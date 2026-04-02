@@ -20,6 +20,8 @@ export interface AudioUniforms {
   u_resolution: [number, number];
   u_scene_progress: number;
   u_fps: number;
+  spectrumData: Float32Array;   // 512 log-scaled FFT magnitudes, 0–1
+  waveformData: Float32Array;   // 1024 samples centered at 0.5
 }
 
 export type BeatSource = 'bass' | 'mid' | 'treble' | 'composite';

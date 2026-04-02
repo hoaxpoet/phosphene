@@ -2,6 +2,8 @@ import { AudioUniforms } from '../../shared/types';
 import { OnsetDetector } from './onset-detector';
 
 const SAMPLE_RATE = 48000;
+const FFT_SIZE = 1024;
+const SPECTRUM_BINS = FFT_SIZE / 2; // 512
 
 // Per-band smoothing: bass faster for tight beat response, mid/treble smoother
 const BASS_SM = 0.65;
@@ -95,6 +97,24 @@ export class AudioAnalyzer {
   private accumCount: number = 0;
   private hasData: boolean = false;
 
+  // Ring buffers for FFT and waveform (written per-sample, read per-frame)
+  private fftRingBuffer: Float32Array = new Float32Array(FFT_SIZE);
+  private fftRingPos: number = 0;
+  private waveformRingBuffer: Float32Array = new Float32Array(FFT_SIZE);
+  private waveformRingPos: number = 0;
+
+  // Pre-computed Hanning window
+  private hanningWindow: Float32Array = new Float32Array(FFT_SIZE);
+
+  // FFT output arrays (reused each frame)
+  private fftReal: Float64Array = new Float64Array(FFT_SIZE);
+  private fftImag: Float64Array = new Float64Array(FFT_SIZE);
+  private spectrumData: Float32Array = new Float32Array(SPECTRUM_BINS);
+  private waveformData: Float32Array = new Float32Array(FFT_SIZE);
+
+  // One-time FFT verification log
+  private fftLoggedOnce: boolean = false;
+
   private lpAlphas: number[] = [];
   private fps: number = 60;
 
@@ -105,6 +125,11 @@ export class AudioAnalyzer {
       this.lpAlphas = BAND_CUTOFFS.map(f => Math.exp(-2 * Math.PI * f / SAMPLE_RATE));
       const bassAlpha = Math.exp(-2 * Math.PI * 250 / SAMPLE_RATE);
       const trebleAlpha = Math.exp(-2 * Math.PI * 4000 / SAMPLE_RATE);
+
+      // Pre-compute Hanning window
+      for (let i = 0; i < FFT_SIZE; i++) {
+        this.hanningWindow[i] = 0.5 * (1 - Math.cos(2 * Math.PI * i / (FFT_SIZE - 1)));
+      }
 
       let ipcCount = 0;
       ipcRenderer.on('audio-data', (_event: any, data: any) => {
@@ -168,6 +193,12 @@ export class AudioAnalyzer {
           }
 
           this.accumCount++;
+
+          // Write mono sample into ring buffers for FFT and waveform
+          this.fftRingBuffer[this.fftRingPos] = sample;
+          this.fftRingPos = (this.fftRingPos + 1) & (FFT_SIZE - 1);
+          this.waveformRingBuffer[this.waveformRingPos] = sample;
+          this.waveformRingPos = (this.waveformRingPos + 1) & (FFT_SIZE - 1);
         }
 
       });
@@ -340,6 +371,58 @@ export class AudioAnalyzer {
       this.beatDiagActiveComposite = this.beatDiagActiveBass = this.beatDiagActiveMid = this.beatDiagActiveTreble = 0;
     }
 
+    // === FFT spectrum computation ===
+    // Copy ring buffer (unwrap from write position) and apply Hanning window
+    for (let i = 0; i < FFT_SIZE; i++) {
+      const idx = (this.fftRingPos + i) & (FFT_SIZE - 1);
+      this.fftReal[i] = this.fftRingBuffer[idx] * this.hanningWindow[i];
+      this.fftImag[i] = 0;
+    }
+
+    // In-place radix-2 FFT
+    this.fft(this.fftReal, this.fftImag);
+
+    // Compute magnitudes for first 512 bins, find max for log normalization
+    let maxMag = 0;
+    for (let i = 0; i < SPECTRUM_BINS; i++) {
+      const r = this.fftReal[i];
+      const im = this.fftImag[i];
+      const mag = Math.sqrt(r * r + im * im);
+      this.spectrumData[i] = mag;
+      if (mag > maxMag) maxMag = mag;
+    }
+
+    // Log-scale normalize: log(1 + mag) / log(1 + maxMag) → 0–1
+    if (maxMag > 0) {
+      const logMax = Math.log(1 + maxMag);
+      for (let i = 0; i < SPECTRUM_BINS; i++) {
+        this.spectrumData[i] = Math.log(1 + this.spectrumData[i]) / logMax;
+      }
+    }
+
+    // === Waveform data ===
+    // Copy ring buffer unwrapped, center at 0.5: output = sample * 0.5 + 0.5
+    for (let i = 0; i < FFT_SIZE; i++) {
+      const idx = (this.waveformRingPos + i) & (FFT_SIZE - 1);
+      this.waveformData[i] = this.waveformRingBuffer[idx] * 0.5 + 0.5;
+    }
+
+    // One-time verification log
+    if (!this.fftLoggedOnce && this.hasData) {
+      let specMin = Infinity, specMax = -Infinity;
+      for (let i = 0; i < SPECTRUM_BINS; i++) {
+        if (this.spectrumData[i] < specMin) specMin = this.spectrumData[i];
+        if (this.spectrumData[i] > specMax) specMax = this.spectrumData[i];
+      }
+      let waveMin = Infinity, waveMax = -Infinity;
+      for (let i = 0; i < FFT_SIZE; i++) {
+        if (this.waveformData[i] < waveMin) waveMin = this.waveformData[i];
+        if (this.waveformData[i] > waveMax) waveMax = this.waveformData[i];
+      }
+      console.log(`[FFT] spectrum range: min=${specMin.toFixed(4)} max=${specMax.toFixed(4)}, waveform range: min=${waveMin.toFixed(4)} max=${waveMax.toFixed(4)}`);
+      this.fftLoggedOnce = true;
+    }
+
     return {
       u_time: time,
       u_bass: this.smoothBass,
@@ -362,6 +445,8 @@ export class AudioAnalyzer {
       u_resolution: [width, height],
       u_scene_progress: 0.0,
       u_fps: this.fps,
+      spectrumData: this.spectrumData,
+      waveformData: this.waveformData,
     };
   }
 
@@ -371,5 +456,54 @@ export class AudioAnalyzer {
       rawMid: this.lastRawMid,
       rawTreble: this.lastRawTreble,
     };
+  }
+
+  /** In-place radix-2 Cooley-Tukey FFT. Arrays must be power-of-2 length. */
+  private fft(real: Float64Array, imag: Float64Array): void {
+    const n = real.length;
+
+    // Bit-reversal permutation
+    for (let i = 1, j = 0; i < n; i++) {
+      let bit = n >> 1;
+      while (j & bit) {
+        j ^= bit;
+        bit >>= 1;
+      }
+      j ^= bit;
+
+      if (i < j) {
+        let tmp = real[i]; real[i] = real[j]; real[j] = tmp;
+        tmp = imag[i]; imag[i] = imag[j]; imag[j] = tmp;
+      }
+    }
+
+    // Butterfly stages
+    for (let len = 2; len <= n; len <<= 1) {
+      const halfLen = len >> 1;
+      const angle = -2 * Math.PI / len;
+      const wReal = Math.cos(angle);
+      const wImag = Math.sin(angle);
+
+      for (let i = 0; i < n; i += len) {
+        let curReal = 1;
+        let curImag = 0;
+
+        for (let j = 0; j < halfLen; j++) {
+          const a = i + j;
+          const b = a + halfLen;
+          const tReal = curReal * real[b] - curImag * imag[b];
+          const tImag = curReal * imag[b] + curImag * real[b];
+
+          real[b] = real[a] - tReal;
+          imag[b] = imag[a] - tImag;
+          real[a] += tReal;
+          imag[a] += tImag;
+
+          const nextReal = curReal * wReal - curImag * wImag;
+          curImag = curReal * wImag + curImag * wReal;
+          curReal = nextReal;
+        }
+      }
+    }
   }
 }

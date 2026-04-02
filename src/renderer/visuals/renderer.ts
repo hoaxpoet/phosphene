@@ -7,7 +7,27 @@ void main() {
 }
 `;
 
-function createMaterial(fragmentShader: string, prevFrameTexture: THREE.Texture): THREE.ShaderMaterial {
+function createSpectrumTexture(): THREE.DataTexture {
+  const data = new Float32Array(512);
+  const tex = new THREE.DataTexture(data, 512, 1, THREE.RedFormat, THREE.FloatType);
+  tex.minFilter = THREE.LinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+function createWaveformTexture(): THREE.DataTexture {
+  const data = new Float32Array(1024);
+  // Initialize centered at 0.5 (silence)
+  data.fill(0.5);
+  const tex = new THREE.DataTexture(data, 1024, 1, THREE.RedFormat, THREE.FloatType);
+  tex.minFilter = THREE.LinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+function createMaterial(fragmentShader: string, prevFrameTexture: THREE.Texture, spectrumTexture: THREE.DataTexture, waveformTexture: THREE.DataTexture): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
     vertexShader: VERTEX_SHADER,
     fragmentShader,
@@ -32,6 +52,9 @@ function createMaterial(fragmentShader: string, prevFrameTexture: THREE.Texture)
       u_mid_high: { value: 0.0 },
       u_high_mid: { value: 0.0 },
       u_high: { value: 0.0 },
+      // Spectrum & waveform textures
+      u_spectrum: { value: spectrumTexture },
+      u_waveform: { value: waveformTexture },
       // Scene
       u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
       u_scene_progress: { value: 0.0 },
@@ -101,6 +124,9 @@ export class VisualRenderer {
   private copyScene: THREE.Scene;
   private copyMaterial: THREE.ShaderMaterial;
 
+  private spectrumTexture: THREE.DataTexture;
+  private waveformTexture: THREE.DataTexture;
+
   constructor(canvas: HTMLCanvasElement, fragmentShader: string) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
     this.renderer.setPixelRatio(window.devicePixelRatio);
@@ -117,7 +143,9 @@ export class VisualRenderer {
     this.rtA = new THREE.WebGLRenderTarget(pw, ph, rtOpts);
     this.rtB = new THREE.WebGLRenderTarget(pw, ph, rtOpts);
 
-    this.material = createMaterial(fragmentShader, this.rtB.texture);
+    this.spectrumTexture = createSpectrumTexture();
+    this.waveformTexture = createWaveformTexture();
+    this.material = createMaterial(fragmentShader, this.rtB.texture, this.spectrumTexture, this.waveformTexture);
     this.mesh = new THREE.Mesh(this.geometry, this.material);
     this.scene.add(this.mesh);
 
@@ -144,13 +172,23 @@ export class VisualRenderer {
   setShader(fragmentShader: string): void {
     const readRT = this.pingPong ? this.rtA : this.rtB;
     const oldMaterial = this.material;
-    this.material = createMaterial(fragmentShader, readRT.texture);
+    this.material = createMaterial(fragmentShader, readRT.texture, this.spectrumTexture, this.waveformTexture);
     this.mesh.material = this.material;
     oldMaterial.dispose();
   }
 
   updateUniforms(uniforms: AudioUniforms, params: SceneParams): void {
     updateMaterialUniforms(this.material, uniforms, params);
+
+    // Update spectrum texture data (512 floats)
+    const specData = this.spectrumTexture.image.data as unknown as Float32Array;
+    specData.set(uniforms.spectrumData);
+    this.spectrumTexture.needsUpdate = true;
+
+    // Update waveform texture data (1024 floats)
+    const waveData = this.waveformTexture.image.data as unknown as Float32Array;
+    waveData.set(uniforms.waveformData);
+    this.waveformTexture.needsUpdate = true;
   }
 
   render(): void {
@@ -190,5 +228,7 @@ export class VisualRenderer {
     this.geometry.dispose();
     this.rtA.dispose();
     this.rtB.dispose();
+    this.spectrumTexture.dispose();
+    this.waveformTexture.dispose();
   }
 }
