@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Phosphene Beat Test Harness</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #111; color: #eee; font-family: monospace; font-size: 12px; }
+#container { display: flex; height: 100vh; }
+#viz { flex: 1; position: relative; background: #000; }
+#viz canvas { width: 100%; height: 100%; }
+#panel { width: 320px; padding: 12px; overflow-y: auto; background: #1a1a1a; border-left: 1px solid #333; }
+h3 { margin: 10px 0 6px; color: #aaa; font-size: 11px; text-transform: uppercase; }
+.bar-row { display: flex; align-items: center; margin: 3px 0; }
+.bar-label { width: 70px; font-size: 10px; color: #888; }
+.bar-bg { flex: 1; height: 14px; background: #222; border-radius: 2px; overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 2px; transition: width 16ms linear; }
+.bar-value { width: 40px; text-align: right; font-size: 10px; color: #666; }
+#beat-indicator { width: 100%; height: 40px; margin: 8px 0; border-radius: 4px; background: #222; transition: background 50ms; }
+#beat-indicator.active { background: #fff; }
+#beat-log { font-size: 10px; color: #666; max-height: 200px; overflow-y: auto; white-space: pre; }
+#status { color: #4a4; margin-bottom: 8px; }
+button { background: #333; color: #eee; border: 1px solid #555; padding: 6px 12px; margin: 4px; cursor: pointer; border-radius: 3px; }
+button:hover { background: #444; }
+</style>
+</head>
+<body>
+<div id="container">
+  <div id="viz"><canvas id="canvas"></canvas></div>
+  <div id="panel">
+    <div id="status">Stopped</div>
+    <div>
+      <button onclick="startTest(100)">100 BPM</button>
+      <button onclick="startTest(120)">120 BPM</button>
+      <button onclick="startTest(140)">140 BPM</button>
+      <button onclick="stopTest()">Stop</button>
+    </div>
+
+    <h3>Beat Detection</h3>
+    <div id="beat-indicator"></div>
+    <div class="bar-row">
+      <span class="bar-label">u_beat</span>
+      <div class="bar-bg"><div class="bar-fill" id="bar-beat" style="background:#f0f;width:0%"></div></div>
+      <span class="bar-value" id="val-beat">0</span>
+    </div>
+
+    <h3>3-Band Energy</h3>
+    <div class="bar-row">
+      <span class="bar-label">bass</span>
+      <div class="bar-bg"><div class="bar-fill" id="bar-bass" style="background:#f44;width:0%"></div></div>
+      <span class="bar-value" id="val-bass">0</span>
+    </div>
+    <div class="bar-row">
+      <span class="bar-label">mid</span>
+      <div class="bar-bg"><div class="bar-fill" id="bar-mid" style="background:#4f4;width:0%"></div></div>
+      <span class="bar-value" id="val-mid">0</span>
+    </div>
+    <div class="bar-row">
+      <span class="bar-label">treble</span>
+      <div class="bar-bg"><div class="bar-fill" id="bar-treble" style="background:#44f;width:0%"></div></div>
+      <span class="bar-value" id="val-treble">0</span>
+    </div>
+
+    <h3>6-Band</h3>
+    <div class="bar-row"><span class="bar-label">sub_bass</span><div class="bar-bg"><div class="bar-fill" id="bar-sb" style="background:#e22;width:0%"></div></div><span class="bar-value" id="val-sb">0</span></div>
+    <div class="bar-row"><span class="bar-label">low_bass</span><div class="bar-bg"><div class="bar-fill" id="bar-lb" style="background:#e82;width:0%"></div></div><span class="bar-value" id="val-lb">0</span></div>
+    <div class="bar-row"><span class="bar-label">low_mid</span><div class="bar-bg"><div class="bar-fill" id="bar-lm" style="background:#ec2;width:0%"></div></div><span class="bar-value" id="val-lm">0</span></div>
+    <div class="bar-row"><span class="bar-label">mid_high</span><div class="bar-bg"><div class="bar-fill" id="bar-mh" style="background:#2cc;width:0%"></div></div><span class="bar-value" id="val-mh">0</span></div>
+    <div class="bar-row"><span class="bar-label">high_mid</span><div class="bar-bg"><div class="bar-fill" id="bar-hm" style="background:#24e;width:0%"></div></div><span class="bar-value" id="val-hm">0</span></div>
+    <div class="bar-row"><span class="bar-label">high</span><div class="bar-bg"><div class="bar-fill" id="bar-hi" style="background:#a2e;width:0%"></div></div><span class="bar-value" id="val-hi">0</span></div>
+
+    <h3>Beat Log</h3>
+    <div id="beat-log"></div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// ANALYZER — exact copy of Phosphene's analyzer logic
+// ============================================================
+const SAMPLE_RATE = 48000;
+const SMOOTHING = 0.82;
+const ATT_SMOOTHING = 0.95;
+const BEAT_AVG_RATE = 0.96;
+const BEAT_THRESHOLD_BASE = 1.15;
+const BEAT_THRESHOLD_RISE = 0.08;
+const BEAT_THRESHOLD_DECAY = 0.95;
+const BEAT_MIN_INTERVAL_MS = 180;
+const BEAT_PULSE_DECAY = 0.85;
+const BAND_CUTOFFS = [80, 250, 1000, 4000, 8000];
+
+class TestAnalyzer {
+  constructor() {
+    this.bassLpState = 0; this.trebleHpState = 0; this.prevSample = 0;
+    this.bassAccum = 0; this.midAccum = 0; this.trebleAccum = 0;
+    this.volumeAccum = 0; this.accumCount = 0;
+    this.smoothBass = 0; this.smoothMid = 0; this.smoothTreble = 0; this.smoothVolume = 0;
+    this.attBass = 0; this.attMid = 0; this.attTreble = 0;
+    this.lpStates = [0,0,0,0,0];
+    this.bandAccums = [0,0,0,0,0,0];
+    this.smoothBands = [0,0,0,0,0,0];
+    this.beatAvg = 0; this.beatThresholdBoost = 0;
+    this.beatPulse = 0; this.lastBeatTime = -1000;
+    this.startTime = performance.now();
+    this.lastFrameTime = this.startTime;
+    this.fps = 60;
+
+    this.bassAlpha = Math.exp(-2 * Math.PI * 250 / SAMPLE_RATE);
+    this.trebleAlpha = Math.exp(-2 * Math.PI * 4000 / SAMPLE_RATE);
+    this.lpAlphas = BAND_CUTOFFS.map(f => Math.exp(-2 * Math.PI * f / SAMPLE_RATE));
+  }
+
+  processSamples(samples) {
+    for (let i = 0; i < samples.length; i++) {
+      const sample = samples[i];
+      this.bassLpState = this.bassLpState * this.bassAlpha + sample * (1 - this.bassAlpha);
+      const bassSample = this.bassLpState;
+      this.trebleHpState = this.trebleAlpha * (this.trebleHpState + sample - this.prevSample);
+      this.prevSample = sample;
+      const trebleSample = this.trebleHpState;
+      const midSample = sample - bassSample - trebleSample;
+
+      this.bassAccum += bassSample * bassSample;
+      this.midAccum += midSample * midSample;
+      this.trebleAccum += trebleSample * trebleSample;
+      this.volumeAccum += sample * sample;
+
+      const lpOutputs = [];
+      for (let b = 0; b < 5; b++) {
+        this.lpStates[b] = this.lpStates[b] * this.lpAlphas[b] + sample * (1 - this.lpAlphas[b]);
+        lpOutputs.push(this.lpStates[b]);
+      }
+      const bandSamples = [
+        lpOutputs[0], lpOutputs[1]-lpOutputs[0], lpOutputs[2]-lpOutputs[1],
+        lpOutputs[3]-lpOutputs[2], lpOutputs[4]-lpOutputs[3], sample-lpOutputs[4]
+      ];
+      for (let b = 0; b < 6; b++) this.bandAccums[b] += bandSamples[b] * bandSamples[b];
+      this.accumCount++;
+    }
+  }
+
+  getUniforms() {
+    const now = performance.now();
+    const time = (now - this.startTime) / 1000;
+    const dt = (now - this.lastFrameTime) / 1000;
+    this.lastFrameTime = now;
+    if (dt > 0) this.fps = this.fps * 0.95 + (1/dt) * 0.05;
+
+    const fpsRatio = 30 / Math.max(this.fps, 1);
+    const sm = Math.pow(SMOOTHING, fpsRatio);
+    const smAtt = Math.pow(ATT_SMOOTHING, fpsRatio);
+    const smBeatAvg = Math.pow(BEAT_AVG_RATE, fpsRatio);
+    const smThreshDecay = Math.pow(BEAT_THRESHOLD_DECAY, fpsRatio);
+    const smPulseDecay = Math.pow(BEAT_PULSE_DECAY, fpsRatio);
+
+    let beatFired = false;
+
+    if (this.accumCount > 0) {
+      const rawBass = Math.sqrt(this.bassAccum / this.accumCount);
+      const rawMid = Math.sqrt(this.midAccum / this.accumCount);
+      const rawTreble = Math.sqrt(this.trebleAccum / this.accumCount);
+      const rawVolume = Math.sqrt(this.volumeAccum / this.accumCount);
+
+      const bandScales = [10, 13, 15, 20, 25, 30];
+      const rawBands = [];
+      for (let b = 0; b < 6; b++) {
+        rawBands.push(Math.min(1, Math.sqrt(this.bandAccums[b] / this.accumCount) * bandScales[b]));
+        this.bandAccums[b] = 0;
+      }
+      this.bassAccum = 0; this.midAccum = 0; this.trebleAccum = 0;
+      this.volumeAccum = 0; this.accumCount = 0;
+
+      const scaledBass = Math.min(1, rawBass * 13);
+      const scaledMid = Math.min(1, rawMid * 15);
+      const scaledTreble = Math.min(1, rawTreble * 25);
+      const scaledVolume = Math.min(1, rawVolume * 8);
+
+      this.smoothBass = this.smoothBass * sm + scaledBass * (1 - sm);
+      this.smoothMid = this.smoothMid * sm + scaledMid * (1 - sm);
+      this.smoothTreble = this.smoothTreble * sm + scaledTreble * (1 - sm);
+      this.smoothVolume = this.smoothVolume * sm + scaledVolume * (1 - sm);
+      this.attBass = this.attBass * smAtt + scaledBass * (1 - smAtt);
+      this.attMid = this.attMid * smAtt + scaledMid * (1 - smAtt);
+      this.attTreble = this.attTreble * smAtt + scaledTreble * (1 - smAtt);
+      for (let b = 0; b < 6; b++) this.smoothBands[b] = this.smoothBands[b] * sm + rawBands[b] * (1 - sm);
+
+      // Beat: raw unscaled bass
+      const beatEnergy = rawBass;
+      this.beatAvg = this.beatAvg * smBeatAvg + beatEnergy * (1 - smBeatAvg);
+      const threshold = (BEAT_THRESHOLD_BASE + this.beatThresholdBoost) * Math.max(this.beatAvg, 0.001);
+      const elapsed = time;
+
+      // Debug: store for external inspection
+      this._dbg = { beatEnergy, beatAvg: this.beatAvg, threshold, boost: this.beatThresholdBoost, elapsed, sinceLast: now - this.lastBeatTime };
+
+      if (beatEnergy > threshold && (now - this.lastBeatTime) > BEAT_MIN_INTERVAL_MS && elapsed > 1.0) {
+        this.beatPulse = 1.0;
+        this.lastBeatTime = now;
+        this.beatThresholdBoost = BEAT_THRESHOLD_RISE;
+        beatFired = true;
+      }
+    }
+
+    this.beatThresholdBoost *= smThreshDecay;
+    this.beatPulse *= smPulseDecay;
+
+    return {
+      time, beatFired,
+      bass: this.smoothBass, mid: this.smoothMid, treble: this.smoothTreble,
+      volume: this.smoothVolume, beat: this.beatPulse,
+      bass_att: this.attBass, mid_att: this.attMid, treb_att: this.attTreble,
+      bands: [...this.smoothBands],
+    };
+  }
+}
+
+// ============================================================
+// SYNTHETIC AUDIO GENERATOR
+// ============================================================
+function generateFrame(bpm, sampleIndex, samplesPerFrame) {
+  const beatInterval = Math.floor(SAMPLE_RATE * 60 / bpm);
+  const kickDuration = Math.floor(SAMPLE_RATE * 0.05);
+  const samples = new Float32Array(samplesPerFrame);
+
+  for (let i = 0; i < samplesPerFrame; i++) {
+    const idx = sampleIndex + i;
+    const t = idx / SAMPLE_RATE;
+    const posInBeat = idx % beatInterval;
+    let s = 0;
+
+    // Kick drum
+    if (posInBeat < kickDuration) {
+      const kt = posInBeat / SAMPLE_RATE;
+      s += Math.sin(2 * Math.PI * 60 * kt) * 0.5 * Math.exp(-kt * 40);
+    }
+
+    // Sustained bass
+    s += Math.sin(2 * Math.PI * 100 * t) * 0.15;
+    // Sustained mid (guitar/keys)
+    s += Math.sin(2 * Math.PI * 400 * t + Math.sin(t * 3) * 0.5) * 0.12;
+    s += Math.sin(2 * Math.PI * 800 * t) * 0.08;
+    // Hi-hat on off-beats
+    const offBeatPos = (idx + Math.floor(beatInterval / 2)) % beatInterval;
+    if (offBeatPos < Math.floor(SAMPLE_RATE * 0.02)) {
+      s += (Math.random() - 0.5) * 0.25 * Math.exp(-offBeatPos / SAMPLE_RATE * 80);
+    }
+    // Noise
+    s += (Math.random() - 0.5) * 0.03;
+
+    samples[i] = s;
+  }
+  return samples;
+}
+
+// ============================================================
+// SIMPLE VISUALIZATION (no Three.js, just Canvas2D)
+// ============================================================
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+function renderViz(uniforms) {
+  const w = canvas.width = canvas.clientWidth;
+  const h = canvas.height = canvas.clientHeight;
+
+  // Dark background
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, w, h);
+
+  const cx = w / 2, cy = h / 2;
+
+  // Central orb — radius from bass, brightness from beat
+  const orbR = 30 + uniforms.bass * 80 + uniforms.beat * 60;
+  const beatBright = Math.floor(uniforms.beat * 200);
+  const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, orbR);
+  gradient.addColorStop(0, `rgb(${180 + beatBright}, ${60 + beatBright/2}, ${120 + beatBright})`);
+  gradient.addColorStop(0.6, `rgba(${100 + beatBright/2}, 20, ${80 + beatBright/2}, 0.6)`);
+  gradient.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, w, h);
+
+  // Concentric rings — one per 6-band
+  const ringColors = ['#e22', '#e82', '#ec2', '#2cc', '#24e', '#a2e'];
+  for (let i = 0; i < 6; i++) {
+    const r = 60 + i * 45 + uniforms.bands[i] * 20;
+    const alpha = 0.15 + uniforms.bands[i] * 0.7;
+    ctx.strokeStyle = ringColors[i];
+    ctx.globalAlpha = alpha;
+    ctx.lineWidth = 2 + uniforms.bands[i] * 4;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  // Beat flash border
+  if (uniforms.beat > 0.3) {
+    ctx.strokeStyle = `rgba(255,255,255,${uniforms.beat * 0.5})`;
+    ctx.lineWidth = uniforms.beat * 8;
+    ctx.strokeRect(0, 0, w, h);
+  }
+
+  // Time marker — vertical line sweeping across showing beat rhythm
+  const sweepX = (uniforms.time % 4) / 4 * w;
+  ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(sweepX, 0); ctx.lineTo(sweepX, h); ctx.stroke();
+
+  // Beat tick marks on sweep
+  ctx.fillStyle = '#fff';
+  ctx.font = '10px monospace';
+  ctx.fillText(`${uniforms.time.toFixed(1)}s  beat=${uniforms.beat.toFixed(2)}`, 10, h - 10);
+}
+
+// ============================================================
+// UI UPDATES
+// ============================================================
+function updateBars(uniforms) {
+  const set = (id, val) => {
+    document.getElementById('bar-' + id).style.width = (val * 100) + '%';
+    document.getElementById('val-' + id).textContent = val.toFixed(2);
+  };
+  set('beat', uniforms.beat);
+  set('bass', uniforms.bass);
+  set('mid', uniforms.mid);
+  set('treble', uniforms.treble);
+  set('sb', uniforms.bands[0]);
+  set('lb', uniforms.bands[1]);
+  set('lm', uniforms.bands[2]);
+  set('mh', uniforms.bands[3]);
+  set('hm', uniforms.bands[4]);
+  set('hi', uniforms.bands[5]);
+
+  const indicator = document.getElementById('beat-indicator');
+  if (uniforms.beat > 0.5) {
+    indicator.classList.add('active');
+  } else {
+    indicator.classList.remove('active');
+  }
+}
+
+// ============================================================
+// MAIN LOOP
+// ============================================================
+let running = false;
+let analyzer = null;
+let sampleIndex = 0;
+let currentBpm = 120;
+let beatCount = 0;
+const SAMPLES_PER_FRAME = Math.floor(SAMPLE_RATE / 60);
+
+let intervalId = null;
+
+function startTest(bpm) {
+  stopTest();
+  currentBpm = bpm;
+  analyzer = new TestAnalyzer();
+  sampleIndex = 0;
+  beatCount = 0;
+  running = true;
+  lastLoopTime = 0;
+  document.getElementById('status').textContent = `Running: ${bpm} BPM synthetic`;
+  document.getElementById('beat-log').textContent = '';
+  intervalId = setInterval(loop, 16);
+}
+
+function stopTest() {
+  running = false;
+  if (intervalId) { clearInterval(intervalId); intervalId = null; }
+  document.getElementById('status').textContent = 'Stopped';
+}
+
+let lastLoopTime = 0;
+
+function loop() {
+  if (!running) return;
+
+  // Process enough audio samples to match elapsed wall time
+  // (the Preview tool throttles intervals, so we may need to catch up)
+  const now = performance.now();
+  if (lastLoopTime === 0) lastLoopTime = now;
+  const elapsedMs = Math.min(now - lastLoopTime, 100); // cap at 100ms to avoid huge catch-ups
+  lastLoopTime = now;
+  const samplesToProcess = Math.floor(SAMPLE_RATE * elapsedMs / 1000);
+
+  if (samplesToProcess > 0) {
+    const samples = generateFrame(currentBpm, sampleIndex, samplesToProcess);
+    analyzer.processSamples(samples);
+    sampleIndex += samplesToProcess;
+  }
+
+  const uniforms = analyzer.getUniforms();
+
+  if (uniforms.beatFired) {
+    beatCount++;
+    const log = document.getElementById('beat-log');
+    log.textContent += `Beat #${beatCount} at ${uniforms.time.toFixed(2)}s\n`;
+    log.scrollTop = log.scrollHeight;
+  }
+
+  renderViz(uniforms);
+  updateBars(uniforms);
+}
+</script>
+</body>
+</html>

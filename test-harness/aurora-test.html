@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Aurora Bands Tuning — Real Data</title>
+<style>
+* { margin:0; padding:0; } body { background:#000; overflow:hidden; }
+canvas { display:block; width:100vw; height:100vh; }
+#hud { position:fixed; top:6px; left:6px; color:rgba(255,255,255,0.7); font:10px monospace; z-index:10; pointer-events:none; line-height:1.5; }
+</style>
+</head>
+<body>
+<div id="hud">Loading...</div>
+<canvas id="c"></canvas>
+<script src="realdata.js"></script>
+<script>
+// REAL_DATA columns: [0:time, 1:bass, 2:mid, 3:treble, 4:bass_att, 5:mid_att, 6:treb_att,
+//                     7:beat_raw, 8:beat, 9:sub_bass, 10:low_bass, 11:low_mid,
+//                     12:mid_high, 13:high_mid, 14:high]
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const hud = document.getElementById('hud');
+function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+resize();
+
+function noise(x, y) { return (Math.sin(x*127.1+y*311.7)*43758.5453) % 1; }
+function fbm(x, y) {
+  let v=0, a=0.5;
+  for (let i=0;i<4;i++) { v+=a*Math.abs(noise(x,y)); x*=2; y*=2; a*=0.5; }
+  return v;
+}
+function hsvRgb(h,s,v) {
+  h=((h%1)+1)%1; const i=Math.floor(h*6),f=h*6-i;
+  const p=v*(1-s),q=v*(1-f*s),t=v*(1-(1-f)*s);
+  const c=[[v,t,p],[q,v,p],[p,v,t],[p,q,v],[t,p,v],[v,p,q]][i%6];
+  return c.map(x=>Math.round(x*255));
+}
+
+// Curtain config: [yFrac, speed, freq, hue, name]
+const CURTAINS = [
+  [0.10, 0.08, 1.5, 0.95, 'Sub-bass'],
+  [0.22, 0.14, 2.0, 0.05, 'Bass'],
+  [0.38, 0.22, 2.5, 0.14, 'Low-mid'],
+  [0.53, 0.32, 3.0, 0.35, 'Mid-high (SYNTH)'],
+  [0.68, 0.48, 3.5, 0.58, 'High-mid'],
+  [0.84, 0.65, 4.5, 0.75, 'Treble'],
+];
+// Which REAL_DATA column for each curtain's energy
+const BAND_COLS = [9, 10, 11, 12, 13, 14];
+
+// Per-preset params (matching aurora-bands.json)
+const P = { beat_sens: 0.7, decay: 0.89, beat_zoom: 0.10 };
+
+function renderFrame(d, time) {
+  const w = canvas.width, h = canvas.height;
+  const beat = Math.min(1, d[7] * P.beat_sens); // beat_raw * sensitivity
+
+  // Feedback
+  ctx.save();
+  ctx.globalAlpha = P.decay;
+  const zoom = 1.0 + P.beat_zoom * beat;
+  ctx.translate(w/2, h/2);
+  ctx.scale(zoom, zoom);
+  ctx.translate(-w/2, -h/2 - 1.5 * d[1]); // upward drift from bass
+  ctx.drawImage(canvas, 0, 0);
+  ctx.restore();
+  ctx.fillStyle = `rgba(0,0,0,${1-P.decay})`;
+  ctx.fillRect(0,0,w,h);
+
+  // Draw curtains using REAL 6-band values
+  for (let c = 0; c < 6; c++) {
+    const [yf, speed, freq, hue, name] = CURTAINS[c];
+    const energy = d[BAND_COLS[c]]; // Real AGC-normalized value
+    const vis = energy * 0.7 + 0.05;
+    const yCtr = yf * h;
+    const amp = 5 + vis * 25;
+    const width = 2 + vis * 10;
+
+    ctx.beginPath();
+    for (let x = 0; x < w; x += 3) {
+      const nx = x/w * freq + time * speed;
+      const wave = fbm(nx, yf*5) * amp;
+      const y = yCtr + wave;
+      if (x===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    const [r,g,b] = hsvRgb(hue, 0.85, Math.min(1, vis * 1.5));
+    ctx.strokeStyle = `rgba(${r},${g},${b},${Math.min(1,vis*1.2)})`;
+    ctx.lineWidth = width;
+    ctx.shadowColor = `rgb(${r},${g},${b})`;
+    ctx.shadowBlur = vis * 15;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
+  // Vertical gradient
+  const grad = ctx.createLinearGradient(0,0,0,h);
+  grad.addColorStop(0,'rgba(0,0,0,0)');
+  grad.addColorStop(1,'rgba(0,0,0,0.4)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0,0,w,h);
+
+  // HUD with REAL values
+  const bands = BAND_COLS.map((col,i) => `${CURTAINS[i][4].split(' ')[0]}=${d[col].toFixed(2)}`);
+  hud.innerHTML = `t=${d[0].toFixed(1)}s beat=${beat.toFixed(2)} bass=${d[1].toFixed(2)} mid=${d[2].toFixed(2)} treb=${d[3].toFixed(2)}<br>${bands.join(' ')}`;
+}
+
+// Real-time playback of captured data
+let frameIdx = 0;
+const startWall = performance.now() / 1000;
+setInterval(() => {
+  const elapsed = performance.now() / 1000 - startWall;
+  while (frameIdx < REAL_DATA.length-1 && REAL_DATA[frameIdx+1][0] <= elapsed) frameIdx++;
+  if (frameIdx >= REAL_DATA.length) { frameIdx = 0; return; } // Loop
+  renderFrame(REAL_DATA[frameIdx], elapsed);
+}, 16);
+</script>
+</body>
+</html>

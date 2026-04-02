@@ -1,0 +1,13 @@
+{
+  "name": "Aurora Bands",
+  "family": "fluid",
+  "duration": 40,
+  "description": "Aurora curtains per frequency band",
+  "author": "Matt",
+  "beat_zoom": 0.033,
+  "beat_rot": 0.0,
+  "base_zoom": 0.045,
+  "base_rot": 0.0,
+  "decay": 0.89,
+  "beat_sensitivity": 0.0
+}

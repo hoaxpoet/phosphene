@@ -1,0 +1,12 @@
+appId: com.phosphene.app
+productName: Phosphene
+mac:
+  category: public.app-category.entertainment
+  target:
+    - dmg
+dmg:
+  title: Phosphene
+files:
+  - dist/**/*
+  - node_modules/**/*
+  - package.json

@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Real Music Playback Test</title>
+<style>
+* { margin:0; padding:0; } body { background:#000; overflow:hidden; }
+canvas { display:block; width:100vw; height:100vh; }
+#hud { position:fixed; top:8px; left:8px; color:rgba(255,255,255,0.6); font:11px monospace; z-index:10; pointer-events:none; }
+#bars { position:fixed; top:8px; right:8px; z-index:10; pointer-events:none; }
+.bar { height:8px; margin:2px 0; border-radius:2px; min-width:2px; }
+</style>
+</head>
+<body>
+<div id="hud">Loading...</div>
+<div id="bars">
+  <div class="bar" id="b-bass" style="background:#f44;width:0px"></div>
+  <div class="bar" id="b-mid" style="background:#4f4;width:0px"></div>
+  <div class="bar" id="b-treb" style="background:#44f;width:0px"></div>
+  <div class="bar" id="b-beat" style="background:#f0f;width:0px"></div>
+</div>
+<canvas id="c"></canvas>
+<script src="realdata.js"></script>
+<script>
+// REAL_DATA: [time, bass, mid, treble, beat_raw, beat, raw_bass, raw_mid, raw_treble]
+// Replay at real-time speed and render a Spectrum Pulse-style visualization
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const hud = document.getElementById('hud');
+
+// Resize
+function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+resize();
+window.addEventListener('resize', resize);
+
+// Feedback: keep previous frame as ImageData
+let prevFrame = null;
+
+let frameIdx = 0;
+let playing = false;
+let startTime = 0;
+
+function getDataAtTime(t) {
+  // Find the closest frame
+  while (frameIdx < REAL_DATA.length - 1 && REAL_DATA[frameIdx + 1][0] <= t) frameIdx++;
+  const d = REAL_DATA[Math.min(frameIdx, REAL_DATA.length - 1)];
+  return { time: d[0], bass: d[1], mid: d[2], treble: d[3], beat_raw: d[4], beat: d[5] };
+}
+
+function hsv2rgb(h, s, v) {
+  h = ((h % 1) + 1) % 1;
+  const i = Math.floor(h * 6);
+  const f = h * 6 - i;
+  const p = v * (1 - s), q = v * (1 - f * s), t2 = v * (1 - (1 - f) * s);
+  let r, g, b;
+  switch (i % 6) {
+    case 0: r=v;g=t2;b=p;break; case 1: r=q;g=v;b=p;break; case 2: r=p;g=v;b=t2;break;
+    case 3: r=p;g=q;b=v;break; case 4: r=t2;g=p;b=v;break; case 5: r=v;g=p;b=q;break;
+  }
+  return [Math.round(r*255), Math.round(g*255), Math.round(b*255)];
+}
+
+function render(d) {
+  const w = canvas.width, h = canvas.height;
+  const cx = w/2, cy = h/2;
+
+  // === FEEDBACK: sample previous frame with zoom ===
+  if (prevFrame) {
+    // Zoom toward center driven by bass + beat
+    const zoom = 1.0 + 0.08 * d.bass + 0.20 * d.beat;
+    const rot = 0.02 * (d.treble - 0.3) + 0.06 * d.beat;
+
+    // Draw previous frame zoomed/rotated with decay
+    ctx.save();
+    ctx.globalAlpha = 0.96; // decay
+    ctx.translate(cx, cy);
+    ctx.rotate(rot);
+    ctx.scale(zoom, zoom);
+    ctx.translate(-cx, -cy);
+    ctx.drawImage(canvas, 0, 0); // self-reference creates feedback
+    ctx.restore();
+
+    // Darken slightly for decay
+    ctx.fillStyle = 'rgba(0,0,0,0.04)';
+    ctx.fillRect(0, 0, w, h);
+  }
+
+  // === NEW ELEMENTS ===
+  const time = d.time;
+
+  // Central orb — bass drives radius, beat drives bloom
+  const orbR = 30 + d.bass * 100 + d.beat * 80;
+  const hue = (time * 0.06 + d.bass * 0.3) % 1;
+  const [cr, cg, cb] = hsv2rgb(hue, 0.9, 0.8 + d.beat * 0.2);
+  const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, orbR);
+  grad.addColorStop(0, `rgba(${cr},${cg},${cb},${0.8 + d.beat * 0.2})`);
+  grad.addColorStop(0.5, `rgba(${cr>>1},${cg>>1},${cb>>1},0.3)`);
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, w, h);
+
+  // Frequency rings
+  const ringCount = 8;
+  for (let i = 0; i < ringCount; i++) {
+    const ringR = orbR + 20 + i * 30 + d.mid * 10;
+    const ringHue = (hue + 0.33 + i * 0.05) % 1;
+    const [rr, rg, rb] = hsv2rgb(ringHue, 0.8, 0.7);
+    const alpha = 0.15 + d.treble * 0.4 + (i === 0 ? d.beat * 0.3 : 0);
+    ctx.strokeStyle = `rgba(${rr},${rg},${rb},${alpha})`;
+    ctx.lineWidth = 1 + d.mid * 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, ringR, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  // Beat flash
+  if (d.beat > 0.3) {
+    ctx.strokeStyle = `rgba(255,255,255,${d.beat * 0.4})`;
+    ctx.lineWidth = d.beat * 6;
+    ctx.strokeRect(2, 2, w - 4, h - 4);
+  }
+
+  // Update bars
+  document.getElementById('b-bass').style.width = (d.bass * 120) + 'px';
+  document.getElementById('b-mid').style.width = (d.mid * 120) + 'px';
+  document.getElementById('b-treb').style.width = (d.treble * 120) + 'px';
+  document.getElementById('b-beat').style.width = (d.beat * 120) + 'px';
+
+  hud.textContent = `t=${d.time.toFixed(1)}s bass=${d.bass.toFixed(2)} mid=${d.mid.toFixed(2)} treb=${d.treble.toFixed(2)} beat=${d.beat.toFixed(2)}`;
+}
+
+// Playback loop using setInterval (works in preview)
+function startPlayback() {
+  frameIdx = 0;
+  startTime = performance.now() / 1000;
+  playing = true;
+  hud.textContent = 'Playing...';
+
+  setInterval(() => {
+    if (!playing) return;
+    const elapsed = performance.now() / 1000 - startTime;
+    if (elapsed > REAL_DATA[REAL_DATA.length - 1][0]) {
+      playing = false;
+      hud.textContent = 'Done.';
+      return;
+    }
+    const d = getDataAtTime(elapsed);
+    render(d);
+  }, 16);
+}
+
+// Auto-start after 500ms
+setTimeout(startPlayback, 500);
+</script>
+</body>
+</html>

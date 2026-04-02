@@ -1,0 +1,14 @@
+{
+  "name": "Waveform Ribbons",
+  "family": "abstract",
+  "duration": 30,
+  "description": "Layered ribbons per frequency band",
+  "author": "Matt",
+  "beat_zoom": 0.02,
+  "beat_rot": 0.0,
+  "base_zoom": 0.06,
+  "base_rot": 0.0,
+  "decay": 0.90,
+  "beat_sensitivity": 0.4,
+  "beat_source": "mid"
+}

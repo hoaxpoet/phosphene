@@ -1,0 +1,24 @@
+{
+  "name": "phosphene",
+  "version": "0.2.0",
+  "description": "Real-time music visualizer for macOS",
+  "main": "dist/main/index.js",
+  "scripts": {
+    "start": "npm run build && electron .",
+    "build": "tsc && npm run copy-assets",
+    "copy-assets": "cp src/renderer/index.html dist/renderer/index.html && mkdir -p dist/renderer/visuals/shaders && cp src/renderer/visuals/shaders/*.glsl dist/renderer/visuals/shaders/ && cp src/renderer/visuals/shaders/*.json dist/renderer/visuals/shaders/",
+    "dev": "tsc --watch",
+    "package": "electron-builder"
+  },
+  "author": "Matt",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/three": "^0.160.0",
+    "electron": "^41.1.1",
+    "electron-builder": "^24.9.0",
+    "typescript": "^5.3.0"
+  },
+  "dependencies": {
+    "three": "^0.160.0"
+  }
+}

@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Raw vs Smoothed Signal Comparison</title>
+<style>
+body { background: #111; color: #eee; font-family: monospace; margin: 0; }
+canvas { display: block; width: 100%; }
+#info { padding: 8px; font-size: 11px; color: #888; }
+</style>
+</head>
+<body>
+<div id="info">Loading...</div>
+<canvas id="c"></canvas>
+<script src="realdata.js"></script>
+<script>
+// REAL_DATA: [time, smoothBass, smoothMid, smoothTreble, rawBass, rawMid, rawTreble]
+const c = document.getElementById('c');
+const ctx = c.getContext('2d');
+c.width = window.innerWidth;
+c.height = window.innerHeight - 30;
+const w = c.width, h = c.height;
+
+const totalTime = REAL_DATA[REAL_DATA.length - 1][0];
+
+// 6 rows: raw bass, smoothed bass, raw mid, smoothed mid, raw treble, smoothed treble
+const rows = [
+  { label: 'RAW BASS (pre-smoothing)', col: 4, color: '#f88' },
+  { label: 'SMOOTHED BASS (what shaders see)', col: 1, color: '#f44' },
+  { label: 'RAW MID', col: 5, color: '#8f8' },
+  { label: 'SMOOTHED MID', col: 2, color: '#4f4' },
+  { label: 'RAW TREBLE', col: 6, color: '#88f' },
+  { label: 'SMOOTHED TREBLE', col: 3, color: '#44f' },
+];
+
+const rowH = h / rows.length;
+
+ctx.fillStyle = '#111';
+ctx.fillRect(0, 0, w, h);
+
+for (let r = 0; r < rows.length; r++) {
+  const { label, col, color } = rows[r];
+  const y0 = r * rowH;
+  ctx.fillStyle = '#1a1a1a';
+  ctx.fillRect(0, y0, w, rowH - 1);
+
+  // Find max
+  let maxVal = 0;
+  for (let i = 0; i < REAL_DATA.length; i++) {
+    if (REAL_DATA[i][col] > maxVal) maxVal = REAL_DATA[i][col];
+  }
+
+  // Draw
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let i = 0; i < REAL_DATA.length; i++) {
+    const x = (REAL_DATA[i][0] / totalTime) * w;
+    const val = maxVal > 0 ? REAL_DATA[i][col] / maxVal : 0;
+    const y = y0 + rowH - 1 - val * (rowH - 3);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  ctx.fillStyle = '#888';
+  ctx.font = '10px monospace';
+  ctx.fillText(`${label} (max=${maxVal.toFixed(4)})`, 3, y0 + 11);
+
+  // Second markers
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 0.5;
+  for (let s = 0; s <= totalTime; s += 2) {
+    const x = (s / totalTime) * w;
+    ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y0 + rowH); ctx.stroke();
+    if (r === 0) { ctx.fillStyle = '#555'; ctx.fillText(s + 's', x + 2, y0 + rowH - 2); }
+  }
+}
+
+document.getElementById('info').textContent =
+  `Raw vs Smoothed: ${REAL_DATA.length} frames, ${totalTime.toFixed(1)}s. "There There" by Radiohead. Each row auto-scaled.`;
+</script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+{
+  "name": "Spectrum Pulse",
+  "family": "abstract",
+  "duration": 30,
+  "description": "Pulsing orb — beat dominates the visual",
+  "author": "Matt",
+  "beat_zoom": 0.04,
+  "beat_rot": 0.01,
+  "base_zoom": 0.12,
+  "base_rot": 0.03,
+  "decay": 0.92,
+  "beat_sensitivity": 0.5,
+  "beat_source": "bass"
+}

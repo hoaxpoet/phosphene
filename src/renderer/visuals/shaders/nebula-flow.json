@@ -1,0 +1,14 @@
+{
+  "name": "Nebula Flow",
+  "family": "fluid",
+  "duration": 35,
+  "description": "Reaction-diffusion nebula — organic beat pulses",
+  "author": "Matt",
+  "beat_zoom": 0.027,
+  "beat_rot": 0.007,
+  "base_zoom": 0.09,
+  "base_rot": 0.015,
+  "decay": 0.93,
+  "beat_sensitivity": 0.45,
+  "beat_source": "mid"
+}
