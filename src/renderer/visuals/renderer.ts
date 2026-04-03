@@ -52,6 +52,9 @@ function createMaterial(fragmentShader: string, prevFrameTexture: THREE.Texture,
       u_mid_high: { value: 0.0 },
       u_high_mid: { value: 0.0 },
       u_high: { value: 0.0 },
+      // Spectral features
+      u_centroid: { value: 0.0 },
+      u_flux: { value: 0.0 },
       // Spectrum & waveform textures
       u_spectrum: { value: spectrumTexture },
       u_waveform: { value: waveformTexture },
@@ -98,6 +101,8 @@ function updateMaterialUniforms(material: THREE.ShaderMaterial, uniforms: AudioU
   material.uniforms.u_mid_high.value = uniforms.u_mid_high;
   material.uniforms.u_high_mid.value = uniforms.u_high_mid;
   material.uniforms.u_high.value = uniforms.u_high;
+  material.uniforms.u_centroid.value = uniforms.u_centroid;
+  material.uniforms.u_flux.value = uniforms.u_flux;
   material.uniforms.u_resolution.value.set(uniforms.u_resolution[0], uniforms.u_resolution[1]);
   material.uniforms.u_scene_progress.value = uniforms.u_scene_progress;
   material.uniforms.u_fps.value = uniforms.u_fps;

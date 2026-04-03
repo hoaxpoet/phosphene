@@ -112,6 +112,16 @@ export class AudioAnalyzer {
   private spectrumData: Float32Array = new Float32Array(SPECTRUM_BINS);
   private waveformData: Float32Array = new Float32Array(FFT_SIZE);
 
+  // Previous frame's FFT magnitudes (for spectral flux)
+  private prevSpectrumMags: Float32Array = new Float32Array(SPECTRUM_BINS);
+
+  // Spectral features: centroid and flux
+  private smoothCentroid: number = 0;
+  private smoothFlux: number = 0;
+  private fluxAgcAvg: number = 0.001;  // Running average for flux AGC normalization
+  private featuresLoggedOnce: boolean = false;
+  private featuresAudioDetectedTime: number = 0;
+
   // One-time FFT verification log
   private fftLoggedOnce: boolean = false;
 
@@ -407,6 +417,33 @@ export class AudioAnalyzer {
       this.waveformData[i] = this.waveformRingBuffer[idx] * 0.5 + 0.5;
     }
 
+    // === Spectral features: centroid and flux ===
+    // Compute from log-scaled spectrum (already in spectrumData, 0–1 range)
+    let weightedSum = 0;
+    let magSum = 0;
+    let rawFlux = 0;
+    for (let i = 0; i < SPECTRUM_BINS; i++) {
+      const mag = this.spectrumData[i];
+      weightedSum += i * mag;
+      magSum += mag;
+      // Spectral flux: half-wave rectified difference from previous frame
+      const diff = mag - this.prevSpectrumMags[i];
+      if (diff > 0) rawFlux += diff;
+      this.prevSpectrumMags[i] = mag;
+    }
+
+    // Centroid: normalized 0–1
+    const rawCentroid = magSum > 0 ? (weightedSum / magSum) / (SPECTRUM_BINS - 1) : 0;
+
+    // Flux AGC: same approach as band normalization (raw / runningAvg * 0.5, clamped 0–1)
+    const fluxAgcRate = Math.pow(this.frameCount < 120 ? 0.95 : 0.992, fpsRatio);
+    this.fluxAgcAvg = this.fluxAgcAvg * fluxAgcRate + rawFlux * (1 - fluxAgcRate);
+    const scaledFlux = Math.min(1.0, rawFlux / Math.max(this.fluxAgcAvg, 0.0001) * 0.5);
+
+    // Smooth both with mid/treble rate (0.75)
+    this.smoothCentroid = this.smoothCentroid * smMid + rawCentroid * (1 - smMid);
+    this.smoothFlux = this.smoothFlux * smMid + scaledFlux * (1 - smMid);
+
     // One-time verification log
     if (!this.fftLoggedOnce && this.hasData) {
       let specMin = Infinity, specMax = -Infinity;
@@ -421,6 +458,18 @@ export class AudioAnalyzer {
       }
       console.log(`[FFT] spectrum range: min=${specMin.toFixed(4)} max=${specMax.toFixed(4)}, waveform range: min=${waveMin.toFixed(4)} max=${waveMax.toFixed(4)}`);
       this.fftLoggedOnce = true;
+    }
+
+    // One-time features verification log: 3 seconds after real audio detected
+    if (!this.featuresLoggedOnce) {
+      const hasAudio = this.smoothBass > 0.01 || this.smoothMid > 0.01 || this.smoothTreble > 0.01;
+      if (hasAudio && this.featuresAudioDetectedTime === 0) {
+        this.featuresAudioDetectedTime = now;
+      }
+      if (this.featuresAudioDetectedTime > 0 && (now - this.featuresAudioDetectedTime) >= 3000) {
+        console.log(`[FEATURES] centroid=${this.smoothCentroid.toFixed(2)} flux=${this.smoothFlux.toFixed(2)}`);
+        this.featuresLoggedOnce = true;
+      }
     }
 
     return {
@@ -442,6 +491,8 @@ export class AudioAnalyzer {
       u_mid_high: this.smoothBands[3],
       u_high_mid: this.smoothBands[4],
       u_high: this.smoothBands[5],
+      u_centroid: this.smoothCentroid,
+      u_flux: this.smoothFlux,
       u_resolution: [width, height],
       u_scene_progress: 0.0,
       u_fps: this.fps,

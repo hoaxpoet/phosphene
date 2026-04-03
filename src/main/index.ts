@@ -21,7 +21,7 @@ function createWindow(): void {
 
   // Forward renderer console logs to main process stdout (for diagnostics)
   mainWindow.webContents.on('console-message', (_event, _level, message) => {
-    if (message.startsWith('[ONSET') || message.startsWith('[BEAT DIAG]') || message.startsWith('[BASS PULSE]') || message.startsWith('[FFT]')) {
+    if (message.startsWith('[ONSET') || message.startsWith('[BEAT DIAG]') || message.startsWith('[BASS PULSE]') || message.startsWith('[FFT]') || message.startsWith('[FEATURES]')) {
       console.log(message);
     }
   });
