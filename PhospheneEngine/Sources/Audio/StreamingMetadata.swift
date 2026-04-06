@@ -1,20 +1,100 @@
-// StreamingMetadata — Polls MPNowPlayingInfoCenter for track changes.
-// Detects when the currently playing track changes and emits TrackChangeEvent.
+// StreamingMetadata — Polls system Now Playing state for track changes.
+// Uses the MediaRemote private framework to read other apps' Now Playing
+// info (Spotify, Apple Music, etc.). MPNowPlayingInfoCenter only exposes
+// the host app's own metadata — MediaRemote reads the system-wide state.
 // Conforms to MetadataProviding for dependency injection.
 
 import Foundation
-import MediaPlayer
 import Shared
 import os.log
 
 private let logger = Logging.metadata
 
+// MARK: - NowPlayingInfo
+
+/// Parsed Now Playing info in a Sendable form.
+/// Used by both MediaRemoteBridge (production) and tests (injected).
+public struct NowPlayingInfo: Sendable {
+    public let title: String?
+    public let artist: String?
+    public let album: String?
+    public let duration: Double?
+
+    public init(title: String?, artist: String?, album: String?, duration: Double?) {
+        self.title = title
+        self.artist = artist
+        self.album = album
+        self.duration = duration
+    }
+}
+
+// MARK: - MediaRemote Bridge
+
+/// Dynamically loaded interface to MediaRemote.framework.
+///
+/// MediaRemote is a private framework that provides system-wide Now Playing
+/// information. We load it dynamically to avoid linking against private APIs
+/// at build time. The app sandbox is already disabled for Core Audio taps,
+/// so this works without additional entitlements.
+private enum MediaRemoteBridge {
+
+    /// Dictionary keys used by MediaRemote for Now Playing info.
+    static let titleKey = "kMRMediaRemoteNowPlayingInfoTitle"
+    static let artistKey = "kMRMediaRemoteNowPlayingInfoArtist"
+    static let albumKey = "kMRMediaRemoteNowPlayingInfoAlbum"
+    static let durationKey = "kMRMediaRemoteNowPlayingInfoDuration"
+
+    /// Function signature for MRMediaRemoteGetNowPlayingInfo.
+    private typealias GetNowPlayingInfoFunc = @convention(c) (
+        DispatchQueue,
+        @escaping ([String: Any]) -> Void
+    ) -> Void
+
+    /// Cached function pointer — loaded once on first access.
+    private static let getNowPlayingInfo: GetNowPlayingInfoFunc? = {
+        let path = "/System/Library/PrivateFrameworks/MediaRemote.framework"
+        guard let bundle = CFBundleCreate(kCFAllocatorDefault, NSURL(fileURLWithPath: path)) else {
+            logger.error("Failed to load MediaRemote.framework")
+            return nil
+        }
+        guard let pointer = CFBundleGetFunctionPointerForName(
+            bundle, "MRMediaRemoteGetNowPlayingInfo" as CFString
+        ) else {
+            logger.error("Failed to find MRMediaRemoteGetNowPlayingInfo")
+            return nil
+        }
+        return unsafeBitCast(pointer, to: GetNowPlayingInfoFunc.self)
+    }()
+
+    /// Query the system-wide Now Playing info asynchronously.
+    /// Returns nil if MediaRemote is unavailable or nothing is playing.
+    static func fetchNowPlayingInfo() async -> NowPlayingInfo? {
+        guard let fn = getNowPlayingInfo else { return nil }
+
+        return await withCheckedContinuation { continuation in
+            fn(DispatchQueue.main) { info in
+                if info.isEmpty {
+                    continuation.resume(returning: nil)
+                } else {
+                    let parsed = NowPlayingInfo(
+                        title: info[titleKey] as? String,
+                        artist: info[artistKey] as? String,
+                        album: info[albumKey] as? String,
+                        duration: info[durationKey] as? Double
+                    )
+                    continuation.resume(returning: parsed)
+                }
+            }
+        }
+    }
+}
+
 // MARK: - StreamingMetadata
 
-/// Observes Now Playing metadata and detects track changes.
+/// Observes system-wide Now Playing metadata and detects track changes.
 ///
-/// Polls `MPNowPlayingInfoCenter` at a 2-second interval. When the
-/// playing track identity changes (title + artist), fires `onTrackChange`.
+/// Polls MediaRemote at a 2-second interval. When the playing track
+/// identity changes (title + artist), fires `onTrackChange`.
 /// All metadata is optional — gracefully handles nil Now Playing state.
 public final class StreamingMetadata: MetadataProviding, @unchecked Sendable {
 
@@ -30,11 +110,9 @@ public final class StreamingMetadata: MetadataProviding, @unchecked Sendable {
 
     // MARK: - Testability
 
-    /// Override this closure in tests to inject canned Now Playing dictionaries.
-    /// Defaults to reading from the real `MPNowPlayingInfoCenter`.
-    var nowPlayingReader: () -> [String: Any]? = {
-        MPNowPlayingInfoCenter.default().nowPlayingInfo
-    }
+    /// Override this closure in tests to inject canned Now Playing info.
+    /// Defaults to querying MediaRemote for system-wide Now Playing state.
+    var nowPlayingReader: (@Sendable () async -> NowPlayingInfo?)? = nil
 
     // MARK: - Init
 
@@ -58,10 +136,10 @@ public final class StreamingMetadata: MetadataProviding, @unchecked Sendable {
 
         pollingTask = Task { [weak self] in
             guard let self else { return }
-            logger.info("Started observing Now Playing metadata")
+            logger.info("Started observing Now Playing metadata via MediaRemote")
 
             while !Task.isCancelled {
-                self.pollNowPlaying()
+                await self.pollNowPlaying()
 
                 do {
                     try await Task.sleep(for: self.pollInterval)
@@ -84,12 +162,15 @@ public final class StreamingMetadata: MetadataProviding, @unchecked Sendable {
 
     // MARK: - Polling
 
-    private func pollNowPlaying() {
-        let info = nowPlayingReader()
+    private func pollNowPlaying() async {
+        let info: NowPlayingInfo?
+        if let reader = nowPlayingReader {
+            info = await reader()
+        } else {
+            info = await MediaRemoteBridge.fetchNowPlayingInfo()
+        }
 
         guard let info else {
-            // Nothing playing — clear state but don't fire event.
-            // Silence is handled by audio-level heuristics, not metadata.
             lock.withLock {
                 _currentTrack = nil
                 lastTrackIdentity = nil
@@ -97,11 +178,10 @@ public final class StreamingMetadata: MetadataProviding, @unchecked Sendable {
             return
         }
 
-        let title = info[MPMediaItemPropertyTitle] as? String
-        let artist = info[MPMediaItemPropertyArtist] as? String
-        let album = info[MPMediaItemPropertyAlbumTitle] as? String
-        let genre = info[MPMediaItemPropertyGenre] as? String
-        let duration = info[MPMediaItemPropertyPlaybackDuration] as? Double
+        let title = info.title
+        let artist = info.artist
+        let album = info.album
+        let duration = info.duration
 
         let identity = trackIdentity(title: title, artist: artist)
 
@@ -109,7 +189,6 @@ public final class StreamingMetadata: MetadataProviding, @unchecked Sendable {
             title: title,
             artist: artist,
             album: album,
-            genre: genre,
             duration: duration,
             source: .nowPlaying
         )

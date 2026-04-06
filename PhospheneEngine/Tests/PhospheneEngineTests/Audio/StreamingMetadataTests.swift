@@ -2,124 +2,126 @@
 
 import Testing
 import Foundation
-import MediaPlayer
 @testable import Audio
 @testable import Shared
+
+/// Thread-safe wrapper for mutable test state.
+private final class AtomicValue<T: Sendable>: @unchecked Sendable {
+    private var _value: T
+    private let lock = NSLock()
+
+    init(_ value: T) { _value = value }
+
+    var value: T {
+        get { lock.withLock { _value } }
+        set { lock.withLock { _value = newValue } }
+    }
+}
 
 @Suite("StreamingMetadata")
 struct StreamingMetadataTests {
 
     // MARK: - Helpers
 
-    /// Create a Now Playing dictionary matching MPNowPlayingInfoCenter format.
-    private func nowPlayingDict(
+    private func makeInfo(
         title: String? = nil,
         artist: String? = nil,
         album: String? = nil,
-        genre: String? = nil,
         duration: Double? = nil
-    ) -> [String: Any] {
-        var dict: [String: Any] = [:]
-        if let title { dict[MPMediaItemPropertyTitle] = title }
-        if let artist { dict[MPMediaItemPropertyArtist] = artist }
-        if let album { dict[MPMediaItemPropertyAlbumTitle] = album }
-        if let genre { dict[MPMediaItemPropertyGenre] = genre }
-        if let duration { dict[MPMediaItemPropertyPlaybackDuration] = duration }
-        return dict
+    ) -> NowPlayingInfo {
+        NowPlayingInfo(title: title, artist: artist, album: album, duration: duration)
     }
 
     // MARK: - Tests
 
     @Test func trackChange_differentTitle_emitsEvent() async throws {
         let metadata = StreamingMetadata(pollInterval: .milliseconds(50))
-        var callCount = 0
-        let dict = nowPlayingDict(title: "Bohemian Rhapsody", artist: "Queen")
-        metadata.nowPlayingReader = { dict }
+        let callCount = AtomicValue(0)
+        let info = makeInfo(title: "Bohemian Rhapsody", artist: "Queen")
+        metadata.nowPlayingReader = { info }
 
         metadata.onTrackChange = { _ in
-            callCount += 1
+            callCount.value += 1
         }
 
         metadata.startObserving()
         try await Task.sleep(for: .milliseconds(150))
         metadata.stopObserving()
 
-        #expect(callCount == 1)
+        #expect(callCount.value == 1)
     }
 
     @Test func trackChange_sameTitle_noRedundantEvent() async throws {
         let metadata = StreamingMetadata(pollInterval: .milliseconds(50))
-        var callCount = 0
-        let dict = nowPlayingDict(title: "Hey Jude", artist: "The Beatles")
-        metadata.nowPlayingReader = { dict }
+        let callCount = AtomicValue(0)
+        let info = makeInfo(title: "Hey Jude", artist: "The Beatles")
+        metadata.nowPlayingReader = { info }
 
         metadata.onTrackChange = { _ in
-            callCount += 1
+            callCount.value += 1
         }
 
         metadata.startObserving()
-        // Wait long enough for multiple poll cycles.
         try await Task.sleep(for: .milliseconds(300))
         metadata.stopObserving()
 
-        // Should fire exactly once on first detection, not on subsequent polls.
-        #expect(callCount == 1)
+        #expect(callCount.value == 1)
     }
 
     @Test func trackChange_eventContainsTitleAndArtist() async throws {
         let metadata = StreamingMetadata(pollInterval: .milliseconds(50))
-        var receivedEvent: TrackChangeEvent?
-        let dict = nowPlayingDict(title: "Stairway to Heaven", artist: "Led Zeppelin", duration: 482)
-        metadata.nowPlayingReader = { dict }
+        let receivedEvent = AtomicValue<TrackChangeEvent?>(nil)
+        let info = makeInfo(title: "Stairway to Heaven", artist: "Led Zeppelin", duration: 482)
+        metadata.nowPlayingReader = { info }
 
         metadata.onTrackChange = { event in
-            receivedEvent = event
+            receivedEvent.value = event
         }
 
         metadata.startObserving()
         try await Task.sleep(for: .milliseconds(150))
         metadata.stopObserving()
 
-        #expect(receivedEvent != nil)
-        #expect(receivedEvent?.current.title == "Stairway to Heaven")
-        #expect(receivedEvent?.current.artist == "Led Zeppelin")
-        #expect(receivedEvent?.current.duration == 482)
-        #expect(receivedEvent?.previous == nil)
+        let event = receivedEvent.value
+        #expect(event != nil)
+        #expect(event?.current.title == "Stairway to Heaven")
+        #expect(event?.current.artist == "Led Zeppelin")
+        #expect(event?.current.duration == 482)
+        #expect(event?.previous == nil)
     }
 
     @Test func trackChange_secondTrack_hasPrevious() async throws {
         let metadata = StreamingMetadata(pollInterval: .milliseconds(50))
-        var events: [TrackChangeEvent] = []
+        let events = AtomicValue<[TrackChangeEvent]>([])
 
-        let trackA = nowPlayingDict(title: "Track A", artist: "Artist A")
-        let trackB = nowPlayingDict(title: "Track B", artist: "Artist B")
-        var currentDict: [String: Any] = trackA
+        let trackA = makeInfo(title: "Track A", artist: "Artist A")
+        let trackB = makeInfo(title: "Track B", artist: "Artist B")
+        let currentInfo = AtomicValue<NowPlayingInfo>(trackA)
 
-        metadata.nowPlayingReader = { currentDict }
+        metadata.nowPlayingReader = { currentInfo.value }
         metadata.onTrackChange = { event in
-            events.append(event)
+            events.value.append(event)
         }
 
         metadata.startObserving()
         try await Task.sleep(for: .milliseconds(150))
 
-        // Switch to track B.
-        currentDict = trackB
+        currentInfo.value = trackB
         try await Task.sleep(for: .milliseconds(150))
         metadata.stopObserving()
 
-        #expect(events.count == 2)
-        #expect(events[1].previous?.title == "Track A")
-        #expect(events[1].current.title == "Track B")
+        #expect(events.value.count == 2)
+        #expect(events.value[1].previous?.title == "Track A")
+        #expect(events.value[1].current.title == "Track B")
     }
 
     @Test func noNowPlaying_returnsNilMetadata() async throws {
         let metadata = StreamingMetadata(pollInterval: .milliseconds(50))
-        var callCount = 0
+        let callCount = AtomicValue(0)
 
         metadata.nowPlayingReader = { nil }
         metadata.onTrackChange = { _ in
-            callCount += 1
+            callCount.value += 1
         }
 
         metadata.startObserving()
@@ -127,7 +129,7 @@ struct StreamingMetadataTests {
         metadata.stopObserving()
 
         #expect(metadata.currentTrack == nil)
-        #expect(callCount == 0)
+        #expect(callCount.value == 0)
     }
 
     @Test func conformsToMetadataProviding() {
@@ -138,25 +140,24 @@ struct StreamingMetadataTests {
 
     @Test func trackIdentity_caseInsensitive() async throws {
         let metadata = StreamingMetadata(pollInterval: .milliseconds(50))
-        var callCount = 0
+        let callCount = AtomicValue(0)
 
-        let dictUpper = nowPlayingDict(title: "SONG", artist: "ARTIST")
-        let dictLower = nowPlayingDict(title: "song", artist: "artist")
-        var currentDict: [String: Any] = dictUpper
+        let infoUpper = makeInfo(title: "SONG", artist: "ARTIST")
+        let infoLower = makeInfo(title: "song", artist: "artist")
+        let currentInfo = AtomicValue<NowPlayingInfo>(infoUpper)
 
-        metadata.nowPlayingReader = { currentDict }
+        metadata.nowPlayingReader = { currentInfo.value }
         metadata.onTrackChange = { _ in
-            callCount += 1
+            callCount.value += 1
         }
 
         metadata.startObserving()
         try await Task.sleep(for: .milliseconds(150))
 
-        // Switch to same track with different case — should NOT fire.
-        currentDict = dictLower
+        currentInfo.value = infoLower
         try await Task.sleep(for: .milliseconds(150))
         metadata.stopObserving()
 
-        #expect(callCount == 1)
+        #expect(callCount.value == 1)
     }
 }
