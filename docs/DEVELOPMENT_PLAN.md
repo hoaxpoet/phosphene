@@ -25,7 +25,7 @@ All other architectural decisions, module structure, and phasing from v1 are pre
 **Streaming Anticipation Architecture:** Because streaming audio arrives without a pre-scannable file, Phosphene employs three complementary systems to recover the anticipatory capability that pre-scanning would otherwise provide:
 
 1. **Analysis Lookahead Buffer** — A configurable 2–3 second delay between audio analysis and visual rendering. The audio pipeline processes frames ahead of what the renderer displays, giving the Orchestrator a genuine lookahead window to prepare for upcoming musical moments (drops, builds, transitions). This latency is imperceptible in a visualizer context where viewers do not expect sample-accurate video sync.
-2. **Metadata Pre-Fetching** — When Now Playing reports a new track, Phosphene queries external music databases (MusicBrainz, Apple Music catalog, Spotify Web API) for pre-analyzed audio features: BPM, key, energy, danceability, genre, and duration. This metadata typically arrives within the first second of a track change, giving the Orchestrator immediate context before the MIR pipeline has accumulated enough audio to estimate these features independently.
+2. **Metadata Pre-Fetching** — When Now Playing reports a new track, Phosphene queries external music databases (MusicBrainz, Soundcharts) for pre-analyzed audio features: BPM, key, energy, danceability, genre, and duration. This is a **"fast hint"** that accelerates the first ~15 seconds — the self-computed MIR pipeline (Increment 2.4) is the real source of truth. Pre-fetch data is optional at every level; the system is resilient to any external API being unavailable.
 3. **Progressive Structural Analysis** — After hearing 15–20 seconds of a track, a self-similarity analysis identifies section boundaries (intro, verse, chorus, bridge) and predicts when future transitions will occur based on the repetitive structure inherent in virtually all popular music. After the first chorus, the system can predict when the second chorus will arrive.
 
 Combined, these three systems give the Orchestrator roughly the same decision-making information as a pre-scanned local file after a brief ramp-up period at the start of each track.
@@ -191,8 +191,12 @@ Phosphene/
 │   │   ├── AudioBuffer.swift
 │   │   ├── LookaheadBuffer.swift      # Deliberate analysis-to-render delay pipeline
 │   │   ├── FFTProcessor.swift
-│   │   ├── StreamingMetadata.swift    # MusicKit / Now Playing info integration
-│   │   └── MetadataPreFetcher.swift   # External DB queries (MusicBrainz, catalog APIs)
+│   │   ├── StreamingMetadata.swift    # MediaRemote Now Playing polling, track change detection
+│   │   ├── MetadataPreFetcher.swift   # Parallel async queries, LRU cache, merge
+│   │   ├── MusicBrainzFetcher.swift   # Free API: genre tags, duration
+│   │   ├── SpotifyFetcher.swift       # Search-only track matching (audio features deprecated)
+│   │   ├── SoundchartsFetcher.swift   # Optional commercial API: BPM, key, energy, valence
+│   │   └── MusicKitBridge.swift       # Optional MusicKit catalog enrichment
 │   ├── DSP/                   # MIR feature extraction
 │   │   ├── SpectralAnalyzer.swift
 │   │   ├── BeatDetector.swift
@@ -581,49 +585,36 @@ echo "=== All checks passed ==="
 
 ## Phase 2 — Audio Intelligence & ML Pipeline (Blueprint Release 0.3)
 
-### Increment 2.1: Streaming Metadata Integration & Pre-Fetching
+### Increment 2.1: Streaming Metadata Integration & Pre-Fetching ✅
 
-**Goal:** Enrich the audio pipeline with track metadata from streaming services and external music databases.
+**Status:** Complete.
+
+**Goal:** Enrich the audio pipeline with track metadata from streaming services and external music databases. Pre-fetched data is a "fast hint" for the first ~15 seconds — self-computed MIR (Increment 2.4) is the real source of truth.
 
 **Design rationale:** (unchanged from v1)
 
-**Files to create/edit:**
-- `Audio/StreamingMetadata.swift` — Polls `MPNowPlayingInfoCenter`. Detects track changes. Emits `TrackChangeEvent`. Conforms to `MetadataProviding` protocol.
-- `Audio/MusicKitBridge.swift` — Optional MusicKit integration. Graceful no-op if unavailable.
-- `Audio/MetadataPreFetcher.swift` — Parallel async queries to MusicBrainz, Spotify Web API, AcousticBrainz. LRU cache. Returns `PreFetchedTrackProfile`.
-- `Shared/AudioFeatures.swift` — Add `TrackMetadata` and `PreFetchedTrackProfile` structs.
-- `Audio/AudioInputRouter.swift` — Add `onTrackChange` callback.
+**Key decisions made during implementation:**
+- `MPNowPlayingInfoCenter` only returns the host app's own metadata — cannot read other apps. Switched to MediaRemote private framework (dynamically loaded) for system-wide Now Playing.
+- AcousticBrainz shut down in 2022 — removed. MusicBrainz (free) provides genre tags.
+- Spotify Audio Features deprecated Nov 2024 (403 for new apps) — Spotify is search-only for track matching. Soundcharts added as optional commercial replacement for audio features (BPM, key, energy, valence, danceability).
+- Essentia (AGPL) for offline validation in `tools/` Python scripts only — NOT shipped in app binary. Pre-computes ground-truth features for testing and validates MIR pipeline accuracy.
 
-**Test requirements:**
-- `StreamingMetadataTests.swift` — 7 tests:
-  - `test_trackChange_differentTitle_emitsEvent()`
-  - `test_trackChange_sameTitle_noEvent()`
-  - `test_trackChange_eventContainsTitle()`
-  - `test_trackChange_eventContainsArtist()`
-  - `test_trackChange_eventContainsDuration()`
-  - `test_noNowPlaying_returnsNilMetadata()` — graceful degradation
-  - `test_conformsToMetadataProviding()`
-- `MetadataPreFetcherTests.swift` — 10 tests:
-  - `test_fetch_validTrack_returnsProfile()` — use mock HTTP responses
-  - `test_fetch_unknownTrack_returnsNilProfile()`
-  - `test_fetch_networkTimeout_returnsNilWithin3Seconds()`
-  - `test_fetch_cachedTrack_returnsImmediately()` — second fetch for same track hits LRU cache, no network call
-  - `test_fetch_parallelQueries_allSourcesQueriedConcurrently()` — mock 3 sources, assert all 3 called
-  - `test_fetch_partialResults_returnsAvailableData()` — one source fails, others succeed, profile has partial data
-  - `test_cache_eviction_lruOrder()` — fill cache, verify oldest entry evicted
-  - `test_cache_sameTrack_noRedundantNetworkCalls()`
-  - `test_preFetchedProfile_bpmPresent_whenSpotifyResponds()`
-  - `test_preFetchedProfile_gracefulDegradation_allSourcesFail_returnsEmpty()`
-- `MockMetadataProvider.swift` in TestDoubles — emits canned TrackChangeEvents on demand
-- **Integration test** `MetadataToOrchestratorTests.swift` — 2 tests:
-  - `test_trackChange_triggersPreFetch_resultsAvailableWithin2Seconds()`
-  - `test_trackChange_metadataFlowsToOrchestratorState()`
+**Files created/edited:**
+- `Audio/StreamingMetadata.swift` — Polls MediaRemote for system-wide Now Playing. Detects track changes. Conforms to `MetadataProviding`.
+- `Audio/MetadataPreFetcher.swift` — Parallel async queries with 3s per-fetcher timeouts, LRU cache (50 entries via OrderedDictionary), merge partial results.
+- `Audio/MusicBrainzFetcher.swift` — Free API, no auth. Genre tags + duration from recording search.
+- `Audio/SpotifyFetcher.swift` — Client credentials flow, search-only track matching. Env vars: `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`.
+- `Audio/SoundchartsFetcher.swift` — Optional commercial API for audio features. Env vars: `SOUNDCHARTS_APP_ID`, `SOUNDCHARTS_API_KEY`.
+- `Audio/MusicKitBridge.swift` — Optional MusicKit enrichment. `#if canImport(MusicKit)` gated, graceful no-op.
+- `Audio/Protocols.swift` — Added `MetadataProviding`, `MetadataFetching`, `TrackChangeEvent`, `PartialTrackProfile`.
+- `Audio/AudioInputRouter.swift` — Added `onTrackChange` callback, optional metadata provider.
+- `Shared/AudioFeatures.swift` — Added `TrackMetadata`, `PreFetchedTrackProfile`, `MetadataSource`.
+- `PhospheneApp/ContentView.swift` — Wired StreamingMetadata + MetadataPreFetcher into VisualizerEngine.
+- `PhospheneApp/Views/DebugOverlayView.swift` — Debug overlay (toggle with 'D' key) showing track info + pre-fetched data.
 
-**Regression test** `Regression/MetadataParsingRegressionTests.swift`:
-  - `test_parseMusicBrainzResponse_knownJSON_matchesExpected()` — golden JSON → expected struct
-  - `test_parseSpotifyAudioFeatures_knownJSON_matchesExpected()`
+**Tests:** 21 new tests (115 total). 7 StreamingMetadata, 10 MetadataPreFetcher, 2 integration, 2 regression with golden JSON fixtures.
 
-**Verification:** Play a song in Spotify, then switch to Apple Music. Debug overlay shows correct track info. Pre-fetched data appears within 2 seconds. All 21+ tests pass.
+**Verification:** Play a song in Spotify, then switch to Apple Music. Press 'D' for debug overlay. Track info appears from MediaRemote. MusicBrainz genre tags appear within 2 seconds. Soundcharts audio features appear if credentials are configured.
 
 ### Increment 2.2: CoreML Stem Separation Model Conversion
 
@@ -680,13 +671,16 @@ echo "=== All checks passed ==="
 
 ### Increment 2.4: MIR Feature Extraction Pipeline
 
-**Goal:** Implement real-time MIR feature extraction on the CPU using Accelerate.
+**Goal:** Implement real-time MIR feature extraction on the CPU using Accelerate. This is the primary source of audio features (BPM, key, spectral characteristics) — pre-fetched data from external APIs (Increment 2.1) is a "fast hint" for the first ~15 seconds, after which the self-computed MIR pipeline takes over as the source of truth.
+
+**Essentia validation tooling:** Use Essentia (AGPL, Python) in `tools/` scripts to pre-compute ground-truth audio features for test fixtures. Compare self-computed MIR output against Essentia's output to validate accuracy. Essentia is NEVER linked into PhospheneEngine or PhospheneApp — it is an offline validation tool only.
 
 **Files to create/edit:**
 - `DSP/SpectralAnalyzer.swift` — Spectral centroid, rolloff, flux (vDSP)
 - `DSP/ChromaExtractor.swift` — 12-bin chroma vector, key estimation
 - `DSP/BeatDetector.swift` — Onset detection, tempo estimation via autocorrelation
 - `DSP/FeatureVector.swift` — Combines all features into SIMD-aligned struct
+- `tools/essentia_ground_truth.py` — Essentia-based ground truth generator for MIR validation fixtures
 
 **Test requirements:**
 - `SpectralAnalyzerTests.swift` — 8 tests:
