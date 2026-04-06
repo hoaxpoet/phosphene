@@ -191,7 +191,7 @@ Phosphene/
 │   │   ├── AudioBuffer.swift
 │   │   ├── LookaheadBuffer.swift      # Deliberate analysis-to-render delay pipeline
 │   │   ├── FFTProcessor.swift
-│   │   ├── StreamingMetadata.swift    # MediaRemote Now Playing polling, track change detection
+│   │   ├── StreamingMetadata.swift    # AppleScript polling of Apple Music/Spotify, track change detection
 │   │   ├── MetadataPreFetcher.swift   # Parallel async queries, LRU cache, merge
 │   │   ├── MusicBrainzFetcher.swift   # Free API: genre tags, duration
 │   │   ├── SpotifyFetcher.swift       # Search-only track matching (audio features deprecated)
@@ -594,13 +594,15 @@ echo "=== All checks passed ==="
 **Design rationale:** (unchanged from v1)
 
 **Key decisions made during implementation:**
-- `MPNowPlayingInfoCenter` only returns the host app's own metadata — cannot read other apps. Switched to MediaRemote private framework (dynamically loaded) for system-wide Now Playing.
+- `MPNowPlayingInfoCenter` only returns the host app's own metadata — cannot read other apps.
+- MediaRemote private framework works from CLI tools but returns "Operation not permitted" (code 3) from signed app bundles on macOS 15+, even with screen capture permission. Abandoned.
+- Switched to AppleScript via Automation framework — queries Apple Music and Spotify directly with a clean per-app permission prompt (`NSAppleEventsUsageDescription` in Info.plist). Metadata observation is independent of screen capture permission.
 - AcousticBrainz shut down in 2022 — removed. MusicBrainz (free) provides genre tags.
 - Spotify Audio Features deprecated Nov 2024 (403 for new apps) — Spotify is search-only for track matching. Soundcharts added as optional commercial replacement for audio features (BPM, key, energy, valence, danceability).
 - Essentia (AGPL) for offline validation in `tools/` Python scripts only — NOT shipped in app binary. Pre-computes ground-truth features for testing and validates MIR pipeline accuracy.
 
 **Files created/edited:**
-- `Audio/StreamingMetadata.swift` — Polls MediaRemote for system-wide Now Playing. Detects track changes. Conforms to `MetadataProviding`.
+- `Audio/StreamingMetadata.swift` — Polls Apple Music/Spotify via AppleScript. Detects track changes. Conforms to `MetadataProviding`.
 - `Audio/MetadataPreFetcher.swift` — Parallel async queries with 3s per-fetcher timeouts, LRU cache (50 entries via OrderedDictionary), merge partial results.
 - `Audio/MusicBrainzFetcher.swift` — Free API, no auth. Genre tags + duration from recording search.
 - `Audio/SpotifyFetcher.swift` — Client credentials flow, search-only track matching. Env vars: `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`.
@@ -614,7 +616,7 @@ echo "=== All checks passed ==="
 
 **Tests:** 21 new tests (115 total). 7 StreamingMetadata, 10 MetadataPreFetcher, 2 integration, 2 regression with golden JSON fixtures.
 
-**Verification:** Play a song in Spotify, then switch to Apple Music. Press 'D' for debug overlay. Track info appears from MediaRemote. MusicBrainz genre tags appear within 2 seconds. Soundcharts audio features appear if credentials are configured.
+**Verification:** Play a song in Spotify, then switch to Apple Music. Press 'D' for debug overlay. Track info appears via AppleScript (one-time Automation permission prompt per app). MusicBrainz genre tags appear within 2 seconds. Soundcharts audio features appear if credentials are configured. Metadata works independently of screen capture permission.
 
 ### Increment 2.2: CoreML Stem Separation Model Conversion
 
