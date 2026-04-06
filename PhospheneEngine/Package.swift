@@ -84,7 +84,8 @@ let package = Package(
         .testTarget(
             name: "PhospheneEngineTests",
             dependencies: ["Shared", "Audio", "DSP", "Presets", "Renderer"],
-            path: "Tests/PhospheneEngineTests"
+            path: "Tests/PhospheneEngineTests",
+            resources: [.copy("Regression/Fixtures")]
         ),
     ]
 )
