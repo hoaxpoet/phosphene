@@ -8,7 +8,7 @@ import os.log
 
 private let logger = Logger(subsystem: "com.phosphene.renderer", category: "RenderPipeline")
 
-public final class RenderPipeline: NSObject, MTKViewDelegate, @unchecked Sendable {
+public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
 
     // MARK: - Metal State
 

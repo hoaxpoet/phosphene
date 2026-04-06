@@ -27,7 +27,7 @@ private let logger = Logger(subsystem: "com.phosphene.audio", category: "FFTProc
 /// let result = fft.process(samples: audioBuffer.latestSamples(count: 1024))
 /// encoder.setBuffer(fft.magnitudeBuffer, offset: 0, index: 1)
 /// ```
-public final class FFTProcessor: @unchecked Sendable {
+public final class FFTProcessor: FFTProcessing, @unchecked Sendable {
 
     // MARK: - Configuration
 

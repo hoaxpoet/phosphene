@@ -1,4 +1,20 @@
-# Phosphene — Development Plan for Claude Code Implementation
+# Phosphene — Development Plan for Claude Code Implementation (v2)
+
+## Revision Notes (v2)
+
+This revision addresses insufficient test coverage and code hygiene observed during Phase 1 development. Key changes from v1:
+
+- **New Quality Standards section** — project-wide testing policy, linting rules, and CI expectations
+- **New Increment 0.2** — test infrastructure, CI pipeline, and code quality tooling setup
+- **Explicit Test Requirements on every increment** — each increment now specifies exactly which unit tests, integration tests, and assertions must be written alongside the production code
+- **Code Hygiene Checklist** added to Claude Code Session Guidelines — every session must pass before the increment is considered complete
+- **Stronger Verification criteria** — "it looks right" replaced with measurable, automatable assertions
+- **Testing-related technical constraints** added (protocol-oriented design for testability, dependency injection, no singletons)
+- **Regression test suite gate** — all existing tests must pass before any new code is merged
+
+All other architectural decisions, module structure, and phasing from v1 are preserved.
+
+---
 
 ## Project Overview
 
@@ -15,6 +31,96 @@
 Combined, these three systems give the Orchestrator roughly the same decision-making information as a pre-scanned local file after a brief ramp-up period at the start of each track.
 
 This plan decomposes the architectural blueprint into **Claude Code-safe increments** — discrete tasks that can each be completed within a single context window without risk of truncation or loss of coherence.
+
+---
+
+## Quality Standards
+
+This section defines project-wide testing, code hygiene, and CI requirements. **Every increment must satisfy these standards before it is considered complete.** Claude Code sessions should treat these as hard constraints, not aspirational goals.
+
+### Testing Policy
+
+**Minimum coverage target: 80% line coverage** on all non-UI, non-Metal-shader Swift code in `PhospheneEngine`. UI code (`PhospheneApp/Views/`) and `.metal` shader files are exempt from automated coverage but require manual verification steps documented in each increment.
+
+**Test categories and when to use each:**
+
+| Category | Location | What It Covers | When Required |
+|----------|----------|----------------|---------------|
+| **Unit tests** | `Tests/PhospheneEngineTests/` | Single type in isolation. All dependencies mocked/stubbed via protocols. | Every increment that adds or modifies a Swift type. |
+| **Integration tests** | `Tests/PhospheneEngineTests/Integration/` | Two or more real modules wired together (e.g., AudioBuffer → FFTProcessor pipeline). | Every increment that connects modules or adds a new pipeline stage. |
+| **Snapshot / regression tests** | `Tests/PhospheneEngineTests/Regression/` | Golden-value comparisons: known input → expected output, saved to disk. Catches silent numerical drift. | Every DSP, MIR, or ML increment. |
+| **Performance tests** | `Tests/PhospheneEngineTests/Performance/` | `XCTest.measure {}` blocks with baselines. Catches regressions in hot paths. | Every renderer, audio, or DSP increment. |
+| **Manual verification** | Documented in increment's Verification section | Visual output, live audio behavior, UI interaction. | Every increment. |
+
+**Test naming convention:** `test_<MethodOrBehavior>_<Scenario>_<ExpectedResult>()`
+- Example: `test_write_fullRingOverwrite_oldestSamplesOverwritten()`
+- Example: `test_fftProcess_440HzSine_peakAtBin9()`
+
+**Test file naming convention:** One test file per source file, mirroring the module structure.
+- `Audio/AudioBuffer.swift` → `Tests/PhospheneEngineTests/Audio/AudioBufferTests.swift`
+- `DSP/BeatDetector.swift` → `Tests/PhospheneEngineTests/DSP/BeatDetectorTests.swift`
+- Integration tests: `Tests/PhospheneEngineTests/Integration/AudioToFFTPipelineTests.swift`
+
+### Testability Requirements (Dependency Injection)
+
+**No singletons.** Every dependency is injected via initializer parameters. Types depend on protocols, not concrete classes.
+
+**Protocol-first design.** Before implementing a concrete type, define the protocol it conforms to. This enables test doubles (mocks, stubs, fakes) without conditional compilation or swizzling.
+
+Required protocols (define incrementally as each module is built):
+
+| Protocol | Concrete Implementation | Purpose |
+|----------|------------------------|---------|
+| `AudioCapturing` | `SystemAudioCapture` | Mockable audio source for tests that don't need real hardware |
+| `AudioBuffering` | `AudioBuffer` | Allows injection of pre-filled buffers in downstream tests |
+| `FFTProcessing` | `FFTProcessor` | Stub with known FFT output for renderer/DSP tests |
+| `StemSeparating` | `StemSeparator` | Fake that returns canned stem data without CoreML |
+| `MoodClassifying` | `MoodClassifier` | Stub returning fixed valence/arousal for orchestrator tests |
+| `MetadataProviding` | `StreamingMetadata` | Fake metadata source for testing track change logic |
+| `PresetLoading` | `PresetLoader` | Stub preset catalog for orchestrator tests |
+| `Rendering` | `RenderPipeline` | Headless/no-op renderer for non-visual tests |
+
+**Test doubles directory:** `Tests/PhospheneEngineTests/TestDoubles/` — shared mocks, stubs, and fixture data.
+
+### Code Hygiene Rules
+
+These rules apply to every line of code written in every increment:
+
+1. **SwiftLint clean.** Zero warnings, zero errors. The `.swiftlint.yml` is the source of truth. No `// swiftlint:disable` without a comment explaining why.
+2. **No force-unwraps (`!`) outside of tests.** Production code uses `guard let`, `if let`, or `precondition` with a message. Tests may use `XCTUnwrap` or force-unwrap for brevity.
+3. **No `print()` in production code.** Use `os.Logger` with appropriate log levels (`.debug`, `.info`, `.error`, `.fault`). Define one `Logger` per module with a subsystem of `"com.phosphene.<module>"`.
+4. **All public API has doc comments.** Every `public` type, method, and property gets a `///` doc comment explaining what it does, not how. Include `- Parameter`, `- Returns`, and `- Throws` annotations where applicable.
+5. **No magic numbers.** Named constants or enums. `let fftSize = 1024` not bare `1024` in a function call.
+6. **MARK annotations.** Every source file uses `// MARK: -` to delineate sections: Properties, Initialization, Public API, Private Helpers, Protocol Conformance.
+7. **File length limit: 400 lines.** If a file exceeds 400 lines, split it. Extract a helper type, an extension, or a sub-module.
+8. **Cyclomatic complexity limit: 10 per function.** SwiftLint enforces this. Complex logic gets decomposed into helper functions.
+9. **No commented-out code.** Delete it. Git has history.
+10. **Every `TODO` has a tracking increment.** Format: `// TODO: [Increment 3.2] Add mesh shader LOD support`
+
+### CI Pipeline (Enforced via Claude Code Hooks)
+
+Every Claude Code session that modifies Swift code must end with:
+
+```bash
+# 1. Lint
+swiftlint lint --strict --config .swiftlint.yml
+
+# 2. Build (warnings-as-errors)
+xcodebuild -scheme PhospheneApp -destination 'platform=macOS' \
+  build SWIFT_TREAT_WARNINGS_AS_ERRORS=YES 2>&1
+
+# 3. Test (all tests, not just new ones)
+swift test --package-path PhospheneEngine 2>&1
+
+# 4. Coverage check (after Phase 1 is complete)
+# xcrun llvm-cov report ... (threshold: 80%)
+```
+
+**All four steps must pass.** If any step fails, the increment is not complete. Claude Code should fix the failure before moving on.
+
+### Regression Gate
+
+**All existing tests must pass before writing new code.** At the start of every Claude Code session, run `swift test` first. If anything is red, fix it before starting the increment's work. This prevents test rot and cascading failures.
 
 ---
 
@@ -127,6 +233,68 @@ Phosphene/
 │       ├── UMABuffer.swift
 │       └── AudioFeatures.swift
 └── Tests/
+    └── PhospheneEngineTests/
+        ├── Audio/                     # Unit tests mirroring source structure
+        │   ├── AudioBufferTests.swift
+        │   ├── FFTProcessorTests.swift
+        │   ├── SystemAudioCaptureTests.swift
+        │   ├── AudioInputRouterTests.swift
+        │   ├── LookaheadBufferTests.swift
+        │   ├── StreamingMetadataTests.swift
+        │   └── MetadataPreFetcherTests.swift
+        ├── DSP/
+        │   ├── SpectralAnalyzerTests.swift
+        │   ├── BeatDetectorTests.swift
+        │   ├── ChromaExtractorTests.swift
+        │   ├── StructuralAnalyzerTests.swift
+        │   └── FeatureVectorTests.swift
+        ├── ML/
+        │   ├── StemSeparatorTests.swift
+        │   └── MoodClassifierTests.swift
+        ├── Renderer/
+        │   ├── MetalContextTests.swift
+        │   ├── ShaderLibraryTests.swift
+        │   └── RenderPipelineTests.swift
+        ├── Presets/
+        │   ├── PresetLoaderTests.swift
+        │   ├── PresetCategoryTests.swift
+        │   └── LegacyTranspilerTests.swift
+        ├── Orchestrator/
+        │   ├── OrchestratorTests.swift
+        │   ├── EmotionMapperTests.swift
+        │   ├── TransitionEngineTests.swift
+        │   ├── TrackChangeDetectorTests.swift
+        │   └── AnticipationEngineTests.swift
+        ├── Shared/
+        │   ├── UMABufferTests.swift
+        │   └── AudioFeaturesTests.swift
+        ├── Integration/               # Multi-module integration tests
+        │   ├── AudioToFFTPipelineTests.swift
+        │   ├── AudioToStemPipelineTests.swift
+        │   ├── MIRPipelineTests.swift
+        │   ├── MetadataToOrchestratorTests.swift
+        │   └── FullPipelineTests.swift
+        ├── Regression/                # Golden-value snapshot tests
+        │   ├── FFTRegressionTests.swift
+        │   ├── ChromaRegressionTests.swift
+        │   ├── BeatDetectorRegressionTests.swift
+        │   └── Fixtures/              # Known-good input/output pairs
+        │       ├── 440hz_sine_1s.pcm
+        │       ├── 440hz_fft_expected.json
+        │       ├── cmajor_chord_chroma_expected.json
+        │       └── 120bpm_kick_onsets_expected.json
+        ├── Performance/               # XCTest.measure benchmarks
+        │   ├── FFTPerformanceTests.swift
+        │   ├── AudioBufferPerformanceTests.swift
+        │   └── RenderLoopPerformanceTests.swift
+        └── TestDoubles/               # Shared mocks, stubs, fakes
+            ├── MockAudioCapture.swift
+            ├── StubFFTProcessor.swift
+            ├── FakeStemSeparator.swift
+            ├── StubMoodClassifier.swift
+            ├── MockMetadataProvider.swift
+            ├── StubPresetLoader.swift
+            └── AudioFixtures.swift    # Helper to generate sine waves, noise, silence
 ```
 
 ---
@@ -144,12 +312,101 @@ Phosphene/
 - Add `PhospheneEngine` as a dependency of `PhospheneApp`
 - Set build settings: enable Metal API Validation in debug, link `Metal.framework`, `MetalKit.framework`, `CoreML.framework`, `AVFoundation.framework`, `Accelerate.framework`, `ScreenCaptureKit.framework` (retained but not used for audio — see Increment 1.3 notes), `MusicKit.framework`
 - Configure entitlements: `NSScreenCaptureUsageDescription` in Info.plist (retained for potential future ScreenCaptureKit use). Core Audio taps do not require additional entitlements.
-- Create a `.swiftlint.yml` with sensible defaults
 - Create a `README.md` stub
 
 **Verification:** Project builds and launches an empty window. All frameworks link without error.
 
 **Estimated scope:** ~200 lines of config + stubs. Well within context.
+
+### Increment 0.2: Test Infrastructure & Code Quality Tooling
+
+**Goal:** Set up the testing foundation, CI hooks, linting, logging, and shared test utilities so that every subsequent increment can write tests from day one without friction.
+
+**Claude Code instructions:**
+
+**SwiftLint configuration** — create `.swiftlint.yml`:
+```yaml
+# .swiftlint.yml
+included:
+  - PhospheneEngine/Sources
+  - PhospheneApp
+excluded:
+  - PhospheneEngine/.build
+opt_in_rules:
+  - force_unwrapping           # No ! in production code
+  - implicitly_unwrapped_optional
+  - discouraged_optional_boolean
+  - empty_count
+  - closure_spacing
+  - operator_usage_whitespace
+  - redundant_nil_coalescing
+  - sorted_imports
+  - vertical_whitespace_closing_braces
+  - unowned_variable_capture
+disabled_rules:
+  - todo                        # We use TODO with increment tracking
+force_cast: error
+force_try: error
+force_unwrapping: error
+line_length:
+  warning: 120
+  error: 150
+file_length:
+  warning: 400
+  error: 500
+cyclomatic_complexity:
+  warning: 10
+  error: 15
+function_body_length:
+  warning: 50
+  error: 80
+type_body_length:
+  warning: 300
+  error: 400
+identifier_name:
+  min_length: 2
+  max_length: 60
+```
+
+**Logging infrastructure** — create `Shared/Logging.swift`:
+- Define `os.Logger` instances per module: `Logger.audio`, `Logger.dsp`, `Logger.renderer`, `Logger.orchestrator`, `Logger.ml`
+- Subsystem: `"com.phosphene"`, categories matching module names
+- Wrapper that makes log level consistent across the project
+
+**Test fixtures helper** — create `Tests/PhospheneEngineTests/TestDoubles/AudioFixtures.swift`:
+- `AudioFixtures.sineWave(frequency: Float, sampleRate: Float, duration: Float) -> [Float]` — generates a pure sine tone
+- `AudioFixtures.silence(sampleCount: Int) -> [Float]` — all zeros
+- `AudioFixtures.whiteNoise(sampleCount: Int) -> [Float]` — deterministic PRNG-seeded noise (same seed = same output for reproducibility)
+- `AudioFixtures.impulse(sampleCount: Int, position: Int) -> [Float]` — single spike, useful for testing transient detection
+- `AudioFixtures.mixStereo(left: [Float], right: [Float]) -> [Float]` — interleave two mono signals
+
+**Test helper protocols** — create `Tests/PhospheneEngineTests/TestDoubles/MockAudioCapture.swift` (and other stubs listed in Architecture Overview):
+- `MockAudioCapture: AudioCapturing` — calls its callback with canned PCM data on demand, no hardware needed
+- `StubFFTProcessor: FFTProcessing` — returns pre-configured magnitude array
+- `AudioFixtures` doubles as the data source for all test doubles
+
+**CI hook script** — create `tools/ci-check.sh`:
+```bash
+#!/bin/bash
+set -euo pipefail
+echo "=== SwiftLint ==="
+swiftlint lint --strict --config .swiftlint.yml
+echo "=== Build ==="
+xcodebuild -scheme PhospheneApp -destination 'platform=macOS' \
+  build SWIFT_TREAT_WARNINGS_AS_ERRORS=YES 2>&1
+echo "=== Tests ==="
+swift test --package-path PhospheneEngine 2>&1
+echo "=== All checks passed ==="
+```
+
+**Verification:**
+- `swiftlint lint` runs clean on all placeholder files
+- `swift test` runs (0 tests, 0 failures — no tests yet, but the harness works)
+- `./tools/ci-check.sh` exits 0
+- `AudioFixtures.sineWave(frequency: 440, sampleRate: 48000, duration: 0.1)` returns 4800 samples; first sample ≈ 0.0, sample at index 27 ≈ 1.0 (quarter wavelength of 440Hz at 48kHz)
+
+**Test requirements for this increment:**
+- `AudioFixturesTests.swift` — 5 tests: sine wave amplitude range [-1,1], silence is all zeros, white noise has nonzero RMS, impulse has exactly one nonzero sample, stereo interleave length is 2× mono
 
 ---
 
@@ -165,7 +422,18 @@ Phosphene/
 - `PhospheneApp/Views/MetalView.swift` — `NSViewRepresentable` wrapping `MTKView` with delegate
 - `PhospheneApp/Views/ContentView.swift` — Host the MetalView
 
-**Verification:** Window displays a solid color that changes per-frame (proves render loop is active at 60/120 fps).
+**Test requirements:**
+- `MetalContextTests.swift` — 4 tests:
+  - `test_init_createsDevice_deviceIsNotNil()` — MTLDevice initializes on Apple Silicon
+  - `test_init_createsCommandQueue_queueIsNotNil()`
+  - `test_pixelFormat_defaultsBGRA8Unorm()`
+  - `test_semaphore_tripleBuffered_maxConcurrentFramesIs3()`
+- `RenderPipelineTests.swift` — 3 tests:
+  - `test_init_withValidDevice_createsPipelineState()`
+  - `test_renderPassDescriptor_hasClearColor()`
+  - `test_draw_withNilDrawable_doesNotCrash()` — resilience test
+
+**Verification:** Window displays a solid color that changes per-frame (proves render loop is active at 60/120 fps). All 7 unit tests pass.
 
 ### Increment 1.2: UMA Shared Buffer Infrastructure ✅
 
@@ -175,64 +443,139 @@ Phosphene/
 - `Shared/UMABuffer.swift` — Generic wrapper around `MTLBuffer` with `.storageModeShared`, typed pointer access, ring-buffer support for audio frames
 - `Shared/AudioFeatures.swift` — Structs for `AudioFrame`, `FFTResult`, `StemData`, `FeatureVector` (all `@frozen` and SIMD-aligned for GPU consumption)
 
-**Verification:** Unit test that writes data on CPU, reads it in a trivial compute shader — no copy, same pointer.
+**Test requirements:**
+- `UMABufferTests.swift` — 10 tests:
+  - `test_init_withCapacity_allocatesCorrectByteCount()`
+  - `test_storageMode_isShared()`
+  - `test_write_readBack_valuesMatch()` — CPU round-trip
+  - `test_write_gpuRead_valuesMatch()` — Write on CPU, read via trivial compute shader, compare
+  - `test_ringBuffer_overwrite_oldDataOverwritten()`
+  - `test_ringBuffer_readLatest_returnsNewestSamples()`
+  - `test_ringBuffer_capacity_neverExceeded()`
+  - `test_typedPointer_alignment_isSIMDAligned()`
+  - `test_reset_clearsAllData()`
+  - `test_concurrentWriteRead_noDataRace()` — Write on background thread, read on main, no crash (use TSan)
+- `AudioFeaturesTests.swift` — 6 tests:
+  - `test_audioFrame_memoryLayout_isSIMDAligned()`
+  - `test_fftResult_binCount_is512()`
+  - `test_featureVector_defaultValues_areZero()`
+  - `test_stemData_fourStems_correctLayout()`
+  - `test_audioFrame_equatable_sameValues_areEqual()`
+  - `test_featureVector_simdSize_matchesGPUExpectation()`
+
+**Verification:** All 16 unit tests pass. GPU compute shader test proves zero-copy (same pointer).
 
 ### Increment 1.3: System Audio Capture via Core Audio Taps ✅
 
-**Goal:** Capture live system audio output (i.e., whatever the user is streaming via Apple Music, Spotify, Tidal, YouTube, etc.) and fill the UMA ring buffer with PCM float32 samples. Local file playback is a secondary fallback, not the primary input.
+**Goal:** Capture live system audio output and fill the UMA ring buffer with PCM float32 samples.
 
-**Design rationale:** Most users consume music through streaming services. Phosphene cannot and should not attempt to integrate with each service's SDK — streaming services do not expose raw PCM audio to third parties. Instead, Phosphene taps the system audio mix (or a specific application's audio) using Core Audio taps (`AudioHardwareCreateProcessTap`, macOS 14.2+). This creates a process tap that feeds an aggregate device, whose IO proc delivers interleaved float32 PCM on a real-time audio thread. ScreenCaptureKit was originally planned but abandoned because it silently fails to deliver audio callbacks on macOS 15+/26 despite video frames arriving.
+**Design rationale:** (unchanged from v1)
 
 **Files created:**
-- `Audio/SystemAudioCapture.swift` — Creates a `CATapDescription` (system-wide via `stereoGlobalTapButExcludeProcesses: []`, or per-app via `stereoMixdownOfProcesses: [pid]`), builds an aggregate device, and delivers audio via a callback on the real-time IO thread.
-- `Audio/AudioInputRouter.swift` — Unified callback-based interface over three input modes: (1) system audio via Core Audio taps (default), (2) specific-app audio via Core Audio taps, (3) local file via `AVAudioFile` (fallback).
-- `Audio/AudioBuffer.swift` — Writes interleaved float32 PCM into `UMARingBuffer<Float>` via pointer-based `write(from:count:)` for zero-copy from the IO thread. Exposes latest N samples for FFT and Metal buffer for GPU binding.
-- `Audio/FFTProcessor.swift` — vDSP-based 1024-point FFT with Hann window, writes 512 magnitude bins into `UMABuffer<Float>` for GPU consumption. All working buffers pre-allocated (zero per-frame allocation).
-- `Tests/PhospheneEngineTests/AudioTests.swift` — 12 tests covering AudioBuffer and FFTProcessor.
-- `tools/audio-tap-test.swift` — Standalone test binary for live audio verification.
+- `Audio/SystemAudioCapture.swift` — Creates a `CATapDescription`, builds an aggregate device, delivers audio via IO proc callback.
+- `Audio/AudioInputRouter.swift` — Unified callback-based interface: system audio, app-specific audio, local file fallback. Conforms to `AudioCapturing` protocol.
+- `Audio/AudioBuffer.swift` — Ring buffer with `write(from:count:)`. Conforms to `AudioBuffering` protocol.
+- `Audio/FFTProcessor.swift` — vDSP 1024-point FFT. Conforms to `FFTProcessing` protocol.
+- `tools/audio-tap-test.swift` — Standalone live verification binary.
 
-**Verification:** Play a song in Spotify. `./tools/audio-tap-test` captures 468 audio callbacks in 5 seconds, prints per-frame RMS levels (~-26dB) and FFT histograms showing energy concentrated in low frequencies. Verified on macOS 26.4.0.
+**Test requirements:**
+- `AudioBufferTests.swift` — 12 tests (existing from v1, verify all still pass):
+  - `test_write_singleFrame_readBackMatches()`
+  - `test_write_multipleFrames_latestSamplesCorrect()`
+  - `test_write_overflowRing_oldestOverwritten()`
+  - `test_rms_silence_isZero()`
+  - `test_rms_knownSine_matchesExpected()` — use `AudioFixtures.sineWave`, assert RMS ≈ 0.707 (±0.01)
+  - `test_latestSamples_count_matchesRequested()`
+  - `test_latestSamples_afterReset_allZeros()`
+  - `test_metalBuffer_isNotNil()`
+  - `test_metalBuffer_storageMode_isShared()`
+  - `test_writeFromPointer_zeroCopy_matchesDirect()` — compare pointer-based write vs array-based write
+  - `test_threadSafety_concurrentWrites_noCrash()` — dispatch 10 concurrent writes
+  - `test_capacity_reportedCorrectly()`
+- `FFTProcessorTests.swift` — 10 tests:
+  - `test_init_binCount_is512()`
+  - `test_process_silence_allBinsNearZero()` — max magnitude < 0.001
+  - `test_process_440HzSine_peakInExpectedBin()` — bin 9 (440/48000*1024) has highest magnitude
+  - `test_process_lowFreqSine_peakInLowBins()` — 100Hz, verify energy below bin 5
+  - `test_process_stereoInput_mixesDown()` — L=sine, R=silence → half amplitude
+  - `test_process_shortInput_padsWithZeros()` — input < 1024, no crash, reasonable output
+  - `test_process_outputBuffer_storageModeShared()`
+  - `test_process_noAllocation_perFrame()` — measure allocations, assert 0 heap allocs in hot path
+  - `test_process_hannWindow_applied()` — process a DC signal, verify spectral leakage is suppressed vs rectangular window
+  - `test_process_deterministic_sameInput_sameOutput()` — process twice, outputs identical
+- `AudioInputRouterTests.swift` — 6 tests:
+  - `test_init_defaultMode_isSystemAudio()`
+  - `test_setMode_filePlayback_callsAVAudioFile()` — mock file, verify callback fires
+  - `test_onAudioSamples_callbackFires_withValidPointer()`
+  - `test_stop_noMoreCallbacks()`
+  - `test_switchMode_whileRunning_noGap()` — verify no crash on hot-switch
+  - `test_routerConformsToAudioCapturing()`
+- **Integration test** `AudioToFFTPipelineTests.swift` — 3 tests:
+  - `test_sineWaveThroughPipeline_fftShowsPeak()` — mock audio source → AudioBuffer → FFTProcessor → verify peak bin
+  - `test_silenceThroughPipeline_fftIsFlat()`
+  - `test_continuousStream_noMemoryGrowth()` — process 10,000 frames, assert stable memory
 
-**Implementation notes (completed 2026-04-06):**
-- **ScreenCaptureKit abandoned for audio capture.** On macOS 26, `SCStream` with `capturesAudio = true` delivers video frames but zero audio callbacks, even with screen capture permission confirmed working. Root cause unknown — may be macOS 26 regression.
-- **Core Audio taps adopted as primary capture method.** `AudioHardwareCreateProcessTap` (macOS 14.2+) works perfectly. System-wide: `CATapDescription(stereoGlobalTapButExcludeProcesses: [])`. Per-app: `CATapDescription(stereoMixdownOfProcesses: [pid])`. Tap feeds an aggregate device whose IO proc delivers interleaved float32 PCM on a real-time audio thread.
-- **Critical: `stereoMixdownOfProcesses: []` with empty array means "mix zero processes" = silence.** Must use `stereoGlobalTapButExcludeProcesses: []` for system-wide capture.
-- Sample rate: 48kHz stereo float32, matching the tap's reported format.
-- `AudioInputRouter` uses callback-based API (`onAudioSamples`) — the IO proc delivers a raw float pointer on a real-time thread.
-- `AudioBuffer.write(from:count:)` takes a raw pointer for zero-copy writing from the IO proc.
-- 23 unit tests cover AudioBuffer (write, RMS, ring overwrite, GPU binding, reset) and FFTProcessor (bin count, silence, 440Hz detection, stereo mixdown, short input, GPU readability).
-- Standalone test script: `tools/audio-tap-test.swift` — compile with `swiftc` and run to verify live audio capture with RMS + FFT histogram.
+**Performance tests** `FFTPerformanceTests.swift`:
+  - `test_fftProcess_1024Samples_performance()` — `measure {}` block, baseline < 0.1ms
+
+**Verification:** All 31+ unit tests pass. Integration tests pass. Standalone `audio-tap-test.swift` captures live audio. `swift test` + `swiftlint` clean.
+
+**Implementation notes (completed 2026-04-06):** (unchanged from v1)
 
 ### Increment 1.4: Basic Fragment Shader Visualizer ✅
 
 **Goal:** Render a full-screen quad driven by FFT data — proving the audio-to-GPU-to-pixel pipeline works end to end.
 
-**Files created/edited:**
-- `Renderer/ShaderLibrary.swift` — Auto-discovers `.metal` files from SPM bundle resources (`Shaders/` directory), compiles at runtime via `device.makeLibrary(source:options:)`, caches `MTLRenderPipelineState` by name.
-- `Renderer/Shaders/Waveform.metal` — Full-screen fragment shader: 64-bar FFT frequency spectrum (bottom half, purple→cyan→green gradient), mirrored reflection (top), oscilloscope waveform line (centered, anti-aliased via distance field), glow effects, vignette. Reads all 512 FFT magnitude bins and 2048 PCM waveform samples directly on the GPU.
-- `Renderer/RenderPipeline.swift` — Rewritten to accept FFT and waveform `MTLBuffer` references at init, bind as fragment shader buffers alongside `FeatureVector` timing uniforms, draw a full-screen triangle (3 vertices, no vertex buffer — generated from `vertex_id`).
-- `PhospheneApp/ContentView.swift` — `VisualizerEngine` class (held via `@StateObject`) owns the complete pipeline: `AudioInputRouter` → `AudioBuffer` → `FFTProcessor` → `RenderPipeline`. Requests screen capture permission via `CGRequestScreenCaptureAccess()` before starting capture.
-- `PhospheneEngine/Package.swift` — Added `resources: [.copy("Shaders")]` to Renderer target.
-- `Audio/AudioInputRouter.swift` — Added `public init()`.
+**Files created/edited:** (unchanged from v1)
 
-**Verification:** Play music in any streaming app. 64-bar spectrum and waveform respond in real time. Verified on macOS 26.4.0.
+**Test requirements:**
+- `ShaderLibraryTests.swift` — 6 tests:
+  - `test_init_discoversWaveformShader()`
+  - `test_loadShader_validName_returnsPipelineState()`
+  - `test_loadShader_invalidName_returnsNil()`
+  - `test_cachedPipelineState_sameName_returnsSameInstance()`
+  - `test_allShaderNames_returnsNonEmptySet()`
+  - `test_shaderCompilation_noWarnings()` — compile all discovered shaders, assert no compilation warnings
+- `RenderPipelineTests.swift` — add 4 tests:
+  - `test_bindFFTBuffer_bufferIsAccessible()`
+  - `test_bindWaveformBuffer_bufferIsAccessible()`
+  - `test_draw_withValidBuffers_completesWithoutError()`
+  - `test_draw_withStubFFT_producesNonBlackOutput()` — render one frame with a known FFT stub, read back pixels, assert not all black
+- **Integration test** `Integration/AudioToRenderPipelineTests.swift` — 2 tests:
+  - `test_fullPipeline_sineWave_rendersNonBlackFrame()` — mock audio → buffer → FFT → render → read pixels → assert non-uniform
+  - `test_fullPipeline_silence_rendersBackgroundOnly()`
 
-**Implementation notes (completed 2026-04-06):**
-- **Screen capture permission is required for Core Audio taps to deliver non-zero audio.** `AudioHardwareCreateProcessTap` succeeds without permission, but the IO proc delivers all-zero samples. The tap reports correct format (48kHz, 2ch, 32bit), the aggregate device starts, callbacks fire at the expected rate — but every sample is 0.0. Call `CGPreflightScreenCaptureAccess()` / `CGRequestScreenCaptureAccess()` before starting capture. If denied, log a message directing the user to System Settings → Privacy & Security → Screen Recording.
-- **SwiftUI lifecycle requires `@StateObject` for the engine.** A `private let` property in a SwiftUI struct is re-created on every view re-init. The old engine is deallocated (tearing down audio capture) while the `MTKView` still holds the old `RenderPipeline` delegate. `@StateObject` with `ObservableObject` preserves the engine across SwiftUI view reconstructions.
-- **Metal shaders are SPM bundle resources.** `.metal` files live in `Sources/Renderer/Shaders/` and are included via `.copy("Shaders")` in Package.swift. `ShaderLibrary` loads them from `Bundle.module` and compiles at runtime. This keeps shaders in the engine package (not the app target) while supporting auto-discovery.
-- **Full-screen triangle, not quad.** A single oversized triangle (3 vertices from `vertex_id`) is more efficient than a 6-vertex quad. The rasterizer clips to the viewport; fragment shader sees uv ∈ [0,1].
+**Verification:** Play music in any streaming app. 64-bar spectrum and waveform respond in real time. All 12+ new tests pass. Full `./tools/ci-check.sh` green.
 
-### Increment 1.5: Basic Preset Abstraction & Hot-Reloading
+**Implementation notes (completed 2026-04-06):** (unchanged from v1)
+
+### Increment 1.5: Basic Preset Abstraction & Hot-Reloading 🔧 (in progress)
 
 **Goal:** Define a `Preset` protocol and loader so that shaders can be swapped at runtime.
 
 **Files to create/edit:**
 - `Presets/PresetCategory.swift` — Enum for categories: `waveform`, `fractal`, `geometric`, `particles`, `hypnotic`, `supernova`, `reaction`, `drawing`, `dancer`, `transition`
-- `Presets/PresetLoader.swift` — Discovers `.metal` files in a presets directory, compiles pipeline states, caches them, supports hot-reload via `DispatchSource.FileSystemObject`
+- `Presets/PresetLoader.swift` — Discovers `.metal` files in a presets directory, compiles pipeline states, caches them, supports hot-reload via `DispatchSource.FileSystemObject`. Conforms to `PresetLoading` protocol.
 - Write 2-3 simple native presets as separate `.metal` files to prove the loader works
 
-**Verification:** Press a key to cycle through presets. New `.metal` files dropped into the presets folder appear without restarting.
+**Test requirements:**
+- `PresetCategoryTests.swift` — 4 tests:
+  - `test_allCases_count_is10()`
+  - `test_rawValues_areSnakeCase()`
+  - `test_codable_roundTrip()`
+  - `test_displayName_isHumanReadable()`
+- `PresetLoaderTests.swift` — 8 tests:
+  - `test_init_discoversPresetsInDirectory()`
+  - `test_loadPreset_validName_returnsPipelineState()`
+  - `test_loadPreset_invalidName_returnsNil()`
+  - `test_presetCount_matchesFilesOnDisk()`
+  - `test_allPresets_compileSuccessfully()` — no compilation errors on any discovered preset
+  - `test_caching_samePresetTwice_returnsCachedState()`
+  - `test_presetsByCategory_filtersCorrectly()` — given manifest, returns only matching category
+  - `test_hotReload_newFileAdded_detectedWithinTimeout()` — write a new .metal file, assert loader discovers it within 2 seconds
+- `StubPresetLoader.swift` in TestDoubles — returns canned preset list, no disk access
+
+**Verification:** Press a key to cycle through presets. New `.metal` files dropped into the presets folder appear without restarting. All 12 tests pass.
 
 ---
 
@@ -240,126 +583,263 @@ Phosphene/
 
 ### Increment 2.1: Streaming Metadata Integration & Pre-Fetching
 
-**Goal:** Enrich the audio pipeline with track metadata from streaming services and external music databases, giving the Orchestrator immediate context about each track before the MIR pipeline has had time to analyze the audio itself.
+**Goal:** Enrich the audio pipeline with track metadata from streaming services and external music databases.
 
-**Design rationale:** When Core Audio taps capture system audio, Phosphene gets raw PCM but no metadata (track title, artist, album, duration, artwork). This metadata is crucial for the Orchestrator — knowing track boundaries, durations, and artist/genre context dramatically improves visual selection. Three complementary sources provide this:
-
-1. **MPNowPlayingInfoCenter / MediaRemote** — A system-level API that reports what any app is currently playing (works with Spotify, Tidal, YouTube Music, etc.). Provides title, artist, album, duration, elapsed time, and playback state. No special authorization required beyond standard entitlements.
-2. **MusicKit / Apple Music API** — If the user is an Apple Music subscriber, MusicKit provides deep metadata: track title, artist, album, genre, duration, artwork, and even catalog-level mood/genre tags. Requires user authorization.
-3. **External Music Database Pre-Fetching** — When a track change is detected via Now Playing, Phosphene queries external databases to retrieve pre-analyzed audio characteristics. This provides the Orchestrator with BPM, key, energy, danceability, and genre within 1–2 seconds of a track starting — far faster than the 15–20 seconds the MIR pipeline needs to estimate these independently from raw audio.
-
-**External data sources (queried in parallel on track change):**
-- **MusicBrainz API** (free, no key required) — Track metadata, genre tags, release information, linked recordings
-- **Apple Music Catalog API** (via MusicKit, requires Apple Music subscription) — Genre, editorial mood tags, tempo hints, preview URLs
-- **Spotify Web API** (free tier, requires developer registration) — Audio features endpoint: `danceability`, `energy`, `valence`, `tempo`, `key`, `mode`, `loudness`, `speechiness`, `acousticness`. This is extremely valuable — Spotify has pre-computed the exact features Phosphene needs for mood mapping. Works even when the user is listening in a different app, as long as the track can be matched by title/artist.
-- **AcousticBrainz** (community, best-effort) — Pre-computed MIR features including mood, genre, BPM, key, tonal/atonal classification
+**Design rationale:** (unchanged from v1)
 
 **Files to create/edit:**
-- `Audio/StreamingMetadata.swift` — Polls `MPNowPlayingInfoCenter` for current track info. Detects track changes by monitoring title/artist transitions. Emits `TrackChangeEvent` with metadata payload.
-- `Audio/MusicKitBridge.swift` — Optional MusicKit integration: request authorization, query Apple Music catalog for richer metadata (genre, mood tags, tempo hints) when available. Graceful no-op if user declines or isn't subscribed.
-- `Audio/MetadataPreFetcher.swift` — On each `TrackChangeEvent`, fires parallel async queries to MusicBrainz, Spotify Web API, and AcousticBrainz. Matches tracks by title + artist string similarity. Returns a `PreFetchedTrackProfile` struct that consolidates all available external data. Uses local caching (in-memory LRU + optional disk cache) so repeated plays of the same track don't re-query. Handles network failures gracefully — pre-fetched data is always optional enrichment, never a hard dependency.
-- `Shared/AudioFeatures.swift` — Add `TrackMetadata` struct (title, artist, album, genre, duration, artwork URL, source service) and `PreFetchedTrackProfile` struct (external BPM, key, energy, valence, danceability, genre tags, confidence scores)
-- `Audio/AudioInputRouter.swift` — Integrate metadata alongside the audio callback. Add an `onTrackChange` callback or expose a metadata stream parallel to `onAudioSamples`.
+- `Audio/StreamingMetadata.swift` — Polls `MPNowPlayingInfoCenter`. Detects track changes. Emits `TrackChangeEvent`. Conforms to `MetadataProviding` protocol.
+- `Audio/MusicKitBridge.swift` — Optional MusicKit integration. Graceful no-op if unavailable.
+- `Audio/MetadataPreFetcher.swift` — Parallel async queries to MusicBrainz, Spotify Web API, AcousticBrainz. LRU cache. Returns `PreFetchedTrackProfile`.
+- `Shared/AudioFeatures.swift` — Add `TrackMetadata` and `PreFetchedTrackProfile` structs.
+- `Audio/AudioInputRouter.swift` — Add `onTrackChange` callback.
 
-**Verification:** Play a song in Spotify, then switch to Apple Music. Phosphene's debug overlay shows the correct track title, artist, and duration from both services. Within 2 seconds of a track change, the debug overlay also shows pre-fetched data: "Spotify API: BPM 128, Key Cm, Energy 0.82, Valence 0.34" (or "Pre-fetch: unavailable" if the track can't be matched). Track change events fire accurately within 1 second of an actual track change.
+**Test requirements:**
+- `StreamingMetadataTests.swift` — 7 tests:
+  - `test_trackChange_differentTitle_emitsEvent()`
+  - `test_trackChange_sameTitle_noEvent()`
+  - `test_trackChange_eventContainsTitle()`
+  - `test_trackChange_eventContainsArtist()`
+  - `test_trackChange_eventContainsDuration()`
+  - `test_noNowPlaying_returnsNilMetadata()` — graceful degradation
+  - `test_conformsToMetadataProviding()`
+- `MetadataPreFetcherTests.swift` — 10 tests:
+  - `test_fetch_validTrack_returnsProfile()` — use mock HTTP responses
+  - `test_fetch_unknownTrack_returnsNilProfile()`
+  - `test_fetch_networkTimeout_returnsNilWithin3Seconds()`
+  - `test_fetch_cachedTrack_returnsImmediately()` — second fetch for same track hits LRU cache, no network call
+  - `test_fetch_parallelQueries_allSourcesQueriedConcurrently()` — mock 3 sources, assert all 3 called
+  - `test_fetch_partialResults_returnsAvailableData()` — one source fails, others succeed, profile has partial data
+  - `test_cache_eviction_lruOrder()` — fill cache, verify oldest entry evicted
+  - `test_cache_sameTrack_noRedundantNetworkCalls()`
+  - `test_preFetchedProfile_bpmPresent_whenSpotifyResponds()`
+  - `test_preFetchedProfile_gracefulDegradation_allSourcesFail_returnsEmpty()`
+- `MockMetadataProvider.swift` in TestDoubles — emits canned TrackChangeEvents on demand
+- **Integration test** `MetadataToOrchestratorTests.swift` — 2 tests:
+  - `test_trackChange_triggersPreFetch_resultsAvailableWithin2Seconds()`
+  - `test_trackChange_metadataFlowsToOrchestratorState()`
+
+**Regression test** `Regression/MetadataParsingRegressionTests.swift`:
+  - `test_parseMusicBrainzResponse_knownJSON_matchesExpected()` — golden JSON → expected struct
+  - `test_parseSpotifyAudioFeatures_knownJSON_matchesExpected()`
+
+**Verification:** Play a song in Spotify, then switch to Apple Music. Debug overlay shows correct track info. Pre-fetched data appears within 2 seconds. All 21+ tests pass.
 
 ### Increment 2.2: CoreML Stem Separation Model Conversion
 
-**Goal:** Convert an open-source stem separation model (HTDemucs or Open-Unmix) to CoreML `.mlpackage` targeting the ANE.
+**Goal:** Convert an open-source stem separation model to CoreML `.mlpackage` targeting the ANE.
 
 **This is a Python-side task.** Claude Code will:
-- Write a Python script `tools/convert_stem_model.py` that:
-  - Loads the pre-trained PyTorch model
-  - Traces/exports to ONNX
-  - Converts via `coremltools` to `.mlpackage` with `compute_units=.cpuAndNeuralEngine`
-  - Validates output shape: input `[1, 2, T]` → output `[4, 2, T]` (4 stems x stereo x samples)
-- Write a companion test script that runs inference on a sample WAV and writes 4 output WAVs
+- Write `tools/convert_stem_model.py` with:
+  - Model loading, ONNX export, CoreML conversion
+  - Input/output shape validation assertions
+  - Automated comparison: run PyTorch inference and CoreML inference on same input, assert max absolute error < 0.01
+- Write `tools/test_stem_model.py` — integration test:
+  - Load a 10-second WAV, run inference, write 4 stem WAVs
+  - Assert each stem WAV has correct sample rate, channel count, and nonzero energy
+  - Assert stems recombine to approximate original (sum of stems ≈ original, MSE < 0.05)
 
-**Verification:** Four output WAV files (vocals, drums, bass, other) sound correct when played individually.
+**Test requirements (Python):**
+- `tools/test_stem_model.py` — 6 assertions:
+  - Output shape is `[4, 2, T]`
+  - Each stem has nonzero RMS
+  - Vocal stem has lower energy than drum stem on a drum-heavy test clip
+  - Stems sum to approximate original (MSE < 0.05)
+  - CoreML output matches PyTorch output (max abs error < 0.01)
+  - Inference completes in < 5 seconds for 10 seconds of audio on ANE
+
+**Verification:** Four output WAV files sound correct individually. All Python tests pass.
 
 ### Increment 2.3: Swift CoreML Stem Separator Integration
 
 **Goal:** Load the `.mlpackage` in Swift, run inference on the ANE, write separated stems into UMA buffers.
 
 **Files to create/edit:**
-- `ML/StemSeparator.swift` — Load `MLModel`, configure for `.cpuAndNeuralEngine`, accept `UMABuffer<Float>` input, write 4 stem `UMABuffer<Float>` outputs
-- Update `Audio/AudioBuffer.swift` to provide chunked audio windows (e.g., 4096 samples) suitable for model input
-- Provide an async pipeline: audio chunk → stem separation → stem buffers updated
+- `ML/StemSeparator.swift` — Load `MLModel`, configure for `.cpuAndNeuralEngine`, accept `UMABuffer<Float>` input, write 4 stem `UMABuffer<Float>` outputs. Conforms to `StemSeparating` protocol.
+- Update `Audio/AudioBuffer.swift` to provide chunked audio windows
 
-**Verification:** In debug overlay, show per-stem RMS levels that independently react (e.g., drums spike on kick hits while vocals remain stable).
+**Test requirements:**
+- `StemSeparatorTests.swift` — 8 tests:
+  - `test_init_loadsModel_noThrow()`
+  - `test_init_computeUnits_isCPUAndNeuralEngine()`
+  - `test_separate_validInput_returnsFourStems()`
+  - `test_separate_silence_allStemsNearZero()`
+  - `test_separate_outputBuffers_storageModeShared()`
+  - `test_separate_stemLabels_correctOrder()` — vocals, drums, bass, other
+  - `test_separate_chunkedInput_noGapBetweenChunks()`
+  - `test_conformsToStemSeparating()`
+- `FakeStemSeparator.swift` in TestDoubles — returns canned stem data (e.g., copies input to drums stem, zeros others)
+- **Performance test** `Performance/StemSeparationPerformanceTests.swift`:
+  - `test_separate_4096Samples_performance()` — measure, baseline < 50ms
+
+**Integration test** `Integration/AudioToStemPipelineTests.swift` — 2 tests:
+  - `test_sineWaveInput_stemsHaveExpectedEnergyDistribution()`
+  - `test_continuousChunks_noMemoryLeak()` — process 100 chunks, assert stable memory
+
+**Verification:** Debug overlay shows per-stem RMS levels. Drums spike on kicks. All 12+ tests pass.
 
 ### Increment 2.4: MIR Feature Extraction Pipeline
 
-**Goal:** Implement real-time Music Information Retrieval feature extraction on the CPU using Accelerate.
+**Goal:** Implement real-time MIR feature extraction on the CPU using Accelerate.
 
 **Files to create/edit:**
-- `DSP/SpectralAnalyzer.swift` — Spectral centroid, spectral rolloff, spectral flux (all via vDSP)
-- `DSP/ChromaExtractor.swift` — 12-bin chroma vector from FFT, key estimation
-- `DSP/BeatDetector.swift` — Onset detection via spectral flux thresholding, tempo estimation via autocorrelation
-- `DSP/FeatureVector.swift` — Combines all features into a single SIMD-aligned struct written to UMA buffer
+- `DSP/SpectralAnalyzer.swift` — Spectral centroid, rolloff, flux (vDSP)
+- `DSP/ChromaExtractor.swift` — 12-bin chroma vector, key estimation
+- `DSP/BeatDetector.swift` — Onset detection, tempo estimation via autocorrelation
+- `DSP/FeatureVector.swift` — Combines all features into SIMD-aligned struct
 
-**Verification:** Console logs: "BPM: 128, Key: Am, Centroid: 3400Hz, Brightness: 0.72" updating in real time.
+**Test requirements:**
+- `SpectralAnalyzerTests.swift` — 8 tests:
+  - `test_centroid_silence_isZero()`
+  - `test_centroid_lowFreqSine_belowMidpoint()`
+  - `test_centroid_highFreqSine_aboveMidpoint()`
+  - `test_rolloff_silence_isZero()`
+  - `test_rolloff_fullBandNoise_near85Percent()`
+  - `test_flux_steadySignal_nearZero()`
+  - `test_flux_suddenOnset_highValue()`
+  - `test_allFeatures_deterministic_sameInput_sameOutput()`
+- `ChromaExtractorTests.swift` — 6 tests:
+  - `test_chroma_CMajorChord_peakAtCEG()` — bins 0, 4, 7 have highest energy
+  - `test_chroma_AMinorChord_peakAtACE()`
+  - `test_chroma_silence_allBinsNearZero()`
+  - `test_keyEstimation_CMajorChord_returnsC()`
+  - `test_keyEstimation_AMinorScale_returnsAm()`
+  - `test_chroma_deterministic()`
+- `BeatDetectorTests.swift` — 7 tests:
+  - `test_tempo_120BPMKick_estimatesNear120()` — synthesize 120BPM kick pattern, assert tempo ∈ [118, 122]
+  - `test_tempo_90BPMKick_estimatesNear90()`
+  - `test_tempo_silence_returnsNilOrZero()`
+  - `test_onsetDetection_singleImpulse_detectsOne()`
+  - `test_onsetDetection_regularKicks_countMatchesExpected()`
+  - `test_onsetDetection_noOnsets_inSilence()`
+  - `test_tempo_deterministic()`
+- `FeatureVectorTests.swift` — 4 tests:
+  - `test_combine_allFeaturesPresent()`
+  - `test_simdAlignment_matchesGPUExpectation()`
+  - `test_defaultValues_allZero()`
+  - `test_encode_toUMABuffer_readBackMatches()`
+
+**Regression tests** `Regression/`:
+  - `FFTRegressionTests.swift` — known 440Hz sine → golden FFT magnitude array (saved to `Fixtures/440hz_fft_expected.json`), assert max delta < 0.0001
+  - `ChromaRegressionTests.swift` — known C major chord → golden chroma vector, assert max delta < 0.01
+  - `BeatDetectorRegressionTests.swift` — known 120BPM kick pattern → golden onset timestamps, assert max delta < 10ms
+
+**Performance tests:**
+  - `Performance/DSPPerformanceTests.swift` — measure spectral centroid, chroma, and beat detection on 1 second of audio, assert < 5ms each
+
+**Integration test** `Integration/MIRPipelineTests.swift` — 3 tests:
+  - `test_fullMIRPipeline_sineWave_allFeaturesPopulated()`
+  - `test_fullMIRPipeline_silence_gracefulDefaults()`
+  - `test_fullMIRPipeline_continuousFrames_noMemoryGrowth()`
+
+**Verification:** Console shows "BPM: 128, Key: Am, Centroid: 3400Hz, Brightness: 0.72" updating in real time. All 28+ unit tests, 3 regression tests, 3 performance tests, and 3 integration tests pass.
 
 ### Increment 2.5: Mood Classification Model
 
 **Goal:** Train or convert a lightweight valence/arousal classifier and deploy on ANE.
 
-**Claude Code tasks (Python side):**
-- Write `tools/train_mood_classifier.py` — A small feedforward network that takes the MIR feature vector and outputs (valence, arousal) in [-1, 1]
-- Train on a labeled dataset (or use a pre-annotated one like MusicMood or DEAM)
-- Convert to `.mlpackage`
+**Python side:**
+- `tools/train_mood_classifier.py`
+- `tools/test_mood_classifier.py` — 4 assertions:
+  - Output shape is `[2]` (valence, arousal)
+  - Values in range [-1, 1]
+  - High-energy major-key input → positive valence, high arousal
+  - Slow minor-key input → negative valence, low arousal
 
 **Swift side:**
-- `ML/MoodClassifier.swift` — Load model, run inference on feature vectors, expose `EmotionalState` (valence, arousal, quadrant label)
-- `Shared/AudioFeatures.swift` — Add `EmotionalState` struct
+- `ML/MoodClassifier.swift` — Conforms to `MoodClassifying` protocol.
+- `Shared/AudioFeatures.swift` — Add `EmotionalState` struct with `valence: Float`, `arousal: Float`, `quadrant: EmotionalQuadrant`
 
-**Verification:** App displays "Mood: Happy/Energetic (V:0.7 A:0.8)" in debug overlay, updating per segment.
+**Test requirements:**
+- `MoodClassifierTests.swift` — 7 tests:
+  - `test_init_loadsModel()`
+  - `test_classify_validFeatureVector_returnsEmotionalState()`
+  - `test_classify_valenceInRange_minus1To1()`
+  - `test_classify_arousalInRange_minus1To1()`
+  - `test_classify_highEnergyMajorKey_happyQuadrant()`
+  - `test_classify_lowEnergyMinorKey_sadQuadrant()`
+  - `test_conformsToMoodClassifying()`
+- `EmotionalStateTests.swift` — 4 tests:
+  - `test_quadrant_highValenceHighArousal_isHappy()`
+  - `test_quadrant_lowValenceLowArousal_isSad()`
+  - `test_quadrant_lowValenceHighArousal_isTense()`
+  - `test_quadrant_highValenceLowArousal_isCalm()`
+- `StubMoodClassifier.swift` in TestDoubles — returns fixed (valence, arousal) for orchestrator testing
+
+**Verification:** Debug overlay shows "Mood: Happy/Energetic (V:0.7 A:0.8)" updating per segment. All 11 tests pass.
 
 ### Increment 2.6: Analysis Lookahead Buffer
 
-**Goal:** Introduce a configurable delay between audio analysis and visual rendering so that the Orchestrator can see upcoming musical moments before the renderer needs to respond to them.
+**Goal:** Configurable delay between analysis and rendering for anticipatory visual decisions.
 
-**Design rationale:** In a streaming context, the audio signal arrives in real time with no ability to peek ahead in the file. However, Phosphene can create its own lookahead window by introducing a deliberate delay between analysis and rendering. The audio pipeline analyzes incoming PCM immediately as it arrives, but the *visual rendering* of those analyzed frames is delayed by a configurable duration (default: 2.5 seconds, range: 0–5 seconds). This means that when the Orchestrator sees a massive energy spike from a drop or a sudden silence from a breakdown, it has 2.5 seconds of lead time to prepare — pre-loading the next preset, initiating a transition, or ramping visual parameters.
-
-This delay is imperceptible to the user because there is no reference signal to synchronize against. The music is playing from their speakers in real time, and the visuals appear to be perfectly reactive. A 2.5-second visual latency in a music visualizer is effectively invisible — this is standard practice in professional VJ software and concert lighting systems.
-
-**Pipeline architecture:**
-```
-Core Audio Tap → PCM frames → [Analysis Pipeline: FFT, Stems, MIR, Mood] → Analyzed Frames Queue
-                                                                                      │
-                                                                            ┌─────────┘
-                                                                            │ 2.5s delay
-                                                                            ▼
-                                                              Orchestrator decisions ──→ Metal Renderer
-```
+**Design rationale:** (unchanged from v1)
 
 **Files to create/edit:**
-- `Audio/LookaheadBuffer.swift` — A timestamped ring buffer that sits between the analysis pipeline and the Orchestrator/renderer. Analyzed frames (containing FFT, stem data, MIR features, and mood classification results) are enqueued immediately. The renderer dequeues frames from the buffer after a configurable delay. The Orchestrator has access to *both* the current analysis head (for lookahead decisions) and the render head (for current visual state).
-- `Audio/AudioInputRouter.swift` — Updated to expose two callback paths: `onAnalysisFrame` (real-time, for the Orchestrator's lookahead window) and `onRenderFrame` (delayed, for the renderer and the Orchestrator's "current frame" decisions). Note: the router currently uses callback-based API (`onAudioSamples`), not AsyncStream — this dual-tap extension should follow the same pattern.
-- `Shared/AnalyzedFrame.swift` — A timestamped container struct that bundles all analysis outputs for a single audio window: `AudioFrame` + `FFTResult` + `StemData` + `FeatureVector` + `EmotionalState`. This is the unit that flows through the lookahead buffer.
+- `Audio/LookaheadBuffer.swift` — Timestamped ring buffer with dual read heads (analysis and render).
+- `Shared/AnalyzedFrame.swift` — Timestamped container: `AudioFrame` + `FFTResult` + `StemData` + `FeatureVector` + `EmotionalState`.
+- `Audio/AudioInputRouter.swift` — Dual callbacks: `onAnalysisFrame` and `onRenderFrame`.
 
-**Verification:** Enable a debug visualization that renders two small oscilloscopes: one driven by the analysis head (real-time) and one by the render head (delayed). Confirm the render oscilloscope lags the analysis oscilloscope by exactly the configured duration. Play a track with a dramatic drop — confirm the Orchestrator's debug log shows it detected the drop 2.5 seconds before the visual transition fires.
+**Test requirements:**
+- `LookaheadBufferTests.swift` — 10 tests:
+  - `test_enqueue_incrementsCount()`
+  - `test_dequeueAnalysisHead_returnsLatestFrame()`
+  - `test_dequeueRenderHead_returnsDelayedFrame()`
+  - `test_delay_2500ms_renderHeadLagsAnalysisHead()` — enqueue frames with timestamps, assert render head timestamp = analysis head - 2500ms (±50ms)
+  - `test_delay_0ms_bothHeadsReturnSameFrame()`
+  - `test_setDelay_midStream_adjustsSmoothly()`
+  - `test_buffer_overflow_dropsOldestFrames()`
+  - `test_reset_clearsAllFrames()`
+  - `test_emptyBuffer_dequeue_returnsNil()`
+  - `test_threadSafety_concurrentEnqueueDequeue_noCrash()`
+- `AnalyzedFrameTests.swift` — 3 tests:
+  - `test_init_allFieldsAccessible()`
+  - `test_timestamp_monotonicallyIncreasing()`
+  - `test_memoryLayout_isReasonableSize()` — assert < 64KB per frame
+
+**Integration test:**
+  - `test_analysisToRenderDelay_measuredAccurately()` — push 100 frames at 60fps, measure actual delay at render head, assert within ±100ms of configured delay
+
+**Verification:** Two debug oscilloscopes show analysis and render heads with visible lag. All 13+ tests pass.
 
 ### Increment 2.7: Progressive Structural Analysis
 
-**Goal:** Implement a real-time structural segmentation system that progressively learns the song's form (intro, verse, chorus, bridge, outro) and predicts when future section changes will occur.
+**Goal:** Real-time structural segmentation that predicts section boundaries.
 
-**Design rationale:** Popular music is overwhelmingly repetitive in structure. After hearing a verse and a chorus, the system can predict with high confidence when the next chorus will arrive, because verses and choruses tend to have consistent durations within a track. This prediction gives the Orchestrator advance notice of major structural transitions — exactly the kind of anticipation that pre-scanning a local file would have provided.
-
-**Algorithm overview:**
-1. Continuously compute a **self-similarity matrix** from MIR feature vectors. Each new frame is compared against all previously observed frames using cosine similarity of the chroma + MFCC feature vectors.
-2. Apply a lightweight **novelty detection** function along the diagonal of the self-similarity matrix. Peaks in the novelty function indicate section boundaries (e.g., verse → chorus, chorus → bridge).
-3. Once two or more boundaries have been detected, estimate **section durations** and look for **recurring patterns** (e.g., "the last two sections were each 16 bars long, and the current section sounds like the first section, so it will probably also be 16 bars long").
-4. Combine section predictions with BPM (from the MIR pipeline) to generate a **predicted next boundary timestamp** with a confidence score.
-5. If `PreFetchedTrackProfile` from Increment 2.1 includes a track duration, use it to estimate how much of the song remains and improve boundary predictions near the expected end of the track.
+**Algorithm overview:** (unchanged from v1)
 
 **Files to create/edit:**
-- `DSP/StructuralAnalyzer.swift` — Maintains the growing self-similarity matrix (ring buffer capped at ~5 minutes of history). Computes novelty function. Detects section boundaries. Estimates section type labels (repetition = same section type, novelty = new section type). Predicts next boundary timestamp. Exposes `StructuralPrediction` struct: `currentSectionStarted: TimeInterval`, `predictedNextBoundary: TimeInterval?`, `confidence: Float`, `sectionIndex: Int`, `isRepeatOfSection: Int?`.
-- `DSP/SelfSimilarityMatrix.swift` — Efficient computation and storage of frame-by-frame cosine similarity. Uses Accelerate/vDSP for vectorized dot products. Ring-buffer-based to cap memory usage.
-- `DSP/NoveltyDetector.swift` — Checkerboard kernel convolution along the self-similarity diagonal. Peak picking with adaptive threshold. Outputs detected boundary timestamps.
-- `Shared/AnalyzedFrame.swift` — Add `StructuralPrediction` to the analyzed frame struct.
+- `DSP/StructuralAnalyzer.swift`
+- `DSP/SelfSimilarityMatrix.swift`
+- `DSP/NoveltyDetector.swift`
+- `Shared/AnalyzedFrame.swift` — Add `StructuralPrediction`.
 
-**Verification:** Play a pop song with clear verse-chorus structure. After the first chorus ends (~60–90 seconds in), the debug overlay shows: "Section 3 started at 1:32. Predicted next boundary: ~2:15 (confidence: 0.78). Current section similar to Section 1 (verse)." The predicted boundary should be within ±5 seconds of the actual structural change. For a second test, play an ambient/drone track with no clear structure — the system should report low confidence predictions rather than hallucinating false boundaries.
+**Test requirements:**
+- `StructuralAnalyzerTests.swift` — 8 tests:
+  - `test_init_noSegments()`
+  - `test_feed_oneSection_noPredictioin()` — not enough data yet
+  - `test_feed_twoSections_predictsThirdBoundary()`
+  - `test_sectionBoundary_detectedOnNoveltyPeak()`
+  - `test_repetition_identifiedCorrectly()` — section 3 similar to section 1
+  - `test_confidence_lowForAmbientTrack()` — feed random feature vectors, assert low confidence
+  - `test_confidence_highForRepetitiveTrack()` — feed ABAB pattern, assert high confidence
+  - `test_reset_clearsHistory()`
+- `SelfSimilarityMatrixTests.swift` — 5 tests:
+  - `test_add_frame_matrixGrows()`
+  - `test_similarity_identicalFrames_is1()`
+  - `test_similarity_orthogonalFrames_isNear0()`
+  - `test_ringBuffer_capsAtMaxHistory()`
+  - `test_cosineSimilarity_matchesManualCalculation()`
+- `NoveltyDetectorTests.swift` — 5 tests:
+  - `test_detect_noChange_noPeaks()`
+  - `test_detect_abruptChange_peakDetected()`
+  - `test_detect_gradualChange_noPeak()`
+  - `test_peakPicking_adaptiveThreshold_ignoresMinorFluctuations()`
+  - `test_detect_deterministic()`
+
+**Regression test:**
+  - `Regression/StructuralAnalysisRegressionTests.swift` — feed a known AABA feature sequence (from fixture file), assert detected boundaries match golden timestamps (±500ms)
+
+**Verification:** After first verse-chorus, debug shows predicted next boundary within ±5 seconds. All 18+ tests pass.
 
 ---
 
@@ -367,47 +847,88 @@ Core Audio Tap → PCM frames → [Analysis Pipeline: FFT, Stems, MIR, Mood] →
 
 ### Increment 3.1: Compute Shader Particle System
 
-**Goal:** GPU compute pipeline that simulates millions of particles driven by stem-separated audio.
+**Goal:** GPU compute pipeline driving millions of particles from stem-separated audio.
 
 **Files to create/edit:**
-- `Renderer/Shaders/Particles.metal` — Compute kernel: read drum stem buffer → emit particles on transients, read bass stem → apply gravity/attraction fields, velocity integration, lifetime management
-- `Renderer/Geometry/ProceduralGeometry.swift` — Manage particle buffer (position, velocity, color, life), dispatch compute, draw as point sprites or instanced quads
-- Bind particle render into the main render pass
+- `Renderer/Shaders/Particles.metal`
+- `Renderer/Geometry/ProceduralGeometry.swift`
 
-**Verification:** Millions of particles on screen. Kick drum triggers burst emission. Bass drives swirling gravity well. Visually confirms stem routing.
+**Test requirements:**
+- `ProceduralGeometryTests.swift` — 6 tests:
+  - `test_init_particleBuffer_allocatedWithCapacity()`
+  - `test_particleBuffer_storageModeShared()`
+  - `test_dispatch_compute_noGPUError()` — run compute dispatch, assert command buffer completes without error
+  - `test_particleCount_matchesConfiguration()`
+  - `test_zeroAudioInput_particlesStationary()` — all velocities near zero after compute
+  - `test_impulseAudioInput_particlesEmitted()` — nonzero velocity for some particles
+- **Performance test:**
+  - `test_particleCompute_1MillionParticles_under8ms()` — measure GPU compute time
+
+**Verification:** Visual: millions of particles on screen, drum stem triggers bursts. All 7 tests pass.
 
 ### Increment 3.2: Mesh Shader Pipeline (Object + Mesh Shaders)
 
-**Goal:** Implement Metal mesh shading for procedural fractal and geometric generation.
+**Goal:** Metal mesh shading for procedural fractal and geometric generation.
 
 **Files to create/edit:**
-- `Renderer/Shaders/MeshShaders.metal` — Object shader for culling/LOD, Mesh shader outputting meshlets (max 256 verts / 512 prims per threadgroup)
-- `Renderer/Geometry/MeshGenerator.swift` — Configure mesh render pipeline state with `MTLMeshRenderPipelineDescriptor`, dispatch mesh draws
-- Write a fractal preset: recursive branching tree whose depth and angle respond to audio features
+- `Renderer/Shaders/MeshShaders.metal`
+- `Renderer/Geometry/MeshGenerator.swift`
 
-**Verification:** 3D fractal structure renders, branches sway/grow in response to music. Frame rate stays above 60 fps.
+**Test requirements:**
+- `MeshGeneratorTests.swift` — 5 tests:
+  - `test_init_createsMeshPipelineDescriptor()`
+  - `test_meshPipelineState_createdSuccessfully()`
+  - `test_dispatch_meshDraw_completesWithoutError()`
+  - `test_maxVerticesPerMeshlet_is256()`
+  - `test_maxPrimitivesPerMeshlet_is512()`
+- **Performance test:**
+  - `test_meshShaderFractal_60fps_frameTimeUnder16ms()`
+
+**Verification:** 3D fractal structure renders, branches respond to audio. Frame rate > 60fps. All 6 tests pass.
 
 ### Increment 3.3: Hardware Ray Tracing Integration
 
-**Goal:** Add ray-traced reflections and shadows to geometric presets using `MPSRayIntersector`.
+**Goal:** Ray-traced reflections and shadows using `MPSRayIntersector`.
 
 **Files to create/edit:**
-- `Renderer/RayTracing/BVHBuilder.swift` — Build `MPSAccelerationStructure` from mesh-shader-generated geometry each frame (or rebuild on significant change)
-- `Renderer/RayTracing/RayIntersector.swift` — Cast shadow rays and reflection rays, write results to a lighting texture
-- `Renderer/Shaders/PostProcess.metal` — Composite ray-traced lighting with rasterized output, apply bloom and tone mapping
+- `Renderer/RayTracing/BVHBuilder.swift`
+- `Renderer/RayTracing/RayIntersector.swift`
+- `Renderer/Shaders/PostProcess.metal`
 
-**Verification:** Geometric preset shows glossy reflections and soft shadows that shift with the music. Toggle ray tracing on/off to see the visual difference.
+**Test requirements:**
+- `BVHBuilderTests.swift` — 4 tests:
+  - `test_build_withTriangles_createsAccelerationStructure()`
+  - `test_build_emptyGeometry_handlesGracefully()`
+  - `test_rebuild_afterGeometryChange_succeeds()`
+  - `test_accelerationStructure_isNotNil()`
+- `RayIntersectorTests.swift` — 4 tests:
+  - `test_intersect_rayHitsTriangle_returnsHit()`
+  - `test_intersect_rayMissesGeometry_returnsNoHit()`
+  - `test_shadowRay_occluded_returnsInShadow()`
+  - `test_reflectionRay_computedCorrectly()`
+- **Performance test:**
+  - `test_rayTrace_1000Rays_under2ms()`
+
+**Verification:** Geometric preset shows reflections and shadows. Toggle ray tracing on/off to see difference. All 9 tests pass.
 
 ### Increment 3.4: Indirect Command Buffers for GPU-Driven Rendering
 
-**Goal:** Eliminate CPU draw-call encoding by having a compute shader populate an ICB based on audio state.
+**Goal:** GPU encodes its own draw calls via ICBs based on audio state.
 
 **Files to create/edit:**
-- `Renderer/RenderPipeline.swift` — Create `MTLIndirectCommandBuffer`, configure with max command count
-- Write a compute shader that evaluates current audio features and encodes draw commands (bind vertex buffers, set pipeline states, issue draws) into the ICB
-- Execute the ICB in the render pass
+- `Renderer/RenderPipeline.swift` — ICB creation and execution
 
-**Verification:** CPU frame time drops dramatically. GPU Debugger shows draw calls originating from compute, not CPU. Preset with thousands of distinct objects renders smoothly.
+**Test requirements:**
+- `RenderPipelineICBTests.swift` — 5 tests:
+  - `test_createICB_maxCommandCount_matchesConfig()`
+  - `test_computeShader_populatesICB_nonZeroCommands()`
+  - `test_executeICB_completesWithoutError()`
+  - `test_icb_resetBetweenFrames()`
+  - `test_icb_withZeroAudio_minimumDrawCalls()`
+- **Performance test:**
+  - `test_gpuDrivenRendering_cpuFrameTimeReduced()` — compare CPU frame time with and without ICB
+
+**Verification:** CPU frame time drops. GPU debugger confirms GPU-originated draw calls. All 6 tests pass.
 
 ---
 
@@ -415,14 +936,27 @@ Core Audio Tap → PCM frames → [Analysis Pipeline: FFT, Stems, MIR, Mood] →
 
 ### Increment 4.1: Preset Categorization & Metadata System
 
-**Goal:** Build the data layer that tags every preset with its category, visual characteristics, and optimal mood match.
+**Goal:** Data layer tagging presets with category, visual characteristics, and mood match.
 
 **Files to create/edit:**
-- `Presets/PresetCategory.swift` — Expand with metadata: color temperature (warm/cool), geometric complexity (low/med/high), motion intensity, bloom level
+- `Presets/PresetCategory.swift` — Expand with metadata fields: color temperature (warm/cool), geometric complexity (low/med/high), motion intensity, bloom level
 - `Presets/PresetLoader.swift` — Parse embedded metadata from preset files or a sidecar JSON manifest
-- Create `presets_manifest.json` with entries for all native presets and their properties
+- `presets_manifest.json` with entries for all native presets and their properties
 
-**Verification:** `PresetLoader.presets(forMood: .highValenceHighArousal)` returns the correct subset.
+**Test requirements:**
+- `PresetCategoryTests.swift` — add 5 tests:
+  - `test_metadata_colorTemperature_defaultIsNeutral()`
+  - `test_metadata_complexity_validRange()`
+  - `test_metadata_codable_roundTripWithMetadata()`
+  - `test_presetsForMood_highValenceHighArousal_returnsWarmCategories()`
+  - `test_presetsForMood_lowValenceLowArousal_returnsCoolCategories()`
+- `PresetLoaderTests.swift` — add 4 tests:
+  - `test_loadManifest_validJSON_parsesAllEntries()`
+  - `test_loadManifest_missingFields_usesDefaults()`
+  - `test_loadManifest_malformedJSON_returnsEmptyGracefully()`
+  - `test_presetsForMood_filtersCorrectly()`
+
+**Verification:** `PresetLoader.presets(forMood: .highValenceHighArousal)` returns the correct subset. All 9 tests pass.
 
 ### Increment 4.2: Emotion-to-Visual Semantic Mapper
 
@@ -432,64 +966,126 @@ Core Audio Tap → PCM frames → [Analysis Pipeline: FFT, Stems, MIR, Mood] →
 - `Orchestrator/EmotionMapper.swift` — Takes `EmotionalState` and returns `VisualDirective` (target preset category, color palette, camera speed, bloom intensity, particle emission rate, ray-trace bounce limit)
 - `Shared/VisualDirective.swift` — The struct that parameterizes the renderer
 
-**Verification:** Unit tests covering all four quadrants produce expected directives. E.g., (V:-0.8, A:0.2) → fractal category, cool blues, slow dissolve.
+**Test requirements:**
+- `EmotionMapperTests.swift` — 10 tests:
+  - `test_map_highValenceHighArousal_warmHues()`
+  - `test_map_highValenceHighArousal_fastCameraRotation()`
+  - `test_map_highValenceHighArousal_highBloom()`
+  - `test_map_highValenceLowArousal_pastelPalette()`
+  - `test_map_highValenceLowArousal_slowTransforms()`
+  - `test_map_lowValenceHighArousal_sharpGeometry()`
+  - `test_map_lowValenceHighArousal_deepRedsPurples()`
+  - `test_map_lowValenceLowArousal_coolHues()`
+  - `test_map_lowValenceLowArousal_lowAmbientLight()`
+  - `test_map_neutralValues_reasonableDefaults()`
+- `VisualDirectiveTests.swift` — 3 tests:
+  - `test_directive_allFieldsPresent()`
+  - `test_directive_codable_roundTrip()`
+  - `test_directive_defaultValues_areNeutral()`
+
+**Verification:** Unit tests covering all four quadrants produce expected directives. All 13 tests pass.
 
 ### Increment 4.3: Transition Engine
 
 **Goal:** Smooth crossfading between two active presets using dual render targets and interpolation.
 
 **Files to create/edit:**
-- `Orchestrator/TransitionEngine.swift` — Maintains two `RenderPipeline` instances, alpha-blends their output textures over a configurable duration, supports dissolve / morph / wipe transition styles
-- `Renderer/Shaders/Transition.metal` — Fragment shader that blends two input textures with various transition functions (linear dissolve, radial wipe, noise-driven morph)
-- `Renderer/RenderPipeline.swift` — Support rendering to offscreen texture (not directly to drawable) for transition composition
+- `Orchestrator/TransitionEngine.swift` — Maintains two `RenderPipeline` instances, alpha-blends output textures, supports dissolve / morph / wipe styles
+- `Renderer/Shaders/Transition.metal` — Fragment shader blending two input textures
+- `Renderer/RenderPipeline.swift` — Support rendering to offscreen texture
 
-**Verification:** Press a key to trigger a transition. Two presets blend smoothly over 2 seconds with no frame drops.
+**Test requirements:**
+- `TransitionEngineTests.swift` — 8 tests:
+  - `test_init_noActiveTransition()`
+  - `test_startTransition_setsIsTransitioningTrue()`
+  - `test_progress_atStart_isZero()`
+  - `test_progress_atEnd_isOne()`
+  - `test_progress_midway_isNearHalf()`
+  - `test_completeTransition_setsIsTransitioningFalse()`
+  - `test_transitionStyle_dissolve_linearAlpha()`
+  - `test_concurrentTransitionRequest_queuesNotOverlaps()`
+- **Performance test:**
+  - `test_dualRenderTarget_transitionFrame_under16ms()`
+
+**Verification:** Press a key to trigger a transition. Two presets blend smoothly over 2 seconds with no frame drops. All 9 tests pass.
 
 ### Increment 4.4: Streaming-Aware Orchestrator Core
 
-**Goal:** The main Orchestrator that fuses all three anticipation systems (lookahead buffer, metadata pre-fetching, and structural analysis) into a single decision engine that matches or exceeds the quality of pre-scanned local file analysis.
+**Goal:** The main Orchestrator fusing all three anticipation systems into a single decision engine.
 
-**Design rationale:** The Orchestrator consumes three layers of temporal intelligence, each with different latency and confidence characteristics:
-
-| Anticipation Source | Available After | What It Provides |
-|---|---|---|
-| **Pre-fetched metadata** (Increment 2.1) | ~1–2 seconds into track | BPM, key, energy, valence, genre, track duration (from Spotify/MusicBrainz/MusicKit) |
-| **Lookahead buffer** (Increment 2.6) | Continuously, 2.5s ahead | Upcoming FFT, stem, MIR, and mood data — knows drops, builds, silences before they render |
-| **Structural predictions** (Increment 2.7) | ~15–30 seconds into track | Predicted section boundaries, section type (verse/chorus/bridge), time until next transition |
-
-The Orchestrator's decision quality ramps up progressively as these sources come online:
-
-- **Seconds 0–2:** Fallback to genre tags from Now Playing metadata (if available) or a neutral default preset. No audio-derived intelligence yet.
-- **Seconds 2–5:** Pre-fetched metadata arrives. Orchestrator selects a mood-appropriate preset category using external BPM/energy/valence. Lookahead buffer begins providing analyzed frames.
-- **Seconds 5–15:** MIR pipeline has accumulated enough audio for reliable tempo, key, and mood estimation. Orchestrator cross-validates its own MIR output against pre-fetched metadata and uses the higher-confidence source for each parameter.
-- **Seconds 15–30:** Structural analyzer identifies the first section boundary. From this point forward, the Orchestrator can predict upcoming transitions and pre-initiate visual crossfades 2–3 seconds before a section change occurs.
-- **Seconds 30+:** Structural predictions stabilize with high confidence. The Orchestrator operates at full capability — functionally equivalent to having pre-scanned the track.
+**Design rationale:** (unchanged from v1 — see Anticipation Source table and progressive ramp-up timeline)
 
 **Files to create/edit:**
-- `Orchestrator/AnticipationEngine.swift` — Central fusion module. Subscribes to: `analysisStream` (real-time lookahead head), `renderStream` (delayed render head), `PreFetchedTrackProfile` updates, and `StructuralPrediction` updates. Maintains a unified `AnticipationState` struct that represents the Orchestrator's best current understanding: confirmed tempo, estimated key, mood trajectory over the next 2.5 seconds, predicted next section boundary, and time-to-track-end. Implements confidence-weighted merging when multiple sources provide the same data (e.g., MIR-derived BPM vs. Spotify-provided BPM).
-- `Orchestrator/Orchestrator.swift` — State machine: idle → listening → ramping → full. On audio input: enters `ramping` state, selects initial preset using whatever intelligence is available (metadata first, then MIR as it comes online). On reaching structural analysis confidence threshold: enters `full` state. Continuously queries `AnticipationEngine` for upcoming decisions. Schedules transitions proactively — when `AnticipationEngine` reports a section boundary in 3 seconds, the Orchestrator begins the crossfade immediately so that the visual transition *lands* on the musical transition rather than reacting to it after the fact.
-- `Orchestrator/TrackChangeDetector.swift` — Detects track boundaries via three fused signals: (1) `TrackMetadata` change events from Now Playing, (2) audio-level heuristics (brief silence or dramatic spectral shift detected in the lookahead buffer), and (3) elapsed time approaching the pre-fetched track duration. On track change: resets `AnticipationEngine` and `StructuralAnalyzer` state, fires pre-fetch queries for the new track.
-- Implement a heuristic policy first (no RL): match mood quadrant to category, avoid repeating same category twice in a row, prefer smooth energy transitions, use genre tags from pre-fetched metadata to influence category weighting. Factor in structural predictions: prefer to transition between presets at section boundaries rather than mid-section.
+- `Orchestrator/AnticipationEngine.swift` — Central fusion module with confidence-weighted merging
+- `Orchestrator/Orchestrator.swift` — State machine: idle → listening → ramping → full. Heuristic policy first (no RL).
+- `Orchestrator/TrackChangeDetector.swift` — Fuses Now Playing events, audio-level heuristics, and elapsed time
 
-**Verification:** Stream a playlist in Apple Music with at least 5 tracks spanning different genres. Test criteria:
-1. **Track 1 cold start:** Orchestrator selects a reasonable preset within 3 seconds using pre-fetched metadata (or a neutral default if pre-fetch fails). No black screen or "loading" state.
-2. **Mid-track reactivity:** When a dramatic drop occurs, the lookahead buffer gives the Orchestrator advance notice — the visual transition should begin *before* the drop hits the speakers, not after.
-3. **Section boundary prediction:** After the first verse-chorus transition, subsequent section changes should produce visual transitions that feel pre-planned, not reactive.
-4. **Track change smoothness:** Between songs, the Orchestrator detects the boundary within 2 seconds, begins a transition, and has the new track's pre-fetched metadata informing preset selection before the MIR pipeline has caught up.
-5. **Debug log shows decision rationale** including which anticipation source drove each decision and the confidence level.
+**Test requirements:**
+- `AnticipationEngineTests.swift` — 10 tests:
+  - `test_init_stateIsEmpty()`
+  - `test_feedAnalysisFrame_updatesCurrentState()`
+  - `test_feedPreFetchedProfile_mergesWithMIR()`
+  - `test_confidenceWeighting_prefersHigherConfidence()` — MIR says BPM=120 (conf 0.9), Spotify says BPM=122 (conf 0.7), result ≈ 120
+  - `test_moodTrajectory_providesLookaheadWindow()`
+  - `test_predictedBoundary_fromStructuralAnalysis_present()`
+  - `test_noMetadata_functionsWithAudioOnly()`
+  - `test_allSourcesFail_gracefulDefaults()`
+  - `test_reset_clearsAccumulatedState()`
+  - `test_trackDuration_improvesEndOfTrackPrediction()`
+- `OrchestratorTests.swift` — 12 tests:
+  - `test_init_stateIsIdle()`
+  - `test_audioInput_transitionsToListening()`
+  - `test_afterMIRRampUp_transitionsToRamping()`
+  - `test_afterStructuralConfidence_transitionsToFull()`
+  - `test_selectPreset_matchesMoodQuadrant()` — use StubMoodClassifier + StubPresetLoader
+  - `test_selectPreset_neverRepeatsSameCategoryTwice()`
+  - `test_transition_prefersStructuralBoundary()` — when boundary predicted in 3s, transition starts now
+  - `test_transition_fallsBackToTimer_whenNoStructure()`
+  - `test_trackChange_resetsAnticipation()`
+  - `test_trackChange_triggersPreFetch()`
+  - `test_coldStart_selectsReasonableDefault()`
+  - `test_presetOverride_locksOrchestratorSelection()`
+- `TrackChangeDetectorTests.swift` — 7 tests:
+  - `test_metadataChange_emitsTrackChange()`
+  - `test_sameMetadata_noEvent()`
+  - `test_audioSilence_plusMetadataChange_emitsEvent()`
+  - `test_elapsedTimeNearDuration_raisesConfidence()`
+  - `test_noMetadata_audioOnlyDetection_works()`
+  - `test_rapidMetadataChanges_debounced()`
+  - `test_reset_clearsElapsedTime()`
+
+**Integration test** `Integration/MetadataToOrchestratorTests.swift` — 3 tests:
+  - `test_trackChange_orchestratorReceivesNewState()`
+  - `test_moodShift_triggersPresetChange()`
+  - `test_fullPipeline_5MockTracks_noConsecutiveCategoryRepeats()`
+
+**Verification:** Stream a 5-track playlist. Orchestrator selects mood-appropriate presets, transitions land on section boundaries, no black screens. Debug log shows decision rationale. All 32+ tests pass.
 
 ### Increment 4.5: Reinforcement Learning Agent (Optional / Advanced)
 
 **Goal:** Replace the heuristic policy with a trained DQN agent.
 
-**This is a Python training task:**
-- `tools/train_orchestrator_rl.py` — Simulated environment where the agent observes an `AnticipationState` (MIR features, pre-fetched metadata, structural predictions, lookahead mood trajectory) and selects from preset categories. Reward function penalizes jarring transitions, rewards energy matching, and gives bonus reward for transitions that land on predicted section boundaries.
-- Export trained policy weights to CoreML `.mlpackage`
+**Python side:**
+- `tools/train_orchestrator_rl.py` — simulated environment, reward function penalizes jarring transitions
+- Export to `.mlpackage`
+
+**Python tests:**
+- `tools/test_orchestrator_rl.py` — 4 assertions:
+  - Agent selects different actions for different mood quadrants
+  - Reward is higher for energy-matched vs mismatched selections
+  - Bonus reward for boundary-aligned transitions
+  - Exported CoreML model accepts correct input shape
 
 **Swift side:**
-- `Orchestrator/Orchestrator.swift` — Load RL model, query it instead of heuristic rules, fall back to heuristic if model unavailable
+- `Orchestrator/Orchestrator.swift` — Load RL model, fall back to heuristic if unavailable
 
-**Verification:** Playlist visual selection improves subjectively over heuristic. A/B comparison in debug mode.
+**Test requirements:**
+- `OrchestratorTests.swift` — add 3 tests:
+  - `test_rlModel_loaded_usesModelPolicy()`
+  - `test_rlModel_unavailable_fallsBackToHeuristic()`
+  - `test_rlModel_sameInput_deterministicOutput()`
+
+**Verification:** A/B comparison in debug mode. All tests pass.
 
 ---
 
@@ -500,30 +1096,76 @@ The Orchestrator's decision quality ramps up progressively as these sources come
 **Goal:** Parse `.milk` preset files — extract per-frame equations, per-vertex equations, waveform definitions, and composite shader code.
 
 **Files to create/edit:**
-- `Presets/LegacyTranspiler.swift` — INI-style parser for `.milk` files. Extract sections: `[preset00]` per-frame vars, per-vertex equations, warp/composite HLSL code
-- Define an intermediate representation `LegacyPreset` struct holding parsed equations and shader source
+- `Presets/LegacyTranspiler.swift` — INI-style parser
+- `LegacyPreset` struct as intermediate representation
 
-**Verification:** Parse 20 representative Cream of the Crop presets. All fields extracted. No crashes on malformed files.
+**Test requirements:**
+- `LegacyTranspilerTests.swift` — 10 tests:
+  - `test_parse_validMilkFile_extractsPerFrameVars()`
+  - `test_parse_validMilkFile_extractsPerVertexEquations()`
+  - `test_parse_validMilkFile_extractsWarpShader()`
+  - `test_parse_validMilkFile_extractsCompositeShader()`
+  - `test_parse_emptyFile_returnsNilGracefully()`
+  - `test_parse_malformedFile_noThrow()`
+  - `test_parse_missingSection_partialResultReturned()`
+  - `test_parse_unicodeContent_handled()`
+  - `test_parse_windowsLineEndings_handled()`
+  - `test_parse_20RepresentativePresets_allFieldsExtracted()` — batch test against fixture files
+
+**Regression test:**
+  - `Regression/PresetParserRegressionTests.swift` — parse 5 fixture `.milk` files, assert extracted fields match golden JSON snapshots
+
+**Verification:** Parse 20 representative Cream of the Crop presets. All fields extracted. No crashes. All 11+ tests pass.
 
 ### Increment 5.2: Equation Evaluator
 
 **Goal:** Runtime evaluator for Milkdrop's per-frame and per-vertex math expressions.
 
 **Files to create/edit:**
-- `Presets/EquationEvaluator.swift` — Tokenizer + recursive descent parser for Milkdrop equation syntax (supports `sin`, `cos`, `abs`, `if`, `pow`, `log`, `rand`, built-in variables like `bass`, `mid`, `treb`, `time`)
-- Compile parsed equations to a fast evaluation function (closure or bytecode interpreter)
+- `Presets/EquationEvaluator.swift` — Tokenizer + recursive descent parser
 
-**Verification:** Evaluate `rot = rot + 0.01 * bass_att` with mock audio data. Results match reference Milkdrop output.
+**Test requirements:**
+- `EquationEvaluatorTests.swift` — 15 tests:
+  - `test_eval_constant_returnsValue()`
+  - `test_eval_addition_correct()`
+  - `test_eval_multiplication_correct()`
+  - `test_eval_precedence_mulBeforeAdd()`
+  - `test_eval_parentheses_overridePrecedence()`
+  - `test_eval_sin_correct()`
+  - `test_eval_cos_correct()`
+  - `test_eval_abs_negativeInput_returnsPositive()`
+  - `test_eval_pow_correct()`
+  - `test_eval_if_trueCondition_returnsFirst()`
+  - `test_eval_if_falseCondition_returnsSecond()`
+  - `test_eval_variable_bass_resolves()`
+  - `test_eval_variable_time_resolves()`
+  - `test_eval_assignment_rotEquation_matchesReference()` — `rot = rot + 0.01 * bass_att` with mock audio
+  - `test_eval_complexExpression_nestedCalls()`
+
+**Regression test:**
+  - `Regression/EquationRegressionTests.swift` — 10 expressions from real presets with known outputs, verified against reference Milkdrop
+
+**Verification:** All 15+ unit tests and 10 regression tests pass.
 
 ### Increment 5.3: HLSL-to-Metal Shader Transpilation
 
 **Goal:** Convert Milkdrop's HLSL warp/composite shaders to Metal Shading Language.
 
 **Files to create/edit:**
-- `Presets/LegacyTranspiler.swift` — Extend with HLSL-to-MSL conversion: remap `tex2D` to `texture.sample()`, `float4` type mappings, register-based texture binding to argument buffer binding
-- Alternative: integrate Apple's `metal-shader-converter` CLI as a build-time step for batch conversion
+- `Presets/LegacyTranspiler.swift` — HLSL-to-MSL conversion
 
-**Verification:** 50 legacy presets render visually identically (or near-identically) to ProjectM reference screenshots.
+**Test requirements:**
+- `LegacyTranspilerHLSLTests.swift` — 8 tests:
+  - `test_transpile_tex2D_becomesTextureSample()`
+  - `test_transpile_float4_mappedCorrectly()`
+  - `test_transpile_registerBinding_toArgumentBuffer()`
+  - `test_transpile_simpleShader_compilesInMetal()`
+  - `test_transpile_complexShader_compilesInMetal()`
+  - `test_transpile_unsupportedFeature_loggedAndSkipped()`
+  - `test_transpile_emptySource_returnsNil()`
+  - `test_transpile_50Presets_atLeast90PercentSucceed()`
+
+**Verification:** 50 legacy presets render near-identically to ProjectM reference. All 8 tests pass.
 
 ---
 
@@ -534,36 +1176,62 @@ The Orchestrator's decision quality ramps up progressively as these sources come
 **Goal:** Main window with Metal view, audio source controls, and streaming-aware HUD.
 
 **Files to create/edit:**
-- `PhospheneApp/Views/ContentView.swift` — Full-screen Metal view with overlay HUD that auto-hides on inactivity
-- `PhospheneApp/Views/TransportBar.swift` — Audio source selector (system audio / specific app / local file fallback), fullscreen toggle, preset cycle override, settings gear
-- `PhospheneApp/Views/AudioSourcePicker.swift` — Lists running audio-producing applications (via `SystemAudioCapture.availableApplications()` which uses `NSWorkspace.shared.runningApplications`) with icons. User selects which app to visualize, or "System Audio" for the full mix. Shows currently detected track info (title, artist, artwork) from Now Playing metadata.
-- `PhospheneApp/Views/NowPlayingBanner.swift` — Floating overlay showing current track info and album artwork (sourced from MusicKit or Now Playing), current mood quadrant, active preset name, and anticipation status indicator (shows ramp-up progress: "learning structure..." → "fully anticipating"). Fades in on track change, fades out after a few seconds.
+- `PhospheneApp/Views/ContentView.swift` — Full-screen Metal view with overlay HUD
+- `PhospheneApp/Views/TransportBar.swift` — Audio source selector, fullscreen toggle, preset cycle, settings
+- `PhospheneApp/Views/AudioSourcePicker.swift` — Lists running audio-producing applications
+- `PhospheneApp/Views/NowPlayingBanner.swift` — Track info, mood quadrant, preset name, anticipation status
 - `PhospheneApp/ViewModels/AppViewModel.swift` — Binds UI state to engine
 
-**Verification:** User opens Phosphene, selects Spotify from the audio source picker, starts playing music in Spotify. Visualizations begin. The Now Playing banner shows the correct track info. Switching to Apple Music updates the source seamlessly.
+**Test requirements:**
+- `AppViewModelTests.swift` — 8 tests:
+  - `test_init_audioSource_isSystemAudio()`
+  - `test_setAudioSource_application_updatesRouter()`
+  - `test_trackMetadata_updates_publishedToUI()`
+  - `test_moodState_updates_publishedToUI()`
+  - `test_activePreset_updates_publishedToUI()`
+  - `test_isFullscreen_toggle_updatesState()`
+  - `test_presetOverride_locksOrchestrator()`
+  - `test_availableApps_listsRunningProcesses()`
+
+**Verification:** Select Spotify from picker, play music, visualizations begin. Now Playing banner shows correct info. All 8 tests pass.
 
 ### Increment 6.2: Visual History Timeline & Orchestrator Overlay
 
-**Goal:** A timeline strip showing the Orchestrator's real-time decisions and mood analysis as a scrolling history.
-
-**Design rationale:** In a streaming context, the timeline can't show a future playlist — the next track is unknown. Instead, it shows a scrolling history of what has played: mood arc, preset selections, and detected track changes. If local files are loaded (fallback mode), or if MusicKit provides queue info, it can also show upcoming tracks.
+**Goal:** Timeline strip showing Orchestrator decisions and mood analysis.
 
 **Files to create/edit:**
-- `PhospheneApp/Views/TimelineView.swift` — Horizontally scrolling timeline: colored segments per detected track showing mood quadrant, preset category labels, transition points. Auto-scrolls to follow playback. Expands rightward as new tracks play.
-- `PhospheneApp/Views/PresetOverrideSheet.swift` — Click the current segment to override the active preset. Also allows locking a preset so the Orchestrator doesn't auto-switch.
-- `PhospheneApp/ViewModels/TimelineViewModel.swift` — Subscribe to Orchestrator state, append history entries on track changes and preset transitions
+- `PhospheneApp/Views/TimelineView.swift`
+- `PhospheneApp/Views/PresetOverrideSheet.swift`
+- `PhospheneApp/ViewModels/TimelineViewModel.swift`
 
-**Verification:** Stream three songs. The timeline populates with three color-coded segments. Mood labels match the character of the music. User can click the active segment and force a different preset.
+**Test requirements:**
+- `TimelineViewModelTests.swift` — 6 tests:
+  - `test_init_emptyTimeline()`
+  - `test_trackChange_addsSegment()`
+  - `test_presetChange_addsTransitionMarker()`
+  - `test_segmentColor_matchesMoodQuadrant()`
+  - `test_multipleTrackChanges_segmentCountMatches()`
+  - `test_presetOverride_locksFlagOnSegment()`
+
+**Verification:** Stream three songs. Timeline populates with three color-coded segments. All 6 tests pass.
 
 ### Increment 6.3: Settings & Performance Dashboard
 
 **Goal:** Preferences panel and real-time performance metrics.
 
 **Files to create/edit:**
-- `PhospheneApp/Views/SettingsView.swift` — Ray tracing on/off, particle density slider, transition speed, analysis lookahead delay (0–5s slider, default 2.5s), default audio source preference (remember last selected app), MusicKit authorization toggle, Spotify Web API key configuration, target frame rate, local file fallback option
-- `PhospheneApp/Views/PerformanceDashboard.swift` — Overlay showing FPS, GPU utilization, ANE utilization, memory usage, current mood state, active stems, anticipation system status (lookahead buffer depth, pre-fetch latency, structural prediction confidence, Orchestrator state: ramping/full), and active data sources (Now Playing, MusicKit, Spotify API, MusicBrainz)
+- `PhospheneApp/Views/SettingsView.swift` — Ray tracing toggle, particle density, transition speed, lookahead delay, audio source preference, MusicKit auth, Spotify API key, target frame rate
+- `PhospheneApp/Views/PerformanceDashboard.swift` — FPS, GPU/ANE utilization, memory, mood state, stems, anticipation status, active data sources
 
-**Verification:** Toggling ray tracing shows immediate FPS impact. All metrics update live.
+**Test requirements:**
+- `SettingsViewModelTests.swift` — 5 tests:
+  - `test_rayTracing_toggle_persistsToUserDefaults()`
+  - `test_lookaheadDelay_clamped_0to5()`
+  - `test_targetFrameRate_options_60and120()`
+  - `test_particleDensity_slider_range()`
+  - `test_defaults_areReasonable()`
+
+**Verification:** Toggling ray tracing shows immediate FPS impact. All 5 tests pass.
 
 ---
 
@@ -574,35 +1242,56 @@ The Orchestrator's decision quality ramps up progressively as these sources come
 **Goal:** Profile with Instruments and Metal Debugger. Eliminate bottlenecks.
 
 **Claude Code tasks:**
-- Add `os_signpost` markers to key pipeline stages (audio capture, stem separation, FFT, render encode, present)
-- Document profiling methodology in `docs/PROFILING.md`
-- Review all `MTLBuffer` allocations — ensure `.storageModeShared` everywhere, no accidental copies
-- Verify Dynamic Caching is being utilized (no manual cache management competing with it)
+- Add `os_signpost` markers to key pipeline stages
+- Document methodology in `docs/PROFILING.md`
+- Review all `MTLBuffer` allocations — ensure `.storageModeShared` everywhere
+- Verify no manual cache management competing with Dynamic Caching
 
-**Verification:** Instruments trace shows no CPU-GPU sync stalls. Frame time under 8ms at 120fps on M3 Pro.
+**Test requirements:**
+- `Performance/FullPipelinePerformanceTests.swift` — 4 benchmarks:
+  - `test_fullFrame_audioToPixels_under8ms()` — end-to-end at 120fps
+  - `test_fftAlone_under0_1ms()`
+  - `test_stemSeparation_under50ms()`
+  - `test_orchestratorDecision_under1ms()`
+- Add `XCTMetric` baselines so regressions are caught by CI
+
+**Verification:** Instruments trace shows no CPU-GPU sync stalls. Frame time under 8ms at 120fps on M3 Pro. All 4 performance benchmarks within baselines.
 
 ### Increment 7.2: Memory & Resource Optimization
 
 **Goal:** Minimize memory footprint, ensure no disk swapping.
 
 **Claude Code tasks:**
-- Implement resource pooling for transient textures and buffers
-- Add `MTLHeap` for grouped allocations where appropriate
-- Implement LOD (level of detail) for particle counts and mesh complexity based on available GPU headroom
-- Ensure ML model memory is released when not actively inferring
+- Resource pooling for transient textures and buffers
+- `MTLHeap` for grouped allocations
+- LOD for particles and mesh complexity based on GPU headroom
+- ML model memory released when not inferring
 
-**Verification:** Activity Monitor shows stable memory under extended playback. No swap usage.
+**Test requirements:**
+- `Performance/MemoryStabilityTests.swift` — 3 tests:
+  - `test_extendedPlayback_10Minutes_memoryStable()` — process 36,000 frames, assert memory delta < 50MB
+  - `test_trackChanges_100Tracks_noMemoryGrowth()` — simulate 100 track changes, assert stable
+  - `test_presetSwitch_100Times_noLeaks()` — cycle presets rapidly, assert stable
+
+**Verification:** Activity Monitor shows stable memory. No swap. All 3 tests pass.
 
 ### Increment 7.3: Public Preset SDK & Documentation
 
 **Goal:** Define the API for community preset authors.
 
 **Files to create/edit:**
-- `docs/PRESET_SDK.md` — Guide for writing native Phosphene presets: Metal shader API, available audio buffers (raw PCM, FFT, stems, features), preset manifest format, hot-reload workflow
-- `PhospheneEngine/Presets/PresetSDK.swift` — Public protocol and types exported as a Swift module
-- 3 example presets with extensive comments as templates
+- `docs/PRESET_SDK.md` — Guide for writing native presets
+- `PhospheneEngine/Presets/PresetSDK.swift` — Public protocol and types
+- 3 example presets with extensive comments
 
-**Verification:** An external developer can read the SDK doc, write a `.metal` preset, drop it in the presets folder, and see it appear in the app.
+**Test requirements:**
+- `PresetSDKTests.swift` — 4 tests:
+  - `test_presetProtocol_hasRequiredProperties()`
+  - `test_examplePreset_conformsToProtocol()`
+  - `test_examplePreset_compilesSuccessfully()`
+  - `test_presetManifest_exampleParsesCorrectly()`
+
+**Verification:** External developer can write a preset following the SDK doc, drop it in the folder, see it appear. All 4 tests pass.
 
 ---
 
@@ -613,22 +1302,109 @@ The Orchestrator's decision quality ramps up progressively as these sources come
 **Goal:** Automated pipeline to import, transpile, categorize, and index all 9,795 legacy presets.
 
 **Claude Code tasks:**
-- Write `tools/batch_import_presets.py` — Download the Cream of the Crop repo, parse all `.milk` files, auto-categorize by directory, run transpiler, output Metal shaders + manifest JSON
-- Handle edge cases: presets with syntax errors, unsupported HLSL features (log warnings, skip gracefully)
+- `tools/batch_import_presets.py` — download, parse, categorize, transpile, output Metal shaders + manifest
 
-**Verification:** At least 90% of presets transpile and render. Skipped presets are logged with reasons.
+**Test requirements (Python):**
+- `tools/test_batch_import.py` — 5 assertions:
+  - At least 90% of presets transpile without error
+  - Manifest JSON is valid and contains all transpiled entries
+  - Skipped presets are logged with reasons
+  - No duplicate IDs in manifest
+  - Category distribution is non-degenerate (no single category has >50%)
+
+**Verification:** At least 90% of 9,795 presets transpile and render. Skipped presets logged. All 5 tests pass.
 
 ### Increment 8.2: App Store Packaging & Signing
 
 **Goal:** Archive, sign, and prepare for distribution.
 
 **Claude Code tasks:**
-- Configure entitlements: network client (for MusicKit catalog queries, MusicBrainz/Spotify Web API metadata pre-fetching, and future updates), file access (for local file fallback and preset loading). Note: Core Audio taps do not require ScreenCaptureKit entitlements, but `NSScreenCaptureUsageDescription` is retained in Info.plist for potential future use.
-- Set up app icons and launch screen
-- Configure archive scheme with release optimizations (`-O` for Swift, `-Os` for Metal)
-- Write `docs/RELEASE_CHECKLIST.md`
+- Configure entitlements: network client, file access
+- App icons and launch screen
+- Archive scheme with release optimizations
+- `docs/RELEASE_CHECKLIST.md`
 
-**Verification:** `xcodebuild archive` succeeds. Notarization passes. App launches from exported `.app` bundle.
+**Test requirements:**
+- Final CI gate — every test category must pass:
+  - All unit tests (target: 200+)
+  - All integration tests (target: 15+)
+  - All regression tests (target: 20+)
+  - All performance tests within baselines (target: 15+)
+  - SwiftLint clean
+  - Zero compiler warnings
+  - Coverage ≥ 80% on PhospheneEngine
+
+**Verification:** `xcodebuild archive` succeeds. Notarization passes. App launches from exported `.app`. Full test suite green.
+
+---
+
+## Retroactive Quality Increment
+
+### Increment R.1: Test Debt Paydown for Phase 1 (1.1–1.4)
+
+**Goal:** Bring the already-built Phase 1 code up to the quality standards defined in this document. This increment should be executed **before** continuing with Increment 1.5.
+
+**Rationale:** Increments 1.1–1.4 were built under v1 of the development plan, which lacked explicit test requirements per increment. The code works but has gaps in test coverage, protocol-based testability, doc comments, and logging.
+
+**Tasks:**
+
+1. **Define protocols for testability.** Extract from existing concrete types:
+   - `AudioCapturing` from `SystemAudioCapture`
+   - `AudioBuffering` from `AudioBuffer`
+   - `FFTProcessing` from `FFTProcessor`
+   - `Rendering` from `RenderPipeline`
+   - Ensure `AudioInputRouter` depends on `AudioCapturing`, not the concrete type
+
+2. **Create test doubles:**
+   - `TestDoubles/MockAudioCapture.swift` — delivers canned PCM via callback
+   - `TestDoubles/StubFFTProcessor.swift` — returns pre-configured magnitude arrays
+   - `TestDoubles/AudioFixtures.swift` — sine wave, silence, noise, impulse generators (deterministic seeds)
+
+3. **Add missing unit tests** (target: bring Audio + Renderer + Shared modules to 80% coverage):
+   - `MetalContextTests.swift` — 4 tests (device, queue, pixel format, semaphore)
+   - `ShaderLibraryTests.swift` — 6 tests (discovery, load, invalid, cache, all names, no warnings)
+   - `RenderPipelineTests.swift` — 4 tests (buffer binding, draw completion, non-black output with stub FFT)
+   - `UMABufferTests.swift` — 10 tests (see Increment 1.2 test list above)
+   - `AudioFeaturesTests.swift` — 6 tests (see Increment 1.2 test list above)
+   - Review existing `AudioTests.swift` (23 tests) — split into `AudioBufferTests.swift` and `FFTProcessorTests.swift` mirroring source structure
+
+4. **Add integration tests:**
+   - `Integration/AudioToFFTPipelineTests.swift` — 3 tests (sine → FFT peak, silence → flat, memory stability)
+   - `Integration/AudioToRenderPipelineTests.swift` — 2 tests (sine → non-black frame, silence → background only)
+
+5. **Add regression tests:**
+   - `Regression/FFTRegressionTests.swift` — golden 440Hz sine FFT output saved to `Fixtures/`
+   - Generate fixture files: `440hz_sine_1s.pcm`, `440hz_fft_expected.json`
+
+6. **Add performance tests:**
+   - `Performance/FFTPerformanceTests.swift` — 1024-sample FFT < 0.1ms
+   - `Performance/AudioBufferPerformanceTests.swift` — ring buffer write throughput
+
+7. **Code hygiene pass on all Phase 1 files:**
+   - Replace all `print()` with `os.Logger` (subsystem `"com.phosphene"`)
+   - Add `/// ` doc comments to all `public` API
+   - Add `// MARK: -` section annotations
+   - Extract magic numbers into named constants
+   - Remove any commented-out code
+   - Ensure no force-unwraps in production code
+   - Run SwiftLint, fix all warnings/errors
+
+8. **Logging infrastructure:**
+   - Create `Shared/Logging.swift` with per-module `Logger` instances
+
+**Verification:**
+- `swift test` passes with 60+ total tests (existing 23 + ~40 new)
+- `swiftlint lint --strict` exits 0
+- `xcodebuild build SWIFT_TREAT_WARNINGS_AS_ERRORS=YES` exits 0
+- No `print()` statements in production code (`grep -r "print(" PhospheneEngine/Sources/` returns 0 results)
+- All public types and methods have doc comments
+- Test doubles exist for all protocol-backed types
+
+**Estimated scope:** This is a large increment. Split into sub-sessions if needed:
+- R.1a: Protocols + test doubles + logging infrastructure
+- R.1b: Unit tests for Renderer and Shared modules
+- R.1c: Integration + regression + performance tests
+- R.1d: Code hygiene pass (doc comments, MARK annotations, lint fixes)
 
 ---
 
@@ -658,18 +1434,80 @@ Build command: xcodebuild -scheme PhospheneApp -destination 'platform=macOS' bui
 Test command: swift test --package-path PhospheneEngine
 ```
 
+### Session Start Checklist (MANDATORY)
+
+Before writing any new code in a session, Claude Code must:
+
+```bash
+# 1. Run existing tests — all must pass before new work begins
+swift test --package-path PhospheneEngine
+
+# 2. Lint — must be clean
+swiftlint lint --strict --config .swiftlint.yml
+```
+
+If either step fails, fix it first. Do not start the increment's work on a red baseline.
+
+### Session End Checklist (MANDATORY)
+
+Before considering an increment complete, Claude Code must run and pass all of:
+
+```bash
+# 1. Lint (zero warnings)
+swiftlint lint --strict --config .swiftlint.yml
+
+# 2. Build (warnings-as-errors)
+xcodebuild -scheme PhospheneApp -destination 'platform=macOS' \
+  build SWIFT_TREAT_WARNINGS_AS_ERRORS=YES 2>&1
+
+# 3. ALL tests (not just new ones — full regression)
+swift test --package-path PhospheneEngine 2>&1
+```
+
+**All three must pass.** If any fails, fix it before ending the session.
+
+### Code Hygiene Checklist (Per Increment)
+
+For every file created or modified in the increment, verify:
+
+- [ ] No `print()` — use `Logger.audio.debug(...)` etc.
+- [ ] No force-unwraps (`!`) in production code
+- [ ] All `public` API has `///` doc comments
+- [ ] `// MARK: -` sections: Properties, Initialization, Public API, Private Helpers
+- [ ] No magic numbers — named constants or enums
+- [ ] No commented-out code
+- [ ] Every `TODO` has an increment reference: `// TODO: [Increment X.Y] description`
+- [ ] File under 400 lines (split if exceeded)
+- [ ] New protocols defined for any type that will be a dependency of other modules
+- [ ] Test file created mirroring source file path
+
+### Test Writing Checklist (Per Increment)
+
+- [ ] Unit tests for every new public method
+- [ ] At least one test per error/edge case path (nil input, empty array, overflow, timeout)
+- [ ] Test doubles (mocks/stubs) for all injected dependencies
+- [ ] Integration test if this increment connects two modules
+- [ ] Regression test if this increment involves numerical computation (DSP, FFT, MIR)
+- [ ] Performance test if this increment is on a hot path (audio callback, render loop, FFT)
+- [ ] All tests follow naming convention: `test_<Method>_<Scenario>_<Expected>()`
+- [ ] Tests are deterministic — no flaky timing, seeded random, known inputs
+
 ### Key Technical Constraints to Reiterate
 
 - **macOS 14.0+ only** — no iOS, no cross-platform
 - **Metal only** — never OpenGL, never Vulkan
-- **Core Audio taps for audio** — primary audio input is system audio capture via `AudioHardwareCreateProcessTap` (macOS 14.2+), not file loading. ScreenCaptureKit was abandoned because it silently fails to deliver audio callbacks on macOS 15+/26. Core Audio taps require no special entitlements or user permission prompts for system audio.
+- **Core Audio taps for audio** — primary audio input is system audio capture via `AudioHardwareCreateProcessTap` (macOS 14.2+), not file loading. ScreenCaptureKit was abandoned because it silently fails to deliver audio callbacks on macOS 15+/26. Core Audio taps require screen capture permission to deliver non-zero audio — call `CGRequestScreenCaptureAccess()` before starting.
 - **ANE for ML** — always configure CoreML models with `.cpuAndNeuralEngine`, never `.all` (which would compete with GPU)
 - **UMA zero-copy** — all shared buffers must use `.storageModeShared`
 - **Swift concurrency** — use `async/await` and actors for thread safety, avoid raw `DispatchQueue` where possible
 - **No C++ interop in Phase 1-4** — pure Swift + Metal Shading Language. C++ interop only if absolutely required for legacy preset parsing
-- **Graceful metadata degradation** — MusicKit is optional (requires Apple Music subscription). Now Playing metadata is best-effort. Pre-fetched metadata from external APIs is best-effort. Phosphene must function fully with audio-only (no metadata) from any source — quality improves with more metadata but never depends on it.
-- **Analysis lookahead is always on** — The lookahead buffer defaults to 2.5 seconds and should never be disabled in the Orchestrator's decision path, even if the user sets it to 0 in the UI (the UI setting controls visual latency, not analysis pipelining). The Orchestrator should always consume the real-time analysis head for its decisions.
-- **Network calls are non-blocking** — Metadata pre-fetching (MusicBrainz, Spotify Web API) must never block the audio or rendering pipelines. All queries are async with short timeouts (3 seconds). Cache aggressively. If the network is unavailable, the system falls back silently to audio-only intelligence.
+- **Graceful metadata degradation** — MusicKit is optional. Now Playing is best-effort. Pre-fetched metadata is best-effort. Phosphene must function fully with audio-only.
+- **Analysis lookahead is always on** — defaults to 2.5 seconds, never disabled in Orchestrator decision path
+- **Network calls are non-blocking** — 3-second timeouts, aggressive caching, silent fallback on failure
+- **Protocol-oriented design** — every cross-module dependency is injected via protocol, enabling test doubles
+- **No singletons** — all dependencies injected via initializer
+- **Logging via os.Logger** — never `print()`. Subsystem: `"com.phosphene"`, category per module.
+- **Audio data hierarchy is non-negotiable** — continuous energy is primary visual driver, beat onset is accent only. See CLAUDE.md.
 
 ### Dependency Installation Checklist
 
@@ -697,7 +1535,9 @@ pip install coremltools torch torchaudio onnx onnxruntime librosa numpy scipy
 # Install to /usr/local/bin/metal-shader-converter
 
 # 6. Verify
-xcrun metal --version          # Metal compiler
+xcrun metal --version
 python3.11 -c "import coremltools; print(coremltools.__version__)"
 ffmpeg -version
+swiftlint version
 ```
+- `

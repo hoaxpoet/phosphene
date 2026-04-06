@@ -23,7 +23,7 @@ private let logger = Logger(subsystem: "com.phosphene.audio", category: "AudioBu
 /// The ring buffer holds a sliding window of recent audio samples. The GPU
 /// reads the entire buffer each frame as waveform data. Older samples are
 /// silently overwritten as new audio arrives.
-public final class AudioBuffer: @unchecked Sendable {
+public final class AudioBuffer: AudioBuffering, @unchecked Sendable {
 
     // MARK: - Configuration
 

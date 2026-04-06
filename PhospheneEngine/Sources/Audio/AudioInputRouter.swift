@@ -39,7 +39,7 @@ public final class AudioInputRouter: @unchecked Sendable {
     // MARK: - State
 
     private var currentMode: InputMode?
-    private let systemCapture = SystemAudioCapture()
+    private let systemCapture: any AudioCapturing
     private var filePlaybackTask: Task<Void, Never>?
     private let lock = NSLock()
 
@@ -48,7 +48,12 @@ public final class AudioInputRouter: @unchecked Sendable {
 
     // MARK: - Init
 
-    public init() {}
+    /// Create an AudioInputRouter.
+    ///
+    /// - Parameter capture: Audio capture backend. Defaults to `SystemAudioCapture`.
+    public init(capture: any AudioCapturing = SystemAudioCapture()) {
+        self.systemCapture = capture
+    }
 
     // MARK: - Callback
 

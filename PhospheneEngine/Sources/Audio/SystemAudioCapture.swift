@@ -70,7 +70,11 @@ public struct RunningApplication: Sendable, Identifiable {
 /// capture.stopCapture()
 /// ```
 @available(macOS 14.2, *)
-public final class SystemAudioCapture: @unchecked Sendable {
+public final class SystemAudioCapture: AudioCapturing, @unchecked Sendable {
+
+    // MARK: - Init
+
+    public init() {}
 
     // MARK: - Configuration
 
