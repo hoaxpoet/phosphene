@@ -167,7 +167,17 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
                 }
             }
 
-            let fetcher = MetadataPreFetcher()
+            // Build fetcher list — MusicBrainz is always available (free API).
+            // Spotify requires credentials via environment variables.
+            var fetchers: [any MetadataFetching] = [MusicBrainzFetcher()]
+            if let spotify = SpotifyFetcher.fromEnvironment() {
+                fetchers.append(spotify)
+                logger.info("Spotify fetcher enabled")
+            } else {
+                logger.info("Spotify fetcher disabled (no credentials)")
+            }
+
+            let fetcher = MetadataPreFetcher(fetchers: fetchers)
             self.preFetcher = fetcher
 
             audioRouter.onTrackChange = { [weak self] event in

@@ -45,8 +45,10 @@ PhospheneEngine/
     AudioBuffer             → IO proc → UMARingBuffer<Float> bridge for GPU (✓ implemented)
     FFTProcessor            → vDSP 1024-pt FFT → 512 magnitude bins in UMABuffer (✓ implemented)
     Protocols               → AudioCapturing, AudioBuffering, FFTProcessing, MetadataProviding, MetadataFetching (✓ implemented)
-    StreamingMetadata       → MPNowPlayingInfoCenter polling, track change detection (✓ implemented)
+    StreamingMetadata       → MediaRemote Now Playing polling, track change detection (✓ implemented)
     MetadataPreFetcher      → Parallel async queries, LRU cache, merge partial results (✓ implemented)
+    MusicBrainzFetcher      → Free API, genre tags + duration from MusicBrainz recordings (✓ implemented)
+    SpotifyFetcher          → Client credentials flow, search + audio features (✓ implemented)
     MusicKitBridge          → Optional MusicKit catalog enrichment, graceful no-op (✓ implemented)
   DSP/                      → Spectral analysis, beat/onset detection, chroma, MFCCs (stub)
   ML/                       → CoreML wrappers: stem separator, mood classifier (stub)
@@ -328,6 +330,9 @@ These were tried in the Electron prototype and abandoned with documented reasons
 5. **BlackHole virtual audio driver**: Broken on macOS Sequoia. `DoIOOperation` timing guard zeros out the read buffer. Additionally, Chromium's Web Audio API can't read from virtual devices on macOS.
 6. **Web Audio API AnalyserNode for frequency analysis**: Chromium's implementation is broken for virtual audio devices on macOS. IIR filters in application code give direct control.
 7. **ScreenCaptureKit for audio-only capture** (macOS 26): `SCStream` with `capturesAudio = true` delivers video frames but zero audio callbacks, even with both `.screen` and `.audio` stream outputs registered and screen capture permission confirmed working. The root cause is unknown — may be a macOS 26 regression or a deliberate policy change. Core Audio taps (`AudioHardwareCreateProcessTap`, macOS 14.2+) work perfectly and are purpose-built for audio tapping.
+8. **AcousticBrainz**: Shut down in 2022. The project was discontinued and the API is no longer available. MusicBrainz recording search (free, no auth) provides genre tags as an alternative.
+9. **MPNowPlayingInfoCenter for reading other apps' metadata**: Only returns the host app's own published Now Playing info. Cannot read Spotify, Apple Music, etc. Use MediaRemote private framework (dynamically loaded) instead.
+10. **Spotify Audio Features endpoint**: Deprecated for apps created after Nov 2024. Returns 403. SpotifyFetcher gracefully degrades — search still works, audio features are optional.
 
 ---
 
@@ -399,7 +404,7 @@ Metal, MetalKit, CoreML, AVFoundation, Accelerate, ScreenCaptureKit, MusicKit
 15. **Protocol-oriented testability**: All major subsystems have corresponding protocols (`AudioCapturing`, `AudioBuffering`, `FFTProcessing`, `Rendering`). Production code depends on protocols; test doubles inject via initializer.
 16. **Structured logging**: `os.Logger` via `Shared/Logging.swift`. One subsystem (`com.phosphene`), one category per module. No `print()` in production code.
 17. **SwiftLint enforcement**: `.swiftlint.yml` with `force_cast`/`force_try`/`force_unwrapping` as errors, `file_length` warning at 400, `cyclomatic_complexity` warning at 10. Tests and tools directories excluded from lint.
-18. **Streaming metadata**: `StreamingMetadata` polls `MPNowPlayingInfoCenter` every 2s for track changes. Case-insensitive identity matching. `MetadataPreFetcher` queries external APIs (MusicBrainz, Spotify) in parallel via `MetadataFetching` protocol with 3s per-fetcher timeouts, LRU cache (50 entries, `OrderedDictionary`). `MusicKitBridge` enriches via `#if canImport(MusicKit)` with graceful no-op. `AudioInputRouter` forwards `TrackChangeEvent` to consumers via `onTrackChange` callback.
+18. **Streaming metadata**: `StreamingMetadata` polls MediaRemote (private framework, dynamically loaded) every 2s for system-wide Now Playing state from any app. `MPNowPlayingInfoCenter` only returns the host app's own metadata — do not use it for reading other apps. Case-insensitive identity matching. `MetadataPreFetcher` queries external APIs (MusicBrainz, Spotify) in parallel via `MetadataFetching` protocol with 3s per-fetcher timeouts, LRU cache (50 entries, `OrderedDictionary`). `MusicKitBridge` enriches via `#if canImport(MusicKit)` with graceful no-op. `AudioInputRouter` forwards `TrackChangeEvent` to consumers via `onTrackChange` callback.
 
 ## Reference Documents
 
