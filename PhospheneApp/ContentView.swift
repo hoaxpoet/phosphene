@@ -21,7 +21,7 @@ struct ContentView: View {
     @StateObject private var engine = VisualizerEngine()
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
+        ZStack {
             MetalView(context: engine.context, pipeline: engine.pipeline)
 
             if let name = engine.currentPresetName {
@@ -32,8 +32,14 @@ struct ContentView: View {
                     .background(.black.opacity(0.4))
                     .cornerRadius(6)
                     .padding(12)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     .transition(.opacity)
                     .allowsHitTesting(false)
+            }
+
+            // Debug overlay — toggle with 'D' key.
+            if engine.showDebugOverlay {
+                DebugOverlayView(engine: engine)
             }
         }
         .focusable()
@@ -49,6 +55,10 @@ struct ContentView: View {
         }
         .onKeyPress(.space) {
             engine.nextPreset()
+            return .handled
+        }
+        .onKeyPress("d") {
+            engine.toggleDebugOverlay()
             return .handled
         }
     }
@@ -85,8 +95,20 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Currently displayed preset name (shown briefly on switch).
     @Published var currentPresetName: String?
 
+    /// Whether the debug overlay is visible (toggle with 'D' key).
+    @Published var showDebugOverlay = false
+
+    /// Current track metadata from Now Playing.
+    @Published var currentTrack: TrackMetadata?
+
+    /// Pre-fetched profile from external APIs.
+    @Published var preFetchedProfile: PreFetchedTrackProfile?
+
     /// Task that hides the preset name after a delay.
     private var hideNameTask: Task<Void, Never>?
+
+    /// Metadata pre-fetcher for external API queries.
+    private var preFetcher: MetadataPreFetcher?
 
     // MARK: - Initialization
 
@@ -134,7 +156,8 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         }
 
         if #available(macOS 14.2, *) {
-            let audioRouter = AudioInputRouter()
+            let metadata = StreamingMetadata()
+            let audioRouter = AudioInputRouter(metadata: metadata)
             audioRouter.onAudioSamples = { [weak buf, weak fft] samples, count, rate, _ in
                 guard let buf, let fft else { return }
                 buf.write(from: samples, count: count)
@@ -143,6 +166,25 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
                     fft.processStereo(interleavedSamples: latest, sampleRate: rate)
                 }
             }
+
+            let fetcher = MetadataPreFetcher()
+            self.preFetcher = fetcher
+
+            audioRouter.onTrackChange = { [weak self] event in
+                guard let self else { return }
+                Task { @MainActor in
+                    self.currentTrack = event.current
+                    self.preFetchedProfile = nil
+                    logger.info("Track changed: \(event.current.title ?? "?") — \(event.current.artist ?? "?")")
+                }
+                Task {
+                    let profile = await fetcher.prefetch(for: event.current)
+                    await MainActor.run {
+                        self.preFetchedProfile = profile
+                    }
+                }
+            }
+
             self.router = audioRouter
         }
     }
@@ -188,6 +230,11 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         guard let preset = presetLoader.previousPreset() else { return }
         pipeline.setActivePipelineState(preset.pipelineState)
         showPresetName(preset.descriptor.name)
+    }
+
+    /// Toggle the debug metadata overlay.
+    func toggleDebugOverlay() {
+        showDebugOverlay.toggle()
     }
 
     // MARK: - Private Helpers
