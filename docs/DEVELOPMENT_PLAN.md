@@ -616,7 +616,7 @@ echo "=== All checks passed ==="
 
 **Tests:** 21 new tests (115 total). 7 StreamingMetadata, 10 MetadataPreFetcher, 2 integration, 2 regression with golden JSON fixtures.
 
-**Verification:** Play a song in Spotify, then switch to Apple Music. Press 'D' for debug overlay. Track info appears via AppleScript (one-time Automation permission prompt per app). MusicBrainz genre tags appear within 2 seconds. Soundcharts audio features appear if credentials are configured. Metadata works independently of screen capture permission.
+**Verification:** ✅ Verified end-to-end. Play a song in Spotify, then switch to Apple Music. Press 'D' for debug overlay. Track info appears via AppleScript (one-time Automation permission prompt per app) with correct source (appleMusic/spotify). MusicBrainz duration appears within 2 seconds. Soundcharts audio features appear if credentials are configured. Metadata works independently of screen capture permission. Screen capture permission polling auto-starts audio capture when granted (no restart needed).
 
 ### Increment 2.2: CoreML Stem Separation Model Conversion
 

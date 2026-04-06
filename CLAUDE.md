@@ -427,4 +427,4 @@ The architectural blueprint is in `docs/ARCHITECTURAL_BLUEPRINT.md`.
 
 ## Current Status
 
-**Phase 2 in progress.** Increment 2.1 (streaming metadata) is complete. Now Playing polling detects track changes, MetadataPreFetcher queries external APIs in parallel with LRU caching, MusicKitBridge provides optional catalog enrichment. AudioInputRouter forwards track change events to downstream consumers. 115 tests pass. Next up: Increment 2.2 (stem separation, MIR features, mood classification).
+**Phase 2 in progress.** Increment 2.1 (streaming metadata) is complete and verified end-to-end. AppleScript queries Apple Music and Spotify for track changes (independent of screen capture permission). MetadataPreFetcher queries MusicBrainz (always) and Soundcharts (optional, commercial) in parallel with LRU caching. Pre-fetched data is a "fast hint" for the first ~15s — self-computed MIR (Increment 2.4) will be the primary source of audio features. Debug overlay (D key) shows track info and pre-fetched data. Screen capture permission polling auto-starts audio capture when granted. 115 tests pass. Next up: Increment 2.2 (CoreML stem separation model conversion).
