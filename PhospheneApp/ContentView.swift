@@ -223,15 +223,22 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         }
         hasScreenCapturePermission = permitted
 
-        if permitted, #available(macOS 14.2, *), let audioRouter = router as? AudioInputRouter {
-            do {
-                try audioRouter.start(mode: .systemAudio)
-                logger.info("Audio capture started")
-            } catch {
-                logger.error("Audio capture failed: \(error)")
+        if permitted {
+            startAudioCapture()
+        } else {
+            logger.info("Screen capture denied — track detection works but audio capture requires permission. Grant in System Settings.")
+            // Poll until permission is granted — no restart required.
+            Task { @MainActor in
+                while !hasScreenCapturePermission {
+                    try? await Task.sleep(for: .seconds(2))
+                    if CGPreflightScreenCaptureAccess() {
+                        hasScreenCapturePermission = true
+                        logger.info("Screen capture permission granted")
+                        startAudioCapture()
+                        break
+                    }
+                }
             }
-        } else if !permitted {
-            logger.info("Screen capture denied — track detection works but audio capture requires permission. Grant in System Settings, then restart.")
         }
 
         if let current = presetLoader.currentPreset {
@@ -253,6 +260,18 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         guard let preset = presetLoader.previousPreset() else { return }
         pipeline.setActivePipelineState(preset.pipelineState)
         showPresetName(preset.descriptor.name)
+    }
+
+    /// Start Core Audio tap capture (requires screen capture permission).
+    private func startAudioCapture() {
+        if #available(macOS 14.2, *), let audioRouter = router as? AudioInputRouter {
+            do {
+                try audioRouter.start(mode: .systemAudio)
+                logger.info("Audio capture started")
+            } catch {
+                logger.error("Audio capture failed: \(error)")
+            }
+        }
     }
 
     /// Toggle the debug metadata overlay.
