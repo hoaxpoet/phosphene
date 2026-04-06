@@ -66,13 +66,17 @@ private enum MediaRemoteBridge {
         return unsafeBitCast(pointer, to: GetNowPlayingInfoFunc.self)
     }()
 
+    /// Serial queue for MediaRemote callbacks — avoids main queue
+    /// deadlocks when called from Swift concurrency tasks.
+    private static let callbackQueue = DispatchQueue(label: "com.phosphene.mediaremote")
+
     /// Query the system-wide Now Playing info asynchronously.
     /// Returns nil if MediaRemote is unavailable or nothing is playing.
     static func fetchNowPlayingInfo() async -> NowPlayingInfo? {
         guard let fn = getNowPlayingInfo else { return nil }
 
         return await withCheckedContinuation { continuation in
-            fn(DispatchQueue.main) { info in
+            fn(callbackQueue) { info in
                 if info.isEmpty {
                     continuation.resume(returning: nil)
                 } else {
