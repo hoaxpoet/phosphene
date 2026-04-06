@@ -37,7 +37,7 @@ struct DebugOverlayView: View {
                 Text("Screen capture permission required")
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundColor(.red.opacity(0.8))
-                Text("System Settings → Privacy → Screen Recording")
+                Text("Grant in System Settings, then restart app")
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundColor(.white.opacity(0.4))
             } else {

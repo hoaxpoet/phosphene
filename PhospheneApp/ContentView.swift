@@ -239,20 +239,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         // Poll for permission changes — user may grant in System Settings
         // while the app is running.
         if !permitted {
-            logger.info("Waiting for screen capture permission — polling every 2s")
-            Task { @MainActor in
-                while !hasScreenCapturePermission {
-                    try? await Task.sleep(for: .seconds(2))
-                    let granted = CGPreflightScreenCaptureAccess()
-                    logger.debug("Permission poll: \(granted ? "granted" : "still denied")")
-                    if granted {
-                        hasScreenCapturePermission = true
-                        logger.info("Screen capture permission granted — starting audio and metadata")
-                        startAudio()
-                        break
-                    }
-                }
-            }
+            logger.info("Screen capture permission denied. Grant in System Settings → Privacy → Screen Recording, then restart the app.")
         }
     }
 
