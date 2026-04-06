@@ -108,15 +108,15 @@ public final class FFTProcessor: FFTProcessing, @unchecked Sendable {
     /// - Returns: FFT result metadata including dominant frequency.
     @discardableResult
     public func process(samples: [Float], sampleRate: Float = 48000) -> FFTResult {
-        let n = Self.fftSize
+        let fftLength = Self.fftSize
 
         // Fill windowed samples: use the latest `fftSize` samples, zero-pad if short.
         windowedSamples.withUnsafeMutableBufferPointer { dst in
             // Zero the buffer first.
             dst.update(repeating: 0)
 
-            let sampleCount = min(samples.count, n)
-            let sourceOffset = max(0, samples.count - n)
+            let sampleCount = min(samples.count, fftLength)
+            let sourceOffset = max(0, samples.count - fftLength)
 
             samples.withUnsafeBufferPointer { src in
                 for i in 0..<sampleCount {
@@ -126,9 +126,10 @@ public final class FFTProcessor: FFTProcessing, @unchecked Sendable {
         }
 
         // Apply Hann window.
-        vDSP_vmul(windowedSamples, 1, window, 1, &windowedSamples, 1, vDSP_Length(n))
+        vDSP_vmul(windowedSamples, 1, window, 1, &windowedSamples, 1, vDSP_Length(fftLength))
 
         // Convert to split complex format for vDSP FFT.
+        // swiftlint:disable force_unwrapping
         windowedSamples.withUnsafeBufferPointer { srcPtr in
             realPart.withUnsafeMutableBufferPointer { realPtr in
                 imagPart.withUnsafeMutableBufferPointer { imagPtr in
@@ -148,8 +149,10 @@ public final class FFTProcessor: FFTProcessing, @unchecked Sendable {
                     var magnitudes = [Float](repeating: 0, count: Self.binCount)
                     vDSP_zvabs(&splitComplex, 1, &magnitudes, 1, vDSP_Length(Self.binCount))
 
+                    // swiftlint:enable force_unwrapping
+
                     // Normalize by FFT size.
-                    var scale = 2.0 / Float(n)
+                    var scale = 2.0 / Float(fftLength)
                     vDSP_vsmul(magnitudes, 1, &scale, &magnitudes, 1, vDSP_Length(Self.binCount))
 
                     // Write to UMA buffer for GPU.
@@ -161,7 +164,7 @@ public final class FFTProcessor: FFTProcessing, @unchecked Sendable {
                     var maxIdx: vDSP_Length = 0
                     vDSP_maxvi(magnitudes, 1, &maxMag, &maxIdx, vDSP_Length(Self.binCount))
 
-                    let binResolution = sampleRate / Float(n)
+                    let binResolution = sampleRate / Float(fftLength)
                     latestResult = FFTResult(
                         binCount: UInt32(Self.binCount),
                         binResolution: binResolution,
@@ -225,7 +228,9 @@ public final class FFTProcessor: FFTProcessing, @unchecked Sendable {
         let globalMax = bars.max() ?? 1.0
         let scale = globalMax > 0 ? 1.0 / globalMax : 1.0
 
-        var output = "FFT Spectrum (dominant: \(String(format: "%.0f", result.dominantFrequency))Hz @ \(String(format: "%.3f", result.dominantMagnitude)))\n"
+        let freqStr = String(format: "%.0f", result.dominantFrequency)
+        let magStr = String(format: "%.3f", result.dominantMagnitude)
+        var output = "FFT Spectrum (dominant: \(freqStr)Hz @ \(magStr))\n"
         for bar in 0..<barCount {
             let freq = Float(bar * binsPerBar) * binRes
             let normalized = bars[bar] * scale

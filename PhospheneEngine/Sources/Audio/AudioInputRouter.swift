@@ -166,7 +166,8 @@ public final class AudioInputRouter: @unchecked Sendable {
                     }
 
                     interleaved.withUnsafeBufferPointer { ptr in
-                        callback?(ptr.baseAddress!, totalSamples, sampleRate, channelCount)
+                        guard let base = ptr.baseAddress else { return }
+                        callback?(base, totalSamples, sampleRate, channelCount)
                     }
 
                     try await Task.sleep(for: .seconds(frameDuration))

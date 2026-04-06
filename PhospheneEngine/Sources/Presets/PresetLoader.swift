@@ -351,6 +351,11 @@ extension PresetDescriptor {
         let json = """
         {"name": "\(name)", "family": "waveform"}
         """
-        return try! JSONDecoder().decode(PresetDescriptor.self, from: Data(json.utf8))
+        do {
+            return try JSONDecoder().decode(PresetDescriptor.self, from: Data(json.utf8))
+        } catch {
+            // This should never fail — the JSON template is compile-time constant.
+            fatalError("PresetDescriptor fallback JSON decode failed: \(error)")
+        }
     }
 }

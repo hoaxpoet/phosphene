@@ -137,86 +137,99 @@ public final class SystemAudioCapture: AudioCapturing, @unchecked Sendable {
         stateLock.unlock()
 
         do {
-            // Step 1: Create the process tap.
-            tapUUID = UUID()
-            let tapDesc = try buildTapDescription(for: mode)
-
-            var newTapID: AudioObjectID = 0
-            let tapStatus = AudioHardwareCreateProcessTap(tapDesc, &newTapID)
-            guard tapStatus == noErr else {
-                stateLock.withLock { _isCapturing = false }
-                throw AudioCaptureError.tapCreationFailed(tapStatus)
-            }
-
-            stateLock.withLock { self.tapID = newTapID }
-            logger.info("Process tap created (ID: \(newTapID))")
-
-            // Step 2: Read the tap's audio format.
+            let newTapID = try createProcessTap(for: mode)
             readTapFormat(tapID: newTapID)
+            let newAggregateID = try createAggregateDevice()
+            let newProcID = try createIOProc(aggregateID: newAggregateID)
+            try startDevice(aggregateID: newAggregateID, procID: newProcID)
 
-            // Step 3: Create aggregate device containing the tap.
-            let aggDesc: [String: Any] = [
-                kAudioAggregateDeviceNameKey as String: "PhospheneAggregate",
-                kAudioAggregateDeviceUIDKey as String: "com.phosphene.aggregate.\(UUID().uuidString)",
-                kAudioAggregateDeviceIsPrivateKey as String: true,
-                kAudioAggregateDeviceTapListKey as String: [[
-                    kAudioSubTapUIDKey as String: tapUUID.uuidString
-                ]],
-                kAudioAggregateDeviceTapAutoStartKey as String: true
-            ]
-
-            var newAggregateID: AudioDeviceID = 0
-            let aggStatus = AudioHardwareCreateAggregateDevice(aggDesc as CFDictionary, &newAggregateID)
-            guard aggStatus == noErr else {
-                cleanup()
-                throw AudioCaptureError.aggregateDeviceCreationFailed(aggStatus)
-            }
-
-            stateLock.withLock { self.aggregateID = newAggregateID }
-            logger.info("Aggregate device created (ID: \(newAggregateID))")
-
-            // Step 4: Set up IO proc.
-            let callback = self.onAudioBuffer
             let sr = self.sampleRate
             let ch = self.channelCount
-
-            var newProcID: AudioDeviceIOProcID?
-            let procStatus = AudioDeviceCreateIOProcIDWithBlock(
-                &newProcID, newAggregateID, nil
-            ) { _, inInputData, _, _, _ in
-                let buffers = UnsafeMutableAudioBufferListPointer(
-                    UnsafeMutablePointer(mutating: inInputData)
-                )
-                for buffer in buffers {
-                    guard let data = buffer.mData else { continue }
-                    let floatCount = Int(buffer.mDataByteSize) / MemoryLayout<Float>.size
-                    guard floatCount > 0 else { continue }
-
-                    let floatPtr = data.bindMemory(to: Float.self, capacity: floatCount)
-                    callback?(floatPtr, floatCount, sr, ch)
-                    break  // Process first buffer only (stereo interleaved)
-                }
-            }
-
-            guard procStatus == noErr else {
-                cleanup()
-                throw AudioCaptureError.ioProcCreationFailed(procStatus)
-            }
-
-            stateLock.withLock { self.procID = newProcID }
-
-            // Step 5: Start capture.
-            let startStatus = AudioDeviceStart(newAggregateID, newProcID)
-            guard startStatus == noErr else {
-                cleanup()
-                throw AudioCaptureError.deviceStartFailed(startStatus)
-            }
-
             logger.info("Audio capture started: \(String(describing: mode)), \(sr) Hz, \(ch) ch")
-
         } catch {
             stateLock.withLock { _isCapturing = false }
             throw error
+        }
+    }
+
+    // MARK: - Capture Setup Steps
+
+    private func createProcessTap(for mode: CaptureMode) throws -> AudioObjectID {
+        tapUUID = UUID()
+        let tapDesc = try buildTapDescription(for: mode)
+
+        var newTapID: AudioObjectID = 0
+        let tapStatus = AudioHardwareCreateProcessTap(tapDesc, &newTapID)
+        guard tapStatus == noErr else {
+            stateLock.withLock { _isCapturing = false }
+            throw AudioCaptureError.tapCreationFailed(tapStatus)
+        }
+
+        stateLock.withLock { self.tapID = newTapID }
+        logger.info("Process tap created (ID: \(newTapID))")
+        return newTapID
+    }
+
+    private func createAggregateDevice() throws -> AudioDeviceID {
+        let aggDesc: [String: Any] = [
+            kAudioAggregateDeviceNameKey as String: "PhospheneAggregate",
+            kAudioAggregateDeviceUIDKey as String: "com.phosphene.aggregate.\(UUID().uuidString)",
+            kAudioAggregateDeviceIsPrivateKey as String: true,
+            kAudioAggregateDeviceTapListKey as String: [[
+                kAudioSubTapUIDKey as String: tapUUID.uuidString
+            ]],
+            kAudioAggregateDeviceTapAutoStartKey as String: true
+        ]
+
+        var newAggregateID: AudioDeviceID = 0
+        let aggStatus = AudioHardwareCreateAggregateDevice(aggDesc as CFDictionary, &newAggregateID)
+        guard aggStatus == noErr else {
+            cleanup()
+            throw AudioCaptureError.aggregateDeviceCreationFailed(aggStatus)
+        }
+
+        stateLock.withLock { self.aggregateID = newAggregateID }
+        logger.info("Aggregate device created (ID: \(newAggregateID))")
+        return newAggregateID
+    }
+
+    private func createIOProc(aggregateID: AudioDeviceID) throws -> AudioDeviceIOProcID {
+        let callback = self.onAudioBuffer
+        let sr = self.sampleRate
+        let ch = self.channelCount
+
+        var newProcID: AudioDeviceIOProcID?
+        let procStatus = AudioDeviceCreateIOProcIDWithBlock(
+            &newProcID, aggregateID, nil
+        ) { _, inInputData, _, _, _ in
+            let buffers = UnsafeMutableAudioBufferListPointer(
+                UnsafeMutablePointer(mutating: inInputData)
+            )
+            for buffer in buffers {
+                guard let data = buffer.mData else { continue }
+                let floatCount = Int(buffer.mDataByteSize) / MemoryLayout<Float>.size
+                guard floatCount > 0 else { continue }
+
+                let floatPtr = data.bindMemory(to: Float.self, capacity: floatCount)
+                callback?(floatPtr, floatCount, sr, ch)
+                break  // Process first buffer only (stereo interleaved)
+            }
+        }
+
+        guard procStatus == noErr, let procID = newProcID else {
+            cleanup()
+            throw AudioCaptureError.ioProcCreationFailed(procStatus)
+        }
+
+        stateLock.withLock { self.procID = procID }
+        return procID
+    }
+
+    private func startDevice(aggregateID: AudioDeviceID, procID: AudioDeviceIOProcID) throws {
+        let startStatus = AudioDeviceStart(aggregateID, procID)
+        guard startStatus == noErr else {
+            cleanup()
+            throw AudioCaptureError.deviceStartFailed(startStatus)
         }
     }
 

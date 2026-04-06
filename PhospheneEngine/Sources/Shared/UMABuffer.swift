@@ -104,6 +104,7 @@ public final class UMARingBuffer<T>: @unchecked Sendable {
     public var buffer: MTLBuffer { storage.buffer }
 
     public var isFull: Bool { count == capacity }
+    // swiftlint:disable:next empty_count
     public var isEmpty: Bool { count == 0 }
 
     /// Create a ring buffer sized for `capacity` elements of `T`.
@@ -131,7 +132,7 @@ public final class UMARingBuffer<T>: @unchecked Sendable {
 
     /// Index of the oldest valid element.
     public var tail: Int {
-        if count < capacity { return 0 }
+        if !isFull { return 0 }
         return head
     }
 

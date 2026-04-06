@@ -4,6 +4,11 @@
 
 import Foundation
 
+/// Metadata for a single visual preset, loaded from a JSON sidecar file.
+///
+/// Each `.metal` shader file may have an accompanying `.json` file defining
+/// feedback parameters, audio routing, and display metadata. Missing fields
+/// use sensible defaults (see `init(from:)`).
 public struct PresetDescriptor: Sendable, Codable, Identifiable {
     public var id: String { name }
 

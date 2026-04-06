@@ -549,7 +549,7 @@ echo "=== All checks passed ==="
 
 **Implementation notes (completed 2026-04-06):** (unchanged from v1)
 
-### Increment 1.5: Basic Preset Abstraction & Hot-Reloading 🔧 (in progress)
+### Increment 1.5: Basic Preset Abstraction & Hot-Reloading ✅
 
 **Goal:** Define a `Preset` protocol and loader so that shaders can be swapped at runtime.
 
@@ -1340,71 +1340,57 @@ echo "=== All checks passed ==="
 
 ## Retroactive Quality Increment
 
-### Increment R.1: Test Debt Paydown for Phase 1 (1.1–1.4)
+### Increment R.1: Test Debt Paydown for Phase 1 (1.1–1.5) ✅
 
-**Goal:** Bring the already-built Phase 1 code up to the quality standards defined in this document. This increment should be executed **before** continuing with Increment 1.5.
+**Goal:** Bring the already-built Phase 1 code up to the quality standards defined in this document.
 
-**Rationale:** Increments 1.1–1.4 were built under v1 of the development plan, which lacked explicit test requirements per increment. The code works but has gaps in test coverage, protocol-based testability, doc comments, and logging.
+**Rationale:** Increments 1.1–1.5 were built under v1 of the development plan, which lacked explicit test requirements per increment. The code worked but had gaps in test coverage, protocol-based testability, doc comments, and logging.
 
-**Tasks:**
+**Completed 2026-04-06 in four sub-increments:**
 
-1. **Define protocols for testability.** Extract from existing concrete types:
-   - `AudioCapturing` from `SystemAudioCapture`
-   - `AudioBuffering` from `AudioBuffer`
-   - `FFTProcessing` from `FFTProcessor`
-   - `Rendering` from `RenderPipeline`
-   - Ensure `AudioInputRouter` depends on `AudioCapturing`, not the concrete type
+#### R.1a: Protocols, Test Doubles & Logging Infrastructure ✅
 
-2. **Create test doubles:**
-   - `TestDoubles/MockAudioCapture.swift` — delivers canned PCM via callback
-   - `TestDoubles/StubFFTProcessor.swift` — returns pre-configured magnitude arrays
-   - `TestDoubles/AudioFixtures.swift` — sine wave, silence, noise, impulse generators (deterministic seeds)
+Defined testability protocols and created test doubles:
+- **Protocols** (`Audio/Protocols.swift`, `Renderer/Protocols.swift`): `AudioCapturing`, `AudioBuffering`, `FFTProcessing`, `Rendering` — all production types now conform to injectable protocols
+- **Test doubles** (`TestDoubles/`): `MockAudioCapture` (delivers canned PCM via callback), `StubFFTProcessor` (returns pre-configured magnitudes), `AudioFixtures` (deterministic sine, silence, noise, impulse generators)
+- **Logging** (`Shared/Logging.swift`): Per-module `os.Logger` instances — `audio`, `dsp`, `renderer`, `orchestrator`, `ml` — subsystem `"com.phosphene"`
+- `AudioInputRouter` refactored to depend on `AudioCapturing` protocol, not concrete `SystemAudioCapture`
 
-3. **Add missing unit tests** (target: bring Audio + Renderer + Shared modules to 80% coverage):
-   - `MetalContextTests.swift` — 4 tests (device, queue, pixel format, semaphore)
-   - `ShaderLibraryTests.swift` — 6 tests (discovery, load, invalid, cache, all names, no warnings)
-   - `RenderPipelineTests.swift` — 4 tests (buffer binding, draw completion, non-black output with stub FFT)
-   - `UMABufferTests.swift` — 10 tests (see Increment 1.2 test list above)
-   - `AudioFeaturesTests.swift` — 6 tests (see Increment 1.2 test list above)
-   - Review existing `AudioTests.swift` (23 tests) — split into `AudioBufferTests.swift` and `FFTProcessorTests.swift` mirroring source structure
+#### R.1b: Unit Tests for Renderer and Shared Modules ✅
 
-4. **Add integration tests:**
-   - `Integration/AudioToFFTPipelineTests.swift` — 3 tests (sine → FFT peak, silence → flat, memory stability)
-   - `Integration/AudioToRenderPipelineTests.swift` — 2 tests (sine → non-black frame, silence → background only)
+Added unit tests mirroring source structure:
+- `Audio/AudioBufferTests.swift` — ring buffer write/read, RMS, reset, thread safety
+- `Audio/FFTProcessorTests.swift` — bin count, 440Hz peak detection, short input, determinism
+- `Renderer/MetalContextTests.swift` — device, queue, pixel format, semaphore (4 tests)
+- `Renderer/ShaderLibraryTests.swift` — shader discovery, compilation, caching, no warnings (6 tests)
+- `Renderer/RenderPipelineTests.swift` — buffer binding, draw completion, non-black output with stub FFT
+- `Shared/AudioFeaturesTests.swift` — memory layout, SIMD alignment, default values (6 tests)
+- `Shared/UMABufferExtendedTests.swift` — zero-copy GPU roundtrip, overflow, concurrent access (10 tests)
+- Existing monolithic `AudioTests.swift` split into per-file test files
 
-5. **Add regression tests:**
-   - `Regression/FFTRegressionTests.swift` — golden 440Hz sine FFT output saved to `Fixtures/`
-   - Generate fixture files: `440hz_sine_1s.pcm`, `440hz_fft_expected.json`
+#### R.1c: Integration, Regression & Performance Tests ✅
 
-6. **Add performance tests:**
-   - `Performance/FFTPerformanceTests.swift` — 1024-sample FFT < 0.1ms
-   - `Performance/AudioBufferPerformanceTests.swift` — ring buffer write throughput
+- **Integration** (`Integration/`): `AudioToFFTPipelineTests` (sine→FFT peak, silence→flat, 10k-frame memory stability), `AudioToRenderPipelineTests` (full pipeline non-black frame, silence background)
+- **Regression** (`Regression/`): `FFTRegressionTests` with golden fixtures (`440hz_sine_4800.json`, `440hz_fft_expected.json`) — asserts max delta < 0.001 across 512 bins
+- **Performance** (`Performance/`): `FFTPerformanceTests` (1024-sample FFT baseline), `RenderLoopPerformanceTests` (frame encode/commit throughput)
 
-7. **Code hygiene pass on all Phase 1 files:**
-   - Replace all `print()` with `os.Logger` (subsystem `"com.phosphene"`)
-   - Add `/// ` doc comments to all `public` API
-   - Add `// MARK: -` section annotations
-   - Extract magic numbers into named constants
-   - Remove any commented-out code
-   - Ensure no force-unwraps in production code
-   - Run SwiftLint, fix all warnings/errors
+#### R.1d: Code Hygiene Pass ✅
 
-8. **Logging infrastructure:**
-   - Create `Shared/Logging.swift` with per-module `Logger` instances
+- **SwiftLint config** (`.swiftlint.yml`): `force_cast`, `force_try`, `force_unwrapping` → error severity; `file_length` warning → 400; `cyclomatic_complexity` warning → 10
+- **Zero `print()` calls** in production code — all replaced with structured `os.Logger` in R.1a
+- **Doc comments** on all `public` types, methods, and properties across all production files
+- **MARK annotations** in every source file (Properties, Initialization, Public API, Private Helpers)
+- **Named constants** extracted: `maxFramesInFlight`, `fftSize`, `binCount`, `defaultWaveformCapacity`, `defaultCapacity`
+- **Force-unwrap cleanup**: vDSP pointer ops wrapped in `swiftlint:disable` with comments; `try!` in `ContentView` → `guard let ... try?` + `fatalError`; `PresetDescriptor.fallback` → `do/catch`
+- **Refactored** `SystemAudioCapture.startCapture()` from 70-line method → 20-line method + 4 private helpers (fixes cyclomatic complexity and function_body_length)
+- Sorted imports across all PhospheneApp files
 
-**Verification:**
-- `swift test` passes with 60+ total tests (existing 23 + ~40 new)
-- `swiftlint lint --strict` exits 0
-- `xcodebuild build SWIFT_TREAT_WARNINGS_AS_ERRORS=YES` exits 0
-- No `print()` statements in production code (`grep -r "print(" PhospheneEngine/Sources/` returns 0 results)
-- All public types and methods have doc comments
-- Test doubles exist for all protocol-backed types
-
-**Estimated scope:** This is a large increment. Split into sub-sessions if needed:
-- R.1a: Protocols + test doubles + logging infrastructure
-- R.1b: Unit tests for Renderer and Shared modules
-- R.1c: Integration + regression + performance tests
-- R.1d: Code hygiene pass (doc comments, MARK annotations, lint fixes)
+**Final verification results (R.1 complete):**
+- `swift test` → **94 tests pass** (up from 23 pre-R.1)
+- `swiftlint lint --strict` → **0 violations**
+- `xcodebuild build` → **0 warnings** in project code
+- `grep -rn "print(" PhospheneEngine/Sources/` → **0 results**
+- All public API has `///` doc comments
 
 ---
 

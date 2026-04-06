@@ -75,6 +75,7 @@ public final class AudioBuffer: AudioBuffering, @unchecked Sendable {
     /// - Returns: Number of samples written.
     @discardableResult
     public func write(from pointer: UnsafePointer<Float>, count: Int) -> Int {
+        // swiftlint:disable:next empty_count
         guard count > 0 else { return 0 }
 
         let samples = UnsafeBufferPointer(start: pointer, count: count)

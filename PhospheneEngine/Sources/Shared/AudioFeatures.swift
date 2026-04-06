@@ -168,7 +168,9 @@ public struct FeatureVector: Sendable {
     public var deltaTime: Float
 
     // --- Padding to 96 bytes (24 × 4) ---
+    // swiftlint:disable:next identifier_name
     public var _pad0: Float
+    // swiftlint:disable:next identifier_name
     public var _pad1: Float
 
     public init(

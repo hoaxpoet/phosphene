@@ -2,7 +2,7 @@
 
 ## What This Is
 
-Phosphene is a native macOS music visualization engine for Apple Silicon. It captures live system audio from streaming services (Apple Music, Spotify, Tidal, etc.) via ScreenCaptureKit, performs real-time audio analysis and ML-powered stem separation, and renders Metal-based visuals that respond to the music's frequency content, rhythm, and emotional character.
+Phosphene is a native macOS music visualization engine for Apple Silicon. It captures live system audio from streaming services (Apple Music, Spotify, Tidal, etc.) via Core Audio taps (`AudioHardwareCreateProcessTap`), performs real-time audio analysis and ML-powered stem separation, and renders Metal-based visuals that respond to the music's frequency content, rhythm, and emotional character.
 
 Users do NOT load audio files. They play music in their streaming app and Phosphene visualizes it. Phosphene is a passive listener — it never controls playback.
 
@@ -23,37 +23,54 @@ This is a ground-up native Swift/Metal rewrite. A prior Electron/WebGL prototype
 ```bash
 xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build
 swift test --package-path PhospheneEngine
+swiftlint lint --strict --config .swiftlint.yml
 ```
 
 Deployment target: macOS 14.0+ (Sonoma). Swift 6.0. Metal 3.1+.
 
+**Current test count: 94 tests** (unit, integration, regression, performance). All must pass before any new code is merged.
+
 ## Module Map
 
 ```
-PhospheneApp/           → SwiftUI shell, views, view models
+PhospheneApp/               → SwiftUI shell, views, view models
+  ContentView.swift         → Main view + VisualizerEngine (audio→FFT→render pipeline owner)
+  PhospheneApp.swift        → App entry point
+  Views/MetalView.swift     → NSViewRepresentable wrapping MTKView
+
 PhospheneEngine/
-  Audio/                → ScreenCaptureKit capture, ring buffers, FFT, lookahead buffer,
-                          streaming metadata (Now Playing + MusicKit), metadata pre-fetcher
-    SystemAudioCapture  → Core Audio tap wrapper: system-wide or per-app audio capture (✓ implemented)
-    AudioInputRouter    → Unified source abstraction: system/app/file → callbacks (✓ implemented)
-    AudioBuffer         → IO proc → UMARingBuffer<Float> bridge for GPU (✓ implemented)
-    FFTProcessor        → vDSP 1024-pt FFT → 512 magnitude bins in UMABuffer (✓ implemented)
-  DSP/                  → Spectral analysis, beat/onset detection, chroma, MFCCs,
-                          structural analysis (self-similarity, section prediction)
-  ML/                   → CoreML wrappers: stem separator, mood classifier
-  Renderer/             → Metal context, pipelines, shader library, geometry, ray tracing
-    MetalContext        → MTLDevice, command queue, triple-buffered semaphore (✓ implemented)
-    ShaderLibrary       → Auto-discover .metal files, runtime compilation, pipeline state cache (✓ implemented)
-    RenderPipeline      → Full-screen shader pass, audio UMA buffer binding, FeatureVector uniforms (✓ implemented)
-    Shaders/Waveform    → First-light visualizer: 64-bar FFT spectrum + oscilloscope waveform (✓ implemented)
-  Presets/              → Preset loading, categorization, legacy Milkdrop parser, transpiler
-  Orchestrator/         → AI VJ: anticipation engine, emotion mapper, transitions,
-                          track change detection, preset selection policy
-  Shared/               → UMA buffer wrappers, type definitions
-    UMABuffer           → Generic .storageModeShared MTLBuffer + UMARingBuffer (✓ implemented)
-    AudioFeatures       → @frozen SIMD-aligned structs: AudioFrame, FFTResult, etc. (✓ implemented)
-Tests/
-  AudioTests            → FFTProcessor + AudioBuffer unit tests (23 tests total)
+  Audio/                    → Core Audio tap capture, ring buffers, FFT
+    SystemAudioCapture      → Core Audio tap wrapper: system-wide or per-app (✓ implemented)
+    AudioInputRouter        → Unified source abstraction: system/app/file → callbacks (✓ implemented)
+    AudioBuffer             → IO proc → UMARingBuffer<Float> bridge for GPU (✓ implemented)
+    FFTProcessor            → vDSP 1024-pt FFT → 512 magnitude bins in UMABuffer (✓ implemented)
+    Protocols               → AudioCapturing, AudioBuffering, FFTProcessing (✓ implemented)
+  DSP/                      → Spectral analysis, beat/onset detection, chroma, MFCCs (stub)
+  ML/                       → CoreML wrappers: stem separator, mood classifier (stub)
+  Renderer/                 → Metal context, pipelines, shader library
+    MetalContext            → MTLDevice, command queue, triple-buffered semaphore (✓ implemented)
+    ShaderLibrary           → Auto-discover .metal files, runtime compilation, cache (✓ implemented)
+    RenderPipeline          → Full-screen shader pass, audio UMA buffer binding (✓ implemented)
+    Protocols               → Rendering protocol for DI/testing (✓ implemented)
+    Shaders/Waveform.metal  → 64-bar FFT spectrum + oscilloscope waveform (✓ implemented)
+  Presets/                  → Preset loading, categorization, hot-reload
+    PresetLoader            → Auto-discover .metal presets, compile, hot-reload via FSEvents (✓ implemented)
+    PresetDescriptor        → JSON sidecar metadata (feedback params, beat source) (✓ implemented)
+    PresetCategory          → Visual aesthetic families (10 categories) (✓ implemented)
+  Orchestrator/             → AI VJ: anticipation engine, transitions, preset selection (stub)
+  Shared/                   → UMA buffer wrappers, type definitions, logging
+    UMABuffer               → Generic .storageModeShared MTLBuffer + UMARingBuffer (✓ implemented)
+    AudioFeatures           → @frozen SIMD-aligned structs: AudioFrame, FFTResult, etc. (✓ implemented)
+    Logging                 → Per-module os.Logger instances (✓ implemented)
+
+Tests/ (94 tests)
+  Audio/                    → AudioBufferTests, FFTProcessorTests
+  Renderer/                 → MetalContextTests, ShaderLibraryTests, RenderPipelineTests
+  Shared/                   → AudioFeaturesTests, UMABufferExtendedTests
+  Integration/              → AudioToFFTPipelineTests, AudioToRenderPipelineTests
+  Regression/               → FFTRegressionTests + golden fixtures (440hz_sine, 440hz_fft)
+  Performance/              → FFTPerformanceTests, RenderLoopPerformanceTests
+  TestDoubles/              → MockAudioCapture, StubFFTProcessor, AudioFixtures
 ```
 
 ---
@@ -283,7 +300,17 @@ Phosphene works at every tier — never show errors or degraded UI when metadata
 - `CMSampleBuffer` is thread-safe but not marked `Sendable` in Swift 6. Use `nonisolated(unsafe)` or `@unchecked Sendable` box wrappers when transferring across isolation boundaries (e.g., from `SCStreamOutput` callback to `AsyncStream`).
 - `NSLock` cannot be used in `async` contexts in Swift 6. Use `NSLock.withLock {}` from synchronous contexts only, or convert to an actor. For types that mix sync callbacks (e.g., `SCStreamOutput`) with async API, use `@unchecked Sendable` class with `NSLock.withLock` rather than actor.
 - No C++ interop unless required for legacy preset parsing.
-- SwiftLint enforced. Config at `.swiftlint.yml`.
+- SwiftLint enforced. Config at `.swiftlint.yml`. Key rules: `force_cast`, `force_try`, `force_unwrapping` → error; `file_length` warning at 400 lines; `cyclomatic_complexity` warning at 10.
+- No `print()` in production code. Use `os.Logger` via `Shared/Logging.swift` — one logger per module (`Logger(subsystem: "com.phosphene", category: "<module>")`). Use `.debug` for per-frame data, `.info` for lifecycle events, `.error` for failures.
+- All `public` API must have `///` doc comments. Every source file uses `// MARK: -` section dividers.
+- Protocol-first design for testability. Every injectable dependency has a protocol (`AudioCapturing`, `AudioBuffering`, `FFTProcessing`, `Rendering`). Tests use doubles from `TestDoubles/`.
+
+### Testing
+- **94 tests** across unit, integration, regression, and performance categories.
+- All tests must pass before starting new work (`swift test --package-path PhospheneEngine`).
+- Test doubles in `Tests/TestDoubles/`: `MockAudioCapture`, `StubFFTProcessor`, `AudioFixtures`.
+- Regression tests use golden fixtures in `Tests/Regression/Fixtures/`.
+- Performance tests use `XCTest.measure {}` with baselines.
 
 ---
 
@@ -365,9 +392,17 @@ Metal, MetalKit, CoreML, AVFoundation, Accelerate, ScreenCaptureKit, MusicKit
 12. **Full-screen rendering**: Single oversized triangle (3 vertices, no vertex buffer) generated in vertex shader from `vertex_id`. More efficient than a quad.
 13. **Screen capture permission**: Required for Core Audio taps to deliver non-zero audio. Must call `CGRequestScreenCaptureAccess()` before starting capture. Tap creation succeeds without permission but delivers silence.
 10. **Learning stays local**: On-device only. No cloud. No telemetry.
+14. **Preset hot-reload**: `PresetLoader` watches external directories via `DispatchSource.FileSystemObject`. New `.metal` files are discovered and compiled without restart. Each preset has an independent pipeline state compiled with a shared preamble (FeatureVector struct, fullscreen_vertex, HSV utilities).
+15. **Protocol-oriented testability**: All major subsystems have corresponding protocols (`AudioCapturing`, `AudioBuffering`, `FFTProcessing`, `Rendering`). Production code depends on protocols; test doubles inject via initializer.
+16. **Structured logging**: `os.Logger` via `Shared/Logging.swift`. One subsystem (`com.phosphene`), one category per module. No `print()` in production code.
+17. **SwiftLint enforcement**: `.swiftlint.yml` with `force_cast`/`force_try`/`force_unwrapping` as errors, `file_length` warning at 400, `cyclomatic_complexity` warning at 10. Tests and tools directories excluded from lint.
 
 ## Reference Documents
 
 The full development plan with phased increments is in `docs/DEVELOPMENT_PLAN.md`. Consult the relevant increment when starting a task — do not load the entire plan into context.
 
-The architectural blueprint is in `docs/ARCHITECTURE_BLUEPRINT.md`.
+The architectural blueprint is in `docs/ARCHITECTURAL_BLUEPRINT.md`.
+
+## Current Status
+
+**Phase 1 complete.** Increments 1.1–1.5 and R.1 (quality retrofit) are done. The audio-to-GPU-to-pixel pipeline works end to end: Core Audio taps → AudioBuffer → FFTProcessor → Metal shader rendering. Preset hot-reload works. 94 tests pass. SwiftLint clean. Next up: Phase 2 (streaming metadata, stem separation, MIR features, mood classification).

@@ -3,6 +3,12 @@
 
 import Foundation
 
+// MARK: - PresetCategory
+
+/// Visual aesthetic family for classifying presets.
+///
+/// The Orchestrator uses categories to ensure visual variety — it avoids
+/// selecting presets from the same category in consecutive transitions.
 public enum PresetCategory: String, Sendable, CaseIterable, Codable {
     case waveform
     case fractal
