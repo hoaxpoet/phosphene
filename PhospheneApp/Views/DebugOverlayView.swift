@@ -33,6 +33,13 @@ struct DebugOverlayView: View {
                     label("Duration", formatDuration(duration))
                 }
                 label("Source", track.source.rawValue)
+            } else if !engine.hasScreenCapturePermission {
+                Text("Screen capture permission required")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundColor(.red.opacity(0.8))
+                Text("System Settings → Privacy → Screen Recording")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.4))
             } else {
                 Text("No track detected")
                     .font(.system(size: 12, design: .monospaced))

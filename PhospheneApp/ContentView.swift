@@ -104,6 +104,9 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Pre-fetched profile from external APIs.
     @Published var preFetchedProfile: PreFetchedTrackProfile?
 
+    /// Whether screen capture permission has been granted.
+    @Published var hasScreenCapturePermission = false
+
     /// Task that hides the preset name after a delay.
     private var hideNameTask: Task<Void, Never>?
 
@@ -205,36 +208,48 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
 
     // MARK: - Public API
 
-    /// Request screen capture permission and start audio capture.
+    /// Request screen capture permission and start audio capture + metadata.
     func startAudio() {
-        // Start metadata observation unconditionally — it uses MediaRemote,
-        // which does not require screen capture permission.
-        if #available(macOS 14.2, *), let audioRouter = router as? AudioInputRouter {
-            audioRouter.startMetadataOnly()
-        }
-
-        let hasPermission = CGPreflightScreenCaptureAccess()
-        if !hasPermission {
-            let granted = CGRequestScreenCaptureAccess()
-            if !granted {
+        var permitted = CGPreflightScreenCaptureAccess()
+        if !permitted {
+            permitted = CGRequestScreenCaptureAccess()
+            if !permitted {
                 logger.error("Screen capture denied. Enable in System Settings → Privacy → Screen Recording.")
-                // Metadata observation is already running — only audio capture is blocked.
             }
         }
 
-        if hasPermission || CGPreflightScreenCaptureAccess() {
-            if #available(macOS 14.2, *), let audioRouter = router as? AudioInputRouter {
-                do {
-                    try audioRouter.start(mode: .systemAudio)
-                    logger.info("Audio capture started")
-                } catch {
-                    logger.error("Audio capture failed: \(error)")
-                }
+        hasScreenCapturePermission = permitted
+
+        if permitted, #available(macOS 14.2, *), let audioRouter = router as? AudioInputRouter {
+            do {
+                // start() begins both audio capture AND metadata observation.
+                try audioRouter.start(mode: .systemAudio)
+                logger.info("Audio capture and metadata observation started")
+            } catch {
+                logger.error("Audio capture failed: \(error)")
+                // Audio failed but metadata might still work — try it.
+                audioRouter.startMetadataOnly()
             }
         }
 
         if let current = presetLoader.currentPreset {
             showPresetName(current.descriptor.name)
+        }
+
+        // Poll for permission changes — user may grant in System Settings
+        // while the app is running.
+        if !permitted {
+            Task { @MainActor in
+                while !hasScreenCapturePermission {
+                    try? await Task.sleep(for: .seconds(2))
+                    if CGPreflightScreenCaptureAccess() {
+                        hasScreenCapturePermission = true
+                        logger.info("Screen capture permission granted — starting audio")
+                        startAudio()
+                        break
+                    }
+                }
+            }
         }
     }
 
