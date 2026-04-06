@@ -144,6 +144,40 @@ public struct TrackChangeEvent: Sendable {
     }
 }
 
+// MARK: - MoodClassifying
+
+/// Abstraction over CoreML mood classification.
+///
+/// Concrete implementation: `MoodClassifier` (ML module).
+/// Test double: `StubMoodClassifier`.
+public protocol MoodClassifying: AnyObject, Sendable {
+    /// Classify mood from audio features.
+    ///
+    /// - Parameter features: Array of 10 floats:
+    ///   `[subBass, lowBass, lowMid, midHigh, highMid, high,
+    ///    spectralCentroid, spectralFlux,
+    ///    majorKeyCorrelation, minorKeyCorrelation]`
+    /// - Returns: EmotionalState with valence and arousal.
+    func classify(features: [Float]) throws -> EmotionalState
+
+    /// Latest smoothed emotional state (EMA-filtered).
+    var currentState: EmotionalState { get }
+}
+
+// MARK: - MoodClassificationError
+
+/// Errors from the mood classification pipeline.
+public enum MoodClassificationError: Error, Sendable {
+    /// CoreML model bundle not found in the module resources.
+    case modelNotFound
+    /// CoreML model failed to load.
+    case modelLoadFailed(String)
+    /// CoreML prediction failed.
+    case predictionFailed(String)
+    /// Wrong number of input features (expected 20).
+    case invalidFeatureCount(Int)
+}
+
 // MARK: - MetadataProviding
 
 /// Abstraction over streaming metadata observation (Now Playing polling).

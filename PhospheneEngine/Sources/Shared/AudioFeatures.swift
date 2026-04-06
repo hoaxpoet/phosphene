@@ -308,3 +308,53 @@ public struct PreFetchedTrackProfile: Sendable, Equatable, Codable {
         self.fetchedAt = fetchedAt
     }
 }
+
+// MARK: - EmotionalQuadrant
+
+/// Quadrant in the valence-arousal circumplex model.
+///
+/// Maps to Russell's circumplex: valence (positive/negative) × arousal (high/low).
+public enum EmotionalQuadrant: String, Sendable, Equatable, Codable {
+    /// High valence, high arousal (e.g., euphoric dance track).
+    case happy
+    /// Low valence, low arousal (e.g., slow minor-key ballad).
+    case sad
+    /// Low valence, high arousal (e.g., aggressive distorted riff).
+    case tense
+    /// High valence, low arousal (e.g., gentle acoustic lullaby).
+    case calm
+}
+
+// MARK: - EmotionalState
+
+/// Continuous emotional coordinates from the mood classifier.
+///
+/// Maps to Russell's circumplex model of affect:
+/// - Valence: -1 (negative/sad) to +1 (positive/happy)
+/// - Arousal: -1 (calm/relaxed) to +1 (energetic/excited)
+public struct EmotionalState: Sendable, Equatable {
+
+    /// Emotional valence: -1 (sad/tense) to +1 (happy/calm).
+    public var valence: Float
+
+    /// Emotional arousal: -1 (calm) to +1 (energetic).
+    public var arousal: Float
+
+    /// The quadrant this emotional state falls in.
+    public var quadrant: EmotionalQuadrant {
+        switch (valence >= 0, arousal >= 0) {
+        case (true, true):   return .happy
+        case (false, false): return .sad
+        case (false, true):  return .tense
+        case (true, false):  return .calm
+        }
+    }
+
+    public init(valence: Float = 0, arousal: Float = 0) {
+        self.valence = valence
+        self.arousal = arousal
+    }
+
+    /// Neutral emotional state (origin of the circumplex).
+    public static let neutral = EmotionalState()
+}

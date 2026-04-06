@@ -28,7 +28,7 @@ swiftlint lint --strict --config .swiftlint.yml
 
 Deployment target: macOS 14.0+ (Sonoma). Swift 6.0. Metal 3.1+.
 
-**Current test count: 162 tests** (unit, integration, regression, performance). All must pass before any new code is merged.
+**Current test count: 173 tests** (unit, integration, regression, performance). All must pass before any new code is merged.
 
 ## Module Map
 
@@ -44,7 +44,7 @@ PhospheneEngine/
     AudioInputRouter        → Unified source abstraction: system/app/file → callbacks (✓ implemented)
     AudioBuffer             → IO proc → UMARingBuffer<Float> bridge for GPU (✓ implemented)
     FFTProcessor            → vDSP 1024-pt FFT → 512 magnitude bins in UMABuffer (✓ implemented)
-    Protocols               → AudioCapturing, AudioBuffering, FFTProcessing, MetadataProviding, MetadataFetching (✓ implemented)
+    Protocols               → AudioCapturing, AudioBuffering, FFTProcessing, MoodClassifying, MetadataProviding, MetadataFetching (✓ implemented)
     StreamingMetadata       → AppleScript polling of Apple Music/Spotify, track change detection (✓ implemented)
     MetadataPreFetcher      → Parallel async queries, LRU cache, merge partial results (✓ implemented)
     MusicBrainzFetcher      → Free API, genre tags + duration from MusicBrainz recordings (✓ implemented)
@@ -59,7 +59,9 @@ PhospheneEngine/
     MIRPipeline             → Coordinator: all analyzers → FeatureVector for GPU (✓ implemented)
   ML/                       → CoreML wrappers: stem separator, mood classifier
     Models/StemSeparator.mlpackage → Open-Unmix HQ 4-stem mask estimator for ANE (✓ converted)
+    Models/MoodClassifier.mlpackage → Valence/arousal MLP for ANE (✓ trained)
     StemSeparator.swift      → STFT → CoreML → iSTFT pipeline, StemSeparating protocol (✓ implemented)
+    MoodClassifier.swift    → 10-feature MLP → valence/arousal, MoodClassifying protocol (✓ implemented)
     ML.swift                → CoreML module imports
   Renderer/                 → Metal context, pipelines, shader library
     MetalContext            → MTLDevice, command queue, triple-buffered semaphore (✓ implemented)
@@ -77,16 +79,16 @@ PhospheneEngine/
     AudioFeatures           → @frozen SIMD-aligned structs: AudioFrame, FFTResult, TrackMetadata, PreFetchedTrackProfile (✓ implemented)
     Logging                 → Per-module os.Logger instances (✓ implemented)
 
-Tests/ (162 tests)
+Tests/ (173 tests)
   Audio/                    → AudioBufferTests, FFTProcessorTests, StreamingMetadataTests, MetadataPreFetcherTests
   DSP/                      → SpectralAnalyzerTests (8), BandEnergyProcessorTests (5), ChromaExtractorTests (6), BeatDetectorTests (7), MIRPipelineUnitTests (4)
-  ML/                       → StemSeparatorTests (8 tests: model loading, compute units, separation, silence, storage mode, labels, chunking, protocol)
+  ML/                       → StemSeparatorTests (8), MoodClassifierTests (7: model loading, classification, range, quadrants, protocol)
   Renderer/                 → MetalContextTests, ShaderLibraryTests, RenderPipelineTests
-  Shared/                   → AudioFeaturesTests, UMABufferExtendedTests
+  Shared/                   → AudioFeaturesTests, UMABufferExtendedTests, EmotionalStateTests (4: quadrant classification)
   Integration/              → AudioToFFTPipelineTests, AudioToRenderPipelineTests, MetadataToOrchestratorTests, AudioToStemPipelineTests, MIRPipelineIntegrationTests (3)
   Regression/               → FFTRegressionTests, MetadataParsingRegressionTests, ChromaRegressionTests (2), BeatDetectorRegressionTests (2) + golden fixtures
   Performance/              → FFTPerformanceTests, RenderLoopPerformanceTests, StemSeparationPerformanceTests, DSPPerformanceTests (3)
-  TestDoubles/              → MockAudioCapture, StubFFTProcessor, FakeStemSeparator, AudioFixtures, MockMetadataProvider, MockMetadataFetcher
+  TestDoubles/              → MockAudioCapture, StubFFTProcessor, FakeStemSeparator, StubMoodClassifier, AudioFixtures, MockMetadataProvider, MockMetadataFetcher
 ```
 
 ---
@@ -295,10 +297,11 @@ Because streaming audio arrives without a pre-scannable file, Phosphene employs 
 - ALL CoreML models: `.cpuAndNeuralEngine` compute units. Never `.all` or `.cpuAndGPU` — GPU is reserved for rendering.
 - Models are `.mlpackage` format in `ML/Models/`, tracked via Git LFS.
 - **Stem separator architecture** (STFT split): CoreML model takes STFT magnitude spectrograms `[1, 2, 2049, nb_frames]`, outputs 4 filtered spectrograms `[4, 2, 2049, nb_frames]` (vocals, drums, bass, other). STFT/iSTFT handled in Swift via Accelerate/vDSP — CoreML cannot process complex numbers. Model: Open-Unmix HQ (LSTM-based, 68 MB). STFT params: n_fft=4096, hop=1024, sample_rate=44100. Fixed input size: 431 frames (~10s of audio at 44100 Hz). Shorter inputs are zero-padded; longer inputs are truncated.
+- **ANE Float16 output**: Small CoreML models may output `Float16` MLMultiArrays on ANE. `MLShapedArray<Float16>` requires macOS 15+. Use `MLMultiArray` subscript access (`multiArray[index].floatValue`) for type-safe extraction compatible with macOS 14+.
 - **ANE output buffer padding**: CoreML outputs from the Neural Engine have padded strides (e.g., stride[2]=448 for shape[3]=431, aligned for ANE tile sizes) but `dataPointer` only covers the logical element count — accessing padding indices causes SIGSEGV. Use `MLShapedArray.withUnsafeShapedBufferPointer` to correctly traverse padded layouts. Never use raw `MLMultiArray.dataPointer` with reported strides on ANE outputs.
 - **STFT/iSTFT performance**: The current CPU-based STFT/iSTFT via Accelerate is the bottleneck (~6s for a 10s chunk across 4 stems × 2 channels). The endgame optimization is moving STFT/iSTFT to Metal compute shaders, eliminating CPU↔GPU copies entirely and enabling the separation pipeline to run within a single GPU command buffer alongside rendering. This is tracked as a future increment.
 - Stem separator outputs: Vocals, Drums, Bass, Other — each independently routed to shaders.
-- Mood classifier outputs continuous valence (-1…1) and arousal (-1…1), smoothed with EMA.
+- Mood classifier outputs continuous valence (-1…1) and arousal (-1…1), smoothed with EMA. Input: 10 features (6-band energy, centroid, flux, major/minor key correlations). Model: 914-parameter MLP on ANE.
 
 ### Orchestrator
 - Four states: `idle` → `listening` → `ramping` → `full`.
@@ -337,7 +340,7 @@ Phosphene works at every tier — never show errors or degraded UI when metadata
 ### Testing
 - **162 tests** across unit, integration, regression, and performance categories.
 - All tests must pass before starting new work (`swift test --package-path PhospheneEngine`).
-- Test doubles in `Tests/TestDoubles/`: `MockAudioCapture`, `StubFFTProcessor`, `AudioFixtures`, `MockMetadataProvider`, `MockMetadataFetcher`.
+- Test doubles in `Tests/TestDoubles/`: `MockAudioCapture`, `StubFFTProcessor`, `FakeStemSeparator`, `StubMoodClassifier`, `AudioFixtures`, `MockMetadataProvider`, `MockMetadataFetcher`.
 - Regression tests use golden fixtures in `Tests/Regression/Fixtures/`.
 - Performance tests use `XCTest.measure {}` with baselines.
 
@@ -362,7 +365,8 @@ These were tried in the Electron prototype and abandoned with documented reasons
 13. **End-to-end audio-in/audio-out CoreML models for source separation**: CoreML has no complex number support. All audio separation models (HTDemucs, Open-Unmix, Demucs) use STFT/iSTFT internally, which requires complex arithmetic. The architecture must be split: STFT/iSTFT in Swift (Accelerate), neural network mask estimation in CoreML.
 14. **Raw `MLMultiArray.dataPointer` with reported strides on ANE outputs**: ANE output buffers have padded strides (aligned to tile sizes) but `dataPointer` only maps the logical element count. Accessing padding indices causes SIGSEGV. Use `MLShapedArray.withUnsafeShapedBufferPointer` instead — it correctly handles padded layouts. This also applies to `withUnsafeBytes`.
 15. **Chroma extraction using low-frequency FFT bins (< 500 Hz)**: At 48kHz/1024-point FFT, bin resolution is 46.875 Hz. Below ~500 Hz, bin centers don't align with musical pitches — e.g., 261.6 Hz (C4) maps to bin 6 (281.25 Hz) which rounds to C#, not C. 220 Hz (A3) maps to bin 5 (234.375 Hz) which rounds to A#, not A. Solution: skip bins below 65 Hz entirely, and rely on higher octaves (C5+, 523+ Hz) where bin-to-pitch mapping is accurate. The higher harmonics naturally carry the pitch information.
-16. **Autocorrelation tempo estimation returning half-tempo**: Basic autocorrelation of onset functions often returns half the true tempo (e.g., 60 BPM instead of 120 BPM) because the autocorrelation peak at lag=2×beat is often stronger than at lag=1×beat. This is a well-known "octave error". Accept it for now — the pre-fetched BPM from metadata APIs disambiguates. Future fix: onset spacing analysis or harmonic product spectrum.
+16. **Raw 12-bin chroma as mood classifier input**: A 914-param MLP (or even 3490-param) cannot learn the Krumhansl-Schmuckler key correlation function from raw chroma bins. Training loss plateaued at 0.23 (RMSE ~0.48) and valence output was near-zero for both major and minor key inputs. The correlation computation involves rotating the chroma vector through all 12 keys and comparing against 24 profiles — too complex for a tiny network to approximate. Solution: pre-compute major/minor key correlations as 2 scalar inputs (replacing 12 chroma bins), reducing the model input from 20 to 10 features. Training loss dropped to 0.02 (RMSE ~0.14).
+17. **Autocorrelation tempo estimation returning half-tempo**: Basic autocorrelation of onset functions often returns half the true tempo (e.g., 60 BPM instead of 120 BPM) because the autocorrelation peak at lag=2×beat is often stronger than at lag=1×beat. This is a well-known "octave error". Accept it for now — the pre-fetched BPM from metadata APIs disambiguates. Future fix: onset spacing analysis or harmonic product spectrum.
 
 ---
 
@@ -393,7 +397,7 @@ struct BandEnergy              // 3-band (bass/mid/treble) + 6-band, instant + a
 struct StemData                // Four stems: vocals, drums, bass, other (each as AudioFrame)
 struct SpectralFeatures        // centroid, flux, rolloff, MFCCs, chroma, ZCR
 struct OnsetPulses             // beat_bass, beat_mid, beat_treble, composite (all 0–1 decaying)
-struct EmotionVector           // valence: Float (-1…1), arousal: Float (-1…1)
+struct EmotionalState           // valence: Float (-1…1), arousal: Float (-1…1), quadrant: EmotionalQuadrant
 struct StructuralPrediction    // section start, predicted next boundary, confidence, section index
 struct AnalyzedFrame           // Timestamped bundle of all above
 struct TrackMetadata           // title, artist, album, genre, duration, artwork URL, source
@@ -441,7 +445,8 @@ Metal, MetalKit, CoreML, AVFoundation, Accelerate, ScreenCaptureKit, MusicKit
 22. **GPU STFT/iSTFT (planned optimization)**: The current CPU-based STFT/iSTFT via Accelerate is the stem separation bottleneck (~6s for 10s of audio across 4 stems × 2 channels = 3448 FFT operations). The target architecture moves STFT/iSTFT to Metal compute shaders, eliminating CPU↔GPU copies and enabling the full separation pipeline (STFT → ANE predict → iSTFT → UMA buffers) to run without CPU-side data extraction. This would also enable real-time per-frame stem analysis rather than batch processing.
 23. **MIR pipeline architecture**: DSP module takes `[Float]` magnitude arrays (not `UMABuffer`) — no Metal dependency. The caller extracts magnitudes from FFTProcessor's UMABuffer before passing to MIRPipeline. Chroma, key, and tempo are CPU-side properties on MIRPipeline (not in FeatureVector, which is limited to 24 floats for GPU upload). BandEnergyProcessor and BeatDetector independently compute 6-band bin ranges — simple duplication avoids coupling.
 24. **Krumhansl-Schmuckler key estimation**: 24 key profiles (12 major + 12 minor rotations of Krumhansl 1990 profiles). Pearson correlation against normalized chroma vector. Minimum confidence threshold of 0.3 to avoid spurious key reports. Works well for clear tonal content; atonal or percussive-only material correctly returns nil.
-25. **Spectral flux normalization for GPU**: Raw flux depends on magnitude scale and bin count. MIRPipeline normalizes via running-max AGC (tracks peak flux with 0.999 decay). Spectral centroid normalized by dividing by Nyquist (24000 Hz) to map to 0–1.
+25. **Mood classifier input features**: 10 pre-computed features, NOT raw 12-bin chroma. A tiny MLP cannot learn the Krumhansl-Schmuckler correlation function implicitly from 12 chroma bins — training converged to near-zero valence regardless of key mode. Pre-computing major/minor key correlations (which ChromaExtractor already calculates internally) reduces the problem to a trivially learnable function. The MLP provides smooth interpolation + efficient ANE execution over what could be pure heuristics.
+26. **Spectral flux normalization for GPU**: Raw flux depends on magnitude scale and bin count. MIRPipeline normalizes via running-max AGC (tracks peak flux with 0.999 decay). Spectral centroid normalized by dividing by Nyquist (24000 Hz) to map to 0–1.
 
 ## Reference Documents
 
@@ -451,6 +456,6 @@ The architectural blueprint is in `docs/ARCHITECTURAL_BLUEPRINT.md`.
 
 ## Current Status
 
-**Phase 2 in progress.** Increments 2.1 (streaming metadata), 2.2 (CoreML stem separation model conversion), 2.3 (Swift CoreML stem separator integration), and 2.4 (MIR feature extraction pipeline) are complete.
+**Phase 2 in progress.** Increments 2.1 (streaming metadata), 2.2 (CoreML stem separation model conversion), 2.3 (Swift CoreML stem separator integration), 2.4 (MIR feature extraction pipeline), and 2.5 (mood classification model) are complete.
 
-Increment 2.4 implemented the real-time MIR pipeline in the DSP module — five new source files: `SpectralAnalyzer` (centroid, rolloff, flux via vDSP), `BandEnergyProcessor` (3-band + 6-band energy with AGC and FPS-independent smoothing), `ChromaExtractor` (12-bin chroma vector with Krumhansl-Schmuckler key estimation), `BeatDetector` (6-band spectral flux onset detection with adaptive median thresholds, per-band cooldowns, grouped beat pulses with exponential decay, and tempo estimation via autocorrelation), and `MIRPipeline` (coordinator that runs all analyzers and populates a `FeatureVector` for GPU upload). Chroma, key, and tempo are exposed as CPU-side properties for the Orchestrator. All tuning constants match the validated Electron prototype. 162 Swift tests pass (122 existing + 40 new). Performance: spectral analyzer ~4ms, chroma ~6ms, beat detector ~3ms per second of audio at 48fps. Next up: Increment 2.5 (DSP/MIR → rendering integration).
+Increment 2.5 added a lightweight valence/arousal mood classifier deployed on the Apple Neural Engine. Python training pipeline (`tools/train_mood_classifier.py`) generates rule-based synthetic data mapping audio features to emotional coordinates, trains a 914-parameter MLP (10 → 32 → 16 → 2 with tanh), and exports to CoreML `.mlpackage`. Input features: 6-band energy, spectral centroid, spectral flux, and pre-computed major/minor key correlations (from ChromaExtractor's Krumhansl-Schmuckler algorithm). Output: valence [-1,1] and arousal [-1,1] with EMA smoothing (alpha=0.1, ~0.5s time constant at 60fps). Swift types: `EmotionalState` struct with computed `quadrant` property (happy/sad/tense/calm), `MoodClassifying` protocol, `MoodClassifier` CoreML wrapper, `StubMoodClassifier` test double. 173 Swift tests pass (162 existing + 11 new). 4/4 Python model assertions pass. Next up: Increment 2.6 (DSP/MIR → rendering integration).
