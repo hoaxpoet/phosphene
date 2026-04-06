@@ -1,6 +1,7 @@
 import SwiftUI
 import Renderer
 import Audio
+import Presets
 import Shared
 import os.log
 import CoreGraphics
@@ -11,9 +12,36 @@ struct ContentView: View {
     @StateObject private var engine = VisualizerEngine()
 
     var body: some View {
-        MetalView(context: engine.context, pipeline: engine.pipeline)
-            .frame(minWidth: 800, minHeight: 600)
-            .onAppear { engine.startAudio() }
+        ZStack(alignment: .topLeading) {
+            MetalView(context: engine.context, pipeline: engine.pipeline)
+
+            if let name = engine.currentPresetName {
+                Text(name)
+                    .font(.system(size: 14, weight: .medium, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.7))
+                    .padding(8)
+                    .background(.black.opacity(0.4))
+                    .cornerRadius(6)
+                    .padding(12)
+                    .transition(.opacity)
+                    .allowsHitTesting(false)
+            }
+        }
+        .focusable()
+        .frame(minWidth: 800, minHeight: 600)
+        .onAppear { engine.startAudio() }
+        .onKeyPress(.rightArrow) {
+            engine.nextPreset()
+            return .handled
+        }
+        .onKeyPress(.leftArrow) {
+            engine.previousPreset()
+            return .handled
+        }
+        .onKeyPress(.space) {
+            engine.nextPreset()
+            return .handled
+        }
     }
 }
 
@@ -27,14 +55,21 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
 
     private let audioBuffer: AudioBuffer
     private let fftProcessor: FFTProcessor
+    private let presetLoader: PresetLoader
     // AudioInputRouter requires macOS 14.2+; stored as Any to avoid propagating availability.
     private var router: Any?
+
+    @Published var currentPresetName: String?
+    private var hideNameTask: Task<Void, Never>?
 
     init() {
         let ctx = try! MetalContext()
         let buf = try! AudioBuffer(device: ctx.device)
         let fft = try! FFTProcessor(device: ctx.device)
         let lib = try! ShaderLibrary(context: ctx)
+
+        let loader = PresetLoader(device: ctx.device, pixelFormat: ctx.pixelFormat)
+
         let pipe = try! RenderPipeline(
             context: ctx,
             shaderLibrary: lib,
@@ -42,15 +77,29 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
             waveformBuffer: buf.metalBuffer
         )
 
+        if !loader.presets.isEmpty {
+            if let waveformIndex = loader.selectPreset(named: "Waveform") {
+                logger.info("Starting with preset: Waveform (index \(waveformIndex))")
+            }
+            if let preset = loader.currentPreset {
+                pipe.setActivePipelineState(preset.pipelineState)
+            }
+        }
+
         self.context = ctx
         self.audioBuffer = buf
         self.fftProcessor = fft
         self.pipeline = pipe
+        self.presetLoader = loader
+
+        loader.onPresetsReloaded = { [weak self] in
+            guard let self, let current = self.presetLoader.currentPreset else { return }
+            self.pipeline.setActivePipelineState(current.pipelineState)
+            self.showPresetName(current.descriptor.name)
+        }
 
         if #available(macOS 14.2, *) {
             let audioRouter = AudioInputRouter()
-            // Wire audio callback: samples → ring buffer → FFT.
-            // This closure runs on the real-time audio IO thread.
             audioRouter.onAudioSamples = {
                 [weak buf, weak fft]
                 (samples: UnsafePointer<Float>, count: Int, rate: Float, channels: UInt32) in
@@ -66,30 +115,52 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     }
 
     func startAudio() {
-        // Core Audio taps require Screen Recording (or System Audio Recording) permission.
-        // Without it, the tap is created but delivers silence.
         let hasPermission = CGPreflightScreenCaptureAccess()
         if !hasPermission {
-            logger.warning("Screen capture permission not granted — requesting now")
             let granted = CGRequestScreenCaptureAccess()
-            logger.info("Screen capture permission request result: \(granted)")
             if !granted {
-                logger.error("Screen capture permission denied. Grant it in System Settings → Privacy & Security → Screen Recording (or Screen & System Audio Recording), then relaunch.")
+                logger.error("Screen capture permission denied. Grant it in System Settings → Privacy & Security → Screen Recording, then relaunch.")
                 return
             }
-        } else {
-            logger.info("Screen capture permission: granted")
         }
 
         if #available(macOS 14.2, *), let audioRouter = router as? AudioInputRouter {
             do {
                 try audioRouter.start(mode: .systemAudio)
-                logger.info("Audio capture started successfully")
+                logger.info("Audio capture started")
             } catch {
                 logger.error("Audio capture failed: \(error)")
             }
-        } else {
-            logger.warning("Audio capture unavailable (requires macOS 14.2+)")
+        }
+
+        if let current = presetLoader.currentPreset {
+            showPresetName(current.descriptor.name)
+        }
+    }
+
+    // MARK: - Preset Cycling
+
+    func nextPreset() {
+        guard let preset = presetLoader.nextPreset() else { return }
+        pipeline.setActivePipelineState(preset.pipelineState)
+        showPresetName(preset.descriptor.name)
+    }
+
+    func previousPreset() {
+        guard let preset = presetLoader.previousPreset() else { return }
+        pipeline.setActivePipelineState(preset.pipelineState)
+        showPresetName(preset.descriptor.name)
+    }
+
+    private func showPresetName(_ name: String) {
+        hideNameTask?.cancel()
+        currentPresetName = name
+        hideNameTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeOut(duration: 0.5)) {
+                currentPresetName = nil
+            }
         }
     }
 }

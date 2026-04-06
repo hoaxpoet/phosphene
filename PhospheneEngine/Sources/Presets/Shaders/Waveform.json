@@ -1,0 +1,14 @@
+{
+  "name": "Waveform",
+  "family": "waveform",
+  "duration": 30,
+  "description": "64-bar FFT spectrum analyzer with stereo oscilloscope waveform overlay",
+  "author": "Matt",
+  "beat_source": "bass",
+  "beat_zoom": 0.03,
+  "beat_rot": 0.01,
+  "base_zoom": 0.12,
+  "base_rot": 0.03,
+  "decay": 0.955,
+  "beat_sensitivity": 1.0
+}

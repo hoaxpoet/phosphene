@@ -1,0 +1,14 @@
+{
+  "name": "Nebula",
+  "family": "particles",
+  "duration": 30,
+  "description": "Radial frequency visualization with particle sparkles and nebula haze",
+  "author": "Matt",
+  "beat_source": "bass",
+  "beat_zoom": 0.05,
+  "beat_rot": 0.02,
+  "base_zoom": 0.08,
+  "base_rot": 0.04,
+  "decay": 0.94,
+  "beat_sensitivity": 1.0
+}

@@ -1,0 +1,14 @@
+{
+  "name": "Plasma",
+  "family": "hypnotic",
+  "duration": 25,
+  "description": "Classic demoscene plasma with sine interference patterns driven by FFT energy bands",
+  "author": "Matt",
+  "beat_source": "composite",
+  "beat_zoom": 0.04,
+  "beat_rot": 0.03,
+  "base_zoom": 0.10,
+  "base_rot": 0.05,
+  "decay": 0.92,
+  "beat_sensitivity": 1.2
+}

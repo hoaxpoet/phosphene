@@ -13,7 +13,8 @@ public final class RenderPipeline: NSObject, MTKViewDelegate, @unchecked Sendabl
     // MARK: - Metal State
 
     private let context: MetalContext
-    private let pipelineState: MTLRenderPipelineState
+    private var pipelineState: MTLRenderPipelineState
+    private let pipelineLock = NSLock()
 
     // MARK: - Audio Buffers (UMA zero-copy — written by audio thread, read by GPU)
 
@@ -57,6 +58,17 @@ public final class RenderPipeline: NSObject, MTKViewDelegate, @unchecked Sendabl
 
         super.init()
         logger.info("RenderPipeline initialized with audio-reactive shader")
+    }
+
+    // MARK: - Preset Switching
+
+    /// Replace the active render pipeline state (e.g., when switching presets).
+    /// Thread-safe — can be called from any queue.
+    public func setActivePipelineState(_ newState: MTLRenderPipelineState) {
+        pipelineLock.withLock {
+            pipelineState = newState
+        }
+        logger.info("Active pipeline state updated")
     }
 
     // MARK: - MTKViewDelegate
@@ -105,7 +117,8 @@ public final class RenderPipeline: NSObject, MTKViewDelegate, @unchecked Sendabl
         var features = FeatureVector(time: elapsed, deltaTime: deltaTime)
 
         // Bind shader pipeline and audio buffers.
-        encoder.setRenderPipelineState(pipelineState)
+        let activePipeline = pipelineLock.withLock { pipelineState }
+        encoder.setRenderPipelineState(activePipeline)
         encoder.setFragmentBytes(&features, length: MemoryLayout<FeatureVector>.size, index: 0)
         encoder.setFragmentBuffer(fftMagnitudeBuffer, offset: 0, index: 1)
         encoder.setFragmentBuffer(waveformBuffer, offset: 0, index: 2)

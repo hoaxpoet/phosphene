@@ -66,7 +66,8 @@ let package = Package(
         .target(
             name: "Presets",
             dependencies: ["Shared"],
-            path: "Sources/Presets"
+            path: "Sources/Presets",
+            resources: [.copy("Shaders")]
         ),
         .target(
             name: "Orchestrator",
@@ -82,7 +83,7 @@ let package = Package(
         ),
         .testTarget(
             name: "PhospheneEngineTests",
-            dependencies: ["Shared", "Audio", "DSP"],
+            dependencies: ["Shared", "Audio", "DSP", "Presets", "Renderer"],
             path: "Tests/PhospheneEngineTests"
         ),
     ]
