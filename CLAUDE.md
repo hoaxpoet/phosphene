@@ -28,7 +28,7 @@ swiftlint lint --strict --config .swiftlint.yml
 
 Deployment target: macOS 14.0+ (Sonoma). Swift 6.0. Metal 3.1+.
 
-**Current test count: 115 tests** (unit, integration, regression, performance). All must pass before any new code is merged.
+**Current test count: 162 tests** (unit, integration, regression, performance). All must pass before any new code is merged.
 
 ## Module Map
 
@@ -51,10 +51,16 @@ PhospheneEngine/
     SpotifyFetcher          → Client credentials flow, search-only track matching (✓ implemented)
     SoundchartsFetcher      → Optional commercial API, BPM/key/energy/valence/danceability (✓ implemented)
     MusicKitBridge          → Optional MusicKit catalog enrichment, graceful no-op (✓ implemented)
-  DSP/                      → Spectral analysis, beat/onset detection, chroma, MFCCs (stub)
+  DSP/                      → Spectral analysis, beat/onset detection, chroma, MIR pipeline
+    SpectralAnalyzer        → Spectral centroid, rolloff, flux via vDSP (✓ implemented)
+    BandEnergyProcessor     → 3-band + 6-band energy, AGC, FPS-independent smoothing (✓ implemented)
+    ChromaExtractor         → 12-bin chroma vector, Krumhansl-Schmuckler key estimation (✓ implemented)
+    BeatDetector            → 6-band onset detection, grouped beat pulses, tempo via autocorrelation (✓ implemented)
+    MIRPipeline             → Coordinator: all analyzers → FeatureVector for GPU (✓ implemented)
   ML/                       → CoreML wrappers: stem separator, mood classifier
     Models/StemSeparator.mlpackage → Open-Unmix HQ 4-stem mask estimator for ANE (✓ converted)
-    ML.swift                → CoreML module stub (Swift integration in Increment 2.3)
+    StemSeparator.swift      → STFT → CoreML → iSTFT pipeline, StemSeparating protocol (✓ implemented)
+    ML.swift                → CoreML module imports
   Renderer/                 → Metal context, pipelines, shader library
     MetalContext            → MTLDevice, command queue, triple-buffered semaphore (✓ implemented)
     ShaderLibrary           → Auto-discover .metal files, runtime compilation, cache (✓ implemented)
@@ -71,14 +77,16 @@ PhospheneEngine/
     AudioFeatures           → @frozen SIMD-aligned structs: AudioFrame, FFTResult, TrackMetadata, PreFetchedTrackProfile (✓ implemented)
     Logging                 → Per-module os.Logger instances (✓ implemented)
 
-Tests/ (115 tests)
+Tests/ (162 tests)
   Audio/                    → AudioBufferTests, FFTProcessorTests, StreamingMetadataTests, MetadataPreFetcherTests
+  DSP/                      → SpectralAnalyzerTests (8), BandEnergyProcessorTests (5), ChromaExtractorTests (6), BeatDetectorTests (7), MIRPipelineUnitTests (4)
+  ML/                       → StemSeparatorTests (8 tests: model loading, compute units, separation, silence, storage mode, labels, chunking, protocol)
   Renderer/                 → MetalContextTests, ShaderLibraryTests, RenderPipelineTests
   Shared/                   → AudioFeaturesTests, UMABufferExtendedTests
-  Integration/              → AudioToFFTPipelineTests, AudioToRenderPipelineTests, MetadataToOrchestratorTests
-  Regression/               → FFTRegressionTests, MetadataParsingRegressionTests + golden fixtures
-  Performance/              → FFTPerformanceTests, RenderLoopPerformanceTests
-  TestDoubles/              → MockAudioCapture, StubFFTProcessor, AudioFixtures, MockMetadataProvider, MockMetadataFetcher
+  Integration/              → AudioToFFTPipelineTests, AudioToRenderPipelineTests, MetadataToOrchestratorTests, AudioToStemPipelineTests, MIRPipelineIntegrationTests (3)
+  Regression/               → FFTRegressionTests, MetadataParsingRegressionTests, ChromaRegressionTests (2), BeatDetectorRegressionTests (2) + golden fixtures
+  Performance/              → FFTPerformanceTests, RenderLoopPerformanceTests, StemSeparationPerformanceTests, DSPPerformanceTests (3)
+  TestDoubles/              → MockAudioCapture, StubFFTProcessor, FakeStemSeparator, AudioFixtures, MockMetadataProvider, MockMetadataFetcher
 ```
 
 ---
@@ -286,7 +294,9 @@ Because streaming audio arrives without a pre-scannable file, Phosphene employs 
 ### CoreML / Neural Engine
 - ALL CoreML models: `.cpuAndNeuralEngine` compute units. Never `.all` or `.cpuAndGPU` — GPU is reserved for rendering.
 - Models are `.mlpackage` format in `ML/Models/`, tracked via Git LFS.
-- **Stem separator architecture** (STFT split): CoreML model takes STFT magnitude spectrograms `[1, 2, 2049, nb_frames]`, outputs 4 filtered spectrograms `[4, 2, 2049, nb_frames]` (vocals, drums, bass, other). STFT/iSTFT handled in Swift via Accelerate/vDSP — CoreML cannot process complex numbers. Model: Open-Unmix HQ (LSTM-based, 68 MB). STFT params: n_fft=4096, hop=1024, sample_rate=44100.
+- **Stem separator architecture** (STFT split): CoreML model takes STFT magnitude spectrograms `[1, 2, 2049, nb_frames]`, outputs 4 filtered spectrograms `[4, 2, 2049, nb_frames]` (vocals, drums, bass, other). STFT/iSTFT handled in Swift via Accelerate/vDSP — CoreML cannot process complex numbers. Model: Open-Unmix HQ (LSTM-based, 68 MB). STFT params: n_fft=4096, hop=1024, sample_rate=44100. Fixed input size: 431 frames (~10s of audio at 44100 Hz). Shorter inputs are zero-padded; longer inputs are truncated.
+- **ANE output buffer padding**: CoreML outputs from the Neural Engine have padded strides (e.g., stride[2]=448 for shape[3]=431, aligned for ANE tile sizes) but `dataPointer` only covers the logical element count — accessing padding indices causes SIGSEGV. Use `MLShapedArray.withUnsafeShapedBufferPointer` to correctly traverse padded layouts. Never use raw `MLMultiArray.dataPointer` with reported strides on ANE outputs.
+- **STFT/iSTFT performance**: The current CPU-based STFT/iSTFT via Accelerate is the bottleneck (~6s for a 10s chunk across 4 stems × 2 channels). The endgame optimization is moving STFT/iSTFT to Metal compute shaders, eliminating CPU↔GPU copies entirely and enabling the separation pipeline to run within a single GPU command buffer alongside rendering. This is tracked as a future increment.
 - Stem separator outputs: Vocals, Drums, Bass, Other — each independently routed to shaders.
 - Mood classifier outputs continuous valence (-1…1) and arousal (-1…1), smoothed with EMA.
 
@@ -325,7 +335,7 @@ Phosphene works at every tier — never show errors or degraded UI when metadata
 - Protocol-first design for testability. Every injectable dependency has a protocol (`AudioCapturing`, `AudioBuffering`, `FFTProcessing`, `Rendering`, `MetadataProviding`, `MetadataFetching`). Tests use doubles from `TestDoubles/`.
 
 ### Testing
-- **115 tests** across unit, integration, regression, and performance categories.
+- **162 tests** across unit, integration, regression, and performance categories.
 - All tests must pass before starting new work (`swift test --package-path PhospheneEngine`).
 - Test doubles in `Tests/TestDoubles/`: `MockAudioCapture`, `StubFFTProcessor`, `AudioFixtures`, `MockMetadataProvider`, `MockMetadataFetcher`.
 - Regression tests use golden fixtures in `Tests/Regression/Fixtures/`.
@@ -350,6 +360,9 @@ These were tried in the Electron prototype and abandoned with documented reasons
 10. **Spotify Audio Features endpoint**: Deprecated for apps created after Nov 2024. Returns 403. Dropped entirely — Spotify is now search-only for track matching. Use Soundcharts (commercial) or self-computed MIR for audio features instead.
 12. **HTDemucs direct CoreML conversion**: Both `torch.jit.trace` → `coremltools.convert()` and `torch.onnx.export()` → CoreML fail. HTDemucs uses STFT/iSTFT with complex tensors (`view_as_complex`) and dynamic shape calculations (`int` cast on tensor shapes) that coremltools 9.0 cannot convert. The same `int` op bug affects Open-Unmix's `Separator` wrapper. Solution: convert only the neural network core (mask estimation), handle STFT/iSTFT externally in Swift via Accelerate/vDSP.
 13. **End-to-end audio-in/audio-out CoreML models for source separation**: CoreML has no complex number support. All audio separation models (HTDemucs, Open-Unmix, Demucs) use STFT/iSTFT internally, which requires complex arithmetic. The architecture must be split: STFT/iSTFT in Swift (Accelerate), neural network mask estimation in CoreML.
+14. **Raw `MLMultiArray.dataPointer` with reported strides on ANE outputs**: ANE output buffers have padded strides (aligned to tile sizes) but `dataPointer` only maps the logical element count. Accessing padding indices causes SIGSEGV. Use `MLShapedArray.withUnsafeShapedBufferPointer` instead — it correctly handles padded layouts. This also applies to `withUnsafeBytes`.
+15. **Chroma extraction using low-frequency FFT bins (< 500 Hz)**: At 48kHz/1024-point FFT, bin resolution is 46.875 Hz. Below ~500 Hz, bin centers don't align with musical pitches — e.g., 261.6 Hz (C4) maps to bin 6 (281.25 Hz) which rounds to C#, not C. 220 Hz (A3) maps to bin 5 (234.375 Hz) which rounds to A#, not A. Solution: skip bins below 65 Hz entirely, and rely on higher octaves (C5+, 523+ Hz) where bin-to-pitch mapping is accurate. The higher harmonics naturally carry the pitch information.
+16. **Autocorrelation tempo estimation returning half-tempo**: Basic autocorrelation of onset functions often returns half the true tempo (e.g., 60 BPM instead of 120 BPM) because the autocorrelation peak at lag=2×beat is often stronger than at lag=1×beat. This is a well-known "octave error". Accept it for now — the pre-fetched BPM from metadata APIs disambiguates. Future fix: onset spacing analysis or harmonic product spectrum.
 
 ---
 
@@ -424,6 +437,11 @@ Metal, MetalKit, CoreML, AVFoundation, Accelerate, ScreenCaptureKit, MusicKit
 18. **Streaming metadata**: `StreamingMetadata` polls MediaRemote (private framework, dynamically loaded) every 2s for system-wide Now Playing state. `MetadataPreFetcher` queries external APIs in parallel (3s per-fetcher timeouts, LRU cache). Active fetchers: MusicBrainz (always, free), Soundcharts (optional, commercial), Spotify (optional, search-only). Pre-fetched data is a "fast hint" for the first ~15s — self-computed MIR (Increment 2.4) is the real source of truth.
 19. **Essentia for offline validation**: Essentia (AGPL) is used in `tools/` Python scripts only — NOT in the app binary. Pre-computes ground-truth audio features for testing and validates self-computed MIR accuracy. Never link Essentia into PhospheneEngine or PhospheneApp.
 20. **Stem separation model**: Open-Unmix HQ (umxhq). HTDemucs was first choice but fails CoreML conversion due to complex tensor ops and dynamic shapes. Open-Unmix's LSTM architecture converts cleanly. The CoreML model operates on STFT magnitude spectrograms (not raw audio) — STFT/iSTFT is handled in Swift via Accelerate/vDSP. Conversion: `tools/convert_stem_model.py`. Tests: `tools/test_stem_model.py` (6 assertions, all pass). Model: 68 MB `.mlpackage`, inference 0.17s for 10s audio on ANE.
+21. **MLShapedArray for CoreML I/O**: ANE output buffers have padded strides with unmapped padding regions — raw `MLMultiArray.dataPointer` access crashes. `MLShapedArray.withUnsafeShapedBufferPointer` correctly traverses padded layouts. Used for both input packing and output unpacking in `StemSeparator`.
+22. **GPU STFT/iSTFT (planned optimization)**: The current CPU-based STFT/iSTFT via Accelerate is the stem separation bottleneck (~6s for 10s of audio across 4 stems × 2 channels = 3448 FFT operations). The target architecture moves STFT/iSTFT to Metal compute shaders, eliminating CPU↔GPU copies and enabling the full separation pipeline (STFT → ANE predict → iSTFT → UMA buffers) to run without CPU-side data extraction. This would also enable real-time per-frame stem analysis rather than batch processing.
+23. **MIR pipeline architecture**: DSP module takes `[Float]` magnitude arrays (not `UMABuffer`) — no Metal dependency. The caller extracts magnitudes from FFTProcessor's UMABuffer before passing to MIRPipeline. Chroma, key, and tempo are CPU-side properties on MIRPipeline (not in FeatureVector, which is limited to 24 floats for GPU upload). BandEnergyProcessor and BeatDetector independently compute 6-band bin ranges — simple duplication avoids coupling.
+24. **Krumhansl-Schmuckler key estimation**: 24 key profiles (12 major + 12 minor rotations of Krumhansl 1990 profiles). Pearson correlation against normalized chroma vector. Minimum confidence threshold of 0.3 to avoid spurious key reports. Works well for clear tonal content; atonal or percussive-only material correctly returns nil.
+25. **Spectral flux normalization for GPU**: Raw flux depends on magnitude scale and bin count. MIRPipeline normalizes via running-max AGC (tracks peak flux with 0.999 decay). Spectral centroid normalized by dividing by Nyquist (24000 Hz) to map to 0–1.
 
 ## Reference Documents
 
@@ -433,6 +451,6 @@ The architectural blueprint is in `docs/ARCHITECTURAL_BLUEPRINT.md`.
 
 ## Current Status
 
-**Phase 2 in progress.** Increments 2.1 (streaming metadata) and 2.2 (CoreML stem separation model conversion) are complete.
+**Phase 2 in progress.** Increments 2.1 (streaming metadata), 2.2 (CoreML stem separation model conversion), 2.3 (Swift CoreML stem separator integration), and 2.4 (MIR feature extraction pipeline) are complete.
 
-Increment 2.2 converted Open-Unmix HQ to a 68 MB CoreML `.mlpackage` targeting the ANE. HTDemucs was the first choice but fails CoreML conversion due to complex tensor ops (STFT, attention) and dynamic shape calculations. Open-Unmix's LSTM architecture converts cleanly with a hardcoded-shape wrapper that avoids coremltools' `int` op bug. The model operates on STFT magnitude spectrograms — STFT/iSTFT is handled externally (in Swift via Accelerate for Increment 2.3). Conversion tool: `tools/convert_stem_model.py`. All 6 Python test assertions pass: correct shape, nonzero stems, vocal<drums energy, reconstruction MSE 0.007, CoreML↔PyTorch correlation 0.9999, inference 0.17s for 10s audio. 115 Swift tests still pass (no Swift changes in this increment). Next up: Increment 2.3 (Swift CoreML stem separator integration).
+Increment 2.4 implemented the real-time MIR pipeline in the DSP module — five new source files: `SpectralAnalyzer` (centroid, rolloff, flux via vDSP), `BandEnergyProcessor` (3-band + 6-band energy with AGC and FPS-independent smoothing), `ChromaExtractor` (12-bin chroma vector with Krumhansl-Schmuckler key estimation), `BeatDetector` (6-band spectral flux onset detection with adaptive median thresholds, per-band cooldowns, grouped beat pulses with exponential decay, and tempo estimation via autocorrelation), and `MIRPipeline` (coordinator that runs all analyzers and populates a `FeatureVector` for GPU upload). Chroma, key, and tempo are exposed as CPU-side properties for the Orchestrator. All tuning constants match the validated Electron prototype. 162 Swift tests pass (122 existing + 40 new). Performance: spectral analyzer ~4ms, chroma ~6ms, beat detector ~3ms per second of audio at 48fps. Next up: Increment 2.5 (DSP/MIR → rendering integration).

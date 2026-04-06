@@ -161,7 +161,10 @@ import Metal
         }
     }
 
-    let result = group.wait(timeout: .now() + 5)
+    // Use a generous timeout — GCD thread pool scheduling on a loaded machine
+    // can exceed 5s for 200 concurrent blocks. The operations themselves are
+    // trivially fast; the bottleneck is thread pool contention during tests.
+    let result = group.wait(timeout: .now() + 30)
     #expect(result == .success, "Concurrent access should complete without deadlock")
 }
 

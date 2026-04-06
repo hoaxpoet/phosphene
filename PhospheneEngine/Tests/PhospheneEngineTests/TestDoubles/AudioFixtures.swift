@@ -63,6 +63,37 @@ enum AudioFixtures {
         return buffer
     }
 
+    /// Create a synthetic FFT magnitude array with energy at specific bins.
+    ///
+    /// Useful for DSP unit tests that need magnitude input without running FFTProcessor.
+    ///
+    /// - Parameters:
+    ///   - binCount: Total number of bins (default 512).
+    ///   - peaks: Array of (bin index, magnitude) tuples.
+    /// - Returns: Magnitude array with specified peaks, zeros elsewhere.
+    static func syntheticMagnitudes(
+        binCount: Int = 512,
+        peaks: [(bin: Int, magnitude: Float)]
+    ) -> [Float] {
+        var mags = [Float](repeating: 0, count: binCount)
+        for peak in peaks {
+            if peak.bin >= 0 && peak.bin < binCount {
+                mags[peak.bin] = peak.magnitude
+            }
+        }
+        return mags
+    }
+
+    /// Create a synthetic FFT magnitude array approximating uniform noise.
+    ///
+    /// - Parameters:
+    ///   - binCount: Total number of bins (default 512).
+    ///   - magnitude: Magnitude for each bin.
+    /// - Returns: Uniform magnitude array.
+    static func uniformMagnitudes(binCount: Int = 512, magnitude: Float = 0.5) -> [Float] {
+        [Float](repeating: magnitude, count: binCount)
+    }
+
     /// Interleave two mono channels into stereo (L, R, L, R, ...).
     ///
     /// - Parameters:
