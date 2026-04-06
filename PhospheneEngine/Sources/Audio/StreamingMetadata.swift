@@ -73,7 +73,10 @@ private enum MediaRemoteBridge {
     /// Query the system-wide Now Playing info asynchronously.
     /// Returns nil if MediaRemote is unavailable or nothing is playing.
     static func fetchNowPlayingInfo() async -> NowPlayingInfo? {
-        guard let fn = getNowPlayingInfo else { return nil }
+        guard let fn = getNowPlayingInfo else {
+            logger.error("MediaRemote function pointer is nil — framework failed to load")
+            return nil
+        }
 
         return await withCheckedContinuation { continuation in
             fn(callbackQueue) { info in
@@ -167,6 +170,7 @@ public final class StreamingMetadata: MetadataProviding, @unchecked Sendable {
     // MARK: - Polling
 
     private func pollNowPlaying() async {
+        logger.debug("Polling Now Playing...")
         let info: NowPlayingInfo?
         if let reader = nowPlayingReader {
             info = await reader()
@@ -175,6 +179,7 @@ public final class StreamingMetadata: MetadataProviding, @unchecked Sendable {
         }
 
         guard let info else {
+            logger.debug("Poll result: nil (nothing playing or MediaRemote unavailable)")
             lock.withLock {
                 _currentTrack = nil
                 lastTrackIdentity = nil

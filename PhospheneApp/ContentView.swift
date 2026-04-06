@@ -207,21 +207,29 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
 
     /// Request screen capture permission and start audio capture.
     func startAudio() {
+        // Start metadata observation unconditionally — it uses MediaRemote,
+        // which does not require screen capture permission.
+        if #available(macOS 14.2, *), let audioRouter = router as? AudioInputRouter {
+            audioRouter.startMetadataOnly()
+        }
+
         let hasPermission = CGPreflightScreenCaptureAccess()
         if !hasPermission {
             let granted = CGRequestScreenCaptureAccess()
             if !granted {
                 logger.error("Screen capture denied. Enable in System Settings → Privacy → Screen Recording.")
-                return
+                // Metadata observation is already running — only audio capture is blocked.
             }
         }
 
-        if #available(macOS 14.2, *), let audioRouter = router as? AudioInputRouter {
-            do {
-                try audioRouter.start(mode: .systemAudio)
-                logger.info("Audio capture started")
-            } catch {
-                logger.error("Audio capture failed: \(error)")
+        if hasPermission || CGPreflightScreenCaptureAccess() {
+            if #available(macOS 14.2, *), let audioRouter = router as? AudioInputRouter {
+                do {
+                    try audioRouter.start(mode: .systemAudio)
+                    logger.info("Audio capture started")
+                } catch {
+                    logger.error("Audio capture failed: \(error)")
+                }
             }
         }
 

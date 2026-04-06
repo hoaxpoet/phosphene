@@ -111,6 +111,21 @@ public final class AudioInputRouter: @unchecked Sendable {
         }
     }
 
+    /// Start metadata observation without audio capture.
+    ///
+    /// Metadata polling (MediaRemote) does not require screen capture permission,
+    /// so it can start before permission is granted. Call `start(mode:)` separately
+    /// once audio capture permission is available.
+    public func startMetadataOnly() {
+        if let provider = metadataProvider {
+            provider.onTrackChange = { [weak self] event in
+                self?.onTrackChange?(event)
+            }
+            provider.startObserving()
+            logger.info("Metadata observation started (audio capture pending)")
+        }
+    }
+
     /// Switch to a different input mode.
     public func switchMode(_ mode: InputMode) throws {
         let current = lock.withLock { currentMode }
