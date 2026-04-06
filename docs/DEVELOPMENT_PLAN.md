@@ -155,7 +155,7 @@ Phosphene/
 
 ## Phase 1 — Core Foundation & Metal Rendering (Blueprint Release 0.1)
 
-### Increment 1.1: Metal Context & Render Loop
+### Increment 1.1: Metal Context & Render Loop ✅
 
 **Goal:** Initialize a Metal device, command queue, and CAMetalLayer-backed rendering loop in a SwiftUI view via `MTKView` / `NSViewRepresentable`.
 
@@ -167,7 +167,7 @@ Phosphene/
 
 **Verification:** Window displays a solid color that changes per-frame (proves render loop is active at 60/120 fps).
 
-### Increment 1.2: UMA Shared Buffer Infrastructure
+### Increment 1.2: UMA Shared Buffer Infrastructure ✅
 
 **Goal:** Build the zero-copy UMA buffer abstraction that allows CPU, GPU, and ANE to share memory.
 
@@ -177,7 +177,7 @@ Phosphene/
 
 **Verification:** Unit test that writes data on CPU, reads it in a trivial compute shader — no copy, same pointer.
 
-### Increment 1.3: System Audio Capture via ScreenCaptureKit
+### Increment 1.3: System Audio Capture via ScreenCaptureKit ✅
 
 **Goal:** Capture live system audio output (i.e., whatever the user is streaming via Apple Music, Spotify, Tidal, YouTube, etc.) and fill the UMA ring buffer with PCM float32 samples. Local file playback is a secondary fallback, not the primary input.
 
@@ -194,6 +194,16 @@ Phosphene/
 - Info.plist: `NSScreenCaptureUsageDescription` explaining why audio capture is needed
 
 **Verification:** Play a song in Apple Music or Spotify. Phosphene captures the audio and prints RMS levels and dominant frequency per frame to console. FFT output visualized as a text histogram in debug. Switching between system-wide and app-specific capture works without restarting.
+
+**Implementation notes (completed 2026-04-06):**
+- **ScreenCaptureKit abandoned for audio capture.** On macOS 26, `SCStream` with `capturesAudio = true` delivers video frames but zero audio callbacks, even with screen capture permission confirmed working. Root cause unknown — may be macOS 26 regression.
+- **Core Audio taps adopted as primary capture method.** `AudioHardwareCreateProcessTap` (macOS 14.2+) works perfectly. System-wide: `CATapDescription(stereoGlobalTapButExcludeProcesses: [])`. Per-app: `CATapDescription(stereoMixdownOfProcesses: [pid])`. Tap feeds an aggregate device whose IO proc delivers interleaved float32 PCM on a real-time audio thread.
+- **Critical: `stereoMixdownOfProcesses: []` with empty array means "mix zero processes" = silence.** Must use `stereoGlobalTapButExcludeProcesses: []` for system-wide capture.
+- Sample rate: 48kHz stereo float32, matching the tap's reported format.
+- `AudioInputRouter` uses callback-based API (`onAudioSamples`) — the IO proc delivers a raw float pointer on a real-time thread.
+- `AudioBuffer.write(from:count:)` takes a raw pointer for zero-copy writing from the IO proc.
+- 23 unit tests cover AudioBuffer (write, RMS, ring overwrite, GPU binding, reset) and FFTProcessor (bin count, silence, 440Hz detection, stereo mixdown, short input, GPU readability).
+- Standalone test script: `tools/audio-tap-test.swift` — compile with `swiftc` and run to verify live audio capture with RMS + FFT histogram.
 
 ### Increment 1.4: Basic Fragment Shader Visualizer
 

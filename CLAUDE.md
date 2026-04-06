@@ -34,15 +34,24 @@ PhospheneApp/           → SwiftUI shell, views, view models
 PhospheneEngine/
   Audio/                → ScreenCaptureKit capture, ring buffers, FFT, lookahead buffer,
                           streaming metadata (Now Playing + MusicKit), metadata pre-fetcher
+    SystemAudioCapture  → SCStream wrapper: system-wide or per-app audio capture (✓ implemented)
+    AudioInputRouter    → Unified source abstraction: system/app/file → callbacks (✓ implemented)
+    AudioBuffer         → CMSampleBuffer → UMARingBuffer<Float> bridge for GPU (✓ implemented)
+    FFTProcessor        → vDSP 1024-pt FFT → 512 magnitude bins in UMABuffer (✓ implemented)
   DSP/                  → Spectral analysis, beat/onset detection, chroma, MFCCs,
                           structural analysis (self-similarity, section prediction)
   ML/                   → CoreML wrappers: stem separator, mood classifier
   Renderer/             → Metal context, pipelines, shader library, geometry, ray tracing
+    MetalContext        → MTLDevice, command queue, triple-buffered semaphore (✓ implemented)
+    RenderPipeline      → Basic render pass, clear color, drawable presentation (✓ implemented)
   Presets/              → Preset loading, categorization, legacy Milkdrop parser, transpiler
   Orchestrator/         → AI VJ: anticipation engine, emotion mapper, transitions,
                           track change detection, preset selection policy
   Shared/               → UMA buffer wrappers, type definitions
+    UMABuffer           → Generic .storageModeShared MTLBuffer + UMARingBuffer (✓ implemented)
+    AudioFeatures       → @frozen SIMD-aligned structs: AudioFrame, FFTResult, etc. (✓ implemented)
 Tests/
+  AudioTests            → FFTProcessor + AudioBuffer unit tests (23 tests total)
 ```
 
 ---
@@ -215,10 +224,14 @@ The scene manager auto-discovers shader files by scanning the presets directory.
 - Apple frameworks only for system integration. No third-party audio capture or virtual audio drivers.
 
 ### Audio Input
-- Primary input is ALWAYS ScreenCaptureKit system audio capture, never file loading.
-- Configure `SCStreamConfiguration` for audio-only (video disabled), 48kHz stereo float32.
+- Primary input is ALWAYS Core Audio taps (`AudioHardwareCreateProcessTap`, macOS 14.2+), never file loading.
+- `SystemAudioCapture` creates a process tap → aggregate device → IO proc pipeline delivering interleaved float32 PCM at 48kHz stereo on a real-time audio thread.
+- `AudioInputRouter` abstracts three modes behind a callback API: `.systemAudio` (default), `.application(bundleIdentifier:)`, `.localFile(URL)`. Mode switching is seamless.
+- `AudioBuffer` writes interleaved float32 from the IO callback into `UMARingBuffer<Float>` via pointer-based `write(from:count:)`.
+- `FFTProcessor` reads the latest 1024 mono samples, applies Hann window, runs vDSP 1024-point FFT, writes 512 magnitude bins into `UMABuffer<Float>` for GPU binding.
 - Local file playback via `AVAudioFile` exists only as a fallback for testing/offline use.
 - Phosphene never controls music playback. It is a passive listener.
+- App sandbox is disabled (`com.apple.security.app-sandbox = false`). `NSScreenCaptureUsageDescription` in Info.plist is kept for future ScreenCaptureKit fallback compatibility.
 
 ### Streaming Anticipation Pipeline
 
@@ -263,8 +276,10 @@ Phosphene works at every tier — never show errors or degraded UI when metadata
 - No metadata at all → fully functional via audio analysis alone
 
 ### Code Style
-- Swift 6.0. `async`/`await` and actors. Avoid raw `DispatchQueue` except for Accelerate/vDSP.
+- Swift 6.0 with `SWIFT_STRICT_CONCURRENCY = complete`. `async`/`await` and actors. Avoid raw `DispatchQueue` except for Accelerate/vDSP.
 - Shared data types: `Sendable`. Audio frame types: `@frozen`, SIMD-aligned.
+- `CMSampleBuffer` is thread-safe but not marked `Sendable` in Swift 6. Use `nonisolated(unsafe)` or `@unchecked Sendable` box wrappers when transferring across isolation boundaries (e.g., from `SCStreamOutput` callback to `AsyncStream`).
+- `NSLock` cannot be used in `async` contexts in Swift 6. Use `NSLock.withLock {}` from synchronous contexts only, or convert to an actor. For types that mix sync callbacks (e.g., `SCStreamOutput`) with async API, use `@unchecked Sendable` class with `NSLock.withLock` rather than actor.
 - No C++ interop unless required for legacy preset parsing.
 - SwiftLint enforced. Config at `.swiftlint.yml`.
 
@@ -278,14 +293,16 @@ These were tried in the Electron prototype and abandoned with documented reasons
 2. **Rising-edge accumulation**: IIR filters don't produce clean rise-then-flat patterns. Energy oscillates, defeating the accumulator.
 3. **FFT-based spectral flux (1024-point, per-bin, dual-rate EMA thresholds)**: Threshold tuning was intractable. Too many parameters, different settings needed per genre. The current 6-band IIR flux approach is simpler and more robust.
 4. **Beat-dominant visual design** (beat_zoom >> base_zoom): Onset pulses have ±80ms jitter, which the feedback loop amplifies. Visuals feel out of sync. Continuous energy values are perfectly synchronized because they ARE the audio. This lesson took multiple iterations to learn. Do not revisit it.
-5. **BlackHole virtual audio driver**: Broken on macOS Sequoia. `DoIOOperation` timing guard zeros out the read buffer. Additionally, Chromium's Web Audio API can't read from virtual devices on macOS. ScreenCaptureKit is better in every way.
+5. **BlackHole virtual audio driver**: Broken on macOS Sequoia. `DoIOOperation` timing guard zeros out the read buffer. Additionally, Chromium's Web Audio API can't read from virtual devices on macOS.
 6. **Web Audio API AnalyserNode for frequency analysis**: Chromium's implementation is broken for virtual audio devices on macOS. IIR filters in application code give direct control.
+7. **ScreenCaptureKit for audio-only capture** (macOS 26): `SCStream` with `capturesAudio = true` delivers video frames but zero audio callbacks, even with both `.screen` and `.audio` stream outputs registered and screen capture permission confirmed working. The root cause is unknown — may be a macOS 26 regression or a deliberate policy change. Core Audio taps (`AudioHardwareCreateProcessTap`, macOS 14.2+) work perfectly and are purpose-built for audio tapping.
 
 ---
 
 ## What NOT To Do
 
-- Do not use `AVAudioEngine` input tap as the primary audio source. ScreenCaptureKit is primary.
+- Do not use `AVAudioEngine` input tap as the primary audio source. Core Audio taps are primary.
+- Do not use ScreenCaptureKit for audio-only capture — it silently fails on macOS 15+/26. Use `AudioHardwareCreateProcessTap` instead.
 - Do not block the render loop on network calls, CoreML inference, or metadata queries.
 - Do not use `.storageModeManaged` buffers — they trigger implicit CPU-GPU copies that defeat UMA.
 - Do not make beat onset the primary driver of visual motion. Continuous energy bands are primary. This is the single most important visual design constraint.
@@ -294,6 +311,8 @@ These were tried in the Electron prototype and abandoned with documented reasons
 - Do not assume Now Playing metadata is always available or accurate. Cross-reference with MIR.
 - Do not normalize 6-band AGC per-band. Normalize against total energy to preserve relative differences.
 - Do not use `MTLCaptureManager` in release builds.
+- Do not use `CATapDescription(stereoMixdownOfProcesses: [])` with an empty array — it means "mix zero processes" = silence. Use `CATapDescription(stereoGlobalTapButExcludeProcesses: [])` for system-wide capture.
+- Do not allocate or block in the Core Audio IO proc callback — it runs on a real-time audio thread.
 
 ---
 
@@ -330,7 +349,7 @@ Metal, MetalKit, CoreML, AVFoundation, Accelerate, ScreenCaptureKit, MusicKit
 
 ## Resolved Decisions
 
-1. **Audio capture**: ScreenCaptureKit via native Swift integration. No virtual audio driver. Future: `AudioHardwareCreateProcessTap` for app-specific capture.
+1. **Audio capture**: Core Audio taps (`AudioHardwareCreateProcessTap`, macOS 14.2+) via native Swift. No virtual audio driver. System-wide: `CATapDescription(stereoGlobalTapButExcludeProcesses: [])`. Per-app: `CATapDescription(stereoMixdownOfProcesses: [pid])`. Tap feeds an aggregate device (`AudioHardwareCreateAggregateDevice`) whose IO proc delivers interleaved float32 PCM on a real-time audio thread. ScreenCaptureKit was tried first but fails to deliver audio callbacks on macOS 15+/26 despite video frames arriving — abandoned in favor of Core Audio taps.
 2. **Visual feedback**: Milkdrop-style previous-frame feedback with per-shader zoom, rotation, and decay. This is Phosphene's core visual identity.
 3. **Audio data hierarchy**: Continuous energy = primary. Spectrum/waveform = richest. Beat = accent only. Non-negotiable.
 4. **Beat detection**: 6-band spectral flux with adaptive median threshold and band-appropriate cooldowns. Four alternative approaches were tried and failed.
