@@ -28,7 +28,7 @@ swiftlint lint --strict --config .swiftlint.yml
 
 Deployment target: macOS 14.0+ (Sonoma). Swift 6.0. Metal 3.1+.
 
-**Current test count: 94 tests** (unit, integration, regression, performance). All must pass before any new code is merged.
+**Current test count: 115 tests** (unit, integration, regression, performance). All must pass before any new code is merged.
 
 ## Module Map
 
@@ -44,7 +44,10 @@ PhospheneEngine/
     AudioInputRouter        → Unified source abstraction: system/app/file → callbacks (✓ implemented)
     AudioBuffer             → IO proc → UMARingBuffer<Float> bridge for GPU (✓ implemented)
     FFTProcessor            → vDSP 1024-pt FFT → 512 magnitude bins in UMABuffer (✓ implemented)
-    Protocols               → AudioCapturing, AudioBuffering, FFTProcessing (✓ implemented)
+    Protocols               → AudioCapturing, AudioBuffering, FFTProcessing, MetadataProviding, MetadataFetching (✓ implemented)
+    StreamingMetadata       → MPNowPlayingInfoCenter polling, track change detection (✓ implemented)
+    MetadataPreFetcher      → Parallel async queries, LRU cache, merge partial results (✓ implemented)
+    MusicKitBridge          → Optional MusicKit catalog enrichment, graceful no-op (✓ implemented)
   DSP/                      → Spectral analysis, beat/onset detection, chroma, MFCCs (stub)
   ML/                       → CoreML wrappers: stem separator, mood classifier (stub)
   Renderer/                 → Metal context, pipelines, shader library
@@ -60,17 +63,17 @@ PhospheneEngine/
   Orchestrator/             → AI VJ: anticipation engine, transitions, preset selection (stub)
   Shared/                   → UMA buffer wrappers, type definitions, logging
     UMABuffer               → Generic .storageModeShared MTLBuffer + UMARingBuffer (✓ implemented)
-    AudioFeatures           → @frozen SIMD-aligned structs: AudioFrame, FFTResult, etc. (✓ implemented)
+    AudioFeatures           → @frozen SIMD-aligned structs: AudioFrame, FFTResult, TrackMetadata, PreFetchedTrackProfile (✓ implemented)
     Logging                 → Per-module os.Logger instances (✓ implemented)
 
-Tests/ (94 tests)
-  Audio/                    → AudioBufferTests, FFTProcessorTests
+Tests/ (115 tests)
+  Audio/                    → AudioBufferTests, FFTProcessorTests, StreamingMetadataTests, MetadataPreFetcherTests
   Renderer/                 → MetalContextTests, ShaderLibraryTests, RenderPipelineTests
   Shared/                   → AudioFeaturesTests, UMABufferExtendedTests
-  Integration/              → AudioToFFTPipelineTests, AudioToRenderPipelineTests
-  Regression/               → FFTRegressionTests + golden fixtures (440hz_sine, 440hz_fft)
+  Integration/              → AudioToFFTPipelineTests, AudioToRenderPipelineTests, MetadataToOrchestratorTests
+  Regression/               → FFTRegressionTests, MetadataParsingRegressionTests + golden fixtures
   Performance/              → FFTPerformanceTests, RenderLoopPerformanceTests
-  TestDoubles/              → MockAudioCapture, StubFFTProcessor, AudioFixtures
+  TestDoubles/              → MockAudioCapture, StubFFTProcessor, AudioFixtures, MockMetadataProvider, MockMetadataFetcher
 ```
 
 ---
@@ -303,12 +306,12 @@ Phosphene works at every tier — never show errors or degraded UI when metadata
 - SwiftLint enforced. Config at `.swiftlint.yml`. Key rules: `force_cast`, `force_try`, `force_unwrapping` → error; `file_length` warning at 400 lines; `cyclomatic_complexity` warning at 10.
 - No `print()` in production code. Use `os.Logger` via `Shared/Logging.swift` — one logger per module (`Logger(subsystem: "com.phosphene", category: "<module>")`). Use `.debug` for per-frame data, `.info` for lifecycle events, `.error` for failures.
 - All `public` API must have `///` doc comments. Every source file uses `// MARK: -` section dividers.
-- Protocol-first design for testability. Every injectable dependency has a protocol (`AudioCapturing`, `AudioBuffering`, `FFTProcessing`, `Rendering`). Tests use doubles from `TestDoubles/`.
+- Protocol-first design for testability. Every injectable dependency has a protocol (`AudioCapturing`, `AudioBuffering`, `FFTProcessing`, `Rendering`, `MetadataProviding`, `MetadataFetching`). Tests use doubles from `TestDoubles/`.
 
 ### Testing
-- **94 tests** across unit, integration, regression, and performance categories.
+- **115 tests** across unit, integration, regression, and performance categories.
 - All tests must pass before starting new work (`swift test --package-path PhospheneEngine`).
-- Test doubles in `Tests/TestDoubles/`: `MockAudioCapture`, `StubFFTProcessor`, `AudioFixtures`.
+- Test doubles in `Tests/TestDoubles/`: `MockAudioCapture`, `StubFFTProcessor`, `AudioFixtures`, `MockMetadataProvider`, `MockMetadataFetcher`.
 - Regression tests use golden fixtures in `Tests/Regression/Fixtures/`.
 - Performance tests use `XCTest.measure {}` with baselines.
 
@@ -396,6 +399,7 @@ Metal, MetalKit, CoreML, AVFoundation, Accelerate, ScreenCaptureKit, MusicKit
 15. **Protocol-oriented testability**: All major subsystems have corresponding protocols (`AudioCapturing`, `AudioBuffering`, `FFTProcessing`, `Rendering`). Production code depends on protocols; test doubles inject via initializer.
 16. **Structured logging**: `os.Logger` via `Shared/Logging.swift`. One subsystem (`com.phosphene`), one category per module. No `print()` in production code.
 17. **SwiftLint enforcement**: `.swiftlint.yml` with `force_cast`/`force_try`/`force_unwrapping` as errors, `file_length` warning at 400, `cyclomatic_complexity` warning at 10. Tests and tools directories excluded from lint.
+18. **Streaming metadata**: `StreamingMetadata` polls `MPNowPlayingInfoCenter` every 2s for track changes. Case-insensitive identity matching. `MetadataPreFetcher` queries external APIs (MusicBrainz, Spotify) in parallel via `MetadataFetching` protocol with 3s per-fetcher timeouts, LRU cache (50 entries, `OrderedDictionary`). `MusicKitBridge` enriches via `#if canImport(MusicKit)` with graceful no-op. `AudioInputRouter` forwards `TrackChangeEvent` to consumers via `onTrackChange` callback.
 
 ## Reference Documents
 
@@ -405,4 +409,4 @@ The architectural blueprint is in `docs/ARCHITECTURAL_BLUEPRINT.md`.
 
 ## Current Status
 
-**Phase 1 complete.** Increments 1.1–1.5 and R.1 (quality retrofit) are done. The audio-to-GPU-to-pixel pipeline works end to end: Core Audio taps → AudioBuffer → FFTProcessor → Metal shader rendering. Preset hot-reload works. 94 tests pass. SwiftLint clean. Next up: Phase 2 (streaming metadata, stem separation, MIR features, mood classification).
+**Phase 2 in progress.** Increment 2.1 (streaming metadata) is complete. Now Playing polling detects track changes, MetadataPreFetcher queries external APIs in parallel with LRU caching, MusicKitBridge provides optional catalog enrichment. AudioInputRouter forwards track change events to downstream consumers. 115 tests pass. Next up: Increment 2.2 (stem separation, MIR features, mood classification).

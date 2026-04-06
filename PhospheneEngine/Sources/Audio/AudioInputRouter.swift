@@ -40,6 +40,7 @@ public final class AudioInputRouter: @unchecked Sendable {
 
     private var currentMode: InputMode?
     private let systemCapture: any AudioCapturing
+    private let metadataProvider: (any MetadataProviding)?
     private var filePlaybackTask: Task<Void, Never>?
     private let lock = NSLock()
 
@@ -50,9 +51,13 @@ public final class AudioInputRouter: @unchecked Sendable {
 
     /// Create an AudioInputRouter.
     ///
-    /// - Parameter capture: Audio capture backend. Defaults to `SystemAudioCapture`.
-    public init(capture: any AudioCapturing = SystemAudioCapture()) {
+    /// - Parameters:
+    ///   - capture: Audio capture backend. Defaults to `SystemAudioCapture`.
+    ///   - metadata: Optional metadata provider for track change detection.
+    public init(capture: any AudioCapturing = SystemAudioCapture(),
+                metadata: (any MetadataProviding)? = nil) {
         self.systemCapture = capture
+        self.metadataProvider = metadata
     }
 
     // MARK: - Callback
@@ -62,6 +67,9 @@ public final class AudioInputRouter: @unchecked Sendable {
     /// For system/app capture this is called on a real-time audio thread — do not allocate or block.
     public var onAudioSamples: ((_ samples: UnsafePointer<Float>, _ sampleCount: Int,
                                  _ sampleRate: Float, _ channelCount: UInt32) -> Void)?
+
+    /// Called when the currently playing track changes.
+    public var onTrackChange: ((_ event: TrackChangeEvent) -> Void)?
 
     // MARK: - Public API
 
@@ -93,6 +101,14 @@ public final class AudioInputRouter: @unchecked Sendable {
             startFilePlayback(url: url)
             logger.info("Router started: local file (\(url.lastPathComponent))")
         }
+
+        // Wire metadata observation if a provider is configured.
+        if let provider = metadataProvider {
+            provider.onTrackChange = { [weak self] event in
+                self?.onTrackChange?(event)
+            }
+            provider.startObserving()
+        }
     }
 
     /// Switch to a different input mode.
@@ -123,6 +139,11 @@ public final class AudioInputRouter: @unchecked Sendable {
     /// The channel count of the active capture.
     public var channelCount: UInt32 {
         systemCapture.channelCount
+    }
+
+    /// The currently detected track metadata, or nil if unavailable.
+    public var currentTrack: TrackMetadata? {
+        metadataProvider?.currentTrack
     }
 
     // MARK: - Local File Playback
@@ -195,6 +216,8 @@ public final class AudioInputRouter: @unchecked Sendable {
         case nil:
             break
         }
+
+        metadataProvider?.stopObserving()
 
         lock.withLock { currentMode = nil }
     }

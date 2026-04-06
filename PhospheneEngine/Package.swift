@@ -41,6 +41,7 @@ let package = Package(
             dependencies: [
                 "Shared",
                 .product(name: "AsyncAlgorithms", package: "swift-async-algorithms"),
+                .product(name: "OrderedCollections", package: "swift-collections"),
             ],
             path: "Sources/Audio"
         ),

@@ -21,4 +21,7 @@ public enum Logging {
 
     /// CoreML: stem separation, mood classification.
     public static let ml = Logger(subsystem: subsystem, category: "ml")
+
+    /// Metadata: track change detection, pre-fetching, MusicKit bridge.
+    public static let metadata = Logger(subsystem: subsystem, category: "metadata")
 }

@@ -1,0 +1,31 @@
+{
+  "recordings": [
+    {
+      "id": "b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d",
+      "title": "Bohemian Rhapsody",
+      "length": 354947,
+      "artist-credit": [
+        {
+          "artist": {
+            "id": "0383dadf-2a4e-4d10-a46a-e9e041da8eb3",
+            "name": "Queen",
+            "sort-name": "Queen"
+          }
+        }
+      ],
+      "releases": [
+        {
+          "id": "bb2d39f3-4819-36f5-90e3-a6967ee5e236",
+          "title": "A Night at the Opera",
+          "date": "1975-11-21",
+          "country": "GB"
+        }
+      ],
+      "tags": [
+        { "name": "rock", "count": 15 },
+        { "name": "classic rock", "count": 12 },
+        { "name": "progressive rock", "count": 8 }
+      ]
+    }
+  ]
+}

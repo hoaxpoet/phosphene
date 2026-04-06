@@ -78,3 +78,89 @@ public protocol FFTProcessing: AnyObject, Sendable {
     /// Most recent FFT result metadata.
     var latestResult: FFTResult { get }
 }
+
+// MARK: - TrackChangeEvent
+
+/// Emitted when the currently playing track changes.
+public struct TrackChangeEvent: Sendable {
+    /// The previously playing track, or nil if this is the first detection.
+    public let previous: TrackMetadata?
+    /// The newly detected track.
+    public let current: TrackMetadata
+    /// When the change was detected.
+    public let timestamp: Date
+
+    public init(previous: TrackMetadata? = nil, current: TrackMetadata, timestamp: Date = Date()) {
+        self.previous = previous
+        self.current = current
+        self.timestamp = timestamp
+    }
+}
+
+// MARK: - MetadataProviding
+
+/// Abstraction over streaming metadata observation (Now Playing polling).
+///
+/// Concrete implementation: `StreamingMetadata`.
+public protocol MetadataProviding: AnyObject, Sendable {
+    /// Called when the currently playing track changes.
+    var onTrackChange: ((_ event: TrackChangeEvent) -> Void)? { get set }
+
+    /// The currently detected track, or nil if nothing is playing.
+    var currentTrack: TrackMetadata? { get }
+
+    /// Start polling for track changes.
+    func startObserving()
+
+    /// Stop polling and release resources.
+    func stopObserving()
+}
+
+// MARK: - PartialTrackProfile
+
+/// Partial metadata returned by a single external API fetcher.
+///
+/// Multiple `PartialTrackProfile` values are merged into a single
+/// `PreFetchedTrackProfile` by `MetadataPreFetcher`.
+public struct PartialTrackProfile: Sendable {
+    public var bpm: Float?
+    public var key: String?
+    public var energy: Float?
+    public var valence: Float?
+    public var danceability: Float?
+    public var genreTags: [String]
+    public var duration: Double?
+
+    public init(
+        bpm: Float? = nil,
+        key: String? = nil,
+        energy: Float? = nil,
+        valence: Float? = nil,
+        danceability: Float? = nil,
+        genreTags: [String] = [],
+        duration: Double? = nil
+    ) {
+        self.bpm = bpm
+        self.key = key
+        self.energy = energy
+        self.valence = valence
+        self.danceability = danceability
+        self.genreTags = genreTags
+        self.duration = duration
+    }
+}
+
+// MARK: - MetadataFetching
+
+/// Abstraction over an external music metadata API (MusicBrainz, Spotify, etc.).
+///
+/// Each concrete fetcher queries one source and returns partial data.
+/// `MetadataPreFetcher` runs multiple fetchers in parallel and merges results.
+public protocol MetadataFetching: Sendable {
+    /// Human-readable name of this source (e.g. "MusicBrainz", "Spotify").
+    var sourceName: String { get }
+
+    /// Query this source for track metadata.
+    /// Returns nil on failure or timeout — failures are always silent.
+    func fetch(title: String, artist: String) async -> PartialTrackProfile?
+}
