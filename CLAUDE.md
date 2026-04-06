@@ -34,16 +34,18 @@ PhospheneApp/           → SwiftUI shell, views, view models
 PhospheneEngine/
   Audio/                → ScreenCaptureKit capture, ring buffers, FFT, lookahead buffer,
                           streaming metadata (Now Playing + MusicKit), metadata pre-fetcher
-    SystemAudioCapture  → SCStream wrapper: system-wide or per-app audio capture (✓ implemented)
+    SystemAudioCapture  → Core Audio tap wrapper: system-wide or per-app audio capture (✓ implemented)
     AudioInputRouter    → Unified source abstraction: system/app/file → callbacks (✓ implemented)
-    AudioBuffer         → CMSampleBuffer → UMARingBuffer<Float> bridge for GPU (✓ implemented)
+    AudioBuffer         → IO proc → UMARingBuffer<Float> bridge for GPU (✓ implemented)
     FFTProcessor        → vDSP 1024-pt FFT → 512 magnitude bins in UMABuffer (✓ implemented)
   DSP/                  → Spectral analysis, beat/onset detection, chroma, MFCCs,
                           structural analysis (self-similarity, section prediction)
   ML/                   → CoreML wrappers: stem separator, mood classifier
   Renderer/             → Metal context, pipelines, shader library, geometry, ray tracing
     MetalContext        → MTLDevice, command queue, triple-buffered semaphore (✓ implemented)
-    RenderPipeline      → Basic render pass, clear color, drawable presentation (✓ implemented)
+    ShaderLibrary       → Auto-discover .metal files, runtime compilation, pipeline state cache (✓ implemented)
+    RenderPipeline      → Full-screen shader pass, audio UMA buffer binding, FeatureVector uniforms (✓ implemented)
+    Shaders/Waveform    → First-light visualizer: 64-bar FFT spectrum + oscilloscope waveform (✓ implemented)
   Presets/              → Preset loading, categorization, legacy Milkdrop parser, transpiler
   Orchestrator/         → AI VJ: anticipation engine, emotion mapper, transitions,
                           track change detection, preset selection policy
@@ -313,6 +315,7 @@ These were tried in the Electron prototype and abandoned with documented reasons
 - Do not use `MTLCaptureManager` in release builds.
 - Do not use `CATapDescription(stereoMixdownOfProcesses: [])` with an empty array — it means "mix zero processes" = silence. Use `CATapDescription(stereoGlobalTapButExcludeProcesses: [])` for system-wide capture.
 - Do not allocate or block in the Core Audio IO proc callback — it runs on a real-time audio thread.
+- Do not assume Core Audio taps deliver audio without screen capture permission. `AudioHardwareCreateProcessTap` succeeds even without permission, but the tap silently delivers zeros. Call `CGPreflightScreenCaptureAccess()` / `CGRequestScreenCaptureAccess()` before starting capture, and prompt the user to grant permission in System Settings if denied.
 
 ---
 
@@ -357,7 +360,10 @@ Metal, MetalKit, CoreML, AVFoundation, Accelerate, ScreenCaptureKit, MusicKit
 6. **Spectrum/waveform as GPU data**: Sent as buffer/texture data, not reduced to scalar uniforms.
 7. **Scene timing**: Per-shader duration in metadata. The Orchestrator can override based on structural analysis.
 8. **Shader discovery**: Auto-scan directory. No manual registration.
-9. **Sample rate**: 48kHz stereo float32 (matching ScreenCaptureKit default output).
+9. **Sample rate**: 48kHz stereo float32 (matching Core Audio tap format).
+11. **Shader compilation**: Runtime compilation from `.metal` source via `device.makeLibrary(source:options:)`. Shaders are SPM bundle resources (`.copy("Shaders")` in Package.swift), auto-discovered at startup.
+12. **Full-screen rendering**: Single oversized triangle (3 vertices, no vertex buffer) generated in vertex shader from `vertex_id`. More efficient than a quad.
+13. **Screen capture permission**: Required for Core Audio taps to deliver non-zero audio. Must call `CGRequestScreenCaptureAccess()` before starting capture. Tap creation succeeds without permission but delivers silence.
 10. **Learning stays local**: On-device only. No cloud. No telemetry.
 
 ## Reference Documents

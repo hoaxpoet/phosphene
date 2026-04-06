@@ -203,16 +203,25 @@ Phosphene/
 - 23 unit tests cover AudioBuffer (write, RMS, ring overwrite, GPU binding, reset) and FFTProcessor (bin count, silence, 440Hz detection, stereo mixdown, short input, GPU readability).
 - Standalone test script: `tools/audio-tap-test.swift` — compile with `swiftc` and run to verify live audio capture with RMS + FFT histogram.
 
-### Increment 1.4: Basic Fragment Shader Visualizer
+### Increment 1.4: Basic Fragment Shader Visualizer ✅
 
 **Goal:** Render a full-screen quad driven by FFT data — proving the audio-to-GPU-to-pixel pipeline works end to end.
 
-**Files to create/edit:**
-- `Renderer/ShaderLibrary.swift` — Compile `.metal` files, manage pipeline states
-- `Renderer/Shaders/Waveform.metal` — Fragment shader that reads FFT buffer, renders a frequency bar graph and oscilloscope waveform
-- `Renderer/RenderPipeline.swift` — Update to bind audio UMA buffers to fragment shader
+**Files created/edited:**
+- `Renderer/ShaderLibrary.swift` — Auto-discovers `.metal` files from SPM bundle resources (`Shaders/` directory), compiles at runtime via `device.makeLibrary(source:options:)`, caches `MTLRenderPipelineState` by name.
+- `Renderer/Shaders/Waveform.metal` — Full-screen fragment shader: 64-bar FFT frequency spectrum (bottom half, purple→cyan→green gradient), mirrored reflection (top), oscilloscope waveform line (centered, anti-aliased via distance field), glow effects, vignette. Reads all 512 FFT magnitude bins and 2048 PCM waveform samples directly on the GPU.
+- `Renderer/RenderPipeline.swift` — Rewritten to accept FFT and waveform `MTLBuffer` references at init, bind as fragment shader buffers alongside `FeatureVector` timing uniforms, draw a full-screen triangle (3 vertices, no vertex buffer — generated from `vertex_id`).
+- `PhospheneApp/ContentView.swift` — `VisualizerEngine` class (held via `@StateObject`) owns the complete pipeline: `AudioInputRouter` → `AudioBuffer` → `FFTProcessor` → `RenderPipeline`. Requests screen capture permission via `CGRequestScreenCaptureAccess()` before starting capture.
+- `PhospheneEngine/Package.swift` — Added `resources: [.copy("Shaders")]` to Renderer target.
+- `Audio/AudioInputRouter.swift` — Added `public init()`.
 
-**Verification:** Play music in any streaming app. Visual bars react to the captured audio in real time. This is the "first light" milestone — equivalent to a working legacy visualizer, but already streaming-aware.
+**Verification:** Play music in any streaming app. 64-bar spectrum and waveform respond in real time. Verified on macOS 26.4.0.
+
+**Implementation notes (completed 2026-04-06):**
+- **Screen capture permission is required for Core Audio taps to deliver non-zero audio.** `AudioHardwareCreateProcessTap` succeeds without permission, but the IO proc delivers all-zero samples. The tap reports correct format (48kHz, 2ch, 32bit), the aggregate device starts, callbacks fire at the expected rate — but every sample is 0.0. Call `CGPreflightScreenCaptureAccess()` / `CGRequestScreenCaptureAccess()` before starting capture. If denied, log a message directing the user to System Settings → Privacy & Security → Screen Recording.
+- **SwiftUI lifecycle requires `@StateObject` for the engine.** A `private let` property in a SwiftUI struct is re-created on every view re-init. The old engine is deallocated (tearing down audio capture) while the `MTKView` still holds the old `RenderPipeline` delegate. `@StateObject` with `ObservableObject` preserves the engine across SwiftUI view reconstructions.
+- **Metal shaders are SPM bundle resources.** `.metal` files live in `Sources/Renderer/Shaders/` and are included via `.copy("Shaders")` in Package.swift. `ShaderLibrary` loads them from `Bundle.module` and compiles at runtime. This keeps shaders in the engine package (not the app target) while supporting auto-discovery.
+- **Full-screen triangle, not quad.** A single oversized triangle (3 vertices from `vertex_id`) is more efficient than a 6-vertex quad. The rasterizer clips to the viewport; fragment shader sees uv ∈ [0,1].
 
 ### Increment 1.5: Basic Preset Abstraction & Hot-Reloading
 

@@ -1,17 +1,62 @@
-// RenderPipeline — MTKViewDelegate that drives the render loop.
-// Clears to a time-varying color to prove the loop is alive at display refresh rate.
+// RenderPipeline — MTKViewDelegate that drives the audio-reactive render loop.
+// Binds FFT magnitude and PCM waveform UMA buffers to a full-screen fragment shader.
 
 import Metal
 import MetalKit
+import Shared
+import os.log
 
-public final class RenderPipeline: NSObject, MTKViewDelegate, Sendable {
+private let logger = Logger(subsystem: "com.phosphene.renderer", category: "RenderPipeline")
+
+public final class RenderPipeline: NSObject, MTKViewDelegate, @unchecked Sendable {
+
+    // MARK: - Metal State
+
     private let context: MetalContext
-    private let startTime: CFAbsoluteTime
+    private let pipelineState: MTLRenderPipelineState
 
-    public init(context: MetalContext) {
+    // MARK: - Audio Buffers (UMA zero-copy — written by audio thread, read by GPU)
+
+    private let fftMagnitudeBuffer: MTLBuffer   // 512 floats from FFTProcessor
+    private let waveformBuffer: MTLBuffer       // 2048 interleaved floats from AudioBuffer
+
+    // MARK: - Timing
+
+    private let startTime: CFAbsoluteTime
+    private var lastFrameTime: CFAbsoluteTime
+
+    // MARK: - Init
+
+    /// Create the render pipeline with audio buffer bindings.
+    ///
+    /// - Parameters:
+    ///   - context: Metal context (device, queue, semaphore).
+    ///   - shaderLibrary: Compiled shader library for pipeline state creation.
+    ///   - fftBuffer: UMA buffer containing 512 FFT magnitude bins (from FFTProcessor).
+    ///   - waveformBuffer: UMA buffer containing interleaved stereo PCM (from AudioBuffer).
+    public init(
+        context: MetalContext,
+        shaderLibrary: ShaderLibrary,
+        fftBuffer: MTLBuffer,
+        waveformBuffer: MTLBuffer
+    ) throws {
         self.context = context
+        self.fftMagnitudeBuffer = fftBuffer
+        self.waveformBuffer = waveformBuffer
         self.startTime = CFAbsoluteTimeGetCurrent()
+        self.lastFrameTime = self.startTime
+
+        // Create render pipeline state: fullscreen_vertex → waveform_fragment.
+        self.pipelineState = try shaderLibrary.renderPipelineState(
+            named: "waveform",
+            vertexFunction: "fullscreen_vertex",
+            fragmentFunction: "waveform_fragment",
+            pixelFormat: context.pixelFormat,
+            device: context.device
+        )
+
         super.init()
+        logger.info("RenderPipeline initialized with audio-reactive shader")
     }
 
     // MARK: - MTKViewDelegate
@@ -29,7 +74,6 @@ public final class RenderPipeline: NSObject, MTKViewDelegate, Sendable {
             return
         }
 
-        // Signal the semaphore when the GPU finishes this frame.
         commandBuffer.addCompletedHandler { [semaphore = context.inflightSemaphore] _ in
             semaphore.signal()
         }
@@ -40,17 +84,8 @@ public final class RenderPipeline: NSObject, MTKViewDelegate, Sendable {
             return
         }
 
-        // Time-varying clear color — slowly cycles through deep, saturated hues
-        // (Phosphene's color philosophy: rich colors emerging from darkness).
-        let elapsed = CFAbsoluteTimeGetCurrent() - startTime
-        let hue = elapsed.truncatingRemainder(dividingBy: 12.0) / 12.0
-        let (red, green, blue) = hueToRGB(hue)
-        descriptor.colorAttachments[0].clearColor = MTLClearColor(
-            red: red * 0.6,
-            green: green * 0.6,
-            blue: blue * 0.6,
-            alpha: 1.0
-        )
+        // Black background — visuals emerge from darkness (Phosphene color philosophy).
+        descriptor.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
         descriptor.colorAttachments[0].loadAction = .clear
         descriptor.colorAttachments[0].storeAction = .store
 
@@ -58,26 +93,28 @@ public final class RenderPipeline: NSObject, MTKViewDelegate, Sendable {
             commandBuffer.commit()
             return
         }
-        // No draw calls yet — just the clear color proves the render loop is alive.
+
+        // Timing.
+        let now = CFAbsoluteTimeGetCurrent()
+        let elapsed = Float(now - startTime)
+        let deltaTime = Float(now - lastFrameTime)
+        lastFrameTime = now
+
+        // Build FeatureVector with timing info.
+        // Full band energy / onset analysis comes in later increments (DSP module).
+        var features = FeatureVector(time: elapsed, deltaTime: deltaTime)
+
+        // Bind shader pipeline and audio buffers.
+        encoder.setRenderPipelineState(pipelineState)
+        encoder.setFragmentBytes(&features, length: MemoryLayout<FeatureVector>.size, index: 0)
+        encoder.setFragmentBuffer(fftMagnitudeBuffer, offset: 0, index: 1)
+        encoder.setFragmentBuffer(waveformBuffer, offset: 0, index: 2)
+
+        // Draw full-screen triangle (3 vertices, generated in vertex shader).
+        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         encoder.endEncoding()
 
         commandBuffer.present(drawable)
         commandBuffer.commit()
-    }
-
-    // MARK: - Color Utility
-
-    /// Convert hue (0–1) to RGB. Saturation and brightness are both 1.0.
-    private func hueToRGB(_ hue: Double) -> (Double, Double, Double) {
-        let segment = hue * 6.0
-        let fraction = segment - segment.rounded(.down)
-        switch Int(segment) % 6 {
-        case 0: return (1.0, fraction, 0.0)
-        case 1: return (1.0 - fraction, 1.0, 0.0)
-        case 2: return (0.0, 1.0, fraction)
-        case 3: return (0.0, 1.0 - fraction, 1.0)
-        case 4: return (fraction, 0.0, 1.0)
-        default: return (1.0, 0.0, 1.0 - fraction)
-        }
     }
 }

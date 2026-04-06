@@ -46,6 +46,10 @@ public final class AudioInputRouter: @unchecked Sendable {
     /// Monotonically increasing timestamp base.
     private var captureStartTime: Double = 0
 
+    // MARK: - Init
+
+    public init() {}
+
     // MARK: - Callback
 
     /// Called for each chunk of audio samples.

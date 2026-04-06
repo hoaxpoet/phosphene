@@ -236,7 +236,7 @@ public final class SystemAudioCapture: @unchecked Sendable {
         switch mode {
         case .systemAudio:
             // Capture all system audio — exclude nothing.
-            var desc = CATapDescription(stereoGlobalTapButExcludeProcesses: [])
+            let desc = CATapDescription(stereoGlobalTapButExcludeProcesses: [])
             desc.uuid = tapUUID
             desc.name = "PhospheneSystemTap"
             return desc
@@ -249,7 +249,7 @@ public final class SystemAudioCapture: @unchecked Sendable {
                 throw AudioCaptureError.applicationNotFound(bundleIdentifier)
             }
 
-            var desc = CATapDescription(stereoMixdownOfProcesses: [AudioObjectID(app.processIdentifier)])
+            let desc = CATapDescription(stereoMixdownOfProcesses: [AudioObjectID(app.processIdentifier)])
             desc.uuid = tapUUID
             desc.name = "PhospheneAppTap-\(bundleIdentifier)"
             return desc

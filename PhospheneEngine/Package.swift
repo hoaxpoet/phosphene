@@ -60,7 +60,8 @@ let package = Package(
         .target(
             name: "Renderer",
             dependencies: ["Shared"],
-            path: "Sources/Renderer"
+            path: "Sources/Renderer",
+            resources: [.copy("Shaders")]
         ),
         .target(
             name: "Presets",
