@@ -643,6 +643,23 @@ echo "=== All checks passed ==="
 
 **Verification:** Four output WAV files sound correct individually. All Python tests pass.
 
+**Files created:**
+- `tools/convert_stem_model.py` — Loads Open-Unmix HQ (umxhq), builds combined 4-stem model with hardcoded shapes, traces with `torch.jit.trace`, converts to CoreML via `coremltools.convert()`.
+- `tools/test_stem_model.py` — Full pipeline test: synthesize drum-heavy clip → STFT → CoreML predict → iSTFT → 4 stem WAVs. 6 assertions.
+- `tools/requirements-ml.txt` — Pinned Python deps (torch 2.7.0, coremltools 9.0, openunmix).
+- `PhospheneEngine/Sources/ML/Models/StemSeparator.mlpackage` — 68 MB CoreML model (Git LFS tracked).
+- `.gitattributes` — Git LFS rules for `.mlpackage`/`.mlmodel` files.
+
+**Key decisions:**
+- **Model: Open-Unmix HQ** instead of HTDemucs. HTDemucs fails CoreML conversion due to `view_as_complex` (STFT uses complex tensors) and `int` cast on tensor shapes. Both `torch.jit.trace` → `coremltools` and `torch.onnx.export` → CoreML fail. Open-Unmix's LSTM architecture converts cleanly.
+- **STFT split architecture:** CoreML model takes STFT magnitude spectrograms `[1, 2, 2049, nb_frames]`, outputs 4 filtered spectrograms `[4, 2, 2049, nb_frames]`. STFT/iSTFT handled externally in Swift via Accelerate/vDSP. CoreML cannot represent complex numbers. This split also allows sharing STFT computation with the existing FFT analysis pipeline.
+- **Hardcoded shapes:** Open-Unmix's `forward()` uses dynamic shape calculations (`x.data.shape`, `x.shape[-1]`) that produce `int` cast ops coremltools can't convert. A `StemSeparatorFixed` wrapper replaces all dynamic shapes with compile-time constants.
+- **Accuracy metric:** LSTM layers produce outlier divergences between PyTorch and CoreML (max abs error up to 5.3 on spectrograms). Mean error is 0.0003 and correlation is 0.9999. Test uses mean + 99.9th percentile + correlation thresholds instead of max absolute error.
+
+**Test results:** All 6/6 assertions pass. Output shape [4, 2, 441000] ✓. All stems nonzero ✓. Vocal RMS (0.003) < Drum RMS (0.058) ✓. Reconstruction MSE 0.007 ✓. CoreML↔PyTorch correlation 0.9999 ✓. Inference 0.17s ✓.
+
+**Verification:** ✅ Verified. Four output WAV files written to `tools/output/`. Conversion completes in 5.7s. All Python tests pass. No Swift changes in this increment — 115 Swift tests unaffected.
+
 ### Increment 2.3: Swift CoreML Stem Separator Integration
 
 **Goal:** Load the `.mlpackage` in Swift, run inference on the ANE, write separated stems into UMA buffers.

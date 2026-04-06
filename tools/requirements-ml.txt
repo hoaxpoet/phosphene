@@ -1,0 +1,12 @@
+# Python dependencies for ML model conversion pipeline (Increment 2.2+)
+# Install: pip install -r tools/requirements-ml.txt
+# Requires Python 3.10+ (tested with 3.12)
+
+# Pin torch to coremltools-tested version to avoid conversion bugs
+torch==2.7.0
+torchaudio==2.7.0
+openunmix>=1.3.0
+coremltools>=9.0
+numpy
+scipy
+soundfile

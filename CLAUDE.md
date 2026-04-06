@@ -52,7 +52,9 @@ PhospheneEngine/
     SoundchartsFetcher      → Optional commercial API, BPM/key/energy/valence/danceability (✓ implemented)
     MusicKitBridge          → Optional MusicKit catalog enrichment, graceful no-op (✓ implemented)
   DSP/                      → Spectral analysis, beat/onset detection, chroma, MFCCs (stub)
-  ML/                       → CoreML wrappers: stem separator, mood classifier (stub)
+  ML/                       → CoreML wrappers: stem separator, mood classifier
+    Models/StemSeparator.mlpackage → Open-Unmix HQ 4-stem mask estimator for ANE (✓ converted)
+    ML.swift                → CoreML module stub (Swift integration in Increment 2.3)
   Renderer/                 → Metal context, pipelines, shader library
     MetalContext            → MTLDevice, command queue, triple-buffered semaphore (✓ implemented)
     ShaderLibrary           → Auto-discover .metal files, runtime compilation, cache (✓ implemented)
@@ -284,6 +286,7 @@ Because streaming audio arrives without a pre-scannable file, Phosphene employs 
 ### CoreML / Neural Engine
 - ALL CoreML models: `.cpuAndNeuralEngine` compute units. Never `.all` or `.cpuAndGPU` — GPU is reserved for rendering.
 - Models are `.mlpackage` format in `ML/Models/`, tracked via Git LFS.
+- **Stem separator architecture** (STFT split): CoreML model takes STFT magnitude spectrograms `[1, 2, 2049, nb_frames]`, outputs 4 filtered spectrograms `[4, 2, 2049, nb_frames]` (vocals, drums, bass, other). STFT/iSTFT handled in Swift via Accelerate/vDSP — CoreML cannot process complex numbers. Model: Open-Unmix HQ (LSTM-based, 68 MB). STFT params: n_fft=4096, hop=1024, sample_rate=44100.
 - Stem separator outputs: Vocals, Drums, Bass, Other — each independently routed to shaders.
 - Mood classifier outputs continuous valence (-1…1) and arousal (-1…1), smoothed with EMA.
 
@@ -345,6 +348,8 @@ These were tried in the Electron prototype and abandoned with documented reasons
 9. **MPNowPlayingInfoCenter for reading other apps' metadata**: Only returns the host app's own published Now Playing info. Cannot read Spotify, Apple Music, etc.
 11. **MediaRemote private framework for Now Playing** (macOS 15+): `MRMediaRemoteGetNowPlayingInfo` works from CLI tools but returns `kMRMediaRemoteFrameworkErrorDomain Code=3 "Operation not permitted"` from signed app bundles, even with screen capture permission granted. Use AppleScript via Automation framework instead — queries Apple Music and Spotify directly with a clean per-app permission prompt.
 10. **Spotify Audio Features endpoint**: Deprecated for apps created after Nov 2024. Returns 403. Dropped entirely — Spotify is now search-only for track matching. Use Soundcharts (commercial) or self-computed MIR for audio features instead.
+12. **HTDemucs direct CoreML conversion**: Both `torch.jit.trace` → `coremltools.convert()` and `torch.onnx.export()` → CoreML fail. HTDemucs uses STFT/iSTFT with complex tensors (`view_as_complex`) and dynamic shape calculations (`int` cast on tensor shapes) that coremltools 9.0 cannot convert. The same `int` op bug affects Open-Unmix's `Separator` wrapper. Solution: convert only the neural network core (mask estimation), handle STFT/iSTFT externally in Swift via Accelerate/vDSP.
+13. **End-to-end audio-in/audio-out CoreML models for source separation**: CoreML has no complex number support. All audio separation models (HTDemucs, Open-Unmix, Demucs) use STFT/iSTFT internally, which requires complex arithmetic. The architecture must be split: STFT/iSTFT in Swift (Accelerate), neural network mask estimation in CoreML.
 
 ---
 
@@ -418,6 +423,7 @@ Metal, MetalKit, CoreML, AVFoundation, Accelerate, ScreenCaptureKit, MusicKit
 17. **SwiftLint enforcement**: `.swiftlint.yml` with `force_cast`/`force_try`/`force_unwrapping` as errors, `file_length` warning at 400, `cyclomatic_complexity` warning at 10. Tests and tools directories excluded from lint.
 18. **Streaming metadata**: `StreamingMetadata` polls MediaRemote (private framework, dynamically loaded) every 2s for system-wide Now Playing state. `MetadataPreFetcher` queries external APIs in parallel (3s per-fetcher timeouts, LRU cache). Active fetchers: MusicBrainz (always, free), Soundcharts (optional, commercial), Spotify (optional, search-only). Pre-fetched data is a "fast hint" for the first ~15s — self-computed MIR (Increment 2.4) is the real source of truth.
 19. **Essentia for offline validation**: Essentia (AGPL) is used in `tools/` Python scripts only — NOT in the app binary. Pre-computes ground-truth audio features for testing and validates self-computed MIR accuracy. Never link Essentia into PhospheneEngine or PhospheneApp.
+20. **Stem separation model**: Open-Unmix HQ (umxhq). HTDemucs was first choice but fails CoreML conversion due to complex tensor ops and dynamic shapes. Open-Unmix's LSTM architecture converts cleanly. The CoreML model operates on STFT magnitude spectrograms (not raw audio) — STFT/iSTFT is handled in Swift via Accelerate/vDSP. Conversion: `tools/convert_stem_model.py`. Tests: `tools/test_stem_model.py` (6 assertions, all pass). Model: 68 MB `.mlpackage`, inference 0.17s for 10s audio on ANE.
 
 ## Reference Documents
 
@@ -427,4 +433,6 @@ The architectural blueprint is in `docs/ARCHITECTURAL_BLUEPRINT.md`.
 
 ## Current Status
 
-**Phase 2 in progress.** Increment 2.1 (streaming metadata) is complete and verified end-to-end. AppleScript queries Apple Music and Spotify for track changes (independent of screen capture permission). MetadataPreFetcher queries MusicBrainz (always) and Soundcharts (optional, commercial) in parallel with LRU caching. Pre-fetched data is a "fast hint" for the first ~15s — self-computed MIR (Increment 2.4) will be the primary source of audio features. Debug overlay (D key) shows track info and pre-fetched data. Screen capture permission polling auto-starts audio capture when granted. 115 tests pass. Next up: Increment 2.2 (CoreML stem separation model conversion).
+**Phase 2 in progress.** Increments 2.1 (streaming metadata) and 2.2 (CoreML stem separation model conversion) are complete.
+
+Increment 2.2 converted Open-Unmix HQ to a 68 MB CoreML `.mlpackage` targeting the ANE. HTDemucs was the first choice but fails CoreML conversion due to complex tensor ops (STFT, attention) and dynamic shape calculations. Open-Unmix's LSTM architecture converts cleanly with a hardcoded-shape wrapper that avoids coremltools' `int` op bug. The model operates on STFT magnitude spectrograms — STFT/iSTFT is handled externally (in Swift via Accelerate for Increment 2.3). Conversion tool: `tools/convert_stem_model.py`. All 6 Python test assertions pass: correct shape, nonzero stems, vocal<drums energy, reconstruction MSE 0.007, CoreML↔PyTorch correlation 0.9999, inference 0.17s for 10s audio. 115 Swift tests still pass (no Swift changes in this increment). Next up: Increment 2.3 (Swift CoreML stem separator integration).
