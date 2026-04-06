@@ -205,10 +205,14 @@ public struct FeatureVector: Sendable {
 
 /// Where track metadata was obtained from.
 public enum MetadataSource: String, Sendable, Equatable, Codable {
-    /// From `MPNowPlayingInfoCenter` (macOS Now Playing).
-    case nowPlaying
+    /// From Apple Music via AppleScript.
+    case appleMusic
+    /// From Spotify via AppleScript.
+    case spotify
     /// From MusicKit catalog search.
     case musicKit
+    /// Generic Now Playing source.
+    case nowPlaying
     /// Source unknown or unavailable.
     case unknown
 }

@@ -18,12 +18,14 @@ public struct NowPlayingInfo: Sendable {
     public let artist: String?
     public let album: String?
     public let duration: Double?
+    public let source: MetadataSource
 
-    public init(title: String?, artist: String?, album: String?, duration: Double?) {
+    public init(title: String?, artist: String?, album: String?, duration: Double?, source: MetadataSource = .nowPlaying) {
         self.title = title
         self.artist = artist
         self.album = album
         self.duration = duration
+        self.source = source
     }
 }
 
@@ -49,7 +51,7 @@ private enum AppleScriptBridge {
             end if
         end tell
         """
-        return executeScript(script, appName: "Music")
+        return executeScript(script, appName: "Music", source: .appleMusic)
     }
 
     /// Query Spotify for the current track.
@@ -65,7 +67,7 @@ private enum AppleScriptBridge {
             end if
         end tell
         """
-        return executeScript(script, appName: "Spotify")
+        return executeScript(script, appName: "Spotify", source: .spotify)
     }
 
     /// Check if an app is running without launching it.
@@ -74,7 +76,7 @@ private enum AppleScriptBridge {
     }
 
     /// Execute an AppleScript and parse the result.
-    private static func executeScript(_ source: String, appName: String) -> NowPlayingInfo? {
+    private static func executeScript(_ source: String, appName: String, source metadataSource: MetadataSource) -> NowPlayingInfo? {
         guard let script = NSAppleScript(source: source) else { return nil }
 
         var error: NSDictionary?
@@ -97,7 +99,8 @@ private enum AppleScriptBridge {
             title: parts[0].isEmpty ? nil : parts[0],
             artist: parts[1].isEmpty ? nil : parts[1],
             album: parts[2].isEmpty ? nil : parts[2],
-            duration: Double(parts[3])
+            duration: Double(parts[3]),
+            source: metadataSource
         )
     }
 
@@ -225,7 +228,7 @@ public final class StreamingMetadata: MetadataProviding, @unchecked Sendable {
             artist: artist,
             album: album,
             duration: duration,
-            source: .nowPlaying
+            source: info.source
         )
 
         let (shouldFire, previous) = lock.withLock { () -> (Bool, TrackMetadata?) in
