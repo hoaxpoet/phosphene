@@ -4,7 +4,7 @@
 
 **Phosphene** is a next-generation, AI-driven music visualization engine built exclusively for Apple Silicon (M3/M4). It succeeds ProjectM/Milkdrop by combining Metal rendering, real-time ML-powered audio stem separation on the Apple Neural Engine, Music Information Retrieval (MIR), and an AI Orchestrator that autonomously curates visual playlists matched to the emotional arc of the music.
 
-**Primary audio source:** System audio capture via ScreenCaptureKit. Phosphene visualizes whatever the user is streaming — Apple Music, Spotify, Tidal, YouTube Music, or any other audio source — by tapping the system audio output directly. It enriches the experience with track metadata from MusicKit and the macOS Now Playing API. Local file playback is supported as a fallback but is not the primary workflow.
+**Primary audio source:** System audio capture via Core Audio taps (`AudioHardwareCreateProcessTap`, macOS 14.2+). Phosphene visualizes whatever the user is streaming — Apple Music, Spotify, Tidal, YouTube Music, or any other audio source — by tapping the system audio output directly. It enriches the experience with track metadata from MusicKit and the macOS Now Playing API. Local file playback is supported as a fallback but is not the primary workflow. ScreenCaptureKit was originally planned but abandoned because it silently fails to deliver audio callbacks on macOS 15+/26.
 
 **Streaming Anticipation Architecture:** Because streaming audio arrives without a pre-scannable file, Phosphene employs three complementary systems to recover the anticipatory capability that pre-scanning would otherwise provide:
 
@@ -80,7 +80,7 @@ Phosphene/
 │   └── ViewModels/            # Observable state
 ├── PhospheneEngine/           # Core Swift package (library)
 │   ├── Audio/                 # Audio capture, buffering, PCM pipeline
-│   │   ├── SystemAudioCapture.swift   # ScreenCaptureKit system audio tap
+│   │   ├── SystemAudioCapture.swift   # Core Audio tap (AudioHardwareCreateProcessTap)
 │   │   ├── AudioInputRouter.swift     # Selects source: system audio, app-specific, or file
 │   │   ├── AudioBuffer.swift
 │   │   ├── LookaheadBuffer.swift      # Deliberate analysis-to-render delay pipeline
@@ -142,8 +142,8 @@ Phosphene/
 - Create a local Swift package `PhospheneEngine` with the directory structure above (empty placeholder files)
 - Configure `Package.swift` with all SPM dependencies listed above
 - Add `PhospheneEngine` as a dependency of `PhospheneApp`
-- Set build settings: enable Metal API Validation in debug, link `Metal.framework`, `MetalKit.framework`, `CoreML.framework`, `AVFoundation.framework`, `Accelerate.framework`, `ScreenCaptureKit.framework`, `MusicKit.framework`
-- Configure entitlements: `com.apple.security.screen-capture.audio` for system audio capture, `NSScreenCaptureUsageDescription` in Info.plist
+- Set build settings: enable Metal API Validation in debug, link `Metal.framework`, `MetalKit.framework`, `CoreML.framework`, `AVFoundation.framework`, `Accelerate.framework`, `ScreenCaptureKit.framework` (retained but not used for audio — see Increment 1.3 notes), `MusicKit.framework`
+- Configure entitlements: `NSScreenCaptureUsageDescription` in Info.plist (retained for potential future ScreenCaptureKit use). Core Audio taps do not require additional entitlements.
 - Create a `.swiftlint.yml` with sensible defaults
 - Create a `README.md` stub
 
@@ -177,23 +177,21 @@ Phosphene/
 
 **Verification:** Unit test that writes data on CPU, reads it in a trivial compute shader — no copy, same pointer.
 
-### Increment 1.3: System Audio Capture via ScreenCaptureKit ✅
+### Increment 1.3: System Audio Capture via Core Audio Taps ✅
 
 **Goal:** Capture live system audio output (i.e., whatever the user is streaming via Apple Music, Spotify, Tidal, YouTube, etc.) and fill the UMA ring buffer with PCM float32 samples. Local file playback is a secondary fallback, not the primary input.
 
-**Design rationale:** Most users consume music through streaming services. Phosphene cannot and should not attempt to integrate with each service's SDK — streaming services do not expose raw PCM audio to third parties. Instead, Phosphene taps the system audio mix (or a specific application's audio) using Apple's `ScreenCaptureKit` framework (macOS 13+). This is the same mechanism that screen-recording tools use, but configured for audio-only capture. It triggers a one-time user permission prompt ("Phosphene would like to capture audio from your screen").
+**Design rationale:** Most users consume music through streaming services. Phosphene cannot and should not attempt to integrate with each service's SDK — streaming services do not expose raw PCM audio to third parties. Instead, Phosphene taps the system audio mix (or a specific application's audio) using Core Audio taps (`AudioHardwareCreateProcessTap`, macOS 14.2+). This creates a process tap that feeds an aggregate device, whose IO proc delivers interleaved float32 PCM on a real-time audio thread. ScreenCaptureKit was originally planned but abandoned because it silently fails to deliver audio callbacks on macOS 15+/26 despite video frames arriving.
 
-**Files to create/edit:**
-- `Audio/SystemAudioCapture.swift` — Use `SCShareableContent` to enumerate running audio-producing applications. Create an `SCContentFilter` targeting either the entire system audio mix or a specific app (e.g., Music.app, Spotify.app). Configure `SCStreamConfiguration` for audio-only (disable video), 44.1kHz stereo float32. Implement `SCStreamDelegate` / `SCStreamOutput` to receive `CMSampleBuffer` audio frames.
-- `Audio/AudioInputRouter.swift` — Unified interface that abstracts over three input modes: (1) system audio via ScreenCaptureKit (default), (2) specific-app audio via ScreenCaptureKit, (3) local file via `AVAudioFile` (fallback for testing/offline use). Exposes a single `AsyncStream<AudioFrame>` regardless of source.
-- `Audio/AudioBuffer.swift` — Lock-free ring buffer writing PCM frames from the router into `UMABuffer`, exposing the latest N frames for GPU consumption
-- `Audio/FFTProcessor.swift` — vDSP-based FFT using `Accelerate.framework`, writes frequency magnitudes into a second `UMABuffer`
+**Files created:**
+- `Audio/SystemAudioCapture.swift` — Creates a `CATapDescription` (system-wide via `stereoGlobalTapButExcludeProcesses: []`, or per-app via `stereoMixdownOfProcesses: [pid]`), builds an aggregate device, and delivers audio via a callback on the real-time IO thread.
+- `Audio/AudioInputRouter.swift` — Unified callback-based interface over three input modes: (1) system audio via Core Audio taps (default), (2) specific-app audio via Core Audio taps, (3) local file via `AVAudioFile` (fallback).
+- `Audio/AudioBuffer.swift` — Writes interleaved float32 PCM into `UMARingBuffer<Float>` via pointer-based `write(from:count:)` for zero-copy from the IO thread. Exposes latest N samples for FFT and Metal buffer for GPU binding.
+- `Audio/FFTProcessor.swift` — vDSP-based 1024-point FFT with Hann window, writes 512 magnitude bins into `UMABuffer<Float>` for GPU consumption. All working buffers pre-allocated (zero per-frame allocation).
+- `Tests/PhospheneEngineTests/AudioTests.swift` — 12 tests covering AudioBuffer and FFTProcessor.
+- `tools/audio-tap-test.swift` — Standalone test binary for live audio verification.
 
-**Entitlements required:**
-- Add `com.apple.security.temporary-exception.audio-unit-host` if sandboxed
-- Info.plist: `NSScreenCaptureUsageDescription` explaining why audio capture is needed
-
-**Verification:** Play a song in Apple Music or Spotify. Phosphene captures the audio and prints RMS levels and dominant frequency per frame to console. FFT output visualized as a text histogram in debug. Switching between system-wide and app-specific capture works without restarting.
+**Verification:** Play a song in Spotify. `./tools/audio-tap-test` captures 468 audio callbacks in 5 seconds, prints per-frame RMS levels (~-26dB) and FFT histograms showing energy concentrated in low frequencies. Verified on macOS 26.4.0.
 
 **Implementation notes (completed 2026-04-06):**
 - **ScreenCaptureKit abandoned for audio capture.** On macOS 26, `SCStream` with `capturesAudio = true` delivers video frames but zero audio callbacks, even with screen capture permission confirmed working. Root cause unknown — may be macOS 26 regression.
@@ -235,7 +233,7 @@ Phosphene/
 
 **Goal:** Enrich the audio pipeline with track metadata from streaming services and external music databases, giving the Orchestrator immediate context about each track before the MIR pipeline has had time to analyze the audio itself.
 
-**Design rationale:** When ScreenCaptureKit captures system audio, Phosphene gets raw PCM but no metadata (track title, artist, album, duration, artwork). This metadata is crucial for the Orchestrator — knowing track boundaries, durations, and artist/genre context dramatically improves visual selection. Three complementary sources provide this:
+**Design rationale:** When Core Audio taps capture system audio, Phosphene gets raw PCM but no metadata (track title, artist, album, duration, artwork). This metadata is crucial for the Orchestrator — knowing track boundaries, durations, and artist/genre context dramatically improves visual selection. Three complementary sources provide this:
 
 1. **MPNowPlayingInfoCenter / MediaRemote** — A system-level API that reports what any app is currently playing (works with Spotify, Tidal, YouTube Music, etc.). Provides title, artist, album, duration, elapsed time, and playback state. No special authorization required beyond standard entitlements.
 2. **MusicKit / Apple Music API** — If the user is an Apple Music subscriber, MusicKit provides deep metadata: track title, artist, album, genre, duration, artwork, and even catalog-level mood/genre tags. Requires user authorization.
@@ -252,7 +250,7 @@ Phosphene/
 - `Audio/MusicKitBridge.swift` — Optional MusicKit integration: request authorization, query Apple Music catalog for richer metadata (genre, mood tags, tempo hints) when available. Graceful no-op if user declines or isn't subscribed.
 - `Audio/MetadataPreFetcher.swift` — On each `TrackChangeEvent`, fires parallel async queries to MusicBrainz, Spotify Web API, and AcousticBrainz. Matches tracks by title + artist string similarity. Returns a `PreFetchedTrackProfile` struct that consolidates all available external data. Uses local caching (in-memory LRU + optional disk cache) so repeated plays of the same track don't re-query. Handles network failures gracefully — pre-fetched data is always optional enrichment, never a hard dependency.
 - `Shared/AudioFeatures.swift` — Add `TrackMetadata` struct (title, artist, album, genre, duration, artwork URL, source service) and `PreFetchedTrackProfile` struct (external BPM, key, energy, valence, danceability, genre tags, confidence scores)
-- `Audio/AudioInputRouter.swift` — Integrate metadata stream alongside audio stream. Expose combined `AsyncStream<(AudioFrame, TrackMetadata?)>`
+- `Audio/AudioInputRouter.swift` — Integrate metadata alongside the audio callback. Add an `onTrackChange` callback or expose a metadata stream parallel to `onAudioSamples`.
 
 **Verification:** Play a song in Spotify, then switch to Apple Music. Phosphene's debug overlay shows the correct track title, artist, and duration from both services. Within 2 seconds of a track change, the debug overlay also shows pre-fetched data: "Spotify API: BPM 128, Key Cm, Energy 0.82, Valence 0.34" (or "Pre-fetch: unavailable" if the track can't be matched). Track change events fire accurately within 1 second of an actual track change.
 
@@ -318,7 +316,7 @@ This delay is imperceptible to the user because there is no reference signal to 
 
 **Pipeline architecture:**
 ```
-ScreenCaptureKit → PCM frames → [Analysis Pipeline: FFT, Stems, MIR, Mood] → Analyzed Frames Queue
+Core Audio Tap → PCM frames → [Analysis Pipeline: FFT, Stems, MIR, Mood] → Analyzed Frames Queue
                                                                                       │
                                                                             ┌─────────┘
                                                                             │ 2.5s delay
@@ -328,7 +326,7 @@ ScreenCaptureKit → PCM frames → [Analysis Pipeline: FFT, Stems, MIR, Mood] �
 
 **Files to create/edit:**
 - `Audio/LookaheadBuffer.swift` — A timestamped ring buffer that sits between the analysis pipeline and the Orchestrator/renderer. Analyzed frames (containing FFT, stem data, MIR features, and mood classification results) are enqueued immediately. The renderer dequeues frames from the buffer after a configurable delay. The Orchestrator has access to *both* the current analysis head (for lookahead decisions) and the render head (for current visual state).
-- `Audio/AudioInputRouter.swift` — Updated to expose two output taps: `analysisStream` (real-time, for the Orchestrator's lookahead window) and `renderStream` (delayed, for the renderer and the Orchestrator's "current frame" decisions).
+- `Audio/AudioInputRouter.swift` — Updated to expose two callback paths: `onAnalysisFrame` (real-time, for the Orchestrator's lookahead window) and `onRenderFrame` (delayed, for the renderer and the Orchestrator's "current frame" decisions). Note: the router currently uses callback-based API (`onAudioSamples`), not AsyncStream — this dual-tap extension should follow the same pattern.
 - `Shared/AnalyzedFrame.swift` — A timestamped container struct that bundles all analysis outputs for a single audio window: `AudioFrame` + `FFTResult` + `StemData` + `FeatureVector` + `EmotionalState`. This is the unit that flows through the lookahead buffer.
 
 **Verification:** Enable a debug visualization that renders two small oscilloscopes: one driven by the analysis head (real-time) and one by the render head (delayed). Confirm the render oscilloscope lags the analysis oscilloscope by exactly the configured duration. Play a track with a dramatic drop — confirm the Orchestrator's debug log shows it detected the drop 2.5 seconds before the visual transition fires.
@@ -529,7 +527,7 @@ The Orchestrator's decision quality ramps up progressively as these sources come
 **Files to create/edit:**
 - `PhospheneApp/Views/ContentView.swift` — Full-screen Metal view with overlay HUD that auto-hides on inactivity
 - `PhospheneApp/Views/TransportBar.swift` — Audio source selector (system audio / specific app / local file fallback), fullscreen toggle, preset cycle override, settings gear
-- `PhospheneApp/Views/AudioSourcePicker.swift` — Lists running audio-producing applications (via `SCShareableContent`) with icons. User selects which app to visualize, or "System Audio" for the full mix. Shows currently detected track info (title, artist, artwork) from Now Playing metadata.
+- `PhospheneApp/Views/AudioSourcePicker.swift` — Lists running audio-producing applications (via `SystemAudioCapture.availableApplications()` which uses `NSWorkspace.shared.runningApplications`) with icons. User selects which app to visualize, or "System Audio" for the full mix. Shows currently detected track info (title, artist, artwork) from Now Playing metadata.
 - `PhospheneApp/Views/NowPlayingBanner.swift` — Floating overlay showing current track info and album artwork (sourced from MusicKit or Now Playing), current mood quadrant, active preset name, and anticipation status indicator (shows ramp-up progress: "learning structure..." → "fully anticipating"). Fades in on track change, fades out after a few seconds.
 - `PhospheneApp/ViewModels/AppViewModel.swift` — Binds UI state to engine
 
@@ -616,7 +614,7 @@ The Orchestrator's decision quality ramps up progressively as these sources come
 **Goal:** Archive, sign, and prepare for distribution.
 
 **Claude Code tasks:**
-- Configure entitlements: screen/audio capture (ScreenCaptureKit), network client (for MusicKit catalog queries, MusicBrainz/Spotify Web API metadata pre-fetching, and future updates), file access (for local file fallback and preset loading)
+- Configure entitlements: network client (for MusicKit catalog queries, MusicBrainz/Spotify Web API metadata pre-fetching, and future updates), file access (for local file fallback and preset loading). Note: Core Audio taps do not require ScreenCaptureKit entitlements, but `NSScreenCaptureUsageDescription` is retained in Info.plist for potential future use.
 - Set up app icons and launch screen
 - Configure archive scheme with release optimizations (`-O` for Swift, `-Os` for Metal)
 - Write `docs/RELEASE_CHECKLIST.md`
@@ -655,7 +653,7 @@ Test command: swift test --package-path PhospheneEngine
 
 - **macOS 14.0+ only** — no iOS, no cross-platform
 - **Metal only** — never OpenGL, never Vulkan
-- **ScreenCaptureKit for audio** — primary audio input is system audio capture, not file loading. ScreenCaptureKit requires macOS 13+ (already covered by macOS 14+ target). Requires user permission grant on first launch.
+- **Core Audio taps for audio** — primary audio input is system audio capture via `AudioHardwareCreateProcessTap` (macOS 14.2+), not file loading. ScreenCaptureKit was abandoned because it silently fails to deliver audio callbacks on macOS 15+/26. Core Audio taps require no special entitlements or user permission prompts for system audio.
 - **ANE for ML** — always configure CoreML models with `.cpuAndNeuralEngine`, never `.all` (which would compete with GPU)
 - **UMA zero-copy** — all shared buffers must use `.storageModeShared`
 - **Swift concurrency** — use `async/await` and actors for thread safety, avoid raw `DispatchQueue` where possible
