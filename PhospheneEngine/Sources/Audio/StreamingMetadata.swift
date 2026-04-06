@@ -1,9 +1,9 @@
-// StreamingMetadata — Polls system Now Playing state for track changes.
-// Uses the MediaRemote private framework to read other apps' Now Playing
-// info (Spotify, Apple Music, etc.). MPNowPlayingInfoCenter only exposes
-// the host app's own metadata — MediaRemote reads the system-wide state.
+// StreamingMetadata — Polls running music apps for track changes.
+// Uses AppleScript to query Apple Music and Spotify directly.
+// MediaRemote private framework is blocked for signed apps on macOS 15+.
 // Conforms to MetadataProviding for dependency injection.
 
+import AppKit
 import Foundation
 import Shared
 import os.log
@@ -13,7 +13,6 @@ private let logger = Logging.metadata
 // MARK: - NowPlayingInfo
 
 /// Parsed Now Playing info in a Sendable form.
-/// Used by both MediaRemoteBridge (production) and tests (injected).
 public struct NowPlayingInfo: Sendable {
     public let title: String?
     public let artist: String?
@@ -28,81 +27,107 @@ public struct NowPlayingInfo: Sendable {
     }
 }
 
-// MARK: - MediaRemote Bridge
+// MARK: - AppleScript Bridge
 
-/// Dynamically loaded interface to MediaRemote.framework.
+/// Queries running music apps via AppleScript for Now Playing info.
 ///
-/// MediaRemote is a private framework that provides system-wide Now Playing
-/// information. We load it dynamically to avoid linking against private APIs
-/// at build time. The app sandbox is already disabled for Core Audio taps,
-/// so this works without additional entitlements.
-private enum MediaRemoteBridge {
+/// AppleScript works reliably from signed apps via the Automation framework.
+/// Each target app triggers a one-time permission prompt. Supports Apple Music
+/// and Spotify. Falls back gracefully if neither is running.
+private enum AppleScriptBridge {
 
-    /// Dictionary keys used by MediaRemote for Now Playing info.
-    static let titleKey = "kMRMediaRemoteNowPlayingInfoTitle"
-    static let artistKey = "kMRMediaRemoteNowPlayingInfoArtist"
-    static let albumKey = "kMRMediaRemoteNowPlayingInfoAlbum"
-    static let durationKey = "kMRMediaRemoteNowPlayingInfoDuration"
+    /// Query Apple Music for the current track.
+    static func queryAppleMusic() -> NowPlayingInfo? {
+        let script = """
+        tell application "Music"
+            if player state is playing then
+                set trackName to name of current track
+                set trackArtist to artist of current track
+                set trackAlbum to album of current track
+                set trackDuration to duration of current track
+                return trackName & "||" & trackArtist & "||" & trackAlbum & "||" & (trackDuration as text)
+            end if
+        end tell
+        """
+        return executeScript(script, appName: "Music")
+    }
 
-    /// Function signature for MRMediaRemoteGetNowPlayingInfo.
-    private typealias GetNowPlayingInfoFunc = @convention(c) (
-        DispatchQueue,
-        @escaping ([String: Any]) -> Void
-    ) -> Void
+    /// Query Spotify for the current track.
+    static func querySpotify() -> NowPlayingInfo? {
+        let script = """
+        tell application "Spotify"
+            if player state is playing then
+                set trackName to name of current track
+                set trackArtist to artist of current track
+                set trackAlbum to album of current track
+                set trackDuration to duration of current track
+                return trackName & "||" & trackArtist & "||" & trackAlbum & "||" & ((trackDuration / 1000) as text)
+            end if
+        end tell
+        """
+        return executeScript(script, appName: "Spotify")
+    }
 
-    /// Cached function pointer — loaded once on first access.
-    private static let getNowPlayingInfo: GetNowPlayingInfoFunc? = {
-        let path = "/System/Library/PrivateFrameworks/MediaRemote.framework"
-        guard let bundle = CFBundleCreate(kCFAllocatorDefault, NSURL(fileURLWithPath: path)) else {
-            logger.error("Failed to load MediaRemote.framework")
+    /// Check if an app is running without launching it.
+    static func isAppRunning(_ bundleID: String) -> Bool {
+        NSWorkspace.shared.runningApplications.contains { $0.bundleIdentifier == bundleID }
+    }
+
+    /// Execute an AppleScript and parse the result.
+    private static func executeScript(_ source: String, appName: String) -> NowPlayingInfo? {
+        guard let script = NSAppleScript(source: source) else { return nil }
+
+        var error: NSDictionary?
+        let result = script.executeAndReturnError(&error)
+
+        if let error {
+            let code = error[NSAppleScript.errorNumber] as? Int ?? 0
+            // -600 = app not running, -1728 = no current track — both expected.
+            if code != -600 && code != -1728 {
+                logger.debug("AppleScript error for \(appName): \(error[NSAppleScript.errorMessage] as? String ?? "unknown")")
+            }
             return nil
         }
-        guard let pointer = CFBundleGetFunctionPointerForName(
-            bundle, "MRMediaRemoteGetNowPlayingInfo" as CFString
-        ) else {
-            logger.error("Failed to find MRMediaRemoteGetNowPlayingInfo")
-            return nil
-        }
-        return unsafeBitCast(pointer, to: GetNowPlayingInfoFunc.self)
-    }()
 
-    /// Serial queue for MediaRemote callbacks — avoids main queue
-    /// deadlocks when called from Swift concurrency tasks.
-    private static let callbackQueue = DispatchQueue(label: "com.phosphene.mediaremote")
+        guard let output = result.stringValue else { return nil }
+        let parts = output.components(separatedBy: "||")
+        guard parts.count >= 4 else { return nil }
 
-    /// Query the system-wide Now Playing info asynchronously.
-    /// Returns nil if MediaRemote is unavailable or nothing is playing.
-    static func fetchNowPlayingInfo() async -> NowPlayingInfo? {
-        guard let fn = getNowPlayingInfo else {
-            logger.error("MediaRemote function pointer is nil — framework failed to load")
-            return nil
-        }
+        return NowPlayingInfo(
+            title: parts[0].isEmpty ? nil : parts[0],
+            artist: parts[1].isEmpty ? nil : parts[1],
+            album: parts[2].isEmpty ? nil : parts[2],
+            duration: Double(parts[3])
+        )
+    }
 
-        return await withCheckedContinuation { continuation in
-            fn(callbackQueue) { info in
-                if info.isEmpty {
-                    continuation.resume(returning: nil)
-                } else {
-                    let parsed = NowPlayingInfo(
-                        title: info[titleKey] as? String,
-                        artist: info[artistKey] as? String,
-                        album: info[albumKey] as? String,
-                        duration: info[durationKey] as? Double
-                    )
-                    continuation.resume(returning: parsed)
-                }
+    /// Query all supported music apps, returning the first hit.
+    static func queryNowPlaying() -> NowPlayingInfo? {
+        // Check Apple Music first (most common on macOS).
+        if isAppRunning("com.apple.Music") {
+            if let info = queryAppleMusic() {
+                return info
             }
         }
+
+        // Then Spotify.
+        if isAppRunning("com.spotify.client") {
+            if let info = querySpotify() {
+                return info
+            }
+        }
+
+        return nil
     }
 }
 
 // MARK: - StreamingMetadata
 
-/// Observes system-wide Now Playing metadata and detects track changes.
+/// Observes running music apps and detects track changes.
 ///
-/// Polls MediaRemote at a 2-second interval. When the playing track
-/// identity changes (title + artist), fires `onTrackChange`.
-/// All metadata is optional — gracefully handles nil Now Playing state.
+/// Polls Apple Music and Spotify via AppleScript at a 2-second interval.
+/// When the playing track identity changes (title + artist), fires `onTrackChange`.
+/// All metadata is optional — gracefully handles no music app running.
 public final class StreamingMetadata: MetadataProviding, @unchecked Sendable {
 
     // MARK: - State
@@ -112,13 +137,13 @@ public final class StreamingMetadata: MetadataProviding, @unchecked Sendable {
     private var lastTrackIdentity: String?
     private let lock = NSLock()
 
-    /// Polling interval in seconds.
+    /// Polling interval.
     private let pollInterval: Duration
 
     // MARK: - Testability
 
     /// Override this closure in tests to inject canned Now Playing info.
-    /// Defaults to querying MediaRemote for system-wide Now Playing state.
+    /// Defaults to querying music apps via AppleScript.
     var nowPlayingReader: (@Sendable () async -> NowPlayingInfo?)? = nil
 
     // MARK: - Init
@@ -143,7 +168,7 @@ public final class StreamingMetadata: MetadataProviding, @unchecked Sendable {
 
         pollingTask = Task { [weak self] in
             guard let self else { return }
-            logger.info("Started observing Now Playing metadata via MediaRemote")
+            logger.info("Started observing Now Playing metadata via AppleScript")
 
             while !Task.isCancelled {
                 await self.pollNowPlaying()
@@ -170,16 +195,17 @@ public final class StreamingMetadata: MetadataProviding, @unchecked Sendable {
     // MARK: - Polling
 
     private func pollNowPlaying() async {
-        logger.debug("Polling Now Playing...")
         let info: NowPlayingInfo?
         if let reader = nowPlayingReader {
             info = await reader()
         } else {
-            info = await MediaRemoteBridge.fetchNowPlayingInfo()
+            // AppleScript is synchronous — run off the cooperative pool.
+            info = await Task.detached {
+                AppleScriptBridge.queryNowPlaying()
+            }.value
         }
 
         guard let info else {
-            logger.debug("Poll result: nil (nothing playing or MediaRemote unavailable)")
             lock.withLock {
                 _currentTrack = nil
                 lastTrackIdentity = nil

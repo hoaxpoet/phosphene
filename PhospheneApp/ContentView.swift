@@ -208,38 +208,34 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
 
     // MARK: - Public API
 
-    /// Request screen capture permission and start audio capture + metadata.
+    /// Start audio capture and metadata observation.
     func startAudio() {
+        // Start metadata observation unconditionally — AppleScript queries
+        // music apps directly via Automation, no screen capture permission needed.
+        if #available(macOS 14.2, *), let audioRouter = router as? AudioInputRouter {
+            audioRouter.startMetadataOnly()
+        }
+
+        // Screen capture permission is only needed for Core Audio taps (audio capture).
         var permitted = CGPreflightScreenCaptureAccess()
         if !permitted {
             permitted = CGRequestScreenCaptureAccess()
-            if !permitted {
-                logger.error("Screen capture denied. Enable in System Settings → Privacy → Screen Recording.")
-            }
         }
-
         hasScreenCapturePermission = permitted
 
         if permitted, #available(macOS 14.2, *), let audioRouter = router as? AudioInputRouter {
             do {
-                // start() begins both audio capture AND metadata observation.
                 try audioRouter.start(mode: .systemAudio)
-                logger.info("Audio capture and metadata observation started")
+                logger.info("Audio capture started")
             } catch {
                 logger.error("Audio capture failed: \(error)")
-                // Audio failed but metadata might still work — try it.
-                audioRouter.startMetadataOnly()
             }
+        } else if !permitted {
+            logger.info("Screen capture denied — track detection works but audio capture requires permission. Grant in System Settings, then restart.")
         }
 
         if let current = presetLoader.currentPreset {
             showPresetName(current.descriptor.name)
-        }
-
-        // Poll for permission changes — user may grant in System Settings
-        // while the app is running.
-        if !permitted {
-            logger.info("Screen capture permission denied. Grant in System Settings → Privacy → Screen Recording, then restart the app.")
         }
     }
 

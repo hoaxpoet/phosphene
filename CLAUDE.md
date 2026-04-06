@@ -45,7 +45,7 @@ PhospheneEngine/
     AudioBuffer             → IO proc → UMARingBuffer<Float> bridge for GPU (✓ implemented)
     FFTProcessor            → vDSP 1024-pt FFT → 512 magnitude bins in UMABuffer (✓ implemented)
     Protocols               → AudioCapturing, AudioBuffering, FFTProcessing, MetadataProviding, MetadataFetching (✓ implemented)
-    StreamingMetadata       → MediaRemote Now Playing polling, track change detection (✓ implemented)
+    StreamingMetadata       → AppleScript polling of Apple Music/Spotify, track change detection (✓ implemented)
     MetadataPreFetcher      → Parallel async queries, LRU cache, merge partial results (✓ implemented)
     MusicBrainzFetcher      → Free API, genre tags + duration from MusicBrainz recordings (✓ implemented)
     SpotifyFetcher          → Client credentials flow, search-only track matching (✓ implemented)
@@ -342,7 +342,8 @@ These were tried in the Electron prototype and abandoned with documented reasons
 6. **Web Audio API AnalyserNode for frequency analysis**: Chromium's implementation is broken for virtual audio devices on macOS. IIR filters in application code give direct control.
 7. **ScreenCaptureKit for audio-only capture** (macOS 26): `SCStream` with `capturesAudio = true` delivers video frames but zero audio callbacks, even with both `.screen` and `.audio` stream outputs registered and screen capture permission confirmed working. The root cause is unknown — may be a macOS 26 regression or a deliberate policy change. Core Audio taps (`AudioHardwareCreateProcessTap`, macOS 14.2+) work perfectly and are purpose-built for audio tapping.
 8. **AcousticBrainz**: Shut down in 2022. The project was discontinued and the API is no longer available. MusicBrainz recording search (free, no auth) provides genre tags as an alternative.
-9. **MPNowPlayingInfoCenter for reading other apps' metadata**: Only returns the host app's own published Now Playing info. Cannot read Spotify, Apple Music, etc. Use MediaRemote private framework (dynamically loaded) instead.
+9. **MPNowPlayingInfoCenter for reading other apps' metadata**: Only returns the host app's own published Now Playing info. Cannot read Spotify, Apple Music, etc.
+11. **MediaRemote private framework for Now Playing** (macOS 15+): `MRMediaRemoteGetNowPlayingInfo` works from CLI tools but returns `kMRMediaRemoteFrameworkErrorDomain Code=3 "Operation not permitted"` from signed app bundles, even with screen capture permission granted. Use AppleScript via Automation framework instead — queries Apple Music and Spotify directly with a clean per-app permission prompt.
 10. **Spotify Audio Features endpoint**: Deprecated for apps created after Nov 2024. Returns 403. Dropped entirely — Spotify is now search-only for track matching. Use Soundcharts (commercial) or self-computed MIR for audio features instead.
 
 ---

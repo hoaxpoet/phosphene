@@ -4,5 +4,7 @@
 <dict>
 	<key>NSScreenCaptureUsageDescription</key>
 	<string>Phosphene captures system audio to generate real-time music visualizations. No video is recorded.</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Phosphene reads track info from music apps (Apple Music, Spotify) to display what's currently playing.</string>
 </dict>
 </plist>
