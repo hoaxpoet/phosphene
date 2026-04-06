@@ -56,7 +56,8 @@ let package = Package(
         .target(
             name: "ML",
             dependencies: ["Shared", "Audio"],
-            path: "Sources/ML"
+            path: "Sources/ML",
+            resources: [.copy("Models")]
         ),
         .target(
             name: "Renderer",
@@ -84,7 +85,7 @@ let package = Package(
         ),
         .testTarget(
             name: "PhospheneEngineTests",
-            dependencies: ["Shared", "Audio", "DSP", "Presets", "Renderer"],
+            dependencies: ["Shared", "Audio", "DSP", "ML", "Presets", "Renderer"],
             path: "Tests/PhospheneEngineTests",
             resources: [.copy("Regression/Fixtures")]
         ),

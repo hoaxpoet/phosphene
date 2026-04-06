@@ -79,6 +79,53 @@ public protocol FFTProcessing: AnyObject, Sendable {
     var latestResult: FFTResult { get }
 }
 
+// MARK: - StemSeparating
+
+/// Abstraction over CoreML stem separation.
+///
+/// Concrete implementation: `StemSeparator` (ML module).
+/// Test double: `FakeStemSeparator`.
+public protocol StemSeparating: AnyObject, Sendable {
+    /// Separate interleaved PCM audio into four stems (vocals, drums, bass, other).
+    ///
+    /// - Parameters:
+    ///   - audio: Interleaved float32 PCM samples.
+    ///   - channelCount: Number of channels (1 for mono, 2 for stereo).
+    ///   - sampleRate: Sample rate in Hz (will be resampled to 44100 if different).
+    /// - Returns: Separation result with metadata and sample count.
+    func separate(audio: [Float], channelCount: Int, sampleRate: Float) throws -> StemSeparationResult
+
+    /// Ordered stem labels: `["vocals", "drums", "bass", "other"]`.
+    var stemLabels: [String] { get }
+
+    /// Four UMA output buffers, one per stem (same order as `stemLabels`).
+    var stemBuffers: [UMABuffer<Float>] { get }
+}
+
+// MARK: - StemSeparationResult
+
+/// Result of a stem separation pass.
+public struct StemSeparationResult: Sendable {
+    /// Per-stem AudioFrame metadata.
+    public let stemData: StemData
+    /// Number of mono samples written per stem.
+    public let sampleCount: Int
+
+    public init(stemData: StemData, sampleCount: Int) {
+        self.stemData = stemData
+        self.sampleCount = sampleCount
+    }
+}
+
+// MARK: - StemSeparationError
+
+public enum StemSeparationError: Error, Sendable {
+    case modelNotFound
+    case modelLoadFailed(String)
+    case predictionFailed(String)
+    case insufficientSamples(Int)
+}
+
 // MARK: - TrackChangeEvent
 
 /// Emitted when the currently playing track changes.
