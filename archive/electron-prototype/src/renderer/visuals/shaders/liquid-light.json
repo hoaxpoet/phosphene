@@ -1,0 +1,14 @@
+{
+  "name": "Liquid Light",
+  "family": "fluid",
+  "duration": 30,
+  "description": "Raymarched liquid surface — waveform creates ripples, spectrum paints iridescent color, beat sends splashes outward",
+  "author": "Matt",
+  "beat_source": "bass",
+  "beat_zoom": 0.01,
+  "beat_rot": 0.005,
+  "base_zoom": 0.02,
+  "base_rot": 0.01,
+  "decay": 0.84,
+  "beat_sensitivity": 1.3
+}

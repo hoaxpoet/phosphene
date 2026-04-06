@@ -1,0 +1,14 @@
+{
+  "name": "Living Crystal",
+  "family": "abstract",
+  "duration": 35,
+  "description": "Raymarched 3D blob whose shape IS the frequency spectrum — each direction deforms with active frequencies, surface ripples with the raw waveform",
+  "author": "Matt",
+  "beat_source": "composite",
+  "beat_zoom": 0.01,
+  "beat_rot": 0.005,
+  "base_zoom": 0.02,
+  "base_rot": 0.01,
+  "decay": 0.82,
+  "beat_sensitivity": 1.2
+}

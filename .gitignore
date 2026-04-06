@@ -1,4 +1,33 @@
+# macOS
+.DS_Store
+
+# Electron prototype (archived)
 node_modules/
 dist/
-.DS_Store
 *.tsbuildinfo
+
+# Xcode / Swift
+build/
+DerivedData/
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/
+xcuserdata/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# Metal
+*.metallib
+*.air
