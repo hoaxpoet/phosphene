@@ -1,3 +1,4 @@
 # Git LFS tracking for large ML model files
-*.mlpackage filter=lfs diff=lfs merge=lfs -text
+# .mlpackage is a directory bundle — track the large files inside it
+**/weights/*.bin filter=lfs diff=lfs merge=lfs -text
 *.mlmodel filter=lfs diff=lfs merge=lfs -text
