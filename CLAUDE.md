@@ -48,7 +48,8 @@ PhospheneEngine/
     StreamingMetadata       → MediaRemote Now Playing polling, track change detection (✓ implemented)
     MetadataPreFetcher      → Parallel async queries, LRU cache, merge partial results (✓ implemented)
     MusicBrainzFetcher      → Free API, genre tags + duration from MusicBrainz recordings (✓ implemented)
-    SpotifyFetcher          → Client credentials flow, search + audio features (✓ implemented)
+    SpotifyFetcher          → Client credentials flow, search-only track matching (✓ implemented)
+    SoundchartsFetcher      → Optional commercial API, BPM/key/energy/valence/danceability (✓ implemented)
     MusicKitBridge          → Optional MusicKit catalog enrichment, graceful no-op (✓ implemented)
   DSP/                      → Spectral analysis, beat/onset detection, chroma, MFCCs (stub)
   ML/                       → CoreML wrappers: stem separator, mood classifier (stub)
@@ -293,11 +294,21 @@ Because streaming audio arrives without a pre-scannable file, Phosphene employs 
 - Section boundaries (structural analysis) are preferred transition points over timer-based switching.
 - Track change detection fuses: Now Playing metadata, audio-level heuristics, elapsed time vs. pre-fetched duration.
 
+### Pre-Fetch Philosophy
+Pre-fetched metadata is a **"fast hint"** that accelerates the first ~15 seconds of a track. It is NOT a hard dependency. The self-computed MIR pipeline (Increment 2.4) computes BPM, key, spectral features, and mood from live audio — pre-fetch just gives the Orchestrator a head start before MIR has enough data to be confident.
+
+**Fetcher priority:**
+1. MusicBrainz (always active, free) — genre tags, duration
+2. Soundcharts (optional, commercial) — BPM, key, energy, valence, danceability. Best external source for audio features. Gated behind `SOUNDCHARTS_APP_ID` / `SOUNDCHARTS_API_KEY` env vars.
+3. Spotify (optional, needs credentials) — search-only track matching, duration. Audio features endpoint deprecated Nov 2024.
+4. MusicKit (optional, needs entitlement) — artwork, genre, duration enrichment.
+
 ### Metadata Degradation
 Phosphene works at every tier — never show errors or degraded UI when metadata is unavailable:
-- Full metadata (MusicKit + Spotify API + Now Playing) → best experience
+- Full metadata (Soundcharts + MusicBrainz + MusicKit + Now Playing) → best experience
+- Now Playing + MusicBrainz only → good experience, genre tags available immediately
 - Now Playing only → good experience, slower ramp-up
-- No metadata at all → fully functional via audio analysis alone
+- No metadata at all → fully functional via self-computed MIR audio analysis alone
 
 ### Code Style
 - Swift 6.0 with `SWIFT_STRICT_CONCURRENCY = complete`. `async`/`await` and actors. Avoid raw `DispatchQueue` except for Accelerate/vDSP.
@@ -332,7 +343,7 @@ These were tried in the Electron prototype and abandoned with documented reasons
 7. **ScreenCaptureKit for audio-only capture** (macOS 26): `SCStream` with `capturesAudio = true` delivers video frames but zero audio callbacks, even with both `.screen` and `.audio` stream outputs registered and screen capture permission confirmed working. The root cause is unknown — may be a macOS 26 regression or a deliberate policy change. Core Audio taps (`AudioHardwareCreateProcessTap`, macOS 14.2+) work perfectly and are purpose-built for audio tapping.
 8. **AcousticBrainz**: Shut down in 2022. The project was discontinued and the API is no longer available. MusicBrainz recording search (free, no auth) provides genre tags as an alternative.
 9. **MPNowPlayingInfoCenter for reading other apps' metadata**: Only returns the host app's own published Now Playing info. Cannot read Spotify, Apple Music, etc. Use MediaRemote private framework (dynamically loaded) instead.
-10. **Spotify Audio Features endpoint**: Deprecated for apps created after Nov 2024. Returns 403. SpotifyFetcher gracefully degrades — search still works, audio features are optional.
+10. **Spotify Audio Features endpoint**: Deprecated for apps created after Nov 2024. Returns 403. Dropped entirely — Spotify is now search-only for track matching. Use Soundcharts (commercial) or self-computed MIR for audio features instead.
 
 ---
 
@@ -404,7 +415,8 @@ Metal, MetalKit, CoreML, AVFoundation, Accelerate, ScreenCaptureKit, MusicKit
 15. **Protocol-oriented testability**: All major subsystems have corresponding protocols (`AudioCapturing`, `AudioBuffering`, `FFTProcessing`, `Rendering`). Production code depends on protocols; test doubles inject via initializer.
 16. **Structured logging**: `os.Logger` via `Shared/Logging.swift`. One subsystem (`com.phosphene`), one category per module. No `print()` in production code.
 17. **SwiftLint enforcement**: `.swiftlint.yml` with `force_cast`/`force_try`/`force_unwrapping` as errors, `file_length` warning at 400, `cyclomatic_complexity` warning at 10. Tests and tools directories excluded from lint.
-18. **Streaming metadata**: `StreamingMetadata` polls MediaRemote (private framework, dynamically loaded) every 2s for system-wide Now Playing state from any app. `MPNowPlayingInfoCenter` only returns the host app's own metadata — do not use it for reading other apps. Case-insensitive identity matching. `MetadataPreFetcher` queries external APIs (MusicBrainz, Spotify) in parallel via `MetadataFetching` protocol with 3s per-fetcher timeouts, LRU cache (50 entries, `OrderedDictionary`). `MusicKitBridge` enriches via `#if canImport(MusicKit)` with graceful no-op. `AudioInputRouter` forwards `TrackChangeEvent` to consumers via `onTrackChange` callback.
+18. **Streaming metadata**: `StreamingMetadata` polls MediaRemote (private framework, dynamically loaded) every 2s for system-wide Now Playing state. `MetadataPreFetcher` queries external APIs in parallel (3s per-fetcher timeouts, LRU cache). Active fetchers: MusicBrainz (always, free), Soundcharts (optional, commercial), Spotify (optional, search-only). Pre-fetched data is a "fast hint" for the first ~15s — self-computed MIR (Increment 2.4) is the real source of truth.
+19. **Essentia for offline validation**: Essentia (AGPL) is used in `tools/` Python scripts only — NOT in the app binary. Pre-computes ground-truth audio features for testing and validates self-computed MIR accuracy. Never link Essentia into PhospheneEngine or PhospheneApp.
 
 ## Reference Documents
 

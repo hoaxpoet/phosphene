@@ -168,13 +168,17 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
             }
 
             // Build fetcher list — MusicBrainz is always available (free API).
-            // Spotify requires credentials via environment variables.
+            // Spotify and Soundcharts require credentials via environment variables.
+            // Self-computed MIR (Increment 2.4) will replace external audio features —
+            // pre-fetch is a "fast hint" for the first ~15 seconds, not a hard dependency.
             var fetchers: [any MetadataFetching] = [MusicBrainzFetcher()]
+            if let soundcharts = SoundchartsFetcher.fromEnvironment() {
+                fetchers.append(soundcharts)
+                logger.info("Soundcharts fetcher enabled (audio features)")
+            }
             if let spotify = SpotifyFetcher.fromEnvironment() {
                 fetchers.append(spotify)
-                logger.info("Spotify fetcher enabled")
-            } else {
-                logger.info("Spotify fetcher disabled (no credentials)")
+                logger.info("Spotify fetcher enabled (search only)")
             }
 
             let fetcher = MetadataPreFetcher(fetchers: fetchers)
