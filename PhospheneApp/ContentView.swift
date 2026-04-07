@@ -62,7 +62,6 @@ struct ContentView: View {
         .frame(minWidth: 800, minHeight: 600)
         .onAppear {
             engine.startAudio()
-            Task { await AppMusicKitFetcher.requestAuthorization() }
         }
         .onKeyPress(.rightArrow) {
             engine.nextPreset()
@@ -370,7 +369,6 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         // MusicBrainz: genre tags (always free).
         // Soundcharts/Spotify: optional, need credentials.
         var fetchers: [any MetadataFetching] = [
-            AppMusicKitFetcher(),
             MusicBrainzFetcher()
         ]
         if let soundcharts = SoundchartsFetcher.fromEnvironment() {
