@@ -279,12 +279,15 @@ public final class BeatDetector: @unchecked Sendable {
         // Track elapsed time for stable tempo estimation.
         elapsedTime += Double(deltaTime)
 
-        // Record onset timestamps when any band fires.
-        let hasCompositeOnset = onsets.contains(true)
-        if hasCompositeOnset {
+        // Record onset timestamps when the BASS GROUP pulse fires.
+        // groupPulses[0] == 1.0 only on the frame a bass onset was accepted
+        // (after the 400ms group cooldown). This gives clean beat-rate events.
+        if groupPulses[0] >= 0.99 {
             onsetTimestamps[onsetTimestampHead] = elapsedTime
             onsetTimestampHead = (onsetTimestampHead + 1) % Self.onsetTimestampWindowSize
-            onsetTimestampCount = min(onsetTimestampCount + 1, Self.onsetTimestampWindowSize)
+            onsetTimestampCount = min(
+                onsetTimestampCount + 1, Self.onsetTimestampWindowSize
+            )
         }
 
         // Once per second: compute stable tempo via IOI histogram.

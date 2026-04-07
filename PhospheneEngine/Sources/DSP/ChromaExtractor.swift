@@ -83,9 +83,9 @@ public final class ChromaExtractor: @unchecked Sendable {
     /// Accumulated chroma for stable key estimation (EMA-smoothed).
     private var accumulatedChroma = [Float](repeating: 0, count: 12)
 
-    /// EMA alpha for chroma accumulation. 0.08 = ~4s effective window.
-    /// Update: new = (1 - alpha) * old + alpha * current.
-    private static let chromaEmaAlpha: Float = 0.08
+    /// EMA alpha for chroma accumulation. 0.02 = ~15s effective window.
+    /// Slow accumulation gives stable key within a song section.
+    private static let chromaEmaAlpha: Float = 0.02
 
     // MARK: - Key Hysteresis State
 
@@ -200,8 +200,10 @@ public final class ChromaExtractor: @unchecked Sendable {
         let keyEst = estimateKey(chroma: accumulatedChroma)
         let estimatedKeyName: String? = keyEst.confidence >= Self.minKeyConfidence ? keyEst.key : nil
 
-        // Key hysteresis: require 3 seconds of agreement before updating stableKey.
-        let frameDelta: Float = 1.0 / 60.0  // approximate frame time
+        // Key hysteresis: the slow EMA (alpha=0.02) provides anti-jitter.
+        // The hysteresis only prevents false transitions during brief timbral changes.
+        // Key modulations within a song ARE detected because the EMA shifts over ~10s.
+        let frameDelta: Float = 1.0 / 60.0
         if estimatedKeyName == candidateKey {
             candidateKeyDuration += frameDelta
             candidateKeyCorrelation = keyEst.confidence
@@ -211,14 +213,9 @@ public final class ChromaExtractor: @unchecked Sendable {
             candidateKeyCorrelation = keyEst.confidence
         }
 
-        // First key: accept after 3s of agreement with no margin.
-        // Subsequent key changes: require 5s AND 0.05 correlation margin.
-        let isFirstKey = stableKey == nil
-        let durationThreshold: Float = isFirstKey ? 3.0 : 5.0
-        let marginThreshold: Float = isFirstKey ? 0.0 : 0.05
-
-        if candidateKeyDuration > durationThreshold
-            && candidateKeyCorrelation > stableKeyCorrelation + marginThreshold {
+        // Accept a new key after 3 seconds of agreement from the accumulated chroma.
+        // No correlation margin — the slow EMA already filters noise.
+        if candidateKeyDuration > 3.0 && candidateKey != nil {
             stableKey = candidateKey
             stableKeyCorrelation = candidateKeyCorrelation
         }
