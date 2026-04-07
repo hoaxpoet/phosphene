@@ -22,7 +22,7 @@ import CoreML
     let features: [Float] = [
         0.127, 0.212, 0.121, 0.031, 0.007, 0.002,  // 6-band energy (DEAM means)
         0.081,                                         // centroid (normalized by Nyquist)
-        65.0,                                          // flux (raw, DEAM mean ~65)
+        0.127,                                         // flux (with 2/N FFT normalization)
         0.476, 0.480                                   // major/minor correlations
     ]
     let state = try classifier.classify(features: features)
@@ -36,9 +36,9 @@ import CoreML
 
     // Test with varied feature vectors.
     let testCases: [[Float]] = [
-        [0.20, 0.25, 0.15, 0.05, 0.01, 0.003, 0.12, 100.0, 0.70, 0.40],  // energetic major
-        [0.05, 0.10, 0.05, 0.01, 0.003, 0.001, 0.04, 20.0, 0.30, 0.60],   // quiet minor
-        [0.15, 0.22, 0.12, 0.03, 0.007, 0.002, 0.08, 65.0, 0.50, 0.50],   // average
+        [0.20, 0.25, 0.15, 0.05, 0.01, 0.003, 0.12, 0.25, 0.70, 0.40],   // energetic major
+        [0.05, 0.10, 0.05, 0.01, 0.003, 0.001, 0.04, 0.03, 0.30, 0.60],   // quiet minor
+        [0.15, 0.22, 0.12, 0.03, 0.007, 0.002, 0.08, 0.13, 0.50, 0.50],   // average
     ]
     for features in testCases {
         let state = try classifier.classify(features: features)
@@ -51,7 +51,7 @@ import CoreML
     let classifier = try MoodClassifier()
 
     let testCases: [[Float]] = [
-        [0.20, 0.25, 0.15, 0.05, 0.01, 0.003, 0.12, 100.0, 0.70, 0.40],
+        [0.20, 0.25, 0.15, 0.05, 0.01, 0.003, 0.12, 0.25, 0.70, 0.40],
         [0.05, 0.10, 0.05, 0.01, 0.003, 0.001, 0.04, 20.0, 0.30, 0.60],
         [0.15, 0.22, 0.12, 0.03, 0.007, 0.002, 0.08, 65.0, 0.50, 0.50],
     ]
@@ -66,11 +66,11 @@ import CoreML
     let classifier = try MoodClassifier()
 
     // High energy, bright timbre, strong major key — DEAM-calibrated.
-    // Flux is raw (not 0-1 normalized). Centroid is Hz / Nyquist.
+    // Flux uses 2/N FFT normalization (same scale as live pipeline).
     let features: [Float] = [
         0.20, 0.26, 0.18, 0.06, 0.015, 0.004,  // above-average energy
         0.12,                                      // bright centroid
-        110.0,                                     // high flux
+        0.30,                                      // high flux (2/N normalized)
         0.70, 0.35                                 // strong major lean
     ]
 
@@ -91,7 +91,7 @@ import CoreML
     let features: [Float] = [
         0.06, 0.15, 0.06, 0.015, 0.003, 0.001,  // below-average energy
         0.04,                                       // dark centroid
-        25.0,                                       // low flux
+        0.03,                                       // low flux (2/N normalized)
         0.30, 0.65                                  // strong minor lean
     ]
 

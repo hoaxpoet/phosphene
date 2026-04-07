@@ -42,16 +42,16 @@ public final class MoodClassifier: MoodClassifying, @unchecked Sendable {
 
     // MARK: - Z-Score Normalization (from tools/data/mood_scaler.json)
 
-    /// Per-feature means from DEAM training set.
+    /// Per-feature means from DEAM training set (with 2/N FFT normalization).
     private static let scalerMeans: [Float] = [
         0.12667, 0.21217, 0.12087, 0.03148, 0.00705, 0.00177,
-        0.08116, 65.03311, 0.47553, 0.48029
+        0.08114, 0.12702, 0.47553, 0.48029
     ]
 
     /// Per-feature standard deviations from DEAM training set.
     private static let scalerStds: [Float] = [
         0.06715, 0.04275, 0.06551, 0.02538, 0.00570, 0.00206,
-        0.03441, 49.28737, 0.12126, 0.11216
+        0.03442, 0.09626, 0.12126, 0.11216
     ]
 
     // MARK: - Model

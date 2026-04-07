@@ -146,6 +146,13 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Feature capture file handle.
     private var captureHandle: FileHandle?
 
+    /// Diagnostic log file handle (writes to /tmp/phosphene_diag.log).
+    private let diagLogHandle: FileHandle? = {
+        let path = "/tmp/phosphene_diag.log"
+        FileManager.default.createFile(atPath: path, contents: nil)
+        return FileHandle(forWritingAtPath: path)
+    }()
+
     /// Path to the current capture file.
     private(set) var captureFilePath: String?
 
@@ -227,6 +234,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         let audioRouter = AudioInputRouter(metadata: metadata)
         let mir = self.mirPipeline
         let mood = self.moodClassifier
+        let diagLog = self.diagLogHandle
         let analysisQueue = DispatchQueue(label: "com.phosphene.analysis", qos: .userInteractive)
         var frameCount = 0
 
@@ -249,21 +257,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
                     magnitudes: magnitudes, fps: 60, time: 0, deltaTime: 1.0 / 60.0
                 )
 
-                // Diagnostic logging (~once per second).
                 frameCount += 1
-                if frameCount % 60 == 0 {
-                    let magMax = magnitudes.max() ?? 0
-                    let key = mir.estimatedKey ?? "nil"
-                    let msg = String(
-                        format: "MIR: magMax=%.4f bass=%.3f mid=%.3f "
-                        + "cent=%.3f flux=%.3f majC=%.3f minC=%.3f key=%@",
-                        magMax, fv.bass, fv.mid,
-                        fv.spectralCentroid, fv.spectralFlux,
-                        mir.latestMajorKeyCorrelation,
-                        mir.latestMinorKeyCorrelation, key
-                    )
-                    logger.info("\(msg, privacy: .public)")
-                }
 
                 // Run mood classifier with 10 features.
                 // DEAM-trained model expects raw centroid (Hz/Nyquist) and raw flux
@@ -289,6 +283,28 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
                     }
 
                     if let state = try? mood.classify(features: features) {
+                        // Diagnostic: write to file once per second (bypasses log redaction).
+                        if frameCount % 60 == 0 {
+                            let featStr = features.map {
+                                String(format: "%.2f", $0)
+                            }.joined(separator: ",")
+                            let sBPM = mir.stableBPM ?? 0
+                            let iBPM = mir.instantBPM ?? 0
+                            let sKey = mir.stableKey ?? "nil"
+                            let kConf = mir.keyConfidence
+                            let stab = mir.featureStability
+                            let quad = state.quadrant.rawValue
+                            let line = String(
+                                format: "[MIR] feat=[%@] bpm=%.0f/%.0f key=%@(%.2f) "
+                                + "stability=%.2f mood=(%.3f,%.3f) quad=%@\n",
+                                featStr, sBPM, iBPM, sKey, kConf,
+                                stab, state.valence, state.arousal, quad
+                            )
+                            if let data = line.data(using: .utf8) {
+                                diagLog?.write(data)
+                            }
+                        }
+
                         let diag = MIRDiagnostics(
                             magMax: magnitudes.max() ?? 0,
                             bass: fv.bass, mid: fv.mid,

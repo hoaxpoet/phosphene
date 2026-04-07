@@ -227,7 +227,8 @@ def extract_features_from_audio(audio_path):
     # Use hop_length=512 to match typical frame rate
     stft = np.abs(librosa.stft(y, n_fft=FFT_SIZE, hop_length=FFT_SIZE // 2))
     # stft shape: (513, num_frames) -- we use bins 0..511 (BIN_COUNT)
-    magnitudes = stft[:BIN_COUNT, :]  # (512, num_frames)
+    # Apply same normalization as Swift FFTProcessor: magnitudes *= 2.0 / fftSize
+    magnitudes = stft[:BIN_COUNT, :] * (2.0 / FFT_SIZE)  # (512, num_frames)
     num_frames = magnitudes.shape[1]
 
     if num_frames < 2:

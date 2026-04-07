@@ -200,7 +200,7 @@ public final class ChromaExtractor: @unchecked Sendable {
         let keyEst = estimateKey(chroma: accumulatedChroma)
         let estimatedKeyName: String? = keyEst.confidence >= Self.minKeyConfidence ? keyEst.key : nil
 
-        // Key hysteresis: require 5 seconds of agreement before updating stableKey.
+        // Key hysteresis: require 3 seconds of agreement before updating stableKey.
         let frameDelta: Float = 1.0 / 60.0  // approximate frame time
         if estimatedKeyName == candidateKey {
             candidateKeyDuration += frameDelta
@@ -211,8 +211,14 @@ public final class ChromaExtractor: @unchecked Sendable {
             candidateKeyCorrelation = keyEst.confidence
         }
 
-        if candidateKeyDuration > 5.0
-            && candidateKeyCorrelation > stableKeyCorrelation + 0.05 {
+        // First key: accept after 3s of agreement with no margin.
+        // Subsequent key changes: require 5s AND 0.05 correlation margin.
+        let isFirstKey = stableKey == nil
+        let durationThreshold: Float = isFirstKey ? 3.0 : 5.0
+        let marginThreshold: Float = isFirstKey ? 0.0 : 0.05
+
+        if candidateKeyDuration > durationThreshold
+            && candidateKeyCorrelation > stableKeyCorrelation + marginThreshold {
             stableKey = candidateKey
             stableKeyCorrelation = candidateKeyCorrelation
         }
