@@ -62,9 +62,7 @@ struct ContentView: View {
         .frame(minWidth: 800, minHeight: 600)
         .onAppear {
             engine.startAudio()
-            // Request MusicKit authorization early so the dialog appears
-            // before the window takes focus. Non-blocking.
-            Task { await MusicKitFetcher().requestAuthorizationIfNeeded() }
+            Task { await AppMusicKitFetcher.requestAuthorization() }
         }
         .onKeyPress(.rightArrow) {
             engine.nextPreset()
@@ -368,11 +366,11 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         }
 
         // Build fetcher list.
-        // MusicKit: BPM + genre from Apple Music catalog (works for any streaming app).
+        // MusicKit: genre from Apple Music catalog (works for any streaming app).
         // MusicBrainz: genre tags (always free).
         // Soundcharts/Spotify: optional, need credentials.
         var fetchers: [any MetadataFetching] = [
-            MusicKitFetcher(),
+            AppMusicKitFetcher(),
             MusicBrainzFetcher()
         ]
         if let soundcharts = SoundchartsFetcher.fromEnvironment() {

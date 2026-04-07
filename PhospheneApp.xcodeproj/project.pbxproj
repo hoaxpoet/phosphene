@@ -11,6 +11,7 @@
 		A10002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20002; };
 		A10020 /* MetalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20020; };
 		A10021 /* DebugOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20021; };
+		A10022 /* MusicKitFetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20022; };
 		A10003 /* PhospheneEngine in Frameworks */ = {isa = PBXBuildFile; productRef = A80001; };
 		A10010 /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20010; };
 		A10011 /* MetalKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20011; };
@@ -27,6 +28,7 @@
 		A20003 /* PhospheneApp.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = PhospheneApp.entitlements; sourceTree = "<group>"; };
 		A20020 /* MetalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetalView.swift; sourceTree = "<group>"; };
 		A20021 /* DebugOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugOverlayView.swift; sourceTree = "<group>"; };
+		A20022 /* MusicKitFetcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicKitFetcher.swift; sourceTree = "<group>"; };
 		A20004 /* PhospheneApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PhospheneApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A20005 /* PhospheneEngine */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = PhospheneEngine; path = PhospheneEngine; sourceTree = "<group>"; };
 		A20010 /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
@@ -72,6 +74,7 @@
 			children = (
 				A20001 /* PhospheneApp.swift */,
 				A20002 /* ContentView.swift */,
+				A20022 /* MusicKitFetcher.swift */,
 				A40005 /* Views */,
 				A20003 /* PhospheneApp.entitlements */,
 			);
@@ -176,6 +179,7 @@
 				A10002 /* ContentView.swift in Sources */,
 				A10020 /* MetalView.swift in Sources */,
 				A10021 /* DebugOverlayView.swift in Sources */,
+				A10022 /* MusicKitFetcher.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
