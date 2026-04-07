@@ -435,7 +435,23 @@ public final class BeatDetector: @unchecked Sendable {
 
         guard peakCount >= 2 else { return }
 
-        let newInstant = Float(peakBucket + 60)
+        var bestBPM = Float(peakBucket + 60)
+
+        // Octave error correction: if there's a peak at 2x or 0.5x,
+        // prefer the tempo in the 80-160 BPM range (most common for
+        // pop/rock/electronic). This resolves the 86↔171 ambiguity.
+        let doubleBucket = peakBucket * 2 + 60  // bucket for 2x BPM
+        let halfBucket = (peakBucket - 60) / 2  // bucket for 0.5x BPM
+
+        if bestBPM < 90 && doubleBucket < 141 && histogram[doubleBucket] >= peakCount / 3 {
+            // Half-tempo detected with a harmonic at double — use double.
+            bestBPM = Float(doubleBucket + 60)
+        } else if bestBPM > 160 && halfBucket >= 0 && histogram[halfBucket] >= peakCount / 3 {
+            // Double-tempo detected with a harmonic at half — use half.
+            bestBPM = Float(halfBucket + 60)
+        }
+
+        let newInstant = bestBPM
         instantBPM = newInstant
 
         // Add to tempo estimates circular buffer.
