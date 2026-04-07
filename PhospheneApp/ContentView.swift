@@ -22,6 +22,8 @@ struct MIRDiagnostics {
     var majorCorr: Float = 0
     var minorCorr: Float = 0
     var callbackCount: Int = 0
+    var onsetsPerSec: Int = 0
+    var totalEnergy: Float = 0
 }
 
 // MARK: - ContentView
@@ -77,6 +79,10 @@ struct ContentView: View {
         }
         .onKeyPress("c") {
             engine.toggleCapture()
+            return .handled
+        }
+        .onKeyPress("r") {
+            engine.toggleRecording()
             return .handled
         }
     }
@@ -146,12 +152,13 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Feature capture file handle.
     private var captureHandle: FileHandle?
 
-    /// Diagnostic log file handle (writes to /tmp/phosphene_diag.log).
-    private let diagLogHandle: FileHandle? = {
+    /// Diagnostic log (writes to /tmp/phosphene_diag.log).
+    private let diagLog: FileHandle? = {
         let path = "/tmp/phosphene_diag.log"
         FileManager.default.createFile(atPath: path, contents: nil)
         return FileHandle(forWritingAtPath: path)
     }()
+
 
     /// Path to the current capture file.
     private(set) var captureFilePath: String?
@@ -234,9 +241,16 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         let audioRouter = AudioInputRouter(metadata: metadata)
         let mir = self.mirPipeline
         let mood = self.moodClassifier
-        let diagLog = self.diagLogHandle
+        let diagLog = self.diagLog
         let analysisQueue = DispatchQueue(label: "com.phosphene.analysis", qos: .userInteractive)
         var frameCount = 0
+
+        // 10-second EMA accumulator for features fed to the mood classifier.
+        // Matches DEAM's track-level average feature distribution.
+        // At ~94 callbacks/s, alpha=0.01 gives ~7s effective window.
+        let featureEmaAlpha: Float = 0.01
+        var accumulatedFeatures = [Float](repeating: 0, count: 10)
+        var featureAccumInitialized = false
 
         // Audio callback: buffer write + FFT only (real-time safe).
         // MIR + mood classification dispatched to a background queue.
@@ -259,20 +273,31 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
 
                 frameCount += 1
 
-                // Run mood classifier with 10 features.
-                // DEAM-trained model expects raw centroid (Hz/Nyquist) and raw flux
-                // (not 0-1 normalized). Z-score normalization is applied inside
-                // MoodClassifier using DEAM training set statistics.
+                // Build per-frame features and accumulate via 10s EMA.
+                let nyquist: Float = 24000.0
+                let centroidNorm = mir.rawSmoothedCentroid / nyquist
+                let frameFeatures: [Float] = [
+                    fv.subBass, fv.lowBass, fv.lowMid,
+                    fv.midHigh, fv.highMid, fv.high,
+                    centroidNorm, mir.rawSmoothedFlux,
+                    mir.latestMajorKeyCorrelation,
+                    mir.latestMinorKeyCorrelation
+                ]
+
+                // EMA accumulation to match DEAM's track-level averages.
+                if !featureAccumInitialized {
+                    accumulatedFeatures = frameFeatures
+                    featureAccumInitialized = true
+                } else {
+                    for idx in 0..<10 {
+                        accumulatedFeatures[idx] = featureEmaAlpha * frameFeatures[idx]
+                            + (1 - featureEmaAlpha) * accumulatedFeatures[idx]
+                    }
+                }
+
+                // Run mood classifier on accumulated (averaged) features.
                 if let mood {
-                    let nyquist: Float = 24000.0
-                    let centroidNorm = mir.rawSmoothedCentroid / nyquist
-                    let features: [Float] = [
-                        fv.subBass, fv.lowBass, fv.lowMid,
-                        fv.midHigh, fv.highMid, fv.high,
-                        centroidNorm, mir.rawSmoothedFlux,
-                        mir.latestMajorKeyCorrelation,
-                        mir.latestMinorKeyCorrelation
-                    ]
+                    let features = accumulatedFeatures
                     // Write capture row (~every 10th frame to avoid huge files).
                     if frameCount % 10 == 0, let self {
                         self.writeCaptureRow(
@@ -283,28 +308,25 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
                     }
 
                     if let state = try? mood.classify(features: features) {
-                        // Diagnostic: write to file once per second (bypasses log redaction).
+                        // Diagnostic: once per second, write to file.
                         if frameCount % 60 == 0 {
-                            let featStr = features.map {
-                                String(format: "%.2f", $0)
-                            }.joined(separator: ",")
-                            let sBPM = mir.stableBPM ?? 0
-                            let iBPM = mir.instantBPM ?? 0
-                            let sKey = mir.stableKey ?? "nil"
-                            let kConf = mir.keyConfidence
-                            let stab = mir.featureStability
-                            let quad = state.quadrant.rawValue
+                            let af = accumulatedFeatures
                             let line = String(
-                                format: "[MIR] feat=[%@] bpm=%.0f/%.0f key=%@(%.2f) "
-                                + "stability=%.2f mood=(%.3f,%.3f) quad=%@\n",
-                                featStr, sBPM, iBPM, sKey, kConf,
-                                stab, state.valence, state.arousal, quad
+                                format: "accum=[%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f]"
+                                + " onsets/s=%d key=%@ bpm=%.0f"
+                                + " mood=(%.3f,%.3f) quad=%@\n",
+                                af[0], af[1], af[2], af[3], af[4], af[5],
+                                af[6], af[7], af[8], af[9],
+                                mir.onsetsPerSecond,
+                                mir.stableKey ?? mir.estimatedKey ?? "nil",
+                                mir.stableBPM ?? 0,
+                                state.valence, state.arousal,
+                                state.quadrant.rawValue
                             )
-                            if let data = line.data(using: .utf8) {
-                                diagLog?.write(data)
-                            }
+                            diagLog?.write(Data(line.utf8))
                         }
-
+                        let te = fv.subBass + fv.lowBass + fv.lowMid
+                            + fv.midHigh + fv.highMid + fv.high
                         let diag = MIRDiagnostics(
                             magMax: magnitudes.max() ?? 0,
                             bass: fv.bass, mid: fv.mid,
@@ -312,7 +334,9 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
                             flux: fv.spectralFlux,
                             majorCorr: mir.latestMajorKeyCorrelation,
                             minorCorr: mir.latestMinorKeyCorrelation,
-                            callbackCount: frameCount
+                            callbackCount: frameCount,
+                            onsetsPerSec: mir.onsetsPerSecond,
+                            totalEnergy: te
                         )
                         let stability = mir.featureStability
                         Task { @MainActor [weak self] in
@@ -433,6 +457,15 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Toggle the debug metadata overlay.
     func toggleDebugOverlay() {
         showDebugOverlay.toggle()
+    }
+
+    /// Toggle MIR feature recording to ~/phosphene_features.csv.
+    func toggleRecording() {
+        if mirPipeline.isRecording {
+            mirPipeline.stopRecording()
+        } else {
+            mirPipeline.startRecording()
+        }
     }
 
     /// Toggle feature vector capture to CSV file.

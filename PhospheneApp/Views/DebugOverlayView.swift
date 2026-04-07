@@ -84,15 +84,9 @@ struct DebugOverlayView: View {
             label("mid", String(format: "%.3f", diag.mid))
             label("majC", String(format: "%.3f", diag.majorCorr))
             label("minC", String(format: "%.3f", diag.minorCorr))
+            label("energy", String(format: "%.3f", diag.totalEnergy))
+            label("onsets/s", "\(diag.onsetsPerSec)")
             label("frames", "\(diag.callbackCount)")
-
-            // Capture status.
-            if engine.isCapturing {
-                Divider().background(.white.opacity(0.3))
-                Text("● RECORDING (press C to stop)")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .foregroundColor(.red)
-            }
         }
         .padding(12)
         .background(.black.opacity(0.6))

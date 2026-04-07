@@ -86,6 +86,26 @@ public final class MIRPipeline: @unchecked Sendable {
     /// Elapsed seconds since last reset, for stability ramp.
     private var elapsedSeconds: Float = 0
 
+    /// Number of onsets detected per second (for BPM debugging).
+    public private(set) var onsetsPerSecond: Int = 0
+
+    /// Internal onset counter for the current second.
+    private var onsetCountThisSecond: Int = 0
+
+    /// Elapsed seconds tracker for onset rate measurement.
+    private var lastOnsetRateTime: Float = 0
+
+    // MARK: - Feature Recording
+
+    /// File handle for recording mode (nil = not recording).
+    private var recordingHandle: FileHandle?
+
+    /// Last recording write time (to throttle to 1 row/sec).
+    private var lastRecordTime: Float = 0
+
+    /// Whether recording mode is active.
+    public var isRecording: Bool { recordingHandle != nil }
+
     // MARK: - Normalization State
 
     /// Running max for spectral flux normalization.
@@ -177,7 +197,25 @@ public final class MIRPipeline: @unchecked Sendable {
         latestMinorKeyCorrelation = chroma.minorKeyCorrelation
         rawSmoothedFlux = spectral.smoothedFlux
         rawSmoothedCentroid = spectral.smoothedCentroid
+
+        // Track onsets per second for BPM debugging.
+        if beat.onsets.contains(true) {
+            onsetCountThisSecond += 1
+        }
+        if elapsedSeconds - lastOnsetRateTime >= 1.0 {
+            onsetsPerSecond = onsetCountThisSecond
+            onsetCountThisSecond = 0
+            lastOnsetRateTime = elapsedSeconds
+        }
+
         lock.unlock()
+
+        // Write recording row (throttled to 1/sec inside the method).
+        let centroidNorm = nyquist > 0 ? spectral.smoothedCentroid / nyquist : 0
+        writeRecordingRow(
+            energy: energy, centroid: centroidNorm, flux: spectral.smoothedFlux,
+            majorCorr: chroma.majorKeyCorrelation, minorCorr: chroma.minorKeyCorrelation
+        )
 
         // Assemble FeatureVector.
         return FeatureVector(
@@ -206,6 +244,58 @@ public final class MIRPipeline: @unchecked Sendable {
         )
     }
 
+    // MARK: - Recording Mode
+
+    /// Start recording feature vectors to CSV at ~/phosphene_features.csv.
+    /// Writes one row per second with timestamp + 10 features.
+    public func startRecording() {
+        let path = NSHomeDirectory() + "/phosphene_features.csv"
+        FileManager.default.createFile(atPath: path, contents: nil)
+        guard let handle = FileHandle(forWritingAtPath: path) else {
+            logger.error("Failed to create recording file: \(path)")
+            return
+        }
+        let header = "timestamp,subBass,lowBass,lowMid,midHigh,highMid,high,"
+            + "centroid,flux,majorCorr,minorCorr,stableKey,stableBPM,"
+            + "valence,arousal,quadrant\n"
+        handle.write(Data(header.utf8))
+        recordingHandle = handle
+        lastRecordTime = elapsedSeconds
+        logger.info("Recording started: \(path)")
+    }
+
+    /// Stop recording and close the file.
+    public func stopRecording() {
+        recordingHandle?.closeFile()
+        recordingHandle = nil
+        logger.info("Recording stopped")
+    }
+
+    /// Write a feature row if recording and throttle interval has passed.
+    /// Called from process() with the current feature values.
+    private func writeRecordingRow(
+        energy: BandEnergyProcessor.Result,
+        centroid: Float,
+        flux: Float,
+        majorCorr: Float,
+        minorCorr: Float
+    ) {
+        guard let handle = recordingHandle else { return }
+        guard elapsedSeconds - lastRecordTime >= 1.0 else { return }
+        lastRecordTime = elapsedSeconds
+
+        let row = String(
+            format: "%.1f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%@,%.1f,,,\n",
+            elapsedSeconds,
+            energy.subBass, energy.lowBass, energy.lowMid,
+            energy.midHigh, energy.highMid, energy.high,
+            centroid, flux, majorCorr, minorCorr,
+            stableKey ?? "nil",
+            stableBPM ?? 0
+        )
+        handle.write(Data(row.utf8))
+    }
+
     /// Reset all analyzers and internal state.
     public func reset() {
         spectralAnalyzer.reset()
@@ -230,6 +320,10 @@ public final class MIRPipeline: @unchecked Sendable {
         featureStability = 0
         rawSmoothedFlux = 0
         rawSmoothedCentroid = 0
+        onsetsPerSecond = 0
+        onsetCountThisSecond = 0
+        lastOnsetRateTime = 0
+        lastRecordTime = 0
         lock.unlock()
     }
 }
