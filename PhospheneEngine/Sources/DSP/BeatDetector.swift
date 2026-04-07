@@ -437,18 +437,23 @@ public final class BeatDetector: @unchecked Sendable {
 
         var bestBPM = Float(peakBucket + 60)
 
-        // Octave error correction: if there's a peak at 2x or 0.5x,
-        // prefer the tempo in the 80-160 BPM range (most common for
-        // pop/rock/electronic). This resolves the 86↔171 ambiguity.
-        let doubleBucket = peakBucket * 2 + 60  // bucket for 2x BPM
-        let halfBucket = (peakBucket - 60) / 2  // bucket for 0.5x BPM
-
-        if bestBPM < 90 && doubleBucket < 141 && histogram[doubleBucket] >= peakCount / 3 {
-            // Half-tempo detected with a harmonic at double — use double.
-            bestBPM = Float(doubleBucket + 60)
-        } else if bestBPM > 160 && halfBucket >= 0 && histogram[halfBucket] >= peakCount / 3 {
-            // Double-tempo detected with a harmonic at half — use half.
-            bestBPM = Float(halfBucket + 60)
+        // Octave error correction: if the peak is outside 80-160 BPM,
+        // check if there's ANY energy at the 2x or 0.5x harmonic (±3 BPM
+        // window). Most pop/rock/electronic is 80-160 BPM.
+        if bestBPM < 90 {
+            // Half-tempo — look for energy at double.
+            let targetBucket = Int(round(bestBPM * 2)) - 60
+            var harmonicEnergy = 0
+            for offset in -3...3 {
+                let idx = targetBucket + offset
+                if idx >= 0 && idx < 141 { harmonicEnergy += histogram[idx] }
+            }
+            if harmonicEnergy > 0 {
+                bestBPM = bestBPM * 2
+            }
+        } else if bestBPM > 160 {
+            // Double-tempo — prefer half.
+            bestBPM = bestBPM / 2
         }
 
         let newInstant = bestBPM
@@ -530,7 +535,11 @@ public final class BeatDetector: @unchecked Sendable {
 
         guard bestLag > 0 else { return (nil, 0) }
 
-        let bpm = 60.0 * fps / Float(bestLag)
+        var bpm = 60.0 * fps / Float(bestLag)
+
+        // Octave correction: prefer 80-160 BPM range.
+        if bpm > 160 { bpm /= 2 }
+        if bpm < 80 { bpm *= 2 }
 
         // Compute confidence: ratio of best correlation to mean correlation.
         var meanCorrelation: Float = 0
