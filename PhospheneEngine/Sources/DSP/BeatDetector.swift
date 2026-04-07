@@ -437,24 +437,32 @@ public final class BeatDetector: @unchecked Sendable {
 
         var bestBPM = Float(peakBucket + 60)
 
-        // Octave error correction: if the peak is outside 80-160 BPM,
-        // check if there's ANY energy at the 2x or 0.5x harmonic (±3 BPM
-        // window). Most pop/rock/electronic is 80-160 BPM.
-        if bestBPM < 90 {
-            // Half-tempo — look for energy at double.
-            let targetBucket = Int(round(bestBPM * 2)) - 60
-            var harmonicEnergy = 0
-            for offset in -3...3 {
-                let idx = targetBucket + offset
-                if idx >= 0 && idx < 141 { harmonicEnergy += histogram[idx] }
+        // Octave error correction: find the two strongest peaks. If they're
+        // in a ~2:1 ratio, pick the higher one (actual beat rate). Then clamp
+        // to 80-160 BPM.
+        var secondPeakCount = 0
+        var secondPeakBucket = 0
+        for idx in 0..<141 {
+            if histogram[idx] > secondPeakCount && abs(idx - peakBucket) > 10 {
+                secondPeakCount = histogram[idx]
+                secondPeakBucket = idx
             }
-            if harmonicEnergy > 0 {
-                bestBPM = bestBPM * 2
-            }
-        } else if bestBPM > 160 {
-            // Double-tempo — prefer half.
-            bestBPM = bestBPM / 2
         }
+
+        let peakBPM1 = Float(peakBucket + 60)
+        let peakBPM2 = Float(secondPeakBucket + 60)
+
+        if secondPeakCount > peakCount / 4 {
+            let ratio = max(peakBPM1, peakBPM2) / min(peakBPM1, peakBPM2)
+            if ratio > 1.8 && ratio < 2.2 {
+                // Two peaks in 2:1 ratio — pick the higher BPM (actual beat).
+                bestBPM = max(peakBPM1, peakBPM2)
+            }
+        }
+
+        // Clamp to 80-160 range.
+        if bestBPM > 160 { bestBPM /= 2 }
+        if bestBPM < 80 { bestBPM *= 2 }
 
         let newInstant = bestBPM
         instantBPM = newInstant
@@ -537,7 +545,23 @@ public final class BeatDetector: @unchecked Sendable {
 
         var bpm = 60.0 * fps / Float(bestLag)
 
-        // Octave correction: prefer 80-160 BPM range.
+        // Check if half-lag (double BPM) also has strong correlation.
+        // If so, prefer the higher BPM (actual beat, not half-tempo).
+        let halfLag = bestLag / 2
+        if halfLag >= minLag {
+            var halfCorr: Float = 0
+            let overlapHalf = onsetHistoryCount - halfLag
+            vDSP_dotpr(linear, 1,
+                       Array(linear[halfLag..<halfLag + overlapHalf]), 1,
+                       &halfCorr, vDSP_Length(overlapHalf))
+            halfCorr /= Float(overlapHalf)
+            // If half-lag correlation is at least 60% of best, use it.
+            if halfCorr > bestCorrelation * 0.6 {
+                bpm = 60.0 * fps / Float(halfLag)
+            }
+        }
+
+        // Clamp to 80-160 BPM range.
         if bpm > 160 { bpm /= 2 }
         if bpm < 80 { bpm *= 2 }
 
