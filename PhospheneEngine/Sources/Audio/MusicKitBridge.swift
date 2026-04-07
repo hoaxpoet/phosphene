@@ -54,11 +54,8 @@ public final class MusicKitFetcher: MetadataFetching, @unchecked Sendable {
 
     public func fetch(title: String, artist: String) async -> PartialTrackProfile? {
         #if canImport(MusicKit)
-        if MusicAuthorization.currentStatus != .authorized {
-            await requestAuthorizationIfNeeded()
-        }
         guard MusicAuthorization.currentStatus == .authorized else {
-            logger.debug("MusicKit not authorized")
+            logger.debug("MusicKit not authorized — skipping")
             return nil
         }
 

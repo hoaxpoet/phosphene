@@ -60,7 +60,12 @@ struct ContentView: View {
         }
         .focusable()
         .frame(minWidth: 800, minHeight: 600)
-        .onAppear { engine.startAudio() }
+        .onAppear {
+            engine.startAudio()
+            // Request MusicKit authorization early so the dialog appears
+            // before the window takes focus. Non-blocking.
+            Task { await MusicKitFetcher().requestAuthorizationIfNeeded() }
+        }
         .onKeyPress(.rightArrow) {
             engine.nextPreset()
             return .handled
