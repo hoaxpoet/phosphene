@@ -34,6 +34,12 @@ public final class SpectralAnalyzer: @unchecked Sendable {
         public var rolloff: Float
         /// Half-wave rectified spectral difference from previous frame. 0 on first frame.
         public var flux: Float
+        /// EMA-smoothed centroid in Hz.
+        public var smoothedCentroid: Float
+        /// EMA-smoothed rolloff in Hz.
+        public var smoothedRolloff: Float
+        /// EMA-smoothed flux.
+        public var smoothedFlux: Float
     }
 
     // MARK: - Configuration
@@ -63,6 +69,26 @@ public final class SpectralAnalyzer: @unchecked Sendable {
 
     /// Scratch buffer for squared magnitudes.
     private var squaredBuffer: [Float]
+
+    // MARK: - EMA Smoothing
+
+    /// EMA alpha for centroid smoothing.
+    private static let centroidAlpha: Float = 0.12
+
+    /// EMA alpha for rolloff smoothing.
+    private static let rolloffAlpha: Float = 0.12
+
+    /// EMA alpha for flux smoothing.
+    private static let fluxAlpha: Float = 0.25
+
+    /// EMA-smoothed centroid value.
+    private var smoothedCentroid: Float = 0
+
+    /// EMA-smoothed rolloff value.
+    private var smoothedRolloff: Float = 0
+
+    /// EMA-smoothed flux value.
+    private var smoothedFlux: Float = 0
 
     /// Thread safety.
     private let lock = NSLock()
@@ -103,12 +129,18 @@ public final class SpectralAnalyzer: @unchecked Sendable {
 
         let count = min(magnitudes.count, binCount)
         guard count > 0 else {
-            return Result(centroid: 0, rolloff: 0, flux: 0)
+            return Result(centroid: 0, rolloff: 0, flux: 0,
+                          smoothedCentroid: 0, smoothedRolloff: 0, smoothedFlux: 0)
         }
 
         let centroid = computeCentroid(magnitudes: magnitudes, count: count)
         let rolloff = computeRolloff(magnitudes: magnitudes, count: count)
         let flux = computeFlux(magnitudes: magnitudes, count: count)
+
+        // EMA smoothing.
+        smoothedCentroid = Self.centroidAlpha * centroid + (1 - Self.centroidAlpha) * smoothedCentroid
+        smoothedRolloff = Self.rolloffAlpha * rolloff + (1 - Self.rolloffAlpha) * smoothedRolloff
+        smoothedFlux = Self.fluxAlpha * flux + (1 - Self.fluxAlpha) * smoothedFlux
 
         // Store current frame for next flux computation.
         magnitudes.withUnsafeBufferPointer { src in
@@ -120,7 +152,14 @@ public final class SpectralAnalyzer: @unchecked Sendable {
         }
         hasPreviousFrame = true
 
-        return Result(centroid: centroid, rolloff: rolloff, flux: flux)
+        return Result(
+            centroid: centroid,
+            rolloff: rolloff,
+            flux: flux,
+            smoothedCentroid: smoothedCentroid,
+            smoothedRolloff: smoothedRolloff,
+            smoothedFlux: smoothedFlux
+        )
     }
 
     /// Reset internal state (previous frame buffer).
@@ -132,6 +171,9 @@ public final class SpectralAnalyzer: @unchecked Sendable {
             ptr.update(repeating: 0)
         }
         hasPreviousFrame = false
+        smoothedCentroid = 0
+        smoothedRolloff = 0
+        smoothedFlux = 0
     }
 
     // MARK: - Centroid

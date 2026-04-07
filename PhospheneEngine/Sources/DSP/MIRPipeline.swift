@@ -65,6 +65,27 @@ public final class MIRPipeline: @unchecked Sendable {
     /// Latest best Pearson correlation with any minor key profile, 0–1.
     public private(set) var latestMinorKeyCorrelation: Float = 0
 
+    /// Hysteresis-filtered stable key from ChromaExtractor.
+    public private(set) var stableKey: String?
+
+    /// Hysteresis-filtered stable BPM from BeatDetector.
+    public private(set) var stableBPM: Float?
+
+    /// Raw per-second IOI histogram BPM for debugging.
+    public private(set) var instantBPM: Float?
+
+    /// Feature stability ramp: 0.0 for first 3s, linear to 1.0 at 10s.
+    public private(set) var featureStability: Float = 0
+
+    /// Raw smoothed spectral flux (not normalized). For mood classifier z-score input.
+    public private(set) var rawSmoothedFlux: Float = 0
+
+    /// Raw smoothed spectral centroid in Hz (not normalized). For mood classifier z-score input.
+    public private(set) var rawSmoothedCentroid: Float = 0
+
+    /// Elapsed seconds since last reset, for stability ramp.
+    private var elapsedSeconds: Float = 0
+
     // MARK: - Normalization State
 
     /// Running max for spectral flux normalization.
@@ -130,22 +151,32 @@ public final class MIRPipeline: @unchecked Sendable {
         let beat = beatDetector.process(magnitudes: magnitudes, fps: fps, deltaTime: deltaTime)
 
         // Normalize spectral features for FeatureVector (0–1 range).
-        let normalizedCentroid = nyquist > 0 ? spectral.centroid / nyquist : 0
+        // Use smoothed values for stable GPU input.
+        let normalizedCentroid = nyquist > 0 ? spectral.smoothedCentroid / nyquist : 0
 
-        // Flux normalization via running max.
+        // Flux normalization via running max (using smoothed flux).
         lock.lock()
-        fluxRunningMax = max(fluxRunningMax * Self.fluxMaxDecay, spectral.flux)
-        let normalizedFlux = fluxRunningMax > 1e-10 ? spectral.flux / fluxRunningMax : 0
+        fluxRunningMax = max(fluxRunningMax * Self.fluxMaxDecay, spectral.smoothedFlux)
+        let normalizedFlux = fluxRunningMax > 1e-10 ? spectral.smoothedFlux / fluxRunningMax : 0
+
+        // Update elapsed time and feature stability ramp.
+        elapsedSeconds += deltaTime
+        featureStability = min(1.0, max(0.0, (elapsedSeconds - 3.0) / 7.0))
 
         // Update CPU-side properties.
         latestChroma = chroma.chroma
-        estimatedKey = chroma.estimatedKey
+        estimatedKey = chroma.stableKey ?? chroma.estimatedKey
+        stableKey = chroma.stableKey
         keyConfidence = chroma.keyConfidence
         estimatedTempo = beat.estimatedTempo
         tempoConfidence = beat.tempoConfidence
+        stableBPM = beat.stableBPM > 0 ? beat.stableBPM : nil
+        instantBPM = beat.instantBPM > 0 ? beat.instantBPM : nil
         spectralRolloff = spectral.rolloff
         latestMajorKeyCorrelation = chroma.majorKeyCorrelation
         latestMinorKeyCorrelation = chroma.minorKeyCorrelation
+        rawSmoothedFlux = spectral.smoothedFlux
+        rawSmoothedCentroid = spectral.smoothedCentroid
         lock.unlock()
 
         // Assemble FeatureVector.
@@ -180,17 +211,25 @@ public final class MIRPipeline: @unchecked Sendable {
         spectralAnalyzer.reset()
         bandEnergyProcessor.reset()
         beatDetector.reset()
+        chromaExtractor.resetAccumulators()
 
         lock.lock()
         fluxRunningMax = 1e-6
         latestChroma = [Float](repeating: 0, count: 12)
         estimatedKey = nil
+        stableKey = nil
         keyConfidence = 0
         estimatedTempo = nil
         tempoConfidence = 0
+        stableBPM = nil
+        instantBPM = nil
         spectralRolloff = 0
         latestMajorKeyCorrelation = 0
         latestMinorKeyCorrelation = 0
+        elapsedSeconds = 0
+        featureStability = 0
+        rawSmoothedFlux = 0
+        rawSmoothedCentroid = 0
         lock.unlock()
     }
 }

@@ -35,10 +35,14 @@ public final class BeatDetector: @unchecked Sendable {
         public var beatTreble: Float
         /// Composite pulse: max of bass/mid/treble.
         public var beatComposite: Float
-        /// Estimated tempo in BPM, nil if insufficient data.
+        /// Estimated tempo in BPM via autocorrelation, nil if insufficient data.
         public var estimatedTempo: Float?
-        /// Confidence of tempo estimation, 0–1.
+        /// Confidence of autocorrelation tempo estimation, 0–1.
         public var tempoConfidence: Float
+        /// Hysteresis-filtered stable BPM from IOI histogram, 0 if not yet stable.
+        public var stableBPM: Float
+        /// Raw per-second IOI histogram BPM estimate, 0 if not yet computed.
+        public var instantBPM: Float
     }
 
     // MARK: - Band Definitions
@@ -115,6 +119,38 @@ public final class BeatDetector: @unchecked Sendable {
     /// Current fps for tempo lag conversion.
     private var currentFps: Float = 60
 
+    // MARK: - Stable Tempo State
+
+    /// Sliding window of onset timestamps (last 10 seconds).
+    private static let onsetTimestampWindowSize = 600  // ~10s at 60fps max onsets
+    private var onsetTimestamps: [Double]
+    private var onsetTimestampHead: Int = 0
+    private var onsetTimestampCount: Int = 0
+
+    /// Last 8 per-second tempo estimates for median filtering.
+    private static let tempoEstimateBufferSize = 8
+    private var tempoEstimates: [Float]
+    private var tempoEstimateHead: Int = 0
+    private var tempoEstimateCount: Int = 0
+
+    /// Hysteresis-filtered stable BPM.
+    private var stableBPM: Float = 0
+
+    /// Raw per-second IOI histogram BPM estimate.
+    private var instantBPM: Float = 0
+
+    /// How many consecutive estimates agree with the candidate.
+    private var stableConsecutiveCount: Int = 0
+
+    /// The BPM candidate being validated for hysteresis.
+    private var candidateBPM: Float = 0
+
+    /// Total elapsed time (seconds) for timestamp tracking.
+    private var elapsedTime: Double = 0
+
+    /// When we last computed the IOI-based tempo (once per second).
+    private var lastTempoComputeTime: Double = 0
+
     /// Thread safety.
     private let lock = NSLock()
 
@@ -146,6 +182,8 @@ public final class BeatDetector: @unchecked Sendable {
         self.groupPulses = [Float](repeating: 0, count: 3)
         self.groupCooldownTimers = [Float](repeating: 0, count: 3)
         self.onsetHistory = [Float](repeating: 0, count: Self.onsetHistorySize)
+        self.onsetTimestamps = [Double](repeating: 0, count: Self.onsetTimestampWindowSize)
+        self.tempoEstimates = [Float](repeating: 0, count: Self.tempoEstimateBufferSize)
 
         logger.info("BeatDetector created: \(binCount) bins, 6-band onset detection")
     }
@@ -168,7 +206,8 @@ public final class BeatDetector: @unchecked Sendable {
             return Result(
                 onsets: [Bool](repeating: false, count: 6),
                 beatBass: 0, beatMid: 0, beatTreble: 0, beatComposite: 0,
-                estimatedTempo: nil, tempoConfidence: 0
+                estimatedTempo: nil, tempoConfidence: 0,
+                stableBPM: 0, instantBPM: 0
             )
         }
 
@@ -237,6 +276,23 @@ public final class BeatDetector: @unchecked Sendable {
 
         let composite = max(groupPulses[0], max(groupPulses[1], groupPulses[2]))
 
+        // Track elapsed time for stable tempo estimation.
+        elapsedTime += Double(deltaTime)
+
+        // Record onset timestamps when any band fires.
+        let hasCompositeOnset = onsets.contains(true)
+        if hasCompositeOnset {
+            onsetTimestamps[onsetTimestampHead] = elapsedTime
+            onsetTimestampHead = (onsetTimestampHead + 1) % Self.onsetTimestampWindowSize
+            onsetTimestampCount = min(onsetTimestampCount + 1, Self.onsetTimestampWindowSize)
+        }
+
+        // Once per second: compute stable tempo via IOI histogram.
+        if elapsedTime - lastTempoComputeTime >= 1.0 {
+            lastTempoComputeTime = elapsedTime
+            computeStableTempo()
+        }
+
         // Update onset history for tempo estimation (composite flux).
         let compositeFlux = bandFlux.reduce(0, +)
         onsetHistory[onsetHistoryHead] = compositeFlux
@@ -253,7 +309,9 @@ public final class BeatDetector: @unchecked Sendable {
             beatTreble: groupPulses[2],
             beatComposite: composite,
             estimatedTempo: tempo,
-            tempoConfidence: confidence
+            tempoConfidence: confidence,
+            stableBPM: stableBPM,
+            instantBPM: instantBPM
         )
     }
 
@@ -275,6 +333,18 @@ public final class BeatDetector: @unchecked Sendable {
         onsetHistory = [Float](repeating: 0, count: Self.onsetHistorySize)
         onsetHistoryHead = 0
         onsetHistoryCount = 0
+        onsetTimestamps = [Double](repeating: 0, count: Self.onsetTimestampWindowSize)
+        onsetTimestampHead = 0
+        onsetTimestampCount = 0
+        tempoEstimates = [Float](repeating: 0, count: Self.tempoEstimateBufferSize)
+        tempoEstimateHead = 0
+        tempoEstimateCount = 0
+        stableBPM = 0
+        instantBPM = 0
+        stableConsecutiveCount = 0
+        candidateBPM = 0
+        elapsedTime = 0
+        lastTempoComputeTime = 0
     }
 
     // MARK: - Helpers
@@ -303,6 +373,83 @@ public final class BeatDetector: @unchecked Sendable {
             return (slice[count / 2 - 1] + slice[count / 2]) / 2.0
         }
         return slice[count / 2]
+    }
+
+    // MARK: - Stable Tempo (IOI Histogram)
+
+    /// Compute stable tempo from inter-onset intervals using histogram + hysteresis.
+    /// Called once per second from process(). Must be called under lock.
+    private func computeStableTempo() {
+        // Collect onset timestamps from the last 10 seconds.
+        let windowStart = elapsedTime - 10.0
+        var recentTimestamps = [Double]()
+        recentTimestamps.reserveCapacity(onsetTimestampCount)
+
+        for i in 0..<onsetTimestampCount {
+            let idx = (onsetTimestampHead - onsetTimestampCount + i
+                       + Self.onsetTimestampWindowSize) % Self.onsetTimestampWindowSize
+            let ts = onsetTimestamps[idx]
+            if ts >= windowStart {
+                recentTimestamps.append(ts)
+            }
+        }
+
+        guard recentTimestamps.count >= 4 else { return }
+
+        // Compute inter-onset intervals and histogram into 1-BPM buckets (60–200).
+        var histogram = [Int](repeating: 0, count: 141)  // indices 0..140 → BPM 60..200
+
+        for i in 1..<recentTimestamps.count {
+            let ioi = recentTimestamps[i] - recentTimestamps[i - 1]
+            guard ioi > 0.01 else { continue }  // skip near-zero intervals
+            let bpm = 60.0 / ioi
+            let bucket = Int(round(bpm)) - 60
+            if bucket >= 0 && bucket < 141 {
+                histogram[bucket] += 1
+            }
+        }
+
+        // Find peak bucket.
+        var peakCount = 0
+        var peakBucket = 0
+        for i in 0..<141 {
+            if histogram[i] > peakCount {
+                peakCount = histogram[i]
+                peakBucket = i
+            }
+        }
+
+        guard peakCount >= 2 else { return }
+
+        let newInstant = Float(peakBucket + 60)
+        instantBPM = newInstant
+
+        // Add to tempo estimates circular buffer.
+        tempoEstimates[tempoEstimateHead] = newInstant
+        tempoEstimateHead = (tempoEstimateHead + 1) % Self.tempoEstimateBufferSize
+        tempoEstimateCount = min(tempoEstimateCount + 1, Self.tempoEstimateBufferSize)
+
+        // Compute median of the estimates buffer.
+        let validEstimates = Array(tempoEstimates.prefix(tempoEstimateCount)).sorted()
+        let median: Float
+        if validEstimates.count % 2 == 0 {
+            median = (validEstimates[validEstimates.count / 2 - 1]
+                      + validEstimates[validEstimates.count / 2]) / 2.0
+        } else {
+            median = validEstimates[validEstimates.count / 2]
+        }
+
+        // Hysteresis: only update stableBPM when filtered estimate agrees for 3+ estimates.
+        if abs(median - candidateBPM) <= 5.0 {
+            stableConsecutiveCount += 1
+        } else {
+            candidateBPM = median
+            stableConsecutiveCount = 1
+        }
+
+        if stableConsecutiveCount >= 3 {
+            stableBPM = candidateBPM
+        }
     }
 
     // MARK: - Tempo Estimation

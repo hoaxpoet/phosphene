@@ -75,6 +75,10 @@ struct ContentView: View {
             engine.toggleDebugOverlay()
             return .handled
         }
+        .onKeyPress("c") {
+            engine.toggleCapture()
+            return .handled
+        }
     }
 }
 
@@ -135,6 +139,15 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
 
     /// Raw MIR diagnostic values for debug overlay.
     @Published var mirDiag: MIRDiagnostics = MIRDiagnostics()
+
+    /// Whether feature capture is active (toggle with 'C' key).
+    @Published var isCapturing = false
+
+    /// Feature capture file handle.
+    private var captureHandle: FileHandle?
+
+    /// Path to the current capture file.
+    private(set) var captureFilePath: String?
 
     /// Whether screen capture permission has been granted.
     @Published var hasScreenCapturePermission = false
@@ -253,14 +266,28 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
                 }
 
                 // Run mood classifier with 10 features.
+                // DEAM-trained model expects raw centroid (Hz/Nyquist) and raw flux
+                // (not 0-1 normalized). Z-score normalization is applied inside
+                // MoodClassifier using DEAM training set statistics.
                 if let mood {
+                    let nyquist: Float = 24000.0
+                    let centroidNorm = mir.rawSmoothedCentroid / nyquist
                     let features: [Float] = [
                         fv.subBass, fv.lowBass, fv.lowMid,
                         fv.midHigh, fv.highMid, fv.high,
-                        fv.spectralCentroid, fv.spectralFlux,
+                        centroidNorm, mir.rawSmoothedFlux,
                         mir.latestMajorKeyCorrelation,
                         mir.latestMinorKeyCorrelation
                     ]
+                    // Write capture row (~every 10th frame to avoid huge files).
+                    if frameCount % 10 == 0, let self {
+                        self.writeCaptureRow(
+                            features: features, fv: fv,
+                            magMax: magnitudes.max() ?? 0,
+                            key: mir.estimatedKey
+                        )
+                    }
+
                     if let state = try? mood.classify(features: features) {
                         let diag = MIRDiagnostics(
                             magMax: magnitudes.max() ?? 0,
@@ -271,10 +298,15 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
                             minorCorr: mir.latestMinorKeyCorrelation,
                             callbackCount: frameCount
                         )
+                        let stability = mir.featureStability
                         Task { @MainActor [weak self] in
-                            self?.currentMood = state
-                            self?.estimatedKey = mir.estimatedKey
-                            self?.estimatedTempo = mir.estimatedTempo
+                            // Attenuate mood toward neutral during ramp-up.
+                            var attenuated = state
+                            attenuated.valence *= stability
+                            attenuated.arousal *= stability
+                            self?.currentMood = attenuated
+                            self?.estimatedKey = mir.stableKey ?? mir.estimatedKey
+                            self?.estimatedTempo = mir.stableBPM ?? mir.estimatedTempo
                             self?.mirDiag = diag
                         }
                     }
@@ -385,6 +417,68 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Toggle the debug metadata overlay.
     func toggleDebugOverlay() {
         showDebugOverlay.toggle()
+    }
+
+    /// Toggle feature vector capture to CSV file.
+    func toggleCapture() {
+        if isCapturing {
+            stopCapture()
+        } else {
+            startCapture()
+        }
+    }
+
+    private func startCapture() {
+        let dir = FileManager.default.temporaryDirectory
+        let name = "phosphene_features_\(Int(Date().timeIntervalSince1970)).csv"
+        let url = dir.appendingPathComponent(name)
+
+        FileManager.default.createFile(atPath: url.path, contents: nil)
+        guard let handle = FileHandle(forWritingAtPath: url.path) else {
+            logger.error("Failed to create capture file: \(url.path)")
+            return
+        }
+
+        let header = "timestamp,track,artist,genre,subBass,lowBass,lowMid,midHigh,highMid,high,"
+            + "centroid,flux,majorCorr,minorCorr,bass3,mid3,treble3,magMax,key\n"
+        handle.write(Data(header.utf8))
+
+        captureHandle = handle
+        captureFilePath = url.path
+        isCapturing = true
+        logger.info("Feature capture started: \(url.path, privacy: .public)")
+    }
+
+    private func stopCapture() {
+        captureHandle?.closeFile()
+        captureHandle = nil
+        isCapturing = false
+        if let path = captureFilePath {
+            logger.info("Feature capture stopped: \(path, privacy: .public)")
+        }
+    }
+
+    /// Write a feature row to the capture file (called from analysis queue).
+    func writeCaptureRow(features: [Float], fv: Shared.FeatureVector,
+                         magMax: Float, key: String?) {
+        guard let handle = captureHandle else { return }
+        let track = currentTrack?.title ?? ""
+        let artist = currentTrack?.artist ?? ""
+        let genre = preFetchedProfile?.genreTags.joined(separator: "|") ?? ""
+        let row = String(
+            format: "%.3f,%@,%@,%@,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,"
+            + "%.5f,%.5f,%.5f,%.5f,%.4f,%.4f,%.4f,%.5f,%@\n",
+            Date().timeIntervalSince1970,
+            track.replacingOccurrences(of: ",", with: ";"),
+            artist.replacingOccurrences(of: ",", with: ";"),
+            genre.replacingOccurrences(of: ",", with: "|"),
+            features[0], features[1], features[2],
+            features[3], features[4], features[5],
+            features[6], features[7], features[8], features[9],
+            fv.bass, fv.mid, fv.treble, magMax,
+            key ?? "nil"
+        )
+        handle.write(Data(row.utf8))
     }
 
     // MARK: - Private Helpers

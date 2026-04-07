@@ -24,16 +24,20 @@ public final class ChromaExtractor: @unchecked Sendable {
 
     /// Chroma analysis output for a single frame.
     public struct Result: Sendable {
-        /// 12-element chroma vector (C, C#, D, D#, E, F, F#, G, G#, A, A#, B).
+        /// 12-element instantaneous chroma vector (C, C#, D, D#, E, F, F#, G, G#, A, A#, B).
         /// Normalized so the largest bin = 1.0. All zeros for silence.
         public var chroma: [Float]
-        /// Estimated musical key (e.g. "C major", "A minor"), or nil if confidence is too low.
+        /// EMA-accumulated chroma for stable analysis (12 elements).
+        public var stableChroma: [Float]
+        /// Estimated musical key from instantaneous chroma, or nil if confidence is too low.
         public var estimatedKey: String?
+        /// Hysteresis-filtered stable key, or nil if not yet stable.
+        public var stableKey: String?
         /// Confidence of key estimation, 0–1.
         public var keyConfidence: Float
-        /// Best Pearson correlation with any major key profile, 0–1.
+        /// Best Pearson correlation with any major key profile, 0–1 (from accumulated chroma).
         public var majorKeyCorrelation: Float
-        /// Best Pearson correlation with any minor key profile, 0–1.
+        /// Best Pearson correlation with any minor key profile, 0–1 (from accumulated chroma).
         public var minorKeyCorrelation: Float
     }
 
@@ -79,8 +83,26 @@ public final class ChromaExtractor: @unchecked Sendable {
     /// Accumulated chroma for stable key estimation (EMA-smoothed).
     private var accumulatedChroma = [Float](repeating: 0, count: 12)
 
-    /// EMA rate for chroma accumulation. 0.98 = ~3s time constant at 60fps.
-    private static let chromaEmaRate: Float = 0.98
+    /// EMA alpha for chroma accumulation. 0.08 = ~4s effective window.
+    /// Update: new = (1 - alpha) * old + alpha * current.
+    private static let chromaEmaAlpha: Float = 0.08
+
+    // MARK: - Key Hysteresis State
+
+    /// Hysteresis-filtered stable key.
+    private var stableKey: String?
+
+    /// Key candidate being validated.
+    private var candidateKey: String?
+
+    /// How long the candidate key has been the top result (seconds).
+    private var candidateKeyDuration: Float = 0
+
+    /// Correlation score of the candidate key.
+    private var candidateKeyCorrelation: Float = 0
+
+    /// Correlation score of the current stable key.
+    private var stableKeyCorrelation: Float = 0
 
     // MARK: - Init
 
@@ -142,7 +164,9 @@ public final class ChromaExtractor: @unchecked Sendable {
         guard count > 0 else {
             return Result(
                 chroma: [Float](repeating: 0, count: 12),
+                stableChroma: [Float](repeating: 0, count: 12),
                 estimatedKey: nil,
+                stableKey: nil,
                 keyConfidence: 0,
                 majorKeyCorrelation: 0,
                 minorKeyCorrelation: 0
@@ -167,21 +191,59 @@ public final class ChromaExtractor: @unchecked Sendable {
         }
 
         // EMA-accumulate chroma for stable key estimation.
-        let rate = Self.chromaEmaRate
+        let alpha = Self.chromaEmaAlpha
         for i in 0..<12 {
-            accumulatedChroma[i] = rate * accumulatedChroma[i] + (1 - rate) * chroma[i]
+            accumulatedChroma[i] = (1 - alpha) * accumulatedChroma[i] + alpha * chroma[i]
         }
 
         // Key estimation via Krumhansl-Schmuckler on accumulated chroma.
         let keyEst = estimateKey(chroma: accumulatedChroma)
+        let estimatedKeyName: String? = keyEst.confidence >= Self.minKeyConfidence ? keyEst.key : nil
+
+        // Key hysteresis: require 5 seconds of agreement before updating stableKey.
+        let frameDelta: Float = 1.0 / 60.0  // approximate frame time
+        if estimatedKeyName == candidateKey {
+            candidateKeyDuration += frameDelta
+            candidateKeyCorrelation = keyEst.confidence
+        } else {
+            candidateKey = estimatedKeyName
+            candidateKeyDuration = 0
+            candidateKeyCorrelation = keyEst.confidence
+        }
+
+        if candidateKeyDuration > 5.0
+            && candidateKeyCorrelation > stableKeyCorrelation + 0.05 {
+            stableKey = candidateKey
+            stableKeyCorrelation = candidateKeyCorrelation
+        }
+
+        // Copy accumulated chroma for result.
+        let stableChromaCopy = accumulatedChroma
 
         return Result(
             chroma: chroma,
-            estimatedKey: keyEst.confidence >= Self.minKeyConfidence ? keyEst.key : nil,
+            stableChroma: stableChromaCopy,
+            estimatedKey: estimatedKeyName,
+            stableKey: stableKey,
             keyConfidence: keyEst.confidence,
             majorKeyCorrelation: keyEst.majorCorrelation,
             minorKeyCorrelation: keyEst.minorCorrelation
         )
+    }
+
+    // MARK: - Reset
+
+    /// Reset accumulated chroma and key hysteresis state.
+    public func resetAccumulators() {
+        lock.lock()
+        defer { lock.unlock() }
+
+        accumulatedChroma = [Float](repeating: 0, count: 12)
+        stableKey = nil
+        candidateKey = nil
+        candidateKeyDuration = 0
+        candidateKeyCorrelation = 0
+        stableKeyCorrelation = 0
     }
 
     // MARK: - Key Estimation
