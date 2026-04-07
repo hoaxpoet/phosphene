@@ -279,15 +279,26 @@ public final class BeatDetector: @unchecked Sendable {
         // Track elapsed time for stable tempo estimation.
         elapsedTime += Double(deltaTime)
 
-        // Record onset timestamps when the BASS GROUP pulse fires.
-        // groupPulses[0] == 1.0 only on the frame a bass onset was accepted
-        // (after the 400ms group cooldown). This gives clean beat-rate events.
-        if groupPulses[0] >= 0.99 {
-            onsetTimestamps[onsetTimestampHead] = elapsedTime
-            onsetTimestampHead = (onsetTimestampHead + 1) % Self.onsetTimestampWindowSize
-            onsetTimestampCount = min(
-                onsetTimestampCount + 1, Self.onsetTimestampWindowSize
-            )
+        // Record onset timestamps from raw bass flux peaks for tempo estimation.
+        // Use the pre-cooldown flux threshold crossing (not the cooldown-gated
+        // grouped pulse) to avoid the 400ms cooldown capping tempo at 150 BPM.
+        // Minimum 200ms between recorded timestamps to filter double-triggers.
+        let bassFlux = bandFlux[0] + bandFlux[1]
+        let bassThreshold = (medianOfBuffer(fluxBuffers[0], count: fluxCounts[0])
+                           + medianOfBuffer(fluxBuffers[1], count: fluxCounts[1]))
+                           * Self.thresholdMultiplier
+        if bassFlux > bassThreshold && fluxCounts[0] >= 5 {
+            let lastTs = onsetTimestampCount > 0
+                ? onsetTimestamps[(onsetTimestampHead - 1 + Self.onsetTimestampWindowSize)
+                                  % Self.onsetTimestampWindowSize]
+                : -1.0
+            if elapsedTime - lastTs > 0.20 {
+                onsetTimestamps[onsetTimestampHead] = elapsedTime
+                onsetTimestampHead = (onsetTimestampHead + 1) % Self.onsetTimestampWindowSize
+                onsetTimestampCount = min(
+                    onsetTimestampCount + 1, Self.onsetTimestampWindowSize
+                )
+            }
         }
 
         // Once per second: compute stable tempo via IOI histogram.
