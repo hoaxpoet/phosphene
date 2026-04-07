@@ -88,10 +88,10 @@ public final class ChromaExtractor: @unchecked Sendable {
     private var accumulatedChroma = [Float](repeating: 0, count: 12)
 
     /// Per-frame decay multiplier for accumulated chroma.
-    /// 0.995^60 ≈ 0.74 per second → half-life ~2.3 seconds of pure decay.
-    /// But since new chroma is continuously added, effective window is much
-    /// longer (~30s for the aggregate to shift to a new key).
-    private static let chromaDecayRate: Float = 0.995
+    /// 0.9995^60 ≈ 0.97 per second → half-life ~23 seconds of pure decay.
+    /// With continuous addition, effective window is ~60s+ for the aggregate
+    /// to shift to a new key. An entire song's notes contribute.
+    private static let chromaDecayRate: Float = 0.9995
 
     // MARK: - Key Hysteresis State
 
@@ -221,9 +221,10 @@ public final class ChromaExtractor: @unchecked Sendable {
             candidateKeyCorrelation = keyEst.confidence
         }
 
-        // Accept a new key after 3 seconds of agreement from the accumulated chroma.
-        // No correlation margin — the slow EMA already filters noise.
-        if candidateKeyDuration > 3.0 && candidateKey != nil {
+        // Accept a new key after 8 seconds of agreement from the accumulated chroma.
+        // The slow additive accumulation + this duration requirement means only
+        // genuine key modulations (or new songs) change the stable key.
+        if candidateKeyDuration > 8.0 && candidateKey != nil {
             stableKey = candidateKey
             stableKeyCorrelation = candidateKeyCorrelation
         }
