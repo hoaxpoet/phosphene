@@ -373,6 +373,8 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
 
         audioRouter.onTrackChange = { [weak self] event in
             guard let self else { return }
+            mir.currentTrackName = event.current.title ?? ""
+            mir.currentArtistName = event.current.artist ?? ""
             Task { @MainActor in
                 self.currentTrack = event.current
                 self.preFetchedProfile = nil

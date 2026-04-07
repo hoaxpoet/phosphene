@@ -106,6 +106,10 @@ public final class MIRPipeline: @unchecked Sendable {
     /// Whether recording mode is active.
     public var isRecording: Bool { recordingHandle != nil }
 
+    /// Current track info for recording. Set by the app layer.
+    public var currentTrackName: String = ""
+    public var currentArtistName: String = ""
+
     // MARK: - Normalization State
 
     /// Running max for spectral flux normalization.
@@ -255,9 +259,9 @@ public final class MIRPipeline: @unchecked Sendable {
             logger.error("Failed to create recording file: \(path)")
             return
         }
-        let header = "timestamp,subBass,lowBass,lowMid,midHigh,highMid,high,"
+        let header = "timestamp,track,artist,subBass,lowBass,lowMid,midHigh,highMid,high,"
             + "centroid,flux,majorCorr,minorCorr,stableKey,stableBPM,"
-            + "valence,arousal,quadrant\n"
+            + "valence,arousal\n"
         handle.write(Data(header.utf8))
         recordingHandle = handle
         lastRecordTime = elapsedSeconds
@@ -284,13 +288,15 @@ public final class MIRPipeline: @unchecked Sendable {
         guard elapsedSeconds - lastRecordTime >= 1.0 else { return }
         lastRecordTime = elapsedSeconds
 
+        let track = currentTrackName.replacingOccurrences(of: ",", with: ";")
+        let artist = currentArtistName.replacingOccurrences(of: ",", with: ";")
         let row = String(
-            format: "%.1f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%@,%.1f,,,\n",
-            elapsedSeconds,
+            format: "%.1f,%@,%@,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%@,%.1f,,\n",
+            elapsedSeconds, track, artist,
             energy.subBass, energy.lowBass, energy.lowMid,
             energy.midHigh, energy.highMid, energy.high,
             centroid, flux, majorCorr, minorCorr,
-            stableKey ?? "nil",
+            stableKey ?? "",
             stableBPM ?? 0
         )
         handle.write(Data(row.utf8))
