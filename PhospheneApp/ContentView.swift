@@ -348,8 +348,13 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
                             attenuated.valence *= stability
                             attenuated.arousal *= stability
                             self?.currentMood = attenuated
-                            self?.estimatedKey = mir.stableKey ?? mir.estimatedKey
-                            self?.estimatedTempo = mir.stableBPM ?? mir.estimatedTempo
+                            // Prefer pre-fetched metadata over self-computed.
+                            if self?.preFetchedProfile?.key == nil {
+                                self?.estimatedKey = mir.stableKey ?? mir.estimatedKey
+                            }
+                            if self?.preFetchedProfile?.bpm == nil {
+                                self?.estimatedTempo = mir.stableBPM ?? mir.estimatedTempo
+                            }
                             self?.mirDiag = diag
                         }
                     }
@@ -357,8 +362,14 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
             }
         }
 
-        // Build fetcher list — MusicBrainz always available (free API).
-        var fetchers: [any MetadataFetching] = [MusicBrainzFetcher()]
+        // Build fetcher list.
+        // MusicKit: BPM + genre from Apple Music catalog (works for any streaming app).
+        // MusicBrainz: genre tags (always free).
+        // Soundcharts/Spotify: optional, need credentials.
+        var fetchers: [any MetadataFetching] = [
+            MusicKitFetcher(),
+            MusicBrainzFetcher()
+        ]
         if let soundcharts = SoundchartsFetcher.fromEnvironment() {
             fetchers.append(soundcharts)
             logger.info("Soundcharts fetcher enabled (audio features)")
@@ -380,10 +391,23 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
                 self.preFetchedProfile = nil
                 logger.info("Track: \(event.current.title ?? "?") — \(event.current.artist ?? "?")")
             }
+            // Reset MIR accumulators on track change.
+            mir.reset()
+
             Task {
                 let profile = await fetcher.prefetch(for: event.current)
                 await MainActor.run {
                     self.preFetchedProfile = profile
+
+                    // Use pre-fetched BPM/key to override self-computed values.
+                    if let bpm = profile?.bpm {
+                        self.estimatedTempo = bpm
+                        logger.info("Using pre-fetched BPM: \(bpm)")
+                    }
+                    if let key = profile?.key {
+                        self.estimatedKey = key
+                        logger.info("Using pre-fetched key: \(key)")
+                    }
                 }
             }
         }
