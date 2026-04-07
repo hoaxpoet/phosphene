@@ -146,6 +146,9 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Raw MIR diagnostic values for debug overlay.
     @Published var mirDiag: MIRDiagnostics = MIRDiagnostics()
 
+    /// Whether MIR recording is active.
+    var mirPipelineIsRecording: Bool { mirPipeline.isRecording }
+
     /// Whether feature capture is active (toggle with 'C' key).
     @Published var isCapturing = false
 

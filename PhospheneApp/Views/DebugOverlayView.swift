@@ -87,6 +87,13 @@ struct DebugOverlayView: View {
             label("energy", String(format: "%.3f", diag.totalEnergy))
             label("onsets/s", "\(diag.onsetsPerSec)")
             label("frames", "\(diag.callbackCount)")
+
+            if engine.mirPipelineIsRecording {
+                Divider().background(.white.opacity(0.3))
+                Text("● REC (R to stop)")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundColor(.red)
+            }
         }
         .padding(12)
         .background(.black.opacity(0.6))
