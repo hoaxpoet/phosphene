@@ -80,12 +80,18 @@ public final class ChromaExtractor: @unchecked Sendable {
     /// Thread safety.
     private let lock = NSLock()
 
-    /// Accumulated chroma for stable key estimation (EMA-smoothed).
+    /// Additive chroma accumulator for key estimation.
+    /// Each frame's chroma is ADDED (not EMA'd), so every note in the song
+    /// contributes equally. Over 30+ seconds the aggregate naturally matches
+    /// the key's scale profile. A slow per-frame decay (~0.5%/frame ≈ 30s
+    /// half-life at 60fps) allows key modulations to register.
     private var accumulatedChroma = [Float](repeating: 0, count: 12)
 
-    /// EMA alpha for chroma accumulation. 0.02 = ~15s effective window.
-    /// Slow accumulation gives stable key within a song section.
-    private static let chromaEmaAlpha: Float = 0.02
+    /// Per-frame decay multiplier for accumulated chroma.
+    /// 0.995^60 ≈ 0.74 per second → half-life ~2.3 seconds of pure decay.
+    /// But since new chroma is continuously added, effective window is much
+    /// longer (~30s for the aggregate to shift to a new key).
+    private static let chromaDecayRate: Float = 0.995
 
     // MARK: - Key Hysteresis State
 
@@ -190,10 +196,12 @@ public final class ChromaExtractor: @unchecked Sendable {
             vDSP_vsmul(chroma, 1, &scale, &chroma, 1, vDSP_Length(12))
         }
 
-        // EMA-accumulate chroma for stable key estimation.
-        let alpha = Self.chromaEmaAlpha
-        for i in 0..<12 {
-            accumulatedChroma[i] = (1 - alpha) * accumulatedChroma[i] + alpha * chroma[i]
+        // Additive chroma accumulation: decay old values, add new frame.
+        // Every note contributes to the running total. The aggregate over
+        // many seconds reveals the key's scale, not individual notes.
+        let decay = Self.chromaDecayRate
+        for idx in 0..<12 {
+            accumulatedChroma[idx] = accumulatedChroma[idx] * decay + chroma[idx]
         }
 
         // Key estimation via Krumhansl-Schmuckler on accumulated chroma.
