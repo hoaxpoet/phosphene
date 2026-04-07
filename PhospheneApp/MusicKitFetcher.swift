@@ -65,14 +65,16 @@ final class AppMusicKitFetcher: MetadataFetching, @unchecked Sendable {
         }
     }
 
-    /// Request MusicKit authorization. Call once at app startup.
-    static func requestAuthorization() async {
-        let status = MusicAuthorization.currentStatus
-        if status == .notDetermined {
-            let result = await MusicAuthorization.request()
-            logger.info("MusicKit authorization: \(String(describing: result))")
-        } else {
-            logger.info("MusicKit status: \(String(describing: status))")
+    /// Request MusicKit authorization. Fire-and-forget, never blocks UI.
+    static func requestAuthorizationInBackground() {
+        Task.detached {
+            let status = MusicAuthorization.currentStatus
+            if status == .notDetermined {
+                let result = await MusicAuthorization.request()
+                logger.info("MusicKit authorization: \(String(describing: result))")
+            } else {
+                logger.info("MusicKit status: \(String(describing: status))")
+            }
         }
     }
 }
