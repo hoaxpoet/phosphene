@@ -2,8 +2,8 @@
 // Takes 10 audio features per frame (from MIRPipeline) and outputs continuous
 // emotional coordinates in [-1, 1], smoothed with exponential moving average.
 //
-// The model is a 3-layer MLP (10 → 64 → 32 → 16 → 2) trained on the DEAM
-// dataset (1802 annotated music excerpts) and deployed on .cpuAndNeuralEngine.
+// The model is a 3-layer MLP (10 → 64 → 32 → 16 → 2) trained on live
+// Phosphene pipeline features annotated by the user, deployed on ANE.
 //
 // Input features require z-score normalization before inference. The scaler
 // parameters (means and stds) are hardcoded from the training pipeline and
@@ -42,16 +42,16 @@ public final class MoodClassifier: MoodClassifying, @unchecked Sendable {
 
     // MARK: - Z-Score Normalization (from tools/data/mood_scaler.json)
 
-    /// Per-feature means from DEAM training set (with 2/N FFT normalization).
+    /// Per-feature means from live-pipeline annotated training set.
     private static let scalerMeans: [Float] = [
-        0.12667, 0.21217, 0.12087, 0.03148, 0.00705, 0.00177,
-        0.08114, 0.12702, 0.47553, 0.48029
+        0.12720, 0.20594, 0.12509, 0.03842, 0.01068, 0.00502,
+        0.11827, 0.25158, 0.53073, 0.50940
     ]
 
-    /// Per-feature standard deviations from DEAM training set.
+    /// Per-feature standard deviations from live-pipeline annotated training set.
     private static let scalerStds: [Float] = [
-        0.06715, 0.04275, 0.06551, 0.02538, 0.00570, 0.00206,
-        0.03442, 0.09626, 0.12126, 0.11216
+        0.12225, 0.13055, 0.08257, 0.03043, 0.01463, 0.01376,
+        0.07421, 0.20444, 0.15677, 0.12204
     ]
 
     // MARK: - Model
