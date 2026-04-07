@@ -157,12 +157,6 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Feature capture file handle.
     private var captureHandle: FileHandle?
 
-    /// Diagnostic log (writes to /tmp/phosphene_diag.log).
-    private let diagLog: FileHandle? = {
-        let path = "/tmp/phosphene_diag.log"
-        FileManager.default.createFile(atPath: path, contents: nil)
-        return FileHandle(forWritingAtPath: path)
-    }()
 
 
     /// Path to the current capture file.
@@ -246,7 +240,12 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         let audioRouter = AudioInputRouter(metadata: metadata)
         let mir = self.mirPipeline
         let mood = self.moodClassifier
-        let diagLog = self.diagLog
+
+        // Create diagnostic log file.
+        let diagPath = NSHomeDirectory() + "/phosphene_diag.log"
+        FileManager.default.createFile(atPath: diagPath, contents: nil)
+        let diagLog = FileHandle(forWritingAtPath: diagPath)
+
         let analysisQueue = DispatchQueue(label: "com.phosphene.analysis", qos: .userInteractive)
         var frameCount = 0
 
@@ -256,6 +255,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         let featureEmaAlpha: Float = 0.01
         var accumulatedFeatures = [Float](repeating: 0, count: 10)
         var featureAccumInitialized = false
+        var lastAnalysisTime = CFAbsoluteTimeGetCurrent()
 
         // Audio callback: buffer write + FFT only (real-time safe).
         // MIR + mood classification dispatched to a background queue.
@@ -272,8 +272,13 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
             let magnitudes = Array(fft.magnitudeBuffer.pointer.prefix(binCount))
 
             analysisQueue.async {
+                let now = CFAbsoluteTimeGetCurrent()
+                let dt = max(Float(now - lastAnalysisTime), 0.001)
+                lastAnalysisTime = now
+                let effectiveFps = 1.0 / dt
+
                 let fv = mir.process(
-                    magnitudes: magnitudes, fps: 60, time: 0, deltaTime: 1.0 / 60.0
+                    magnitudes: magnitudes, fps: effectiveFps, time: 0, deltaTime: dt
                 )
 
                 frameCount += 1
@@ -317,14 +322,13 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
                         if frameCount % 60 == 0 {
                             let af = accumulatedFeatures
                             let line = String(
-                                format: "accum=[%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f]"
-                                + " onsets/s=%d key=%@ bpm=%.0f"
-                                + " mood=(%.3f,%.3f) quad=%@\n",
-                                af[0], af[1], af[2], af[3], af[4], af[5],
-                                af[6], af[7], af[8], af[9],
-                                mir.onsetsPerSecond,
-                                mir.stableKey ?? mir.estimatedKey ?? "nil",
+                                format: "bassTs=%d iBPM=%.0f sBPM=%.0f td=%@"
+                                + " key=%@ mood=(%.2f,%.2f) quad=%@\n",
+                                mir.bassOnsetCount,
+                                mir.instantBPM ?? 0,
                                 mir.stableBPM ?? 0,
+                                mir.tempoDebug,
+                                mir.stableKey ?? mir.estimatedKey ?? "nil",
                                 state.valence, state.arousal,
                                 state.quadrant.rawValue
                             )

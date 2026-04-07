@@ -43,6 +43,8 @@ public final class BeatDetector: @unchecked Sendable {
         public var stableBPM: Float
         /// Raw per-second IOI histogram BPM estimate, 0 if not yet computed.
         public var instantBPM: Float
+        /// Number of bass onset timestamps in the sliding window (for debugging).
+        public var bassOnsetCount: Int
     }
 
     // MARK: - Band Definitions
@@ -118,6 +120,9 @@ public final class BeatDetector: @unchecked Sendable {
 
     /// Current fps for tempo lag conversion.
     private var currentFps: Float = 60
+
+    /// Debug string from computeStableTempo for diagnostics.
+    public private(set) var tempoDebug: String = ""
 
     // MARK: - Stable Tempo State
 
@@ -207,7 +212,7 @@ public final class BeatDetector: @unchecked Sendable {
                 onsets: [Bool](repeating: false, count: 6),
                 beatBass: 0, beatMid: 0, beatTreble: 0, beatComposite: 0,
                 estimatedTempo: nil, tempoConfidence: 0,
-                stableBPM: 0, instantBPM: 0
+                stableBPM: 0, instantBPM: 0, bassOnsetCount: 0
             )
         }
 
@@ -279,20 +284,20 @@ public final class BeatDetector: @unchecked Sendable {
         // Track elapsed time for stable tempo estimation.
         elapsedTime += Double(deltaTime)
 
-        // Record onset timestamps from raw bass flux peaks for tempo estimation.
-        // Use the pre-cooldown flux threshold crossing (not the cooldown-gated
-        // grouped pulse) to avoid the 400ms cooldown capping tempo at 150 BPM.
-        // Minimum 200ms between recorded timestamps to filter double-triggers.
+        // Record onset timestamps from strong bass flux peaks for tempo.
+        // Use 3x the normal threshold — only the strongest hits (actual beats).
+        // Normal onset detection uses 1.5x median; tempo uses 4.5x to filter
+        // transients and harmonics that fire at 5/sec instead of beat rate.
         let bassFlux = bandFlux[0] + bandFlux[1]
-        let bassThreshold = (medianOfBuffer(fluxBuffers[0], count: fluxCounts[0])
-                           + medianOfBuffer(fluxBuffers[1], count: fluxCounts[1]))
-                           * Self.thresholdMultiplier
-        if bassFlux > bassThreshold && fluxCounts[0] >= 5 {
+        let bassMedian = medianOfBuffer(fluxBuffers[0], count: fluxCounts[0])
+                       + medianOfBuffer(fluxBuffers[1], count: fluxCounts[1])
+        let tempoThreshold = bassMedian * Self.thresholdMultiplier * 2.0
+        if bassFlux > tempoThreshold && fluxCounts[0] >= 5 {
             let lastTs = onsetTimestampCount > 0
                 ? onsetTimestamps[(onsetTimestampHead - 1 + Self.onsetTimestampWindowSize)
                                   % Self.onsetTimestampWindowSize]
                 : -1.0
-            if elapsedTime - lastTs > 0.20 {
+            if elapsedTime - lastTs > 0.30 {  // 300ms min = 200 BPM max
                 onsetTimestamps[onsetTimestampHead] = elapsedTime
                 onsetTimestampHead = (onsetTimestampHead + 1) % Self.onsetTimestampWindowSize
                 onsetTimestampCount = min(
@@ -325,7 +330,8 @@ public final class BeatDetector: @unchecked Sendable {
             estimatedTempo: tempo,
             tempoConfidence: confidence,
             stableBPM: stableBPM,
-            instantBPM: instantBPM
+            instantBPM: instantBPM,
+            bassOnsetCount: onsetTimestampCount
         )
     }
 
@@ -408,18 +414,26 @@ public final class BeatDetector: @unchecked Sendable {
             }
         }
 
-        guard recentTimestamps.count >= 4 else { return }
+        guard recentTimestamps.count >= 4 else {
+            tempoDebug = "recent<4(\(recentTimestamps.count))"
+            return
+        }
 
         // Compute inter-onset intervals and histogram into 1-BPM buckets (60–200).
         var histogram = [Int](repeating: 0, count: 141)  // indices 0..140 → BPM 60..200
+        var outOfRange = 0
+        var inRange = 0
 
         for i in 1..<recentTimestamps.count {
             let ioi = recentTimestamps[i] - recentTimestamps[i - 1]
-            guard ioi > 0.01 else { continue }  // skip near-zero intervals
+            guard ioi > 0.01 else { continue }
             let bpm = 60.0 / ioi
             let bucket = Int(round(bpm)) - 60
             if bucket >= 0 && bucket < 141 {
                 histogram[bucket] += 1
+                inRange += 1
+            } else {
+                outOfRange += 1
             }
         }
 
@@ -433,7 +447,10 @@ public final class BeatDetector: @unchecked Sendable {
             }
         }
 
-        guard peakCount >= 2 else { return }
+        guard peakCount >= 2 else {
+            tempoDebug = "noPeak(in=\(inRange),out=\(outOfRange),recent=\(recentTimestamps.count))"
+            return
+        }
 
         var bestBPM = Float(peakBucket + 60)
 

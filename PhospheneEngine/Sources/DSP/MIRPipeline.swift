@@ -74,6 +74,12 @@ public final class MIRPipeline: @unchecked Sendable {
     /// Raw per-second IOI histogram BPM for debugging.
     public private(set) var instantBPM: Float?
 
+    /// Number of bass onset timestamps in the BeatDetector's sliding window.
+    public private(set) var bassOnsetCount: Int = 0
+
+    /// Debug string from BeatDetector tempo estimation.
+    public private(set) var tempoDebug: String = ""
+
     /// Feature stability ramp: 0.0 for first 3s, linear to 1.0 at 10s.
     public private(set) var featureStability: Float = 0
 
@@ -196,6 +202,8 @@ public final class MIRPipeline: @unchecked Sendable {
         tempoConfidence = beat.tempoConfidence
         stableBPM = beat.stableBPM > 0 ? beat.stableBPM : nil
         instantBPM = beat.instantBPM > 0 ? beat.instantBPM : nil
+        bassOnsetCount = beat.bassOnsetCount
+        tempoDebug = beatDetector.tempoDebug
         spectralRolloff = spectral.rolloff
         latestMajorKeyCorrelation = chroma.majorKeyCorrelation
         latestMinorKeyCorrelation = chroma.minorKeyCorrelation
