@@ -2,6 +2,8 @@
 
 import Audio
 import CoreGraphics
+import DSP
+import ML
 import os.log
 import Presets
 import Renderer
@@ -9,6 +11,18 @@ import Shared
 import SwiftUI
 
 private let logger = Logger(subsystem: "com.phosphene.app", category: "ContentView")
+
+/// Raw MIR values for debug overlay diagnostics.
+struct MIRDiagnostics {
+    var magMax: Float = 0
+    var bass: Float = 0
+    var mid: Float = 0
+    var centroid: Float = 0
+    var flux: Float = 0
+    var majorCorr: Float = 0
+    var minorCorr: Float = 0
+    var callbackCount: Int = 0
+}
 
 // MARK: - ContentView
 
@@ -89,6 +103,12 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Preset loader managing shader compilation and hot-reload.
     private let presetLoader: PresetLoader
 
+    /// MIR feature extraction pipeline (spectral, energy, chroma, beat).
+    private let mirPipeline: MIRPipeline
+
+    /// CoreML mood classifier (valence/arousal on ANE).
+    private let moodClassifier: MoodClassifier?
+
     /// AudioInputRouter requires macOS 14.2+; stored as Any to avoid propagating availability.
     private var router: Any?
 
@@ -103,6 +123,18 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
 
     /// Pre-fetched profile from external APIs.
     @Published var preFetchedProfile: PreFetchedTrackProfile?
+
+    /// Live mood classification from MoodClassifier (updated per frame).
+    @Published var currentMood: EmotionalState = .neutral
+
+    /// Live estimated key from MIR pipeline.
+    @Published var estimatedKey: String?
+
+    /// Live estimated tempo from MIR pipeline.
+    @Published var estimatedTempo: Float?
+
+    /// Raw MIR diagnostic values for debug overlay.
+    @Published var mirDiag: MIRDiagnostics = MIRDiagnostics()
 
     /// Whether screen capture permission has been granted.
     @Published var hasScreenCapturePermission = false
@@ -151,6 +183,15 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         self.fftProcessor = fft
         self.pipeline = pipe
         self.presetLoader = loader
+        self.mirPipeline = MIRPipeline()
+
+        do {
+            self.moodClassifier = try MoodClassifier()
+            logger.info("MoodClassifier loaded")
+        } catch {
+            self.moodClassifier = nil
+            logger.error("MoodClassifier failed to load: \(error)")
+        }
 
         loader.onPresetsReloaded = { [weak self] in
             guard let self, let current = self.presetLoader.currentPreset else { return }
@@ -159,51 +200,118 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         }
 
         if #available(macOS 14.2, *) {
-            let metadata = StreamingMetadata()
-            let audioRouter = AudioInputRouter(metadata: metadata)
-            audioRouter.onAudioSamples = { [weak buf, weak fft] samples, count, rate, _ in
-                guard let buf, let fft else { return }
-                buf.write(from: samples, count: count)
-                let latest = buf.latestSamples(count: FFTProcessor.fftSize * 2)
-                if !latest.isEmpty {
-                    fft.processStereo(interleavedSamples: latest, sampleRate: rate)
+            self.router = setupAudioRouting(audioBuffer: buf, fftProcessor: fft)
+        }
+    }
+
+    /// Set up audio routing, MIR analysis, mood classification, and metadata pre-fetching.
+    @available(macOS 14.2, *)
+    private func setupAudioRouting(
+        audioBuffer buf: AudioBuffer,
+        fftProcessor fft: FFTProcessor
+    ) -> AudioInputRouter {
+        let metadata = StreamingMetadata()
+        let audioRouter = AudioInputRouter(metadata: metadata)
+        let mir = self.mirPipeline
+        let mood = self.moodClassifier
+        let analysisQueue = DispatchQueue(label: "com.phosphene.analysis", qos: .userInteractive)
+        var frameCount = 0
+
+        // Audio callback: buffer write + FFT only (real-time safe).
+        // MIR + mood classification dispatched to a background queue.
+        audioRouter.onAudioSamples = { [weak self, weak buf, weak fft] samples, count, rate, _ in
+            guard let buf, let fft else { return }
+            buf.write(from: samples, count: count)
+            let latest = buf.latestSamples(count: FFTProcessor.fftSize * 2)
+            guard !latest.isEmpty else { return }
+
+            let fftResult = fft.processStereo(interleavedSamples: latest, sampleRate: rate)
+
+            // Copy magnitudes off the real-time thread for analysis.
+            let binCount = Int(fftResult.binCount)
+            let magnitudes = Array(fft.magnitudeBuffer.pointer.prefix(binCount))
+
+            analysisQueue.async {
+                let fv = mir.process(
+                    magnitudes: magnitudes, fps: 60, time: 0, deltaTime: 1.0 / 60.0
+                )
+
+                // Diagnostic logging (~once per second).
+                frameCount += 1
+                if frameCount % 60 == 0 {
+                    let magMax = magnitudes.max() ?? 0
+                    let key = mir.estimatedKey ?? "nil"
+                    let msg = String(
+                        format: "MIR: magMax=%.4f bass=%.3f mid=%.3f "
+                        + "cent=%.3f flux=%.3f majC=%.3f minC=%.3f key=%@",
+                        magMax, fv.bass, fv.mid,
+                        fv.spectralCentroid, fv.spectralFlux,
+                        mir.latestMajorKeyCorrelation,
+                        mir.latestMinorKeyCorrelation, key
+                    )
+                    logger.info("\(msg, privacy: .public)")
                 }
-            }
 
-            // Build fetcher list — MusicBrainz is always available (free API).
-            // Spotify and Soundcharts require credentials via environment variables.
-            // Self-computed MIR (Increment 2.4) will replace external audio features —
-            // pre-fetch is a "fast hint" for the first ~15 seconds, not a hard dependency.
-            var fetchers: [any MetadataFetching] = [MusicBrainzFetcher()]
-            if let soundcharts = SoundchartsFetcher.fromEnvironment() {
-                fetchers.append(soundcharts)
-                logger.info("Soundcharts fetcher enabled (audio features)")
-            }
-            if let spotify = SpotifyFetcher.fromEnvironment() {
-                fetchers.append(spotify)
-                logger.info("Spotify fetcher enabled (search only)")
-            }
-
-            let fetcher = MetadataPreFetcher(fetchers: fetchers)
-            self.preFetcher = fetcher
-
-            audioRouter.onTrackChange = { [weak self] event in
-                guard let self else { return }
-                Task { @MainActor in
-                    self.currentTrack = event.current
-                    self.preFetchedProfile = nil
-                    logger.info("Track changed: \(event.current.title ?? "?") — \(event.current.artist ?? "?")")
-                }
-                Task {
-                    let profile = await fetcher.prefetch(for: event.current)
-                    await MainActor.run {
-                        self.preFetchedProfile = profile
+                // Run mood classifier with 10 features.
+                if let mood {
+                    let features: [Float] = [
+                        fv.subBass, fv.lowBass, fv.lowMid,
+                        fv.midHigh, fv.highMid, fv.high,
+                        fv.spectralCentroid, fv.spectralFlux,
+                        mir.latestMajorKeyCorrelation,
+                        mir.latestMinorKeyCorrelation
+                    ]
+                    if let state = try? mood.classify(features: features) {
+                        let diag = MIRDiagnostics(
+                            magMax: magnitudes.max() ?? 0,
+                            bass: fv.bass, mid: fv.mid,
+                            centroid: fv.spectralCentroid,
+                            flux: fv.spectralFlux,
+                            majorCorr: mir.latestMajorKeyCorrelation,
+                            minorCorr: mir.latestMinorKeyCorrelation,
+                            callbackCount: frameCount
+                        )
+                        Task { @MainActor [weak self] in
+                            self?.currentMood = state
+                            self?.estimatedKey = mir.estimatedKey
+                            self?.estimatedTempo = mir.estimatedTempo
+                            self?.mirDiag = diag
+                        }
                     }
                 }
             }
-
-            self.router = audioRouter
         }
+
+        // Build fetcher list — MusicBrainz always available (free API).
+        var fetchers: [any MetadataFetching] = [MusicBrainzFetcher()]
+        if let soundcharts = SoundchartsFetcher.fromEnvironment() {
+            fetchers.append(soundcharts)
+            logger.info("Soundcharts fetcher enabled (audio features)")
+        }
+        if let spotify = SpotifyFetcher.fromEnvironment() {
+            fetchers.append(spotify)
+            logger.info("Spotify fetcher enabled (search only)")
+        }
+
+        let fetcher = MetadataPreFetcher(fetchers: fetchers)
+        self.preFetcher = fetcher
+
+        audioRouter.onTrackChange = { [weak self] event in
+            guard let self else { return }
+            Task { @MainActor in
+                self.currentTrack = event.current
+                self.preFetchedProfile = nil
+                logger.info("Track: \(event.current.title ?? "?") — \(event.current.artist ?? "?")")
+            }
+            Task {
+                let profile = await fetcher.prefetch(for: event.current)
+                await MainActor.run {
+                    self.preFetchedProfile = profile
+                }
+            }
+        }
+
+        return audioRouter
     }
 
     // MARK: - Public API
@@ -226,7 +334,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         if permitted {
             startAudioCapture()
         } else {
-            logger.info("Screen capture denied — track detection works but audio capture requires permission. Grant in System Settings.")
+            logger.info("Screen capture denied — grant in System Settings for audio capture")
             // Poll until permission is granted — no restart required.
             Task { @MainActor in
                 while !hasScreenCapturePermission {

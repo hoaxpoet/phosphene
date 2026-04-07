@@ -60,6 +60,31 @@ struct DebugOverlayView: View {
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundColor(.yellow.opacity(0.7))
             }
+
+            // Live mood classification from MIR + MoodClassifier.
+            Divider().background(.white.opacity(0.3))
+
+            Text("MOOD (LIVE)")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .foregroundColor(.cyan.opacity(0.7))
+
+            let mood = engine.currentMood
+            label("Mood", "\(mood.quadrant.rawValue.capitalized) "
+                  + "(V:\(String(format: "%.2f", mood.valence)) "
+                  + "A:\(String(format: "%.2f", mood.arousal)))")
+            if let key = engine.estimatedKey { label("Key", key) }
+            if let bpm = engine.estimatedTempo {
+                label("Tempo", String(format: "%.0f BPM", bpm))
+            }
+
+            // Raw MIR diagnostics.
+            let diag = engine.mirDiag
+            label("magMax", String(format: "%.4f", diag.magMax))
+            label("bass", String(format: "%.3f", diag.bass))
+            label("mid", String(format: "%.3f", diag.mid))
+            label("majC", String(format: "%.3f", diag.majorCorr))
+            label("minC", String(format: "%.3f", diag.minorCorr))
+            label("frames", "\(diag.callbackCount)")
         }
         .padding(12)
         .background(.black.opacity(0.6))

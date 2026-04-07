@@ -63,16 +63,21 @@ import CoreML
 
     var features = [Float](repeating: 0, count: MoodClassifier.featureCount)
 
-    // High energy across all 6 bands.
-    for i in 0..<6 { features[i] = 0.7 }
+    // Energetic signal (calibrated to real AGC output).
+    features[0] = 0.25  // subBass
+    features[1] = 0.20  // lowBass
+    features[2] = 0.10  // lowMid
+    features[3] = 0.08  // midHigh
+    features[4] = 0.05  // highMid
+    features[5] = 0.03  // high
 
-    // Bright timbre.
-    features[6] = 0.6   // spectralCentroid
-    features[7] = 0.5   // spectralFlux
+    // Moderate brightness and flux.
+    features[6] = 0.20  // spectralCentroid
+    features[7] = 0.15  // spectralFlux
 
     // Strong major key correlation.
     features[8] = 0.85  // majorKeyCorrelation
-    features[9] = 0.25  // minorKeyCorrelation
+    features[9] = 0.45  // minorKeyCorrelation
 
     // Classify multiple times to overcome EMA smoothing toward neutral.
     var state = EmotionalState.neutral
@@ -93,12 +98,17 @@ import CoreML
 
     var features = [Float](repeating: 0, count: MoodClassifier.featureCount)
 
-    // Low energy.
-    for i in 0..<6 { features[i] = 0.15 }
+    // Low energy (calibrated to real AGC output).
+    features[0] = 0.03   // subBass
+    features[1] = 0.02   // lowBass
+    features[2] = 0.02   // lowMid
+    features[3] = 0.02   // midHigh
+    features[4] = 0.01   // highMid
+    features[5] = 0.01   // high
 
-    // Dark timbre.
-    features[6] = 0.15   // spectralCentroid
-    features[7] = 0.1    // spectralFlux
+    // Dark timbre, low flux.
+    features[6] = 0.05   // spectralCentroid
+    features[7] = 0.02   // spectralFlux
 
     // Strong minor key correlation.
     features[8] = 0.20   // majorKeyCorrelation

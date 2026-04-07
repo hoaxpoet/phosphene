@@ -59,6 +59,12 @@ public final class MIRPipeline: @unchecked Sendable {
     /// Latest spectral rolloff in Hz.
     public private(set) var spectralRolloff: Float = 0
 
+    /// Latest best Pearson correlation with any major key profile, 0–1.
+    public private(set) var latestMajorKeyCorrelation: Float = 0
+
+    /// Latest best Pearson correlation with any minor key profile, 0–1.
+    public private(set) var latestMinorKeyCorrelation: Float = 0
+
     // MARK: - Normalization State
 
     /// Running max for spectral flux normalization.
@@ -138,6 +144,8 @@ public final class MIRPipeline: @unchecked Sendable {
         estimatedTempo = beat.estimatedTempo
         tempoConfidence = beat.tempoConfidence
         spectralRolloff = spectral.rolloff
+        latestMajorKeyCorrelation = chroma.majorKeyCorrelation
+        latestMinorKeyCorrelation = chroma.minorKeyCorrelation
         lock.unlock()
 
         // Assemble FeatureVector.
@@ -181,6 +189,8 @@ public final class MIRPipeline: @unchecked Sendable {
         estimatedTempo = nil
         tempoConfidence = 0
         spectralRolloff = 0
+        latestMajorKeyCorrelation = 0
+        latestMinorKeyCorrelation = 0
         lock.unlock()
     }
 }

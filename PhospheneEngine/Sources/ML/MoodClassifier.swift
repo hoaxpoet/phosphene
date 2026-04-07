@@ -1,10 +1,10 @@
-// MoodClassifier — CoreML-powered valence/arousal classification for music.
+// MoodClassifier — Direct heuristic valence/arousal classification for music.
 // Takes 10 audio features per frame (from MIRPipeline) and outputs continuous
 // emotional coordinates in [-1, 1], smoothed with exponential moving average.
 //
-// The model is a lightweight MLP (10 → 32 → 16 → 2) running on
-// .cpuAndNeuralEngine. EMA smoothing prevents frame-to-frame jitter while
-// preserving responsiveness to genuine mood shifts.
+// Uses direct computation instead of CoreML — calibrated against real Core Audio
+// tap output. Will be replaced with a trained ML model once calibration data
+// is collected from diverse genres.
 //
 // Input features (10 floats):
 //   [0-5]:  6-band energy (subBass, lowBass, lowMid, midHigh, highMid, high)
@@ -14,7 +14,6 @@
 //   [9]:    minorKeyCorrelation (best Pearson r with K-S minor profiles, 0-1)
 
 import Foundation
-import CoreML
 import Shared
 import Audio
 import os.log
@@ -23,10 +22,10 @@ private let logger = Logger(subsystem: "com.phosphene.ml", category: "MoodClassi
 
 // MARK: - MoodClassifier
 
-/// Classifies audio mood as continuous valence/arousal using CoreML and the Neural Engine.
+/// Classifies audio mood as continuous valence/arousal using direct heuristics.
 ///
 /// Thread-safe. Each call to `classify(features:)` applies EMA smoothing to the
-/// raw model output and updates `currentState`.
+/// raw heuristic output and updates `currentState`.
 public final class MoodClassifier: MoodClassifying, @unchecked Sendable {
 
     // MARK: - Constants
@@ -34,16 +33,8 @@ public final class MoodClassifier: MoodClassifying, @unchecked Sendable {
     /// Expected number of input features.
     public static let featureCount = 10
 
-    /// EMA smoothing factor. At 60fps, alpha=0.1 gives ~0.5s time constant.
-    public static let emaAlpha: Float = 0.1
-
-    // MARK: - Model
-
-    /// The loaded CoreML model.
-    private let model: MLModel
-
-    /// The compute unit configuration used to load the model.
-    public let computeUnits: MLComputeUnits
+    /// EMA smoothing factor. At 60fps, alpha=0.15 gives ~0.35s time constant.
+    public static let emaAlpha: Float = 0.15
 
     // MARK: - State
 
@@ -55,86 +46,64 @@ public final class MoodClassifier: MoodClassifying, @unchecked Sendable {
 
     // MARK: - Init
 
-    /// Create a mood classifier backed by the MoodClassifier CoreML model.
-    ///
-    /// - Throws: `MoodClassificationError` if model loading fails.
+    /// Create a mood classifier using direct heuristics.
     public init() throws {
-        guard let modelURL = Bundle.module.url(
-            forResource: "MoodClassifier",
-            withExtension: "mlpackage",
-            subdirectory: "Models"
-        ) else {
-            throw MoodClassificationError.modelNotFound
-        }
-
-        let config = MLModelConfiguration()
-        config.computeUnits = .cpuAndNeuralEngine
-        self.computeUnits = config.computeUnits
-
-        do {
-            self.model = try MLModel(
-                contentsOf: MLModel.compileModel(at: modelURL),
-                configuration: config
-            )
-        } catch {
-            throw MoodClassificationError.modelLoadFailed(error.localizedDescription)
-        }
-
-        logger.info("MoodClassifier loaded: \(Self.featureCount) features, ANE inference")
+        logger.info("MoodClassifier loaded: \(Self.featureCount) features, heuristic mode")
     }
 
     // MARK: - Classification
 
-    /// Classify mood from audio features.
+    /// Classify mood from audio features using direct heuristics.
     ///
-    /// Applies EMA smoothing to the raw model output. Call once per frame.
+    /// Applies EMA smoothing to the raw output. Call once per frame.
     ///
-    /// - Parameter features: Array of exactly 10 floats (see class-level docs for ordering).
+    /// - Parameter features: Array of exactly 10 floats (see class-level docs).
     /// - Returns: Smoothed `EmotionalState` with valence and arousal in [-1, 1].
     public func classify(features: [Float]) throws -> EmotionalState {
         guard features.count == Self.featureCount else {
             throw MoodClassificationError.invalidFeatureCount(features.count)
         }
 
-        // Pack input as MLShapedArray [1, 10].
-        let inputArray = MLShapedArray<Float>(scalars: features, shape: [1, Self.featureCount])
-        let inputMultiArray = MLMultiArray(inputArray)
-        let provider = try MLDictionaryFeatureProvider(
-            dictionary: ["features": MLFeatureValue(multiArray: inputMultiArray)]
-        )
+        let subBass = features[0]
+        let lowBass = features[1]
+        let lowMid = features[2]
+        let midHigh = features[3]
+        let highMid = features[4]
+        let high = features[5]
+        let centroid = features[6]
+        let flux = features[7]
+        let majorCorr = features[8]
+        let minorCorr = features[9]
 
-        // Run prediction.
-        let prediction: MLFeatureProvider
-        do {
-            prediction = try model.prediction(from: provider)
-        } catch {
-            throw MoodClassificationError.predictionFailed(error.localizedDescription)
-        }
+        // --- Arousal: energy + flux driven ---
+        // Bass weight: sub_bass and low_bass carry the physical energy feel.
+        let bassEnergy = (subBass + lowBass) * 0.5
+        // Total across all bands.
+        let totalEnergy = (subBass + lowBass + lowMid + midHigh + highMid + high) / 6.0
+        // Weighted blend: bass matters more for perceived energy.
+        let weightedEnergy = totalEnergy * 0.3 + bassEnergy * 0.7
+        // Map to arousal. Calibrated: 0.05 = quiet, 0.15 = moderate, 0.25 = loud.
+        var rawArousal = (weightedEnergy - 0.08) * 7.0
+        // Flux adds excitement (timbral change = energy).
+        rawArousal += flux * 1.5
+        // Centroid adds slight arousal (brighter = more energetic).
+        rawArousal += (centroid - 0.10) * 0.5
+        rawArousal = min(max(rawArousal, -1), 1)
 
-        // Extract output [1, 2].
-        guard let outputValue = prediction.featureValue(for: "mood"),
-              let outputMultiArray = outputValue.multiArrayValue else {
-            throw MoodClassificationError.predictionFailed("Missing 'mood' output")
-        }
-
-        // ANE may output Float16 — use subscript access which handles type conversion.
-        var rawValence: Float = 0
-        var rawArousal: Float = 0
-
-        if outputMultiArray.count >= 2 {
-            rawValence = outputMultiArray[0].floatValue
-            rawArousal = outputMultiArray[1].floatValue
-        }
-
-        // Clamp to [-1, 1] (defensive — tanh should already bound).
-        let clampedValence = min(max(rawValence, -1), 1)
-        let clampedArousal = min(max(rawArousal, -1), 1)
+        // --- Valence: key mode driven ---
+        // Major key → positive, minor key → negative.
+        let modeDiff = majorCorr - minorCorr
+        let confidence = max(majorCorr, minorCorr)
+        var rawValence = modeDiff * confidence * 3.0
+        // Brightness adds slight positive bias.
+        rawValence += (centroid - 0.10) * 0.3
+        rawValence = min(max(rawValence, -1), 1)
 
         // Apply EMA smoothing.
         lock.lock()
         let alpha = Self.emaAlpha
-        let smoothedValence = alpha * clampedValence + (1 - alpha) * currentState.valence
-        let smoothedArousal = alpha * clampedArousal + (1 - alpha) * currentState.arousal
+        let smoothedValence = alpha * rawValence + (1 - alpha) * currentState.valence
+        let smoothedArousal = alpha * rawArousal + (1 - alpha) * currentState.arousal
         let state = EmotionalState(valence: smoothedValence, arousal: smoothedArousal)
         currentState = state
         lock.unlock()

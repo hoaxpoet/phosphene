@@ -31,6 +31,10 @@ public final class ChromaExtractor: @unchecked Sendable {
         public var estimatedKey: String?
         /// Confidence of key estimation, 0–1.
         public var keyConfidence: Float
+        /// Best Pearson correlation with any major key profile, 0–1.
+        public var majorKeyCorrelation: Float
+        /// Best Pearson correlation with any minor key profile, 0–1.
+        public var minorKeyCorrelation: Float
     }
 
     // MARK: - Constants
@@ -48,8 +52,11 @@ public final class ChromaExtractor: @unchecked Sendable {
         6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17
     ]
 
-    /// Minimum frequency for chroma mapping (C2 ≈ 65.4 Hz).
-    private static let minFrequency: Float = 65.0
+    /// Minimum frequency for chroma mapping.
+    /// Set to 500 Hz (≈B4) to avoid low-resolution bins where 46.875 Hz spacing
+    /// causes systematic pitch class bias (e.g., bins 2, 5, 10 all map to F#).
+    /// Higher harmonics carry accurate pitch information.
+    private static let minFrequency: Float = 500.0
 
     /// Minimum key confidence to report a key.
     private static let minKeyConfidence: Float = 0.3
@@ -127,7 +134,13 @@ public final class ChromaExtractor: @unchecked Sendable {
 
         let count = min(magnitudes.count, binCount)
         guard count > 0 else {
-            return Result(chroma: [Float](repeating: 0, count: 12), estimatedKey: nil, keyConfidence: 0)
+            return Result(
+                chroma: [Float](repeating: 0, count: 12),
+                estimatedKey: nil,
+                keyConfidence: 0,
+                majorKeyCorrelation: 0,
+                minorKeyCorrelation: 0
+            )
         }
 
         // Accumulate energy into 12 pitch classes.
@@ -148,27 +161,44 @@ public final class ChromaExtractor: @unchecked Sendable {
         }
 
         // Key estimation via Krumhansl-Schmuckler.
-        let (key, confidence) = estimateKey(chroma: chroma)
+        let keyEst = estimateKey(chroma: chroma)
 
         return Result(
             chroma: chroma,
-            estimatedKey: confidence >= Self.minKeyConfidence ? key : nil,
-            keyConfidence: confidence
+            estimatedKey: keyEst.confidence >= Self.minKeyConfidence ? keyEst.key : nil,
+            keyConfidence: keyEst.confidence,
+            majorKeyCorrelation: keyEst.majorCorrelation,
+            minorKeyCorrelation: keyEst.minorCorrelation
         )
     }
 
     // MARK: - Key Estimation
 
+    /// Key estimation result (internal, avoids large tuple).
+    private struct KeyEstimation {
+        var key: String
+        var confidence: Float
+        var majorCorrelation: Float
+        var minorCorrelation: Float
+    }
+
     /// Estimate key by correlating chroma with all 24 key profiles.
-    private func estimateKey(chroma: [Float]) -> (key: String, confidence: Float) {
+    private func estimateKey(chroma: [Float]) -> KeyEstimation {
         var bestCorrelation: Float = -2
         var bestIndex = 0
+        var bestMajor: Float = -2
+        var bestMinor: Float = -2
 
         for i in 0..<24 {
-            let r = pearsonCorrelation(chroma, keyProfiles[i])
-            if r > bestCorrelation {
-                bestCorrelation = r
+            let corr = pearsonCorrelation(chroma, keyProfiles[i])
+            if corr > bestCorrelation {
+                bestCorrelation = corr
                 bestIndex = i
+            }
+            if i < 12 {
+                bestMajor = max(bestMajor, corr)
+            } else {
+                bestMinor = max(bestMinor, corr)
             }
         }
 
@@ -178,21 +208,28 @@ public final class ChromaExtractor: @unchecked Sendable {
 
         // Confidence is the absolute correlation, clamped to 0-1.
         let confidence = min(max(bestCorrelation, 0), 1)
+        let majorClamped = min(max(bestMajor, 0), 1)
+        let minorClamped = min(max(bestMinor, 0), 1)
 
-        return (keyName, confidence)
+        return KeyEstimation(
+            key: keyName,
+            confidence: confidence,
+            majorCorrelation: majorClamped,
+            minorCorrelation: minorClamped
+        )
     }
 
     /// Pearson correlation coefficient between two 12-element arrays.
     private func pearsonCorrelation(_ x: [Float], _ y: [Float]) -> Float {
-        let n = Float(12)
+        let count = Float(12)
 
         var sumX: Float = 0
         var sumY: Float = 0
         vDSP_sve(x, 1, &sumX, vDSP_Length(12))
         vDSP_sve(y, 1, &sumY, vDSP_Length(12))
 
-        let meanX = sumX / n
-        let meanY = sumY / n
+        let meanX = sumX / count
+        let meanY = sumY / count
 
         var covSum: Float = 0
         var varXSum: Float = 0
@@ -217,9 +254,9 @@ public final class ChromaExtractor: @unchecked Sendable {
     /// Rotate a 12-element profile array by `steps` positions.
     /// rotate([a,b,c,d], by: 1) → [d,a,b,c] (shift right = transpose up).
     private static func rotateProfile(_ profile: [Float], by steps: Int) -> [Float] {
-        let n = profile.count
-        return (0..<n).map { i in
-            profile[(i - steps + n) % n]
+        let size = profile.count
+        return (0..<size).map { i in
+            profile[(i - steps + size) % size]
         }
     }
 }
