@@ -76,6 +76,12 @@ public final class ChromaExtractor: @unchecked Sendable {
     /// Thread safety.
     private let lock = NSLock()
 
+    /// Accumulated chroma for stable key estimation (EMA-smoothed).
+    private var accumulatedChroma = [Float](repeating: 0, count: 12)
+
+    /// EMA rate for chroma accumulation. 0.98 = ~3s time constant at 60fps.
+    private static let chromaEmaRate: Float = 0.98
+
     // MARK: - Init
 
     /// Create a chroma extractor.
@@ -160,8 +166,14 @@ public final class ChromaExtractor: @unchecked Sendable {
             vDSP_vsmul(chroma, 1, &scale, &chroma, 1, vDSP_Length(12))
         }
 
-        // Key estimation via Krumhansl-Schmuckler.
-        let keyEst = estimateKey(chroma: chroma)
+        // EMA-accumulate chroma for stable key estimation.
+        let rate = Self.chromaEmaRate
+        for i in 0..<12 {
+            accumulatedChroma[i] = rate * accumulatedChroma[i] + (1 - rate) * chroma[i]
+        }
+
+        // Key estimation via Krumhansl-Schmuckler on accumulated chroma.
+        let keyEst = estimateKey(chroma: accumulatedChroma)
 
         return Result(
             chroma: chroma,

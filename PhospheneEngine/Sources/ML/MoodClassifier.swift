@@ -33,8 +33,9 @@ public final class MoodClassifier: MoodClassifying, @unchecked Sendable {
     /// Expected number of input features.
     public static let featureCount = 10
 
-    /// EMA smoothing factor. At 60fps, alpha=0.15 gives ~0.35s time constant.
-    public static let emaAlpha: Float = 0.15
+    /// EMA smoothing factor. At ~94 callbacks/s, alpha=0.02 gives ~3s time constant.
+    /// Mood should be stable within a song section, not jittery per-frame.
+    public static let emaAlpha: Float = 0.02
 
     // MARK: - State
 
@@ -90,13 +91,24 @@ public final class MoodClassifier: MoodClassifying, @unchecked Sendable {
         rawArousal += (centroid - 0.10) * 0.5
         rawArousal = min(max(rawArousal, -1), 1)
 
-        // --- Valence: key mode driven ---
+        // --- Valence: key mode + timbral character ---
         // Major key → positive, minor key → negative.
         let modeDiff = majorCorr - minorCorr
         let confidence = max(majorCorr, minorCorr)
         var rawValence = modeDiff * confidence * 3.0
-        // Brightness adds slight positive bias.
-        rawValence += (centroid - 0.10) * 0.3
+
+        // Key ambiguity: when both correlations are close, the music is
+        // likely dissonant (power chords, distortion, atonal). Bias negative.
+        let keyAmbiguity = 1.0 - abs(modeDiff) / (confidence + 1e-6)
+        rawValence -= keyAmbiguity * 0.3
+
+        // Aggression detector: high energy + high flux + low centroid = dark,
+        // loud, rapidly changing timbre → angry/aggressive → negative valence.
+        let aggressionSignal = weightedEnergy * flux * (1.0 - centroid)
+        rawValence -= aggressionSignal * 4.0
+
+        // Brightness adds slight positive bias (bright = happier).
+        rawValence += (centroid - 0.15) * 0.3
         rawValence = min(max(rawValence, -1), 1)
 
         // Apply EMA smoothing.
