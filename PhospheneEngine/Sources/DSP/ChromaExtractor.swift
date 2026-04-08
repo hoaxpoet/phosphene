@@ -73,6 +73,12 @@ public final class ChromaExtractor: @unchecked Sendable {
     /// Precomputed pitch class for each bin. -1 means skip (below minFrequency).
     private let binPitchClass: [Int]
 
+    /// Precomputed per-bin weight: 1/binsInPitchClass, to compensate for non-uniform
+    /// FFT-to-pitch mapping. Without this, pitch classes with more bins (F=55, E=50)
+    /// accumulate more energy than those with fewer bins (G=31, G#=31), biasing
+    /// key estimation by up to 1.77x.
+    private let binWeight: [Float]
+
     /// Precomputed 24 key profiles: [0..11] = major, [12..23] = minor.
     /// Each profile is rotated to its root pitch class.
     private let keyProfiles: [[Float]]
@@ -143,6 +149,22 @@ public final class ChromaExtractor: @unchecked Sendable {
             return pitchClass < 0 ? pitchClass + 12 : pitchClass
         }
 
+        // Count bins per pitch class and compute per-bin normalization weights.
+        // FFT bins are linear in frequency but pitch classes are logarithmic,
+        // so some pitch classes get up to 1.77x more bins than others (F=55, G=31).
+        // Without normalization, key estimation is biased toward high-bin-count PCs.
+        var binsPerPC = [Int](repeating: 0, count: 12)
+        for pc in self.binPitchClass where pc >= 0 {
+            binsPerPC[pc] += 1
+        }
+
+        // Each bin's weight = 1 / (number of bins in its pitch class).
+        // This ensures each pitch class contributes equally regardless of bin count.
+        self.binWeight = self.binPitchClass.map { pc in
+            guard pc >= 0, binsPerPC[pc] > 0 else { return Float(0) }
+            return 1.0 / Float(binsPerPC[pc])
+        }
+
         // Precompute all 24 key profiles (12 major rotations + 12 minor rotations).
         var profiles = [[Float]]()
         for root in 0..<12 {
@@ -152,6 +174,8 @@ public final class ChromaExtractor: @unchecked Sendable {
             profiles.append(Self.rotateProfile(Self.minorProfile, by: root))
         }
         self.keyProfiles = profiles
+
+        logger.info("ChromaExtractor bins per pitch class: \(binsPerPC.enumerated().map { "\(Self.pitchNames[$0.offset])=\($0.element)" }.joined(separator: " "))")
 
         logger.info("ChromaExtractor created: \(binCount) bins, reference A4=\(referenceA4) Hz")
     }
@@ -179,12 +203,14 @@ public final class ChromaExtractor: @unchecked Sendable {
             )
         }
 
-        // Accumulate energy into 12 pitch classes.
+        // Accumulate energy into 12 pitch classes, weighted by inverse bin count.
+        // Without weighting, pitch classes with more FFT bins (F=55) accumulate
+        // ~1.77x more energy than those with fewer (G=31), biasing key estimation.
         var chroma = [Float](repeating: 0, count: 12)
         for i in 0..<count {
             let pc = binPitchClass[i]
             guard pc >= 0 else { continue }
-            chroma[pc] += magnitudes[i]
+            chroma[pc] += magnitudes[i] * binWeight[i]
         }
 
         // Normalize: divide by max so loudest pitch class = 1.0.
@@ -250,6 +276,7 @@ public final class ChromaExtractor: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
 
+        logger.info("ChromaExtractor: reset accumulators (track change)")
         accumulatedChroma = [Float](repeating: 0, count: 12)
         stableKey = nil
         candidateKey = nil

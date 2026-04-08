@@ -28,7 +28,7 @@ swiftlint lint --strict --config .swiftlint.yml
 
 Deployment target: macOS 14.0+ (Sonoma). Swift 6.0. Metal 3.1+.
 
-**Current test count: 173 tests** (unit, integration, regression, performance). All must pass before any new code is merged.
+**Current test count: 187 tests** (unit, integration, regression, performance). All must pass before any new code is merged.
 
 ## Module Map
 
@@ -41,7 +41,8 @@ PhospheneApp/               → SwiftUI shell, views, view models
 PhospheneEngine/
   Audio/                    → Core Audio tap capture, ring buffers, FFT
     SystemAudioCapture      → Core Audio tap wrapper: system-wide or per-app (✓ implemented)
-    AudioInputRouter        → Unified source abstraction: system/app/file → callbacks (✓ implemented)
+    AudioInputRouter        → Unified source abstraction: system/app/file → callbacks + dual analysis/render frame callbacks (✓ implemented)
+    LookaheadBuffer         → Timestamped ring buffer, dual read heads (analysis + render), configurable delay (✓ implemented)
     AudioBuffer             → IO proc → UMARingBuffer<Float> bridge for GPU (✓ implemented)
     FFTProcessor            → vDSP 1024-pt FFT → 512 magnitude bins in UMABuffer (✓ implemented)
     Protocols               → AudioCapturing, AudioBuffering, FFTProcessing, MoodClassifying, MetadataProviding, MetadataFetching (✓ implemented)
@@ -77,15 +78,16 @@ PhospheneEngine/
   Shared/                   → UMA buffer wrappers, type definitions, logging
     UMABuffer               → Generic .storageModeShared MTLBuffer + UMARingBuffer (✓ implemented)
     AudioFeatures           → @frozen SIMD-aligned structs: AudioFrame, FFTResult, TrackMetadata, PreFetchedTrackProfile (✓ implemented)
+    AnalyzedFrame           → Timestamped container: AudioFrame + FFTResult + StemData + FeatureVector + EmotionalState (✓ implemented)
     Logging                 → Per-module os.Logger instances (✓ implemented)
 
-Tests/ (173 tests)
-  Audio/                    → AudioBufferTests, FFTProcessorTests, StreamingMetadataTests, MetadataPreFetcherTests
+Tests/ (187 tests)
+  Audio/                    → AudioBufferTests, FFTProcessorTests, StreamingMetadataTests, MetadataPreFetcherTests, LookaheadBufferTests (10)
   DSP/                      → SpectralAnalyzerTests (8), BandEnergyProcessorTests (5), ChromaExtractorTests (6), BeatDetectorTests (7), MIRPipelineUnitTests (4)
   ML/                       → StemSeparatorTests (8), MoodClassifierTests (7: model loading, classification, range, quadrants, protocol)
   Renderer/                 → MetalContextTests, ShaderLibraryTests, RenderPipelineTests
-  Shared/                   → AudioFeaturesTests, UMABufferExtendedTests, EmotionalStateTests (4: quadrant classification)
-  Integration/              → AudioToFFTPipelineTests, AudioToRenderPipelineTests, MetadataToOrchestratorTests, AudioToStemPipelineTests, MIRPipelineIntegrationTests (3)
+  Shared/                   → AudioFeaturesTests, UMABufferExtendedTests, EmotionalStateTests (4: quadrant classification), AnalyzedFrameTests (3)
+  Integration/              → AudioToFFTPipelineTests, AudioToRenderPipelineTests, MetadataToOrchestratorTests, AudioToStemPipelineTests, MIRPipelineIntegrationTests (3), LookaheadIntegrationTests (1)
   Regression/               → FFTRegressionTests, MetadataParsingRegressionTests, ChromaRegressionTests (2), BeatDetectorRegressionTests (2) + golden fixtures
   Performance/              → FFTPerformanceTests, RenderLoopPerformanceTests, StemSeparationPerformanceTests, DSPPerformanceTests (3)
   TestDoubles/              → MockAudioCapture, StubFFTProcessor, FakeStemSeparator, StubMoodClassifier, AudioFixtures, MockMetadataProvider, MockMetadataFetcher
@@ -338,7 +340,7 @@ Phosphene works at every tier — never show errors or degraded UI when metadata
 - Protocol-first design for testability. Every injectable dependency has a protocol (`AudioCapturing`, `AudioBuffering`, `FFTProcessing`, `Rendering`, `MetadataProviding`, `MetadataFetching`). Tests use doubles from `TestDoubles/`.
 
 ### Testing
-- **162 tests** across unit, integration, regression, and performance categories.
+- **187 tests** across unit, integration, regression, and performance categories.
 - All tests must pass before starting new work (`swift test --package-path PhospheneEngine`).
 - Test doubles in `Tests/TestDoubles/`: `MockAudioCapture`, `StubFFTProcessor`, `FakeStemSeparator`, `StubMoodClassifier`, `AudioFixtures`, `MockMetadataProvider`, `MockMetadataFetcher`.
 - Regression tests use golden fixtures in `Tests/Regression/Fixtures/`.
@@ -367,6 +369,8 @@ These were tried in the Electron prototype and abandoned with documented reasons
 15. **Chroma extraction using low-frequency FFT bins (< 500 Hz)**: At 48kHz/1024-point FFT, bin resolution is 46.875 Hz. Below ~500 Hz, bin centers don't align with musical pitches — e.g., 261.6 Hz (C4) maps to bin 6 (281.25 Hz) which rounds to C#, not C. 220 Hz (A3) maps to bin 5 (234.375 Hz) which rounds to A#, not A. Solution: skip bins below 65 Hz entirely, and rely on higher octaves (C5+, 523+ Hz) where bin-to-pitch mapping is accurate. The higher harmonics naturally carry the pitch information.
 16. **Raw 12-bin chroma as mood classifier input**: A 914-param MLP (or even 3490-param) cannot learn the Krumhansl-Schmuckler key correlation function from raw chroma bins. Training loss plateaued at 0.23 (RMSE ~0.48) and valence output was near-zero for both major and minor key inputs. The correlation computation involves rotating the chroma vector through all 12 keys and comparing against 24 profiles — too complex for a tiny network to approximate. Solution: pre-compute major/minor key correlations as 2 scalar inputs (replacing 12 chroma bins), reducing the model input from 20 to 10 features. Training loss dropped to 0.02 (RMSE ~0.14).
 17. **Autocorrelation tempo estimation returning half-tempo**: Basic autocorrelation of onset functions often returns half the true tempo (e.g., 60 BPM instead of 120 BPM) because the autocorrelation peak at lag=2×beat is often stronger than at lag=1×beat. This is a well-known "octave error". Accept it for now — the pre-fetched BPM from metadata APIs disambiguates. Future fix: onset spacing analysis or harmonic product spectrum.
+18. **Median-based threshold for tempo onset timestamps**: Half-wave rectified spectral flux is zero for most frames (no energy increase = zero flux after rectification). The median of a buffer that's mostly zeros is near-zero, making `median * N` near-zero regardless of multiplier. Every positive flux passed, and the 300ms minimum spacing became the only gate — forcing IOIs at ~310ms intervals regardless of actual tempo (310ms → 194 BPM → octave-halved to 97). Fix: use 75th percentile instead of median, which is non-zero only when there's genuine activity, and reduce minimum spacing to 150ms so it doesn't alias real tempos.
+19. **Unweighted chroma accumulation from FFT bins**: FFT bins are linearly spaced in frequency, but pitch classes are logarithmically spaced. At 48kHz/1024-point FFT, some pitch classes get up to 1.77x more bins than others (F=55 bins, G=31 bins). Without per-bin normalization (weight = 1/binsInPitchClass), pitch classes with more bins accumulate proportionally more energy, systematically biasing key estimation. Fix: precompute per-bin weights at init and multiply each bin's magnitude contribution.
 
 ---
 
@@ -447,6 +451,8 @@ Metal, MetalKit, CoreML, AVFoundation, Accelerate, ScreenCaptureKit, MusicKit
 24. **Krumhansl-Schmuckler key estimation**: 24 key profiles (12 major + 12 minor rotations of Krumhansl 1990 profiles). Pearson correlation against normalized chroma vector. Minimum confidence threshold of 0.3 to avoid spurious key reports. Works well for clear tonal content; atonal or percussive-only material correctly returns nil.
 25. **Mood classifier input features**: 10 pre-computed features, NOT raw 12-bin chroma. A tiny MLP cannot learn the Krumhansl-Schmuckler correlation function implicitly from 12 chroma bins — training converged to near-zero valence regardless of key mode. Pre-computing major/minor key correlations (which ChromaExtractor already calculates internally) reduces the problem to a trivially learnable function. The MLP provides smooth interpolation + efficient ANE execution over what could be pure heuristics.
 26. **Spectral flux normalization for GPU**: Raw flux depends on magnitude scale and bin count. MIRPipeline normalizes via running-max AGC (tracks peak flux with 0.999 decay). Spectral centroid normalized by dividing by Nyquist (24000 Hz) to map to 0–1.
+27. **Tempo onset threshold**: 75th percentile of bass flux buffer × 2.0, with 150ms minimum spacing. The median of half-wave rectified flux is near-zero (most frames have zero flux), so median-based thresholds fail. The 75th percentile is non-zero only during genuine energy changes. Previous 300ms minimum spacing aliased all tempos to ~97 BPM.
+28. **Chroma bin-count normalization**: Each FFT bin's magnitude contribution to its pitch class is weighted by `1/binsInPitchClass`. At 48kHz/1024-point FFT, pitch classes get 31–55 bins (1.77x ratio). Without normalization, key estimation is systematically biased toward high-bin-count pitch classes (F, E, D#).
 
 ## Reference Documents
 
@@ -456,6 +462,8 @@ The architectural blueprint is in `docs/ARCHITECTURAL_BLUEPRINT.md`.
 
 ## Current Status
 
-**Phase 2 in progress.** Increments 2.1 (streaming metadata), 2.2 (CoreML stem separation model conversion), 2.3 (Swift CoreML stem separator integration), 2.4 (MIR feature extraction pipeline), and 2.5 (mood classification model) are complete.
+**Phase 2 in progress.** Increments 2.1 (streaming metadata), 2.2 (CoreML stem separation model conversion), 2.3 (Swift CoreML stem separator integration), 2.4 (MIR feature extraction pipeline), 2.5 (mood classification model), and 2.6 (analysis lookahead buffer) are complete. Next up: Increment 2.7 (DSP/MIR → rendering integration).
 
-Increment 2.5 added a lightweight valence/arousal mood classifier deployed on the Apple Neural Engine. Python training pipeline (`tools/train_mood_classifier.py`) generates rule-based synthetic data mapping audio features to emotional coordinates, trains a 914-parameter MLP (10 → 32 → 16 → 2 with tanh), and exports to CoreML `.mlpackage`. Input features: 6-band energy, spectral centroid, spectral flux, and pre-computed major/minor key correlations (from ChromaExtractor's Krumhansl-Schmuckler algorithm). Output: valence [-1,1] and arousal [-1,1] with EMA smoothing (alpha=0.1, ~0.5s time constant at 60fps). Swift types: `EmotionalState` struct with computed `quadrant` property (happy/sad/tense/calm), `MoodClassifying` protocol, `MoodClassifier` CoreML wrapper, `StubMoodClassifier` test double. 173 Swift tests pass (162 existing + 11 new). 4/4 Python model assertions pass. Next up: Increment 2.6 (DSP/MIR → rendering integration).
+Increment 2.6 added the analysis lookahead buffer — a configurable delay between analysis and rendering for anticipatory visual decisions. `AnalyzedFrame` is a timestamped container bundling all per-frame analysis results (AudioFrame + FFTResult + StemData + FeatureVector + EmotionalState). `LookaheadBuffer` is a thread-safe ring buffer (default 512 frames, 2.5s delay) with dual read heads: the analysis head returns the latest frame (real-time) and the render head returns the frame delayed by the configured amount. `AudioInputRouter` gained `onAnalysisFrame` and `onRenderFrame` dual callbacks for the Orchestrator. 187 Swift tests pass (173 existing + 14 new: 10 LookaheadBuffer unit tests, 3 AnalyzedFrame unit tests, 1 integration test verifying delay accuracy within ±100ms).
+
+BPM and key estimation bugs fixed at end of increment 2.5: tempo onset threshold changed from median (near-zero for half-wave rectified flux) to 75th percentile; chroma accumulation now weights bins by inverse pitch-class count to compensate for non-uniform FFT-to-pitch mapping. Known remaining issues: BPM histogram peaks are thin (peak counts of 2-3) making tempo estimates fragile; tempo takes ~35s to converge; accuracy vs ground truth not yet validated across genres.

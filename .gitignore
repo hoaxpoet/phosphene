@@ -31,3 +31,10 @@ Package.resolved
 # Metal
 *.metallib
 *.air
+tools/.venv/
+tools/__pycache__/
+tools/data/DEAM/
+tools/data/deam_features_cache.npz
+tools/output/
+tools/audio-capture-test
+tools/audio-tap-test

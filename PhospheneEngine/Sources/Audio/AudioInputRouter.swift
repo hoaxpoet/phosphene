@@ -68,6 +68,14 @@ public final class AudioInputRouter: @unchecked Sendable {
     public var onAudioSamples: ((_ samples: UnsafePointer<Float>, _ sampleCount: Int,
                                  _ sampleRate: Float, _ channelCount: UInt32) -> Void)?
 
+    /// Called with the latest analyzed frame from the analysis head (real-time).
+    /// Use for anticipatory decisions (e.g., Orchestrator pre-planning transitions).
+    public var onAnalysisFrame: ((_ frame: AnalyzedFrame) -> Void)?
+
+    /// Called with the delayed analyzed frame from the render head.
+    /// Use for synchronized visual rendering (lags analysis head by `LookaheadBuffer.delay`).
+    public var onRenderFrame: ((_ frame: AnalyzedFrame) -> Void)?
+
     /// Called when the currently playing track changes.
     public var onTrackChange: ((_ event: TrackChangeEvent) -> Void)?
 

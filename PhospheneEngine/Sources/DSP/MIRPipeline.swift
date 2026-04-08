@@ -312,6 +312,7 @@ public final class MIRPipeline: @unchecked Sendable {
 
     /// Reset all analyzers and internal state.
     public func reset() {
+        logger.info("MIR_RESET: resetting all analyzers (track change)")
         spectralAnalyzer.reset()
         bandEnergyProcessor.reset()
         beatDetector.reset()

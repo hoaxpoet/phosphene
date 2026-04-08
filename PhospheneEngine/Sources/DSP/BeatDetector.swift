@@ -285,19 +285,25 @@ public final class BeatDetector: @unchecked Sendable {
         elapsedTime += Double(deltaTime)
 
         // Record onset timestamps from strong bass flux peaks for tempo.
-        // Use 3x the normal threshold — only the strongest hits (actual beats).
-        // Normal onset detection uses 1.5x median; tempo uses 4.5x to filter
-        // transients and harmonics that fire at 5/sec instead of beat rate.
+        // Use the 75th percentile of the flux buffer as the threshold base.
+        // The median of half-wave rectified flux is near-zero (most frames have
+        // zero flux), which made the old median-based threshold near-zero and let
+        // every positive flux through — the 300ms spacing became the only gate,
+        // creating a systematic 97 BPM artifact (310ms IOI → 194 → halved to 97).
+        // The 75th percentile is non-zero when there's real activity, and the 2x
+        // multiplier ensures only genuine strong beats pass.
         let bassFlux = bandFlux[0] + bandFlux[1]
-        let bassMedian = medianOfBuffer(fluxBuffers[0], count: fluxCounts[0])
-                       + medianOfBuffer(fluxBuffers[1], count: fluxCounts[1])
-        let tempoThreshold = bassMedian * Self.thresholdMultiplier * 2.0
+        let bassP75 = percentileOfBuffer(fluxBuffers[0], count: fluxCounts[0], percentile: 0.75)
+                    + percentileOfBuffer(fluxBuffers[1], count: fluxCounts[1], percentile: 0.75)
+        let tempoThreshold = bassP75 * 2.0
         if bassFlux > tempoThreshold && fluxCounts[0] >= 5 {
             let lastTs = onsetTimestampCount > 0
                 ? onsetTimestamps[(onsetTimestampHead - 1 + Self.onsetTimestampWindowSize)
                                   % Self.onsetTimestampWindowSize]
                 : -1.0
-            if elapsedTime - lastTs > 0.30 {  // 300ms min = 200 BPM max
+            // 150ms minimum spacing = 400 BPM max. Short enough to not alias
+            // any real tempo. The threshold does the actual filtering.
+            if elapsedTime - lastTs > 0.15 {
                 onsetTimestamps[onsetTimestampHead] = elapsedTime
                 onsetTimestampHead = (onsetTimestampHead + 1) % Self.onsetTimestampWindowSize
                 onsetTimestampCount = min(
@@ -395,6 +401,14 @@ public final class BeatDetector: @unchecked Sendable {
         return slice[count / 2]
     }
 
+    /// Compute a given percentile (0–1) of the first `count` elements in a buffer.
+    private func percentileOfBuffer(_ buffer: [Float], count: Int, percentile: Float) -> Float {
+        guard count > 0 else { return 0 }
+        let slice = Array(buffer.prefix(count)).sorted()
+        let idx = min(Int(Float(count) * percentile), count - 1)
+        return slice[idx]
+    }
+
     // MARK: - Stable Tempo (IOI Histogram)
 
     /// Compute stable tempo from inter-onset intervals using histogram + hysteresis.
@@ -405,17 +419,27 @@ public final class BeatDetector: @unchecked Sendable {
         var recentTimestamps = [Double]()
         recentTimestamps.reserveCapacity(onsetTimestampCount)
 
+        // Diagnostic: track first/last timestamps in buffer for tracing.
+        var firstTs: Double = .infinity
+        var lastTs: Double = -.infinity
+
         for i in 0..<onsetTimestampCount {
             let idx = (onsetTimestampHead - onsetTimestampCount + i
                        + Self.onsetTimestampWindowSize) % Self.onsetTimestampWindowSize
             let ts = onsetTimestamps[idx]
+            if ts < firstTs { firstTs = ts }
+            if ts > lastTs { lastTs = ts }
             if ts >= windowStart {
                 recentTimestamps.append(ts)
             }
         }
 
         guard recentTimestamps.count >= 4 else {
-            tempoDebug = "recent<4(\(recentTimestamps.count))"
+            tempoDebug = String(
+                format: "recent<4(%d) e=%.1f ws=%.1f first=%.1f last=%.1f buf=%d",
+                recentTimestamps.count, elapsedTime, windowStart,
+                firstTs, lastTs, onsetTimestampCount
+            )
             return
         }
 
@@ -483,6 +507,19 @@ public final class BeatDetector: @unchecked Sendable {
 
         let newInstant = bestBPM
         instantBPM = newInstant
+
+        // Diagnostic: log successful tempo computation.
+        // Show recent count, IOI stats, histogram peak, and pre-clamp BPM.
+        let ioiValues = (1..<recentTimestamps.count).map {
+            recentTimestamps[$0] - recentTimestamps[$0 - 1]
+        }
+        let avgIOI = ioiValues.isEmpty ? 0 : ioiValues.reduce(0, +) / Double(ioiValues.count)
+        let minIOI = ioiValues.min() ?? 0
+        tempoDebug = String(
+            format: "ok r=%d bpm=%.0f pk=%d@%d avg_ioi=%.3f min_ioi=%.3f",
+            recentTimestamps.count, bestBPM, peakCount, peakBucket + 60,
+            avgIOI, minIOI
+        )
 
         // Add to tempo estimates circular buffer.
         tempoEstimates[tempoEstimateHead] = newInstant
