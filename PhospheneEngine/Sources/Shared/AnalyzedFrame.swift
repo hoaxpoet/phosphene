@@ -38,13 +38,17 @@ public struct AnalyzedFrame: Sendable {
     /// Continuous valence/arousal emotional state.
     public var emotionalState: EmotionalState
 
+    /// Progressive structural prediction (section boundaries, next-boundary forecast).
+    public var structuralPrediction: StructuralPrediction
+
     public init(
         timestamp: Double = 0,
         audioFrame: AudioFrame = AudioFrame(),
         fftResult: FFTResult = FFTResult(),
         stemData: StemData = StemData(),
         featureVector: FeatureVector = .zero,
-        emotionalState: EmotionalState = .neutral
+        emotionalState: EmotionalState = .neutral,
+        structuralPrediction: StructuralPrediction = .none
     ) {
         self.timestamp = timestamp
         self.audioFrame = audioFrame
@@ -52,6 +56,7 @@ public struct AnalyzedFrame: Sendable {
         self.stemData = stemData
         self.featureVector = featureVector
         self.emotionalState = emotionalState
+        self.structuralPrediction = structuralPrediction
     }
 
     /// An empty frame at timestamp zero.

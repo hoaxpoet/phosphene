@@ -28,7 +28,7 @@ swiftlint lint --strict --config .swiftlint.yml
 
 Deployment target: macOS 14.0+ (Sonoma). Swift 6.0. Metal 3.1+.
 
-**Current test count: 187 tests** (unit, integration, regression, performance). All must pass before any new code is merged.
+**Current test count: 206 tests** (unit, integration, regression, performance). All must pass before any new code is merged.
 
 ## Module Map
 
@@ -58,6 +58,9 @@ PhospheneEngine/
     ChromaExtractor         → 12-bin chroma vector, Krumhansl-Schmuckler key estimation (✓ implemented)
     BeatDetector            → 6-band onset detection, grouped beat pulses, tempo via autocorrelation (✓ implemented)
     MIRPipeline             → Coordinator: all analyzers → FeatureVector for GPU (✓ implemented)
+    SelfSimilarityMatrix    → Ring buffer of feature vectors, vDSP cosine similarity (✓ implemented)
+    NoveltyDetector         → Checkerboard kernel boundary detection, adaptive threshold (✓ implemented)
+    StructuralAnalyzer      → Section boundary prediction, repetition detection (✓ implemented)
   ML/                       → CoreML wrappers: stem separator, mood classifier
     Models/StemSeparator.mlpackage → Open-Unmix HQ 4-stem mask estimator for ANE (✓ converted)
     Models/MoodClassifier.mlpackage → Valence/arousal MLP for ANE (✓ trained)
@@ -83,12 +86,12 @@ PhospheneEngine/
 
 Tests/ (187 tests)
   Audio/                    → AudioBufferTests, FFTProcessorTests, StreamingMetadataTests, MetadataPreFetcherTests, LookaheadBufferTests (10)
-  DSP/                      → SpectralAnalyzerTests (8), BandEnergyProcessorTests (5), ChromaExtractorTests (6), BeatDetectorTests (7), MIRPipelineUnitTests (4)
+  DSP/                      → SpectralAnalyzerTests (8), BandEnergyProcessorTests (5), ChromaExtractorTests (6), BeatDetectorTests (7), MIRPipelineUnitTests (4), SelfSimilarityMatrixTests (5), NoveltyDetectorTests (5), StructuralAnalyzerTests (8)
   ML/                       → StemSeparatorTests (8), MoodClassifierTests (7: model loading, classification, range, quadrants, protocol)
   Renderer/                 → MetalContextTests, ShaderLibraryTests, RenderPipelineTests
   Shared/                   → AudioFeaturesTests, UMABufferExtendedTests, EmotionalStateTests (4: quadrant classification), AnalyzedFrameTests (3)
   Integration/              → AudioToFFTPipelineTests, AudioToRenderPipelineTests, MetadataToOrchestratorTests, AudioToStemPipelineTests, MIRPipelineIntegrationTests (3), LookaheadIntegrationTests (1)
-  Regression/               → FFTRegressionTests, MetadataParsingRegressionTests, ChromaRegressionTests (2), BeatDetectorRegressionTests (2) + golden fixtures
+  Regression/               → FFTRegressionTests, MetadataParsingRegressionTests, ChromaRegressionTests (2), BeatDetectorRegressionTests (2), StructuralAnalysisRegressionTests (1) + golden fixtures
   Performance/              → FFTPerformanceTests, RenderLoopPerformanceTests, StemSeparationPerformanceTests, DSPPerformanceTests (3)
   TestDoubles/              → MockAudioCapture, StubFFTProcessor, FakeStemSeparator, StubMoodClassifier, AudioFixtures, MockMetadataProvider, MockMetadataFetcher
 ```
@@ -407,6 +410,7 @@ struct AnalyzedFrame           // Timestamped bundle of all above
 struct TrackMetadata           // title, artist, album, genre, duration, artwork URL, source
 struct PreFetchedTrackProfile  // External BPM, key, energy, valence, danceability, genre tags
 struct PresetDescriptor        // id, family, tags, scene metadata (all JSON sidecar fields)
+struct StructuralPrediction    // sectionIndex, sectionStartTime, predictedNextBoundary, confidence
 struct VisualDirective         // Target family, color palette, camera speed, bloom, particles
 ```
 
@@ -453,6 +457,7 @@ Metal, MetalKit, CoreML, AVFoundation, Accelerate, ScreenCaptureKit, MusicKit
 26. **Spectral flux normalization for GPU**: Raw flux depends on magnitude scale and bin count. MIRPipeline normalizes via running-max AGC (tracks peak flux with 0.999 decay). Spectral centroid normalized by dividing by Nyquist (24000 Hz) to map to 0–1.
 27. **Tempo onset threshold**: 75th percentile of bass flux buffer × 2.0, with 150ms minimum spacing. The median of half-wave rectified flux is near-zero (most frames have zero flux), so median-based thresholds fail. The 75th percentile is non-zero only during genuine energy changes. Previous 300ms minimum spacing aliased all tempos to ~97 BPM.
 28. **Chroma bin-count normalization**: Each FFT bin's magnitude contribution to its pitch class is weighted by `1/binsInPitchClass`. At 48kHz/1024-point FFT, pitch classes get 31–55 bins (1.77x ratio). Without normalization, key estimation is systematically biased toward high-bin-count pitch classes (F, E, D#).
+29. **Structural analysis architecture**: Three-class decomposition: `SelfSimilarityMatrix` (ring buffer + cosine similarity), `NoveltyDetector` (checkerboard kernel + peak-picking), `StructuralAnalyzer` (coordinator + prediction). Feature vector is 16 floats (12 chroma + centroid/flux/rolloff/energy). Novelty detection runs every 30 frames (~0.5s), amortized cost ~0.03ms/frame. `StructuralPrediction` is CPU-side only — not in FeatureVector (locked at 24 floats for GPU). Min peak distance 120 frames (2s) balances sensitivity vs false positives.
 
 ## Reference Documents
 
@@ -462,8 +467,10 @@ The architectural blueprint is in `docs/ARCHITECTURAL_BLUEPRINT.md`.
 
 ## Current Status
 
-**Phase 2 in progress.** Increments 2.1 (streaming metadata), 2.2 (CoreML stem separation model conversion), 2.3 (Swift CoreML stem separator integration), 2.4 (MIR feature extraction pipeline), 2.5 (mood classification model), and 2.6 (analysis lookahead buffer) are complete. Next up: Increment 2.7 (DSP/MIR → rendering integration).
+**Phase 2 in progress.** Increments 2.1 (streaming metadata), 2.2 (CoreML stem separation model conversion), 2.3 (Swift CoreML stem separator integration), 2.4 (MIR feature extraction pipeline), 2.5 (mood classification model), 2.6 (analysis lookahead buffer), and 2.7 (progressive structural analysis) are complete. Next up: Increment 2.8 (DSP/MIR → rendering integration).
 
 Increment 2.6 added the analysis lookahead buffer — a configurable delay between analysis and rendering for anticipatory visual decisions. `AnalyzedFrame` is a timestamped container bundling all per-frame analysis results (AudioFrame + FFTResult + StemData + FeatureVector + EmotionalState). `LookaheadBuffer` is a thread-safe ring buffer (default 512 frames, 2.5s delay) with dual read heads: the analysis head returns the latest frame (real-time) and the render head returns the frame delayed by the configured amount. `AudioInputRouter` gained `onAnalysisFrame` and `onRenderFrame` dual callbacks for the Orchestrator. 187 Swift tests pass (173 existing + 14 new: 10 LookaheadBuffer unit tests, 3 AnalyzedFrame unit tests, 1 integration test verifying delay accuracy within ±100ms).
+
+Increment 2.7 added progressive structural analysis — real-time section boundary detection and next-boundary prediction. `SelfSimilarityMatrix` stores 600 frames of 16-float feature vectors (12 chroma + 4 spectral) in a ring buffer with vDSP cosine similarity. `NoveltyDetector` convolves a checkerboard kernel along the similarity diagonal and peak-picks with adaptive threshold (mean + 1.5×stddev, min 2s between peaks). `StructuralAnalyzer` coordinates both, running novelty detection every 30 frames (~0.5s amortized). After 2+ boundaries, predicts next via average section duration; repetition detection (section-average cosine similarity) boosts confidence for ABAB patterns. `StructuralPrediction` is CPU-side only, added to `AnalyzedFrame`. MIRPipeline gained StructuralAnalyzer as its 5th sub-analyzer. 206 Swift tests pass (187 existing + 19 new: 5 SelfSimilarityMatrix, 5 NoveltyDetector, 8 StructuralAnalyzer, 1 AABA regression).
 
 BPM and key estimation bugs fixed at end of increment 2.5: tempo onset threshold changed from median (near-zero for half-wave rectified flux) to 75th percentile; chroma accumulation now weights bins by inverse pitch-class count to compensate for non-uniform FFT-to-pitch mapping. Known remaining issues: BPM histogram peaks are thin (peak counts of 2-3) making tempo estimates fragile; tempo takes ~35s to converge; accuracy vs ground truth not yet validated across genres.

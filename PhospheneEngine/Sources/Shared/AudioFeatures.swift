@@ -358,3 +358,42 @@ public struct EmotionalState: Sendable, Equatable {
     /// Neutral emotional state (origin of the circumplex).
     public static let neutral = EmotionalState()
 }
+
+// MARK: - StructuralPrediction
+
+/// Progressive structural analysis prediction.
+///
+/// CPU-only — not uploaded to GPU buffers. Provides section-level
+/// anticipation for the Orchestrator to trigger transitions ahead
+/// of musical boundaries.
+@frozen
+public struct StructuralPrediction: Sendable, Equatable {
+
+    /// Current section number (0-based). Increments at each detected boundary.
+    public var sectionIndex: UInt32
+
+    /// Timestamp (seconds since capture start) when the current section began.
+    public var sectionStartTime: Float
+
+    /// Predicted timestamp of the next section boundary.
+    public var predictedNextBoundary: Float
+
+    /// Confidence of the prediction, 0–1. Low for ambient/random material,
+    /// high for repetitive ABAB patterns.
+    public var confidence: Float
+
+    public init(
+        sectionIndex: UInt32 = 0,
+        sectionStartTime: Float = 0,
+        predictedNextBoundary: Float = 0,
+        confidence: Float = 0
+    ) {
+        self.sectionIndex = sectionIndex
+        self.sectionStartTime = sectionStartTime
+        self.predictedNextBoundary = predictedNextBoundary
+        self.confidence = confidence
+    }
+
+    /// No prediction available.
+    public static let none = StructuralPrediction()
+}

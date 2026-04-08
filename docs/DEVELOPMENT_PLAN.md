@@ -814,7 +814,9 @@ echo "=== All checks passed ==="
 
 **Verification:** ✅ All 187 Swift tests pass (173 existing + 14 new). Delay accuracy verified within ±50ms at 2.5s configured delay.
 
-### Increment 2.7: Progressive Structural Analysis
+### Increment 2.7: Progressive Structural Analysis ✅
+
+**Status:** Complete.
 
 **Goal:** Real-time structural segmentation that predicts section boundaries.
 
@@ -852,7 +854,23 @@ echo "=== All checks passed ==="
 **Regression test:**
   - `Regression/StructuralAnalysisRegressionTests.swift` — feed a known AABA feature sequence (from fixture file), assert detected boundaries match golden timestamps (±500ms)
 
-**Verification:** After first verse-chorus, debug shows predicted next boundary within ±5 seconds. All 18+ tests pass.
+**Implementation notes:**
+- `SelfSimilarityMatrix` stores up to 600 frames of 16-float feature vectors (12 chroma + centroid/flux/rolloff/energy) in a ring buffer. Cosine similarity computed via vDSP. ~38KB memory.
+- `NoveltyDetector` uses a checkerboard kernel (halfWidth=8) convolved along the similarity diagonal. Peak-picking with adaptive threshold (mean + 1.5×stddev). Minimum 2s between boundaries (120 frames at 60fps).
+- `StructuralAnalyzer` coordinates both: feeds features per-frame, runs novelty detection every 30 frames (~0.5s). After 2+ boundaries, predicts next via average section duration. Repetition detection (section-average cosine similarity) boosts confidence for ABAB patterns.
+- `StructuralPrediction` is CPU-side only (not in FeatureVector). Flows through `AnalyzedFrame.structuralPrediction` for the Orchestrator.
+- MIRPipeline integration: runs after the 4 existing analyzers, exposes `latestStructuralPrediction` as CPU-side property, resets on track change.
+- Key tuning: `minPeakDistance` set to 120 frames (2s) rather than 180 (3s) to avoid suppressing real boundaries in fast-changing music. Repetition bonus scales from 0 at similarity 0.6 to 1.0 at 0.9.
+
+**Files created/edited:**
+- `DSP/SelfSimilarityMatrix.swift` — Ring buffer of feature vectors with vDSP cosine similarity.
+- `DSP/NoveltyDetector.swift` — Checkerboard kernel convolution + adaptive threshold peak-picking.
+- `DSP/StructuralAnalyzer.swift` — Coordinator: boundary detection, repetition analysis, prediction.
+- `Shared/AudioFeatures.swift` — Added `StructuralPrediction` struct.
+- `Shared/AnalyzedFrame.swift` — Added `structuralPrediction` field.
+- `DSP/MIRPipeline.swift` — Integrated StructuralAnalyzer as 5th sub-analyzer.
+
+**Verification:** ✅ All 206 Swift tests pass (187 existing + 19 new: 5 SelfSimilarityMatrix, 5 NoveltyDetector, 8 StructuralAnalyzer, 1 AABA regression). AABA fixture boundaries detected within ±500ms of golden values. ABAB confidence > 0.6, random input confidence < 0.3.
 
 ---
 

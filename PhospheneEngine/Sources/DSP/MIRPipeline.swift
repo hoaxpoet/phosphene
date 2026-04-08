@@ -39,6 +39,9 @@ public final class MIRPipeline: @unchecked Sendable {
     /// Onset detection, beat pulses, and tempo estimation.
     public let beatDetector: BeatDetector
 
+    /// Progressive structural analysis (section boundaries, prediction).
+    public let structuralAnalyzer: StructuralAnalyzer
+
     // MARK: - CPU-Side Properties
 
     /// Latest 12-bin chroma vector (C, C#, D, ..., B). Not in FeatureVector.
@@ -91,6 +94,9 @@ public final class MIRPipeline: @unchecked Sendable {
 
     /// Elapsed seconds since last reset, for stability ramp.
     private var elapsedSeconds: Float = 0
+
+    /// Latest structural prediction from StructuralAnalyzer.
+    public private(set) var latestStructuralPrediction: StructuralPrediction = .none
 
     /// Number of onsets detected per second (for BPM debugging).
     public private(set) var onsetsPerSecond: Int = 0
@@ -151,6 +157,7 @@ public final class MIRPipeline: @unchecked Sendable {
         self.beatDetector = BeatDetector(
             binCount: binCount, sampleRate: sampleRate, fftSize: fftSize
         )
+        self.structuralAnalyzer = StructuralAnalyzer()
         self.nyquist = sampleRate / 2.0
 
         logger.info("MIRPipeline created: \(binCount) bins, \(sampleRate) Hz")
@@ -221,6 +228,18 @@ public final class MIRPipeline: @unchecked Sendable {
         }
 
         lock.unlock()
+
+        // Run structural analysis (has its own lock).
+        let normalizedRolloff = nyquist > 0 ? spectral.rolloff / nyquist : 0
+        let totalEnergy = (energy.bass + energy.mid + energy.treble) / 3.0
+        latestStructuralPrediction = structuralAnalyzer.process(
+            chroma: chroma.chroma,
+            spectralCentroid: normalizedCentroid,
+            spectralFlux: normalizedFlux,
+            spectralRolloff: normalizedRolloff,
+            energy: totalEnergy,
+            time: time
+        )
 
         // Write recording row (throttled to 1/sec inside the method).
         let centroidNorm = nyquist > 0 ? spectral.smoothedCentroid / nyquist : 0
@@ -318,8 +337,11 @@ public final class MIRPipeline: @unchecked Sendable {
         beatDetector.reset()
         chromaExtractor.resetAccumulators()
 
+        structuralAnalyzer.reset()
+
         lock.lock()
         fluxRunningMax = 1e-6
+        latestStructuralPrediction = .none
         latestChroma = [Float](repeating: 0, count: 12)
         estimatedKey = nil
         stableKey = nil
