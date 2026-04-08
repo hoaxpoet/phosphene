@@ -773,13 +773,21 @@ echo "=== All checks passed ==="
 
 **Verification:** ✅ All 173 Swift tests pass (162 existing + 11 new). 4/4 Python model assertions pass. `xcodebuild` succeeds. SwiftLint 0 violations. Model: 0.01 MB `.mlpackage`.
 
-### Increment 2.6: Analysis Lookahead Buffer
+### Increment 2.6: Analysis Lookahead Buffer ✅
+
+**Status:** Complete.
 
 **Goal:** Configurable delay between analysis and rendering for anticipatory visual decisions.
 
 **Design rationale:** (unchanged from v1)
 
-**Files to create/edit:**
+**Implementation notes:**
+- `LookaheadBuffer` is a thread-safe ring buffer (NSLock-synchronized, default 512 frames) with configurable delay (default 2.5s). Analysis head returns the latest frame; render head finds the frame closest to `(latest timestamp - delay)` via linear scan.
+- `AnalyzedFrame` is a lightweight value type (~248 bytes) bundling all per-frame analysis outputs. Stores scalar metadata only — raw sample/FFT data stays in UMA buffers.
+- `AudioInputRouter` gained `onAnalysisFrame` and `onRenderFrame` dual callbacks for the Orchestrator to consume both real-time and delayed frames.
+- At 60fps with 2.5s delay, ~150 frames are needed; 512 capacity gives headroom for variable frame rates.
+
+**Files created/edited:**
 - `Audio/LookaheadBuffer.swift` — Timestamped ring buffer with dual read heads (analysis and render).
 - `Shared/AnalyzedFrame.swift` — Timestamped container: `AudioFrame` + `FFTResult` + `StemData` + `FeatureVector` + `EmotionalState`.
 - `Audio/AudioInputRouter.swift` — Dual callbacks: `onAnalysisFrame` and `onRenderFrame`.
@@ -802,9 +810,9 @@ echo "=== All checks passed ==="
   - `test_memoryLayout_isReasonableSize()` — assert < 64KB per frame
 
 **Integration test:**
-  - `test_analysisToRenderDelay_measuredAccurately()` — push 100 frames at 60fps, measure actual delay at render head, assert within ±100ms of configured delay
+  - `test_analysisToRenderDelay_measuredAccurately()` — push 300 frames at 60fps, measure actual delay at render head, assert within ±100ms of configured delay
 
-**Verification:** Two debug oscilloscopes show analysis and render heads with visible lag. All 13+ tests pass.
+**Verification:** ✅ All 187 Swift tests pass (173 existing + 14 new). Delay accuracy verified within ±50ms at 2.5s configured delay.
 
 ### Increment 2.7: Progressive Structural Analysis
 
