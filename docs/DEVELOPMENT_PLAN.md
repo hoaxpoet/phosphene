@@ -97,6 +97,16 @@ These rules apply to every line of code written in every increment:
 9. **No commented-out code.** Delete it. Git has history.
 10. **Every `TODO` has a tracking increment.** Format: `// TODO: [Increment 3.2] Add mesh shader LOD support`
 
+### Increment Scope Discipline
+
+These rules govern how increments are scoped and how they relate to each other.
+
+1. **One increment = one reviewable unit of work.** Each increment delivers either a piece of infrastructure OR a preset that uses existing infrastructure — never both in the same increment.
+2. **Every infrastructure increment lists the presets or downstream systems it enables.** This makes dependency chains explicit.
+3. **Every preset increment lists the infrastructure increments it depends on.** Preset increments must not land until their dependencies are complete.
+4. **Scope creep is recorded retroactively, not silently absorbed.** If an increment discovers it needs adjacent infrastructure, it either (a) pauses and splits into a new increment, or (b) completes with a noted scope deviation that becomes a new increment in the plan.
+5. **The Phase 3 experience is the case study.** Increment 3.1 violated rule 1 by bundling a particle pipeline + feedback texture infrastructure + the Murmuration preset. Its retroactive split (see the revised 3.1 entries in Phase 3) is the template for how to unwind such bundles.
+
 ### CI Pipeline (Enforced via Claude Code Hooks)
 
 Every Claude Code session that modifies Swift code must end with:
@@ -876,66 +886,198 @@ echo "=== All checks passed ==="
 
 ## Phase 3 — Advanced Metal Rendering (Blueprint Release 0.5)
 
-### Increment 3.1: Compute Shader Particle System ✅ COMPLETE
+> **Retroactive scope split note:** The original Increment 3.1 bundled three distinct units of work — a GPU compute particle pipeline, a Milkdrop-style feedback texture infrastructure, and the Murmuration preset — into a single increment. Per the **Increment Scope Discipline** rule (§ Code Hygiene Rules), each unit of work should have been its own increment. The following three entries (3.1, 3.1-bonus, 3.1-preset) document what actually shipped, retroactively split for clarity. The original spec's "from stem-separated audio" goal was NOT delivered and is tracked as deferred via Increments 3.1a (GPU STFT/iSTFT) and 3.1b (live stem pipeline wiring) below.
 
-**Goal:** GPU compute pipeline driving millions of particles from stem-separated audio. Delivered with the **Murmuration** preset — the project's first official shader.
+### Increment 3.1 (RETROACTIVE): Compute Shader Particle Pipeline ✅
 
-**Files created/edited:**
-- `Renderer/Shaders/Particles.metal` (compute kernel + vertex/fragment for bird silhouettes)
-- `Renderer/Shaders/Common.metal` (extracted shared definitions + feedback warp/blit shaders)
-- `Renderer/Geometry/ProceduralGeometry.swift` (UMA buffer + compute pipeline + render pipeline with additive blending option)
-- `Renderer/RenderPipeline.swift` (feedback texture infrastructure: ping-pong textures, warp/composite/blit passes, lazy allocation from drawable size)
-- `Renderer/MetalContext.swift` (added `makeSharedTexture` helper)
-- `Shared/AudioFeatures.swift` (added `FeedbackParams` struct)
-- `Presets/PresetDescriptor.swift` (added `useFeedback` flag)
-- `Presets/PresetCategory.swift` (added `abstract` category)
-- `Presets/PresetLoader.swift` (dual pipeline state compilation for feedback presets, preamble includes `FeedbackParams` struct)
-- `Presets/Shaders/Starburst.metal` + `Starburst.json` (Murmuration preset: dusk sky backdrop)
-- `PhospheneApp/ContentView.swift` (particle geometry creation, `applyPreset` with feedback wiring)
+**Status:** Complete (shipped as part of the original 3.1 bundle; reclassified for clarity).
 
-**Test results:** All 7 tests pass:
-- `test_init_particleBuffer_allocatedWithCapacity()` ✓
-- `test_particleBuffer_storageModeShared()` ✓
-- `test_dispatch_compute_noGPUError()` ✓
-- `test_particleCount_matchesConfiguration()` ✓
-- `test_zeroAudioInput_particlesStationary()` ✓
-- `test_impulseAudioInput_particlesEmitted()` ✓
-- `test_particleCompute_1MillionParticles_under8ms()` ✓
+**Goal:** GPU compute pipeline for audio-reactive particle systems, with a compute kernel maintaining per-particle state and a point-sprite render pipeline for display.
 
-Total: 213 Swift tests pass (206 existing + 7 new).
+**What shipped (the legitimate 3.1 deliverable):**
+- `Renderer/Geometry/ProceduralGeometry.swift` — Swift class owning the compute pipeline, UMA particle buffer, and the point-sprite render pipeline state (with optional additive blending)
+- `Renderer/Shaders/Particles.metal` — compute kernel for per-particle state plus vertex/fragment shaders for point-sprite rendering
+- `Renderer/MetalContext.swift` — added `makeSharedTexture(width:height:pixelFormat:usage:)` helper
+- 7 tests in `Tests/PhospheneEngineTests/Renderer/ProceduralGeometryTests.swift`:
+  - `test_init_particleBuffer_allocatedWithCapacity()` ✓
+  - `test_particleBuffer_storageModeShared()` ✓
+  - `test_dispatch_compute_noGPUError()` ✓
+  - `test_particleCount_matchesConfiguration()` ✓
+  - `test_zeroAudioInput_particlesStationary()` ✓
+  - `test_impulseAudioInput_particlesEmitted()` ✓
+  - `test_particleCompute_1MillionParticles_under8ms()` ✓
 
-**Visual verification:** The Murmuration preset shows ~5,000 starlings flying as one organism across a dusk sunrise/sunset sky. The flock forms an elongated, asymmetric, tapered shape that stretches, curves, and rotates. Audio mapping deliberately bypasses vocal frequency ranges (`low_mid`+`mid_high`) and responds to `sub_bass`+`low_bass` (rhythm section drives body movement) and `high_mid`+`high` (strings/overtones drive flutter and shape bending). Tuned against Lou Reed's "Sad Song" so fluttering strings ripple the murmuration and the bass line pushes the mass.
+**What was originally in the spec but NOT delivered:**
+- *"From stem-separated audio"* — the original 3.1 goal specified stem-driven particle routing, but the live stem pipeline was never wired into `VisualizerEngine`. The Murmuration preset (see 3.1-preset below) ships using `features.sub_bass + features.low_bass` as a full-mix stand-in, documented in CLAUDE.md Resolved Decision #32. True stem-driven particle routing is deferred to Increment 3.1b below, which itself depends on Increment 3.1a (GPU STFT/iSTFT).
 
-**Creative design notes:** Earlier iterations layered disconnected technical features (frequency rings, Lissajous traces, beat seeds) without visual coherence. The breakthrough was committing to a single natural metaphor — a flock of starlings — and making every audio feature serve that metaphor. The Milkdrop preset analysis (see `docs/MILKDROP_PRESET_ANALYSIS.md`) catalogued 15 creative techniques but the key insight was that technology and art must reinforce each other: compute particles with custom physics enable the murmuration metaphor, and the metaphor justifies the compute particles.
+**Enables:** Murmuration preset (3.1-preset), any future compute-particle preset.
 
-### Increment 3.2: Mesh Shader Pipeline (Object + Mesh Shaders)
+### Increment 3.1-bonus (RETROACTIVE): Feedback Texture Infrastructure ✅
 
-**Goal:** Metal mesh shading for procedural fractal and geometric generation.
+**Status:** Complete (smuggled into the original 3.1 alongside the particle work; reclassified for clarity).
+
+**Goal:** Milkdrop-style double-buffered feedback texture ping-pong for presets that want trails and visual memory.
+
+**What shipped:**
+- `Shared/AudioFeatures.swift` — `FeedbackParams` struct (32 bytes, 8 floats: decay, baseZoom, baseRot, beatZoom, beatRot, beatSensitivity, beatValue, pad)
+- `Renderer/Shaders/Common.metal` — `feedback_warp_fragment` (decay/zoom/rotate previous frame) and `feedback_blit_fragment` (copy feedback texture to drawable), plus the MSL `FeedbackParams` struct
+- `Renderer/RenderPipeline.swift` — feedback texture lifecycle (lazy allocation from drawable size, double-buffered ping-pong), `drawWithFeedback` render path with three-pass loop (warp → composite → blit), later split into `drawParticleMode` and `drawSurfaceMode` branches for presets that do or don't attach compute particles
+- `Presets/PresetDescriptor.swift` — `useFeedback` flag with matching `"use_feedback"` JSON key; `useParticles` flag added later for particle-only opt-in
+- `Presets/PresetLoader.swift` — dual pipeline state compilation for `useFeedback: true` presets (standard pipeline for the drawable pass, additive-blend pipeline for the composite-into-feedback-texture pass); preamble includes the `FeedbackParams` MSL struct
+- `Presets/PresetCategory.swift` — `abstract` category added
+- `Presets/Shaders/Membrane.metal` + `Membrane.json` — second preset validating the surface-mode (non-particle) feedback path
+
+**Scope violation note:** This infrastructure was implemented to serve the Murmuration preset but is general-purpose — it is now used by the Membrane preset and will be used by any future preset that wants trails. It should have been its own increment with its own tests and verification. This retroactive entry documents the scope slip so future increments don't repeat it. No new tests were added specifically for the feedback infrastructure; coverage is indirect via the Murmuration and Membrane preset tests and the `presetLoaderBuiltInPresetsHaveValidPipelines` test.
+
+**Enables:** Murmuration preset (3.1-preset), Membrane preset, any future feedback-using preset.
+
+### Increment 3.1-preset (RETROACTIVE): Murmuration Preset ✅
+
+**Status:** Complete.
+
+**Goal:** Native demonstration preset using the compute particle pipeline (3.1) and the feedback texture infrastructure (3.1-bonus) to depict a flock of ~5,000 starlings against a dusk sky gradient.
+
+**What shipped:**
+- `Presets/Shaders/Starburst.metal` — dusk sky gradient fragment shader (the "canvas" the flock flies against)
+- `Presets/Shaders/Starburst.json` — preset descriptor with `use_feedback: true`, `use_particles: true`
+- Compute kernel modifications in `Particles.metal` for flock behavior: each bird has a home position within an elongated, tapered, curving shape that stretches, rotates, and bends with the music
+- Audio routing (documented workaround for missing stem routing): `sub_bass + low_bass` drives flock body movement (rhythm section); `high_mid + high_freq` drives flutter, shape bending, cohesion loosening (strings and overtones). Deliberately bypasses vocal frequency ranges (`low_mid + mid_high`).
+- `PhospheneApp/ContentView.swift` — `applyPreset` method wiring particles + feedback parameters based on descriptor flags
+
+**Visual verification:** The preset shows ~5,000 starlings flying as one organism across a dusk sunrise/sunset sky. Hand-tuned against Lou Reed's "Sad Song" so the fluttering strings drive the murmuration's rippling and the bass line pushes the mass. Earlier iterations layered disconnected technical features (frequency rings, Lissajous traces, beat seeds) without visual coherence; the breakthrough was committing to a single natural metaphor — a flock of starlings — and making every audio feature serve it. The Milkdrop preset analysis (see `docs/MILKDROP_PRESET_ANALYSIS.md`) catalogued 15 creative techniques but the key insight was that technology and art must reinforce each other.
+
+**Depends on:** Increment 3.1, Increment 3.1-bonus.
+
+**Blocked on (deferred features):** true stem-driven routing (requires Increments 3.1a and 3.1b below). Revisiting Murmuration to replace its full-mix workaround with real drums/bass/other stem routing is a Phase 3.5 preset-polish task that follows naturally once 3.1b lands.
+
+**Test count after 3.1 bundle:** 213 Swift tests pass (206 existing + 7 new particle tests).
+
+### Increment 3.1a: GPU STFT/iSTFT Compute Pipeline (PROMOTED from 7.1)
+
+**Status:** Not started.
+
+**Why promoted:** Originally a bullet in Increment 7.1 ("Metal Performance Profiling Pass"), but it's a prerequisite for the live stem pipeline, which in turn is a prerequisite for true stem-driven presets (Murmuration's deferred re-routing, Popcorn, and others). Keeping it in 7.1 leaves Phase 4 (Orchestrator) blocked on profiling work that is conceptually later in the project. Promoting it early resolves the dependency and honors the Increment Scope Discipline rule that infrastructure should land before the work that depends on it.
+
+**Goal:** Replace the Accelerate-based CPU STFT/iSTFT in `StemSeparator.swift` with Metal compute shaders (or `MPSGraph` FFT operations where available), dropping per-separation time from ~6.5s (current CPU baseline) to under 250ms end-to-end.
 
 **Files to create/edit:**
-- `Renderer/Shaders/MeshShaders.metal`
-- `Renderer/Geometry/MeshGenerator.swift`
+- `Sources/ML/StemFFT.swift` (new) — `StemFFTEngine` class wrapping either `MPSGraph` FFT or hand-written Metal compute kernels. Public API: `forward(mono: [Float]) -> (magnitude: UMABuffer<Float>, phase: UMABuffer<Float>)` and `inverse(magnitude: UMABuffer<Float>, phase: UMABuffer<Float>, nbFrames: Int, originalLength: Int?) -> [Float]`. Owns plans, twiddle factor buffers, window buffer, and (if using compute kernels) the compiled compute pipeline states. `@unchecked Sendable` with an internal lock for thread safety.
+- `Sources/ML/Shaders/StemFFT.metal` (new, conditional) — Metal compute kernels for forward/inverse Stockham radix-2 FFT, Hann window, magnitude/phase extraction, overlap-add synthesis. Only created if `MPSGraph` FFT is unavailable for the 4096-point real FFT this model requires. Decision made in the first step of implementation via a prototype test.
+- `Sources/ML/StemSeparator.swift` — delegate `stft(mono:)` and `istft(magnitude:phase:nbFrames:originalLength:)` to the new `StemFFTEngine`. Preserve the existing public `separate(audio:channelCount:sampleRate:)` API so no downstream code changes. Keep the Accelerate-based implementations alive behind a `forceCPUFallback: Bool` flag on `StemFFTEngine` so regression testing can cross-validate.
+- `Package.swift` (if `StemFFT.metal` is created) — add `resources: [.copy("Shaders")]` to the `ML` target alongside the existing `.copy("Models")` entry.
 
 **Test requirements:**
-- `MeshGeneratorTests.swift` — 5 tests:
-  - `test_init_createsMeshPipelineDescriptor()`
-  - `test_meshPipelineState_createdSuccessfully()`
-  - `test_dispatch_meshDraw_completesWithoutError()`
-  - `test_maxVerticesPerMeshlet_is256()`
-  - `test_maxPrimitivesPerMeshlet_is512()`
-- **Performance test:**
-  - `test_meshShaderFractal_60fps_frameTimeUnder16ms()`
+- `Tests/PhospheneEngineTests/ML/StemFFTTests.swift` (new) — 6 tests:
+  - `test_forward_matchesVDSP_withinTolerance()` — cross-validate against existing CPU vDSP implementation on a deterministic sine+noise input. Max absolute magnitude error < 1e-3, mean phase error < 1e-2 radians.
+  - `test_inverse_roundTripPreservesSignal()` — STFT → iSTFT should recover the input within tolerance.
+  - `test_forward_performance_under100ms()` — `XCTest.measure` single 10s chunk forward transform, baseline < 100ms.
+  - `test_inverse_performance_under100ms()` — same for inverse transform.
+  - `test_storageMode_allUMA()` — all FFT I/O buffers are `.storageModeShared`.
+  - `test_threadSafety_concurrentCalls_noCrash()` — concurrent forward and inverse calls from multiple threads.
+- `Tests/PhospheneEngineTests/Performance/StemSeparationPerformanceTests.swift` — loosen the current baseline from ~6500ms to ≤250ms end-to-end for a full `separate()` call.
 
-**Verification:** 3D fractal structure renders, branches respond to audio. Frame rate > 60fps. All 6 tests pass.
+**Verification:** All existing tests pass. The 6 new `StemFFTTests` pass. Updated `StemSeparationPerformanceTests` reports ≤250ms average. Existing `tools/test_stem_model.py` Python pipeline tests still pass unchanged (they validate model-level correctness, not Swift-side FFT).
 
-### Increment 3.3: Hardware Ray Tracing Integration
+**Depends on:** nothing (the `StemSeparator` module already exists from 2.3).
 
-**Goal:** Ray-traced reflections and shadows using `MPSRayIntersector`.
+**Enables:** Increment 3.1b (live stem pipeline wiring), all downstream stem-driven presets (Murmuration stem-routing re-do, Popcorn, any future vocal/bass/drum-reactive preset).
+
+### Increment 3.1b: Live Stem Pipeline Wiring + Per-Stem FeatureVector Extension
+
+**Status:** Not started.
+
+**Goal:** Wire `StemSeparator.separate()` into the live audio pipeline on a rolling 10s window basis, run per-stem analysis, and expose per-stem features to shaders via a new GPU uniform buffer bound at `buffer(3)`.
+
+**Architecture:**
+- `StemSampleBuffer` in `Sources/Shared/` — thread-safe ring buffer for 15s of interleaved stereo PCM at 44.1kHz (~1.3M floats). Methods: `write(samples: UnsafePointer<Float>, count: Int)`, `snapshotLatest(seconds: Double) -> [Float]`, `reset()`.
+- Dispatch timer on a background `stemQueue` (utility QoS) fires every 5 seconds, snapshots the latest 10s from `StemSampleBuffer`, calls `stemSeparator.separate(...)`, then runs per-stem analysis.
+- Per-stem analysis reuses existing DSP primitives: 4 instances of `BandEnergyProcessor` (one per stem) + 1 `BeatDetector` applied to the drums stem. No new DSP code required.
+- `StemFeatures` is a new `@frozen` struct — 16 floats / 64 bytes, 4 floats per stem: energy, 2 band slots, beat pulse. Exact layout documented in the struct doc comment.
+- `RenderPipeline.setStemFeatures(_:)` atomically stores latest value in a lock-protected slot; all three draw paths (`drawDirect`, `drawWithFeedback`, and any future paths) bind it at `buffer(3)` via `setFragmentBytes`.
+- MSL `StemFeatures` struct definition added to `PresetLoader.shaderPreamble` so every preset inherits it automatically without re-declaring.
+- Existing presets ignore `buffer(3)`; Metal allows binding a buffer slot that the shader doesn't read, so no behavior change for Waveform, Plasma, Nebula, Membrane, or Starburst.
+- Track-change reset: when `StreamingMetadata` fires a track-change event, `VisualizerEngine` clears `StemSampleBuffer` and resets `latestStemFeatures` to `.zero` (parallels the existing `MIRPipeline.reset()` on track change).
+- Warmup behavior: for the first ~10 seconds of a track, stems aren't available yet. `StemFeatures.zero` is the default, and shaders that use stems must fall back gracefully on full-mix features for that window.
+
+**Files to create/edit:**
+- `Sources/Shared/StemSampleBuffer.swift` (new)
+- `Sources/Shared/AudioFeatures.swift` — add `StemFeatures` struct and `.zero` static
+- `Sources/DSP/StemAnalyzer.swift` (new) — coordinates the 4 `BandEnergyProcessor` instances + `BeatDetector`, returns `StemFeatures`
+- `Sources/Renderer/Shaders/Common.metal` — MSL `StemFeatures` struct
+- `Sources/Presets/PresetLoader.swift` — preamble update
+- `Sources/Renderer/RenderPipeline.swift` — `setStemFeatures`, `stemFeaturesLock`, bind index 3 in all draw paths
+- `PhospheneApp/ContentView.swift` (VisualizerEngine) — instantiate `StemSeparator`, `StemSampleBuffer`, `StemAnalyzer`; set up `stemQueue` dispatch timer; wire track-change reset
+- `Package.swift` — if `StemAnalyzer.swift` needs to import both `DSP` and the stem types, verify module dependencies
+
+**Test requirements:**
+- `Tests/PhospheneEngineTests/Shared/AudioFeaturesTests.swift` — add `test_stemFeatures_memoryLayout_is64Bytes()` and `test_stemFeatures_simdAligned()`
+- `Tests/PhospheneEngineTests/Integration/StemsToRenderPipelineTests.swift` (new) — 4 tests:
+  - `test_stemFeatures_defaultZero_rendersWithoutCrash()` — verify `StemFeatures.zero` is safe to bind at buffer(3) when stems haven't arrived yet
+  - `test_stemFeatures_afterSeparation_hasNonZeroDrumsEnergy()` — feed a drum-heavy clip through `StemSeparator` + `StemAnalyzer`, assert drums energy > 0
+  - `test_stemFeatures_trackChange_resetsToZero()` — simulate a track change, verify stem features clear
+  - `test_stemFeatures_renderBinding_structSizeMatchesMSL()` — `MemoryLayout<StemFeatures>.size == 64`
+
+**Verification:** All existing tests pass. 2 new layout tests pass. 4 new integration tests pass. Manual verification: play a drum-heavy track, confirm via debug logging that `StemFeatures` updates every ~5s during playback and resets when a new track begins.
+
+**Depends on:** Increment 3.1a (GPU STFT/iSTFT) for the real-time performance needed.
+
+**Enables:** Murmuration stem-routing revisit (Phase 3.5 preset polish), Popcorn preset (Phase 3.5.1), and any future preset that depends on stem-accurate audio features.
+
+### Increment 3.2: Mesh Shader Pipeline Infrastructure
+
+**Goal:** Metal mesh shading infrastructure for procedural 3D geometry generation. Object + mesh shader stages, pipeline state management, capability detection, and a vertex shader fallback path for pre-M3 hardware (per CLAUDE.md hard rule).
+
+**Files to create/edit:**
+- `Renderer/Shaders/MeshShaders.metal` — shared mesh shader utilities: meshlet structures (`ObjectPayload`, `MeshVertex`, `MeshPrimitive`), transformation helpers, cohort dispatch helpers. No preset-specific logic.
+- `Renderer/Geometry/MeshGenerator.swift` — pipeline state management class. Detects `device.supportsFamily(.apple8)` at init, selects mesh shader path (primary, M3+) or vertex shader fallback (M1/M2). Owns both pipeline states so presets can opt in without knowing the hardware tier. `MeshGeneratorConfiguration` struct with `maxVerticesPerMeshlet = 256`, `maxPrimitivesPerMeshlet = 512`.
+- `Renderer/RenderPipeline.swift` — new `drawWithMeshShader` private method parallel to `drawDirect` and `drawWithFeedback`. Routed to from `draw(in:)` when the active preset's descriptor has `useMeshShader: true`.
+- `Presets/PresetLoader.swift` — preamble update to include the meshlet MSL structs so all mesh presets inherit them; mesh-aware pipeline compilation when `useMeshShader: true`.
+- `Presets/PresetDescriptor.swift` — add `useMeshShader: Bool` field, default `false` for backward compat. Matching `"use_mesh_shader"` CodingKey.
+
+**Test requirements:**
+- `Tests/PhospheneEngineTests/Renderer/MeshGeneratorTests.swift` — 6 tests:
+  - `test_init_createsMeshPipelineDescriptor()` — verify the init produces a valid pipeline descriptor on the current hardware (mesh or fallback)
+  - `test_meshPipelineState_createdSuccessfully()` — non-nil pipeline state after init
+  - `test_dispatch_meshDraw_completesWithoutError()` — dispatching a trivial draw against an offscreen render target completes without GPU errors
+  - `test_maxVerticesPerMeshlet_is256()` — `configuration.maxVerticesPerMeshlet == 256`
+  - `test_maxPrimitivesPerMeshlet_is512()` — `configuration.maxPrimitivesPerMeshlet == 512`
+  - `test_meshShaderFractal_60fps_frameTimeUnder16ms()` — `XCTest.measure` benchmark of a single-frame dispatch, baseline < 16ms
+
+**Verification:** Mesh pipeline state compiles on the current hardware. Dispatching a trivial mesh draw completes without error. Vertex shader fallback path compiles on M1/M2 hardware (use `#if targetEnvironment` or runtime `supportsFamily` check to gate the test). All 6 tests pass. **No visible preset at this stage** — this increment delivers infrastructure only. The demonstration preset is Increment 3.2b.
+
+**Depends on:** nothing.
+
+**Enables:** Increment 3.2b (Fractal Tree demonstration preset) and all future mesh-shader presets.
+
+### Increment 3.2b: Fractal Tree Demonstration Preset
+
+**Goal:** First preset using the mesh shader pipeline. A recursive 3D fractal tree structure that grows upward, with branch length and count driven by audio, demonstrating that the mesh shader infrastructure works end-to-end.
+
+**Files to create/edit:**
+- `Presets/Shaders/FractalTree.metal` — object + mesh + fragment entry points. Object shader reads `FeatureVector` and decides how many meshlets to dispatch this frame (a function of `bass_att * branch_count_scale`, clamped). Mesh shader generates per-branch geometry (cylindrical tube of 8–12 quads per segment) using a recursive-position formula (unrolled because MSL doesn't support recursion). Fragment shader applies Phong-ish directional lighting with HSV color shifts at leaf tips driven by `spectral_centroid + time`.
+- `Presets/Shaders/FractalTree.json` — preset descriptor with `"name": "Fractal Tree"`, `"family": "geometric"`, `"use_mesh_shader": true`, `"use_feedback": false`, `"use_particles": false`
+- `PhospheneApp/ContentView.swift` (VisualizerEngine) — when switching to a preset with `useMeshShader: true`, instantiate `MeshGenerator` (lazy, cached) and call the corresponding pipeline setter
+
+**Test requirements:**
+- Existing `presetLoaderBuiltInPresetsHaveValidPipelines()` test must continue to pass — it will automatically catch any `FractalTree.metal` compile error or pipeline state creation failure.
+- No new tests specifically for the preset beyond the existing preset loader coverage.
+
+**Verification:** *"3D fractal structure renders, branches respond to audio. Frame rate > 60fps."* (the original Increment 3.2 verification criterion, applied here to the preset increment it actually describes). Manual check: Matt switches to the Fractal Tree preset, sees a recursive branching structure, trunk grows with bass, secondary branches respond to mid-range energy, leaf tips shift color with centroid, beat pulses propagate visibly.
+
+**Depends on:** Increment 3.2 (mesh shader infrastructure).
+
+**Enables:** nothing downstream — this is a leaf preset increment.
+
+### Increment 3.3: Hardware Ray Tracing Infrastructure
+
+**Goal:** `MPSRayIntersector` + `BVHBuilder` infrastructure for ray-traced shadows and reflections. Shader-accessible acceleration structure, intersection kernel, and shared ray-tracing utility functions.
+
+> **Scope split note:** The original Increment 3.3 entry listed `Renderer/Shaders/PostProcess.metal` under this increment. That file has been extracted into a separate Increment 3.4 (HDR Post-Process Chain) because post-processing is independent of ray tracing conceptually and architecturally — a preset can use one without the other. Per the Increment Scope Discipline rule, they are now separate increments.
 
 **Files to create/edit:**
 - `Renderer/RayTracing/BVHBuilder.swift`
 - `Renderer/RayTracing/RayIntersector.swift`
-- `Renderer/Shaders/PostProcess.metal`
+- `Renderer/Shaders/RayTracing.metal` (NEW) — shared ray-tracing utility functions and intersection kernels. Replaces the `PostProcess.metal` slot from the original 3.3 spec.
 
 **Test requirements:**
 - `BVHBuilderTests.swift` — 4 tests:
@@ -951,9 +1093,48 @@ Total: 213 Swift tests pass (206 existing + 7 new).
 - **Performance test:**
   - `test_rayTrace_1000Rays_under2ms()`
 
-**Verification:** Geometric preset shows reflections and shadows. Toggle ray tracing on/off to see difference. All 9 tests pass.
+**Verification:** All 9 tests pass. A test shader using `RayIntersector` to cast shadow rays against a trivial scene (single triangle + light) produces the expected hit/miss pattern. Visual end-to-end verification is deferred to the first preset that uses ray tracing (likely Popcorn in Phase 3.5.1).
 
-### Increment 3.4: Indirect Command Buffers for GPU-Driven Rendering
+**Depends on:** nothing.
+
+**Enables:** Increment 3.5.1 Popcorn preset (real shadows on the pan floor and under kernels), any future preset needing ray-traced shadows or reflections.
+
+### Increment 3.4: HDR Post-Process Chain (EXTRACTED from 3.3)
+
+**Status:** Not started.
+
+**Goal:** Multi-pass HDR rendering pipeline with bloom, tone mapping, and color grading. Enables photorealistic presets by providing the post-process chain that `PostProcess.metal` was originally slated to house.
+
+**Architecture:**
+- `PostProcessChain` Swift class — owns HDR scene texture (`.rgba16Float`), ping-pong bloom textures (half-res), and 4 pipeline states (bright pass, blur H, blur V, composite).
+- Render path: scene preset → HDR texture → bright pass → Gaussian blur H → Gaussian blur V → composite (ACES tone-map + color grade) → drawable (`.bgra8Unorm_srgb`).
+- `usePostProcess` flag on `PresetDescriptor` (default `false`, existing presets unaffected).
+- New `drawWithPostProcess` private method in `RenderPipeline`, parallel to `drawDirect` / `drawWithFeedback` / `drawWithMeshShader`.
+- HDR textures lazy-allocated at drawable size (same lifecycle pattern as the feedback textures).
+
+**Files to create/edit:**
+- `Renderer/PostProcessChain.swift` (new) — texture and pipeline-state owner, `render(scenePipelineState:features:fftBuffer:waveformBuffer:drawable:view:commandBuffer:)` entry point
+- `Renderer/Shaders/PostProcess.metal` (new) — 4 fragment shaders: bright pass, separable Gaussian blur H, separable Gaussian blur V, ACES composite
+- `Presets/PresetDescriptor.swift` — `usePostProcess: Bool` field, default `false`. Matching `"use_post_process"` CodingKey.
+- `Renderer/RenderPipeline.swift` — new `drawWithPostProcess` path; `draw(in:)` branches on `usePostProcess`
+
+**Test requirements:**
+- `Tests/PhospheneEngineTests/Renderer/PostProcessChainTests.swift` (new) — 5 tests:
+  - `test_init_createsHDRAndBloomTextures()` — HDR scene texture and both bloom textures are allocated with correct dimensions
+  - `test_hdrTexture_pixelFormat_isRGBA16Float()` — HDR texture uses `.rgba16Float`
+  - `test_bloomThreshold_onlyBrightPixelsPass()` — feed a test HDR input with known pixel values, verify only luminance > 0.9 survives the bright pass
+  - `test_gaussianBlur_preservesLuminance()` — blur a solid-color region and verify total luminance is preserved within tolerance
+  - `test_acesTonemap_mapsHDRToSDR()` — verify that values > 1.0 map into the SDR range and the curve matches the ACES formula
+- **Performance test:**
+  - `test_fullChain_under2ms_at1080p()` — the full 4-pass chain at 1920×1080 completes in under 2ms
+
+**Verification:** A test shader writing an HDR color with some pixels > 1.0 produces visible bloom in the final composited output. Tone-mapped output is within gamut. All 6 tests pass.
+
+**Depends on:** nothing (can be implemented independently of 3.3 ray tracing).
+
+**Enables:** Increment 3.5.1 (Popcorn) and any future photorealistic preset that needs bloom, tone mapping, or HDR rendering.
+
+### Increment 3.5: Indirect Command Buffers for GPU-Driven Rendering
 
 **Goal:** GPU encodes its own draw calls via ICBs based on audio state.
 
@@ -971,6 +1152,74 @@ Total: 213 Swift tests pass (206 existing + 7 new).
   - `test_gpuDrivenRendering_cpuFrameTimeReduced()` — compare CPU frame time with and without ICB
 
 **Verification:** CPU frame time drops. GPU debugger confirms GPU-originated draw calls. All 6 tests pass.
+
+**Depends on:** nothing.
+
+**Enables:** Future performance optimizations for presets with large dynamic draw-call counts.
+
+### Increment 3.6 (DEFERRED): Render Graph / Capability Composition Refactor
+
+**Status:** Not started. Triggered when the number of render capability flags on `PresetDescriptor` exceeds 4.
+
+**Motivation:** The current pattern — `useFeedback`, `useParticles`, `useMeshShader`, `usePostProcess`, and any future capability — adds a branch to `RenderPipeline.draw(in:)`, a conditional pipeline state compile in `PresetLoader`, and a new `drawWithX` render method. At N=3 flags this is fine; at N≥5 it becomes unmanageable and multi-capability combinations explode combinatorially. This increment replaces the flag-based approach with a generic render graph where each preset declares a sequence of passes.
+
+**Current flag count:** 3 (`useFeedback`, `useParticles`, and `useMeshShader` planned). Trigger threshold: 5. Expected trigger: when `usePostProcess` lands in Increment 3.4, the count becomes 4; the next capability flag after that fires this increment.
+
+**Scope (when triggered):**
+- Introduce `RenderPassDescriptor` as a new type describing a single render or compute pass
+- Each preset declares a `passes: [RenderPassDescriptor]` array instead of scattered boolean flags
+- `RenderPipeline.draw(in:)` becomes a generic executor that walks the passes array
+- Migrate existing presets to the new descriptor form; delete the old flag-based methods
+
+**Depends on:** all existing render capabilities being stable (3.1, 3.1-bonus, 3.2, 3.3, 3.4, 3.5) so there's no moving target to refactor against.
+
+**Enables:** sustainable scaling of the preset library past the 5-capability ceiling.
+
+**Not starting this until triggered. This entry exists so future me doesn't forget.**
+
+---
+
+## Phase 3.5 — Native Preset Library Expansion
+
+**Goal:** Ship a curated library of native presets that exercise the Phase 3 infrastructure. Each preset increment depends on one or more infrastructure increments from Phase 3 and must not start until those dependencies are verified complete.
+
+**Naming convention:** `Increment 3.5.N` — each native preset is a separate increment with a clear concept, audio routing, dependency list, and per-preset test/diagnose workflow. Per the Increment Scope Discipline rule, a preset and the infrastructure it depends on are never bundled — if a preset reveals a missing capability, the preset pauses and the capability becomes its own infrastructure increment.
+
+### Increment 3.5.1: Photorealistic Popcorn Preset
+
+**Status:** Deferred. Was attempted multiple times before infrastructure was ready; explicitly held until prerequisites are met.
+
+**Concept:** 3/4 overhead view of a cast-iron skillet on a glowing gas burner. Finite batch of ~60 popcorn kernels popping in sync with the music, driven by real drum-stem onsets (from Increment 3.1b). No respawning. `accumulatedBeatEnergy`-driven bell-distributed pop thresholds pace the batch over a typical song length so the frenzy lands on the first chorus and stragglers pop during bridge/second-verse. Late-song phase: heavy volumetric steam rising from the pan and slow scorching (popped kernels brown from sustained heat). Track change resets the batch via `MIRPipeline.reset()`.
+
+**Why it needs real infrastructure:**
+- 2D SDF rendering cannot depict a cast-iron skillet on a stovetop convincingly — needs ray marching with PBR materials (Cook-Torrance, Schlick Fresnel, subsurface approximation)
+- The visual reads as photorealistic only with real shadows (requires ray tracing infrastructure from 3.3)
+- Burner glow and pop flashes bloom correctly only through an HDR post-process chain (requires 3.4)
+- Drum-accurate pop triggers require the live stem pipeline (requires 3.1b), which itself requires GPU STFT/iSTFT (3.1a)
+
+**Depends on:**
+- Increment 3.1a (GPU STFT/iSTFT) — via 3.1b
+- Increment 3.1b (live stem pipeline) — for `StemFeatures.drumsBeatPulse` pop triggers and `StemFeatures.bassEnergy` heat glow
+- Increment 3.3 (ray tracing) — for real shadows under kernels and on the pan floor, optionally for reflections on the pan rim
+- Increment 3.4 (HDR post-process) — for bloom from the burner glow and pop flashes, ACES tone-mapping, mild color grading
+
+**Explicit pre-conditions:** all four dependency increments must be verified complete before this one starts. No partial starts, no working around missing infrastructure.
+
+**Files to create/edit (when unblocked):**
+- `Presets/Shaders/Popcorn.metal` — full rewrite from whatever is in the tree
+- `Presets/Shaders/Popcorn.json` — preset descriptor with `use_post_process: true` and dependency flags as needed
+- No Swift source changes expected beyond the preset wiring already landed in earlier increments
+
+**Test/diagnose harness:**
+- `Tests/PhospheneEngineTests/Visual/PopcornVisualTests.swift` (new) — headless test that renders the preset to offscreen HDR textures at 8 synthetic audio states (cold start, warming, first pops, chorus chaos, late song, final frame, ultrawide aspect, portrait aspect) and writes the composited drawable frames as PNG files via a new `TestHelpers/TextureToPNG.swift` helper. Lets the implementer iterate on the shader without asking the user to manually build and run the app. Test passes if rendering completes without crashes and no pixel is NaN/inf; visual quality is verified by the implementer opening the PNGs.
+
+**Verification:**
+- Headless visual test suite passes and the implementer inspects all PNGs against documented acceptance criteria (cast iron reads as cast iron, real shadows present, kernels look 3D not 2D, steam reads as volumetric, burner bloom bleeds onto pan underside)
+- Manual: Matt runs the app with several genres, verifies pops align with drum hits, burner glows under bass-heavy sections, track change resets the batch, frame rate holds at 60fps
+
+**Blocked until:** 3.1a, 3.1b, 3.3, 3.4 all complete.
+
+*Other Phase 3.5 entries can be added as presets are designed. For now, listing Popcorn is enough to establish the phase and document its dependencies.*
 
 ---
 
@@ -1281,26 +1530,29 @@ Total: 213 Swift tests pass (206 existing + 7 new).
 
 ### Increment 7.1: Metal Performance Profiling Pass
 
-**Goal:** Profile with Instruments and Metal Debugger. Eliminate bottlenecks.
+**Goal:** Profile with Instruments and Metal Debugger. Eliminate end-to-end bottlenecks and establish CI-tracked performance baselines.
 
-**Prerequisite:** GPU STFT/iSTFT must be implemented before the `test_stemSeparation_under50ms` target can be met. The current CPU-based Accelerate STFT/iSTFT is ~6.5s for a 10s chunk (3448 FFT operations across 4 stems × 2 channels). Moving STFT/iSTFT to Metal compute shaders would eliminate CPU-side data extraction entirely, enabling the full pipeline (audio → STFT → ANE predict → iSTFT → UMA buffers) to run without CPU↔GPU copies. This is the single largest performance optimization available in the stem separation pipeline.
+> **Scope change note:** The original 7.1 entry bundled "implement GPU STFT/iSTFT" as a Claude Code task. That work has been promoted to its own increment — **Increment 3.1a: GPU STFT/iSTFT Compute Pipeline** — so it can land before the live stem pipeline (Increment 3.1b) and its downstream preset consumers. Per the Increment Scope Discipline rule, infrastructure that unblocks other increments should not be held inside a later optimization pass. 7.1 now focuses purely on profiling and bottleneck elimination for whatever remains.
 
 **Claude Code tasks:**
-- **Implement GPU STFT/iSTFT** — Metal compute shaders for windowed FFT, magnitude/phase extraction, and overlap-add synthesis. Replace the Accelerate-based `stft()` and `istft()` methods in `StemSeparator.swift`. Input/output remain in UMA buffers (`.storageModeShared`).
-- Add `os_signpost` markers to key pipeline stages
-- Document methodology in `docs/PROFILING.md`
-- Review all `MTLBuffer` allocations — ensure `.storageModeShared` everywhere
+- Add `os_signpost` markers to key pipeline stages (audio IO, FFT, MIR, stem separation, render)
+- Document profiling methodology in `docs/PROFILING.md`
+- Review all `MTLBuffer` allocations — ensure `.storageModeShared` everywhere (no `.storageModeManaged` or unnecessary `.storageModePrivate`)
 - Verify no manual cache management competing with Dynamic Caching
+- Analyze Instruments traces for CPU-GPU sync stalls and resolve any found
+- Establish `XCTMetric` baselines for all performance tests so regressions are caught by CI
 
 **Test requirements:**
 - `Performance/FullPipelinePerformanceTests.swift` — 4 benchmarks:
   - `test_fullFrame_audioToPixels_under8ms()` — end-to-end at 120fps
   - `test_fftAlone_under0_1ms()`
-  - `test_stemSeparation_under50ms()` — requires GPU STFT/iSTFT (current CPU baseline: ~6.5s)
+  - `test_stemSeparation_under50ms()` — depends on Increment 3.1a (GPU STFT/iSTFT) having landed; this is the end-to-end assertion that the promoted increment achieved its target
   - `test_orchestratorDecision_under1ms()`
 - Add `XCTMetric` baselines so regressions are caught by CI
 
 **Verification:** Instruments trace shows no CPU-GPU sync stalls. Frame time under 8ms at 120fps on M3 Pro. All 4 performance benchmarks within baselines.
+
+**Depends on:** Increment 3.1a (GPU STFT/iSTFT) for the `test_stemSeparation_under50ms` target to be achievable.
 
 ### Increment 7.2: Memory & Resource Optimization
 
