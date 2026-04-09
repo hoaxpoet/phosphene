@@ -115,9 +115,8 @@ Every Claude Code session that modifies Swift code must end with:
 # 1. Lint
 swiftlint lint --strict --config .swiftlint.yml
 
-# 2. Build (warnings-as-errors)
-xcodebuild -scheme PhospheneApp -destination 'platform=macOS' \
-  build SWIFT_TREAT_WARNINGS_AS_ERRORS=YES 2>&1
+# 2. Build (warnings-as-errors enforced per-target via Phosphene.xcconfig)
+xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build 2>&1
 
 # 3. Test (all tests, not just new ones)
 swift test --package-path PhospheneEngine 2>&1
@@ -125,6 +124,11 @@ swift test --package-path PhospheneEngine 2>&1
 # 4. Coverage check (after Phase 1 is complete)
 # xcrun llvm-cov report ... (threshold: 80%)
 ```
+
+Do NOT pass `SWIFT_TREAT_WARNINGS_AS_ERRORS=YES` on the xcodebuild command line
+— it propagates to SPM dependencies (swift-collections, etc.) that compile with
+`-suppress-warnings`, and the two flags conflict at the Swift driver level.
+The flag is enforced per-target via `PhospheneApp/Phosphene.xcconfig`.
 
 **All four steps must pass.** If any step fails, the increment is not complete. Claude Code should fix the failure before moving on.
 

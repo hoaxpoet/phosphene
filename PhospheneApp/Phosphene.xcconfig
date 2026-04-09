@@ -1,0 +1,13 @@
+// Phosphene.xcconfig — build settings scoped to the PhospheneApp target only.
+//
+// These settings are intentionally NOT on the project level. Project-level or
+// command-line settings propagate to every SPM dependency target, and SPM
+// dependencies (e.g. swift-collections) compile with -suppress-warnings to
+// silence third-party noise. -warnings-as-errors + -suppress-warnings conflict
+// at the Swift driver level, so the PhospheneApp build fails the moment
+// SWIFT_TREAT_WARNINGS_AS_ERRORS is set globally.
+//
+// Keeping it here scopes warnings-as-errors to Phosphene source files while
+// leaving dependencies untouched.
+
+SWIFT_TREAT_WARNINGS_AS_ERRORS = YES

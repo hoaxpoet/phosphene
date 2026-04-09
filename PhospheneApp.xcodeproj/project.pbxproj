@@ -38,6 +38,7 @@
 		A20014 /* Accelerate.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Accelerate.framework; path = System/Library/Frameworks/Accelerate.framework; sourceTree = SDKROOT; };
 		A20015 /* ScreenCaptureKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ScreenCaptureKit.framework; path = System/Library/Frameworks/ScreenCaptureKit.framework; sourceTree = SDKROOT; };
 		A20016 /* MusicKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MusicKit.framework; path = System/Library/Frameworks/MusicKit.framework; sourceTree = SDKROOT; };
+		A20030 /* Phosphene.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Phosphene.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -77,6 +78,7 @@
 				A20022 /* MusicKitFetcher.swift */,
 				A40005 /* Views */,
 				A20003 /* PhospheneApp.entitlements */,
+				A20030 /* Phosphene.xcconfig */,
 			);
 			path = PhospheneApp;
 			sourceTree = "<group>";
@@ -298,6 +300,7 @@
 		};
 		AB0003 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = A20030 /* Phosphene.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = PhospheneApp/PhospheneApp.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
@@ -325,6 +328,7 @@
 		};
 		AB0004 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = A20030 /* Phosphene.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = PhospheneApp/PhospheneApp.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";

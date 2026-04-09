@@ -26,6 +26,11 @@ swift test --package-path PhospheneEngine
 swiftlint lint --strict --config .swiftlint.yml
 ```
 
+Warnings-as-errors is enforced per-target via `PhospheneApp/Phosphene.xcconfig`
+(`SWIFT_TREAT_WARNINGS_AS_ERRORS = YES`) — do NOT pass the flag on the command
+line, as it would propagate to SPM dependencies that compile with
+`-suppress-warnings` and conflict at the Swift driver level.
+
 Deployment target: macOS 14.0+ (Sonoma). Swift 6.0. Metal 3.1+.
 
 **Current test count: 213 tests** (unit, integration, regression, performance). All must pass before any new code is merged.

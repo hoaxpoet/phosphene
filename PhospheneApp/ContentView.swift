@@ -174,6 +174,24 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Metadata pre-fetcher for external API queries.
     private var preFetcher: MetadataPreFetcher?
 
+    // MARK: - Analysis State
+    //
+    // These are accessed from the background analysis queue via the audio
+    // callback. The class is `@unchecked Sendable` and the mutations happen
+    // only on the serial `analysisQueue`, so there is no data race.
+
+    /// Running frame count for the analysis queue.
+    private var analysisFrameCount = 0
+
+    /// 10-second EMA accumulator matching DEAM's track-level feature averages.
+    private var accumulatedFeatures = [Float](repeating: 0, count: 10)
+
+    /// Whether `accumulatedFeatures` has been seeded with the first frame.
+    private var featureAccumInitialized = false
+
+    /// Timestamp of the last analysis frame (for dt / effective fps).
+    private var lastAnalysisTime: CFAbsoluteTime = 0
+
     // MARK: - Initialization
 
     init() {
@@ -265,15 +283,12 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         let diagLog = FileHandle(forWritingAtPath: diagPath)
 
         let analysisQueue = DispatchQueue(label: "com.phosphene.analysis", qos: .userInteractive)
-        var frameCount = 0
 
         // 10-second EMA accumulator for features fed to the mood classifier.
         // Matches DEAM's track-level average feature distribution.
         // At ~94 callbacks/s, alpha=0.01 gives ~7s effective window.
         let featureEmaAlpha: Float = 0.01
-        var accumulatedFeatures = [Float](repeating: 0, count: 10)
-        var featureAccumInitialized = false
-        var lastAnalysisTime = CFAbsoluteTimeGetCurrent()
+        self.lastAnalysisTime = CFAbsoluteTimeGetCurrent()
 
         // Audio callback: buffer write + FFT only (real-time safe).
         // MIR + mood classification dispatched to a background queue.
@@ -289,10 +304,11 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
             let binCount = Int(fftResult.binCount)
             let magnitudes = Array(fft.magnitudeBuffer.pointer.prefix(binCount))
 
-            analysisQueue.async {
+            analysisQueue.async { [weak self] in
+                guard let self else { return }
                 let now = CFAbsoluteTimeGetCurrent()
-                let dt = max(Float(now - lastAnalysisTime), 0.001)
-                lastAnalysisTime = now
+                let dt = max(Float(now - self.lastAnalysisTime), 0.001)
+                self.lastAnalysisTime = now
                 let effectiveFps = 1.0 / dt
 
                 let fv = mir.process(
@@ -301,14 +317,12 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
 
                 // Feed live MIR features (band energy, beats, spectral) to the render pipeline.
                 // RenderPipeline.draw(in:) overlays timing fields each frame.
-                if let pipeline = self?.pipeline {
-                    pipeline.setFeatures(fv)
+                self.pipeline.setFeatures(fv)
 
-                    // Update feedback beat value from live audio (per-frame).
-                    pipeline.updateFeedbackBeatValue(from: fv)
-                }
+                // Update feedback beat value from live audio (per-frame).
+                self.pipeline.updateFeedbackBeatValue(from: fv)
 
-                frameCount += 1
+                self.analysisFrameCount += 1
 
                 // Build per-frame features and accumulate via 10s EMA.
                 let nyquist: Float = 24000.0
@@ -322,21 +336,21 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
                 ]
 
                 // EMA accumulation to match DEAM's track-level averages.
-                if !featureAccumInitialized {
-                    accumulatedFeatures = frameFeatures
-                    featureAccumInitialized = true
+                if !self.featureAccumInitialized {
+                    self.accumulatedFeatures = frameFeatures
+                    self.featureAccumInitialized = true
                 } else {
                     for idx in 0..<10 {
-                        accumulatedFeatures[idx] = featureEmaAlpha * frameFeatures[idx]
-                            + (1 - featureEmaAlpha) * accumulatedFeatures[idx]
+                        self.accumulatedFeatures[idx] = featureEmaAlpha * frameFeatures[idx]
+                            + (1 - featureEmaAlpha) * self.accumulatedFeatures[idx]
                     }
                 }
 
                 // Run mood classifier on accumulated (averaged) features.
                 if let mood {
-                    let features = accumulatedFeatures
+                    let features = self.accumulatedFeatures
                     // Write capture row (~every 10th frame to avoid huge files).
-                    if frameCount % 10 == 0, let self {
+                    if self.analysisFrameCount % 10 == 0 {
                         self.writeCaptureRow(
                             features: features, fv: fv,
                             magMax: magnitudes.max() ?? 0,
@@ -346,8 +360,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
 
                     if let state = try? mood.classify(features: features) {
                         // Diagnostic: once per second, write to file.
-                        if frameCount % 60 == 0 {
-                            let af = accumulatedFeatures
+                        if self.analysisFrameCount % 60 == 0 {
                             let line = String(
                                 format: "bassTs=%d iBPM=%.0f sBPM=%.0f td=%@"
                                 + " key=%@ mood=(%.2f,%.2f) quad=%@\n",
@@ -370,7 +383,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
                             flux: fv.spectralFlux,
                             majorCorr: mir.latestMajorKeyCorrelation,
                             minorCorr: mir.latestMinorKeyCorrelation,
-                            callbackCount: frameCount,
+                            callbackCount: self.analysisFrameCount,
                             onsetsPerSec: mir.onsetsPerSecond,
                             totalEnergy: te
                         )
