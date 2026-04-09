@@ -121,6 +121,9 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// CoreML mood classifier (valence/arousal on ANE).
     private let moodClassifier: MoodClassifier?
 
+    /// GPU compute particle system — attached to feedback presets only.
+    private var particleGeometry: ProceduralGeometry?
+
     /// AudioInputRouter requires macOS 14.2+; stored as Any to avoid propagating availability.
     private var router: Any?
 
@@ -199,9 +202,6 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
             if let waveformIndex = loader.selectPreset(named: "Waveform") {
                 logger.info("Starting with preset: Waveform (index \(waveformIndex))")
             }
-            if let preset = loader.currentPreset {
-                pipe.setActivePipelineState(preset.pipelineState)
-            }
         }
 
         self.context = ctx
@@ -210,6 +210,24 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         self.pipeline = pipe
         self.presetLoader = loader
         self.mirPipeline = MIRPipeline()
+
+        // Create GPU particle system — a few thousand birds for the Murmuration preset.
+        // Quality of movement over quantity. Each bird should be visible.
+        if let particles = try? ProceduralGeometry(
+            device: ctx.device,
+            library: lib.library,
+            configuration: ParticleConfiguration(
+                particleCount: 5_000,
+                decayRate: 0.0,     // Birds don't die — they're always alive.
+                burstThreshold: 0.4, // Only strong beats trigger scatter.
+                burstVelocity: 1.0,  // Not used (flocking, not explosions).
+                drag: 0.8            // Light air drag — birds glide.
+            ),
+            pixelFormat: ctx.pixelFormat
+        ) {
+            self.particleGeometry = particles
+            logger.info("Particle system created: 500K particles (attached per-preset)")
+        }
 
         do {
             self.moodClassifier = try MoodClassifier()
@@ -221,7 +239,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
 
         loader.onPresetsReloaded = { [weak self] in
             guard let self, let current = self.presetLoader.currentPreset else { return }
-            self.pipeline.setActivePipelineState(current.pipelineState)
+            self.applyPreset(current)
             self.showPresetName(current.descriptor.name)
         }
 
@@ -280,6 +298,15 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
                 let fv = mir.process(
                     magnitudes: magnitudes, fps: effectiveFps, time: 0, deltaTime: dt
                 )
+
+                // Feed live MIR features (band energy, beats, spectral) to the render pipeline.
+                // RenderPipeline.draw(in:) overlays timing fields each frame.
+                if let pipeline = self?.pipeline {
+                    pipeline.setFeatures(fv)
+
+                    // Update feedback beat value from live audio (per-frame).
+                    pipeline.updateFeedbackBeatValue(from: fv)
+                }
 
                 frameCount += 1
 
@@ -457,6 +484,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         }
 
         if let current = presetLoader.currentPreset {
+            applyPreset(current)
             showPresetName(current.descriptor.name)
         }
     }
@@ -466,15 +494,41 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Advance to the next preset and update the pipeline.
     func nextPreset() {
         guard let preset = presetLoader.nextPreset() else { return }
-        pipeline.setActivePipelineState(preset.pipelineState)
+        applyPreset(preset)
         showPresetName(preset.descriptor.name)
     }
 
     /// Go back to the previous preset and update the pipeline.
     func previousPreset() {
         guard let preset = presetLoader.previousPreset() else { return }
-        pipeline.setActivePipelineState(preset.pipelineState)
+        applyPreset(preset)
         showPresetName(preset.descriptor.name)
+    }
+
+    /// Apply a preset to the render pipeline, including feedback and particle configuration.
+    private func applyPreset(_ preset: PresetLoader.LoadedPreset) {
+        let desc = preset.descriptor
+        pipeline.setActivePipelineState(preset.pipelineState)
+
+        if desc.useFeedback, let fbPipeline = preset.feedbackPipelineState {
+            let params = FeedbackParams(
+                decay: desc.decay,
+                baseZoom: desc.baseZoom,
+                baseRot: desc.baseRot,
+                beatZoom: desc.beatZoom,
+                beatRot: desc.beatRot,
+                beatSensitivity: desc.beatSensitivity
+            )
+            pipeline.setFeedbackParams(params)
+            pipeline.setFeedbackComposePipeline(fbPipeline)
+            // Attach particles — they render INTO the feedback texture for trails.
+            pipeline.setParticleGeometry(particleGeometry)
+        } else {
+            pipeline.setFeedbackParams(nil)
+            pipeline.setFeedbackComposePipeline(nil)
+            // Detach particles — non-feedback presets don't use compute particles.
+            pipeline.setParticleGeometry(nil)
+        }
     }
 
     /// Start Core Audio tap capture (requires screen capture permission).

@@ -201,6 +201,59 @@ public struct FeatureVector: Sendable {
     public static let zero = FeatureVector()
 }
 
+// MARK: - FeedbackParams
+
+/// Per-frame feedback parameters for Milkdrop-style render loop.
+///
+/// Populated from `PresetDescriptor` and the current `FeatureVector` each frame.
+/// The matching MSL struct:
+/// ```metal
+/// struct FeedbackParams {
+///     float decay, base_zoom, base_rot;
+///     float beat_zoom, beat_rot, beat_sensitivity;
+///     float beat_value, _pad0;
+/// };
+/// ```
+@frozen
+public struct FeedbackParams: Sendable {
+    /// Feedback decay per frame. 0.85 = short trails, 0.95 = long trails.
+    public var decay: Float
+    /// Continuous energy zoom (primary driver). Bass-driven.
+    public var baseZoom: Float
+    /// Continuous energy rotation (primary driver). Mid-driven.
+    public var baseRot: Float
+    /// Beat accent zoom (secondary).
+    public var beatZoom: Float
+    /// Beat accent rotation (secondary).
+    public var beatRot: Float
+    /// Beat pulse multiplier. 0 = ignore beats, up to 3.0.
+    public var beatSensitivity: Float
+    /// Pre-selected beat pulse value (from beatSource: bass/mid/treble/composite).
+    public var beatValue: Float
+    /// Padding to 32 bytes (8 × Float).
+    // swiftlint:disable:next identifier_name
+    public var _pad0: Float
+
+    public init(
+        decay: Float = 0.955,
+        baseZoom: Float = 0.12,
+        baseRot: Float = 0.03,
+        beatZoom: Float = 0.03,
+        beatRot: Float = 0.01,
+        beatSensitivity: Float = 1.0,
+        beatValue: Float = 0
+    ) {
+        self.decay = decay
+        self.baseZoom = baseZoom
+        self.baseRot = baseRot
+        self.beatZoom = beatZoom
+        self.beatRot = beatRot
+        self.beatSensitivity = beatSensitivity
+        self.beatValue = beatValue
+        self._pad0 = 0
+    }
+}
+
 // MARK: - MetadataSource
 
 /// Where track metadata was obtained from.

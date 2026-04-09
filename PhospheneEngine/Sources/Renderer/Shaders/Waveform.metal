@@ -1,49 +1,8 @@
 // Waveform.metal — First-light visualizer: frequency bar spectrum + oscilloscope waveform.
 // Reads FFT magnitude buffer (512 bins) and PCM waveform ring buffer directly on the GPU.
 // Colors follow Phosphene's philosophy: rich, saturated palettes emerging from darkness.
-
-#include <metal_stdlib>
-using namespace metal;
-
-#define FFT_BIN_COUNT 512
-#define WAVEFORM_CAPACITY 2048  // Interleaved stereo float32 (1024 frames)
-
-// Matches Swift FeatureVector layout (24 floats = 96 bytes).
-struct FeatureVector {
-    float bass, mid, treble;
-    float bass_att, mid_att, treb_att;
-    float sub_bass, low_bass, low_mid, mid_high, high_mid, high_freq;
-    float beat_bass, beat_mid, beat_treble, beat_composite;
-    float spectral_centroid, spectral_flux;
-    float valence, arousal;
-    float time, delta_time;
-    float _pad0, _pad1;
-};
-
-struct VertexOut {
-    float4 position [[position]];
-    float2 uv;
-};
-
-// MARK: - Vertex Shader
-
-// Full-screen triangle: 3 vertices, no vertex buffer needed.
-// The oversized triangle is clipped by the rasterizer to the viewport.
-vertex VertexOut fullscreen_vertex(uint vid [[vertex_id]]) {
-    VertexOut out;
-    out.uv = float2((vid << 1) & 2, vid & 2);
-    out.position = float4(out.uv * 2.0 - 1.0, 0.0, 1.0);
-    // Flip Y so uv (0,0) = bottom-left, (1,1) = top-right.
-    out.uv.y = 1.0 - out.uv.y;
-    return out;
-}
-
-// MARK: - Color Utilities
-
-float3 hsv2rgb(float3 c) {
-    float3 p = abs(fract(float3(c.x) + float3(1.0, 2.0/3.0, 1.0/3.0)) * 6.0 - 3.0);
-    return c.z * mix(float3(1.0), clamp(p - 1.0, 0.0, 1.0), c.y);
-}
+//
+// Shared definitions (FeatureVector, hsv2rgb, fullscreen_vertex) are in Common.metal.
 
 // MARK: - Fragment Shader
 

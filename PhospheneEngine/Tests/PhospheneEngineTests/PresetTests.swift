@@ -7,7 +7,7 @@ import Foundation
 // MARK: - PresetCategory Tests
 
 @Test func presetCategoryAllCases() {
-    #expect(PresetCategory.allCases.count == 10)
+    #expect(PresetCategory.allCases.count == 11)
     #expect(PresetCategory.allCases.contains(.waveform))
     #expect(PresetCategory.allCases.contains(.fractal))
     #expect(PresetCategory.allCases.contains(.geometric))

@@ -876,26 +876,37 @@ echo "=== All checks passed ==="
 
 ## Phase 3 — Advanced Metal Rendering (Blueprint Release 0.5)
 
-### Increment 3.1: Compute Shader Particle System
+### Increment 3.1: Compute Shader Particle System ✅ COMPLETE
 
-**Goal:** GPU compute pipeline driving millions of particles from stem-separated audio.
+**Goal:** GPU compute pipeline driving millions of particles from stem-separated audio. Delivered with the **Murmuration** preset — the project's first official shader.
 
-**Files to create/edit:**
-- `Renderer/Shaders/Particles.metal`
-- `Renderer/Geometry/ProceduralGeometry.swift`
+**Files created/edited:**
+- `Renderer/Shaders/Particles.metal` (compute kernel + vertex/fragment for bird silhouettes)
+- `Renderer/Shaders/Common.metal` (extracted shared definitions + feedback warp/blit shaders)
+- `Renderer/Geometry/ProceduralGeometry.swift` (UMA buffer + compute pipeline + render pipeline with additive blending option)
+- `Renderer/RenderPipeline.swift` (feedback texture infrastructure: ping-pong textures, warp/composite/blit passes, lazy allocation from drawable size)
+- `Renderer/MetalContext.swift` (added `makeSharedTexture` helper)
+- `Shared/AudioFeatures.swift` (added `FeedbackParams` struct)
+- `Presets/PresetDescriptor.swift` (added `useFeedback` flag)
+- `Presets/PresetCategory.swift` (added `abstract` category)
+- `Presets/PresetLoader.swift` (dual pipeline state compilation for feedback presets, preamble includes `FeedbackParams` struct)
+- `Presets/Shaders/Starburst.metal` + `Starburst.json` (Murmuration preset: dusk sky backdrop)
+- `PhospheneApp/ContentView.swift` (particle geometry creation, `applyPreset` with feedback wiring)
 
-**Test requirements:**
-- `ProceduralGeometryTests.swift` — 6 tests:
-  - `test_init_particleBuffer_allocatedWithCapacity()`
-  - `test_particleBuffer_storageModeShared()`
-  - `test_dispatch_compute_noGPUError()` — run compute dispatch, assert command buffer completes without error
-  - `test_particleCount_matchesConfiguration()`
-  - `test_zeroAudioInput_particlesStationary()` — all velocities near zero after compute
-  - `test_impulseAudioInput_particlesEmitted()` — nonzero velocity for some particles
-- **Performance test:**
-  - `test_particleCompute_1MillionParticles_under8ms()` — measure GPU compute time
+**Test results:** All 7 tests pass:
+- `test_init_particleBuffer_allocatedWithCapacity()` ✓
+- `test_particleBuffer_storageModeShared()` ✓
+- `test_dispatch_compute_noGPUError()` ✓
+- `test_particleCount_matchesConfiguration()` ✓
+- `test_zeroAudioInput_particlesStationary()` ✓
+- `test_impulseAudioInput_particlesEmitted()` ✓
+- `test_particleCompute_1MillionParticles_under8ms()` ✓
 
-**Verification:** Visual: millions of particles on screen, drum stem triggers bursts. All 7 tests pass.
+Total: 213 Swift tests pass (206 existing + 7 new).
+
+**Visual verification:** The Murmuration preset shows ~5,000 starlings flying as one organism across a dusk sunrise/sunset sky. The flock forms an elongated, asymmetric, tapered shape that stretches, curves, and rotates. Audio mapping deliberately bypasses vocal frequency ranges (`low_mid`+`mid_high`) and responds to `sub_bass`+`low_bass` (rhythm section drives body movement) and `high_mid`+`high` (strings/overtones drive flutter and shape bending). Tuned against Lou Reed's "Sad Song" so fluttering strings ripple the murmuration and the bass line pushes the mass.
+
+**Creative design notes:** Earlier iterations layered disconnected technical features (frequency rings, Lissajous traces, beat seeds) without visual coherence. The breakthrough was committing to a single natural metaphor — a flock of starlings — and making every audio feature serve that metaphor. The Milkdrop preset analysis (see `docs/MILKDROP_PRESET_ANALYSIS.md`) catalogued 15 creative techniques but the key insight was that technology and art must reinforce each other: compute particles with custom physics enable the murmuration metaphor, and the metaphor justifies the compute particles.
 
 ### Increment 3.2: Mesh Shader Pipeline (Object + Mesh Shaders)
 

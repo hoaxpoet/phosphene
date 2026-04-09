@@ -1,0 +1,119 @@
+// Common.metal — Shared definitions for all Renderer shaders.
+
+#include <metal_stdlib>
+using namespace metal;
+
+#define FFT_BIN_COUNT 512
+#define WAVEFORM_CAPACITY 2048
+
+// MARK: - FeatureVector
+
+struct FeatureVector {
+    float bass, mid, treble;
+    float bass_att, mid_att, treb_att;
+    float sub_bass, low_bass, low_mid, mid_high, high_mid, high_freq;
+    float beat_bass, beat_mid, beat_treble, beat_composite;
+    float spectral_centroid, spectral_flux;
+    float valence, arousal;
+    float time, delta_time;
+    float _pad0, _pad1;
+};
+
+// MARK: - FeedbackParams
+
+struct FeedbackParams {
+    float decay, base_zoom, base_rot;
+    float beat_zoom, beat_rot, beat_sensitivity;
+    float beat_value, _pad0;
+};
+
+// MARK: - Color Utilities
+
+float3 hsv2rgb(float3 c) {
+    float3 p = abs(fract(float3(c.x) + float3(1.0, 2.0/3.0, 1.0/3.0)) * 6.0 - 3.0);
+    return c.z * mix(float3(1.0), clamp(p - 1.0, 0.0, 1.0), c.y);
+}
+
+// MARK: - Full-Screen Vertex Shader
+
+struct VertexOut {
+    float4 position [[position]];
+    float2 uv;
+};
+
+vertex VertexOut fullscreen_vertex(uint vid [[vertex_id]]) {
+    VertexOut out;
+    out.uv = float2((vid << 1) & 2, vid & 2);
+    out.position = float4(out.uv * 2.0 - 1.0, 0.0, 1.0);
+    out.uv.y = 1.0 - out.uv.y;
+    return out;
+}
+
+// MARK: - Feedback Warp Shader
+//
+// The feedback warp creates soft motion trails behind the flock.
+// It should be ALMOST INVISIBLE as a standalone effect — its only job
+// is to give the particles a gentle wake, like birds leaving vapor
+// trails in cold air. The flock IS the visual. The warp just gives
+// it memory.
+
+fragment float4 feedback_warp_fragment(
+    VertexOut in [[stage_in]],
+    constant FeatureVector& features [[buffer(0)]],
+    constant FeedbackParams& feedback [[buffer(1)]],
+    texture2d<float> previousFrame [[texture(0)]],
+    sampler feedbackSampler [[sampler(0)]]
+) {
+    float t = features.time;
+    float2 uv = in.uv;
+
+    // Very subtle offset — just enough to smear trails slightly
+    // in the direction the flock is flowing. Not a psychedelic
+    // zoom-and-rotate tunnel. A gentle atmospheric drag.
+
+    float2 centered = uv - 0.5;
+    float rad = length(centered);
+
+    // Tiny inward zoom — trails shrink slightly each frame,
+    // creating a "dissipation into the center" effect.
+    float zoom = feedback.base_zoom * 0.3;
+    centered *= 1.0 - zoom;
+
+    // Very gentle rotation — the sky slowly turning.
+    // mid_att provides a slow organic steering.
+    float rot = feedback.base_rot * 0.2 * features.mid_att
+              + 0.001 * sin(t * 0.2);
+    float cosR = cos(rot);
+    float sinR = sin(rot);
+    centered = float2(centered.x * cosR - centered.y * sinR,
+                      centered.x * sinR + centered.y * cosR);
+
+    uv = centered + 0.5;
+
+    // Sample previous frame.
+    float4 prev = previousFrame.sample(feedbackSampler, uv);
+
+    // Decay: trails fade. Higher decay = longer trails.
+    // Edges fade slightly faster — keeps the center of the flock
+    // as the visual anchor.
+    float decay = feedback.decay - 0.01 * smoothstep(0.3, 0.5, rad);
+    decay = max(decay, 0.0);
+
+    float3 col = prev.rgb * decay;
+
+    // Very gentle desaturation over time — prevents color buildup.
+    float lum = dot(col, float3(0.299, 0.587, 0.114));
+    col = mix(col, float3(lum), 0.005);
+
+    return float4(col, prev.a * decay);
+}
+
+// MARK: - Feedback Blit Shader
+
+fragment float4 feedback_blit_fragment(
+    VertexOut in [[stage_in]],
+    texture2d<float> tex [[texture(0)]],
+    sampler s [[sampler(0)]]
+) {
+    return tex.sample(s, in.uv);
+}

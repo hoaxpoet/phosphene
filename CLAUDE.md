@@ -28,7 +28,7 @@ swiftlint lint --strict --config .swiftlint.yml
 
 Deployment target: macOS 14.0+ (Sonoma). Swift 6.0. Metal 3.1+.
 
-**Current test count: 206 tests** (unit, integration, regression, performance). All must pass before any new code is merged.
+**Current test count: 213 tests** (unit, integration, regression, performance). All must pass before any new code is merged.
 
 ## Module Map
 
@@ -67,16 +67,23 @@ PhospheneEngine/
     StemSeparator.swift      → STFT → CoreML → iSTFT pipeline, StemSeparating protocol (✓ implemented)
     MoodClassifier.swift    → 10-feature MLP → valence/arousal, MoodClassifying protocol (✓ implemented)
     ML.swift                → CoreML module imports
-  Renderer/                 → Metal context, pipelines, shader library
-    MetalContext            → MTLDevice, command queue, triple-buffered semaphore (✓ implemented)
+  Renderer/                 → Metal context, pipelines, shader library, compute particles
+    MetalContext            → MTLDevice, command queue, triple-buffered semaphore, shared-texture helper (✓ implemented)
     ShaderLibrary           → Auto-discover .metal files, runtime compilation, cache (✓ implemented)
-    RenderPipeline          → Full-screen shader pass, audio UMA buffer binding (✓ implemented)
+    RenderPipeline          → Feedback-texture ping-pong, warp/composite/blit passes, particle integration (✓ implemented)
     Protocols               → Rendering protocol for DI/testing (✓ implemented)
+    Geometry/ProceduralGeometry → GPU compute particle system: UMA buffer + compute pipeline + render pipeline (✓ implemented)
+    Shaders/Common.metal    → FeatureVector/FeedbackParams structs, hsv2rgb, fullscreen_vertex, feedback_warp_fragment, feedback_blit_fragment (✓ implemented)
+    Shaders/Particles.metal → Murmuration compute kernel + bird silhouette vertex/fragment shaders (✓ implemented)
     Shaders/Waveform.metal  → 64-bar FFT spectrum + oscilloscope waveform (✓ implemented)
-  Presets/                  → Preset loading, categorization, hot-reload
-    PresetLoader            → Auto-discover .metal presets, compile, hot-reload via FSEvents (✓ implemented)
-    PresetDescriptor        → JSON sidecar metadata (feedback params, beat source) (✓ implemented)
-    PresetCategory          → Visual aesthetic families (10 categories) (✓ implemented)
+  Presets/                  → Preset loading, categorization, hot-reload, feedback support
+    PresetLoader            → Auto-discover .metal presets, compile standard + additive-blend pipeline states (✓ implemented)
+    PresetDescriptor        → JSON sidecar metadata with useFeedback flag (✓ implemented)
+    PresetCategory          → Visual aesthetic families (11 categories including abstract) (✓ implemented)
+    Shaders/Starburst.metal → "Murmuration" preset — dusk sky gradient backdrop (✓ implemented)
+    Shaders/Waveform.metal  → Spectrum bars + oscilloscope preset (✓ implemented)
+    Shaders/Plasma.metal    → Demoscene plasma preset (✓ implemented)
+    Shaders/Nebula.metal    → Radial frequency nebula preset (✓ implemented)
   Orchestrator/             → AI VJ: anticipation engine, transitions, preset selection (stub)
   Shared/                   → UMA buffer wrappers, type definitions, logging
     UMABuffer               → Generic .storageModeShared MTLBuffer + UMARingBuffer (✓ implemented)
@@ -84,11 +91,11 @@ PhospheneEngine/
     AnalyzedFrame           → Timestamped container: AudioFrame + FFTResult + StemData + FeatureVector + EmotionalState (✓ implemented)
     Logging                 → Per-module os.Logger instances (✓ implemented)
 
-Tests/ (187 tests)
+Tests/ (213 tests)
   Audio/                    → AudioBufferTests, FFTProcessorTests, StreamingMetadataTests, MetadataPreFetcherTests, LookaheadBufferTests (10)
   DSP/                      → SpectralAnalyzerTests (8), BandEnergyProcessorTests (5), ChromaExtractorTests (6), BeatDetectorTests (7), MIRPipelineUnitTests (4), SelfSimilarityMatrixTests (5), NoveltyDetectorTests (5), StructuralAnalyzerTests (8)
   ML/                       → StemSeparatorTests (8), MoodClassifierTests (7: model loading, classification, range, quadrants, protocol)
-  Renderer/                 → MetalContextTests, ShaderLibraryTests, RenderPipelineTests
+  Renderer/                 → MetalContextTests, ShaderLibraryTests, RenderPipelineTests, ProceduralGeometryTests (7: init, storage mode, dispatch, count, zero-audio, impulse, 1M perf)
   Shared/                   → AudioFeaturesTests, UMABufferExtendedTests, EmotionalStateTests (4: quadrant classification), AnalyzedFrameTests (3)
   Integration/              → AudioToFFTPipelineTests, AudioToRenderPipelineTests, MetadataToOrchestratorTests, AudioToStemPipelineTests, MIRPipelineIntegrationTests (3), LookaheadIntegrationTests (1)
   Regression/               → FFTRegressionTests, MetadataParsingRegressionTests, ChromaRegressionTests (2), BeatDetectorRegressionTests (2), StructuralAnalysisRegressionTests (1) + golden fixtures
@@ -343,7 +350,7 @@ Phosphene works at every tier — never show errors or degraded UI when metadata
 - Protocol-first design for testability. Every injectable dependency has a protocol (`AudioCapturing`, `AudioBuffering`, `FFTProcessing`, `Rendering`, `MetadataProviding`, `MetadataFetching`). Tests use doubles from `TestDoubles/`.
 
 ### Testing
-- **187 tests** across unit, integration, regression, and performance categories.
+- **213 tests** across unit, integration, regression, and performance categories.
 - All tests must pass before starting new work (`swift test --package-path PhospheneEngine`).
 - Test doubles in `Tests/TestDoubles/`: `MockAudioCapture`, `StubFFTProcessor`, `FakeStemSeparator`, `StubMoodClassifier`, `AudioFixtures`, `MockMetadataProvider`, `MockMetadataFetcher`.
 - Regression tests use golden fixtures in `Tests/Regression/Fixtures/`.
@@ -409,7 +416,10 @@ struct StructuralPrediction    // section start, predicted next boundary, confid
 struct AnalyzedFrame           // Timestamped bundle of all above
 struct TrackMetadata           // title, artist, album, genre, duration, artwork URL, source
 struct PreFetchedTrackProfile  // External BPM, key, energy, valence, danceability, genre tags
-struct PresetDescriptor        // id, family, tags, scene metadata (all JSON sidecar fields)
+struct PresetDescriptor        // id, family, tags, scene metadata, useFeedback (JSON sidecar fields)
+struct FeedbackParams          // 32 bytes: decay, baseZoom, baseRot, beatZoom, beatRot, beatSensitivity, beatValue (GPU uniform)
+struct Particle                // 64 bytes: position, velocity, color, life, size, seed, age (compute kernel state)
+struct ParticleConfiguration   // particleCount, decayRate, burstThreshold, burstVelocity, drag (CPU-side tuning)
 struct StructuralPrediction    // sectionIndex, sectionStartTime, predictedNextBoundary, confidence
 struct VisualDirective         // Target family, color palette, camera speed, bloom, particles
 ```
@@ -458,6 +468,10 @@ Metal, MetalKit, CoreML, AVFoundation, Accelerate, ScreenCaptureKit, MusicKit
 27. **Tempo onset threshold**: 75th percentile of bass flux buffer × 2.0, with 150ms minimum spacing. The median of half-wave rectified flux is near-zero (most frames have zero flux), so median-based thresholds fail. The 75th percentile is non-zero only during genuine energy changes. Previous 300ms minimum spacing aliased all tempos to ~97 BPM.
 28. **Chroma bin-count normalization**: Each FFT bin's magnitude contribution to its pitch class is weighted by `1/binsInPitchClass`. At 48kHz/1024-point FFT, pitch classes get 31–55 bins (1.77x ratio). Without normalization, key estimation is systematically biased toward high-bin-count pitch classes (F, E, D#).
 29. **Structural analysis architecture**: Three-class decomposition: `SelfSimilarityMatrix` (ring buffer + cosine similarity), `NoveltyDetector` (checkerboard kernel + peak-picking), `StructuralAnalyzer` (coordinator + prediction). Feature vector is 16 floats (12 chroma + centroid/flux/rolloff/energy). Novelty detection runs every 30 frames (~0.5s), amortized cost ~0.03ms/frame. `StructuralPrediction` is CPU-side only — not in FeatureVector (locked at 24 floats for GPU). Min peak distance 120 frames (2s) balances sensitivity vs false positives.
+30. **Feedback texture architecture**: Double-buffered ping-pong MTLTextures allocated lazily from the drawable size (handles the case where `drawableSizeWillChange` never fires). Three-pass render loop for feedback presets: (1) `feedback_warp_fragment` reads previous texture, applies bass→gravity / mid→current / treble→crystallization transforms with a wandering center, writes to current texture; (2) composite pass draws the preset fragment shader (additive blend pipeline state compiled separately by PresetLoader for presets with `use_feedback: true`) onto current texture; (3) drawable blit pass copies feedback texture to screen and renders compute particles on top with standard alpha blending. `FeedbackParams` (32 bytes, 8 floats) carries per-preset decay/zoom/rot values and live beat value to the shaders each frame. Non-feedback presets skip all three passes and render directly to the drawable (single-pass, zero regression from pre-feedback behavior).
+31. **Particle rendering strategy for the Murmuration preset**: Compute particles render with standard `.sourceAlpha`/`.oneMinusSourceAlpha` blending (dark silhouettes over sky), NOT additive blending, NOT into the feedback texture. The sky gradient is rendered directly to the drawable each frame (standard preset pipeline, no feedback). This keeps the sky vivid instead of being washed out by feedback accumulation. The feedback texture path remains available but is currently unused by Murmuration — kept as infrastructure for future presets that need trails.
+32. **Audio routing philosophy (learned from Murmuration tuning)**: Responding to `features.bass`/`features.mid`/`features.treble` means responding primarily to whatever instrument dominates the mix — which is often vocals in singer-songwriter tracks. To make a preset respond to specific musical content, use the 6-band energy values (`sub_bass`, `low_bass`, `low_mid`, `mid_high`, `high_mid`, `high_freq`) to deliberately target or avoid frequency ranges. Vocals live in `low_mid` (250-1kHz) and `mid_high` (1-4kHz); skipping those bands routes visual response to rhythm section and overtones instead. This is a simpler alternative to running per-stem analysis until the Orchestrator increment wires stem-specific routing.
+33. **Creative design principle — marriage of art and technology**: Every preset should be rooted in a natural metaphor that the technology uniquely enables. Murmuration requires GPU compute (thousands of particles with custom physics) to exist — it couldn't be faked with Milkdrop's 1024 shape instances. The creative vision (a flock of starlings moving as one organism) and the technology (compute shaders with per-particle state) reinforce each other. Different audio features should control fundamentally different things: the waveform is a drawn shape, bass is gravity, mid is current, treble is crystallization, beats are phase transitions. Amplitude→magnitude mapping alone produces boring visuals regardless of tuning.
 
 ## Reference Documents
 
@@ -467,7 +481,11 @@ The architectural blueprint is in `docs/ARCHITECTURAL_BLUEPRINT.md`.
 
 ## Current Status
 
-**Phase 2 in progress.** Increments 2.1 (streaming metadata), 2.2 (CoreML stem separation model conversion), 2.3 (Swift CoreML stem separator integration), 2.4 (MIR feature extraction pipeline), 2.5 (mood classification model), 2.6 (analysis lookahead buffer), and 2.7 (progressive structural analysis) are complete. Next up: Increment 2.8 (DSP/MIR → rendering integration).
+**Phase 3 in progress.** Phase 2 complete (streaming metadata, stem separation, MIR pipeline, mood classifier, lookahead buffer, structural analysis). Phase 3 started with Increment 3.1 (compute shader particle system + first official preset). Next up: Increment 3.2 (mesh shader procedural geometry).
+
+Increment 3.1 delivered the **Murmuration** preset — the project's first official shader. It combines the GPU compute particle system (`ProceduralGeometry`), the Milkdrop-style feedback texture infrastructure (`feedback_warp_fragment` / `feedback_blit_fragment` in `Common.metal`, three-pass render loop in `RenderPipeline`), and a dedicated fragment preset (`Starburst.metal` = dusk sky backdrop, `Starburst.json` with `use_feedback: true`). The compute kernel simulates ~5,000 starlings as one organism: each bird is pulled to a home position within an elongated, tapered, curving shape that stretches, rotates, and bends with the music. Audio mapping deliberately bypasses vocal frequency ranges (`low_mid`+`mid_high` where voices live) and instead uses `sub_bass`+`low_bass` (rhythm section → flock body movement) and `high_mid`+`high` (strings and overtones → flutter, shape bending, cohesion loosening). The result is a flock that responds to the *accompaniment* rather than the vocal melody — hand-tuned against Lou Reed's "Sad Song" so the fluttering strings drive the murmuration's rippling and the bass line pushes the mass. 213 Swift tests pass (206 existing + 7 new: `test_init_particleBuffer_allocatedWithCapacity`, `test_particleBuffer_storageModeShared`, `test_dispatch_compute_noGPUError`, `test_particleCount_matchesConfiguration`, `test_zeroAudioInput_particlesStationary`, `test_impulseAudioInput_particlesEmitted`, `test_particleCompute_1MillionParticles_under8ms`).
+
+Supporting infrastructure added for Increment 3.1: `FeedbackParams` struct in `Shared/AudioFeatures.swift` (32 bytes, GPU-uploaded each frame); `useFeedback` flag in `PresetDescriptor` with matching `"use_feedback"` JSON key; `abstract` category added to `PresetCategory` enum; `makeSharedTexture(width:height:pixelFormat:usage:)` helper on `MetalContext`; `RenderPipeline` gained double-buffered feedback textures (lazy-allocated from drawable size), `setFeedbackParams`/`setFeedbackComposePipeline`/`updateFeedbackBeatValue` public API, and a three-pass feedback render path (warp → composite → drawable blit). `PresetLoader` now compiles two pipeline states for feedback presets: a standard state for the non-feedback drawable pass and an additive-blend state for the composite-into-feedback-texture pass. The creative journey is documented in detail in `docs/MILKDROP_PRESET_ANALYSIS.md` (catalog of Milkdrop creative techniques studied during this increment).
 
 Increment 2.6 added the analysis lookahead buffer — a configurable delay between analysis and rendering for anticipatory visual decisions. `AnalyzedFrame` is a timestamped container bundling all per-frame analysis results (AudioFrame + FFTResult + StemData + FeatureVector + EmotionalState). `LookaheadBuffer` is a thread-safe ring buffer (default 512 frames, 2.5s delay) with dual read heads: the analysis head returns the latest frame (real-time) and the render head returns the frame delayed by the configured amount. `AudioInputRouter` gained `onAnalysisFrame` and `onRenderFrame` dual callbacks for the Orchestrator. 187 Swift tests pass (173 existing + 14 new: 10 LookaheadBuffer unit tests, 3 AnalyzedFrame unit tests, 1 integration test verifying delay accuracy within ±100ms).
 

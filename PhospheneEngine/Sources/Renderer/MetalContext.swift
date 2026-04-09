@@ -66,6 +66,31 @@ public final class MetalContext: Sendable {
     public func makeSharedBuffer(length: Int) -> MTLBuffer? {
         device.makeBuffer(length: length, options: .storageModeShared)
     }
+
+    /// Create a shared-mode 2D texture (UMA zero-copy). For feedback ping-pong textures.
+    ///
+    /// - Parameters:
+    ///   - width: Texture width in pixels.
+    ///   - height: Texture height in pixels.
+    ///   - pixelFormat: Pixel format (default: context's pixelFormat).
+    ///   - usage: Texture usage flags.
+    /// - Returns: A new shared-mode texture, or nil if allocation fails.
+    public func makeSharedTexture(
+        width: Int,
+        height: Int,
+        pixelFormat: MTLPixelFormat? = nil,
+        usage: MTLTextureUsage = [.renderTarget, .shaderRead]
+    ) -> MTLTexture? {
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: pixelFormat ?? self.pixelFormat,
+            width: width,
+            height: height,
+            mipmapped: false
+        )
+        descriptor.storageMode = .shared
+        descriptor.usage = usage
+        return device.makeTexture(descriptor: descriptor)
+    }
 }
 
 // MARK: - MetalContextError

@@ -43,6 +43,12 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
     /// Beat pulse multiplier. 0.0 = ignore beats. Range 0–3.0.
     public let beatSensitivity: Float
 
+    // MARK: - Feedback
+
+    /// Whether this preset uses the feedback texture loop (Milkdrop-style trails).
+    /// When true, the RenderPipeline wraps this preset in a two-pass feedback architecture.
+    public let useFeedback: Bool
+
     // MARK: - Shader Function Names
 
     /// Fragment function name in the .metal file. Defaults to "<lowercaseName>_fragment".
@@ -71,6 +77,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         case baseRot = "base_rot"
         case decay
         case beatSensitivity = "beat_sensitivity"
+        case useFeedback = "use_feedback"
         case fragmentFunction = "fragment_function"
         case vertexFunction = "vertex_function"
         case shaderFileName = "shader_file"
@@ -90,6 +97,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         baseRot = try container.decodeIfPresent(Float.self, forKey: .baseRot) ?? 0.03
         decay = try container.decodeIfPresent(Float.self, forKey: .decay) ?? 0.955
         beatSensitivity = try container.decodeIfPresent(Float.self, forKey: .beatSensitivity) ?? 1.0
+        useFeedback = try container.decodeIfPresent(Bool.self, forKey: .useFeedback) ?? false
         fragmentFunction = try container.decodeIfPresent(String.self, forKey: .fragmentFunction) ?? "preset_fragment"
         vertexFunction = try container.decodeIfPresent(String.self, forKey: .vertexFunction) ?? "fullscreen_vertex"
         shaderFileName = try container.decodeIfPresent(String.self, forKey: .shaderFileName) ?? ""

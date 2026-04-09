@@ -28,6 +28,8 @@ public final class PresetLoader: @unchecked Sendable {
     public struct LoadedPreset: Sendable {
         public let descriptor: PresetDescriptor
         public let pipelineState: MTLRenderPipelineState
+        /// Additive-blended pipeline state for feedback composite pass. Nil for non-feedback presets.
+        public let feedbackPipelineState: MTLRenderPipelineState?
     }
 
     // MARK: - Private State
@@ -156,11 +158,15 @@ public final class PresetLoader: @unchecked Sendable {
             descriptor.shaderFileName = metalFile.lastPathComponent
 
             // Compile the shader.
-            guard let pipelineState = compileShader(at: metalFile, descriptor: descriptor) else {
+            guard let pipelines = compileShader(at: metalFile, descriptor: descriptor) else {
                 continue
             }
 
-            let loaded = LoadedPreset(descriptor: descriptor, pipelineState: pipelineState)
+            let loaded = LoadedPreset(
+                descriptor: descriptor,
+                pipelineState: pipelines.standard,
+                feedbackPipelineState: pipelines.feedback
+            )
 
             lock.withLock {
                 // Replace existing preset with same name, or append.
@@ -198,7 +204,9 @@ public final class PresetLoader: @unchecked Sendable {
 
     // MARK: - Shader Compilation
 
-    private func compileShader(at url: URL, descriptor: PresetDescriptor) -> MTLRenderPipelineState? {
+    private func compileShader(
+        at url: URL, descriptor: PresetDescriptor
+    ) -> (standard: MTLRenderPipelineState, feedback: MTLRenderPipelineState?)? {
         guard let fragmentSource = try? String(contentsOf: url, encoding: .utf8) else {
             logger.error("Could not read shader file: \(url.lastPathComponent)")
             return nil
@@ -231,17 +239,37 @@ public final class PresetLoader: @unchecked Sendable {
             return nil
         }
 
+        // Standard pipeline (no blending — used for non-feedback presets and tests).
         let pipelineDescriptor = MTLRenderPipelineDescriptor()
         pipelineDescriptor.vertexFunction = vertexFn
         pipelineDescriptor.fragmentFunction = fragmentFn
         pipelineDescriptor.colorAttachments[0].pixelFormat = pixelFormat
 
+        let standardState: MTLRenderPipelineState
         do {
-            return try device.makeRenderPipelineState(descriptor: pipelineDescriptor)
+            standardState = try device.makeRenderPipelineState(descriptor: pipelineDescriptor)
         } catch {
             logger.error("Pipeline state creation failed for \(url.lastPathComponent): \(error)")
             return nil
         }
+
+        // Feedback pipeline (additive blending — used for feedback composite pass).
+        var feedbackState: MTLRenderPipelineState?
+        if descriptor.useFeedback {
+            pipelineDescriptor.colorAttachments[0].isBlendingEnabled = true
+            pipelineDescriptor.colorAttachments[0].sourceRGBBlendFactor = .one
+            pipelineDescriptor.colorAttachments[0].destinationRGBBlendFactor = .one
+            pipelineDescriptor.colorAttachments[0].sourceAlphaBlendFactor = .one
+            pipelineDescriptor.colorAttachments[0].destinationAlphaBlendFactor = .one
+            do {
+                feedbackState = try device.makeRenderPipelineState(descriptor: pipelineDescriptor)
+                logger.info("Created feedback pipeline for \(descriptor.name)")
+            } catch {
+                logger.error("Feedback pipeline creation failed for \(url.lastPathComponent): \(error)")
+            }
+        }
+
+        return (standard: standardState, feedback: feedbackState)
     }
 
     // MARK: - Hot Reload
@@ -309,6 +337,13 @@ public final class PresetLoader: @unchecked Sendable {
 
     #define FFT_BIN_COUNT 512
     #define WAVEFORM_CAPACITY 2048
+
+    // Matches Swift FeedbackParams layout (8 floats = 32 bytes).
+    struct FeedbackParams {
+        float decay, base_zoom, base_rot;
+        float beat_zoom, beat_rot, beat_sensitivity;
+        float beat_value, _pad0;
+    };
 
     // Matches Swift FeatureVector layout (24 floats = 96 bytes).
     struct FeatureVector {
