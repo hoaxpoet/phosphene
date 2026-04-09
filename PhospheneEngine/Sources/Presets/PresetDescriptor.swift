@@ -49,6 +49,13 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
     /// When true, the RenderPipeline wraps this preset in a two-pass feedback architecture.
     public let useFeedback: Bool
 
+    /// Whether this preset uses the GPU compute particle system.
+    /// When true, `ProceduralGeometry` is attached and particles are rendered on top
+    /// of the preset fragment shader. Defaults to false so presets that don't need
+    /// particles (e.g. surface-based feedback presets) don't pay the cost or get the
+    /// visual overlay.
+    public let useParticles: Bool
+
     // MARK: - Shader Function Names
 
     /// Fragment function name in the .metal file. Defaults to "<lowercaseName>_fragment".
@@ -78,6 +85,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         case decay
         case beatSensitivity = "beat_sensitivity"
         case useFeedback = "use_feedback"
+        case useParticles = "use_particles"
         case fragmentFunction = "fragment_function"
         case vertexFunction = "vertex_function"
         case shaderFileName = "shader_file"
@@ -98,6 +106,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         decay = try container.decodeIfPresent(Float.self, forKey: .decay) ?? 0.955
         beatSensitivity = try container.decodeIfPresent(Float.self, forKey: .beatSensitivity) ?? 1.0
         useFeedback = try container.decodeIfPresent(Bool.self, forKey: .useFeedback) ?? false
+        useParticles = try container.decodeIfPresent(Bool.self, forKey: .useParticles) ?? false
         fragmentFunction = try container.decodeIfPresent(String.self, forKey: .fragmentFunction) ?? "preset_fragment"
         vertexFunction = try container.decodeIfPresent(String.self, forKey: .vertexFunction) ?? "fullscreen_vertex"
         shaderFileName = try container.decodeIfPresent(String.self, forKey: .shaderFileName) ?? ""

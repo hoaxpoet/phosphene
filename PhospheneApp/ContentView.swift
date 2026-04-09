@@ -521,8 +521,8 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
             )
             pipeline.setFeedbackParams(params)
             pipeline.setFeedbackComposePipeline(fbPipeline)
-            // Attach particles — they render INTO the feedback texture for trails.
-            pipeline.setParticleGeometry(particleGeometry)
+            // Attach particles only for presets that declare use_particles in their JSON.
+            pipeline.setParticleGeometry(desc.useParticles ? particleGeometry : nil)
         } else {
             pipeline.setFeedbackParams(nil)
             pipeline.setFeedbackComposePipeline(nil)

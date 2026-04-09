@@ -21,4 +21,5 @@ public enum PresetCategory: String, Sendable, CaseIterable, Codable {
     case dancer
     case transition
     case abstract
+    case fluid
 }

@@ -113,7 +113,7 @@ public struct StemData: Sendable {
 ///     float spectral_centroid, spectral_flux;
 ///     float valence, arousal;
 ///     float time, delta_time;
-///     float _pad0, _pad1;
+///     float _pad0, aspect_ratio;
 /// };
 /// ```
 @frozen
@@ -168,11 +168,17 @@ public struct FeatureVector: Sendable {
     /// Seconds since last frame.
     public var deltaTime: Float
 
-    // --- Padding to 96 bytes (24 × 4) ---
+    // --- Padding ---
     // swiftlint:disable:next identifier_name
     public var _pad0: Float
-    // swiftlint:disable:next identifier_name
-    public var _pad1: Float
+
+    // --- Viewport ---
+
+    /// Viewport aspect ratio (width / height). Set each frame by the render
+    /// pipeline from the drawable size. Shaders use this for aspect-correct
+    /// geometric calculations (e.g. rendering circles as actual circles
+    /// rather than UV-space ellipses).
+    public var aspectRatio: Float
 
     public init(
         bass: Float = 0, mid: Float = 0, treble: Float = 0,
@@ -183,7 +189,8 @@ public struct FeatureVector: Sendable {
         beatComposite: Float = 0,
         spectralCentroid: Float = 0, spectralFlux: Float = 0,
         valence: Float = 0, arousal: Float = 0,
-        time: Float = 0, deltaTime: Float = 0
+        time: Float = 0, deltaTime: Float = 0,
+        aspectRatio: Float = 1.777
     ) {
         self.bass = bass; self.mid = mid; self.treble = treble
         self.bassAtt = bassAtt; self.midAtt = midAtt; self.trebleAtt = trebleAtt
@@ -194,7 +201,8 @@ public struct FeatureVector: Sendable {
         self.spectralCentroid = spectralCentroid; self.spectralFlux = spectralFlux
         self.valence = valence; self.arousal = arousal
         self.time = time; self.deltaTime = deltaTime
-        self._pad0 = 0; self._pad1 = 0
+        self._pad0 = 0
+        self.aspectRatio = aspectRatio
     }
 
     /// All-zero feature vector.

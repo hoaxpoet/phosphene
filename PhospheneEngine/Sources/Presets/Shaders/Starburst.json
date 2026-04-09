@@ -12,5 +12,6 @@
   "decay": 0.95,
   "beat_sensitivity": 1.0,
   "use_feedback": true,
+  "use_particles": true,
   "fragment_function": "starburst_fragment"
 }

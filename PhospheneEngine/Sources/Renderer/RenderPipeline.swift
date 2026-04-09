@@ -233,6 +233,8 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
         var features = featuresLock.withLock { latestFeatures }
         features.time = elapsed
         features.deltaTime = deltaTime
+        let size = view.drawableSize
+        features.aspectRatio = size.height > 0 ? Float(size.width / size.height) : 1.777
 
         // Snapshot state for this frame.
         let particles = particleLock.withLock { particleGeometry }
@@ -331,7 +333,16 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
 
     // MARK: - Feedback Rendering (Milkdrop-Style)
 
-    /// Three-pass feedback render: warp → composite → blit.
+    /// Feedback render path. Two modes depending on whether particles are attached:
+    ///
+    /// - **Particle mode** (Murmuration): warp (unused) → preset + particles drawn
+    ///   directly to the drawable. The feedback texture is maintained but not shown,
+    ///   to prevent additive washout over a vivid sky backdrop.
+    ///
+    /// - **Surface mode** (Membrane): warp → composite (additive) → blit to drawable.
+    ///   The preset's contribution accumulates into the feedback texture each frame
+    ///   and the warped/decayed previous state provides visual memory. This is the
+    ///   true Milkdrop-style feedback loop.
     private func drawWithFeedback(
         commandBuffer: MTLCommandBuffer,
         view: MTKView,
@@ -346,58 +357,123 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
         let currentTex = textures[texIndex]
         let previousTex = textures[1 - texIndex]
         var fbParams = params
-
-        // Update beat value from live features.
         fbParams.beatValue = params.beatValue
 
-        // ── Pass 1: Feedback warp ────────────────────────────────────
-        // Read previous frame, apply zoom/rotation/decay, write to current.
-        let warpDescriptor = MTLRenderPassDescriptor()
-        warpDescriptor.colorAttachments[0].texture = currentTex
-        warpDescriptor.colorAttachments[0].loadAction = .clear
-        warpDescriptor.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
-        warpDescriptor.colorAttachments[0].storeAction = .store
+        runWarpPass(
+            commandBuffer: commandBuffer, features: &features, params: &fbParams,
+            target: currentTex, source: previousTex
+        )
 
-        if let warpEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: warpDescriptor) {
-            warpEncoder.setRenderPipelineState(feedbackWarpPipelineState)
-            warpEncoder.setFragmentBytes(&features, length: MemoryLayout<FeatureVector>.stride, index: 0)
-            warpEncoder.setFragmentBytes(&fbParams, length: MemoryLayout<FeedbackParams>.stride, index: 1)
-            warpEncoder.setFragmentTexture(previousTex, index: 0)
-            warpEncoder.setFragmentSamplerState(feedbackSamplerState, index: 0)
-            warpEncoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
-            warpEncoder.endEncoding()
+        if particles != nil {
+            drawParticleMode(
+                commandBuffer: commandBuffer, view: view,
+                features: &features, activePipeline: activePipeline, particles: particles
+            )
+        } else {
+            drawSurfaceMode(
+                commandBuffer: commandBuffer, view: view,
+                features: &features, composePipeline: composePipeline,
+                feedbackTexture: currentTex
+            )
         }
+    }
 
-        // Skip Pass 2 — don't composite anything into the feedback texture.
-        // The feedback loop is not used for this preset's visual (birds are
-        // drawn directly, sky is drawn directly).
+    /// Pass 1 of the feedback loop: read the previous texture, apply decay and
+    /// any subtle warp, write the result into the current texture.
+    private func runWarpPass(
+        commandBuffer: MTLCommandBuffer,
+        features: inout FeatureVector,
+        params: inout FeedbackParams,
+        target: MTLTexture,
+        source: MTLTexture
+    ) {
+        let desc = MTLRenderPassDescriptor()
+        desc.colorAttachments[0].texture = target
+        desc.colorAttachments[0].loadAction = .clear
+        desc.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
+        desc.colorAttachments[0].storeAction = .store
 
-        // ── Drawable pass: sky → birds ───────────────────────────────
-        // Draw sky directly (NOT through feedback — prevents white washout).
-        // Then draw birds as dark silhouettes on top.
+        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: desc) else {
+            return
+        }
+        encoder.setRenderPipelineState(feedbackWarpPipelineState)
+        encoder.setFragmentBytes(&features, length: MemoryLayout<FeatureVector>.stride, index: 0)
+        encoder.setFragmentBytes(&params, length: MemoryLayout<FeedbackParams>.stride, index: 1)
+        encoder.setFragmentTexture(source, index: 0)
+        encoder.setFragmentSamplerState(feedbackSamplerState, index: 0)
+        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+        encoder.endEncoding()
+    }
+
+    /// Particle mode drawable pass: render the preset + particles directly to the
+    /// drawable without blending through the feedback texture.
+    private func drawParticleMode(
+        commandBuffer: MTLCommandBuffer,
+        view: MTKView,
+        features: inout FeatureVector,
+        activePipeline: MTLRenderPipelineState,
+        particles: ProceduralGeometry?
+    ) {
         guard let descriptor = view.currentRenderPassDescriptor,
               let drawable = view.currentDrawable else {
             return
         }
-
         descriptor.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
         descriptor.colorAttachments[0].loadAction = .clear
         descriptor.colorAttachments[0].storeAction = .store
 
-        if let drawEncoder = commandBuffer.makeRenderCommandEncoder(descriptor: descriptor) {
-            // Sky: rendered with the standard (non-blended) preset pipeline.
-            drawEncoder.setRenderPipelineState(activePipeline)
-            drawEncoder.setFragmentBytes(&features, length: MemoryLayout<FeatureVector>.stride, index: 0)
-            drawEncoder.setFragmentBuffer(fftMagnitudeBuffer, offset: 0, index: 1)
-            drawEncoder.setFragmentBuffer(waveformBuffer, offset: 0, index: 2)
-            drawEncoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+        if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: descriptor) {
+            encoder.setRenderPipelineState(activePipeline)
+            encoder.setFragmentBytes(&features, length: MemoryLayout<FeatureVector>.stride, index: 0)
+            encoder.setFragmentBuffer(fftMagnitudeBuffer, offset: 0, index: 1)
+            encoder.setFragmentBuffer(waveformBuffer, offset: 0, index: 2)
+            encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+            particles?.render(encoder: encoder, features: features)
+            encoder.endEncoding()
+        }
+        commandBuffer.present(drawable)
+    }
 
-            // Birds: dark silhouettes on top (alpha blended).
-            particles?.render(encoder: drawEncoder, features: features)
+    /// Surface mode: composite the preset additively into the (already warped)
+    /// feedback texture, then blit the result to the drawable.
+    private func drawSurfaceMode(
+        commandBuffer: MTLCommandBuffer,
+        view: MTKView,
+        features: inout FeatureVector,
+        composePipeline: MTLRenderPipelineState,
+        feedbackTexture: MTLTexture
+    ) {
+        // Pass 2: additive composite into the warped feedback texture.
+        let composeDesc = MTLRenderPassDescriptor()
+        composeDesc.colorAttachments[0].texture = feedbackTexture
+        composeDesc.colorAttachments[0].loadAction = .load
+        composeDesc.colorAttachments[0].storeAction = .store
 
-            drawEncoder.endEncoding()
+        if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: composeDesc) {
+            encoder.setRenderPipelineState(composePipeline)
+            encoder.setFragmentBytes(&features, length: MemoryLayout<FeatureVector>.stride, index: 0)
+            encoder.setFragmentBuffer(fftMagnitudeBuffer, offset: 0, index: 1)
+            encoder.setFragmentBuffer(waveformBuffer, offset: 0, index: 2)
+            encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+            encoder.endEncoding()
         }
 
+        // Drawable pass: blit feedback texture to screen.
+        guard let descriptor = view.currentRenderPassDescriptor,
+              let drawable = view.currentDrawable else {
+            return
+        }
+        descriptor.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
+        descriptor.colorAttachments[0].loadAction = .clear
+        descriptor.colorAttachments[0].storeAction = .store
+
+        if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: descriptor) {
+            encoder.setRenderPipelineState(feedbackBlitPipelineState)
+            encoder.setFragmentTexture(feedbackTexture, index: 0)
+            encoder.setFragmentSamplerState(feedbackSamplerState, index: 0)
+            encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+            encoder.endEncoding()
+        }
         commandBuffer.present(drawable)
     }
 }

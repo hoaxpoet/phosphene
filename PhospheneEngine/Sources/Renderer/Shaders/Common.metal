@@ -16,7 +16,7 @@ struct FeatureVector {
     float spectral_centroid, spectral_flux;
     float valence, arousal;
     float time, delta_time;
-    float _pad0, _pad1;
+    float _pad0, aspect_ratio;
 };
 
 // MARK: - FeedbackParams

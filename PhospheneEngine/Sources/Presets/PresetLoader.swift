@@ -253,12 +253,17 @@ public final class PresetLoader: @unchecked Sendable {
             return nil
         }
 
-        // Feedback pipeline (additive blending — used for feedback composite pass).
+        // Feedback pipeline (source-alpha blending — used for feedback composite pass).
+        // The shader outputs (rgb, alpha) where alpha controls how much the new
+        // frame replaces the warped/decayed history: alpha=1 fully replaces,
+        // alpha=0.3 blends 30% new with 70% history. RGB uses standard alpha
+        // compositing; alpha channel accumulates so the feedback texture stays
+        // opaque for the drawable blit.
         var feedbackState: MTLRenderPipelineState?
         if descriptor.useFeedback {
             pipelineDescriptor.colorAttachments[0].isBlendingEnabled = true
-            pipelineDescriptor.colorAttachments[0].sourceRGBBlendFactor = .one
-            pipelineDescriptor.colorAttachments[0].destinationRGBBlendFactor = .one
+            pipelineDescriptor.colorAttachments[0].sourceRGBBlendFactor = .sourceAlpha
+            pipelineDescriptor.colorAttachments[0].destinationRGBBlendFactor = .oneMinusSourceAlpha
             pipelineDescriptor.colorAttachments[0].sourceAlphaBlendFactor = .one
             pipelineDescriptor.colorAttachments[0].destinationAlphaBlendFactor = .one
             do {
@@ -354,7 +359,7 @@ public final class PresetLoader: @unchecked Sendable {
         float spectral_centroid, spectral_flux;
         float valence, arousal;
         float time, delta_time;
-        float _pad0, _pad1;
+        float _pad0, aspect_ratio;
     };
 
     struct VertexOut {
