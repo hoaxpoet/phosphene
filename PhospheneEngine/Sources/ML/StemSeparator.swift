@@ -1,11 +1,16 @@
 // StemSeparator — CoreML-powered audio stem separation using Open-Unmix HQ.
-// Accepts interleaved PCM audio, performs STFT via Accelerate, runs CoreML
-// mask estimation on the ANE, applies masks and iSTFT to produce four
-// separated stem waveforms (vocals, drums, bass, other) in UMA buffers.
+// Accepts interleaved PCM audio, performs STFT via the GPU-accelerated
+// `StemFFTEngine`, runs CoreML mask estimation on the ANE, applies masks
+// and iSTFT to produce four separated stem waveforms (vocals, drums, bass,
+// other) in UMA buffers.
 //
-// STFT/iSTFT is handled in Swift because CoreML has no complex number support.
-// The model operates on magnitude spectrograms only; phase is preserved from
-// the original STFT and reapplied during iSTFT reconstruction.
+// STFT/iSTFT is handled outside CoreML because CoreML has no complex number
+// support. The model operates on magnitude spectrograms only; phase is
+// preserved from the original STFT and reapplied during iSTFT
+// reconstruction. As of Increment 3.1a the transforms run on the GPU via
+// MPSGraph (see `StemFFT.swift`); the legacy Accelerate/vDSP path is
+// preserved inside `StemFFTEngine` behind `forceCPUFallback` for
+// cross-validation testing.
 //
 // All heavy allocations happen at init time. Per-call allocations are limited
 // to MLShapedArray creation (CoreML requirement).
@@ -13,13 +18,11 @@
 // MLShapedArray is used instead of raw MLMultiArray pointer access because
 // ANE output buffers have padded strides with unmapped memory in the padding
 // regions. MLShapedArray.withUnsafeShapedBufferPointer handles these strides
-// correctly. A future optimization (GPU STFT/iSTFT via Metal compute shaders)
-// would eliminate the CPU-side extraction entirely.
+// correctly.
 
 import Foundation
 import Metal
 import CoreML
-import Accelerate
 import Shared
 import Audio
 import os.log
@@ -78,16 +81,12 @@ public final class StemSeparator: StemSeparating, @unchecked Sendable {
     /// Default output buffer capacity (enough for ~10s at 44100 Hz).
     private static let defaultBufferCapacity = 441_000
 
-    // MARK: - Pre-allocated STFT Buffers
+    // MARK: - STFT Engine
 
-    /// Hann window for STFT.
-    private let window: [Float]
-
-    /// vDSP FFT setup for nFFT-point transforms.
-    private let fftSetup: FFTSetup
-
-    /// Log2 of nFFT for vDSP.
-    private static let log2n = vDSP_Length(log2(Double(nFFT)))
+    /// GPU-accelerated STFT/iSTFT engine (Increment 3.1a). Replaces the
+    /// original CPU-based Accelerate path. The engine keeps a CPU vDSP
+    /// fallback behind `forceCPUFallback` for cross-validation testing.
+    private let fftEngine: StemFFTEngine
 
     /// Lock for thread safety.
     private let lock = NSLock()
@@ -125,22 +124,14 @@ public final class StemSeparator: StemSeparating, @unchecked Sendable {
         }
         self.stemBuffers = buffers
 
-        // Create Hann window.
-        var win = [Float](repeating: 0, count: Self.nFFT)
-        vDSP_hann_window(&win, vDSP_Length(Self.nFFT), Int32(vDSP_HANN_NORM))
-        self.window = win
-
-        // Create FFT setup.
-        guard let setup = vDSP_create_fftsetup(Self.log2n, FFTRadix(kFFTRadix2)) else {
-            throw StemSeparationError.modelLoadFailed("Failed to create vDSP FFT setup")
+        // GPU-accelerated STFT/iSTFT engine (MPSGraph + vDSP fallback).
+        do {
+            self.fftEngine = try StemFFTEngine(device: device)
+        } catch {
+            throw StemSeparationError.modelLoadFailed("Failed to initialize StemFFTEngine: \(error)")
         }
-        self.fftSetup = setup
 
-        logger.info("StemSeparator loaded: \(Self.nFFT)-point STFT, \(Self.nBins) bins, ANE inference")
-    }
-
-    deinit {
-        vDSP_destroy_fftsetup(fftSetup)
+        logger.info("StemSeparator loaded: \(Self.nFFT)-point STFT via GPU, \(Self.nBins) bins, ANE inference")
     }
 
     // MARK: - Separation
@@ -247,80 +238,14 @@ public final class StemSeparator: StemSeparating, @unchecked Sendable {
     /// Matches PyTorch's `torch.stft(center=True)`: input is zero-padded by
     /// nFFT/2 on each side, giving `nb_frames = num_samples // hop_length + 1`.
     ///
+    /// Delegates to ``StemFFTEngine``, which routes to the GPU MPSGraph path
+    /// when the frame count matches `modelFrameCount` and falls back to the
+    /// preserved vDSP CPU path otherwise.
+    ///
     /// - Parameter mono: Mono float32 samples.
     /// - Returns: Tuple of (magnitude, phase) arrays, each of length nBins * nbFrames.
     private func stft(mono: [Float]) -> (magnitude: [Float], phase: [Float]) {
-        // Center padding: pad by nFFT/2 on each side.
-        let pad = Self.nFFT / 2
-        var padded = [Float](repeating: 0, count: mono.count + 2 * pad)
-        for i in 0..<mono.count {
-            padded[pad + i] = mono[i]
-        }
-
-        let sampleCount = padded.count
-        let nbFrames = (sampleCount - Self.nFFT) / Self.hopLength + 1
-        let totalBins = Self.nBins * nbFrames
-
-        var magnitude = [Float](repeating: 0, count: totalBins)
-        var phase = [Float](repeating: 0, count: totalBins)
-
-        let halfN = Self.nFFT / 2
-
-        // Pre-allocate per-frame working buffers.
-        var windowedFrame = [Float](repeating: 0, count: Self.nFFT)
-        var realPart = [Float](repeating: 0, count: halfN)
-        var imagPart = [Float](repeating: 0, count: halfN)
-
-        for frame in 0..<nbFrames {
-            let offset = frame * Self.hopLength
-
-            // Extract and window the frame.
-            for i in 0..<Self.nFFT {
-                windowedFrame[i] = padded[offset + i] * window[i]
-            }
-
-            // Forward FFT.
-            windowedFrame.withUnsafeBufferPointer { srcPtr in
-                realPart.withUnsafeMutableBufferPointer { realPtr in
-                    imagPart.withUnsafeMutableBufferPointer { imagPtr in
-                        // swiftlint:disable force_unwrapping
-                        var splitComplex = DSPSplitComplex(
-                            realp: realPtr.baseAddress!,
-                            imagp: imagPtr.baseAddress!
-                        )
-                        srcPtr.baseAddress!.withMemoryRebound(
-                            to: DSPComplex.self, capacity: halfN
-                        ) { complexPtr in
-                            vDSP_ctoz(complexPtr, 2, &splitComplex, 1, vDSP_Length(halfN))
-                        }
-                        vDSP_fft_zrip(fftSetup, &splitComplex, 1, Self.log2n, FFTDirection(FFT_FORWARD))
-                        // swiftlint:enable force_unwrapping
-                    }
-                }
-            }
-
-            // Extract magnitude and phase for nBins frequencies.
-            // Bin 0 (DC) and bin halfN (Nyquist) are packed in realPart[0] and imagPart[0].
-            let binOffset = frame * Self.nBins
-
-            // DC component (bin 0).
-            magnitude[binOffset] = abs(realPart[0]) / Float(Self.nFFT)
-            phase[binOffset] = realPart[0] >= 0 ? 0 : .pi
-
-            // Regular bins 1..<halfN.
-            for bin in 1..<halfN {
-                let re = realPart[bin]
-                let im = imagPart[bin]
-                magnitude[binOffset + bin] = sqrtf(re * re + im * im) / Float(Self.nFFT)
-                phase[binOffset + bin] = atan2f(im, re)
-            }
-
-            // Nyquist (bin halfN = nBins - 1).
-            magnitude[binOffset + halfN] = abs(imagPart[0]) / Float(Self.nFFT)
-            phase[binOffset + halfN] = imagPart[0] >= 0 ? 0 : .pi
-        }
-
-        return (magnitude, phase)
+        return fftEngine.forward(mono: mono)
     }
 
     // MARK: - iSTFT
@@ -331,6 +256,8 @@ public final class StemSeparator: StemSeparating, @unchecked Sendable {
     /// When `originalLength` is provided, strips center padding to return
     /// a waveform matching the original (pre-padded) length.
     ///
+    /// Delegates to ``StemFFTEngine``.
+    ///
     /// - Parameters:
     ///   - magnitude: Magnitude spectrogram (nBins * nbFrames).
     ///   - phase: Phase spectrogram (nBins * nbFrames).
@@ -339,84 +266,12 @@ public final class StemSeparator: StemSeparating, @unchecked Sendable {
     /// - Returns: Reconstructed mono waveform.
     private func istft(magnitude: [Float], phase: [Float], nbFrames: Int,
                        originalLength: Int? = nil) -> [Float] {
-        let outputLength = (nbFrames - 1) * Self.hopLength + Self.nFFT
-        var output = [Float](repeating: 0, count: outputLength)
-        var windowSum = [Float](repeating: 0, count: outputLength)
-
-        let halfN = Self.nFFT / 2
-
-        var realPart = [Float](repeating: 0, count: halfN)
-        var imagPart = [Float](repeating: 0, count: halfN)
-        var timeFrame = [Float](repeating: 0, count: Self.nFFT)
-
-        for frame in 0..<nbFrames {
-            let binOffset = frame * Self.nBins
-
-            // Reconstruct split complex from magnitude and phase.
-            // DC (bin 0): pack into realPart[0].
-            realPart[0] = magnitude[binOffset] * cosf(phase[binOffset]) * Float(Self.nFFT)
-
-            // Nyquist (bin halfN): pack into imagPart[0].
-            imagPart[0] = magnitude[binOffset + halfN] * cosf(phase[binOffset + halfN]) * Float(Self.nFFT)
-
-            // Regular bins.
-            for bin in 1..<halfN {
-                let mag = magnitude[binOffset + bin] * Float(Self.nFFT)
-                let ph = phase[binOffset + bin]
-                realPart[bin] = mag * cosf(ph)
-                imagPart[bin] = mag * sinf(ph)
-            }
-
-            // Inverse FFT.
-            realPart.withUnsafeMutableBufferPointer { realPtr in
-                imagPart.withUnsafeMutableBufferPointer { imagPtr in
-                    // swiftlint:disable force_unwrapping
-                    var splitComplex = DSPSplitComplex(
-                        realp: realPtr.baseAddress!,
-                        imagp: imagPtr.baseAddress!
-                    )
-                    vDSP_fft_zrip(fftSetup, &splitComplex, 1, Self.log2n, FFTDirection(FFT_INVERSE))
-
-                    // Convert back to interleaved.
-                    timeFrame.withUnsafeMutableBufferPointer { dstPtr in
-                        dstPtr.baseAddress!.withMemoryRebound(
-                            to: DSPComplex.self, capacity: halfN
-                        ) { complexPtr in
-                            vDSP_ztoc(&splitComplex, 1, complexPtr, 2, vDSP_Length(halfN))
-                        }
-                    }
-                    // swiftlint:enable force_unwrapping
-                }
-            }
-
-            // Scale by 1/(2*nFFT) — vDSP's inverse FFT includes a factor of 2.
-            var scale = 1.0 / Float(2 * Self.nFFT)
-            vDSP_vsmul(timeFrame, 1, &scale, &timeFrame, 1, vDSP_Length(Self.nFFT))
-
-            // Overlap-add with window.
-            let outOffset = frame * Self.hopLength
-            for i in 0..<Self.nFFT {
-                output[outOffset + i] += timeFrame[i] * window[i]
-                windowSum[outOffset + i] += window[i] * window[i]
-            }
-        }
-
-        // Normalize by window sum to compensate for overlap.
-        for i in 0..<outputLength {
-            if windowSum[i] > 1e-8 {
-                output[i] /= windowSum[i]
-            }
-        }
-
-        // Strip center padding if originalLength is specified.
-        if let origLen = originalLength {
-            let pad = Self.nFFT / 2
-            let start = min(pad, output.count)
-            let end = min(start + origLen, output.count)
-            return Array(output[start..<end])
-        }
-
-        return output
+        return fftEngine.inverse(
+            magnitude: magnitude,
+            phase: phase,
+            nbFrames: nbFrames,
+            originalLength: originalLength
+        )
     }
 
     // MARK: - Spectrogram Packing / Unpacking
@@ -526,7 +381,7 @@ public final class StemSeparator: StemSeparating, @unchecked Sendable {
 
     // MARK: - Resampling
 
-    /// Resample audio from one sample rate to another using vDSP.
+    /// Resample audio from one sample rate to another via linear interpolation.
     ///
     /// - Parameters:
     ///   - audio: Input samples (interleaved if multi-channel).
