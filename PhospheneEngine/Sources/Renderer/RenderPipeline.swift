@@ -194,7 +194,8 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
         var textures: [MTLTexture] = []
         for i in 0..<2 {
             guard let tex = context.makeSharedTexture(
-                width: width, height: height,
+                width: width,
+                height: height,
                 usage: [.renderTarget, .shaderRead]
             ) else {
                 logger.error("Failed to allocate feedback texture \(i)")
@@ -244,12 +245,13 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
         let drawableSize = view.drawableSize
         feedbackLock.withLock {
             if feedbackEnabled && feedbackTextures.isEmpty && drawableSize.width > 0 {
-                let w = max(Int(drawableSize.width), 1)
-                let h = max(Int(drawableSize.height), 1)
+                let texWidth = max(Int(drawableSize.width), 1)
+                let texHeight = max(Int(drawableSize.height), 1)
                 var textures: [MTLTexture] = []
                 for _ in 0..<2 {
                     if let tex = context.makeSharedTexture(
-                        width: w, height: h,
+                        width: texWidth,
+                        height: texHeight,
                         usage: [.renderTarget, .shaderRead]
                     ) {
                         textures.append(tex)
@@ -258,7 +260,7 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
                 if textures.count == 2 {
                     feedbackTextures = textures
                     feedbackIndex = 0
-                    logger.info("Feedback textures lazy-allocated: \(w)×\(h)")
+                    logger.info("Feedback textures lazy-allocated: \(texWidth)×\(texHeight)")
                 }
             }
         }
@@ -275,17 +277,23 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
         if fbEnabled, let params = fbParams, let composePipeline = fbCompose,
            fbTextures.count == 2 {
             drawWithFeedback(
-                commandBuffer: commandBuffer, view: view,
-                features: &features, params: params,
-                activePipeline: activePipeline, composePipeline: composePipeline,
+                commandBuffer: commandBuffer,
+                view: view,
+                features: &features,
+                params: params,
+                activePipeline: activePipeline,
+                composePipeline: composePipeline,
                 particles: particles,
-                textures: fbTextures, texIndex: fbIndex
+                textures: fbTextures,
+                texIndex: fbIndex
             )
             feedbackLock.withLock { feedbackIndex = 1 - feedbackIndex }
         } else {
             drawDirect(
-                commandBuffer: commandBuffer, view: view,
-                features: &features, activePipeline: activePipeline,
+                commandBuffer: commandBuffer,
+                view: view,
+                features: &features,
+                activePipeline: activePipeline,
                 particles: particles
             )
         }
@@ -360,19 +368,27 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
         fbParams.beatValue = params.beatValue
 
         runWarpPass(
-            commandBuffer: commandBuffer, features: &features, params: &fbParams,
-            target: currentTex, source: previousTex
+            commandBuffer: commandBuffer,
+            features: &features,
+            params: &fbParams,
+            target: currentTex,
+            source: previousTex
         )
 
         if particles != nil {
             drawParticleMode(
-                commandBuffer: commandBuffer, view: view,
-                features: &features, activePipeline: activePipeline, particles: particles
+                commandBuffer: commandBuffer,
+                view: view,
+                features: &features,
+                activePipeline: activePipeline,
+                particles: particles
             )
         } else {
             drawSurfaceMode(
-                commandBuffer: commandBuffer, view: view,
-                features: &features, composePipeline: composePipeline,
+                commandBuffer: commandBuffer,
+                view: view,
+                features: &features,
+                composePipeline: composePipeline,
                 feedbackTexture: currentTex
             )
         }

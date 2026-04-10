@@ -95,7 +95,7 @@ public final class SpotifyFetcher: MetadataFetching, @unchecked Sendable {
         guard let credData = credentials.data(using: .utf8) else { return nil }
         let base64 = credData.base64EncodedString()
         request.setValue("Basic \(base64)", forHTTPHeaderField: "Authorization")
-        request.httpBody = "grant_type=client_credentials".data(using: .utf8)
+        request.httpBody = Data("grant_type=client_credentials".utf8)
 
         do {
             let (data, response) = try await URLSession.shared.data(for: request)

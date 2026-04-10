@@ -47,6 +47,9 @@ public final class LookaheadBuffer: @unchecked Sendable {
     private var count: Int = 0
     private let lock = NSLock()
 
+    /// Whether the buffer has any enqueued frames. Must be called with `lock` held.
+    private var isEmptyUnlocked: Bool { count < 1 }
+
     /// Current lookahead delay in seconds.
     private var _delay: Double
 
@@ -102,7 +105,7 @@ public final class LookaheadBuffer: @unchecked Sendable {
     /// Returns `nil` if the buffer is empty.
     public func dequeueAnalysisHead() -> AnalyzedFrame? {
         lock.withLock {
-            guard count > 0 else { return nil }
+            guard !isEmptyUnlocked else { return nil }
             let latestIndex = (head - 1 + capacity) % capacity
             return storage[latestIndex]
         }
@@ -116,7 +119,7 @@ public final class LookaheadBuffer: @unchecked Sendable {
     /// When `delay` is 0, returns the same frame as `dequeueAnalysisHead()`.
     public func dequeueRenderHead() -> AnalyzedFrame? {
         lock.withLock {
-            guard count > 0 else { return nil }
+            guard !isEmptyUnlocked else { return nil }
 
             let latestIndex = (head - 1 + capacity) % capacity
             let latestTimestamp = storage[latestIndex].timestamp

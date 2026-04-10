@@ -175,7 +175,10 @@ public final class ChromaExtractor: @unchecked Sendable {
         }
         self.keyProfiles = profiles
 
-        logger.info("ChromaExtractor bins per pitch class: \(binsPerPC.enumerated().map { "\(Self.pitchNames[$0.offset])=\($0.element)" }.joined(separator: " "))")
+        let binsPerPCDesc = binsPerPC.enumerated()
+            .map { "\(Self.pitchNames[$0.offset])=\($0.element)" }
+            .joined(separator: " ")
+        logger.info("ChromaExtractor bins per pitch class: \(binsPerPCDesc)")
 
         logger.info("ChromaExtractor created: \(binCount) bins, reference A4=\(referenceA4) Hz")
     }

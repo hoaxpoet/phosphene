@@ -210,9 +210,15 @@ public final class BeatDetector: @unchecked Sendable {
         guard count > 0 && fps > 0 && deltaTime > 0 else {
             return Result(
                 onsets: [Bool](repeating: false, count: 6),
-                beatBass: 0, beatMid: 0, beatTreble: 0, beatComposite: 0,
-                estimatedTempo: nil, tempoConfidence: 0,
-                stableBPM: 0, instantBPM: 0, bassOnsetCount: 0
+                beatBass: 0,
+                beatMid: 0,
+                beatTreble: 0,
+                beatComposite: 0,
+                estimatedTempo: nil,
+                tempoConfidence: 0,
+                stableBPM: 0,
+                instantBPM: 0,
+                bassOnsetCount: 0
             )
         }
 
@@ -385,7 +391,8 @@ public final class BeatDetector: @unchecked Sendable {
 
             var rms: Float = 0
             magnitudes.withUnsafeBufferPointer { ptr in
-                vDSP_rmsqv(ptr.baseAddress! + start, 1, &rms, vDSP_Length(count))
+                guard let base = ptr.baseAddress else { return }
+                vDSP_rmsqv(base + start, 1, &rms, vDSP_Length(count))
             }
             return rms
         }
@@ -437,8 +444,12 @@ public final class BeatDetector: @unchecked Sendable {
         guard recentTimestamps.count >= 4 else {
             tempoDebug = String(
                 format: "recent<4(%d) e=%.1f ws=%.1f first=%.1f last=%.1f buf=%d",
-                recentTimestamps.count, elapsedTime, windowStart,
-                firstTs, lastTs, onsetTimestampCount
+                recentTimestamps.count,
+                elapsedTime,
+                windowStart,
+                firstTs,
+                lastTs,
+                onsetTimestampCount
             )
             return
         }
@@ -464,11 +475,9 @@ public final class BeatDetector: @unchecked Sendable {
         // Find peak bucket.
         var peakCount = 0
         var peakBucket = 0
-        for i in 0..<141 {
-            if histogram[i] > peakCount {
-                peakCount = histogram[i]
-                peakBucket = i
-            }
+        for i in 0..<141 where histogram[i] > peakCount {
+            peakCount = histogram[i]
+            peakBucket = i
         }
 
         guard peakCount >= 2 else {
@@ -517,8 +526,12 @@ public final class BeatDetector: @unchecked Sendable {
         let minIOI = ioiValues.min() ?? 0
         tempoDebug = String(
             format: "ok r=%d bpm=%.0f pk=%d@%d avg_ioi=%.3f min_ioi=%.3f",
-            recentTimestamps.count, bestBPM, peakCount, peakBucket + 60,
-            avgIOI, minIOI
+            recentTimestamps.count,
+            bestBPM,
+            peakCount,
+            peakBucket + 60,
+            avgIOI,
+            minIOI
         )
 
         // Add to tempo estimates circular buffer.
@@ -582,9 +595,14 @@ public final class BeatDetector: @unchecked Sendable {
             let overlapCount = onsetHistoryCount - lag
 
             // Dot product of signal with itself at offset `lag`.
-            vDSP_dotpr(linear, 1,
-                       Array(linear[lag..<lag + overlapCount]), 1,
-                       &correlation, vDSP_Length(overlapCount))
+            vDSP_dotpr(
+                linear,
+                1,
+                Array(linear[lag..<lag + overlapCount]),
+                1,
+                &correlation,
+                vDSP_Length(overlapCount)
+            )
 
             // Normalize by overlap count.
             correlation /= Float(overlapCount)
@@ -605,9 +623,14 @@ public final class BeatDetector: @unchecked Sendable {
         if halfLag >= minLag {
             var halfCorr: Float = 0
             let overlapHalf = onsetHistoryCount - halfLag
-            vDSP_dotpr(linear, 1,
-                       Array(linear[halfLag..<halfLag + overlapHalf]), 1,
-                       &halfCorr, vDSP_Length(overlapHalf))
+            vDSP_dotpr(
+                linear,
+                1,
+                Array(linear[halfLag..<halfLag + overlapHalf]),
+                1,
+                &halfCorr,
+                vDSP_Length(overlapHalf)
+            )
             halfCorr /= Float(overlapHalf)
             // If half-lag correlation is at least 60% of best, use it.
             if halfCorr > bestCorrelation * 0.6 {
@@ -625,9 +648,14 @@ public final class BeatDetector: @unchecked Sendable {
         for lag in minLag...min(maxLag, onsetHistoryCount / 2) {
             var corr: Float = 0
             let overlapCount = onsetHistoryCount - lag
-            vDSP_dotpr(linear, 1,
-                       Array(linear[lag..<lag + overlapCount]), 1,
-                       &corr, vDSP_Length(overlapCount))
+            vDSP_dotpr(
+                linear,
+                1,
+                Array(linear[lag..<lag + overlapCount]),
+                1,
+                &corr,
+                vDSP_Length(overlapCount)
+            )
             corr /= Float(overlapCount)
             meanCorrelation += corr
             count += 1

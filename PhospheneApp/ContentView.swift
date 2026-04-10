@@ -160,8 +160,6 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Feature capture file handle.
     private var captureHandle: FileHandle?
 
-
-
     /// Path to the current capture file.
     private(set) var captureFilePath: String?
 
@@ -352,7 +350,8 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
                     // Write capture row (~every 10th frame to avoid huge files).
                     if self.analysisFrameCount % 10 == 0 {
                         self.writeCaptureRow(
-                            features: features, fv: fv,
+                            features: features,
+                            fv: fv,
                             magMax: magnitudes.max() ?? 0,
                             key: mir.estimatedKey
                         )
@@ -369,7 +368,8 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
                                 mir.stableBPM ?? 0,
                                 mir.tempoDebug,
                                 mir.stableKey ?? mir.estimatedKey ?? "nil",
-                                state.valence, state.arousal,
+                                state.valence,
+                                state.arousal,
                                 state.quadrant.rawValue
                             )
                             diagLog?.write(Data(line.utf8))
@@ -378,7 +378,8 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
                             + fv.midHigh + fv.highMid + fv.high
                         let diag = MIRDiagnostics(
                             magMax: magnitudes.max() ?? 0,
-                            bass: fv.bass, mid: fv.mid,
+                            bass: fv.bass,
+                            mid: fv.mid,
                             centroid: fv.spectralCentroid,
                             flux: fv.spectralFlux,
                             majorCorr: mir.latestMajorKeyCorrelation,
@@ -623,10 +624,20 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
             track.replacingOccurrences(of: ",", with: ";"),
             artist.replacingOccurrences(of: ",", with: ";"),
             genre.replacingOccurrences(of: ",", with: "|"),
-            features[0], features[1], features[2],
-            features[3], features[4], features[5],
-            features[6], features[7], features[8], features[9],
-            fv.bass, fv.mid, fv.treble, magMax,
+            features[0],
+            features[1],
+            features[2],
+            features[3],
+            features[4],
+            features[5],
+            features[6],
+            features[7],
+            features[8],
+            features[9],
+            fv.bass,
+            fv.mid,
+            fv.treble,
+            magMax,
             key ?? "nil"
         )
         handle.write(Data(row.utf8))

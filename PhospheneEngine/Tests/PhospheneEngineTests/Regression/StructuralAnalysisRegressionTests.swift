@@ -41,10 +41,12 @@ import Foundation
         let chroma = Array(floatFeatures[0..<12])
         _ = analyzer.process(
             chroma: chroma,
-            spectralCentroid: floatFeatures[12],
-            spectralFlux: floatFeatures[13],
-            spectralRolloff: floatFeatures[14],
-            energy: floatFeatures[15],
+            spectral: StructuralAnalyzer.SpectralSummary(
+                centroid: floatFeatures[12],
+                flux: floatFeatures[13],
+                rolloff: floatFeatures[14],
+                energy: floatFeatures[15]
+            ),
             time: Float(time)
         )
     }

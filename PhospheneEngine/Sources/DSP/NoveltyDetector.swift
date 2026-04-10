@@ -86,7 +86,10 @@ public final class NoveltyDetector: @unchecked Sendable {
         self.noveltyCurve = [Float](repeating: 0, count: maxHistory)
 
         logger.info(
-            "NoveltyDetector created: kernelHalfWidth=\(kernelHalfWidth), minPeakDistance=\(minPeakDistance), threshold=\(thresholdMultiplier)"
+            """
+            NoveltyDetector created: kernelHalfWidth=\(kernelHalfWidth), \
+            minPeakDistance=\(minPeakDistance), threshold=\(thresholdMultiplier)
+            """
         )
     }
 
@@ -156,8 +159,12 @@ public final class NoveltyDetector: @unchecked Sendable {
                 if val > lastPeak.noveltyScore {
                     peaks[peaks.count - 1] = Boundary(
                         frameIndex: i,
-                        timestamp: timestampForFrame(i, currentTime: currentTime,
-                                                     totalFrames: frameCount, fps: fps),
+                        timestamp: timestampForFrame(
+                            i,
+                            currentTime: currentTime,
+                            totalFrames: frameCount,
+                            fps: fps
+                        ),
                         noveltyScore: val
                     )
                 }
@@ -172,8 +179,12 @@ public final class NoveltyDetector: @unchecked Sendable {
 
             peaks.append(Boundary(
                 frameIndex: i,
-                timestamp: timestampForFrame(i, currentTime: currentTime,
-                                             totalFrames: frameCount, fps: fps),
+                timestamp: timestampForFrame(
+                    i,
+                    currentTime: currentTime,
+                    totalFrames: frameCount,
+                    fps: fps
+                ),
                 noveltyScore: val
             ))
         }

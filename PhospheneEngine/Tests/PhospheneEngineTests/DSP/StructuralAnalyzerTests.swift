@@ -34,14 +34,17 @@ private func feedSection(
     fps: Float = 60
 ) -> StructuralPrediction {
     var prediction = StructuralPrediction.none
+    let summary = StructuralAnalyzer.SpectralSummary(
+        centroid: centroid,
+        flux: flux,
+        rolloff: rolloff,
+        energy: energy
+    )
     for i in 0..<frames {
         let time = startTime + Float(i) / fps
         prediction = analyzer.process(
             chroma: chroma,
-            spectralCentroid: centroid,
-            spectralFlux: flux,
-            spectralRolloff: rolloff,
-            energy: energy,
+            spectral: summary,
             time: time
         )
     }
@@ -168,18 +171,21 @@ private func feedSection(
     // Feed random-ish features — slowly varying, no clear sections.
     var prediction = StructuralPrediction.none
     for i in 0..<500 {
-        let t = Float(i) / 60.0
+        let time = Float(i) / 60.0
         let phase = Float(i) * 0.037  // Slow irrational phase.
         let chroma: [Float] = (0..<12).map { bin in
             0.3 + 0.2 * sinf(phase + Float(bin) * 0.5)
         }
+        let summary = StructuralAnalyzer.SpectralSummary(
+            centroid: 0.4 + 0.1 * sinf(phase),
+            flux: 0.2 + 0.1 * cosf(phase),
+            rolloff: 0.5,
+            energy: 0.4
+        )
         prediction = analyzer.process(
             chroma: chroma,
-            spectralCentroid: 0.4 + 0.1 * sinf(phase),
-            spectralFlux: 0.2 + 0.1 * cosf(phase),
-            spectralRolloff: 0.5,
-            energy: 0.4,
-            time: t
+            spectral: summary,
+            time: time
         )
     }
 
@@ -241,8 +247,13 @@ private func feedSection(
     // Process a frame — should behave like fresh.
     let prediction = analyzer.process(
         chroma: chromaA(),
-        spectralCentroid: 0.5, spectralFlux: 0.3,
-        spectralRolloff: 0.6, energy: 0.5, time: 0
+        spectral: StructuralAnalyzer.SpectralSummary(
+            centroid: 0.5,
+            flux: 0.3,
+            rolloff: 0.6,
+            energy: 0.5
+        ),
+        time: 0
     )
     #expect(prediction.confidence == 0, "After reset, confidence should be 0")
 }

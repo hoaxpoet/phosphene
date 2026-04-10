@@ -129,8 +129,14 @@ public final class SpectralAnalyzer: @unchecked Sendable {
 
         let count = min(magnitudes.count, binCount)
         guard count > 0 else {
-            return Result(centroid: 0, rolloff: 0, flux: 0,
-                          smoothedCentroid: 0, smoothedRolloff: 0, smoothedFlux: 0)
+            return Result(
+                centroid: 0,
+                rolloff: 0,
+                flux: 0,
+                smoothedCentroid: 0,
+                smoothedRolloff: 0,
+                smoothedFlux: 0
+            )
         }
 
         let centroid = computeCentroid(magnitudes: magnitudes, count: count)

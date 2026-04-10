@@ -215,15 +215,16 @@ public final class StemSeparator: StemSeparating, @unchecked Sendable {
         lock.unlock()
 
         // Build StemData metadata.
+        let frameTemplate = AudioFrame(
+            sampleRate: Self.modelSampleRate,
+            sampleCount: UInt32(monoSampleCount),
+            channelCount: 1
+        )
         let stemData = StemData(
-            vocals: AudioFrame(sampleRate: Self.modelSampleRate,
-                               sampleCount: UInt32(monoSampleCount), channelCount: 1),
-            drums: AudioFrame(sampleRate: Self.modelSampleRate,
-                              sampleCount: UInt32(monoSampleCount), channelCount: 1),
-            bass: AudioFrame(sampleRate: Self.modelSampleRate,
-                             sampleCount: UInt32(monoSampleCount), channelCount: 1),
-            other: AudioFrame(sampleRate: Self.modelSampleRate,
-                              sampleCount: UInt32(monoSampleCount), channelCount: 1)
+            vocals: frameTemplate,
+            drums: frameTemplate,
+            bass: frameTemplate,
+            other: frameTemplate
         )
 
         logger.debug("Separated \(audio.count) samples → \(monoSampleCount) samples/stem (\(nbFrames) STFT frames)")
@@ -293,11 +294,13 @@ public final class StemSeparator: StemSeparating, @unchecked Sendable {
 
         // Write via withUnsafeMutableShapedBufferPointer — handles padded strides correctly.
         shaped.withUnsafeMutableShapedBufferPointer { ptr, _, strides in
-            for f in 0..<Self.nBins {
-                for t in 0..<nbFrames {
-                    let srcIdx = t * Self.nBins + f
-                    ptr[0 * strides[0] + 0 * strides[1] + f * strides[2] + t * strides[3]] = magL[srcIdx]
-                    ptr[0 * strides[0] + 1 * strides[1] + f * strides[2] + t * strides[3]] = magR[srcIdx]
+            for bin in 0..<Self.nBins {
+                for frame in 0..<nbFrames {
+                    let srcIdx = frame * Self.nBins + bin
+                    let leftIdx = bin * strides[2] + frame * strides[3]
+                    let rightIdx = strides[1] + bin * strides[2] + frame * strides[3]
+                    ptr[leftIdx] = magL[srcIdx]
+                    ptr[rightIdx] = magR[srcIdx]
                 }
             }
         }
@@ -344,11 +347,11 @@ public final class StemSeparator: StemSeparating, @unchecked Sendable {
                 let leftBase = stemBase
                 let rightBase = stemBase + strides[1]
 
-                for f in 0..<binsPerFrame {
-                    let freqOff = f * strides[2]
-                    for t in 0..<nbFrames {
-                        let localIdx = t * binsPerFrame + f
-                        let timeOff = t * strides[3]
+                for bin in 0..<binsPerFrame {
+                    let freqOff = bin * strides[2]
+                    for frame in 0..<nbFrames {
+                        let localIdx = frame * binsPerFrame + bin
+                        let timeOff = frame * strides[3]
                         allStemMagL[stem][localIdx] = ptr[leftBase + freqOff + timeOff]
                         allStemMagR[stem][localIdx] = ptr[rightBase + freqOff + timeOff]
                     }
@@ -361,10 +364,18 @@ public final class StemSeparator: StemSeparating, @unchecked Sendable {
 
         for stem in 0..<Self.stemCount {
             // iSTFT each channel with original phase, then strip center padding.
-            let waveL = istft(magnitude: allStemMagL[stem], phase: phaseL, nbFrames: nbFrames,
-                              originalLength: Self.requiredMonoSamples)
-            let waveR = istft(magnitude: allStemMagR[stem], phase: phaseR, nbFrames: nbFrames,
-                              originalLength: Self.requiredMonoSamples)
+            let waveL = istft(
+                magnitude: allStemMagL[stem],
+                phase: phaseL,
+                nbFrames: nbFrames,
+                originalLength: Self.requiredMonoSamples
+            )
+            let waveR = istft(
+                magnitude: allStemMagR[stem],
+                phase: phaseR,
+                nbFrames: nbFrames,
+                originalLength: Self.requiredMonoSamples
+            )
 
             // Average to mono.
             let monoCount = min(waveL.count, waveR.count)

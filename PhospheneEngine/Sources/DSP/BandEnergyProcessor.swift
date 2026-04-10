@@ -43,25 +43,48 @@ public final class BandEnergyProcessor: @unchecked Sendable {
         public var midHigh: Float
         public var highMid: Float
         public var high: Float
+
+        /// All-zero result, returned when there is no input or fps is invalid.
+        public static let zero = Result(
+            bass: 0,
+            mid: 0,
+            treble: 0,
+            bassAtt: 0,
+            midAtt: 0,
+            trebleAtt: 0,
+            subBass: 0,
+            lowBass: 0,
+            lowMid: 0,
+            midHigh: 0,
+            highMid: 0,
+            high: 0
+        )
     }
 
     // MARK: - Band Definitions
 
+    /// Named frequency band with a low/high cutoff in Hz.
+    private struct BandRange {
+        let name: String
+        let low: Float
+        let high: Float
+    }
+
     /// 3-band frequency boundaries in Hz.
-    private static let bands3: [(name: String, low: Float, high: Float)] = [
-        ("bass", 20, 250),
-        ("mid", 250, 4000),
-        ("treble", 4000, 20000),
+    private static let bands3: [BandRange] = [
+        BandRange(name: "bass", low: 20, high: 250),
+        BandRange(name: "mid", low: 250, high: 4000),
+        BandRange(name: "treble", low: 4000, high: 20000),
     ]
 
     /// 6-band frequency boundaries in Hz.
-    private static let bands6: [(name: String, low: Float, high: Float)] = [
-        ("subBass", 20, 80),
-        ("lowBass", 80, 250),
-        ("lowMid", 250, 1000),
-        ("midHigh", 1000, 4000),
-        ("highMid", 4000, 8000),
-        ("high", 8000, 24000),
+    private static let bands6: [BandRange] = [
+        BandRange(name: "subBass", low: 20, high: 80),
+        BandRange(name: "lowBass", low: 80, high: 250),
+        BandRange(name: "lowMid", low: 250, high: 1000),
+        BandRange(name: "midHigh", low: 1000, high: 4000),
+        BandRange(name: "highMid", low: 4000, high: 8000),
+        BandRange(name: "high", low: 8000, high: 24000),
     ]
 
     /// Instant smoothing rates per 3-band (FPS-independent base rates at 30 fps).
@@ -158,14 +181,7 @@ public final class BandEnergyProcessor: @unchecked Sendable {
         defer { lock.unlock() }
 
         let count = min(magnitudes.count, binCount)
-        guard count > 0 && fps > 0 else {
-            return Result(
-                bass: 0, mid: 0, treble: 0,
-                bassAtt: 0, midAtt: 0, trebleAtt: 0,
-                subBass: 0, lowBass: 0, lowMid: 0,
-                midHigh: 0, highMid: 0, high: 0
-            )
-        }
+        guard count > 0 && fps > 0 else { return .zero }
 
         // Compute raw RMS for each band.
         let raw3 = computeRawEnergy(magnitudes: magnitudes, ranges: bandRanges3)
@@ -213,10 +229,18 @@ public final class BandEnergyProcessor: @unchecked Sendable {
         frameCount += 1
 
         return Result(
-            bass: smoothedInstant[0], mid: smoothedInstant[1], treble: smoothedInstant[2],
-            bassAtt: smoothedAttenuated[0], midAtt: smoothedAttenuated[1], trebleAtt: smoothedAttenuated[2],
-            subBass: smoothed6Band[0], lowBass: smoothed6Band[1], lowMid: smoothed6Band[2],
-            midHigh: smoothed6Band[3], highMid: smoothed6Band[4], high: smoothed6Band[5]
+            bass: smoothedInstant[0],
+            mid: smoothedInstant[1],
+            treble: smoothedInstant[2],
+            bassAtt: smoothedAttenuated[0],
+            midAtt: smoothedAttenuated[1],
+            trebleAtt: smoothedAttenuated[2],
+            subBass: smoothed6Band[0],
+            lowBass: smoothed6Band[1],
+            lowMid: smoothed6Band[2],
+            midHigh: smoothed6Band[3],
+            highMid: smoothed6Band[4],
+            high: smoothed6Band[5]
         )
     }
 
@@ -244,7 +268,8 @@ public final class BandEnergyProcessor: @unchecked Sendable {
 
             var rms: Float = 0
             magnitudes.withUnsafeBufferPointer { ptr in
-                vDSP_rmsqv(ptr.baseAddress! + start, 1, &rms, vDSP_Length(count))
+                guard let base = ptr.baseAddress else { return }
+                vDSP_rmsqv(base + start, 1, &rms, vDSP_Length(count))
             }
             return rms
         }

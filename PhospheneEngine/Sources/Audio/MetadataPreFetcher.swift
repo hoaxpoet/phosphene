@@ -162,9 +162,10 @@ public final class MetadataPreFetcher: @unchecked Sendable {
             }
 
             // First result wins. If the timeout finishes first, cancel the fetch.
-            let result = await group.next() ?? nil
+            // `group.next()` returns an Optional<Optional<_>> — flatten it.
+            let result = await group.next()
             group.cancelAll()
-            return result
+            return result.flatMap { $0 }
         }
     }
 

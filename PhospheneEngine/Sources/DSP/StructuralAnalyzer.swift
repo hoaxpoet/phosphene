@@ -101,7 +101,10 @@ public final class StructuralAnalyzer: @unchecked Sendable {
         self.currentSectionSum = [Float](repeating: 0, count: featureDim)
 
         logger.info(
-            "StructuralAnalyzer created: maxHistory=\(maxHistory), featureDim=\(featureDim), detectionInterval=\(detectionInterval)"
+            """
+            StructuralAnalyzer created: maxHistory=\(maxHistory), \
+            featureDim=\(featureDim), detectionInterval=\(detectionInterval)
+            """
         )
     }
 
@@ -109,23 +112,32 @@ public final class StructuralAnalyzer: @unchecked Sendable {
 
     /// Feed one frame of features and return the current structural prediction.
     ///
+    /// 4-scalar spectral summary fed alongside chroma into the structural feature vector.
+    public struct SpectralSummary: Sendable {
+        public let centroid: Float
+        public let flux: Float
+        public let rolloff: Float
+        public let energy: Float
+
+        public init(centroid: Float, flux: Float, rolloff: Float, energy: Float) {
+            self.centroid = centroid
+            self.flux = flux
+            self.rolloff = rolloff
+            self.energy = energy
+        }
+    }
+
     /// Called every frame from MIRPipeline. The expensive novelty detection
     /// runs only every `detectionInterval` frames.
     ///
     /// - Parameters:
     ///   - chroma: 12-float chroma vector from ChromaExtractor.
-    ///   - spectralCentroid: Normalized spectral centroid (0–1).
-    ///   - spectralFlux: Normalized spectral flux (0–1).
-    ///   - spectralRolloff: Normalized spectral rolloff (0–1).
-    ///   - energy: Total energy (0–1).
+    ///   - spectral: Centroid/flux/rolloff/energy summary, all normalized (0–1).
     ///   - time: Seconds since capture start.
     /// - Returns: Current structural prediction.
     public func process(
         chroma: [Float],
-        spectralCentroid: Float,
-        spectralFlux: Float,
-        spectralRolloff: Float,
-        energy: Float,
+        spectral: SpectralSummary,
         time: Float
     ) -> StructuralPrediction {
         lock.lock()
@@ -137,10 +149,10 @@ public final class StructuralAnalyzer: @unchecked Sendable {
         let chromaCount = min(chroma.count, 12)
         for i in 0..<chromaCount { featureBuffer[i] = chroma[i] }
         for i in chromaCount..<12 { featureBuffer[i] = 0 }
-        featureBuffer[12] = spectralCentroid
-        featureBuffer[13] = spectralFlux
-        featureBuffer[14] = spectralRolloff
-        featureBuffer[15] = energy
+        featureBuffer[12] = spectral.centroid
+        featureBuffer[13] = spectral.flux
+        featureBuffer[14] = spectral.rolloff
+        featureBuffer[15] = spectral.energy
 
         // Add to similarity matrix.
         similarityMatrix.addFrame(featureBuffer)
@@ -232,8 +244,9 @@ public final class StructuralAnalyzer: @unchecked Sendable {
         for i in 0..<featureDim { currentSectionSum[i] = 0 }
         currentSectionFrameCount = 0
 
+        let total = self.sectionBoundaries.count
         logger.debug(
-            "Section boundary detected at \(timestamp, format: .fixed(precision: 2))s (total: \(self.sectionBoundaries.count))"
+            "Section boundary detected at \(timestamp, format: .fixed(precision: 2))s (total: \(total))"
         )
     }
 

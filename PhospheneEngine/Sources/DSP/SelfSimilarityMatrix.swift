@@ -120,8 +120,10 @@ public final class SelfSimilarityMatrix: @unchecked Sendable {
         let offsetB = physB * featureDim
 
         return cosineSimilarity(
-            buffer, offsetA: offsetA,
-            buffer, offsetB: offsetB,
+            buffer,
+            offsetA: offsetA,
+            buffer,
+            offsetB: offsetB,
             count: featureDim
         )
     }
@@ -152,7 +154,8 @@ public final class SelfSimilarityMatrix: @unchecked Sendable {
         var normB: Float = 0
 
         buffer.withUnsafeBufferPointer { ptr in
-            let base = ptr.baseAddress! + offset
+            guard let bufferBase = ptr.baseAddress else { return }
+            let base = bufferBase + offset
             vDSP_dotpr(base, 1, scratchA, 1, &dot, vDSP_Length(featureDim))
             vDSP_svesq(base, 1, &normA, vDSP_Length(featureDim))
         }
@@ -211,8 +214,9 @@ public final class SelfSimilarityMatrix: @unchecked Sendable {
 
         bufA.withUnsafeBufferPointer { ptrA in
             bufB.withUnsafeBufferPointer { ptrB in
-                let baseA = ptrA.baseAddress! + offsetA
-                let baseB = ptrB.baseAddress! + offsetB
+                guard let aBase = ptrA.baseAddress, let bBase = ptrB.baseAddress else { return }
+                let baseA = aBase + offsetA
+                let baseB = bBase + offsetB
                 vDSP_dotpr(baseA, 1, baseB, 1, &dot, vDSP_Length(count))
                 vDSP_svesq(baseA, 1, &normA, vDSP_Length(count))
                 vDSP_svesq(baseB, 1, &normB, vDSP_Length(count))

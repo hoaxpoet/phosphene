@@ -20,7 +20,13 @@ public struct NowPlayingInfo: Sendable {
     public let duration: Double?
     public let source: MetadataSource
 
-    public init(title: String?, artist: String?, album: String?, duration: Double?, source: MetadataSource = .nowPlaying) {
+    public init(
+        title: String?,
+        artist: String?,
+        album: String?,
+        duration: Double?,
+        source: MetadataSource = .nowPlaying
+    ) {
         self.title = title
         self.artist = artist
         self.album = album
@@ -76,7 +82,11 @@ private enum AppleScriptBridge {
     }
 
     /// Execute an AppleScript and parse the result.
-    private static func executeScript(_ source: String, appName: String, source metadataSource: MetadataSource) -> NowPlayingInfo? {
+    private static func executeScript(
+        _ source: String,
+        appName: String,
+        source metadataSource: MetadataSource
+    ) -> NowPlayingInfo? {
         guard let script = NSAppleScript(source: source) else { return nil }
 
         var error: NSDictionary?
@@ -86,7 +96,8 @@ private enum AppleScriptBridge {
             let code = error[NSAppleScript.errorNumber] as? Int ?? 0
             // -600 = app not running, -1728 = no current track — both expected.
             if code != -600 && code != -1728 {
-                logger.debug("AppleScript error for \(appName): \(error[NSAppleScript.errorMessage] as? String ?? "unknown")")
+                let message = error[NSAppleScript.errorMessage] as? String ?? "unknown"
+                logger.debug("AppleScript error for \(appName): \(message)")
             }
             return nil
         }
@@ -147,7 +158,7 @@ public final class StreamingMetadata: MetadataProviding, @unchecked Sendable {
 
     /// Override this closure in tests to inject canned Now Playing info.
     /// Defaults to querying music apps via AppleScript.
-    var nowPlayingReader: (@Sendable () async -> NowPlayingInfo?)? = nil
+    var nowPlayingReader: (@Sendable () async -> NowPlayingInfo?)?
 
     // MARK: - Init
 
@@ -251,8 +262,8 @@ public final class StreamingMetadata: MetadataProviding, @unchecked Sendable {
     /// Normalized track identity for change detection.
     /// Case-insensitive to avoid spurious events from metadata formatting.
     private func trackIdentity(title: String?, artist: String?) -> String {
-        let t = title?.lowercased().trimmingCharacters(in: .whitespaces) ?? ""
-        let a = artist?.lowercased().trimmingCharacters(in: .whitespaces) ?? ""
-        return "\(t)|\(a)"
+        let normalizedTitle = title?.lowercased().trimmingCharacters(in: .whitespaces) ?? ""
+        let normalizedArtist = artist?.lowercased().trimmingCharacters(in: .whitespaces) ?? ""
+        return "\(normalizedTitle)|\(normalizedArtist)"
     }
 }

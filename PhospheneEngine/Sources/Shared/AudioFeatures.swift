@@ -238,7 +238,7 @@ public struct FeedbackParams: Sendable {
     public var beatSensitivity: Float
     /// Pre-selected beat pulse value (from beatSource: bass/mid/treble/composite).
     public var beatValue: Float
-    /// Padding to 32 bytes (8 × Float).
+    // Padding to 32 bytes (8 × Float).
     // swiftlint:disable:next identifier_name
     public var _pad0: Float
 

@@ -234,18 +234,23 @@ public final class MIRPipeline: @unchecked Sendable {
         let totalEnergy = (energy.bass + energy.mid + energy.treble) / 3.0
         latestStructuralPrediction = structuralAnalyzer.process(
             chroma: chroma.chroma,
-            spectralCentroid: normalizedCentroid,
-            spectralFlux: normalizedFlux,
-            spectralRolloff: normalizedRolloff,
-            energy: totalEnergy,
+            spectral: StructuralAnalyzer.SpectralSummary(
+                centroid: normalizedCentroid,
+                flux: normalizedFlux,
+                rolloff: normalizedRolloff,
+                energy: totalEnergy
+            ),
             time: time
         )
 
         // Write recording row (throttled to 1/sec inside the method).
         let centroidNorm = nyquist > 0 ? spectral.smoothedCentroid / nyquist : 0
         writeRecordingRow(
-            energy: energy, centroid: centroidNorm, flux: spectral.smoothedFlux,
-            majorCorr: chroma.majorKeyCorrelation, minorCorr: chroma.minorKeyCorrelation
+            energy: energy,
+            centroid: centroidNorm,
+            flux: spectral.smoothedFlux,
+            majorCorr: chroma.majorKeyCorrelation,
+            minorCorr: chroma.minorKeyCorrelation
         )
 
         // Assemble FeatureVector.
@@ -319,10 +324,19 @@ public final class MIRPipeline: @unchecked Sendable {
         let artist = currentArtistName.replacingOccurrences(of: ",", with: ";")
         let row = String(
             format: "%.1f,%@,%@,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%@,%.1f,,\n",
-            elapsedSeconds, track, artist,
-            energy.subBass, energy.lowBass, energy.lowMid,
-            energy.midHigh, energy.highMid, energy.high,
-            centroid, flux, majorCorr, minorCorr,
+            elapsedSeconds,
+            track,
+            artist,
+            energy.subBass,
+            energy.lowBass,
+            energy.lowMid,
+            energy.midHigh,
+            energy.highMid,
+            energy.high,
+            centroid,
+            flux,
+            majorCorr,
+            minorCorr,
             stableKey ?? "",
             stableBPM ?? 0
         )

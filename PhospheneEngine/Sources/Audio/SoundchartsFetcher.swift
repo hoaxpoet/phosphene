@@ -164,7 +164,7 @@ private struct SCSong: Decodable {
     let audioFeatures: SCAudioFeatures?
 
     enum CodingKeys: String, CodingKey {
-        case audioFeatures = "audioFeatures"
+        case audioFeatures
     }
 }
 
