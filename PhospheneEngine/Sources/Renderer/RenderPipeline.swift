@@ -70,6 +70,15 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     var meshShaderEnabled: Bool = false
     let meshLock = NSLock()
 
+    // MARK: - Post-Process Chain
+
+    /// Optional HDR post-process chain — bloom + ACES tone mapping.
+    /// Set via `setPostProcessChain(_:enabled:)` when switching to a post-process preset.
+    var postProcessChain: PostProcessChain?
+    /// Whether the active preset routes through the post-process render path.
+    var postProcessEnabled: Bool = false
+    let postProcessLock = NSLock()
+
     // MARK: - Timing
 
     let startTime: CFAbsoluteTime
@@ -204,6 +213,19 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
         }
     }
 
+    /// Attach a post-process chain to the render loop.
+    ///
+    /// Pass a non-nil chain and `enabled: true` to route `draw(in:)` through
+    /// `drawWithPostProcess`.  Pass `nil` / `false` to fall back to the direct
+    /// or feedback render path.  Thread-safe — can be called from any queue.
+    public func setPostProcessChain(_ chain: PostProcessChain?, enabled: Bool = true) {
+        postProcessLock.withLock {
+            postProcessChain    = chain
+            postProcessEnabled  = chain != nil && enabled
+        }
+        logger.info("Post-process chain \(chain != nil && enabled ? "enabled" : "disabled")")
+    }
+
     /// Update the live audio features from MIR analysis.
     /// Thread-safe — called from the analysis queue each frame.
     public func setFeatures(_ features: FeatureVector) {
@@ -244,6 +266,12 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
             feedbackTextures = textures
             feedbackIndex = 0
         }
+
+        // Reallocate post-process textures if a chain is attached.
+        postProcessLock.withLock {
+            postProcessChain?.allocateTextures(width: width, height: height)
+        }
+
         logger.info("Feedback textures allocated: \(width)×\(height)")
     }
 
