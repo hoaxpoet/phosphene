@@ -34,7 +34,7 @@ line, as it would propagate to SPM dependencies that compile with
 
 Deployment target: macOS 14.0+ (Sonoma). Swift 6.0. Metal 3.1+.
 
-**Current test count: 238 tests** (222 swift-testing + 14 XCTest, across unit, integration, regression, performance). All must pass before any new code is merged.
+**Current test count: 244 tests** (222 swift-testing + 22 XCTest, across unit, integration, regression, performance). All must pass before any new code is merged.
 
 ## Module Map
 
@@ -72,11 +72,14 @@ PhospheneEngine/
     NoveltyDetector         → Checkerboard kernel boundary detection, adaptive threshold (✓ implemented)
     StructuralAnalyzer      → Section boundary prediction, repetition detection (✓ implemented)
     StemAnalyzer            → Per-stem energy (4× BandEnergyProcessor) + beat (1× BeatDetector on drums) → StemFeatures (✓ implemented)
-  ML/                       → CoreML wrappers: stem separator, mood classifier
+  ML/                       → CoreML wrappers, MPSGraph inference, stem separator, mood classifier
     Models/StemSeparator.mlpackage → Open-Unmix HQ 4-stem mask estimator for ANE (✓ converted)
     Models/MoodClassifier.mlpackage → Valence/arousal MLP for ANE (✓ trained)
     StemSeparator.swift      → STFT → CoreML → iSTFT pipeline, StemSeparating protocol (✓ implemented)
     StemSeparator+Pack      → CoreML spectrogram packing/unpacking (✓ implemented)
+    StemModel.swift          → MPSGraph Open-Unmix HQ inference engine, public API, I/O buffers (✓ implemented)
+    StemModel+Graph         → MPSGraph construction: per-stem subgraph, LSTM, FC, BN helpers (✓ implemented)
+    StemModel+Weights       → Weight manifest parsing, .bin loading, BN fusion (✓ implemented)
     MoodClassifier.swift    → 10-feature MLP → valence/arousal, MoodClassifying protocol (✓ implemented)
     ML.swift                → CoreML module imports
   Renderer/                 → Metal context, pipelines, shader library, compute particles
@@ -109,10 +112,10 @@ PhospheneEngine/
     StemSampleBuffer        → Interleaved stereo PCM ring buffer for stem separation input (✓ implemented)
     Logging                 → Per-module os.Logger instances (✓ implemented)
 
-Tests/ (238 tests: 222 swift-testing + 16 XCTest)
+Tests/ (244 tests: 222 swift-testing + 22 XCTest)
   Audio/                    → AudioBufferTests, FFTProcessorTests, StreamingMetadataTests, MetadataPreFetcherTests, LookaheadBufferTests (10)
   DSP/                      → SpectralAnalyzerTests (8), BandEnergyProcessorTests (5), ChromaExtractorTests (6), BeatDetectorTests (7), MIRPipelineUnitTests (4), SelfSimilarityMatrixTests (5), NoveltyDetectorTests (5), StructuralAnalyzerTests (8)
-  ML/                       → StemSeparatorTests (8), StemFFTTests (6: vDSP cross-validate, round-trip, fwd perf, inv perf, UMA storage, thread safety), MoodClassifierTests (7: model loading, classification, range, quadrants, protocol)
+  ML/                       → StemSeparatorTests (8), StemFFTTests (6: vDSP cross-validate, round-trip, fwd perf, inv perf, UMA storage, thread safety), StemModelTests (6: init, silence, CoreML cross-validate, perf gate <400ms, UMA storage, thread safety), MoodClassifierTests (7: model loading, classification, range, quadrants, protocol)
   Renderer/                 → MetalContextTests, ShaderLibraryTests, RenderPipelineTests, ProceduralGeometryTests (7: init, storage mode, dispatch, count, zero-audio, impulse, 1M perf)
   Shared/                   → AudioFeaturesTests (2: StemFeatures layout + SIMD alignment), UMABufferExtendedTests, EmotionalStateTests (4: quadrant classification), AnalyzedFrameTests (3)
   Integration/              → AudioToFFTPipelineTests, AudioToRenderPipelineTests, MetadataToOrchestratorTests, AudioToStemPipelineTests, MIRPipelineIntegrationTests (3), LookaheadIntegrationTests (1), StemsToRenderPipelineTests (4: warmup default, separation→analysis, track reset, Swift/MSL size)
@@ -368,7 +371,7 @@ Phosphene works at every tier — never show errors or degraded UI when metadata
 - Protocol-first design for testability. Every injectable dependency has a protocol (`AudioCapturing`, `AudioBuffering`, `FFTProcessing`, `Rendering`, `MetadataProviding`, `MetadataFetching`). Tests use doubles from `TestDoubles/`.
 
 ### Testing
-- **238 tests** (222 swift-testing + 16 XCTest) across unit, integration, regression, and performance categories.
+- **244 tests** (222 swift-testing + 22 XCTest) across unit, integration, regression, and performance categories.
 - All tests must pass before starting new work (`swift test --package-path PhospheneEngine` or `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' test`).
 - Test doubles in `Tests/TestDoubles/`: `MockAudioCapture`, `StubFFTProcessor`, `FakeStemSeparator`, `StubMoodClassifier`, `AudioFixtures`, `MockMetadataProvider`, `MockMetadataFetcher`.
 - Regression tests use golden fixtures in `Tests/Regression/Fixtures/`.
@@ -496,6 +499,8 @@ Metal, MetalKit, CoreML, AVFoundation, Accelerate, ScreenCaptureKit, MusicKit
 
 35. **Open-Unmix HQ actual architecture (discovered in 3.7b weight extraction)**: Per-stem: 43 tensors, not 34. All Linear layers use `bias=False` (bias folded into BatchNorm). fc3/bn3 output 4098 features (2 channels × 2049 bins), not 2049. LSTM hidden_size=256 bidirectional (output 512), gate_size=1024 (4×256). Input normalization: 1487 bandwidth-limited bins. Raw weights: 172 .bin files, 135.9 MB float32, stored in `PhospheneEngine/Sources/ML/Weights/` with `manifest.json`. Tracked via Git LFS.
 
+36. **MPSGraph Open-Unmix HQ reconstruction (Increment 3.8)**: All 4 stems in a single MPSGraph. Float32 throughout — eliminates ANE Float16→Float32 conversion bottleneck. Batch norm fused into scale+bias at init time (12 fusions). Bidirectional LSTM via `MPSGraphLSTMDescriptor.bidirectional = true` (macOS 12.3+). Gate order matches PyTorch default `[i, f, z, o]` — no weight reordering needed. PyTorch `bias_ih + bias_hh` summed at load time. Weights loaded from `.bin` files into `MTLBuffer(.storageModeShared)`. Fixed 431-frame input shape, graph compiled once at init. Performance: 102ms average warm predict (down from ~620ms CoreML). `StemModelEngine` class with pre-allocated UMA I/O buffers following the `StemFFTEngine` pattern.
+
 ## Reference Documents
 
 The full development plan with phased increments is in `docs/DEVELOPMENT_PLAN.md`. Consult the relevant increment when starting a task — do not load the entire plan into context.
@@ -519,9 +524,10 @@ The architectural blueprint is in `docs/ARCHITECTURAL_BLUEPRINT.md`.
 **Completed increments (Phase 3.7):**
 - **Increment 3.7a — CPU-only CoreML Baseline Measurement** ✅ — Added `computeUnits` parameter to `StemSeparator.init`, 2 CPU-only perf tests. Results: ANE=659ms avg, CPU=592ms avg. CPU is ~10% faster (avoids F16→F32 conversion) but still above 400ms target. MPSGraph migration confirmed as the right path. 238 tests (222 swift-testing + 16 XCTest).
 - **Increment 3.7b — Open-Unmix Weight Extraction Tool** ✅ — `tools/extract_umx_weights.py` extracts 172 tensors (43 per stem × 4 stems, 135.9 MB float32) from umxhq PyTorch checkpoint into raw `.bin` files + `manifest.json`. Key architecture corrections from spec: Linear layers use `bias=False`, fc3/bn3 output 4098 (2×2049), LSTM hidden=256 bidirectional, gate_size=1024. `tools/test_umx_weights.py` validates 6 checks (metadata, count, presence, shapes, sizes, data). Weights at `PhospheneEngine/Sources/ML/Weights/`, tracked via Git LFS, added to `Package.swift` as `.copy("Weights")`.
+- **Increment 3.8 — MPSGraph Open-Unmix Inference Engine** ✅ — `StemModel.swift` + `StemModel+Graph.swift` + `StemModel+Weights.swift`: `StemModelEngine` class reconstructing Open-Unmix HQ entirely in MPSGraph. All 4 stems in single graph, Float32 throughout. Bidirectional 3-layer LSTM, fused batch norm (12 fusions), 172 weight tensors loaded from `.bin` files. 102ms average warm predict (6× faster than CoreML's ~620ms). 6 StemModelTests (init, silence, CoreML cross-validate, perf gate <400ms, UMA storage, thread safety). 244 tests (222 swift-testing + 22 XCTest).
 
 **Ordered next increments** (per the revised plan):
-1. **Phase 3.7 — CoreML → MPSGraph Migration** (continued). Remaining sub-increments: 3.8 (MPSGraph Open-Unmix engine), 3.9 (integrate into StemSeparator), 3.10 (pure Accelerate MoodClassifier), 3.11 (remove CoreML). Target: `separate()` < 400ms (down from ~620ms).
+1. **Phase 3.7 — CoreML → MPSGraph Migration** (continued). Remaining sub-increments: 3.9 (integrate into StemSeparator), 3.10 (pure Accelerate MoodClassifier), 3.11 (remove CoreML). Target: `separate()` < 400ms (down from ~620ms).
 2. **Increment 3.2 — Mesh Shader Pipeline Infrastructure** (now infrastructure-only, no preset). `MeshShaders.metal` shared utilities, `MeshGenerator.swift` with mesh path + vertex fallback, new `drawWithMeshShader` render path, `useMeshShader` flag, 6 `MeshGeneratorTests`.
 3. **Increment 3.2b — Fractal Tree Demonstration Preset.** First preset using the mesh shader pipeline. Recursive 3D branching structure responding to audio.
 4. **Increment 3.3 — Hardware Ray Tracing Infrastructure.** `BVHBuilder`, `RayIntersector`, `RayTracing.metal`, 9 tests. (The original 3.3 spec had `PostProcess.metal` in it; that file was extracted to Increment 3.4.)
