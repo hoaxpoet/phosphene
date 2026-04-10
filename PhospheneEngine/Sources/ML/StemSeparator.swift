@@ -1,28 +1,27 @@
-// StemSeparator — CoreML-powered audio stem separation using Open-Unmix HQ.
+// StemSeparator — MPSGraph-powered audio stem separation using Open-Unmix HQ.
 // Accepts interleaved PCM audio, performs STFT via the GPU-accelerated
-// `StemFFTEngine`, runs CoreML mask estimation on the ANE, applies masks
-// and iSTFT to produce four separated stem waveforms (vocals, drums, bass,
-// other) in UMA buffers.
+// `StemFFTEngine`, runs MPSGraph mask estimation via `StemModelEngine`, applies
+// masks and iSTFT to produce four separated stem waveforms (vocals, drums,
+// bass, other) in UMA buffers.
 //
-// STFT/iSTFT is handled outside CoreML because CoreML has no complex number
-// support. The model operates on magnitude spectrograms only; phase is
-// preserved from the original STFT and reapplied during iSTFT
+// STFT/iSTFT is handled outside the neural network because CoreML has no
+// complex number support. The model operates on magnitude spectrograms only;
+// phase is preserved from the original STFT and reapplied during iSTFT
 // reconstruction. As of Increment 3.1a the transforms run on the GPU via
 // MPSGraph (see `StemFFT.swift`); the legacy Accelerate/vDSP path is
 // preserved inside `StemFFTEngine` behind `forceCPUFallback` for
 // cross-validation testing.
 //
-// All heavy allocations happen at init time. Per-call allocations are limited
-// to MLShapedArray creation (CoreML requirement).
+// As of Increment 3.9 the neural network prediction uses `StemModelEngine`
+// (MPSGraph, Float32 on GPU) instead of CoreML on the ANE. This eliminates
+// the ANE Float16→Float32 conversion bottleneck (~420ms) and the
+// MLMultiArray pack/unpack overhead.
 //
-// MLShapedArray is used instead of raw MLMultiArray pointer access because
-// ANE output buffers have padded strides with unmapped memory in the padding
-// regions. MLShapedArray.withUnsafeShapedBufferPointer handles these strides
-// correctly.
+// All heavy allocations happen at init time. Per-call allocations are limited
+// to [Float] arrays for STFT intermediates.
 
 import Foundation
 import Metal
-import CoreML
 import Accelerate
 import Shared
 import Audio
@@ -32,13 +31,13 @@ private let logger = Logger(subsystem: "com.phosphene.ml", category: "StemSepara
 
 // MARK: - StemSeparator
 
-/// Separates mixed audio into four stems using CoreML and the Neural Engine.
+/// Separates mixed audio into four stems using MPSGraph on the GPU.
 ///
 /// Pipeline per call:
 /// 1. Resample to 44100 Hz if needed (model's native rate)
 /// 2. Deinterleave stereo → two mono channels
 /// 3. STFT each channel → magnitude + phase spectrograms
-/// 4. CoreML prediction: magnitude → 4 filtered magnitude spectrograms
+/// 4. MPSGraph prediction: magnitude → 4 filtered magnitude spectrograms
 /// 5. iSTFT: filtered magnitude × original phase → 4 stem waveforms
 /// 6. Write each stem into its own UMABuffer<Float>
 public final class StemSeparator: StemSeparating, @unchecked Sendable {
@@ -65,11 +64,8 @@ public final class StemSeparator: StemSeparating, @unchecked Sendable {
 
     // MARK: - Model
 
-    /// The loaded CoreML model.
-    private let model: MLModel
-
-    /// The compute unit configuration used to load the model.
-    public let computeUnits: MLComputeUnits
+    /// MPSGraph-based Open-Unmix HQ inference engine (Increment 3.8+3.9).
+    private let stemModel: StemModelEngine
 
     // MARK: - Output
 
@@ -94,29 +90,14 @@ public final class StemSeparator: StemSeparating, @unchecked Sendable {
 
     // MARK: - Init
 
-    /// Create a stem separator backed by the Open-Unmix HQ CoreML model.
+    /// Create a stem separator backed by the Open-Unmix HQ MPSGraph model.
     ///
-    /// - Parameters:
-    ///   - device: Metal device for UMA buffer allocation.
-    ///   - computeUnits: CoreML compute units. Defaults to `.cpuAndNeuralEngine`
-    ///     (GPU reserved for rendering). Pass `.cpuOnly` for diagnostic benchmarking.
-    /// - Throws: `StemSeparationError` if model loading fails.
-    public init(device: MTLDevice, computeUnits: MLComputeUnits = .cpuAndNeuralEngine) throws {
-        // Load model from bundle.
-        guard let modelURL = Bundle.module.url(
-            forResource: "StemSeparator",
-            withExtension: "mlpackage",
-            subdirectory: "Models"
-        ) else {
-            throw StemSeparationError.modelNotFound
-        }
-
-        let config = MLModelConfiguration()
-        config.computeUnits = computeUnits
-        self.computeUnits = config.computeUnits
-
+    /// - Parameter device: Metal device for UMA buffer allocation and GPU inference.
+    /// - Throws: `StemSeparationError` if model or engine initialization fails.
+    public init(device: MTLDevice) throws {
+        // Load MPSGraph stem model (weights from .bin files, ~136 MB).
         do {
-            self.model = try MLModel(contentsOf: MLModel.compileModel(at: modelURL), configuration: config)
+            self.stemModel = try StemModelEngine(device: device)
         } catch {
             throw StemSeparationError.modelLoadFailed(error.localizedDescription)
         }
@@ -135,8 +116,7 @@ public final class StemSeparator: StemSeparating, @unchecked Sendable {
             throw StemSeparationError.modelLoadFailed("Failed to initialize StemFFTEngine: \(error)")
         }
 
-        let units = String(describing: config.computeUnits)
-        logger.info("StemSeparator loaded: \(Self.nFFT)-pt STFT, \(Self.nBins) bins, \(units)")
+        logger.info("StemSeparator loaded: MPSGraph engine, \(Self.nFFT)-pt STFT, \(Self.nBins) bins")
     }
 
     // MARK: - Separation
@@ -179,38 +159,51 @@ public final class StemSeparator: StemSeparating, @unchecked Sendable {
 
         let nbFrames = magL.count / Self.nBins
 
-        // Step 5: Pack into MLMultiArray [1, 2, 2049, nb_frames] and predict.
-        let inputArray = try packSpectrogramForModel(magL: magL, magR: magR, nbFrames: nbFrames)
+        // Step 5: Write magnitudes into StemModelEngine input buffers and predict.
+        let elemCount = nbFrames * Self.nBins
+        let byteCount = elemCount * MemoryLayout<Float>.size
 
-        let inputFeatures = try MLDictionaryFeatureProvider(
-            dictionary: ["spectrogram": MLFeatureValue(multiArray: inputArray)]
-        )
+        magL.withUnsafeBufferPointer { src in
+            guard let srcBase = src.baseAddress else { return }
+            memcpy(stemModel.inputMagLBuffer.contents(), srcBase, byteCount)
+        }
+        magR.withUnsafeBufferPointer { src in
+            guard let srcBase = src.baseAddress else { return }
+            memcpy(stemModel.inputMagRBuffer.contents(), srcBase, byteCount)
+        }
 
-        let prediction: MLFeatureProvider
         do {
-            prediction = try model.prediction(from: inputFeatures)
+            try stemModel.predict()
         } catch {
             throw StemSeparationError.predictionFailed(error.localizedDescription)
         }
 
-        // Step 6: Unpack output [4, 2, 2049, nb_frames] → 4 pairs of magnitude spectrograms.
-        guard let outputArray = prediction.featureValue(for: "stems")?.multiArrayValue else {
-            throw StemSeparationError.predictionFailed("Missing output feature")
+        // Step 6: Read output magnitudes and reconstruct stem waveforms via iSTFT.
+        let outputFrames = nbFrames
+        var allStemMagL = [[Float]]()
+        var allStemMagR = [[Float]]()
+        allStemMagL.reserveCapacity(Self.stemCount)
+        allStemMagR.reserveCapacity(Self.stemCount)
+
+        for stem in 0..<Self.stemCount {
+            let bufL = stemModel.outputBuffers[stem].magL
+            let bufR = stemModel.outputBuffers[stem].magR
+            let outL = bufL.contents().assumingMemoryBound(to: Float.self)
+            let outR = bufR.contents().assumingMemoryBound(to: Float.self)
+
+            allStemMagL.append(Array(UnsafeBufferPointer(start: outL, count: elemCount)))
+            allStemMagR.append(Array(UnsafeBufferPointer(start: outR, count: elemCount)))
         }
 
-        guard outputArray.shape.count == 4 else {
-            throw StemSeparationError.predictionFailed(
-                "Unexpected output shape: \(outputArray.shape)")
-        }
-
-        // Step 7: iSTFT each stem and write to UMA buffers.
-        let stemWaveforms = try unpackAndISTFT(
-            output: outputArray,
+        let stemWaveforms = reconstructStemWaveforms(
+            allStemMagL: allStemMagL,
+            allStemMagR: allStemMagR,
             phaseL: phaseL,
             phaseR: phaseR,
-            nbFrames: outputArray.shape[3].intValue
+            nbFrames: outputFrames
         )
 
+        // Step 7: Write to UMA output buffers.
         let monoSampleCount = stemWaveforms[0].count
         writeToBuffers(stemWaveforms, sampleCount: monoSampleCount)
 
@@ -291,8 +284,6 @@ public final class StemSeparator: StemSeparating, @unchecked Sendable {
         )
     }
 
-    // MARK: - Spectrogram Packing / Unpacking
-
     // MARK: - Resampling
 
     /// Resample audio from one sample rate to another via linear interpolation.
@@ -368,9 +359,9 @@ public final class StemSeparator: StemSeparating, @unchecked Sendable {
             srcBase.withMemoryRebound(to: DSPComplex.self, capacity: frameCount) { complex in
                 left.withUnsafeMutableBufferPointer { leftBuf in
                     right.withUnsafeMutableBufferPointer { rightBuf in
-                        guard let lp = leftBuf.baseAddress,
-                              let rp = rightBuf.baseAddress else { return }
-                        var split = DSPSplitComplex(realp: lp, imagp: rp)
+                        guard let lPtr = leftBuf.baseAddress,
+                              let rPtr = rightBuf.baseAddress else { return }
+                        var split = DSPSplitComplex(realp: lPtr, imagp: rPtr)
                         vDSP_ctoz(complex, 2, &split, 1, vDSP_Length(frameCount))
                     }
                 }
