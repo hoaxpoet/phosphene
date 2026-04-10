@@ -57,7 +57,7 @@ let package = Package(
             name: "ML",
             dependencies: ["Shared", "Audio"],
             path: "Sources/ML",
-            resources: [.copy("Models")]
+            resources: [.copy("Models"), .copy("Weights")]
         ),
         .target(
             name: "Renderer",
