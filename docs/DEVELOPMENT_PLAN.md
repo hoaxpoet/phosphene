@@ -1133,21 +1133,28 @@ All 4 stems in a single MPSGraph. Float32 throughout. Weights loaded from `.bin`
 
 ### Increment 3.9: Integrate MPSGraph into StemSeparator
 
-**Status:** Not started.
+**Status:** ✅ Complete.
 
 **Goal:** Replace CoreML prediction with `StemModelEngine`. Eliminate pack/unpack overhead.
 
 **Data flow simplification:**
 ```
 Before: STFT(GPU) → [Float] → pack(MLMultiArray) → predict(ANE/F16) → unpack(F16→F32) → iSTFT(GPU)
-After:  STFT(GPU) → [Float] → predict(MPSGraph/GPU/F32) → iSTFT(GPU)
+After:  STFT(GPU) → [Float] → memcpy(MTLBuffer) → predict(MPSGraph/GPU/F32) → read(MTLBuffer) → iSTFT(GPU)
 ```
 
-**Changes:** `StemSeparator.swift` replaces `MLModel` with `StemModelEngine`. `StemSeparator+Pack.swift` loses `packSpectrogramForModel` and `extractStemSpectrograms` (renamed to `StemSeparator+Reconstruct.swift`, keeps iSTFT + mono averaging). Remove `import CoreML`.
+**Changes:**
+- `StemSeparator.swift` — replaced `MLModel` with `StemModelEngine`. Init loads MPSGraph weights instead of CoreML model. `separate()` writes STFT magnitudes directly into `StemModelEngine` input MTLBuffers via `memcpy`, calls `predict()`, reads output buffers directly. Removed `import CoreML` and `computeUnits` parameter.
+- `StemSeparator+Pack.swift` → renamed to `StemSeparator+Reconstruct.swift`. Deleted all CoreML pack/unpack code (6 methods: `packSpectrogramForModel`, `isDensePackLayout`, `packDense`, `packStrided`, `extractStemSpectrograms`, `extractDense`, `extractStrided`, `unpackAndISTFT`). Kept `reconstructStemWaveforms` and `averageToMono` for iSTFT + mono averaging. Removed `import CoreML`.
+- `StemSeparatorTests.swift` — removed `import CoreML` and `test_init_computeUnits_isCPUAndNeuralEngine` (CoreML-specific).
+- `StemSeparationPerformanceTests.swift` — hard gate updated from 750ms to 400ms. Removed 2 CPU-only CoreML baseline tests (`test_separate_cpuOnly_baseline`, `test_separate_cpuOnly_measureBlock`).
 
-**Performance target:** Warm-call `separate()` < 400ms (down from ~620ms).
+**Measured results (Mac mini, Apple Silicon):**
+- Warm `separate()`: **142ms avg** (10 iterations, 11% RSD) — 4.4× faster than CoreML's ~620ms
+- Breakdown: ~9ms STFT + ~0ms memcpy + ~102ms MPSGraph predict + ~30ms iSTFT/reconstruct + ~1ms write
+- Hard gate passes at 400ms with massive headroom
 
-**Tests:** All 8 `StemSeparatorTests` pass unchanged. Hard gate updated to 400ms.
+**Test count after 3.9:** 241 tests (221 swift-testing + 20 XCTest). −3 from 244 (removed 1 CoreML-specific unit test + 2 CPU-only perf tests).
 
 ### Increment 3.10: Pure Accelerate MoodClassifier
 

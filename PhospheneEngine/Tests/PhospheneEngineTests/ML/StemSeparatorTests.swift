@@ -1,11 +1,10 @@
-// StemSeparatorTests — Unit tests for CoreML stem separation pipeline.
-// Tests model loading, compute unit configuration, stem output correctness,
-// buffer storage mode, label ordering, and protocol conformance.
+// StemSeparatorTests — Unit tests for MPSGraph stem separation pipeline.
+// Tests model loading, stem output correctness, buffer storage mode,
+// label ordering, and protocol conformance.
 
 import Testing
 import Foundation
 import Metal
-import CoreML
 @testable import ML
 @testable import Audio
 @testable import Shared
@@ -19,16 +18,6 @@ import CoreML
 
     // Should not throw — model is bundled as a resource.
     _ = try StemSeparator(device: device)
-}
-
-@Test func test_init_computeUnits_isCPUAndNeuralEngine() throws {
-    guard let device = MTLCreateSystemDefaultDevice() else {
-        throw StemTestError.noMetalDevice
-    }
-
-    let separator = try StemSeparator(device: device)
-    #expect(separator.computeUnits == .cpuAndNeuralEngine,
-            "Compute units should be .cpuAndNeuralEngine, got \(separator.computeUnits)")
 }
 
 @Test func test_separate_validInput_returnsFourStems() throws {

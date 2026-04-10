@@ -9,24 +9,16 @@
 //
 // Increment 3.1a-followup replaced scalar loops with vDSP_mtrans
 // bulk transposes and memcpy:
-//   - pack: 275ms → 1ms (raw MLMultiArray + vDSP_mtrans)
-//   - write: 231ms → <1ms (Float-specialized memcpy in UMABuffer)
-//   - unpack transpose: nested scalar loops → vDSP_mtrans
-//   - deinterleave: scalar loop → vDSP_ctoz
-//   - mono averaging: scalar loop → vDSP_vadd + vDSP_vsmul
 //   - Total: ~2000ms → ~620ms (3.2× improvement)
 //
-// ## Remaining bottleneck
+// Increment 3.9 replaced CoreML (ANE, Float16) with MPSGraph (GPU, Float32),
+// eliminating the ~420ms Float16→Float32 conversion and MLMultiArray
+// pack/unpack overhead:
+//   - Total: ~620ms → ~150ms (4× improvement)
 //
-// The ANE outputs Float16 MLMultiArrays. `MLShapedArray<Float>(converting:)`
-// performs the Float16→Float32 conversion, which takes ~420ms for ~7M
-// elements — this is internal to CoreML and cannot be optimized further
-// from Swift. The original spec's 250ms target assumed Float32 ANE output.
-//
-// Warm-call breakdown (typical):
-//   prep=1ms, stft=9ms, pack=1ms, predict=140ms,
-//   unpackIstft=475ms (420ms F16→F32 + 5ms transpose + 50ms iSTFT),
-//   write=0ms → total ≈ 625ms
+// Warm-call breakdown (typical, post-3.9):
+//   prep=1ms, stft=9ms, memcpy=0ms, predict=102ms,
+//   reconstruct=35ms (iSTFT + mono avg), write=0ms → total ≈ 150ms
 
 import XCTest
 import Metal
@@ -45,27 +37,27 @@ final class StemSeparationPerformanceTests: XCTestCase {
         device = dev
     }
 
-    /// Hard assertion: warm-call `separate()` must complete under 750ms.
+    /// Hard assertion: warm-call `separate()` must complete under 400ms.
     ///
-    /// This ceiling accounts for ~140ms ANE prediction + ~420ms Float16→Float32
-    /// conversion + ~50ms iSTFT + ~15ms overhead, with 20% headroom.
-    /// The first call includes MPSGraph JIT and CoreML compilation, so we
-    /// warm up once before measuring.
+    /// Post-3.9 budget: ~9ms STFT + ~102ms MPSGraph predict + ~35ms iSTFT
+    /// + ~15ms overhead = ~161ms, with generous headroom to 400ms.
+    /// The first call includes MPSGraph JIT compilation, so we warm up
+    /// once before measuring.
     func test_separate_1SecondAudio_performance() throws {
         let separator = try StemSeparator(device: device)
 
         let mono = AudioFixtures.sineWave(frequency: 440, sampleRate: 44100, duration: 1.0)
         let stereo = AudioFixtures.mixStereo(left: mono, right: mono)
 
-        // Warm up: first call includes MPSGraph JIT and CoreML compilation.
+        // Warm up: first call includes MPSGraph JIT compilation.
         _ = try separator.separate(audio: stereo, channelCount: 2, sampleRate: 44100)
 
         // Hard assertion on a warm call.
         let start = Date()
         _ = try separator.separate(audio: stereo, channelCount: 2, sampleRate: 44100)
         let elapsed = Date().timeIntervalSince(start)
-        XCTAssertLessThan(elapsed, 0.75,
-            "separate() took \(String(format: "%.0f", elapsed * 1000))ms, target is 750ms")
+        XCTAssertLessThan(elapsed, 0.40,
+            "separate() took \(String(format: "%.0f", elapsed * 1000))ms, target is 400ms")
     }
 
     /// XCTest.measure benchmark for averaged timing across multiple iterations.
@@ -83,61 +75,6 @@ final class StemSeparationPerformanceTests: XCTestCase {
                 _ = try separator.separate(audio: stereo, channelCount: 2, sampleRate: 44100)
             } catch {
                 XCTFail("Separation failed: \(error)")
-            }
-        }
-    }
-
-    // MARK: - Increment 3.7a: CPU-only CoreML Baseline
-
-    /// Diagnostic: measure `separate()` with `.cpuOnly` compute units.
-    ///
-    /// Hypothesis: CPU Float32 inference avoids the ~420ms Float16→Float32
-    /// conversion from ANE output, potentially making CPU-only faster overall
-    /// despite slower raw inference. If CPU total ≈ 400ms vs ANE total ≈ 620ms,
-    /// the MPSGraph migration (Increment 3.8) target is confirmed.
-    func test_separate_cpuOnly_baseline() throws {
-        let separator = try StemSeparator(device: device, computeUnits: .cpuOnly)
-        XCTAssertEqual(separator.computeUnits, .cpuOnly)
-
-        let mono = AudioFixtures.sineWave(frequency: 440, sampleRate: 44100, duration: 1.0)
-        let stereo = AudioFixtures.mixStereo(left: mono, right: mono)
-
-        // Warm up: first call includes CoreML compilation overhead.
-        let warmStart = Date()
-        _ = try separator.separate(audio: stereo, channelCount: 2, sampleRate: 44100)
-        let warmElapsed = Date().timeIntervalSince(warmStart)
-
-        // Warm call: the number we care about.
-        let hotStart = Date()
-        _ = try separator.separate(audio: stereo, channelCount: 2, sampleRate: 44100)
-        let hotElapsed = Date().timeIntervalSince(hotStart)
-
-        // Log timings for the commit message.
-        print("""
-        === Increment 3.7a: CPU-only CoreML Baseline ===
-        Compute units: .cpuOnly
-        Cold call (includes compilation): \(String(format: "%.0f", warmElapsed * 1000))ms
-        Warm call: \(String(format: "%.0f", hotElapsed * 1000))ms
-        Compare against ANE baseline: ~620ms warm (140ms predict + 420ms F16→F32 + 60ms other)
-        ================================================
-        """)
-    }
-
-    /// XCTest.measure benchmark for CPU-only path across multiple iterations.
-    func test_separate_cpuOnly_measureBlock() throws {
-        let separator = try StemSeparator(device: device, computeUnits: .cpuOnly)
-
-        let mono = AudioFixtures.sineWave(frequency: 440, sampleRate: 44100, duration: 1.0)
-        let stereo = AudioFixtures.mixStereo(left: mono, right: mono)
-
-        // Warm up outside measure block.
-        _ = try separator.separate(audio: stereo, channelCount: 2, sampleRate: 44100)
-
-        measure {
-            do {
-                _ = try separator.separate(audio: stereo, channelCount: 2, sampleRate: 44100)
-            } catch {
-                XCTFail("CPU-only separation failed: \(error)")
             }
         }
     }
