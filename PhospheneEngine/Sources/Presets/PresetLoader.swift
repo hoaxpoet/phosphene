@@ -207,6 +207,103 @@ public final class PresetLoader: @unchecked Sendable {
     private func compileShader(
         at url: URL, descriptor: PresetDescriptor
     ) -> (standard: MTLRenderPipelineState, feedback: MTLRenderPipelineState?)? {
+        // Branch to mesh pipeline compilation for mesh shader presets.
+        if descriptor.useMeshShader {
+            return compileMeshShader(at: url, descriptor: descriptor)
+        }
+        return compileStandardShader(at: url, descriptor: descriptor)
+    }
+
+    /// Compile a mesh shader preset.
+    ///
+    /// On M3+ (`device.supportsFamily(.apple8)`), uses `MTLMeshRenderPipelineDescriptor`
+    /// with the object, mesh, and fragment functions derived by convention from the
+    /// preset's fragment function name (replacing the `_fragment` suffix with
+    /// `_object_shader`, `_mesh_shader`).
+    ///
+    /// On M1/M2, falls back to a standard vertex+fragment pipeline using
+    /// `descriptor.vertexFunction` + `descriptor.fragmentFunction` so the preset
+    /// degrades gracefully without crashing.
+    private func compileMeshShader(
+        at url: URL, descriptor: PresetDescriptor
+    ) -> (standard: MTLRenderPipelineState, feedback: MTLRenderPipelineState?)? {
+        guard let fragmentSource = try? String(contentsOf: url, encoding: .utf8) else {
+            logger.error("Could not read shader file: \(url.lastPathComponent)")
+            return nil
+        }
+
+        let fullSource = Self.shaderPreamble + "\n\n" + fragmentSource
+        let options = MTLCompileOptions()
+        options.fastMathEnabled = true
+        options.languageVersion = .version3_1
+
+        let library: MTLLibrary
+        do {
+            library = try device.makeLibrary(source: fullSource, options: options)
+        } catch {
+            logger.error("Mesh shader compilation failed for \(url.lastPathComponent): \(error)")
+            return nil
+        }
+
+        let fragmentName = descriptor.fragmentFunction
+        let meshName     = fragmentName.replacingOccurrences(of: "_fragment", with: "_mesh_shader")
+        let objectName   = fragmentName.replacingOccurrences(of: "_fragment", with: "_object_shader")
+
+        guard let fragmentFn = library.makeFunction(name: fragmentName) else {
+            logger.error("Fragment function '\(fragmentName)' not found in \(url.lastPathComponent)")
+            return nil
+        }
+        guard let meshFn = library.makeFunction(name: meshName) else {
+            logger.error("Mesh function '\(meshName)' not found in \(url.lastPathComponent)")
+            return nil
+        }
+        let objectFn = library.makeFunction(name: objectName) // optional
+
+        let state: MTLRenderPipelineState
+        if device.supportsFamily(.apple8) {
+            // M3+: native mesh pipeline.
+            let meshDesc = MTLMeshRenderPipelineDescriptor()
+            meshDesc.objectFunction   = objectFn
+            meshDesc.meshFunction     = meshFn
+            meshDesc.fragmentFunction = fragmentFn
+            meshDesc.colorAttachments[0].pixelFormat = pixelFormat
+            do {
+                let (pipelineState, _) = try device.makeRenderPipelineState(
+                    descriptor: meshDesc, options: []
+                )
+                state = pipelineState
+                logger.info("Created mesh pipeline (native) for \(descriptor.name)")
+            } catch {
+                logger.error("Mesh pipeline creation failed for \(url.lastPathComponent): \(error)")
+                return nil
+            }
+        } else {
+            // M1/M2 fallback: standard vertex + fragment, no mesh geometry.
+            guard let vertexFn = library.makeFunction(name: descriptor.vertexFunction) else {
+                logger.error("Fallback vertex '\(descriptor.vertexFunction)' not found in \(url.lastPathComponent)")
+                return nil
+            }
+            let fallbackDesc = MTLRenderPipelineDescriptor()
+            fallbackDesc.vertexFunction   = vertexFn
+            fallbackDesc.fragmentFunction = fragmentFn
+            fallbackDesc.colorAttachments[0].pixelFormat = pixelFormat
+            do {
+                state = try device.makeRenderPipelineState(descriptor: fallbackDesc)
+                logger.info("Created mesh pipeline (vertex fallback) for \(descriptor.name)")
+            } catch {
+                logger.error("Fallback pipeline creation failed for \(url.lastPathComponent): \(error)")
+                return nil
+            }
+        }
+
+        // Mesh presets do not support feedback compositing in this increment.
+        return (standard: state, feedback: nil)
+    }
+
+    /// Compile a standard (non-mesh) preset shader.
+    private func compileStandardShader(
+        at url: URL, descriptor: PresetDescriptor
+    ) -> (standard: MTLRenderPipelineState, feedback: MTLRenderPipelineState?)? {
         guard let fragmentSource = try? String(contentsOf: url, encoding: .utf8) else {
             logger.error("Could not read shader file: \(url.lastPathComponent)")
             return nil

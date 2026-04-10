@@ -34,7 +34,7 @@ line, as it would propagate to SPM dependencies that compile with
 
 Deployment target: macOS 14.0+ (Sonoma). Swift 6.0. Metal 3.1+.
 
-**Current test count: 241 tests** (221 swift-testing + 20 XCTest, across unit, integration, regression, performance). All must pass before any new code is merged.
+**Current test count: 247 tests** (221 swift-testing + 26 XCTest, across unit, integration, regression, performance). All must pass before any new code is merged.
 
 ## Module Map
 
@@ -85,16 +85,19 @@ PhospheneEngine/
     MetalContext            → MTLDevice, command queue, triple-buffered semaphore, shared-texture helper (✓ implemented)
     ShaderLibrary           → Auto-discover .metal files, runtime compilation, cache (✓ implemented)
     RenderPipeline          → Feedback-texture ping-pong, warp/composite/blit passes, particle integration (✓ implemented)
-    RenderPipeline+Draw     → Draw paths: direct, feedback, warp, blit, particles (✓ implemented)
+    RenderPipeline+Draw     → Draw paths: direct, mesh, feedback, warp, blit, particles (✓ implemented)
+    RenderPipeline+MeshDraw → Mesh shader draw path: drawWithMeshShader, offscreen pass, MeshGenerator delegation (✓ implemented)
     Protocols               → Rendering protocol for DI/testing (✓ implemented)
     Geometry/ProceduralGeometry → GPU compute particle system: UMA buffer + compute pipeline + render pipeline (✓ implemented)
+    Geometry/MeshGenerator  → MTLMeshRenderPipelineDescriptor (M3+) + vertex fallback (M1/M2), draw dispatch (✓ implemented)
     Shaders/Common.metal    → FeatureVector/FeedbackParams structs, hsv2rgb, fullscreen_vertex, feedback_warp_fragment, feedback_blit_fragment (✓ implemented)
+    Shaders/MeshShaders.metal → ObjectPayload/MeshVertex/MeshPrimitive structs, mesh_object_shader, mesh_shader, mesh_fragment, mesh_fallback_vertex (✓ implemented)
     Shaders/Particles.metal → Murmuration compute kernel + bird silhouette vertex/fragment shaders (✓ implemented)
     Shaders/Waveform.metal  → 64-bar FFT spectrum + oscilloscope waveform (✓ implemented)
-  Presets/                  → Preset loading, categorization, hot-reload, feedback support
-    PresetLoader            → Auto-discover .metal presets, compile standard + additive-blend pipeline states (✓ implemented)
-    PresetLoader+Preamble   → Common Metal shader preamble string (FeatureVector struct, utilities) (✓ implemented)
-    PresetDescriptor        → JSON sidecar metadata with useFeedback flag (✓ implemented)
+  Presets/                  → Preset loading, categorization, hot-reload, feedback + mesh support
+    PresetLoader            → Auto-discover .metal presets, compile standard + additive-blend + mesh pipeline states (✓ implemented)
+    PresetLoader+Preamble   → Common Metal shader preamble string (FeatureVector struct, meshlet structs, utilities) (✓ implemented)
+    PresetDescriptor        → JSON sidecar metadata with useFeedback, useMeshShader flags (✓ implemented)
     PresetCategory          → Visual aesthetic families (11 categories including abstract) (✓ implemented)
     Shaders/Starburst.metal → "Murmuration" preset — dusk sky gradient backdrop (✓ implemented)
     Shaders/Waveform.metal  → Spectrum bars + oscilloscope preset (✓ implemented)
@@ -111,11 +114,11 @@ PhospheneEngine/
     StemSampleBuffer        → Interleaved stereo PCM ring buffer for stem separation input (✓ implemented)
     Logging                 → Per-module os.Logger instances (✓ implemented)
 
-Tests/ (241 tests: 221 swift-testing + 20 XCTest)
+Tests/ (247 tests: 221 swift-testing + 26 XCTest)
   Audio/                    → AudioBufferTests, FFTProcessorTests, StreamingMetadataTests, MetadataPreFetcherTests, LookaheadBufferTests (10)
   DSP/                      → SpectralAnalyzerTests (8), BandEnergyProcessorTests (5), ChromaExtractorTests (6), BeatDetectorTests (7), MIRPipelineUnitTests (4), SelfSimilarityMatrixTests (5), NoveltyDetectorTests (5), StructuralAnalyzerTests (8)
   ML/                       → StemSeparatorTests (7), StemFFTTests (6: vDSP cross-validate, round-trip, fwd perf, inv perf, UMA storage, thread safety), StemModelTests (6: init, silence, cross-validate, perf gate <400ms, UMA storage, thread safety), MoodClassifierTests (7: init, classification, range, quadrants, protocol)
-  Renderer/                 → MetalContextTests, ShaderLibraryTests, RenderPipelineTests, ProceduralGeometryTests (7: init, storage mode, dispatch, count, zero-audio, impulse, 1M perf)
+  Renderer/                 → MetalContextTests, ShaderLibraryTests, RenderPipelineTests, ProceduralGeometryTests (7: init, storage mode, dispatch, count, zero-audio, impulse, 1M perf), MeshGeneratorTests (6: descriptor, pipeline state, dispatch, maxVerts=256, maxPrims=512, <16ms perf)
   Shared/                   → AudioFeaturesTests (2: StemFeatures layout + SIMD alignment), UMABufferExtendedTests, EmotionalStateTests (4: quadrant classification), AnalyzedFrameTests (3)
   Integration/              → AudioToFFTPipelineTests, AudioToRenderPipelineTests, MetadataToOrchestratorTests, AudioToStemPipelineTests, MIRPipelineIntegrationTests (3), LookaheadIntegrationTests (1), StemsToRenderPipelineTests (4: warmup default, separation→analysis, track reset, Swift/MSL size)
   Regression/               → FFTRegressionTests, MetadataParsingRegressionTests, ChromaRegressionTests (2), BeatDetectorRegressionTests (2), StructuralAnalysisRegressionTests (1) + golden fixtures
@@ -498,6 +501,8 @@ Metal, MetalKit, MetalPerformanceShadersGraph, AVFoundation, Accelerate, ScreenC
 
 37. **StemSeparator MPSGraph integration (Increment 3.9)**: `StemSeparator` now uses `StemModelEngine` instead of CoreML. STFT magnitudes are written directly into `StemModelEngine.inputMagLBuffer`/`inputMagRBuffer` via `memcpy` (same row-major [frame, bin] layout). Output magnitudes read directly from `StemModelEngine.outputBuffers[stem].magL/magR` as `UnsafeBufferPointer`. No MLMultiArray pack/unpack, no Float16→Float32 conversion. `StemSeparator+Pack.swift` renamed to `StemSeparator+Reconstruct.swift` — retains only `reconstructStemWaveforms` (iSTFT per stem) and `averageToMono` (vDSP). `import CoreML` removed from StemSeparator; CoreML remains for MoodClassifier until Increment 3.10. Warm `separate()`: 142ms avg (4.4× faster than 620ms CoreML path).
 
+38. **Mesh shader pipeline architecture (Increment 3.2)**: Hardware capability gated at `device.supportsFamily(.apple8)` (M3+). On M3+: `MTLMeshRenderPipelineDescriptor` with `objectFunction` (optional) + `meshFunction` + `fragmentFunction`; draw via `drawMeshThreadgroups(_, threadsPerObjectThreadgroup:, threadsPerMeshThreadgroup:)`. On M1/M2: standard `MTLRenderPipelineDescriptor` with `mesh_fallback_vertex` + same fragment function; draw via `drawPrimitives`. `MeshGenerator` owns both pipeline states and abstracts the dispatch — callers never branch on hardware tier. `renderFrame` priority: mesh → feedback → direct. MSL note: mesh function parameters use `[[thread_index_in_threadgroup]]`, NOT `[[thread_index_in_mesh]]` (that attribute does not exist). `ObjectPayload` uses `object_data` address space qualifier for the payload pointer in the object shader and reference in the mesh shader. Preamble provides `ObjectPayload`, `MeshVertex`, `MeshPrimitive` to preset shaders that declare `use_mesh_shader: true`. Function naming convention for preset mesh shaders: `<name>_mesh_shader`, `<name>_object_shader` (optional), `<name>_fragment`.
+
 ## Reference Documents
 
 The full development plan with phased increments is in `docs/DEVELOPMENT_PLAN.md`. Consult the relevant increment when starting a task — do not load the entire plan into context.
@@ -528,14 +533,16 @@ The architectural blueprint is in `docs/ARCHITECTURAL_BLUEPRINT.md`.
 - **Increment 3.10 — Pure Accelerate MoodClassifier** ✅ — Replaced CoreML inference with 3 `vDSP_mmul` + bias + ReLU/tanh calls. Weights (3,346 Float32 params) hardcoded as static arrays in `MoodClassifier+Weights.swift`, extracted from the DEAM-trained CoreML model via `tools/extract_mood_weights.py`. `init()` is non-throwing (no model loading). Protocol `MoodClassifying` unchanged. 241 tests (221 swift-testing + 20 XCTest).
 - **Increment 3.11 — Remove CoreML Dependency** ✅ — Deleted `StemSeparator.mlpackage` and `MoodClassifier.mlpackage`. Removed `import CoreML` from `ML.swift`. Removed `.copy("Models")` from `Package.swift`. Verified via `otool -L` that the binary no longer links CoreML. 241 tests pass, SwiftLint clean.
 
+**Completed increments (Phase 3.2):**
+- **Increment 3.2 — Mesh Shader Pipeline Infrastructure** ✅ — `MeshShaders.metal` (ObjectPayload/MeshVertex/MeshPrimitive structs, trivial object+mesh+fragment+fallback shaders), `MeshGenerator.swift` (detects `device.supportsFamily(.apple8)`, compiles `MTLMeshRenderPipelineDescriptor` on M3+ or vertex fallback on M1/M2, `draw()` dispatches `drawMeshThreadgroups`/`drawPrimitives` accordingly), `RenderPipeline+MeshDraw.swift` (`drawWithMeshShader` parallel to `drawDirect`), mesh branch in `renderFrame` (mesh → feedback → direct priority), `useMeshShader: Bool` on `PresetDescriptor`, meshlet struct definitions in `PresetLoader` preamble, `compileMeshShader` in `PresetLoader`. MSL fix: `[[thread_index_in_threadgroup]]` is correct; `[[thread_index_in_mesh]]` is not a valid Metal attribute. 247 tests (221 swift-testing + 26 XCTest).
+
 **Ordered next increments** (per the revised plan):
-1. **Increment 3.2 — Mesh Shader Pipeline Infrastructure** (now infrastructure-only, no preset). `MeshShaders.metal` shared utilities, `MeshGenerator.swift` with mesh path + vertex fallback, new `drawWithMeshShader` render path, `useMeshShader` flag, 6 `MeshGeneratorTests`.
-2. **Increment 3.2b — Fractal Tree Demonstration Preset.** First preset using the mesh shader pipeline. Recursive 3D branching structure responding to audio.
-3. **Increment 3.3 — Hardware Ray Tracing Infrastructure.** `BVHBuilder`, `RayIntersector`, `RayTracing.metal`, 9 tests. (The original 3.3 spec had `PostProcess.metal` in it; that file was extracted to Increment 3.4.)
-4. **Increment 3.4 — HDR Post-Process Chain** (extracted from 3.3). `PostProcessChain.swift`, `PostProcess.metal` (bright pass, blur H/V, ACES composite), `usePostProcess` flag, 6 tests. Independent of ray tracing.
-5. **Increment 3.5 — Indirect Command Buffers** (was 3.4).
-6. **Increment 3.6 (deferred) — Render Graph Refactor.** Fires when capability flag count exceeds 4.
-7. **Phase 3.5 — Native Preset Library Expansion.** Dedicated home for native presets that depend on Phase 3 infrastructure. First entry: **3.5.1 Photorealistic Popcorn**, depends on 3.1b + 3.3 + 3.4.
+1. **Increment 3.2b — Fractal Tree Demonstration Preset.** First preset using the mesh shader pipeline. Recursive 3D branching structure responding to audio.
+2. **Increment 3.3 — Hardware Ray Tracing Infrastructure.** `BVHBuilder`, `RayIntersector`, `RayTracing.metal`, 9 tests. (The original 3.3 spec had `PostProcess.metal` in it; that file was extracted to Increment 3.4.)
+3. **Increment 3.4 — HDR Post-Process Chain** (extracted from 3.3). `PostProcessChain.swift`, `PostProcess.metal` (bright pass, blur H/V, ACES composite), `usePostProcess` flag, 6 tests. Independent of ray tracing.
+4. **Increment 3.5 — Indirect Command Buffers** (was 3.4).
+5. **Increment 3.6 (deferred) — Render Graph Refactor.** Fires when capability flag count exceeds 4.
+6. **Phase 3.5 — Native Preset Library Expansion.** Dedicated home for native presets that depend on Phase 3 infrastructure. First entry: **3.5.1 Photorealistic Popcorn**, depends on 3.1b + 3.3 + 3.4.
 
 **Increment Scope Discipline rule**: per the revised `DEVELOPMENT_PLAN.md` Code Hygiene Rules, one increment is one reviewable unit of work. Infrastructure increments and preset increments are never bundled in the same increment. Scope creep is recorded retroactively as a new increment, not silently absorbed.
 

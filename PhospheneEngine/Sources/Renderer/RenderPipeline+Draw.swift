@@ -81,8 +81,19 @@ extension RenderPipeline {
         // ── Compute pass: update particles before rendering ─────────
         particles?.update(features: features, commandBuffer: commandBuffer)
 
-        // Branch: feedback-enabled preset vs direct rendering.
-        if fbEnabled, let params = fbParams, let composePipeline = fbCompose,
+        // Snapshot mesh shader state for this frame.
+        let (meshEnabled, meshGen) = meshLock.withLock { (meshShaderEnabled, meshGenerator) }
+
+        // Branch: mesh shader → feedback → direct.
+        if meshEnabled, let generator = meshGen {
+            drawWithMeshShader(
+                commandBuffer: commandBuffer,
+                view: view,
+                features: &features,
+                stemFeatures: stemFeatures,
+                meshGenerator: generator
+            )
+        } else if fbEnabled, let params = fbParams, let composePipeline = fbCompose,
            fbTextures.count == 2 {
             var ctx = FeedbackDrawContext(
                 commandBuffer: commandBuffer,

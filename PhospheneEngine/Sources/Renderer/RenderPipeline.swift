@@ -62,6 +62,14 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     /// Bilinear, clamp-to-edge sampler for feedback texture reads.
     let feedbackSamplerState: MTLSamplerState
 
+    // MARK: - Mesh Shader State
+
+    /// Optional mesh generator — attached when the active preset has `useMeshShader: true`.
+    var meshGenerator: MeshGenerator?
+    /// Whether the active preset routes through the mesh shader draw path.
+    var meshShaderEnabled: Bool = false
+    let meshLock = NSLock()
+
     // MARK: - Timing
 
     let startTime: CFAbsoluteTime
@@ -173,6 +181,19 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
             // but beatBass is correct for the Starburst preset (beat_source: "bass").
             currentFeedbackParams?.beatValue = max(features.beatBass, features.beatComposite)
         }
+    }
+
+    /// Attach a mesh generator for mesh shader presets.
+    ///
+    /// Pass a non-nil generator and `enabled: true` to route `draw(in:)` through
+    /// `drawWithMeshShader`.  Pass `nil` / `false` to fall back to the standard
+    /// direct or feedback render path.  Thread-safe — can be called from any queue.
+    public func setMeshGenerator(_ generator: MeshGenerator?, enabled: Bool = true) {
+        meshLock.withLock {
+            meshGenerator      = generator
+            meshShaderEnabled  = generator != nil && enabled
+        }
+        logger.info("Mesh shader \(generator != nil && enabled ? "enabled" : "disabled")")
     }
 
     /// Attach a particle system to the render loop.
