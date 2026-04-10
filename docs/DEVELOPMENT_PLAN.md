@@ -1069,29 +1069,42 @@ echo "=== All checks passed ==="
 
 ### Increment 3.7a: CPU-only CoreML Baseline Measurement
 
-**Status:** Not started.
+**Status:** ✅ Complete.
 
 **Goal:** Validate the hypothesis that Float16 conversion overhead exceeds CPU inference cost. One-line diagnostic change: `config.computeUnits = .cpuOnly` in `StemSeparator.init`. Measure wall-clock `separate()` with the CPU path. If CPU Float32 inference ≈ 400ms (vs ANE 140ms + F16→F32 420ms = 560ms), the MPSGraph migration target is confirmed.
 
-**Revert the compute units change after measurement** — this is diagnostic only. Record measured timings in the commit message.
+**Measured results (Mac mini, Apple Silicon):**
+- ANE path (`.cpuAndNeuralEngine`): **659ms avg** (10 iterations, 2.9% RSD)
+- CPU path (`.cpuOnly`): **592ms avg** (10 iterations, 11.8% RSD)
+- CPU cold call: ~723ms (includes CoreML compilation)
 
-**Files:** `StemSeparator.swift` (temporary), `StemSeparationPerformanceTests.swift` (add CPU timing log).
+**Analysis:** CPU-only is ~10% faster than ANE due to eliminating Float16→Float32 conversion. However, 592ms still exceeds the 400ms MPSGraph target — CPU inference alone is ~450ms (vs ANE 140ms). The MPSGraph migration remains the right path: it should achieve ANE-like 140ms inference in Float32 with zero conversion overhead. Target: <400ms total `separate()`.
 
-**Tests:** All 236 existing tests pass. No new tests.
+**Implementation:** Added `computeUnits` parameter to `StemSeparator.init` (default `.cpuAndNeuralEngine`), plus 2 CPU-only benchmark tests. Production default unchanged.
+
+**Files:** `StemSeparator.swift`, `StemSeparationPerformanceTests.swift`.
+
+**Tests:** 238 tests pass (222 swift-testing + 16 XCTest). +2 new perf tests.
 
 ### Increment 3.7b: Open-Unmix Weight Extraction Tool
 
-**Status:** Not started.
+**Status:** ✅ Complete.
 
 **Goal:** Extract all weight tensors from the Open-Unmix HQ PyTorch model into a GPU-loadable format.
 
-**Deliverable:** `tools/extract_umx_weights.py` — loads the umxhq PyTorch checkpoint via `torch.hub`, iterates all named parameters/buffers across 4 stems, saves each as a raw `.bin` (float32, C-contiguous) with a `manifest.json` mapping names to shapes/dtypes/files.
+**Deliverable:** `tools/extract_umx_weights.py` — loads the umxhq PyTorch checkpoint via `openunmix`, iterates all named parameters/buffers across 4 stems, saves each as a raw `.bin` (float32, C-contiguous) with a `manifest.json` mapping names to shapes/dtypes/files.
 
-**Per-stem expected weights:** `input_mean[1487]`, `input_scale[1487]`, `fc1.weight[512,2974]`, `fc1.bias[512]`, `bn1.{weight,bias,running_mean,running_var}[512]`, LSTM weights `weight_ih_l{0,1,2}[2048,512]` + `weight_hh_l{0,1,2}[2048,512]` + reverse variants + biases, `fc2.weight[512,1024]`, `fc2.bias[512]`, `bn2.*[512]`, `fc3.weight[2049,512]`, `fc3.bias[512]`, `bn3.*[2049]`, `output_mean[2049]`, `output_scale[2049]`.
+**Actual architecture (discovered during extraction):**
+- 43 tensors per stem, 172 total (not 34 as originally estimated)
+- Linear layers use `bias=False` (bias folded into BatchNorm) — no fc1.bias, fc2.bias, fc3.bias
+- fc3/bn3 output 4098 features (2 channels × 2049 bins), not 2049
+- LSTM hidden_size=256 (bidirectional → 512 output), weight_hh shape [1024, 256]
+- LSTM gate_size = 4 × 256 = 1024 (not 2048 as spec assumed)
+- Total: 135.9 MB across 172 .bin files + manifest.json
 
-**Output:** `PhospheneEngine/Sources/ML/Weights/` directory with `.bin` files + `manifest.json`. Added to `Package.swift` as `.copy("Weights")`.
+**Output:** `PhospheneEngine/Sources/ML/Weights/` directory with `.bin` files + `manifest.json`. Added to `Package.swift` as `.copy("Weights")`. Weight .bin files tracked via Git LFS (`.gitattributes`).
 
-**Tests:** `tools/test_umx_weights.py` validates manifest shapes match architecture constants.
+**Tests:** `tools/test_umx_weights.py` — 6 validation checks (manifest metadata, tensor count, presence, shapes, file sizes, data validity). All pass.
 
 ### Increment 3.8: MPSGraph Open-Unmix Inference Engine
 
@@ -1101,15 +1114,16 @@ echo "=== All checks passed ==="
 
 **New file:** `Sources/ML/StemModel.swift` — `StemModelEngine` class.
 
-**Architecture per stem:**
+**Architecture per stem** (corrected per 3.7b extraction):
 ```
 Input [431, 2, 1487] → InputNorm → Reshape [431, 2974]
-  → FC1(2974→512) + BN1 + Tanh
-  → LSTM(512, bidirectional, 3 layers) → concat(input, lstm_out) → [431, 1024]
-  → FC2(1024→512) + BN2 + ReLU
-  → FC3(512→2049) + BN3 + OutputScale
-  → ReLU(mask) × original_spectrogram → Output [431, 2, 2049]
+  → FC1(2974→512, bias=False) + BN1 + Tanh
+  → LSTM(input=512, hidden=256, 3 layers, bidirectional) → concat(fc1_out, lstm_out) → [431, 1024]
+  → FC2(1024→512, bias=False) + BN2 + ReLU
+  → FC3(512→4098, bias=False) + BN3 + OutputScale
+  → Reshape [431, 2, 2049] → ReLU(mask) × original_spectrogram → Output [431, 2, 2049]
 ```
+Note: All Linear layers use `bias=False` (bias is folded into BatchNorm). FC3 outputs 4098 = 2 channels × 2049 bins. LSTM hidden_size=256, bidirectional output=512.
 
 All 4 stems in a single MPSGraph. Float32 throughout. Weights loaded from `.bin` files into `MTLBuffer` (`.storageModeShared`). Fixed input shape (431 frames) — graph compiled once at init.
 
