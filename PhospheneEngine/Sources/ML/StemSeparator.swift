@@ -245,7 +245,7 @@ public final class StemSeparator: StemSeparating, @unchecked Sendable {
     ///
     /// - Parameter mono: Mono float32 samples.
     /// - Returns: Tuple of (magnitude, phase) arrays, each of length nBins * nbFrames.
-    private func stft(mono: [Float]) -> (magnitude: [Float], phase: [Float]) {
+    func stft(mono: [Float]) -> (magnitude: [Float], phase: [Float]) {
         return fftEngine.forward(mono: mono)
     }
 
@@ -265,8 +265,12 @@ public final class StemSeparator: StemSeparating, @unchecked Sendable {
     ///   - nbFrames: Number of STFT frames.
     ///   - originalLength: If provided, trim center padding to this length.
     /// - Returns: Reconstructed mono waveform.
-    private func istft(magnitude: [Float], phase: [Float], nbFrames: Int,
-                       originalLength: Int? = nil) -> [Float] {
+    func istft(
+        magnitude: [Float],
+        phase: [Float],
+        nbFrames: Int,
+        originalLength: Int? = nil
+    ) -> [Float] {
         return fftEngine.inverse(
             magnitude: magnitude,
             phase: phase,
@@ -276,119 +280,6 @@ public final class StemSeparator: StemSeparating, @unchecked Sendable {
     }
 
     // MARK: - Spectrogram Packing / Unpacking
-
-    /// Pack left/right magnitude spectrograms into CoreML input format.
-    ///
-    /// Uses MLShapedArray for stride-safe access to the backing buffer.
-    ///
-    /// - Parameters:
-    ///   - magL: Left channel magnitude (nBins * nbFrames), stored as [frame][bin].
-    ///   - magR: Right channel magnitude (nBins * nbFrames), stored as [frame][bin].
-    ///   - nbFrames: Number of STFT frames.
-    /// - Returns: MLMultiArray of shape [1, 2, 2049, nbFrames].
-    private func packSpectrogramForModel(
-        magL: [Float], magR: [Float], nbFrames: Int
-    ) throws -> MLMultiArray {
-        let shape = [1, 2, Self.nBins, nbFrames]
-        var shaped = MLShapedArray<Float>(repeating: 0, shape: shape)
-
-        // Write via withUnsafeMutableShapedBufferPointer — handles padded strides correctly.
-        shaped.withUnsafeMutableShapedBufferPointer { ptr, _, strides in
-            for bin in 0..<Self.nBins {
-                for frame in 0..<nbFrames {
-                    let srcIdx = frame * Self.nBins + bin
-                    let leftIdx = bin * strides[2] + frame * strides[3]
-                    let rightIdx = strides[1] + bin * strides[2] + frame * strides[3]
-                    ptr[leftIdx] = magL[srcIdx]
-                    ptr[rightIdx] = magR[srcIdx]
-                }
-            }
-        }
-
-        return MLMultiArray(shaped)
-    }
-
-    /// Unpack CoreML output and apply iSTFT to reconstruct stem waveforms.
-    ///
-    /// Uses MLShapedArray for stride-safe access to the ANE output buffer,
-    /// which has padded strides with unmapped memory in the padding regions.
-    ///
-    /// - Parameters:
-    ///   - output: MLMultiArray of shape [4, 2, 2049, nbFrames].
-    ///   - phaseL: Left channel phase spectrogram.
-    ///   - phaseR: Right channel phase spectrogram.
-    ///   - nbFrames: Number of STFT frames.
-    /// - Returns: Array of 4 mono waveforms (L+R averaged).
-    private func unpackAndISTFT(
-        output: MLMultiArray,
-        phaseL: [Float],
-        phaseR: [Float],
-        nbFrames: Int
-    ) throws -> [[Float]] {
-        let binsPerFrame = Self.nBins
-
-        // Wrap the MLMultiArray in MLShapedArray for stride-safe buffer access.
-        let shaped = MLShapedArray<Float>(converting: output)
-
-        // Extract all stem spectrograms using withUnsafeShapedBufferPointer,
-        // which correctly maps logical indices through padded strides.
-        var allStemMagL = [[Float]](
-            repeating: [Float](repeating: 0, count: binsPerFrame * nbFrames),
-            count: Self.stemCount
-        )
-        var allStemMagR = [[Float]](
-            repeating: [Float](repeating: 0, count: binsPerFrame * nbFrames),
-            count: Self.stemCount
-        )
-
-        shaped.withUnsafeShapedBufferPointer { ptr, _, strides in
-            for stem in 0..<Self.stemCount {
-                let stemBase = stem * strides[0]
-                let leftBase = stemBase
-                let rightBase = stemBase + strides[1]
-
-                for bin in 0..<binsPerFrame {
-                    let freqOff = bin * strides[2]
-                    for frame in 0..<nbFrames {
-                        let localIdx = frame * binsPerFrame + bin
-                        let timeOff = frame * strides[3]
-                        allStemMagL[stem][localIdx] = ptr[leftBase + freqOff + timeOff]
-                        allStemMagR[stem][localIdx] = ptr[rightBase + freqOff + timeOff]
-                    }
-                }
-            }
-        }
-
-        var stemWaveforms = [[Float]]()
-        stemWaveforms.reserveCapacity(Self.stemCount)
-
-        for stem in 0..<Self.stemCount {
-            // iSTFT each channel with original phase, then strip center padding.
-            let waveL = istft(
-                magnitude: allStemMagL[stem],
-                phase: phaseL,
-                nbFrames: nbFrames,
-                originalLength: Self.requiredMonoSamples
-            )
-            let waveR = istft(
-                magnitude: allStemMagR[stem],
-                phase: phaseR,
-                nbFrames: nbFrames,
-                originalLength: Self.requiredMonoSamples
-            )
-
-            // Average to mono.
-            let monoCount = min(waveL.count, waveR.count)
-            var mono = [Float](repeating: 0, count: monoCount)
-            for i in 0..<monoCount {
-                mono[i] = (waveL[i] + waveR[i]) * 0.5
-            }
-
-            stemWaveforms.append(mono)
-        }
-
-        return stemWaveforms
-    }
 
     // MARK: - Resampling
 
