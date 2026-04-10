@@ -1059,6 +1059,110 @@ echo "=== All checks passed ==="
 
 **Enables:** Any future increment requiring tight end-to-end stem separation latency. Per-frame or sub-second stem analysis cadences if downstream presets ever need them.
 
+### Phase 3.7: CoreML → MPSGraph Migration (PRIORITIZED before 3.2)
+
+**Motivation:** CoreML's Float16 ANE output forces a ~420ms `MLShapedArray(converting:)` per stem separation call — the single largest pipeline bottleneck. MPSGraph (already proven in `StemFFTEngine`) supports all Open-Unmix operations and runs Float32 throughout with UMA zero-copy buffers. Migrating eliminates Float16 conversion, removes CoreML as a dependency, and enables future STFT→model→iSTFT graph fusion.
+
+**This block is prioritized before Increment 3.2 (Mesh Shaders) because it directly improves the live stem pipeline that shipped in 3.1b.**
+
+---
+
+### Increment 3.7a: CPU-only CoreML Baseline Measurement
+
+**Status:** Not started.
+
+**Goal:** Validate the hypothesis that Float16 conversion overhead exceeds CPU inference cost. One-line diagnostic change: `config.computeUnits = .cpuOnly` in `StemSeparator.init`. Measure wall-clock `separate()` with the CPU path. If CPU Float32 inference ≈ 400ms (vs ANE 140ms + F16→F32 420ms = 560ms), the MPSGraph migration target is confirmed.
+
+**Revert the compute units change after measurement** — this is diagnostic only. Record measured timings in the commit message.
+
+**Files:** `StemSeparator.swift` (temporary), `StemSeparationPerformanceTests.swift` (add CPU timing log).
+
+**Tests:** All 236 existing tests pass. No new tests.
+
+### Increment 3.7b: Open-Unmix Weight Extraction Tool
+
+**Status:** Not started.
+
+**Goal:** Extract all weight tensors from the Open-Unmix HQ PyTorch model into a GPU-loadable format.
+
+**Deliverable:** `tools/extract_umx_weights.py` — loads the umxhq PyTorch checkpoint via `torch.hub`, iterates all named parameters/buffers across 4 stems, saves each as a raw `.bin` (float32, C-contiguous) with a `manifest.json` mapping names to shapes/dtypes/files.
+
+**Per-stem expected weights:** `input_mean[1487]`, `input_scale[1487]`, `fc1.weight[512,2974]`, `fc1.bias[512]`, `bn1.{weight,bias,running_mean,running_var}[512]`, LSTM weights `weight_ih_l{0,1,2}[2048,512]` + `weight_hh_l{0,1,2}[2048,512]` + reverse variants + biases, `fc2.weight[512,1024]`, `fc2.bias[512]`, `bn2.*[512]`, `fc3.weight[2049,512]`, `fc3.bias[512]`, `bn3.*[2049]`, `output_mean[2049]`, `output_scale[2049]`.
+
+**Output:** `PhospheneEngine/Sources/ML/Weights/` directory with `.bin` files + `manifest.json`. Added to `Package.swift` as `.copy("Weights")`.
+
+**Tests:** `tools/test_umx_weights.py` validates manifest shapes match architecture constants.
+
+### Increment 3.8: MPSGraph Open-Unmix Inference Engine
+
+**Status:** Not started.
+
+**Goal:** Reconstruct Open-Unmix HQ in MPSGraph. Validate output matches CoreML within tolerance.
+
+**New file:** `Sources/ML/StemModel.swift` — `StemModelEngine` class.
+
+**Architecture per stem:**
+```
+Input [431, 2, 1487] → InputNorm → Reshape [431, 2974]
+  → FC1(2974→512) + BN1 + Tanh
+  → LSTM(512, bidirectional, 3 layers) → concat(input, lstm_out) → [431, 1024]
+  → FC2(1024→512) + BN2 + ReLU
+  → FC3(512→2049) + BN3 + OutputScale
+  → ReLU(mask) × original_spectrogram → Output [431, 2, 2049]
+```
+
+All 4 stems in a single MPSGraph. Float32 throughout. Weights loaded from `.bin` files into `MTLBuffer` (`.storageModeShared`). Fixed input shape (431 frames) — graph compiled once at init.
+
+**MPSGraph operations:** `placeholder`, `constant`, `matrixMultiplication`, batch norm via running stats, `LSTM` (bidirectional), `reLU`, `tanh`, `multiplication`, `addition`, `reshape`, `transposeTensor`, `concatTensors`, `sliceTensor`.
+
+**Tests** (`Tests/ML/StemModelTests.swift`, 6 tests): init, silence, CoreML cross-validate (max error < 0.05), performance gate (< 400ms), UMA storage, thread safety.
+
+### Increment 3.9: Integrate MPSGraph into StemSeparator
+
+**Status:** Not started.
+
+**Goal:** Replace CoreML prediction with `StemModelEngine`. Eliminate pack/unpack overhead.
+
+**Data flow simplification:**
+```
+Before: STFT(GPU) → [Float] → pack(MLMultiArray) → predict(ANE/F16) → unpack(F16→F32) → iSTFT(GPU)
+After:  STFT(GPU) → [Float] → predict(MPSGraph/GPU/F32) → iSTFT(GPU)
+```
+
+**Changes:** `StemSeparator.swift` replaces `MLModel` with `StemModelEngine`. `StemSeparator+Pack.swift` loses `packSpectrogramForModel` and `extractStemSpectrograms` (renamed to `StemSeparator+Reconstruct.swift`, keeps iSTFT + mono averaging). Remove `import CoreML`.
+
+**Performance target:** Warm-call `separate()` < 400ms (down from ~620ms).
+
+**Tests:** All 8 `StemSeparatorTests` pass unchanged. Hard gate updated to 400ms.
+
+### Increment 3.10: Pure Accelerate MoodClassifier
+
+**Status:** Not started.
+
+**Goal:** Replace the 914-param MoodClassifier MLP (10→64→32→16→2) with 3 `vDSP_mmul` + bias + ReLU calls. Weights hardcoded as static `[Float]` arrays (~3.6 KB). Protocol `MoodClassifying` unchanged.
+
+**Files:** `MoodClassifier.swift` (rewrite `classify()`, remove `MLModel`), weight extraction script.
+
+**Tests:** All 7 `MoodClassifierTests` pass unchanged.
+
+### Increment 3.11: Remove CoreML Dependency
+
+**Status:** Not started.
+
+**Goal:** Delete `StemSeparator.mlpackage` and `MoodClassifier.mlpackage`. Remove `import CoreML` from all ML files. Remove CoreML framework linkage from `Package.swift`. Update CLAUDE.md. Verify via `otool -L` that the binary no longer links CoreML.
+
+**Tests:** All tests pass. SwiftLint clean.
+
+**Dependency graph:**
+```
+3.7a (CPU baseline) ──┐
+                       ├──→ 3.8 (MPSGraph model) ──→ 3.9 (integrate) ──→ 3.11 (remove CoreML)
+3.7b (weight extract) ─┘                                                       ↑
+                                                      3.10 (Accelerate mood) ──┘
+```
+
+---
+
 ### Increment 3.2: Mesh Shader Pipeline Infrastructure
 
 **Goal:** Metal mesh shading infrastructure for procedural 3D geometry generation. Object + mesh shader stages, pipeline state management, capability detection, and a vertex shader fallback path for pre-M3 hardware (per CLAUDE.md hard rule).

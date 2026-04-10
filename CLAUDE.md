@@ -515,13 +515,14 @@ The architectural blueprint is in `docs/ARCHITECTURAL_BLUEPRINT.md`.
 - **Increment 3.1a-followup — StemSeparator CPU Memory Rearrangement** ✅ — Replaced scalar MLShapedArray loops and per-element UMABuffer writes with vectorized Accelerate operations. Pack: raw MLMultiArray.dataPointer + `vDSP_mtrans` (275ms → 1ms). Write: Float-specialized `UMABuffer.write` via memcpy (231ms → <1ms). Unpack transpose: `vDSP_mtrans` replacing nested scalar loops. Deinterleave: `vDSP_ctoz`. Mono averaging: `vDSP_vadd` + `vDSP_vsmul`. Total `separate()`: ~2000ms → ~600ms (3.4× improvement). Remaining ~420ms is Float16→Float32 conversion inside `MLShapedArray(converting:)` — the ANE outputs Float16 MLMultiArrays and this conversion is internal to CoreML. 236 tests (232 + 2 UMABuffer fast-path + 1 perf measure + 1 hard 750ms gate).
 
 **Ordered next increments** (per the revised plan):
-1. **Increment 3.2 — Mesh Shader Pipeline Infrastructure** (now infrastructure-only, no preset). `MeshShaders.metal` shared utilities, `MeshGenerator.swift` with mesh path + vertex fallback, new `drawWithMeshShader` render path, `useMeshShader` flag, 6 `MeshGeneratorTests`.
-2. **Increment 3.2b — Fractal Tree Demonstration Preset.** First preset using the mesh shader pipeline. Recursive 3D branching structure responding to audio.
-3. **Increment 3.3 — Hardware Ray Tracing Infrastructure.** `BVHBuilder`, `RayIntersector`, `RayTracing.metal`, 9 tests. (The original 3.3 spec had `PostProcess.metal` in it; that file was extracted to Increment 3.4.)
-4. **Increment 3.4 — HDR Post-Process Chain** (extracted from 3.3). `PostProcessChain.swift`, `PostProcess.metal` (bright pass, blur H/V, ACES composite), `usePostProcess` flag, 6 tests. Independent of ray tracing.
-5. **Increment 3.5 — Indirect Command Buffers** (was 3.4).
-6. **Increment 3.6 (deferred) — Render Graph Refactor.** Fires when capability flag count exceeds 4.
-7. **Phase 3.5 — Native Preset Library Expansion.** Dedicated home for native presets that depend on Phase 3 infrastructure. First entry: **3.5.1 Photorealistic Popcorn**, depends on 3.1b + 3.3 + 3.4.
+1. **Phase 3.7 — CoreML → MPSGraph Migration** (prioritized before rendering work). Eliminates the ~420ms Float16→Float32 conversion bottleneck, removes CoreML dependency entirely. Six sub-increments: 3.7a (CPU baseline measurement), 3.7b (weight extraction tool), 3.8 (MPSGraph Open-Unmix engine), 3.9 (integrate into StemSeparator), 3.10 (pure Accelerate MoodClassifier), 3.11 (remove CoreML). Target: `separate()` < 400ms (down from ~620ms).
+2. **Increment 3.2 — Mesh Shader Pipeline Infrastructure** (now infrastructure-only, no preset). `MeshShaders.metal` shared utilities, `MeshGenerator.swift` with mesh path + vertex fallback, new `drawWithMeshShader` render path, `useMeshShader` flag, 6 `MeshGeneratorTests`.
+3. **Increment 3.2b — Fractal Tree Demonstration Preset.** First preset using the mesh shader pipeline. Recursive 3D branching structure responding to audio.
+4. **Increment 3.3 — Hardware Ray Tracing Infrastructure.** `BVHBuilder`, `RayIntersector`, `RayTracing.metal`, 9 tests. (The original 3.3 spec had `PostProcess.metal` in it; that file was extracted to Increment 3.4.)
+5. **Increment 3.4 — HDR Post-Process Chain** (extracted from 3.3). `PostProcessChain.swift`, `PostProcess.metal` (bright pass, blur H/V, ACES composite), `usePostProcess` flag, 6 tests. Independent of ray tracing.
+6. **Increment 3.5 — Indirect Command Buffers** (was 3.4).
+7. **Increment 3.6 (deferred) — Render Graph Refactor.** Fires when capability flag count exceeds 4.
+8. **Phase 3.5 — Native Preset Library Expansion.** Dedicated home for native presets that depend on Phase 3 infrastructure. First entry: **3.5.1 Photorealistic Popcorn**, depends on 3.1b + 3.3 + 3.4.
 
 **Increment Scope Discipline rule**: per the revised `DEVELOPMENT_PLAN.md` Code Hygiene Rules, one increment is one reviewable unit of work. Infrastructure increments and preset increments are never bundled in the same increment. Scope creep is recorded retroactively as a new increment, not silently absorbed.
 
