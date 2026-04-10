@@ -118,8 +118,9 @@ swiftlint lint --strict --config .swiftlint.yml
 # 2. Build (warnings-as-errors enforced per-target via Phosphene.xcconfig)
 xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build 2>&1
 
-# 3. Test (all tests, not just new ones)
+# 3. Test — either command runs all 226 tests (213 swift-testing + 13 XCTest)
 swift test --package-path PhospheneEngine 2>&1
+# or: xcodebuild -scheme PhospheneApp -destination 'platform=macOS' test 2>&1
 
 # 4. Coverage check (after Phase 1 is complete)
 # xcrun llvm-cov report ... (threshold: 80%)

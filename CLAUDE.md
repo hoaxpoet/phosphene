@@ -23,6 +23,7 @@ This is a ground-up native Swift/Metal rewrite. A prior Electron/WebGL prototype
 ```bash
 xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build
 swift test --package-path PhospheneEngine
+xcodebuild -scheme PhospheneApp -destination 'platform=macOS' test
 swiftlint lint --strict --config .swiftlint.yml
 ```
 
@@ -33,14 +34,16 @@ line, as it would propagate to SPM dependencies that compile with
 
 Deployment target: macOS 14.0+ (Sonoma). Swift 6.0. Metal 3.1+.
 
-**Current test count: 213 tests** (unit, integration, regression, performance). All must pass before any new code is merged.
+**Current test count: 226 tests** (213 swift-testing + 13 XCTest, across unit, integration, regression, performance). All must pass before any new code is merged.
 
 ## Module Map
 
 ```
 PhospheneApp/               → SwiftUI shell, views, view models
-  ContentView.swift         → Main view + VisualizerEngine (audio→FFT→render pipeline owner)
+  ContentView.swift         → Main view (hosts MetalView + DebugOverlay) (✓ implemented)
   PhospheneApp.swift        → App entry point
+  VisualizerEngine.swift    → Audio→FFT→render pipeline owner (✓ implemented)
+  VisualizerEngine+Audio.swift → Audio routing, MIR analysis, mood classification callbacks (✓ implemented)
   Views/MetalView.swift     → NSViewRepresentable wrapping MTKView
 
 PhospheneEngine/
@@ -62,6 +65,7 @@ PhospheneEngine/
     BandEnergyProcessor     → 3-band + 6-band energy, AGC, FPS-independent smoothing (✓ implemented)
     ChromaExtractor         → 12-bin chroma vector, Krumhansl-Schmuckler key estimation (✓ implemented)
     BeatDetector            → 6-band onset detection, grouped beat pulses, tempo via autocorrelation (✓ implemented)
+    BeatDetector+Tempo      → Tempo estimation: IOI histogram + autocorrelation (✓ implemented)
     MIRPipeline             → Coordinator: all analyzers → FeatureVector for GPU (✓ implemented)
     SelfSimilarityMatrix    → Ring buffer of feature vectors, vDSP cosine similarity (✓ implemented)
     NoveltyDetector         → Checkerboard kernel boundary detection, adaptive threshold (✓ implemented)
@@ -70,12 +74,14 @@ PhospheneEngine/
     Models/StemSeparator.mlpackage → Open-Unmix HQ 4-stem mask estimator for ANE (✓ converted)
     Models/MoodClassifier.mlpackage → Valence/arousal MLP for ANE (✓ trained)
     StemSeparator.swift      → STFT → CoreML → iSTFT pipeline, StemSeparating protocol (✓ implemented)
+    StemSeparator+Pack      → CoreML spectrogram packing/unpacking (✓ implemented)
     MoodClassifier.swift    → 10-feature MLP → valence/arousal, MoodClassifying protocol (✓ implemented)
     ML.swift                → CoreML module imports
   Renderer/                 → Metal context, pipelines, shader library, compute particles
     MetalContext            → MTLDevice, command queue, triple-buffered semaphore, shared-texture helper (✓ implemented)
     ShaderLibrary           → Auto-discover .metal files, runtime compilation, cache (✓ implemented)
     RenderPipeline          → Feedback-texture ping-pong, warp/composite/blit passes, particle integration (✓ implemented)
+    RenderPipeline+Draw     → Draw paths: direct, feedback, warp, blit, particles (✓ implemented)
     Protocols               → Rendering protocol for DI/testing (✓ implemented)
     Geometry/ProceduralGeometry → GPU compute particle system: UMA buffer + compute pipeline + render pipeline (✓ implemented)
     Shaders/Common.metal    → FeatureVector/FeedbackParams structs, hsv2rgb, fullscreen_vertex, feedback_warp_fragment, feedback_blit_fragment (✓ implemented)
@@ -83,6 +89,7 @@ PhospheneEngine/
     Shaders/Waveform.metal  → 64-bar FFT spectrum + oscilloscope waveform (✓ implemented)
   Presets/                  → Preset loading, categorization, hot-reload, feedback support
     PresetLoader            → Auto-discover .metal presets, compile standard + additive-blend pipeline states (✓ implemented)
+    PresetLoader+Preamble   → Common Metal shader preamble string (FeatureVector struct, utilities) (✓ implemented)
     PresetDescriptor        → JSON sidecar metadata with useFeedback flag (✓ implemented)
     PresetCategory          → Visual aesthetic families (11 categories including abstract) (✓ implemented)
     Shaders/Starburst.metal → "Murmuration" preset — dusk sky gradient backdrop (✓ implemented)
@@ -93,10 +100,13 @@ PhospheneEngine/
   Shared/                   → UMA buffer wrappers, type definitions, logging
     UMABuffer               → Generic .storageModeShared MTLBuffer + UMARingBuffer (✓ implemented)
     AudioFeatures           → @frozen SIMD-aligned structs: AudioFrame, FFTResult, TrackMetadata, PreFetchedTrackProfile (✓ implemented)
+    AudioFeatures+Frame     → AudioFrame, FFTResult, StemData (✓ implemented)
+    AudioFeatures+Metadata  → MetadataSource, TrackMetadata, PreFetchedTrackProfile (✓ implemented)
+    AudioFeatures+Analyzed  → FeatureVector, FeedbackParams, EmotionalState, StructuralPrediction (✓ implemented)
     AnalyzedFrame           → Timestamped container: AudioFrame + FFTResult + StemData + FeatureVector + EmotionalState (✓ implemented)
     Logging                 → Per-module os.Logger instances (✓ implemented)
 
-Tests/ (213 tests)
+Tests/ (226 tests: 213 swift-testing + 13 XCTest)
   Audio/                    → AudioBufferTests, FFTProcessorTests, StreamingMetadataTests, MetadataPreFetcherTests, LookaheadBufferTests (10)
   DSP/                      → SpectralAnalyzerTests (8), BandEnergyProcessorTests (5), ChromaExtractorTests (6), BeatDetectorTests (7), MIRPipelineUnitTests (4), SelfSimilarityMatrixTests (5), NoveltyDetectorTests (5), StructuralAnalyzerTests (8)
   ML/                       → StemSeparatorTests (8), MoodClassifierTests (7: model loading, classification, range, quadrants, protocol)
@@ -355,8 +365,8 @@ Phosphene works at every tier — never show errors or degraded UI when metadata
 - Protocol-first design for testability. Every injectable dependency has a protocol (`AudioCapturing`, `AudioBuffering`, `FFTProcessing`, `Rendering`, `MetadataProviding`, `MetadataFetching`). Tests use doubles from `TestDoubles/`.
 
 ### Testing
-- **213 tests** across unit, integration, regression, and performance categories.
-- All tests must pass before starting new work (`swift test --package-path PhospheneEngine`).
+- **226 tests** (213 swift-testing + 13 XCTest) across unit, integration, regression, and performance categories.
+- All tests must pass before starting new work (`swift test --package-path PhospheneEngine` or `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' test`).
 - Test doubles in `Tests/TestDoubles/`: `MockAudioCapture`, `StubFFTProcessor`, `FakeStemSeparator`, `StubMoodClassifier`, `AudioFixtures`, `MockMetadataProvider`, `MockMetadataFetcher`.
 - Regression tests use golden fixtures in `Tests/Regression/Fixtures/`.
 - Performance tests use `XCTest.measure {}` with baselines.
