@@ -1108,11 +1108,11 @@ echo "=== All checks passed ==="
 
 ### Increment 3.8: MPSGraph Open-Unmix Inference Engine
 
-**Status:** Not started.
+**Status:** ✅ Complete.
 
 **Goal:** Reconstruct Open-Unmix HQ in MPSGraph. Validate output matches CoreML within tolerance.
 
-**New file:** `Sources/ML/StemModel.swift` — `StemModelEngine` class.
+**New files:** `Sources/ML/StemModel.swift` (246 lines), `Sources/ML/StemModel+Graph.swift` (317 lines), `Sources/ML/StemModel+Weights.swift` (296 lines) — `StemModelEngine` class split across three files per SwiftLint 400-line limit.
 
 **Architecture per stem** (corrected per 3.7b extraction):
 ```
