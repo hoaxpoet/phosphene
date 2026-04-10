@@ -1,8 +1,6 @@
 // BeatDetector — 6-band onset detection with adaptive thresholds and tempo estimation.
-// Implements the validated onset detection algorithm from the Electron prototype:
-// spectral flux per 6 bands, adaptive median threshold, per-band cooldowns,
-// grouped beat pulses with exponential decay, and autocorrelation tempo estimation.
-// All allocations at init time — per-frame processing is zero-alloc.
+// Spectral flux per 6 bands, adaptive median threshold, per-band cooldowns,
+// grouped beat pulses with exponential decay. Zero-alloc per-frame processing.
 
 import Foundation
 import Accelerate
@@ -12,13 +10,9 @@ private let logger = Logger(subsystem: "com.phosphene.dsp", category: "BeatDetec
 
 // MARK: - BeatDetector
 
-/// Detects onsets and estimates tempo from FFT magnitude bins.
-///
-/// Uses 6-band spectral flux with adaptive median thresholds and per-band cooldowns,
-/// producing grouped beat pulses (bass/mid/treble/composite) with exponential decay.
-/// Tempo estimation via autocorrelation of the composite onset function.
-///
-/// Band definitions and tuning constants are from the validated Electron prototype.
+/// Detects onsets and estimates tempo from FFT magnitude bins using 6-band spectral flux
+/// with adaptive median thresholds, per-band cooldowns, and grouped beat pulses with
+/// exponential decay. Band definitions and tuning constants from the Electron prototype.
 public final class BeatDetector: @unchecked Sendable {
 
     // MARK: - Result
@@ -76,10 +70,10 @@ public final class BeatDetector: @unchecked Sendable {
     private static let fluxBufferSize = 50
 
     /// Onset history buffer size for tempo estimation (~5s at 60fps).
-    private static let onsetHistorySize = 300
+    static let onsetHistorySize = 300
 
     /// Minimum frames before attempting tempo estimation.
-    private static let minTempoFrames = 150
+    static let minTempoFrames = 150
 
     /// Adaptive threshold multiplier: median × this value.
     private static let thresholdMultiplier: Float = 1.5
@@ -89,7 +83,7 @@ public final class BeatDetector: @unchecked Sendable {
     public let binCount: Int
 
     /// Precomputed bin ranges for 6 bands.
-    private let bandRanges: [(start: Int, end: Int)]
+    let bandRanges: [(start: Int, end: Int)]
 
     // MARK: - State
 
@@ -114,44 +108,44 @@ public final class BeatDetector: @unchecked Sendable {
     private var groupCooldownTimers: [Float]
 
     /// Onset history for tempo estimation (composite flux values).
-    private var onsetHistory: [Float]
-    private var onsetHistoryHead: Int = 0
-    private var onsetHistoryCount: Int = 0
+    var onsetHistory: [Float]
+    var onsetHistoryHead: Int = 0
+    var onsetHistoryCount: Int = 0
 
     /// Current fps for tempo lag conversion.
-    private var currentFps: Float = 60
+    var currentFps: Float = 60
 
     /// Debug string from computeStableTempo for diagnostics.
-    public private(set) var tempoDebug: String = ""
+    public var tempoDebug: String = ""
 
     // MARK: - Stable Tempo State
 
     /// Sliding window of onset timestamps (last 10 seconds).
-    private static let onsetTimestampWindowSize = 600  // ~10s at 60fps max onsets
-    private var onsetTimestamps: [Double]
-    private var onsetTimestampHead: Int = 0
-    private var onsetTimestampCount: Int = 0
+    static let onsetTimestampWindowSize = 600  // ~10s at 60fps max onsets
+    var onsetTimestamps: [Double]
+    var onsetTimestampHead: Int = 0
+    var onsetTimestampCount: Int = 0
 
     /// Last 8 per-second tempo estimates for median filtering.
-    private static let tempoEstimateBufferSize = 8
-    private var tempoEstimates: [Float]
-    private var tempoEstimateHead: Int = 0
-    private var tempoEstimateCount: Int = 0
+    static let tempoEstimateBufferSize = 8
+    var tempoEstimates: [Float]
+    var tempoEstimateHead: Int = 0
+    var tempoEstimateCount: Int = 0
 
     /// Hysteresis-filtered stable BPM.
-    private var stableBPM: Float = 0
+    var stableBPM: Float = 0
 
     /// Raw per-second IOI histogram BPM estimate.
-    private var instantBPM: Float = 0
+    var instantBPM: Float = 0
 
     /// How many consecutive estimates agree with the candidate.
-    private var stableConsecutiveCount: Int = 0
+    var stableConsecutiveCount: Int = 0
 
     /// The BPM candidate being validated for hysteresis.
-    private var candidateBPM: Float = 0
+    var candidateBPM: Float = 0
 
     /// Total elapsed time (seconds) for timestamp tracking.
-    private var elapsedTime: Double = 0
+    var elapsedTime: Double = 0
 
     /// When we last computed the IOI-based tempo (once per second).
     private var lastTempoComputeTime: Double = 0
@@ -224,99 +218,18 @@ public final class BeatDetector: @unchecked Sendable {
 
         currentFps = fps
 
-        // Compute per-band RMS.
-        let currentRMS = computeBandRMS(magnitudes: magnitudes)
+        // Compute per-band spectral flux.
+        let bandFlux = computeBandFlux(magnitudes: magnitudes)
 
-        // Compute spectral flux per band (half-wave rectified).
-        var bandFlux = [Float](repeating: 0, count: 6)
-        if hasPreviousFrame {
-            for i in 0..<6 {
-                bandFlux[i] = max(0, currentRMS[i] - previousBandRMS[i])
-            }
-        }
+        // Detect per-band onsets from flux.
+        let onsets = detectOnsets(bandFlux: bandFlux, deltaTime: deltaTime)
 
-        // Store current RMS for next frame.
-        for i in 0..<6 { previousBandRMS[i] = currentRMS[i] }
-        hasPreviousFrame = true
+        // Update grouped beat pulses.
+        let composite = updateGroupPulses(onsets: onsets, fps: fps, deltaTime: deltaTime)
 
-        // Update flux buffers and detect onsets.
-        var onsets = [Bool](repeating: false, count: 6)
-
-        for i in 0..<6 {
-            // Write flux to circular buffer.
-            fluxBuffers[i][fluxHeads[i]] = bandFlux[i]
-            fluxHeads[i] = (fluxHeads[i] + 1) % Self.fluxBufferSize
-            fluxCounts[i] = min(fluxCounts[i] + 1, Self.fluxBufferSize)
-
-            // Decrement cooldown.
-            bandCooldownTimers[i] = max(0, bandCooldownTimers[i] - deltaTime)
-
-            // Adaptive threshold: median of buffer × multiplier.
-            let threshold = medianOfBuffer(fluxBuffers[i], count: fluxCounts[i]) * Self.thresholdMultiplier
-
-            // Onset detection.
-            if bandFlux[i] > threshold && bandCooldownTimers[i] <= 0 && fluxCounts[i] >= 5 {
-                onsets[i] = true
-                bandCooldownTimers[i] = Self.bandCooldowns[i]
-            }
-        }
-
-        // Grouped beat pulses.
-        // Decay existing pulses.
-        let decay = powf(Self.decayBase, 30.0 / fps)
-        for i in 0..<3 {
-            groupPulses[i] *= decay
-            groupCooldownTimers[i] = max(0, groupCooldownTimers[i] - deltaTime)
-        }
-
-        // Bass group: subBass (0) OR lowBass (1).
-        if (onsets[0] || onsets[1]) && groupCooldownTimers[0] <= 0 {
-            groupPulses[0] = 1.0
-            groupCooldownTimers[0] = Self.groupCooldowns[0]
-        }
-        // Mid group: lowMid (2) OR midHigh (3).
-        if (onsets[2] || onsets[3]) && groupCooldownTimers[1] <= 0 {
-            groupPulses[1] = 1.0
-            groupCooldownTimers[1] = Self.groupCooldowns[1]
-        }
-        // Treble group: highMid (4) OR high (5).
-        if (onsets[4] || onsets[5]) && groupCooldownTimers[2] <= 0 {
-            groupPulses[2] = 1.0
-            groupCooldownTimers[2] = Self.groupCooldowns[2]
-        }
-
-        let composite = max(groupPulses[0], max(groupPulses[1], groupPulses[2]))
-
-        // Track elapsed time for stable tempo estimation.
+        // Track elapsed time and record onset timestamps for tempo.
         elapsedTime += Double(deltaTime)
-
-        // Record onset timestamps from strong bass flux peaks for tempo.
-        // Use the 75th percentile of the flux buffer as the threshold base.
-        // The median of half-wave rectified flux is near-zero (most frames have
-        // zero flux), which made the old median-based threshold near-zero and let
-        // every positive flux through — the 300ms spacing became the only gate,
-        // creating a systematic 97 BPM artifact (310ms IOI → 194 → halved to 97).
-        // The 75th percentile is non-zero when there's real activity, and the 2x
-        // multiplier ensures only genuine strong beats pass.
-        let bassFlux = bandFlux[0] + bandFlux[1]
-        let bassP75 = percentileOfBuffer(fluxBuffers[0], count: fluxCounts[0], percentile: 0.75)
-                    + percentileOfBuffer(fluxBuffers[1], count: fluxCounts[1], percentile: 0.75)
-        let tempoThreshold = bassP75 * 2.0
-        if bassFlux > tempoThreshold && fluxCounts[0] >= 5 {
-            let lastTs = onsetTimestampCount > 0
-                ? onsetTimestamps[(onsetTimestampHead - 1 + Self.onsetTimestampWindowSize)
-                                  % Self.onsetTimestampWindowSize]
-                : -1.0
-            // 150ms minimum spacing = 400 BPM max. Short enough to not alias
-            // any real tempo. The threshold does the actual filtering.
-            if elapsedTime - lastTs > 0.15 {
-                onsetTimestamps[onsetTimestampHead] = elapsedTime
-                onsetTimestampHead = (onsetTimestampHead + 1) % Self.onsetTimestampWindowSize
-                onsetTimestampCount = min(
-                    onsetTimestampCount + 1, Self.onsetTimestampWindowSize
-                )
-            }
-        }
+        recordOnsetTimestamps(bandFlux: bandFlux)
 
         // Once per second: compute stable tempo via IOI histogram.
         if elapsedTime - lastTempoComputeTime >= 1.0 {
@@ -324,13 +237,8 @@ public final class BeatDetector: @unchecked Sendable {
             computeStableTempo()
         }
 
-        // Update onset history for tempo estimation (composite flux).
-        let compositeFlux = bandFlux.reduce(0, +)
-        onsetHistory[onsetHistoryHead] = compositeFlux
-        onsetHistoryHead = (onsetHistoryHead + 1) % Self.onsetHistorySize
-        onsetHistoryCount = min(onsetHistoryCount + 1, Self.onsetHistorySize)
-
-        // Tempo estimation via autocorrelation.
+        // Update onset history and estimate tempo via autocorrelation.
+        updateOnsetHistory(bandFlux: bandFlux)
         let (tempo, confidence) = estimateTempo()
 
         return Result(
@@ -379,293 +287,110 @@ public final class BeatDetector: @unchecked Sendable {
         lastTempoComputeTime = 0
     }
 
-    // MARK: - Helpers
+    // MARK: - Process Helpers
 
-    /// Compute RMS of magnitude bins in each of the 6 bands.
-    private func computeBandRMS(magnitudes: [Float]) -> [Float] {
-        bandRanges.map { range in
-            let start = range.start
-            let end = min(range.end, magnitudes.count)
-            let count = end - start
-            guard count > 0 else { return Float(0) }
+    /// Compute half-wave rectified spectral flux per band.
+    private func computeBandFlux(magnitudes: [Float]) -> [Float] {
+        let currentRMS = computeBandRMS(magnitudes: magnitudes)
 
-            var rms: Float = 0
-            magnitudes.withUnsafeBufferPointer { ptr in
-                guard let base = ptr.baseAddress else { return }
-                vDSP_rmsqv(base + start, 1, &rms, vDSP_Length(count))
+        var bandFlux = [Float](repeating: 0, count: 6)
+        if hasPreviousFrame {
+            for i in 0..<6 {
+                bandFlux[i] = max(0, currentRMS[i] - previousBandRMS[i])
             }
-            return rms
         }
+
+        for i in 0..<6 { previousBandRMS[i] = currentRMS[i] }
+        hasPreviousFrame = true
+        return bandFlux
     }
 
-    /// Compute median of the first `count` elements in a buffer.
-    private func medianOfBuffer(_ buffer: [Float], count: Int) -> Float {
-        guard count > 0 else { return 0 }
-        let slice = Array(buffer.prefix(count)).sorted()
-        if count % 2 == 0 {
-            return (slice[count / 2 - 1] + slice[count / 2]) / 2.0
+    /// Detect per-band onsets from spectral flux values.
+    private func detectOnsets(bandFlux: [Float], deltaTime: Float) -> [Bool] {
+        var onsets = [Bool](repeating: false, count: 6)
+
+        for i in 0..<6 {
+            fluxBuffers[i][fluxHeads[i]] = bandFlux[i]
+            fluxHeads[i] = (fluxHeads[i] + 1) % Self.fluxBufferSize
+            fluxCounts[i] = min(fluxCounts[i] + 1, Self.fluxBufferSize)
+
+            bandCooldownTimers[i] = max(0, bandCooldownTimers[i] - deltaTime)
+
+            let threshold = medianOfBuffer(
+                fluxBuffers[i], count: fluxCounts[i]
+            ) * Self.thresholdMultiplier
+
+            if bandFlux[i] > threshold && bandCooldownTimers[i] <= 0
+                && fluxCounts[i] >= 5 {
+                onsets[i] = true
+                bandCooldownTimers[i] = Self.bandCooldowns[i]
+            }
         }
-        return slice[count / 2]
+        return onsets
     }
 
-    /// Compute a given percentile (0–1) of the first `count` elements in a buffer.
-    private func percentileOfBuffer(_ buffer: [Float], count: Int, percentile: Float) -> Float {
-        guard count > 0 else { return 0 }
-        let slice = Array(buffer.prefix(count)).sorted()
-        let idx = min(Int(Float(count) * percentile), count - 1)
-        return slice[idx]
+    /// Update grouped beat pulses (bass/mid/treble) and return composite.
+    private func updateGroupPulses(
+        onsets: [Bool], fps: Float, deltaTime: Float
+    ) -> Float {
+        let decay = powf(Self.decayBase, 30.0 / fps)
+        for i in 0..<3 {
+            groupPulses[i] *= decay
+            groupCooldownTimers[i] = max(0, groupCooldownTimers[i] - deltaTime)
+        }
+
+        // Bass group: subBass (0) OR lowBass (1).
+        if (onsets[0] || onsets[1]) && groupCooldownTimers[0] <= 0 {
+            groupPulses[0] = 1.0
+            groupCooldownTimers[0] = Self.groupCooldowns[0]
+        }
+        // Mid group: lowMid (2) OR midHigh (3).
+        if (onsets[2] || onsets[3]) && groupCooldownTimers[1] <= 0 {
+            groupPulses[1] = 1.0
+            groupCooldownTimers[1] = Self.groupCooldowns[1]
+        }
+        // Treble group: highMid (4) OR high (5).
+        if (onsets[4] || onsets[5]) && groupCooldownTimers[2] <= 0 {
+            groupPulses[2] = 1.0
+            groupCooldownTimers[2] = Self.groupCooldowns[2]
+        }
+
+        return max(groupPulses[0], max(groupPulses[1], groupPulses[2]))
     }
 
-    // MARK: - Stable Tempo (IOI Histogram)
-
-    /// Compute stable tempo from inter-onset intervals using histogram + hysteresis.
-    /// Called once per second from process(). Must be called under lock.
-    private func computeStableTempo() {
-        // Collect onset timestamps from the last 10 seconds.
-        let windowStart = elapsedTime - 10.0
-        var recentTimestamps = [Double]()
-        recentTimestamps.reserveCapacity(onsetTimestampCount)
-
-        // Diagnostic: track first/last timestamps in buffer for tracing.
-        var firstTs: Double = .infinity
-        var lastTs: Double = -.infinity
-
-        for i in 0..<onsetTimestampCount {
-            let idx = (onsetTimestampHead - onsetTimestampCount + i
-                       + Self.onsetTimestampWindowSize) % Self.onsetTimestampWindowSize
-            let ts = onsetTimestamps[idx]
-            if ts < firstTs { firstTs = ts }
-            if ts > lastTs { lastTs = ts }
-            if ts >= windowStart {
-                recentTimestamps.append(ts)
-            }
-        }
-
-        guard recentTimestamps.count >= 4 else {
-            tempoDebug = String(
-                format: "recent<4(%d) e=%.1f ws=%.1f first=%.1f last=%.1f buf=%d",
-                recentTimestamps.count,
-                elapsedTime,
-                windowStart,
-                firstTs,
-                lastTs,
-                onsetTimestampCount
-            )
-            return
-        }
-
-        // Compute inter-onset intervals and histogram into 1-BPM buckets (60–200).
-        var histogram = [Int](repeating: 0, count: 141)  // indices 0..140 → BPM 60..200
-        var outOfRange = 0
-        var inRange = 0
-
-        for i in 1..<recentTimestamps.count {
-            let ioi = recentTimestamps[i] - recentTimestamps[i - 1]
-            guard ioi > 0.01 else { continue }
-            let bpm = 60.0 / ioi
-            let bucket = Int(round(bpm)) - 60
-            if bucket >= 0 && bucket < 141 {
-                histogram[bucket] += 1
-                inRange += 1
-            } else {
-                outOfRange += 1
-            }
-        }
-
-        // Find peak bucket.
-        var peakCount = 0
-        var peakBucket = 0
-        for i in 0..<141 where histogram[i] > peakCount {
-            peakCount = histogram[i]
-            peakBucket = i
-        }
-
-        guard peakCount >= 2 else {
-            tempoDebug = "noPeak(in=\(inRange),out=\(outOfRange),recent=\(recentTimestamps.count))"
-            return
-        }
-
-        var bestBPM = Float(peakBucket + 60)
-
-        // Octave error correction: find the two strongest peaks. If they're
-        // in a ~2:1 ratio, pick the higher one (actual beat rate). Then clamp
-        // to 80-160 BPM.
-        var secondPeakCount = 0
-        var secondPeakBucket = 0
-        for idx in 0..<141 {
-            if histogram[idx] > secondPeakCount && abs(idx - peakBucket) > 10 {
-                secondPeakCount = histogram[idx]
-                secondPeakBucket = idx
-            }
-        }
-
-        let peakBPM1 = Float(peakBucket + 60)
-        let peakBPM2 = Float(secondPeakBucket + 60)
-
-        if secondPeakCount > peakCount / 4 {
-            let ratio = max(peakBPM1, peakBPM2) / min(peakBPM1, peakBPM2)
-            if ratio > 1.8 && ratio < 2.2 {
-                // Two peaks in 2:1 ratio — pick the higher BPM (actual beat).
-                bestBPM = max(peakBPM1, peakBPM2)
-            }
-        }
-
-        // Clamp to 80-160 range.
-        if bestBPM > 160 { bestBPM /= 2 }
-        if bestBPM < 80 { bestBPM *= 2 }
-
-        let newInstant = bestBPM
-        instantBPM = newInstant
-
-        // Diagnostic: log successful tempo computation.
-        // Show recent count, IOI stats, histogram peak, and pre-clamp BPM.
-        let ioiValues = (1..<recentTimestamps.count).map {
-            recentTimestamps[$0] - recentTimestamps[$0 - 1]
-        }
-        let avgIOI = ioiValues.isEmpty ? 0 : ioiValues.reduce(0, +) / Double(ioiValues.count)
-        let minIOI = ioiValues.min() ?? 0
-        tempoDebug = String(
-            format: "ok r=%d bpm=%.0f pk=%d@%d avg_ioi=%.3f min_ioi=%.3f",
-            recentTimestamps.count,
-            bestBPM,
-            peakCount,
-            peakBucket + 60,
-            avgIOI,
-            minIOI
+    /// Record bass onset timestamps for IOI-based tempo estimation.
+    /// Uses 75th percentile threshold (median is near-zero for half-wave rectified flux).
+    private func recordOnsetTimestamps(bandFlux: [Float]) {
+        let bassFlux = bandFlux[0] + bandFlux[1]
+        let bassP75 = percentileOfBuffer(
+            fluxBuffers[0], count: fluxCounts[0], percentile: 0.75
+        ) + percentileOfBuffer(
+            fluxBuffers[1], count: fluxCounts[1], percentile: 0.75
         )
+        let tempoThreshold = bassP75 * 2.0
+        guard bassFlux > tempoThreshold && fluxCounts[0] >= 5 else { return }
 
-        // Add to tempo estimates circular buffer.
-        tempoEstimates[tempoEstimateHead] = newInstant
-        tempoEstimateHead = (tempoEstimateHead + 1) % Self.tempoEstimateBufferSize
-        tempoEstimateCount = min(tempoEstimateCount + 1, Self.tempoEstimateBufferSize)
+        let lastTs = onsetTimestampCount > 0
+            ? onsetTimestamps[
+                (onsetTimestampHead - 1 + Self.onsetTimestampWindowSize)
+                % Self.onsetTimestampWindowSize
+            ]
+            : -1.0
 
-        // Compute median of the estimates buffer.
-        let validEstimates = Array(tempoEstimates.prefix(tempoEstimateCount)).sorted()
-        let median: Float
-        if validEstimates.count % 2 == 0 {
-            median = (validEstimates[validEstimates.count / 2 - 1]
-                      + validEstimates[validEstimates.count / 2]) / 2.0
-        } else {
-            median = validEstimates[validEstimates.count / 2]
-        }
-
-        // Hysteresis: only update stableBPM when filtered estimate agrees for 3+ estimates.
-        if abs(median - candidateBPM) <= 5.0 {
-            stableConsecutiveCount += 1
-        } else {
-            candidateBPM = median
-            stableConsecutiveCount = 1
-        }
-
-        if stableConsecutiveCount >= 3 {
-            stableBPM = candidateBPM
-        }
+        // 150ms minimum spacing = 400 BPM max.
+        guard elapsedTime - lastTs > 0.15 else { return }
+        onsetTimestamps[onsetTimestampHead] = elapsedTime
+        onsetTimestampHead = (onsetTimestampHead + 1) % Self.onsetTimestampWindowSize
+        onsetTimestampCount = min(
+            onsetTimestampCount + 1, Self.onsetTimestampWindowSize
+        )
     }
 
-    // MARK: - Tempo Estimation
-
-    /// Estimate tempo via autocorrelation of the onset history.
-    private func estimateTempo() -> (tempo: Float?, confidence: Float) {
-        guard onsetHistoryCount >= Self.minTempoFrames else { return (nil, 0) }
-
-        let fps = currentFps
-        guard fps > 0 else { return (nil, 0) }
-
-        // Search BPM range: 60–200 BPM.
-        let minLag = Int(60.0 * fps / 200.0)  // ~18 frames at 60fps for 200 BPM
-        let maxLag = Int(60.0 * fps / 60.0)   // ~60 frames at 60fps for 60 BPM
-
-        guard minLag > 0 && maxLag > minLag && maxLag < onsetHistoryCount else {
-            return (nil, 0)
-        }
-
-        // Linearize the circular buffer.
-        var linear = [Float](repeating: 0, count: onsetHistoryCount)
-        for i in 0..<onsetHistoryCount {
-            let idx = (onsetHistoryHead - onsetHistoryCount + i + Self.onsetHistorySize) % Self.onsetHistorySize
-            linear[i] = onsetHistory[idx]
-        }
-
-        // Autocorrelation for each lag in BPM range.
-        var bestCorrelation: Float = 0
-        var bestLag = 0
-
-        for lag in minLag...min(maxLag, onsetHistoryCount / 2) {
-            var correlation: Float = 0
-            let overlapCount = onsetHistoryCount - lag
-
-            // Dot product of signal with itself at offset `lag`.
-            vDSP_dotpr(
-                linear,
-                1,
-                Array(linear[lag..<lag + overlapCount]),
-                1,
-                &correlation,
-                vDSP_Length(overlapCount)
-            )
-
-            // Normalize by overlap count.
-            correlation /= Float(overlapCount)
-
-            if correlation > bestCorrelation {
-                bestCorrelation = correlation
-                bestLag = lag
-            }
-        }
-
-        guard bestLag > 0 else { return (nil, 0) }
-
-        var bpm = 60.0 * fps / Float(bestLag)
-
-        // Check if half-lag (double BPM) also has strong correlation.
-        // If so, prefer the higher BPM (actual beat, not half-tempo).
-        let halfLag = bestLag / 2
-        if halfLag >= minLag {
-            var halfCorr: Float = 0
-            let overlapHalf = onsetHistoryCount - halfLag
-            vDSP_dotpr(
-                linear,
-                1,
-                Array(linear[halfLag..<halfLag + overlapHalf]),
-                1,
-                &halfCorr,
-                vDSP_Length(overlapHalf)
-            )
-            halfCorr /= Float(overlapHalf)
-            // If half-lag correlation is at least 60% of best, use it.
-            if halfCorr > bestCorrelation * 0.6 {
-                bpm = 60.0 * fps / Float(halfLag)
-            }
-        }
-
-        // Clamp to 80-160 BPM range.
-        if bpm > 160 { bpm /= 2 }
-        if bpm < 80 { bpm *= 2 }
-
-        // Compute confidence: ratio of best correlation to mean correlation.
-        var meanCorrelation: Float = 0
-        var count = 0
-        for lag in minLag...min(maxLag, onsetHistoryCount / 2) {
-            var corr: Float = 0
-            let overlapCount = onsetHistoryCount - lag
-            vDSP_dotpr(
-                linear,
-                1,
-                Array(linear[lag..<lag + overlapCount]),
-                1,
-                &corr,
-                vDSP_Length(overlapCount)
-            )
-            corr /= Float(overlapCount)
-            meanCorrelation += corr
-            count += 1
-        }
-        meanCorrelation /= Float(max(count, 1))
-
-        let confidence: Float = meanCorrelation > 1e-10
-            ? min(bestCorrelation / meanCorrelation / 3.0, 1.0)
-            : 0
-
-        return (bpm, confidence)
+    /// Append composite flux to the onset history buffer.
+    private func updateOnsetHistory(bandFlux: [Float]) {
+        let compositeFlux = bandFlux.reduce(0, +)
+        onsetHistory[onsetHistoryHead] = compositeFlux
+        onsetHistoryHead = (onsetHistoryHead + 1) % Self.onsetHistorySize
+        onsetHistoryCount = min(onsetHistoryCount + 1, Self.onsetHistorySize)
     }
 }

@@ -143,51 +143,13 @@ public final class NoveltyDetector: @unchecked Sendable {
         let threshold = mean + thresholdMultiplier * stddev
 
         // Peak-picking: find local maxima above threshold with minimum distance.
-        var peaks: [Boundary] = []
-        for i in validRange {
-            let val = noveltyCurve[i]
-            guard val > threshold else { continue }
-
-            // Local maximum check (must be greater than both neighbors).
-            let prev = i > validRange.lowerBound ? noveltyCurve[i - 1] : 0
-            let next = i < validRange.upperBound - 1 ? noveltyCurve[i + 1] : 0
-            guard val >= prev, val >= next else { continue }
-
-            // Minimum distance from last peak.
-            if let lastPeak = peaks.last, i - lastPeak.frameIndex < minPeakDistance {
-                // Keep the stronger peak.
-                if val > lastPeak.noveltyScore {
-                    peaks[peaks.count - 1] = Boundary(
-                        frameIndex: i,
-                        timestamp: timestampForFrame(
-                            i,
-                            currentTime: currentTime,
-                            totalFrames: frameCount,
-                            fps: fps
-                        ),
-                        noveltyScore: val
-                    )
-                }
-                continue
-            }
-
-            // Minimum distance from previously detected boundaries.
-            let tooCloseToExisting = detectedBoundaries.contains { existing in
-                abs(existing.frameIndex - i) < minPeakDistance
-            }
-            if tooCloseToExisting { continue }
-
-            peaks.append(Boundary(
-                frameIndex: i,
-                timestamp: timestampForFrame(
-                    i,
-                    currentTime: currentTime,
-                    totalFrames: frameCount,
-                    fps: fps
-                ),
-                noveltyScore: val
-            ))
-        }
+        let peaks = pickPeaks(
+            threshold: threshold,
+            validRange: validRange,
+            frameCount: frameCount,
+            currentTime: currentTime,
+            fps: fps
+        )
 
         // Add new peaks to detected boundaries.
         detectedBoundaries.append(contentsOf: peaks)
@@ -217,6 +179,52 @@ public final class NoveltyDetector: @unchecked Sendable {
     }
 
     // MARK: - Private
+
+    /// Pick peaks from the novelty curve that are local maxima above threshold,
+    /// enforcing minimum distance from each other and from previously detected boundaries.
+    private func pickPeaks(
+        threshold: Float,
+        validRange: Range<Int>,
+        frameCount: Int,
+        currentTime: Float,
+        fps: Float
+    ) -> [Boundary] {
+        var peaks: [Boundary] = []
+        for i in validRange {
+            let val = noveltyCurve[i]
+            guard val > threshold else { continue }
+
+            // Local maximum check (must be greater than both neighbors).
+            let prev = i > validRange.lowerBound ? noveltyCurve[i - 1] : 0
+            let next = i < validRange.upperBound - 1 ? noveltyCurve[i + 1] : 0
+            guard val >= prev, val >= next else { continue }
+
+            let ts = timestampForFrame(
+                i, currentTime: currentTime, totalFrames: frameCount, fps: fps
+            )
+
+            // Minimum distance from last peak.
+            if let lastPeak = peaks.last, i - lastPeak.frameIndex < minPeakDistance {
+                if val > lastPeak.noveltyScore {
+                    peaks[peaks.count - 1] = Boundary(
+                        frameIndex: i, timestamp: ts, noveltyScore: val
+                    )
+                }
+                continue
+            }
+
+            // Minimum distance from previously detected boundaries.
+            let tooCloseToExisting = detectedBoundaries.contains { existing in
+                abs(existing.frameIndex - i) < minPeakDistance
+            }
+            if tooCloseToExisting { continue }
+
+            peaks.append(Boundary(
+                frameIndex: i, timestamp: ts, noveltyScore: val
+            ))
+        }
+        return peaks
+    }
 
     /// Checkerboard kernel response at a given center frame.
     ///
