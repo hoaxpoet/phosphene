@@ -86,4 +86,59 @@ final class StemSeparationPerformanceTests: XCTestCase {
             }
         }
     }
+
+    // MARK: - Increment 3.7a: CPU-only CoreML Baseline
+
+    /// Diagnostic: measure `separate()` with `.cpuOnly` compute units.
+    ///
+    /// Hypothesis: CPU Float32 inference avoids the ~420ms Float16→Float32
+    /// conversion from ANE output, potentially making CPU-only faster overall
+    /// despite slower raw inference. If CPU total ≈ 400ms vs ANE total ≈ 620ms,
+    /// the MPSGraph migration (Increment 3.8) target is confirmed.
+    func test_separate_cpuOnly_baseline() throws {
+        let separator = try StemSeparator(device: device, computeUnits: .cpuOnly)
+        XCTAssertEqual(separator.computeUnits, .cpuOnly)
+
+        let mono = AudioFixtures.sineWave(frequency: 440, sampleRate: 44100, duration: 1.0)
+        let stereo = AudioFixtures.mixStereo(left: mono, right: mono)
+
+        // Warm up: first call includes CoreML compilation overhead.
+        let warmStart = Date()
+        _ = try separator.separate(audio: stereo, channelCount: 2, sampleRate: 44100)
+        let warmElapsed = Date().timeIntervalSince(warmStart)
+
+        // Warm call: the number we care about.
+        let hotStart = Date()
+        _ = try separator.separate(audio: stereo, channelCount: 2, sampleRate: 44100)
+        let hotElapsed = Date().timeIntervalSince(hotStart)
+
+        // Log timings for the commit message.
+        print("""
+        === Increment 3.7a: CPU-only CoreML Baseline ===
+        Compute units: .cpuOnly
+        Cold call (includes compilation): \(String(format: "%.0f", warmElapsed * 1000))ms
+        Warm call: \(String(format: "%.0f", hotElapsed * 1000))ms
+        Compare against ANE baseline: ~620ms warm (140ms predict + 420ms F16→F32 + 60ms other)
+        ================================================
+        """)
+    }
+
+    /// XCTest.measure benchmark for CPU-only path across multiple iterations.
+    func test_separate_cpuOnly_measureBlock() throws {
+        let separator = try StemSeparator(device: device, computeUnits: .cpuOnly)
+
+        let mono = AudioFixtures.sineWave(frequency: 440, sampleRate: 44100, duration: 1.0)
+        let stereo = AudioFixtures.mixStereo(left: mono, right: mono)
+
+        // Warm up outside measure block.
+        _ = try separator.separate(audio: stereo, channelCount: 2, sampleRate: 44100)
+
+        measure {
+            do {
+                _ = try separator.separate(audio: stereo, channelCount: 2, sampleRate: 44100)
+            } catch {
+                XCTFail("CPU-only separation failed: \(error)")
+            }
+        }
+    }
 }

@@ -96,9 +96,12 @@ public final class StemSeparator: StemSeparating, @unchecked Sendable {
 
     /// Create a stem separator backed by the Open-Unmix HQ CoreML model.
     ///
-    /// - Parameter device: Metal device for UMA buffer allocation.
+    /// - Parameters:
+    ///   - device: Metal device for UMA buffer allocation.
+    ///   - computeUnits: CoreML compute units. Defaults to `.cpuAndNeuralEngine`
+    ///     (GPU reserved for rendering). Pass `.cpuOnly` for diagnostic benchmarking.
     /// - Throws: `StemSeparationError` if model loading fails.
-    public init(device: MTLDevice) throws {
+    public init(device: MTLDevice, computeUnits: MLComputeUnits = .cpuAndNeuralEngine) throws {
         // Load model from bundle.
         guard let modelURL = Bundle.module.url(
             forResource: "StemSeparator",
@@ -109,7 +112,7 @@ public final class StemSeparator: StemSeparating, @unchecked Sendable {
         }
 
         let config = MLModelConfiguration()
-        config.computeUnits = .cpuAndNeuralEngine
+        config.computeUnits = computeUnits
         self.computeUnits = config.computeUnits
 
         do {
@@ -132,7 +135,8 @@ public final class StemSeparator: StemSeparating, @unchecked Sendable {
             throw StemSeparationError.modelLoadFailed("Failed to initialize StemFFTEngine: \(error)")
         }
 
-        logger.info("StemSeparator loaded: \(Self.nFFT)-point STFT via GPU, \(Self.nBins) bins, ANE inference")
+        let units = String(describing: config.computeUnits)
+        logger.info("StemSeparator loaded: \(Self.nFFT)-pt STFT, \(Self.nBins) bins, \(units)")
     }
 
     // MARK: - Separation
