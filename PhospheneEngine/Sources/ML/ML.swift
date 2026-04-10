@@ -1,5 +1,4 @@
-// ML — CoreML wrappers: stem separator, mood classifier.
-// All models use .cpuAndNeuralEngine compute units (GPU reserved for rendering).
+// ML — MPSGraph stem separator, Accelerate mood classifier.
+// No CoreML dependency — all inference runs on GPU (MPSGraph) or CPU (vDSP).
 
 import Foundation
-import CoreML

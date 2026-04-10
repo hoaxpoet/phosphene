@@ -1,18 +1,17 @@
-// MoodClassifierTests — Unit tests for live-pipeline-trained CoreML mood classification.
+// MoodClassifierTests — Unit tests for Accelerate-based mood classification.
 
 import Testing
 import Foundation
-import CoreML
 @testable import ML
 @testable import Audio
 @testable import Shared
 
-@Test func test_init_loadsModel() throws {
-    _ = try MoodClassifier()
+@Test func test_init_loadsModel() {
+    _ = MoodClassifier()
 }
 
 @Test func test_classify_validFeatureVector_returnsEmotionalState() throws {
-    let classifier = try MoodClassifier()
+    let classifier = MoodClassifier()
     let features: [Float] = [
         0.127, 0.206, 0.125, 0.038, 0.011, 0.005,
         0.118, 0.252, 0.531, 0.509
@@ -23,7 +22,7 @@ import CoreML
 }
 
 @Test func test_classify_valenceInRange_minus1To1() throws {
-    let classifier = try MoodClassifier()
+    let classifier = MoodClassifier()
     let testCases: [[Float]] = [
         [0.20, 0.25, 0.15, 0.05, 0.02, 0.005, 0.17, 0.43, 0.48, 0.46],
         [0.07, 0.23, 0.19, 0.02, 0.001, 0.0002, 0.04, 0.09, 0.52, 0.48],
@@ -36,7 +35,7 @@ import CoreML
 }
 
 @Test func test_classify_arousalInRange_minus1To1() throws {
-    let classifier = try MoodClassifier()
+    let classifier = MoodClassifier()
     let testCases: [[Float]] = [
         [0.20, 0.25, 0.15, 0.05, 0.02, 0.005, 0.17, 0.43, 0.48, 0.46],
         [0.07, 0.23, 0.19, 0.02, 0.001, 0.0002, 0.04, 0.09, 0.52, 0.48],
@@ -49,7 +48,7 @@ import CoreML
 }
 
 @Test func test_classify_partyRock_positiveValence() throws {
-    let classifier = try MoodClassifier()
+    let classifier = MoodClassifier()
     // Love Shack average features (V=+0.8, A=+0.5).
     let features: [Float] = [
         0.1561, 0.1622, 0.1164, 0.0531, 0.0174, 0.0054,
@@ -62,7 +61,7 @@ import CoreML
 }
 
 @Test func test_classify_darkHaunting_negativeValence() throws {
-    let classifier = try MoodClassifier()
+    let classifier = MoodClassifier()
     // Pyramid Song average features (V=-0.5, A=-0.7).
     let features: [Float] = [
         0.0749, 0.2286, 0.1892, 0.0157, 0.0009, 0.0002,
@@ -74,8 +73,8 @@ import CoreML
             "Dark haunting track should have negative valence, got \(state.valence)")
 }
 
-@Test func test_conformsToMoodClassifying() throws {
-    let classifier = try MoodClassifier()
+@Test func test_conformsToMoodClassifying() {
+    let classifier = MoodClassifier()
     let proto: any MoodClassifying = classifier
     #expect(proto.currentState == EmotionalState.neutral)
 }
