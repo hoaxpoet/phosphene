@@ -1196,27 +1196,25 @@ After:  STFT(GPU) → [Float] → memcpy(MTLBuffer) → predict(MPSGraph/GPU/F32
 
 ---
 
-### Increment 3.2: Mesh Shader Pipeline Infrastructure
+### Increment 3.2: Mesh Shader Pipeline Infrastructure ✅ COMPLETE
 
 **Goal:** Metal mesh shading infrastructure for procedural 3D geometry generation. Object + mesh shader stages, pipeline state management, capability detection, and a vertex shader fallback path for pre-M3 hardware (per CLAUDE.md hard rule).
 
-**Files to create/edit:**
-- `Renderer/Shaders/MeshShaders.metal` — shared mesh shader utilities: meshlet structures (`ObjectPayload`, `MeshVertex`, `MeshPrimitive`), transformation helpers, cohort dispatch helpers. No preset-specific logic.
-- `Renderer/Geometry/MeshGenerator.swift` — pipeline state management class. Detects `device.supportsFamily(.apple8)` at init, selects mesh shader path (primary, M3+) or vertex shader fallback (M1/M2). Owns both pipeline states so presets can opt in without knowing the hardware tier. `MeshGeneratorConfiguration` struct with `maxVerticesPerMeshlet = 256`, `maxPrimitivesPerMeshlet = 512`.
-- `Renderer/RenderPipeline.swift` — new `drawWithMeshShader` private method parallel to `drawDirect` and `drawWithFeedback`. Routed to from `draw(in:)` when the active preset's descriptor has `useMeshShader: true`.
-- `Presets/PresetLoader.swift` — preamble update to include the meshlet MSL structs so all mesh presets inherit them; mesh-aware pipeline compilation when `useMeshShader: true`.
-- `Presets/PresetDescriptor.swift` — add `useMeshShader: Bool` field, default `false` for backward compat. Matching `"use_mesh_shader"` CodingKey.
+**Files created/edited:**
+- `Renderer/Shaders/MeshShaders.metal` — `ObjectPayload`, `MeshVertex`, `MeshPrimitive` structs; trivial `mesh_object_shader` (dispatches 1 meshlet), `mesh_shader` (outputs a full-screen triangle), `mesh_fragment` (UV-as-color placeholder), `mesh_fallback_vertex` (identical triangle via standard vertex shader).
+- `Renderer/Geometry/MeshGenerator.swift` — detects `device.supportsFamily(.apple8)` at init; compiles `MTLMeshRenderPipelineDescriptor` (M3+) or `MTLRenderPipelineDescriptor` with `mesh_fallback_vertex` (M1/M2). `draw(encoder:features:)` dispatches `drawMeshThreadgroups` or `drawPrimitives` accordingly. `MeshGeneratorConfiguration` with `maxVerticesPerMeshlet = 256`, `maxPrimitivesPerMeshlet = 512`.
+- `Renderer/RenderPipeline.swift` — `meshGenerator`, `meshShaderEnabled`, `meshLock`, `setMeshGenerator(_:enabled:)`.
+- `Renderer/RenderPipeline+Draw.swift` — mesh branch added to `renderFrame` (mesh → feedback → direct priority).
+- `Renderer/RenderPipeline+MeshDraw.swift` (new) — `drawWithMeshShader` private method; acquires drawable, encodes stem features at buffer(3), delegates to `meshGenerator.draw()`.
+- `Presets/PresetLoader.swift` — `compileMeshShader` dispatcher + `compileMeshPipeline` (M3+ native / M1-M2 fallback). Function naming convention: `_fragment` suffix replaced with `_mesh_shader` / `_object_shader` to locate mesh functions in the compiled library.
+- `Presets/PresetLoader+Preamble.swift` — `ObjectPayload`, `MeshVertex`, `MeshPrimitive` struct definitions added so preset shaders can reference them without redeclaring.
+- `Presets/PresetDescriptor.swift` — `useMeshShader: Bool`, `"use_mesh_shader"` CodingKey, default `false`.
 
-**Test requirements:**
-- `Tests/PhospheneEngineTests/Renderer/MeshGeneratorTests.swift` — 6 tests:
-  - `test_init_createsMeshPipelineDescriptor()` — verify the init produces a valid pipeline descriptor on the current hardware (mesh or fallback)
-  - `test_meshPipelineState_createdSuccessfully()` — non-nil pipeline state after init
-  - `test_dispatch_meshDraw_completesWithoutError()` — dispatching a trivial draw against an offscreen render target completes without GPU errors
-  - `test_maxVerticesPerMeshlet_is256()` — `configuration.maxVerticesPerMeshlet == 256`
-  - `test_maxPrimitivesPerMeshlet_is512()` — `configuration.maxPrimitivesPerMeshlet == 512`
-  - `test_meshShaderFractal_60fps_frameTimeUnder16ms()` — `XCTest.measure` benchmark of a single-frame dispatch, baseline < 16ms
+**Implementation note:** `[[thread_index_in_mesh]]` is not a valid MSL attribute — the correct attribute is `[[thread_index_in_threadgroup]]` in both object and mesh shader stages. This caused initial compile failure, fixed before tests passed.
 
-**Verification:** Mesh pipeline state compiles on the current hardware. Dispatching a trivial mesh draw completes without error. Vertex shader fallback path compiles on M1/M2 hardware (use `#if targetEnvironment` or runtime `supportsFamily` check to gate the test). All 6 tests pass. **No visible preset at this stage** — this increment delivers infrastructure only. The demonstration preset is Increment 3.2b.
+**Tests:** 6 XCTest (`MeshGeneratorTests`): descriptor, pipeline state, dispatch, maxVerts=256, maxPrims=512, <16ms perf. All pass.
+
+**Result:** 247 tests (221 swift-testing + 26 XCTest). Commit: `d6561d38`.
 
 **Depends on:** nothing.
 
