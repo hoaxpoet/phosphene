@@ -34,7 +34,7 @@ line, as it would propagate to SPM dependencies that compile with
 
 Deployment target: macOS 14.0+ (Sonoma). Swift 6.0. Metal 3.1+.
 
-**Current test count: 247 tests** (221 swift-testing + 26 XCTest, across unit, integration, regression, performance). All must pass before any new code is merged.
+**Current test count: 262 tests** (221 swift-testing + 41 XCTest, across unit, integration, regression, performance). All must pass before any new code is merged.
 
 ## Module Map
 
@@ -85,8 +85,10 @@ PhospheneEngine/
     MetalContext            → MTLDevice, command queue, triple-buffered semaphore, shared-texture helper (✓ implemented)
     ShaderLibrary           → Auto-discover .metal files, runtime compilation, cache (✓ implemented)
     RenderPipeline          → Feedback-texture ping-pong, warp/composite/blit passes, particle integration (✓ implemented)
-    RenderPipeline+Draw     → Draw paths: direct, mesh, feedback, warp, blit, particles (✓ implemented)
+    RenderPipeline+Draw     → Draw paths: direct, mesh, postProcess, feedback, warp, blit, particles (✓ implemented)
     RenderPipeline+MeshDraw → Mesh shader draw path: drawWithMeshShader, offscreen pass, MeshGenerator delegation (✓ implemented)
+    RenderPipeline+PostProcess → HDR post-process draw path: drawWithPostProcess, lazy texture allocation (✓ implemented)
+    PostProcessChain        → HDR scene texture (.rgba16Float), bloom ping-pong (.rgba16Float half-res), 4 pipeline states, ACES composite (✓ implemented)
     Protocols               → Rendering protocol for DI/testing (✓ implemented)
     Geometry/ProceduralGeometry → GPU compute particle system: UMA buffer + compute pipeline + render pipeline (✓ implemented)
     Geometry/MeshGenerator  → MTLMeshRenderPipelineDescriptor (M3+) + vertex fallback (M1/M2), draw dispatch (✓ implemented)
@@ -96,12 +98,13 @@ PhospheneEngine/
     Shaders/Common.metal    → FeatureVector/FeedbackParams structs, hsv2rgb, fullscreen_vertex, feedback_warp_fragment, feedback_blit_fragment (✓ implemented)
     Shaders/MeshShaders.metal → ObjectPayload/MeshVertex/MeshPrimitive structs, mesh_object_shader, mesh_shader, mesh_fragment, mesh_fallback_vertex (✓ implemented)
     Shaders/Particles.metal → Murmuration compute kernel + bird silhouette vertex/fragment shaders (✓ implemented)
+    Shaders/PostProcess.metal → pp_bright_pass_fragment, pp_blur_h/v_fragment (9-tap Gaussian), pp_composite_fragment (ACES tonemapping) (✓ implemented)
     Shaders/RayTracing.metal → RTRay/RTNearestHit structs, rt_nearest_hit_kernel, rt_shadow_kernel, rt_camera_ray, rt_reflect, rt_offset_point (✓ implemented)
     Shaders/Waveform.metal  → 64-bar FFT spectrum + oscilloscope waveform (✓ implemented)
   Presets/                  → Preset loading, categorization, hot-reload, feedback + mesh support
     PresetLoader            → Auto-discover .metal presets, compile standard + additive-blend + mesh pipeline states (✓ implemented)
     PresetLoader+Preamble   → Common Metal shader preamble string (FeatureVector struct, meshlet structs, utilities) (✓ implemented)
-    PresetDescriptor        → JSON sidecar metadata with useFeedback, useMeshShader flags (✓ implemented)
+    PresetDescriptor        → JSON sidecar metadata with useFeedback, useMeshShader, usePostProcess flags (✓ implemented)
     PresetCategory          → Visual aesthetic families (11 categories including abstract) (✓ implemented)
     Shaders/Starburst.metal → "Murmuration" preset — dusk sky gradient backdrop (✓ implemented)
     Shaders/Waveform.metal  → Spectrum bars + oscilloscope preset (✓ implemented)
@@ -118,11 +121,11 @@ PhospheneEngine/
     StemSampleBuffer        → Interleaved stereo PCM ring buffer for stem separation input (✓ implemented)
     Logging                 → Per-module os.Logger instances (✓ implemented)
 
-Tests/ (247 tests: 221 swift-testing + 26 XCTest)
+Tests/ (262 tests: 221 swift-testing + 41 XCTest)
   Audio/                    → AudioBufferTests, FFTProcessorTests, StreamingMetadataTests, MetadataPreFetcherTests, LookaheadBufferTests (10)
   DSP/                      → SpectralAnalyzerTests (8), BandEnergyProcessorTests (5), ChromaExtractorTests (6), BeatDetectorTests (7), MIRPipelineUnitTests (4), SelfSimilarityMatrixTests (5), NoveltyDetectorTests (5), StructuralAnalyzerTests (8)
   ML/                       → StemSeparatorTests (7), StemFFTTests (6: vDSP cross-validate, round-trip, fwd perf, inv perf, UMA storage, thread safety), StemModelTests (6: init, silence, cross-validate, perf gate <400ms, UMA storage, thread safety), MoodClassifierTests (7: init, classification, range, quadrants, protocol)
-  Renderer/                 → MetalContextTests, ShaderLibraryTests, RenderPipelineTests, ProceduralGeometryTests (7: init, storage mode, dispatch, count, zero-audio, impulse, 1M perf), MeshGeneratorTests (6: descriptor, pipeline state, dispatch, maxVerts=256, maxPrims=512, <16ms perf), BVHBuilderTests (4: build, empty, rebuild, triangleCount), RayIntersectorTests (5: hit, miss, shadow, reflection, 1000-ray <2ms perf)
+  Renderer/                 → MetalContextTests, ShaderLibraryTests, RenderPipelineTests, ProceduralGeometryTests (7: init, storage mode, dispatch, count, zero-audio, impulse, 1M perf), MeshGeneratorTests (6: descriptor, pipeline state, dispatch, maxVerts=256, maxPrims=512, <16ms perf), BVHBuilderTests (4: build, empty, rebuild, triangleCount), RayIntersectorTests (5: hit, miss, shadow, reflection, 1000-ray <2ms perf), PostProcessChainTests (6: HDR texture alloc, rgba16Float format, bloom threshold, Gaussian luminance preservation, ACES SDR mapping, <2ms perf at 1080p)
   Shared/                   → AudioFeaturesTests (2: StemFeatures layout + SIMD alignment), UMABufferExtendedTests, EmotionalStateTests (4: quadrant classification), AnalyzedFrameTests (3)
   Integration/              → AudioToFFTPipelineTests, AudioToRenderPipelineTests, MetadataToOrchestratorTests, AudioToStemPipelineTests, MIRPipelineIntegrationTests (3), LookaheadIntegrationTests (1), StemsToRenderPipelineTests (4: warmup default, separation→analysis, track reset, Swift/MSL size)
   Regression/               → FFTRegressionTests, MetadataParsingRegressionTests, ChromaRegressionTests (2), BeatDetectorRegressionTests (2), StructuralAnalysisRegressionTests (1) + golden fixtures
@@ -543,10 +546,10 @@ The architectural blueprint is in `docs/ARCHITECTURAL_BLUEPRINT.md`.
 
 **Completed increments (Phase 3.3):**
 - **Increment 3.3 — Hardware Ray Tracing Infrastructure** ✅ — Native Metal ray tracing API (migrated away from deprecated `MPSRayIntersector`). `BVHBuilder.swift`: `MTLPrimitiveAccelerationStructureDescriptor` BVH builder with blocking `build()`/`rebuild()` + non-blocking `encodeBuild(into:)` for per-frame audio-reactive scene geometry. `RayIntersector.swift` + `RayIntersector+Internal.swift`: compute-pipeline intersector with blocking `intersect()`/`shadowRay()` + non-blocking `encodeNearestHit()`/`encodeShadow()`. `RayTracing.metal`: `rt_nearest_hit_kernel` + `rt_shadow_kernel` (`accept_any_intersection(true)`). MSL gotcha: `intersection_result<triangle_data>` exposes `triangle_barycentric_coord` (NOT `.barycentrics`); buffer binding requires `primitive_acceleration_structure`. 9 tests pass (4 BVHBuilder + 5 RayIntersector, perf gate < 2ms, actual ~0.8ms warm). 247 tests total, SwiftLint clean.
+- **Increment 3.4 — HDR Post-Process Chain** ✅ — `PostProcessChain.swift`: owns HDR scene texture (`.rgba16Float` full-res), ping-pong bloom textures (`.rgba16Float` half-res), and 4 compiled pipeline states. `PostProcess.metal`: `pp_bright_pass_fragment` (luminance > 0.9 threshold, 2× downsample), `pp_blur_h/v_fragment` (9-tap separable Gaussian, sigma ≈ 1.5), `pp_composite_fragment` (ACES filmic tone mapping + 0.5× bloom additive → SDR). `RenderPipeline+PostProcess.swift`: `drawWithPostProcess` parallel to `drawDirect`/`drawWithFeedback`/`drawWithMeshShader`; renderFrame priority: mesh → postProcess → feedback → direct. `usePostProcess: Bool` on `PresetDescriptor` (JSON key `"use_post_process"`, default `false`). 6 PostProcessChainTests (HDR texture alloc, rgba16Float format, bloom threshold, Gaussian luminance preservation <2%, ACES SDR mapping, <2ms perf at 1080p). 262 tests total, SwiftLint clean.
 
 **Ordered next increments** (per the revised plan):
-1. **Increment 3.4 — HDR Post-Process Chain** (extracted from 3.3). `PostProcessChain.swift`, `PostProcess.metal` (bright pass, blur H/V, ACES composite), `usePostProcess` flag, 6 tests. Independent of ray tracing.
-3. **Increment 3.5 — Indirect Command Buffers** (was 3.4).
+1. **Increment 3.5 — Indirect Command Buffers** (was 3.4→3.5 in revised plan).
 4. **Increment 3.6 (deferred) — Render Graph Refactor.** Fires when capability flag count exceeds 4.
 5. **Phase 3.5 — Native Preset Library Expansion.** Dedicated home for native presets that depend on Phase 3 infrastructure. First entry: **3.5.1 Photorealistic Popcorn**, depends on 3.1b + 3.3 + 3.4.
 

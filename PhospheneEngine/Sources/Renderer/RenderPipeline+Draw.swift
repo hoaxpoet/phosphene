@@ -78,13 +78,16 @@ extension RenderPipeline {
              feedbackTextures, feedbackIndex)
         }
 
+        // Snapshot post-process state for this frame.
+        let (ppEnabled, ppChain) = postProcessLock.withLock { (postProcessEnabled, postProcessChain) }
+
         // ── Compute pass: update particles before rendering ─────────
         particles?.update(features: features, commandBuffer: commandBuffer)
 
         // Snapshot mesh shader state for this frame.
         let (meshEnabled, meshGen) = meshLock.withLock { (meshShaderEnabled, meshGenerator) }
 
-        // Branch: mesh shader → feedback → direct.
+        // Branch: mesh shader → post-process → feedback → direct.
         if meshEnabled, let generator = meshGen {
             drawWithMeshShader(
                 commandBuffer: commandBuffer,
@@ -92,6 +95,15 @@ extension RenderPipeline {
                 features: &features,
                 stemFeatures: stemFeatures,
                 meshGenerator: generator
+            )
+        } else if ppEnabled, let chain = ppChain {
+            drawWithPostProcess(
+                commandBuffer: commandBuffer,
+                view: view,
+                features: &features,
+                stemFeatures: stemFeatures,
+                activePipeline: activePipeline,
+                chain: chain
             )
         } else if fbEnabled, let params = fbParams, let composePipeline = fbCompose,
            fbTextures.count == 2 {

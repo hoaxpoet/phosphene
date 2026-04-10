@@ -64,6 +64,12 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
     /// visual overlay.
     public let useParticles: Bool
 
+    /// Whether this preset uses the HDR post-process chain (bloom + ACES tone mapping).
+    /// When true, the scene is rendered to a `.rgba16Float` HDR texture, followed by
+    /// a bright pass, separable Gaussian bloom blur, and ACES composite to the drawable.
+    /// Defaults to `false` — existing presets are unaffected.
+    public let usePostProcess: Bool
+
     // MARK: - Mesh Shader Configuration
 
     /// Mesh threadgroup size — must match `[[mesh, max_total_threads_per_threadgroup(N)]]`
@@ -102,6 +108,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         case useFeedback = "use_feedback"
         case useMeshShader = "use_mesh_shader"
         case useParticles = "use_particles"
+        case usePostProcess = "use_post_process"
         case meshThreadCount = "mesh_thread_count"
         case fragmentFunction = "fragment_function"
         case vertexFunction = "vertex_function"
@@ -125,6 +132,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         useFeedback = try container.decodeIfPresent(Bool.self, forKey: .useFeedback) ?? false
         useMeshShader = try container.decodeIfPresent(Bool.self, forKey: .useMeshShader) ?? false
         useParticles = try container.decodeIfPresent(Bool.self, forKey: .useParticles) ?? false
+        usePostProcess = try container.decodeIfPresent(Bool.self, forKey: .usePostProcess) ?? false
         meshThreadCount = try container.decodeIfPresent(Int.self, forKey: .meshThreadCount) ?? 64
         fragmentFunction = try container.decodeIfPresent(String.self, forKey: .fragmentFunction) ?? "preset_fragment"
         vertexFunction = try container.decodeIfPresent(String.self, forKey: .vertexFunction) ?? "fullscreen_vertex"
