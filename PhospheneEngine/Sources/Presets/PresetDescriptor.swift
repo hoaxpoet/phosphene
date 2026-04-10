@@ -64,9 +64,16 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
     /// visual overlay.
     public let useParticles: Bool
 
+    // MARK: - Mesh Shader Configuration
+
+    /// Mesh threadgroup size — must match `[[mesh, max_total_threads_per_threadgroup(N)]]`
+    /// in the preset's mesh shader function.  Only relevant when `useMeshShader == true`.
+    /// Defaults to 64 (the standard threadgroup size for production preset mesh shaders).
+    public let meshThreadCount: Int
+
     // MARK: - Shader Function Names
 
-    /// Fragment function name in the .metal file. Defaults to "<lowercaseName>_fragment".
+    /// Fragment function name in the .metal file. Defaults to "preset_fragment".
     public let fragmentFunction: String
     /// Vertex function name. Defaults to "fullscreen_vertex".
     public let vertexFunction: String
@@ -95,6 +102,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         case useFeedback = "use_feedback"
         case useMeshShader = "use_mesh_shader"
         case useParticles = "use_particles"
+        case meshThreadCount = "mesh_thread_count"
         case fragmentFunction = "fragment_function"
         case vertexFunction = "vertex_function"
         case shaderFileName = "shader_file"
@@ -114,9 +122,10 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         baseRot = try container.decodeIfPresent(Float.self, forKey: .baseRot) ?? 0.03
         decay = try container.decodeIfPresent(Float.self, forKey: .decay) ?? 0.955
         beatSensitivity = try container.decodeIfPresent(Float.self, forKey: .beatSensitivity) ?? 1.0
-        useFeedback    = try container.decodeIfPresent(Bool.self, forKey: .useFeedback)    ?? false
-        useMeshShader  = try container.decodeIfPresent(Bool.self, forKey: .useMeshShader)  ?? false
-        useParticles   = try container.decodeIfPresent(Bool.self, forKey: .useParticles)   ?? false
+        useFeedback = try container.decodeIfPresent(Bool.self, forKey: .useFeedback) ?? false
+        useMeshShader = try container.decodeIfPresent(Bool.self, forKey: .useMeshShader) ?? false
+        useParticles = try container.decodeIfPresent(Bool.self, forKey: .useParticles) ?? false
+        meshThreadCount = try container.decodeIfPresent(Int.self, forKey: .meshThreadCount) ?? 64
         fragmentFunction = try container.decodeIfPresent(String.self, forKey: .fragmentFunction) ?? "preset_fragment"
         vertexFunction = try container.decodeIfPresent(String.self, forKey: .vertexFunction) ?? "fullscreen_vertex"
         shaderFileName = try container.decodeIfPresent(String.self, forKey: .shaderFileName) ?? ""

@@ -5,9 +5,14 @@
 // at init time and selects the appropriate pipeline transparently, so presets
 // never need to branch on hardware tier.
 //
-// Usage:
+// Usage (infrastructure shader):
 //   let gen = try MeshGenerator(device: ctx.device, library: shaderLib.library,
 //                               pixelFormat: ctx.pixelFormat)
+//
+// Usage (preset shader compiled by PresetLoader):
+//   let gen = MeshGenerator(device: ctx.device, pipelineState: preset.pipelineState,
+//                           configuration: .init(meshThreadCount: 64))
+//
 //   // Each frame inside a render pass:
 //   gen.draw(encoder: encoder, features: currentFeatures)
 
@@ -26,15 +31,32 @@ private let logger = Logger(subsystem: "com.phosphene.renderer", category: "Mesh
 /// `mesh<>` template parameters.  MeshGenerator's built-in infrastructure
 /// shader uses a smaller triangle (3V, 1P) for testing; these constants govern
 /// production preset geometry.
+///
+/// `meshThreadCount` must match the `max_total_threads_per_threadgroup` attribute
+/// on the preset's `[[mesh]]` function.  `objectThreadCount` must match the
+/// `max_total_threads_per_threadgroup` attribute on the `[[object]]` function.
 public struct MeshGeneratorConfiguration: Sendable {
     /// Maximum vertices per meshlet — must match the MSL `mesh<>` first template parameter.
     public let maxVerticesPerMeshlet: Int
     /// Maximum primitives per meshlet — must match the MSL `mesh<>` second template parameter.
     public let maxPrimitivesPerMeshlet: Int
+    /// Threads per mesh threadgroup — must match `[[mesh, max_total_threads_per_threadgroup(N)]]`.
+    /// Default 3 matches the infrastructure test triangle shader.
+    public let meshThreadCount: Int
+    /// Threads per object threadgroup — must match `[[object, max_total_threads_per_threadgroup(N)]]`.
+    /// Default 1 is correct for all current preset object shaders.
+    public let objectThreadCount: Int
 
-    public init(maxVerticesPerMeshlet: Int = 256, maxPrimitivesPerMeshlet: Int = 512) {
+    public init(
+        maxVerticesPerMeshlet: Int = 256,
+        maxPrimitivesPerMeshlet: Int = 512,
+        meshThreadCount: Int = 3,
+        objectThreadCount: Int = 1
+    ) {
         self.maxVerticesPerMeshlet  = maxVerticesPerMeshlet
         self.maxPrimitivesPerMeshlet = maxPrimitivesPerMeshlet
+        self.meshThreadCount        = meshThreadCount
+        self.objectThreadCount      = objectThreadCount
     }
 }
 
@@ -55,7 +77,7 @@ public final class MeshGenerator: @unchecked Sendable {
 
     // MARK: - Public Properties
 
-    /// Active configuration (maxVerticesPerMeshlet, maxPrimitivesPerMeshlet).
+    /// Active configuration (maxVerticesPerMeshlet, maxPrimitivesPerMeshlet, thread counts).
     public let configuration: MeshGeneratorConfiguration
 
     /// `true` when the hardware supports native mesh shaders (apple8 family, M3+).
@@ -70,17 +92,20 @@ public final class MeshGenerator: @unchecked Sendable {
 
     private let device: MTLDevice
 
-    // MARK: - Init
+    // MARK: - Init (infrastructure shader)
 
     /// Create a mesh generator, selecting the appropriate pipeline for the hardware.
     ///
+    /// Compiles the infrastructure mesh shader from the provided `library`
+    /// (`mesh_object_shader`, `mesh_shader`, `mesh_fragment`, `mesh_fallback_vertex`).
+    /// Use the `init(device:pipelineState:configuration:)` overload for preset shaders
+    /// already compiled by `PresetLoader`.
+    ///
     /// - Parameters:
     ///   - device: Metal device for pipeline and buffer creation.
-    ///   - library: Compiled Metal library containing the mesh shader functions
-    ///     (`mesh_object_shader`, `mesh_shader`, `mesh_fragment`,
-    ///     `mesh_fallback_vertex`).
+    ///   - library: Compiled Metal library containing the infrastructure mesh functions.
     ///   - pixelFormat: Output pixel format for pipeline state creation.
-    ///   - configuration: Per-meshlet vertex/primitive limits. Defaults to 256V/512P.
+    ///   - configuration: Per-meshlet vertex/primitive limits. Defaults to 256V/512P/3T.
     public init(
         device: MTLDevice,
         library: MTLLibrary,
@@ -106,32 +131,73 @@ public final class MeshGenerator: @unchecked Sendable {
         }
     }
 
+    // MARK: - Init (preset shader — pre-compiled by PresetLoader)
+
+    /// Create a mesh generator wrapping a pre-compiled pipeline state.
+    ///
+    /// Use this initialiser for preset shaders that were already compiled by
+    /// `PresetLoader.compileMeshShader`.  The pipeline state contains the correct
+    /// shader functions for the current hardware tier (mesh on M3+, vertex fallback
+    /// on M1/M2) — `MeshGenerator` simply wraps it and drives the draw dispatch.
+    ///
+    /// - Parameters:
+    ///   - device: Metal device (used to detect hardware tier for dispatch selection).
+    ///   - pipelineState: Pre-compiled pipeline state from `PresetLoader`.
+    ///   - configuration: Per-meshlet limits and thread counts.  `meshThreadCount` must
+    ///     match the preset's `[[mesh, max_total_threads_per_threadgroup(N)]]` attribute.
+    public init(
+        device: MTLDevice,
+        pipelineState: MTLRenderPipelineState,
+        configuration: MeshGeneratorConfiguration = .init()
+    ) {
+        self.device             = device
+        self.configuration      = configuration
+        self.usesMeshShaderPath = device.supportsFamily(.apple8)
+        self.pipelineState      = pipelineState
+        logger.info("MeshGenerator: wrapped preset pipeline (mesh path: \(device.supportsFamily(.apple8)))")
+    }
+
     // MARK: - Draw
 
     /// Encode a mesh draw command into the given render encoder.
     ///
     /// Sets the pipeline state and dispatches geometry.  On M3+ this calls
-    /// `drawMeshThreadgroups` (object → mesh → fragment); on M1/M2 this calls
-    /// `drawPrimitives(.triangle)` with the fallback vertex shader.
+    /// `drawMeshThreadgroups` (object → mesh → fragment) using thread counts from
+    /// `configuration`; on M1/M2 this calls `drawPrimitives(.triangle)` with the
+    /// fallback vertex shader.
+    ///
+    /// On M3+, `FeatureVector` is bound at buffer(0) for all three shader stages
+    /// (object, mesh, fragment) so preset shaders can read audio data at any stage.
+    /// On M1/M2, only the fragment stage binding is set (object/mesh stages are not
+    /// active with the vertex fallback pipeline).
     ///
     /// The encoder must already have a valid render pass active.
     ///
     /// - Parameters:
     ///   - encoder: Active render command encoder.
-    ///   - features: Current audio feature vector — bound at fragment buffer(0).
+    ///   - features: Current audio feature vector — bound at buffer(0) for all stages.
     public func draw(encoder: MTLRenderCommandEncoder, features: FeatureVector) {
         encoder.setRenderPipelineState(pipelineState)
         var feat = features
+
+        if usesMeshShaderPath {
+            // Bind features to all mesh-pipeline stages so preset shaders can read
+            // audio data from the object, mesh, or fragment stage as needed.
+            encoder.setObjectBytes(&feat, length: MemoryLayout<FeatureVector>.stride, index: 0)
+            encoder.setMeshBytes(&feat, length: MemoryLayout<FeatureVector>.stride, index: 0)
+        }
         encoder.setFragmentBytes(&feat, length: MemoryLayout<FeatureVector>.stride, index: 0)
 
         if usesMeshShaderPath {
-            // Native mesh dispatch: 1 object threadgroup → 1 mesh threadgroup of 3 threads.
-            // The mesh shader (mesh_shader) runs 3 threads, one per vertex of the
-            // infrastructure triangle.  Production presets scale this to fill meshlets.
+            // Native mesh dispatch using per-preset thread counts from configuration.
             encoder.drawMeshThreadgroups(
                 MTLSize(width: 1, height: 1, depth: 1),
-                threadsPerObjectThreadgroup: MTLSize(width: 1, height: 1, depth: 1),
-                threadsPerMeshThreadgroup:   MTLSize(width: 3, height: 1, depth: 1)
+                threadsPerObjectThreadgroup: MTLSize(
+                    width: configuration.objectThreadCount, height: 1, depth: 1
+                ),
+                threadsPerMeshThreadgroup: MTLSize(
+                    width: configuration.meshThreadCount, height: 1, depth: 1
+                )
             )
         } else {
             // Vertex fallback: fullscreen triangle, 3 vertices.

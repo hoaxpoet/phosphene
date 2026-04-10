@@ -123,6 +123,10 @@ extension RenderPipeline {
 
     // MARK: Direct Rendering (Non-Feedback)
 
+    // swiftlint:disable function_parameter_count
+    // drawDirect / drawParticleMode / drawSurfaceMode each take 6 parameters —
+    // the full render-pass context they coordinate. Refactor tracked separately.
+
     /// Original single-pass render directly to drawable.
     func drawDirect(
         commandBuffer: MTLCommandBuffer,
@@ -312,4 +316,5 @@ extension RenderPipeline {
         }
         commandBuffer.present(drawable)
     }
+    // swiftlint:enable function_parameter_count
 }
