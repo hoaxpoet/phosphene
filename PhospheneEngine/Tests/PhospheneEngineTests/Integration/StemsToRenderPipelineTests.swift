@@ -99,8 +99,10 @@ import Metal
         features = analyzer.analyze(stemWaveforms: frameWaveforms, fps: fps)
     }
 
-    // Drums stem should have non-zero energy (FakeStemSeparator routes audio there).
-    #expect(features.drumsEnergy > 0, "Drums energy should be non-zero after separation, got \(features.drumsEnergy)")
+    // Drums stem should have meaningful energy after multi-frame AGC warmup.
+    // With 120 frames of warmup, the AGC running average should be fully adapted,
+    // producing energy values well above the near-zero single-frame result.
+    #expect(features.drumsEnergy > 0.1, "Drums energy should be > 0.1 after AGC warmup, got \(features.drumsEnergy)")
     // Vocals/bass/other should be near-zero (FakeStemSeparator zeros them).
     #expect(features.vocalsEnergy < 0.01, "Vocals energy should be near-zero (not routed)")
     #expect(features.bassEnergy < 0.01, "Bass energy should be near-zero (not routed)")
@@ -193,6 +195,36 @@ import Metal
     #expect(mslSize == swiftSize,
             "MSL sizeof(StemFeatures) = \(mslSize) must match Swift MemoryLayout<StemFeatures>.size = \(swiftSize)")
     #expect(mslSize == 64, "StemFeatures must be exactly 64 bytes in MSL, got \(mslSize)")
+}
+
+// MARK: - Idle Suppression
+
+@Test func stemPipeline_silence_skipsSeparation() throws {
+    let buffer = StemSampleBuffer(sampleRate: 44100, maxSeconds: 15)
+
+    // Write 10 seconds of silence (zeros) as interleaved stereo.
+    let silenceSamples = 44100 * 10 * 2
+    let silence = [Float](repeating: 0, count: silenceSamples)
+    silence.withUnsafeBufferPointer { ptr in
+        buffer.write(samples: ptr.baseAddress!, count: ptr.count)
+    }
+
+    // Snapshot should return data (buffer is not empty).
+    let snapshot = buffer.snapshotLatest(seconds: 10)
+    #expect(!snapshot.isEmpty, "Buffer should have data after writing silence")
+
+    // RMS of silence should be below the suppression threshold.
+    let rms = buffer.rms(seconds: 10)
+    #expect(rms < 1e-6, "RMS of silence should be < 1e-6, got \(rms)")
+
+    // RMS of non-silent audio should be above the threshold.
+    let buffer2 = StemSampleBuffer(sampleRate: 44100, maxSeconds: 15)
+    let noise = AudioFixtures.whiteNoise(sampleCount: 44100 * 10 * 2)
+    noise.withUnsafeBufferPointer { ptr in
+        buffer2.write(samples: ptr.baseAddress!, count: ptr.count)
+    }
+    let noiseRMS = buffer2.rms(seconds: 10)
+    #expect(noiseRMS > 1e-6, "RMS of white noise should be > 1e-6, got \(noiseRMS)")
 }
 
 // MARK: - Error Type

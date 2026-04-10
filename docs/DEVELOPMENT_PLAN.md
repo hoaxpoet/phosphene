@@ -959,7 +959,7 @@ echo "=== All checks passed ==="
 
 ### Increment 3.1a: GPU STFT/iSTFT Compute Pipeline (PROMOTED from 7.1)
 
-**Status:** Not started.
+**Status:** Complete.
 
 **Why promoted:** Originally a bullet in Increment 7.1 ("Metal Performance Profiling Pass"), but it's a prerequisite for the live stem pipeline, which in turn is a prerequisite for true stem-driven presets (Murmuration's deferred re-routing, Popcorn, and others). Keeping it in 7.1 leaves Phase 4 (Orchestrator) blocked on profiling work that is conceptually later in the project. Promoting it early resolves the dependency and honors the Increment Scope Discipline rule that infrastructure should land before the work that depends on it.
 
@@ -1027,6 +1027,37 @@ echo "=== All checks passed ==="
 **Depends on:** Increment 3.1a (GPU STFT/iSTFT) for the real-time performance needed.
 
 **Enables:** Murmuration stem-routing revisit (Phase 3.5 preset polish), Popcorn preset (Phase 3.5.1), and any future preset that depends on stem-accurate audio features.
+
+### Increment 3.1a-followup: StemSeparator CPU Memory Rearrangement Optimization
+
+**Status:** Complete.
+
+**Goal:** Optimize the three CPU memory-rearrangement hotspots in `StemSeparator.separate()` using vectorized Accelerate operations and bulk memcpy. Zero change to correctness or public API.
+
+**Measured improvements:**
+- `packSpectrogramForModel`: 275ms → 1ms (raw `MLMultiArray.dataPointer` + `vDSP_mtrans`, bypassing `MLShapedArray` allocation)
+- `UMABuffer.write`: 231ms → <1ms (Float-specialized overload using `update(from:count:)`)
+- `unpackAndISTFT` transpose: scalar nested loops → `vDSP_mtrans` per stem/channel block
+- `deinterleave`: scalar loop → `vDSP_ctoz`
+- Mono L+R averaging: scalar loop → `vDSP_vadd` + `vDSP_vsmul`
+- Total `separate()`: ~2000ms → ~600ms (3.4× wall-clock improvement)
+
+**Key finding — ANE Float16 output:** The Neural Engine outputs Float16 MLMultiArrays (dataType rawValue 65552) for the Open-Unmix HQ model, even though the model was converted with Float32 inputs. `MLShapedArray<Float>(converting:)` handles the Float16→Float32 conversion correctly but costs ~420ms for ~7M elements. This is internal to CoreML and sets the performance floor at ~560ms (140ms predict + 420ms conversion). The original spec's 250ms target assumed Float32 ANE output. Alternatives investigated and rejected: `vImageConvert_Planar16FtoPlanarF` (slower), raw `dataPointer.bindMemory(to: Float.self)` (incorrect — misinterprets Float16 as Float32).
+
+**Files edited:**
+- `Sources/Shared/UMABuffer.swift` — Float-specialized `write(_ values: [Float], offset:)` extension
+- `Sources/ML/StemSeparator+Pack.swift` — decomposed into `packDense`/`packStrided`, `extractDense`/`extractStrided`, `averageToMono` helpers. All fast paths use `vDSP_mtrans` with `guard let` pointer safety.
+- `Sources/ML/StemSeparator.swift` — `vDSP_ctoz` deinterleave, `writeToBuffers`/`buildResult` extracted to reduce `separate()` body length, `Accelerate` import added.
+
+**Tests added:**
+- `UMABufferExtendedTests`: `test_writeArrayFloat_correctness()`, `test_writeArrayFloat_withOffset_correctness()` — verify the Float fast-path write produces byte-identical results to the generic path.
+- `StemSeparationPerformanceTests`: `test_separate_1SecondAudio_performance()` updated with hard 750ms warm-call assertion. `test_separate_1SecondAudio_measureBlock()` added for XCTest.measure averaging.
+
+**Test count after 3.1a-followup:** 236 tests (222 swift-testing + 14 XCTest), all passing. SwiftLint clean.
+
+**Depends on:** Increment 3.1a (GPU STFT/iSTFT).
+
+**Enables:** Any future increment requiring tight end-to-end stem separation latency. Per-frame or sub-second stem analysis cadences if downstream presets ever need them.
 
 ### Increment 3.2: Mesh Shader Pipeline Infrastructure
 

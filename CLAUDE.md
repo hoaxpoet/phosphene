@@ -34,7 +34,7 @@ line, as it would propagate to SPM dependencies that compile with
 
 Deployment target: macOS 14.0+ (Sonoma). Swift 6.0. Metal 3.1+.
 
-**Current test count: 232 tests** (213 swift-testing + 13 XCTest, across unit, integration, regression, performance). All must pass before any new code is merged.
+**Current test count: 236 tests** (222 swift-testing + 14 XCTest, across unit, integration, regression, performance). All must pass before any new code is merged.
 
 ## Module Map
 
@@ -109,15 +109,15 @@ PhospheneEngine/
     StemSampleBuffer        → Interleaved stereo PCM ring buffer for stem separation input (✓ implemented)
     Logging                 → Per-module os.Logger instances (✓ implemented)
 
-Tests/ (232 tests: 219 swift-testing + 13 XCTest)
+Tests/ (236 tests: 222 swift-testing + 14 XCTest)
   Audio/                    → AudioBufferTests, FFTProcessorTests, StreamingMetadataTests, MetadataPreFetcherTests, LookaheadBufferTests (10)
   DSP/                      → SpectralAnalyzerTests (8), BandEnergyProcessorTests (5), ChromaExtractorTests (6), BeatDetectorTests (7), MIRPipelineUnitTests (4), SelfSimilarityMatrixTests (5), NoveltyDetectorTests (5), StructuralAnalyzerTests (8)
-  ML/                       → StemSeparatorTests (8), MoodClassifierTests (7: model loading, classification, range, quadrants, protocol)
+  ML/                       → StemSeparatorTests (8), StemFFTTests (6: vDSP cross-validate, round-trip, fwd perf, inv perf, UMA storage, thread safety), MoodClassifierTests (7: model loading, classification, range, quadrants, protocol)
   Renderer/                 → MetalContextTests, ShaderLibraryTests, RenderPipelineTests, ProceduralGeometryTests (7: init, storage mode, dispatch, count, zero-audio, impulse, 1M perf)
   Shared/                   → AudioFeaturesTests (2: StemFeatures layout + SIMD alignment), UMABufferExtendedTests, EmotionalStateTests (4: quadrant classification), AnalyzedFrameTests (3)
   Integration/              → AudioToFFTPipelineTests, AudioToRenderPipelineTests, MetadataToOrchestratorTests, AudioToStemPipelineTests, MIRPipelineIntegrationTests (3), LookaheadIntegrationTests (1), StemsToRenderPipelineTests (4: warmup default, separation→analysis, track reset, Swift/MSL size)
   Regression/               → FFTRegressionTests, MetadataParsingRegressionTests, ChromaRegressionTests (2), BeatDetectorRegressionTests (2), StructuralAnalysisRegressionTests (1) + golden fixtures
-  Performance/              → FFTPerformanceTests, RenderLoopPerformanceTests, StemSeparationPerformanceTests, DSPPerformanceTests (3)
+  Performance/              → FFTPerformanceTests, RenderLoopPerformanceTests, StemSeparationPerformanceTests (2: hard 750ms gate + measure block), DSPPerformanceTests (3)
   TestDoubles/              → MockAudioCapture, StubFFTProcessor, FakeStemSeparator, StubMoodClassifier, AudioFixtures, MockMetadataProvider, MockMetadataFetcher
 ```
 
@@ -368,7 +368,7 @@ Phosphene works at every tier — never show errors or degraded UI when metadata
 - Protocol-first design for testability. Every injectable dependency has a protocol (`AudioCapturing`, `AudioBuffering`, `FFTProcessing`, `Rendering`, `MetadataProviding`, `MetadataFetching`). Tests use doubles from `TestDoubles/`.
 
 ### Testing
-- **226 tests** (213 swift-testing + 13 XCTest) across unit, integration, regression, and performance categories.
+- **236 tests** (222 swift-testing + 14 XCTest) across unit, integration, regression, and performance categories.
 - All tests must pass before starting new work (`swift test --package-path PhospheneEngine` or `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' test`).
 - Test doubles in `Tests/TestDoubles/`: `MockAudioCapture`, `StubFFTProcessor`, `FakeStemSeparator`, `StubMoodClassifier`, `AudioFixtures`, `MockMetadataProvider`, `MockMetadataFetcher`.
 - Regression tests use golden fixtures in `Tests/Regression/Fixtures/`.
@@ -399,6 +399,7 @@ These were tried in the Electron prototype and abandoned with documented reasons
 17. **Autocorrelation tempo estimation returning half-tempo**: Basic autocorrelation of onset functions often returns half the true tempo (e.g., 60 BPM instead of 120 BPM) because the autocorrelation peak at lag=2×beat is often stronger than at lag=1×beat. This is a well-known "octave error". Accept it for now — the pre-fetched BPM from metadata APIs disambiguates. Future fix: onset spacing analysis or harmonic product spectrum.
 18. **Median-based threshold for tempo onset timestamps**: Half-wave rectified spectral flux is zero for most frames (no energy increase = zero flux after rectification). The median of a buffer that's mostly zeros is near-zero, making `median * N` near-zero regardless of multiplier. Every positive flux passed, and the 300ms minimum spacing became the only gate — forcing IOIs at ~310ms intervals regardless of actual tempo (310ms → 194 BPM → octave-halved to 97). Fix: use 75th percentile instead of median, which is non-zero only when there's genuine activity, and reduce minimum spacing to 150ms so it doesn't alias real tempos.
 19. **Unweighted chroma accumulation from FFT bins**: FFT bins are linearly spaced in frequency, but pitch classes are logarithmically spaced. At 48kHz/1024-point FFT, some pitch classes get up to 1.77x more bins than others (F=55 bins, G=31 bins). Without per-bin normalization (weight = 1/binsInPitchClass), pitch classes with more bins accumulate proportionally more energy, systematically biasing key estimation. Fix: precompute per-bin weights at init and multiply each bin's magnitude contribution.
+20. **Raw `MLMultiArray.dataPointer` with `bindMemory(to: Float.self)` on ANE Float16 outputs**: The ANE outputs Float16 MLMultiArrays (dataType rawValue 65552) even when the model input is Float32. Using `dataPointer.bindMemory(to: Float.self, capacity:)` misinterprets the Float16 data as Float32 — producing garbage values and reading past the buffer. Also tried `vImageConvert_Planar16FtoPlanarF` for bulk conversion but it was slower than `MLShapedArray<Float>(converting:)`. The only reliable approach for Float16→Float32 from ANE output is `MLShapedArray<Float>(converting: output)`, which costs ~420ms for ~7M elements. This is internal to CoreML and sets the floor for unpack performance.
 
 ---
 
@@ -491,6 +492,7 @@ Metal, MetalKit, CoreML, AVFoundation, Accelerate, ScreenCaptureKit, MusicKit
 31. **Particle rendering strategy for the Murmuration preset**: Compute particles render with standard `.sourceAlpha`/`.oneMinusSourceAlpha` blending (dark silhouettes over sky), NOT additive blending, NOT into the feedback texture. The sky gradient is rendered directly to the drawable each frame (standard preset pipeline, no feedback). This keeps the sky vivid instead of being washed out by feedback accumulation. The feedback texture path remains available but is currently unused by Murmuration — kept as infrastructure for future presets that need trails.
 32. **Audio routing philosophy (learned from Murmuration tuning)**: Responding to `features.bass`/`features.mid`/`features.treble` means responding primarily to whatever instrument dominates the mix — which is often vocals in singer-songwriter tracks. To make a preset respond to specific musical content, use the 6-band energy values (`sub_bass`, `low_bass`, `low_mid`, `mid_high`, `high_mid`, `high_freq`) to deliberately target or avoid frequency ranges. Vocals live in `low_mid` (250-1kHz) and `mid_high` (1-4kHz); skipping those bands routes visual response to rhythm section and overtones instead. This is a simpler alternative to running per-stem analysis until the Orchestrator increment wires stem-specific routing.
 33. **Creative design principle — marriage of art and technology**: Every preset should be rooted in a natural metaphor that the technology uniquely enables. Murmuration requires GPU compute (thousands of particles with custom physics) to exist — it couldn't be faked with Milkdrop's 1024 shape instances. The creative vision (a flock of starlings moving as one organism) and the technology (compute shaders with per-particle state) reinforce each other. Different audio features should control fundamentally different things: the waveform is a drawn shape, bass is gravity, mid is current, treble is crystallization, beats are phase transitions. Amplitude→magnitude mapping alone produces boring visuals regardless of tuning.
+34. **ANE Float16 output and StemSeparator unpack strategy**: The ANE outputs Float16 MLMultiArrays (dataType=65552) even when the model was converted with Float32 inputs. `MLShapedArray<Float>(converting:)` is the only safe and correct way to get Float32 data from these outputs — it costs ~420ms for ~7M elements but handles both type conversion and stride padding. Once converted, the Float32 buffer has dense strides (stride[3]=1, stride[2]=nbFrames) suitable for direct `vDSP_mtrans` transpose. The `separate()` pack/write stages were optimized to <2ms each (raw MLMultiArray.dataPointer + vDSP_mtrans for pack, Float-specialized memcpy for write), but the unpack conversion sets a ~560ms floor (140ms predict + 420ms F16→F32). This is acceptable for the 5s background cadence but would need a CoreML API change or Float32-output model to reach sub-250ms.
 
 ## Reference Documents
 
@@ -508,8 +510,9 @@ The architectural blueprint is in `docs/ARCHITECTURAL_BLUEPRINT.md`.
 - **Increment 3.1-preset (Murmuration)** ✅ — `Starburst.metal` + `Starburst.json`, flock compute kernel modifications in `Particles.metal`, audio routing. Ships with a documented full-mix workaround (`sub_bass + low_bass` / `high_mid + high_freq`) because the live stem pipeline was never wired. True stem routing for Murmuration is deferred to a Phase 3.5 preset-polish task that follows Increment 3.1b.
 
 **Completed increments (Phase 3):**
-- **Increment 3.1a — GPU STFT/iSTFT Compute Pipeline** ✅
+- **Increment 3.1a — GPU STFT/iSTFT Compute Pipeline** ✅ — `StemFFTEngine` wrapping MPSGraph FFT, `StemFFT.swift`, CPU vDSP fallback behind `forceCPUFallback`. Dropped `separate()` from ~6500ms to ~2000ms. 6 StemFFTTests.
 - **Increment 3.1b — Live Stem Pipeline Wiring + Per-Stem `StemFeatures`** ✅ — `StemSampleBuffer` (15s ring buffer), `StemAnalyzer` (4× BandEnergyProcessor + BeatDetector on drums), `StemFeatures` @frozen struct (16 floats = 64 bytes at GPU buffer(3)), background `DispatchSourceTimer` (5s cadence, utility QoS), track-change reset. 232 tests (226 + 2 layout + 4 integration). Known follow-up: idle suppression (skip separation during silence) and multi-frame AGC warmup.
+- **Increment 3.1a-followup — StemSeparator CPU Memory Rearrangement** ✅ — Replaced scalar MLShapedArray loops and per-element UMABuffer writes with vectorized Accelerate operations. Pack: raw MLMultiArray.dataPointer + `vDSP_mtrans` (275ms → 1ms). Write: Float-specialized `UMABuffer.write` via memcpy (231ms → <1ms). Unpack transpose: `vDSP_mtrans` replacing nested scalar loops. Deinterleave: `vDSP_ctoz`. Mono averaging: `vDSP_vadd` + `vDSP_vsmul`. Total `separate()`: ~2000ms → ~600ms (3.4× improvement). Remaining ~420ms is Float16→Float32 conversion inside `MLShapedArray(converting:)` — the ANE outputs Float16 MLMultiArrays and this conversion is internal to CoreML. 236 tests (232 + 2 UMABuffer fast-path + 1 perf measure + 1 hard 750ms gate).
 
 **Ordered next increments** (per the revised plan):
 1. **Increment 3.2 — Mesh Shader Pipeline Infrastructure** (now infrastructure-only, no preset). `MeshShaders.metal` shared utilities, `MeshGenerator.swift` with mesh path + vertex fallback, new `drawWithMeshShader` render path, `useMeshShader` flag, 6 `MeshGeneratorTests`.

@@ -50,6 +50,11 @@ extension VisualizerEngine {
         stemTimer = nil
     }
 
+    /// RMS threshold below which the stem pipeline skips CoreML inference.
+    /// Interleaved stereo silence from Core Audio taps reads as true zero;
+    /// 1e-6 catches near-zero noise floors without false-positive skips.
+    private static let silenceRMSThreshold: Float = 1e-6
+
     /// Run a single stem separation + analysis cycle on the stem queue.
     func runStemSeparation() {
         guard let separator = stemSeparator else { return }
@@ -59,6 +64,13 @@ extension VisualizerEngine {
         let requiredStereo = StemSeparator.requiredMonoSamples * 2
         guard samples.count >= requiredStereo else {
             logger.debug("Stem pipeline: warmup (\(samples.count)/\(requiredStereo) samples)")
+            return
+        }
+
+        // Idle suppression: skip CoreML inference when the buffer is silence.
+        let rms = stemSampleBuffer.rms(seconds: 10)
+        guard rms > Self.silenceRMSThreshold else {
+            logger.debug("Stem pipeline: skipping — silence (RMS=\(rms))")
             return
         }
 
@@ -76,16 +88,36 @@ extension VisualizerEngine {
                 stemWaveforms.append(waveform)
             }
 
-            // Analyze per-stem energy and beats.
-            let features = stemAnalyzer.analyze(
-                stemWaveforms: stemWaveforms, fps: 60
-            )
+            // Multi-frame AGC warmup: iterate through the waveform in
+            // 1024-sample windows at 60fps hop rate (~735 samples). This
+            // feeds ~600 frames through BandEnergyProcessor's AGC, fully
+            // warming it each cycle instead of producing attenuated output
+            // from a single-frame analysis.
+            let fps: Float = 60
+            let hop = Int(44100.0 / fps)  // ~735 samples per frame
+            let maxFrames = (sampleCount - 1024) / hop + 1
+            var features = StemFeatures.zero
+
+            for frame in 0..<maxFrames {
+                let offset = frame * hop
+                var frameWaveforms: [[Float]] = []
+                for stem in stemWaveforms {
+                    let end = min(offset + 1024, stem.count)
+                    if offset < end {
+                        frameWaveforms.append(Array(stem[offset..<end]))
+                    } else {
+                        frameWaveforms.append([Float](repeating: 0, count: 1024))
+                    }
+                }
+                features = stemAnalyzer.analyze(stemWaveforms: frameWaveforms, fps: fps)
+            }
+
             pipeline.setStemFeatures(features)
             let voc = features.vocalsEnergy
             let drm = features.drumsEnergy
             let bas = features.bassEnergy
             let oth = features.otherEnergy
-            logger.debug("Stem update: v=\(voc) d=\(drm) b=\(bas) o=\(oth)")
+            logger.debug("Stem update (\(maxFrames) frames): v=\(voc) d=\(drm) b=\(bas) o=\(oth)")
         } catch {
             logger.error("Stem separation failed: \(error)")
         }

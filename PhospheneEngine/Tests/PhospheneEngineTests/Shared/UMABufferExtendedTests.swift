@@ -168,6 +168,46 @@ import Metal
     #expect(result == .success, "Concurrent access should complete without deadlock")
 }
 
+// MARK: - Float Fast-Path Tests
+
+@Test func test_writeArrayFloat_correctness() throws {
+    guard let device = MTLCreateSystemDefaultDevice() else {
+        throw UMAExtendedTestError.noMetalDevice
+    }
+
+    let capacity = 1024
+    let buf = try UMABuffer<Float>(device: device, capacity: capacity)
+    let values: [Float] = (0..<capacity).map { Float($0) * 1.5 + 0.25 }
+
+    // Write via the specialized [Float] fast path.
+    buf.write(values)
+
+    // Verify every element matches via the raw pointer (same path GPU uses).
+    let rawPtr = buf.buffer.contents().bindMemory(to: Float.self, capacity: capacity)
+    for i in 0..<capacity {
+        #expect(rawPtr[i] == values[i],
+                "Mismatch at index \(i): got \(rawPtr[i]), expected \(values[i])")
+    }
+}
+
+@Test func test_writeArrayFloat_withOffset_correctness() throws {
+    guard let device = MTLCreateSystemDefaultDevice() else {
+        throw UMAExtendedTestError.noMetalDevice
+    }
+
+    let buf = try UMABuffer<Float>(device: device, capacity: 16)
+    let prefix: [Float] = [1.0, 2.0, 3.0, 4.0]
+    let suffix: [Float] = [5.0, 6.0, 7.0, 8.0]
+
+    buf.write(prefix)
+    buf.write(suffix, offset: 4)
+
+    for i in 0..<4 {
+        #expect(buf[i] == prefix[i])
+        #expect(buf[i + 4] == suffix[i])
+    }
+}
+
 enum UMAExtendedTestError: Error {
     case noMetalDevice
 }

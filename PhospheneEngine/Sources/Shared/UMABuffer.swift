@@ -76,6 +76,29 @@ public final class UMABuffer<T>: @unchecked Sendable {
     }
 }
 
+// MARK: - Float Fast Path
+
+extension UMABuffer where T == Float {
+
+    /// Bulk-copy a Float array into the buffer via `memcpy`.
+    ///
+    /// This specialized overload avoids the per-element generic write loop
+    /// by copying the entire contiguous array in a single `memcpy` call.
+    /// Swift's overload resolution picks this over the generic `write<C>`
+    /// when the concrete argument type is `[Float]`.
+    public func write(_ values: [Float], offset: Int = 0) {
+        precondition(offset >= 0 && offset + values.count <= capacity,
+                     "UMABuffer write would exceed capacity")
+        values.withUnsafeBufferPointer { src in
+            guard let srcBase = src.baseAddress else { return }
+            let dst = buffer.contents()
+                .bindMemory(to: Float.self, capacity: capacity)
+                .advanced(by: offset)
+            dst.update(from: srcBase, count: values.count)
+        }
+    }
+}
+
 // MARK: - UMARingBuffer
 
 /// A fixed-capacity ring buffer backed by a UMA-shared MTLBuffer.

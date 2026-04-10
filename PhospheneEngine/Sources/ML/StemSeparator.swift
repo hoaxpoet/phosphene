@@ -23,6 +23,7 @@
 import Foundation
 import Metal
 import CoreML
+import Accelerate
 import Shared
 import Audio
 import os.log
@@ -174,7 +175,7 @@ public final class StemSeparator: StemSeparating, @unchecked Sendable {
 
         let nbFrames = magL.count / Self.nBins
 
-        // Step 4: Pack into MLMultiArray [1, 2, 2049, nb_frames] and predict.
+        // Step 5: Pack into MLMultiArray [1, 2, 2049, nb_frames] and predict.
         let inputArray = try packSpectrogramForModel(magL: magL, magR: magR, nbFrames: nbFrames)
 
         let inputFeatures = try MLDictionaryFeatureProvider(
@@ -188,7 +189,7 @@ public final class StemSeparator: StemSeparating, @unchecked Sendable {
             throw StemSeparationError.predictionFailed(error.localizedDescription)
         }
 
-        // Step 5: Unpack output [4, 2, 2049, nb_frames] → 4 pairs of magnitude spectrograms.
+        // Step 6: Unpack output [4, 2, 2049, nb_frames] → 4 pairs of magnitude spectrograms.
         guard let outputArray = prediction.featureValue(for: "stems")?.multiArrayValue else {
             throw StemSeparationError.predictionFailed("Missing output feature")
         }
@@ -198,7 +199,7 @@ public final class StemSeparator: StemSeparating, @unchecked Sendable {
                 "Unexpected output shape: \(outputArray.shape)")
         }
 
-        // Step 6: iSTFT each stem and write to UMA buffers.
+        // Step 7: iSTFT each stem and write to UMA buffers.
         let stemWaveforms = try unpackAndISTFT(
             output: outputArray,
             phaseL: phaseL,
@@ -207,29 +208,36 @@ public final class StemSeparator: StemSeparating, @unchecked Sendable {
         )
 
         let monoSampleCount = stemWaveforms[0].count
+        writeToBuffers(stemWaveforms, sampleCount: monoSampleCount)
+
+        let result = buildResult(sampleCount: monoSampleCount)
+        logger.debug("Separated \(audio.count) samples → \(monoSampleCount) samples/stem (\(nbFrames) STFT frames)")
+        return result
+    }
+
+    /// Write stem waveforms into the pre-allocated UMA output buffers.
+    private func writeToBuffers(_ waveforms: [[Float]], sampleCount: Int) {
         lock.lock()
         for i in 0..<Self.stemCount {
-            let writeCount = min(monoSampleCount, stemBuffers[i].capacity)
-            stemBuffers[i].write(Array(stemWaveforms[i].prefix(writeCount)))
+            let writeCount = min(sampleCount, stemBuffers[i].capacity)
+            if writeCount == waveforms[i].count {
+                stemBuffers[i].write(waveforms[i])
+            } else {
+                stemBuffers[i].write(Array(waveforms[i].prefix(writeCount)))
+            }
         }
         lock.unlock()
+    }
 
-        // Build StemData metadata.
-        let frameTemplate = AudioFrame(
+    /// Build a StemSeparationResult from the given sample count.
+    private func buildResult(sampleCount: Int) -> StemSeparationResult {
+        let frame = AudioFrame(
             sampleRate: Self.modelSampleRate,
-            sampleCount: UInt32(monoSampleCount),
+            sampleCount: UInt32(sampleCount),
             channelCount: 1
         )
-        let stemData = StemData(
-            vocals: frameTemplate,
-            drums: frameTemplate,
-            bass: frameTemplate,
-            other: frameTemplate
-        )
-
-        logger.debug("Separated \(audio.count) samples → \(monoSampleCount) samples/stem (\(nbFrames) STFT frames)")
-
-        return StemSeparationResult(stemData: stemData, sampleCount: monoSampleCount)
+        let stemData = StemData(vocals: frame, drums: frame, bass: frame, other: frame)
+        return StemSeparationResult(stemData: stemData, sampleCount: sampleCount)
     }
 
     // MARK: - STFT
@@ -337,6 +345,9 @@ public final class StemSeparator: StemSeparating, @unchecked Sendable {
     // MARK: - Deinterleave
 
     /// Split interleaved stereo into two mono arrays.
+    ///
+    /// Uses `vDSP_ctoz` to deinterleave LRLRLR → separate L and R arrays
+    /// in a single vectorized call.
     /// For mono input, returns the same array as both channels.
     private func deinterleave(_ audio: [Float], channelCount: Int) -> (left: [Float], right: [Float]) {
         guard channelCount >= 2 else {
@@ -347,9 +358,19 @@ public final class StemSeparator: StemSeparating, @unchecked Sendable {
         var left = [Float](repeating: 0, count: frameCount)
         var right = [Float](repeating: 0, count: frameCount)
 
-        for i in 0..<frameCount {
-            left[i] = audio[i * channelCount]
-            right[i] = audio[i * channelCount + 1]
+        // vDSP_ctoz interprets interleaved pairs as DSPSplitComplex (real=L, imag=R).
+        audio.withUnsafeBufferPointer { src in
+            guard let srcBase = src.baseAddress else { return }
+            srcBase.withMemoryRebound(to: DSPComplex.self, capacity: frameCount) { complex in
+                left.withUnsafeMutableBufferPointer { leftBuf in
+                    right.withUnsafeMutableBufferPointer { rightBuf in
+                        guard let lp = leftBuf.baseAddress,
+                              let rp = rightBuf.baseAddress else { return }
+                        var split = DSPSplitComplex(realp: lp, imagp: rp)
+                        vDSP_ctoz(complex, 2, &split, 1, vDSP_Length(frameCount))
+                    }
+                }
+            }
         }
 
         return (left, right)

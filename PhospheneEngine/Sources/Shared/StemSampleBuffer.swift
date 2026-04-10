@@ -2,6 +2,7 @@
 // CPU-only storage (no Metal dependency). Accumulates audio samples from the render
 // callback; the background stem pipeline snapshots the latest N seconds for separation.
 
+import Accelerate
 import Foundation
 import os.log
 
@@ -18,6 +19,10 @@ public protocol StemSampleBuffering: AnyObject, Sendable {
     /// Copy the latest `seconds` worth of interleaved stereo samples.
     /// Returns an empty array if insufficient data has been written.
     func snapshotLatest(seconds: Double) -> [Float]
+
+    /// Compute the RMS energy of the latest `seconds` of buffered audio.
+    /// Returns 0 if no data is available. Thread-safe.
+    func rms(seconds: Double) -> Float
 
     /// Clear all stored samples (e.g., on track change). Thread-safe.
     func reset()
@@ -125,6 +130,41 @@ public final class StemSampleBuffer: StemSampleBuffering, @unchecked Sendable {
         }
         lock.unlock()
         return result
+    }
+
+    /// Compute the RMS energy of the latest `seconds` of buffered audio.
+    /// Returns 0 if no data is available. Thread-safe.
+    public func rms(seconds: Double) -> Float {
+        let requestedSamples = Int(sampleRate * Double(channelCount) * seconds)
+        lock.lock()
+        let available = min(totalWritten, capacity)
+        let count = min(requestedSamples, available)
+        guard count > 0 else {
+            lock.unlock()
+            return 0
+        }
+
+        let start = (writeHead - count + capacity) % capacity
+        var sumOfSquares: Float = 0
+        let n = vDSP_Length(count)
+
+        storage.withUnsafeBufferPointer { src in
+            if start + count <= capacity {
+                // Contiguous region.
+                vDSP_svesq(src.baseAddress!.advanced(by: start), 1, &sumOfSquares, n)
+            } else {
+                // Wraps — two contiguous chunks.
+                let firstChunk = capacity - start
+                var sum1: Float = 0
+                var sum2: Float = 0
+                vDSP_svesq(src.baseAddress!.advanced(by: start), 1, &sum1, vDSP_Length(firstChunk))
+                vDSP_svesq(src.baseAddress!, 1, &sum2, vDSP_Length(count - firstChunk))
+                sumOfSquares = sum1 + sum2
+            }
+        }
+        lock.unlock()
+
+        return sqrtf(sumOfSquares / Float(count))
     }
 
     public func reset() {
