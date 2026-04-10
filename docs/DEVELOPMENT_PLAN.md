@@ -1248,32 +1248,28 @@ After:  STFT(GPU) → [Float] → memcpy(MTLBuffer) → predict(MPSGraph/GPU/F32
 
 **Enables:** nothing downstream — this is a leaf preset increment.
 
-### Increment 3.3: Hardware Ray Tracing Infrastructure
+### Increment 3.3: Hardware Ray Tracing Infrastructure ✅
 
-**Goal:** `MPSRayIntersector` + `BVHBuilder` infrastructure for ray-traced shadows and reflections. Shader-accessible acceleration structure, intersection kernel, and shared ray-tracing utility functions.
+**Goal:** Native Metal `MTLAccelerationStructure` + `BVHBuilder` infrastructure for ray-traced shadows and reflections. Shader-accessible acceleration structure, intersection kernels, and shared ray-tracing utility functions.
 
-> **Scope split note:** The original Increment 3.3 entry listed `Renderer/Shaders/PostProcess.metal` under this increment. That file has been extracted into a separate Increment 3.4 (HDR Post-Process Chain) because post-processing is independent of ray tracing conceptually and architecturally — a preset can use one without the other. Per the Increment Scope Discipline rule, they are now separate increments.
+> **API migration note:** Originally specced as `MPSRayIntersector` + `MPSTriangleAccelerationStructure`. Migrated to the native Metal ray tracing API (`MTLAccelerationStructure`, `MTLAccelerationStructureCommandEncoder`, MSL `primitive_acceleration_structure` + `intersector<triangle_data>`) because the MPS variants are deprecated. The native API is lower-level but avoids deprecation warnings and is what Apple recommends for new code.
 
-**Files to create/edit:**
-- `Renderer/RayTracing/BVHBuilder.swift`
-- `Renderer/RayTracing/RayIntersector.swift`
-- `Renderer/Shaders/RayTracing.metal` (NEW) — shared ray-tracing utility functions and intersection kernels. Replaces the `PostProcess.metal` slot from the original 3.3 spec.
+> **Dynamic geometry note:** Both `BVHBuilder` and `RayIntersector` expose non-blocking encode paths (`encodeBuild`, `encodeNearestHit`, `encodeShadow`) for per-frame audio-reactive scene geometry. The blocking `build()` / `intersect()` convenience wrappers are for tests and one-off queries only.
 
-**Test requirements:**
-- `BVHBuilderTests.swift` — 4 tests:
-  - `test_build_withTriangles_createsAccelerationStructure()`
-  - `test_build_emptyGeometry_handlesGracefully()`
-  - `test_rebuild_afterGeometryChange_succeeds()`
-  - `test_accelerationStructure_isNotNil()`
-- `RayIntersectorTests.swift` — 4 tests:
-  - `test_intersect_rayHitsTriangle_returnsHit()`
-  - `test_intersect_rayMissesGeometry_returnsNoHit()`
-  - `test_shadowRay_occluded_returnsInShadow()`
-  - `test_reflectionRay_computedCorrectly()`
-- **Performance test:**
-  - `test_rayTrace_1000Rays_under2ms()`
+> **MSL gotcha documented:** `intersection_result<triangle_data>` provides `triangle_barycentric_coord` (NOT `.barycentrics` — that member does not exist in the macOS 14 Metal compiler 32023). Buffer bindings require `primitive_acceleration_structure`; `acceleration_structure<triangle_data>` as a buffer param is a compile error.
 
-**Verification:** All 9 tests pass. A test shader using `RayIntersector` to cast shadow rays against a trivial scene (single triangle + light) produces the expected hit/miss pattern. Visual end-to-end verification is deferred to the first preset that uses ray tracing (likely Popcorn in Phase 3.5.1).
+> **Scope split note:** The original Increment 3.3 entry listed `Renderer/Shaders/PostProcess.metal` under this increment. That file has been extracted into a separate Increment 3.4 (HDR Post-Process Chain) because post-processing is independent of ray tracing conceptually and architecturally. Per the Increment Scope Discipline rule, they are now separate increments.
+
+**Files created/edited:**
+- `Renderer/RayTracing/BVHBuilder.swift` — `MTLPrimitiveAccelerationStructureDescriptor` BVH builder; blocking `build()`/`rebuild()` + non-blocking `encodeBuild(into:)` for render-loop use
+- `Renderer/RayTracing/RayIntersector.swift` — compute-pipeline-based intersector; blocking `intersect()`/`shadowRay()` + non-blocking `encodeNearestHit()`/`encodeShadow()`; static `reflectionDirection()` CPU helper
+- `Renderer/RayTracing/RayIntersector+Internal.swift` — private GPU struct layouts (`RayGPUData`, `NearestHitData`) and buffer/pipeline helpers; split out to keep each file under the 400-line SwiftLint limit
+- `Renderer/Shaders/RayTracing.metal` — `RTRay`/`RTNearestHit` structs, `rt_nearest_hit_kernel`, `rt_shadow_kernel`, `rt_camera_ray`/`rt_reflect`/`rt_offset_point` utilities
+
+**Test results (9/9 pass):**
+- `BVHBuilderTests.swift` — 4 XCTest tests: build, empty geometry, rebuild, triangleCount
+- `RayIntersectorTests.swift` — 5 XCTest tests: hit, miss, shadow occluded, reflection (CPU), 1000-ray perf gate < 2ms (actual: ~0.8ms warm)
+- 247 total tests pass (221 swift-testing + 26 XCTest), SwiftLint clean
 
 **Depends on:** nothing.
 
