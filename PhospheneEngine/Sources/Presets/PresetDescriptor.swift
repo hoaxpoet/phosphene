@@ -49,6 +49,14 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
     /// When true, the RenderPipeline wraps this preset in a two-pass feedback architecture.
     public let useFeedback: Bool
 
+    /// Whether this preset uses the Metal mesh shader pipeline.
+    ///
+    /// When true, `PresetLoader` compiles a `MTLMeshRenderPipelineDescriptor` on M3+
+    /// (`device.supportsFamily(.apple8)`) or falls back to a standard vertex+fragment
+    /// pipeline on M1/M2.  The RenderPipeline routes through `drawWithMeshShader`
+    /// instead of `drawDirect` or `drawWithFeedback`. Defaults to `false`.
+    public let useMeshShader: Bool
+
     /// Whether this preset uses the GPU compute particle system.
     /// When true, `ProceduralGeometry` is attached and particles are rendered on top
     /// of the preset fragment shader. Defaults to false so presets that don't need
@@ -85,6 +93,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         case decay
         case beatSensitivity = "beat_sensitivity"
         case useFeedback = "use_feedback"
+        case useMeshShader = "use_mesh_shader"
         case useParticles = "use_particles"
         case fragmentFunction = "fragment_function"
         case vertexFunction = "vertex_function"
@@ -105,8 +114,9 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         baseRot = try container.decodeIfPresent(Float.self, forKey: .baseRot) ?? 0.03
         decay = try container.decodeIfPresent(Float.self, forKey: .decay) ?? 0.955
         beatSensitivity = try container.decodeIfPresent(Float.self, forKey: .beatSensitivity) ?? 1.0
-        useFeedback = try container.decodeIfPresent(Bool.self, forKey: .useFeedback) ?? false
-        useParticles = try container.decodeIfPresent(Bool.self, forKey: .useParticles) ?? false
+        useFeedback    = try container.decodeIfPresent(Bool.self, forKey: .useFeedback)    ?? false
+        useMeshShader  = try container.decodeIfPresent(Bool.self, forKey: .useMeshShader)  ?? false
+        useParticles   = try container.decodeIfPresent(Bool.self, forKey: .useParticles)   ?? false
         fragmentFunction = try container.decodeIfPresent(String.self, forKey: .fragmentFunction) ?? "preset_fragment"
         vertexFunction = try container.decodeIfPresent(String.self, forKey: .vertexFunction) ?? "fullscreen_vertex"
         shaderFileName = try container.decodeIfPresent(String.self, forKey: .shaderFileName) ?? ""

@@ -67,5 +67,23 @@ extension PresetLoader {
         float3 p = abs(fract(float3(c.x) + float3(1.0, 2.0/3.0, 1.0/3.0)) * 6.0 - 3.0);
         return c.z * mix(float3(1.0), clamp(p - 1.0, 0.0, 1.0), c.y);
     }
+
+    // ── Meshlet structures (use_mesh_shader: true presets) ─────────────────
+    // Preset mesh shaders declare `mesh<MeshVertex, MeshPrimitive, N, M, ...>`
+    // with N ≤ 256 (maxVerticesPerMeshlet) and M ≤ 512 (maxPrimitivesPerMeshlet).
+
+    struct ObjectPayload {
+        uint meshlet_index;
+        uint vertex_offset;
+        uint primitive_offset;
+    };
+
+    struct MeshVertex {
+        float4 position [[position]];
+        float2 uv;
+        float3 normal;
+    };
+
+    struct MeshPrimitive {};
     """
 }
