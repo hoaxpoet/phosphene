@@ -72,14 +72,16 @@ public final class StemSampleBuffer: StemSampleBuffering, @unchecked Sendable {
             // More samples than buffer capacity — keep only the tail.
             let offset = count - capacity
             storage.withUnsafeMutableBufferPointer { buf in
-                buf.baseAddress!.update(from: samples.advanced(by: offset), count: capacity)
+                guard let base = buf.baseAddress else { return }
+                base.update(from: samples.advanced(by: offset), count: capacity)
             }
             writeHead = 0
             totalWritten += count
         } else if writeHead + count <= capacity {
             // Fits without wrapping.
             storage.withUnsafeMutableBufferPointer { buf in
-                buf.baseAddress!.advanced(by: writeHead).update(from: samples, count: count)
+                guard let base = buf.baseAddress else { return }
+                base.advanced(by: writeHead).update(from: samples, count: count)
             }
             writeHead += count
             if writeHead == capacity { writeHead = 0 }
@@ -89,8 +91,9 @@ public final class StemSampleBuffer: StemSampleBuffering, @unchecked Sendable {
             let firstChunk = capacity - writeHead
             let secondChunk = count - firstChunk
             storage.withUnsafeMutableBufferPointer { buf in
-                buf.baseAddress!.advanced(by: writeHead).update(from: samples, count: firstChunk)
-                buf.baseAddress!.update(from: samples.advanced(by: firstChunk), count: secondChunk)
+                guard let base = buf.baseAddress else { return }
+                base.advanced(by: writeHead).update(from: samples, count: firstChunk)
+                base.update(from: samples.advanced(by: firstChunk), count: secondChunk)
             }
             writeHead = secondChunk
             totalWritten += count
@@ -113,7 +116,8 @@ public final class StemSampleBuffer: StemSampleBuffering, @unchecked Sendable {
         if start + count <= capacity {
             result.withUnsafeMutableBufferPointer { buf in
                 storage.withUnsafeBufferPointer { src in
-                    buf.baseAddress!.update(from: src.baseAddress!.advanced(by: start), count: count)
+                    guard let dst = buf.baseAddress, let srcBase = src.baseAddress else { return }
+                    dst.update(from: srcBase.advanced(by: start), count: count)
                 }
             }
         } else {
@@ -121,10 +125,9 @@ public final class StemSampleBuffer: StemSampleBuffering, @unchecked Sendable {
             let secondChunk = count - firstChunk
             result.withUnsafeMutableBufferPointer { buf in
                 storage.withUnsafeBufferPointer { src in
-                    buf.baseAddress!.update(
-                        from: src.baseAddress!.advanced(by: start), count: firstChunk)
-                    buf.baseAddress!.advanced(by: firstChunk).update(
-                        from: src.baseAddress!, count: secondChunk)
+                    guard let dst = buf.baseAddress, let srcBase = src.baseAddress else { return }
+                    dst.update(from: srcBase.advanced(by: start), count: firstChunk)
+                    dst.advanced(by: firstChunk).update(from: srcBase, count: secondChunk)
                 }
             }
         }
@@ -146,19 +149,19 @@ public final class StemSampleBuffer: StemSampleBuffering, @unchecked Sendable {
 
         let start = (writeHead - count + capacity) % capacity
         var sumOfSquares: Float = 0
-        let n = vDSP_Length(count)
 
         storage.withUnsafeBufferPointer { src in
+            guard let srcBase = src.baseAddress else { return }
             if start + count <= capacity {
                 // Contiguous region.
-                vDSP_svesq(src.baseAddress!.advanced(by: start), 1, &sumOfSquares, n)
+                vDSP_svesq(srcBase.advanced(by: start), 1, &sumOfSquares, vDSP_Length(count))
             } else {
                 // Wraps — two contiguous chunks.
                 let firstChunk = capacity - start
                 var sum1: Float = 0
                 var sum2: Float = 0
-                vDSP_svesq(src.baseAddress!.advanced(by: start), 1, &sum1, vDSP_Length(firstChunk))
-                vDSP_svesq(src.baseAddress!, 1, &sum2, vDSP_Length(count - firstChunk))
+                vDSP_svesq(srcBase.advanced(by: start), 1, &sum1, vDSP_Length(firstChunk))
+                vDSP_svesq(srcBase, 1, &sum2, vDSP_Length(count - firstChunk))
                 sumOfSquares = sum1 + sum2
             }
         }
@@ -174,7 +177,8 @@ public final class StemSampleBuffer: StemSampleBuffering, @unchecked Sendable {
         totalWritten = 0
         // Zero the storage to avoid stale data bleeding through.
         storage.withUnsafeMutableBufferPointer { buf in
-            buf.baseAddress!.initialize(repeating: 0, count: capacity)
+            guard let base = buf.baseAddress else { return }
+            base.initialize(repeating: 0, count: capacity)
         }
         logger.info("StemSampleBuffer reset")
     }

@@ -174,7 +174,8 @@ public final class StemAnalyzer: StemAnalyzing, @unchecked Sendable {
         guard sampleCount > 0 else {
             // Return zeros — analyzers handle gracefully.
             magnitudes.withUnsafeMutableBufferPointer { buf in
-                buf.baseAddress!.initialize(repeating: 0, count: Self.binCount)
+                guard let base = buf.baseAddress else { return }
+                base.initialize(repeating: 0, count: Self.binCount)
             }
             return magnitudes
         }
@@ -185,13 +186,15 @@ public final class StemAnalyzer: StemAnalyzing, @unchecked Sendable {
 
         // Zero the windowed buffer, then copy available samples.
         windowedSamples.withUnsafeMutableBufferPointer { buf in
-            buf.baseAddress!.initialize(repeating: 0, count: Self.fftSize)
+            guard let base = buf.baseAddress else { return }
+            base.initialize(repeating: 0, count: Self.fftSize)
         }
         waveform.withUnsafeBufferPointer { src in
             windowedSamples.withUnsafeMutableBufferPointer { dst in
+                guard let dstBase = dst.baseAddress, let srcBase = src.baseAddress else { return }
                 let copyStart = Self.fftSize - available
-                dst.baseAddress!.advanced(by: copyStart).update(
-                    from: src.baseAddress!.advanced(by: offset),
+                dstBase.advanced(by: copyStart).update(
+                    from: srcBase.advanced(by: offset),
                     count: available
                 )
             }
@@ -204,12 +207,13 @@ public final class StemAnalyzer: StemAnalyzing, @unchecked Sendable {
         // withUnsafeMutableBufferPointer to satisfy Swift 6 pointer safety.
         realPart.withUnsafeMutableBufferPointer { realBuf in
             imagPart.withUnsafeMutableBufferPointer { imagBuf in
-                var split = DSPSplitComplex(realp: realBuf.baseAddress!,
-                                            imagp: imagBuf.baseAddress!)
+                guard let realBase = realBuf.baseAddress, let imagBase = imagBuf.baseAddress else { return }
+                var split = DSPSplitComplex(realp: realBase, imagp: imagBase)
 
                 // Interleaved → split complex.
                 windowedSamples.withUnsafeBufferPointer { input in
-                    input.baseAddress!.withMemoryRebound(
+                    guard let inputBase = input.baseAddress else { return }
+                    inputBase.withMemoryRebound(
                         to: DSPComplex.self, capacity: Self.binCount
                     ) { complex in
                         vDSP_ctoz(complex, 2, &split, 1, vDSP_Length(Self.binCount))
@@ -217,13 +221,12 @@ public final class StemAnalyzer: StemAnalyzing, @unchecked Sendable {
                 }
 
                 // Forward FFT.
-                vDSP_fft_zrip(fftSetup, &split, 1, Self.log2n,
-                              FFTDirection(kFFTDirection_Forward))
+                vDSP_fft_zrip(fftSetup, &split, 1, Self.log2n, FFTDirection(kFFTDirection_Forward))
 
                 // Squared magnitudes → magnitudes buffer.
                 magnitudes.withUnsafeMutableBufferPointer { magBuf in
-                    vDSP_zvmags(&split, 1, magBuf.baseAddress!, 1,
-                                vDSP_Length(Self.binCount))
+                    guard let magBase = magBuf.baseAddress else { return }
+                    vDSP_zvmags(&split, 1, magBase, 1, vDSP_Length(Self.binCount))
                 }
             }
         }

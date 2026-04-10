@@ -311,12 +311,31 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         showPresetName(preset.descriptor.name)
     }
 
-    /// Apply a preset to the render pipeline, including feedback and particle configuration.
+    /// Apply a preset to the render pipeline, including feedback, mesh, and particle configuration.
     private func applyPreset(_ preset: PresetLoader.LoadedPreset) {
         let desc = preset.descriptor
         pipeline.setActivePipelineState(preset.pipelineState)
 
-        if desc.useFeedback, let fbPipeline = preset.feedbackPipelineState {
+        if desc.useMeshShader {
+            // Mesh shader preset: wrap the compiled pipeline state in a MeshGenerator
+            // and route all rendering through drawWithMeshShader. Feedback and particles
+            // are incompatible with the mesh path in this increment.
+            let config = MeshGeneratorConfiguration(
+                maxVerticesPerMeshlet: 256,
+                maxPrimitivesPerMeshlet: 512,
+                meshThreadCount: desc.meshThreadCount  // from JSON sidecar, default 64
+            )
+            let gen = MeshGenerator(
+                device: context.device,
+                pipelineState: preset.pipelineState,
+                configuration: config
+            )
+            pipeline.setMeshGenerator(gen, enabled: true)
+            pipeline.setFeedbackParams(nil)
+            pipeline.setFeedbackComposePipeline(nil)
+            pipeline.setParticleGeometry(nil)
+        } else if desc.useFeedback, let fbPipeline = preset.feedbackPipelineState {
+            pipeline.setMeshGenerator(nil, enabled: false)
             let params = FeedbackParams(
                 decay: desc.decay,
                 baseZoom: desc.baseZoom,
@@ -330,6 +349,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
             // Attach particles only for presets that declare use_particles in their JSON.
             pipeline.setParticleGeometry(desc.useParticles ? particleGeometry : nil)
         } else {
+            pipeline.setMeshGenerator(nil, enabled: false)
             pipeline.setFeedbackParams(nil)
             pipeline.setFeedbackComposePipeline(nil)
             // Detach particles — non-feedback presets don't use compute particles.
@@ -370,5 +390,4 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
             }
         }
     }
-
 }
