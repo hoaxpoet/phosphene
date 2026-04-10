@@ -241,16 +241,11 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         return particles
     }
 
-    /// Load the optional mood classifier; return nil and log on failure.
-    private static func loadMoodClassifier() -> MoodClassifier? {
-        do {
-            let classifier = try MoodClassifier()
-            logger.info("MoodClassifier loaded")
-            return classifier
-        } catch {
-            logger.error("MoodClassifier failed to load: \(error)")
-            return nil
-        }
+    /// Load the mood classifier.
+    private static func loadMoodClassifier() -> MoodClassifier {
+        let classifier = MoodClassifier()
+        logger.info("MoodClassifier loaded")
+        return classifier
     }
 
     // MARK: - Public API

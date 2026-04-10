@@ -72,16 +72,15 @@ PhospheneEngine/
     NoveltyDetector         → Checkerboard kernel boundary detection, adaptive threshold (✓ implemented)
     StructuralAnalyzer      → Section boundary prediction, repetition detection (✓ implemented)
     StemAnalyzer            → Per-stem energy (4× BandEnergyProcessor) + beat (1× BeatDetector on drums) → StemFeatures (✓ implemented)
-  ML/                       → CoreML wrappers, MPSGraph inference, stem separator, mood classifier
-    Models/StemSeparator.mlpackage → Open-Unmix HQ 4-stem mask estimator for ANE (✓ converted)
-    Models/MoodClassifier.mlpackage → Valence/arousal MLP for ANE (✓ trained)
+  ML/                       → MPSGraph stem separator, Accelerate mood classifier (no CoreML dependency)
     StemSeparator.swift      → STFT → MPSGraph → iSTFT pipeline, StemSeparating protocol (✓ implemented)
     StemSeparator+Reconstruct → iSTFT reconstruction + mono averaging (✓ implemented)
     StemModel.swift          → MPSGraph Open-Unmix HQ inference engine, public API, I/O buffers (✓ implemented)
     StemModel+Graph         → MPSGraph construction: per-stem subgraph, LSTM, FC, BN helpers (✓ implemented)
     StemModel+Weights       → Weight manifest parsing, .bin loading, BN fusion (✓ implemented)
-    MoodClassifier.swift    → 10-feature MLP → valence/arousal, MoodClassifying protocol (✓ implemented)
-    ML.swift                → CoreML module imports
+    MoodClassifier.swift    → Accelerate/vDSP MLP → valence/arousal, MoodClassifying protocol (✓ implemented)
+    MoodClassifier+Weights  → Hardcoded Float32 weight arrays (3,346 params from DEAM training) (✓ implemented)
+    ML.swift                → ML module declaration
   Renderer/                 → Metal context, pipelines, shader library, compute particles
     MetalContext            → MTLDevice, command queue, triple-buffered semaphore, shared-texture helper (✓ implemented)
     ShaderLibrary           → Auto-discover .metal files, runtime compilation, cache (✓ implemented)
@@ -115,7 +114,7 @@ PhospheneEngine/
 Tests/ (241 tests: 221 swift-testing + 20 XCTest)
   Audio/                    → AudioBufferTests, FFTProcessorTests, StreamingMetadataTests, MetadataPreFetcherTests, LookaheadBufferTests (10)
   DSP/                      → SpectralAnalyzerTests (8), BandEnergyProcessorTests (5), ChromaExtractorTests (6), BeatDetectorTests (7), MIRPipelineUnitTests (4), SelfSimilarityMatrixTests (5), NoveltyDetectorTests (5), StructuralAnalyzerTests (8)
-  ML/                       → StemSeparatorTests (7), StemFFTTests (6: vDSP cross-validate, round-trip, fwd perf, inv perf, UMA storage, thread safety), StemModelTests (6: init, silence, CoreML cross-validate, perf gate <400ms, UMA storage, thread safety), MoodClassifierTests (7: model loading, classification, range, quadrants, protocol)
+  ML/                       → StemSeparatorTests (7), StemFFTTests (6: vDSP cross-validate, round-trip, fwd perf, inv perf, UMA storage, thread safety), StemModelTests (6: init, silence, cross-validate, perf gate <400ms, UMA storage, thread safety), MoodClassifierTests (7: init, classification, range, quadrants, protocol)
   Renderer/                 → MetalContextTests, ShaderLibraryTests, RenderPipelineTests, ProceduralGeometryTests (7: init, storage mode, dispatch, count, zero-audio, impulse, 1M perf)
   Shared/                   → AudioFeaturesTests (2: StemFeatures layout + SIMD alignment), UMABufferExtendedTests, EmotionalStateTests (4: quadrant classification), AnalyzedFrameTests (3)
   Integration/              → AudioToFFTPipelineTests, AudioToRenderPipelineTests, MetadataToOrchestratorTests, AudioToStemPipelineTests, MIRPipelineIntegrationTests (3), LookaheadIntegrationTests (1), StemsToRenderPipelineTests (4: warmup default, separation→analysis, track reset, Swift/MSL size)
@@ -326,15 +325,11 @@ Because streaming audio arrives without a pre-scannable file, Phosphene employs 
 - Post-processing: bloom → radial blur → chromatic aberration → tone mapping → color grading.
 - Support EDR output via `CAMetalLayer` on HDR displays. SDR tone mapping fallback.
 
-### CoreML / Neural Engine
-- ALL CoreML models: `.cpuAndNeuralEngine` compute units. Never `.all` or `.cpuAndGPU` — GPU is reserved for rendering.
-- Models are `.mlpackage` format in `ML/Models/`, tracked via Git LFS.
-- **Stem separator architecture** (STFT split): CoreML model takes STFT magnitude spectrograms `[1, 2, 2049, nb_frames]`, outputs 4 filtered spectrograms `[4, 2, 2049, nb_frames]` (vocals, drums, bass, other). STFT/iSTFT handled in Swift via Accelerate/vDSP — CoreML cannot process complex numbers. Model: Open-Unmix HQ (LSTM-based, 68 MB). STFT params: n_fft=4096, hop=1024, sample_rate=44100. Fixed input size: 431 frames (~10s of audio at 44100 Hz). Shorter inputs are zero-padded; longer inputs are truncated.
-- **ANE Float16 output**: Small CoreML models may output `Float16` MLMultiArrays on ANE. `MLShapedArray<Float16>` requires macOS 15+. Use `MLMultiArray` subscript access (`multiArray[index].floatValue`) for type-safe extraction compatible with macOS 14+.
-- **ANE output buffer padding**: CoreML outputs from the Neural Engine have padded strides (e.g., stride[2]=448 for shape[3]=431, aligned for ANE tile sizes) but `dataPointer` only covers the logical element count — accessing padding indices causes SIGSEGV. Use `MLShapedArray.withUnsafeShapedBufferPointer` to correctly traverse padded layouts. Never use raw `MLMultiArray.dataPointer` with reported strides on ANE outputs.
-- **STFT/iSTFT performance**: The current CPU-based STFT/iSTFT via Accelerate is the bottleneck (~6s for a 10s chunk across 4 stems × 2 channels). The endgame optimization is moving STFT/iSTFT to Metal compute shaders, eliminating CPU↔GPU copies entirely and enabling the separation pipeline to run within a single GPU command buffer alongside rendering. This is tracked as a future increment.
+### ML Inference (No CoreML — fully migrated as of Phase 3.7)
+- **No CoreML dependency.** All ML inference uses MPSGraph (GPU) or Accelerate (CPU). CoreML framework was removed in Increment 3.11.
+- **Stem separator** (MPSGraph, GPU): Open-Unmix HQ architecture reconstructed in MPSGraph. Takes STFT magnitude spectrograms `[2049, 431]` per channel, outputs 4 masked spectrograms (vocals, drums, bass, other). Float32 throughout. Weights: 172 raw `.bin` files (135.9 MB) in `ML/Weights/`. STFT/iSTFT handled in Swift via Accelerate/vDSP. STFT params: n_fft=4096, hop=1024, sample_rate=44100. Fixed input: 431 frames (~10s). Performance: 142ms warm predict.
+- **Mood classifier** (Accelerate, CPU): 4-layer MLP (10→64→32→16→2) with ReLU + tanh, implemented as 3 `vDSP_mmul` calls. Weights hardcoded as static `[Float]` arrays (3,346 params, extracted from the original DEAM-trained CoreML model). Outputs continuous valence (-1…1) and arousal (-1…1), smoothed with EMA. Input: 10 features (6-band energy, centroid, flux, major/minor key correlations).
 - Stem separator outputs: Vocals, Drums, Bass, Other — each independently routed to shaders.
-- Mood classifier outputs continuous valence (-1…1) and arousal (-1…1), smoothed with EMA. Input: 10 features (6-band energy, centroid, flux, major/minor key correlations). Model: 914-parameter MLP on ANE.
 
 ### Orchestrator
 - Four states: `idle` → `listening` → `ramping` → `full`.
@@ -410,7 +405,7 @@ These were tried in the Electron prototype and abandoned with documented reasons
 
 - Do not use `AVAudioEngine` input tap as the primary audio source. Core Audio taps are primary.
 - Do not use ScreenCaptureKit for audio-only capture — it silently fails on macOS 15+/26. Use `AudioHardwareCreateProcessTap` instead.
-- Do not block the render loop on network calls, CoreML inference, or metadata queries.
+- Do not block the render loop on network calls, ML inference, or metadata queries.
 - Do not use `.storageModeManaged` buffers — they trigger implicit CPU-GPU copies that defeat UMA.
 - Do not make beat onset the primary driver of visual motion. Continuous energy bands are primary. This is the single most important visual design constraint.
 - Do not hardcode shader paths. All shaders are discovered via directory scan.
@@ -449,7 +444,7 @@ struct VisualDirective         // Target family, color palette, camera speed, bl
 
 ## Linked Frameworks
 
-Metal, MetalKit, CoreML, AVFoundation, Accelerate, ScreenCaptureKit, MusicKit
+Metal, MetalKit, MetalPerformanceShadersGraph, AVFoundation, Accelerate, ScreenCaptureKit, MusicKit
 
 ## Development Constraints
 
@@ -481,12 +476,12 @@ Metal, MetalKit, CoreML, AVFoundation, Accelerate, ScreenCaptureKit, MusicKit
 17. **SwiftLint enforcement**: `.swiftlint.yml` with `force_cast`/`force_try`/`force_unwrapping` as errors, `file_length` warning at 400, `cyclomatic_complexity` warning at 10. Tests and tools directories excluded from lint.
 18. **Streaming metadata**: `StreamingMetadata` polls MediaRemote (private framework, dynamically loaded) every 2s for system-wide Now Playing state. `MetadataPreFetcher` queries external APIs in parallel (3s per-fetcher timeouts, LRU cache). Active fetchers: MusicBrainz (always, free), Soundcharts (optional, commercial), Spotify (optional, search-only). Pre-fetched data is a "fast hint" for the first ~15s — self-computed MIR (Increment 2.4) is the real source of truth.
 19. **Essentia for offline validation**: Essentia (AGPL) is used in `tools/` Python scripts only — NOT in the app binary. Pre-computes ground-truth audio features for testing and validates self-computed MIR accuracy. Never link Essentia into PhospheneEngine or PhospheneApp.
-20. **Stem separation model**: Open-Unmix HQ (umxhq). HTDemucs was first choice but fails CoreML conversion due to complex tensor ops and dynamic shapes. Open-Unmix's LSTM architecture converts cleanly. The CoreML model operates on STFT magnitude spectrograms (not raw audio) — STFT/iSTFT is handled in Swift via Accelerate/vDSP. Conversion: `tools/convert_stem_model.py`. Tests: `tools/test_stem_model.py` (6 assertions, all pass). Model: 68 MB `.mlpackage`, inference 0.17s for 10s audio on ANE.
-21. **MLShapedArray for CoreML I/O**: ANE output buffers have padded strides with unmapped padding regions — raw `MLMultiArray.dataPointer` access crashes. `MLShapedArray.withUnsafeShapedBufferPointer` correctly traverses padded layouts. Used for both input packing and output unpacking in `StemSeparator`.
+20. **Stem separation model**: Open-Unmix HQ (umxhq). HTDemucs was first choice but fails CoreML conversion due to complex tensor ops and dynamic shapes. Open-Unmix's LSTM architecture converts cleanly. Now runs entirely on MPSGraph (GPU, Float32) — the original CoreML `.mlpackage` was removed in Increment 3.11. STFT/iSTFT is handled in Swift via Accelerate/vDSP. Weights: 172 raw `.bin` files extracted by `tools/extract_umx_weights.py`. Performance: 142ms warm predict for 10s audio.
+21. **MLShapedArray for CoreML I/O (historical)**: No longer applicable — CoreML was removed in Increment 3.11. Retained as a failed-approach reference for why the migration was necessary (ANE Float16 output, padded strides, ~420ms F16→F32 conversion overhead).
 22. **GPU STFT/iSTFT (planned optimization)**: The current CPU-based STFT/iSTFT via Accelerate is the stem separation bottleneck (~6s for 10s of audio across 4 stems × 2 channels = 3448 FFT operations). The target architecture moves STFT/iSTFT to Metal compute shaders, eliminating CPU↔GPU copies and enabling the full separation pipeline (STFT → ANE predict → iSTFT → UMA buffers) to run without CPU-side data extraction. This would also enable real-time per-frame stem analysis rather than batch processing.
 23. **MIR pipeline architecture**: DSP module takes `[Float]` magnitude arrays (not `UMABuffer`) — no Metal dependency. The caller extracts magnitudes from FFTProcessor's UMABuffer before passing to MIRPipeline. Chroma, key, and tempo are CPU-side properties on MIRPipeline (not in FeatureVector, which is limited to 24 floats for GPU upload). BandEnergyProcessor and BeatDetector independently compute 6-band bin ranges — simple duplication avoids coupling.
 24. **Krumhansl-Schmuckler key estimation**: 24 key profiles (12 major + 12 minor rotations of Krumhansl 1990 profiles). Pearson correlation against normalized chroma vector. Minimum confidence threshold of 0.3 to avoid spurious key reports. Works well for clear tonal content; atonal or percussive-only material correctly returns nil.
-25. **Mood classifier input features**: 10 pre-computed features, NOT raw 12-bin chroma. A tiny MLP cannot learn the Krumhansl-Schmuckler correlation function implicitly from 12 chroma bins — training converged to near-zero valence regardless of key mode. Pre-computing major/minor key correlations (which ChromaExtractor already calculates internally) reduces the problem to a trivially learnable function. The MLP provides smooth interpolation + efficient ANE execution over what could be pure heuristics.
+25. **Mood classifier input features**: 10 pre-computed features, NOT raw 12-bin chroma. A tiny MLP cannot learn the Krumhansl-Schmuckler correlation function implicitly from 12 chroma bins — training converged to near-zero valence regardless of key mode. Pre-computing major/minor key correlations (which ChromaExtractor already calculates internally) reduces the problem to a trivially learnable function. The MLP provides smooth interpolation + efficient vDSP execution over what could be pure heuristics.
 26. **Spectral flux normalization for GPU**: Raw flux depends on magnitude scale and bin count. MIRPipeline normalizes via running-max AGC (tracks peak flux with 0.999 decay). Spectral centroid normalized by dividing by Nyquist (24000 Hz) to map to 0–1.
 27. **Tempo onset threshold**: 75th percentile of bass flux buffer × 2.0, with 150ms minimum spacing. The median of half-wave rectified flux is near-zero (most frames have zero flux), so median-based thresholds fail. The 75th percentile is non-zero only during genuine energy changes. Previous 300ms minimum spacing aliased all tempos to ~97 BPM.
 28. **Chroma bin-count normalization**: Each FFT bin's magnitude contribution to its pitch class is weighted by `1/binsInPitchClass`. At 48kHz/1024-point FFT, pitch classes get 31–55 bins (1.77x ratio). Without normalization, key estimation is systematically biased toward high-bin-count pitch classes (F, E, D#).
@@ -529,15 +524,18 @@ The architectural blueprint is in `docs/ARCHITECTURAL_BLUEPRINT.md`.
 - **Increment 3.8 — MPSGraph Open-Unmix Inference Engine** ✅ — `StemModel.swift` + `StemModel+Graph.swift` + `StemModel+Weights.swift`: `StemModelEngine` class reconstructing Open-Unmix HQ entirely in MPSGraph. All 4 stems in single graph, Float32 throughout. Bidirectional 3-layer LSTM, fused batch norm (12 fusions), 172 weight tensors loaded from `.bin` files. 102ms average warm predict (6× faster than CoreML's ~620ms). 6 StemModelTests (init, silence, CoreML cross-validate, perf gate <400ms, UMA storage, thread safety). 244 tests (222 swift-testing + 22 XCTest).
 - **Increment 3.9 — Integrate MPSGraph into StemSeparator** ✅ — Replaced CoreML prediction with `StemModelEngine` in `StemSeparator.separate()`. STFT magnitudes written directly into pre-allocated MTLBuffers via `memcpy`, eliminating MLMultiArray pack/unpack and Float16→Float32 conversion. `StemSeparator+Pack.swift` renamed to `StemSeparator+Reconstruct.swift` (kept iSTFT + mono averaging, deleted 6 CoreML pack/unpack methods). Removed `import CoreML` from StemSeparator. Warm `separate()`: **142ms avg** (4.4× faster than CoreML's ~620ms). Hard gate updated from 750ms to 400ms. 241 tests (221 swift-testing + 20 XCTest).
 
+**Completed increments (Phase 3.7 continued):**
+- **Increment 3.10 — Pure Accelerate MoodClassifier** ✅ — Replaced CoreML inference with 3 `vDSP_mmul` + bias + ReLU/tanh calls. Weights (3,346 Float32 params) hardcoded as static arrays in `MoodClassifier+Weights.swift`, extracted from the DEAM-trained CoreML model via `tools/extract_mood_weights.py`. `init()` is non-throwing (no model loading). Protocol `MoodClassifying` unchanged. 241 tests (221 swift-testing + 20 XCTest).
+- **Increment 3.11 — Remove CoreML Dependency** ✅ — Deleted `StemSeparator.mlpackage` and `MoodClassifier.mlpackage`. Removed `import CoreML` from `ML.swift`. Removed `.copy("Models")` from `Package.swift`. Verified via `otool -L` that the binary no longer links CoreML. 241 tests pass, SwiftLint clean.
+
 **Ordered next increments** (per the revised plan):
-1. **Phase 3.7 — CoreML → MPSGraph Migration** (continued). Remaining sub-increments: 3.10 (pure Accelerate MoodClassifier), 3.11 (remove CoreML).
-2. **Increment 3.2 — Mesh Shader Pipeline Infrastructure** (now infrastructure-only, no preset). `MeshShaders.metal` shared utilities, `MeshGenerator.swift` with mesh path + vertex fallback, new `drawWithMeshShader` render path, `useMeshShader` flag, 6 `MeshGeneratorTests`.
-3. **Increment 3.2b — Fractal Tree Demonstration Preset.** First preset using the mesh shader pipeline. Recursive 3D branching structure responding to audio.
-4. **Increment 3.3 — Hardware Ray Tracing Infrastructure.** `BVHBuilder`, `RayIntersector`, `RayTracing.metal`, 9 tests. (The original 3.3 spec had `PostProcess.metal` in it; that file was extracted to Increment 3.4.)
-5. **Increment 3.4 — HDR Post-Process Chain** (extracted from 3.3). `PostProcessChain.swift`, `PostProcess.metal` (bright pass, blur H/V, ACES composite), `usePostProcess` flag, 6 tests. Independent of ray tracing.
-6. **Increment 3.5 — Indirect Command Buffers** (was 3.4).
-7. **Increment 3.6 (deferred) — Render Graph Refactor.** Fires when capability flag count exceeds 4.
-8. **Phase 3.5 — Native Preset Library Expansion.** Dedicated home for native presets that depend on Phase 3 infrastructure. First entry: **3.5.1 Photorealistic Popcorn**, depends on 3.1b + 3.3 + 3.4.
+1. **Increment 3.2 — Mesh Shader Pipeline Infrastructure** (now infrastructure-only, no preset). `MeshShaders.metal` shared utilities, `MeshGenerator.swift` with mesh path + vertex fallback, new `drawWithMeshShader` render path, `useMeshShader` flag, 6 `MeshGeneratorTests`.
+2. **Increment 3.2b — Fractal Tree Demonstration Preset.** First preset using the mesh shader pipeline. Recursive 3D branching structure responding to audio.
+3. **Increment 3.3 — Hardware Ray Tracing Infrastructure.** `BVHBuilder`, `RayIntersector`, `RayTracing.metal`, 9 tests. (The original 3.3 spec had `PostProcess.metal` in it; that file was extracted to Increment 3.4.)
+4. **Increment 3.4 — HDR Post-Process Chain** (extracted from 3.3). `PostProcessChain.swift`, `PostProcess.metal` (bright pass, blur H/V, ACES composite), `usePostProcess` flag, 6 tests. Independent of ray tracing.
+5. **Increment 3.5 — Indirect Command Buffers** (was 3.4).
+6. **Increment 3.6 (deferred) — Render Graph Refactor.** Fires when capability flag count exceeds 4.
+7. **Phase 3.5 — Native Preset Library Expansion.** Dedicated home for native presets that depend on Phase 3 infrastructure. First entry: **3.5.1 Photorealistic Popcorn**, depends on 3.1b + 3.3 + 3.4.
 
 **Increment Scope Discipline rule**: per the revised `DEVELOPMENT_PLAN.md` Code Hygiene Rules, one increment is one reviewable unit of work. Infrastructure increments and preset increments are never bundled in the same increment. Scope creep is recorded retroactively as a new increment, not silently absorbed.
 

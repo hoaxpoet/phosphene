@@ -1158,29 +1158,41 @@ After:  STFT(GPU) → [Float] → memcpy(MTLBuffer) → predict(MPSGraph/GPU/F32
 
 ### Increment 3.10: Pure Accelerate MoodClassifier
 
-**Status:** Not started.
+**Status:** ✅ Complete.
 
-**Goal:** Replace the 914-param MoodClassifier MLP (10→64→32→16→2) with 3 `vDSP_mmul` + bias + ReLU calls. Weights hardcoded as static `[Float]` arrays (~3.6 KB). Protocol `MoodClassifying` unchanged.
+**Goal:** Replace the CoreML MoodClassifier MLP (10→64→32→16→2) with pure Accelerate `vDSP_mmul` + bias + ReLU/tanh calls. Weights hardcoded as static `[Float]` arrays (3,346 params, ~13 KB source). Protocol `MoodClassifying` unchanged.
 
-**Files:** `MoodClassifier.swift` (rewrite `classify()`, remove `MLModel`), weight extraction script.
+**Files:**
+- `MoodClassifier.swift` — Rewrote `classify()` to use Accelerate. Removed `import CoreML`, `MLModel`. `init()` is non-throwing.
+- `MoodClassifier+Weights.swift` — New file with 8 static weight arrays extracted from the CoreML model.
+- `tools/extract_mood_weights.py` — Parses CoreML `.mlpackage` blob format (64-byte headers, Float16 data) and emits Swift code.
+- `VisualizerEngine.swift` — Simplified `loadMoodClassifier()` (non-optional return, no do/catch).
+- `MoodClassifierTests.swift` — Removed `import CoreML` and `try` from init calls.
 
-**Tests:** All 7 `MoodClassifierTests` pass unchanged.
+**Tests:** All 7 `MoodClassifierTests` pass unchanged. 241 total (221 swift-testing + 20 XCTest).
 
 ### Increment 3.11: Remove CoreML Dependency
 
-**Status:** Not started.
+**Status:** ✅ Complete.
 
-**Goal:** Delete `StemSeparator.mlpackage` and `MoodClassifier.mlpackage`. Remove `import CoreML` from all ML files. Remove CoreML framework linkage from `Package.swift`. Update CLAUDE.md. Verify via `otool -L` that the binary no longer links CoreML.
+**Goal:** Delete `StemSeparator.mlpackage` and `MoodClassifier.mlpackage`. Remove `import CoreML` from all ML files. Remove CoreML framework linkage from `Package.swift`. Verify via `otool -L` that the binary no longer links CoreML.
 
-**Tests:** All tests pass. SwiftLint clean.
+**Files:**
+- Deleted `PhospheneEngine/Sources/ML/Models/` (both `.mlpackage` bundles)
+- `ML.swift` — Removed `import CoreML`, updated comment
+- `Package.swift` — Removed `.copy("Models")` from ML target resources
 
-**Dependency graph:**
+**Tests:** All 241 tests pass. SwiftLint clean. `otool -L` confirms CoreML NOT linked.
+
+**Dependency graph (complete):**
 ```
 3.7a (CPU baseline) ──┐
-                       ├──→ 3.8 (MPSGraph model) ──→ 3.9 (integrate) ──→ 3.11 (remove CoreML)
+                       ├──→ 3.8 (MPSGraph model) ──→ 3.9 (integrate) ──→ 3.11 (remove CoreML) ✅
 3.7b (weight extract) ─┘                                                       ↑
-                                                      3.10 (Accelerate mood) ──┘
+                                                      3.10 (Accelerate mood) ──┘ ✅
 ```
+
+**Phase 3.7 is complete.** CoreML has been fully replaced: stem separation runs on MPSGraph (GPU, Float32, 142ms), mood classification runs on Accelerate (CPU, Float32, negligible). The binary no longer links the CoreML framework.
 
 ---
 
