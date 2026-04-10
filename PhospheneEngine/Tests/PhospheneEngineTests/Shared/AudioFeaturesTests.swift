@@ -90,6 +90,31 @@ import Metal
     #expect(!notEqual, "AudioFrames with different timestamps should not be byte-equal")
 }
 
+@Test func test_stemFeatures_memoryLayout_is64Bytes() {
+    // StemFeatures: 16 floats × 4 bytes = 64 bytes.
+    #expect(MemoryLayout<StemFeatures>.size == 64,
+            "StemFeatures must be 64 bytes (16 × 4), got \(MemoryLayout<StemFeatures>.size)")
+    #expect(MemoryLayout<StemFeatures>.stride == 64,
+            "StemFeatures stride must be 64 bytes, got \(MemoryLayout<StemFeatures>.stride)")
+}
+
+@Test func test_stemFeatures_simdAligned() {
+    // StemFeatures stride must be 16-byte aligned for GPU uniform upload.
+    #expect(MemoryLayout<StemFeatures>.stride % 16 == 0,
+            "StemFeatures stride must be 16-byte aligned for GPU, got stride \(MemoryLayout<StemFeatures>.stride)")
+
+    // Verify the matching MSL struct size expectation (16 floats × 4 bytes).
+    let expectedMSLSize = 16 * MemoryLayout<Float>.size
+    #expect(MemoryLayout<StemFeatures>.size == expectedMSLSize,
+            "Swift StemFeatures size (\(MemoryLayout<StemFeatures>.size)) must match MSL size (\(expectedMSLSize))")
+
+    // Verify .zero default is safe to bind.
+    let zero = StemFeatures.zero
+    #expect(zero.vocalsEnergy == 0)
+    #expect(zero.drumsBeat == 0)
+    #expect(zero.otherBand1 == 0)
+}
+
 @Test func test_featureVector_simdSize_matchesGPUExpectation() {
     // FeatureVector: 24 floats = 96 bytes, stride must be 16-byte aligned for GPU uniforms.
     #expect(MemoryLayout<FeatureVector>.size == 96,

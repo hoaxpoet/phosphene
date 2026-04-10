@@ -63,7 +63,8 @@ extension VisualizerEngine {
 
     /// Build the real-time onAudioSamples callback. Runs on the audio thread:
     /// must do only the buffer write + FFT, then dispatch heavy MIR work
-    /// onto the analysis queue.
+    /// onto the analysis queue. Also feeds StemSampleBuffer for background
+    /// stem separation.
     func makeAudioSampleCallback(
         buf: AudioBuffer,
         fft: FFTProcessor
@@ -71,6 +72,10 @@ extension VisualizerEngine {
         return { [weak self, weak buf, weak fft] samples, count, rate, _ in
             guard let buf, let fft else { return }
             buf.write(from: samples, count: count)
+
+            // Feed stem sample buffer (interleaved stereo, lightweight write).
+            self?.stemSampleBuffer.write(samples: samples, count: count)
+
             let latest = buf.latestSamples(count: FFTProcessor.fftSize * 2)
             guard !latest.isEmpty else { return }
 
@@ -343,6 +348,8 @@ extension VisualizerEngine {
             }
             // Reset MIR accumulators on track change.
             mir.reset()
+            // Reset stem pipeline — prevents previous track's stems from bleeding.
+            self.resetStemPipeline()
             self.kickoffPreFetch(for: event.current, fetcher: fetcher)
         }
     }

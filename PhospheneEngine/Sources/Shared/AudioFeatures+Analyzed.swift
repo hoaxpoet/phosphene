@@ -223,6 +223,95 @@ public struct EmotionalState: Sendable, Equatable {
     public static let neutral = EmotionalState()
 }
 
+// MARK: - StemFeatures
+
+/// Per-stem audio features bound to GPU buffer(3).
+///
+/// 16 floats × 4 bytes = 64 bytes total. 4 floats per stem:
+/// energy, two band slots (stem-specific), beat pulse (only non-zero for drums today).
+///
+/// Band slot semantics:
+/// - **vocals**: band0 = presence (1–4 kHz), band1 = air (4–8 kHz)
+/// - **drums**:  band0 = sub_bass (20–80 Hz), band1 = mid_high (1–4 kHz)
+/// - **bass**:   band0 = sub_bass (20–80 Hz), band1 = low_bass (80–250 Hz)
+/// - **other**:  band0 = low_mid (250 Hz–1 kHz), band1 = high_mid (4–8 kHz)
+///
+/// The matching MSL struct:
+/// ```metal
+/// struct StemFeatures {
+///     float vocals_energy;   float vocals_band0;
+///     float vocals_band1;    float vocals_beat;
+///     float drums_energy;    float drums_band0;
+///     float drums_band1;     float drums_beat;
+///     float bass_energy;     float bass_band0;
+///     float bass_band1;      float bass_beat;
+///     float other_energy;    float other_band0;
+///     float other_band1;     float other_beat;
+/// };
+/// ```
+@frozen
+public struct StemFeatures: Sendable {
+
+    /// Vocals: total energy across all vocal bands.
+    public var vocalsEnergy: Float
+    /// Vocals band 0: presence (1–4 kHz).
+    public var vocalsBand0: Float
+    /// Vocals band 1: air (4–8 kHz).
+    public var vocalsBand1: Float
+    /// Vocals beat pulse (reserved — currently always 0).
+    public var vocalsBeat: Float
+
+    /// Drums: total energy across all drum bands.
+    public var drumsEnergy: Float
+    /// Drums band 0: sub bass (20–80 Hz).
+    public var drumsBand0: Float
+    /// Drums band 1: mid high (1–4 kHz, snare crack).
+    public var drumsBand1: Float
+    /// Drums beat pulse from BeatDetector.
+    public var drumsBeat: Float
+
+    /// Bass: total energy across bass bands.
+    public var bassEnergy: Float
+    /// Bass band 0: sub bass (20–80 Hz).
+    public var bassBand0: Float
+    /// Bass band 1: low bass (80–250 Hz).
+    public var bassBand1: Float
+    /// Bass beat pulse (reserved — currently always 0).
+    public var bassBeat: Float
+
+    /// Other: total energy across remaining instruments.
+    public var otherEnergy: Float
+    /// Other band 0: low mid (250 Hz–1 kHz).
+    public var otherBand0: Float
+    /// Other band 1: high mid (4–8 kHz).
+    public var otherBand1: Float
+    /// Other beat pulse (reserved — currently always 0).
+    public var otherBeat: Float
+
+    public init(
+        vocalsEnergy: Float = 0, vocalsBand0: Float = 0,
+        vocalsBand1: Float = 0, vocalsBeat: Float = 0,
+        drumsEnergy: Float = 0, drumsBand0: Float = 0,
+        drumsBand1: Float = 0, drumsBeat: Float = 0,
+        bassEnergy: Float = 0, bassBand0: Float = 0,
+        bassBand1: Float = 0, bassBeat: Float = 0,
+        otherEnergy: Float = 0, otherBand0: Float = 0,
+        otherBand1: Float = 0, otherBeat: Float = 0
+    ) {
+        self.vocalsEnergy = vocalsEnergy; self.vocalsBand0 = vocalsBand0
+        self.vocalsBand1 = vocalsBand1; self.vocalsBeat = vocalsBeat
+        self.drumsEnergy = drumsEnergy; self.drumsBand0 = drumsBand0
+        self.drumsBand1 = drumsBand1; self.drumsBeat = drumsBeat
+        self.bassEnergy = bassEnergy; self.bassBand0 = bassBand0
+        self.bassBand1 = bassBand1; self.bassBeat = bassBeat
+        self.otherEnergy = otherEnergy; self.otherBand0 = otherBand0
+        self.otherBand1 = otherBand1; self.otherBeat = otherBeat
+    }
+
+    /// All-zero stem features — safe default during warmup.
+    public static let zero = StemFeatures()
+}
+
 // MARK: - StructuralPrediction
 
 /// Progressive structural analysis prediction.

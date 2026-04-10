@@ -15,6 +15,7 @@ struct FeedbackDrawContext {
     let view: MTKView
     var features: FeatureVector
     var params: FeedbackParams
+    var stemFeatures: StemFeatures
     let activePipeline: MTLRenderPipelineState
     let composePipeline: MTLRenderPipelineState
     let particles: ProceduralGeometry?
@@ -64,6 +65,7 @@ extension RenderPipeline {
         // Snapshot state for this frame.
         let particles = particleLock.withLock { particleGeometry }
         let activePipeline = pipelineLock.withLock { pipelineState }
+        let stemFeatures = stemFeaturesLock.withLock { latestStemFeatures }
 
         // Lazy-allocate feedback textures if needed (drawableSizeWillChange may not fire).
         let drawableSize = view.drawableSize
@@ -87,6 +89,7 @@ extension RenderPipeline {
                 view: view,
                 features: features,
                 params: params,
+                stemFeatures: stemFeatures,
                 activePipeline: activePipeline,
                 composePipeline: composePipeline,
                 particles: particles,
@@ -100,6 +103,7 @@ extension RenderPipeline {
                 commandBuffer: commandBuffer,
                 view: view,
                 features: &features,
+                stemFeatures: stemFeatures,
                 activePipeline: activePipeline,
                 particles: particles
             )
@@ -113,6 +117,7 @@ extension RenderPipeline {
         commandBuffer: MTLCommandBuffer,
         view: MTKView,
         features: inout FeatureVector,
+        stemFeatures: StemFeatures,
         activePipeline: MTLRenderPipelineState,
         particles: ProceduralGeometry?
     ) {
@@ -134,6 +139,8 @@ extension RenderPipeline {
         encoder.setFragmentBytes(&features, length: MemoryLayout<FeatureVector>.size, index: 0)
         encoder.setFragmentBuffer(fftMagnitudeBuffer, offset: 0, index: 1)
         encoder.setFragmentBuffer(waveformBuffer, offset: 0, index: 2)
+        var stems = stemFeatures
+        encoder.setFragmentBytes(&stems, length: MemoryLayout<StemFeatures>.size, index: 3)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
 
         // Draw particles on top.
@@ -174,6 +181,7 @@ extension RenderPipeline {
                 commandBuffer: ctx.commandBuffer,
                 view: ctx.view,
                 features: &ctx.features,
+                stemFeatures: ctx.stemFeatures,
                 activePipeline: ctx.activePipeline,
                 particles: ctx.particles
             )
@@ -182,6 +190,7 @@ extension RenderPipeline {
                 commandBuffer: ctx.commandBuffer,
                 view: ctx.view,
                 features: &ctx.features,
+                stemFeatures: ctx.stemFeatures,
                 composePipeline: ctx.composePipeline,
                 feedbackTexture: currentTex
             )
@@ -221,6 +230,7 @@ extension RenderPipeline {
         commandBuffer: MTLCommandBuffer,
         view: MTKView,
         features: inout FeatureVector,
+        stemFeatures: StemFeatures,
         activePipeline: MTLRenderPipelineState,
         particles: ProceduralGeometry?
     ) {
@@ -237,6 +247,8 @@ extension RenderPipeline {
             encoder.setFragmentBytes(&features, length: MemoryLayout<FeatureVector>.stride, index: 0)
             encoder.setFragmentBuffer(fftMagnitudeBuffer, offset: 0, index: 1)
             encoder.setFragmentBuffer(waveformBuffer, offset: 0, index: 2)
+            var stems = stemFeatures
+            encoder.setFragmentBytes(&stems, length: MemoryLayout<StemFeatures>.size, index: 3)
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
             particles?.render(encoder: encoder, features: features)
             encoder.endEncoding()
@@ -250,6 +262,7 @@ extension RenderPipeline {
         commandBuffer: MTLCommandBuffer,
         view: MTKView,
         features: inout FeatureVector,
+        stemFeatures: StemFeatures,
         composePipeline: MTLRenderPipelineState,
         feedbackTexture: MTLTexture
     ) {
@@ -264,6 +277,8 @@ extension RenderPipeline {
             encoder.setFragmentBytes(&features, length: MemoryLayout<FeatureVector>.stride, index: 0)
             encoder.setFragmentBuffer(fftMagnitudeBuffer, offset: 0, index: 1)
             encoder.setFragmentBuffer(waveformBuffer, offset: 0, index: 2)
+            var stems = stemFeatures
+            encoder.setFragmentBytes(&stems, length: MemoryLayout<StemFeatures>.size, index: 3)
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
             encoder.endEncoding()
         }

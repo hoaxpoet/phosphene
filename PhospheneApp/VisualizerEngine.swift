@@ -104,6 +104,23 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Metadata pre-fetcher for external API queries.
     var preFetcher: MetadataPreFetcher?
 
+    // MARK: - Stem Pipeline
+
+    /// Stem separator (CoreML on ANE).
+    let stemSeparator: StemSeparator?
+
+    /// Ring buffer accumulating interleaved stereo PCM for stem separation.
+    let stemSampleBuffer = StemSampleBuffer(sampleRate: 44100, maxSeconds: 15)
+
+    /// Per-stem energy + beat analysis.
+    let stemAnalyzer = StemAnalyzer(sampleRate: 44100)
+
+    /// Background queue for stem separation (utility QoS — never blocks render).
+    let stemQueue = DispatchQueue(label: "com.phosphene.stemSeparator", qos: .utility)
+
+    /// Repeating timer that triggers stem separation every 5 seconds.
+    var stemTimer: DispatchSourceTimer?
+
     /// Whether MIR recording is active.
     var mirPipelineIsRecording: Bool { mirPipeline.isRecording }
 
@@ -187,6 +204,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         self.mirPipeline = MIRPipeline()
         self.particleGeometry = Self.makeParticleGeometry(context: ctx, library: lib)
         self.moodClassifier = Self.loadMoodClassifier()
+        self.stemSeparator = Self.loadStemSeparator(device: ctx.device)
 
         loader.onPresetsReloaded = { [weak self] in
             guard let self, let current = self.presetLoader.currentPreset else { return }
@@ -254,6 +272,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
 
         if permitted {
             startAudioCapture()
+            startStemPipeline()
         } else {
             logger.info("Screen capture denied — grant in System Settings for audio capture")
             pollForScreenCapturePermission()
@@ -274,6 +293,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
                     hasScreenCapturePermission = true
                     logger.info("Screen capture permission granted")
                     startAudioCapture()
+                    startStemPipeline()
                     break
                 }
             }
@@ -355,4 +375,5 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
             }
         }
     }
+
 }

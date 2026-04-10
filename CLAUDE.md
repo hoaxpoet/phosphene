@@ -34,7 +34,7 @@ line, as it would propagate to SPM dependencies that compile with
 
 Deployment target: macOS 14.0+ (Sonoma). Swift 6.0. Metal 3.1+.
 
-**Current test count: 226 tests** (213 swift-testing + 13 XCTest, across unit, integration, regression, performance). All must pass before any new code is merged.
+**Current test count: 232 tests** (213 swift-testing + 13 XCTest, across unit, integration, regression, performance). All must pass before any new code is merged.
 
 ## Module Map
 
@@ -44,6 +44,7 @@ PhospheneApp/               → SwiftUI shell, views, view models
   PhospheneApp.swift        → App entry point
   VisualizerEngine.swift    → Audio→FFT→render pipeline owner (✓ implemented)
   VisualizerEngine+Audio.swift → Audio routing, MIR analysis, mood classification callbacks (✓ implemented)
+  VisualizerEngine+Stems.swift → Background stem separation pipeline, 5s cadence, track-change reset (✓ implemented)
   Views/MetalView.swift     → NSViewRepresentable wrapping MTKView
 
 PhospheneEngine/
@@ -70,6 +71,7 @@ PhospheneEngine/
     SelfSimilarityMatrix    → Ring buffer of feature vectors, vDSP cosine similarity (✓ implemented)
     NoveltyDetector         → Checkerboard kernel boundary detection, adaptive threshold (✓ implemented)
     StructuralAnalyzer      → Section boundary prediction, repetition detection (✓ implemented)
+    StemAnalyzer            → Per-stem energy (4× BandEnergyProcessor) + beat (1× BeatDetector on drums) → StemFeatures (✓ implemented)
   ML/                       → CoreML wrappers: stem separator, mood classifier
     Models/StemSeparator.mlpackage → Open-Unmix HQ 4-stem mask estimator for ANE (✓ converted)
     Models/MoodClassifier.mlpackage → Valence/arousal MLP for ANE (✓ trained)
@@ -102,17 +104,18 @@ PhospheneEngine/
     AudioFeatures           → @frozen SIMD-aligned structs: AudioFrame, FFTResult, TrackMetadata, PreFetchedTrackProfile (✓ implemented)
     AudioFeatures+Frame     → AudioFrame, FFTResult, StemData (✓ implemented)
     AudioFeatures+Metadata  → MetadataSource, TrackMetadata, PreFetchedTrackProfile (✓ implemented)
-    AudioFeatures+Analyzed  → FeatureVector, FeedbackParams, EmotionalState, StructuralPrediction (✓ implemented)
+    AudioFeatures+Analyzed  → FeatureVector, FeedbackParams, StemFeatures, EmotionalState, StructuralPrediction (✓ implemented)
     AnalyzedFrame           → Timestamped container: AudioFrame + FFTResult + StemData + FeatureVector + EmotionalState (✓ implemented)
+    StemSampleBuffer        → Interleaved stereo PCM ring buffer for stem separation input (✓ implemented)
     Logging                 → Per-module os.Logger instances (✓ implemented)
 
-Tests/ (226 tests: 213 swift-testing + 13 XCTest)
+Tests/ (232 tests: 219 swift-testing + 13 XCTest)
   Audio/                    → AudioBufferTests, FFTProcessorTests, StreamingMetadataTests, MetadataPreFetcherTests, LookaheadBufferTests (10)
   DSP/                      → SpectralAnalyzerTests (8), BandEnergyProcessorTests (5), ChromaExtractorTests (6), BeatDetectorTests (7), MIRPipelineUnitTests (4), SelfSimilarityMatrixTests (5), NoveltyDetectorTests (5), StructuralAnalyzerTests (8)
   ML/                       → StemSeparatorTests (8), MoodClassifierTests (7: model loading, classification, range, quadrants, protocol)
   Renderer/                 → MetalContextTests, ShaderLibraryTests, RenderPipelineTests, ProceduralGeometryTests (7: init, storage mode, dispatch, count, zero-audio, impulse, 1M perf)
-  Shared/                   → AudioFeaturesTests, UMABufferExtendedTests, EmotionalStateTests (4: quadrant classification), AnalyzedFrameTests (3)
-  Integration/              → AudioToFFTPipelineTests, AudioToRenderPipelineTests, MetadataToOrchestratorTests, AudioToStemPipelineTests, MIRPipelineIntegrationTests (3), LookaheadIntegrationTests (1)
+  Shared/                   → AudioFeaturesTests (2: StemFeatures layout + SIMD alignment), UMABufferExtendedTests, EmotionalStateTests (4: quadrant classification), AnalyzedFrameTests (3)
+  Integration/              → AudioToFFTPipelineTests, AudioToRenderPipelineTests, MetadataToOrchestratorTests, AudioToStemPipelineTests, MIRPipelineIntegrationTests (3), LookaheadIntegrationTests (1), StemsToRenderPipelineTests (4: warmup default, separation→analysis, track reset, Swift/MSL size)
   Regression/               → FFTRegressionTests, MetadataParsingRegressionTests, ChromaRegressionTests (2), BeatDetectorRegressionTests (2), StructuralAnalysisRegressionTests (1) + golden fixtures
   Performance/              → FFTPerformanceTests, RenderLoopPerformanceTests, StemSeparationPerformanceTests, DSPPerformanceTests (3)
   TestDoubles/              → MockAudioCapture, StubFFTProcessor, FakeStemSeparator, StubMoodClassifier, AudioFixtures, MockMetadataProvider, MockMetadataFetcher
@@ -432,6 +435,7 @@ struct AnalyzedFrame           // Timestamped bundle of all above
 struct TrackMetadata           // title, artist, album, genre, duration, artwork URL, source
 struct PreFetchedTrackProfile  // External BPM, key, energy, valence, danceability, genre tags
 struct PresetDescriptor        // id, family, tags, scene metadata, useFeedback (JSON sidecar fields)
+struct StemFeatures             // 64 bytes: 4 floats per stem (vocals/drums/bass/other): energy, band0, band1, beat (GPU buffer(3))
 struct FeedbackParams          // 32 bytes: decay, baseZoom, baseRot, beatZoom, beatRot, beatSensitivity, beatValue (GPU uniform)
 struct Particle                // 64 bytes: position, velocity, color, life, size, seed, age (compute kernel state)
 struct ParticleConfiguration   // particleCount, decayRate, burstThreshold, burstVelocity, drag (CPU-side tuning)
@@ -503,16 +507,18 @@ The architectural blueprint is in `docs/ARCHITECTURAL_BLUEPRINT.md`.
 - **Increment 3.1-bonus (Feedback Texture Infrastructure)** ✅ — `FeedbackParams` struct, `feedback_warp_fragment`/`feedback_blit_fragment` in `Common.metal`, three-pass feedback render path in `RenderPipeline` (`drawWithFeedback` with `drawParticleMode`/`drawSurfaceMode` split), `useFeedback` + `useParticles` flags on `PresetDescriptor`, dual pipeline state compilation in `PresetLoader`, `abstract` category, Membrane preset (second feedback user). **Scope violation:** this should have been its own increment; documented retroactively so the pattern isn't repeated.
 - **Increment 3.1-preset (Murmuration)** ✅ — `Starburst.metal` + `Starburst.json`, flock compute kernel modifications in `Particles.metal`, audio routing. Ships with a documented full-mix workaround (`sub_bass + low_bass` / `high_mid + high_freq`) because the live stem pipeline was never wired. True stem routing for Murmuration is deferred to a Phase 3.5 preset-polish task that follows Increment 3.1b.
 
+**Completed increments (Phase 3):**
+- **Increment 3.1a — GPU STFT/iSTFT Compute Pipeline** ✅
+- **Increment 3.1b — Live Stem Pipeline Wiring + Per-Stem `StemFeatures`** ✅ — `StemSampleBuffer` (15s ring buffer), `StemAnalyzer` (4× BandEnergyProcessor + BeatDetector on drums), `StemFeatures` @frozen struct (16 floats = 64 bytes at GPU buffer(3)), background `DispatchSourceTimer` (5s cadence, utility QoS), track-change reset. 232 tests (226 + 2 layout + 4 integration). Known follow-up: idle suppression (skip separation during silence) and multi-frame AGC warmup.
+
 **Ordered next increments** (per the revised plan):
-1. **Increment 3.1a — GPU STFT/iSTFT Compute Pipeline** (promoted from Increment 7.1). Replace `StemSeparator`'s Accelerate CPU STFT/iSTFT with a Metal compute path, dropping per-separation time from ~6.5s to ≤250ms. Prerequisite for all real-time stem work.
-2. **Increment 3.1b — Live Stem Pipeline Wiring + Per-Stem `FeatureVector` Extension.** Wire `StemSeparator.separate()` into `VisualizerEngine` on a rolling 10s/5s-cadence background queue, run per-stem `BandEnergyProcessor` + `BeatDetector`, expose results to shaders via a new `StemFeatures` struct bound at GPU `buffer(3)`. Enables Murmuration's stem-routing re-do and all downstream stem-driven presets.
-3. **Increment 3.2 — Mesh Shader Pipeline Infrastructure** (now infrastructure-only, no preset). `MeshShaders.metal` shared utilities, `MeshGenerator.swift` with mesh path + vertex fallback, new `drawWithMeshShader` render path, `useMeshShader` flag, 6 `MeshGeneratorTests`.
-4. **Increment 3.2b — Fractal Tree Demonstration Preset.** First preset using the mesh shader pipeline. Recursive 3D branching structure responding to audio.
-5. **Increment 3.3 — Hardware Ray Tracing Infrastructure.** `BVHBuilder`, `RayIntersector`, `RayTracing.metal`, 9 tests. (The original 3.3 spec had `PostProcess.metal` in it; that file was extracted to Increment 3.4.)
-6. **Increment 3.4 — HDR Post-Process Chain** (extracted from 3.3). `PostProcessChain.swift`, `PostProcess.metal` (bright pass, blur H/V, ACES composite), `usePostProcess` flag, 6 tests. Independent of ray tracing.
-7. **Increment 3.5 — Indirect Command Buffers** (was 3.4).
-8. **Increment 3.6 (deferred) — Render Graph Refactor.** Fires when capability flag count exceeds 4.
-9. **Phase 3.5 — Native Preset Library Expansion.** Dedicated home for native presets that depend on Phase 3 infrastructure. First entry: **3.5.1 Photorealistic Popcorn**, depends on 3.1b + 3.3 + 3.4.
+1. **Increment 3.2 — Mesh Shader Pipeline Infrastructure** (now infrastructure-only, no preset). `MeshShaders.metal` shared utilities, `MeshGenerator.swift` with mesh path + vertex fallback, new `drawWithMeshShader` render path, `useMeshShader` flag, 6 `MeshGeneratorTests`.
+2. **Increment 3.2b — Fractal Tree Demonstration Preset.** First preset using the mesh shader pipeline. Recursive 3D branching structure responding to audio.
+3. **Increment 3.3 — Hardware Ray Tracing Infrastructure.** `BVHBuilder`, `RayIntersector`, `RayTracing.metal`, 9 tests. (The original 3.3 spec had `PostProcess.metal` in it; that file was extracted to Increment 3.4.)
+4. **Increment 3.4 — HDR Post-Process Chain** (extracted from 3.3). `PostProcessChain.swift`, `PostProcess.metal` (bright pass, blur H/V, ACES composite), `usePostProcess` flag, 6 tests. Independent of ray tracing.
+5. **Increment 3.5 — Indirect Command Buffers** (was 3.4).
+6. **Increment 3.6 (deferred) — Render Graph Refactor.** Fires when capability flag count exceeds 4.
+7. **Phase 3.5 — Native Preset Library Expansion.** Dedicated home for native presets that depend on Phase 3 infrastructure. First entry: **3.5.1 Photorealistic Popcorn**, depends on 3.1b + 3.3 + 3.4.
 
 **Increment Scope Discipline rule**: per the revised `DEVELOPMENT_PLAN.md` Code Hygiene Rules, one increment is one reviewable unit of work. Infrastructure increments and preset increments are never bundled in the same increment. Scope creep is recorded retroactively as a new increment, not silently absorbed.
 

@@ -35,6 +35,13 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     var latestFeatures = FeatureVector.zero
     let featuresLock = NSLock()
 
+    // MARK: - Per-Stem Features
+
+    /// Latest per-stem features from the background stem pipeline.
+    /// Set from the stem queue (~5s cadence), read every frame in the render loop.
+    var latestStemFeatures = StemFeatures.zero
+    let stemFeaturesLock = NSLock()
+
     // MARK: - Feedback Textures (Milkdrop-style ping-pong)
 
     /// Double-buffered feedback textures. Index flips each frame.
@@ -181,6 +188,14 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     public func setFeatures(_ features: FeatureVector) {
         featuresLock.withLock {
             latestFeatures = features
+        }
+    }
+
+    /// Update per-stem features from the background stem pipeline.
+    /// Thread-safe — called from the stem queue at ~5s cadence.
+    public func setStemFeatures(_ features: StemFeatures) {
+        stemFeaturesLock.withLock {
+            latestStemFeatures = features
         }
     }
 

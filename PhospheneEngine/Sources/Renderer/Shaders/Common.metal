@@ -27,6 +27,25 @@ struct FeedbackParams {
     float beat_value, _pad0;
 };
 
+// MARK: - StemFeatures
+
+/// Per-stem audio features, bound at buffer(3) by the render pipeline.
+/// Matches Swift StemFeatures layout (16 floats = 64 bytes).
+/// During warmup (~first 10s) all values are zero.
+struct StemFeatures {
+    float vocals_energy;   float vocals_band0;
+    float vocals_band1;    float vocals_beat;
+
+    float drums_energy;    float drums_band0;
+    float drums_band1;     float drums_beat;
+
+    float bass_energy;     float bass_band0;
+    float bass_band1;      float bass_beat;
+
+    float other_energy;    float other_band0;
+    float other_band1;     float other_beat;
+};
+
 // MARK: - Color Utilities
 
 float3 hsv2rgb(float3 c) {

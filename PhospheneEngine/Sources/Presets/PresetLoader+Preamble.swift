@@ -46,6 +46,22 @@ extension PresetLoader {
         return out;
     }
 
+    // Per-stem audio features, bound at buffer(3). All zero during warmup.
+    // Matches Swift StemFeatures layout (16 floats = 64 bytes).
+    struct StemFeatures {
+        float vocals_energy;   float vocals_band0;
+        float vocals_band1;    float vocals_beat;
+
+        float drums_energy;    float drums_band0;
+        float drums_band1;     float drums_beat;
+
+        float bass_energy;     float bass_band0;
+        float bass_band1;      float bass_beat;
+
+        float other_energy;    float other_band0;
+        float other_band1;     float other_beat;
+    };
+
     // HSV to RGB conversion.
     float3 hsv2rgb(float3 c) {
         float3 p = abs(fract(float3(c.x) + float3(1.0, 2.0/3.0, 1.0/3.0)) * 6.0 - 3.0);

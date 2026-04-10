@@ -989,7 +989,7 @@ echo "=== All checks passed ==="
 
 ### Increment 3.1b: Live Stem Pipeline Wiring + Per-Stem FeatureVector Extension
 
-**Status:** Not started.
+**Status:** Complete.
 
 **Goal:** Wire `StemSeparator.separate()` into the live audio pipeline on a rolling 10s window basis, run per-stem analysis, and expose per-stem features to shaders via a new GPU uniform buffer bound at `buffer(3)`.
 
