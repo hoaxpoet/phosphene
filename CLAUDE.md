@@ -535,14 +535,14 @@ The architectural blueprint is in `docs/ARCHITECTURAL_BLUEPRINT.md`.
 
 **Completed increments (Phase 3.2):**
 - **Increment 3.2 — Mesh Shader Pipeline Infrastructure** ✅ — `MeshShaders.metal` (ObjectPayload/MeshVertex/MeshPrimitive structs, trivial object+mesh+fragment+fallback shaders), `MeshGenerator.swift` (detects `device.supportsFamily(.apple8)`, compiles `MTLMeshRenderPipelineDescriptor` on M3+ or vertex fallback on M1/M2, `draw()` dispatches `drawMeshThreadgroups`/`drawPrimitives` accordingly), `RenderPipeline+MeshDraw.swift` (`drawWithMeshShader` parallel to `drawDirect`), mesh branch in `renderFrame` (mesh → feedback → direct priority), `useMeshShader: Bool` on `PresetDescriptor`, meshlet struct definitions in `PresetLoader` preamble, `compileMeshShader` in `PresetLoader`. MSL fix: `[[thread_index_in_threadgroup]]` is correct; `[[thread_index_in_mesh]]` is not a valid Metal attribute. 247 tests (221 swift-testing + 26 XCTest).
+- **Increment 3.2b — Fractal Tree Demonstration Preset** ✅ — `FractalTree.metal` (object shader packs audio into `FractalPayload`; 64-thread mesh shader generates 63-branch binary tree via iterative ancestry traversal, 252 vertices / 126 triangles per frame; fragment shader: depth-dependent colour bark→green→hue-shifted tips, beat flash, edge soft-fade; `fractal_tree_fallback_vertex` for M1/M2). `FractalTree.json` (`"family": "fractal"`, `"use_mesh_shader": true`). `PresetDescriptor` gains `meshThreadCount: Int` (default 64, key `"mesh_thread_count"`). `MeshGeneratorConfiguration` gains `meshThreadCount`/`objectThreadCount`; `MeshGenerator` gains `init(device:pipelineState:configuration:)` for preset-compiled states and binds `FeatureVector` to object/mesh/fragment stages. `VisualizerEngine.applyPreset` handles `useMeshShader: true`. Verified with "Cannonball" by The Breeders — responds particularly well to bass-heavy music. 247 tests, 0 failures.
 
 **Ordered next increments** (per the revised plan):
-1. **Increment 3.2b — Fractal Tree Demonstration Preset.** First preset using the mesh shader pipeline. Recursive 3D branching structure responding to audio.
-2. **Increment 3.3 — Hardware Ray Tracing Infrastructure.** `BVHBuilder`, `RayIntersector`, `RayTracing.metal`, 9 tests. (The original 3.3 spec had `PostProcess.metal` in it; that file was extracted to Increment 3.4.)
-3. **Increment 3.4 — HDR Post-Process Chain** (extracted from 3.3). `PostProcessChain.swift`, `PostProcess.metal` (bright pass, blur H/V, ACES composite), `usePostProcess` flag, 6 tests. Independent of ray tracing.
-4. **Increment 3.5 — Indirect Command Buffers** (was 3.4).
-5. **Increment 3.6 (deferred) — Render Graph Refactor.** Fires when capability flag count exceeds 4.
-6. **Phase 3.5 — Native Preset Library Expansion.** Dedicated home for native presets that depend on Phase 3 infrastructure. First entry: **3.5.1 Photorealistic Popcorn**, depends on 3.1b + 3.3 + 3.4.
+1. **Increment 3.3 — Hardware Ray Tracing Infrastructure.** `BVHBuilder`, `RayIntersector`, `RayTracing.metal`, 9 tests. (The original 3.3 spec had `PostProcess.metal` in it; that file was extracted to Increment 3.4.)
+2. **Increment 3.4 — HDR Post-Process Chain** (extracted from 3.3). `PostProcessChain.swift`, `PostProcess.metal` (bright pass, blur H/V, ACES composite), `usePostProcess` flag, 6 tests. Independent of ray tracing.
+3. **Increment 3.5 — Indirect Command Buffers** (was 3.4).
+4. **Increment 3.6 (deferred) — Render Graph Refactor.** Fires when capability flag count exceeds 4.
+5. **Phase 3.5 — Native Preset Library Expansion.** Dedicated home for native presets that depend on Phase 3 infrastructure. First entry: **3.5.1 Photorealistic Popcorn**, depends on 3.1b + 3.3 + 3.4.
 
 **Increment Scope Discipline rule**: per the revised `DEVELOPMENT_PLAN.md` Code Hygiene Rules, one increment is one reviewable unit of work. Infrastructure increments and preset increments are never bundled in the same increment. Scope creep is recorded retroactively as a new increment, not silently absorbed.
 
