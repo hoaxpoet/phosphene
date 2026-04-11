@@ -1310,28 +1310,37 @@ After:  STFT(GPU) → [Float] → memcpy(MTLBuffer) → predict(MPSGraph/GPU/F32
 
 **Enables:** Increment 3.5.1 (Popcorn) and any future photorealistic preset that needs bloom, tone mapping, or HDR rendering.
 
-### Increment 3.5: Indirect Command Buffers for GPU-Driven Rendering
+### Increment 3.5: Indirect Command Buffers for GPU-Driven Rendering ✅
 
 **Goal:** GPU encodes its own draw calls via ICBs based on audio state.
 
-**Files to create/edit:**
-- `Renderer/RenderPipeline.swift` — ICB creation and execution
+**Files created/edited:**
+- `Renderer/Shaders/ICB.metal` — `icb_populate_kernel` compute shader: reads `FeatureVector`, populates up to `maxCommandCount` (default 16) ICB slots via `render_command`; slot 0 unconditionally active, subsequent slots activate as `bass + mid + treble` energy exceeds linearly spaced thresholds; inactive slots call `cmd.reset()`.
+- `Renderer/RenderPipeline+ICB.swift` — `ICBConfiguration` struct, `IndirectCommandBufferState` class (ICB + compute pipeline + argument buffer for `command_buffer` MSL type + UMA `featureVectorBuffer`/`stemFeaturesBuffer`), `drawWithICB()` three-phase render path, `setICBState()`.
+- `Renderer/RenderPipeline.swift` — Added `icbState`, `icbEnabled`, `icbLock`.
+- `Renderer/RenderPipeline+Draw.swift` — ICB branch in `renderFrame()`: mesh → postProcess → **ICB** → feedback → direct.
+- `Renderer/ShaderLibrary.swift` — `supportICB: Bool = false` param on `renderPipelineState()`.
 
-**Test requirements:**
-- `RenderPipelineICBTests.swift` — 5 tests:
-  - `test_createICB_maxCommandCount_matchesConfig()`
-  - `test_computeShader_populatesICB_nonZeroCommands()`
-  - `test_executeICB_completesWithoutError()`
-  - `test_icb_resetBetweenFrames()`
-  - `test_icb_withZeroAudio_minimumDrawCalls()`
-- **Performance test:**
-  - `test_gpuDrivenRendering_cpuFrameTimeReduced()` — compare CPU frame time with and without ICB
+**Tests:** 6 RenderPipelineICBTests (all pass):
+- `test_createICB_maxCommandCount_matchesConfig()`
+- `test_computeShader_populatesICB_nonZeroCommands()`
+- `test_executeICB_completesWithoutError()`
+- `test_icb_resetBetweenFrames()`
+- `test_icb_withZeroAudio_minimumDrawCalls()`
+- `test_gpuDrivenRendering_cpuFrameTimeReduced()` — avg ~0.001s/frame, hard gate <2ms ✓
 
-**Verification:** CPU frame time drops. GPU debugger confirms GPU-originated draw calls. All 6 tests pass.
+**Verified:** 268 tests total, 0 failures, SwiftLint clean.
+
+**Key implementation lessons:**
+- `MTLIndirectCommandType.draw` is the correct option (not `.drawPrimitives`).
+- `setFragmentBytes` is NOT inherited by ICB commands when `inheritBuffers = true` — only `setFragmentBuffer` bindings are. Solution: pre-allocated UMA `featureVectorBuffer` and `stemFeaturesBuffer` on `IndirectCommandBufferState`.
+- Pipelines used with `executeCommandsInBuffer` must be compiled with `supportIndirectCommandBuffers = true`.
+- Pass `command_buffer` to compute kernels via the argument buffer pattern: `makeArgumentEncoder(bufferIndex:)` + `setIndirectCommandBuffer(_:index:)` + `useResource(icb, usage: .write)`.
+- Use `useResource(_:usage:stages:)` (macOS 13+ API) to avoid deprecation warnings on `MTLRenderCommandEncoder`.
 
 **Depends on:** nothing.
 
-**Enables:** Future performance optimizations for presets with large dynamic draw-call counts.
+**Enables:** Future performance optimizations for presets with large dynamic draw-call counts. Also triggers Increment 3.6 (render graph refactor) — ICB raises the capability flag count to 5 (mesh, postProcess, ICB, feedback, direct), crossing the threshold.
 
 ### Increment 3.6 (DEFERRED): Render Graph / Capability Composition Refactor
 
@@ -1339,7 +1348,7 @@ After:  STFT(GPU) → [Float] → memcpy(MTLBuffer) → predict(MPSGraph/GPU/F32
 
 **Motivation:** The current pattern — `useFeedback`, `useParticles`, `useMeshShader`, `usePostProcess`, and any future capability — adds a branch to `RenderPipeline.draw(in:)`, a conditional pipeline state compile in `PresetLoader`, and a new `drawWithX` render method. At N=3 flags this is fine; at N≥5 it becomes unmanageable and multi-capability combinations explode combinatorially. This increment replaces the flag-based approach with a generic render graph where each preset declares a sequence of passes.
 
-**Current flag count:** 3 (`useFeedback`, `useParticles`, and `useMeshShader` planned). Trigger threshold: 5. Expected trigger: when `usePostProcess` lands in Increment 3.4, the count becomes 4; the next capability flag after that fires this increment.
+**Current flag count:** 5 (`useFeedback`, `useParticles`, `useMeshShader`, `usePostProcess`, `useICB`). Trigger threshold: 5 — **threshold crossed**. This increment is now unblocked.
 
 **Scope (when triggered):**
 - Introduce `RenderPassDescriptor` as a new type describing a single render or compute pass

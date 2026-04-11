@@ -79,6 +79,15 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     var postProcessEnabled: Bool = false
     let postProcessLock = NSLock()
 
+    // MARK: - ICB State (Increment 3.5)
+
+    /// Optional ICB state for GPU-driven indirect command buffer rendering.
+    /// Set via `setICBState(_:enabled:)` when switching to an ICB-capable preset.
+    var icbState: IndirectCommandBufferState?
+    /// Whether the active preset routes through the ICB render path.
+    var icbEnabled: Bool = false
+    let icbLock = NSLock()
+
     // MARK: - Timing
 
     let startTime: CFAbsoluteTime
