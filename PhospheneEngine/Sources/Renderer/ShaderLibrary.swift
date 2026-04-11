@@ -80,13 +80,18 @@ public final class ShaderLibrary: @unchecked Sendable {
     ///   - fragmentFunction: Name of the fragment function in the shader library.
     ///   - pixelFormat: Output pixel format (from MetalContext).
     ///   - device: Metal device for pipeline creation.
+    ///   - supportICB: Set `true` to enable `supportIndirectCommandBuffers` on the
+    ///     descriptor.  Required when the pipeline state will be used as the inherited
+    ///     state in an `executeCommandsInBuffer` call (Increment 3.5 ICB render path).
+    ///     Defaults to `false`.
     /// - Returns: A compiled render pipeline state.
     public func renderPipelineState(
         named name: String,
         vertexFunction: String,
         fragmentFunction: String,
         pixelFormat: MTLPixelFormat,
-        device: MTLDevice
+        device: MTLDevice,
+        supportICB: Bool = false
     ) throws -> MTLRenderPipelineState {
         lock.lock()
         if let cached = pipelineStates[name] {
@@ -106,6 +111,7 @@ public final class ShaderLibrary: @unchecked Sendable {
         descriptor.vertexFunction = vertexFn
         descriptor.fragmentFunction = fragmentFn
         descriptor.colorAttachments[0].pixelFormat = pixelFormat
+        descriptor.supportIndirectCommandBuffers = supportICB
 
         let state = try device.makeRenderPipelineState(descriptor: descriptor)
 

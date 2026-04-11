@@ -55,6 +55,11 @@ extension RenderPipeline {
 
     // MARK: Frame Dispatch
 
+    // swiftlint:disable function_body_length
+    // renderFrame snapshots five independent capability flags (particles, feedback,
+    // post-process, ICB, mesh) before branching.  The snapshot + branch pattern is
+    // intentionally flat — extracting sub-branches would obscure the priority order.
+
     /// Snapshot per-frame state and dispatch to the appropriate rendering path.
     /// Called from `draw(in:)` after timing and features are prepared.
     func renderFrame(
@@ -81,13 +86,16 @@ extension RenderPipeline {
         // Snapshot post-process state for this frame.
         let (ppEnabled, ppChain) = postProcessLock.withLock { (postProcessEnabled, postProcessChain) }
 
+        // Snapshot ICB state for this frame.
+        let (icbIsEnabled, icbSnapshotState) = icbLock.withLock { (icbEnabled, icbState) }
+
         // ── Compute pass: update particles before rendering ─────────
         particles?.update(features: features, commandBuffer: commandBuffer)
 
         // Snapshot mesh shader state for this frame.
         let (meshEnabled, meshGen) = meshLock.withLock { (meshShaderEnabled, meshGenerator) }
 
-        // Branch: mesh shader → post-process → feedback → direct.
+        // Branch: mesh shader → post-process → ICB → feedback → direct.
         if meshEnabled, let generator = meshGen {
             drawWithMeshShader(
                 commandBuffer: commandBuffer,
@@ -104,6 +112,15 @@ extension RenderPipeline {
                 stemFeatures: stemFeatures,
                 activePipeline: activePipeline,
                 chain: chain
+            )
+        } else if icbIsEnabled, let icb = icbSnapshotState {
+            drawWithICB(
+                commandBuffer: commandBuffer,
+                view: view,
+                features: &features,
+                stemFeatures: stemFeatures,
+                activePipeline: activePipeline,
+                icbState: icb
             )
         } else if fbEnabled, let params = fbParams, let composePipeline = fbCompose,
            fbTextures.count == 2 {
@@ -132,6 +149,7 @@ extension RenderPipeline {
             )
         }
     }
+    // swiftlint:enable function_body_length
 
     // MARK: Direct Rendering (Non-Feedback)
 
