@@ -226,7 +226,12 @@ Phosphene/
 │   │   ├── MetalContext.swift
 │   │   ├── RenderPipeline.swift
 │   │   ├── ShaderLibrary.swift
+│   │   ├── TextureManager.swift      # Pre-generated noise textures (Phase 3R)
+│   │   ├── PostProcessChain.swift
 │   │   ├── Shaders/           # .metal shader files
+│   │   │   ├── Common.metal
+│   │   │   ├── ShaderUtilities.metal  # Reusable MSL: noise, SDF, PBR, UV transforms (Phase 3R)
+│   │   │   ├── RayMarch.metal         # G-buffer + deferred lighting for SDF scenes (Phase 3R)
 │   │   │   ├── Particles.metal
 │   │   │   ├── Fractal.metal
 │   │   │   ├── Waveform.metal
@@ -273,7 +278,10 @@ Phosphene/
         ├── Renderer/
         │   ├── MetalContextTests.swift
         │   ├── ShaderLibraryTests.swift
-        │   └── RenderPipelineTests.swift
+        │   ├── RenderPipelineTests.swift
+        │   ├── ShaderUtilityTests.swift       # Phase 3R: utility function compilation + correctness
+        │   ├── TextureManagerTests.swift       # Phase 3R: noise texture generation + binding
+        │   └── RayMarchPipelineTests.swift     # Phase 3R: G-buffer + deferred lighting
         ├── Presets/
         │   ├── PresetLoaderTests.swift
         │   ├── PresetCategoryTests.swift
@@ -286,7 +294,9 @@ Phosphene/
         │   └── AnticipationEngineTests.swift
         ├── Shared/
         │   ├── UMABufferTests.swift
-        │   └── AudioFeaturesTests.swift
+        │   ├── AudioFeaturesTests.swift
+        │   ├── SceneUniformsTests.swift       # Phase 3R: layout, JSON parsing
+        │   └── FeatureVectorExtendedTests.swift  # Phase 3R: accumulatedAudioTime
         ├── Integration/               # Multi-module integration tests
         │   ├── AudioToFFTPipelineTests.swift
         │   ├── AudioToStemPipelineTests.swift
@@ -1377,16 +1387,22 @@ After:  STFT(GPU) → [Float] → memcpy(MTLBuffer) → predict(MPSGraph/GPU/F32
 **Concept:** 3/4 overhead view of a cast-iron skillet on a glowing gas burner. Finite batch of ~60 popcorn kernels popping in sync with the music, driven by real drum-stem onsets (from Increment 3.1b). No respawning. `accumulatedBeatEnergy`-driven bell-distributed pop thresholds pace the batch over a typical song length so the frenzy lands on the first chorus and stragglers pop during bridge/second-verse. Late-song phase: heavy volumetric steam rising from the pan and slow scorching (popped kernels brown from sustained heat). Track change resets the batch via `MIRPipeline.reset()`.
 
 **Why it needs real infrastructure:**
-- 2D SDF rendering cannot depict a cast-iron skillet on a stovetop convincingly — needs ray marching with PBR materials (Cook-Torrance, Schlick Fresnel, subsurface approximation)
-- The visual reads as photorealistic only with real shadows (requires ray tracing infrastructure from 3.3)
+- 2D SDF rendering cannot depict a cast-iron skillet on a stovetop convincingly — needs ray marching with PBR materials (Cook-Torrance, Schlick Fresnel, subsurface approximation). Requires the shader utility library (3.12) for SDF/PBR functions and the ray march pipeline (3.14) for deferred lighting.
+- Organic textures (cast iron grain, kernel surface, oil sheen) require pre-computed noise textures — impossible to fake with pure math (requires 3.13)
+- The visual reads as photorealistic only with real shadows (requires ray tracing infrastructure from 3.3) and proper scene lighting (requires SceneUniforms from 3.15)
 - Burner glow and pop flashes bloom correctly only through an HDR post-process chain (requires 3.4)
 - Drum-accurate pop triggers require the live stem pipeline (requires 3.1b), which itself requires GPU STFT/iSTFT (3.1a)
+- Volumetric steam requires the atmosphere/volumetric functions from the shader utility library (3.12) and 3D noise sampling from the noise textures (3.13)
 
 **Depends on:**
 - Increment 3.1a (GPU STFT/iSTFT) — via 3.1b
 - Increment 3.1b (live stem pipeline) — for `StemFeatures.drumsBeatPulse` pop triggers and `StemFeatures.bassEnergy` heat glow
 - Increment 3.3 (ray tracing) — for real shadows under kernels and on the pan floor, optionally for reflections on the pan rim
 - Increment 3.4 (HDR post-process) — for bloom from the burner glow and pop flashes, ACES tone-mapping, mild color grading
+- Increment 3.12 (shader utility library) — for SDF primitives, ray marching loop, PBR lighting, noise functions, volumetric march
+- Increment 3.13 (noise texture manager) — for cast iron surface texture, kernel surface detail, oil/grease noise, steam turbulence
+- Increment 3.14 (ray march pipeline) — for deferred G-buffer rendering with multi-light PBR evaluation
+- Increment 3.15 (extended shader uniforms) — for SceneUniforms (camera, 4 lights, accumulated audio time, fog density)
 
 **Explicit pre-conditions:** all four dependency increments must be verified complete before this one starts. No partial starts, no working around missing infrastructure.
 
@@ -1402,9 +1418,256 @@ After:  STFT(GPU) → [Float] → memcpy(MTLBuffer) → predict(MPSGraph/GPU/F32
 - Headless visual test suite passes and the implementer inspects all PNGs against documented acceptance criteria (cast iron reads as cast iron, real shadows present, kernels look 3D not 2D, steam reads as volumetric, burner bloom bleeds onto pan underside)
 - Manual: Matt runs the app with several genres, verifies pops align with drum hits, burner glows under bass-heavy sections, track change resets the batch, frame rate holds at 60fps
 
-**Blocked until:** 3.1a, 3.1b, 3.3, 3.4 all complete.
+**Blocked until:** 3.1a, 3.1b, 3.3, 3.4, 3.12, 3.13, 3.14, 3.15 all complete.
 
 *Other Phase 3.5 entries can be added as presets are designed. For now, listing Popcorn is enough to establish the phase and document its dependencies.*
+
+---
+
+## Phase 3R — Rendering Fidelity Infrastructure
+
+**Goal:** Close the quality gap between Phosphene's current fragment-shader output and photorealistic visuals. Four infrastructure increments provide the building blocks that every high-fidelity preset needs: reusable shader functions, pre-computed noise textures, a deferred ray march pipeline, and extended scene uniforms. These are independent of geometry pipelines (mesh shaders, ray tracing acceleration structures) — they enhance the *fragment-shader-only* path that most presets use.
+
+**Why this phase exists:** The screenshots from Phase 3.5.1 Popcorn development attempts revealed that the rendering pipeline lacks fundamental infrastructure. Fragment shaders trying to fake 3D scenes without noise textures, lighting models, or SDF utilities produce flat, synthetic results. The Milkdrop preset analysis (see `MILKDROP_PRESET_ANALYSIS.md`) documents 15 creative techniques that all depend on infrastructure Phosphene doesn't have yet — noise samplers, polar/bipolar UV transforms, gradient advection, articulated kinematics, reaction-diffusion systems. This phase provides the foundation.
+
+**Dependency chain:**
+```
+3.12 (Shader Utility Library) ──┐
+                                 ├──→ 3.14 (Ray March Pipeline) ──→ Phase 3.5 presets
+3.13 (Noise Texture Manager) ───┘                                       ↑
+                                                                         │
+3.15 (Extended Shader Uniforms) ─────────────────────────────────────────┘
+```
+
+3.12 and 3.13 are independent of each other and can proceed in parallel. 3.14 depends on both (the ray march pipeline uses utility functions from the library and noise textures for materials). 3.15 is independent but should land before any ray march preset is written.
+
+### Increment 3.12: Shader Utility Library
+
+**Status:** Complete.
+
+**Goal:** Create `ShaderUtilities.metal` — a comprehensive MSL function library included in every preset via the `PresetLoader` preamble. Provides noise generation, SDF primitives, ray marching, PBR lighting, UV transforms, color palettes, and atmospheric effects as reusable, tested functions.
+
+**Why this is the highest-priority rendering increment:** Every preset currently hand-rolls its own noise, lighting, and color math — badly. A shared utility library immediately raises the quality floor for all presets. The Milkdrop preset analysis identifies noise sampling as the single biggest missing capability (used in Sparkle, Supernova, Reaction, and Drawing categories). PBR lighting is the second biggest gap (needed for Geometric and any photorealistic preset).
+
+**Files to create/edit:**
+- `Renderer/Shaders/ShaderUtilities.metal` (new, ~800–1000 lines) — all utility functions, organized by `// MARK: -` category. All functions `static inline`.
+- `Presets/PresetLoader+Preamble.swift` — insert `ShaderUtilities.metal` content into the preamble string, after FeatureVector struct and before preset shader code. The content is loaded from the bundle resource at init, not hardcoded as a string literal.
+- `Package.swift` — ensure `ShaderUtilities.metal` is included in the shader resources (`.copy("Shaders")` or `.process("Shaders")`).
+
+**Function inventory (53 functions across 6 domains):**
+
+| Domain | Functions | Count |
+|--------|-----------|-------|
+| **Noise** | `hash21`, `hash31`, `hash22`, `hash33`, `perlin2D`, `perlin3D`, `simplex2D`, `simplex3D`, `worley2D`, `worley3D`, `fbm2D`, `fbm3D`, `curl2D`, `curl3D` | 14 |
+| **SDF Primitives** | `sdSphere`, `sdBox`, `sdRoundBox`, `sdTorus`, `sdCylinder`, `sdCapsule`, `sdCone`, `sdPlane` | 8 |
+| **SDF Operations** | `opUnion`, `opSubtract`, `opIntersect`, `opSmoothUnion`, `opSmoothSubtract`, `opRepeat`, `opTwist`, `opBend`, `opRound` | 9 |
+| **Ray Marching** | `rayMarch`, `calcNormal`, `calcAO`, `softShadow` | 4 |
+| **PBR Lighting** | `fresnelSchlick`, `distributionGGX`, `geometrySmith`, `cookTorranceBRDF`, `evaluatePointLight`, `evaluateDirectionalLight` | 6 |
+| **UV Transforms** | `uvPolar`, `uvInvRadius`, `uvKaleidoscope`, `uvMoebius`, `uvBipolar`, `uvLogSpiral` | 6 |
+| **Color/Atmosphere** | `palette`, `toneMapACES`, `toneMapReinhard`, `linearToSRGB`, `sRGBToLinear`, `fog`, `atmosphericScatter`, `volumetricMarch` | 8 |
+
+**Reference implementations:** Each function should be validated against established sources:
+- Noise: Stefan Gustavson's simplex noise, Inigo Quilez's noise functions
+- SDF: Inigo Quilez's SDF library (iquilezles.org/articles/distfunctions/)
+- PBR: LearnOpenGL.com Cook-Torrance implementation, Epic Games' UE4 PBR notes
+- UV transforms: Flexi's "Box of Tricks" from Milkdrop (see `MILKDROP_PRESET_ANALYSIS.md` Hypnotic section)
+- Tone mapping: Academy Color Encoding System (ACES) fitted curve by Stephen Hill
+
+**Test requirements:**
+- `Tests/PhospheneEngineTests/Renderer/ShaderUtilityTests.swift` (new) — 10 tests:
+  - `test_preambleIncludesShaderUtilities()` — verify the compiled preamble string contains ShaderUtilities content
+  - `test_presetCompilation_withUtilityFunctions_succeeds()` — compile a test preset that calls at least one function from each domain
+  - `test_noiseOutput_deterministic_sameInputSameOutput()` — compile and run a compute kernel calling `perlin2D` with known inputs, verify output matches expected values
+  - `test_sdfSphere_knownDistance_matchesAnalytic()` — `sdSphere(float3(1,0,0), 0.5)` should return 0.5
+  - `test_rayMarch_sphereScene_hitsAtExpectedDistance()` — march toward a unit sphere at origin, verify hit distance ≈ expected
+  - `test_cookTorrance_energyConservation_outputLEInput()` — PBR output luminance ≤ input light energy
+  - `test_uvKaleidoscope_symmetry_nFinsProducesNFoldSymmetry()` — verify angular folding correctness
+  - `test_palette_sweepT_producesSmooth gradient()` — cosine palette with t from 0→1 produces no discontinuities
+  - `test_acesToneMap_hdrInput_outputInSDRRange()` — values > 1.0 map to (0, 1)
+  - `test_fog_zeroDistance_noEffect()` — fog at distance 0 returns original color
+- **Performance test:**
+  - `test_fullScreenNoise_1080p_under2ms()` — full-screen `fbm3D` at 1920×1080 completes in under 2ms
+
+**Verification:** All existing 268 tests pass. 11 new tests pass. A test preset calling noise + SDF + PBR compiles and renders without errors. Visual inspection: noise output looks organic (not banded), SDF sphere has smooth edges, PBR lighting shows specular highlight and Fresnel rim.
+
+**Depends on:** nothing.
+
+**Enables:** Increment 3.14 (ray march pipeline), all future presets needing noise/SDF/PBR, immediate quality improvement for existing presets that could be updated to use utility functions.
+
+### Increment 3.13: Noise Texture Manager
+
+**Status:** Not started.
+
+**Goal:** Create `TextureManager` — generates and binds 5 pre-computed noise textures at application init, providing Milkdrop-equivalent noise samplers to all preset shaders.
+
+**Why textures in addition to procedural noise (3.12):** Procedural noise computed per-pixel in a fragment shader has no mipmaps, no hardware filtering, and costs ALU every frame. Pre-computed noise textures are sampled via the texture unit with free bilinear/trilinear filtering and mipmaps, are much cheaper per pixel, and enable 3D volumetric noise (which is prohibitively expensive to compute per-pixel). The Milkdrop preset analysis shows that `sampler_noisevol_hq` (3D noise) is essential for clouds, gas, and nebula effects (Supernova/Burst, Supernova/Gas) — these are impossible without a 3D texture.
+
+**Files to create/edit:**
+- `Renderer/TextureManager.swift` (new) — owns 5 `MTLTexture` objects. Generates noise data on a background thread at init. Provides `bindTextures(encoder:)` method that binds all noise textures at their fixed indices.
+- `Renderer/RenderPipeline.swift` — call `textureManager.bindTextures(encoder:)` in every render pass (direct, feedback, mesh, ray march, post-process).
+- `Presets/PresetLoader+Preamble.swift` — add sampler declarations and texture parameter declarations to the preamble so preset shaders can write `noiseLQ.sample(linearSampler, uv)`.
+
+**Texture specifications:**
+
+| Name | Dimensions | Format | Type | Size | Generation |
+|------|-----------|--------|------|------|------------|
+| `noiseLQ` | 256×256 | `.r8Unorm` | `MTLTextureType2D` | 64 KB | Tileable Perlin, seed 42 |
+| `noiseHQ` | 1024×1024 | `.r8Unorm` | `MTLTextureType2D` | 1 MB | Tileable Perlin, seed 42 |
+| `noiseVolume` | 64×64×64 | `.r8Unorm` | `MTLTextureType3D` | 256 KB | Tileable 3D Perlin, seed 42 |
+| `noiseFBM` | 1024×1024 | `.rgba8Unorm` | `MTLTextureType2D` | 4 MB | R=Perlin, G=Simplex, B=Worley, A=curl |
+| `blueNoise` | 256×256 | `.r8Unorm` | `MTLTextureType2D` | 64 KB | Void-and-cluster algorithm |
+
+All textures: `.storageModeShared` (UMA), deterministic seed (same noise every launch for reproducibility). Total GPU memory: ~5.4 MB. Mipmaps generated for 2D textures via `MTLBlitCommandEncoder.generateMipmaps(for:)`.
+
+**Preamble additions:**
+```metal
+// Noise texture samplers (bound by TextureManager at texture(4)–texture(8))
+texture2d<float> noiseLQ   [[texture(4)]];
+texture2d<float> noiseHQ   [[texture(5)]];
+texture3d<float> noiseVolume [[texture(6)]];
+texture2d<float> noiseFBM  [[texture(7)]];
+texture2d<float> blueNoise [[texture(8)]];
+constexpr sampler linearSampler(filter::linear, address::repeat);
+constexpr sampler nearestSampler(filter::nearest, address::repeat);
+```
+
+**Test requirements:**
+- `Tests/PhospheneEngineTests/Renderer/TextureManagerTests.swift` (new) — 8 tests:
+  - `test_init_createsAllFiveTextures()` — all 5 textures are non-nil after init
+  - `test_noiseLQ_dimensions_256x256()` — verify width, height, pixel format
+  - `test_noiseHQ_dimensions_1024x1024()`
+  - `test_noiseVolume_dimensions_64x64x64_type3D()` — verify texture type is `.type3D`
+  - `test_noiseFBM_pixelFormat_rgba8Unorm()`
+  - `test_allTextures_storageModeShared()` — UMA compliance
+  - `test_noiseGeneration_deterministic_sameOutputEachInit()` — create two `TextureManager` instances, read back pixel data, verify identical
+  - `test_bindTextures_setsCorrectIndices()` — mock encoder, verify textures bound at indices 4–8
+- **Performance test:**
+  - `test_init_textureGeneration_under500ms()` — total generation time for all 5 textures under 500ms
+
+**Verification:** All existing 268 tests pass. 9 new tests pass. A test preset sampling `noiseLQ` and `noiseVolume` compiles and renders clouds/organic textures. Visual inspection: no banding, smooth gradients, 3D noise produces volumetric appearance.
+
+**Depends on:** nothing (but benefits greatly from 3.12 — preset shaders can combine procedural utility functions with texture sampling).
+
+**Enables:** Increment 3.14 (ray march pipeline uses noise textures for materials), all presets needing organic textures (Reaction, Supernova, Drawing categories from Milkdrop analysis).
+
+### Increment 3.14: Multi-Pass Ray March Pipeline
+
+**Status:** Not started.
+
+**Goal:** Deferred rendering pipeline for SDF ray-marched scenes — a G-buffer pass, a PBR lighting pass, and integration with the existing post-process chain. Enables photorealistic 3D presets rendered entirely in fragment shaders.
+
+**Why deferred:** A single fragment pass that ray marches AND evaluates PBR lighting AND computes shadows is prohibitively expensive at 60fps. Deferred rendering separates geometry evaluation (one SDF march per pixel) from lighting (evaluated only on visible surfaces), and allows multi-light scenes without re-marching.
+
+**Files to create/edit:**
+- `Renderer/Shaders/RayMarch.metal` (new) — 3 shader functions:
+  - `raymarch_gbuffer_fragment` — ray marches the SDF scene (scene function provided per-preset), writes to 3 G-buffer targets (depth+material, normals, albedo+material). Uses `calcNormal()` and material lookup from ShaderUtilities.
+  - `raymarch_lighting_fragment` — reads G-buffer, evaluates Cook-Torrance PBR with up to 4 lights from `SceneUniforms`. Computes soft shadows by re-marching from surface to each light. Screen-space AO from depth buffer. Procedural sky environment for reflections. Outputs to HDR scene texture (`.rgba16Float`).
+  - `raymarch_composite_fragment` — combines lit scene with any overlay elements (waveform, particles). Passes through to post-process chain.
+- `Renderer/RenderPipeline+RayMarch.swift` (new) — `drawWithRayMarch` method: manages G-buffer textures (lazy allocation, resize), encodes 3 passes per frame, feeds result to `PostProcessChain` when `usePostProcess` is also true.
+- `Renderer/RenderPipeline+Draw.swift` — add `rayMarch` branch to `renderFrame`: mesh → postProcess → ICB → **rayMarch** → feedback → direct.
+- `Presets/PresetDescriptor.swift` — `useRayMarch: Bool` field, default `false`. Matching `"use_ray_march"` CodingKey.
+- `Presets/PresetLoader+Preamble.swift` — add `SceneUniforms` struct definition and G-buffer output struct to preamble.
+
+**G-buffer texture layout:**
+
+| Target | Format | Contents |
+|--------|--------|----------|
+| G-buffer 0 | `.rg16Float` | R = depth (0 = camera, 1 = max distance), G = material ID (0–15 as float) |
+| G-buffer 1 | `.rgba8Snorm` | RGB = world-space normal (signed normalized), A = unused |
+| G-buffer 2 | `.rgba8Unorm` | RGB = albedo, A = packed roughness (upper 4 bits) + metallic (lower 4 bits) |
+
+**Per-preset scene function:** Each ray march preset provides a function `float sceneSDF(float3 p, constant FeatureVector& f, constant SceneUniforms& s)` and a material function `void sceneMaterial(float3 p, int matID, thread float3& albedo, thread float& roughness, thread float& metallic)`. The infrastructure calls these — the preset author focuses on scene composition and materials without writing marching loops, normal estimation, or lighting code.
+
+**Test requirements:**
+- `Tests/PhospheneEngineTests/Renderer/RayMarchPipelineTests.swift` (new) — 8 tests:
+  - `test_gbuffer_allocation_matchesDrawableSize()` — G-buffer textures resize with drawable
+  - `test_gbuffer_formats_correct()` — verify pixel formats for all 3 targets
+  - `test_gbuffer_storageModeShared()` — UMA compliance
+  - `test_rayMarch_sphereScene_depthBufferNonZero()` — simple sphere SDF produces valid depth
+  - `test_rayMarch_sphereScene_normalsPointOutward()` — read back normals, verify they face camera
+  - `test_lighting_singleLight_specularHighlightPresent()` — lit sphere has luminance > ambient in highlight region
+  - `test_lighting_shadow_occludedRegionDarker()` — floor plane behind sphere has lower luminance
+  - `test_pipeline_withPostProcess_producesValidOutput()` — ray march + post-process chain produces non-zero drawable
+- **Performance test:**
+  - `test_fullPipeline_sphereOnPlane_1080p_under8ms()` — complete G-buffer + lighting + composite at 1920×1080 in under 8ms (leaves headroom for post-process + present)
+
+**Verification:** All existing tests pass. 9 new tests pass. A test preset (sphere on infinite plane with one light) renders photorealistic results: smooth surface, specular highlight, soft shadow, ambient occlusion at sphere/floor junction. Frame rate holds 60fps at 1080p.
+
+**Depends on:** Increment 3.12 (shader utility library — uses SDF, ray march, PBR, and normal estimation functions), Increment 3.13 (noise textures — materials sample noise for surface detail).
+
+**Enables:** Increment 3.5.1 Popcorn and all future photorealistic presets, Milkdrop Reaction-category equivalents (reaction-diffusion in 3D).
+
+### Increment 3.15: Extended Shader Uniforms (SceneUniforms + Accumulated Audio Time)
+
+**Status:** Not started.
+
+**Goal:** Add `SceneUniforms` struct at `buffer(4)` for ray march presets, and add `accumulatedAudioTime` to `FeatureVector` for all presets. These two changes provide the scene-level and time-level data that photorealistic and Milkdrop-style presets need.
+
+**`SceneUniforms` struct (256 bytes):**
+```swift
+@frozen public struct SceneUniforms: Sendable {
+    public var cameraPosition: SIMD3<Float>     // 12 bytes
+    public var cameraFOV: Float                  // 4 bytes  (16 cumulative)
+    public var cameraTarget: SIMD3<Float>        // 12 bytes
+    public var fogDensity: Float                 // 4 bytes  (32 cumulative)
+    public var lightPositions: (SIMD4<Float>, SIMD4<Float>, SIMD4<Float>, SIMD4<Float>)  // 64 bytes (96 cumulative)
+    public var lightColors: (SIMD4<Float>, SIMD4<Float>, SIMD4<Float>, SIMD4<Float>)     // 64 bytes (160 cumulative)
+    public var accumulatedAudioTime: Float       // 4 bytes
+    public var ambientIntensity: Float           // 4 bytes
+    public var pad: (Float, Float, Float, Float, Float, Float,
+                     Float, Float, Float, Float, Float, Float,
+                     Float, Float, Float, Float, Float, Float,
+                     Float, Float, Float, Float)  // 88 bytes (256 cumulative)
+}
+```
+
+**FeatureVector extension:** Add `accumulatedAudioTime` as the 25th float. Struct grows from 96 bytes (24 floats) to 128 bytes (25 floats + 7 padding), maintaining 16-byte SIMD alignment. The MSL `FeatureVector` in the preamble is updated to match.
+
+**Accumulated audio time logic:** `VisualizerEngine` maintains a `private var accumulatedAudioTime: Float = 0`. Each frame: `accumulatedAudioTime += max(0, (features.bass + features.mid + features.treble) / 3.0) * deltaTime`. Reset to 0 on track change. Clamped to prevent overflow (wrap at Float.greatestFiniteMagnitude is unnecessary — at ~0.5 accumulation rate and 60fps, it would take years to overflow Float32).
+
+**Per-preset scene configuration (JSON sidecar):** Ray march presets declare scene setup in their JSON:
+```json
+{
+  "use_ray_march": true,
+  "use_post_process": true,
+  "scene_camera": { "position": [0, 2, -5], "target": [0, 0, 0], "fov": 1.2 },
+  "scene_lights": [
+    { "position": [3, 5, -2], "color": [1, 0.9, 0.8], "intensity": 2.0 },
+    { "position": [-2, 3, 1], "color": [0.4, 0.5, 0.8], "intensity": 1.0 }
+  ],
+  "scene_fog": 0.02,
+  "scene_ambient": 0.1
+}
+```
+
+**Files to create/edit:**
+- `Shared/AudioFeatures+Analyzed.swift` — add `SceneUniforms` struct definition
+- `Shared/AudioFeatures+Analyzed.swift` — add `accumulatedAudioTime` to `FeatureVector`, update MSL mirror
+- `Presets/PresetDescriptor.swift` — add `sceneCamera`, `sceneLights`, `sceneFog`, `sceneAmbient` fields with defaults
+- `Presets/PresetLoader+Preamble.swift` — add `SceneUniforms` MSL struct, update `FeatureVector` MSL struct
+- `PhospheneApp/VisualizerEngine.swift` — maintain `accumulatedAudioTime`, populate `SceneUniforms` from `PresetDescriptor`, bind at `buffer(4)` for ray march presets
+- `Renderer/RenderPipeline.swift` — accept and pass through `SceneUniforms` buffer in ray march render path
+
+**Test requirements:**
+- `Tests/PhospheneEngineTests/Shared/SceneUniformsTests.swift` (new) — 5 tests:
+  - `test_sceneUniforms_size_is256Bytes()` — `MemoryLayout<SceneUniforms>.size == 256`
+  - `test_sceneUniforms_stride_is256Bytes()` — `MemoryLayout<SceneUniforms>.stride == 256`
+  - `test_sceneUniforms_defaultValues_reasonable()` — camera at (0,2,-5), one white light
+  - `test_sceneUniforms_mslLayoutMatches_swiftLayout()` — compile test shader accessing all fields
+  - `test_sceneUniforms_fromPresetDescriptor_parsesJSON()`
+- `Tests/PhospheneEngineTests/Shared/FeatureVectorExtendedTests.swift` (new) — 4 tests:
+  - `test_featureVector_size_is128Bytes()` — updated size after adding accumulatedAudioTime + padding
+  - `test_accumulatedAudioTime_zeroAtStart()`
+  - `test_accumulatedAudioTime_accumulatesWithVolume()` — feed 60 frames of known energy, verify accumulated value
+  - `test_accumulatedAudioTime_resetsOnTrackChange()`
+- **Integration test:**
+  - `test_sceneUniforms_boundAtBuffer4_accessibleInShader()` — compile and run a test shader that reads `SceneUniforms` from buffer(4)
+
+**Verification:** All existing tests pass. 10 new tests pass. `FeatureVector` size is 128 bytes. `SceneUniforms` size is 256 bytes. A test preset reading `features.accumulatedAudioTime` compiles and animates with volume-dependent speed. Ray march test preset receives valid camera and light data.
+
+**Depends on:** nothing (but should land before any ray march preset is written).
+
+**Enables:** Increment 3.14 (ray march pipeline reads SceneUniforms), all presets using accumulated audio time (nearly universal — see Milkdrop analysis), Phase 3.5 Popcorn.
 
 ---
 
