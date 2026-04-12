@@ -40,6 +40,10 @@ public final class PresetLoader: @unchecked Sendable {
     private var watchSource: DispatchSourceFileSystemObject?
     private var watchedDirectoryFD: Int32 = -1
 
+    /// File names in the Shaders/ directory that are utility libraries, not presets.
+    /// These are included in the preamble and skipped during preset discovery.
+    private static let utilityFileNames: Set<String> = ["ShaderUtilities.metal"]
+
     // MARK: - Init
 
     /// Create a preset loader that discovers shaders from bundle resources
@@ -147,6 +151,7 @@ public final class PresetLoader: @unchecked Sendable {
 
         let metalFiles = contents
             .filter { $0.pathExtension == "metal" }
+            .filter { !Self.utilityFileNames.contains($0.lastPathComponent) }
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
 
         for metalFile in metalFiles {
@@ -251,10 +256,14 @@ public final class PresetLoader: @unchecked Sendable {
         }
 
         // Standard pipeline (no blending — used for non-feedback presets and tests).
+        // Post-process presets render into an HDR scene texture (.rgba16Float) before
+        // the bloom/ACES chain, so their pipeline must match that format — not the
+        // drawable's .bgra8Unorm_srgb.
         let pipelineDescriptor = MTLRenderPipelineDescriptor()
         pipelineDescriptor.vertexFunction = vertexFn
         pipelineDescriptor.fragmentFunction = fragmentFn
-        pipelineDescriptor.colorAttachments[0].pixelFormat = pixelFormat
+        pipelineDescriptor.colorAttachments[0].pixelFormat = descriptor.usePostProcess
+            ? .rgba16Float : pixelFormat
 
         let standardState: MTLRenderPipelineState
         do {

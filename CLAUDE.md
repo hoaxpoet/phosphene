@@ -34,7 +34,7 @@ line, as it would propagate to SPM dependencies that compile with
 
 Deployment target: macOS 14.0+ (Sonoma). Swift 6.0. Metal 3.1+.
 
-**Current test count: 268 tests** (221 swift-testing + 47 XCTest, across unit, integration, regression, performance). All must pass before any new code is merged.
+**Current test count: 279 tests** (232 swift-testing + 47 XCTest, across unit, integration, regression, performance). All must pass before any new code is merged.
 
 ## Module Map
 
@@ -100,10 +100,14 @@ PhospheneEngine/
     Shaders/Particles.metal → Murmuration compute kernel + bird silhouette vertex/fragment shaders (✓ implemented)
     Shaders/PostProcess.metal → pp_bright_pass_fragment, pp_blur_h/v_fragment (9-tap Gaussian), pp_composite_fragment (ACES tonemapping) (✓ implemented)
     Shaders/RayTracing.metal → RTRay/RTNearestHit structs, rt_nearest_hit_kernel, rt_shadow_kernel, rt_camera_ray, rt_reflect, rt_offset_point (✓ implemented)
+    Shaders/ShaderLib.metal  → SDF primitives, ray marching, PBR lighting, procedural noise, color utilities, camera, domain transforms (planned — Increment 3.14)
+    Shaders/NoiseGen.metal   → Compute kernels for generating noise textures at startup: gen_perlin_2d, gen_perlin_3d, gen_worley_2d, gen_blue_noise (planned — Increment 3.12)
     Shaders/Waveform.metal  → 64-bar FFT spectrum + oscilloscope waveform (✓ implemented)
+    TextureManager           → Procedural noise textures + environment map: noise_lq, noise_hq, noise_vol, noise_blue, environmentMap. Generated via compute at init. TextureProviding protocol. (planned — Increment 3.12)
   Presets/                  → Preset loading, categorization, hot-reload, feedback + mesh support
-    PresetLoader            → Auto-discover .metal presets, compile standard + additive-blend + mesh pipeline states (✓ implemented)
-    PresetLoader+Preamble   → Common Metal shader preamble string (FeatureVector struct, meshlet structs, utilities) (✓ implemented)
+    PresetLoader            → Auto-discover .metal presets, compile standard + additive-blend + mesh pipeline states; skips utility files (✓ implemented)
+    PresetLoader+Preamble   → Common Metal shader preamble: FeatureVector struct, meshlet structs, hsv2rgb, ShaderUtilities library loaded from bundle (✓ implemented)
+    Shaders/ShaderUtilities.metal → 55 reusable functions: hash, noise (Perlin/simplex/Worley/FBM/curl), SDF primitives+ops, ray marching, PBR (Cook-Torrance), UV transforms, color/atmosphere (✓ implemented)
     PresetDescriptor        → JSON sidecar metadata with useFeedback, useMeshShader, usePostProcess flags (✓ implemented)
     PresetCategory          → Visual aesthetic families (11 categories including abstract) (✓ implemented)
     Shaders/Starburst.metal → "Murmuration" preset — dusk sky gradient backdrop (✓ implemented)
@@ -121,11 +125,11 @@ PhospheneEngine/
     StemSampleBuffer        → Interleaved stereo PCM ring buffer for stem separation input (✓ implemented)
     Logging                 → Per-module os.Logger instances (✓ implemented)
 
-Tests/ (262 tests: 221 swift-testing + 41 XCTest)
+Tests/ (279 tests: 232 swift-testing + 47 XCTest)
   Audio/                    → AudioBufferTests, FFTProcessorTests, StreamingMetadataTests, MetadataPreFetcherTests, LookaheadBufferTests (10)
   DSP/                      → SpectralAnalyzerTests (8), BandEnergyProcessorTests (5), ChromaExtractorTests (6), BeatDetectorTests (7), MIRPipelineUnitTests (4), SelfSimilarityMatrixTests (5), NoveltyDetectorTests (5), StructuralAnalyzerTests (8)
   ML/                       → StemSeparatorTests (7), StemFFTTests (6: vDSP cross-validate, round-trip, fwd perf, inv perf, UMA storage, thread safety), StemModelTests (6: init, silence, cross-validate, perf gate <400ms, UMA storage, thread safety), MoodClassifierTests (7: init, classification, range, quadrants, protocol)
-  Renderer/                 → MetalContextTests, ShaderLibraryTests, RenderPipelineTests, ProceduralGeometryTests (7: init, storage mode, dispatch, count, zero-audio, impulse, 1M perf), MeshGeneratorTests (6: descriptor, pipeline state, dispatch, maxVerts=256, maxPrims=512, <16ms perf), BVHBuilderTests (4: build, empty, rebuild, triangleCount), RayIntersectorTests (5: hit, miss, shadow, reflection, 1000-ray <2ms perf), PostProcessChainTests (6: HDR texture alloc, rgba16Float format, bloom threshold, Gaussian luminance preservation, ACES SDR mapping, <2ms perf at 1080p)
+  Renderer/                 → MetalContextTests, ShaderLibraryTests, RenderPipelineTests, ProceduralGeometryTests (7: init, storage mode, dispatch, count, zero-audio, impulse, 1M perf), MeshGeneratorTests (6: descriptor, pipeline state, dispatch, maxVerts=256, maxPrims=512, <16ms perf), BVHBuilderTests (4: build, empty, rebuild, triangleCount), RayIntersectorTests (5: hit, miss, shadow, reflection, 1000-ray <2ms perf), PostProcessChainTests (6: HDR texture alloc, rgba16Float format, bloom threshold, Gaussian luminance preservation, ACES SDR mapping, <2ms perf at 1080p), ShaderUtilityTests (11: preamble inclusion, multi-domain compilation, noise determinism, SDF analytic, ray march hit/miss, PBR energy conservation, kaleidoscope symmetry, palette smoothness, ACES SDR range, fog identity, 1080p noise perf)
   Shared/                   → AudioFeaturesTests (2: StemFeatures layout + SIMD alignment), UMABufferExtendedTests, EmotionalStateTests (4: quadrant classification), AnalyzedFrameTests (3)
   Integration/              → AudioToFFTPipelineTests, AudioToRenderPipelineTests, MetadataToOrchestratorTests, AudioToStemPipelineTests, MIRPipelineIntegrationTests (3), LookaheadIntegrationTests (1), StemsToRenderPipelineTests (4: warmup default, separation→analysis, track reset, Swift/MSL size)
   Regression/               → FFTRegressionTests, MetadataParsingRegressionTests, ChromaRegressionTests (2), BeatDetectorRegressionTests (2), StructuralAnalysisRegressionTests (1) + golden fixtures
@@ -257,6 +261,40 @@ Feedback is implemented as a double-buffered render-to-texture ping-pong pattern
 - Spectral centroid modulates palette warmth (low = cool blues/purples, high = warm oranges/pinks)
 - Always clamp output with `min(color, 1.0)` to prevent white clipping from feedback accumulation
 
+### Photorealistic Fragment Shader Rendering
+
+Presets targeting photorealistic visuals (3D scenes with realistic lighting, materials, textures) use a different architectural pattern from the Milkdrop-style feedback loop. Both coexist in the engine; the shader's JSON sidecar declares which pattern it uses.
+
+**Ray marching architecture (per-fragment):**
+1. Construct a perspective ray from UV coordinates + camera uniforms (`FeatureVector.cameraFov`, `cameraPhi`, `cameraTheta`, `cameraDistance`)
+2. Sphere-trace against the preset's SDF scene geometry (each preset defines its own `map(float3 p) → float`)
+3. On hit: compute surface normal (central differences), determine material ID and UV
+4. Evaluate PBR lighting: Cook-Torrance BRDF with metallic/roughness, GGX distribution, Schlick Fresnel, ambient occlusion
+5. Cast shadow rays (soft shadows via penumbra estimation), multi-sample AO
+6. Sample noise textures (bound at indices 4–7) for surface detail: metal grain, organic variation, weathering
+7. Sample environment map (index 8) for reflections and image-based ambient lighting
+8. Pass through HDR post-process chain: bloom, ACES tone mapping, color grading
+
+**Why photorealistic presets failed before these additions:** Phosphene's original renderer bound exactly two data sources to fragment shaders: the feedback texture and the audio buffer. Without noise textures, every surface was mathematically smooth — no grain, no imperfection, no organic variation. Without a shared SDF/PBR library, each preset reimplemented ray marching and lighting from scratch (incorrectly). Without camera uniforms, 3D scenes hardcoded arbitrary camera parameters. Without `audioTime`, animation was driven by wall-clock time rather than music-weighted time, making movement feel disconnected from audio energy.
+
+**Noise textures (bound at fixed sampler slots for all shaders):**
+- `noise_lq` (texture 4): 256×256 `.r8Unorm` tileable Perlin — cheap lookup for subtle variation
+- `noise_hq` (texture 5): 1024×1024 `.r16Float` Perlin — high detail for terrain, clouds, surfaces
+- `noise_vol` (texture 6): 64×64×64 3D `.r8Unorm` — volumetric clouds, fog, smoke
+- `noise_blue` (texture 7): 256×256 `.r8Unorm` blue noise — dithering, eliminating banding
+These correspond to Milkdrop's `sampler_noise_lq`, `sampler_noise_hq`, `sampler_noisevol_hq`. Their absence was the single largest contributor to flat, synthetic-looking procedural textures.
+
+**Shader utility library (`ShaderLib.metal`, compiled into preamble):**
+All photorealistic presets share reusable functions: SDF primitives + combinators, ray marching loop, PBR lighting (Cook-Torrance), soft shadows, AO, procedural noise evaluation, cosine palettes, camera ray construction, domain transforms. This eliminates the pattern of each shader poorly reimplementing ray marching fundamentals.
+
+**Audio routing for photorealistic scenes:**
+Photorealistic presets map audio to scene *properties*, not feedback transforms:
+- Continuous energy → material properties (emissive intensity, roughness), camera orbit speed, light intensity
+- Spectral centroid → color temperature of lighting (cool blues ↔ warm oranges)
+- Beat pulses → transient events (particle emission, material flash, camera shake)
+- Stems → targeted effects (drum → physical impacts, bass → low-frequency deformation, vocal → ambient color saturation)
+- `audioTime` → animation phase for organic motion that speeds up during loud passages and slows during quiet ones
+
 ### Scene Metadata Format
 
 Each shader has a JSON sidecar defining its behavior. This format carries forward from the prototype:
@@ -334,6 +372,15 @@ Because streaming audio arrives without a pre-scannable file, Phosphene employs 
 - Framebuffer feedback: double-buffered render-to-texture ping-pong.
 - Post-processing: bloom → radial blur → chromatic aberration → tone mapping → color grading.
 - Support EDR output via `CAMetalLayer` on HDR displays. SDR tone mapping fallback.
+- Noise textures are generated once at startup via Metal compute shaders. Bound at texture indices 4–7, available to every preset shader. Never generate noise textures on CPU — compute shader path is 10–50× faster and textures live in `.storageModeShared` memory with no copy.
+- `ShaderLib.metal` functions are compiled into the preamble (same mechanism as `Common.metal`). Preset shaders call any `sdf_*`, `rm_*`, `pbr_*`, `noise_*`, `color_*`, `transform_*`, `camera_*` function without redeclaring.
+- Camera uniforms in `FeatureVector` (`audioTime`, `cameraFov`, `cameraDistance`, `cameraPhi`, `cameraTheta`) are populated by the render loop every frame. Default values produce a reasonable orbit camera for 3D SDF scenes. The Orchestrator can override via `PresetDescriptor`.
+- Environment map uses `.rgba16Float` equirectangular format, `.storageModeShared`, bound at texture index 8. A default procedural environment (gradient sky + ground plane) is generated at startup.
+- Texture binding layout: 0 = audio FFT, 1 = audio waveform, 2 = feedback read, 3 = feedback write, 4 = noise_lq, 5 = noise_hq, 6 = noise_vol, 7 = noise_blue, 8 = environment map. Do not reassign these indices.
+- **Texture binding indices are reserved:** buffer(0) = FFT, buffer(1) = waveform, buffer(2) = FeatureVector, buffer(3) = StemFeatures, buffer(4-7) = future use. Texture indices: texture(0) = feedback read, texture(1) = feedback write, texture(2-3) = reserved, texture(4) = Perlin 2D noise, texture(5) = Worley 2D noise, texture(6) = 3D volume noise, texture(7) = blue noise dither.
+- **Shader utility library is always available.** Every preset inherits Noise, SDF, PBR, Environment, and Volumetric utility functions via the preamble. Preset shaders call these functions directly — never reimplement noise, SDF primitives, or BRDF math inline.
+- **Material struct is standardized.** All photorealistic presets use the MSL `Material` struct for surface properties. This ensures consistent PBR evaluation across presets.
+- **Noise textures are always bound.** `TextureManager` textures are bound at fixed indices in every draw path. Presets that don't sample them pay no cost (unused texture bindings are free).
 
 ### ML Inference (No CoreML — fully migrated as of Phase 3.7)
 - **No CoreML dependency.** All ML inference uses MPSGraph (GPU) or Accelerate (CPU). CoreML framework was removed in Increment 3.11.
@@ -376,7 +423,7 @@ Phosphene works at every tier — never show errors or degraded UI when metadata
 - Protocol-first design for testability. Every injectable dependency has a protocol (`AudioCapturing`, `AudioBuffering`, `FFTProcessing`, `Rendering`, `MetadataProviding`, `MetadataFetching`). Tests use doubles from `TestDoubles/`.
 
 ### Testing
-- **241 tests** (221 swift-testing + 20 XCTest) across unit, integration, regression, and performance categories.
+- **279 tests** (232 swift-testing + 47 XCTest) across unit, integration, regression, and performance categories.
 - All tests must pass before starting new work (`swift test --package-path PhospheneEngine` or `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' test`).
 - Test doubles in `Tests/TestDoubles/`: `MockAudioCapture`, `StubFFTProcessor`, `FakeStemSeparator`, `StubMoodClassifier`, `AudioFixtures`, `MockMetadataProvider`, `MockMetadataFetcher`.
 - Regression tests use golden fixtures in `Tests/Regression/Fixtures/`.
@@ -510,6 +557,14 @@ Metal, MetalKit, MetalPerformanceShadersGraph, AVFoundation, Accelerate, ScreenC
 
 38. **Mesh shader pipeline architecture (Increment 3.2)**: Hardware capability gated at `device.supportsFamily(.apple8)` (M3+). On M3+: `MTLMeshRenderPipelineDescriptor` with `objectFunction` (optional) + `meshFunction` + `fragmentFunction`; draw via `drawMeshThreadgroups(_, threadsPerObjectThreadgroup:, threadsPerMeshThreadgroup:)`. On M1/M2: standard `MTLRenderPipelineDescriptor` with `mesh_fallback_vertex` + same fragment function; draw via `drawPrimitives`. `MeshGenerator` owns both pipeline states and abstracts the dispatch — callers never branch on hardware tier. `renderFrame` priority: mesh → feedback → direct. MSL note: mesh function parameters use `[[thread_index_in_threadgroup]]`, NOT `[[thread_index_in_mesh]]` (that attribute does not exist). `ObjectPayload` uses `object_data` address space qualifier for the payload pointer in the object shader and reference in the mesh shader. Preamble provides `ObjectPayload`, `MeshVertex`, `MeshPrimitive` to preset shaders that declare `use_mesh_shader: true`. Function naming convention for preset mesh shaders: `<name>_mesh_shader`, `<name>_object_shader` (optional), `<name>_fragment`.
 
+39. **Shader utility library architecture (Phase 3R)**: `ShaderUtilities.metal` is a single MSL file containing all reusable shader functions (noise, SDF, ray marching, PBR lighting, UV transforms, color palettes, atmosphere). Included in the `PresetLoader` preamble string so every runtime-compiled preset shader has access without explicit imports. Functions organized by `// MARK: -` categories. All `static inline` to avoid symbol collision. Covers 6 domains: noise (12 functions), SDF (17 functions), ray marching (4 functions), PBR (6 functions), UV transforms (6 functions), color/atmosphere (8 functions). Each function validated against Shadertoy or Inigo Quilez reference implementations. Preamble order: FeatureVector struct → ShaderUtilities functions → preset shader code.
+
+40. **Noise texture specifications (Phase 3R)**: `TextureManager` generates 5 pre-computed noise textures at init: `noiseLQ` (256² `.r8Unorm` tileable Perlin), `noiseHQ` (1024² `.r8Unorm` tileable Perlin), `noiseVolume` (64³ `.r8Unorm` tileable 3D Perlin), `noiseFBM` (1024² `.rgba8Unorm` with Perlin/Simplex/Worley/curl in RGBA), `blueNoise` (256² `.r8Unorm` void-and-cluster). Deterministic seeded generation, `.storageModeShared`, bound at `texture(4)`–`texture(8)`. Total GPU memory: ~6 MB. Background generation at init.
+
+41. **Multi-pass ray march pipeline (Phase 3R)**: `useRayMarch: true` presets render via 3-pass deferred: (1) ray march writes G-buffer (depth+materialID `.rg16Float`, normals `.rgba8Snorm`, albedo+material `.rgba8Unorm`); (2) lighting evaluates PBR with up to 4 audio-driven lights, soft SDF shadows, screen-space AO, procedural sky; (3) existing post-process chain. G-buffer textures lazy-allocated at drawable size. Scene function defined per-preset; infrastructure provides marching loop, normals, and lighting.
+
+42. **Accumulated audio time (Phase 3R)**: Running sum of `totalEnergy * deltaTime` in `VisualizerEngine`, reset on track change. Nearly universal in Milkdrop presets — animation that breathes with the music. Delta: `(bass + mid + treble) / 3.0 * (1.0 / fps)`, clamped. Exposed via `FeatureVector.accumulatedAudioTime` (struct grows from 24 to 25 floats, 100 bytes, padded to 128 for SIMD alignment) and in `SceneUniforms` for ray march presets.
+
 ## Reference Documents
 
 The full development plan with phased increments is in `docs/DEVELOPMENT_PLAN.md`. Consult the relevant increment when starting a task — do not load the entire plan into context.
@@ -551,9 +606,16 @@ The architectural blueprint is in `docs/ARCHITECTURAL_BLUEPRINT.md`.
 **Completed increments (Phase 3.5):**
 - **Increment 3.5 — Indirect Command Buffers** ✅ — GPU-driven ICB render path. `ICB.metal`: `icb_populate_kernel` compute shader reads `FeatureVector` (bass+mid+treble cumulative energy) and populates up to `maxCommandCount` (default 16) ICB slots; slot 0 unconditionally active (base layer), subsequent slots activate as energy rises above linearly spaced thresholds. `RenderPipeline+ICB.swift`: `ICBConfiguration` struct, `IndirectCommandBufferState` (ICB + compute pipeline + argument buffer for `command_buffer` MSL type + `commandCountBuffer` + UMA `featureVectorBuffer`/`stemFeaturesBuffer` — needed because `setFragmentBytes` is NOT inherited by ICB commands, only `setFragmentBuffer` bindings are). `drawWithICB`: three-phase loop: (1) blit reset, (2) compute populate, (3) render + `executeCommandsInBuffer`. Pipeline priority: mesh → postProcess → ICB → feedback → direct. `ShaderLibrary.renderPipelineState` gains `supportICB: Bool = false` parameter — pipelines used with ICBs must set `supportIndirectCommandBuffers = true`. Key lessons: `MTLIndirectCommandType.draw` (not `.drawPrimitives`), `useResource(_:usage:stages:)` for the stages-aware API (macOS 13+), and the argument buffer pattern for passing `command_buffer` to compute kernels via `makeArgumentEncoder(bufferIndex:)` + `setIndirectCommandBuffer(_:index:)`. 6 RenderPipelineICBTests (ICB creation, compute populate, execute, reset-between-frames, zero-audio minimum, <2ms perf). 268 tests total, SwiftLint clean.
 
+**Completed increments (Phase 3R):**
+- **Increment 3.12 — Shader Utility Library** ✅ — `ShaderUtilities.metal` (663 lines, 55 functions across 7 domains): hash (4), noise (10: Perlin/simplex/Worley/FBM/curl in 2D+3D), SDF primitives (8) + operations (9), ray marching (4: march/normal/AO/shadow via forward-declared `map()`), PBR lighting (6: Fresnel-Schlick, GGX, Smith, Cook-Torrance BRDF, point/directional light), UV transforms (6: polar/invRadius/kaleidoscope/Möbius/bipolar/logSpiral), color/atmosphere (8: cosine palette, ACES/Reinhard tone mapping, sRGB conversions, fog, atmospheric scatter, volumetric march). Loaded from Presets bundle at init, appended to preamble after struct definitions. `PresetLoader` skips utility files during preset discovery via `utilityFileNames` filter. All functions `static inline`; ray march functions use forward-declared `float map(float3 p)` — presets define `map()` to use them, non-ray-march presets are unaffected (dead code elimination). 11 ShaderUtilityTests (preamble inclusion, multi-domain compilation, noise determinism, SDF analytic correctness, ray march sphere hit/miss, PBR energy conservation, kaleidoscope symmetry, palette smoothness, ACES SDR range, fog identity, 1080p noise <2ms). 279 tests total (232 swift-testing + 47 XCTest), SwiftLint clean.
+
 **Ordered next increments** (per the revised plan):
-1. **Increment 3.6 (deferred) — Render Graph Refactor.** Fires when capability flag count exceeds 4 (now at 5: mesh, postProcess, ICB, feedback, direct).
-2. **Phase 3.5 — Native Preset Library Expansion.** Dedicated home for native presets that depend on Phase 3 infrastructure. First entry: **3.5.1 Photorealistic Popcorn**, depends on 3.1b + 3.3 + 3.4.
+1. **Phase 3R — Rendering Fidelity Infrastructure (continued).** Three increments remaining:
+   - **3.13 — Noise Texture Manager** (`TextureManager`): pre-generated noise textures (5 textures, ~6 MB) bound at `texture(4)–texture(8)`.
+   - **3.14 — Multi-Pass Ray March Pipeline**: G-buffer + deferred lighting for SDF scenes. `useRayMarch` flag on `PresetDescriptor`.
+   - **3.15 — Extended Shader Uniforms** (`SceneUniforms`): camera, lights, accumulated audio time, fog at `buffer(4)`. `accumulatedAudioTime` also added to `FeatureVector`.
+2. **Increment 3.6 (deferred) — Render Graph Refactor.** Fires when capability flag count exceeds 4 (now at 5: mesh, postProcess, ICB, feedback, direct). Adding `useRayMarch` (Phase 3R) raises this to 6 — the refactor becomes increasingly urgent.
+3. **Phase 3.5 — Native Preset Library Expansion.** First entry: **3.5.1 Photorealistic Popcorn**, depends on 3.1b + 3.3 + 3.4 + **3.12 + 3.13 + 3.14 + 3.15**.
 
 **Increment Scope Discipline rule**: per the revised `DEVELOPMENT_PLAN.md` Code Hygiene Rules, one increment is one reviewable unit of work. Infrastructure increments and preset increments are never bundled in the same increment. Scope creep is recorded retroactively as a new increment, not silently absorbed.
 
