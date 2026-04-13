@@ -4,6 +4,7 @@
   "duration": 30,
   "description": "64-bar FFT spectrum analyzer with stereo oscilloscope waveform overlay",
   "author": "Matt",
+  "passes": ["direct"],
   "beat_source": "bass",
   "beat_zoom": 0.03,
   "beat_rot": 0.01,

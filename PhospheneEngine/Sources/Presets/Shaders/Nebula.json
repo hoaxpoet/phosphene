@@ -4,6 +4,7 @@
   "duration": 30,
   "description": "Radial frequency visualization with particle sparkles and nebula haze",
   "author": "Matt",
+  "passes": ["direct"],
   "beat_source": "bass",
   "beat_zoom": 0.05,
   "beat_rot": 0.02,

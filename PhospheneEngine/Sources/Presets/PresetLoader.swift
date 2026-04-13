@@ -230,13 +230,12 @@ public final class PresetLoader: @unchecked Sendable {
     }
 
     private func compileShader(at url: URL, descriptor: PresetDescriptor) -> CompiledShader? {
-        // Branch to mesh pipeline compilation for mesh shader presets.
-        if descriptor.useMeshShader {
+        // Route to the compilation path that matches the preset's declared passes.
+        if descriptor.passes.contains(.meshShader) {
             guard let result = compileMeshShader(at: url, descriptor: descriptor) else { return nil }
             return CompiledShader(standard: result.standard, feedback: result.feedback)
         }
-        // Branch to ray march G-buffer pipeline for ray march presets.
-        if descriptor.useRayMarch {
+        if descriptor.passes.contains(.rayMarch) {
             return compileRayMarchShader(at: url, descriptor: descriptor)
         }
         guard let result = compileStandardShader(at: url, descriptor: descriptor) else { return nil }
@@ -286,7 +285,7 @@ public final class PresetLoader: @unchecked Sendable {
         let pipelineDescriptor = MTLRenderPipelineDescriptor()
         pipelineDescriptor.vertexFunction = vertexFn
         pipelineDescriptor.fragmentFunction = fragmentFn
-        pipelineDescriptor.colorAttachments[0].pixelFormat = descriptor.usePostProcess
+        pipelineDescriptor.colorAttachments[0].pixelFormat = descriptor.passes.contains(.postProcess)
             ? .rgba16Float : pixelFormat
 
         let standardState: MTLRenderPipelineState
@@ -304,7 +303,7 @@ public final class PresetLoader: @unchecked Sendable {
         // compositing; alpha channel accumulates so the feedback texture stays
         // opaque for the drawable blit.
         var feedbackState: MTLRenderPipelineState?
-        if descriptor.useFeedback {
+        if descriptor.passes.contains(.feedback) {
             pipelineDescriptor.colorAttachments[0].isBlendingEnabled = true
             pipelineDescriptor.colorAttachments[0].sourceRGBBlendFactor = .sourceAlpha
             pipelineDescriptor.colorAttachments[0].destinationRGBBlendFactor = .oneMinusSourceAlpha

@@ -1,0 +1,11 @@
+{
+  "name": "Ferrofluid Ocean",
+  "family": "abstract",
+  "duration": 60,
+  "description": "Metallic ocean with stem-driven swells, cymatic patterns, and drum pulse emission",
+  "author": "Matt",
+  "passes": ["post_process"],
+  "beat_source": "bass",
+  "beat_sensitivity": 1.5,
+  "fragment_function": "ferrofluid_ocean_fragment"
+}

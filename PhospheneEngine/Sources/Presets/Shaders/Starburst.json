@@ -4,6 +4,7 @@
   "duration": 45,
   "description": "A flock of 500K starlings — music is wind, beats are predators, the flock breathes as one",
   "author": "Matt",
+  "passes": ["feedback", "particles"],
   "beat_source": "bass",
   "beat_zoom": 0.01,
   "beat_rot": 0.005,
@@ -11,7 +12,5 @@
   "base_rot": 0.01,
   "decay": 0.95,
   "beat_sensitivity": 1.0,
-  "use_feedback": true,
-  "use_particles": true,
   "fragment_function": "starburst_fragment"
 }

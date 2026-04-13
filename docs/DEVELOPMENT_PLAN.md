@@ -1352,25 +1352,27 @@ After:  STFT(GPU) → [Float] → memcpy(MTLBuffer) → predict(MPSGraph/GPU/F32
 
 **Enables:** Future performance optimizations for presets with large dynamic draw-call counts. Also triggers Increment 3.6 (render graph refactor) — ICB raises the capability flag count to 5 (mesh, postProcess, ICB, feedback, direct), crossing the threshold.
 
-### Increment 3.6 (DEFERRED): Render Graph / Capability Composition Refactor
+### Increment 3.6: Render Graph / Capability Composition Refactor ✅
 
-**Status:** Not started. Triggered when the number of render capability flags on `PresetDescriptor` exceeds 4.
+**Status:** Complete.
 
-**Motivation:** The current pattern — `useFeedback`, `useParticles`, `useMeshShader`, `usePostProcess`, and any future capability — adds a branch to `RenderPipeline.draw(in:)`, a conditional pipeline state compile in `PresetLoader`, and a new `drawWithX` render method. At N=3 flags this is fine; at N≥5 it becomes unmanageable and multi-capability combinations explode combinatorially. This increment replaces the flag-based approach with a generic render graph where each preset declares a sequence of passes.
+**Motivation:** The capability-flag pattern (`useFeedback`, `useParticles`, `useMeshShader`, `usePostProcess`, `useICB`, `useRayMarch`) was crossing the manageable threshold — each new capability required a branch in `RenderPipeline.renderFrame`, a boolean on `RenderPipeline`, a conditional in `PresetLoader`, and a JSON flag in every preset. At N=6 the combinations started to explode.
 
-**Current flag count:** 5 (`useFeedback`, `useParticles`, `useMeshShader`, `usePostProcess`, `useICB`). Trigger threshold: 5 — **threshold crossed**. This increment is now unblocked.
+**What shipped:**
+- `RenderPass` enum (in `Shared` module): `direct`, `feedback`, `particles`, `meshShader`, `postProcess`, `rayMarch`, `icb` — with raw string values matching JSON keys
+- `PresetDescriptor.passes: [RenderPass]` replaces 5 stored boolean flags; computed `useFeedback`, `useMeshShader`, etc. are kept as backwards-compatible derived properties
+- Backward-compatible JSON decoding: `"passes"` key preferred; falls back to `synthesizePasses(from:)` which reads legacy `use_feedback` / `use_mesh_shader` / `use_post_process` / `use_ray_march` / `use_particles` boolean flags
+- `RenderPipeline.activePasses: [RenderPass]` with `setActivePasses(_:)` / `currentPasses` (thread-safe via `passesLock`)
+- `RenderPipeline.renderFrame` replaced with data-driven loop: iterates `activePasses`, dispatches to first pass with available subsystem, falls back to `drawDirect`
+- `RenderPipeline+RayMarch`: replaced removed `postProcessEnabled` bool with `passesLock.withLock { activePasses.contains(.postProcess) }`
+- `VisualizerEngine.applyPreset` rewrote as pass-walking configurator; removed `applyRayMarchPreset` private helper
+- 7 preset JSON files migrated to `"passes"` format; legacy format still decodes correctly
+- 7 new tests in `PresetTests.swift` covering `RenderPass` raw values, JSON decoding, legacy synthesis, and `setActivePasses` round-trip
+- 314 tests total (239 swift-testing + 75 XCTest), SwiftLint clean
 
-**Scope (when triggered):**
-- Introduce `RenderPassDescriptor` as a new type describing a single render or compute pass
-- Each preset declares a `passes: [RenderPassDescriptor]` array instead of scattered boolean flags
-- `RenderPipeline.draw(in:)` becomes a generic executor that walks the passes array
-- Migrate existing presets to the new descriptor form; delete the old flag-based methods
+**Depends on:** 3.1, 3.1-bonus, 3.2, 3.3, 3.4, 3.5, 3.14, 3.15 (all complete)
 
-**Depends on:** all existing render capabilities being stable (3.1, 3.1-bonus, 3.2, 3.3, 3.4, 3.5) so there's no moving target to refactor against.
-
-**Enables:** sustainable scaling of the preset library past the 5-capability ceiling.
-
-**Not starting this until triggered. This entry exists so future me doesn't forget.**
+**Enables:** sustainable scaling of the preset library past the 6-capability ceiling.
 
 ---
 

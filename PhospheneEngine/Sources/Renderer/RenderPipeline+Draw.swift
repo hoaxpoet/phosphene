@@ -1,6 +1,11 @@
-// RenderPipeline+Draw — Draw method extraction for the render pipeline.
-// Splits out the feedback and direct rendering passes to keep the main
-// type body within SwiftLint's length limits.
+// RenderPipeline+Draw — Generic render-graph executor (Increment 3.6).
+//
+// `renderFrame` replaces the old hardcoded priority-chain with a data-driven loop over
+// `activePasses`.  The preset declares its passes in JSON; the executor dispatches to
+// the first pass whose required subsystem is available, falling back to direct rendering.
+//
+// Adding a new capability requires only: a new `RenderPass` case in Shared, a
+// `drawWithX` method, and one `case` in the switch below.
 
 import Metal
 import MetalKit
@@ -8,7 +13,7 @@ import Shared
 
 // MARK: - Feedback Draw Context
 
-/// Groups the nine parameters of a feedback draw call into a single value type,
+/// Groups the parameters of a feedback draw call into a single value type,
 /// reducing the function signature to a manageable size.
 struct FeedbackDrawContext {
     let commandBuffer: MTLCommandBuffer
@@ -40,7 +45,7 @@ extension RenderPipeline {
     /// Lazily allocate feedback textures when drawableSizeWillChange has not fired.
     /// Must be called while holding feedbackLock externally (or within a withLock block).
     func ensureFeedbackTexturesAllocated(size: CGSize) {
-        guard feedbackEnabled && feedbackTextures.isEmpty && size.width > 0 else {
+        guard currentFeedbackParams != nil && feedbackTextures.isEmpty && size.width > 0 else {
             return
         }
         let texWidth = max(Int(size.width), 1)
@@ -61,120 +66,142 @@ extension RenderPipeline {
         }
     }
 
-    // MARK: Frame Dispatch
+    // MARK: Render-Graph Executor
 
-    // swiftlint:disable function_body_length
-    // renderFrame snapshots five independent capability flags (particles, feedback,
-    // post-process, ICB, mesh) before branching.  The snapshot + branch pattern is
-    // intentionally flat — extracting sub-branches would obscure the priority order.
-
+    // swiftlint:disable cyclomatic_complexity function_body_length
+    // renderFrame iterates the passes array with one case per capability type.
+    // The switch is the whole point — extracting cases would obscure the dispatch logic.
     /// Snapshot per-frame state and dispatch to the appropriate rendering path.
+    ///
+    /// Iterates `activePasses` in declared order and executes the first pass whose
+    /// required subsystem is available.  Falls back to `drawDirect` if no pass matches.
     /// Called from `draw(in:)` after timing and features are prepared.
     func renderFrame(
         commandBuffer: MTLCommandBuffer,
         view: MTKView,
         features: inout FeatureVector
     ) {
-        // Snapshot state for this frame.
-        let particles = particleLock.withLock { particleGeometry }
+        // Snapshot the active passes for this frame.
+        let passes = passesLock.withLock { activePasses }
+
+        // Snapshot all subsystem state atomically before branching.
+        let particles      = particleLock.withLock { particleGeometry }
         let activePipeline = pipelineLock.withLock { pipelineState }
-        let stemFeatures = stemFeaturesLock.withLock { latestStemFeatures }
+        let stemFeatures   = stemFeaturesLock.withLock { latestStemFeatures }
+        let meshGen        = meshLock.withLock { meshGenerator }
+        let ppChain        = postProcessLock.withLock { postProcessChain }
+        let icbSnap        = icbLock.withLock { icbState }
+        let rmPipeline     = rayMarchLock.withLock { rayMarchPipeline }
 
         // Lazy-allocate feedback textures if needed (drawableSizeWillChange may not fire).
         let drawableSize = view.drawableSize
         feedbackLock.withLock {
             ensureFeedbackTexturesAllocated(size: drawableSize)
         }
-
-        let (fbEnabled, fbParams, fbCompose, fbTextures, fbIndex) = feedbackLock.withLock {
-            (feedbackEnabled, currentFeedbackParams, feedbackComposePipelineState,
-             feedbackTextures, feedbackIndex)
+        let (fbParams, fbCompose, fbTextures, fbIndex) = feedbackLock.withLock {
+            (currentFeedbackParams, feedbackComposePipelineState, feedbackTextures, feedbackIndex)
         }
 
-        // Snapshot post-process state for this frame.
-        let (ppEnabled, ppChain) = postProcessLock.withLock { (postProcessEnabled, postProcessChain) }
-
-        // Snapshot ICB state for this frame.
-        let (icbIsEnabled, icbSnapshotState) = icbLock.withLock { (icbEnabled, icbState) }
-
-        // Snapshot ray march state for this frame.
-        let (rmEnabled, rmPipeline) = rayMarchLock.withLock { (rayMarchEnabled, rayMarchPipeline) }
-
-        // ── Compute pass: update particles before rendering ─────────
+        // Compute pass: update particles before any render pass.
         particles?.update(features: features, commandBuffer: commandBuffer)
 
-        // Snapshot mesh shader state for this frame.
-        let (meshEnabled, meshGen) = meshLock.withLock { (meshShaderEnabled, meshGenerator) }
+        // Walk the passes array — execute the first pass with available resources.
+        for pass in passes {
+            switch pass {
 
-        // Branch: mesh shader → post-process → ICB → rayMarch → feedback → direct.
-        if meshEnabled, let generator = meshGen {
-            drawWithMeshShader(
-                commandBuffer: commandBuffer,
-                view: view,
-                features: &features,
-                stemFeatures: stemFeatures,
-                meshGenerator: generator
-            )
-        } else if ppEnabled, let chain = ppChain {
-            drawWithPostProcess(
-                commandBuffer: commandBuffer,
-                view: view,
-                features: &features,
-                stemFeatures: stemFeatures,
-                activePipeline: activePipeline,
-                chain: chain
-            )
-        } else if icbIsEnabled, let icb = icbSnapshotState {
-            drawWithICB(
-                commandBuffer: commandBuffer,
-                view: view,
-                features: &features,
-                stemFeatures: stemFeatures,
-                activePipeline: activePipeline,
-                icbState: icb
-            )
-        } else if rmEnabled, let rmState = rmPipeline {
-            drawWithRayMarch(
-                commandBuffer: commandBuffer,
-                view: view,
-                features: &features,
-                stemFeatures: stemFeatures,
-                activePipeline: activePipeline,
-                rayMarchState: rmState
-            )
-        } else if fbEnabled, let params = fbParams, let composePipeline = fbCompose,
-           fbTextures.count == 2 {
-            var ctx = FeedbackDrawContext(
-                commandBuffer: commandBuffer,
-                view: view,
-                features: features,
-                params: params,
-                stemFeatures: stemFeatures,
-                activePipeline: activePipeline,
-                composePipeline: composePipeline,
-                particles: particles,
-                textures: fbTextures,
-                texIndex: fbIndex
-            )
-            drawWithFeedback(&ctx)
-            feedbackLock.withLock { feedbackIndex = 1 - feedbackIndex }
-        } else {
-            drawDirect(
-                commandBuffer: commandBuffer,
-                view: view,
-                features: &features,
-                stemFeatures: stemFeatures,
-                activePipeline: activePipeline,
-                particles: particles
-            )
+            case .meshShader:
+                guard let gen = meshGen else { continue }
+                drawWithMeshShader(
+                    commandBuffer: commandBuffer,
+                    view: view,
+                    features: &features,
+                    stemFeatures: stemFeatures,
+                    meshGenerator: gen
+                )
+                return
+
+            case .rayMarch:
+                guard let rm = rmPipeline else { continue }
+                drawWithRayMarch(
+                    commandBuffer: commandBuffer,
+                    view: view,
+                    features: &features,
+                    stemFeatures: stemFeatures,
+                    activePipeline: activePipeline,
+                    rayMarchState: rm
+                )
+                return
+
+            case .postProcess:
+                // Stand-alone post-process path.  When combined with .rayMarch, the ray
+                // march pipeline uses the PostProcessChain internally for bloom — the
+                // .postProcess pass itself is only executed if .rayMarch is absent.
+                guard !passes.contains(.rayMarch), let chain = ppChain else { continue }
+                drawWithPostProcess(
+                    commandBuffer: commandBuffer,
+                    view: view,
+                    features: &features,
+                    stemFeatures: stemFeatures,
+                    activePipeline: activePipeline,
+                    chain: chain
+                )
+                return
+
+            case .icb:
+                guard let icb = icbSnap else { continue }
+                drawWithICB(
+                    commandBuffer: commandBuffer,
+                    view: view,
+                    features: &features,
+                    stemFeatures: stemFeatures,
+                    activePipeline: activePipeline,
+                    icbState: icb
+                )
+                return
+
+            case .feedback:
+                guard let params  = fbParams,
+                      let compose = fbCompose,
+                      fbTextures.count == 2 else { continue }
+                var ctx = FeedbackDrawContext(
+                    commandBuffer: commandBuffer,
+                    view: view,
+                    features: features,
+                    params: params,
+                    stemFeatures: stemFeatures,
+                    activePipeline: activePipeline,
+                    composePipeline: compose,
+                    particles: particles,
+                    textures: fbTextures,
+                    texIndex: fbIndex
+                )
+                drawWithFeedback(&ctx)
+                feedbackLock.withLock { feedbackIndex = 1 - feedbackIndex }
+                return
+
+            case .direct, .particles:
+                // .direct is the explicit fallback handled after the loop.
+                // .particles modifies the .feedback pass — handled inside drawWithFeedback.
+                break
+            }
         }
+
+        // Fallback: direct rendering (no capability-specific pass matched).
+        drawDirect(
+            commandBuffer: commandBuffer,
+            view: view,
+            features: &features,
+            stemFeatures: stemFeatures,
+            activePipeline: activePipeline,
+            particles: particles
+        )
     }
-    // swiftlint:enable function_body_length
+    // swiftlint:enable cyclomatic_complexity function_body_length
 
     // MARK: Direct Rendering (Non-Feedback)
 
     // swiftlint:disable function_parameter_count
-    // drawDirect / drawParticleMode / drawSurfaceMode each take 6 parameters —
+    // drawDirect/drawParticleMode/drawSurfaceMode each take 6 parameters —
     // the full render-pass context they coordinate. Refactor tracked separately.
 
     /// Original single-pass render directly to drawable.

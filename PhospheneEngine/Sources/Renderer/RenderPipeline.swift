@@ -48,8 +48,6 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     var feedbackTextures: [MTLTexture] = []
     /// Which texture is the current write target (0 or 1).
     var feedbackIndex: Int = 0
-    /// Whether the active preset uses feedback.
-    var feedbackEnabled: Bool = false
     /// Current feedback parameters (from preset descriptor).
     var currentFeedbackParams: FeedbackParams?
     /// Additive-blended pipeline for the feedback composite pass.
@@ -66,43 +64,41 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
 
     /// Optional mesh generator — attached when the active preset has `useMeshShader: true`.
     var meshGenerator: MeshGenerator?
-    /// Whether the active preset routes through the mesh shader draw path.
-    var meshShaderEnabled: Bool = false
     let meshLock = NSLock()
 
     // MARK: - Post-Process Chain
 
     /// Optional HDR post-process chain — bloom + ACES tone mapping.
-    /// Set via `setPostProcessChain(_:enabled:)` when switching to a post-process preset.
     var postProcessChain: PostProcessChain?
-    /// Whether the active preset routes through the post-process render path.
-    var postProcessEnabled: Bool = false
     let postProcessLock = NSLock()
 
     // MARK: - ICB State (Increment 3.5)
 
     /// Optional ICB state for GPU-driven indirect command buffer rendering.
-    /// Set via `setICBState(_:enabled:)` when switching to an ICB-capable preset.
     var icbState: IndirectCommandBufferState?
-    /// Whether the active preset routes through the ICB render path.
-    var icbEnabled: Bool = false
     let icbLock = NSLock()
 
     // MARK: - Ray March Pipeline (Increment 3.14)
 
     /// Optional deferred ray march pipeline — G-buffer + PBR lighting + composite.
-    /// Set via `setRayMarchPipeline(_:enabled:)` when switching to a ray march preset.
     var rayMarchPipeline: RayMarchPipeline?
-    /// Whether the active preset routes through the ray march draw path.
-    var rayMarchEnabled: Bool = false
     let rayMarchLock = NSLock()
 
     // MARK: - Noise Textures (Increment 3.13)
 
     /// Optional noise texture manager — binds 5 pre-computed textures at slots 4–8.
-    /// Set via `setTextureManager(_:)` once at app startup.
     var textureManager: TextureManager?
     let textureManagerLock = NSLock()
+
+    // MARK: - Render Graph (Increment 3.6)
+
+    /// Active render passes declared by the current preset.
+    ///
+    /// `renderFrame` iterates this array and dispatches to the first pass whose
+    /// required subsystem is available, replacing the old priority-ordered boolean
+    /// flag chain.  Set atomically via `setActivePasses(_:)`.
+    var activePasses: [RenderPass] = [.direct]
+    let passesLock = NSLock()
 
     // MARK: - Accumulated Audio Time (Increment 3.15)
 
@@ -195,7 +191,24 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
         self.feedbackSamplerState = sampler
 
         super.init()
-        logger.info("RenderPipeline initialized with feedback support")
+        logger.info("RenderPipeline initialized with render-graph support")
+    }
+
+    // MARK: - Render Graph
+
+    /// Set the active render passes for the current preset.
+    ///
+    /// Called from `applyPreset` after all subsystems are configured.
+    /// `renderFrame` iterates this array each frame to select the draw path.
+    /// Thread-safe — can be called from any queue.
+    public func setActivePasses(_ passes: [RenderPass]) {
+        passesLock.withLock { activePasses = passes }
+        logger.info("Active passes: [\(passes.map(\.rawValue).joined(separator: ", "))]")
+    }
+
+    /// The currently active render passes (snapshot for testing / diagnostics).
+    public var currentPasses: [RenderPass] {
+        passesLock.withLock { activePasses }
     }
 
     // MARK: - Preset Switching
@@ -206,13 +219,7 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
         pipelineLock.withLock {
             pipelineState = newState
         }
-        // Disable feedback when using legacy API (no descriptor info).
-        feedbackLock.withLock {
-            feedbackEnabled = false
-            currentFeedbackParams = nil
-            feedbackComposePipelineState = nil
-        }
-        logger.info("Active pipeline state updated (feedback disabled)")
+        logger.info("Active pipeline state updated")
     }
 
     /// Set feedback parameters for the active preset. Pass nil to disable feedback.
@@ -220,7 +227,6 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     public func setFeedbackParams(_ params: FeedbackParams?) {
         feedbackLock.withLock {
             currentFeedbackParams = params
-            feedbackEnabled = params != nil
         }
     }
 
@@ -245,15 +251,13 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
 
     /// Attach a mesh generator for mesh shader presets.
     ///
-    /// Pass a non-nil generator and `enabled: true` to route `draw(in:)` through
-    /// `drawWithMeshShader`.  Pass `nil` / `false` to fall back to the standard
-    /// direct or feedback render path.  Thread-safe — can be called from any queue.
-    public func setMeshGenerator(_ generator: MeshGenerator?, enabled: Bool = true) {
+    /// Pass a non-nil generator to route `draw(in:)` through `drawWithMeshShader`.
+    /// Pass `nil` to detach.  Thread-safe — can be called from any queue.
+    public func setMeshGenerator(_ generator: MeshGenerator?) {
         meshLock.withLock {
-            meshGenerator      = generator
-            meshShaderEnabled  = generator != nil && enabled
+            meshGenerator = generator
         }
-        logger.info("Mesh shader \(generator != nil && enabled ? "enabled" : "disabled")")
+        logger.info("Mesh generator \(generator != nil ? "attached" : "detached")")
     }
 
     /// Attach a particle system to the render loop.
@@ -266,29 +270,26 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
 
     /// Attach a post-process chain to the render loop.
     ///
-    /// Pass a non-nil chain and `enabled: true` to route `draw(in:)` through
-    /// `drawWithPostProcess`.  Pass `nil` / `false` to fall back to the direct
-    /// or feedback render path.  Thread-safe — can be called from any queue.
-    public func setPostProcessChain(_ chain: PostProcessChain?, enabled: Bool = true) {
+    /// Pass a non-nil chain to enable bloom + ACES tone mapping when the active
+    /// passes include `.postProcess`.  Pass `nil` to detach.
+    /// Thread-safe — can be called from any queue.
+    public func setPostProcessChain(_ chain: PostProcessChain?) {
         postProcessLock.withLock {
-            postProcessChain    = chain
-            postProcessEnabled  = chain != nil && enabled
+            postProcessChain = chain
         }
-        logger.info("Post-process chain \(chain != nil && enabled ? "enabled" : "disabled")")
+        logger.info("Post-process chain \(chain != nil ? "attached" : "detached")")
     }
 
     /// Attach a deferred ray march pipeline to the render loop.
     ///
-    /// Pass a non-nil pipeline and `enabled: true` to route `draw(in:)` through
-    /// `drawWithRayMarch`.  Pass `nil` / `false` to fall back to the next path in
-    /// the priority order (postProcess → ICB → feedback → direct).
+    /// Pass a non-nil pipeline to enable G-buffer + PBR lighting when the active
+    /// passes include `.rayMarch`.  Pass `nil` to detach.
     /// Thread-safe — can be called from any queue.
-    public func setRayMarchPipeline(_ pipeline: RayMarchPipeline?, enabled: Bool = true) {
+    public func setRayMarchPipeline(_ pipeline: RayMarchPipeline?) {
         rayMarchLock.withLock {
             rayMarchPipeline = pipeline
-            rayMarchEnabled  = pipeline != nil && enabled
         }
-        logger.info("Ray march pipeline \(pipeline != nil && enabled ? "enabled" : "disabled")")
+        logger.info("Ray march pipeline \(pipeline != nil ? "attached" : "detached")")
     }
 
     /// Attach noise textures that will be bound on every preset render encoder.
