@@ -7,6 +7,7 @@ import Foundation
 import Metal
 import ML
 import os.log
+import Session
 import Shared
 
 private let logger = Logger(subsystem: "com.phosphene.app", category: "VisualizerEngine")
@@ -123,11 +124,27 @@ extension VisualizerEngine {
         }
     }
 
-    /// Reset the stem pipeline on track change.
-    func resetStemPipeline() {
-        stemSampleBuffer.reset()
+    /// Reset the stem pipeline on track change, loading pre-analyzed data from cache
+    /// when available.
+    ///
+    /// Per the session preparation architecture:
+    /// - `StemSampleBuffer` is NOT cleared — real-time audio keeps accumulating so
+    ///   live separation can begin immediately.
+    /// - If `stemCache` has data for the given identity, `StemFeatures` is seeded
+    ///   from the pre-separated preview; otherwise it resets to `.zero`.
+    ///
+    /// - Parameter identity: The newly playing track. Pass nil when the identity is
+    ///   unknown (falls back to `.zero` stems).
+    func resetStemPipeline(for identity: TrackIdentity? = nil) {
         stemAnalyzer.reset()
-        pipeline.setStemFeatures(.zero)
-        logger.info("Stem pipeline reset (track change)")
+
+        if let identity, let cached = stemCache?.loadForPlayback(track: identity) {
+            pipeline.setStemFeatures(cached.stemFeatures)
+            logger.info("Stem pipeline loaded from cache: \(identity.title) by \(identity.artist)")
+        } else {
+            pipeline.setStemFeatures(.zero)
+            logger.info("Stem pipeline reset (track change, no cache entry)")
+        }
+        // StemSampleBuffer intentionally not reset — continues accumulating for live separation.
     }
 }

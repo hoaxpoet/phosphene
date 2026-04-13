@@ -978,34 +978,24 @@ echo "=== All checks passed ==="
 
 **Enables:** 2.5.3 (batch pre-analysis needs PCM audio).
 
-### Increment 2.5.3: Batch Pre-Analysis & Stem Cache
+### Increment 2.5.3: Batch Pre-Analysis & Stem Cache ✅
 
-**Status:** Not started.
+**Status:** Complete.
 
 **Goal:** Run stem separation and MIR analysis on every preview clip and cache the results. This is the core of the preparation pipeline.
 
-**Files to create/edit:**
-- `Session/SessionPreparer.swift` (new) — Orchestrates the full batch: `prepare(tracks: [TrackIdentity]) async -> SessionPreparationResult`. For each track: resolve preview → download → `StemSeparator.separate()` → `StemAnalyzer.analyze()` → `MIRPipeline` (BPM, key, mood, chroma, centroid) → store in `StemCache`. Publishes progress via `@Published var progress: (completed: Int, total: Int)`. Handles partial failures gracefully (tracks with missing previews get nil cache entries — the real-time pipeline fills them during playback).
-- `Session/StemCache.swift` (new) — Thread-safe dictionary keyed by `TrackIdentity`. Stores `CachedTrackData`: separated stem waveforms (4× `[Float]`), derived `StemFeatures`, `TrackProfile` (BPM, key, mood, centroid, genre). `func stemFeatures(for: TrackIdentity) -> StemFeatures?`. `func trackProfile(for: TrackIdentity) -> TrackProfile?`. `func loadForPlayback(track: TrackIdentity) -> CachedTrackData?` — called by `VisualizerEngine` on track change.
-- `Session/TrackProfile.swift` (new) — Struct: bpm (Float?), key (Key?), mood (EmotionalState), spectralCentroidAvg (Float), genreTags ([String]), stemEnergyBalance (StemFeatures — the summary from the preview), estimatedSectionCount (Int).
-- `PhospheneApp/VisualizerEngine+Stems.swift` — Modify track-change callback: instead of `StemSampleBuffer.reset()` + `latestStemFeatures = .zero`, call `stemCache.loadForPlayback(track:)` and populate `latestStemFeatures` from cache. Do NOT clear `StemSampleBuffer`.
+**What shipped:**
+- `Session/TrackProfile.swift` (new) — `TrackProfile` struct: bpm (`Float?`), key (`String?`), mood (`EmotionalState`), spectralCentroidAvg (`Float`), genreTags (`[String]`), stemEnergyBalance (`StemFeatures`), estimatedSectionCount (`Int`). Static `empty` default.
+- `Session/StemCache.swift` (new) — `CachedTrackData` struct (stemWaveforms `[[Float]]`, stemFeatures, trackProfile). `StemCache` `@unchecked Sendable` class with `NSLock`-guarded `store/loadForPlayback/stemFeatures/trackProfile/count/clear`.
+- `Session/SessionPreparer.swift` (new) — `@MainActor ObservableObject` with `@Published progress: (Int, Int)`. Sequential per-track loop: resolve → download → `Task.detached` CPU work → cache. Cancellation via `Task.isCancelled` + `catch is CancellationError`. Returns `SessionPreparationResult(cachedTracks:failedTracks:cache:)`.
+- `Session/SessionPreparer+Analysis.swift` (new) — `nonisolated` static helpers: `analyzePreview` (separator → AGC warmup → offline MIR), `warmUpAndAnalyze` (1024-sample hop loop), `analyzeMIR` (vDSP FFT frame-by-frame through `MIRPipeline`), `computeFFTMagnitudes` (takes `FFTContext` struct to avoid SwiftLint parameter-count violation). Private `MIRAnalysisResult` struct replaces large tuple return.
+- `Shared/AudioFeatures+Analyzed.swift` — `StemFeatures` gains `: Equatable` conformance.
+- `Package.swift` — Session target deps expanded to include Audio + DSP + ML.
+- `PhospheneApp/VisualizerEngine.swift` — `stemCache: StemCache?` property added; `import Session`.
+- `PhospheneApp/VisualizerEngine+Stems.swift` — `resetStemPipeline(for:)` loads from cache on track change; `StemSampleBuffer` NOT cleared.
+- `PhospheneApp/VisualizerEngine+Audio.swift` — Track-change callback constructs `TrackIdentity` and passes it to `resetStemPipeline`.
 
-**Test requirements:**
-- `SessionPreparerTests.swift` — 8 tests:
-  - `test_prepare_singleTrack_populatesCache()`
-  - `test_prepare_multipleTrack_allCached()`
-  - `test_prepare_missingPreview_skipsThatTrack()`
-  - `test_prepare_publishesProgress()`
-  - `test_prepare_cancellation_stopsCleanly()`
-  - `test_stemCache_loadForPlayback_returnsCorrectTrack()`
-  - `test_stemCache_unknownTrack_returnsNil()`
-  - `test_stemCache_threadSafety_concurrentAccess()`
-- `Integration/SessionPreparationIntegrationTests.swift` — 3 tests:
-  - `test_fullPipeline_resolve_download_separate_analyze()` — end-to-end with a real iTunes lookup for a known track
-  - `test_trackProfile_hasBPMAndMood()`
-  - `test_cachedStemFeatures_nonZero()`
-
-**Verification:** Prepare a 5-track playlist. All 5 tracks have cached stem data and track profiles. StemFeatures are non-zero for all tracks. MIR data (BPM, mood) is plausible. All 11 tests pass.
+**Tests:** 5 `SessionPreparerTests` (single track, multiple tracks, missing preview, progress, cancellation) + 3 `StemCacheTests` (load correct, unknown nil, thread safety) + 3 `SessionPreparationIntegrationTests` (full pipeline, BPM+mood, non-zero stems). 280 total tests pass.
 
 **Depends on:** 2.5.2 (preview audio), Phase 2 complete (StemSeparator, MIRPipeline, StemAnalyzer).
 

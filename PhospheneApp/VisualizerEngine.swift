@@ -11,6 +11,7 @@ import ML
 import os.log
 import Presets
 import Renderer
+import Session
 import Shared
 import SwiftUI
 
@@ -111,6 +112,11 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     var preFetcher: MetadataPreFetcher?
 
     // MARK: - Stem Pipeline
+
+    /// Pre-analyzed stem data from session preparation. Set by the app layer
+    /// after `SessionPreparer.prepare(tracks:)` completes. When non-nil, each
+    /// track change loads cached stems instead of waiting for live separation.
+    var stemCache: StemCache?
 
     /// Stem separator (CoreML on ANE).
     let stemSeparator: StemSeparator?

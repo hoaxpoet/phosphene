@@ -74,7 +74,7 @@ let package = Package(
         ),
         .target(
             name: "Session",
-            dependencies: ["Shared"],
+            dependencies: ["Shared", "Audio", "DSP", "ML"],
             path: "Sources/Session"
         ),
         .target(
