@@ -35,7 +35,7 @@ line, as it would propagate to SPM dependencies that compile with
 
 Deployment target: macOS 14.0+ (Sonoma). Swift 6.0. Metal 3.1+.
 
-**Current test count: 348 tests** (257 swift-testing + 91 XCTest, across unit, integration, regression, performance). All must pass before any new code is merged.
+**Current test count: 360 tests** (269 swift-testing + 91 XCTest, across unit, integration, regression, performance). All must pass before any new code is merged.
 
 ## Module Map
 
@@ -652,6 +652,10 @@ Metal, MetalKit, MetalPerformanceShadersGraph, AVFoundation, Accelerate, ScreenC
 
 42. **Accumulated audio time (Phase 3R)**: Running sum of `totalEnergy * deltaTime` in `VisualizerEngine`, reset on track change. Nearly universal in Milkdrop presets — animation that breathes with the music. Delta: `(bass + mid + treble) / 3.0 * (1.0 / fps)`, clamped. Exposed via `FeatureVector.accumulatedAudioTime` (struct grows from 24 to 25 floats, 100 bytes, padded to 128 for SIMD alignment) and in `SceneUniforms` for ray march presets.
 
+43. **Preview URL resolution strategy (Increment 2.5.2)**: iTunes Search API (`itunes.apple.com/search?term={artist}+{title}&media=music&entity=song&limit=1`) returns `previewUrl` for any track in the Apple Music catalog — no auth, no entitlement, universally available. Results are cached in memory keyed by `TrackIdentity` using `URL??` dict semantics: `nil` = uncached, `.some(nil)` = resolved but no preview found, `.some(url)` = preview URL. Rate limiting uses a sliding window over `requestTimestamps` (configurable window + count, default 20/60s). The `throttle()` loop is a `while true` with `Task.sleep` to handle concurrent callers all waking after the same delay.
+
+44. **Preview audio decode architecture (Increment 2.5.2)**: `PreviewDownloader` injects the download step (`fileFetcher: (URL) async throws -> Data`) but always uses real `AVAudioFile` for decode — this tests the actual decode path with synthetic WAV data rather than mocking it away. Format is auto-detected from the first 4 bytes of the downloaded `Data` (RIFF=WAV, FORM=AIFF, caff=CAF, ID3/sync=MP3, default=M4A) so the correct temp file extension is used. `AVAudioFile` uses extensions to select the demuxer. Batch download uses a producer/consumer `withTaskGroup` pattern: seed `concurrency` tasks initially, dispatch the next pending track each time one completes — avoids creating all N tasks upfront, which would defeat the concurrency limit for large playlists.
+
 ## Reference Documents
 
 The full development plan with phased increments is in `docs/DEVELOPMENT_PLAN.md`. Consult the relevant increment when starting a task — do not load the entire plan into context.
@@ -706,9 +710,9 @@ The architectural blueprint is in `docs/ARCHITECTURAL_BLUEPRINT.md`.
 
 **Completed increments (Phase 2.5):**
 - **Increment 2.5.1 — Playlist Connector** ✅ — New `Session` SPM target. `TrackIdentity` struct (title, artist, album, duration, appleMusicID, spotifyID, musicBrainzID; `Sendable + Hashable + Codable`). `PlaylistConnecting` protocol + `PlaylistConnector` concrete class: Apple Music (AppleScript loop over `every track of current playlist`, linefeed-joined output), Spotify queue endpoint (`/me/player/queue`) and playlist URL endpoint (`/playlists/{id}/tracks`, paginated), Apple Music URL (validates format, falls back to current playlist pending MusicKit entitlement in Phase 4). All external calls injectable via `appleScriptReader` and `networkFetcher` closures. `PlaylistConnectorError` enum (5 cases). `Logging.session` logger added to `Shared`. SwiftLint fix: `SilenceDetector.update(rms:)` refactored — per-state logic extracted into 4 private `advance*` helpers, reducing cyclomatic complexity from 12 → 5; `s` renamed to `sample`. 8 `PlaylistConnectorTests` (ordered tracks, duration, Spotify queue, Spotify URL, empty playlist, network failure, Codable round-trip, duplicate order preservation). 348 tests total (257 swift-testing + 91 XCTest), SwiftLint clean.
+- **Increment 2.5.2 — Preview Resolver & Downloader** ✅ — `PreviewAudio` struct (`Session/SessionTypes.swift`: trackIdentity, pcmSamples `[Float]`, sampleRate `Int`, duration `TimeInterval`). `PreviewResolving` protocol + `PreviewResolver` class (`Session/PreviewResolver.swift`): iTunes Search API (`itunes.apple.com/search?term=…&media=music&entity=song&limit=1`), injectable `networkFetcher` closure, in-memory cache keyed by `TrackIdentity` (hit/miss/nil-cached via `URL??` dict), sliding-window rate limiter (20 req/min default, configurable for testing). `PreviewDownloading` protocol + `PreviewDownloader` class (`Session/PreviewDownloader.swift`): injectable `fileFetcher` closure, format-sniffing temp file writer (WAV/AIFF/CAF/MP3/M4A auto-detected from file header bytes), real `AVAudioFile` decode to mono Float32 (multi-channel averaged), configurable concurrency ceiling (default 4, `withTaskGroup` producer/consumer), guaranteed temp file cleanup via `defer`. 6 `PreviewResolverTests` (known track → URL, unknown → nil, AAC URL format, rate-limit enforcement, timeout → nil graceful, cache dedup). 6 `PreviewDownloaderTests` (non-zero PCM, 44100 Hz, ~30s duration, concurrency ceiling, failed track skipped, temp file cleanup). 360 tests total (269 swift-testing + 91 XCTest), SwiftLint clean.
 
 **Ordered next increments** (per the revised plan):
-1. **Increment 2.5.2 — Preview Resolver & Downloader.** iTunes Search API → preview URL, batch AAC/MP3 download + PCM decode via AVAudioFile.
-2. **Increment 2.5.3 — Batch Pre-Analysis & Stem Cache.** SessionPreparer orchestrates preview → StemSeparator → MIRPipeline → StemCache for every track before playback begins.
+1. **Increment 2.5.3 — Batch Pre-Analysis & Stem Cache.** SessionPreparer orchestrates preview → StemSeparator → MIRPipeline → StemCache for every track before playback begins.
 3. **Phase 3.5 — Native Preset Library Expansion.** First entry: **3.5.2 Murmuration Stem Routing Revision** (replace 6-band workaround with real stem routing from StemFeatures). Popcorn (3.5.1) removed from plan.
 4. **Phase 4 — Orchestrator.** Revised to include session planning mode alongside reactive mode.
