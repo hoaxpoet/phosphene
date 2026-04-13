@@ -10,7 +10,7 @@ import Foundation
 /// Packed per-frame audio features for GPU uniform upload.
 ///
 /// This is the primary struct that shaders receive every frame.
-/// 24 floats = 96 bytes, naturally 16-byte aligned.
+/// 32 floats = 128 bytes, naturally 16-byte aligned.
 /// Fields follow the audio data hierarchy: continuous energy first,
 /// spectral features second, onset pulses third.
 ///
@@ -25,6 +25,8 @@ import Foundation
 ///     float valence, arousal;
 ///     float time, delta_time;
 ///     float _pad0, aspect_ratio;
+///     float accumulated_audio_time;
+///     float _pad1, _pad2, _pad3, _pad4, _pad5, _pad6, _pad7;
 /// };
 /// ```
 @frozen
@@ -79,17 +81,37 @@ public struct FeatureVector: Sendable {
     /// Seconds since last frame.
     public var deltaTime: Float
 
-    // --- Padding ---
+    // --- Padding (float 23) ---
     // swiftlint:disable:next identifier_name
     public var _pad0: Float
 
-    // --- Viewport ---
+    // --- Viewport (float 24) ---
 
     /// Viewport aspect ratio (width / height). Set each frame by the render
     /// pipeline from the drawable size. Shaders use this for aspect-correct
     /// geometric calculations (e.g. rendering circles as actual circles
     /// rather than UV-space ellipses).
     public var aspectRatio: Float
+
+    // --- Accumulated audio time (float 25) ---
+
+    /// Running sum of energy × deltaTime, reset on track change.
+    ///
+    /// Unlike `time` (wall-clock seconds), this value accumulates faster during
+    /// loud passages and slower during quiet ones, producing animation that
+    /// "breathes" with the music. Use as an animation phase in shaders.
+    public var accumulatedAudioTime: Float
+
+    // --- Padding to 128 bytes (floats 26–32) ---
+    // swiftlint:disable identifier_name
+    var _pad1: Float
+    var _pad2: Float
+    var _pad3: Float
+    var _pad4: Float
+    var _pad5: Float
+    var _pad6: Float
+    var _pad7: Float
+    // swiftlint:enable identifier_name
 
     public init(
         bass: Float = 0, mid: Float = 0, treble: Float = 0,
@@ -101,7 +123,8 @@ public struct FeatureVector: Sendable {
         spectralCentroid: Float = 0, spectralFlux: Float = 0,
         valence: Float = 0, arousal: Float = 0,
         time: Float = 0, deltaTime: Float = 0,
-        aspectRatio: Float = 1.777
+        aspectRatio: Float = 1.777,
+        accumulatedAudioTime: Float = 0
     ) {
         self.bass = bass; self.mid = mid; self.treble = treble
         self.bassAtt = bassAtt; self.midAtt = midAtt; self.trebleAtt = trebleAtt
@@ -114,6 +137,9 @@ public struct FeatureVector: Sendable {
         self.time = time; self.deltaTime = deltaTime
         self._pad0 = 0
         self.aspectRatio = aspectRatio
+        self.accumulatedAudioTime = accumulatedAudioTime
+        self._pad1 = 0; self._pad2 = 0; self._pad3 = 0; self._pad4 = 0
+        self._pad5 = 0; self._pad6 = 0; self._pad7 = 0
     }
 
     /// All-zero feature vector.

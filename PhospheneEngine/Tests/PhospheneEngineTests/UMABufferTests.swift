@@ -161,8 +161,8 @@ import Metal
 // MARK: - FeatureVector GPU Layout
 
 @Test func featureVectorSizeAndAlignment() {
-    // 24 floats × 4 bytes = 96 bytes, 16-byte aligned for GPU uniforms.
-    #expect(MemoryLayout<FeatureVector>.size == 96)
+    // 32 floats × 4 bytes = 128 bytes after Increment 3.15, 16-byte aligned for GPU uniforms.
+    #expect(MemoryLayout<FeatureVector>.size == 128)
     #expect(MemoryLayout<FeatureVector>.stride % 16 == 0)
 }
 

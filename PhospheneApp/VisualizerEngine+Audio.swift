@@ -348,6 +348,8 @@ extension VisualizerEngine {
             }
             // Reset MIR accumulators on track change.
             mir.reset()
+            // Reset accumulated audio time — prevents previous track's phase from bleeding.
+            self.pipeline.resetAccumulatedAudioTime()
             // Reset stem pipeline — prevents previous track's stems from bleeding.
             self.resetStemPipeline()
             self.kickoffPreFetch(for: event.current, fetcher: fetcher)

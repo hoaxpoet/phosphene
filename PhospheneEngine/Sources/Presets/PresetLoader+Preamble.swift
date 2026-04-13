@@ -27,7 +27,7 @@ extension PresetLoader {
             float beat_value, _pad0;
         };
 
-        // Matches Swift FeatureVector layout (24 floats = 96 bytes).
+        // Matches Swift FeatureVector layout (32 floats = 128 bytes).
         struct FeatureVector {
             float bass, mid, treble;
             float bass_att, mid_att, treb_att;
@@ -37,6 +37,8 @@ extension PresetLoader {
             float valence, arousal;
             float time, delta_time;
             float _pad0, aspect_ratio;
+            float accumulated_audio_time;
+            float _pad1, _pad2, _pad3, _pad4, _pad5, _pad6, _pad7;
         };
 
         struct VertexOut {

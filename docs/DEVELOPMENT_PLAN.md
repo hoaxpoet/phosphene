@@ -1439,7 +1439,7 @@ After:  STFT(GPU) → [Float] → memcpy(MTLBuffer) → predict(MPSGraph/GPU/F32
 3.15 (Extended Shader Uniforms) ─────────────────────────────────────────┘
 ```
 
-3.12 and 3.13 are independent of each other and can proceed in parallel. 3.14 depends on both (the ray march pipeline uses utility functions from the library and noise textures for materials). 3.15 is independent but should land before any ray march preset is written.
+**Phase 3R status: ✅ COMPLETE.** All four increments (3.12, 3.13, 3.14, 3.15) are done. Phase 3.5 presets are now unblocked.
 
 ### Increment 3.12: Shader Utility Library
 
@@ -1625,77 +1625,41 @@ constexpr sampler mipLinearSampler(filter::linear, mip_filter::linear, address::
 
 **Enables:** Increment 3.5.1 Popcorn and all future photorealistic presets, Milkdrop Reaction-category equivalents (reaction-diffusion in 3D).
 
-### Increment 3.15: Extended Shader Uniforms (SceneUniforms + Accumulated Audio Time)
+### Increment 3.15: Extended Shader Uniforms (SceneUniforms + Accumulated Audio Time) ✅ COMPLETE
 
-**Status:** Not started.
+**Status:** ✅ Complete. 307 tests pass (232 swift-testing + 75 XCTest).
 
-**Goal:** Add `SceneUniforms` struct at `buffer(4)` for ray march presets, and add `accumulatedAudioTime` to `FeatureVector` for all presets. These two changes provide the scene-level and time-level data that photorealistic and Milkdrop-style presets need.
+**Goal:** Add `accumulatedAudioTime` to `FeatureVector` for all presets, and add per-preset scene configuration (`SceneCamera`, `SceneLight`, fog, ambient) to `PresetDescriptor` with `SceneUniforms` population at preset-switch time. These changes provide the scene-level and time-level data that photorealistic and Milkdrop-style presets need.
 
-**`SceneUniforms` struct (256 bytes):**
-```swift
-@frozen public struct SceneUniforms: Sendable {
-    public var cameraPosition: SIMD3<Float>     // 12 bytes
-    public var cameraFOV: Float                  // 4 bytes  (16 cumulative)
-    public var cameraTarget: SIMD3<Float>        // 12 bytes
-    public var fogDensity: Float                 // 4 bytes  (32 cumulative)
-    public var lightPositions: (SIMD4<Float>, SIMD4<Float>, SIMD4<Float>, SIMD4<Float>)  // 64 bytes (96 cumulative)
-    public var lightColors: (SIMD4<Float>, SIMD4<Float>, SIMD4<Float>, SIMD4<Float>)     // 64 bytes (160 cumulative)
-    public var accumulatedAudioTime: Float       // 4 bytes
-    public var ambientIntensity: Float           // 4 bytes
-    public var pad: (Float, Float, Float, Float, Float, Float,
-                     Float, Float, Float, Float, Float, Float,
-                     Float, Float, Float, Float, Float, Float,
-                     Float, Float, Float, Float)  // 88 bytes (256 cumulative)
-}
-```
+**What was implemented:**
 
-**FeatureVector extension:** Add `accumulatedAudioTime` as the 25th float. Struct grows from 96 bytes (24 floats) to 128 bytes (25 floats + 7 padding), maintaining 16-byte SIMD alignment. The MSL `FeatureVector` in the preamble is updated to match.
+`FeatureVector` grew from 24 floats (96 bytes) to 32 floats (128 bytes): `accumulatedAudioTime` added as float 25, followed by 7 padding floats (`_pad1`–`_pad7`) for SIMD alignment. MSL preamble `FeatureVector` struct updated to match (32 floats, field `accumulated_audio_time`).
 
-**Accumulated audio time logic:** `VisualizerEngine` maintains a `private var accumulatedAudioTime: Float = 0`. Each frame: `accumulatedAudioTime += max(0, (features.bass + features.mid + features.treble) / 3.0) * deltaTime`. Reset to 0 on track change. Clamped to prevent overflow (wrap at Float.greatestFiniteMagnitude is unnecessary — at ~0.5 accumulation rate and 60fps, it would take years to overflow Float32).
+`SceneUniforms` uses the existing Increment 3.14 layout (8 × `SIMD4<Float>` = 128 bytes): `cameraOriginAndFov`, `cameraForward`, `cameraRight`, `cameraUp`, `lightPositionAndIntensity`, `lightColor`, `sceneParamsA` (x=audioTime, y=aspectRatio, z=near, w=far), `sceneParamsB` (x=fogNear, y=fogFar, z=ambient, w=reserved).
 
-**Per-preset scene configuration (JSON sidecar):** Ray march presets declare scene setup in their JSON:
-```json
-{
-  "use_ray_march": true,
-  "use_post_process": true,
-  "scene_camera": { "position": [0, 2, -5], "target": [0, 0, 0], "fov": 1.2 },
-  "scene_lights": [
-    { "position": [3, 5, -2], "color": [1, 0.9, 0.8], "intensity": 2.0 },
-    { "position": [-2, 3, 1], "color": [0.4, 0.5, 0.8], "intensity": 1.0 }
-  ],
-  "scene_fog": 0.02,
-  "scene_ambient": 0.1
-}
-```
+`SceneCamera` and `SceneLight` Codable structs added to `Presets` module. `PresetDescriptor` gains `sceneCamera: SceneCamera?`, `sceneLights: [SceneLight]`, `sceneFog: Float`, `sceneAmbient: Float`.
 
-**Files to create/edit:**
-- `Shared/AudioFeatures+Analyzed.swift` — add `SceneUniforms` struct definition
-- `Shared/AudioFeatures+Analyzed.swift` — add `accumulatedAudioTime` to `FeatureVector`, update MSL mirror
-- `Presets/PresetDescriptor.swift` — add `sceneCamera`, `sceneLights`, `sceneFog`, `sceneAmbient` fields with defaults
-- `Presets/PresetLoader+Preamble.swift` — add `SceneUniforms` MSL struct, update `FeatureVector` MSL struct
-- `PhospheneApp/VisualizerEngine.swift` — maintain `accumulatedAudioTime`, populate `SceneUniforms` from `PresetDescriptor`, bind at `buffer(4)` for ray march presets
-- `Renderer/RenderPipeline.swift` — accept and pass through `SceneUniforms` buffer in ray march render path
+`RenderPipeline` gains `accumulatedAudioTime: Float`, `resetAccumulatedAudioTime()`, and internal `stepAccumulatedTime(energy:deltaTime:)` behind `NSLock`. Accumulation formula: `_accumulatedAudioTime += max(0, energy) * deltaTime`, driven by `(bass + mid + treble) / 3.0` each frame. `drawWithRayMarch` writes `accumulatedAudioTime` to `sceneUniforms.sceneParamsA.x` each frame.
 
-**Test requirements:**
-- `Tests/PhospheneEngineTests/Shared/SceneUniformsTests.swift` (new) — 5 tests:
-  - `test_sceneUniforms_size_is256Bytes()` — `MemoryLayout<SceneUniforms>.size == 256`
-  - `test_sceneUniforms_stride_is256Bytes()` — `MemoryLayout<SceneUniforms>.stride == 256`
-  - `test_sceneUniforms_defaultValues_reasonable()` — camera at (0,2,-5), one white light
-  - `test_sceneUniforms_mslLayoutMatches_swiftLayout()` — compile test shader accessing all fields
-  - `test_sceneUniforms_fromPresetDescriptor_parsesJSON()`
-- `Tests/PhospheneEngineTests/Shared/FeatureVectorExtendedTests.swift` (new) — 4 tests:
-  - `test_featureVector_size_is128Bytes()` — updated size after adding accumulatedAudioTime + padding
-  - `test_accumulatedAudioTime_zeroAtStart()`
-  - `test_accumulatedAudioTime_accumulatesWithVolume()` — feed 60 frames of known energy, verify accumulated value
-  - `test_accumulatedAudioTime_resetsOnTrackChange()`
-- **Integration test:**
-  - `test_sceneUniforms_boundAtBuffer4_accessibleInShader()` — compile and run a test shader that reads `SceneUniforms` from buffer(4)
+`VisualizerEngine+Presets.swift` gains `makeSceneUniforms(from:)`: camera basis construction (forward/right/up from position+target), first light → lightPositionAndIntensity + lightColor, fog/ambient → sceneParamsB. Track-change callback calls `pipeline.resetAccumulatedAudioTime()`.
 
-**Verification:** All existing tests pass. 10 new tests pass. `FeatureVector` size is 128 bytes. `SceneUniforms` size is 256 bytes. A test preset reading `features.accumulatedAudioTime` compiles and animates with volume-dependent speed. Ray march test preset receives valid camera and light data.
+**Files created/modified:**
+- `Shared/AudioFeatures+Analyzed.swift` — `FeatureVector` 96→128 bytes, `accumulatedAudioTime` field
+- `Presets/PresetDescriptor.swift` — `SceneCamera`, `SceneLight` structs; new JSON fields
+- `Presets/PresetLoader+Preamble.swift` — MSL `FeatureVector` updated to 32 floats
+- `Renderer/RenderPipeline.swift` — accumulated time state, step/reset methods, per-frame accumulation
+- `Renderer/RenderPipeline+RayMarch.swift` — writes audioTime to sceneParamsA.x each frame
+- `PhospheneApp/VisualizerEngine+Presets.swift` (new) — `makeSceneUniforms(from:)`, preset apply logic
+- `PhospheneApp/VisualizerEngine+Audio.swift` — `resetAccumulatedAudioTime()` on track change
+- `Tests/Shared/SceneUniformsTests.swift` (new) — 5 tests
+- `Tests/Shared/FeatureVectorExtendedTests.swift` (new) — 4 tests
+- 3 existing tests updated (96→128 bytes): `AudioFeaturesTests`, `MIRPipelineUnitTests`, `UMABufferTests`, `PipelineIntegrationTests`
 
-**Depends on:** nothing (but should land before any ray march preset is written).
+**Verification:** ✅ 307 tests pass. `FeatureVector` is 128 bytes (32 floats). MSL probe kernel reads all 32 fields without compile errors. JSON preset with `scene_camera`, `scene_lights`, `scene_fog`, `scene_ambient` decodes correctly. `accumulatedAudioTime` starts at 0, accumulates at `energy × deltaTime` rate, and resets to 0 on `resetAccumulatedAudioTime()`.
 
-**Enables:** Increment 3.14 (ray march pipeline reads SceneUniforms), all presets using accumulated audio time (nearly universal — see Milkdrop analysis), Phase 3.5 Popcorn.
+**Depends on:** Increment 3.14 (SceneUniforms struct exists in Renderer module).
+
+**Enables:** All presets using accumulated audio time (nearly universal — see Milkdrop analysis), Phase 3.5 Popcorn.
 
 ---
 

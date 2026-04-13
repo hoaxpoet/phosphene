@@ -3,6 +3,54 @@
 // See CLAUDE.md "Scene Metadata Format" for field documentation.
 
 import Foundation
+import simd
+
+// MARK: - Scene Configuration Types
+
+/// Camera configuration declared in a ray march preset's JSON sidecar.
+///
+/// `position` and `target` are in world-space; `fov` is the vertical field of view in radians.
+/// These are used to populate `SceneUniforms` when the preset is activated.
+public struct SceneCamera: Sendable, Codable, Equatable {
+    /// World-space camera position.
+    public var position: SIMD3<Float>
+    /// World-space point the camera looks toward.
+    public var target: SIMD3<Float>
+    /// Vertical field of view in radians.
+    public var fov: Float
+
+    public init(
+        position: SIMD3<Float> = SIMD3(0, 0, -5),
+        target: SIMD3<Float> = .zero,
+        fov: Float = .pi / 4.0
+    ) {
+        self.position = position
+        self.target = target
+        self.fov = fov
+    }
+}
+
+/// A single scene light declared in a ray march preset's JSON sidecar.
+public struct SceneLight: Sendable, Codable, Equatable {
+    /// World-space light position.
+    public var position: SIMD3<Float>
+    /// Linear-RGB light colour (each component 0–1).
+    public var color: SIMD3<Float>
+    /// Intensity multiplier.
+    public var intensity: Float
+
+    public init(
+        position: SIMD3<Float> = SIMD3(3, 8, -3),
+        color: SIMD3<Float> = SIMD3(1, 1, 1),
+        intensity: Float = 5.0
+    ) {
+        self.position = position
+        self.color = color
+        self.intensity = intensity
+    }
+}
+
+// MARK: - PresetDescriptor
 
 /// Metadata for a single visual preset, loaded from a JSON sidecar file.
 ///
@@ -86,6 +134,24 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
     /// Defaults to 64 (the standard threadgroup size for production preset mesh shaders).
     public let meshThreadCount: Int
 
+    // MARK: - Scene Configuration (Ray March Presets)
+
+    /// Camera configuration for ray march presets. Nil uses `SceneUniforms` defaults.
+    public let sceneCamera: SceneCamera?
+
+    /// Light sources for ray march presets. The first entry maps to the primary
+    /// `SceneUniforms` light; additional lights are ignored until the lighting pass
+    /// supports multiple lights. Empty uses `SceneUniforms` defaults.
+    public let sceneLights: [SceneLight]
+
+    /// Fog density for ray march presets (0 = no fog; 0.05 ≈ heavy fog).
+    /// Stored in `sceneParamsB.x`; far-plane fog maps `fogFar = max(1, 1/sceneFog)`.
+    public let sceneFog: Float
+
+    /// Ambient light intensity multiplier for ray march presets (0–1).
+    /// Stored in `sceneParamsB.z`.
+    public let sceneAmbient: Float
+
     // MARK: - Shader Function Names
 
     /// Fragment function name in the .metal file. Defaults to "preset_fragment".
@@ -120,6 +186,10 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         case usePostProcess = "use_post_process"
         case useRayMarch = "use_ray_march"
         case meshThreadCount = "mesh_thread_count"
+        case sceneCamera = "scene_camera"
+        case sceneLights = "scene_lights"
+        case sceneFog = "scene_fog"
+        case sceneAmbient = "scene_ambient"
         case fragmentFunction = "fragment_function"
         case vertexFunction = "vertex_function"
         case shaderFileName = "shader_file"
@@ -145,6 +215,10 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         usePostProcess = try container.decodeIfPresent(Bool.self, forKey: .usePostProcess) ?? false
         useRayMarch = try container.decodeIfPresent(Bool.self, forKey: .useRayMarch) ?? false
         meshThreadCount = try container.decodeIfPresent(Int.self, forKey: .meshThreadCount) ?? 64
+        sceneCamera = try container.decodeIfPresent(SceneCamera.self, forKey: .sceneCamera)
+        sceneLights = try container.decodeIfPresent([SceneLight].self, forKey: .sceneLights) ?? []
+        sceneFog = try container.decodeIfPresent(Float.self, forKey: .sceneFog) ?? 0
+        sceneAmbient = try container.decodeIfPresent(Float.self, forKey: .sceneAmbient) ?? 0.1
         fragmentFunction = try container.decodeIfPresent(String.self, forKey: .fragmentFunction) ?? "preset_fragment"
         vertexFunction = try container.decodeIfPresent(String.self, forKey: .vertexFunction) ?? "fullscreen_vertex"
         shaderFileName = try container.decodeIfPresent(String.self, forKey: .shaderFileName) ?? ""

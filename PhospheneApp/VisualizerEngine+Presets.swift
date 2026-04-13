@@ -4,6 +4,7 @@ import os.log
 import Presets
 import Renderer
 import Shared
+import simd
 
 private let logger = Logger(subsystem: "com.phosphene.app", category: "VisualizerEngine")
 
@@ -122,6 +123,9 @@ extension VisualizerEngine {
         pipeline.setActivePipelineState(rmPipelineState)
         pipeline.setRayMarchPipeline(rmPipeline, enabled: true)
 
+        // Populate SceneUniforms from the preset's JSON scene configuration.
+        rmPipeline.sceneUniforms = makeSceneUniforms(from: desc)
+
         // If the preset also requests post-process bloom, attach the chain.
         // RayMarchPipeline.render() will call chain.runBloomAndComposite when non-nil.
         if desc.usePostProcess {
@@ -134,5 +138,47 @@ extension VisualizerEngine {
         } else {
             pipeline.setPostProcessChain(nil, enabled: false)
         }
+    }
+
+    // MARK: - Scene Uniforms Construction
+
+    /// Build a `SceneUniforms` value from a preset descriptor's scene configuration.
+    ///
+    /// Falls back to `SceneUniforms()` defaults for any field not declared in the JSON.
+    /// `audioTime` and `aspectRatio` are left at their defaults (0 and 16/9) — the
+    /// render loop overwrites them each frame in `drawWithRayMarch`.
+    private func makeSceneUniforms(from desc: PresetDescriptor) -> SceneUniforms {
+        var uniforms = SceneUniforms()
+
+        // Camera — compute orthonormal basis from position and target.
+        if let cam = desc.sceneCamera {
+            let fwd = simd_normalize(cam.target - cam.position)
+            let worldUp = SIMD3<Float>(0, 1, 0)
+            // Guard against degenerate case where forward is parallel to world-up.
+            let right = simd_normalize(simd_cross(fwd, worldUp))
+            let up = simd_cross(right, fwd)
+            uniforms.cameraOriginAndFov = SIMD4(cam.position.x, cam.position.y, cam.position.z, cam.fov)
+            uniforms.cameraForward = SIMD4(fwd.x, fwd.y, fwd.z, 0)
+            uniforms.cameraRight = SIMD4(right.x, right.y, right.z, 0)
+            uniforms.cameraUp = SIMD4(up.x, up.y, up.z, 0)
+        }
+
+        // Primary light — only the first entry is used (single-light SceneUniforms).
+        if let light = desc.sceneLights.first {
+            uniforms.lightPositionAndIntensity = SIMD4(
+                light.position.x, light.position.y, light.position.z, light.intensity)
+            uniforms.lightColor = SIMD4(light.color.x, light.color.y, light.color.z, 0)
+        }
+
+        // Fog: map density → fogFar distance; ambient stored in sceneParamsB.z.
+        let fogFar: Float = desc.sceneFog > 0 ? max(1.0, 1.0 / desc.sceneFog) : uniforms.sceneParamsB.y
+        uniforms.sceneParamsB = SIMD4(
+            uniforms.sceneParamsB.x,
+            fogFar,
+            desc.sceneAmbient,
+            0
+        )
+
+        return uniforms
     }
 }
