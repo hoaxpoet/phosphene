@@ -6,6 +6,7 @@ import DSP
 import Foundation
 import ML
 import os.log
+import Session
 import Shared
 
 private let logger = Logger(subsystem: "com.phosphene.app", category: "VisualizerEngine")
@@ -14,7 +15,7 @@ private let logger = Logger(subsystem: "com.phosphene.app", category: "Visualize
 
 extension VisualizerEngine {
 
-    /// Set up audio routing, MIR analysis, mood classification, and metadata pre-fetching.
+    /// Set up audio routing, MIR analysis, mood classification, and pre-fetching.
     @available(macOS 14.2, *)
     func setupAudioRouting(
         audioBuffer buf: AudioBuffer,
@@ -62,10 +63,9 @@ extension VisualizerEngine {
         return fetchers
     }
 
-    /// Build the real-time onAudioSamples callback. Runs on the audio thread:
-    /// must do only the buffer write + FFT, then dispatch heavy MIR work
-    /// onto the analysis queue. Also feeds StemSampleBuffer for background
-    /// stem separation.
+    /// Build the real-time onAudioSamples callback. Runs on the audio thread —
+    /// writes the buffer + FFT, dispatches heavy MIR work to the analysis queue,
+    /// and feeds StemSampleBuffer for background stem separation.
     func makeAudioSampleCallback(
         buf: AudioBuffer,
         fft: FFTProcessor
@@ -111,7 +111,6 @@ extension VisualizerEngine {
         )
 
         // Feed live MIR features to the render pipeline.
-        // RenderPipeline.draw(in:) overlays timing fields each frame.
         pipeline.setFeatures(fv)
         pipeline.updateFeedbackBeatValue(from: fv)
 
@@ -180,7 +179,7 @@ extension VisualizerEngine {
         publishMoodResult(state: state, diag: diag, stability: stability, mir: mir)
     }
 
-    /// Build a snapshot of MIR diagnostics for the debug overlay.
+    /// MIR diagnostics snapshot for the debug overlay.
     func makeDiagnostics(
         fv: FeatureVector,
         mir: MIRPipeline,
@@ -256,11 +255,7 @@ extension VisualizerEngine {
 
     /// Toggle feature vector capture to CSV file.
     func toggleCapture() {
-        if isCapturing {
-            stopCapture()
-        } else {
-            startCapture()
-        }
+        if isCapturing { stopCapture() } else { startCapture() }
     }
 
     func startCapture() {
@@ -373,8 +368,12 @@ extension VisualizerEngine {
             mir.reset()
             // Reset accumulated audio time — prevents previous track's phase from bleeding.
             self.pipeline.resetAccumulatedAudioTime()
-            // Reset stem pipeline — prevents previous track's stems from bleeding.
-            self.resetStemPipeline()
+            // Reset stem pipeline — loads cached stems or falls back to .zero.
+            let identity = TrackIdentity(
+                title: event.current.title ?? "",
+                artist: event.current.artist ?? ""
+            )
+            self.resetStemPipeline(for: identity)
             self.kickoffPreFetch(for: event.current, fetcher: fetcher)
         }
     }

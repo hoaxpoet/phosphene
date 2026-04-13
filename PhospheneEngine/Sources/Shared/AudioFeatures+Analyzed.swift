@@ -276,7 +276,7 @@ public struct EmotionalState: Sendable, Equatable {
 /// };
 /// ```
 @frozen
-public struct StemFeatures: Sendable {
+public struct StemFeatures: Sendable, Equatable {
 
     /// Vocals: total energy across all vocal bands.
     public var vocalsEnergy: Float

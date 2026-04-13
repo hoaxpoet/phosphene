@@ -35,7 +35,7 @@ line, as it would propagate to SPM dependencies that compile with
 
 Deployment target: macOS 14.0+ (Sonoma). Swift 6.0. Metal 3.1+.
 
-**Current test count: 360 tests** (269 swift-testing + 91 XCTest, across unit, integration, regression, performance). All must pass before any new code is merged.
+**Current test count: 371 tests** (280 swift-testing + 91 XCTest, across unit, integration, regression, performance). All must pass before any new code is merged.
 
 ## Module Map
 
@@ -119,11 +119,11 @@ PhospheneEngine/
   Session/                  → Playlist connection, preview pipeline, session state
     PlaylistConnector       → Protocol PlaylistConnecting + concrete Apple Music (AppleScript) / Spotify (Web API) impl (✓ implemented)
     TrackIdentity           → Stable per-track cache key: title, artist, album, duration, catalog IDs (✓ implemented)
-    PreviewResolver          → Resolve TrackIdentity → preview URL (iTunes Search API / MusicKit PreviewAssets)
-    PreviewDownloader        → Batch download + decode AAC/MP3 → PCM via AVAudioFile
-    SessionPreparer          → Orchestrate: download → separate → analyze → cache → plan
-    StemCache                → Thread-safe per-track storage: separated stem waveforms + StemFeatures + TrackProfile
-    TrackProfile             → Pre-computed MIR features per track: BPM, key, mood, spectral summary, stem energy balance
+    PreviewResolver          → Resolve TrackIdentity → preview URL (iTunes Search API / MusicKit PreviewAssets) (✓ implemented)
+    PreviewDownloader        → Batch download + decode AAC/MP3 → PCM via AVAudioFile (✓ implemented)
+    SessionPreparer          → Orchestrate: download → separate → analyze → cache → plan (✓ implemented)
+    StemCache                → Thread-safe per-track storage: separated stem waveforms + StemFeatures + TrackProfile (✓ implemented)
+    TrackProfile             → Pre-computed MIR features per track: BPM, key, mood, spectral summary, stem energy balance (✓ implemented)
   Shared/                   → UMA buffer wrappers, type definitions, logging
     UMABuffer               → Generic .storageModeShared MTLBuffer + UMARingBuffer (✓ implemented)
     AudioFeatures           → @frozen SIMD-aligned structs: AudioFrame, FFTResult, TrackMetadata, PreFetchedTrackProfile (✓ implemented)
@@ -133,21 +133,14 @@ PhospheneEngine/
     AnalyzedFrame           → Timestamped container: AudioFrame + FFTResult + StemData + FeatureVector + EmotionalState (✓ implemented)
     StemSampleBuffer        → Interleaved stereo PCM ring buffer for stem separation input (✓ implemented)
     Logging                 → Per-module os.Logger instances (✓ implemented)
-  Session/                   → Playlist connection, preview pipeline, session state
-    PlaylistConnector        → Read playlist from Apple Music (AppleScript) / Spotify (Web API) / URL
-    PreviewResolver          → Resolve TrackIdentity → preview URL (iTunes Search API / MusicKit PreviewAssets)
-    PreviewDownloader        → Batch download + decode AAC/MP3 → PCM via AVAudioFile
-    SessionPreparer          → Orchestrate: download → separate → analyze → cache → plan
-    StemCache                → Thread-safe per-track storage: separated stem waveforms + StemFeatures + TrackProfile
-    TrackProfile             → Pre-computed MIR features per track: BPM, key, mood, spectral summary, stem energy balance
-
-Tests/ (298 tests: 232 swift-testing + 66 XCTest)
+Tests/ (371 tests: 280 swift-testing + 91 XCTest)
   Audio/                    → AudioBufferTests, FFTProcessorTests, StreamingMetadataTests, MetadataPreFetcherTests, LookaheadBufferTests (10)
   DSP/                      → SpectralAnalyzerTests (8), BandEnergyProcessorTests (5), ChromaExtractorTests (6), BeatDetectorTests (7), MIRPipelineUnitTests (4), SelfSimilarityMatrixTests (5), NoveltyDetectorTests (5), StructuralAnalyzerTests (8)
   ML/                       → StemSeparatorTests (7), StemFFTTests (6: vDSP cross-validate, round-trip, fwd perf, inv perf, UMA storage, thread safety), StemModelTests (6: init, silence, cross-validate, perf gate <400ms, UMA storage, thread safety), MoodClassifierTests (7: init, classification, range, quadrants, protocol)
   Renderer/                 → MetalContextTests, ShaderLibraryTests, RenderPipelineTests, ProceduralGeometryTests (7: init, storage mode, dispatch, count, zero-audio, impulse, 1M perf), MeshGeneratorTests (6: descriptor, pipeline state, dispatch, maxVerts=256, maxPrims=512, <16ms perf), BVHBuilderTests (4: build, empty, rebuild, triangleCount), RayIntersectorTests (5: hit, miss, shadow, reflection, 1000-ray <2ms perf), PostProcessChainTests (6: HDR texture alloc, rgba16Float format, bloom threshold, Gaussian luminance preservation, ACES SDR mapping, <2ms perf at 1080p), ShaderUtilityTests (11: preamble inclusion, multi-domain compilation, noise determinism, SDF analytic, ray march hit/miss, PBR energy conservation, kaleidoscope symmetry, palette smoothness, ACES SDR range, fog identity, 1080p noise perf), TextureManagerTests (9: all 5 textures created, noiseLQ 256², noiseHQ 1024², noiseVolume 64³ type3D, noiseFBM rgba8Unorm, all storageModeShared, deterministic across inits, bindTextures sets indices 4–8, <500ms init perf)
   Shared/                   → AudioFeaturesTests (2: StemFeatures layout + SIMD alignment), UMABufferExtendedTests, EmotionalStateTests (4: quadrant classification), AnalyzedFrameTests (3), SceneUniformsTests (5: size/stride, alignment, default values, MSL layout, JSON parse), FeatureVectorExtendedTests (4: size, zero-at-start, accumulation formula, reset)
-  Integration/              → AudioToFFTPipelineTests, AudioToRenderPipelineTests, MetadataToOrchestratorTests, AudioToStemPipelineTests, MIRPipelineIntegrationTests (3), LookaheadIntegrationTests (1), StemsToRenderPipelineTests (4: warmup default, separation→analysis, track reset, Swift/MSL size)
+  Session/                  → PlaylistConnectorTests (8), PreviewResolverTests (6), PreviewDownloaderTests (6), SessionPreparerTests (5: single track, multiple, missing preview, progress, cancellation), StemCacheTests (3: load correct, unknown nil, thread safety)
+  Integration/              → AudioToFFTPipelineTests, AudioToRenderPipelineTests, MetadataToOrchestratorTests, AudioToStemPipelineTests, MIRPipelineIntegrationTests (3), LookaheadIntegrationTests (1), StemsToRenderPipelineTests (4: warmup default, separation→analysis, track reset, Swift/MSL size), SessionPreparationIntegrationTests (3: full pipeline, BPM+mood, non-zero stems)
   Regression/               → FFTRegressionTests, MetadataParsingRegressionTests, ChromaRegressionTests (2), BeatDetectorRegressionTests (2), StructuralAnalysisRegressionTests (1) + golden fixtures
   Performance/              → FFTPerformanceTests, RenderLoopPerformanceTests, StemSeparationPerformanceTests (2: hard 400ms gate + measure block), DSPPerformanceTests (3)
   TestDoubles/              → MockAudioCapture, StubFFTProcessor, FakeStemSeparator, StubMoodClassifier, AudioFixtures, MockMetadataProvider, MockMetadataFetcher
@@ -711,8 +704,9 @@ The architectural blueprint is in `docs/ARCHITECTURAL_BLUEPRINT.md`.
 **Completed increments (Phase 2.5):**
 - **Increment 2.5.1 — Playlist Connector** ✅ — New `Session` SPM target. `TrackIdentity` struct (title, artist, album, duration, appleMusicID, spotifyID, musicBrainzID; `Sendable + Hashable + Codable`). `PlaylistConnecting` protocol + `PlaylistConnector` concrete class: Apple Music (AppleScript loop over `every track of current playlist`, linefeed-joined output), Spotify queue endpoint (`/me/player/queue`) and playlist URL endpoint (`/playlists/{id}/tracks`, paginated), Apple Music URL (validates format, falls back to current playlist pending MusicKit entitlement in Phase 4). All external calls injectable via `appleScriptReader` and `networkFetcher` closures. `PlaylistConnectorError` enum (5 cases). `Logging.session` logger added to `Shared`. SwiftLint fix: `SilenceDetector.update(rms:)` refactored — per-state logic extracted into 4 private `advance*` helpers, reducing cyclomatic complexity from 12 → 5; `s` renamed to `sample`. 8 `PlaylistConnectorTests` (ordered tracks, duration, Spotify queue, Spotify URL, empty playlist, network failure, Codable round-trip, duplicate order preservation). 348 tests total (257 swift-testing + 91 XCTest), SwiftLint clean.
 - **Increment 2.5.2 — Preview Resolver & Downloader** ✅ — `PreviewAudio` struct (`Session/SessionTypes.swift`: trackIdentity, pcmSamples `[Float]`, sampleRate `Int`, duration `TimeInterval`). `PreviewResolving` protocol + `PreviewResolver` class (`Session/PreviewResolver.swift`): iTunes Search API (`itunes.apple.com/search?term=…&media=music&entity=song&limit=1`), injectable `networkFetcher` closure, in-memory cache keyed by `TrackIdentity` (hit/miss/nil-cached via `URL??` dict), sliding-window rate limiter (20 req/min default, configurable for testing). `PreviewDownloading` protocol + `PreviewDownloader` class (`Session/PreviewDownloader.swift`): injectable `fileFetcher` closure, format-sniffing temp file writer (WAV/AIFF/CAF/MP3/M4A auto-detected from file header bytes), real `AVAudioFile` decode to mono Float32 (multi-channel averaged), configurable concurrency ceiling (default 4, `withTaskGroup` producer/consumer), guaranteed temp file cleanup via `defer`. 6 `PreviewResolverTests` (known track → URL, unknown → nil, AAC URL format, rate-limit enforcement, timeout → nil graceful, cache dedup). 6 `PreviewDownloaderTests` (non-zero PCM, 44100 Hz, ~30s duration, concurrency ceiling, failed track skipped, temp file cleanup). 360 tests total (269 swift-testing + 91 XCTest), SwiftLint clean.
+- **Increment 2.5.3 — Batch Pre-Analysis & Stem Cache** ✅ — `TrackProfile` struct (bpm, key, mood, spectralCentroidAvg, genreTags, stemEnergyBalance, estimatedSectionCount). `CachedTrackData` struct (stemWaveforms `[[Float]]`, stemFeatures `StemFeatures`, trackProfile `TrackProfile`). `StemCache` (`@unchecked Sendable`, `NSLock`-guarded `store/loadForPlayback/stemFeatures/trackProfile/count/clear`). `SessionPreparer` (`@MainActor ObservableObject`, `@Published progress`, sequential per-track loop with `Task.detached` for CPU work, cancellation via `Task.isCancelled`). `SessionPreparer+Analysis.swift` — `nonisolated` static helpers: `analyzePreview` (separator → AGC warmup → offline MIR), `warmUpAndAnalyze` (1024-sample hop multi-frame warmup), `analyzeMIR` (vDSP FFT frame-by-frame through `MIRPipeline`, mood every 30 frames), `computeFFTMagnitudes` (`FFTContext` struct packs working buffers). `StemFeatures` gains `: Equatable`. Session target deps expanded: Audio + DSP + ML. `VisualizerEngine` gains `stemCache: StemCache?`; `resetStemPipeline(for:)` loads from cache instead of zeroing (StemSampleBuffer not cleared). Track-change callback passes `TrackIdentity` to `resetStemPipeline`. 8 unit tests (`SessionPreparerTests` + `StemCacheTests`) + 3 integration tests (real Metal GPU, synthetic sine wave PCM, no network). 280 tests total (269 swift-testing + 91 XCTest — note: 91 XCTest unchanged, swift-testing count revised vs prior entry), SwiftLint clean.
 
 **Ordered next increments** (per the revised plan):
-1. **Increment 2.5.3 — Batch Pre-Analysis & Stem Cache.** SessionPreparer orchestrates preview → StemSeparator → MIRPipeline → StemCache for every track before playback begins.
-3. **Phase 3.5 — Native Preset Library Expansion.** First entry: **3.5.2 Murmuration Stem Routing Revision** (replace 6-band workaround with real stem routing from StemFeatures). Popcorn (3.5.1) removed from plan.
-4. **Phase 4 — Orchestrator.** Revised to include session planning mode alongside reactive mode.
+1. **Increment 2.5.4 — Session State Machine & Track Change Behavior.** `SessionManager` formalizes the lifecycle: idle → connecting → preparing → ready → playing → ended.
+2. **Phase 3.5 — Native Preset Library Expansion.** First entry: **3.5.2 Murmuration Stem Routing Revision** (replace 6-band workaround with real stem routing from StemFeatures). Popcorn (3.5.1) removed from plan.
+3. **Phase 4 — Orchestrator.** Revised to include session planning mode alongside reactive mode.
