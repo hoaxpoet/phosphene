@@ -1526,11 +1526,50 @@ After:  STFT(GPU) → [Float] → memcpy(MTLBuffer) → predict(MPSGraph/GPU/F32
 
 ### Increment 3.5.2: Murmuration Stem Routing Revision
 
-**Status:** Not started. First preset in the expansion phase.
+**Status:** Not started. Next preset in the expansion phase.
 
 [See the full increment prompt created earlier in this conversation for the complete specification.]
 
-*Other Phase 3.5 entries can be added as presets are designed. For now, listing Popcorn is enough to establish the phase and document its dependencies.*
+---
+
+### Increment 3.5.3: Glass Brutalist Preset ✅
+
+**Status:** Complete.
+
+**Concept:** A stark brutalist corridor of massive concrete pillars and horizontal ceiling slabs, with near-mirror glass panels positioned between each pillar bay. The architecture breathes and heaves with low-frequency energy; glass panels produce high-luminance IBL specular reflections that the SSGI pass bleeds as indirect diffuse light onto adjacent concrete surfaces.
+
+**Files created:**
+- `PhospheneEngine/Sources/Presets/Shaders/GlassBrutalist.metal`
+- `PhospheneEngine/Sources/Presets/Shaders/GlassBrutalist.json`
+
+**Passes:** `["ray_march", "ssgi", "post_process"]` — G-buffer deferred lighting → SSGI indirect bleed → bloom + ACES tone map.
+
+**SDF geometry:**
+- Concrete: floor/ceiling `sdPlane`s + paired pillar columns (mirrored via `abs(p.x)` fold, repeated in Z at 7-unit intervals via `round()`-based repetition) + horizontal cross-beams at pillar tops.
+- Glass: thin vertical panels (`sdBox`, half-depth 0.05) offset by half a cell in Z so they sit between each pillar row.
+
+**Audio routing (hierarchy-correct):**
+- `f.sub_bass + f.low_bass` → pillar Y-scale (continuous energy, primary driver; architecture heaves with bass stem proxy)
+- `f.mid` → glass panel Y-scale (continuous energy, melody-reactive)
+- `f.accumulated_audio_time` → slow sinusoidal corridor drift (scene breathes overall)
+- `f.beat_bass` → 5 % transient pillar X/Z-squeeze (accent, secondary — well within 2–4× continuous/beat ratio)
+
+**Materials:**
+- Concrete: two-octave `perlin2D` FBM on `p.xz` for gritty albedo variation (grey range 0.32–0.56 with slight warm cast), roughness 0.82–0.92, metallic 0.0.
+- Glass: cool cyan albedo [0.55, 0.82, 0.96], roughness 0.04, metallic 0.92. Near-mirror finish produces strong specular IBL contribution in the `rgba16Float` litTexture; SSGI samples this brightness and bleeds cyan-tinted indirect diffuse onto adjacent concrete.
+
+**Architecture notes:**
+- `sceneMaterial` has no `FeatureVector` access (forward declaration constraint). Audio-reactive material properties are expressed geometrically in `sceneSDF` only. Material re-evaluates sub-SDFs at rest pose (no deformation) for stable boundaries.
+- `gb_rep()` helper uses `round()` not `fmod()` for correct negative-coordinate domain repetition (same lesson as `ks_rep` in KineticSculpture).
+- No new Swift files, no new tests (preset compiles dynamically via `PresetLoader` at runtime).
+
+**Verified:** Build succeeded. 280 swift-testing + 91 XCTest pass. 0 SwiftLint violations. Pre-existing `test_fullScreenNoise_1080p_under2ms` flake (2.08 ms vs 2.0 ms threshold, system-load-dependent) unrelated to this increment.
+
+**Enables:** Demonstrates full ray_march → ssgi → post_process pipeline with a concrete creative concept. Reference architecture for future corridor/architectural presets.
+
+---
+
+*Additional Phase 3.5 preset entries are added as presets are designed.*
 
 ---
 
