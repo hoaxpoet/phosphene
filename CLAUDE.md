@@ -34,7 +34,7 @@ line, as it would propagate to SPM dependencies that compile with
 
 Deployment target: macOS 14.0+ (Sonoma). Swift 6.0. Metal 3.1+.
 
-**Current test count: 288 tests** (232 swift-testing + 56 XCTest, across unit, integration, regression, performance). All must pass before any new code is merged.
+**Current test count: 298 tests** (232 swift-testing + 66 XCTest, across unit, integration, regression, performance). All must pass before any new code is merged.
 
 ## Module Map
 
@@ -100,7 +100,7 @@ PhospheneEngine/
     Shaders/Particles.metal → Murmuration compute kernel + bird silhouette vertex/fragment shaders (✓ implemented)
     Shaders/PostProcess.metal → pp_bright_pass_fragment, pp_blur_h/v_fragment (9-tap Gaussian), pp_composite_fragment (ACES tonemapping) (✓ implemented)
     Shaders/RayTracing.metal → RTRay/RTNearestHit structs, rt_nearest_hit_kernel, rt_shadow_kernel, rt_camera_ray, rt_reflect, rt_offset_point (✓ implemented)
-    Shaders/ShaderLib.metal  → SDF primitives, ray marching, PBR lighting, procedural noise, color utilities, camera, domain transforms (planned — Increment 3.14)
+    Shaders/RayMarch.metal   → raymarch_lighting_fragment (Cook-Torrance PBR, soft shadows, AO, fog), raymarch_composite_fragment (ACES SDR) (✓ implemented)
     Shaders/NoiseGen.metal   → Compute kernels for generating noise textures at startup: gen_perlin_2d, gen_perlin_3d, gen_fbm_rgba, gen_blue_noise (✓ implemented)
     Shaders/Waveform.metal  → 64-bar FFT spectrum + oscilloscope waveform (✓ implemented)
     TextureManager           → 5 pre-computed noise textures (noiseLQ 256², noiseHQ 1024², noiseVolume 64³, noiseFBM 1024², blueNoise 256²) generated via Metal compute at init, bound at texture(4)–texture(8). (✓ implemented)
@@ -108,7 +108,7 @@ PhospheneEngine/
     PresetLoader            → Auto-discover .metal presets, compile standard + additive-blend + mesh pipeline states; skips utility files (✓ implemented)
     PresetLoader+Preamble   → Common Metal shader preamble: FeatureVector struct, meshlet structs, hsv2rgb, ShaderUtilities library loaded from bundle (✓ implemented)
     Shaders/ShaderUtilities.metal → 55 reusable functions: hash, noise (Perlin/simplex/Worley/FBM/curl), SDF primitives+ops, ray marching, PBR (Cook-Torrance), UV transforms, color/atmosphere (✓ implemented)
-    PresetDescriptor        → JSON sidecar metadata with useFeedback, useMeshShader, usePostProcess flags (✓ implemented)
+    PresetDescriptor        → JSON sidecar metadata with useFeedback, useMeshShader, usePostProcess, useRayMarch flags (✓ implemented)
     PresetCategory          → Visual aesthetic families (11 categories including abstract) (✓ implemented)
     Shaders/Starburst.metal → "Murmuration" preset — dusk sky gradient backdrop (✓ implemented)
     Shaders/Waveform.metal  → Spectrum bars + oscilloscope preset (✓ implemented)
@@ -125,7 +125,7 @@ PhospheneEngine/
     StemSampleBuffer        → Interleaved stereo PCM ring buffer for stem separation input (✓ implemented)
     Logging                 → Per-module os.Logger instances (✓ implemented)
 
-Tests/ (288 tests: 232 swift-testing + 56 XCTest)
+Tests/ (298 tests: 232 swift-testing + 66 XCTest)
   Audio/                    → AudioBufferTests, FFTProcessorTests, StreamingMetadataTests, MetadataPreFetcherTests, LookaheadBufferTests (10)
   DSP/                      → SpectralAnalyzerTests (8), BandEnergyProcessorTests (5), ChromaExtractorTests (6), BeatDetectorTests (7), MIRPipelineUnitTests (4), SelfSimilarityMatrixTests (5), NoveltyDetectorTests (5), StructuralAnalyzerTests (8)
   ML/                       → StemSeparatorTests (7), StemFFTTests (6: vDSP cross-validate, round-trip, fwd perf, inv perf, UMA storage, thread safety), StemModelTests (6: init, silence, cross-validate, perf gate <400ms, UMA storage, thread safety), MoodClassifierTests (7: init, classification, range, quadrants, protocol)
@@ -609,12 +609,12 @@ The architectural blueprint is in `docs/ARCHITECTURAL_BLUEPRINT.md`.
 **Completed increments (Phase 3R):**
 - **Increment 3.12 — Shader Utility Library** ✅ — `ShaderUtilities.metal` (663 lines, 55 functions across 7 domains): hash (4), noise (10: Perlin/simplex/Worley/FBM/curl in 2D+3D), SDF primitives (8) + operations (9), ray marching (4: march/normal/AO/shadow via forward-declared `map()`), PBR lighting (6: Fresnel-Schlick, GGX, Smith, Cook-Torrance BRDF, point/directional light), UV transforms (6: polar/invRadius/kaleidoscope/Möbius/bipolar/logSpiral), color/atmosphere (8: cosine palette, ACES/Reinhard tone mapping, sRGB conversions, fog, atmospheric scatter, volumetric march). Loaded from Presets bundle at init, appended to preamble after struct definitions. `PresetLoader` skips utility files during preset discovery via `utilityFileNames` filter. All functions `static inline`; ray march functions use forward-declared `float map(float3 p)` — presets define `map()` to use them, non-ray-march presets are unaffected (dead code elimination). 11 ShaderUtilityTests (preamble inclusion, multi-domain compilation, noise determinism, SDF analytic correctness, ray march sphere hit/miss, PBR energy conservation, kaleidoscope symmetry, palette smoothness, ACES SDR range, fog identity, 1080p noise <2ms). 279 tests total (232 swift-testing + 47 XCTest), SwiftLint clean.
 - **Increment 3.13 — Noise Texture Manager** ✅ — `TextureManager.swift`: generates 5 noise textures via Metal compute at init (`gen_perlin_2d`, `gen_perlin_3d`, `gen_fbm_rgba`, `gen_blue_noise` kernels in `NoiseGen.metal`). Textures: `noiseLQ` (256² `.r8Unorm` tileable Perlin FBM), `noiseHQ` (1024² `.r8Unorm`), `noiseVolume` (64³ `.r8Unorm` 3D FBM), `noiseFBM` (1024² `.rgba8Unorm` R=Perlin G=shifted B=Worley A=curl), `blueNoise` (256² `.r8Unorm` IGN dither). All `.storageModeShared`, 2D textures mipmapped. `bindTextures(to:)` sets fragment texture indices 4–8 in all draw paths (drawDirect, drawParticleMode, drawSurfaceMode, drawWithMeshShader, drawWithICB, drawWithPostProcess). `RenderPipeline` holds optional `TextureManager` behind `NSLock`. `VisualizerEngine` creates on background `.userInitiated` queue at startup. Preamble gains `constexpr sampler linearSampler/nearestSampler/mipLinearSampler` declarations and noise texture index documentation. 9 `TextureManagerTests` (dimensions, formats, storageMode, determinism, binding, <500ms perf). 288 tests total (232 swift-testing + 56 XCTest), SwiftLint clean.
+- **Increment 3.14 — Multi-Pass Ray March Pipeline** ✅ — `RayMarchPipeline.swift`: owns G-buffer textures (gbuffer0 `.rg16Float`, gbuffer1 `.rgba8Snorm`, gbuffer2 `.rgba8Unorm`, litTexture `.rgba16Float`), two fixed pipeline states (lightingPipeline, compositePipeline), bilinear sampler, public `sceneUniforms: SceneUniforms`. `render(gbufferPipelineState:features:fftBuffer:waveformBuffer:stemFeatures:outputTexture:commandBuffer:noiseTextures:postProcessChain:)` runs 3-pass deferred encode. `RenderPipeline+RayMarch.swift`: `drawWithRayMarch` updates aspect ratio, lazy-allocates textures, delegates GPU work. `RayMarch.metal`: `raymarch_lighting_fragment` (Cook-Torrance PBR, 12-step soft shadows, 5-sample AO, fog, sky) + `raymarch_composite_fragment` (ACES SDR). `PostProcessChain` gains `runBloomAndComposite(from:to:commandBuffer:)` for ray march + bloom path. `PresetLoader` gains `CompiledShader` struct (replaced 3-member tuple), `compileRayMarchShader` (3-attachment G-buffer `MTLRenderPipelineDescriptor`), and split preamble architecture: `shaderPreamble` (all presets) vs `rayMarchGBufferPreamble` (ray march only — critical fix: `raymarch_gbuffer_fragment` calls preset-defined `sceneSDF`/`sceneMaterial` which standard presets never define, so it must not appear in the shared preamble). `SceneUniforms` Swift struct: 8×`SIMD4<Float>` = 128 bytes. Render path priority: mesh → postProcess → ICB → **rayMarch** → feedback → direct. 10 `RayMarchPipelineTests` (G-buffer alloc, formats, storage mode, sphere depth, outward normals, specular highlight, shadow region, bloom path, idempotent alloc, <8ms perf at 1080p). 298 tests total (232 swift-testing + 66 XCTest), SwiftLint clean.
 
 **Ordered next increments** (per the revised plan):
-1. **Phase 3R — Rendering Fidelity Infrastructure (continued).** Two increments remaining:
-   - **3.14 — Multi-Pass Ray March Pipeline**: G-buffer + deferred lighting for SDF scenes. `useRayMarch` flag on `PresetDescriptor`.
+1. **Phase 3R — Rendering Fidelity Infrastructure (continued).** One increment remaining:
    - **3.15 — Extended Shader Uniforms** (`SceneUniforms`): camera, lights, accumulated audio time, fog at `buffer(4)`. `accumulatedAudioTime` also added to `FeatureVector`.
-2. **Increment 3.6 (deferred) — Render Graph Refactor.** Fires when capability flag count exceeds 4 (now at 5: mesh, postProcess, ICB, feedback, direct). Adding `useRayMarch` (Phase 3R) raises this to 6 — the refactor becomes increasingly urgent.
+2. **Increment 3.6 (deferred) — Render Graph Refactor.** Fires when capability flag count exceeds 4 (now at 6: mesh, postProcess, ICB, rayMarch, feedback, direct). The refactor is now overdue.
 3. **Phase 3.5 — Native Preset Library Expansion.** First entry: **3.5.1 Photorealistic Popcorn**, depends on 3.1b + 3.3 + 3.4 + **3.12 + 3.13 + 3.14 + 3.15**.
 
 **Increment Scope Discipline rule**: per the revised `DEVELOPMENT_PLAN.md` Code Hygiene Rules, one increment is one reviewable unit of work. Infrastructure increments and preset increments are never bundled in the same increment. Scope creep is recorded retroactively as a new increment, not silently absorbed.

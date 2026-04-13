@@ -97,13 +97,16 @@ extension RenderPipeline {
         // Snapshot ICB state for this frame.
         let (icbIsEnabled, icbSnapshotState) = icbLock.withLock { (icbEnabled, icbState) }
 
+        // Snapshot ray march state for this frame.
+        let (rmEnabled, rmPipeline) = rayMarchLock.withLock { (rayMarchEnabled, rayMarchPipeline) }
+
         // ── Compute pass: update particles before rendering ─────────
         particles?.update(features: features, commandBuffer: commandBuffer)
 
         // Snapshot mesh shader state for this frame.
         let (meshEnabled, meshGen) = meshLock.withLock { (meshShaderEnabled, meshGenerator) }
 
-        // Branch: mesh shader → post-process → ICB → feedback → direct.
+        // Branch: mesh shader → post-process → ICB → rayMarch → feedback → direct.
         if meshEnabled, let generator = meshGen {
             drawWithMeshShader(
                 commandBuffer: commandBuffer,
@@ -129,6 +132,15 @@ extension RenderPipeline {
                 stemFeatures: stemFeatures,
                 activePipeline: activePipeline,
                 icbState: icb
+            )
+        } else if rmEnabled, let rmState = rmPipeline {
+            drawWithRayMarch(
+                commandBuffer: commandBuffer,
+                view: view,
+                features: &features,
+                stemFeatures: stemFeatures,
+                activePipeline: activePipeline,
+                rayMarchState: rmState
             )
         } else if fbEnabled, let params = fbParams, let composePipeline = fbCompose,
            fbTextures.count == 2 {
