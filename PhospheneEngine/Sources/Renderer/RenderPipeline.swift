@@ -88,6 +88,15 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     var icbEnabled: Bool = false
     let icbLock = NSLock()
 
+    // MARK: - Ray March Pipeline (Increment 3.14)
+
+    /// Optional deferred ray march pipeline — G-buffer + PBR lighting + composite.
+    /// Set via `setRayMarchPipeline(_:enabled:)` when switching to a ray march preset.
+    var rayMarchPipeline: RayMarchPipeline?
+    /// Whether the active preset routes through the ray march draw path.
+    var rayMarchEnabled: Bool = false
+    let rayMarchLock = NSLock()
+
     // MARK: - Noise Textures (Increment 3.13)
 
     /// Optional noise texture manager — binds 5 pre-computed textures at slots 4–8.
@@ -242,6 +251,20 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
         logger.info("Post-process chain \(chain != nil && enabled ? "enabled" : "disabled")")
     }
 
+    /// Attach a deferred ray march pipeline to the render loop.
+    ///
+    /// Pass a non-nil pipeline and `enabled: true` to route `draw(in:)` through
+    /// `drawWithRayMarch`.  Pass `nil` / `false` to fall back to the next path in
+    /// the priority order (postProcess → ICB → feedback → direct).
+    /// Thread-safe — can be called from any queue.
+    public func setRayMarchPipeline(_ pipeline: RayMarchPipeline?, enabled: Bool = true) {
+        rayMarchLock.withLock {
+            rayMarchPipeline = pipeline
+            rayMarchEnabled  = pipeline != nil && enabled
+        }
+        logger.info("Ray march pipeline \(pipeline != nil && enabled ? "enabled" : "disabled")")
+    }
+
     /// Attach noise textures that will be bound on every preset render encoder.
     ///
     /// Call once after app startup.  Pass `nil` to detach (noise textures will
@@ -298,6 +321,11 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
         // Reallocate post-process textures if a chain is attached.
         postProcessLock.withLock {
             postProcessChain?.allocateTextures(width: width, height: height)
+        }
+
+        // Reallocate ray march G-buffer and lit textures if a pipeline is attached.
+        rayMarchLock.withLock {
+            rayMarchPipeline?.allocateTextures(width: width, height: height)
         }
 
         logger.info("Feedback textures allocated: \(width)×\(height)")

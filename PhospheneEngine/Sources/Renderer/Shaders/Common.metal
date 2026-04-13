@@ -46,6 +46,32 @@ struct StemFeatures {
     float other_band1;     float other_beat;
 };
 
+// MARK: - SceneUniforms
+
+/// Camera, lighting, and scene parameters for deferred ray march passes.
+/// Bound at buffer(4) in the G-buffer and lighting passes.
+/// Layout must match Swift SceneUniforms in AudioFeatures+SceneUniforms.swift.
+/// All fields are float4 (16 bytes) — avoids float3 alignment ambiguity.
+///
+///   [0]  cameraOriginAndFov     xyz = world-space position, w = vertical fov (radians)
+///   [1]  cameraForward          xyz = normalized forward direction, w = 0
+///   [2]  cameraRight            xyz = normalized right direction, w = 0
+///   [3]  cameraUp               xyz = normalized up direction, w = 0
+///   [4]  lightPositionAndIntensity  xyz = light position, w = intensity
+///   [5]  lightColor             xyz = linear RGB, w = 0
+///   [6]  sceneParamsA           x=audioTime, y=aspectRatio, z=nearPlane, w=farPlane
+///   [7]  sceneParamsB           x=fogNear, y=fogFar, zw=reserved
+struct SceneUniforms {
+    float4 cameraOriginAndFov;
+    float4 cameraForward;
+    float4 cameraRight;
+    float4 cameraUp;
+    float4 lightPositionAndIntensity;
+    float4 lightColor;
+    float4 sceneParamsA;
+    float4 sceneParamsB;
+};
+
 // MARK: - Color Utilities
 
 float3 hsv2rgb(float3 c) {

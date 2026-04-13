@@ -2,6 +2,7 @@
 // Each .metal file is compiled independently with a common preamble prepended.
 // Optional JSON sidecars provide metadata (name, family, feedback params).
 // Hot-reload watches an external directory via DispatchSource.FileSystemObject.
+// swiftlint:disable file_length
 
 import Foundation
 import Metal
@@ -9,6 +10,7 @@ import os.log
 
 private let logger = Logger(subsystem: "com.phosphene.presets", category: "PresetLoader")
 
+// swiftlint:disable:next type_body_length
 public final class PresetLoader: @unchecked Sendable {
 
     // MARK: - Public State
@@ -30,6 +32,8 @@ public final class PresetLoader: @unchecked Sendable {
         public let pipelineState: MTLRenderPipelineState
         /// Additive-blended pipeline state for feedback composite pass. Nil for non-feedback presets.
         public let feedbackPipelineState: MTLRenderPipelineState?
+        /// G-buffer pipeline state for ray march presets (3 color attachments). Nil for non-ray-march presets.
+        public let rayMarchPipelineState: MTLRenderPipelineState?
     }
 
     // MARK: - Private State
@@ -170,7 +174,8 @@ public final class PresetLoader: @unchecked Sendable {
             let loaded = LoadedPreset(
                 descriptor: descriptor,
                 pipelineState: pipelines.standard,
-                feedbackPipelineState: pipelines.feedback
+                feedbackPipelineState: pipelines.feedback,
+                rayMarchPipelineState: pipelines.rayMarch
             )
 
             lock.withLock {
@@ -209,20 +214,39 @@ public final class PresetLoader: @unchecked Sendable {
 
     // MARK: - Shader Compilation
 
-    private func compileShader(
-        at url: URL, descriptor: PresetDescriptor
-    ) -> (standard: MTLRenderPipelineState, feedback: MTLRenderPipelineState?)? {
-        // Branch to mesh pipeline compilation for mesh shader presets.
-        if descriptor.useMeshShader {
-            return compileMeshShader(at: url, descriptor: descriptor)
+    /// Result of compiling a preset shader: the primary state plus optional specialised states.
+    struct CompiledShader {
+        let standard: MTLRenderPipelineState
+        let feedback: MTLRenderPipelineState?
+        let rayMarch: MTLRenderPipelineState?
+
+        init(standard: MTLRenderPipelineState,
+             feedback: MTLRenderPipelineState? = nil,
+             rayMarch: MTLRenderPipelineState? = nil) {
+            self.standard  = standard
+            self.feedback  = feedback
+            self.rayMarch  = rayMarch
         }
-        return compileStandardShader(at: url, descriptor: descriptor)
     }
 
-    /// Compile a standard (non-mesh) preset shader.
+    private func compileShader(at url: URL, descriptor: PresetDescriptor) -> CompiledShader? {
+        // Branch to mesh pipeline compilation for mesh shader presets.
+        if descriptor.useMeshShader {
+            guard let result = compileMeshShader(at: url, descriptor: descriptor) else { return nil }
+            return CompiledShader(standard: result.standard, feedback: result.feedback)
+        }
+        // Branch to ray march G-buffer pipeline for ray march presets.
+        if descriptor.useRayMarch {
+            return compileRayMarchShader(at: url, descriptor: descriptor)
+        }
+        guard let result = compileStandardShader(at: url, descriptor: descriptor) else { return nil }
+        return CompiledShader(standard: result.standard, feedback: result.feedback)
+    }
+
+    /// Compile a standard (non-mesh, non-ray-march) preset shader.
     private func compileStandardShader(
         at url: URL, descriptor: PresetDescriptor
-    ) -> (standard: MTLRenderPipelineState, feedback: MTLRenderPipelineState?)? {
+    ) -> CompiledShader? {
         guard let fragmentSource = try? String(contentsOf: url, encoding: .utf8) else {
             logger.error("Could not read shader file: \(url.lastPathComponent)")
             return nil
@@ -294,7 +318,98 @@ public final class PresetLoader: @unchecked Sendable {
             }
         }
 
-        return (standard: standardState, feedback: feedbackState)
+        return CompiledShader(standard: standardState, feedback: feedbackState)
+    }
+
+    /// Compile a ray march preset: produces a G-buffer pipeline state (3 color attachments)
+    /// using `raymarch_gbuffer_fragment` from the preamble plus the preset's `sceneSDF`
+    /// and `sceneMaterial` definitions.  Also compiles a standard single-attachment state
+    /// (used as a fallback or for compatibility if needed).
+    private func compileRayMarchShader(
+        at url: URL, descriptor: PresetDescriptor
+    ) -> CompiledShader? {
+        guard let fragmentSource = try? String(contentsOf: url, encoding: .utf8) else {
+            logger.error("Could not read ray march shader file: \(url.lastPathComponent)")
+            return nil
+        }
+
+        // Full source: standard preamble + ray march G-buffer preamble + preset SDF.
+        // rayMarchGBufferPreamble adds SceneUniforms, GBufferOutput, forward declarations,
+        // and raymarch_gbuffer_fragment (which calls preset-defined sceneSDF/sceneMaterial).
+        let fullSource = Self.shaderPreamble + "\n\n" + Self.rayMarchGBufferPreamble + "\n\n" + fragmentSource
+
+        let options = MTLCompileOptions()
+        options.fastMathEnabled = true
+        options.languageVersion = .version3_1
+
+        let library: MTLLibrary
+        do {
+            library = try device.makeLibrary(source: fullSource, options: options)
+        } catch {
+            logger.error("Ray march shader compilation failed for \(url.lastPathComponent): \(error)")
+            return nil
+        }
+
+        guard let vertexFn = library.makeFunction(name: descriptor.vertexFunction) else {
+            logger.error("Vertex function '\(descriptor.vertexFunction)' not found in \(url.lastPathComponent)")
+            return nil
+        }
+        guard let gbufferFn = library.makeFunction(name: "raymarch_gbuffer_fragment") else {
+            logger.error("'raymarch_gbuffer_fragment' not found — ensure preamble is correctly prepended")
+            return nil
+        }
+
+        // G-buffer pipeline: 3 simultaneous color attachments.
+        //   attachment[0]  .rg16Float    — depth (R) + unused (G)
+        //   attachment[1]  .rgba8Snorm   — world-space normal (RGB) + AO (A)
+        //   attachment[2]  .rgba8Unorm   — albedo (RGB) + packed roughness/metallic (A)
+        let gbufferDesc = MTLRenderPipelineDescriptor()
+        gbufferDesc.vertexFunction = vertexFn
+        gbufferDesc.fragmentFunction = gbufferFn
+        gbufferDesc.colorAttachments[0].pixelFormat = .rg16Float
+        gbufferDesc.colorAttachments[1].pixelFormat = .rgba8Snorm
+        gbufferDesc.colorAttachments[2].pixelFormat = .rgba8Unorm
+
+        let gbufferState: MTLRenderPipelineState
+        do {
+            gbufferState = try device.makeRenderPipelineState(descriptor: gbufferDesc)
+            logger.info("Compiled ray march G-buffer pipeline for \(descriptor.name)")
+        } catch {
+            logger.error("Ray march G-buffer pipeline creation failed for \(url.lastPathComponent): \(error)")
+            return nil
+        }
+
+        // Standard single-attachment pipeline (fallback / reuse of pipelineState slot).
+        // Uses a fragment function named after the preset file if present; otherwise
+        // falls back to a no-op by reusing the G-buffer state as standard.
+        // For ray march presets, the G-buffer state is what matters — standard is
+        // a placeholder so LoadedPreset.pipelineState is always non-nil.
+        let placeholderDesc = MTLRenderPipelineDescriptor()
+        placeholderDesc.vertexFunction = vertexFn
+        placeholderDesc.fragmentFunction = gbufferFn
+        // Single attachment in drawable format to satisfy the non-nil requirement.
+        placeholderDesc.colorAttachments[0].pixelFormat = pixelFormat
+
+        // We need a valid single-attachment pipeline — recompile with 1 attachment.
+        // If that fails (e.g., format mismatch), fall back to the G-buffer state cast.
+        // In practice the G-buffer fragment only writes GBufferOutput (3 attachments),
+        // so this won't compile cleanly. Use a minimal passthrough instead: if a
+        // preset-defined fragment (named e.g. "sphere_preview_fragment") exists, use it;
+        // otherwise just use the G-buffer pipeline state as the placeholder standard.
+        let standardState: MTLRenderPipelineState
+        if let previewFn = library.makeFunction(name: descriptor.fragmentFunction),
+           descriptor.fragmentFunction != "preset_fragment" {
+            let previewDesc = MTLRenderPipelineDescriptor()
+            previewDesc.vertexFunction = vertexFn
+            previewDesc.fragmentFunction = previewFn
+            previewDesc.colorAttachments[0].pixelFormat = pixelFormat
+            standardState = (try? device.makeRenderPipelineState(descriptor: previewDesc)) ?? gbufferState
+        } else {
+            // No separate preview function — use the G-buffer state as the placeholder.
+            standardState = gbufferState
+        }
+
+        return CompiledShader(standard: standardState, rayMarch: gbufferState)
     }
 
     // MARK: - Hot Reload

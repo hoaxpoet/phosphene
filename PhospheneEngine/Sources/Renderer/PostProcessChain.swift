@@ -216,6 +216,44 @@ public final class PostProcessChain: @unchecked Sendable {
         runComposite(commandBuffer: commandBuffer, outputTexture: outputTexture)
     }
 
+    // MARK: - Ray March Integration
+
+    /// Run bloom + ACES composite on an externally-provided HDR scene texture.
+    ///
+    /// Used by `RayMarchPipeline` when `useRayMarch: true` and a `PostProcessChain`
+    /// is both desired (for bloom).  The ray march pipeline writes its lit scene into
+    /// a `.rgba16Float` texture, then calls this method instead of `render(...)` to
+    /// skip the internal scene pass and inject the external lit texture directly.
+    ///
+    /// Passes run: bright pass → blur H → blur V → composite (ACES).
+    /// Bloom textures are allocated lazily at `from.width × from.height` if needed.
+    ///
+    /// - Parameters:
+    ///   - externalSceneTexture: HDR `.rgba16Float` lit texture from the ray march pipeline.
+    ///   - outputTexture: SDR render target (drawable texture, `.bgra8Unorm_srgb`).
+    ///   - commandBuffer: All passes are encoded into this buffer.
+    public func runBloomAndComposite(
+        from externalSceneTexture: MTLTexture,
+        to outputTexture: MTLTexture,
+        commandBuffer: MTLCommandBuffer
+    ) {
+        // Treat the external texture as our scene texture for the bloom passes.
+        sceneTexture = externalSceneTexture
+
+        ensureAllocated(width: externalSceneTexture.width,
+                        height: externalSceneTexture.height)
+
+        guard bloomTexA != nil, bloomTexB != nil else {
+            logger.error("runBloomAndComposite: bloom textures unavailable — skipping")
+            return
+        }
+
+        runBrightPass(commandBuffer: commandBuffer)
+        runBlurH(commandBuffer: commandBuffer)
+        runBlurV(commandBuffer: commandBuffer)
+        runComposite(commandBuffer: commandBuffer, outputTexture: outputTexture)
+    }
+
     // MARK: - Internal Pass Methods
 
     /// Pass 1: Render the scene preset into the full-resolution HDR scene texture.

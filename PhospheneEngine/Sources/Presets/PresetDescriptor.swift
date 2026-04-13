@@ -70,6 +70,15 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
     /// Defaults to `false` — existing presets are unaffected.
     public let usePostProcess: Bool
 
+    /// Whether this preset uses the deferred ray march pipeline (Increment 3.14).
+    ///
+    /// When true, `PresetLoader` compiles a G-buffer pipeline state with 3 color attachments
+    /// (`.rg16Float`, `.rgba8Snorm`, `.rgba8Unorm`) using `raymarch_gbuffer_fragment` as
+    /// the fragment function.  The preset source must define `sceneSDF()` and `sceneMaterial()`.
+    /// The `RenderPipeline` routes through `drawWithRayMarch` instead of `drawDirect`
+    /// or `drawWithFeedback`.  Defaults to `false`.
+    public let useRayMarch: Bool
+
     // MARK: - Mesh Shader Configuration
 
     /// Mesh threadgroup size — must match `[[mesh, max_total_threads_per_threadgroup(N)]]`
@@ -109,6 +118,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         case useMeshShader = "use_mesh_shader"
         case useParticles = "use_particles"
         case usePostProcess = "use_post_process"
+        case useRayMarch = "use_ray_march"
         case meshThreadCount = "mesh_thread_count"
         case fragmentFunction = "fragment_function"
         case vertexFunction = "vertex_function"
@@ -133,6 +143,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         useMeshShader = try container.decodeIfPresent(Bool.self, forKey: .useMeshShader) ?? false
         useParticles = try container.decodeIfPresent(Bool.self, forKey: .useParticles) ?? false
         usePostProcess = try container.decodeIfPresent(Bool.self, forKey: .usePostProcess) ?? false
+        useRayMarch = try container.decodeIfPresent(Bool.self, forKey: .useRayMarch) ?? false
         meshThreadCount = try container.decodeIfPresent(Int.self, forKey: .meshThreadCount) ?? 64
         fragmentFunction = try container.decodeIfPresent(String.self, forKey: .fragmentFunction) ?? "preset_fragment"
         vertexFunction = try container.decodeIfPresent(String.self, forKey: .vertexFunction) ?? "fullscreen_vertex"
