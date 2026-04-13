@@ -77,8 +77,8 @@ static inline float gb_sdConcrete(float3 p, float yScale, float beatSq) {
     // Floor slab: normal = +Y, plane equation dot(p,(0,1,0)) + 1.0 = 0 → Y = -1.0.
     float dFloor   = sdPlane(p, float3(0.0f, 1.0f, 0.0f), 1.0f);
 
-    // Ceiling slab: normal = -Y, plane equation dot(p,(0,-1,0)) + (-5.2) = 0 → Y = 5.2.
-    float dCeiling = sdPlane(p, float3(0.0f, -1.0f, 0.0f), -5.2f);
+    // Ceiling slab: normal = -Y, plane equation dot(p,(0,-1,0)) + 5.2 = 0 → Y = 5.2.
+    float dCeiling = sdPlane(p, float3(0.0f, -1.0f, 0.0f), 5.2f);
 
     // Pillar rows: abs-fold in X collapses both columns into one sdBox evaluation.
     // pP is in pillar-local space; centre at (GB_CORRIDOR_X, 0, zR).
