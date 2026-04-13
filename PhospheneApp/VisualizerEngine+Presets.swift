@@ -115,6 +115,11 @@ extension VisualizerEngine {
                 // ICB state must be set externally via pipeline.setICBState(_:).
                 logger.info("ICB pass declared for '\(desc.name)' — ICB state must be set externally")
 
+            case .ssgi:
+                // SSGI is wired automatically in drawWithRayMarch when .ssgi is in activePasses.
+                // No separate subsystem setup required here.
+                break
+
             case .direct:
                 break // No subsystem setup required; direct rendering is the default fallback.
             }

@@ -179,9 +179,9 @@ extension RenderPipeline {
                 feedbackLock.withLock { feedbackIndex = 1 - feedbackIndex }
                 return
 
-            case .direct, .particles:
-                // .direct is the explicit fallback handled after the loop.
-                // .particles modifies the .feedback pass — handled inside drawWithFeedback.
+            case .direct, .particles, .ssgi:
+                // .direct: fallback below. .particles: handled in drawWithFeedback.
+                // .ssgi: companion to .rayMarch, wired in drawWithRayMarch.
                 break
             }
         }

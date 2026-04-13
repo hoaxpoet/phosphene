@@ -126,6 +126,9 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
     public var usePostProcess: Bool { passes.contains(.postProcess) }
     /// Whether this preset uses the deferred ray march pipeline.
     public var useRayMarch: Bool { passes.contains(.rayMarch) }
+    /// Whether this preset uses the SSGI indirect illumination pass (Increment 3.17).
+    /// Only meaningful when `useRayMarch` is also true.
+    public var useSSGI: Bool { passes.contains(.ssgi) }
 
     // MARK: - Mesh Shader Configuration
 

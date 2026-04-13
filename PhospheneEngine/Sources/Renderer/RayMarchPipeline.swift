@@ -8,12 +8,17 @@
 // Render path (all on one command buffer):
 //   1. runGBufferPass   — preset → 3 G-buffer targets (.rg16Float, .rgba8Snorm, .rgba8Unorm)
 //   2. runLightingPass  — G-buffer → litTexture (.rgba16Float), PBR + screen-space shadows
-//   3. runCompositePass — litTexture → outputTexture (ACES SDR) OR
+//   3. runSSGIPass      — (optional, Increment 3.17) G-buffers + litTexture → ssgiTexture (half-res)
+//   4. runSSGIBlendPass — (optional) additively upsample ssgiTexture into litTexture
+//   5. runCompositePass — litTexture → outputTexture (ACES SDR) OR
 //      (optional) caller feeds litTexture into PostProcessChain.runBloomAndComposite()
+//
+// SSGI is enabled by setting `ssgiEnabled = true` before calling `render(...)`.
+// `RenderPipeline+RayMarch` sets this flag when `.ssgi` is present in `activePasses`.
 //
 // When both `useRayMarch: true` and a PostProcessChain are desired, the caller:
 //   1. Runs RayMarchPipeline.render(..., postProcessChain: chain)
-//   2. The pipeline runs G-buffer + lighting into litTexture, then calls
+//   2. The pipeline runs G-buffer + lighting (+ optional SSGI) into litTexture, then calls
 //      chain.runBloomAndComposite(from: litTexture, to: outputTexture, ...)
 //   3. The composite pass is skipped in favour of the chain's bloom composite.
 
@@ -44,15 +49,35 @@ public final class RayMarchPipeline: @unchecked Sendable {
     public private(set) var gbuffer2: MTLTexture?
 
     /// Lit scene texture: `.rgba16Float` — PBR lighting output before tone-mapping.
+    /// After the optional SSGI blend pass this also contains indirect diffuse contributions.
     public private(set) var litTexture: MTLTexture?
+
+    /// SSGI accumulation texture: `.rgba16Float`, half drawable resolution.
+    /// Written by `runSSGIPass`; blended additively into `litTexture` by `runSSGIBlendPass`.
+    /// Nil until `allocateTextures` is called.
+    public private(set) var ssgiTexture: MTLTexture?
 
     // MARK: - Pipeline States
 
     /// Lighting pass: reads 3 G-buffer targets, evaluates PBR, writes to `.rgba16Float`.
     let lightingPipeline: MTLRenderPipelineState
 
+    /// SSGI accumulation pass (Increment 3.17): reads G-buffers + lit texture → half-res indirect diffuse.
+    let ssgiPipeline: MTLRenderPipelineState
+
+    /// SSGI blend pass (Increment 3.17): additive upsample of ssgiTexture into litTexture.
+    let ssgiBlendPipeline: MTLRenderPipelineState
+
     /// Composite pass: reads litTexture, applies ACES, writes to drawable format.
     let compositePipeline: MTLRenderPipelineState
+
+    // MARK: - SSGI State
+
+    /// When `true`, `render(...)` runs the SSGI accumulation and blend passes between
+    /// the lighting pass and the composite/bloom pass.
+    /// Set by `RenderPipeline+RayMarch` when `.ssgi` is present in `activePasses`.
+    /// Defaults to `false`.
+    public var ssgiEnabled: Bool = false
 
     // MARK: - Sampler
 
@@ -93,6 +118,12 @@ public final class RayMarchPipeline: @unchecked Sendable {
         guard let lightingFn = shaderLibrary.function(named: "raymarch_lighting_fragment") else {
             throw RayMarchPipelineError.functionNotFound("raymarch_lighting_fragment")
         }
+        guard let ssgiFn = shaderLibrary.function(named: "ssgi_fragment") else {
+            throw RayMarchPipelineError.functionNotFound("ssgi_fragment")
+        }
+        guard let ssgiBlendFn = shaderLibrary.function(named: "ssgi_blend_fragment") else {
+            throw RayMarchPipelineError.functionNotFound("ssgi_blend_fragment")
+        }
         guard let compositeFn = shaderLibrary.function(named: "raymarch_composite_fragment") else {
             throw RayMarchPipelineError.functionNotFound("raymarch_composite_fragment")
         }
@@ -103,6 +134,27 @@ public final class RayMarchPipeline: @unchecked Sendable {
         lightDesc.fragmentFunction = lightingFn
         lightDesc.colorAttachments[0].pixelFormat = .rgba16Float
         self.lightingPipeline = try device.makeRenderPipelineState(descriptor: lightDesc)
+
+        // SSGI accumulation pass — half-res, writes indirect diffuse to .rgba16Float.
+        let ssgiDesc = MTLRenderPipelineDescriptor()
+        ssgiDesc.vertexFunction = vertexFn
+        ssgiDesc.fragmentFunction = ssgiFn
+        ssgiDesc.colorAttachments[0].pixelFormat = .rgba16Float
+        self.ssgiPipeline = try device.makeRenderPipelineState(descriptor: ssgiDesc)
+
+        // SSGI blend pass — additive upsample of ssgiTexture into litTexture (.rgba16Float).
+        let ssgiBlendDesc = MTLRenderPipelineDescriptor()
+        ssgiBlendDesc.vertexFunction = vertexFn
+        ssgiBlendDesc.fragmentFunction = ssgiBlendFn
+        ssgiBlendDesc.colorAttachments[0].pixelFormat = .rgba16Float
+        ssgiBlendDesc.colorAttachments[0].isBlendingEnabled = true
+        ssgiBlendDesc.colorAttachments[0].rgbBlendOperation = .add
+        ssgiBlendDesc.colorAttachments[0].alphaBlendOperation = .add
+        ssgiBlendDesc.colorAttachments[0].sourceRGBBlendFactor = .one
+        ssgiBlendDesc.colorAttachments[0].destinationRGBBlendFactor = .one
+        ssgiBlendDesc.colorAttachments[0].sourceAlphaBlendFactor = .one
+        ssgiBlendDesc.colorAttachments[0].destinationAlphaBlendFactor = .one
+        self.ssgiBlendPipeline = try device.makeRenderPipelineState(descriptor: ssgiBlendDesc)
 
         // Composite pass — ACES tone-map to drawable format.
         let compositeDesc = MTLRenderPipelineDescriptor()
@@ -136,12 +188,16 @@ public final class RayMarchPipeline: @unchecked Sendable {
         let texWidth  = max(width, 1)
         let texHeight = max(height, 1)
 
-        gbuffer0   = context.makeSharedTexture(width: texWidth, height: texHeight, pixelFormat: .rg16Float)
-        gbuffer1   = makeSnormTexture(width: texWidth, height: texHeight)
-        gbuffer2   = context.makeSharedTexture(width: texWidth, height: texHeight, pixelFormat: .rgba8Unorm)
-        litTexture = context.makeSharedTexture(width: texWidth, height: texHeight, pixelFormat: .rgba16Float)
+        let ssgiW = max(texWidth / 2, 1)
+        let ssgiH = max(texHeight / 2, 1)
 
-        logger.info("RayMarchPipeline textures allocated: \(texWidth)×\(texHeight)")
+        gbuffer0    = context.makeSharedTexture(width: texWidth, height: texHeight, pixelFormat: .rg16Float)
+        gbuffer1    = makeSnormTexture(width: texWidth, height: texHeight)
+        gbuffer2    = context.makeSharedTexture(width: texWidth, height: texHeight, pixelFormat: .rgba8Unorm)
+        litTexture  = context.makeSharedTexture(width: texWidth, height: texHeight, pixelFormat: .rgba16Float)
+        ssgiTexture = context.makeSharedTexture(width: ssgiW, height: ssgiH, pixelFormat: .rgba16Float)
+
+        logger.info("RayMarchPipeline textures allocated: \(texWidth)×\(texHeight), SSGI: \(ssgiW)×\(ssgiH)")
     }
 
     /// Lazy allocator — no-op if textures are already allocated.
@@ -208,6 +264,12 @@ public final class RayMarchPipeline: @unchecked Sendable {
             iblManager: iblManager
         )
 
+        // Optional SSGI pass (Increment 3.17): indirect diffuse between lighting and composite.
+        if ssgiEnabled {
+            runSSGIPass(commandBuffer: commandBuffer, features: &features, noiseTextures: noiseTextures)
+            runSSGIBlendPass(commandBuffer: commandBuffer)
+        }
+
         if let chain = postProcessChain {
             // Route litTexture through the PostProcessChain bloom + ACES path.
             guard let lit = litTexture else { return }
@@ -219,102 +281,6 @@ public final class RayMarchPipeline: @unchecked Sendable {
     }
 
     // swiftlint:enable function_parameter_count
-
-    // MARK: - Internal Pass Methods
-
-    // swiftlint:disable function_parameter_count
-
-    /// Pass 1: Render the preset's SDF scene into the three G-buffer targets.
-    func runGBufferPass(
-        commandBuffer: MTLCommandBuffer,
-        gbufferPipelineState: MTLRenderPipelineState,
-        features: inout FeatureVector,
-        fftBuffer: MTLBuffer,
-        waveformBuffer: MTLBuffer,
-        stemFeatures: StemFeatures,
-        noiseTextures: TextureManager?
-    ) {
-        guard let g0 = gbuffer0, let g1 = gbuffer1, let g2 = gbuffer2 else { return }
-
-        let desc = MTLRenderPassDescriptor()
-        desc.colorAttachments[0].texture    = g0
-        desc.colorAttachments[0].loadAction = .clear
-        desc.colorAttachments[0].clearColor = MTLClearColor(red: 1, green: 0, blue: 0, alpha: 0)
-        desc.colorAttachments[0].storeAction = .store
-
-        desc.colorAttachments[1].texture    = g1
-        desc.colorAttachments[1].loadAction = .clear
-        desc.colorAttachments[1].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
-        desc.colorAttachments[1].storeAction = .store
-
-        desc.colorAttachments[2].texture    = g2
-        desc.colorAttachments[2].loadAction = .clear
-        desc.colorAttachments[2].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
-        desc.colorAttachments[2].storeAction = .store
-
-        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: desc) else { return }
-        encoder.setRenderPipelineState(gbufferPipelineState)
-        encoder.setFragmentBytes(&features, length: MemoryLayout<FeatureVector>.stride, index: 0)
-        encoder.setFragmentBuffer(fftBuffer, offset: 0, index: 1)
-        encoder.setFragmentBuffer(waveformBuffer, offset: 0, index: 2)
-        var stems = stemFeatures
-        encoder.setFragmentBytes(&stems, length: MemoryLayout<StemFeatures>.stride, index: 3)
-        encoder.setFragmentBytes(&sceneUniforms, length: MemoryLayout<SceneUniforms>.stride, index: 4)
-        noiseTextures?.bindTextures(to: encoder)
-        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
-        encoder.endEncoding()
-    }
-
-    // swiftlint:enable function_parameter_count
-
-    /// Pass 2: Evaluate PBR lighting from G-buffer data → litTexture (.rgba16Float).
-    /// IBL textures (Increment 3.16) are bound at slots 9–11 when `iblManager` is non-nil.
-    func runLightingPass(
-        commandBuffer: MTLCommandBuffer,
-        features: inout FeatureVector,
-        noiseTextures: TextureManager?,
-        iblManager: IBLManager? = nil
-    ) {
-        guard let g0 = gbuffer0, let g1 = gbuffer1, let g2 = gbuffer2,
-              let lit = litTexture else { return }
-
-        let desc = MTLRenderPassDescriptor()
-        desc.colorAttachments[0].texture     = lit
-        desc.colorAttachments[0].loadAction  = .clear
-        desc.colorAttachments[0].clearColor  = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
-        desc.colorAttachments[0].storeAction = .store
-
-        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: desc) else { return }
-        encoder.setRenderPipelineState(lightingPipeline)
-        encoder.setFragmentBytes(&features, length: MemoryLayout<FeatureVector>.stride, index: 0)
-        encoder.setFragmentBytes(&sceneUniforms, length: MemoryLayout<SceneUniforms>.stride, index: 4)
-        encoder.setFragmentTexture(g0, index: 0)
-        encoder.setFragmentTexture(g1, index: 1)
-        encoder.setFragmentTexture(g2, index: 2)
-        encoder.setFragmentSamplerState(sampler, index: 0)
-        noiseTextures?.bindTextures(to: encoder)
-        iblManager?.bindTextures(to: encoder)       // texture(9–11)
-        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
-        encoder.endEncoding()
-    }
-
-    /// Pass 3 (fallback, no PostProcessChain): ACES composite litTexture → outputTexture.
-    func runCompositePass(commandBuffer: MTLCommandBuffer, outputTexture: MTLTexture) {
-        guard let lit = litTexture else { return }
-
-        let desc = MTLRenderPassDescriptor()
-        desc.colorAttachments[0].texture    = outputTexture
-        desc.colorAttachments[0].loadAction = .clear
-        desc.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
-        desc.colorAttachments[0].storeAction = .store
-
-        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: desc) else { return }
-        encoder.setRenderPipelineState(compositePipeline)
-        encoder.setFragmentTexture(lit, index: 0)
-        encoder.setFragmentSamplerState(sampler, index: 0)
-        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
-        encoder.endEncoding()
-    }
 
     // MARK: - Private Helpers
 
