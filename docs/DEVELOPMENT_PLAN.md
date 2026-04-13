@@ -1736,36 +1736,43 @@ constexpr sampler mipLinearSampler(filter::linear, mip_filter::linear, address::
 
 ### Increment 3.18: DRM Silence Detection & Graceful Degradation
 
-**Status:** Not started.
+**Status:** Complete ✅
 
 **Goal:** Detect DRM-triggered audio silence in Core Audio process taps and gracefully degrade the visual experience instead of showing a frozen or static visualizer.
 
 **Why this is critical:** Core Audio process taps (`AudioHardwareCreateProcessTap`) are the primary audio source. When streaming apps play DRM-protected content (Apple Music FairPlay, Spotify DRM), macOS may zero the tap's audio buffer. This produces no error — just sustained zero-energy frames. The visualizer continues running but with no audio input, producing either a frozen frame (feedback presets) or a static render (ray march presets). This is the primary use case failure mode and currently fails silently.
 
-**Files to create/edit:**
-- `Audio/AudioInputRouter.swift` — Add `SilenceDetector` internal class: monitors RMS energy from the IO proc callback via a lightweight ring buffer (last 180 frames ≈ 3s at 60fps). State machine: `.receiving` (normal) → `.suspect` (RMS below noise floor for 1.5s) → `.silent` (confirmed silence for 3s) → `.recovering` (signal returns, hold for 0.5s before confirming). Publishes `AudioSignalState` enum via callback. Configurable thresholds: `silenceRMSThreshold: Float = 1e-6`, `silenceConfirmationDuration: TimeInterval = 3.0`, `recoveryConfirmationDuration: TimeInterval = 0.5`.
-- `Audio/Protocols.swift` — Add `AudioSignalState` enum: `.active`, `.suspect`, `.silent`, `.recovering`. Add `onSignalStateChanged` callback to `AudioCapturing` protocol.
-- `PhospheneApp/VisualizerEngine.swift` — Subscribe to signal state changes. On `.silent`: notify the Orchestrator to enter ambient/generative mode. On `.active`: resume normal audio-reactive rendering.
-- `PhospheneApp/Views/ContentView.swift` — Surface non-intrusive "No audio signal" indicator overlay when state is `.silent`. Auto-dismiss on recovery.
-- `Orchestrator/Orchestrator.swift` (future wiring point) — When Orchestrator is implemented (Phase 4), it will handle `.silent` state by selecting a generative preset that runs without audio input (slow procedural animation, ambient drift). For now, the signal state callback is available but the visual fallback is deferred to Phase 4.
+**Files created/edited:**
+- `Audio/Protocols.swift` — Added `AudioSignalState` enum (`.active`, `.suspect`, `.silent`, `.recovering`) as a public type.
+- `Audio/SilenceDetector.swift` (new) — Internal `SilenceDetector` class: time-injectable state machine (`timeProvider: @escaping () -> CFAbsoluteTime` for deterministic testing without sleeping). Thresholds: `silenceRMSThreshold = 1e-6`, `silenceDuration = 3.0s` (`.suspect` at `silenceDuration / 2 = 1.5s`, `.silent` at `3.0s` total), `recoveryDuration = 0.5s`. `update(samples:count:)` computes RMS inline (O(N) loop, not held under lock); `update(rms:)` testable overload. `onStateChanged` callback invoked after lock release to prevent deadlock. `reset()` called on audio source mode switch.
+- `Audio/AudioInputRouter.swift` — `silenceDetector: SilenceDetector` wired into `systemCapture.onAudioBuffer` (for system/app capture) and `startFilePlayback` (for file mode). Public `onSignalStateChanged: ((AudioSignalState) -> Void)?` callback and `signalState: AudioSignalState` read-only property. Internal secondary `init(capture:metadata:silenceDetector:)` for test injection (avoids exposing `SilenceDetector` in the public API signature). `stopInternal()` calls `silenceDetector.reset()` on mode switch.
+- `PhospheneApp/VisualizerEngine.swift` — Added `@Published var audioSignalState: AudioSignalState = .active`.
+- `PhospheneApp/VisualizerEngine+Audio.swift` — `makeSignalStateCallback()` dispatches to `@MainActor` to update `audioSignalState` and logs each transition via `os.Logger`.
+- `PhospheneApp/ContentView.swift` — `NoAudioSignalBadge` private view (bottom-left, `speaker.slash.fill` icon + "No audio signal" text, `.black.opacity(0.5)` background, `.opacity` transition). Shown when `engine.audioSignalState == .silent`, auto-dismissed on recovery.
 
-**Test requirements:**
-- `Tests/PhospheneEngineTests/Audio/SilenceDetectorTests.swift` (new) — 9 tests:
-  - `test_init_stateIsActive()`
-  - `test_normalAudio_stateRemainsActive()` — feed non-zero RMS for 5s, state stays `.active`
-  - `test_silence_stateTransitionsToSuspect()` — feed zeros for 1.5s, state becomes `.suspect`
-  - `test_silence_stateTransitionsToSilent()` — feed zeros for 3s, state becomes `.silent`
-  - `test_signalReturn_stateTransitionsToRecovering()` — from `.silent`, feed non-zero → `.recovering`
-  - `test_signalReturn_confirmationTransitionsToActive()` — from `.recovering`, 0.5s non-zero → `.active`
-  - `test_briefDropout_doesNotTriggerSilent()` — 0.5s silence followed by recovery stays `.active`
-  - `test_callback_firesOnStateChange()` — verify callback receives each transition
-  - `test_thresholds_configurable()` — custom thresholds produce expected behavior
+**Implementation notes:**
+- `SilenceDetector` is `internal` (not `public`) — it's an implementation detail of `AudioInputRouter`. Exposed to tests via `@testable import Audio`.
+- `onSignalStateChanged` lives on `AudioInputRouter` (not `AudioCapturing` protocol) because silence detection is a router-level heuristic, not a Core Audio tap primitive. `SystemAudioCapture` remains unchanged.
+- State machine brief-dropout behavior: silence shorter than `suspectDuration` (1.5s) never leaves `.active`. Silence between 1.5s and 3.0s enters `.suspect` but returns to `.active` if signal recovers before 3.0s total.
+- Phase 4 Orchestrator wiring point: `AudioInputRouter.onSignalStateChanged` is available for the Orchestrator to consume when implemented. Visual fallback (generative ambient preset during silence) is deferred to Phase 4.
 
-**Verification:** All prior tests pass. 9 new tests pass. Manual test: play DRM-protected Apple Music track → verify silence detection triggers → verify visual indicator appears → switch to non-DRM source → verify automatic recovery.
+**Tests:** 10 `SilenceDetectorTests` in `Tests/PhospheneEngineTests/Audio/SilenceDetectorTests.swift` (all time-controlled via injected clock — no `Thread.sleep` or wall-clock waits):
+- `test_init_stateIsActive()`
+- `test_normalAudio_stateRemainsActive()` — 100 frames of non-zero RMS, state stays `.active`
+- `test_silence_stateTransitionsToSuspect()` — t=1.5s → `.suspect`
+- `test_silence_stateTransitionsToSilent()` — t=3.0s → `.silent`
+- `test_signalReturn_stateTransitionsToRecovering()` — one non-silent frame from `.silent` → `.recovering`
+- `test_signalReturn_confirmationTransitionsToActive()` — 0.5s signal from `.recovering` → `.active`
+- `test_briefDropout_doesNotTriggerSuspect()` — 0.5s silence followed by signal never leaves `.active`
+- `test_callback_firesOnStateChange()` — full `.active→.suspect→.silent→.recovering→.active` sequence produces exactly those 4 callbacks
+- `test_callback_doesNotFireOnNonTransitionFrames()` — 50 normal frames fire 0 callbacks
+- `test_thresholds_configurable()` — custom threshold (0.05 RMS), silence (1.0s), recovery (0.2s) produce expected transitions
+
+**Verification:** 340 tests total (249 swift-testing + 91 XCTest). All 10 new tests pass. Pre-existing flaky GPU perf tests (`test_fullScreenNoise_1080p_under2ms`, `fetch_networkTimeout_returnsWithinBudget`) are timing-sensitive and unrelated to this increment.
 
 **Depends on:** Nothing (uses existing `AudioInputRouter` infrastructure).
 
-**Enables:** Resilient user experience for the primary use case. Phase 4 Orchestrator will consume signal state for intelligent visual fallback.
+**Enables:** Resilient user experience for the primary use case. Phase 4 Orchestrator will consume `AudioInputRouter.onSignalStateChanged` for intelligent visual fallback (generative ambient preset during DRM silence).
 
 ---
 

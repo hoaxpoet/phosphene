@@ -72,6 +72,9 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Whether screen capture permission has been granted.
     @Published var hasScreenCapturePermission = false
 
+    /// Current audio signal state — `.silent` indicates DRM-triggered tap silencing.
+    @Published var audioSignalState: AudioSignalState = .active
+
     // MARK: - Pipeline References
 
     /// Metal context shared across the pipeline.
