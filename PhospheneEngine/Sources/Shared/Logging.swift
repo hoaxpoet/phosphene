@@ -24,4 +24,7 @@ public enum Logging {
 
     /// Metadata: track change detection, pre-fetching, MusicKit bridge.
     public static let metadata = Logger(subsystem: subsystem, category: "metadata")
+
+    /// Session: playlist connection, preview pipeline, session state.
+    public static let session = Logger(subsystem: subsystem, category: "session")
 }

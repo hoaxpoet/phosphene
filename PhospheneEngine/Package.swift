@@ -17,6 +17,7 @@ let package = Package(
                 "Renderer",
                 "Presets",
                 "Orchestrator",
+                "Session",
                 "Shared"
             ]
         )
@@ -72,6 +73,11 @@ let package = Package(
             resources: [.copy("Shaders")]
         ),
         .target(
+            name: "Session",
+            dependencies: ["Shared"],
+            path: "Sources/Session"
+        ),
+        .target(
             name: "Orchestrator",
             dependencies: [
                 "Shared",
@@ -85,7 +91,7 @@ let package = Package(
         ),
         .testTarget(
             name: "PhospheneEngineTests",
-            dependencies: ["Shared", "Audio", "DSP", "ML", "Presets", "Renderer"],
+            dependencies: ["Shared", "Audio", "DSP", "ML", "Presets", "Renderer", "Session"],
             path: "Tests/PhospheneEngineTests",
             resources: [.copy("Regression/Fixtures")]
         ),

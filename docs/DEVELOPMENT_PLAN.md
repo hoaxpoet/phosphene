@@ -20,15 +20,23 @@ All other architectural decisions, module structure, and phasing from v1 are pre
 
 **Phosphene** is a next-generation, AI-driven music visualization engine built exclusively for Apple Silicon (M3/M4). It succeeds ProjectM/Milkdrop by combining Metal rendering, real-time ML-powered audio stem separation on the Apple Neural Engine, Music Information Retrieval (MIR), and an AI Orchestrator that autonomously curates visual playlists matched to the emotional arc of the music.
 
-**Primary audio source:** System audio capture via Core Audio taps (`AudioHardwareCreateProcessTap`, macOS 14.2+). Phosphene visualizes whatever the user is streaming — Apple Music, Spotify, Tidal, YouTube Music, or any other audio source — by tapping the system audio output directly. It enriches the experience with track metadata from MusicKit and the macOS Now Playing API. Local file playback is supported as a fallback but is not the primary workflow. ScreenCaptureKit was originally planned but abandoned because it silently fails to deliver audio callbacks on macOS 15+/26.
+**Primary workflow:** The user connects a playlist from Apple Music or Spotify. Phosphene enters a preparation phase — downloading 30-second preview clips, running full stem separation and MIR analysis on each track, and planning the visual session. When preparation completes (~20–30 seconds), Phosphene signals "Ready" and the user starts playback in their streaming app. During playback, Phosphene captures live system audio via Core Audio taps (`AudioHardwareCreateProcessTap`, macOS 14.2+) to refine the pre-analyzed data in real time. Ad-hoc listening (no connected playlist) is supported as a fallback with real-time-only analysis. Local file playback is supported for testing/offline use.
 
-**Streaming Anticipation Architecture:** Because streaming audio arrives without a pre-scannable file, Phosphene employs three complementary systems to recover the anticipatory capability that pre-scanning would otherwise provide:
+**Session Preparation Architecture:** Phosphene's primary operating mode front-loads all analysis before playback begins:
 
-1. **Analysis Lookahead Buffer** — A configurable 2–3 second delay between audio analysis and visual rendering. The audio pipeline processes frames ahead of what the renderer displays, giving the Orchestrator a genuine lookahead window to prepare for upcoming musical moments (drops, builds, transitions). This latency is imperceptible in a visualizer context where viewers do not expect sample-accurate video sync.
-2. **Metadata Pre-Fetching** — When Now Playing reports a new track, Phosphene queries external music databases (MusicBrainz, Soundcharts) for pre-analyzed audio features: BPM, key, energy, danceability, genre, and duration. This is a **"fast hint"** that accelerates the first ~15 seconds — the self-computed MIR pipeline (Increment 2.4) is the real source of truth. Pre-fetch data is optional at every level; the system is resilient to any external API being unavailable.
-3. **Progressive Structural Analysis** — After hearing 15–20 seconds of a track, a self-similarity analysis identifies section boundaries (intro, verse, chorus, bridge) and predicts when future transitions will occur based on the repetitive structure inherent in virtually all popular music. After the first chorus, the system can predict when the second chorus will arrive.
+1. **Playlist Connection** — AppleScript (Apple Music) or Web API (Spotify) reads the full track list with metadata. The user can also paste a playlist URL directly.
+2. **Preview Pre-Analysis** — For each track, download a 30-second preview clip (via iTunes Search API `previewUrl`), run full stem separation (MPSGraph Open-Unmix HQ), and run the complete MIR pipeline (BPM, key, mood, spectral features, structural analysis). Cache all results keyed by track identity.
+3. **Session Planning** — The Orchestrator uses per-track profiles to plan the full visual arc: preset selection, transition timing, emotional trajectory across the playlist.
 
-Combined, these three systems give the Orchestrator roughly the same decision-making information as a pre-scanned local file after a brief ramp-up period at the start of each track.
+Combined, these systems give the Orchestrator complete information for the entire playlist before the first note plays. Stems are available from frame one of every track with zero warmup.
+
+**Real-Time Refinement (during playback):** Three additional systems refine the pre-analyzed data as each track plays:
+
+1. **Analysis Lookahead Buffer** — 2.5s delay between analysis and rendering for anticipatory visual decisions.
+2. **Metadata Enrichment** — Parallel queries to MusicBrainz, Soundcharts (most data already cached from preparation phase).
+3. **Progressive Structural Analysis** — Extends the coarse section boundaries from the 30s preview with full-track, time-aligned structural detection.
+
+**Ad-Hoc Fallback:** When no playlist is connected, the real-time refinement layer operates as the primary (and only) analysis path, with the existing reactive Orchestrator mode.
 
 This plan decomposes the architectural blueprint into **Claude Code-safe increments** — discrete tasks that can each be completed within a single context window without risk of truncation or loss of coherence.
 
@@ -899,6 +907,142 @@ echo "=== All checks passed ==="
 
 ---
 
+## Phase 2.5 — Session Preparation Pipeline
+
+**Goal:** Enable the playlist-first workflow where Phosphene analyzes every track before playback begins, providing stems and MIR data from the first frame of every track.
+
+**Why this is a new phase:** The preparation pipeline is not a rendering feature (Phase 3), not a UI feature (Phase 6), and not an Orchestrator feature (Phase 4). It is the data layer that feeds all three. It reuses the existing StemSeparator and MIRPipeline from Phase 2 but orchestrates them in a new batch-processing workflow with new audio sources (preview clips, not Core Audio taps).
+
+### Increment 2.5.1: Playlist Connector ✅
+
+**Status:** Complete.
+
+**Goal:** Read the full track list from Apple Music or Spotify playlists. Output: an ordered `[TrackIdentity]` array.
+
+**Files to create/edit:**
+- `Session/PlaylistConnector.swift` (new) — Protocol `PlaylistConnecting` with `connect(source:) async throws -> [TrackIdentity]`. Concrete implementations for Apple Music (AppleScript) and Spotify (Web API). Also accepts raw playlist URLs.
+- `Session/TrackIdentity.swift` (new) — Struct: title, artist, album, duration, appleMusicID (optional), spotifyID (optional).
+- `Audio/StreamingMetadata.swift` — Extract the AppleScript playlist enumeration logic into a reusable helper that `PlaylistConnector` can call.
+
+**Apple Music implementation:** AppleScript query: `tell application "Music" to get {name, artist, album, duration} of every track of current playlist`. Also get `index of current track` to identify the starting position. Requires the existing Automation permission (already handled by StreamingMetadata).
+
+**Spotify implementation:** If Spotify OAuth credentials are configured, call `GET /me/player/queue` for up to 20 tracks. If a playlist URL is provided, call `GET /playlists/{id}/tracks` for the full list. Fall back to the Apple Music path if Spotify credentials are unavailable (most Spotify tracks also exist in the iTunes catalog).
+
+**Test requirements:**
+- `PlaylistConnectorTests.swift` — 8 tests:
+  - `test_appleMusicPlaylist_returnsOrderedTracks()`
+  - `test_appleMusicPlaylist_includesDuration()`
+  - `test_spotifyQueue_returnsUpTo20Tracks()`
+  - `test_spotifyPlaylistURL_returnsFullTrackList()`
+  - `test_emptyPlaylist_returnsEmptyArray()`
+  - `test_networkFailure_throwsGracefully()`
+  - `test_trackIdentity_codable_roundTrip()`
+  - `test_duplicateTracks_preserveOrder()`
+
+**Verification:** ✅ All 8 tests pass. 348 tests total (257 swift-testing + 91 XCTest). SwiftLint clean. Implementation notes: AppleScript enumerates `every track of current playlist` in a `repeat` loop, joining track lines with `linefeed` via `AppleScript's text item delimiters` (avoids list-to-text coercion issues). Apple Music playlist URL falls back to current playlist with a log note — MusicKit catalog URL lookup deferred to Phase 4. `SilenceDetector` cyclomatic complexity violation fixed as part of this increment (per-state logic extracted to 4 private helpers). `appleScriptReader` and `networkFetcher` injectable closures enable full test coverage without real Apple Music or Spotify.
+
+**Depends on:** Phase 2 complete (existing StreamingMetadata AppleScript infrastructure).
+
+**Enables:** 2.5.2 (Preview Resolver needs track identities to look up previews).
+
+### Increment 2.5.2: Preview Resolver & Downloader
+
+**Status:** Not started.
+
+**Goal:** For each track in the playlist, resolve a downloadable 30-second preview URL and download the audio. Output: per-track raw PCM arrays ready for stem separation.
+
+**Files to create/edit:**
+- `Session/PreviewResolver.swift` (new) — Protocol `PreviewResolving` with `resolvePreviewURL(for: TrackIdentity) async throws -> URL?`. Concrete implementation using iTunes Search API (`https://itunes.apple.com/search?term={artist}+{title}&media=music&limit=1`). Parse `previewUrl` from the JSON response. Fallback: MusicKit `Song.previewAssets` for Apple Music subscribers.
+- `Session/PreviewDownloader.swift` (new) — Downloads preview audio files (AAC/MP3) to a temp directory, decodes to `[Float]` PCM via `AVAudioFile`. Batch processing with configurable concurrency (default 4 parallel downloads). Rate-limit aware (iTunes API: 20 req/min).
+- `Session/SessionTypes.swift` (new) — `PreviewAudio` struct: trackIdentity, pcmSamples ([Float]), sampleRate (Int), duration (TimeInterval).
+
+**Test requirements:**
+- `PreviewResolverTests.swift` — 6 tests:
+  - `test_knownTrack_resolvesToURL()` — use a well-known track (e.g., "Bohemian Rhapsody")
+  - `test_unknownTrack_returnsNil()`
+  - `test_previewURL_isValidAAC()`
+  - `test_rateLimiting_respectsLimit()`
+  - `test_networkTimeout_returnsNilGracefully()`
+  - `test_multipleResolves_usesCache()`
+- `PreviewDownloaderTests.swift` — 6 tests:
+  - `test_downloadAndDecode_producesNonZeroPCM()`
+  - `test_downloadedAudio_sampleRate_is44100()`
+  - `test_downloadedAudio_duration_approximately30s()`
+  - `test_batchDownload_respectsConcurrencyLimit()`
+  - `test_failedDownload_skipsTrack_continuesBatch()`
+  - `test_tempFiles_cleanedUpAfterDecode()`
+
+**Verification:** Resolve and download previews for a 5-track playlist. All 5 decode to ~30s of PCM audio. All 12 tests pass.
+
+**Depends on:** 2.5.1 (needs TrackIdentity).
+
+**Enables:** 2.5.3 (batch pre-analysis needs PCM audio).
+
+### Increment 2.5.3: Batch Pre-Analysis & Stem Cache
+
+**Status:** Not started.
+
+**Goal:** Run stem separation and MIR analysis on every preview clip and cache the results. This is the core of the preparation pipeline.
+
+**Files to create/edit:**
+- `Session/SessionPreparer.swift` (new) — Orchestrates the full batch: `prepare(tracks: [TrackIdentity]) async -> SessionPreparationResult`. For each track: resolve preview → download → `StemSeparator.separate()` → `StemAnalyzer.analyze()` → `MIRPipeline` (BPM, key, mood, chroma, centroid) → store in `StemCache`. Publishes progress via `@Published var progress: (completed: Int, total: Int)`. Handles partial failures gracefully (tracks with missing previews get nil cache entries — the real-time pipeline fills them during playback).
+- `Session/StemCache.swift` (new) — Thread-safe dictionary keyed by `TrackIdentity`. Stores `CachedTrackData`: separated stem waveforms (4× `[Float]`), derived `StemFeatures`, `TrackProfile` (BPM, key, mood, centroid, genre). `func stemFeatures(for: TrackIdentity) -> StemFeatures?`. `func trackProfile(for: TrackIdentity) -> TrackProfile?`. `func loadForPlayback(track: TrackIdentity) -> CachedTrackData?` — called by `VisualizerEngine` on track change.
+- `Session/TrackProfile.swift` (new) — Struct: bpm (Float?), key (Key?), mood (EmotionalState), spectralCentroidAvg (Float), genreTags ([String]), stemEnergyBalance (StemFeatures — the summary from the preview), estimatedSectionCount (Int).
+- `PhospheneApp/VisualizerEngine+Stems.swift` — Modify track-change callback: instead of `StemSampleBuffer.reset()` + `latestStemFeatures = .zero`, call `stemCache.loadForPlayback(track:)` and populate `latestStemFeatures` from cache. Do NOT clear `StemSampleBuffer`.
+
+**Test requirements:**
+- `SessionPreparerTests.swift` — 8 tests:
+  - `test_prepare_singleTrack_populatesCache()`
+  - `test_prepare_multipleTrack_allCached()`
+  - `test_prepare_missingPreview_skipsThatTrack()`
+  - `test_prepare_publishesProgress()`
+  - `test_prepare_cancellation_stopsCleanly()`
+  - `test_stemCache_loadForPlayback_returnsCorrectTrack()`
+  - `test_stemCache_unknownTrack_returnsNil()`
+  - `test_stemCache_threadSafety_concurrentAccess()`
+- `Integration/SessionPreparationIntegrationTests.swift` — 3 tests:
+  - `test_fullPipeline_resolve_download_separate_analyze()` — end-to-end with a real iTunes lookup for a known track
+  - `test_trackProfile_hasBPMAndMood()`
+  - `test_cachedStemFeatures_nonZero()`
+
+**Verification:** Prepare a 5-track playlist. All 5 tracks have cached stem data and track profiles. StemFeatures are non-zero for all tracks. MIR data (BPM, mood) is plausible. All 11 tests pass.
+
+**Depends on:** 2.5.2 (preview audio), Phase 2 complete (StemSeparator, MIRPipeline, StemAnalyzer).
+
+**Enables:** 2.5.4 (session state machine), Phase 4 Orchestrator session planning mode, Phase 3.5 preset work (presets can assume non-zero stems).
+
+### Increment 2.5.4: Session State Machine & Track Change Behavior
+
+**Status:** Not started.
+
+**Goal:** Formalize the session lifecycle and replace the hard-reset track-change behavior with cache-aware loading.
+
+**Files to create/edit:**
+- `Session/SessionManager.swift` (new) — Owns the session lifecycle state machine (`SessionState` enum). Coordinates `PlaylistConnector`, `SessionPreparer`, and `StemCache`. Exposes `@Published var state: SessionState` and `@Published var currentPlan: SessionPlan?`. Entry point: `startSession(source: PlaylistSource) async`.
+- `Shared/AudioFeatures.swift` — Add `SessionState` enum, `TrackIdentity`, `SessionPlan` types.
+- `PhospheneApp/VisualizerEngine.swift` — Integrate `SessionManager`. In session mode, load cached stems on track change instead of zeroing. In ad-hoc mode, preserve existing behavior.
+- `PhospheneApp/VisualizerEngine+Stems.swift` — Replace the track-change callback: check `stemCache.loadForPlayback(track:)` first. If cache hit, populate `latestStemFeatures` immediately. If cache miss (ad-hoc mode or failed preparation), fall back to the existing zero + wait-for-real-time behavior.
+
+**Test requirements:**
+- `SessionManagerTests.swift` — 10 tests:
+  - `test_init_stateIsIdle()`
+  - `test_startSession_transitionsToConnecting()`
+  - `test_afterPlaylistRead_transitionsToPreparing()`
+  - `test_afterPreparation_transitionsToReady()`
+  - `test_playbackStarts_transitionsToPlaying()`
+  - `test_sessionEnds_transitionsToEnded()`
+  - `test_preparationFailure_transitionsToReady_withPartialData()`
+  - `test_adHocMode_skipsPreparation()`
+  - `test_trackChange_loadsFromCache()`
+  - `test_trackChange_cacheMiss_fallsBackToRealTime()`
+
+**Verification:** Start a session with a 5-track playlist. State transitions: idle → connecting → preparing → ready. On "Ready", play the playlist. On track change, cached stems load immediately (verify via debug log). All 10 tests pass.
+
+**Depends on:** 2.5.3 (stem cache and session preparer).
+
+**Enables:** Phase 4 Orchestrator session planning mode, Phase 6 session preparation UI.
+---
+
 ## Phase 3 — Advanced Metal Rendering (Blueprint Release 0.5)
 
 > **Retroactive scope split note:** The original Increment 3.1 bundled three distinct units of work — a GPU compute particle pipeline, a Milkdrop-style feedback texture infrastructure, and the Murmuration preset — into a single increment. Per the **Increment Scope Discipline** rule (§ Code Hygiene Rules), each unit of work should have been its own increment. The following three entries (3.1, 3.1-bonus, 3.1-preset) document what actually shipped, retroactively split for clarity. The original spec's "from stem-separated audio" goal was NOT delivered and is tracked as deferred via Increments 3.1a (GPU STFT/iSTFT) and 3.1b (live stem pipeline wiring) below.
@@ -998,6 +1142,8 @@ echo "=== All checks passed ==="
 **Enables:** Increment 3.1b (live stem pipeline wiring), all downstream stem-driven presets (Murmuration stem-routing re-do, Popcorn, any future vocal/bass/drum-reactive preset).
 
 ### Increment 3.1b: Live Stem Pipeline Wiring + Per-Stem FeatureVector Extension
+
+**Revision note (v3):** The track-change behavior described here (`StemSampleBuffer.reset()` + `latestStemFeatures = .zero`) is the ad-hoc-mode fallback. In session mode (Phase 2.5), track change loads cached stems from `StemCache` and does NOT clear the ring buffer. See Increment 2.5.4 for the revised behavior.
 
 **Status:** Complete.
 
@@ -1380,49 +1526,19 @@ After:  STFT(GPU) → [Float] → memcpy(MTLBuffer) → predict(MPSGraph/GPU/F32
 
 **Goal:** Ship a curated library of native presets that exercise the Phase 3 infrastructure. Each preset increment depends on one or more infrastructure increments from Phase 3 and must not start until those dependencies are verified complete.
 
-**Naming convention:** `Increment 3.5.N` — each native preset is a separate increment with a clear concept, audio routing, dependency list, and per-preset test/diagnose workflow. Per the Increment Scope Discipline rule, a preset and the infrastructure it depends on are never bundled — if a preset reveals a missing capability, the preset pauses and the capability becomes its own infrastructure increment.
+**Naming convention:** `Increment 3.5.N` — each native preset is a separate increment with a clear concept, audio routing, dependency list, and per-preset test/diagnose workflow. Per the Increment Scope Discipline rule, a preset and the infrastructure it depends on are never bundled.
 
-### Increment 3.5.1: Photorealistic Popcorn Preset
+**Prerequisite:** Phase 2.5 (Session Preparation Pipeline) should be complete before preset work begins, so presets can be designed with the assumption that stems are always available from frame one. Presets should NOT include warmup fallback logic.
 
-**Status:** Deferred. Was attempted multiple times before infrastructure was ready; explicitly held until prerequisites are met.
+### Increment 3.5.1: REMOVED — Photorealistic Popcorn
 
-**Concept:** 3/4 overhead view of a cast-iron skillet on a glowing gas burner. Finite batch of ~60 popcorn kernels popping in sync with the music, driven by real drum-stem onsets (from Increment 3.1b). No respawning. `accumulatedBeatEnergy`-driven bell-distributed pop thresholds pace the batch over a typical song length so the frenzy lands on the first chorus and stragglers pop during bridge/second-verse. Late-song phase: heavy volumetric steam rising from the pan and slow scorching (popped kernels brown from sustained heat). Track change resets the batch via `MIRPipeline.reset()`.
+**Status:** Removed from plan. The concept (photorealistic cast-iron skillet with popping kernels) prioritized technical demonstration over emotional musical connection. The visual metaphor — a kitchen scene — has a thin relationship to the music beyond "kernels pop on drum hits." This conflicts with the project's creative philosophy that visuals should function as another member of the band, not a Pixar short. The massive dependency list (3.1a, 3.1b, 3.3, 3.4, 3.12–3.17) and multiple failed implementation attempts confirmed this was the wrong first preset.
 
-**Why it needs real infrastructure:**
-- 2D SDF rendering cannot depict a cast-iron skillet on a stovetop convincingly — needs ray marching with PBR materials (Cook-Torrance, Schlick Fresnel, subsurface approximation). Requires the shader utility library (3.12) for SDF/PBR functions and the ray march pipeline (3.14) for deferred lighting.
-- Organic textures (cast iron grain, kernel surface, oil sheen) require pre-computed noise textures — impossible to fake with pure math (requires 3.13)
-- The visual reads as photorealistic only with real shadows (requires ray tracing infrastructure from 3.3) and proper scene lighting (requires SceneUniforms from 3.15)
-- Burner glow and pop flashes bloom correctly only through an HDR post-process chain (requires 3.4)
-- Drum-accurate pop triggers require the live stem pipeline (requires 3.1b), which itself requires GPU STFT/iSTFT (3.1a)
-- Volumetric steam requires the atmosphere/volumetric functions from the shader utility library (3.12) and 3D noise sampling from the noise textures (3.13)
+### Increment 3.5.2: Murmuration Stem Routing Revision
 
-**Depends on:**
-- Increment 3.1a (GPU STFT/iSTFT) — via 3.1b
-- Increment 3.1b (live stem pipeline) — for `StemFeatures.drumsBeatPulse` pop triggers and `StemFeatures.bassEnergy` heat glow
-- Increment 3.3 (ray tracing) — for real shadows under kernels and on the pan floor, optionally for reflections on the pan rim
-- Increment 3.4 (HDR post-process) — for bloom from the burner glow and pop flashes, ACES tone-mapping, mild color grading
-- Increment 3.12 (shader utility library) — for SDF primitives, ray marching loop, PBR lighting, noise functions, volumetric march
-- Increment 3.13 (noise texture manager) — for cast iron surface texture, kernel surface detail, oil/grease noise, steam turbulence
-- Increment 3.14 (ray march pipeline) — for deferred G-buffer rendering with multi-light PBR evaluation
-- Increment 3.15 (extended shader uniforms) — for SceneUniforms (camera, 4 lights, accumulated audio time, fog density)
-- Increment 3.16 (IBL pipeline) — for environment reflections on the cast-iron pan surface, oil sheen, and metallic burner grate. Point lights alone cannot produce the complex reflection patterns that sell a cast-iron surface as real.
-- Increment 3.17 (SSGI) — for the hot pan interior and oil surface bouncing warm light upward onto kernels, and inter-kernel light scattering between popped whites. Without indirect illumination, the scene's primary light interactions are missing.
+**Status:** Not started. First preset in the expansion phase.
 
-**Explicit pre-conditions:** all dependency increments must be verified complete before this one starts. No partial starts, no working around missing infrastructure.
-
-**Files to create/edit (when unblocked):**
-- `Presets/Shaders/Popcorn.metal` — full rewrite from whatever is in the tree
-- `Presets/Shaders/Popcorn.json` — preset descriptor with `use_post_process: true` and dependency flags as needed
-- No Swift source changes expected beyond the preset wiring already landed in earlier increments
-
-**Test/diagnose harness:**
-- `Tests/PhospheneEngineTests/Visual/PopcornVisualTests.swift` (new) — headless test that renders the preset to offscreen HDR textures at 8 synthetic audio states (cold start, warming, first pops, chorus chaos, late song, final frame, ultrawide aspect, portrait aspect) and writes the composited drawable frames as PNG files via a new `TestHelpers/TextureToPNG.swift` helper. Lets the implementer iterate on the shader without asking the user to manually build and run the app. Test passes if rendering completes without crashes and no pixel is NaN/inf; visual quality is verified by the implementer opening the PNGs.
-
-**Verification:**
-- Headless visual test suite passes and the implementer inspects all PNGs against documented acceptance criteria (cast iron reads as cast iron, real shadows present, kernels look 3D not 2D, steam reads as volumetric, burner bloom bleeds onto pan underside)
-- Manual: Matt runs the app with several genres, verifies pops align with drum hits, burner glows under bass-heavy sections, track change resets the batch, frame rate holds at 60fps
-
-**Blocked until:** 3.1a, 3.1b, 3.3, 3.4, 3.12, 3.13, 3.14, 3.15, 3.16, 3.17 all complete.
+[See the full increment prompt created earlier in this conversation for the complete specification.]
 
 *Other Phase 3.5 entries can be added as presets are designed. For now, listing Popcorn is enough to establish the phase and document its dependencies.*
 
@@ -1853,7 +1969,9 @@ constexpr sampler mipLinearSampler(filter::linear, mip_filter::linear, address::
 
 **Verification:** Press a key to trigger a transition. Two presets blend smoothly over 2 seconds with no frame drops. All 9 tests pass.
 
-### Increment 4.4: Streaming-Aware Orchestrator Core
+### Increment 4.4: Reactive Orchestrator Core (Ad-Hoc Mode)
+
+**Note:** This increment implements the reactive/ad-hoc path. Session planning mode (Increment 4.4b) extends the Orchestrator for the playlist-first workflow. Both modes share the transition engine (4.3) and emotion mapper (4.2).
 
 **Goal:** The main Orchestrator fusing all three anticipation systems into a single decision engine.
 
@@ -1904,6 +2022,21 @@ constexpr sampler mipLinearSampler(filter::linear, mip_filter::linear, address::
   - `test_fullPipeline_5MockTracks_noConsecutiveCategoryRepeats()`
 
 **Verification:** Stream a 5-track playlist. Orchestrator selects mood-appropriate presets, transitions land on section boundaries, no black screens. Debug log shows decision rationale. All 32+ tests pass.
+
+### Increment 4.4b: Session Planning Mode
+
+**Status:** Not started.
+
+**Goal:** Extend the Orchestrator with a session planning mode that generates a complete visual plan from pre-analyzed track profiles before playback starts.
+
+**Files to create/edit:**
+- `Orchestrator/SessionPlanner.swift` (new) — Takes `[TrackProfile]` from `StemCache` and the preset manifest. Outputs a `SessionPlan`: ordered list of (track, preset, transition timing). Selection criteria: mood quadrant matching, stem affinity matching (drum-heavy tracks → drum-responsive presets), no consecutive category repeats, emotional arc shaping across the playlist.
+- `Orchestrator/Orchestrator.swift` — Add `planSession(profiles: [TrackProfile]) -> SessionPlan`. In session mode, this runs during the preparation phase. During playback, the Orchestrator follows the plan but adapts transition timing based on real-time structural analysis.
+- `Presets/PresetDescriptor.swift` — Add `stemAffinity: [String: String]?` field (JSON key `"stem_affinity"`). Maps stem names to visual roles.
+
+**Depends on:** 2.5.3 (StemCache + TrackProfile), 4.1 (Preset Categorization), 4.2 (Emotion Mapper).
+
+**Enables:** Complete playlist-first experience with pre-planned visual arc.
 
 ### Increment 4.5: Reinforcement Learning Agent (Optional / Advanced)
 
@@ -2014,6 +2147,35 @@ constexpr sampler mipLinearSampler(filter::linear, mip_filter::linear, address::
 ---
 
 ## Phase 6 — UI & User Experience (Blueprint Release 0.9)
+
+### Increment 6.0: Session Preparation UI
+
+**Status:** Not started.
+
+**Goal:** The entry point for Phosphene — where the user connects a playlist and watches the preparation progress.
+
+**Files to create/edit:**
+- `PhospheneApp/Views/SessionStartView.swift` (new) — Landing screen: "Connect a Playlist" with three paths: (1) "Use Current Apple Music Playlist" button, (2) "Use Current Spotify Queue" button, (3) "Paste Playlist URL" text field. Also a "Skip — Listen Without Playlist" link for ad-hoc mode.
+- `PhospheneApp/Views/PreparationProgressView.swift` (new) — Progress screen during preparation: playlist artwork grid, per-track progress indicators (downloading → analyzing → cached), overall progress bar, estimated time remaining. Track names and artists visible. Animated transition to "Ready" state.
+- `PhospheneApp/Views/SessionReadyView.swift` (new) — "Ready" screen: playlist overview showing the planned visual arc (which preset for each track, mood trajectory), "Start Listening" prompt. The user starts playback in their streaming app, and Phosphene detects the audio via Core Audio tap and transitions to the visualizer view.
+- `PhospheneApp/ViewModels/SessionViewModel.swift` (new) — Binds `SessionManager` state to the UI views. Publishes preparation progress, session state, and playlist metadata.
+
+**Test requirements:**
+- `SessionViewModelTests.swift` — 8 tests:
+  - `test_init_stateIsIdle()`
+  - `test_connectAppleMusic_transitionsToConnecting()`
+  - `test_preparationProgress_updatesCorrectly()`
+  - `test_ready_exposesSessionPlan()`
+  - `test_skipPreparation_transitionsToAdHoc()`
+  - `test_pasteURL_validatesAndConnects()`
+  - `test_preparationFailure_showsPartialReady()`
+  - `test_playbackDetected_transitionsToPlaying()`
+
+**Verification:** Open Phosphene. Connect an Apple Music playlist. See preparation progress. When "Ready," start music in Apple Music. Visualizer begins with pre-analyzed stems. All 8 tests pass.
+
+**Depends on:** Phase 2.5 (SessionManager, SessionPreparer), 6.1 (base SwiftUI shell).
+
+**Enables:** Complete end-to-end playlist-first user experience.
 
 ### Increment 6.1: SwiftUI Application Shell
 
@@ -2178,7 +2340,7 @@ constexpr sampler mipLinearSampler(filter::linear, mip_filter::linear, address::
 
 **Status:** Not started. Deferred pending model evaluation and subjective quality assessment.
 
-**Goal:** Reduce stem separation boundary artifacts by transitioning from discrete 10-second block processing to a continuous or near-continuous inference architecture.
+**Goal:** Reduce real-time stem refinement latency. With the session preparation pipeline, track-boundary stem gaps are eliminated (cached stems are available from frame one). This increment improves how quickly the engine upgrades from cached preview stems to time-aligned live stems within each track — currently ~10–15 seconds, target 2–5 seconds.
 
 **Near-term mitigation (can be implemented in Phase 3 if artifacts prove distracting):** Reduce dispatch cadence from 5s to 2–3s within the existing 10s rolling window. Add EMA crossfade blending between consecutive `StemFeatures` results in `StemAnalyzer` to smooth boundary transitions. This addresses the most audible artifacts without rearchitecting the ML pipeline.
 

@@ -2,17 +2,18 @@
 
 ## What This Is
 
-Phosphene is a native macOS music visualization engine for Apple Silicon. It captures live system audio from streaming services (Apple Music, Spotify, Tidal, etc.) via Core Audio taps (`AudioHardwareCreateProcessTap`), performs real-time audio analysis and ML-powered stem separation, and renders Metal-based visuals that respond to the music's frequency content, rhythm, and emotional character.
+Phosphene is a native macOS music visualization engine for Apple Silicon. Before the music starts, Phosphene connects to a playlist, downloads 30-second preview clips for every track, and runs full ML-powered stem separation and MIR analysis on each. By the time the user presses play, the AI Orchestrator has planned the entire visual session — which visualizer for each track, where transitions land, and what the emotional arc looks like across the playlist. During playback, real-time audio analysis via Core Audio taps (`AudioHardwareCreateProcessTap`) refines the pre-analyzed data, and the Orchestrator adapts its plan as the music unfolds.
 
-Users do NOT load audio files. They play music in their streaming app and Phosphene visualizes it. Phosphene is a passive listener — it never controls playback.
+Phosphene does not control playback — the user starts the music in their streaming app when Phosphene signals it is ready. But Phosphene is not a passive listener. It is a VJ that prepares a show for a known setlist.
 
 The name references the visual phenomenon of perceiving light and patterns without external visual stimulus — exactly what this software does with sound.
 
 ### Core Use Cases
 
-1. **Listening party backdrop**: Friends gather, each brings a mix. Phosphene runs fullscreen on a TV or projector, producing synchronized visuals while people listen together.
-2. **Ambient accompaniment**: Solo listening — reading, working, unwinding — with visuals on a secondary display or in a window.
-3. **Creative enhancement**: Immersive visual accompaniment to deepen the listening experience.
+1. **Curated playlist session**: The primary use case. The user connects a playlist from Apple Music or Spotify. Phosphene analyzes every track during a brief preparation phase (~20–30 seconds), then signals "Ready." From the first beat of the first song, stems are cached, the visualizer is chosen, and transitions are pre-planned across the entire session. This is how Phosphene is designed to be used.
+2. **Listening party backdrop**: Friends gather, each brings a mix. One person connects the playlist, Phosphene prepares the show, and the group watches synchronized visuals on a TV or projector while listening together.
+3. **Ambient accompaniment**: Solo listening — reading, working, unwinding — with visuals on a secondary display or in a window. For ad-hoc listening without a connected playlist, Phosphene falls back to its reactive mode (real-time analysis only, no pre-planned arc).
+4. **Creative enhancement**: Immersive visual accompaniment to deepen the listening experience.
 
 ### Lineage
 
@@ -34,7 +35,7 @@ line, as it would propagate to SPM dependencies that compile with
 
 Deployment target: macOS 14.0+ (Sonoma). Swift 6.0. Metal 3.1+.
 
-**Current test count: 340 tests** (249 swift-testing + 91 XCTest, across unit, integration, regression, performance). All must pass before any new code is merged.
+**Current test count: 348 tests** (257 swift-testing + 91 XCTest, across unit, integration, regression, performance). All must pass before any new code is merged.
 
 ## Module Map
 
@@ -115,6 +116,14 @@ PhospheneEngine/
     Shaders/Plasma.metal    → Demoscene plasma preset (✓ implemented)
     Shaders/Nebula.metal    → Radial frequency nebula preset (✓ implemented)
   Orchestrator/             → AI VJ: anticipation engine, transitions, preset selection (stub)
+  Session/                  → Playlist connection, preview pipeline, session state
+    PlaylistConnector       → Protocol PlaylistConnecting + concrete Apple Music (AppleScript) / Spotify (Web API) impl (✓ implemented)
+    TrackIdentity           → Stable per-track cache key: title, artist, album, duration, catalog IDs (✓ implemented)
+    PreviewResolver          → Resolve TrackIdentity → preview URL (iTunes Search API / MusicKit PreviewAssets)
+    PreviewDownloader        → Batch download + decode AAC/MP3 → PCM via AVAudioFile
+    SessionPreparer          → Orchestrate: download → separate → analyze → cache → plan
+    StemCache                → Thread-safe per-track storage: separated stem waveforms + StemFeatures + TrackProfile
+    TrackProfile             → Pre-computed MIR features per track: BPM, key, mood, spectral summary, stem energy balance
   Shared/                   → UMA buffer wrappers, type definitions, logging
     UMABuffer               → Generic .storageModeShared MTLBuffer + UMARingBuffer (✓ implemented)
     AudioFeatures           → @frozen SIMD-aligned structs: AudioFrame, FFTResult, TrackMetadata, PreFetchedTrackProfile (✓ implemented)
@@ -124,6 +133,13 @@ PhospheneEngine/
     AnalyzedFrame           → Timestamped container: AudioFrame + FFTResult + StemData + FeatureVector + EmotionalState (✓ implemented)
     StemSampleBuffer        → Interleaved stereo PCM ring buffer for stem separation input (✓ implemented)
     Logging                 → Per-module os.Logger instances (✓ implemented)
+  Session/                   → Playlist connection, preview pipeline, session state
+    PlaylistConnector        → Read playlist from Apple Music (AppleScript) / Spotify (Web API) / URL
+    PreviewResolver          → Resolve TrackIdentity → preview URL (iTunes Search API / MusicKit PreviewAssets)
+    PreviewDownloader        → Batch download + decode AAC/MP3 → PCM via AVAudioFile
+    SessionPreparer          → Orchestrate: download → separate → analyze → cache → plan
+    StemCache                → Thread-safe per-track storage: separated stem waveforms + StemFeatures + TrackProfile
+    TrackProfile             → Pre-computed MIR features per track: BPM, key, mood, spectral summary, stem energy balance
 
 Tests/ (298 tests: 232 swift-testing + 66 XCTest)
   Audio/                    → AudioBufferTests, FFTProcessorTests, StreamingMetadataTests, MetadataPreFetcherTests, LookaheadBufferTests (10)
@@ -157,8 +173,14 @@ Spectral centroid (brightness), continuous spectral flux (rate of change), MFCCs
 ### Layer 4: Beat Onset Pulses (ACCENT ONLY — NEVER PRIMARY)
 Discrete accent events that spike on detected onsets and exponentially decay. They add punch — a momentary flash, a brief burst, a color spike. They must NEVER be the dominant driver of visual motion because they have inherent timing jitter (±80ms) from threshold-crossing detection. The feedback loop amplifies this jitter, making beat-dominant visuals feel out of sync with the music.
 
+### Layer 5a: Pre-Analyzed Stems (AVAILABLE FROM FIRST FRAME)
+Stem waveforms separated from 30-second preview clips during the session preparation phase. Available instantly on track change — no warmup, no latency. Provides the correct spectral character and energy profile for each instrument in the track, but is not time-aligned with live playback. Each stem feeds its own energy and spectral analysis. Enables targeted visual routing: bass stem drives low-frequency geometric deformation, drum stem triggers particle emission, vocal stem modulates color saturation.
+
+### Layer 5b: Real-Time Stems (REPLACES 5a AFTER ~10 SECONDS)
+Full waveform separation from the live Core Audio tap via MPSGraph (Open-Unmix HQ). Arrives ~10–15 seconds into each track. Time-aligned with playback — replaces pre-analyzed stems via crossfade. Same per-stem analysis pipeline. Stems inherit the same hierarchy — their continuous energy is primary, their onset pulses are accent. In ad-hoc mode (no connected playlist), Layer 5a is unavailable and Layer 5b is the only stem source, with the existing ~10s warmup latency.
+
 ### Layer 5: Stems (PER-INSTRUMENT ROUTING — NEW IN NATIVE BUILD)
-CoreML-separated audio stems (Vocals, Drums, Bass, Other). Each stem feeds its own energy and spectral analysis. Enables targeted visual routing: bass stem drives low-frequency geometric deformation, drum stem triggers particle emission, vocal stem modulates color saturation. Stems inherit the same hierarchy — their continuous energy is primary, their onset pulses are accent.
+ML-separated audio stems (MPSGraph) (Vocals, Drums, Bass, Other). Each stem feeds its own energy and spectral analysis. Enables targeted visual routing: bass stem drives low-frequency geometric deformation, drum stem triggers particle emission, vocal stem modulates color saturation. Stems inherit the same hierarchy — their continuous energy is primary, their onset pulses are accent.
 
 **Rule of thumb for shader authors**: `base_zoom` and `base_rot` (continuous energy) should be 2–4x larger than `beat_zoom` and `beat_rot` (onset pulses). The continuous values do the heavy lifting; the beat adds spice.
 
@@ -314,6 +336,14 @@ Each shader has a JSON sidecar defining its behavior. This format carries forwar
   "decay": 0.91,
   "beat_sensitivity": 1.2
 }
+{
+  "stem_affinity": {
+    "drums": "cohesion",
+    "bass": "body_movement",
+    "other": "flutter",
+    "vocals": "color_warmth"
+  }
+}
 ```
 
 | Field | Default | Description |
@@ -328,6 +358,7 @@ Each shader has a JSON sidecar defining its behavior. This format carries forwar
 | `base_rot` | 0.03 | Continuous energy rotation (primary driver) |
 | `decay` | 0.955 | Feedback decay per frame. 0.85 = short trails. 0.95 = long. |
 | `beat_sensitivity` | 1.0 | Beat pulse multiplier. 0.0 = ignore beats. Range 0–3.0. |
+| `stem_affinity` | optional | Declares which stems this preset uses and how. Enables the Orchestrator to pair tracks with presets that match their stem profile — e.g., drum-heavy tracks with drum-responsive presets. |
 
 The scene manager auto-discovers shader files by scanning the presets directory. No manual registration.
 
@@ -341,25 +372,68 @@ The scene manager auto-discovers shader files by scanning the presets directory.
 - Apple frameworks only for system integration. No third-party audio capture or virtual audio drivers.
 
 ### Audio Input
-- Primary input is ALWAYS Core Audio taps (`AudioHardwareCreateProcessTap`, macOS 14.2+), never file loading.
+- Primary LIVE audio input is Core Audio taps (`AudioHardwareCreateProcessTap`, macOS 14.2+). Secondary audio source: 30-second preview clips (AAC/MP3, DRM-free) downloaded via iTunes Search API / MusicKit for pre-analysis during session preparation. These are decoded to PCM via `AVAudioFile` and run through the stem separation and MIR pipelines before playback begins.
 - `SystemAudioCapture` creates a process tap → aggregate device → IO proc pipeline delivering interleaved float32 PCM at 48kHz stereo on a real-time audio thread.
 - `AudioInputRouter` abstracts three modes behind a callback API: `.systemAudio` (default), `.application(bundleIdentifier:)`, `.localFile(URL)`. Mode switching is seamless.
 - `AudioBuffer` writes interleaved float32 from the IO callback into `UMARingBuffer<Float>` via pointer-based `write(from:count:)`.
 - `FFTProcessor` reads the latest 1024 mono samples, applies Hann window, runs vDSP 1024-point FFT, writes 512 magnitude bins into `UMABuffer<Float>` for GPU binding.
 - Local file playback via `AVAudioFile` exists only as a fallback for testing/offline use.
-- Phosphene never controls music playback. It is a passive listener.
+- Phosphene never controls music playback. It actively prepares a visual show for a known playlist, but the user initiates playback in their streaming app.
 - App sandbox is disabled (`com.apple.security.app-sandbox = false`). `NSScreenCaptureUsageDescription` in Info.plist is kept for future ScreenCaptureKit fallback compatibility.
 - **DRM silence detection** (Increment 3.18): Core Audio process taps are vulnerable to DRM-triggered silencing. When apps play protected streams (Apple Music lossless/FairPlay, Spotify DRM), macOS may zero out the tap's audio buffer to prevent capture. Because Phosphene is a passive listener, this breaks the entire pipeline silently — no error, just zero-energy frames producing a static or frozen visualizer. `AudioInputRouter` monitors sustained zero-energy frames (configurable threshold, default 3s). When triggered: (1) surface a non-intrusive visual indicator ("No audio signal detected"), (2) transition to an ambient/generative visual mode that runs without audio input, (3) continue monitoring for signal recovery and seamlessly resume audio-reactive rendering when audio returns. This is the single most important resilience feature for the primary use case (visualizing streaming music).
 
-### Streaming Anticipation Pipeline
+### Session Preparation Pipeline
 
-Because streaming audio arrives without a pre-scannable file, Phosphene employs three systems to recover anticipatory capability:
+Phosphene's primary operating mode is playlist-first: the user connects a playlist before playback begins, and Phosphene pre-analyzes every track so the visual show is ready from the first beat.
+
+**Session lifecycle:**
+- `idle` → user hasn't connected a playlist
+- `connecting` → reading the playlist from the streaming app
+- `preparing` → downloading preview clips, running stem separation + MIR on each track, planning the visual arc
+- `ready` → all tracks analyzed, Orchestrator has planned the session, waiting for user to start playback
+- `playing` → live session, real-time analysis refining pre-analyzed data, Orchestrator adapting its plan
+- `ended` → playlist complete or user stopped
+
+**Playlist connection:**
+- Apple Music: AppleScript enumerates `every track of current playlist` — title, artist, album, duration, track index. Uses the existing `StreamingMetadata` AppleScript infrastructure.
+- Spotify: Web API `GET /me/player/queue` returns up to 20 upcoming tracks. Fallback: if the user provides a Spotify playlist URL, fetch the full track list via the playlist endpoint.
+- Manual: User pastes a playlist URL (Apple Music or Spotify) directly into Phosphene.
+
+**Preview clip pipeline:**
+- For each track, resolve a 30-second preview URL via the iTunes Search API (`previewUrl` field — universal, works for any track in the Apple Music catalog regardless of streaming source, no auth required, 20 req/min rate limit). MusicKit `Song.previewAssets` is an alternative for Apple Music subscribers.
+- Download AAC/MP3 preview clips, decode to raw PCM via `AVAudioFile`.
+- Preview clips are unprotected (no DRM) and freely decodable. This is a different audio path from the Core Audio tap — previews are downloaded files, not captured streams.
+
+**Batch pre-analysis (per track):**
+1. Run `StemSeparator.separate()` on the preview PCM → full separated waveforms (drums, bass, vocals, other)
+2. Run `StemAnalyzer` on the separated stems → `StemFeatures` (energy, band slots, beat pulse per stem)
+3. Run the MIR pipeline on the preview audio → BPM, key, mood (valence/arousal), spectral centroid, chroma
+4. Run structural analysis on the preview → section boundary estimates (limited from 30s, but non-zero)
+5. Store all results in a `StemCache` keyed by track identity
+
+**Performance budget:** At ~142ms per stem separation on Apple Silicon (MPSGraph), a 20-track playlist pre-analyzes in ~3 seconds of compute. Preview downloads are the bottleneck (~10MB total, a few seconds on broadband). Total preparation time: ~20–30 seconds for a full playlist.
+
+**Track transition behavior (replaces the current hard-reset model):**
+- On track change, `VisualizerEngine` loads cached stems and MIR data for the new track from the `StemCache`. `StemFeatures` is populated immediately — never zeroed.
+- `StemSampleBuffer` is NOT cleared. The ring buffer continues accumulating audio from the Core Audio tap for real-time refinement.
+- Real-time separation runs in the background on its normal cadence. When the first real-time result arrives (~10–15s into the track), it crossfades with and then replaces the cached preview data.
+- No preset ever sees zero stems during a playlist session. No warmup fallback is needed.
+
+**Orchestrator session planning:**
+- Before playback starts, the Orchestrator has a `TrackProfile` for every track in the playlist: BPM, key, mood, stem energy balance, genre tags, duration.
+- It plans the full visual session: which preset for each track (matched by mood and stem affinity), where transitions land, what the emotional arc looks like across the playlist.
+- Preset pipeline states can be pre-compiled for every preset the plan uses, eliminating runtime compilation hitches during transitions.
+- During playback, the plan adapts — real-time MIR may reveal structural details the 30-second preview missed, and the Orchestrator adjusts transition timing accordingly.
+
+### Real-Time Refinement Layer (Active During Playback)
+
+During a playlist session, the session preparation pipeline provides the primary data. These three systems refine and extend that data in real time as each track plays. In ad-hoc mode (no connected playlist), these systems are the primary — and only — source of anticipation.
 
 1. **Lookahead Buffer** — A deliberate 2.5s delay between audio analysis and visual rendering. The Orchestrator sees both the real-time analysis head (for anticipation) and the delayed render head (for current state). Always active internally.
 
-2. **Metadata Pre-Fetching** — On track change (via Now Playing), fire parallel async queries to MusicBrainz, Spotify Web API, Apple Music catalog. Match by title+artist. Cache in LRU. 3-second timeouts. Network failures are silent — pre-fetched data is optional, never a dependency.
+2. **Metadata Pre-Fetching** — On track change (via Now Playing), fire parallel async queries to MusicBrainz, Spotify Web API, Apple Music catalog. Match by title+artist. Cache in LRU. 3-second timeouts. In playlist mode, this data is already cached from the preparation phase. In ad-hoc mode, this is the "fast hint" that accelerates the first ~15 seconds.
 
-3. **Progressive Structural Analysis** — Self-similarity matrix from chroma + MFCC features. Novelty detection finds section boundaries. After 2+ boundaries, predict future boundary timestamps. Low-structure music produces low-confidence predictions, not false ones.
+3. **Progressive Structural Analysis** — Self-similarity matrix from chroma + MFCC features. Novelty detection finds section boundaries. After 2+ boundaries, predict future boundary timestamps. This supplements the coarse structural data from the 30-second preview with time-aligned, complete structural analysis from the full track.
 
 ### Memory & GPU
 - ALL shared buffers between CPU, GPU, and ANE: `MTLResourceOptions.storageModeShared` (UMA zero-copy).
@@ -390,17 +464,21 @@ Because streaming audio arrives without a pre-scannable file, Phosphene employs 
 - **Stem separator** (MPSGraph, GPU): Open-Unmix HQ architecture reconstructed in MPSGraph. Takes STFT magnitude spectrograms `[2049, 431]` per channel, outputs 4 masked spectrograms (vocals, drums, bass, other). Float32 throughout. Weights: 172 raw `.bin` files (135.9 MB) in `ML/Weights/`. STFT/iSTFT handled in Swift via Accelerate/vDSP. STFT params: n_fft=4096, hop=1024, sample_rate=44100. Fixed input: 431 frames (~10s). Performance: 142ms warm predict.
 - **Mood classifier** (Accelerate, CPU): 4-layer MLP (10→64→32→16→2) with ReLU + tanh, implemented as 3 `vDSP_mmul` calls. Weights hardcoded as static `[Float]` arrays (3,346 params, extracted from the original DEAM-trained CoreML model). Outputs continuous valence (-1…1) and arousal (-1…1), smoothed with EMA. Input: 10 features (6-band energy, centroid, flux, major/minor key correlations).
 - Stem separator outputs: Vocals, Drums, Bass, Other — each independently routed to shaders.
-- **Stem separation cadence improvement** (Phase 7 — ML optimization): The current 10-second block / 5-second dispatch cadence introduces "step" artifacts during sudden dynamic shifts. Near-term mitigation: reduce dispatch cadence to 2–3s (the rolling window already supports this) and add crossfade blending between consecutive stem analysis results in `StemAnalyzer`. Long-term: evaluate streaming-native separation models or overlap-add architecture with shorter MPSGraph input windows. Note that the current MPSGraph is compiled with fixed 431-frame input shape — true streaming inference requires either graph recompilation for smaller shapes, zero-padded smaller chunks, or a fundamentally different model. Deferred to Phase 7 pending profiling and model evaluation.
+- - **Stem separation cadence improvement** (Phase 7 — ML optimization): The pre-analysis pipeline eliminates stem gaps at track transitions. The remaining concern is real-time refinement latency — how quickly the engine upgrades from cached preview stems to time-aligned live stems within a track. Near-term: reduce dispatch cadence from 5s to 2–3s after track changes. Long-term: evaluate streaming-native separation models or overlap-add architecture with shorter MPSGraph input windows for faster convergence.
 
 ### Orchestrator
-- Four states: `idle` → `listening` → `ramping` → `full`.
+**Two modes:**
+- **Session mode** (playlist connected): Plans the full visual arc before playback starts using pre-analyzed `TrackProfile` data. Selects presets matched to each track's mood and stem profile. Pre-determines transition timing aligned to track boundaries and estimated section boundaries. Adapts the plan in real time as live MIR reveals structural details the 30-second preview missed.
+- **Ad-hoc mode** (no playlist): Reactive decision-making under uncertainty. Four states: `idle` → `listening` → `ramping` → `full`. Falls back to heuristic preset selection based on live MIR data as it accumulates.
+
+**Both modes share:**
 - Visual transitions LAND on musical transitions (use lookahead to pre-initiate crossfades).
 - No repeating the same preset category twice in succession.
 - Section boundaries (structural analysis) are preferred transition points over timer-based switching.
 - Track change detection fuses: Now Playing metadata, audio-level heuristics, elapsed time vs. pre-fetched duration.
 
 ### Pre-Fetch Philosophy
-Pre-fetched metadata is a **"fast hint"** that accelerates the first ~15 seconds of a track. It is NOT a hard dependency. The self-computed MIR pipeline (Increment 2.4) computes BPM, key, spectral features, and mood from live audio — pre-fetch just gives the Orchestrator a head start before MIR has enough data to be confident.
+In **session mode**, pre-fetched metadata is gathered during the preparation phase for every track before playback starts. It complements the pre-analyzed stem and MIR data from preview clips. In **ad-hoc mode**, pre-fetched metadata is a "fast hint" that accelerates the first ~15 seconds of each track — the self-computed MIR pipeline is the real source of truth. In both modes, all external data is optional — Phosphene is fully functional via self-computed audio analysis alone.
 
 **Fetcher priority:**
 1. MusicBrainz (always active, free) — genre tags, duration
@@ -427,7 +505,7 @@ Phosphene works at every tier — never show errors or degraded UI when metadata
 - Protocol-first design for testability. Every injectable dependency has a protocol (`AudioCapturing`, `AudioBuffering`, `FFTProcessing`, `Rendering`, `MetadataProviding`, `MetadataFetching`). Tests use doubles from `TestDoubles/`.
 
 ### Testing
-- **307 tests** (232 swift-testing + 75 XCTest) across unit, integration, regression, and performance categories.
+- **340 tests** (249 swift-testing + 91 XCTest) across unit, integration, regression, and performance categories.
 - All tests must pass before starting new work (`swift test --package-path PhospheneEngine` or `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' test`).
 - Test doubles in `Tests/TestDoubles/`: `MockAudioCapture`, `StubFFTProcessor`, `FakeStemSeparator`, `StubMoodClassifier`, `AudioFixtures`, `MockMetadataProvider`, `MockMetadataFetcher`.
 - Regression tests use golden fixtures in `Tests/Regression/Fixtures/`.
@@ -501,6 +579,11 @@ struct Particle                // 64 bytes: position, velocity, color, life, siz
 struct ParticleConfiguration   // particleCount, decayRate, burstThreshold, burstVelocity, drag (CPU-side tuning)
 struct StructuralPrediction    // sectionIndex, sectionStartTime, predictedNextBoundary, confidence
 struct VisualDirective         // Target family, color palette, camera speed, bloom, particles
+struct TrackIdentity         // title, artist, album, duration, catalogIDs (Apple/Spotify/MusicBrainz)
+struct TrackProfile          // BPM, key, mood, spectral centroid avg, genre tags, stem energy balance, estimated section count
+struct SessionPlan           // Ordered list of (TrackIdentity, PresetDescriptor, transitionTiming)
+struct CachedStemData        // Pre-separated stem waveforms (4× [Float]) + derived StemFeatures
+enum SessionState            // idle, connecting, preparing, ready, playing, ended
 ```
 
 ## Linked Frameworks
@@ -613,7 +696,7 @@ The architectural blueprint is in `docs/ARCHITECTURAL_BLUEPRINT.md`.
 **Completed increments (Phase 3R):**
 - **Increment 3.12 — Shader Utility Library** ✅ — `ShaderUtilities.metal` (663 lines, 55 functions across 7 domains): hash (4), noise (10: Perlin/simplex/Worley/FBM/curl in 2D+3D), SDF primitives (8) + operations (9), ray marching (4: march/normal/AO/shadow via forward-declared `map()`), PBR lighting (6: Fresnel-Schlick, GGX, Smith, Cook-Torrance BRDF, point/directional light), UV transforms (6: polar/invRadius/kaleidoscope/Möbius/bipolar/logSpiral), color/atmosphere (8: cosine palette, ACES/Reinhard tone mapping, sRGB conversions, fog, atmospheric scatter, volumetric march). Loaded from Presets bundle at init, appended to preamble after struct definitions. `PresetLoader` skips utility files during preset discovery via `utilityFileNames` filter. All functions `static inline`; ray march functions use forward-declared `float map(float3 p)` — presets define `map()` to use them, non-ray-march presets are unaffected (dead code elimination). 11 ShaderUtilityTests (preamble inclusion, multi-domain compilation, noise determinism, SDF analytic correctness, ray march sphere hit/miss, PBR energy conservation, kaleidoscope symmetry, palette smoothness, ACES SDR range, fog identity, 1080p noise <2ms). 279 tests total (232 swift-testing + 47 XCTest), SwiftLint clean.
 - **Increment 3.13 — Noise Texture Manager** ✅ — `TextureManager.swift`: generates 5 noise textures via Metal compute at init (`gen_perlin_2d`, `gen_perlin_3d`, `gen_fbm_rgba`, `gen_blue_noise` kernels in `NoiseGen.metal`). Textures: `noiseLQ` (256² `.r8Unorm` tileable Perlin FBM), `noiseHQ` (1024² `.r8Unorm`), `noiseVolume` (64³ `.r8Unorm` 3D FBM), `noiseFBM` (1024² `.rgba8Unorm` R=Perlin G=shifted B=Worley A=curl), `blueNoise` (256² `.r8Unorm` IGN dither). All `.storageModeShared`, 2D textures mipmapped. `bindTextures(to:)` sets fragment texture indices 4–8 in all draw paths (drawDirect, drawParticleMode, drawSurfaceMode, drawWithMeshShader, drawWithICB, drawWithPostProcess). `RenderPipeline` holds optional `TextureManager` behind `NSLock`. `VisualizerEngine` creates on background `.userInitiated` queue at startup. Preamble gains `constexpr sampler linearSampler/nearestSampler/mipLinearSampler` declarations and noise texture index documentation. 9 `TextureManagerTests` (dimensions, formats, storageMode, determinism, binding, <500ms perf). 288 tests total (232 swift-testing + 56 XCTest), SwiftLint clean.
-- **Increment 3.14 — Multi-Pass Ray March Pipeline** ✅ — `RayMarchPipeline.swift`: owns G-buffer textures (gbuffer0 `.rg16Float`, gbuffer1 `.rgba8Snorm`, gbuffer2 `.rgba8Unorm`, litTexture `.rgba16Float`), two fixed pipeline states (lightingPipeline, compositePipeline), bilinear sampler, public `sceneUniforms: SceneUniforms`. `render(gbufferPipelineState:features:fftBuffer:waveformBuffer:stemFeatures:outputTexture:commandBuffer:noiseTextures:postProcessChain:)` runs 3-pass deferred encode. `RenderPipeline+RayMarch.swift`: `drawWithRayMarch` updates aspect ratio, lazy-allocates textures, delegates GPU work. `RayMarch.metal`: `raymarch_lighting_fragment` (Cook-Torrance PBR, 12-step soft shadows, 5-sample AO, fog, sky) + `raymarch_composite_fragment` (ACES SDR). `PostProcessChain` gains `runBloomAndComposite(from:to:commandBuffer:)` for ray march + bloom path. `PresetLoader` gains `CompiledShader` struct (replaced 3-member tuple), `compileRayMarchShader` (3-attachment G-buffer `MTLRenderPipelineDescriptor`), and split preamble architecture: `shaderPreamble` (all presets) vs `rayMarchGBufferPreamble` (ray march only — critical fix: `raymarch_gbuffer_fragment` calls preset-defined `sceneSDF`/`sceneMaterial` which standard presets never define, so it must not appear in the shared preamble). `SceneUniforms` Swift struct: 8×`SIMD4<Float>` = 128 bytes. Render path priority: mesh → postProcess → ICB → **rayMarch** → feedback → direct. 10 `RayMarchPipelineTests` (G-buffer alloc, formats, storage mode, sphere depth, outward normals, specular highlight, shadow region, bloom path, idempotent alloc, <8ms perf at 1080p). 298 tests total (232 swift-testing + 66 XCTest), SwiftLint clean.
+- **Increment 3.14 — Multi-Pass Ray March Pipeline** ✅ — `RayMarchPipeline.swift`: owns G-buffer textures (gbuffer0 `.rg16Float`, gbuffer1 `.rgba8Snorm`, gbuffer2 `.rgba8Unorm`, litTexture `.rgba16Float`), two fixed pipeline states (lightingPipeline, compositePipeline), bilinear sampler, public `sceneUniforms: SceneUniforms`. `render(gbufferPipelineState:features:fftBuffer:waveformBuffer:stemFeatures:outputTexture:commandBuffer:noiseTextures:postProcessChain:)` runs 3-pass deferred encode. `RenderPipeline+RayMarch.swift`: `drawWithRayMarch` updates aspect ratio, lazy-allocates textures, delegates GPU work. `RayMarch.metal`: `raymarch_lighting_fragment` (Cook-Torrance PBR, 12-step soft shadows, 5-sample AO, fog, sky) + `raymarch_composite_fragment` (ACES SDR). `PostProcessChain` gains `runBloomAndComposite(from:to:commandBuffer:)` for ray march + bloom path. `PresetLoader` gains `CompiledShader` struct (replaced 3-member tuple), `compileRayMarchShader` (3-attachment G-buffer `MTLRenderPipelineDescriptor`), and split preamble architecture: `shaderPreamble` (all presets) vs `rayMarchGBufferPreamble` (ray march only — critical fix: `raymarch_gbuffer_fragment` calls preset-defined `sceneSDF`/`sceneMaterial` which standard presets never define, so it must not appear in the shared preamble). `SceneUniforms` Swift struct: 8×`SIMD4<Float>` = 128 bytes. Render path priority: mesh → postProcess → ICB → **rayMarch** → feedback → direct. 10 `RayMarchPipelineTests` (G-buffer alloc, formats, storage mode, sphere depth, outward normals, specular highlight, shadow region, bloom path, idempotent alloc, <8ms perf at 1080p). 340 tests total (249 swift-testing + 91 XCTest), SwiftLint clean.
 - **Increment 3.15 — Extended Shader Uniforms** ✅ — `FeatureVector` grew from 24 to 32 floats (96→128 bytes): added `accumulatedAudioTime` (float 25) + 7 padding floats for SIMD alignment. MSL preamble `FeatureVector` struct updated to match (32 floats, field `accumulated_audio_time`). `SceneCamera` and `SceneLight` Codable structs added to `Presets` module; `PresetDescriptor` gains `sceneCamera: SceneCamera?`, `sceneLights: [SceneLight]`, `sceneFog: Float`, `sceneAmbient: Float` (JSON keys `scene_camera`, `scene_lights`, `scene_fog`, `scene_ambient`). `RenderPipeline` gains `accumulatedAudioTime: Float`, `resetAccumulatedAudioTime()`, and internal `stepAccumulatedTime(energy:deltaTime:)` behind `NSLock`; accumulation formula: `_accumulatedAudioTime += max(0, energy) * deltaTime`, driven by `(bass + mid + treble) / 3.0` each frame. `drawWithRayMarch` writes `accumulatedAudioTime` to `sceneUniforms.sceneParamsA.x` each frame. `VisualizerEngine+Presets.swift` gains `makeSceneUniforms(from:)` (camera basis construction: forward/right/up from position+target; first light → lightPositionAndIntensity + lightColor; fog/ambient → sceneParamsB). Track-change callback calls `pipeline.resetAccumulatedAudioTime()`. 9 new tests: 5 `SceneUniformsTests` (128-byte size/stride, 16-byte alignment, default value sanity, MSL probe kernel, JSON preset parse) + 4 `FeatureVectorExtendedTests` (128-byte size, zero-at-start, accumulation formula, reset via RenderPipeline). 3 existing tests updated (96→128 bytes). 307 tests total (232 swift-testing + 75 XCTest), SwiftLint clean.
 - **Increment 3.6 — Render Graph / Capability Composition Refactor** ✅ — Replaced 6 scattered boolean capability flags with a generic render graph. `RenderPass` enum in `Shared` (raw strings: `"direct"`, `"feedback"`, `"particles"`, `"mesh_shader"`, `"post_process"`, `"ray_march"`, `"icb"`). `PresetDescriptor.passes: [RenderPass]` is the new source of truth; computed `useFeedback`/`useMeshShader`/etc. kept as backwards-compatible derived properties. Backward-compatible JSON decoding: `"passes"` key preferred, falls back to `synthesizePasses(from:)` reading legacy `use_feedback`/`use_mesh_shader`/etc. booleans. `RenderPipeline.activePasses` guarded by `passesLock`; `setActivePasses(_:)` + `currentPasses` public API. `renderFrame` replaced with data-driven loop: iterates `activePasses`, dispatches to first pass with available subsystem, falls back to `drawDirect`. `VisualizerEngine.applyPreset` rewritten as pass-walking configurator. 7 preset JSON files migrated to `"passes"` format. 7 new tests in `PresetTests.swift`. 314 tests total (239 swift-testing + 75 XCTest), SwiftLint clean.
 
@@ -621,13 +704,11 @@ The architectural blueprint is in `docs/ARCHITECTURAL_BLUEPRINT.md`.
 - **Increment 3.17 — SSGI Post-Process Pass** ✅ — `SSGI.metal`: `ssgi_fragment` reads gbuffer0 (depth), gbuffer1 (normals), litTexture (direct lighting); samples 8 nearby screen-space positions in a blue-noise-rotated varying-radius spiral (`radiusFactor = (i + 0.5) / N` ensures non-zero falloff at every sample); accumulates indirect diffuse weighted by `(NdotD * 0.7 + 0.3) * falloff` (30% floor prevents zero contribution on convex surfaces); far-side depth rejection via `dot(toSample, rayDir) > farPlane * 0.1`; `kIndirectStrength = 0.3`; sky pixels (depth ≥ 0.999) early-exit. `ssgi_blend_fragment` bilinearly upsamples half-res ssgiTexture for additive blend into litTexture. `RayMarchPipeline` gains `ssgiTexture` (half-res `.rgba16Float`), `ssgiPipeline`, `ssgiBlendPipeline` (additive blend: src=one, dst=one), `ssgiEnabled: Bool`; pass methods extracted to `RayMarchPipeline+Passes.swift` for file-length compliance. `RenderPass` gains `.ssgi` case; `PresetDescriptor` gains `useSSGI` computed property; `RenderPipeline+RayMarch` wires `ssgiEnabled` from `activePasses`; `RenderPipeline+Draw` merges `.ssgi` into `.direct, .particles` break case. `sceneParamsB.w` overrides sample radius (0 → default 0.08 UV). 7 `SSGITests` (half-res texture, `.rgba16Float` format, storageModeShared, emissive surface illuminates neighbor, no emission → minimal contribution, disabled → no pass encoded, <1ms overhead at 1080p). 330 tests total (239 swift-testing + 91 XCTest), SwiftLint clean.
 - **Increment 3.18 — DRM Silence Detection & Graceful Degradation** ✅ — `AudioSignalState` enum (`.active`, `.suspect`, `.silent`, `.recovering`) in `Audio/Protocols.swift`. `SilenceDetector` class in `Audio/SilenceDetector.swift`: time-injectable state machine (threshold `1e-6` RMS, `.suspect` at 1.5s, `.silent` at 3s total, `.recovering` immediately on signal return, `.active` after 0.5s sustained signal); `update(samples:count:)` called on real-time IO proc thread; `onStateChanged` callback invoked outside lock to prevent deadlock; `reset()` called on mode switch. `AudioInputRouter` gains `silenceDetector: SilenceDetector` (internal, wired into `systemCapture.onAudioBuffer` and `startFilePlayback`), `onSignalStateChanged: ((AudioSignalState) -> Void)?` (public), `signalState: AudioSignalState` (public); internal secondary init for test injection. `VisualizerEngine` gains `@Published var audioSignalState: AudioSignalState = .active`; `makeSignalStateCallback()` in `VisualizerEngine+Audio.swift` dispatches to MainActor and logs each transition. `ContentView` gains `NoAudioSignalBadge` (bottom-left overlay, auto-dismisses on recovery). 10 `SilenceDetectorTests` (init state, normal audio stays active, suspect at 1.5s, silent at 3s, recovering on signal return, active after recovery hold, brief dropout stays active, callback on each transition, no callback on non-transition frames, configurable thresholds). 340 tests total (249 swift-testing + 91 XCTest), SwiftLint clean.
 
+**Completed increments (Phase 2.5):**
+- **Increment 2.5.1 — Playlist Connector** ✅ — New `Session` SPM target. `TrackIdentity` struct (title, artist, album, duration, appleMusicID, spotifyID, musicBrainzID; `Sendable + Hashable + Codable`). `PlaylistConnecting` protocol + `PlaylistConnector` concrete class: Apple Music (AppleScript loop over `every track of current playlist`, linefeed-joined output), Spotify queue endpoint (`/me/player/queue`) and playlist URL endpoint (`/playlists/{id}/tracks`, paginated), Apple Music URL (validates format, falls back to current playlist pending MusicKit entitlement in Phase 4). All external calls injectable via `appleScriptReader` and `networkFetcher` closures. `PlaylistConnectorError` enum (5 cases). `Logging.session` logger added to `Shared`. SwiftLint fix: `SilenceDetector.update(rms:)` refactored — per-state logic extracted into 4 private `advance*` helpers, reducing cyclomatic complexity from 12 → 5; `s` renamed to `sample`. 8 `PlaylistConnectorTests` (ordered tracks, duration, Spotify queue, Spotify URL, empty playlist, network failure, Codable round-trip, duplicate order preservation). 348 tests total (257 swift-testing + 91 XCTest), SwiftLint clean.
+
 **Ordered next increments** (per the revised plan):
-1. **Phase 3.5 — Native Preset Library Expansion.** First entry: **3.5.1 Photorealistic Popcorn**, depends on 3.1b + 3.3 + 3.4 + 3.6 + 3.12 + 3.13 + 3.14 + 3.15 + 3.16 + 3.17 + 3.18 (all complete).
-
-**Increment Scope Discipline rule**: per the revised `DEVELOPMENT_PLAN.md` Code Hygiene Rules, one increment is one reviewable unit of work. Infrastructure increments and preset increments are never bundled in the same increment. Scope creep is recorded retroactively as a new increment, not silently absorbed.
-
-Increment 2.6 added the analysis lookahead buffer — a configurable delay between analysis and rendering for anticipatory visual decisions. `AnalyzedFrame` is a timestamped container bundling all per-frame analysis results (AudioFrame + FFTResult + StemData + FeatureVector + EmotionalState). `LookaheadBuffer` is a thread-safe ring buffer (default 512 frames, 2.5s delay) with dual read heads: the analysis head returns the latest frame (real-time) and the render head returns the frame delayed by the configured amount. `AudioInputRouter` gained `onAnalysisFrame` and `onRenderFrame` dual callbacks for the Orchestrator. 187 Swift tests pass (173 existing + 14 new: 10 LookaheadBuffer unit tests, 3 AnalyzedFrame unit tests, 1 integration test verifying delay accuracy within ±100ms).
-
-Increment 2.7 added progressive structural analysis — real-time section boundary detection and next-boundary prediction. `SelfSimilarityMatrix` stores 600 frames of 16-float feature vectors (12 chroma + 4 spectral) in a ring buffer with vDSP cosine similarity. `NoveltyDetector` convolves a checkerboard kernel along the similarity diagonal and peak-picks with adaptive threshold (mean + 1.5×stddev, min 2s between peaks). `StructuralAnalyzer` coordinates both, running novelty detection every 30 frames (~0.5s amortized). After 2+ boundaries, predicts next via average section duration; repetition detection (section-average cosine similarity) boosts confidence for ABAB patterns. `StructuralPrediction` is CPU-side only, added to `AnalyzedFrame`. MIRPipeline gained StructuralAnalyzer as its 5th sub-analyzer. 206 Swift tests pass (187 existing + 19 new: 5 SelfSimilarityMatrix, 5 NoveltyDetector, 8 StructuralAnalyzer, 1 AABA regression).
-
-BPM and key estimation bugs fixed at end of increment 2.5: tempo onset threshold changed from median (near-zero for half-wave rectified flux) to 75th percentile; chroma accumulation now weights bins by inverse pitch-class count to compensate for non-uniform FFT-to-pitch mapping. Known remaining issues: BPM histogram peaks are thin (peak counts of 2-3) making tempo estimates fragile; tempo takes ~35s to converge; accuracy vs ground truth not yet validated across genres.
+1. **Increment 2.5.2 — Preview Resolver & Downloader.** iTunes Search API → preview URL, batch AAC/MP3 download + PCM decode via AVAudioFile.
+2. **Increment 2.5.3 — Batch Pre-Analysis & Stem Cache.** SessionPreparer orchestrates preview → StemSeparator → MIRPipeline → StemCache for every track before playback begins.
+3. **Phase 3.5 — Native Preset Library Expansion.** First entry: **3.5.2 Murmuration Stem Routing Revision** (replace 6-band workaround with real stem routing from StemFeatures). Popcorn (3.5.1) removed from plan.
+4. **Phase 4 — Orchestrator.** Revised to include session planning mode alongside reactive mode.

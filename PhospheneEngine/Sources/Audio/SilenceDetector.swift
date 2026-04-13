@@ -107,8 +107,8 @@ final class SilenceDetector: @unchecked Sendable {
         guard count > 0 else { return }
         var sumSq: Float = 0
         for i in 0..<count {
-            let s = samples[i]
-            sumSq += s * s
+            let sample = samples[i]
+            sumSq += sample * sample
         }
         let rms = (sumSq / Float(count)).squareRoot()
         update(rms: rms)
@@ -120,69 +120,14 @@ final class SilenceDetector: @unchecked Sendable {
     func update(rms: Float) {
         let now = timeProvider()
         let isSilent = rms < silenceRMSThreshold
-
-        // Compute next state outside the lock for the logic, then update atomically.
         var newState: AudioSignalState?
 
         lock.withLock {
             switch _state {
-
-            case .active:
-                if isSilent {
-                    // Track when silence first began.
-                    let start = silenceStartTime ?? now
-                    silenceStartTime = start
-                    let elapsed = now - start
-                    if elapsed >= suspectDuration {
-                        _state = .suspect
-                        newState = .suspect
-                    }
-                } else {
-                    // Signal present — clear silence window.
-                    silenceStartTime = nil
-                }
-
-            case .suspect:
-                if isSilent {
-                    // silenceStartTime was set in .active; continue measuring total elapsed.
-                    let start = silenceStartTime ?? now
-                    let elapsed = now - start
-                    if elapsed >= silenceDuration {
-                        _state = .silent
-                        newState = .silent
-                    }
-                } else {
-                    // Signal returned before confirmation — brief dropout, recover to .active.
-                    silenceStartTime = nil
-                    _state = .active
-                    newState = .active
-                }
-
-            case .silent:
-                if !isSilent {
-                    // Signal returned — enter recovery hold immediately.
-                    signalReturnTime = now
-                    _state = .recovering
-                    newState = .recovering
-                }
-                // If still silent: remain in .silent, no transition.
-
-            case .recovering:
-                if isSilent {
-                    // Silence returned before recovery confirmed — back to .silent.
-                    signalReturnTime = nil
-                    _state = .silent
-                    newState = .silent
-                } else {
-                    let start = signalReturnTime ?? now
-                    let elapsed = now - start
-                    if elapsed >= recoveryDuration {
-                        // Recovery confirmed.
-                        signalReturnTime = nil
-                        _state = .active
-                        newState = .active
-                    }
-                }
+            case .active:     newState = advanceActive(isSilent: isSilent, now: now)
+            case .suspect:    newState = advanceSuspect(isSilent: isSilent, now: now)
+            case .silent:     newState = advanceSilent(isSilent: isSilent, now: now)
+            case .recovering: newState = advanceRecovering(isSilent: isSilent, now: now)
             }
         }
 
@@ -191,6 +136,64 @@ final class SilenceDetector: @unchecked Sendable {
         if let transition = newState {
             onStateChanged?(transition)
         }
+    }
+
+    // MARK: - State Advance Helpers (called while lock is held)
+
+    private func advanceActive(isSilent: Bool, now: CFAbsoluteTime) -> AudioSignalState? {
+        if isSilent {
+            let start = silenceStartTime ?? now
+            silenceStartTime = start
+            if now - start >= suspectDuration {
+                _state = .suspect
+                return .suspect
+            }
+        } else {
+            silenceStartTime = nil
+        }
+        return nil
+    }
+
+    private func advanceSuspect(isSilent: Bool, now: CFAbsoluteTime) -> AudioSignalState? {
+        if isSilent {
+            // silenceStartTime was set in .active; measure total elapsed silence.
+            let start = silenceStartTime ?? now
+            if now - start >= silenceDuration {
+                _state = .silent
+                return .silent
+            }
+        } else {
+            // Signal returned before confirmation — brief dropout, recover to .active.
+            silenceStartTime = nil
+            _state = .active
+            return .active
+        }
+        return nil
+    }
+
+    private func advanceSilent(isSilent: Bool, now: CFAbsoluteTime) -> AudioSignalState? {
+        if !isSilent {
+            signalReturnTime = now
+            _state = .recovering
+            return .recovering
+        }
+        return nil
+    }
+
+    private func advanceRecovering(isSilent: Bool, now: CFAbsoluteTime) -> AudioSignalState? {
+        if isSilent {
+            // Silence returned before recovery confirmed — back to .silent.
+            signalReturnTime = nil
+            _state = .silent
+            return .silent
+        }
+        let start = signalReturnTime ?? now
+        if now - start >= recoveryDuration {
+            signalReturnTime = nil
+            _state = .active
+            return .active
+        }
+        return nil
     }
 
     // MARK: - Reset
