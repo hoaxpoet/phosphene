@@ -13,6 +13,9 @@
 import Metal
 import MetalKit
 import Shared
+import os.log
+
+private let rmLogger = Logger(subsystem: "com.phosphene.renderer", category: "RenderPipeline")
 
 // MARK: - Texture + IBL Attachment
 
@@ -27,7 +30,7 @@ extension RenderPipeline {
         textureManagerLock.withLock {
             textureManager = manager
         }
-        logger.info("TextureManager \(manager != nil ? "attached" : "detached")")
+        rmLogger.info("TextureManager \(manager != nil ? "attached" : "detached")")
     }
 
     /// Attach IBL textures for the ray march lighting pass (Increment 3.16).
@@ -39,7 +42,7 @@ extension RenderPipeline {
         iblManagerLock.withLock {
             iblManager = manager
         }
-        logger.info("IBLManager \(manager != nil ? "attached" : "detached")")
+        rmLogger.info("IBLManager \(manager != nil ? "attached" : "detached")")
     }
 }
 
@@ -96,6 +99,10 @@ extension RenderPipeline {
         if let chain = chainForBloom {
             chain.ensureAllocated(width: width, height: height)
         }
+
+        // Enable SSGI when the active passes array includes .ssgi.
+        let ssgiActive = passesLock.withLock { activePasses.contains(.ssgi) }
+        rayMarchState.ssgiEnabled = ssgiActive
 
         let noiseTextures = textureManagerLock.withLock { textureManager }
         let ibl = iblManagerLock.withLock { iblManager }

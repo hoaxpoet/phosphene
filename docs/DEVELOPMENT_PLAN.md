@@ -1703,7 +1703,7 @@ constexpr sampler mipLinearSampler(filter::linear, mip_filter::linear, address::
 
 ### Increment 3.17: Screen Space Global Illumination (SSGI) Post-Process Pass
 
-**Status:** Not started.
+**Status:** Complete ✅
 
 **Goal:** Approximate short-range diffuse light bounces using the existing G-buffer depth and normal data. Implemented as an optional post-process pass that slots between the lighting pass and the composite pass in the ray march pipeline.
 
