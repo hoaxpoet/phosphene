@@ -1,5 +1,6 @@
 // ContentView — Main visualizer view with keyboard-driven preset navigation.
 
+import Audio
 import Renderer
 import SwiftUI
 
@@ -31,6 +32,11 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     .transition(.opacity)
                     .allowsHitTesting(false)
+            }
+
+            // Audio signal lost — DRM silence or no active source.
+            if engine.audioSignalState == .silent {
+                NoAudioSignalBadge()
             }
 
             // Debug overlay — toggle with 'D' key.
@@ -67,5 +73,30 @@ struct ContentView: View {
             engine.toggleRecording()
             return .handled
         }
+    }
+}
+
+// MARK: - NoAudioSignalBadge
+
+/// Non-intrusive badge shown when the audio tap is delivering silence —
+/// the typical symptom of DRM-triggered silencing on protected streams.
+/// Auto-dismissed when the signal recovers (driven by `engine.audioSignalState`).
+private struct NoAudioSignalBadge: View {
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "speaker.slash.fill")
+                .font(.system(size: 11))
+            Text("No audio signal")
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
+        }
+        .foregroundColor(.white.opacity(0.85))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(.black.opacity(0.5))
+        .cornerRadius(6)
+        .padding(12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+        .transition(.opacity)
+        .allowsHitTesting(false)
     }
 }

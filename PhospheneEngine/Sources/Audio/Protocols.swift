@@ -6,6 +6,23 @@ import Foundation
 import Metal
 import Shared
 
+// MARK: - AudioSignalState
+
+/// The current audio signal state as monitored by the silence detection pipeline.
+///
+/// Silence is detected when the Core Audio process tap delivers sustained zero-energy
+/// frames — the typical symptom of DRM-triggered tap silencing for protected streams.
+public enum AudioSignalState: Sendable, Equatable {
+    /// Audio signal is present and normal.
+    case active
+    /// Silence detected but not yet confirmed (below noise floor for half the confirmation window).
+    case suspect
+    /// Sustained silence confirmed — likely DRM-triggered tap silencing.
+    case silent
+    /// Signal has returned from `.silent`; holding until recovery is confirmed.
+    case recovering
+}
+
 // MARK: - AudioCapturing
 
 /// Abstraction over system audio capture (Core Audio taps or test doubles).

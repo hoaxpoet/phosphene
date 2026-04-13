@@ -26,6 +26,7 @@ extension VisualizerEngine {
         lastAnalysisTime = CFAbsoluteTimeGetCurrent()
 
         audioRouter.onAudioSamples = makeAudioSampleCallback(buf: buf, fft: fft)
+        audioRouter.onSignalStateChanged = makeSignalStateCallback()
 
         let fetcher = MetadataPreFetcher(fetchers: Self.buildFetcherList())
         preFetcher = fetcher
@@ -327,6 +328,28 @@ extension VisualizerEngine {
             key ?? "nil"
         )
         handle.write(Data(row.utf8))
+    }
+
+    // MARK: - Signal State
+
+    /// Build the onSignalStateChanged callback. Called on the real-time audio thread —
+    /// dispatches to the main actor for @Published property updates.
+    func makeSignalStateCallback() -> (AudioSignalState) -> Void {
+        return { [weak self] state in
+            Task { @MainActor [weak self] in
+                self?.audioSignalState = state
+                switch state {
+                case .silent:
+                    logger.info("Audio signal lost — DRM silence or no active audio source")
+                case .recovering:
+                    logger.info("Audio signal returning — confirming recovery")
+                case .active:
+                    logger.info("Audio signal restored")
+                case .suspect:
+                    logger.debug("Audio signal suspect — monitoring for sustained silence")
+                }
+            }
+        }
     }
 
     // MARK: - Track Change

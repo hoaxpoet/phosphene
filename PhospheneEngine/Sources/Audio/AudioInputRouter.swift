@@ -47,6 +47,9 @@ public final class AudioInputRouter: @unchecked Sendable {
     /// Monotonically increasing timestamp base.
     private var captureStartTime: Double = 0
 
+    /// Silence / DRM detection state machine.
+    private let silenceDetector: SilenceDetector
+
     // MARK: - Init
 
     /// Create an AudioInputRouter.
@@ -58,9 +61,27 @@ public final class AudioInputRouter: @unchecked Sendable {
                 metadata: (any MetadataProviding)? = nil) {
         self.systemCapture = capture
         self.metadataProvider = metadata
+        self.silenceDetector = SilenceDetector()
+
+        silenceDetector.onStateChanged = { [weak self] newState in
+            self?.onSignalStateChanged?(newState)
+        }
     }
 
-    // MARK: - Callback
+    /// Internal initializer with injectable silence detector (used by tests).
+    init(capture: any AudioCapturing,
+         metadata: (any MetadataProviding)?,
+         silenceDetector: SilenceDetector) {
+        self.systemCapture = capture
+        self.metadataProvider = metadata
+        self.silenceDetector = silenceDetector
+
+        silenceDetector.onStateChanged = { [weak self] newState in
+            self?.onSignalStateChanged?(newState)
+        }
+    }
+
+    // MARK: - Callbacks
 
     /// Called for each chunk of audio samples.
     /// Parameters: (pointer to interleaved float32 samples, sample count, sample rate, channel count).
@@ -79,6 +100,18 @@ public final class AudioInputRouter: @unchecked Sendable {
     /// Called when the currently playing track changes.
     public var onTrackChange: ((_ event: TrackChangeEvent) -> Void)?
 
+    /// Called when the audio signal state transitions (e.g., `.active` → `.silent`).
+    ///
+    /// Invoked on the real-time audio thread for system/app capture, or on a background
+    /// thread for file playback. Dispatch to the main actor before touching UI or
+    /// `@Published` properties.
+    public var onSignalStateChanged: ((_ state: AudioSignalState) -> Void)?
+
+    /// Current audio signal state as determined by the silence detector.
+    public var signalState: AudioSignalState {
+        silenceDetector.state
+    }
+
     // MARK: - Public API
 
     /// Start audio input with the given mode.
@@ -93,6 +126,7 @@ public final class AudioInputRouter: @unchecked Sendable {
         switch mode {
         case .systemAudio:
             systemCapture.onAudioBuffer = { [weak self] samples, count, rate, channels in
+                self?.silenceDetector.update(samples: samples, count: count)
                 self?.onAudioSamples?(samples, count, rate, channels)
             }
             try systemCapture.startCapture(mode: .systemAudio)
@@ -100,6 +134,7 @@ public final class AudioInputRouter: @unchecked Sendable {
 
         case .application(let bundleID):
             systemCapture.onAudioBuffer = { [weak self] samples, count, rate, channels in
+                self?.silenceDetector.update(samples: samples, count: count)
                 self?.onAudioSamples?(samples, count, rate, channels)
             }
             try systemCapture.startCapture(mode: .application(bundleIdentifier: bundleID))
@@ -211,6 +246,7 @@ public final class AudioInputRouter: @unchecked Sendable {
 
                     interleaved.withUnsafeBufferPointer { ptr in
                         guard let base = ptr.baseAddress else { return }
+                        self?.silenceDetector.update(samples: base, count: totalSamples)
                         callback?(base, totalSamples, sampleRate, channelCount)
                     }
 
@@ -241,6 +277,7 @@ public final class AudioInputRouter: @unchecked Sendable {
         }
 
         metadataProvider?.stopObserving()
+        silenceDetector.reset()
 
         lock.withLock { currentMode = nil }
     }
