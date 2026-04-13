@@ -945,9 +945,9 @@ echo "=== All checks passed ==="
 
 **Enables:** 2.5.2 (Preview Resolver needs track identities to look up previews).
 
-### Increment 2.5.2: Preview Resolver & Downloader
+### Increment 2.5.2: Preview Resolver & Downloader ✅
 
-**Status:** Not started.
+**Status:** Complete.
 
 **Goal:** For each track in the playlist, resolve a downloadable 30-second preview URL and download the audio. Output: per-track raw PCM arrays ready for stem separation.
 
