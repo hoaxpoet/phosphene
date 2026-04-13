@@ -27,6 +27,14 @@ struct FeedbackDrawContext {
 
 extension RenderPipeline {
 
+    // MARK: Noise Texture Binding
+
+    /// Bind the TextureManager's noise textures to fragment slots 4–8, if attached.
+    /// No-op when no TextureManager is set (backwards-compatible).
+    func bindNoiseTextures(to encoder: MTLRenderCommandEncoder) {
+        textureManagerLock.withLock { textureManager }?.bindTextures(to: encoder)
+    }
+
     // MARK: Feedback Texture Allocation
 
     /// Lazily allocate feedback textures when drawableSizeWillChange has not fired.
@@ -186,6 +194,7 @@ extension RenderPipeline {
         encoder.setFragmentBuffer(waveformBuffer, offset: 0, index: 2)
         var stems = stemFeatures
         encoder.setFragmentBytes(&stems, length: MemoryLayout<StemFeatures>.size, index: 3)
+        bindNoiseTextures(to: encoder)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
 
         // Draw particles on top.
@@ -294,6 +303,7 @@ extension RenderPipeline {
             encoder.setFragmentBuffer(waveformBuffer, offset: 0, index: 2)
             var stems = stemFeatures
             encoder.setFragmentBytes(&stems, length: MemoryLayout<StemFeatures>.size, index: 3)
+            bindNoiseTextures(to: encoder)
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
             particles?.render(encoder: encoder, features: features)
             encoder.endEncoding()
@@ -324,6 +334,7 @@ extension RenderPipeline {
             encoder.setFragmentBuffer(waveformBuffer, offset: 0, index: 2)
             var stems = stemFeatures
             encoder.setFragmentBytes(&stems, length: MemoryLayout<StemFeatures>.size, index: 3)
+            bindNoiseTextures(to: encoder)
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
             encoder.endEncoding()
         }

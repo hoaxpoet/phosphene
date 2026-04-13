@@ -87,7 +87,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     private let fftProcessor: FFTProcessor
 
     /// Preset loader managing shader compilation and hot-reload.
-    private let presetLoader: PresetLoader
+    let presetLoader: PresetLoader
 
     /// MIR feature extraction pipeline (spectral, energy, chroma, beat).
     let mirPipeline: MIRPipeline
@@ -96,7 +96,10 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     let moodClassifier: MoodClassifier?
 
     /// GPU compute particle system — attached to feedback presets only.
-    private var particleGeometry: ProceduralGeometry?
+    var particleGeometry: ProceduralGeometry?
+
+    /// Shader library for creating post-process chains on preset switch.
+    let shaderLibrary: Renderer.ShaderLibrary
 
     /// AudioInputRouter requires macOS 14.2+; stored as Any to avoid propagating availability.
     private var router: Any?
@@ -201,10 +204,22 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         self.fftProcessor = fft
         self.pipeline = pipe
         self.presetLoader = loader
+        self.shaderLibrary = lib
         self.mirPipeline = MIRPipeline()
         self.particleGeometry = Self.makeParticleGeometry(context: ctx, library: lib)
         self.moodClassifier = Self.loadMoodClassifier()
         self.stemSeparator = Self.loadStemSeparator(device: ctx.device)
+
+        // Generate noise textures in the background — the pipeline renders correctly
+        // without them (shaders that don't sample noise work as before), so startup
+        // isn't blocked.  setTextureManager is thread-safe.
+        DispatchQueue.global(qos: .userInitiated).async {
+            if let tm = try? TextureManager(context: ctx, shaderLibrary: lib) {
+                pipe.setTextureManager(tm)
+            } else {
+                logger.warning("TextureManager init failed — noise textures unavailable")
+            }
+        }
 
         loader.onPresetsReloaded = { [weak self] in
             guard let self, let current = self.presetLoader.currentPreset else { return }
@@ -295,68 +310,6 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         }
     }
 
-    // MARK: - Preset Cycling
-
-    /// Advance to the next preset and update the pipeline.
-    func nextPreset() {
-        guard let preset = presetLoader.nextPreset() else { return }
-        applyPreset(preset)
-        showPresetName(preset.descriptor.name)
-    }
-
-    /// Go back to the previous preset and update the pipeline.
-    func previousPreset() {
-        guard let preset = presetLoader.previousPreset() else { return }
-        applyPreset(preset)
-        showPresetName(preset.descriptor.name)
-    }
-
-    /// Apply a preset to the render pipeline, including feedback, mesh, and particle configuration.
-    private func applyPreset(_ preset: PresetLoader.LoadedPreset) {
-        let desc = preset.descriptor
-        pipeline.setActivePipelineState(preset.pipelineState)
-
-        if desc.useMeshShader {
-            // Mesh shader preset: wrap the compiled pipeline state in a MeshGenerator
-            // and route all rendering through drawWithMeshShader. Feedback and particles
-            // are incompatible with the mesh path in this increment.
-            let config = MeshGeneratorConfiguration(
-                maxVerticesPerMeshlet: 256,
-                maxPrimitivesPerMeshlet: 512,
-                meshThreadCount: desc.meshThreadCount  // from JSON sidecar, default 64
-            )
-            let gen = MeshGenerator(
-                device: context.device,
-                pipelineState: preset.pipelineState,
-                configuration: config
-            )
-            pipeline.setMeshGenerator(gen, enabled: true)
-            pipeline.setFeedbackParams(nil)
-            pipeline.setFeedbackComposePipeline(nil)
-            pipeline.setParticleGeometry(nil)
-        } else if desc.useFeedback, let fbPipeline = preset.feedbackPipelineState {
-            pipeline.setMeshGenerator(nil, enabled: false)
-            let params = FeedbackParams(
-                decay: desc.decay,
-                baseZoom: desc.baseZoom,
-                baseRot: desc.baseRot,
-                beatZoom: desc.beatZoom,
-                beatRot: desc.beatRot,
-                beatSensitivity: desc.beatSensitivity
-            )
-            pipeline.setFeedbackParams(params)
-            pipeline.setFeedbackComposePipeline(fbPipeline)
-            // Attach particles only for presets that declare use_particles in their JSON.
-            pipeline.setParticleGeometry(desc.useParticles ? particleGeometry : nil)
-        } else {
-            pipeline.setMeshGenerator(nil, enabled: false)
-            pipeline.setFeedbackParams(nil)
-            pipeline.setFeedbackComposePipeline(nil)
-            // Detach particles — non-feedback presets don't use compute particles.
-            pipeline.setParticleGeometry(nil)
-        }
-    }
-
     /// Start Core Audio tap capture (requires screen capture permission).
     private func startAudioCapture() {
         if #available(macOS 14.2, *), let audioRouter = router as? AudioInputRouter {
@@ -379,7 +332,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     // MARK: - Private Helpers
 
     /// Briefly display the preset name, then fade it out after 2 seconds.
-    private func showPresetName(_ name: String) {
+    func showPresetName(_ name: String) {
         hideNameTask?.cancel()
         currentPresetName = name
         hideNameTask = Task { @MainActor in

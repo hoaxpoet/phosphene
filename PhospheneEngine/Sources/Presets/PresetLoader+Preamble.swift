@@ -69,6 +69,21 @@ extension PresetLoader {
             float other_band1;     float other_beat;
         };
 
+        // ── Noise texture samplers (Increment 3.13) ───────────────────────────
+        // TextureManager binds pre-computed noise textures at [[texture(4)]]–[[texture(8)]].
+        // Declare the needed ones in your fragment function signature to sample them:
+        //
+        //   texture2d<float>  noiseLQ     [[texture(4)]]  — 256²  tileable Perlin FBM (.r8Unorm)
+        //   texture2d<float>  noiseHQ     [[texture(5)]]  — 1024² tileable Perlin FBM (.r8Unorm)
+        //   texture3d<float>  noiseVolume [[texture(6)]]  — 64³   tileable 3D FBM   (.r8Unorm)
+        //   texture2d<float>  noiseFBM    [[texture(7)]]  — 1024² RGBA FBM          (.rgba8Unorm)
+        //   texture2d<float>  blueNoise   [[texture(8)]]  — 256²  IGN dither        (.r8Unorm)
+        //
+        // Convenience samplers — valid as file-scope constexpr in MSL:
+        constexpr sampler linearSampler(filter::linear,  address::repeat);
+        constexpr sampler nearestSampler(filter::nearest, address::repeat);
+        constexpr sampler mipLinearSampler(filter::linear, mip_filter::linear, address::repeat);
+
         // HSV to RGB conversion.
         float3 hsv2rgb(float3 c) {
             float3 p = abs(fract(float3(c.x) + float3(1.0, 2.0/3.0, 1.0/3.0)) * 6.0 - 3.0);
