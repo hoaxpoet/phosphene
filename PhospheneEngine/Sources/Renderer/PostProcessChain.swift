@@ -184,6 +184,8 @@ public final class PostProcessChain: @unchecked Sendable {
     ///   - stemFeatures: Per-stem features (buffer 3).
     ///   - outputTexture: Final SDR render target (drawable texture, `.bgra8Unorm_srgb`).
     ///   - commandBuffer: All render passes are encoded into this buffer.
+    ///   - noiseTextures: Optional TextureManager — binds noise textures at slots 4–8
+    ///     in the scene pass so preset shaders can sample them.  Defaults to `nil`.
     public func render(
         scenePipelineState: MTLRenderPipelineState,
         features: inout FeatureVector,
@@ -191,7 +193,8 @@ public final class PostProcessChain: @unchecked Sendable {
         waveformBuffer: MTLBuffer,
         stemFeatures: StemFeatures,
         outputTexture: MTLTexture,
-        commandBuffer: MTLCommandBuffer
+        commandBuffer: MTLCommandBuffer,
+        noiseTextures: TextureManager? = nil
     ) {
         guard sceneTexture != nil, bloomTexA != nil, bloomTexB != nil else {
             logger.error("PostProcessChain.render called before textures allocated — skipping")
@@ -204,7 +207,8 @@ public final class PostProcessChain: @unchecked Sendable {
             features: &features,
             fftBuffer: fftBuffer,
             waveformBuffer: waveformBuffer,
-            stemFeatures: stemFeatures
+            stemFeatures: stemFeatures,
+            noiseTextures: noiseTextures
         )
         runBrightPass(commandBuffer: commandBuffer)
         runBlurH(commandBuffer: commandBuffer)
@@ -221,7 +225,8 @@ public final class PostProcessChain: @unchecked Sendable {
         features: inout FeatureVector,
         fftBuffer: MTLBuffer,
         waveformBuffer: MTLBuffer,
-        stemFeatures: StemFeatures
+        stemFeatures: StemFeatures,
+        noiseTextures: TextureManager? = nil
     ) {
         guard let scene = sceneTexture else { return }
 
@@ -238,6 +243,7 @@ public final class PostProcessChain: @unchecked Sendable {
         encoder.setFragmentBuffer(waveformBuffer, offset: 0, index: 2)
         var stems = stemFeatures
         encoder.setFragmentBytes(&stems, length: MemoryLayout<StemFeatures>.stride, index: 3)
+        noiseTextures?.bindTextures(to: encoder)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         encoder.endEncoding()
     }

@@ -51,6 +51,7 @@ extension RenderPipeline {
         let size = view.drawableSize
         chain.ensureAllocated(width: Int(size.width), height: Int(size.height))
 
+        let noiseTextures = textureManagerLock.withLock { textureManager }
         chain.render(
             scenePipelineState: activePipeline,
             features: &features,
@@ -58,7 +59,8 @@ extension RenderPipeline {
             waveformBuffer: waveformBuffer,
             stemFeatures: stemFeatures,
             outputTexture: drawable.texture,
-            commandBuffer: commandBuffer
+            commandBuffer: commandBuffer,
+            noiseTextures: noiseTextures
         )
 
         commandBuffer.present(drawable)

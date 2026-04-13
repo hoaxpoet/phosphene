@@ -15,6 +15,7 @@
 		A10031 /* VisualizerEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20031; };
 		A10032 /* VisualizerEngine+Audio.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20032; };
 		A10033 /* VisualizerEngine+Stems.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20033; };
+		A10034 /* VisualizerEngine+Presets.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20034; };
 		A10003 /* PhospheneEngine in Frameworks */ = {isa = PBXBuildFile; productRef = A80001; };
 		A10010 /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20010; };
 		A10011 /* MetalKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20011; };
@@ -35,6 +36,7 @@
 		A20031 /* VisualizerEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualizerEngine.swift; sourceTree = "<group>"; };
 		A20032 /* VisualizerEngine+Audio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VisualizerEngine+Audio.swift"; sourceTree = "<group>"; };
 		A20033 /* VisualizerEngine+Stems.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VisualizerEngine+Stems.swift"; sourceTree = "<group>"; };
+		A20034 /* VisualizerEngine+Presets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VisualizerEngine+Presets.swift"; sourceTree = "<group>"; };
 		A20004 /* PhospheneApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PhospheneApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A20005 /* PhospheneEngine */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = PhospheneEngine; path = PhospheneEngine; sourceTree = "<group>"; };
 		A20010 /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
@@ -84,6 +86,7 @@
 				A20031 /* VisualizerEngine.swift */,
 				A20032 /* VisualizerEngine+Audio.swift */,
 				A20033 /* VisualizerEngine+Stems.swift */,
+				A20034 /* VisualizerEngine+Presets.swift */,
 				A20022 /* MusicKitFetcher.swift */,
 				A40005 /* Views */,
 				A20003 /* PhospheneApp.entitlements */,
@@ -191,6 +194,7 @@
 				A10031 /* VisualizerEngine.swift in Sources */,
 				A10032 /* VisualizerEngine+Audio.swift in Sources */,
 				A10033 /* VisualizerEngine+Stems.swift in Sources */,
+				A10034 /* VisualizerEngine+Presets.swift in Sources */,
 				A10020 /* MetalView.swift in Sources */,
 				A10021 /* DebugOverlayView.swift in Sources */,
 				A10022 /* MusicKitFetcher.swift in Sources */,

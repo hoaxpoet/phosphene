@@ -314,9 +314,14 @@ import Metal
     let loader = PresetLoader(device: device, pixelFormat: .bgra8Unorm_srgb)
 
     for preset in loader.presets {
+        // Post-process presets are compiled for .rgba16Float (HDR scene texture);
+        // all others use the standard drawable format.
+        let targetFormat: MTLPixelFormat = preset.descriptor.usePostProcess
+            ? .rgba16Float : .bgra8Unorm_srgb
+
         // Verify each built-in preset can render a frame.
         let textureDesc = MTLTextureDescriptor.texture2DDescriptor(
-            pixelFormat: .bgra8Unorm_srgb, width: 16, height: 16, mipmapped: false)
+            pixelFormat: targetFormat, width: 16, height: 16, mipmapped: false)
         textureDesc.usage = .renderTarget
         guard let texture = device.makeTexture(descriptor: textureDesc),
               let queue = device.makeCommandQueue(),

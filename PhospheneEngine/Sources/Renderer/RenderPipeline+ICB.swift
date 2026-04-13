@@ -316,6 +316,10 @@ extension RenderPipeline {
         encoder.setFragmentBuffer(waveformBuffer, offset: 0, index: 2)
         encoder.setFragmentBuffer(icbState.stemFeaturesBuffer, offset: 0, index: 3)
 
+        // Bind noise textures at slots 4–8.  These are encoder-level bindings,
+        // accessible to ICB shaders that declare [[texture(4..8)]] parameters.
+        bindNoiseTextures(to: encoder)
+
         // Declare ICB read access for Metal's dependency tracker.
         // Use the stages-aware overload (macOS 13+, our target is 14+).
         encoder.useResource(icbState.icb, usage: .read, stages: [.vertex, .fragment])

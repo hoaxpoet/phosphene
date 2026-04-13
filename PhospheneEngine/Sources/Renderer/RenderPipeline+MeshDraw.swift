@@ -58,6 +58,9 @@ extension RenderPipeline {
         var stems = stemFeatures
         encoder.setFragmentBytes(&stems, length: MemoryLayout<StemFeatures>.size, index: 3)
 
+        // Bind noise textures at fragment slots 4–8.
+        bindNoiseTextures(to: encoder)
+
         // Delegate pipeline state selection and draw dispatch to the generator.
         meshGenerator.draw(encoder: encoder, features: features)
 

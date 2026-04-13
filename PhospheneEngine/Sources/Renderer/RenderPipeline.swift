@@ -88,6 +88,13 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     var icbEnabled: Bool = false
     let icbLock = NSLock()
 
+    // MARK: - Noise Textures (Increment 3.13)
+
+    /// Optional noise texture manager — binds 5 pre-computed textures at slots 4–8.
+    /// Set via `setTextureManager(_:)` once at app startup.
+    var textureManager: TextureManager?
+    let textureManagerLock = NSLock()
+
     // MARK: - Timing
 
     let startTime: CFAbsoluteTime
@@ -233,6 +240,18 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
             postProcessEnabled  = chain != nil && enabled
         }
         logger.info("Post-process chain \(chain != nil && enabled ? "enabled" : "disabled")")
+    }
+
+    /// Attach noise textures that will be bound on every preset render encoder.
+    ///
+    /// Call once after app startup.  Pass `nil` to detach (noise textures will
+    /// be unbound; shaders that sample them will read zeros).
+    /// Thread-safe — can be called from any queue.
+    public func setTextureManager(_ manager: TextureManager?) {
+        textureManagerLock.withLock {
+            textureManager = manager
+        }
+        logger.info("TextureManager \(manager != nil ? "attached" : "detached")")
     }
 
     /// Update the live audio features from MIR analysis.
