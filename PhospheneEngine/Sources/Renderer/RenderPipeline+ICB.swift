@@ -201,15 +201,14 @@ extension RenderPipeline {
 
     /// Attach ICB state to the render loop.
     ///
-    /// Pass a non-nil state and `enabled: true` to route subsequent frames through
-    /// `drawWithICB`.  Pass `nil` / `false` to fall back to the next available path
-    /// (feedback → direct).  Thread-safe — can be called from any queue.
-    public func setICBState(_ state: IndirectCommandBufferState?, enabled: Bool = true) {
+    /// Pass a non-nil state to enable GPU-driven draw dispatch when the active passes
+    /// include `.icb`.  Pass `nil` to detach.
+    /// Thread-safe — can be called from any queue.
+    public func setICBState(_ state: IndirectCommandBufferState?) {
         icbLock.withLock {
-            icbState   = state
-            icbEnabled = state != nil && enabled
+            icbState = state
         }
-        icbLogger.info("ICB rendering \(state != nil && enabled ? "enabled" : "disabled")")
+        icbLogger.info("ICB state \(state != nil ? "attached" : "detached")")
     }
 
     // MARK: - ICB Render Path

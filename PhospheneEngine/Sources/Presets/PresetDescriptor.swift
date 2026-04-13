@@ -3,6 +3,7 @@
 // See CLAUDE.md "Scene Metadata Format" for field documentation.
 
 import Foundation
+import Shared
 import simd
 
 // MARK: - Scene Configuration Types
@@ -57,6 +58,18 @@ public struct SceneLight: Sendable, Codable, Equatable {
 /// Each `.metal` shader file may have an accompanying `.json` file defining
 /// feedback parameters, audio routing, and display metadata. Missing fields
 /// use sensible defaults (see `init(from:)`).
+///
+/// ## Render Graph
+///
+/// The `passes` array declares which render capabilities this preset uses:
+///
+/// ```json
+/// { "passes": ["feedback", "particles"] }
+/// ```
+///
+/// If the JSON uses the legacy `use_feedback` / `use_mesh_shader` / `use_post_process` /
+/// `use_ray_march` / `use_particles` boolean flags instead of `"passes"`, the decoder
+/// synthesises the `passes` array automatically for backward compatibility.
 public struct PresetDescriptor: Sendable, Codable, Identifiable {
     public var id: String { name }
 
@@ -91,41 +104,28 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
     /// Beat pulse multiplier. 0.0 = ignore beats. Range 0–3.0.
     public let beatSensitivity: Float
 
-    // MARK: - Feedback
+    // MARK: - Render Graph (Increment 3.6)
 
-    /// Whether this preset uses the feedback texture loop (Milkdrop-style trails).
-    /// When true, the RenderPipeline wraps this preset in a two-pass feedback architecture.
-    public let useFeedback: Bool
+    /// Ordered render passes declared by this preset.
+    ///
+    /// Replaces the legacy `use_feedback`, `use_particles`, `use_mesh_shader`,
+    /// `use_post_process`, and `use_ray_march` boolean flags.
+    /// `RenderPipeline.renderFrame` walks this array and executes the first pass
+    /// whose required subsystem is available, falling back to `.direct`.
+    public let passes: [RenderPass]
 
+    // MARK: - Capability Accessors (computed from passes)
+
+    /// Whether this preset uses the Milkdrop-style feedback loop.
+    public var useFeedback: Bool { passes.contains(.feedback) }
+    /// Whether this preset attaches GPU compute particles.
+    public var useParticles: Bool { passes.contains(.particles) }
     /// Whether this preset uses the Metal mesh shader pipeline.
-    ///
-    /// When true, `PresetLoader` compiles a `MTLMeshRenderPipelineDescriptor` on M3+
-    /// (`device.supportsFamily(.apple8)`) or falls back to a standard vertex+fragment
-    /// pipeline on M1/M2.  The RenderPipeline routes through `drawWithMeshShader`
-    /// instead of `drawDirect` or `drawWithFeedback`. Defaults to `false`.
-    public let useMeshShader: Bool
-
-    /// Whether this preset uses the GPU compute particle system.
-    /// When true, `ProceduralGeometry` is attached and particles are rendered on top
-    /// of the preset fragment shader. Defaults to false so presets that don't need
-    /// particles (e.g. surface-based feedback presets) don't pay the cost or get the
-    /// visual overlay.
-    public let useParticles: Bool
-
-    /// Whether this preset uses the HDR post-process chain (bloom + ACES tone mapping).
-    /// When true, the scene is rendered to a `.rgba16Float` HDR texture, followed by
-    /// a bright pass, separable Gaussian bloom blur, and ACES composite to the drawable.
-    /// Defaults to `false` — existing presets are unaffected.
-    public let usePostProcess: Bool
-
-    /// Whether this preset uses the deferred ray march pipeline (Increment 3.14).
-    ///
-    /// When true, `PresetLoader` compiles a G-buffer pipeline state with 3 color attachments
-    /// (`.rg16Float`, `.rgba8Snorm`, `.rgba8Unorm`) using `raymarch_gbuffer_fragment` as
-    /// the fragment function.  The preset source must define `sceneSDF()` and `sceneMaterial()`.
-    /// The `RenderPipeline` routes through `drawWithRayMarch` instead of `drawDirect`
-    /// or `drawWithFeedback`.  Defaults to `false`.
-    public let useRayMarch: Bool
+    public var useMeshShader: Bool { passes.contains(.meshShader) }
+    /// Whether this preset uses the HDR post-process chain.
+    public var usePostProcess: Bool { passes.contains(.postProcess) }
+    /// Whether this preset uses the deferred ray march pipeline.
+    public var useRayMarch: Bool { passes.contains(.rayMarch) }
 
     // MARK: - Mesh Shader Configuration
 
@@ -171,6 +171,9 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         case composite
     }
 
+    // MARK: - CodingKeys
+
+    /// Keys for all stored properties — used by both `init(from:)` and `encode(to:)`.
     enum CodingKeys: String, CodingKey {
         case name, family, duration, description, author
         case beatSource = "beat_source"
@@ -180,11 +183,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         case baseRot = "base_rot"
         case decay
         case beatSensitivity = "beat_sensitivity"
-        case useFeedback = "use_feedback"
-        case useMeshShader = "use_mesh_shader"
-        case useParticles = "use_particles"
-        case usePostProcess = "use_post_process"
-        case useRayMarch = "use_ray_march"
+        case passes
         case meshThreadCount = "mesh_thread_count"
         case sceneCamera = "scene_camera"
         case sceneLights = "scene_lights"
@@ -195,32 +194,72 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         case shaderFileName = "shader_file"
     }
 
+    /// Keys for legacy boolean flags — decode-only, not stored as properties.
+    /// Used in `synthesizePasses(from:)` for backward-compatible JSON parsing.
+    private enum LegacyCodingKeys: String, CodingKey {
+        case useFeedback    = "use_feedback"
+        case useMeshShader  = "use_mesh_shader"
+        case useParticles   = "use_particles"
+        case usePostProcess = "use_post_process"
+        case useRayMarch    = "use_ray_march"
+    }
+
+    // MARK: - Decoding
+
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        name = try container.decode(String.self, forKey: .name)
-        family = try container.decodeIfPresent(PresetCategory.self, forKey: .family) ?? .waveform
-        duration = try container.decodeIfPresent(Int.self, forKey: .duration) ?? 30
-        description = try container.decodeIfPresent(String.self, forKey: .description) ?? ""
-        author = try container.decodeIfPresent(String.self, forKey: .author) ?? ""
-        beatSource = try container.decodeIfPresent(BeatSource.self, forKey: .beatSource) ?? .bass
-        beatZoom = try container.decodeIfPresent(Float.self, forKey: .beatZoom) ?? 0.03
-        beatRot = try container.decodeIfPresent(Float.self, forKey: .beatRot) ?? 0.01
-        baseZoom = try container.decodeIfPresent(Float.self, forKey: .baseZoom) ?? 0.12
-        baseRot = try container.decodeIfPresent(Float.self, forKey: .baseRot) ?? 0.03
-        decay = try container.decodeIfPresent(Float.self, forKey: .decay) ?? 0.955
-        beatSensitivity = try container.decodeIfPresent(Float.self, forKey: .beatSensitivity) ?? 1.0
-        useFeedback = try container.decodeIfPresent(Bool.self, forKey: .useFeedback) ?? false
-        useMeshShader = try container.decodeIfPresent(Bool.self, forKey: .useMeshShader) ?? false
-        useParticles = try container.decodeIfPresent(Bool.self, forKey: .useParticles) ?? false
-        usePostProcess = try container.decodeIfPresent(Bool.self, forKey: .usePostProcess) ?? false
-        useRayMarch = try container.decodeIfPresent(Bool.self, forKey: .useRayMarch) ?? false
-        meshThreadCount = try container.decodeIfPresent(Int.self, forKey: .meshThreadCount) ?? 64
-        sceneCamera = try container.decodeIfPresent(SceneCamera.self, forKey: .sceneCamera)
-        sceneLights = try container.decodeIfPresent([SceneLight].self, forKey: .sceneLights) ?? []
-        sceneFog = try container.decodeIfPresent(Float.self, forKey: .sceneFog) ?? 0
-        sceneAmbient = try container.decodeIfPresent(Float.self, forKey: .sceneAmbient) ?? 0.1
+        name             = try container.decode(String.self, forKey: .name)
+        family           = try container.decodeIfPresent(PresetCategory.self, forKey: .family) ?? .waveform
+        duration         = try container.decodeIfPresent(Int.self, forKey: .duration) ?? 30
+        description      = try container.decodeIfPresent(String.self, forKey: .description) ?? ""
+        author           = try container.decodeIfPresent(String.self, forKey: .author) ?? ""
+        beatSource       = try container.decodeIfPresent(BeatSource.self, forKey: .beatSource) ?? .bass
+        beatZoom         = try container.decodeIfPresent(Float.self, forKey: .beatZoom) ?? 0.03
+        beatRot          = try container.decodeIfPresent(Float.self, forKey: .beatRot) ?? 0.01
+        baseZoom         = try container.decodeIfPresent(Float.self, forKey: .baseZoom) ?? 0.12
+        baseRot          = try container.decodeIfPresent(Float.self, forKey: .baseRot) ?? 0.03
+        decay            = try container.decodeIfPresent(Float.self, forKey: .decay) ?? 0.955
+        beatSensitivity  = try container.decodeIfPresent(Float.self, forKey: .beatSensitivity) ?? 1.0
+        meshThreadCount  = try container.decodeIfPresent(Int.self, forKey: .meshThreadCount) ?? 64
+        sceneCamera      = try container.decodeIfPresent(SceneCamera.self, forKey: .sceneCamera)
+        sceneLights      = try container.decodeIfPresent([SceneLight].self, forKey: .sceneLights) ?? []
+        sceneFog         = try container.decodeIfPresent(Float.self, forKey: .sceneFog) ?? 0
+        sceneAmbient     = try container.decodeIfPresent(Float.self, forKey: .sceneAmbient) ?? 0.1
         fragmentFunction = try container.decodeIfPresent(String.self, forKey: .fragmentFunction) ?? "preset_fragment"
-        vertexFunction = try container.decodeIfPresent(String.self, forKey: .vertexFunction) ?? "fullscreen_vertex"
-        shaderFileName = try container.decodeIfPresent(String.self, forKey: .shaderFileName) ?? ""
+        vertexFunction   = try container.decodeIfPresent(String.self, forKey: .vertexFunction) ?? "fullscreen_vertex"
+        shaderFileName   = try container.decodeIfPresent(String.self, forKey: .shaderFileName) ?? ""
+
+        // Render graph: prefer the new "passes" key; fall back to legacy boolean flags.
+        if let decoded = try container.decodeIfPresent([RenderPass].self, forKey: .passes) {
+            passes = decoded
+        } else {
+            passes = try Self.synthesizePasses(from: decoder)
+        }
+    }
+
+    /// Synthesise a `passes` array from legacy boolean flags.
+    /// Used when JSON predates the `"passes"` key (Increment 3.6).
+    private static func synthesizePasses(from decoder: any Decoder) throws -> [RenderPass] {
+        let legacy = try decoder.container(keyedBy: LegacyCodingKeys.self)
+        // Use optional-chaining to silently ignore missing or malformed keys.
+        let hasMesh      = (try? legacy.decodeIfPresent(Bool.self, forKey: .useMeshShader)) == .some(true)
+        let hasRayMarch  = (try? legacy.decodeIfPresent(Bool.self, forKey: .useRayMarch)) == .some(true)
+        let hasPostProc  = (try? legacy.decodeIfPresent(Bool.self, forKey: .usePostProcess)) == .some(true)
+        let hasFeedback  = (try? legacy.decodeIfPresent(Bool.self, forKey: .useFeedback)) == .some(true)
+        let hasParticles = (try? legacy.decodeIfPresent(Bool.self, forKey: .useParticles)) == .some(true)
+
+        if hasMesh {
+            return [.meshShader]
+        }
+        if hasRayMarch {
+            return hasPostProc ? [.rayMarch, .postProcess] : [.rayMarch]
+        }
+        if hasPostProc {
+            return [.postProcess]
+        }
+        if hasFeedback {
+            return hasParticles ? [.feedback, .particles] : [.feedback]
+        }
+        return [.direct]
     }
 }

@@ -4,6 +4,7 @@
   "duration": 25,
   "description": "Classic demoscene plasma with sine interference patterns driven by FFT energy bands",
   "author": "Matt",
+  "passes": ["direct"],
   "beat_source": "composite",
   "beat_zoom": 0.04,
   "beat_rot": 0.03,

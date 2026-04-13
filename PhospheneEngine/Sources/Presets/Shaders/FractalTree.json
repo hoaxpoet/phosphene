@@ -4,11 +4,10 @@
   "duration": 30,
   "description": "Recursive binary tree — trunk grows with bass, canopy spreads with mid, leaf tips shift colour with spectral centroid",
   "author": "Matt",
+  "passes": ["mesh_shader"],
   "beat_source": "bass",
-  "use_mesh_shader": true,
-  "use_feedback": false,
-  "use_particles": false,
   "fragment_function": "fractal_tree_fragment",
   "vertex_function": "fractal_tree_fallback_vertex",
-  "beat_sensitivity": 1.2
+  "beat_sensitivity": 1.2,
+  "mesh_thread_count": 64
 }

@@ -59,9 +59,11 @@ extension RenderPipeline {
         rayMarchState.sceneUniforms.sceneParamsA.x = features.accumulatedAudioTime
         rayMarchState.sceneUniforms.sceneParamsA.y = width > 0 ? Float(width) / Float(height) : 1.0
 
-        // Resolve optional PostProcessChain: allocate bloom textures if present.
-        let (ppEnabled, ppChain) = postProcessLock.withLock { (postProcessEnabled, postProcessChain) }
-        let chainForBloom: PostProcessChain? = ppEnabled ? ppChain : nil
+        // Resolve optional PostProcessChain for bloom: present only when .postProcess is
+        // declared alongside .rayMarch in the preset's passes array.
+        let passesIncludePostProcess = passesLock.withLock { activePasses.contains(.postProcess) }
+        let ppChain = postProcessLock.withLock { postProcessChain }
+        let chainForBloom: PostProcessChain? = passesIncludePostProcess ? ppChain : nil
         if let chain = chainForBloom {
             chain.ensureAllocated(width: width, height: height)
         }

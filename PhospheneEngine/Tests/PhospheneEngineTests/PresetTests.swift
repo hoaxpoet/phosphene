@@ -1,8 +1,11 @@
-// PresetTests — Unit tests for PresetDescriptor JSON parsing and PresetCategory.
+// PresetTests — Unit tests for PresetDescriptor JSON parsing, PresetCategory, and RenderPass.
 
 import Testing
 import Foundation
+import Metal
 @testable import Presets
+@testable import Renderer
+@testable import Shared
 
 // MARK: - PresetCategory Tests
 
@@ -163,4 +166,91 @@ import Foundation
             "base_zoom (\(descriptor.baseZoom)) must exceed beat_zoom (\(descriptor.beatZoom)) — continuous energy is primary driver")
     #expect(descriptor.baseRot >= descriptor.beatRot,
             "base_rot (\(descriptor.baseRot)) must meet or exceed beat_rot (\(descriptor.beatRot))")
+}
+
+// MARK: - RenderPass Tests (Increment 3.6)
+
+@Test func renderPassRawValues() {
+    #expect(RenderPass.direct.rawValue    == "direct")
+    #expect(RenderPass.feedback.rawValue  == "feedback")
+    #expect(RenderPass.particles.rawValue == "particles")
+    #expect(RenderPass.meshShader.rawValue  == "mesh_shader")
+    #expect(RenderPass.postProcess.rawValue == "post_process")
+    #expect(RenderPass.rayMarch.rawValue    == "ray_march")
+    #expect(RenderPass.icb.rawValue == "icb")
+}
+
+@Test func renderPassDecodesFromJSON() throws {
+    let json = """
+    {"name": "Test", "passes": ["feedback", "particles"]}
+    """
+    let desc = try JSONDecoder().decode(PresetDescriptor.self, from: Data(json.utf8))
+    #expect(desc.passes == [.feedback, .particles])
+    #expect(desc.useFeedback  == true,  "useFeedback should derive from passes")
+    #expect(desc.useParticles == true,  "useParticles should derive from passes")
+    #expect(desc.useMeshShader  == false)
+    #expect(desc.usePostProcess == false)
+    #expect(desc.useRayMarch    == false)
+}
+
+@Test func renderPassDefaultIsDirect() throws {
+    let json = """
+    {"name": "Simple"}
+    """
+    let desc = try JSONDecoder().decode(PresetDescriptor.self, from: Data(json.utf8))
+    #expect(desc.passes == [.direct], "Minimal JSON with no passes or legacy flags → [.direct]")
+    #expect(desc.useFeedback    == false)
+    #expect(desc.useMeshShader  == false)
+    #expect(desc.usePostProcess == false)
+    #expect(desc.useRayMarch    == false)
+    #expect(desc.useParticles   == false)
+}
+
+@Test func renderPassSynthesisedFromLegacyFeedbackAndParticles() throws {
+    let json = """
+    {"name": "Legacy", "use_feedback": true, "use_particles": true}
+    """
+    let desc = try JSONDecoder().decode(PresetDescriptor.self, from: Data(json.utf8))
+    #expect(desc.passes == [.feedback, .particles],
+            "Legacy use_feedback + use_particles → passes: [.feedback, .particles]")
+}
+
+@Test func renderPassSynthesisedFromLegacyMeshShader() throws {
+    let json = """
+    {"name": "Legacy", "use_mesh_shader": true}
+    """
+    let desc = try JSONDecoder().decode(PresetDescriptor.self, from: Data(json.utf8))
+    #expect(desc.passes == [.meshShader],
+            "Legacy use_mesh_shader: true → passes: [.meshShader]")
+}
+
+@Test func renderPassSynthesisedFromLegacyRayMarchWithPostProcess() throws {
+    let json = """
+    {"name": "Legacy", "use_ray_march": true, "use_post_process": true}
+    """
+    let desc = try JSONDecoder().decode(PresetDescriptor.self, from: Data(json.utf8))
+    #expect(desc.passes == [.rayMarch, .postProcess],
+            "Legacy use_ray_march + use_post_process → passes: [.rayMarch, .postProcess]")
+}
+
+@Test func renderGraphSetActivePasses_roundTrips() throws {
+    let ctx = try MetalContext()
+    let lib = try ShaderLibrary(context: ctx)
+    let fftBuf = ctx.makeSharedBuffer(length: 512  * MemoryLayout<Float>.stride)!
+    let wavBuf = ctx.makeSharedBuffer(length: 2048 * MemoryLayout<Float>.stride)!
+    let pipeline = try RenderPipeline(context: ctx, shaderLibrary: lib,
+                                       fftBuffer: fftBuf, waveformBuffer: wavBuf)
+
+    // Default passes after init.
+    #expect(pipeline.currentPasses == [.direct])
+
+    // Switch to feedback + particles.
+    pipeline.setActivePasses([.feedback, .particles])
+    #expect(pipeline.currentPasses == [.feedback, .particles],
+            "setActivePasses should store and return the exact array supplied")
+
+    // Reset to empty (pre-preset-switch state).
+    pipeline.setActivePasses([])
+    #expect(pipeline.currentPasses == [],
+            "Empty passes array should be stored as-is")
 }
