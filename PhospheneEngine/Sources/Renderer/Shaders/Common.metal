@@ -17,6 +17,8 @@ struct FeatureVector {
     float valence, arousal;
     float time, delta_time;
     float _pad0, aspect_ratio;
+    float accumulated_audio_time;
+    float _pad1, _pad2, _pad3, _pad4, _pad5, _pad6, _pad7;
 };
 
 // MARK: - FeedbackParams

@@ -61,7 +61,7 @@ public final class IndirectCommandBufferState: @unchecked Sendable {
     /// Zeroed by the blit pass each frame; read back by tests after GPU completion.
     public let commandCountBuffer: MTLBuffer
 
-    /// UMA buffer holding the current frame's `FeatureVector` (96 bytes).
+    /// UMA buffer holding the current frame's `FeatureVector` (128 bytes).
     ///
     /// `MTLRenderCommandEncoder.setFragmentBytes` is NOT inherited by ICB commands
     /// when `inheritBuffers = true` — only `setFragmentBuffer` bindings are.
