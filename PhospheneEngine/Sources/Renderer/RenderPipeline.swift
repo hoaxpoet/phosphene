@@ -104,6 +104,32 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     var textureManager: TextureManager?
     let textureManagerLock = NSLock()
 
+    // MARK: - Accumulated Audio Time (Increment 3.15)
+
+    /// Energy-weighted running time — accumulates faster during loud passages.
+    /// Reset to 0 on track change via `resetAccumulatedAudioTime()`.
+    private var _accumulatedAudioTime: Float = 0
+    let audioTimeLock = NSLock()
+
+    /// Current accumulated audio time (energy-weighted, reset on track change).
+    public var accumulatedAudioTime: Float {
+        audioTimeLock.withLock { _accumulatedAudioTime }
+    }
+
+    /// Reset accumulated audio time to zero. Call on track change.
+    public func resetAccumulatedAudioTime() {
+        audioTimeLock.withLock { _accumulatedAudioTime = 0 }
+    }
+
+    /// Advance accumulated audio time by one frame.
+    /// `energy` should be `max(0, (bass + mid + treble) / 3.0)`.
+    /// Called by `draw(in:)` each frame; also accessible from tests via `@testable import`.
+    func stepAccumulatedTime(energy: Float, deltaTime: Float) {
+        audioTimeLock.withLock {
+            _accumulatedAudioTime += max(0, energy) * deltaTime
+        }
+    }
+
     // MARK: - Timing
 
     let startTime: CFAbsoluteTime
@@ -356,6 +382,11 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
         features.deltaTime = deltaTime
         let size = view.drawableSize
         features.aspectRatio = size.height > 0 ? Float(size.width / size.height) : 1.777
+
+        // Accumulate energy-weighted audio time and inject into the feature vector.
+        let energy = (features.bass + features.mid + features.treble) / 3.0
+        stepAccumulatedTime(energy: energy, deltaTime: deltaTime)
+        features.accumulatedAudioTime = audioTimeLock.withLock { _accumulatedAudioTime }
 
         renderFrame(
             commandBuffer: commandBuffer,

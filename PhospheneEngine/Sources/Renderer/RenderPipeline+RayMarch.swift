@@ -55,7 +55,8 @@ extension RenderPipeline {
         let height = Int(size.height)
         rayMarchState.ensureAllocated(width: width, height: height)
 
-        // Update aspect ratio from current drawable dimensions.
+        // Update per-frame uniforms: accumulated audio time and aspect ratio.
+        rayMarchState.sceneUniforms.sceneParamsA.x = features.accumulatedAudioTime
         rayMarchState.sceneUniforms.sceneParamsA.y = width > 0 ? Float(width) / Float(height) : 1.0
 
         // Resolve optional PostProcessChain: allocate bloom textures if present.
