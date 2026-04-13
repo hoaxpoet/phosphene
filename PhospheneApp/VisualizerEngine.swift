@@ -252,7 +252,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         ) else {
             return nil
         }
-        logger.info("Particle system created: 500K particles (attached per-preset)")
+        logger.info("Particle system created: 5K particles (attached per-preset)")
         return particles
     }
 
