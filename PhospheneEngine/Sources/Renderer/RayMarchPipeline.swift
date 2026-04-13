@@ -172,6 +172,7 @@ public final class RayMarchPipeline: @unchecked Sendable {
     ///   - outputTexture: Final render target (drawable texture or chain input).
     ///   - commandBuffer: All render passes are encoded into this buffer.
     ///   - noiseTextures: Optional noise texture manager — binds at slots 4–8.
+    ///   - iblManager: Optional IBL texture manager — binds at slots 9–11.
     ///   - postProcessChain: Optional bloom chain. When non-nil, replaces the composite pass.
     public func render(
         gbufferPipelineState: MTLRenderPipelineState,
@@ -182,6 +183,7 @@ public final class RayMarchPipeline: @unchecked Sendable {
         outputTexture: MTLTexture,
         commandBuffer: MTLCommandBuffer,
         noiseTextures: TextureManager? = nil,
+        iblManager: IBLManager? = nil,
         postProcessChain: PostProcessChain? = nil
     ) {
         guard gbuffer0 != nil, gbuffer1 != nil, gbuffer2 != nil, litTexture != nil else {
@@ -199,7 +201,12 @@ public final class RayMarchPipeline: @unchecked Sendable {
             noiseTextures: noiseTextures
         )
 
-        runLightingPass(commandBuffer: commandBuffer, features: &features, noiseTextures: noiseTextures)
+        runLightingPass(
+            commandBuffer: commandBuffer,
+            features: &features,
+            noiseTextures: noiseTextures,
+            iblManager: iblManager
+        )
 
         if let chain = postProcessChain {
             // Route litTexture through the PostProcessChain bloom + ACES path.
@@ -261,18 +268,20 @@ public final class RayMarchPipeline: @unchecked Sendable {
     // swiftlint:enable function_parameter_count
 
     /// Pass 2: Evaluate PBR lighting from G-buffer data → litTexture (.rgba16Float).
+    /// IBL textures (Increment 3.16) are bound at slots 9–11 when `iblManager` is non-nil.
     func runLightingPass(
         commandBuffer: MTLCommandBuffer,
         features: inout FeatureVector,
-        noiseTextures: TextureManager?
+        noiseTextures: TextureManager?,
+        iblManager: IBLManager? = nil
     ) {
         guard let g0 = gbuffer0, let g1 = gbuffer1, let g2 = gbuffer2,
               let lit = litTexture else { return }
 
         let desc = MTLRenderPassDescriptor()
-        desc.colorAttachments[0].texture    = lit
-        desc.colorAttachments[0].loadAction = .clear
-        desc.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
+        desc.colorAttachments[0].texture     = lit
+        desc.colorAttachments[0].loadAction  = .clear
+        desc.colorAttachments[0].clearColor  = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
         desc.colorAttachments[0].storeAction = .store
 
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: desc) else { return }
@@ -284,6 +293,7 @@ public final class RayMarchPipeline: @unchecked Sendable {
         encoder.setFragmentTexture(g2, index: 2)
         encoder.setFragmentSamplerState(sampler, index: 0)
         noiseTextures?.bindTextures(to: encoder)
+        iblManager?.bindTextures(to: encoder)       // texture(9–11)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         encoder.endEncoding()
     }

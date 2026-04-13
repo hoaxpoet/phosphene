@@ -81,6 +81,16 @@ extension PresetLoader {
         //   texture2d<float>  noiseFBM    [[texture(7)]]  — 1024² RGBA FBM          (.rgba8Unorm)
         //   texture2d<float>  blueNoise   [[texture(8)]]  — 256²  IGN dither        (.r8Unorm)
         //
+        // ── IBL textures (Increment 3.16) ────────────────────────────────────
+        // IBLManager binds IBL textures at [[texture(9)]]–[[texture(11)]].
+        // These are sampled by the fixed raymarch_lighting_fragment in the Renderer library;
+        // preset G-buffer shaders do not need to declare them directly.
+        // For reference (custom lighting in advanced presets):
+        //
+        //   texturecube<float> iblIrradiance  [[texture(9)]]  — 32²  irradiance cubemap (.rgba16Float)
+        //   texturecube<float> iblPrefiltered [[texture(10)]] — 128² prefiltered env, 5 mips (.rgba16Float)
+        //   texture2d<float>   iblBRDFLUT     [[texture(11)]] — 512² BRDF split-sum LUT (.rg16Float)
+        //
         // Convenience samplers — valid as file-scope constexpr in MSL:
         constexpr sampler linearSampler(filter::linear,  address::repeat);
         constexpr sampler nearestSampler(filter::nearest, address::repeat);

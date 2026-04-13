@@ -1405,8 +1405,10 @@ After:  STFT(GPU) → [Float] → memcpy(MTLBuffer) → predict(MPSGraph/GPU/F32
 - Increment 3.13 (noise texture manager) — for cast iron surface texture, kernel surface detail, oil/grease noise, steam turbulence
 - Increment 3.14 (ray march pipeline) — for deferred G-buffer rendering with multi-light PBR evaluation
 - Increment 3.15 (extended shader uniforms) — for SceneUniforms (camera, 4 lights, accumulated audio time, fog density)
+- Increment 3.16 (IBL pipeline) — for environment reflections on the cast-iron pan surface, oil sheen, and metallic burner grate. Point lights alone cannot produce the complex reflection patterns that sell a cast-iron surface as real.
+- Increment 3.17 (SSGI) — for the hot pan interior and oil surface bouncing warm light upward onto kernels, and inter-kernel light scattering between popped whites. Without indirect illumination, the scene's primary light interactions are missing.
 
-**Explicit pre-conditions:** all four dependency increments must be verified complete before this one starts. No partial starts, no working around missing infrastructure.
+**Explicit pre-conditions:** all dependency increments must be verified complete before this one starts. No partial starts, no working around missing infrastructure.
 
 **Files to create/edit (when unblocked):**
 - `Presets/Shaders/Popcorn.metal` — full rewrite from whatever is in the tree
@@ -1420,7 +1422,7 @@ After:  STFT(GPU) → [Float] → memcpy(MTLBuffer) → predict(MPSGraph/GPU/F32
 - Headless visual test suite passes and the implementer inspects all PNGs against documented acceptance criteria (cast iron reads as cast iron, real shadows present, kernels look 3D not 2D, steam reads as volumetric, burner bloom bleeds onto pan underside)
 - Manual: Matt runs the app with several genres, verifies pops align with drum hits, burner glows under bass-heavy sections, track change resets the batch, frame rate holds at 60fps
 
-**Blocked until:** 3.1a, 3.1b, 3.3, 3.4, 3.12, 3.13, 3.14, 3.15 all complete.
+**Blocked until:** 3.1a, 3.1b, 3.3, 3.4, 3.12, 3.13, 3.14, 3.15, 3.16, 3.17 all complete.
 
 *Other Phase 3.5 entries can be added as presets are designed. For now, listing Popcorn is enough to establish the phase and document its dependencies.*
 
@@ -1662,6 +1664,108 @@ constexpr sampler mipLinearSampler(filter::linear, mip_filter::linear, address::
 **Depends on:** Increment 3.14 (SceneUniforms struct exists in Renderer module).
 
 **Enables:** All presets using accumulated audio time (nearly universal — see Milkdrop analysis), Phase 3.5 Popcorn.
+
+### Increment 3.16: Image-Based Lighting (IBL) Pipeline
+
+**Status:** Complete ✅
+
+**Goal:** HDR environment map generation and IBL texture pipeline for physically accurate ambient lighting and specular reflections in all ray march presets. Replaces the procedural sky fallback in `raymarch_lighting_fragment` with irradiance + prefiltered environment sampling.
+
+**Why this is needed now:** The ray march pipeline (3.14) evaluates Cook-Torrance PBR with point/directional lights and a procedural sky fallback. This produces acceptable lighting for matte surfaces but fails for reflective materials (glass, polished metal, water, wet surfaces) because point lights alone cannot produce the complex, continuous reflection patterns these materials require. IBL is a prerequisite for photorealistic presets — shipping Popcorn (3.5.1) without it would produce a visually flat cast-iron pan and unconvincing kernel surfaces.
+
+**Texture binding resolution:** `TextureManager` currently occupies texture(4–8) with noise textures. IBL textures bind at texture(9–11): irradiance cubemap, prefiltered environment map, BRDF integration LUT. The prior documentation claimed texture(8) was reserved for environment maps, but `blueNoise` was implemented at texture(8) in Increment 3.13. This increment resolves the conflict by using indices 9–11.
+
+**Files to create/edit:**
+- `Renderer/IBLManager.swift` (new) — `IBLManager` class: generates 3 IBL textures at init via Metal compute kernels. Owns: `irradianceMap` (cubemap, 32² per face, `.rgba16Float`, convolved from source), `prefilteredEnvMap` (cubemap, 128² per face, 5 mip levels for roughness LOD, `.rgba16Float`), `brdfLUT` (2D, 512², `.rg16Float`, split-sum integration). Default source environment: procedural gradient sky + ground plane (generated via compute). Future: accept `.hdr`/`.exr` files. `bindTextures(to:)` sets fragment texture indices 9–11.
+- `Renderer/Shaders/IBL.metal` (new) — Metal compute kernels: `gen_irradiance_cubemap` (hemisphere cosine-weighted convolution), `gen_prefiltered_env` (GGX importance sampling per mip level), `gen_brdf_lut` (split-sum numeric integration). MSL utility functions: `ibl_sample_irradiance`, `ibl_sample_prefiltered`, `ibl_sample_brdf_lut` for use by the lighting pass.
+- `Renderer/Shaders/RayMarch.metal` — Update `raymarch_lighting_fragment` to sample IBL textures for diffuse ambient (irradiance map) and specular reflections (prefiltered env + BRDF LUT). Keep existing point/directional light evaluation alongside IBL. Add `texture2d<float> iblIrradiance [[texture(9)]]`, `texturecube<float> iblPrefiltered [[texture(10)]]`, `texture2d<float> brdfLUT [[texture(11)]]` parameters.
+- `Renderer/RenderPipeline.swift` — Hold optional `IBLManager`, bind IBL textures in ray march draw paths.
+- `Renderer/RenderPipeline+RayMarch.swift` — Pass IBL textures to lighting pass encoder.
+- `Presets/PresetLoader+Preamble.swift` — Add IBL texture index documentation to `rayMarchGBufferPreamble`.
+
+**Test requirements:**
+- `Tests/PhospheneEngineTests/Renderer/IBLManagerTests.swift` (new) — 9 tests:
+  - `test_init_createsIrradianceMap()` — non-nil, correct dimensions (32² per face)
+  - `test_init_createsPrefilteredEnvMap()` — non-nil, correct dimensions (128² per face), 5 mip levels
+  - `test_init_createsBRDFLUT()` — non-nil, 512², `.rg16Float`
+  - `test_allTextures_storageModeShared()` — UMA compliance
+  - `test_irradiance_nonBlack()` — sample center of each face, verify non-zero values
+  - `test_prefilteredEnv_mipLevelsExist()` — verify mip chain is populated
+  - `test_brdfLUT_range()` — sample corners and center, verify values in [0, 1]
+  - `test_bindTextures_setsCorrectIndices()` — compile inline shader sampling texture(9–11), verify non-zero output
+  - `test_init_performance_under1s()` — hard gate: all 3 textures generated in < 1s
+
+**Verification:** All prior tests pass. 9 new tests pass. Ray march lighting pass produces visually richer output with environment reflections. Metallic sphere shows environmental reflections instead of procedural sky color.
+
+**Depends on:** Increment 3.14 (ray march pipeline), Increment 3.13 (texture binding pattern).
+
+**Enables:** All photorealistic ray march presets. Required prerequisite for 3.5.1 Popcorn.
+
+### Increment 3.17: Screen Space Global Illumination (SSGI) Post-Process Pass
+
+**Status:** Not started.
+
+**Goal:** Approximate short-range diffuse light bounces using the existing G-buffer depth and normal data. Implemented as an optional post-process pass that slots between the lighting pass and the composite pass in the ray march pipeline.
+
+**Why this is needed:** Photorealistic scenes with strong local emitters look visually disconnected without indirect illumination. In the Popcorn scene, the burner is below the opaque cast-iron skillet — it illuminates the pan's exterior and grate, not the kernels directly. The kernels receive indirect light from the hot pan interior and oil surface bouncing warm light upward, and from inter-kernel scattering between popped whites. Without SSGI, none of these secondary bounces exist and the scene's strongest visual features (the glowing pan, the bright oil surface) have no visible effect on surrounding geometry. Hardware ray-traced GI is too expensive for a 60fps visualizer. SSGI reads the existing G-buffer to approximate short-range diffuse bounces at marginal cost (~0.5–1ms at 1080p).
+
+**Implementation approach:** Half-resolution SSGI for performance. The pass reads `gbuffer0` (depth), `gbuffer1` (normals), and `litTexture` (direct lighting result). For each pixel, it samples N nearby screen-space positions (default 8), traces a short ray in screen space, and accumulates indirect diffuse contribution from visible lit surfaces. Output is blended additively into `litTexture` before the composite/tone-mapping pass.
+
+**Files to create/edit:**
+- `Renderer/Shaders/SSGI.metal` (new) — `ssgi_fragment`: reads depth/normal G-buffers + lit texture, traces short screen-space rays, accumulates indirect diffuse. Configurable sample count and radius via `SceneUniforms.sceneParamsB.w` (repurpose reserved field).
+- `Renderer/RayMarchPipeline.swift` — Add optional `ssgiPipelineState: MTLRenderPipelineState?`, SSGI half-res texture (`.rgba16Float`, half width/height), `ssgiEnabled: Bool`. Insert SSGI pass between lighting and composite in `render()`.
+- `Renderer/RenderPipeline+RayMarch.swift` — Pass SSGI configuration through.
+- `Presets/PresetDescriptor.swift` — `useSSGI: Bool` field (`"use_ssgi"` key, default `false`). Only meaningful when `useRayMarch` is also true.
+- `Presets/PresetDescriptor.swift` — Add `"ssgi"` to `RenderPass` enum.
+
+**Test requirements:**
+- `Tests/PhospheneEngineTests/Renderer/SSGITests.swift` (new) — 7 tests:
+  - `test_ssgiTexture_halfResolution()` — SSGI texture is half the G-buffer dimensions
+  - `test_ssgiTexture_format_rgba16Float()` — HDR format for accumulation
+  - `test_ssgiTexture_storageModeShared()` — UMA compliance
+  - `test_ssgi_emissiveSurface_illuminatesNeighbor()` — render scene with bright floor, verify adjacent wall pixel receives indirect light (luminance > baseline)
+  - `test_ssgi_noEmission_minimalContribution()` — dark scene produces near-zero SSGI output
+  - `test_ssgi_disabled_noPassExecuted()` — when `useSSGI: false`, SSGI pass is not encoded
+  - `test_ssgi_performance_under1ms_at1080p()` — hard perf gate at half-res
+
+**Verification:** All prior tests pass. 7 new tests pass. Visual comparison: ray march scene with and without SSGI shows color bleeding from emissive surfaces onto nearby geometry. Performance impact < 1ms at 1080p (half-resolution).
+
+**Depends on:** Increment 3.14 (G-buffer pipeline provides depth + normals + lit texture).
+
+**Enables:** Photorealistic presets with local indirect illumination. Significant visual quality improvement for 3.5.1 Popcorn.
+
+### Increment 3.18: DRM Silence Detection & Graceful Degradation
+
+**Status:** Not started.
+
+**Goal:** Detect DRM-triggered audio silence in Core Audio process taps and gracefully degrade the visual experience instead of showing a frozen or static visualizer.
+
+**Why this is critical:** Core Audio process taps (`AudioHardwareCreateProcessTap`) are the primary audio source. When streaming apps play DRM-protected content (Apple Music FairPlay, Spotify DRM), macOS may zero the tap's audio buffer. This produces no error — just sustained zero-energy frames. The visualizer continues running but with no audio input, producing either a frozen frame (feedback presets) or a static render (ray march presets). This is the primary use case failure mode and currently fails silently.
+
+**Files to create/edit:**
+- `Audio/AudioInputRouter.swift` — Add `SilenceDetector` internal class: monitors RMS energy from the IO proc callback via a lightweight ring buffer (last 180 frames ≈ 3s at 60fps). State machine: `.receiving` (normal) → `.suspect` (RMS below noise floor for 1.5s) → `.silent` (confirmed silence for 3s) → `.recovering` (signal returns, hold for 0.5s before confirming). Publishes `AudioSignalState` enum via callback. Configurable thresholds: `silenceRMSThreshold: Float = 1e-6`, `silenceConfirmationDuration: TimeInterval = 3.0`, `recoveryConfirmationDuration: TimeInterval = 0.5`.
+- `Audio/Protocols.swift` — Add `AudioSignalState` enum: `.active`, `.suspect`, `.silent`, `.recovering`. Add `onSignalStateChanged` callback to `AudioCapturing` protocol.
+- `PhospheneApp/VisualizerEngine.swift` — Subscribe to signal state changes. On `.silent`: notify the Orchestrator to enter ambient/generative mode. On `.active`: resume normal audio-reactive rendering.
+- `PhospheneApp/Views/ContentView.swift` — Surface non-intrusive "No audio signal" indicator overlay when state is `.silent`. Auto-dismiss on recovery.
+- `Orchestrator/Orchestrator.swift` (future wiring point) — When Orchestrator is implemented (Phase 4), it will handle `.silent` state by selecting a generative preset that runs without audio input (slow procedural animation, ambient drift). For now, the signal state callback is available but the visual fallback is deferred to Phase 4.
+
+**Test requirements:**
+- `Tests/PhospheneEngineTests/Audio/SilenceDetectorTests.swift` (new) — 9 tests:
+  - `test_init_stateIsActive()`
+  - `test_normalAudio_stateRemainsActive()` — feed non-zero RMS for 5s, state stays `.active`
+  - `test_silence_stateTransitionsToSuspect()` — feed zeros for 1.5s, state becomes `.suspect`
+  - `test_silence_stateTransitionsToSilent()` — feed zeros for 3s, state becomes `.silent`
+  - `test_signalReturn_stateTransitionsToRecovering()` — from `.silent`, feed non-zero → `.recovering`
+  - `test_signalReturn_confirmationTransitionsToActive()` — from `.recovering`, 0.5s non-zero → `.active`
+  - `test_briefDropout_doesNotTriggerSilent()` — 0.5s silence followed by recovery stays `.active`
+  - `test_callback_firesOnStateChange()` — verify callback receives each transition
+  - `test_thresholds_configurable()` — custom thresholds produce expected behavior
+
+**Verification:** All prior tests pass. 9 new tests pass. Manual test: play DRM-protected Apple Music track → verify silence detection triggers → verify visual indicator appears → switch to non-DRM source → verify automatic recovery.
+
+**Depends on:** Nothing (uses existing `AudioInputRouter` infrastructure).
+
+**Enables:** Resilient user experience for the primary use case. Phase 4 Orchestrator will consume signal state for intelligent visual fallback.
 
 ---
 
@@ -2031,6 +2135,56 @@ constexpr sampler mipLinearSampler(filter::linear, mip_filter::linear, address::
   - `test_presetManifest_exampleParsesCorrectly()`
 
 **Verification:** External developer can write a preset following the SDK doc, drop it in the folder, see it appear. All 4 tests pass.
+
+### Increment 7.4: MetalFX Temporal Upscaling
+
+**Status:** Not started. Deferred until profiling data from photorealistic presets is available.
+
+**Goal:** Integrate Apple's MetalFX framework for temporal upscaling. Render internal G-buffers and lighting passes at 50–70% native resolution, then use MetalFX Temporal Upscaling to reconstruct full-resolution output.
+
+**Why deferred:** The ray march pipeline's 8ms perf gate at 1080p passes comfortably. MetalFX adds complexity (motion vectors, jitter patterns, temporal stability) that isn't justified without evidence of thermal budget pressure during extended listening sessions. Profile first, optimize second.
+
+**Trigger conditions for implementation:**
+- Profiling shows sustained GPU utilization > 80% during photorealistic presets at native resolution
+- Thermal downclocking observed on MacBook Air/Mac Mini during 30+ minute listening sessions
+- Frame drops detected by the render loop's timing instrumentation
+
+**Files to create/edit:**
+- `Renderer/MetalFXUpscaler.swift` (new) — Wraps `MTLFXTemporalScaler`. Manages internal render targets at reduced resolution, jitter pattern (Halton sequence), motion vector generation from `SceneUniforms` camera delta.
+- `Renderer/RayMarchPipeline.swift` — Optional upscaler integration: render G-buffer + lighting at internal resolution, upscale before composite.
+- `Presets/PresetDescriptor.swift` — `internalResolutionScale: Float` (default 1.0, range 0.5–1.0).
+
+**Test requirements:**
+- `Tests/PhospheneEngineTests/Renderer/MetalFXUpscalerTests.swift` (new) — 6 tests:
+  - `test_init_createsTemporalScaler()` — MetalFX scaler is non-nil on supported hardware
+  - `test_internalResolution_isScaledDown()` — at 0.5 scale, internal textures are half native dimensions
+  - `test_upscaledOutput_matchesNativeResolution()` — output texture matches drawable size
+  - `test_jitterPattern_haltonSequence_isCorrect()` — verify first 16 Halton(2,3) values
+  - `test_motionVectors_staticCamera_areZero()` — no camera delta → zero motion vectors
+  - `test_performance_upscaleOnly_under1ms()` — hard gate: MetalFX temporal upscale pass alone
+
+**Depends on:** Increment 7.1 (profiling data establishing that thermal budget pressure exists). Do not implement speculatively.
+
+**Enables:** Sustained 60fps rendering of complex photorealistic presets at 4K on thermally constrained hardware (laptops, Mac Mini).
+
+### Increment 7.5: Stem Separation Streaming Architecture
+
+**Status:** Not started. Deferred pending model evaluation and subjective quality assessment.
+
+**Goal:** Reduce stem separation boundary artifacts by transitioning from discrete 10-second block processing to a continuous or near-continuous inference architecture.
+
+**Near-term mitigation (can be implemented in Phase 3 if artifacts prove distracting):** Reduce dispatch cadence from 5s to 2–3s within the existing 10s rolling window. Add EMA crossfade blending between consecutive `StemFeatures` results in `StemAnalyzer` to smooth boundary transitions. This addresses the most audible artifacts without rearchitecting the ML pipeline.
+
+**Long-term approach (requires evaluation):**
+- Option A: Overlap-add with the existing model — process overlapping 10s chunks more frequently, blend results. Requires no model change but increases GPU inference load (2–3× more `separate()` calls per minute).
+- Option B: Recompile MPSGraph for shorter input windows (e.g., 2s / ~86 frames). Requires validating that Open-Unmix produces acceptable separation quality at shorter context lengths. May require retraining.
+- Option C: Swap to a streaming-native model (e.g., Hybrid Demucs with streaming STFT). Requires full model conversion pipeline rebuild.
+
+**Implementation note:** The current MPSGraph is compiled with a fixed 431-frame input shape. True streaming inference requires either graph recompilation for smaller shapes, zero-padded smaller chunks, or a fundamentally different model. This is a model architecture decision, not a cadence tweak.
+
+**Depends on:** Profiling and subjective quality evaluation of boundary artifacts in real listening sessions. Increment 7.1 profiling data helps quantify the GPU budget available for more frequent inference.
+
+**Enables:** Seamless stem-driven visual routing during rapid dynamic shifts (drops, builds, tempo changes).
 
 ---
 
