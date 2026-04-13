@@ -165,22 +165,35 @@ static float rm_screenSpaceShadow(
 ///
 /// Reads the three G-buffer textures written by `raymarch_gbuffer_fragment`,
 /// evaluates Cook-Torrance BRDF with the scene's primary light, applies
-/// screen-space soft shadows and ambient occlusion, and writes a linear-HDR
-/// colour to the .rgba16Float lit scene texture.
+/// screen-space soft shadows and ambient occlusion, samples IBL textures for
+/// physically accurate environment ambient and specular reflections, and writes
+/// a linear-HDR colour to the .rgba16Float lit scene texture.
+///
+/// IBL textures (Increment 3.16):
+///   texture(9)  — irradiance cubemap       → diffuse ambient (ibl_sample_irradiance)
+///   texture(10) — prefiltered env cubemap  → specular reflections (ibl_sample_prefiltered)
+///   texture(11) — BRDF split-sum LUT       → Fresnel split factors (ibl_sample_brdf_lut)
+/// When IBL textures are not yet bound, they return zero; the per-component max
+/// against `albedo * 0.04 * ao` prevents fully black surfaces during warmup.
 fragment float4 raymarch_lighting_fragment(
     VertexOut                   in        [[stage_in]],
     constant FeatureVector&     features  [[buffer(0)]],
     constant SceneUniforms&     scene     [[buffer(4)]],
-    texture2d<float>            gbuf0     [[texture(0)]],  // rg16Float: depth, unused
-    texture2d<float>            gbuf1     [[texture(1)]],  // rgba8Snorm: normal xyz, AO
-    texture2d<float>            gbuf2     [[texture(2)]],  // rgba8Unorm: albedo, packed material
-    texture2d<float>            noiseLQ   [[texture(4)]],
-    texture2d<float>            noiseHQ   [[texture(5)]],
-    texture3d<float>            noiseVol  [[texture(6)]],
-    texture2d<float>            noiseFBM  [[texture(7)]],
-    texture2d<float>            blueNoise [[texture(8)]]
+    texture2d<float>            gbuf0     [[texture(0)]],   // rg16Float: depth, unused
+    texture2d<float>            gbuf1     [[texture(1)]],   // rgba8Snorm: normal xyz, AO
+    texture2d<float>            gbuf2     [[texture(2)]],   // rgba8Unorm: albedo, packed material
+    texture2d<float>            noiseLQ        [[texture(4)]],
+    texture2d<float>            noiseHQ        [[texture(5)]],
+    texture3d<float>            noiseVol       [[texture(6)]],
+    texture2d<float>            noiseFBM       [[texture(7)]],
+    texture2d<float>            blueNoise      [[texture(8)]],
+    texturecube<float>          iblIrradiance  [[texture(9)]],
+    texturecube<float>          iblPrefiltered [[texture(10)]],
+    texture2d<float>            iblBRDFLUT     [[texture(11)]]
 ) {
     constexpr sampler samp(filter::linear, address::clamp_to_edge);
+    // IBL sampler: trilinear filtering for mip LOD-based roughness lookup.
+    constexpr sampler iblSamp(filter::linear, mip_filter::linear, address::clamp_to_edge);
     float2 uv = in.uv;
 
     // ── Sample G-buffer ────────────────────────────────────────────
@@ -225,8 +238,25 @@ fragment float4 raymarch_lighting_fragment(
     float shadow = rm_screenSpaceShadow(uv, worldPos, L, lightDist, gbuf0, samp, scene);
     litColor *= shadow;
 
-    // ── Ambient + AO ───────────────────────────────────────────────
-    float3 ambient = albedo * 0.08 * ao;
+    // ── IBL ambient (diffuse + specular) ─────────────────────────
+    // Diffuse: cosine-weighted irradiance from environment.
+    // Specular: prefiltered env + split-sum BRDF LUT (Epic split-sum).
+    float  NdotV   = max(dot(N, V), 0.0);
+    float3 R       = reflect(-V, N);
+    float3 F0      = mix(float3(0.04), albedo, metallic);
+    float3 F_ibl   = rm_fresnel(NdotV, F0);
+    float3 kd      = (1.0 - F_ibl) * (1.0 - metallic);
+
+    float3 irradiance   = ibl_sample_irradiance(N, iblIrradiance, iblSamp);
+    float3 prefColor    = ibl_sample_prefiltered(R, roughness, iblPrefiltered, iblSamp, 4);
+    float2 brdfFactors  = ibl_sample_brdf_lut(NdotV, roughness, iblBRDFLUT, iblSamp);
+    float3 iblDiffuse   = kd * albedo * irradiance;
+    float3 iblSpecular  = prefColor * (F_ibl * brdfFactors.x + brdfFactors.y);
+    float3 iblAmbient   = (iblDiffuse + iblSpecular) * ao;
+
+    // Minimum ambient prevents fully black surfaces when IBL textures are not yet bound
+    // (unbound textures return zero on Apple Silicon Metal).
+    float3 ambient = max(iblAmbient, albedo * 0.04 * ao);
     litColor += ambient;
 
     // ── Atmospheric fog ────────────────────────────────────────────

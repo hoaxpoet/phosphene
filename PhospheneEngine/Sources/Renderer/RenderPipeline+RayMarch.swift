@@ -14,6 +14,35 @@ import Metal
 import MetalKit
 import Shared
 
+// MARK: - Texture + IBL Attachment
+
+extension RenderPipeline {
+
+    /// Attach noise textures that will be bound on every preset render encoder.
+    ///
+    /// Call once after app startup.  Pass `nil` to detach (noise textures will
+    /// be unbound; shaders that sample them will read zeros).
+    /// Thread-safe — can be called from any queue.
+    public func setTextureManager(_ manager: TextureManager?) {
+        textureManagerLock.withLock {
+            textureManager = manager
+        }
+        logger.info("TextureManager \(manager != nil ? "attached" : "detached")")
+    }
+
+    /// Attach IBL textures for the ray march lighting pass (Increment 3.16).
+    ///
+    /// Pass a non-nil manager to enable environment-based ambient and specular reflections.
+    /// Pass `nil` to detach; the lighting pass will fall back to a minimum ambient term.
+    /// Thread-safe — can be called from any queue.
+    public func setIBLManager(_ manager: IBLManager?) {
+        iblManagerLock.withLock {
+            iblManager = manager
+        }
+        logger.info("IBLManager \(manager != nil ? "attached" : "detached")")
+    }
+}
+
 // MARK: - Ray March Draw Path
 
 extension RenderPipeline {
@@ -69,6 +98,7 @@ extension RenderPipeline {
         }
 
         let noiseTextures = textureManagerLock.withLock { textureManager }
+        let ibl = iblManagerLock.withLock { iblManager }
         rayMarchState.render(
             gbufferPipelineState: activePipeline,
             features: &features,
@@ -78,6 +108,7 @@ extension RenderPipeline {
             outputTexture: drawable.texture,
             commandBuffer: commandBuffer,
             noiseTextures: noiseTextures,
+            iblManager: ibl,
             postProcessChain: chainForBloom
         )
 

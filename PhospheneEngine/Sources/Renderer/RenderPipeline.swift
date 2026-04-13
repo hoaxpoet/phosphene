@@ -90,6 +90,12 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     var textureManager: TextureManager?
     let textureManagerLock = NSLock()
 
+    // MARK: - IBL Textures (Increment 3.16)
+
+    /// Optional IBL texture manager — binds irradiance, prefiltered env, and BRDF LUT at slots 9–11.
+    var iblManager: IBLManager?
+    let iblManagerLock = NSLock()
+
     // MARK: - Render Graph (Increment 3.6)
 
     /// Active render passes declared by the current preset.
@@ -290,18 +296,6 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
             rayMarchPipeline = pipeline
         }
         logger.info("Ray march pipeline \(pipeline != nil ? "attached" : "detached")")
-    }
-
-    /// Attach noise textures that will be bound on every preset render encoder.
-    ///
-    /// Call once after app startup.  Pass `nil` to detach (noise textures will
-    /// be unbound; shaders that sample them will read zeros).
-    /// Thread-safe — can be called from any queue.
-    public func setTextureManager(_ manager: TextureManager?) {
-        textureManagerLock.withLock {
-            textureManager = manager
-        }
-        logger.info("TextureManager \(manager != nil ? "attached" : "detached")")
     }
 
     /// Update the live audio features from MIR analysis.
