@@ -184,7 +184,7 @@ void sceneMaterial(float3 p,
         // these bright pixels and bleed cyan-tinted indirect diffuse light
         // onto adjacent concrete walls and floor.
         albedo    = float3(0.55f, 0.82f, 0.96f);   // cool cyan tint
-        roughness = 0.04f;                           // near-perfect mirror
+        roughness = 0.12f;                           // brushed architectural glass
         metallic  = 0.92f;
     } else {
         // ── Bare Concrete ────────────────────────────────────────────────────
