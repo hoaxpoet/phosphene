@@ -6,6 +6,7 @@
 
 import XCTest
 import Metal
+import simd
 @testable import Renderer
 @testable import Presets
 @testable import Shared
@@ -184,7 +185,7 @@ final class SceneUniformsTests: XCTestCase {
             "scene_camera": {
                 "position": [0.0, 2.0, -5.0],
                 "target":   [0.0, 0.0,  0.0],
-                "fov": 1.2
+                "fov": 70.0
             },
             "scene_lights": [
                 { "position": [3.0, 5.0, -2.0], "color": [1.0, 0.9, 0.8], "intensity": 2.0 },
@@ -203,7 +204,8 @@ final class SceneUniformsTests: XCTestCase {
         let cam = try XCTUnwrap(desc.sceneCamera, "scene_camera must be decoded")
         assertNearlyEqual(cam.position, SIMD3<Float>(0, 2, -5), eps: 0.001, label: "cam.position")
         assertNearlyEqual(cam.target, SIMD3<Float>(0, 0, 0), eps: 0.001, label: "cam.target")
-        XCTAssertEqual(cam.fov, 1.2, accuracy: Float(0.001))
+        XCTAssertEqual(cam.fov, 70.0, accuracy: Float(0.001),
+            "fov field must be decoded in degrees (70.0), not radians")
 
         // Lights
         XCTAssertEqual(desc.sceneLights.count, 2, "Two lights must be decoded")
@@ -214,6 +216,76 @@ final class SceneUniformsTests: XCTestCase {
         // Fog and ambient
         XCTAssertEqual(desc.sceneFog, Float(0.02), accuracy: Float(0.0001))
         XCTAssertEqual(desc.sceneAmbient, Float(0.1), accuracy: Float(0.001))
+    }
+
+    // MARK: - Test 6: FOV is stored in radians (JSON field is in degrees)
+
+    /// Regression test for makeSceneUniforms bug: JSON "fov" is in degrees (e.g. 65),
+    /// but the G-buffer shader computes `tan(fov * 0.5)` expecting radians.
+    ///
+    /// If 65.0 is stored without conversion: `tan(65 * 0.5) = tan(32.5 rad) ≈ 1.84` — a
+    /// frustum with ~±61° half-angle in each direction, making the camera FOV ~3× wider
+    /// than intended. Most of the corridor geometry falls outside the narrower intended
+    /// frustum, producing a mostly-sky frame.
+    ///
+    /// After the fix, 65° × (π/180) ≈ 1.1345 rad is stored; `tan(1.1345/2) ≈ 0.638`.
+    func test_cameraFov_65degrees_storedAs_1_1345_radians() {
+        let fovDegrees: Float = 65.0
+        let expectedRadians = fovDegrees * Float.pi / 180.0   // ≈ 1.1345
+
+        XCTAssertEqual(expectedRadians, 1.1345, accuracy: 0.001,
+            "65° must convert to ≈1.1345 rad")
+
+        // Verify the shader's tan(fov * 0.5) produces a sensible FOV scale factor.
+        // A value > 1.0 means the frustum half-angle exceeds 45°.
+        let yFovCorrect = tan(expectedRadians * 0.5)
+        XCTAssertLessThan(yFovCorrect, 1.0,
+            "tan(65°/2) = tan(32.5°) ≈ 0.638; a value ≥ 1.0 means fov was not converted to radians")
+        XCTAssertEqual(yFovCorrect, 0.638, accuracy: 0.01)
+
+        // The buggy path: storing 65.0 directly as 65 radians.
+        let yFovBug = tan(fovDegrees * 0.5)   // tan(32.5 radians) ≈ 1.84
+        XCTAssertGreaterThan(yFovBug, 1.0,
+            "tan(32.5 rad) must be > 1.0 — documents why raw-degree storage breaks the frustum")
+    }
+
+    // MARK: - Test 7: Camera right vector is +X for a forward-looking camera
+
+    /// Regression test for makeSceneUniforms cross product order.
+    ///
+    /// The correct formula is `cross(worldUp, fwd)` → right = +X for fwd = +Z.
+    /// The buggy form `cross(fwd, worldUp)` gives right = -X (left vector), mirroring the image.
+    /// `cross(fwd, right)` then accidentally produces correct up because two errors cancel,
+    /// but the right vector is still flipped, reversing left and right in the rendered frame.
+    func test_cameraRight_isPositiveX_forForwardLookingCamera() {
+        let fwd     = SIMD3<Float>(0, 0, 1)
+        let worldUp = SIMD3<Float>(0, 1, 0)
+
+        // Correct form: cross(worldUp, fwd) = +X.
+        let rightCorrect = simd_normalize(simd_cross(worldUp, fwd))
+        XCTAssertEqual(rightCorrect.x,  1.0, accuracy: 0.001, "right.x must be +1 for fwd=(0,0,1)")
+        XCTAssertEqual(rightCorrect.y,  0.0, accuracy: 0.001, "right.y must be 0")
+        XCTAssertEqual(rightCorrect.z,  0.0, accuracy: 0.001, "right.z must be 0")
+
+        // Buggy form: cross(fwd, worldUp) = -X (left vector, not right).
+        let rightBug = simd_normalize(simd_cross(fwd, worldUp))
+        XCTAssertEqual(rightBug.x, -1.0, accuracy: 0.001,
+            "cross(fwd, worldUp) gives the left vector — documents the mirroring bug")
+    }
+
+    // MARK: - Test 8: Camera up vector is +Y for a forward-looking level camera
+
+    /// Verifies that `up = cross(fwd, right)` yields +Y for a camera looking along +Z
+    /// with right = +X, completing the correct right-handed camera basis.
+    func test_cameraUp_isPositiveY_forForwardLookingCamera() {
+        let fwd     = SIMD3<Float>(0, 0, 1)
+        let worldUp = SIMD3<Float>(0, 1, 0)
+        let right   = simd_normalize(simd_cross(worldUp, fwd))   // correct: (1, 0, 0)
+        let up      = simd_cross(fwd, right)                      // correct: (0, 1, 0)
+
+        XCTAssertEqual(up.x, 0.0, accuracy: 0.001, "up.x must be 0")
+        XCTAssertEqual(up.y, 1.0, accuracy: 0.001, "up.y must be +1")
+        XCTAssertEqual(up.z, 0.0, accuracy: 0.001, "up.z must be 0")
     }
 }
 

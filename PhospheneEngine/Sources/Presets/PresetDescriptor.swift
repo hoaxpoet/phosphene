@@ -10,20 +10,21 @@ import simd
 
 /// Camera configuration declared in a ray march preset's JSON sidecar.
 ///
-/// `position` and `target` are in world-space; `fov` is the vertical field of view in radians.
+/// `position` and `target` are in world-space; `fov` is the vertical field of view in **degrees**
+/// (e.g. 65). `makeSceneUniforms(from:)` converts to radians before uploading to the GPU.
 /// These are used to populate `SceneUniforms` when the preset is activated.
 public struct SceneCamera: Sendable, Codable, Equatable {
     /// World-space camera position.
     public var position: SIMD3<Float>
     /// World-space point the camera looks toward.
     public var target: SIMD3<Float>
-    /// Vertical field of view in radians.
+    /// Vertical field of view in **degrees** (e.g. 65). Converted to radians in makeSceneUniforms.
     public var fov: Float
 
     public init(
         position: SIMD3<Float> = SIMD3(0, 0, -5),
         target: SIMD3<Float> = .zero,
-        fov: Float = .pi / 4.0
+        fov: Float = 65.0
     ) {
         self.position = position
         self.target = target
