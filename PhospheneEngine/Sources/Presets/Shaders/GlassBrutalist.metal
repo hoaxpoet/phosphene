@@ -184,8 +184,8 @@ void sceneMaterial(float3 p,
         // these bright pixels and bleed cyan-tinted indirect diffuse light
         // onto adjacent concrete walls and floor.
         albedo    = float3(0.55f, 0.82f, 0.96f);   // cool cyan tint
-        roughness = 0.12f;                           // brushed architectural glass
-        metallic  = 0.92f;
+        roughness = 0.18f;                           // brushed architectural glass
+        metallic  = 0.45f;                           // semi-reflective: cyan tint visible + IBL bleed
     } else {
         // ── Bare Concrete ────────────────────────────────────────────────────
         // Two octaves of Perlin noise provide tactile variation without a

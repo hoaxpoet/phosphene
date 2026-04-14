@@ -48,6 +48,7 @@ extension VisualizerEngine {
         pipeline.setFeedbackParams(nil)
         pipeline.setFeedbackComposePipeline(nil)
         pipeline.setParticleGeometry(nil)
+        currentRayMarchPipeline = nil
 
         // Set the primary pipeline state (overridden for ray march below).
         pipeline.setActivePipelineState(preset.pipelineState)
@@ -87,6 +88,8 @@ extension VisualizerEngine {
                     pipeline.setActivePipelineState(rmPipelineState)
                     pipeline.setRayMarchPipeline(rmPipeline)
                     rmPipeline.sceneUniforms = makeSceneUniforms(from: desc)
+                    rmPipeline.debugGBufferMode = debugGBufferMode
+                    currentRayMarchPipeline = rmPipeline
                 } catch {
                     logger.error("Failed to create RayMarchPipeline for preset '\(desc.name)': \(error)")
                 }
@@ -145,7 +148,7 @@ extension VisualizerEngine {
         // farPlane must be set here — drawWithRayMarch only updates x and y each frame.
         // A farPlane of 0 causes the G-buffer ray march loop to never execute (t < 0 is always
         // false), producing an all-sky frame regardless of scene geometry.
-        uniforms.sceneParamsA = SIMD4(0, 16.0 / 9.0, 0.1, 30.0)
+        uniforms.sceneParamsA = SIMD4(0, 16.0 / 9.0, 0.1, desc.sceneFarPlane)
 
         // Camera — compute orthonormal basis from position and target.
         if let cam = desc.sceneCamera {

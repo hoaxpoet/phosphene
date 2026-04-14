@@ -8,17 +8,18 @@
   "beat_source": "bass",
   "beat_sensitivity": 1.4,
   "scene_camera": {
-    "position": [0.0, 1.6, -6.0],
-    "target": [0.0, 1.4, 20.0],
-    "fov": 65
+    "position": [1.2, 1.8, 0.5],
+    "target": [-0.5, 1.4, 8.0],
+    "fov": 70
   },
   "scene_lights": [
     {
-      "position": [0.0, 3.0, -9.0],
+      "position": [2.0, 4.5, 2.0],
       "color": [1.0, 0.95, 0.88],
-      "intensity": 8.0
+      "intensity": 300.0
     }
   ],
-  "scene_fog": 0.012,
-  "scene_ambient": 0.10
+  "scene_fog": 0.015,
+  "scene_ambient": 0.08,
+  "scene_far_plane": 40.0
 }

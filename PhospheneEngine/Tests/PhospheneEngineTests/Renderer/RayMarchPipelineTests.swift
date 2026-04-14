@@ -176,7 +176,11 @@ final class RayMarchPipelineTests: XCTestCase {
         let r = pixels[centerIdx], g = pixels[centerIdx + 1], b = pixels[centerIdx + 2]
         let luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b
 
-        XCTAssertGreaterThan(luminance, 0.01,
+        // Threshold lowered from 0.01 → 0.001 after adding inverse-square point light
+        // attenuation (Increment 3.14+). Light at (3,8,-3) is ~8.8 units from sphere surface;
+        // attenuation factor ≈ 0.013 × intensity=3.0 = 0.039 effective. The sphere is
+        // visibly illuminated (IBL + attenuated direct) but the center luminance is ~0.005.
+        XCTAssertGreaterThan(luminance, 0.001,
             "Center pixel in lit texture must have non-zero luminance (got \(luminance)) — "
             + "sphere should be illuminated by the scene light")
     }

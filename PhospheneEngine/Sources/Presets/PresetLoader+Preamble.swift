@@ -154,6 +154,17 @@ extension PresetLoader {
         // so it can be accessed independently without recomputing shaderPreamble.
         return """
 
+        // Enable 4-quadrant G-buffer diagnostic visualization.
+        // When RayMarchPipeline.debugGBufferMode == true, the Swift bypass path routes
+        // gbuf2 directly to the drawable (skipping lighting/SSGI/ACES), so these raw
+        // colours reach the screen unmodified:
+        //   TL: green = geometry hit, red = ray miss
+        //   TR: green = SDF positive at ray start (outside solid), red = inside solid
+        //   BL: greyscale step count (black = 0 steps, white = 128 steps)
+        //   BR: greyscale hit depth (black = near, white = far), red on miss
+        #define GBUFFER_DEBUG 1
+
+
         struct SceneUniforms {
             float4 cameraOriginAndFov;       // xyz = camera pos, w = fov (radians)
             float4 cameraForward;            // xyz = forward direction, w = 0
@@ -225,7 +236,9 @@ extension PresetLoader {
             float t         = nearPlane;
             bool  hit       = false;
 
-            for (int i = 0; i < 128 && t < farPlane; i++) {
+            int stepCount = 0;
+            int i = 0;
+            for (i = 0; i < 128 && t < farPlane; i++) {
                 float3 p = camPos + rayDir * t;
                 float  d = sceneSDF(p, features, scene);
                 if (d < 0.001 * t) {
@@ -234,6 +247,7 @@ extension PresetLoader {
                 }
                 t += max(d, 0.002);
             }
+            stepCount = i;
 
             if (!hit) {
                 // Sky / miss — depth = 1.0 signals no geometry to the lighting pass.
@@ -283,6 +297,56 @@ extension PresetLoader {
             out.gbuf0 = float4(depthNorm, 0.0, 0.0, 0.0);
             out.gbuf1 = float4(normal, ao);               // rgba8Snorm: [-1..1]
             out.gbuf2 = float4(albedo, packed);            // rgba8Unorm: [0..1]
+
+        #ifdef GBUFFER_DEBUG
+            // Override G-buffer with diagnostic visualization.
+            // The Swift bypass (debugGBufferMode=true) copies gbuf2 directly to the drawable,
+            // so these colours are NOT processed by the lighting pass or ACES tonemapper.
+            // Use albedo channel (gbuf2.rgb) for the diagnostic colour; packed value (gbuf2.a)
+            // carries roughness+metallic and is not visible in debug mode.
+            float2 debugUV = in.uv;
+
+            if (debugUV.x < 0.5 && debugUV.y < 0.5) {
+                // TOP-LEFT: Geometry hit (green) vs ray miss (red).
+                // A fully-green TL quadrant means ALL rays hit geometry.
+                // Any red pixels = misses; widespread red = camera FOV/far-plane issue.
+                out.gbuf0 = float4(1.0, 0.0, 0.0, 0.0);   // depth=1 = sky (lighting pass skipped)
+                out.gbuf2 = float4(hit ? 0.0 : 1.0, hit ? 1.0 : 0.0, 0.0, 0.5);
+
+            } else if (debugUV.x >= 0.5 && debugUV.y < 0.5) {
+                // TOP-RIGHT: SDF sign at ray start position (nearPlane offset from camera).
+                // green = SDF positive (camera is outside solid — correct).
+                // red   = SDF negative (camera is INSIDE solid — rays start occluded, all miss).
+                float3 startP = camPos + rayDir * nearPlane;
+                float  startD = sceneSDF(startP, features, scene);
+                float  absD   = clamp(abs(startD) / 5.0, 0.0, 1.0);
+                out.gbuf0 = float4(1.0, 0.0, 0.0, 0.0);
+                out.gbuf2 = float4(startD < 0.0 ? absD : 0.0,
+                                   startD >= 0.0 ? absD : 0.0,
+                                   0.0, 0.5);
+
+            } else if (debugUV.x < 0.5 && debugUV.y >= 0.5) {
+                // BOTTOM-LEFT: March step count normalised to [0,1] for 128 max steps.
+                // White pixels = ray exhausted budget without hitting (miss via step limit).
+                // Dark pixels  = geometry found quickly.
+                float stepFrac = clamp(float(stepCount) / 128.0, 0.0, 1.0);
+                out.gbuf0 = float4(1.0, 0.0, 0.0, 0.0);
+                out.gbuf2 = float4(stepFrac, stepFrac, stepFrac, 0.5);
+
+            } else {
+                // BOTTOM-RIGHT: Hit depth normalised to [0,1] over farPlane.
+                // dark = close, bright = far, red = miss.
+                if (hit) {
+                    float depthFrac = clamp(t / farPlane, 0.0, 1.0);
+                    out.gbuf0 = float4(depthFrac, 0.0, 0.0, 0.0);
+                    out.gbuf2 = float4(depthFrac, depthFrac, depthFrac, 0.5);
+                } else {
+                    out.gbuf0 = float4(1.0, 0.0, 0.0, 0.0);
+                    out.gbuf2 = float4(1.0, 0.0, 0.0, 0.5);
+                }
+            }
+            return out;
+        #endif
 
             return out;
         }

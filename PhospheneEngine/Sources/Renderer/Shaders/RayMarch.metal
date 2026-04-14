@@ -232,7 +232,11 @@ fragment float4 raymarch_lighting_fragment(
     float  lightDist = length(L);
     L                = normalize(L);
 
-    float3 litColor  = rm_brdf(N, V, L, albedo, roughness, metallic) * lColor * intensity;
+    // Inverse-square attenuation: prevents infinitely-repeating geometry (glass panels,
+    // tiled corridors) from accumulating extreme HDR values. The `+ 1.0` prevents a
+    // singularity when the surface is at the light position.
+    float  attenuation = 1.0 / (1.0 + lightDist * lightDist);
+    float3 litColor    = rm_brdf(N, V, L, albedo, roughness, metallic) * lColor * intensity * attenuation;
 
     // ── Screen-space soft shadow ───────────────────────────────────
     float shadow = rm_screenSpaceShadow(uv, worldPos, L, lightDist, gbuf0, samp, scene);
@@ -259,9 +263,6 @@ fragment float4 raymarch_lighting_fragment(
     float3 ambient = max(iblAmbient, albedo * 0.04 * ao);
     litColor += ambient;
 
-    // ── HDR clamp — prevent extreme specular from overwhelming bloom ──
-    litColor = min(litColor, float3(25.0));
-
     // ── Atmospheric fog ────────────────────────────────────────────
     float  fogNear   = scene.sceneParamsB.x;
     float  fogFar    = scene.sceneParamsB.y;
@@ -271,6 +272,27 @@ fragment float4 raymarch_lighting_fragment(
     litColor         = mix(litColor, fogColor, fogFactor);
 
     return float4(litColor, 1.0);
+}
+
+// MARK: - G-buffer Debug Pass
+
+/// Diagnostic pass: copies gbuf2 (albedo/debug data) directly to the drawable.
+///
+/// Invoked when `RayMarchPipeline.debugGBufferMode == true`.
+/// Bypasses the lighting pass, SSGI, and ACES tone-mapping so the raw colours
+/// written by the G-buffer diagnostic quadrants reach the screen unmodified.
+/// This makes the 4-quadrant GBUFFER_DEBUG visualization actually readable:
+///   TL = green (hit) / red (miss)  [not muted grey after ACES]
+///   TR = SDF sign at ray start
+///   BL = step count greyscale
+///   BR = hit depth greyscale / red on miss
+fragment float4 raymarch_gbuffer_debug_fragment(
+    VertexOut        in    [[stage_in]],
+    texture2d<float> gbuf2 [[texture(0)]],
+    sampler          samp  [[sampler(0)]]
+) {
+    // gbuf2 is .rgba8Unorm; sample values are already in [0,1] SDR — no tone-map needed.
+    return gbuf2.sample(samp, in.uv);
 }
 
 // MARK: - Composite Pass

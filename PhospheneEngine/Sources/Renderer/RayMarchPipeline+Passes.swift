@@ -169,6 +169,40 @@ extension RayMarchPipeline {
     }
 }
 
+// MARK: - G-buffer Debug Pass
+
+extension RayMarchPipeline {
+
+    /// Debug pass: copy gbuf2 directly to outputTexture without any lighting, SSGI, or ACES.
+    ///
+    /// Used when `debugGBufferMode == true` (toggled with 'G' key).
+    /// Because this bypasses the PBR lighting pass and all post-processing, the raw colours
+    /// written by the `#ifdef GBUFFER_DEBUG` quadrant block are preserved:
+    ///   TL = green (hit) / red (miss)   — albedo (0,1,0) / (1,0,0)
+    ///   TR = SDF sign as green or red
+    ///   BL = step count as greyscale
+    ///   BR = hit depth as greyscale / red on miss
+    func runGBufferDebugPass(commandBuffer: MTLCommandBuffer, outputTexture: MTLTexture) {
+        guard let g2 = gbuffer2 else {
+            passLogger.error("runGBufferDebugPass: gbuffer2 nil — skipping")
+            return
+        }
+
+        let desc = MTLRenderPassDescriptor()
+        desc.colorAttachments[0].texture     = outputTexture
+        desc.colorAttachments[0].loadAction  = .clear
+        desc.colorAttachments[0].clearColor  = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
+        desc.colorAttachments[0].storeAction = .store
+
+        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: desc) else { return }
+        encoder.setRenderPipelineState(gbufferDebugPipeline)
+        encoder.setFragmentTexture(g2, index: 0)
+        encoder.setFragmentSamplerState(sampler, index: 0)
+        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+        encoder.endEncoding()
+    }
+}
+
 // MARK: - Composite Pass
 
 extension RayMarchPipeline {
