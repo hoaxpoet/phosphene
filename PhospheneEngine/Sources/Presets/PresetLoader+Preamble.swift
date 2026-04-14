@@ -283,6 +283,7 @@ extension PresetLoader {
             out.gbuf0 = float4(depthNorm, 0.0, 0.0, 0.0);
             out.gbuf1 = float4(normal, ao);               // rgba8Snorm: [-1..1]
             out.gbuf2 = float4(albedo, packed);            // rgba8Unorm: [0..1]
+
             return out;
         }
 

@@ -259,6 +259,9 @@ fragment float4 raymarch_lighting_fragment(
     float3 ambient = max(iblAmbient, albedo * 0.04 * ao);
     litColor += ambient;
 
+    // ── HDR clamp — prevent extreme specular from overwhelming bloom ──
+    litColor = min(litColor, float3(25.0));
+
     // ── Atmospheric fog ────────────────────────────────────────────
     float  fogNear   = scene.sceneParamsB.x;
     float  fogFar    = scene.sceneParamsB.y;
