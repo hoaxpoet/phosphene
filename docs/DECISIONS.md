@@ -178,6 +178,18 @@ The Orchestrator will be a scored decision model with explicit inputs (energy tr
 
 ---
 
+## D-019: Stem routing warmup fallback pattern for compute presets
+
+**Status:** Accepted
+
+Compute kernels that route `StemFeatures` to visual parameters must handle the ~10s warmup window before live stems are available. The accepted pattern: detect zero stems via `smoothstep(0.02, 0.06, totalStemEnergy)` and mix between FeatureVector 6-band fallback values and true stem values. When total stem energy is below the lower threshold, pure FeatureVector routing applies (identical behavior to the pre-stem implementation). When above the upper threshold, full stem routing applies.
+
+**Reason:** In ad-hoc mode and at the start of each track in session mode, `StemFeatures` is `.zero` for up to 10–15 seconds. A kernel that reads zero stems without fallback produces flat, unresponsive visuals during this window. The smoothstep crossfade makes the transition invisible — the kernel degrades gracefully to full-mix frequency analysis rather than going dark.
+
+**Implication for new particle/compute presets:** Any preset that uses `buffer(3)` for stem routing should implement this pattern or an equivalent. The crossfade range (0.02–0.06) is intentionally narrow so the transition completes within the first few update cycles once stems arrive.
+
+---
+
 ## D-018: SessionManager degrades to ready on any preparation failure
 
 **Status:** Accepted

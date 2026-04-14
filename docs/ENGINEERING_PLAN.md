@@ -38,29 +38,25 @@ Test infrastructure: swift-testing + XCTest across unit, integration, regression
 
 Key implementation decisions: `SessionState`/`SessionPlan` live in `Session/SessionTypes.swift` (not `Shared`) because `Shared` cannot depend on `Session`. Cache-aware track-change loading already existed in `resetStemPipeline(for:)` from Increment 2.5.3 — no changes required there. `VisualizerEngine` gained a `sessionManager: SessionManager?` property; the app layer wires `cache → stemCache` on state transition to `.ready`.
 
-11 tests. 291 SPM tests total.
+11 tests.
+
+### Increment 3.5.2 — Murmuration Stem Routing Revision ✅
+
+Replaced the 6-band full-mix frequency workaround with real stem-driven routing via `StemFeatures` at GPU `buffer(3)`.
+
+`Particles.metal` compute kernel gains `constant StemFeatures& stems [[buffer(3)]]`. Routing: **drums** (`drums_beat` decay drives wave front position) → turning wave that sweeps across the flock over ~200ms, not instantaneously; direction alternates per beat epoch; **bass** (`bass_energy`) → macro drift velocity and shape elongation; **other** (`other_energy`) → surface flutter weighted by `distFromCenter` (periphery 1.0×, core 0.25×); **vocals** (`vocals_energy`) → density compression via `densityScale = 1 - vocals * 0.22` applied to `halfLength` and `halfWidth`.
+
+Warmup fallback: `smoothstep(0.02, 0.06, totalStemEnergy)` crossfades from FeatureVector 6-band routing to stem routing. Zero stems → identical behavior to previous implementation.
+
+`ProceduralGeometry.update()` gains `stemFeatures: StemFeatures = .zero` parameter. `Starburst.metal` gains `StemFeatures` param; `vocals_energy` shifts sky gradient ≤10% warmer.
+
+8 new tests in `MurmurationStemRoutingTests.swift`. 288 swift-testing + 91 XCTest = 379 tests total.
 
 ---
 
 ## Immediate Next Increments
 
 These are ordered by dependency. Each has done-when criteria and verification commands.
-
-### Increment 3.5.2 — Murmuration Stem Routing Revision
-
-Replace the 6-band frequency workaround with real stem routing from StemFeatures.
-
-**Scope:** `Starburst.metal` and `Particles.metal`. Wire `StemFeatures` (buffer 3) into the flock compute kernel. Drums → cohesion radius, bass → body movement/gravity, vocals → color warmth, other → flutter/turbulence. Remove the `sub_bass + low_bass` / `high_mid + high_freq` workaround.
-
-**Done when:**
-- Murmuration responds to individual stems, not frequency band proxies.
-- Visual behavior is noticeably different between vocal-heavy and instrumental tracks.
-- JSON sidecar updated with `stem_affinity` declaration.
-- Manual verification with 3+ genre-diverse tracks.
-
-**Verify:** Build + visual inspection. No new tests required (shader behavior).
-
----
 
 ## Phase 4 — Orchestrator
 
