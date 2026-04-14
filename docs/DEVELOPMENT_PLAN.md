@@ -1563,6 +1563,22 @@ After:  STFT(GPU) → [Float] → memcpy(MTLBuffer) → predict(MPSGraph/GPU/F32
 - `gb_rep()` helper uses `round()` not `fmod()` for correct negative-coordinate domain repetition (same lesson as `ks_rep` in KineticSculpture).
 - No new Swift files, no new tests (preset compiles dynamically via `PresetLoader` at runtime).
 
+**Post-implementation debugging (three live test iterations):**
+
+*Bug #1 — Ceiling SDF sign error (black ceiling):* `sdPlane(p, float3(0,-1,0), -5.2f)` evaluates to `-p.y - 5.2`, which is negative everywhere in the corridor (y is 0–5.2 range). The marcher sees negative distance = inside the ceiling slab from the first step, producing a false hit and wrong normal. Fixed: changed to `+5.2f`.
+
+*Bug #2 — Off-centre camera (geometry on left third of screen):* Initial camera at [1.2, 1.6, -7.0] combined with the right vector produced by `cross(fwd, worldUp)` ≈ (-1,0,0) pushed all visible geometry to the left. Fixed: centred camera to [0.0, 1.6, -6.0], target [0.0, 1.4, 20.0].
+
+*Bug #3 — Missing side walls (sky visible between pillar columns):* The concrete SDF only had floor, ceiling, pillars, and beams. Rays aimed between pillar columns escaped the corridor and hit the sky gradient. Fixed: added `float dSideWalls = GB_CORRIDOR_X - abs(p.x)` to `gb_sdConcrete` and included it in the final `min()`.
+
+*Bug #4 — All-black output after centering + side walls (two root causes):*
+
+1. **IBLManager never instantiated.** `VisualizerEngine.init()` created `TextureManager` on a background queue (Increment 3.13) but had no corresponding `IBLManager` creation block — the Increment 3.16 implementation note described the pattern but never produced the actual init-site code. Unbound Metal textures return zero on Apple Silicon. Near-mirror glass (metallic=0.92) relies entirely on IBL for specular appearance; without it, glass ambient = albedo × 0.04 × ao ≈ (0.022, 0.033, 0.038) — black after ACES tone mapping. Concrete ambient similarly fell to ~4% albedo. Fix: added `DispatchQueue.global(qos: .userInitiated).async { if let ibl = try? IBLManager(...) { pipe.setIBLManager(ibl) } }` in `VisualizerEngine.init()`.
+
+2. **Scene light outside the corridor walls.** `scene_lights[0].position` was `[4.0, 15.0, 2.0]`. The corridor walls are at x = ±2.5, so a light at x=4.0 is outside the geometry on the right side. NdotL < 0 for: the right wall (outward normal (-1,0,0) — light is on the same side), the ceiling (light above ceiling level y=15 > y=5.2 → wrong side of ceiling plane), pillar inner faces, and beam undersides. Combined with missing IBL, virtually every surface received zero light. Fix: moved light to `[0.0, 4.5, 2.0]` — centred in the corridor, ~0.7 units below the ceiling, illuminating all primary surfaces with positive NdotL.
+
+**Lesson for future ray march presets:** (1) Always wire `IBLManager` at engine init — materials with metallic > 0.5 will appear near-black without it, and the failure is silent. (2) Verify scene light is inside (or above an open) geometry before testing — a light a few units outside a closed corridor completely blacks out the interior. (3) `sdPlane(p, normal, offset)` = `dot(p, normal) + offset`; the offset sign must give positive distance on the interior side.
+
 **Verified:** Build succeeded. 280 swift-testing + 91 XCTest pass. 0 SwiftLint violations. Pre-existing `test_fullScreenNoise_1080p_under2ms` flake (2.08 ms vs 2.0 ms threshold, system-load-dependent) unrelated to this increment.
 
 **Enables:** Demonstrates full ray_march → ssgi → post_process pipeline with a concrete creative concept. Reference architecture for future corridor/architectural presets.
