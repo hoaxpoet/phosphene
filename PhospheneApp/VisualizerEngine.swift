@@ -230,6 +230,18 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
             }
         }
 
+        // Generate IBL environment textures (irradiance cubemap, prefiltered env, BRDF LUT)
+        // in the background — ray march presets fall back to minimum ambient without them,
+        // but glass and polished-metal materials require IBL for correct specular appearance.
+        // setIBLManager is thread-safe.
+        DispatchQueue.global(qos: .userInitiated).async {
+            if let ibl = try? IBLManager(context: ctx, shaderLibrary: lib) {
+                pipe.setIBLManager(ibl)
+            } else {
+                logger.warning("IBLManager init failed — IBL textures unavailable for ray march presets")
+            }
+        }
+
         loader.onPresetsReloaded = { [weak self] in
             guard let self, let current = self.presetLoader.currentPreset else { return }
             self.applyPreset(current)

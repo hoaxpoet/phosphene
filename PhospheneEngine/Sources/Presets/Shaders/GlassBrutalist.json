@@ -14,7 +14,7 @@
   },
   "scene_lights": [
     {
-      "position": [4.0, 15.0, 2.0],
+      "position": [0.0, 4.5, 2.0],
       "color": [1.0, 0.95, 0.88],
       "intensity": 5.5
     }
