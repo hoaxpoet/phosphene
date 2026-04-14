@@ -3,6 +3,11 @@
 // Looking up into the sky where birds fly. Rich color — peach, amber,
 // rose, lavender, deep blue. Clouds drift slowly. The sky is the canvas;
 // the birds are dark calligraphy written on it.
+//
+// Vocals routing (Increment 3.5.2):
+//   vocals_energy subtly shifts the sky toward warmer amber/rose hues.
+//   Primary vocal response is density compression in the particle kernel.
+//   This is a secondary, optional coloration effect (~10% shift max).
 
 float sky_hash(float2 p) {
     return fract(sin(dot(p, float2(127.1, 311.7))) * 43758.5453);
@@ -36,11 +41,18 @@ fragment float4 starburst_fragment(
     VertexOut in [[stage_in]],
     constant FeatureVector& features [[buffer(0)]],
     constant float* fftMagnitudes [[buffer(1)]],
-    constant float* waveformData [[buffer(2)]]
+    constant float* waveformData [[buffer(2)]],
+    constant StemFeatures& stems [[buffer(3)]]
 ) {
     float2 uv = in.uv;
     float t = features.time;
     float warmth = features.spectral_centroid;
+
+    // Vocal presence shifts the sky subtly warmer (amber/rose toward the horizon).
+    // This is intentionally gentle — max 10% shift — so it doesn't dominate
+    // the spectral centroid-driven warmth. Smoothed to avoid abrupt changes.
+    float vocalWarmth = stems.vocals_energy * 0.10;
+    float totalWarmth = clamp(warmth + vocalWarmth, 0.0, 1.0);
 
     // ── SUNSET/SUNRISE SKY GRADIENT ──────────────────────────────
     // Looking upward. Screen bottom = horizon (brightest, warmest).
@@ -53,28 +65,28 @@ fragment float4 starburst_fragment(
     float3 zenith = mix(
         float3(0.08, 0.06, 0.22),   // Cool: deep indigo
         float3(0.12, 0.08, 0.18),   // Warm: softer violet
-        warmth
+        totalWarmth
     );
 
     // Mid-sky: lavender to rose.
     float3 midSky = mix(
         float3(0.20, 0.15, 0.35),   // Cool: lavender
         float3(0.35, 0.18, 0.25),   // Warm: dusty rose
-        warmth
+        totalWarmth
     );
 
     // Low sky: pink to peach.
     float3 lowSky = mix(
         float3(0.40, 0.22, 0.35),   // Cool: mauve-pink
         float3(0.55, 0.30, 0.18),   // Warm: peach-amber
-        warmth
+        totalWarmth
     );
 
     // Horizon: brightest — amber to gold.
     float3 horizon = mix(
         float3(0.50, 0.30, 0.35),   // Cool: warm pink
         float3(0.70, 0.40, 0.15),   // Warm: golden amber
-        warmth
+        totalWarmth
     );
 
     // Multi-stop gradient.
@@ -105,7 +117,7 @@ fragment float4 starburst_fragment(
     float3 cloudColor = mix(
         float3(0.45, 0.35, 0.50),   // Cool: pinkish grey
         float3(0.65, 0.45, 0.25),   // Warm: lit amber
-        warmth
+        totalWarmth
     );
     // Cloud edges are brighter (silver lining effect).
     float cloudEdge = smoothstep(0.02, 0.08, cloudMask) * (1.0 - smoothstep(0.15, 0.30, cloudMask));
@@ -116,7 +128,7 @@ fragment float4 starburst_fragment(
     // ── SUBTLE GLOW near horizon ─────────────────────────────────
     // A warm band of light where the sun would be (below the horizon).
     float horizonGlow = exp(-(1.0 - y) * (1.0 - y) / 0.02) * 0.15;
-    float3 glowColor = mix(float3(0.5, 0.3, 0.3), float3(0.7, 0.5, 0.2), warmth);
+    float3 glowColor = mix(float3(0.5, 0.3, 0.3), float3(0.7, 0.5, 0.2), totalWarmth);
     sky += glowColor * horizonGlow;
 
     sky = min(sky, float3(1.0));

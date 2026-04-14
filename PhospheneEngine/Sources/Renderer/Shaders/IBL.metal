@@ -27,20 +27,44 @@ using namespace metal;
 
 // MARK: - Source Environment
 
-/// Procedural sky radiance for a given world-space direction.
-/// Matches the rm_skyColor gradient used in RayMarch.metal for visual consistency.
+/// Procedural environment radiance for a given world-space direction.
+///
+/// Configured as a warm concrete-corridor interior — appropriate for enclosed
+/// architectural presets (GlassBrutalist).  The blue-sky gradient that was here
+/// previously caused all surfaces to appear sky-blue regardless of geometry.
+///
+/// Three zones by elevation:
+///   up > 0.5  — warm overhead zone (corridor ceiling / light source)
+///   up ∈ [-0.15, 0.5] — neutral concrete-grey walls
+///   up < -0.15 — dark floor zone
+///
+/// NOTE: This is a global function shared by all ray march presets.  When an
+/// outdoor preset is added, per-preset IBL support should be introduced so each
+/// preset can declare its own environment type.  For now GlassBrutalist is the
+/// only ray march preset, so the interior environment is correct.
 static inline float3 ibl_proc_env(float3 dir) {
-    float t = 0.5 * (dir.y + 1.0);
-    // Below horizon: dark earth/ground
-    if (dir.y < 0.0) {
-        float fade = 1.0 + dir.y;                      // 1 at horizon → 0 at nadir
-        float3 ground = float3(0.22, 0.18, 0.12);
-        float3 horizon = float3(0.85, 0.90, 1.0);
-        return mix(ground, horizon, fade * fade);
+    float up = dir.y;
+
+    if (up > 0.5f) {
+        // Upper zone: warm overhead corridor light bleeding into ceiling.
+        float t = (up - 0.5f) / 0.5f;
+        float3 ceilAmb   = float3(0.80f, 0.76f, 0.68f);   // warm grey upper wall
+        float3 ceilLight = float3(1.20f, 1.10f, 0.90f);   // warm white overhead
+        return mix(ceilAmb, ceilLight, t * t);
+    } else if (up > -0.15f) {
+        // Mid zone: neutral concrete walls (horizontal directions included here,
+        // which is what glass panels reflect when facing the camera).
+        float t = (up + 0.15f) / 0.65f;                   // 0 at bottom, 1 at top
+        float3 wallLow  = float3(0.25f, 0.23f, 0.20f);    // lower wall (darker)
+        float3 wallHigh = float3(0.45f, 0.43f, 0.40f);    // upper wall (lighter)
+        return mix(wallLow, wallHigh, t);
+    } else {
+        // Lower zone: dark concrete floor.
+        float t = clamp((-0.15f - up) / 0.85f, 0.0f, 1.0f);
+        float3 wallLow = float3(0.25f, 0.23f, 0.20f);
+        float3 floor_  = float3(0.12f, 0.11f, 0.10f);
+        return mix(wallLow, floor_, t * t);
     }
-    float3 horizon = float3(0.85, 0.90, 1.0);
-    float3 zenith  = float3(0.10, 0.30, 0.80);
-    return mix(horizon, zenith, t);
 }
 
 // MARK: - Cubemap UV ↔ Direction
