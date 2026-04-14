@@ -10,7 +10,7 @@
   "scene_camera": {
     "position": [0.0, 1.6, -6.0],
     "target": [0.0, 1.4, 20.0],
-    "fov": 0.8
+    "fov": 65
   },
   "scene_lights": [
     {

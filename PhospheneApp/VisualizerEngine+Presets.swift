@@ -152,9 +152,17 @@ extension VisualizerEngine {
             let fwd = simd_normalize(cam.target - cam.position)
             let worldUp = SIMD3<Float>(0, 1, 0)
             // Guard against degenerate case where forward is parallel to world-up.
-            let right = simd_normalize(simd_cross(fwd, worldUp))
-            let up = simd_cross(right, fwd)
-            uniforms.cameraOriginAndFov = SIMD4(cam.position.x, cam.position.y, cam.position.z, cam.fov)
+            // cross(worldUp, fwd) → right (+X for a forward-looking camera).
+            // cross(fwd, worldUp) is the incorrect form — it gives -X (left), mirroring the image.
+            let right = simd_normalize(simd_cross(worldUp, fwd))
+            // up = cross(fwd, right) is orthogonal to both and points +Y for a level camera.
+            // cross(right, fwd) would give -Y (upside-down).
+            let up = simd_cross(fwd, right)
+            // JSON fov field is in degrees; the G-buffer shader computes tan(fov * 0.5) directly
+            // and expects radians. Storing the raw degree value produces tan(32.5 rad) ≈ 1.84 for
+            // a 65° fov, which is a ~123° frustum half-angle — making most of the frame miss geometry.
+            let fovRadians = cam.fov * Float.pi / 180.0
+            uniforms.cameraOriginAndFov = SIMD4(cam.position.x, cam.position.y, cam.position.z, fovRadians)
             uniforms.cameraForward = SIMD4(fwd.x, fwd.y, fwd.z, 0)
             uniforms.cameraRight = SIMD4(right.x, right.y, right.z, 0)
             uniforms.cameraUp = SIMD4(up.x, up.y, up.z, 0)
