@@ -420,11 +420,10 @@ No CoreML dependency. All ML uses MPSGraph (GPU) or Accelerate (CPU).
 
 ## Current Status
 
-**Phase 3 substantially complete. Phase 2.5 (session preparation) substantially complete.** The next ordered increments are:
+**Phase 3 substantially complete. Phase 2.5 (session preparation) complete.** The next ordered increments are:
 
-1. **Increment 2.5.4 — Session State Machine & Track Change Behavior** — `SessionManager` formalizes lifecycle.
-2. **Increment 3.5.2 — Murmuration Stem Routing Revision** — replace 6-band workaround with real stem routing.
-3. **Phase 4 — Orchestrator** — scored preset selection, transition policy, session planning, golden-session tests.
+1. **Increment 3.5.2 — Murmuration Stem Routing Revision** — replace 6-band workaround with real stem routing.
+2. **Phase 4 — Orchestrator** — scored preset selection, transition policy, session planning, golden-session tests.
 
 See `docs/ENGINEERING_PLAN.md` for the full forward plan with done-when criteria and verification commands.
 
