@@ -1,0 +1,156 @@
+# Phosphene — Architecture
+
+## Overview
+
+Phosphene is a native Swift/Metal macOS application with a modular engine architecture. Its major subsystems are:
+
+- Audio capture and routing
+- Buffering and FFT
+- MIR / DSP analysis
+- ML-powered stem separation
+- Metadata and playlist preparation
+- Renderer and preset system
+- Orchestrator and session planning (in development)
+- App shell and UI
+
+## Architectural Principles
+
+**Native macOS stack only.** Swift, Metal, Accelerate, Core Audio, and Apple system frameworks. No third-party audio capture, no virtual audio drivers, no cross-platform abstractions.
+
+**Local-only processing.** Audio analysis, stem separation, preference learning, and all adaptation remain on-device. No cloud, no telemetry.
+
+**Protocol-oriented design.** Cross-module dependencies are injected via protocols (`AudioCapturing`, `AudioBuffering`, `FFTProcessing`, `Rendering`, `MetadataProviding`, `MetadataFetching`, `StemSeparating`, `MoodClassifying`, `PlaylistConnecting`, `PreviewResolving`, `PreviewDownloading`). All tests use doubles from `Tests/TestDoubles/`.
+
+**UMA-first memory model.** All shared buffers between CPU, GPU, and ML use `MTLResourceOptions.storageModeShared` (zero-copy). Never `.storageModePrivate` or `.storageModeManaged` unless GPU-exclusive.
+
+**Non-blocking render path.** Rendering must never wait on network calls, metadata fetches, or ML inference.
+
+## System Diagram
+
+```
+Playlist / streaming source
+→ SessionManager (idle → connecting → preparing → ready → playing → ended)
+  → PlaylistConnector (AppleScript / Spotify Web API)
+  → PreviewResolver (iTunes Search API) → PreviewDownloader (AVAudioFile decode)
+  → SessionPreparer (stem separation + MIR per track)
+  → StemCache + TrackProfile → Session plan
+
+Live audio capture (Core Audio tap)
+→ AudioInputRouter → AudioBuffer (UMARingBuffer)
+→ LookaheadBuffer (2.5s analysis/render split)
+→ FFTProcessor (vDSP 1024-point → 512 bins)
+→ MIRPipeline (BandEnergy + BeatDetector + Chroma + Spectral + Structural)
+→ StemSeparator (MPSGraph, background 5s cadence)
+→ AnalyzedFrame (FeatureVector + StemFeatures + EmotionalState)
+
+→ Orchestrator (session mode or ad-hoc mode)
+→ RenderPipeline (Metal)
+→ Preset output
+```
+
+## Audio Capture
+
+Phosphene uses a provider-oriented capture architecture. The current default provider is Core Audio taps via `AudioHardwareCreateProcessTap` (macOS 14.2+).
+
+Supported capture modes (abstracted by `AudioInputRouter`):
+
+- `.systemAudio` — system-wide tap (default)
+- `.application(bundleIdentifier:)` — per-app tap
+- `.localFile(URL)` — file playback for testing/offline use
+
+Operational requirements:
+
+- Screen capture permission is required for non-zero audio delivery. `AudioHardwareCreateProcessTap` succeeds without permission but delivers silence.
+- Capture must not allocate or block on the real-time audio thread.
+- DRM silence detection via `SilenceDetector` monitors for sustained zero-energy frames and transitions to ambient visual mode.
+
+## Audio Analysis Hierarchy
+
+This ordering is the most important design rule in the project. Continuous-energy-dominant designs feel locked to the music. Beat-dominant designs feel out of sync.
+
+1. **Continuous energy bands** (primary visual driver) — bass/mid/treble (3-band) and 6-band equivalents. Zero detection delay.
+2. **Spectrum and waveform buffers** (richest data) — 512 FFT magnitude bins + 1024 waveform samples sent to GPU as buffer data.
+3. **Spectral features** (derived characteristics) — centroid, flux, rolloff, MFCCs, chroma.
+4. **Beat onset pulses** (accent only, never primary) — discrete accent events with ±80ms jitter. Feedback amplifies this jitter.
+5. **Stems** — ML-separated vocals/drums/bass/other. Pre-analyzed from preview clips (available from first frame in session mode). Replaced by time-aligned live stems after ~10s.
+
+Rule: `base_zoom` and `base_rot` (continuous energy) should be 2–4× larger than `beat_zoom` and `beat_rot` (onset pulses).
+
+## Session Lifecycle
+
+`SessionManager` (`@MainActor ObservableObject`, `Session` module) owns the session lifecycle and coordinates `PlaylistConnector`, `SessionPreparer`, and `StemCache`.
+
+**States:** `idle` → `connecting` → `preparing` → `ready` → `playing` → `ended`
+
+**Degradation:** if the playlist connection fails, the manager transitions directly to `ready` with an empty plan (live-only reactive mode). If individual track preparation fails, `ready` is reached with a partial plan — uncached tracks fall back to real-time stem separation.
+
+**Ad-hoc mode:** `startAdHocSession()` transitions directly to `playing`, skipping playlist preparation entirely.
+
+## Session Preparation
+
+When a playlist is available, `SessionManager.startSession(source:)` drives:
+
+1. Read the ordered track list via `PlaylistConnector`.
+2. Resolve preview clip URLs via iTunes Search API (`PreviewResolver`).
+3. Download and decode preview clips (AAC/MP3 → PCM via `AVAudioFile`, `PreviewDownloader`).
+4. Run stem separation (MPSGraph Open-Unmix HQ, ~142ms per track).
+5. Run MIR pipeline (BPM, key, mood, spectral features, structural analysis).
+6. Cache all results in `StemCache` keyed by `TrackIdentity`.
+7. Orchestrator plans the visual session using per-track `TrackProfile`s.
+
+On track change, `VisualizerEngine.resetStemPipeline(for:)` loads pre-separated stems from `StemCache` immediately — no warmup gap. `StemSampleBuffer` keeps accumulating for live refinement, which crossfades in after ~10s.
+
+## Renderer
+
+The renderer manages the Metal pipeline: device, command queue, triple-buffered semaphore, shader compilation, and frame scheduling. It supports multiple render paths dispatched via a data-driven render graph.
+
+**Render passes** (`RenderPass` enum): `direct`, `feedback`, `particles`, `mesh_shader`, `post_process`, `ray_march`, `icb`, `ssgi`. Each preset declares its required passes in JSON metadata.
+
+**Render path priority:** mesh → postProcess → ICB → rayMarch → feedback → direct.
+
+**Key subsystems:**
+
+- `PostProcessChain` — HDR bloom + ACES tone mapping.
+- `RayMarchPipeline` — Deferred 3-pass: G-buffer → PBR lighting → composite.
+- `IBLManager` — Image-based lighting (irradiance + prefiltered environment + BRDF LUT).
+- `ProceduralGeometry` — GPU compute particle system.
+- `MeshGenerator` — Hardware mesh shaders (M3+) with vertex fallback (M1/M2).
+- `TextureManager` — 5 pre-computed noise textures generated via Metal compute at init.
+
+**Binding layout:**
+
+- Textures: 0=feedback read, 1=feedback write, 2–3=reserved, 4=noiseLQ, 5=noiseHQ, 6=noiseVolume, 7=noiseFBM, 8=blueNoise, 9=IBL irradiance, 10=IBL prefiltered, 11=BRDF LUT.
+- Buffers: 0=FFT, 1=waveform, 2=FeatureVector, 3=StemFeatures, 4–7=future.
+
+## Presets
+
+Each preset consists of one or more Metal shaders plus a JSON sidecar declaring visual behavior, render passes, audio routing, and orchestration metadata. Presets are discovered automatically at runtime and compiled with a shared preamble (FeatureVector struct, ShaderUtilities library, noise samplers).
+
+**Two architectural patterns coexist:**
+
+- Milkdrop-style feedback loop: read previous frame → warp/decay → composite new elements.
+- Photorealistic ray march: SDF scene → G-buffer → PBR lighting → IBL → post-process.
+
+## Orchestrator
+
+The Orchestrator is the decision layer responsible for selecting visualizers, sequencing transitions, adapting to live analysis, and balancing novelty, continuity, and performance cost.
+
+**Two modes:**
+
+- **Session mode** (playlist connected): Plans the full visual arc before playback using pre-analyzed TrackProfile data. Adapts in real time as live MIR reveals structural details.
+- **Ad-hoc mode** (no playlist): Reactive decision-making under uncertainty. Heuristic preset selection based on live MIR data as it accumulates.
+
+The Orchestrator is the product's key differentiator and is being implemented as an explicit scoring and policy system with testable golden-session fixtures.
+
+## Support Tiers
+
+**Tier 1 — M1 / M2:** Baseline feature set. Mesh shaders use vertex fallback. Stricter budgets for geometry, post-process, and advanced shaders.
+
+**Tier 2 — M3 / M4:** Enhanced feature set. Hardware mesh shaders enabled. Mesh/ray-heavy presets allowed. Higher complexity ceilings.
+
+## ML Inference
+
+No CoreML dependency. All ML runs on MPSGraph (GPU) or Accelerate (CPU).
+
+- **Stem separator** (MPSGraph): Open-Unmix HQ, Float32 throughout, 142ms warm predict for 10s audio. STFT/iSTFT via Accelerate/vDSP.
+- **Mood classifier** (Accelerate): 4-layer MLP (10→64→32→16→2) via `vDSP_mmul`. 3,346 hardcoded Float32 params from DEAM training.
