@@ -152,7 +152,6 @@ float sceneSDF(float3 p,
 
     float dConcrete = gb_sdConcrete(q, yScale, beatSq);
     float dGlass    = gb_sdGlass(q, glassBreath);
-
     return min(dConcrete, dGlass);
 }
 

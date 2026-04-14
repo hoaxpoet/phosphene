@@ -103,7 +103,7 @@ extension RenderPipeline {
         }
 
         // Compute pass: update particles before any render pass.
-        particles?.update(features: features, commandBuffer: commandBuffer)
+        particles?.update(features: features, stemFeatures: stemFeatures, commandBuffer: commandBuffer)
 
         // Walk the passes array — execute the first pass with available resources.
         for pass in passes {

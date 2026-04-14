@@ -12,6 +12,9 @@
 
 import Metal
 import Shared
+import os.log
+
+private let passLogger = Logger(subsystem: "com.phosphene.renderer", category: "GBufferPass")
 
 // MARK: - G-buffer Pass
 
@@ -30,7 +33,10 @@ extension RayMarchPipeline {
         stemFeatures: StemFeatures,
         noiseTextures: TextureManager?
     ) {
-        guard let g0 = gbuffer0, let g1 = gbuffer1, let g2 = gbuffer2 else { return }
+        guard let g0 = gbuffer0, let g1 = gbuffer1, let g2 = gbuffer2 else {
+            passLogger.error("runGBufferPass: G-buffer textures nil — skipping")
+            return
+        }
 
         let desc = MTLRenderPassDescriptor()
         desc.colorAttachments[0].texture     = g0
@@ -48,7 +54,10 @@ extension RayMarchPipeline {
         desc.colorAttachments[2].clearColor  = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
         desc.colorAttachments[2].storeAction = .store
 
-        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: desc) else { return }
+        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: desc) else {
+            passLogger.error("runGBufferPass: makeRenderCommandEncoder returned nil — pipeline/attachment format mismatch?")
+            return
+        }
         encoder.setRenderPipelineState(gbufferPipelineState)
         encoder.setFragmentBytes(&features, length: MemoryLayout<FeatureVector>.stride, index: 0)
         encoder.setFragmentBuffer(fftBuffer, offset: 0, index: 1)
