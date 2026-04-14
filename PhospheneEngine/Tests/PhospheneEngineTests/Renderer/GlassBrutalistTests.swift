@@ -167,10 +167,10 @@ private extension GlassBrutalistTests {
         s.cameraForward             = SIMD4(fwd.x,   fwd.y,   fwd.z,   0)
         s.cameraRight               = SIMD4(right.x, right.y, right.z, 0)
         s.cameraUp                  = SIMD4(up.x,    up.y,    up.z,    0)
-        s.lightPositionAndIntensity = SIMD4(0, 4.5, 2, 5.5)
+        s.lightPositionAndIntensity = SIMD4(0, 3.0, -9, 8.0)
         s.lightColor                = SIMD4(1, 0.95, 0.88, 0)
         s.sceneParamsA              = SIMD4(0, Float(width) / Float(height), 0.1, 30)
-        s.sceneParamsB              = SIMD4(25, 30, 0.012, 0.05)
+        s.sceneParamsB              = SIMD4(25, 30, 0.012, 0.10)
         pipeline.sceneUniforms = s
     }
 
