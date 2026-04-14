@@ -140,6 +140,13 @@ extension VisualizerEngine {
     func makeSceneUniforms(from desc: PresetDescriptor) -> SceneUniforms {
         var uniforms = SceneUniforms()
 
+        // sceneParamsA: x=audioTime (overwritten per-frame), y=aspectRatio (overwritten per-frame),
+        // z=nearPlane, w=farPlane.  SwiftUI zero-initialises SceneUniforms, so nearPlane and
+        // farPlane must be set here — drawWithRayMarch only updates x and y each frame.
+        // A farPlane of 0 causes the G-buffer ray march loop to never execute (t < 0 is always
+        // false), producing an all-sky frame regardless of scene geometry.
+        uniforms.sceneParamsA = SIMD4(0, 16.0 / 9.0, 0.1, 30.0)
+
         // Camera — compute orthonormal basis from position and target.
         if let cam = desc.sceneCamera {
             let fwd = simd_normalize(cam.target - cam.position)
