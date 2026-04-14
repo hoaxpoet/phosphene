@@ -73,6 +73,10 @@ struct ContentView: View {
             engine.toggleRecording()
             return .handled
         }
+        .onKeyPress("g") {
+            engine.debugGBufferMode.toggle()
+            return .handled
+        }
     }
 }
 

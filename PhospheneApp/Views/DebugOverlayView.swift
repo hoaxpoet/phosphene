@@ -88,6 +88,19 @@ struct DebugOverlayView: View {
             label("onsets/s", "\(diag.onsetsPerSec)")
             label("frames", "\(diag.callbackCount)")
 
+            if engine.debugGBufferMode {
+                Divider().background(.white.opacity(0.3))
+                Text("■ G-BUFFER DEBUG (G to exit)")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundColor(.yellow)
+                Text("TL=hit/miss  TR=SDF sign")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundColor(.yellow.opacity(0.7))
+                Text("BL=steps     BR=depth")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundColor(.yellow.opacity(0.7))
+            }
+
             if engine.mirPipelineIsRecording {
                 Divider().background(.white.opacity(0.3))
                 Text("● REC (R to stop)")

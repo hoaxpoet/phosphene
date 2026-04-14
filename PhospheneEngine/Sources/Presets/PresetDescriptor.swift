@@ -156,6 +156,11 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
     /// Stored in `sceneParamsB.z`.
     public let sceneAmbient: Float
 
+    /// Ray march far plane distance in world units. Rays that travel this far without
+    /// hitting geometry are treated as sky misses. Default 30. Increase for deep corridors
+    /// or open scenes; decrease for tight interior scenes to recover march step budget.
+    public let sceneFarPlane: Float
+
     // MARK: - Shader Function Names
 
     /// Fragment function name in the .metal file. Defaults to "preset_fragment".
@@ -193,6 +198,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         case sceneLights = "scene_lights"
         case sceneFog = "scene_fog"
         case sceneAmbient = "scene_ambient"
+        case sceneFarPlane = "scene_far_plane"
         case fragmentFunction = "fragment_function"
         case vertexFunction = "vertex_function"
         case shaderFileName = "shader_file"
@@ -229,6 +235,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         sceneLights      = try container.decodeIfPresent([SceneLight].self, forKey: .sceneLights) ?? []
         sceneFog         = try container.decodeIfPresent(Float.self, forKey: .sceneFog) ?? 0
         sceneAmbient     = try container.decodeIfPresent(Float.self, forKey: .sceneAmbient) ?? 0.1
+        sceneFarPlane    = try container.decodeIfPresent(Float.self, forKey: .sceneFarPlane) ?? 30.0
         fragmentFunction = try container.decodeIfPresent(String.self, forKey: .fragmentFunction) ?? "preset_fragment"
         vertexFunction   = try container.decodeIfPresent(String.self, forKey: .vertexFunction) ?? "fullscreen_vertex"
         shaderFileName   = try container.decodeIfPresent(String.self, forKey: .shaderFileName) ?? ""

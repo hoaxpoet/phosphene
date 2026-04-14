@@ -79,6 +79,25 @@ public final class RayMarchPipeline: @unchecked Sendable {
     /// Defaults to `false`.
     public var ssgiEnabled: Bool = false
 
+    // MARK: - G-buffer Debug Mode
+
+    /// When `true`, `render(...)` skips the lighting pass, SSGI, and ACES tone-mapping
+    /// and copies `gbuffer2` directly to the output texture.
+    ///
+    /// This makes the `#ifdef GBUFFER_DEBUG` 4-quadrant visualization readable on screen:
+    ///   TL = green (hit) / red (miss)
+    ///   TR = SDF sign at ray start (green = outside, red = inside)
+    ///   BL = step count greyscale (black = few, white = 128 steps)
+    ///   BR = hit depth greyscale / red on miss
+    ///
+    /// Toggle with the 'G' key in ContentView via `VisualizerEngine.debugGBufferMode`.
+    public var debugGBufferMode: Bool = false
+
+    /// Direct-copy pipeline for the G-buffer debug pass.
+    /// Reads `gbuffer2` at texture(0) and writes it unmodified to the drawable.
+    /// Compiled from `raymarch_gbuffer_debug_fragment` in the Renderer library.
+    let gbufferDebugPipeline: MTLRenderPipelineState
+
     // MARK: - Sampler
 
     /// Bilinear, clamp-to-edge sampler shared across all passes.
@@ -127,6 +146,9 @@ public final class RayMarchPipeline: @unchecked Sendable {
         guard let compositeFn = shaderLibrary.function(named: "raymarch_composite_fragment") else {
             throw RayMarchPipelineError.functionNotFound("raymarch_composite_fragment")
         }
+        guard let debugFn = shaderLibrary.function(named: "raymarch_gbuffer_debug_fragment") else {
+            throw RayMarchPipelineError.functionNotFound("raymarch_gbuffer_debug_fragment")
+        }
 
         // Lighting pass — outputs linear HDR to .rgba16Float.
         let lightDesc = MTLRenderPipelineDescriptor()
@@ -162,6 +184,14 @@ public final class RayMarchPipeline: @unchecked Sendable {
         compositeDesc.fragmentFunction = compositeFn
         compositeDesc.colorAttachments[0].pixelFormat = context.pixelFormat
         self.compositePipeline = try device.makeRenderPipelineState(descriptor: compositeDesc)
+
+        // G-buffer debug pass — copies gbuf2 (.rgba8Unorm) directly to the drawable.
+        // Bypasses lighting/SSGI/ACES so diagnostic colors are read unmodified.
+        let debugDesc = MTLRenderPipelineDescriptor()
+        debugDesc.vertexFunction = vertexFn
+        debugDesc.fragmentFunction = debugFn
+        debugDesc.colorAttachments[0].pixelFormat = context.pixelFormat
+        self.gbufferDebugPipeline = try device.makeRenderPipelineState(descriptor: debugDesc)
 
         // Bilinear, clamp-to-edge sampler.
         let samplerDesc = MTLSamplerDescriptor()
@@ -256,6 +286,14 @@ public final class RayMarchPipeline: @unchecked Sendable {
             stemFeatures: stemFeatures,
             noiseTextures: noiseTextures
         )
+
+        // G-buffer debug bypass: skip lighting/SSGI/ACES entirely.
+        // gbuf2 is written directly to the drawable so the 4-quadrant
+        // diagnostic colors are unmodified when they reach the screen.
+        if debugGBufferMode {
+            runGBufferDebugPass(commandBuffer: commandBuffer, outputTexture: outputTexture)
+            return
+        }
 
         runLightingPass(
             commandBuffer: commandBuffer,

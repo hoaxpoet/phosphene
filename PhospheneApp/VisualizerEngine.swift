@@ -76,6 +76,19 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Current audio signal state — `.silent` indicates DRM-triggered tap silencing.
     @Published var audioSignalState: AudioSignalState = .active
 
+    /// When true, the ray march G-buffer debug visualization is active.
+    /// gbuf2 is copied directly to the drawable — bypassing lighting/SSGI/ACES —
+    /// so the raw 4-quadrant diagnostic colors are readable on screen.
+    /// Toggle with 'G' key. Only affects ray march presets.
+    @Published var debugGBufferMode: Bool = false {
+        didSet { currentRayMarchPipeline?.debugGBufferMode = debugGBufferMode }
+    }
+
+    /// Reference to the currently-active RayMarchPipeline (if any).
+    /// Kept so `debugGBufferMode.didSet` can push changes without a pipeline lookup.
+    /// Set in `applyPreset` when a ray march preset is activated; cleared otherwise.
+    var currentRayMarchPipeline: RayMarchPipeline?
+
     // MARK: - Pipeline References
 
     /// Metal context shared across the pipeline.
