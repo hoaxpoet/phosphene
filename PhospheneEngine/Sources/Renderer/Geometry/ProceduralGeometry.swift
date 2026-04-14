@@ -234,8 +234,14 @@ public final class ProceduralGeometry: @unchecked Sendable {
     ///
     /// - Parameters:
     ///   - features: Current audio feature vector.
+    ///   - stemFeatures: Per-stem audio features. All-zero during the first ~10s warmup
+    ///     window; the kernel detects this and falls back to full-mix FeatureVector routing.
     ///   - commandBuffer: Active command buffer to encode into.
-    public func update(features: FeatureVector, commandBuffer: MTLCommandBuffer) {
+    public func update(
+        features: FeatureVector,
+        stemFeatures: StemFeatures = .zero,
+        commandBuffer: MTLCommandBuffer
+    ) {
         guard let encoder = commandBuffer.makeComputeCommandEncoder() else {
             logger.error("Failed to create compute command encoder")
             return
@@ -252,11 +258,13 @@ public final class ProceduralGeometry: @unchecked Sendable {
             _pad1: 0
         )
         var feat = features
+        var stems = stemFeatures
 
         encoder.setComputePipelineState(computePipelineState)
         encoder.setBuffer(particleBuffer, offset: 0, index: 0)
         encoder.setBytes(&feat, length: MemoryLayout<FeatureVector>.stride, index: 1)
         encoder.setBytes(&config, length: MemoryLayout<ParticleConfig>.stride, index: 2)
+        encoder.setBytes(&stems, length: MemoryLayout<StemFeatures>.stride, index: 3)
 
         // Dispatch one thread per particle.
         let threadgroupSize = min(computePipelineState.maxTotalThreadsPerThreadgroup, 256)
