@@ -1001,32 +1001,35 @@ echo "=== All checks passed ==="
 
 **Enables:** 2.5.4 (session state machine), Phase 4 Orchestrator session planning mode, Phase 3.5 preset work (presets can assume non-zero stems).
 
-### Increment 2.5.4: Session State Machine & Track Change Behavior
+### Increment 2.5.4: Session State Machine & Track Change Behavior ✅
 
-**Status:** Not started.
+**Status:** Complete.
 
 **Goal:** Formalize the session lifecycle and replace the hard-reset track-change behavior with cache-aware loading.
 
-**Files to create/edit:**
-- `Session/SessionManager.swift` (new) — Owns the session lifecycle state machine (`SessionState` enum). Coordinates `PlaylistConnector`, `SessionPreparer`, and `StemCache`. Exposes `@Published var state: SessionState` and `@Published var currentPlan: SessionPlan?`. Entry point: `startSession(source: PlaylistSource) async`.
-- `Shared/AudioFeatures.swift` — Add `SessionState` enum, `TrackIdentity`, `SessionPlan` types.
-- `PhospheneApp/VisualizerEngine.swift` — Integrate `SessionManager`. In session mode, load cached stems on track change instead of zeroing. In ad-hoc mode, preserve existing behavior.
-- `PhospheneApp/VisualizerEngine+Stems.swift` — Replace the track-change callback: check `stemCache.loadForPlayback(track:)` first. If cache hit, populate `latestStemFeatures` immediately. If cache miss (ad-hoc mode or failed preparation), fall back to the existing zero + wait-for-real-time behavior.
+**What shipped:**
+- `Session/SessionTypes.swift` — `SessionState` enum (idle/connecting/preparing/ready/playing/ended) and `SessionPlan` stub struct (holds `[TrackIdentity]`; Orchestrator expands in Phase 4).
+- `Session/SessionManager.swift` — `@MainActor ObservableObject` owning the lifecycle. `startSession(source:)` drives idle → connecting → preparing → ready, degrading gracefully on connector failure (→ ready with empty plan) or partial preparation failure (→ ready with partial plan). `startAdHocSession()` transitions directly to playing (reactive mode). `beginPlayback()` advances ready → playing. `endSession()` from any state → ended.
+- `PhospheneApp/VisualizerEngine.swift` — Added `sessionManager: SessionManager?` property. The app layer wires `sessionManager.cache` to `stemCache` after the session reaches `.ready`.
+- `PhospheneApp/VisualizerEngine+Stems.swift` — No changes required: cache-aware track-change loading was already implemented in `resetStemPipeline(for:)` during Increment 2.5.3.
 
-**Test requirements:**
-- `SessionManagerTests.swift` — 10 tests:
-  - `test_init_stateIsIdle()`
-  - `test_startSession_transitionsToConnecting()`
-  - `test_afterPlaylistRead_transitionsToPreparing()`
-  - `test_afterPreparation_transitionsToReady()`
-  - `test_playbackStarts_transitionsToPlaying()`
-  - `test_sessionEnds_transitionsToEnded()`
-  - `test_preparationFailure_transitionsToReady_withPartialData()`
-  - `test_adHocMode_skipsPreparation()`
-  - `test_trackChange_loadsFromCache()`
-  - `test_trackChange_cacheMiss_fallsBackToRealTime()`
+**Implementation notes:**
+- `SessionState`/`SessionPlan` placed in `Session/SessionTypes.swift` (not `Shared/`) because `Session` is the only module that references them and `Shared` cannot depend on `Session`.
+- `SessionManager` does not use Combine observation internally for wiring `stemCache` — the app layer sets it directly after observing the state transition to `.ready`.
+- `startSession()` is a no-op when called in a non-startable state (`.connecting`, `.preparing`, `.ready`, `.playing`) — prevents double-preparation if called twice.
 
-**Verification:** Start a session with a 5-track playlist. State transitions: idle → connecting → preparing → ready. On "Ready", play the playlist. On track change, cached stems load immediately (verify via debug log). All 10 tests pass.
+**Tests (10, all passing):**
+- `init_stateIsIdle()` ✓
+- `startSession_transitionsToConnecting()` — observes via `$state` publisher ✓
+- `afterPlaylistRead_transitionsToPreparing()` — checks ordering in observed state sequence ✓
+- `afterPreparation_transitionsToReady()` ✓
+- `playbackStarts_transitionsToPlaying()` ✓
+- `sessionEnds_transitionsToEnded()` ✓
+- `preparationFailure_transitionsToReady_withPartialData()` — resolver returns nil for all tracks ✓
+- `adHocMode_skipsPreparation()` ✓
+- `trackChange_loadsFromCache()` — verifies cache hit for every prepared track ✓
+- `trackChange_cacheMiss_fallsBackToRealTime()` — verifies nil for unprepared track ✓
+- `connectionFailure_transitionsToReady_withEmptyPlan()` — connector throws, plan is empty ✓ (bonus)
 
 **Depends on:** 2.5.3 (stem cache and session preparer).
 

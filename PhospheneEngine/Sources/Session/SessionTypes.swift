@@ -4,6 +4,40 @@
 
 import Foundation
 
+// MARK: - SessionState
+
+/// The lifecycle state of a Phosphene visualization session.
+public enum SessionState: String, Sendable, Equatable {
+    /// No session is active.
+    case idle
+    /// Connecting to the music source and reading the playlist.
+    case connecting
+    /// Pre-analyzing tracks (stem separation + MIR analysis).
+    case preparing
+    /// Analysis complete. Waiting for playback to begin.
+    case ready
+    /// Playback is active.
+    case playing
+    /// The session has ended.
+    case ended
+}
+
+// MARK: - SessionPlan
+
+/// A planned visual session for an ordered playlist.
+///
+/// Lightweight stub for Phase 4 Orchestrator expansion. The Orchestrator
+/// will add preset assignments and transition timing per track.
+public struct SessionPlan: Sendable {
+
+    /// Ordered list of tracks in the session.
+    public let tracks: [TrackIdentity]
+
+    public init(tracks: [TrackIdentity]) {
+        self.tracks = tracks
+    }
+}
+
 // MARK: - PreviewAudio
 
 /// Raw PCM audio decoded from a 30-second preview clip.
