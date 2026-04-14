@@ -113,6 +113,11 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
 
     // MARK: - Stem Pipeline
 
+    /// Session manager that coordinates playlist preparation. Set by the app
+    /// layer before playback; exposes `cache` which is wired to `stemCache`
+    /// when the session reaches `.ready`.
+    var sessionManager: SessionManager?
+
     /// Pre-analyzed stem data from session preparation. Set by the app layer
     /// after `SessionPreparer.prepare(tracks:)` completes. When non-nil, each
     /// track change loads cached stems instead of waiting for live separation.
