@@ -141,6 +141,45 @@ final class GlassBrutalistTests: XCTestCase {
             + "Check ibl_proc_env in IBL.metal — for horizontal directions (dir.y ≈ 0) it "
             + "should return a neutral grey wall colour, not the blue-sky gradient.")
     }
+
+    // MARK: - Test 4: Regression — zero farPlane causes all-sky G-buffer
+
+    /// Regression test for Increment 3.5.3: when SceneUniforms.sceneParamsA.w (farPlane) is
+    /// 0, the G-buffer ray march loop condition `t < farPlane` is `0 < 0` — false on the
+    /// first iteration — so no ray ever steps forward and every pixel returns sky depth (1.0).
+    ///
+    /// Root cause: `SceneUniforms()` zero-initialises all fields; `makeSceneUniforms(from:)` in
+    /// VisualizerEngine+Presets.swift only sets camera + light + fog, leaving sceneParamsA.z/.w
+    /// at 0. `drawWithRayMarch` only overwrites .x (audioTime) and .y (aspectRatio) each frame.
+    ///
+    /// Fix: `makeSceneUniforms` now explicitly sets `sceneParamsA = SIMD4(0, 16/9, 0.1, 30)`.
+    /// This test confirms that farPlane = 0 produces all-sky and will fail if the
+    /// G-buffer shader is changed to handle zero farPlane differently.
+    func test_gbuffer_allSkyWhenFarPlaneIsZero() throws {
+        let w = 64, h = 64
+        pipeline.allocateTextures(width: w, height: h)
+
+        // Apply correct camera/light but force farPlane = 0 (the bug state).
+        applyGlassBrutalistCamera(width: w, height: h)
+        var broken = pipeline.sceneUniforms
+        broken.sceneParamsA.w = 0   // farPlane = 0 → march loop never executes
+        pipeline.sceneUniforms = broken
+
+        let gbuf = try XCTUnwrap(gbufferPipeline)
+        try runRender(gbuf: gbuf, width: w, height: h)
+
+        let g0    = try XCTUnwrap(pipeline.gbuffer0)
+        let depth = readFloat16Pixels(g0, width: w, height: h, channelsPerPixel: 2)
+
+        var skyCount = 0
+        for i in stride(from: 0, to: w * h * 2, by: 2) where depth[i] >= 0.99 { skyCount += 1 }
+        let skyFraction = Double(skyCount) / Double(w * h)
+
+        XCTAssertEqual(skyFraction, 1.0, accuracy: 0.01,
+            "farPlane=0 must cause 100%% sky pixels (\(Int(skyFraction * 100))%% sky). "
+            + "If this fails, the march loop no longer exits immediately at farPlane=0. "
+            + "See VisualizerEngine+Presets.swift makeSceneUniforms for the fix.")
+    }
 }
 
 // MARK: - Private Helpers
@@ -170,7 +209,8 @@ private extension GlassBrutalistTests {
         s.lightPositionAndIntensity = SIMD4(0, 3.0, -9, 8.0)
         s.lightColor                = SIMD4(1, 0.95, 0.88, 0)
         s.sceneParamsA              = SIMD4(0, Float(width) / Float(height), 0.1, 30)
-        s.sceneParamsB              = SIMD4(25, 30, 0.012, 0.10)
+        // fog: makeSceneUniforms sets fogNear=0, fogFar=1/sceneFog=1/0.012≈83.3, ambient in .z.
+        s.sceneParamsB              = SIMD4(0, 83.3, 0.10, 0)
         pipeline.sceneUniforms = s
     }
 
