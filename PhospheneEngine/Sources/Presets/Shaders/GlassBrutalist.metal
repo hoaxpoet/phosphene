@@ -80,6 +80,12 @@ static inline float gb_sdConcrete(float3 p, float yScale, float beatSq) {
     // Ceiling slab: normal = -Y, plane equation dot(p,(0,-1,0)) + 5.2 = 0 → Y = 5.2.
     float dCeiling = sdPlane(p, float3(0.0f, -1.0f, 0.0f), 5.2f);
 
+    // Side walls: continuous concrete planes at x = ±GB_CORRIDOR_X.
+    // Positive inside the corridor, zero at the wall surface.
+    // Pillar columns project inward from these walls as engaged pilasters —
+    // visible where they protrude past the wall face between cross-beam bays.
+    float dSideWalls = GB_CORRIDOR_X - abs(p.x);
+
     // Pillar rows: abs-fold in X collapses both columns into one sdBox evaluation.
     // pP is in pillar-local space; centre at (GB_CORRIDOR_X, 0, zR).
     float zR   = gb_repZ(p.z, GB_CELL_Z);
@@ -94,7 +100,7 @@ static inline float gb_sdConcrete(float3 p, float yScale, float beatSq) {
     float3 bP  = float3(p.x, p.y - GB_BEAM_Y, zR);
     float dBeam = sdBox(bP, float3(GB_CORRIDOR_X + GB_PILLAR_HW, 0.35f, GB_PILLAR_HW));
 
-    return min(min(dFloor, dCeiling), min(dPillar, dBeam));
+    return min(min(min(dFloor, dCeiling), dSideWalls), min(dPillar, dBeam));
 }
 
 // ── Glass sub-SDF ────────────────────────────────────────────────────────────
