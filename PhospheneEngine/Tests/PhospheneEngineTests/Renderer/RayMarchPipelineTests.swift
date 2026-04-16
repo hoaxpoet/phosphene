@@ -24,15 +24,22 @@ final class RayMarchPipelineTests: XCTestCase {
     private var gbufferPipeline: MTLRenderPipelineState!
 
     // Minimal sphere SDF preset: unit sphere at origin, matte grey material.
+    // Signature matches the preamble forward-declarations in
+    // PresetLoader+Preamble.swift `rayMarchGBufferPreamble` — including
+    // StemFeatures as of the "expose stems in sceneSDF/sceneMaterial" change.
     private static let spherePresetSource = """
     float sceneSDF(float3 p,
                    constant FeatureVector& f,
-                   constant SceneUniforms& s) {
+                   constant SceneUniforms& s,
+                   constant StemFeatures& stems) {
         return length(p) - 1.0;
     }
 
     void sceneMaterial(float3 p,
                        int matID,
+                       constant FeatureVector& f,
+                       constant SceneUniforms& s,
+                       constant StemFeatures& stems,
                        thread float3& albedo,
                        thread float& roughness,
                        thread float& metallic) {

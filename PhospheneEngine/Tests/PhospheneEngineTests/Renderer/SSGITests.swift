@@ -28,12 +28,16 @@ final class SSGITests: XCTestCase {
     private static let spherePresetSource = """
     float sceneSDF(float3 p,
                    constant FeatureVector& f,
-                   constant SceneUniforms& s) {
+                   constant SceneUniforms& s,
+                   constant StemFeatures& stems) {
         return length(p) - 1.0;
     }
 
     void sceneMaterial(float3 p,
                        int matID,
+                       constant FeatureVector& f,
+                       constant SceneUniforms& s,
+                       constant StemFeatures& stems,
                        thread float3& albedo,
                        thread float& roughness,
                        thread float& metallic) {
@@ -48,12 +52,16 @@ final class SSGITests: XCTestCase {
     private static let brightSphereSource = """
     float sceneSDF(float3 p,
                    constant FeatureVector& f,
-                   constant SceneUniforms& s) {
+                   constant SceneUniforms& s,
+                   constant StemFeatures& stems) {
         return length(p) - 1.0;
     }
 
     void sceneMaterial(float3 p,
                        int matID,
+                       constant FeatureVector& f,
+                       constant SceneUniforms& s,
+                       constant StemFeatures& stems,
                        thread float3& albedo,
                        thread float& roughness,
                        thread float& metallic) {

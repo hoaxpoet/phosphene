@@ -3,7 +3,8 @@
 
 float sceneSDF(float3 p,
                constant FeatureVector& f,
-               constant SceneUniforms& s) {
+               constant SceneUniforms& s,
+               constant StemFeatures& stems) {
     // Sphere at (0, 1.5, 5), radius 1.5
     float dSphere = length(p - float3(0.0, 1.5, 5.0)) - 1.5;
     // Floor at y = -1
@@ -15,6 +16,7 @@ void sceneMaterial(float3 p,
                    int matID,
                    constant FeatureVector& f,
                    constant SceneUniforms& s,
+                   constant StemFeatures& stems,
                    thread float3& albedo,
                    thread float& roughness,
                    thread float& metallic) {

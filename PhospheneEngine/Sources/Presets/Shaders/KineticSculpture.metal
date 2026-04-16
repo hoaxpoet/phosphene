@@ -9,13 +9,15 @@
 //   Frosted Glass    — spherical nodes at cell-centre intersections.
 //   Liquid Mercury   — fat connectors that smoothly pool into the nodes.
 //
-// Audio routing (FeatureVector; StemFeatures unavailable in sceneSDF /
-// sceneMaterial — preamble forward-declarations do not carry that struct):
+// Audio routing (FeatureVector; StemFeatures now available via preamble
+// forward-declarations but this preset ships with the FeatureVector
+// routing that was validated when it landed — kept to preserve existing
+// visual behaviour).  A future revision could switch to stems directly:
 //   f.accumulated_audio_time → Z-axis twist deformation phase
 //   f.sub_bass + f.bass      → Mercury opSmoothUnion radius (melt / merge)
 //   f.beat_bass              → Glass node beat-pulse size accent
 //
-// Band-to-stem proxies used:
+// Band-to-stem proxies used (could now be replaced with direct stems access):
 //   f.sub_bass  ≈ stems.bass_energy   (20–80 Hz; same frequency range)
 //   f.beat_bass ≈ stems.drums_beat    (low-frequency onset pulse)
 //
@@ -81,7 +83,8 @@ static inline float ks_sdMercury(float3 p, float sminK) {
 
 float sceneSDF(float3 p,
                constant FeatureVector& f,
-               constant SceneUniforms& s) {
+               constant SceneUniforms& s,
+               constant StemFeatures& stems) {
     // 1. Z-axis twist driven by accumulated audio time (breathes with energy).
     //    Rate 0.06 rad per unit keeps the deformation gentle but perceptible.
     float twistK = f.accumulated_audio_time * 0.06f;
@@ -115,6 +118,7 @@ void sceneMaterial(float3 p,
                    int matID,
                    constant FeatureVector& f,
                    constant SceneUniforms& s,
+                   constant StemFeatures& stems,
                    thread float3& albedo,
                    thread float& roughness,
                    thread float& metallic) {
