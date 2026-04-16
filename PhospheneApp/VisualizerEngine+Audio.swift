@@ -118,8 +118,70 @@ extension VisualizerEngine {
 
         accumulateMoodFeatures(fv: fv, mir: mir)
 
+        // Per-frame stem analysis. Slides a 1024-sample window through the
+        // most recent separated stem waveforms at real-time rate so
+        // StemFeatures update continuously. Before this, stems updated
+        // once per 5s separation cycle (piecewise-constant values hit the
+        // GPU for 5s at a time — see session 2026-04-16T20-56-46Z where
+        // only 25 unique drumsBeat values appeared across 8,987 frames).
+        runPerFrameStemAnalysis(fps: effectiveFps)
+
         guard let mood = moodClassifier else { return }
         runMoodClassifier(mood: mood, fv: fv, mir: mir, magnitudes: magnitudes)
+    }
+
+    /// Slide a 1024-sample window through the most recent separated stem
+    /// waveforms and run `StemAnalyzer` on it. Produces continuously-varying
+    /// `StemFeatures` between 5-second separation cycles.
+    ///
+    /// Strategy: each separation produces a 10-second chunk of audio that's
+    /// already been heard by the user. Starting at the chunk's 5-second mark,
+    /// we scan forward at real-time rate over the ~5 seconds until the next
+    /// separation completes. This ties the sliding window to wall-clock time
+    /// (not audio energy) so the window advances smoothly regardless of audio
+    /// dynamics. Features carry ~5-10s of latency (we're always analyzing
+    /// audio that's already been heard), which is acceptable because musical
+    /// sections persist longer than that.
+    func runPerFrameStemAnalysis(fps: Float) {
+        var stems: [[Float]] = []
+        var sepTime: CFAbsoluteTime = 0
+        stemsStateLock.withLock {
+            stems = self.latestSeparatedStems
+            sepTime = self.latestSeparationTimestamp
+        }
+
+        // No separation yet → stems stay at zero (warmup behaviour unchanged).
+        guard stems.count == 4, stems[0].count >= 1024 else { return }
+
+        let chunkSampleCount = stems[0].count
+        let sampleRate: Float = 44100
+        let windowSize = 1024
+
+        // Start scanning from the 5-second mark into the 10-second chunk.
+        // The last 5 seconds of the chunk represents audio heard 0-5 seconds
+        // ago at the moment of separation; as wall-clock time advances past
+        // the separation, we slide toward the chunk's end.
+        let startSample = Int(5.0 * sampleRate)
+        let elapsed = max(0.0, CFAbsoluteTimeGetCurrent() - sepTime)
+        let advanceSamples = Int(Float(elapsed) * sampleRate)
+        let maxOffset = max(0, chunkSampleCount - windowSize)
+        let rawOffset = startSample + advanceSamples
+        let offset = min(rawOffset, maxOffset)
+
+        // Slice the per-stem 1024-sample window.
+        var window: [[Float]] = []
+        window.reserveCapacity(4)
+        for stem in stems {
+            let end = min(offset + windowSize, stem.count)
+            if offset < end {
+                window.append(Array(stem[offset..<end]))
+            } else {
+                window.append([Float](repeating: 0, count: windowSize))
+            }
+        }
+
+        let features = stemAnalyzer.analyze(stemWaveforms: window, fps: fps)
+        pipeline.setStemFeatures(features)
     }
 
     /// EMA-accumulate the 10 features that the mood classifier consumes.

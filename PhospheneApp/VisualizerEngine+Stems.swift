@@ -89,36 +89,21 @@ extension VisualizerEngine {
                 stemWaveforms.append(waveform)
             }
 
-            // Multi-frame AGC warmup: iterate through the waveform in
-            // 1024-sample windows at 60fps hop rate (~735 samples). This
-            // feeds ~600 frames through BandEnergyProcessor's AGC, fully
-            // warming it each cycle instead of producing attenuated output
-            // from a single-frame analysis.
-            let fps: Float = 60
-            let hop = Int(44100.0 / fps)  // ~735 samples per frame
-            let maxFrames = (sampleCount - 1024) / hop + 1
-            var features = StemFeatures.zero
-
-            for frame in 0..<maxFrames {
-                let offset = frame * hop
-                var frameWaveforms: [[Float]] = []
-                for stem in stemWaveforms {
-                    let end = min(offset + 1024, stem.count)
-                    if offset < end {
-                        frameWaveforms.append(Array(stem[offset..<end]))
-                    } else {
-                        frameWaveforms.append([Float](repeating: 0, count: 1024))
-                    }
-                }
-                features = stemAnalyzer.analyze(stemWaveforms: frameWaveforms, fps: fps)
+            // Hand off to the per-frame analyzer on analysisQueue.
+            // runPerFrameStemAnalysis (VisualizerEngine+Audio) slides a
+            // 1024-sample window through these waveforms at real-time rate
+            // so StemFeatures values in GPU buffer(3) update continuously
+            // (at ~audio-callback rate, ~94 Hz) instead of once per 5s.
+            // Eliminates the piecewise-constant-for-5s behaviour that
+            // produced visible terrain freeze-and-jump artefacts in
+            // session 2026-04-16T20-56-46Z.
+            let sepTime = CFAbsoluteTimeGetCurrent()
+            stemsStateLock.withLock {
+                self.latestSeparatedStems = stemWaveforms
+                self.latestSeparationTimestamp = sepTime
             }
 
-            pipeline.setStemFeatures(features)
-            let voc = features.vocalsEnergy
-            let drm = features.drumsEnergy
-            let bas = features.bassEnergy
-            let oth = features.otherEnergy
-            logger.debug("Stem update (\(maxFrames) frames): v=\(voc) d=\(drm) b=\(bas) o=\(oth)")
+            logger.debug("Stem separation complete: \(sampleCount) samples per stem")
 
             // Diagnostic capture: dump the four separated stem waveforms as WAV
             // files so we can listen to separation quality against real audio.
@@ -145,6 +130,13 @@ extension VisualizerEngine {
     ///   unknown (falls back to `.zero` stems).
     func resetStemPipeline(for identity: TrackIdentity? = nil) {
         stemAnalyzer.reset()
+
+        // Clear the per-frame analyzer's source waveforms so stems don't
+        // leak across tracks. Next separation will repopulate them.
+        stemsStateLock.withLock {
+            self.latestSeparatedStems = []
+            self.latestSeparationTimestamp = 0
+        }
 
         if let identity, let cached = stemCache?.loadForPlayback(track: identity) {
             pipeline.setStemFeatures(cached.stemFeatures)

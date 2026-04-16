@@ -151,6 +151,34 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Repeating timer that triggers stem separation every 5 seconds.
     var stemTimer: DispatchSourceTimer?
 
+    // MARK: - Stem Per-Frame Analysis State
+    //
+    // After each 5s stem separation completes on `stemQueue`, the produced
+    // mono stem waveforms are stored here along with a wall-clock timestamp.
+    // The per-frame analysis path in `processAnalysisFrame` (on
+    // `analysisQueue`) slides a 1024-sample window through these waveforms
+    // at real-time rate, running `StemAnalyzer.analyze` on each frame so
+    // `StemFeatures` values in GPU buffer(3) update continuously instead of
+    // stepping every 5 seconds (see `VisualizerEngine+Stems.runStemSeparation`
+    // and `VisualizerEngine+Audio.runPerFrameStemAnalysis`).
+    //
+    // Writer: stemQueue (runStemSeparation). Reader: analysisQueue
+    // (processAnalysisFrame). Lock synchronizes the handoff.
+
+    /// The 4 separated mono stem waveforms (vocals, drums, bass, other) from
+    /// the most recent `StemSeparator.separate` call. Each array covers
+    /// approximately 10s of audio at 44.1 kHz. Empty before the first
+    /// separation completes; cleared on track change.
+    var latestSeparatedStems: [[Float]] = []
+
+    /// Wall-clock timestamp of when `latestSeparatedStems` was stored. Used
+    /// by the per-frame analyzer to compute a sliding window offset.
+    var latestSeparationTimestamp: CFAbsoluteTime = 0
+
+    /// Protects `latestSeparatedStems` + `latestSeparationTimestamp` across
+    /// the stemQueue → analysisQueue handoff.
+    let stemsStateLock = NSLock()
+
     /// Whether MIR recording is active.
     var mirPipelineIsRecording: Bool { mirPipeline.isRecording }
 
