@@ -104,10 +104,17 @@ extension VisualizerEngine {
                     snap.fogFar = uniforms.sceneParamsB.y
                     rmPipeline.baseScene = snap
 
-                    // Per-preset dolly speed. Only Glass Brutalist uses forward
-                    // dolly for now; others stay camera-static unless the
-                    // preset author opts in.
-                    rmPipeline.cameraDollySpeed = (desc.name == "Glass Brutalist") ? 2.5 : 0
+                    // Per-preset dolly speed (world units per second of wall-clock).
+                    // Set to 0 for camera-static presets. The shared `drawWithRayMarch`
+                    // path applies `baseZ + features.time * cameraDollySpeed`, so the
+                    // motion reads as real travel through the scene (not tempo-driven).
+                    rmPipeline.cameraDollySpeed = {
+                        switch desc.name {
+                        case "Glass Brutalist":       return 2.5
+                        case "Volumetric Lithograph": return 1.8
+                        default:                      return 0
+                        }
+                    }()
 
                     currentRayMarchPipeline = rmPipeline
                 } catch {

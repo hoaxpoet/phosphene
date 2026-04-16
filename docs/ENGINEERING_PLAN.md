@@ -156,6 +156,26 @@ Cross-driver analysis tested five alternatives against the 125 BPM target:
 
 Same regression gate.
 
+### Increment 3.5.4.7 — v4: melody-primary drivers + forward dolly ✅
+
+Matt tested v3.4 on Tea Lights (Lower Dens — acoustic/electric guitar, no kick drum). Result: total failure. v3's bass-only drivers had nothing to track. Also asked about forward camera motion.
+
+Session `2026-04-16T20-09-44Z` data showed:
+- `f.mid_att × 15` tracks melodic phrasing at 72 BPM on Tea Lights (matches song tempo).
+- `f.spectral_flux` fires at ~190 BPM on *any* timbral attack — kicks, guitar strums, vocal onsets, piano chord changes.
+- Stem data (`stems.vocalsEnergy` 0.30 mean, `stems.otherEnergy` 0.26 mean) is the true melody carrier but isn't in `sceneSDF`/`sceneMaterial` preamble scope.
+
+Changes:
+- `sceneSDF audioAmp`: melody-primary blend — `0.75 × clamp(f.mid_att × 15, 0, 1.5) + 0.35 × clamp(f.bass_att × 1.2, 0, 1)`.
+- `sceneMaterial accentFB`: `smoothstep(0.35, 0.70, f.spectral_flux)` replaces bass-keyed driver. Flare multipliers reduced (× 1.5 → × 0.8 peak, × 2.0 → × 1.0 ridge, 0.03 → 0.02 coverage shift) for softer ambient match.
+- Palette phase adds `f.mid_att × 3.0` — colour rotates with melodic phrasing.
+- Amplitude reduced 1.8 → 1.4 to pair with dolly.
+- Camera lifted Y 6.5 → 7.2, FOV narrowed 60 → 55, **forward dolly at 1.8 u/s** via new switch in `VisualizerEngine+Presets.swift` (replaces ternary; pattern extensible for future presets).
+
+Flagged for follow-up (explicitly requested):
+1. **SessionRecorder drawable-size mismatch** — 1,861 frames skipped in the Tea Lights session because writer locked at Retina pixels while drawable reports logical points. Blocks diagnostic testing reliability; next increment.
+2. **Expose `StemFeatures` in `sceneSDF`/`sceneMaterial` preamble** — preset-level stem routing (Milkdrop-style per-preset control) has always been the architectural aim. Next increment, preserving existing 4 presets' behavior (they continue to ignore the parameter since D-019 fallback path uses FeatureVector).
+
 ---
 
 ## Immediate Next Increments
