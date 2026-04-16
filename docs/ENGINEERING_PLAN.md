@@ -135,6 +135,27 @@ Matt flagged that v3.2 pulses still didn't sync with the driving kick on Love Re
 
 Same regression gate.
 
+### Increment 3.5.4.6 — v3.4: use f.bass_att (pre-smoothed), not f.bass threshold ✅
+
+Matt flagged v3.3 beat sync was still wrong AND motion was too sharp. Session `2026-04-16T18-56-59Z` diagnostic revealed:
+
+**v3.3's `smoothstep(0.22, 0.32, f.bass)` fires at 65 BPM on a 125 BPM track** — half tempo. Root cause: Love Rehab's f.bass peaks in this session range 0.20–0.31. Kicks at the low end (0.20–0.23) never cleanly cross the 0.22 threshold, so only LOUDER kicks trigger a rise. Result: phantom half-tempo rhythm.
+
+**Smoothstep with narrow range (0.22, 0.32) produces near-binary 0→1 output.** That's the "sharp, less smooth" character — visible motion was a 2-frame transition rather than a gradual envelope.
+
+Cross-driver analysis tested five alternatives against the 125 BPM target:
+- `smoothstep(0.22, 0.32, f.bass)` — 65 BPM (current v3.3, half-tempo)
+- `smoothstep(0.13, 0.32, f.subBass)` — 111 BPM (better)
+- `smoothstep(0.10, 0.25, f.bass_att)` — 121 BPM ✓
+- `smoothstep(0.08, 0.22, f.bass_att)` — **127 BPM** ✓✓
+- `f.bass_att × 4 clamped` — 126 BPM ✓
+
+**Fix (v3.4)**: drive everything from `f.bass_att` (the 0.95-smoothed bass band). It catches every kick via smoothing (no threshold-miss), is inherently smooth (no sharpening artefacts), and tracks at 127 BPM on a 125 BPM track. Single driver replaces the two-stage design:
+- `sceneSDF`: `audioAmp = clamp(f.bass_att × 3.5, 0, 2.0)` (was slow `f.bass_att` + sharp `smoothstep(f.bass) × 0.40`)
+- `sceneMaterial`: `drumsBeatFB = smoothstep(0.06, 0.25, f.bass_att)` (was `smoothstep(0.22, 0.32, f.bass)`)
+
+Same regression gate.
+
 ---
 
 ## Immediate Next Increments
