@@ -121,6 +121,20 @@ Fixes:
 
 Same regression gate.
 
+### Increment 3.5.4.5 — v3.3: correct beat driver (f.bass, not f.beat_bass) ✅
+
+Matt flagged that v3.2 pulses still didn't sync with the driving kick on Love Rehab. Session `2026-04-16T18-44-45Z` diagnostic:
+
+**Rising-edge analysis of `f.beat_bass` in a 4-second window** revealed intervals of **410/403/421/397/435/418/431/399/488 ms** → mean **420ms = 143 BPM**. Love Rehab is 125 BPM (480ms intervals). **Local-maxima analysis of the continuous `f.bass`** revealed intervals of **499/526/495/504/531/452/549 ms** → mean **508ms = 118 BPM**, within normal variation of the real 125 BPM kick.
+
+**Root cause**: `f.beat_bass` has a 400ms cooldown (CLAUDE.md "Onset Detection"). On tracks with dense off-kick bass content (syncopated basslines, double-time sub-bass), the cooldown causes beat_bass to phase-lock to the 400ms window itself rather than the real kick — producing a consistent phantom tempo that's faster than the music. This is a music-dependent failure mode of the onset detector, not a VL bug, but it affects any preset that reads `f.beat_bass` directly.
+
+**Fix (VL-local)**: Switched all beat-aligned drivers from `f.beat_bass` to `smoothstep(0.22, 0.32, f.bass)`. `f.bass` is the continuous 3-band bass energy with no cooldown gating — its peaks naturally align with real kicks. Smoothstep shape gives clean 0→1 transitions matching the kick rhythm. Also removed the `0.4 × f.mid_att` contribution from `slowAmp` — mid band has ~4.6 onsets/sec (hi-hat/clap) on Love Rehab, which was leaking a non-kick rhythm into the terrain amplitude.
+
+**Out of scope for this increment**: `f.beat_bass` cooldown-phase-lock affects other presets (Kinetic Sculpture, Glass Brutalist via shared Swift path, Ferrofluid Ocean). Worth following up on at the engine level — either shorten cooldown, or prefer a stem-separated kick onset (when `stems.drumsBeat` is fixed — session data also showed it firing only 2 times in 90s, which is a separate engine bug).
+
+Same regression gate.
+
 ---
 
 ## Immediate Next Increments

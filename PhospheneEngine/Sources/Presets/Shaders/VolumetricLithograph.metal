@@ -7,6 +7,22 @@
 // flare the peak palette into HDR bloom; the ridge-line itself reads as
 // a thin emissive seam where the cut goes.
 //
+// v3.3 (session 2026-04-16T18-44-45Z — Matt flagged beat not syncing to
+// the driving kick):  Data revealed that f.beat_bass was firing at
+// 143 BPM on a 125 BPM track — the 400ms cooldown in the 6-band onset
+// detector phase-locks beat_bass to the cooldown itself when the track
+// has dense off-kick bass content (like Love Rehab's syncopated
+// bassline).  f.bass local-maxima analysis showed the real kick rhythm
+// is cleanly readable from the continuous bass energy (508ms intervals,
+// matching 125 BPM).  v3.3 switches all beat-aligned drivers to use
+// smoothstep(0.22, 0.32, f.bass) instead of f.beat_bass:
+//   - Terrain kick in sceneSDF: smoothstep × 0.40 (up from 0.35, since
+//     smoothstep has a smoother shape than the sharp beat_bass pulse).
+//   - drumsBeatFB in sceneMaterial: direct smoothstep output.
+//   - Removed 0.4 * f.mid_att from slowAmp: mid had ~4.6 onsets/sec on
+//     Love Rehab (hi-hat/clap), which leaked a non-kick rhythm into
+//     terrain amplitude.  bass_att alone tracks the kick.
+//
 // v3.2 (session 2026-04-16T18-24-43Z — Matt flagged "pulsing faster than
 // the beat" and "neutral gray backdrop"):
 //   - Peak coverage was ~35% because lo=0.50 sat at the fbm mean.  Raised
@@ -131,10 +147,20 @@ float sceneSDF(float3 p,
                constant FeatureVector& f,
                constant SceneUniforms& s) {
     float audioPhase = s.sceneParamsA.x;                            // accumulated audio time
-    // Slow base: attenuated bands → slow-flowing peaks, not frame-by-frame boil.
-    float slowAmp    = clamp(f.bass_att + 0.4f * f.mid_att, 0.0f, 1.5f);
-    // Transient kick: adds a short vertical punch on each bass onset (accent, not primary).
-    float kick       = clamp(f.beat_bass, 0.0f, 1.0f) * 0.35f;
+
+    // Slow base: attenuated bass → slow-flowing peaks, not frame-by-frame boil.
+    // v3.3: removed 0.4 * mid_att contribution.  Mid band in Love Rehab had
+    // ~4.6 onsets/sec (hi-hat/clap territory) — adding mid_att leaked a
+    // clap-rhythm into the terrain amplitude.  Bass_att alone stays true
+    // to the kick rhythm.
+    float slowAmp    = clamp(f.bass_att, 0.0f, 1.5f);
+
+    // Kick accent: v3.3 switched from f.beat_bass (which cooldown-phase-locks
+    // to a 143 BPM phantom rhythm on Love Rehab's dense bassline, see data
+    // session 2026-04-16T18-44-45Z) to a smoothstep over continuous f.bass.
+    // f.bass local-maxima intervals = 508ms → 118 BPM, matching the real
+    // 125 BPM kick within tempo variation.
+    float kick       = smoothstep(0.22f, 0.32f, f.bass) * 0.40f;
     float audioAmp   = clamp(slowAmp + kick, 0.0f, 2.0f);
     float h          = vl_heightAt(p, audioPhase, audioAmp);
     return (p.y - h) * VL_SDF_STEP_SCALE;
@@ -153,11 +179,15 @@ void sceneMaterial(float3 p,
     float n          = vl_terrainNoise(p, audioPhase); // [0,1]
 
     // ── D-019 stem-routing fallback (StemFeatures not in scope) ─────────
-    // Drum-beat fallback: pow(f.beat_bass, 1.2) × 1.5 gives a responsive
-    // curve — at beat_bass=0.5 → 0.65; at 0.7 → saturates to 1.0. v2's
-    // pow(1.5) × 0.7 was too conservative; real-music p90 of 0.66 only
-    // produced a 0.37 boost which was visually inert on energetic music.
-    float drumsBeatFB = clamp(pow(max(f.beat_bass, 0.0f), 1.2f) * 1.5f, 0.0f, 1.0f);
+    // Drum-beat fallback: v3.3 switched from pow(f.beat_bass, 1.2) * 1.5
+    // to smoothstep(f.bass).  Reason: f.beat_bass has a 400ms cooldown
+    // (per CLAUDE.md) that phase-locks detection to the cooldown itself
+    // rather than real kicks when a track has dense off-kick bass content.
+    // Session 2026-04-16T18-44-45Z showed beat_bass firing at 143 BPM
+    // on a 125 BPM track.  Continuous f.bass has no cooldown gating and
+    // its local maxima align with real kicks (508ms intervals = 118 BPM).
+    // The smoothstep(0.22, 0.32) gives 0 between kicks, 1 at kick peak.
+    float drumsBeatFB = smoothstep(0.22f, 0.32f, f.bass);
 
     // "Other" stem proxy: sqrt(f.mid) * 1.6.  f.mid (250 Hz–4 kHz)
     // overlaps the actual "other" stem band almost exactly.  AGC keeps
