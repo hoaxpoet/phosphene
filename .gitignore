@@ -38,3 +38,6 @@ tools/data/deam_features_cache.npz
 tools/output/
 tools/audio-capture-test
 tools/audio-tap-test
+
+# Claude Code session worktrees (auto-managed; not project source)
+.claude/worktrees/
