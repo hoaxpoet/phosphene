@@ -35,6 +35,23 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     var latestFeatures = FeatureVector.zero
     let featuresLock = NSLock()
 
+    // MARK: - Session Recording Hook
+
+    /// Optional per-frame capture hook for SessionRecorder (app layer).
+    ///
+    /// The hook is invoked AFTER `renderFrame` writes the drawable, but BEFORE
+    /// the command buffer is committed. The closure receives the freshly-rendered
+    /// drawable texture plus the features and stems that drove this frame; it
+    /// may issue its own blit commands on `commandBuffer` to copy the texture
+    /// into a shared-storage capture texture for later readback.
+    ///
+    /// Setting this to `nil` disables capture with zero overhead (no closure
+    /// invocation, no blit, no allocations).
+    public var onFrameRendered: ((_ drawableTexture: MTLTexture,
+                                  _ features: FeatureVector,
+                                  _ stems: StemFeatures,
+                                  _ commandBuffer: MTLCommandBuffer) -> Void)?
+
     // MARK: - Per-Stem Features
 
     /// Latest per-stem features from the background stem pipeline.
@@ -302,7 +319,25 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     /// Thread-safe — called from the analysis queue each frame.
     public func setFeatures(_ features: FeatureVector) {
         featuresLock.withLock {
+            // Preserve the most recent valence/arousal — they are produced
+            // by the mood classifier on a slower cadence and arrive via
+            // `setMood` after MIR has already overwritten the FeatureVector.
+            // Without this preservation the mood is reset to 0 every frame.
+            let valence = latestFeatures.valence
+            let arousal = latestFeatures.arousal
             latestFeatures = features
+            latestFeatures.valence = valence
+            latestFeatures.arousal = arousal
+        }
+    }
+
+    /// Update only the mood components (valence, arousal) from the mood
+    /// classifier. Preserves all other fields populated by the MIR pipeline.
+    /// Thread-safe.
+    public func setMood(valence: Float, arousal: Float) {
+        featuresLock.withLock {
+            latestFeatures.valence = valence
+            latestFeatures.arousal = arousal
         }
     }
 
@@ -388,6 +423,14 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
             view: view,
             features: &features
         )
+
+        // Session recording hook — invoked after renderFrame so the drawable
+        // texture contains the final composited image. The closure may enqueue
+        // a blit to copy the texture into its own capture target.
+        if let hook = onFrameRendered, let drawable = view.currentDrawable {
+            let stems = stemFeaturesLock.withLock { latestStemFeatures }
+            hook(drawable.texture, features, stems, commandBuffer)
+        }
 
         commandBuffer.commit()
     }

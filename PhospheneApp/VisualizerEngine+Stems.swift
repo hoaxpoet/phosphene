@@ -119,6 +119,14 @@ extension VisualizerEngine {
             let bas = features.bassEnergy
             let oth = features.otherEnergy
             logger.debug("Stem update (\(maxFrames) frames): v=\(voc) d=\(drm) b=\(bas) o=\(oth)")
+
+            // Diagnostic capture: dump the four separated stem waveforms as WAV
+            // files so we can listen to separation quality against real audio.
+            sessionRecorder?.recordStemSeparation(
+                stemWaveforms: stemWaveforms,
+                sampleRate: 44100,
+                trackTitle: currentTrack?.title
+            )
         } catch {
             logger.error("Stem separation failed: \(error)")
         }
