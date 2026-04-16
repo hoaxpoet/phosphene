@@ -368,6 +368,8 @@ No CoreML dependency. All ML uses MPSGraph (GPU) or Accelerate (CPU).
 
 **Stem separation cadence:** Background `DispatchSourceTimer`, 5s, utility QoS. Track-change loads from StemCache first, then live refinement crossfades.
 
+**Stem analysis cadence (per-frame since engine increment 3.5.4.9):** `StemAnalyzer` runs every audio-callback frame on `analysisQueue`, slicing a 1024-sample window from the latest separated stem waveforms. Window scans from the chunk's 5-second mark forward at real-time rate so `StemFeatures` values in GPU buffer(3) update continuously (~94 Hz) instead of stepping every 5s. Before this change stems were piecewise-constant for 5s — session `2026-04-16T20-56-46Z` showed only 25 unique `drumsBeat` values across 8,987 frames (0.3%), which made stem-driven preset visuals freeze for 5 seconds then jump.
+
 ---
 
 ## Code Style

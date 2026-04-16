@@ -188,6 +188,30 @@ Fix: if the drawable arrives consistently at a different size for `writerRelockT
 
 Verified: `swift test --package-path PhospheneEngine --filter PresetLoaderTests` 12/12 passing (including the full-pipeline render gate), `RayMarchPipelineTests` 10/10 passing, `SSGITests` 7/7 passing, `SessionRecorderTests` 7/7 passing (including the new relock test).
 
+### Increment 3.5.4.9 — Per-frame stem analysis (engine-level) ✅
+
+Session `2026-04-16T20-56-46Z` diagnostic on Tea Lights revealed the architectural root cause of repeated "terrain stops moving but colours keep changing" failures: **`StemFeatures` values in GPU buffer(3) update only once per 5-second stem separation cycle**. The uploaded `stems.csv` showed only 25 unique `drumsBeat` values across 8,987 rows (0.3% uniqueness); identical vocals/drums/bass/other energies held for 300+ consecutive frames then stepped to a new set. Any preset reading stems directly got a piecewise-constant driver with 5-second freeze-then-jump dynamics — no matter how careful the shader design.
+
+**Root cause** (`VisualizerEngine+Stems.runStemSeparation`): after each 5s `StemSeparator.separate()` call, the engine ran a 600-frame AGC warmup loop on `stemQueue` and uploaded ONLY the final frame's features via `pipeline.setStemFeatures(features)`. The intermediate frames — which DO produce continuously-varying output when fed sliding windows of the same waveform — were discarded.
+
+**Fix** (preserves 5s separation cadence, adds per-frame analysis):
+- `runStemSeparation` now stores the separated waveforms + wall-clock timestamp under a new `stemsStateLock`, then returns. No analyzer calls or GPU uploads from `stemQueue` any more.
+- `processAnalysisFrame` (called on `analysisQueue` at audio-callback rate, ~94 Hz) reads the latest stored waveforms under lock, slides a 1024-sample window through them at real-time rate (starting 5s into the 10s chunk, advancing by `elapsed × 44100` samples), runs `StemAnalyzer.analyze` on the window, and uploads the result via `pipeline.setStemFeatures`. AGC warms up naturally over the first ~60 frames of each new chunk.
+- `resetStemPipeline` clears the stored waveforms on track change so stems don't leak across tracks.
+
+**Cadence improvement**: 1 stem upload every 5000 ms → 1 upload every ~10 ms. **500× more frequent**.
+
+**Latency**: stem features lag real audio by ~5-10s (separator works on past audio and we scan the last 5s of each chunk). Acceptable because musical sections persist longer than that. A future enhancement could shorten the chunk or overlap separations.
+
+**Side benefit**: `stems.csv` in future SessionRecorder dumps now shows continuously-varying per-frame values instead of 5s-flat blocks, making preset diagnostics far cleaner.
+
+**Tests**: new `StemAnalyzerTests.swift` pins the sliding-window contract so future refactors can't silently regress:
+- `stemAnalyzer_slidingWindows_produceVaryingFeatures` — feeds sliding 1024-sample windows through a ramped waveform, asserts non-zero spread + smooth per-frame deltas.
+- `stemAnalyzer_sameWindow_producesStableFeatures` — convergence on repeated identical input.
+- `stemAnalyzer_zeroLengthWindow_returnsZeroFeatures` — safety under empty input.
+
+Verified: 3/3 new tests pass; full suite 308/314 with only pre-existing environmental failures (Apple Music not running × 4, perf flake, network timeout).
+
 ---
 
 ## Immediate Next Increments
