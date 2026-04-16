@@ -261,6 +261,15 @@ fragment float4 raymarch_lighting_fragment(
     // Minimum ambient prevents fully black surfaces when IBL textures are not yet bound
     // (unbound textures return zero on Apple Silicon Metal).
     float3 ambient = max(iblAmbient, albedo * 0.04 * ao);
+
+    // Tint the ambient by the scene light colour. Indoor ray-march scenes
+    // are dominated by IBL ambient (the direct light only catches surfaces
+    // facing it) so any audio-driven `lightColor` change had to filter
+    // through here to be visible. At rest `lightColor ≈ (1, 0.95, 0.88)`
+    // so the multiply is near-identity; under audio modulation the ambient
+    // takes the warm/cool tint and the whole corridor visibly shifts colour.
+    ambient *= scene.lightColor.rgb;
+
     litColor += ambient;
 
     // ── Atmospheric fog ────────────────────────────────────────────
@@ -268,10 +277,41 @@ fragment float4 raymarch_lighting_fragment(
     float  fogFar    = scene.sceneParamsB.y;
     float  t         = depthNorm * farPlane;
     float  fogFactor = clamp((t - fogNear) / max(fogFar - fogNear, 0.001), 0.0, 1.0);
-    float3 fogColor  = rm_skyColor(rayDir);
+    // Fog colour also takes the scene tint so warm/cool palette stays
+    // consistent in the distance.
+    float3 fogColor  = rm_skyColor(rayDir) * scene.lightColor.rgb;
     litColor         = mix(litColor, fogColor, fogFactor);
 
     return float4(litColor, 1.0);
+}
+
+// MARK: - Depth Debug Pass
+
+/// DEBUG: Visualize raw G-buffer, bypassing all lighting and bloom.
+/// Left half:  depth map (white=near, dark=far, RED=sky/miss)
+/// Right half: raw unlit albedo from G-buffer
+fragment float4 raymarch_depth_debug_fragment(
+    VertexOut        in    [[stage_in]],
+    texture2d<float> gbuf0 [[texture(0)]],
+    texture2d<float> gbuf2 [[texture(1)]],
+    sampler          s     [[sampler(0)]]
+) {
+    float2 uv = in.uv;
+    float depthNorm = gbuf0.sample(s, uv).r;
+
+    if (uv.x < 0.5) {
+        if (depthNorm >= 0.999) {
+            return float4(1.0, 0.0, 0.0, 1.0);  // RED = miss/sky
+        }
+        float vis = 1.0 - depthNorm;
+        return float4(vis, vis, vis, 1.0);
+    } else {
+        if (depthNorm >= 0.999) {
+            return float4(0.2, 0.2, 0.3, 1.0);  // dark blue = sky
+        }
+        float3 albedo = gbuf2.sample(s, uv).rgb;
+        return float4(albedo, 1.0);
+    }
 }
 
 // MARK: - G-buffer Debug Pass

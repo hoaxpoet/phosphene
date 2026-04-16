@@ -1,25 +1,10 @@
 {
-  "name": "Glass Brutalist",
-  "family": "geometric",
-  "duration": 50,
-  "description": "Brutalist concrete corridor with near-mirror glass panels that bleed light via SSGI",
-  "author": "Matt",
-  "passes": ["ray_march", "ssgi", "post_process"],
-  "beat_source": "bass",
-  "beat_sensitivity": 1.4,
-  "scene_camera": {
-    "position": [1.2, 1.8, 0.5],
-    "target": [-0.5, 1.4, 8.0],
-    "fov": 70
-  },
-  "scene_lights": [
-    {
-      "position": [2.0, 4.5, 2.0],
-      "color": [1.0, 0.95, 0.88],
-      "intensity": 300.0
-    }
-  ],
-  "scene_fog": 0.015,
-  "scene_ambient": 0.08,
-  "scene_far_plane": 40.0
+    "name": "Glass Brutalist",
+    "family": "geometric",
+    "duration": 30,
+    "passes": ["ray_march", "ssgi", "post_process"],
+    "scene_camera": { "position": [0.0, 1.8, 0.5], "target": [0.0, 1.5, 18.0], "fov": 65 },
+    "scene_lights": [{ "position": [0, 4.5, 2], "color": [1, 0.95, 0.9], "intensity": 3.0 }],
+    "scene_fog": 0.015,
+    "scene_ambient": 0.08
 }

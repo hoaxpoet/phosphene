@@ -1,0 +1,24 @@
+{
+  "name": "Kinetic Sculpture",
+  "family": "abstract",
+  "duration": 40,
+  "description": "Interlocking lattice of Brushed Aluminum, Frosted Glass, and Liquid Mercury that breathes with audio stems",
+  "author": "Matt",
+  "passes": ["ray_march", "post_process"],
+  "beat_source": "bass",
+  "beat_sensitivity": 1.3,
+  "scene_camera": {
+    "position": [4.5, 2.8, -5.5],
+    "target": [0.0, 0.2, 0.0],
+    "fov": 70
+  },
+  "scene_lights": [
+    {
+      "position": [5.0, 8.0, -4.0],
+      "color": [1.0, 0.96, 0.88],
+      "intensity": 3.5
+    }
+  ],
+  "scene_fog": 0.018,
+  "scene_ambient": 0.06
+}

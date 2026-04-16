@@ -1,0 +1,9 @@
+{
+    "name": "Test Sphere",
+    "family": "geometric",
+    "passes": ["ray_march", "post_process"],
+    "scene_camera": { "position": [0.0, 2.0, -3.0], "target": [0.0, 1.5, 5.0], "fov": 65 },
+    "scene_lights": [{ "position": [3.0, 6.0, 0.0], "color": [1.0, 1.0, 1.0], "intensity": 3.0 }],
+    "scene_fog": 0.01,
+    "scene_ambient": 0.15
+}
