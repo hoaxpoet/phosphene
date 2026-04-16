@@ -2,14 +2,14 @@
   "name": "Volumetric Lithograph",
   "family": "fluid",
   "duration": 35,
-  "description": "Tactile linocut-inspired audio-reactive terrain — matte-black valleys and mirror-bright peaks, ridges expand on transients",
+  "description": "Psychedelic linocut terrain — slow-flowing audio-reactive landscape with palette-cycling polished-metal peaks, razor ridge-line seams, and beat flares that bloom into the post-process chain. No atmospheric fog (printmaking has no aerial perspective).",
   "author": "Matt",
   "passes": ["ray_march", "post_process"],
   "beat_source": "bass",
-  "beat_sensitivity": 1.2,
+  "beat_sensitivity": 1.0,
   "scene_camera": {
-    "position": [0.0, 7.5, -9.0],
-    "target": [0.0, 0.0, 6.0],
+    "position": [0.0, 6.5, -8.5],
+    "target": [0.0, 0.0, 7.0],
     "fov": 60
   },
   "scene_lights": [
@@ -19,12 +19,12 @@
       "intensity": 4.5
     }
   ],
-  "scene_fog": 0.025,
-  "scene_ambient": 0.04,
-  "scene_far_plane": 60.0,
+  "scene_fog": 0.0,
+  "scene_ambient": 0.06,
+  "scene_far_plane": 80.0,
   "stem_affinity": {
-    "drums": "contrast_pulse",
+    "drums": "palette_flare",
     "bass": "terrain_height",
-    "other": "metallic_sheen"
+    "other": "metallic_polish"
   }
 }
