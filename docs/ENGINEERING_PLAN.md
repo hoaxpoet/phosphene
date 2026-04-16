@@ -218,6 +218,181 @@ Verified: 3/3 new tests pass; full suite 308/314 with only pre-existing environm
 
 These are ordered by dependency. Each has done-when criteria and verification commands.
 
+## Phase MV — Milkdrop-Informed Musical Architecture
+
+**Why this phase exists:** six iterations on Volumetric Lithograph produced incremental fixes but never converged on "feels like a band member playing along with the music." [`docs/MILKDROP_ARCHITECTURE.md`](MILKDROP_ARCHITECTURE.md) documents the research that identified the root cause:
+
+1. Milkdrop's audio vocabulary is **identical in scope to what Phosphene already computes** — no chord recognition, no pitch tracking, no stems. Our analysis pipeline is richer than theirs.
+2. Milkdrop's `bass`/`bass_att` are **AGC-normalized ratios centered at 1.0**. Phosphene's are centered at 0.5 via the same AGC mechanism. But our presets have been authored with absolute thresholds — the wrong primitive for an AGC signal. Absolute thresholds inherently fail across tracks because the AGC divisor moves with mix density.
+3. Milkdrop's "musical feel" comes from its **per-vertex feedback warp architecture**, not its audio analysis. Every preset warps the previous frame via a 32×24 grid, and motion *accumulates* over many frames. Simple audio inputs compound into rich organic motion.
+4. **9 of 11 Phosphene presets do not use any feedback loop** — they render from scratch each frame. Ray-march presets in particular show only instantaneous audio state. This is why they've felt "disconnected" from music regardless of how cleverly tuned.
+
+Phase MV addresses the two architectural gaps (correct audio primitives + per-vertex feedback warp), then adds Apple-Silicon-specific capabilities Milkdrop couldn't implement in 2001.
+
+Each sub-phase independently improves the product and is gated by a visual checkpoint before the next begins.
+
+### Increment MV-0 — Drop v4.2 stash, re-land sky-tint conditional
+
+**Scope:** The git stash created earlier this session (`v4.2 pending: stems as emphasis, conditional sky tint, reduced amp`) was a narrow fix to the ray-march no-feedback architecture that MV-1 + MV-2 deliberately change. Drop it. The one part worth salvaging independently is the `RayMarch.metal:208` sky-tint conditional (`rm_skyColor * scene.lightColor.rgb` only when `sceneParamsB.y > 1e5`, i.e., fog is disabled). That fix is orthogonal to the architectural pivot and solves a real regression in Glass Brutalist / Kinetic Sculpture contrast.
+
+**Done when:**
+- `git stash drop` executed on the v4.2 stash.
+- Sky-tint conditional re-applied to `RayMarch.metal` as a standalone commit.
+- `presetLoaderBuiltInPresetsHaveValidPipelines` 12/12 + visual spot-check that GB/KS sky reads cool-blue while VL sky still picks up warm tint when `scene_fog: 0`.
+
+**Verify:** `swift test --package-path PhospheneEngine --filter PresetLoaderTests` and launch app → cycle through GB, KS, VL on any track.
+
+---
+
+### Increment MV-1 — Milkdrop-correct audio primitives
+
+**Scope:** Expose deviation-from-normal signals in `FeatureVector` and `StemFeatures` so preset authors have a stable primitive that survives AGC. Keep existing fields for backward compatibility.
+
+New fields (derived each frame from existing fields — no pipeline changes):
+
+```swift
+// In FeatureVector:
+var bassRel: Float    // (bass - 0.5) * 2.0, centered at 0, ~±0.5 typical range
+var bassDev: Float    // max(0, bassRel) — positive deviation only (loud moments)
+var midRel, midDev: Float
+var trebRel, trebDev: Float
+var bassAttRel, midAttRel, trebAttRel: Float  // smoothed deviation
+
+// In StemFeatures:
+var vocalsEnergyRel, vocalsEnergyDev: Float
+var drumsEnergyRel, drumsEnergyDev: Float
+var bassEnergyRel, bassEnergyDev: Float
+var otherEnergyRel, otherEnergyDev: Float
+```
+
+Authoring convention documented in CLAUDE.md:
+- *Don't* threshold absolute values (`smoothstep(0.22, 0.32, f.bass)`).
+- *Do* use deviation (`smoothstep(0.0, 0.3, f.bassDev)`).
+- *Do* use rel for continuous drivers that should swing negative during quiet sections (`zoom = baseZoom + 0.1 * f.bassAttRel`).
+
+**Done when:**
+- New fields added to Swift structs + MSL preamble struct.
+- `MIRPipeline.process` and `StemAnalyzer.analyze` populate them each frame.
+- New tests `MIRPipelineRelDevTests` prove the centering: `bassRel` averages near 0 over a 5-second synthetic signal, `bassDev >= 0` always, `bassRel == (bass - 0.5) * 2.0` exactly.
+- VL updated to use the new primitives as a reference implementation; all other presets kept unchanged.
+- Full test suite passes (only pre-existing env failures).
+
+**CHECKPOINT:** rebuild, capture a SessionRecorder dump against Tea Lights + Love Rehab, compare to the 2026-04-16T20-56-46Z and 2026-04-16T20-09-44Z baselines. Does using `bassDev` instead of `smoothstep(0.22, 0.32, bass)` alone produce more stable cross-track behavior? If yes, we've confirmed primitive-convention was a major contributor and should audit all other presets next. If no, we've confirmed the architectural gap matters more than primitive convention and MV-2 is the critical path.
+
+**Files:**
+- `PhospheneEngine/Sources/Shared/AudioFeatures+Analyzed.swift` — extend both structs
+- `PhospheneEngine/Sources/DSP/MIRPipeline.swift` — populate rel/dev fields
+- `PhospheneEngine/Sources/DSP/StemAnalyzer.swift` — same for stems
+- `PhospheneEngine/Sources/Presets/PresetLoader+Preamble.swift` — extend MSL structs
+- `PhospheneEngine/Sources/Presets/Shaders/VolumetricLithograph.metal` — switch to new primitives
+- `CLAUDE.md` — document the convention in the "Proven Audio Analysis Tuning" section
+- New `PhospheneEngine/Tests/PhospheneEngineTests/DSP/RelDevTests.swift`
+
+**Verify:** `swift test --package-path PhospheneEngine && xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build`.
+
+---
+
+### Increment MV-2 — Per-vertex feedback warp mesh
+
+**Scope:** New optional render pass `mv_warp` that any preset can opt into via its `passes` array. Implements a Milkdrop-style 32×24 per-vertex warp of the previous frame's composite output, blended with the current frame. Makes feedback-based motion accumulation available to ray-march and post-process presets for the first time.
+
+**Architecture:**
+1. Persistent feedback texture (sized to drawable, `.rgba16Float`) retained across frames.
+2. New `mv_warp_vertex` shader runs over a 32×24 grid. For each grid point, calls preset-provided `mvWarpPerFrame()` (baseline params shared across vertices) and `mvWarpPerVertex(float2 uv, float rad, float ang)` (spatial modulation). Outputs per-vertex UV displacement.
+3. `mv_warp_fragment` samples the previous frame at the warped UV (`sampler_main` equivalent) with a `_qa`–`_qh` convention for preset-authored q-variables, applies preset-defined decay, blends with the current-frame composite output.
+4. Result is written to the drawable AND to the feedback texture for the next frame.
+
+**MV-2a authoring approach (recommended first cut):** preset-provided Metal functions, same pattern as existing `sceneSDF`/`sceneMaterial`. Preset's `.metal` file implements:
+
+```metal
+struct MVWarpPerFrame {
+    float zoom, rot, decay, warp;
+    float cx, cy, dx, dy, sx, sy;
+    float q1, q2, q3, q4, q5, q6, q7, q8;
+};
+
+MVWarpPerFrame mvWarpPerFrame(constant FeatureVector& f,
+                              constant StemFeatures& stems,
+                              constant SceneUniforms& s);
+
+float2 mvWarpPerVertex(float2 uv, float rad, float ang,
+                       thread const MVWarpPerFrame& pf,
+                       constant FeatureVector& f);
+```
+
+The preamble forward-declares these and the fixed `mv_warp_vertex` / `mv_warp_fragment` functions call them.
+
+**MV-2b (deferred):** implement a minimal ns-eel-like equation parser so presets can be authored in text (like Milkdrop's `.milk` format). Bonus: could enable loading real `.milk` presets via an importer. Postpone until MV-2a ships and authoring-ergonomics is the demonstrated blocker.
+
+**MV-2c (deferred):** JSON-declared warp formulas from a restricted vocabulary. Middle ground, considered and rejected in favor of MV-2a for initial velocity.
+
+**Done when:**
+- New render pass implemented (`RenderPipeline+MVWarp.swift`).
+- `MVWarp.metal` contains vertex + fragment shaders + forward declarations.
+- `RenderPass.swift` extended with `mvWarp` case.
+- `PresetDescriptor.swift` `passes` parser accepts the new string.
+- VL converted to `passes: ["ray_march", "post_process", "mv_warp"]` — the terrain SDF becomes static, all audio motion goes into mv_warp functions.
+- One feedback-based preset (Starburst or Membrane) also converted to the new pipeline to prove direct-render presets can still use it.
+- `presetLoaderBuiltInPresetsHaveValidPipelines` passes for all presets.
+- 2 new tests: `MVWarpPipelineTests_correctness` (warp mesh produces expected displacement for a known mvWarpPerFrame/mvWarpPerVertex fixture) and `MVWarpPipelineTests_feedbackAccumulation` (consecutive frames produce drift consistent with accumulated motion).
+
+**CHECKPOINT:** rebuild, capture SessionRecorder against Tea Lights + Love Rehab. Does feedback-based VL feel materially more Milkdrop-quality musical? If yes, convert remaining ray-march presets (GB, KS) one by one. If no, we've hit a deeper architectural issue; pause MV-3 and reconsider.
+
+**Files:**
+- New `PhospheneEngine/Sources/Renderer/RenderPipeline+MVWarp.swift`
+- New `PhospheneEngine/Sources/Renderer/Shaders/MVWarp.metal`
+- `PhospheneEngine/Sources/Shared/RenderPass.swift` — add `.mvWarp`
+- `PhospheneEngine/Sources/Presets/PresetDescriptor.swift` — recognize the pass
+- `PhospheneEngine/Sources/Presets/PresetLoader+Preamble.swift` — forward-declarations for `MVWarpPerFrame` struct + `mvWarpPerFrame`/`mvWarpPerVertex` functions
+- `PhospheneEngine/Sources/Presets/PresetLoader.swift` — compilation path for mv_warp presets
+- `PhospheneApp/VisualizerEngine+Presets.swift` — dispatch the new pass
+- Updated `PhospheneEngine/Sources/Presets/Shaders/VolumetricLithograph.metal` + `.json`
+- New tests: `PhospheneEngine/Tests/PhospheneEngineTests/Renderer/MVWarpPipelineTests.swift`
+- `CLAUDE.md` Module Map + Pipeline sections updated
+
+**Verify:** full test suite + visual checkpoint against the two reference tracks.
+
+---
+
+### Increment MV-3 — Beyond-Milkdrop extensions (start only after MV-2 checkpoint passes)
+
+**Scope:** Layer Apple-Silicon-specific capabilities on top of the MV-2 foundation. Do NOT start until MV-2's visual checkpoint confirms the feedback architecture produces Milkdrop-quality motion. Otherwise MV-3 would layer richer data onto a still-broken foundation.
+
+Three independently-shippable sub-increments:
+
+**MV-3a — Richer per-stem metadata** (~1 week)
+- New fields in `StemFeatures` computed in `StemAnalyzer` from the separated waveforms we already have:
+  - `vocalsOnsetRate`, `drumsOnsetRate`, etc. — attacks per second per stem
+  - `vocalsCentroid`, `drumsCentroid`, etc. — spectral brightness per stem
+  - `vocalsAttackRatio`, etc. — transient energy / sustained energy
+  - `vocalsEnergySlope`, etc. — derivative of the attenuated energy
+- Purely additive; existing fields untouched.
+- Verified by unit tests on synthetic waveforms: plucked click vs sustained sine should produce distinguishable attack ratios.
+
+**MV-3b — Next-beat phase predictor** (~2-3 days)
+- New `BeatPredictor` class fed by `BeatDetector` output + BPM estimate.
+- Exposes `beatPhase01: Float` (0 at last detected beat, 1 at predicted next beat) and `beatsUntilNext: Float` in `FeatureVector`.
+- Presets drive peak intensity from `beatPhase01 > 0.9` to flare AT the beat rather than after it.
+- Verified: synthetic 125-BPM click track produces phase output that linearly rises between clicks.
+
+**MV-3c — Vocal pitch tracking** (~1 week)
+- New `PitchTracker` using YIN autocorrelation on the separated vocals stem. Accelerate/vDSP implementation; no ML.
+- Exposes `vocalsPitchHz: Float` and `vocalsPitchConfidence: Float` in `StemFeatures` (or a new buffer).
+- Presets can track melodic contour — rising lines lift terrain, falling lines lower it.
+- Verified: synthetic pure tones at known frequencies produce YIN pitch within ±5 cents.
+
+**Explicitly NOT part of MV-3:**
+- Basic Pitch port (unverified availability, not needed for core experience)
+- Chord recognition via Tonic (evaluate separately, depends on MV-3c)
+- HTDemucs swap (Open-Unmix HQ is working; don't fix what isn't broken)
+- Sound Analysis framework (applause detection — orthogonal)
+
+**Done when:** all three sub-increments tested and landed; at least one preset updated to demonstrate per-stem-metadata or pitch-contour usage.
+
+**Verify:** per-component unit tests + visual verification that presets using the new signals respond musically on the reference tracks.
+
+---
+
 ## Phase 4 — Orchestrator
 
 The Orchestrator is the product's key differentiator. It is implemented as an explicit scoring and policy system, not a black box.
