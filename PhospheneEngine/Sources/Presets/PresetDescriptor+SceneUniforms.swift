@@ -82,7 +82,13 @@ extension PresetDescriptor {
         }
 
         // Fog: convert density → far distance. Dense fog (0.05) → 20 units; light (0.015) → ~67.
-        let fogFar: Float = sceneFog > 0 ? max(1.0, 1.0 / sceneFog) : uniforms.sceneParamsB.y
+        //
+        // scene_fog == 0 semantically means "no fog" (e.g. printmaking aesthetic).
+        // The shader formula `fogFactor = clamp((t - fogNear) / max(fogFar - fogNear, 0.001), 0, 1)`
+        // with a zero fogFar saturates to 1.0 for any t > 0.001 — i.e. max fog,
+        // the exact opposite of the intent. Using a very large fallback pushes
+        // fogFactor well below the visible threshold at any realistic far-plane.
+        let fogFar: Float = sceneFog > 0 ? max(1.0, 1.0 / sceneFog) : 1_000_000
         uniforms.sceneParamsB = SIMD4(uniforms.sceneParamsB.x, fogFar, sceneAmbient, 0)
 
         return uniforms

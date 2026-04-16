@@ -7,20 +7,23 @@
 // flare the peak palette into HDR bloom; the ridge-line itself reads as
 // a thin emissive seam where the cut goes.
 //
-// v2 design rationale (session 2026-04-16T16-44-51Z, Love Rehab):
-//   - Beat fallback `max(beat_bass, beat_mid, beat_composite)` was
-//     saturated 86% of the time → boundary flickered every frame.
-//     Replaced with selective `pow(f.beat_bass, 1.5) * 0.7`.
-//   - Continuous bands `f.bass + f.mid` stacked with beat shifts
-//     produced 3 simultaneously moving drivers → switched to attenuated
-//     `f.bassAtt + 0.4 * f.midAtt` for slow-flowing terrain.
-//   - "Other" stem proxy `f.treble * 1.4` was effectively 0 in real
-//     music → switched to `sqrt(f.mid) * 1.6` (mid covers actual
-//     250 Hz–4 kHz "other" range).
-//   - Pure-grayscale palette → IQ cosine palette driven by
-//     terrain-noise position + audio-time + valence.
-//   - scene_fog killed (linocut has no aerial perspective; was
-//     producing a foggy band across the upper third of the frame).
+// v3 design rationale (session 2026-04-16T16-44-51Z + v2 visual review):
+//   v2 (palette + calmer motion) over-corrected — beat response was
+//   inert on energetic music, and scene_fog=0 actually produced MAX
+//   fog due to a bug in the shared `makeSceneUniforms` fallback.  v3:
+//   - Fixed shared helper so `scene_fog: 0` truly disables fog.
+//   - Rebalanced beat response: `pow(f.beat_bass, 1.2) * 1.5` replaces
+//     v2's `pow(1.5) * 0.7`; palette flare × 1.5 (was × 0.6); ridge
+//     strobe × (1.4 + beat × 2.0); added 0.03 coverage-expansion shift
+//     (v1 was 0.18 which flickered; v2 was 0 which was dead).
+//   - Added a small transient kick to terrain amplitude in sceneSDF
+//     (`f.beat_bass * 0.35`) so the landscape breathes on kicks.
+// v2 changes preserved:
+//   - Attenuated bands (`f.bass_att + 0.4 * f.mid_att`) for slow-flowing
+//     baseline amplitude (not the primary driver v1 had).
+//   - IQ cosine palette from ShaderUtilities.metal:576 drives peak
+//     albedo by noise position + audio time + valence.
+//   - `sqrt(f.mid) * 1.6` replaces `f.treble * 1.4` for "other" polish.
 //
 // Audio routing (FeatureVector — StemFeatures unavailable in
 // sceneSDF/sceneMaterial; preamble forward-declarations omit it):
@@ -94,8 +97,11 @@ float sceneSDF(float3 p,
                constant FeatureVector& f,
                constant SceneUniforms& s) {
     float audioPhase = s.sceneParamsA.x;                            // accumulated audio time
-    // Attenuated bands → slow-flowing peaks rather than boil-on-every-kick.
-    float audioAmp   = clamp(f.bass_att + 0.4f * f.mid_att, 0.0f, 1.5f);
+    // Slow base: attenuated bands → slow-flowing peaks, not frame-by-frame boil.
+    float slowAmp    = clamp(f.bass_att + 0.4f * f.mid_att, 0.0f, 1.5f);
+    // Transient kick: adds a short vertical punch on each bass onset (accent, not primary).
+    float kick       = clamp(f.beat_bass, 0.0f, 1.0f) * 0.35f;
+    float audioAmp   = clamp(slowAmp + kick, 0.0f, 2.0f);
     float h          = vl_heightAt(p, audioPhase, audioAmp);
     return (p.y - h) * VL_SDF_STEP_SCALE;
 }
@@ -113,11 +119,11 @@ void sceneMaterial(float3 p,
     float n          = vl_terrainNoise(p, audioPhase); // [0,1]
 
     // ── D-019 stem-routing fallback (StemFeatures not in scope) ─────────
-    // Drum-beat fallback: pow(f.beat_bass, 1.5) so only strong kicks
-    // register.  Real music data: f.beat_bass median 0.10, p99 1.0;
-    // pow brings the median down to ~0.03, leaving p99 at 1.0 — only
-    // genuine transients punch through.
-    float drumsBeatFB = clamp(pow(max(f.beat_bass, 0.0f), 1.5f) * 0.7f, 0.0f, 1.0f);
+    // Drum-beat fallback: pow(f.beat_bass, 1.2) × 1.5 gives a responsive
+    // curve — at beat_bass=0.5 → 0.65; at 0.7 → saturates to 1.0. v2's
+    // pow(1.5) × 0.7 was too conservative; real-music p90 of 0.66 only
+    // produced a 0.37 boost which was visually inert on energetic music.
+    float drumsBeatFB = clamp(pow(max(f.beat_bass, 0.0f), 1.2f) * 1.5f, 0.0f, 1.0f);
 
     // "Other" stem proxy: sqrt(f.mid) * 1.6.  f.mid (250 Hz–4 kHz)
     // overlaps the actual "other" stem band almost exactly.  AGC keeps
@@ -128,10 +134,18 @@ void sceneMaterial(float3 p,
     // ── Three-stratum classification ────────────────────────────────────
     //   peakSelect    = matte-valley → polished-peak transition (sharp)
     //   ridgeSelect   = thin emissive seam at the boundary (cut-paper line)
-    float peakSelect  = smoothstep(VL_PEAK_LO, VL_PEAK_HI, n);
+    //
+    // Beat adds a small coverage shift (−0.03 window displacement) so
+    // peaks briefly expand across the terrain on kicks — much less than
+    // v1's 0.18 shift (which caused the boundary to flicker every frame).
+    float beatShift   = drumsBeatFB * 0.03f;
+    float peakSelect  = smoothstep(VL_PEAK_LO - beatShift,
+                                    VL_PEAK_HI - beatShift, n);
     float ridgeSelect =
-        smoothstep(VL_RIDGE_INNER, (VL_RIDGE_INNER + VL_RIDGE_OUTER) * 0.5f, n)
-      * (1.0f - smoothstep((VL_RIDGE_INNER + VL_RIDGE_OUTER) * 0.5f, VL_RIDGE_OUTER, n));
+        smoothstep(VL_RIDGE_INNER - beatShift,
+                    (VL_RIDGE_INNER + VL_RIDGE_OUTER) * 0.5f - beatShift, n)
+      * (1.0f - smoothstep((VL_RIDGE_INNER + VL_RIDGE_OUTER) * 0.5f - beatShift,
+                            VL_RIDGE_OUTER - beatShift, n));
 
     // ── Psychedelic palette (the headline change) ───────────────────────
     // Phase = local noise × 0.45  (spatial hue variation across terrain)
@@ -143,8 +157,10 @@ void sceneMaterial(float3 p,
 
     // Beat flare: peaks push into HDR (bloom in post_process amplifies);
     // ACES at composite (RayMarch.metal:352–355) handles the over-bright
-    // values gracefully.  Ridge gets the same boost so the seam strobes.
-    float beatBoost = 1.0f + drumsBeatFB * 0.6f;
+    // values gracefully.  v2 used 0.6 which was too timid for energetic
+    // music — ACES squashed the boost back into SDR before bloom.  1.5
+    // gives a clearly visible flare (up to 2.5× peak albedo at full beat).
+    float beatBoost = 1.0f + drumsBeatFB * 1.5f;
     peakHue *= beatBoost;
 
     // ── Stratum materials ──────────────────────────────────────────────
@@ -166,11 +182,14 @@ void sceneMaterial(float3 p,
     metallic  = mix(valleyMetal,  peakMetal,  peakSelect);
 
     // Ridgeline: overlay a thin dielectric seam at the cut, tinted by
-    // the same palette but at maximum brightness × beat boost.  Low
-    // metallic so it reads as luminous-paint rather than chrome line.
-    float3 ridgeAlbedo = peakHue * 1.4f;             // brighter than peak
-    float  ridgeRough  = 0.35f;                       // catches a soft halo
-    float  ridgeMetal  = 0.10f;                       // mostly dielectric
+    // the same palette at high brightness with an additional beat strobe
+    // so the cut-line itself pulses visibly at every kick.  Low metallic
+    // reads as luminous-paint rather than chrome line; low roughness
+    // keeps the seam tight.
+    float  ridgeStrobe = 1.4f + drumsBeatFB * 2.0f;
+    float3 ridgeAlbedo = peakHue * ridgeStrobe;       // very bright on beat
+    float  ridgeRough  = 0.30f;
+    float  ridgeMetal  = 0.10f;
     albedo    = mix(albedo,    ridgeAlbedo, ridgeSelect);
     roughness = mix(roughness, ridgeRough,  ridgeSelect);
     metallic  = mix(metallic,  ridgeMetal,  ridgeSelect);
