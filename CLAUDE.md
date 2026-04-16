@@ -76,7 +76,7 @@ PhospheneEngine/
     RenderPipeline+Draw     → Draw paths: direct, mesh, postProcess, feedback, warp, blit, particles
     RenderPipeline+MeshDraw → Mesh shader draw: drawWithMeshShader, offscreen pass
     RenderPipeline+PostProcess → HDR post-process: drawWithPostProcess, lazy texture allocation
-    RenderPipeline+RayMarch → Ray march draw: drawWithRayMarch, G-buffer management, IBL forwarding
+    RenderPipeline+RayMarch → Ray march draw: drawWithRayMarch + per-frame audio-reactive SceneUniforms modulation (light intensity from any-band beat, lightColor from valence, fogFar from arousal, camera dolly from features.time, glass-fin position from bass). Reads BaseSceneSnapshot for additive-on-baseline behaviour.
     RenderPipeline+ICB      → Indirect command buffer: drawWithICB, populate compute + execute render
     RayMarchPipeline        → Deferred 3-pass: G-buffer textures, lighting pipeline, composite pipeline
     RayMarchPipeline+Passes → SSGI pass extraction for file-length compliance
@@ -92,21 +92,24 @@ PhospheneEngine/
     Shaders/Particles.metal → Murmuration compute kernel + bird silhouette vertex/fragment
     Shaders/PostProcess.metal → Bright pass, Gaussian blur H/V, ACES composite
     Shaders/RayTracing.metal → RT structs, nearest-hit kernel, shadow kernel, camera ray utils
-    Shaders/RayMarch.metal   → Cook-Torrance PBR deferred lighting, composite fragment
+    Shaders/RayMarch.metal   → Cook-Torrance PBR deferred lighting (IBL ambient tinted by lightColor), composite fragment, depth/G-buffer debug pipelines
     Shaders/SSGI.metal       → Screen-space global illumination (8-sample spiral, half-res, additive blend)
     Shaders/NoiseGen.metal   → Compute kernels: gen_perlin_2d, gen_perlin_3d, gen_fbm_rgba, gen_blue_noise
     Shaders/IBL.metal        → IBL generation kernels + sampling utilities
   Presets/
     PresetLoader            → Auto-discover, compile standard + additive + mesh + ray march pipelines, skip utility files
-    PresetLoader+Preamble   → Shared preamble: FeatureVector struct → ShaderUtilities → noise samplers → preset code
+    PresetLoader+Preamble   → Shared preamble: FeatureVector struct → ShaderUtilities → noise samplers → preset code. Forwards `sceneMaterial(p, matID, FeatureVector& f, SceneUniforms& s, ...)` so ray-march presets can apply identical audio-reactive deformation in both sceneSDF and sceneMaterial (DECISIONS D-021).
     PresetDescriptor        → JSON sidecar: passes, feedback params, scene camera/lights, stem affinity
+    PresetDescriptor+SceneUniforms → Constructs SceneUniforms from descriptor (camera basis, light, fog, near/far). FOV converted from JSON degrees → radians exactly once.
     PresetCategory          → 11 aesthetic families
     Shaders/ShaderUtilities.metal → 55 reusable functions: noise, SDF, PBR, ray march, UV, color, atmosphere
     Shaders/Waveform.metal  → Spectrum bars + oscilloscope
     Shaders/Plasma.metal    → Demoscene plasma
     Shaders/Nebula.metal    → Radial frequency nebula
     Shaders/Starburst.metal → Murmuration sky backdrop
-    Shaders/GlassBrutalist.metal → Brutalist corridor (ray march + SSGI + post-process)
+    Shaders/GlassBrutalist.metal → Brutalist corridor — static architecture; only the glass-fin X-position deforms with bass (Option A design, see DECISIONS D-020). Light/fog/colour modulated in shared Swift path.
+    Shaders/KineticSculpture.metal → Interlocking lattice of Brushed Aluminum + Frosted Glass + Liquid Mercury, abstract ray march. FOV in degrees (post-fix; was radians, see commit history).
+    Shaders/TestSphere.metal → Minimal pipeline-verification SDF (sphere + floor); used for end-to-end ray-march compile/render test.
   Orchestrator/             → AI VJ: preset selection, transitions, session planning (stub — see ENGINEERING_PLAN.md Phase 4)
   Session/
     SessionManager          → Lifecycle state machine (idle→connecting→preparing→ready→playing→ended), @MainActor ObservableObject; degrades gracefully on connector/preparation failure
@@ -125,6 +128,7 @@ PhospheneEngine/
     StemSampleBuffer        → Interleaved stereo PCM ring buffer for stem separation input (15s)
     RenderPass              → Enum: direct, feedback, particles, mesh_shader, post_process, ray_march, icb, ssgi
     Logging                 → Per-module os.Logger instances (subsystem: "com.phosphene")
+    SessionRecorder         → Continuous diagnostic capture per app launch: video.mp4 (H.264, 30 fps) + features.csv + stems.csv + stems/<N>_<title>/{drums,bass,vocals,other}.wav + session.log. Writes to ~/Documents/phosphene_sessions/<timestamp>/. Finalised on NSApplication.willTerminateNotification. Validated by SessionRecorderTests.
 Tests/
   Audio/                    → AudioBufferTests, FFTProcessorTests, StreamingMetadataTests, MetadataPreFetcherTests, LookaheadBufferTests, SilenceDetectorTests
   DSP/                      → SpectralAnalyzerTests, BandEnergyProcessorTests, ChromaExtractorTests, BeatDetectorTests, MIRPipelineUnitTests, SelfSimilarityMatrixTests, NoveltyDetectorTests, StructuralAnalyzerTests
@@ -401,6 +405,14 @@ No CoreML dependency. All ML uses MPSGraph (GPU) or Accelerate (CPU).
 20. **CoreML ANE outputs with bindMemory(to: Float.self)**: Float16 misinterpreted as Float32.
 21. **CATapDescription(stereoMixdownOfProcesses: [])**: Empty array = silence. Use `stereoGlobalTapButExcludeProcesses: []`.
 22. **Screen capture permission assumption**: Tap creation succeeds without permission but delivers zeros. Must call `CGRequestScreenCaptureAccess()` first.
+23. **Architecture deformation in ray-march scene presets**: Bass-driven beam dipping, pillar squeezing, fin Y-stretching all read as broken/rubber. Architecture has implied permanence — modulate light/atmosphere/camera, not the building (DECISIONS D-020).
+24. **Modulating only `lightColor` for mood-driven palette shift**: Indoor ray-march scenes are dominated by IBL ambient; the direct light only catches surfaces facing it. Tinting the light alone leaves most pixels colour-unchanged. Multiply IBL ambient by `lightColor.rgb` so the shift propagates everywhere (DECISIONS D-022).
+25. **Mood values written to a `@Published` overlay property without a renderer-bound path**: MoodClassifier output reaches the SwiftUI debug overlay but never the GPU FeatureVector unless `RenderPipeline.setMood` is called explicitly and `setFeatures` preserves valence/arousal across overwrites (DECISIONS D-024).
+26. **Beat-pulse keyed only to `beatBass`**: Tracks where the kick is buried (Love Shack, anything snare-driven) get no pulse. Use `max(beatBass, beatMid, beatComposite)` for cross-genre coverage.
+27. **Synthetic audio for visualizer diagnostics**: Hand-authored FeatureVector envelopes do not reproduce real-music pipeline noise/cross-band correlation/MIR-derived structure. Diagnostic harnesses must run the actual capture path on real audio.
+28. **Locking `AVAssetWriter` to the first observed drawable size**: MTKView's drawable size is transient at launch; lock to the first size and later frames at the steady-state size get blitted into a corner of the writer's larger buffer. Defer writer init until N consecutive same-size frames; once locked, skip mismatched frames rather than blit-into-wrong-geometry.
+29. **Hardcoded sample rate (44.1 kHz) when the tap reports something else**: Phosphene assumes 44.1/48 kHz internally for stem separation and beat-detection windowing. If the user's Audio MIDI Setup runs at 96 kHz, beat windows and BPM math are off by ~2.18×. Set Audio MIDI Setup to 48 kHz to match (RUNBOOK).
+30. **Spotify default normalization (Volume level: Normal)**: Knocks mastered peaks from ~0.7 to ~0.15-0.20, compressing AGC headroom and degrading mood-classifier stability. Toggle Normalize Volume off in Spotify settings (RUNBOOK).
 
 ---
 
@@ -415,15 +427,27 @@ No CoreML dependency. All ML uses MPSGraph (GPU) or Accelerate (CPU).
 - Do not pass `SWIFT_TREAT_WARNINGS_AS_ERRORS=YES` on the xcodebuild command line.
 - Do not assume Now Playing metadata is available or accurate.
 - Do not use `[[thread_index_in_mesh]]` in MSL (does not exist).
+- Do not deform architecture geometry with audio in ray-march scene presets — modulate light/atmosphere/camera instead (DECISIONS D-020).
+- Do not write to `latestFeatures.valence` / `arousal` from the MIR path. Mood goes through `RenderPipeline.setMood`; `setFeatures` preserves mood across overwrites.
+- Do not lock `AVAssetWriter` to the first observed drawable size — defer until N consecutive same-size frames; skip mismatched frames after.
+- Do not key visualizer beat-pulse logic to a single onset band — use `max(beatBass, beatMid, beatComposite)` so snare-driven and kick-driven tracks both register.
 
 ---
 
 ## Current Status
 
-**Phase 3 substantially complete. Phase 2.5 (session preparation) complete.** The next ordered increments are:
+**Phase 3 substantially complete. Phase 2.5 (session preparation) complete.** Recent landed work:
 
-1. **Increment 3.5.2 — Murmuration Stem Routing Revision** — replace 6-band workaround with real stem routing.
-2. **Phase 4 — Orchestrator** — scored preset selection, transition policy, session planning, golden-session tests.
+- **Glass Brutalist Option A** — static brutalist corridor; music drives only light/fog/path (DECISIONS D-020). Per-frame Swift modulation in `drawWithRayMarch` reads `BaseSceneSnapshot` so modulation is additive on the JSON baseline.
+- **Preamble extension** — `sceneMaterial(p, matID, FeatureVector& f, SceneUniforms& s, ...)` for all three ray-march presets, eliminating boundary-classification mismatch (D-021).
+- **IBL ambient tinting** — `iblAmbient *= scene.lightColor.rgb` so mood-driven palette shift propagates across the scene (D-022).
+- **Tap reinstall on prolonged silence** — recovers from scrub-induced source teardowns (D-023).
+- **Mood injection** — `RenderPipeline.setMood` + valence/arousal preservation in `setFeatures` (D-024).
+- **`SessionRecorder`** — continuous diagnostic capture (video + features + stems + WAVs + log) per app launch (D-025).
+
+The next ordered increments are:
+
+1. **Phase 4 — Orchestrator** — scored preset selection, transition policy, session planning, golden-session tests.
 
 See `docs/ENGINEERING_PLAN.md` for the full forward plan with done-when criteria and verification commands.
 

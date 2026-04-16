@@ -200,3 +200,71 @@ If `PlaylistConnector.connect()` throws, `SessionManager` transitions to `ready`
 
 **Implication for tests:** Tests that verify degradation behavior must cover both failure modes (connector failure → empty plan, resolver failure → partial plan) independently.
 
+---
+
+## D-020: Architecture-stays-solid for ray-march scene presets (Glass Brutalist Option A)
+
+**Status:** Accepted
+
+For ray-march scenes that depict identifiable architecture (corridors, rooms, structures with implied permanence), audio reactivity must NOT deform the architecture itself. Walls, pillars, beams, floors, and ceilings stay static. Music drives only the *light* in the scene (intensity, colour), the *atmosphere* (fog density), the *camera* (constant-speed dolly), and at most a single secondary deformation that reads as spatial rather than structural (Glass Brutalist's glass-fin position, which widens/narrows the open path between fins).
+
+**Reason:** Three iterations of bass-driven beam dipping, pillar squeezing, and fin Y-stretching all produced the same complaint: the scene reads as broken or rubber. Architecture has implied permanence; visibly warping a concrete cross-beam on every kick drum collapses the spatial illusion. Real-world music reactivity in spaces (clubs, cathedrals, light shows) modulates lighting and mist, never the building. Phosphene's deferred PBR pipeline already gives us the mechanism — modulate `lightColor`, `lightIntensity`, `fogFar`, and IBL ambient, leave geometry alone.
+
+**Implication for ray-march preset authors:** `sceneSDF` should be audio-independent or limited to a single, intentionally subtle non-architectural element. Modulation of lighting/atmosphere happens in the shared Swift render path (`drawWithRayMarch`) reading from `RayMarchPipeline.BaseSceneSnapshot` so per-frame modulation is additive on the JSON baseline. If a preset needs SDF-side modulation that material classification must agree with (e.g. Glass Brutalist's fin X-position), pass it via a free `SceneUniforms` lane that both `sceneSDF` and `sceneMaterial` read from — never re-evaluate sub-SDFs at a different shape in `sceneMaterial` than in `sceneSDF`, or material boundaries will flip at deformed edges.
+
+---
+
+## D-021: `sceneMaterial` receives `FeatureVector` and `SceneUniforms`
+
+**Status:** Accepted
+
+The shader preamble's `sceneMaterial` forward declaration is `void sceneMaterial(float3 p, int matID, constant FeatureVector& f, constant SceneUniforms& s, thread float3& albedo, thread float& roughness, thread float& metallic)`. All ray-march presets implement this signature.
+
+**Reason:** Audio-reactive SDF deformation that only `sceneSDF` could see produced material-classification mismatches at deformed boundaries — pixels classified as glass would re-classify as concrete (and vice versa) when the per-fragment hit position fell outside the rest-shape sub-SDF that `sceneMaterial` was checking against. Passing the same `FeatureVector` and `SceneUniforms` to `sceneMaterial` lets it apply the same deformation `sceneSDF` did, eliminating boundary flips. This is a one-time preamble update; the cost is requiring all ray-march presets to declare the wider signature even if they don't use it.
+
+---
+
+## D-022: IBL ambient is tinted by `lightColor` so mood shifts are visible
+
+**Status:** Accepted
+
+`raymarch_lighting_fragment` multiplies its computed IBL ambient term by `scene.lightColor.rgb` before adding it to direct light. The same tint is applied to fog colour.
+
+**Reason:** Indoor ray-march scenes are dominated by IBL ambient — the direct scene light only catches surfaces facing it (often a small fraction of the visible frame). Modulating only the direct light's `lightColor` (e.g. by `valence`) leaves most of the rendered pixels colour-unchanged. Multiplying the ambient by `lightColor.rgb` makes the mood-driven palette shift visible across every concrete surface, not just light-facing ones. At rest `lightColor ≈ (1, 0.95, 0.88)` so the multiply is near-identity; under modulation it propagates through the whole scene.
+
+---
+
+## D-023: Core Audio tap reinstall on prolonged silence
+
+**Status:** Accepted
+
+`AudioInputRouter` watches the `SilenceDetector` state machine. On entry to `.silent`, it schedules a tap-reinstall on a `tap-mgmt` utility queue with backoff `[3s, 10s, 30s]`. Each attempt destroys the existing tap + aggregate device and creates fresh ones for the active capture mode. Backoff resets on transition to `.active`.
+
+**Reason:** `AudioHardwareCreateProcessTap` does not gracefully handle the source process tearing down its audio session — most commonly observed when the user scrubs to a new position in a streaming app. The tap stays alive but delivers permanent zeros. The silence detector correctly identifies this as silence (no fade, hard cut), but its native recovery path requires fresh non-silent samples on the existing tap, which never arrive when the tap is broken. Reinstalling the tap re-establishes the path to the source process. The backoff prevents thrash when silence is a real pause rather than a broken tap.
+
+**Implication for new audio capture providers:** any provider that can fall into a "stuck silent but technically alive" state needs an analogous recovery mechanism. File playback (`InputMode.localFile`) is exempt because file playback can't get stuck this way.
+
+---
+
+## D-024: Mood is injected into the renderer through a dedicated path
+
+**Status:** Accepted
+
+`RenderPipeline.setMood(valence:arousal:)` is the only path that updates `latestFeatures.valence` / `arousal`. `RenderPipeline.setFeatures(_:)` (called from the MIR analysis pipeline at every analysis frame) explicitly preserves the most recent mood values across the overwrite.
+
+**Reason:** Mood classification runs at a slower cadence than MIR feature extraction. Without the preserve+inject pair, MIR's per-frame `setFeatures` would zero out mood on every call. The visible symptom in earlier sessions: `features.csv` showed `valence=0` and `arousal=0` always, even though the mood classifier was running and producing real values that reached the SwiftUI overlay. Dedicated injection separates the producer cadences cleanly.
+
+**Implication for new GPU-bound features:** any classifier output that lives on the `FeatureVector` but is produced at a different cadence than MIR needs the same pattern — a setter on `RenderPipeline` that updates only its own fields, plus preservation in `setFeatures`.
+
+---
+
+## D-025: SessionRecorder runs continuously from app launch
+
+**Status:** Accepted
+
+`SessionRecorder` (in the `Shared` module, public) is created during `VisualizerEngine.init` and writes diagnostic capture continuously to `~/Documents/phosphene_sessions/<ISO-timestamp>/` for every running session. There is no "start recording" button. The recorder is finalized via an `NSApplication.willTerminateNotification` observer so the MP4 `moov` atom is written before the process exits.
+
+**Reason:** Phosphene problems are typically observable but not reproducible — a beat lands wrong on one passage of one track, a colour looks off during a specific moment, audio cuts out after a scrub. Asking the user to retroactively reproduce these requires guessing at conditions. Continuous recording means the data already exists when the user reports an issue. The recorder is small (~60 MB per minute, mostly video), runs on a utility-QoS queue off the realtime audio thread, and survives unit tests against known-input round-trip (CSV columns, WAV PCM samples, MP4 readability).
+
+**Trade-off:** Disk usage. A long listening session can accumulate hundreds of MB. Acceptable for a dev/diagnostic build; if/when Phosphene ships, this should become an opt-in toggle with a configurable retention policy.
+
