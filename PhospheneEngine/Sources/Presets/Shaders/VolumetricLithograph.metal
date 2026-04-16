@@ -7,6 +7,21 @@
 // flare the peak palette into HDR bloom; the ridge-line itself reads as
 // a thin emissive seam where the cut goes.
 //
+// v3.2 (session 2026-04-16T18-24-43Z — Matt flagged "pulsing faster than
+// the beat" and "neutral gray backdrop"):
+//   - Peak coverage was ~35% because lo=0.50 sat at the fbm mean.  Raised
+//     lo/hi to 0.56/0.60 so peaks are ~15% of the scene — restores the
+//     linocut "highlights on mostly-dark paper" feel and quiets the
+//     visual field so beat-aligned motion can dominate.
+//   - Noise time scale 0.06 → 0.015: high-octave fbm shimmer was drifting
+//     fast enough to read as continuous "pulses" that weren't beat-locked.
+//     4× slower ties the surface detail down so beat flares stand out.
+//   - Palette rotation 0.15 → 0.08: ~one full colour cycle per preset
+//     duration at moderate energy (was pulse-rate at 0.15).
+//   - Shared RayMarch.metal fix: miss/sky pixels now tinted by
+//     scene.lightColor.rgb (matches fog-colour treatment) — no more
+//     "neutral gray backdrop" on presets with warm light colour.
+//
 // v3.1 (session 2026-04-16T17-33-10Z v2 diagnostic) tuned three palette
 // parameters that v3 left untouched but the data showed were wrong:
 //   - Palette rotation rate 0.04 → 0.15:  over 64s of playback, audioTime
@@ -62,7 +77,11 @@
 
 constant float VL_TERRAIN_BASE_Y   = 0.0f;   // resting terrain height (world Y)
 constant float VL_NOISE_FREQUENCY  = 0.12f;  // larger features than v1 (0.18)
-constant float VL_NOISE_TIME_SCALE = 0.06f;  // slower morph than v1 (0.15)
+constant float VL_NOISE_TIME_SCALE = 0.015f; // v3.2: 0.06 → 0.015 so high-octave
+                                              // noise shimmer slows to ~1 cycle
+                                              // per 20s wallclock; beat-aligned
+                                              // motion stops competing with
+                                              // continuous surface boil
 constant float VL_DISP_SILENT_AMP  = 0.6f;   // baseline so terrain reads in silence
 constant float VL_DISP_AUDIO_AMP   = 1.8f;   // tamer than v1 (3.4)
 constant int   VL_FBM_OCTAVES      = 5;
@@ -70,11 +89,14 @@ constant int   VL_FBM_OCTAVES      = 5;
 // SDF Lipschitz scaling: heightfield is not Euclidean on slopes.
 constant float VL_SDF_STEP_SCALE   = 0.6f;
 
-// Linocut edge windows.  Tighter than v1 (0.55, 0.72) — sharper boundary.
-constant float VL_PEAK_LO          = 0.50f;  // valley → peak transition start
-constant float VL_PEAK_HI          = 0.55f;  // valley → peak transition end
-constant float VL_RIDGE_INNER      = 0.495f; // ridgeline lower edge
-constant float VL_RIDGE_OUTER      = 0.51f;  // ridgeline upper edge
+// Linocut edge windows — v3.2 narrowed peak coverage from ~35% (v3/v3.1
+// had lo=0.50, right at the fbm mean, so half the terrain was "peaks")
+// to ~15% (lo=0.56, above the mean, so peaks read as highlights on a
+// mostly-dark canvas — the linocut "ink on paper" relationship).
+constant float VL_PEAK_LO          = 0.56f;  // valley → peak transition start
+constant float VL_PEAK_HI          = 0.60f;  // valley → peak transition end
+constant float VL_RIDGE_INNER      = 0.555f; // ridgeline lower edge
+constant float VL_RIDGE_OUTER      = 0.565f; // ridgeline upper edge
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -159,17 +181,17 @@ void sceneMaterial(float3 p,
       * (1.0f - smoothstep((VL_RIDGE_INNER + VL_RIDGE_OUTER) * 0.5f - beatShift,
                             VL_RIDGE_OUTER - beatShift, n));
 
-    // ── Psychedelic palette (the headline change) ───────────────────────
-    // Phase = local noise × 0.9  (wide spatial hue variation across peaks;
-    //                              v3 had 0.45 which clamped peak variation
-    //                              to ~20% of a cycle — all peaks looked
-    //                              the same colour in a single frame)
-    //       + audioTime × 0.15   (full cycle every ~7s of active audio;
-    //                              v3 had 0.04 which only rotated 20% of
-    //                              a cycle over 64s — visually static)
-    //       + valence × 0.25     (mood shifts the palette window —
-    //                              unchanged, gives per-track hue identity)
-    float palettePhase = n * 0.9f + audioPhase * 0.15f + f.valence * 0.25f;
+    // ── Psychedelic palette ────────────────────────────────────────────
+    // Phase = local noise × 0.9  (wide spatial hue spread across peaks —
+    //                              v3's 0.45 was too narrow; v3.1's 0.9
+    //                              is right)
+    //       + audioTime × 0.08   (v3.2: 0.15 felt like "pulsing faster
+    //                              than the beat" — rotation was too fast
+    //                              and competed with beat-aligned motion.
+    //                              0.08 gives ~1 full cycle per preset
+    //                              duration at moderate energy)
+    //       + valence × 0.25     (per-track mood hue identity, unchanged)
+    float palettePhase = n * 0.9f + audioPhase * 0.08f + f.valence * 0.25f;
     float3 peakHue   = vl_palette(palettePhase);
     // Valley brightness × 0.15 (v3 had × 0.08 which the valence-tinted
     // IBL ambient drowned out — valleys read as uniform dark brown).
