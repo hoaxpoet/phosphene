@@ -79,6 +79,18 @@ public final class RayMarchPipeline: @unchecked Sendable {
     /// Defaults to `false`.
     public var ssgiEnabled: Bool = false
 
+    // MARK: - Depth Debug Mode
+
+    /// When `true`, `render(...)` bypasses all lighting, SSGI, and post-processing and
+    /// renders a split-screen depth/albedo diagnostic:
+    ///   Left half:  depth map — white = near, dark = far, RED = sky/miss.
+    ///   Right half: raw unlit albedo from gbuf2.
+    /// Temporarily enabled in applyPreset for diagnostic review — disable after.
+    public var depthDebugEnabled: Bool = false
+
+    /// Direct depth+albedo diagnostic pipeline — compiled from `raymarch_depth_debug_fragment`.
+    let depthDebugPipeline: MTLRenderPipelineState
+
     // MARK: - G-buffer Debug Mode
 
     /// When `true`, `render(...)` skips the lighting pass, SSGI, and ACES tone-mapping
@@ -112,6 +124,32 @@ public final class RayMarchPipeline: @unchecked Sendable {
     /// Per-scene camera, light, and animation parameters.
     /// Updated each frame before `render(...)` by the caller or render loop.
     public var sceneUniforms: SceneUniforms
+
+    // MARK: - Audio-Reactive Modulation (Option A design)
+
+    /// Snapshot of the preset's JSON-specified scene uniforms, captured once
+    /// at preset apply time. The shared render path reads these each frame
+    /// as the baseline to which per-frame audio modulation is applied — so
+    /// modulation accumulates from the preset's intent, not from whatever
+    /// the previous frame wrote.
+    ///
+    /// Fields preserved: camera position (z becomes dolly base), light
+    /// intensity, light color, fog far plane.
+    public var baseScene: BaseSceneSnapshot = BaseSceneSnapshot()
+
+    /// Forward dolly speed in world-units per second of wall-clock time.
+    /// `0` disables dolly (Kinetic Sculpture / Test Sphere stay static).
+    /// Set by `applyPreset` from a preset-specific rule.
+    public var cameraDollySpeed: Float = 0
+
+    /// Captured baseline scene values from the preset JSON.
+    public struct BaseSceneSnapshot: Sendable {
+        public var cameraPosition: SIMD3<Float> = .zero
+        public var lightIntensity: Float = 1.0
+        public var lightColor: SIMD3<Float> = SIMD3(1, 1, 1)
+        public var fogFar: Float = 30.0
+        public init() {}
+    }
 
     // MARK: - Init
 
@@ -192,6 +230,16 @@ public final class RayMarchPipeline: @unchecked Sendable {
         debugDesc.fragmentFunction = debugFn
         debugDesc.colorAttachments[0].pixelFormat = context.pixelFormat
         self.gbufferDebugPipeline = try device.makeRenderPipelineState(descriptor: debugDesc)
+
+        // Depth debug pass — split screen: left=depth, right=albedo. No lighting/ACES.
+        guard let depthDebugFn = shaderLibrary.function(named: "raymarch_depth_debug_fragment") else {
+            throw RayMarchPipelineError.functionNotFound("raymarch_depth_debug_fragment")
+        }
+        let depthDebugDesc = MTLRenderPipelineDescriptor()
+        depthDebugDesc.vertexFunction = vertexFn
+        depthDebugDesc.fragmentFunction = depthDebugFn
+        depthDebugDesc.colorAttachments[0].pixelFormat = context.pixelFormat
+        self.depthDebugPipeline = try device.makeRenderPipelineState(descriptor: depthDebugDesc)
 
         // Bilinear, clamp-to-edge sampler.
         let samplerDesc = MTLSamplerDescriptor()

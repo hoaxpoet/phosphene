@@ -46,14 +46,27 @@ constant float GB_PILLAR_HH   = 5.5f;
 /// Y centre of the horizontal cross-beam that connects each pillar pair at the top.
 constant float GB_BEAM_Y      = 3.80f;
 
-/// Glass panel X half-width — narrower than the corridor gap so a sliver of
-/// open air is visible between the glass edge and each pillar face.
-constant float GB_GLASS_HW    = 1.78f;
+/// Glass fin X half-width — narrow vertical fins, not full-wall panels.
+/// Two fins per bay at x = ±GB_GLASS_CX leave the corridor centreline
+/// open so rays looking down-corridor see a receding vista instead of
+/// a screen-filling mirror. Changed from 1.78 → 0.60 in the Option-A
+/// redesign to fix the "giant cyan rectangle" framing problem.
+constant float GB_GLASS_HW    = 0.60f;
 
-/// Glass panel Y half-height — from just above floor to just below beam.
-constant float GB_GLASS_HH    = 2.40f;
+/// X centre-distance of each glass fin from the corridor centre-line.
+/// Fin extent is therefore x ∈ [GB_GLASS_CX − GB_GLASS_HW, GB_GLASS_CX + GB_GLASS_HW]
+/// = [0.6, 1.8], leaving |x| < 0.6 (the centre channel) as open air.
+constant float GB_GLASS_CX    = 1.20f;
 
-/// Glass panel Z half-depth (physical thickness of the pane).
+/// Glass fin Y half-height — from just above floor (y ≈ −0.95) to just
+/// below beam (y ≈ 3.75). Taller than the original panels; reads as a
+/// floor-to-beam architectural fin rather than a vitrine window.
+constant float GB_GLASS_HH    = 2.35f;
+
+/// Glass fin Y centre. Matches (floor + beam) / 2 ≈ ( −1 + 3.8 ) / 2 = 1.4.
+constant float GB_GLASS_CY    = 1.40f;
+
+/// Glass fin Z half-depth (physical thickness of the fin).
 constant float GB_GLASS_HD    = 0.05f;
 
 // ── Domain helpers ────────────────────────────────────────────────────────────
@@ -68,12 +81,11 @@ static inline float gb_repZ(float z, float c) {
 
 /// Signed distance to all concrete elements at world position p.
 ///
-/// - yScale: audio-driven pillar Y-stretch (1.0 = rest shape; use in sceneSDF only).
-/// - beatSq: transient X/Z-squeeze factor (1.0 = rest shape; use in sceneSDF only).
-///
-/// sceneMaterial passes (1.0, 1.0) to obtain stable, audio-independent material
-/// boundaries while accepting a small sub-pixel seam at deformed geometry boundaries.
-static inline float gb_sdConcrete(float3 p, float yScale, float beatSq) {
+/// Deliberately audio-independent: brutalist architecture reads as solid,
+/// permanent mass. Music reactivity is applied via scene lighting + fog
+/// (handled in Swift via SceneUniforms per-frame modulation), never by
+/// deforming geometry.
+static inline float gb_sdConcrete(float3 p) {
     // Floor slab: normal = +Y, plane equation dot(p,(0,1,0)) + 1.0 = 0 → Y = -1.0.
     float dFloor   = sdPlane(p, float3(0.0f, 1.0f, 0.0f), 1.0f);
 
@@ -81,23 +93,15 @@ static inline float gb_sdConcrete(float3 p, float yScale, float beatSq) {
     float dCeiling = sdPlane(p, float3(0.0f, -1.0f, 0.0f), 5.2f);
 
     // Side walls: continuous concrete planes at x = ±GB_CORRIDOR_X.
-    // Positive inside the corridor, zero at the wall surface.
-    // Pillar columns project inward from these walls as engaged pilasters —
-    // visible where they protrude past the wall face between cross-beam bays.
     float dSideWalls = GB_CORRIDOR_X - abs(p.x);
 
     // Pillar rows: abs-fold in X collapses both columns into one sdBox evaluation.
-    // pP is in pillar-local space; centre at (GB_CORRIDOR_X, 0, zR).
     float zR   = gb_repZ(p.z, GB_CELL_Z);
-    float3 pP  = float3(abs(p.x) - GB_CORRIDOR_X,
-                        p.y * yScale,
-                        zR);
-    float dPillar = sdBox(pP, float3(GB_PILLAR_HW * beatSq,
-                                     GB_PILLAR_HH,
-                                     GB_PILLAR_HW * beatSq));
+    float3 pP  = float3(abs(p.x) - GB_CORRIDOR_X, p.y, zR);
+    float dPillar = sdBox(pP, float3(GB_PILLAR_HW, GB_PILLAR_HH, GB_PILLAR_HW));
 
     // Horizontal cross-beam spanning the full corridor width at pillar tops.
-    float3 bP  = float3(p.x, p.y - GB_BEAM_Y, zR);
+    float3 bP   = float3(p.x, p.y - GB_BEAM_Y, zR);
     float dBeam = sdBox(bP, float3(GB_CORRIDOR_X + GB_PILLAR_HW, 0.35f, GB_PILLAR_HW));
 
     return min(min(min(dFloor, dCeiling), dSideWalls), min(dPillar, dBeam));
@@ -105,54 +109,42 @@ static inline float gb_sdConcrete(float3 p, float yScale, float beatSq) {
 
 // ── Glass sub-SDF ────────────────────────────────────────────────────────────
 
-/// Signed distance to the glass panels at world position p.
+/// Signed distance to the glass fins at world position p.
 ///
-/// Panels are offset by half a cell in Z so they sit between each pillar row.
+/// Two narrow fins per bay, mirrored in X via abs-fold, offset by half a
+/// cell in Z so they land between each pillar row.
 ///
-/// - glassBreath: mid-energy Y-scale (1.0 = rest height; use in sceneSDF only).
-///
-/// sceneMaterial passes 1.0 for a stable material boundary.
-static inline float gb_sdGlass(float3 p, float glassBreath) {
-    // Offset by half a cell so panels land between pillar rows, then repeat.
+/// - `finCX`: audio-modulated fin centre-distance from the corridor midline.
+///   At rest = GB_GLASS_CX (1.20); shrinks when the music is bass-heavy so
+///   the corridor *path* between the fins narrows. The architecture (walls,
+///   pillars, beam, floor, ceiling) stays static; only the fins move.
+static inline float gb_sdGlass(float3 p, float finCX) {
+    // Offset by half a cell so fins land between pillar rows, then repeat.
     float zG   = gb_repZ(p.z - GB_CELL_Z * 0.5f, GB_CELL_Z);
 
-    // Divide Y by glassBreath to scale panel height (non-conformal but small).
-    float3 gP  = float3(p.x,
-                        (p.y - 1.20f) / glassBreath,
+    // abs-fold in X collapses both fins into one sdBox evaluation.
+    float3 gP  = float3(abs(p.x) - finCX,
+                        p.y - GB_GLASS_CY,
                         zG);
     return sdBox(gP, float3(GB_GLASS_HW, GB_GLASS_HH, GB_GLASS_HD));
 }
 
 // ── Scene SDF ────────────────────────────────────────────────────────────────
 
+/// Static architecture with one music-driven element: the glass fins'
+/// X-position is modulated so the open corridor path between them widens
+/// and narrows with the music. The value comes from Swift via
+/// `sceneUniforms.cameraForward.w` (a free SIMD4 lane) — both `sceneSDF`
+/// and `sceneMaterial` read from the same uniform so the glass/concrete
+/// classification stays consistent.
+///
+/// Forward motion through the corridor is produced by advancing the
+/// camera position in Swift each frame; the SDF is never time-offset.
 float sceneSDF(float3 p,
                constant FeatureVector& f,
                constant SceneUniforms& s) {
-    // ── Continuous energy (primary driver) ───────────────────────────────────
-    // 20–250 Hz proxy for bass-stem energy; sub_bass dominates kick + 808.
-    float bassEnergy = f.sub_bass + f.low_bass;
-
-    // Pillar Y-scale: architecture breathes taller with bass energy.
-    // Range: 1.0 (silence) → ~1.14 (loud bass).
-    float yScale = 1.0f + bassEnergy * 0.07f;
-
-    // Glass Y-scale: panels stretch subtly with mid-range content.
-    // Range: 1.0 (silence) → ~1.10 (loud mid).
-    float glassBreath = 1.0f + f.mid * 0.10f;
-
-    // Slow sinusoidal corridor drift driven by accumulated audio time.
-    // Gives the scene a slow lateral sway that scales with musical energy.
-    float drift = sin(f.accumulated_audio_time * 0.35f) * 0.14f;
-    float3 q = p + float3(drift, 0.0f, 0.0f);
-
-    // ── Beat accent (secondary) ──────────────────────────────────────────────
-    // Transient X/Z-squeeze on kick/snare onset — pillars momentarily narrow.
-    // Kept small (max 5 %) so beat never overrides the continuous motion.
-    float beatSq = 1.0f - f.beat_bass * 0.05f;
-
-    float dConcrete = gb_sdConcrete(q, yScale, beatSq);
-    float dGlass    = gb_sdGlass(q, glassBreath);
-    return min(dConcrete, dGlass);
+    float finCX = s.cameraForward.w > 0.0f ? s.cameraForward.w : GB_GLASS_CX;
+    return min(gb_sdConcrete(p), gb_sdGlass(p, finCX));
 }
 
 // ── Scene Material ────────────────────────────────────────────────────────────
@@ -168,24 +160,37 @@ float sceneSDF(float3 p,
 // cyan-tinted indirect diffuse onto adjacent concrete regardless of audio level.
 void sceneMaterial(float3 p,
                    int matID,
+                   constant FeatureVector& f,
+                   constant SceneUniforms& s,
                    thread float3& albedo,
                    thread float& roughness,
                    thread float& metallic) {
-    // Re-evaluate sub-SDFs at rest shape (no audio deformation) to classify.
-    // Small seams at peak-deformation geometry boundaries are imperceptible.
-    float dConcrete = gb_sdConcrete(p, 1.0f, 1.0f);
-    float dGlass    = gb_sdGlass(p, 1.0f);
+    // Re-evaluate sub-SDFs with the SAME audio-reactive fin position used
+    // in sceneSDF — otherwise fin edges at a displaced X would classify as
+    // concrete when they should be glass (the "glass-turning-to-concrete"
+    // bug). Reading from the same scene uniform guarantees consistency.
+    float finCX = s.cameraForward.w > 0.0f ? s.cameraForward.w : GB_GLASS_CX;
+    float dConcrete = gb_sdConcrete(p);
+    float dGlass    = gb_sdGlass(p, finCX);
 
     if (dGlass < dConcrete) {
         // ── Structural Glass ─────────────────────────────────────────────────
-        // Near-mirror finish: low roughness + high metallic maximises IBL
-        // specular contribution in the lighting pass, producing high luminance
-        // values in the rgba16Float litTexture.  The SSGI pass then samples
-        // these bright pixels and bleed cyan-tinted indirect diffuse light
-        // onto adjacent concrete walls and floor.
-        albedo    = float3(0.55f, 0.82f, 0.96f);   // cool cyan tint
-        roughness = 0.18f;                           // brushed architectural glass
-        metallic  = 0.45f;                           // semi-reflective: cyan tint visible + IBL bleed
+        // Deferred PBR cannot refract, so pure dielectric (metallic=0) glass
+        // degenerates to "tinted concrete" because F0=0.04 leaves the IBL
+        // specular term at ~4% — albedo × irradiance dominates and reads
+        // like a diffuse surface.
+        //
+        // The fix: raise F0 enough that IBL Fresnel (F_ibl in RayMarch.metal)
+        // returns cool *environment reflection*, not the surface tint. Glass
+        // then looks like reflective glass rather than painted concrete.
+        //
+        //   metallic = 0.55 → F0 ≈ 0.46 (high enough to dominate IBL specular)
+        //   roughness = 0.02 → crisp, near-perfect mirror reflection
+        //   albedo   = deep cool blue — what transmitted light would look like
+        //              at grazing angles when Fresnel is low
+        albedo    = float3(0.35f, 0.72f, 0.95f);
+        roughness = 0.02f;
+        metallic  = 0.55f;
     } else {
         // ── Bare Concrete ────────────────────────────────────────────────────
         // Two octaves of Perlin noise provide tactile variation without a
@@ -200,5 +205,23 @@ void sceneMaterial(float3 p,
         // Roughness follows grain — pitted zones are rougher than smooth zones.
         roughness = mix(0.82f, 0.92f, finGrain);
         metallic  = 0.0f;
+
+        // ── Floor stripes for motion cue ─────────────────────────────────────
+        // Without Z-varying features, an infinite corridor looks static even
+        // as the dolly advances. Painted bright stripes on the floor at each
+        // pillar row (z = 0, ±GB_CELL_Z, ±2·GB_CELL_Z…) sweep past as the
+        // world moves, giving an unambiguous optical-flow motion cue.
+        //
+        // Floor check: plane at y = −1, normal +Y. Test against p.y within
+        // a small tolerance to avoid striping side-walls/pillars/ceiling.
+        if (p.y < -0.95f) {
+            float stripePhase = p.z / GB_CELL_Z;
+            float stripeT     = fract(stripePhase + 0.5f);        // 0..1 within bay
+            // Thin bright band centred at each pillar row:
+            float stripe = smoothstep(0.44f, 0.50f, stripeT)
+                         - smoothstep(0.50f, 0.56f, stripeT);
+            albedo    = mix(albedo, float3(0.95f, 0.90f, 0.78f), stripe);
+            roughness = mix(roughness, 0.35f, stripe);  // polished strip
+        }
     }
 }

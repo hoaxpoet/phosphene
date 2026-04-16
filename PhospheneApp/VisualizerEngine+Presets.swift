@@ -4,7 +4,6 @@ import os.log
 import Presets
 import Renderer
 import Shared
-import simd
 
 private let logger = Logger(subsystem: "com.phosphene.app", category: "VisualizerEngine")
 
@@ -87,8 +86,29 @@ extension VisualizerEngine {
                     // Ray march presets use the G-buffer state, not the standard placeholder.
                     pipeline.setActivePipelineState(rmPipelineState)
                     pipeline.setRayMarchPipeline(rmPipeline)
-                    rmPipeline.sceneUniforms = makeSceneUniforms(from: desc)
+                    let uniforms = makeSceneUniforms(from: desc)
+                    rmPipeline.sceneUniforms = uniforms
                     rmPipeline.debugGBufferMode = debugGBufferMode
+
+                    // Capture JSON baseline so per-frame audio modulation in
+                    // RenderPipeline+RayMarch.swift is applied additively on
+                    // top of the preset's intent rather than clobbering it.
+                    var snap = RayMarchPipeline.BaseSceneSnapshot()
+                    snap.cameraPosition = SIMD3(uniforms.cameraOriginAndFov.x,
+                                                uniforms.cameraOriginAndFov.y,
+                                                uniforms.cameraOriginAndFov.z)
+                    snap.lightIntensity = uniforms.lightPositionAndIntensity.w
+                    snap.lightColor = SIMD3(uniforms.lightColor.x,
+                                            uniforms.lightColor.y,
+                                            uniforms.lightColor.z)
+                    snap.fogFar = uniforms.sceneParamsB.y
+                    rmPipeline.baseScene = snap
+
+                    // Per-preset dolly speed. Only Glass Brutalist uses forward
+                    // dolly for now; others stay camera-static unless the
+                    // preset author opts in.
+                    rmPipeline.cameraDollySpeed = (desc.name == "Glass Brutalist") ? 2.5 : 0
+
                     currentRayMarchPipeline = rmPipeline
                 } catch {
                     logger.error("Failed to create RayMarchPipeline for preset '\(desc.name)': \(error)")
@@ -137,56 +157,9 @@ extension VisualizerEngine {
 
     /// Build a `SceneUniforms` value from a preset descriptor's scene configuration.
     ///
-    /// Falls back to `SceneUniforms()` defaults for any field not declared in the JSON.
-    /// `audioTime` and `aspectRatio` are left at their defaults (0 and 16/9) — the
-    /// render loop overwrites them each frame in `drawWithRayMarch`.
+    /// Delegates to `PresetDescriptor.makeSceneUniforms()` in the Presets module so the
+    /// camera math is testable without an app-layer dependency.
     func makeSceneUniforms(from desc: PresetDescriptor) -> SceneUniforms {
-        var uniforms = SceneUniforms()
-
-        // sceneParamsA: x=audioTime (overwritten per-frame), y=aspectRatio (overwritten per-frame),
-        // z=nearPlane, w=farPlane.  SwiftUI zero-initialises SceneUniforms, so nearPlane and
-        // farPlane must be set here — drawWithRayMarch only updates x and y each frame.
-        // A farPlane of 0 causes the G-buffer ray march loop to never execute (t < 0 is always
-        // false), producing an all-sky frame regardless of scene geometry.
-        uniforms.sceneParamsA = SIMD4(0, 16.0 / 9.0, 0.1, desc.sceneFarPlane)
-
-        // Camera — compute orthonormal basis from position and target.
-        if let cam = desc.sceneCamera {
-            let fwd = simd_normalize(cam.target - cam.position)
-            let worldUp = SIMD3<Float>(0, 1, 0)
-            // Guard against degenerate case where forward is parallel to world-up.
-            // cross(worldUp, fwd) → right (+X for a forward-looking camera).
-            // cross(fwd, worldUp) is the incorrect form — it gives -X (left), mirroring the image.
-            let right = simd_normalize(simd_cross(worldUp, fwd))
-            // up = cross(fwd, right) is orthogonal to both and points +Y for a level camera.
-            // cross(right, fwd) would give -Y (upside-down).
-            let up = simd_cross(fwd, right)
-            // JSON fov field is in degrees; the G-buffer shader computes tan(fov * 0.5) directly
-            // and expects radians. Storing the raw degree value produces tan(32.5 rad) ≈ 1.84 for
-            // a 65° fov, which is a ~123° frustum half-angle — making most of the frame miss geometry.
-            let fovRadians = cam.fov * Float.pi / 180.0
-            uniforms.cameraOriginAndFov = SIMD4(cam.position.x, cam.position.y, cam.position.z, fovRadians)
-            uniforms.cameraForward = SIMD4(fwd.x, fwd.y, fwd.z, 0)
-            uniforms.cameraRight = SIMD4(right.x, right.y, right.z, 0)
-            uniforms.cameraUp = SIMD4(up.x, up.y, up.z, 0)
-        }
-
-        // Primary light — only the first entry is used (single-light SceneUniforms).
-        if let light = desc.sceneLights.first {
-            uniforms.lightPositionAndIntensity = SIMD4(
-                light.position.x, light.position.y, light.position.z, light.intensity)
-            uniforms.lightColor = SIMD4(light.color.x, light.color.y, light.color.z, 0)
-        }
-
-        // Fog: map density → fogFar distance; ambient stored in sceneParamsB.z.
-        let fogFar: Float = desc.sceneFog > 0 ? max(1.0, 1.0 / desc.sceneFog) : uniforms.sceneParamsB.y
-        uniforms.sceneParamsB = SIMD4(
-            uniforms.sceneParamsB.x,
-            fogFar,
-            desc.sceneAmbient,
-            0
-        )
-
-        return uniforms
+        return desc.makeSceneUniforms()
     }
 }

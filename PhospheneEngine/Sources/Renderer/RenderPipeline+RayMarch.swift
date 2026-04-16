@@ -91,6 +91,74 @@ extension RenderPipeline {
         rayMarchState.sceneUniforms.sceneParamsA.x = features.accumulatedAudioTime
         rayMarchState.sceneUniforms.sceneParamsA.y = width > 0 ? Float(width) / Float(height) : 1.0
 
+        // ── Option-A audio-reactive modulation (preset-agnostic) ──────────────
+        // Drive light, fog, and camera dolly from the feature vector. Geometry
+        // stays static; the music lights the space and moves the camera, not
+        // the architecture. All modulations are relative to the preset's
+        // JSON baseline (captured in `baseScene`), so the modulation is
+        // additive on top of the preset's intent rather than clobbering it.
+
+        let base = rayMarchState.baseScene
+
+        // Constant-speed forward dolly: camera Z advances at a fixed
+        // units/sec regardless of audio energy. Baseline Z comes from the
+        // preset JSON; advance is pure wall-time so motion feels like
+        // actual forward travel, not "faster when the song is loud".
+        let dollyZ = base.cameraPosition.z + features.time * rayMarchState.cameraDollySpeed
+        rayMarchState.sceneUniforms.cameraOriginAndFov.x = base.cameraPosition.x
+        rayMarchState.sceneUniforms.cameraOriginAndFov.y = base.cameraPosition.y
+        rayMarchState.sceneUniforms.cameraOriginAndFov.z = dollyZ
+
+        // Light intensity pulses with the strongest of bass/mid/composite
+        // onsets — `beat_bass` alone misses snare-driven tracks like Love
+        // Shack where the kick drum is muted relative to the snare. Taking
+        // the max across bands gives a beat pulse that fires for any genre.
+        // Range: 0.4× (silence) → 3.0× (peak). 7.5× swing.
+        let beatPulse = max(features.beatBass,
+                            max(features.beatMid, features.beatComposite))
+        let beatClamped = max(0, min(1, beatPulse))
+        let intensityMul = 0.4 + beatClamped * 2.6
+        rayMarchState.sceneUniforms.lightPositionAndIntensity.w = base.lightIntensity * intensityMul
+
+        // Light colour shifts with valence: amplified from ±15% to ±40% per
+        // channel so the warm/cool shift is clearly visible across genres.
+        // Positive valence (happy/major key) → warm amber; negative (sad/
+        // minor) → cold blue. The preset's palette still anchors at valence=0.
+        let valence = max(-1, min(1, features.valence))
+        let warm = max(0, valence)
+        let cool = max(0, -valence)
+        let tint = SIMD3<Float>(
+            1.0 + warm * 0.40 - cool * 0.25,
+            1.0 + warm * 0.15 - cool * 0.10,
+            1.0 + cool * 0.40 - warm * 0.30
+        )
+        let modulatedColor = base.lightColor * tint
+        rayMarchState.sceneUniforms.lightColor = SIMD4(modulatedColor, 0)
+
+        // Fog density tracks arousal much more aggressively: calm → fog at
+        // 2.0× baseline distance (long sightlines through clear corridor),
+        // frantic → fog at 0.30× baseline (wall of mist closes in). The
+        // ratio means high-arousal frames vanish to fog within ~5 bays
+        // while calm frames see all the way to the horizon.
+        let arousal = max(-1, min(1, features.arousal))
+        let fogScale: Float = arousal >= 0
+            ? (1.0 - arousal * 0.7)              // 1.0 → 0.30 as arousal 0 → 1
+            : (1.0 + (-arousal) * 1.0)            // 1.0 → 2.0 as arousal 0 → -1
+        rayMarchState.sceneUniforms.sceneParamsB.y = base.fogFar * fogScale
+
+        // Corridor-path width modulation (Glass Brutalist only): fin
+        // X-centre distance shrinks when bass is loud so the path between
+        // the glass fins narrows. Writes into `cameraForward.w` — a free
+        // SIMD4 lane read by both `sceneSDF` and `sceneMaterial` so the
+        // glass/concrete classification stays consistent across the
+        // deformation. Non-GB presets leave this unused (their shaders
+        // don't read `cameraForward.w`).
+        let bassDrive = max(0, min(1, features.subBass + features.lowBass))
+        let finBase: Float = 1.20   // matches GB_GLASS_CX rest value
+        let finNarrow: Float = 0.85 // at bassDrive=1
+        let finCX = finBase - (finBase - finNarrow) * bassDrive
+        rayMarchState.sceneUniforms.cameraForward.w = finCX
+
         // Resolve optional PostProcessChain for bloom: present only when .postProcess is
         // declared alongside .rayMarch in the preset's passes array.
         let passesIncludePostProcess = passesLock.withLock { activePasses.contains(.postProcess) }

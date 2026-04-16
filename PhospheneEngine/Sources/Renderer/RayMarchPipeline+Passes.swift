@@ -169,6 +169,35 @@ extension RayMarchPipeline {
     }
 }
 
+// MARK: - Depth Debug Pass
+
+extension RayMarchPipeline {
+
+    /// DEBUG: Split-screen depth/albedo bypass — no lighting, SSGI, or ACES.
+    /// Left half:  depth map (white=near, dark=far, RED=sky/miss).
+    /// Right half: raw unlit albedo from gbuf2.
+    func runDepthDebugPass(commandBuffer: MTLCommandBuffer, outputTexture: MTLTexture) {
+        guard let g0 = gbuffer0, let g2 = gbuffer2 else {
+            passLogger.error("runDepthDebugPass: G-buffer textures nil — skipping")
+            return
+        }
+
+        let desc = MTLRenderPassDescriptor()
+        desc.colorAttachments[0].texture     = outputTexture
+        desc.colorAttachments[0].loadAction  = .clear
+        desc.colorAttachments[0].clearColor  = MTLClearColor(red: 1, green: 0, blue: 0, alpha: 1)
+        desc.colorAttachments[0].storeAction = .store
+
+        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: desc) else { return }
+        encoder.setRenderPipelineState(depthDebugPipeline)
+        encoder.setFragmentTexture(g0, index: 0)
+        encoder.setFragmentTexture(g2, index: 1)
+        encoder.setFragmentSamplerState(sampler, index: 0)
+        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+        encoder.endEncoding()
+    }
+}
+
 // MARK: - G-buffer Debug Pass
 
 extension RayMarchPipeline {
