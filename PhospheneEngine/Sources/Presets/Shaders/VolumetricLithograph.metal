@@ -7,6 +7,18 @@
 // flare the peak palette into HDR bloom; the ridge-line itself reads as
 // a thin emissive seam where the cut goes.
 //
+// v3.4 (session 2026-04-16T18-56-59Z — Matt flagged "still out of sync,
+// and sharper/less smooth"):  Data analysis exposed that v3.3's
+// smoothstep(0.22, 0.32, f.bass) missed half the kicks (many Love Rehab
+// kicks peak at 0.20-0.23 in f.bass, below the 0.22 threshold), producing
+// a phantom 65 BPM rhythm — half the actual 125 BPM kick.  The narrow
+// smoothstep range also gave near-binary 0→1 transitions, explaining the
+// "sharp" character.  v3.4 switches to f.bass_att (the 0.95-smoothed bass
+// band): (a) its local maxima track real kicks at 127 BPM (within 2% of
+// target), (b) it's already smooth so no sharpening artefacts, (c) it
+// catches every kick via smoothing (no threshold-miss issue).  Single
+// smooth driver for both sceneSDF audioAmp and sceneMaterial drumsBeatFB.
+//
 // v3.3 (session 2026-04-16T18-44-45Z — Matt flagged beat not syncing to
 // the driving kick):  Data revealed that f.beat_bass was firing at
 // 143 BPM on a 125 BPM track — the 400ms cooldown in the 6-band onset
@@ -148,21 +160,17 @@ float sceneSDF(float3 p,
                constant SceneUniforms& s) {
     float audioPhase = s.sceneParamsA.x;                            // accumulated audio time
 
-    // Slow base: attenuated bass → slow-flowing peaks, not frame-by-frame boil.
-    // v3.3: removed 0.4 * mid_att contribution.  Mid band in Love Rehab had
-    // ~4.6 onsets/sec (hi-hat/clap territory) — adding mid_att leaked a
-    // clap-rhythm into the terrain amplitude.  Bass_att alone stays true
-    // to the kick rhythm.
-    float slowAmp    = clamp(f.bass_att, 0.0f, 1.5f);
-
-    // Kick accent: v3.3 switched from f.beat_bass (which cooldown-phase-locks
-    // to a 143 BPM phantom rhythm on Love Rehab's dense bassline, see data
-    // session 2026-04-16T18-44-45Z) to a smoothstep over continuous f.bass.
-    // f.bass local-maxima intervals = 508ms → 118 BPM, matching the real
-    // 125 BPM kick within tempo variation.
-    float kick       = smoothstep(0.22f, 0.32f, f.bass) * 0.40f;
-    float audioAmp   = clamp(slowAmp + kick, 0.0f, 2.0f);
-    float h          = vl_heightAt(p, audioPhase, audioAmp);
+    // v3.4: single smooth beat driver from f.bass_att.  Data analysis of
+    // session 2026-04-16T18-56-59Z showed v3.3's smoothstep(0.22, 0.32, bass)
+    // missed half the kicks (many Love Rehab kicks peak at 0.20–0.23, below
+    // the 0.22 threshold), producing a phantom 65 BPM pulse on a 125 BPM
+    // track.  f.bass_att (0.95-smoothed) is inherently smooth AND its local
+    // maxima track real kicks at 127 BPM (within 2% of target).  Using it
+    // directly gives musical, tempo-correct terrain motion without any
+    // threshold-sharpening artefacts.  Scaled × 3.5 so typical bass_att
+    // range (0.15–0.22 during active playback) maps to audioAmp ≈ 0.5–0.8.
+    float audioAmp = clamp(f.bass_att * 3.5f, 0.0f, 2.0f);
+    float h        = vl_heightAt(p, audioPhase, audioAmp);
     return (p.y - h) * VL_SDF_STEP_SCALE;
 }
 
@@ -179,15 +187,16 @@ void sceneMaterial(float3 p,
     float n          = vl_terrainNoise(p, audioPhase); // [0,1]
 
     // ── D-019 stem-routing fallback (StemFeatures not in scope) ─────────
-    // Drum-beat fallback: v3.3 switched from pow(f.beat_bass, 1.2) * 1.5
-    // to smoothstep(f.bass).  Reason: f.beat_bass has a 400ms cooldown
-    // (per CLAUDE.md) that phase-locks detection to the cooldown itself
-    // rather than real kicks when a track has dense off-kick bass content.
-    // Session 2026-04-16T18-44-45Z showed beat_bass firing at 143 BPM
-    // on a 125 BPM track.  Continuous f.bass has no cooldown gating and
-    // its local maxima align with real kicks (508ms intervals = 118 BPM).
-    // The smoothstep(0.22, 0.32) gives 0 between kicks, 1 at kick peak.
-    float drumsBeatFB = smoothstep(0.22f, 0.32f, f.bass);
+    // v3.4: driver switched from smoothstep(bass) to smoothstep(bass_att).
+    // Session 2026-04-16T18-56-59Z revealed v3.3's threshold (0.22-0.32)
+    // on raw f.bass was too high — many Love Rehab kicks peak at 0.20-0.23
+    // in f.bass, so pulses only fired on LOUDER kicks, giving a phantom
+    // 65 BPM rhythm on a 125 BPM track.  f.bass_att (0.95-smoothed) catches
+    // every kick via smoothing and is inherently smooth (no threshold-
+    // sharpening artefacts).  Wider (0.06, 0.25) range gives a gradual
+    // shoulder that matches the music's natural pulse shape.  Local-maxima
+    // analysis confirmed 127 BPM tracking on a 125 BPM track.
+    float drumsBeatFB = smoothstep(0.06f, 0.25f, f.bass_att);
 
     // "Other" stem proxy: sqrt(f.mid) * 1.6.  f.mid (250 Hz–4 kHz)
     // overlaps the actual "other" stem band almost exactly.  AGC keeps
