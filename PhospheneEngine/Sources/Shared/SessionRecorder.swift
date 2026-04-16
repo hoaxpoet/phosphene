@@ -84,6 +84,20 @@ public final class SessionRecorder: @unchecked Sendable {
     private var writerLockedDims: (width: Int, height: Int)?
     private var skippedFrameCount: Int = 0
 
+    // Writer-relock after bad initial lock. If the drawable settles at a
+    // different steady-state size than the one we initially locked to
+    // (e.g. launch observed Retina native 1802×1202 then the view stabilises
+    // at logical 901×601), the locked writer would drop every subsequent
+    // frame. We track how many consecutive frames arrive at a *different*
+    // size and, once the streak exceeds `writerRelockThreshold`, throw
+    // away the current writer and relock at the new size. This recovers
+    // the video output without losing significant footage — the original
+    // lock already had only `videoSizeStableThreshold` (30) transient
+    // frames in it.
+    private var mismatchedDims: (width: Int, height: Int)?
+    private var mismatchedDimsStreak: Int = 0
+    private let writerRelockThreshold: Int = 90  // ~3s at 30fps capture
+
     private var frameIndex: Int = 0
     private var stemDumpIndex: Int = 0
 
@@ -327,26 +341,53 @@ public final class SessionRecorder: @unchecked Sendable {
             writeLogLine("video writer locked to \(width)x\(height) after \(sameDimsStreak) stable frames")
         }
 
+        // Compare against the WRITER's locked dimensions. If the drawable
+        // doesn't match the lock, either (a) skip the frame (normal
+        // mid-session resize), or (b) relock to the new size if it has
+        // been the steady-state for `writerRelockThreshold` frames — this
+        // recovers from a bad initial lock (session 2026-04-16T20-09-44Z
+        // locked to Retina-native 1802×1202 then lost 1861 frames at the
+        // steady-state 901×601).
+        //
+        // Lock-check MUST run before the adaptor/input guard below —
+        // setupVideoWriter replaces pixelAdaptor and videoInput, so any
+        // references captured before the relock would be stale.
+        let lockedW = writerLockedDims?.width ?? 0
+        let lockedH = writerLockedDims?.height ?? 0
+        if lockedW != width || lockedH != height {
+            skippedFrameCount += 1
+            if let m = mismatchedDims, m.width == width, m.height == height {
+                mismatchedDimsStreak += 1
+            } else {
+                mismatchedDims = (width, height)
+                mismatchedDimsStreak = 1
+            }
+            if mismatchedDimsStreak >= writerRelockThreshold {
+                writeLogLine("video writer relocking: drawable stabilised at \(width)x\(height), was locked at \(lockedW)x\(lockedH) (skipped \(skippedFrameCount) frames)")
+                tearDownVideoWriter()
+                if setupVideoWriter(width: width, height: height) {
+                    writerLockedDims = (width, height)
+                    writeLogLine("video writer relocked to \(width)x\(height)")
+                    skippedFrameCount = 0
+                    mismatchedDims = nil
+                    mismatchedDimsStreak = 0
+                    // Fall through to write this frame into the new writer.
+                } else {
+                    writeLogLine("video writer relock FAILED — video output disabled")
+                    return
+                }
+            } else {
+                if skippedFrameCount % 30 == 1 {
+                    writeLogLine("video frame skipped: drawable \(width)x\(height) != writer \(lockedW)x\(lockedH) (skip count: \(skippedFrameCount))")
+                }
+                return
+            }
+        }
+
         guard let adaptor = pixelAdaptor,
               let pool = adaptor.pixelBufferPool,
               let videoInput = videoInput,
               videoInput.isReadyForMoreMediaData else {
-            return
-        }
-
-        // Compare against the WRITER's locked dimensions (not the sliding
-        // `lastObservedDims`, which gets updated to track new sizes for the
-        // streak counter). If the drawable changes mid-session, skip those
-        // frames — writing a smaller texture into the writer's larger pixel
-        // buffer produces the corner-rendered video we hit before.
-        guard let lockedDims = writerLockedDims,
-              lockedDims.width == width,
-              lockedDims.height == height else {
-            skippedFrameCount += 1
-            // Log once per 30 skips so we know if size mismatch is happening.
-            if skippedFrameCount % 30 == 1 {
-                writeLogLine("video frame skipped: drawable \(width)x\(height) != writer \(writerLockedDims?.width ?? 0)x\(writerLockedDims?.height ?? 0) (skip count: \(skippedFrameCount))")
-            }
             return
         }
 
@@ -372,6 +413,27 @@ public final class SessionRecorder: @unchecked Sendable {
         let pts = CMTime(value: CMTimeValue(wallclock * 1_000_000),
                          timescale: 1_000_000)
         adaptor.append(pixelBuffer, withPresentationTime: pts)
+    }
+
+    /// Tear down the current writer without finalising. Used only when the
+    /// original lock was bad (drawable stabilised at a different size than
+    /// the initial 30-frame streak). Discards the transient footage by
+    /// deleting the partial file so setupVideoWriter can recreate it.
+    private func tearDownVideoWriter() {
+        if let input = videoInput {
+            input.markAsFinished()
+        }
+        if let writer = videoWriter, writer.status == .writing {
+            writer.cancelWriting()
+        }
+        videoWriter = nil
+        videoInput = nil
+        pixelAdaptor = nil
+        videoStartTime = nil
+        lastVideoFrameTime = 0
+        // AVAssetWriter refuses to init with an existing output URL; remove
+        // the partial file so setupVideoWriter can recreate it at the new size.
+        try? FileManager.default.removeItem(at: videoURL)
     }
 
     private func setupVideoWriter(width: Int, height: Int) -> Bool {

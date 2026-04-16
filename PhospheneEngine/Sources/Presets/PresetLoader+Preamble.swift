@@ -178,14 +178,23 @@ extension PresetLoader {
 
         // ── Per-preset forward declarations ──────────────────────────────────
         // Ray march presets must define these two functions.
+        //
+        // `stems` is the StemFeatures struct bound at buffer(3), containing
+        // per-stem energy/band/beat values (vocals, drums, bass, other).
+        // Presets should apply the D-019 warmup fallback when reading stems —
+        // smoothstep(0.02, 0.06, totalStemEnergy) mixes between FeatureVector
+        // proxies and true stem values so the preset behaves correctly before
+        // stem separation has completed on the first chunk.
         float sceneSDF(float3 p,
                        constant FeatureVector& f,
-                       constant SceneUniforms& s);
+                       constant SceneUniforms& s,
+                       constant StemFeatures& stems);
 
         void sceneMaterial(float3 p,
                            int matID,
                            constant FeatureVector& f,
                            constant SceneUniforms& s,
+                           constant StemFeatures& stems,
                            thread float3& albedo,
                            thread float& roughness,
                            thread float& metallic);
@@ -230,7 +239,7 @@ extension PresetLoader {
 
             for (int i = 0; i < 128 && t < farPlane; i++) {
                 float3 p = camPos + rayDir * t;
-                float  d = sceneSDF(p, features, scene);
+                float  d = sceneSDF(p, features, scene, stems);
                 if (d < 0.001 * t) {
                     hit = true;
                     break;
@@ -251,12 +260,12 @@ extension PresetLoader {
             // ── Central-differences normal ───────────────────────────────────
             const float eps = 0.001;
             float3 normal = normalize(float3(
-                sceneSDF(hitPos + float3(eps, 0, 0), features, scene)
-              - sceneSDF(hitPos - float3(eps, 0, 0), features, scene),
-                sceneSDF(hitPos + float3(0, eps, 0), features, scene)
-              - sceneSDF(hitPos - float3(0, eps, 0), features, scene),
-                sceneSDF(hitPos + float3(0, 0, eps), features, scene)
-              - sceneSDF(hitPos - float3(0, 0, eps), features, scene)
+                sceneSDF(hitPos + float3(eps, 0, 0), features, scene, stems)
+              - sceneSDF(hitPos - float3(eps, 0, 0), features, scene, stems),
+                sceneSDF(hitPos + float3(0, eps, 0), features, scene, stems)
+              - sceneSDF(hitPos - float3(0, eps, 0), features, scene, stems),
+                sceneSDF(hitPos + float3(0, 0, eps), features, scene, stems)
+              - sceneSDF(hitPos - float3(0, 0, eps), features, scene, stems)
             ));
 
             // ── Ambient occlusion (5-sample cone) ───────────────────────────
@@ -265,7 +274,7 @@ extension PresetLoader {
             for (int k = 1; k <= 5; k++) {
                 float aoT   = float(k) * aoStep;
                 float3 aoPos = hitPos + normal * aoT;
-                float aoD   = sceneSDF(aoPos, features, scene);
+                float aoD   = sceneSDF(aoPos, features, scene, stems);
                 ao -= max(0.0, (aoT - aoD) / aoT) * 0.2;
             }
             ao = clamp(ao, 0.0, 1.0);
@@ -274,7 +283,7 @@ extension PresetLoader {
             float3 albedo    = float3(0.7);
             float  roughness = 0.5;
             float  metallic  = 0.0;
-            sceneMaterial(hitPos, 0, features, scene, albedo, roughness, metallic);
+            sceneMaterial(hitPos, 0, features, scene, stems, albedo, roughness, metallic);
 
             // Pack roughness + metallic into 8 bits (upper 4b + lower 4b) → [0,1].
             int    rByte = int(clamp(roughness, 0.0, 1.0) * 15.0 + 0.5);

@@ -172,9 +172,21 @@ Changes:
 - Amplitude reduced 1.8 → 1.4 to pair with dolly.
 - Camera lifted Y 6.5 → 7.2, FOV narrowed 60 → 55, **forward dolly at 1.8 u/s** via new switch in `VisualizerEngine+Presets.swift` (replaces ternary; pattern extensible for future presets).
 
-Flagged for follow-up (explicitly requested):
-1. **SessionRecorder drawable-size mismatch** — 1,861 frames skipped in the Tea Lights session because writer locked at Retina pixels while drawable reports logical points. Blocks diagnostic testing reliability; next increment.
-2. **Expose `StemFeatures` in `sceneSDF`/`sceneMaterial` preamble** — preset-level stem routing (Milkdrop-style per-preset control) has always been the architectural aim. Next increment, preserving existing 4 presets' behavior (they continue to ignore the parameter since D-019 fallback path uses FeatureVector).
+### Increment 3.5.4.8 — SessionRecorder writer relock + StemFeatures in preamble ✅
+
+Two follow-ups from v4, both explicitly requested by Matt. Bundled because both surfaced in the same diagnostic loop and both are prerequisites for clean next-iteration work.
+
+**A. SessionRecorder writer relock.** Session `2026-04-16T20-09-44Z` lost 1,861 frames (~31s) because the writer locked to transient Retina-native drawable dimensions (1802×1202) observed for the first 30 frames, then rejected every subsequent frame at the steady-state logical-point size (901×601). The old guard was correct in spirit (avoid locking to transient launch-time dimensions) but couldn't recover when the "stable" size itself was the transient.
+
+Fix: if the drawable arrives consistently at a different size for `writerRelockThreshold` (90) frames after initial lock, tear down the current writer, remove the partial `video.mp4`, and recreate at the new size. Conservative enough that it doesn't trigger on normal mid-session resizes (which should still be rare). Test `test_recordFrame_relocksWhenDrawableStabilisesAtDifferentSize` simulates the exact Tea Lights scenario.
+
+**B. `StemFeatures` in `sceneSDF`/`sceneMaterial` preamble.** Opens per-preset stem routing (Milkdrop-style) to the entire ray-march preset pipeline. The preamble forward-declarations, G-buffer fragment call sites, and all 4 existing presets gain a `constant StemFeatures& stems` parameter:
+
+- `TestSphere`, `GlassBrutalist`, `KineticSculpture`: parameter added for signature conformance, unused internally — existing visual behaviour preserved (GB still ships its Option-A design, KS still uses its validated FeatureVector routing as commented in the header).
+- `VolumetricLithograph`: upgraded to true stem reads with D-019 warmup fallback. Terrain amp melody now reads `stems.other_energy + stems.vocals_energy` (with `f.mid_att × 15` fallback); accent now reads `stems.drums_beat` (with `f.spectral_flux` fallback); peak polish reads `stems.other_energy` (with `sqrt(f.mid) × 1.6` fallback). All blended via `smoothstep(0.02, 0.06, totalStemEnergy)` so the first few seconds before stem separation completes fall back gracefully to FeatureVector routing.
+- Test fixtures in `RayMarchPipelineTests.swift` and `SSGITests.swift` updated to match the new signature — this actually repairs `RayMarchPipelineTests` which was failing before v4 with undefined-symbol errors because the fixture was stale for the earlier sceneMaterial signature change.
+
+Verified: `swift test --package-path PhospheneEngine --filter PresetLoaderTests` 12/12 passing (including the full-pipeline render gate), `RayMarchPipelineTests` 10/10 passing, `SSGITests` 7/7 passing, `SessionRecorderTests` 7/7 passing (including the new relock test).
 
 ---
 

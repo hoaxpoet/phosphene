@@ -232,6 +232,86 @@ final class SessionRecorderTests: XCTestCase {
         }
     }
 
+    // MARK: - Relock on drawable size change after bad initial lock
+    //
+    // Simulates the Tea Lights session (2026-04-16T20-09-44Z) where the
+    // drawable reported Retina-native 1802×1202 for the first ~30 frames
+    // then stabilised at logical-point 901×601. Before the fix, the writer
+    // locked to the transient Retina size and skipped all 1861 subsequent
+    // frames. The fix: if a different size arrives consistently for
+    // ≥ writerRelockThreshold (90) frames after initial lock, relock to it.
+
+    func test_recordFrame_relocksWhenDrawableStabilisesAtDifferentSize() throws {
+        guard let device = MTLCreateSystemDefaultDevice() else {
+            throw XCTSkip("No Metal device available")
+        }
+        let recorder = try XCTUnwrap(SessionRecorder(baseDir: tempDir))
+
+        // Phase 1: 35 frames at the "transient" Retina-native size.
+        // Passes the 30-frame stability threshold → writer locks here.
+        let badW = 256
+        let badH = 144
+        let badTex = try XCTUnwrap(recorder.ensureCaptureTexture(
+            device: device, width: badW, height: badH,
+            pixelFormat: .bgra8Unorm_srgb))
+        var badPixels = [UInt8](repeating: 0, count: badW * badH * 4)
+        for i in 0..<(badW * badH) {
+            badPixels[i * 4 + 2] = 255; badPixels[i * 4 + 3] = 255   // red
+        }
+        badTex.replace(region: MTLRegionMake2D(0, 0, badW, badH),
+                       mipmapLevel: 0, withBytes: &badPixels,
+                       bytesPerRow: badW * 4)
+        for _ in 0..<35 {
+            recorder.recordFrame(features: FeatureVector.zero, stems: StemFeatures.zero)
+            Thread.sleep(forTimeInterval: 0.04)
+        }
+
+        // Phase 2: 120 frames at the logical-point "good" size (clears the
+        // 90-frame relock threshold). The recorder should throw away the
+        // bad lock, recreate the writer at goodW×goodH, and start writing.
+        let goodW = 128
+        let goodH = 72
+        let goodTex = try XCTUnwrap(recorder.ensureCaptureTexture(
+            device: device, width: goodW, height: goodH,
+            pixelFormat: .bgra8Unorm_srgb))
+        var goodPixels = [UInt8](repeating: 0, count: goodW * goodH * 4)
+        for i in 0..<(goodW * goodH) {
+            goodPixels[i * 4 + 0] = 255; goodPixels[i * 4 + 3] = 255  // blue
+        }
+        goodTex.replace(region: MTLRegionMake2D(0, 0, goodW, goodH),
+                        mipmapLevel: 0, withBytes: &goodPixels,
+                        bytesPerRow: goodW * 4)
+        for _ in 0..<120 {
+            recorder.recordFrame(features: FeatureVector.zero, stems: StemFeatures.zero)
+            Thread.sleep(forTimeInterval: 0.04)
+        }
+        recorder.finish()
+
+        // Log must document the relock.
+        let log = try String(
+            contentsOf: recorder.sessionDir.appendingPathComponent("session.log"),
+            encoding: .utf8)
+        XCTAssertTrue(log.contains("video writer relocking"),
+                      "log must record the relock event, got:\n\(log)")
+        XCTAssertTrue(log.contains("video writer relocked to \(goodW)x\(goodH)"),
+                      "log must record the new locked size")
+
+        // Video must exist and match the POST-relock size, not the bad size.
+        let videoURL = recorder.sessionDir.appendingPathComponent("video.mp4")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: videoURL.path),
+                      "video.mp4 must be written after relock")
+        let asset = AVURLAsset(url: videoURL)
+        let tracks = asset.tracks(withMediaType: .video)
+        XCTAssertFalse(tracks.isEmpty, "video.mp4 must contain a video track after relock")
+        if let track = tracks.first {
+            let naturalSize = track.naturalSize
+            XCTAssertEqual(Int(naturalSize.width), goodW,
+                           "video width must match the relocked (good) size")
+            XCTAssertEqual(Int(naturalSize.height), goodH,
+                           "video height must match the relocked (good) size")
+        }
+    }
+
     // MARK: - Log entries are preserved
 
     func test_log_writesTimestampedEntriesToSessionLog() throws {

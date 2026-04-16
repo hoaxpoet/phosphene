@@ -98,7 +98,7 @@ PhospheneEngine/
     Shaders/IBL.metal        → IBL generation kernels + sampling utilities
   Presets/
     PresetLoader            → Auto-discover, compile standard + additive + mesh + ray march pipelines, skip utility files
-    PresetLoader+Preamble   → Shared preamble: FeatureVector struct → ShaderUtilities → noise samplers → preset code. Forwards `sceneMaterial(p, matID, FeatureVector& f, SceneUniforms& s, ...)` so ray-march presets can apply identical audio-reactive deformation in both sceneSDF and sceneMaterial (DECISIONS D-021).
+    PresetLoader+Preamble   → Shared preamble: FeatureVector struct → ShaderUtilities → noise samplers → preset code. Forwards `sceneSDF(p, FeatureVector& f, SceneUniforms& s, StemFeatures& stems)` and `sceneMaterial(p, matID, f, s, stems, albedo, roughness, metallic)` so ray-march presets can do per-stem routing (Milkdrop-style) directly in sceneSDF/sceneMaterial. StemFeatures plumbed through G-buffer fragment call sites. Presets should apply the D-019 warmup fallback `smoothstep(0.02, 0.06, totalStemEnergy)` to mix between FeatureVector proxies and stem direct reads (see VolumetricLithograph for reference implementation).
     PresetDescriptor        → JSON sidecar: passes, feedback params, scene camera/lights, stem affinity
     PresetDescriptor+SceneUniforms → Constructs SceneUniforms from descriptor (camera basis, light, fog, near/far). FOV converted from JSON degrees → radians exactly once.
     PresetCategory          → 11 aesthetic families
@@ -129,7 +129,7 @@ PhospheneEngine/
     StemSampleBuffer        → Interleaved stereo PCM ring buffer for stem separation input (15s)
     RenderPass              → Enum: direct, feedback, particles, mesh_shader, post_process, ray_march, icb, ssgi
     Logging                 → Per-module os.Logger instances (subsystem: "com.phosphene")
-    SessionRecorder         → Continuous diagnostic capture per app launch: video.mp4 (H.264, 30 fps) + features.csv + stems.csv + stems/<N>_<title>/{drums,bass,vocals,other}.wav + session.log. Writes to ~/Documents/phosphene_sessions/<timestamp>/. Finalised on NSApplication.willTerminateNotification. Validated by SessionRecorderTests.
+    SessionRecorder         → Continuous diagnostic capture per app launch: video.mp4 (H.264, 30 fps) + features.csv + stems.csv + stems/<N>_<title>/{drums,bass,vocals,other}.wav + session.log. Writes to ~/Documents/phosphene_sessions/<timestamp>/. Writer locks after 30 stable drawable frames; if a different size arrives consistently for ≥90 frames after lock (bad initial lock from transient Retina→logical-point resize), tears down and relocks — logs "video writer relocking". Finalised on NSApplication.willTerminateNotification. Validated by SessionRecorderTests.
 Tests/
   Audio/                    → AudioBufferTests, FFTProcessorTests, StreamingMetadataTests, MetadataPreFetcherTests, LookaheadBufferTests, SilenceDetectorTests
   DSP/                      → SpectralAnalyzerTests, BandEnergyProcessorTests, ChromaExtractorTests, BeatDetectorTests, MIRPipelineUnitTests, SelfSimilarityMatrixTests, NoveltyDetectorTests, StructuralAnalyzerTests

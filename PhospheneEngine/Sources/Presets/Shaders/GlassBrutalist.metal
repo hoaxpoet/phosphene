@@ -142,19 +142,17 @@ static inline float gb_sdGlass(float3 p, float finCX) {
 /// camera position in Swift each frame; the SDF is never time-offset.
 float sceneSDF(float3 p,
                constant FeatureVector& f,
-               constant SceneUniforms& s) {
+               constant SceneUniforms& s,
+               constant StemFeatures& stems) {
     float finCX = s.cameraForward.w > 0.0f ? s.cameraForward.w : GB_GLASS_CX;
     return min(gb_sdConcrete(p), gb_sdGlass(p, finCX));
 }
 
 // ── Scene Material ────────────────────────────────────────────────────────────
 
-// NOTE: FeatureVector is architecturally unavailable here — the preamble
-// forward declaration for sceneMaterial does not carry it.  Audio-reactive
-// properties (glass emissive intensity, concrete roughness variation) are
-// instead encoded in the geometry itself via sceneSDF, or approximated through
-// fixed material values chosen for their visual effect at any energy level.
-//
+// Glass Brutalist ships its stem-independent Option-A design (see D-020):
+// architecture stays solid, audio modulates only light/fog/path via the shared
+// Swift path.  `stems` is accepted for signature conformance but unused here.
 // The glass material's near-zero roughness + high metallic ensure strong
 // specular IBL reflection → high luminance in the litTexture → SSGI bleeds
 // cyan-tinted indirect diffuse onto adjacent concrete regardless of audio level.
@@ -162,6 +160,7 @@ void sceneMaterial(float3 p,
                    int matID,
                    constant FeatureVector& f,
                    constant SceneUniforms& s,
+                   constant StemFeatures& stems,
                    thread float3& albedo,
                    thread float& roughness,
                    thread float& metallic) {

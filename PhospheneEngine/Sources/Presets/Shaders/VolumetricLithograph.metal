@@ -7,6 +7,23 @@
 // flare the peak palette into HDR bloom; the ridge-line itself reads as
 // a thin emissive seam where the cut goes.
 //
+// v4.1: StemFeatures now plumbed through the preamble into sceneSDF
+// and sceneMaterial (engine-level change: per-preset stem routing à la
+// Milkdrop is the long-term aim).  VL upgrades from band-proxy drivers
+// to true stem reads with D-019 warmup fallback:
+//   - Terrain amp "melody" = stems.other_energy + stems.vocals_energy
+//       (fallback f.mid_att × 15)
+//   - Terrain amp "bass"   = stems.bass_energy  (fallback f.bass_att × 1.2)
+//   - Accent trigger       = smoothstep(stems.drums_beat)
+//       (fallback smoothstep(f.spectral_flux))
+//   - Peak polish          = stems.other_energy × 3
+//       (fallback sqrt(f.mid) × 1.6)
+//   - Palette hue melody   = stems.vocals + stems.other
+//       (fallback f.mid_att × 5)
+// All blended via smoothstep(0.02, 0.06, totalStemEnergy) so the preset
+// gracefully handles the first few seconds before the stem separator's
+// first chunk completes.
+//
 // v4 (session 2026-04-16T20-09-44Z — tested on Tea Lights, Lower Dens,
 // an acoustic/electric guitar driven track at ~75 BPM with no kick drum):
 // previous iterations were all bass-band-centric and totally failed on
@@ -101,16 +118,17 @@
 //     albedo by noise position + audio time + valence.
 //   - `sqrt(f.mid) * 1.6` replaces `f.treble * 1.4` for "other" polish.
 //
-// Audio routing (FeatureVector — StemFeatures unavailable in
-// sceneSDF/sceneMaterial; preamble forward-declarations omit it):
-//   s.sceneParamsA.x  → terrain phase (accumulated audio time)
-//   f.mid_att (×15)   → primary vertical displacement (melody)
-//   f.bass_att (×1.2) → secondary vertical displacement (bass swell)
-//   f.spectral_flux   → palette flare + ridge strobe (any timbral attack)
-//   f.mid_att (×3)    → palette hue phase (melody → colour cycling)
-//   f.valence         → palette hue offset (mood)
-//   f.mid (sqrt-boost)→ peak roughness polish ("other" stem proxy)
-// Forward camera dolly (1.8 u/s) configured in
+// Audio routing (v4.1 — StemFeatures available via preamble):
+//   s.sceneParamsA.x                        → terrain phase (accumulated audio time)
+//   stems.other + stems.vocals / f.mid_att  → primary vertical displacement (melody)
+//   stems.bass / f.bass_att                 → secondary vertical displacement
+//   stems.drums_beat / f.spectral_flux      → accent (palette flare + ridge strobe)
+//   stems.other + stems.vocals / f.mid_att  → palette hue phase (melody → colour)
+//   f.valence                               → palette hue offset (mood)
+//   stems.other / sqrt(f.mid)               → peak roughness polish
+// Where "A / B": A is the stem-accurate driver (used once stems have warmed
+// up via smoothstep(0.02, 0.06, totalStemEnergy)); B is the FeatureVector
+// fallback used during warmup.  Forward camera dolly (1.8 u/s) configured in
 //   PhospheneApp/VisualizerEngine+Presets.swift → RayMarchPipeline.cameraDollySpeed.
 //
 // D-019 stem-routing fallback: stems are not in scope here, so all
@@ -184,20 +202,40 @@ static inline float3 vl_palette(float t) {
 
 float sceneSDF(float3 p,
                constant FeatureVector& f,
-               constant SceneUniforms& s) {
+               constant SceneUniforms& s,
+               constant StemFeatures& stems) {
     float audioPhase = s.sceneParamsA.x;                            // accumulated audio time
 
-    // v4: melody-primary motion driver.  Bass-only (v3.4) totally failed
-    // on non-percussive music like Tea Lights (Lower Dens, acoustic/
-    // electric guitar, no kick drum) — terrain pulsed dully at ~80 BPM
-    // ignoring the real melodic phrasing at ~75 BPM.  v4 blends:
-    //   - melody (f.mid_att × 15):  250-4000 Hz band covers guitar, vocals,
-    //     melodic synths.  ×15 compensates for per-band AGC suppression.
-    //     Tracks musical phrasing across genres.  Primary driver (weight 0.75).
-    //   - bass (f.bass_att × 1.2):  retained so bass-driven tracks (Love
-    //     Rehab) still get sub-swell.  Secondary (weight 0.35).
-    float melody = clamp(f.mid_att * 15.0f, 0.0f, 1.5f);
-    float bass   = clamp(f.bass_att * 1.2f, 0.0f, 1.0f);
+    // v4.1: true stem-driven melody, with D-019 warmup fallback to
+    // FeatureVector proxies.  StemFeatures now plumbed through the
+    // preamble so sceneSDF can read stems directly.
+    //
+    //   Melody (primary, weight 0.75):
+    //     stems.other_energy + stems.vocals_energy — "other" is the
+    //     catch-all for melodic instruments (guitar, synth, piano) and
+    //     vocals carry lyrical phrasing.  Together they track the song's
+    //     melodic motion directly.  Fallback f.mid_att × 15 (250-4000 Hz
+    //     covers the same timbral range post-AGC-boost).
+    //
+    //   Bass (secondary, weight 0.35):
+    //     stems.bass_energy — isolated bass stem (kick + bassline).
+    //     Fallback f.bass_att × 1.2.
+    //
+    // Warmup blend: smoothstep(0.02, 0.06, totalStemEnergy) interpolates
+    // from FeatureVector fallbacks (mix == 0) to stem direct (mix == 1).
+    float totalStemEnergy = stems.vocals_energy + stems.drums_energy
+                          + stems.bass_energy   + stems.other_energy;
+    float stemMix = smoothstep(0.02f, 0.06f, totalStemEnergy);
+
+    float melodyFromStems = clamp((stems.other_energy + stems.vocals_energy) * 1.6f,
+                                   0.0f, 1.5f);
+    float melodyFromFV    = clamp(f.mid_att * 15.0f, 0.0f, 1.5f);
+    float melody          = mix(melodyFromFV, melodyFromStems, stemMix);
+
+    float bassFromStems = clamp(stems.bass_energy * 2.0f, 0.0f, 1.0f);
+    float bassFromFV    = clamp(f.bass_att * 1.2f, 0.0f, 1.0f);
+    float bass          = mix(bassFromFV, bassFromStems, stemMix);
+
     float audioAmp = clamp(melody * 0.75f + bass * 0.35f, 0.0f, 2.0f);
     float h = vl_heightAt(p, audioPhase, audioAmp);
     return (p.y - h) * VL_SDF_STEP_SCALE;
@@ -209,27 +247,35 @@ void sceneMaterial(float3 p,
                    int matID,
                    constant FeatureVector& f,
                    constant SceneUniforms& s,
+                   constant StemFeatures& stems,
                    thread float3& albedo,
                    thread float& roughness,
                    thread float& metallic) {
     float audioPhase = s.sceneParamsA.x;
     float n          = vl_terrainNoise(p, audioPhase); // [0,1]
 
-    // v4: accent driver switched from bass-keyed smoothstep to
-    // spectral_flux.  Reason: bass-keyed accent missed every melodic
-    // attack on non-percussive music.  f.spectral_flux fires on ANY
-    // timbral change — kick drums, guitar strums, vocal onsets, piano
-    // chord changes.  Session 2026-04-16T20-09-44Z distribution on
-    // Tea Lights: mean 0.47, p90 0.69.  smoothstep(0.35, 0.70) gives
-    // clean 0-to-1 pulses without false positives on steady-state audio.
-    // Works equally well for Love Rehab (kicks/hats/synths all trigger).
-    float accentFB = smoothstep(0.35f, 0.70f, f.spectral_flux);
+    // v4.1: accent driver now prefers stems.drums_beat (true drum-stem
+    // onset pulse) when stems have warmed up, with D-019 fallback to
+    // f.spectral_flux (genre-agnostic full-mix timbral attack).
+    //
+    // stems.drums_beat is kick/snare-aligned: on Love Rehab it tracks
+    // the actual 125 BPM kick cleanly; on Tea Lights (soft percussion)
+    // it fires on guitar strums picked up by the drum stem.
+    //
+    // f.spectral_flux is the fallback because it fires on ANY timbral
+    // change — works before stems separation completes on the first chunk.
+    float totalAccentStem = stems.vocals_energy + stems.drums_energy
+                          + stems.bass_energy   + stems.other_energy;
+    float accentStemMix = smoothstep(0.02f, 0.06f, totalAccentStem);
+    float accentFromStems = smoothstep(0.30f, 0.70f, stems.drums_beat);
+    float accentFromFV    = smoothstep(0.35f, 0.70f, f.spectral_flux);
+    float accentFB = mix(accentFromFV, accentFromStems, accentStemMix);
 
-    // "Other" stem proxy: sqrt(f.mid) * 1.6.  f.mid (250 Hz–4 kHz)
-    // overlaps the actual "other" stem band almost exactly.  AGC keeps
-    // f.mid in roughly [0, 0.08] for real music — sqrt boost lifts the
-    // 0.016 mean to ~0.20, producing a useful polish range.
-    float otherFB = clamp(sqrt(max(f.mid, 0.0f)) * 1.6f, 0.0f, 1.0f);
+    // v4.1: "other" polish now prefers stems.other_energy directly,
+    // with D-019 fallback to the pre-existing sqrt(f.mid) × 1.6 proxy.
+    float otherFromStems = clamp(stems.other_energy * 3.0f, 0.0f, 1.0f);
+    float otherFromFV    = clamp(sqrt(max(f.mid, 0.0f)) * 1.6f, 0.0f, 1.0f);
+    float otherFB        = mix(otherFromFV, otherFromStems, accentStemMix);
 
     // ── Three-stratum classification ────────────────────────────────────
     //   peakSelect    = matte-valley → polished-peak transition (sharp)
@@ -247,18 +293,18 @@ void sceneMaterial(float3 p,
                             VL_RIDGE_OUTER - beatShift, n));
 
     // ── Psychedelic palette ────────────────────────────────────────────
-    // Phase = local noise × 0.9    (spatial hue spread across peaks)
-    //       + audioTime × 0.08     (baseline cycle — ~1 full rotation
-    //                                per preset duration at moderate energy)
-    //       + mid_att × 3.0        (v4: NEW — melody modulates hue.  On
-    //                                Tea Lights, colour shifts align with
-    //                                vocal/guitar swells.  On Love Rehab,
-    //                                mid_att is quieter so this is a
-    //                                gentle overlay on audio-time cycling.)
-    //       + valence × 0.25       (per-track mood hue identity)
+    // Phase = local noise × 0.9        (spatial hue spread across peaks)
+    //       + audioTime × 0.08         (baseline cycle — ~1 full rotation
+    //                                    per preset duration at moderate energy)
+    //       + melodyHue × 0.6          (melody modulates hue; v4.1 uses stems
+    //                                    directly with FV fallback)
+    //       + valence × 0.25           (per-track mood hue identity)
+    float melodyHueFromStems = stems.vocals_energy + stems.other_energy;
+    float melodyHueFromFV    = f.mid_att * 5.0f;
+    float melodyHue          = mix(melodyHueFromFV, melodyHueFromStems, accentStemMix);
     float palettePhase = n * 0.9f
                        + audioPhase * 0.08f
-                       + f.mid_att * 3.0f
+                       + melodyHue * 0.6f
                        + f.valence * 0.25f;
     float3 peakHue   = vl_palette(palettePhase);
     // Valley brightness × 0.15 (v3 had × 0.08 which the valence-tinted
