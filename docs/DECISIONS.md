@@ -268,3 +268,49 @@ The shader preamble's `sceneMaterial` forward declaration is `void sceneMaterial
 
 **Trade-off:** Disk usage. A long listening session can accumulate hundreds of MB. Acceptable for a dev/diagnostic build; if/when Phosphene ships, this should become an opt-in toggle with a configurable retention policy.
 
+---
+
+## D-026: Preset shaders drive from audio deviation, not absolute energy
+
+**Status:** Accepted (Phase MV-1)
+
+Preset shader code must drive visual parameters from deviation-from-AGC-center (`f.bassRel`, `f.bassDev`, `stems.vocalsEnergyDev`, etc.) rather than from absolute energy values (`f.bass`, `f.bassAtt`, `stems.vocalsEnergy`). Absolute thresholds like `smoothstep(0.22, 0.32, f.bass)` are explicitly disallowed in new preset code.
+
+**Reason:** `BandEnergyProcessor` implements Milkdrop-style AGC: output = raw / runningAverage × 0.5. This inherently means raw output magnitudes depend on recent loudness history, not acoustic loudness. A kick that peaks at `bass = 0.35` during a sparse section will peak at `bass = 0.22` during a busy section because the running-average divisor rose — the kick is equally loud acoustically but AGC scaled it down. Preset v3.3 of Volumetric Lithograph hit this exact failure mode: `smoothstep(0.22, 0.32, f.bass)` missed every other kick on Love Rehab (session 2026-04-16T18-56-59Z), producing a phantom 65 BPM rhythm on a 125 BPM track. Deviation (`bass - 0.5`, or `bassRel` in the new convention) is stable across mix density because both numerator and denominator track together.
+
+Milkdrop documents this convention in its preset authoring guide: "1 is normal, below 0.7 quiet, above 1.3 loud" — authors universally write `zoom = zoom + 0.1 * (bass - 1.0)`, never `if (bass > 0.22)`. We adopt the same convention scaled to our 0.5-centered AGC.
+
+**Implication:** existing presets written with absolute thresholds are grandfathered but should be migrated. New preset code review must reject absolute-threshold patterns. CLAUDE.md's "Proven Audio Analysis Tuning" section documents the primitive vocabulary authors should use.
+
+---
+
+## D-027: Milkdrop-style per-vertex feedback warp as an opt-in render pass
+
+**Status:** Accepted (Phase MV-2)
+
+A new `mv_warp` render pass implements Milkdrop's per-vertex warp mesh — 32×24 grid, per-vertex UV displacement computed from preset-authored `mvWarpPerFrame()` + `mvWarpPerVertex()` functions, sampled against a persistent feedback texture. Any preset can opt in by adding `"mv_warp"` to its `passes` array.
+
+**Reason:** Research documented in [MILKDROP_ARCHITECTURE.md](MILKDROP_ARCHITECTURE.md) established that Milkdrop's "musical feel" comes from feedback-based motion accumulation, not from rich audio analysis (Milkdrop's audio vocabulary is a strict subset of ours). 9 of 11 Phosphene presets prior to MV-2 do not use any feedback loop; ray-march presets render from scratch each frame and show only instantaneous audio state. Six iterations of Volumetric Lithograph (v3 → v4.2) attempted to make a ray-march preset feel musical via increasingly elaborate audio drivers and failed every time. The gap is mechanical: without feedback, simple audio cannot compound into organic motion.
+
+The existing `feedback` pass is kept for Starburst/Membrane but is semantically narrower (single global zoom+rot per frame, not per-vertex spatial modulation). `mv_warp` is a new pass with a different contract, not a replacement.
+
+**Authoring approach:** MV-2a (per-preset Metal warp functions, same pattern as `sceneSDF`/`sceneMaterial`). Faster to ship than an equation-language parser (MV-2b). An equation-language importer for real Milkdrop `.milk` presets is tracked as a potential future increment only if Metal-function authoring becomes the demonstrated blocker.
+
+**Implication:** ray-march preset authoring pattern shifts. A scene's 3D geometry becomes static (not deformed with audio); all audio-driven motion goes through the mv_warp pass. Audio reacts to the *image* of the scene rather than its geometry. This matches Milkdrop's architecture exactly and preserves our 3D-rendering advantage.
+
+---
+
+## D-028: Apple-Silicon-specific audio capabilities layer on top of MV-2, not instead of it
+
+**Status:** Accepted (Phase MV-3)
+
+Richer stem metadata (per-stem onset rate, spectral centroid, attack/sustain ratio, energy slope), next-beat phase prediction, and vocal pitch tracking are deferred until after MV-2 ships and its visual checkpoint confirms the feedback architecture works. They are implemented as additive extensions to the MV-1 + MV-2 foundation, not as replacements.
+
+**Reason:** The temptation on reading Matt's research doc ("Architectural Framework for Phosphene") was to jump to neural pitch tracking (Basic Pitch / SwiftF0), chord recognition (Tonic), and HTDemucs swap. These are the high-leverage Apple-Silicon capabilities Milkdrop couldn't have in 2001. But layering them on top of a still-broken feedback architecture would produce richer data fed into the same mechanism that has failed six times. MV-1 + MV-2 establish the foundation Milkdrop proved worked; MV-3 then adds the capabilities Milkdrop can't.
+
+Order matters because the visual checkpoints after MV-1 and MV-2 distinguish root causes. If MV-1 alone produces a noticeable improvement, the authoring-convention gap was dominant and we should audit all existing presets. If only MV-2 produces improvement, the architectural gap was dominant. If neither, we have a clearly-scoped remaining problem instead of a diffuse one.
+
+**Explicitly excluded from MV-3:** Basic Pitch port (unverified native availability), HTDemucs swap (Open-Unmix HQ works), Sound Analysis framework (applause detection — orthogonal to "band member" feel), chord recognition via Tonic (deferred pending MV-3c pitch tracking).
+
+**Implication:** any future increment that adds a new audio-analysis capability should explicitly state whether it layers on the mv_warp architecture or requires architectural changes. Purely additive classifier features (new `FeatureVector` fields) are preferred over pipeline-changing ones.
+

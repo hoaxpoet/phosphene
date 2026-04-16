@@ -6,7 +6,7 @@ Phosphene is a native macOS music visualization engine for Apple Silicon. Before
 
 Phosphene does not control playback — the user starts the music in their streaming app when Phosphene signals it is ready.
 
-See `docs/PRODUCT_SPEC.md` for the full product definition, `docs/ARCHITECTURE.md` for system design, `docs/DECISIONS.md` for rationale behind key choices, and `docs/RUNBOOK.md` for build/test/CI/troubleshooting.
+See `docs/PRODUCT_SPEC.md` for the full product definition, `docs/ARCHITECTURE.md` for system design, `docs/DECISIONS.md` for rationale behind key choices, `docs/RUNBOOK.md` for build/test/CI/troubleshooting, and `docs/MILKDROP_ARCHITECTURE.md` for the research findings that drive the Phase MV (Musicality) work in `docs/ENGINEERING_PLAN.md`.
 
 ## Build & Test
 
@@ -184,6 +184,8 @@ These constants were validated across genres. Do not re-tune from scratch.
 ### AGC (Automatic Gain Control)
 
 Milkdrop-style average-tracking. Output = `raw / runningAverage * 0.5`. Two-speed warmup: fast (0.95 rate, ~1s) then moderate (0.992, ~2s settling). 6-band AGC normalizes against total energy (not per-band) to preserve relative differences.
+
+**Authoring implication (D-026):** AGC-normalized outputs like `f.bass` are **centered around 0.5**, not raw amplitudes. The kick that reads `0.35` in a sparse section and `0.22` in a busy one is equally loud acoustically — only the running-average divisor moved. Preset shaders must drive visuals from **deviation primitives** (`f.bassRel = (f.bass - 0.5) * 2.0`, `f.bassDev = max(0, f.bassRel)`, added in MV-1) rather than absolute thresholds. Patterns like `smoothstep(0.22, 0.32, f.bass)` are an anti-pattern: they fail on track changes and on section changes within a single track. See `docs/MILKDROP_ARCHITECTURE.md` for the research establishing this and `docs/DECISIONS.md` D-026 for the rule.
 
 ### Smoothing
 
@@ -416,6 +418,8 @@ No CoreML dependency. All ML uses MPSGraph (GPU) or Accelerate (CPU).
 28. **Locking `AVAssetWriter` to the first observed drawable size**: MTKView's drawable size is transient at launch; lock to the first size and later frames at the steady-state size get blitted into a corner of the writer's larger buffer. Defer writer init until N consecutive same-size frames; once locked, skip mismatched frames rather than blit-into-wrong-geometry.
 29. **Hardcoded sample rate (44.1 kHz) when the tap reports something else**: Phosphene assumes 44.1/48 kHz internally for stem separation and beat-detection windowing. If the user's Audio MIDI Setup runs at 96 kHz, beat windows and BPM math are off by ~2.18×. Set Audio MIDI Setup to 48 kHz to match (RUNBOOK).
 30. **Spotify default normalization (Volume level: Normal)**: Knocks mastered peaks from ~0.7 to ~0.15-0.20, compressing AGC headroom and degrading mood-classifier stability. Toggle Normalize Volume off in Spotify settings (RUNBOOK).
+31. **Absolute thresholds on AGC-normalized energy** (e.g. `smoothstep(0.22, 0.32, f.bass)`): AGC's denominator (running-average) moves with mix density, so the same acoustic kick reads different values across tracks or across sections of one track. Six VL iterations (v3→v4.2) hit this repeatedly. Drive from deviation instead — `f.bassRel`, `f.bassDev` (D-026, MV-1). See `docs/MILKDROP_ARCHITECTURE.md` for the full diagnosis.
+32. **Driving ray-march preset visuals from instantaneous audio alone**: feedback is the mechanism that turns simple audio into compound musical motion (Milkdrop's core insight). Ray-march presets rendered from scratch each frame can only show instantaneous audio state — no accumulation, no "breathing", no musicality regardless of how clever the shader drivers are. Fix is the MV-2 `mv_warp` render pass (D-027). Do not attempt to make a ray-march preset musically expressive without feedback accumulation.
 
 ---
 
@@ -434,6 +438,8 @@ No CoreML dependency. All ML uses MPSGraph (GPU) or Accelerate (CPU).
 - Do not write to `latestFeatures.valence` / `arousal` from the MIR path. Mood goes through `RenderPipeline.setMood`; `setFeatures` preserves mood across overwrites.
 - Do not lock `AVAssetWriter` to the first observed drawable size — defer until N consecutive same-size frames; skip mismatched frames after.
 - Do not key visualizer beat-pulse logic to a single onset band — use `max(beatBass, beatMid, beatComposite)` so snare-driven and kick-driven tracks both register.
+- Do not threshold absolute AGC-normalized energy values (`f.bass > 0.22`). Drive from deviation primitives (`f.bassDev`, `f.bassRel`) — D-026.
+- Do not try to make a ray-march preset musically expressive without feedback accumulation. The shader runs every frame from scratch; without the `mv_warp` pass (D-027, MV-2) motion cannot accumulate and visuals will feel disconnected from music regardless of driver tuning. See `docs/MILKDROP_ARCHITECTURE.md`.
 
 ---
 
@@ -442,17 +448,23 @@ No CoreML dependency. All ML uses MPSGraph (GPU) or Accelerate (CPU).
 **Phase 3 substantially complete. Phase 2.5 (session preparation) complete.** Recent landed work:
 
 - **Glass Brutalist Option A** — static brutalist corridor; music drives only light/fog/path (DECISIONS D-020). Per-frame Swift modulation in `drawWithRayMarch` reads `BaseSceneSnapshot` so modulation is additive on the JSON baseline.
-- **Preamble extension** — `sceneMaterial(p, matID, FeatureVector& f, SceneUniforms& s, ...)` for all three ray-march presets, eliminating boundary-classification mismatch (D-021).
+- **Preamble extension** — `sceneMaterial(p, matID, FeatureVector& f, SceneUniforms& s, StemFeatures& stems, ...)` for all ray-march presets (D-021, extended in increment 3.5.4.8).
 - **IBL ambient tinting** — `iblAmbient *= scene.lightColor.rgb` so mood-driven palette shift propagates across the scene (D-022).
 - **Tap reinstall on prolonged silence** — recovers from scrub-induced source teardowns (D-023).
 - **Mood injection** — `RenderPipeline.setMood` + valence/arousal preservation in `setFeatures` (D-024).
-- **`SessionRecorder`** — continuous diagnostic capture (video + features + stems + WAVs + log) per app launch (D-025).
+- **`SessionRecorder`** — continuous diagnostic capture (video + features + stems + WAVs + log) per app launch (D-025). Now includes writer relock on drawable resize (increment 3.5.4.8).
+- **Per-frame stem analysis** — `StemAnalyzer` runs on `analysisQueue` at audio-callback rate (~94 Hz) on a sliding window through the latest separated chunk, replacing the prior 5s piecewise-constant behaviour (increment 3.5.4.9).
 
 The next ordered increments are:
 
-1. **Phase 4 — Orchestrator** — scored preset selection, transition policy, session planning, golden-session tests.
+1. **Phase MV — Musicality** — informed by research documented in `docs/MILKDROP_ARCHITECTURE.md`. Six VL iterations (v3 → v4.2) established that preset-level shader tuning is not converging on "feels like a band member." Diagnosis: missing Milkdrop-style per-vertex feedback warp + misused AGC primitives in preset authoring. Three coordinated sub-phases, each independently shippable and checkpointed:
+   - **MV-0**: drop v4.2 stash, re-land sky-tint conditional (~30 min)
+   - **MV-1**: Milkdrop-correct audio primitives — add `bassRel`/`bassDev` etc. to `FeatureVector`/`StemFeatures` so presets drive from deviation not absolute (D-026, ~2 days)
+   - **MV-2**: per-vertex feedback warp mesh — new opt-in `mv_warp` render pass any preset can use (D-027, ~1 week)
+   - **MV-3**: beyond-Milkdrop extensions — richer per-stem metadata, next-beat predictor, YIN vocal pitch (D-028, ~2-3 weeks, only after MV-2 checkpoint)
+2. **Phase 4 — Orchestrator** — scored preset selection, transition policy, session planning, golden-session tests (blocked on Phase MV proving preset-level musicality is achievable).
 
-See `docs/ENGINEERING_PLAN.md` for the full forward plan with done-when criteria and verification commands.
+See `docs/ENGINEERING_PLAN.md` for the full forward plan with done-when criteria and verification commands. See `docs/MILKDROP_ARCHITECTURE.md` for the research that scopes Phase MV.
 
 ## Linked Frameworks
 
