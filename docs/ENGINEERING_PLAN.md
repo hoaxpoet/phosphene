@@ -97,6 +97,16 @@ Two issues surfaced during v2 visual review on Love Rehab:
 
 Same regression gate covers both changes.
 
+### Increment 3.5.4.3 — v3.1 palette tuning ✅
+
+Data analysis of the v2 diagnostic session (`2026-04-16T17-33-10Z`, 3,749 active frames on Love Rehab) surfaced three palette-level issues that the v3 fix alone did not address:
+
+1. **Palette rotation too slow**: `accumulatedAudioTime × 0.04` only advanced 0.20 over 64 seconds of playback (20% of one color cycle). All sampled frames read as the same teal because the palette barely rotated. Bumped to × 0.15 — one full cyan→magenta→yellow cycle every ~7 seconds of active audio.
+2. **Spatial hue spread too narrow**: peak pixels exist where noise n ∈ [0.55, 1.0], so `n × 0.45` capped the peak contribution at 0.20 — all peaks in a single frame looked the same hue. Bumped to × 0.9 — doubles per-peak variation so different ridges show different colors.
+3. **Valley brightness too low**: `palette(phase + 0.5) × 0.08` was drowned out by the valence-tinted IBL ambient; valleys read as uniform dark brown rather than complementary palette color. Bumped × 0.08 → × 0.15.
+
+Same regression gate. Landed alongside v3 fixes.
+
 ---
 
 ## Immediate Next Increments

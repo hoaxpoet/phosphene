@@ -7,6 +7,18 @@
 // flare the peak palette into HDR bloom; the ridge-line itself reads as
 // a thin emissive seam where the cut goes.
 //
+// v3.1 (session 2026-04-16T17-33-10Z v2 diagnostic) tuned three palette
+// parameters that v3 left untouched but the data showed were wrong:
+//   - Palette rotation rate 0.04 → 0.15:  over 64s of playback, audioTime
+//     accumulated only to 5.0 units so the palette rotated 20% of a cycle
+//     total.  0.15 gives one full rotation per ~7s of active audio.
+//   - Spatial hue spread 0.45 → 0.9:  peak noise range is [0.55, 1.0], so
+//     0.45 contribution capped at 0.20 — all peaks in a frame looked the
+//     same hue.  0.9 doubles per-peak variation.
+//   - Valley brightness 0.08 → 0.15:  v3 valleys were so dim the
+//     valence-tinted IBL ambient dominated and they read as uniform dark
+//     brown.  0.15 lets the complementary palette colour register.
+//
 // v3 design rationale (session 2026-04-16T16-44-51Z + v2 visual review):
 //   v2 (palette + calmer motion) over-corrected — beat response was
 //   inert on energetic music, and scene_fog=0 actually produced MAX
@@ -148,12 +160,20 @@ void sceneMaterial(float3 p,
                             VL_RIDGE_OUTER - beatShift, n));
 
     // ── Psychedelic palette (the headline change) ───────────────────────
-    // Phase = local noise × 0.45  (spatial hue variation across terrain)
-    //       + audioTime × 0.04     (slow whole-scene cycle)
-    //       + valence × 0.25       (mood shifts the palette window)
-    float palettePhase = n * 0.45f + audioPhase * 0.04f + f.valence * 0.25f;
+    // Phase = local noise × 0.9  (wide spatial hue variation across peaks;
+    //                              v3 had 0.45 which clamped peak variation
+    //                              to ~20% of a cycle — all peaks looked
+    //                              the same colour in a single frame)
+    //       + audioTime × 0.15   (full cycle every ~7s of active audio;
+    //                              v3 had 0.04 which only rotated 20% of
+    //                              a cycle over 64s — visually static)
+    //       + valence × 0.25     (mood shifts the palette window —
+    //                              unchanged, gives per-track hue identity)
+    float palettePhase = n * 0.9f + audioPhase * 0.15f + f.valence * 0.25f;
     float3 peakHue   = vl_palette(palettePhase);
-    float3 valleyHue = vl_palette(palettePhase + 0.5f) * 0.08f; // complementary, deep
+    // Valley brightness × 0.15 (v3 had × 0.08 which the valence-tinted
+    // IBL ambient drowned out — valleys read as uniform dark brown).
+    float3 valleyHue = vl_palette(palettePhase + 0.5f) * 0.15f;
 
     // Beat flare: peaks push into HDR (bloom in post_process amplifies);
     // ACES at composite (RayMarch.metal:352–355) handles the over-bright
