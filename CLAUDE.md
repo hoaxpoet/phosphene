@@ -110,6 +110,7 @@ PhospheneEngine/
     Shaders/GlassBrutalist.metal → Brutalist corridor — static architecture; only the glass-fin X-position deforms with bass (Option A design, see DECISIONS D-020). Light/fog/colour modulated in shared Swift path.
     Shaders/KineticSculpture.metal → Interlocking lattice of Brushed Aluminum + Frosted Glass + Liquid Mercury, abstract ray march. FOV in degrees (post-fix; was radians, see commit history).
     Shaders/TestSphere.metal → Minimal pipeline-verification SDF (sphere + floor); used for end-to-end ray-march compile/render test.
+    Shaders/VolumetricLithograph.metal → Linocut-aesthetic infinite terrain (3.5.4). fbm3D heightfield swept by `s.sceneParamsA.x` (accumulated audio time); amplitude scaled by `f.bass + f.mid`. Bimodal materials: matte-black valleys vs mirror-bright metallic peaks. Drum onset (max of `f.beat_bass`/`beat_mid`/`beat_composite`) shifts the peak/valley smoothstep window down so bright-ridge coverage swells on transients. `f.treble` polishes peak roughness as the "other" stem proxy. SSGI intentionally omitted — harsh shadows are part of the printmaking aesthetic.
   Orchestrator/             → AI VJ: preset selection, transitions, session planning (stub — see ENGINEERING_PLAN.md Phase 4)
   Session/
     SessionManager          → Lifecycle state machine (idle→connecting→preparing→ready→playing→ended), @MainActor ObservableObject; degrades gracefully on connector/preparation failure
