@@ -107,6 +107,20 @@ Data analysis of the v2 diagnostic session (`2026-04-16T17-33-10Z`, 3,749 active
 
 Same regression gate. Landed alongside v3 fixes.
 
+### Increment 3.5.4.4 — v3.2 "pulse-rate too fast" + sky tint ✅
+
+Matt's visual review of v3.1 (session `2026-04-16T18-24-43Z` on Love Rehab):
+1. **"Pulsing faster than the beat"** — v3.1 had ~35% of the terrain classified as peaks (smoothstep lo=0.50 sat right at the fbm mean), noise shimmer at `audioTime × 0.06` drifting high-octave detail fast, and palette rotation at 0.15 — all continuous, non-beat-locked motion. Beat-aligned flares (flare, strobe, kick) existed but drowned in the background activity.
+2. **"Neutral gray backdrop"** — v3's fog fix exposed the raw `rm_skyColor` sky, which skipped the `scene.lightColor` multiplier that fog already used. On a preset with a warm `[1, 0.94, 0.84]` light, the sky stayed blue-gray.
+
+Fixes:
+- Peak coverage: smoothstep window `(0.50, 0.55) → (0.56, 0.60)` — peaks now ~15% of scene (linocut "highlights on paper"), ridge band `(0.495, 0.51) → (0.555, 0.565)`.
+- Noise time scale `0.06 → 0.015` (4× slower high-octave drift).
+- Palette rotation `0.15 → 0.08` (~1 cycle per preset duration).
+- **Shared fix** (RayMarch.metal:208): miss/sky pixels now multiplied by `scene.lightColor.rgb`, matching the fog-colour treatment. Benefits every ray-march preset with a non-white light colour (Glass Brutalist, Kinetic Sculpture, VL).
+
+Same regression gate.
+
 ---
 
 ## Immediate Next Increments

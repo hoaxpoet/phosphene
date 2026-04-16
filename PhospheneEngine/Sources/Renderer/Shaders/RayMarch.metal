@@ -204,9 +204,14 @@ fragment float4 raymarch_lighting_fragment(
     float depthNorm = g0.r;
 
     // Miss / sky pixel: depth == 1.0.
+    // Tint by scene.lightColor.rgb so the sky picks up the preset's palette
+    // and valence-driven warm/cool shift — matches the fog-colour treatment
+    // below (line: fogColor = rm_skyColor(rayDir) * scene.lightColor.rgb)
+    // and prevents a "neutral gray backdrop" when valence warms the direct
+    // light but the sky stays raw blue-gray.
     if (depthNorm >= 0.999) {
         float3 rd = rm_rayDir(uv, scene);
-        return float4(rm_skyColor(rd), 1.0);
+        return float4(rm_skyColor(rd) * scene.lightColor.rgb, 1.0);
     }
 
     // ── Reconstruct surface data ───────────────────────────────────
