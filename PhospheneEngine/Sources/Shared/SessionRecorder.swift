@@ -1,0 +1,487 @@
+// SessionRecorder — Continuous diagnostic capture during real playback.
+//
+// Writes to ~/Documents/phosphene_sessions/<ISO-timestamp>/ while the app is
+// running, producing:
+//
+//   video.mp4             H.264 video of the rendered output (30 fps cap).
+//   features.csv          Per-frame FeatureVector (bass/mid/treble/bands/beats/accum).
+//   stems.csv             Per-frame StemFeatures (drums/bass/vocals/other energy+beat).
+//   session.log           Plain-text log of events (track/preset/state changes, errors).
+//   stems/<N>_<title>/    One directory per stem-separation invocation:
+//       drums.wav bass.wav vocals.wav other.wav
+//
+// The recorder is created once at VisualizerEngine init and runs continuously
+// — there is no "start" button. Every rendered frame from the real app, driven
+// by real audio from the Core Audio tap (Apple Music / Spotify / any source
+// feeding the system tap), lands in the capture directory.
+//
+// Video capture works by blitting the drawable texture to a shared-storage
+// capture texture *inside* the render command buffer, then reading that
+// texture's bytes in the buffer's completion handler and feeding them to the
+// AVAssetWriter on a dedicated serial queue.
+
+import AVFoundation
+import CoreMedia
+import CoreVideo
+import Foundation
+import Metal
+import os.log
+
+private let logger = Logger(subsystem: "com.phosphene", category: "SessionRecorder")
+
+// MARK: - SessionRecorder
+
+/// Continuously records diagnostic data from a running Phosphene session.
+///
+/// Thread-safe: hot path methods (`recordFrame`, `recordStemSeparation`, `log`)
+/// dispatch onto an internal serial queue; callers do not need to synchronize.
+public final class SessionRecorder: @unchecked Sendable {
+
+    // MARK: Paths
+
+    public let sessionDir: URL
+    private let videoURL: URL
+    private let featuresCSVURL: URL
+    private let stemsCSVURL: URL
+    private let logURL: URL
+
+    // MARK: IO
+
+    private let queue = DispatchQueue(label: "com.phosphene.recorder", qos: .utility)
+
+    private let featuresHandle: FileHandle
+    private let stemsHandle: FileHandle
+    private let logHandle: FileHandle
+
+    // Video writer (lazy — initialized on first frame so we know the resolution).
+    private var videoWriter: AVAssetWriter?
+    private var videoInput: AVAssetWriterInput?
+    private var pixelAdaptor: AVAssetWriterInputPixelBufferAdaptor?
+    private var videoStartTime: CMTime?
+    private var lastVideoFrameTime: CFAbsoluteTime = 0
+    /// Cap video to ~30 fps regardless of the render loop rate (reduces file size;
+    /// diagnostic motion is readable at 30 fps).
+    private let minVideoInterval: CFAbsoluteTime = 1.0 / 30.0
+
+    // Capture texture (reused across frames; resized on view-size change).
+    private var captureTexture: MTLTexture?
+
+    // Drawable-size stability tracking. The first few frames after launch
+    // sometimes report a transient drawable size (e.g. native-pixel size
+    // before SwiftUI/MTKView layout finalizes the logical-point area).
+    // Locking the AVAssetWriter to that early size produces a video where
+    // later frames are blitted into a corner of the original buffer.
+    // We defer writer initialization until we've observed the same drawable
+    // size for `videoSizeStableThreshold` consecutive frames.
+    private var lastObservedDims: (width: Int, height: Int)?
+    private var sameDimsStreak: Int = 0
+    private let videoSizeStableThreshold: Int = 30  // ~1s at 30fps capture
+
+    /// Dimensions the AVAssetWriter is locked to (set in `setupVideoWriter`).
+    /// Frames whose drawable size doesn't match are skipped from video,
+    /// preventing geometry-mismatched blits that produce a corner-rendered
+    /// video file. CSV/log writes are unaffected.
+    private var writerLockedDims: (width: Int, height: Int)?
+    private var skippedFrameCount: Int = 0
+
+    private var frameIndex: Int = 0
+    private var stemDumpIndex: Int = 0
+
+    /// True once `finish()` has closed all handles. Guards against double-close
+    /// when `deinit` runs after explicit `finish()` (common in tests).
+    private var didFinish: Bool = false
+
+    // MARK: Init
+
+    /// Create a new session directory under ~/Documents/phosphene_sessions/.
+    /// Returns `nil` if the directory could not be created.
+    public init?(baseDir: URL? = nil) {
+        let root: URL
+        if let baseDir = baseDir {
+            root = baseDir
+        } else {
+            let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+            guard let documents = documents else { return nil }
+            root = documents.appendingPathComponent("phosphene_sessions", isDirectory: true)
+        }
+
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        let stamp = formatter.string(from: Date())
+            .replacingOccurrences(of: ":", with: "-")  // colons are sketchy in paths
+        let dir = root.appendingPathComponent(stamp, isDirectory: true)
+
+        do {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        } catch {
+            logger.error("SessionRecorder could not create \(dir.path): \(error.localizedDescription)")
+            return nil
+        }
+
+        self.sessionDir = dir
+        self.videoURL = dir.appendingPathComponent("video.mp4")
+        self.featuresCSVURL = dir.appendingPathComponent("features.csv")
+        self.stemsCSVURL = dir.appendingPathComponent("stems.csv")
+        self.logURL = dir.appendingPathComponent("session.log")
+
+        // Create CSV files with headers and the log file.
+        let featuresHeader = """
+            frame,wallclock_s,time,deltaTime,bass,mid,treble,\
+            subBass,lowBass,lowMid,midHigh,highMid,high,\
+            beatBass,beatMid,beatTreble,beatComposite,\
+            spectralCentroid,spectralFlux,valence,arousal,accumulatedAudioTime
+
+            """
+        let stemsHeader = """
+            frame,wallclock_s,drumsEnergy,drumsBeat,drumsBand0,drumsBand1,\
+            bassEnergy,bassBeat,bassBand0,bassBand1,\
+            vocalsEnergy,vocalsBeat,vocalsBand0,vocalsBand1,\
+            otherEnergy,otherBeat,otherBand0,otherBand1
+
+            """
+        FileManager.default.createFile(atPath: featuresCSVURL.path,
+                                       contents: featuresHeader.data(using: .utf8))
+        FileManager.default.createFile(atPath: stemsCSVURL.path,
+                                       contents: stemsHeader.data(using: .utf8))
+        FileManager.default.createFile(atPath: logURL.path, contents: nil)
+
+        guard let fh = try? FileHandle(forWritingTo: featuresCSVURL),
+              let sh = try? FileHandle(forWritingTo: stemsCSVURL),
+              let lh = try? FileHandle(forWritingTo: logURL) else {
+            logger.error("SessionRecorder failed to open CSV/log handles")
+            return nil
+        }
+        fh.seekToEndOfFile()
+        sh.seekToEndOfFile()
+        lh.seekToEndOfFile()
+        self.featuresHandle = fh
+        self.stemsHandle = sh
+        self.logHandle = lh
+
+        logger.info("SessionRecorder started: \(dir.path, privacy: .public)")
+
+        // Startup banner — lets anyone inspecting session.log verify which
+        // recorder version ran, where artifacts live, and what device recorded.
+        // Also makes it immediately obvious if the log is missing when it
+        // shouldn't be (e.g. recorder init failed silently).
+        let proc = ProcessInfo.processInfo
+        let osVersion = proc.operatingSystemVersionString
+        let device = MTLCreateSystemDefaultDevice()?.name ?? "unknown"
+        log("SessionRecorder started schema=1 dir=\(dir.path)")
+        log("host macOS=\(osVersion) gpu=\(device) hostname=\(proc.hostName)")
+    }
+
+    deinit {
+        finish()
+    }
+
+    // MARK: - Public API: Frame Capture
+
+    /// Ensure a shared-storage capture texture matching the drawable size.
+    /// The render pipeline blits the drawable into this texture inside the
+    /// command buffer before commit; `recordFrame` reads it in the completion
+    /// handler and feeds it to the AVAssetWriter.
+    public func ensureCaptureTexture(device: MTLDevice, width: Int, height: Int,
+                              pixelFormat: MTLPixelFormat) -> MTLTexture? {
+        if let existing = captureTexture,
+           existing.width == width,
+           existing.height == height,
+           existing.pixelFormat == pixelFormat {
+            return existing
+        }
+        let desc = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: pixelFormat,
+            width: width, height: height, mipmapped: false
+        )
+        desc.usage = [.shaderRead]
+        desc.storageMode = .shared
+        let tex = device.makeTexture(descriptor: desc)
+        captureTexture = tex
+        return tex
+    }
+
+    /// Record one rendered frame. Safe to call from the command buffer
+    /// completion handler — heavy work is dispatched onto the recorder's queue.
+    ///
+    /// Reads the internal capture texture (populated by the RenderPipeline's
+    /// per-frame blit) inside the recorder's queue. The caller does not pass
+    /// the texture through the @Sendable completion handler — MTLTexture is
+    /// not Sendable.
+    public func recordFrame(features: FeatureVector, stems: StemFeatures) {
+        let now = CFAbsoluteTimeGetCurrent()
+        let throttled = (now - lastVideoFrameTime) < minVideoInterval
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            let idx = self.frameIndex
+            self.frameIndex += 1
+
+            // Features CSV row (every render frame — 60 fps, still cheap).
+            let fRow = SessionRecorder.csvRow(features: features, frame: idx, wallclock: now)
+            self.featuresHandle.write(fRow.data(using: .utf8) ?? Data())
+
+            // Stems CSV row.
+            let sRow = SessionRecorder.csvRow(stems: stems, frame: idx, wallclock: now)
+            self.stemsHandle.write(sRow.data(using: .utf8) ?? Data())
+
+            // Video frame — throttled to ~30 fps.
+            guard !throttled, let tex = self.captureTexture else { return }
+            self.lastVideoFrameTime = now
+            self.appendVideoFrame(from: tex, wallclock: now)
+        }
+    }
+
+    // MARK: - Public API: Stem Separation
+
+    /// Dump the four separated stem waveforms as 16-bit PCM WAV files.
+    /// Called once per stem-separation cycle (~5s).
+    public func recordStemSeparation(stemWaveforms: [[Float]],
+                              sampleRate: Int,
+                              trackTitle: String?) {
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            guard stemWaveforms.count >= 4 else { return }
+            let names = ["drums", "bass", "vocals", "other"]
+            let idx = self.stemDumpIndex
+            self.stemDumpIndex += 1
+            let safeTitle = (trackTitle ?? "unknown")
+                .replacingOccurrences(of: "/", with: "_")
+                .replacingOccurrences(of: ":", with: "_")
+                .prefix(60)
+            let dumpDir = self.sessionDir
+                .appendingPathComponent("stems", isDirectory: true)
+                .appendingPathComponent(String(format: "%04d_%@", idx, String(safeTitle)),
+                                        isDirectory: true)
+            try? FileManager.default.createDirectory(at: dumpDir,
+                                                     withIntermediateDirectories: true)
+            for (i, waveform) in stemWaveforms.prefix(4).enumerated() {
+                let url = dumpDir.appendingPathComponent("\(names[i]).wav")
+                SessionRecorder.writeWav(samples: waveform, sampleRate: sampleRate, to: url)
+            }
+            // Write log line directly — calling self.log() would re-enqueue
+            // on the same serial queue and miss the window opened by finish().
+            self.writeLogLine("stem separation \(idx) "
+                              + "(\(stemWaveforms[0].count) samples) "
+                              + "track=\(safeTitle) → \(dumpDir.lastPathComponent)")
+        }
+    }
+
+    /// Synchronous log write — for use from inside the recorder's own queue.
+    private func writeLogLine(_ message: String) {
+        let stamp = ISO8601DateFormatter().string(from: Date())
+        let line = "[\(stamp)] \(message)\n"
+        self.logHandle.write(line.data(using: .utf8) ?? Data())
+    }
+
+    // MARK: - Public API: Logging
+
+    /// Append a timestamped line to session.log.
+    public func log(_ message: String) {
+        let stamp = ISO8601DateFormatter().string(from: Date())
+        let line = "[\(stamp)] \(message)\n"
+        queue.async { [weak self] in
+            self?.logHandle.write(line.data(using: .utf8) ?? Data())
+        }
+    }
+
+    // MARK: - Public API: Finish
+
+    /// Flush all writers. Safe to call multiple times; idempotent after first call.
+    public func finish() {
+        queue.sync {
+            guard !self.didFinish else { return }
+            self.didFinish = true
+            if let writer = self.videoWriter, writer.status == .writing {
+                self.videoInput?.markAsFinished()
+                let sema = DispatchSemaphore(value: 0)
+                writer.finishWriting { sema.signal() }
+                _ = sema.wait(timeout: .now() + 5)
+            }
+            try? self.featuresHandle.close()
+            try? self.stemsHandle.close()
+            let msg = "SessionRecorder finished (\(self.frameIndex) frames, "
+                    + "\(self.stemDumpIndex) stem dumps)\n"
+            try? self.logHandle.write(contentsOf: Data(msg.utf8))
+            try? self.logHandle.close()
+        }
+    }
+
+    // MARK: - Video encoding
+
+    private func appendVideoFrame(from tex: MTLTexture, wallclock: CFAbsoluteTime) {
+        let width = tex.width
+        let height = tex.height
+
+        if videoWriter == nil {
+            // Defer initial setup until drawable size has been stable for
+            // `videoSizeStableThreshold` frames. Drops the very early frames
+            // where size may not yet match the steady-state render area.
+            if let last = lastObservedDims, last.width == width, last.height == height {
+                sameDimsStreak += 1
+            } else {
+                lastObservedDims = (width, height)
+                sameDimsStreak = 1
+            }
+            guard sameDimsStreak >= videoSizeStableThreshold else { return }
+            guard setupVideoWriter(width: width, height: height) else { return }
+            writerLockedDims = (width, height)
+            writeLogLine("video writer locked to \(width)x\(height) after \(sameDimsStreak) stable frames")
+        }
+
+        guard let adaptor = pixelAdaptor,
+              let pool = adaptor.pixelBufferPool,
+              let videoInput = videoInput,
+              videoInput.isReadyForMoreMediaData else {
+            return
+        }
+
+        // Compare against the WRITER's locked dimensions (not the sliding
+        // `lastObservedDims`, which gets updated to track new sizes for the
+        // streak counter). If the drawable changes mid-session, skip those
+        // frames — writing a smaller texture into the writer's larger pixel
+        // buffer produces the corner-rendered video we hit before.
+        guard let lockedDims = writerLockedDims,
+              lockedDims.width == width,
+              lockedDims.height == height else {
+            skippedFrameCount += 1
+            // Log once per 30 skips so we know if size mismatch is happening.
+            if skippedFrameCount % 30 == 1 {
+                writeLogLine("video frame skipped: drawable \(width)x\(height) != writer \(writerLockedDims?.width ?? 0)x\(writerLockedDims?.height ?? 0) (skip count: \(skippedFrameCount))")
+            }
+            return
+        }
+
+        var maybeBuffer: CVPixelBuffer?
+        let status = CVPixelBufferPoolCreatePixelBuffer(nil, pool, &maybeBuffer)
+        guard status == kCVReturnSuccess, let pixelBuffer = maybeBuffer else { return }
+
+        CVPixelBufferLockBaseAddress(pixelBuffer, [])
+        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, []) }
+        guard let base = CVPixelBufferGetBaseAddress(pixelBuffer) else { return }
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
+
+        tex.getBytes(base,
+                     bytesPerRow: bytesPerRow,
+                     from: MTLRegionMake2D(0, 0, width, height),
+                     mipmapLevel: 0)
+
+        if videoStartTime == nil {
+            videoStartTime = CMTime(value: CMTimeValue(wallclock * 1_000_000),
+                                    timescale: 1_000_000)
+            videoWriter?.startSession(atSourceTime: videoStartTime!)
+        }
+        let pts = CMTime(value: CMTimeValue(wallclock * 1_000_000),
+                         timescale: 1_000_000)
+        adaptor.append(pixelBuffer, withPresentationTime: pts)
+    }
+
+    private func setupVideoWriter(width: Int, height: Int) -> Bool {
+        do {
+            let writer = try AVAssetWriter(outputURL: videoURL, fileType: .mp4)
+            let settings: [String: Any] = [
+                AVVideoCodecKey: AVVideoCodecType.h264,
+                AVVideoWidthKey: width,
+                AVVideoHeightKey: height,
+                AVVideoCompressionPropertiesKey: [
+                    AVVideoAverageBitRateKey: 4_000_000,
+                    AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel
+                ]
+            ]
+            let input = AVAssetWriterInput(mediaType: .video, outputSettings: settings)
+            input.expectsMediaDataInRealTime = true
+            let pbAttributes: [String: Any] = [
+                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+                kCVPixelBufferWidthKey as String: width,
+                kCVPixelBufferHeightKey as String: height
+            ]
+            let adaptor = AVAssetWriterInputPixelBufferAdaptor(
+                assetWriterInput: input,
+                sourcePixelBufferAttributes: pbAttributes
+            )
+            guard writer.canAdd(input) else { return false }
+            writer.add(input)
+            guard writer.startWriting() else {
+                logger.error("AVAssetWriter.startWriting failed: \(writer.error?.localizedDescription ?? "nil")")
+                return false
+            }
+            self.videoWriter = writer
+            self.videoInput = input
+            self.pixelAdaptor = adaptor
+            return true
+        } catch {
+            logger.error("AVAssetWriter init failed: \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    // MARK: - CSV row formatting
+
+    private static func csvRow(features f: FeatureVector, frame: Int, wallclock: CFAbsoluteTime) -> String {
+        String(format: "%d,%.4f,%.4f,%.4f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,"
+                     + "%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f\n",
+               frame, wallclock, f.time, f.deltaTime,
+               f.bass, f.mid, f.treble,
+               f.subBass, f.lowBass, f.lowMid, f.midHigh, f.highMid, f.high,
+               f.beatBass, f.beatMid, f.beatTreble, f.beatComposite,
+               f.spectralCentroid, f.spectralFlux, f.valence, f.arousal,
+               f.accumulatedAudioTime)
+    }
+
+    private static func csvRow(stems s: StemFeatures, frame: Int, wallclock: CFAbsoluteTime) -> String {
+        String(format: "%d,%.4f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,"
+                     + "%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f\n",
+               frame, wallclock,
+               s.drumsEnergy, s.drumsBeat, s.drumsBand0, s.drumsBand1,
+               s.bassEnergy, s.bassBeat, s.bassBand0, s.bassBand1,
+               s.vocalsEnergy, s.vocalsBeat, s.vocalsBand0, s.vocalsBand1,
+               s.otherEnergy, s.otherBeat, s.otherBand0, s.otherBand1)
+    }
+
+    // MARK: - WAV writer
+
+    /// Write a mono Float32 waveform as a 16-bit PCM WAV file.
+    private static func writeWav(samples: [Float], sampleRate: Int, to url: URL) {
+        var data = Data()
+        let byteRate = sampleRate * 2  // mono, 16-bit
+        let dataSize = samples.count * 2
+        let chunkSize = 36 + dataSize
+
+        data.append(contentsOf: Array("RIFF".utf8))
+        data.append(contentsOf: UInt32(chunkSize).littleEndianBytes)
+        data.append(contentsOf: Array("WAVE".utf8))
+        data.append(contentsOf: Array("fmt ".utf8))
+        data.append(contentsOf: UInt32(16).littleEndianBytes)         // PCM chunk size
+        data.append(contentsOf: UInt16(1).littleEndianBytes)          // PCM format
+        data.append(contentsOf: UInt16(1).littleEndianBytes)          // mono
+        data.append(contentsOf: UInt32(sampleRate).littleEndianBytes)
+        data.append(contentsOf: UInt32(byteRate).littleEndianBytes)
+        data.append(contentsOf: UInt16(2).littleEndianBytes)          // block align
+        data.append(contentsOf: UInt16(16).littleEndianBytes)         // bits per sample
+        data.append(contentsOf: Array("data".utf8))
+        data.append(contentsOf: UInt32(dataSize).littleEndianBytes)
+
+        for sample in samples {
+            let clamped = max(-1.0, min(1.0, sample))
+            // Round to nearest integer — Int16(float) traps on non-integer values.
+            let pcm = Int16((clamped * 32767.0).rounded())
+            data.append(contentsOf: UInt16(bitPattern: pcm).littleEndianBytes)
+        }
+        try? data.write(to: url)
+    }
+}
+
+// MARK: - Little-endian helpers
+
+private extension UInt16 {
+    var littleEndianBytes: [UInt8] {
+        [UInt8(self & 0xFF), UInt8((self >> 8) & 0xFF)]
+    }
+}
+
+private extension UInt32 {
+    var littleEndianBytes: [UInt8] {
+        [UInt8(self & 0xFF),
+         UInt8((self >> 8) & 0xFF),
+         UInt8((self >> 16) & 0xFF),
+         UInt8((self >> 24) & 0xFF)]
+    }
+}

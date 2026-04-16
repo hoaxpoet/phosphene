@@ -29,6 +29,13 @@ struct MetalView: NSViewRepresentable {
         view.enableSetNeedsDisplay = false
         view.isPaused = false
 
+        // Allow reading the drawable texture post-render. Required for the
+        // SessionRecorder's blit-to-capture-texture path; without this, the
+        // blit traps with "source texture is framebufferOnly" on first frame.
+        // Minor cost: Metal cannot use tile memory optimizations for the
+        // drawable. Acceptable at 60 fps on Apple Silicon.
+        view.framebufferOnly = false
+
         return view
     }
 

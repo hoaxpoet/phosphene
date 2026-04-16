@@ -50,6 +50,25 @@ public final class AudioInputRouter: @unchecked Sendable {
     /// Silence / DRM detection state machine.
     private let silenceDetector: SilenceDetector
 
+    // MARK: - Tap Reinstall (scrub-recovery)
+
+    /// Serial queue for tap teardown/reinstall work. Off the realtime thread
+    /// because reinstalling involves destroying + recreating Core Audio devices.
+    private let tapMgmtQueue = DispatchQueue(
+        label: "com.phosphene.audio.tap-mgmt", qos: .utility)
+
+    /// Number of reinstall attempts since the most recent `.silent` entry.
+    /// Reset on transition to `.active`.
+    private var reinstallAttempts: Int = 0
+
+    /// Pending reinstall work item, if any. Cancelled on `.active`.
+    private var reinstallWorkItem: DispatchWorkItem?
+
+    /// Backoff schedule for tap-reinstall attempts after entering `.silent`.
+    /// 3 attempts is enough to ride out a typical scrub-induced disconnect
+    /// without thrashing if the user actually paused the music.
+    private let reinstallDelays: [TimeInterval] = [3.0, 10.0, 30.0]
+
     // MARK: - Init
 
     /// Create an AudioInputRouter.
@@ -64,7 +83,7 @@ public final class AudioInputRouter: @unchecked Sendable {
         self.silenceDetector = SilenceDetector()
 
         silenceDetector.onStateChanged = { [weak self] newState in
-            self?.onSignalStateChanged?(newState)
+            self?.handleSignalStateChange(newState)
         }
     }
 
@@ -77,7 +96,7 @@ public final class AudioInputRouter: @unchecked Sendable {
         self.silenceDetector = silenceDetector
 
         silenceDetector.onStateChanged = { [weak self] newState in
-            self?.onSignalStateChanged?(newState)
+            self?.handleSignalStateChange(newState)
         }
     }
 
@@ -278,7 +297,127 @@ public final class AudioInputRouter: @unchecked Sendable {
 
         metadataProvider?.stopObserving()
         silenceDetector.reset()
+        cancelPendingReinstall()
 
         lock.withLock { currentMode = nil }
+    }
+
+    // MARK: - Signal-State Handling + Tap Reinstall
+
+    /// Forward signal state to subscribers and drive the tap-reinstall state
+    /// machine. `AudioHardwareCreateProcessTap` does not gracefully handle
+    /// the source process tearing down its audio session (e.g. during a
+    /// streaming-app scrub) — the tap stays alive but delivers permanent
+    /// silence. The recovery is to destroy and recreate the tap.
+    ///
+    /// State transitions:
+    ///   .silent  → schedule tap reinstall after `reinstallDelays[attempt]`
+    ///   .active  → cancel any pending reinstall + reset attempt counter
+    ///   .recovering / .suspect → no action (let the detector confirm first)
+    private func handleSignalStateChange(_ state: AudioSignalState) {
+        onSignalStateChanged?(state)
+        switch state {
+        case .silent:
+            scheduleNextReinstall()
+        case .active:
+            cancelPendingReinstall()
+        case .recovering, .suspect:
+            break
+        }
+    }
+
+    /// Schedule the next tap-reinstall attempt with exponential backoff.
+    /// No-op if we've exhausted `reinstallDelays` (treats prolonged silence
+    /// as a real pause rather than a stuck tap).
+    private func scheduleNextReinstall() {
+        let attempt: Int
+        let delay: TimeInterval
+        let shouldSchedule: Bool
+        let workItem: DispatchWorkItem
+        let lockHandle = self.lock
+        attempt = lockHandle.withLock { reinstallAttempts }
+        guard attempt < reinstallDelays.count else {
+            logger.info("Tap reinstall: backoff exhausted (\(attempt) attempts) — treating silence as real pause")
+            return
+        }
+        delay = reinstallDelays[attempt]
+        shouldSchedule = lockHandle.withLock {
+            // Skip if already scheduled at this attempt count.
+            guard reinstallWorkItem == nil else { return false }
+            reinstallAttempts = attempt + 1
+            return true
+        }
+        guard shouldSchedule else { return }
+
+        workItem = DispatchWorkItem { [weak self] in
+            self?.attemptTapReinstall(attemptNumber: attempt + 1)
+        }
+        lockHandle.withLock { reinstallWorkItem = workItem }
+        tapMgmtQueue.asyncAfter(deadline: .now() + delay, execute: workItem)
+        logger.info("Tap reinstall scheduled in \(delay)s (attempt #\(attempt + 1))")
+    }
+
+    /// Cancel any pending reinstall and reset the attempt counter.
+    /// Called when audio resumes naturally on the existing tap.
+    private func cancelPendingReinstall() {
+        lock.withLock {
+            reinstallWorkItem?.cancel()
+            reinstallWorkItem = nil
+            reinstallAttempts = 0
+        }
+    }
+
+    /// Run on `tapMgmtQueue`. Re-checks signal state, then destroys and
+    /// recreates the tap for the current mode. After reinstall, resets the
+    /// silence detector so the new tap gets a clean slate; if real audio
+    /// flows on it, `.silent → .recovering → .active` transitions naturally.
+    /// If silence persists (real pause), the detector will re-enter `.silent`
+    /// and `handleSignalStateChange` will schedule the next backoff attempt.
+    private func attemptTapReinstall(attemptNumber: Int) {
+        // Clear the work-item handle before doing work so a state change
+        // arriving mid-reinstall can schedule the *next* attempt cleanly.
+        lock.withLock { reinstallWorkItem = nil }
+
+        // If audio has already returned, abort.
+        let state = silenceDetector.state
+        guard state == .silent else {
+            logger.info("Tap reinstall #\(attemptNumber) skipped — state is \(String(describing: state))")
+            cancelPendingReinstall()
+            return
+        }
+
+        let mode = lock.withLock { currentMode }
+        guard let mode = mode else { return }
+
+        switch mode {
+        case .systemAudio:
+            performTapReinstall(captureMode: .systemAudio,
+                                attemptNumber: attemptNumber)
+        case .application(let bundleID):
+            performTapReinstall(captureMode: .application(bundleIdentifier: bundleID),
+                                attemptNumber: attemptNumber)
+        case .localFile:
+            // File playback can't get stuck — no tap to reinstall.
+            break
+        }
+    }
+
+    private func performTapReinstall(captureMode: CaptureMode, attemptNumber: Int) {
+        logger.info("Tap reinstall #\(attemptNumber) starting (mode: \(String(describing: captureMode)))")
+        systemCapture.stopCapture()
+        do {
+            try systemCapture.startCapture(mode: captureMode)
+            logger.info("Tap reinstall #\(attemptNumber) succeeded — fresh tap installed; waiting to see if audio flows on it")
+            // Deliberately do NOT call silenceDetector.reset() here.
+            // - If new tap delivers real audio: detector .silent → .recovering
+            //   → .active fires naturally and cancels further attempts.
+            // - If new tap is also silent (genuine pause): no state transition
+            //   fires, so we chain the next attempt explicitly below.
+        } catch {
+            logger.error("Tap reinstall #\(attemptNumber) failed: \(error.localizedDescription)")
+        }
+        // Chain the next attempt with longer backoff. Cancelled automatically
+        // if audio returns (handleSignalStateChange(.active) → cancelPendingReinstall).
+        scheduleNextReinstall()
     }
 }

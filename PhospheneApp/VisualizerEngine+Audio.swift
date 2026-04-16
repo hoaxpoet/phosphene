@@ -225,11 +225,17 @@ extension VisualizerEngine {
         stability: Float,
         mir: MIRPipeline
     ) {
+        // Inject mood into the renderer's FeatureVector so audio-reactive
+        // shaders (e.g. Glass Brutalist's light-colour shift on valence,
+        // fog density on arousal) actually receive these values. Without
+        // this, the renderer reads valence=0/arousal=0 every frame and
+        // mood-driven modulations are dead.
+        var attenuated = state
+        attenuated.valence *= stability
+        attenuated.arousal *= stability
+        pipeline.setMood(valence: attenuated.valence, arousal: attenuated.arousal)
+
         Task { @MainActor [weak self] in
-            // Attenuate mood toward neutral during ramp-up.
-            var attenuated = state
-            attenuated.valence *= stability
-            attenuated.arousal *= stability
             self?.currentMood = attenuated
             // Prefer pre-fetched metadata over self-computed.
             if self?.preFetchedProfile?.key == nil {
@@ -332,7 +338,9 @@ extension VisualizerEngine {
     func makeSignalStateCallback() -> (AudioSignalState) -> Void {
         return { [weak self] state in
             Task { @MainActor [weak self] in
-                self?.audioSignalState = state
+                guard let self = self else { return }
+                self.audioSignalState = state
+                self.sessionRecorder?.log("audio signal → \(state)")
                 switch state {
                 case .silent:
                     logger.info("Audio signal lost — DRM silence or no active audio source")
@@ -362,7 +370,10 @@ extension VisualizerEngine {
             Task { @MainActor in
                 self.currentTrack = event.current
                 self.preFetchedProfile = nil
-                logger.info("Track: \(event.current.title ?? "?") — \(event.current.artist ?? "?")")
+                let title = event.current.title ?? "?"
+                let artist = event.current.artist ?? "?"
+                logger.info("Track: \(title) — \(artist)")
+                self.sessionRecorder?.log("track → \(title) — \(artist)")
             }
             // Reset MIR accumulators on track change.
             mir.reset()
