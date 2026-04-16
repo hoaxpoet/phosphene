@@ -20,6 +20,7 @@
     }
   ],
   "scene_fog": 0.0,
+  "_comment_scene_fog": "0 disables fog (was actually MAXIMUM fog in pre-v3 due to PresetDescriptor+SceneUniforms fallback bug; fixed alongside v3)",
   "scene_ambient": 0.06,
   "scene_far_plane": 80.0,
   "stem_affinity": {
