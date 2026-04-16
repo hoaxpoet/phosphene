@@ -7,6 +7,27 @@
 // flare the peak palette into HDR bloom; the ridge-line itself reads as
 // a thin emissive seam where the cut goes.
 //
+// v4 (session 2026-04-16T20-09-44Z — tested on Tea Lights, Lower Dens,
+// an acoustic/electric guitar driven track at ~75 BPM with no kick drum):
+// previous iterations were all bass-band-centric and totally failed on
+// non-percussive music.  v4 redesigns drivers to be genre-agnostic:
+//   - sceneSDF audioAmp: melody-primary blend.  f.mid_att (250-4000 Hz)
+//     covers guitar/vocals/synths at ×15 (compensates per-band AGC).
+//     f.bass_att retained as secondary (×1.2) so bass-driven tracks still
+//     get sub-swell.  Weighted 0.75 melody + 0.35 bass.
+//   - sceneMaterial accent: f.spectral_flux (any timbral attack — kicks,
+//     guitar strums, vocal onsets, piano chord changes) replaces the
+//     bass-keyed drumsBeatFB.  smoothstep(0.35, 0.70) based on Tea Lights
+//     distribution (mean 0.47, p90 0.69).
+//   - Palette phase now adds f.mid_att × 3.0 so colour rotates with
+//     melodic phrasing, not only accumulated audio time.
+//   - Paired with forward camera dolly (1.8 u/s, enabled in
+//     VisualizerEngine+Presets.swift) so scene CHANGE comes from spatial
+//     motion, not only vertical pulsing.  Amplitude reduced 1.8 → 1.4
+//     because tall peaks look dramatic on horizon but awkward close-up
+//     when dollying past.  Flares toned down (×1.5 → ×0.8 peak, ×2.0 →
+//     ×1.0 ridge, 0.03 → 0.02 coverage shift) to match ambient motion.
+//
 // v3.4 (session 2026-04-16T18-56-59Z — Matt flagged "still out of sync,
 // and sharper/less smooth"):  Data analysis exposed that v3.3's
 // smoothstep(0.22, 0.32, f.bass) missed half the kicks (many Love Rehab
@@ -83,10 +104,14 @@
 // Audio routing (FeatureVector — StemFeatures unavailable in
 // sceneSDF/sceneMaterial; preamble forward-declarations omit it):
 //   s.sceneParamsA.x  → terrain phase (accumulated audio time)
-//   f.bassAtt+midAtt  → vertical displacement amplitude (slow)
-//   f.beat_bass       → palette saturation/brightness flare
+//   f.mid_att (×15)   → primary vertical displacement (melody)
+//   f.bass_att (×1.2) → secondary vertical displacement (bass swell)
+//   f.spectral_flux   → palette flare + ridge strobe (any timbral attack)
+//   f.mid_att (×3)    → palette hue phase (melody → colour cycling)
 //   f.valence         → palette hue offset (mood)
 //   f.mid (sqrt-boost)→ peak roughness polish ("other" stem proxy)
+// Forward camera dolly (1.8 u/s) configured in
+//   PhospheneApp/VisualizerEngine+Presets.swift → RayMarchPipeline.cameraDollySpeed.
 //
 // D-019 stem-routing fallback: stems are not in scope here, so all
 // stem-driven parameters fall back to FeatureVector — equivalent to
@@ -111,7 +136,9 @@ constant float VL_NOISE_TIME_SCALE = 0.015f; // v3.2: 0.06 → 0.015 so high-oct
                                               // motion stops competing with
                                               // continuous surface boil
 constant float VL_DISP_SILENT_AMP  = 0.6f;   // baseline so terrain reads in silence
-constant float VL_DISP_AUDIO_AMP   = 1.8f;   // tamer than v1 (3.4)
+constant float VL_DISP_AUDIO_AMP   = 1.4f;   // v4: 1.8 → 1.4 to pair with forward
+                                              //      dolly — tall peaks awkward when
+                                              //      flying past close-up
 constant int   VL_FBM_OCTAVES      = 5;
 
 // SDF Lipschitz scaling: heightfield is not Euclidean on slopes.
@@ -160,17 +187,19 @@ float sceneSDF(float3 p,
                constant SceneUniforms& s) {
     float audioPhase = s.sceneParamsA.x;                            // accumulated audio time
 
-    // v3.4: single smooth beat driver from f.bass_att.  Data analysis of
-    // session 2026-04-16T18-56-59Z showed v3.3's smoothstep(0.22, 0.32, bass)
-    // missed half the kicks (many Love Rehab kicks peak at 0.20–0.23, below
-    // the 0.22 threshold), producing a phantom 65 BPM pulse on a 125 BPM
-    // track.  f.bass_att (0.95-smoothed) is inherently smooth AND its local
-    // maxima track real kicks at 127 BPM (within 2% of target).  Using it
-    // directly gives musical, tempo-correct terrain motion without any
-    // threshold-sharpening artefacts.  Scaled × 3.5 so typical bass_att
-    // range (0.15–0.22 during active playback) maps to audioAmp ≈ 0.5–0.8.
-    float audioAmp = clamp(f.bass_att * 3.5f, 0.0f, 2.0f);
-    float h        = vl_heightAt(p, audioPhase, audioAmp);
+    // v4: melody-primary motion driver.  Bass-only (v3.4) totally failed
+    // on non-percussive music like Tea Lights (Lower Dens, acoustic/
+    // electric guitar, no kick drum) — terrain pulsed dully at ~80 BPM
+    // ignoring the real melodic phrasing at ~75 BPM.  v4 blends:
+    //   - melody (f.mid_att × 15):  250-4000 Hz band covers guitar, vocals,
+    //     melodic synths.  ×15 compensates for per-band AGC suppression.
+    //     Tracks musical phrasing across genres.  Primary driver (weight 0.75).
+    //   - bass (f.bass_att × 1.2):  retained so bass-driven tracks (Love
+    //     Rehab) still get sub-swell.  Secondary (weight 0.35).
+    float melody = clamp(f.mid_att * 15.0f, 0.0f, 1.5f);
+    float bass   = clamp(f.bass_att * 1.2f, 0.0f, 1.0f);
+    float audioAmp = clamp(melody * 0.75f + bass * 0.35f, 0.0f, 2.0f);
+    float h = vl_heightAt(p, audioPhase, audioAmp);
     return (p.y - h) * VL_SDF_STEP_SCALE;
 }
 
@@ -186,17 +215,15 @@ void sceneMaterial(float3 p,
     float audioPhase = s.sceneParamsA.x;
     float n          = vl_terrainNoise(p, audioPhase); // [0,1]
 
-    // ── D-019 stem-routing fallback (StemFeatures not in scope) ─────────
-    // v3.4: driver switched from smoothstep(bass) to smoothstep(bass_att).
-    // Session 2026-04-16T18-56-59Z revealed v3.3's threshold (0.22-0.32)
-    // on raw f.bass was too high — many Love Rehab kicks peak at 0.20-0.23
-    // in f.bass, so pulses only fired on LOUDER kicks, giving a phantom
-    // 65 BPM rhythm on a 125 BPM track.  f.bass_att (0.95-smoothed) catches
-    // every kick via smoothing and is inherently smooth (no threshold-
-    // sharpening artefacts).  Wider (0.06, 0.25) range gives a gradual
-    // shoulder that matches the music's natural pulse shape.  Local-maxima
-    // analysis confirmed 127 BPM tracking on a 125 BPM track.
-    float drumsBeatFB = smoothstep(0.06f, 0.25f, f.bass_att);
+    // v4: accent driver switched from bass-keyed smoothstep to
+    // spectral_flux.  Reason: bass-keyed accent missed every melodic
+    // attack on non-percussive music.  f.spectral_flux fires on ANY
+    // timbral change — kick drums, guitar strums, vocal onsets, piano
+    // chord changes.  Session 2026-04-16T20-09-44Z distribution on
+    // Tea Lights: mean 0.47, p90 0.69.  smoothstep(0.35, 0.70) gives
+    // clean 0-to-1 pulses without false positives on steady-state audio.
+    // Works equally well for Love Rehab (kicks/hats/synths all trigger).
+    float accentFB = smoothstep(0.35f, 0.70f, f.spectral_flux);
 
     // "Other" stem proxy: sqrt(f.mid) * 1.6.  f.mid (250 Hz–4 kHz)
     // overlaps the actual "other" stem band almost exactly.  AGC keeps
@@ -208,10 +235,9 @@ void sceneMaterial(float3 p,
     //   peakSelect    = matte-valley → polished-peak transition (sharp)
     //   ridgeSelect   = thin emissive seam at the boundary (cut-paper line)
     //
-    // Beat adds a small coverage shift (−0.03 window displacement) so
-    // peaks briefly expand across the terrain on kicks — much less than
-    // v1's 0.18 shift (which caused the boundary to flicker every frame).
-    float beatShift   = drumsBeatFB * 0.03f;
+    // Accent adds a small coverage shift (v4: 0.03 → 0.02 for quieter
+    // ambient match with forward dolly + melody-driven motion).
+    float beatShift   = accentFB * 0.02f;
     float peakSelect  = smoothstep(VL_PEAK_LO - beatShift,
                                     VL_PEAK_HI - beatShift, n);
     float ridgeSelect =
@@ -221,28 +247,31 @@ void sceneMaterial(float3 p,
                             VL_RIDGE_OUTER - beatShift, n));
 
     // ── Psychedelic palette ────────────────────────────────────────────
-    // Phase = local noise × 0.9  (wide spatial hue spread across peaks —
-    //                              v3's 0.45 was too narrow; v3.1's 0.9
-    //                              is right)
-    //       + audioTime × 0.08   (v3.2: 0.15 felt like "pulsing faster
-    //                              than the beat" — rotation was too fast
-    //                              and competed with beat-aligned motion.
-    //                              0.08 gives ~1 full cycle per preset
-    //                              duration at moderate energy)
-    //       + valence × 0.25     (per-track mood hue identity, unchanged)
-    float palettePhase = n * 0.9f + audioPhase * 0.08f + f.valence * 0.25f;
+    // Phase = local noise × 0.9    (spatial hue spread across peaks)
+    //       + audioTime × 0.08     (baseline cycle — ~1 full rotation
+    //                                per preset duration at moderate energy)
+    //       + mid_att × 3.0        (v4: NEW — melody modulates hue.  On
+    //                                Tea Lights, colour shifts align with
+    //                                vocal/guitar swells.  On Love Rehab,
+    //                                mid_att is quieter so this is a
+    //                                gentle overlay on audio-time cycling.)
+    //       + valence × 0.25       (per-track mood hue identity)
+    float palettePhase = n * 0.9f
+                       + audioPhase * 0.08f
+                       + f.mid_att * 3.0f
+                       + f.valence * 0.25f;
     float3 peakHue   = vl_palette(palettePhase);
     // Valley brightness × 0.15 (v3 had × 0.08 which the valence-tinted
     // IBL ambient drowned out — valleys read as uniform dark brown).
     float3 valleyHue = vl_palette(palettePhase + 0.5f) * 0.15f;
 
-    // Beat flare: peaks push into HDR (bloom in post_process amplifies);
+    // Accent flare: peaks push into HDR (bloom in post_process amplifies);
     // ACES at composite (RayMarch.metal:352–355) handles the over-bright
-    // values gracefully.  v2 used 0.6 which was too timid for energetic
-    // music — ACES squashed the boost back into SDR before bloom.  1.5
-    // gives a clearly visible flare (up to 2.5× peak albedo at full beat).
-    float beatBoost = 1.0f + drumsBeatFB * 1.5f;
-    peakHue *= beatBoost;
+    // values gracefully.  v4: 1.5 → 0.8 to match softer ambient motion
+    // paired with forward dolly + melody-driven terrain.  Peak albedo
+    // reaches up to 1.8× at full accent (was 2.5×).
+    float accentBoost = 1.0f + accentFB * 0.8f;
+    peakHue *= accentBoost;
 
     // ── Stratum materials ──────────────────────────────────────────────
     // Valley: palette-tinted near-black, pure dielectric, fully rough.
@@ -263,12 +292,13 @@ void sceneMaterial(float3 p,
     metallic  = mix(valleyMetal,  peakMetal,  peakSelect);
 
     // Ridgeline: overlay a thin dielectric seam at the cut, tinted by
-    // the same palette at high brightness with an additional beat strobe
-    // so the cut-line itself pulses visibly at every kick.  Low metallic
-    // reads as luminous-paint rather than chrome line; low roughness
-    // keeps the seam tight.
-    float  ridgeStrobe = 1.4f + drumsBeatFB * 2.0f;
-    float3 ridgeAlbedo = peakHue * ridgeStrobe;       // very bright on beat
+    // the same palette with an additional accent strobe so the cut-line
+    // itself pulses on any timbral attack.  Low metallic reads as
+    // luminous-paint rather than chrome line; low roughness keeps the
+    // seam tight.  v4: strobe × 2.0 → × 1.0 (ridge reaches 2.4×
+    // brightness on full accent, was 3.4×) — quieter to match ambient.
+    float  ridgeStrobe = 1.4f + accentFB * 1.0f;
+    float3 ridgeAlbedo = peakHue * ridgeStrobe;
     float  ridgeRough  = 0.30f;
     float  ridgeMetal  = 0.10f;
     albedo    = mix(albedo,    ridgeAlbedo, ridgeSelect);
