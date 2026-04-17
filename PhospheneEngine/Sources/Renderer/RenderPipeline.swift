@@ -101,6 +101,13 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     var rayMarchPipeline: RayMarchPipeline?
     let rayMarchLock = NSLock()
 
+    // MARK: - MV-Warp State (MV-2, D-027)
+
+    /// Optional per-vertex feedback warp state — allocated when the active preset
+    /// declares `.mvWarp` in its passes array.
+    var mvWarpState: MVWarpState?
+    let mvWarpLock = NSLock()
+
     // MARK: - Noise Textures (Increment 3.13)
 
     /// Optional noise texture manager — binds 5 pre-computed textures at slots 4–8.
@@ -383,6 +390,9 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
         rayMarchLock.withLock {
             rayMarchPipeline?.allocateTextures(width: width, height: height)
         }
+
+        // Reallocate mv_warp textures if the active preset uses the warp pass.
+        reallocateMVWarpTextures(size: size)
 
         logger.info("Feedback textures allocated: \(width)×\(height)")
     }

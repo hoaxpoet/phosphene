@@ -1,5 +1,6 @@
 // VisualizerEngine+Presets — Preset switching and render-path configuration.
 
+import CoreGraphics
 import os.log
 import Presets
 import Renderer
@@ -47,6 +48,7 @@ extension VisualizerEngine {
         pipeline.setFeedbackParams(nil)
         pipeline.setFeedbackComposePipeline(nil)
         pipeline.setParticleGeometry(nil)
+        pipeline.clearMVWarpState()
         currentRayMarchPipeline = nil
 
         // Set the primary pipeline state (overridden for ray march below).
@@ -149,6 +151,24 @@ extension VisualizerEngine {
                 // SSGI is wired automatically in drawWithRayMarch when .ssgi is in activePasses.
                 // No separate subsystem setup required here.
                 break
+
+            case .mvWarp:
+                // MV-2: build the MVWarpPipelineBundle from the preset's compiled states and
+                // the current drawable size, then wire it into the render pipeline.
+                guard let warpPipelines = preset.mvWarpPipelines else {
+                    logger.error("mv_warp preset '\(desc.name)' missing compiled warp pipeline states")
+                    break
+                }
+                let bundle = MVWarpPipelineBundle(
+                    warpState:    warpPipelines.warpState,
+                    composeState: warpPipelines.composeState,
+                    blitState:    warpPipelines.blitState,
+                    pixelFormat:  context.pixelFormat
+                )
+                // Use 1920×1080 as initial allocation; reallocateMVWarpTextures fires
+                // from drawableSizeWillChange with the real drawable size before the first frame.
+                let drawableSize = CGSize(width: 1920, height: 1080)
+                pipeline.setupMVWarp(bundle: bundle, size: drawableSize)
 
             case .direct:
                 break // No subsystem setup required; direct rendering is the default fallback.

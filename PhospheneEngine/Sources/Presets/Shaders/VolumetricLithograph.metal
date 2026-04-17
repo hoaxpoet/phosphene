@@ -383,3 +383,71 @@ void sceneMaterial(float3 p,
     roughness = mix(roughness, ridgeRough,  ridgeSelect);
     metallic  = mix(metallic,  ridgeMetal,  ridgeSelect);
 }
+
+// ── MV-2 Warp Functions (D-027) ───────────────────────────────────────────
+//
+// VL warp design: the 3D ray-march provides the scene; the per-vertex warp
+// mesh provides temporal accumulation and musical "breathing".
+//
+// mvWarpPerFrame: melody-driven inward breath (zoom > 1 on above-average
+// mid), valence-driven slow rotation (CCW for positive valence), high decay
+// (0.96) for long-trailing feedback.  q1–q4 pass per-frame audio to vertex.
+//
+// mvWarpPerVertex: applies global rotation + zoom (Milkdrop baseline), then
+// adds a small terrain-coherent UV ripple — horizontal on bass deviation,
+// vertical on melody deviation — so the warp field feels like the image
+// itself is gently breathing with the music rather than a uniform zoom.
+
+MVWarpPerFrame mvWarpPerFrame(constant FeatureVector& f,
+                              constant StemFeatures&  stems,
+                              constant SceneUniforms& s) {
+    MVWarpPerFrame pf;
+
+    // Gentle inward breath: above-average melody pulls the frame in ~0.3%.
+    // Range: zoom ≈ 0.999 at silence → 1.006 at peak mid_att_rel ≈ 2.
+    pf.zoom  = 1.0f + f.mid_att_rel * 0.003f;
+
+    // Slow drift: positive valence → CCW, negative → CW. ~0.09°/frame max.
+    pf.rot   = f.valence * 0.0015f;
+
+    // Long trailing feedback — prev frame contributes 96% each frame.
+    pf.decay = 0.96f;
+
+    // Global warp ripple amplitude (scaled by per-vertex audio below).
+    pf.warp  = 0.3f;
+
+    pf.cx = 0.0f; pf.cy = 0.0f;   // warp centred on screen
+    pf.dx = 0.0f; pf.dy = 0.0f;   // no lateral translation
+    pf.sx = 1.0f; pf.sy = 1.0f;
+
+    // q-variables: carry per-frame audio to mvWarpPerVertex.
+    pf.q1 = f.bass_att_rel;    // bass deviation → horizontal ripple amplitude
+    pf.q2 = f.mid_att_rel;     // melody deviation → vertical ripple amplitude
+    pf.q3 = s.sceneParamsA.x;  // accumulated audio time → ripple phase
+    pf.q4 = f.valence;
+    pf.q5 = 0.0f; pf.q6 = 0.0f; pf.q7 = 0.0f; pf.q8 = 0.0f;
+    return pf;
+}
+
+float2 mvWarpPerVertex(float2 uv, float rad, float ang,
+                       thread const MVWarpPerFrame& pf,
+                       constant FeatureVector& f,
+                       constant StemFeatures& stems) {
+    // Apply global rotation + zoom centred on the warp centre.
+    float2 centre  = float2(0.5f + pf.cx, 0.5f + pf.cy);
+    float2 p       = uv - centre;
+    float  cosR    = cos(pf.rot);
+    float  sinR    = sin(pf.rot);
+    float2 rotated = float2(p.x * cosR - p.y * sinR,
+                            p.x * sinR + p.y * cosR);
+    float2 base    = centre + rotated / pf.zoom + float2(pf.dx, pf.dy);
+
+    // Terrain-coherent UV ripple: slow phase from accumulated audio time,
+    // horizontal amplitude from bass, vertical from melody.
+    // Amplitude 0.004 UV (≈ 4px on 1080p) keeps the effect subtle.
+    float phase = pf.q3 * 0.05f;
+    float du = pf.q1 * sin(uv.y * 6.2832f + phase)        * pf.warp * 0.004f;
+    float dv = pf.q2 * cos(uv.x * 6.2832f + phase * 0.7f) * pf.warp * 0.003f;
+
+    return base + float2(du, dv);
+}

@@ -26,6 +26,21 @@ public final class PresetLoader: @unchecked Sendable {
 
     // MARK: - Types
 
+    /// Compiled pipeline states for the mv_warp pass (MV-2, D-027).
+    ///
+    /// Built by PresetLoader at compile time from the preset's library (which includes
+    /// the mvWarpPreamble with `mvWarp_vertex` calling the preset's `mvWarpPerFrame` /
+    /// `mvWarpPerVertex`).  The app layer bridges these into `MVWarpPipelineBundle` for
+    /// the Renderer module.
+    public struct MVWarpCompiledPipelines: Sendable {
+        /// Warp pipeline: `mvWarp_vertex` (32×24 grid) + `mvWarp_fragment`.
+        public let warpState: MTLRenderPipelineState
+        /// Compose pipeline: `fullscreen_vertex` + `mvWarp_compose_fragment` (alpha blend).
+        public let composeState: MTLRenderPipelineState
+        /// Blit pipeline: `fullscreen_vertex` + `mvWarp_blit_fragment`.
+        public let blitState: MTLRenderPipelineState
+    }
+
     /// A preset with its compiled pipeline state ready for rendering.
     public struct LoadedPreset: Sendable {
         public let descriptor: PresetDescriptor
@@ -34,6 +49,8 @@ public final class PresetLoader: @unchecked Sendable {
         public let feedbackPipelineState: MTLRenderPipelineState?
         /// G-buffer pipeline state for ray march presets (3 color attachments). Nil for non-ray-march presets.
         public let rayMarchPipelineState: MTLRenderPipelineState?
+        /// Per-vertex warp pipeline states (MV-2). Nil for non-mv_warp presets.
+        public let mvWarpPipelines: MVWarpCompiledPipelines?
     }
 
     // MARK: - Private State
@@ -175,7 +192,8 @@ public final class PresetLoader: @unchecked Sendable {
                 descriptor: descriptor,
                 pipelineState: pipelines.standard,
                 feedbackPipelineState: pipelines.feedback,
-                rayMarchPipelineState: pipelines.rayMarch
+                rayMarchPipelineState: pipelines.rayMarch,
+                mvWarpPipelines: pipelines.mvWarp
             )
 
             lock.withLock {
@@ -219,13 +237,16 @@ public final class PresetLoader: @unchecked Sendable {
         let standard: MTLRenderPipelineState
         let feedback: MTLRenderPipelineState?
         let rayMarch: MTLRenderPipelineState?
+        let mvWarp: MVWarpCompiledPipelines?
 
         init(standard: MTLRenderPipelineState,
              feedback: MTLRenderPipelineState? = nil,
-             rayMarch: MTLRenderPipelineState? = nil) {
+             rayMarch: MTLRenderPipelineState? = nil,
+             mvWarp: MVWarpCompiledPipelines? = nil) {
             self.standard  = standard
             self.feedback  = feedback
             self.rayMarch  = rayMarch
+            self.mvWarp    = mvWarp
         }
     }
 
@@ -234,6 +255,11 @@ public final class PresetLoader: @unchecked Sendable {
         if descriptor.passes.contains(.meshShader) {
             guard let result = compileMeshShader(at: url, descriptor: descriptor) else { return nil }
             return CompiledShader(standard: result.standard, feedback: result.feedback)
+        }
+        if descriptor.passes.contains(.mvWarp) {
+            // MV-2: mv_warp presets compile via the ray march path (for ray-march presets)
+            // or a new combined path.  All mv_warp presets also get the warp pipeline states.
+            return compileMVWarpShader(at: url, descriptor: descriptor)
         }
         if descriptor.passes.contains(.rayMarch) {
             return compileRayMarchShader(at: url, descriptor: descriptor)
@@ -409,6 +435,148 @@ public final class PresetLoader: @unchecked Sendable {
         }
 
         return CompiledShader(standard: standardState, rayMarch: gbufferState)
+    }
+
+    /// Compile an mv_warp preset: injects `shaderPreamble + rayMarchGBufferPreamble +
+    /// mvWarpPreamble` so the preset's `mvWarpPerFrame` / `mvWarpPerVertex` are compiled
+    /// alongside `mvWarp_vertex`, the 3 fixed fragment functions, and (for ray-march
+    /// presets) `sceneSDF` / `sceneMaterial`.
+    ///
+    /// Produces:
+    /// - `standard`  — G-buffer state (ray march) or direct state (direct presets).
+    /// - `rayMarch`  — G-buffer state (nil for direct presets).
+    /// - `mvWarp`    — Three warp pipeline states.
+    // swiftlint:disable:next function_body_length
+    private func compileMVWarpShader(
+        at url: URL, descriptor: PresetDescriptor
+    ) -> CompiledShader? {
+        guard let fragmentSource = try? String(contentsOf: url, encoding: .utf8) else {
+            logger.error("Could not read mv_warp shader file: \(url.lastPathComponent)")
+            return nil
+        }
+
+        // Determine whether this is a ray-march preset with mv_warp.
+        let isRayMarch = descriptor.passes.contains(.rayMarch)
+
+        // Build the full source. Ray-march presets get the G-buffer preamble too.
+        let fullSource: String
+        if isRayMarch {
+            fullSource = Self.shaderPreamble
+                + "\n\n" + Self.rayMarchGBufferPreamble
+                + "\n\n" + Self.mvWarpPreamble
+                + "\n\n" + fragmentSource
+        } else {
+            fullSource = Self.shaderPreamble
+                + "\n\n" + Self.mvWarpPreamble
+                + "\n\n" + fragmentSource
+        }
+
+        let options = MTLCompileOptions()
+        options.fastMathEnabled = true
+        options.languageVersion = .version3_1
+
+        let library: MTLLibrary
+        do {
+            library = try device.makeLibrary(source: fullSource, options: options)
+        } catch {
+            logger.error("mv_warp shader compilation failed for \(url.lastPathComponent): \(error)")
+            return nil
+        }
+
+        // ── Build the warp pipeline states ────────────────────────────────────
+        // All three functions come from the same preset library because mvWarpPreamble
+        // was injected into the source, making mvWarp_vertex, mvWarp_fragment, etc.
+        // available alongside the preset's own mvWarpPerFrame / mvWarpPerVertex.
+        guard let warpVertexFn   = library.makeFunction(name: "mvWarp_vertex"),
+              let warpFragFn     = library.makeFunction(name: "mvWarp_fragment"),
+              let composeFn      = library.makeFunction(name: "mvWarp_compose_fragment"),
+              let blitFragFn     = library.makeFunction(name: "mvWarp_blit_fragment"),
+              let fullscreenVtx  = library.makeFunction(name: "fullscreen_vertex")
+        else {
+            logger.error("mv_warp functions not found in compiled library for \(url.lastPathComponent)")
+            return nil
+        }
+
+        // Warp pipeline: mvWarp_vertex (32×24 grid) + mvWarp_fragment (no blending).
+        let warpDesc = MTLRenderPipelineDescriptor()
+        warpDesc.vertexFunction   = warpVertexFn
+        warpDesc.fragmentFunction = warpFragFn
+        warpDesc.colorAttachments[0].pixelFormat = pixelFormat
+
+        // Compose pipeline: fullscreen_vertex + mvWarp_compose_fragment.
+        // sourceAlpha × src.rgb + one × dst.rgb — scene blends in at (1-decay) weight.
+        let composeDesc = MTLRenderPipelineDescriptor()
+        composeDesc.vertexFunction   = fullscreenVtx
+        composeDesc.fragmentFunction = composeFn
+        composeDesc.colorAttachments[0].pixelFormat = pixelFormat
+        composeDesc.colorAttachments[0].isBlendingEnabled = true
+        composeDesc.colorAttachments[0].sourceRGBBlendFactor   = .sourceAlpha
+        composeDesc.colorAttachments[0].destinationRGBBlendFactor = .one
+        composeDesc.colorAttachments[0].sourceAlphaBlendFactor = .zero
+        composeDesc.colorAttachments[0].destinationAlphaBlendFactor = .one
+
+        // Blit pipeline: fullscreen_vertex + mvWarp_blit_fragment (no blending).
+        let blitDesc = MTLRenderPipelineDescriptor()
+        blitDesc.vertexFunction   = fullscreenVtx
+        blitDesc.fragmentFunction = blitFragFn
+        blitDesc.colorAttachments[0].pixelFormat = pixelFormat
+
+        let warpPipelines: MVWarpCompiledPipelines
+        do {
+            let warpState    = try device.makeRenderPipelineState(descriptor: warpDesc)
+            let composeState = try device.makeRenderPipelineState(descriptor: composeDesc)
+            let blitState    = try device.makeRenderPipelineState(descriptor: blitDesc)
+            warpPipelines = MVWarpCompiledPipelines(
+                warpState: warpState, composeState: composeState, blitState: blitState)
+            logger.info("Compiled mv_warp pipelines for \(descriptor.name)")
+        } catch {
+            logger.error("mv_warp pipeline creation failed for \(url.lastPathComponent): \(error)")
+            return nil
+        }
+
+        // ── Build primary (G-buffer or direct) pipeline state ────────────────
+        if isRayMarch {
+            guard let vertexFn   = library.makeFunction(name: descriptor.vertexFunction),
+                  let gbufferFn  = library.makeFunction(name: "raymarch_gbuffer_fragment")
+            else {
+                logger.error("Ray march functions not found for mv_warp preset \(url.lastPathComponent)")
+                return nil
+            }
+            let gbufDesc = MTLRenderPipelineDescriptor()
+            gbufDesc.vertexFunction   = vertexFn
+            gbufDesc.fragmentFunction = gbufferFn
+            gbufDesc.colorAttachments[0].pixelFormat = .rg16Float
+            gbufDesc.colorAttachments[1].pixelFormat = .rgba8Snorm
+            gbufDesc.colorAttachments[2].pixelFormat = .rgba8Unorm
+
+            do {
+                let gbufferState = try device.makeRenderPipelineState(descriptor: gbufDesc)
+                return CompiledShader(standard: gbufferState, rayMarch: gbufferState, mvWarp: warpPipelines)
+            } catch {
+                logger.error("G-buffer pipeline failed for mv_warp preset \(url.lastPathComponent): \(error)")
+                return nil
+            }
+        } else {
+            // Direct-render mv_warp preset (Starburst etc.): compile standard pipeline.
+            guard let vertexFn   = library.makeFunction(name: descriptor.vertexFunction),
+                  let fragmentFn = library.makeFunction(name: descriptor.fragmentFunction)
+            else {
+                logger.error("Fragment functions not found for direct mv_warp preset \(url.lastPathComponent)")
+                return nil
+            }
+            let stdDesc = MTLRenderPipelineDescriptor()
+            stdDesc.vertexFunction   = vertexFn
+            stdDesc.fragmentFunction = fragmentFn
+            stdDesc.colorAttachments[0].pixelFormat = pixelFormat
+
+            do {
+                let stdState = try device.makeRenderPipelineState(descriptor: stdDesc)
+                return CompiledShader(standard: stdState, mvWarp: warpPipelines)
+            } catch {
+                logger.error("Standard pipeline failed for direct mv_warp preset \(url.lastPathComponent): \(error)")
+                return nil
+            }
+        }
     }
 
     // MARK: - Hot Reload

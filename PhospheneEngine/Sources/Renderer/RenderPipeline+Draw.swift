@@ -76,6 +76,12 @@ extension RenderPipeline {
     /// Iterates `activePasses` in declared order and executes the first pass whose
     /// required subsystem is available.  Falls back to `drawDirect` if no pass matches.
     /// Called from `draw(in:)` after timing and features are prepared.
+    ///
+    /// **MV-2 multi-pass flow:** When `.mvWarp` is in the passes array, the preceding
+    /// `.rayMarch` pass renders to an offscreen scene texture (not the drawable) and
+    /// does NOT return — the loop continues to `.mvWarp` which applies the warp and blits.
+    /// For direct-render presets (`["mv_warp"]`), the `.mvWarp` case renders the preset
+    /// fragment to sceneTexture itself before warping.
     func renderFrame(
         commandBuffer: MTLCommandBuffer,
         view: MTKView,
@@ -92,6 +98,10 @@ extension RenderPipeline {
         let ppChain        = postProcessLock.withLock { postProcessChain }
         let icbSnap        = icbLock.withLock { icbState }
         let rmPipeline     = rayMarchLock.withLock { rayMarchPipeline }
+        let mvWarpSnap     = mvWarpLock.withLock { mvWarpState }
+
+        // Is the mv_warp pass active this frame?
+        let mvWarpActive   = passes.contains(.mvWarp) && mvWarpSnap != nil
 
         // Lazy-allocate feedback textures if needed (drawableSizeWillChange may not fire).
         let drawableSize = view.drawableSize
@@ -104,6 +114,9 @@ extension RenderPipeline {
 
         // Compute pass: update particles before any render pass.
         particles?.update(features: features, stemFeatures: stemFeatures, commandBuffer: commandBuffer)
+
+        // Track whether the scene has been rendered to sceneTexture by a preceding pass.
+        var sceneRenderedToWarpTarget = false
 
         // Walk the passes array — execute the first pass with available resources.
         for pass in passes {
@@ -122,15 +135,31 @@ extension RenderPipeline {
 
             case .rayMarch:
                 guard let rm = rmPipeline else { continue }
-                drawWithRayMarch(
-                    commandBuffer: commandBuffer,
-                    view: view,
-                    features: &features,
-                    stemFeatures: stemFeatures,
-                    activePipeline: activePipeline,
-                    rayMarchState: rm
-                )
-                return
+                if mvWarpActive, let warpState = mvWarpSnap {
+                    // MV-2: render scene to offscreen texture so mv_warp can warp it.
+                    drawWithRayMarch(
+                        commandBuffer: commandBuffer,
+                        view: view,
+                        features: &features,
+                        stemFeatures: stemFeatures,
+                        activePipeline: activePipeline,
+                        rayMarchState: rm,
+                        sceneOutputTexture: warpState.sceneTexture
+                    )
+                    sceneRenderedToWarpTarget = true
+                    // Continue the loop — .mvWarp will present the result.
+                } else {
+                    drawWithRayMarch(
+                        commandBuffer: commandBuffer,
+                        view: view,
+                        features: &features,
+                        stemFeatures: stemFeatures,
+                        activePipeline: activePipeline,
+                        rayMarchState: rm,
+                        sceneOutputTexture: nil
+                    )
+                    return
+                }
 
             case .postProcess:
                 // Stand-alone post-process path.  When combined with .rayMarch, the ray
@@ -177,6 +206,23 @@ extension RenderPipeline {
                 )
                 drawWithFeedback(&ctx)
                 feedbackLock.withLock { feedbackIndex = 1 - feedbackIndex }
+                return
+
+            case .mvWarp:
+                // MV-2: per-vertex feedback warp pass.
+                // `sceneRenderedToWarpTarget` is true when .rayMarch rendered offscreen.
+                // For direct-render presets (no preceding rayMarch), the warp draws
+                // the preset fragment to sceneTexture itself.
+                guard let warpState = mvWarpSnap else { continue }
+                drawWithMVWarp(
+                    commandBuffer: commandBuffer,
+                    view: view,
+                    features: &features,
+                    stemFeatures: stemFeatures,
+                    activePipeline: activePipeline,
+                    warpState: warpState,
+                    sceneAlreadyRendered: sceneRenderedToWarpTarget
+                )
                 return
 
             case .direct, .particles, .ssgi:

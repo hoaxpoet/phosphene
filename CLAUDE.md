@@ -77,6 +77,7 @@ PhospheneEngine/
     RenderPipeline+MeshDraw → Mesh shader draw: drawWithMeshShader, offscreen pass
     RenderPipeline+PostProcess → HDR post-process: drawWithPostProcess, lazy texture allocation
     RenderPipeline+RayMarch → Ray march draw: drawWithRayMarch + per-frame audio-reactive SceneUniforms modulation (light intensity from any-band beat, lightColor from valence, fogFar from arousal, camera dolly from features.time, glass-fin position from bass). Reads BaseSceneSnapshot for additive-on-baseline behaviour.
+    RenderPipeline+MVWarp   → MV-2 per-vertex feedback warp: MVWarpPipelineBundle, MVWarpState, setupMVWarp, drawWithMVWarp (3-pass: warp grid → compose → blit), clearMVWarpState, reallocateMVWarpTextures
     RenderPipeline+ICB      → Indirect command buffer: drawWithICB, populate compute + execute render
     RayMarchPipeline        → Deferred 3-pass: G-buffer textures, lighting pipeline, composite pipeline
     RayMarchPipeline+Passes → SSGI pass extraction for file-length compliance
@@ -88,6 +89,7 @@ PhospheneEngine/
     RayTracing/BVHBuilder   → MTLPrimitiveAccelerationStructure, blocking + non-blocking paths
     RayTracing/RayIntersector → Compute-pipeline intersector, nearest-hit + shadow kernels
     Shaders/Common.metal    → FeatureVector/FeedbackParams structs, hsv2rgb, fullscreen_vertex, feedback shaders
+    Shaders/MVWarp.metal    → Default engine-library mvWarp implementations (mvWarp_vertex_default, identity warpPerFrame/Vertex); fixed fragment shaders shared by all presets (mvWarp_fragment, mvWarp_compose_fragment, mvWarp_blit_fragment)
     Shaders/MeshShaders.metal → Mesh pipeline structs, object/mesh/fragment + fallback vertex shaders
     Shaders/Particles.metal → Murmuration compute kernel + bird silhouette vertex/fragment
     Shaders/PostProcess.metal → Bright pass, Gaussian blur H/V, ACES composite
@@ -98,7 +100,7 @@ PhospheneEngine/
     Shaders/IBL.metal        → IBL generation kernels + sampling utilities
   Presets/
     PresetLoader            → Auto-discover, compile standard + additive + mesh + ray march pipelines, skip utility files
-    PresetLoader+Preamble   → Shared preamble: FeatureVector struct → ShaderUtilities → noise samplers → preset code. Forwards `sceneSDF(p, FeatureVector& f, SceneUniforms& s, StemFeatures& stems)` and `sceneMaterial(p, matID, f, s, stems, albedo, roughness, metallic)` so ray-march presets can do per-stem routing (Milkdrop-style) directly in sceneSDF/sceneMaterial. StemFeatures plumbed through G-buffer fragment call sites. Presets should apply the D-019 warmup fallback `smoothstep(0.02, 0.06, totalStemEnergy)` to mix between FeatureVector proxies and stem direct reads (see VolumetricLithograph for reference implementation).
+    PresetLoader+Preamble   → Shared preamble: FeatureVector struct → ShaderUtilities → noise samplers → preset code. Forwards `sceneSDF(p, FeatureVector& f, SceneUniforms& s, StemFeatures& stems)` and `sceneMaterial(p, matID, f, s, stems, albedo, roughness, metallic)` so ray-march presets can do per-stem routing (Milkdrop-style) directly in sceneSDF/sceneMaterial. StemFeatures plumbed through G-buffer fragment call sites. Presets should apply the D-019 warmup fallback `smoothstep(0.02, 0.06, totalStemEnergy)` to mix between FeatureVector proxies and stem direct reads (see VolumetricLithograph for reference implementation). Also contains `mvWarpPreamble` (MV-2, D-027): MVWarpPerFrame struct, WarpVertexOut, warpSampler, forward declarations for preset `mvWarpPerFrame`/`mvWarpPerVertex`, and the `mvWarp_vertex` 32×24 grid shader. SceneUniforms defined via `#ifndef SCENE_UNIFORMS_DEFINED` guard so direct (non-ray-march) mv_warp presets compile correctly.
     PresetDescriptor        → JSON sidecar: passes, feedback params, scene camera/lights, stem affinity
     PresetDescriptor+SceneUniforms → Constructs SceneUniforms from descriptor (camera basis, light, fog, near/far). FOV converted from JSON degrees → radians exactly once.
     PresetCategory          → 11 aesthetic families
@@ -106,11 +108,11 @@ PhospheneEngine/
     Shaders/Waveform.metal  → Spectrum bars + oscilloscope
     Shaders/Plasma.metal    → Demoscene plasma
     Shaders/Nebula.metal    → Radial frequency nebula
-    Shaders/Starburst.metal → Murmuration sky backdrop
+    Shaders/Starburst.metal → Murmuration sky backdrop (MV-2: mv_warp pass replaces feedback+particles; bass_att_rel drives zoom breath, mid_att_rel drives slow rotation, decay=0.97 for long cloud smear)
     Shaders/GlassBrutalist.metal → Brutalist corridor — static architecture; only the glass-fin X-position deforms with bass (Option A design, see DECISIONS D-020). Light/fog/colour modulated in shared Swift path.
     Shaders/KineticSculpture.metal → Interlocking lattice of Brushed Aluminum + Frosted Glass + Liquid Mercury, abstract ray march. FOV in degrees (post-fix; was radians, see commit history).
     Shaders/TestSphere.metal → Minimal pipeline-verification SDF (sphere + floor); used for end-to-end ray-march compile/render test.
-    Shaders/VolumetricLithograph.metal → Psychedelic linocut terrain (MV-1 / v4.1). fbm3D heightfield swept by `s.sceneParamsA.x` at slow rate 0.015; melody-primary blend `0.75 × (0.5 + f.mid_att_rel) + 0.35 × (0.3 + f.bass_att_rel × 0.7)` — deviation-driven, genre-stable across AGC shifts (MV-1 / D-026). Stem-accurate drivers blend in via `smoothstep(0.02, 0.06, totalStemEnergy)` warmup (D-019). Forward camera dolly at 1.8 u/s (configured in VisualizerEngine+Presets.swift). Three strata with narrow linocut coverage (~15% peaks): palette-tinted near-black valleys, razor-thin emissive ridge-line seam, polished-metal peaks. Peaks use IQ cosine `palette()` driven by terrain noise + audio time + `0.5 + f.mid_att_rel × 0.5` (melody-modulated hue) + valence. Accent/strobe from `smoothstep(0.30/0.70, stems.drums_beat)` with FV fallback `smoothstep(0.35, 0.70, f.spectral_flux)`. `f.mid_dev × 1.5` polishes peak roughness. `scene_fog: 0` truly disables fog. Miss/sky pixels tinted by `scene.lightColor.rgb`. SSGI omitted.
+    Shaders/VolumetricLithograph.metal → Psychedelic linocut terrain (MV-2 / v4.1). fbm3D heightfield swept by `s.sceneParamsA.x` at slow rate 0.015; melody-primary blend `0.75 × (0.5 + f.mid_att_rel) + 0.35 × (0.3 + f.bass_att_rel × 0.7)` — deviation-driven, genre-stable across AGC shifts (MV-1 / D-026). Stem-accurate drivers blend in via `smoothstep(0.02, 0.06, totalStemEnergy)` warmup (D-019). Forward camera dolly at 1.8 u/s (configured in VisualizerEngine+Presets.swift). Three strata with narrow linocut coverage (~15% peaks): palette-tinted near-black valleys, razor-thin emissive ridge-line seam, polished-metal peaks. Peaks use IQ cosine `palette()` driven by terrain noise + audio time + `0.5 + f.mid_att_rel × 0.5` (melody-modulated hue) + valence. Accent/strobe from `smoothstep(0.30/0.70, stems.drums_beat)` with FV fallback `smoothstep(0.35, 0.70, f.spectral_flux)`. `f.mid_dev × 1.5` polishes peak roughness. `scene_fog: 0` truly disables fog. Miss/sky pixels tinted by `scene.lightColor.rgb`. SSGI omitted. MV-2: mv_warp pass adds temporal feedback accumulation — melody-driven zoom breath (mid_att_rel × 0.003), valence-driven rotation, decay=0.96; per-vertex UV ripple from bass (horizontal) and melody (vertical) at 0.004 UV amplitude. Passes: ray_march + post_process + mv_warp.
   Orchestrator/             → AI VJ: preset selection, transitions, session planning (stub — see ENGINEERING_PLAN.md Phase 4)
   Session/
     SessionManager          → Lifecycle state machine (idle→connecting→preparing→ready→playing→ended), @MainActor ObservableObject; degrades gracefully on connector/preparation failure
@@ -127,14 +129,14 @@ PhospheneEngine/
     AudioFeatures           → @frozen SIMD-aligned structs (see Key Types below)
     AnalyzedFrame           → Timestamped container: AudioFrame + FFTResult + StemData + FeatureVector + EmotionalState
     StemSampleBuffer        → Interleaved stereo PCM ring buffer for stem separation input (15s)
-    RenderPass              → Enum: direct, feedback, particles, mesh_shader, post_process, ray_march, icb, ssgi
+    RenderPass              → Enum: direct, feedback, particles, mesh_shader, post_process, ray_march, icb, ssgi, mv_warp
     Logging                 → Per-module os.Logger instances (subsystem: "com.phosphene")
     SessionRecorder         → Continuous diagnostic capture per app launch: video.mp4 (H.264, 30 fps) + features.csv + stems.csv + stems/<N>_<title>/{drums,bass,vocals,other}.wav + session.log. Writes to ~/Documents/phosphene_sessions/<timestamp>/. Writer locks after 30 stable drawable frames; if a different size arrives consistently for ≥90 frames after lock (bad initial lock from transient Retina→logical-point resize), tears down and relocks — logs "video writer relocking". Finalised on NSApplication.willTerminateNotification. Validated by SessionRecorderTests.
 Tests/
   Audio/                    → AudioBufferTests, FFTProcessorTests, StreamingMetadataTests, MetadataPreFetcherTests, LookaheadBufferTests, SilenceDetectorTests
   DSP/                      → SpectralAnalyzerTests, BandEnergyProcessorTests, ChromaExtractorTests, BeatDetectorTests, MIRPipelineUnitTests, SelfSimilarityMatrixTests, NoveltyDetectorTests, StructuralAnalyzerTests
   ML/                       → StemSeparatorTests, StemFFTTests, StemModelTests, MoodClassifierTests
-  Renderer/                 → MetalContextTests, ShaderLibraryTests, RenderPipelineTests, ProceduralGeometryTests, MeshGeneratorTests, BVHBuilderTests, RayIntersectorTests, PostProcessChainTests, ShaderUtilityTests, TextureManagerTests, RayMarchPipelineTests, SceneUniformsTests, FeatureVectorExtendedTests, SSGITests, RenderPipelineICBTests
+  Renderer/                 → MetalContextTests, ShaderLibraryTests, RenderPipelineTests, ProceduralGeometryTests, MeshGeneratorTests, BVHBuilderTests, RayIntersectorTests, PostProcessChainTests, ShaderUtilityTests, TextureManagerTests, RayMarchPipelineTests, SceneUniformsTests, FeatureVectorExtendedTests, SSGITests, RenderPipelineICBTests, MVWarpPipelineTests
   Shared/                   → AudioFeaturesTests, UMABufferExtendedTests, EmotionalStateTests, AnalyzedFrameTests
   Session/                  → SessionManagerTests, PlaylistConnectorTests, PreviewResolverTests, PreviewDownloaderTests, SessionPreparerTests, StemCacheTests
   Integration/              → AudioToFFTPipelineTests, AudioToRenderPipelineTests, MetadataToOrchestratorTests, AudioToStemPipelineTests, MIRPipelineIntegrationTests, LookaheadIntegrationTests, StemsToRenderPipelineTests, SessionPreparationIntegrationTests
@@ -431,7 +433,7 @@ No CoreML dependency. All ML uses MPSGraph (GPU) or Accelerate (CPU).
 29. **Hardcoded sample rate (44.1 kHz) when the tap reports something else**: Phosphene assumes 44.1/48 kHz internally for stem separation and beat-detection windowing. If the user's Audio MIDI Setup runs at 96 kHz, beat windows and BPM math are off by ~2.18×. Set Audio MIDI Setup to 48 kHz to match (RUNBOOK).
 30. **Spotify default normalization (Volume level: Normal)**: Knocks mastered peaks from ~0.7 to ~0.15-0.20, compressing AGC headroom and degrading mood-classifier stability. Toggle Normalize Volume off in Spotify settings (RUNBOOK).
 31. **Absolute thresholds on AGC-normalized energy** (e.g. `smoothstep(0.22, 0.32, f.bass)`): AGC's denominator (running-average) moves with mix density, so the same acoustic kick reads different values across tracks or across sections of one track. Six VL iterations (v3→v4.2) hit this repeatedly. Drive from deviation instead — `f.bassRel`, `f.bassDev` (D-026, MV-1). See `docs/MILKDROP_ARCHITECTURE.md` for the full diagnosis.
-32. **Driving ray-march preset visuals from instantaneous audio alone**: feedback is the mechanism that turns simple audio into compound musical motion (Milkdrop's core insight). Ray-march presets rendered from scratch each frame can only show instantaneous audio state — no accumulation, no "breathing", no musicality regardless of how clever the shader drivers are. Fix is the MV-2 `mv_warp` render pass (D-027). Do not attempt to make a ray-march preset musically expressive without feedback accumulation.
+32. **Driving ray-march preset visuals from instantaneous audio alone**: feedback is the mechanism that turns simple audio into compound musical motion (Milkdrop's core insight). Ray-march presets rendered from scratch each frame can only show instantaneous audio state — no accumulation, no "breathing", no musicality regardless of how clever the shader drivers are. Fixed in MV-2: the `mv_warp` render pass (D-027) provides per-vertex feedback accumulation. See VolumetricLithograph for the reference implementation.
 
 ---
 
@@ -451,7 +453,7 @@ No CoreML dependency. All ML uses MPSGraph (GPU) or Accelerate (CPU).
 - Do not lock `AVAssetWriter` to the first observed drawable size — defer until N consecutive same-size frames; skip mismatched frames after.
 - Do not key visualizer beat-pulse logic to a single onset band — use `max(beatBass, beatMid, beatComposite)` so snare-driven and kick-driven tracks both register.
 - Do not threshold absolute AGC-normalized energy values (`f.bass > 0.22`). Drive from deviation primitives (`f.bassDev`, `f.bassRel`) — D-026.
-- Do not try to make a ray-march preset musically expressive without feedback accumulation. The shader runs every frame from scratch; without the `mv_warp` pass (D-027, MV-2) motion cannot accumulate and visuals will feel disconnected from music regardless of driver tuning. See `docs/MILKDROP_ARCHITECTURE.md`.
+- Do not write new ray-march presets without also implementing the `mv_warp` pass (D-027, MV-2). The shader runs every frame from scratch; without per-vertex feedback accumulation, motion cannot compound and visuals feel disconnected from music regardless of how clever the audio drivers are. See `docs/MILKDROP_ARCHITECTURE.md`. VolumetricLithograph is the reference implementation — add `"mv_warp"` to the preset's passes JSON and implement `mvWarpPerFrame`/`mvWarpPerVertex` in the .metal file.
 
 ---
 
@@ -473,7 +475,7 @@ The next ordered increments are:
 1. **Phase MV — Musicality** — informed by research documented in `docs/MILKDROP_ARCHITECTURE.md`. Six VL iterations (v3 → v4.2) established that preset-level shader tuning is not converging on "feels like a band member." Diagnosis: missing Milkdrop-style per-vertex feedback warp + misused AGC primitives in preset authoring. Three coordinated sub-phases, each independently shippable and checkpointed:
    - **MV-0**: ✅ drop v4.2 stash, re-land sky-tint conditional — `RayMarch.metal` miss/sky path now gates `lightColor.rgb` tint behind `sceneParamsB.y > 1e5` (fog-disabled sentinel), restoring cool-sky/warm-light contrast on GB/KS while preserving VL's warm sky tint.
    - **MV-1**: ✅ Milkdrop-correct audio primitives — `bassRel/Dev` etc. in `FeatureVector` + `{stem}EnergyRel/Dev` in `StemFeatures`; VL reference implementation updated; 4 contract tests (D-026).
-   - **MV-2**: per-vertex feedback warp mesh — new opt-in `mv_warp` render pass any preset can use (D-027, ~1 week)
+   - **MV-2**: ✅ per-vertex feedback warp mesh — `mv_warp` opt-in render pass; 32×24 vertex grid; MVWarpPipelineBundle/MVWarpState; warp_fragment (decay×prev) + compose (alpha blend scene in) + blit (→ drawable); VolumetricLithograph and Starburst now use mv_warp; 2 GPU regression tests (identity + accumulation) (D-027)
    - **MV-3**: beyond-Milkdrop extensions — richer per-stem metadata, next-beat predictor, YIN vocal pitch (D-028, ~2-3 weeks, only after MV-2 checkpoint)
 2. **Phase 4 — Orchestrator** — scored preset selection, transition policy, session planning, golden-session tests (blocked on Phase MV proving preset-level musicality is achievable).
 
