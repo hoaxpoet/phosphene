@@ -10,9 +10,9 @@ import Foundation
 /// Packed per-frame audio features for GPU uniform upload.
 ///
 /// This is the primary struct that shaders receive every frame.
-/// 32 floats = 128 bytes, naturally 16-byte aligned.
+/// 48 floats = 192 bytes, naturally 16-byte aligned.
 /// Fields follow the audio data hierarchy: continuous energy first,
-/// spectral features second, onset pulses third.
+/// spectral features second, onset pulses third, deviation primitives fourth.
 ///
 /// The matching MSL struct:
 /// ```metal
@@ -26,7 +26,14 @@ import Foundation
 ///     float time, delta_time;
 ///     float _pad0, aspect_ratio;
 ///     float accumulated_audio_time;
-///     float _pad1, _pad2, _pad3, _pad4, _pad5, _pad6, _pad7;
+///     // MV-1 deviation primitives (floats 26–34)
+///     float bass_rel, bass_dev;
+///     float mid_rel,  mid_dev;
+///     float treb_rel, treb_dev;
+///     float bass_att_rel, mid_att_rel, treb_att_rel;
+///     // Padding to 192 bytes (floats 35–48)
+///     float _pad1, _pad2, _pad3, _pad4, _pad5, _pad6, _pad7,
+///           _pad8, _pad9, _pad10, _pad11, _pad12, _pad13, _pad14;
 /// };
 /// ```
 @frozen
@@ -102,7 +109,40 @@ public struct FeatureVector: Sendable {
     /// "breathes" with the music. Use as an animation phase in shaders.
     public var accumulatedAudioTime: Float
 
-    // --- Padding to 128 bytes (floats 26–32) ---
+    // --- MV-1: Milkdrop-correct deviation primitives (floats 26–34) ---
+    //
+    // Populated each frame in MIRPipeline.process(). Provide stable,
+    // mix-density-independent primitives for preset shader authoring.
+    //
+    // Rule (D-026): drive visuals from Rel/Dev, not from absolute f.bass/f.mid.
+    // - Use Rel for continuous drivers that should swing negative during quiet
+    //   sections: `zoom = baseZoom + 0.1 * f.bassAttRel`
+    // - Use Dev for accent/threshold drivers that fire only on loud moments:
+    //   `smoothstep(0.0, 0.3, f.bassDev)`
+    //
+    // Formula: xRel = (x - 0.5) * 2.0  — centered at 0, ~±0.5 typical range
+    //          xDev = max(0, xRel)      — positive deviation only
+
+    /// Bass deviation: (bass − 0.5) × 2.0. Centered at 0; ~±0.5 typical range.
+    public var bassRel: Float
+    /// Positive bass deviation: max(0, bassRel). Non-zero only on louder-than-average moments.
+    public var bassDev: Float
+    /// Mid deviation: (mid − 0.5) × 2.0.
+    public var midRel: Float
+    /// Positive mid deviation: max(0, midRel).
+    public var midDev: Float
+    /// Treble deviation: (treble − 0.5) × 2.0.
+    public var trebRel: Float
+    /// Positive treble deviation: max(0, trebRel).
+    public var trebDev: Float
+    /// Smoothed bass deviation: (bassAtt − 0.5) × 2.0. For slow continuous motion drivers.
+    public var bassAttRel: Float
+    /// Smoothed mid deviation: (midAtt − 0.5) × 2.0.
+    public var midAttRel: Float
+    /// Smoothed treble deviation: (trebleAtt − 0.5) × 2.0.
+    public var trebAttRel: Float
+
+    // --- Padding to 192 bytes (48 floats total — floats 35–48) ---
     // swiftlint:disable identifier_name
     var _pad1: Float
     var _pad2: Float
@@ -111,6 +151,13 @@ public struct FeatureVector: Sendable {
     var _pad5: Float
     var _pad6: Float
     var _pad7: Float
+    var _pad8: Float
+    var _pad9: Float
+    var _pad10: Float
+    var _pad11: Float
+    var _pad12: Float
+    var _pad13: Float
+    var _pad14: Float
     // swiftlint:enable identifier_name
 
     public init(
@@ -138,8 +185,16 @@ public struct FeatureVector: Sendable {
         self._pad0 = 0
         self.aspectRatio = aspectRatio
         self.accumulatedAudioTime = accumulatedAudioTime
+        // MV-1 deviation primitives — computed by MIRPipeline each frame.
+        self.bassRel = 0; self.bassDev = 0
+        self.midRel  = 0; self.midDev  = 0
+        self.trebRel = 0; self.trebDev = 0
+        self.bassAttRel = 0; self.midAttRel = 0; self.trebAttRel = 0
+        // Padding
         self._pad1 = 0; self._pad2 = 0; self._pad3 = 0; self._pad4 = 0
-        self._pad5 = 0; self._pad6 = 0; self._pad7 = 0
+        self._pad5 = 0; self._pad6 = 0; self._pad7 = 0; self._pad8 = 0
+        self._pad9 = 0; self._pad10 = 0; self._pad11 = 0; self._pad12 = 0
+        self._pad13 = 0; self._pad14 = 0
     }
 
     /// All-zero feature vector.
@@ -253,8 +308,10 @@ public struct EmotionalState: Sendable, Equatable {
 
 /// Per-stem audio features bound to GPU buffer(3).
 ///
-/// 16 floats × 4 bytes = 64 bytes total. 4 floats per stem:
-/// energy, two band slots (stem-specific), beat pulse (only non-zero for drums today).
+/// 32 floats × 4 bytes = 128 bytes total.
+/// The first 16 floats (4 per stem) are energy, band, and beat data.
+/// Floats 17–24 are MV-1 deviation primitives (2 per stem: Rel and Dev).
+/// Floats 25–32 are padding to SIMD alignment.
 ///
 /// Band slot semantics:
 /// - **vocals**: band0 = presence (1–4 kHz), band1 = air (4–8 kHz)
@@ -262,17 +319,28 @@ public struct EmotionalState: Sendable, Equatable {
 /// - **bass**:   band0 = sub_bass (20–80 Hz), band1 = low_bass (80–250 Hz)
 /// - **other**:  band0 = low_mid (250 Hz–1 kHz), band1 = high_mid (4–8 kHz)
 ///
+/// Deviation semantics (MV-1, D-026):
+/// - `xEnergyRel = (xEnergy - runningAvg) * 2.0` — centered at 0
+/// - `xEnergyDev = max(0, xEnergyRel)` — positive deviation only
+///
 /// The matching MSL struct:
 /// ```metal
 /// struct StemFeatures {
-///     float vocals_energy;   float vocals_band0;
-///     float vocals_band1;    float vocals_beat;
-///     float drums_energy;    float drums_band0;
-///     float drums_band1;     float drums_beat;
-///     float bass_energy;     float bass_band0;
-///     float bass_band1;      float bass_beat;
-///     float other_energy;    float other_band0;
-///     float other_band1;     float other_beat;
+///     float vocals_energy;      float vocals_band0;
+///     float vocals_band1;       float vocals_beat;
+///     float drums_energy;       float drums_band0;
+///     float drums_band1;        float drums_beat;
+///     float bass_energy;        float bass_band0;
+///     float bass_band1;         float bass_beat;
+///     float other_energy;       float other_band0;
+///     float other_band1;        float other_beat;
+///     // MV-1 deviation primitives (floats 17–24)
+///     float vocals_energy_rel;  float vocals_energy_dev;
+///     float drums_energy_rel;   float drums_energy_dev;
+///     float bass_energy_rel;    float bass_energy_dev;
+///     float other_energy_rel;   float other_energy_dev;
+///     // Padding to 128 bytes (floats 25–32)
+///     float _pad1, _pad2, _pad3, _pad4, _pad5, _pad6, _pad7, _pad8;
 /// };
 /// ```
 @frozen
@@ -314,6 +382,35 @@ public struct StemFeatures: Sendable, Equatable {
     /// Other beat pulse (reserved — currently always 0).
     public var otherBeat: Float
 
+    // --- MV-1: Per-stem deviation primitives (floats 17–24) ---
+    // Populated each frame in StemAnalyzer.analyze().
+    // Center is a per-stem EMA running average (decay ≈ 0.995).
+    // Formula: xEnergyRel = (xEnergy - runningAvg) * 2.0
+    //          xEnergyDev = max(0, xEnergyRel)
+
+    /// Vocals energy deviation: (vocalsEnergy − EMA) × 2.0.
+    public var vocalsEnergyRel: Float
+    /// Positive vocals energy deviation: max(0, vocalsEnergyRel).
+    public var vocalsEnergyDev: Float
+    /// Drums energy deviation: (drumsEnergy − EMA) × 2.0.
+    public var drumsEnergyRel: Float
+    /// Positive drums energy deviation: max(0, drumsEnergyRel).
+    public var drumsEnergyDev: Float
+    /// Bass energy deviation: (bassEnergy − EMA) × 2.0.
+    public var bassEnergyRel: Float
+    /// Positive bass energy deviation: max(0, bassEnergyRel).
+    public var bassEnergyDev: Float
+    /// Other energy deviation: (otherEnergy − EMA) × 2.0.
+    public var otherEnergyRel: Float
+    /// Positive other energy deviation: max(0, otherEnergyRel).
+    public var otherEnergyDev: Float
+
+    // --- Padding to 128 bytes (32 floats total — floats 25–32) ---
+    // swiftlint:disable identifier_name
+    var _sfPad1: Float; var _sfPad2: Float; var _sfPad3: Float; var _sfPad4: Float
+    var _sfPad5: Float; var _sfPad6: Float; var _sfPad7: Float; var _sfPad8: Float
+    // swiftlint:enable identifier_name
+
     public init(
         vocalsEnergy: Float = 0, vocalsBand0: Float = 0,
         vocalsBand1: Float = 0, vocalsBeat: Float = 0,
@@ -332,6 +429,14 @@ public struct StemFeatures: Sendable, Equatable {
         self.bassBand1 = bassBand1; self.bassBeat = bassBeat
         self.otherEnergy = otherEnergy; self.otherBand0 = otherBand0
         self.otherBand1 = otherBand1; self.otherBeat = otherBeat
+        // MV-1 deviation primitives — computed by StemAnalyzer each frame.
+        self.vocalsEnergyRel = 0; self.vocalsEnergyDev = 0
+        self.drumsEnergyRel  = 0; self.drumsEnergyDev  = 0
+        self.bassEnergyRel   = 0; self.bassEnergyDev   = 0
+        self.otherEnergyRel  = 0; self.otherEnergyDev  = 0
+        // Padding
+        self._sfPad1 = 0; self._sfPad2 = 0; self._sfPad3 = 0; self._sfPad4 = 0
+        self._sfPad5 = 0; self._sfPad6 = 0; self._sfPad7 = 0; self._sfPad8 = 0
     }
 
     /// All-zero stem features — safe default during warmup.

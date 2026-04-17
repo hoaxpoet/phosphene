@@ -14,15 +14,15 @@ final class FeatureVectorExtendedTests: XCTestCase {
 
     // MARK: - Test 1: FeatureVector is 128 bytes after adding accumulatedAudioTime + padding
 
-    func test_featureVector_size_is128Bytes() {
+    func test_featureVector_size_is192Bytes() {
         XCTAssertEqual(
-            MemoryLayout<FeatureVector>.size, 128,
-            "FeatureVector must be 128 bytes (32 × Float) after Increment 3.15 — "
+            MemoryLayout<FeatureVector>.size, 192,
+            "FeatureVector must be 192 bytes (48 × Float) after MV-1 — "
             + "got \(MemoryLayout<FeatureVector>.size)"
         )
         XCTAssertEqual(
-            MemoryLayout<FeatureVector>.stride, 128,
-            "FeatureVector stride must be 128 bytes — got \(MemoryLayout<FeatureVector>.stride)"
+            MemoryLayout<FeatureVector>.stride, 192,
+            "FeatureVector stride must be 192 bytes — got \(MemoryLayout<FeatureVector>.stride)"
         )
         XCTAssertEqual(
             MemoryLayout<FeatureVector>.stride % 16, 0,

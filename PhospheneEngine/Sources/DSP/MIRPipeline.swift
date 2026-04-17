@@ -248,8 +248,13 @@ public final class MIRPipeline: @unchecked Sendable {
     }
 
     /// Assemble a FeatureVector from analyzer results.
+    ///
+    /// MV-1: deviation primitives (bassRel, bassDev, etc.) are derived here
+    /// from the AGC-normalized energy fields. Formula: xRel = (x - 0.5) * 2.0,
+    /// xDev = max(0, xRel). These are stable across mix-density changes because
+    /// the AGC numerator and denominator track together (D-026).
     private func buildFeatureVector(_ ctx: ProcessContext) -> FeatureVector {
-        FeatureVector(
+        var fv = FeatureVector(
             bass: ctx.energy.bass,
             mid: ctx.energy.mid,
             treble: ctx.energy.treble,
@@ -273,6 +278,17 @@ public final class MIRPipeline: @unchecked Sendable {
             time: ctx.time,
             deltaTime: ctx.deltaTime
         )
+        // MV-1: Derive deviation primitives from AGC-normalized values.
+        fv.bassRel = (fv.bass - 0.5) * 2.0
+        fv.bassDev = max(0, fv.bassRel)
+        fv.midRel  = (fv.mid - 0.5) * 2.0
+        fv.midDev  = max(0, fv.midRel)
+        fv.trebRel = (fv.treble - 0.5) * 2.0
+        fv.trebDev = max(0, fv.trebRel)
+        fv.bassAttRel = (fv.bassAtt - 0.5) * 2.0
+        fv.midAttRel  = (fv.midAtt  - 0.5) * 2.0
+        fv.trebAttRel = (fv.trebleAtt - 0.5) * 2.0
+        return fv
     }
 
     // MARK: - Recording Mode

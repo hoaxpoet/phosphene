@@ -148,6 +148,7 @@ import Metal
     #include <metal_stdlib>
     using namespace metal;
 
+    // Matches Swift StemFeatures layout (32 floats = 128 bytes, MV-1).
     struct StemFeatures {
         float vocals_energy;   float vocals_band0;
         float vocals_band1;    float vocals_beat;
@@ -157,6 +158,13 @@ import Metal
         float bass_band1;      float bass_beat;
         float other_energy;    float other_band0;
         float other_band1;     float other_beat;
+        // MV-1 deviation primitives (floats 17–24).
+        float vocals_energy_rel;  float vocals_energy_dev;
+        float drums_energy_rel;   float drums_energy_dev;
+        float bass_energy_rel;    float bass_energy_dev;
+        float other_energy_rel;   float other_energy_dev;
+        // Padding to 128 bytes (floats 25–32).
+        float _pad1, _pad2, _pad3, _pad4, _pad5, _pad6, _pad7, _pad8;
     };
 
     kernel void measure_size(device uint* out [[buffer(0)]],
@@ -194,7 +202,7 @@ import Metal
     let swiftSize = UInt32(MemoryLayout<StemFeatures>.size)
     #expect(mslSize == swiftSize,
             "MSL sizeof(StemFeatures) = \(mslSize) must match Swift MemoryLayout<StemFeatures>.size = \(swiftSize)")
-    #expect(mslSize == 64, "StemFeatures must be exactly 64 bytes in MSL, got \(mslSize)")
+    #expect(mslSize == 128, "StemFeatures must be exactly 128 bytes in MSL (MV-1: 32 floats), got \(mslSize)")
 }
 
 // MARK: - Idle Suppression
