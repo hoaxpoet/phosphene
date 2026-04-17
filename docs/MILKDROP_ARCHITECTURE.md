@@ -1,6 +1,6 @@
 # Milkdrop Architecture Research — Findings and Implications for Phosphene
 
-**Status:** Reference document. Informs Phase MV (Musicality) increments in [ENGINEERING_PLAN.md](ENGINEERING_PLAN.md).
+**Status:** Reference document. MV-0, MV-1, and MV-2 are complete (2026-04-17). See "Phase MV Implementation Outcomes" section at the end for what shipped and key learnings. MV-3 is the immediate next increment.
 
 **Written:** 2026-04-16, after six failed iterations on Volumetric Lithograph made it clear that preset-level tuning was not converging on "feels musical." Matt challenged the premise: Milkdrop achieves convincing musical synchronization with 20-year-old technology, so why can't we?
 
@@ -133,23 +133,23 @@ This is a rich authoring vocabulary. Our presets author Metal shader functions d
 
 ## 4. Phosphene's architectural divergence
 
-Render-pass breakdown of our 11 presets:
+Render-pass breakdown of our 11 presets (post-MV-2):
 
-| Preset | Pass type | Uses feedback? |
+| Preset | Pass type | Uses per-vertex feedback? |
 |---|---|---|
 | Waveform | `direct` | No |
 | Plasma | `direct` | No |
 | Nebula | `direct` | No |
-| Starburst | `feedback` + `particles` | Yes (thin — global zoom+rot only) |
-| Membrane | `feedback` | Yes (thin — global zoom+rot only) |
+| Starburst | `mv_warp` | **Yes — full per-vertex warp** (MV-2) |
+| Membrane | `feedback` | Thin — global zoom+rot only |
 | FractalTree | `mesh_shader` | No |
 | FerrofluidOcean | `post_process` | No |
 | GlassBrutalist | `ray_march` + `ssgi` + `post_process` | **No** |
 | KineticSculpture | `ray_march` + `post_process` | **No** |
 | TestSphere | `ray_march` + `post_process` | **No** |
-| VolumetricLithograph | `ray_march` + `post_process` | **No** |
+| VolumetricLithograph | `ray_march` + `post_process` + `mv_warp` | **Yes — full per-vertex warp** (MV-2) |
 
-**9 of 11 presets do not use the feedback loop at all.** Every ray-march preset renders from scratch each frame, showing only the instantaneous audio state. No motion accumulation is possible in that pipeline.
+Prior to MV-2, 9 of 11 presets used no feedback loop. Post-MV-2, two presets use full per-vertex warp. Glass Brutalist, Kinetic Sculpture, and TestSphere are candidates for mv_warp conversion once the MV-2 visual checkpoint passes on VL and Starburst.
 
 Even our two feedback presets have a much thinner warp than Milkdrop's per-vertex mesh. See [`Common.metal:107-156`](../PhospheneEngine/Sources/Renderer/Shaders/Common.metal):
 
@@ -180,13 +180,37 @@ Everything else (richer stems, pitch tracking, harmonic analysis) is enhancement
 
 Three coordinated phases, each independently shippable and each gated on a visual checkpoint:
 
-- **MV-1 — Milkdrop-correct audio primitives.** Expose `bassRel`/`bassDev` etc. in FeatureVector so presets drive from deviation, not absolute value. ~2 days.
-- **MV-2 — Per-vertex feedback warp mesh.** New optional `mv_warp` render pass that any preset (including ray-march) can opt into. ~1 week.
-- **MV-3 — Beyond-Milkdrop extensions.** Richer stem metadata, next-beat phase predictor, vocal pitch tracking. ~2-3 weeks, only after MV-2 proves the architecture.
+- **MV-1 — Milkdrop-correct audio primitives.** ✅ Complete (commit `a05fd753`). `bassRel`/`bassDev` etc. in FeatureVector; `{stem}EnergyRel/Dev` in StemFeatures. VolumetricLithograph reference implementation. 4 contract tests.
+- **MV-2 — Per-vertex feedback warp mesh.** ✅ Complete (commit `c8cd558f`). `mv_warp` render pass; 32×24 vertex grid; three-pass warp/compose/blit pipeline; VolumetricLithograph and Starburst converted. 2 GPU regression tests.
+- **MV-3 — Beyond-Milkdrop extensions.** ⬜ Pending MV-2 visual checkpoint. Richer stem metadata, next-beat phase predictor, vocal pitch tracking. ~2-3 weeks.
+
+**MV-2 visual checkpoint required before starting MV-3:** capture a SessionRecorder dump against Tea Lights + Love Rehab. If feedback-based VL feels materially more Milkdrop-quality musical, proceed to MV-3 and convert remaining ray-march presets. If not, revisit the architecture before adding capabilities.
 
 See [ENGINEERING_PLAN.md](ENGINEERING_PLAN.md) Phase MV section for full increment definitions, file lists, and verification plans.
 
-## 7. Related Decisions
+## 7. Phase MV Implementation Outcomes
+
+Documenting what shipped and key implementation learnings for future reference.
+
+### MV-0 (2026-04-16)
+
+The `RayMarch.metal` miss/sky path now gates the `lightColor.rgb` tint behind `sceneParamsB.y > 1e5` (fog-disabled sentinel). Result: Glass Brutalist and Kinetic Sculpture retain cool blue sky contrast; VolumetricLithograph (fog disabled, `sceneParamsB.y = 1e6` sentinel) still picks up warm sky tint. The sentinel is set by `PresetDescriptor+SceneUniforms.makeSceneUniforms()` when `scene_fog == 0`.
+
+### MV-1 (2026-04-16)
+
+Deviation primitives landed as designed. **Checkpoint outcome:** deviation alone did not converge VL on musical feel — the absolute-threshold anti-pattern was a real problem (confirmed the fix across tracks) but it was not the primary bottleneck. The missing feedback mechanism (MV-2) was the critical path, as MILKDROP_ARCHITECTURE.md had predicted.
+
+### MV-2 (2026-04-17)
+
+Three non-obvious implementation discoveries:
+
+1. **`@unchecked Sendable` for Metal resource structs.** Swift 6.0 strict concurrency requires `Sendable` on structs stored behind locks. `MTLTexture` is a protocol with no `Sendable` conformance, so `MVWarpState` (which contains three textures) must be `@unchecked Sendable`. The struct is only mutated under `mvWarpLock` so the annotation is safe.
+
+2. **`SceneUniforms` preprocessor guard.** `mvWarpPerFrame` takes a `constant SceneUniforms& s` parameter to allow warp functions to use scene-level state (camera position, accumulated audio time). But `SceneUniforms` is only defined in `rayMarchGBufferPreamble`, which is not injected for direct (non-ray-march) presets. Solution: `#ifndef SCENE_UNIFORMS_DEFINED / #define SCENE_UNIFORMS_DEFINED` guard in both preambles — the `mvWarpPreamble` defines it for direct presets; the ray-march preamble guards its own definition to prevent redefinition when both preambles compile together (ray-march + mv_warp combos).
+
+3. **Starburst birds removed intentionally.** Starburst previously used `["feedback", "particles"]`. The MV-2 design decision was to replace both with `["mv_warp"]` only. The murmuration particle system's murmuration-like motion is now created by the feedback warp accumulating and smearing the sky backdrop — different mechanism, similar emergent cloud-like behavior. The explicit bird silhouettes were dropped.
+
+## 8. Related Decisions
 
 - **D-026** — "Drive preset shaders from deviation, not absolute energy" (MV-1)
 - **D-027** — "Adopt Milkdrop-style per-vertex feedback warp as an opt-in render pass" (MV-2)

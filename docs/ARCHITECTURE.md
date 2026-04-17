@@ -106,7 +106,7 @@ On track change, `VisualizerEngine.resetStemPipeline(for:)` loads pre-separated 
 
 The renderer manages the Metal pipeline: device, command queue, triple-buffered semaphore, shader compilation, and frame scheduling. It supports multiple render paths dispatched via a data-driven render graph.
 
-**Render passes** (`RenderPass` enum): `direct`, `feedback`, `particles`, `mesh_shader`, `post_process`, `ray_march`, `icb`, `ssgi`. Each preset declares its required passes in JSON metadata.
+**Render passes** (`RenderPass` enum): `direct`, `feedback`, `particles`, `mesh_shader`, `post_process`, `ray_march`, `icb`, `ssgi`, `mv_warp`. Each preset declares its required passes in JSON metadata.
 
 **Compute kernel buffer layout for particle presets:** `buffer(0)` = particle state, `buffer(1)` = FeatureVector, `buffer(2)` = ParticleConfiguration, `buffer(3)` = StemFeatures. `ProceduralGeometry.update(features:stemFeatures:commandBuffer:)` binds `StemFeatures` at index 3 on the compute encoder. The `stemFeatures` parameter defaults to `.zero` so callers that don't have live stems still compile and run correctly.
 
@@ -132,6 +132,7 @@ Baselines for these modulations are captured in `RayMarchPipeline.BaseSceneSnaps
 - `ProceduralGeometry` — GPU compute particle system.
 - `MeshGenerator` — Hardware mesh shaders (M3+) with vertex fallback (M1/M2).
 - `TextureManager` — 5 pre-computed noise textures generated via Metal compute at init.
+- `RenderPipeline+MVWarp` — Milkdrop-style per-vertex feedback warp: `MVWarpPipelineBundle`, `MVWarpState`, `setupMVWarp`, `drawWithMVWarp` (3-pass warp/compose/blit), `clearMVWarpState`, `reallocateMVWarpTextures`.
 
 **Binding layout:**
 
@@ -142,10 +143,11 @@ Baselines for these modulations are captured in `RayMarchPipeline.BaseSceneSnaps
 
 Each preset consists of one or more Metal shaders plus a JSON sidecar declaring visual behavior, render passes, audio routing, and orchestration metadata. Presets are discovered automatically at runtime and compiled with a shared preamble (FeatureVector struct, ShaderUtilities library, noise samplers).
 
-**Two architectural patterns coexist:**
+**Three architectural patterns coexist:**
 
-- Milkdrop-style feedback loop: read previous frame → warp/decay → composite new elements.
-- Photorealistic ray march: SDF scene → G-buffer → PBR lighting → IBL → post-process.
+- **Milkdrop-style per-vertex feedback warp (`mv_warp`):** 32×24 vertex grid warps the previous frame at per-vertex displaced UVs. Three passes per frame — warp (previous frame → composeTexture via displaced UVs × decay), compose (alpha-blend current scene onto composeTexture), blit (composeTexture → drawable). Motion accumulates across frames; simple audio inputs compound into organic motion. The scene can be pre-rendered by a preceding `.rayMarch` pass (into `warpState.sceneTexture`) or rendered directly by the preset's fragment shader for direct presets (e.g. Starburst). Presets implement `mvWarpPerFrame()` + `mvWarpPerVertex()` Metal functions to author the per-vertex UV displacement. `MVWarpPipelineBundle` holds the three per-preset compiled pipeline states; `MVWarpState` holds the three off-screen textures (warpTexture, composeTexture, sceneTexture).
+- **Thin global feedback (`feedback`):** read previous frame → single global zoom+rot → composite. Kept for Membrane. Semantically narrower than `mv_warp`.
+- **Photorealistic ray march:** SDF scene → G-buffer → PBR lighting → IBL → post-process. Ray-march presets can also opt into `mv_warp` for temporal feedback; in that case the lighting pass renders to `warpState.sceneTexture` instead of the drawable, and `mv_warp` handles drawable presentation.
 
 ## Orchestrator
 
