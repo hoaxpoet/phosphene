@@ -298,6 +298,12 @@ The existing `feedback` pass is kept for Starburst/Membrane but is semantically 
 
 **Implication:** ray-march preset authoring pattern shifts. A scene's 3D geometry becomes static (not deformed with audio); all audio-driven motion goes through the mv_warp pass. Audio reacts to the *image* of the scene rather than its geometry. This matches Milkdrop's architecture exactly and preserves our 3D-rendering advantage.
 
+**Implementation notes (landed 2026-04-17, commit `c8cd558f`):**
+- `MVWarpState` uses `@unchecked Sendable` because `MTLTexture` protocol has no `Sendable` conformance in Swift 6.0. The struct is only mutated under `mvWarpLock`.
+- `SceneUniforms` is defined in `mvWarpPreamble` behind `#ifndef SCENE_UNIFORMS_DEFINED` so direct (non-ray-march) presets compile; the ray-march preamble wraps its own definition in the same guard to prevent redefinition for ray-march + mv_warp combos.
+- `mvWarpPerFrame()` + `mvWarpPerVertex()` must be implemented in every preset that includes `mv_warp` in its passes — the engine does not provide a default (see `Shaders/MVWarp.metal` for the engine-library default implementations that `PresetLoader` falls back to via the default engine library).
+- Ray-march + mv_warp handoff: `drawWithRayMarch` detects `.mvWarp` in `activePasses` and renders to `warpState.sceneTexture` instead of the drawable; `drawWithMVWarp` is called next and handles drawable presentation. `sceneAlreadyRendered: true` is passed in this case.
+
 ---
 
 ## D-028: Apple-Silicon-specific audio capabilities layer on top of MV-2, not instead of it

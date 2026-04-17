@@ -157,3 +157,5 @@ Every Phosphene launch creates `~/Documents/phosphene_sessions/<ISO-timestamp>/`
 - Never use `.storageModeManaged` buffers.
 - Never use `CATapDescription(stereoMixdownOfProcesses: [])` with an empty array (silence). Use `CATapDescription(stereoGlobalTapButExcludeProcesses: [])`.
 - App sandbox is disabled (`com.apple.security.app-sandbox = false`).
+- Any preset that includes `mv_warp` in its `passes` array must implement `mvWarpPerFrame()` and `mvWarpPerVertex()` in its `.metal` file. Missing implementations cause a linker error at preset-library compile time. See `VolumetricLithograph.metal` or `Starburst.metal` for reference implementations.
+- New ray-march presets should include `mv_warp` in their passes unless there is a deliberate reason not to. Without per-vertex feedback accumulation, ray-march presets show only instantaneous audio state regardless of how sophisticated the shader drivers are (MV-2, D-027).
