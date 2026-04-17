@@ -76,6 +76,24 @@ This ordering is the most important design rule in the project. Continuous-energ
 4. **Beat onset pulses** (accent only, never primary) — discrete accent events with ±80ms jitter. Feedback amplifies this jitter.
 5. **Stems** — ML-separated vocals/drums/bass/other. Pre-analyzed from preview clips (available from first frame in session mode). Replaced by time-aligned live stems after ~10s.
 
+**MIR pipeline components** (`DSP` module):
+
+- `BandEnergyProcessor` — Milkdrop-style AGC (output = raw / runningAverage × 0.5). 3-band and 6-band per frame. Deviation primitives `xRel`/`xDev` exposed in `FeatureVector` (D-026).
+- `BeatDetector` — 6-band onset detection with per-band cooldowns and grouped pulses; tempo via IOI histogram autocorrelation.
+- `BeatPredictor` (MV-3b) — IIR period smoother on onset rising edges. Writes `beatPhase01` (0→1 per inter-beat interval) and `beatsUntilNext` to `FeatureVector`. Enables anticipatory pre-beat animation.
+- `ChromaExtractor` — 12-bin chroma with bin-count normalization; Krumhansl-Schmuckler key estimation.
+- `SpectralAnalyzer` — centroid, rolloff, flux via vDSP.
+- `StemAnalyzer` — per-stem `BandEnergyProcessor` + `BeatDetector` on drums + rich metadata (onset rate, centroid, attack ratio, energy slope) via fast/slow RMS EMAs + `PitchTracker` on vocals. Runs at audio-callback rate (~94 Hz) on a sliding 1024-sample window.
+- `PitchTracker` (MV-3c) — YIN autocorrelation (vDSP_dotpr, 2048-sample window). Key implementation detail: after finding the first CMNDF crossing below threshold, the algorithm advances to the local minimum before parabolic interpolation — stopping at the crossing causes catastrophic extrapolation on the descending slope. Exposes `vocalsPitchHz`/`vocalsPitchConfidence` in `StemFeatures`.
+- `MIRPipeline` — coordinator: builds `FeatureVector` from all the above each frame.
+
+**`StemFeatures` layout** (GPU buffer(3), 64 floats = 256 bytes):
+- Floats 1–16: per-stem energy, band0, band1, beat (four stems).
+- Floats 17–24: MV-1 deviation primitives (`{vocals,drums,bass,other}EnergyRel/Dev`).
+- Floats 25–40: MV-3a rich metadata (`{vocals,drums,bass,other}{OnsetRate,Centroid,AttackRatio,EnergySlope}`).
+- Floats 41–42: MV-3c vocal pitch (`vocalsPitchHz`, `vocalsPitchConfidence`).
+- Floats 43–64: padding.
+
 Rule: `base_zoom` and `base_rot` (continuous energy) should be 2–4× larger than `beat_zoom` and `beat_rot` (onset pulses).
 
 ## Session Lifecycle
@@ -183,7 +201,7 @@ No CoreML dependency. All ML runs on MPSGraph (GPU) or Accelerate (CPU).
 
 - `video.mp4` — H.264 capture of the rendered output, throttled to 30 fps. Writer is locked once the drawable size has been observed for 30 consecutive same-size frames; later frames at a different size are skipped (preventing corner-rendered video from transient launch-time drawable sizes). MetalView sets `framebufferOnly = false` so the drawable is blit-readable.
 - `features.csv` — per-frame `FeatureVector` (22 columns: bass/mid/treble, 6-band, beat onsets, spectral, valence/arousal, accumulatedAudioTime).
-- `stems.csv` — per-frame `StemFeatures` (drums/bass/vocals/other × {energy, beat, band0, band1}).
+- `stems.csv` — per-frame `StemFeatures` (vocals/drums/bass/other × {energy, band0, band1, beat, energyRel/Dev, onsetRate, centroid, attackRatio, energySlope}; plus vocalsPitchHz/Confidence).
 - `stems/<NNNN>_<title>/{drums,bass,vocals,other}.wav` — 16-bit mono PCM dump of each stem-separation cycle output, listenable in any audio editor.
 - `session.log` — startup banner (recorder version + macOS + GPU + hostname), state transitions (signal `.active/.suspect/.silent/.recovering`), track changes, preset changes, video-writer locked dimensions, and any frame-skip reasons.
 

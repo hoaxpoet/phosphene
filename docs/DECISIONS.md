@@ -308,13 +308,23 @@ The existing `feedback` pass is kept for Starburst/Membrane but is semantically 
 
 ## D-028: Apple-Silicon-specific audio capabilities layer on top of MV-2, not instead of it
 
-**Status:** Accepted (Phase MV-3)
+**Status:** Accepted and implemented (Phase MV-3, commit `329fe451`, 2026-04-17)
 
-Richer stem metadata (per-stem onset rate, spectral centroid, attack/sustain ratio, energy slope), next-beat phase prediction, and vocal pitch tracking are deferred until after MV-2 ships and its visual checkpoint confirms the feedback architecture works. They are implemented as additive extensions to the MV-1 + MV-2 foundation, not as replacements.
+Richer stem metadata (per-stem onset rate, spectral centroid, attack/sustain ratio, energy slope), next-beat phase prediction, and vocal pitch tracking are implemented as additive extensions to the MV-1 + MV-2 foundation.
 
-**Reason:** The temptation on reading Matt's research doc ("Architectural Framework for Phosphene") was to jump to neural pitch tracking (Basic Pitch / SwiftF0), chord recognition (Tonic), and HTDemucs swap. These are the high-leverage Apple-Silicon capabilities Milkdrop couldn't have in 2001. But layering them on top of a still-broken feedback architecture would produce richer data fed into the same mechanism that has failed six times. MV-1 + MV-2 establish the foundation Milkdrop proved worked; MV-3 then adds the capabilities Milkdrop can't.
+**Reason:** The temptation on reading Matt's research doc ("Architectural Framework for Phosphene") was to jump to neural pitch tracking (Basic Pitch / SwiftF0), chord recognition (Tonic), and HTDemucs swap. These are the high-leverage Apple-Silicon capabilities Milkdrop couldn't have in 2001. But layering them on top of a still-broken feedback architecture would produce richer data fed into the same mechanism that had failed six times. MV-1 + MV-2 establish the foundation Milkdrop proved worked; MV-3 then adds the capabilities Milkdrop can't.
 
 Order matters because the visual checkpoints after MV-1 and MV-2 distinguish root causes. If MV-1 alone produces a noticeable improvement, the authoring-convention gap was dominant and we should audit all existing presets. If only MV-2 produces improvement, the architectural gap was dominant. If neither, we have a clearly-scoped remaining problem instead of a diffuse one.
+
+**Implementation notes (landed 2026-04-17):**
+
+- **StemFeatures** expanded 32→64 floats (128→256 bytes). Per-stem `{onsetRate, centroid, attackRatio, energySlope}` computed in `StemAnalyzer.computeRichFeatures()` each frame via RMS EMAs (fast τ=50ms / slow τ=500ms) and a leaky-integrator onset accumulator (τ=0.5s).
+
+- **BeatPredictor** (`DSP` module): IIR period smoother on onset rising edges. Writes `beatPhase01` (0→1 per inter-beat interval) and `beatsUntilNext` to `FeatureVector` floats 35–36. `setBootstrapBPM()` seeds the period from metadata BPM before the first real onset. Integrated in `MIRPipeline.buildFeatureVector()`.
+
+- **PitchTracker** (`DSP` module): YIN autocorrelation via `vDSP_dotpr` on 2048-sample windows. Critical implementation fix: the naive "find first τ below threshold" algorithm stops on the *descending slope* of the CMNDF — the correct minimum is farther right. Without the local-minimum descent step, parabolic interpolation at the crossing point extrapolates catastrophically (e.g. refinedTau → 171 for a 440 Hz input, yielding 258 Hz instead of 440 Hz). The fix: after the first sub-threshold τ, advance forward while CMNDF keeps decreasing before interpolating. This reduced pitch error from ~35 cents to <5 cents for clean tones. Writes `vocalsPitchHz`/`vocalsPitchConfidence` to `StemFeatures` floats 41–42.
+
+- **VolumetricLithograph** updated with both signals: `beat_phase01 > 0.80` triggers an anticipatory pre-beat zoom ramp (`approachFrac × 0.004`); `vocalsPitchHz` modulates the IQ cosine palette hue ±0.15 (gated by confidence ≥ 0.6).
 
 **Explicitly excluded from MV-3:** Basic Pitch port (unverified native availability), HTDemucs swap (Open-Unmix HQ works), Sound Analysis framework (applause detection — orthogonal to "band member" feel), chord recognition via Tonic (deferred pending MV-3c pitch tracking).
 
