@@ -458,7 +458,7 @@ No CoreML dependency. All ML uses MPSGraph (GPU) or Accelerate (CPU).
 The next ordered increments are:
 
 1. **Phase MV — Musicality** — informed by research documented in `docs/MILKDROP_ARCHITECTURE.md`. Six VL iterations (v3 → v4.2) established that preset-level shader tuning is not converging on "feels like a band member." Diagnosis: missing Milkdrop-style per-vertex feedback warp + misused AGC primitives in preset authoring. Three coordinated sub-phases, each independently shippable and checkpointed:
-   - **MV-0**: drop v4.2 stash, re-land sky-tint conditional (~30 min)
+   - **MV-0**: ✅ drop v4.2 stash, re-land sky-tint conditional — `RayMarch.metal` miss/sky path now gates `lightColor.rgb` tint behind `sceneParamsB.y > 1e5` (fog-disabled sentinel), restoring cool-sky/warm-light contrast on GB/KS while preserving VL's warm sky tint.
    - **MV-1**: Milkdrop-correct audio primitives — add `bassRel`/`bassDev` etc. to `FeatureVector`/`StemFeatures` so presets drive from deviation not absolute (D-026, ~2 days)
    - **MV-2**: per-vertex feedback warp mesh — new opt-in `mv_warp` render pass any preset can use (D-027, ~1 week)
    - **MV-3**: beyond-Milkdrop extensions — richer per-stem metadata, next-beat predictor, YIN vocal pitch (D-028, ~2-3 weeks, only after MV-2 checkpoint)
