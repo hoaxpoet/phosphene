@@ -17,8 +17,10 @@
 //      update the IIR period: period = 0.3 × period + 0.7 × interval.
 //   3. Each frame: phase = (now − lastBeatTime) / estimatedPeriod, clamped 0–1.
 //   4. If no beat for > 3 × estimatedPeriod: phase resets to 0 (tempo lost).
-//   5. Bootstrap: `bootstrapBPM` seeds the period before the first onset so
-//      phase is non-zero from the first frame.
+//   5. Bootstrap: `bootstrapBPM` seeds the period estimate so that once the
+//      first live onset arrives the predictor can produce a valid phase
+//      immediately (instead of needing two onsets to measure a period).
+//      Phase remains 0 until the first onset lands.
 //
 // Thread safety: all mutable state is guarded by NSLock.
 // Used from MIRPipeline.process() on the analysis queue.
@@ -60,10 +62,13 @@ public final class BeatPredictor: @unchecked Sendable {
 
     // MARK: - Bootstrap
 
-    /// Seeds the period estimate from a known BPM before the first onset.
+    /// Seeds the period estimate from a known BPM.
     ///
     /// Call this when a TrackProfile BPM is available (e.g. from metadata
-    /// pre-fetch).  Ignored once the IIR has been updated by a live beat.
+    /// pre-fetch).  Once the first live onset lands the predictor produces a
+    /// valid phase immediately (no two-onset warm-up needed).  Phase remains 0
+    /// until the first onset; `lastBeatTime` is not seeded here.
+    /// Ignored once the IIR has been updated by a live beat.
     public func setBootstrapBPM(_ bpm: Float) {
         lock.lock()
         defer { lock.unlock() }

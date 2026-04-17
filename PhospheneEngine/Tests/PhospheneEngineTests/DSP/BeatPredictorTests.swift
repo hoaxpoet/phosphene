@@ -3,7 +3,8 @@
 // Three contracts:
 //   1. Phase rises 0→1 over a 125-BPM click track.
 //   2. Phase resets to 0 after 3× estimated-period silence.
-//   3. Bootstrap from a known BPM yields non-zero phase before the first beat.
+//   3. Bootstrap from a known BPM enables valid phase from the first onset
+//      (phase stays 0 before any onset; after onset, phase tracks the seeded period).
 
 import Foundation
 import Testing
@@ -119,7 +120,7 @@ func beatPredictor_phaseResets_after3PeriodSilence() {
 }
 
 @Test
-func beatPredictor_bootstrap_givesNonZeroPhaseBeforeFirstBeat() {
+func beatPredictor_bootstrap_enablesValidPhaseFromFirstOnset() {
     let predictor = BeatPredictor()
     predictor.setBootstrapBPM(120)   // 0.5s period
 
@@ -137,11 +138,8 @@ func beatPredictor_bootstrap_givesNonZeroPhaseBeforeFirstBeat() {
         t += dt
     }
 
-    // With a 0.5s period and ~0.25s elapsed, phase should be ~0.5.
-    // Allow wide tolerance — we haven't had any real onset to anchor lastBeatTime.
-    // The predictor returns phase = elapsed / estimatedPeriod from lastBeatTime = -1,
-    // so phase will be 0 until the first onset. Assert instead that setBootstrapBPM
-    // sets hasPeriod = true and the first onset fires correctly.
+    // Before any onset, phase is 0 — bootstrap seeds the period but not lastBeatTime.
+    // After the first onset, the seeded period lets the predictor track phase immediately.
 
     // Fire first real beat and check phase resets to near 0.
     let beatResult = predictor.update(beatBass: 0.9, beatMid: 0, beatComposite: 0,

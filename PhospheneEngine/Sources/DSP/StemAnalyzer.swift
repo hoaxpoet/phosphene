@@ -160,13 +160,13 @@ public final class StemAnalyzer: StemAnalyzing, @unchecked Sendable {
 
         let dt = fps > 0 ? 1.0 / fps : (1.0 / 60.0)
 
-        // Analyze each stem.
-        let vocalsResult = analyzeStem(stemWaveforms[0], processor: energyProcessors[0], fps: fps)
-        let drumsResult  = analyzeStem(stemWaveforms[1], processor: energyProcessors[1], fps: fps)
-        let bassResult   = analyzeStem(stemWaveforms[2], processor: energyProcessors[2], fps: fps)
-        let otherResult  = analyzeStem(stemWaveforms[3], processor: energyProcessors[3], fps: fps)
+        // Analyze each stem. Magnitudes are returned to avoid a second FFT pass for MV-3a.
+        let (vocalsResult, vocalsMags) = analyzeStem(stemWaveforms[0], processor: energyProcessors[0], fps: fps)
+        let (drumsResult,  _)          = analyzeStem(stemWaveforms[1], processor: energyProcessors[1], fps: fps)
+        let (bassResult,   bassMags)   = analyzeStem(stemWaveforms[2], processor: energyProcessors[2], fps: fps)
+        let (otherResult,  otherMags)  = analyzeStem(stemWaveforms[3], processor: energyProcessors[3], fps: fps)
 
-        // Beat detection on drums stem only.
+        // Beat detection on drums stem — needs a fresh compute against the drums waveform.
         let drumsMags = computeMagnitudes(from: stemWaveforms[1])
         let beatResult = drumsBeatDetector.process(magnitudes: drumsMags, fps: fps, deltaTime: dt)
 
@@ -188,12 +188,7 @@ public final class StemAnalyzer: StemAnalyzing, @unchecked Sendable {
         let bRel = (bassE   - stemRunningAvg[2]) * 2.0
         let oRel = (otherE  - stemRunningAvg[3]) * 2.0
 
-        // MV-3a: Compute rich per-stem metadata.
-        // Pass the stem magnitudes and waveforms to the helper.
-        let vocalsMags = computeMagnitudes(from: stemWaveforms[0])
-        let bassMags   = computeMagnitudes(from: stemWaveforms[2])
-        let otherMags  = computeMagnitudes(from: stemWaveforms[3])
-
+        // MV-3a: Compute rich per-stem metadata using the magnitudes already computed above.
         let vocalsRich = computeRichFeatures(
             index: 0, waveform: stemWaveforms[0], magnitudes: vocalsMags,
             attEnergy: (vocalsResult.bassAtt + vocalsResult.midAtt + vocalsResult.trebleAtt) / 3.0,
@@ -296,13 +291,16 @@ public final class StemAnalyzer: StemAnalyzing, @unchecked Sendable {
     // MARK: - Private Helpers
 
     /// Run energy analysis on a single stem's waveform.
+    /// Returns both the band-energy result and the computed magnitude bins so
+    /// callers can reuse them for MV-3a rich features without a second FFT pass.
     private func analyzeStem(
         _ waveform: [Float],
         processor: BandEnergyProcessor,
         fps: Float
-    ) -> BandEnergyProcessor.Result {
+    ) -> (result: BandEnergyProcessor.Result, magnitudes: [Float]) {
         let mags = computeMagnitudes(from: waveform)
-        return processor.process(magnitudes: mags, fps: fps)
+        let result = processor.process(magnitudes: mags, fps: fps)
+        return (result: result, magnitudes: mags)
     }
 
     // MARK: - MV-3a Rich Metadata

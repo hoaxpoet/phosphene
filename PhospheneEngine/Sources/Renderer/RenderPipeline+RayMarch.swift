@@ -92,12 +92,14 @@ extension RenderPipeline {
         if let offscreen = sceneOutputTexture {
             outputTex = offscreen
         } else {
-            guard let drawable = view.currentDrawable else { return }
-            outputTex = drawable.texture
+            guard let d = MainActor.assumeIsolated({ view.currentDrawable }) else { return }
+            outputTex = d.texture
         }
 
         // Keep a reference to the drawable for presentation (normal path only).
-        let drawable = sceneOutputTexture == nil ? view.currentDrawable : nil
+        let drawable = sceneOutputTexture == nil
+            ? MainActor.assumeIsolated({ view.currentDrawable })
+            : nil
 
         let size = view.drawableSize
         let width = Int(size.width)

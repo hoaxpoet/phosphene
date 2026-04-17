@@ -106,6 +106,17 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     /// Optional per-vertex feedback warp state — allocated when the active preset
     /// declares `.mvWarp` in its passes array.
     var mvWarpState: MVWarpState?
+    /// Decay value for the mv_warp compose pass. Set from the preset descriptor via
+    /// `setMVWarpDecay` so the compose pass matches the shader's `pf.decay`.
+    var mvWarpDecay: Float = 0.96
+    /// Last drawable size reported by `mtkView(_:drawableSizeWillChange:)`.
+    /// Used by `setupMVWarp` so mid-session preset switches allocate at the real size.
+    var currentDrawableSize: CGSize = CGSize(width: 1920, height: 1080)
+
+    /// Public accessor for the last known drawable size (guarded by mvWarpLock).
+    public var mvWarpDrawableSize: CGSize {
+        mvWarpLock.withLock { currentDrawableSize }
+    }
     let mvWarpLock = NSLock()
 
     // MARK: - Noise Textures (Increment 3.13)
@@ -391,6 +402,9 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
             rayMarchPipeline?.allocateTextures(width: width, height: height)
         }
 
+        // Track size so mid-session preset switches allocate mv_warp textures correctly.
+        mvWarpLock.withLock { currentDrawableSize = size }
+
         // Reallocate mv_warp textures if the active preset uses the warp pass.
         reallocateMVWarpTextures(size: size)
 
@@ -437,7 +451,8 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
         // Session recording hook — invoked after renderFrame so the drawable
         // texture contains the final composited image. The closure may enqueue
         // a blit to copy the texture into its own capture target.
-        if let hook = onFrameRendered, let drawable = view.currentDrawable {
+        if let hook = onFrameRendered,
+           let drawable = MainActor.assumeIsolated({ view.currentDrawable }) {
             let stems = stemFeaturesLock.withLock { latestStemFeatures }
             hook(drawable.texture, features, stems, commandBuffer)
         }

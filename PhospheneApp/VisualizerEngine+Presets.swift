@@ -165,10 +165,13 @@ extension VisualizerEngine {
                     blitState:    warpPipelines.blitState,
                     pixelFormat:  context.pixelFormat
                 )
-                // Use 1920×1080 as initial allocation; reallocateMVWarpTextures fires
-                // from drawableSizeWillChange with the real drawable size before the first frame.
-                let drawableSize = CGSize(width: 1920, height: 1080)
+                // Use the last drawable size reported by drawableSizeWillChange so
+                // mid-session preset switches allocate at the correct resolution.
+                // Falls back to 1920×1080 only before the first drawable size event.
+                let drawableSize = pipeline.mvWarpDrawableSize
                 pipeline.setupMVWarp(bundle: bundle, size: drawableSize)
+                // Plumb the descriptor decay so the compose pass matches pf.decay in the shader.
+                pipeline.setMVWarpDecay(desc.decay)
 
             case .direct:
                 break // No subsystem setup required; direct rendering is the default fallback.

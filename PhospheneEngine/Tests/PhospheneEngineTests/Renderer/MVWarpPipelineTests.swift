@@ -119,7 +119,7 @@ final class MVWarpPipelineTests: XCTestCase {
         ca.isBlendingEnabled           = true
         ca.sourceRGBBlendFactor        = .sourceAlpha
         ca.destinationRGBBlendFactor   = .one
-        ca.sourceAlphaBlendFactor      = .sourceAlpha
+        ca.sourceAlphaBlendFactor      = .zero
         ca.destinationAlphaBlendFactor = .one
         let composeState = try context.device.makeRenderPipelineState(descriptor: composeDesc)
 
@@ -271,7 +271,7 @@ final class MVWarpPipelineTests: XCTestCase {
         fill(sceneTex, r: 0,   g: 0,   b: 255, a: 255)  // blue
 
         let fvBuf   = zeroBuffer(count: 48)   // FeatureVector (48 floats = 192 bytes)
-        let stemBuf = zeroBuffer(count: 32)   // StemFeatures  (32 floats = 128 bytes)
+        let stemBuf = zeroBuffer(count: 64)   // StemFeatures  (64 floats = 256 bytes, MV-3)
         let scenBuf = zeroBuffer(count: 32)   // SceneUniforms (8 × float4 = 128 bytes)
 
         runWarpFrame(states: states, warpTex: warpTex, composeTex: composeTex,
@@ -306,7 +306,7 @@ final class MVWarpPipelineTests: XCTestCase {
         fill(sceneTex, r: 0,   g: 0, b: 255, a: 255)  // blue
 
         let fvBuf   = zeroBuffer(count: 48)
-        let stemBuf = zeroBuffer(count: 32)
+        let stemBuf = zeroBuffer(count: 64)   // StemFeatures (64 floats = 256 bytes, MV-3)
         let scenBuf = zeroBuffer(count: 32)
 
         let initialR = centrePixel(warpTex).r  // ≈ 1.0

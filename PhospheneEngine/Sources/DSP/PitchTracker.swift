@@ -58,6 +58,9 @@ public final class PitchTracker: @unchecked Sendable {
     // MARK: - State
 
     private var emaHz: Float = 0
+    /// Tracks whether the previous frame was voiced so we can seed the EMA from
+    /// rawHz on the first voiced frame after silence instead of smoothing from ~0.
+    private var wasVoiced: Bool = false
 
     // MARK: - Pre-allocated buffers
 
@@ -172,7 +175,7 @@ public final class PitchTracker: @unchecked Sendable {
             tau += 1
         }
 
-        guard pitchTau > 1 && pitchTau < maxTau else {
+        guard pitchTau > 1 && pitchTau <= maxTau else {
             // No confident pitch found.
             emaHz *= Self.emaDecay
             return (hz: 0, confidence: 0)
@@ -198,11 +201,20 @@ public final class PitchTracker: @unchecked Sendable {
         // Range gate: outside 80–1000 Hz or low confidence → unvoiced.
         if rawHz < 80 || rawHz > 1000 || confidence < confidenceThreshold {
             emaHz *= Self.emaDecay
+            wasVoiced = false
             return (hz: 0, confidence: confidence)
         }
 
         // --- Step 7: EMA smoothing ---
-        emaHz = emaHz * Self.emaDecay + rawHz * (1 - Self.emaDecay)
+        // On the first voiced frame after silence, seed the EMA directly from rawHz
+        // rather than smoothing from near-zero. The EMA would otherwise report ~0.2×rawHz
+        // for the first ~20 frames, producing a wrong-hue flash in pitch-driven visuals.
+        if wasVoiced {
+            emaHz = emaHz * Self.emaDecay + rawHz * (1 - Self.emaDecay)
+        } else {
+            emaHz = rawHz
+        }
+        wasVoiced = true
 
         return (hz: emaHz, confidence: confidence)
     }
@@ -214,6 +226,7 @@ public final class PitchTracker: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         emaHz = 0
+        wasVoiced = false
         logger.info("PitchTracker reset")
     }
 }
