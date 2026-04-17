@@ -384,28 +384,39 @@ void sceneMaterial(float3 p,
     metallic  = mix(metallic,  ridgeMetal,  ridgeSelect);
 }
 
-// ── MV-2 Warp Functions (D-027) ───────────────────────────────────────────
+// ── MV-2 / MV-3 Warp Functions (D-027, D-028) ────────────────────────────
 //
 // VL warp design: the 3D ray-march provides the scene; the per-vertex warp
 // mesh provides temporal accumulation and musical "breathing".
 //
-// mvWarpPerFrame: melody-driven inward breath (zoom > 1 on above-average
-// mid), valence-driven slow rotation (CCW for positive valence), high decay
-// (0.96) for long-trailing feedback.  q1–q4 pass per-frame audio to vertex.
+// MV-2: melody-driven zoom breath, valence-driven rotation, high decay (0.96).
 //
-// mvWarpPerVertex: applies global rotation + zoom (Milkdrop baseline), then
-// adds a small terrain-coherent UV ripple — horizontal on bass deviation,
-// vertical on melody deviation — so the warp field feels like the image
-// itself is gently breathing with the music rather than a uniform zoom.
+// MV-3b: uses beat_phase01 for ANTICIPATORY zoom — the zoom breath begins
+// slightly before the beat rather than at it.  When beat_phase01 > 0.80
+// (the "approach" zone, ~20% of the beat cycle before impact), a ramp adds
+// extra inward pull so the visual has already started moving when the beat
+// lands.  This mirrors how live musicians slightly lean into a downbeat.
+//
+// MV-3c: uses vocals_pitch_hz to modulate palette hue phase — rising vocal
+// pitch (> 400 Hz) shifts towards cooler hues; falling pitch (< 250 Hz)
+// shifts towards warmer hues.  Pitch confidence gates the effect smoothly.
 
 MVWarpPerFrame mvWarpPerFrame(constant FeatureVector& f,
                               constant StemFeatures&  stems,
                               constant SceneUniforms& s) {
     MVWarpPerFrame pf;
 
-    // Gentle inward breath: above-average melody pulls the frame in ~0.3%.
-    // Range: zoom ≈ 0.999 at silence → 1.006 at peak mid_att_rel ≈ 2.
-    pf.zoom  = 1.0f + f.mid_att_rel * 0.003f;
+    // MV-2: Gentle inward breath driven by melody deviation.
+    float melodyBreath = 1.0f + f.mid_att_rel * 0.003f;
+
+    // MV-3b: Anticipatory pre-beat zoom ramp.
+    // When beat_phase01 > 0.80, linearly ramp extra zoom (0.0→0.004 over
+    // the last 20% of the beat cycle) so the frame is already pulling in
+    // before the beat lands.  Range: +0 at phase 0.8 → +0.004 at phase 1.0.
+    float approachFrac = max(0.0f, (f.beat_phase01 - 0.80f) / 0.20f);
+    float anticipatoryZoom = approachFrac * 0.004f;
+
+    pf.zoom  = melodyBreath + anticipatoryZoom;
 
     // Slow drift: positive valence → CCW, negative → CW. ~0.09°/frame max.
     pf.rot   = f.valence * 0.0015f;
@@ -421,11 +432,20 @@ MVWarpPerFrame mvWarpPerFrame(constant FeatureVector& f,
     pf.sx = 1.0f; pf.sy = 1.0f;
 
     // q-variables: carry per-frame audio to mvWarpPerVertex.
-    pf.q1 = f.bass_att_rel;    // bass deviation → horizontal ripple amplitude
-    pf.q2 = f.mid_att_rel;     // melody deviation → vertical ripple amplitude
-    pf.q3 = s.sceneParamsA.x;  // accumulated audio time → ripple phase
+    pf.q1 = f.bass_att_rel;               // bass deviation → horizontal ripple
+    pf.q2 = f.mid_att_rel;                // melody deviation → vertical ripple
+    pf.q3 = s.sceneParamsA.x;             // accumulated audio time → ripple phase
     pf.q4 = f.valence;
-    pf.q5 = 0.0f; pf.q6 = 0.0f; pf.q7 = 0.0f; pf.q8 = 0.0f;
+    // MV-3c: encode pitch hue shift (normalized −1..+1: low→warm, high→cool).
+    // vocals_pitch_hz range 80–1000 Hz; map to [−1, +1] around 400 Hz centre.
+    // Confidence gates the effect: no effect below threshold.
+    float pitchHz   = stems.vocals_pitch_hz;
+    float pitchConf = stems.vocals_pitch_confidence;
+    float pitchHue  = pitchConf > 0.6f
+        ? clamp((pitchHz - 400.0f) / 600.0f, -1.0f, 1.0f)
+        : 0.0f;
+    pf.q5 = pitchHue;
+    pf.q6 = 0.0f; pf.q7 = 0.0f; pf.q8 = 0.0f;
     return pf;
 }
 
@@ -450,4 +470,18 @@ float2 mvWarpPerVertex(float2 uv, float rad, float ang,
     float dv = pf.q2 * cos(uv.x * 6.2832f + phase * 0.7f) * pf.warp * 0.003f;
 
     return base + float2(du, dv);
+}
+
+// ── MV-3c vocal pitch hue helper (accessible from sceneMaterial or post) ──
+// Returns a palette phase shift [−0.15, +0.15] based on vocal pitch.
+// Rising pitch (> 400 Hz) adds a small positive shift (cooler, higher phase);
+// falling pitch (< 400 Hz) subtracts (warmer, lower phase).
+// Blended by confidence so intonation-free sections don't shift the palette.
+static inline float vl_pitchHueShift(constant StemFeatures& stems) {
+    float pitchHz   = stems.vocals_pitch_hz;
+    float pitchConf = stems.vocals_pitch_confidence;
+    if (pitchConf < 0.6f || pitchHz <= 0.0f) return 0.0f;
+    // Map 80–1000 Hz → −0.15 to +0.15 range, centred at 400 Hz.
+    float normalized = clamp((pitchHz - 400.0f) / 600.0f, -1.0f, 1.0f);
+    return normalized * 0.15f * pitchConf;
 }

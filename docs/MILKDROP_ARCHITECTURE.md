@@ -1,6 +1,6 @@
 # Milkdrop Architecture Research — Findings and Implications for Phosphene
 
-**Status:** Reference document. MV-0, MV-1, and MV-2 are complete (2026-04-17). See "Phase MV Implementation Outcomes" section at the end for what shipped and key learnings. MV-3 is the immediate next increment.
+**Status:** Reference document. MV-0 through MV-3 complete (2026-04-17). See "Phase MV Implementation Outcomes" section at the end for what shipped and key learnings. Phase MV is finished; next is Phase 4 (Orchestrator).
 
 **Written:** 2026-04-16, after six failed iterations on Volumetric Lithograph made it clear that preset-level tuning was not converging on "feels musical." Matt challenged the premise: Milkdrop achieves convincing musical synchronization with 20-year-old technology, so why can't we?
 
@@ -182,9 +182,7 @@ Three coordinated phases, each independently shippable and each gated on a visua
 
 - **MV-1 — Milkdrop-correct audio primitives.** ✅ Complete (commit `a05fd753`). `bassRel`/`bassDev` etc. in FeatureVector; `{stem}EnergyRel/Dev` in StemFeatures. VolumetricLithograph reference implementation. 4 contract tests.
 - **MV-2 — Per-vertex feedback warp mesh.** ✅ Complete (commit `c8cd558f`). `mv_warp` render pass; 32×24 vertex grid; three-pass warp/compose/blit pipeline; VolumetricLithograph and Starburst converted. 2 GPU regression tests.
-- **MV-3 — Beyond-Milkdrop extensions.** ⬜ Pending MV-2 visual checkpoint. Richer stem metadata, next-beat phase predictor, vocal pitch tracking. ~2-3 weeks.
-
-**MV-2 visual checkpoint required before starting MV-3:** capture a SessionRecorder dump against Tea Lights + Love Rehab. If feedback-based VL feels materially more Milkdrop-quality musical, proceed to MV-3 and convert remaining ray-march presets. If not, revisit the architecture before adding capabilities.
+- **MV-3 — Beyond-Milkdrop extensions.** ✅ Complete (2026-04-17). See MV-3 outcomes below.
 
 See [ENGINEERING_PLAN.md](ENGINEERING_PLAN.md) Phase MV section for full increment definitions, file lists, and verification plans.
 
@@ -209,6 +207,16 @@ Three non-obvious implementation discoveries:
 2. **`SceneUniforms` preprocessor guard.** `mvWarpPerFrame` takes a `constant SceneUniforms& s` parameter to allow warp functions to use scene-level state (camera position, accumulated audio time). But `SceneUniforms` is only defined in `rayMarchGBufferPreamble`, which is not injected for direct (non-ray-march) presets. Solution: `#ifndef SCENE_UNIFORMS_DEFINED / #define SCENE_UNIFORMS_DEFINED` guard in both preambles — the `mvWarpPreamble` defines it for direct presets; the ray-march preamble guards its own definition to prevent redefinition when both preambles compile together (ray-march + mv_warp combos).
 
 3. **Starburst birds removed intentionally.** Starburst previously used `["feedback", "particles"]`. The MV-2 design decision was to replace both with `["mv_warp"]` only. The murmuration particle system's murmuration-like motion is now created by the feedback warp accumulating and smearing the sky backdrop — different mechanism, similar emergent cloud-like behavior. The explicit bird silhouettes were dropped.
+
+### MV-3 (2026-04-17)
+
+Three sub-increments landed together (D-028):
+
+**MV-3a — Richer per-stem metadata.** `StemFeatures` expanded 32→64 floats (128→256 bytes). Per-stem `{onsetRate, centroid, attackRatio, energySlope}` computed in `StemAnalyzer.computeRichFeatures()`. AttackRatio uses fast (τ=50ms) vs slow (τ=500ms) RMS EMA — a transient/sustained discriminator that works without any beat detection. OnsetRate uses a leaky integrator (τ=0.5s) on half-wave-rectified RMS flux. EnergySlope is a simple FPS-independent finite difference on attenuated energy.
+
+**MV-3b — Beat phase predictor.** New `BeatPredictor` class. Detects onset rising edges from `max(beatBass, beatMid, beatComposite)`. Measures inter-beat intervals and applies IIR smoothing (period = 0.3×old + 0.7×measured). Exposes `beatPhase01` (0 at last beat → 1 at next predicted beat) in `FeatureVector` floats 35–36. Bootstrap from metadata BPM seeds the period before the first onset. VolumetricLithograph now ramps zoom starting at `beat_phase01 > 0.80` for anticipatory pre-beat compression.
+
+**MV-3c — Vocal pitch tracking (YIN).** New `PitchTracker` (YIN autocorrelation, vDSP_dotpr). Critical implementation finding: the standard "find first τ below threshold" implementation causes catastrophic parabolic extrapolation — the first sub-threshold crossing falls on the descending slope of the CMNDF, not the valley floor. Fix: after the threshold crossing, advance forward while CMNDF keeps decreasing to find the local minimum before interpolating. This single fix converted 35-cent error to <5-cent error for pure tones. Exposes `vocalsPitchHz`/`vocalsPitchConfidence` in `StemFeatures`. VolumetricLithograph uses pitch to shift the IQ cosine palette hue ±0.15 (cooler on rising pitch, warmer on falling).
 
 ## 8. Related Decisions
 

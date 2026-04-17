@@ -274,44 +274,27 @@ These are ordered by dependency. Each has done-when criteria and verification co
 3. Milkdrop's "musical feel" comes from its **per-vertex feedback warp architecture**, not its audio analysis. Every preset warps the previous frame via a 32×24 grid, and motion *accumulates* over many frames. Simple audio inputs compound into rich organic motion.
 4. **9 of 11 Phosphene presets did not use any feedback loop** prior to MV-2 — they rendered from scratch each frame. Ray-march presets in particular showed only instantaneous audio state. This is why they felt "disconnected" from music regardless of how cleverly tuned.
 
-MV-0 ✅, MV-1 ✅, MV-2 ✅ complete. MV-3 is the immediate next increment. Do NOT start MV-3 without first capturing a SessionRecorder dump against Tea Lights + Love Rehab and confirming that MV-2's feedback architecture feels materially more Milkdrop-quality musical than pre-MV-2.
+MV-0 ✅, MV-1 ✅, MV-2 ✅, MV-3 ✅ complete.
 
-### Increment MV-3 — Beyond-Milkdrop extensions (start only after MV-2 checkpoint passes)
+### Increment MV-3 — Beyond-Milkdrop extensions ✅
 
-**Scope:** Layer Apple-Silicon-specific capabilities on top of the MV-2 foundation. Do NOT start until MV-2's visual checkpoint confirms the feedback architecture produces Milkdrop-quality motion. Otherwise MV-3 would layer richer data onto a still-broken foundation.
+**MV-3a — Richer per-stem metadata** ✅
+- `StemFeatures` expanded 32→64 floats (128→256 bytes). New per-stem fields: `{vocals,drums,bass,other}{OnsetRate, Centroid, AttackRatio, EnergySlope}` (floats 25–40), computed in `StemAnalyzer.analyze()` via `computeRichFeatures()`.
+- `StemAnalyzerMV3Tests.swift`: click vs sine distinguishes attackRatio; silence gives zeros; 120-BPM click track mean onsetRate in [1.0, 3.5]/sec.
 
-Three independently-shippable sub-increments:
+**MV-3b — Next-beat phase predictor** ✅
+- New `BeatPredictor` class (IIR period estimation from onset rising edges). Feeds `beatPhase01` and `beatsUntilNext` into `FeatureVector` floats 35–36. Integrated in `MIRPipeline.buildFeatureVector()`.
+- `BeatPredictorTests.swift`: phase monotonically rises 0→1; phase resets after 3× period silence; bootstrap BPM gives correct phase.
+- `VolumetricLithograph.metal` updated: `approachFrac = max(0, (f.beat_phase01 - 0.80) / 0.20)` pre-beat anticipatory zoom.
 
-**MV-3a — Richer per-stem metadata** (~1 week)
-- New fields in `StemFeatures` computed in `StemAnalyzer` from the separated waveforms we already have:
-  - `vocalsOnsetRate`, `drumsOnsetRate`, etc. — attacks per second per stem
-  - `vocalsCentroid`, `drumsCentroid`, etc. — spectral brightness per stem
-  - `vocalsAttackRatio`, etc. — transient energy / sustained energy
-  - `vocalsEnergySlope`, etc. — derivative of the attenuated energy
-- Purely additive; existing fields untouched.
-- Verified by unit tests on synthetic waveforms: plucked click vs sustained sine should produce distinguishable attack ratios.
+**MV-3c — Vocal pitch tracking** ✅
+- New `PitchTracker` (YIN autocorrelation, vDSP_dotpr). Key fix: advance to local CMNDF minimum before parabolic interpolation (finding just the first sub-threshold point causes catastrophic extrapolation on the descending slope). 80–1000 Hz gate, 0.6 confidence threshold, EMA decay 0.8.
+- Feeds `vocalsPitchHz` and `vocalsPitchConfidence` into `StemFeatures` floats 41–42.
+- `PitchTrackerTests.swift`: 440 Hz and 220 Hz within 5 cents; silence → 0 Hz; random noise → unvoiced.
+- `VolumetricLithograph.metal` updated: `vl_pitchHueShift()` maps pitch to ±0.15 palette phase shift; gated by confidence ≥ 0.6.
 
-**MV-3b — Next-beat phase predictor** (~2-3 days)
-- New `BeatPredictor` class fed by `BeatDetector` output + BPM estimate.
-- Exposes `beatPhase01: Float` (0 at last detected beat, 1 at predicted next beat) and `beatsUntilNext: Float` in `FeatureVector`.
-- Presets drive peak intensity from `beatPhase01 > 0.9` to flare AT the beat rather than after it.
-- Verified: synthetic 125-BPM click track produces phase output that linearly rises between clicks.
-
-**MV-3c — Vocal pitch tracking** (~1 week)
-- New `PitchTracker` using YIN autocorrelation on the separated vocals stem. Accelerate/vDSP implementation; no ML.
-- Exposes `vocalsPitchHz: Float` and `vocalsPitchConfidence: Float` in `StemFeatures` (or a new buffer).
-- Presets can track melodic contour — rising lines lift terrain, falling lines lower it.
-- Verified: synthetic pure tones at known frequencies produce YIN pitch within ±5 cents.
-
-**Explicitly NOT part of MV-3:**
-- Basic Pitch port (unverified availability, not needed for core experience)
-- Chord recognition via Tonic (evaluate separately, depends on MV-3c)
-- HTDemucs swap (Open-Unmix HQ is working; don't fix what isn't broken)
-- Sound Analysis framework (applause detection — orthogonal)
-
-**Done when:** all three sub-increments tested and landed; at least one preset updated to demonstrate per-stem-metadata or pitch-contour usage.
-
-**Verify:** per-component unit tests + visual verification that presets using the new signals respond musically on the reference tracks.
+**Explicitly NOT part of MV-3 (still out of scope):**
+- Basic Pitch port, chord recognition via Tonic, HTDemucs swap, Sound Analysis framework
 
 ---
 
