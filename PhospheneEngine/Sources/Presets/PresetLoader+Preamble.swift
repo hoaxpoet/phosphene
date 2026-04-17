@@ -27,7 +27,7 @@ extension PresetLoader {
             float beat_value, _pad0;
         };
 
-        // Matches Swift FeatureVector layout (48 floats = 192 bytes, MV-1).
+        // Matches Swift FeatureVector layout (48 floats = 192 bytes, MV-1/MV-3b).
         struct FeatureVector {
             float bass, mid, treble;
             float bass_att, mid_att, treb_att;
@@ -46,9 +46,14 @@ extension PresetLoader {
             float mid_rel,  mid_dev;
             float treb_rel, treb_dev;
             float bass_att_rel, mid_att_rel, treb_att_rel;
-            // Padding to 192 bytes (floats 35–48).
+            // MV-3b beat phase predictor (floats 35–36, D-028).
+            // beat_phase01: 0 at last confirmed beat, rises to 1 at next predicted beat.
+            // beats_until_next: 1 - beat_phase01 (fractional beats until next beat).
+            // Use for anticipatory animation: start ramp when beat_phase01 > 0.8.
+            float beat_phase01, beats_until_next;
+            // Padding to 192 bytes (floats 37–48).
             float _pad1, _pad2, _pad3, _pad4, _pad5, _pad6, _pad7,
-                  _pad8, _pad9, _pad10, _pad11, _pad12, _pad13, _pad14;
+                  _pad8, _pad9, _pad10, _pad11, _pad12;
         };
 
         struct VertexOut {
@@ -66,8 +71,9 @@ extension PresetLoader {
         }
 
         // Per-stem audio features, bound at buffer(3). All zero during warmup.
-        // Matches Swift StemFeatures layout (32 floats = 128 bytes, MV-1).
+        // Matches Swift StemFeatures layout (64 floats = 256 bytes, MV-3, D-028).
         struct StemFeatures {
+            // Floats 1–16: per-stem energy/band/beat.
             float vocals_energy;      float vocals_band0;
             float vocals_band1;       float vocals_beat;
 
@@ -88,8 +94,32 @@ extension PresetLoader {
             float bass_energy_rel;    float bass_energy_dev;
             float other_energy_rel;   float other_energy_dev;
 
-            // Padding to 128 bytes (floats 25–32).
-            float _pad1, _pad2, _pad3, _pad4, _pad5, _pad6, _pad7, _pad8;
+            // MV-3a rich per-stem metadata (floats 25–40, D-028).
+            // onset_rate:    onsets/sec over ~0.5s leaky window.
+            // centroid:      spectral brightness [0,1], normalized by Nyquist.
+            // attack_ratio:  fastRMS(50ms)/slowRMS(500ms) clamped [0,3].
+            //                High = transient/plucked; low = sustained/pad.
+            // energy_slope:  derivative of attenuated energy (FPS-independent).
+            float vocals_onset_rate;  float vocals_centroid;
+            float vocals_attack_ratio; float vocals_energy_slope;
+
+            float drums_onset_rate;   float drums_centroid;
+            float drums_attack_ratio; float drums_energy_slope;
+
+            float bass_onset_rate;    float bass_centroid;
+            float bass_attack_ratio;  float bass_energy_slope;
+
+            float other_onset_rate;   float other_centroid;
+            float other_attack_ratio; float other_energy_slope;
+
+            // MV-3c vocal pitch (floats 41–42, D-028).
+            // vocals_pitch_hz = 0 means unvoiced or confidence below 0.6.
+            float vocals_pitch_hz;    float vocals_pitch_confidence;
+
+            // Padding to 256 bytes (floats 43–64).
+            float _pad1,  _pad2,  _pad3,  _pad4,  _pad5,  _pad6,  _pad7,  _pad8;
+            float _pad9,  _pad10, _pad11, _pad12, _pad13, _pad14, _pad15, _pad16;
+            float _pad17, _pad18, _pad19, _pad20, _pad21, _pad22;
         };
 
         // ── Noise texture samplers (Increment 3.13) ───────────────────────────

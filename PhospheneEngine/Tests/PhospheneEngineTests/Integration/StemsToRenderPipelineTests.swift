@@ -148,8 +148,9 @@ import Metal
     #include <metal_stdlib>
     using namespace metal;
 
-    // Matches Swift StemFeatures layout (32 floats = 128 bytes, MV-1).
+    // Matches Swift StemFeatures layout (64 floats = 256 bytes, MV-3, D-028).
     struct StemFeatures {
+        // Floats 1–16: per-stem energy/band/beat.
         float vocals_energy;   float vocals_band0;
         float vocals_band1;    float vocals_beat;
         float drums_energy;    float drums_band0;
@@ -158,13 +159,25 @@ import Metal
         float bass_band1;      float bass_beat;
         float other_energy;    float other_band0;
         float other_band1;     float other_beat;
-        // MV-1 deviation primitives (floats 17–24).
+        // Floats 17–24: MV-1 deviation primitives.
         float vocals_energy_rel;  float vocals_energy_dev;
         float drums_energy_rel;   float drums_energy_dev;
         float bass_energy_rel;    float bass_energy_dev;
         float other_energy_rel;   float other_energy_dev;
-        // Padding to 128 bytes (floats 25–32).
-        float _pad1, _pad2, _pad3, _pad4, _pad5, _pad6, _pad7, _pad8;
+        // Floats 25–40: MV-3a rich metadata (4 per stem).
+        float vocals_onset_rate;  float vocals_centroid;
+        float vocals_attack_ratio; float vocals_energy_slope;
+        float drums_onset_rate;   float drums_centroid;
+        float drums_attack_ratio; float drums_energy_slope;
+        float bass_onset_rate;    float bass_centroid;
+        float bass_attack_ratio;  float bass_energy_slope;
+        float other_onset_rate;   float other_centroid;
+        float other_attack_ratio; float other_energy_slope;
+        // Floats 41–42: MV-3c vocal pitch.
+        float vocals_pitch_hz;    float vocals_pitch_confidence;
+        // Floats 43–64: padding to 256 bytes (22 floats).
+        float _p1,_p2,_p3,_p4,_p5,_p6,_p7,_p8,_p9,_p10,_p11;
+        float _p12,_p13,_p14,_p15,_p16,_p17,_p18,_p19,_p20,_p21,_p22;
     };
 
     kernel void measure_size(device uint* out [[buffer(0)]],
@@ -202,7 +215,7 @@ import Metal
     let swiftSize = UInt32(MemoryLayout<StemFeatures>.size)
     #expect(mslSize == swiftSize,
             "MSL sizeof(StemFeatures) = \(mslSize) must match Swift MemoryLayout<StemFeatures>.size = \(swiftSize)")
-    #expect(mslSize == 128, "StemFeatures must be exactly 128 bytes in MSL (MV-1: 32 floats), got \(mslSize)")
+    #expect(mslSize == 256, "StemFeatures must be exactly 256 bytes in MSL (MV-3: 64 floats), got \(mslSize)")
 }
 
 // MARK: - Idle Suppression

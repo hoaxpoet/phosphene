@@ -31,9 +31,11 @@ import Foundation
 ///     float mid_rel,  mid_dev;
 ///     float treb_rel, treb_dev;
 ///     float bass_att_rel, mid_att_rel, treb_att_rel;
-///     // Padding to 192 bytes (floats 35–48)
+///     // MV-3b beat phase (floats 35–36)
+///     float beat_phase01, beats_until_next;
+///     // Padding to 192 bytes (floats 37–48)
 ///     float _pad1, _pad2, _pad3, _pad4, _pad5, _pad6, _pad7,
-///           _pad8, _pad9, _pad10, _pad11, _pad12, _pad13, _pad14;
+///           _pad8, _pad9, _pad10, _pad11, _pad12;
 /// };
 /// ```
 @frozen
@@ -142,7 +144,22 @@ public struct FeatureVector: Sendable {
     /// Smoothed treble deviation: (trebleAtt − 0.5) × 2.0.
     public var trebAttRel: Float
 
-    // --- Padding to 192 bytes (48 floats total — floats 35–48) ---
+    // --- MV-3b: Beat phase predictor (floats 35–36, D-028) ---
+    //
+    // Populated each frame by BeatPredictor in MIRPipeline.process().
+    // Enables "anticipatory" preset motion that starts BEFORE the beat lands.
+    //
+    // beatPhase01:    0 at the last detected beat, linearly rises to 1 at the
+    //                 predicted next beat. Resets to 0 if tempo is lost for
+    //                 > 3× the estimated period.
+    // beatsUntilNext: Fractional beats until the next predicted beat (1 - beatPhase01).
+
+    /// Beat cycle phase: 0 at last beat, rising linearly to 1 at next predicted beat.
+    public var beatPhase01: Float
+    /// Fractional beats until next predicted beat. 1.0 immediately after a beat.
+    public var beatsUntilNext: Float
+
+    // --- Padding to 192 bytes (48 floats total — floats 37–48) ---
     // swiftlint:disable identifier_name
     var _pad1: Float
     var _pad2: Float
@@ -156,8 +173,6 @@ public struct FeatureVector: Sendable {
     var _pad10: Float
     var _pad11: Float
     var _pad12: Float
-    var _pad13: Float
-    var _pad14: Float
     // swiftlint:enable identifier_name
 
     public init(
@@ -190,11 +205,12 @@ public struct FeatureVector: Sendable {
         self.midRel  = 0; self.midDev  = 0
         self.trebRel = 0; self.trebDev = 0
         self.bassAttRel = 0; self.midAttRel = 0; self.trebAttRel = 0
+        // MV-3b beat phase — computed by BeatPredictor each frame.
+        self.beatPhase01 = 0; self.beatsUntilNext = 0
         // Padding
         self._pad1 = 0; self._pad2 = 0; self._pad3 = 0; self._pad4 = 0
         self._pad5 = 0; self._pad6 = 0; self._pad7 = 0; self._pad8 = 0
         self._pad9 = 0; self._pad10 = 0; self._pad11 = 0; self._pad12 = 0
-        self._pad13 = 0; self._pad14 = 0
     }
 
     /// All-zero feature vector.
@@ -308,10 +324,12 @@ public struct EmotionalState: Sendable, Equatable {
 
 /// Per-stem audio features bound to GPU buffer(3).
 ///
-/// 32 floats × 4 bytes = 128 bytes total.
-/// The first 16 floats (4 per stem) are energy, band, and beat data.
-/// Floats 17–24 are MV-1 deviation primitives (2 per stem: Rel and Dev).
-/// Floats 25–32 are padding to SIMD alignment.
+/// 64 floats × 4 bytes = 256 bytes total (MV-3, D-028).
+/// Floats 1–16:  4 per stem (energy, band0, band1, beat) — vocals/drums/bass/other.
+/// Floats 17–24: MV-1 deviation primitives (2 per stem: EnergyRel, EnergyDev).
+/// Floats 25–40: MV-3a rich metadata (4 per stem: onsetRate, centroid, attackRatio, energySlope).
+/// Floats 41–42: MV-3c vocal pitch (vocalsPitchHz, vocalsPitchConfidence).
+/// Floats 43–64: padding to 256-byte boundary.
 ///
 /// Band slot semantics:
 /// - **vocals**: band0 = presence (1–4 kHz), band1 = air (4–8 kHz)
@@ -323,28 +341,11 @@ public struct EmotionalState: Sendable, Equatable {
 /// - `xEnergyRel = (xEnergy - runningAvg) * 2.0` — centered at 0
 /// - `xEnergyDev = max(0, xEnergyRel)` — positive deviation only
 ///
-/// The matching MSL struct:
-/// ```metal
-/// struct StemFeatures {
-///     float vocals_energy;      float vocals_band0;
-///     float vocals_band1;       float vocals_beat;
-///     float drums_energy;       float drums_band0;
-///     float drums_band1;        float drums_beat;
-///     float bass_energy;        float bass_band0;
-///     float bass_band1;         float bass_beat;
-///     float other_energy;       float other_band0;
-///     float other_band1;        float other_beat;
-///     // MV-1 deviation primitives (floats 17–24)
-///     float vocals_energy_rel;  float vocals_energy_dev;
-///     float drums_energy_rel;   float drums_energy_dev;
-///     float bass_energy_rel;    float bass_energy_dev;
-///     float other_energy_rel;   float other_energy_dev;
-///     // Padding to 128 bytes (floats 25–32)
-///     float _pad1, _pad2, _pad3, _pad4, _pad5, _pad6, _pad7, _pad8;
-/// };
-/// ```
+/// The matching MSL struct: see PresetLoader+Preamble.swift StemFeatures (64 floats).
 @frozen
 public struct StemFeatures: Sendable, Equatable {
+
+    // --- Floats 1–16: per-stem energy/band/beat ---
 
     /// Vocals: total energy across all vocal bands.
     public var vocalsEnergy: Float
@@ -382,7 +383,7 @@ public struct StemFeatures: Sendable, Equatable {
     /// Other beat pulse (reserved — currently always 0).
     public var otherBeat: Float
 
-    // --- MV-1: Per-stem deviation primitives (floats 17–24) ---
+    // --- Floats 17–24: MV-1 per-stem deviation primitives ---
     // Populated each frame in StemAnalyzer.analyze().
     // Center is a per-stem EMA running average (decay ≈ 0.995).
     // Formula: xEnergyRel = (xEnergy - runningAvg) * 2.0
@@ -405,10 +406,63 @@ public struct StemFeatures: Sendable, Equatable {
     /// Positive other energy deviation: max(0, otherEnergyRel).
     public var otherEnergyDev: Float
 
-    // --- Padding to 128 bytes (32 floats total — floats 25–32) ---
+    // --- Floats 25–40: MV-3a per-stem rich metadata (D-028) ---
+    // Populated each frame in StemAnalyzer.analyze().
+
+    /// Vocals onset rate in events/second over a ~0.5s leaky window.
+    public var vocalsOnsetRate: Float
+    /// Vocals spectral centroid, normalized by Nyquist (0–1).
+    public var vocalsCentroid: Float
+    /// Vocals attack ratio: fastRMS(50ms) / slowRMS(500ms), clamped 0–3.
+    /// High → plucked/transient; low → sustained/pad.
+    public var vocalsAttackRatio: Float
+    /// Vocals energy slope: derivative of attenuated energy, FPS-independent.
+    public var vocalsEnergySlope: Float
+
+    /// Drums onset rate in events/second over a ~0.5s leaky window.
+    public var drumsOnsetRate: Float
+    /// Drums spectral centroid, normalized by Nyquist (0–1).
+    public var drumsCentroid: Float
+    /// Drums attack ratio: fastRMS(50ms) / slowRMS(500ms), clamped 0–3.
+    public var drumsAttackRatio: Float
+    /// Drums energy slope: derivative of attenuated energy, FPS-independent.
+    public var drumsEnergySlope: Float
+
+    /// Bass onset rate in events/second over a ~0.5s leaky window.
+    public var bassOnsetRate: Float
+    /// Bass spectral centroid, normalized by Nyquist (0–1).
+    public var bassCentroid: Float
+    /// Bass attack ratio: fastRMS(50ms) / slowRMS(500ms), clamped 0–3.
+    public var bassAttackRatio: Float
+    /// Bass energy slope: derivative of attenuated energy, FPS-independent.
+    public var bassEnergySlope: Float
+
+    /// Other onset rate in events/second over a ~0.5s leaky window.
+    public var otherOnsetRate: Float
+    /// Other spectral centroid, normalized by Nyquist (0–1).
+    public var otherCentroid: Float
+    /// Other attack ratio: fastRMS(50ms) / slowRMS(500ms), clamped 0–3.
+    public var otherAttackRatio: Float
+    /// Other energy slope: derivative of attenuated energy, FPS-independent.
+    public var otherEnergySlope: Float
+
+    // --- Floats 41–42: MV-3c vocal pitch tracking (D-028) ---
+    // Populated each frame in StemAnalyzer.analyze() via PitchTracker (YIN).
+    // 0 Hz = unvoiced or low confidence.
+
+    /// Estimated vocal pitch in Hz (YIN autocorrelation). 0 = unvoiced/unconfident.
+    public var vocalsPitchHz: Float
+    /// Confidence of vocalsPitchHz estimate (0–1). < 0.6 → unreliable.
+    public var vocalsPitchConfidence: Float
+
+    // --- Floats 43–64: padding to 256 bytes (22 floats) ---
     // swiftlint:disable identifier_name
-    var _sfPad1: Float; var _sfPad2: Float; var _sfPad3: Float; var _sfPad4: Float
-    var _sfPad5: Float; var _sfPad6: Float; var _sfPad7: Float; var _sfPad8: Float
+    var _sfPad1:  Float; var _sfPad2:  Float; var _sfPad3:  Float; var _sfPad4:  Float
+    var _sfPad5:  Float; var _sfPad6:  Float; var _sfPad7:  Float; var _sfPad8:  Float
+    var _sfPad9:  Float; var _sfPad10: Float; var _sfPad11: Float; var _sfPad12: Float
+    var _sfPad13: Float; var _sfPad14: Float; var _sfPad15: Float; var _sfPad16: Float
+    var _sfPad17: Float; var _sfPad18: Float; var _sfPad19: Float; var _sfPad20: Float
+    var _sfPad21: Float; var _sfPad22: Float
     // swiftlint:enable identifier_name
 
     public init(
@@ -434,9 +488,24 @@ public struct StemFeatures: Sendable, Equatable {
         self.drumsEnergyRel  = 0; self.drumsEnergyDev  = 0
         self.bassEnergyRel   = 0; self.bassEnergyDev   = 0
         self.otherEnergyRel  = 0; self.otherEnergyDev  = 0
+        // MV-3a rich metadata — computed by StemAnalyzer each frame.
+        self.vocalsOnsetRate = 0; self.vocalsCentroid = 0
+        self.vocalsAttackRatio = 0; self.vocalsEnergySlope = 0
+        self.drumsOnsetRate = 0; self.drumsCentroid = 0
+        self.drumsAttackRatio = 0; self.drumsEnergySlope = 0
+        self.bassOnsetRate = 0; self.bassCentroid = 0
+        self.bassAttackRatio = 0; self.bassEnergySlope = 0
+        self.otherOnsetRate = 0; self.otherCentroid = 0
+        self.otherAttackRatio = 0; self.otherEnergySlope = 0
+        // MV-3c vocal pitch — computed by StemAnalyzer via PitchTracker.
+        self.vocalsPitchHz = 0; self.vocalsPitchConfidence = 0
         // Padding
-        self._sfPad1 = 0; self._sfPad2 = 0; self._sfPad3 = 0; self._sfPad4 = 0
-        self._sfPad5 = 0; self._sfPad6 = 0; self._sfPad7 = 0; self._sfPad8 = 0
+        self._sfPad1  = 0; self._sfPad2  = 0; self._sfPad3  = 0; self._sfPad4  = 0
+        self._sfPad5  = 0; self._sfPad6  = 0; self._sfPad7  = 0; self._sfPad8  = 0
+        self._sfPad9  = 0; self._sfPad10 = 0; self._sfPad11 = 0; self._sfPad12 = 0
+        self._sfPad13 = 0; self._sfPad14 = 0; self._sfPad15 = 0; self._sfPad16 = 0
+        self._sfPad17 = 0; self._sfPad18 = 0; self._sfPad19 = 0; self._sfPad20 = 0
+        self._sfPad21 = 0; self._sfPad22 = 0
     }
 
     /// All-zero stem features — safe default during warmup.

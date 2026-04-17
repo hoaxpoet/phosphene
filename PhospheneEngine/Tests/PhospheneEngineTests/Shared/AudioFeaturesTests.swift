@@ -92,12 +92,12 @@ import Metal
     #expect(!notEqual, "AudioFrames with different timestamps should not be byte-equal")
 }
 
-@Test func test_stemFeatures_memoryLayout_is128Bytes() {
-    // StemFeatures: 32 floats × 4 bytes = 128 bytes (MV-1: +8 deviation fields + 8 padding).
-    #expect(MemoryLayout<StemFeatures>.size == 128,
-            "StemFeatures must be 128 bytes (32 × 4), got \(MemoryLayout<StemFeatures>.size)")
-    #expect(MemoryLayout<StemFeatures>.stride == 128,
-            "StemFeatures stride must be 128 bytes, got \(MemoryLayout<StemFeatures>.stride)")
+@Test func test_stemFeatures_memoryLayout_is256Bytes() {
+    // StemFeatures: 64 floats × 4 bytes = 256 bytes (MV-3: +16 rich metadata + 2 pitch + 22 padding).
+    #expect(MemoryLayout<StemFeatures>.size == 256,
+            "StemFeatures must be 256 bytes (64 × 4), got \(MemoryLayout<StemFeatures>.size)")
+    #expect(MemoryLayout<StemFeatures>.stride == 256,
+            "StemFeatures stride must be 256 bytes, got \(MemoryLayout<StemFeatures>.stride)")
 }
 
 @Test func test_stemFeatures_simdAligned() {
@@ -105,8 +105,8 @@ import Metal
     #expect(MemoryLayout<StemFeatures>.stride % 16 == 0,
             "StemFeatures stride must be 16-byte aligned for GPU, got stride \(MemoryLayout<StemFeatures>.stride)")
 
-    // Verify the matching MSL struct size expectation (32 floats × 4 bytes, MV-1).
-    let expectedMSLSize = 32 * MemoryLayout<Float>.size
+    // Verify the matching MSL struct size expectation (64 floats × 4 bytes, MV-3).
+    let expectedMSLSize = 64 * MemoryLayout<Float>.size
     #expect(MemoryLayout<StemFeatures>.size == expectedMSLSize,
             "Swift StemFeatures size (\(MemoryLayout<StemFeatures>.size)) must match MSL size (\(expectedMSLSize))")
 
@@ -115,6 +115,11 @@ import Metal
     #expect(zero.vocalsEnergy == 0)
     #expect(zero.drumsBeat == 0)
     #expect(zero.otherBand1 == 0)
+    // MV-3 fields default to zero.
+    #expect(zero.vocalsPitchHz == 0)
+    #expect(zero.vocalsPitchConfidence == 0)
+    #expect(zero.vocalsAttackRatio == 0)
+    #expect(zero.drumsOnsetRate == 0)
 }
 
 @Test func test_featureVector_simdSize_matchesGPUExpectation() {

@@ -56,11 +56,13 @@ PhospheneEngine/
     ChromaExtractor         → 12-bin chroma, Krumhansl-Schmuckler key estimation, bin-count normalized
     BeatDetector            → 6-band onset detection, grouped beat pulses, tempo via autocorrelation
     BeatDetector+Tempo      → IOI histogram + autocorrelation tempo estimation
-    MIRPipeline             → Coordinator: all analyzers → FeatureVector for GPU
+    MIRPipeline             → Coordinator: all analyzers → FeatureVector for GPU; owns BeatPredictor (D-028)
+    BeatPredictor           → IIR beat-phase predictor: rising-edge onset → period estimate → beatPhase01/beatsUntilNext in FeatureVector (MV-3b, D-028)
+    PitchTracker            → YIN autocorrelation pitch detector (vDSP_dotpr, 2048-sample window, 80–1000 Hz, local-minimum refinement) → vocalsPitchHz/Confidence in StemFeatures (MV-3c, D-028)
     SelfSimilarityMatrix    → Ring buffer of feature vectors, vDSP cosine similarity
     NoveltyDetector         → Checkerboard kernel boundary detection, adaptive threshold
     StructuralAnalyzer      → Section boundary prediction, repetition detection
-    StemAnalyzer            → Per-stem energy (4× BandEnergyProcessor) + beat (1× BeatDetector on drums) → StemFeatures
+    StemAnalyzer            → Per-stem energy (4× BandEnergyProcessor) + beat (1× BeatDetector on drums) + rich metadata (MV-3a) + PitchTracker (MV-3c) → StemFeatures (64 floats, 256 bytes)
   ML/
     StemSeparator.swift      → STFT → MPSGraph → iSTFT pipeline, StemSeparating protocol
     StemSeparator+Reconstruct → iSTFT reconstruction + mono averaging
@@ -134,7 +136,7 @@ PhospheneEngine/
     SessionRecorder         → Continuous diagnostic capture per app launch: video.mp4 (H.264, 30 fps) + features.csv + stems.csv + stems/<N>_<title>/{drums,bass,vocals,other}.wav + session.log. Writes to ~/Documents/phosphene_sessions/<timestamp>/. Writer locks after 30 stable drawable frames; if a different size arrives consistently for ≥90 frames after lock (bad initial lock from transient Retina→logical-point resize), tears down and relocks — logs "video writer relocking". Finalised on NSApplication.willTerminateNotification. Validated by SessionRecorderTests.
 Tests/
   Audio/                    → AudioBufferTests, FFTProcessorTests, StreamingMetadataTests, MetadataPreFetcherTests, LookaheadBufferTests, SilenceDetectorTests
-  DSP/                      → SpectralAnalyzerTests, BandEnergyProcessorTests, ChromaExtractorTests, BeatDetectorTests, MIRPipelineUnitTests, SelfSimilarityMatrixTests, NoveltyDetectorTests, StructuralAnalyzerTests
+  DSP/                      → SpectralAnalyzerTests, BandEnergyProcessorTests, ChromaExtractorTests, BeatDetectorTests, MIRPipelineUnitTests, SelfSimilarityMatrixTests, NoveltyDetectorTests, StructuralAnalyzerTests, BeatPredictorTests, PitchTrackerTests, StemAnalyzerMV3Tests
   ML/                       → StemSeparatorTests, StemFFTTests, StemModelTests, MoodClassifierTests
   Renderer/                 → MetalContextTests, ShaderLibraryTests, RenderPipelineTests, ProceduralGeometryTests, MeshGeneratorTests, BVHBuilderTests, RayIntersectorTests, PostProcessChainTests, ShaderUtilityTests, TextureManagerTests, RayMarchPipelineTests, SceneUniformsTests, FeatureVectorExtendedTests, SSGITests, RenderPipelineICBTests, MVWarpPipelineTests
   Shared/                   → AudioFeaturesTests, UMABufferExtendedTests, EmotionalStateTests, AnalyzedFrameTests
@@ -229,21 +231,24 @@ Bin-count normalized: weight = `1/binsInPitchClass`. Skip bins below 65 Hz. At 4
 ## Key Types (Shared Module)
 
 ```swift
-struct FeatureVector          // 48 floats = 192 bytes (SIMD-aligned). GPU buffer(2). MV-1.
+struct FeatureVector          // 48 floats = 192 bytes (SIMD-aligned). GPU buffer(2). MV-3.
                               // Floats 1–24: energy bands, smoothed bands, beat pulses, spectral features,
                               //   mood valence/arousal, structural prediction fields, camera uniforms.
                               // Float 25: accumulatedAudioTime.
                               // Floats 26–34: MV-1 deviation primitives (D-026):
                               //   bassRel, bassDev, midRel, midDev, trebRel, trebDev,
                               //   bassAttRel, midAttRel, trebAttRel.
-                              // Floats 35–48: padding.
+                              // Floats 35–36: MV-3b beat phase (D-028): beatPhase01, beatsUntilNext.
+                              // Floats 37–48: padding.
 struct FeedbackParams         // 32 bytes (8 floats): decay, baseZoom, baseRot, beatZoom, beatRot,
                               //   beatSensitivity, beatValue, padding.
-struct StemFeatures           // 128 bytes (32 floats). GPU buffer(3). MV-1.
+struct StemFeatures           // 256 bytes (64 floats). GPU buffer(3). MV-3.
                               //   Floats 1–16: 4 per stem (vocals/drums/bass/other): energy, band0, band1, beat.
                               //   Floats 17–24: MV-1 deviation primitives: vocalsEnergyRel/Dev,
                               //     drumsEnergyRel/Dev, bassEnergyRel/Dev, otherEnergyRel/Dev.
-                              //   Floats 25–32: padding.
+                              //   Floats 25–40: MV-3a rich metadata (4 per stem): onsetRate, centroid, attackRatio, energySlope.
+                              //   Floats 41–42: MV-3c vocalsPitchHz, vocalsPitchConfidence.
+                              //   Floats 43–64: padding.
 struct AudioFrame             // PCM samples, timestamp, sample rate
 struct FFTResult              // 512 magnitude bins, phase bins, dominant frequency
 struct BandEnergy             // 3-band + 6-band, instant + attenuated
@@ -290,7 +295,7 @@ texture(11) = BRDF LUT (512² .rg16Float)
 buffer(0) = FFT magnitudes (512 floats)
 buffer(1) = waveform samples (1024 floats)
 buffer(2) = FeatureVector (128 bytes, 32 floats)
-buffer(3) = StemFeatures (64 bytes, 16 floats)
+buffer(3) = StemFeatures (256 bytes, 64 floats)
 buffer(4–7) = future use
 ```
 
@@ -469,15 +474,11 @@ No CoreML dependency. All ML uses MPSGraph (GPU) or Accelerate (CPU).
 - **`SessionRecorder`** — continuous diagnostic capture (video + features + stems + WAVs + log) per app launch (D-025). Now includes writer relock on drawable resize (increment 3.5.4.8).
 - **Per-frame stem analysis** — `StemAnalyzer` runs on `analysisQueue` at audio-callback rate (~94 Hz) on a sliding window through the latest separated chunk, replacing the prior 5s piecewise-constant behaviour (increment 3.5.4.9).
 - **MV-1: Milkdrop-correct deviation primitives** — `FeatureVector` expanded 32→48 floats (128→192 bytes), `StemFeatures` expanded 16→32 floats (64→128 bytes). Nine new FV deviation fields (`bassRel/Dev`, `midRel/Dev`, `trebRel/Dev`, `bassAttRel`, `midAttRel`, `trebAttRel`) derived in `MIRPipeline.buildFeatureVector()` as `xRel = (x - 0.5) * 2.0`, `xDev = max(0, xRel)`. Eight new StemFeatures deviation fields (`{vocals,drums,bass,other}EnergyRel/Dev`) derived in `StemAnalyzer.analyze()` via per-stem EMA (decay 0.995). Metal preamble structs in `PresetLoader+Preamble.swift` updated to match. `VolumetricLithograph.metal` updated as reference implementation: all four FeatureVector fallback drivers converted from absolute-threshold to deviation form. `RelDevTests.swift` (4 contract tests) gates the invariants. (D-026)
+- **MV-3: Beyond-Milkdrop extensions** — `StemFeatures` expanded 32→64 floats (128→256 bytes, D-028). Three sub-increments: (a) per-stem rich metadata `{onsetRate, centroid, attackRatio, energySlope}` computed in `StemAnalyzer.computeRichFeatures()` via RMS EMAs (τ=50ms/500ms), spectral centroid, leaky-integrator onset rate; (b) `BeatPredictor` class (IIR period from onset rising edges) → `FeatureVector.beatPhase01/beatsUntilNext` for anticipatory pre-beat animation; (c) `PitchTracker` (YIN via vDSP_dotpr, key fix: advance to CMNDF local minimum before parabolic interpolation) → `StemFeatures.vocalsPitchHz/Confidence`. Metal preamble and Swift structs updated byte-for-byte. `VolumetricLithograph.metal` uses `beat_phase01` for anticipatory zoom ramp (`approachFrac * 0.004`) and `vl_pitchHueShift()` for pitch→hue mapping. 9 new unit tests across `StemAnalyzerMV3Tests`, `BeatPredictorTests`, `PitchTrackerTests`. (D-028)
 
-The next ordered increments are:
+The next ordered increment is:
 
-1. **Phase MV — Musicality** — informed by research documented in `docs/MILKDROP_ARCHITECTURE.md`. Six VL iterations (v3 → v4.2) established that preset-level shader tuning is not converging on "feels like a band member." Diagnosis: missing Milkdrop-style per-vertex feedback warp + misused AGC primitives in preset authoring. Three coordinated sub-phases, each independently shippable and checkpointed:
-   - **MV-0**: ✅ drop v4.2 stash, re-land sky-tint conditional — `RayMarch.metal` miss/sky path now gates `lightColor.rgb` tint behind `sceneParamsB.y > 1e5` (fog-disabled sentinel), restoring cool-sky/warm-light contrast on GB/KS while preserving VL's warm sky tint.
-   - **MV-1**: ✅ Milkdrop-correct audio primitives — `bassRel/Dev` etc. in `FeatureVector` + `{stem}EnergyRel/Dev` in `StemFeatures`; VL reference implementation updated; 4 contract tests (D-026).
-   - **MV-2**: ✅ per-vertex feedback warp mesh — `mv_warp` opt-in render pass; 32×24 vertex grid; MVWarpPipelineBundle/MVWarpState; warp_fragment (decay×prev) + compose (alpha blend scene in) + blit (→ drawable); VolumetricLithograph and Starburst now use mv_warp; 2 GPU regression tests (identity + accumulation) (D-027)
-   - **MV-3**: beyond-Milkdrop extensions — richer per-stem metadata, next-beat predictor, YIN vocal pitch (D-028, ~2-3 weeks, only after MV-2 checkpoint)
-2. **Phase 4 — Orchestrator** — scored preset selection, transition policy, session planning, golden-session tests (blocked on Phase MV proving preset-level musicality is achievable).
+1. **Phase 4 — Orchestrator** — scored preset selection, transition policy, session planning, golden-session tests (Phase MV complete — all sub-phases MV-0 through MV-3 landed).
 
 See `docs/ENGINEERING_PLAN.md` for the full forward plan with done-when criteria and verification commands. See `docs/MILKDROP_ARCHITECTURE.md` for the research that scopes Phase MV.
 

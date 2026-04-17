@@ -21,6 +21,8 @@ public final class MIRPipeline: @unchecked Sendable {
     public let chromaExtractor: ChromaExtractor
     public let beatDetector: BeatDetector
     public let structuralAnalyzer: StructuralAnalyzer
+    /// MV-3b: Beat phase predictor — exposes beatPhase01 and beatsUntilNext to shaders.
+    public let beatPredictor: BeatPredictor
 
     // MARK: - CPU-Side Properties
 
@@ -103,6 +105,7 @@ public final class MIRPipeline: @unchecked Sendable {
             binCount: binCount, sampleRate: sampleRate, fftSize: fftSize
         )
         self.structuralAnalyzer = StructuralAnalyzer()
+        self.beatPredictor = BeatPredictor()
         self.nyquist = sampleRate / 2.0
 
         logger.info("MIRPipeline created: \(binCount) bins, \(sampleRate) Hz")
@@ -253,6 +256,9 @@ public final class MIRPipeline: @unchecked Sendable {
     /// from the AGC-normalized energy fields. Formula: xRel = (x - 0.5) * 2.0,
     /// xDev = max(0, xRel). These are stable across mix-density changes because
     /// the AGC numerator and denominator track together (D-026).
+    ///
+    /// MV-3b: beatPhase01 and beatsUntilNext are populated from BeatPredictor
+    /// each frame, enabling anticipatory motion in preset shaders (D-028).
     private func buildFeatureVector(_ ctx: ProcessContext) -> FeatureVector {
         var fv = FeatureVector(
             bass: ctx.energy.bass,
@@ -288,6 +294,16 @@ public final class MIRPipeline: @unchecked Sendable {
         fv.bassAttRel = (fv.bassAtt - 0.5) * 2.0
         fv.midAttRel  = (fv.midAtt  - 0.5) * 2.0
         fv.trebAttRel = (fv.trebleAtt - 0.5) * 2.0
+        // MV-3b: Beat phase prediction.
+        let beatPhase = beatPredictor.update(
+            beatBass: ctx.beat.beatBass,
+            beatMid: ctx.beat.beatMid,
+            beatComposite: ctx.beat.beatComposite,
+            time: ctx.time,
+            deltaTime: ctx.deltaTime
+        )
+        fv.beatPhase01    = beatPhase.beatPhase01
+        fv.beatsUntilNext = beatPhase.beatsUntilNext
         return fv
     }
 
@@ -361,8 +377,8 @@ public final class MIRPipeline: @unchecked Sendable {
         bandEnergyProcessor.reset()
         beatDetector.reset()
         chromaExtractor.resetAccumulators()
-
         structuralAnalyzer.reset()
+        beatPredictor.reset()
 
         lock.lock()
         fluxRunningMax = 1e-6
