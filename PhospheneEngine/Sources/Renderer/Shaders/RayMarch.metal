@@ -204,14 +204,26 @@ fragment float4 raymarch_lighting_fragment(
     float depthNorm = g0.r;
 
     // Miss / sky pixel: depth == 1.0.
-    // Tint by scene.lightColor.rgb so the sky picks up the preset's palette
-    // and valence-driven warm/cool shift — matches the fog-colour treatment
-    // below (line: fogColor = rm_skyColor(rayDir) * scene.lightColor.rgb)
-    // and prevents a "neutral gray backdrop" when valence warms the direct
-    // light but the sky stays raw blue-gray.
+    //
+    // Apply scene.lightColor.rgb tint only when fog is DISABLED.
+    // Presets with fog (Glass Brutalist, Kinetic Sculpture) already
+    // receive the same tint via the fog-colour path below
+    // (fogColor = rm_skyColor(rayDir) * scene.lightColor.rgb), so
+    // applying it here too collapses the cool-sky/warm-light contrast
+    // that makes those scenes read as outdoor architecture.
+    //
+    // Presets with fog disabled (VL ships scene_fog: 0) need this path
+    // to avoid the "neutral gray backdrop" failure — sky pixels that
+    // ignore lightColor stay raw blue-gray even when valence warms
+    // the direct light.
+    //
+    // Sentinel: the "no-fog" fallback in PresetDescriptor+SceneUniforms
+    // returns fogFar = 1_000_000.  Any realistic fogFar is < 500.
     if (depthNorm >= 0.999) {
         float3 rd = rm_rayDir(uv, scene);
-        return float4(rm_skyColor(rd) * scene.lightColor.rgb, 1.0);
+        bool fogDisabled = scene.sceneParamsB.y > 1.0e5;
+        float3 sky = rm_skyColor(rd);
+        return float4(fogDisabled ? sky * scene.lightColor.rgb : sky, 1.0);
     }
 
     // ── Reconstruct surface data ───────────────────────────────────
