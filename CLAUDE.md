@@ -294,7 +294,7 @@ texture(11) = BRDF LUT (512² .rg16Float)
 ```
 buffer(0) = FFT magnitudes (512 floats)
 buffer(1) = waveform samples (1024 floats)
-buffer(2) = FeatureVector (128 bytes, 32 floats)
+buffer(2) = FeatureVector (192 bytes, 48 floats)
 buffer(3) = StemFeatures (256 bytes, 64 floats)
 buffer(4–7) = future use
 ```

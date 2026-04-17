@@ -45,7 +45,7 @@ extension RenderPipeline {
         activePipeline: MTLRenderPipelineState,
         chain: PostProcessChain
     ) {
-        guard let drawable = view.currentDrawable else { return }
+        guard let drawable = MainActor.assumeIsolated({ view.currentDrawable }) else { return }
 
         // Lazy-allocate the chain's textures if drawableSizeWillChange hasn't fired.
         let size = view.drawableSize

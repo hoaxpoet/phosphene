@@ -121,6 +121,15 @@ extension RenderPipeline {
         mvWarpLock.withLock { mvWarpState = nil }
     }
 
+    /// Set the decay value used by the mv_warp compose pass.
+    ///
+    /// Must match the `pf.decay` returned by the preset's `mvWarpPerFrame` shader function.
+    /// Call this from `applyPreset` alongside `setupMVWarp` so the compose blend equation
+    /// `Σ(1−d)×d^n = 1` holds and the scene converges to 1× brightness at steady state.
+    public func setMVWarpDecay(_ decay: Float) {
+        mvWarpLock.withLock { mvWarpDecay = decay }
+    }
+
     // MARK: Texture Helper
 
     private func makeWarpTexture(width: Int, height: Int, format: MTLPixelFormat) -> MTLTexture? {
@@ -222,7 +231,7 @@ extension RenderPipeline {
         // the compose alpha blend correct regardless since mvWarp_compose_fragment
         // reads its own decay from buffer(0).
         // We pass current RenderPipeline feedback decay (or default) to compose.
-        currentDecay = feedbackLock.withLock { currentFeedbackParams?.decay ?? 0.96 }
+        currentDecay = mvWarpLock.withLock { mvWarpDecay }
 
         // ── Pass 2: Compose pass ──────────────────────────────────────────────
         // Fullscreen quad. mvWarp_compose_fragment alpha-blends the scene onto
@@ -244,12 +253,12 @@ extension RenderPipeline {
         }
 
         // ── Pass 3: Blit to drawable ─────────────────────────────────────────
-        guard let drawable = view.currentDrawable,
-              let descriptor = view.currentRenderPassDescriptor else {
-            return
+        let (drawable, descriptor) = MainActor.assumeIsolated {
+            (view.currentDrawable, view.currentRenderPassDescriptor)
         }
-        descriptor.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
-        descriptor.colorAttachments[0].loadAction  = .clear
+        guard let drawable, let descriptor else { return }
+        // .dontCare is correct — the full-screen triangle overwrites every pixel.
+        descriptor.colorAttachments[0].loadAction  = .dontCare
         descriptor.colorAttachments[0].storeAction = .store
 
         if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: descriptor) {

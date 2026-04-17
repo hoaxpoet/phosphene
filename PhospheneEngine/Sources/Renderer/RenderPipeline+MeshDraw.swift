@@ -41,10 +41,10 @@ extension RenderPipeline {
         stemFeatures: StemFeatures,
         meshGenerator: MeshGenerator
     ) {
-        guard let descriptor = view.currentRenderPassDescriptor,
-              let drawable   = view.currentDrawable else {
-            return
+        let (descriptor, drawable) = MainActor.assumeIsolated {
+            (view.currentRenderPassDescriptor, view.currentDrawable)
         }
+        guard let descriptor, let drawable else { return }
 
         descriptor.colorAttachments[0].clearColor  = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
         descriptor.colorAttachments[0].loadAction  = .clear
