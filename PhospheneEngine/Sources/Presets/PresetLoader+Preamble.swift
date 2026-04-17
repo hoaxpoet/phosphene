@@ -27,7 +27,7 @@ extension PresetLoader {
             float beat_value, _pad0;
         };
 
-        // Matches Swift FeatureVector layout (32 floats = 128 bytes).
+        // Matches Swift FeatureVector layout (48 floats = 192 bytes, MV-1).
         struct FeatureVector {
             float bass, mid, treble;
             float bass_att, mid_att, treb_att;
@@ -38,7 +38,17 @@ extension PresetLoader {
             float time, delta_time;
             float _pad0, aspect_ratio;
             float accumulated_audio_time;
-            float _pad1, _pad2, _pad3, _pad4, _pad5, _pad6, _pad7;
+            // MV-1 deviation primitives (floats 26–34, D-026).
+            // xRel = (x - 0.5) * 2.0 — centered at 0, ~±0.5 typical range.
+            // xDev = max(0, xRel)     — positive deviation only (loud moments).
+            // Use Rel for continuous drivers; Dev for accent/threshold drivers.
+            float bass_rel, bass_dev;
+            float mid_rel,  mid_dev;
+            float treb_rel, treb_dev;
+            float bass_att_rel, mid_att_rel, treb_att_rel;
+            // Padding to 192 bytes (floats 35–48).
+            float _pad1, _pad2, _pad3, _pad4, _pad5, _pad6, _pad7,
+                  _pad8, _pad9, _pad10, _pad11, _pad12, _pad13, _pad14;
         };
 
         struct VertexOut {
@@ -56,19 +66,30 @@ extension PresetLoader {
         }
 
         // Per-stem audio features, bound at buffer(3). All zero during warmup.
-        // Matches Swift StemFeatures layout (16 floats = 64 bytes).
+        // Matches Swift StemFeatures layout (32 floats = 128 bytes, MV-1).
         struct StemFeatures {
-            float vocals_energy;   float vocals_band0;
-            float vocals_band1;    float vocals_beat;
+            float vocals_energy;      float vocals_band0;
+            float vocals_band1;       float vocals_beat;
 
-            float drums_energy;    float drums_band0;
-            float drums_band1;     float drums_beat;
+            float drums_energy;       float drums_band0;
+            float drums_band1;        float drums_beat;
 
-            float bass_energy;     float bass_band0;
-            float bass_band1;      float bass_beat;
+            float bass_energy;        float bass_band0;
+            float bass_band1;         float bass_beat;
 
-            float other_energy;    float other_band0;
-            float other_band1;     float other_beat;
+            float other_energy;       float other_band0;
+            float other_band1;        float other_beat;
+
+            // MV-1 deviation primitives (floats 17–24, D-026).
+            // xEnergyRel = (xEnergy - EMA) * 2.0 — centered at 0.
+            // xEnergyDev = max(0, xEnergyRel)     — positive deviation only.
+            float vocals_energy_rel;  float vocals_energy_dev;
+            float drums_energy_rel;   float drums_energy_dev;
+            float bass_energy_rel;    float bass_energy_dev;
+            float other_energy_rel;   float other_energy_dev;
+
+            // Padding to 128 bytes (floats 25–32).
+            float _pad1, _pad2, _pad3, _pad4, _pad5, _pad6, _pad7, _pad8;
         };
 
         // ── Noise texture samplers (Increment 3.13) ───────────────────────────

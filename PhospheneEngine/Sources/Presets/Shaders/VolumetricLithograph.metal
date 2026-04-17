@@ -7,6 +7,38 @@
 // flare the peak palette into HDR bloom; the ridge-line itself reads as
 // a thin emissive seam where the cut goes.
 //
+// MV-1 (D-026): All FeatureVector fallback drivers converted from
+// absolute-threshold form to deviation primitives so they remain
+// genre-stable across AGC denominator shifts.  Changes:
+//
+//   melodyFromFV:  f.mid_att * 15.0  → 0.5 + f.mid_att_rel
+//     Before: steady-state ≈ 7.5 (f.mid_att ≈ 0.5 × 15), range [0, 15].
+//             Absolute value shifts with mix density — a quiet section of a
+//             loud track and a loud section of a quiet track give the same
+//             f.mid_att ≈ 0.5, but the acoustic energy differs by 10 dB.
+//     After: steady-state = 0.5 (centered), range [0, 1.5] after clamp.
+//            mid_att_rel = (mid_att − 0.5) × 2 → 0 when at AGC average,
+//            positive when above average, negative below.  Mix-stable.
+//
+//   bassFromFV:    f.bass_att * 1.2  → 0.3 + f.bass_att_rel * 0.7
+//     Before: steady-state ≈ 0.6.  Shifts with AGC denominator.
+//     After:  steady-state = 0.3 (a gentle baseline), peaks at ~1.0 on
+//             loud bass, drops to 0 in sparse sections.  Deviation-driven.
+//
+//   melodyHueFromFV: f.mid_att * 5.0 → 0.5 + f.mid_att_rel * 0.5
+//     Before: steady-state ≈ 2.5.  Hue phase accumulates toward a fixed
+//             region of the palette regardless of relative melodic intensity.
+//     After:  steady-state = 0.5.  Above-average melody pushes hue phase
+//             up to 1.0; below-average pulls toward 0.  Palette rotation
+//             reflects actual melodic lift, not absolute AGC level.
+//
+//   otherFromFV: sqrt(max(f.mid, 0)) * 1.6 → f.mid_dev * 1.5
+//     Before: sqrt(0.5) * 1.6 ≈ 1.13 → clamped 1.0.  Peak roughness was
+//             permanently polished even in sparse sections.
+//     After:  mid_dev = max(0, mid_rel).  Zero when mid is at AGC average;
+//             positive only on above-average melodic energy.  Roughness
+//             polish now fires on genuinely active mid moments, not always.
+//
 // v4.1: StemFeatures now plumbed through the preamble into sceneSDF
 // and sceneMaterial (engine-level change: per-preset stem routing à la
 // Milkdrop is the long-term aim).  VL upgrades from band-proxy drivers
@@ -229,11 +261,11 @@ float sceneSDF(float3 p,
 
     float melodyFromStems = clamp((stems.other_energy + stems.vocals_energy) * 1.6f,
                                    0.0f, 1.5f);
-    float melodyFromFV    = clamp(f.mid_att * 15.0f, 0.0f, 1.5f);
+    float melodyFromFV    = clamp(0.5f + f.mid_att_rel, 0.0f, 1.5f);  // MV-1: deviation, not absolute
     float melody          = mix(melodyFromFV, melodyFromStems, stemMix);
 
     float bassFromStems = clamp(stems.bass_energy * 2.0f, 0.0f, 1.0f);
-    float bassFromFV    = clamp(f.bass_att * 1.2f, 0.0f, 1.0f);
+    float bassFromFV    = clamp(0.3f + f.bass_att_rel * 0.7f, 0.0f, 1.0f);  // MV-1: deviation, not absolute
     float bass          = mix(bassFromFV, bassFromStems, stemMix);
 
     float audioAmp = clamp(melody * 0.75f + bass * 0.35f, 0.0f, 2.0f);
@@ -274,7 +306,7 @@ void sceneMaterial(float3 p,
     // v4.1: "other" polish now prefers stems.other_energy directly,
     // with D-019 fallback to the pre-existing sqrt(f.mid) × 1.6 proxy.
     float otherFromStems = clamp(stems.other_energy * 3.0f, 0.0f, 1.0f);
-    float otherFromFV    = clamp(sqrt(max(f.mid, 0.0f)) * 1.6f, 0.0f, 1.0f);
+    float otherFromFV    = clamp(f.mid_dev * 1.5f, 0.0f, 1.0f);  // MV-1: deviation, not absolute
     float otherFB        = mix(otherFromFV, otherFromStems, accentStemMix);
 
     // ── Three-stratum classification ────────────────────────────────────
@@ -300,7 +332,7 @@ void sceneMaterial(float3 p,
     //                                    directly with FV fallback)
     //       + valence × 0.25           (per-track mood hue identity)
     float melodyHueFromStems = stems.vocals_energy + stems.other_energy;
-    float melodyHueFromFV    = f.mid_att * 5.0f;
+    float melodyHueFromFV    = 0.5f + f.mid_att_rel * 0.5f;  // MV-1: deviation, not absolute
     float melodyHue          = mix(melodyHueFromFV, melodyHueFromStems, accentStemMix);
     float palettePhase = n * 0.9f
                        + audioPhase * 0.08f

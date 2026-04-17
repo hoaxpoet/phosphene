@@ -196,17 +196,17 @@ import Metal
 // MARK: - FeatureVector Layout Consistency
 
 @Test func featureVectorLayoutMatchesShaderExpectation() throws {
-    // The shader preamble (in PresetLoader) defines FeatureVector as 32 floats = 128 bytes
-    // (Increment 3.15: added accumulatedAudioTime + 7 padding floats).
+    // The shader preamble (in PresetLoader) defines FeatureVector as 48 floats = 192 bytes
+    // (MV-1: added 9 deviation primitives + 14 padding floats).
     // This test verifies the Swift FeatureVector matches that layout exactly.
-    #expect(MemoryLayout<FeatureVector>.size == 128,
-            "FeatureVector must be 128 bytes (32 floats), got \(MemoryLayout<FeatureVector>.size)")
+    #expect(MemoryLayout<FeatureVector>.size == 192,
+            "FeatureVector must be 192 bytes (48 floats), got \(MemoryLayout<FeatureVector>.size)")
 
     // Verify specific field offsets by writing known values and reading as float array.
     guard let device = MTLCreateSystemDefaultDevice() else {
         throw IntegrationTestError.noMetalDevice
     }
-    guard let buffer = device.makeBuffer(length: 128, options: .storageModeShared) else {
+    guard let buffer = device.makeBuffer(length: 192, options: .storageModeShared) else {
         throw IntegrationTestError.metalSetupFailed
     }
 
@@ -215,8 +215,8 @@ import Metal
         time: 42.0, deltaTime: 0.016
     )
 
-    memcpy(buffer.contents(), &features, 128)
-    let floats = buffer.contents().bindMemory(to: Float.self, capacity: 32)
+    memcpy(buffer.contents(), &features, 192)
+    let floats = buffer.contents().bindMemory(to: Float.self, capacity: 48)
 
     #expect(floats[0] == 0.8, "bass should be at offset 0")
     #expect(floats[1] == 0.5, "mid should be at offset 1")

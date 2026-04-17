@@ -92,12 +92,12 @@ import Metal
     #expect(!notEqual, "AudioFrames with different timestamps should not be byte-equal")
 }
 
-@Test func test_stemFeatures_memoryLayout_is64Bytes() {
-    // StemFeatures: 16 floats × 4 bytes = 64 bytes.
-    #expect(MemoryLayout<StemFeatures>.size == 64,
-            "StemFeatures must be 64 bytes (16 × 4), got \(MemoryLayout<StemFeatures>.size)")
-    #expect(MemoryLayout<StemFeatures>.stride == 64,
-            "StemFeatures stride must be 64 bytes, got \(MemoryLayout<StemFeatures>.stride)")
+@Test func test_stemFeatures_memoryLayout_is128Bytes() {
+    // StemFeatures: 32 floats × 4 bytes = 128 bytes (MV-1: +8 deviation fields + 8 padding).
+    #expect(MemoryLayout<StemFeatures>.size == 128,
+            "StemFeatures must be 128 bytes (32 × 4), got \(MemoryLayout<StemFeatures>.size)")
+    #expect(MemoryLayout<StemFeatures>.stride == 128,
+            "StemFeatures stride must be 128 bytes, got \(MemoryLayout<StemFeatures>.stride)")
 }
 
 @Test func test_stemFeatures_simdAligned() {
@@ -105,8 +105,8 @@ import Metal
     #expect(MemoryLayout<StemFeatures>.stride % 16 == 0,
             "StemFeatures stride must be 16-byte aligned for GPU, got stride \(MemoryLayout<StemFeatures>.stride)")
 
-    // Verify the matching MSL struct size expectation (16 floats × 4 bytes).
-    let expectedMSLSize = 16 * MemoryLayout<Float>.size
+    // Verify the matching MSL struct size expectation (32 floats × 4 bytes, MV-1).
+    let expectedMSLSize = 32 * MemoryLayout<Float>.size
     #expect(MemoryLayout<StemFeatures>.size == expectedMSLSize,
             "Swift StemFeatures size (\(MemoryLayout<StemFeatures>.size)) must match MSL size (\(expectedMSLSize))")
 
@@ -118,15 +118,15 @@ import Metal
 }
 
 @Test func test_featureVector_simdSize_matchesGPUExpectation() {
-    // FeatureVector: 32 floats = 128 bytes (Increment 3.15: added accumulatedAudioTime + 7 pad).
+    // FeatureVector: 48 floats = 192 bytes (MV-1: added 9 deviation fields + 14 pad).
     // Stride must be 16-byte aligned for GPU uniforms.
-    #expect(MemoryLayout<FeatureVector>.size == 128,
-            "FeatureVector must be 128 bytes (32 × 4), got \(MemoryLayout<FeatureVector>.size)")
+    #expect(MemoryLayout<FeatureVector>.size == 192,
+            "FeatureVector must be 192 bytes (48 × 4), got \(MemoryLayout<FeatureVector>.size)")
     #expect(MemoryLayout<FeatureVector>.stride % 16 == 0,
             "FeatureVector stride must be 16-byte aligned for GPU, got stride \(MemoryLayout<FeatureVector>.stride)")
 
-    // Verify the matching MSL struct size expectation (32 floats × 4 bytes).
-    let expectedMSLSize = 32 * MemoryLayout<Float>.size
+    // Verify the matching MSL struct size expectation (48 floats × 4 bytes, MV-1).
+    let expectedMSLSize = 48 * MemoryLayout<Float>.size
     #expect(MemoryLayout<FeatureVector>.size == expectedMSLSize,
             "Swift FeatureVector size (\(MemoryLayout<FeatureVector>.size)) must match MSL size (\(expectedMSLSize))")
 }

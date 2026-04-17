@@ -40,9 +40,9 @@ import Foundation
 // MARK: - SIMD Alignment
 
 @Test func mirPipeline_featureVector_simdAligned() {
-    // FeatureVector is 128 bytes (32 × 4) after Increment 3.15, 16-byte aligned.
-    #expect(MemoryLayout<FeatureVector>.size == 128,
-            "FeatureVector should be 128 bytes, got \(MemoryLayout<FeatureVector>.size)")
+    // FeatureVector is 192 bytes (48 × 4) after MV-1, 16-byte aligned.
+    #expect(MemoryLayout<FeatureVector>.size == 192,
+            "FeatureVector should be 192 bytes, got \(MemoryLayout<FeatureVector>.size)")
     #expect(MemoryLayout<FeatureVector>.alignment <= 16,
             "FeatureVector alignment (\(MemoryLayout<FeatureVector>.alignment)) should be ≤ 16 for GPU upload")
 }

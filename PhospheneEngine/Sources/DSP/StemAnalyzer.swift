@@ -50,6 +50,17 @@ public final class StemAnalyzer: StemAnalyzing, @unchecked Sendable {
     /// Beat detector on the drums stem only.
     private let drumsBeatDetector: BeatDetector
 
+    // MARK: - MV-1: Per-Stem EMA Running Averages
+
+    /// Per-stem running average for deviation primitive computation (D-026).
+    /// Order: [vocals, drums, bass, other].
+    /// Decay ≈ 0.995 per frame (~2.1s time constant at 94 Hz).
+    /// Formula: runningAvg = runningAvg * decay + energy * (1 - decay)
+    /// Then: energyRel = (energy - runningAvg) * 2.0
+    ///       energyDev = max(0, energyRel)
+    private var stemRunningAvg: [Float] = [0, 0, 0, 0]
+    private static let stemEMADecay: Float = 0.995
+
     // MARK: - vDSP State (reused per call, no per-frame alloc)
 
     private let fftSetup: FFTSetup
@@ -109,40 +120,69 @@ public final class StemAnalyzer: StemAnalyzing, @unchecked Sendable {
         let dt = fps > 0 ? 1.0 / fps : 0.016
 
         // Analyze each stem.
-        let vocalsEnergy = analyzeStem(stemWaveforms[0], processor: energyProcessors[0], fps: fps)
-        let drumsEnergy = analyzeStem(stemWaveforms[1], processor: energyProcessors[1], fps: fps)
-        let bassEnergy = analyzeStem(stemWaveforms[2], processor: energyProcessors[2], fps: fps)
-        let otherEnergy = analyzeStem(stemWaveforms[3], processor: energyProcessors[3], fps: fps)
+        let vocalsResult = analyzeStem(stemWaveforms[0], processor: energyProcessors[0], fps: fps)
+        let drumsResult  = analyzeStem(stemWaveforms[1], processor: energyProcessors[1], fps: fps)
+        let bassResult   = analyzeStem(stemWaveforms[2], processor: energyProcessors[2], fps: fps)
+        let otherResult  = analyzeStem(stemWaveforms[3], processor: energyProcessors[3], fps: fps)
 
         // Beat detection on drums stem only.
         let drumsMags = computeMagnitudes(from: stemWaveforms[1])
         let beatResult = drumsBeatDetector.process(magnitudes: drumsMags, fps: fps, deltaTime: dt)
 
-        return StemFeatures(
+        // Compute total energy per stem (scalar used for StemFeatures.xEnergy).
+        let vocalsE = vocalsResult.bass + vocalsResult.mid + vocalsResult.treble
+        let drumsE  = drumsResult.bass  + drumsResult.mid  + drumsResult.treble
+        let bassE   = bassResult.bass   + bassResult.mid   + bassResult.treble
+        let otherE  = otherResult.bass  + otherResult.mid  + otherResult.treble
+
+        // MV-1: Update per-stem EMA running averages and derive deviation primitives.
+        // runningAvg decays at ~0.995/frame so it tracks the recent mean of stem energy.
+        // energyRel = (energy - runningAvg) * 2.0  — centered at 0
+        // energyDev = max(0, energyRel)             — positive deviation only (D-026)
+        let decay = Self.stemEMADecay
+        stemRunningAvg[0] = stemRunningAvg[0] * decay + vocalsE * (1 - decay)
+        stemRunningAvg[1] = stemRunningAvg[1] * decay + drumsE  * (1 - decay)
+        stemRunningAvg[2] = stemRunningAvg[2] * decay + bassE   * (1 - decay)
+        stemRunningAvg[3] = stemRunningAvg[3] * decay + otherE  * (1 - decay)
+
+        let vRel = (vocalsE - stemRunningAvg[0]) * 2.0
+        let dRel = (drumsE  - stemRunningAvg[1]) * 2.0
+        let bRel = (bassE   - stemRunningAvg[2]) * 2.0
+        let oRel = (otherE  - stemRunningAvg[3]) * 2.0
+
+        var features = StemFeatures(
             // Vocals: energy, presence (midHigh 1-4kHz), air (highMid 4-8kHz)
-            vocalsEnergy: vocalsEnergy.bass + vocalsEnergy.mid + vocalsEnergy.treble,
-            vocalsBand0: vocalsEnergy.midHigh,
-            vocalsBand1: vocalsEnergy.highMid,
+            vocalsEnergy: vocalsE,
+            vocalsBand0: vocalsResult.midHigh,
+            vocalsBand1: vocalsResult.highMid,
             vocalsBeat: 0,
 
             // Drums: energy, sub bass (kick), mid high (snare crack)
-            drumsEnergy: drumsEnergy.bass + drumsEnergy.mid + drumsEnergy.treble,
-            drumsBand0: drumsEnergy.subBass,
-            drumsBand1: drumsEnergy.midHigh,
+            drumsEnergy: drumsE,
+            drumsBand0: drumsResult.subBass,
+            drumsBand1: drumsResult.midHigh,
             drumsBeat: beatResult.beatBass,
 
             // Bass: energy, sub bass, low bass
-            bassEnergy: bassEnergy.bass + bassEnergy.mid + bassEnergy.treble,
-            bassBand0: bassEnergy.subBass,
-            bassBand1: bassEnergy.lowBass,
+            bassEnergy: bassE,
+            bassBand0: bassResult.subBass,
+            bassBand1: bassResult.lowBass,
             bassBeat: 0,
 
             // Other: energy, low mid, high mid
-            otherEnergy: otherEnergy.bass + otherEnergy.mid + otherEnergy.treble,
-            otherBand0: otherEnergy.lowMid,
-            otherBand1: otherEnergy.highMid,
+            otherEnergy: otherE,
+            otherBand0: otherResult.lowMid,
+            otherBand1: otherResult.highMid,
             otherBeat: 0
         )
+
+        // MV-1 deviation fields (not in init parameters — set directly).
+        features.vocalsEnergyRel = vRel;  features.vocalsEnergyDev = max(0, vRel)
+        features.drumsEnergyRel  = dRel;  features.drumsEnergyDev  = max(0, dRel)
+        features.bassEnergyRel   = bRel;  features.bassEnergyDev   = max(0, bRel)
+        features.otherEnergyRel  = oRel;  features.otherEnergyDev  = max(0, oRel)
+
+        return features
     }
 
     public func reset() {
@@ -152,6 +192,8 @@ public final class StemAnalyzer: StemAnalyzing, @unchecked Sendable {
             processor.reset()
         }
         drumsBeatDetector.reset()
+        // Reset EMA state so deviation primitives don't carry over across tracks.
+        stemRunningAvg = [0, 0, 0, 0]
         logger.info("StemAnalyzer reset")
     }
 

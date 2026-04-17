@@ -110,7 +110,7 @@ PhospheneEngine/
     Shaders/GlassBrutalist.metal → Brutalist corridor — static architecture; only the glass-fin X-position deforms with bass (Option A design, see DECISIONS D-020). Light/fog/colour modulated in shared Swift path.
     Shaders/KineticSculpture.metal → Interlocking lattice of Brushed Aluminum + Frosted Glass + Liquid Mercury, abstract ray march. FOV in degrees (post-fix; was radians, see commit history).
     Shaders/TestSphere.metal → Minimal pipeline-verification SDF (sphere + floor); used for end-to-end ray-march compile/render test.
-    Shaders/VolumetricLithograph.metal → Psychedelic linocut terrain (3.5.4 / v4). fbm3D heightfield swept by `s.sceneParamsA.x` at slow rate 0.015; melody-primary blend `0.75 × (f.mid_att × 15) + 0.35 × (f.bass_att × 1.2)` — works for both percussive (Love Rehab) and melodic (Tea Lights) music. Forward camera dolly at 1.8 u/s (configured in VisualizerEngine+Presets.swift). Three strata with narrow linocut coverage (~15% peaks): palette-tinted near-black valleys, razor-thin emissive ridge-line seam, polished-metal peaks. Peaks use IQ cosine `palette()` driven by terrain noise + audio time + `f.mid_att × 3` (melody-modulated hue) + valence. `smoothstep(0.35, 0.70, f.spectral_flux)` drives palette brightness flare (× 1.8 peak, × 2.4 ridge) into HDR bloom + 0.02 coverage expansion — genre-agnostic accent that fires on kick drums, guitar strums, vocal onsets, piano chord changes alike. `sqrt(f.mid) × 1.6` polishes peak roughness. `scene_fog: 0` truly disables fog. Miss/sky pixels tinted by `scene.lightColor.rgb`. SSGI omitted.
+    Shaders/VolumetricLithograph.metal → Psychedelic linocut terrain (MV-1 / v4.1). fbm3D heightfield swept by `s.sceneParamsA.x` at slow rate 0.015; melody-primary blend `0.75 × (0.5 + f.mid_att_rel) + 0.35 × (0.3 + f.bass_att_rel × 0.7)` — deviation-driven, genre-stable across AGC shifts (MV-1 / D-026). Stem-accurate drivers blend in via `smoothstep(0.02, 0.06, totalStemEnergy)` warmup (D-019). Forward camera dolly at 1.8 u/s (configured in VisualizerEngine+Presets.swift). Three strata with narrow linocut coverage (~15% peaks): palette-tinted near-black valleys, razor-thin emissive ridge-line seam, polished-metal peaks. Peaks use IQ cosine `palette()` driven by terrain noise + audio time + `0.5 + f.mid_att_rel × 0.5` (melody-modulated hue) + valence. Accent/strobe from `smoothstep(0.30/0.70, stems.drums_beat)` with FV fallback `smoothstep(0.35, 0.70, f.spectral_flux)`. `f.mid_dev × 1.5` polishes peak roughness. `scene_fog: 0` truly disables fog. Miss/sky pixels tinted by `scene.lightColor.rgb`. SSGI omitted.
   Orchestrator/             → AI VJ: preset selection, transitions, session planning (stub — see ENGINEERING_PLAN.md Phase 4)
   Session/
     SessionManager          → Lifecycle state machine (idle→connecting→preparing→ready→playing→ended), @MainActor ObservableObject; degrades gracefully on connector/preparation failure
@@ -185,7 +185,12 @@ These constants were validated across genres. Do not re-tune from scratch.
 
 Milkdrop-style average-tracking. Output = `raw / runningAverage * 0.5`. Two-speed warmup: fast (0.95 rate, ~1s) then moderate (0.992, ~2s settling). 6-band AGC normalizes against total energy (not per-band) to preserve relative differences.
 
-**Authoring implication (D-026):** AGC-normalized outputs like `f.bass` are **centered around 0.5**, not raw amplitudes. The kick that reads `0.35` in a sparse section and `0.22` in a busy one is equally loud acoustically — only the running-average divisor moved. Preset shaders must drive visuals from **deviation primitives** (`f.bassRel = (f.bass - 0.5) * 2.0`, `f.bassDev = max(0, f.bassRel)`, added in MV-1) rather than absolute thresholds. Patterns like `smoothstep(0.22, 0.32, f.bass)` are an anti-pattern: they fail on track changes and on section changes within a single track. See `docs/MILKDROP_ARCHITECTURE.md` for the research establishing this and `docs/DECISIONS.md` D-026 for the rule.
+**Authoring implication (D-026):** AGC-normalized outputs like `f.bass` are **centered around 0.5**, not raw amplitudes. The kick that reads `0.35` in a sparse section and `0.22` in a busy one is equally loud acoustically — only the running-average divisor moved. Preset shaders must drive visuals from **deviation primitives** added in MV-1:
+
+- **xRel** = `(x - 0.5) * 2.0` — centered at 0, typical range ±0.5. Use for continuous motion drivers: `zoom = base + 0.1 * f.bass_att_rel`.
+- **xDev** = `max(0, xRel)` — positive-only, zero at or below AGC average. Use for accent/threshold drivers: `smoothstep(0.0, 0.3, f.bass_dev)`.
+
+Available fields: `f.bass_rel/dev`, `f.mid_rel/dev`, `f.treb_rel/dev`, `f.bass_att_rel`, `f.mid_att_rel`, `f.treb_att_rel` (FeatureVector); `stems.vocals_energy_rel/dev`, `stems.drums_energy_rel/dev`, `stems.bass_energy_rel/dev`, `stems.other_energy_rel/dev` (StemFeatures). Patterns like `smoothstep(0.22, 0.32, f.bass)` are an anti-pattern: they fail on track changes and on section changes within a single track. See `docs/MILKDROP_ARCHITECTURE.md` for the research establishing this and `docs/DECISIONS.md` D-026 for the rule.
 
 ### Smoothing
 
@@ -222,14 +227,21 @@ Bin-count normalized: weight = `1/binsInPitchClass`. Skip bins below 65 Hz. At 4
 ## Key Types (Shared Module)
 
 ```swift
-struct FeatureVector          // 32 floats = 128 bytes (SIMD-aligned). GPU buffer(2).
+struct FeatureVector          // 48 floats = 192 bytes (SIMD-aligned). GPU buffer(2). MV-1.
                               // Floats 1–24: energy bands, smoothed bands, beat pulses, spectral features,
                               //   mood valence/arousal, structural prediction fields, camera uniforms.
-                              // Float 25: accumulatedAudioTime. Floats 26–32: padding.
+                              // Float 25: accumulatedAudioTime.
+                              // Floats 26–34: MV-1 deviation primitives (D-026):
+                              //   bassRel, bassDev, midRel, midDev, trebRel, trebDev,
+                              //   bassAttRel, midAttRel, trebAttRel.
+                              // Floats 35–48: padding.
 struct FeedbackParams         // 32 bytes (8 floats): decay, baseZoom, baseRot, beatZoom, beatRot,
                               //   beatSensitivity, beatValue, padding.
-struct StemFeatures           // 64 bytes (16 floats): 4 per stem (vocals/drums/bass/other):
-                              //   energy, band0, band1, beat. GPU buffer(3).
+struct StemFeatures           // 128 bytes (32 floats). GPU buffer(3). MV-1.
+                              //   Floats 1–16: 4 per stem (vocals/drums/bass/other): energy, band0, band1, beat.
+                              //   Floats 17–24: MV-1 deviation primitives: vocalsEnergyRel/Dev,
+                              //     drumsEnergyRel/Dev, bassEnergyRel/Dev, otherEnergyRel/Dev.
+                              //   Floats 25–32: padding.
 struct AudioFrame             // PCM samples, timestamp, sample rate
 struct FFTResult              // 512 magnitude bins, phase bins, dominant frequency
 struct BandEnergy             // 3-band + 6-band, instant + attenuated
@@ -454,12 +466,13 @@ No CoreML dependency. All ML uses MPSGraph (GPU) or Accelerate (CPU).
 - **Mood injection** — `RenderPipeline.setMood` + valence/arousal preservation in `setFeatures` (D-024).
 - **`SessionRecorder`** — continuous diagnostic capture (video + features + stems + WAVs + log) per app launch (D-025). Now includes writer relock on drawable resize (increment 3.5.4.8).
 - **Per-frame stem analysis** — `StemAnalyzer` runs on `analysisQueue` at audio-callback rate (~94 Hz) on a sliding window through the latest separated chunk, replacing the prior 5s piecewise-constant behaviour (increment 3.5.4.9).
+- **MV-1: Milkdrop-correct deviation primitives** — `FeatureVector` expanded 32→48 floats (128→192 bytes), `StemFeatures` expanded 16→32 floats (64→128 bytes). Nine new FV deviation fields (`bassRel/Dev`, `midRel/Dev`, `trebRel/Dev`, `bassAttRel`, `midAttRel`, `trebAttRel`) derived in `MIRPipeline.buildFeatureVector()` as `xRel = (x - 0.5) * 2.0`, `xDev = max(0, xRel)`. Eight new StemFeatures deviation fields (`{vocals,drums,bass,other}EnergyRel/Dev`) derived in `StemAnalyzer.analyze()` via per-stem EMA (decay 0.995). Metal preamble structs in `PresetLoader+Preamble.swift` updated to match. `VolumetricLithograph.metal` updated as reference implementation: all four FeatureVector fallback drivers converted from absolute-threshold to deviation form. `RelDevTests.swift` (4 contract tests) gates the invariants. (D-026)
 
 The next ordered increments are:
 
 1. **Phase MV — Musicality** — informed by research documented in `docs/MILKDROP_ARCHITECTURE.md`. Six VL iterations (v3 → v4.2) established that preset-level shader tuning is not converging on "feels like a band member." Diagnosis: missing Milkdrop-style per-vertex feedback warp + misused AGC primitives in preset authoring. Three coordinated sub-phases, each independently shippable and checkpointed:
    - **MV-0**: ✅ drop v4.2 stash, re-land sky-tint conditional — `RayMarch.metal` miss/sky path now gates `lightColor.rgb` tint behind `sceneParamsB.y > 1e5` (fog-disabled sentinel), restoring cool-sky/warm-light contrast on GB/KS while preserving VL's warm sky tint.
-   - **MV-1**: Milkdrop-correct audio primitives — add `bassRel`/`bassDev` etc. to `FeatureVector`/`StemFeatures` so presets drive from deviation not absolute (D-026, ~2 days)
+   - **MV-1**: ✅ Milkdrop-correct audio primitives — `bassRel/Dev` etc. in `FeatureVector` + `{stem}EnergyRel/Dev` in `StemFeatures`; VL reference implementation updated; 4 contract tests (D-026).
    - **MV-2**: per-vertex feedback warp mesh — new opt-in `mv_warp` render pass any preset can use (D-027, ~1 week)
    - **MV-3**: beyond-Milkdrop extensions — richer per-stem metadata, next-beat predictor, YIN vocal pitch (D-028, ~2-3 weeks, only after MV-2 checkpoint)
 2. **Phase 4 — Orchestrator** — scored preset selection, transition policy, session planning, golden-session tests (blocked on Phase MV proving preset-level musicality is achievable).
