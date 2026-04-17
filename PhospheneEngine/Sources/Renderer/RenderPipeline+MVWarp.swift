@@ -12,7 +12,7 @@
 //   3. Blit pass   — `composeTexture` → drawable; swap warp ↔ compose
 
 import Metal
-import MetalKit
+@preconcurrency import MetalKit
 import Shared
 import os.log
 
@@ -253,10 +253,8 @@ extension RenderPipeline {
         }
 
         // ── Pass 3: Blit to drawable ─────────────────────────────────────────
-        let (drawable, descriptor) = MainActor.assumeIsolated {
-            (view.currentDrawable, view.currentRenderPassDescriptor)
-        }
-        guard let drawable, let descriptor else { return }
+        guard let drawable = view.currentDrawable,
+              let descriptor = view.currentRenderPassDescriptor else { return }
         // .dontCare is correct — the full-screen triangle overwrites every pixel.
         descriptor.colorAttachments[0].loadAction  = .dontCare
         descriptor.colorAttachments[0].storeAction = .store

@@ -11,7 +11,7 @@
 // without requiring RenderPipeline to understand mesh topology.
 
 import Metal
-import MetalKit
+@preconcurrency import MetalKit
 import Shared
 
 // MARK: - Mesh Draw Pass
@@ -41,10 +41,8 @@ extension RenderPipeline {
         stemFeatures: StemFeatures,
         meshGenerator: MeshGenerator
     ) {
-        let (descriptor, drawable) = MainActor.assumeIsolated {
-            (view.currentRenderPassDescriptor, view.currentDrawable)
-        }
-        guard let descriptor, let drawable else { return }
+        guard let descriptor = view.currentRenderPassDescriptor,
+              let drawable = view.currentDrawable else { return }
 
         descriptor.colorAttachments[0].clearColor  = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
         descriptor.colorAttachments[0].loadAction  = .clear

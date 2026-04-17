@@ -11,7 +11,7 @@
 // Priority in renderFrame(): mesh → postProcess → ICB → rayMarch → feedback → direct.
 
 import Metal
-import MetalKit
+@preconcurrency import MetalKit
 import Shared
 import os.log
 
@@ -92,13 +92,13 @@ extension RenderPipeline {
         if let offscreen = sceneOutputTexture {
             outputTex = offscreen
         } else {
-            guard let d = MainActor.assumeIsolated({ view.currentDrawable }) else { return }
+            guard let d = view.currentDrawable else { return }
             outputTex = d.texture
         }
 
         // Keep a reference to the drawable for presentation (normal path only).
         let drawable = sceneOutputTexture == nil
-            ? MainActor.assumeIsolated({ view.currentDrawable })
+            ? view.currentDrawable
             : nil
 
         let size = view.drawableSize
