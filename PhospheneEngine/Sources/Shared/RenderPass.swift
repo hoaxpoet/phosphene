@@ -64,4 +64,13 @@ public enum RenderPass: String, Codable, Sendable, CaseIterable {
     /// Must appear alongside `rayMarch` — inserts between the lighting pass and the
     /// composite pass in `RayMarchPipeline.render(...)`.
     case ssgi
+
+    /// Milkdrop-style per-vertex feedback warp pass (MV-2, D-027).
+    /// A 32×24 vertex grid warps the previous frame's composite output per-vertex via
+    /// preset-authored `mvWarpPerFrame()` and `mvWarpPerVertex()` Metal functions.
+    /// Motion accumulates across frames — small per-frame UV displacements compound
+    /// into rich organic motion. Must follow `rayMarch`/`postProcess` in the passes
+    /// array; those passes render to an offscreen scene texture, then `mvWarp` applies
+    /// the warp and blits to the drawable.
+    case mvWarp = "mv_warp"
 }

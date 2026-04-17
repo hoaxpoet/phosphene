@@ -4,7 +4,7 @@
   "duration": 35,
   "description": "Psychedelic linocut terrain — forward-dollying flight over an infinite audio-reactive landscape. Terrain swells follow melody (f.mid_att primary) with bass swell secondary; palette cycles with melodic phrasing; spectral-flux accents flare peaks and strobe the cut-line ridge on any timbral attack. No atmospheric fog (printmaking has no aerial perspective).",
   "author": "Matt",
-  "passes": ["ray_march", "post_process"],
+  "passes": ["ray_march", "post_process", "mv_warp"],
   "beat_source": "bass",
   "beat_sensitivity": 1.0,
   "scene_camera": {

@@ -51,8 +51,8 @@ extension RenderPipeline {
 extension RenderPipeline {
 
     // swiftlint:disable function_parameter_count
-    // `drawWithRayMarch` takes 6 parameters — the minimal render-pass context,
-    // matching the convention used by `drawWithPostProcess`.
+    // `drawWithRayMarch` takes 7 parameters — the minimal render-pass context plus
+    // an optional scene output texture for the mv_warp handoff.
 
     /// Deferred ray march render pass.
     ///
@@ -72,15 +72,32 @@ extension RenderPipeline {
     ///   - stemFeatures: Per-stem features from the background separation pipeline.
     ///   - activePipeline: The preset's compiled G-buffer pipeline state.
     ///   - rayMarchState: Pipeline that owns G-buffer + lit textures and pass encoders.
+    ///   - sceneOutputTexture: When non-nil (MV-2 mv_warp handoff), the final composite
+    ///     is written here instead of the drawable and `commandBuffer.present` is skipped.
+    ///     The caller (`.mvWarp` in `renderFrame`) reads this texture and presents via its
+    ///     own blit pass.  Pass `nil` for normal (non-warp) ray march rendering.
     func drawWithRayMarch(
         commandBuffer: MTLCommandBuffer,
         view: MTKView,
         features: inout FeatureVector,
         stemFeatures: StemFeatures,
         activePipeline: MTLRenderPipelineState,
-        rayMarchState: RayMarchPipeline
+        rayMarchState: RayMarchPipeline,
+        sceneOutputTexture: MTLTexture?
     ) {
-        guard let drawable = view.currentDrawable else { return }
+        // When rendering to an offscreen texture for mv_warp, we don't need the drawable
+        // during scene rendering. We still need it to exist for command buffer presentation
+        // (done by the mv_warp blit pass instead). Acquire it only for the normal path.
+        let outputTex: MTLTexture
+        if let offscreen = sceneOutputTexture {
+            outputTex = offscreen
+        } else {
+            guard let drawable = view.currentDrawable else { return }
+            outputTex = drawable.texture
+        }
+
+        // Keep a reference to the drawable for presentation (normal path only).
+        let drawable = sceneOutputTexture == nil ? view.currentDrawable : nil
 
         let size = view.drawableSize
         let width = Int(size.width)
@@ -180,14 +197,18 @@ extension RenderPipeline {
             fftBuffer: fftMagnitudeBuffer,
             waveformBuffer: waveformBuffer,
             stemFeatures: stemFeatures,
-            outputTexture: drawable.texture,
+            outputTexture: outputTex,
             commandBuffer: commandBuffer,
             noiseTextures: noiseTextures,
             iblManager: ibl,
             postProcessChain: chainForBloom
         )
 
-        commandBuffer.present(drawable)
+        // Present only when rendering directly to the drawable (normal path).
+        // When sceneOutputTexture is non-nil, the mv_warp blit pass presents instead.
+        if let drawable = drawable {
+            commandBuffer.present(drawable)
+        }
     }
 
     // swiftlint:enable function_parameter_count
