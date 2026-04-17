@@ -143,9 +143,12 @@ extension PresetLoader {
         //   texture2d<float>   iblBRDFLUT     [[texture(11)]] — 512² BRDF split-sum LUT (.rg16Float)
         //
         // Convenience samplers — valid as file-scope constexpr in MSL:
+        #pragma clang diagnostic push
+        #pragma clang diagnostic ignored "-Wunused-const-variable"
         constexpr sampler linearSampler(filter::linear,  address::repeat);
         constexpr sampler nearestSampler(filter::nearest, address::repeat);
         constexpr sampler mipLinearSampler(filter::linear, mip_filter::linear, address::repeat);
+        #pragma clang diagnostic pop
 
         // HSV to RGB conversion.
         float3 hsv2rgb(float3 c) {
@@ -186,7 +189,11 @@ extension PresetLoader {
             preambleLogger.warning("ShaderUtilities.metal not found in Presets bundle")
         }
 
-        return structPreamble + "\n\n" + utilitiesSource
+        let utilsWrapped = """
+        #pragma clang diagnostic push
+        #pragma clang diagnostic ignored "-Wunused-function"
+        """ + "\n" + utilitiesSource + "\n#pragma clang diagnostic pop\n"
+        return structPreamble + "\n\n" + utilsWrapped
     }()
 
     // MARK: - MV-Warp Preamble (MV-2, D-027)
