@@ -3,7 +3,7 @@
 // Binds FFT magnitude and PCM waveform UMA buffers to a full-screen fragment shader.
 
 import Metal
-import MetalKit
+@preconcurrency import MetalKit
 import Shared
 import os.log
 
@@ -452,7 +452,7 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
         // texture contains the final composited image. The closure may enqueue
         // a blit to copy the texture into its own capture target.
         if let hook = onFrameRendered,
-           let drawable = MainActor.assumeIsolated({ view.currentDrawable }) {
+           let drawable = view.currentDrawable {
             let stems = stemFeaturesLock.withLock { latestStemFeatures }
             hook(drawable.texture, features, stems, commandBuffer)
         }
