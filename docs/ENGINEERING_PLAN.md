@@ -468,17 +468,30 @@ swift test --package-path PhospheneEngine
 
 ---
 
-### Increment 4.5 — Live Adaptation
+### Increment 4.5 — Live Adaptation ✅
 
-**Scope:** `Orchestrator/LiveAdapter.swift`. During playback, the Orchestrator adapts its session plan based on real-time MIR data. When live structural analysis reveals boundaries the 30s preview missed, adjust transition timing. When live mood diverges from pre-analyzed mood, consider mid-track preset adjustment.
+**Landed:** 2026-04-20.
 
-**Done when:**
-- Plan adapts when live section boundaries arrive that differ from preview estimates by >5s.
-- Adaptation is conservative: mid-track preset changes are rare and only triggered by significant mood divergence.
-- Adaptation decisions are logged.
-- 6+ unit tests with synthetic live MIR data that diverges from pre-analyzed profiles.
+`LiveAdapter.swift` + `LiveAdapter+Patching.swift` + `VisualizerEngine+Orchestrator.swift`. `DefaultLiveAdapter` implementing `LiveAdapting` protocol with two adaptation paths (boundary reschedule > mood override). `PlannedSession.applying(_:at:)` extension for controlled plan mutation from the app layer. `VisualizerEngine+Orchestrator` holds `livePlan` (NSLock-guarded) and provides `buildPlan()`, `currentPreset(at:)`, `currentTransition(at:)`, `applyLiveUpdate(...)`.
 
-**Verify:** `swift test --package-path PhospheneEngine`
+**Boundary reschedule:** fires when `StructuralPrediction.confidence ≥ 0.5` AND the live boundary deviates from the planned transition time by > 5 s. 5 s = 2× the `LookaheadBuffer` 2.5 s window — deviations smaller than that are within normal preview-vs-live jitter. Wins over mood override when both conditions fire simultaneously.
+
+**Mood override:** fires only when all three hold: `|Δvalence| > 0.4 || |Δarousal| > 0.4`, elapsed fraction < 40%, and the best-scoring alternative preset is > 0.15 higher. Current preset scored without exclusion (true live score); alternatives scored with current preset excluded. Cap at 40% prevents churn in the back half of a track.
+
+**Key implementation decisions (D-035):**
+- `LiveAdaptation.PresetOverride` is a nested struct (not a named tuple) for `Sendable` conformance in Swift 6 strict mode.
+- `PlannedSession.applying` lives in `LiveAdapter+Patching.swift` (same Orchestrator module as the internal memberwise inits of `PlannedSession`/`PlannedTrack`) — the only controlled mutation path outside of `DefaultSessionPlanner.plan()`.
+- Empty `recentHistory: []` in live scoring context is intentional — fatigueMultiplier is a session-level pre-plan concern; live overrides that fire mid-track should not re-apply session-level fatigue logic.
+- `LiveAdapting` protocol uses `// swiftlint:disable function_parameter_count` (6 params) — wrapping into a context struct would add an intermediate allocation on the hot path with no modelling benefit.
+
+**Test notes:**
+- `noBoundarySignal()` helper (confidence=0.0) bypasses the boundary path in mood-only tests. Using `closeBoundary(at: N)` in mood tests caused unexpected boundary reschedules because the live session boundary deviated > 5 s from the planned transition time even when confidence was high.
+- Override catalog uses `visual_density` JSON field (`case visualDensity = "visual_density"` in `PresetDescriptor.CodingKeys`) — confirmed before writing test helpers.
+- Scoring math verified by hand: pre-analyzed sad/calm (-0.5, -0.5) → targetTemp=0.30; CurrentPreset (center=0.25, density=0.25) → mood score 0.95. Live happy/energetic (0.7, 0.7) → targetTemp=0.78; AltPreset (center=0.78, density=0.78) → mood score 1.0. Gap = 0.875 − 0.716 = 0.159 > 0.15 threshold.
+
+407 tests total; 4 pre-existing Apple Music env failures unchanged.
+
+**Verify:** `swift test --package-path PhospheneEngine --filter LiveAdapterTests`
 
 ---
 

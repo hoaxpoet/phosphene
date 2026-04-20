@@ -8,6 +8,7 @@ import CoreGraphics
 import DSP
 import Foundation
 import ML
+import Orchestrator
 import os.log
 import Presets
 import Renderer
@@ -239,6 +240,21 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// EMA alpha for the accumulated mood-classifier feature window.
     /// At ~94 callbacks/s, alpha=0.01 gives ~7s effective window.
     static let featureEmaAlpha: Float = 0.01
+
+    // MARK: - Orchestrator
+
+    /// Session planner that produces a `PlannedSession` before playback.
+    let sessionPlanner = DefaultSessionPlanner()
+
+    /// Live adapter that refines the plan as playback progresses.
+    let liveAdapter = DefaultLiveAdapter()
+
+    /// The active planned session. Populated when the session reaches `.ready`.
+    /// Guarded by `orchestratorLock` — read/write only under the lock.
+    var livePlan: PlannedSession?
+
+    /// Protects `livePlan` across the main-thread writer and render/audio-queue readers.
+    let orchestratorLock = NSLock()
 
     // MARK: - Initialization
 
