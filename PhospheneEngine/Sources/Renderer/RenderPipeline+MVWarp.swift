@@ -79,7 +79,7 @@ extension RenderPipeline {
     /// Call again from `drawableSizeWillChange` to reallocate at the new size.
     /// Thread-safe — wraps the write in `mvWarpLock`.
     public func setupMVWarp(bundle: MVWarpPipelineBundle, size: CGSize) {
-        let width  = max(Int(size.width),  1)
+        let width  = max(Int(size.width), 1)
         let height = max(Int(size.height), 1)
 
         guard let warpTex    = makeWarpTexture(width: width, height: height, format: bundle.pixelFormat),
@@ -91,13 +91,13 @@ extension RenderPipeline {
         }
 
         let state = MVWarpState(
-            warpTexture:    warpTex,
+            warpTexture: warpTex,
             composeTexture: composeTex,
-            sceneTexture:   sceneTex,
-            warpPipeline:   bundle.warpState,
+            sceneTexture: sceneTex,
+            warpPipeline: bundle.warpState,
             composePipeline: bundle.composeState,
-            blitPipeline:   bundle.blitState,
-            pixelFormat:    bundle.pixelFormat
+            blitPipeline: bundle.blitState,
+            pixelFormat: bundle.pixelFormat
         )
         mvWarpLock.withLock { mvWarpState = state }
         mvWarpLogger.info("mv_warp textures allocated: \(width)×\(height), format=\(bundle.pixelFormat.rawValue)")
@@ -108,10 +108,10 @@ extension RenderPipeline {
     public func reallocateMVWarpTextures(size: CGSize) {
         guard let existing = mvWarpLock.withLock({ mvWarpState }) else { return }
         let bundle = MVWarpPipelineBundle(
-            warpState:    existing.warpPipeline,
+            warpState: existing.warpPipeline,
             composeState: existing.composePipeline,
-            blitState:    existing.blitPipeline,
-            pixelFormat:  existing.pixelFormat
+            blitState: existing.blitPipeline,
+            pixelFormat: existing.pixelFormat
         )
         setupMVWarp(bundle: bundle, size: size)
     }

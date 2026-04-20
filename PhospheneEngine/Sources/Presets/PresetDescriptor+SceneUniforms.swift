@@ -69,9 +69,9 @@ extension PresetDescriptor {
             let fovRadians = cam.fov * Float.pi / 180.0
 
             uniforms.cameraOriginAndFov = SIMD4(cam.position.x, cam.position.y, cam.position.z, fovRadians)
-            uniforms.cameraForward      = SIMD4(fwd.x,   fwd.y,   fwd.z,   0)
+            uniforms.cameraForward      = SIMD4(fwd.x, fwd.y, fwd.z, 0)
             uniforms.cameraRight        = SIMD4(right.x, right.y, right.z, 0)
-            uniforms.cameraUp           = SIMD4(up.x,    up.y,    up.z,    0)
+            uniforms.cameraUp           = SIMD4(up.x, up.y, up.z, 0)
         }
 
         // Primary light (only the first entry is used — single-light SceneUniforms).

@@ -94,8 +94,8 @@ extension RenderPipeline {
         if let offscreen = sceneOutputTexture {
             outputTex = offscreen
         } else {
-            guard let d = view.currentDrawable else { return }
-            outputTex = d.texture
+            guard let desc = view.currentDrawable else { return }
+            outputTex = desc.texture
         }
 
         // Keep a reference to the drawable for presentation (normal path only).

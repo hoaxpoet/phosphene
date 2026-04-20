@@ -138,9 +138,9 @@ public final class PitchTracker: @unchecked Sendable {
             guard let base = buf.baseAddress else { return }
             for tau in 1...maxTau {
                 var crossCorr: Float = 0
-                var rTau:      Float = 0
-                vDSP_dotpr(base,       1, base + tau, 1, &crossCorr, vDSP_Length(halfWindow))
-                vDSP_svesq(base + tau, 1, &rTau,         vDSP_Length(halfWindow))
+                var rTau: Float = 0
+                vDSP_dotpr(base, 1, base + tau, 1, &crossCorr, vDSP_Length(halfWindow))
+                vDSP_svesq(base + tau, 1, &rTau, vDSP_Length(halfWindow))
                 diffBuffer[tau] = r0 + rTau - 2 * crossCorr
             }
         }

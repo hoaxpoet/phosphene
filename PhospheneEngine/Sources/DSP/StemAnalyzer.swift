@@ -181,9 +181,9 @@ public final class StemAnalyzer: StemAnalyzing, @unchecked Sendable {
 
         // Analyze each stem. Magnitudes are returned to avoid a second FFT pass for MV-3a.
         let (vocalsResult, vocalsMags) = analyzeStem(stemWaveforms[0], processor: energyProcessors[0], fps: fps)
-        let (drumsResult,  _)          = analyzeStem(stemWaveforms[1], processor: energyProcessors[1], fps: fps)
-        let (bassResult,   bassMags)   = analyzeStem(stemWaveforms[2], processor: energyProcessors[2], fps: fps)
-        let (otherResult,  otherMags)  = analyzeStem(stemWaveforms[3], processor: energyProcessors[3], fps: fps)
+        let (drumsResult, _)          = analyzeStem(stemWaveforms[1], processor: energyProcessors[1], fps: fps)
+        let (bassResult, bassMags) = analyzeStem(stemWaveforms[2], processor: energyProcessors[2], fps: fps)
+        let (otherResult, otherMags)  = analyzeStem(stemWaveforms[3], processor: energyProcessors[3], fps: fps)
 
         // Beat detection on drums stem — needs a fresh compute against the drums waveform.
         let drumsMags = computeMagnitudes(from: stemWaveforms[1])
@@ -191,40 +191,48 @@ public final class StemAnalyzer: StemAnalyzing, @unchecked Sendable {
 
         // Compute total energy per stem (scalar used for StemFeatures.xEnergy).
         let vocalsE = vocalsResult.bass + vocalsResult.mid + vocalsResult.treble
-        let drumsE  = drumsResult.bass  + drumsResult.mid  + drumsResult.treble
-        let bassE   = bassResult.bass   + bassResult.mid   + bassResult.treble
-        let otherE  = otherResult.bass  + otherResult.mid  + otherResult.treble
+        let drumsE  = drumsResult.bass + drumsResult.mid + drumsResult.treble
+        let bassE   = bassResult.bass + bassResult.mid + bassResult.treble
+        let otherE  = otherResult.bass + otherResult.mid + otherResult.treble
 
         // MV-1: Update per-stem EMA running averages and derive deviation primitives.
         let decay = Self.stemEMADecay
         stemRunningAvg[0] = stemRunningAvg[0] * decay + vocalsE * (1 - decay)
-        stemRunningAvg[1] = stemRunningAvg[1] * decay + drumsE  * (1 - decay)
-        stemRunningAvg[2] = stemRunningAvg[2] * decay + bassE   * (1 - decay)
-        stemRunningAvg[3] = stemRunningAvg[3] * decay + otherE  * (1 - decay)
+        stemRunningAvg[1] = stemRunningAvg[1] * decay + drumsE * (1 - decay)
+        stemRunningAvg[2] = stemRunningAvg[2] * decay + bassE * (1 - decay)
+        stemRunningAvg[3] = stemRunningAvg[3] * decay + otherE * (1 - decay)
 
         let vRel = (vocalsE - stemRunningAvg[0]) * 2.0
-        let dRel = (drumsE  - stemRunningAvg[1]) * 2.0
-        let bRel = (bassE   - stemRunningAvg[2]) * 2.0
-        let oRel = (otherE  - stemRunningAvg[3]) * 2.0
+        let dRel = (drumsE - stemRunningAvg[1]) * 2.0
+        let bRel = (bassE - stemRunningAvg[2]) * 2.0
+        let oRel = (otherE - stemRunningAvg[3]) * 2.0
 
         // MV-3a: Compute rich per-stem metadata using the magnitudes already computed above.
         let vocalsRich = computeRichFeatures(
-            index: 0, waveform: stemWaveforms[0], magnitudes: vocalsMags,
+            index: 0,
+            waveform: stemWaveforms[0],
+            magnitudes: vocalsMags,
             attEnergy: (vocalsResult.bassAtt + vocalsResult.midAtt + vocalsResult.trebleAtt) / 3.0,
             dt: dt
         )
         let drumsRich = computeRichFeatures(
-            index: 1, waveform: stemWaveforms[1], magnitudes: drumsMags,
+            index: 1,
+            waveform: stemWaveforms[1],
+            magnitudes: drumsMags,
             attEnergy: (drumsResult.bassAtt + drumsResult.midAtt + drumsResult.trebleAtt) / 3.0,
             dt: dt
         )
         let bassRich = computeRichFeatures(
-            index: 2, waveform: stemWaveforms[2], magnitudes: bassMags,
+            index: 2,
+            waveform: stemWaveforms[2],
+            magnitudes: bassMags,
             attEnergy: (bassResult.bassAtt + bassResult.midAtt + bassResult.trebleAtt) / 3.0,
             dt: dt
         )
         let otherRich = computeRichFeatures(
-            index: 3, waveform: stemWaveforms[3], magnitudes: otherMags,
+            index: 3,
+            waveform: stemWaveforms[3],
+            magnitudes: otherMags,
             attEnergy: (otherResult.bassAtt + otherResult.midAtt + otherResult.trebleAtt) / 3.0,
             dt: dt
         )

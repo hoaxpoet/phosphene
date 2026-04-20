@@ -78,8 +78,8 @@ public final class SessionManager: ObservableObject {
     /// - Parameter source: The playlist source to connect to.
     public func startSession(source: PlaylistSource) async {
         guard state == .idle || state == .ended else {
-            let s = state.rawValue
-            logger.info("SessionManager: ignoring startSession (state=\(s))")
+            let state = self.state.rawValue
+            logger.info("SessionManager: ignoring startSession (state=\(state))")
             return
         }
 
@@ -123,8 +123,8 @@ public final class SessionManager: ObservableObject {
     /// Transitions `.ready` → `.playing`. A no-op for any other state.
     public func beginPlayback() {
         guard state == .ready else {
-            let s = state.rawValue
-            logger.info("SessionManager: ignoring beginPlayback (state=\(s))")
+            let state = self.state.rawValue
+            logger.info("SessionManager: ignoring beginPlayback (state=\(state))")
             return
         }
         state = .playing
