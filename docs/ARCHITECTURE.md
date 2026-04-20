@@ -10,7 +10,7 @@ Phosphene is a native Swift/Metal macOS application with a modular engine archit
 - ML-powered stem separation
 - Metadata and playlist preparation
 - Renderer and preset system
-- Orchestrator and session planning (in development)
+- Orchestrator and session planning (scorer implemented; transition policy and session planning forthcoming)
 - App shell and UI
 
 ## Architectural Principles

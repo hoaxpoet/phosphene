@@ -205,6 +205,13 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
     /// Estimated render cost in ms at 1080p per device tier.
     public let complexityCost: ComplexityCost
 
+    /// Maps stem names ("vocals", "drums", "bass", "other") to visual parameter descriptors.
+    ///
+    /// Presence of a key signals that this preset responds to that stem.
+    /// The string value (e.g. "terrain_height_adaptive") is a hint for the Orchestrator
+    /// visual-wiring layer; the scorer only checks key membership.
+    public let stemAffinity: [String: String]
+
     // MARK: - CodingKeys
 
     /// Keys for all stored properties — used by both `init(from:)` and `encode(to:)`.
@@ -234,6 +241,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         case transitionAffordances = "transition_affordances"
         case sectionSuitability = "section_suitability"
         case complexityCost = "complexity_cost"
+        case stemAffinity = "stem_affinity"
     }
 
     /// Keys for legacy boolean flags — decode-only, not stored as properties.
@@ -307,6 +315,8 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
             [SongSection].self, forKey: .sectionSuitability) ?? SongSection.allCases
         complexityCost = try container.decodeIfPresent(
             ComplexityCost.self, forKey: .complexityCost) ?? ComplexityCost()
+        stemAffinity = try container.decodeIfPresent(
+            [String: String].self, forKey: .stemAffinity) ?? [:]
     }
 
     /// Synthesise a `passes` array from legacy boolean flags.

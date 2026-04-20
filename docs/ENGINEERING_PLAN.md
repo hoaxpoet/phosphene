@@ -411,17 +411,15 @@ swift test --package-path PhospheneEngine
 
 ---
 
-### Increment 4.1 — Preset Scoring Model
+### Increment 4.1 — Preset Scoring Model ✅
 
-**Scope:** `Orchestrator/PresetScorer.swift`. Given a `TrackProfile` and the current session context, score every preset in the catalog for suitability. Inputs: energy trajectory, mood quadrant, stem salience, tempo range, key mode. Per-preset: stem affinity match, mood compatibility, fatigue risk (time since last use of this preset's family), transition compatibility with the current preset, performance cost (render pass complexity vs device tier).
+**Landed:** 2026-04-20.
 
-**Done when:**
-- `PresetScorer.score(preset:track:context:) -> Float` returns a normalized 0–1 score.
-- Scores are deterministic for the same inputs.
-- 10+ unit tests covering: high-energy track → high-energy preset ranked first, mood mismatch penalized, same-family repeat penalized, Tier 1 device excludes expensive presets, stem affinity match boosts score.
-- Protocol `PresetScoring` for test injection.
+`DefaultPresetScorer` implements the `PresetScoring` protocol with four weighted sub-scores (mood 0.30, stemAffinity 0.25, sectionSuitability 0.25, tempoMotion 0.20) and two multiplicative penalties (family-repeat 0.2×, smoothstep fatigue cooldown 60/120/300s). Hard exclusions gate perf-budget breakers and identity matches before scoring. `PresetScoreBreakdown` exposes every sub-score for introspection. `PresetScoringContext` is a fully Sendable value-type snapshot with a monotonic session clock — no `Date.now()` inside the scorer. 13 unit tests cover all contract edges including determinism, exclusion, cooldown, and rank stability across device tiers. See D-032 in DECISIONS.md for weight rationale.
 
-**Verify:** `swift test --package-path PhospheneEngine`
+**New files:** `Orchestrator/PresetScorer.swift`, `Orchestrator/PresetScoringContext.swift`, `Shared/DeviceTier.swift`. Extended: `PresetDescriptor` (added `stemAffinity: [String: String]`), `ComplexityCost` (added `cost(for:)` helper), `Package.swift` (added `Session` dep to `Orchestrator` target, `Orchestrator` dep to test target).
+
+**Verify:** `swift test --package-path PhospheneEngine --filter PresetScorerTests`
 
 ---
 

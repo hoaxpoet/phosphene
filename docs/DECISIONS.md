@@ -402,7 +402,7 @@ A pre-allocated `.storageModeShared` MTLBuffer (16 KB, 4096 Float32) carrying pe
 
 ---
 
-## D-029: Preset metadata schema extended for Orchestrator scoring (Increment 4.0)
+## D-031: Preset metadata schema extended for Orchestrator scoring (Increment 4.0)
 
 **Status:** Accepted (2026-04-20)
 
@@ -425,3 +425,27 @@ Seven new fields were added to `PresetDescriptor` to give the Orchestrator (Incr
 **New types:** `FatigueRisk`, `TransitionAffordance`, `SongSection` (all `String`-raw, `Codable`, `Sendable`, `Hashable`, `CaseIterable`), `ComplexityCost` (struct with custom dual-form Codable). Defined in `PresetMetadata.swift`.
 
 **Back-fill note:** 11 JSON sidecars were back-filled. KineticSculpture's `color_temperature_range` was adjusted from spec `[0.3, 0.7]` (identical to the default) to `[0.3, 0.65]` to make the back-fill detectable by the regression test and to better reflect the slightly cooler warm-end of its metallic/glass palette.
+
+---
+
+## D-032: Preset scoring weights and penalty structure (Increment 4.1)
+
+**Status:** Accepted (2026-04-20)
+
+`DefaultPresetScorer` combines four sub-scores into a final [0, 1] total using fixed weights and two multiplicative penalties.
+
+**Sub-score weights:** `mood = 0.30`, `tempoMotion = 0.20`, `stemAffinity = 0.25`, `sectionSuitability = 0.25`. Sum = 1.0, so `raw` is already in [0, 1] without normalisation — any sub-score is directly readable as a fraction of the total budget.
+
+**Why mood gets the highest weight (0.30):** Mood is the single axis with the most perceptual surface area. A wrong emotional tone undermines the entire visual experience even when tempo and stem affinity are well-matched. Valence → colour temperature and arousal → visual density are the two most directly observable mismatches; together they justify the extra 5 points over the other dimensions.
+
+**Why tempoMotion gets the lowest weight (0.20):** BPM metadata is often missing (nil in `TrackProfile`) and the scorer maps nil to neutral 0.5 to avoid penalising presets on missing data. A nil-safe neutral degrades information, so this dimension earns less influence. When BPM is available it is valuable; when absent, the other three dimensions carry the decision.
+
+**Why stemAffinity and sectionSuitability share 0.25 each:** Both are equally important for the product's stated purpose (intentional visual sequencing). Stem affinity makes the preset feel musically responsive; section suitability makes timing feel deliberate. Equal weighting avoids one outweighing the other given the uncertainty in both.
+
+**Multiplicative penalties:** `familyRepeatMultiplier` (0.2× for consecutive same-family) and `fatigueMultiplier` (smoothstep over 60/120/300s cooldown) are multiplicative, not additive, so they compose cleanly. A 0.2× family-repeat penalty on a 0.9 raw score gives 0.18, not 0.7 (which additive would). This ensures highly-penalised presets lose to even mediocre competitors — the intended behaviour.
+
+**Exclusions are separate from penalties:** `excluded = true` always produces `total = 0` and populates `exclusionReason`. This keeps "why is this at zero" answerable from the breakdown: "excluded for cost" vs "penalised to near-zero by fatigue and repeat" are different problems with different remedies.
+
+**Fatigue cooldown windows:** `.low = 60s`, `.medium = 120s`, `.high = 300s`. These are the smallest values that created observable variety in internal playlist test sessions without causing visually jarring avoidance patterns (every session felt different, no preset disappeared for so long that its return felt jarring). `smoothstep` rather than a linear ramp avoids an abrupt "fully available" cliff.
+
+**How to apply:** The `internal static let` constants (`weightMood`, `weightTempoMotion`, `weightStemAffinity`, `weightSectionSuitability`, `familyRepeatPenalty`, `fatigueCooldown`) are the only place these values are defined — adjust there to tune globally. The `PresetScoreBreakdown` struct surfaces all sub-scores for introspection and future calibration tooling.
