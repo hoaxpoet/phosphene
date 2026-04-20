@@ -16,6 +16,9 @@
 		A10032 /* VisualizerEngine+Audio.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20032; };
 		A10033 /* VisualizerEngine+Stems.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20033; };
 		A10034 /* VisualizerEngine+Presets.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20034; };
+		A10035 /* VisualizerEngine+Capture.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20035; };
+		A10036 /* VisualizerEngine+InitHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20036; };
+		A10037 /* VisualizerEngine+PublicAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20037; };
 		A10003 /* PhospheneEngine in Frameworks */ = {isa = PBXBuildFile; productRef = A80001; };
 		A10010 /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20010; };
 		A10011 /* MetalKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20011; };
@@ -37,6 +40,9 @@
 		A20032 /* VisualizerEngine+Audio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VisualizerEngine+Audio.swift"; sourceTree = "<group>"; };
 		A20033 /* VisualizerEngine+Stems.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VisualizerEngine+Stems.swift"; sourceTree = "<group>"; };
 		A20034 /* VisualizerEngine+Presets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VisualizerEngine+Presets.swift"; sourceTree = "<group>"; };
+		A20035 /* VisualizerEngine+Capture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VisualizerEngine+Capture.swift"; sourceTree = "<group>"; };
+		A20036 /* VisualizerEngine+InitHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VisualizerEngine+InitHelpers.swift"; sourceTree = "<group>"; };
+		A20037 /* VisualizerEngine+PublicAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VisualizerEngine+PublicAPI.swift"; sourceTree = "<group>"; };
 		A20004 /* PhospheneApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PhospheneApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A20005 /* PhospheneEngine */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = PhospheneEngine; path = PhospheneEngine; sourceTree = "<group>"; };
 		A20010 /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
@@ -87,6 +93,9 @@
 				A20032 /* VisualizerEngine+Audio.swift */,
 				A20033 /* VisualizerEngine+Stems.swift */,
 				A20034 /* VisualizerEngine+Presets.swift */,
+				A20035 /* VisualizerEngine+Capture.swift */,
+				A20036 /* VisualizerEngine+InitHelpers.swift */,
+				A20037 /* VisualizerEngine+PublicAPI.swift */,
 				A20022 /* MusicKitFetcher.swift */,
 				A40005 /* Views */,
 				A20003 /* PhospheneApp.entitlements */,
@@ -195,6 +204,9 @@
 				A10032 /* VisualizerEngine+Audio.swift in Sources */,
 				A10033 /* VisualizerEngine+Stems.swift in Sources */,
 				A10034 /* VisualizerEngine+Presets.swift in Sources */,
+				A10035 /* VisualizerEngine+Capture.swift in Sources */,
+				A10036 /* VisualizerEngine+InitHelpers.swift in Sources */,
+				A10037 /* VisualizerEngine+PublicAPI.swift in Sources */,
 				A10020 /* MetalView.swift in Sources */,
 				A10021 /* DebugOverlayView.swift in Sources */,
 				A10022 /* MusicKitFetcher.swift in Sources */,

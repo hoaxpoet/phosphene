@@ -112,98 +112,7 @@ extension RenderPipeline {
         rayMarchState.sceneUniforms.sceneParamsA.x = features.accumulatedAudioTime
         rayMarchState.sceneUniforms.sceneParamsA.y = width > 0 ? Float(width) / Float(height) : 1.0
 
-        // ── Option-A audio-reactive modulation (preset-agnostic) ──────────────
-        // Drive light, fog, and camera dolly from the feature vector. Geometry
-        // stays static; the music lights the space and moves the camera, not
-        // the architecture. All modulations are relative to the preset's
-        // JSON baseline (captured in `baseScene`), so the modulation is
-        // additive on top of the preset's intent rather than clobbering it.
-
-        let base = rayMarchState.baseScene
-
-        // Bass-modulated forward dolly (v9.1).  Speed is no longer a
-        // constant applied to accumulated wall-time; per frame we advance
-        // the integrated dolly offset by deltaTime × instantaneousSpeed,
-        // where instantaneousSpeed varies with the bass band of the
-        // feature vector.  Camera always moves (autonomous baseline
-        // per Matt's original design intent) but perceivable bass energy
-        // pushes it 0.5× → ~1.6× the base speed.
-        //
-        //   instantaneousSpeed = baseDolly × (0.5 + bassContribution)
-        //   bassContribution   = clamp(f.bass × 1.1, 0, 1.1)
-        //
-        // `features.bass` is post-AGC band energy (centered ~0.5 during
-        // active music, 0 at silence).  Multiplier 1.1 biases the
-        // distribution so steady-state music sits near 1.05× base and
-        // drops sit near 1.6× — perceivable acceleration without
-        // lurching.  Base-only during silence keeps camera from stopping
-        // at track boundaries.
-        let now = CACurrentMediaTime()
-        let dt: Float
-        if let last = rayMarchState.lastDollyFrameTime {
-            dt = Float(max(0, now - last))
-        } else {
-            dt = 0
-        }
-        rayMarchState.lastDollyFrameTime = now
-        let bassContribution = max(0, min(1.1, features.bass * 1.1))
-        let instantaneousSpeed =
-            rayMarchState.cameraDollySpeed * (0.5 + bassContribution)
-        rayMarchState.cameraDollyOffset += dt * instantaneousSpeed
-        let dollyZ = base.cameraPosition.z + rayMarchState.cameraDollyOffset
-        rayMarchState.sceneUniforms.cameraOriginAndFov.x = base.cameraPosition.x
-        rayMarchState.sceneUniforms.cameraOriginAndFov.y = base.cameraPosition.y
-        rayMarchState.sceneUniforms.cameraOriginAndFov.z = dollyZ
-
-        // Light intensity pulses with the strongest of bass/mid/composite
-        // onsets — `beat_bass` alone misses snare-driven tracks like Love
-        // Shack where the kick drum is muted relative to the snare. Taking
-        // the max across bands gives a beat pulse that fires for any genre.
-        // Range: 0.4× (silence) → 3.0× (peak). 7.5× swing.
-        let beatPulse = max(features.beatBass,
-                            max(features.beatMid, features.beatComposite))
-        let beatClamped = max(0, min(1, beatPulse))
-        let intensityMul = 0.4 + beatClamped * 2.6
-        rayMarchState.sceneUniforms.lightPositionAndIntensity.w = base.lightIntensity * intensityMul
-
-        // Light colour shifts with valence: amplified from ±15% to ±40% per
-        // channel so the warm/cool shift is clearly visible across genres.
-        // Positive valence (happy/major key) → warm amber; negative (sad/
-        // minor) → cold blue. The preset's palette still anchors at valence=0.
-        let valence = max(-1, min(1, features.valence))
-        let warm = max(0, valence)
-        let cool = max(0, -valence)
-        let tint = SIMD3<Float>(
-            1.0 + warm * 0.40 - cool * 0.25,
-            1.0 + warm * 0.15 - cool * 0.10,
-            1.0 + cool * 0.40 - warm * 0.30
-        )
-        let modulatedColor = base.lightColor * tint
-        rayMarchState.sceneUniforms.lightColor = SIMD4(modulatedColor, 0)
-
-        // Fog density tracks arousal much more aggressively: calm → fog at
-        // 2.0× baseline distance (long sightlines through clear corridor),
-        // frantic → fog at 0.30× baseline (wall of mist closes in). The
-        // ratio means high-arousal frames vanish to fog within ~5 bays
-        // while calm frames see all the way to the horizon.
-        let arousal = max(-1, min(1, features.arousal))
-        let fogScale: Float = arousal >= 0
-            ? (1.0 - arousal * 0.7)              // 1.0 → 0.30 as arousal 0 → 1
-            : (1.0 + (-arousal) * 1.0)            // 1.0 → 2.0 as arousal 0 → -1
-        rayMarchState.sceneUniforms.sceneParamsB.y = base.fogFar * fogScale
-
-        // Corridor-path width modulation (Glass Brutalist only): fin
-        // X-centre distance shrinks when bass is loud so the path between
-        // the glass fins narrows. Writes into `cameraForward.w` — a free
-        // SIMD4 lane read by both `sceneSDF` and `sceneMaterial` so the
-        // glass/concrete classification stays consistent across the
-        // deformation. Non-GB presets leave this unused (their shaders
-        // don't read `cameraForward.w`).
-        let bassDrive = max(0, min(1, features.subBass + features.lowBass))
-        let finBase: Float = 1.20   // matches GB_GLASS_CX rest value
-        let finNarrow: Float = 0.85 // at bassDrive=1
-        let finCX = finBase - (finBase - finNarrow) * bassDrive
-        rayMarchState.sceneUniforms.cameraForward.w = finCX
+        applyAudioModulation(to: rayMarchState, features: features)
 
         // Resolve optional PostProcessChain for bloom: present only when .postProcess is
         // declared alongside .rayMarch in the preset's passes array.
@@ -241,4 +150,44 @@ extension RenderPipeline {
     }
 
     // swiftlint:enable function_parameter_count
+
+    // MARK: - Audio-Reactive Modulation
+
+    /// Option-A preset-agnostic audio modulation: drives light, fog, camera dolly,
+    /// and fin position from the feature vector, additive on top of the preset's
+    /// JSON baseline (`baseScene`). Geometry stays static — music moves the camera
+    /// and lights the space (D-020).
+    private func applyAudioModulation(to rayMarchState: RayMarchPipeline, features: FeatureVector) {
+        let base = rayMarchState.baseScene
+        let now = CACurrentMediaTime()
+        let dt: Float = rayMarchState.lastDollyFrameTime.map { Float(max(0, now - $0)) } ?? 0
+        rayMarchState.lastDollyFrameTime = now
+        let bassContribution = max(0, min(1.1, features.bass * 1.1))
+        let instantaneousSpeed = rayMarchState.cameraDollySpeed * (0.5 + bassContribution)
+        rayMarchState.cameraDollyOffset += dt * instantaneousSpeed
+        let dollyZ = base.cameraPosition.z + rayMarchState.cameraDollyOffset
+        rayMarchState.sceneUniforms.cameraOriginAndFov.x = base.cameraPosition.x
+        rayMarchState.sceneUniforms.cameraOriginAndFov.y = base.cameraPosition.y
+        rayMarchState.sceneUniforms.cameraOriginAndFov.z = dollyZ
+        let beatPulse = max(features.beatBass, max(features.beatMid, features.beatComposite))
+        let intensityMul = 0.4 + max(0, min(1, beatPulse)) * 2.6
+        rayMarchState.sceneUniforms.lightPositionAndIntensity.w = base.lightIntensity * intensityMul
+        let valence = max(-1, min(1, features.valence))
+        let warm = max(0, valence)
+        let cool = max(0, -valence)
+        let tint = SIMD3<Float>(
+            1.0 + warm * 0.40 - cool * 0.25,
+            1.0 + warm * 0.15 - cool * 0.10,
+            1.0 + cool * 0.40 - warm * 0.30
+        )
+        rayMarchState.sceneUniforms.lightColor = SIMD4(base.lightColor * tint, 0)
+        let arousal = max(-1, min(1, features.arousal))
+        let fogScale: Float = arousal >= 0
+            ? (1.0 - arousal * 0.7)
+            : (1.0 + (-arousal) * 1.0)
+        rayMarchState.sceneUniforms.sceneParamsB.y = base.fogFar * fogScale
+        let bassDrive = max(0, min(1, features.subBass + features.lowBass))
+        let finCX: Float = 1.20 - (1.20 - 0.85) * bassDrive
+        rayMarchState.sceneUniforms.cameraForward.w = finCX
+    }
 }

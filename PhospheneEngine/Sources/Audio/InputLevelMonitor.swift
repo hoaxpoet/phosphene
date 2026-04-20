@@ -263,9 +263,9 @@ public final class InputLevelMonitor: @unchecked Sendable {
         } else if peak < 1e-6 {
             (quality, reason) = (.red, "no signal — check output device / app is playing")
         } else if peakDB < Self.peakCriticalDBFS {
-            (quality, reason) = (.red, String(format:
-                "peak %.0f dBFS — output routed through Multi-Output/BlackHole, or Spotify Normalize on, or system volume low",
-                peakDB))
+            let dBStr = String(format: "peak %.0f dBFS", peakDB)
+            let hint = "output routed through Multi-Output/BlackHole, or Spotify Normalize on, or system volume low"
+            (quality, reason) = (.red, "\(dBStr) — \(hint)")
         } else if peakDB < Self.peakWarningDBFS {
             (quality, reason) = (.yellow, String(format:
                 "peak %.0f dBFS — raise system volume, check source-app normalization",
@@ -274,7 +274,8 @@ public final class InputLevelMonitor: @unchecked Sendable {
             // Treble ratio is shown for reference only — many modern productions
             // are genuinely bass-heavy and register below 1% without any chain
             // issue (Billie Eilish / Oxytocin verified clean at 0.2% treble).
-            (quality, reason) = (.green, String(format: "peak %.0f dBFS, treble %.2f%% — OK", peakDB, 100 * treR))
+            let msg = String(format: "peak %.0f dBFS, treble %.2f%% — OK", peakDB, 100 * treR)
+            (quality, reason) = (.green, msg)
         }
 
         // Hysteresis: only publish a new quality if the candidate has

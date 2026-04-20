@@ -119,7 +119,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     let shaderLibrary: Renderer.ShaderLibrary
 
     /// AudioInputRouter requires macOS 14.2+; stored as Any to avoid propagating availability.
-    private var router: Any?
+    var router: Any?
 
     /// Metadata pre-fetcher for external API queries.
     var preFetcher: MetadataPreFetcher?
@@ -206,7 +206,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     var lastLoggedQuality: SignalQuality = .unknown
 
     /// Task that hides the preset name after a delay.
-    private var hideNameTask: Task<Void, Never>?
+    var hideNameTask: Task<Void, Never>?
 
     // MARK: - Analysis State
     //
@@ -281,59 +281,8 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         self.stemSeparator = Self.loadStemSeparator(device: ctx.device)
         self.sessionRecorder = SessionRecorder()
 
-        // Wire per-frame capture hook: blit the drawable into a shared-storage
-        // capture texture inside the command buffer, then read it in the buffer's
-        // completion handler and hand to the recorder.
-        if let recorder = self.sessionRecorder {
-            let device = ctx.device
-            pipe.onFrameRendered = { [weak recorder] drawableTex, features, stems, commandBuffer in
-                guard let recorder = recorder else { return }
-                // Skip video blit if the drawable is framebufferOnly (cannot be
-                // read back). MetalView sets framebufferOnly=false, but defend
-                // against future config changes rather than crashing at the
-                // blit validation layer.
-                let canBlit = !drawableTex.isFramebufferOnly
-                                && drawableTex.width > 0
-                                && drawableTex.height > 0
-                if canBlit,
-                   let captureTex = recorder.ensureCaptureTexture(
-                        device: device,
-                        width: drawableTex.width,
-                        height: drawableTex.height,
-                        pixelFormat: drawableTex.pixelFormat),
-                   let blit = commandBuffer.makeBlitCommandEncoder() {
-                    blit.copy(from: drawableTex, to: captureTex)
-                    blit.endEncoding()
-                }
-                // Always record CSV rows; recorder reads its own capture texture.
-                commandBuffer.addCompletedHandler { [weak recorder] _ in
-                    recorder?.recordFrame(features: features, stems: stems)
-                }
-            }
-        }
-
-        // Generate noise textures in the background — the pipeline renders correctly
-        // without them (shaders that don't sample noise work as before), so startup
-        // isn't blocked.  setTextureManager is thread-safe.
-        DispatchQueue.global(qos: .userInitiated).async {
-            if let tm = try? TextureManager(context: ctx, shaderLibrary: lib) {
-                pipe.setTextureManager(tm)
-            } else {
-                logger.warning("TextureManager init failed — noise textures unavailable")
-            }
-        }
-
-        // Generate IBL environment textures (irradiance cubemap, prefiltered env, BRDF LUT)
-        // in the background — ray march presets fall back to minimum ambient without them,
-        // but glass and polished-metal materials require IBL for correct specular appearance.
-        // setIBLManager is thread-safe.
-        DispatchQueue.global(qos: .userInitiated).async {
-            if let ibl = try? IBLManager(context: ctx, shaderLibrary: lib) {
-                pipe.setIBLManager(ibl)
-            } else {
-                logger.warning("IBLManager init failed — IBL textures unavailable for ray march presets")
-            }
-        }
+        setupCaptureHook(pipe: pipe, ctx: ctx)
+        setupBackgroundTextures(pipe: pipe, ctx: ctx, lib: lib)
 
         loader.onPresetsReloaded = { [weak self] in
             guard let self, let current = self.presetLoader.currentPreset else { return }
@@ -345,17 +294,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
             self.router = setupAudioRouting(audioBuffer: buf, fftProcessor: fft)
         }
 
-        // Finalize the video writer when the app is about to quit. Without
-        // this the MP4 `moov` atom is never written and video.mp4 is
-        // unplayable (ffprobe reports "moov atom not found"). The CSVs and
-        // WAVs are written line-by-line and are unaffected.
-        NotificationCenter.default.addObserver(
-            forName: NSApplication.willTerminateNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.sessionRecorder?.finish()
-        }
+        setupTerminationObserver()
     }
 
     /// Build the GPU particle system used by the Murmuration preset.
@@ -387,87 +326,5 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         let classifier = MoodClassifier()
         logger.info("MoodClassifier loaded")
         return classifier
-    }
-
-    // MARK: - Public API
-
-    /// Start audio capture and metadata observation.
-    func startAudio() {
-        // Start metadata observation unconditionally — AppleScript queries
-        // music apps directly via Automation, no screen capture permission needed.
-        if #available(macOS 14.2, *), let audioRouter = router as? AudioInputRouter {
-            audioRouter.startMetadataOnly()
-        }
-
-        // Screen capture permission is only needed for Core Audio taps (audio capture).
-        var permitted = CGPreflightScreenCaptureAccess()
-        if !permitted {
-            permitted = CGRequestScreenCaptureAccess()
-        }
-        hasScreenCapturePermission = permitted
-
-        if permitted {
-            startAudioCapture()
-            startStemPipeline()
-        } else {
-            logger.info("Screen capture denied — grant in System Settings for audio capture")
-            pollForScreenCapturePermission()
-        }
-
-        if let current = presetLoader.currentPreset {
-            applyPreset(current)
-            showPresetName(current.descriptor.name)
-        }
-    }
-
-    /// Poll until screen capture permission is granted, then start audio capture.
-    private func pollForScreenCapturePermission() {
-        Task { @MainActor in
-            while !hasScreenCapturePermission {
-                try? await Task.sleep(for: .seconds(2))
-                if CGPreflightScreenCaptureAccess() {
-                    hasScreenCapturePermission = true
-                    logger.info("Screen capture permission granted")
-                    startAudioCapture()
-                    startStemPipeline()
-                    break
-                }
-            }
-        }
-    }
-
-    /// Start Core Audio tap capture (requires screen capture permission).
-    private func startAudioCapture() {
-        if #available(macOS 14.2, *), let audioRouter = router as? AudioInputRouter {
-            do {
-                try audioRouter.start(mode: .systemAudio)
-                logger.info("Audio capture started")
-            } catch {
-                logger.error("Audio capture failed: \(error)")
-            }
-        }
-    }
-
-    // MARK: - Toggles
-
-    /// Toggle the debug metadata overlay.
-    func toggleDebugOverlay() {
-        showDebugOverlay.toggle()
-    }
-
-    // MARK: - Private Helpers
-
-    /// Briefly display the preset name, then fade it out after 2 seconds.
-    func showPresetName(_ name: String) {
-        hideNameTask?.cancel()
-        currentPresetName = name
-        sessionRecorder?.log("preset → \(name)")
-        hideNameTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(2))
-            guard !Task.isCancelled else { return }
-            withAnimation(.easeOut(duration: 0.5)) {
-                currentPresetName = nil
-            }
-        }
     }
 }
