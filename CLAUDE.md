@@ -287,6 +287,11 @@ struct PresetScoreBreakdown   // Per-(preset,track,context) score breakdown: moo
 protocol PresetScoring        // score(preset:track:context:) → Float; breakdown(…) → PresetScoreBreakdown;
                               // rank(presets:track:context:) default extension. Sendable.
 struct DefaultPresetScorer    // Concrete PresetScoring. Pure/stateless/deterministic. Weights in static lets.
+enum FatigueRisk              // .low / .medium / .high. Controls fatigue-penalty cooldown (60/120/300s).
+enum TransitionAffordance     // .crossfade / .cut / .morph. Transition styles a preset tolerates.
+enum SongSection              // .ambient / .buildup / .peak / .bridge / .comedown. Section suitability filter.
+struct ComplexityCost         // tier1: Float, tier2: Float (ms at 1080p). Scalar or {tier1,tier2} JSON.
+                              // .cost(for: DeviceTier) → Float. Exclusion gate in DefaultPresetScorer.
 ```
 
 ---

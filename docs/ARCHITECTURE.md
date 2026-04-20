@@ -191,7 +191,17 @@ The Orchestrator is the decision layer responsible for selecting visualizers, se
 - **Session mode** (playlist connected): Plans the full visual arc before playback using pre-analyzed TrackProfile data. Adapts in real time as live MIR reveals structural details.
 - **Ad-hoc mode** (no playlist): Reactive decision-making under uncertainty. Heuristic preset selection based on live MIR data as it accumulates.
 
-The Orchestrator is the product's key differentiator and is being implemented as an explicit scoring and policy system with testable golden-session fixtures.
+The Orchestrator is the product's key differentiator and is implemented as an explicit scoring and policy system with testable golden-session fixtures.
+
+**Implemented (Phase 4, Increment 4.1):**
+
+- **`DefaultPresetScorer`** — stateless, deterministic preset ranker. Produces a `PresetScoreBreakdown` with four weighted sub-scores (mood 30 %, stemAffinity 25 %, sectionSuitability 25 %, tempoMotion 20 %) and two multiplicative penalties (family-repeat 0.2×; fatigue via smoothstep over 60/120/300 s cooldowns by `FatigueRisk`). Hard exclusions gate the currently-playing preset and any preset whose `ComplexityCost` exceeds the device frame budget. `PresetScoringContext` is a fully Sendable value snapshot; `DefaultPresetScorer` contains no mutable state and calls no `Date.now()`, guaranteeing determinism across all tests.
+- Mood matching uses `TrackProfile.mood` (`EmotionalState.valence` / `.arousal`, each −1…+1). Color-temperature intersection scores how well the preset's declared range overlaps a target range derived from valence/arousal.
+
+**Forthcoming (4.2+):**
+
+- **`TransitionPolicy`** — when and how to transition between presets, consuming `StructuralPrediction` and `DefaultPresetScorer` ranking.
+- **`SessionPlanner`** — composes scorer + policy into a full pre-analyzed visual session plan for the playlist.
 
 ## Support Tiers
 
