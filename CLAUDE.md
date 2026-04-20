@@ -120,6 +120,7 @@ PhospheneEngine/
   Orchestrator/             → AI VJ: preset selection, transitions, session planning (Increment 4.1 complete — see ENGINEERING_PLAN.md Phase 4)
     PresetScorer            → DefaultPresetScorer: 4 weighted sub-scores (mood/tempoMotion/stemAffinity/sectionSuitability) + 2 multiplicative penalties (family-repeat, fatigue). PresetScoring protocol. PresetScoreBreakdown for inspection. (D-032)
     PresetScoringContext    → Immutable Sendable snapshot: deviceTier, frameBudgetMs, recentHistory, currentPreset, elapsedSessionTime, currentSection. PresetHistoryEntry for session history.
+    TransitionPolicy        → DefaultTransitionPolicy: structural boundary (confidence≥0.5, 2.5s window) beats duration-expired timer. TransitionDecision: trigger/scheduledAt/style/duration/confidence/rationale. Style from transitionAffordances + energy. Crossfade duration scales 2.0s→0.5s with energy. TransitionDeciding protocol. (D-033)
   Session/
     SessionManager          → Lifecycle state machine (idle→connecting→preparing→ready→playing→ended), @MainActor ObservableObject; degrades gracefully on connector/preparation failure
     PlaylistConnector       → Apple Music (AppleScript) / Spotify (Web API) / URL parsing
@@ -292,6 +293,15 @@ enum TransitionAffordance     // .crossfade / .cut / .morph. Transition styles a
 enum SongSection              // .ambient / .buildup / .peak / .bridge / .comedown. Section suitability filter.
 struct ComplexityCost         // tier1: Float, tier2: Float (ms at 1080p). Scalar or {tier1,tier2} JSON.
                               // .cost(for: DeviceTier) → Float. Exclusion gate in DefaultPresetScorer.
+struct TransitionContext      // Sendable snapshot for TransitionDeciding: currentPreset, elapsedPresetTime,
+                              // prediction (StructuralPrediction), energy (0–1), captureTime (Float, seconds
+                              // since capture start — shared coordinate with StructuralPrediction timestamps).
+struct TransitionDecision     // Fully-inspectable transition directive: trigger (structuralBoundary/
+                              // durationExpired), scheduledAt (Float), style (TransitionAffordance),
+                              // duration (TimeInterval, 0 for cut), confidence (Float), rationale (String).
+protocol TransitionDeciding   // evaluate(context: TransitionContext) → TransitionDecision?. Sendable.
+struct DefaultTransitionPolicy // Concrete TransitionDeciding. Constants in static lets. Structural boundary
+                              // beats timer fallback; energy scales crossfade duration and style selection.
 ```
 
 ---
@@ -506,6 +516,7 @@ No CoreML dependency. All ML uses MPSGraph (GPU) or Accelerate (CPU).
 
 **Phase 4 (Orchestrator) in progress. Phase 3 and Phase 2.5 (session preparation) complete.** Recent landed work:
 
+- **Increment 4.2: TransitionPolicy** — `DefaultTransitionPolicy` implementing `TransitionDeciding` protocol. Structural boundary trigger (confidence ≥ 0.5, 2.5 s lookahead) takes priority over duration-expired timer fallback. `TransitionDecision` value type: trigger, scheduledAt, style, duration, confidence, rationale. Style negotiated from `transitionAffordances` + energy (cut preferred at energy > 0.7, crossfade otherwise). Crossfade duration scales linearly 2.0 s→0.5 s with energy. 12 unit tests. D-033 in DECISIONS.md. 374 tests total; 4 pre-existing Apple Music env failures unchanged.
 - **Increment 4.1: PresetScorer** — `DefaultPresetScorer` implementing `PresetScoring` protocol. Four weighted sub-scores: mood (0.30), stemAffinity (0.25), sectionSuitability (0.25), tempoMotion (0.20). Two multiplicative penalties: family-repeat (0.2×) and fatigue smoothstep (60/120/300s cooldown by `FatigueRisk`). Hard exclusions gate perf-budget breakers and the currently-playing preset. `PresetScoreBreakdown` exposes all sub-scores for introspection. `PresetScoringContext` is a fully Sendable value snapshot using monotonic `elapsedSessionTime` — no `Date.now()` inside the scorer (guarantees determinism). `DeviceTier` enum added to Shared. `stemAffinity: [String: String]` added to `PresetDescriptor` (was in JSON sidecars, now decoded). 13 unit tests. D-032 in DECISIONS.md. 362 tests total; 5 pre-existing failures unchanged.
 - **Increment 4.0: Enriched preset metadata schema** — `PresetMetadata.swift` with `FatigueRisk`, `TransitionAffordance`, `SongSection`, `ComplexityCost`. `PresetDescriptor` extended with 7 new Orchestrator-facing fields (`visual_density`, `motion_intensity`, `color_temperature_range`, `fatigue_risk`, `transition_affordances`, `section_suitability`, `complexity_cost`), all optional in JSON with fallback-on-missing / warn-on-malformed decoding. All 11 built-in preset JSON sidecars back-filled. 6 new `PresetDescriptorMetadataTests`. D-029 in DECISIONS.md. (Pulled forward from Phase 5.1.)
 - **SwiftLint L-1 structural cleanup** — Pure mechanical refactor: zero logic changes, zero new public API. Reduced from 24 → 0 violations by extracting overlong functions and splitting oversized files into extension files. New files: `StemAnalyzer+RichMetadata.swift`, `MIRPipeline+Recording.swift`, `AudioInputRouter+SignalState.swift`, `RayMarchPipeline+PipelineStates.swift`, `RenderPipeline+FeedbackDraw.swift`, `RenderPipeline+PresetSwitching.swift`, `PresetLoader+WarpPreamble.swift`, `VisualizerEngine+Capture.swift`, `VisualizerEngine+InitHelpers.swift`, `VisualizerEngine+PublicAPI.swift`. All helpers private/internal only. 349 tests pass (4 pre-existing Apple Music environment failures unchanged).
@@ -519,7 +530,7 @@ No CoreML dependency. All ML uses MPSGraph (GPU) or Accelerate (CPU).
 
 The next ordered increment is:
 
-1. **Increment 4.2 — TransitionPolicy** — `Orchestrator/TransitionPolicy.swift`: decides when and how to transition between presets using `StructuralPrediction`. Consumes the ranking produced by `DefaultPresetScorer`.
+1. **Increment 4.3 — SessionPlanner** — `Orchestrator/SessionPlanner.swift`: before playback starts, produces a `SessionPlan` — ordered list of (TrackIdentity, PresetDescriptor, TransitionTiming) for the entire playlist. Composes `DefaultPresetScorer` + `DefaultTransitionPolicy`. Pre-compiles pipeline states for all planned presets to eliminate runtime compilation hitches.
 
 See `docs/ENGINEERING_PLAN.md` for the full forward plan with done-when criteria and verification commands. See `docs/MILKDROP_ARCHITECTURE.md` for the research that scopes Phase MV.
 

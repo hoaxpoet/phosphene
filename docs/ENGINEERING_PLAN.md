@@ -423,16 +423,13 @@ swift test --package-path PhospheneEngine
 
 ---
 
-### Increment 4.2 — Transition Policy
+### Increment 4.2 — Transition Policy ✅
 
-**Scope:** `Orchestrator/TransitionPolicy.swift`. Decides *when* and *how* to transition between presets. Inputs: structural analysis (section boundaries from StructuralAnalyzer), lookahead buffer state, current preset elapsed time vs declared duration, energy trajectory. Outputs: `TransitionDecision` (timing, type: crossfade/cut/morph, duration).
+**Landed:** 2026-04-20.
 
-**Done when:**
-- Transitions land on section boundaries when confidence > threshold (prefer structural analysis over timer).
-- Timer-based fallback when no boundaries detected.
-- No preset repeats its family twice in succession.
-- Crossfade duration scales with energy (faster transitions during high-energy passages).
-- 8+ unit tests with synthetic StructuralPrediction inputs.
+`DefaultTransitionPolicy` implements the `TransitionDeciding` protocol. Priority: structural boundary (when `StructuralPrediction.confidence ≥ 0.5` and boundary within 2.5 s lookahead window) beats duration-expired timer fallback. `TransitionDecision` is fully inspectable: trigger, scheduledAt, style (crossfade/cut/morph), duration, confidence, rationale. Style negotiated from `currentPreset.transitionAffordances` and energy level — high energy (> 0.7) prefers `.cut`, low energy prefers `.crossfade`. Crossfade duration scales linearly from 2.0 s (energy=0) to 0.5 s (energy=1). Family-repeat avoidance is already handled upstream by `DefaultPresetScorer` (familyRepeatMultiplier=0.2×). 12 unit tests with synthetic `StructuralPrediction` inputs — all pass. See D-033 in DECISIONS.md.
+
+**New files:** `Orchestrator/TransitionPolicy.swift`, `Tests/Orchestrator/TransitionPolicyTests.swift`.
 
 **Verify:** `swift test --package-path PhospheneEngine`
 
