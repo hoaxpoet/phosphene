@@ -11,5 +11,12 @@
   "base_zoom": 0.12,
   "base_rot": 0.03,
   "decay": 0.955,
-  "beat_sensitivity": 1.0
+  "beat_sensitivity": 1.0,
+  "visual_density": 0.3,
+  "motion_intensity": 0.6,
+  "color_temperature_range": [0.2, 0.8],
+  "fatigue_risk": "medium",
+  "transition_affordances": ["crossfade"],
+  "section_suitability": ["ambient", "buildup", "peak", "bridge", "comedown"],
+  "complexity_cost": { "tier1": 0.4, "tier2": 0.2 }
 }

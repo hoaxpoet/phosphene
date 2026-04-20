@@ -28,5 +28,12 @@
     "vocals": "terrain_height_adaptive+palette_teal+peak_polish",
     "other": "terrain_height_adaptive+palette_yellow+peak_polish",
     "drums": "terrain_height_adaptive+palette_violet+beat_accent"
-  }
+  },
+  "visual_density": 0.7,
+  "motion_intensity": 0.6,
+  "color_temperature_range": [0.2, 0.95],
+  "fatigue_risk": "low",
+  "transition_affordances": ["crossfade", "cut"],
+  "section_suitability": ["buildup", "peak", "bridge"],
+  "complexity_cost": { "tier1": 3.8, "tier2": 2.0 }
 }

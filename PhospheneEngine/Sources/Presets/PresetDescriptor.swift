@@ -5,6 +5,7 @@
 import Foundation
 import Shared
 import simd
+import os.log
 
 // MARK: - Scene Configuration Types
 
@@ -180,6 +181,30 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         case composite
     }
 
+    // MARK: - Orchestrator Scoring Metadata (Increment 4.0)
+
+    /// 0 = sparse/minimal, 1 = packed/busy. Low-arousal tracks prefer low density.
+    public let visualDensity: Float
+
+    /// 0 = static/slow, 1 = fast/kinetic. Informs tempo match during scoring.
+    public let motionIntensity: Float
+
+    /// `[cool, warm]`, each 0–1. 0 = cold blue, 1 = hot orange.
+    /// The Orchestrator intersects this range with the mood-derived target range.
+    public let colorTemperatureRange: SIMD2<Float>
+
+    /// Controls the cooldown penalty between consecutive reuses of this preset.
+    public let fatigueRisk: FatigueRisk
+
+    /// Transition styles this preset tolerates as an incoming or outgoing transition.
+    public let transitionAffordances: [TransitionAffordance]
+
+    /// Which song sections this preset suits. Default = all (no suitability penalty).
+    public let sectionSuitability: [SongSection]
+
+    /// Estimated render cost in ms at 1080p per device tier.
+    public let complexityCost: ComplexityCost
+
     // MARK: - CodingKeys
 
     /// Keys for all stored properties — used by both `init(from:)` and `encode(to:)`.
@@ -202,6 +227,13 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         case fragmentFunction = "fragment_function"
         case vertexFunction = "vertex_function"
         case shaderFileName = "shader_file"
+        case visualDensity = "visual_density"
+        case motionIntensity = "motion_intensity"
+        case colorTemperatureRange = "color_temperature_range"
+        case fatigueRisk = "fatigue_risk"
+        case transitionAffordances = "transition_affordances"
+        case sectionSuitability = "section_suitability"
+        case complexityCost = "complexity_cost"
     }
 
     /// Keys for legacy boolean flags — decode-only, not stored as properties.
@@ -246,6 +278,35 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         } else {
             passes = try Self.synthesizePasses(from: decoder)
         }
+
+        // MARK: Orchestrator Scoring Metadata (Increment 4.0)
+        visualDensity = try container.decodeIfPresent(Float.self, forKey: .visualDensity) ?? 0.5
+        motionIntensity = try container.decodeIfPresent(Float.self, forKey: .motionIntensity) ?? 0.5
+        colorTemperatureRange = try container.decodeIfPresent(
+            SIMD2<Float>.self, forKey: .colorTemperatureRange) ?? SIMD2(0.3, 0.7)
+
+        // Decode fatigue_risk as a raw String so an unrecognised value logs a warning
+        // and falls back to .medium rather than throwing and rejecting the whole preset.
+        if let rawRisk = try container.decodeIfPresent(String.self, forKey: .fatigueRisk) {
+            if let parsed = FatigueRisk(rawValue: rawRisk) {
+                fatigueRisk = parsed
+            } else {
+                // Capture name as a local to avoid "escaping autoclosure captures mutating self" error.
+                let presetName = name
+                Logging.renderer.warning(
+                    "PresetDescriptor '\(presetName)': unknown fatigue_risk '\(rawRisk)' — using .medium")
+                fatigueRisk = .medium
+            }
+        } else {
+            fatigueRisk = .medium
+        }
+
+        transitionAffordances = try container.decodeIfPresent(
+            [TransitionAffordance].self, forKey: .transitionAffordances) ?? [.crossfade]
+        sectionSuitability = try container.decodeIfPresent(
+            [SongSection].self, forKey: .sectionSuitability) ?? SongSection.allCases
+        complexityCost = try container.decodeIfPresent(
+            ComplexityCost.self, forKey: .complexityCost) ?? ComplexityCost()
     }
 
     /// Synthesise a `passes` array from legacy boolean flags.

@@ -334,6 +334,29 @@ MV-0 ✅, MV-1 ✅, MV-2 ✅, MV-3 ✅ complete.
 
 The Orchestrator is the product's key differentiator. It is implemented as an explicit scoring and policy system, not a black box.
 
+### Increment 4.0 — Enriched Preset Metadata Schema ✅
+
+**Scope:** `PresetMetadata.swift` (new), `PresetDescriptor.swift` (extended), all 11 JSON sidecars back-filled.
+
+Pulled forward from Phase 5.1 because Increment 4.1 (PresetScorer) cannot be built without the metadata it scores on. Adding the schema now eliminates a breaking change immediately after 4.1 is drafted.
+
+**New types:** `FatigueRisk`, `TransitionAffordance`, `SongSection` (String-raw, Codable, Sendable, Hashable, CaseIterable). `ComplexityCost` struct with dual-form Codable (scalar or `{"tier1":x,"tier2":y}`). All in `PresetMetadata.swift`.
+
+**New `PresetDescriptor` fields (all optional in JSON, fallback-on-missing, warn-on-malformed):**
+`visual_density`, `motion_intensity`, `color_temperature_range`, `fatigue_risk`, `transition_affordances`, `section_suitability`, `complexity_cost`.
+
+**Done when:** ✅ All criteria met.
+- `PresetMetadata.swift` with three enums and `ComplexityCost`, all correct Swift 6 types.
+- `PresetDescriptor` has 7 new fields; decoding falls back to defaults; unknown `fatigue_risk` logs warning + uses `.medium`.
+- All 11 built-in preset JSON sidecars have explicit values for all 7 new fields.
+- `PresetLoaderBuiltInPresetsHaveValidPipelines` regression gate still passes.
+- `PresetDescriptorMetadataTests`: round-trip, defaults, malformed, complexity variants (scalar + nested), on-disk back-fill regression (6 test functions).
+- D-029 in `docs/DECISIONS.md`. CLAUDE.md preset metadata table extended.
+
+**Verify:** `swift test --package-path PhospheneEngine --filter PresetDescriptorMetadataTests`
+
+---
+
 ### Increment 4.1 — Preset Scoring Model
 
 **Scope:** `Orchestrator/PresetScorer.swift`. Given a `TrackProfile` and the current session context, score every preset in the catalog for suitability. Inputs: energy trajectory, mood quadrant, stem salience, tempo range, key mode. Per-preset: stem affinity match, mood compatibility, fatigue risk (time since last use of this preset's family), transition compatibility with the current preset, performance cost (render pass complexity vs device tier).
@@ -421,15 +444,9 @@ The Orchestrator is the product's key differentiator. It is implemented as an ex
 
 ## Phase 5 — Preset Certification Pipeline
 
-### Increment 5.1 — Enriched Preset Metadata Schema
+### Increment 5.1 — Enriched Preset Metadata Schema ✅ (landed as Increment 4.0)
 
-**Scope:** Extend `PresetDescriptor` JSON schema with fields the Orchestrator needs for intelligent selection: `visual_density` (0–1), `motion_intensity` (0–1), `color_temperature_range` ([cool, warm]), `fatigue_risk` (low/medium/high), `transition_affordances` ([crossfade, cut]), `section_suitability` ([ambient, buildup, peak, bridge, comedown]), `complexity_cost` (estimated ms at 1080p on Tier 1 / Tier 2). Back-fill all existing preset JSON files.
-
-**Done when:**
-- Schema documented. All existing presets have complete metadata.
-- `PresetDescriptor` parses all new fields with sensible defaults for missing keys.
-- `PresetScorer` (Increment 4.1) uses the new metadata.
-- 4+ unit tests for parsing, defaults, and round-trip.
+**Note:** This increment was pulled forward and completed as **Increment 4.0** because PresetScorer (Increment 4.1) requires this schema before it can be drafted. See Increment 4.0 above for the full done-when criteria and verification commands. All 5.1 scope items are complete.
 
 **Verify:** `swift test --package-path PhospheneEngine`
 

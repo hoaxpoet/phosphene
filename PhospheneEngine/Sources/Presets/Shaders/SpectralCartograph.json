@@ -11,5 +11,12 @@
   "beat_rot": 0.0,
   "decay": 0.0,
   "beat_sensitivity": 0.0,
-  "stem_affinity": {}
+  "stem_affinity": {},
+  "visual_density": 0.1,
+  "motion_intensity": 0.0,
+  "color_temperature_range": [0.3, 0.6],
+  "fatigue_risk": "low",
+  "transition_affordances": ["crossfade"],
+  "section_suitability": ["ambient"],
+  "complexity_cost": { "tier1": 0.3, "tier2": 0.15 }
 }
