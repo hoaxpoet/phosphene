@@ -498,3 +498,21 @@ Seven new fields were added to `PresetDescriptor` to give the Orchestrator (Incr
 **`PlannedSession` lives in Orchestrator, not Session (D-017 corollary):** The `Session` module cannot depend on `Orchestrator` (would create a circular dependency — `Orchestrator` depends on `Session`). The `SessionManager` cannot therefore carry a `@Published var plannedSession: PlannedSession?` field directly. The integration pattern is: the app layer observes `SessionManager.state == .ready`, then calls `sessionPlanner.plan(...)` using the `StemCache` data, and stores the resulting `PlannedSession` in its own state. This is the correct layering: SessionManager owns lifecycle, the app layer owns the plan. Full wiring is Increment 4.5.
 
 **How to apply:** `DefaultSessionPlanner.plan(tracks:catalog:deviceTier:)` is the synchronous entry point (deterministic, no async needed). `planAsync(tracks:catalog:deviceTier:)` adds preset precompilation via the injected closure. Inspect `PlannedSession.warnings` to understand any soft failures. `PlannedSession.track(at:)` and `.transition(at:)` provide O(N) playback-time lookups by session time.
+
+## D-035: Live adaptation is a pure function over the session plan (Increment 4.5)
+
+**Status:** Accepted (2026-04-20)
+
+`DefaultLiveAdapter` takes the current `PlannedSession`, a live `StructuralPrediction`, and a live `EmotionalState`, and returns a `LiveAdaptation` value — a pure function with no internal state and no external reads. All mutable session state lives in `VisualizerEngine+Orchestrator`, which applies adaptations via `PlannedSession.applying(_:at:)`.
+
+**Why conservative (at most one adaptation per call, boundary wins):** Two competing adaptations in one call would require merging transitions and overrides — a combinatorial problem that doesn't arise in practice because structural boundaries and mood divergences rarely fire simultaneously. Boundary reschedule is the safer, lower-risk operation (it moves a time, not a preset); mood override is irreversible mid-track. Separating them with a priority rule keeps each path predictable and individually testable.
+
+**Why the boundary threshold is 5 s:** The `LookaheadBuffer` delay is 2.5 s. A deviation of 5 s (2× the buffer depth) means the live boundary is outside the range of normal jitter from the structural analyzer. Below 5 s the planner's original estimate is probably still correct; above it the live signal is clearly diverging.
+
+**Why the override fraction cap is 40 %:** Overriding a preset after 40 % of the track has played delivers diminishing returns: fewer seconds of the new preset remain, and the visual disruption of a mid-track cut is harder to justify. 40 % is a conservative threshold — a full-track override (0 %) would be ideal, but some latency in mood convergence means 40 % gives the classifier time to stabilize before firing. This matches the "30-second preview analysis may not represent the full track" rationale from D-034.
+
+**Why `PlannedSession.applying(_:at:)` is a public extension in `LiveAdapter.swift`:** `PlannedSession` and `PlannedTrack` have internal memberwise inits (D-034: "always build via `DefaultSessionPlanner.plan()`"). The mutation path must live in the `Orchestrator` module where internal inits are accessible. Exposing it as a `public extension PlannedSession` method keeps the controlled mutation visible, self-documenting, and callable from the app layer without leaking the underlying constructors.
+
+**The scoring context for override candidates uses empty history:** In `evaluateMoodOverride`, both the current-preset score and the alternative scores are computed with `recentHistory: []`. This avoids re-applying session-level fatigue penalties that were already baked into the original plan, and keeps the comparison to a single "which preset fits this live mood better" question. Family-repeat and fatigue penalties are session-level concerns; live adaptation is a track-level correction.
+
+**How to apply:** Call `VisualizerEngine.buildPlan()` when `SessionManager.state == .ready` to build and store the initial plan. During playback, call `applyLiveUpdate(trackIndex:elapsedTrackTime:boundary:mood:)` periodically from the audio analysis path (the `analysisQueue`). `currentPreset(at:)` and `currentTransition(at:)` provide thread-safe lookups for the render loop.
