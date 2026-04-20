@@ -435,17 +435,13 @@ swift test --package-path PhospheneEngine
 
 ---
 
-### Increment 4.3 — Session Planner
+### Increment 4.3 — Session Planner ✅
 
-**Scope:** `Orchestrator/SessionPlanner.swift`. Before playback starts, produces a `SessionPlan`: ordered list of (TrackIdentity, PresetDescriptor, TransitionTiming) for the entire playlist. Uses PresetScorer and TransitionPolicy.
+**Scope:** `Orchestrator/SessionPlanner.swift`, `Orchestrator/PlannedSession.swift`. Greedy forward-walk planner composing `DefaultPresetScorer` + `DefaultTransitionPolicy`. Produces a `PlannedSession` — ordered list of `PlannedTrack` entries each carrying the selected `PresetDescriptor`, `PresetScoreBreakdown`, `PlannedTransition`, and planned timing. `planAsync` accepts a precompile closure (caller-injected, keeps Orchestrator module free of Renderer dependency). Deterministic: same inputs → byte-identical output. `PlanningWarning` surfaces degradation events. SessionManager integration deferred: `Session` module cannot import `Orchestrator` without a circular dependency — app-layer wiring is Increment 4.5.
 
-**Done when:**
-- Given a list of TrackProfiles, produces a complete session plan.
-- Plan respects: no consecutive same-family, mood arc across the playlist, performance budget per device tier.
-- Pipeline states for all planned presets are pre-compiled (eliminates runtime compilation hitches during transitions).
-- 6+ unit tests with curated 5-track playlists covering mood variety, family diversity, and tier constraints.
+**Landed 2026-04-20.** 13 unit tests covering empty-playlist/empty-catalog errors, single-track plan, 5-track family diversity, tier exclusion, mood arc, fatigue, full-exclusion fallback, determinism, `track(at:)` / `transition(at:)` lookups, precompile dedup, and precompile failure handling. D-034 in DECISIONS.md. 387 tests total; 4 pre-existing Apple Music env failures unchanged.
 
-**Verify:** `swift test --package-path PhospheneEngine`
+**Verify:** `swift test --package-path PhospheneEngine --filter SessionPlannerTests`
 
 ---
 
