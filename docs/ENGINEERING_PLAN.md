@@ -455,6 +455,8 @@ swift test --package-path PhospheneEngine
 - Tests pass against the current PresetScorer + TransitionPolicy + SessionPlanner.
 - Any future Orchestrator change that breaks a golden session test is a regression.
 
+**Design flag from 4.3:** Golden tests may need to inspect why a runner-up preset was NOT chosen — i.e., the full ranked breakdown for all catalog entries at each position, not just the winner. `PlannedTrack.scoreBreakdown` only carries the winner's breakdown. If assertion depth requires runner-up inspection, either (a) call `DefaultPresetScorer.breakdown(preset:track:context:)` directly inside the test fixture, or (b) consider adding `allBreakdowns: [(PresetDescriptor, PresetScoreBreakdown)]` to `PlannedTrack`. Decide at the start of 4.4 before drafting.
+
 **Verify:** `swift test --package-path PhospheneEngine`
 
 ---

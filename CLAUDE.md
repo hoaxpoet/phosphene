@@ -132,7 +132,8 @@ PhospheneEngine/
     PreviewDownloader        → Batch download + format-sniff + AVAudioFile decode to mono Float32, withTaskGroup concurrency ceiling (default 4)
     SessionPreparer          → Download → separate → analyze → cache per track, @MainActor ObservableObject with @Published progress
     StemCache                → Thread-safe per-track: stem waveforms + StemFeatures + TrackProfile, NSLock-guarded
-    TrackProfile             → BPM, key, mood, spectral centroid avg, genre tags, stem energy balance, estimated section count
+    TrackProfile             → BPM, key, mood, spectral centroid avg, genre tags, stem energy balance, estimated section count.
+                               NOTE: no `fullDuration` field — full track duration comes from TrackIdentity.duration (Double?, nil = unknown). SessionPlanner defaults to 180 s when nil.
   Shared/
     UMABuffer               → Generic .storageModeShared MTLBuffer + UMARingBuffer
     AudioFeatures           → @frozen SIMD-aligned structs (see Key Types below)
