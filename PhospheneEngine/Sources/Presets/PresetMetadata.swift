@@ -3,6 +3,7 @@
 // See PresetDescriptor for how these are decoded (fallback-on-missing, warn-on-malformed).
 
 import Foundation
+import Shared
 
 // MARK: - FatigueRisk
 
@@ -71,6 +72,14 @@ public struct ComplexityCost: Sendable, Equatable {
     public init(tier1: Float = 1.0, tier2: Float = 1.0) {
         self.tier1 = tier1
         self.tier2 = tier2
+    }
+
+    /// Estimated render cost in ms for the given device tier.
+    public func cost(for tier: DeviceTier) -> Float {
+        switch tier {
+        case .tier1: return tier1
+        case .tier2: return tier2
+        }
     }
 }
 

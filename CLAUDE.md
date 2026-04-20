@@ -117,7 +117,9 @@ PhospheneEngine/
     Shaders/TestSphere.metal → Minimal pipeline-verification SDF (sphere + floor); used for end-to-end ray-march compile/render test.
     Shaders/SpectralCartograph.metal → Instrument-family diagnostic preset. Four-panel real-time MIR visualiser: TL=FFT spectrum (log-freq, centroid-coloured), TR=3-band deviation meters (D-026 compliant), BL=valence/arousal phase plot with 8s trail, BR=scrolling graphs for beat_phase01/bass_dev/vocal pitch. Reads SpectralHistoryBuffer at buffer(5). Direct pass only; no feedback, no warp.
     Shaders/VolumetricLithograph.metal → Psychedelic linocut terrain (MV-2 / v4.1). fbm3D heightfield swept by `s.sceneParamsA.x` at slow rate 0.015; melody-primary blend `0.75 × (0.5 + f.mid_att_rel) + 0.35 × (0.3 + f.bass_att_rel × 0.7)` — deviation-driven, genre-stable across AGC shifts (MV-1 / D-026). Stem-accurate drivers blend in via `smoothstep(0.02, 0.06, totalStemEnergy)` warmup (D-019). Forward camera dolly at 1.8 u/s (configured in VisualizerEngine+Presets.swift). Three strata with narrow linocut coverage (~15% peaks): palette-tinted near-black valleys, razor-thin emissive ridge-line seam, polished-metal peaks. Peaks use IQ cosine `palette()` driven by terrain noise + audio time + `0.5 + f.mid_att_rel × 0.5` (melody-modulated hue) + valence. Accent/strobe from `smoothstep(0.30/0.70, stems.drums_beat)` with FV fallback `smoothstep(0.35, 0.70, f.spectral_flux)`. `f.mid_dev × 1.5` polishes peak roughness. `scene_fog: 0` truly disables fog. Miss/sky pixels tinted by `scene.lightColor.rgb`. SSGI omitted. MV-2: mv_warp pass adds temporal feedback accumulation — melody-driven zoom breath (mid_att_rel × 0.003), valence-driven rotation, decay=0.96; per-vertex UV ripple from bass (horizontal) and melody (vertical) at 0.004 UV amplitude. Passes: ray_march + post_process + mv_warp.
-  Orchestrator/             → AI VJ: preset selection, transitions, session planning (stub — see ENGINEERING_PLAN.md Phase 4)
+  Orchestrator/             → AI VJ: preset selection, transitions, session planning (Increment 4.1 complete — see ENGINEERING_PLAN.md Phase 4)
+    PresetScorer            → DefaultPresetScorer: 4 weighted sub-scores (mood/tempoMotion/stemAffinity/sectionSuitability) + 2 multiplicative penalties (family-repeat, fatigue). PresetScoring protocol. PresetScoreBreakdown for inspection. (D-032)
+    PresetScoringContext    → Immutable Sendable snapshot: deviceTier, frameBudgetMs, recentHistory, currentPreset, elapsedSessionTime, currentSection. PresetHistoryEntry for session history.
   Session/
     SessionManager          → Lifecycle state machine (idle→connecting→preparing→ready→playing→ended), @MainActor ObservableObject; degrades gracefully on connector/preparation failure
     PlaylistConnector       → Apple Music (AppleScript) / Spotify (Web API) / URL parsing
@@ -137,6 +139,7 @@ PhospheneEngine/
     Logging                 → Per-module os.Logger instances (subsystem: "com.phosphene")
     SessionRecorder         → Continuous diagnostic capture per app launch: video.mp4 (H.264, 30 fps) + features.csv + stems.csv + stems/<N>_<title>/{drums,bass,vocals,other}.wav + session.log. Writes to ~/Documents/phosphene_sessions/<timestamp>/. Writer locks after 30 stable drawable frames; if a different size arrives consistently for ≥90 frames after lock (bad initial lock from transient Retina→logical-point resize), tears down and relocks — logs "video writer relocking". Finalised on NSApplication.willTerminateNotification. Validated by SessionRecorderTests.
     SpectralHistoryBuffer   → Per-frame MIR history ring buffer. 5 rings × 480 samples (≈8s at 60fps) in a 16 KB UMA MTLBuffer bound at fragment index 5 in direct-pass encoders. Tracks valence, arousal, beat_phase01, bass_dev, log-normalized vocal pitch. Updated once per frame in RenderPipeline.draw(in:); reset on track change.
+    DeviceTier              → .tier1 (M1/M2) / .tier2 (M3/M4). frameBudgetMs getter. Used by PresetScoringContext for complexity-cost exclusion gate.
 Tests/
   Audio/                    → AudioBufferTests, FFTProcessorTests, StreamingMetadataTests, MetadataPreFetcherTests, LookaheadBufferTests, SilenceDetectorTests
   DSP/                      → SpectralAnalyzerTests, BandEnergyProcessorTests, ChromaExtractorTests, BeatDetectorTests, MIRPipelineUnitTests, SelfSimilarityMatrixTests, NoveltyDetectorTests, StructuralAnalyzerTests, BeatPredictorTests, PitchTrackerTests, StemAnalyzerMV3Tests
@@ -275,6 +278,15 @@ enum RenderPass               // direct, feedback, particles, mesh_shader, post_
 class SpectralHistoryBuffer   // 16 KB UMA ring buffer at buffer(5). 480-sample trails for
                               // valence, arousal, beat_phase01, bass_dev, vocals_pitch_norm.
                               // Conforms to SpectralHistoryPublishing for test injection.
+enum DeviceTier               // .tier1 (M1/M2), .tier2 (M3/M4). frameBudgetMs = 16.6ms.
+struct PresetScoringContext   // Sendable session snapshot: deviceTier, frameBudgetMs, recentHistory,
+                              // currentPreset, elapsedSessionTime, currentSection. .initial(deviceTier:) factory.
+struct PresetHistoryEntry     // One past preset appearance: presetID, family, startTime, endTime. Sendable+Hashable.
+struct PresetScoreBreakdown   // Per-(preset,track,context) score breakdown: mood, tempoMotion, stemAffinity,
+                              // sectionSuitability, familyRepeatMultiplier, fatigueMultiplier, excluded, total.
+protocol PresetScoring        // score(preset:track:context:) → Float; breakdown(…) → PresetScoreBreakdown;
+                              // rank(presets:track:context:) default extension. Sendable.
+struct DefaultPresetScorer    // Concrete PresetScoring. Pure/stateless/deterministic. Weights in static lets.
 ```
 
 ---
@@ -489,6 +501,7 @@ No CoreML dependency. All ML uses MPSGraph (GPU) or Accelerate (CPU).
 
 **Phase 4 (Orchestrator) in progress. Phase 3 and Phase 2.5 (session preparation) complete.** Recent landed work:
 
+- **Increment 4.1: PresetScorer** — `DefaultPresetScorer` implementing `PresetScoring` protocol. Four weighted sub-scores: mood (0.30), stemAffinity (0.25), sectionSuitability (0.25), tempoMotion (0.20). Two multiplicative penalties: family-repeat (0.2×) and fatigue smoothstep (60/120/300s cooldown by `FatigueRisk`). Hard exclusions gate perf-budget breakers and the currently-playing preset. `PresetScoreBreakdown` exposes all sub-scores for introspection. `PresetScoringContext` is a fully Sendable value snapshot using monotonic `elapsedSessionTime` — no `Date.now()` inside the scorer (guarantees determinism). `DeviceTier` enum added to Shared. `stemAffinity: [String: String]` added to `PresetDescriptor` (was in JSON sidecars, now decoded). 13 unit tests. D-032 in DECISIONS.md. 362 tests total; 5 pre-existing failures unchanged.
 - **Increment 4.0: Enriched preset metadata schema** — `PresetMetadata.swift` with `FatigueRisk`, `TransitionAffordance`, `SongSection`, `ComplexityCost`. `PresetDescriptor` extended with 7 new Orchestrator-facing fields (`visual_density`, `motion_intensity`, `color_temperature_range`, `fatigue_risk`, `transition_affordances`, `section_suitability`, `complexity_cost`), all optional in JSON with fallback-on-missing / warn-on-malformed decoding. All 11 built-in preset JSON sidecars back-filled. 6 new `PresetDescriptorMetadataTests`. D-029 in DECISIONS.md. (Pulled forward from Phase 5.1.)
 - **SwiftLint L-1 structural cleanup** — Pure mechanical refactor: zero logic changes, zero new public API. Reduced from 24 → 0 violations by extracting overlong functions and splitting oversized files into extension files. New files: `StemAnalyzer+RichMetadata.swift`, `MIRPipeline+Recording.swift`, `AudioInputRouter+SignalState.swift`, `RayMarchPipeline+PipelineStates.swift`, `RenderPipeline+FeedbackDraw.swift`, `RenderPipeline+PresetSwitching.swift`, `PresetLoader+WarpPreamble.swift`, `VisualizerEngine+Capture.swift`, `VisualizerEngine+InitHelpers.swift`, `VisualizerEngine+PublicAPI.swift`. All helpers private/internal only. 349 tests pass (4 pre-existing Apple Music environment failures unchanged).
 - **SwiftLint L-0 cleanup** — Auto-corrected comma/colon/operator spacing; fixed identifier names (single-letter variable renames); fixed 2 force-unwrap violations; fixed orphaned doc comment; targeted `disable/enable` around the CSV row-writing block in `SessionRecorder`; fixed multiline-arguments in `StemAnalyzer`, `InputLevelMonitor`, `VisualizerEngine+Audio`. Reduced from 166 → 24 violations (structural file/function-length refactors deferred to a dedicated increment).
@@ -501,7 +514,7 @@ No CoreML dependency. All ML uses MPSGraph (GPU) or Accelerate (CPU).
 
 The next ordered increment is:
 
-1. **Increment 4.1 — PresetScorer** — `Orchestrator/PresetScorer.swift`: scored preset selection using the Increment 4.0 metadata schema.
+1. **Increment 4.2 — TransitionPolicy** — `Orchestrator/TransitionPolicy.swift`: decides when and how to transition between presets using `StructuralPrediction`. Consumes the ranking produced by `DefaultPresetScorer`.
 
 See `docs/ENGINEERING_PLAN.md` for the full forward plan with done-when criteria and verification commands. See `docs/MILKDROP_ARCHITECTURE.md` for the research that scopes Phase MV.
 

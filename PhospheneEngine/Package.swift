@@ -86,12 +86,13 @@ let package = Package(
                 "ML",
                 "Renderer",
                 "Presets",
+                "Session",
             ],
             path: "Sources/Orchestrator"
         ),
         .testTarget(
             name: "PhospheneEngineTests",
-            dependencies: ["Shared", "Audio", "DSP", "ML", "Presets", "Renderer", "Session"],
+            dependencies: ["Shared", "Audio", "DSP", "ML", "Presets", "Renderer", "Session", "Orchestrator"],
             path: "Tests/PhospheneEngineTests",
             resources: [.copy("Regression/Fixtures")]
         ),
