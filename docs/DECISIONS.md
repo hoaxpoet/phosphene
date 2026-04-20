@@ -398,3 +398,30 @@ A pre-allocated `.storageModeShared` MTLBuffer (16 KB, 4096 Float32) carrying pe
 **First consumer:** `SpectralCartograph` preset — four-panel diagnostic instrument showing FFT spectrum, deviation meters, V/A plot, and scrolling feature graphs.
 
 **Implication:** future additions to the history layout (e.g., per-stem onset rate history) can consume slots [2402..4095] without breaking existing consumers. Ray march presets currently skip buffer(5); it is available to them if needed.
+
+
+---
+
+## D-029: Preset metadata schema extended for Orchestrator scoring (Increment 4.0)
+
+**Status:** Accepted (2026-04-20)
+
+Seven new fields were added to `PresetDescriptor` to give the Orchestrator (Increment 4.1) the signal it needs to make tasteful preset-selection decisions without hard-coding per-preset logic in scoring rules.
+
+**New fields:** `visual_density`, `motion_intensity`, `color_temperature_range`, `fatigue_risk`, `transition_affordances`, `section_suitability`, `complexity_cost`.
+
+**Why pulled forward from Phase 5.1:** The original engineering plan placed the enriched metadata schema in Phase 5.1 (Orchestrator polish) on the assumption that PresetScorer (Increment 4.1) could be prototyped against a minimal schema and extended later. In practice, building PresetScorer without the fields it scores on forces either placeholder logic or a breaking schema change immediately after. Pulling the schema forward costs a small amount of effort (back-filling 11 JSON sidecars) and eliminates the breaking change.
+
+**Decoding contract:** Missing field → default. Malformed `fatigue_risk` string → log warning via `Logging.renderer`, use `.medium`, do not throw. This matches the existing `synthesizePasses` fallback philosophy. `complexity_cost` accepts both scalar (applied to both tiers) and nested `{"tier1": x, "tier2": y}` forms.
+
+**Why these specific fields:**
+- `visual_density` + `motion_intensity`: direct proxies for the two axes of arousal that the MoodClassifier already tracks. The Orchestrator can intersect descriptor ranges with mood targets.
+- `color_temperature_range`: bridges mood-derived valence (warm/cool palette bias) to preset capability. Allows scoring without inspecting shader source.
+- `fatigue_risk`: encodes the subjective reviewer observation that some presets (high-contrast, strobing) become uncomfortable over extended viewing. A cooldown penalty enforces variety.
+- `transition_affordances`: hard cuts work beautifully for GlassBrutalist (stark) and VolumetricLithograph (linocut) but would feel jarring on particle or plasma presets. Encoding this prevents the Orchestrator from scheduling inappropriate transitions.
+- `section_suitability`: structural section matching (ambient/buildup/peak/bridge/comedown) is the highest-leverage hook for making visual choices feel intentional rather than random.
+- `complexity_cost`: tier1/tier2 device tiers reflect the M1/M2 vs M3+ performance gap for ray march presets. Excludes frame-budget breakers at scoring time rather than at runtime.
+
+**New types:** `FatigueRisk`, `TransitionAffordance`, `SongSection` (all `String`-raw, `Codable`, `Sendable`, `Hashable`, `CaseIterable`), `ComplexityCost` (struct with custom dual-form Codable). Defined in `PresetMetadata.swift`.
+
+**Back-fill note:** 11 JSON sidecars were back-filled. KineticSculpture's `color_temperature_range` was adjusted from spec `[0.3, 0.7]` (identical to the default) to `[0.3, 0.65]` to make the back-fill detectable by the regression test and to better reflect the slightly cooler warm-end of its metallic/glass palette.

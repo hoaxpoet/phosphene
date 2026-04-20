@@ -12,5 +12,12 @@
   "base_rot": 0.005,
   "decay": 0.90,
   "beat_sensitivity": 1.4,
-  "fragment_function": "membrane_fragment"
+  "fragment_function": "membrane_fragment",
+  "visual_density": 0.55,
+  "motion_intensity": 0.7,
+  "color_temperature_range": [0.25, 0.8],
+  "fatigue_risk": "medium",
+  "transition_affordances": ["crossfade"],
+  "section_suitability": ["buildup", "peak"],
+  "complexity_cost": { "tier1": 0.8, "tier2": 0.4 }
 }

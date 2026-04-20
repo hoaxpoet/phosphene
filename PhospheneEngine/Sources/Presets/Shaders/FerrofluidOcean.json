@@ -7,5 +7,12 @@
   "passes": ["post_process"],
   "beat_source": "bass",
   "beat_sensitivity": 1.5,
-  "fragment_function": "ferrofluid_ocean_fragment"
+  "fragment_function": "ferrofluid_ocean_fragment",
+  "visual_density": 0.75,
+  "motion_intensity": 0.65,
+  "color_temperature_range": [0.1, 0.55],
+  "fatigue_risk": "medium",
+  "transition_affordances": ["crossfade"],
+  "section_suitability": ["buildup", "peak", "bridge"],
+  "complexity_cost": { "tier1": 1.5, "tier2": 0.8 }
 }

@@ -1,10 +1,17 @@
 {
-    "name": "Glass Brutalist",
-    "family": "geometric",
-    "duration": 30,
-    "passes": ["ray_march", "ssgi", "post_process"],
-    "scene_camera": { "position": [0.0, 1.8, 0.5], "target": [0.0, 1.5, 18.0], "fov": 65 },
-    "scene_lights": [{ "position": [0, 4.5, 2], "color": [1, 0.95, 0.9], "intensity": 3.0 }],
-    "scene_fog": 0.015,
-    "scene_ambient": 0.08
+  "name": "Glass Brutalist",
+  "family": "geometric",
+  "duration": 30,
+  "passes": ["ray_march", "ssgi", "post_process"],
+  "scene_camera": { "position": [0.0, 1.8, 0.5], "target": [0.0, 1.5, 18.0], "fov": 65 },
+  "scene_lights": [{ "position": [0, 4.5, 2], "color": [1, 0.95, 0.9], "intensity": 3.0 }],
+  "scene_fog": 0.015,
+  "scene_ambient": 0.08,
+  "visual_density": 0.4,
+  "motion_intensity": 0.4,
+  "color_temperature_range": [0.4, 0.9],
+  "fatigue_risk": "medium",
+  "transition_affordances": ["crossfade", "cut"],
+  "section_suitability": ["ambient", "bridge"],
+  "complexity_cost": { "tier1": 3.2, "tier2": 1.8 }
 }

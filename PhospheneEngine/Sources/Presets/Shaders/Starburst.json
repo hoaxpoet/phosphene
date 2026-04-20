@@ -12,5 +12,12 @@
   "base_rot": 0.01,
   "decay": 0.95,
   "beat_sensitivity": 1.0,
-  "fragment_function": "starburst_fragment"
+  "fragment_function": "starburst_fragment",
+  "visual_density": 0.9,
+  "motion_intensity": 0.85,
+  "color_temperature_range": [0.2, 0.7],
+  "fatigue_risk": "low",
+  "transition_affordances": ["crossfade"],
+  "section_suitability": ["buildup", "peak"],
+  "complexity_cost": { "tier1": 2.5, "tier2": 1.4 }
 }

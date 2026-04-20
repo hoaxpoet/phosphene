@@ -9,5 +9,12 @@
   "fragment_function": "fractal_tree_fragment",
   "vertex_function": "fractal_tree_fallback_vertex",
   "beat_sensitivity": 1.2,
-  "mesh_thread_count": 64
+  "mesh_thread_count": 64,
+  "visual_density": 0.65,
+  "motion_intensity": 0.55,
+  "color_temperature_range": [0.2, 0.75],
+  "fatigue_risk": "medium",
+  "transition_affordances": ["crossfade"],
+  "section_suitability": ["ambient", "buildup", "bridge"],
+  "complexity_cost": { "tier1": 1.2, "tier2": 0.7 }
 }
