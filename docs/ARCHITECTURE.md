@@ -10,7 +10,7 @@ Phosphene is a native Swift/Metal macOS application with a modular engine archit
 - ML-powered stem separation
 - Metadata and playlist preparation
 - Renderer and preset system
-- Orchestrator and session planning (scorer implemented; transition policy and session planning forthcoming)
+- Orchestrator and session planning (increments 4.1–4.3 complete: scorer, transition policy, session planner; golden fixtures and live adaptation forthcoming)
 - App shell and UI
 
 ## Architectural Principles
@@ -193,15 +193,19 @@ The Orchestrator is the decision layer responsible for selecting visualizers, se
 
 The Orchestrator is the product's key differentiator and is implemented as an explicit scoring and policy system with testable golden-session fixtures.
 
-**Implemented (Phase 4, Increment 4.1):**
+**Implemented (Phase 4, Increments 4.1–4.3):**
 
 - **`DefaultPresetScorer`** — stateless, deterministic preset ranker. Produces a `PresetScoreBreakdown` with four weighted sub-scores (mood 30 %, stemAffinity 25 %, sectionSuitability 25 %, tempoMotion 20 %) and two multiplicative penalties (family-repeat 0.2×; fatigue via smoothstep over 60/120/300 s cooldowns by `FatigueRisk`). Hard exclusions gate the currently-playing preset and any preset whose `ComplexityCost` exceeds the device frame budget. `PresetScoringContext` is a fully Sendable value snapshot; `DefaultPresetScorer` contains no mutable state and calls no `Date.now()`, guaranteeing determinism across all tests.
-- Mood matching uses `TrackProfile.mood` (`EmotionalState.valence` / `.arousal`, each −1…+1). Color-temperature intersection scores how well the preset's declared range overlaps a target range derived from valence/arousal.
+- **`DefaultTransitionPolicy`** — implements `TransitionDeciding`. Structural boundary (confidence ≥ 0.5, 2.5 s lookahead) fires before the duration-expired timer fallback. Style negotiated from the current preset's `transitionAffordances` and energy (`.cut` preferred at energy > 0.7, `.crossfade` otherwise). Crossfade duration scales linearly 2.0 s → 0.5 s with energy. Fully inspectable `TransitionDecision` value type.
+- **`DefaultSessionPlanner`** — implements `SessionPlanning`. Greedy forward-walk over the playlist: for each track, scores the full catalog given accumulated history and picks the top eligible preset. Transition decisions reuse `DefaultTransitionPolicy` via synthetic `StructuralPrediction` at each track boundary (confidence 1.0). Output is a `PlannedSession` with `PlannedTrack` entries each carrying score breakdown, transition decision, and planned timing. `planAsync` accepts a precompile closure — the Orchestrator module carries no Renderer dependency. Deterministic: same inputs → byte-identical plan.
+- Session-mode planning is now implemented end-to-end (score → select → transition → plan). Render-loop consumption (Increment 4.5), live adaptation (Increment 4.5), ad-hoc mode (Increment 4.6), and golden-session regression fixtures (Increment 4.4) remain forthcoming.
 
-**Forthcoming (4.2+):**
+**Forthcoming (4.4+):**
 
-- **`TransitionPolicy`** — when and how to transition between presets, consuming `StructuralPrediction` and `DefaultPresetScorer` ranking.
-- **`SessionPlanner`** — composes scorer + policy into a full pre-analyzed visual session plan for the playlist.
+- **Golden-session fixtures (4.4)** — curated playlists with expected family sequences and forbidden choices; become the regression gate for all future Orchestrator changes.
+- **SessionManager app-layer wiring (4.5)** — `Session` module cannot import `Orchestrator` (circular dependency). The app layer observes `SessionManager.state == .ready` and calls `DefaultSessionPlanner.plan(...)`.
+- **Live adaptation (4.5)** — adapt the running plan as live MIR reveals structural details.
+- **Ad-hoc reactive mode (4.6)** — heuristic preset selection without pre-analysis.
 
 ## Support Tiers
 

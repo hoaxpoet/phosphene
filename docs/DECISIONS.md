@@ -473,3 +473,28 @@ Seven new fields were added to `PresetDescriptor` to give the Orchestrator (Incr
 **`TransitionDecision` is a pure value type:** trigger, scheduledAt, style, duration, confidence, rationale. No callbacks, no side effects. Callers schedule the transition externally from the returned struct.
 
 **How to apply:** Tune the four `static let` constants in `DefaultTransitionPolicy` (`structuralConfidenceThreshold`, `lookaheadWindow`, `baseCrossfadeDuration`, `minCrossfadeDuration`, `cutEnergyThreshold`) to adjust timing behaviour globally. The `TransitionDeciding` protocol allows injection of test doubles or alternative implementations without changing callers.
+
+
+---
+
+## D-034: Session planning as greedy forward walk (Increment 4.3)
+
+**Status:** Accepted (2026-04-20)
+
+`DefaultSessionPlanner` answers the pre-session question: given an ordered playlist and the full preset catalog, produce a `PlannedSession` — a sequence of (track, preset, transition) entries — before playback begins.
+
+**Why greedy forward walk (not global optimization):** A greedy walk is O(N × catalog) and deterministic. Each position scores the full catalog given accumulated history, picks the top eligible preset, then advances. This is sufficient for the Orchestrator's core goal: variety, mood-matching, and fatigue avoidance. A global optimizer (e.g., dynamic programming over all permutations) would find occasionally better plans in edge cases but costs O(N! × catalog) and makes the plan opaque to inspection. The greedy result is already "good enough" because `DefaultPresetScorer`'s family-repeat and fatigue penalties naturally push toward variety when a diverse catalog is provided. Global optimization is a possible future enhancement — document it here so no one re-litigates it without cause.
+
+**Why planning never blocks `ready` (extends D-018):** Session preparation already has a degradation budget — partial preparation still yields `.ready`. The planner follows the same principle: if `plan()` throws (impossible given a non-empty catalog, but defensive), `SessionManager` catches it, logs it, and leaves `plannedSession == nil`. The render loop and engine are unaffected. The plan is advisory, not required for playback.
+
+**The synthetic-boundary trick at track changes:** Track changes are by definition section boundaries. Rather than adding a special "plan-time" code path in `DefaultTransitionPolicy`, `DefaultSessionPlanner.buildTransition` passes a `StructuralPrediction` with `predictedNextBoundary == captureTime` and `confidence == 1.0`. This causes `DefaultTransitionPolicy.evaluate()` to fire `structuralBoundary` immediately, exactly as it would during live playback at a detected section boundary. No code duplication; the real policy is exercised in both planning and playback.
+
+**Estimated energy mapping:** `energy = clamp(0.5 + 0.4 × arousal, 0, 1)` where `arousal ∈ [-1, 1]`. Maps neutral (0) → 0.5, fully calm (-1) → 0.1, fully energetic (1) → 0.9. This drives `TransitionContext.energy` to select crossfade style and duration during planning. Live playback can override with real audio-derived energy.
+
+**Fallback ladder:** (1) Top eligible preset (not excluded, total > 0) — normal path. (2) All excluded: cheapest-cost preset that is not the current one, plus `.noEligiblePresets` warning — covers budget-constrained situations. (3) No non-current alternative: cheapest preset regardless of identity, plus `.budgetExceeded` warning — covers degenerate single-preset catalogs. Plans are always producible given a non-empty catalog.
+
+**The precompile closure pattern:** `DefaultSessionPlanner` does not depend on `Renderer` or `RenderPipeline`. The precompile side effect is injected as a `(@Sendable (PresetDescriptor) async throws -> Void)?` closure. This keeps the Orchestrator module free of Renderer dependencies, allowing it to be tested without a GPU context. The app layer (or `VisualizerEngine`) wires the closure to `RenderPipeline`'s JIT compilation path.
+
+**`PlannedSession` lives in Orchestrator, not Session (D-017 corollary):** The `Session` module cannot depend on `Orchestrator` (would create a circular dependency — `Orchestrator` depends on `Session`). The `SessionManager` cannot therefore carry a `@Published var plannedSession: PlannedSession?` field directly. The integration pattern is: the app layer observes `SessionManager.state == .ready`, then calls `sessionPlanner.plan(...)` using the `StemCache` data, and stores the resulting `PlannedSession` in its own state. This is the correct layering: SessionManager owns lifecycle, the app layer owns the plan. Full wiring is Increment 4.5.
+
+**How to apply:** `DefaultSessionPlanner.plan(tracks:catalog:deviceTier:)` is the synchronous entry point (deterministic, no async needed). `planAsync(tracks:catalog:deviceTier:)` adds preset precompilation via the injected closure. Inspect `PlannedSession.warnings` to understand any soft failures. `PlannedSession.track(at:)` and `.transition(at:)` provide O(N) playback-time lookups by session time.
