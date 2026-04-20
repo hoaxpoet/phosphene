@@ -22,4 +22,6 @@ public enum PresetCategory: String, Sendable, CaseIterable, Codable {
     case transition
     case abstract
     case fluid
+    /// Real-time diagnostic instrument for MIR pipeline observability.
+    case instrument
 }

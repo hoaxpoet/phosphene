@@ -66,6 +66,16 @@ public final class StemAnalyzer: StemAnalyzing, @unchecked Sendable {
         var onsetAccum: Float = 0
         var prevRMS: Float = 0        // for flux detection
         var fluxEMA: Float = 1e-8     // adaptive threshold
+        // Rising-edge detection + refractory period (fixed 2026-04-17).
+        // Previous implementation counted every frame with flux > threshold
+        // as a separate onset.  At 94 Hz frame rate, a single drum hit
+        // spanning 3–5 frames registered as 3–5 onsets, producing 20+
+        // onsets/sec in session 2026-04-17T19-31-46Z — saturating
+        // downstream density/intensity drivers.  Now an "onset" is a
+        // rising-edge transition across the threshold, followed by a
+        // 100ms refractory period (max 600 BPM mono-stem detection).
+        var aboveThreshold: Bool = false
+        var framesSinceOnset: Int = 10_000
     }
 
     // MARK: - DSP Primitives
@@ -83,12 +93,21 @@ public final class StemAnalyzer: StemAnalyzing, @unchecked Sendable {
 
     /// Per-stem running average for deviation primitive computation (D-026).
     /// Order: [vocals, drums, bass, other].
-    /// Decay ≈ 0.995 per frame (~2.1s time constant at 94 Hz).
+    /// Decay ≈ 0.9989 per frame (~10s time constant at 94 Hz).
+    ///
+    /// Relaxed from 0.995 (τ≈2s) after session 2026-04-17T18-28-01Z diagnosis:
+    /// on sustained loud sections (Slint "Good Morning, Captain" outro), a 2s
+    /// EMA caught up within seconds and pushed *_energy_dev back toward zero
+    /// even though the audio stayed loud.  Presets using dev as a driver
+    /// (VolumetricLithograph v5) then read the outro as equivalent to the
+    /// verse.  Extending τ to ~10s preserves dev across full musical phrases
+    /// while AGC still adapts on section-change timescales.
+    ///
     /// Formula: runningAvg = runningAvg * decay + energy * (1 - decay)
     /// Then: energyRel = (energy - runningAvg) * 2.0
     ///       energyDev = max(0, energyRel)
     private var stemRunningAvg: [Float] = [0, 0, 0, 0]
-    private static let stemEMADecay: Float = 0.995
+    private static let stemEMADecay: Float = 0.9989
 
     // MARK: - MV-3a: Rich State
 
@@ -360,16 +379,32 @@ public final class StemAnalyzer: StemAnalyzing, @unchecked Sendable {
             : 0
         richStates[index].prevAttEnergy = attEnergy
 
-        // ── Onset rate: leaky integrator over ~0.5s ───────────────────────────
+        // ── Onset rate: rising-edge detection + 100ms refractory ─────────────
         // Flux: half-wave rectified change in RMS.
         let flux = max(0, currentRMS - richStates[index].prevRMS)
         richStates[index].prevRMS = currentRMS
         // Adaptive threshold: EMA of recent flux × 1.5.
         richStates[index].fluxEMA = richStates[index].fluxEMA * 0.9 + flux * 0.1
         let fluxThreshold = richStates[index].fluxEMA * 1.5
-        if flux > fluxThreshold && flux > 1e-6 {
+
+        // Count an onset only on a rising-edge transition across the threshold,
+        // and only if at least ~100ms has passed since the previous onset.
+        // At 94 Hz this caps mono-stem detection at ~600 BPM, well above any
+        // realistic musical onset density.  Without this gate, the leaky
+        // integrator saw every frame of a sustained above-threshold signal
+        // as a fresh onset (see StemRichState docs).
+        let refractoryFrames = max(1, Int((0.100 / max(dt, 1e-4)).rounded()))
+        let nowAbove = flux > fluxThreshold && flux > 1e-6
+        let risingEdge = nowAbove && !richStates[index].aboveThreshold
+        let refractoryElapsed = richStates[index].framesSinceOnset >= refractoryFrames
+        if risingEdge && refractoryElapsed {
             richStates[index].onsetAccum += 1.0
+            richStates[index].framesSinceOnset = 0
+        } else {
+            richStates[index].framesSinceOnset &+= 1
         }
+        richStates[index].aboveThreshold = nowAbove
+
         // Decay the accumulator with a 0.5s window time constant.
         let windowDecay = exp(-dt / 0.5)
         richStates[index].onsetAccum *= windowDecay

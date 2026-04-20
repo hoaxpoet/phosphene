@@ -5,10 +5,18 @@
 //
 //   video.mp4             H.264 video of the rendered output (30 fps cap).
 //   features.csv          Per-frame FeatureVector (bass/mid/treble/bands/beats/accum).
-//   stems.csv             Per-frame StemFeatures (drums/bass/vocals/other energy+beat).
+//   stems.csv             Per-frame StemFeatures: base energy/beat/band + MV-1 rel/dev
+//                         + MV-3a rich metadata (onsetRate/centroid/attackRatio/energySlope)
+//                         + MV-3c vocals pitch.
 //   session.log           Plain-text log of events (track/preset/state changes, errors).
 //   stems/<N>_<title>/    One directory per stem-separation invocation:
 //       drums.wav bass.wav vocals.wav other.wav
+//   raw_tap.wav           First 30s of interleaved Float32 PCM straight from
+//                         the Core Audio tap callback — before any Phosphene
+//                         DSP (FFT, AGC, stem separation).  Stage 4 ground
+//                         truth for diagnosing signal-chain degradation.
+//                         Compare its spectrum against stems/*/*.wav to
+//                         localise where band-limiting or attenuation enters.
 //
 // The recorder is created once at VisualizerEngine init and runs continuously
 // — there is no "start" button. Every rendered frame from the real app, driven
@@ -44,6 +52,13 @@ public final class SessionRecorder: @unchecked Sendable {
     private let featuresCSVURL: URL
     private let stemsCSVURL: URL
     private let logURL: URL
+    /// First 30 seconds of interleaved Float32 samples straight from the
+    /// Core Audio tap callback, before Phosphene's FFT / AGC / stem separation
+    /// touch them.  This is Stage 4 ground truth for diagnosing where in the
+    /// chain signal degradation (low-level peaks, high-frequency roll-off)
+    /// is introduced.  Compare its spectrum against the per-stem WAVs to
+    /// localise the culprit.
+    private let rawTapURL: URL
 
     // MARK: IO
 
@@ -101,6 +116,29 @@ public final class SessionRecorder: @unchecked Sendable {
     private var frameIndex: Int = 0
     private var stemDumpIndex: Int = 0
 
+    // MARK: Raw-tap streaming WAV state (diagnostic — first 30s).
+    //
+    // Open on first sample submission; set the WAV format once we know the
+    // tap's sample rate and channel count.  Stream interleaved Float32
+    // samples appended as little-endian IEEE 754 PCM bytes.  Stop after
+    // `rawTapMaxSamples` total samples have been written (30s × sampleRate
+    // × channels).  Header chunk-sizes are patched in `finish()`.
+    private var rawTapHandle: FileHandle?
+    private var rawTapSampleRate: UInt32 = 0
+    private var rawTapChannels: UInt16 = 0
+    private var rawTapSamplesWritten: Int = 0
+    private var rawTapMaxSamples: Int = 0        // set when format is known
+    private var rawTapHeaderWritten: Bool = false
+    /// Set once the 30s cap is reached or `finish()` closes the file.  Any
+    /// subsequent `recordRawTapSamples` calls short-circuit.  Without this
+    /// guard, a completed capture + continuing tap callbacks re-entered
+    /// `appendRawTapBytes`, saw `rawTapHandle == nil`, and re-created the
+    /// file via `FileManager.createFile(contents: nil)` — truncating the
+    /// freshly-captured 30s to zero bytes (seen in session 20-57-06Z,
+    /// where raw_tap.wav ended up at 44 bytes = header-only).
+    private var rawTapDone: Bool = false
+    private let rawTapDurationSeconds: Double = 30.0
+
     /// True once `finish()` has closed all handles. Guards against double-close
     /// when `deinit` runs after explicit `finish()` (common in tests).
     private var didFinish: Bool = false
@@ -137,6 +175,7 @@ public final class SessionRecorder: @unchecked Sendable {
         self.featuresCSVURL = dir.appendingPathComponent("features.csv")
         self.stemsCSVURL = dir.appendingPathComponent("stems.csv")
         self.logURL = dir.appendingPathComponent("session.log")
+        self.rawTapURL = dir.appendingPathComponent("raw_tap.wav")
 
         // Create CSV files with headers and the log file.
         let featuresHeader = """
@@ -147,10 +186,20 @@ public final class SessionRecorder: @unchecked Sendable {
 
             """
         let stemsHeader = """
-            frame,wallclock_s,drumsEnergy,drumsBeat,drumsBand0,drumsBand1,\
+            frame,wallclock_s,\
+            drumsEnergy,drumsBeat,drumsBand0,drumsBand1,\
             bassEnergy,bassBeat,bassBand0,bassBand1,\
             vocalsEnergy,vocalsBeat,vocalsBand0,vocalsBand1,\
-            otherEnergy,otherBeat,otherBand0,otherBand1
+            otherEnergy,otherBeat,otherBand0,otherBand1,\
+            drumsEnergyRel,drumsEnergyDev,\
+            bassEnergyRel,bassEnergyDev,\
+            vocalsEnergyRel,vocalsEnergyDev,\
+            otherEnergyRel,otherEnergyDev,\
+            drumsOnsetRate,drumsCentroid,drumsAttackRatio,drumsEnergySlope,\
+            bassOnsetRate,bassCentroid,bassAttackRatio,bassEnergySlope,\
+            vocalsOnsetRate,vocalsCentroid,vocalsAttackRatio,vocalsEnergySlope,\
+            otherOnsetRate,otherCentroid,otherAttackRatio,otherEnergySlope,\
+            vocalsPitchHz,vocalsPitchConfidence
 
             """
         FileManager.default.createFile(atPath: featuresCSVURL.path,
@@ -293,7 +342,8 @@ public final class SessionRecorder: @unchecked Sendable {
         let stamp = ISO8601DateFormatter().string(from: Date())
         let line = "[\(stamp)] \(message)\n"
         queue.async { [weak self] in
-            self?.logHandle.write(line.data(using: .utf8) ?? Data())
+            guard let self = self, !self.didFinish else { return }
+            self.logHandle.write(line.data(using: .utf8) ?? Data())
         }
     }
 
@@ -312,6 +362,21 @@ public final class SessionRecorder: @unchecked Sendable {
             }
             try? self.featuresHandle.close()
             try? self.stemsHandle.close()
+
+            // Raw tap WAV finalisation — patch chunk sizes before closing.
+            // Handle may be nil if the duration cap was already reached
+            // (finalizeRawTapHeader handles that by reopening for update).
+            // Set rawTapDone FIRST so any in-flight appendRawTapBytes calls
+            // enqueued before finish() short-circuit immediately.
+            self.rawTapDone = true
+            if self.rawTapHeaderWritten {
+                self.finalizeRawTapHeader()
+                if let fh = self.rawTapHandle {
+                    try? fh.close()
+                    self.rawTapHandle = nil
+                }
+            }
+
             let msg = "SessionRecorder finished (\(self.frameIndex) frames, "
                     + "\(self.stemDumpIndex) stem dumps)\n"
             try? self.logHandle.write(contentsOf: Data(msg.utf8))
@@ -489,13 +554,165 @@ public final class SessionRecorder: @unchecked Sendable {
     }
 
     private static func csvRow(stems s: StemFeatures, frame: Int, wallclock: CFAbsoluteTime) -> String {
-        String(format: "%d,%.4f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,"
-                     + "%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f\n",
-               frame, wallclock,
-               s.drumsEnergy, s.drumsBeat, s.drumsBand0, s.drumsBand1,
-               s.bassEnergy, s.bassBeat, s.bassBand0, s.bassBand1,
-               s.vocalsEnergy, s.vocalsBeat, s.vocalsBand0, s.vocalsBand1,
-               s.otherEnergy, s.otherBeat, s.otherBand0, s.otherBand1)
+        // Base (16) + MV-1 dev (8) + MV-3a rich (16) + MV-3c pitch (2) = 42 floats + frame + wallclock.
+        let base = String(format: "%d,%.4f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,"
+                                + "%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f",
+                          frame, wallclock,
+                          s.drumsEnergy, s.drumsBeat, s.drumsBand0, s.drumsBand1,
+                          s.bassEnergy, s.bassBeat, s.bassBand0, s.bassBand1,
+                          s.vocalsEnergy, s.vocalsBeat, s.vocalsBand0, s.vocalsBand1,
+                          s.otherEnergy, s.otherBeat, s.otherBand0, s.otherBand1)
+        let dev = String(format: ",%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f",
+                         s.drumsEnergyRel, s.drumsEnergyDev,
+                         s.bassEnergyRel,  s.bassEnergyDev,
+                         s.vocalsEnergyRel, s.vocalsEnergyDev,
+                         s.otherEnergyRel, s.otherEnergyDev)
+        let rich = String(format: ",%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,"
+                                + "%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f",
+                          s.drumsOnsetRate,  s.drumsCentroid,  s.drumsAttackRatio,  s.drumsEnergySlope,
+                          s.bassOnsetRate,   s.bassCentroid,   s.bassAttackRatio,   s.bassEnergySlope,
+                          s.vocalsOnsetRate, s.vocalsCentroid, s.vocalsAttackRatio, s.vocalsEnergySlope,
+                          s.otherOnsetRate,  s.otherCentroid,  s.otherAttackRatio,  s.otherEnergySlope)
+        let pitch = String(format: ",%.3f,%.4f\n",
+                           s.vocalsPitchHz, s.vocalsPitchConfidence)
+        return base + dev + rich + pitch
+    }
+
+    // MARK: - Raw tap diagnostic capture
+
+    /// Copy the most recent Core Audio tap samples into the raw_tap.wav
+    /// diagnostic file.  Safe to call from the IO proc — heavy I/O is
+    /// dispatched onto the recorder queue.  Automatically stops after
+    /// `rawTapDurationSeconds` of audio to cap file size.
+    ///
+    /// The resulting WAV is stream-written as IEEE 754 Float32 PCM, which
+    /// preserves the exact bytes the macOS audio server delivered to us —
+    /// no sample-rate conversion, no bit-depth quantisation, no AGC.  This
+    /// is Stage 4 ground truth for spectral diagnostics.
+    public func recordRawTapSamples(
+        pointer: UnsafePointer<Float>,
+        count: Int,
+        sampleRate: Float,
+        channelCount: UInt32
+    ) {
+        guard count > 0 else { return }
+        // Copy samples off the real-time thread before the pointer becomes
+        // invalid.  Dispatch the write to the recorder queue.
+        let byteCount = count * MemoryLayout<Float>.size
+        let data = Data(bytes: pointer, count: byteCount)
+        let sr = UInt32(sampleRate)
+        let ch = UInt16(channelCount)
+        queue.async { [weak self] in
+            self?.appendRawTapBytes(data: data, sampleRate: sr, channelCount: ch,
+                                    sampleCount: count)
+        }
+    }
+
+    /// Recorder-queue work.  Opens the file on first call, writes a stub
+    /// header with zero chunk sizes (finalized in `finish()`), appends the
+    /// samples, and stops once the duration cap is reached.
+    private func appendRawTapBytes(data: Data, sampleRate: UInt32,
+                                    channelCount: UInt16, sampleCount: Int) {
+        // Honour the done flag and the recorder-wide shutdown flag — both
+        // guard against reopening/truncating a completed capture.
+        if rawTapDone || didFinish { return }
+
+        if rawTapHandle == nil {
+            // Lazy-open on first sample so we pick up the real format.
+            rawTapSampleRate = sampleRate
+            rawTapChannels = channelCount
+            rawTapMaxSamples = Int(rawTapDurationSeconds * Double(sampleRate)
+                                   * Double(channelCount))
+            FileManager.default.createFile(atPath: rawTapURL.path, contents: nil)
+            guard let fh = try? FileHandle(forWritingTo: rawTapURL) else {
+                logger.error("SessionRecorder could not open raw_tap.wav")
+                return
+            }
+            rawTapHandle = fh
+            writeRawTapHeaderStub(to: fh, sampleRate: sampleRate,
+                                  channelCount: channelCount)
+            rawTapHeaderWritten = true
+            log("raw tap capture started sr=\(sampleRate) Hz ch=\(channelCount) max=\(Int(rawTapDurationSeconds))s")
+        }
+
+        guard let fh = rawTapHandle else { return }
+
+        // Enforce the duration cap — never overshoot.
+        let remaining = rawTapMaxSamples - rawTapSamplesWritten
+        if remaining <= 0 {
+            return
+        }
+        let samplesToWrite = min(sampleCount, remaining)
+        let bytesToWrite = samplesToWrite * MemoryLayout<Float>.size
+        if bytesToWrite == data.count {
+            fh.write(data)
+        } else {
+            fh.write(data.prefix(bytesToWrite))
+        }
+        rawTapSamplesWritten += samplesToWrite
+
+        if rawTapSamplesWritten >= rawTapMaxSamples {
+            finalizeRawTapHeader()
+            try? fh.close()
+            rawTapHandle = nil
+            rawTapDone = true
+            log("raw tap capture complete \(rawTapSamplesWritten) samples (\(Int(rawTapDurationSeconds))s cap)")
+        }
+    }
+
+    /// Write a 44-byte WAVE header with placeholder sizes.  Finalized in
+    /// `finalizeRawTapHeader()` once we know how many bytes of audio data
+    /// were actually captured.  Format is WAVE_FORMAT_IEEE_FLOAT (0x0003),
+    /// 32-bit float, interleaved.
+    private func writeRawTapHeaderStub(to fh: FileHandle, sampleRate: UInt32,
+                                        channelCount: UInt16) {
+        let bytesPerSample: UInt16 = 4  // Float32
+        let blockAlign: UInt16 = channelCount * bytesPerSample
+        let byteRate: UInt32 = sampleRate * UInt32(blockAlign)
+
+        var header = Data()
+        header.append(contentsOf: Array("RIFF".utf8))
+        header.append(contentsOf: UInt32(0).littleEndianBytes)                    // chunkSize — patched
+        header.append(contentsOf: Array("WAVE".utf8))
+        header.append(contentsOf: Array("fmt ".utf8))
+        header.append(contentsOf: UInt32(16).littleEndianBytes)                   // fmt chunk size
+        header.append(contentsOf: UInt16(3).littleEndianBytes)                    // WAVE_FORMAT_IEEE_FLOAT
+        header.append(contentsOf: channelCount.littleEndianBytes)
+        header.append(contentsOf: sampleRate.littleEndianBytes)
+        header.append(contentsOf: byteRate.littleEndianBytes)
+        header.append(contentsOf: blockAlign.littleEndianBytes)
+        header.append(contentsOf: UInt16(32).littleEndianBytes)                   // bits per sample
+        header.append(contentsOf: Array("data".utf8))
+        header.append(contentsOf: UInt32(0).littleEndianBytes)                    // data size — patched
+        fh.write(header)
+    }
+
+    /// Patch the RIFF chunkSize and data chunkSize fields with the real
+    /// byte counts.  Called when the duration cap is hit and in `finish()`.
+    private func finalizeRawTapHeader() {
+        guard let fh = rawTapHandle else {
+            // Handle may have been closed already — reopen for patching.
+            guard rawTapHeaderWritten,
+                  let fh = try? FileHandle(forUpdating: rawTapURL) else { return }
+            patchRawTapHeader(fh: fh)
+            try? fh.close()
+            return
+        }
+        patchRawTapHeader(fh: fh)
+    }
+
+    private func patchRawTapHeader(fh: FileHandle) {
+        let dataBytes = UInt32(rawTapSamplesWritten * MemoryLayout<Float>.size)
+        let riffChunkSize = UInt32(36) + dataBytes
+
+        // Seek to offset 4 → RIFF chunkSize.
+        try? fh.seek(toOffset: 4)
+        fh.write(Data(riffChunkSize.littleEndianBytes))
+        // Seek to offset 40 → data subchunk size.
+        try? fh.seek(toOffset: 40)
+        fh.write(Data(dataBytes.littleEndianBytes))
+        // Restore write position to end so any later writes append correctly.
+        _ = try? fh.seekToEnd()
     }
 
     // MARK: - WAV writer

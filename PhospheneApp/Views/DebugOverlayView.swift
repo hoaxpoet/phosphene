@@ -1,6 +1,7 @@
 // DebugOverlayView — Metadata debug overlay showing current track info
 // and pre-fetched profile data. Toggle with 'D' key.
 
+import Audio
 import Shared
 import SwiftUI
 
@@ -76,6 +77,41 @@ struct DebugOverlayView: View {
             if let bpm = engine.estimatedTempo {
                 label("Tempo", String(format: "%.0f BPM", bpm))
             }
+
+            // Input signal quality — surfaces output-chain problems that
+            // the post-AGC features cannot expose (low peak, BT-codec
+            // lowpass, etc.).  Read directly from the thread-safe monitor.
+            Divider().background(.white.opacity(0.3))
+
+            let snap = engine.inputLevelMonitor.currentSnapshot()
+            let qColor: Color = {
+                switch snap.quality {
+                case .green:   return .green
+                case .yellow:  return .yellow
+                case .red:     return .red
+                case .unknown: return .white.opacity(0.5)
+                }
+            }()
+            HStack(spacing: 4) {
+                Text("SIGNAL:")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.5))
+                    .frame(width: 70, alignment: .trailing)
+                Text(snap.quality.rawValue.uppercased())
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundColor(qColor)
+            }
+            label("peak", String(format: "%.1f dBFS", snap.peakDBFS))
+            label("rms", String(format: "%.1f dBFS", snap.rmsDBFS))
+            label("sub", String(format: "%.0f%%", 100 * snap.subRatio))
+            label("mid", String(format: "%.0f%%", 100 * snap.midRatio))
+            label("treble", String(format: "%.1f%%", 100 * snap.trebleRatio))
+            Text(snap.reason)
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundColor(qColor.opacity(0.9))
+                .lineLimit(3)
+
+            Divider().background(.white.opacity(0.3))
 
             // Raw MIR diagnostics.
             let diag = engine.mirDiag

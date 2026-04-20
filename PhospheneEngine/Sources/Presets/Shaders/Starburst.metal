@@ -134,38 +134,3 @@ fragment float4 starburst_fragment(
     sky = min(sky, float3(1.0));
     return float4(sky, 1.0);
 }
-
-// ── MV-2 Warp Functions (D-027) ───────────────────────────────────────────
-// Murmuration sky warp: bass_att_rel drives zoom (the sky breathes with
-// bass), mid_att_rel drives gentle rotation (melodic lines spin the sky).
-// High decay (0.97) for long-trailing, cloud-smearing feedback.
-
-MVWarpPerFrame mvWarpPerFrame(constant FeatureVector& f,
-                              constant StemFeatures&  stems,
-                              constant SceneUniforms& s) {
-    MVWarpPerFrame pf;
-    pf.zoom   = 1.0f + f.bass_att_rel * 0.004f;  // bass breath: ~0.4% per deviation unit
-    pf.rot    = f.mid_att_rel * 0.001f;           // melody spin: ~0.06°/frame at peak
-    pf.decay  = 0.97f;                            // long cloud smear
-    pf.warp   = 0.0f;                             // no per-vertex ripple for sky
-    pf.cx = 0.0f; pf.cy = 0.0f;
-    pf.dx = 0.0f; pf.dy = 0.0f;
-    pf.sx = 1.0f; pf.sy = 1.0f;
-    pf.q1 = 0.0f; pf.q2 = 0.0f; pf.q3 = 0.0f; pf.q4 = 0.0f;
-    pf.q5 = 0.0f; pf.q6 = 0.0f; pf.q7 = 0.0f; pf.q8 = 0.0f;
-    return pf;
-}
-
-float2 mvWarpPerVertex(float2 uv, float rad, float ang,
-                       thread const MVWarpPerFrame& pf,
-                       constant FeatureVector& f,
-                       constant StemFeatures& stems) {
-    // Global rotation + zoom centred on screen.
-    float2 centre  = float2(0.5f);
-    float2 p       = uv - centre;
-    float  cosR    = cos(pf.rot);
-    float  sinR    = sin(pf.rot);
-    float2 rotated = float2(p.x * cosR - p.y * sinR,
-                            p.x * sinR + p.y * cosR);
-    return centre + rotated / pf.zoom + float2(pf.dx, pf.dy);
-}

@@ -49,6 +49,7 @@ public final class BeatPredictor: @unchecked Sendable {
 
     // MARK: - State
 
+    private var elapsedTime: Double = 0            // accumulated from deltaTime
     private var lastBeatTime: Double = -1.0
     private var estimatedPeriod: Double = 0.5      // 120 BPM default
     private var hasPeriod: Bool = false
@@ -100,7 +101,10 @@ public final class BeatPredictor: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
 
-        let now = Double(time)
+        // Accumulate elapsed time from deltaTime so timing is correct regardless
+        // of what the caller passes for `time` (MIRPipeline passes 0 currently).
+        elapsedTime += Double(max(deltaTime, 0.001))
+        let now = elapsedTime
 
         // Detect rising edge on any of the three pulse signals.
         let beatValue = max(beatBass, max(beatMid, beatComposite))
@@ -108,7 +112,7 @@ public final class BeatPredictor: @unchecked Sendable {
         prevBeatValue = beatValue
 
         if onsetDetected {
-            if lastBeatTime > 0 {
+            if lastBeatTime >= 0 {
                 let interval = now - lastBeatTime
                 // Valid BPM range: 40–300 BPM → period 0.2s–1.5s.
                 if interval >= 0.2 && interval <= 1.5 {
@@ -122,7 +126,7 @@ public final class BeatPredictor: @unchecked Sendable {
         }
 
         // No period estimate yet — can't predict.
-        guard hasPeriod && lastBeatTime > 0 else {
+        guard hasPeriod && lastBeatTime >= 0 else {
             return Result(beatPhase01: 0, beatsUntilNext: 1)
         }
 
@@ -146,6 +150,7 @@ public final class BeatPredictor: @unchecked Sendable {
     public func reset() {
         lock.lock()
         defer { lock.unlock() }
+        elapsedTime = 0
         lastBeatTime = -1.0
         hasPeriod = false
         prevBeatValue = 0

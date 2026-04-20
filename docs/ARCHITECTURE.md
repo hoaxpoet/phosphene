@@ -63,6 +63,7 @@ Operational requirements:
 - Screen capture permission is required for non-zero audio delivery. `AudioHardwareCreateProcessTap` succeeds without permission but delivers silence.
 - Capture must not allocate or block on the real-time audio thread.
 - DRM silence detection via `SilenceDetector` monitors for sustained zero-energy frames and transitions to ambient visual mode.
+- Tap input quality is continuously assessed by `InputLevelMonitor`: rolling peak dBFS (21 s window) and 3-band spectral balance EMAs → `SignalQuality` (green/yellow/red). Classification is peak-only — treble-ratio thresholds were removed after they produced false positives on bass-heavy tracks. Quality transitions are logged to session.log with 30-frame hysteresis to prevent flapping.
 
 **Tap recovery on prolonged silence.** Streaming-app scrubs frequently break the process tap — the tap stays alive but delivers permanent silence after the source process tears down and reopens its audio session on seek. `AudioInputRouter` watches the silence detector and, after `.silent` persists, schedules a tap reinstall on a backoff schedule (3 s → 10 s → 30 s, three attempts). Each attempt destroys the existing tap + aggregate device and creates a fresh one for the active capture mode. If audio resumes (either on the existing tap or a freshly-installed one) the silence detector transitions through `.recovering → .active` and the reinstall sequence is cancelled. After three exhausted attempts, prolonged silence is treated as a real pause and reinstall stops until the next active → silent transition.
 
@@ -141,6 +142,20 @@ The renderer manages the Metal pipeline: device, command queue, triple-buffered 
 - **`SceneUniforms.cameraForward.w`** is repurposed as a preset-specific scalar for SDF deformation that needs to be visible to both `sceneSDF` and `sceneMaterial` (Glass Brutalist uses it as the glass-fin X-position). The preamble passes `FeatureVector` and `SceneUniforms` to `sceneMaterial` so material classification stays consistent with deformed geometry.
 
 Baselines for these modulations are captured in `RayMarchPipeline.BaseSceneSnapshot` at preset apply time so per-frame modulation is additive on the preset's intent, not destructive.
+
+**Fragment buffer binding layout (direct-pass presets):**
+
+| Index | Content | Notes |
+|-------|---------|-------|
+| 0 | `FeatureVector` (192 bytes) | All fragment encoders |
+| 1 | FFT magnitudes (512 Float32) | All fragment encoders |
+| 2 | Waveform (2048 Float32) | All fragment encoders |
+| 3 | `StemFeatures` (256 bytes) | All fragment encoders |
+| 4 | `SceneUniforms` (128 bytes) | Ray march G-buffer, lighting, SSGI **only** |
+| 5 | `SpectralHistory` (4096 Float32, 16 KB) | Direct-pass fragment encoders; see D-030 |
+| 6–7 | Future use | — |
+
+`SpectralHistoryBuffer` (Shared module) maintains 5 ring buffers of 480 samples (≈8s at 60 fps): valence, arousal, `beat_phase01`, `bass_dev`, and log-normalized vocal pitch (80→800 Hz mapped to 0→1). Updated once per frame in `RenderPipeline.draw(in:)` before any render encoder; reset on track change. Enables `instrument`-family presets to render recent MIR history without per-preset plumbing.
 
 **Key subsystems:**
 

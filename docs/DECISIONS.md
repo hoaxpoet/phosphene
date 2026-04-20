@@ -298,6 +298,8 @@ The existing `feedback` pass is kept for Starburst/Membrane but is semantically 
 
 **Implication:** ray-march preset authoring pattern shifts. A scene's 3D geometry becomes static (not deformed with audio); all audio-driven motion goes through the mv_warp pass. Audio reacts to the *image* of the scene rather than its geometry. This matches Milkdrop's architecture exactly and preserves our 3D-rendering advantage.
 
+**Scope correction (2026-04-17, see D-029):** The "ray-march preset authoring pattern shifts" framing above was over-broad. mv_warp is one of several *alternative* motion-source paradigms, not a universal requirement for ray-march presets. It does not compose with a moving world-space camera (see D-029 for the incompatibility diagnosis and the VL revert).
+
 **Implementation notes (landed 2026-04-17, commit `c8cd558f`):**
 - `MVWarpState` uses `@unchecked Sendable` because `MTLTexture` protocol has no `Sendable` conformance in Swift 6.0. The struct is only mutated under `mvWarpLock`.
 - `SceneUniforms` is defined in `mvWarpPreamble` behind `#ifndef SCENE_UNIFORMS_DEFINED` so direct (non-ray-march) presets compile; the ray-march preamble wraps its own definition in the same guard to prevent redefinition for ray-march + mv_warp combos.
@@ -330,3 +332,69 @@ Order matters because the visual checkpoints after MV-1 and MV-2 distinguish roo
 
 **Implication:** any future increment that adds a new audio-analysis capability should explicitly state whether it layers on the mv_warp architecture or requires architectural changes. Purely additive classifier features (new `FeatureVector` fields) are preferred over pipeline-changing ones.
 
+
+---
+
+## D-029: Preset motion sources are alternative paradigms, not composable layers
+
+**Status:** Accepted (2026-04-17)
+
+Each preset picks exactly one motion-source paradigm from the following catalogue. The engine supports all of them via the `passes` array, but mixing them within a single preset is either incoherent or actively broken.
+
+| Paradigm | Motion comes from | Example presets | Passes |
+|----------|-------------------|-----------------|--------|
+| **Milkdrop mv_warp** | Per-vertex UV feedback accumulator — "the warp mesh is the camera" | *(future direct-fragment presets; optionally static-camera ray march)* | `mv_warp` (± `direct` / `ray_march` without camera motion) |
+| **Particle system** | Compute-kernel sprite integration in world space | Starburst (Murmuration) | `feedback` + `particles` |
+| **Feedback composite** | Single global zoom/rotation per frame + persistent texture | Membrane | `feedback` |
+| **Ray-march camera flight** | Translating/rotating a 3D camera through an SDF scene; motion compounds via spatial traversal | VolumetricLithograph, KineticSculpture, GlassBrutalist (static variant) | `ray_march` + `post_process` (+ `ssgi`) |
+| **Mesh shader animation** | GPU-authored procedural geometry evolution | FractalTree | `mesh_shader` |
+| **Direct-fragment modulation** | Time + audio into a single fragment shader; no persistence | Waveform, Plasma, Nebula | `direct` |
+
+**Reason:** The MV-2 rollout (D-027) attempted to add mv_warp on top of VolumetricLithograph's forward camera dolly. The result was severe vertical smearing at rest: mv_warp's feedback accumulator pins previous-frame pixels to UV coordinates, but the moving world-space camera re-projects those same world points to different UV coordinates each frame, so `0.96 × previous + 0.04 × current` bleeds camera-motion history across the screen. See CLAUDE.md Failed Approaches #32.
+
+The same bug applies — more subtly — to any ray-march preset that translates or rotates its camera. It applies partially to particle systems (particles already integrate state, so stacking mv_warp over them double-integrates and smears trails into mush).
+
+**Rule:** Paradigms may not be stacked. The only legitimate compositions are:
+- `mv_warp` + static-camera `ray_march` — a 3D SDF backdrop receives Milkdrop-style 2D warp on top. Narrow use case; none implemented as of 2026-04-17.
+- `ray_march` + `post_process` + `ssgi` — standard ray-march compositing (not a motion-source mix).
+- `feedback` + `particles` — Starburst's original and current pattern; feedback here is a trail decay for the particle render, not an independent motion source.
+
+**Implication for PresetLoader:** the current mutual-exclusion routing in `compileShader()` (meshShader → mvWarp → rayMarch → standard) enforces the rule by construction and should be kept. A future static-camera `ray_march + mv_warp` preset remains supported by the existing `compileMVWarpShader` branch (it already handles the ray-march variant).
+
+**Implication for preset authors:** do not reach for `mv_warp` as a universal "add musicality" switch. Ask first what the preset's motion source is. If it's a moving camera or a particle system, mv_warp will fight it. If it's a static 2D or static-camera 3D scene with no inherent compounding, mv_warp is one valid choice (feedback and mesh-shader animation are others).
+
+**Reverts and documentation changes:**
+- Starburst.json: `["mv_warp"]` → `["feedback", "particles"]`. Stale `mvWarpPerFrame`/`mvWarpPerVertex` removed.
+- VolumetricLithograph.json: `["ray_march", "post_process", "mv_warp"]` → `["ray_march", "post_process"]`. `mvWarpPerFrame`/`mvWarpPerVertex` and the unused `vl_pitchHueShift` helper removed.
+- CLAUDE.md Failed Approaches #32 rewritten to describe the camera/feedback incompatibility rather than the old "ray march needs feedback" claim.
+- CLAUDE.md "Do not" rule reframed from "always implement mv_warp" to "do not stack mv_warp on a moving camera."
+- D-027 scope-corrected with a forward pointer to this entry.
+
+
+---
+
+## D-030: SpectralHistoryBuffer as unconditional GPU contract at buffer(5)
+
+**Status:** Accepted (2026-04-19)
+
+A pre-allocated `.storageModeShared` MTLBuffer (16 KB, 4096 Float32) carrying per-frame MIR history is bound unconditionally at fragment buffer index 5 in all direct-pass encoders (`drawDirect`, `drawParticleMode`, `drawSurfaceMode`). The class is `SpectralHistoryBuffer` in the Shared module; it conforms to `SpectralHistoryPublishing` for test injection.
+
+**Layout:**
+```
+[0..479]    valence trail         (-1..1, raw)
+[480..959]  arousal trail         (-1..1, raw)
+[960..1439] beat_phase01 history  (0..1, sawtooth)
+[1440..1919] bass_dev history     (0..1)
+[1920..2399] vocals_pitch_norm    (0..1, log2(hz/80)/log2(10), 0=unvoiced/low confidence)
+[2400]      write_head            (integer as Float, 0..479)
+[2401]      samples_valid         (integer as Float, capped at 480)
+[2402..4095] reserved             (zeroed; future consumers)
+```
+
+**Why:** Phosphene's MV-3 extensions (D-028) added ~26 new per-frame primitives with no real-time observability. `SessionRecorder` (D-025) captures them offline to CSV but there's no live view during preset authoring. An always-bound history ring at buffer(5) lets `instrument`-family presets render recent MIR state trivially and creates the foundation for any future preset that wants short-term history without new plumbing. 16 KB on UMA is negligible.
+
+**Why buffer(5) and not buffer(4):** buffer(4) is already occupied by `SceneUniforms` in ray march G-buffer, lighting, and SSGI passes. Buffer(5) is the first truly unused slot across all pass types. CLAUDE.md GPU Contract documentation was wrong (listed buffer(0)=FFT, buffer(4–7)=future) — corrected in this increment.
+
+**First consumer:** `SpectralCartograph` preset — four-panel diagnostic instrument showing FFT spectrum, deviation meters, V/A plot, and scrolling feature graphs.
+
+**Implication:** future additions to the history layout (e.g., per-stem onset rate history) can consume slots [2402..4095] without breaking existing consumers. Ray march presets currently skip buffer(5); it is available to them if needed.

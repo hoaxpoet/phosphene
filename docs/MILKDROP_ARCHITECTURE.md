@@ -133,23 +133,23 @@ This is a rich authoring vocabulary. Our presets author Metal shader functions d
 
 ## 4. Phosphene's architectural divergence
 
-Render-pass breakdown of our 11 presets (post-MV-2):
+Render-pass breakdown of our 11 presets (current, post-D-029 revert):
 
-| Preset | Pass type | Uses per-vertex feedback? |
+| Preset | Pass type | Motion source |
 |---|---|---|
-| Waveform | `direct` | No |
-| Plasma | `direct` | No |
-| Nebula | `direct` | No |
-| Starburst | `mv_warp` | **Yes — full per-vertex warp** (MV-2) |
-| Membrane | `feedback` | Thin — global zoom+rot only |
-| FractalTree | `mesh_shader` | No |
-| FerrofluidOcean | `post_process` | No |
-| GlassBrutalist | `ray_march` + `ssgi` + `post_process` | **No** |
-| KineticSculpture | `ray_march` + `post_process` | **No** |
-| TestSphere | `ray_march` + `post_process` | **No** |
-| VolumetricLithograph | `ray_march` + `post_process` + `mv_warp` | **Yes — full per-vertex warp** (MV-2) |
+| Waveform | `direct` | Time + audio into fragment (no persistence) |
+| Plasma | `direct` | Time + audio into fragment |
+| Nebula | `direct` | Time + audio into fragment |
+| Starburst | `feedback` + `particles` | Compute-kernel starling flock + feedback trail |
+| Membrane | `feedback` | Thin global zoom+rot feedback |
+| FractalTree | `mesh_shader` | GPU-authored procedural geometry |
+| FerrofluidOcean | `post_process` | HDR post chain |
+| GlassBrutalist | `ray_march` + `ssgi` + `post_process` | Light/fog modulation in a static scene |
+| KineticSculpture | `ray_march` + `post_process` | Ray-march camera + SDF |
+| TestSphere | `ray_march` + `post_process` | Ray-march (diagnostic) |
+| VolumetricLithograph | `ray_march` + `post_process` | Forward camera dolly through audio-swept SDF terrain |
 
-Prior to MV-2, 9 of 11 presets used no feedback loop. Post-MV-2, two presets use full per-vertex warp. Glass Brutalist, Kinetic Sculpture, and TestSphere are candidates for mv_warp conversion once the MV-2 visual checkpoint passes on VL and Starburst.
+No preset currently uses the `mv_warp` Milkdrop-style per-vertex warp. MV-2 shipped the `mv_warp` render pass as an *opt-in* capability, applied it to Starburst and VolumetricLithograph, and was reverted on both (see D-029). The pass itself remains in the engine — it is a legitimate motion-source paradigm for future presets that fit its constraints (direct-fragment presets, or static-camera ray-march scenes). It must not be stacked on a moving world-space camera or a particle system; see Failed Approaches #32 in CLAUDE.md.
 
 Even our two feedback presets have a much thinner warp than Milkdrop's per-vertex mesh. See [`Common.metal:107-156`](../PhospheneEngine/Sources/Renderer/Shaders/Common.metal):
 
@@ -175,6 +175,12 @@ The Milkdrop-quality "musical" feel we've been chasing is not achievable in the 
 2. **Proper audio-deviation primitives**, which our AGC pipeline already produces but our preset authoring has not used correctly.
 
 Everything else (richer stems, pitch tracking, harmonic analysis) is enhancement *on top of* this foundation. Without the foundation, even perfect audio analysis will not produce Milkdrop-quality musical feel — it will just produce more-informed reactive visuals.
+
+> **Retrospective correction (2026-04-17, D-029).** The framing above treats "per-vertex feedback warp" as a universal requirement. Testing MV-2 on Starburst and VolumetricLithograph revealed this was over-broad:
+> - **Starburst** originally rendered a 500K-starling particle system on a sunset-sky backdrop. The particle system IS the compound motion; replacing it with a fragment-only sky + mv_warp feedback deleted the murmuration and produced a generic smeared cloud. Reverted.
+> - **VolumetricLithograph** has a forward camera dolly at 1.8 u/s + audio-time-swept 3D fbm + stem-driven modulation. These three together ARE compound motion. Adding mv_warp on top fought the camera dolly — the UV-space accumulator pinned stale pixels to screen positions that no longer matched the re-projected world, producing heavy vertical smear (worst at rest). Reverted.
+>
+> The real rule is narrower: **mv_warp is one of several alternative motion-source paradigms** (Milkdrop feedback / particle physics / camera flight / mesh animation / direct time-modulation). Each preset picks one. Stacking paradigms produces contradiction, not layering. mv_warp is compatible with direct-fragment presets and with static-camera ray-march scenes, but not with moving cameras or independent integrators. See D-029.
 
 ## 6. What to do about it
 
@@ -206,7 +212,7 @@ Three non-obvious implementation discoveries:
 
 2. **`SceneUniforms` preprocessor guard.** `mvWarpPerFrame` takes a `constant SceneUniforms& s` parameter to allow warp functions to use scene-level state (camera position, accumulated audio time). But `SceneUniforms` is only defined in `rayMarchGBufferPreamble`, which is not injected for direct (non-ray-march) presets. Solution: `#ifndef SCENE_UNIFORMS_DEFINED / #define SCENE_UNIFORMS_DEFINED` guard in both preambles — the `mvWarpPreamble` defines it for direct presets; the ray-march preamble guards its own definition to prevent redefinition when both preambles compile together (ray-march + mv_warp combos).
 
-3. **Starburst birds removed intentionally.** Starburst previously used `["feedback", "particles"]`. The MV-2 design decision was to replace both with `["mv_warp"]` only. The murmuration particle system's murmuration-like motion is now created by the feedback warp accumulating and smearing the sky backdrop — different mechanism, similar emergent cloud-like behavior. The explicit bird silhouettes were dropped.
+3. **Starburst birds removed intentionally — reverted 2026-04-17.** Starburst previously used `["feedback", "particles"]`. The MV-2 design decision was to replace both with `["mv_warp"]` only, on the theory that mv_warp feedback on the sky backdrop would produce "emergent cloud-like behavior" substituting for the particles. In practice the result was a generic smeared sky with no murmuration — the particle kernel IS the point of the preset. Reverted to `["feedback", "particles"]` under D-029.
 
 ### MV-3 (2026-04-17)
 
@@ -221,8 +227,9 @@ Three sub-increments landed together (D-028):
 ## 8. Related Decisions
 
 - **D-026** — "Drive preset shaders from deviation, not absolute energy" (MV-1)
-- **D-027** — "Adopt Milkdrop-style per-vertex feedback warp as an opt-in render pass" (MV-2)
+- **D-027** — "Adopt Milkdrop-style per-vertex feedback warp as an opt-in render pass" (MV-2) — scope-corrected by D-029
 - **D-028** — "Extend Milkdrop's model with Apple-Silicon-only capabilities only after MV-2 proves out" (MV-3)
+- **D-029** — "Preset motion sources are alternative paradigms, not composable layers" (revert of mv_warp on Starburst and VolumetricLithograph, 2026-04-17)
 
 ## 8. Sources consulted
 

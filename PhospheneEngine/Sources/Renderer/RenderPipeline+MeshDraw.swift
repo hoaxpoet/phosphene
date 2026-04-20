@@ -34,6 +34,7 @@ extension RenderPipeline {
     ///   - features: Audio feature vector (time/delta pre-filled by `draw(in:)`).
     ///   - stemFeatures: Per-stem features from the background separation pipeline.
     ///   - meshGenerator: Generator that owns the pipeline state and dispatches geometry.
+    @MainActor
     func drawWithMeshShader(
         commandBuffer: MTLCommandBuffer,
         view: MTKView,

@@ -69,7 +69,7 @@ Checks:
 - DRM silence: Apple Music lossless/FairPlay and Spotify DRM can zero out the tap buffer. This is expected — Phosphene degrades to ambient visual mode and monitors for recovery.
 - Scrub-induced silence: scrubbing in Spotify / Apple Music tears down the source process's audio session and the existing tap stays alive but delivers permanent silence. `AudioInputRouter` automatically reinstalls the tap on backoff `[3s, 10s, 30s]` after `.silent` is confirmed. Look for `Tap reinstall scheduled` / `Tap reinstall #N succeeded` lines in `session.log` to confirm recovery fired.
 
-### Audio levels too low (stem peaks below 0.3)
+### Audio levels too low (raw tap peaks below −15 dBFS)
 
 Likely causes: source app normalization, system-wide attenuation in the routing chain, audio MIDI Setup misconfiguration.
 
@@ -78,7 +78,27 @@ Checks:
 - **Apple Music**: Settings → Playback → toggle **"Sound Check"** OFF.
 - **Streaming quality**: pin to **Very High** / **Lossless**, disable any "auto-adjust quality" toggle. Lower bitrates compress dynamic range and flatten transients.
 - **Audio MIDI Setup**: if a Multi-Output Device is the system output, all member devices should be at the same sample rate (48 kHz preferred — Phosphene's stem pipeline assumes 44.1/48 kHz internally; 96 kHz forces resampling). Set the *physical* device (e.g., built-in speakers) as Primary and enable Drift Correction on virtual subdevices, not the other way around.
-- **Verification**: stem WAV peaks should land at 0.4-0.7 for properly mastered tracks with normalization off. Lower peaks (0.15-0.20) point to source-app normalization. Even lower (0.08) means Quiet (-19 LUFS) normalization or a stuck output gain somewhere.
+- **Verification**: `raw_tap.wav` (30s Stage-4 capture in each session dir) peak should land at −3 to −9 dBFS for properly mastered tracks with normalization off. Peaks below −15 dBFS point to source-app normalization or routing attenuation. **Do not interpret post-stem-separation WAV spectra as the raw chain** — the stem separator isolates per-instrument content, so a "drums.wav with narrow spectrum" on a drum-sparse track tells you nothing about the chain. Only `raw_tap.wav` reflects what macOS actually delivers to Phosphene.
+
+### Diagnosing signal-chain degradation (proper methodology)
+
+Do not guess at chain culprits from post-processing symptoms. The audio pipeline has distinct stages:
+
+```
+Spotify → coreaudiod → CATap → IO proc → AudioBuffer → FFT → StemSeparator → stem WAVs
+[Stage 1]  [Stage 2]   [Stage 3] [Stage 4]  [Stage 5]   [Stage 6]  [Stage 7]     [Stage 8]
+```
+
+`SessionRecorder` captures **Stage 4** as `raw_tap.wav` (first 30 seconds, IEEE Float32 48 kHz stereo) and **Stage 8** as `stems/<N>_<title>/{drums,bass,vocals,other}.wav`.
+
+To localize degradation:
+
+1. **Spectrum-check `raw_tap.wav`** — this is ground truth for what macOS hands us. If it looks clean here, the issue is in Phosphene or the preset, not the source chain.
+2. **If `raw_tap.wav` is degraded**, play a 20 Hz–20 kHz sine sweep through the same chain (YouTube: "20Hz to 20kHz sine sweep stereo"). A clean chain produces a flat spectrum across the sweep duration; any dip localizes the attenuated frequency range.
+3. **If the sweep is flat but specific content still looks wrong**, the issue is Spotify/source app — bypass it with a locally-owned FLAC/MP3 through QuickTime and re-capture.
+4. **Post-separation stem WAVs are unreliable for chain diagnostics** — they reflect the stem separator's per-instrument isolation, not the mix. A track with minimal drums will produce a narrow-spectrum `drums.wav` regardless of chain quality.
+
+This procedure was established after session 2026-04-17T21-05-47Z, where earlier guesses at Voice Isolation / Multi-Output Device / BT codec degradation were all wrong — `raw_tap.wav` analysis confirmed the chain was clean and Oxytocin's bass-heavy spectrum was the song, not chain loss. Always test Stage 4 before concluding anything about upstream stages.
 
 ### Jank / dropped frames
 

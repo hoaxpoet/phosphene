@@ -154,10 +154,16 @@ func beatPredictor_bootstrap_enablesValidPhaseFromFirstOnset() {
     #expect(postBeatResult.beatPhase01 < 0.1,
             "phase should be near 0 immediately after first onset, got \(postBeatResult.beatPhase01)")
 
-    // Advance half a bootstrapped period and verify phase is around 0.5.
-    t += 0.25
-    let midResult = predictor.update(beatBass: 0, beatMid: 0, beatComposite: 0,
+    // Advance half a bootstrapped period (0.25s) frame-by-frame.
+    // Time is tracked via deltaTime accumulation inside BeatPredictor — a single
+    // call with t+=0.25 would only advance by one dt, not 0.25s.
+    var midResult = postBeatResult
+    let halfPeriodEnd = t + 0.25
+    while t < halfPeriodEnd {
+        midResult = predictor.update(beatBass: 0, beatMid: 0, beatComposite: 0,
                                      time: t, deltaTime: dt)
+        t += dt
+    }
     #expect(midResult.beatPhase01 > 0.3 && midResult.beatPhase01 < 0.7,
             "phase at half-period should be ~0.5, got \(midResult.beatPhase01)")
 }

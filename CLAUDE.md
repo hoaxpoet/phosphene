@@ -43,6 +43,7 @@ PhospheneEngine/
     AudioBuffer             → IO proc → UMARingBuffer<Float> bridge for GPU
     FFTProcessor            → vDSP 1024-pt FFT → 512 magnitude bins in UMABuffer
     SilenceDetector         → DRM silence state machine: .active → .suspect (1.5s) → .silent (3s) → .recovering → .active (0.5s hold)
+    InputLevelMonitor       → Continuous tap-quality assessment: rolling peak dBFS (21s window) + 3-band spectral EMAs → SignalQuality (green/yellow/red) with reason string. Peak-only classification after session 2026-04-17T21-05-47Z showed treble-ratio thresholds fired false positives on bass-heavy tracks. Hysteresis (30-frame hold) prevents log flapping. Logged to session.log on quality transitions via VisualizerEngine+Audio.
     StreamingMetadata       → AppleScript polling of Apple Music/Spotify, track change detection
     MetadataPreFetcher      → Parallel async queries, LRU cache, merge partial results, 3s per-fetcher timeouts
     MusicBrainzFetcher      → Free API, genre tags + duration
@@ -114,6 +115,7 @@ PhospheneEngine/
     Shaders/GlassBrutalist.metal → Brutalist corridor — static architecture; only the glass-fin X-position deforms with bass (Option A design, see DECISIONS D-020). Light/fog/colour modulated in shared Swift path.
     Shaders/KineticSculpture.metal → Interlocking lattice of Brushed Aluminum + Frosted Glass + Liquid Mercury, abstract ray march. FOV in degrees (post-fix; was radians, see commit history).
     Shaders/TestSphere.metal → Minimal pipeline-verification SDF (sphere + floor); used for end-to-end ray-march compile/render test.
+    Shaders/SpectralCartograph.metal → Instrument-family diagnostic preset. Four-panel real-time MIR visualiser: TL=FFT spectrum (log-freq, centroid-coloured), TR=3-band deviation meters (D-026 compliant), BL=valence/arousal phase plot with 8s trail, BR=scrolling graphs for beat_phase01/bass_dev/vocal pitch. Reads SpectralHistoryBuffer at buffer(5). Direct pass only; no feedback, no warp.
     Shaders/VolumetricLithograph.metal → Psychedelic linocut terrain (MV-2 / v4.1). fbm3D heightfield swept by `s.sceneParamsA.x` at slow rate 0.015; melody-primary blend `0.75 × (0.5 + f.mid_att_rel) + 0.35 × (0.3 + f.bass_att_rel × 0.7)` — deviation-driven, genre-stable across AGC shifts (MV-1 / D-026). Stem-accurate drivers blend in via `smoothstep(0.02, 0.06, totalStemEnergy)` warmup (D-019). Forward camera dolly at 1.8 u/s (configured in VisualizerEngine+Presets.swift). Three strata with narrow linocut coverage (~15% peaks): palette-tinted near-black valleys, razor-thin emissive ridge-line seam, polished-metal peaks. Peaks use IQ cosine `palette()` driven by terrain noise + audio time + `0.5 + f.mid_att_rel × 0.5` (melody-modulated hue) + valence. Accent/strobe from `smoothstep(0.30/0.70, stems.drums_beat)` with FV fallback `smoothstep(0.35, 0.70, f.spectral_flux)`. `f.mid_dev × 1.5` polishes peak roughness. `scene_fog: 0` truly disables fog. Miss/sky pixels tinted by `scene.lightColor.rgb`. SSGI omitted. MV-2: mv_warp pass adds temporal feedback accumulation — melody-driven zoom breath (mid_att_rel × 0.003), valence-driven rotation, decay=0.96; per-vertex UV ripple from bass (horizontal) and melody (vertical) at 0.004 UV amplitude. Passes: ray_march + post_process + mv_warp.
   Orchestrator/             → AI VJ: preset selection, transitions, session planning (stub — see ENGINEERING_PLAN.md Phase 4)
   Session/
@@ -134,12 +136,13 @@ PhospheneEngine/
     RenderPass              → Enum: direct, feedback, particles, mesh_shader, post_process, ray_march, icb, ssgi, mv_warp
     Logging                 → Per-module os.Logger instances (subsystem: "com.phosphene")
     SessionRecorder         → Continuous diagnostic capture per app launch: video.mp4 (H.264, 30 fps) + features.csv + stems.csv + stems/<N>_<title>/{drums,bass,vocals,other}.wav + session.log. Writes to ~/Documents/phosphene_sessions/<timestamp>/. Writer locks after 30 stable drawable frames; if a different size arrives consistently for ≥90 frames after lock (bad initial lock from transient Retina→logical-point resize), tears down and relocks — logs "video writer relocking". Finalised on NSApplication.willTerminateNotification. Validated by SessionRecorderTests.
+    SpectralHistoryBuffer   → Per-frame MIR history ring buffer. 5 rings × 480 samples (≈8s at 60fps) in a 16 KB UMA MTLBuffer bound at fragment index 5 in direct-pass encoders. Tracks valence, arousal, beat_phase01, bass_dev, log-normalized vocal pitch. Updated once per frame in RenderPipeline.draw(in:); reset on track change.
 Tests/
   Audio/                    → AudioBufferTests, FFTProcessorTests, StreamingMetadataTests, MetadataPreFetcherTests, LookaheadBufferTests, SilenceDetectorTests
   DSP/                      → SpectralAnalyzerTests, BandEnergyProcessorTests, ChromaExtractorTests, BeatDetectorTests, MIRPipelineUnitTests, SelfSimilarityMatrixTests, NoveltyDetectorTests, StructuralAnalyzerTests, BeatPredictorTests, PitchTrackerTests, StemAnalyzerMV3Tests
   ML/                       → StemSeparatorTests, StemFFTTests, StemModelTests, MoodClassifierTests
-  Renderer/                 → MetalContextTests, ShaderLibraryTests, RenderPipelineTests, ProceduralGeometryTests, MeshGeneratorTests, BVHBuilderTests, RayIntersectorTests, PostProcessChainTests, ShaderUtilityTests, TextureManagerTests, RayMarchPipelineTests, SceneUniformsTests, FeatureVectorExtendedTests, SSGITests, RenderPipelineICBTests, MVWarpPipelineTests
-  Shared/                   → AudioFeaturesTests, UMABufferExtendedTests, EmotionalStateTests, AnalyzedFrameTests
+  Renderer/                 → MetalContextTests, ShaderLibraryTests, RenderPipelineTests, ProceduralGeometryTests, MeshGeneratorTests, BVHBuilderTests, RayIntersectorTests, PostProcessChainTests, ShaderUtilityTests, TextureManagerTests, RayMarchPipelineTests, SceneUniformsTests, FeatureVectorExtendedTests, SSGITests, RenderPipelineICBTests, MVWarpPipelineTests, SpectralCartographTests
+  Shared/                   → AudioFeaturesTests, UMABufferExtendedTests, EmotionalStateTests, AnalyzedFrameTests, SpectralHistoryBufferTests
   Session/                  → SessionManagerTests, PlaylistConnectorTests, PreviewResolverTests, PreviewDownloaderTests, SessionPreparerTests, StemCacheTests
   Integration/              → AudioToFFTPipelineTests, AudioToRenderPipelineTests, MetadataToOrchestratorTests, AudioToStemPipelineTests, MIRPipelineIntegrationTests, LookaheadIntegrationTests, StemsToRenderPipelineTests, SessionPreparationIntegrationTests
   Regression/               → FFTRegressionTests, MetadataParsingRegressionTests, ChromaRegressionTests, BeatDetectorRegressionTests, StructuralAnalysisRegressionTests + golden fixtures
@@ -269,6 +272,9 @@ struct Particle               // 64 bytes: position, velocity, color, life, size
 enum SessionState             // idle, connecting, preparing, ready, playing, ended
 enum AudioSignalState         // .active, .suspect, .silent, .recovering
 enum RenderPass               // direct, feedback, particles, mesh_shader, post_process, ray_march, icb, ssgi
+class SpectralHistoryBuffer   // 16 KB UMA ring buffer at buffer(5). 480-sample trails for
+                              // valence, arousal, beat_phase01, bass_dev, vocals_pitch_norm.
+                              // Conforms to SpectralHistoryPublishing for test injection.
 ```
 
 ---
@@ -292,12 +298,22 @@ texture(11) = BRDF LUT (512² .rg16Float)
 
 ### Buffer Binding Layout
 ```
-buffer(0) = FFT magnitudes (512 floats)
-buffer(1) = waveform samples (1024 floats)
-buffer(2) = FeatureVector (192 bytes, 48 floats)
+buffer(0) = FeatureVector (192 bytes, 48 floats)        ← all fragment encoders
+buffer(1) = FFT magnitudes (512 floats)
+buffer(2) = waveform samples (1024 floats)
 buffer(3) = StemFeatures (256 bytes, 64 floats)
-buffer(4–7) = future use
+buffer(4) = SceneUniforms (128 bytes) — ray march G-buffer, lighting, SSGI passes ONLY
+buffer(5) = SpectralHistory (4096 Float32, 16 KB) — direct-pass fragment encoders
+              [0..479]    valence trail (-1..1)
+              [480..959]  arousal trail (-1..1)
+              [960..1439] beat_phase01 history (0..1)
+              [1440..1919] bass_dev history (0..1)
+              [1920..2399] vocals_pitch_norm history (0..1, log-mapped 80..800 Hz, 0 = unvoiced)
+              [2400] write_head  [2401] samples_valid
+buffer(6–7) = future use
 ```
+
+**Authoring note:** buffer(0) is `FeatureVector`, not FFT — the old documentation was wrong. All existing presets (Starburst, VolumetricLithograph, etc.) bind in this order. New preset fragment functions must declare `constant FeatureVector& fv [[buffer(0)]]`. The `SpectralHistory` buffer(5) is available in direct-pass presets; ray march presets currently skip it.
 
 ### Preamble Compilation Order
 `FeatureVector struct` → `ShaderUtilities.metal functions` → `constexpr sampler declarations` → preset shader code.
@@ -350,7 +366,7 @@ Hardware gated: `device.supportsFamily(.apple8)` (M3+). On M3+: `MTLMeshRenderPi
 | Field | Default | Notes |
 |-------|---------|-------|
 | `name` | required | Display name |
-| `family` | required | Aesthetic family: `fluid`, `geometric`, `abstract`, `fractal`, etc. |
+| `family` | required | Aesthetic family: `fluid`, `geometric`, `abstract`, `fractal`, `instrument`, etc. |
 | `duration` | 30 | Preferred scene duration (seconds). Orchestrator can override. |
 | `passes` | `["direct"]` | Required render passes. Backward-compatible: falls back to `synthesizePasses(from:)` reading legacy booleans. |
 | `beat_source` | `"bass"` | Which onset drives beat uniform: `bass`, `mid`, `treble`, `composite` |
@@ -475,6 +491,10 @@ No CoreML dependency. All ML uses MPSGraph (GPU) or Accelerate (CPU).
 - **Per-frame stem analysis** — `StemAnalyzer` runs on `analysisQueue` at audio-callback rate (~94 Hz) on a sliding window through the latest separated chunk, replacing the prior 5s piecewise-constant behaviour (increment 3.5.4.9).
 - **MV-1: Milkdrop-correct deviation primitives** — `FeatureVector` expanded 32→48 floats (128→192 bytes), `StemFeatures` expanded 16→32 floats (64→128 bytes). Nine new FV deviation fields (`bassRel/Dev`, `midRel/Dev`, `trebRel/Dev`, `bassAttRel`, `midAttRel`, `trebAttRel`) derived in `MIRPipeline.buildFeatureVector()` as `xRel = (x - 0.5) * 2.0`, `xDev = max(0, xRel)`. Eight new StemFeatures deviation fields (`{vocals,drums,bass,other}EnergyRel/Dev`) derived in `StemAnalyzer.analyze()` via per-stem EMA (decay 0.995). Metal preamble structs in `PresetLoader+Preamble.swift` updated to match. `VolumetricLithograph.metal` updated as reference implementation: all four FeatureVector fallback drivers converted from absolute-threshold to deviation form. `RelDevTests.swift` (4 contract tests) gates the invariants. (D-026)
 - **MV-3: Beyond-Milkdrop extensions** — `StemFeatures` expanded 32→64 floats (128→256 bytes, D-028). Three sub-increments: (a) per-stem rich metadata `{onsetRate, centroid, attackRatio, energySlope}` computed in `StemAnalyzer.computeRichFeatures()` via RMS EMAs (τ=50ms/500ms), spectral centroid, leaky-integrator onset rate; (b) `BeatPredictor` class (IIR period from onset rising edges) → `FeatureVector.beatPhase01/beatsUntilNext` for anticipatory pre-beat animation; (c) `PitchTracker` (YIN via vDSP_dotpr, key fix: advance to CMNDF local minimum before parabolic interpolation) → `StemFeatures.vocalsPitchHz/Confidence`. Metal preamble and Swift structs updated byte-for-byte. `VolumetricLithograph.metal` uses `beat_phase01` for anticipatory zoom ramp (`approachFrac * 0.004`) and `vl_pitchHueShift()` for pitch→hue mapping. 9 new unit tests across `StemAnalyzerMV3Tests`, `BeatPredictorTests`, `PitchTrackerTests`. (D-028)
+- **D-030: SpectralHistoryBuffer + SpectralCartograph** — 16 KB UMA ring buffer at buffer(5) carrying 5×480 sample trails (valence, arousal, beat_phase01, bass_dev, vocals_pitch_norm). `SpectralCartograph` preset: first `instrument`-family four-panel MIR diagnostic. `PresetCategory.instrument` added. CLAUDE.md GPU Contract corrected (buffer(0)=FeatureVector, buffer(5)=SpectralHistory). 15+ new tests.
+- **BeatPredictor timing fix** — `beatPhase01` was always 0 in production because `MIRPipeline.processAnalysisFrame` passes `time: 0` to every `BeatPredictor.update()` call; `lastBeatTime > 0` guard silently rejected the first onset, so `hasPeriod` never became true. Fixed by internal `elapsedTime` accumulation from `deltaTime`, independent of the `time` parameter. Guards changed from `> 0` to `>= 0`.
+- **InputLevelMonitor** — continuous tap-quality assessment (peak dBFS + spectral balance → green/yellow/red grade). Peak-only classification after session 2026-04-17 revealed treble-ratio thresholds produced false positives on bass-heavy tracks. Logs quality transitions to session.log; shown in debug overlay.
+- **Swift 6 concurrency cleanup** — `@MainActor` on `draw(in:)` and all render-path helpers (`renderFrame`, `drawDirect`, `drawWithFeedback`, `drawWithRayMarch`, etc.) that access `MTKView.currentDrawable`/`currentRenderPassDescriptor`/`drawableSize`. Xcode IDE warnings resolved; xcodebuild already clean via `@preconcurrency import MetalKit`.
 
 The next ordered increment is:
 

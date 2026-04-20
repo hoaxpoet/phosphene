@@ -138,6 +138,8 @@ extension VisualizerEngine {
             self.latestSeparationTimestamp = 0
         }
 
+        pipeline.spectralHistory.reset()
+
         if let identity, let cached = stemCache?.loadForPlayback(track: identity) {
             pipeline.setStemFeatures(cached.stemFeatures)
             logger.info("Stem pipeline loaded from cache: \(identity.title) by \(identity.artist)")

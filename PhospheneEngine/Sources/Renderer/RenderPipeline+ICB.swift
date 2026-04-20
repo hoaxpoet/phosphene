@@ -234,6 +234,7 @@ extension RenderPipeline {
     ///   - stemFeatures:   Per-stem features from the background separation pipeline.
     ///   - activePipeline: The compiled scene preset pipeline state.
     ///   - icbState:       ICB state (indirect command buffer + compute pipeline).
+    @MainActor
     func drawWithICB(
         commandBuffer: MTLCommandBuffer,
         view: MTKView,

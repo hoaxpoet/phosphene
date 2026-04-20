@@ -82,6 +82,7 @@ extension RenderPipeline {
     /// does NOT return — the loop continues to `.mvWarp` which applies the warp and blits.
     /// For direct-render presets (`["mv_warp"]`), the `.mvWarp` case renders the preset
     /// fragment to sceneTexture itself before warping.
+    @MainActor
     func renderFrame(
         commandBuffer: MTLCommandBuffer,
         view: MTKView,
@@ -251,6 +252,7 @@ extension RenderPipeline {
     // the full render-pass context they coordinate. Refactor tracked separately.
 
     /// Original single-pass render directly to drawable.
+    @MainActor
     func drawDirect(
         commandBuffer: MTLCommandBuffer,
         view: MTKView,
@@ -277,6 +279,7 @@ extension RenderPipeline {
         encoder.setFragmentBuffer(waveformBuffer, offset: 0, index: 2)
         var stems = stemFeatures
         encoder.setFragmentBytes(&stems, length: MemoryLayout<StemFeatures>.size, index: 3)
+        encoder.setFragmentBuffer(spectralHistory.gpuBuffer, offset: 0, index: 5)
         bindNoiseTextures(to: encoder)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
 
@@ -300,6 +303,7 @@ extension RenderPipeline {
     ///   The preset's contribution accumulates into the feedback texture each frame
     ///   and the warped/decayed previous state provides visual memory. This is the
     ///   true Milkdrop-style feedback loop.
+    @MainActor
     func drawWithFeedback(_ ctx: inout FeedbackDrawContext) {
         let currentTex = ctx.textures[ctx.texIndex]
         let previousTex = ctx.textures[1 - ctx.texIndex]
@@ -363,6 +367,7 @@ extension RenderPipeline {
 
     /// Particle mode drawable pass: render the preset + particles directly to the
     /// drawable without blending through the feedback texture.
+    @MainActor
     func drawParticleMode(
         commandBuffer: MTLCommandBuffer,
         view: MTKView,
@@ -384,6 +389,7 @@ extension RenderPipeline {
             encoder.setFragmentBuffer(waveformBuffer, offset: 0, index: 2)
             var stems = stemFeatures
             encoder.setFragmentBytes(&stems, length: MemoryLayout<StemFeatures>.size, index: 3)
+            encoder.setFragmentBuffer(spectralHistory.gpuBuffer, offset: 0, index: 5)
             bindNoiseTextures(to: encoder)
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
             particles?.render(encoder: encoder, features: features)
@@ -394,6 +400,7 @@ extension RenderPipeline {
 
     /// Surface mode: composite the preset additively into the (already warped)
     /// feedback texture, then blit the result to the drawable.
+    @MainActor
     func drawSurfaceMode(
         commandBuffer: MTLCommandBuffer,
         view: MTKView,
@@ -415,6 +422,7 @@ extension RenderPipeline {
             encoder.setFragmentBuffer(waveformBuffer, offset: 0, index: 2)
             var stems = stemFeatures
             encoder.setFragmentBytes(&stems, length: MemoryLayout<StemFeatures>.size, index: 3)
+            encoder.setFragmentBuffer(spectralHistory.gpuBuffer, offset: 0, index: 5)
             bindNoiseTextures(to: encoder)
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
             encoder.endEncoding()

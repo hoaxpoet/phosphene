@@ -7,54 +7,197 @@
 // flare the peak palette into HDR bloom; the ridge-line itself reads as
 // a thin emissive seam where the cut goes.
 //
-// MV-1 (D-026): All FeatureVector fallback drivers converted from
-// absolute-threshold form to deviation primitives so they remain
-// genre-stable across AGC denominator shifts.  Changes:
+// v9 — Explicit per-stem routing: drums→pulse, vocals→depth (2026-04-17,
+//   session 2026-04-17T22-42-15Z).  Matt's observations on bad guy:
 //
-//   melodyFromFV:  f.mid_att * 15.0  → 0.5 + f.mid_att_rel
-//     Before: steady-state ≈ 7.5 (f.mid_att ≈ 0.5 × 15), range [0, 15].
-//             Absolute value shifts with mix density — a quiet section of a
-//             loud track and a loud section of a quiet track give the same
-//             f.mid_att ≈ 0.5, but the acoustic energy differs by 10 dB.
-//     After: steady-state = 0.5 (centered), range [0, 1.5] after clamp.
-//            mid_att_rel = (mid_att − 0.5) × 2 → 0 when at AGC average,
-//            positive when above average, negative below.  Mix-stable.
+//     "The best synchronization is with the darker valleys, which move
+//      deeper with Billie Eilish's voice.  The pulsing terrain is a bit
+//      too overstimulated and could probably react to just the kick."
 //
-//   bassFromFV:    f.bass_att * 1.2  → 0.3 + f.bass_att_rel * 0.7
-//     Before: steady-state ≈ 0.6.  Shifts with AGC denominator.
-//     After:  steady-state = 0.3 (a gentle baseline), peaks at ~1.0 on
-//             loud bass, drops to 0 in sparse sections.  Deviation-driven.
+//   Data analysis of the session confirmed:
+//     • Vocals leads the song's dynamic envelope (avg 0.37, highest
+//       variance 0.023) — its coincidental contribution through
+//       intensity was what produced the "valleys move with voice" read.
+//     • Only `stems.drums_beat` has a live beat signal (per-stem beat
+//       detector architecture — other stems' `_beat` fields stay 0).
+//     • `f.beat_composite` (v8.2's pulse source) fires on vocal
+//       transients, mid-band attacks AND kicks — the overstimulation.
 //
-//   melodyHueFromFV: f.mid_att * 5.0 → 0.5 + f.mid_att_rel * 0.5
-//     Before: steady-state ≈ 2.5.  Hue phase accumulates toward a fixed
-//             region of the palette regardless of relative melodic intensity.
-//     After:  steady-state = 0.5.  Above-average melody pushes hue phase
-//             up to 1.0; below-average pulls toward 0.  Palette rotation
-//             reflects actual melodic lift, not absolute AGC level.
+//   v9 mapping (explicit):
+//     Kick pulse (peak lift):  max(stems.drums_beat, f.beat_bass × 0.8),
+//                              thresholded smoothstep(0.20, 0.70).
+//                              Restricted to kick-character signals;
+//                              f.beat_bass fallback covers bass-driven
+//                              tracks (Slint) where drums stem is empty.
+//     Vocal depth:             stems.vocals_energy (fast-follow) →
+//                              adds VL_VOCAL_DEPTH_BOOST × swell to
+//                              audioAmp.  Deeper valleys with vocal
+//                              phrasing, intentional rather than
+//                              accidental.  FV fallback: f.mid_att_rel.
+//     Continuous intensity:    coact + log(1+density) + 0.25·(AR-1)
+//                              (retained for section-scale swell).
+//     Palette hue:              unchanged (energy-weighted stem mean).
+//     Peak polish:              unchanged (onset density).
+//     Bass sustain:             REMOVED from peak lift (user: "just the
+//                              kick").  Bass now contributes only via
+//                              coactivation and density in intensity.
 //
-//   otherFromFV: sqrt(max(f.mid, 0)) * 1.6 → f.mid_dev * 1.5
-//     Before: sqrt(0.5) * 1.6 ≈ 1.13 → clamped 1.0.  Peak roughness was
-//             permanently polished even in sparse sections.
-//     After:  mid_dev = max(0, mid_rel).  Zero when mid is at AGC average;
-//             positive only on above-average melodic energy.  Roughness
-//             polish now fires on genuinely active mid moments, not always.
+// v8.2 — Sync-drift fixes: thresholded beat pulse + bass sustain + beefier
+//   FV fallback (2026-04-17, session 2026-04-17T22-29-43Z).  Matt's
+//   observation on bad guy was a specific pattern: "not synced at start,
+//   synced at 5-6s, drifts out, re-syncs approaching chorus."  Data
+//   confirmed three causes:
 //
-// v4.1: StemFeatures now plumbed through the preamble into sceneSDF
-// and sceneMaterial (engine-level change: per-preset stem routing à la
-// Milkdrop is the long-term aim).  VL upgrades from band-proxy drivers
-// to true stem reads with D-019 warmup fallback:
-//   - Terrain amp "melody" = stems.other_energy + stems.vocals_energy
-//       (fallback f.mid_att × 15)
-//   - Terrain amp "bass"   = stems.bass_energy  (fallback f.bass_att × 1.2)
-//   - Accent trigger       = smoothstep(stems.drums_beat)
-//       (fallback smoothstep(f.spectral_flux))
-//   - Peak polish          = stems.other_energy × 3
-//       (fallback sqrt(f.mid) × 1.6)
-//   - Palette hue melody   = stems.vocals + stems.other
-//       (fallback f.mid_att × 5)
-// All blended via smoothstep(0.02, 0.06, totalStemEnergy) so the preset
-// gracefully handles the first few seconds before the stem separator's
-// first chunk completes.
+//   (1) f.beat_composite is noisy during active music — values span
+//       0.22 to 1.00 across frames within a single bar.  Using the raw
+//       value as the pulse amplitude meant weak detector reads (0.3-0.5)
+//       produced subtle bumps that didn't carry sync; only the full
+//       pulses (0.9-1.0) were visible.  v8.2 thresholds via
+//       smoothstep(0.30, 0.85) so only real hits register, and the
+//       peak lift constant is increased to compensate.
+//
+//   (2) Sustained 808/sub-bass verses (bad guy 0:04-0:21) have few
+//       rising-edge onsets — the detector sees a held bass note as
+//       one flux spike, not a rhythm.  Added a separate `bassSustain`
+//       term driven by f.bass_att (IIR-smoothed bass band) that feeds
+//       into the same peak-lift path.  Keeps terrain visibly alive
+//       during sustained bass-forward sections even between discrete
+//       onsets.
+//
+//   (3) Pre-stem FV fallback was structurally weaker than post-stem
+//       intensity (max ~1.1 vs max ~2.5), producing a visible
+//       response-strength jump at ~10s when stems arrived.  FV path
+//       now scales band deviations more aggressively and adds a
+//       continuous bass_att floor, matching post-stem range.
+//
+// v8 — Asymmetric peak-lift beat pulse + wider depth range (2026-04-17).
+//   Matt feedback on v7: the linear `audioAmp += beatPulse × 0.6` added
+//   the pulse to the *entire* terrain amplitude, which multiplies both
+//   sides of the (n − 0.5) midpoint — so peaks lift AND valleys drop on
+//   each onset, in equal measure.  That reads as the whole terrain
+//   vertically stretching (a breathing squish) rather than as rhythmic
+//   motion.  Visually subtle, not what a "pulse" should feel like.
+//
+//   v8 splits the pulse out of `audioAmp` and applies it only to the
+//   above-midpoint region in `vl_heightAt`:
+//
+//     peakLift = beatPulse × max(0, n − 0.5) × 2 × VL_BEAT_PEAK_LIFT
+//     h       = base + peakLift
+//
+//   Asymmetric: valleys stay at their continuous-intensity floor while
+//   peaks reach *up* on each onset and relax back (beat_composite decays
+//   ~200 ms to 0.1).  Reads as "tall peaks reaching toward the sky on
+//   every beat" rather than "whole terrain squishing."
+//
+//   Also widens the continuous depth range to make intensity differences
+//   dramatic rather than subtle:
+//     VL_DISP_SILENT_AMP  0.6 → 0.4  (lower resting floor)
+//     VL_DISP_AUDIO_AMP   1.4 → 2.2  (steeper intensity response)
+//     Silent terrain: peaks at ~0.4 units.  Dense section: peaks at ~5.
+//     10× depth swing between silent and dense; clearly perceptible.
+//
+//   Reference tracks for future testing (modern loud-mastered, peaks
+//   within 1 dB of full scale): Billie Eilish "bad guy", Taylor Swift
+//   "Anti-Hero", The Weeknd "Blinding Lights", Dua Lipa "Levitating",
+//   Post Malone "Sunflower".  Dynamic-range references (still loud-
+//   mastered on streaming but with wider quiet-to-loud internal range):
+//   Steely Dan "Aja", Pink Floyd "Time".
+//
+// v7 — Beat-synced terrain pulse via `f.beat_composite` (2026-04-17,
+//   session 2026-04-17T20-16-31Z).  Matt observed that Slint's "Good
+//   Morning, Captain" is bass-and-guitar-driven (no kick propelling
+//   the verse), so a drum-centric rhythm driver gets the synchronization
+//   wrong.  v7 replaces the drum-stem beat + stem-specific intensity
+//   with `f.beat_composite` — the 6-band full-mix onset detector's
+//   union signal, which fires on whichever band is currently rhythmic:
+//   kick (sub_bass/low_bass), bass guitar pluck (low_bass), guitar
+//   strum (low_mid), vocal attack (mid_high), cymbal (high).  Every
+//   band has proper cooldowns so it doesn't flood on dense passages.
+//
+//   Changes:
+//     audioAmp += f.beat_composite × 0.6  — terrain now visibly pulses
+//       on each onset in addition to the continuous intensity swell.
+//       Base:beat ratio ≈ 2.5:1 (CLAUDE.md guideline 2-4×).
+//     accent = smoothstep(f.beat_composite)  — peak flare + ridge
+//       strobe now fire on any rhythmic band, not only the drum stem.
+//
+//   The intensity driver (coact + density + attack) is retained for
+//   the slow section-energy swell; it just no longer has to carry the
+//   rhythm signal as well.
+//
+// v6.2 — Calibration tighten (see diff history):
+//   • Coactivation thresholds [0.12, 0.30] → [0.28, 0.50].  Stem
+//     separator leaks cross-material, so "active" requires genuine
+//     above-baseline energy.  Sparse verses now score coact 0-1.
+//   • Density log-compressed (log(1+density)) and baseline subtracted
+//     so intensity truly floors at 0 in sparse sections.
+//
+// v6.1 — Recalibration + rhythm decoupling (2026-04-17, session
+//   2026-04-17T19-31-46Z).  The v6 prototype shipped with two latent
+//   issues surfaced on Slint "Good Morning, Captain":
+//
+//   (a) Onset rates were 20-25/sec across all stems (should be 1-8/sec),
+//       saturating `density` and pinning intensity at clamp 2.5 for
+//       the whole song — amp was effectively constant.  Root cause was
+//       a missing rising-edge gate in the StemAnalyzer onset detector:
+//       each sustained above-threshold signal registered 3-5 onsets per
+//       hit.  Fixed at the source with rising-edge + 100ms refractory.
+//
+//   (b) Accent fired on `attack_ratio` across all four stems, so bass
+//       onsets (often syncopated against the drum pattern) produced
+//       extra off-beat flashes that read as arhythmic.  v6.1 locks the
+//       accent to `drums_beat` only (which already has proper per-band
+//       cooldowns from the drum-stem BeatDetector), with FV spectral-
+//       flux fallback during stem warmup.
+//
+//   Intensity constants recalibrated for realistic post-fix rates:
+//     intensity = 0.25·coact + 0.40·density + 0.20·(attack-1)
+//
+// v6 — Density/rate/attack drivers (2026-04-17, session 2026-04-17T18-28-01Z).
+// v5 depended on per-stem deviation (`*_energy_dev`) to drive terrain amp.
+// Diagnostic showed this failed on Slint — Good Morning, Captain: the
+// screamed-vocal outro is ~4× louder acoustically than the bass-only
+// verse, but post-AGC normalised energies were 0.45 vs 0.20 (≈2.3×), and
+// dev values dropped back near zero during the sustained outro as the
+// per-stem EMA (decay 0.995, τ≈2s) caught up to the new loudness.  The
+// visualiser read the outro and the verse as the same intensity.
+//
+// v6 pivots to three primitives that survive per-stem AGC because they
+// measure the *structure* of activity rather than its amplitude:
+//
+//   1. Coactivation count — how many stems are simultaneously active
+//      (soft count via smoothstep on raw energies).  Verse has 1
+//      active stem; outro has all 4.  AGC compresses amplitude but
+//      cannot make a silent stem appear active.
+//
+//   2. Onset rate (MV-3a, events/sec, ~0.5s leaky integrator) — how
+//      fast onsets are firing.  Outro has dense kicks + strummed
+//      guitar onsets at ~3-5 events/sec; verse has sparse plucks.
+//      Rate is unaffected by AGC gain.
+//
+//   3. Attack ratio (MV-3a, fastRMS(50ms)/slowRMS(500ms), clamped [0,3])
+//      — how transient the sharpest stem currently is.  Screamed
+//      vocals and hard drum hits have ratio ≫ 1; sustained pads ~1.
+//      A fast-over-slow RMS ratio is gain-invariant by construction.
+//
+// Combined: intensity = 0.30·coact + 0.50·density + 0.25·(attack−1)
+//
+// Rough target ranges:
+//   Silence          → 0
+//   Solo-bass verse  → coact≈1, dens≈0.3, attack≈1.2  →  ~0.6
+//   Full-band verse  → coact≈2.5, dens≈0.6, attack≈1.5 →  ~1.2
+//   Dense outro      → coact≈4, dens≈1.2, attack≈2.5  →  ~2.2
+//
+// Hue driver: energy-weighted mean across per-stem hue positions (bass
+// warm, drums violet, vocals teal, other yellow).  v5 used dev-weighted
+// but that collapsed numerically when all devs decayed; energy-weighted
+// blends stems by current mix contribution, which is what "dominant
+// stem shifts palette" should measure anyway.
+//
+// Accent: max(drums_beat, smoothstep(attack−1)) — fires on any stem's
+// sharp transient, not only the drum-stem onset detector.
+//
+// MV-1 FV fallbacks retained for warmup (smoothstep(0.02, 0.06, total)).
 //
 // v4 (session 2026-04-16T20-09-44Z — tested on Tea Lights, Lower Dens,
 // an acoustic/electric guitar driven track at ~75 BPM with no kick drum):
@@ -150,18 +293,28 @@
 //     albedo by noise position + audio time + valence.
 //   - `sqrt(f.mid) * 1.6` replaces `f.treble * 1.4` for "other" polish.
 //
-// Audio routing (v4.1 — StemFeatures available via preamble):
-//   s.sceneParamsA.x                        → terrain phase (accumulated audio time)
-//   stems.other + stems.vocals / f.mid_att  → primary vertical displacement (melody)
-//   stems.bass / f.bass_att                 → secondary vertical displacement
-//   stems.drums_beat / f.spectral_flux      → accent (palette flare + ridge strobe)
-//   stems.other + stems.vocals / f.mid_att  → palette hue phase (melody → colour)
-//   f.valence                               → palette hue offset (mood)
-//   stems.other / sqrt(f.mid)               → peak roughness polish
-// Where "A / B": A is the stem-accurate driver (used once stems have warmed
-// up via smoothstep(0.02, 0.06, totalStemEnergy)); B is the FeatureVector
-// fallback used during warmup.  Forward camera dolly (1.8 u/s) configured in
-//   PhospheneApp/VisualizerEngine+Presets.swift → RayMarchPipeline.cameraDollySpeed.
+// Audio routing (v9.2 — clean per-stem / per-element mapping):
+//   s.sceneParamsA.x                                          → terrain phase
+//   0.30·coact + 0.50·log(1+density) + 0.25·(AR-1)            → section intensity
+//   stems.vocals_energy × 0.7 (+ intensity)                   → continuous depth amp
+//   max(stems.drums_beat,
+//       smoothstep(1.3, 2.0, stems.drums_attack_ratio)
+//         × smoothstep(0.08, 0.22, stems.drums_energy))       → kick-only peak lift
+//                                                             (DRUM STEM ONLY; no bass)
+//   features.bass                                             → camera dolly speed
+//                                                             (separate path in RayMarch)
+//   kickPulse (same drum-stem-only source)                    → accent (peak flare + ridge + coverage)
+//   energy-weighted stem-hue mean                             → palette hue phase
+//   f.valence                                                 → palette hue offset (mood)
+//   onset-density + 0.25·attack                               → peak roughness polish
+// FV fallbacks (pre-stem warmup):
+//   0.3 + f.bass_att_rel·1.2 + f.mid_att_rel·1.4 + f.bass_att·0.6 → continuous amp
+//   f.mid_att_rel + 0.2                                           → vocal swell proxy
+//   (no FV fallback for kickPulse — landmasses silent during stem warmup;
+//    track start has ~10s of no-pulse before stems arrive.  Acceptable
+//    trade for removing bass-overload when stems are live.)
+// Camera dolly base: 1.8 u/s (VisualizerEngine+Presets.swift).  Modulated
+// per-frame by (0.5 + features.bass × 1.1) in RenderPipeline+RayMarch.swift.
 //
 // D-019 stem-routing fallback: stems are not in scope here, so all
 // stem-driven parameters fall back to FeatureVector — equivalent to
@@ -185,10 +338,26 @@ constant float VL_NOISE_TIME_SCALE = 0.015f; // v3.2: 0.06 → 0.015 so high-oct
                                               // per 20s wallclock; beat-aligned
                                               // motion stops competing with
                                               // continuous surface boil
-constant float VL_DISP_SILENT_AMP  = 0.6f;   // baseline so terrain reads in silence
-constant float VL_DISP_AUDIO_AMP   = 1.4f;   // v4: 1.8 → 1.4 to pair with forward
-                                              //      dolly — tall peaks awkward when
-                                              //      flying past close-up
+constant float VL_DISP_SILENT_AMP  = 0.5f;   // v8.1: 0.4 → 0.5; closer to v4 resting depth
+                                              //       (Matt: v8 was "way too hot")
+constant float VL_DISP_AUDIO_AMP   = 1.3f;   // v8.1: 2.2 → 1.3; back down close to v4's 1.4
+                                              //       so peak heights don't run away.
+                                              //       Dense section: 0.5 + 2×1.3 = 3.1 units,
+                                              //       matching v4's ~3.4 max.  Silent: 0.5.
+                                              //       Still a 6× depth swing intensity-driven.
+constant float VL_BEAT_PEAK_LIFT   = 0.9f;   // v8.2: 0.5 → 0.9.  v9: unchanged magnitude,
+                                              //       but the source is now drums-stem-only
+                                              //       (see kickPulse in sceneSDF).
+constant float VL_VOCAL_DEPTH_BOOST = 0.7f;  // v9: NEW — vocals_energy contribution to the
+                                              //       continuous-depth amp.  Matt's observation
+                                              //       on bad guy: "darker valleys moving deeper
+                                              //       with Billie's voice is the BEST sync."
+                                              //       Data confirmed vocals carries the song's
+                                              //       dynamic envelope (avg 0.37, highest
+                                              //       variance 0.023).  This routes vocals
+                                              //       stem energy into the amp driver so the
+                                              //       effect is intentional and explicit, not
+                                              //       an accident of stem-summed intensity.
 constant int   VL_FBM_OCTAVES      = 5;
 
 // SDF Lipschitz scaling: heightfield is not Euclidean on slopes.
@@ -214,10 +383,21 @@ static inline float vl_terrainNoise(float3 worldP, float audioPhase) {
 }
 
 /// Heightfield surface height at world XZ.
-static inline float vl_heightAt(float3 worldP, float audioPhase, float audioAmp) {
-    float n   = vl_terrainNoise(worldP, audioPhase);
-    float amp = VL_DISP_SILENT_AMP + audioAmp * VL_DISP_AUDIO_AMP;
-    return VL_TERRAIN_BASE_Y + (n - 0.5f) * 2.0f * amp;
+///
+/// v9 peak-lift: asymmetric, driven SOLELY by `kickPulse` (drums-stem beat +
+/// bass-band-flux fallback).  Matt's v8.2 observation: sustained-bass +
+/// beat-composite pulses together were "overstimulated" — the visual
+/// pulsed on vocal transients, mid-band attacks, AND kicks.  v9 restricts
+/// the peak-lift source to kick-character onsets only.  Bass-stem-derived
+/// motion now contributes to `audioAmp` (depth), not to peak lift.
+static inline float vl_heightAt(float3 worldP, float audioPhase,
+                                 float audioAmp, float kickPulse) {
+    float n    = vl_terrainNoise(worldP, audioPhase);
+    float amp  = VL_DISP_SILENT_AMP + audioAmp * VL_DISP_AUDIO_AMP;
+    float base = (n - 0.5f) * 2.0f * amp;
+    float nAbove = max(0.0f, n - 0.5f) * 2.0f;
+    float peakLift = nAbove * kickPulse * VL_BEAT_PEAK_LIFT;
+    return VL_TERRAIN_BASE_Y + base + peakLift;
 }
 
 /// Inigo Quilez cosine-palette tint for the given phase.  Cyan → magenta →
@@ -238,38 +418,74 @@ float sceneSDF(float3 p,
                constant StemFeatures& stems) {
     float audioPhase = s.sceneParamsA.x;                            // accumulated audio time
 
-    // v4.1: true stem-driven melody, with D-019 warmup fallback to
-    // FeatureVector proxies.  StemFeatures now plumbed through the
-    // preamble so sceneSDF can read stems directly.
+    // v9.3: section-intensity driver REMOVED from audioAmp path.
+    // Matt's requirement (session 22-52-30Z → 23-22-40Z): "landmasses
+    // should be COMPLETELY STILL and ONLY respond to the clicks/snaps"
+    // during bass-only playback.  The old intensity =
+    //   0.30·coact + 0.50·log(1+density) + 0.25·(attackN−1)
+    // included bass-stem coactivation and bass onsets, which made
+    // landmass DEPTH animate with the bassline even when `kickPulse`
+    // was silent.  v9.3 removes it entirely from audioAmp — continuous
+    // depth is now driven EXCLUSIVELY by `vocalSwell` (vocals stem).
+    // Landmasses are truly still when only bass is playing.
     //
-    //   Melody (primary, weight 0.75):
-    //     stems.other_energy + stems.vocals_energy — "other" is the
-    //     catch-all for melodic instruments (guitar, synth, piano) and
-    //     vocals carry lyrical phrasing.  Together they track the song's
-    //     melodic motion directly.  Fallback f.mid_att × 15 (250-4000 Hz
-    //     covers the same timbral range post-AGC-boost).
+    // Section-level energy dynamics (quiet intro → loud chorus) now
+    // emerge from vocalSwell itself (vocals are present across all
+    // sections in bad guy) and from palette shifts / camera pace.
+
+    // v9.2 rhythmic driver: kickPulse from DRUM-STEM ONLY.  Matt's v9.1
+    // feedback: "landmasses are currently pulsing with the bass, which
+    // should only be controlling the speed of the camera... when the
+    // snaps come in, they are not registering because the bass already
+    // overloads the pulsing landmasses."
     //
-    //   Bass (secondary, weight 0.35):
-    //     stems.bass_energy — isolated bass stem (kick + bassline).
-    //     Fallback f.bass_att × 1.2.
+    // v9.1 included `f.beat_bass × 0.8` as a fallback "for non-drums
+    // tracks."  On bad guy, that fallback fires on every 808 bass note
+    // → landmasses pulse continuously at bass rate → distinct snap
+    // events produce no visible DELTA against the already-saturated
+    // baseline.  Removing the bass fallback so the pulse is silent
+    // between snaps and fires cleanly on each percussion hit.
     //
-    // Warmup blend: smoothstep(0.02, 0.06, totalStemEnergy) interpolates
-    // from FeatureVector fallbacks (mix == 0) to stem direct (mix == 1).
+    //   • stems.drums_beat         — kicks (when BeatDetector isn't
+    //                                threshold-saturated)
+    //   • stems.drums_attack_ratio — snaps/claps/snares (gated by
+    //                                drums_energy so vocal transients
+    //                                can't leak into the pulse)
+    //
+    // Bass now exclusively drives camera dolly speed (see
+    // RenderPipeline+RayMarch.swift).  Non-drum-only tracks (e.g. Slint
+    // bass-guitar-driven) will land with silent landmass pulses — we'll
+    // add an adaptive per-track routing in the Orchestrator phase.
+    float drumsActive    = smoothstep(0.08f, 0.22f, stems.drums_energy);
+    float drumsTransient = smoothstep(1.3f, 2.0f, stems.drums_attack_ratio)
+                         * drumsActive;
+    float kickRaw   = max(stems.drums_beat, drumsTransient);
+    float kickPulse = smoothstep(0.20f, 0.70f, kickRaw);
+
+    // D-019 warmup: FeatureVector fallback until stems produce first chunk.
     float totalStemEnergy = stems.vocals_energy + stems.drums_energy
                           + stems.bass_energy   + stems.other_energy;
     float stemMix = smoothstep(0.02f, 0.06f, totalStemEnergy);
 
-    float melodyFromStems = clamp((stems.other_energy + stems.vocals_energy) * 1.6f,
-                                   0.0f, 1.5f);
-    float melodyFromFV    = clamp(0.5f + f.mid_att_rel, 0.0f, 1.5f);  // MV-1: deviation, not absolute
-    float melody          = mix(melodyFromFV, melodyFromStems, stemMix);
+    // v9.3: audioAmp = vocalSwell ONLY.  No FV bass terms.  No intensity
+    // term.  Continuous terrain depth responds exclusively to vocals.
+    // During bass-only sections the vocals stem is silent (or near-
+    // silent for whispered intros) and audioAmp floors at 0 — terrain
+    // sits at VL_DISP_SILENT_AMP resting depth, no audio-driven motion.
+    //
+    // FV fallback during stem warmup uses f.mid_att_rel as a vocals
+    // proxy (most vocal fundamentals + harmonics sit in the mid band).
+    // Pre-stem bass contributions removed — otherwise the first 10
+    // seconds of a track with active bass would still drive landmass
+    // depth before the vocals stem came online.
+    float vocalSwellFromStems = clamp(stems.vocals_energy - 0.1f, 0.0f, 1.2f);
+    float vocalSwellFromFV    = clamp(f.mid_att_rel, 0.0f, 1.2f);
+    float vocalSwell          = mix(vocalSwellFromFV, vocalSwellFromStems, stemMix);
 
-    float bassFromStems = clamp(stems.bass_energy * 2.0f, 0.0f, 1.0f);
-    float bassFromFV    = clamp(0.3f + f.bass_att_rel * 0.7f, 0.0f, 1.0f);  // MV-1: deviation, not absolute
-    float bass          = mix(bassFromFV, bassFromStems, stemMix);
+    float audioAmp = vocalSwell * VL_VOCAL_DEPTH_BOOST;
 
-    float audioAmp = clamp(melody * 0.75f + bass * 0.35f, 0.0f, 2.0f);
-    float h = vl_heightAt(p, audioPhase, audioAmp);
+    // v9: peak lift is kick-only (no bass sustain).
+    float h = vl_heightAt(p, audioPhase, audioAmp, kickPulse);
     return (p.y - h) * VL_SDF_STEP_SCALE;
 }
 
@@ -286,27 +502,43 @@ void sceneMaterial(float3 p,
     float audioPhase = s.sceneParamsA.x;
     float n          = vl_terrainNoise(p, audioPhase); // [0,1]
 
-    // v4.1: accent driver now prefers stems.drums_beat (true drum-stem
-    // onset pulse) when stems have warmed up, with D-019 fallback to
-    // f.spectral_flux (genre-agnostic full-mix timbral attack).
+    // v9.4: accent = drum-stem-only kickPulse.  The prior accent path
+    // used `f.beat_composite` (6-band full-mix onset composite), which
+    // fires on EVERY bass note.  Downstream, accentFB drives beatShift
+    // (peak/valley threshold modulation → peak coverage expands on
+    // each hit → "landmasses animate") and accentBoost (peak albedo
+    // brightness).  That's the bass-driven landmass pulsing Matt has
+    // been observing for four iterations.  Rerouting accentFB to the
+    // same drums-stem-only kickPulse used in sceneSDF means peak
+    // coverage/brightness respond ONLY to drum hits (kicks + snaps
+    // via attack-ratio), and bass-only sections leave the landmass
+    // material stable.
     //
-    // stems.drums_beat is kick/snare-aligned: on Love Rehab it tracks
-    // the actual 125 BPM kick cleanly; on Tea Lights (soft percussion)
-    // it fires on guitar strums picked up by the drum stem.
-    //
-    // f.spectral_flux is the fallback because it fires on ANY timbral
-    // change — works before stems separation completes on the first chunk.
+    // kickPulse is recomputed here (duplicate of sceneSDF) because
+    // sceneSDF and sceneMaterial are separate entry points called from
+    // different fragment-path contexts and don't share locals.
+    float drumsActive    = smoothstep(0.08f, 0.22f, stems.drums_energy);
+    float drumsTransient = smoothstep(1.3f, 2.0f, stems.drums_attack_ratio)
+                         * drumsActive;
+    float kickRaw   = max(stems.drums_beat, drumsTransient);
+    float kickPulse = smoothstep(0.20f, 0.70f, kickRaw);
+
+    // accentStemMix retained for the peak-polish FV/stem crossfade below.
     float totalAccentStem = stems.vocals_energy + stems.drums_energy
                           + stems.bass_energy   + stems.other_energy;
     float accentStemMix = smoothstep(0.02f, 0.06f, totalAccentStem);
-    float accentFromStems = smoothstep(0.30f, 0.70f, stems.drums_beat);
-    float accentFromFV    = smoothstep(0.35f, 0.70f, f.spectral_flux);
-    float accentFB = mix(accentFromFV, accentFromStems, accentStemMix);
 
-    // v4.1: "other" polish now prefers stems.other_energy directly,
-    // with D-019 fallback to the pre-existing sqrt(f.mid) × 1.6 proxy.
-    float otherFromStems = clamp(stems.other_energy * 3.0f, 0.0f, 1.0f);
-    float otherFromFV    = clamp(f.mid_dev * 1.5f, 0.0f, 1.0f);  // MV-1: deviation, not absolute
+    float accentFB = kickPulse;
+
+    // v6.1: peak polish from onset density (drums-dominant, matching
+    // the intensity driver's weighting).  Polishes when the groove is
+    // busy; sparse verses stay matte.
+    float densityLocal = stems.drums_onset_rate  * 0.20f
+                       + stems.bass_onset_rate   * 0.06f
+                       + stems.vocals_onset_rate * 0.06f
+                       + stems.other_onset_rate  * 0.06f;
+    float otherFromStems = clamp(densityLocal * 0.6f, 0.0f, 1.0f);
+    float otherFromFV    = clamp(f.mid_dev * 1.5f, 0.0f, 1.0f);
     float otherFB        = mix(otherFromFV, otherFromStems, accentStemMix);
 
     // ── Three-stratum classification ────────────────────────────────────
@@ -325,18 +557,33 @@ void sceneMaterial(float3 p,
                             VL_RIDGE_OUTER - beatShift, n));
 
     // ── Psychedelic palette ────────────────────────────────────────────
-    // Phase = local noise × 0.9        (spatial hue spread across peaks)
-    //       + audioTime × 0.08         (baseline cycle — ~1 full rotation
-    //                                    per preset duration at moderate energy)
-    //       + melodyHue × 0.6          (melody modulates hue; v4.1 uses stems
-    //                                    directly with FV fallback)
-    //       + valence × 0.25           (per-track mood hue identity)
-    float melodyHueFromStems = stems.vocals_energy + stems.other_energy;
-    float melodyHueFromFV    = 0.5f + f.mid_att_rel * 0.5f;  // MV-1: deviation, not absolute
-    float melodyHue          = mix(melodyHueFromFV, melodyHueFromStems, accentStemMix);
+    // Phase = local noise × 0.9       (spatial hue spread across peaks)
+    //       + audioTime × 0.08        (baseline cycle)
+    //       + stemHue   × 0.6         (mix composition shifts hue)
+    //       + valence   × 0.25        (per-track mood identity)
+    //
+    // v6 stemHue: energy-weighted mean of per-stem hue positions.
+    //   bass   → 0.00 (warm red/orange)
+    //   drums  → 0.25 (violet)
+    //   vocals → 0.50 (teal/green)
+    //   other  → 0.75 (yellow)
+    // Raw energy (not dev) so the weighting stays numerically stable
+    // when all devs decay.  The hue tracks who's currently in the mix
+    // rather than who's spiking above AGC baseline.
+    float wBass   = stems.bass_energy;
+    float wDrums  = stems.drums_energy;
+    float wVocals = stems.vocals_energy;
+    float wOther  = stems.other_energy;
+    float wTotal  = wBass + wDrums + wVocals + wOther + 1e-3f;
+    float stemHueFromStems = (wBass   * 0.00f
+                            + wDrums  * 0.25f
+                            + wVocals * 0.50f
+                            + wOther  * 0.75f) / wTotal;
+    float stemHueFromFV    = 0.5f + f.mid_att_rel * 0.5f;
+    float stemHue          = mix(stemHueFromFV, stemHueFromStems, accentStemMix);
     float palettePhase = n * 0.9f
                        + audioPhase * 0.08f
-                       + melodyHue * 0.6f
+                       + stemHue * 0.6f
                        + f.valence * 0.25f;
     float3 peakHue   = vl_palette(palettePhase);
     // Valley brightness × 0.15 (v3 had × 0.08 which the valence-tinted
@@ -382,106 +629,4 @@ void sceneMaterial(float3 p,
     albedo    = mix(albedo,    ridgeAlbedo, ridgeSelect);
     roughness = mix(roughness, ridgeRough,  ridgeSelect);
     metallic  = mix(metallic,  ridgeMetal,  ridgeSelect);
-}
-
-// ── MV-2 / MV-3 Warp Functions (D-027, D-028) ────────────────────────────
-//
-// VL warp design: the 3D ray-march provides the scene; the per-vertex warp
-// mesh provides temporal accumulation and musical "breathing".
-//
-// MV-2: melody-driven zoom breath, valence-driven rotation, high decay (0.96).
-//
-// MV-3b: uses beat_phase01 for ANTICIPATORY zoom — the zoom breath begins
-// slightly before the beat rather than at it.  When beat_phase01 > 0.80
-// (the "approach" zone, ~20% of the beat cycle before impact), a ramp adds
-// extra inward pull so the visual has already started moving when the beat
-// lands.  This mirrors how live musicians slightly lean into a downbeat.
-//
-// MV-3c: uses vocals_pitch_hz to modulate palette hue phase — rising vocal
-// pitch (> 400 Hz) shifts towards cooler hues; falling pitch (< 250 Hz)
-// shifts towards warmer hues.  Pitch confidence gates the effect smoothly.
-
-MVWarpPerFrame mvWarpPerFrame(constant FeatureVector& f,
-                              constant StemFeatures&  stems,
-                              constant SceneUniforms& s) {
-    MVWarpPerFrame pf;
-
-    // MV-2: Gentle inward breath driven by melody deviation.
-    float melodyBreath = 1.0f + f.mid_att_rel * 0.003f;
-
-    // MV-3b: Anticipatory pre-beat zoom ramp.
-    // When beat_phase01 > 0.80, linearly ramp extra zoom (0.0→0.004 over
-    // the last 20% of the beat cycle) so the frame is already pulling in
-    // before the beat lands.  Range: +0 at phase 0.8 → +0.004 at phase 1.0.
-    float approachFrac = max(0.0f, (f.beat_phase01 - 0.80f) / 0.20f);
-    float anticipatoryZoom = approachFrac * 0.004f;
-
-    pf.zoom  = melodyBreath + anticipatoryZoom;
-
-    // Slow drift: positive valence → CCW, negative → CW. ~0.09°/frame max.
-    pf.rot   = f.valence * 0.0015f;
-
-    // Long trailing feedback — prev frame contributes 96% each frame.
-    pf.decay = 0.96f;
-
-    // Global warp ripple amplitude (scaled by per-vertex audio below).
-    pf.warp  = 0.3f;
-
-    pf.cx = 0.0f; pf.cy = 0.0f;   // warp centred on screen
-    pf.dx = 0.0f; pf.dy = 0.0f;   // no lateral translation
-    pf.sx = 1.0f; pf.sy = 1.0f;
-
-    // q-variables: carry per-frame audio to mvWarpPerVertex.
-    pf.q1 = f.bass_att_rel;               // bass deviation → horizontal ripple
-    pf.q2 = f.mid_att_rel;                // melody deviation → vertical ripple
-    pf.q3 = s.sceneParamsA.x;             // accumulated audio time → ripple phase
-    pf.q4 = f.valence;
-    // MV-3c: encode pitch hue shift (normalized −1..+1: low→warm, high→cool).
-    // vocals_pitch_hz range 80–1000 Hz; map to [−1, +1] around 400 Hz centre.
-    // Confidence gates the effect: no effect below threshold.
-    float pitchHz   = stems.vocals_pitch_hz;
-    float pitchConf = stems.vocals_pitch_confidence;
-    float pitchHue  = pitchConf > 0.6f
-        ? clamp((pitchHz - 400.0f) / 600.0f, -1.0f, 1.0f)
-        : 0.0f;
-    pf.q5 = pitchHue;
-    pf.q6 = 0.0f; pf.q7 = 0.0f; pf.q8 = 0.0f;
-    return pf;
-}
-
-float2 mvWarpPerVertex(float2 uv, float rad, float ang,
-                       thread const MVWarpPerFrame& pf,
-                       constant FeatureVector& f,
-                       constant StemFeatures& stems) {
-    // Apply global rotation + zoom centred on the warp centre.
-    float2 centre  = float2(0.5f + pf.cx, 0.5f + pf.cy);
-    float2 p       = uv - centre;
-    float  cosR    = cos(pf.rot);
-    float  sinR    = sin(pf.rot);
-    float2 rotated = float2(p.x * cosR - p.y * sinR,
-                            p.x * sinR + p.y * cosR);
-    float2 base    = centre + rotated / pf.zoom + float2(pf.dx, pf.dy);
-
-    // Terrain-coherent UV ripple: slow phase from accumulated audio time,
-    // horizontal amplitude from bass, vertical from melody.
-    // Amplitude 0.004 UV (≈ 4px on 1080p) keeps the effect subtle.
-    float phase = pf.q3 * 0.05f;
-    float du = pf.q1 * sin(uv.y * 6.2832f + phase)        * pf.warp * 0.004f;
-    float dv = pf.q2 * cos(uv.x * 6.2832f + phase * 0.7f) * pf.warp * 0.003f;
-
-    return base + float2(du, dv);
-}
-
-// ── MV-3c vocal pitch hue helper (accessible from sceneMaterial or post) ──
-// Returns a palette phase shift [−0.15, +0.15] based on vocal pitch.
-// Rising pitch (> 400 Hz) adds a small positive shift (cooler, higher phase);
-// falling pitch (< 400 Hz) subtracts (warmer, lower phase).
-// Blended by confidence so intonation-free sections don't shift the palette.
-static inline float vl_pitchHueShift(constant StemFeatures& stems) {
-    float pitchHz   = stems.vocals_pitch_hz;
-    float pitchConf = stems.vocals_pitch_confidence;
-    if (pitchConf < 0.6f || pitchHz <= 0.0f) return 0.0f;
-    // Map 80–1000 Hz → −0.15 to +0.15 range, centred at 400 Hz.
-    float normalized = clamp((pitchHz - 400.0f) / 600.0f, -1.0f, 1.0f);
-    return normalized * 0.15f * pitchConf;
 }
