@@ -449,3 +449,27 @@ Seven new fields were added to `PresetDescriptor` to give the Orchestrator (Incr
 **Fatigue cooldown windows:** `.low = 60s`, `.medium = 120s`, `.high = 300s`. These are the smallest values that created observable variety in internal playlist test sessions without causing visually jarring avoidance patterns (every session felt different, no preset disappeared for so long that its return felt jarring). `smoothstep` rather than a linear ramp avoids an abrupt "fully available" cliff.
 
 **How to apply:** The `internal static let` constants (`weightMood`, `weightTempoMotion`, `weightStemAffinity`, `weightSectionSuitability`, `familyRepeatPenalty`, `fatigueCooldown`) are the only place these values are defined — adjust there to tune globally. The `PresetScoreBreakdown` struct surfaces all sub-scores for introspection and future calibration tooling.
+
+---
+
+## D-033: Transition policy design — structural boundary priority and energy-scaled crossfades (Increment 4.2)
+
+**Status:** Accepted (2026-04-20)
+
+`DefaultTransitionPolicy` answers the "when + how" question. Two trigger paths, strict priority order.
+
+**Structural boundary (preferred):** Fires when `StructuralPrediction.confidence ≥ 0.5` and the predicted next boundary is within 2.5 s (the `LookaheadBuffer` window). `scheduledAt` is offset before the boundary so a crossfade or morph completes exactly at it; a cut is scheduled at the boundary itself. Confidence threshold 0.5 was chosen as the midpoint of the [0, 1] range — the analyzer produces values above this for tracks with detectable periodic structure (ABAB or verse/chorus patterns), and values below for ambient or through-composed material.
+
+**Duration-expired fallback:** Fires when `elapsedPresetTime ≥ preset.duration`. `scheduledAt = captureTime` (transition now). Confidence reports 1.0 because the trigger is deterministic, not a probabilistic prediction.
+
+**Why structural boundary beats the timer:** Section boundaries are the musically correct moment to switch visuals. The timer fires regardless of where we are in the track structure. When both conditions are true simultaneously (preset is overdue AND a boundary is imminent), the structural path produces a less jarring result — it aligns with what the listener hears.
+
+**Style selection:** The current preset's `transitionAffordances` constrain the palette. Within that palette, energy drives preference: above `cutEnergyThreshold = 0.7` the policy prefers `.cut` (fast, punchy — appropriate at peaks), below it prefers `.crossfade` (slow blend — appropriate for relaxed passages). Default fallback when no affordances are declared: `.crossfade`.
+
+**Crossfade duration scaling:** Linear interpolation between `baseCrossfadeDuration = 2.0s` (energy=0) and `minCrossfadeDuration = 0.5s` (energy=1). This gives the visually desired behaviour — slow, deliberate fades during quiet passages; quick, energetic ones during peaks.
+
+**Family-repeat avoidance is NOT in TransitionPolicy:** The `DefaultPresetScorer` already applies a 0.2× family-repeat penalty during ranking (D-032). TransitionPolicy receives a ranked list and picks from the top — no duplicate logic needed.
+
+**`TransitionDecision` is a pure value type:** trigger, scheduledAt, style, duration, confidence, rationale. No callbacks, no side effects. Callers schedule the transition externally from the returned struct.
+
+**How to apply:** Tune the four `static let` constants in `DefaultTransitionPolicy` (`structuralConfidenceThreshold`, `lookaheadWindow`, `baseCrossfadeDuration`, `minCrossfadeDuration`, `cutEnergyThreshold`) to adjust timing behaviour globally. The `TransitionDeciding` protocol allows injection of test doubles or alternative implementations without changing callers.
