@@ -102,7 +102,7 @@ extension RenderPipeline {
         let mvWarpSnap     = mvWarpLock.withLock { mvWarpState }
 
         // Is the mv_warp pass active this frame?
-        let mvWarpActive   = passes.contains(.mvWarp) && mvWarpSnap != nil
+        let mvWarpActive = passes.contains(.mvWarp) && mvWarpSnap != nil
 
         // Lazy-allocate feedback textures if needed (drawableSizeWillChange may not fire).
         let drawableSize = view.drawableSize

@@ -457,9 +457,9 @@ public struct StemFeatures: Sendable, Equatable {
 
     // --- Floats 43–64: padding to 256 bytes (22 floats) ---
     // swiftlint:disable identifier_name
-    var _sfPad1:  Float; var _sfPad2:  Float; var _sfPad3:  Float; var _sfPad4:  Float
-    var _sfPad5:  Float; var _sfPad6:  Float; var _sfPad7:  Float; var _sfPad8:  Float
-    var _sfPad9:  Float; var _sfPad10: Float; var _sfPad11: Float; var _sfPad12: Float
+    var _sfPad1: Float; var _sfPad2: Float; var _sfPad3: Float; var _sfPad4: Float
+    var _sfPad5: Float; var _sfPad6: Float; var _sfPad7: Float; var _sfPad8: Float
+    var _sfPad9: Float; var _sfPad10: Float; var _sfPad11: Float; var _sfPad12: Float
     var _sfPad13: Float; var _sfPad14: Float; var _sfPad15: Float; var _sfPad16: Float
     var _sfPad17: Float; var _sfPad18: Float; var _sfPad19: Float; var _sfPad20: Float
     var _sfPad21: Float; var _sfPad22: Float

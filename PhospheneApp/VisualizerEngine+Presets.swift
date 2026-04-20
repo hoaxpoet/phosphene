@@ -169,10 +169,10 @@ extension VisualizerEngine {
                     break
                 }
                 let bundle = MVWarpPipelineBundle(
-                    warpState:    warpPipelines.warpState,
+                    warpState: warpPipelines.warpState,
                     composeState: warpPipelines.composeState,
-                    blitState:    warpPipelines.blitState,
-                    pixelFormat:  context.pixelFormat
+                    blitState: warpPipelines.blitState,
+                    pixelFormat: context.pixelFormat
                 )
                 // Use the last drawable size reported by drawableSizeWillChange so
                 // mid-session preset switches allocate at the correct resolution.

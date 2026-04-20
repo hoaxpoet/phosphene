@@ -244,8 +244,12 @@ public final class SessionRecorder: @unchecked Sendable {
     /// The render pipeline blits the drawable into this texture inside the
     /// command buffer before commit; `recordFrame` reads it in the completion
     /// handler and feeds it to the AVAssetWriter.
-    public func ensureCaptureTexture(device: MTLDevice, width: Int, height: Int,
-                              pixelFormat: MTLPixelFormat) -> MTLTexture? {
+    public func ensureCaptureTexture(
+        device: MTLDevice,
+        width: Int,
+        height: Int,
+        pixelFormat: MTLPixelFormat
+    ) -> MTLTexture? {
         if let existing = captureTexture,
            existing.width == width,
            existing.height == height,
@@ -254,7 +258,9 @@ public final class SessionRecorder: @unchecked Sendable {
         }
         let desc = MTLTextureDescriptor.texture2DDescriptor(
             pixelFormat: pixelFormat,
-            width: width, height: height, mipmapped: false
+            width: width,
+            height: height,
+            mipmapped: false
         )
         desc.usage = [.shaderRead]
         desc.storageMode = .shared
@@ -297,9 +303,11 @@ public final class SessionRecorder: @unchecked Sendable {
 
     /// Dump the four separated stem waveforms as 16-bit PCM WAV files.
     /// Called once per stem-separation cycle (~5s).
-    public func recordStemSeparation(stemWaveforms: [[Float]],
-                              sampleRate: Int,
-                              trackTitle: String?) {
+    public func recordStemSeparation(
+        stemWaveforms: [[Float]],
+        sampleRate: Int,
+        trackTitle: String?
+    ) {
         queue.async { [weak self] in
             guard let self = self else { return }
             guard stemWaveforms.count >= 4 else { return }
@@ -421,14 +429,15 @@ public final class SessionRecorder: @unchecked Sendable {
         let lockedH = writerLockedDims?.height ?? 0
         if lockedW != width || lockedH != height {
             skippedFrameCount += 1
-            if let m = mismatchedDims, m.width == width, m.height == height {
+            if let meta = mismatchedDims, meta.width == width, meta.height == height {
                 mismatchedDimsStreak += 1
             } else {
                 mismatchedDims = (width, height)
                 mismatchedDimsStreak = 1
             }
             if mismatchedDimsStreak >= writerRelockThreshold {
-                writeLogLine("video writer relocking: drawable stabilised at \(width)x\(height), was locked at \(lockedW)x\(lockedH) (skipped \(skippedFrameCount) frames)")
+                writeLogLine("video writer relocking: drawable stabilised at \(width)x\(height),"
+                    + " was locked at \(lockedW)x\(lockedH) (skipped \(skippedFrameCount) frames)")
                 tearDownVideoWriter()
                 if setupVideoWriter(width: width, height: height) {
                     writerLockedDims = (width, height)
@@ -443,7 +452,8 @@ public final class SessionRecorder: @unchecked Sendable {
                 }
             } else {
                 if skippedFrameCount % 30 == 1 {
-                    writeLogLine("video frame skipped: drawable \(width)x\(height) != writer \(lockedW)x\(lockedH) (skip count: \(skippedFrameCount))")
+                    writeLogLine("video frame skipped: drawable \(width)x\(height)"
+                        + " != writer \(lockedW)x\(lockedH) (skip count: \(skippedFrameCount))")
                 }
                 return
             }
@@ -471,9 +481,10 @@ public final class SessionRecorder: @unchecked Sendable {
                      mipmapLevel: 0)
 
         if videoStartTime == nil {
-            videoStartTime = CMTime(value: CMTimeValue(wallclock * 1_000_000),
-                                    timescale: 1_000_000)
-            videoWriter?.startSession(atSourceTime: videoStartTime!)
+            let startTime = CMTime(value: CMTimeValue(wallclock * 1_000_000),
+                                   timescale: 1_000_000)
+            videoStartTime = startTime
+            videoWriter?.startSession(atSourceTime: startTime)
         }
         let pts = CMTime(value: CMTimeValue(wallclock * 1_000_000),
                          timescale: 1_000_000)
@@ -542,41 +553,43 @@ public final class SessionRecorder: @unchecked Sendable {
 
     // MARK: - CSV row formatting
 
-    private static func csvRow(features f: FeatureVector, frame: Int, wallclock: CFAbsoluteTime) -> String {
+    // swiftlint:disable multiline_arguments
+    private static func csvRow(features fv: FeatureVector, frame: Int, wallclock: CFAbsoluteTime) -> String {
         String(format: "%d,%.4f,%.4f,%.4f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,"
                      + "%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f\n",
-               frame, wallclock, f.time, f.deltaTime,
-               f.bass, f.mid, f.treble,
-               f.subBass, f.lowBass, f.lowMid, f.midHigh, f.highMid, f.high,
-               f.beatBass, f.beatMid, f.beatTreble, f.beatComposite,
-               f.spectralCentroid, f.spectralFlux, f.valence, f.arousal,
-               f.accumulatedAudioTime)
+               frame, wallclock, fv.time, fv.deltaTime,
+               fv.bass, fv.mid, fv.treble,
+               fv.subBass, fv.lowBass, fv.lowMid, fv.midHigh, fv.highMid, fv.high,
+               fv.beatBass, fv.beatMid, fv.beatTreble, fv.beatComposite,
+               fv.spectralCentroid, fv.spectralFlux, fv.valence, fv.arousal,
+               fv.accumulatedAudioTime)
     }
 
-    private static func csvRow(stems s: StemFeatures, frame: Int, wallclock: CFAbsoluteTime) -> String {
+    private static func csvRow(stems stems: StemFeatures, frame: Int, wallclock: CFAbsoluteTime) -> String {
         // Base (16) + MV-1 dev (8) + MV-3a rich (16) + MV-3c pitch (2) = 42 floats + frame + wallclock.
         let base = String(format: "%d,%.4f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,"
                                 + "%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f",
                           frame, wallclock,
-                          s.drumsEnergy, s.drumsBeat, s.drumsBand0, s.drumsBand1,
-                          s.bassEnergy, s.bassBeat, s.bassBand0, s.bassBand1,
-                          s.vocalsEnergy, s.vocalsBeat, s.vocalsBand0, s.vocalsBand1,
-                          s.otherEnergy, s.otherBeat, s.otherBand0, s.otherBand1)
+                          stems.drumsEnergy, stems.drumsBeat, stems.drumsBand0, stems.drumsBand1,
+                          stems.bassEnergy, stems.bassBeat, stems.bassBand0, stems.bassBand1,
+                          stems.vocalsEnergy, stems.vocalsBeat, stems.vocalsBand0, stems.vocalsBand1,
+                          stems.otherEnergy, stems.otherBeat, stems.otherBand0, stems.otherBand1)
         let dev = String(format: ",%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f",
-                         s.drumsEnergyRel, s.drumsEnergyDev,
-                         s.bassEnergyRel,  s.bassEnergyDev,
-                         s.vocalsEnergyRel, s.vocalsEnergyDev,
-                         s.otherEnergyRel, s.otherEnergyDev)
+                         stems.drumsEnergyRel, stems.drumsEnergyDev,
+                         stems.bassEnergyRel, stems.bassEnergyDev,
+                         stems.vocalsEnergyRel, stems.vocalsEnergyDev,
+                         stems.otherEnergyRel, stems.otherEnergyDev)
         let rich = String(format: ",%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,"
                                 + "%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f",
-                          s.drumsOnsetRate,  s.drumsCentroid,  s.drumsAttackRatio,  s.drumsEnergySlope,
-                          s.bassOnsetRate,   s.bassCentroid,   s.bassAttackRatio,   s.bassEnergySlope,
-                          s.vocalsOnsetRate, s.vocalsCentroid, s.vocalsAttackRatio, s.vocalsEnergySlope,
-                          s.otherOnsetRate,  s.otherCentroid,  s.otherAttackRatio,  s.otherEnergySlope)
+                          stems.drumsOnsetRate, stems.drumsCentroid, stems.drumsAttackRatio, stems.drumsEnergySlope,
+                          stems.bassOnsetRate, stems.bassCentroid, stems.bassAttackRatio, stems.bassEnergySlope,
+                          stems.vocalsOnsetRate, stems.vocalsCentroid, stems.vocalsAttackRatio, stems.vocalsEnergySlope,
+                          stems.otherOnsetRate, stems.otherCentroid, stems.otherAttackRatio, stems.otherEnergySlope)
         let pitch = String(format: ",%.3f,%.4f\n",
-                           s.vocalsPitchHz, s.vocalsPitchConfidence)
+                           stems.vocalsPitchHz, stems.vocalsPitchConfidence)
         return base + dev + rich + pitch
     }
+    // swiftlint:enable multiline_arguments
 
     // MARK: - Raw tap diagnostic capture
 
@@ -603,16 +616,24 @@ public final class SessionRecorder: @unchecked Sendable {
         let sr = UInt32(sampleRate)
         let ch = UInt16(channelCount)
         queue.async { [weak self] in
-            self?.appendRawTapBytes(data: data, sampleRate: sr, channelCount: ch,
-                                    sampleCount: count)
+            self?.appendRawTapBytes(
+                data: data,
+                sampleRate: sr,
+                channelCount: ch,
+                sampleCount: count
+            )
         }
     }
 
     /// Recorder-queue work.  Opens the file on first call, writes a stub
     /// header with zero chunk sizes (finalized in `finish()`), appends the
     /// samples, and stops once the duration cap is reached.
-    private func appendRawTapBytes(data: Data, sampleRate: UInt32,
-                                    channelCount: UInt16, sampleCount: Int) {
+    private func appendRawTapBytes(
+        data: Data,
+        sampleRate: UInt32,
+        channelCount: UInt16,
+        sampleCount: Int
+    ) {
         // Honour the done flag and the recorder-wide shutdown flag — both
         // guard against reopening/truncating a completed capture.
         if rawTapDone || didFinish { return }
@@ -629,8 +650,11 @@ public final class SessionRecorder: @unchecked Sendable {
                 return
             }
             rawTapHandle = fh
-            writeRawTapHeaderStub(to: fh, sampleRate: sampleRate,
-                                  channelCount: channelCount)
+            writeRawTapHeaderStub(
+                to: fh,
+                sampleRate: sampleRate,
+                channelCount: channelCount
+            )
             rawTapHeaderWritten = true
             log("raw tap capture started sr=\(sampleRate) Hz ch=\(channelCount) max=\(Int(rawTapDurationSeconds))s")
         }
@@ -664,8 +688,11 @@ public final class SessionRecorder: @unchecked Sendable {
     /// `finalizeRawTapHeader()` once we know how many bytes of audio data
     /// were actually captured.  Format is WAVE_FORMAT_IEEE_FLOAT (0x0003),
     /// 32-bit float, interleaved.
-    private func writeRawTapHeaderStub(to fh: FileHandle, sampleRate: UInt32,
-                                        channelCount: UInt16) {
+    private func writeRawTapHeaderStub(
+        to fh: FileHandle,
+        sampleRate: UInt32,
+        channelCount: UInt16
+    ) {
         let bytesPerSample: UInt16 = 4  // Float32
         let blockAlign: UInt16 = channelCount * bytesPerSample
         let byteRate: UInt32 = sampleRate * UInt32(blockAlign)

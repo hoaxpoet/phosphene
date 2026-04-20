@@ -119,7 +119,9 @@ public final class BeatPredictor: @unchecked Sendable {
                     // IIR period smoother: mostly measured, small prior contribution.
                     estimatedPeriod = 0.3 * estimatedPeriod + 0.7 * interval
                     hasPeriod = true
-                    logger.debug("BeatPredictor onset: interval=\(interval, format: .fixed(precision: 3))s, period=\(self.estimatedPeriod, format: .fixed(precision: 3))s")
+                    let iStr = String(format: "%.3f", interval)
+                    let pStr = String(format: "%.3f", self.estimatedPeriod)
+                    logger.debug("BeatPredictor onset: interval=\(iStr)s, period=\(pStr)s")
                 }
             }
             lastBeatTime = now

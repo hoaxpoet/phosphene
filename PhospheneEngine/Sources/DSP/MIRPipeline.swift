@@ -292,7 +292,7 @@ public final class MIRPipeline: @unchecked Sendable {
         fv.trebRel = (fv.treble - 0.5) * 2.0
         fv.trebDev = max(0, fv.trebRel)
         fv.bassAttRel = (fv.bassAtt - 0.5) * 2.0
-        fv.midAttRel  = (fv.midAtt  - 0.5) * 2.0
+        fv.midAttRel  = (fv.midAtt - 0.5) * 2.0
         fv.trebAttRel = (fv.trebleAtt - 0.5) * 2.0
         // MV-3b: Beat phase prediction.
         let beatPhase = beatPredictor.update(

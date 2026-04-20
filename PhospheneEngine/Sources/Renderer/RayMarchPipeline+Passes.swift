@@ -55,7 +55,9 @@ extension RayMarchPipeline {
         desc.colorAttachments[2].storeAction = .store
 
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: desc) else {
-            passLogger.error("runGBufferPass: makeRenderCommandEncoder returned nil — pipeline/attachment format mismatch?")
+            passLogger.error(
+                "runGBufferPass: makeRenderCommandEncoder returned nil — pipeline/attachment format mismatch?"
+            )
             return
         }
         encoder.setRenderPipelineState(gbufferPipelineState)

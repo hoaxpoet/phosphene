@@ -79,8 +79,11 @@ extension VisualizerEngine {
             // spectrum-vs-stem comparisons — whatever band-limiting or
             // attenuation shows up here is upstream of Phosphene.
             self?.sessionRecorder?.recordRawTapSamples(
-                pointer: samples, count: count,
-                sampleRate: rate, channelCount: channels)
+                pointer: samples,
+                count: count,
+                sampleRate: rate,
+                channelCount: channels
+            )
 
             // Signal-quality monitor: peak + RMS directly on the tap samples,
             // before any processing.  Cheap enough for the real-time thread

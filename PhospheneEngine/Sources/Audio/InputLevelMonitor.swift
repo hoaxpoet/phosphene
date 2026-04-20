@@ -211,20 +211,25 @@ public final class InputLevelMonitor: @unchecked Sendable {
             guard hiBin > loBin else { return 0 }
             var sum: Float = 0
             magnitudes.withUnsafeBufferPointer { buf in
-                vDSP_svesq(buf.baseAddress! + loBin, 1, &sum,
-                           vDSP_Length(hiBin - loBin))
+                guard let baseAddress = buf.baseAddress else { return }
+                vDSP_svesq(
+                    baseAddress + loBin,
+                    1,
+                    &sum,
+                    vDSP_Length(hiBin - loBin)
+                )
             }
             return sum
         }
 
-        let sub = bandEnergy(loHz: 20,   hiHz: 250)
-        let mid = bandEnergy(loHz: 250,  hiHz: 4_000)
+        let sub = bandEnergy(loHz: 20, hiHz: 250)
+        let mid = bandEnergy(loHz: 250, hiHz: 4_000)
         let tre = bandEnergy(loHz: 4_000, hiHz: min(20_000, nyquist))
 
         lock.withLock {
             // 1s EMA on spectral bands (analysis queue ~94 Hz, α=0.1).
-            subEnergyEMA    = subEnergyEMA    * 0.9 + sub * 0.1
-            midEnergyEMA    = midEnergyEMA    * 0.9 + mid * 0.1
+            subEnergyEMA    = subEnergyEMA * 0.9 + sub * 0.1
+            midEnergyEMA    = midEnergyEMA * 0.9 + mid * 0.1
             trebleEnergyEMA = trebleEnergyEMA * 0.9 + tre * 0.1
 
             recomputeSnapshotLocked()
@@ -269,8 +274,7 @@ public final class InputLevelMonitor: @unchecked Sendable {
             // Treble ratio is shown for reference only — many modern productions
             // are genuinely bass-heavy and register below 1% without any chain
             // issue (Billie Eilish / Oxytocin verified clean at 0.2% treble).
-            (quality, reason) = (.green, String(format:
-                "peak %.0f dBFS, treble %.2f%% — OK", peakDB, 100 * treR))
+            (quality, reason) = (.green, String(format: "peak %.0f dBFS, treble %.2f%% — OK", peakDB, 100 * treR))
         }
 
         // Hysteresis: only publish a new quality if the candidate has

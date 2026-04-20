@@ -446,7 +446,6 @@ public final class PresetLoader: @unchecked Sendable {
     /// - `standard`  — G-buffer state (ray march) or direct state (direct presets).
     /// - `rayMarch`  — G-buffer state (nil for direct presets).
     /// - `mvWarp`    — Three warp pipeline states.
-    // swiftlint:disable:next function_body_length
     private func compileMVWarpShader(
         at url: URL, descriptor: PresetDescriptor
     ) -> CompiledShader? {
