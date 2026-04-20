@@ -103,13 +103,43 @@ public final class PitchTracker: @unchecked Sendable {
             return (hz: 0, confidence: 0)
         }
 
-        // --- Fill windowBuffer ---
+        fillWindow(from: waveform)
+        computeDifferenceFunction()
+        computeCMNDF()
+
+        let pitchTau = findMinimum()
+        guard pitchTau > 1 && pitchTau <= maxTau else {
+            emaHz *= Self.emaDecay
+            return (hz: 0, confidence: 0)
+        }
+
+        let refinedTau = parabolicRefinement(at: pitchTau)
+        let rawHz      = refinedTau > 0 ? sampleRate / refinedTau : 0
+        let confidence = max(0, 1.0 - cmndfBuffer[pitchTau])
+
+        if rawHz < 80 || rawHz > 1000 || confidence < confidenceThreshold {
+            emaHz *= Self.emaDecay
+            wasVoiced = false
+            return (hz: 0, confidence: confidence)
+        }
+
+        // On the first voiced frame after silence, seed from rawHz (not from near-zero EMA).
+        if wasVoiced {
+            emaHz = emaHz * Self.emaDecay + rawHz * (1 - Self.emaDecay)
+        } else {
+            emaHz = rawHz
+        }
+        wasVoiced = true
+        return (hz: emaHz, confidence: confidence)
+    }
+
+    // MARK: - YIN Algorithm Steps
+
+    private func fillWindow(from waveform: [Float]) {
         let available = min(windowSize, waveform.count)
         let srcOffset = waveform.count - available
         let padCount  = windowSize - available
-
         if padCount > 0 {
-            // Zero-pad leading samples.
             withUnsafeMutablePointer(to: &windowBuffer[0]) { ptr in
                 ptr.initialize(repeating: 0, count: padCount)
             }
@@ -121,19 +151,15 @@ public final class PitchTracker: @unchecked Sendable {
                 (dstBase + padCount).update(from: srcBase + srcOffset, count: available)
             }
         }
+    }
 
-        // --- Step 1: Difference function d[τ] ---
-        // d[τ] = r0 + r[τ] − 2 × c[τ]
-        // r0 = auto-power of x[0..halfWindow]
-        // r[τ] = auto-power of x[τ..τ+halfWindow]
-        // c[τ] = cross-correlation of x[0..halfWindow] × x[τ..τ+halfWindow]
+    private func computeDifferenceFunction() {
         var r0: Float = 0
         windowBuffer.withUnsafeBufferPointer { buf in
             guard let base = buf.baseAddress else { return }
             vDSP_svesq(base, 1, &r0, vDSP_Length(halfWindow))
         }
         diffBuffer[0] = 0
-
         windowBuffer.withUnsafeBufferPointer { buf in
             guard let base = buf.baseAddress else { return }
             for tau in 1...maxTau {
@@ -144,9 +170,9 @@ public final class PitchTracker: @unchecked Sendable {
                 diffBuffer[tau] = r0 + rTau - 2 * crossCorr
             }
         }
+    }
 
-        // --- Step 2: CMNDF ---
-        // d'[0] = 1; d'[τ] = d[τ] × τ / Σ_{j=1}^{τ} d[j]
+    private func computeCMNDF() {
         cmndfBuffer[0] = 1.0
         var runningSum: Float = 0
         for tau in 1...maxTau {
@@ -155,68 +181,30 @@ public final class PitchTracker: @unchecked Sendable {
                 ? diffBuffer[tau] * Float(tau) / runningSum
                 : 1.0
         }
+    }
 
-        // --- Step 3: Find first LOCAL MINIMUM below threshold in [minTau, maxTau] ---
-        // On crossing the threshold, continue advancing while CMNDF keeps decreasing
-        // to land at the valley floor before parabolic interpolation (YIN §2.4).
-        // Finding just the first sub-threshold point causes catastrophic parabolic
-        // extrapolation because it falls on the descending slope, not the minimum.
-        var pitchTau = -1
+    /// Returns the τ at the first CMNDF local minimum below `yinThreshold`, or -1 if none found.
+    private func findMinimum() -> Int {
         var tau = minTau
         while tau <= maxTau {
             if cmndfBuffer[tau] < yinThreshold {
-                // Slide down to the local minimum.
                 while tau + 1 <= maxTau && cmndfBuffer[tau + 1] <= cmndfBuffer[tau] {
                     tau += 1
                 }
-                pitchTau = tau
-                break
+                return tau
             }
             tau += 1
         }
+        return -1
+    }
 
-        guard pitchTau > 1 && pitchTau <= maxTau else {
-            // No confident pitch found.
-            emaHz *= Self.emaDecay
-            return (hz: 0, confidence: 0)
-        }
-
-        // --- Step 4: Parabolic interpolation ---
-        let prev = cmndfBuffer[pitchTau - 1]
-        let curr = cmndfBuffer[pitchTau]
-        let next = cmndfBuffer[pitchTau + 1]
+    private func parabolicRefinement(at tau: Int) -> Float {
+        let prev = cmndfBuffer[tau - 1]
+        let curr = cmndfBuffer[tau]
+        let next = cmndfBuffer[tau + 1]
         let denom = 2.0 * (prev - 2 * curr + next)
-        let refinedTau: Float
-        if abs(denom) > 1e-8 {
-            let delta = (prev - next) / denom
-            refinedTau = Float(pitchTau) + delta
-        } else {
-            refinedTau = Float(pitchTau)
-        }
-
-        // --- Step 5–6: Pitch and confidence ---
-        let rawHz = refinedTau > 0 ? sampleRate / refinedTau : 0
-        let confidence = max(0, 1.0 - curr)
-
-        // Range gate: outside 80–1000 Hz or low confidence → unvoiced.
-        if rawHz < 80 || rawHz > 1000 || confidence < confidenceThreshold {
-            emaHz *= Self.emaDecay
-            wasVoiced = false
-            return (hz: 0, confidence: confidence)
-        }
-
-        // --- Step 7: EMA smoothing ---
-        // On the first voiced frame after silence, seed the EMA directly from rawHz
-        // rather than smoothing from near-zero. The EMA would otherwise report ~0.2×rawHz
-        // for the first ~20 frames, producing a wrong-hue flash in pitch-driven visuals.
-        if wasVoiced {
-            emaHz = emaHz * Self.emaDecay + rawHz * (1 - Self.emaDecay)
-        } else {
-            emaHz = rawHz
-        }
-        wasVoiced = true
-
-        return (hz: emaHz, confidence: confidence)
+        guard abs(denom) > 1e-8 else { return Float(tau) }
+        return Float(tau) + (prev - next) / denom
     }
 
     // MARK: - Reset

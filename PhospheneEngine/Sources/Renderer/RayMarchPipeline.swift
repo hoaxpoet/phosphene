@@ -184,92 +184,14 @@ public final class RayMarchPipeline: @unchecked Sendable {
     public init(context: MetalContext, shaderLibrary: ShaderLibrary) throws {
         self.context = context
         self.sceneUniforms = SceneUniforms()
-
-        let device = context.device
-
-        guard let vertexFn = shaderLibrary.function(named: "fullscreen_vertex") else {
-            throw RayMarchPipelineError.functionNotFound("fullscreen_vertex")
-        }
-        guard let lightingFn = shaderLibrary.function(named: "raymarch_lighting_fragment") else {
-            throw RayMarchPipelineError.functionNotFound("raymarch_lighting_fragment")
-        }
-        guard let ssgiFn = shaderLibrary.function(named: "ssgi_fragment") else {
-            throw RayMarchPipelineError.functionNotFound("ssgi_fragment")
-        }
-        guard let ssgiBlendFn = shaderLibrary.function(named: "ssgi_blend_fragment") else {
-            throw RayMarchPipelineError.functionNotFound("ssgi_blend_fragment")
-        }
-        guard let compositeFn = shaderLibrary.function(named: "raymarch_composite_fragment") else {
-            throw RayMarchPipelineError.functionNotFound("raymarch_composite_fragment")
-        }
-        guard let debugFn = shaderLibrary.function(named: "raymarch_gbuffer_debug_fragment") else {
-            throw RayMarchPipelineError.functionNotFound("raymarch_gbuffer_debug_fragment")
-        }
-
-        // Lighting pass — outputs linear HDR to .rgba16Float.
-        let lightDesc = MTLRenderPipelineDescriptor()
-        lightDesc.vertexFunction = vertexFn
-        lightDesc.fragmentFunction = lightingFn
-        lightDesc.colorAttachments[0].pixelFormat = .rgba16Float
-        self.lightingPipeline = try device.makeRenderPipelineState(descriptor: lightDesc)
-
-        // SSGI accumulation pass — half-res, writes indirect diffuse to .rgba16Float.
-        let ssgiDesc = MTLRenderPipelineDescriptor()
-        ssgiDesc.vertexFunction = vertexFn
-        ssgiDesc.fragmentFunction = ssgiFn
-        ssgiDesc.colorAttachments[0].pixelFormat = .rgba16Float
-        self.ssgiPipeline = try device.makeRenderPipelineState(descriptor: ssgiDesc)
-
-        // SSGI blend pass — additive upsample of ssgiTexture into litTexture (.rgba16Float).
-        let ssgiBlendDesc = MTLRenderPipelineDescriptor()
-        ssgiBlendDesc.vertexFunction = vertexFn
-        ssgiBlendDesc.fragmentFunction = ssgiBlendFn
-        ssgiBlendDesc.colorAttachments[0].pixelFormat = .rgba16Float
-        ssgiBlendDesc.colorAttachments[0].isBlendingEnabled = true
-        ssgiBlendDesc.colorAttachments[0].rgbBlendOperation = .add
-        ssgiBlendDesc.colorAttachments[0].alphaBlendOperation = .add
-        ssgiBlendDesc.colorAttachments[0].sourceRGBBlendFactor = .one
-        ssgiBlendDesc.colorAttachments[0].destinationRGBBlendFactor = .one
-        ssgiBlendDesc.colorAttachments[0].sourceAlphaBlendFactor = .one
-        ssgiBlendDesc.colorAttachments[0].destinationAlphaBlendFactor = .one
-        self.ssgiBlendPipeline = try device.makeRenderPipelineState(descriptor: ssgiBlendDesc)
-
-        // Composite pass — ACES tone-map to drawable format.
-        let compositeDesc = MTLRenderPipelineDescriptor()
-        compositeDesc.vertexFunction = vertexFn
-        compositeDesc.fragmentFunction = compositeFn
-        compositeDesc.colorAttachments[0].pixelFormat = context.pixelFormat
-        self.compositePipeline = try device.makeRenderPipelineState(descriptor: compositeDesc)
-
-        // G-buffer debug pass — copies gbuf2 (.rgba8Unorm) directly to the drawable.
-        // Bypasses lighting/SSGI/ACES so diagnostic colors are read unmodified.
-        let debugDesc = MTLRenderPipelineDescriptor()
-        debugDesc.vertexFunction = vertexFn
-        debugDesc.fragmentFunction = debugFn
-        debugDesc.colorAttachments[0].pixelFormat = context.pixelFormat
-        self.gbufferDebugPipeline = try device.makeRenderPipelineState(descriptor: debugDesc)
-
-        // Depth debug pass — split screen: left=depth, right=albedo. No lighting/ACES.
-        guard let depthDebugFn = shaderLibrary.function(named: "raymarch_depth_debug_fragment") else {
-            throw RayMarchPipelineError.functionNotFound("raymarch_depth_debug_fragment")
-        }
-        let depthDebugDesc = MTLRenderPipelineDescriptor()
-        depthDebugDesc.vertexFunction = vertexFn
-        depthDebugDesc.fragmentFunction = depthDebugFn
-        depthDebugDesc.colorAttachments[0].pixelFormat = context.pixelFormat
-        self.depthDebugPipeline = try device.makeRenderPipelineState(descriptor: depthDebugDesc)
-
-        // Bilinear, clamp-to-edge sampler.
-        let samplerDesc = MTLSamplerDescriptor()
-        samplerDesc.minFilter = .linear
-        samplerDesc.magFilter = .linear
-        samplerDesc.sAddressMode = .clampToEdge
-        samplerDesc.tAddressMode = .clampToEdge
-        guard let samp = device.makeSamplerState(descriptor: samplerDesc) else {
-            throw RayMarchPipelineError.samplerCreationFailed
-        }
-        self.sampler = samp
-
+        let bundle = try Self.buildPipelineBundle(context: context, shaderLibrary: shaderLibrary)
+        self.lightingPipeline = bundle.lighting
+        self.ssgiPipeline = bundle.ssgi
+        self.ssgiBlendPipeline = bundle.ssgiBlend
+        self.compositePipeline = bundle.composite
+        self.gbufferDebugPipeline = bundle.gbufferDebug
+        self.depthDebugPipeline = bundle.depthDebug
+        self.sampler = bundle.sampler
         logger.info("RayMarchPipeline initialized")
     }
 

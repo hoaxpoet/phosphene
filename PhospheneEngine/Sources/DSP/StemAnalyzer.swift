@@ -48,15 +48,15 @@ public final class StemAnalyzer: StemAnalyzing, @unchecked Sendable {
     // MARK: - Constants
 
     /// FFT size matching the main pipeline's FFTProcessor.
-    private static let fftSize = 1024
-    private static let binCount = fftSize / 2
-    private static let log2n = vDSP_Length(log2(Double(fftSize)))
+    static let fftSize = 1024
+    static let binCount = fftSize / 2
+    static let log2n = vDSP_Length(log2(Double(fftSize)))
 
     // MARK: - MV-3a: Per-Stem Rich State
 
     /// Mutable per-call state for MV-3a rich metadata computation.
     /// One element per stem (index 0=vocals, 1=drums, 2=bass, 3=other).
-    private struct StemRichState {
+    struct StemRichState {
         // AttackRatio: EMA-based fast and slow RMS
         var fastRMS: Float = 1e-8     // ~50ms time constant
         var slowRMS: Float = 1e-8     // ~500ms time constant
@@ -111,20 +111,20 @@ public final class StemAnalyzer: StemAnalyzing, @unchecked Sendable {
 
     // MARK: - MV-3a: Rich State
 
-    private var richStates: [StemRichState] = [
+    var richStates: [StemRichState] = [
         StemRichState(), StemRichState(), StemRichState(), StemRichState()
     ]
-    private let sampleRate: Float
-    private let nyquist: Float
+    let sampleRate: Float
+    let nyquist: Float
 
     // MARK: - vDSP State (reused per call, no per-frame alloc)
 
-    private let fftSetup: FFTSetup
-    private var window: [Float]
-    private var windowedSamples: [Float]
-    private var realPart: [Float]
-    private var imagPart: [Float]
-    private var magnitudes: [Float]
+    let fftSetup: FFTSetup
+    var window: [Float]
+    var windowedSamples: [Float]
+    var realPart: [Float]
+    var imagPart: [Float]
+    var magnitudes: [Float]
     private let lock = NSLock()
 
     // MARK: - Init
@@ -173,131 +173,121 @@ public final class StemAnalyzer: StemAnalyzing, @unchecked Sendable {
             logger.error("StemAnalyzer expected 4 stems, got \(stemWaveforms.count)")
             return .zero
         }
-
         lock.lock()
         defer { lock.unlock() }
-
         let dt = fps > 0 ? 1.0 / fps : (1.0 / 60.0)
-
-        // Analyze each stem. Magnitudes are returned to avoid a second FFT pass for MV-3a.
         let (vocalsResult, vocalsMags) = analyzeStem(stemWaveforms[0], processor: energyProcessors[0], fps: fps)
-        let (drumsResult, _)          = analyzeStem(stemWaveforms[1], processor: energyProcessors[1], fps: fps)
+        let (drumsResult, _) = analyzeStem(stemWaveforms[1], processor: energyProcessors[1], fps: fps)
         let (bassResult, bassMags) = analyzeStem(stemWaveforms[2], processor: energyProcessors[2], fps: fps)
-        let (otherResult, otherMags)  = analyzeStem(stemWaveforms[3], processor: energyProcessors[3], fps: fps)
-
-        // Beat detection on drums stem — needs a fresh compute against the drums waveform.
+        let (otherResult, otherMags) = analyzeStem(stemWaveforms[3], processor: energyProcessors[3], fps: fps)
         let drumsMags = computeMagnitudes(from: stemWaveforms[1])
         let beatResult = drumsBeatDetector.process(magnitudes: drumsMags, fps: fps, deltaTime: dt)
-
-        // Compute total energy per stem (scalar used for StemFeatures.xEnergy).
         let vocalsE = vocalsResult.bass + vocalsResult.mid + vocalsResult.treble
-        let drumsE  = drumsResult.bass + drumsResult.mid + drumsResult.treble
-        let bassE   = bassResult.bass + bassResult.mid + bassResult.treble
-        let otherE  = otherResult.bass + otherResult.mid + otherResult.treble
+        let drumsE = drumsResult.bass + drumsResult.mid + drumsResult.treble
+        let bassE = bassResult.bass + bassResult.mid + bassResult.treble
+        let otherE = otherResult.bass + otherResult.mid + otherResult.treble
+        let devs = updateEMAsAndComputeDeviations(vocalsE: vocalsE, drumsE: drumsE, bassE: bassE, otherE: otherE)
+        let allResults: [BandEnergyProcessor.Result] = [vocalsResult, drumsResult, bassResult, otherResult]
+        let allMags = [vocalsMags, drumsMags, bassMags, otherMags]
+        let richAll = computeAllRichFeatures(stemWaveforms: stemWaveforms, results: allResults, mags: allMags, dt: dt)
+        let (pitchHz, pitchConf) = pitchTracker.process(waveform: stemWaveforms[0])
+        let inputs = StemBandInputs(
+            vocalsE: vocalsE,
+            vocalsResult: vocalsResult,
+            drumsE: drumsE,
+            drumsResult: drumsResult,
+            beatResult: beatResult,
+            bassE: bassE,
+            bassResult: bassResult,
+            otherE: otherE,
+            otherResult: otherResult
+        )
+        var features = buildBaseStemFeatures(inputs)
+        features.vocalsEnergyRel = devs.vocalsRel; features.vocalsEnergyDev = max(0, devs.vocalsRel)
+        features.drumsEnergyRel = devs.drumsRel; features.drumsEnergyDev = max(0, devs.drumsRel)
+        features.bassEnergyRel = devs.bassRel; features.bassEnergyDev = max(0, devs.bassRel)
+        features.otherEnergyRel = devs.otherRel; features.otherEnergyDev = max(0, devs.otherRel)
+        applyRichMetadata(to: &features, vocals: richAll[0], drums: richAll[1], bass: richAll[2], other: richAll[3])
+        features.vocalsPitchHz = pitchHz
+        features.vocalsPitchConfidence = pitchConf
+        return features
+    }
 
-        // MV-1: Update per-stem EMA running averages and derive deviation primitives.
+    // MARK: - Deviation Primitives
+
+    private struct StemDeviations {
+        var vocalsRel: Float
+        var drumsRel: Float
+        var bassRel: Float
+        var otherRel: Float
+    }
+
+    private func updateEMAsAndComputeDeviations(
+        vocalsE: Float, drumsE: Float, bassE: Float, otherE: Float
+    ) -> StemDeviations {
         let decay = Self.stemEMADecay
         stemRunningAvg[0] = stemRunningAvg[0] * decay + vocalsE * (1 - decay)
         stemRunningAvg[1] = stemRunningAvg[1] * decay + drumsE * (1 - decay)
         stemRunningAvg[2] = stemRunningAvg[2] * decay + bassE * (1 - decay)
         stemRunningAvg[3] = stemRunningAvg[3] * decay + otherE * (1 - decay)
-
-        let vRel = (vocalsE - stemRunningAvg[0]) * 2.0
-        let dRel = (drumsE - stemRunningAvg[1]) * 2.0
-        let bRel = (bassE - stemRunningAvg[2]) * 2.0
-        let oRel = (otherE - stemRunningAvg[3]) * 2.0
-
-        // MV-3a: Compute rich per-stem metadata using the magnitudes already computed above.
-        let vocalsRich = computeRichFeatures(
-            index: 0,
-            waveform: stemWaveforms[0],
-            magnitudes: vocalsMags,
-            attEnergy: (vocalsResult.bassAtt + vocalsResult.midAtt + vocalsResult.trebleAtt) / 3.0,
-            dt: dt
+        return StemDeviations(
+            vocalsRel: (vocalsE - stemRunningAvg[0]) * 2.0,
+            drumsRel: (drumsE - stemRunningAvg[1]) * 2.0,
+            bassRel: (bassE - stemRunningAvg[2]) * 2.0,
+            otherRel: (otherE - stemRunningAvg[3]) * 2.0
         )
-        let drumsRich = computeRichFeatures(
-            index: 1,
-            waveform: stemWaveforms[1],
-            magnitudes: drumsMags,
-            attEnergy: (drumsResult.bassAtt + drumsResult.midAtt + drumsResult.trebleAtt) / 3.0,
-            dt: dt
-        )
-        let bassRich = computeRichFeatures(
-            index: 2,
-            waveform: stemWaveforms[2],
-            magnitudes: bassMags,
-            attEnergy: (bassResult.bassAtt + bassResult.midAtt + bassResult.trebleAtt) / 3.0,
-            dt: dt
-        )
-        let otherRich = computeRichFeatures(
-            index: 3,
-            waveform: stemWaveforms[3],
-            magnitudes: otherMags,
-            attEnergy: (otherResult.bassAtt + otherResult.midAtt + otherResult.trebleAtt) / 3.0,
-            dt: dt
-        )
+    }
 
-        // MV-3c: Vocal pitch via YIN.
-        let (pitchHz, pitchConf) = pitchTracker.process(waveform: stemWaveforms[0])
+    // MARK: - Base Feature Builder
 
-        var features = StemFeatures(
-            // Vocals: energy, presence (midHigh 1-4kHz), air (highMid 4-8kHz)
-            vocalsEnergy: vocalsE,
-            vocalsBand0: vocalsResult.midHigh,
-            vocalsBand1: vocalsResult.highMid,
+    private struct StemBandInputs {
+        var vocalsE: Float
+        var vocalsResult: BandEnergyProcessor.Result
+        var drumsE: Float
+        var drumsResult: BandEnergyProcessor.Result
+        var beatResult: BeatDetector.Result
+        var bassE: Float
+        var bassResult: BandEnergyProcessor.Result
+        var otherE: Float
+        var otherResult: BandEnergyProcessor.Result
+    }
+
+    private func buildBaseStemFeatures(_ inp: StemBandInputs) -> StemFeatures {
+        StemFeatures(
+            vocalsEnergy: inp.vocalsE,
+            vocalsBand0: inp.vocalsResult.midHigh,
+            vocalsBand1: inp.vocalsResult.highMid,
             vocalsBeat: 0,
-
-            // Drums: energy, sub bass (kick), mid high (snare crack)
-            drumsEnergy: drumsE,
-            drumsBand0: drumsResult.subBass,
-            drumsBand1: drumsResult.midHigh,
-            drumsBeat: beatResult.beatBass,
-
-            // Bass: energy, sub bass, low bass
-            bassEnergy: bassE,
-            bassBand0: bassResult.subBass,
-            bassBand1: bassResult.lowBass,
+            drumsEnergy: inp.drumsE,
+            drumsBand0: inp.drumsResult.subBass,
+            drumsBand1: inp.drumsResult.midHigh,
+            drumsBeat: inp.beatResult.beatBass,
+            bassEnergy: inp.bassE,
+            bassBand0: inp.bassResult.subBass,
+            bassBand1: inp.bassResult.lowBass,
             bassBeat: 0,
-
-            // Other: energy, low mid, high mid
-            otherEnergy: otherE,
-            otherBand0: otherResult.lowMid,
-            otherBand1: otherResult.highMid,
+            otherEnergy: inp.otherE,
+            otherBand0: inp.otherResult.lowMid,
+            otherBand1: inp.otherResult.highMid,
             otherBeat: 0
         )
+    }
 
-        // MV-1 deviation fields.
-        features.vocalsEnergyRel = vRel;  features.vocalsEnergyDev = max(0, vRel)
-        features.drumsEnergyRel  = dRel;  features.drumsEnergyDev  = max(0, dRel)
-        features.bassEnergyRel   = bRel;  features.bassEnergyDev   = max(0, bRel)
-        features.otherEnergyRel  = oRel;  features.otherEnergyDev  = max(0, oRel)
-
-        // MV-3a rich metadata fields.
-        features.vocalsOnsetRate   = vocalsRich.onsetRate
-        features.vocalsCentroid    = vocalsRich.centroid
-        features.vocalsAttackRatio = vocalsRich.attackRatio
-        features.vocalsEnergySlope = vocalsRich.energySlope
-
-        features.drumsOnsetRate    = drumsRich.onsetRate
-        features.drumsCentroid     = drumsRich.centroid
-        features.drumsAttackRatio  = drumsRich.attackRatio
-        features.drumsEnergySlope  = drumsRich.energySlope
-
-        features.bassOnsetRate     = bassRich.onsetRate
-        features.bassCentroid      = bassRich.centroid
-        features.bassAttackRatio   = bassRich.attackRatio
-        features.bassEnergySlope   = bassRich.energySlope
-
-        features.otherOnsetRate    = otherRich.onsetRate
-        features.otherCentroid     = otherRich.centroid
-        features.otherAttackRatio  = otherRich.attackRatio
-        features.otherEnergySlope  = otherRich.energySlope
-
-        // MV-3c pitch fields.
-        features.vocalsPitchHz          = pitchHz
-        features.vocalsPitchConfidence  = pitchConf
-
-        return features
+    private func applyRichMetadata(
+        to features: inout StemFeatures,
+        vocals: StemRichFeatures,
+        drums: StemRichFeatures,
+        bass: StemRichFeatures,
+        other: StemRichFeatures
+    ) {
+        features.vocalsOnsetRate = vocals.onsetRate; features.vocalsCentroid = vocals.centroid
+        features.vocalsAttackRatio = vocals.attackRatio; features.vocalsEnergySlope = vocals.energySlope
+        features.drumsOnsetRate = drums.onsetRate;   features.drumsCentroid = drums.centroid
+        features.drumsAttackRatio = drums.attackRatio; features.drumsEnergySlope = drums.energySlope
+        features.bassOnsetRate = bass.onsetRate;     features.bassCentroid = bass.centroid
+        features.bassAttackRatio = bass.attackRatio;   features.bassEnergySlope = bass.energySlope
+        features.otherOnsetRate = other.onsetRate;   features.otherCentroid = other.centroid
+        features.otherAttackRatio = other.attackRatio; features.otherEnergySlope = other.energySlope
     }
 
     public func reset() {
@@ -328,173 +318,5 @@ public final class StemAnalyzer: StemAnalyzing, @unchecked Sendable {
         let mags = computeMagnitudes(from: waveform)
         let result = processor.process(magnitudes: mags, fps: fps)
         return (result: result, magnitudes: mags)
-    }
-
-    // MARK: - MV-3a Rich Metadata
-
-    /// Compute onset rate, spectral centroid, attack ratio, and energy slope for one stem.
-    ///
-    /// - Parameters:
-    ///   - index: Stem index (0=vocals, 1=drums, 2=bass, 3=other) for richStates access.
-    ///   - waveform: Raw PCM samples from the stem.
-    ///   - magnitudes: Pre-computed FFT magnitude bins (512 floats).
-    ///   - attEnergy: Attenuated total energy (average of bassAtt, midAtt, trebleAtt).
-    ///   - dt: Frame delta time in seconds.
-    private func computeRichFeatures(
-        index: Int,
-        waveform: [Float],
-        magnitudes: [Float],
-        attEnergy: Float,
-        dt: Float
-    ) -> (onsetRate: Float, centroid: Float, attackRatio: Float, energySlope: Float) {
-
-        // ── Spectral centroid (0–1 normalized by Nyquist) ────────────────────
-        var centroid: Float = 0
-        if !magnitudes.isEmpty {
-            let binResolution = sampleRate / Float(Self.fftSize)
-            var weightedSum: Float = 0
-            var totalMag: Float = 0
-            for (i, mag) in magnitudes.enumerated() {
-                let freq = Float(i) * binResolution
-                weightedSum += freq * mag
-                totalMag += mag
-            }
-            centroid = totalMag > 1e-10 ? (weightedSum / totalMag) / nyquist : 0
-        }
-
-        // ── RMS of the current waveform window ───────────────────────────────
-        var currentRMS: Float = 0
-        if !waveform.isEmpty {
-            var sumSq: Float = 0
-            vDSP_svesq(waveform, 1, &sumSq, vDSP_Length(waveform.count))
-            currentRMS = sqrt(sumSq / Float(waveform.count))
-        }
-
-        // ── Attack ratio: fastRMS / slowRMS (clamped 0–3) ────────────────────
-        // FPS-independent EMA decay: exp(-dt / τ)
-        let fastDecay = exp(-dt / 0.050)   // τ = 50ms
-        let slowDecay = exp(-dt / 0.500)   // τ = 500ms
-        richStates[index].fastRMS = richStates[index].fastRMS * fastDecay
-                                  + currentRMS * (1 - fastDecay)
-        richStates[index].slowRMS = richStates[index].slowRMS * slowDecay
-                                  + currentRMS * (1 - slowDecay)
-        let attackRatio = min(3.0, richStates[index].fastRMS
-                                  / max(richStates[index].slowRMS, 1e-8))
-
-        // ── Energy slope (attenuated, FPS-independent derivative) ────────────
-        let energySlope = dt > 0
-            ? (attEnergy - richStates[index].prevAttEnergy) / dt
-            : 0
-        richStates[index].prevAttEnergy = attEnergy
-
-        // ── Onset rate: rising-edge detection + 100ms refractory ─────────────
-        // Flux: half-wave rectified change in RMS.
-        let flux = max(0, currentRMS - richStates[index].prevRMS)
-        richStates[index].prevRMS = currentRMS
-        // Adaptive threshold: EMA of recent flux × 1.5.
-        richStates[index].fluxEMA = richStates[index].fluxEMA * 0.9 + flux * 0.1
-        let fluxThreshold = richStates[index].fluxEMA * 1.5
-
-        // Count an onset only on a rising-edge transition across the threshold,
-        // and only if at least ~100ms has passed since the previous onset.
-        // At 94 Hz this caps mono-stem detection at ~600 BPM, well above any
-        // realistic musical onset density.  Without this gate, the leaky
-        // integrator saw every frame of a sustained above-threshold signal
-        // as a fresh onset (see StemRichState docs).
-        let refractoryFrames = max(1, Int((0.100 / max(dt, 1e-4)).rounded()))
-        let nowAbove = flux > fluxThreshold && flux > 1e-6
-        let risingEdge = nowAbove && !richStates[index].aboveThreshold
-        let refractoryElapsed = richStates[index].framesSinceOnset >= refractoryFrames
-        if risingEdge && refractoryElapsed {
-            richStates[index].onsetAccum += 1.0
-            richStates[index].framesSinceOnset = 0
-        } else {
-            richStates[index].framesSinceOnset &+= 1
-        }
-        richStates[index].aboveThreshold = nowAbove
-
-        // Decay the accumulator with a 0.5s window time constant.
-        let windowDecay = exp(-dt / 0.5)
-        richStates[index].onsetAccum *= windowDecay
-        // Rate = accumulated count / window length (0.5s).
-        let onsetRate = richStates[index].onsetAccum * 2.0
-
-        return (onsetRate: onsetRate, centroid: centroid,
-                attackRatio: attackRatio, energySlope: energySlope)
-    }
-
-    /// Compute FFT magnitudes from a mono waveform.
-    /// Uses the last `fftSize` samples. Returns 512 magnitude bins.
-    private func computeMagnitudes(from waveform: [Float]) -> [Float] {
-        let sampleCount = waveform.count
-        guard sampleCount > 0 else {
-            // Return zeros — analyzers handle gracefully.
-            magnitudes.withUnsafeMutableBufferPointer { buf in
-                guard let base = buf.baseAddress else { return }
-                base.initialize(repeating: 0, count: Self.binCount)
-            }
-            return magnitudes
-        }
-
-        // Take the last fftSize samples (or zero-pad if shorter).
-        let offset = max(0, sampleCount - Self.fftSize)
-        let available = min(Self.fftSize, sampleCount)
-
-        // Zero the windowed buffer, then copy available samples.
-        windowedSamples.withUnsafeMutableBufferPointer { buf in
-            guard let base = buf.baseAddress else { return }
-            base.initialize(repeating: 0, count: Self.fftSize)
-        }
-        waveform.withUnsafeBufferPointer { src in
-            windowedSamples.withUnsafeMutableBufferPointer { dst in
-                guard let dstBase = dst.baseAddress, let srcBase = src.baseAddress else { return }
-                let copyStart = Self.fftSize - available
-                dstBase.advanced(by: copyStart).update(
-                    from: srcBase.advanced(by: offset),
-                    count: available
-                )
-            }
-        }
-
-        // Apply Hann window.
-        vDSP_vmul(windowedSamples, 1, window, 1, &windowedSamples, 1, vDSP_Length(Self.fftSize))
-
-        // Convert to split complex, run FFT, compute magnitudes — all within
-        // withUnsafeMutableBufferPointer to satisfy Swift 6 pointer safety.
-        realPart.withUnsafeMutableBufferPointer { realBuf in
-            imagPart.withUnsafeMutableBufferPointer { imagBuf in
-                guard let realBase = realBuf.baseAddress, let imagBase = imagBuf.baseAddress else { return }
-                var split = DSPSplitComplex(realp: realBase, imagp: imagBase)
-
-                // Interleaved → split complex.
-                windowedSamples.withUnsafeBufferPointer { input in
-                    guard let inputBase = input.baseAddress else { return }
-                    inputBase.withMemoryRebound(
-                        to: DSPComplex.self, capacity: Self.binCount
-                    ) { complex in
-                        vDSP_ctoz(complex, 2, &split, 1, vDSP_Length(Self.binCount))
-                    }
-                }
-
-                // Forward FFT.
-                vDSP_fft_zrip(fftSetup, &split, 1, Self.log2n, FFTDirection(kFFTDirection_Forward))
-
-                // Squared magnitudes → magnitudes buffer.
-                magnitudes.withUnsafeMutableBufferPointer { magBuf in
-                    guard let magBase = magBuf.baseAddress else { return }
-                    vDSP_zvmags(&split, 1, magBase, 1, vDSP_Length(Self.binCount))
-                }
-            }
-        }
-
-        // Scale (divide by fftSize).
-        var scale = Float(Self.fftSize)
-        vDSP_vsdiv(magnitudes, 1, &scale, &magnitudes, 1, vDSP_Length(Self.binCount))
-
-        // Square root for magnitude (zvmags gives squared magnitude).
-        var count = Int32(Self.binCount)
-        vvsqrtf(&magnitudes, magnitudes, &count)
-
-        return magnitudes
     }
 }
