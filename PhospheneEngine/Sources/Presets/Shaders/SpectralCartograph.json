@@ -1,0 +1,15 @@
+{
+  "name": "Spectral Cartograph",
+  "family": "instrument",
+  "duration": 45,
+  "passes": ["direct"],
+  "fragment_function": "spectral_cartograph_fragment",
+  "beat_source": "composite",
+  "base_zoom": 0.0,
+  "base_rot": 0.0,
+  "beat_zoom": 0.0,
+  "beat_rot": 0.0,
+  "decay": 0.0,
+  "beat_sensitivity": 0.0,
+  "stem_affinity": {}
+}

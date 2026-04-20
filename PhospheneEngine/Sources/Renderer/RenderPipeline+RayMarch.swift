@@ -12,6 +12,7 @@
 
 import Metal
 @preconcurrency import MetalKit
+import QuartzCore
 import Shared
 import os.log
 
@@ -76,6 +77,7 @@ extension RenderPipeline {
     ///     is written here instead of the drawable and `commandBuffer.present` is skipped.
     ///     The caller (`.mvWarp` in `renderFrame`) reads this texture and presents via its
     ///     own blit pass.  Pass `nil` for normal (non-warp) ray march rendering.
+    @MainActor
     func drawWithRayMarch(
         commandBuffer: MTLCommandBuffer,
         view: MTKView,
@@ -119,11 +121,36 @@ extension RenderPipeline {
 
         let base = rayMarchState.baseScene
 
-        // Constant-speed forward dolly: camera Z advances at a fixed
-        // units/sec regardless of audio energy. Baseline Z comes from the
-        // preset JSON; advance is pure wall-time so motion feels like
-        // actual forward travel, not "faster when the song is loud".
-        let dollyZ = base.cameraPosition.z + features.time * rayMarchState.cameraDollySpeed
+        // Bass-modulated forward dolly (v9.1).  Speed is no longer a
+        // constant applied to accumulated wall-time; per frame we advance
+        // the integrated dolly offset by deltaTime × instantaneousSpeed,
+        // where instantaneousSpeed varies with the bass band of the
+        // feature vector.  Camera always moves (autonomous baseline
+        // per Matt's original design intent) but perceivable bass energy
+        // pushes it 0.5× → ~1.6× the base speed.
+        //
+        //   instantaneousSpeed = baseDolly × (0.5 + bassContribution)
+        //   bassContribution   = clamp(f.bass × 1.1, 0, 1.1)
+        //
+        // `features.bass` is post-AGC band energy (centered ~0.5 during
+        // active music, 0 at silence).  Multiplier 1.1 biases the
+        // distribution so steady-state music sits near 1.05× base and
+        // drops sit near 1.6× — perceivable acceleration without
+        // lurching.  Base-only during silence keeps camera from stopping
+        // at track boundaries.
+        let now = CACurrentMediaTime()
+        let dt: Float
+        if let last = rayMarchState.lastDollyFrameTime {
+            dt = Float(max(0, now - last))
+        } else {
+            dt = 0
+        }
+        rayMarchState.lastDollyFrameTime = now
+        let bassContribution = max(0, min(1.1, features.bass * 1.1))
+        let instantaneousSpeed =
+            rayMarchState.cameraDollySpeed * (0.5 + bassContribution)
+        rayMarchState.cameraDollyOffset += dt * instantaneousSpeed
+        let dollyZ = base.cameraPosition.z + rayMarchState.cameraDollyOffset
         rayMarchState.sceneUniforms.cameraOriginAndFov.x = base.cameraPosition.x
         rayMarchState.sceneUniforms.cameraOriginAndFov.y = base.cameraPosition.y
         rayMarchState.sceneUniforms.cameraOriginAndFov.z = dollyZ

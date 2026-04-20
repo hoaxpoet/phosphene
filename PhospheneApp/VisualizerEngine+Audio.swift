@@ -70,9 +70,23 @@ extension VisualizerEngine {
         buf: AudioBuffer,
         fft: FFTProcessor
     ) -> (UnsafePointer<Float>, Int, Float, UInt32) -> Void {
-        return { [weak self, weak buf, weak fft] samples, count, rate, _ in
+        return { [weak self, weak buf, weak fft] samples, count, rate, channels in
             guard let buf, let fft else { return }
             buf.write(from: samples, count: count)
+
+            // Stage-4 diagnostic: dump the raw tap samples (first 30s) to
+            // raw_tap.wav in the session directory.  Ground truth for
+            // spectrum-vs-stem comparisons — whatever band-limiting or
+            // attenuation shows up here is upstream of Phosphene.
+            self?.sessionRecorder?.recordRawTapSamples(
+                pointer: samples, count: count,
+                sampleRate: rate, channelCount: channels)
+
+            // Signal-quality monitor: peak + RMS directly on the tap samples,
+            // before any processing.  Cheap enough for the real-time thread
+            // (two vDSP reductions).  Spectral balance is filled in on the
+            // analysis queue from the FFT magnitudes already computed below.
+            self?.inputLevelMonitor.submitSamples(pointer: samples, count: count)
 
             // Feed stem sample buffer (interleaved stereo, lightweight write).
             self?.stemSampleBuffer.write(samples: samples, count: count)
@@ -86,7 +100,12 @@ extension VisualizerEngine {
             let binCount = Int(fftResult.binCount)
             let magnitudes = Array(fft.magnitudeBuffer.pointer.prefix(binCount))
 
+            // Capture the tap sample rate so the spectral-balance pass
+            // in the monitor knows the band-to-bin mapping.
+            let sr = rate
+
             self?.analysisQueue.async { [weak self] in
+                self?.inputLevelMonitor.submitMagnitudes(magnitudes, sampleRate: sr)
                 self?.processAnalysisFrame(magnitudes: magnitudes)
             }
         }
@@ -297,16 +316,30 @@ extension VisualizerEngine {
         attenuated.arousal *= stability
         pipeline.setMood(valence: attenuated.valence, arousal: attenuated.arousal)
 
+        // Publish signal-quality changes to session.log on transitions (not
+        // every frame).  Read the snapshot here on the analysis queue so the
+        // logging side-effect happens off the main actor.
+        let snap = inputLevelMonitor.currentSnapshot()
+
         Task { @MainActor [weak self] in
-            self?.currentMood = attenuated
+            guard let self else { return }
+            self.currentMood = attenuated
             // Prefer pre-fetched metadata over self-computed.
-            if self?.preFetchedProfile?.key == nil {
-                self?.estimatedKey = mir.stableKey ?? mir.estimatedKey
+            if self.preFetchedProfile?.key == nil {
+                self.estimatedKey = mir.stableKey ?? mir.estimatedKey
             }
-            if self?.preFetchedProfile?.bpm == nil {
-                self?.estimatedTempo = mir.stableBPM ?? mir.estimatedTempo
+            if self.preFetchedProfile?.bpm == nil {
+                self.estimatedTempo = mir.stableBPM ?? mir.estimatedTempo
             }
-            self?.mirDiag = diag
+            self.mirDiag = diag
+
+            // Log quality transitions once per change (green ↔ yellow ↔ red),
+            // plus the first non-warmup classification.
+            if snap.quality != self.lastLoggedQuality && snap.quality != .unknown {
+                self.sessionRecorder?.log(
+                    "signal quality → \(snap.quality.rawValue): \(snap.reason)")
+                self.lastLoggedQuality = snap.quality
+            }
         }
     }
 

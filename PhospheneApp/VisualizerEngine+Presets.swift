@@ -106,10 +106,13 @@ extension VisualizerEngine {
                     snap.fogFar = uniforms.sceneParamsB.y
                     rmPipeline.baseScene = snap
 
-                    // Per-preset dolly speed (world units per second of wall-clock).
-                    // Set to 0 for camera-static presets. The shared `drawWithRayMarch`
-                    // path applies `baseZ + features.time * cameraDollySpeed`, so the
-                    // motion reads as real travel through the scene (not tempo-driven).
+                    // Per-preset base dolly speed (world units per second).  Set
+                    // to 0 for camera-static presets.  `drawWithRayMarch`
+                    // multiplies this per-frame by a bass-modulated factor
+                    // (0.5 + bassContribution), so the actual speed varies
+                    // ~0.5×-1.6× the base depending on audio.  Camera still
+                    // always moves (autonomous baseline) — bass just
+                    // modulates the pace.
                     rmPipeline.cameraDollySpeed = {
                         switch desc.name {
                         case "Glass Brutalist":       return 2.5
@@ -117,6 +120,12 @@ extension VisualizerEngine {
                         default:                      return 0
                         }
                     }()
+
+                    // Reset the dolly integrator state on preset (re)apply so
+                    // re-entering a ray-march preset doesn't jump forward by
+                    // the distance accumulated during its previous activation.
+                    rmPipeline.cameraDollyOffset = 0
+                    rmPipeline.lastDollyFrameTime = nil
 
                     currentRayMarchPipeline = rmPipeline
                 } catch {

@@ -162,6 +162,7 @@ extension RenderPipeline {
     ///   - sceneAlreadyRendered: `true` when a preceding `.rayMarch` pass has already written
     ///     to `warpState.sceneTexture`.  `false` for direct-render presets (Starburst etc.) —
     ///     in that case the preset's fragment is rendered to `sceneTexture` first.
+    @MainActor
     func drawWithMVWarp(
         commandBuffer: MTLCommandBuffer,
         view: MTKView,

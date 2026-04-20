@@ -140,7 +140,25 @@ public final class RayMarchPipeline: @unchecked Sendable {
     /// Forward dolly speed in world-units per second of wall-clock time.
     /// `0` disables dolly (Kinetic Sculpture / Test Sphere stay static).
     /// Set by `applyPreset` from a preset-specific rule.
+    ///
+    /// Per-frame actual speed = `cameraDollySpeed × (0.5 + bassContribution)`
+    /// where bassContribution comes from the audio FeatureVector.  Keeps
+    /// camera always moving (autonomous baseline per design) while letting
+    /// bass energy modulate the perceived pace 0.5× to ~1.6×.
     public var cameraDollySpeed: Float = 0
+
+    /// Integrated forward camera offset (world units).  Advanced each frame
+    /// by `deltaTime × instantaneousSpeed` in `drawWithRayMarch`.  Replaces
+    /// the earlier `features.time × cameraDollySpeed` formula so the speed
+    /// can vary per frame without historical camera position being rewritten
+    /// retroactively (multiplying a constant into accumulated time would do
+    /// exactly that).
+    public var cameraDollyOffset: Float = 0
+
+    /// Timestamp of the previous drawWithRayMarch invocation — used to
+    /// compute `deltaTime` for the dolly integrator.  `nil` before the
+    /// first draw.  Reset on preset change.
+    public var lastDollyFrameTime: CFTimeInterval?
 
     /// Captured baseline scene values from the preset JSON.
     public struct BaseSceneSnapshot: Sendable {

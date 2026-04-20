@@ -125,6 +125,13 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     var textureManager: TextureManager?
     let textureManagerLock = NSLock()
 
+    // MARK: - Spectral History (buffer(5))
+
+    /// Per-frame MIR history ring buffer. Bound at fragment buffer index 5 in all direct-pass
+    /// encoders so instrument-family presets can visualise recent MIR state.
+    /// Updated once per frame in `draw(in:)`, reset on track change.
+    public let spectralHistory: SpectralHistoryBuffer
+
     // MARK: - IBL Textures (Increment 3.16)
 
     /// Optional IBL texture manager — binds irradiance, prefiltered env, and BRDF LUT at slots 9–11.
@@ -192,6 +199,7 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
         self.waveformBuffer = waveformBuffer
         self.startTime = CFAbsoluteTimeGetCurrent()
         self.lastFrameTime = self.startTime
+        self.spectralHistory = SpectralHistoryBuffer(device: context.device)
 
         // Create render pipeline state: fullscreen_vertex → waveform_fragment.
         self.pipelineState = try shaderLibrary.renderPipelineState(
@@ -411,6 +419,7 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
         logger.info("Feedback textures allocated: \(width)×\(height)")
     }
 
+    @MainActor
     public func draw(in view: MTKView) {
         // Wait for an available frame slot (triple buffering).
         context.inflightSemaphore.wait()
@@ -441,6 +450,10 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
         let energy = (features.bass + features.mid + features.treble) / 3.0
         stepAccumulatedTime(energy: energy, deltaTime: deltaTime)
         features.accumulatedAudioTime = audioTimeLock.withLock { _accumulatedAudioTime }
+
+        // Update spectral history ring buffer (buffer(5)) once per frame.
+        let stemSnap = stemFeaturesLock.withLock { latestStemFeatures }
+        spectralHistory.append(features: features, stems: stemSnap)
 
         renderFrame(
             commandBuffer: commandBuffer,

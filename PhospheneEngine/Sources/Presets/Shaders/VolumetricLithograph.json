@@ -2,9 +2,9 @@
   "name": "Volumetric Lithograph",
   "family": "fluid",
   "duration": 35,
-  "description": "Psychedelic linocut terrain — forward-dollying flight over an infinite audio-reactive landscape. Terrain swells follow melody (f.mid_att primary) with bass swell secondary; palette cycles with melodic phrasing; spectral-flux accents flare peaks and strobe the cut-line ridge on any timbral attack. No atmospheric fog (printmaking has no aerial perspective).",
+  "description": "Psychedelic linocut terrain — forward-dollying flight over an infinite audio-reactive landscape. v6 density/rate/attack drivers: terrain amp = 0.30·coactivation + 0.50·onset_density + 0.25·(attack−1), three AGC-surviving primitives that track structural intensity rather than normalised amplitude. Accent fires on drum onsets or any stem's sharp transients; palette hue tracks energy-weighted stem composition. No atmospheric fog (printmaking has no aerial perspective).",
   "author": "Matt",
-  "passes": ["ray_march", "post_process", "mv_warp"],
+  "passes": ["ray_march", "post_process"],
   "beat_source": "bass",
   "beat_sensitivity": 1.0,
   "scene_camera": {
@@ -24,9 +24,9 @@
   "scene_ambient": 0.06,
   "scene_far_plane": 80.0,
   "stem_affinity": {
-    "other": "terrain_height_primary",
-    "vocals": "terrain_height_primary",
-    "bass": "terrain_height_secondary",
-    "drums": "spectral_flux_accent"
+    "bass": "terrain_height_adaptive+palette_warm",
+    "vocals": "terrain_height_adaptive+palette_teal+peak_polish",
+    "other": "terrain_height_adaptive+palette_yellow+peak_polish",
+    "drums": "terrain_height_adaptive+palette_violet+beat_accent"
   }
 }

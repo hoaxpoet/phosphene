@@ -261,6 +261,38 @@ New `mv_warp` render pass implementing Milkdrop-style 32×24 per-vertex feedback
 
 ---
 
+### Increment D-030 — SpectralHistoryBuffer + SpectralCartograph ✅
+
+New `SpectralHistoryBuffer` class (Shared module): 16 KB UMA MTLBuffer at fragment buffer index 5, bound unconditionally in all direct-pass fragment encoders. Maintains 5 ring buffers of 480 samples (≈8s at 60fps): valence, arousal, beat_phase01, bass_dev, and log-normalized vocal pitch. Updated once per frame in `RenderPipeline.draw(in:)`; reset on track change via `VisualizerEngine.resetStemPipeline(for:)`.
+
+`SpectralCartograph` preset: first `instrument`-family preset. Four-panel real-time MIR diagnostic — TL=FFT spectrum (log-frequency, centroid-driven colour), TR=3-band deviation meters (D-026 compliant: reads only `*_att_rel` and `*_dev`), BL=valence/arousal phase plot with 8-second fading trail, BR=scrolling line graphs for `beat_phase01`, `bass_dev`, and `vocals_pitch_norm`. Direct pass only.
+
+CLAUDE.md GPU Contract corrected: buffer(0)=FeatureVector (not FFT as previously documented). buffer(4)=SceneUniforms (ray march only, not future use). buffer(5)=SpectralHistory.
+
+New `PresetCategory.instrument` case added.
+
+15+ new tests across `SpectralHistoryBufferTests.swift`, `SpectralCartographTests.swift`, and additions to `RenderPipelineTests.swift`.
+
+---
+
+### Increment D-030b — Verification fixes + InputLevelMonitor ✅
+
+Post-D-030 live-session verification (2026-04-20) found and fixed four issues:
+
+**BeatPredictor timing bug (critical).** `beatPhase01` was always 0 in production. Root cause: `MIRPipeline.processAnalysisFrame` calls `mir.process(... time: 0 ...)` on every frame; `BeatPredictor.update()` accumulated timing via the `time` parameter, so `now = 0` always. First onset set `lastBeatTime = 0`; the subsequent `if lastBeatTime > 0` guard was false for `0.0`, so `hasPeriod` never became true. Fixed by internal `elapsedTime` accumulation from `deltaTime` (independent of `time`); guards changed `> 0` → `>= 0`. The `BeatPredictorTests.swift` bootstrap test was also updated to advance time frame-by-frame rather than via a single `time` jump (single calls only advance by one `dt` with the new accumulator).
+
+**SpectralCartograph silent load.** The preset JSON was missing `"fragment_function": "spectral_cartograph_fragment"`. `PresetLoader` defaulted to `"preset_fragment"` which doesn't exist in the library, causing the preset to be silently skipped at load time.
+
+**Swift 6 @MainActor warnings.** `MTKView.currentDrawable`, `currentRenderPassDescriptor`, and `drawableSize` are `@MainActor`-isolated; accessing them from nonisolated `draw(in:)` and helper methods produced ~18 Xcode IDE warnings. Fixed by annotating `draw(in:)`, `renderFrame`, `drawDirect`, `drawWithFeedback`, `drawParticleMode`, `drawSurfaceMode`, `drawWithICB`, `drawWithMeshShader`, `drawWithMVWarp`, `drawWithPostProcess`, `drawWithRayMarch` as `@MainActor`. The `@preconcurrency import MetalKit` already in each file suppresses any conformance mismatch for the protocol requirement.
+
+**InputLevelMonitor** (new component). A live session (2026-04-17T19-31-46Z) routed through a Multi-Output Device (BlackHole + Mac mini Speakers) produced peaks at −20 dBFS with treble fraction at 0.1% — undetectable by the existing `SilenceDetector` (which only distinguishes silent/non-silent) or by post-AGC feature values (which normalise away absolute level). `InputLevelMonitor` measures peak dBFS (21s rolling window via `vDSP_maxmgv`) and 3-band spectral balance (EMAs on squared FFT magnitudes). Classification is peak-only after session 2026-04-17T21-05-47Z showed treble-ratio thresholds produced false positives on bass-heavy tracks (Oxytocin: 0.2% treble, clean chain). 30-frame hysteresis prevents log flapping. Quality transitions logged to session.log via `VisualizerEngine+Audio`; displayed in DebugOverlay.
+
+Also: `MusicKitBridge` unused `artistLower` removed; `SessionRecorder` `_ = try? fh.seekToEnd()` to suppress unused `UInt64?` result.
+
+343 tests, 5 pre-existing Apple Music failures. All 3 `BeatPredictorTests` now pass with correct phase tracking.
+
+---
+
 ## Immediate Next Increments
 
 These are ordered by dependency. Each has done-when criteria and verification commands.

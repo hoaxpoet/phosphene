@@ -10,7 +10,7 @@ import Metal
 // MARK: - PresetCategory Tests
 
 @Test func presetCategoryAllCases() {
-    #expect(PresetCategory.allCases.count == 12)
+    #expect(PresetCategory.allCases.count == 13)
     #expect(PresetCategory.allCases.contains(.waveform))
     #expect(PresetCategory.allCases.contains(.fractal))
     #expect(PresetCategory.allCases.contains(.geometric))

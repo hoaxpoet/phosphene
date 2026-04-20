@@ -70,7 +70,6 @@ public final class MusicKitFetcher: MetadataFetching, @unchecked Sendable {
 
             // Find the best match — prefer exact title match.
             let titleLower = title.lowercased()
-            let artistLower = artist.lowercased()
 
             let bestMatch = response.songs.first { song in
                 song.title.lowercased() == titleLower

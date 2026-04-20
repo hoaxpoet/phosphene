@@ -197,6 +197,14 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// `~/Documents/phosphene_sessions/<timestamp>/`.
     let sessionRecorder: SessionRecorder?
 
+    // MARK: - Signal Quality Monitor
+
+    /// Continuous assessment of tap input quality (peak dBFS + spectral balance).
+    let inputLevelMonitor = InputLevelMonitor()
+
+    /// Last logged quality grade; avoids spamming session.log on every frame.
+    var lastLoggedQuality: SignalQuality = .unknown
+
     /// Task that hides the preset name after a delay.
     private var hideNameTask: Task<Void, Never>?
 

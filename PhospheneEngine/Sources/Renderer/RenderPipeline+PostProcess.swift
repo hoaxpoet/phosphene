@@ -37,6 +37,7 @@ extension RenderPipeline {
     ///   - stemFeatures: Per-stem features from the background separation pipeline.
     ///   - activePipeline: The compiled scene preset pipeline state.
     ///   - chain: Post-process chain that owns the intermediate textures and passes.
+    @MainActor
     func drawWithPostProcess(
         commandBuffer: MTLCommandBuffer,
         view: MTKView,

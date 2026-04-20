@@ -336,6 +336,65 @@ final class SessionRecorderTests: XCTestCase {
                       "finish must log a closing line")
     }
 
+    // MARK: - Raw tap WAV persists after duration cap (regression: session 20-57-06Z)
+
+    /// After `recordRawTapSamples` accumulates more than the duration cap, the
+    /// file must remain on disk with the captured audio intact.  Earlier bug:
+    /// completing the cap set `rawTapHandle = nil` without a "done" flag, so
+    /// the next sample callback treated the nil handle as a fresh session and
+    /// `FileManager.createFile(atPath:contents:nil)` truncated the file to a
+    /// 44-byte header-only stub — wiping all the captured audio.
+    func test_rawTapCapture_persistsAfterDurationCap_evenWithContinuingCallbacks() throws {
+        let recorder = try XCTUnwrap(SessionRecorder(baseDir: tempDir))
+
+        // Feed 35 seconds of audio at 48 kHz stereo (30s cap + 5s of "kept
+        // arriving after done").  Use a chunked submission so we actually
+        // cross the cap mid-stream and then continue submitting.
+        let sampleRate: Float = 48_000
+        let channels: UInt32 = 2
+        let chunkFrames = 1024
+        let totalSeconds: Float = 35
+        let totalChunks = Int((totalSeconds * sampleRate) / Float(chunkFrames))
+
+        // Fill chunk buffer with a distinguishable ramp so bytes aren't all zeros.
+        var chunk = [Float](repeating: 0, count: chunkFrames * Int(channels))
+        for i in 0..<chunk.count {
+            chunk[i] = Float(i % 97) / 97.0 * 0.5
+        }
+
+        for _ in 0..<totalChunks {
+            chunk.withUnsafeBufferPointer { ptr in
+                guard let base = ptr.baseAddress else { return }
+                recorder.recordRawTapSamples(
+                    pointer: base, count: chunk.count,
+                    sampleRate: sampleRate, channelCount: channels)
+            }
+        }
+        recorder.finish()
+
+        let url = recorder.sessionDir.appendingPathComponent("raw_tap.wav")
+        let data = try Data(contentsOf: url)
+
+        // A 30s capture at 48 kHz stereo Float32 = 11 520 044 bytes (44 header
+        // + 11 520 000 PCM).  The header-only bug produced exactly 44 bytes.
+        // Expect at least 10 MB so the test is unambiguous.
+        XCTAssertGreaterThan(data.count, 10_000_000,
+            "raw_tap.wav must contain the captured audio; got only \(data.count) bytes "
+            + "(header-only bug would produce exactly 44)")
+
+        // Validate IEEE 754 Float WAV format markers (our stub writes fmt=3, bits=32).
+        let riff = String(data: data.subdata(in: 0..<4), encoding: .ascii)
+        XCTAssertEqual(riff, "RIFF")
+        let fmtCode = data.withUnsafeBytes { $0.load(fromByteOffset: 20, as: UInt16.self) }
+        XCTAssertEqual(fmtCode, 3, "WAVE_FORMAT_IEEE_FLOAT expected")
+        let bits = data.withUnsafeBytes { $0.load(fromByteOffset: 34, as: UInt16.self) }
+        XCTAssertEqual(bits, 32, "32-bit float samples expected")
+
+        // Confirm a non-zero sample actually landed in the PCM region.
+        let anyNonZero = data.suffix(from: 44).contains { $0 != 0 }
+        XCTAssertTrue(anyNonZero, "PCM region must contain captured audio, not zeros")
+    }
+
     // MARK: - WAV decoder (test-only)
 
     /// Minimal 16-bit PCM WAV decoder for validating the recorder's writer.

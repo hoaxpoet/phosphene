@@ -131,6 +131,21 @@ import MetalKit
     #expect(hasNonBlack, "Shader output should contain non-black pixels with non-zero FFT data")
 }
 
+@Test func test_renderPipeline_spectralHistoryAllocated() throws {
+    let ctx = try MetalContext()
+    let lib = try ShaderLibrary(context: ctx)
+    let fftBuf = ctx.makeSharedBuffer(length: 512 * MemoryLayout<Float>.stride)!
+    let wavBuf = ctx.makeSharedBuffer(length: 2048 * MemoryLayout<Float>.stride)!
+
+    let pipeline = try RenderPipeline(
+        context: ctx, shaderLibrary: lib,
+        fftBuffer: fftBuf, waveformBuffer: wavBuf
+    )
+
+    #expect(pipeline.spectralHistory.gpuBuffer.length == SpectralHistoryBuffer.bufferSizeBytes,
+            "spectralHistory must be allocated at init with the correct buffer size")
+}
+
 enum RenderPipelineTestError: Error {
     case metalSetupFailed
 }
