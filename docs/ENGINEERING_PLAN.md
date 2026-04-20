@@ -445,19 +445,26 @@ swift test --package-path PhospheneEngine
 
 ---
 
-### Increment 4.4 — Golden Session Test Fixtures
+### Increment 4.4 — Golden Session Test Fixtures ✅
 
-**Scope:** `Tests/PhospheneEngineTests/Orchestrator/GoldenSessionTests.swift`. Curated playlists with expected preset sequences, expected transition windows, and forbidden choices.
+**Landed:** 2026-04-20.
 
-**Done when:**
-- 3 golden sessions defined: one high-energy electronic, one mellow jazz, one genre-diverse mix.
-- Each fixture specifies: acceptable preset families per track, forbidden families, transition window tolerance.
-- Tests pass against the current PresetScorer + TransitionPolicy + SessionPlanner.
-- Any future Orchestrator change that breaks a golden session test is a regression.
+`GoldenSessionTests.swift` — 12 regression tests across three curated playlists that lock in the expected Orchestrator output for any given set of track profiles and the full 11-preset production catalog. Any future change to `DefaultPresetScorer`, `DefaultTransitionPolicy`, `DefaultSessionPlanner`, or a preset JSON sidecar that breaks a golden test is a regression; the test file must be updated with a scoring trace comment that proves the new expected values are correct.
 
-**Design flag from 4.3:** Golden tests may need to inspect why a runner-up preset was NOT chosen — i.e., the full ranked breakdown for all catalog entries at each position, not just the winner. `PlannedTrack.scoreBreakdown` only carries the winner's breakdown. If assertion depth requires runner-up inspection, either (a) call `DefaultPresetScorer.breakdown(preset:track:context:)` directly inside the test fixture, or (b) consider adding `allBreakdowns: [(PresetDescriptor, PresetScoreBreakdown)]` to `PlannedTrack`. Decide at the start of 4.4 before drafting.
+**Session A (high-energy electronic, 5 × 180 s, BPM=130, val=0.7, arous=0.8):** VL→Plasma→VL→FO→VL. Transitions from VL are cuts (VL carries `[crossfade, cut]` affordances, energy=0.82 > 0.7 threshold); transitions from Plasma/FO are crossfades at ~0.77 s.
 
-**Verify:** `swift test --package-path PhospheneEngine`
+**Session B (mellow jazz, 5 × 180 s, BPM=85, val=0.3, arous=−0.3):** VL→GB→VL→GB→VL. All crossfades at ~1.43 s (energy=0.38). No high-motion preset (Murmuration motion=0.85) ever wins.
+
+**Session C (genre-diverse, 6 tracks, varied durations):** VL→GB→VL→Plasma→VL→FO. Covers 4 families (fluid, geometric, hypnotic, abstract).
+
+**Key implementation decisions:**
+- `allBreakdowns: [(PresetDescriptor, PresetScoreBreakdown)]` was **not** added to `PlannedTrack`. Runner-up inspection is done by calling `DefaultPresetScorer().breakdown(preset:track:context:)` directly inside the test body — no new public API.
+- `PlannedTransition` carries no `trigger` enum field; trigger type is verified via `reason.hasPrefix("Structural boundary")`.
+- Two pre-implementation spec derivation errors were caught and corrected against the code: Plasma (0.803) beats Ferrofluid Ocean (0.793) in high-energy electronic sessions because Plasma's tempCenter (0.6) is closer to targetTemp (0.78). The spec's scoring trace omitted Plasma when listing non-fluid competitors.
+
+399 tests total; 4 pre-existing Apple Music env failures unchanged.
+
+**Verify:** `swift test --package-path PhospheneEngine --filter GoldenSessionTests`
 
 ---
 
