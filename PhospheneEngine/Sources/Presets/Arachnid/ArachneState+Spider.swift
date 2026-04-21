@@ -66,10 +66,10 @@ extension ArachneState {
 
     /// Seconds of sustained sub-bass required to trigger the spider.
     static let sustainedTriggerThreshold: Float = 0.75
-    /// Sub-bass energy level gate (FV: subBass 0–1; stems: bassEnergy × 1.5 proxy).
+    /// Sub-bass energy level gate — AGC-normalised FV subBass (20–80 Hz).
+    /// Typical resting value ≈ 0.5; 0.65 = ~30% above average. During James Blake
+    /// "Limit to Your Love" the field reaches 3.9–5.9 at the bass drop.
     static let subBassThreshold: Float = 0.65
-    /// Attack-ratio upper bound — distinguishes resonant bass from kick drum transients.
-    static let attackRatioThreshold: Float = 0.55
     /// Minimum seconds between spider appearances (session-level cooldown).
     static let sessionCooldownDuration: Float = 300.0
     /// Seconds to blend blend 0→1 on materialisation.
@@ -84,28 +84,17 @@ extension ArachneState {
     // MARK: - Spider Update (called from _tick while lock is held)
 
     /// Advance spider state by one frame. Call from `_tick` while holding the lock.
-    func updateSpider(dt: Float, features: FeatureVector, stems: StemFeatures, stemMix: Float) {
+    func updateSpider(dt: Float, features: FeatureVector) {
         // Advance cooldown timer only when the spider is absent.
         if !spiderActive { timeSinceLastSpider += dt }
 
-        // Sub-bass trigger: sustained resonant bass, not a kick drum.
-        // FV proxy: features.subBass (6-band 20–80 Hz); stem: bassEnergy × 1.5.
-        // Attack ratio: low ratio = sustained sine-like bass; high = transient percussion.
-        let subBassLevel = arachMix(features.subBass,
-                                    stems.bassEnergy * 1.5,
-                                    stemMix)
-
-        // Attack-ratio gate only applies when stems are warm: stems.bassAttackRatio
-        // reliably distinguishes sustained sine bass (low) from kick transients (high).
-        // Pre-warmup: skip the gate — the 0.75s accumulator is the kick debounce
-        // (a kick decays in <100ms and cannot sustain the threshold).
-        let conditionMet: Bool
-        if stemMix > 0.3 {
-            conditionMet = subBassLevel > Self.subBassThreshold
-                        && stems.bassAttackRatio < Self.attackRatioThreshold
-        } else {
-            conditionMet = subBassLevel > Self.subBassThreshold
-        }
+        // Sub-bass trigger: always use FV features.subBass (AGC-normalised 20–80 Hz band).
+        // stems.bassEnergy is an absolute energy value on a completely different scale and
+        // does not capture sub-bass reliably — Open-Unmix attributes deep electronic sub-bass
+        // (James Blake 40–60 Hz) to "other", not "bass". The FV band IS correct.
+        // Attack-ratio gate removed: the 0.75 s accumulator is the kick debounce — a kick
+        // decays in <100 ms and cannot sustain the threshold regardless of attack character.
+        let conditionMet = features.subBass > Self.subBassThreshold
 
         if conditionMet {
             sustainedSubBassAccumulator += dt
