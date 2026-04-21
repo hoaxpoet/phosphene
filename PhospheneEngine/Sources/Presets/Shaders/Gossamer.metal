@@ -143,7 +143,7 @@ fragment float4 gossamer_fragment(
     float3 waveContrib = float3(0.0);
     float  totalRingWeight = 0.0;  // for interference bloom
 
-    constant float kRingSigma = 0.011;  // ring half-width in UV units
+    constexpr float kRingSigma = 0.011;  // ring half-width in UV units
 
     for (uint i = 0; i < gState.wave_count; i++) {
         WaveGPU w = gState.waves[i];
