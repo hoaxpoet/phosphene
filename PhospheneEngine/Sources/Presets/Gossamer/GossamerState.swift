@@ -140,7 +140,7 @@ public final class GossamerState: @unchecked Sendable {
 
         // D-019 warmup: 0.0 = FV-only, 1.0 = stems fully warm.
         let totalStemEnergy = stems.vocalsEnergy + stems.drumsEnergy
-                            + stems.bassEnergy   + stems.otherEnergy
+                            + stems.bassEnergy + stems.otherEnergy
         let stemMix = gossamerSmoothstep(Self.warmupLow, Self.warmupHigh, totalStemEnergy)
 
         // Retire waves older than maxWaveLifetime.
@@ -158,8 +158,12 @@ public final class GossamerState: @unchecked Sendable {
             let pitchConfident = stems.vocalsPitchConfidence > 0.35
             let vocalActive    = abs(stems.vocalsEnergyDev) > 0.05
             if pitchConfident || vocalActive {
-                emitWave(features: features, stems: stems, stemMix: stemMix,
-                         pitchConfident: pitchConfident)
+                emitWave(
+                    features: features,
+                    stems: stems,
+                    stemMix: stemMix,
+                    pitchConfident: pitchConfident
+                )
             }
             // Accumulator decremented regardless of gate: no clumping on re-entry.
         }
@@ -240,10 +244,10 @@ public final class GossamerState: @unchecked Sendable {
         var oldestIdx: Int?
         var oldestBirth = Float.infinity
         for i in pool.indices {
-            guard let w = pool[i] else { continue }
-            if w.birthTime < oldestBirth {
-                oldestBirth = w.birthTime
-                oldestIdx   = i
+            guard let wave = pool[i] else { continue }
+            if wave.birthTime < oldestBirth {
+                oldestBirth = wave.birthTime
+                oldestIdx = i
             }
         }
         if let idx = oldestIdx {
@@ -299,12 +303,12 @@ public final class GossamerState: @unchecked Sendable {
         // Wave data starting at byte 16.
         let wavePtr = ptr.advanced(by: 16).bindMemory(to: WaveGPU.self, capacity: Self.maxWaves)
         for i in 0..<count {
-            let w = aliveWaves[i].wave
+            let wave = aliveWaves[i].wave
             wavePtr[i] = WaveGPU(
-                age:        currentTime - w.birthTime,
-                hue:        w.birthHue,
-                saturation: w.birthSaturation,
-                amplitude:  w.amplitude
+                age: currentTime - wave.birthTime,
+                hue: wave.birthHue,
+                saturation: wave.birthSaturation,
+                amplitude: wave.amplitude
             )
         }
     }
@@ -320,11 +324,11 @@ public final class GossamerState: @unchecked Sendable {
     // MARK: - Private: math helpers (local to avoid dependency on global functions)
 
     private func gossamerSmoothstep(_ edge0: Float, _ edge1: Float, _ x: Float) -> Float {
-        let t = gossamerClamp((x - edge0) / (edge1 - edge0), 0, 1)
-        return t * t * (3 - 2 * t)
+        let tt = gossamerClamp((x - edge0) / (edge1 - edge0), 0, 1)
+        return tt * tt * (3 - 2 * tt)
     }
 
     private func gossamerClamp(_ x: Float, _ lo: Float, _ hi: Float) -> Float { min(max(x, lo), hi) }
-    private func gossamerMix(_ a: Float, _ b: Float, _ t: Float) -> Float { a + (b - a) * t }
+    private func gossamerMix(_ x0: Float, _ x1: Float, _ frac: Float) -> Float { x0 + (x1 - x0) * frac }
     private func gossamerFract(_ x: Float) -> Float { x - floor(x) }
 }
