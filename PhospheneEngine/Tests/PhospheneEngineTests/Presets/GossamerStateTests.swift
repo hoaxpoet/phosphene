@@ -5,9 +5,9 @@
 //
 // Invariants verified:
 //   1. Initial pool: 2 seeded waves, waveCount = 2 (D-037 inv.1, inv.4)
-//   2. Emission rate: confident vocals + otherOnsetRate=2.0 for 1s → exactly 2 new waves
+//   2. Emission rate: confident vocals + otherEnergyDev=0.75 for 1.5s → ≥ 2 new waves
 //   3. Confidence gate: low confidence suppresses emission; accumulator preserved for re-entry
-//   4. FV fallback: stems=.zero + mid_att=0.5 emits proportionally via FV path
+//   4. FV fallback: stems=.zero + midAttRel=0.75 emits proportionally via FV path
 //   5. Retirement: a wave older than maxWaveLifetime is retired; count decreases
 //   6. Pool full: 33rd emission evicts oldest wave; waveCount stays ≤ maxWaves
 //   7. Determinism: two instances with same seed + same inputs → identical GPU buffer
@@ -43,24 +43,30 @@ private func readRawBuffer(_ state: GossamerState) -> Data {
 }
 
 /// FeatureVector with optional fields for test control.
-private func fv(midAtt: Float = 0, midRel: Float = 0, deltaTime: Float = 1.0 / 60.0) -> FeatureVector {
+private func fv(
+    midAtt: Float = 0,
+    midRel: Float = 0,
+    midAttRel: Float = 0,
+    deltaTime: Float = 1.0 / 60.0
+) -> FeatureVector {
     var f = FeatureVector.zero
-    f.midAtt       = midAtt
-    f.midRel       = midRel
-    f.deltaTime    = deltaTime
+    f.midAtt    = midAtt
+    f.midRel    = midRel
+    f.midAttRel = midAttRel
+    f.deltaTime = deltaTime
     return f
 }
 
 /// StemFeatures with the fields Gossamer cares about.
 private func stems(
-    otherOnsetRate: Float = 0,
+    otherEnergyDev: Float = 0,
     vocalsPitchHz: Float = 0,
     vocalsPitchConfidence: Float = 0,
     vocalsEnergyDev: Float = 0,
     totalEnergy: Float = 0.1   // > 0.06 → stemMix ≈ 1.0
 ) -> StemFeatures {
     var s = StemFeatures.zero
-    s.otherOnsetRate         = otherOnsetRate
+    s.otherEnergyDev         = otherEnergyDev
     s.vocalsPitchHz          = vocalsPitchHz
     s.vocalsPitchConfidence  = vocalsPitchConfidence
     s.vocalsEnergyDev        = vocalsEnergyDev
@@ -95,22 +101,20 @@ struct GossamerStateTests {
 
     // MARK: Test 2 — Emission rate
 
-    @Test("Emission rate: otherOnsetRate=2.0/s with confident vocals for 1.0s produces ≥ 2 new waves")
+    @Test("Emission rate: otherEnergyDev=0.75 with confident vocals for 1.5s produces ≥ 2 new waves")
     func testEmissionRate() throws {
         guard let device = MTLCreateSystemDefaultDevice() else { throw GossamerTestError.noMetalDevice }
         guard let state = GossamerState(device: device, seed: 42) else { return }
 
         let initialCount = state.waveCount   // 2
-        // Simulate exactly 1.0s of audio at 60 fps (60 frames × 1/60s each).
         let frameTime: Float = 1.0 / 60.0
-        // otherOnsetRate=2.0 → stemRate=3.0 waves/s → ~3 new waves per second.
-        // Two should comfortably arrive in the first second.
-        let s = stems(otherOnsetRate: 2.0, vocalsPitchHz: 220, vocalsPitchConfidence: 0.8,
+        // otherEnergyDev=0.75 → stemRate = 0.5 + 0.75×2 = 2.0 waves/sec.
+        // Over 1.5s: ~3 new waves expected.
+        let s = stems(otherEnergyDev: 0.75, vocalsPitchHz: 220, vocalsPitchConfidence: 0.8,
                       vocalsEnergyDev: 0.2, totalEnergy: 0.2)
-        for _ in 0..<60 {
+        for _ in 0..<90 {
             state.tick(deltaTime: frameTime, features: fv(deltaTime: frameTime), stems: s)
         }
-        // At least 2 new waves should have been emitted beyond the initial 2.
         #expect(state.waveCount >= initialCount + 2)
     }
 
@@ -124,8 +128,10 @@ struct GossamerStateTests {
         let initialCount = state.waveCount  // 2
 
         // Low confidence + no vocal energy → gate closed. Run for 1.0s.
+        // Base rate (0.5/sec) builds the accumulator to ~0.5 — below the 1.0 threshold,
+        // so no emission slots trigger during the gated period.
         let frameTime: Float = 1.0 / 60.0
-        let sSilentVocals = stems(otherOnsetRate: 2.0,
+        let sSilentVocals = stems(otherEnergyDev: 0.0,
                                   vocalsPitchHz: 220,
                                   vocalsPitchConfidence: 0.1,   // below 0.35 gate
                                   vocalsEnergyDev: 0.0,          // also below 0.05
@@ -142,39 +148,38 @@ struct GossamerStateTests {
         #expect(state.waveEmissionAccumulator >= 0)
 
         // Now open the gate — emission should resume within a fraction of a second.
-        // The accumulator is between 0 and 1 after the gated period; at rate 3.0/sec
-        // the next emission lands within at most ~1/3s = 20 frames.
-        let sConfident = stems(otherOnsetRate: 2.0,
+        // otherEnergyDev=0.5 → stemRate=1.5/sec; accumulator ~0.5 head-start →
+        // first emission within ~0.33s = 20 frames.
+        let sConfident = stems(otherEnergyDev: 0.5,
                                vocalsPitchHz: 220,
                                vocalsPitchConfidence: 0.9,
                                vocalsEnergyDev: 0.3,
                                totalEnergy: 0.2)
-        for _ in 0..<25 {
+        for _ in 0..<30 {
             state.tick(deltaTime: frameTime, features: fv(deltaTime: frameTime), stems: sConfident)
         }
-        // At least one new wave should appear within 25 frames of gate opening.
+        // At least one new wave should appear within 30 frames of gate opening.
         #expect(state.waveCount > countAfterGated)
     }
 
     // MARK: Test 4 — FV fallback emission
 
-    @Test("FV fallback: stems=.zero + mid_att=0.5 emits waves via FV path")
+    @Test("FV fallback: stems=.zero + midAttRel=0.75 emits waves via FV path")
     func testFVFallback() throws {
         guard let device = MTLCreateSystemDefaultDevice() else { throw GossamerTestError.noMetalDevice }
         guard let state = GossamerState(device: device, seed: 42) else { return }
 
-        // stems.zero → stemMix ≈ 0 → FV path drives emission.
-        // mid_att = 0.5 → fvRate = 1.0 waves/sec.
-        let fvFeatures = fv(midAtt: 0.5, midRel: 0.2, deltaTime: 1.0 / 60.0)
+        // stems.zero → totalStemEnergy=0 → stemMix≈0 → FV path drives emission.
+        // midAttRel=0.75 → fvRate = 0.4 + 0.75×0.8 = 1.0 waves/sec.
+        let fvFeatures = fv(midAttRel: 0.75, deltaTime: 1.0 / 60.0)
         // vocalsEnergyDev > 0.05 so the emission gate opens.
         var sZero = StemFeatures.zero
         sZero.vocalsEnergyDev = 0.1   // gate open; stems otherwise zero
 
         let initialCount = state.waveCount
-        for _ in 0..<120 {  // 2 seconds at 60 fps
+        for _ in 0..<120 {  // 2 seconds at 60 fps → ~2 new waves at 1.0/sec
             state.tick(deltaTime: 1.0 / 60.0, features: fvFeatures, stems: sZero)
         }
-        // FV rate ≈ 1.0 wave/sec → ~2 new waves over 2s.
         #expect(state.waveCount >= initialCount + 1)
     }
 
@@ -211,7 +216,9 @@ struct GossamerStateTests {
         guard let state = GossamerState(device: device, seed: 42) else { return }
 
         // Emit at a very high rate to fill the pool quickly.
-        let sHigh = stems(otherOnsetRate: 20.0,
+        // otherEnergyDev=10.0 is test-inflated (real max ≈ 1.0) to drive stemRate=20.5/sec
+        // so the pool fills within the 10s window.
+        let sHigh = stems(otherEnergyDev: 10.0,
                           vocalsPitchHz: 440,
                           vocalsPitchConfidence: 0.9,
                           vocalsEnergyDev: 0.5,
@@ -233,7 +240,7 @@ struct GossamerStateTests {
               let b = GossamerState(device: device, seed: 7) else { return }
 
         let frameTime: Float = 1.0 / 60.0
-        let s = stems(otherOnsetRate: 1.5, vocalsPitchHz: 330, vocalsPitchConfidence: 0.7,
+        let s = stems(otherEnergyDev: 0.5, vocalsPitchHz: 330, vocalsPitchConfidence: 0.7,
                       vocalsEnergyDev: 0.25, totalEnergy: 0.2)
         let f = fv(midAtt: 0.4, midRel: 0.1, deltaTime: frameTime)
 
