@@ -220,7 +220,7 @@ public final class ArachneState: @unchecked Sendable {
 
         webCount = webs.filter { $0.isAlive != 0 }.count
 
-        updateSpider(dt: dt, features: features, stems: stems, stemMix: stemMix)
+        updateSpider(dt: dt, features: features)
     }
 
     // MARK: - Private: beat index advancement

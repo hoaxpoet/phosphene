@@ -350,67 +350,49 @@ private func stems(drumsOnsetRate: Float = 0, totalEnergy: Float = 0.1) -> StemF
 
     // MARK: Spider Tests (Increment 3.5.9)
 
-    // Helper: FeatureVector with strong sub-bass.
+    // Helper: FeatureVector with strong sub-bass (above 0.65 threshold).
     private func subBassFV(deltaTime: Float = 1.0 / 60.0) -> FeatureVector {
         var f = FeatureVector.zero
-        f.subBass    = 0.80    // above 0.65 threshold
-        f.bassAttRel = 0.10    // low attack ratio (below 0.55 when centred)
-        f.deltaTime  = deltaTime
+        f.subBass   = 0.80    // above 0.65 threshold — typical James Blake bass drop value
+        f.deltaTime = deltaTime
         return f
     }
 
-    // Helper: StemFeatures with strong sustained bass and low attack ratio.
-    private func subBassStems() -> StemFeatures {
-        var s = StemFeatures.zero
-        s.bassEnergy      = 0.55    // × 1.5 = 0.825 > 0.65 threshold
-        s.bassAttackRatio = 0.30    // well below 0.55 threshold
-        s.drumsEnergy = 0.05; s.bassEnergy = 0.55
-        s.otherEnergy = 0.05; s.vocalsEnergy = 0.05
-        return s
-    }
-
-    @Test("sustained sub-bass with low attack ratio triggers spider materialisation")
+    @Test("sustained sub-bass triggers spider materialisation")
     func sustainedSubBassTriggersSpider() throws {
         guard let device = MTLCreateSystemDefaultDevice() else {
             throw ArachneTestError.noMetalDevice
         }
         let state = try #require(ArachneState(device: device, seed: 42))
 
-        // Tick for just over 0.75 s with sub-bass + low attack ratio and fully warm stems.
-        // dt = 1/60 s → need ≥45 ticks for accumulator to reach 0.75 s threshold.
-        let fv  = subBassFV()
-        let stm = subBassStems()
+        // Tick for just over 0.75 s with continuous sub-bass above threshold.
+        // dt = 1/60 s → 60 ticks = 1.0 s ≥ 0.75 s sustain threshold.
+        let fv = subBassFV()
         for _ in 0..<60 {
-            state.tick(features: fv, stems: stm)
+            state.tick(features: fv, stems: .zero)
         }
 
-        // Spider should be active (blend > 0) after sustained sub-bass.
         let ptr = state.spiderBuffer.contents().bindMemory(to: ArachneSpiderGPU.self, capacity: 1)
-        #expect(ptr[0].blend > 0, "Expected spider blend > 0 after sustained sub-bass")
+        #expect(ptr[0].blend > 0, "Expected spider blend > 0 after 1 s sustained sub-bass")
     }
 
-    @Test("transient kick drum (high attack ratio) does NOT trigger the spider")
-    func kickDrumDoesNotTrigger() throws {
+    @Test("brief sub-bass pulse (kick drum) does NOT trigger the spider")
+    func kickDrumPulseDoesNotTrigger() throws {
         guard let device = MTLCreateSystemDefaultDevice() else {
             throw ArachneTestError.noMetalDevice
         }
         let state = try #require(ArachneState(device: device, seed: 42))
 
-        // High attack ratio = transient percussion (kick drum), not resonant bass.
-        var kickStems = StemFeatures.zero
-        kickStems.bassEnergy      = 0.70    // energy is high...
-        kickStems.bassAttackRatio = 0.75    // ...but very transient (above 0.55 threshold)
-        kickStems.drumsEnergy = 0.05; kickStems.otherEnergy = 0.05; kickStems.vocalsEnergy = 0.05
+        // A kick drum fires for ~100 ms then decays — far less than the 750 ms threshold.
+        // 9 frames × (1/60 s) = 150 ms above threshold, then 120 frames of silence.
+        var high = subBassFV(); high.subBass = 0.80
+        var low  = subBassFV(); low.subBass  = 0.10   // below threshold
 
-        var fv = subBassFV()
-        fv.bassAttRel = 0.60  // also above threshold on FV side
-
-        for _ in 0..<120 {
-            state.tick(features: fv, stems: kickStems)
-        }
+        for _ in 0..<9   { state.tick(features: high, stems: .zero) }  // 150 ms burst
+        for _ in 0..<120 { state.tick(features: low,  stems: .zero) }  // 2 s decay
 
         let ptr = state.spiderBuffer.contents().bindMemory(to: ArachneSpiderGPU.self, capacity: 1)
-        #expect(ptr[0].blend == 0, "Kick drum (high attack ratio) must not trigger the spider")
+        #expect(ptr[0].blend == 0, "Brief kick pulse (150 ms) must not trigger the spider")
     }
 
     @Test("spider dematerialises when sub-bass condition ends")
@@ -422,7 +404,7 @@ private func stems(drumsOnsetRate: Float = 0, totalEnergy: Float = 0.1) -> StemF
 
         // Phase 1: trigger the spider.
         let fv  = subBassFV()
-        let stm = subBassStems()
+        let stm = StemFeatures.zero
         for _ in 0..<60 { state.tick(features: fv, stems: stm) }
 
         let ptrAfterTrigger = state.spiderBuffer.contents()
@@ -445,7 +427,7 @@ private func stems(drumsOnsetRate: Float = 0, totalEnergy: Float = 0.1) -> StemF
 
         // Phase 1: trigger the spider normally.
         let fv  = subBassFV()
-        let stm = subBassStems()
+        let stm = StemFeatures.zero
         for _ in 0..<60 { state.tick(features: fv, stems: stm) }
 
         // Confirm spider triggered and then reset it manually (simulate full appearance + fade).
