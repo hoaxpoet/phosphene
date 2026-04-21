@@ -572,3 +572,23 @@ Arachne is the first preset in a planned family of organic / nature-derived visu
 **Rejected alternative — `natural`:** Both `organic` and `natural` work semantically. `organic` was chosen because it is the established term in visual design for forms derived from biological growth patterns (curved, asymmetric, non-Euclidean), regardless of literal organism identity.
 
 **How to apply:** New presets whose primary visual inspiration is a biological structure (web, coral, fungus, root, crystal growth, flock) should declare `"family": "organic"` in their JSON sidecar. Presets whose primary inspiration is mathematical pattern (Lissajous, Mandelbrot, Plasma) should remain `abstract`.
+
+---
+
+## D-039 — dHash visual regression gate for preset shaders (Increment 5.3)
+
+**Status:** Accepted (2026-04-21)
+
+**Context:** Increment 5.2 gates structural invariants (non-black, no clip, form complexity, beat response). A shader edit can pass all four invariants while silently changing the visual character of a preset — a palette shift, a contrast change, or a broken scene element that still has "some pixels and some complexity."
+
+**Decision:** A 64-bit dHash (difference hash) is computed for each preset at three fixtures (steady, beat-heavy, quiet). Goldens are stored inline as a Swift dictionary literal in `PresetRegressionTests.swift`. Comparison uses Hamming distance ≤ 8 (87.5% match), tolerating GPU float quantization noise while catching intentional visual changes.
+
+**Why dHash over perceptual statistics (mean/stddev):** Statistics detect global brightness/contrast changes but miss structural changes — a scene could have identical mean luma while all its geometry moved to a different position. dHash encodes spatial structure via the horizontal-difference representation.
+
+**Why Hamming ≤ 8:** GPU float-to-uint8 quantization on the same hardware is deterministic. Across shader edits that change nothing visual (whitespace, constant folding), the output is byte-identical — Hamming distance = 0. A meaningful change (different palette, altered SDF parameters) shifts 10–30 bits. The threshold of 8 sits safely between noise (0) and signal (≥ 10).
+
+**Mesh-shader presets excluded:** `FractalTree` uses an `MTLMeshRenderPipeline` on M3+ that cannot be invoked via `drawPrimitives`. No `pipelineState` equivalent to the vertex fallback is stored in `LoadedPreset`. These presets are excluded until a dedicated mesh-shader render helper is added.
+
+**Golden update workflow:** Run `UPDATE_GOLDEN_SNAPSHOTS=1 swift test --package-path PhospheneEngine --filter "test_printGoldenHashes"`. The test prints Swift literal lines to stdout. Paste into `goldenPresetHashes` in `PresetRegressionTests.swift`. New presets that have no entry skip silently — CI does not fail on a new preset until its goldens are explicitly added.
+
+**Hardware caveat:** Goldens are generated and validated on Apple Silicon. A different GPU generation may produce different 8-bit output for fragment shaders that use trigonometric functions (GPU sine/cosine precision varies across architectures). If CI runs on a different device tier from where goldens were generated, set a per-tier golden dictionary or accept a wider Hamming threshold.

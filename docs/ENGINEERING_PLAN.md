@@ -573,17 +573,29 @@ swift test --package-path PhospheneEngine
 
 ---
 
-### Increment 5.3 — Visual Regression Snapshots
+### Increment 5.3 — Visual Regression Snapshots ✅
 
-**Scope:** Render each preset with fixed audio fixtures at deterministic frame numbers. Compare frame statistics or perceptual hashes against golden references. Detects when a shader change makes a preset muddy, overexposed, banded, or visually dead.
+**Landed:** 2026-04-21
 
-**Done when:**
-- Golden snapshots generated for all presets at 3 fixture configurations.
-- Perceptual hash comparison with configurable tolerance.
-- Regression test fails when a preset's visual output changes beyond tolerance.
-- Snapshot update script for intentional changes.
+**What was built:**
+- `PresetRegressionTests.swift` — 3 parametrized regression tests (steady, beat-heavy, quiet) + 1 golden-generation utility test.
+- 64-bit dHash computed via 9×8 luma grid + horizontal-difference encoding (`computeLumaGrid` + `dHash`).
+- `goldenPresetHashes` dictionary: 11 preset entries × 3 fixtures = 33 comparisons. Fractal Tree excluded (meshShader).
+- Hamming distance ≤ 8 tolerance (87.5% match). Missing entries skip silently (safe for new presets).
+- `UPDATE_GOLDEN_SNAPSHOTS=1 swift test --package-path PhospheneEngine --filter test_printGoldenHashes` regenerates all values.
+- Same buffer/skip infrastructure as Increment 5.2 (SceneUniforms for ray march, zeroed FFT/stems/history).
+- `_acceptanceFixture` and `PresetFixtureContext` promoted from `private` to `internal` in `PresetAcceptanceTests.swift` so `PresetRegressionTests.swift` can reference them directly.
 
-**Verify:** `swift test --package-path PhospheneEngine`
+**Key decision:** D-039 — dHash regression gate; hardware caveat documented.
+
+**Tests:** 435 → 439 (4 new @Test functions). Same pre-existing failures unchanged.
+
+**Verify:**
+```bash
+swift test --package-path PhospheneEngine --filter PresetRegressionTests
+# To regenerate goldens:
+UPDATE_GOLDEN_SNAPSHOTS=1 swift test --package-path PhospheneEngine --filter test_printGoldenHashes
+```
 
 ---
 

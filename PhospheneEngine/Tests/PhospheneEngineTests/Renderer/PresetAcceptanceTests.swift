@@ -18,11 +18,11 @@ import Metal
 
 // MARK: - Shared Fixture Context (module-level, computed once)
 
-private struct PresetFixtureContext {
+struct PresetFixtureContext {
     let presets: [PresetLoader.LoadedPreset]
 }
 
-private let _acceptanceFixture: PresetFixtureContext = {
+let _acceptanceFixture: PresetFixtureContext = {
     guard let ctx = try? MetalContext() else { return PresetFixtureContext(presets: []) }
     let loader = PresetLoader(device: ctx.device, pixelFormat: ctx.pixelFormat, loadBuiltIn: true)
     return PresetFixtureContext(presets: loader.presets)
