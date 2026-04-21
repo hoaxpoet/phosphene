@@ -24,4 +24,6 @@ public enum PresetCategory: String, Sendable, CaseIterable, Codable {
     case fluid
     /// Real-time diagnostic instrument for MIR pipeline observability.
     case instrument
+    /// Organic, natural-world motion: bioluminescent strands, mycelium, arachnid geometry.
+    case organic
 }

@@ -116,6 +116,9 @@ extension RenderPipeline {
         // Compute pass: update particles before any render pass.
         particles?.update(features: features, stemFeatures: stemFeatures, commandBuffer: commandBuffer)
 
+        // Tick mesh preset world-state (e.g. ArachneState) before rendering.
+        meshPresetTickLock.withLock { meshPresetTick }?(features, stemFeatures)
+
         // Track whether the scene has been rendered to sceneTexture by a preceding pass.
         var sceneRenderedToWarpTarget = false
 

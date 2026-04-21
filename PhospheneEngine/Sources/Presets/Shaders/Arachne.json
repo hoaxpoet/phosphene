@@ -1,0 +1,27 @@
+{
+  "name": "Arachne",
+  "family": "organic",
+  "duration": 45,
+  "description": "Bioluminescent spider webs spin in rhythm — strands land on beats, bass drives radial quiver, drums trigger spawn",
+  "author": "Matt",
+  "passes": ["mesh_shader"],
+  "fragment_function": "arachne_fragment",
+  "vertex_function": "arachne_fallback_vertex",
+  "beat_source": "composite",
+  "beat_sensitivity": 1.1,
+  "additive_blend": true,
+  "mesh_thread_count": 64,
+  "stem_affinity": {
+    "drums": "web_spawn",
+    "bass": "strand_quiver",
+    "other": "birth_color",
+    "vocals": "unused"
+  },
+  "visual_density": 0.55,
+  "motion_intensity": 0.45,
+  "color_temperature_range": [0.3, 0.75],
+  "fatigue_risk": "low",
+  "transition_affordances": ["crossfade", "cut"],
+  "section_suitability": ["ambient", "buildup", "bridge", "comedown"],
+  "complexity_cost": { "tier1": 0.8, "tier2": 0.6 }
+}

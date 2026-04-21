@@ -90,6 +90,16 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Set in `applyPreset` when a ray march preset is activated; cleared otherwise.
     var currentRayMarchPipeline: RayMarchPipeline?
 
+    /// Arachne web-pool state — allocated when the Arachne preset is active,
+    /// nil otherwise. Tick closure and webBuffer are wired into the render pipeline
+    /// via `setMeshPresetTick` / `setMeshPresetBuffer` in `applyPreset`.
+    var arachneState: ArachneState?
+
+    /// Gossamer wave-pool state — allocated when the Gossamer preset is active,
+    /// nil otherwise. Tick closure and waveBuffer are wired into the render pipeline
+    /// via `setMeshPresetTick` / `setDirectPresetFragmentBuffer` in `applyPreset`.
+    var gossamerState: GossamerState?
+
     // MARK: - Pipeline References
 
     /// Metal context shared across the pipeline.

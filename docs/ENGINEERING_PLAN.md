@@ -212,6 +212,33 @@ Session `2026-04-16T20-56-46Z` diagnostic on Tea Lights revealed the architectur
 
 Verified: 3/3 new tests pass; full suite 308/314 with only pre-existing environmental failures (Apple Music not running × 4, perf flake, network timeout).
 
+### Increment 3.5.5 — Arachne Preset (bioluminescent spider webs) ✅
+
+**Landed:** 2026-04-21
+
+Bioluminescent spider web visualizer using the M3+ mesh shader pipeline with vertex fallback for M1/M2. Key decisions and implementation:
+
+- **`ArachneState.swift`** — 12-web pool with beat-measured stage lifecycle (anchorPulse → radial → spiral → stable → evicting). Drum-driven spawn accumulator (`drumsOnsetRate × dt × stemMix`). LCG PRNG seeded per-web for deterministic layout. GPU `webBuffer` (MTLBuffer, 12 × 64 bytes) flushed after every tick. 2 pre-seeded stable webs satisfy D-037 inv.1 and inv.4 from frame zero.
+- **`Arachne.metal`** — Object shader dispatches 12 mesh threadgroups (one per web slot). 64-thread mesh shader: thread 0 = hub cap, threads 1–8 = anchor dots, threads 9–16 = radial spokes, threads 17–56 = spiral segments. Inactive threads write off-screen geometry. Dead webs: `set_primitive_count(0)`. Fragment shader: D-019 stemMix warmup, bass-driven strand quiver, MV-3b beat anticipation.
+- **`PresetCategory.organic`** added — keeps Arachne separate from abstract/geometric families in Orchestrator family-repeat scoring. D-038 in DECISIONS.md.
+- **`ArachneStateTests.swift`** — 8 unit tests covering all 8 pool-management invariants from D-037.
+
+**Visual tuning (post-session 2026-04-21T13-26-38Z):** First playback revealed three issues: (1) hub throb used `sin(time * 9)` — continuous free-running oscillation with no music connection; (2) strand quiver scrolled at fixed `time * 4.8` rate, never syncing to beats; (3) bioluminescent effect weak — sat=0.72 and linear glow falloff. Fixes: (1) hub throb during anchorPulse replaced with `anticipation * 0.9` (beat_phase01-driven only); (2) quiver wave phase-locked to beat via `sin(dist*12 - beat_phase01*2π)` so one wave propagates per beat; (3) sat raised to 0.92, glow changed to `exp2(-dist*3)` exponential falloff with darker base (0.20) and brighter hub (0.85). **Rule: never use free-running `sin(time)` for motion in organic presets — all oscillation should be beat-anchored or at minimum audio-amplitude-gated.**
+
+**Verification:** `swift test --package-path PhospheneEngine` → 427 tests pass; `xcodebuild -scheme PhospheneApp` → BUILD SUCCEEDED; SwiftLint → 0 violations in active sources.
+
+### Increment 3.5.6 — Gossamer Preset (bioluminescent sonic resonator) ✅
+
+**Landed:** 2026-04-21
+
+Bioluminescent hero-web as a musical resonator. A single SDF-drawn static web (12 radials + Archimedean capture spiral) acts as the "instrument body"; up to 32 vocal-pitch-keyed propagating color waves travel outward from the hub along all radials simultaneously, leaving decaying echoes via mv_warp temporal feedback.
+
+- **`GossamerState.swift`** — 32-wave pool. Each `Wave` has birthTime, hue (baked from YIN pitch), saturation (baked from other-stem density), amplitude (baked from vocals_energy_dev). Emission gates on `vocalsPitchConfidence > 0.35 OR |vocalsEnergyDev| > 0.05`; below threshold, accumulator integrates but no wave is emitted. Ambient drift floor guarantees waveCount ≥ 2 at silence. Retirement when `age > maxWaveLifetime = 6s`. GPU buffer (528 bytes): GossamerGPU header + 32 WaveGPU (16 bytes each). Bound at `fragment buffer(6)` via `pipeline.setDirectPresetFragmentBuffer` / `directPresetFragmentBuffer` in RenderPipeline.
+- **`Gossamer.metal`** — SDF scene (radial spokes + Archimedean spiral strand) drawn at each fragment; color waves sampled as a ring-pass at `|dist - waveRadius| < waveWidth`. mv_warp pass accumulates decaying echoes (decay=0.955). D-026 deviation-first; D-019 warmup; D-037 acceptance satisfied via background gradient + seeded waves.
+- **`GossamerStateTests.swift`** — 8 unit tests: initial pool, emission rate, confidence gate, FV fallback, retirement, silence stability, pool eviction, determinism.
+
+**Verification:** `swift test --package-path PhospheneEngine` → 435 tests pass; `xcodebuild -scheme PhospheneApp` → BUILD SUCCEEDED.
+
 ### Increment MV-0 — Drop v4.2 stash, re-land sky-tint conditional ✅
 
 **Landed:** 2026-04-16, commit `91f698d5`

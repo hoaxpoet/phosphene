@@ -60,6 +60,13 @@ extension RenderPipeline {
         // Bind noise textures at fragment slots 4–8.
         bindNoiseTextures(to: encoder)
 
+        // Bind optional per-preset world-state buffer at object/mesh buffer(1) if attached.
+        // Must be set before meshGenerator.draw() encodes the draw call.
+        if let presetBuf = meshPresetBufferLock.withLock({ meshPresetBuffer }) {
+            encoder.setObjectBuffer(presetBuf, offset: 0, index: 1)
+            encoder.setMeshBuffer(presetBuf, offset: 0, index: 1)
+        }
+
         // Delegate pipeline state selection and draw dispatch to the generator.
         meshGenerator.draw(encoder: encoder, features: features)
 

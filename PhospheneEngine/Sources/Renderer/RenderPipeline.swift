@@ -83,6 +83,16 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     var meshGenerator: MeshGenerator?
     let meshLock = NSLock()
 
+    /// Optional per-preset world-state buffer for mesh presets (e.g. ArachneState.webBuffer).
+    /// When non-nil, bound at object buffer(1) + mesh buffer(1) before the mesh draw.
+    var meshPresetBuffer: MTLBuffer?
+    let meshPresetBufferLock = NSLock()
+
+    /// Optional per-frame tick closure for mesh preset state (e.g. ArachneState.tick).
+    /// Called once per frame in renderFrame before the draw pass.
+    var meshPresetTick: (@Sendable (FeatureVector, StemFeatures) -> Void)?
+    let meshPresetTickLock = NSLock()
+
     // MARK: - Post-Process Chain
 
     /// Optional HDR post-process chain — bloom + ACES tone mapping.
@@ -131,6 +141,16 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     /// encoders so instrument-family presets can visualise recent MIR state.
     /// Updated once per frame in `draw(in:)`, reset on track change.
     public let spectralHistory: SpectralHistoryBuffer
+
+    // MARK: - Direct Preset Fragment Buffer (buffer(6))
+
+    /// Optional per-preset fragment buffer for direct-fragment mv_warp presets.
+    ///
+    /// Bound at fragment buffer index 6 in `renderSceneToTexture` when non-nil.
+    /// Used by presets (e.g. Gossamer) that need to pass CPU-side state to the
+    /// scene fragment shader. Follows the same pattern as `meshPresetBuffer`.
+    var directPresetFragmentBuffer: MTLBuffer?
+    let directPresetFragmentBufferLock = NSLock()
 
     // MARK: - IBL Textures (Increment 3.16)
 

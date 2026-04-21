@@ -94,6 +94,15 @@ extension PresetLoader {
         meshDesc.meshFunction = meshFn
         meshDesc.fragmentFunction = fragmentFn
         meshDesc.colorAttachments[0].pixelFormat = pixelFormat
+        if descriptor.meshAdditiveBlend {
+            meshDesc.colorAttachments[0].isBlendingEnabled = true
+            meshDesc.colorAttachments[0].sourceRGBBlendFactor = .one
+            meshDesc.colorAttachments[0].destinationRGBBlendFactor = .one
+            meshDesc.colorAttachments[0].rgbBlendOperation = .add
+            meshDesc.colorAttachments[0].sourceAlphaBlendFactor = .one
+            meshDesc.colorAttachments[0].destinationAlphaBlendFactor = .zero
+            meshDesc.colorAttachments[0].alphaBlendOperation = .add
+        }
         do {
             let (pipelineState, _) = try device.makeRenderPipelineState(descriptor: meshDesc, options: [])
             meshLogger.info("Created mesh pipeline (native) for \(descriptor.name)")
@@ -119,6 +128,15 @@ extension PresetLoader {
         fallbackDesc.vertexFunction = vertexFn
         fallbackDesc.fragmentFunction = fragmentFn
         fallbackDesc.colorAttachments[0].pixelFormat = pixelFormat
+        if descriptor.meshAdditiveBlend {
+            fallbackDesc.colorAttachments[0].isBlendingEnabled = true
+            fallbackDesc.colorAttachments[0].sourceRGBBlendFactor = .one
+            fallbackDesc.colorAttachments[0].destinationRGBBlendFactor = .one
+            fallbackDesc.colorAttachments[0].rgbBlendOperation = .add
+            fallbackDesc.colorAttachments[0].sourceAlphaBlendFactor = .one
+            fallbackDesc.colorAttachments[0].destinationAlphaBlendFactor = .zero
+            fallbackDesc.colorAttachments[0].alphaBlendOperation = .add
+        }
         do {
             let state = try device.makeRenderPipelineState(descriptor: fallbackDesc)
             meshLogger.info("Created mesh pipeline (vertex fallback) for \(descriptor.name)")
