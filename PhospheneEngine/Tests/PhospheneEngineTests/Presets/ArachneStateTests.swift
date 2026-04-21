@@ -148,6 +148,47 @@ private func stems(drumsOnsetRate: Float = 0, totalEnergy: Float = 0.1) -> StemF
         #expect(after > before + 0.01)
     }
 
+    // MARK: Invariant 4b: FV beat fallback fires when stems warm but drums silent
+
+    @Test("beat rising edge spawns when drumsOnsetRate=0 but stems are warm (quiet/drumless track)")
+    func fvFallbackFiringWithSilentDrums() throws {
+        guard let device = MTLCreateSystemDefaultDevice() else {
+            throw ArachneTestError.noMetalDevice
+        }
+        let state = try #require(ArachneState(device: device, seed: 42))
+
+        // Simulate a quiet post-rock opening: stems are warm (bass+other energy present)
+        // but drumsOnsetRate=0. The old (1-stemMix) gate would suppress the FV path.
+        // The new (1-drumActivity) gate must let beat rising edges through.
+        var warmS = StemFeatures.zero
+        warmS.drumsOnsetRate = 0          // no drum onsets — silent drums
+        warmS.bassEnergy    = 0.10        // totalEnergy=0.20 → stemMix≈1.0
+        warmS.otherEnergy   = 0.10
+        warmS.drumsEnergy   = 0.0
+        warmS.vocalsEnergy  = 0.0
+
+        // Deliver a beat rising edge (composite goes 0 → 0.8) with small dt so
+        // the spawned web stays in anchorPulse and beatsDt doesn't advance stages.
+        var below = FeatureVector.zero
+        below.beatComposite = 0.0
+        below.deltaTime = 0.01
+        state.tick(features: below, stems: warmS)
+
+        var above = FeatureVector.zero
+        above.beatComposite = 0.8
+        above.deltaTime = 0.01
+        state.tick(features: above, stems: warmS)
+
+        // fvDrive = 0.8 × (1 - drumActivity) = 0.8 × 1.0 = 0.8 ≥ threshold (1.0 after 2 edges)
+        // After 2 rising edges the accumulator should have triggered a spawn.
+        // Deliver one more rising edge to ensure accumulator crosses 1.0.
+        state.tick(features: below, stems: warmS)
+        state.tick(features: above, stems: warmS)
+
+        #expect(state.webCount >= 3,
+                "Expected ≥3 webs (2 seeded + ≥1 spawned via FV beat path); got \(state.webCount)")
+    }
+
     // MARK: Invariant 5: Spawn creates new anchorPulse web
 
     @Test("accumulator ≥ threshold spawns a new web in anchorPulse")

@@ -171,10 +171,14 @@ public final class ArachneState: @unchecked Sendable {
         let drumDrive = stems.drumsOnsetRate * dt * stemMix
 
         // FV fallback: rising edge on beat_composite / beat_bass counts as one onset.
+        // Suppressed by actual drum activity, not by general stem warmup — so quiet/drumless
+        // tracks (e.g. post-rock openings where drumsOnsetRate=0 but stems are warm) still
+        // get a working spawn path from the beat detector.
         let currentBeat = max(features.beatComposite, features.beatBass)
         let risingEdge: Float = (currentBeat > 0.5 && prevBeatComposite <= 0.5) ? 0.8 : 0.0
         prevBeatComposite = currentBeat
-        let fvDrive = risingEdge * (1.0 - stemMix)
+        let drumActivity = min(stems.drumsOnsetRate * 0.05, 1.0)  // fully suppressed at ≥20 onsets/s
+        let fvDrive = risingEdge * (1.0 - drumActivity)
 
         spawnAccumulator += drumDrive + fvDrive
 
