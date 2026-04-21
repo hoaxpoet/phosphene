@@ -94,12 +94,18 @@ extension ArachneState {
         let subBassLevel = arachMix(features.subBass,
                                     stems.bassEnergy * 1.5,
                                     stemMix)
-        let attackRatio = arachMix(max(0, features.bassAttRel) + 0.5,
-                                   stems.bassAttackRatio,
-                                   stemMix)
 
-        let conditionMet = subBassLevel > Self.subBassThreshold
-                        && attackRatio < Self.attackRatioThreshold
+        // Attack-ratio gate only applies when stems are warm: stems.bassAttackRatio
+        // reliably distinguishes sustained sine bass (low) from kick transients (high).
+        // Pre-warmup: skip the gate — the 0.75s accumulator is the kick debounce
+        // (a kick decays in <100ms and cannot sustain the threshold).
+        let conditionMet: Bool
+        if stemMix > 0.3 {
+            conditionMet = subBassLevel > Self.subBassThreshold
+                        && stems.bassAttackRatio < Self.attackRatioThreshold
+        } else {
+            conditionMet = subBassLevel > Self.subBassThreshold
+        }
 
         if conditionMet {
             sustainedSubBassAccumulator += dt

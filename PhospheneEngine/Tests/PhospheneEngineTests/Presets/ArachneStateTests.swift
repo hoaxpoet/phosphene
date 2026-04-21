@@ -179,11 +179,15 @@ private func stems(drumsOnsetRate: Float = 0, totalEnergy: Float = 0.1) -> StemF
         above.deltaTime = 0.01
         state.tick(features: above, stems: warmS)
 
-        // fvDrive = 0.8 × (1 - drumActivity) = 0.8 × 1.0 = 0.8 ≥ threshold (1.0 after 2 edges)
-        // After 2 rising edges the accumulator should have triggered a spawn.
-        // Deliver one more rising edge to ensure accumulator crosses 1.0.
+        // fvDrive = 0.8 × (1 - drumActivity) = 0.8 × 1.0 = 0.8 per rising edge.
+        // spawnThreshold=3.0 → need 4 edges total (3.2). 95 below ticks + 3 more above/below pairs
+        // deliver edges 2, 3, 4 and advance globalBeatIndex past minSpawnGapBeats(2.0).
+        for _ in 0..<95 { state.tick(features: below, stems: warmS) }
+        state.tick(features: above, stems: warmS)  // 2nd rising edge, acc=1.6
         state.tick(features: below, stems: warmS)
-        state.tick(features: above, stems: warmS)
+        state.tick(features: above, stems: warmS)  // 3rd rising edge, acc=2.4
+        state.tick(features: below, stems: warmS)
+        state.tick(features: above, stems: warmS)  // 4th rising edge, acc=3.2 ≥ 3.0 → spawn
 
         #expect(state.webCount >= 3,
                 "Expected ≥3 webs (2 seeded + ≥1 spawned via FV beat path); got \(state.webCount)")
@@ -200,7 +204,8 @@ private func stems(drumsOnsetRate: Float = 0, totalEnergy: Float = 0.1) -> StemF
 
         // Use dt=0.01 so beatsDt=0.02 beats — well below anchorPulseDuration(1.0).
         // This means a newly spawned web stays in anchorPulse after the tick.
-        // drumsOnsetRate=5, 20 ticks → accumulator = 0.05 × 20 = 1.0 → spawn fires.
+        // drumsOnsetRate=5, 100 ticks → accumulator = 0.05 × 100 = 5.0 ≥ spawnThreshold(3.0);
+        // globalBeatIndex = 0.02 × 100 = 2.0 ≥ minSpawnGapBeats(2.0) → spawn fires.
         var s = StemFeatures.zero
         s.drumsOnsetRate = 5.0
         s.drumsEnergy = 0.05; s.bassEnergy = 0.05
@@ -209,8 +214,8 @@ private func stems(drumsOnsetRate: Float = 0, totalEnergy: Float = 0.1) -> StemF
         var f = FeatureVector.zero
         f.deltaTime = 0.01
 
-        // Tick 20 times to build accumulator above threshold.
-        for _ in 0..<20 {
+        // Tick 100 times to satisfy both accumulator and beat-gap thresholds.
+        for _ in 0..<100 {
             state.tick(features: f, stems: s)
         }
 
@@ -322,12 +327,12 @@ private func stems(drumsOnsetRate: Float = 0, totalEnergy: Float = 0.1) -> StemF
         let stableWebs = fullWebs.filter { $0.isAlive != 0 && $0.stage == WebStage.stable.rawValue }
         let oldestBirth = stableWebs.min(by: { $0.birthBeatPhase < $1.birthBeatPhase })?.birthBeatPhase
 
-        // Phase 2: trigger eviction with dt=0.25 so beatsDt=0.5 ≥ minSpawnGapBeats=0.5
-        // (passes the gap check), while progress += 0.5/2.0 = 0.25 so the evicting
+        // Phase 2: trigger eviction with dt=1.0 so beatsDt=2.0 ≥ minSpawnGapBeats=2.0
+        // (passes the gap check), while progress += 2.0/4.0 = 0.5 so the evicting
         // web survives the tick and is observable in the buffer.
         // The accumulator is very high from phase 1, so no extra drum drive is needed.
         var evictF = FeatureVector.zero
-        evictF.deltaTime = 0.25
+        evictF.deltaTime = 1.0
         state.tick(features: evictF, stems: .zero)
 
         let afterWebs = readWebs(state)

@@ -109,9 +109,10 @@ fragment float4 gossamer_fragment(
     float radCov     = smoothstep(radWidth + 0.0008, radWidth - 0.0008, rDist) * rimMask;
     float spirCov    = smoothstep(spirWidth + 0.0006, spirWidth - 0.0006, sDist) * rimMask;
 
-    // Two-layer bioluminescent glow: crisp strand edge + soft luminous halo.
-    float radHalo    = exp(-rDist * rDist / (0.0055 * 0.0055)) * 0.50 * rimMask;
-    float spirHalo   = exp(-sDist * sDist / (0.0045 * 0.0045)) * 0.40 * rimMask;
+    // Two-layer bioluminescent glow: crisp strand edge + wide luminous halo.
+    // Sigma in UV units — 0.022 ≈ 22px at 1080p, giving visible ambient glow between strands.
+    float radHalo    = exp(-rDist * rDist / (0.022 * 0.022)) * 0.90 * rimMask;
+    float spirHalo   = exp(-sDist * sDist / (0.016 * 0.016)) * 0.70 * rimMask;
     float strandCov  = max(max(radCov, spirCov), max(radHalo, spirHalo));
 
     // Hub cap: small filled disc at center.
@@ -132,10 +133,11 @@ fragment float4 gossamer_fragment(
     float breathFactor = mix(breathSpiral, breathRadial, wRadial);
 
     // ── Base strand emissive (resting brightness) ────────────────────────────
-    float3 nearColor = float3(0.80, 0.72, 0.60);
-    float3 rimColor  = float3(0.38, 0.43, 0.52);
+    // Bioluminescent palette: bright cyan hub fades to deep blue at the rim.
+    float3 nearColor = float3(0.38, 0.85, 0.90);  // cyan hub
+    float3 rimColor  = float3(0.14, 0.44, 0.82);  // deep blue rim
     float3 baseStrand = mix(nearColor, rimColor, taper) * tautness
-                      * (0.55 + tremor) * breathFactor;
+                      * (1.50 + tremor) * breathFactor;
 
     // ── Propagating color waves ───────────────────────────────────────────────
     // Gaussian ring profile (replaces hard smoothstep — no block artifacts).
@@ -190,6 +192,7 @@ fragment float4 gossamer_fragment(
     float3 finalColor   = strandResult + bgColor;
 
     // Clamp to keep non-HDR path below white-clip (D-037 invariant 2).
+    // 0.95 linear → sRGB 249/255 on bgra8Unorm_srgb — bright but not blown out.
     finalColor = min(finalColor, float3(0.95));
 
     return float4(finalColor, 1.0);
