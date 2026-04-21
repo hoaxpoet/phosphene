@@ -188,6 +188,7 @@ struct PresetAcceptanceTests {
         if let sceneBuf = buffers.scene { encoder.setFragmentBuffer(sceneBuf, offset: 0, index: 4) }
         encoder.setFragmentBuffer(buffers.hist, offset: 0, index: 5)
         encoder.setFragmentBuffer(buffers.presetState, offset: 0, index: 6)
+        encoder.setFragmentBuffer(buffers.presetState, offset: 0, index: 7)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         encoder.endEncoding()
         cmdBuf.commit()

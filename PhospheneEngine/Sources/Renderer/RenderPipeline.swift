@@ -162,6 +162,16 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     var directPresetFragmentBuffer: MTLBuffer?
     let directPresetFragmentBufferLock = NSLock()
 
+    // MARK: - Direct Preset Fragment Buffer 2 (buffer(7))
+
+    /// Optional secondary per-preset fragment buffer for direct-fragment mv_warp presets.
+    ///
+    /// Bound at fragment buffer index 7 in `renderSceneToTexture` when non-nil.
+    /// Used by presets (e.g. Arachne) that need a second CPU-side buffer in the
+    /// scene fragment shader (web pool at buffer(6) + spider GPU at buffer(7)).
+    var directPresetFragmentBuffer2: MTLBuffer?
+    let directPresetFragmentBuffer2Lock = NSLock()
+
     // MARK: - IBL Textures (Increment 3.16)
 
     /// Optional IBL texture manager — binds irradiance, prefiltered env, and BRDF LUT at slots 9–11.

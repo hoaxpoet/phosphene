@@ -49,6 +49,7 @@ extension VisualizerEngine {
         arachneState = nil
         gossamerState = nil
         pipeline.setDirectPresetFragmentBuffer(nil)
+        pipeline.setDirectPresetFragmentBuffer2(nil)
         pipeline.setPostProcessChain(nil)
         pipeline.setRayMarchPipeline(nil)
         pipeline.setFeedbackParams(nil)
@@ -76,20 +77,6 @@ extension VisualizerEngine {
                     configuration: config
                 )
                 pipeline.setMeshGenerator(gen)
-
-                // Arachne-specific world state: allocate web pool and wire tick + buffer.
-                if desc.name == "Arachne" {
-                    if let state = ArachneState(device: context.device) {
-                        arachneState = state
-                        pipeline.setMeshPresetBuffer(state.webBuffer)
-                        pipeline.setMeshPresetFragmentBuffer(state.spiderBuffer)
-                        pipeline.setMeshPresetTick { [weak state] features, stems in
-                            state?.tick(features: features, stems: stems)
-                        }
-                    } else {
-                        logger.error("ArachneState: failed to allocate web pool for preset '\(desc.name)'")
-                    }
-                }
 
             case .postProcess:
                 if let chain = try? PostProcessChain(context: context, shaderLibrary: shaderLibrary) {
@@ -201,6 +188,20 @@ extension VisualizerEngine {
                 pipeline.setupMVWarp(bundle: bundle, size: drawableSize)
                 // Plumb the descriptor decay so the compose pass matches pf.decay in the shader.
                 pipeline.setMVWarpDecay(desc.decay)
+
+                // Arachne-specific: allocate web pool + spider buffer and wire tick + fragment buffers.
+                if desc.name == "Arachne" {
+                    if let state = ArachneState(device: context.device) {
+                        arachneState = state
+                        pipeline.setDirectPresetFragmentBuffer(state.webBuffer)    // buffer(6)
+                        pipeline.setDirectPresetFragmentBuffer2(state.spiderBuffer) // buffer(7)
+                        pipeline.setMeshPresetTick { [weak state] features, stems in
+                            state?.tick(features: features, stems: stems)
+                        }
+                    } else {
+                        logger.error("ArachneState: failed to allocate web pool for preset '\(desc.name)'")
+                    }
+                }
 
                 // Gossamer-specific: allocate wave pool and wire tick + fragment buffer.
                 if desc.name == "Gossamer" {
