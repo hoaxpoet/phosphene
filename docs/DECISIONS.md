@@ -614,3 +614,28 @@ A separate threadgroup 0 for the spider body would require all web threadgroups 
 **Decision 3 — Sub-bass trigger discriminates sustained resonance from transient kick drums.**
 
 The spider should appear during James Blake "Limit to Your Love" sub-bass drops, NOT during every kick drum in a house track. The trigger uses `bassAttackRatio < 0.55` (from `StemFeatures.bassAttackRatio`, the ratio of peak attack energy to sustained RMS) as a gate alongside the energy threshold. A kick drum has a high attack ratio (~0.9); a sustained sub-bass tone has a low ratio (~0.2–0.4). Session cooldown (300 s) prevents back-to-back appearances. This three-part condition (energy + attack ratio + accumulator) is identical to StalkerState's listening-pose trigger, validated across genres in Increment 3.5.7.
+
+---
+
+## D-041 — Arachne ray march remaster (Increment 3.5.10)
+
+**Status:** Accepted (2026-04-21)
+
+**Context:** Arachne v1 (Increment 3.5.5) was a mesh-shader preset. Free-running sin(time) oscillators made the motion feel mechanical and disconnected from music (CLAUDE.md failed approach #33, session 2026-04-21T13-26-38Z). Replacing with 3D SDF ray march gives proper perspective depth, correct strand geometry, and beat-phase-locked motion.
+
+**Decision 1 — Replace mesh shader entirely with direct fragment + mv_warp.**
+
+The mesh shader was drawing flat 2D geometry via strip primitives. Moving to a full 3D SDF ray march: (a) correctly renders each web as a tilted disc in 3D space; (b) allows a perspective camera so depth separation between webs is visible; (c) preserves the ArachneState world-state system and GPU buffers without change — only the Metal shader is rewritten. The passes array changes from `["mesh_shader"]` to `["mv_warp"]`.
+
+**Decision 2 — Soft bioluminescent glow via minimum-SDF falloff.**
+
+At typical test resolution (64×64) and even at 1080p, SDF tube strands (radius 0.0055 world units at distance 3) are sub-pixel for most rays. A hard-surface-only shader would produce a nearly black image with no spatial gradient, failing D-037 invariant 4 (readable form). The fix: track `minWebDist` across all march steps and add `exp2(-minWebDist * 14.0)` glow to rays that miss. This is also the physically correct model for bioluminescence — self-emitting organisms radiate a halo, not just a hard surface. Hard-surface hits still render as before; glow is additive for miss rays.
+
+**Decision 3 — mv_warp decay 0.92, shorter than other organic presets.**
+
+Gossamer uses 0.955 to maximise the echo-reverb trail of vocal waves. Arachne is a 3D scene: longer decay accumulates the perspective-projected web field and obscures depth separation. 0.92 gives visible temporal echo (the aesthetic) while keeping 3D structure readable.
+
+**Decision 4 — Unique per-web tilt from rng_seed, not random per-frame.**
+
+Each web's spatial orientation is derived deterministically from its `rng_seed` field (already in `WebGPU`). This gives a stable 3D arrangement that persists across frames. Fully random orientations would make the scene chaotic; fully aligned (all facing camera) would look flat. The seed-derived tilt range (±0.15 in X, ±0.11 in Y before normalisation) gives ~15° of variation per web — enough to read as 3D without appearing unstable.
+

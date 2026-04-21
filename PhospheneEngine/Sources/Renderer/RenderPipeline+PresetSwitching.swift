@@ -115,4 +115,10 @@ extension RenderPipeline {
     public func setDirectPresetFragmentBuffer(_ buffer: MTLBuffer?) {
         directPresetFragmentBufferLock.withLock { directPresetFragmentBuffer = buffer }
     }
+
+    /// Attach a secondary per-preset fragment buffer for direct-fragment mv_warp presets (bound at buffer(7)).
+    /// Pass nil to detach. Thread-safe — can be called from any queue.
+    public func setDirectPresetFragmentBuffer2(_ buffer: MTLBuffer?) {
+        directPresetFragmentBuffer2Lock.withLock { directPresetFragmentBuffer2 = buffer }
+    }
 }

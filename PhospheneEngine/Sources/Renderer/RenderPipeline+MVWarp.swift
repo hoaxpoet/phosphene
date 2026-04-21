@@ -308,6 +308,10 @@ extension RenderPipeline {
         if let presetBuf = directPresetFragmentBufferLock.withLock({ directPresetFragmentBuffer }) {
             encoder.setFragmentBuffer(presetBuf, offset: 0, index: 6)
         }
+        // Bind optional secondary per-preset fragment data at buffer(7) (e.g. ArachneSpiderGPU).
+        if let presetBuf2 = directPresetFragmentBuffer2Lock.withLock({ directPresetFragmentBuffer2 }) {
+            encoder.setFragmentBuffer(presetBuf2, offset: 0, index: 7)
+        }
         bindNoiseTextures(to: encoder)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         encoder.endEncoding()

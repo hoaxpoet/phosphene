@@ -1,320 +1,181 @@
-// Arachne.metal — Bioluminescent spider-web mesh shader preset (Increment 3.5.5).
+// Arachne.metal — Bioluminescent spider-web field, 3D SDF ray march (Increment 3.5.10).
 //
-// Renders up to 12 spider webs that spin in rhythm with the music.
-// Stage order: anchorPulse → radial → spiral → stable → evicting.
-// Stage durations are measured in beats (ArachneState.swift), so fast music
-// builds faster.
+// Replaces mesh-shader preset with a full 3D ray-marched scene for proper
+// strand geometry, depth, and lighting. ArachneState / ArachneState+Spider logic
+// is unchanged — web pool and spider buffers carry over directly.
 //
-// Stem routing (D-019 warmup applied in fragment):
-//   drums   → spawn timing only (ArachneState.swift)
-//   bass    → strand quiver: propagating sinusoidal wave from hub outward
-//   other   → birth color (WebGPU.birth_hue/sat/brt, baked at spawn)
-//   vocals  → unused
+// Scene: up to 12 webs from pool + 1 permanent anchor web at origin.
+// Each web is a flat disc of SDF tubes (radials + spiral), tilted by a seed-
+// derived normal so each web has a unique 3D orientation. The spider SDF from
+// Increment 3.5.9 is preserved byte-for-byte.
 //
-// Object shader: dispatches 12 mesh threadgroups (one per web slot).
-// Mesh shader (64 threads per web):
-//   Thread 0     : hub cap quad (always visible when alive)
-//   Threads 1–8  : anchor dot quads (visible from anchorPulse onward)
-//   Threads 9–16 : radial spoke quads (visible from radial onward)
-//   Threads 17–56: spiral capture-thread segments (visible from spiral onward)
-//   Threads 57–63: idle (no geometry)
+// Buffer bindings:
+//   buffer(0) = FeatureVector      (192 bytes)
+//   buffer(3) = StemFeatures       (256 bytes)
+//   buffer(6) = ArachneWebGPU[12]  (768 bytes — ArachneState.webBuffer, raw array)
+//   buffer(7) = ArachneSpiderGPU   (80 bytes  — ArachneState.spiderBuffer)
 //
-// MeshVertex packing:
-//   position : clip-space
-//   normal.x : birth_hue [0, 1]
-//   normal.y : dist_from_hub [0, 1]
-//   normal.z : web opacity          (strand geometry)
-//              web opacity + 10.0   (dot geometry — circular mask sentinel)
-//   uv       : (along 0..1, across 0..1) for strands
-//              (0..1 corners)           for dots — circular mask via length(uv*2-1)
+// D-026 deviation-first, D-019 warmup, D-037: anchor web guarantees non-black
+// even with zeroed pool (acceptance tests run before ArachneState pre-seeds webs).
 
-// MARK: - ArachneSpiderGPU (byte-matches Swift ArachneSpiderGPU in ArachneState+Spider.swift)
-//
-// 80 bytes: 4 × float (16 B) + 8 × float2 (64 B).
-// Bound at fragment buffer(4) when Arachne is the active preset.
+// ── Structs (byte-match Swift counterparts) ───────────────────────────────────
 
-struct ArachneSpiderGPU {
-    float blend;          // 0 = absent, 1 = fully materialised
-    float posX, posY;     // clip-space body centre
-    float heading;        // orientation (radians)
-    float2 tip[8];        // leg tip positions in clip space
-};
-
-// MARK: - ArachneWebGPU (byte-matches Swift WebGPU in ArachneState.swift)
-
+/// 64 bytes — matches Swift WebGPU in ArachneState.swift.
 struct ArachneWebGPU {
-    // Row 0
     float hub_x, hub_y, radius, depth;
-    // Row 1
-    float rot_angle;
-    uint  anchor_count;
-    float spiral_revolutions;
-    uint  rng_seed;
-    // Row 2
-    float birth_beat_phase;
-    uint  stage;
-    float progress;
-    float opacity;
-    // Row 3
-    float birth_hue, birth_sat, birth_brt;
-    uint  is_alive;
+    float rot_angle; uint anchor_count; float spiral_revolutions; uint rng_seed;
+    float birth_beat_phase; uint stage; float progress, opacity;
+    float birth_hue, birth_sat, birth_brt; uint is_alive;
 };
 
-// MARK: - Payload (object → all 12 mesh threadgroups)
-
-struct ArachnePayload {
-    float bass_rel;        // D-026: FV bass deviation (object has no stem access)
-    float beat_phase01;    // MV-3b: 0→1 ramp to next predicted beat
-    float beats_until_next;
-    float aspect_ratio;
-    float time;
+/// 80 bytes — matches Swift ArachneSpiderGPU in ArachneState+Spider.swift.
+struct ArachneSpiderGPU {
+    float blend, posX, posY, heading;
+    float2 tip[8];
 };
 
-// MARK: - Object Shader
+// ── Constants ─────────────────────────────────────────────────────────────────
 
-/// Reads FeatureVector at buffer(0), populates shared payload, dispatches 12 mesh threadgroups.
-[[object, max_total_threads_per_threadgroup(1)]]
-void arachne_object_shader(
-    object_data ArachnePayload* payload [[payload]],
-    mesh_grid_properties          mgp,
-    constant FeatureVector&       features [[buffer(0)]],
-    uint tid [[thread_index_in_threadgroup]])
-{
-    // Dispatch one mesh threadgroup per web slot (12 total, matching ArachneState.maxWebs).
-    mgp.set_threadgroups_per_grid(uint3(12, 1, 1));
+constant int   kArachWebs    = 12;
+constant int   kArachSpokes  = 12;
+constant float kArachCamZ    = -3.0;    // camera Z (world units)
+constant float kArachFovTan  = 0.5774;  // tan(30°) → 60° vertical FOV
 
-    if (tid == 0) {
-        payload->bass_rel        = features.bass_rel;
-        payload->beat_phase01    = features.beat_phase01;
-        payload->beats_until_next = features.beats_until_next;
-        payload->aspect_ratio    = max(features.aspect_ratio, 0.1f);
-        payload->time            = features.time;
-    }
+// ── Geometry helpers ──────────────────────────────────────────────────────────
+
+/// Unsigned integer hash → float [0, 1).
+static float arachHash(uint seed) {
+    seed = (seed ^ 61u) ^ (seed >> 16u);
+    seed *= 9u;
+    seed = seed ^ (seed >> 4u);
+    seed *= 0x27d4eb2du;
+    seed = seed ^ (seed >> 15u);
+    return float(seed) * (1.0 / 4294967296.0);
 }
 
-// MARK: - Mesh Shader Geometry
-
-/// Web-slot layout (one per mesh threadgroup, 64 threads each):
-///   Thread 0    : hub cap quad        verts [0..3],    indices [0..5]
-///   Thread 1–8  : anchor dot i-1      verts [4+i*4..], indices [6+i*6..]
-///   Thread 9–16 : spoke j=lid-9       verts [36+j*4..],indices [54+j*6..]
-///   Thread 17–56: spiral seg k=lid-17 verts [68+k*4..],indices [102+k*6..]
-///   Thread 57–63: idle (return early)
-/// Max total: 228 vertices, 114 triangles (2 per quad slot × 57 active threads).
-
-typedef mesh<MeshVertex, MeshPrimitive, 228, 114, topology::triangle> ArachneMesh;
-
-// Per-anchor position: independent deterministic formula, no sequential LCG state.
-static inline float2 anchor_pos(ArachneWebGPU web, uint idx) {
-    uint s = web.rng_seed ^ (idx * 2246822519u + 1234567u);
-    s = s * 1664525u + 1013904223u;
-    float jitter = (float(s >> 8) / float(1 << 24) - 0.5f) * 0.55f;  // ±0.275 rad
-    float angle = web.rot_angle
-                + float(idx) * (2.0f * M_PI_F / float(web.anchor_count))
-                + jitter;
-    return float2(web.hub_x + cos(angle) * web.radius,
-                  web.hub_y + sin(angle) * web.radius);
+/// Angular distance (UV units) from point to the nearest of kArachSpokes radials.
+static float arachRadialDist(float2 p, float r) {
+    float theta = atan2(p.y, p.x);
+    float step  = 2.0 * M_PI_F / float(kArachSpokes);
+    float norm  = fract((theta + 2.0 * M_PI_F) / step);
+    float fold  = abs(norm - 0.5);
+    return fold * step * r;
 }
 
-// Write off-screen (clipped) quad for idle/inactive slots.
-static inline void write_offscreen(thread ArachneMesh& m, uint bv, uint bi) {
-    MeshVertex dead;
-    dead.position = float4(2.0f, 2.0f, 0.0f, 1.0f);
-    dead.uv       = float2(0, 0);
-    dead.normal   = float3(0, 0, 0);
-    dead.clipXY   = float2(2.0f, 2.0f);
-    m.set_vertex(bv + 0u, dead); m.set_vertex(bv + 1u, dead);
-    m.set_vertex(bv + 2u, dead); m.set_vertex(bv + 3u, dead);
-    for (uint k = 0u; k < 6u; k++) m.set_index(bi + k, bv);
+/// Angular distance (UV units) from point to nearest arm of Archimedean spiral.
+static float arachSpiralDist(float2 p, float r, float radius, float turns) {
+    float theta      = atan2(p.y, p.x);
+    float spirAngle  = theta - (r / radius) * turns * 2.0 * M_PI_F;
+    float fold       = abs(fract(spirAngle / (2.0 * M_PI_F)) - 0.5);
+    return fold * 2.0 * M_PI_F * r;
 }
 
-// Write a segment quad (p0→p1, half-widths w0→w1, aspect-corrected X).
-// normal.z encodes opacity (+10 for dot circular-mask sentinel).
-static inline void write_quad(
-    thread ArachneMesh& m, uint bv, uint bi,
-    float2 p0, float2 p1, float w0, float w1, float aspect,
-    float hue, float d0, float d1, float normalZ)
-{
-    float2 seg = p1 - p0;
-    float len  = length(seg);
-    float2 dir = len > 1e-5f ? (seg / len) : float2(0, 1);
-    float2 perp = float2(-dir.y, dir.x);
-    float2 ap0 = float2(perp.x / aspect, perp.y) * w0;
-    float2 ap1 = float2(perp.x / aspect, perp.y) * w1;
+/// 3D SDF of a single spider web lying in a tilted plane.
+/// Returns distance to the nearest strand surface (tube extruded from 2D web SDF).
+static float sdWebElement(
+    float3 p,
+    float3 center,
+    float  rotAngle,
+    float  radius,
+    float  spiralTurns,
+    float  tubeRadius,
+    float  vibAmp,
+    float  vibPhase,
+    uint   seedTilt,
+    uint   stage,
+    float  progress
+) {
+    // Derive a unique tilt for this web from its spawn seed.
+    float tx = (arachHash(seedTilt    ) - 0.5) * 0.30;
+    float ty = (arachHash(seedTilt + 7) - 0.5) * 0.22;
+    float3 wZ = normalize(float3(tx, ty, -1.0));
+    float3 wX = normalize(cross(float3(0, 1, 0), wZ));
+    float3 wY = cross(wZ, wX);
 
-    // v0 (p0 + perp), v1 (p0 - perp), v2 (p1 + perp), v3 (p1 - perp)
-    MeshVertex v;
-    v.normal = float3(hue, d0, normalZ);
-    v.position = float4(p0 + ap0, 0, 1); v.clipXY = p0 + ap0; v.uv = float2(0, 0); m.set_vertex(bv + 0u, v);
-    v.position = float4(p0 - ap0, 0, 1); v.clipXY = p0 - ap0; v.uv = float2(0, 1); m.set_vertex(bv + 1u, v);
-    v.normal.y = d1;
-    v.position = float4(p1 + ap1, 0, 1); v.clipXY = p1 + ap1; v.uv = float2(1, 0); m.set_vertex(bv + 2u, v);
-    v.position = float4(p1 - ap1, 0, 1); v.clipXY = p1 - ap1; v.uv = float2(1, 1); m.set_vertex(bv + 3u, v);
+    float3 dp     = p - center;
+    float  lZ     = dot(dp, wZ);
+    float  lX     = dot(dp, wX);
+    float  lY     = dot(dp, wY);
 
-    m.set_index(bi + 0u, bv + 0u); m.set_index(bi + 1u, bv + 2u); m.set_index(bi + 2u, bv + 1u);
-    m.set_index(bi + 3u, bv + 1u); m.set_index(bi + 4u, bv + 2u); m.set_index(bi + 5u, bv + 3u);
-}
+    // Apply in-plane rotation.
+    float ca = cos(rotAngle), sa = sin(rotAngle);
+    float2 pLocal = float2(lX * ca + lY * sa, -lX * sa + lY * ca);
+    float  r      = length(pLocal);
 
-[[mesh, max_total_threads_per_threadgroup(64)]]
-void arachne_mesh_shader(
-    object_data const ArachnePayload& payload [[payload]],
-    ArachneMesh m,
-    device const ArachneWebGPU* webs [[buffer(1)]],
-    uint  lid  [[thread_index_in_threadgroup]],
-    uint3 tgid [[threadgroup_position_in_grid]])
-{
-    uint webIdx = tgid.x;
-    ArachneWebGPU web = webs[webIdx];
+    // Hub sphere — always present once the web is alive.
+    float hubSDF = length(dp) - 0.020;
 
-    // Thread 0 sets primitive count; all others rely on this to be correct.
-    if (lid == 0u) {
-        m.set_primitive_count(web.is_alive != 0u ? 114u : 0u);
+    // No strands outside the rim or at the hub cap origin.
+    if (r < 0.001 || r > radius * 1.03) return hubSDF;
+
+    // Radial spokes (stage >= 1: radial, spiral, stable, evicting).
+    float minStrand = 1e6;
+    if (stage >= 1u) {
+        float rDist    = arachRadialDist(pLocal, r);
+        // Beat-phase-locked transverse vibration plucks the radials.
+        float vibR     = sin(r * 20.0 - vibPhase) * vibAmp;
+        float rDistVib = abs(rDist + vibR);
+        minStrand = length(float2(max(rDistVib - tubeRadius, 0.0), lZ)) - tubeRadius;
     }
 
-    // Dead slots: write nothing (primitive_count=0 means no rasterization).
-    if (web.is_alive == 0u) return;
-
-    float aspect  = payload.aspect_ratio;
-    float hue     = web.birth_hue;
-    float opacity = web.opacity;
-    uint  stage   = web.stage;
-    uint  ac      = web.anchor_count;
-    float2 hub    = float2(web.hub_x, web.hub_y);
-
-    // MV-3b beat anticipation (stronger the closer we get to the next beat).
-    float anticipation = smoothstep(0.75f, 1.0f, payload.beat_phase01);
-    float bassBoost    = max(0.0f, payload.bass_rel) * 0.10f;
-
-    // ── Thread 0: hub cap ──────────────────────────────────────────────────────
-    if (lid == 0u) {
-        float r = 0.018f * (1.0f + anticipation * 0.55f + bassBoost);
-        // anchorPulse: pulse with beat anticipation only — no free-running oscillation.
-        if (stage == 0u) r *= 1.0f + anticipation * 0.9f;
-        // Segment along Y, width = r → visually circular (aspect-corrected)
-        float2 p0 = float2(hub.x, hub.y - r);
-        float2 p1 = float2(hub.x, hub.y + r);
-        write_quad(m, 0u, 0u, p0, p1, r, r, aspect, hue, 0.0f, 0.0f, opacity + 10.0f);
-        return;
-    }
-
-    // ── Threads 1–8: anchor dots — suppressed (write offscreen) ──────────────
-    // Anchor dots were confusing; anchors remain as radial spoke endpoints only.
-    if (lid <= 8u) {
-        uint ai = lid - 1u;
-        write_offscreen(m, 4u + ai * 4u, 6u + ai * 6u);
-        return;
-    }
-
-    // ── Threads 9–16: radial spokes ────────────────────────────────────────────
-    if (lid <= 16u) {
-        uint si = lid - 9u;
-        uint bv = 36u + si * 4u;
-        uint bi = 54u + si * 6u;
-
-        bool active = (si < ac) && (stage >= 1u);
-        // During radial stage, spokes appear one-by-one as progress advances.
-        if (active && stage == 1u) {
-            float threshold = float(si) / float(ac);
-            active = web.progress >= threshold;
+    // Spiral capture threads (stage >= 2: spiral, stable, evicting).
+    if (stage >= 2u) {
+        float progressR = (stage == 2u) ? (progress * radius) : radius;
+        if (r <= progressR + 0.01) {
+            float sDist    = arachSpiralDist(pLocal, r, radius, spiralTurns);
+            float vibS     = sin(r * 15.0 - vibPhase + 1.2) * vibAmp * 0.65;
+            float sDistVib = abs(sDist + vibS);
+            float spirTube = tubeRadius * 0.60;
+            float spirSDF  = length(float2(max(sDistVib - spirTube, 0.0), lZ)) - spirTube;
+            minStrand = min(minStrand, spirSDF);
         }
-
-        if (!active) { write_offscreen(m, bv, bi); return; }
-
-        float2 aPos = anchor_pos(web, si);
-        // Taper: 0.005 at hub, 0.0015 at anchor.
-        write_quad(m, bv, bi, hub, aPos, 0.005f, 0.0015f, aspect, hue, 0.0f, 0.85f, opacity);
-        return;
     }
 
-    // ── Threads 17–56: spiral capture-thread segments ─────────────────────────
-    if (lid <= 56u) {
-        uint segIdx = lid - 17u;
-        uint bv = 68u + segIdx * 4u;
-        uint bi = 102u + segIdx * 6u;
-
-        bool active = (stage >= 2u);
-        // During spiral stage, segments appear sequentially as progress advances.
-        if (active && stage == 2u) {
-            active = web.progress >= (float(segIdx) / 40.0f);
-        }
-
-        if (!active) { write_offscreen(m, bv, bi); return; }
-
-        // Spiral: winds from hub to outer radius over spiral_revolutions turns.
-        float t0 = float(segIdx) / 40.0f;
-        float t1 = float(segIdx + 1u) / 40.0f;
-
-        float a0 = web.rot_angle + t0 * web.spiral_revolutions * (2.0f * M_PI_F);
-        float a1 = web.rot_angle + t1 * web.spiral_revolutions * (2.0f * M_PI_F);
-
-        float2 pos0 = hub + float2(cos(a0), sin(a0)) * (web.radius * t0);
-        float2 pos1 = hub + float2(cos(a1), sin(a1)) * (web.radius * t1);
-
-        // Strand tapers outward: thick near hub, fine at edge.
-        float w0 = mix(0.0040f, 0.0010f, t0);
-        float w1 = mix(0.0040f, 0.0010f, t1);
-
-        write_quad(m, bv, bi, pos0, pos1, w0, w1, aspect, hue, t0, t1, opacity);
-        return;
-    }
-
-    // Threads 57–63: no geometry (slots already counted in prim_count=114 but
-    // those index slots are outside the 0..113 range we wrote — unreachable).
+    return min(hubSDF, minStrand);
 }
 
-// MARK: - Spider SDF (Increment 3.5.9)
-//
-// Orthographic ray-march from above (ray origin above Z=0 web plane, direction (0,0,-1)).
-// Fragment calls sdSpider only when in.clipXY is within bounding radius of the body.
+// ── Spider SDF (Increment 3.5.9, preserved) ───────────────────────────────────
 
 static float spOpSmoothUnion(float d1, float d2, float k) {
-    float h = saturate(0.5f + 0.5f * (d2 - d1) / k);
-    return mix(d2, d1, h) - k * h * (1.0f - h);
+    float h = saturate(0.5 + 0.5 * (d2 - d1) / k);
+    return mix(d2, d1, h) - k * h * (1.0 - h);
 }
 
 static float spSdCapsule(float3 p, float3 a, float3 b, float r) {
     float3 ab = b - a, ap = p - a;
-    float  t  = saturate(dot(ap, ab) / max(dot(ab, ab), 1e-8f));
+    float  t  = saturate(dot(ap, ab) / max(dot(ab, ab), 1e-8));
     return length(ap - ab * t) - r;
 }
 
 static float spSdEllipsoid(float3 p, float3 r) {
     float k0 = length(p / r);
     float k1 = length(p / (r * r));
-    return k0 * (k0 - 1.0f) / max(k1, 1e-8f);
+    return k0 * (k0 - 1.0) / max(k1, 1e-8);
 }
 
-// Full spider SDF in local spider space (body centre at origin, heading pre-applied).
 static float sdSpiderLocal(float3 lp, float2 tipLocal[8]) {
-    // Body: abdomen + cephalothorax, smooth-unioned
-    float abdomen = spSdEllipsoid(lp - float3(0.0f, 0.0f,  0.06f), float3(0.085f, 0.080f, 0.105f));
-    float head    = spSdEllipsoid(lp - float3(0.0f, 0.0f, -0.04f), float3(0.048f, 0.043f, 0.048f));
-    float body    = spOpSmoothUnion(abdomen, head, 0.025f);
-
-    // Hip offsets (local space) — 4 pairs radiating outward
+    float abdomen = spSdEllipsoid(lp - float3(0, 0,  0.06), float3(0.085, 0.080, 0.105));
+    float head    = spSdEllipsoid(lp - float3(0, 0, -0.04), float3(0.048, 0.043, 0.048));
+    float body    = spOpSmoothUnion(abdomen, head, 0.025);
     float3 hips[8] = {
-        float3(-0.05f, -0.03f, 0.00f), float3(-0.05f,  0.03f, 0.00f),
-        float3(-0.02f, -0.06f, 0.00f), float3(-0.02f,  0.06f, 0.00f),
-        float3( 0.02f, -0.06f, 0.00f), float3( 0.02f,  0.06f, 0.00f),
-        float3( 0.05f, -0.03f, 0.00f), float3( 0.05f,  0.03f, 0.00f),
+        float3(-0.05, -0.03, 0.00), float3(-0.05,  0.03, 0.00),
+        float3(-0.02, -0.06, 0.00), float3(-0.02,  0.06, 0.00),
+        float3( 0.02, -0.06, 0.00), float3( 0.02,  0.06, 0.00),
+        float3( 0.05, -0.03, 0.00), float3( 0.05,  0.03, 0.00),
     };
-
-    float legs = 1e6f;
+    float legs = 1e6;
     for (int i = 0; i < 8; i++) {
-        float3 tip  = float3(tipLocal[i].x, tipLocal[i].y, 0.0f);
+        float3 tip  = float3(tipLocal[i].x, tipLocal[i].y, 0.0);
         float3 hip  = hips[i];
-        // Knee: midpoint + upward arc
-        float3 knee = (hip + tip) * 0.5f + float3(0.0f, 0.0f, 0.07f);
-        float  seg0 = spSdCapsule(lp, hip,  knee, 0.013f);
-        float  seg1 = spSdCapsule(lp, knee, tip,  0.010f);
-        legs = min(legs, min(seg0, seg1));
+        float3 knee = (hip + tip) * 0.5 + float3(0, 0, 0.07);
+        legs = min(legs, min(spSdCapsule(lp, hip, knee, 0.013),
+                             spSdCapsule(lp, knee, tip, 0.010)));
     }
     return min(body, legs);
 }
 
-// Finite-difference surface normal (6-tap tetrahedron).
 static float3 calcSpiderNormal(float3 p, float2 tipLocal[8]) {
-    float2 e = float2(0.0015f, 0.0f);
+    float2 e = float2(0.0015, 0.0);
     return normalize(float3(
         sdSpiderLocal(p + float3(e.x,e.y,e.y), tipLocal) - sdSpiderLocal(p - float3(e.x,e.y,e.y), tipLocal),
         sdSpiderLocal(p + float3(e.y,e.x,e.y), tipLocal) - sdSpiderLocal(p - float3(e.y,e.x,e.y), tipLocal),
@@ -322,152 +183,231 @@ static float3 calcSpiderNormal(float3 p, float2 tipLocal[8]) {
     ));
 }
 
-// MARK: - Fragment Shader
+// ── Scene fragment ─────────────────────────────────────────────────────────────
 
-/// Bioluminescent strand/dot rendering with additive blending.
-///
-/// D-019 warmup: bass quiver blends from features.bass_rel (cold) to
-/// stems.bass_energy_rel (warm) as total stem energy crosses 2–6 %.
-/// MV-3b: pre-beat anticipation brightens all strands as beat_phase01 → 1.
-/// Increment 3.5.9: spider SDF overlay when spiderData->blend > 0.
 fragment float4 arachne_fragment(
-    MeshVertex                    in         [[stage_in]],
-    constant FeatureVector&       features   [[buffer(0)]],
-    constant StemFeatures&        stems      [[buffer(3)]],
-    constant ArachneSpiderGPU&    spider     [[buffer(4)]])
-{
-    // Unpack normal: normal.z >= 10 → hub cap (circular mask); else → strand.
-    bool  isHub    = in.normal.z >= 10.0f;
-    float webOpacity = isHub ? (in.normal.z - 10.0f) : in.normal.z;
-    webOpacity = saturate(webOpacity);
+    VertexOut                   in      [[stage_in]],
+    constant FeatureVector&     f       [[buffer(0)]],
+    constant float*             fft     [[buffer(1)]],
+    constant float*             wave    [[buffer(2)]],
+    constant StemFeatures&      stems   [[buffer(3)]],
+    constant ArachneWebGPU*     webs    [[buffer(6)]],
+    constant ArachneSpiderGPU&  spider  [[buffer(7)]]
+) {
+    float2 uv  = in.uv;
+    float2 ndc = uv * 2.0 - 1.0;
 
-    // D-019 warmup: blend FV bass deviation with stems as stem energy warms up.
-    float totalStemEnergy = stems.drums_energy + stems.bass_energy
-                          + stems.other_energy + stems.vocals_energy;
-    float stemMix = smoothstep(0.02f, 0.06f, totalStemEnergy);
-    float bassRel = mix(features.bass_rel, stems.bass_energy_rel, stemMix);
+    // D-019 warmup.
+    float totalStemEnergy = stems.vocals_energy + stems.drums_energy
+                          + stems.bass_energy   + stems.other_energy;
+    float stemMix = smoothstep(0.02, 0.06, totalStemEnergy);
 
-    float dist = in.normal.y;  // 0 = hub, 1 = outer edge (strands)
+    // D-026 audio drivers.
+    float bassRel    = mix(f.bass_att_rel, stems.bass_energy_rel, stemMix);
+    float tautness   = mix(0.5, 1.0, saturate(0.5 + bassRel * 0.5));
 
-    // Bass quiver: wave phase-locked to beat_phase01 — one propagation per beat.
-    float quiver = 0.0f;
-    if (!isHub) {
-        float quiverAmp = max(0.0f, bassRel) * 0.08f;
-        quiver = sin(dist * 12.0f - features.beat_phase01 * (2.0f * M_PI_F)) * quiverAmp * dist;
-    }
+    // Beat-phase vibration: plucks strands once per beat cycle.
+    float vibAmp   = max(0.0, bassRel) * 0.007;
+    float vibPhase = f.beat_phase01 * 2.0 * M_PI_F;
 
-    // MV-3b: pre-beat surge as beat_phase01 → 1.
-    float anticipation = smoothstep(0.75f, 1.0f, features.beat_phase01) * 0.25f;
+    // Strand thickness breathes with bass.
+    float tubeRadius = 0.0055 + max(0.0, bassRel) * 0.003;
 
-    // 2-layer bioluminescent glow profile.
-    // isHub: circular distance mask. Strands: gaussian cross-section (core + halo).
-    float profile;
-    if (isHub) {
-        float2 centred = in.uv * 2.0f - 1.0f;
-        float  dd = length(centred);
-        float  core = exp(-dd * dd * 14.0f);
-        float  halo = exp(-dd * dd * 1.0f);
-        profile = core + halo * 0.85f;
-    } else {
-        // Normalized cross-section distance from strand centerline: 0=center, 1=edge.
-        float cdist = abs(in.uv.y - 0.5f) * 2.0f;
-        float core  = exp(-cdist * cdist * 22.0f);   // tight silk thread
-        float halo  = exp(-cdist * cdist * 1.6f);    // wide bioluminescent diffusion
-        profile = core + halo * 0.85f;
+    // Slow hue drift over accumulated song energy.
+    float hueDrift = fract(f.accumulated_audio_time * 0.025 + f.mid_att_rel * 0.08);
 
-        // Hub fade: strands brighten as they converge at the hub (dist→0).
-        float hubFade = exp(-dist * dist * 3.5f);
-        profile *= 0.55f + hubFade * 0.45f;
-    }
+    // ── Camera ray ────────────────────────────────────────────────────────────
+    float aspect  = max(f.aspect_ratio, 0.5);
+    float3 camPos = float3(0, 0, kArachCamZ);
+    float3 rayDir = normalize(float3(ndc.x * aspect * kArachFovTan,
+                                     ndc.y * kArachFovTan, 1.0));
 
-    float hue = in.normal.x;
-    float sat  = 0.92f;
-    float brt  = 0.15f + quiver + anticipation + (isHub ? 0.80f : 0.72f);
-    brt = saturate(brt);
+    // ── Ray march ─────────────────────────────────────────────────────────────
+    int   hitType    = 0;   // 0=miss 1=strand 2=spider
+    float hitT       = 8.0;
+    float hitHue     = 0.52;
+    float hitSat     = 0.88;
+    float hitBrt     = 0.80;
+    float hitOpacity = 1.0;
 
-    float3 color = hsv2rgb(float3(fract(hue), sat, brt));
-    float  alpha = profile * webOpacity;
+    // Track nearest web SDF for glow: rays that don't hard-intersect still
+    // pick up bioluminescent halo from sub-pixel geometry (D-037 inv.4 at any res).
+    float minWebDist = 8.0;
+    float minWebHue  = 0.52;
+    float minWebSat  = 0.88;
+    float minWebBrt  = 0.78;
 
-    // Spider overlay (Increment 3.5.9) — 3D SDF ray-march when blend > 0.
-    if (spider.blend > 0.001f) {
-        float2 clipXY    = in.clipXY;
-        float2 bodyXY    = float2(spider.posX, spider.posY);
-        float  distBody  = length(clipXY - bodyXY);
+    float t = 0.05;
+    for (int step = 0; step < 56 && t < 8.0; step++) {
+        float3 pos = camPos + rayDir * t;
+        float  dMin = 8.0;
 
-        // Only ray-march within bounding radius (leg reach + margin).
-        if (distBody < 0.48f) {
-            // Transform tip positions to local spider space (rotate by -heading).
-            float ch = cos(-spider.heading), sh = sin(-spider.heading);
-            float2 tipLocal[8];
-            for (int i = 0; i < 8; i++) {
-                float2 d = spider.tip[i] - bodyXY;
-                tipLocal[i] = float2(d.x * ch - d.y * sh, d.x * sh + d.y * ch);
+        // ── Permanent anchor web at origin (D-037: visible even with zeroed pool).
+        // seedTilt=0 → slight canonical tilt; stage=3 (stable), progress=1.
+        float ancD = sdWebElement(pos, float3(0, 0, 0), 0.0, 0.38, 6.5,
+                                  tubeRadius, vibAmp * 0.5, vibPhase,
+                                  1984u, 3u, 1.0);
+        if (ancD < dMin) dMin = ancD;
+        if (ancD < minWebDist) {
+            minWebDist = ancD;
+            minWebHue = 0.52; minWebSat = 0.88; minWebBrt = 0.78 * tautness;
+        }
+        if (ancD < 0.002) {
+            hitType = 1; hitT = t;
+            hitHue = 0.52; hitSat = 0.88; hitBrt = 0.78 * tautness; hitOpacity = 0.65;
+        }
+
+        // ── Dynamic web pool ─────────────────────────────────────────────────
+        for (int i = 0; i < kArachWebs; i++) {
+            ArachneWebGPU w = webs[i];
+            if (w.is_alive == 0u || w.opacity < 0.02) continue;
+
+            // Map clip-space hub to world space; depth spreads webs in Z.
+            float3 wCenter = float3(w.hub_x * 1.25, w.hub_y,
+                                    mix(-0.45, 1.10, w.depth));
+            float wd = sdWebElement(pos, wCenter, w.rot_angle, w.radius,
+                                    w.spiral_revolutions, tubeRadius,
+                                    vibAmp, vibPhase, w.rng_seed, w.stage, w.progress);
+            if (wd < dMin) dMin = wd;
+            if (wd < minWebDist) {
+                minWebDist = wd;
+                minWebHue  = w.birth_hue;
+                minWebSat  = w.birth_sat * 0.90 + 0.08;
+                minWebBrt  = w.birth_brt * tautness;
             }
-
-            // Orthographic ray: origin above web plane, looking straight down.
-            float3 rayOrig = float3(clipXY.x - bodyXY.x, clipXY.y - bodyXY.y, 1.2f);
-            float3 rayDir  = float3(0.0f, 0.0f, -1.0f);
-
-            float  t   = 0.0f;
-            bool   hit = false;
-            for (int step = 0; step < 64; step++) {
-                float d = sdSpiderLocal(rayOrig + t * rayDir, tipLocal);
-                if (d < 0.0025f) { hit = true; break; }
-                if (t > 1.8f) break;
-                t += d;
-            }
-
-            if (hit) {
-                float3 hitP = rayOrig + t * rayDir;
-                float3 nrm  = calcSpiderNormal(hitP, tipLocal);
-
-                // PBR chitin: near-black base, iridescent clearcoat specular.
-                float3 lightDir = normalize(float3(0.25f, 0.35f, 1.0f));
-                float3 viewDir  = -rayDir;
-                float3 halfVec  = normalize(lightDir + viewDir);
-                float  nDotL    = max(dot(nrm, lightDir), 0.0f);
-                float  spec     = pow(max(dot(nrm, halfVec), 0.0f), 96.0f);
-                float  fresnel  = pow(1.0f - max(dot(nrm, viewDir), 0.0f), 3.0f);
-
-                // Iridescent hue: surface-normal-based shift (angle-dependent).
-                float  iridHue  = fract(nrm.x * 0.45f + nrm.y * 0.30f + 0.42f);
-                float3 iridCol  = hsv2rgb(float3(iridHue, 0.88f, 1.0f));
-
-                float3 chitin   = float3(0.018f, 0.020f, 0.022f);
-                float3 spiderCol = chitin * (0.15f + nDotL * 0.55f)
-                                 + iridCol * spec * 2.2f
-                                 + iridCol * fresnel * 0.35f;
-
-                // Bioluminescent rim: web glow bleeds onto spider silhouette edges.
-                spiderCol += color * fresnel * 0.5f;
-
-                float spiderA = spider.blend;
-                // Additive composite: spider adds to underlying web color.
-                color = color + spiderCol * spiderA;
-                alpha = max(alpha, spiderA * saturate(nDotL + spec * 2.0f + fresnel));
+            if (wd < 0.002) {
+                hitType = 1; hitT = t;
+                hitHue  = w.birth_hue;
+                hitSat  = w.birth_sat * 0.90 + 0.08;
+                hitBrt  = w.birth_brt * tautness;
+                hitOpacity = w.opacity;
             }
         }
+
+        // ── Spider SDF ───────────────────────────────────────────────────────
+        if (spider.blend > 0.01) {
+            float3 spWorld = float3(spider.posX * 1.25, spider.posY, 0.0);
+            float3 dp      = pos - spWorld;
+            float  ch = cos(-spider.heading), sh = sin(-spider.heading);
+            float3 spLocal = float3(dp.x * ch - dp.y * sh,
+                                    dp.x * sh + dp.y * ch, dp.z);
+            float2 tipLocal[8];
+            for (int k = 0; k < 8; k++) {
+                float2 td  = (spider.tip[k] - float2(spider.posX, spider.posY)) * 1.25;
+                tipLocal[k] = float2(td.x * ch - td.y * sh, td.x * sh + td.y * ch);
+            }
+            float spD = sdSpiderLocal(spLocal, tipLocal);
+            if (spD < dMin) dMin = spD;
+            if (spD < 0.002) { hitType = 2; hitT = t; }
+        }
+
+        if (dMin < 0.002) break;
+        t += max(dMin * 0.75, 0.003);
     }
 
-    return float4(color * alpha, alpha);
+    // ── Background (valence/arousal-tinted dark sky) ──────────────────────────
+    float  gv     = saturate(f.valence * 0.5 + 0.5);
+    float  ga     = saturate(f.arousal * 0.5 + 0.5);
+    float3 bgLow  = mix(float3(0.01, 0.01, 0.03), float3(0.02, 0.04, 0.01), ga);
+    float3 bgHigh = mix(float3(0.01, 0.02, 0.06), float3(0.04, 0.02, 0.05), ga);
+    float3 bgCol  = mix(bgLow, bgHigh, uv.y);
+    bgCol         = mix(bgLow, bgCol, gv);
+
+    // ── Shading ───────────────────────────────────────────────────────────────
+    float3 color = bgCol;
+
+    // Common audio factors shared by strand and glow shading.
+    float bassBoost = 1.0 + max(0.0, bassRel) * 0.55;
+    float anticipate = smoothstep(0.75, 1.0, f.beat_phase01) * 0.20;
+
+    if (hitType == 1) {
+        // Bioluminescent strand: self-emissive, no external light.
+        // Hue drift blended at 15% — colour shifts slowly, identity held.
+        float  finalHue = fract(hitHue + hueDrift * 0.15);
+        float3 strandCol  = hsv2rgb(float3(finalHue, hitSat,
+                                           saturate(hitBrt * bassBoost + anticipate)));
+        color = mix(bgCol, strandCol, saturate(hitOpacity));
+    } else if (hitType == 0) {
+        // Miss: soft bioluminescent glow from nearest strand.
+        // exp2 falloff ensures form complexity even for sub-pixel geometry (D-037 inv.4).
+        float  glowHue = fract(minWebHue + hueDrift * 0.15);
+        float  glowAmt = exp2(-max(minWebDist, 0.0) * 14.0);
+        float3 glowCol = hsv2rgb(float3(glowHue, minWebSat,
+                                        saturate(minWebBrt * bassBoost + anticipate)));
+        color = bgCol + glowCol * glowAmt;
+
+    } else if (hitType == 2 && spider.blend > 0.01) {
+        // Spider: PBR chitin (Increment 3.5.9 shading, re-used verbatim).
+        float3 spWorld = float3(spider.posX * 1.25, spider.posY, 0.0);
+        float3 hitPos  = camPos + rayDir * hitT;
+        float3 dp      = hitPos - spWorld;
+        float  ch = cos(-spider.heading), sh = sin(-spider.heading);
+        float3 spLocal = float3(dp.x * ch - dp.y * sh, dp.x * sh + dp.y * ch, dp.z);
+        float2 tipLocal[8];
+        for (int k = 0; k < 8; k++) {
+            float2 td  = (spider.tip[k] - float2(spider.posX, spider.posY)) * 1.25;
+            tipLocal[k] = float2(td.x * ch - td.y * sh, td.x * sh + td.y * ch);
+        }
+        float3 nrm      = calcSpiderNormal(spLocal, tipLocal);
+        float3 lightDir = normalize(float3(0.25, 0.35, -1.0));
+        float3 viewDir  = -rayDir;
+        float3 halfVec  = normalize(lightDir + viewDir);
+        float  nDotL    = max(dot(nrm, lightDir), 0.0);
+        float  spec     = pow(max(dot(nrm, halfVec), 0.0), 96.0);
+        float  fresnel  = pow(1.0 - max(dot(nrm, viewDir), 0.0), 3.0);
+        float  iridHue  = fract(nrm.x * 0.45 + nrm.y * 0.30 + 0.42);
+        float3 iridCol  = hsv2rgb(float3(iridHue, 0.88, 1.0));
+        float3 chitin   = float3(0.018, 0.020, 0.022);
+        color = chitin   * (0.15 + nDotL * 0.55)
+              + iridCol  * spec * 2.2
+              + iridCol  * fresnel * 0.35
+              + bgCol    * fresnel * 0.4;
+        color *= spider.blend;
+        color += bgCol * (1.0 - spider.blend);
+    }
+
+    // D-037 invariant 2: clamp before sRGB encoding.
+    color = min(color, float3(0.95));
+    return float4(color, 1.0);
 }
 
-// MARK: - Vertex Fallback (M1 / M2)
+// ── MV-Warp functions ─────────────────────────────────────────────────────────
+// decay 0.92 keeps trails short enough to preserve 3D perspective depth.
+// Bass-driven zoom breath + mid-driven slow rotation animate the web field.
 
-/// Full-screen triangle with bioluminescent radial glow for pre-apple8 hardware.
-/// Simulates a single large stable web centered on screen.
-vertex MeshVertex arachne_fallback_vertex(uint vid [[vertex_id]])
-{
-    float2 uv    = float2(float((vid << 1u) & 2u), float(vid & 2u)) * 0.5f;
-    float2 ndcXY = uv * 4.0f - 1.0f;
+MVWarpPerFrame mvWarpPerFrame(
+    constant FeatureVector& f,
+    constant StemFeatures&  stems,
+    constant SceneUniforms& s
+) {
+    MVWarpPerFrame pf;
+    pf.cx  = 0.0; pf.cy = 0.0;
+    pf.dx  = 0.0; pf.dy = 0.0;
+    pf.sx  = 1.0; pf.sy = 1.0;
+    pf.warp = 0.0;
 
-    MeshVertex out;
-    out.position = float4(ndcXY, 0.0f, 1.0f);
-    out.clipXY   = ndcXY;
+    pf.zoom  = 1.0 + f.bass_att_rel * 0.008 + f.mid_att_rel * 0.004;
+    pf.rot   = f.mid_att_rel * 0.0025;
+    pf.decay = 0.92;
 
-    // Simulate distance-from-hub for the fragment's glow falloff.
-    float dist = saturate(length(uv * 2.0f - 1.0f));
-    out.normal  = float3(0.55f, dist, 0.85f);  // hue=cyan-blue, dist, opacity
-    out.uv      = float2(0.5f, 0.5f);          // centre of strand → fully opaque edge mask
-    return out;
+    pf.q1 = f.bass_att_rel;
+    pf.q2 = f.mid_att_rel;
+    pf.q3 = 0.0; pf.q4 = 0.0;
+    pf.q5 = 0.0; pf.q6 = 0.0; pf.q7 = 0.0; pf.q8 = 0.0;
+    return pf;
+}
+
+float2 mvWarpPerVertex(
+    float2 uv, float rad, float ang,
+    thread const MVWarpPerFrame& pf,
+    constant FeatureVector& f,
+    constant StemFeatures& stems
+) {
+    float2 centre = float2(0.5, 0.5);
+    float2 p      = uv - centre;
+
+    float  zoomAmt   = 1.0 / max(pf.zoom, 0.001);
+    float2 zoomed    = p * zoomAmt + centre;
+    float  wobble    = (pf.q1 * 0.010 + pf.q2 * 0.006) * rad;
+    return zoomed + p * wobble;
 }

@@ -290,6 +290,24 @@ Post-session visual feedback on all three Arachnid Trilogy presets surfaced acti
 
 **Files to touch:** `ArachneState.swift` (gait solver + spider state + sub-bass trigger), `Arachne.metal` (spider SDF + fragment overlay), `ArachneStateTests.swift` (4 new tests: trigger fires on sustained sub-bass, does NOT fire on kick, spider dematerialises, cooldown gate).
 
+### Increment 3.5.10 — Arachne ray march remaster ✅
+
+**Landed:** 2026-04-21
+
+**Scope:** Replace Arachne's mesh-shader preset with a full 3D SDF ray-marched scene. The mesh-shader implementation used free-running `sin(time)` oscillators that made motion feel mechanical and disconnected from audio (failed approach #33, session 2026-04-21T13-26-38Z). The ray-march approach gives correct 3D perspective, unique per-web tilt, beat-phase-locked vibration, and proper temporal accumulation via mv_warp.
+
+**Architecture changes:**
+- `Arachne.json`: passes changed from `["mesh_shader"]` to `["mv_warp"]`. Preset is now a direct fragment shader + mv_warp, not a mesh shader.
+- `Arachne.metal`: complete rewrite as 3D SDF ray march. 56-step march, perspective camera (60° FOV, z=-3). Each web is a tilted disc of SDF tubes in world space. Per-web tilt derived deterministically from `rng_seed`. Permanent anchor web at origin (D-037). Spider SDF from Increment 3.5.9 preserved byte-for-byte. Soft bioluminescent glow (`exp2(-minWebDist * 14)`) ensures form complexity at any render resolution (D-037 inv.4). mv_warp decay=0.92 for short temporal echo that doesn't obscure depth.
+- `VisualizerEngine+Presets.swift`: Arachne setup moved from `.meshShader` case to `.mvWarp` case. Buffer(6) = web pool, buffer(7) = spider GPU.
+- `RenderPipeline.swift` + `RenderPipeline+PresetSwitching.swift` + `RenderPipeline+MVWarp.swift`: added `directPresetFragmentBuffer2` (buffer(7)) infrastructure.
+- `PresetAcceptanceTests.swift`: buffer(7) bound (zeroed) so spider `blend=0` during tests.
+- `PresetRegressionTests.swift`: Arachne golden hash added.
+
+**D-041** in DECISIONS.md.
+
+444 tests pass; 0 SwiftLint violations.
+
 ### Increment MV-0 — Drop v4.2 stash, re-land sky-tint conditional ✅
 
 **Landed:** 2026-04-16, commit `91f698d5`
