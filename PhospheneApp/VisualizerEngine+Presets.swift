@@ -44,6 +44,7 @@ extension VisualizerEngine {
         pipeline.setActivePasses([])
         pipeline.setMeshGenerator(nil)
         pipeline.setMeshPresetBuffer(nil)
+        pipeline.setMeshPresetFragmentBuffer(nil)
         pipeline.setMeshPresetTick(nil)
         arachneState = nil
         gossamerState = nil
@@ -81,6 +82,7 @@ extension VisualizerEngine {
                     if let state = ArachneState(device: context.device) {
                         arachneState = state
                         pipeline.setMeshPresetBuffer(state.webBuffer)
+                        pipeline.setMeshPresetFragmentBuffer(state.spiderBuffer)
                         pipeline.setMeshPresetTick { [weak state] features, stems in
                             state?.tick(features: features, stems: stems)
                         }

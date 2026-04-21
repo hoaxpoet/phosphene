@@ -67,6 +67,12 @@ extension RenderPipeline {
             encoder.setMeshBuffer(presetBuf, offset: 0, index: 1)
         }
 
+        // Bind optional per-preset fragment buffer at buffer(4) for mesh presets
+        // that pass CPU-side state to the fragment shader (e.g. Arachne spider).
+        if let fragBuf = meshPresetFragmentBufferLock.withLock({ meshPresetFragmentBuffer }) {
+            encoder.setFragmentBuffer(fragBuf, offset: 0, index: 4)
+        }
+
         // Delegate pipeline state selection and draw dispatch to the generator.
         meshGenerator.draw(encoder: encoder, features: features)
 

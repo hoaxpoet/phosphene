@@ -142,6 +142,16 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     /// Updated once per frame in `draw(in:)`, reset on track change.
     public let spectralHistory: SpectralHistoryBuffer
 
+    // MARK: - Mesh Preset Fragment Buffer (buffer(4))
+
+    /// Optional per-preset fragment buffer for mesh presets.
+    ///
+    /// Bound at fragment buffer index 4 in `drawWithMeshShader` when non-nil.
+    /// Used by mesh presets (e.g. Arachne) that need to pass CPU-side state to
+    /// the fragment shader. Follows the same pattern as `directPresetFragmentBuffer`.
+    var meshPresetFragmentBuffer: MTLBuffer?
+    let meshPresetFragmentBufferLock = NSLock()
+
     // MARK: - Direct Preset Fragment Buffer (buffer(6))
 
     /// Optional per-preset fragment buffer for direct-fragment mv_warp presets.

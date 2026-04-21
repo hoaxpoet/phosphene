@@ -450,6 +450,8 @@ Seven new fields were added to `PresetDescriptor` to give the Orchestrator (Incr
 
 **How to apply:** The `internal static let` constants (`weightMood`, `weightTempoMotion`, `weightStemAffinity`, `weightSectionSuitability`, `familyRepeatPenalty`, `fatigueCooldown`) are the only place these values are defined — adjust there to tune globally. The `PresetScoreBreakdown` struct surfaces all sub-scores for introspection and future calibration tooling.
 
+**Scarcity-via-cooldown pattern (Stalker, Increment 3.5.7):** `fatigue_risk: "high"` is the correct lever to make a preset feel rare and surprising without adding per-preset logic. Stalker's 300 s cooldown means it appears at most once per 5 minutes in a continuous session, which is intentional — a predator that appears too often stops feeling predatory. The listening-pose capability justifies scarcity: it needs time between appearances to retain its perceptual impact.
+
 ---
 
 ## D-033: Transition policy design — structural boundary priority and energy-scaled crossfades (Increment 4.2)
@@ -592,3 +594,23 @@ Arachne is the first preset in a planned family of organic / nature-derived visu
 **Golden update workflow:** Run `UPDATE_GOLDEN_SNAPSHOTS=1 swift test --package-path PhospheneEngine --filter "test_printGoldenHashes"`. The test prints Swift literal lines to stdout. Paste into `goldenPresetHashes` in `PresetRegressionTests.swift`. New presets that have no entry skip silently — CI does not fail on a new preset until its goldens are explicitly added.
 
 **Hardware caveat:** Goldens are generated and validated on Apple Silicon. A different GPU generation may produce different 8-bit output for fragment shaders that use trigonometric functions (GPU sine/cosine precision varies across architectures). If CI runs on a different device tier from where goldens were generated, set a per-tier golden dictionary or accept a wider Hamming threshold.
+
+---
+
+## D-040 — Spider easter egg design for Arachne (Increment 3.5.9)
+
+**Status:** Accepted (2026-04-21)
+
+**Context:** Arachne is the first mesh-shader preset in the Arachnid Trilogy. The design called for an easter egg spider that rewards deep-listening sessions with James Blake-style sub-bass. Three questions required explicit decisions.
+
+**Decision 1 — Render approach: fragment overlay, not separate mesh threadgroup.**
+
+A separate threadgroup 0 for the spider body would require all web threadgroups to shift to indices 1–12, and a full-resolution quad mesh needed a different dispatch path. The fragment overlay approach runs the spider SDF inside every web fragment that passes a bounding-radius check against the spider position. Since the spider spawns at the hub (the densest pixel region), it appears fully visible. Background pixels between webs have no fragments, so there is no cost.
+
+**Decision 2 — Separate `ArachneSpiderGPU` buffer at fragment buffer(4), not extending `WebGPU`.**
+
+`WebGPU` is 64 bytes, tightly packed, and has 12 instances per frame (768 bytes). Adding 80 spider bytes would inflate it to 144 bytes × 12 = 1728 bytes and change the byte layout that the object/mesh shader already indexes by `[[payload_index]]`. A separate 80-byte buffer at fragment buffer(4) — the same slot used by the `meshPresetFragmentBuffer` infrastructure added for this increment — is cleaner and leaves `WebGPU` stable.
+
+**Decision 3 — Sub-bass trigger discriminates sustained resonance from transient kick drums.**
+
+The spider should appear during James Blake "Limit to Your Love" sub-bass drops, NOT during every kick drum in a house track. The trigger uses `bassAttackRatio < 0.55` (from `StemFeatures.bassAttackRatio`, the ratio of peak attack energy to sustained RMS) as a gate alongside the energy threshold. A kick drum has a high attack ratio (~0.9); a sustained sub-bass tone has a low ratio (~0.2–0.4). Session cooldown (300 s) prevents back-to-back appearances. This three-part condition (energy + attack ratio + accumulator) is identical to StalkerState's listening-pose trigger, validated across genres in Increment 3.5.7.

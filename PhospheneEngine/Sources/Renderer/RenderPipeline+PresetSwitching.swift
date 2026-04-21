@@ -104,6 +104,12 @@ extension RenderPipeline {
         stemFeaturesLock.withLock { latestStemFeatures = features }
     }
 
+    /// Attach a per-preset fragment buffer for mesh presets (bound at fragment buffer(4)).
+    /// Pass nil to detach. Thread-safe — can be called from any queue.
+    public func setMeshPresetFragmentBuffer(_ buffer: MTLBuffer?) {
+        meshPresetFragmentBufferLock.withLock { meshPresetFragmentBuffer = buffer }
+    }
+
     /// Attach a per-preset fragment buffer for direct-fragment mv_warp presets (bound at buffer(6)).
     /// Pass nil to detach. Thread-safe — can be called from any queue.
     public func setDirectPresetFragmentBuffer(_ buffer: MTLBuffer?) {

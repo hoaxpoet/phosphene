@@ -239,6 +239,57 @@ Bioluminescent hero-web as a musical resonator. A single SDF-drawn static web (1
 
 **Verification:** `swift test --package-path PhospheneEngine` → 435 tests pass; `xcodebuild -scheme PhospheneApp` → BUILD SUCCEEDED.
 
+### Increment 3.5.7 — Stalker Preset — **Retired** ✅
+
+**Landed:** 2026-04-21 | **Retired:** 2026-04-21
+
+Stalker was the original third entry in the Arachnid Trilogy: a black silhouette spider crossing a background web with a realistic alternating-tetrapod gait, triggered to a listening pose by sustained low-attack-ratio bass. After seeing all three trilogy presets in the session, the design was revised: the static-web-with-traversing-spider pattern created dead time (nothing interesting while the spider is offscreen) and the 2D mesh silhouette lacked the visual fidelity the preset deserved. The gait solver, sustained-bass discriminator, and GPU buffer architecture were retained as engineering foundations; the spider will be reborn as a 3D ray-march SDF easter egg triggered inside Arachne (see Increment 3.5.8).
+
+**Removed files:** `Stalker/StalkerGait.swift`, `Stalker/StalkerState.swift`, `Stalker/StalkerState+GPU.swift`, `Shaders/Stalker.metal`, `Shaders/Stalker.json`, `StalkerGaitTests.swift`, `StalkerStateTests.swift`. All `stalkerState` references removed from `VisualizerEngine.swift` and `VisualizerEngine+Presets.swift`.
+
+**Post-retirement:** 440 tests pass; BUILD SUCCEEDED; 0 SwiftLint violations.
+
+### Increment 3.5.8 — Arachne + Gossamer visual rework ✅
+
+**Landed:** 2026-04-21
+
+Post-session visual feedback on all three Arachnid Trilogy presets surfaced actionable changes to Arachne and Gossamer. No logic regressions; 440 tests pass before and after.
+
+**Arachne changes:**
+- **Stage pacing slowed 3×**: `radialDuration` → `Float(anchorCount) × 2.0` beats (10–16 beats), `spiralDuration` → `max(20.0, revolutions × 2.5)` (≥20 beats). At 120 BPM a full build now takes ≥18s. `evictingDuration` extended to 4 beats.
+- **Per-web golden-ratio hue**: `birthHue = fract(Float(slot) × 0.618 + centroidJitter)`. 12 web slots distribute across the hue wheel with no repetition (Fibonacci dispersion).
+- **Anchor dots removed**: threads 1–8 in the mesh shader always write offscreen. Anchors remain as spoke endpoints.
+- **2-layer bioluminescent glow**: fragment replaced smooth-step cross-section profile with `exp(-d²×22)` core + `exp(-d²×3.8)` halo. Hub-fade term `exp(-dist²×3.5)` brightens strand bases. Hub cap uses circular gaussian instead of hard smoothstep.
+- **Saturation locked high**: `birthSat = 0.88 + lcg * 0.10` (vs centroid-derived). Seeded webs use slot-0/1 golden-ratio hues at sat=0.92.
+
+**Gossamer changes:**
+- **Gaussian wave rings**: `exp(-(dr²) / (sigma²))` with sigma=0.011 UV. Eliminates hard-edge "block" artifacts from the previous `smoothstep(thickness, 0.0, dr)`.
+- **Web breathing**: radials brighten with `max(0, bassRel) × 0.65`, spiral with `max(0, mid_att_rel) × 0.50`. Blend weight from per-pixel `radCov / (radCov + spirCov)`.
+- **2-layer strand halos**: Gaussian halo terms `exp(-rDist²/0.0055²)` and `exp(-sDist²/0.0045²)` add visible luminous aura around each strand.
+- **Complementary color pairs**: each wave also contributes `hsv2rgb(hue + 0.5, sat × 0.45, amp × 0.30)` for iridescent shimmer at wave edges.
+- **Interference blooms**: `saturate(totalRingWeight - 1.0) × 0.45 × strandCov` adds warm-white burst where ≥2 waves overlap.
+- **Reduced mv_warp decay**: `0.955 → 0.90` (shorter trails, sharper visual impact per wave). JSON sidecar updated.
+- **Saturation floor raised**: `emitWave` saturation floor `0.5 → 0.85`; drift waves `0.60 → 0.90`; seeded waves `0.70/0.65 → 0.92/0.90`.
+
+### Increment 3.5.9 — Spider easter egg in Arachne ✅
+
+**Landed:** 2026-04-21
+
+**Scope:** Add a 3D ray-march SDF spider that appears as a rare easter egg inside the Arachne mesh-shader preset. Frequency target: ~1-in-10 songs. Trigger: sustained sub-bass (`subBass > 0.65`, `bassAttackRatio < 0.55`, held ≥ 0.75 s) + session-level cooldown (≥5 min between appearances). Calibration track: James Blake "Limit to Your Love" — prominent sub-bass drop after the chorus.
+
+**Design:**
+- Spider materialises on the web — positioned at the hub, limbs following radials in rest pose.
+- Fragment: ray-march SDF through the Arachne fragment shader (invoked when the spider is active via `spiderBlend > 0`). The spider SDF runs as an overlay pass in the mesh shader fragment.
+- Body: smooth-union ellipsoids — cephalothorax (major 0.06, minor 0.045), abdomen (major 0.08, minor 0.055), pedipalps (2 small spheres).
+- Legs: 8 × 3-joint tapered capsule chain. Hip joint at radial anchor positions; intermediate joints at ~0.55× full length; tip near spiral perimeter. Radius tapers 0.008 (hip) → 0.002 (tip).
+- Material: dark chitinous exoskeleton. Base albedo 0.015 (near-black). Clearcoat 0.85, roughness 0.08 for dramatic specular. Thin-film iridescence: `sin(normalDot × 12) × 0.15` shifts surface hue in cyan/violet band.
+- Lighting: lit primarily by the web's bioluminescent emission (nearest radials and spiral segments as area lights approximated by nearest `radCov`/`spirCov` values already computed in the fragment).
+- Animation: gait solver computed in `ArachneState.tick()` — same alternating-tetrapod math as the original GaitSolver but embedded in `ArachneState` (no separate file). State: `spiderBlend` (0 = absent, 1 = fully materialized), `spiderPos` (hub-relative UV), `spiderHeading`, `gaitPhase`.
+- GPU: extend `WebGPU` to include 1 extra `float4 × 12` block (spider body + 8 leg tip positions), OR add a separate `ArachneSpiderGPU` buffer at `object/mesh buffer(2)`. The latter is cleaner; the fragment will need to receive it via a separate binding.
+- Fade: spider materialises over ~2 s via `spiderBlend` easing. Dematerialises after sustained-bass condition ends (same asymmetric decay as original StalkerState accumulator).
+
+**Files to touch:** `ArachneState.swift` (gait solver + spider state + sub-bass trigger), `Arachne.metal` (spider SDF + fragment overlay), `ArachneStateTests.swift` (4 new tests: trigger fires on sustained sub-bass, does NOT fire on kick, spider dematerialises, cooldown gate).
+
 ### Increment MV-0 — Drop v4.2 stash, re-land sky-tint conditional ✅
 
 **Landed:** 2026-04-16, commit `91f698d5`
