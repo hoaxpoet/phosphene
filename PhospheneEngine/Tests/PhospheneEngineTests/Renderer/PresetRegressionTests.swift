@@ -31,7 +31,7 @@ private typealias PresetHashes = (steady: UInt64, beatHeavy: UInt64, quiet: UInt
 private let goldenPresetHashes: [String: PresetHashes] = [
     "Ferrofluid Ocean": (steady: 0x56AB1C4A28B32727, beatHeavy: 0x5CB393AAAFA84840, quiet: 0xA64C51A62FD35356),
     "Glass Brutalist": (steady: 0x3369549494544D33, beatHeavy: 0x3369549494544D33, quiet: 0x3369549494544D33),
-    "Gossamer": (steady: 0x14572B0F0F2A5714, beatHeavy: 0x14572B0F0F2A5714, quiet: 0x14572B0F0F2A5714),
+    "Gossamer": (steady: 0x14570B0F0F2F5714, beatHeavy: 0x14570B0F0F2F5714, quiet: 0x14570B0F0F2F5714),
     "Kinetic Sculpture": (steady: 0x592B6395585B1A4A, beatHeavy: 0x5B2B63B5505B124A, quiet: 0x5B2B6295585A1A4A),
     "Membrane": (steady: 0x33E3A919C9627939, beatHeavy: 0x12A3A998C9646139, quiet: 0x47E3C919CD627959),
     "Murmuration": (steady: 0x07449B6727773FF8, beatHeavy: 0x0B449A4727373FF8, quiet: 0x0744936727773FF8),
