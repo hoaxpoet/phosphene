@@ -26,10 +26,14 @@ struct ObjectPayload {
 /// Per-vertex output from the mesh shader stage.  Consumed by the fragment
 /// shader via [[stage_in]].  The [[position]] attribute marks the clip-space
 /// position; `normal` is available to preset fragment shaders for lighting.
+/// `clipXY` carries the interpolated clip-space XY for fragment-side ray-march
+/// presets (e.g. spider SDF in Arachne) that need the screen position without
+/// relying on the system [[position]] built-in's window-coordinate semantics.
 struct MeshVertex {
     float4 position [[position]];
     float2 uv;
     float3 normal;
+    float2 clipXY;
 };
 
 /// Per-primitive metadata.  Empty for base infrastructure — extend in presets
@@ -89,10 +93,12 @@ void mesh_shader(
     // identical to fullscreen_vertex in Common.metal).
     if (lid < 3) {
         float2 uv = float2(float((lid << 1u) & 2u), float(lid & 2u));
+        float2 clip = uv * 2.0 - 1.0;
         MeshVertex v;
-        v.position = float4(uv * 2.0 - 1.0, 0.0, 1.0);
+        v.position = float4(clip, 0.0, 1.0);
         v.uv       = float2(uv.x, 1.0 - uv.y);
         v.normal   = float3(0.0, 0.0, 1.0);
+        v.clipXY   = clip;
         m.set_vertex(lid, v);
     }
 }
@@ -117,10 +123,12 @@ fragment float4 mesh_fragment(MeshVertex in [[stage_in]]) {
 /// the preset's fragment shader executes normally; only the mesh geometry
 /// generation stage is missing.
 vertex MeshVertex mesh_fallback_vertex(uint vid [[vertex_id]]) {
-    float2 uv = float2(float((vid << 1u) & 2u), float(vid & 2u));
+    float2 uv   = float2(float((vid << 1u) & 2u), float(vid & 2u));
+    float2 clip = uv * 2.0 - 1.0;
     MeshVertex out;
-    out.position = float4(uv * 2.0 - 1.0, 0.0, 1.0);
+    out.position = float4(clip, 0.0, 1.0);
     out.uv       = float2(uv.x, 1.0 - uv.y);
     out.normal   = float3(0.0, 0.0, 1.0);
+    out.clipXY   = clip;
     return out;
 }

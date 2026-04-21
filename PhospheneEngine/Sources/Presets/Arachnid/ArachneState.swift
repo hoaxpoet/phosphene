@@ -93,14 +93,15 @@ public final class ArachneState: @unchecked Sendable {
     static let minSpawnGapBeats: Float = 0.5
 
     // Stage durations in beats.
-    static let anchorPulseDuration: Float = 1.0
+    // Deliberately slow: at 120 BPM a full web build takes ~18–24 s.
+    static let anchorPulseDuration: Float = 2.0
     static func radialDuration(_ anchorCount: UInt32) -> Float {
-        min(max(Float(anchorCount) - 2.0, 3), 6)
+        Float(anchorCount) * 2.0          // 10–16 beats for 5–8 anchors
     }
     static func spiralDuration(_ revolutions: Float) -> Float {
-        max(4.0, revolutions * 1.5)
+        max(20.0, revolutions * 2.5)      // ≥20 beats; 40 segments appear over 20 beats = 2s/segment at 120 BPM
     }
-    static let evictingDuration: Float = 2.0
+    static let evictingDuration: Float = 4.0
 
     // MARK: - Public Properties
 
@@ -113,15 +114,27 @@ public final class ArachneState: @unchecked Sendable {
     /// Spawn accumulator exposed for diagnostics.
     public private(set) var spawnAccumulator: Float = 0
 
+    // MARK: - Spider State (Increment 3.5.9)
+
+    /// GPU-side spider descriptor buffer — 80 bytes; bound at fragment buffer(4).
+    public let spiderBuffer: MTLBuffer
+    var spiderBlend: Float = 0
+    var spiderActive: Bool = false
+    var sustainedSubBassAccumulator: Float = 0
+    var timeSinceLastSpider: Float = 300.0  // starts at cooldown so first song can trigger
+    var spiderPosX: Float = 0; var spiderPosY: Float = 0; var spiderHeading: Float = 0
+    var spiderLegPhase: Float = 0
+    var spiderLegTips: [SIMD2<Float>] = Array(repeating: .zero, count: 8)
+
     // MARK: - Private State
 
-    private var webs: [WebGPU]
-    private var globalBeatIndex: Float = 0
+    var webs: [WebGPU]
+    var globalBeatIndex: Float = 0
     private var lastSpawnBeatIndex: Float = -10
     private var prevBeatPhase01: Float = 0
     private var prevBeatComposite: Float = 0
-    private var rng: UInt32
-    private let lock = NSLock()
+    var rng: UInt32
+    let lock = NSLock()
 
     // MARK: - Init
 
@@ -131,26 +144,34 @@ public final class ArachneState: @unchecked Sendable {
     ///   - device: Metal device for buffer allocation.
     ///   - seed: Deterministic seed — same seed + same frame inputs → identical output.
     public init?(device: MTLDevice, seed: UInt32 = 42) {
-        let bufferSize = Self.maxWebs * MemoryLayout<WebGPU>.stride
-        guard let buf = device.makeBuffer(length: bufferSize, options: .storageModeShared) else {
-            logger.error("ArachneState: failed to allocate webBuffer (\(bufferSize) bytes)")
+        let webBufSize = Self.maxWebs * MemoryLayout<WebGPU>.stride
+        guard let wBuf = device.makeBuffer(length: webBufSize, options: .storageModeShared) else {
+            logger.error("ArachneState: failed to allocate webBuffer (\(webBufSize) bytes)")
             return nil
         }
-        webBuffer = buf
+        let spiderBufSize = MemoryLayout<ArachneSpiderGPU>.stride
+        guard let sBuf = device.makeBuffer(length: spiderBufSize, options: .storageModeShared) else {
+            logger.error("ArachneState: failed to allocate spiderBuffer (\(spiderBufSize) bytes)")
+            return nil
+        }
+        webBuffer = wBuf
+        spiderBuffer = sBuf
         webs = Array(repeating: .zero, count: Self.maxWebs)
         rng = seed
         seedInitialWebs()
         writeToGPU()
+        sBuf.contents().bindMemory(to: ArachneSpiderGPU.self, capacity: 1)[0] = .zero
     }
 
     // MARK: - Public API
 
-    /// Update web pool for one rendered frame, then flush to `webBuffer`.
+    /// Update web pool and spider state for one rendered frame, then flush to GPU buffers.
     ///
     /// Called once per frame by the RenderPipeline tick hook before mesh draw.
     public func tick(features: FeatureVector, stems: StemFeatures) {
         lock.withLock { _tick(features: features, stems: stems) }
         writeToGPU()
+        writeSpiderToGPU()
     }
 
     // MARK: - Private: tick (called while holding lock)
@@ -185,7 +206,11 @@ public final class ArachneState: @unchecked Sendable {
         if spawnAccumulator >= Self.spawnThreshold &&
            (globalBeatIndex - lastSpawnBeatIndex) >= Self.minSpawnGapBeats {
             spawnAccumulator -= Self.spawnThreshold
-            trySpawn(features: features, stems: stems, stemMix: stemMix)
+            if let slot = freeSlot() {
+                trySpawn(features: features, stems: stems, stemMix: stemMix, slot: slot)
+            } else {
+                _ = evictAndRetry()
+            }
         }
 
         // Advance all alive web stages.
@@ -194,6 +219,8 @@ public final class ArachneState: @unchecked Sendable {
         }
 
         webCount = webs.filter { $0.isAlive != 0 }.count
+
+        updateSpider(dt: dt, features: features, stems: stems, stemMix: stemMix)
     }
 
     // MARK: - Private: beat index advancement
@@ -211,17 +238,18 @@ public final class ArachneState: @unchecked Sendable {
 
     // MARK: - Private: web spawning
 
-    private func trySpawn(features: FeatureVector, stems: StemFeatures, stemMix: Float) {
-        guard let slot = freeSlot() ?? evictAndRetry() else { return }
+    private func trySpawn(features: FeatureVector, stems: StemFeatures, stemMix: Float, slot: Int) {
         lastSpawnBeatIndex = globalBeatIndex
 
-        // Birth color: D-019 mix of stems.otherCentroid vs features.spectralCentroid.
-        let hue = arachMix(centroidToHue(features.spectralCentroid),
-                           centroidToHue(stems.otherCentroid),
-                           stemMix)
-        let sat = arachMix(saturateF(features.midAtt * 1.5),
-                           saturateF(stems.otherEnergy * 1.5),
-                           stemMix)
+        // Per-slot golden-ratio hue so each of the 12 web slots has a distinct, evenly
+        // distributed color. Small centroid jitter (±0.03) prevents adjacent spawns
+        // looking identical even when the same slot is reused.
+        let centroidJitter = arachMix(features.spectralCentroid,
+                                      stems.otherCentroid,
+                                      stemMix) * 0.06 - 0.03
+        let rawHue = Float(slot) * 0.618 + centroidJitter
+        let hue = rawHue - floor(rawHue)   // fract — handles negative jitter safely
+        let sat = 0.88 + lcg(&rng) * 0.10   // 0.88–0.98, always vivid
         let brt = 0.50 + lcg(&rng) * 0.45   // 0.50–0.95
 
         let seed = rng
@@ -246,7 +274,7 @@ public final class ArachneState: @unchecked Sendable {
             stage: WebStage.anchorPulse.rawValue,
             progress: 0,
             opacity: 1,
-            birthHue: hue.truncatingRemainder(dividingBy: 1.0),
+            birthHue: hue,
             birthSat: sat,
             birthBrt: brt,
             isAlive: 1
@@ -334,8 +362,8 @@ public final class ArachneState: @unchecked Sendable {
             stage: WebStage.stable.rawValue,
             progress: 1,
             opacity: 1,
-            birthHue: 0.55,
-            birthSat: 0.75,
+            birthHue: 0 * 0.618,                              // slot 0 → 0.000 red-magenta
+            birthSat: 0.92,
             birthBrt: 0.70,
             isAlive: 1
         )
@@ -353,44 +381,19 @@ public final class ArachneState: @unchecked Sendable {
             stage: WebStage.stable.rawValue,
             progress: 1,
             opacity: 1,
-            birthHue: 0.80,
-            birthSat: 0.75,
+            birthHue: 1 * 0.618,                              // slot 1 → 0.618 cyan-blue
+            birthSat: 0.92,
             birthBrt: 0.70,
             isAlive: 1
         )
         webCount = 2
     }
 
-    // MARK: - Private: GPU write
-
-    private func writeToGPU() {
-        let ptr = webBuffer.contents().bindMemory(to: WebGPU.self, capacity: Self.maxWebs)
-        lock.withLock {
-            for i in 0..<Self.maxWebs { ptr[i] = webs[i] }
-        }
-    }
-
     // MARK: - Private: PRNG (LCG)
 
     @discardableResult
-    private func lcg(_ seed: inout UInt32) -> Float {
+    func lcg(_ seed: inout UInt32) -> Float {
         seed = seed &* 1_664_525 &+ 1_013_904_223
         return Float(seed >> 8) / Float(1 << 24)
     }
-
-    // MARK: - Private: math helpers
-
-    private func centroidToHue(_ centroid: Float) -> Float {
-        // Log-map spectral centroid [0,1] → hue [0.15, 0.85] for vivid bioluminescent palette.
-        0.15 + centroid * 0.70
-    }
-
-    private func arachSmoothstep(_ edge0: Float, _ edge1: Float, _ x: Float) -> Float {
-        let value = min(max((x - edge0) / (edge1 - edge0), 0), 1)
-        return value * value * (3 - 2 * value)
-    }
-
-    private func arachMix(_ from: Float, _ to: Float, _ factor: Float) -> Float { from + (to - from) * factor }
-    private func saturateF(_ x: Float) -> Float { min(max(x, 0), 1) }
-    private func clamp(_ x: Float, min lo: Float, max hi: Float) -> Float { min(max(x, lo), hi) }
 }
