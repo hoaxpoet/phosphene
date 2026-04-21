@@ -556,3 +556,19 @@ The preset catalog has no automated gate against regressions. A new preset could
 **HDR exemption for white-clip invariant:** Presets that include the `post_process` pass intentionally produce HDR values before tone-mapping; the composite output in 8-bit is legal. The check skips those presets.
 
 **Test infrastructure note:** `@Test(arguments: _acceptanceFixture.presets)` uses a module-level fixture that loads all built-in presets once via `PresetLoader(loadBuiltIn: true)`. If the bundle resources are not linked to the test target, the fixture returns `[]`, yielding zero test cases — an environment issue, not a code regression.
+
+---
+
+## D-038 — PresetCategory.organic added for bioluminescent/natural presets (Increment 3.5.5)
+
+**Status:** Accepted (2026-04-20)
+
+Arachne is the first preset in a planned family of organic / nature-derived visualizers (webs, mycelium, bioluminescent organisms). The existing `PresetCategory` enum had no suitable category — the closest was `abstract`, which conflates Arachne with Plasma and Nebula presets that have a very different aesthetic intent.
+
+**Decision:** Add `PresetCategory.organic` with raw value `"organic"`. This enables the Orchestrator's family-repeat penalty to correctly distinguish organic presets from geometric or fluid ones, and gives the preset catalog a meaningful grouping for future natural-world visualizers.
+
+**Why not `abstract`:** The `abstract` family is used by demoscene-style presets (Plasma, Nebula) that are pattern-driven with no representational referent. Arachne's spiderwebs and any future mycelium/coral/organism presets have a clear natural referent — treating them as `abstract` would cause the family-repeat penalty to incorrectly suppress them when Plasma is active, and vice versa.
+
+**Rejected alternative — `natural`:** Both `organic` and `natural` work semantically. `organic` was chosen because it is the established term in visual design for forms derived from biological growth patterns (curved, asymmetric, non-Euclidean), regardless of literal organism identity.
+
+**How to apply:** New presets whose primary visual inspiration is a biological structure (web, coral, fungus, root, crystal growth, flock) should declare `"family": "organic"` in their JSON sidecar. Presets whose primary inspiration is mathematical pattern (Lissajous, Mandelbrot, Plasma) should remain `abstract`.

@@ -304,6 +304,10 @@ extension RenderPipeline {
         encoder.setFragmentBuffer(waveformBuffer, offset: 0, index: 2)
         var stems = stemFeatures
         encoder.setFragmentBytes(&stems, length: MemoryLayout<StemFeatures>.stride, index: 3)
+        // Bind optional per-preset fragment data at buffer(6) (e.g. GossamerState wave pool).
+        if let presetBuf = directPresetFragmentBufferLock.withLock({ directPresetFragmentBuffer }) {
+            encoder.setFragmentBuffer(presetBuf, offset: 0, index: 6)
+        }
         bindNoiseTextures(to: encoder)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         encoder.endEncoding()

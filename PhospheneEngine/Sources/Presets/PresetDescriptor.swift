@@ -139,6 +139,11 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
     /// Defaults to 64 (the standard threadgroup size for production preset mesh shaders).
     public let meshThreadCount: Int
 
+    /// When true, the mesh pipeline uses additive blending (src=one, dst=one).
+    /// Used by presets with emissive overlapping geometry (e.g. Arachne bioluminescent strands).
+    /// Defaults to false (no blending).
+    public let meshAdditiveBlend: Bool
+
     // MARK: - Scene Configuration (Ray March Presets)
 
     /// Camera configuration for ray march presets. Nil uses `SceneUniforms` defaults.
@@ -226,6 +231,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         case beatSensitivity = "beat_sensitivity"
         case passes
         case meshThreadCount = "mesh_thread_count"
+        case meshAdditiveBlend = "additive_blend"
         case sceneCamera = "scene_camera"
         case sceneLights = "scene_lights"
         case sceneFog = "scene_fog"
@@ -271,6 +277,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         decay            = try container.decodeIfPresent(Float.self, forKey: .decay) ?? 0.955
         beatSensitivity  = try container.decodeIfPresent(Float.self, forKey: .beatSensitivity) ?? 1.0
         meshThreadCount  = try container.decodeIfPresent(Int.self, forKey: .meshThreadCount) ?? 64
+        meshAdditiveBlend = try container.decodeIfPresent(Bool.self, forKey: .meshAdditiveBlend) ?? false
         sceneCamera      = try container.decodeIfPresent(SceneCamera.self, forKey: .sceneCamera)
         sceneLights      = try container.decodeIfPresent([SceneLight].self, forKey: .sceneLights) ?? []
         sceneFog         = try container.decodeIfPresent(Float.self, forKey: .sceneFog) ?? 0

@@ -43,6 +43,11 @@ extension VisualizerEngine {
         // This prevents stale subsystem state from the previous preset bleeding through.
         pipeline.setActivePasses([])
         pipeline.setMeshGenerator(nil)
+        pipeline.setMeshPresetBuffer(nil)
+        pipeline.setMeshPresetTick(nil)
+        arachneState = nil
+        gossamerState = nil
+        pipeline.setDirectPresetFragmentBuffer(nil)
         pipeline.setPostProcessChain(nil)
         pipeline.setRayMarchPipeline(nil)
         pipeline.setFeedbackParams(nil)
@@ -70,6 +75,19 @@ extension VisualizerEngine {
                     configuration: config
                 )
                 pipeline.setMeshGenerator(gen)
+
+                // Arachne-specific world state: allocate web pool and wire tick + buffer.
+                if desc.name == "Arachne" {
+                    if let state = ArachneState(device: context.device) {
+                        arachneState = state
+                        pipeline.setMeshPresetBuffer(state.webBuffer)
+                        pipeline.setMeshPresetTick { [weak state] features, stems in
+                            state?.tick(features: features, stems: stems)
+                        }
+                    } else {
+                        logger.error("ArachneState: failed to allocate web pool for preset '\(desc.name)'")
+                    }
+                }
 
             case .postProcess:
                 if let chain = try? PostProcessChain(context: context, shaderLibrary: shaderLibrary) {
@@ -181,6 +199,21 @@ extension VisualizerEngine {
                 pipeline.setupMVWarp(bundle: bundle, size: drawableSize)
                 // Plumb the descriptor decay so the compose pass matches pf.decay in the shader.
                 pipeline.setMVWarpDecay(desc.decay)
+
+                // Gossamer-specific: allocate wave pool and wire tick + fragment buffer.
+                if desc.name == "Gossamer" {
+                    if let state = GossamerState(device: context.device) {
+                        gossamerState = state
+                        pipeline.setDirectPresetFragmentBuffer(state.waveBuffer)
+                        pipeline.setMeshPresetTick { [weak state] features, stems in
+                            state?.tick(deltaTime: features.deltaTime,
+                                        features: features,
+                                        stems: stems)
+                        }
+                    } else {
+                        logger.error("GossamerState: failed to allocate wave pool for preset '\(desc.name)'")
+                    }
+                }
 
             case .direct:
                 break // No subsystem setup required; direct rendering is the default fallback.

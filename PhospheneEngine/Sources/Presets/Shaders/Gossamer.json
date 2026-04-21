@@ -1,0 +1,25 @@
+{
+  "name": "Gossamer",
+  "family": "organic",
+  "duration": 60,
+  "description": "A bioluminescent hero web vibrates as a sonic resonator — vocal pitch colors the traveling waves, bass controls strand tautness",
+  "author": "Matt",
+  "passes": ["mv_warp"],
+  "fragment_function": "gossamer_fragment",
+  "vertex_function": "fullscreen_vertex",
+  "beat_source": "composite",
+  "decay": 0.955,
+  "stem_affinity": {
+    "drums": "strand_tremor_accent",
+    "bass": "strand_tautness",
+    "other": "wave_emission_rate",
+    "vocals": "wave_hue_and_emission_gate"
+  },
+  "visual_density": 0.40,
+  "motion_intensity": 0.30,
+  "color_temperature_range": [0.15, 0.85],
+  "fatigue_risk": "low",
+  "transition_affordances": ["crossfade", "morph"],
+  "section_suitability": ["ambient", "bridge", "comedown"],
+  "complexity_cost": { "tier1": 6.0, "tier2": 3.5 }
+}
