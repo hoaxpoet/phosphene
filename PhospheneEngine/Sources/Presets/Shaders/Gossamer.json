@@ -8,7 +8,7 @@
   "fragment_function": "gossamer_fragment",
   "vertex_function": "fullscreen_vertex",
   "beat_source": "composite",
-  "decay": 0.955,
+  "decay": 0.90,
   "stem_affinity": {
     "drums": "strand_tremor_accent",
     "bass": "strand_tautness",

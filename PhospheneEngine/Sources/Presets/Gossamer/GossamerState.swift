@@ -203,11 +203,11 @@ public final class GossamerState: @unchecked Sendable {
             hue = gossamerFract(0.5 + 0.3 * sin(currentTime * 0.2))
         }
 
-        // Saturation: D-019 mix; floor at 0.5 so waves are never desaturated to invisibility.
+        // Saturation: D-019 mix; floor at 0.85 for vivid bioluminescent waves.
         let satStem = gossamerClamp(stems.otherEnergy * 2.0, 0, 1)
         let satFV   = gossamerClamp(features.mid * 1.5, 0, 1)
         let rawSat  = gossamerMix(satFV, satStem, stemMix)
-        let saturation = gossamerMix(0.5, 1.0, rawSat)
+        let saturation = gossamerMix(0.85, 1.0, rawSat)
 
         // Amplitude: D-019 mix; quiet vocals = dim, loud = bright.
         let ampStem = gossamerClamp(abs(stems.vocalsEnergyDev) * 3.0 + 0.3, 0, 1)
@@ -218,9 +218,9 @@ public final class GossamerState: @unchecked Sendable {
     }
 
     private func emitDriftWave() {
-        // Slow ambient hue walk; moderate sat/amp so the web never goes dark at silence.
+        // Slow ambient hue walk; vivid sat so the web stays colorful at silence.
         let hue = gossamerFract(0.5 + 0.3 * sin(currentTime * 0.15))
-        emitSlot(hue: hue, saturation: 0.6, amplitude: 0.5)
+        emitSlot(hue: hue, saturation: 0.90, amplitude: 0.55)
     }
 
     private func emitSlot(hue: Float, saturation: Float, amplitude: Float) {
@@ -275,13 +275,13 @@ public final class GossamerState: @unchecked Sendable {
         pool[0] = Wave(
             birthTime: -Self.seed0Age,  // age = 1.0s at frame zero
             birthHue: 0.55,
-            birthSaturation: 0.70,
+            birthSaturation: 0.92,
             amplitude: 0.65
         )
         pool[1] = Wave(
             birthTime: -Self.seed1Age,  // age = 3.0s at frame zero
             birthHue: 0.80,
-            birthSaturation: 0.65,
+            birthSaturation: 0.90,
             amplitude: 0.60
         )
         waveCount = 2

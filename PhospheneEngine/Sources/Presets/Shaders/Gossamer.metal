@@ -108,7 +108,11 @@ fragment float4 gossamer_fragment(
 
     float radCov     = smoothstep(radWidth + 0.0008, radWidth - 0.0008, rDist) * rimMask;
     float spirCov    = smoothstep(spirWidth + 0.0006, spirWidth - 0.0006, sDist) * rimMask;
-    float strandCov  = max(radCov, spirCov);
+
+    // Two-layer bioluminescent glow: crisp strand edge + soft luminous halo.
+    float radHalo    = exp(-rDist * rDist / (0.0055 * 0.0055)) * 0.50 * rimMask;
+    float spirHalo   = exp(-sDist * sDist / (0.0045 * 0.0045)) * 0.40 * rimMask;
+    float strandCov  = max(max(radCov, spirCov), max(radHalo, spirHalo));
 
     // Hub cap: small filled disc at center.
     float hubCap     = smoothstep(0.012, 0.008, r);
@@ -119,16 +123,27 @@ fragment float4 gossamer_fragment(
     float drumPulse  = max(f.beat_bass, max(f.beat_mid, f.beat_composite));
     float tremor     = drumPulse * 0.03;
 
+    // ── Web breathing: radials pulse with bass, spiral with mid (D-026) ─────
+    // Per-layer audio response: blend based on which layer dominates locally.
+    float breathRadial = 1.0 + max(0.0, bassRel) * 0.65;
+    float breathSpiral = 1.0 + max(0.0, f.mid_att_rel) * 0.50;
+    float totalCov     = radCov + spirCov;
+    float wRadial      = totalCov > 0.001 ? radCov / totalCov : 0.5;
+    float breathFactor = mix(breathSpiral, breathRadial, wRadial);
+
     // ── Base strand emissive (resting brightness) ────────────────────────────
-    // Warm near hub, cool at rim; tautness multiplier dims the web when bass is slack.
     float3 nearColor = float3(0.80, 0.72, 0.60);
     float3 rimColor  = float3(0.38, 0.43, 0.52);
-    float3 baseStrand = mix(nearColor, rimColor, taper) * tautness * (0.55 + tremor);
+    float3 baseStrand = mix(nearColor, rimColor, taper) * tautness
+                      * (0.55 + tremor) * breathFactor;
 
     // ── Propagating color waves ───────────────────────────────────────────────
-    // Each wave is a thin ring traveling outward from the hub at kWaveSpeed.
-    // The wave colors the strands it passes; off-strand pixels get nothing.
+    // Gaussian ring profile (replaces hard smoothstep — no block artifacts).
+    // Complementary color echo (hue+0.5) adds iridescent shimmer at wave edges.
     float3 waveContrib = float3(0.0);
+    float  totalRingWeight = 0.0;  // for interference bloom
+
+    constant float kRingSigma = 0.011;  // ring half-width in UV units
 
     for (uint i = 0; i < gState.wave_count; i++) {
         WaveGPU w = gState.waves[i];
@@ -136,18 +151,25 @@ fragment float4 gossamer_fragment(
 
         float waveRadius = w.age * kWaveSpeed;
         float dr         = abs(r - waveRadius);
-        float thickness  = 0.016;    // wave ring half-width in UV units
-        float ring       = smoothstep(thickness, 0.0, dr);
+        float ring       = exp(-(dr * dr) / (kRingSigma * kRingSigma));
 
-        // Fade: rises in 10% of lifetime, falls from 70% to 100%.
+        // Fade: rises in 8% of lifetime, falls from 65% to 100%.
         float lifeFrac   = w.age / kMaxWaveLife;
-        float fade       = smoothstep(0.0, 0.10, lifeFrac)
-                         * smoothstep(1.0, 0.70, lifeFrac);
+        float fade       = smoothstep(0.0, 0.08, lifeFrac)
+                         * smoothstep(1.0, 0.65, lifeFrac);
 
-        // Hue → RGB via hsv2rgb (from ShaderUtilities preamble).
+        float scaledRing = ring * fade;
+        totalRingWeight += scaledRing;
+
+        // Primary wave color + desaturated complement for iridescence.
         float3 waveColor = hsv2rgb(float3(w.hue, w.saturation, w.amplitude));
-        waveContrib += waveColor * ring * fade * strandCov;
+        float3 compColor = hsv2rgb(float3(fract(w.hue + 0.5), w.saturation * 0.45, w.amplitude * 0.30));
+        waveContrib += (waveColor + compColor) * scaledRing * strandCov;
     }
+
+    // Interference bloom: white burst where ≥2 waves overlap simultaneously.
+    float interferenceBloom = saturate(totalRingWeight - 1.0) * 0.45;
+    waveContrib += float3(1.0, 0.98, 0.90) * interferenceBloom * strandCov;
 
     // ── Background gradient (valence/arousal-tinted dark sky) ────────────────
     // Mirrors Arachne's background for trilogy visual consistency.
@@ -197,7 +219,7 @@ MVWarpPerFrame mvWarpPerFrame(
     // Gentle radial breath keyed to bass_att_rel (D-026).
     // 0.001 UV/beat: nearly imperceptible zoom in the hub area.
     pf.zoom  = 1.0 + f.bass_att_rel * 0.001;
-    pf.decay = 0.955;
+    pf.decay = 0.90;
 
     // q-variables: pass bass_att_rel to mvWarpPerVertex for spatially-varying wobble.
     pf.q1 = f.bass_att_rel;
