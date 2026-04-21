@@ -89,8 +89,8 @@ public final class ArachneState: @unchecked Sendable {
     // MARK: - Constants
 
     public static let maxWebs: Int = 12
-    static let spawnThreshold: Float = 1.0
-    static let minSpawnGapBeats: Float = 0.5
+    static let spawnThreshold: Float = 3.0
+    static let minSpawnGapBeats: Float = 2.0
 
     // Stage durations in beats.
     // Deliberately slow: at 120 BPM a full web build takes ~18–24 s.
@@ -248,7 +248,8 @@ public final class ArachneState: @unchecked Sendable {
                                       stems.otherCentroid,
                                       stemMix) * 0.06 - 0.03
         let rawHue = Float(slot) * 0.618 + centroidJitter
-        let hue = rawHue - floor(rawHue)   // fract — handles negative jitter safely
+        // Map golden-ratio 0-1 to bioluminescent palette: cyan (0.42) → blue → violet (0.82).
+        let hue = 0.42 + (rawHue - floor(rawHue)) * 0.40
         let sat = 0.88 + lcg(&rng) * 0.10   // 0.88–0.98, always vivid
         let brt = 0.50 + lcg(&rng) * 0.45   // 0.50–0.95
 

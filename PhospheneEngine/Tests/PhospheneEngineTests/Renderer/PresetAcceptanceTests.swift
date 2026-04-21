@@ -187,6 +187,7 @@ struct PresetAcceptanceTests {
         encoder.setFragmentBuffer(buffers.stem, offset: 0, index: 3)
         if let sceneBuf = buffers.scene { encoder.setFragmentBuffer(sceneBuf, offset: 0, index: 4) }
         encoder.setFragmentBuffer(buffers.hist, offset: 0, index: 5)
+        encoder.setFragmentBuffer(buffers.presetState, offset: 0, index: 6)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         encoder.endEncoding()
         cmdBuf.commit()
@@ -203,6 +204,7 @@ struct PresetAcceptanceTests {
         let wav: MTLBuffer
         let stem: MTLBuffer
         let hist: MTLBuffer
+        let presetState: MTLBuffer  // zeroed 1 KB — covers preset-specific slots (e.g. buffer(6) for Gossamer)
         let scene: MTLBuffer?
     }
 
@@ -212,12 +214,14 @@ struct PresetAcceptanceTests {
             let fft = context.makeSharedBuffer(length: 512 * floatStride),
             let wav = context.makeSharedBuffer(length: 2048 * floatStride),
             let stem = context.makeSharedBuffer(length: MemoryLayout<StemFeatures>.size),
-            let hist = context.makeSharedBuffer(length: 4096 * floatStride)
+            let hist = context.makeSharedBuffer(length: 4096 * floatStride),
+            let presetState = context.makeSharedBuffer(length: 1024)
         else { throw AcceptanceTestError.bufferAllocationFailed }
 
         _ = fft.contents().initializeMemory(as: UInt8.self, repeating: 0, count: 512 * floatStride)
         _ = stem.contents().initializeMemory(as: UInt8.self, repeating: 0, count: MemoryLayout<StemFeatures>.size)
         _ = hist.contents().initializeMemory(as: UInt8.self, repeating: 0, count: 4096 * floatStride)
+        _ = presetState.contents().initializeMemory(as: UInt8.self, repeating: 0, count: 1024)
 
         // SceneUniforms for ray-march presets provide proper camera/lighting.
         // Without them, farPlane = 0 causes every ray to return sky depth — all-black output.
@@ -228,7 +232,7 @@ struct PresetAcceptanceTests {
             buf.contents().copyMemory(from: &su, byteCount: MemoryLayout<SceneUniforms>.size)
             scene = buf
         }
-        return RenderBuffers(fft: fft, wav: wav, stem: stem, hist: hist, scene: scene)
+        return RenderBuffers(fft: fft, wav: wav, stem: stem, hist: hist, presetState: presetState, scene: scene)
     }
 
     // MARK: - Pixel Statistics

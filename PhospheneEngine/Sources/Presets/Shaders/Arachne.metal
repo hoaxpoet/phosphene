@@ -366,14 +366,14 @@ fragment float4 arachne_fragment(
         float2 centred = in.uv * 2.0f - 1.0f;
         float  dd = length(centred);
         float  core = exp(-dd * dd * 14.0f);
-        float  halo = exp(-dd * dd * 2.5f);
-        profile = core + halo * 0.45f;
+        float  halo = exp(-dd * dd * 1.0f);
+        profile = core + halo * 0.85f;
     } else {
         // Normalized cross-section distance from strand centerline: 0=center, 1=edge.
         float cdist = abs(in.uv.y - 0.5f) * 2.0f;
         float core  = exp(-cdist * cdist * 22.0f);   // tight silk thread
-        float halo  = exp(-cdist * cdist * 3.8f);    // wide bioluminescent diffusion
-        profile = core + halo * 0.45f;
+        float halo  = exp(-cdist * cdist * 1.6f);    // wide bioluminescent diffusion
+        profile = core + halo * 0.85f;
 
         // Hub fade: strands brighten as they converge at the hub (dist→0).
         float hubFade = exp(-dist * dist * 3.5f);
@@ -382,7 +382,7 @@ fragment float4 arachne_fragment(
 
     float hue = in.normal.x;
     float sat  = 0.92f;
-    float brt  = 0.15f + quiver + anticipation + (isHub ? 0.75f : 0.60f);
+    float brt  = 0.15f + quiver + anticipation + (isHub ? 0.80f : 0.72f);
     brt = saturate(brt);
 
     float3 color = hsv2rgb(float3(fract(hue), sat, brt));
