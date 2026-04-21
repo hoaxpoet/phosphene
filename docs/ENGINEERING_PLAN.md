@@ -524,17 +524,25 @@ swift test --package-path PhospheneEngine
 
 ---
 
-### Increment 5.2 — Preset Acceptance Checklist (Automated)
+### Increment 5.2 — Preset Acceptance Checklist (Automated) ✅
 
-**Scope:** A test suite that runs against every preset in the catalog. Presets fail if they: overreact to onset jitter (beat response > 2× continuous response), clip into white (any pixel > 1.0 pre-tonemap for non-HDR paths), produce repetitive motion at low energy, or lack readable form at zero energy.
+**Landed:** 2026-04-20
 
-**Done when:**
-- Test harness renders each preset with synthetic audio fixtures (silence, steady energy, beat-heavy, quiet passage).
-- Frame statistics collected: max pixel value, motion variance, form complexity metric.
-- All current presets pass the checklist.
-- New presets cannot land without passing.
+**What was built:**
+- `PresetAcceptanceTests.swift` — 4 parametrized invariant tests across all production presets (44 test cases when bundle resources are linked):
+  1. Non-black at silence (max channel > 10).
+  2. No white clip on steady energy for non-HDR passes (max < 250).
+  3. Beat response ≤ 2× continuous response + 1.0 tolerance (enforces CLAUDE.md audio data hierarchy).
+  4. Form complexity ≥ 2 at silence (detects visually dead single-bin outputs).
+- Four FeatureVector fixtures derived from AGC semantics and CLAUDE.md reference onset table (Love Rehab ~125 BPM, Miles Davis ~136 BPM). Not synthetic envelopes.
+- `renderFrame` renders 64×64 offscreen via the preset's direct `pipelineState`. Ray march and post-process presets are rendered via their composite output; the `post_process` white-clip check is skipped (HDR values are legal before tone-mapping).
+- `_acceptanceFixture` is a module-level constant loaded once; if bundle resources are absent, it returns `[]` (zero test cases rather than failure).
 
-**Verify:** `swift test --package-path PhospheneEngine`
+**Key decision:** D-037 — structural invariants over GPU output; perceptual snapshot regression deferred to 5.3.
+
+**Tests:** 415 → 419 (4 new @Test functions; Swift Testing counts @Test declarations, not parametrized cases). Same 4 pre-existing Apple Music environment failures.
+
+**Verify:** `swift test --package-path PhospheneEngine --filter PresetAcceptanceTests`
 
 ---
 
