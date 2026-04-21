@@ -170,6 +170,7 @@ extension PresetLoader {
             float4 position [[position]];
             float2 uv;
             float3 normal;
+            float2 clipXY;   // clip-space XY, interpolated to fragment for SDF ray-march
         };
 
         struct MeshPrimitive {};
