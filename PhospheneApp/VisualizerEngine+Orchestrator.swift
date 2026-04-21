@@ -37,6 +37,8 @@ extension VisualizerEngine {
             logger.info("Orchestrator: no session plan available — skipping build")
             return
         }
+        // A real plan is taking over — end reactive mode.
+        reactiveSessionStart = nil
 
         let identities = sessionPlan.tracks
         let cache = manager.cache
@@ -100,7 +102,10 @@ extension VisualizerEngine {
         boundary: StructuralPrediction,
         mood: EmotionalState
     ) {
-        guard let plan = orchestratorLock.withLock({ livePlan }) else { return }
+        guard let plan = orchestratorLock.withLock({ livePlan }) else {
+            applyReactiveUpdate(boundary: boundary, mood: mood)
+            return
+        }
 
         let catalog = presetLoader.presets.map { $0.descriptor }
 
@@ -130,6 +135,60 @@ extension VisualizerEngine {
 
         let patched = plan.applying(adaptation, at: trackIndex)
         orchestratorLock.withLock { livePlan = patched }
+    }
+
+    // MARK: - Reactive Mode (Ad-Hoc Sessions)
+
+    /// Apply reactive orchestration when no pre-planned session exists.
+    ///
+    /// Accumulates wall-clock elapsed time from the first call. Suggests preset
+    /// switches via `DefaultReactiveOrchestrator.evaluate()` and applies them on
+    /// the main thread. A 60 s cooldown prevents switch-thrashing.
+    ///
+    /// Called from the audio/analysis path (background queue).
+    private func applyReactiveUpdate(boundary: StructuralPrediction, mood: EmotionalState) {
+        if reactiveSessionStart == nil { reactiveSessionStart = Date() }
+        guard let sessionStart = reactiveSessionStart else { return }
+        let elapsed = Date().timeIntervalSince(sessionStart)
+
+        let catalog = presetLoader.presets.map { $0.descriptor }
+        let currentDesc = presetLoader.currentPreset?.descriptor
+        let tier = Self.detectDeviceTier(device: context.device)
+
+        let decision = reactiveOrchestrator.evaluate(
+            liveMood: mood,
+            liveBoundary: boundary,
+            elapsedSessionTime: elapsed,
+            currentPreset: currentDesc,
+            catalog: catalog,
+            deviceTier: tier
+        )
+
+        switch decision.accumulationState {
+        case .listening:
+            break
+        case .ramping, .full:
+            if decision.suggestedPreset != nil {
+                logger.info("Orchestrator (reactive): \(decision.reason)")
+            }
+        }
+
+        guard let suggested = decision.suggestedPreset,
+              elapsed - lastReactiveSwitchTime >= 60.0 else { return }
+
+        guard let loadedPreset = presetLoader.presets.first(
+            where: { $0.descriptor.name == suggested.name }
+        ) else {
+            logger.warning("Orchestrator (reactive): suggested preset '\(suggested.name)' not in loader")
+            return
+        }
+
+        lastReactiveSwitchTime = elapsed
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.applyPreset(loadedPreset)
+            self.showPresetName(loadedPreset.descriptor.name)
+        }
     }
 
     // MARK: - Device Tier Detection

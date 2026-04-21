@@ -516,3 +516,21 @@ Seven new fields were added to `PresetDescriptor` to give the Orchestrator (Incr
 **The scoring context for override candidates uses empty history:** In `evaluateMoodOverride`, both the current-preset score and the alternative scores are computed with `recentHistory: []`. This avoids re-applying session-level fatigue penalties that were already baked into the original plan, and keeps the comparison to a single "which preset fits this live mood better" question. Family-repeat and fatigue penalties are session-level concerns; live adaptation is a track-level correction.
 
 **How to apply:** Call `VisualizerEngine.buildPlan()` when `SessionManager.state == .ready` to build and store the initial plan. During playback, call `applyLiveUpdate(trackIndex:elapsedTrackTime:boundary:mood:)` periodically from the audio analysis path (the `analysisQueue`). `currentPreset(at:)` and `currentTransition(at:)` provide thread-safe lookups for the render loop.
+
+## D-036: Reactive orchestrator is stateless; app layer owns cooldown and start-time tracking (Increment 4.6)
+
+**Status:** Accepted (2026-04-20)
+
+`DefaultReactiveOrchestrator.evaluate()` is a pure function — no mutable state inside the struct. This matches `DefaultPresetScorer` and `DefaultLiveAdapter`. The tradeoffs:
+
+**Why stateless:** `VisualizerEngine` already owns audio/session state. Keeping state in the struct would require it to be a `class`, or force the caller to maintain an opaque state blob across calls. Injecting all context as arguments keeps the type Sendable and unit-testable without fixtures.
+
+**Cooldown outside the orchestrator:** A 60 s minimum between reactive switches is an app-level policy (how often should the visualizer interrupt itself?), not a scoring concern. It lives in `VisualizerEngine+Orchestrator.lastReactiveSwitchTime`. The orchestrator returns a `suggestedPreset` on every qualifying call; it is the caller's responsibility to gate on the cooldown.
+
+**Elapsed time from `Date()` wall clock:** Ad-hoc sessions have no track structure, so `elapsedTrackTime` (track-relative) is not meaningful for accumulation state. Wall-clock since first audio frame is the right denominator. `VisualizerEngine+Orchestrator` sets `reactiveSessionStart` on the first `applyReactiveUpdate()` call and resets it to nil when `buildPlan()` succeeds (a real plan takes over).
+
+**`minScoreGapForSwitch = 0.20` vs. `LiveAdapter`'s 0.15:** Reactive scoring builds a `TrackProfile` from live mood only — no BPM, stems, or section data. The thinner profile means scoring is noisier and a larger gap is needed before acting. LiveAdapter operates on profiles that include pre-analyzed BPM and stems, giving it more information and justifying a lower threshold.
+
+**Accumulation gating (0–15 s listening, 15–30 s ramping, 30 s+ full):** The MIR pipeline takes approximately 10–15 s of audio to stabilize mood, beat detection, and spectral features. The 15 s listening window prevents premature switches while the EMA smoothers converge. The ramping window (15–30 s) allows suggestions but returns a sub-1.0 confidence in the decision, so callers can optionally show a visual indicator that the orchestrator is still gaining confidence.
+
+**How to apply:** `buildPlan()` resets `reactiveSessionStart = nil` so reactive state clears when a real plan arrives. `applyLiveUpdate()` routes to `applyReactiveUpdate()` when `livePlan == nil`. The 60 s cooldown in `VisualizerEngine+Orchestrator` prevents switch-thrashing during the listening window edge.

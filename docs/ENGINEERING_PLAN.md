@@ -495,17 +495,22 @@ swift test --package-path PhospheneEngine
 
 ---
 
-### Increment 4.6 — Ad-Hoc Reactive Mode
+### Increment 4.6 — Ad-Hoc Reactive Mode ✅
 
-**Scope:** Wire the Orchestrator's reactive mode (no playlist, live MIR only). States: `idle` → `listening` → `ramping` → `full`. Heuristic preset selection from live energy, mood, and structural data as they accumulate.
+**Landed:** 2026-04-20
 
-**Done when:**
-- Orchestrator produces reasonable preset selections with zero pre-analyzed data.
-- After ~30s of listening, preset choices reflect the music's character.
-- Transitions still land on detected section boundaries.
-- 6+ unit tests with synthetic progressive MIR accumulation.
+**What was built:**
+- `ReactiveOrchestrator.swift` — `ReactiveAccumulationState` (listening/ramping/full), `ReactiveDecision`, `ReactiveOrchestrating` protocol, `DefaultReactiveOrchestrator` (stateless pure function). Confidence ramps 0→0.3 over first 15 s, 0.3→1.0 over 15–30 s, 1.0 after. Switch conditions: score gap > 0.20 OR structural boundary confidence ≥ 0.5.
+- `ReactiveOrchestratorTests.swift` — 8 unit tests: listening hold, confidence ramp, ramping suggestion, score-gap suppression, boundary override, boundary scheduling, nil-preset path, empty-catalog hold.
+- `VisualizerEngine.swift` — added `reactiveOrchestrator`, `reactiveSessionStart`, `lastReactiveSwitchTime`.
+- `VisualizerEngine+Orchestrator.swift` — `applyLiveUpdate()` routes to `applyReactiveUpdate()` when `livePlan == nil`; `buildPlan()` clears `reactiveSessionStart` when a real plan arrives. 60 s cooldown prevents switch-thrashing.
+- D-036 added to `docs/DECISIONS.md`.
 
-**Verify:** `swift test --package-path PhospheneEngine`
+**Key decisions:** D-036 — stateless orchestrator, app-layer owns cooldown and wall-clock elapsed time.
+
+**Tests:** 407 → 415 (8 new). Same 4 pre-existing Apple Music environment failures.
+
+**Verify:** `swift test --package-path PhospheneEngine --filter ReactiveOrchestratorTests`
 
 ---
 

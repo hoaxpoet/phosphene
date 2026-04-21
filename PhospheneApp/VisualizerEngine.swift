@@ -249,12 +249,23 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Live adapter that refines the plan as playback progresses.
     let liveAdapter = DefaultLiveAdapter()
 
+    /// Reactive orchestrator for ad-hoc (no-playlist) sessions.
+    let reactiveOrchestrator = DefaultReactiveOrchestrator()
+
     /// The active planned session. Populated when the session reaches `.ready`.
     /// Guarded by `orchestratorLock` — read/write only under the lock.
     var livePlan: PlannedSession?
 
     /// Protects `livePlan` across the main-thread writer and render/audio-queue readers.
     let orchestratorLock = NSLock()
+
+    /// Wall-clock timestamp of the first reactive `applyLiveUpdate()` call.
+    /// Set on entry, reset to nil when `buildPlan()` succeeds (real plan takes over).
+    var reactiveSessionStart: Date?
+
+    /// Session-relative time of the last reactive preset switch.
+    /// Prevents switching more often than once per 60 seconds.
+    var lastReactiveSwitchTime: TimeInterval = -.infinity
 
     // MARK: - Initialization
 
