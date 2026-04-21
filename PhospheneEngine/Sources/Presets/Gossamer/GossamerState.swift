@@ -146,9 +146,13 @@ public final class GossamerState: @unchecked Sendable {
         // Retire waves older than maxWaveLifetime.
         retireOldWaves()
 
-        // Emission rate: otherOnsetRate × 1.5 at high density; FV fallback mid_att × 2.0.
-        let stemRate = stems.otherOnsetRate * 1.5
-        let fvRate   = features.midAtt * 2.0
+        // Emission rate — D-026 deviation-first, track-independent.
+        // Stem path: 0.5 base + above-average other activity → ~0.5–2.5 waves/sec.
+        // otherOnsetRate (events/sec) was discarded: it was 6/sec on sparse tracks,
+        // flooding the pool regardless of musical density.
+        let stemRate: Float = 0.5 + max(0, stems.otherEnergyDev) * 2.0
+        // FV fallback: constant 0.4 base + above-average mid energy.
+        let fvRate: Float = 0.4 + max(0, features.midAttRel) * 0.8
         let emissionRate = gossamerMix(fvRate, stemRate, stemMix)
         waveEmissionAccumulator += emissionRate * dt
 
