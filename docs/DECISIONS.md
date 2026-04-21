@@ -534,3 +534,25 @@ Seven new fields were added to `PresetDescriptor` to give the Orchestrator (Incr
 **Accumulation gating (0–15 s listening, 15–30 s ramping, 30 s+ full):** The MIR pipeline takes approximately 10–15 s of audio to stabilize mood, beat detection, and spectral features. The 15 s listening window prevents premature switches while the EMA smoothers converge. The ramping window (15–30 s) allows suggestions but returns a sub-1.0 confidence in the decision, so callers can optionally show a visual indicator that the orchestrator is still gaining confidence.
 
 **How to apply:** `buildPlan()` resets `reactiveSessionStart = nil` so reactive state clears when a real plan arrives. `applyLiveUpdate()` routes to `applyReactiveUpdate()` when `livePlan == nil`. The 60 s cooldown in `VisualizerEngine+Orchestrator` prevents switch-thrashing during the listening window edge.
+
+---
+
+## D-037 — Preset Acceptance Checklist: structural invariants over GPU output (Increment 5.2)
+
+**Status:** Accepted (2026-04-20)
+
+The preset catalog has no automated gate against regressions. A new preset could ship that clips to white on steady energy, goes dark at silence, or overreacts to beat jitter (amplifying ±80 ms jitter into visible thrashing). The lack of a gate was acceptable during catalog development but blocks safe catalog growth.
+
+**Decision:** `PresetAcceptanceTests.swift` renders each preset against four FeatureVector fixtures and asserts four structural invariants:
+1. Non-black at silence (max channel > 10).
+2. No white clip on steady energy for non-HDR passes (max channel < 250).
+3. Beat response ≤ 2× continuous response + 1.0 tolerance (prevents beat-dominant motion design).
+4. Form complexity ≥ 2 at silence (detects visually dead presets — all pixels in a single luma bin).
+
+**Fixture design:** Vectors are constructed from AGC semantics documented in CLAUDE.md (all continuous fields centered at ~0.5, deviation fields derived from `xRel = (x - 0.5) * 2.0`) and from the reference onset table. They represent real observed states, not synthetic time-domain envelopes. See the in-file doc comment for the mapping to reference tracks.
+
+**Rejected alternative — pixel hash comparison:** Perceptual hashes catch visual regressions but require golden snapshots to be updated on every intentional change. The acceptance checklist only checks structural invariants, not visual fidelity. Snapshot regression testing is Increment 5.3.
+
+**HDR exemption for white-clip invariant:** Presets that include the `post_process` pass intentionally produce HDR values before tone-mapping; the composite output in 8-bit is legal. The check skips those presets.
+
+**Test infrastructure note:** `@Test(arguments: _acceptanceFixture.presets)` uses a module-level fixture that loads all built-in presets once via `PresetLoader(loadBuiltIn: true)`. If the bundle resources are not linked to the test target, the fixture returns `[]`, yielding zero test cases — an environment issue, not a code regression.
