@@ -660,3 +660,25 @@ Hub moved from (0.502, 0.511) to (0.465, 0.32). The hub is near the ceiling — 
 
 **Rule:** Any future revision to Gossamer spoke geometry must continue to use an explicit angle array, not a formula with noise. The moment you apply a regular grid and add noise, you get a noisy grid — not irregular geometry.
 
+## D-043 — Arachne must use 2D SDF direct fragment, not 3D ray march (Increment 3.5.12)
+
+**Status:** Accepted (2026-04-22)
+
+**Context:** Increment 3.5.10 rewrote Arachne as a 3D SDF ray-march, reasoning that depth and tilt would make pools of webs look more three-dimensional. On-device inspection of session `2026-04-22T14-13-58Z` showed the result looked like "sand dollars or dart boards" — not spider webs. The root cause is twofold:
+
+1. **Miss-ray glow dominates the visual.** The 3D approach generated bioluminescent glow via `exp2(-minWebDist * 14)` on every missed ray. At 64×64 test resolution and real resolutions, the nearest-web-SDF value along a miss ray is dominated by the circular disc boundary of the tilted web plane, not by individual strand structure. The resulting bloom forms a soft circular halo regardless of strand geometry.
+
+2. **Camera-to-web geometry creates circular projection.** A tilted disc seen nearly face-on with a 60° FOV camera produces an ellipse in screen space. With jitter applied to the normal (±14° tilt), the webs appear as ovals, reinforcing the disc/dartboard impression.
+
+**Decision — Return to 2D SDF direct fragment (Gossamer architecture).**
+
+Arachne is now a 2D SDF shader that evaluates each web entirely in UV space:
+- Hub in clip-space `(hubX, hubY)` converted to UV: `float2((hub_x+1)/2, (1−hub_y)/2)`.
+- Radius in UV: `w.radius × 0.5` (clip-space → UV scale factor).
+- Per-web: hub concentric rings + 12 radial spokes with ±30% seed jitter + Archimedean capture spiral.
+- Permanent anchor web at UV `(0.42, 0.40)` radius 0.22, seed 1984u, always stage=3/progress=1 — satisfies D-037 invariant 4 regardless of pool state.
+- Pool webs evaluated via `arachneEvalWeb()` helper called once per alive web slot.
+- Spider rendered as 2D: body circle + head ellipse + 8 leg capsule segments from clip-space ArachneSpiderGPU positions, converted to UV the same way.
+
+**Rule:** Any further Arachne rewrite must remain 2D SDF. The 3D ray-march approach is permanently ruled out for a preset that must render recognizable spider web strand geometry. The same rule applies to any other "fine-structure" preset (fibers, threads, filaments) — fine structure is invisible in 3D miss-ray glow; it requires SDF evaluation at screen resolution with sub-pixel anti-aliasing.
+
