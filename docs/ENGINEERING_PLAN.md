@@ -292,37 +292,33 @@ Post-session visual feedback on all three Arachnid Trilogy presets surfaced acti
 
 ### Increment 3.5.10 — Arachne ray march remaster ✅
 
-**Landed:** 2026-04-21
+**Landed:** 2026-04-22
 
 **Scope:** Replace Arachne's mesh-shader preset with a full 3D SDF ray-marched scene. The mesh-shader implementation used free-running `sin(time)` oscillators that made motion feel mechanical and disconnected from audio (failed approach #33, session 2026-04-21T13-26-38Z). The ray-march approach gives correct 3D perspective, unique per-web tilt, beat-phase-locked vibration, and proper temporal accumulation via mv_warp.
 
 **Architecture changes:**
 - `Arachne.json`: passes changed from `["mesh_shader"]` to `["mv_warp"]`. Preset is now a direct fragment shader + mv_warp, not a mesh shader.
-- `Arachne.metal`: complete rewrite as 3D SDF ray march. 56-step march, perspective camera (60° FOV, z=-3). Each web is a tilted disc of SDF tubes in world space. Per-web tilt derived deterministically from `rng_seed`. Permanent anchor web at origin (D-037). Spider SDF from Increment 3.5.9 preserved byte-for-byte. Soft bioluminescent glow (`exp2(-minWebDist * 14)`) ensures form complexity at any render resolution (D-037 inv.4). mv_warp decay=0.92 for short temporal echo that doesn't obscure depth.
+- `Arachne.metal`: complete rewrite as 3D SDF ray march. 64-step march; perspective camera 60° FOV at z=−1.8 (close enough for dramatic web scale). Each web is a tilted disc of SDF tubes; tilt derived from `rng_seed` field (±14% X, ±10% Y before normalisation). Pool webs at `hub_xy × {0.9, 0.8}` spread, depth mapped z∈[−0.4, 1.4]. Permanent anchor web at `(0, 0, 0.2)` (D-037). Spider SDF from Increment 3.5.9 always placed at anchor position; fixes Z-depth mismatch of the old mesh-shader approach. `sdWebElement` draws hub cap + progressive radials (alternating-pair order, ±22% angular jitter per spoke) + Archimedean spiral with corrected SDF (`min(fract, 1−fract)` — `abs(fract−0.5)` was inverted, rendering filled sectors instead of strands). Tube radius 0.012 world units ≈ 11 px at 1080p. Soft bioluminescent glow `exp2(−minWebDist × 14)` for miss rays ensures D-037 formComplexity at any resolution. mv_warp decay=0.92.
 - `VisualizerEngine+Presets.swift`: Arachne setup moved from `.meshShader` case to `.mvWarp` case. Buffer(6) = web pool, buffer(7) = spider GPU.
 - `RenderPipeline.swift` + `RenderPipeline+PresetSwitching.swift` + `RenderPipeline+MVWarp.swift`: added `directPresetFragmentBuffer2` (buffer(7)) infrastructure.
 - `PresetAcceptanceTests.swift`: buffer(7) bound (zeroed) so spider `blend=0` during tests.
-- `PresetRegressionTests.swift`: Arachne golden hash added.
+- `PresetRegressionTests.swift`: Arachne golden hash regenerated.
 
 **D-041** in DECISIONS.md.
 
 444 tests pass; 0 SwiftLint violations.
 
-### Increment 3.5.11 — Gossamer v3: genuinely asymmetric web geometry ✅
+### Increment 3.5.11 — Gossamer SDF correction + v3 acceptance gate ✅
 
 **Landed:** 2026-04-22
 
-**Problem:** Gossamer v2 (Increment 3.5.8) used 16 hash-jittered spokes computed from a formula (equal spacing ± 11% noise). The result was still a compass-rose: approximately evenly distributed angles, a near-center hub, and spiral rings that read as concentric ovals. This is not a spider web; it is a mathematical artefact.
+**Problem 1 — Inverted SDF in spiral and hub-ring distance functions.** `gossamerSpiralDist` and `gossamerHubDist` both used `abs(fract(x) − 0.5)` as their fold formula. This gives 0 in the GAPS between threads and 0.5 ON the threads — the opposite of what a distance function requires. The result: the entire capture zone rendered as a uniformly lit filled disc (the SDF gave zero distance everywhere off-thread, fully covering everything via the coverage and halo terms). Fixed to `min(fract(x), 1 − fract(x))` which correctly gives 0 ON the thread.
 
-**Changes — `Gossamer.metal` only, no logic changes:**
-- **Explicit spoke array**: 17 angles hand-designed by inspection of reference webs. `gossamerSpokeAngle()` and `kRadialCount` removed entirely; replaced with `constant float kSpokeAngles[17]`.
-- **Genuine irregular spacing**: gaps range 0.27–0.77 rad. One 0.77 rad open sector (lower-right, between 0.58 and 1.35 rad) where no anchor point exists — the web does not reach that corner. Tight cluster at upper-left (-2.82→-2.15 rad, 0.34 rad spacing) simulates three ceiling anchors.
-- **Off-center hub**: moved from (0.502, 0.511) to (0.465, 0.32) — upper portion of screen. Hub is only 0.32 UV from the top edge, so upper spiral rings clip into asymmetric arcs naturally. Lower rings extend to full `kWebRadius = 0.44`.
-- **Elliptical stretch removed**: the old `pRel.x / 1.10 / pRel.y / 0.94` distortion compensated for the centered hub. With the hub genuinely off-center the stretch would add a second asymmetry axis and fight the natural one.
-- **`kWebRadius` expanded**: 0.42 → 0.44 so lower spiral rings are visibly full and lush before the anchor fade.
-- All v2/3.5.8 audio improvements retained: bass brightness `0.55 + bassRel × 0.45`, beat flash 0.65, standing-wave tremor 0.018 UV, tight halos, wave amplitude/sat floors.
+**Problem 2 — D-037 acceptance invariant 3 failure (beat response bounded).** The inverted SDF caused silence and steady-energy renders to look identical (both uniformly lit at `0.55 × baseColor`). `meanSquaredDiff(silence, steady) = 0` while `meanSquaredDiff(steady, beat-heavy) = 151` — the beat flash was seen as an overreaction relative to zero continuous motion. Fixed in two parts: (a) `brightness = 0.12 + f.bass × 0.76 + bassRel × 0.12` — absolute `f.bass` creates a music-presence glow so silence (f.bass=0) is dim and steady music (f.bass≈0.5) is lit; (b) `beatFlash` reduced from 0.65 to 0.30 to keep beat accent proportional to the continuous baseline.
 
-440 tests pass; 0 SwiftLint violations.
+**Geometry changes (v3):** 17 explicitly-defined irregular spoke angles replacing formula-derived equal spacing. Off-center hub at (0.465, 0.32). Elliptical stretch removed. `kWebRadius` expanded 0.42→0.44. See D-042.
+
+444 tests pass; 0 SwiftLint violations. Golden hashes regenerated for Gossamer and Arachne.
 
 ### Increment MV-0 — Drop v4.2 stash, re-land sky-tint conditional ✅
 

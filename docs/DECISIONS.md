@@ -637,7 +637,11 @@ Gossamer uses 0.955 to maximise the echo-reverb trail of vocal waves. Arachne is
 
 **Decision 4 — Unique per-web tilt from rng_seed, not random per-frame.**
 
-Each web's spatial orientation is derived deterministically from its `rng_seed` field (already in `WebGPU`). This gives a stable 3D arrangement that persists across frames. Fully random orientations would make the scene chaotic; fully aligned (all facing camera) would look flat. The seed-derived tilt range (±0.15 in X, ±0.11 in Y before normalisation) gives ~15° of variation per web — enough to read as 3D without appearing unstable.
+Each web's spatial orientation is derived deterministically from its `rng_seed` field (already in `WebGPU`). This gives a stable 3D arrangement that persists across frames. Fully random orientations would make the scene chaotic; fully aligned (all facing camera) would look flat. The seed-derived tilt range (±14% in X, ±10% in Y before normalisation) gives ~15° of variation per web — enough to read as 3D without appearing unstable.
+
+**Decision 5 — SDF formula: min(fract, 1−fract), not abs(fract−0.5).**
+
+`abs(fract(x) − 0.5)` gives 0 at integer positions (in the GAPS) and 0.5 at half-integers (ON the strand). This is the inverse of a distance function. `min(fract(x), 1 − fract(x))` correctly gives 0 ON the strand and increases to 0.5 in the gaps. This applies to both the spiral Archimedean distance and the hub-ring distance in the same shader family (Gossamer had the same bug).
 
 ## D-042 — Gossamer spoke geometry must be explicitly defined, not formula-derived (Increment 3.5.11)
 
