@@ -2,7 +2,7 @@
   "name": "Arachne",
   "family": "organic",
   "duration": 45,
-  "description": "A field of bioluminescent spider webs rendered in 3D — silk strands glow with music, beat-phase vibration plucks every thread, sub-bass triggers the spider.",
+  "description": "A field of bioluminescent spider webs — silk strands glow with music, beat-phase vibration plucks every thread, sub-bass triggers the spider.",
   "author": "Matt",
   "passes": ["mv_warp"],
   "fragment_function": "arachne_fragment",
