@@ -1,18 +1,22 @@
-// Gossamer.metal — v2 — bioluminescent web as sonic resonator (Increment 3.5.6).
+// Gossamer.metal — v3 — bioluminescent web as sonic resonator (Increment 3.5.6).
 //
-// Fundamental design fixes from first-session diagnostics:
-//   · Web geometry overhauled: 16 hash-jittered spokes, real hub (no bright disc),
-//     proper radial ring-spacing so all rings equally visible, free zone near hub.
-//   · Spokes extend to screen edges — the web is always anchored to something.
-//   · Slight elliptical stretch + off-center hub for organic asymmetry.
-//   · Music responsiveness made visceral: beat flash +65%, bass brightness is the
-//     primary visual driver (0.55 + bassRel × 0.45), tremor amplitude 0.018 UV
-//     (~19px at 1080p, vs. previous 4px which was invisible).
-//   · Wave amplitude and saturation floored so rings are always coloured.
-//   · Halos tightened from σ=22px to σ=6px — crisp strands, not a glowing fog.
+// v3 geometry overhaul — fixes the symmetry problem in v2:
+//   · 17 explicitly-defined spoke angles, NOT formula-derived.
+//     Spacing ranges 0.27–0.77 rad (avg 21°). One wide open sector (lower-right,
+//     0.77 rad gap) where no anchor point exists — like a real web in a corner.
+//     Tight cluster near -2.82→-2.15 rad simulates three close ceiling anchors.
+//   · Hub at (0.465, 0.32) — upper portion of screen. Hub proximity to top edge
+//     clips spiral rings into asymmetric arcs naturally: upper threads are short
+//     (only ~0.32 UV to the screen edge), lower threads extend to full radius.
+//   · Elliptical stretch removed — asymmetry comes from geometry, not distortion.
+//   · kWebRadius expanded to 0.44 so lower spiral rings are full and lush.
+//
+// All v2 audio improvements retained: bass-primary brightness driver, beat flash,
+// standing-wave tremor at 0.018 UV, tight halos (σ=6/4px), wave amplitude/sat
+// floors, anchor fade for spokes beyond the capture zone.
 //
 // Entry point: gossamer_fragment
-// Buffer layout: same as v1 (see file header in GossamerState.swift).
+// Buffer layout: same as v1/v2 (see GossamerState.swift).
 // D-026 deviation-first. D-019 warmup. D-037 invariants met.
 
 // ── GPU wave types ─────────────────────────────────────────────────────────────
@@ -32,63 +36,72 @@ struct GossamerGPU {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-constant int   kRadialCount = 16;     // more spokes = more organic density
-constant float kWebRadius   = 0.42;   // outer capture zone (UV)
-constant float kHubRadius   = 0.055;  // free zone: no spiral threads within this
-constant float kSpiralTurns = 8.0;
+constant float kWebRadius   = 0.44;   // outer capture zone (UV)
+constant float kHubRadius   = 0.050;  // free zone near hub — no spiral threads
+constant float kSpiralTurns = 7.0;
 constant float kWaveSpeed   = 0.12;   // UV/sec — must match GossamerState.waveSpeed
 constant float kMaxWaveLife = 6.0;    // seconds — must match GossamerState.maxWaveLifetime
 
-// ── Hash-jittered spoke angles ─────────────────────────────────────────────────
-// Each spoke has a fixed pseudo-random angular offset of ±11% of the equal step,
-// giving an organic look without changing frame to frame.
+// ── Explicit spoke angles ──────────────────────────────────────────────────────
+//
+// 17 angles in radians. 0 = right (+X), π/2 = down (+Y in UV space).
+// Hub is at (0.465, 0.32) — upper-centre. Spokes radiate from there.
+//
+// Design: web built at a ceiling/wall junction.
+//   • Upper-left cluster (-2.82, -2.48, -2.15): three tight ceiling anchors.
+//   • Left wall (-1.78, -1.42, -1.08): regular wall anchors.
+//   • Right-of-centre (-0.72 … 0.58): mixed upper-right anchors.
+//   • OPEN SECTOR 0.58 → 1.35 (0.77 rad): lower-right has no surface to anchor.
+//   • Lower arc (1.35 … 2.95): threads hang toward lower-left anchor.
+//
+// The irregular gaps (min 0.27, max 0.77 rad) produce visible clustering and
+// absence — the web is a product of its anchoring, not a compass rose.
 
-static float gossamerSpokeAngle(int i) {
-    uint h  = uint(i) * 2654435761u;
-    h = h ^ (h >> 16);
-    h = h * 2246822519u;
-    h = h ^ (h >> 13);
-    float step   = 2.0 * M_PI_F / float(kRadialCount);
-    float jitter = (float(h & 0xFFu) / 255.0 - 0.5) * 0.22 * step;  // ±11%
-    return float(i) * step + jitter;
-}
+constant int   kSpokeCount   = 17;
+constant float kSpokeAngles[17] = {
+    -2.82f, -2.48f, -2.15f,   // upper-left cluster (tight, 0.34/0.33 rad)
+    -1.78f, -1.42f, -1.08f,   // left wall (0.37/0.36/0.34 rad)
+    -0.72f, -0.38f, -0.08f,   // right-of-centre (0.34/0.30 rad)
+     0.25f,  0.58f,            // right side (0.33/0.33 rad)
+    //                         ← gap: 0.77 rad, lower-right open sector
+     1.35f,  1.65f,  1.92f,   // lower-left (0.30/0.27 rad — tight cluster)
+     2.28f,  2.62f,  2.95f    // lower anchor threads (0.36/0.34/0.33 rad)
+};
 
-// Perpendicular distance from pRel to the infinite radial line at spoke i.
-static float gossamerSpokeDist(float2 pRel, int i) {
-    float a  = gossamerSpokeAngle(i);
-    float2 d = float2(cos(a), sin(a));
+// ── Spoke geometry ────────────────────────────────────────────────────────────
+
+static float gossamerSpokeDist(float2 pRel, float angle) {
+    float2 d = float2(cos(angle), sin(angle));
     return abs(pRel.x * d.y - pRel.y * d.x);
 }
 
-// Nearest radial spoke distance.
 static float gossamerNearestSpokeDist(float2 pRel) {
     float minD = 1e6;
-    for (int i = 0; i < kRadialCount; i++) {
-        minD = min(minD, gossamerSpokeDist(pRel, i));
+    for (int i = 0; i < kSpokeCount; i++) {
+        minD = min(minD, gossamerSpokeDist(pRel, kSpokeAngles[i]));
     }
     return minD;
 }
 
 // ── Capture spiral ─────────────────────────────────────────────────────────────
-// Uses RADIAL distance to the nearest ring (not arc distance), so all rings
-// have equal visual weight regardless of radius.  Free zone for r < kHubRadius.
+// Radial ring-spacing formula: fold × kWebRadius / kSpiralTurns.
+// All rings have equal radial width regardless of radius.
+// Free zone r < kHubRadius and outer zone r > kWebRadius return 1e6.
 
 static float gossamerSpiralDist(float2 pRel, float r) {
     if (r < kHubRadius || r > kWebRadius) return 1e6;
-    float theta    = atan2(pRel.y, pRel.x);
-    float coord    = theta - (r / kWebRadius) * kSpiralTurns * 2.0 * M_PI_F;
-    float fold     = abs(fract(coord / (2.0 * M_PI_F)) - 0.5);
-    // Radial ring spacing = kWebRadius / kSpiralTurns — constant, ring-independent.
+    float theta = atan2(pRel.y, pRel.x);
+    float coord = theta - (r / kWebRadius) * kSpiralTurns * 2.0 * M_PI_F;
+    float fold  = abs(fract(coord / (2.0 * M_PI_F)) - 0.5);
     return fold * kWebRadius / kSpiralTurns;
 }
 
 // ── Hub stabilimentum ─────────────────────────────────────────────────────────
-// Tight concentric rings in the free zone replace the old bright-disc hubCap.
-// The web-creator lives here; it should be dense and dark, not a spotlight.
+// Tight concentric rings in the free zone — dense and dark, not a spotlight.
 
 static float gossamerHubDist(float r) {
     if (r > kHubRadius) return 1e6;
-    float coord = r / kHubRadius * 3.0;   // 3 tight rings within hub radius
+    float coord = r / kHubRadius * 3.0;
     return abs(fract(coord) - 0.5) * kHubRadius / 3.0;
 }
 
@@ -102,11 +115,11 @@ fragment float4 gossamer_fragment(
     constant StemFeatures&  stems  [[buffer(3)]],
     constant GossamerGPU&   gState [[buffer(6)]]
 ) {
-    // Hub offset + elliptical stretch for organic asymmetry.
-    // The slight horizontal stretch reads as a web suspended between lateral anchors.
-    float2 hub  = float2(0.502, 0.511);
+    // Hub at upper portion of screen — proximity to top edge clips upper spiral
+    // rings into asymmetric arcs, giving the web its natural hanging shape.
+    float2 hub  = float2(0.465, 0.32);
     float2 uv   = in.uv;
-    float2 pRel = float2((uv.x - hub.x) / 1.10, (uv.y - hub.y) / 0.94);
+    float2 pRel = uv - hub;
     float  r    = length(pRel);
 
     // ── D-019 warmup ─────────────────────────────────────────────────────────
@@ -119,98 +132,89 @@ fragment float4 gossamer_fragment(
     float midRel    = mix(f.mid_att_rel,    stems.vocals_energy_rel, stemMix);
     float beatPulse = max(f.beat_bass, max(f.beat_mid, f.beat_composite));
 
-    // ── Motion layer 3: Strand tremor ────────────────────────────────────────
-    // Single half-wave standing wave across the web, beat-phase locked.
-    // Envelope = sin(π × r/R): zero at hub and rim, maximum at midpoint.
-    // Amplitude 0.018 UV ≈ 19px at 1080p — clearly visible at screen distance.
-    float vibEnv    = sin(saturate(r / kWebRadius) * M_PI_F);
-    float vibPhase  = f.beat_phase01 * 2.0 * M_PI_F;
-    float radVib    = vibEnv * sin(vibPhase)        * max(-1.0, bassRel) * 0.018;
-    float spirVib   = vibEnv * sin(vibPhase + 0.85) * max(-1.0, midRel)  * 0.012;
+    // ── Motion: Strand tremor ─────────────────────────────────────────────────
+    // Standing-wave envelope: zero at hub and rim, peak at mid-radius.
+    // Amplitude 0.018 UV ≈ 19px at 1080p — clearly visible.
+    float vibEnv   = sin(saturate(r / kWebRadius) * M_PI_F);
+    float vibPhase = f.beat_phase01 * 2.0 * M_PI_F;
+    float radVib   = vibEnv * sin(vibPhase)        * max(-1.0, bassRel) * 0.018;
+    float spirVib  = vibEnv * sin(vibPhase + 0.85) * max(-1.0, midRel)  * 0.012;
 
-    // Tangential displacement: strands sway perpendicular to the radial direction.
-    float2 tangent  = r > 0.001 ? float2(-pRel.y, pRel.x) / r : float2(0.0, 1.0);
-    float2 tRel     = pRel + tangent * (radVib + spirVib);
-    float  rT       = length(tRel);
+    float2 tangent = r > 0.001 ? float2(-pRel.y, pRel.x) / r : float2(0.0, 1.0);
+    float2 tRel    = pRel + tangent * (radVib + spirVib);
+    float  rT      = length(tRel);
 
     // ── Web geometry distances ────────────────────────────────────────────────
     float spokeDist = gossamerNearestSpokeDist(tRel);
     float spirDist  = gossamerSpiralDist(tRel, rT);
     float hubDist   = gossamerHubDist(rT);
 
-    float taper     = saturate(rT / kWebRadius);
+    float taper = saturate(rT / kWebRadius);
 
     // ── Anti-aliased strand coverage ─────────────────────────────────────────
-    float spokeWidth = mix(0.0028, 0.0016, taper);  // tapers toward rim
-    float spirWidth  = 0.0015;                        // consistently thin spiral
-    float hubWidth   = 0.0012;                        // tight hub rings
+    float spokeWidth = mix(0.0028, 0.0016, taper);
+    float spirWidth  = 0.0015;
+    float hubWidth   = 0.0012;
     float aaW        = 0.0007;
 
-    // Radial spokes: no rim clipping — they extend to screen edges (anchors).
-    // Beyond kWebRadius: exponential fade (characteristic length ~0.20 UV).
+    // Spokes extend past kWebRadius with exponential fade — they're anchored.
+    // The open sector on the lower-right will simply have no spoke there.
     float anchorFade = rT > kWebRadius ? exp(-(rT - kWebRadius) * 5.0) : 1.0;
     float spokeCov   = smoothstep(spokeWidth + aaW, spokeWidth - aaW, spokeDist) * anchorFade;
     float spokeHalo  = exp(-spokeDist * spokeDist / (0.006 * 0.006)) * 0.45 * anchorFade;
 
-    // Spiral and hub rings: only in their respective zones.
     float inCapture  = (rT >= kHubRadius && rT <= kWebRadius) ? 1.0 : 0.0;
     float inHub      = (rT < kHubRadius)                      ? 1.0 : 0.0;
     float spirCov    = smoothstep(spirWidth + aaW, spirWidth - aaW, spirDist) * inCapture;
-    float spirHalo   = exp(-spirDist  * spirDist  / (0.0042 * 0.0042)) * 0.30 * inCapture;
+    float spirHalo   = exp(-spirDist * spirDist / (0.0042 * 0.0042)) * 0.30 * inCapture;
     float hubCov     = smoothstep(hubWidth + aaW, hubWidth - aaW, hubDist) * 0.65 * inHub;
 
     float strandCov  = max(max(spokeCov, spirCov), max(max(spokeHalo, spirHalo), hubCov));
 
     // ── Beat brightness flash ─────────────────────────────────────────────────
-    // Whole-web brightness surges on each beat — the web resonates with the music.
-    float beatFlash  = beatPulse * 0.65;
+    float beatFlash = beatPulse * 0.65;
 
-    // ── Motion layer 5: Slow hue drift ───────────────────────────────────────
-    float hueDrift   = fract(f.accumulated_audio_time * 0.020 + f.mid_att_rel * 0.05);
+    // ── Slow hue drift ────────────────────────────────────────────────────────
+    float hueDrift  = fract(f.accumulated_audio_time * 0.020 + f.mid_att_rel * 0.05);
     float3 driftTint = hsv2rgb(float3(hueDrift, 0.48, 0.80));
 
     // ── Base strand color ─────────────────────────────────────────────────────
-    // PRIMARY DRIVER: bass energy deviation.
-    // When bass is above average (bassRel > 0) the web is bright.
-    // When bass is below average (bassRel < 0, sparse music) it dims.
-    // This makes the musical connection direct and continuous — no threshold.
+    // Bass deviation is the primary brightness driver — direct musical connection.
     float3 nearColor  = float3(0.22, 0.70, 0.88);
     float3 rimColor   = float3(0.08, 0.28, 0.70);
     float3 baseColor  = mix(mix(nearColor, rimColor, taper), driftTint, 0.18);
-    float brightness  = 0.55 + bassRel * 0.45;   // 0.10..1.00 over bassRel −1..1
+    float brightness  = 0.55 + bassRel * 0.45;
     float3 baseStrand = baseColor * max(0.10, brightness) * (1.0 + beatFlash);
 
     // ── Propagating color waves ───────────────────────────────────────────────
-    // Waves are only visible on strands (waveContrib × strandCov below).
-    // Amplitude and saturation are floored so waves always have visible colour.
     float3 waveContrib = float3(0.0);
 
     for (uint i = 0; i < gState.wave_count; i++) {
-        WaveGPU w = gState.waves[i];
-        if (w.age <= 0.0 || w.age >= kMaxWaveLife) continue;
+        WaveGPU wave = gState.waves[i];
+        if (wave.age <= 0.0 || wave.age >= kMaxWaveLife) continue;
 
-        float waveRadius = w.age * kWaveSpeed;
+        float waveRadius = wave.age * kWaveSpeed;
         float dr         = abs(rT - waveRadius);
         float ring       = exp(-(dr * dr) / (0.010 * 0.010));
 
-        float lifeFrac   = w.age / kMaxWaveLife;
+        float lifeFrac   = wave.age / kMaxWaveLife;
         float fade       = smoothstep(0.0, 0.05, lifeFrac) * smoothstep(1.0, 0.60, lifeFrac);
 
-        float wSat       = max(w.saturation, 0.60);  // floor: waves always coloured
-        float wAmp       = max(w.amplitude,  0.40);  // floor: waves always bright
-        float3 wCol      = hsv2rgb(float3(w.hue, wSat, wAmp));
-        waveContrib     += wCol * ring * fade;
+        float wSat  = max(wave.saturation, 0.60);
+        float wAmp  = max(wave.amplitude,  0.40);
+        float3 wCol = hsv2rgb(float3(wave.hue, wSat, wAmp));
+        waveContrib += wCol * ring * fade;
     }
     waveContrib *= strandCov;
 
     // ── Intersection dewdrops ─────────────────────────────────────────────────
-    float intersect  = spokeCov * spirCov;
-    float3 dewColor  = float3(0.88, 0.96, 1.0) * intersect
-                     * (0.28 + max(0.0, f.treb_dev) * 1.8) * 0.55;
+    float intersect = spokeCov * spirCov;
+    float3 dewColor = float3(0.88, 0.96, 1.0) * intersect
+                    * (0.28 + max(0.0, f.treb_dev) * 1.8) * 0.55;
 
-    // ── Background (dark night sky, valence/arousal tinted) ──────────────────
-    float  gv     = saturate(f.valence * 0.5 + 0.5);
-    float  ga     = saturate(f.arousal * 0.5 + 0.5);
+    // ── Background (dark night sky) ────────────────────────────────────────────
+    float  gv    = saturate(f.valence * 0.5 + 0.5);
+    float  ga    = saturate(f.arousal * 0.5 + 0.5);
     float3 bgLow  = mix(float3(0.004, 0.004, 0.016), float3(0.008, 0.014, 0.006), ga);
     float3 bgHigh = mix(float3(0.004, 0.008, 0.036), float3(0.014, 0.008, 0.022), ga);
     float3 bgColor = mix(bgLow, bgHigh, uv.y * gv);
@@ -237,7 +241,6 @@ MVWarpPerFrame mvWarpPerFrame(
     pf.sx = 1.0; pf.sy = 1.0;
     pf.warp = 0.0;
 
-    // Bass breath + mid rotation accumulate over mv_warp frames.
     pf.zoom  = 1.0 + f.bass_att_rel * 0.010 + f.mid_att_rel * 0.006;
     pf.rot   = f.mid_att_rel * 0.003;
     pf.decay = 0.955;
@@ -261,7 +264,6 @@ float2 mvWarpPerVertex(
     float  zoomAmt = 1.0 / max(pf.zoom, 0.001);
     float2 zoomed  = p * zoomAmt + centre;
 
-    // Outer strands ripple more than inner hub (rad scales with distance from centre).
-    float wobble   = (pf.q1 * 0.012 + pf.q2 * 0.008) * rad;
+    float wobble = (pf.q1 * 0.012 + pf.q2 * 0.008) * rad;
     return zoomed + p * wobble;
 }
