@@ -308,6 +308,22 @@ Post-session visual feedback on all three Arachnid Trilogy presets surfaced acti
 
 444 tests pass; 0 SwiftLint violations.
 
+### Increment 3.5.11 — Gossamer v3: genuinely asymmetric web geometry ✅
+
+**Landed:** 2026-04-22
+
+**Problem:** Gossamer v2 (Increment 3.5.8) used 16 hash-jittered spokes computed from a formula (equal spacing ± 11% noise). The result was still a compass-rose: approximately evenly distributed angles, a near-center hub, and spiral rings that read as concentric ovals. This is not a spider web; it is a mathematical artefact.
+
+**Changes — `Gossamer.metal` only, no logic changes:**
+- **Explicit spoke array**: 17 angles hand-designed by inspection of reference webs. `gossamerSpokeAngle()` and `kRadialCount` removed entirely; replaced with `constant float kSpokeAngles[17]`.
+- **Genuine irregular spacing**: gaps range 0.27–0.77 rad. One 0.77 rad open sector (lower-right, between 0.58 and 1.35 rad) where no anchor point exists — the web does not reach that corner. Tight cluster at upper-left (-2.82→-2.15 rad, 0.34 rad spacing) simulates three ceiling anchors.
+- **Off-center hub**: moved from (0.502, 0.511) to (0.465, 0.32) — upper portion of screen. Hub is only 0.32 UV from the top edge, so upper spiral rings clip into asymmetric arcs naturally. Lower rings extend to full `kWebRadius = 0.44`.
+- **Elliptical stretch removed**: the old `pRel.x / 1.10 / pRel.y / 0.94` distortion compensated for the centered hub. With the hub genuinely off-center the stretch would add a second asymmetry axis and fight the natural one.
+- **`kWebRadius` expanded**: 0.42 → 0.44 so lower spiral rings are visibly full and lush before the anchor fade.
+- All v2/3.5.8 audio improvements retained: bass brightness `0.55 + bassRel × 0.45`, beat flash 0.65, standing-wave tremor 0.018 UV, tight halos, wave amplitude/sat floors.
+
+440 tests pass; 0 SwiftLint violations.
+
 ### Increment MV-0 — Drop v4.2 stash, re-land sky-tint conditional ✅
 
 **Landed:** 2026-04-16, commit `91f698d5`
