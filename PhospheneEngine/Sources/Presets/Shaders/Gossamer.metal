@@ -92,7 +92,8 @@ static float gossamerSpiralDist(float2 pRel, float r) {
     if (r < kHubRadius || r > kWebRadius) return 1e6;
     float theta = atan2(pRel.y, pRel.x);
     float coord = theta - (r / kWebRadius) * kSpiralTurns * 2.0 * M_PI_F;
-    float fold  = abs(fract(coord / (2.0 * M_PI_F)) - 0.5);
+    float f     = fract(coord / (2.0 * M_PI_F));
+    float fold  = min(f, 1.0 - f);   // 0 ON thread, max in gap
     return fold * kWebRadius / kSpiralTurns;
 }
 
@@ -102,7 +103,8 @@ static float gossamerSpiralDist(float2 pRel, float r) {
 static float gossamerHubDist(float r) {
     if (r > kHubRadius) return 1e6;
     float coord = r / kHubRadius * 3.0;
-    return abs(fract(coord) - 0.5) * kHubRadius / 3.0;
+    float hf    = fract(coord);
+    return min(hf, 1.0 - hf) * kHubRadius / 3.0;   // 0 ON ring, max in gap
 }
 
 // ── Scene fragment ─────────────────────────────────────────────────────────────
@@ -172,18 +174,19 @@ fragment float4 gossamer_fragment(
     float strandCov  = max(max(spokeCov, spirCov), max(max(spokeHalo, spirHalo), hubCov));
 
     // ── Beat brightness flash ─────────────────────────────────────────────────
-    float beatFlash = beatPulse * 0.65;
+    float beatFlash = beatPulse * 0.30;
 
     // ── Slow hue drift ────────────────────────────────────────────────────────
     float hueDrift  = fract(f.accumulated_audio_time * 0.020 + f.mid_att_rel * 0.05);
     float3 driftTint = hsv2rgb(float3(hueDrift, 0.48, 0.80));
 
     // ── Base strand color ─────────────────────────────────────────────────────
-    // Bass deviation is the primary brightness driver — direct musical connection.
+    // Absolute bass gives a music-presence glow (silent=dim, playing=lit).
+    // Deviation adds dynamic variation above the average.
     float3 nearColor  = float3(0.22, 0.70, 0.88);
     float3 rimColor   = float3(0.08, 0.28, 0.70);
     float3 baseColor  = mix(mix(nearColor, rimColor, taper), driftTint, 0.18);
-    float brightness  = 0.55 + bassRel * 0.45;
+    float brightness  = 0.12 + f.bass * 0.76 + bassRel * 0.12;
     float3 baseStrand = baseColor * max(0.10, brightness) * (1.0 + beatFlash);
 
     // ── Propagating color waves ───────────────────────────────────────────────
