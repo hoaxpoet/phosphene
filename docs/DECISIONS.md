@@ -639,3 +639,20 @@ Gossamer uses 0.955 to maximise the echo-reverb trail of vocal waves. Arachne is
 
 Each web's spatial orientation is derived deterministically from its `rng_seed` field (already in `WebGPU`). This gives a stable 3D arrangement that persists across frames. Fully random orientations would make the scene chaotic; fully aligned (all facing camera) would look flat. The seed-derived tilt range (±0.15 in X, ±0.11 in Y before normalisation) gives ~15° of variation per web — enough to read as 3D without appearing unstable.
 
+## D-042 — Gossamer spoke geometry must be explicitly defined, not formula-derived (Increment 3.5.11)
+
+**Status:** Accepted (2026-04-22)
+
+**Context:** Gossamer v1 used 12 evenly-spaced spokes. v2 used 16 spokes with ±11% hash-jitter applied to equal angular spacing. Both produced approximately symmetric compass-rose geometry. Real spider webs are not constructed from a formula — they are built between whatever anchor points are available, producing markedly irregular angular spacing and a non-centered hub.
+
+**Decision — Replace formula with explicit array; move hub off-center.**
+
+`gossamerSpokeAngle(int i)` and `kRadialCount` removed entirely. Replaced with `constant float kSpokeAngles[17]` — 17 angles hand-designed from reference web photographs. Key features of the array:
+- One 0.77 rad open sector (lower-right) where no surface exists to anchor.
+- Tight cluster of 3 ceiling anchors spanning 0.67 rad (upper-left).
+- Minimum gap 0.27 rad, maximum 0.77 rad; no uniform underlying spacing.
+
+Hub moved from (0.502, 0.511) to (0.465, 0.32). The hub is near the ceiling — only 0.32 UV from the top edge. Upper spiral rings are naturally clipped into arcs by the screen boundary; lower rings extend to full radius. This asymmetry is structural: it cannot be removed without moving the hub, which means it persists through all rendering states and audio conditions.
+
+**Rule:** Any future revision to Gossamer spoke geometry must continue to use an explicit angle array, not a formula with noise. The moment you apply a regular grid and add noise, you get a noisy grid — not irregular geometry.
+
