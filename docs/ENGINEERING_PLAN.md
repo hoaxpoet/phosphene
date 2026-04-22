@@ -405,6 +405,16 @@ Also: `MusicKitBridge` unused `artistLower` removed; `SessionRecorder` `_ = try?
 
 These are ordered by dependency. Each has done-when criteria and verification commands.
 
+**Current priority ordering (post-2026-04-22 documentation audit):**
+
+1. **Phase U — UX Architecture** (U.1 → U.7 gates Milestone A). Sequential.
+2. **Phase V — Visual Fidelity Uplift** (V.1 → V.6 build the library; V.7 → V.12 apply it). V.1–V.6 can run in parallel with Phase U since they touch disjoint modules. V.7+ starts once V.1–V.3 utilities land.
+3. **Phase MD — Milkdrop Ingestion** (MD.1 → MD.7). Starts once Phase V.1–V.3 utilities land. Parallelizable with V.7+.
+4. **Phase 6** (Progressive readiness, Frame budget manager, ML dispatch scheduling). 6.1 specifically unblocks the "Start now" CTA in Increment U.4 — either pull 6.1 forward or ship U.4 with the CTA dormant.
+5. **Phase 7** (Long-session stability). Unchanged.
+
+Phase MV is complete; see below for its historical record.
+
 ## Phase MV — Milkdrop-Informed Musical Architecture
 
 **Why this phase exists:** six iterations on Volumetric Lithograph produced incremental fixes but never converged on "feels like a band member playing along with the music." [`docs/MILKDROP_ARCHITECTURE.md`](MILKDROP_ARCHITECTURE.md) documents the research that identified the root cause:
@@ -680,6 +690,437 @@ UPDATE_GOLDEN_SNAPSHOTS=1 swift test --package-path PhospheneEngine --filter tes
 
 ---
 
+## Phase U — UX Architecture
+
+**Why this phase exists:** the engine has a `SessionState` lifecycle (idle → connecting → preparing → ready → playing → ended) and a developer-facing debug overlay, but there is no user-facing UX specification and no corresponding UI. Phase 2.5 built the preparation *pipeline*; Phase U builds the UI around it. `docs/UX_SPEC.md` is the canonical spec for everything in this phase. Milestone A ("Trustworthy Playback Session") blocks on U.1–U.7.
+
+### Increment U.1 — Session-state views
+
+**Scope:** `ContentView` becomes a pure switch on `SessionManager.state`. Six stub top-level views (`IdleView`, `ConnectingView`, `PreparationProgressView`, `ReadyView`, `PlaybackView`, `EndedView`) under `PhospheneApp/Views/`, each rendering a distinct testable hierarchy. `SessionStateViewModel` (`@MainActor ObservableObject`) observes `SessionManager` and publishes current state. New `CLAUDE.md §UX Contract` section. New `ARCHITECTURE.md §UI Layer` subsection.
+
+**Done when:**
+- Six views exist; each renders without errors for its corresponding state.
+- `ContentView` contains no state logic beyond routing.
+- Snapshot tests for each view with at least one fixture (empty state).
+- Reduced-motion system flag detection stub in place (used by later increments).
+
+**Verify:** `swift test --package-path PhospheneEngine --filter SessionStateViewTests`
+
+---
+
+### Increment U.2 — Permission onboarding
+
+**Scope:** `PermissionOnboardingView` with one-screen permission explainer and "Open System Settings" CTA per `UX_SPEC.md §3.2`. On every app foregrounding, `PhospheneApp` checks `CGPreflightScreenCaptureAccess()`; if false, routes to `PermissionOnboardingView` regardless of session state. Return auto-detection: when permission flips to granted, advance to `.idle` without a user click. `PhotosensitivityNoticeView` shown once before first session, persisted in `UserDefaults`.
+
+**Done when:**
+- Fresh install without permission shows onboarding.
+- Granting permission auto-advances to `.idle` on foregrounding.
+- Revoking permission mid-session routes back to onboarding.
+- Photosensitivity notice shown once, suppressible, persisted.
+- 4+ unit tests covering the permission-state flows.
+
+**Verify:** `swift test --package-path PhospheneEngine --filter PermissionOnboardingTests`
+
+---
+
+### Increment U.3 — Playlist connector picker
+
+**Scope:** `ConnectorPickerView` with three tiles (Apple Music, Spotify, Local folder). Apple Music and Spotify reuse existing `PlaylistConnecting` protocol implementations. Local folder is feature-flagged off in v1. Per-connector flow views (`AppleMusicConnectionView`, `SpotifyConnectionView`) handle the five `AppleMusicAppleScriptConnector.connect()` return cases and the Spotify URL-paste + validation flow per `UX_SPEC.md §4.3`/`§4.4`.
+
+**Done when:**
+- Three tiles render with correct availability states (Apple Music disabled when not running).
+- Apple Music path works end-to-end with existing `AppleMusicAppleScriptConnector`.
+- Spotify URL paste accepts all valid URL forms; rejects tracks/albums with correct copy.
+- Each connector surfaces its error states per the UX_SPEC §8.2 table.
+- 8+ unit tests covering connector flows.
+
+**Verify:** `swift test --package-path PhospheneEngine --filter ConnectorPickerTests`
+
+---
+
+### Increment U.4 — Preparation progress UI
+
+**Scope:** `PreparationProgressView` per `UX_SPEC.md §5.2`. New `PreparationProgressPublishing` protocol exposed by `SessionPreparer`; publishes `[TrackID: TrackPreparationStatus]` via Combine. `TrackPreparationRow` renders one of seven statuses (`.queued`, `.resolving`, `.downloading`, `.analyzing`, `.ready`, `.partial`, `.failed`) with icon + copy per `§5.3` table. Aggregate progress bar + per-track ETA + cancel affordance. "Start now" CTA appears at `progressiveReadinessLevel == .ready_for_first_tracks` — dependency on Increment 6.1; before 6.1 ships, this CTA is dormant.
+
+**Done when:**
+- Track list updates as each track advances through preparation stages.
+- `PreparationProgressPublishing` protocol defined in `Session` module; `DefaultSessionPreparer` conforms.
+- All seven status cases render correctly with their icons and copy.
+- Cancel tears down in-flight work and returns to `.idle` without leaving orphan stem analyses.
+- 6+ unit tests, including a flaky-network fixture via `MockPreparationProgressPublisher`.
+
+**Verify:** `swift test --package-path PhospheneEngine --filter PreparationProgressTests`
+
+---
+
+### Increment U.5 — Ready view + first-audio autodetect
+
+**Scope:** `ReadyView` per `UX_SPEC.md §6.1`. First-track preset renders in background at 0.3× opacity. Attention-drawing pulsing border. First-audio autodetect via `AudioInputRouter` `.silent → .active` transition sustained >250 ms → auto-advance to `.playing`. 90-second timeout handling per `§6.3`.
+
+**Done when:**
+- `ReadyView` renders with background preset preview and handoff copy.
+- Sustained audio signal advances to `.playing` without user input.
+- 90s timeout shows the "haven't heard anything yet" prompt with Retry / End.
+- Source-name in copy matches the connector used (Apple Music / Spotify / your music app).
+- 4+ unit tests via mocked `AudioInputRouter`.
+
+**Verify:** `swift test --package-path PhospheneEngine --filter ReadyViewTests`
+
+---
+
+### Increment U.6 — In-session chrome
+
+**Scope:** `PlaybackView` overlay chrome per `UX_SPEC.md §7`. Three layers: Metal render surface (full-bleed), auto-hiding overlay (track info top-left, controls cluster top-right, bottom-right toast slot), debug overlay (toggled with `D`). `OverlayChromeView` with `PlaybackOverlayViewModel` managing visibility + fade timers. Keyboard shortcuts from `§7.6` registered globally within `.playing`. Track-change animation per `§7.5`. Multi-display drag per `§7.7`. Blurred dark backdrop for contrast guarantee.
+
+**Done when:**
+- Overlay fades out after 3 s idle; reappears on mouse move or key press.
+- Keyboard shortcuts `⌘F`, `Space`, `←`, `→`, `M`, `D`, `Esc`, `?` all wired.
+- Track change triggers center toast for 1 s then moves info to top-left card.
+- Minimum-contrast 4.5:1 verified against three regression fixtures (silence / steady mid-energy / beat-heavy).
+- Display hot-plug reparents window without crash or session loss.
+- 8+ unit tests for ViewModel state transitions + snapshot tests for each overlay configuration.
+
+**Verify:** `swift test --package-path PhospheneEngine --filter PlaybackChromeTests`
+
+---
+
+### Increment U.7 — Error taxonomy + toast system
+
+**Scope:** `UserFacingError` typed enum and `ErrorToast` view component per `UX_SPEC.md §8`. Every row in the UX_SPEC error tables (§8.1–§8.4) has a corresponding enum case with copy test. All user-facing strings externalized in `Localizable.strings`. `PlaybackView` bottom-right toast slot for degradation messages (silence detection, preview fallback, sample-rate mismatch, etc.). Full-screen error states for connection / preparation failures.
+
+**Done when:**
+- `UserFacingError` has a case for every row in UX_SPEC §8.1–§8.4 tables.
+- Exhaustive copy test: every enum case asserts the exact string returned.
+- `Localizable.strings` complete for v1 English; no inline hardcoded strings in views.
+- Toast auto-dismisses on condition-resolved signals; persists while condition holds.
+- Never shows full-screen error during `.playing`.
+- Every error case has either CTA or auto-retry status indicator.
+
+**Verify:** `swift test --package-path PhospheneEngine --filter UserFacingErrorCopyTests`
+
+---
+
+### Increment U.8 — Settings panel
+
+**Scope:** `SettingsView` sheet per `UX_SPEC.md §9`. Four groups: Audio, Visuals, Diagnostics, About. All fields persisted in `UserDefaults` via `SettingsViewModel`. Settings apply immediately (no "Apply" button). Quality ceiling mid-session applies at next preset transition.
+
+**Done when:**
+- All four sections render with correct fields.
+- Every setting persists across app restart.
+- Capture-mode change tears down and re-establishes `AudioInputRouter` cleanly.
+- Device-tier override propagates to `DefaultPresetScorer.PresetScoringContext`.
+- "Reset onboarding" clears the photosensitivity flag and forces re-prompt.
+- "Open sessions folder" opens `~/Documents/phosphene_sessions/` in Finder.
+- 6+ unit tests.
+
+**Verify:** `swift test --package-path PhospheneEngine --filter SettingsTests`
+
+---
+
+### Increment U.9 — Accessibility pass
+
+**Scope:** `NSWorkspace.accessibilityDisplayShouldReduceMotion` gates `mv_warp` and SSGI temporal feedback. Beat-pulse amplitude clamped to 0.5× when reduced motion is active. Dynamic Type sizing respected across all non-Metal views. VoiceOver labels on interactive elements; render surface marked decorative. Overlay-text contrast measured against the three regression fixtures for every preset; failures gate preset certification.
+
+**Done when:**
+- `mv_warp` disabled when reduced motion is active; preset still renders correctly without it.
+- SSGI temporal feedback disabled (falls back to non-temporal sampling).
+- Beat-pulse amplitude cap verified on beat-heavy fixture.
+- Dynamic Type from xSmall to xxxLarge renders without clipping across all non-Metal views.
+- VoiceOver rotor reads all interactive elements correctly.
+- Contrast test fails a synthetic white-on-white preset fixture; passes against all production presets.
+- 8+ unit tests + contrast fixture tests.
+
+**Verify:** `swift test --package-path PhospheneEngine --filter AccessibilityTests`
+
+---
+
+## Phase V — Visual Fidelity Uplift
+
+**Why this phase exists:** six iterations on Volumetric Lithograph, three each on Arachne and Gossamer, produced incremental fixes but never reached a 2026 quality bar. `docs/SHADER_CRAFT.md` documents the root cause: the `ShaderUtilities` library was thin (55 functions, missing every modern shader technique), there was no detail-cascade methodology documented, no material cookbook, no reference-image discipline, no quality rubric beyond "does it compile." The fidelity cap is authoring-vocabulary poverty in documentation, not hardware or Metal.
+
+V.1–V.6 build the authoring vocabulary. V.7–V.12 apply it to the existing presets Matt called out. V.1–V.6 can run in parallel with Phase U; V.7+ starts once the utility library is ready.
+
+### Increment V.1 — Shader utility library: Noise + PBR
+
+**Scope:** New directory tree `PhospheneEngine/Sources/Renderer/Shaders/Utilities/` with subtrees `Noise/` and `PBR/`. ~90 new functions total. Per `SHADER_CRAFT.md §11.2`:
+- `Noise/`: Perlin, Worley, Simplex, FBM (fbm4/fbm8/fbm12, vector fbm), RidgedMultifractal, DomainWarp, Curl, BlueNoise, Hash.
+- `PBR/`: BRDF (GGX, Lambert, Oren-Nayar, Ashikhmin-Shirley), Fresnel, NormalMapping, POM, Triplanar, DetailNormals, SSS, Fiber (Marschner-lite), Thin (thin-film interference).
+
+SwiftLint `file_length` special-cased for `.metal` files (raise to 1000 or path-exclude); mechanism TBD during implementation per `SHADER_CRAFT.md §16.1`. `PresetLoader+Preamble.swift` extended to include new utility tree before preset code.
+
+**Done when:**
+- All listed utility files exist with the function signatures from SHADER_CRAFT recipes.
+- `NoiseUtilityTests` and `PBRUtilityTests` pass (visual sanity check: render each primitive to a test texture, dHash against goldens).
+- `.metal` files allowed to exceed 400 lines without lint violation.
+- Existing presets compile and render unchanged (additive change, no breaking modifications).
+- `fbm8`, `warped_fbm`, `ridged_mf`, `triplanar_sample`, `triplanar_normal`, `parallax_occlusion`, `mat_silk_thread` available for preset authoring.
+
+**Verify:** `swift test --package-path PhospheneEngine --filter UtilityTests && xcodebuild -scheme PhospheneApp build`
+
+---
+
+### Increment V.2 — Shader utility library: Geometry + Volume + Texture
+
+**Scope:** Add `Geometry/`, `Volume/`, `Texture/` subtrees. ~95 new functions. Per `SHADER_CRAFT.md §11.2`:
+- `Geometry/`: SDFPrimitives (~30 primitives), SDFBoolean (smooth unions / intersections with multi-node blending), SDFModifiers (repeat/mirror/twist/bend/scale), SDFDisplacement (Lipschitz-aware), RayMarch (adaptive sphere tracing), HexTile.
+- `Volume/`: ParticipatingMedia, HenyeyGreenstein, LightShafts, Caustics, Clouds.
+- `Texture/`: Voronoi (cracks / cells), ReactionDiffusion, FlowMaps, Procedural (wood / marble / rings), Grunge.
+
+**Done when:**
+- Utility files exist with SHADER_CRAFT signatures.
+- Geometry tests: smooth-union 3-primitive blend; displacement within Lipschitz bounds; adaptive march correctness against fixed-step baseline.
+- Volume tests: light shaft against known analytic solution; cloud density distribution; caustic pattern stable across frames.
+- Texture tests: Voronoi cell distribution; flow-map UV-offset correctness.
+- Existing presets continue to render unchanged.
+
+**Verify:** `swift test --package-path PhospheneEngine --filter UtilityTests`
+
+---
+
+### Increment V.3 — Shader utility library: Color + Materials cookbook
+
+**Scope:** Add `Color/` subtree and `Materials/` cookbook:
+- `Color/`: Palettes (IQ cosine, gradients, LUT sampling), ColorSpaces (RGB↔HSV↔Lab↔Oklab), ChromaticAberration, ToneMapping (ACES variants, Reinhard, filmic).
+- `Materials/`: Metals.metal (polished chrome, brushed aluminum, gold, copper, ferrofluid), Dielectrics.metal (ceramic, frosted glass, wet stone), Organic.metal (bark, leaf, silk thread, chitin), Exotic.metal (ocean, ink, marble, granite). All 20 recipes from `SHADER_CRAFT.md §4`.
+
+**Done when:**
+- All 20 material functions implemented as documented.
+- Per-material visual sanity tests render each against a test sphere with standardized lighting.
+- Color utilities pass round-trip tests (RGB→Oklab→RGB delta < 0.01).
+- Cookbook materials callable from `sceneMaterial()` in ray-march presets.
+
+**Verify:** `swift test --package-path PhospheneEngine --filter MaterialCookbookTests`
+
+---
+
+### Increment V.4 — SHADER_CRAFT reference implementation audit
+
+**Scope:** Read-through and correctness pass over the completed utility library. For every recipe in `SHADER_CRAFT.md §3`–`§8`, verify the utility implementation matches the documented recipe byte-for-byte. Any drift becomes a doc bug or a code bug — both get fixed. Performance measurements: measure each utility's real cost on Tier 1 (M1/M2) and Tier 2 (M3+) hardware; update the cost table in `SHADER_CRAFT.md §9.4` with measured values.
+
+**Done when:**
+- Every `SHADER_CRAFT.md` recipe has a corresponding utility function with matching behavior.
+- Cost table in §9.4 reflects measured values on both tier classes.
+- Discrepancies between doc and code are resolved in favor of the empirically-correct version.
+
+**Verify:** `swift test --package-path PhospheneEngine --filter UtilityCorrectnessTests && swift test --filter UtilityPerformanceTests`
+
+---
+
+### Increment V.5 — Visual references library + quality reel
+
+**Scope:** Create `docs/VISUAL_REFERENCES/` directory with per-preset folders for all 11 existing presets plus placeholders for Phase MD presets. Each folder: 3–5 curated reference images with an annotated `README.md` specifying which visual traits are mandatory. Matt curates; Claude Code sessions reference by filename. Additionally: build a **quality reel** — a 3-minute multi-genre capture across (sparse jazz → hard electronic → symphonic), used as a one-glance quality-review artifact for future increments.
+
+**Done when:**
+- Every existing preset has a `docs/VISUAL_REFERENCES/<preset>/` folder with reference images and annotated README.
+- Quality reel `docs/quality_reel.mp4` checked in (Git LFS).
+- `SHADER_CRAFT.md §2.3` reference-image discipline is enforceable — Claude Code sessions cite filenames.
+- Matt approves curation round.
+
+**Verify:** Manual Matt review.
+
+---
+
+### Increment V.6 — Fidelity rubric + certification pipeline
+
+**Scope:** Implement the `SHADER_CRAFT.md §12` rubric as automated + manual gates:
+- Automated: detail-cascade detection via static analysis of preset Metal source (look for `fbm8` / `worley_fbm` / multiple material calls / triplanar usage); noise-octave counting; material-count verification; D-026 deviation-primitive usage; silence-fallback regression test.
+- Manual: Matt-approved reference frame match gates certification.
+
+`PresetDescriptor` gains a `certified: Bool` field. Orchestrator excludes uncertified presets by default. `SettingsView` gets a "Show uncertified presets" toggle (off by default).
+
+Supersedes (without deleting) Increment 5.2's weak invariants — those stay as a passing prerequisite.
+
+**Done when:**
+- Automated rubric scores every preset; report prints each preset's 7+4+4 breakdown.
+- `certified: Bool` field defaults to false for Matt-approved presets only.
+- Orchestrator filter excludes uncertified.
+- Toggle in Settings reveals uncertified.
+- Increment 5.2 invariants still passing.
+
+**Verify:** `swift test --package-path PhospheneEngine --filter FidelityRubricTests`
+
+---
+
+### Increment V.7 — Arachne v4 (fidelity uplift)
+
+**Scope:** Apply V.1–V.4 utilities and V.5 references to Arachne per `SHADER_CRAFT.md §10.1`. Key changes: per-web organic variation (tilt/hub/strand-count jitter); per-strand sag/tension variation; adhesive droplets on spiral threads; silk thread Marschner-lite material; dust-mote field; bioluminescent lighting with back-lit rim; audio-reactivity restricted to emission intensity and dust-mote density (D-020 — structure stays solid).
+
+**Done when:**
+- Arachne v4 passes fidelity rubric 10/15 minimum including Matt-approved reference frame match.
+- Passes Increment 5.2 invariants.
+- p95 frame time ≤ Tier 2 budget at 1080p.
+- Silk threads visibly narrow (∼1.5 px at 1080p) with axial specular per `04_specular_fiber_highlight.jpg` annotation.
+- Adhesive droplets visible at 8–12 px spacing per `03_micro_adhesive_droplet.jpg` annotation.
+- Golden hash regenerated; `certified: true`.
+
+**Verify:** `swift test --filter PresetAcceptanceTests && swift test --filter PresetRegressionTests && swift test --filter FidelityRubricTests` + Matt review.
+
+**Estimated sessions:** 3 (geometry + variation / materials / polish + audio routing).
+
+---
+
+### Increment V.8 — Gossamer v4
+
+**Scope:** Apply to Gossamer per `SHADER_CRAFT.md §10.2`. Physical wave displacement (waves offset silk strand positions, not just tint them); silk Marschner-lite material tuned for hero resonator; fine specular glints at thread intersections; chromatic aberration on wave peaks; inward/outward dust drift; SSGI-lit background from web emission.
+
+**Done when:** same rubric gates as V.7; `certified: true`.
+
+**Verify:** same as V.7.
+
+**Estimated sessions:** 2 (physical displacement rework / atmosphere + chromatic aberration).
+
+---
+
+### Increment V.9 — Ferrofluid Ocean v2
+
+**Scope:** Full rebuild per `SHADER_CRAFT.md §10.3`. Hex-tile Rosensweig spike lattice (`stems.bass_energy_dev` drives field strength); domain-warped spike positions for organic flow; ferrofluid material with anisotropic reflection along spike axes; distant fog cooling to dark purple; IBL cubemap as primary indirect light; caustic underlighting.
+
+**Done when:** same rubric gates; `certified: true`.
+
+**Verify:** same as V.7.
+
+**Estimated sessions:** 4 (field formulation / material / lighting + IBL / audio routing).
+
+---
+
+### Increment V.10 — Fractal Tree v2
+
+**Scope:** Apply to Fractal Tree per `SHADER_CRAFT.md §10.4`. Bark material with POM + triplanar + lichen patches; procedural leaf clusters at branch tips with leaf material (SSS back-lit); wind animation via curl-noise; seasonal palette synced with valence; golden-hour lighting with long shadows.
+
+**Done when:** same rubric gates; `certified: true`. Performance profile shows POM + foliage within Tier 2 budget (likely requires MetalFX Temporal upscaling at sub-1080p internal render).
+
+**Verify:** same as V.7.
+
+**Estimated sessions:** 4 (bark + POM / foliage / wind animation / seasonal + audio).
+
+---
+
+### Increment V.11 — Volumetric Lithograph v5
+
+**Scope:** Major rework per `SHADER_CRAFT.md §10.5`. Replace fBM heightfield with `ridged_mf` warped by `curl_noise` (mountainous, not lumpy); mesa terrace secondary displacement; triplanar detail normal; aerial perspective fog (color-shift from warm sky to cool depth); drifting cloud shadows; cutting-plane beat-reveal replaces palette flash; retain mv_warp and pitch-color mapping from MV-3.
+
+**Done when:** same rubric gates; `certified: true`. Terrain reads as mountainous, not lumpy — confirmed against `docs/VISUAL_REFERENCES/volumetric_lithograph/` annotations.
+
+**Verify:** same as V.7.
+
+**Estimated sessions:** 3 (terrain reformulation / aerial + clouds / cutting-plane + polish).
+
+---
+
+### Increment V.12 — Glass Brutalist v2 + Kinetic Sculpture v2
+
+**Scope:** Fidelity uplift for the remaining ray-march presets not covered in V.7–V.11. Glass Brutalist: detail normals on concrete; POM on walls; frosted glass material for fins; volumetric light shafts through windows. Kinetic Sculpture: brushed aluminum material per `§4.2`; polished chrome with anisotropic streaks; dust motes in ambient space.
+
+**Done when:** both presets pass fidelity rubric 10/15 with all mandatory; `certified: true` on both.
+
+**Verify:** same as V.7.
+
+**Estimated sessions:** 3 (Glass Brutalist lift / Kinetic Sculpture lift / joint polish + perf).
+
+---
+
+## Phase MD — Milkdrop Ingestion
+
+**Why this phase exists:** `docs/MILKDROP_ARCHITECTURE.md` informed Phosphene's own authoring patterns (MV-0 through MV-3), but the "port the cream of the crop" work track disappeared from the plan. The vehicle for that work — the `mv_warp` render pass (D-027) — is built and sitting largely unused since D-029 pulled it from Starburst and VolumetricLithograph. This phase ingests Jason Fletcher's curated `presets-cream-of-the-crop` pack as Phosphene presets, then upgrades the best with Phosphene's superior capabilities (SSGI, PBR, stems, pitch, beat anticipation) — producing "evolved Milkdrop" presets, not mere clones.
+
+Runs in parallel with Phase V.7+ once Phase V.1–V.3 utilities are available.
+
+### Increment MD.1 — `.milk` grammar audit
+
+**Scope:** New doc `docs/MILKDROP_GRAMMAR.md` cataloguing every per-frame / per-vertex variable, every equation operator, and every function used across the `presets-cream-of-the-crop` pack. Frequency counts so we know which 80% of the language to support first. Milkdrop 2 pixel shaders (warp + composite) analyzed separately — these emit directly as Metal rather than being transpiled from a DSL.
+
+**Done when:**
+- Doc enumerates all variables (bass/mid/treb/time/q1–q32/wave_* / mv_* / ob_* / ib_* etc.) observed.
+- Top-20 built-in functions (sigmoid, clamp, above, below, if_then_else etc.) have Metal-equivalent code notes.
+- Pixel-shader conventions (sampler_main, GetPixel, GetBlur1, GetBlur2, ret, rad, ang, uv, uv_orig, tex2D) documented with Metal mappings.
+
+**Verify:** Manual review against 5 randomly-sampled preset files from the pack.
+
+---
+
+### Increment MD.2 — Transpiler CLI skeleton
+
+**Scope:** New SPM executable target `PhospheneTools/MilkdropTranspiler`. Lexes `.milk` files; emits a Swift AST. No code generation yet — this increment proves the parser covers the grammar surface. Ships as a standalone tool so transpiler bugs never affect the Phosphene runtime (Option B from the improvement plan).
+
+**Done when:**
+- Can parse 100% of the cream-of-the-crop pack without lexer / parser errors.
+- Round-trips AST to readable pretty-print; diffing the pretty-print against the original is semantically equivalent (modulo whitespace).
+- Test suite: 10+ fixture presets covering grammar edge cases.
+
+**Verify:** `swift test --package-path PhospheneTools --filter MilkdropTranspilerParserTests`
+
+---
+
+### Increment MD.3 — Per-frame → JSON emission
+
+**Scope:** Transpiler extends AST → JSON emission. Per-frame equations that map to `PresetDescriptor` parameters (`base_zoom`, `base_rot`, `decay`, etc.) emit as JSON sidecar. Per-frame `q1`–`q32` user variables emit as a fixed-size uniform buffer alongside `FeatureVector`.
+
+**Done when:**
+- Transpiler generates valid `.json` sidecars for 20 test presets.
+- Round-trip test verifies semantic equivalence for the supported per-frame operator subset.
+- Unsupported operators (rare cases) emit a clear diagnostic with the offending line; doesn't crash.
+
+**Verify:** `swift test --package-path PhospheneTools --filter PerFrameEmissionTests`
+
+---
+
+### Increment MD.4 — Per-vertex → Metal emission
+
+**Scope:** Transpiler extends to per-vertex emission: Milkdrop per-vertex equations compile to `mvWarpPerVertex` Metal function bodies. Per-frame state threaded through the `q1`–`q32` uniform buffer. Milkdrop 2 warp / composite pixel shaders compile directly to their Metal equivalents using the `sampler_main` → `warpTexture` mapping.
+
+**Done when:**
+- 5 hand-selected reference presets (including at least one Milkdrop 1 and one Milkdrop 2 preset) compile via transpiler and render in Phosphene.
+- Transpiled presets bind to the existing `mv_warp` render pass.
+- Golden hash regression added per transpiled preset.
+- Visual sanity check: transpiled preset output resembles projectM's render of the same preset.
+
+**Verify:** `swift test --package-path PhospheneEngine --filter MilkdropTranspiledPresetTests`
+
+---
+
+### Increment MD.5 — Ingestion harness + first 10 cream-of-the-crop presets
+
+**Scope:** Pick 10 Jason Fletcher presets spanning families (geometric, fractal, organic, kaleidoscopic, abstract). Run transpiler, inspect output, polish each until visual match against projectM render is acceptable. These presets are marked `family: "milkdrop_classic"` and tagged for the "Include Milkdrop-style presets" user toggle in Settings.
+
+**Done when:**
+- 10 new presets in `PhospheneEngine/Sources/Presets/Shaders/Milkdrop/` with JSON sidecars.
+- Each has a golden-session regression entry and Increment 5.2 acceptance test.
+- Orchestrator metadata (`visual_density`, `motion_intensity`, `fatigue_risk`, etc.) hand-authored per preset for planning integration.
+- User-settings toggle "Include Milkdrop-style presets" honored (Increment U.8).
+- **D-043 added to DECISIONS.md**: "Milkdrop presets ingested via offline transpiler + manual uplift; no runtime .milk parser."
+
+**Verify:** `swift test --filter PresetAcceptanceTests` (auto-covers new presets via existing regression gate).
+
+---
+
+### Increment MD.6 — Next 20 presets + stem-aware upgrade
+
+**Scope:** Next 20 cream-of-the-crop presets. Each manually upgraded with **at least two** of: stem-driven parameter routing (replacing `bass`/`mid`/`treb` with per-stem equivalents), beat-phase anticipation via MV-3b `beat_phase01`, pitch-hue mapping via MV-3c `vocalsPitchHz`, MV-3a rich stem metadata. These are the "evolved Milkdrop" presets — keep the visual DNA but exploit Phosphene's audio pipeline.
+
+**Done when:**
+- 20 more presets in the library.
+- Each preset's JSON documents which MV-3 capabilities it uses (new `mv3_features_used: [...]` array field).
+- No original preset is regressed — the unmodified version from MD.5 stays available under a separate ID for A/B comparison.
+- All 30 Milkdrop presets pass Increment 5.2 acceptance.
+
+**Verify:** `swift test --filter PresetAcceptanceTests`
+
+---
+
+### Increment MD.7 — Ray-march hybrids (evolved Milkdrop)
+
+**Scope:** For the best 5 Milkdrop presets from MD.5–MD.6, author a companion ray-march layer that renders 3D depth behind the 2D warp plane. Static-camera only, per D-029 — no moving-camera hybrids. Kept as separate presets prefixed `evolved/`. Uses the full utility library from Phase V.
+
+**Done when:**
+- 5 hybrid presets composed of `["ray_march", "mv_warp", "post_process"]`.
+- Each passes the V.6 fidelity rubric (10/15 including mandatory).
+- Performance verified on Tier 1 and Tier 2 — hybrids are more expensive and may be Tier-2-only.
+- Matt approves reference frame match for each.
+
+**Verify:** `swift test --filter PresetAcceptanceTests && swift test --filter FidelityRubricTests`
+
+---
+
 ## Phase 6 — Progressive Readiness & Performance Tiering
 
 ### Increment 6.1 — Progressive Session Readiness
@@ -759,10 +1200,12 @@ UPDATE_GOLDEN_SNAPSHOTS=1 swift test --package-path PhospheneEngine --filter tes
 
 These milestones map to product-level outcomes, not implementation phases.
 
-**Milestone A — Trustworthy Playback Session.** A user can connect a playlist, obtain a usable prepared session, and complete a full listening session without instability. *Requires: ~~2.5.4~~ ✅, progressive readiness basics (6.1).*
+**Milestone A — Trustworthy Playback Session.** A user can connect a playlist, obtain a usable prepared session, and complete a full listening session without instability. *Requires: ~~2.5.4~~ ✅, Phase U increments U.1–U.7, progressive readiness basics (6.1).*
 
 **Milestone B — Tasteful Orchestration.** Preset choice and transitions are consistently better than random and pass golden-session tests. *Requires: Phase 4 complete, Increment 5.1.*
 
 **Milestone C — Device-Aware Show Quality.** The same playlist produces an excellent show on M1 and a richer one on M4 without jank. *Requires: Phase 6 complete.*
 
-**Milestone D — Library Depth.** The preset catalog is large enough, varied enough, and well-tagged enough for Phosphene to feel like a product rather than a tech demo. *Requires: Phase 5 complete, 10+ certified presets.*
+**Milestone D — Library Depth.** The preset catalog is large enough, varied enough, and well-tagged enough for Phosphene to feel like a product rather than a tech demo. *Requires: Phase 5 complete, Phase V complete (12 fidelity-uplifted presets), Phase MD through MD.5 minimum (10 Milkdrop presets), 22+ certified presets total.*
+
+**Milestone E — Visual Identity.** Phosphene's preset catalog has a recognizable aesthetic ceiling that reads as 2026-quality — comparable to indie-game-released visuals, not 2006-era ShaderToy. *Requires: Phase V complete, Phase V.7–V.11 uplifts all Matt-approved, accessibility pass (U.9).*

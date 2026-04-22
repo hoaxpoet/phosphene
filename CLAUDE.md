@@ -6,7 +6,7 @@ Phosphene is a native macOS music visualization engine for Apple Silicon. Before
 
 Phosphene does not control playback — the user starts the music in their streaming app when Phosphene signals it is ready.
 
-See `docs/PRODUCT_SPEC.md` for the full product definition, `docs/ARCHITECTURE.md` for system design, `docs/DECISIONS.md` for rationale behind key choices, `docs/RUNBOOK.md` for build/test/CI/troubleshooting, and `docs/MILKDROP_ARCHITECTURE.md` for the research findings that drive the Phase MV (Musicality) work in `docs/ENGINEERING_PLAN.md`.
+See `docs/PRODUCT_SPEC.md` for the full product definition, `docs/ARCHITECTURE.md` for system design, `docs/DECISIONS.md` for rationale behind key choices, `docs/RUNBOOK.md` for build/test/CI/troubleshooting, `docs/MILKDROP_ARCHITECTURE.md` for the research findings that drive the Phase MV (Musicality) work, `docs/UX_SPEC.md` for the user-facing product UX contract (state-to-view mapping, error taxonomy, onboarding), and `docs/SHADER_CRAFT.md` for the preset authoring handbook (detail cascade, material cookbook, per-preset uplift playbook) in `docs/ENGINEERING_PLAN.md`.
 
 ## Build & Test
 
@@ -116,7 +116,7 @@ PhospheneEngine/
     Shaders/KineticSculpture.metal → Interlocking lattice of Brushed Aluminum + Frosted Glass + Liquid Mercury, abstract ray march. FOV in degrees (post-fix; was radians, see commit history).
     Shaders/TestSphere.metal → Minimal pipeline-verification SDF (sphere + floor); used for end-to-end ray-march compile/render test.
     Shaders/SpectralCartograph.metal → Instrument-family diagnostic preset. Four-panel real-time MIR visualiser: TL=FFT spectrum (log-freq, centroid-coloured), TR=3-band deviation meters (D-026 compliant), BL=valence/arousal phase plot with 8s trail, BR=scrolling graphs for beat_phase01/bass_dev/vocal pitch. Reads SpectralHistoryBuffer at buffer(5). Direct pass only; no feedback, no warp.
-    Shaders/Arachne.metal → Bioluminescent spider-web field, 2D SDF direct fragment (Increment 3.5.12, D-043). Architecture identical to Gossamer: per-pixel UV-space SDF, no ray march. Permanent anchor web at UV (0.42, 0.40) radius 0.22, seed 1984u (stage=3 always). Pool webs from ArachneWebGPU buffer: clip-space hub → UV via `((hub_x+1)/2, (1−hub_y)/2)`, clip radius × 0.5. Per-web: hub concentric rings + 12 radial spokes (±30% seed-jitter, alternating-pair reveal) + Archimedean spiral. `arachneEvalWeb()` helper function reused for anchor and all pool slots. Spider: 2D body circle + head + 8 leg capsule segments at clip-space ArachneSpiderGPU positions. mv_warp decay=0.92. D-019/D-026/D-037/D-043 compliant.
+    Shaders/Arachne.metal → Bioluminescent spider web 3D SDF ray march (Increment 3.5.10, D-041). Direct fragment + mv_warp (decay=0.92). 64-step ray march from z=−1.8; anchor web at (0,0,0.2) always present. Pool webs (up to 11) at hub_xy×{0.9,0.8} spread, depth z∈[−0.4,1.4]. sdWebElement: hub cap + progressive radial draw (alternating-pair order {0,6,3,9,1,7,4,10,2,8,5,11}, ±22% angular jitter per-spoke) + Archimedean spiral (7 turns, min(fract,1-fract) correct SDF). Tube radius 0.012. Beat-phase vibration. Miss-ray bioluminescent glow exp2(−dist×14) ensures D-037 acceptance. Spider SDF (ArachneSpiderGPU at buffer(7)) on anchor web when triggered. D-019/D-026 compliant.
     Arachnid/ArachneState.swift → Per-preset world state: 12-web pool, stages (anchorPulse→radial→spiral→stable→evicting), beat-measured stage advancement, drum-driven spawn accumulator, LCG PRNG, GPU webBuffer flush. (Increment 3.5.5)
     Shaders/Gossamer.metal → Bioluminescent hero-web sonic resonator (Increment 3.5.6, v3 geometry). Direct fragment + mv_warp. 17 explicitly-defined irregular spoke angles (spacing 0.27–0.77 rad, one 0.77 rad open sector lower-right). Hub at (0.465, 0.32) — upper screen — clips top spiral rings into asymmetric arcs naturally. No formula, no hash-jitter. Up to 32 propagating color waves emitted when vocalsPitchConfidence > 0.35 OR |vocalsEnergyDev| > 0.05; wave hue baked from YIN pitch, saturation from other-stem density. mv_warp trails accumulate wave echoes. Ambient drift floor keeps ≥2 waves at silence. D-026/D-019 compliant.
     Gossamer/GossamerState.swift → Per-preset world state: 32-wave pool, Wave structs with birthTime/hue/saturation/amplitude, GossamerGPU buffer (528 bytes) at fragment buffer(6). Vocal confidence gate + FV fallback. Retirement when age > maxWaveLifetime=6s. (Increment 3.5.6)
@@ -437,6 +437,39 @@ Hardware gated: `device.supportsFamily(.apple8)` (M3+). On M3+: `MTLMeshRenderPi
 
 ---
 
+## Visual Quality Floor
+
+See `docs/SHADER_CRAFT.md` for the authoring handbook. This section is the short contract every preset shader session must satisfy.
+
+**The detail cascade (mandatory).** Every primary surface has four distinct detail scales layered:
+
+1. **Macro** — SDF geometry or mesh silhouette (unit scale).
+2. **Meso** — variation ridges, dents, per-instance jitter (∼0.1–0.3 unit scale).
+3. **Micro** — surface-scale normal / texture detail (∼0.01–0.03 unit scale).
+4. **Specular breakup** — roughness variation, glints, grunge (pixel to sub-pixel scale).
+
+A preset that skips any cascade layer reads as primitive, regardless of clever audio routing. This is enforced by the rubric below.
+
+**Noise floor (mandatory).** Minimum **4 octaves** of noise on any hero surface. The `fbm8` and `warped_fbm` utilities in `Shaders/Utilities/Noise/` (Phase V.1–V.3) are the default. Single-octave-fBM presets fail certification.
+
+**Material count (mandatory).** Minimum **3 distinct materials** per preset, drawn from the cookbook in `SHADER_CRAFT.md §4` (20 recipes: polished chrome, brushed aluminum, silk thread, wet stone, frosted glass, ferrofluid, bark, leaf, etc.). Plasma-family stylized presets are exempt.
+
+**Authoring workflow (mandatory).** Coarse-to-fine, 9 passes: macro geometry → materials → meso variation → micro detail → specular breakup → atmosphere → lighting polish → audio reactivity → review. See `SHADER_CRAFT.md §2.2`. Writing a finished-looking shader in a single pass is the observed cause of every primitive output.
+
+**Reference-image-first (mandatory).** Before writing MSL, read `docs/VISUAL_REFERENCES/<preset>/README.md` and the curated images. Authoring from prose description alone is observed Failed Approach #40. Session prompts must cite specific reference image filenames for the traits being implemented.
+
+**Rubric (enforced at certification — Increment V.6).**
+
+- Mandatory 7/7: detail cascade, ≥4 noise octaves, ≥3 materials, deviation-primitive audio (D-026), graceful silence fallback, p95 frame time ≤ tier budget, Matt-approved reference frame match.
+- Expected ≥2/4: triplanar texturing, detail normals, volumetric fog / aerial perspective, SSS / fiber BRDF / anisotropic specular.
+- Strongly preferred ≥1/4: hero specular highlight in ≥60% of frames, POM on at least one surface, volumetric light shafts or dust motes, chromatic aberration / thin-film interference.
+
+Minimum score: **10/15** with all mandatory passing. Uncertified presets stay in the catalog but Orchestrator excludes them by default.
+
+**Shader file length.** SwiftLint `file_length: 400` is relaxed for `.metal` files (see `SHADER_CRAFT.md §11.1`). Good ray-march shaders run 800–2000 lines; do not truncate or split for lint conformance.
+
+---
+
 ## Session Preparation Pipeline
 
 **Lifecycle:** `idle` → `connecting` → `preparing` → `ready` → `playing` → `ended`.
@@ -448,6 +481,44 @@ Hardware gated: `device.supportsFamily(.apple8)` (M3+). On M3+: `MTLMeshRenderPi
 **Performance budget:** 142ms stem separation per track. Preview downloads are the bottleneck (~10MB total). Total: ~20–30 seconds for a 20-track playlist.
 
 **Metadata fetcher priority:** MusicBrainz (always, free) → Soundcharts (optional, commercial, gated by env vars) → Spotify (optional, search-only) → MusicKit (optional). Self-computed MIR is the authoritative source.
+
+---
+
+## UX Contract
+
+See `docs/UX_SPEC.md` for the full product UX specification (personas, onboarding, preparation UI, error taxonomy, copy guide, settings surface, accessibility). This section is the short contract every UI session must satisfy.
+
+**State-to-view mapping (mandatory).** `ContentView` is a pure switch on `SessionManager.state`. Six top-level views, one per state — no orphans, no overloaded views:
+
+| State | View | Purpose |
+|---|---|---|
+| `.idle` | `IdleView` | Connect a playlist or start ad-hoc |
+| `.connecting` | `ConnectingView` | Per-connector spinner + cancel |
+| `.preparing` | `PreparationProgressView` | Per-track status + partial-ready CTA |
+| `.ready` | `ReadyView` | "Press play in your music app" + first-audio autodetect |
+| `.playing` | `PlaybackView` | Full-bleed visuals + auto-hiding overlay chrome |
+| `.ended` | `EndedView` | Session summary + new session affordance |
+
+`ContentView` owns no logic beyond routing. View logic lives in per-view ViewModels (`@MainActor ObservableObject`).
+
+**Copy principles (mandatory).** User-facing strings follow `UX_SPEC.md §8.5`:
+- Describe the situation, not the exception. Not "NSURLError -1009" but "You're offline."
+- Every error message has a CTA or a clear "auto-retrying" status.
+- No jargon: never "MPSGraph," "FFT," "tap," "DRM," or "sandbox" in user copy. Internal logs use jargon freely.
+- Never apologize. Either describe what happened or offer a fix.
+- Never show a full-screen error during `.playing`. Bottom-right toast only. The visuals are the point.
+
+**Product truths (never violate).**
+- Phosphene does not control playback. No pause/play/skip buttons on `PlaybackView` — they'd lie.
+- First-audio autodetect advances `.ready → .playing`. No user click required.
+- Every user-facing string is externalized in `Localizable.strings`, even in English-only v1.
+- Debug overlay (`D` key) is separate from user overlay chrome (`Space` key). Hidden by default for users.
+- Overlay text has ≥4.5:1 contrast against worst-case preset frame via blurred dark backdrop.
+- Reduced-motion mode disables `mv_warp` feedback and caps beat-pulse amplitude.
+
+**Error taxonomy authority.** `UX_SPEC.md §8` is the canonical mapping from internal error state to user-facing language. Any new `UserFacingError` case must add a row to that table before shipping. `RUNBOOK.md §Common Failure Modes` stays developer-facing and should cross-reference UX_SPEC copy to prevent drift.
+
+**Progressive readiness.** `PreparationProgressView` shows a **"Start now"** CTA at the `ready_for_first_tracks` threshold (Increment 6.1). Users are not forced to wait for full playlist preparation. `SessionManager` exposes `progressiveReadinessLevel` so playback can show a subtle indicator while trailing tracks continue preparing.
 
 ---
 
@@ -512,8 +583,19 @@ No CoreML dependency. All ML uses MPSGraph (GPU) or Accelerate (CPU).
 31. **Absolute thresholds on AGC-normalized energy** (e.g. `smoothstep(0.22, 0.32, f.bass)`): AGC's denominator (running-average) moves with mix density, so the same acoustic kick reads different values across tracks or across sections of one track. Six VL iterations (v3→v4.2) hit this repeatedly. Drive from deviation instead — `f.bassRel`, `f.bassDev` (D-026, MV-1). See `docs/MILKDROP_ARCHITECTURE.md` for the full diagnosis.
 32. **Driving ray-march preset visuals from instantaneous audio alone**: feedback is the mechanism that turns simple audio into compound musical motion (Milkdrop's core insight). Ray-march presets rendered from scratch each frame can only show instantaneous audio state — no accumulation, no "breathing", no musicality regardless of how clever the shader drivers are. Fixed in MV-2: the `mv_warp` render pass (D-027) provides per-vertex feedback accumulation. See VolumetricLithograph for the reference implementation.
 33. **Free-running `sin(time)` oscillation in organic preset motion**: A `sin(time * k)` term runs at a fixed cycle rate regardless of music, making the visual feel mechanical and disconnected from the audio. Observed in Arachne v1 (session 2026-04-21T13-26-38Z): hub throb `sin(time*9)` ≈ 1.4 Hz oscillation ignored tempo entirely; strand quiver `sin(dist*15 - time*4.8)` scrolled continuously even at silence. Fix: replace with beat_phase01-locked phase (`sin(dist*k - beat_phase01*2π)` = exactly one wave per beat) or beat-anticipation amplitude (`smoothstep(0.75, 1.0, beat_phase01)`). If BeatPredictor has no stable estimate, gate on `bassDev > 0` so motion only fires on above-average transients.
-34. **3D SDF ray march for fine-structure presets (webs, fibers, threads)**: The miss-ray glow term `exp2(-nearestStrandDist * k)` that ensures D-037 form-complexity creates a circular soft blob whose radius equals the SDF's influence range. At any rendering resolution, the blob dominates over actual strand SDF crossings when strands are thin (tube radius 0.012 world-units). On-screen the result reads as sand dollars or dart boards — not threads. Fine structure is only legible at screen resolution with 2D anti-aliased SDF evaluation (`smoothstep(w+aaW, w-aaW, dist)`). Use Gossamer's architecture for any preset that must render individual strands (D-043).
 34. **`abs(fract(x) − 0.5)` as an SDF fold for periodic structures (spiral threads, ring bands)**: This formula gives 0 at integer positions (in the GAPS between threads) and 0.5 at half-integer positions (ON the threads). It is the inverse of a correct distance field — coverage computed from it is maximal everywhere threads are NOT, filling the entire area instead of drawing thin strands. Use `min(fract(x), 1 − fract(x))` which correctly gives 0 ON the thread and 0.5 in the gaps. Bit both Arachne and Gossamer during Increment 3.5.10/3.5.11 and caused both to render as filled discs. The visual tells: perfectly uniform lit region where web should be, no strand structure visible.
+
+35. **Single-octave noise for hero surfaces**: 1–3 octaves of Perlin or fBM reads as primitive. Real surfaces have variation across many spatial frequencies simultaneously. Minimum 4 octaves for any hero surface; 8 octaves (`fbm8` utility) for terrain or cloud fields. Observed across every preset iteration before Phase V. See `SHADER_CRAFT.md §3`.
+
+36. **Uniform-albedo-per-material presets**: A constant `float3 albedo` anywhere on a hero surface reads as clipart. Real surfaces have per-point variation. Drive albedo through `fbm8` or `worley_fbm` at minimum, or through a cookbook material recipe from `SHADER_CRAFT.md §4` that already layers variation.
+
+37. **Constant roughness**: `roughness = 0.3` across a surface reads as CGI-plastic. Vary roughness spatially via noise. Even 10% variation breaks the plastic look. Silk, metal, wet stone, ferrofluid — all need spatially varied roughness.
+
+38. **Grey fog**: Fog color matching scene palette (sky, horizon, mood) reads as atmosphere. Grey fog reads as a printing defect. Always tint fog to match scene, not to a neutral middle-gray.
+
+39. **Authoring shaders without reading `docs/VISUAL_REFERENCES/<preset>/`**: Claude Code has no visual feedback loop; the only way to hit quality targets is to anchor on specific reference images before writing code. Sessions that skip this produce primitive output, observed across every preset iteration v1→v3 prior to Phase V. Session prompts must cite specific reference image filenames for the traits being implemented. See `SHADER_CRAFT.md §2.3`.
+
+40. **Cylinder-as-silk, cube-as-rock, sphere-as-organic**: SDF primitives are building blocks, not final forms. Always apply at least one modifier (displacement, twist, noise-driven deformation, smooth union with secondary primitive) before applying materials. An unmodified primitive with a fancy material still reads as a primitive.
 
 ---
 
@@ -534,6 +616,14 @@ No CoreML dependency. All ML uses MPSGraph (GPU) or Accelerate (CPU).
 - Do not key visualizer beat-pulse logic to a single onset band — use `max(beatBass, beatMid, beatComposite)` so snare-driven and kick-driven tracks both register.
 - Do not threshold absolute AGC-normalized energy values (`f.bass > 0.22`). Drive from deviation primitives (`f.bassDev`, `f.bassRel`) — D-026.
 - Do not write new ray-march presets without also implementing the `mv_warp` pass (D-027, MV-2). The shader runs every frame from scratch; without per-vertex feedback accumulation, motion cannot compound and visuals feel disconnected from music regardless of how clever the audio drivers are. See `docs/MILKDROP_ARCHITECTURE.md`. VolumetricLithograph is the reference implementation — add `"mv_warp"` to the preset's passes JSON and implement `mvWarpPerFrame`/`mvWarpPerVertex` in the .metal file.
+- Do not author a preset without first reading `docs/VISUAL_REFERENCES/<preset>/README.md` and the curated reference images. Authoring from prose description alone is Failed Approach #39.
+- Do not ship a preset with fewer than 4 octaves of noise on any hero surface. Mandatory per `SHADER_CRAFT.md §12.1`.
+- Do not ship a preset with fewer than 3 distinct materials. Mandatory per `SHADER_CRAFT.md §12.1`. Plasma-family exempt.
+- Do not skip the coarse-to-fine authoring workflow (`SHADER_CRAFT.md §2.2`). A single-pass shader that tries to do everything at once is untuneable and ships primitive.
+- Do not show full-screen errors during the `.playing` state. Use bottom-right toasts only. Per `UX_SPEC.md §8`.
+- Do not put pause / play / skip controls in `PlaybackView`. Phosphene does not control playback and any such control would lie. Per `UX_SPEC.md UX-2`.
+- Do not use jargon in user-facing strings (FFT / MPSGraph / tap / DRM / sandbox / SSGI / G-buffer). Internal logs use jargon freely; user copy does not. Per `UX_SPEC.md §8.5`.
+- Do not bypass the certification rubric when a preset visually "feels done." Matt-approved reference frame match is mandatory per `SHADER_CRAFT.md §12.1`.
 
 ---
 
@@ -541,8 +631,8 @@ No CoreML dependency. All ML uses MPSGraph (GPU) or Accelerate (CPU).
 
 **Phase 4 (Orchestrator) in progress. Phase 3 and Phase 2.5 (session preparation) complete.** Recent landed work:
 
-- **Increment 3.5.12: Arachne 2D SDF rewrite** — Complete rewrite abandoning 3D ray march in favour of 2D SDF direct fragment (Gossamer architecture, D-043). Root cause of "sand dollar" appearance: miss-ray glow `exp2(-minWebDist*14)` created a circular glow envelope dominating the visual; tilted disc geometry projected as ovals, not webs. New approach: `arachneEvalWeb()` helper evaluates each web entirely in UV space (hub, spokes, spiral, hub rings). Permanent anchor web (seed=1984u, UV 0.42/0.40) always rendered regardless of pool state. Spider now 2D: body circle + head + 8 leg capsule segments from clip-space ArachneSpiderGPU positions; fully visible and trigger-correct. Golden hashes regenerated. 444 tests; pre-existing failures unchanged.
 - **Increment 3.5.11: Gossamer SDF correction + v3 acceptance** — Fixed inverted SDF in `gossamerSpiralDist` and `gossamerHubDist` (`abs(fract−0.5)` → `min(fract, 1−fract)`): the old formula gave 0 in thread gaps and 0.5 on threads, making the entire capture zone render as a filled disc instead of a web. Also corrected D-037 acceptance invariant 3: brightness formula changed to `0.12 + f.bass×0.76 + bassRel×0.12` so silence (f.bass=0) is dim and steady music (f.bass≈0.5) is lit; beat flash reduced 0.65→0.30. Includes v3 geometry: 17 explicit irregular spoke angles, off-center hub at (0.465, 0.32), kWebRadius 0.42→0.44, elliptical stretch removed. D-042. Golden hashes regenerated. 444 tests; pre-existing failures unchanged.
+- **Increment 3.5.10: Arachne ray march remaster** — Complete shader rewrite from mesh_shader to 3D SDF ray march (direct fragment + mv_warp). 64-step march; camera at z=−1.8 for dramatic close-up scale. `sdWebElement` draws webs progressively: alternating-pair radial order {0,6,3,9,1,7,4,10,2,8,5,11} mirrors real orb-weaver construction; ±22% per-spoke angular jitter via `rng_seed` hash makes each web unique. Corrected SDF (`min(fract, 1−fract)`) for spiral threads. Pool webs mapped to 3D at varying depths z∈[−0.4,1.4]; anchor web always at (0,0,0.2). Spider always placed on anchor web, fixing Z-depth mismatch. Miss-ray glow `exp2(−minWebDist×14)` ensures D-037 formComplexity. `directPresetFragmentBuffer2` (buffer(7)) infrastructure for spider GPU struct. D-041. 444 tests; pre-existing failures unchanged.
 - **Increment 3.5.9: Spider easter egg in Arachne** — 3D ray-march SDF spider materialises as a rare reward (~1-in-10 songs) inside the Arachne mesh-shader preset. Trigger: `subBass > 0.65 AND bassAttackRatio < 0.55` held ≥ 0.75 s (sustained resonant bass, not kick drums) + 300 s session cooldown. `ArachneSpiderGPU` (80 bytes) at fragment buffer(4) via new `meshPresetFragmentBuffer` infrastructure in `RenderPipeline`. `ArachneState+Spider.swift` extension: gait solver (alternating-tetrapod, smoothstep foot-plant easing), `activateSpider()` (positions at most-opaque stable web hub, initialises 8 leg tips), `writeSpiderToGPU()`. `Arachne.metal`: `ArachneSpiderGPU` struct, 5 SDF helpers (`spOpSmoothUnion`, `spSdCapsule`, `spSdEllipsoid`, `sdSpiderLocal`, `calcSpiderNormal`), PBR chitin overlay (near-black base + iridescent spec + bioluminescent rim). `float2 clipXY` added to `MeshVertex` for screen-space ray-march. D-040 in DECISIONS.md. 444 tests total; pre-existing failures unchanged.
 - **Increment 5.3: Visual Regression Snapshots** — `PresetRegressionTests.swift`: 3 parametrized regression tests × 11 presets (Fractal Tree excluded — meshShader). 64-bit dHash via 9×8 luma grid + horizontal-difference bits. Hamming distance ≤ 8 tolerance. `goldenPresetHashes` dictionary inline in test file. `UPDATE_GOLDEN_SNAPSHOTS=1 swift test --filter test_printGoldenHashes` regenerates all values. `_acceptanceFixture`/`PresetFixtureContext` promoted to `internal` in `PresetAcceptanceTests.swift`. D-039 in DECISIONS.md. 439 tests total; pre-existing failures unchanged.
 - **Increment 4.5: Live Adaptation** — `LiveAdapter.swift` + `LiveAdapter+Patching.swift` + `VisualizerEngine+Orchestrator.swift`. `DefaultLiveAdapter` implementing `LiveAdapting` protocol: boundary reschedule fires when `confidence ≥ 0.5` and deviation > 5 s (wins over mood override); mood override fires when `|Δv| > 0.4 || |Δa| > 0.4`, elapsed < 40%, and an alternative preset scores > 0.15 higher. `LiveAdaptation` result type with nested `PresetOverride` struct (Sendable-safe). `PlannedSession.applying(_:at:)` extension in Orchestrator module for controlled patching using internal memberwise inits. App-layer wiring in `VisualizerEngine+Orchestrator.swift`: `buildPlan()`, `currentPreset(at:)`, `currentTransition(at:)`, `applyLiveUpdate(...)`, `detectDeviceTier(device:)`. 8 unit tests. D-035 in DECISIONS.md. 407 tests total; 4 pre-existing Apple Music env failures unchanged.
@@ -565,11 +655,13 @@ No CoreML dependency. All ML uses MPSGraph (GPU) or Accelerate (CPU).
 - **Increment 4.6: Ad-Hoc Reactive Mode** — `DefaultReactiveOrchestrator` (stateless pure function): `ReactiveAccumulationState` (listening/ramping/full), `ReactiveDecision`, `ReactiveOrchestrating` protocol. Confidence ramps 0→0.3 over 0–15 s, 0.3→1.0 over 15–30 s, 1.0 after 30 s. Switch conditions: score gap > 0.20 or boundary confidence ≥ 0.5. `VisualizerEngine+Orchestrator` routes to `applyReactiveUpdate()` when `livePlan == nil`; 60 s cooldown prevents switch-thrashing; `buildPlan()` clears `reactiveSessionStart` when a real plan arrives. 8 unit tests. D-036 in DECISIONS.md. 415 tests total; 4 pre-existing Apple Music environment failures unchanged.
 - **Swift 6 concurrency cleanup** — `@MainActor` on `draw(in:)` and all render-path helpers (`renderFrame`, `drawDirect`, `drawWithFeedback`, `drawWithRayMarch`, etc.) that access `MTKView.currentDrawable`/`currentRenderPassDescriptor`/`drawableSize`. Xcode IDE warnings resolved; xcodebuild already clean via `@preconcurrency import MetalKit`.
 
-The next ordered increment is:
+The next ordered increments are:
 
-1. **Increment 6.1** — See `docs/ENGINEERING_PLAN.md` for the Phase 6 increment definitions.
+1. **Increment U.1 — Session-state views.** Unblocks Milestone A. See `docs/ENGINEERING_PLAN.md §Phase U`.
+2. **Increment V.1 — Shader utility library (Noise + PBR).** Can run in parallel with Phase U; prerequisite for Phase V.7 fidelity uplift. See `docs/ENGINEERING_PLAN.md §Phase V`.
+3. **Increment 6.1 — Progressive Session Readiness.** Was next-ordered; now gates the "Start now" CTA in Increment U.4. See `docs/ENGINEERING_PLAN.md §Phase 6`.
 
-See `docs/ENGINEERING_PLAN.md` for the full forward plan with done-when criteria and verification commands. See `docs/MILKDROP_ARCHITECTURE.md` for the research that scopes Phase MV.
+See `docs/ENGINEERING_PLAN.md` for the full forward plan with done-when criteria and verification commands. See `docs/MILKDROP_ARCHITECTURE.md` for the research that scopes Phase MV and now also gates Phase MD (Milkdrop ingestion). See `docs/UX_SPEC.md` for the product-UX source of truth and `docs/SHADER_CRAFT.md` for the shader authoring handbook.
 
 ## Linked Frameworks
 
