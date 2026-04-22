@@ -31,12 +31,13 @@ extension VisualizerEngine {
     ///
     /// Failures are logged; `livePlan` is left nil so the render loop continues
     /// in reactive mode (no pre-planned presets).
+    @MainActor
     func buildPlan() {
-        guard let manager = sessionManager,
-              let sessionPlan = manager.currentPlan else {
+        guard let sessionPlan = sessionManager.currentPlan else {
             logger.info("Orchestrator: no session plan available — skipping build")
             return
         }
+        let manager = sessionManager
         // A real plan is taking over — end reactive mode.
         reactiveSessionStart = nil
 
@@ -57,12 +58,9 @@ extension VisualizerEngine {
             orchestratorLock.withLock { livePlan = plan }
 
             let presetNames = plan.tracks.map { $0.preset.name }.joined(separator: ", ")
-            logger.info(
-                "Orchestrator: plan built — \(plan.tracks.count) tracks, "
-                + "presets: [\(presetNames)], "
-                + "total \(String(format: "%.0f", plan.totalDuration))s, "
-                + "warnings: \(plan.warnings.count)"
-            )
+            let totalSecs = String(format: "%.0f", plan.totalDuration)
+            logger.info("Orchestrator: plan built — \(plan.tracks.count) tracks, \(totalSecs)s, \(plan.warnings.count) warnings")
+            logger.info("Orchestrator: planned presets — [\(presetNames)]")
         } catch {
             logger.error("Orchestrator: plan failed — \(error)")
         }

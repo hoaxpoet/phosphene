@@ -9,9 +9,19 @@
 /* Begin PBXBuildFile section */
 		A10001 /* PhospheneApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20001; };
 		A10002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20002; };
+		B10001 /* SessionStateViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20001; };
+		B10002 /* PhospheneApp.app in Frameworks */ = {isa = PBXBuildFile; fileRef = A20004; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		A10020 /* MetalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20020; };
 		A10021 /* DebugOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20021; };
 		A10022 /* MusicKitFetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20022; };
+		A10040 /* VisualizerEngine+Orchestrator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20040; };
+		C10001 /* SessionStateViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20001; };
+		C10002 /* IdleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20002; };
+		C10003 /* ConnectingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20003; };
+		C10004 /* PreparationProgressView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20004; };
+		C10005 /* ReadyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20005; };
+		C10006 /* PlaybackView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20006; };
+		C10007 /* EndedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20007; };
 		A10031 /* VisualizerEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20031; };
 		A10032 /* VisualizerEngine+Audio.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20032; };
 		A10033 /* VisualizerEngine+Stems.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20033; };
@@ -32,6 +42,8 @@
 /* Begin PBXFileReference section */
 		A20001 /* PhospheneApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhospheneApp.swift; sourceTree = "<group>"; };
 		A20002 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		B20001 /* SessionStateViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStateViewTests.swift; sourceTree = "<group>"; };
+		B20002 /* PhospheneAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PhospheneAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A20003 /* PhospheneApp.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = PhospheneApp.entitlements; sourceTree = "<group>"; };
 		A20020 /* MetalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetalView.swift; sourceTree = "<group>"; };
 		A20021 /* DebugOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugOverlayView.swift; sourceTree = "<group>"; };
@@ -53,6 +65,14 @@
 		A20015 /* ScreenCaptureKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ScreenCaptureKit.framework; path = System/Library/Frameworks/ScreenCaptureKit.framework; sourceTree = SDKROOT; };
 		A20016 /* MusicKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MusicKit.framework; path = System/Library/Frameworks/MusicKit.framework; sourceTree = SDKROOT; };
 		A20030 /* Phosphene.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Phosphene.xcconfig; sourceTree = "<group>"; };
+		A20040 /* VisualizerEngine+Orchestrator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VisualizerEngine+Orchestrator.swift"; sourceTree = "<group>"; };
+		C20001 /* SessionStateViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStateViewModel.swift; sourceTree = "<group>"; };
+		C20002 /* IdleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdleView.swift; sourceTree = "<group>"; };
+		C20003 /* ConnectingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectingView.swift; sourceTree = "<group>"; };
+		C20004 /* PreparationProgressView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreparationProgressView.swift; sourceTree = "<group>"; };
+		C20005 /* ReadyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadyView.swift; sourceTree = "<group>"; };
+		C20006 /* PlaybackView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackView.swift; sourceTree = "<group>"; };
+		C20007 /* EndedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EndedView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -71,6 +91,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B30001 /* Frameworks (PhospheneAppTests) */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B10002 /* PhospheneApp.app in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -78,6 +106,7 @@
 			isa = PBXGroup;
 			children = (
 				A40002 /* PhospheneApp */,
+				B40001 /* PhospheneAppTests */,
 				A40003 /* Frameworks */,
 				A40004 /* Products */,
 				A20005 /* PhospheneEngine */,
@@ -96,7 +125,9 @@
 				A20035 /* VisualizerEngine+Capture.swift */,
 				A20036 /* VisualizerEngine+InitHelpers.swift */,
 				A20037 /* VisualizerEngine+PublicAPI.swift */,
+				A20040 /* VisualizerEngine+Orchestrator.swift */,
 				A20022 /* MusicKitFetcher.swift */,
+				C40001 /* ViewModels */,
 				A40005 /* Views */,
 				A20003 /* PhospheneApp.entitlements */,
 				A20030 /* Phosphene.xcconfig */,
@@ -104,13 +135,63 @@
 			path = PhospheneApp;
 			sourceTree = "<group>";
 		};
+		C40001 /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				C20001 /* SessionStateViewModel.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
 		A40005 /* Views */ = {
 			isa = PBXGroup;
 			children = (
 				A20020 /* MetalView.swift */,
 				A20021 /* DebugOverlayView.swift */,
+				C40002 /* Idle */,
+				C40003 /* Connecting */,
+				C40004 /* Preparation */,
+				C40005 /* Ready */,
+				C40006 /* Playback */,
+				C40007 /* Ended */,
 			);
 			path = Views;
+			sourceTree = "<group>";
+		};
+		C40002 /* Idle */ = {
+			isa = PBXGroup;
+			children = (C20002 /* IdleView.swift */);
+			path = Idle;
+			sourceTree = "<group>";
+		};
+		C40003 /* Connecting */ = {
+			isa = PBXGroup;
+			children = (C20003 /* ConnectingView.swift */);
+			path = Connecting;
+			sourceTree = "<group>";
+		};
+		C40004 /* Preparation */ = {
+			isa = PBXGroup;
+			children = (C20004 /* PreparationProgressView.swift */);
+			path = Preparation;
+			sourceTree = "<group>";
+		};
+		C40005 /* Ready */ = {
+			isa = PBXGroup;
+			children = (C20005 /* ReadyView.swift */);
+			path = Ready;
+			sourceTree = "<group>";
+		};
+		C40006 /* Playback */ = {
+			isa = PBXGroup;
+			children = (C20006 /* PlaybackView.swift */);
+			path = Playback;
+			sourceTree = "<group>";
+		};
+		C40007 /* Ended */ = {
+			isa = PBXGroup;
+			children = (C20007 /* EndedView.swift */);
+			path = Ended;
 			sourceTree = "<group>";
 		};
 		A40003 /* Frameworks */ = {
@@ -131,8 +212,17 @@
 			isa = PBXGroup;
 			children = (
 				A20004 /* PhospheneApp.app */,
+				B20002 /* PhospheneAppTests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		B40001 /* PhospheneAppTests */ = {
+			isa = PBXGroup;
+			children = (
+				B20001 /* SessionStateViewTests.swift */,
+			);
+			path = PhospheneAppTests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -156,6 +246,23 @@
 			productName = PhospheneApp;
 			productReference = A20004 /* PhospheneApp.app */;
 			productType = "com.apple.product-type.application";
+		};
+		B50001 /* PhospheneAppTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B70001;
+			buildPhases = (
+				B60001 /* Sources */,
+				B30001 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				B90001 /* PBXTargetDependency */,
+			);
+			name = PhospheneAppTests;
+			productName = PhospheneAppTests;
+			productReference = B20002 /* PhospheneAppTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
 		};
 /* End PBXNativeTarget section */
 
@@ -189,6 +296,7 @@
 			projectRoot = "";
 			targets = (
 				A50001 /* PhospheneApp */,
+				B50001 /* PhospheneAppTests */,
 			);
 		};
 /* End PBXProject section */
@@ -210,6 +318,22 @@
 				A10020 /* MetalView.swift in Sources */,
 				A10021 /* DebugOverlayView.swift in Sources */,
 				A10022 /* MusicKitFetcher.swift in Sources */,
+				A10040 /* VisualizerEngine+Orchestrator.swift in Sources */,
+				C10001 /* SessionStateViewModel.swift in Sources */,
+				C10002 /* IdleView.swift in Sources */,
+				C10003 /* ConnectingView.swift in Sources */,
+				C10004 /* PreparationProgressView.swift in Sources */,
+				C10005 /* ReadyView.swift in Sources */,
+				C10006 /* PlaybackView.swift in Sources */,
+				C10007 /* EndedView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B60001 /* Sources (PhospheneAppTests) */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B10001 /* SessionStateViewTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -326,6 +450,42 @@
 			};
 			name = Release;
 		};
+		BB0001 /* Debug (PhospheneAppTests) */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.phosphene.app.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PhospheneApp.app/Contents/MacOS/PhospheneApp";
+			};
+			name = Debug;
+		};
+		BB0002 /* Release (PhospheneAppTests) */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.phosphene.app.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PhospheneApp.app/Contents/MacOS/PhospheneApp";
+			};
+			name = Release;
+		};
 		AB0003 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = A20030 /* Phosphene.xcconfig */;
@@ -383,6 +543,13 @@
 		};
 /* End XCBuildConfiguration section */
 
+/* Begin PBXTargetDependency section */
+		B90001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A50001 /* PhospheneApp */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCConfigurationList section */
 		A70001 /* Build configuration list for PBXNativeTarget "PhospheneApp" */ = {
 			isa = XCConfigurationList;
@@ -404,6 +571,15 @@
 		};
 /* End XCConfigurationList section */
 
+		B70001 /* Build configuration list for PBXNativeTarget "PhospheneAppTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BB0001 /* Debug */,
+				BB0002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* Begin XCLocalSwiftPackageReference section */
 		A80002 /* PhospheneEngine */ = {
 			isa = XCLocalSwiftPackageReference;

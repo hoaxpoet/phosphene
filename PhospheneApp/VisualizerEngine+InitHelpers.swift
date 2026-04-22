@@ -1,9 +1,13 @@
 // VisualizerEngine+InitHelpers — Private setup helpers called from init.
 
 import AppKit
+import Audio
+import DSP
 import Foundation
 import Metal
+import ML
 import Renderer
+import Session
 import Shared
 import os.log
 
@@ -57,6 +61,33 @@ extension VisualizerEngine {
         }
     }
 
+    // MARK: - Session Manager Factory
+
+    /// Build a `SessionManager` wired to the engine's ML components.
+    ///
+    /// Uses a static factory so it can be called during phase-1 init before
+    /// `self` is fully available. Shares `analyzer` and `classifier` instances
+    /// with the engine's live pipeline to avoid double-loading the ML weights.
+    ///
+    /// `NullStemSeparator` is substituted when the Open-Unmix weights are absent —
+    /// ad-hoc mode never invokes the preparer, so it never throws.
+    @MainActor
+    static func makeSessionManager(
+        sep: StemSeparator?,
+        analyzer: StemAnalyzer,
+        classifier: MoodClassifier?
+    ) -> SessionManager {
+        let resolvedSep: any StemSeparating = sep ?? NullStemSeparator()
+        let preparer = SessionPreparer(
+            resolver: PreviewResolver(),
+            downloader: PreviewDownloader(),
+            stemSeparator: resolvedSep,
+            stemAnalyzer: analyzer,
+            moodClassifier: classifier ?? MoodClassifier()
+        )
+        return SessionManager(connector: PlaylistConnector(), preparer: preparer)
+    }
+
     /// Register the willTerminate observer so the session recorder finalises the MP4.
     func setupTerminationObserver() {
         NotificationCenter.default.addObserver(
@@ -66,5 +97,22 @@ extension VisualizerEngine {
         ) { [weak self] _ in
             self?.sessionRecorder?.finish()
         }
+    }
+}
+
+// MARK: - NullStemSeparator
+
+/// Fallback `StemSeparating` used when Open-Unmix weights are absent.
+///
+/// `separate()` always throws `modelNotFound`. `SessionPreparer` in ad-hoc mode
+/// never calls `separate()`, so this is safe for production use. If pre-analyzed
+/// session mode is attempted without weights, preparation fails gracefully and the
+/// engine falls back to live-only reactive mode.
+private final class NullStemSeparator: StemSeparating, @unchecked Sendable {
+    let stemLabels = ["vocals", "drums", "bass", "other"]
+    var stemBuffers: [UMABuffer<Float>] { [] }
+
+    func separate(audio: [Float], channelCount: Int, sampleRate: Float) throws -> StemSeparationResult {
+        throw StemSeparationError.modelNotFound
     }
 }

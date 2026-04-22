@@ -207,6 +207,29 @@ The Orchestrator is the product's key differentiator and is implemented as an ex
 - **Live adaptation (4.5)** — adapt the running plan as live MIR reveals structural details.
 - **Ad-hoc reactive mode (4.6)** — heuristic preset selection without pre-analysis.
 
+## UI Layer
+
+The app shell routes `SessionManager.state` to one top-level SwiftUI view per session state. No view owns more than one state.
+
+**`SessionStateViewModel`** (`@MainActor ObservableObject`, `PhospheneApp` module) — Bridges `SessionManager.state` into the view layer via a Combine `.assign` subscription. Also surfaces `reduceMotion` (from `NSWorkspace.accessibilityDisplayOptionsDidChangeNotification`), which caps beat-pulse amplitude and disables `mv_warp` feedback in reduced-motion mode. Lives in `PhospheneApp/ViewModels/`.
+
+**State-to-view mapping:**
+
+| `SessionState` | View | `accessibilityIdentifier` |
+|---|---|---|
+| `.idle` | `IdleView` | `phosphene.view.idle` |
+| `.connecting` | `ConnectingView` | `phosphene.view.connecting` |
+| `.preparing` | `PreparationProgressView` | `phosphene.view.preparing` |
+| `.ready` | `ReadyView` | `phosphene.view.ready` |
+| `.playing` | `PlaybackView` | `phosphene.view.playing` |
+| `.ended` | `EndedView` | `phosphene.view.ended` |
+
+**`ContentView`** is a pure `switch viewModel.state {}` with no layout logic. All layout, keyboard shortcuts, and state-specific view models live inside the individual views.
+
+**`PlaybackView`** hosts the full-bleed `MetalView`, preset-name badge, `NoAudioSignalBadge` (DRM silence), and `DebugOverlayView`. It calls `engine.startAudio()` on appear and handles all keyboard shortcuts (`→` / `←` / `Space` = next/prev/next preset; `D` = debug overlay; `C` = capture; `R` = MIR record; `G` = G-buffer debug).
+
+**`VisualizerEngine`** is injected into the SwiftUI environment as an `@EnvironmentObject`. `ContentView` and `PhospheneApp.swift` do not own layout — they exist solely to wire the VM and inject the engine.
+
 ## Support Tiers
 
 **Tier 1 — M1 / M2:** Baseline feature set. Mesh shaders use vertex fallback. Stricter budgets for geometry, post-process, and advanced shaders.

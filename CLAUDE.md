@@ -27,13 +27,23 @@ All tests must pass before any new code is merged (regression gate).
 
 ```
 PhospheneApp/               → SwiftUI shell, views, view models
-  ContentView.swift         → Main view (hosts MetalView + DebugOverlay + NoAudioSignalBadge)
-  PhospheneApp.swift        → App entry point
-  VisualizerEngine.swift    → Audio→FFT→render pipeline owner
+  ContentView.swift         → Pure switch on SessionManager.state; no layout logic
+  PhospheneApp.swift        → App entry point; wires SessionStateViewModel + startAdHocSession()
+  VisualizerEngine.swift    → Audio→FFT→render pipeline owner; owns SessionManager (non-optional)
   VisualizerEngine+Audio.swift → Audio routing, MIR analysis, mood classification, signal state callbacks
   VisualizerEngine+Stems.swift → Background stem separation pipeline, 5s cadence, track-change reset
   VisualizerEngine+Presets.swift → makeSceneUniforms(from:) for ray march camera/light setup
-  Views/MetalView.swift     → NSViewRepresentable wrapping MTKView
+  ViewModels/
+    SessionStateViewModel.swift → @MainActor ObservableObject bridging SessionManager.state → SwiftUI; publishes state + reduceMotion
+  Views/
+    MetalView.swift         → NSViewRepresentable wrapping MTKView
+    DebugOverlayView.swift  → Developer debug overlay (D key)
+    Idle/IdleView.swift     → .idle state: connect playlist or start ad-hoc
+    Connecting/ConnectingView.swift → .connecting state: per-connector spinner + cancel
+    Preparation/PreparationProgressView.swift → .preparing state: per-track status + partial-ready CTA
+    Ready/ReadyView.swift   → .ready state: "Press play in your music app" + first-audio autodetect
+    Playback/PlaybackView.swift → .playing state: full-bleed Metal + preset badge + signal badge + debug overlay + keyboard shortcuts
+    Ended/EndedView.swift   → .ended state: session summary + new session affordance
 
 PhospheneEngine/
   Audio/

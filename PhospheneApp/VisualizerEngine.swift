@@ -137,10 +137,9 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
 
     // MARK: - Stem Pipeline
 
-    /// Session manager that coordinates playlist preparation. Set by the app
-    /// layer before playback; exposes `cache` which is wired to `stemCache`
-    /// when the session reaches `.ready`.
-    var sessionManager: SessionManager?
+    /// Session manager that coordinates playlist preparation. Created at init;
+    /// exposes `cache` which is wired to `stemCache` when the session reaches `.ready`.
+    var sessionManager: SessionManager
 
     /// Pre-analyzed stem data from session preparation. Set by the app layer
     /// after `SessionPreparer.prepare(tracks:)` completes. When non-nil, each
@@ -154,7 +153,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     let stemSampleBuffer = StemSampleBuffer(sampleRate: 44100, maxSeconds: 15)
 
     /// Per-stem energy + beat analysis.
-    let stemAnalyzer = StemAnalyzer(sampleRate: 44100)
+    let stemAnalyzer: StemAnalyzer
 
     /// Background queue for stem separation (utility QoS — never blocks render).
     let stemQueue = DispatchQueue(label: "com.phosphene.stemSeparator", qos: .utility)
@@ -279,7 +278,13 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
 
     // MARK: - Initialization
 
+    @MainActor
     init() {
+        // Create shared instances up front — these go into both the engine pipeline
+        // and the SessionPreparer (local vars used to avoid reading self before phase 2).
+        let analyzer = StemAnalyzer(sampleRate: 44100)
+        let classifier = Self.loadMoodClassifier()
+
         // Metal setup is required for the app to function — a failure here
         // means the hardware doesn't support Metal at all.
         guard let ctx = try? MetalContext(),
@@ -306,6 +311,8 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
             logger.info("Starting with preset: Waveform (index \(waveformIndex))")
         }
 
+        let sep = Self.loadStemSeparator(device: ctx.device)
+
         self.context = ctx
         self.audioBuffer = buf
         self.fftProcessor = fft
@@ -314,9 +321,13 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         self.shaderLibrary = lib
         self.mirPipeline = MIRPipeline()
         self.particleGeometry = Self.makeParticleGeometry(context: ctx, library: lib)
-        self.moodClassifier = Self.loadMoodClassifier()
-        self.stemSeparator = Self.loadStemSeparator(device: ctx.device)
+        self.moodClassifier = classifier
+        self.stemAnalyzer = analyzer
+        self.stemSeparator = sep
         self.sessionRecorder = SessionRecorder()
+        // SessionManager is always created — uses the same component instances as the engine.
+        // Ad-hoc mode never invokes the preparer; session mode uses it for pre-analysis.
+        self.sessionManager = Self.makeSessionManager(sep: sep, analyzer: analyzer, classifier: classifier)
 
         setupCaptureHook(pipe: pipe, ctx: ctx)
         setupBackgroundTextures(pipe: pipe, ctx: ctx, lib: lib)
