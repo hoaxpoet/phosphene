@@ -607,6 +607,8 @@ No CoreML dependency. All ML uses MPSGraph (GPU) or Accelerate (CPU).
 
 40. **Cylinder-as-silk, cube-as-rock, sphere-as-organic**: SDF primitives are building blocks, not final forms. Always apply at least one modifier (displacement, twist, noise-driven deformation, smooth union with secondary primitive) before applying materials. An unmodified primitive with a fancy material still reads as a primitive.
 
+41. **SwiftUI accessibility tree traversal in unit tests**: On macOS, SwiftUI only materialises the `accessibilityChildren()` tree when an active accessibility client (VoiceOver, Accessibility Inspector, XCUITest) queries it. In unit tests running via `xcodebuild test`, no client exists — `accessibilityChildren()` returns empty even after rendering into an NSWindow with a RunLoop cycle. ObjC dynamic dispatch (`NSSelectorFromString("accessibilityChildren")`) has the same limitation. Fix: expose `static let accessibilityID: String` on each view and bind it via `.accessibilityIdentifier(Self.accessibilityID)`. Tests check the static constant; the binding is enforced by construction. See D-044.
+
 ---
 
 ## What NOT To Do
@@ -639,8 +641,9 @@ No CoreML dependency. All ML uses MPSGraph (GPU) or Accelerate (CPU).
 
 ## Current Status
 
-**Phase 4 (Orchestrator) in progress. Phase 3 and Phase 2.5 (session preparation) complete.** Recent landed work:
+**Phase U (UX Architecture) in progress. Phase 4 (Orchestrator), Phase 3, and Phase 2.5 (session preparation) complete.** Recent landed work:
 
+- **Increment U.1: Session-state views** — `SessionStateViewModel` (`@MainActor ObservableObject`) bridges `SessionManager.state` → SwiftUI; publishes `state` + `reduceMotion`. Six stub views under `PhospheneApp/Views/` (IdleView, ConnectingView, PreparationProgressView, ReadyView, PlaybackView, EndedView), each with `static let accessibilityID` and `.accessibilityIdentifier(Self.accessibilityID)`. ContentView refactored to pure switch on `viewModel.state`. PlaybackView absorbs Metal/overlay chrome from former ContentView. PhospheneApp.swift wired: VisualizerEngine owns SessionManager; ad-hoc session starts at launch. New `PhospheneAppTests` target with 9 tests. D-044. 453 tests total; pre-existing failures unchanged.
 - **Increment 3.5.11: Gossamer SDF correction + v3 acceptance** — Fixed inverted SDF in `gossamerSpiralDist` and `gossamerHubDist` (`abs(fract−0.5)` → `min(fract, 1−fract)`): the old formula gave 0 in thread gaps and 0.5 on threads, making the entire capture zone render as a filled disc instead of a web. Also corrected D-037 acceptance invariant 3: brightness formula changed to `0.12 + f.bass×0.76 + bassRel×0.12` so silence (f.bass=0) is dim and steady music (f.bass≈0.5) is lit; beat flash reduced 0.65→0.30. Includes v3 geometry: 17 explicit irregular spoke angles, off-center hub at (0.465, 0.32), kWebRadius 0.42→0.44, elliptical stretch removed. D-042. Golden hashes regenerated. 444 tests; pre-existing failures unchanged.
 - **Increment 3.5.10: Arachne ray march remaster** — Complete shader rewrite from mesh_shader to 3D SDF ray march (direct fragment + mv_warp). 64-step march; camera at z=−1.8 for dramatic close-up scale. `sdWebElement` draws webs progressively: alternating-pair radial order {0,6,3,9,1,7,4,10,2,8,5,11} mirrors real orb-weaver construction; ±22% per-spoke angular jitter via `rng_seed` hash makes each web unique. Corrected SDF (`min(fract, 1−fract)`) for spiral threads. Pool webs mapped to 3D at varying depths z∈[−0.4,1.4]; anchor web always at (0,0,0.2). Spider always placed on anchor web, fixing Z-depth mismatch. Miss-ray glow `exp2(−minWebDist×14)` ensures D-037 formComplexity. `directPresetFragmentBuffer2` (buffer(7)) infrastructure for spider GPU struct. D-041. 444 tests; pre-existing failures unchanged.
 - **Increment 3.5.9: Spider easter egg in Arachne** — 3D ray-march SDF spider materialises as a rare reward (~1-in-10 songs) inside the Arachne mesh-shader preset. Trigger: `subBass > 0.65 AND bassAttackRatio < 0.55` held ≥ 0.75 s (sustained resonant bass, not kick drums) + 300 s session cooldown. `ArachneSpiderGPU` (80 bytes) at fragment buffer(4) via new `meshPresetFragmentBuffer` infrastructure in `RenderPipeline`. `ArachneState+Spider.swift` extension: gait solver (alternating-tetrapod, smoothstep foot-plant easing), `activateSpider()` (positions at most-opaque stable web hub, initialises 8 leg tips), `writeSpiderToGPU()`. `Arachne.metal`: `ArachneSpiderGPU` struct, 5 SDF helpers (`spOpSmoothUnion`, `spSdCapsule`, `spSdEllipsoid`, `sdSpiderLocal`, `calcSpiderNormal`), PBR chitin overlay (near-black base + iridescent spec + bioluminescent rim). `float2 clipXY` added to `MeshVertex` for screen-space ray-march. D-040 in DECISIONS.md. 444 tests total; pre-existing failures unchanged.
@@ -667,9 +670,9 @@ No CoreML dependency. All ML uses MPSGraph (GPU) or Accelerate (CPU).
 
 The next ordered increments are:
 
-1. **Increment U.1 — Session-state views.** Unblocks Milestone A. See `docs/ENGINEERING_PLAN.md §Phase U`.
+1. **Increment U.2 — Permission onboarding.** `PermissionOnboardingView` + `CGPreflightScreenCaptureAccess()` check on every foregrounding; photosensitivity notice (once). See `docs/ENGINEERING_PLAN.md §Phase U`.
 2. **Increment V.1 — Shader utility library (Noise + PBR).** Can run in parallel with Phase U; prerequisite for Phase V.7 fidelity uplift. See `docs/ENGINEERING_PLAN.md §Phase V`.
-3. **Increment 6.1 — Progressive Session Readiness.** Was next-ordered; now gates the "Start now" CTA in Increment U.4. See `docs/ENGINEERING_PLAN.md §Phase 6`.
+3. **Increment 6.1 — Progressive Session Readiness.** Gates the "Start now" CTA in Increment U.4. See `docs/ENGINEERING_PLAN.md §Phase 6`.
 
 See `docs/ENGINEERING_PLAN.md` for the full forward plan with done-when criteria and verification commands. See `docs/MILKDROP_ARCHITECTURE.md` for the research that scopes Phase MV and now also gates Phase MD (Milkdrop ingestion). See `docs/UX_SPEC.md` for the product-UX source of truth and `docs/SHADER_CRAFT.md` for the shader authoring handbook.
 

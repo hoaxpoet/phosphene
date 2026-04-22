@@ -682,3 +682,15 @@ Arachne is now a 2D SDF shader that evaluates each web entirely in UV space:
 
 **Rule:** Any further Arachne rewrite must remain 2D SDF. The 3D ray-march approach is permanently ruled out for a preset that must render recognizable spider web strand geometry. The same rule applies to any other "fine-structure" preset (fibers, threads, filaments) — fine structure is invisible in 3D miss-ray glow; it requires SDF evaluation at screen resolution with sub-pixel anti-aliasing.
 
+## D-044 — SwiftUI accessibility identifiers: static constants + binding, not tree traversal (Increment U.1)
+
+**Status:** Accepted (2026-04-22)
+
+**Context:** Increment U.1 required tests that verify each session-state view carries the correct `accessibilityIdentifier` — needed for UI automation (XCUITest, Accessibility Inspector). The first implementation used `NSHostingController` + `NSWindow` rendering + `accessibilityChildren()` traversal via ObjC dynamic dispatch (`NSSelectorFromString`). All 6 rendering-based tests failed.
+
+**Root cause:** On macOS, SwiftUI only materialises the accessibility tree when an active accessibility client queries it (VoiceOver, Accessibility Inspector, XCUITest harness). In `xcodebuild test` unit tests there is no client — `NSHostingView.accessibilityChildren()` returns an empty array regardless of RunLoop cycles, window visibility, or ObjC dispatch approach. This is a platform behaviour, not a SwiftLint or concurrency issue.
+
+**Decision:** Each view exposes `static let accessibilityID: String`. The view body applies `.accessibilityIdentifier(Self.accessibilityID)`. Unit tests check the static constant directly; the binding is enforced by construction (if the modifier is removed, UI automation breaks — caught by human review or XCUITest, not unit tests).
+
+**Rule:** Do not attempt accessibility tree traversal from `xcodebuild test` unit tests. Use static constants for identifier contracts. Accessibility tree verification belongs in XCUITest (future Milestone A acceptance suite), not unit tests.
+
