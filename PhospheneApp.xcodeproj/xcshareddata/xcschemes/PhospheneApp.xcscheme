@@ -21,6 +21,20 @@
                ReferencedContainer = "container:PhospheneApp.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "B50001"
+               BuildableName = "PhospheneAppTests.xctest"
+               BlueprintName = "PhospheneAppTests"
+               ReferencedContainer = "container:PhospheneApp.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction
@@ -38,6 +52,16 @@
                BuildableName = "PhospheneEngineTests"
                BlueprintName = "PhospheneEngineTests"
                ReferencedContainer = "container:PhospheneEngine">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "B50001"
+               BuildableName = "PhospheneAppTests.xctest"
+               BlueprintName = "PhospheneAppTests"
+               ReferencedContainer = "container:PhospheneApp.xcodeproj">
             </BuildableReference>
          </TestableReference>
       </Testables>
