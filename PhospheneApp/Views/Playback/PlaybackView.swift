@@ -15,6 +15,7 @@ struct PlaybackView: View {
     static let accessibilityID = "phosphene.view.playing"
 
     @EnvironmentObject private var engine: VisualizerEngine
+    @FocusState private var isFocused: Bool
 
     var body: some View {
         ZStack {
@@ -42,10 +43,12 @@ struct PlaybackView: View {
             }
         }
         .focusable()
+        .focused($isFocused)
         .frame(minWidth: 800, minHeight: 600)
         .accessibilityIdentifier(Self.accessibilityID)
         .onAppear {
             engine.startAudio()
+            isFocused = true
         }
         .onKeyPress(.rightArrow) {
             engine.nextPreset()
