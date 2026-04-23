@@ -710,18 +710,44 @@ UPDATE_GOLDEN_SNAPSHOTS=1 swift test --package-path PhospheneEngine --filter tes
 
 ---
 
-### Increment U.2 — Permission onboarding
+### Increment U.2 — Permission onboarding ✅
 
-**Scope:** `PermissionOnboardingView` with one-screen permission explainer and "Open System Settings" CTA per `UX_SPEC.md §3.2`. On every app foregrounding, `PhospheneApp` checks `CGPreflightScreenCaptureAccess()`; if false, routes to `PermissionOnboardingView` regardless of session state. Return auto-detection: when permission flips to granted, advance to `.idle` without a user click. `PhotosensitivityNoticeView` shown once before first session, persisted in `UserDefaults`.
+**Landed:** 2026-04-22
 
-**Done when:**
-- Fresh install without permission shows onboarding.
-- Granting permission auto-advances to `.idle` on foregrounding.
-- Revoking permission mid-session routes back to onboarding.
-- Photosensitivity notice shown once, suppressible, persisted.
-- 4+ unit tests covering the permission-state flows.
+**What was built:**
+- `PermissionMonitor` (`@MainActor ObservableObject`) observing
+  `NSApplication.didBecomeActiveNotification`, backed by
+  `ScreenCapturePermissionProviding`.
+- `SystemScreenCapturePermissionProvider` (production) — `CGPreflightScreenCaptureAccess`.
+  Never calls `CGRequestScreenCaptureAccess` (system dialog doesn't compose with URL-scheme flow).
+- `PhotosensitivityAcknowledgementStore` — injectable `UserDefaults` suite; key
+  `phosphene.onboarding.photosensitivityAcknowledged`.
+- `PermissionOnboardingView` per UX_SPEC §3.2; opens
+  `x-apple.systempreferences:…?Privacy_ScreenCapture` via `NSWorkspace.shared.open`.
+  No Retry button — return-detection is automatic via `PermissionMonitor`.
+- `PhotosensitivityNoticeView` per UX_SPEC §3.3; surfaced as a `.sheet` on
+  first `IdleView` appearance.
+- `ContentView` refactored to two-level switch: permission gate above state switch.
+  `PermissionMonitor` injected as `@EnvironmentObject` from `PhospheneApp`.
+- `IdleView` updated with `.onAppear` + `.sheet(isPresented:)` for the notice.
 
-**Verify:** `swift test --package-path PhospheneEngine --filter PermissionOnboardingTests`
+**Key decisions:**
+- Preflight + URL scheme, NOT `CGRequestScreenCaptureAccess()` — the request
+  API's system dialog doesn't compose with "Open System Settings and return."
+- Permission gate lives above the state switch, not inside `SessionStateViewModel` —
+  permission routing outranks session state per UX_SPEC §3.1.
+- Photosensitivity sheet on `IdleView`, not a separate top-level state — timing
+  is "after permission, before first session" which maps exactly to `IdleView`'s
+  first appearance.
+- `PermissionMonitor` lives under `Permissions/`, not `Views/` — it is a
+  routing-layer concern, not a view.
+
+**Tests:** 535 → 549 (+14 new: 5 PermissionMonitor, 4 PhotosensitivityStore, 5 PermissionOnboarding). Pre-existing failures unchanged.
+
+**Verify:**
+- `swift test --package-path PhospheneEngine`
+- `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' test`
+- `swiftlint lint --strict --config .swiftlint.yml`
 
 ---
 
