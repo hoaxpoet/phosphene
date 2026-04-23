@@ -694,3 +694,37 @@ Arachne is now a 2D SDF shader that evaluates each web entirely in UV space:
 
 **Rule:** Do not attempt accessibility tree traversal from `xcodebuild test` unit tests. Use static constants for identifier contracts. Accessibility tree verification belongs in XCUITest (future Milestone A acceptance suite), not unit tests.
 
+
+## D-045 — V.1 utility library naming: unprefixed snake_case, no legacy collision renaming (Increment V.1)
+
+**Status:** Accepted (2026-04-22)
+
+**Context:** Increment V.1 adds two utility trees — 9 Noise files and 9 PBR files — into `Sources/Presets/Shaders/Utilities/`. The legacy `ShaderUtilities.metal` already contains functions such as `perlin2D`, `cookTorranceBRDF`, `fresnelSchlick` (camelCase convention). The new utilities use `perlin2d`, `brdf_ggx`, `fresnel_schlick` (snake_case convention). The question was whether to rename existing functions to `legacy_*`, prefix new ones, or leave both coexisting.
+
+**Pre-flight finding:** MSL is case-sensitive. `perlin2d` vs `perlin2D` are distinct symbols. A complete audit of all 9 Noise and 9 PBR new function names found zero name-space collisions with any existing `ShaderUtilities.metal` function. No renaming was required.
+
+**Decision:** New V.1 utilities use clean snake_case names with no prefix. Legacy ShaderUtilities functions are unchanged. Both coexist in the preamble without collision. Future V.3+ authoring vocabulary will use the V.1 snake_case names as the primary interface; legacy camelCase names remain available for backward compatibility with existing preset code.
+
+**Rule:** When adding new preamble functions, use snake_case to distinguish from the legacy camelCase ShaderUtilities layer. Only apply `legacy_*` prefix if a true case-insensitive collision exists (none found in V.1). Do not rename existing working functions — preset shaders referencing them would break.
+
+---
+
+## D-046 — Connector picker architecture decisions (Increment U.3)
+
+**Status:** Accepted (2026-04-23)
+
+**Decision 1: `nonisolated(unsafe)` for NSWorkspace observer storage in `@MainActor` classes.**
+
+`@MainActor` classes have `deinit` that is nonisolated (Swift 6 requirement). `NSWorkspace.notificationCenter.removeObserver(_:)` must be called from `deinit`. If the observer handles (`Any?`) are stored as regular `@MainActor`-isolated properties, accessing them from `deinit` produces a Swift 6 concurrency error. The correct pattern is `nonisolated(unsafe) private var observer: Any?` — these properties are only written in `init` and read in `deinit`, so no concurrent access is possible. `@unchecked Sendable` on a wrapper class would also work but adds unnecessary indirection. Use `nonisolated(unsafe)` for any `@MainActor` class that must remove NSWorkspace / NotificationCenter observers from `deinit`.
+
+**Decision 2: `ConnectorPickerView` as a `.sheet` with internal `NavigationStack`.**
+
+The app's top-level content model is a pure enum switch — there is no `NavigationStack` at the root. The connector picker needs push navigation (picker → Apple Music flow / Spotify flow). Solution: present `ConnectorPickerView` as a `.sheet` from `IdleView`, and embed the `NavigationStack` inside the sheet. This keeps the app's flat state-machine routing intact while enabling connector-specific push flows. Do not add a `NavigationStack` to `ContentView` — it would pollute all six session-state views.
+
+**Decision 3: `DelayProviding` protocol for testable retry loops.**
+
+The Spotify rate-limit retry ([2s, 5s, 15s]) and Apple Music auto-retry (2s) use wall-clock delays. Injecting a `DelayProviding` protocol with `RealDelay` (production) and `InstantDelay` (tests, uses `await Task.yield()`) allows retry paths to be exercised in fast unit tests without wall-clock waits. `Task.yield()` is the correct implementation for `InstantDelay` — it suspends and resumes the current task, giving other tasks (including test observations) a chance to run, without introducing any real-time delay. An empty `async throws {}` body would not yield the actor and retry loops would spin synchronously.
+
+**Decision 4: `.spotifyAuthRequired` silently degrades to `startSession`.**
+
+Without OAuth (deferred to v2), `PlaylistConnector.connect()` immediately throws `.spotifyAuthRequired` (empty access token check). Rather than showing an error, the ViewModel calls `startSession(.spotifyPlaylistURL(url, accessToken: ""))` directly. `SessionManager` degrades gracefully: it starts a session with an empty plan and enters live-only reactive mode. This is a valid and useful state — the user gets responsive real-time visuals while the Orchestrator uses the reactive path. An error message here would lie: the session IS starting, just without pre-analyzed stems. User-visible error copy would be `UX_SPEC §8` compliant only if the session actually fails to start.
