@@ -45,6 +45,21 @@
 		A10014 /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20014; };
 		A10015 /* ScreenCaptureKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20015; };
 		A10016 /* MusicKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20016; };
+		E10001 /* SpotifyURLKind.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20001; };
+		E10002 /* SpotifyURLParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20002; };
+		E10003 /* DelayProviding.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20003; };
+		E10004 /* ConnectorType.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20004; };
+		E10005 /* ConnectorTileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20005; };
+		E10006 /* ConnectorPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20006; };
+		E10007 /* AppleMusicConnectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20007; };
+		E10008 /* SpotifyConnectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20008; };
+		E10011 /* ConnectorPickerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20011; };
+		E10012 /* AppleMusicConnectionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20012; };
+		E10013 /* SpotifyConnectionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20013; };
+		E10020 /* ConnectorPickerViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20020; };
+		E10021 /* AppleMusicConnectionViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20021; };
+		E10022 /* SpotifyURLParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20022; };
+		E10023 /* SpotifyConnectionViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20023; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -89,6 +104,21 @@
 		D20008 /* PermissionMonitorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionMonitorTests.swift; sourceTree = "<group>"; };
 		D20009 /* PhotosensitivityAcknowledgementStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotosensitivityAcknowledgementStoreTests.swift; sourceTree = "<group>"; };
 		D20010 /* PermissionOnboardingViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionOnboardingViewTests.swift; sourceTree = "<group>"; };
+		E20001 /* SpotifyURLKind.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotifyURLKind.swift; sourceTree = "<group>"; };
+		E20002 /* SpotifyURLParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotifyURLParser.swift; sourceTree = "<group>"; };
+		E20003 /* DelayProviding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DelayProviding.swift; sourceTree = "<group>"; };
+		E20004 /* ConnectorType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectorType.swift; sourceTree = "<group>"; };
+		E20005 /* ConnectorTileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectorTileView.swift; sourceTree = "<group>"; };
+		E20006 /* ConnectorPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectorPickerView.swift; sourceTree = "<group>"; };
+		E20007 /* AppleMusicConnectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleMusicConnectionView.swift; sourceTree = "<group>"; };
+		E20008 /* SpotifyConnectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotifyConnectionView.swift; sourceTree = "<group>"; };
+		E20011 /* ConnectorPickerViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectorPickerViewModel.swift; sourceTree = "<group>"; };
+		E20012 /* AppleMusicConnectionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleMusicConnectionViewModel.swift; sourceTree = "<group>"; };
+		E20013 /* SpotifyConnectionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotifyConnectionViewModel.swift; sourceTree = "<group>"; };
+		E20020 /* ConnectorPickerViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectorPickerViewModelTests.swift; sourceTree = "<group>"; };
+		E20021 /* AppleMusicConnectionViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleMusicConnectionViewModelTests.swift; sourceTree = "<group>"; };
+		E20022 /* SpotifyURLParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotifyURLParserTests.swift; sourceTree = "<group>"; };
+		E20023 /* SpotifyConnectionViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotifyConnectionViewModelTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -146,6 +176,7 @@
 				D40001 /* Permissions */,
 				C40001 /* ViewModels */,
 				A40005 /* Views */,
+				E40001 /* Services */,
 				A20003 /* PhospheneApp.entitlements */,
 				A20030 /* Phosphene.xcconfig */,
 			);
@@ -156,6 +187,9 @@
 			isa = PBXGroup;
 			children = (
 				C20001 /* SessionStateViewModel.swift */,
+				E20011 /* ConnectorPickerViewModel.swift */,
+				E20012 /* AppleMusicConnectionViewModel.swift */,
+				E20013 /* SpotifyConnectionViewModel.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -191,8 +225,23 @@
 				C40005 /* Ready */,
 				C40006 /* Playback */,
 				C40007 /* Ended */,
+				E20004 /* ConnectorType.swift */,
+				E20005 /* ConnectorTileView.swift */,
+				E20006 /* ConnectorPickerView.swift */,
+				E20007 /* AppleMusicConnectionView.swift */,
+				E20008 /* SpotifyConnectionView.swift */,
 			);
 			path = Views;
+			sourceTree = "<group>";
+		};
+		E40001 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				E20001 /* SpotifyURLKind.swift */,
+				E20002 /* SpotifyURLParser.swift */,
+				E20003 /* DelayProviding.swift */,
+			);
+			path = Services;
 			sourceTree = "<group>";
 		};
 		C40002 /* Idle */ = {
@@ -261,6 +310,10 @@
 				D20008 /* PermissionMonitorTests.swift */,
 				D20009 /* PhotosensitivityAcknowledgementStoreTests.swift */,
 				D20010 /* PermissionOnboardingViewTests.swift */,
+				E20020 /* ConnectorPickerViewModelTests.swift */,
+				E20021 /* AppleMusicConnectionViewModelTests.swift */,
+				E20022 /* SpotifyURLParserTests.swift */,
+				E20023 /* SpotifyConnectionViewModelTests.swift */,
 			);
 			path = PhospheneAppTests;
 			sourceTree = "<group>";
@@ -371,6 +424,17 @@
 				D10003 /* PhotosensitivityAcknowledgementStore.swift in Sources */,
 				D10004 /* PermissionOnboardingView.swift in Sources */,
 				D10005 /* PhotosensitivityNoticeView.swift in Sources */,
+				E10001 /* SpotifyURLKind.swift in Sources */,
+				E10002 /* SpotifyURLParser.swift in Sources */,
+				E10003 /* DelayProviding.swift in Sources */,
+				E10004 /* ConnectorType.swift in Sources */,
+				E10005 /* ConnectorTileView.swift in Sources */,
+				E10006 /* ConnectorPickerView.swift in Sources */,
+				E10007 /* AppleMusicConnectionView.swift in Sources */,
+				E10008 /* SpotifyConnectionView.swift in Sources */,
+				E10011 /* ConnectorPickerViewModel.swift in Sources */,
+				E10012 /* AppleMusicConnectionViewModel.swift in Sources */,
+				E10013 /* SpotifyConnectionViewModel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -382,6 +446,10 @@
 				D10008 /* PermissionMonitorTests.swift in Sources */,
 				D10009 /* PhotosensitivityAcknowledgementStoreTests.swift in Sources */,
 				D10010 /* PermissionOnboardingViewTests.swift in Sources */,
+				E10020 /* ConnectorPickerViewModelTests.swift in Sources */,
+				E10021 /* AppleMusicConnectionViewModelTests.swift in Sources */,
+				E10022 /* SpotifyURLParserTests.swift in Sources */,
+				E10023 /* SpotifyConnectionViewModelTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
