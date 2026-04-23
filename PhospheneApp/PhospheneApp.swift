@@ -9,6 +9,7 @@ import SwiftUI
 @main
 struct PhospheneApp: App {
     @StateObject private var engine = VisualizerEngine()
+    @StateObject private var permissionMonitor = PermissionMonitor()
 
     var body: some Scene {
         WindowGroup {
@@ -16,6 +17,7 @@ struct PhospheneApp: App {
                 viewModel: SessionStateViewModel(sessionManager: engine.sessionManager)
             )
             .environmentObject(engine)
+            .environmentObject(permissionMonitor)
             .onAppear {
                 // Start ad-hoc reactive mode immediately — matches pre-U.1 behavior
                 // where the visualizer always begins on launch without a playlist.

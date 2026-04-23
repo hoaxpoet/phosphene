@@ -224,7 +224,7 @@ The app shell routes `SessionManager.state` to one top-level SwiftUI view per se
 | `.playing` | `PlaybackView` | `phosphene.view.playing` |
 | `.ended` | `EndedView` | `phosphene.view.ended` |
 
-**`ContentView`** is a pure `switch viewModel.state {}` with no layout logic. All layout, keyboard shortcuts, and state-specific view models live inside the individual views.
+**`ContentView`** layers a permission gate above the session-state switch. When `PermissionMonitor.isScreenCaptureGranted` is `false`, `PermissionOnboardingView` renders regardless of `SessionManager.state` — this catches both fresh installs and mid-session permission revocations. When permission flips to `true` (detected via `NSApplication.didBecomeActiveNotification`), the view tree re-renders and routes to the current `SessionState`. Permission plumbing lives under `PhospheneApp/Permissions/`, not `Views/`, because it is a routing-layer concern.
 
 **`PlaybackView`** hosts the full-bleed `MetalView`, preset-name badge, `NoAudioSignalBadge` (DRM silence), and `DebugOverlayView`. It calls `engine.startAudio()` on appear and handles all keyboard shortcuts (`→` / `←` / `Space` = next/prev/next preset; `D` = debug overlay; `C` = capture; `R` = MIR record; `G` = G-buffer debug).
 

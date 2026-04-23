@@ -33,12 +33,18 @@ PhospheneApp/               → SwiftUI shell, views, view models
   VisualizerEngine+Audio.swift → Audio routing, MIR analysis, mood classification, signal state callbacks
   VisualizerEngine+Stems.swift → Background stem separation pipeline, 5s cadence, track-change reset
   VisualizerEngine+Presets.swift → makeSceneUniforms(from:) for ray march camera/light setup
+  Permissions/
+    ScreenCapturePermissionProvider.swift → Protocol + CGPreflightScreenCaptureAccess-backed impl (never prompts)
+    PermissionMonitor.swift               → @MainActor ObservableObject; refreshes isScreenCaptureGranted on foreground (U.2)
+    PhotosensitivityAcknowledgementStore.swift → UserDefaults-backed first-run flag; key phosphene.onboarding.photosensitivityAcknowledged (U.2)
   ViewModels/
     SessionStateViewModel.swift → @MainActor ObservableObject bridging SessionManager.state → SwiftUI; publishes state + reduceMotion
   Views/
     MetalView.swift         → NSViewRepresentable wrapping MTKView
     DebugOverlayView.swift  → Developer debug overlay (D key)
-    Idle/IdleView.swift     → .idle state: connect playlist or start ad-hoc
+    Onboarding/PermissionOnboardingView.swift → Screen-capture permission explainer; "Open System Settings" CTA (U.2)
+    Onboarding/PhotosensitivityNoticeView.swift → One-time photosensitivity sheet on IdleView first appearance (U.2)
+    Idle/IdleView.swift     → .idle state (U.1 stub; U.2 adds photosensitivity sheet; U.3 adds connector buttons)
     Connecting/ConnectingView.swift → .connecting state: per-connector spinner + cancel
     Preparation/PreparationProgressView.swift → .preparing state: per-track status + partial-ready CTA
     Ready/ReadyView.swift   → .ready state: "Press play in your music app" + first-audio autodetect
@@ -113,11 +119,13 @@ PhospheneEngine/
     Shaders/IBL.metal        → IBL generation kernels + sampling utilities
   Presets/
     PresetLoader            → Auto-discover, compile standard + additive + mesh + ray march pipelines, skip utility files
-    PresetLoader+Preamble   → Shared preamble: FeatureVector struct → ShaderUtilities → noise samplers → preset code. Forwards `sceneSDF(p, FeatureVector& f, SceneUniforms& s, StemFeatures& stems)` and `sceneMaterial(p, matID, f, s, stems, albedo, roughness, metallic)` so ray-march presets can do per-stem routing (Milkdrop-style) directly in sceneSDF/sceneMaterial. StemFeatures plumbed through G-buffer fragment call sites. Presets should apply the D-019 warmup fallback `smoothstep(0.02, 0.06, totalStemEnergy)` to mix between FeatureVector proxies and stem direct reads (see VolumetricLithograph for reference implementation). Also contains `mvWarpPreamble` (MV-2, D-027): MVWarpPerFrame struct, WarpVertexOut, warpSampler, forward declarations for preset `mvWarpPerFrame`/`mvWarpPerVertex`, and the `mvWarp_vertex` 32×24 grid shader. SceneUniforms defined via `#ifndef SCENE_UNIFORMS_DEFINED` guard so direct (non-ray-march) mv_warp presets compile correctly.
+    PresetLoader+Preamble   → Shared preamble: FeatureVector struct → V.1 Noise utility tree → V.1 PBR utility tree → ShaderUtilities → noise samplers → preset code. Forwards `sceneSDF(p, FeatureVector& f, SceneUniforms& s, StemFeatures& stems)` and `sceneMaterial(p, matID, f, s, stems, albedo, roughness, metallic)` so ray-march presets can do per-stem routing (Milkdrop-style) directly in sceneSDF/sceneMaterial. StemFeatures plumbed through G-buffer fragment call sites. Presets should apply the D-019 warmup fallback `smoothstep(0.02, 0.06, totalStemEnergy)` to mix between FeatureVector proxies and stem direct reads (see VolumetricLithograph for reference implementation). Also contains `mvWarpPreamble` (MV-2, D-027): MVWarpPerFrame struct, WarpVertexOut, warpSampler, forward declarations for preset `mvWarpPerFrame`/`mvWarpPerVertex`, and the `mvWarp_vertex` 32×24 grid shader. SceneUniforms defined via `#ifndef SCENE_UNIFORMS_DEFINED` guard so direct (non-ray-march) mv_warp presets compile correctly.
     PresetDescriptor        → JSON sidecar: passes, feedback params, scene camera/lights, stem affinity
     PresetDescriptor+SceneUniforms → Constructs SceneUniforms from descriptor (camera basis, light, fog, near/far). FOV converted from JSON degrees → radians exactly once.
     PresetCategory          → 11 aesthetic families
-    Shaders/ShaderUtilities.metal → 55 reusable functions: noise, SDF, PBR, ray march, UV, color, atmosphere
+    Shaders/ShaderUtilities.metal → 55 reusable functions: noise, SDF, PBR, ray march, UV, color, atmosphere (legacy camelCase names)
+    Shaders/Utilities/Noise/  → V.1 Noise utility tree (9 files, snake_case, D-045). Load order: Hash → Perlin → Simplex → FBM → RidgedMultifractal → Worley → DomainWarp → Curl → BlueNoise. Provides: hash_u32/f01 family, perlin2d/3d/4d, simplex3d/4d, fbm4/8/12/fbm_vec3, ridged_mf, worley2d/3d/fbm, warped_fbm/vec, curl_noise, blue_noise_sample/ign/ign_temporal.
+    Shaders/Utilities/PBR/    → V.1 PBR utility tree (9 files, snake_case, D-045). Load order: Fresnel → NormalMapping → BRDF → Thin → DetailNormals → Triplanar → POM → SSS → Fiber. Provides: fresnel_schlick/roughness/dielectric/f0_conductor, ggx_d/g_schlick/g_smith, brdf_ggx/lambert/oren_nayar/ashikhmin_shirley/cook_torrance, decode_normal_map/dx, ts_to_ws/ws_to_ts, tbn_from_derivatives, combine_normals_udn/whiteout, triplanar_blend_weights/sample/normal, parallax_occlusion/shadowed (POMResult), sss_backlit/wrap_lighting, fiber_marschner_lite/trt_lobe (FiberBRDFResult), thinfilm_rgb/hue_rotate.
     Shaders/Waveform.metal  → Spectrum bars + oscilloscope
     Shaders/Plasma.metal    → Demoscene plasma
     Shaders/Nebula.metal    → Radial frequency nebula
@@ -166,6 +174,7 @@ Tests/
   DSP/                      → SpectralAnalyzerTests, BandEnergyProcessorTests, ChromaExtractorTests, BeatDetectorTests, MIRPipelineUnitTests, SelfSimilarityMatrixTests, NoveltyDetectorTests, StructuralAnalyzerTests, BeatPredictorTests, PitchTrackerTests, StemAnalyzerMV3Tests
   ML/                       → StemSeparatorTests, StemFFTTests, StemModelTests, MoodClassifierTests
   Renderer/                 → MetalContextTests, ShaderLibraryTests, RenderPipelineTests, ProceduralGeometryTests, MeshGeneratorTests, BVHBuilderTests, RayIntersectorTests, PostProcessChainTests, ShaderUtilityTests, TextureManagerTests, RayMarchPipelineTests, SceneUniformsTests, FeatureVectorExtendedTests, SSGITests, RenderPipelineICBTests, MVWarpPipelineTests, SpectralCartographTests
+  Utilities/                → NoiseTestHarness (compute-pipeline harness), NoiseUtilityTests (~30 @Test, 10 suites), PBRUtilityTests (~45 @Test, 8 suites) — all V.1 utility tests
   Shared/                   → AudioFeaturesTests, UMABufferExtendedTests, EmotionalStateTests, AnalyzedFrameTests, SpectralHistoryBufferTests
   Session/                  → SessionManagerTests, PlaylistConnectorTests, PreviewResolverTests, PreviewDownloaderTests, SessionPreparerTests, StemCacheTests
   Integration/              → AudioToFFTPipelineTests, AudioToRenderPipelineTests, MetadataToOrchestratorTests, AudioToStemPipelineTests, MIRPipelineIntegrationTests, LookaheadIntegrationTests, StemsToRenderPipelineTests, SessionPreparationIntegrationTests
@@ -375,7 +384,7 @@ buffer(6–7) = future use
 **Authoring note:** buffer(0) is `FeatureVector`, not FFT — the old documentation was wrong. All existing presets (Starburst, VolumetricLithograph, etc.) bind in this order. New preset fragment functions must declare `constant FeatureVector& fv [[buffer(0)]]`. The `SpectralHistory` buffer(5) is available in direct-pass presets; ray march presets currently skip it.
 
 ### Preamble Compilation Order
-`FeatureVector struct` → `ShaderUtilities.metal functions` → `constexpr sampler declarations` → preset shader code.
+`FeatureVector struct` → `V.1 Noise utility tree (9 files)` → `V.1 PBR utility tree (9 files)` → `ShaderUtilities.metal functions` → `constexpr sampler declarations` → preset shader code.
 
 Ray march presets get a separate `rayMarchGBufferPreamble` (includes `raymarch_gbuffer_fragment` which calls preset-defined `sceneSDF`/`sceneMaterial`). This must NOT appear in the shared preamble — standard presets never define those functions.
 
@@ -643,6 +652,7 @@ No CoreML dependency. All ML uses MPSGraph (GPU) or Accelerate (CPU).
 
 **Phase U (UX Architecture) in progress. Phase 4 (Orchestrator), Phase 3, and Phase 2.5 (session preparation) complete.** Recent landed work:
 
+- **Increment V.1: Shader utility library (Noise + PBR)** — 18 new `.metal` utility files in `Sources/Presets/Shaders/Utilities/`. Noise tree (9 files): Hash → Perlin → Simplex → FBM → RidgedMultifractal → Worley → DomainWarp → Curl → BlueNoise. PBR tree (9 files): Fresnel → NormalMapping → BRDF → Thin → DetailNormals → Triplanar → POM → SSS → Fiber. `PresetLoader+Preamble.swift` extended with `noiseLoadOrder`/`pbrLoadOrder` arrays and `loadUtilityDirectory(_:priorityOrder:from:)` — utilities concatenated before ShaderUtilities.metal. New tests: `NoiseTestHarness.swift` (compute-pipeline harness), `NoiseUtilityTests.swift` (~30 @Test), `PBRUtilityTests.swift` (~45 @Test). Zero dHash drift in PresetRegressionTests. D-045 in DECISIONS.md. 85 utility tests pass; 453 total; pre-existing failures unchanged.
 - **Increment U.1: Session-state views** — `SessionStateViewModel` (`@MainActor ObservableObject`) bridges `SessionManager.state` → SwiftUI; publishes `state` + `reduceMotion`. Six stub views under `PhospheneApp/Views/` (IdleView, ConnectingView, PreparationProgressView, ReadyView, PlaybackView, EndedView), each with `static let accessibilityID` and `.accessibilityIdentifier(Self.accessibilityID)`. ContentView refactored to pure switch on `viewModel.state`. PlaybackView absorbs Metal/overlay chrome from former ContentView. PhospheneApp.swift wired: VisualizerEngine owns SessionManager; ad-hoc session starts at launch. New `PhospheneAppTests` target with 9 tests. D-044. 453 tests total; pre-existing failures unchanged.
 - **Increment 3.5.11: Gossamer SDF correction + v3 acceptance** — Fixed inverted SDF in `gossamerSpiralDist` and `gossamerHubDist` (`abs(fract−0.5)` → `min(fract, 1−fract)`): the old formula gave 0 in thread gaps and 0.5 on threads, making the entire capture zone render as a filled disc instead of a web. Also corrected D-037 acceptance invariant 3: brightness formula changed to `0.12 + f.bass×0.76 + bassRel×0.12` so silence (f.bass=0) is dim and steady music (f.bass≈0.5) is lit; beat flash reduced 0.65→0.30. Includes v3 geometry: 17 explicit irregular spoke angles, off-center hub at (0.465, 0.32), kWebRadius 0.42→0.44, elliptical stretch removed. D-042. Golden hashes regenerated. 444 tests; pre-existing failures unchanged.
 - **Increment 3.5.10: Arachne ray march remaster** — Complete shader rewrite from mesh_shader to 3D SDF ray march (direct fragment + mv_warp). 64-step march; camera at z=−1.8 for dramatic close-up scale. `sdWebElement` draws webs progressively: alternating-pair radial order {0,6,3,9,1,7,4,10,2,8,5,11} mirrors real orb-weaver construction; ±22% per-spoke angular jitter via `rng_seed` hash makes each web unique. Corrected SDF (`min(fract, 1−fract)`) for spiral threads. Pool webs mapped to 3D at varying depths z∈[−0.4,1.4]; anchor web always at (0,0,0.2). Spider always placed on anchor web, fixing Z-depth mismatch. Miss-ray glow `exp2(−minWebDist×14)` ensures D-037 formComplexity. `directPresetFragmentBuffer2` (buffer(7)) infrastructure for spider GPU struct. D-041. 444 tests; pre-existing failures unchanged.
@@ -671,8 +681,7 @@ No CoreML dependency. All ML uses MPSGraph (GPU) or Accelerate (CPU).
 The next ordered increments are:
 
 1. **Increment U.2 — Permission onboarding.** `PermissionOnboardingView` + `CGPreflightScreenCaptureAccess()` check on every foregrounding; photosensitivity notice (once). See `docs/ENGINEERING_PLAN.md §Phase U`.
-2. **Increment V.1 — Shader utility library (Noise + PBR).** Can run in parallel with Phase U; prerequisite for Phase V.7 fidelity uplift. See `docs/ENGINEERING_PLAN.md §Phase V`.
-3. **Increment 6.1 — Progressive Session Readiness.** Gates the "Start now" CTA in Increment U.4. See `docs/ENGINEERING_PLAN.md §Phase 6`.
+2. **Increment 6.1 — Progressive Session Readiness.** Gates the "Start now" CTA in Increment U.4. See `docs/ENGINEERING_PLAN.md §Phase 6`.
 
 See `docs/ENGINEERING_PLAN.md` for the full forward plan with done-when criteria and verification commands. See `docs/MILKDROP_ARCHITECTURE.md` for the research that scopes Phase MV and now also gates Phase MD (Milkdrop ingestion). See `docs/UX_SPEC.md` for the product-UX source of truth and `docs/SHADER_CRAFT.md` for the shader authoring handbook.
 

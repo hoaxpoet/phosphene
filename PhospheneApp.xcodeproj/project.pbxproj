@@ -22,6 +22,14 @@
 		C10005 /* ReadyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20005; };
 		C10006 /* PlaybackView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20006; };
 		C10007 /* EndedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20007; };
+		D10001 /* ScreenCapturePermissionProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20001; };
+		D10002 /* PermissionMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20002; };
+		D10003 /* PhotosensitivityAcknowledgementStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20003; };
+		D10004 /* PermissionOnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20004; };
+		D10005 /* PhotosensitivityNoticeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20005; };
+		D10008 /* PermissionMonitorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20008; };
+		D10009 /* PhotosensitivityAcknowledgementStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20009; };
+		D10010 /* PermissionOnboardingViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20010; };
 		A10031 /* VisualizerEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20031; };
 		A10032 /* VisualizerEngine+Audio.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20032; };
 		A10033 /* VisualizerEngine+Stems.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20033; };
@@ -73,6 +81,14 @@
 		C20005 /* ReadyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadyView.swift; sourceTree = "<group>"; };
 		C20006 /* PlaybackView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackView.swift; sourceTree = "<group>"; };
 		C20007 /* EndedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EndedView.swift; sourceTree = "<group>"; };
+		D20001 /* ScreenCapturePermissionProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenCapturePermissionProvider.swift; sourceTree = "<group>"; };
+		D20002 /* PermissionMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionMonitor.swift; sourceTree = "<group>"; };
+		D20003 /* PhotosensitivityAcknowledgementStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotosensitivityAcknowledgementStore.swift; sourceTree = "<group>"; };
+		D20004 /* PermissionOnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionOnboardingView.swift; sourceTree = "<group>"; };
+		D20005 /* PhotosensitivityNoticeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotosensitivityNoticeView.swift; sourceTree = "<group>"; };
+		D20008 /* PermissionMonitorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionMonitorTests.swift; sourceTree = "<group>"; };
+		D20009 /* PhotosensitivityAcknowledgementStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotosensitivityAcknowledgementStoreTests.swift; sourceTree = "<group>"; };
+		D20010 /* PermissionOnboardingViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionOnboardingViewTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -127,6 +143,7 @@
 				A20037 /* VisualizerEngine+PublicAPI.swift */,
 				A20040 /* VisualizerEngine+Orchestrator.swift */,
 				A20022 /* MusicKitFetcher.swift */,
+				D40001 /* Permissions */,
 				C40001 /* ViewModels */,
 				A40005 /* Views */,
 				A20003 /* PhospheneApp.entitlements */,
@@ -143,11 +160,31 @@
 			path = ViewModels;
 			sourceTree = "<group>";
 		};
+		D40001 /* Permissions */ = {
+			isa = PBXGroup;
+			children = (
+				D20001 /* ScreenCapturePermissionProvider.swift */,
+				D20002 /* PermissionMonitor.swift */,
+				D20003 /* PhotosensitivityAcknowledgementStore.swift */,
+			);
+			path = Permissions;
+			sourceTree = "<group>";
+		};
+		D40002 /* Onboarding */ = {
+			isa = PBXGroup;
+			children = (
+				D20004 /* PermissionOnboardingView.swift */,
+				D20005 /* PhotosensitivityNoticeView.swift */,
+			);
+			path = Onboarding;
+			sourceTree = "<group>";
+		};
 		A40005 /* Views */ = {
 			isa = PBXGroup;
 			children = (
 				A20020 /* MetalView.swift */,
 				A20021 /* DebugOverlayView.swift */,
+				D40002 /* Onboarding */,
 				C40002 /* Idle */,
 				C40003 /* Connecting */,
 				C40004 /* Preparation */,
@@ -221,6 +258,9 @@
 			isa = PBXGroup;
 			children = (
 				B20001 /* SessionStateViewTests.swift */,
+				D20008 /* PermissionMonitorTests.swift */,
+				D20009 /* PhotosensitivityAcknowledgementStoreTests.swift */,
+				D20010 /* PermissionOnboardingViewTests.swift */,
 			);
 			path = PhospheneAppTests;
 			sourceTree = "<group>";
@@ -326,6 +366,11 @@
 				C10005 /* ReadyView.swift in Sources */,
 				C10006 /* PlaybackView.swift in Sources */,
 				C10007 /* EndedView.swift in Sources */,
+				D10001 /* ScreenCapturePermissionProvider.swift in Sources */,
+				D10002 /* PermissionMonitor.swift in Sources */,
+				D10003 /* PhotosensitivityAcknowledgementStore.swift in Sources */,
+				D10004 /* PermissionOnboardingView.swift in Sources */,
+				D10005 /* PhotosensitivityNoticeView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -334,6 +379,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				B10001 /* SessionStateViewTests.swift in Sources */,
+				D10008 /* PermissionMonitorTests.swift in Sources */,
+				D10009 /* PhotosensitivityAcknowledgementStoreTests.swift in Sources */,
+				D10010 /* PermissionOnboardingViewTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

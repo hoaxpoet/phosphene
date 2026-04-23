@@ -1,6 +1,7 @@
 // IdleView — Shown when SessionManager.state == .idle.
 // U.1 stub: displays state name on black background.
-// U.2 adds permission onboarding; U.3 adds connector picker + ad-hoc CTA.
+// U.2: photosensitivity sheet on first appearance (persisted via UserDefaults).
+// U.3 will add connector picker + ad-hoc CTA.
 
 import SwiftUI
 
@@ -9,6 +10,9 @@ import SwiftUI
 @MainActor
 struct IdleView: View {
     static let accessibilityID = "phosphene.view.idle"
+
+    @State private var showPhotosensitivityNotice = false
+    private let acknowledgementStore = PhotosensitivityAcknowledgementStore()
 
     var body: some View {
         VStack(spacing: 12) {
@@ -22,5 +26,16 @@ struct IdleView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.black)
         .accessibilityIdentifier(Self.accessibilityID)
+        .onAppear {
+            if !acknowledgementStore.isAcknowledged {
+                showPhotosensitivityNotice = true
+            }
+        }
+        .sheet(isPresented: $showPhotosensitivityNotice) {
+            PhotosensitivityNoticeView {
+                acknowledgementStore.markAcknowledged()
+                showPhotosensitivityNotice = false
+            }
+        }
     }
 }
