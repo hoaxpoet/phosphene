@@ -751,18 +751,57 @@ UPDATE_GOLDEN_SNAPSHOTS=1 swift test --package-path PhospheneEngine --filter tes
 
 ---
 
-### Increment U.3 — Playlist connector picker
+### Increment U.3 — Playlist connector picker ✅
 
-**Scope:** `ConnectorPickerView` with three tiles (Apple Music, Spotify, Local folder). Apple Music and Spotify reuse existing `PlaylistConnecting` protocol implementations. Local folder is feature-flagged off in v1. Per-connector flow views (`AppleMusicConnectionView`, `SpotifyConnectionView`) handle the five `AppleMusicAppleScriptConnector.connect()` return cases and the Spotify URL-paste + validation flow per `UX_SPEC.md §4.3`/`§4.4`.
+**Landed:** 2026-04-23
 
-**Done when:**
-- Three tiles render with correct availability states (Apple Music disabled when not running).
-- Apple Music path works end-to-end with existing `AppleMusicAppleScriptConnector`.
-- Spotify URL paste accepts all valid URL forms; rejects tracks/albums with correct copy.
-- Each connector surfaces its error states per the UX_SPEC §8.2 table.
-- 8+ unit tests covering connector flows.
+**What was built:**
+- `ConnectorType` enum (appleMusic/spotify/localFolder) with title/subtitle/systemImage.
+- `ConnectorTileView`: reusable tile with enabled/disabled states and optional secondary
+  action button.
+- `ConnectorPickerViewModel` (`@MainActor ObservableObject`): NSWorkspace launch/terminate
+  observers with `nonisolated(unsafe)` storage — the only correct pattern for observers
+  that must be removed in `deinit` on a `@MainActor` class (Swift 6 `deinit` is nonisolated).
+  250ms debounce on Apple Music availability.
+- `ConnectorPickerView`: `NavigationStack` inside a `.sheet` from `IdleView`, with
+  `navigationDestination(for: ConnectorType.self)`.
+- `AppleMusicConnectionViewModel`: five-state machine
+  (idle/connecting/noCurrentPlaylist/notRunning/permissionDenied/error/connected).
+  Auto-retry on `.noCurrentPlaylist` via injectable `DelayProviding` (2s real, instant
+  in tests). Pre-flight finding: AppleScript error -1728 (no track) and -1743 (automation
+  denied) both silently return an empty array — indistinguishable in U.3.
+- `AppleMusicConnectionView`: five user-visible states with CTA copy per UX_SPEC §4.3.
+  `.onChange(of: viewModel.state)` fires `onConnect(.appleMusicCurrentPlaylist)` on
+  `.connected`.
+- `SpotifyURLKind` + `SpotifyURLParser`: pure value types. Handles HTTPS, `spotify:` URI,
+  `@`-prefixed links, query param stripping, podcast paths → `.invalid`.
+- `SpotifyConnectionViewModel`: 300ms debounce on text input via `$text.sink`; HTTP 429
+  retry with [2s, 5s, 15s] backoff (extracted to `retryAfterRateLimit` to satisfy
+  `cyclomatic_complexity ≤ 10`). `.spotifyAuthRequired` → calls `startSession` directly
+  (SessionManager degrades gracefully to live-only reactive mode; no OAuth in U.3).
+- `SpotifyConnectionView`: URL paste field, playlist-ID preview card, per-kind rejection
+  copy, retry-attempt indicator.
+- `DelayProviding` protocol: `RealDelay` (wall-clock `Task.sleep`) and `InstantDelay`
+  (`await Task.yield()` — yields actor without wall-clock wait, enabling fast retry tests).
+- `LocalFolderConnector` stub: `#if ENABLE_LOCAL_FOLDER_CONNECTOR` compile flag; always
+  throws `.networkFailure("not yet implemented")`.
+- `IdleView` updated: "Connect a playlist" → `.sheet`, "Start listening now" → ad-hoc
+  session. `PhospheneApp.swift` auto-start `startAdHocSession()` removed from `.onAppear`.
 
-**Verify:** `swift test --package-path PhospheneEngine --filter ConnectorPickerTests`
+**Key decisions (D-046):**
+- `nonisolated(unsafe)` for NSWorkspace observer storage in `@MainActor` classes.
+- `ConnectorPickerView` as sheet-with-NavigationStack (not a new NavigationStack root).
+- `DelayProviding` protocol for testable retry without wall-clock waits.
+- `.spotifyAuthRequired` silently degrades — no user-visible error since the session still
+  starts (live-only reactive mode is valid and useful without OAuth).
+
+**Tests:** 21 new PhospheneApp tests (ConnectorPickerViewModelTests×9, SpotifyURLParserTests×12,
+AppleMusicConnectionViewModelTests×5 + identifier, SpotifyConnectionViewModelTests×5 + identifier).
+56 PhospheneApp tests total. 0 SwiftLint violations.
+
+**Verify:**
+- `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' test`
+- `swiftlint lint --strict --config .swiftlint.yml`
 
 ---
 

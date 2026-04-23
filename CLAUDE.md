@@ -37,14 +37,26 @@ PhospheneApp/               → SwiftUI shell, views, view models
     ScreenCapturePermissionProvider.swift → Protocol + CGPreflightScreenCaptureAccess-backed impl (never prompts)
     PermissionMonitor.swift               → @MainActor ObservableObject; refreshes isScreenCaptureGranted on foreground (U.2)
     PhotosensitivityAcknowledgementStore.swift → UserDefaults-backed first-run flag; key phosphene.onboarding.photosensitivityAcknowledged (U.2)
+  Services/
+    DelayProviding.swift    → Protocol for injectable sleep (RealDelay + InstantDelay); makes retry loops unit-testable without wall-clock waits
+    SpotifyURLKind.swift    → Enum: .playlist(id:) / .track / .album / .artist / .invalid
+    SpotifyURLParser.swift  → Pure enum; static parse(_ input:) → SpotifyURLKind; handles HTTPS, spotify: URI, @-prefix, query params, podcasts
   ViewModels/
     SessionStateViewModel.swift → @MainActor ObservableObject bridging SessionManager.state → SwiftUI; publishes state + reduceMotion
+    ConnectorPickerViewModel.swift → @MainActor ObservableObject; NSWorkspace observers (nonisolated(unsafe)) for AM launch/terminate; 250ms debounce
+    AppleMusicConnectionViewModel.swift → State machine (idle→connecting→noCurrentPlaylist/notRunning/permissionDenied/error/connected); 2s auto-retry via DelayProviding
+    SpotifyConnectionViewModel.swift → State machine (empty→parsing→preview/rejectedKind/invalid→rateLimited/notFound/error); 300ms debounce; [2s,5s,15s] rate-limit retry
   Views/
     MetalView.swift         → NSViewRepresentable wrapping MTKView
     DebugOverlayView.swift  → Developer debug overlay (D key)
+    ConnectorType.swift     → Enum: .appleMusic/.spotify/.localFolder; title/subtitle/systemImage
+    ConnectorTileView.swift → Reusable tile: icon + title/subtitle; disabled state with alt caption + optional secondary action button
+    ConnectorPickerView.swift → NavigationStack in sheet; three tiles; navigationDestination(for: ConnectorType.self)
+    AppleMusicConnectionView.swift → Five-state connection view (connecting/noCurrentPlaylist/notRunning/permissionDenied/error); onConnect fires on .connected
+    SpotifyConnectionView.swift → URL paste field; preview card; rejectedKind copy; rate-limit retry indicator; error body
     Onboarding/PermissionOnboardingView.swift → Screen-capture permission explainer; "Open System Settings" CTA (U.2)
     Onboarding/PhotosensitivityNoticeView.swift → One-time photosensitivity sheet on IdleView first appearance (U.2)
-    Idle/IdleView.swift     → .idle state (U.1 stub; U.2 adds photosensitivity sheet; U.3 adds connector buttons)
+    Idle/IdleView.swift     → .idle state; "Connect a playlist" sheet CTA + "Start listening now" ad-hoc CTA (U.3)
     Connecting/ConnectingView.swift → .connecting state: per-connector spinner + cancel
     Preparation/PreparationProgressView.swift → .preparing state: per-track status + partial-ready CTA
     Ready/ReadyView.swift   → .ready state: "Press play in your music app" + first-audio autodetect
@@ -652,6 +664,8 @@ No CoreML dependency. All ML uses MPSGraph (GPU) or Accelerate (CPU).
 
 **Phase U (UX Architecture) in progress. Phase 4 (Orchestrator), Phase 3, and Phase 2.5 (session preparation) complete.** Recent landed work:
 
+- **Increment U.3: Playlist connector picker** — `ConnectorPickerView` (NavigationStack in `.sheet` from IdleView) with three tiles: Apple Music (disabled when not running), Spotify (URL paste), Local folder (coming later stub). `ConnectorPickerViewModel` uses `NSWorkspace` launch/terminate observers with `nonisolated(unsafe)` storage (Swift 6 `deinit` constraint). `AppleMusicConnectionViewModel`: five-state machine with 2s auto-retry on `.noCurrentPlaylist` via injectable `DelayProviding`. `SpotifyConnectionViewModel`: URL debounce (300ms), `SpotifyURLParser` (handles HTTPS/URI/@ forms), HTTP 429 backoff [2s, 5s, 15s], `.spotifyAuthRequired` degrades to `startSession` directly (no OAuth in U.3). `PhospheneApp.swift`: removed auto-start `startAdHocSession()` — replaced by "Start listening now" button in IdleView. `LocalFolderConnector` stub (`#if ENABLE_LOCAL_FOLDER_CONNECTOR`). D-046 in DECISIONS.md. 56 PhospheneApp tests; 0 SwiftLint violations.
+- **Increment U.2: Permission onboarding** — `PermissionMonitor` (`@MainActor ObservableObject`) checking `CGPreflightScreenCaptureAccess` on every `NSApplication.didBecomeActiveNotification`. `PermissionOnboardingView` (URL-scheme to System Settings, return auto-detected). `PhotosensitivityNoticeView` (one-time sheet on first IdleView appearance, backed by `PhotosensitivityAcknowledgementStore`). `ContentView` refactored to two-level switch: permission gate above state switch. Key decision: preflight + URL scheme, NOT `CGRequestScreenCaptureAccess()` — the request API's system dialog doesn't compose with "open and return" UX.
 - **Increment V.1: Shader utility library (Noise + PBR)** — 18 new `.metal` utility files in `Sources/Presets/Shaders/Utilities/`. Noise tree (9 files): Hash → Perlin → Simplex → FBM → RidgedMultifractal → Worley → DomainWarp → Curl → BlueNoise. PBR tree (9 files): Fresnel → NormalMapping → BRDF → Thin → DetailNormals → Triplanar → POM → SSS → Fiber. `PresetLoader+Preamble.swift` extended with `noiseLoadOrder`/`pbrLoadOrder` arrays and `loadUtilityDirectory(_:priorityOrder:from:)` — utilities concatenated before ShaderUtilities.metal. New tests: `NoiseTestHarness.swift` (compute-pipeline harness), `NoiseUtilityTests.swift` (~30 @Test), `PBRUtilityTests.swift` (~45 @Test). Zero dHash drift in PresetRegressionTests. D-045 in DECISIONS.md. 85 utility tests pass; 453 total; pre-existing failures unchanged.
 - **Increment U.1: Session-state views** — `SessionStateViewModel` (`@MainActor ObservableObject`) bridges `SessionManager.state` → SwiftUI; publishes `state` + `reduceMotion`. Six stub views under `PhospheneApp/Views/` (IdleView, ConnectingView, PreparationProgressView, ReadyView, PlaybackView, EndedView), each with `static let accessibilityID` and `.accessibilityIdentifier(Self.accessibilityID)`. ContentView refactored to pure switch on `viewModel.state`. PlaybackView absorbs Metal/overlay chrome from former ContentView. PhospheneApp.swift wired: VisualizerEngine owns SessionManager; ad-hoc session starts at launch. New `PhospheneAppTests` target with 9 tests. D-044. 453 tests total; pre-existing failures unchanged.
 - **Increment 3.5.11: Gossamer SDF correction + v3 acceptance** — Fixed inverted SDF in `gossamerSpiralDist` and `gossamerHubDist` (`abs(fract−0.5)` → `min(fract, 1−fract)`): the old formula gave 0 in thread gaps and 0.5 on threads, making the entire capture zone render as a filled disc instead of a web. Also corrected D-037 acceptance invariant 3: brightness formula changed to `0.12 + f.bass×0.76 + bassRel×0.12` so silence (f.bass=0) is dim and steady music (f.bass≈0.5) is lit; beat flash reduced 0.65→0.30. Includes v3 geometry: 17 explicit irregular spoke angles, off-center hub at (0.465, 0.32), kWebRadius 0.42→0.44, elliptical stretch removed. D-042. Golden hashes regenerated. 444 tests; pre-existing failures unchanged.
@@ -680,7 +694,7 @@ No CoreML dependency. All ML uses MPSGraph (GPU) or Accelerate (CPU).
 
 The next ordered increments are:
 
-1. **Increment U.2 — Permission onboarding.** `PermissionOnboardingView` + `CGPreflightScreenCaptureAccess()` check on every foregrounding; photosensitivity notice (once). See `docs/ENGINEERING_PLAN.md §Phase U`.
+1. **Increment U.4 — Preparation progress UI.** `PreparationProgressView` per `UX_SPEC.md §5.2`: `PreparationProgressPublishing` protocol on `SessionPreparer`; per-track status rows with seven states; "Start now" CTA gated by Increment 6.1. See `docs/ENGINEERING_PLAN.md §Phase U`.
 2. **Increment 6.1 — Progressive Session Readiness.** Gates the "Start now" CTA in Increment U.4. See `docs/ENGINEERING_PLAN.md §Phase 6`.
 
 See `docs/ENGINEERING_PLAN.md` for the full forward plan with done-when criteria and verification commands. See `docs/MILKDROP_ARCHITECTURE.md` for the research that scopes Phase MV and now also gates Phase MD (Milkdrop ingestion). See `docs/UX_SPEC.md` for the product-UX source of truth and `docs/SHADER_CRAFT.md` for the shader authoring handbook.
