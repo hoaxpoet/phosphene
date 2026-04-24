@@ -60,6 +60,13 @@
 		E10021 /* AppleMusicConnectionViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20021; };
 		E10022 /* SpotifyURLParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20022; };
 		E10023 /* SpotifyConnectionViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20023; };
+		F10001 /* TrackPreparationRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20001; };
+		F10002 /* TrackPreparationStatusIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20002; };
+		F10003 /* PreparationProgressViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20003; };
+		F10004 /* PreparationETAEstimator.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20004; };
+		F10005 /* PreparationProgressViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20005; };
+		F10006 /* PreparationETAEstimatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20006; };
+		F10007 /* PreparationCancelIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20007; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -119,6 +126,13 @@
 		E20021 /* AppleMusicConnectionViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleMusicConnectionViewModelTests.swift; sourceTree = "<group>"; };
 		E20022 /* SpotifyURLParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotifyURLParserTests.swift; sourceTree = "<group>"; };
 		E20023 /* SpotifyConnectionViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotifyConnectionViewModelTests.swift; sourceTree = "<group>"; };
+		F20001 /* TrackPreparationRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackPreparationRow.swift; sourceTree = "<group>"; };
+		F20002 /* TrackPreparationStatusIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackPreparationStatusIcon.swift; sourceTree = "<group>"; };
+		F20003 /* PreparationProgressViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreparationProgressViewModel.swift; sourceTree = "<group>"; };
+		F20004 /* PreparationETAEstimator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreparationETAEstimator.swift; sourceTree = "<group>"; };
+		F20005 /* PreparationProgressViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreparationProgressViewModelTests.swift; sourceTree = "<group>"; };
+		F20006 /* PreparationETAEstimatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreparationETAEstimatorTests.swift; sourceTree = "<group>"; };
+		F20007 /* PreparationCancelIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreparationCancelIntegrationTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -190,6 +204,7 @@
 				E20011 /* ConnectorPickerViewModel.swift */,
 				E20012 /* AppleMusicConnectionViewModel.swift */,
 				E20013 /* SpotifyConnectionViewModel.swift */,
+				F20003 /* PreparationProgressViewModel.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -230,6 +245,8 @@
 				E20006 /* ConnectorPickerView.swift */,
 				E20007 /* AppleMusicConnectionView.swift */,
 				E20008 /* SpotifyConnectionView.swift */,
+				F20001 /* TrackPreparationRow.swift */,
+				F20002 /* TrackPreparationStatusIcon.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -240,6 +257,7 @@
 				E20001 /* SpotifyURLKind.swift */,
 				E20002 /* SpotifyURLParser.swift */,
 				E20003 /* DelayProviding.swift */,
+				F20004 /* PreparationETAEstimator.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -258,7 +276,9 @@
 		};
 		C40004 /* Preparation */ = {
 			isa = PBXGroup;
-			children = (C20004 /* PreparationProgressView.swift */);
+			children = (
+				C20004 /* PreparationProgressView.swift */,
+			);
 			path = Preparation;
 			sourceTree = "<group>";
 		};
@@ -314,6 +334,9 @@
 				E20021 /* AppleMusicConnectionViewModelTests.swift */,
 				E20022 /* SpotifyURLParserTests.swift */,
 				E20023 /* SpotifyConnectionViewModelTests.swift */,
+				F20005 /* PreparationProgressViewModelTests.swift */,
+				F20006 /* PreparationETAEstimatorTests.swift */,
+				F20007 /* PreparationCancelIntegrationTests.swift */,
 			);
 			path = PhospheneAppTests;
 			sourceTree = "<group>";
@@ -435,6 +458,10 @@
 				E10011 /* ConnectorPickerViewModel.swift in Sources */,
 				E10012 /* AppleMusicConnectionViewModel.swift in Sources */,
 				E10013 /* SpotifyConnectionViewModel.swift in Sources */,
+				F10001 /* TrackPreparationRow.swift in Sources */,
+				F10002 /* TrackPreparationStatusIcon.swift in Sources */,
+				F10003 /* PreparationProgressViewModel.swift in Sources */,
+				F10004 /* PreparationETAEstimator.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -450,6 +477,9 @@
 				E10021 /* AppleMusicConnectionViewModelTests.swift in Sources */,
 				E10022 /* SpotifyURLParserTests.swift in Sources */,
 				E10023 /* SpotifyConnectionViewModelTests.swift in Sources */,
+				F10005 /* PreparationProgressViewModelTests.swift in Sources */,
+				F10006 /* PreparationETAEstimatorTests.swift in Sources */,
+				F10007 /* PreparationCancelIntegrationTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

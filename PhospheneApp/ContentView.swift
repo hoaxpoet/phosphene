@@ -6,7 +6,11 @@
 // mid-session revocations. When permission flips to true (detected via
 // NSApplication.didBecomeActiveNotification), the view tree re-renders and routes to
 // whatever SessionState is current.
+//
+// U.4: .preparing routes to PreparationProgressView; the ViewModel is owned as
+// @StateObject inside the view so it survives re-renders within the same state.
 
+import Session
 import SwiftUI
 
 // MARK: - ContentView
@@ -19,6 +23,7 @@ import SwiftUI
 struct ContentView: View {
     @StateObject var viewModel: SessionStateViewModel
     @EnvironmentObject private var permissionMonitor: PermissionMonitor
+    @EnvironmentObject private var engine: VisualizerEngine
 
     init(viewModel: SessionStateViewModel) {
         self._viewModel = StateObject(wrappedValue: viewModel)
@@ -39,12 +44,44 @@ struct ContentView: View {
     @ViewBuilder
     private var sessionStateBody: some View {
         switch viewModel.state {
-        case .idle:       IdleView()
-        case .connecting: ConnectingView()
-        case .preparing:  PreparationProgressView()
-        case .ready:      ReadyView()
-        case .playing:    PlaybackView()
-        case .ended:      EndedView()
+        case .idle:
+            IdleView()
+        case .connecting:
+            ConnectingView()
+        case .preparing:
+            preparingView
+        case .ready:
+            ReadyView()
+        case .playing:
+            PlaybackView()
+        case .ended:
+            EndedView()
+        }
+    }
+
+    @ViewBuilder
+    private var preparingView: some View {
+        if let publisher = engine.sessionManager.preparationProgress {
+            PreparationProgressView(
+                publisher: publisher,
+                tracks: engine.sessionManager.preparingTracks,
+                playlistName: "",
+                onCancel: { engine.sessionManager.cancel() },
+                onStartNow: { engine.sessionManager.beginPlayback() }
+            )
+        } else {
+            // Fallback (should not normally occur — SessionPreparer is always the publisher).
+            VStack(spacing: 12) {
+                Text("Preparing")
+                    .font(.largeTitle)
+                    .foregroundColor(.white)
+                Text("Analyzing tracks…")
+                    .font(.body)
+                    .foregroundColor(.white.opacity(0.5))
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color.black)
+            .accessibilityIdentifier(PreparationProgressView.accessibilityID)
         }
     }
 }
