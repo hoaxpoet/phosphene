@@ -820,18 +820,46 @@ AppleMusicConnectionViewModelTests×5 + identifier, SpotifyConnectionViewModelTe
 
 ---
 
-### Increment U.5 — Ready view + first-audio autodetect
+### Increment U.5 — Ready view + first-audio autodetect ✅
 
-**Scope:** `ReadyView` per `UX_SPEC.md §6.1`. First-track preset renders in background at 0.3× opacity. Attention-drawing pulsing border. First-audio autodetect via `AudioInputRouter` `.silent → .active` transition sustained >250 ms → auto-advance to `.playing`. 90-second timeout handling per `§6.3`.
+**Scope:** `ReadyView` per `UX_SPEC.md §6.1`. First-track preset renders in background at 0.3× opacity. Attention-drawing pulsing border. First-audio autodetect via `AudioInputRouter` `.silent → .active` transition sustained >250 ms → auto-advance to `.playing`. 90-second timeout handling per `§6.3`. Plan preview panel (`PlanPreviewView`) showing all `PlannedTrack` rows with transitions. Regenerate Plan (D-047) with random seed + manual-lock preservation.
+
+**Delivered:**
+- Part A: `ReadyView`, `ReadyViewModel`, `FirstAudioDetector`, `ReadyPulsingBorder`, `ReadyBackgroundPresetView`.
+- Part B: `PlanPreviewView`, `PlanPreviewViewModel`, `PlanPreviewRowView`, `PlanPreviewTransitionView`.
+- Part C: `PresetPreviewController` stub — deferred to U.5b (D-048).
+- Part D: `DefaultSessionPlanner.plan(seed:)`, `PlannedSession.applying(overrides:)`, `VisualizerEngine.regeneratePlan(lockedTracks:lockedPresets:)`.
+- 19 new tests: `FirstAudioDetectorTests`, `ReadyViewModelTests`, `PlanPreviewViewModelTests`, `PlanPreviewRegenerateTests`, `ReadyViewTimeoutIntegrationTests`, `SessionPlannerSeedTests`.
+
+---
+
+### Increment U.5b — Preset preview loop (deferred from U.5 Part C)
+
+**Scope:** 10-second looping preset preview triggered by row-tap in `PlanPreviewView`. Currently a no-op stub in `PresetPreviewController`. Full implementation requires engine-layer changes: (1) synthetic `FeatureVector` injection into active `RenderPipeline`; (2) secondary render surface or background-preset surface hijack; (3) loop mechanism without live audio callbacks. See D-048.
 
 **Done when:**
-- `ReadyView` renders with background preset preview and handoff copy.
-- Sustained audio signal advances to `.playing` without user input.
-- 90s timeout shows the "haven't heard anything yet" prompt with Retry / End.
-- Source-name in copy matches the connector used (Apple Music / Spotify / your music app).
-- 4+ unit tests via mocked `AudioInputRouter`.
+- Row tap in `PlanPreviewView` triggers a looping 10s preview of the row's preset.
+- Tap again or session advance stops the preview and reverts to the session's active preset.
+- Context-menu "Swap preset" is enabled and wired to `PlanPreviewViewModel.swapPreset(for:to:)`.
+- `PresetPreviewController.startPreview(preset:stems:)` drives the RenderPipeline, not a stub.
+- 6+ unit tests for preview controller lifecycle + integration test for row-tap → visual change.
 
-**Verify:** `swift test --package-path PhospheneEngine --filter ReadyViewTests`
+**Verify:** `swift test --package-path PhospheneEngine --filter PresetPreviewTests`
+
+---
+
+### Increment U.5c — Plan modification editor (deferred from U.5 Part C)
+
+**Scope:** Preset picker for manual swap in `PlanPreviewView`. The "Modify" footer button and context-menu "Swap preset" action open a picker sheet showing the preset catalog filtered to eligible candidates for the selected track. Currently disabled with `TODO(U.5.C)` markers.
+
+**Done when:**
+- "Swap preset" context-menu action opens a preset picker for the selected track.
+- Picker shows eligible presets filtered by device tier and fatigue cooldown.
+- Selecting a preset calls `PlanPreviewViewModel.swapPreset(for:to:)` and shows lock badge.
+- "Modify" footer button opens the same picker for the last-tapped row.
+- 4+ unit tests for picker filtering + view model lock state after swap.
+
+**Verify:** `swift test --package-path PhospheneEngine --filter PlanModifyTests`
 
 ---
 

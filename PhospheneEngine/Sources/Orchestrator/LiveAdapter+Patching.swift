@@ -6,6 +6,8 @@
 // of the initial planning pass. See D-035 for rationale.
 
 import Foundation
+import Presets
+import Session
 
 // MARK: - PlannedSession + Applying
 
@@ -54,6 +56,33 @@ public extension PlannedSession {
             )
         }
 
+        return PlannedSession(
+            deviceTier: deviceTier,
+            tracks: updatedTracks,
+            totalDuration: totalDuration,
+            warnings: warnings
+        )
+    }
+
+    /// Returns a new `PlannedSession` with every track in `overrides` having its preset replaced.
+    ///
+    /// Used by `regeneratePlan(lockedTracks:lockedPresets:)` to preserve manually locked picks
+    /// after a seed-randomised re-plan. Tracks not in `overrides` are unchanged.
+    func applying(overrides: [TrackIdentity: PresetDescriptor]) -> PlannedSession {
+        guard !overrides.isEmpty else { return self }
+        let updatedTracks = tracks.map { planned -> PlannedTrack in
+            guard let override = overrides[planned.track] else { return planned }
+            return PlannedTrack(
+                track: planned.track,
+                trackProfile: planned.trackProfile,
+                preset: override,
+                presetScore: planned.presetScore,
+                scoreBreakdown: planned.scoreBreakdown,
+                plannedStartTime: planned.plannedStartTime,
+                plannedEndTime: planned.plannedEndTime,
+                incomingTransition: planned.incomingTransition
+            )
+        }
         return PlannedSession(
             deviceTier: deviceTier,
             tracks: updatedTracks,
