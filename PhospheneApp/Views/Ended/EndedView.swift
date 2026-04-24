@@ -12,10 +12,10 @@ struct EndedView: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            Text("Session Ended")
+            Text(String(localized: "ended.headline"))
                 .font(.largeTitle)
                 .foregroundColor(.white)
-            Text("Start a new session to continue")
+            Text(String(localized: "ended.subtext"))
                 .font(.body)
                 .foregroundColor(.white.opacity(0.5))
         }

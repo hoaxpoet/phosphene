@@ -23,25 +23,22 @@ struct PhotosensitivityNoticeView: View {
 
     var body: some View {
         VStack(spacing: 20) {
-            Text("Heads up")
+            Text(String(localized: "onboarding.photosensitivity.headline"))
                 .font(.headline)
 
-            Text(
-                "Phosphene renders high-contrast, fast-changing visuals. If you\u{2019}re sensitive to " +
-                "flashing lights or strobe patterns, enable Reduce motion in Settings before starting."
-            )
-            .font(.body)
-            .multilineTextAlignment(.center)
-            .fixedSize(horizontal: false, vertical: true)
+            Text(String(localized: "onboarding.photosensitivity.body"))
+                .font(.body)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: 12) {
-                Button("Enable Reduce motion") {
+                Button(String(localized: "onboarding.photosensitivity.enable_reduce")) {
                     openAccessibilityPane()
                     onAcknowledge()
                 }
                 .accessibilityIdentifier("phosphene.photosensitivity.openAccessibility")
 
-                Button("I understand") {
+                Button(String(localized: "onboarding.photosensitivity.acknowledge")) {
                     onAcknowledge()
                 }
                 .keyboardShortcut(.defaultAction)
