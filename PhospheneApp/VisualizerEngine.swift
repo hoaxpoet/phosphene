@@ -4,6 +4,7 @@
 // starts on first appear after verifying screen capture permission.
 
 import Audio
+import Combine
 import CoreGraphics
 import DSP
 import Foundation
@@ -268,6 +269,13 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Protects `livePlan` across the main-thread writer and render/audio-queue readers.
     let orchestratorLock = NSLock()
 
+    /// SwiftUI-observable mirror of `livePlan`. Updated on the main actor inside
+    /// `buildPlan()` and `regeneratePlan(lockedTracks:)` immediately after the lock write.
+    @Published var livePlannedSession: PlannedSession?
+
+    /// Retains the Combine subscription that triggers `buildPlan()` on `.ready`.
+    var stateCancellable: AnyCancellable?
+
     /// Wall-clock timestamp of the first reactive `applyLiveUpdate()` call.
     /// Set on entry, reset to nil when `buildPlan()` succeeds (real plan takes over).
     var reactiveSessionStart: Date?
@@ -341,6 +349,14 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         if #available(macOS 14.2, *) {
             self.router = setupAudioRouting(audioBuffer: buf, fftProcessor: fft)
         }
+
+        // Trigger plan construction whenever the session reaches .ready.
+        let mgr = sessionManager
+        stateCancellable = mgr.$state
+            .sink { [weak self] newState in
+                guard newState == .ready else { return }
+                self?.buildPlan()
+            }
 
         setupTerminationObserver()
     }

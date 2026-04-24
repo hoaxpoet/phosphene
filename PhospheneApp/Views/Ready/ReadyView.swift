@@ -1,26 +1,183 @@
-// ReadyView — Shown when SessionManager.state == .ready.
-// U.1 stub: displays state name on black background.
-// U.5 adds "Press play in your music app" handoff message + plan preview.
+// ReadyView — Shown when SessionManager.state == .ready (Increment U.5).
+//
+// Four surfaces per UX_SPEC §6.1–§6.4:
+//  A. Layout: headline (source-aware), subtext, "Preview the plan" CTA, pulsing border.
+//  B. Plan preview panel (sheet) — wired in Part B.
+//  C. Background preset at 0.3× opacity — gradient placeholder until U.5b.
+//  D. 90-second timeout overlay with Retry / End session.
+//
+// First-audio autodetect: ReadyViewModel owns FirstAudioDetector and emits
+// shouldAdvanceToPlaying when signal is sustained ≥250 ms in .active.
 
+import Audio
+import Combine
+import Orchestrator
+import Presets
+import Session
 import SwiftUI
 
 // MARK: - ReadyView
 
+/// Top-level view for the `.ready` session state.
+///
+/// Creates and owns `ReadyViewModel` via `@StateObject`; all layout and
+/// logic lives in the ViewModel. Auto-advances to `.playing` on first audio.
 @MainActor
 struct ReadyView: View {
-    static let accessibilityID = "phosphene.view.ready"
+    static let accessibilityID      = "phosphene.view.ready"
+    static let headlineID           = "phosphene.ready.headline"
+    static let previewPlanButtonID  = "phosphene.ready.previewPlan"
+    static let endSessionButtonID   = "phosphene.ready.endSession"
+    static let retryButtonID        = "phosphene.ready.retry"
+    static let timeoutOverlayID     = "phosphene.ready.timeoutOverlay"
+
+    @StateObject private var viewModel: ReadyViewModel
+
+    /// Called by ContentView to advance .ready → .playing after audio confirmed.
+    private let onBeginPlayback: () -> Void
+
+    /// Plan publisher and regenerate closure forwarded to PlanPreviewView (Part B+D).
+    private let planPublisher: AnyPublisher<PlannedSession?, Never>
+    private let onRegenerate: @MainActor (Set<TrackIdentity>, [TrackIdentity: PresetDescriptor]) -> Void
+
+    @State private var showingPlanPreview: Bool = false
+    @State private var currentPlan: PlannedSession?
+
+    // MARK: - Init
+
+    init(
+        sessionSource: PlaylistSource?,
+        sessionManager: SessionManager,
+        audioSignalStatePublisher: AnyPublisher<AudioSignalState, Never>,
+        planPublisher: AnyPublisher<PlannedSession?, Never>,
+        onBeginPlayback: @escaping () -> Void,
+        onRegenerate: @escaping @MainActor (Set<TrackIdentity>, [TrackIdentity: PresetDescriptor]) -> Void,
+        reduceMotion: Bool
+    ) {
+        _viewModel = StateObject(wrappedValue: ReadyViewModel(
+            sessionSource: sessionSource,
+            sessionManager: sessionManager,
+            audioSignalStatePublisher: audioSignalStatePublisher,
+            planPublisher: planPublisher,
+            reduceMotion: reduceMotion
+        ))
+        self.planPublisher = planPublisher
+        self.onBeginPlayback = onBeginPlayback
+        self.onRegenerate = onRegenerate
+    }
+
+    // MARK: - Body
 
     var body: some View {
-        VStack(spacing: 12) {
-            Text("Ready")
-                .font(.largeTitle)
-                .foregroundColor(.white)
-            Text("Press play in your music app")
-                .font(.body)
-                .foregroundColor(.white.opacity(0.5))
+        ZStack {
+            Color.black.ignoresSafeArea()
+            ReadyBackgroundPresetView()
+
+            VStack(spacing: 0) {
+                Spacer()
+                mainContent
+                Spacer()
+                endSessionLink
+                    .padding(.bottom, 28)
+            }
+
+            ReadyPulsingBorder(reduceMotion: viewModel.reduceMotion)
+
+            if viewModel.isTimedOut {
+                timeoutOverlay
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.black)
         .accessibilityIdentifier(Self.accessibilityID)
+        .onReceive(viewModel.shouldAdvanceToPlaying) { _ in
+            onBeginPlayback()
+        }
+        .onReceive(planPublisher.compactMap { $0 }) { plan in
+            currentPlan = plan
+        }
+        .sheet(isPresented: $showingPlanPreview) {
+            PlanPreviewView(
+                initialPlan: currentPlan,
+                planPublisher: planPublisher,
+                onRegenerate: onRegenerate
+            )
+        }
+    }
+
+    // MARK: - Subviews
+
+    private var mainContent: some View {
+        VStack(spacing: 20) {
+            Text("Ready.")
+                .font(.system(size: 48, weight: .thin))
+                .foregroundColor(.white)
+                .accessibilityIdentifier(Self.headlineID)
+
+            Text("Press play in \(viewModel.sourceName).")
+                .font(.title3)
+                .foregroundColor(.white.opacity(0.85))
+                .multilineTextAlignment(.center)
+
+            if viewModel.trackCount > 0 {
+                let suffix = viewModel.formattedDuration.isEmpty ? "" : ", \(viewModel.formattedDuration)"
+                Text("Planned \(viewModel.trackCount) tracks\(suffix).")
+                    .font(.subheadline)
+                    .foregroundColor(.white.opacity(0.5))
+            }
+
+            Button("Preview the plan") {
+                showingPlanPreview = true
+            }
+            .buttonStyle(.bordered)
+            .disabled(!viewModel.planPreviewEnabled)
+            .opacity(viewModel.planPreviewEnabled ? 1 : 0.4)
+            .padding(.top, 12)
+            .accessibilityIdentifier(Self.previewPlanButtonID)
+        }
+        .padding(.horizontal, 40)
+    }
+
+    private var endSessionLink: some View {
+        Button("End session") {
+            viewModel.endSession()
+        }
+        .foregroundColor(.white.opacity(0.35))
+        .font(.caption)
+        .accessibilityIdentifier(Self.endSessionButtonID)
+    }
+
+    private var timeoutOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.6)
+                .ignoresSafeArea()
+
+            VStack(spacing: 16) {
+                Text("Haven't heard anything yet.")
+                    .font(.headline)
+                    .foregroundColor(.white)
+                Text("Is the music playing in \(viewModel.sourceName)?")
+                    .font(.subheadline)
+                    .foregroundColor(.white.opacity(0.7))
+                    .multilineTextAlignment(.center)
+
+                HStack(spacing: 16) {
+                    Button("Retry") {
+                        viewModel.retry()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier(Self.retryButtonID)
+
+                    Button("End session") {
+                        viewModel.endSession()
+                    }
+                    .foregroundColor(.white.opacity(0.6))
+                }
+            }
+            .padding(32)
+            .background(.ultraThinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .padding(40)
+        }
+        .accessibilityIdentifier(Self.timeoutOverlayID)
     }
 }
