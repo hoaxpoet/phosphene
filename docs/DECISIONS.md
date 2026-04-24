@@ -779,3 +779,23 @@ Without OAuth (deferred to v2), `PlaylistConnector.connect()` immediately throws
 **Stub strategy:** All methods in `DefaultPlaybackActionRouter` log `"TODO(U.6b): ..."` via `os.Logger` and return immediately. `toggleMoodLock()` is the only non-stub because it only needs to flip a local `@Published` flag — no engine coordination required. The full semantic spec for each U.6b action is documented in a top-of-file comment block in `DefaultPlaybackActionRouter.swift`.
 
 **Rejected alternative:** Place the protocol in `PhospheneApp`. This would prevent the engine's `LiveAdapter` and other Orchestrator types from referencing it (circular dependency since `PhospheneApp` links `PhospheneEngine`, not the reverse). The Orchestrator module is the correct home.
+
+## D-051 — UserFacingError in engine Shared module; condition-ID toast semantics (Increment U.7)
+
+**Status:** Accepted (2026-04-24)
+
+**Context:** U.7 introduces a typed error taxonomy (`UserFacingError`, 29 cases) and a condition-ID mechanism for idempotent, auto-dismissing toasts. Two placement questions arose.
+
+**Decision 1 — UserFacingError in engine `Shared` module (not `PhospheneApp`).**
+`UserFacingError` maps internal states (silence, network loss, rate limiting, DRM, etc.) to presentation metadata (`severity`, `presentationMode`, `conditionID`). These states originate in engine modules (`Audio`, `Session`, `Orchestrator`). Placing the enum in `Shared` lets engine code reference it without creating an upward dependency on the app layer. `Localizable.strings` and `LocalizedCopy` remain in `PhospheneApp` — the engine defines the error identity; the app defines the human copy.
+
+**Decision 2 — `presentationMode` as a property, not a type hierarchy.**
+`UserFacingError` exposes `presentationMode: PresentationMode` (`.inline` / `.toast` / `.banner` / `.fullScreen`) instead of sub-classing or using associated-value enums per mode. The view layer switches on `presentationMode` to route to `ToastView`, `TopBannerView`, or `PreparationFailureView`. This keeps routing logic in Swift, not in a protocol hierarchy, and makes adding a new presentation mode a one-line enum change rather than a protocol conformance.
+
+**Decision 3 — Condition-ID semantics on `PhospheneToast`.**
+Persistent degradation toasts (silence, low input level) must not stack on repeated triggers and must auto-dismiss on recovery. The chosen mechanism: `PhospheneToast.conditionID: String?` + `ToastManager.dismissByCondition(_:)` + `PlaybackErrorConditionTracker`. The tracker is separate from `ToastManager` so `PlaybackErrorBridge` can check "is this condition already displayed?" without coupling to `ToastManager`'s internal queue representation. The condition ID for silence is `"silence.extended"` (derived from `UserFacingError.silenceExtended.conditionID`).
+
+**Decision 4 — 15s silence threshold (was 30s in `SilenceToastBridge`).**
+`UX_SPEC §9.4` specifies >15s sustained silence triggers the degradation toast. The prior `SilenceToastBridge` fired at 30s, which was a pre-U.7 stub value. `PlaybackErrorBridge` corrects this to match the spec.
+
+**Rejected alternative:** Store condition state in `ToastManager` itself (no separate tracker). Rejected because `ToastManager` would then need to be queried by `PlaybackErrorBridge` both to check state and to enqueue — creating a tighter coupling that makes unit testing harder (two concerns in one object).

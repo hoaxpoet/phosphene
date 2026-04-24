@@ -903,17 +903,24 @@ AppleMusicConnectionViewModelTests×5 + identifier, SpotifyConnectionViewModelTe
 
 ---
 
-### Increment U.7 — Error taxonomy + toast system
+### Increment U.7 — Error taxonomy + toast system ✅
+
+**Status: Complete (2026-04-24)**
 
 **Scope:** `UserFacingError` typed enum and `ErrorToast` view component per `UX_SPEC.md §8`. Every row in the UX_SPEC error tables (§8.1–§8.4) has a corresponding enum case with copy test. All user-facing strings externalized in `Localizable.strings`. `PlaybackView` bottom-right toast slot for degradation messages (silence detection, preview fallback, sample-rate mismatch, etc.). Full-screen error states for connection / preparation failures.
 
+**Delivered (3 commits):**
+- **Part A:** `UserFacingError` (29 cases, `Shared` module), `Localizable.strings` (English), `LocalizedCopy` service, retroactive string extraction from U.1–U.6 views. Tests: `UserFacingErrorTests`, `LocalizedCopyTests`.
+- **Part B:** `FullScreenErrorView`, `PreparationFailureView`, `TopBannerView` (44pt amber banner), `PreparationErrorViewModel` (6 priority rules), `ReachabilityMonitor` (NWPathMonitor + 1s debounce), `StubReachabilityMonitor`. Wired into `PreparationProgressView`. Tests: `PreparationErrorViewModelTests` (7), `ReachabilityMonitorTests` (3).
+- **Part C:** `PhospheneToast.conditionID`, `ToastManager.dismissByCondition/_isConditionAsserted`, `PlaybackErrorConditionTracker`, `PlaybackErrorBridge` (replaces `SilenceToastBridge`; fires at 15s per §9.4; condition-ID auto-dismiss on recovery). Wired into `PlaybackView`. Tests: `ToastManagerConditionTests` (3), `PlaybackErrorConditionTrackerTests` (4), `PlaybackErrorBridgeTests` (8). D-051.
+
 **Done when:**
-- `UserFacingError` has a case for every row in UX_SPEC §8.1–§8.4 tables.
-- Exhaustive copy test: every enum case asserts the exact string returned.
-- `Localizable.strings` complete for v1 English; no inline hardcoded strings in views.
-- Toast auto-dismisses on condition-resolved signals; persists while condition holds.
-- Never shows full-screen error during `.playing`.
-- Every error case has either CTA or auto-retry status indicator.
+- ✅ `UserFacingError` has a case for every row in UX_SPEC §8.1–§8.4 tables.
+- ✅ Exhaustive copy test: every enum case asserts the exact string returned.
+- ✅ `Localizable.strings` complete for v1 English; no inline hardcoded strings in views.
+- ✅ Toast auto-dismisses on condition-resolved signals; persists while condition holds.
+- ✅ Never shows full-screen error during `.playing`.
+- ✅ Every error case has either CTA or auto-retry status indicator.
 
 **Verify:** `swift test --package-path PhospheneEngine --filter UserFacingErrorCopyTests`
 
@@ -1319,7 +1326,7 @@ Runs in parallel with Phase V.7+ once Phase V.1–V.3 utilities are available.
 
 These milestones map to product-level outcomes, not implementation phases.
 
-**Milestone A — Trustworthy Playback Session.** A user can connect a playlist, obtain a usable prepared session, and complete a full listening session without instability. *Requires: ~~2.5.4~~ ✅, Phase U increments U.1–U.7, progressive readiness basics (6.1).*
+**Milestone A — Trustworthy Playback Session.** A user can connect a playlist, obtain a usable prepared session, and complete a full listening session without instability. *Requires: ~~2.5.4~~ ✅, ~~Phase U increments U.1–U.7~~ ✅, progressive readiness basics (6.1).*
 
 **Milestone B — Tasteful Orchestration.** Preset choice and transitions are consistently better than random and pass golden-session tests. *Requires: Phase 4 complete, Increment 5.1.*
 
