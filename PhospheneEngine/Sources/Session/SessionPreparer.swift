@@ -4,6 +4,13 @@
 //
 // Tracks whose previews are unavailable receive no cache entry; the real-time
 // pipeline fills them during playback via the existing 5-second cadence.
+//
+// Pre-flight audit notes (U.4):
+// - .analyzing(.mir) is NOT emitted as a separate transition. MIR runs inside the
+//   nonisolated Task.detached block alongside stem separation; emitting mid-task
+//   would require restructuring analyzePreview. TODO(U.4-followup): split detached block.
+// - Download progress uses the -1 sentinel (indeterminate). URLSession progress
+//   callback not wired. TODO(U.4-followup): wire URLSession download progress.
 
 import Audio
 import Combine
@@ -50,14 +57,18 @@ enum SessionPreparationError: Error, Sendable {
 ///
 /// Call `prepare(tracks:)` before playback to populate `StemCache`. The method
 /// runs sequentially so the single `StemSeparator` is never called concurrently.
-/// Progress updates are published on the main actor via `@Published var progress`.
+/// Progress updates are published on the main actor via `@Published var progress`
+/// (legacy scalar) and `@Published var trackStatuses` (per-track, U.4).
 @MainActor
 public final class SessionPreparer: ObservableObject {
 
     // MARK: - Published State
 
-    /// Current preparation progress as (completed, total).
+    /// Current preparation progress as (completed, total). Legacy scalar; prefer `trackStatuses`.
     @Published public private(set) var progress: (completed: Int, total: Int) = (0, 0)
+
+    /// Per-track preparation status. All tracks present from start of `prepare(tracks:)`.
+    @Published public private(set) var trackStatuses: [TrackIdentity: TrackPreparationStatus] = [:]
 
     // MARK: - Dependencies
 
@@ -71,6 +82,10 @@ public final class SessionPreparer: ObservableObject {
 
     /// Populated during `prepare(tracks:)`. Pass to VisualizerEngine before playback.
     public let cache: StemCache
+
+    // MARK: - Cancellation
+
+    private var preparationTask: Task<SessionPreparationResult, Never>?
 
     // MARK: - Init
 
@@ -104,13 +119,56 @@ public final class SessionPreparer: ObservableObject {
     /// Analyze every track in the playlist and populate `cache`.
     ///
     /// Tracks are processed sequentially so the `StemSeparator` is never called
-    /// concurrently. CPU-bound work (stem separation, FFT, MIR) runs in a
-    /// detached task to keep the main actor free.
+    /// concurrently. The work runs inside a stored `Task` so `cancelPreparation()`
+    /// can interrupt it at stage boundaries.
+    ///
+    /// Status transitions for each track:
+    ///   `.queued` → `.resolving` → `.downloading(-1)` → `.analyzing(.stemSeparation)`
+    ///   → `.analyzing(.caching)` → `.ready` (success path)
+    ///   → `.failed(reason:)` (no preview or download failure)
+    ///   → `.partial(reason:)` (download OK but stem analysis failed)
     ///
     /// - Parameter tracks: Ordered list of tracks from the connected playlist.
     /// - Returns: Result with lists of cached/failed tracks and the populated cache.
     public func prepare(tracks: [TrackIdentity]) async -> SessionPreparationResult {
+        // Initialize all tracks to .queued at once before any async work begins.
+        trackStatuses = Dictionary(uniqueKeysWithValues: tracks.map { ($0, .queued) })
         progress = (0, tracks.count)
+
+        // Wrap the loop in a stored Task so cancelPreparation() can cancel it.
+        // withTaskCancellationHandler propagates outer-task cancellation into the
+        // inner unstructured task (which doesn't inherit it automatically).
+        let task = Task { [self] in
+            await self._runPreparation(tracks: tracks)
+        }
+        preparationTask = task
+        let result = await withTaskCancellationHandler {
+            await task.value
+        } onCancel: {
+            task.cancel()
+        }
+        preparationTask = nil
+        return result
+    }
+
+    // MARK: - PreparationProgressPublishing
+
+    /// Publisher emitting the full `trackStatuses` dictionary on every change.
+    public var trackStatusesPublisher: AnyPublisher<[TrackIdentity: TrackPreparationStatus], Never> {
+        $trackStatuses.eraseToAnyPublisher()
+    }
+
+    /// Cancel the in-flight preparation pass.
+    ///
+    /// The current in-flight track may complete its MPSGraph predict (≤ 142 ms)
+    /// before cancellation takes effect. Unprocessed tracks remain `.queued`.
+    public func cancelPreparation() {
+        preparationTask?.cancel()
+    }
+
+    // MARK: - Private
+
+    private func _runPreparation(tracks: [TrackIdentity]) async -> SessionPreparationResult {
         var cachedTracks: [TrackIdentity] = []
         var failedTracks: [TrackIdentity] = []
 
@@ -119,14 +177,32 @@ public final class SessionPreparer: ObservableObject {
 
             do {
                 let data = try await prepareTrack(track)
+
+                trackStatuses[track] = .analyzing(stage: .caching)
                 cache.store(data, for: track)
+                trackStatuses[track] = .ready
+
                 cachedTracks.append(track)
                 logger.info("Cached: \(track.title) by \(track.artist)")
             } catch is CancellationError {
                 logger.info("Preparation cancelled after \(cachedTracks.count) tracks")
                 break
+            } catch SessionPreparationError.noPreviewURL(let title) {
+                failedTracks.append(track)
+                trackStatuses[track] = .failed(reason: "Preview not available")
+                logger.info("No preview for '\(title)'")
+            } catch SessionPreparationError.downloadFailed(let title) {
+                failedTracks.append(track)
+                trackStatuses[track] = .failed(reason: "Download failed")
+                logger.info("Download failed for '\(title)'")
+            } catch SessionPreparationError.analysisError(let detail) {
+                // Download succeeded; stems failed — playable in reactive mode.
+                failedTracks.append(track)
+                trackStatuses[track] = .partial(reason: "Stems unavailable")
+                logger.info("Analysis failed for '\(track.title)': \(detail)")
             } catch {
                 failedTracks.append(track)
+                trackStatuses[track] = .failed(reason: "Unexpected error")
                 logger.info("Failed to prepare '\(track.title)': \(error)")
             }
 
@@ -142,31 +218,42 @@ public final class SessionPreparer: ObservableObject {
         )
     }
 
-    // MARK: - Private
-
     private func prepareTrack(_ track: TrackIdentity) async throws -> CachedTrackData {
         // Resolve 30-second preview URL.
+        trackStatuses[track] = .resolving
         guard let url = try await resolver.resolvePreviewURL(for: track) else {
             throw SessionPreparationError.noPreviewURL(track.title)
         }
 
         // Download and decode to mono PCM.
+        // TODO(U.4-followup): wire URLSession download progress callback; use -1 until then.
+        trackStatuses[track] = .downloading(progress: -1)
         guard let preview = await downloader.download(track: track, from: url) else {
             throw SessionPreparationError.downloadFailed(track.title)
         }
 
         // All CPU-bound analysis runs off the main actor.
+        // NOTE: .mir sub-stage not emitted separately (MIR runs inside detached task).
+        trackStatuses[track] = .analyzing(stage: .stemSeparation)
         let separator = stemSeparator
         let analyzer = stemAnalyzer
         let classifier = moodClassifier
 
-        return try await Task.detached(priority: .userInitiated) {
-            try SessionPreparer.analyzePreview(
-                preview,
-                separator: separator,
-                analyzer: analyzer,
-                classifier: classifier
-            )
-        }.value
+        do {
+            return try await Task.detached(priority: .userInitiated) {
+                try SessionPreparer.analyzePreview(
+                    preview,
+                    separator: separator,
+                    analyzer: analyzer,
+                    classifier: classifier
+                )
+            }.value
+        } catch {
+            throw SessionPreparationError.analysisError(error.localizedDescription)
+        }
     }
 }
+
+// MARK: - PreparationProgressPublishing Conformance
+
+extension SessionPreparer: PreparationProgressPublishing {}
