@@ -1,0 +1,137 @@
+// PlanPreviewView — Sheet presenting the session plan before playback (U.5 Parts B & D).
+//
+// Part B: Display only — rows, transitions, empty-state message.
+// Part D: "Regenerate Plan" button wired; "Modify" deferred to U.5c.
+// TODO(U.5c): Add full Modify editor (drag-to-reorder, transition overrides, mood overrides).
+
+import Combine
+import Orchestrator
+import Presets
+import Session
+import SwiftUI
+
+// MARK: - PlanPreviewView
+
+/// Sheet displaying the planned preset sequence for the current session.
+///
+/// Presented from `ReadyView` when the user taps "Preview the plan".
+/// Creates and owns `PlanPreviewViewModel` via `@StateObject`.
+@MainActor
+struct PlanPreviewView: View {
+    static let accessibilityID         = "phosphene.view.planPreview"
+    static let regenerateButtonID      = "phosphene.planPreview.regenerate"
+
+    @StateObject private var viewModel: PlanPreviewViewModel
+
+    @Environment(\.dismiss) private var dismiss
+
+    // MARK: - Init
+
+    init(
+        initialPlan: PlannedSession?,
+        planPublisher: AnyPublisher<PlannedSession?, Never>,
+        onRegenerate: @escaping @MainActor (Set<TrackIdentity>, [TrackIdentity: PresetDescriptor]) -> Void
+    ) {
+        _viewModel = StateObject(wrappedValue: PlanPreviewViewModel(
+            initialPlan: initialPlan,
+            planPublisher: planPublisher,
+            onRegenerate: onRegenerate
+        ))
+    }
+
+    // MARK: - Body
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if viewModel.rows.isEmpty {
+                    emptyState
+                } else {
+                    planList
+                }
+            }
+            .navigationTitle(navTitle)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { dismiss() }
+                }
+            }
+        }
+        .frame(minWidth: 500, minHeight: 400)
+        .accessibilityIdentifier(Self.accessibilityID)
+    }
+
+    // MARK: - Subviews
+
+    private var navTitle: String {
+        viewModel.rows.isEmpty
+            ? "Session plan"
+            : "Session plan — \(viewModel.rows.count) tracks"
+    }
+
+    private var planList: some View {
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                ForEach(viewModel.rows) { row in
+                    if let transition = row.incomingTransition {
+                        PlanPreviewTransitionView(summary: transition)
+                    }
+                    PlanPreviewRowView(
+                        row: row,
+                        catalog: [],
+                        onSwap: { track, preset in viewModel.swapPreset(for: track, to: preset) },
+                        onResetLock: { track in viewModel.resetLock(for: track) },
+                        onPreview: { viewModel.previewRow($0) }
+                    )
+                    Divider()
+                        .background(Color.white.opacity(0.06))
+                }
+            }
+        }
+        .background(Color(white: 0.07))
+        .safeAreaInset(edge: .bottom) { footer }
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "waveform.path")
+                .font(.system(size: 40))
+                .foregroundColor(.secondary)
+            Text("No plan available.")
+                .font(.headline)
+                .foregroundColor(.primary)
+            Text("Running in reactive mode — presets adapt in real time.")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(40)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var footer: some View {
+        HStack(spacing: 12) {
+            Button {
+                viewModel.regeneratePlan()
+            } label: {
+                HStack(spacing: 6) {
+                    if viewModel.isRegenerating {
+                        ProgressView().controlSize(.small)
+                    }
+                    Text(viewModel.isRegenerating ? "Regenerating…" : "Regenerate Plan")
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(viewModel.isRegenerating || viewModel.rows.isEmpty)
+            .accessibilityIdentifier(Self.regenerateButtonID)
+
+            // TODO(U.5c): Full Modify editor — drag-to-reorder, transition overrides.
+            Button("Modify") {}
+                .disabled(true)
+                .foregroundColor(.secondary)
+                .help("Full plan editing — coming in a future update.")
+        }
+        .padding(16)
+        .background(.ultraThinMaterial)
+    }
+}
