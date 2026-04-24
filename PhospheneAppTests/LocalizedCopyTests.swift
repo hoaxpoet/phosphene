@@ -7,6 +7,7 @@
 //   4. CTA keys resolve to non-empty strings.
 //   5. Missing key falls through to key name (native String(localized:) behaviour).
 
+import Shared
 import Testing
 @testable import PhospheneApp
 
@@ -75,11 +76,11 @@ struct LocalizedCopyTests {
 
     // MARK: - Jargon blacklist
 
-    @Test("no user-facing copy contains blacklisted jargon", arguments: UserFacingError.allCases)
+    @Test("no user-facing copy contains jargon from deny list", arguments: UserFacingError.allCases)
     func test_noJargon_inCopy(_ error: UserFacingError) {
         let copy = LocalizedCopy.string(for: error)
         guard !copy.isEmpty else { return }  // log-only cases have empty copy
-        let found = LocalizedCopy.jargonBlacklist.filter { copy.contains($0) }
+        let found = LocalizedCopy.jargonDenyList.filter { copy.contains($0) }
         #expect(found.isEmpty, "Found jargon \(found) in copy for \(error): '\(copy)'")
     }
 

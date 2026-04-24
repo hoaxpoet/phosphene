@@ -18,7 +18,7 @@ enum LocalizedCopy {
 
     // MARK: - Primary resolution
 
-    /// Localized copy for the primary (headline) presentation of an error.
+    // swiftlint:disable:next cyclomatic_complexity function_body_length
     static func string(for error: UserFacingError) -> String {
         switch error {
 
@@ -136,18 +136,18 @@ enum LocalizedCopy {
     }
 }
 
-// MARK: - Jargon Blacklist
+// MARK: - Jargon deny list
 
 extension LocalizedCopy {
 
     /// Terms that must never appear in user-facing copy per UX_SPEC §9.5.
-    static let jargonBlacklist: [String] = [
+    static let jargonDenyList: [String] = [
         "MPSGraph", "FFT", "IRQ", "DRM", "NSURLError", "sandbox", "G-buffer",
         "SSGI", "MIR", "StemCache", "AudioHardware",
     ]
 
-    /// Returns true if the copy string contains any blacklisted jargon.
+    /// Returns true if the copy string contains any jargon from the deny list.
     static func containsJargon(_ copy: String) -> Bool {
-        jargonBlacklist.contains { copy.contains($0) }
+        jargonDenyList.contains { copy.contains($0) }
     }
 }

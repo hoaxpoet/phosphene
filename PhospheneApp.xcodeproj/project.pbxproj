@@ -113,6 +113,16 @@
 		H10038 /* MultiDisplayToastBridgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20038; };
 		H10039 /* EscBehaviorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20039; };
 		H10040 /* PlaybackViewIdentifierTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20040; };
+		I10001 /* LocalizedCopy.swift in Sources */ = {isa = PBXBuildFile; fileRef = I20001; };
+		I10002 /* ReachabilityMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = I20002; };
+		I10003 /* PreparationErrorViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = I20003; };
+		I10004 /* FullScreenErrorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = I20004; };
+		I10005 /* TopBannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = I20005; };
+		I10006 /* PreparationFailureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = I20006; };
+		I10007 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = I20007; };
+		I10008 /* LocalizedCopyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = I20008; };
+		I10009 /* PreparationErrorViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = I20009; };
+		I10010 /* ReachabilityMonitorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = I20010; };
 		/* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -225,6 +235,16 @@
 		H20038 /* MultiDisplayToastBridgeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultiDisplayToastBridgeTests.swift; sourceTree = "<group>"; };
 		H20039 /* EscBehaviorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EscBehaviorTests.swift; sourceTree = "<group>"; };
 		H20040 /* PlaybackViewIdentifierTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackViewIdentifierTests.swift; sourceTree = "<group>"; };
+		I20001 /* LocalizedCopy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizedCopy.swift; sourceTree = "<group>"; };
+		I20002 /* ReachabilityMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReachabilityMonitor.swift; sourceTree = "<group>"; };
+		I20003 /* PreparationErrorViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreparationErrorViewModel.swift; sourceTree = "<group>"; };
+		I20004 /* FullScreenErrorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FullScreenErrorView.swift; sourceTree = "<group>"; };
+		I20005 /* TopBannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TopBannerView.swift; sourceTree = "<group>"; };
+		I20006 /* PreparationFailureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreparationFailureView.swift; sourceTree = "<group>"; };
+		I20007 /* Localizable.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Localizable.strings; path = "en.lproj/Localizable.strings"; sourceTree = "<group>"; };
+		I20008 /* LocalizedCopyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizedCopyTests.swift; sourceTree = "<group>"; };
+		I20009 /* PreparationErrorViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreparationErrorViewModelTests.swift; sourceTree = "<group>"; };
+		I20010 /* ReachabilityMonitorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReachabilityMonitorTests.swift; sourceTree = "<group>"; };
 		/* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -252,6 +272,17 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A60002 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				I10007 /* Localizable.strings in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXGroup section */
 		A40001 /* = mainGroup */ = {
@@ -286,6 +317,7 @@
 				E40001 /* Services */,
 				A20003 /* PhospheneApp.entitlements */,
 				A20030 /* Phosphene.xcconfig */,
+				I20007 /* Localizable.strings */,
 			);
 			path = PhospheneApp;
 			sourceTree = "<group>";
@@ -298,6 +330,7 @@
 				E20012 /* AppleMusicConnectionViewModel.swift */,
 				E20013 /* SpotifyConnectionViewModel.swift */,
 				F20003 /* PreparationProgressViewModel.swift */,
+				I20003 /* PreparationErrorViewModel.swift */,
 				G20001 /* ReadyViewModel.swift */,
 				G20002 /* PlanPreviewViewModel.swift */,
 				H20002 /* PlaybackChromeViewModel.swift */,
@@ -331,6 +364,7 @@
 			children = (
 				A20020 /* MetalView.swift */,
 				A20021 /* DebugOverlayView.swift */,
+				I20004 /* FullScreenErrorView.swift */,
 				D40002 /* Onboarding */,
 				C40002 /* Idle */,
 				C40003 /* Connecting */,
@@ -365,6 +399,8 @@
 				H20009 /* DisplayManager.swift */,
 				H20010 /* LiveAdaptationToastBridge.swift */,
 				H20011 /* MultiDisplayToastBridge.swift */,
+				I20001 /* LocalizedCopy.swift */,
+				I20002 /* ReachabilityMonitor.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -385,6 +421,8 @@
 			isa = PBXGroup;
 			children = (
 				C20004 /* PreparationProgressView.swift */,
+				I20005 /* TopBannerView.swift */,
+				I20006 /* PreparationFailureView.swift */,
 			);
 			path = Preparation;
 			sourceTree = "<group>";
@@ -479,6 +517,9 @@
 				H20038 /* MultiDisplayToastBridgeTests.swift */,
 				H20039 /* EscBehaviorTests.swift */,
 				H20040 /* PlaybackViewIdentifierTests.swift */,
+				I20008 /* LocalizedCopyTests.swift */,
+				I20009 /* PreparationErrorViewModelTests.swift */,
+				I20010 /* ReachabilityMonitorTests.swift */,
 			);
 			path = PhospheneAppTests;
 			sourceTree = "<group>";
@@ -500,6 +541,7 @@
 			buildPhases = (
 				A60001 /* Sources */,
 				A30001 /* Frameworks */,
+				A60002 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -642,6 +684,12 @@
 				G10007 /* PlanPreviewView.swift in Sources */,
 				G10008 /* PlanPreviewRowView.swift in Sources */,
 				G10009 /* PlanPreviewTransitionView.swift in Sources */,
+				I10001 /* LocalizedCopy.swift in Sources */,
+				I10002 /* ReachabilityMonitor.swift in Sources */,
+				I10003 /* PreparationErrorViewModel.swift in Sources */,
+				I10004 /* FullScreenErrorView.swift in Sources */,
+				I10005 /* TopBannerView.swift in Sources */,
+				I10006 /* PreparationFailureView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -676,6 +724,9 @@
 				H10038 /* MultiDisplayToastBridgeTests.swift in Sources */,
 				H10039 /* EscBehaviorTests.swift in Sources */,
 				H10040 /* PlaybackViewIdentifierTests.swift in Sources */,
+				I10008 /* LocalizedCopyTests.swift in Sources */,
+				I10009 /* PreparationErrorViewModelTests.swift in Sources */,
+				I10010 /* ReachabilityMonitorTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
