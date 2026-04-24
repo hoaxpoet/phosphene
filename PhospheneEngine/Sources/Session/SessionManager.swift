@@ -34,10 +34,18 @@ public final class SessionManager: ObservableObject {
     /// `nil` in ad-hoc mode and before preparation completes.
     @Published public private(set) var currentPlan: SessionPlan?
 
+    /// Tracks currently being prepared. Set when entering `.preparing`.
+    /// Cleared when leaving `.preparing` (success, failure, or cancel).
+    @Published public private(set) var preparingTracks: [TrackIdentity] = []
+
     // MARK: - Dependencies
 
     private let connector: any PlaylistConnecting
     private let preparer: SessionPreparer
+
+    // MARK: - Cancellation
+
+    private var cancellationRequested = false
 
     // MARK: - Cache
 
@@ -46,6 +54,14 @@ public final class SessionManager: ObservableObject {
     /// Wire to `VisualizerEngine.stemCache` before the first track change
     /// so each track loads pre-separated stems immediately on track change.
     public var cache: StemCache { preparer.cache }
+
+    // MARK: - Progress
+
+    /// Per-track preparation progress publisher. Non-nil during `.preparing`.
+    ///
+    /// Expose to `PreparationProgressView` so it can observe status transitions
+    /// without needing access to `SessionPreparer` internals.
+    public var preparationProgress: (any PreparationProgressPublishing)? { preparer }
 
     // MARK: - Init
 
@@ -71,6 +87,7 @@ public final class SessionManager: ObservableObject {
     /// Degradation:
     /// - Connection failure → `.ready` with empty plan (live-only reactive mode).
     /// - Partial preparation failure → `.ready` with whichever tracks were cached.
+    /// - User cancel during `.preparing` → `.idle` (via `cancel()`).
     ///
     /// A no-op when state is already `.connecting`, `.preparing`, `.ready`,
     /// or `.playing`.
@@ -83,6 +100,7 @@ public final class SessionManager: ObservableObject {
             return
         }
 
+        cancellationRequested = false
         state = .connecting
         logger.info("SessionManager: connecting")
 
@@ -97,10 +115,20 @@ public final class SessionManager: ObservableObject {
             return
         }
 
+        preparingTracks = tracks
         state = .preparing
         logger.info("SessionManager: preparing \(tracks.count) track(s)")
 
         let result = await preparer.prepare(tracks: tracks)
+
+        // Guard: cancel() may have fired during prepare; state is already .idle.
+        guard !cancellationRequested else {
+            preparingTracks = []
+            logger.info("SessionManager: preparation cancelled — staying .idle")
+            return
+        }
+
+        preparingTracks = []
         let allTracks = result.cachedTracks + result.failedTracks
         currentPlan = SessionPlan(tracks: allTracks)
         state = .ready
@@ -129,6 +157,23 @@ public final class SessionManager: ObservableObject {
         }
         state = .playing
         logger.info("SessionManager: playback started")
+    }
+
+    /// Cancel the current operation and return to `.idle`.
+    ///
+    /// Safe to call from any state. During `.preparing`, cancels the in-flight
+    /// preparation pass (current track may finish its MPSGraph predict — ≤ 142 ms).
+    /// Transitions state to `.idle` immediately; `startSession` detects the
+    /// cancellation flag and returns without setting `.ready`.
+    ///
+    /// A no-op when state is already `.idle`.
+    public func cancel() {
+        guard state != .idle else { return }
+        cancellationRequested = true
+        preparer.cancelPreparation()
+        preparingTracks = []
+        state = .idle
+        logger.info("SessionManager: cancelled — returning to .idle")
     }
 
     /// End the current session.
