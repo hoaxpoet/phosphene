@@ -30,10 +30,10 @@ struct ConnectorPickerView: View {
                 .padding(.top, 16)
                 .padding(.bottom, 24)
             }
-            .navigationTitle("Connect a playlist")
+            .navigationTitle(String(localized: "connector.picker.title"))
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { dismiss() }
+                    Button(String(localized: "connector.picker.close_button")) { dismiss() }
                         .foregroundColor(.white.opacity(0.7))
                 }
             }
@@ -66,8 +66,8 @@ struct ConnectorPickerView: View {
             ConnectorTileView(
                 type: .appleMusic,
                 isEnabled: false,
-                disabledCaption: "Open Apple Music first",
-                secondaryActionLabel: "Open Apple Music",
+                disabledCaption: String(localized: "connector.picker.apple_music_disabled"),
+                secondaryActionLabel: String(localized: "connector.picker.open_apple_music_button"),
                 onSecondaryAction: { viewModel.openAppleMusic() }
             )
         }
@@ -86,13 +86,13 @@ struct ConnectorPickerView: View {
         ConnectorTileView(
             type: .localFolder,
             isEnabled: false,
-            disabledCaption: "Coming later"
+            disabledCaption: String(localized: "connector.picker.local_folder_disabled")
         )
     }
 
     @ViewBuilder
     private var footer: some View {
-        Text("Phosphene reads what's playing. It doesn't control playback.")
+        Text(String(localized: "connector.picker.footer"))
             .font(.caption2)
             .foregroundColor(.white.opacity(0.3))
             .multilineTextAlignment(.center)
@@ -117,7 +117,7 @@ struct ConnectorPickerView: View {
                 }
             )
         case .localFolder:
-            Text("Local Folder connector coming later.")
+            Text(String(localized: "connector.picker.local_placeholder"))
                 .foregroundColor(.white.opacity(0.5))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color.black)

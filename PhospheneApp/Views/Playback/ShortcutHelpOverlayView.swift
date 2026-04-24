@@ -41,7 +41,7 @@ struct ShortcutHelpOverlayView: View {
     private var panel: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                Text("Keyboard Shortcuts")
+                Text(String(localized: "playback.shortcut_help.title"))
                     .font(.title2.bold())
                     .foregroundColor(.white)
 
@@ -52,7 +52,7 @@ struct ShortcutHelpOverlayView: View {
                     }
                 }
 
-                Text("Press any key to dismiss")
+                Text(String(localized: "playback.shortcut_help.dismiss_hint"))
                     .font(.caption)
                     .foregroundColor(.white.opacity(0.4))
             }

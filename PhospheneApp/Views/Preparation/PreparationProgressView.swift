@@ -65,19 +65,19 @@ struct PreparationProgressView: View {
         }
         .accessibilityIdentifier(Self.accessibilityID)
         .confirmationDialog(
-            "Cancel preparation?",
+            String(localized: "preparation.cancel.confirm_title"),
             isPresented: $viewModel.showCancelConfirmation,
             titleVisibility: .visible
         ) {
-            Button("Cancel preparation", role: .destructive) {
+            Button(String(localized: "preparation.cancel.confirm_button"), role: .destructive) {
                 viewModel.cancel()
                 onCancel()
             }
-            Button("Keep preparing", role: .cancel) {
+            Button(String(localized: "preparation.cancel.keep_button"), role: .cancel) {
                 viewModel.showCancelConfirmation = false
             }
         } message: {
-            Text("Some tracks are already prepared. Cancel anyway?")
+            Text(String(localized: "preparation.cancel.confirm_message"))
         }
     }
 
@@ -85,7 +85,7 @@ struct PreparationProgressView: View {
 
     private var header: some View {
         VStack(spacing: 4) {
-            Text("Preparing your session")
+            Text(String(localized: "preparation.header.title"))
                 .font(.title2)
                 .fontWeight(.semibold)
                 .foregroundColor(.white)
@@ -128,7 +128,7 @@ struct PreparationProgressView: View {
             if viewModel.rows.isEmpty {
                 VStack {
                     Spacer()
-                    Text("Preparing…")
+                    Text(String(localized: "preparation.empty_state"))
                         .foregroundColor(.white.opacity(0.4))
                     Spacer()
                 }
@@ -155,7 +155,7 @@ struct PreparationProgressView: View {
 
     private var bottomBar: some View {
         HStack(spacing: 16) {
-            Button("Cancel") {
+            Button(String(localized: "preparation.cancel_button")) {
                 viewModel.requestCancel()
                 // If no confirmation needed, cancel fires immediately.
                 if !viewModel.showCancelConfirmation {
@@ -168,7 +168,7 @@ struct PreparationProgressView: View {
 
             // "Start now" CTA — dormant until Inc 6.1 flips FeatureFlags.progressiveReadiness.
             if viewModel.readyForFirstTracks {
-                Button("Start now") {
+                Button(String(localized: "preparation.start_now_button")) {
                     onStartNow()
                 }
                 .buttonStyle(.borderedProminent)

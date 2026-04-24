@@ -22,22 +22,18 @@ struct PermissionOnboardingView: View {
 
     var body: some View {
         VStack(spacing: 20) {
-            Text("Phosphene needs permission to hear music playing on your Mac.")
+            Text(String(localized: "onboarding.permission.headline"))
                 .font(.title2)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Text(
-                "To follow along with your music, Phosphene listens to the audio coming out of your " +
-                "speakers \u{2014} the same way a screen recorder would. It doesn\u{2019}t record your screen, your " +
-                "microphone, or anything else. Nothing ever leaves your Mac."
-            )
-            .font(.body)
-            .foregroundColor(.secondary)
-            .multilineTextAlignment(.center)
-            .fixedSize(horizontal: false, vertical: true)
+            Text(String(localized: "onboarding.permission.body"))
+                .font(.body)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
 
-            Button("Open System Settings") {
+            Button(String(localized: "onboarding.permission.open_settings")) {
                 openSettings()
             }
             .buttonStyle(.borderedProminent)
@@ -45,18 +41,15 @@ struct PermissionOnboardingView: View {
             .accessibilityIdentifier("phosphene.onboarding.openSettings")
 
             DisclosureGroup(
-                "Why does this need screen recording permission?",
+                String(localized: "onboarding.permission.why_label"),
                 isExpanded: $showExplainer
             ) {
-                Text(
-                    "On macOS, permission to capture system audio is bundled with screen recording " +
-                    "permission. Apple groups them together. Phosphene uses only the audio portion."
-                )
-                .font(.callout)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.leading)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 8)
+                Text(String(localized: "onboarding.permission.why_body"))
+                    .font(.callout)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 8)
             }
             .accessibilityIdentifier("phosphene.onboarding.whyExplainer")
         }

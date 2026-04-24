@@ -35,7 +35,7 @@ struct AppleMusicConnectionView: View {
                 Task { await onConnect(.appleMusicCurrentPlaylist) }
             }
         }
-        .navigationTitle("Apple Music")
+        .navigationTitle(String(localized: "connector.apple_music.title"))
         .accessibilityIdentifier(Self.accessibilityID)
     }
 
@@ -67,7 +67,7 @@ struct AppleMusicConnectionView: View {
                 .progressViewStyle(.circular)
                 .controlSize(.large)
                 .tint(.white)
-            Text("Talking to Apple Music\u{2026}")
+            Text(String(localized: "connector.apple_music.connecting"))
                 .font(.body)
                 .foregroundColor(.white.opacity(0.6))
         }
@@ -79,11 +79,11 @@ struct AppleMusicConnectionView: View {
                 .font(.system(size: 40))
                 .foregroundColor(.white.opacity(0.4))
             VStack(spacing: 8) {
-                Text("Start a playlist in Apple Music, then come back.")
+                Text(String(localized: "connector.apple_music.no_playlist.headline"))
                     .font(.headline)
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)
-                Text("Checking every 2 seconds\u{2026}")
+                Text(String(localized: "connector.apple_music.no_playlist.status"))
                     .font(.caption)
                     .foregroundColor(.white.opacity(0.4))
             }
@@ -100,15 +100,15 @@ struct AppleMusicConnectionView: View {
                 .font(.system(size: 40))
                 .foregroundColor(.white.opacity(0.4))
             VStack(spacing: 8) {
-                Text("Apple Music isn\u{2019}t running.")
+                Text(String(localized: "connector.apple_music.not_running.headline"))
                     .font(.headline)
                     .foregroundColor(.white)
-                Text("Open it, start a playlist, then come back.")
+                Text(String(localized: "connector.apple_music.not_running.body"))
                     .font(.body)
                     .foregroundColor(.white.opacity(0.6))
                     .multilineTextAlignment(.center)
             }
-            Button("Open Apple Music") {
+            Button(String(localized: "connector.apple_music.open_button")) {
                 viewModel.openAppleMusic()
             }
             .buttonStyle(.borderedProminent)
@@ -122,16 +122,16 @@ struct AppleMusicConnectionView: View {
                 .font(.system(size: 40))
                 .foregroundColor(.white.opacity(0.4))
             VStack(spacing: 8) {
-                Text("Phosphene needs permission to read Apple Music.")
+                Text(String(localized: "connector.apple_music.permission.headline"))
                     .font(.headline)
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)
-                Text("Open System Settings \u{2192} Privacy \u{2192} Automation and enable Phosphene.")
+                Text(String(localized: "connector.apple_music.permission.body"))
                     .font(.body)
                     .foregroundColor(.white.opacity(0.6))
                     .multilineTextAlignment(.center)
             }
-            Button("Open System Settings") {
+            Button(String(localized: "connector.apple_music.permission.button")) {
                 viewModel.openAutomationSettings()
             }
             .buttonStyle(.borderedProminent)
@@ -146,7 +146,7 @@ struct AppleMusicConnectionView: View {
                 .font(.system(size: 40))
                 .foregroundColor(.white.opacity(0.4))
             VStack(spacing: 8) {
-                Text("Something went wrong talking to Apple Music.")
+                Text(String(localized: "connector.apple_music.error.headline"))
                     .font(.headline)
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)
@@ -156,12 +156,16 @@ struct AppleMusicConnectionView: View {
                     .multilineTextAlignment(.center)
             }
             VStack(spacing: 12) {
-                Button("Try again") { viewModel.retry() }
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.defaultAction)
-                Button("Use Spotify instead") { onUseSpotifyInstead() }
-                    .foregroundColor(.white.opacity(0.5))
-                    .font(.subheadline)
+                Button(String(localized: "connector.apple_music.try_again_button")) {
+                    viewModel.retry()
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+                Button(String(localized: "connector.apple_music.use_spotify_button")) {
+                    onUseSpotifyInstead()
+                }
+                .foregroundColor(.white.opacity(0.5))
+                .font(.subheadline)
             }
         }
     }

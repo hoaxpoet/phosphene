@@ -27,7 +27,7 @@ struct SpotifyConnectionView: View {
             .padding(.vertical, 24)
             .frame(maxWidth: 520)
         }
-        .navigationTitle("Spotify")
+        .navigationTitle(String(localized: "connector.spotify.title"))
         .accessibilityIdentifier(Self.accessibilityID)
     }
 
@@ -35,7 +35,7 @@ struct SpotifyConnectionView: View {
 
     private var pasteField: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Paste a Spotify playlist link.")
+            Text(String(localized: "connector.spotify.paste_label"))
                 .font(.body)
                 .foregroundColor(.white.opacity(0.7))
             TextField("", text: $viewModel.text, prompt: Text("https://open.spotify.com/playlist/\u{2026}")
@@ -61,7 +61,7 @@ struct SpotifyConnectionView: View {
         case .parsing:
             HStack(spacing: 8) {
                 ProgressView().controlSize(.mini).tint(.white.opacity(0.4))
-                Text("Checking\u{2026}")
+                Text(String(localized: "connector.spotify.checking"))
                     .font(.caption)
                     .foregroundColor(.white.opacity(0.4))
             }
@@ -70,11 +70,11 @@ struct SpotifyConnectionView: View {
         case .rejectedKind(let kind):
             rejectionBody(for: kind)
         case .invalid:
-            validationMessage("That doesn't look like a Spotify playlist link.")
+            validationMessage(LocalizedCopy.string(for: .spotifyURLMalformed))
         case .rateLimited(let attempt):
             rateLimitBody(attempt: attempt)
         case .notFound:
-            validationMessage("Phosphene couldn't find that playlist. It may be private or deleted.")
+            validationMessage(String(localized: "connector.spotify.not_found"))
         case .error(let msg):
             errorBody(message: msg)
         }
@@ -88,7 +88,7 @@ struct SpotifyConnectionView: View {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundColor(.green.opacity(0.8))
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Spotify playlist recognized")
+                    Text(String(localized: "connector.spotify.recognized_headline"))
                         .font(.headline)
                         .foregroundColor(.white)
                     Text(playlistID)
@@ -101,7 +101,10 @@ struct SpotifyConnectionView: View {
             .background(Color.white.opacity(0.07))
             .cornerRadius(10)
 
-            Button(viewModel.isConnecting ? "Connecting\u{2026}" : "Continue") {
+            let btnLabel = viewModel.isConnecting
+                ? String(localized: "connector.spotify.connecting_button")
+                : String(localized: "connector.spotify.continue_button")
+            Button(btnLabel) {
                 viewModel.connect(startSession: onConnect)
             }
             .buttonStyle(.borderedProminent)
@@ -112,14 +115,14 @@ struct SpotifyConnectionView: View {
     }
 
     private func rejectionBody(for kind: SpotifyURLKind) -> some View {
-        let message: String
+        let errorKind: UserFacingError.SpotifyRejectionKind
         switch kind {
-        case .track:  message = "That\u{2019}s a track, not a playlist."
-        case .album:  message = "That\u{2019}s an album, not a playlist."
-        case .artist: message = "That\u{2019}s an artist page, not a playlist."
-        default:      message = "That link doesn\u{2019}t look like a Spotify playlist."
+        case .track:   errorKind = .track
+        case .album:   errorKind = .album
+        case .artist:  errorKind = .artist
+        default:       errorKind = .unknown
         }
-        return validationMessage(message)
+        return validationMessage(LocalizedCopy.string(for: .spotifyURLNotPlaylist(kind: errorKind)))
     }
 
     private func validationMessage(_ text: String) -> some View {
@@ -136,7 +139,7 @@ struct SpotifyConnectionView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 ProgressView().controlSize(.mini).tint(.white.opacity(0.5))
-                Text("Spotify is being slow \u{2014} still trying (attempt \(attempt) of 3)")
+                Text(LocalizedCopy.string(for: .spotifyRateLimited(attempt: attempt)))
                     .font(.body)
                     .foregroundColor(.white.opacity(0.6))
             }
@@ -149,7 +152,7 @@ struct SpotifyConnectionView: View {
                 Image(systemName: "exclamationmark.triangle")
                     .foregroundColor(.orange.opacity(0.7))
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Couldn\u{2019}t reach Spotify.")
+                    Text(String(localized: "connector.spotify.error.headline"))
                         .font(.headline)
                         .foregroundColor(.white)
                     Text(message)
@@ -157,7 +160,7 @@ struct SpotifyConnectionView: View {
                         .foregroundColor(.white.opacity(0.4))
                 }
             }
-            Button("Try again") {
+            Button(String(localized: "connector.spotify.try_again_button")) {
                 viewModel.connect(startSession: onConnect)
             }
             .buttonStyle(.borderedProminent)
@@ -168,8 +171,10 @@ struct SpotifyConnectionView: View {
     // MARK: - Footer
 
     private var footer: some View {
-        Button("Use Apple Music instead") { onUseAppleMusicInstead() }
-            .foregroundColor(.white.opacity(0.4))
-            .font(.subheadline)
+        Button(String(localized: "connector.spotify.use_apple_music")) {
+            onUseAppleMusicInstead()
+        }
+        .foregroundColor(.white.opacity(0.4))
+        .font(.subheadline)
     }
 }

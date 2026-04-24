@@ -61,18 +61,28 @@ struct TrackPreparationRow: View {
 
     private var stageCaption: String {
         switch row.status {
-        case .queued:                          return "Waiting"
-        case .resolving:                       return "Finding preview"
-        case .downloading(let pct) where pct < 0: return "Downloading"
-        case .downloading(let pct):               return "Downloading — \(Int(pct * 100))%"
+        case .queued:
+            return String(localized: "preparation.track.queued")
+        case .resolving:
+            return String(localized: "preparation.track.resolving")
+        case .downloading(let pct) where pct < 0:
+            return String(localized: "preparation.track.downloading")
+        case .downloading(let pct):
+            return "\(String(localized: "preparation.track.downloading")) — \(Int(pct * 100))%"
         case .analyzing(let stage):
             switch stage {
-            case .stemSeparation, .mir: return "Separating stems"
-            case .caching:             return "Caching"
+            case .stemSeparation, .mir:
+                return String(localized: "preparation.track.analyzing")
+            case .caching:
+                return String(localized: "preparation.track.caching")
             }
-        case .ready:                           return "Ready"
-        case .partial(let reason):             return "Partial — \(reason)"
-        case .failed(let reason):              return "Failed — \(reason)"
+        case .ready:
+            return String(localized: "preparation.track.ready")
+        case .partial(let reason):
+            // "Skipped — <reason>" per UX_SPEC §9.3 inline-row copy.
+            return "Skipped \u{2014} \(reason)"
+        case .failed(let reason):
+            return "Skipped \u{2014} \(reason)"
         }
     }
 

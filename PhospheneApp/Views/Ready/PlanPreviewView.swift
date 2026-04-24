@@ -53,7 +53,7 @@ struct PlanPreviewView: View {
             .navigationTitle(navTitle)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { dismiss() }
+                    Button(String(localized: "plan_preview.close_button")) { dismiss() }
                 }
             }
         }
@@ -64,9 +64,10 @@ struct PlanPreviewView: View {
     // MARK: - Subviews
 
     private var navTitle: String {
-        viewModel.rows.isEmpty
-            ? "Session plan"
-            : "Session plan — \(viewModel.rows.count) tracks"
+        if viewModel.rows.isEmpty {
+            return String(localized: "plan_preview.title_empty")
+        }
+        return String(format: String(localized: "plan_preview.title_tracks"), viewModel.rows.count)
     }
 
     private var planList: some View {
@@ -118,7 +119,9 @@ struct PlanPreviewView: View {
                     if viewModel.isRegenerating {
                         ProgressView().controlSize(.small)
                     }
-                    Text(viewModel.isRegenerating ? "Regenerating…" : "Regenerate Plan")
+                    Text(viewModel.isRegenerating
+                         ? "\(String(localized: "plan_preview.regenerate_button"))\u{2026}"
+                         : String(localized: "plan_preview.regenerate_button"))
                 }
             }
             .buttonStyle(.borderedProminent)

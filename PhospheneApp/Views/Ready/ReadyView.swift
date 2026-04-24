@@ -108,24 +108,33 @@ struct ReadyView: View {
 
     private var mainContent: some View {
         VStack(spacing: 20) {
-            Text("Ready.")
+            Text(String(localized: "ready.headline"))
                 .font(.system(size: 48, weight: .thin))
                 .foregroundColor(.white)
                 .accessibilityIdentifier(Self.headlineID)
 
-            Text("Press play in \(viewModel.sourceName).")
+            Text(String(format: String(localized: "ready.press_play"), viewModel.sourceName))
                 .font(.title3)
                 .foregroundColor(.white.opacity(0.85))
                 .multilineTextAlignment(.center)
 
             if viewModel.trackCount > 0 {
-                let suffix = viewModel.formattedDuration.isEmpty ? "" : ", \(viewModel.formattedDuration)"
-                Text("Planned \(viewModel.trackCount) tracks\(suffix).")
+                let summary: String
+                if viewModel.formattedDuration.isEmpty {
+                    summary = "\(viewModel.trackCount) tracks."
+                } else {
+                    summary = String(
+                        format: String(localized: "ready.plan_summary"),
+                        viewModel.trackCount,
+                        viewModel.formattedDuration
+                    )
+                }
+                Text(summary)
                     .font(.subheadline)
                     .foregroundColor(.white.opacity(0.5))
             }
 
-            Button("Preview the plan") {
+            Button(String(localized: "ready.preview_plan_button")) {
                 showingPlanPreview = true
             }
             .buttonStyle(.bordered)
@@ -138,7 +147,7 @@ struct ReadyView: View {
     }
 
     private var endSessionLink: some View {
-        Button("End session") {
+        Button(String(localized: "ready.end_session_button")) {
             viewModel.endSession()
         }
         .foregroundColor(.white.opacity(0.35))
@@ -152,22 +161,22 @@ struct ReadyView: View {
                 .ignoresSafeArea()
 
             VStack(spacing: 16) {
-                Text("Haven't heard anything yet.")
+                Text(String(localized: "ready.timeout.headline"))
                     .font(.headline)
                     .foregroundColor(.white)
-                Text("Is the music playing in \(viewModel.sourceName)?")
+                Text(String(format: String(localized: "ready.timeout.subtext"), viewModel.sourceName))
                     .font(.subheadline)
                     .foregroundColor(.white.opacity(0.7))
                     .multilineTextAlignment(.center)
 
                 HStack(spacing: 16) {
-                    Button("Retry") {
+                    Button(String(localized: "ready.timeout.retry_button")) {
                         viewModel.retry()
                     }
                     .buttonStyle(.borderedProminent)
                     .accessibilityIdentifier(Self.retryButtonID)
 
-                    Button("End session") {
+                    Button(String(localized: "ready.end_session_button")) {
                         viewModel.endSession()
                     }
                     .foregroundColor(.white.opacity(0.6))

@@ -31,14 +31,14 @@ struct IdleView: View {
             Spacer().frame(height: 8)
 
             VStack(spacing: 12) {
-                Button("Connect a playlist") {
+                Button(String(localized: "idle.connect_button")) {
                     showConnectorPicker = true
                 }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
                 .accessibilityIdentifier(Self.connectButtonID)
 
-                Button("Start listening now") {
+                Button(String(localized: "idle.adhoc_button")) {
                     engine.sessionManager.startAdHocSession()
                 }
                 .foregroundColor(.white.opacity(0.5))
