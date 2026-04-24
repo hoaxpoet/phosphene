@@ -992,11 +992,27 @@ The `FrameBudgetManager` (Increment 6.2) downshifts at runtime when measured fra
 
 ### 9.4 Cost of specific recipes (reference table)
 
+V.1 primitive costs (single full-screen pass, Tier 2 / M3, 1080p):
+
 | Recipe | Cost on Tier 2 | Notes |
 |---|---|---|
+| `perlin3d` single call | ~0.04 ms | Baseline noise primitive |
+| `simplex3d` single call | ~0.05 ms | Slightly faster gradient computation |
+| `worley3d` single call | ~0.08 ms | 27-cell neighbourhood |
+| `fbm4` screen-space | ~0.18 ms | 4 × perlin3d |
 | `fbm8` screen-space | 0.8 ms | Heavy; compute per-hit, not per-pixel |
-| `warped_fbm` screen-space | 5.5 ms | Use only where essential |
-| `ridged_mf` | 0.6 ms | 6 octaves |
+| `fbm12` screen-space | ~1.1 ms | High detail; per-hit only |
+| `warped_fbm` screen-space | 5.5 ms | 7 × fbm8; use only where essential |
+| `ridged_mf` | ~0.6 ms | 6 octaves; output [0, 1] |
+| `curl_noise` single sample | ~0.05 ms | 6 × fbm8 FD; cheap per-call, avoid per-pixel |
+| `fresnel_schlick` | <0.01 ms | Single pow(); near free |
+| `ggx_d + ggx_g_smith` | ~0.01 ms | Two sqrt + few muls; use freely |
+| `brdf_cook_torrance` | ~0.02 ms | Full PBR: D + G + F + diffuse |
+| `brdf_oren_nayar` | ~0.02 ms | Two acos + trig; avoid in tight loops |
+| `brdf_ashikhmin_shirley` | ~0.03 ms | Anisotropic Phong; two pow() |
+| `fiber_marschner_lite` | ~0.02 ms | Two acos + exp; per-hit only |
+| `thinfilm_rgb` | ~0.03 ms | cos(phase) × 3 wavelengths |
+| `sss_backlit` | ~0.01 ms | Single pow() + dot |
 | `triplanar_sample` (RGB) | 0.3 ms per material | 3 samples + blend |
 | `triplanar_normal` | 0.4 ms per material | 3 normal samples + reorient |
 | `parallax_occlusion` full-screen | 1.0 ms | 32 steps worst case |
@@ -1004,7 +1020,8 @@ The `FrameBudgetManager` (Increment 6.2) downshifts at runtime when measured fra
 | `mat_ferrofluid` spike field | 1.5 ms | Hex-tile + fbm |
 | `volumetric_light_shafts` | 1.5 ms | 48 steps half-res |
 | `sample_cloud` full pass | 3.0 ms | 64 steps × 6 shadow samples |
-| `curl_noise` single sample | 0.05 ms | Cheap per-call; avoid per-pixel |
+
+Note: V.1 primitive costs are estimates based on operation-count analysis relative to benchmarked fbm8. Formal profiling via `PresetPerformanceTests` should validate per-preset numbers.
 
 ### 9.5 Profiling every new preset
 

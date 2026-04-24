@@ -21,6 +21,33 @@ import Metal
     #expect(preamble.contains("palette"), "Preamble should include cosine palette from ShaderUtilities")
 }
 
+@Test func test_preambleIncludesV1UtilityTrees() {
+    let preamble = PresetLoader.shaderPreamble
+    // V.1 Noise utility tree (snake_case — distinct from legacy camelCase ShaderUtilities names)
+    #expect(preamble.contains("perlin2d"), "Preamble should include V.1 Perlin noise (perlin2d)")
+    #expect(preamble.contains("perlin3d"), "Preamble should include V.1 Perlin noise (perlin3d)")
+    #expect(preamble.contains("simplex3d"), "Preamble should include V.1 simplex noise")
+    #expect(preamble.contains("fbm4"), "Preamble should include V.1 fbm4")
+    #expect(preamble.contains("fbm8"), "Preamble should include V.1 fbm8")
+    #expect(preamble.contains("fbm12"), "Preamble should include V.1 fbm12")
+    #expect(preamble.contains("ridged_mf"), "Preamble should include V.1 ridged multifractal")
+    #expect(preamble.contains("warped_fbm"), "Preamble should include V.1 domain warp")
+    #expect(preamble.contains("curl_noise"), "Preamble should include V.1 curl noise")
+    #expect(preamble.contains("ign"), "Preamble should include V.1 IGN blue noise")
+    // V.1 PBR utility tree
+    #expect(preamble.contains("fresnel_schlick"), "Preamble should include V.1 Fresnel")
+    #expect(preamble.contains("ggx_d"), "Preamble should include V.1 GGX NDF")
+    #expect(preamble.contains("brdf_ggx"), "Preamble should include V.1 GGX BRDF")
+    #expect(preamble.contains("brdf_lambert"), "Preamble should include V.1 Lambert")
+    #expect(preamble.contains("brdf_oren_nayar"), "Preamble should include V.1 Oren-Nayar")
+    #expect(preamble.contains("decode_normal_map"), "Preamble should include V.1 normal mapping")
+    #expect(preamble.contains("combine_normals_udn"), "Preamble should include V.1 detail normals")
+    #expect(preamble.contains("triplanar_blend_weights"), "Preamble should include V.1 triplanar")
+    #expect(preamble.contains("sss_backlit"), "Preamble should include V.1 SSS")
+    #expect(preamble.contains("fiber_marschner_lite"), "Preamble should include V.1 fiber BRDF")
+    #expect(preamble.contains("thinfilm_rgb"), "Preamble should include V.1 thin-film")
+}
+
 @Test func test_presetCompilation_withUtilityFunctions_succeeds() throws {
     guard let device = MTLCreateSystemDefaultDevice() else {
         throw ShaderUtilityTestError.noMetalDevice

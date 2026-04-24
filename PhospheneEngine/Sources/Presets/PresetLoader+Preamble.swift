@@ -1,4 +1,6 @@
 // PresetLoader+Preamble — Common Metal shader preamble prepended to all presets.
+//
+// Utility file loading (V.1 Noise + PBR trees) lives in PresetLoader+Utilities.swift.
 
 import Foundation
 import os.log
@@ -11,7 +13,14 @@ extension PresetLoader {
 
     /// Shared Metal code prepended to every preset shader.
     /// Contains FeatureVector struct, VertexOut, fullscreen_vertex, color utilities,
-    /// and the full ShaderUtilities function library loaded from the bundle resource.
+    /// the Noise utility tree, the PBR utility tree, and ShaderUtilities.metal.
+    ///
+    /// Concatenation order:
+    ///   FeatureVector struct + vertex/fragment boilerplate
+    ///   → Utilities/Noise/ (Hash, Perlin, Simplex, FBM, RidgedMultifractal, Worley, DomainWarp, Curl, BlueNoise)
+    ///   → Utilities/PBR/ (Fresnel, NormalMapping, BRDF, Thin, DetailNormals, Triplanar, POM, SSS, Fiber)
+    ///   → ShaderUtilities.metal
+    ///   → constexpr sampler declarations
     static let shaderPreamble: String = {
         let structPreamble = """
         #include <metal_stdlib>
@@ -176,24 +185,48 @@ extension PresetLoader {
         struct MeshPrimitive {};
         """
 
-        // Load ShaderUtilities.metal from the Presets bundle resource.
-        let utilitiesSource: String
+        // ── Load Noise + PBR utility trees, then ShaderUtilities ──────────────
+        // All three are wrapped in the same unused-function pragma so the
+        // static-inline utilities don't trigger warnings in presets that
+        // only use a subset.
+
+        var utilitySource = ""
+
+        // Noise and PBR utility trees (V.1). Located in Shaders/Utilities/.
+        if let shadersURL = Bundle.module.url(forResource: "Shaders", withExtension: nil) {
+            let startMs = Date().timeIntervalSinceReferenceDate
+
+            let noiseSrc = loadUtilityDirectory(
+                "Utilities/Noise", priorityOrder: noiseLoadOrder, from: shadersURL)
+            let pbrSrc = loadUtilityDirectory(
+                "Utilities/PBR", priorityOrder: pbrLoadOrder, from: shadersURL)
+            utilitySource = noiseSrc + pbrSrc
+
+            let elapsedMs = (Date().timeIntervalSinceReferenceDate - startMs) * 1000
+            preambleLogger.info("Utility trees loaded in \(String(format: "%.1f", elapsedMs)) ms (\(utilitySource.count) chars)")
+        } else {
+            preambleLogger.warning("Shaders bundle directory not found — utility trees unavailable")
+        }
+
+        // Legacy ShaderUtilities.metal (preserved; functions have different names so no collision).
+        let shaderUtilitiesSource: String
         if let url = Bundle.module.url(
             forResource: "ShaderUtilities",
             withExtension: "metal",
             subdirectory: "Shaders"
         ), let content = try? String(contentsOf: url, encoding: .utf8) {
-            utilitiesSource = content
+            shaderUtilitiesSource = content
             preambleLogger.info("Loaded ShaderUtilities.metal (\(content.count) chars)")
         } else {
-            utilitiesSource = "// WARNING: ShaderUtilities.metal not found in bundle"
+            shaderUtilitiesSource = "// WARNING: ShaderUtilities.metal not found in bundle"
             preambleLogger.warning("ShaderUtilities.metal not found in Presets bundle")
         }
 
+        let combinedUtils = utilitySource + "\n" + shaderUtilitiesSource
         let utilsWrapped = """
         #pragma clang diagnostic push
         #pragma clang diagnostic ignored "-Wunused-function"
-        """ + "\n" + utilitiesSource + "\n#pragma clang diagnostic pop\n"
+        """ + "\n" + combinedUtils + "\n#pragma clang diagnostic pop\n"
         return structPreamble + "\n\n" + utilsWrapped
     }()
 
