@@ -764,3 +764,18 @@ Without OAuth (deferred to v2), `PlaylistConnector.connect()` immediately throws
 **Decision:** Resolve the ambiguity by splitting the two bindings: `Shift+?` opens the shortcut help overlay (`ShortcutHelpOverlayView`); `P` opens the plan preview sheet. `PlaybackShortcutRegistry.matches(event:)` compares `event.charactersIgnoringModifiers.lowercased()` against the shortcut's `key` field and compares `event.modifierFlags` exactly — so `Shift+?` matches `{key: "?", modifiers: [.shift]}` correctly. The `P` binding for plan preview is a deviation from UX_SPEC §7.4 and is noted here for the record; UX_SPEC should be updated to match in the next spec revision.
 
 **Rejected alternative:** Distinguish `?` from `Shift+?` by reading `event.characters` (Shift-modified) vs `event.charactersIgnoringModifiers` — brittle, keyboard-layout-dependent, and breaks on non-US layouts. The explicit modifier flag check is unambiguous on all layouts.
+
+
+---
+
+## D-050 — PlaybackActionRouter protocol in Orchestrator module (Increment U.6)
+
+**Status:** Accepted (2026-04-24)
+
+**Context:** The live-adaptation keyboard shortcuts (`⌘M`, `⌘←/→`, `⌘R`, `⌘Z`, `⌘L`) need a protocol that describes what each shortcut does at the semantic level. This protocol will eventually be wired to `DefaultLiveAdapter` (U.6b). The question is where to place this protocol — in `PhospheneApp` or in `PhospheneEngine/Orchestrator`.
+
+**Decision:** Place `PlaybackActionRouter` in `PhospheneEngine/Sources/Orchestrator/`. Rationale: the protocol describes actions on the orchestration layer (preset scoring, session re-planning, adaptation undo), not on the app layer. The concrete implementation (`DefaultPlaybackActionRouter`) lives in `PhospheneApp/Services/` and conforms at the app layer. This avoids creating a protocol whose methods are defined against types only available deep in the engine, while keeping the contract colocated with the Orchestrator types it will eventually manipulate. Protocol methods are all `@MainActor` because they will mutate `@Published` state on `VisualizerEngine` and `LiveAdapter`.
+
+**Stub strategy:** All methods in `DefaultPlaybackActionRouter` log `"TODO(U.6b): ..."` via `os.Logger` and return immediately. `toggleMoodLock()` is the only non-stub because it only needs to flip a local `@Published` flag — no engine coordination required. The full semantic spec for each U.6b action is documented in a top-of-file comment block in `DefaultPlaybackActionRouter.swift`.
+
+**Rejected alternative:** Place the protocol in `PhospheneApp`. This would prevent the engine's `LiveAdapter` and other Orchestrator types from referencing it (circular dependency since `PhospheneApp` links `PhospheneEngine`, not the reverse). The Orchestrator module is the correct home.
