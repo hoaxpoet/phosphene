@@ -22,7 +22,7 @@
 // MARK: - §9.1 Permission errors
 
 "error.permission.screen_capture.headline" = "Phosphene needs permission to hear music playing on your Mac.";
-"error.permission.screen_capture.body"     = "To follow along with your music, Phosphene listens to the audio coming out of your speakers \u2014 the same way a screen recorder would. It doesn\u2019t record your screen, your microphone, or anything else. Nothing ever leaves your Mac.";
+"error.permission.screen_capture.body"     = "To follow along with your music, Phosphene listens to the audio coming out of your speakers — the same way a screen recorder would. It doesn’t record your screen, your microphone, or anything else. Nothing ever leaves your Mac.";
 "error.permission.screen_capture.why_label" = "Why does this need screen recording permission?";
 "error.permission.screen_capture.why_body"  = "On macOS, permission to capture system audio is bundled with screen recording permission. Apple groups them together. Phosphene uses only the audio portion.";
 
@@ -31,41 +31,41 @@
 
 // MARK: - §9.2 Connection errors
 
-"error.connection.apple_music_not_running.headline" = "Apple Music isn\u2019t running.";
+"error.connection.apple_music_not_running.headline" = "Apple Music isn’t running.";
 "error.connection.apple_music_not_running.body"     = "Open it, start a playlist, then come back.";
 
 "error.connection.no_playlist"          = "Start playing a playlist in Apple Music, then come back.";
 "error.connection.no_playlist.status"   = "Checking every 2 seconds\u2026";
 
-"error.connection.spotify_url_malformed"    = "That doesn\u2019t look like a Spotify playlist link.";
-"error.connection.spotify_url_is_track"     = "That\u2019s a track, not a playlist. Phosphene needs a playlist URL.";
-"error.connection.spotify_url_is_album"     = "That\u2019s an album, not a playlist. Phosphene needs a playlist URL.";
-"error.connection.spotify_url_is_artist"    = "That\u2019s an artist page, not a playlist. Phosphene needs a playlist URL.";
-"error.connection.spotify_url_unknown"      = "That link doesn\u2019t look like a Spotify playlist.";
+"error.connection.spotify_url_malformed"    = "That doesn’t look like a Spotify playlist link.";
+"error.connection.spotify_url_is_track"     = "That’s a track, not a playlist. Phosphene needs a playlist URL.";
+"error.connection.spotify_url_is_album"     = "That’s an album, not a playlist. Phosphene needs a playlist URL.";
+"error.connection.spotify_url_is_artist"    = "That’s an artist page, not a playlist. Phosphene needs a playlist URL.";
+"error.connection.spotify_url_unknown"      = "That link doesn’t look like a Spotify playlist.";
 
 /* %d = attempt number (1–3) */
-"error.connection.spotify_rate_limited"     = "Spotify is being slow \u2014 still trying (attempt %d of 3)";
+"error.connection.spotify_rate_limited"     = "Spotify is being slow — still trying (attempt %d of 3)";
 
-"error.connection.spotify_unreachable.headline" = "Couldn\u2019t reach Spotify.";
+"error.connection.spotify_unreachable.headline" = "Couldn’t reach Spotify.";
 "error.connection.spotify_unreachable.body"     = "Check your network or try a different source.";
 
-"error.connection.empty_playlist"   = "That playlist doesn\u2019t have any tracks yet.";
+"error.connection.empty_playlist"   = "That playlist doesn’t have any tracks yet.";
 
 // MARK: - §9.3 Preparation errors
 
-"error.preparation.preview_not_found"  = "Skipped \u2014 preview unavailable";
+"error.preparation.preview_not_found"  = "Skipped — preview unavailable";
 "error.preparation.rate_limited"        = "Preparing more slowly than usual";
 
-"error.preparation.network_offline.headline"    = "You\u2019re offline.";
-"error.preparation.network_offline.body"        = "Phosphene can\u2019t fetch previews.";
+"error.preparation.network_offline.headline"    = "You’re offline.";
+"error.preparation.network_offline.body"        = "Phosphene can’t fetch previews.";
 
-"error.preparation.stem_failure"    = "Skipped \u2014 couldn\u2019t analyze";
+"error.preparation.stem_failure"    = "Skipped — couldn’t analyze";
 
-"error.preparation.all_failed.headline" = "Couldn\u2019t prepare any of this playlist.";
+"error.preparation.all_failed.headline" = "Couldn’t prepare any of this playlist.";
 "error.preparation.all_failed.body"     = "Try a different one.";
 
 "error.preparation.slow_first_track.headline"   = "Still working on the first tracks.";
-"error.preparation.slow_first_track.body"       = "Slow network? You can start in reactive mode instead and we\u2019ll pick up the planned session once it\u2019s ready.";
+"error.preparation.slow_first_track.body"       = "Slow network? You can start in reactive mode instead and we’ll pick up the planned session once it’s ready.";
 
 "error.preparation.total_timeout.headline"  = "This is taking longer than expected.";
 "error.preparation.total_timeout.body"      = "Try again or start in reactive mode.";
@@ -73,13 +73,13 @@
 // MARK: - §9.4 Playback errors
 
 "error.playback.silence_brief"          = "Listening\u2026";
-"error.playback.silence_extended"       = "Haven\u2019t heard anything for a while. Is the music playing?";
-"error.playback.tap_reinstall_failed"   = "Couldn\u2019t re-hear the audio. Try quitting and re-opening Phosphene.";
-"error.playback.mpsgraph_failure"       = "Analyzer hiccup \u2014 using backup mode.";
+"error.playback.silence_extended"       = "Haven’t heard anything for a while. Is the music playing?";
+"error.playback.tap_reinstall_failed"   = "Couldn’t re-hear the audio. Try quitting and re-opening Phosphene.";
+"error.playback.mpsgraph_failure"       = "Analyzer hiccup — using backup mode.";
 /* %d = sample rate in Hz, e.g. 96000 */
-"error.playback.sample_rate_mismatch"   = "Audio is at %d Hz. For best results set Audio MIDI Setup to 48\u202fkHz.";
-"error.playback.audio_levels_low_spotify"   = "Audio levels are low. Check Spotify\u2019s \u2018Normalize Volume\u2019 setting \u2014 it should be off.";
-"error.playback.audio_levels_low_generic"   = "Audio levels are low. Check your music app\u2019s volume normalization settings.";
+"error.playback.sample_rate_mismatch"   = "Audio is at %d Hz. For best results set Audio MIDI Setup to 48 kHz.";
+"error.playback.audio_levels_low_spotify"   = "Audio levels are low. Check Spotify’s \u2018Normalize Volume’ setting — it should be off.";
+"error.playback.audio_levels_low_generic"   = "Audio levels are low. Check your music app’s volume normalization settings.";
 "error.playback.display_disconnected"   = "Output display disconnected. Moved to main display.";
 "error.playback.negative_nudge_twice"   = "Not quite hitting the mark? Try \u2318R to re-plan.";
 "error.playback.replan_succeeded"       = "Re-planned. Next transition will use the new plan.";
@@ -87,13 +87,13 @@
 // MARK: - Onboarding
 
 "onboarding.permission.headline"        = "Phosphene needs permission to hear music playing on your Mac.";
-"onboarding.permission.body"            = "To follow along with your music, Phosphene listens to the audio coming out of your speakers \u2014 the same way a screen recorder would. It doesn\u2019t record your screen, your microphone, or anything else. Nothing ever leaves your Mac.";
+"onboarding.permission.body"            = "To follow along with your music, Phosphene listens to the audio coming out of your speakers — the same way a screen recorder would. It doesn’t record your screen, your microphone, or anything else. Nothing ever leaves your Mac.";
 "onboarding.permission.open_settings"   = "Open System Settings";
 "onboarding.permission.why_label"       = "Why does this need screen recording permission?";
 "onboarding.permission.why_body"        = "On macOS, permission to capture system audio is bundled with screen recording permission. Apple groups them together. Phosphene uses only the audio portion.";
 
 "onboarding.photosensitivity.headline"      = "Heads up";
-"onboarding.photosensitivity.body"          = "Phosphene renders high-contrast, fast-changing visuals. If you\u2019re sensitive to flashing lights or strobe patterns, enable Reduce motion in Settings before starting.";
+"onboarding.photosensitivity.body"          = "Phosphene renders high-contrast, fast-changing visuals. If you’re sensitive to flashing lights or strobe patterns, enable Reduce motion in Settings before starting.";
 "onboarding.photosensitivity.enable_reduce" = "Enable Reduce motion";
 "onboarding.photosensitivity.acknowledge"   = "I understand";
 
@@ -109,7 +109,7 @@
 "connector.picker.apple_music_disabled"     = "Open Apple Music first";
 "connector.picker.open_apple_music_button"  = "Open Apple Music";
 "connector.picker.local_folder_disabled"    = "Coming later";
-"connector.picker.footer"                   = "Phosphene reads what\u2019s playing. It doesn\u2019t control playback.";
+"connector.picker.footer"                   = "Phosphene reads what’s playing. It doesn’t control playback.";
 "connector.picker.local_placeholder"        = "Local Folder connector coming later.";
 
 // MARK: - Apple Music connection
@@ -118,7 +118,7 @@
 "connector.apple_music.connecting"          = "Talking to Apple Music\u2026";
 "connector.apple_music.no_playlist.headline" = "Start a playlist in Apple Music, then come back.";
 "connector.apple_music.no_playlist.status"  = "Checking every 2 seconds\u2026";
-"connector.apple_music.not_running.headline" = "Apple Music isn\u2019t running.";
+"connector.apple_music.not_running.headline" = "Apple Music isn’t running.";
 "connector.apple_music.not_running.body"    = "Open it, start a playlist, then come back.";
 "connector.apple_music.open_button"         = "Open Apple Music";
 "connector.apple_music.permission.headline" = "Phosphene needs permission to read Apple Music.";
@@ -136,8 +136,8 @@
 "connector.spotify.recognized_headline" = "Spotify playlist recognized";
 "connector.spotify.continue_button"     = "Continue";
 "connector.spotify.connecting_button"   = "Connecting\u2026";
-"connector.spotify.not_found"           = "Phosphene couldn\u2019t find that playlist. It may be private or deleted.";
-"connector.spotify.error.headline"      = "Couldn\u2019t reach Spotify.";
+"connector.spotify.not_found"           = "Phosphene couldn’t find that playlist. It may be private or deleted.";
+"connector.spotify.error.headline"      = "Couldn’t reach Spotify.";
 "connector.spotify.try_again_button"    = "Try again";
 "connector.spotify.use_apple_music"     = "Use Apple Music instead";
 
@@ -169,7 +169,7 @@
 "ready.preview_plan_button" = "Preview the plan";
 "ready.end_session_button"  = "End session";
 
-"ready.timeout.headline"    = "Haven\u2019t heard anything yet.";
+"ready.timeout.headline"    = "Haven’t heard anything yet.";
 /* %@ = source name */
 "ready.timeout.subtext"     = "Is the music playing in %@?";
 "ready.timeout.retry_button" = "Retry";
@@ -178,7 +178,7 @@
 
 "plan_preview.title_empty"      = "Session plan";
 /* %d = track count */
-"plan_preview.title_tracks"     = "Session plan \u2014 %d tracks";
+"plan_preview.title_tracks"     = "Session plan — %d tracks";
 "plan_preview.close_button"     = "Close";
 "plan_preview.regenerate_button" = "Regenerate Plan";
 "plan_preview.empty_state"      = "No plan available yet.";
@@ -196,3 +196,8 @@
 // MARK: - Full-screen error view (Part B)
 
 "fullscreen_error.default_headline" = "Something went wrong.";
+
+// MARK: - Preparation failure view (Part B)
+
+"preparation.failure.pick_playlist_button"  = "Pick another playlist";
+"preparation.failure.start_reactive_button" = "Start reactive mode";

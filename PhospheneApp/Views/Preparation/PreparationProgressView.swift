@@ -1,8 +1,14 @@
 // PreparationProgressView — Shown when SessionManager.state == .preparing.
 // Per-track status list, aggregate progress bar, cancel affordance, and
 // dormant "Start now" CTA (active when Inc 6.1 lands via FeatureFlags.progressiveReadiness).
+//
+// U.7: Owns a PreparationErrorViewModel that watches network reachability and track
+// statuses to decide whether to show a TopBannerView above the list (non-blocking
+// warning) or replace the entire list with PreparationFailureView (catastrophic failure).
 
+import Combine
 import Session
+import Shared
 import SwiftUI
 
 // MARK: - PreparationProgressView
@@ -20,43 +26,78 @@ struct PreparationProgressView: View {
     static let startNowButtonID = "phosphene.preparing.startNow"
 
     @StateObject private var viewModel: PreparationProgressViewModel
+    @StateObject private var errorViewModel: PreparationErrorViewModel
 
     private let playlistName: String
     private let onCancel: () -> Void
     private let onStartNow: () -> Void
+    private let onPickAnotherPlaylist: (() -> Void)?
+    private let onStartReactive: (() -> Void)?
 
     // MARK: - Init
 
-    /// Create the view, instantiating its ViewModel from the given publisher.
+    /// Create the view, instantiating its ViewModels from the given publisher and reachability.
     ///
     /// - Parameters:
     ///   - publisher: The `SessionPreparer`-backed publisher to observe.
     ///   - tracks: Ordered playlist — rows appear in this order.
     ///   - playlistName: Display name shown in the subtitle (may be empty).
+    ///   - reachability: Injectable reachability monitor (defaults to `ReachabilityMonitor`).
     ///   - onCancel: Called when cancel is confirmed; caller transitions state.
     ///   - onStartNow: Called when "Start now" is tapped (dormant in v1).
+    ///   - onPickAnotherPlaylist: Called from full-screen failure CTA (optional).
+    ///   - onStartReactive: Called from "Start reactive mode" failure CTA (optional).
     init(
         publisher: any PreparationProgressPublishing,
         tracks: [TrackIdentity],
         playlistName: String = "",
+        reachability: any ReachabilityPublishing = ReachabilityMonitor(),
         onCancel: @escaping () -> Void,
-        onStartNow: @escaping () -> Void = {}
+        onStartNow: @escaping () -> Void = {},
+        onPickAnotherPlaylist: (() -> Void)? = nil,
+        onStartReactive: (() -> Void)? = nil
     ) {
         _viewModel = StateObject(
             wrappedValue: PreparationProgressViewModel(publisher: publisher, trackList: tracks)
         )
+        _errorViewModel = StateObject(
+            wrappedValue: PreparationErrorViewModel(
+                statusPublisher: publisher.trackStatusesPublisher,
+                reachability: reachability,
+                totalTrackCount: tracks.count
+            )
+        )
         self.playlistName = playlistName
         self.onCancel = onCancel
         self.onStartNow = onStartNow
+        self.onPickAnotherPlaylist = onPickAnotherPlaylist
+        self.onStartReactive = onStartReactive
     }
 
     // MARK: - Body
 
     var body: some View {
+        Group {
+            if case .fullScreen(let error) = errorViewModel.presentationState {
+                PreparationFailureView(
+                    error: error,
+                    onPickAnotherPlaylist: onPickAnotherPlaylist ?? onCancel,
+                    onStartReactive: onStartReactive
+                )
+            } else {
+                normalBody
+            }
+        }
+    }
+
+    // MARK: - Normal Body
+
+    private var normalBody: some View {
         ZStack {
             Color.black.ignoresSafeArea()
 
             VStack(spacing: 0) {
+                bannerSlot
                 header
                 progressBar
                 trackList
@@ -82,6 +123,13 @@ struct PreparationProgressView: View {
     }
 
     // MARK: - Sub-Views
+
+    @ViewBuilder
+    private var bannerSlot: some View {
+        if case .banner(let error) = errorViewModel.presentationState {
+            TopBannerView(error: error)
+        }
+    }
 
     private var header: some View {
         VStack(spacing: 4) {

@@ -106,6 +106,17 @@ struct ReadyView: View {
 
     // MARK: - Subviews
 
+    private var planSummary: String {
+        if viewModel.formattedDuration.isEmpty {
+            return "\(viewModel.trackCount) tracks."
+        }
+        return String(
+            format: String(localized: "ready.plan_summary"),
+            viewModel.trackCount,
+            viewModel.formattedDuration
+        )
+    }
+
     private var mainContent: some View {
         VStack(spacing: 20) {
             Text(String(localized: "ready.headline"))
@@ -119,17 +130,7 @@ struct ReadyView: View {
                 .multilineTextAlignment(.center)
 
             if viewModel.trackCount > 0 {
-                let summary: String
-                if viewModel.formattedDuration.isEmpty {
-                    summary = "\(viewModel.trackCount) tracks."
-                } else {
-                    summary = String(
-                        format: String(localized: "ready.plan_summary"),
-                        viewModel.trackCount,
-                        viewModel.formattedDuration
-                    )
-                }
-                Text(summary)
+                Text(planSummary)
                     .font(.subheadline)
                     .foregroundColor(.white.opacity(0.5))
             }
