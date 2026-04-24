@@ -55,6 +55,20 @@ public protocol PlaylistConnecting: AnyObject, Sendable {
     func connect(source: PlaylistSource) async throws -> [TrackIdentity]
 }
 
+// MARK: - PlaylistSource + Display
+
+extension PlaylistSource {
+    /// Short user-facing name for the music source used in `ReadyView` headlines.
+    public var displayName: String {
+        switch self {
+        case .appleMusicCurrentPlaylist, .appleMusicPlaylistURL:
+            return "Apple Music"
+        case .spotifyCurrentQueue, .spotifyPlaylistURL:
+            return "Spotify"
+        }
+    }
+}
+
 // MARK: - PlaylistConnector
 
 /// Reads the full track list from Apple Music or Spotify playlists.

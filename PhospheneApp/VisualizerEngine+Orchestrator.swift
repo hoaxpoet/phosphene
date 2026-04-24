@@ -56,6 +56,7 @@ extension VisualizerEngine {
         do {
             let plan = try sessionPlanner.plan(tracks: tracks, catalog: catalog, deviceTier: tier)
             orchestratorLock.withLock { livePlan = plan }
+            livePlannedSession = plan
 
             let presetNames = plan.tracks.map { $0.preset.name }.joined(separator: ", ")
             let totalSecs = String(format: "%.0f", plan.totalDuration)
@@ -186,6 +187,38 @@ extension VisualizerEngine {
             guard let self else { return }
             self.applyPreset(loadedPreset)
             self.showPresetName(loadedPreset.descriptor.name)
+        }
+    }
+
+    // MARK: - Plan Regeneration
+
+    /// Re-run the planner with a random seed, preserving any manually locked track picks.
+    ///
+    /// Called from `PlanPreviewViewModel.regeneratePlan()` via an injected closure.
+    /// Updates both `livePlan` (thread-safe) and `livePlannedSession` (@Published, main actor).
+    @MainActor
+    func regeneratePlan(lockedTracks: Set<TrackIdentity>, lockedPresets: [TrackIdentity: PresetDescriptor]) {
+        guard let sessionPlan = sessionManager.currentPlan else {
+            logger.info("Orchestrator: regeneratePlan — no session plan, skipping")
+            return
+        }
+        let tracks: [(TrackIdentity, TrackProfile)] = sessionPlan.tracks.map {
+            ($0, sessionManager.cache.trackProfile(for: $0) ?? .empty)
+        }
+        let catalog = presetLoader.presets.map { $0.descriptor }
+        let tier = Self.detectDeviceTier(device: context.device)
+        let seed = UInt64.random(in: 1...UInt64.max)
+
+        do {
+            var plan = try sessionPlanner.plan(tracks: tracks, catalog: catalog, deviceTier: tier, seed: seed)
+            if !lockedPresets.isEmpty {
+                plan = plan.applying(overrides: lockedPresets)
+            }
+            orchestratorLock.withLock { livePlan = plan }
+            livePlannedSession = plan
+            logger.info("Orchestrator: plan regenerated (seed=\(seed), locks=\(lockedTracks.count))")
+        } catch {
+            logger.error("Orchestrator: regeneratePlan failed — \(error)")
         }
     }
 

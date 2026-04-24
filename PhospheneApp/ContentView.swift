@@ -9,7 +9,11 @@
 //
 // U.4: .preparing routes to PreparationProgressView; the ViewModel is owned as
 // @StateObject inside the view so it survives re-renders within the same state.
+// U.5: .ready routes to ReadyView; dependencies injected so the view's @StateObject
+// ViewModel survives re-renders within the same state.
 
+import Combine
+import Orchestrator
 import Session
 import SwiftUI
 
@@ -51,12 +55,27 @@ struct ContentView: View {
         case .preparing:
             preparingView
         case .ready:
-            ReadyView()
+            readyView
         case .playing:
             PlaybackView()
         case .ended:
             EndedView()
         }
+    }
+
+    @ViewBuilder
+    private var readyView: some View {
+        ReadyView(
+            sessionSource: engine.sessionManager.sessionSource,
+            sessionManager: engine.sessionManager,
+            audioSignalStatePublisher: engine.$audioSignalState.eraseToAnyPublisher(),
+            planPublisher: engine.$livePlannedSession.eraseToAnyPublisher(),
+            onBeginPlayback: { engine.sessionManager.beginPlayback() },
+            onRegenerate: { @MainActor lockedTracks, lockedPresets in
+                engine.regeneratePlan(lockedTracks: lockedTracks, lockedPresets: lockedPresets)
+            },
+            reduceMotion: viewModel.reduceMotion
+        )
     }
 
     @ViewBuilder

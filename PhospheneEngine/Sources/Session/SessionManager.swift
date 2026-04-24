@@ -34,6 +34,10 @@ public final class SessionManager: ObservableObject {
     /// `nil` in ad-hoc mode and before preparation completes.
     @Published public private(set) var currentPlan: SessionPlan?
 
+    /// The playlist source that originated this session.
+    /// Set at `startSession(source:)` entry; nil in ad-hoc mode.
+    @Published public private(set) var sessionSource: PlaylistSource?
+
     /// Tracks currently being prepared. Set when entering `.preparing`.
     /// Cleared when leaving `.preparing` (success, failure, or cancel).
     @Published public private(set) var preparingTracks: [TrackIdentity] = []
@@ -94,6 +98,7 @@ public final class SessionManager: ObservableObject {
     ///
     /// - Parameter source: The playlist source to connect to.
     public func startSession(source: PlaylistSource) async {
+        sessionSource = source
         guard state == .idle || state == .ended else {
             let state = self.state.rawValue
             logger.info("SessionManager: ignoring startSession (state=\(state))")

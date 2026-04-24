@@ -67,6 +67,20 @@
 		F10005 /* PreparationProgressViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20005; };
 		F10006 /* PreparationETAEstimatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20006; };
 		F10007 /* PreparationCancelIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20007; };
+		G10001 /* ReadyViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20001; };
+		G10002 /* PlanPreviewViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20002; };
+		G10003 /* FirstAudioDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20003; };
+		G10004 /* PresetPreviewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20004; };
+		G10005 /* ReadyPulsingBorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20005; };
+		G10006 /* ReadyBackgroundPresetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20006; };
+		G10007 /* PlanPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20007; };
+		G10008 /* PlanPreviewRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20008; };
+		G10009 /* PlanPreviewTransitionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20009; };
+		G10020 /* FirstAudioDetectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20020; };
+		G10021 /* ReadyViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20021; };
+		G10022 /* PlanPreviewViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20022; };
+		G10023 /* PlanPreviewRegenerateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20023; };
+		G10024 /* ReadyViewTimeoutIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20024; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -133,6 +147,20 @@
 		F20005 /* PreparationProgressViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreparationProgressViewModelTests.swift; sourceTree = "<group>"; };
 		F20006 /* PreparationETAEstimatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreparationETAEstimatorTests.swift; sourceTree = "<group>"; };
 		F20007 /* PreparationCancelIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreparationCancelIntegrationTests.swift; sourceTree = "<group>"; };
+		G20001 /* ReadyViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadyViewModel.swift; sourceTree = "<group>"; };
+		G20002 /* PlanPreviewViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanPreviewViewModel.swift; sourceTree = "<group>"; };
+		G20003 /* FirstAudioDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstAudioDetector.swift; sourceTree = "<group>"; };
+		G20004 /* PresetPreviewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetPreviewController.swift; sourceTree = "<group>"; };
+		G20005 /* ReadyPulsingBorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadyPulsingBorder.swift; sourceTree = "<group>"; };
+		G20006 /* ReadyBackgroundPresetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadyBackgroundPresetView.swift; sourceTree = "<group>"; };
+		G20007 /* PlanPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanPreviewView.swift; sourceTree = "<group>"; };
+		G20008 /* PlanPreviewRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanPreviewRowView.swift; sourceTree = "<group>"; };
+		G20009 /* PlanPreviewTransitionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanPreviewTransitionView.swift; sourceTree = "<group>"; };
+		G20020 /* FirstAudioDetectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstAudioDetectorTests.swift; sourceTree = "<group>"; };
+		G20021 /* ReadyViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadyViewModelTests.swift; sourceTree = "<group>"; };
+		G20022 /* PlanPreviewViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanPreviewViewModelTests.swift; sourceTree = "<group>"; };
+		G20023 /* PlanPreviewRegenerateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanPreviewRegenerateTests.swift; sourceTree = "<group>"; };
+		G20024 /* ReadyViewTimeoutIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadyViewTimeoutIntegrationTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -205,6 +233,8 @@
 				E20012 /* AppleMusicConnectionViewModel.swift */,
 				E20013 /* SpotifyConnectionViewModel.swift */,
 				F20003 /* PreparationProgressViewModel.swift */,
+				G20001 /* ReadyViewModel.swift */,
+				G20002 /* PlanPreviewViewModel.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -258,6 +288,8 @@
 				E20002 /* SpotifyURLParser.swift */,
 				E20003 /* DelayProviding.swift */,
 				F20004 /* PreparationETAEstimator.swift */,
+				G20003 /* FirstAudioDetector.swift */,
+				G20004 /* PresetPreviewController.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -284,7 +316,14 @@
 		};
 		C40005 /* Ready */ = {
 			isa = PBXGroup;
-			children = (C20005 /* ReadyView.swift */);
+			children = (
+				C20005 /* ReadyView.swift */,
+				G20005 /* ReadyPulsingBorder.swift */,
+				G20006 /* ReadyBackgroundPresetView.swift */,
+				G20007 /* PlanPreviewView.swift */,
+				G20008 /* PlanPreviewRowView.swift */,
+				G20009 /* PlanPreviewTransitionView.swift */,
+			);
 			path = Ready;
 			sourceTree = "<group>";
 		};
@@ -337,6 +376,11 @@
 				F20005 /* PreparationProgressViewModelTests.swift */,
 				F20006 /* PreparationETAEstimatorTests.swift */,
 				F20007 /* PreparationCancelIntegrationTests.swift */,
+				G20020 /* FirstAudioDetectorTests.swift */,
+				G20021 /* ReadyViewModelTests.swift */,
+				G20022 /* PlanPreviewViewModelTests.swift */,
+				G20023 /* PlanPreviewRegenerateTests.swift */,
+				G20024 /* ReadyViewTimeoutIntegrationTests.swift */,
 			);
 			path = PhospheneAppTests;
 			sourceTree = "<group>";
@@ -462,6 +506,15 @@
 				F10002 /* TrackPreparationStatusIcon.swift in Sources */,
 				F10003 /* PreparationProgressViewModel.swift in Sources */,
 				F10004 /* PreparationETAEstimator.swift in Sources */,
+				G10001 /* ReadyViewModel.swift in Sources */,
+				G10002 /* PlanPreviewViewModel.swift in Sources */,
+				G10003 /* FirstAudioDetector.swift in Sources */,
+				G10004 /* PresetPreviewController.swift in Sources */,
+				G10005 /* ReadyPulsingBorder.swift in Sources */,
+				G10006 /* ReadyBackgroundPresetView.swift in Sources */,
+				G10007 /* PlanPreviewView.swift in Sources */,
+				G10008 /* PlanPreviewRowView.swift in Sources */,
+				G10009 /* PlanPreviewTransitionView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -480,6 +533,11 @@
 				F10005 /* PreparationProgressViewModelTests.swift in Sources */,
 				F10006 /* PreparationETAEstimatorTests.swift in Sources */,
 				F10007 /* PreparationCancelIntegrationTests.swift in Sources */,
+				G10020 /* FirstAudioDetectorTests.swift in Sources */,
+				G10021 /* ReadyViewModelTests.swift in Sources */,
+				G10022 /* PlanPreviewViewModelTests.swift in Sources */,
+				G10023 /* PlanPreviewRegenerateTests.swift in Sources */,
+				G10024 /* ReadyViewTimeoutIntegrationTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
