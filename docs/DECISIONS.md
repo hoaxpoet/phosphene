@@ -728,3 +728,27 @@ The Spotify rate-limit retry ([2s, 5s, 15s]) and Apple Music auto-retry (2s) use
 **Decision 4: `.spotifyAuthRequired` silently degrades to `startSession`.**
 
 Without OAuth (deferred to v2), `PlaylistConnector.connect()` immediately throws `.spotifyAuthRequired` (empty access token check). Rather than showing an error, the ViewModel calls `startSession(.spotifyPlaylistURL(url, accessToken: ""))` directly. `SessionManager` degrades gracefully: it starts a session with an empty plan and enters live-only reactive mode. This is a valid and useful state — the user gets responsive real-time visuals while the Orchestrator uses the reactive path. An error message here would lie: the session IS starting, just without pre-analyzed stems. User-visible error copy would be `UX_SPEC §8` compliant only if the session actually fails to start.
+
+---
+
+## D-047 — Seeded tie-breaking for Regenerate Plan (Increment U.5)
+
+**Status:** Accepted (2026-04-23)
+
+**Context:** "Regenerate Plan" (U.5 Part D) needs to produce a different preset assignment on each call, but the same seed must always produce the same result (reproducibility). `DefaultSessionPlanner.plan()` is already deterministic (D-034) — same inputs → same output. Simply re-running `plan()` with the same inputs produces the same plan, defeating the purpose.
+
+**Decision:** Add a `seed: UInt64` parameter to `plan()`. When `seed == 0`, output is byte-identical to the previous deterministic result (D-034 preserved). When `seed != 0`, a deterministic ±0.02 LCG perturbation is added to each `PresetScoreBreakdown.total` before selection. The perturbation is keyed on `(seed, trackIndex, presetID)` so the same seed produces the same plan. The original `plan(tracks:catalog:deviceTier:)` signature delegates to `plan(..., seed: 0)` — no call-site changes required outside this increment.
+
+**Magnitude choice:** ±0.02 is small relative to the 0.30/0.25/0.25/0.20 weight structure — it will not change the ranking when one preset clearly scores higher, but will reliably break score ties and produce a different selection when scores are close (the common case for a well-balanced catalog).
+
+**`regeneratePlan()` call site:** `VisualizerEngine.regeneratePlan(lockedTracks:lockedPresets:)` calls `plan(..., seed: UInt64.random(in: 1...UInt64.max))` so each button tap produces a distinct seed, hence a distinct plan. After planning, `plan.applying(overrides: lockedPresets)` patches back any manually locked picks.
+
+---
+
+## D-048 — Defer Part C (10s preview loop) to Increment U.5b (Increment U.5)
+
+**Status:** Accepted (2026-04-23)
+
+**Context:** U.5 Part C specifies a 10-second looping preset preview triggered by tapping a row in `PlanPreviewView`. The implementation requires: (1) injecting a synthetic `FeatureVector` into the active `RenderPipeline`; (2) a secondary render surface (or background-preset hijack); (3) a loop mechanism that runs without live audio callbacks. All three require engine-layer changes disjoint from the UX work in U.5.
+
+**Decision:** Defer Part C to a standalone Increment U.5b. A `PresetPreviewController` stub is added now — all methods log and no-op — so `PlanPreviewViewModel.previewRow(_:)` and the row-tap handler in `PlanPreviewRowView` compile and have a stable call site. U.5b can swap in a real implementation without touching PlanPreviewViewModel or any view. The context-menu "Swap preset" action is disabled with a `TODO(U.5.C)` comment. The `ReadyView` and plan preview ship correctly without Part C; the feature is a non-blocking enhancement.

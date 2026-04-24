@@ -88,6 +88,21 @@ public struct DefaultSessionPlanner: SessionPlanning {
         catalog: [PresetDescriptor],
         deviceTier: DeviceTier
     ) throws -> PlannedSession {
+        try plan(tracks: tracks, catalog: catalog, deviceTier: deviceTier, seed: 0)
+    }
+
+    /// Seeded variant for "Regenerate Plan" (D-047).
+    ///
+    /// When `seed` is zero, output is byte-identical to the zero-seed run (D-034 preserved).
+    /// When nonzero, a deterministic ±0.02 perturbation is added to each preset score before
+    /// selection — enough to break ties without changing the ranking meaningfully on non-equal
+    /// scores. Two calls with the same nonzero seed produce identical output.
+    public func plan(
+        tracks: [(TrackIdentity, TrackProfile)],
+        catalog: [PresetDescriptor],
+        deviceTier: DeviceTier,
+        seed: UInt64
+    ) throws -> PlannedSession {
         guard !tracks.isEmpty else { throw SessionPlanningError.emptyPlaylist }
         guard !catalog.isEmpty else { throw SessionPlanningError.emptyCatalog }
 
@@ -109,6 +124,7 @@ public struct DefaultSessionPlanner: SessionPlanning {
                 profile: profile,
                 context: ctx,
                 trackRef: (index, identity.title),
+                seed: seed,
                 warnings: &warnings
             )
             if currentPreset?.family == chosen.family {
@@ -181,17 +197,51 @@ public struct DefaultSessionPlanner: SessionPlanning {
 
     // MARK: - Preset Selection
 
+    // MARK: - Seed Noise (D-047)
+
+    /// Deterministic ±0.02 perturbation for seeded Regenerate Plan.
+    ///
+    /// Uses a simple LCG chain to produce a float in [-0.02, 0.02] for a given
+    /// (seed, trackIndex, presetID) triple. When seed == 0 this is never called.
+    private func seededNoise(seed: UInt64, trackIndex: Int, presetID: String) -> Float {
+        var hash = seed &+ UInt64(bitPattern: Int64(trackIndex)) &* 2654435761
+        hash ^= UInt64(bitPattern: Int64(presetID.hashValue))
+        hash = hash &* 6364136223846793005 &+ 1442695040888963407
+        let normalized = Float(hash >> 11) / Float(1 << 53)
+        return (normalized - 0.5) * 0.04  // [-0.02, 0.02]
+    }
+
+    // MARK: - Preset Selection
+
     /// Returns the best eligible `(preset, breakdown)`, falling back if all are excluded.
     ///
     /// `trackRef` bundles the playlist index and title used for warning messages.
-    private func selectPreset(
+    private func selectPreset( // swiftlint:disable:this function_parameter_count
         catalog: [PresetDescriptor],
         profile: TrackProfile,
         context: PresetScoringContext,
         trackRef: (index: Int, title: String),
+        seed: UInt64,
         warnings: inout [PlanningWarning]
     ) -> (PresetDescriptor, PresetScoreBreakdown) {
-        let allBDs = catalog.map { ($0, scorer.breakdown(preset: $0, track: profile, context: context)) }
+        let allBDs = catalog.map { preset -> (PresetDescriptor, PresetScoreBreakdown) in
+            var bd = scorer.breakdown(preset: preset, track: profile, context: context)
+            if seed != 0 {
+                let noise = seededNoise(seed: seed, trackIndex: trackRef.index, presetID: preset.id)
+                bd = PresetScoreBreakdown(
+                    mood: bd.mood,
+                    tempoMotion: bd.tempoMotion,
+                    stemAffinity: bd.stemAffinity,
+                    sectionSuitability: bd.sectionSuitability,
+                    familyRepeatMultiplier: bd.familyRepeatMultiplier,
+                    fatigueMultiplier: bd.fatigueMultiplier,
+                    excluded: bd.excluded,
+                    exclusionReason: bd.exclusionReason,
+                    total: max(0, min(1, bd.total + noise))
+                )
+            }
+            return (preset, bd)
+        }
         if let top = allBDs.filter({ !$0.1.excluded && $0.1.total > 0 }).max(by: { $0.1.total < $1.1.total }) {
             return (top.0, top.1)
         }
