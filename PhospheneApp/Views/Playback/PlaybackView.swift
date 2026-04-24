@@ -50,7 +50,7 @@ struct PlaybackView: View {
     @State private var keyMonitor = PlaybackKeyMonitor()
     @State private var fullscreenObserver = FullscreenObserver()
     @State private var actionRouter: DefaultPlaybackActionRouter?
-    @State private var silenceBridge: SilenceToastBridge?
+    @State private var playbackErrorBridge: PlaybackErrorBridge?
     @State private var displayManager: DisplayManager?
     @State private var multiDisplayBridge: MultiDisplayToastBridge?
 
@@ -160,8 +160,8 @@ struct PlaybackView: View {
             multiDisplayBridge = MultiDisplayToastBridge(toastManager: toastManager, displayManager: dm)
         }
 
-        // Silence degradation toast
-        silenceBridge = SilenceToastBridge(
+        // §9.4 playback errors — silence at 15s, condition-ID auto-dismiss
+        playbackErrorBridge = PlaybackErrorBridge(
             audioSignalStatePublisher: engine.$audioSignalState.eraseToAnyPublisher(),
             toastManager: toastManager
         )

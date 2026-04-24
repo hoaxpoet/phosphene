@@ -7,76 +7,15 @@
 //
 // The flag "phosphene.showLiveAdaptationToasts" defaults to false until U.8 Settings
 // panel ships. Coalescing: 3 adaptations within 2 s → single toast.
+//
+// Silence handling (previously SilenceToastBridge) was moved to PlaybackErrorBridge
+// in U.7 Part C — now uses condition-ID semantics and the correct 15s threshold.
 
-import Audio
 import Combine
 import Foundation
 import os.log
 
 private let logger = Logger(subsystem: "com.phosphene.app", category: "LiveAdaptationToastBridge")
-
-// MARK: - SilenceToastBridge
-
-/// Emits a degradation toast when audio silence exceeds 30 seconds.
-///
-/// A separate, narrower type from `LiveAdaptationToastBridge` so each concern is
-/// independently testable.
-@MainActor
-final class SilenceToastBridge {
-
-    // MARK: - Private
-
-    private var cancellables = Set<AnyCancellable>()
-    private var silenceStartDate: Date?
-    private var silenceToastID: UUID?
-    private let toastManager: ToastManager
-
-    // MARK: - Init
-
-    init(
-        audioSignalStatePublisher: AnyPublisher<AudioSignalState, Never>,
-        toastManager: ToastManager
-    ) {
-        self.toastManager = toastManager
-
-        audioSignalStatePublisher
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] state in self?.handle(state: state) }
-            .store(in: &cancellables)
-    }
-
-    // MARK: - Private
-
-    private func handle(state: AudioSignalState) {
-        switch state {
-        case .silent:
-            guard silenceStartDate == nil else { return }
-            silenceStartDate = Date()
-            // Schedule degradation toast after 30 s
-            Task { [weak self] in
-                try? await Task.sleep(for: .seconds(30))
-                guard let self, self.silenceStartDate != nil else { return }
-                let toast = PhospheneToast(
-                    severity: .degradation,
-                    copy: "No audio detected — is the music playing?",
-                    duration: .infinity,
-                    source: .signalState
-                )
-                self.silenceToastID = toast.id
-                self.toastManager.enqueue(toast)
-                logger.info("SilenceToastBridge: 30s silence degradation toast shown")
-            }
-        case .active, .recovering:
-            silenceStartDate = nil
-            if let id = silenceToastID {
-                toastManager.dismiss(id: id)
-                silenceToastID = nil
-            }
-        case .suspect:
-            break // Not long enough to show toast
-        }
-    }
-}
 
 // MARK: - LiveAdaptationToastBridge
 
