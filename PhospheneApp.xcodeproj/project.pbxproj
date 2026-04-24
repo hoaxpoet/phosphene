@@ -81,7 +81,39 @@
 		G10022 /* PlanPreviewViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20022; };
 		G10023 /* PlanPreviewRegenerateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20023; };
 		G10024 /* ReadyViewTimeoutIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20024; };
-/* End PBXBuildFile section */
+		H10001 /* PhospheneToast.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20001; };
+		H10002 /* PlaybackChromeViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20002; };
+		H10003 /* ToastManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20003; };
+		H10004 /* EndSessionConfirmViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20004; };
+		H10005 /* DefaultPlaybackActionRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20005; };
+		H10006 /* PlaybackShortcutRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20006; };
+		H10007 /* PlaybackKeyMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20007; };
+		H10008 /* FullscreenObserver.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20008; };
+		H10009 /* DisplayManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20009; };
+		H10010 /* LiveAdaptationToastBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20010; };
+		H10011 /* MultiDisplayToastBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20011; };
+		H10012 /* OverlayBackdropStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20012; };
+		H10013 /* TrackInfoCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20013; };
+		H10014 /* SessionProgressDotsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20014; };
+		H10015 /* PlaybackControlsCluster.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20015; };
+		H10016 /* ListeningBadgeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20016; };
+		H10017 /* PlaybackChromeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20017; };
+		H10018 /* ShortcutHelpOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20018; };
+		H10019 /* ToastView.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20019; };
+		H10020 /* ToastContainerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20020; };
+		H10021 /* TrackChangeAnimationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20021; };
+		H10030 /* PlaybackChromeViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20030; };
+		H10031 /* PlaybackShortcutRegistryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20031; };
+		H10032 /* DefaultPlaybackActionRouterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20032; };
+		H10033 /* EndSessionConfirmViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20033; };
+		H10034 /* ToastManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20034; };
+		H10035 /* LiveAdaptationToastBridgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20035; };
+		H10036 /* FullscreenObserverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20036; };
+		H10037 /* DisplayManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20037; };
+		H10038 /* MultiDisplayToastBridgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20038; };
+		H10039 /* EscBehaviorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20039; };
+		H10040 /* PlaybackViewIdentifierTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20040; };
+		/* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		A20001 /* PhospheneApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhospheneApp.swift; sourceTree = "<group>"; };
@@ -161,7 +193,39 @@
 		G20022 /* PlanPreviewViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanPreviewViewModelTests.swift; sourceTree = "<group>"; };
 		G20023 /* PlanPreviewRegenerateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanPreviewRegenerateTests.swift; sourceTree = "<group>"; };
 		G20024 /* ReadyViewTimeoutIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadyViewTimeoutIntegrationTests.swift; sourceTree = "<group>"; };
-/* End PBXFileReference section */
+		H20001 /* PhospheneToast.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhospheneToast.swift; sourceTree = "<group>"; };
+		H20002 /* PlaybackChromeViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackChromeViewModel.swift; sourceTree = "<group>"; };
+		H20003 /* ToastManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToastManager.swift; sourceTree = "<group>"; };
+		H20004 /* EndSessionConfirmViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EndSessionConfirmViewModel.swift; sourceTree = "<group>"; };
+		H20005 /* DefaultPlaybackActionRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DefaultPlaybackActionRouter.swift; sourceTree = "<group>"; };
+		H20006 /* PlaybackShortcutRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackShortcutRegistry.swift; sourceTree = "<group>"; };
+		H20007 /* PlaybackKeyMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackKeyMonitor.swift; sourceTree = "<group>"; };
+		H20008 /* FullscreenObserver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FullscreenObserver.swift; sourceTree = "<group>"; };
+		H20009 /* DisplayManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisplayManager.swift; sourceTree = "<group>"; };
+		H20010 /* LiveAdaptationToastBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveAdaptationToastBridge.swift; sourceTree = "<group>"; };
+		H20011 /* MultiDisplayToastBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultiDisplayToastBridge.swift; sourceTree = "<group>"; };
+		H20012 /* OverlayBackdropStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayBackdropStyle.swift; sourceTree = "<group>"; };
+		H20013 /* TrackInfoCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackInfoCardView.swift; sourceTree = "<group>"; };
+		H20014 /* SessionProgressDotsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionProgressDotsView.swift; sourceTree = "<group>"; };
+		H20015 /* PlaybackControlsCluster.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackControlsCluster.swift; sourceTree = "<group>"; };
+		H20016 /* ListeningBadgeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListeningBadgeView.swift; sourceTree = "<group>"; };
+		H20017 /* PlaybackChromeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackChromeView.swift; sourceTree = "<group>"; };
+		H20018 /* ShortcutHelpOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutHelpOverlayView.swift; sourceTree = "<group>"; };
+		H20019 /* ToastView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToastView.swift; sourceTree = "<group>"; };
+		H20020 /* ToastContainerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToastContainerView.swift; sourceTree = "<group>"; };
+		H20021 /* TrackChangeAnimationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackChangeAnimationView.swift; sourceTree = "<group>"; };
+		H20030 /* PlaybackChromeViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackChromeViewModelTests.swift; sourceTree = "<group>"; };
+		H20031 /* PlaybackShortcutRegistryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackShortcutRegistryTests.swift; sourceTree = "<group>"; };
+		H20032 /* DefaultPlaybackActionRouterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DefaultPlaybackActionRouterTests.swift; sourceTree = "<group>"; };
+		H20033 /* EndSessionConfirmViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EndSessionConfirmViewModelTests.swift; sourceTree = "<group>"; };
+		H20034 /* ToastManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToastManagerTests.swift; sourceTree = "<group>"; };
+		H20035 /* LiveAdaptationToastBridgeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveAdaptationToastBridgeTests.swift; sourceTree = "<group>"; };
+		H20036 /* FullscreenObserverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FullscreenObserverTests.swift; sourceTree = "<group>"; };
+		H20037 /* DisplayManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisplayManagerTests.swift; sourceTree = "<group>"; };
+		H20038 /* MultiDisplayToastBridgeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultiDisplayToastBridgeTests.swift; sourceTree = "<group>"; };
+		H20039 /* EscBehaviorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EscBehaviorTests.swift; sourceTree = "<group>"; };
+		H20040 /* PlaybackViewIdentifierTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackViewIdentifierTests.swift; sourceTree = "<group>"; };
+		/* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		A30001 /* Frameworks */ = {
@@ -216,6 +280,7 @@
 				A20040 /* VisualizerEngine+Orchestrator.swift */,
 				A20022 /* MusicKitFetcher.swift */,
 				D40001 /* Permissions */,
+				H40001 /* Models */,
 				C40001 /* ViewModels */,
 				A40005 /* Views */,
 				E40001 /* Services */,
@@ -235,6 +300,9 @@
 				F20003 /* PreparationProgressViewModel.swift */,
 				G20001 /* ReadyViewModel.swift */,
 				G20002 /* PlanPreviewViewModel.swift */,
+				H20002 /* PlaybackChromeViewModel.swift */,
+				H20003 /* ToastManager.swift */,
+				H20004 /* EndSessionConfirmViewModel.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -290,6 +358,13 @@
 				F20004 /* PreparationETAEstimator.swift */,
 				G20003 /* FirstAudioDetector.swift */,
 				G20004 /* PresetPreviewController.swift */,
+				H20005 /* DefaultPlaybackActionRouter.swift */,
+				H20006 /* PlaybackShortcutRegistry.swift */,
+				H20007 /* PlaybackKeyMonitor.swift */,
+				H20008 /* FullscreenObserver.swift */,
+				H20009 /* DisplayManager.swift */,
+				H20010 /* LiveAdaptationToastBridge.swift */,
+				H20011 /* MultiDisplayToastBridge.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -329,7 +404,19 @@
 		};
 		C40006 /* Playback */ = {
 			isa = PBXGroup;
-			children = (C20006 /* PlaybackView.swift */);
+			children = (
+				C20006 /* PlaybackView.swift */,
+				H20012 /* OverlayBackdropStyle.swift */,
+				H20013 /* TrackInfoCardView.swift */,
+				H20014 /* SessionProgressDotsView.swift */,
+				H20015 /* PlaybackControlsCluster.swift */,
+				H20016 /* ListeningBadgeView.swift */,
+				H20017 /* PlaybackChromeView.swift */,
+				H20018 /* ShortcutHelpOverlayView.swift */,
+				H20019 /* ToastView.swift */,
+				H20020 /* ToastContainerView.swift */,
+				H20021 /* TrackChangeAnimationView.swift */,
+			);
 			path = Playback;
 			sourceTree = "<group>";
 		};
@@ -381,11 +468,30 @@
 				G20022 /* PlanPreviewViewModelTests.swift */,
 				G20023 /* PlanPreviewRegenerateTests.swift */,
 				G20024 /* ReadyViewTimeoutIntegrationTests.swift */,
+				H20030 /* PlaybackChromeViewModelTests.swift */,
+				H20031 /* PlaybackShortcutRegistryTests.swift */,
+				H20032 /* DefaultPlaybackActionRouterTests.swift */,
+				H20033 /* EndSessionConfirmViewModelTests.swift */,
+				H20034 /* ToastManagerTests.swift */,
+				H20035 /* LiveAdaptationToastBridgeTests.swift */,
+				H20036 /* FullscreenObserverTests.swift */,
+				H20037 /* DisplayManagerTests.swift */,
+				H20038 /* MultiDisplayToastBridgeTests.swift */,
+				H20039 /* EscBehaviorTests.swift */,
+				H20040 /* PlaybackViewIdentifierTests.swift */,
 			);
 			path = PhospheneAppTests;
 			sourceTree = "<group>";
 		};
-/* End PBXGroup section */
+		H40001 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				H20001 /* PhospheneToast.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		/* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
 		A50001 /* PhospheneApp */ = {
@@ -510,6 +616,27 @@
 				G10002 /* PlanPreviewViewModel.swift in Sources */,
 				G10003 /* FirstAudioDetector.swift in Sources */,
 				G10004 /* PresetPreviewController.swift in Sources */,
+				H10001 /* PhospheneToast.swift in Sources */,
+				H10002 /* PlaybackChromeViewModel.swift in Sources */,
+				H10003 /* ToastManager.swift in Sources */,
+				H10004 /* EndSessionConfirmViewModel.swift in Sources */,
+				H10005 /* DefaultPlaybackActionRouter.swift in Sources */,
+				H10006 /* PlaybackShortcutRegistry.swift in Sources */,
+				H10007 /* PlaybackKeyMonitor.swift in Sources */,
+				H10008 /* FullscreenObserver.swift in Sources */,
+				H10009 /* DisplayManager.swift in Sources */,
+				H10010 /* LiveAdaptationToastBridge.swift in Sources */,
+				H10011 /* MultiDisplayToastBridge.swift in Sources */,
+				H10012 /* OverlayBackdropStyle.swift in Sources */,
+				H10013 /* TrackInfoCardView.swift in Sources */,
+				H10014 /* SessionProgressDotsView.swift in Sources */,
+				H10015 /* PlaybackControlsCluster.swift in Sources */,
+				H10016 /* ListeningBadgeView.swift in Sources */,
+				H10017 /* PlaybackChromeView.swift in Sources */,
+				H10018 /* ShortcutHelpOverlayView.swift in Sources */,
+				H10019 /* ToastView.swift in Sources */,
+				H10020 /* ToastContainerView.swift in Sources */,
+				H10021 /* TrackChangeAnimationView.swift in Sources */,
 				G10005 /* ReadyPulsingBorder.swift in Sources */,
 				G10006 /* ReadyBackgroundPresetView.swift in Sources */,
 				G10007 /* PlanPreviewView.swift in Sources */,
@@ -538,6 +665,17 @@
 				G10022 /* PlanPreviewViewModelTests.swift in Sources */,
 				G10023 /* PlanPreviewRegenerateTests.swift in Sources */,
 				G10024 /* ReadyViewTimeoutIntegrationTests.swift in Sources */,
+				H10030 /* PlaybackChromeViewModelTests.swift in Sources */,
+				H10031 /* PlaybackShortcutRegistryTests.swift in Sources */,
+				H10032 /* DefaultPlaybackActionRouterTests.swift in Sources */,
+				H10033 /* EndSessionConfirmViewModelTests.swift in Sources */,
+				H10034 /* ToastManagerTests.swift in Sources */,
+				H10035 /* LiveAdaptationToastBridgeTests.swift in Sources */,
+				H10036 /* FullscreenObserverTests.swift in Sources */,
+				H10037 /* DisplayManagerTests.swift in Sources */,
+				H10038 /* MultiDisplayToastBridgeTests.swift in Sources */,
+				H10039 /* EscBehaviorTests.swift in Sources */,
+				H10040 /* PlaybackViewIdentifierTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
