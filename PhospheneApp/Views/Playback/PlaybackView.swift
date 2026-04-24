@@ -1,107 +1,211 @@
-// PlaybackView — Shown when SessionManager.state == .playing.
-// Absorbs the full MetalView + overlay chrome from the pre-U.1 ContentView verbatim.
-// U.6 adds auto-hiding overlay chrome and keyboard shortcut polish.
+// PlaybackView — Shown when SessionManager.state == .playing (U.6 rewrite).
+//
+// Layer stack (bottom to top):
+//   1. MetalView — full-bleed render surface
+//   2. TrackChangeAnimationView — center-to-top-left boundary animation
+//   3. PlaybackChromeView — auto-hiding overlay chrome (track card, progress, badge, toasts)
+//   4. ShortcutHelpOverlayView — Shift+?
+//   5. DebugOverlayView — D key (developer only)
+//   6. End-session confirm dialog — Esc
+//
+// Publisher-injection pattern: ContentView passes engine.$xxx.eraseToAnyPublisher()
+// at callsite, same as ReadyView. PlaybackView creates @StateObjects from the injected
+// publishers at init time. PlaybackKeyMonitor replaces all .onKeyPress handlers.
 
+import AppKit
+import Audio
+import Combine
+import Orchestrator
 import Renderer
+import Session
+import Shared
 import SwiftUI
 
 // MARK: - PlaybackView
 
-/// Full-bleed Metal visualizer with preset name badge, audio signal badge,
-/// and debug overlay. Keyboard shortcuts: right/space = next preset,
-/// left = previous, D = debug, C = capture, R = MIR record, G = G-buffer.
+/// Full-bleed Metal visualizer with auto-hiding chrome, keyboard shortcuts, and toasts.
 @MainActor
 struct PlaybackView: View {
+
     static let accessibilityID = "phosphene.view.playing"
 
+    // MARK: - Injected
+
     @EnvironmentObject private var engine: VisualizerEngine
-    @FocusState private var isFocused: Bool
+    private let onEndSession: () -> Void
+    private let reduceMotion: Bool
+
+    // MARK: - Owned (publisher-injected @StateObjects)
+
+    @StateObject private var chromeVM: PlaybackChromeViewModel
+    @StateObject private var toastManager = ToastManager()
+    @StateObject private var endSessionVM: EndSessionConfirmViewModel
+
+    // MARK: - View State
+
+    @State private var showDebug: Bool = false
+    @State private var showHelp: Bool = false
+    @State private var showPlanPreview: Bool = false
+    @State private var currentRegistry: PlaybackShortcutRegistry?
+    @State private var keyMonitor = PlaybackKeyMonitor()
+    @State private var fullscreenObserver = FullscreenObserver()
+    @State private var actionRouter: DefaultPlaybackActionRouter?
+    @State private var silenceBridge: SilenceToastBridge?
+    @State private var displayManager: DisplayManager?
+    @State private var multiDisplayBridge: MultiDisplayToastBridge?
+
+    @Namespace private var trackAnimNamespace
+
+    // MARK: - Init
+
+    init(
+        sessionManager: SessionManager,
+        audioSignalStatePublisher: AnyPublisher<AudioSignalState, Never>,
+        currentTrackPublisher: AnyPublisher<TrackMetadata?, Never>,
+        currentPresetNamePublisher: AnyPublisher<String?, Never>,
+        livePlanPublisher: AnyPublisher<PlannedSession?, Never>,
+        onEndSession: @escaping () -> Void,
+        reduceMotion: Bool
+    ) {
+        self.onEndSession = onEndSession
+        self.reduceMotion = reduceMotion
+        _chromeVM = StateObject(wrappedValue: PlaybackChromeViewModel(
+            audioSignalStatePublisher: audioSignalStatePublisher,
+            currentTrackPublisher: currentTrackPublisher,
+            currentPresetNamePublisher: currentPresetNamePublisher,
+            livePlanPublisher: livePlanPublisher
+        ))
+        _endSessionVM = StateObject(wrappedValue: EndSessionConfirmViewModel(
+            sessionManager: sessionManager
+        ))
+    }
+
+    // MARK: - Body
 
     var body: some View {
         ZStack {
+            // Layer 1: Metal render
             MetalView(context: engine.context, pipeline: engine.pipeline)
 
-            if let name = engine.currentPresetName {
-                Text(name)
-                    .font(.system(size: 14, weight: .medium, design: .monospaced))
-                    .foregroundColor(.white.opacity(0.7))
-                    .padding(8)
-                    .background(.black.opacity(0.4))
-                    .cornerRadius(6)
-                    .padding(12)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    .transition(.opacity)
-                    .allowsHitTesting(false)
+            // Layer 2: Track-change center animation
+            TrackChangeAnimationView(
+                trackInfo: chromeVM.currentTrack,
+                reduceMotion: reduceMotion,
+                namespace: trackAnimNamespace
+            )
+
+            // Layer 3: Chrome overlay
+            PlaybackChromeView(
+                viewModel: chromeVM,
+                toastManager: toastManager,
+                onEndSession: { endSessionVM.requestEnd() }
+            )
+
+            // Layer 4: Shortcut help overlay
+            if showHelp, let registry = currentRegistry {
+                ShortcutHelpOverlayView(
+                    shortcuts: registry.shortcuts,
+                    onDismiss: { showHelp = false }
+                )
             }
 
-            if engine.audioSignalState == .silent {
-                NoAudioSignalBadge()
-            }
-
-            if engine.showDebugOverlay {
+            // Layer 5: Debug overlay
+            if showDebug {
                 DebugOverlayView(engine: engine)
             }
         }
-        .focusable()
-        .focused($isFocused)
         .frame(minWidth: 800, minHeight: 600)
         .accessibilityIdentifier(Self.accessibilityID)
-        .onAppear {
-            engine.startAudio()
-            isFocused = true
+        .confirmationDialog(
+            "End this session?",
+            isPresented: $endSessionVM.isPresented,
+            titleVisibility: .visible
+        ) {
+            Button("End session", role: .destructive) { endSessionVM.confirm() }
+            Button("Cancel", role: .cancel) { endSessionVM.cancel() }
+        } message: {
+            Text("The visualizer session will stop.")
         }
-        .onKeyPress(.rightArrow) {
-            engine.nextPreset()
-            return .handled
+        .onContinuousHover { phase in
+            if case .active = phase { chromeVM.onActivity() }
         }
-        .onKeyPress(.leftArrow) {
-            engine.previousPreset()
-            return .handled
-        }
-        .onKeyPress(.space) {
-            engine.nextPreset()
-            return .handled
-        }
-        .onKeyPress("d") {
-            engine.toggleDebugOverlay()
-            return .handled
-        }
-        .onKeyPress("c") {
-            engine.toggleCapture()
-            return .handled
-        }
-        .onKeyPress("r") {
-            engine.toggleRecording()
-            return .handled
-        }
-        .onKeyPress("g") {
-            engine.debugGBufferMode.toggle()
-            return .handled
+        .onAppear { setup() }
+        .onDisappear { teardown() }
+        .sheet(isPresented: $showPlanPreview) {
+            PlanPreviewView(
+                initialPlan: engine.livePlannedSession,
+                planPublisher: engine.$livePlannedSession.eraseToAnyPublisher(),
+                onRegenerate: { @MainActor lockedTracks, lockedPresets in
+                    engine.regeneratePlan(lockedTracks: lockedTracks, lockedPresets: lockedPresets)
+                }
+            )
         }
     }
-}
 
-// MARK: - NoAudioSignalBadge
+    // MARK: - Setup / Teardown
 
-/// Non-intrusive badge shown when the audio tap is delivering silence —
-/// the typical symptom of DRM-triggered silencing on protected streams.
-/// Auto-dismissed when the signal recovers (driven by `engine.audioSignalState`).
-private struct NoAudioSignalBadge: View {
-    var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "speaker.slash.fill")
-                .font(.system(size: 11))
-            Text("No audio signal")
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
+    private func setup() {
+        engine.startAudio()
+
+        // Build action router
+        let router = DefaultPlaybackActionRouter(sessionManager: engine.sessionManager)
+        actionRouter = router
+
+        // Fullscreen + display management
+        if let window = NSApp.keyWindow {
+            fullscreenObserver.attach(to: window)
+            let dm = DisplayManager(fullscreenObserver: fullscreenObserver)
+            dm.attach(to: window)
+            displayManager = dm
+            multiDisplayBridge = MultiDisplayToastBridge(toastManager: toastManager, displayManager: dm)
         }
-        .foregroundColor(.white.opacity(0.85))
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(.black.opacity(0.5))
-        .cornerRadius(6)
-        .padding(12)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-        .transition(.opacity)
-        .allowsHitTesting(false)
+
+        // Silence degradation toast
+        silenceBridge = SilenceToastBridge(
+            audioSignalStatePublisher: engine.$audioSignalState.eraseToAnyPublisher(),
+            toastManager: toastManager
+        )
+
+        // Build registry — closures capture weak refs to avoid retain cycles
+        let registry = buildRegistry(router: router)
+        currentRegistry = registry
+        keyMonitor.install(registry: registry)
+    }
+
+    private func teardown() {
+        keyMonitor.uninstall()
+        fullscreenObserver.detach()
+    }
+
+    // MARK: - Registry factory
+
+    private func buildRegistry(router: DefaultPlaybackActionRouter) -> PlaybackShortcutRegistry {
+        PlaybackShortcutRegistry(
+            actionRouter: router,
+            onToggleFullscreen: { [weak fo = self.fullscreenObserver] in
+                fo?.toggleFullscreen()
+            },
+            onMoveToSecondaryDisplay: { [weak dm = self.displayManager] in
+                if let dm {
+                    dm.moveToSecondaryDisplay()
+                }
+            },
+            onToggleOverlay: { [weak chromeVM] in
+                chromeVM?.toggleOverlay()
+            },
+            onToggleDebug: { [weak engine = self.engine] in
+                engine?.toggleDebugOverlay()
+                showDebug.toggle()
+            },
+            onHandleEsc: { [weak fo = self.fullscreenObserver] in
+                if fo?.isFullscreen == true {
+                    fo?.toggleFullscreen()
+                } else {
+                    endSessionVM.requestEnd()
+                }
+            },
+            onShowHelp: { showHelp = true },
+            onShowPlanPreview: { showPlanPreview = true }
+        )
     }
 }

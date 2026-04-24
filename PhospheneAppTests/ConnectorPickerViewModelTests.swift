@@ -65,8 +65,8 @@ struct ConnectorPickerViewTests {
 
     @Test("ConnectorType rawValue is stable")
     func connectorTypeRawValues() {
-        #expect(ConnectorType.appleMusic.rawValue  == "apple_music")
-        #expect(ConnectorType.spotify.rawValue     == "spotify")
+        #expect(ConnectorType.appleMusic.rawValue == "apple_music")
+        #expect(ConnectorType.spotify.rawValue == "spotify")
         #expect(ConnectorType.localFolder.rawValue == "local_folder")
     }
 

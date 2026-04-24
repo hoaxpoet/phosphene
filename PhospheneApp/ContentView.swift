@@ -57,10 +57,23 @@ struct ContentView: View {
         case .ready:
             readyView
         case .playing:
-            PlaybackView()
+            playbackView
         case .ended:
             EndedView()
         }
+    }
+
+    @ViewBuilder
+    private var playbackView: some View {
+        PlaybackView(
+            sessionManager: engine.sessionManager,
+            audioSignalStatePublisher: engine.$audioSignalState.eraseToAnyPublisher(),
+            currentTrackPublisher: engine.$currentTrack.eraseToAnyPublisher(),
+            currentPresetNamePublisher: engine.$currentPresetName.eraseToAnyPublisher(),
+            livePlanPublisher: engine.$livePlannedSession.eraseToAnyPublisher(),
+            onEndSession: { engine.sessionManager.endSession() },
+            reduceMotion: viewModel.reduceMotion
+        )
     }
 
     @ViewBuilder

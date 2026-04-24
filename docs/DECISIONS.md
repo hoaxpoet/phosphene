@@ -752,3 +752,15 @@ Without OAuth (deferred to v2), `PlaylistConnector.connect()` immediately throws
 **Context:** U.5 Part C specifies a 10-second looping preset preview triggered by tapping a row in `PlanPreviewView`. The implementation requires: (1) injecting a synthetic `FeatureVector` into the active `RenderPipeline`; (2) a secondary render surface (or background-preset hijack); (3) a loop mechanism that runs without live audio callbacks. All three require engine-layer changes disjoint from the UX work in U.5.
 
 **Decision:** Defer Part C to a standalone Increment U.5b. A `PresetPreviewController` stub is added now — all methods log and no-op — so `PlanPreviewViewModel.previewRow(_:)` and the row-tap handler in `PlanPreviewRowView` compile and have a stable call site. U.5b can swap in a real implementation without touching PlanPreviewViewModel or any view. The context-menu "Swap preset" action is disabled with a `TODO(U.5.C)` comment. The `ReadyView` and plan preview ship correctly without Part C; the feature is a non-blocking enhancement.
+
+---
+
+## D-049 — Shift+? for shortcut help overlay; P for plan preview (Increment U.6)
+
+**Status:** Accepted (2026-04-24)
+
+**Context:** UX_SPEC §7.4 lists `?` as the key for the plan-preview overlay. §7.7 separately lists `Shift+?` for the shortcut help overlay. On a US keyboard, `?` requires Shift — so a bare `?` binding and a `Shift+?` binding are physically the same keystroke. `NSEvent.charactersIgnoringModifiers` returns `?` regardless of Shift on US layout, making these bindings ambiguous.
+
+**Decision:** Resolve the ambiguity by splitting the two bindings: `Shift+?` opens the shortcut help overlay (`ShortcutHelpOverlayView`); `P` opens the plan preview sheet. `PlaybackShortcutRegistry.matches(event:)` compares `event.charactersIgnoringModifiers.lowercased()` against the shortcut's `key` field and compares `event.modifierFlags` exactly — so `Shift+?` matches `{key: "?", modifiers: [.shift]}` correctly. The `P` binding for plan preview is a deviation from UX_SPEC §7.4 and is noted here for the record; UX_SPEC should be updated to match in the next spec revision.
+
+**Rejected alternative:** Distinguish `?` from `Shift+?` by reading `event.characters` (Shift-modified) vs `event.charactersIgnoringModifiers` — brittle, keyboard-layout-dependent, and breaks on non-US layouts. The explicit modifier flag check is unambiguous on all layouts.
