@@ -62,6 +62,23 @@ final class ToastManager: ObservableObject {
         visibleToasts.removeAll { $0.id == id }
     }
 
+    /// Dismiss all visible toasts that share the given `conditionID`.
+    ///
+    /// Called by `PlaybackErrorBridge` when a condition (e.g. silence) clears.
+    func dismissByCondition(_ conditionID: String) {
+        let matching = visibleToasts.filter { $0.conditionID == conditionID }
+        for toast in matching {
+            dismiss(id: toast.id)
+        }
+    }
+
+    /// Returns true if any visible toast carries the given `conditionID`.
+    ///
+    /// Used by bridges to avoid enqueuing a duplicate condition toast.
+    func isConditionAsserted(_ conditionID: String) -> Bool {
+        visibleToasts.contains { $0.conditionID == conditionID }
+    }
+
     // MARK: - Private
 
     private func dropOldest() {

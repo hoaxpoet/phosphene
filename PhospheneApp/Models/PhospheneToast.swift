@@ -52,6 +52,10 @@ struct PhospheneToast: Identifiable, Equatable, Sendable {
     let source: Source
     /// Optional inline action button.
     let action: ToastAction?
+    /// Stable identifier for condition-bound toasts.
+    /// `ToastManager.dismissByCondition(_:)` removes toasts sharing this ID
+    /// when the underlying condition clears (e.g. silence resolves).
+    let conditionID: String?
 
     // MARK: - Init
 
@@ -61,7 +65,8 @@ struct PhospheneToast: Identifiable, Equatable, Sendable {
         copy: String,
         duration: TimeInterval = 4,
         source: Source = .generic,
-        action: ToastAction? = nil
+        action: ToastAction? = nil,
+        conditionID: String? = nil
     ) {
         self.id = id
         self.severity = severity
@@ -69,5 +74,6 @@ struct PhospheneToast: Identifiable, Equatable, Sendable {
         self.duration = duration
         self.source = source
         self.action = action
+        self.conditionID = conditionID
     }
 }

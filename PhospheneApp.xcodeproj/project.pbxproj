@@ -123,6 +123,11 @@
 		I10008 /* LocalizedCopyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = I20008; };
 		I10009 /* PreparationErrorViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = I20009; };
 		I10010 /* ReachabilityMonitorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = I20010; };
+		J10001 /* PlaybackErrorConditionTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = J20001; };
+		J10002 /* PlaybackErrorBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = J20002; };
+		J10003 /* PlaybackErrorConditionTrackerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = J20003; };
+		J10004 /* PlaybackErrorBridgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = J20004; };
+		J10005 /* ToastManagerConditionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = J20005; };
 		/* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -245,6 +250,11 @@
 		I20008 /* LocalizedCopyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizedCopyTests.swift; sourceTree = "<group>"; };
 		I20009 /* PreparationErrorViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreparationErrorViewModelTests.swift; sourceTree = "<group>"; };
 		I20010 /* ReachabilityMonitorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReachabilityMonitorTests.swift; sourceTree = "<group>"; };
+		J20001 /* PlaybackErrorConditionTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackErrorConditionTracker.swift; sourceTree = "<group>"; };
+		J20002 /* PlaybackErrorBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackErrorBridge.swift; sourceTree = "<group>"; };
+		J20003 /* PlaybackErrorConditionTrackerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackErrorConditionTrackerTests.swift; sourceTree = "<group>"; };
+		J20004 /* PlaybackErrorBridgeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackErrorBridgeTests.swift; sourceTree = "<group>"; };
+		J20005 /* ToastManagerConditionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToastManagerConditionTests.swift; sourceTree = "<group>"; };
 		/* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -401,6 +411,8 @@
 				H20011 /* MultiDisplayToastBridge.swift */,
 				I20001 /* LocalizedCopy.swift */,
 				I20002 /* ReachabilityMonitor.swift */,
+				J20001 /* PlaybackErrorConditionTracker.swift */,
+				J20002 /* PlaybackErrorBridge.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -520,6 +532,9 @@
 				I20008 /* LocalizedCopyTests.swift */,
 				I20009 /* PreparationErrorViewModelTests.swift */,
 				I20010 /* ReachabilityMonitorTests.swift */,
+				J20003 /* PlaybackErrorConditionTrackerTests.swift */,
+				J20004 /* PlaybackErrorBridgeTests.swift */,
+				J20005 /* ToastManagerConditionTests.swift */,
 			);
 			path = PhospheneAppTests;
 			sourceTree = "<group>";
@@ -690,6 +705,8 @@
 				I10004 /* FullScreenErrorView.swift in Sources */,
 				I10005 /* TopBannerView.swift in Sources */,
 				I10006 /* PreparationFailureView.swift in Sources */,
+				J10001 /* PlaybackErrorConditionTracker.swift in Sources */,
+				J10002 /* PlaybackErrorBridge.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -727,6 +744,9 @@
 				I10008 /* LocalizedCopyTests.swift in Sources */,
 				I10009 /* PreparationErrorViewModelTests.swift in Sources */,
 				I10010 /* ReachabilityMonitorTests.swift in Sources */,
+				J10003 /* PlaybackErrorConditionTrackerTests.swift in Sources */,
+				J10004 /* PlaybackErrorBridgeTests.swift in Sources */,
+				J10005 /* ToastManagerConditionTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
