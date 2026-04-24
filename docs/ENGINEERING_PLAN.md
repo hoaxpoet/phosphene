@@ -879,6 +879,30 @@ AppleMusicConnectionViewModelTests×5 + identifier, SpotifyConnectionViewModelTe
 
 ---
 
+### Increment U.6b — Live adaptation keyboard shortcut semantics
+
+**Scope:** Wire the seven `PlaybackActionRouter` methods stubbed in U.6. All methods currently log `TODO(U.6b)` and return. Full semantics per the spec in `DefaultPlaybackActionRouter.swift`:
+
+- `moreLikeThis()` — freeze current preset family weight at +0.3 for the remainder of the session; calls `LiveAdapter.applyMoodOverride` with boosted `stemAffinity` for current family.
+- `lessLikeThis()` — add current preset to a session-local exclusion list; trigger immediate transition via `LiveAdapter`.
+- `reshuffleUpcoming()` — call `VisualizerEngine.regeneratePlan(lockedTracks: currentLockedTracks, lockedPresets: currentLockedPresets)` preserving user locks.
+- `presetNudge(.next, immediate: false)` — `LiveAdapter` schedules transition at next structural boundary; `(.next, immediate: true)` cuts immediately; `.previous` replays the last preset.
+- `rePlanSession()` — full `regeneratePlan()` call with new random seed; shows plan-preview sheet (same as `P` key).
+- `undoLastAdaptation()` — restore the `LiveAdapter` patch before the most recent `applyLiveUpdate(_:at:)` call; uses `PlannedSession.applying(_:at:)` inverse.
+- `toggleMoodLock()` — already implemented; freezes valence/arousal at current values so mood-driven adaptation pauses.
+
+**Dependencies:** `DefaultLiveAdapter` (Increment 4.5, complete), `VisualizerEngine+Orchestrator` (complete), `LiveAdaptationToastBridge` (U.6, complete — just needs the TODO gates replaced with real calls).
+
+**Done when:**
+- All seven `PlaybackActionRouter` methods produce observable engine state changes verified by unit tests.
+- `DefaultPlaybackActionRouter` no longer contains any `TODO(U.6b)` log lines (except `toggleMoodLock`, already wired).
+- `LiveAdaptationToastBridge.UserDefaults` gate is set to `true` by default (was `false` in U.6 to avoid noise before adaptation semantics land).
+- 8+ unit tests for the adaptation actions.
+
+**Verify:** `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' test`
+
+---
+
 ### Increment U.7 — Error taxonomy + toast system
 
 **Scope:** `UserFacingError` typed enum and `ErrorToast` view component per `UX_SPEC.md §8`. Every row in the UX_SPEC error tables (§8.1–§8.4) has a corresponding enum case with copy test. All user-facing strings externalized in `Localizable.strings`. `PlaybackView` bottom-right toast slot for degradation messages (silence detection, preview fallback, sample-rate mismatch, etc.). Full-screen error states for connection / preparation failures.
