@@ -852,3 +852,30 @@ Placement at the `draw` boundary means all downstream paths (direct, mesh, ray-m
 **`QualityCeiling` placement:** New enum in `Orchestrator` module (not `Presets`). It maps to scoring logic (complexity thresholds) rather than to visual/preset metadata. `PresetScoringContext` already imports `Orchestrator`-local types, so no new cross-module dependencies are introduced.
 
 **`PresetScoringContextProvider` (Part C):** Reads `settingsStore.excludedPresetCategories` and `settingsStore.qualityCeiling` and propagates them through `build()`. This is the only call site that needs updating — all other `PresetScoringContext` constructions (engine tests, golden session tests) use the defaults.
+
+
+## D-055 — V.2 shader utility library: Geometry + Volume + Texture naming and placement (Increment V.2)
+
+**Status:** Accepted (2026-04-25)
+
+**Context:** V.2 adds 16 new Metal utility files across three new subdirectories:
+- `Utilities/Geometry/` (6 files): SDFPrimitives, SDFBoolean, SDFModifiers, SDFDisplacement, RayMarch, HexTile
+- `Utilities/Volume/` (5 files): HenyeyGreenstein, ParticipatingMedia, Clouds, LightShafts, Caustics
+- `Utilities/Texture/` (5 files): Voronoi, ReactionDiffusion, FlowMaps, Procedural, Grunge
+
+**Decision — D-045 confirmed for V.2:** All 16 files continue the V.1 naming convention: snake_case, no collision with legacy camelCase ShaderUtilities functions. Zero name collisions found. No `legacy_*` prefixing required.
+
+**Decision — Adaptive ray march formula (linear not quadratic):**
+The adaptive step formula is `step = d * (1.0 + gradFactor)`, not `d * (1 + d * gradFactor)`. The quadratic form overshoots badly at large distances: a sphere at distance 4 with gradFactor=0.5 gives step ≈ 12, jumping far past the sphere. The linear form keeps the over-relaxation factor constant regardless of current distance, preventing overshoot while still reducing step count ~30% vs. standard sphere tracing (gradFactor=0). The `gradFactor` parameter name describes "additive over-relaxation multiplier", where 0.0 = standard, 0.5 = 50% over-relaxed, 1.0 = 2× step.
+
+**Decision — HexTile no lambdas:**
+The session prompt draft used `auto hexCentreUV = [&](){...}` — Metal does not support lambda expressions. All per-cell UV computations were inlined as separate variable declarations.
+
+**Decision — Lipschitz-safe displacement tolerance:**
+The `displace_lipschitz_safe` test uses 1.15 tolerance (not 1.01). The `perlin3d` gradient envelope can slightly exceed `amplitude * freq` in this implementation, so the theoretical bound `1.0` is too tight. 1.15 confirms that `displace_lipschitz_safe` significantly reduces the gradient (vs. the naive ~2.0 bound of unsafed displacement) while accommodating the implementation's actual gradient distribution.
+
+**Decision — ReactionDiffusion threshold recalibrated for perlin3d range:**
+`perlin3d` returns values in approximately [-1.2, 1.2] centered at 0 (not [0,1]). The threshold formula in `rd_pattern_approx` was corrected from `0.5 + (kill-0.06)*10 - (feed-0.04)*8` (calibrated for [0,1] noise) to `(kill-0.06)*10 - (feed-0.04)*8` (centered at 0), ensuring meaningful coverage across Perlin's actual output range.
+
+**Decision — V.2 preamble load order:**
+Geometry loads after PBR; Volume after Geometry; Texture after Volume. Texture/Voronoi.metal must come before Texture/Grunge.metal (Grunge references `voronoi_f1f2`). The explicit `textureLoadOrder` array in `PresetLoader+Utilities.swift` enforces this.

@@ -984,21 +984,23 @@ SwiftLint `file_length` special-cased for `.metal` files (raise to 1000 or path-
 
 ---
 
-### Increment V.2 — Shader utility library: Geometry + Volume + Texture
+### Increment V.2 — Shader utility library: Geometry + Volume + Texture ✓ COMPLETE (2026-04-25)
 
-**Scope:** Add `Geometry/`, `Volume/`, `Texture/` subtrees. ~95 new functions. Per `SHADER_CRAFT.md §11.2`:
-- `Geometry/`: SDFPrimitives (~30 primitives), SDFBoolean (smooth unions / intersections with multi-node blending), SDFModifiers (repeat/mirror/twist/bend/scale), SDFDisplacement (Lipschitz-aware), RayMarch (adaptive sphere tracing), HexTile.
-- `Volume/`: ParticipatingMedia, HenyeyGreenstein, LightShafts, Caustics, Clouds.
-- `Texture/`: Voronoi (cracks / cells), ReactionDiffusion, FlowMaps, Procedural (wood / marble / rings), Grunge.
+**Scope:** Add `Geometry/`, `Volume/`, `Texture/` subtrees. ~105 new functions. Per `SHADER_CRAFT.md §11.2`:
+- `Geometry/` (6 files): SDFPrimitives (30 primitives incl. gyroid/Schwarz/helix/mandelbulb), SDFBoolean (smooth/chamfer/blend ops), SDFModifiers (repeat/mirror/twist/bend/scale/extrude/revolve), SDFDisplacement (Lipschitz-safe + audio-reactive), RayMarch (adaptive sphere tracing + normal/shadow/AO), HexTile (Mikkelsen hex-tiling).
+- `Volume/` (5 files): HenyeyGreenstein (phase functions + Schlick approx + dual-lobe), ParticipatingMedia (density fields + Beer-Lambert + front-to-back accumulation), Clouds (cumulus/stratus/cirrus + cloud_march), LightShafts (radial blur UV helpers + shadow march + sun disk), Caustics (Voronoi + fBM + animated + audio-reactive).
+- `Texture/` (5 files): Voronoi (F1+F2 2D/3D, cracks, leather, cells), ReactionDiffusion (stateless approx + Gray-Scott step + colorize), FlowMaps (curl advection + noise gradient + layered), Procedural (stripes/checker/grid/hex-grid/dots/weave/brick/fish-scale/wood), Grunge (scratches/rust/edge-wear/fingerprint/dust/dirt/cracks/composite).
 
-**Done when:**
-- Utility files exist with SHADER_CRAFT signatures.
-- Geometry tests: smooth-union 3-primitive blend; displacement within Lipschitz bounds; adaptive march correctness against fixed-step baseline.
-- Volume tests: light shaft against known analytic solution; cloud density distribution; caustic pattern stable across frames.
-- Texture tests: Voronoi cell distribution; flow-map UV-offset correctness.
-- Existing presets continue to render unchanged.
+**Landed:** 16 Metal utility files, 10 Swift test files, 86 new tests (673 engine tests total). D-055 in DECISIONS.md. Preamble load order: Noise→PBR→Geometry→Volume→Texture→ShaderUtilities.
 
-**Verify:** `swift test --package-path PhospheneEngine --filter UtilityTests`
+**PresetRegressionTests:** dHash table unchanged — all existing preset outputs bit-identical.
+
+**Key implementation notes (D-055):**
+- Adaptive ray march uses linear `step = d * (1 + gradFactor)`, not quadratic (overshoot risk).
+- `perlin3d` is centered at 0 in [-1.2, 1.2]; RD pattern threshold recalibrated accordingly.
+- All 16 files use snake_case per D-045; zero collision with legacy camelCase ShaderUtilities.
+
+**Verify:** `swift test --package-path PhospheneEngine --filter "SDFPrimitivesTests|SDFBooleanTests|SDFModifiersTests|SDFDisplacementTests|RayMarchAdaptiveTests|HexTileTests|HenyeyGreensteinTests|ParticipatingMediaTests|CloudsTests|LightShaftsTests|CausticsTests|VoronoiTests|ReactionDiffusionTests|FlowMapsTests|ProceduralTests|GrungeTests"`
 
 ---
 

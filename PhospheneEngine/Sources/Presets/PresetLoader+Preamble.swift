@@ -14,13 +14,8 @@ extension PresetLoader {
     /// Shared Metal code prepended to every preset shader.
     /// Contains FeatureVector struct, VertexOut, fullscreen_vertex, color utilities,
     /// the Noise utility tree, the PBR utility tree, and ShaderUtilities.metal.
-    ///
-    /// Concatenation order:
-    ///   FeatureVector struct + vertex/fragment boilerplate
-    ///   → Utilities/Noise/ (Hash, Perlin, Simplex, FBM, RidgedMultifractal, Worley, DomainWarp, Curl, BlueNoise)
-    ///   → Utilities/PBR/ (Fresnel, NormalMapping, BRDF, Thin, DetailNormals, Triplanar, POM, SSS, Fiber)
-    ///   → ShaderUtilities.metal
-    ///   → constexpr sampler declarations
+    /// Concatenation: struct boilerplate → Noise (V.1) → PBR (V.1) → Geometry (V.2)
+    ///   → Volume (V.2) → Texture (V.2) → ShaderUtilities (legacy). LOCKED per D-055.
     static let shaderPreamble: String = {
         let structPreamble = """
         #include <metal_stdlib>
@@ -192,7 +187,6 @@ extension PresetLoader {
 
         var utilitySource = ""
 
-        // Noise and PBR utility trees (V.1). Located in Shaders/Utilities/.
         if let shadersURL = Bundle.module.url(forResource: "Shaders", withExtension: nil) {
             let startMs = Date().timeIntervalSinceReferenceDate
 
@@ -200,7 +194,13 @@ extension PresetLoader {
                 "Utilities/Noise", priorityOrder: noiseLoadOrder, from: shadersURL)
             let pbrSrc = loadUtilityDirectory(
                 "Utilities/PBR", priorityOrder: pbrLoadOrder, from: shadersURL)
-            utilitySource = noiseSrc + pbrSrc
+            let geometrySrc = loadUtilityDirectory(
+                "Utilities/Geometry", priorityOrder: geometryLoadOrder, from: shadersURL)
+            let volumeSrc = loadUtilityDirectory(
+                "Utilities/Volume", priorityOrder: volumeLoadOrder, from: shadersURL)
+            let textureSrc = loadUtilityDirectory(
+                "Utilities/Texture", priorityOrder: textureLoadOrder, from: shadersURL)
+            utilitySource = noiseSrc + pbrSrc + geometrySrc + volumeSrc + textureSrc
 
             let elapsedMs = (Date().timeIntervalSinceReferenceDate - startMs) * 1000
             preambleLogger.info("Utility trees loaded in \(String(format: "%.1f", elapsedMs)) ms (\(utilitySource.count) chars)")
