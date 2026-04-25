@@ -1334,9 +1334,9 @@ Runs in parallel with Phase V.7+ once Phase V.1–V.3 utilities are available.
 
 These milestones map to product-level outcomes, not implementation phases.
 
-**Milestone A — Trustworthy Playback Session.** A user can connect a playlist, obtain a usable prepared session, and complete a full listening session without instability. *Requires: ~~2.5.4~~ ✅, ~~Phase U increments U.1–U.7~~ ✅, progressive readiness basics (6.1).*
+**Milestone A — Trustworthy Playback Session.** ✅ **MET (2026-04-25).** A user can connect a playlist, obtain a usable prepared session, and complete a full listening session without instability. *Requires: ~~2.5.4~~ ✅, ~~Phase U increments U.1–U.7~~ ✅, ~~progressive readiness basics (6.1)~~ ✅.*
 
-**Milestone B — Tasteful Orchestration.** Preset choice and transitions are consistently better than random and pass golden-session tests. *Requires: Phase 4 complete, Increment 5.1.*
+**Milestone B — Tasteful Orchestration.** ✅ **MET (2026-04-25).** Preset choice and transitions are consistently better than random and pass golden-session tests. *Requires: ~~Phase 4 complete~~ ✅, ~~Increment 5.1~~ ✅ (landed as 4.0).*
 
 **Milestone C — Device-Aware Show Quality.** The same playlist produces an excellent show on M1 and a richer one on M4 without jank. *Requires: Phase 6 complete.*
 
