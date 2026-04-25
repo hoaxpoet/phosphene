@@ -28,6 +28,7 @@ struct ContentView: View {
     @StateObject var viewModel: SessionStateViewModel
     @EnvironmentObject private var permissionMonitor: PermissionMonitor
     @EnvironmentObject private var engine: VisualizerEngine
+    @EnvironmentObject private var accessibilityState: AccessibilityState
 
     init(viewModel: SessionStateViewModel) {
         self._viewModel = StateObject(wrappedValue: viewModel)
@@ -71,6 +72,7 @@ struct ContentView: View {
             currentTrackPublisher: engine.$currentTrack.eraseToAnyPublisher(),
             currentPresetNamePublisher: engine.$currentPresetName.eraseToAnyPublisher(),
             livePlanPublisher: engine.$livePlannedSession.eraseToAnyPublisher(),
+            reduceMotionPublisher: accessibilityState.$reduceMotion.eraseToAnyPublisher(),
             onEndSession: { engine.sessionManager.endSession() },
             reduceMotion: viewModel.reduceMotion
         )

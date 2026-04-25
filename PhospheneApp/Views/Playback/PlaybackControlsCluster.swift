@@ -29,7 +29,7 @@ struct PlaybackControlsCluster: View {
                 onSettings()
             } label: {
                 Image(systemName: "gearshape")
-                    .font(.system(size: 13))
+                    .font(.callout)
                     .foregroundColor(.white.opacity(0.7))
             }
             .buttonStyle(.plain)
@@ -40,7 +40,7 @@ struct PlaybackControlsCluster: View {
                 onEndSession()
             } label: {
                 Image(systemName: "xmark.circle")
-                    .font(.system(size: 13))
+                    .font(.callout)
                     .foregroundColor(.white.opacity(0.7))
             }
             .buttonStyle(.plain)

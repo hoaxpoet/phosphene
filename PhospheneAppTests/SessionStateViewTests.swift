@@ -38,14 +38,16 @@ struct SessionStateViewModelTests {
     @Test("mirrors initial SessionManager state")
     func mirrorsInitialState() throws {
         let manager = SessionManager.testInstance()
-        let vm = SessionStateViewModel(sessionManager: manager)
+        let a11y = AccessibilityState(workspace: NSWorkspace.shared)
+        let vm = SessionStateViewModel(sessionManager: manager, accessibilityState: a11y)
         #expect(vm.state == .idle)
     }
 
     @Test("reflects SessionManager state changes")
     func reflectsStateChanges() async throws {
         let manager = SessionManager.testInstance()
-        let vm = SessionStateViewModel(sessionManager: manager)
+        let a11y = AccessibilityState(workspace: NSWorkspace.shared)
+        let vm = SessionStateViewModel(sessionManager: manager, accessibilityState: a11y)
         #expect(vm.state == .idle)
 
         manager.startAdHocSession()
@@ -57,7 +59,8 @@ struct SessionStateViewModelTests {
     @Test("reduceMotion matches NSWorkspace at init")
     func reduceMotionMatchesWorkspace() {
         let manager = SessionManager.testInstance()
-        let vm = SessionStateViewModel(sessionManager: manager)
+        let a11y = AccessibilityState(workspace: NSWorkspace.shared)
+        let vm = SessionStateViewModel(sessionManager: manager, accessibilityState: a11y)
         #expect(vm.reduceMotion == NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
     }
 }
@@ -73,7 +76,8 @@ struct ContentViewRoutingTests {
 
     @Test("idle state routes to IdleView")
     func idleState() {
-        let vm = SessionStateViewModel(sessionManager: SessionManager.testInstance())
+        let a11y = AccessibilityState(workspace: NSWorkspace.shared)
+        let vm = SessionStateViewModel(sessionManager: SessionManager.testInstance(), accessibilityState: a11y)
         #expect(vm.state == .idle)
         #expect(IdleView.accessibilityID == "phosphene.view.idle")
     }
@@ -82,7 +86,8 @@ struct ContentViewRoutingTests {
     func endedState() {
         let manager = SessionManager.testInstance()
         manager.endSession()
-        let vm = SessionStateViewModel(sessionManager: manager)
+        let a11y = AccessibilityState(workspace: NSWorkspace.shared)
+        let vm = SessionStateViewModel(sessionManager: manager, accessibilityState: a11y)
         #expect(vm.state == .ended)
         #expect(EndedView.accessibilityID == "phosphene.view.ended")
     }
@@ -90,7 +95,8 @@ struct ContentViewRoutingTests {
     @Test("playing state routes to PlaybackView")
     func playingState() async throws {
         let manager = SessionManager.testInstance()
-        let vm = SessionStateViewModel(sessionManager: manager)
+        let a11y = AccessibilityState(workspace: NSWorkspace.shared)
+        let vm = SessionStateViewModel(sessionManager: manager, accessibilityState: a11y)
         manager.startAdHocSession()
         try await Task.sleep(for: .milliseconds(50))
         #expect(vm.state == .playing)

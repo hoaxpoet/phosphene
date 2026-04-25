@@ -84,22 +84,13 @@ struct DebugOverlayView: View {
             Divider().background(.white.opacity(0.3))
 
             let snap = engine.inputLevelMonitor.currentSnapshot()
-            let qColor: Color = {
-                switch snap.quality {
-                case .green:   return .green
-                case .yellow:  return .yellow
-                case .red:     return .red
-                case .unknown: return .white.opacity(0.5)
-                }
-            }()
             HStack(spacing: 4) {
                 Text("SIGNAL:")
                     .font(.system(size: 10, weight: .bold, design: .monospaced))
                     .foregroundColor(.white.opacity(0.5))
                     .frame(width: 70, alignment: .trailing)
-                Text(snap.quality.rawValue.uppercased())
+                QualityGradeIndicator(quality: snap.quality)
                     .font(.system(size: 11, weight: .bold, design: .monospaced))
-                    .foregroundColor(qColor)
             }
             label("peak", String(format: "%.1f dBFS", snap.peakDBFS))
             label("rms", String(format: "%.1f dBFS", snap.rmsDBFS))
@@ -108,7 +99,7 @@ struct DebugOverlayView: View {
             label("treble", String(format: "%.1f%%", 100 * snap.trebleRatio))
             Text(snap.reason)
                 .font(.system(size: 10, design: .monospaced))
-                .foregroundColor(qColor.opacity(0.9))
+                .foregroundColor(.white.opacity(0.7))
                 .lineLimit(3)
 
             Divider().background(.white.opacity(0.3))

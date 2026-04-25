@@ -66,6 +66,7 @@ struct PlaybackView: View {
         currentTrackPublisher: AnyPublisher<TrackMetadata?, Never>,
         currentPresetNamePublisher: AnyPublisher<String?, Never>,
         livePlanPublisher: AnyPublisher<PlannedSession?, Never>,
+        reduceMotionPublisher: AnyPublisher<Bool, Never> = Just(false).eraseToAnyPublisher(),
         onEndSession: @escaping () -> Void,
         reduceMotion: Bool
     ) {
@@ -75,7 +76,8 @@ struct PlaybackView: View {
             audioSignalStatePublisher: audioSignalStatePublisher,
             currentTrackPublisher: currentTrackPublisher,
             currentPresetNamePublisher: currentPresetNamePublisher,
-            livePlanPublisher: livePlanPublisher
+            livePlanPublisher: livePlanPublisher,
+            reduceMotionPublisher: reduceMotionPublisher
         ))
         _endSessionVM = StateObject(wrappedValue: EndSessionConfirmViewModel(
             sessionManager: sessionManager

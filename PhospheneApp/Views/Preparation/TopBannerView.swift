@@ -28,7 +28,7 @@ struct TopBannerView: View {
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 14, weight: .semibold))
+                .font(.callout.weight(.semibold))
                 .foregroundColor(.black.opacity(0.75))
 
             Text(bannerMessage)
@@ -44,12 +44,12 @@ struct TopBannerView: View {
                     onDismiss?()
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.footnote.weight(.semibold))
                         .foregroundColor(.black.opacity(0.55))
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier(Self.dismissID)
-                .accessibilityLabel(Text("Dismiss warning"))
+                .accessibilityLabel(Text(String(localized: "a11y.preparation.topBanner.dismiss.label")))
             }
         }
         .padding(.horizontal, 16)

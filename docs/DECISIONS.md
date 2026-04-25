@@ -814,6 +814,33 @@ Persistent degradation toasts (silence, low input level) must not stack on repea
 
 **Rejected alternative:** Defer to next session start. Would require no new code for the reconciler, but the UX contracts (UX_SPEC §9.3) require that Settings changes take effect immediately for live audio source switching.
 
+## D-054 — AccessibilityState architecture and beat-clamp boundary (Increment U.9)
+
+**Status:** Accepted (2026-04-24)
+
+**Context:** U.9 requires three coordinated changes: (1) gate mv_warp and SSGI execution when reduce-motion is active, (2) clamp beat-pulse amplitude to 0.5× when reduce-motion is active, (3) integrate the user's `ReducedMotionPreference` setting with the system `NSWorkspace.accessibilityDisplayShouldReduceMotion` flag into a single source of truth.
+
+**Decision — AccessibilityState:**
+`AccessibilityState` (`@MainActor final class ObservableObject`) is the single source of truth. It combines `NSWorkspace.accessibilityDisplayShouldReduceMotion` (observed via `NSWorkspace.accessibilityDisplayOptionsDidChangeNotification`) with `ReducedMotionPreference` from `SettingsStore`. The three-way logic:
+- `.matchSystem` → `reduceMotion = systemReduceMotion`
+- `.alwaysOn` → `reduceMotion = true`
+- `.alwaysOff` → `reduceMotion = false`
+
+`SessionStateViewModel` takes `accessibilityState: AccessibilityState` at init; `PlaybackChromeViewModel` subscribes via injected `AnyPublisher<Bool, Never>`. This keeps both view models unit-testable via stub publishers without depending on real NSWorkspace state.
+
+**Decision — beat-clamp boundary:**
+The beat-clamp is applied in `RenderPipeline.draw(in:)` to the local `FeatureVector` copy, before it is passed to `renderFrame`. Affected fields: `beatBass`, `beatMid`, `beatTreble`, `beatComposite`. NOT clamped: `beatPhase01`, `beatsUntilNext` — these are BeatPredictor timing primitives that drive anticipatory animation timing, not pulse amplitude.
+
+Placement at the `draw` boundary means all downstream paths (direct, mesh, ray-march, mv_warp, ICB) share the same clamped vector without each needing to know about reduce-motion state.
+
+**Decision — mv_warp gate:**
+`frameReduceMotion: Bool` on `RenderPipeline` (set by app layer from `AccessibilityState.reduceMotion`). Checked at top of `drawWithMVWarp()` — when true, `drawMVWarpReducedMotion()` renders a single frame without feedback accumulation (avoids both the motion and the GPU cost of the warp pass).
+
+**Decision — SSGI gate:**
+`reducedMotion: Bool` on `RayMarchPipeline`. SSGI pass fires only when `ssgiEnabled && !reducedMotion`. SSGI is the temporally-accumulating screen-space pass most likely to cause discomfort; skipping it costs no visual quality under reduce-motion because the feedback smear is the discomfort source.
+
+**Deferred:** Strict photosensitivity mode (flash frequency analysis + blanking); SSGI temporal accumulation gate distinct from the frame-level `reducedMotion` flag.
+
 ## D-053 — PresetScoringContext extended with excludedFamilies + qualityCeiling; defaults preserve backward compat (Increment U.8)
 
 **Status:** Accepted (2026-04-24)

@@ -126,6 +126,8 @@ extension RenderPipeline {
         // Enable SSGI when the active passes array includes .ssgi.
         let ssgiActive = passesLock.withLock { activePasses.contains(.ssgi) }
         rayMarchState.ssgiEnabled = ssgiActive
+        // Propagate accessibility flags — SSGI is gated inside RayMarchPipeline.render.
+        rayMarchState.reducedMotion = frameReduceMotion
 
         let noiseTextures = textureManagerLock.withLock { textureManager }
         let ibl = iblManagerLock.withLock { iblManager }

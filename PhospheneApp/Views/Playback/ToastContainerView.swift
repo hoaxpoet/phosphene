@@ -1,5 +1,6 @@
 // ToastContainerView — Bottom-trailing stack of up to three toast notifications.
 
+import Accessibility
 import SwiftUI
 
 // MARK: - ToastContainerView
@@ -23,5 +24,12 @@ struct ToastContainerView: View {
         }
         .animation(.easeInOut(duration: 0.3), value: toastManager.visibleToasts.map(\.id))
         .allowsHitTesting(!toastManager.visibleToasts.isEmpty)
+        .onChange(of: toastManager.visibleToasts) { oldToasts, newToasts in
+            let added = newToasts.filter { new in !oldToasts.contains(where: { $0.id == new.id }) }
+            for toast in added {
+                let label = AccessibilityLabels.toastLabel(copy: toast.copy, severity: toast.severity)
+                AccessibilityNotification.Announcement(label).post()
+            }
+        }
     }
 }

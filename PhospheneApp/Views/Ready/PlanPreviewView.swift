@@ -96,7 +96,7 @@ struct PlanPreviewView: View {
     private var emptyState: some View {
         VStack(spacing: 12) {
             Image(systemName: "waveform.path")
-                .font(.system(size: 40))
+                .font(.largeTitle)
                 .foregroundColor(.secondary)
             Text("No plan available.")
                 .font(.headline)

@@ -76,7 +76,7 @@ struct AppleMusicConnectionView: View {
     private var noPlaylistBody: some View {
         VStack(spacing: 20) {
             Image(systemName: "music.note.list")
-                .font(.system(size: 40))
+                .font(.largeTitle)
                 .foregroundColor(.white.opacity(0.4))
             VStack(spacing: 8) {
                 Text(String(localized: "connector.apple_music.no_playlist.headline"))
@@ -97,7 +97,7 @@ struct AppleMusicConnectionView: View {
     private var notRunningBody: some View {
         VStack(spacing: 20) {
             Image(systemName: "exclamationmark.circle")
-                .font(.system(size: 40))
+                .font(.largeTitle)
                 .foregroundColor(.white.opacity(0.4))
             VStack(spacing: 8) {
                 Text(String(localized: "connector.apple_music.not_running.headline"))
@@ -119,7 +119,7 @@ struct AppleMusicConnectionView: View {
     private var permissionDeniedBody: some View {
         VStack(spacing: 20) {
             Image(systemName: "lock.circle")
-                .font(.system(size: 40))
+                .font(.largeTitle)
                 .foregroundColor(.white.opacity(0.4))
             VStack(spacing: 8) {
                 Text(String(localized: "connector.apple_music.permission.headline"))
@@ -143,7 +143,7 @@ struct AppleMusicConnectionView: View {
     private func errorBody(message: String) -> some View {
         VStack(spacing: 20) {
             Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 40))
+                .font(.largeTitle)
                 .foregroundColor(.white.opacity(0.4))
             VStack(spacing: 8) {
                 Text(String(localized: "connector.apple_music.error.headline"))
