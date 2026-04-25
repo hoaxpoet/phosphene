@@ -1,6 +1,7 @@
 excluded:
   - archive
   - .build
+  - .claude
   - DerivedData
   - PhospheneEngine/.build
   - PhospheneEngine/Tests
