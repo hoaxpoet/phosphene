@@ -71,13 +71,48 @@ public final class RayMarchPipeline: @unchecked Sendable {
     /// Composite pass: reads litTexture, applies ACES, writes to drawable format.
     let compositePipeline: MTLRenderPipelineState
 
-    // MARK: - Accessibility Flags (U.9, D-054)
+    // MARK: - SSGI Suppression Flags (D-054, D-057)
+    //
+    // SSGI is suppressed when EITHER the a11y gate OR the frame-budget governor
+    // wants it off. Two separate flags are OR-gated into the computed `reducedMotion`
+    // so that governor-driven recovery cannot re-enable SSGI when the user has
+    // explicitly chosen reduced motion. A11y always wins. D-057(c).
+    //
+    // Future producers (e.g. photosensitivity strict mode, deferred from U.9) must
+    // add a third private flag and widen the OR expression — never assign directly
+    // to `reducedMotion`.
 
-    /// When `true`, SSGI is suppressed this frame regardless of `ssgiEnabled`.
-    /// Set by `RenderPipeline+RayMarch` from `RenderPipeline.frameReduceMotion`
-    /// each frame before calling `render(...)`.
-    /// TODO(post-SSGI-temporal-landing): re-evaluate when temporal SSGI is added.
-    public var reducedMotion: Bool = false
+    /// A11y-driven suppression. Set via `setA11yReducedMotion(_:)`.
+    private var a11yReducedMotion: Bool = false
+    /// Governor-driven suppression. Set via `setGovernorSkipsSSGI(_:)`.
+    private var governorSkipsSSGI: Bool = false
+
+    /// `true` when SSGI must be suppressed, regardless of `ssgiEnabled`.
+    /// Computed as the OR of `a11yReducedMotion` and `governorSkipsSSGI`.
+    public var reducedMotion: Bool { a11yReducedMotion || governorSkipsSSGI }
+
+    /// Set the a11y-driven SSGI suppression flag.
+    ///
+    /// Called by `RenderPipeline+RayMarch` from `RenderPipeline.frameReduceMotion`
+    /// and by the app layer from `AccessibilityState`.
+    public func setA11yReducedMotion(_ value: Bool) {
+        a11yReducedMotion = value
+    }
+
+    /// Set the frame-budget governor's SSGI suppression flag.
+    ///
+    /// Called by `RenderPipeline.applyQualityLevel(_:)`. Setting this to `false`
+    /// never overrides an active a11y flag — the OR gate prevents that.
+    public func setGovernorSkipsSSGI(_ value: Bool) {
+        governorSkipsSSGI = value
+    }
+
+    // MARK: - Step Count Governor (D-057)
+
+    /// Step count multiplier for the ray march loop in the G-buffer fragment.
+    /// Written to `sceneUniforms.sceneParamsB.z` each frame by `RenderPipeline+RayMarch`.
+    /// Default `1.0` = 128 steps (full quality). `0.75` = 96 steps (reduced quality).
+    public var stepCountMultiplier: Float = 1.0
 
     // MARK: - SSGI State
 

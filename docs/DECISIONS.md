@@ -893,3 +893,28 @@ When background preparation completes additional tracks during `.playing`, `exte
 **Decision — `.partial` threshold rule:**
 A `.partial` track (stems unavailable, MIR-only) counts toward the consecutive prefix only when its `TrackProfile` has a non-nil BPM **and** at least one genre tag. A BPM-only or genre-only profile is not plannable — the scorer needs both to estimate tempo-motion match and section suitability. The threshold itself (default 3 tracks) is exposed as `defaultProgressiveReadinessThreshold` in `SessionTypes.swift` for overriding in tests. The prefix must be consecutive from position 0 — a single `.failed` or in-flight track in the prefix breaks the run, ensuring the user doesn't start a session with a gap at the front.
 
+
+## D-057 — Frame Budget Manager: governor design, OR-gate pattern, tier targets, and scope limits (Increment 6.2)
+
+**Status:** Accepted (2026-04-25)
+
+**Decision — Per-tier configuration targets:**
+Tier 1 (M1/M2) uses `targetFrameMs = 14.0` ms with `overrunMarginMs = 0.3` ms. Tier 2 (M3+) uses `targetFrameMs = 16.0` ms with `overrunMarginMs = 0.5` ms. Tier 1 has a tighter target because M1/M2 have less headroom at 60fps — the 14ms target gives the Core Audio tap and Swift overhead ~2.6ms of slack. Tier 2's 16ms target matches the V-sync period exactly; the 0.5ms margin accounts for frame-presentation jitter.
+
+**Decision — Asymmetric hysteresis:**
+3 consecutive overruns to downshift; 180 consecutive sub-budget frames to upshift. The asymmetry is intentional: downshift must be fast (users notice dropped frames immediately) but upshift must be slow (a single lucky frame after 2s of budget pressure should not restore full quality and cause another drop). 180 frames = 3 seconds at 60fps. A "hysteresis band" frame (within the overrun threshold but not low enough to count as recovery) resets both counters — it is neither progress nor regression.
+
+**Decision — OR-gate for SSGI suppression (reducedMotion):**
+`RayMarchPipeline.reducedMotion` was previously a single mutable Bool set by both the a11y path (via `AccessibilityState`) and the governor path (via `applyQualityLevel`). The problem: governor recovery calling `reducedMotion = false` would silently override an active accessibility preference. The fix introduces two private flags — `a11yReducedMotion` and `governorSkipsSSGI` — with dedicated setters and a computed `reducedMotion = a11yReducedMotion || governorSkipsSSGI`. This guarantees that a user who needs reduced motion for medical reasons cannot have SSGI re-enabled by the governor recovering from a transient performance blip. The OR-gate is a formal architectural guarantee, not a runtime check.
+
+**Decision — Governor exempt under QualityCeiling.ultra:**
+When `SettingsStore.qualityCeiling == .ultra`, `FrameBudgetManager` is initialised with `enabled: false`. `observe()` becomes a no-op and always returns `.full`. This respects the user's explicit preference for maximum visual quality at the cost of potential frame drops. The exemption is set once at `VisualizerEngine.init()` by reading `UserDefaults` directly (the engine init predates `SettingsStore`); a `SettingsStore` observer to live-toggle this is deferred.
+
+**Decision — Governor never modifies `activePasses`:**
+The frame budget governor operates exclusively through five scalar properties: `governorSkipsSSGI` (Bool), `bloomEnabled` (Bool), `stepCountMultiplier` (Float), `activeParticleFraction` (Float), `densityMultiplier` (Float). It never adds, removes, or reorders entries in `RenderPipeline.activePasses`. This constraint keeps the governor from invalidating MTLRenderCommandEncoder setup paths — pass gating at the encoder level would require rebuilding the entire render graph. Instead each subsystem degrades gracefully in-place: SSGI is skipped inside `RayMarchPipeline`'s lighting pass via `ssgiEnabled && !reducedMotion`; bloom is bypassed within `PostProcessChain.runBloomAndComposite` without removing the post-process pass itself.
+
+**Decision — densityMultiplier is a no-op on M1/M2 vertex fallback:**
+`MeshGenerator.densityMultiplier` is passed to the object and mesh shader stages at buffer(1) on M3+ hardware. On M1/M2, `MeshGenerator` dispatches a standard vertex pipeline (fullscreen triangle or instanced geometry); the buffer(1) write still occurs but no shader reads it. The M1/M2 fallback draws a fixed geometry count. This is acceptable because M1/M2 are Tier 1 devices — they reach `.reducedMesh` only under severe sustained load, at which point the larger gains from SSGI-off + bloom-off + reduced ray march steps are already in effect. A dedicated M1/M2 vertex-count reduction path is out of scope for 6.2.
+
+**Decision — One-frame governor lag by design:**
+`commandBuffer.addCompletedHandler` fires asynchronously after GPU completion. The handler bounces to `@MainActor` and calls `applyQualityLevel`, which takes effect at the start of the next `draw(in:)` call. This means the governor reacts to frame N's timing during frame N+1 setup. A zero-lag architecture would require predicting budget violations before encoding, which is not feasible. The one-frame lag is invisible at 60fps and eliminates any risk of the governor mutating render state mid-encoding.

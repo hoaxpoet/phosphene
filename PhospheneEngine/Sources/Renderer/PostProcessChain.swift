@@ -53,6 +53,14 @@ public final class PostProcessChain: @unchecked Sendable {
     /// ACES composite: (scene + bloom) → SDR output (.bgra8Unorm_srgb drawable).
     let compositePipeline: MTLRenderPipelineState
 
+    // MARK: - Frame Budget Governor Gate (D-057)
+
+    /// When `false`, the bright-pass and Gaussian blur passes are skipped and the
+    /// ACES composite is run directly on the scene texture without bloom.
+    /// Set by `RenderPipeline.applyQualityLevel(_:)` at QualityLevel >= .noBloom.
+    /// The post-process pass still runs — bloom is suppressed, not the whole chain.
+    public var bloomEnabled: Bool = true
+
     // MARK: - Sampler
 
     /// Bilinear, clamp-to-edge sampler shared across all passes.
@@ -210,9 +218,11 @@ public final class PostProcessChain: @unchecked Sendable {
             stemFeatures: stemFeatures,
             noiseTextures: noiseTextures
         )
-        runBrightPass(commandBuffer: commandBuffer)
-        runBlurH(commandBuffer: commandBuffer)
-        runBlurV(commandBuffer: commandBuffer)
+        if bloomEnabled {
+            runBrightPass(commandBuffer: commandBuffer)
+            runBlurH(commandBuffer: commandBuffer)
+            runBlurV(commandBuffer: commandBuffer)
+        }
         runComposite(commandBuffer: commandBuffer, outputTexture: outputTexture)
     }
 
@@ -248,9 +258,11 @@ public final class PostProcessChain: @unchecked Sendable {
             return
         }
 
-        runBrightPass(commandBuffer: commandBuffer)
-        runBlurH(commandBuffer: commandBuffer)
-        runBlurV(commandBuffer: commandBuffer)
+        if bloomEnabled {
+            runBrightPass(commandBuffer: commandBuffer)
+            runBlurH(commandBuffer: commandBuffer)
+            runBlurV(commandBuffer: commandBuffer)
+        }
         runComposite(commandBuffer: commandBuffer, outputTexture: outputTexture)
     }
 
@@ -347,9 +359,11 @@ public final class PostProcessChain: @unchecked Sendable {
         encoder.endEncoding()
     }
 
-    /// Pass 5: ACES composite — `(sceneTexture + bloomTexA)` → `outputTexture`.
+    /// Pass 5: ACES composite — `(sceneTexture + bloomTexA * bloomStrength)` → `outputTexture`.
     ///
-    /// Adds bloom at 0.5 strength, applies ACES filmic tone mapping, outputs SDR.
+    /// Adds bloom at 0.5 strength when `bloomEnabled` is `true`; skips bloom contribution
+    /// when `false` (frame-budget governor, QualityLevel >= .noBloom). ACES tone mapping
+    /// always runs regardless of bloom state. D-057.
     func runComposite(commandBuffer: MTLCommandBuffer, outputTexture: MTLTexture) {
         guard let scene = sceneTexture, let bloomA = bloomTexA else { return }
 
@@ -361,6 +375,9 @@ public final class PostProcessChain: @unchecked Sendable {
 
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: desc) else { return }
         encoder.setRenderPipelineState(compositePipeline)
+        // bloomStrength: 1.0 when bloom is enabled, 0.0 when suppressed by governor.
+        var strength: Float = bloomEnabled ? 1.0 : 0.0
+        encoder.setFragmentBytes(&strength, length: MemoryLayout<Float>.stride, index: 0)
         encoder.setFragmentTexture(scene, index: 0)
         encoder.setFragmentTexture(bloomA, index: 1)
         encoder.setFragmentSamplerState(sampler, index: 0)

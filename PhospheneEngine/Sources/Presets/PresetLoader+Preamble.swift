@@ -42,18 +42,12 @@ extension PresetLoader {
             float time, delta_time;
             float _pad0, aspect_ratio;
             float accumulated_audio_time;
-            // MV-1 deviation primitives (floats 26–34, D-026).
-            // xRel = (x - 0.5) * 2.0 — centered at 0, ~±0.5 typical range.
-            // xDev = max(0, xRel)     — positive deviation only (loud moments).
-            // Use Rel for continuous drivers; Dev for accent/threshold drivers.
+            // MV-1 deviation: xRel=(x-0.5)*2 (±0.5), xDev=max(0,xRel) (D-026).
             float bass_rel, bass_dev;
             float mid_rel,  mid_dev;
             float treb_rel, treb_dev;
             float bass_att_rel, mid_att_rel, treb_att_rel;
-            // MV-3b beat phase predictor (floats 35–36, D-028).
-            // beat_phase01: 0 at last confirmed beat, rises to 1 at next predicted beat.
-            // beats_until_next: 1 - beat_phase01 (fractional beats until next beat).
-            // Use for anticipatory animation: start ramp when beat_phase01 > 0.8.
+            // MV-3b beat phase: 0 at last beat, rises to 1 at next (D-028).
             float beat_phase01, beats_until_next;
             // Padding to 192 bytes (floats 37–48).
             float _pad1, _pad2, _pad3, _pad4, _pad5, _pad6, _pad7,
@@ -333,7 +327,10 @@ extension PresetLoader {
             float t         = nearPlane;
             bool  hit       = false;
 
-            for (int i = 0; i < 128 && t < farPlane; i++) {
+            // sceneParamsB.z: frame-budget step multiplier (D-057). 1.0=128 steps, 0.75=96. Clamp [0.25,1.0].
+            float stepMult = (scene.sceneParamsB.z > 0.0) ? clamp(scene.sceneParamsB.z, 0.25, 1.0) : 1.0;
+            int maxMarchSteps = int(128.0 * stepMult);
+            for (int i = 0; i < maxMarchSteps && t < farPlane; i++) {
                 float3 p = camPos + rayDir * t;
                 float  d = sceneSDF(p, features, scene, stems);
                 if (d < 0.001 * t) {

@@ -1271,18 +1271,9 @@ Runs in parallel with Phase V.7+ once Phase V.1–V.3 utilities are available.
 
 ---
 
-### Increment 6.2 — Frame Budget Manager
+### ✅ Increment 6.2 — Frame Budget Manager (landed 2026-04-25)
 
-**Scope:** `Renderer/FrameBudgetManager.swift`. Monitors frame timing and dynamically downshifts preset complexity when budget is exceeded. Quality governor can disable: SSGI, bloom, ray march step count reduction, particle count reduction, mesh density reduction.
-
-**Done when:**
-- Frame budget target configurable (default 16.6ms for 60fps).
-- When 3 consecutive frames exceed budget, governor activates lowest-impact reduction first.
-- When frames recover, governor restores quality after sustained recovery (hysteresis).
-- Per-device tier budgets (Tier 1 stricter than Tier 2).
-- 6+ unit tests with synthetic frame timing sequences.
-
-**Verify:** `swift test --package-path PhospheneEngine`
+**What was built:** `FrameBudgetManager.swift` — pure-state governor with 6-level `QualityLevel` ladder (`full → noSSGI → noBloom → reducedRayMarch → reducedParticles → reducedMesh`), `Configuration` factories (tier1: 14ms/0.3ms margin; tier2: 16ms/0.5ms margin), asymmetric hysteresis (3 overruns down / 180 frames up), `reset()` on preset change. OR-gate refactor of `RayMarchPipeline.reducedMotion` → `a11yReducedMotion || governorSkipsSSGI` with dedicated setters (D-057). `PostProcessChain.bloomEnabled`, `ProceduralGeometry.activeParticleFraction`, `MeshGenerator.densityMultiplier`, `RayMarchPipeline.stepCountMultiplier` (written to `sceneParamsB.z`). Timing via `commandBuffer.addCompletedHandler` → `@MainActor` hop. `QualityCeiling.ultra` exempts the governor. Debug overlay quality level line. 36 new tests across 5 files. Golden hashes regenerated for VolumetricLithograph + KineticSculpture (preamble compiler optimization). 721 engine tests total; 1 pre-existing flaky timer failure unchanged.
 
 ---
 

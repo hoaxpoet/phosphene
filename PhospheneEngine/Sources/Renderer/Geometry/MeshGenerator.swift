@@ -88,6 +88,19 @@ public final class MeshGenerator: @unchecked Sendable {
     /// standard vertex+fragment pipeline (M1/M2 fallback).
     public let pipelineState: MTLRenderPipelineState
 
+    // MARK: - Frame Budget Governor Gate (D-057)
+
+    /// Mesh density multiplier for the frame-budget governor.
+    /// Default `1.0` = full geometry. `0.5` = reduced density.
+    ///
+    /// On M3+ (native mesh shader path), this value is passed to the object and
+    /// mesh stages via `setObjectBytes`/`setMeshBytes` at buffer index 1 so
+    /// preset shaders can opt-in to read it and adjust their geometry emission.
+    /// On M1/M2 (vertex fallback: fullscreen triangle), this flag is a documented
+    /// no-op — the triangle vertex count is fixed. Set by `RenderPipeline.applyQualityLevel`.
+    /// See D-057(e) for rationale on why the M1/M2 path is accepted as a no-op.
+    public var densityMultiplier: Float = 1.0
+
     // MARK: - Private
 
     private let device: MTLDevice
@@ -185,6 +198,11 @@ public final class MeshGenerator: @unchecked Sendable {
             // audio data from the object, mesh, or fragment stage as needed.
             encoder.setObjectBytes(&feat, length: MemoryLayout<FeatureVector>.stride, index: 0)
             encoder.setMeshBytes(&feat, length: MemoryLayout<FeatureVector>.stride, index: 0)
+            // Pass density multiplier at buffer(1) so preset mesh shaders can
+            // opt-in to reduce geometry emission. D-057.
+            var density = densityMultiplier
+            encoder.setObjectBytes(&density, length: MemoryLayout<Float>.stride, index: 1)
+            encoder.setMeshBytes(&density, length: MemoryLayout<Float>.stride, index: 1)
         }
         encoder.setFragmentBytes(&feat, length: MemoryLayout<FeatureVector>.stride, index: 0)
 
