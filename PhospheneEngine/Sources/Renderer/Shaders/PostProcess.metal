@@ -86,10 +86,12 @@ fragment float4 pp_blur_v_fragment(
 /// Combines the full-resolution HDR scene with the blurred bloom texture,
 /// then applies ACES filmic tone mapping to produce SDR output.
 ///
-/// The bloom contribution is scaled by 0.5 to prevent oversaturation
-/// while still adding visible glow around bright elements.
+/// `bloomStrength` scales the bloom contribution: 1.0 = full bloom (0.5× additive),
+/// 0.0 = no bloom (frame-budget governor suppression, QualityLevel >= .noBloom).
+/// ACES tone mapping always runs regardless of bloomStrength. D-057.
 fragment float4 pp_composite_fragment(
     VertexOut in                         [[stage_in]],
+    constant float& bloomStrength        [[buffer(0)]],
     texture2d<float> scene               [[texture(0)]],
     texture2d<float> bloom               [[texture(1)]],
     sampler samp                         [[sampler(0)]]
@@ -98,7 +100,8 @@ fragment float4 pp_composite_fragment(
     float3 bloomColor = bloom.sample(samp, in.uv).rgb;
 
     // Additive bloom at half strength — visible glow without washing out the scene.
-    float3 hdr = sceneColor + bloomColor * 0.5;
+    // bloomStrength is 0.0 when suppressed by the frame-budget governor.
+    float3 hdr = sceneColor + bloomColor * (0.5 * bloomStrength);
 
     // ACES filmic tone mapping: HDR → SDR [0, 1].
     float3 sdr = aces_tonemap(hdr);

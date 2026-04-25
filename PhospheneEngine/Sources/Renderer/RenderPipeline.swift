@@ -206,10 +206,17 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
         }
     }
 
+    // MARK: - Frame Budget Governor (D-057)
+
+    /// Optional frame budget governor. When nil, the governor is disabled (tests,
+    /// headless contexts). Wire in from VisualizerEngine after construction.
+    public var frameBudgetManager: FrameBudgetManager?
+
     // MARK: - Timing
 
     let startTime: CFAbsoluteTime
     var lastFrameTime: CFAbsoluteTime
+    var drawStartTime: CFAbsoluteTime = 0
 
     // MARK: - Init
 
@@ -233,7 +240,6 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
         self.lastFrameTime = self.startTime
         self.spectralHistory = SpectralHistoryBuffer(device: context.device)
 
-        // Create render pipeline state: fullscreen_vertex → waveform_fragment.
         self.pipelineState = try shaderLibrary.renderPipelineState(
             named: "waveform",
             vertexFunction: "fullscreen_vertex",
@@ -241,8 +247,6 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
             pixelFormat: context.pixelFormat,
             device: context.device
         )
-
-        // Feedback warp pipeline: fullscreen_vertex → feedback_warp_fragment.
         self.feedbackWarpPipelineState = try shaderLibrary.renderPipelineState(
             named: "feedback_warp",
             vertexFunction: "fullscreen_vertex",
@@ -250,8 +254,6 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
             pixelFormat: context.pixelFormat,
             device: context.device
         )
-
-        // Feedback blit pipeline: fullscreen_vertex → feedback_blit_fragment.
         self.feedbackBlitPipelineState = try shaderLibrary.renderPipelineState(
             named: "feedback_blit",
             vertexFunction: "fullscreen_vertex",
@@ -298,7 +300,6 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
         let width = max(Int(size.width), 1)
         let height = max(Int(size.height), 1)
 
-        // Allocate double-buffered feedback textures at drawable size.
         var textures: [MTLTexture] = []
         for i in 0..<2 {
             guard let tex = context.makeSharedTexture(
@@ -346,51 +347,49 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
             return
         }
 
-        commandBuffer.addCompletedHandler { [semaphore = context.inflightSemaphore] _ in
+        let cpuDrawStart = CACurrentMediaTime()
+        commandBuffer.addCompletedHandler { [semaphore = context.inflightSemaphore, weak self, cpuDrawStart] cb in
             semaphore.signal()
+            let cpuMs = Float((CACurrentMediaTime() - cpuDrawStart) * 1000)
+            let gpuMs: Float? = cb.gpuEndTime > cb.gpuStartTime
+                ? Float((cb.gpuEndTime - cb.gpuStartTime) * 1000)
+                : nil
+            Task { @MainActor [weak self] in
+                guard let self, let mgr = self.frameBudgetManager else { return }
+                let level = mgr.observe(.init(cpuFrameMs: cpuMs, gpuFrameMs: gpuMs))
+                self.applyQualityLevel(level)
+            }
         }
 
-        // Timing.
         let now = CFAbsoluteTimeGetCurrent()
         let elapsed = Float(now - startTime)
         let deltaTime = Float(now - lastFrameTime)
         lastFrameTime = now
 
-        // Build FeatureVector: start from live MIR features, overlay timing.
         var features = featuresLock.withLock { latestFeatures }
         features.time = elapsed
         features.deltaTime = deltaTime
         let size = view.drawableSize
         features.aspectRatio = size.height > 0 ? Float(size.width / size.height) : 1.777
 
-        // Accumulate energy-weighted audio time and inject into the feature vector.
         let energy = (features.bass + features.mid + features.treble) / 3.0
         stepAccumulatedTime(energy: energy, deltaTime: deltaTime)
         features.accumulatedAudioTime = audioTimeLock.withLock { _accumulatedAudioTime }
 
-        // Beat clamp: scale all onset-pulse amplitudes uniformly (U.9, D-054).
-        // beatPhase01/beatsUntilNext are timing primitives — NOT clamped.
+        // Beat clamp: scale onset-pulse amplitudes (U.9, D-054). Timing primitives NOT clamped.
         let beatScale = beatAmplitudeScale
         features.beatBass *= beatScale
         features.beatMid *= beatScale
         features.beatTreble *= beatScale
         features.beatComposite *= beatScale
 
-        // Update spectral history ring buffer (buffer(5)) once per frame.
         let stemSnap = stemFeaturesLock.withLock { latestStemFeatures }
         spectralHistory.append(features: features, stems: stemSnap)
 
-        renderFrame(
-            commandBuffer: commandBuffer,
-            view: view,
-            features: &features
-        )
+        renderFrame(commandBuffer: commandBuffer, view: view, features: &features)
 
-        // Session recording hook — invoked after renderFrame so the drawable
-        // texture contains the final composited image. The closure may enqueue
-        // a blit to copy the texture into its own capture target.
-        if let hook = onFrameRendered,
-           let drawable = view.currentDrawable {
+        // Session recording hook — after renderFrame so drawable has the final image.
+        if let hook = onFrameRendered, let drawable = view.currentDrawable {
             let stems = stemFeaturesLock.withLock { latestStemFeatures }
             hook(drawable.texture, features, stems, commandBuffer)
         }

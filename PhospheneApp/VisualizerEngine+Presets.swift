@@ -39,6 +39,10 @@ extension VisualizerEngine {
     func applyPreset(_ preset: PresetLoader.LoadedPreset) {
         let desc = preset.descriptor
 
+        // Reset frame-budget governor to .full on each preset change — new presets have
+        // unknown cost characteristics; start optimistic and let the controller re-converge.
+        pipeline.frameBudgetManager?.reset()
+
         // Reset all active passes and subsystems before applying the new preset.
         // This prevents stale subsystem state from the previous preset bleeding through.
         pipeline.setActivePasses([])

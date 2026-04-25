@@ -73,7 +73,8 @@ extension VisualizerEngine {
         pipeline.frameReduceMotion = reduceMotion
         pipeline.beatAmplitudeScale = beatAmplitudeScale
         // Propagate to any active RayMarchPipeline so SSGI is suppressed immediately.
-        currentRayMarchPipeline?.reducedMotion = reduceMotion
+        // Uses the a11y-specific setter — the OR-gate ensures the governor flag is unaffected.
+        currentRayMarchPipeline?.setA11yReducedMotion(reduceMotion)
     }
 
     // MARK: - Toggles

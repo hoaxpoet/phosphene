@@ -194,6 +194,13 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Whether MIR recording is active.
     var mirPipelineIsRecording: Bool { mirPipeline.isRecording }
 
+    /// Current frame-budget quality level. Read directly from the governor each
+    /// time the debug overlay repaints — no @Published needed since the overlay
+    /// refreshes on VisualizerEngine objectWillChange. D-057.
+    var currentQualityLevel: FrameBudgetManager.QualityLevel {
+        pipeline.frameBudgetManager?.currentLevel ?? .full
+    }
+
     // MARK: - Capture/Recording State
 
     /// Feature capture file handle.
@@ -346,6 +353,15 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         // SessionManager is always created — uses the same component instances as the engine.
         // Ad-hoc mode never invokes the preparer; session mode uses it for pre-analysis.
         self.sessionManager = Self.makeSessionManager(sep: sep, analyzer: analyzer, classifier: classifier)
+
+        // Wire the frame-budget governor. Read QualityCeiling from UserDefaults to
+        // determine if ultra mode (recording) disables the governor. D-057(d).
+        let tier = Self.detectDeviceTier(device: ctx.device)
+        let qualityCeilingRaw = UserDefaults.standard.string(
+            forKey: "phosphene.settings.visuals.qualityCeiling"
+        )
+        let isUltra = qualityCeilingRaw == "ultra"
+        pipe.frameBudgetManager = FrameBudgetManager(deviceTier: tier, qualityCeilingIsUltra: isUltra)
 
         setupCaptureHook(pipe: pipe, ctx: ctx)
         setupBackgroundTextures(pipe: pipe, ctx: ctx, lib: lib)

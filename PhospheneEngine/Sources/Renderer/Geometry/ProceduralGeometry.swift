@@ -132,6 +132,15 @@ public final class ProceduralGeometry: @unchecked Sendable {
     /// Active configuration.
     public let configuration: ParticleConfiguration
 
+    // MARK: - Frame Budget Governor Gate (D-057)
+
+    /// Fraction of particles that receive compute-shader updates each frame.
+    /// Range [0.0, 1.0]. Default `1.0` = all particles updated.
+    /// At `0.5`, only the first 50% of particles are dispatched — the remainder
+    /// keep their previous values and naturally decay to invisible over time.
+    /// Set by `RenderPipeline.applyQualityLevel(_:)` at QualityLevel >= .reducedParticles.
+    public var activeParticleFraction: Float = 1.0
+
     /// Compiled compute pipeline state for the particle update kernel.
     private let computePipelineState: MTLComputePipelineState
 
@@ -266,9 +275,13 @@ public final class ProceduralGeometry: @unchecked Sendable {
         encoder.setBytes(&config, length: MemoryLayout<ParticleConfig>.stride, index: 2)
         encoder.setBytes(&stems, length: MemoryLayout<StemFeatures>.stride, index: 3)
 
-        // Dispatch one thread per particle.
+        // Dispatch one thread per active particle. The fraction gate reduces the
+        // dispatch count so undispatched particles keep prior values and decay to
+        // invisible via their built-in life timer. D-057.
+        let fraction = max(0.0, min(1.0, activeParticleFraction))
+        let activeCount = max(1, Int(Float(configuration.particleCount) * fraction))
         let threadgroupSize = min(computePipelineState.maxTotalThreadsPerThreadgroup, 256)
-        let threadgroupCount = (configuration.particleCount + threadgroupSize - 1) / threadgroupSize
+        let threadgroupCount = (activeCount + threadgroupSize - 1) / threadgroupSize
 
         encoder.dispatchThreadgroups(
             MTLSize(width: threadgroupCount, height: 1, depth: 1),

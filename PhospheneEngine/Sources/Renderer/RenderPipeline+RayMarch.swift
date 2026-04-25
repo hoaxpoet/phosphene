@@ -108,9 +108,12 @@ extension RenderPipeline {
         let height = Int(size.height)
         rayMarchState.ensureAllocated(width: width, height: height)
 
-        // Update per-frame uniforms: accumulated audio time and aspect ratio.
+        // Update per-frame uniforms: accumulated audio time, aspect ratio, and step-count multiplier.
         rayMarchState.sceneUniforms.sceneParamsA.x = features.accumulatedAudioTime
         rayMarchState.sceneUniforms.sceneParamsA.y = width > 0 ? Float(width) / Float(height) : 1.0
+        // sceneParamsB.z carries the frame-budget step-count multiplier (D-057).
+        // Default 1.0 = 128 steps; 0.75 = 96 steps (reducedRayMarch quality level).
+        rayMarchState.sceneUniforms.sceneParamsB.z = rayMarchState.stepCountMultiplier
 
         applyAudioModulation(to: rayMarchState, features: features)
 
@@ -126,8 +129,9 @@ extension RenderPipeline {
         // Enable SSGI when the active passes array includes .ssgi.
         let ssgiActive = passesLock.withLock { activePasses.contains(.ssgi) }
         rayMarchState.ssgiEnabled = ssgiActive
-        // Propagate accessibility flags — SSGI is gated inside RayMarchPipeline.render.
-        rayMarchState.reducedMotion = frameReduceMotion
+        // Propagate accessibility flag — a11y gate only. Governor gate managed via
+        // applyQualityLevel(_:) → setGovernorSkipsSSGI. D-054, D-057.
+        rayMarchState.setA11yReducedMotion(frameReduceMotion)
 
         let noiseTextures = textureManagerLock.withLock { textureManager }
         let ibl = iblManagerLock.withLock { iblManager }

@@ -159,11 +159,12 @@ Baselines for these modulations are captured in `RayMarchPipeline.BaseSceneSnaps
 
 **Key subsystems:**
 
-- `PostProcessChain` — HDR bloom + ACES tone mapping.
-- `RayMarchPipeline` — Deferred 3-pass: G-buffer → PBR lighting → composite.
+- `FrameBudgetManager` — Pure-state frame timing governor attached to `RenderPipeline`. Receives one `FrameTimingSample` per completed frame (via `commandBuffer.addCompletedHandler` → `@MainActor` hop) and walks a `QualityLevel` ladder: `full → noSSGI → noBloom → reducedRayMarch → reducedParticles → reducedMesh`. Downshifts after 3 consecutive overruns; upshifts after 180 consecutive sub-budget frames (asymmetric hysteresis). Per-tier configuration: tier1 (M1/M2) 14ms target, tier2 (M3+) 16ms target. `reset()` is called on every preset change so the governor starts optimistic. Disabled when `QualityCeiling` is `.ultra`. (D-057)
+- `PostProcessChain` — HDR bloom + ACES tone mapping. `bloomEnabled` gates the bright-pass + blur stages; composite always runs for ACES tone-mapping.
+- `RayMarchPipeline` — Deferred 3-pass: G-buffer → PBR lighting → composite. `reducedMotion` is an OR-gate of `a11yReducedMotion` (accessibility) and `governorSkipsSSGI` (budget governor), ensuring the governor cannot clear a user's accessibility preference. `stepCountMultiplier` is written to `sceneParamsB.z` each frame and consumed in the ray-march preamble loop.
 - `IBLManager` — Image-based lighting (irradiance + prefiltered environment + BRDF LUT).
-- `ProceduralGeometry` — GPU compute particle system.
-- `MeshGenerator` — Hardware mesh shaders (M3+) with vertex fallback (M1/M2).
+- `ProceduralGeometry` — GPU compute particle system. `activeParticleFraction` scales compute dispatch count for governor-level particle reduction.
+- `MeshGenerator` — Hardware mesh shaders (M3+) with vertex fallback (M1/M2). `densityMultiplier` is passed at object/mesh buffer(1) for M3+ opt-in density reduction; no-op on M1/M2 vertex path.
 - `TextureManager` — 5 pre-computed noise textures generated via Metal compute at init.
 - `RenderPipeline+MVWarp` — Milkdrop-style per-vertex feedback warp: `MVWarpPipelineBundle`, `MVWarpState`, `setupMVWarp`, `drawWithMVWarp` (3-pass warp/compose/blit), `clearMVWarpState`, `reallocateMVWarpTextures`.
 

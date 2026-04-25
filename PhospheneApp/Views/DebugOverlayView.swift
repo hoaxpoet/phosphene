@@ -104,6 +104,20 @@ struct DebugOverlayView: View {
 
             Divider().background(.white.opacity(0.3))
 
+            // Frame budget governor quality level.
+            let ql = engine.currentQualityLevel
+            HStack(spacing: 4) {
+                Text("QUALITY:")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.5))
+                    .frame(width: 70, alignment: .trailing)
+                Text(ql.displayName)
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundColor(ql == .full ? .green : .orange)
+            }
+
+            Divider().background(.white.opacity(0.3))
+
             // Raw MIR diagnostics.
             let diag = engine.mirDiag
             label("magMax", String(format: "%.4f", diag.magMax))
