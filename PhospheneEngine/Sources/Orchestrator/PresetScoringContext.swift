@@ -81,6 +81,18 @@ public struct PresetScoringContext: Sendable {
     /// Nil means "no section context available" — sectionSuitability scores 1.0 (full credit).
     public let currentSection: SongSection?
 
+    /// Preset families blocked by the user in Settings → Visuals.
+    ///
+    /// Any preset whose `family` matches an entry here is hard-excluded from scoring.
+    /// Defaults to empty (no exclusions) for backward-compat.
+    public let excludedFamilies: Set<PresetCategory>
+
+    /// Quality ceiling from Settings → Visuals.
+    ///
+    /// Overrides the complexity-cost gate: `.performance` uses a tighter 12 ms budget,
+    /// `.ultra` lifts the gate entirely. Defaults to `.auto` for backward-compat.
+    public let qualityCeiling: QualityCeiling
+
     // MARK: - Init
 
     public init(
@@ -89,7 +101,9 @@ public struct PresetScoringContext: Sendable {
         recentHistory: [PresetHistoryEntry] = [],
         currentPreset: PresetDescriptor? = nil,
         elapsedSessionTime: TimeInterval = 0,
-        currentSection: SongSection? = nil
+        currentSection: SongSection? = nil,
+        excludedFamilies: Set<PresetCategory> = [],
+        qualityCeiling: QualityCeiling = .auto
     ) {
         self.deviceTier = deviceTier
         self.frameBudgetMs = frameBudgetMs ?? deviceTier.frameBudgetMs
@@ -97,6 +111,8 @@ public struct PresetScoringContext: Sendable {
         self.currentPreset = currentPreset
         self.elapsedSessionTime = elapsedSessionTime
         self.currentSection = currentSection
+        self.excludedFamilies = excludedFamilies
+        self.qualityCeiling = qualityCeiling
     }
 
     // MARK: - Factory

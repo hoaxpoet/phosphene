@@ -10,6 +10,17 @@ import SwiftUI
 struct PhospheneApp: App {
     @StateObject private var engine = VisualizerEngine()
     @StateObject private var permissionMonitor = PermissionMonitor()
+    @StateObject private var settingsStore = SettingsStore()
+
+    init() {
+        // Migrate legacy UserDefaults keys to the phosphene.settings.* scheme.
+        SettingsMigrator.migrate()
+        // Prune old session folders according to the persisted retention policy.
+        // Read the key directly to avoid a second SettingsStore allocation before @StateObject init.
+        let rawPolicy = UserDefaults.standard.string(forKey: "phosphene.settings.diagnostics.sessionRetention")
+        let policy = SessionRetentionPolicy(rawValue: rawPolicy ?? "") ?? .lastN10
+        SessionRecorderRetentionPolicy.apply(policy: policy)
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -18,6 +29,7 @@ struct PhospheneApp: App {
             )
             .environmentObject(engine)
             .environmentObject(permissionMonitor)
+            .environmentObject(settingsStore)
         }
     }
 }
