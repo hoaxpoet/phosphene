@@ -30,6 +30,31 @@ extension PresetLoader {
         "Fiber.metal"
     ]
 
+    // V.2 — Geometry utility subtree (Part A).
+    // SDFPrimitives first (Boolean + Modifiers + Displacement depend on sd_* names).
+    // RayMarch and HexTile are independent leaf utilities.
+    static let geometryLoadOrder = [
+        "SDFPrimitives.metal", "SDFBoolean.metal", "SDFModifiers.metal",
+        "SDFDisplacement.metal", "RayMarch.metal", "HexTile.metal"
+    ]
+
+    // V.2 — Volume utility subtree (Part B).
+    // HenyeyGreenstein has no deps; ParticipatingMedia + Clouds depend on HG.
+    // Clouds also depends on fbm8 (Noise tree, loaded before Volume in preamble).
+    static let volumeLoadOrder = [
+        "HenyeyGreenstein.metal", "ParticipatingMedia.metal", "Clouds.metal",
+        "LightShafts.metal", "Caustics.metal"
+    ]
+
+    // V.2 — Texture utility subtree (Part C).
+    // Voronoi first (Caustics in Volume references it conceptually; Procedural
+    // uses Voronoi for marble veins). ReactionDiffusion, FlowMaps, Grunge are
+    // independent. Procedural depends on Voronoi (voronoi_2d).
+    static let textureLoadOrder = [
+        "Voronoi.metal", "ReactionDiffusion.metal", "FlowMaps.metal",
+        "Procedural.metal", "Grunge.metal"
+    ]
+
     /// Concatenate all Metal utility files from a bundle subdirectory.
     ///
     /// Files are ordered using `priorityOrder`: listed files come first in that
