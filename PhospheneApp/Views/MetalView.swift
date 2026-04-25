@@ -36,6 +36,9 @@ struct MetalView: NSViewRepresentable {
         // drawable. Acceptable at 60 fps on Apple Silicon.
         view.framebufferOnly = false
 
+        // The render surface carries no semantic meaning for VoiceOver.
+        view.setAccessibilityElement(false)
+
         return view
     }
 

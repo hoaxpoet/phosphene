@@ -18,7 +18,7 @@ struct ToastView: View {
             // Copy + action
             HStack(spacing: 8) {
                 Text(toast.copy)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.footnote.weight(.medium))
                     .foregroundColor(.white.opacity(0.9))
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
@@ -30,7 +30,7 @@ struct ToastView: View {
                         action.handler()
                         onDismiss(toast.id)
                     }
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.caption.weight(.semibold))
                     .foregroundColor(accentColor)
                     .buttonStyle(.plain)
                 }
@@ -40,7 +40,7 @@ struct ToastView: View {
                     onDismiss(toast.id)
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 9))
+                        .font(.caption2)
                         .foregroundColor(.white.opacity(0.4))
                 }
                 .buttonStyle(.plain)
@@ -52,6 +52,8 @@ struct ToastView: View {
         .overlay { Color.black.opacity(0.35) }
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .frame(maxWidth: 320)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(AccessibilityLabels.toastLabel(copy: toast.copy, severity: toast.severity))
     }
 
     // MARK: - Helpers

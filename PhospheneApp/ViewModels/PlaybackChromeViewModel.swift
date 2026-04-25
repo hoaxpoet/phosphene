@@ -102,27 +102,29 @@ final class PlaybackChromeViewModel: ObservableObject {
     ///   - currentTrackPublisher: Emits `TrackMetadata?` as Now Playing changes.
     ///   - currentPresetNamePublisher: Emits the display preset name.
     ///   - livePlanPublisher: Emits `PlannedSession?` updates.
+    ///   - reduceMotionPublisher: Emits effective reduce-motion state from `AccessibilityState`.
+    ///     Defaults to a `Just(false)` publisher (normal motion) for backwards compatibility in
+    ///     unit tests that don't need to exercise the reduce-motion path.
     ///   - delay: Injectable sleep; defaults to `RealDelay` (use `InstantDelay` in tests).
     init(
         audioSignalStatePublisher: AnyPublisher<AudioSignalState, Never>,
         currentTrackPublisher: AnyPublisher<TrackMetadata?, Never>,
         currentPresetNamePublisher: AnyPublisher<String?, Never>,
         livePlanPublisher: AnyPublisher<PlannedSession?, Never>,
+        reduceMotionPublisher: AnyPublisher<Bool, Never> = Just(false).eraseToAnyPublisher(),
         delay: any DelayProviding = RealDelay()
     ) {
         self.delay = delay
-        self.reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        self.reduceMotion = false   // overwritten immediately by the publisher below
 
         // Start the initial auto-hide timer.
         scheduleHide()
 
-        // Reduce-motion updates.
-        NotificationCenter.default
-            .publisher(for: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification)
+        // Reduce-motion: sourced from AccessibilityState via publisher injection.
+        // Replaces the direct NSWorkspace observation from U.6 (U.9 migration).
+        reduceMotionPublisher
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-            }
+            .assign(to: \.reduceMotion, on: self)
             .store(in: &cancellables)
 
         // Listening badge: show only on definite .silent (≥3 s per SilenceDetector SM).

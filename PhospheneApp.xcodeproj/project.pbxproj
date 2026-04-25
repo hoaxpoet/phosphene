@@ -151,6 +151,12 @@
 		K10051 /* SessionRecorderRetentionPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20051; };
 		K10052 /* OnboardingResetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20052; };
 		K10053 /* CaptureModeReconcilerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20053; };
+		L10001 /* AccessibilityState.swift in Sources */ = {isa = PBXBuildFile; fileRef = L20001; };
+		L10002 /* AccessibilityLabels.swift in Sources */ = {isa = PBXBuildFile; fileRef = L20002; };
+		L10010 /* QualityGradeIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = L20010; };
+		L10040 /* AccessibilityStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = L20040; };
+		L10041 /* DynamicTypeRegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = L20041; };
+		L10042 /* AccessibilityLabelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = L20042; };
 		/* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -301,6 +307,12 @@
 		K20051 /* SessionRecorderRetentionPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionRecorderRetentionPolicyTests.swift; sourceTree = "<group>"; };
 		K20052 /* OnboardingResetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingResetTests.swift; sourceTree = "<group>"; };
 		K20053 /* CaptureModeReconcilerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureModeReconcilerTests.swift; sourceTree = "<group>"; };
+		L20001 /* AccessibilityState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityState.swift; sourceTree = "<group>"; };
+		L20002 /* AccessibilityLabels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityLabels.swift; sourceTree = "<group>"; };
+		L20010 /* QualityGradeIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QualityGradeIndicator.swift; sourceTree = "<group>"; };
+		L20040 /* AccessibilityStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityStateTests.swift; sourceTree = "<group>"; };
+		L20041 /* DynamicTypeRegressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamicTypeRegressionTests.swift; sourceTree = "<group>"; };
+		L20042 /* AccessibilityLabelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityLabelsTests.swift; sourceTree = "<group>"; };
 		/* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -438,6 +450,7 @@
 				F20002 /* TrackPreparationStatusIcon.swift */,
 				K20010 /* SettingsView.swift */,
 				K40001 /* Settings */,
+				L20010 /* QualityGradeIndicator.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -468,6 +481,8 @@
 				K20021 /* CaptureModeReconciler.swift */,
 				K20022 /* SessionRecorderRetentionPolicy.swift */,
 				K20023 /* OnboardingReset.swift */,
+				L20001 /* AccessibilityState.swift */,
+				L20002 /* AccessibilityLabels.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -598,6 +613,9 @@
 				K20051 /* SessionRecorderRetentionPolicyTests.swift */,
 				K20052 /* OnboardingResetTests.swift */,
 				K20053 /* CaptureModeReconcilerTests.swift */,
+				L20040 /* AccessibilityStateTests.swift */,
+				L20041 /* DynamicTypeRegressionTests.swift */,
+				L20042 /* AccessibilityLabelsTests.swift */,
 			);
 			path = PhospheneAppTests;
 			sourceTree = "<group>";
@@ -799,6 +817,9 @@
 				K10021 /* CaptureModeReconciler.swift in Sources */,
 				K10022 /* SessionRecorderRetentionPolicy.swift in Sources */,
 				K10023 /* OnboardingReset.swift in Sources */,
+				L10001 /* AccessibilityState.swift in Sources */,
+				L10002 /* AccessibilityLabels.swift in Sources */,
+				L10010 /* QualityGradeIndicator.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -847,6 +868,9 @@
 				K10051 /* SessionRecorderRetentionPolicyTests.swift in Sources */,
 				K10052 /* OnboardingResetTests.swift in Sources */,
 				K10053 /* CaptureModeReconcilerTests.swift in Sources */,
+				L10040 /* AccessibilityStateTests.swift in Sources */,
+				L10041 /* DynamicTypeRegressionTests.swift in Sources */,
+				L10042 /* AccessibilityLabelsTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

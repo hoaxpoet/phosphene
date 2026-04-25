@@ -277,3 +277,22 @@
 "settings.about.license.title"  = "License";
 "settings.about.license.body"   = "MIT License. © 2026 Phosphene contributors.";
 "settings.about.copy_debug_info" = "Copy debug info";
+
+// MARK: - Accessibility (a11y) — VoiceOver labels and hints. (U.9)
+
+"a11y.connector.tile.hint.enabled"          = "Connect using this source";
+"a11y.connector.tile.hint.disabled"         = "Not available";
+
+"a11y.trackInfoCard.unknownTrack"           = "Unknown track";
+"a11y.trackInfoCard.hint"                   = "Now playing";
+
+"a11y.progressDots.label"                   = "Session progress";
+
+"a11y.listeningBadge.label"                 = "Waiting for audio";
+
+"a11y.toast.severity.info"                  = "Info";
+"a11y.toast.severity.warning"               = "Warning";
+"a11y.toast.severity.degradation"           = "Alert";
+"a11y.toast.dismiss.label"                  = "Dismiss notification";
+
+"a11y.preparation.topBanner.dismiss.label"  = "Dismiss warning";

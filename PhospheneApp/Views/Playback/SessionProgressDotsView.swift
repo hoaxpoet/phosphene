@@ -28,6 +28,8 @@ struct SessionProgressDotsView: View {
             }
         }
         .accessibilityIdentifier(Self.accessibilityID)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(String(localized: "a11y.progressDots.label"))
         .accessibilityValue("Track \(max(1, progress.currentIndex + 1)) of \(progress.totalTracks)")
     }
 
@@ -45,14 +47,14 @@ struct SessionProgressDotsView: View {
                     }
                 }
             Text("Reactive")
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .font(.caption2.weight(.medium).monospaced())
                 .foregroundColor(.white.opacity(0.6))
         }
     }
 
     private var trackCountText: some View {
         Text("\(progress.currentIndex + 1) of \(progress.totalTracks)")
-            .font(.system(size: 11, design: .monospaced))
+            .font(.caption.monospaced())
             .foregroundColor(.white.opacity(0.7))
     }
 

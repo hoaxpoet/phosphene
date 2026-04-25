@@ -1,7 +1,9 @@
 // SessionStateViewModel — Bridges SessionManager into the SwiftUI view layer.
 //
 // Observes SessionManager.state and publishes it for view routing in ContentView.
-// Also tracks the system reduce-motion preference (planted for U.6/U.9 consumption).
+// Forwards reduceMotion from AccessibilityState (U.9 migration: was direct
+// NSWorkspace read; now sourced from AccessibilityState for consistent
+// SettingsStore preference + system flag combination).
 //
 // If Combine + @MainActor interaction causes compilation issues under Swift 6,
 // the assignment-sink pattern used here (receive(on:).assign(to:on:)) is the
@@ -16,9 +18,9 @@ import SwiftUI
 /// Bridges `SessionManager` state into the SwiftUI view hierarchy.
 ///
 /// Owned by the app entry point; passed to `ContentView` via its initializer.
-/// Views observe `state` to determine which top-level view to show. The
-/// `reduceMotion` property is planted for U.6 (overlay animation) and U.9
-/// (mv_warp gating) and has no consumer in U.1.
+/// Views observe `state` to determine which top-level view to show.
+/// `reduceMotion` is forwarded from `AccessibilityState` — it combines the system
+/// `NSWorkspace` flag with the user's `ReducedMotionPreference` from `SettingsStore`.
 @MainActor
 final class SessionStateViewModel: ObservableObject {
 
@@ -27,8 +29,9 @@ final class SessionStateViewModel: ObservableObject {
     /// Current session lifecycle state. Mirrors `SessionManager.state`.
     @Published private(set) var state: SessionState
 
-    /// Whether the system reduce-motion accessibility setting is active.
-    /// Updated live via `NSWorkspace.accessibilityDisplayOptionsDidChangeNotification`.
+    /// Effective reduce-motion state (system flag × user preference).
+    /// Forwarded from `AccessibilityState`. Used by ContentView to pass
+    /// into PlaybackView and ReadyView.
     @Published private(set) var reduceMotion: Bool
 
     // MARK: - Private
@@ -38,26 +41,24 @@ final class SessionStateViewModel: ObservableObject {
 
     // MARK: - Init
 
-    /// Create a view model backed by the given session manager.
+    /// Create a view model backed by the given session manager and accessibility state.
     ///
-    /// - Parameter sessionManager: The shared session manager instance.
-    init(sessionManager: SessionManager) {
+    /// - Parameters:
+    ///   - sessionManager: The shared session manager instance.
+    ///   - accessibilityState: Single source of truth for reduce-motion state.
+    init(sessionManager: SessionManager, accessibilityState: AccessibilityState) {
         self.sessionManager = sessionManager
         self.state = sessionManager.state
-        self.reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        self.reduceMotion = accessibilityState.reduceMotion
 
         sessionManager.$state
             .receive(on: DispatchQueue.main)
             .assign(to: \.state, on: self)
             .store(in: &cancellables)
 
-        NotificationCenter.default.publisher(
-            for: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification
-        )
-        .receive(on: DispatchQueue.main)
-        .sink { [weak self] _ in
-            self?.reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        }
-        .store(in: &cancellables)
+        accessibilityState.$reduceMotion
+            .receive(on: DispatchQueue.main)
+            .assign(to: \.reduceMotion, on: self)
+            .store(in: &cancellables)
     }
 }

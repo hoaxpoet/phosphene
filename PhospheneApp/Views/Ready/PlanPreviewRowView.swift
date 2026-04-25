@@ -23,14 +23,14 @@ struct PlanPreviewRowView: View {
         HStack(spacing: 12) {
             // Track number
             Text("\(row.trackIndex + 1)")
-                .font(.system(size: 12, design: .monospaced))
+                .font(.footnote.monospaced())
                 .foregroundColor(.white.opacity(0.3))
                 .frame(width: 28, alignment: .trailing)
 
             // Lock icon
             if row.isLocked {
                 Image(systemName: "lock.fill")
-                    .font(.system(size: 10))
+                    .font(.caption2)
                     .foregroundColor(.yellow.opacity(0.7))
                     .frame(width: 14)
             } else {
@@ -40,12 +40,12 @@ struct PlanPreviewRowView: View {
             // Track title + artist
             VStack(alignment: .leading, spacing: 2) {
                 Text(row.trackTitle)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.callout.weight(.medium))
                     .foregroundColor(.white)
                     .lineLimit(1)
                 if !row.trackArtist.isEmpty {
                     Text(row.trackArtist)
-                        .font(.system(size: 11))
+                        .font(.caption)
                         .foregroundColor(.white.opacity(0.45))
                         .lineLimit(1)
                 }
@@ -56,12 +56,12 @@ struct PlanPreviewRowView: View {
             // Preset name + family pill
             VStack(alignment: .trailing, spacing: 3) {
                 Text(row.presetName)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.footnote.weight(.medium))
                     .foregroundColor(.white.opacity(0.8))
                     .lineLimit(1)
 
                 Text(row.presetFamily)
-                    .font(.system(size: 10))
+                    .font(.caption2)
                     .foregroundColor(.white.opacity(0.5))
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
@@ -71,7 +71,7 @@ struct PlanPreviewRowView: View {
 
             // Duration
             Text(formattedDuration)
-                .font(.system(size: 11, design: .monospaced))
+                .font(.caption.monospaced())
                 .foregroundColor(.white.opacity(0.35))
                 .frame(width: 48, alignment: .trailing)
         }

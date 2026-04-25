@@ -55,12 +55,12 @@ struct TrackChangeAnimationView: View {
     private func centerCard(info: TrackInfoDisplay) -> some View {
         VStack(spacing: 6) {
             Text(info.title)
-                .font(.system(size: 28, weight: .semibold))
+                .font(.title2.weight(.semibold))
                 .foregroundColor(.white)
                 .multilineTextAlignment(.center)
             if !info.artist.isEmpty {
                 Text(info.artist)
-                    .font(.system(size: 16))
+                    .font(.subheadline)
                     .foregroundColor(.white.opacity(0.7))
             }
         }

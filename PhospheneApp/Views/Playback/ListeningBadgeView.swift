@@ -25,7 +25,7 @@ struct ListeningBadgeView: View {
         HStack(spacing: 6) {
             if !reduceMotion {
                 Image(systemName: "arrow.2.circlepath")
-                    .font(.system(size: 10))
+                    .font(.caption2)
                     .rotationEffect(.degrees(spinnerAngle))
                     .onAppear {
                         withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {
@@ -34,7 +34,7 @@ struct ListeningBadgeView: View {
                     }
             }
             Text("Listening…")
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .font(.caption.weight(.medium).monospaced())
         }
         .foregroundColor(.white.opacity(0.8))
         .padding(.horizontal, 12)
@@ -47,5 +47,7 @@ struct ListeningBadgeView: View {
         )
         .allowsHitTesting(false)
         .accessibilityIdentifier(Self.accessibilityID)
+        .accessibilityLabel(String(localized: "a11y.listeningBadge.label"))
+        .accessibilityAddTraits(.updatesFrequently)
     }
 }

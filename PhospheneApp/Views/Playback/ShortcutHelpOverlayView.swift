@@ -70,7 +70,7 @@ struct ShortcutHelpOverlayView: View {
     private func categorySection(_ category: ShortcutCategory, shortcuts: [PlaybackShortcut]) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(category.rawValue.uppercased())
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .font(.caption2.weight(.bold).monospaced())
                 .foregroundColor(.white.opacity(0.4))
                 .padding(.bottom, 2)
 
@@ -85,11 +85,11 @@ struct ShortcutHelpOverlayView: View {
     private func shortcutRow(_ shortcut: PlaybackShortcut) -> some View {
         HStack {
             Text(shortcut.label)
-                .font(.system(size: 13))
+                .font(.callout)
                 .foregroundColor(.white.opacity(0.85))
             Spacer()
             Text(keyLabel(shortcut))
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .font(.caption.weight(.semibold).monospaced())
                 .foregroundColor(.white)
                 .padding(.horizontal, 7)
                 .padding(.vertical, 3)

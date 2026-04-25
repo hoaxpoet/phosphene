@@ -120,7 +120,7 @@ struct ReadyView: View {
     private var mainContent: some View {
         VStack(spacing: 20) {
             Text(String(localized: "ready.headline"))
-                .font(.system(size: 48, weight: .thin))
+                .font(.largeTitle.weight(.thin))
                 .foregroundColor(.white)
                 .accessibilityIdentifier(Self.headlineID)
 

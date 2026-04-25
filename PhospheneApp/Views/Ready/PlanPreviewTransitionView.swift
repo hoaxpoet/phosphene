@@ -14,11 +14,11 @@ struct PlanPreviewTransitionView: View {
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: "arrow.down")
-                .font(.system(size: 10, weight: .light))
+                .font(.caption2.weight(.light))
                 .foregroundColor(.white.opacity(0.3))
 
             Text(label)
-                .font(.system(size: 11))
+                .font(.caption)
                 .foregroundColor(.white.opacity(0.35))
         }
         .frame(maxWidth: .infinity, alignment: .leading)

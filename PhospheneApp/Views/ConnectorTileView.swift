@@ -58,5 +58,14 @@ struct ConnectorTileView: View {
                 .fill(isEnabled ? Color.white.opacity(0.07) : Color.white.opacity(0.03))
         )
         .accessibilityIdentifier("\(Self.accessibilityIDPrefix).\(type.rawValue)")
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            AccessibilityLabels.connectorTileLabel(
+                type: type,
+                isEnabled: isEnabled,
+                disabledCaption: disabledCaption
+            )
+        )
+        .accessibilityHint(AccessibilityLabels.connectorTileHint(isEnabled: isEnabled))
     }
 }

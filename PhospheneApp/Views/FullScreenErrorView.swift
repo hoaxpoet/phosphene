@@ -53,7 +53,7 @@ struct FullScreenErrorView: View {
 
     private var icon: some View {
         Image(systemName: severityIcon)
-            .font(.system(size: 44, weight: .light))
+            .font(.largeTitle.weight(.light))
             .foregroundColor(severityColor.opacity(0.7))
     }
 

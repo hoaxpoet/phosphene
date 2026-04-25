@@ -37,16 +37,8 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
 
     // MARK: - Session Recording Hook
 
-    /// Optional per-frame capture hook for SessionRecorder (app layer).
-    ///
-    /// The hook is invoked AFTER `renderFrame` writes the drawable, but BEFORE
-    /// the command buffer is committed. The closure receives the freshly-rendered
-    /// drawable texture plus the features and stems that drove this frame; it
-    /// may issue its own blit commands on `commandBuffer` to copy the texture
-    /// into a shared-storage capture texture for later readback.
-    ///
-    /// Setting this to `nil` disables capture with zero overhead (no closure
-    /// invocation, no blit, no allocations).
+    /// Per-frame capture hook for SessionRecorder. Invoked after `renderFrame`,
+    /// before commit. Nil = zero overhead.
     public var onFrameRendered: ((_ drawableTexture: MTLTexture,
                                   _ features: FeatureVector,
                                   _ stems: StemFeatures,
@@ -116,8 +108,7 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     /// Optional per-vertex feedback warp state — allocated when the active preset
     /// declares `.mvWarp` in its passes array.
     var mvWarpState: MVWarpState?
-    /// Decay value for the mv_warp compose pass. Set from the preset descriptor via
-    /// `setMVWarpDecay` so the compose pass matches the shader's `pf.decay`.
+    /// Decay for the mv_warp compose pass — mirrors preset descriptor `pf.decay`.
     var mvWarpDecay: Float = 0.96
     /// Last drawable size reported by `mtkView(_:drawableSizeWillChange:)`.
     /// Used by `setupMVWarp` so mid-session preset switches allocate at the real size.
@@ -137,18 +128,12 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
 
     // MARK: - Spectral History (buffer(5))
 
-    /// Per-frame MIR history ring buffer. Bound at fragment buffer index 5 in all direct-pass
-    /// encoders so instrument-family presets can visualise recent MIR state.
-    /// Updated once per frame in `draw(in:)`, reset on track change.
+    /// Per-frame MIR history ring buffer — bound at fragment buffer(5). Updated each frame.
     public let spectralHistory: SpectralHistoryBuffer
 
     // MARK: - Mesh Preset Fragment Buffer (buffer(4))
 
-    /// Optional per-preset fragment buffer for mesh presets.
-    ///
-    /// Bound at fragment buffer index 4 in `drawWithMeshShader` when non-nil.
-    /// Used by mesh presets (e.g. Arachne) that need to pass CPU-side state to
-    /// the fragment shader. Follows the same pattern as `directPresetFragmentBuffer`.
+    /// Per-preset fragment buffer for mesh presets (e.g. Arachne spider). Bound at fragment buffer(4).
     var meshPresetFragmentBuffer: MTLBuffer?
     let meshPresetFragmentBufferLock = NSLock()
 
@@ -187,6 +172,13 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     /// flag chain.  Set atomically via `setActivePasses(_:)`.
     var activePasses: [RenderPass] = [.direct]
     let passesLock = NSLock()
+
+    // MARK: - Accessibility Flags (U.9, D-054)
+
+    /// Beat-pulse amplitude scale. `1.0` normal; `0.5` reduced-motion. See D-054.
+    public var beatAmplitudeScale: Float = 1.0
+    /// When true, mv_warp and SSGI passes are suppressed. See D-054.
+    public var frameReduceMotion: Bool = false
 
     // MARK: - Accumulated Audio Time (Increment 3.15)
 
@@ -375,6 +367,14 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
         let energy = (features.bass + features.mid + features.treble) / 3.0
         stepAccumulatedTime(energy: energy, deltaTime: deltaTime)
         features.accumulatedAudioTime = audioTimeLock.withLock { _accumulatedAudioTime }
+
+        // Beat clamp: scale all onset-pulse amplitudes uniformly (U.9, D-054).
+        // beatPhase01/beatsUntilNext are timing primitives — NOT clamped.
+        let beatScale = beatAmplitudeScale
+        features.beatBass *= beatScale
+        features.beatMid *= beatScale
+        features.beatTreble *= beatScale
+        features.beatComposite *= beatScale
 
         // Update spectral history ring buffer (buffer(5)) once per frame.
         let stemSnap = stemFeaturesLock.withLock { latestStemFeatures }

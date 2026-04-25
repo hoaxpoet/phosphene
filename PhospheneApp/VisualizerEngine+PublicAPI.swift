@@ -61,6 +61,21 @@ extension VisualizerEngine {
         }
     }
 
+    // MARK: - Accessibility (U.9, D-054)
+
+    /// Apply reduced-motion and beat-amplitude flags to the render pipeline.
+    ///
+    /// Called from `PhospheneApp` whenever `AccessibilityState` publishes a change.
+    /// Both `pipeline.frameReduceMotion` and `pipeline.beatAmplitudeScale` are
+    /// read on the main actor in `draw(in:)`, so no lock is needed here.
+    @MainActor
+    func applyAccessibility(reduceMotion: Bool, beatAmplitudeScale: Float) {
+        pipeline.frameReduceMotion = reduceMotion
+        pipeline.beatAmplitudeScale = beatAmplitudeScale
+        // Propagate to any active RayMarchPipeline so SSGI is suppressed immediately.
+        currentRayMarchPipeline?.reducedMotion = reduceMotion
+    }
+
     // MARK: - Toggles
 
     /// Toggle the debug metadata overlay.

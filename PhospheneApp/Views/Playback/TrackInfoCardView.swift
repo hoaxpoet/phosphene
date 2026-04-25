@@ -20,14 +20,14 @@ struct TrackInfoCardView: View {
         VStack(alignment: .leading, spacing: 2) {
             // Track title
             Text(trackInfo?.title ?? "—")
-                .font(.system(size: 16, weight: .semibold))
+                .font(.headline)
                 .foregroundColor(.white)
                 .lineLimit(1)
 
             // Artist
             if let artist = trackInfo?.artist, !artist.isEmpty {
                 Text(artist)
-                    .font(.system(size: 12))
+                    .font(.footnote)
                     .foregroundColor(.white.opacity(0.75))
                     .lineLimit(1)
             }
@@ -37,7 +37,7 @@ struct TrackInfoCardView: View {
             // Preset name
             if let name = preset?.name {
                 Text(name)
-                    .font(.system(size: 10, weight: .regular, design: .monospaced))
+                    .font(.caption2.monospaced())
                     .italic()
                     .foregroundColor(.white.opacity(0.55))
                     .lineLimit(1)
@@ -50,6 +50,15 @@ struct TrackInfoCardView: View {
         .frame(minWidth: 200, maxWidth: 320, alignment: .leading)
         .overlayBackdrop()
         .accessibilityIdentifier(Self.accessibilityID)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            AccessibilityLabels.trackInfoCardLabel(
+                title: trackInfo?.title,
+                artist: trackInfo?.artist,
+                preset: preset?.name
+            )
+        )
+        .accessibilityHint(String(localized: "a11y.trackInfoCard.hint"))
     }
 
     // MARK: - Subviews
@@ -59,7 +68,7 @@ struct TrackInfoCardView: View {
         let label = orchestratorState.rawValue
         let color: Color = orchestratorState == .planned ? .green.opacity(0.7) : .orange.opacity(0.7)
         Text(label)
-            .font(.system(size: 9, weight: .semibold, design: .monospaced))
+            .font(.caption2.weight(.semibold).monospaced())
             .foregroundColor(color)
             .padding(.horizontal, 5)
             .padding(.vertical, 2)

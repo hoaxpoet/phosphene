@@ -71,6 +71,14 @@ public final class RayMarchPipeline: @unchecked Sendable {
     /// Composite pass: reads litTexture, applies ACES, writes to drawable format.
     let compositePipeline: MTLRenderPipelineState
 
+    // MARK: - Accessibility Flags (U.9, D-054)
+
+    /// When `true`, SSGI is suppressed this frame regardless of `ssgiEnabled`.
+    /// Set by `RenderPipeline+RayMarch` from `RenderPipeline.frameReduceMotion`
+    /// each frame before calling `render(...)`.
+    /// TODO(post-SSGI-temporal-landing): re-evaluate when temporal SSGI is added.
+    public var reducedMotion: Bool = false
+
     // MARK: - SSGI State
 
     /// When `true`, `render(...)` runs the SSGI accumulation and blend passes between
@@ -291,7 +299,8 @@ public final class RayMarchPipeline: @unchecked Sendable {
         )
 
         // Optional SSGI pass (Increment 3.17): indirect diffuse between lighting and composite.
-        if ssgiEnabled {
+        // Suppressed when reducedMotion is true per U.9 / D-054.
+        if ssgiEnabled && !reducedMotion {
             runSSGIPass(commandBuffer: commandBuffer, features: &features, noiseTextures: noiseTextures)
             runSSGIBlendPass(commandBuffer: commandBuffer)
         }

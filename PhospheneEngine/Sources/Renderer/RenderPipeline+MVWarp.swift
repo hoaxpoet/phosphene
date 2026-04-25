@@ -172,6 +172,20 @@ extension RenderPipeline {
         warpState: MVWarpState,
         sceneAlreadyRendered: Bool
     ) {
+        // Reduced-motion gate (U.9, D-054): suppress temporal feedback accumulation.
+        if frameReduceMotion {
+            drawMVWarpReducedMotion(
+                commandBuffer: commandBuffer,
+                view: view,
+                features: &features,
+                stemFeatures: stemFeatures,
+                activePipeline: activePipeline,
+                warpState: warpState,
+                sceneAlreadyRendered: sceneAlreadyRendered
+            )
+            return
+        }
+
         // ── Pass 0: Scene render (direct-render presets only) ─────────────────
         // For ray-march presets the scene is already in warpState.sceneTexture;
         // drawWithRayMarch renders to that texture when mv_warp is active.
@@ -185,53 +199,14 @@ extension RenderPipeline {
             )
         }
 
-        // Snapshot decay for the compose pass.
+        // ── Pass 1: Warp pass → Pass 2: Compose pass ─────────────────────────
         var currentDecay: Float = 0.96
-
-        // ── Pass 1: Warp pass ─────────────────────────────────────────────────
-        // 32×24 vertex grid. Each vertex calls mvWarpPerFrame + mvWarpPerVertex
-        // (defined in the preset's compiled library via the mvWarpPreamble).
-        // Reads warpTexture (previous frame) at warped UVs × decay → composeTexture.
-        do {
-            let desc = MTLRenderPassDescriptor()
-            desc.colorAttachments[0].texture     = warpState.composeTexture
-            desc.colorAttachments[0].loadAction  = .clear
-            desc.colorAttachments[0].clearColor  = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
-            desc.colorAttachments[0].storeAction = .store
-
-            if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: desc) {
-                encoder.setRenderPipelineState(warpState.warpPipeline)
-
-                // Buffer layout: buffer(0)=FeatureVector, buffer(1)=StemFeatures, buffer(2)=SceneUniforms.
-                // Matches the mvWarp_vertex signature in the preamble.
-                var featuresCopy = features
-                encoder.setVertexBytes(&featuresCopy, length: MemoryLayout<FeatureVector>.stride, index: 0)
-                var stemsCopy = stemFeatures
-                encoder.setVertexBytes(&stemsCopy, length: MemoryLayout<StemFeatures>.stride, index: 1)
-
-                // SceneUniforms at buffer(2): provide via rayMarchPipeline if available.
-                var sceneUni = getSceneUniforms()
-                encoder.setVertexBytes(&sceneUni, length: MemoryLayout<SceneUniforms>.stride, index: 2)
-
-                encoder.setFragmentTexture(warpState.warpTexture, index: 0)
-
-                // Extract decay from the warp output (vertex carries pf.decay per-fragment).
-                // We also need it for the compose pass — read it from the snapshot below
-                // after warp completes. For now use a snapshot via scene uniforms or fallback.
-                // 31 quads × 23 quads × 2 triangles × 3 vertices = 4278 vertices.
-                encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 4278)
-
-                encoder.endEncoding()
-            }
-        }
-
-        // Decay for compose: use the value encoded in composeTexture alpha channel
-        // (each fragment writes pf.decay as WarpVertexOut.decay). We can't read back
-        // from GPU during encoding, so we pass decay from the FeatureVector-derived
-        // value that the Swift render loop maintains. Use a conservative 0.96 default;
-        // the compose alpha blend correct regardless since mvWarp_compose_fragment
-        // reads its own decay from buffer(0).
-        // We pass current RenderPipeline feedback decay (or default) to compose.
+        encodeMVWarpPass(
+            commandBuffer: commandBuffer,
+            features: &features,
+            stemFeatures: stemFeatures,
+            warpState: warpState
+        )
         currentDecay = mvWarpLock.withLock { mvWarpDecay }
 
         // ── Pass 2: Compose pass ──────────────────────────────────────────────
@@ -277,6 +252,73 @@ extension RenderPipeline {
         }
     }
     // swiftlint:enable function_parameter_count
+
+    // MARK: Reduced-Motion Fallback (U.9)
+
+    /// Single-frame render when `frameReduceMotion` is true — skips feedback accumulation.
+    @MainActor
+    // swiftlint:disable:next function_parameter_count
+    private func drawMVWarpReducedMotion(
+        commandBuffer: MTLCommandBuffer,
+        view: MTKView,
+        features: inout FeatureVector,
+        stemFeatures: StemFeatures,
+        activePipeline: MTLRenderPipelineState,
+        warpState: MVWarpState,
+        sceneAlreadyRendered: Bool
+    ) {
+        guard let drawable = view.currentDrawable else { return }
+        if !sceneAlreadyRendered {
+            renderSceneToTexture(
+                commandBuffer: commandBuffer,
+                features: &features,
+                stemFeatures: stemFeatures,
+                activePipeline: activePipeline,
+                target: drawable.texture
+            )
+        } else {
+            let desc = MTLRenderPassDescriptor()
+            desc.colorAttachments[0].texture = drawable.texture
+            desc.colorAttachments[0].loadAction = .clear
+            desc.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
+            desc.colorAttachments[0].storeAction = .store
+            guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: desc) else { return }
+            encoder.setRenderPipelineState(warpState.blitPipeline)
+            encoder.setFragmentTexture(warpState.sceneTexture, index: 0)
+            encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+            encoder.endEncoding()
+        }
+        commandBuffer.present(drawable)
+    }
+
+    // MARK: - Warp Pass Encoder
+
+    /// Encodes the 32×24 vertex-grid warp pass to `warpState.composeTexture`.
+    @MainActor
+    private func encodeMVWarpPass(
+        commandBuffer: MTLCommandBuffer,
+        features: inout FeatureVector,
+        stemFeatures: StemFeatures,
+        warpState: MVWarpState
+    ) {
+        let desc = MTLRenderPassDescriptor()
+        desc.colorAttachments[0].texture = warpState.composeTexture
+        desc.colorAttachments[0].loadAction = .clear
+        desc.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
+        desc.colorAttachments[0].storeAction = .store
+        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: desc) else { return }
+        encoder.setRenderPipelineState(warpState.warpPipeline)
+        var featuresCopy = features
+        encoder.setVertexBytes(&featuresCopy, length: MemoryLayout<FeatureVector>.stride, index: 0)
+        var stemsCopy = stemFeatures
+        encoder.setVertexBytes(&stemsCopy, length: MemoryLayout<StemFeatures>.stride, index: 1)
+        var sceneUni = getSceneUniforms()
+        encoder.setVertexBytes(&sceneUni, length: MemoryLayout<SceneUniforms>.stride, index: 2)
+        encoder.setFragmentTexture(warpState.warpTexture, index: 0)
+        // 31×23 quads × 2 triangles × 3 vertices = 4278 vertices
+        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 4278)
+        encoder.endEncoding()
+    }
 
     // MARK: Scene → Texture (direct-render presets)
 
