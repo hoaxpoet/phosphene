@@ -926,20 +926,15 @@ AppleMusicConnectionViewModelTests×5 + identifier, SpotifyConnectionViewModelTe
 
 ---
 
-### Increment U.8 — Settings panel
+### Increment U.8 — Settings panel ✅
 
 **Scope:** `SettingsView` sheet per `UX_SPEC.md §9`. Four groups: Audio, Visuals, Diagnostics, About. All fields persisted in `UserDefaults` via `SettingsViewModel`. Settings apply immediately (no "Apply" button). Quality ceiling mid-session applies at next preset transition.
 
-**Done when:**
-- All four sections render with correct fields.
-- Every setting persists across app restart.
-- Capture-mode change tears down and re-establishes `AudioInputRouter` cleanly.
-- Device-tier override propagates to `DefaultPresetScorer.PresetScoringContext`.
-- "Reset onboarding" clears the photosensitivity flag and forces re-prompt.
-- "Open sessions folder" opens `~/Documents/phosphene_sessions/` in Finder.
-- 6+ unit tests.
+**Landed (2026-04-24):** Three-part delivery across two commits (`5ec23e71`, `b67ec770`).
 
-**Verify:** `swift test --package-path PhospheneEngine --filter SettingsTests`
+Part A+B: `SettingsTypes` (5 enums/structs), `QualityCeiling` (Orchestrator module), `SettingsStore` (`phosphene.settings.*` key scheme, 11 properties, `captureModeChanged` subject), `SettingsMigrator`, `SettingsViewModel` + `AboutSectionData`, `SettingsView` (`NavigationSplitView`, 720×520pt), `AudioSettingsSection` + `VisualsSettingsSection` + `DiagnosticsSettingsSection` + `AboutSettingsSection`, `SourceAppPicker` + `PresetCategoryBlocklistPicker`, `CaptureModeReconciler` (LIVE-SWITCH, D-052), `SessionRecorderRetentionPolicy` (injected `now`/`wallClock`, active-session guard), `OnboardingReset`, `PresetScoringContextProvider` (effectiveTier + Part C TODOs).
+
+Part C: `PresetScoringContext` + `excludedFamilies`/`qualityCeiling` (backward-compat defaults, D-053), `DefaultPresetScorer` blocklist+quality-ceiling gates, `PresetScoringContextProvider.build()` wired, `SessionRecorder.init(enabled:)`, `LiveAdaptationToastBridge` key migrated, `PhospheneApp.swift` launch-time migration+pruning, settings gear sheet in `PlaybackView`. 50 `Localizable.strings` keys. 39 app tests + 9 engine tests. 573 engine total; 0 SwiftLint violations.
 
 ---
 
