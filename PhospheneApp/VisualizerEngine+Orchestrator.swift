@@ -23,45 +23,94 @@ extension VisualizerEngine {
 
     // MARK: - Plan Building
 
-    /// Build and store a `PlannedSession` from the current session state.
+    /// Build and store a `PlannedSession` from the currently-cached tracks.
     ///
-    /// Call this when `sessionManager.state` transitions to `.ready`.
-    /// Reads `(TrackIdentity, TrackProfile)` pairs from the session cache, builds
-    /// the catalog from `presetLoader`, and runs `DefaultSessionPlanner.plan()`.
+    /// Called when `sessionManager.state` transitions to `.ready`. Generates a
+    /// random seed (stored so `extendPlan()` produces a prefix-identical plan),
+    /// then delegates to the shared `_buildPlan(seed:)` implementation.
+    ///
+    /// In the progressive-readiness flow (Increment 6.1), this may be called when
+    /// only a subset of tracks have cache entries — the remaining tracks are planned
+    /// as preparation completes, via `extendPlan()`.
     ///
     /// Failures are logged; `livePlan` is left nil so the render loop continues
     /// in reactive mode (no pre-planned presets).
     @MainActor
     func buildPlan() {
-        guard let sessionPlan = sessionManager.currentPlan else {
-            logger.info("Orchestrator: no session plan available — skipping build")
-            return
-        }
-        let manager = sessionManager
         // A real plan is taking over — end reactive mode.
         reactiveSessionStart = nil
 
-        let identities = sessionPlan.tracks
-        let cache = manager.cache
+        // Generate a fresh seed for this session; extendPlan() will reuse it.
+        let seed = UInt64.random(in: 1...UInt64.max)
+        currentSessionPlanSeed = seed
+        _buildPlan(seed: seed)
+    }
 
-        // Pair each TrackIdentity with its cached TrackProfile (fall back to empty).
-        let tracks: [(TrackIdentity, TrackProfile)] = identities.map { identity in
-            let profile = cache.trackProfile(for: identity) ?? TrackProfile.empty
+    /// Extend the live plan as more tracks become available during background preparation.
+    ///
+    /// Uses the **same seed** as `buildPlan()`, so the prefix of the extended plan is
+    /// byte-identical to the previous partial plan (planner determinism guarantee, D-047).
+    /// A `.partialPreparation` warning is appended when the plan covers fewer tracks than
+    /// the full session (per `sessionManager.currentPlan.tracks.count`).
+    ///
+    /// A no-op if `buildPlan()` has not yet been called for this session (seed is nil).
+    @MainActor
+    func extendPlan() {
+        guard let seed = currentSessionPlanSeed else {
+            logger.info("Orchestrator: extendPlan — no seed stored, skipping")
+            return
+        }
+        _buildPlan(seed: seed)
+    }
+
+    /// Shared plan-building implementation. Filters to tracks with cache entries and
+    /// appends a `.partialPreparation` warning when coverage is incomplete.
+    @MainActor
+    private func _buildPlan(seed: UInt64) {
+        guard let sessionPlan = sessionManager.currentPlan else {
+            logger.info("Orchestrator: no session plan available — skipping")
+            return
+        }
+        let fullCount = sessionPlan.tracks.count
+        let cache = sessionManager.cache
+
+        // Only plan from tracks that have been cached — uncached tracks have empty
+        // profiles which would skew scoring. The reactive path covers remaining tracks.
+        let readyTracks: [(TrackIdentity, TrackProfile)] = sessionPlan.tracks.compactMap { identity in
+            guard let profile = cache.trackProfile(for: identity) else { return nil }
             return (identity, profile)
+        }
+
+        guard !readyTracks.isEmpty else {
+            logger.info("Orchestrator: no cached tracks — deferring plan")
+            return
         }
 
         let catalog = presetLoader.presets.map { $0.descriptor }
         let tier = Self.detectDeviceTier(device: context.device)
 
         do {
-            let plan = try sessionPlanner.plan(tracks: tracks, catalog: catalog, deviceTier: tier)
+            var plan = try sessionPlanner.plan(
+                tracks: readyTracks, catalog: catalog, deviceTier: tier, seed: seed
+            )
+
+            // Attach partial-preparation warning when coverage is incomplete.
+            let unplannedCount = fullCount - readyTracks.count
+            if unplannedCount > 0 {
+                let warning = PlanningWarning(
+                    kind: .partialPreparation(unplannedCount: unplannedCount),
+                    trackIndex: readyTracks.count,
+                    message: "\(unplannedCount) track(s) not yet prepared"
+                )
+                plan = plan.appendingWarnings([warning])
+            }
+
             orchestratorLock.withLock { livePlan = plan }
             livePlannedSession = plan
 
-            let presetNames = plan.tracks.map { $0.preset.name }.joined(separator: ", ")
             let totalSecs = String(format: "%.0f", plan.totalDuration)
-            logger.info("Orchestrator: plan built — \(plan.tracks.count) tracks, \(totalSecs)s, \(plan.warnings.count) warnings")
-            logger.info("Orchestrator: planned presets — [\(presetNames)]")
+            let warnCount = plan.warnings.count
+            logger.info("Orchestrator: plan — \(plan.tracks.count)/\(fullCount) tracks, \(totalSecs)s, \(warnCount) warnings")
         } catch {
             logger.error("Orchestrator: plan failed — \(error)")
         }
@@ -208,6 +257,7 @@ extension VisualizerEngine {
         let catalog = presetLoader.presets.map { $0.descriptor }
         let tier = Self.detectDeviceTier(device: context.device)
         let seed = UInt64.random(in: 1...UInt64.max)
+        currentSessionPlanSeed = seed   // so extendPlan() uses the new seed too
 
         do {
             var plan = try sessionPlanner.plan(tracks: tracks, catalog: catalog, deviceTier: tier, seed: seed)

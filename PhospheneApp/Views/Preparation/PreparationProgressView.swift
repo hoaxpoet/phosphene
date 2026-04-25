@@ -1,6 +1,6 @@
 // PreparationProgressView — Shown when SessionManager.state == .preparing.
 // Per-track status list, aggregate progress bar, cancel affordance, and
-// dormant "Start now" CTA (active when Inc 6.1 lands via FeatureFlags.progressiveReadiness).
+// "Start now" CTA (active once SessionManager.progressiveReadinessLevel >= .readyForFirstTracks).
 //
 // U.7: Owns a PreparationErrorViewModel that watches network reachability and track
 // statuses to decide whether to show a TopBannerView above the list (non-blocking
@@ -42,15 +42,19 @@ struct PreparationProgressView: View {
     ///   - publisher: The `SessionPreparer`-backed publisher to observe.
     ///   - tracks: Ordered playlist — rows appear in this order.
     ///   - playlistName: Display name shown in the subtitle (may be empty).
+    ///   - progressiveReadinessPublisher: Emits `ProgressiveReadinessLevel` from `SessionManager`;
+    ///     drives the "Start now" CTA. Defaults to `.preparing` (CTA disabled) for previews.
     ///   - reachability: Injectable reachability monitor (defaults to `ReachabilityMonitor`).
     ///   - onCancel: Called when cancel is confirmed; caller transitions state.
-    ///   - onStartNow: Called when "Start now" is tapped (dormant in v1).
+    ///   - onStartNow: Called when "Start now" is tapped; typically forwards to `SessionManager.startNow()`.
     ///   - onPickAnotherPlaylist: Called from full-screen failure CTA (optional).
     ///   - onStartReactive: Called from "Start reactive mode" failure CTA (optional).
     init(
         publisher: any PreparationProgressPublishing,
         tracks: [TrackIdentity],
         playlistName: String = "",
+        progressiveReadinessPublisher: AnyPublisher<ProgressiveReadinessLevel, Never> =
+            Just(.preparing).eraseToAnyPublisher(),
         reachability: any ReachabilityPublishing = ReachabilityMonitor(),
         onCancel: @escaping () -> Void,
         onStartNow: @escaping () -> Void = {},
@@ -58,7 +62,12 @@ struct PreparationProgressView: View {
         onStartReactive: (() -> Void)? = nil
     ) {
         _viewModel = StateObject(
-            wrappedValue: PreparationProgressViewModel(publisher: publisher, trackList: tracks)
+            wrappedValue: PreparationProgressViewModel(
+                publisher: publisher,
+                trackList: tracks,
+                progressiveReadinessPublisher: progressiveReadinessPublisher,
+                onStartNow: onStartNow
+            )
         )
         _errorViewModel = StateObject(
             wrappedValue: PreparationErrorViewModel(
@@ -205,19 +214,15 @@ struct PreparationProgressView: View {
         HStack(spacing: 16) {
             Button(String(localized: "preparation.cancel_button")) {
                 viewModel.requestCancel()
-                // If no confirmation needed, cancel fires immediately.
-                if !viewModel.showCancelConfirmation {
-                    onCancel()
-                }
+                if !viewModel.showCancelConfirmation { onCancel() }
             }
             .buttonStyle(.bordered)
             .foregroundColor(.white.opacity(0.7))
             .accessibilityIdentifier(Self.cancelButtonID)
 
-            // "Start now" CTA — dormant until Inc 6.1 flips FeatureFlags.progressiveReadiness.
-            if viewModel.readyForFirstTracks {
-                Button(String(localized: "preparation.start_now_button")) {
-                    onStartNow()
+            if viewModel.canStartNow {
+                Button(startNowLabel) {
+                    viewModel.startNow()
                 }
                 .buttonStyle(.borderedProminent)
                 .accessibilityIdentifier(Self.startNowButtonID)
@@ -225,5 +230,10 @@ struct PreparationProgressView: View {
         }
         .padding(.vertical, 20)
         .padding(.horizontal, 24)
+    }
+
+    private var startNowLabel: String {
+        let count = viewModel.readyTrackCount
+        return String(format: String(localized: "preparation.start_now_button_with_count"), count)
     }
 }

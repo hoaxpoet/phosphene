@@ -29,7 +29,11 @@ struct PreparationCancelIntegrationTests {
     @Test func cancel_noReadyTracks_skipsConfirmationDialog() async throws {
         let track = makeTrack("Queued Track")
         let pub = makePublisher()
-        let vm = PreparationProgressViewModel(publisher: pub, trackList: [track])
+        let vm = PreparationProgressViewModel(
+            publisher: pub,
+            trackList: [track],
+            progressiveReadinessPublisher: Just(.preparing).eraseToAnyPublisher()
+        )
 
         // Fire queued — no ready tracks yet.
         pub.fire(.queued, for: track)
@@ -44,7 +48,11 @@ struct PreparationCancelIntegrationTests {
     @Test func cancel_withReadyTrack_showsConfirmationDialog() async throws {
         let track = makeTrack("Ready Track")
         let pub = makePublisher()
-        let vm = PreparationProgressViewModel(publisher: pub, trackList: [track])
+        let vm = PreparationProgressViewModel(
+            publisher: pub,
+            trackList: [track],
+            progressiveReadinessPublisher: Just(.preparing).eraseToAnyPublisher()
+        )
 
         pub.fire(.ready, for: track)
         try await Task.sleep(nanoseconds: 10_000_000)
@@ -57,7 +65,11 @@ struct PreparationCancelIntegrationTests {
 
     @Test func cancel_forwardsToCancelPreparation() async throws {
         let pub = makePublisher()
-        let vm = PreparationProgressViewModel(publisher: pub, trackList: [])
+        let vm = PreparationProgressViewModel(
+            publisher: pub,
+            trackList: [],
+            progressiveReadinessPublisher: Just(.preparing).eraseToAnyPublisher()
+        )
 
         vm.cancel()
 

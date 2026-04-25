@@ -22,6 +22,46 @@ public enum SessionState: String, Sendable, Equatable {
     case ended
 }
 
+// MARK: - ProgressiveReadinessLevel
+
+/// Graduated preparation readiness level that advances independently of `SessionState`.
+///
+/// Allows `PreparationProgressView` to unlock the "Start now" CTA as soon as a minimum
+/// prefix of tracks is ready, while preparation continues in the background.
+///
+/// `Comparable` ordering matches the case order: `preparing < readyForFirstTracks <
+/// partiallyPlanned < fullyPrepared < reactiveFallback`. The `>=` idiom reads naturally
+/// for threshold checks such as `progressiveReadinessLevel >= .readyForFirstTracks`.
+public enum ProgressiveReadinessLevel: Sendable, Equatable, Comparable {
+    /// Fewer than `DefaultProgressiveReadinessThreshold` consecutive tracks are ready from position 1.
+    case preparing
+    /// At least `DefaultProgressiveReadinessThreshold` consecutive tracks ready; < 50 % total.
+    case readyForFirstTracks
+    /// At least 50 % of all tracks ready; < 100 %.
+    case partiallyPlanned
+    /// All non-failed tracks are `.ready` or `.partial` — nothing left to prepare.
+    case fullyPrepared
+    /// No usable plan is possible (connector failure or all tracks failed).
+    case reactiveFallback
+
+    private var sortOrder: Int {
+        switch self {
+        case .preparing: return 0
+        case .readyForFirstTracks: return 1
+        case .partiallyPlanned: return 2
+        case .fullyPrepared: return 3
+        case .reactiveFallback: return 4
+        }
+    }
+
+    public static func < (lhs: Self, rhs: Self) -> Bool {
+        lhs.sortOrder < rhs.sortOrder
+    }
+}
+
+/// Minimum number of consecutive ready tracks (from position 1) required to unlock "Start now".
+public let defaultProgressiveReadinessThreshold: Int = 3
+
 // MARK: - SessionPlan
 
 /// A planned visual session for an ordered playlist.

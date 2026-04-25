@@ -122,6 +122,18 @@ private func makeManager(
     return SessionManager(connector: connector, preparer: preparer)
 }
 
+/// Poll until the manager leaves `.preparing` (or 3 seconds elapse).
+///
+/// Required because `startSession()` now returns while still in `.preparing` — the
+/// background preparation Task completes asynchronously on the main actor.
+@MainActor
+private func waitForReady(_ manager: SessionManager) async {
+    let deadline = Date().addingTimeInterval(3)
+    while manager.state == .preparing && Date() < deadline {
+        try? await Task.sleep(nanoseconds: 10_000_000)
+    }
+}
+
 // MARK: - Suite
 
 @Suite("SessionManager")
@@ -179,6 +191,7 @@ struct SessionManagerTests {
         let manager = makeManager(separator: sep)
 
         await manager.startSession(source: .appleMusicCurrentPlaylist)
+        await waitForReady(manager)
 
         #expect(manager.state == .ready)
         #expect(manager.currentPlan != nil)
@@ -190,6 +203,7 @@ struct SessionManagerTests {
         let manager = makeManager(separator: sep)
 
         await manager.startSession(source: .appleMusicCurrentPlaylist)
+        await waitForReady(manager)
         #expect(manager.state == .ready)
 
         manager.beginPlayback()
@@ -202,6 +216,7 @@ struct SessionManagerTests {
         let manager = makeManager(separator: sep)
 
         await manager.startSession(source: .appleMusicCurrentPlaylist)
+        await waitForReady(manager)
         manager.beginPlayback()
         manager.endSession()
 
@@ -222,6 +237,7 @@ struct SessionManagerTests {
         )
 
         await manager.startSession(source: .appleMusicCurrentPlaylist)
+        await waitForReady(manager)
 
         #expect(manager.state == .ready)
         // Plan exists but cache is empty (all tracks failed to pre-analyze).
@@ -262,6 +278,7 @@ struct SessionManagerTests {
         let manager = makeManager(connector: connector, separator: sep)
 
         await manager.startSession(source: .appleMusicCurrentPlaylist)
+        await waitForReady(manager)
         #expect(manager.state == .ready)
 
         // Every track in the playlist should be cached after preparation.
@@ -281,6 +298,7 @@ struct SessionManagerTests {
         let manager = makeManager(separator: sep)
 
         await manager.startSession(source: .appleMusicCurrentPlaylist)
+        await waitForReady(manager)
         #expect(manager.state == .ready)
 
         // A track not in the playlist produces a cache miss; the engine falls back

@@ -1250,15 +1250,22 @@ Runs in parallel with Phase V.7+ once Phase V.1–V.3 utilities are available.
 
 ## Phase 6 — Progressive Readiness & Performance Tiering
 
-### Increment 6.1 — Progressive Session Readiness
+### Increment 6.1 — Progressive Session Readiness ✅ (2026-04-25)
 
 **Scope:** Replace the binary preparation model with graduated readiness. States: `preparing`, `ready_for_first_tracks` (first N tracks analyzed), `partially_planned` (visual arc provisional), `fully_prepared` (all tracks analyzed, full plan), `reactive_fallback` (no preparation possible).
 
-**Done when:**
-- User can start playback when the first 3 tracks are prepared (don't block on full playlist).
-- SessionManager exposes readiness level.
-- Orchestrator operates in partial-plan mode with confidence flags.
-- 6+ unit tests covering each readiness state and transitions.
+**What was built:**
+- `ProgressiveReadinessLevel` (5-case `Comparable` enum) in `SessionTypes.swift`.
+- `SessionManager.startSession()` now returns immediately after connecting; preparation runs in a stored `Task { @MainActor }`. `progressiveReadinessLevel` is published and recomputed from `@Published trackStatuses` subscription on every status change.
+- `SessionManager.startNow()` advances `.preparing → .ready` when readiness ≥ `.readyForFirstTracks`; background task continues so remaining tracks are cached during playback.
+- `SessionManager.computeReadiness(statuses:trackList:cache:)` — static pure function implementing D-056 rules: consecutive-prefix gate (default threshold = 3), `.partial` tracks count only when profile has BPM + genre tags, `allTerminal` short-circuits to `fullyPrepared`/`reactiveFallback`.
+- `PlannedSession.appendingWarnings(_:)` (now `public`) and `PlanningWarning.Kind.partialPreparation(unplannedCount:)` with hand-written Codable (associated value incompatible with `CaseIterable`).
+- `VisualizerEngine`: `currentSessionPlanSeed` stored for deterministic re-use; `extendPlan()` rebuilds plan with same seed on readiness update; `progressiveReadinessLevel` subscription drives `buildPlan()`/`extendPlan()` routing.
+- `PreparationProgressViewModel`: removed `FeatureFlags` gate; `canStartNow` driven by injected `progressiveReadinessPublisher`; `onStartNow` closure forwarded from `SessionManager.startNow()`.
+- `PlaybackChromeViewModel`: `isBackgroundPreparationActive` (`level < .fullyPrepared`) drives teal dot in `PlaybackControlsCluster`.
+- 14 new tests: 10 `ProgressiveReadinessTests` (engine) + 2 `PartialPlanTests` (engine) + 2 `PreparationProgressVMReadinessTests` (app). 685 engine tests total; 0 SwiftLint violations.
+
+**Done when:** ✅ User can start playback when first 3 tracks are prepared. ✅ SessionManager exposes readiness level. ✅ Orchestrator partial-plan mode with `partialPreparation` warning. ✅ 14 tests (≥ 6 required).
 
 **Verify:** `swift test --package-path PhospheneEngine`
 
