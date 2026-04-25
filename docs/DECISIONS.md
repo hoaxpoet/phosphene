@@ -879,3 +879,17 @@ The `displace_lipschitz_safe` test uses 1.15 tolerance (not 1.01). The `perlin3d
 
 **Decision — V.2 preamble load order:**
 Geometry loads after PBR; Volume after Geometry; Texture after Volume. Texture/Voronoi.metal must come before Texture/Grunge.metal (Grunge references `voronoi_f1f2`). The explicit `textureLoadOrder` array in `PresetLoader+Utilities.swift` enforces this.
+
+## D-056 — Progressive readiness architecture: orthogonal level, same-seed re-planning, `.partial` threshold rule (Increment 6.1)
+
+**Status:** Accepted (2026-04-25)
+
+**Decision — `progressiveReadinessLevel` is orthogonal to `SessionState`:**
+`ProgressiveReadinessLevel` is a separate published property on `SessionManager`, not a sub-state of `.preparing`. This allows readiness to advance (`.preparing → .readyForFirstTracks → .partiallyPlanned → .fullyPrepared`) while `SessionState` stays `.preparing`, then continues advancing through `.ready` and `.playing`. A single state enum that merged both dimensions would require compound cases or would need to expose readiness at the `.ready`/`.playing` level separately anyway. The orthogonal design keeps `SessionState` as a coarse lifecycle machine and `progressiveReadinessLevel` as a fine-grained preparation metric, consumable independently by the CTA gate in `PreparationProgressView` and the background-indicator in `PlaybackChromeViewModel`.
+
+**Decision — Same seed for `extendPlan()`:**
+When background preparation completes additional tracks during `.playing`, `extendPlan()` rebuilds the plan using the **same seed** that `buildPlan()` generated. The `DefaultSessionPlanner` is deterministic — same tracks × same seed → byte-identical prefix. So the first N planned tracks are guaranteed unchanged; only new suffix tracks are appended. Without seed preservation, every `extendPlan()` call would shuffle the already-playing visual arc, causing preset changes mid-song. The seed is stored in `currentSessionPlanSeed: UInt64?` on `VisualizerEngine`; `regeneratePlan()` gets a fresh seed (user-initiated replan is intentionally a full reshuffle).
+
+**Decision — `.partial` threshold rule:**
+A `.partial` track (stems unavailable, MIR-only) counts toward the consecutive prefix only when its `TrackProfile` has a non-nil BPM **and** at least one genre tag. A BPM-only or genre-only profile is not plannable — the scorer needs both to estimate tempo-motion match and section suitability. The threshold itself (default 3 tracks) is exposed as `defaultProgressiveReadinessThreshold` in `SessionTypes.swift` for overriding in tests. The prefix must be consecutive from position 0 — a single `.failed` or in-flight track in the prefix breaks the run, ensuring the user doesn't start a session with a gap at the front.
+

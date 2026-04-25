@@ -50,7 +50,11 @@ struct PreparationProgressViewModelTests {
         let pub = MockPublisher()
         pub.setAll(Dictionary(uniqueKeysWithValues: tracks.map { ($0, TrackPreparationStatus.queued) }))
 
-        let vm = PreparationProgressViewModel(publisher: pub, trackList: tracks)
+        let vm = PreparationProgressViewModel(
+            publisher: pub,
+            trackList: tracks,
+            progressiveReadinessPublisher: Just(.preparing).eraseToAnyPublisher()
+        )
         try await Task.sleep(nanoseconds: 10_000_000)
 
         #expect(vm.rows.map(\.title) == ["Charlie", "Alpha", "Bravo"],
@@ -62,7 +66,11 @@ struct PreparationProgressViewModelTests {
     @Test func publisherEmission_updatesRows() async throws {
         let track = makeTrack("So What")
         let pub = MockPublisher()
-        let vm = PreparationProgressViewModel(publisher: pub, trackList: [track])
+        let vm = PreparationProgressViewModel(
+            publisher: pub,
+            trackList: [track],
+            progressiveReadinessPublisher: Just(.preparing).eraseToAnyPublisher()
+        )
 
         pub.fire(.queued, for: track)
         try await Task.sleep(nanoseconds: 10_000_000)
@@ -82,7 +90,11 @@ struct PreparationProgressViewModelTests {
     @Test func aggregateProgress_readyAndPartialCount_outOfTotal() async throws {
         let tracks = (0..<5).map { makeTrack("T\($0)") }
         let pub = MockPublisher()
-        let vm = PreparationProgressViewModel(publisher: pub, trackList: tracks)
+        let vm = PreparationProgressViewModel(
+            publisher: pub,
+            trackList: tracks,
+            progressiveReadinessPublisher: Just(.preparing).eraseToAnyPublisher()
+        )
 
         pub.fire(.ready, for: tracks[0])
         pub.fire(.ready, for: tracks[1])
@@ -103,27 +115,34 @@ struct PreparationProgressViewModelTests {
         #expect(vm.counts.total == 5)
     }
 
-    // MARK: - Feature Flag Gate
+    // MARK: - canStartNow (replaces FeatureFlags gate, Increment 6.1)
 
-    @Test func readyForFirstTracks_isFalseWhenFeatureFlagOff() async throws {
-        let track = makeTrack("Flagged")
+    @Test func canStartNow_falseWhenReadinessIsPreparing() async throws {
+        let track = makeTrack("InProgress")
         let pub = MockPublisher()
-        let vm = PreparationProgressViewModel(publisher: pub, trackList: [track])
+        let readinessSubject = CurrentValueSubject<ProgressiveReadinessLevel, Never>(.preparing)
+        let vm = PreparationProgressViewModel(
+            publisher: pub,
+            trackList: [track],
+            progressiveReadinessPublisher: readinessSubject.eraseToAnyPublisher()
+        )
 
         pub.fire(.ready, for: track)
         try await Task.sleep(nanoseconds: 10_000_000)
 
-        // FeatureFlags.progressiveReadiness == false → CTA stays hidden.
-        #expect(!vm.readyForFirstTracks)
-        #expect(!FeatureFlags.progressiveReadiness,
-                "This test must pass false — update it when Inc 6.1 flips the flag")
+        // Still .preparing → CTA stays hidden.
+        #expect(!vm.canStartNow)
     }
 
     // MARK: - Cancel
 
     @Test func cancel_callsPublisherCancelPreparation() async throws {
         let pub = MockPublisher()
-        let vm = PreparationProgressViewModel(publisher: pub, trackList: [])
+        let vm = PreparationProgressViewModel(
+            publisher: pub,
+            trackList: [],
+            progressiveReadinessPublisher: Just(.preparing).eraseToAnyPublisher()
+        )
 
         vm.cancel()
 
@@ -135,7 +154,11 @@ struct PreparationProgressViewModelTests {
     @Test func flakyNetwork_rapidStatusChanges_noCrash() async throws {
         let tracks = (0..<5).map { makeTrack("S\($0)") }
         let pub = MockPublisher()
-        let vm = PreparationProgressViewModel(publisher: pub, trackList: tracks)
+        let vm = PreparationProgressViewModel(
+            publisher: pub,
+            trackList: tracks,
+            progressiveReadinessPublisher: Just(.preparing).eraseToAnyPublisher()
+        )
 
         // Fire 100 rapid updates across all tracks — must not crash.
         let statuses: [TrackPreparationStatus] = [

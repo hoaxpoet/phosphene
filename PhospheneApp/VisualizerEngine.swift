@@ -1,3 +1,4 @@
+// swiftlint:disable file_length
 // VisualizerEngine — Audio capture → FFT → MIR analysis → renderer pipeline owner.
 //
 // Created once at app launch by ContentView via @StateObject. Audio capture
@@ -276,6 +277,14 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Retains the Combine subscription that triggers `buildPlan()` on `.ready`.
     var stateCancellable: AnyCancellable?
 
+    /// Retains the subscription that calls `extendPlan()` as readiness level advances.
+    var readinessCancellable: AnyCancellable?
+
+    /// Seeded LCG perturbation value shared between `buildPlan()` and `extendPlan()`.
+    /// Reset to nil when a new session begins (`.connecting` state), so each session
+    /// gets a fresh random seed while `extendPlan()` reuses the same one.
+    var currentSessionPlanSeed: UInt64?
+
     /// Wall-clock timestamp of the first reactive `applyLiveUpdate()` call.
     /// Set on entry, reset to nil when `buildPlan()` succeeds (real plan takes over).
     var reactiveSessionStart: Date?
@@ -286,6 +295,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
 
     // MARK: - Initialization
 
+    // swiftlint:disable cyclomatic_complexity function_body_length
     @MainActor
     init() {
         // Create shared instances up front — these go into both the engine pipeline
@@ -351,15 +361,31 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         }
 
         // Trigger plan construction whenever the session reaches .ready.
+        // Also reset currentSessionPlanSeed on .connecting so each session gets a fresh seed.
         let mgr = sessionManager
         stateCancellable = mgr.$state
             .sink { [weak self] newState in
-                guard newState == .ready else { return }
-                self?.buildPlan()
+                guard let self else { return }
+                if newState == .connecting { self.currentSessionPlanSeed = nil }
+                if newState == .ready { self.buildPlan() }
+            }
+
+        // Extend the plan as background preparation makes more tracks available.
+        // Only fires when livePlan is already set (i.e. buildPlan() has run).
+        readinessCancellable = mgr.$progressiveReadinessLevel
+            .dropFirst()
+            .sink { [weak self] _ in
+                guard let self else { return }
+                let inActiveSession = self.sessionManager.state == .ready
+                    || self.sessionManager.state == .playing
+                guard inActiveSession else { return }
+                guard self.orchestratorLock.withLock({ self.livePlan }) != nil else { return }
+                self.extendPlan()
             }
 
         setupTerminationObserver()
     }
+    // swiftlint:enable cyclomatic_complexity function_body_length
 
     /// Build the GPU particle system used by the Murmuration preset.
     /// Quality of movement over quantity — each bird should be visible.

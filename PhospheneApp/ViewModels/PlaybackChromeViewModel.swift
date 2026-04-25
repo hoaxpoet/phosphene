@@ -83,6 +83,9 @@ final class PlaybackChromeViewModel: ObservableObject {
     @Published var overlayVisible: Bool = true
     @Published private(set) var showListeningBadge: Bool = false
     @Published private(set) var reduceMotion: Bool
+    /// True while background track preparation is still in flight (6.1).
+    /// Drives the subtle "still preparing" teal dot in `PlaybackControlsCluster`.
+    @Published private(set) var isBackgroundPreparationActive: Bool = false
 
     // MARK: - Private
 
@@ -105,6 +108,9 @@ final class PlaybackChromeViewModel: ObservableObject {
     ///   - reduceMotionPublisher: Emits effective reduce-motion state from `AccessibilityState`.
     ///     Defaults to a `Just(false)` publisher (normal motion) for backwards compatibility in
     ///     unit tests that don't need to exercise the reduce-motion path.
+    ///   - progressiveReadinessPublisher: Emits `ProgressiveReadinessLevel` from `SessionManager`.
+    ///     Drives the "still preparing" teal dot indicator. Defaults to `.fullyPrepared` so the
+    ///     indicator is hidden in unit tests and in ad-hoc (no-playlist) sessions.
     ///   - delay: Injectable sleep; defaults to `RealDelay` (use `InstantDelay` in tests).
     init(
         audioSignalStatePublisher: AnyPublisher<AudioSignalState, Never>,
@@ -112,6 +118,8 @@ final class PlaybackChromeViewModel: ObservableObject {
         currentPresetNamePublisher: AnyPublisher<String?, Never>,
         livePlanPublisher: AnyPublisher<PlannedSession?, Never>,
         reduceMotionPublisher: AnyPublisher<Bool, Never> = Just(false).eraseToAnyPublisher(),
+        progressiveReadinessPublisher: AnyPublisher<ProgressiveReadinessLevel, Never> =
+            Just(.fullyPrepared).eraseToAnyPublisher(),
         delay: any DelayProviding = RealDelay()
     ) {
         self.delay = delay
@@ -168,6 +176,14 @@ final class PlaybackChromeViewModel: ObservableObject {
                 self.livePlan = plan
                 self.orchestratorState = plan != nil ? .planned : .reactive
                 self.refreshProgress()
+            }
+            .store(in: &cancellables)
+
+        // Background preparation indicator (6.1).
+        progressiveReadinessPublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] level in
+                self?.isBackgroundPreparationActive = level < .fullyPrepared
             }
             .store(in: &cancellables)
     }

@@ -151,6 +151,7 @@
 "preparation.empty_state"               = "Preparing\u2026";
 "preparation.cancel_button"             = "Cancel";
 "preparation.start_now_button"          = "Start now";
+"preparation.start_now_button_with_count" = "Start now with %d tracks ready — we'll keep preparing as you listen.";
 
 "preparation.track.queued"      = "Waiting";
 "preparation.track.resolving"   = "Finding preview";
@@ -185,6 +186,8 @@
 
 // MARK: - Playback
 
+"playback.still_preparing"              = "Still preparing";
+"playback.still_preparing.tooltip"      = "Still preparing tracks — we\u2019ll keep going as you listen.";
 "playback.shortcut_help.title"          = "Keyboard Shortcuts";
 "playback.shortcut_help.dismiss_hint"   = "Press any key to dismiss";
 

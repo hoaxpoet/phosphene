@@ -1,22 +1,12 @@
 // PreparationProgressViewModel — Bridges PreparationProgressPublishing into PreparationProgressView.
 // Maintains derived state: ordered rows, aggregate progress, ETA estimates, cancel confirmation.
 //
-// Feature flags:
-//   progressiveReadiness: false in v1 — gates the "Start now" CTA. TODO(6.1): flip when
-//   Inc 6.1 (Progressive Session Readiness) lands.
+// Increment 6.1: FeatureFlags.progressiveReadiness removed. canStartNow is now derived
+// from a SessionManager.$progressiveReadinessLevel publisher injected at init.
 
 import Combine
 import Session
 import SwiftUI
-
-// MARK: - FeatureFlags
-
-/// Compile-time feature flags for incremental UX features.
-enum FeatureFlags {
-    /// Gates the "Start now" CTA in PreparationProgressView.
-    /// `true` once Inc 6.1 (Progressive Session Readiness) lands.
-    static let progressiveReadiness = false
-}
 
 // MARK: - PreparationCounts
 
@@ -61,8 +51,13 @@ final class PreparationProgressViewModel: ObservableObject {
     /// Counts summary.
     @Published private(set) var counts: PreparationCounts = .zero
 
-    /// Whether the "Start now" CTA is visible. Dormant in v1 (Inc 6.1 flips this).
-    @Published private(set) var readyForFirstTracks: Bool = false
+    /// Whether the "Start now" CTA is enabled.
+    /// True when `SessionManager.progressiveReadinessLevel >= .readyForFirstTracks`.
+    @Published private(set) var canStartNow: Bool = false
+
+    /// Number of tracks currently in a usable state (.ready or .partial).
+    /// Shown in the "Start now with N tracks ready" CTA copy.
+    @Published private(set) var readyTrackCount: Int = 0
 
     /// Whether to show the cancel-confirmation dialog (≥ 1 track is .ready).
     @Published var showCancelConfirmation = false
@@ -71,6 +66,7 @@ final class PreparationProgressViewModel: ObservableObject {
 
     private let publisher: any PreparationProgressPublishing
     private let trackList: [TrackIdentity]
+    private let onStartNow: () -> Void
     private var cancellables = Set<AnyCancellable>()
     private var estimator = PreparationETAEstimator()
     private var stageStartTimes: [TrackIdentity: [PreparationStage: Date]] = [:]
@@ -82,9 +78,20 @@ final class PreparationProgressViewModel: ObservableObject {
     /// - Parameters:
     ///   - publisher: The `SessionPreparer` (or mock) to observe.
     ///   - trackList: Ordered list of tracks — rows appear in this order.
-    init(publisher: any PreparationProgressPublishing, trackList: [TrackIdentity]) {
+    ///   - progressiveReadinessPublisher: Emits `ProgressiveReadinessLevel` from `SessionManager`.
+    ///     Drives `canStartNow`. Pass `Just(.preparing).eraseToAnyPublisher()` in tests that
+    ///     don't exercise the progressive-readiness path.
+    ///   - onStartNow: Closure called when the user taps "Start now". Typically
+    ///     forwards to `SessionManager.startNow()`.
+    init(
+        publisher: any PreparationProgressPublishing,
+        trackList: [TrackIdentity],
+        progressiveReadinessPublisher: AnyPublisher<ProgressiveReadinessLevel, Never>,
+        onStartNow: @escaping () -> Void = {}
+    ) {
         self.publisher = publisher
         self.trackList = trackList
+        self.onStartNow = onStartNow
 
         publisher.trackStatusesPublisher
             .receive(on: DispatchQueue.main)
@@ -92,9 +99,21 @@ final class PreparationProgressViewModel: ObservableObject {
                 self?.handleStatusUpdate(statuses)
             }
             .store(in: &cancellables)
+
+        progressiveReadinessPublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] level in
+                self?.canStartNow = level >= .readyForFirstTracks
+            }
+            .store(in: &cancellables)
     }
 
     // MARK: - Actions
+
+    /// Handle the "Start now" button tap.
+    func startNow() {
+        onStartNow()
+    }
 
     /// Handle a cancel button tap.
     ///
@@ -123,13 +142,11 @@ final class PreparationProgressViewModel: ObservableObject {
     private func handleStatusUpdate(_ statuses: [TrackIdentity: TrackPreparationStatus]) {
         let now = Date()
 
-        // Update per-stage timing and EMA.
         for track in trackList {
             guard let status = statuses[track] else { continue }
             updateTiming(track: track, status: status, now: now)
         }
 
-        // Rebuild rows in original list order.
         rows = trackList.map { track in
             let status = statuses[track] ?? .queued
             let eta = estimator.estimate(for: status)
@@ -142,17 +159,14 @@ final class PreparationProgressViewModel: ObservableObject {
             )
         }
 
-        // Recompute aggregate stats.
         let ready   = rows.filter { $0.status == .ready }.count
         let partial = rows.filter { if case .partial = $0.status { return true }; return false }.count
-        let failed  = rows.filter { if case .failed = $0.status { return true }; return false }.count
+        let failed  = rows.filter { if case .failed  = $0.status { return true }; return false }.count
         let total   = trackList.count
 
         counts = PreparationCounts(ready: ready, partial: partial, failed: failed, total: total)
         aggregateProgress = total > 0 ? Double(ready + partial) / Double(total) : 0
-
-        // TODO(6.1): set readyForFirstTracks based on FeatureFlags.progressiveReadiness + threshold
-        readyForFirstTracks = FeatureFlags.progressiveReadiness && (ready + partial) >= 1
+        readyTrackCount = ready + partial
     }
 
     private func updateTiming(track: TrackIdentity, status: TrackPreparationStatus, now: Date) {
@@ -165,7 +179,6 @@ final class PreparationProgressViewModel: ObservableObject {
             }
         }
 
-        // When a track reaches a terminal status, record elapsed durations for EMA.
         if status.isTerminal && status == .ready {
             if let times = stageStartTimes[track] {
                 for (completedStage, startTime) in times {

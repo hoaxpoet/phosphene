@@ -142,6 +142,11 @@ struct SessionManagerCancelTests {
         let manager = makeManager(separator: sep)
 
         await manager.startSession(source: .appleMusicCurrentPlaylist)
+        // startSession returns early while .preparing; wait for natural completion.
+        let deadline = Date().addingTimeInterval(3)
+        while manager.state == .preparing && Date() < deadline {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
         #expect(manager.state == .ready)
 
         manager.cancel()

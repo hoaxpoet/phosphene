@@ -2,7 +2,7 @@
 //
 // Three surfaces:
 //   top-leading:  TrackInfoCardView
-//   top-trailing: PlaybackControlsCluster
+//   top-trailing: PlaybackControlsCluster (+ "still preparing" teal dot when applicable)
 //   top-center:   ListeningBadgeView
 //   bottom-trailing: toast slot (ToastContainerView, wired in Part C)
 //
@@ -10,6 +10,29 @@
 // allowsHitTesting is false so no interactions are intercepted.
 
 import SwiftUI
+
+// MARK: - PreparationBackgroundIndicator
+
+/// Subtle teal dot shown while background track preparation is still in flight (6.1).
+private struct PreparationBackgroundIndicator: View {
+
+    @State private var visible = false
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Circle()
+                .fill(Color.teal)
+                .frame(width: 4, height: 4)
+            Text(String(localized: "playback.still_preparing"))
+                .font(.caption2)
+                .foregroundColor(.teal.opacity(0.85))
+        }
+        .opacity(visible ? 1 : 0)
+        .animation(.easeIn(duration: 0.4), value: visible)
+        .onAppear { visible = true }
+        .help(String(localized: "playback.still_preparing.tooltip"))
+    }
+}
 
 // MARK: - PlaybackChromeView
 
@@ -36,13 +59,18 @@ struct PlaybackChromeView: View {
             .padding(24)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
-            // Top-trailing: controls cluster
-            PlaybackControlsCluster(
-                progress: viewModel.sessionProgress,
-                reduceMotion: viewModel.reduceMotion,
-                onSettings: onSettings,
-                onEndSession: onEndSession
-            )
+            // Top-trailing: controls cluster + optional "still preparing" indicator
+            VStack(alignment: .trailing, spacing: 4) {
+                PlaybackControlsCluster(
+                    progress: viewModel.sessionProgress,
+                    reduceMotion: viewModel.reduceMotion,
+                    onSettings: onSettings,
+                    onEndSession: onEndSession
+                )
+                if viewModel.isBackgroundPreparationActive {
+                    PreparationBackgroundIndicator()
+                }
+            }
             .padding(24)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
 

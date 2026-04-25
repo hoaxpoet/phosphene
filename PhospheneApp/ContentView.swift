@@ -73,6 +73,8 @@ struct ContentView: View {
             currentPresetNamePublisher: engine.$currentPresetName.eraseToAnyPublisher(),
             livePlanPublisher: engine.$livePlannedSession.eraseToAnyPublisher(),
             reduceMotionPublisher: accessibilityState.$reduceMotion.eraseToAnyPublisher(),
+            progressiveReadinessPublisher: engine.sessionManager.$progressiveReadinessLevel
+                .eraseToAnyPublisher(),
             onEndSession: { engine.sessionManager.endSession() },
             reduceMotion: viewModel.reduceMotion
         )
@@ -100,8 +102,10 @@ struct ContentView: View {
                 publisher: publisher,
                 tracks: engine.sessionManager.preparingTracks,
                 playlistName: "",
+                progressiveReadinessPublisher: engine.sessionManager.$progressiveReadinessLevel
+                    .eraseToAnyPublisher(),
                 onCancel: { engine.sessionManager.cancel() },
-                onStartNow: { engine.sessionManager.beginPlayback() }
+                onStartNow: { engine.sessionManager.startNow() }
             )
         } else {
             // Fallback (should not normally occur — SessionPreparer is always the publisher).

@@ -26,7 +26,11 @@ public struct PlanningWarning: Sendable, Hashable, Codable {
     public let message: String
 
     /// Categories of soft failure.
-    public enum Kind: String, Sendable, Hashable, Codable, CaseIterable {
+    ///
+    /// Note: `CaseIterable` and `String` raw values are absent — `partialPreparation`
+    /// carries an associated value, which is incompatible with both conformances.
+    /// Custom `Codable` is implemented in the extension below.
+    public enum Kind: Sendable, Hashable {
         /// All catalog presets were excluded (budget + identity gate) for this track.
         case noEligiblePresets
         /// The only available option shared a family with the previous preset.
@@ -35,6 +39,54 @@ public struct PlanningWarning: Sendable, Hashable, Codable {
         case budgetExceeded
         /// Section boundary data unavailable for this track.
         case missingSectionData
+        /// One or more tracks had not finished preparing when this partial plan was built.
+        case partialPreparation(unplannedCount: Int)
+    }
+
+    public init(kind: Kind, trackIndex: Int, message: String) {
+        self.kind = kind
+        self.trackIndex = trackIndex
+        self.message = message
+    }
+}
+
+// MARK: - PlanningWarning.Kind Codable
+
+extension PlanningWarning.Kind: Codable {
+
+    private enum CodingKeys: String, CodingKey { case caseName, unplannedCount }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let name = try container.decode(String.self, forKey: .caseName)
+        switch name {
+        case "noEligiblePresets":  self = .noEligiblePresets
+        case "forcedFamilyRepeat": self = .forcedFamilyRepeat
+        case "budgetExceeded":     self = .budgetExceeded
+        case "missingSectionData": self = .missingSectionData
+        case "partialPreparation":
+            let count = try container.decode(Int.self, forKey: .unplannedCount)
+            self = .partialPreparation(unplannedCount: count)
+        default:
+            throw DecodingError.dataCorruptedError(
+                forKey: .caseName,
+                in: container,
+                debugDescription: "Unknown PlanningWarning.Kind: \(name)"
+            )
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case .noEligiblePresets:  try container.encode("noEligiblePresets", forKey: .caseName)
+        case .forcedFamilyRepeat: try container.encode("forcedFamilyRepeat", forKey: .caseName)
+        case .budgetExceeded:     try container.encode("budgetExceeded", forKey: .caseName)
+        case .missingSectionData: try container.encode("missingSectionData", forKey: .caseName)
+        case .partialPreparation(let count):
+            try container.encode("partialPreparation", forKey: .caseName)
+            try container.encode(count, forKey: .unplannedCount)
+        }
     }
 }
 
@@ -140,5 +192,19 @@ public struct PlannedSession: Sendable {
         tracks.compactMap(\.incomingTransition).first {
             abs($0.scheduledAt - sessionTime) <= tolerance
         }
+    }
+
+    /// Returns a copy of this plan with additional warnings appended.
+    ///
+    /// Used by `VisualizerEngine.extendPlan()` to attach `.partialPreparation`
+    /// warnings when the plan covers fewer tracks than the full session.
+    public func appendingWarnings(_ newWarnings: [PlanningWarning]) -> PlannedSession {
+        guard !newWarnings.isEmpty else { return self }
+        return PlannedSession(
+            deviceTier: deviceTier,
+            tracks: tracks,
+            totalDuration: totalDuration,
+            warnings: warnings + newWarnings
+        )
     }
 }
