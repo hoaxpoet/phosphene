@@ -28,7 +28,7 @@ final class LiveAdaptationToastBridge {
 
     // MARK: - Settings flag
 
-    static let userDefaultsKey = "phosphene.showLiveAdaptationToasts"
+    static let userDefaultsKey = "phosphene.settings.visuals.showLiveAdaptationToasts"
     private var isEnabled: Bool { UserDefaults.standard.bool(forKey: Self.userDefaultsKey) }
 
     // MARK: - Coalescing

@@ -22,6 +22,7 @@ struct PlaybackChromeView: View {
 
     @ObservedObject var viewModel: PlaybackChromeViewModel
     let toastManager: ToastManager
+    let onSettings: () -> Void
     let onEndSession: () -> Void
 
     var body: some View {
@@ -39,9 +40,7 @@ struct PlaybackChromeView: View {
             PlaybackControlsCluster(
                 progress: viewModel.sessionProgress,
                 reduceMotion: viewModel.reduceMotion,
-                onSettings: {
-                    // TODO(U.8): open Settings sheet
-                },
+                onSettings: onSettings,
                 onEndSession: onEndSession
             )
             .padding(24)

@@ -174,9 +174,14 @@ public struct DefaultPresetScorer: PresetScoring {
     // MARK: - Hard Exclusion
 
     private func exclusionReason(preset: PresetDescriptor, context: PresetScoringContext) -> String? {
-        if preset.complexityCost.cost(for: context.deviceTier) > context.frameBudgetMs {
-            return "complexity cost \(preset.complexityCost.cost(for: context.deviceTier)) ms " +
-                   "exceeds frame budget \(context.frameBudgetMs) ms on \(context.deviceTier)"
+        if context.excludedFamilies.contains(preset.family) {
+            return "preset '\(preset.id)' family '\(preset.family)' is in user blocklist"
+        }
+        if let budget = context.qualityCeiling.complexityThresholdMs(for: context.deviceTier) {
+            if preset.complexityCost.cost(for: context.deviceTier) > budget {
+                return "complexity cost \(preset.complexityCost.cost(for: context.deviceTier)) ms " +
+                       "exceeds quality-ceiling budget \(budget) ms on \(context.deviceTier)"
+            }
         }
         if preset.id == context.currentPreset?.id {
             return "preset '\(preset.id)' is already active"

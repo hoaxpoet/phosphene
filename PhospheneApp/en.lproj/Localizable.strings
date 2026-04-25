@@ -201,3 +201,79 @@
 
 "preparation.failure.pick_playlist_button"  = "Pick another playlist";
 "preparation.failure.start_reactive_button" = "Start reactive mode";
+
+// MARK: - Settings (U.8)
+
+// Navigation groups
+"settings.group.audio"       = "Audio";
+"settings.group.visuals"     = "Visuals";
+"settings.group.diagnostics" = "Diagnostics";
+"settings.group.about"       = "About";
+
+// Audio — capture mode
+"settings.audio.capture_mode.label"    = "Audio source";
+"settings.audio.capture_mode.system"   = "System audio";
+"settings.audio.capture_mode.app"      = "Specific app";
+"settings.audio.capture_mode.file"     = "Local file";
+"settings.audio.source_app.label"      = "App";
+"settings.audio.local_file.coming_later" = "Local file playback is coming in a future update.";
+
+// Visuals — device tier
+"settings.visuals.device_tier.label"  = "Device tier";
+"settings.visuals.device_tier.auto"   = "Auto";
+"settings.visuals.device_tier.tier1"  = "Tier 1 (M1/M2)";
+"settings.visuals.device_tier.tier2"  = "Tier 2 (M3/M4)";
+
+// Visuals — quality ceiling
+"settings.visuals.quality_ceiling.label"       = "Quality ceiling";
+"settings.visuals.quality_ceiling.auto"        = "Auto";
+"settings.visuals.quality_ceiling.performance" = "Performance";
+"settings.visuals.quality_ceiling.balanced"    = "Balanced";
+"settings.visuals.quality_ceiling.ultra"       = "Ultra";
+
+// Visuals — presets
+"settings.visuals.presets.title"             = "Presets";
+"settings.visuals.milkdrop.label"            = "Include Milkdrop presets";
+"settings.visuals.milkdrop.coming_soon"      = "Coming in a future update.";
+"settings.visuals.reduced_motion.label"       = "Reduced motion";
+"settings.visuals.reduced_motion.match_system" = "Match system";
+"settings.visuals.reduced_motion.always_on"   = "Always on";
+"settings.visuals.reduced_motion.always_off"  = "Always off";
+
+// Visuals — blocklist
+"settings.visuals.blocklist.title" = "Hidden preset families";
+
+// Visuals — toasts
+"settings.visuals.toasts.title"              = "Live adaptation";
+"settings.visuals.adaptation_toasts.label"   = "Show adaptation notifications";
+
+// Diagnostics — session recorder
+"settings.diagnostics.recorder.title"   = "Session recording";
+"settings.diagnostics.recorder.label"   = "Record sessions to disk";
+"settings.diagnostics.recorder.caption" = "Takes effect at the start of the next session.";
+
+// Diagnostics — retention
+"settings.diagnostics.retention.label"     = "Keep recordings";
+"settings.diagnostics.retention.last10"    = "Last 10 sessions";
+"settings.diagnostics.retention.last25"    = "Last 25 sessions";
+"settings.diagnostics.retention.keep_all"  = "Keep all";
+"settings.diagnostics.retention.one_day"   = "Last 24 hours";
+"settings.diagnostics.retention.one_week"  = "Last 7 days";
+
+// Diagnostics — performance
+"settings.diagnostics.performance.title"              = "Developer";
+"settings.diagnostics.performance_warnings.label"     = "Show performance warnings";
+"settings.diagnostics.performance_warnings.caption"   = "Logs frame budget overruns to the debug overlay.";
+
+// Diagnostics — actions
+"settings.diagnostics.open_sessions_folder" = "Open sessions folder";
+"settings.diagnostics.reset_onboarding"     = "Reset onboarding";
+"settings.diagnostics.reset_onboarding.caption" = "Takes effect on next app launch.";
+
+// About
+"settings.about.version.label"  = "Version";
+"settings.about.macos.label"    = "macOS";
+"settings.about.gpu.label"      = "GPU";
+"settings.about.license.title"  = "License";
+"settings.about.license.body"   = "MIT License. © 2026 Phosphene contributors.";
+"settings.about.copy_debug_info" = "Copy debug info";

@@ -799,3 +799,29 @@ Persistent degradation toasts (silence, low input level) must not stack on repea
 `UX_SPEC §9.4` specifies >15s sustained silence triggers the degradation toast. The prior `SilenceToastBridge` fired at 30s, which was a pre-U.7 stub value. `PlaybackErrorBridge` corrects this to match the spec.
 
 **Rejected alternative:** Store condition state in `ToastManager` itself (no separate tracker). Rejected because `ToastManager` would then need to be queried by `PlaybackErrorBridge` both to check state and to enqueue — creating a tighter coupling that makes unit testing harder (two concerns in one object).
+
+## D-052 — CaptureModeReconciler: LIVE-SWITCH PATH via AudioInputRouter.switchMode(_:) (Increment U.8)
+
+**Status:** Accepted (2026-04-24)
+
+**Context:** When the user changes the capture mode in Settings (systemAudio / specificApp / localFile), Phosphene must route audio to the new source. Two paths were considered: (1) defer to next session start, (2) live-switch the running router.
+
+**Decision:** LIVE-SWITCH PATH. `AudioInputRouter.switchMode(_:)` exists and calls `stopInternal()` (resetting `SilenceDetector`) then restarts in the new `InputMode`. `CaptureModeReconciler` subscribes to `SettingsStore.captureModeChanged` and calls `router.switchMode(_:)` immediately on the main actor. The `SilenceDetector` briefly enters `.suspect` during the switch, then recovers to `.active` within a few seconds. No DRM false-silent risk because recovery is fast.
+
+**Special case — `.localFile`:** Shows a "coming later" toast without touching the router. Handled before the `guard let router` gate so the toast always fires even if the router reference is already nil.
+
+**InputMode mapping:** `.systemAudio` → `InputMode.systemAudio`; `.specificApp` → `InputMode.application(bundleIdentifier:)` (not pid-based — audit confirmed the correct label during U.8 pre-flight).
+
+**Rejected alternative:** Defer to next session start. Would require no new code for the reconciler, but the UX contracts (UX_SPEC §9.3) require that Settings changes take effect immediately for live audio source switching.
+
+## D-053 — PresetScoringContext extended with excludedFamilies + qualityCeiling; defaults preserve backward compat (Increment U.8)
+
+**Status:** Accepted (2026-04-24)
+
+**Context:** U.8 Settings adds two user-configurable gates that must influence preset selection: a family blocklist and a quality ceiling. These gates belong in `PresetScoringContext` (the immutable snapshot passed to `DefaultPresetScorer`) rather than in the scorer's internal logic, so the context remains the single source of truth for session state at scoring time.
+
+**Decision:** Add `excludedFamilies: Set<PresetCategory> = []` and `qualityCeiling: QualityCeiling = .auto` to `PresetScoringContext`, both with defaults. All existing callers that omit the new params continue to compile and behave identically (empty blocklist, auto ceiling). `DefaultPresetScorer.exclusionReason` checks `excludedFamilies` first, then applies `qualityCeiling.complexityThresholdMs(for:)` as the budget cap (`.ultra` returns nil → no complexity gate; `.performance` returns 12 ms → stricter than the frame budget).
+
+**`QualityCeiling` placement:** New enum in `Orchestrator` module (not `Presets`). It maps to scoring logic (complexity thresholds) rather than to visual/preset metadata. `PresetScoringContext` already imports `Orchestrator`-local types, so no new cross-module dependencies are introduced.
+
+**`PresetScoringContextProvider` (Part C):** Reads `settingsStore.excludedPresetCategories` and `settingsStore.qualityCeiling` and propagates them through `build()`. This is the only call site that needs updating — all other `PresetScoringContext` constructions (engine tests, golden session tests) use the defaults.

@@ -121,8 +121,12 @@ public final class SessionRecorder: @unchecked Sendable {
     // MARK: Init
 
     /// Create a new session directory under ~/Documents/phosphene_sessions/.
-    /// Returns `nil` if the directory could not be created.
-    public init?(baseDir: URL? = nil) {
+    /// Returns `nil` if disabled or if the directory could not be created.
+    public init?(baseDir: URL? = nil, enabled: Bool = true) {
+        guard enabled else {
+            logger.info("SessionRecorder: disabled by settings — no session directory created")
+            return nil
+        }
         let root: URL
         if let baseDir = baseDir {
             root = baseDir

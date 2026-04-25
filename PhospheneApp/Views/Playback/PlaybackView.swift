@@ -46,6 +46,8 @@ struct PlaybackView: View {
     @State private var showDebug: Bool = false
     @State private var showHelp: Bool = false
     @State private var showPlanPreview: Bool = false
+    @State private var showSettings: Bool = false
+    @StateObject private var settingsStore = SettingsStore()
     @State private var currentRegistry: PlaybackShortcutRegistry?
     @State private var keyMonitor = PlaybackKeyMonitor()
     @State private var fullscreenObserver = FullscreenObserver()
@@ -98,6 +100,7 @@ struct PlaybackView: View {
             PlaybackChromeView(
                 viewModel: chromeVM,
                 toastManager: toastManager,
+                onSettings: { showSettings = true },
                 onEndSession: { endSessionVM.requestEnd() }
             )
 
@@ -139,6 +142,9 @@ struct PlaybackView: View {
                     engine.regeneratePlan(lockedTracks: lockedTracks, lockedPresets: lockedPresets)
                 }
             )
+        }
+        .sheet(isPresented: $showSettings) {
+            SettingsView(store: settingsStore)
         }
     }
 

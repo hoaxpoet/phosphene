@@ -32,24 +32,20 @@ final class PresetScoringContextProvider {
     }
 
     /// Builds a complete PresetScoringContext for the given session state.
-    ///
-    /// `excludedFamilies` and `qualityCeiling` fields are wired in Part C
-    /// when `PresetScoringContext` is extended with those fields.
     func build(
         elapsedSessionTime: TimeInterval = 0,
         recentHistory: [PresetHistoryEntry] = [],
         currentPreset: PresetDescriptor? = nil,
         currentSection: SongSection? = nil
     ) -> PresetScoringContext {
-        // TODO(PartC): pass excludedFamilies: settingsStore.excludedPresetCategories,
-        //              qualityCeiling: settingsStore.qualityCeiling
-        //              once PresetScoringContext is extended.
         PresetScoringContext(
             deviceTier: effectiveTier,
             recentHistory: recentHistory,
             currentPreset: currentPreset,
             elapsedSessionTime: elapsedSessionTime,
-            currentSection: currentSection
+            currentSection: currentSection,
+            excludedFamilies: settingsStore.excludedPresetCategories,
+            qualityCeiling: settingsStore.qualityCeiling
         )
     }
 }

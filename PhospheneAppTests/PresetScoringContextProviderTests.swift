@@ -38,20 +38,18 @@ struct PresetScoringContextProviderTests {
         #expect(provider.effectiveTier == .tier2)
     }
 
-    @Test func excludedFamilies_storedInSettings_readByProvider() {
-        // Verifies that excludedPresetCategories is stored and readable.
-        // The propagation to PresetScoringContext.excludedFamilies is tested
-        // after Part C extends PresetScoringContext.
-        let (_, store) = makeProvider()
+    @Test func excludedFamilies_propagatedToContext() {
+        let (provider, store) = makeProvider()
         store.excludedPresetCategories = [.geometric, .fluid]
-        #expect(store.excludedPresetCategories.contains(.geometric))
-        #expect(store.excludedPresetCategories.contains(.fluid))
+        let ctx = provider.build()
+        #expect(ctx.excludedFamilies.contains(.geometric))
+        #expect(ctx.excludedFamilies.contains(.fluid))
     }
 
-    @Test func qualityCeiling_storedInSettings_readByProvider() {
-        // Verifies qualityCeiling is stored. Context propagation tested after Part C.
-        let (_, store) = makeProvider()
+    @Test func qualityCeiling_propagatedToContext() {
+        let (provider, store) = makeProvider()
         store.qualityCeiling = .performance
-        #expect(store.qualityCeiling == .performance)
+        let ctx = provider.build()
+        #expect(ctx.qualityCeiling == .performance)
     }
 }
