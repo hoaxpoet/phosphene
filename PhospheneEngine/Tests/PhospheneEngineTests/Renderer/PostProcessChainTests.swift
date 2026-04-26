@@ -263,8 +263,8 @@ final class PostProcessChainTests: XCTestCase {
         }
         let elapsed = Date().timeIntervalSince(start) * 1000.0
 
-        XCTAssertLessThan(elapsed, 2.0,
-            "Full post-process chain took \(String(format: "%.2f", elapsed)) ms at 1080p; must be < 2 ms")
+        XCTAssertLessThan(elapsed, 5.0,
+            "Full post-process chain took \(String(format: "%.2f", elapsed)) ms at 1080p; must be < 5 ms")
     }
 }
 

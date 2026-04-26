@@ -80,8 +80,9 @@ struct PlaybackChromeViewModelTests {
 
     @Test func overlayAutoHides_afterDelay() async throws {
         let (vm, _, _, _, _) = makeVM(delay: InstantDelay())
-        // InstantDelay fires synchronously; give the Task a chance to run
-        try await Task.sleep(for: .milliseconds(20))
+        // InstantDelay makes the 3s timer effectively instant (Task.yield).
+        // 100ms gives margin for @MainActor scheduling under parallel test load.
+        try await Task.sleep(for: .milliseconds(100))
         #expect(!vm.overlayVisible)
     }
 

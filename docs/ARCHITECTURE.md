@@ -278,3 +278,36 @@ No CoreML dependency. All ML runs on MPSGraph (GPU) or Accelerate (CPU).
 **Render-loop integration:** `RenderPipeline` exposes `onFrameRendered: (drawableTex, features, stems, commandBuffer) -> Void`. `VisualizerEngine` sets this closure to blit the drawable into the recorder's capture texture inside the same command buffer, then schedule the readback in `commandBuffer.addCompletedHandler`. CSV rows are written every render frame; video frames are throttled to 30 fps.
 
 **Test surface:** `SessionRecorderTests` validates round-trip correctness against known inputs (CSV column-by-column, WAV PCM sample-by-sample within 16-bit quantization, MP4 readable by `AVURLAsset`). A passing session that shows wrong data tells you the upstream pipeline is wrong, not the recorder.
+
+## Soak Test Infrastructure (Increment 7.1, D-060)
+
+`SoakTestHarness` (`Diagnostics` module) drives `AudioInputRouter` in `.localFile` mode for a configurable duration (default 2 hours) and produces a structured `Report` with memory growth, frame timing percentiles, dropped frames, quality-level transitions, signal-state transitions, and ML force-dispatch counts.
+
+### Components
+
+**`MemoryReporter`** (enum, stateless): Wraps the `task_info(TASK_VM_INFO)` Mach call. Returns `MemorySnapshot { residentBytes: phys_footprint, virtualBytes, purgeableBytes, timestamp }`. Uses `phys_footprint` — the same metric as Activity Monitor and jetsam — rather than `resident_size` which includes purgeable pages. Returns `nil` on Mach failure (counted as a hard failure if > 5 consecutive nils).
+
+**`FrameTimingReporter`** (class, `@unchecked Sendable`, NSLock-guarded): Records per-frame effective timing (`max(cpuMs, gpuMs)`). Maintains two views: a 100-bucket fixed-width histogram (0.5 ms/bucket, 0–50 ms) for run-wide cumulative percentiles and a 1000-frame circular ring buffer for rolling percentiles and dropped-frame counts. O(1) record, O(buckets) percentile via histogram scan. Wired into `RenderPipeline.onFrameTimingObserved`.
+
+**`SoakTestHarness`** (`@available(macOS 14.2, *)`, `@MainActor`): Orchestrates the run. Starts audio, installs signal-state and frame-timing observers, runs a 0.25s-slice polling loop for cancel responsiveness, fires periodic sampling tasks, and at completion writes a JSON + Markdown report to `reportBaseDirectory/<ISO-timestamp>/`. Does not require a live Metal render pipeline — GPU timing is optional and wired in by callers with a `RenderPipeline`.
+
+**`SoakRunner`** (executable target): CLI entry point using `swift-argument-parser`. Options: `--duration`, `--sample-interval`, `--audio-file`, `--report-dir`. Generates a synthetic audio fixture automatically when `--audio-file` is omitted (10 s sine sweep + noise + 120 BPM kicks, written to `tmp/`). Use `Scripts/run_soak_test.sh` for 2-hour production runs; the script wraps `caffeinate -i` to prevent App Nap.
+
+### Frame Timing Fan-out (D-060c)
+
+`RenderPipeline.onFrameTimingObserved` is an optional `(cpuMs: Float, gpuMs: Float?) -> Void` closure fired inside the `commandBuffer.addCompletedHandler` Task, before `FrameBudgetManager`. Setting it to `harness.frameTimingRecorder` gives the soak harness GPU-accurate timings from the same source as the frame governor with zero additional overhead in production (nil closure = no call).
+
+### Report Structure
+
+```json
+{
+  "finalAssessment": "pass | passWithSoftAlerts | hardFailure",
+  "snapshots": [{ "elapsedSeconds": 60, "residentBytes": ..., "cumulativeP50Ms": ..., ... }],
+  "signalTransitions": [{ "elapsedSeconds": 0.5, "state": "active" }],
+  "qualityLevelTransitions": [{ "elapsedSeconds": 120, "from": "full", "to": "no-SSGI" }],
+  "mlForceDispatches": 0,
+  "alerts": ["Memory grew 52 MB from baseline (threshold: 50 MB)"]
+}
+```
+
+Soft alerts: memory growth > 50 MB, dropped frames > 60/h, quality downshifts > 3, ML force dispatches > 10/h. Hard failure: `MemoryReporter` nil > 5 times.

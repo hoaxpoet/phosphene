@@ -179,3 +179,58 @@ Every Phosphene launch creates `~/Documents/phosphene_sessions/<ISO-timestamp>/`
 - App sandbox is disabled (`com.apple.security.app-sandbox = false`).
 - Any preset that includes `mv_warp` in its `passes` array must implement `mvWarpPerFrame()` and `mvWarpPerVertex()` in its `.metal` file. Missing implementations cause a linker error at preset-library compile time. See `VolumetricLithograph.metal` or `Starburst.metal` for reference implementations.
 - New ray-march presets should include `mv_warp` in their passes unless there is a deliberate reason not to. Without per-vertex feedback accumulation, ray-march presets show only instantaneous audio state regardless of how sophisticated the shader drivers are (MV-2, D-027).
+
+## Running a Soak Test (Increment 7.1)
+
+### Quick smoke run (60 seconds, in test suite)
+
+```bash
+SOAK_TESTS=1 swift test --package-path PhospheneEngine --filter SoakTestHarnessTests
+```
+
+Reports are written to `$TMPDIR/phosphene_soak_smoke_<timestamp>/`.
+
+### 5-minute memory check (in test suite)
+
+```bash
+SOAK_TESTS=1 swift test --package-path PhospheneEngine --filter "SoakTestHarnessTests/fiveMinuteMemoryCheck"
+```
+
+### Full 2-hour production run (CLI, with App Nap prevention)
+
+```bash
+Scripts/run_soak_test.sh
+```
+
+The script builds `SoakRunner` in release mode, then runs:
+```bash
+caffeinate -i .build/release/SoakRunner --duration 7200
+```
+
+Reports are written to `~/Documents/phosphene_soak/<ISO-timestamp>/report.json` and `report.md`.
+
+### Custom run (shorter duration for iteration)
+
+```bash
+swift build --package-path PhospheneEngine --configuration release --product SoakRunner
+caffeinate -i PhospheneEngine/.build/release/SoakRunner \
+  --duration 300 \
+  --sample-interval 30 \
+  --audio-file /path/to/loop.wav
+```
+
+### Interpreting the report
+
+| `finalAssessment` | Meaning |
+|---|---|
+| `pass` | No alerts fired |
+| `passWithSoftAlerts` | Soft thresholds crossed (memory, drops, downshifts, ML force) — informational |
+| `hardFailure` | `MemoryReporter` returned nil > 5 times — indicates Mach kernel API failure |
+
+**Soft alert thresholds (defaults):**
+- Memory growth from baseline: 50 MB
+- Dropped frames: 60/hour
+- Quality governor downshifts: > 3
+- ML force dispatches: > 10/hour
+
+Pass these as `SoakTestHarness.Configuration` overrides for different workloads.

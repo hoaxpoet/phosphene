@@ -25,8 +25,10 @@ struct LiveAdaptationToastBridgeTests {
         defer { UserDefaults.standard.removeObject(forKey: LiveAdaptationToastBridge.userDefaultsKey) }
 
         bridge.emitAck("Plan adjusted")
-        try await Task.sleep(for: .milliseconds(2100)) // wait past the 2s coalescing window
-        #expect(tm.visibleToasts.count == 1)
+        // 2600ms gives 600ms margin over the 2s coalescing window — accounts for
+        // @MainActor contention during parallel test runs.
+        try await Task.sleep(for: .milliseconds(2600))
+        try #require(tm.visibleToasts.count == 1)
         #expect(tm.visibleToasts[0].severity == .info)
         #expect(tm.visibleToasts[0].source == .liveAdaptationAck)
     }
@@ -40,8 +42,8 @@ struct LiveAdaptationToastBridgeTests {
         bridge.emitAck("Change 1")
         bridge.emitAck("Change 2")
         bridge.emitAck("Change 3")
-        try await Task.sleep(for: .milliseconds(2100))
-        #expect(tm.visibleToasts.count == 1)
+        try await Task.sleep(for: .milliseconds(2600))
+        try #require(tm.visibleToasts.count == 1)
         #expect(tm.visibleToasts[0].copy.contains("3"))
     }
 
@@ -52,8 +54,8 @@ struct LiveAdaptationToastBridgeTests {
         defer { UserDefaults.standard.removeObject(forKey: LiveAdaptationToastBridge.userDefaultsKey) }
 
         bridge.emitAck("Skipping organic for 10 min")
-        try await Task.sleep(for: .milliseconds(2100))
-        #expect(tm.visibleToasts.count == 1)
+        try await Task.sleep(for: .milliseconds(2600))
+        try #require(tm.visibleToasts.count == 1)
         #expect(tm.visibleToasts[0].copy == "Skipping organic for 10 min")
     }
 }

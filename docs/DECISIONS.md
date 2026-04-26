@@ -972,3 +972,41 @@ Recording mode wants consistent ML cadence at all times — frame consistency is
 **(e) `FrameTimingProviding` protocol for testability; single rolling buffer.**
 
 The scheduler reads `recentMaxFrameMs` / `recentFramesObserved` via `FrameTimingProviding`, which both `FrameBudgetManager` and test stubs conform to. There is no parallel timing collection in the scheduler itself — `FrameBudgetManager.observe(_:)` records every frame into a 30-slot circular buffer shared by both the governor hysteresis logic and the ML scheduler. This is a single source of truth; duplicating the buffer would create divergence risk.
+
+## D-060 — Soak Test Infrastructure: harness design, frame timing fan-out, procedural audio (Increment 7.1)
+
+### Context
+
+Increment 7.1 adds headless soak test infrastructure to exercise the full audio + MIR stack for multi-hour runs and report on memory growth, frame timing distribution, dropped frames, and ML dispatch behaviour. The infrastructure is purely observability — no stability assertions block CI.
+
+### Decisions
+
+**(a) `MemoryReporter` uses `phys_footprint` from `TASK_VM_INFO`.**
+
+`task_vm_info_data_t.phys_footprint` matches Activity Monitor's "Memory" column. `resident_size` includes purgeable/compressible pages that the OS reclaims under pressure and that don't represent real memory pressure. `phys_footprint` is the metric Apple uses for jetsam thresholds and is the honest measure of what the process is actually keeping alive.
+
+**(b) `FrameTimingReporter` uses a cumulative 100-bucket histogram + 1000-frame rolling window.**
+
+The cumulative histogram (0.5 ms buckets, 0–50 ms) provides run-wide percentile accuracy at O(1) record cost. The rolling window provides "is it janky right now?" context for each periodic snapshot. An HDR histogram (log-scale buckets) would be more accurate above 50 ms but adds complexity for marginal benefit — soak test frames above 50 ms are already hard failures in production.
+
+**(c) `RenderPipeline.onFrameTimingObserved` fan-out: single source, zero duplication.**
+
+The `commandBuffer.addCompletedHandler` site in `RenderPipeline.draw(in:)` is the sole GPU-accurate timing collection point. Adding a second collection site (e.g. in `FrameBudgetManager.observe`) would create two independent timing series that could diverge due to call-order races. Instead, `onFrameTimingObserved` is an optional callback called at the same site before `FrameBudgetManager` — the soak harness wires it in, and production runs leave it nil with zero overhead.
+
+**(d) 2-hour run is CLI-only via `SoakRunner` / `Scripts/run_soak_test.sh`; not in the test suite.**
+
+A 2-hour `swift test` run would break CI (no timeout support) and block developer feedback loops. The shell script wraps `caffeinate -i` to prevent App Nap on a developer machine. The 60-second smoke test (SOAK_TESTS=1) and 5-minute memory check are in the test suite but gated by environment variable so they don't run by default.
+
+**(e) Procedural audio generation instead of a fixture file.**
+
+A 10-second `.caf` file (sine sweep 100→4000 Hz + noise + 120 BPM kick) is generated at runtime via `AVAudioFile` and written to `tmp/`. This avoids a binary fixture file in the repo (which would inflate Git LFS usage and break the "no synthetic audio" rule from the audio-to-GPU pipeline session). The procedural file provides multi-band spectral content that exercises the MIR pipeline across centroid, flux, and beat detection paths.
+
+**(f) `MLDispatchScheduler.forceDispatchCount` as a public counter.**
+
+Force dispatches (stem separation fired despite over-budget frames) are a signal that the deferral caps are too tight or the workload is too heavy. Exposing the counter on the scheduler lets the soak report track force-dispatch rate per hour without the harness needing access to the render loop internals.
+
+### What Was Rejected
+
+- **Per-frame memory sampling:** `task_info` Mach call is cheap but not free. Sampling every frame at 60 fps (3600 calls/minute) would itself become a source of timing noise. Sampling every `sampleInterval` seconds (default 60 s) is sufficient for soak observability.
+- **Putting the 2-hour run in a slow-test lane in `swift test`:** No reliable mechanism exists in Swift Testing for "skip unless explicit flag + budget = 2+ hours". CLI is cleaner.
+- **Separate timing collection in `SoakTestHarness`:** Would require hooking into the render loop from the Diagnostics module, creating an upward dependency (Diagnostics → Renderer). The fan-out closure keeps the dependency direction correct: Renderer declares `onFrameTimingObserved`; Diagnostics wires it.
