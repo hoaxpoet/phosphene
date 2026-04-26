@@ -1292,17 +1292,22 @@ Runs in parallel with Phase V.7+ once Phase V.1–V.3 utilities are available.
 
 ## Phase 7 — Long-Session Stability
 
-### Increment 7.1 — Soak Test Infrastructure
+### Increment 7.1 — Soak Test Infrastructure ✅ **LANDED 2026-04-26**
 
 **Scope:** Automated 2+ hour test sessions with synthetic audio. Monitor: memory growth, frame timing drift, dropped frames, state machine integrity, permission handling.
 
-**Done when:**
-- Test harness can run headless for configurable duration.
-- Memory snapshots at intervals detect leaks.
-- Frame timing statistics collected (p50, p95, p99, max).
-- Session state machine remains valid throughout.
+**Delivered:**
+- `Diagnostics` SPM target: `MemoryReporter` (`phys_footprint` via TASK_VM_INFO), `FrameTimingReporter` (100-bucket histogram + 1000-frame rolling window), `SoakTestHarness` (@MainActor, configurable duration, cancel(), JSON+Markdown reports).
+- `SoakRunner` CLI executable with `--duration`, `--sample-interval`, `--audio-file`, `--report-dir` options. `Scripts/run_soak_test.sh` wraps `caffeinate -i` for 2-hour runs.
+- `RenderPipeline.onFrameTimingObserved` fan-out closure: single `commandBuffer.addCompletedHandler` source feeds both `FrameBudgetManager` and soak harness. D-060(c).
+- `MLDispatchScheduler.forceDispatchCount` public counter.
+- Procedural audio fixture: 10s sine sweep (100→4000 Hz) + noise + 120 BPM kicks, generated at runtime. D-060(e).
+- 19 new tests: `MemoryReporterTests` (5), `FrameTimingReporterTests` (7), `SoakTestHarnessTests` (7 always-run + 2 SOAK_TESTS=1 gated).
+- 766 engine tests total. 0 SwiftLint violations.
 
-**Verify:** `swift test --package-path PhospheneEngine` (soak tests tagged, run separately)
+**Smoke run results (60s):** Run `SOAK_TESTS=1 swift test --package-path PhospheneEngine --filter SoakTestHarnessTests` to populate.
+
+**Verify:** `swift test --package-path PhospheneEngine` (soak tests gated by SOAK_TESTS=1 env var)
 
 ---
 

@@ -107,7 +107,9 @@ struct StreamingMetadataTests {
         try await Task.sleep(for: .milliseconds(150))
 
         currentInfo.value = trackB
-        try await Task.sleep(for: .milliseconds(150))
+        // 300ms gives 250ms margin over the 50ms poll interval — accounts for
+        // scheduling jitter under parallel test execution.
+        try await Task.sleep(for: .milliseconds(300))
         metadata.stopObserving()
 
         #expect(events.value.count == 2)

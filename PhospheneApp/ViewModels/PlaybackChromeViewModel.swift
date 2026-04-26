@@ -210,11 +210,10 @@ final class PlaybackChromeViewModel: ObservableObject {
 
     private func scheduleHide() {
         hideTask?.cancel()
-        hideTask = Task { [weak self] in
+        hideTask = Task { @MainActor [weak self] in
             guard let self else { return }
             try? await self.delay.sleep(seconds: 3)
             guard !Task.isCancelled else { return }
-            // Task inherits @MainActor from its creation context — set directly.
             self.overlayVisible = false
         }
     }

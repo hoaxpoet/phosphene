@@ -139,21 +139,15 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
 
     // MARK: - Direct Preset Fragment Buffer (buffer(6))
 
-    /// Optional per-preset fragment buffer for direct-fragment mv_warp presets.
-    ///
-    /// Bound at fragment buffer index 6 in `renderSceneToTexture` when non-nil.
-    /// Used by presets (e.g. Gossamer) that need to pass CPU-side state to the
-    /// scene fragment shader. Follows the same pattern as `meshPresetBuffer`.
+    /// Per-preset fragment buffer at index 6 for direct mv_warp presets (e.g. Gossamer).
+    /// Follows the same pattern as `meshPresetBuffer`.
     var directPresetFragmentBuffer: MTLBuffer?
     let directPresetFragmentBufferLock = NSLock()
 
     // MARK: - Direct Preset Fragment Buffer 2 (buffer(7))
 
-    /// Optional secondary per-preset fragment buffer for direct-fragment mv_warp presets.
-    ///
-    /// Bound at fragment buffer index 7 in `renderSceneToTexture` when non-nil.
-    /// Used by presets (e.g. Arachne) that need a second CPU-side buffer in the
-    /// scene fragment shader (web pool at buffer(6) + spider GPU at buffer(7)).
+    /// Secondary per-preset fragment buffer at index 7 for direct mv_warp presets (e.g. Arachne).
+    /// Second CPU-side state buffer; web pool at buffer(6), spider GPU at buffer(7).
     var directPresetFragmentBuffer2: MTLBuffer?
     let directPresetFragmentBuffer2Lock = NSLock()
 
@@ -211,6 +205,9 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     /// Optional frame budget governor. When nil, the governor is disabled (tests,
     /// headless contexts). Wire in from VisualizerEngine after construction.
     public var frameBudgetManager: FrameBudgetManager?
+
+    /// Secondary timing observer for soak/diagnostics (D-060c). Same source as `frameBudgetManager`.
+    public var onFrameTimingObserved: ((_ cpuMs: Float, _ gpuMs: Float?) -> Void)?
 
     // MARK: - Timing
 
@@ -355,7 +352,9 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
                 ? Float((cb.gpuEndTime - cb.gpuStartTime) * 1000)
                 : nil
             Task { @MainActor [weak self] in
-                guard let self, let mgr = self.frameBudgetManager else { return }
+                guard let self else { return }
+                self.onFrameTimingObserved?(cpuMs, gpuMs)
+                guard let mgr = self.frameBudgetManager else { return }
                 let level = mgr.observe(.init(cpuFrameMs: cpuMs, gpuFrameMs: gpuMs))
                 self.applyQualityLevel(level)
             }

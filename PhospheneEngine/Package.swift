@@ -90,9 +90,27 @@ let package = Package(
             ],
             path: "Sources/Orchestrator"
         ),
+        .target(
+            name: "Diagnostics",
+            dependencies: ["Shared", "Audio", "Renderer"],
+            path: "Sources/Diagnostics"
+        ),
+        .executableTarget(
+            name: "SoakRunner",
+            dependencies: [
+                "Diagnostics",
+                "Audio",
+                "Renderer",
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+            ],
+            path: "Sources/SoakRunner"
+        ),
         .testTarget(
             name: "PhospheneEngineTests",
-            dependencies: ["Shared", "Audio", "DSP", "ML", "Presets", "Renderer", "Session", "Orchestrator"],
+            dependencies: [
+                "Shared", "Audio", "DSP", "ML", "Presets",
+                "Renderer", "Session", "Orchestrator", "Diagnostics",
+            ],
             path: "Tests/PhospheneEngineTests",
             resources: [.copy("Regression/Fixtures")]
         ),

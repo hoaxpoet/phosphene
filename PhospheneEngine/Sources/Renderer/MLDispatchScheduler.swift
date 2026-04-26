@@ -127,6 +127,12 @@ public final class MLDispatchScheduler {
     /// The most recent decision returned by `decide(context:)`. Used by the debug overlay.
     public private(set) var lastDecision: Decision?
 
+    // MARK: - Observability
+
+    /// Number of times `decide(context:)` has returned `.forceDispatch` since init.
+    /// Read by `SoakTestHarness` to report backstop-firing frequency.
+    public private(set) var forceDispatchCount: Int = 0
+
     // MARK: - Init
 
     public init(configuration: Configuration) {
@@ -160,6 +166,7 @@ public final class MLDispatchScheduler {
         } else if context.pendingForMs >= configuration.maxDeferralMs {
             let ms = String(format: "%.0f", context.pendingForMs)
             logger.warning("ML: force-dispatch after \(ms, privacy: .public)ms — ceiling hit, jank ignored")
+            forceDispatchCount += 1
             decision = .forceDispatch
         } else if context.recentFramesObserved < configuration.requireCleanFramesCount {
             decision = .defer(retryInMs: 100)
