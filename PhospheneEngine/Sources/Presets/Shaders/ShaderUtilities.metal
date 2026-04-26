@@ -572,12 +572,13 @@ static inline float2 uvLogSpiral(float2 uv, float2 center, float rate) {
 // MARK: - Color and Atmosphere
 // ======================================================================
 
-/// Inigo Quilez cosine palette: a + b * cos(2π(c * t + d)).
-static inline float3 palette(float t, float3 a, float3 b, float3 c, float3 d) {
-    return a + b * cos(6.28318530718 * (c * t + d));
-}
+// palette() removed in V.3 — canonical version in Utilities/Color/Palettes.metal,
+// which loads before ShaderUtilities in the preamble (D-062).
+// All call sites (VolumetricLithograph etc.) continue to resolve to that version.
 
-/// ACES filmic tone mapping (Stephen Hill's fitted curve).
+/// ACES filmic tone mapping — legacy camelCase alias; V.3 canonical: tone_map_aces().
+/// Superseded by tone_map_aces() in Utilities/Color/ToneMapping.metal (D-062).
+/// Retained under camelCase name for any future call sites; no collision with snake_case.
 static inline float3 toneMapACES(float3 x) {
     const float a = 2.51;
     const float b = 0.03;
@@ -587,7 +588,8 @@ static inline float3 toneMapACES(float3 x) {
     return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);
 }
 
-/// Reinhard tone mapping.
+/// Reinhard tone mapping — legacy camelCase alias; V.3 canonical: tone_map_reinhard().
+/// Superseded by tone_map_reinhard() in Utilities/Color/ToneMapping.metal (D-062).
 static inline float3 toneMapReinhard(float3 x) {
     return x / (x + 1.0);
 }
