@@ -53,8 +53,7 @@ private func makeTestPreset() throws -> PresetDescriptor {
 private func makeViewModel(
     source: PlaylistSource? = .appleMusicCurrentPlaylist,
     signalState: AudioSignalState = .silent,
-    reduceMotion: Bool = false,
-    delayProvider: any DelayProviding = RealDelay()
+    reduceMotion: Bool = false
 ) -> (ReadyViewModel, FakeStatePublisher, FakePlanPublisher, SessionManager) {
     let sigPub = FakeStatePublisher(signalState)
     let planPub = FakePlanPublisher()
@@ -64,8 +63,7 @@ private func makeViewModel(
         sessionManager: mgr,
         audioSignalStatePublisher: sigPub.publisher,
         planPublisher: planPub.publisher,
-        reduceMotion: reduceMotion,
-        delayProvider: delayProvider
+        reduceMotion: reduceMotion
     )
     return (vm, sigPub, planPub, mgr)
 }
@@ -103,19 +101,19 @@ struct ReadyViewModelTests {
     }
 
     @Test func firstAudioDetected_emitsAdvanceSignal() async throws {
-        let (vm, sigPub, _, _) = makeViewModel(delayProvider: InstantDelay())
+        let (vm, sigPub, _, _) = makeViewModel()
         var advanced = false
         let cancellable = vm.shouldAdvanceToPlaying.sink { advanced = true }
         sigPub.send(.active)
-        try await Task.sleep(for: .milliseconds(50))
+        try await Task.sleep(for: .milliseconds(600))
         #expect(advanced)
         _ = cancellable
     }
 
     @Test func audioDetectedBeforeTimeout_hasDetectedAudioFlips() async throws {
-        let (vm, sigPub, _, _) = makeViewModel(delayProvider: InstantDelay())
+        let (vm, sigPub, _, _) = makeViewModel()
         sigPub.send(.active)
-        try await Task.sleep(for: .milliseconds(50))
+        try await Task.sleep(for: .milliseconds(600))
         #expect(vm.hasDetectedAudio)
         #expect(!vm.isTimedOut)
     }
@@ -126,9 +124,9 @@ struct ReadyViewModelTests {
     }
 
     @Test func retry_resetsDetectorAndClearsTimeout() async throws {
-        let (vm, sigPub, _, _) = makeViewModel(delayProvider: InstantDelay())
+        let (vm, sigPub, _, _) = makeViewModel()
         sigPub.send(.active)
-        try await Task.sleep(for: .milliseconds(50))
+        try await Task.sleep(for: .milliseconds(600))
         #expect(vm.hasDetectedAudio)
 
         vm.retry()

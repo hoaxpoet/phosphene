@@ -28,8 +28,7 @@ private final class FakeSignalPublisher {
 // swiftlint:disable large_tuple
 @MainActor
 private func makeReadyViewModel(
-    signalState: AudioSignalState = .silent,
-    delayProvider: any DelayProviding = RealDelay()
+    signalState: AudioSignalState = .silent
 ) -> (ReadyViewModel, FakeSignalPublisher, SessionManager) {
     let sigPub = FakeSignalPublisher(signalState)
     let planSubject = CurrentValueSubject<PlannedSession?, Never>(nil)
@@ -39,8 +38,7 @@ private func makeReadyViewModel(
         sessionManager: mgr,
         audioSignalStatePublisher: sigPub.publisher,
         planPublisher: planSubject.eraseToAnyPublisher(),
-        reduceMotion: false,
-        delayProvider: delayProvider
+        reduceMotion: false
     )
     return (vm, sigPub, mgr)
 }
@@ -54,11 +52,12 @@ struct ReadyViewTimeoutIntegrationTests {
 
     @Test("retry resets audio detector state and clears isTimedOut flag")
     func retry_resetsDetectorAndClearsTimeout() async throws {
-        let (vm, sigPub, _) = makeReadyViewModel(delayProvider: InstantDelay())
+        let (vm, sigPub, _) = makeReadyViewModel()
 
         // Simulate audio arriving so hasDetectedAudio becomes true.
+        // 600ms gives 350ms margin over the 250ms confirmation timer.
         sigPub.send(.active)
-        try await Task.sleep(for: .milliseconds(50))
+        try await Task.sleep(for: .milliseconds(600))
         #expect(vm.hasDetectedAudio, "pre-condition: audio must have been detected")
         #expect(!vm.isTimedOut, "no timeout has occurred yet")
 

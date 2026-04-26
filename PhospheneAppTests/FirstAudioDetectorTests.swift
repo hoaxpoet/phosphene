@@ -32,14 +32,12 @@ struct FirstAudioDetectorTests {
 
     @Test func activeSustained250ms_firesDetection() async throws {
         let pub = StatePublisher(.silent)
-        // InstantDelay makes the 250ms confirmation timer fire immediately — the
-        // 50ms sleep is well above zero and lets all actor context-switches settle.
-        let detector = FirstAudioDetector(
-            audioSignalStatePublisher: pub.publisher,
-            delayProvider: InstantDelay()
-        )
+        // 600ms gives 350ms margin over the 250ms confirmation timer — needed
+        // because @MainActor contention during parallel test runs can delay
+        // the task continuation by several hundred milliseconds.
+        let detector = FirstAudioDetector(audioSignalStatePublisher: pub.publisher)
         pub.send(.active)
-        try await Task.sleep(for: .milliseconds(50))
+        try await Task.sleep(for: .milliseconds(600))
         #expect(detector.hasDetectedAudio)
     }
 
@@ -68,23 +66,17 @@ struct FirstAudioDetectorTests {
 
     @Test func coldStartPath_silentToActiveViaRecovering_fires() async throws {
         let pub = StatePublisher(.recovering)
-        let detector = FirstAudioDetector(
-            audioSignalStatePublisher: pub.publisher,
-            delayProvider: InstantDelay()
-        )
+        let detector = FirstAudioDetector(audioSignalStatePublisher: pub.publisher)
         pub.send(.active)
-        try await Task.sleep(for: .milliseconds(50))
+        try await Task.sleep(for: .milliseconds(600))
         #expect(detector.hasDetectedAudio)
     }
 
     @Test func reset_clearsDetection_allowsRefire() async throws {
         let pub = StatePublisher(.silent)
-        let detector = FirstAudioDetector(
-            audioSignalStatePublisher: pub.publisher,
-            delayProvider: InstantDelay()
-        )
+        let detector = FirstAudioDetector(audioSignalStatePublisher: pub.publisher)
         pub.send(.active)
-        try await Task.sleep(for: .milliseconds(50))
+        try await Task.sleep(for: .milliseconds(600))
         #expect(detector.hasDetectedAudio)
 
         detector.reset()
@@ -92,7 +84,7 @@ struct FirstAudioDetectorTests {
 
         pub.send(.silent)
         pub.send(.active)
-        try await Task.sleep(for: .milliseconds(50))
+        try await Task.sleep(for: .milliseconds(600))
         #expect(detector.hasDetectedAudio)
     }
 
