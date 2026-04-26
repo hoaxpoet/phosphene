@@ -151,12 +151,18 @@
 		K10051 /* SessionRecorderRetentionPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20051; };
 		K10052 /* OnboardingResetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20052; };
 		K10053 /* CaptureModeReconcilerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20053; };
+		M10004 /* DisplayChangeCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = M20004; };
+		M10005 /* CaptureModeSwitchCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = M20005; };
+		M10006 /* NetworkRecoveryCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = M20006; };
 		L10001 /* AccessibilityState.swift in Sources */ = {isa = PBXBuildFile; fileRef = L20001; };
 		L10002 /* AccessibilityLabels.swift in Sources */ = {isa = PBXBuildFile; fileRef = L20002; };
 		L10010 /* QualityGradeIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = L20010; };
 		L10040 /* AccessibilityStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = L20040; };
 		L10041 /* DynamicTypeRegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = L20041; };
 		L10042 /* AccessibilityLabelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = L20042; };
+		M10001 /* DisplayChangeCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = M20001; };
+		M10002 /* CaptureModeSwitchCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = M20002; };
+		M10003 /* NetworkRecoveryCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = M20003; };
 		/* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -307,12 +313,18 @@
 		K20051 /* SessionRecorderRetentionPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionRecorderRetentionPolicyTests.swift; sourceTree = "<group>"; };
 		K20052 /* OnboardingResetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingResetTests.swift; sourceTree = "<group>"; };
 		K20053 /* CaptureModeReconcilerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureModeReconcilerTests.swift; sourceTree = "<group>"; };
+		M20004 /* DisplayChangeCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisplayChangeCoordinatorTests.swift; sourceTree = "<group>"; };
+		M20005 /* CaptureModeSwitchCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureModeSwitchCoordinatorTests.swift; sourceTree = "<group>"; };
+		M20006 /* NetworkRecoveryCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkRecoveryCoordinatorTests.swift; sourceTree = "<group>"; };
 		L20001 /* AccessibilityState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityState.swift; sourceTree = "<group>"; };
 		L20002 /* AccessibilityLabels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityLabels.swift; sourceTree = "<group>"; };
 		L20010 /* QualityGradeIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QualityGradeIndicator.swift; sourceTree = "<group>"; };
 		L20040 /* AccessibilityStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityStateTests.swift; sourceTree = "<group>"; };
 		L20041 /* DynamicTypeRegressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamicTypeRegressionTests.swift; sourceTree = "<group>"; };
 		L20042 /* AccessibilityLabelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityLabelsTests.swift; sourceTree = "<group>"; };
+		M20001 /* DisplayChangeCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisplayChangeCoordinator.swift; sourceTree = "<group>"; };
+		M20002 /* CaptureModeSwitchCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureModeSwitchCoordinator.swift; sourceTree = "<group>"; };
+		M20003 /* NetworkRecoveryCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkRecoveryCoordinator.swift; sourceTree = "<group>"; };
 		/* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -483,6 +495,9 @@
 				K20023 /* OnboardingReset.swift */,
 				L20001 /* AccessibilityState.swift */,
 				L20002 /* AccessibilityLabels.swift */,
+				M20001 /* DisplayChangeCoordinator.swift */,
+				M20002 /* CaptureModeSwitchCoordinator.swift */,
+				M20003 /* NetworkRecoveryCoordinator.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -613,6 +628,9 @@
 				K20051 /* SessionRecorderRetentionPolicyTests.swift */,
 				K20052 /* OnboardingResetTests.swift */,
 				K20053 /* CaptureModeReconcilerTests.swift */,
+				M20004 /* DisplayChangeCoordinatorTests.swift */,
+				M20005 /* CaptureModeSwitchCoordinatorTests.swift */,
+				M20006 /* NetworkRecoveryCoordinatorTests.swift */,
 				L20040 /* AccessibilityStateTests.swift */,
 				L20041 /* DynamicTypeRegressionTests.swift */,
 				L20042 /* AccessibilityLabelsTests.swift */,
@@ -820,6 +838,9 @@
 				L10001 /* AccessibilityState.swift in Sources */,
 				L10002 /* AccessibilityLabels.swift in Sources */,
 				L10010 /* QualityGradeIndicator.swift in Sources */,
+				M10001 /* DisplayChangeCoordinator.swift in Sources */,
+				M10002 /* CaptureModeSwitchCoordinator.swift in Sources */,
+				M10003 /* NetworkRecoveryCoordinator.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -868,6 +889,9 @@
 				K10051 /* SessionRecorderRetentionPolicyTests.swift in Sources */,
 				K10052 /* OnboardingResetTests.swift in Sources */,
 				K10053 /* CaptureModeReconcilerTests.swift in Sources */,
+				M10004 /* DisplayChangeCoordinatorTests.swift in Sources */,
+				M10005 /* CaptureModeSwitchCoordinatorTests.swift in Sources */,
+				M10006 /* NetworkRecoveryCoordinatorTests.swift in Sources */,
 				L10040 /* AccessibilityStateTests.swift in Sources */,
 				L10041 /* DynamicTypeRegressionTests.swift in Sources */,
 				L10042 /* AccessibilityLabelsTests.swift in Sources */,

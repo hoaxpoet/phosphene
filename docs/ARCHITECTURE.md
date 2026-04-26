@@ -311,3 +311,25 @@ No CoreML dependency. All ML runs on MPSGraph (GPU) or Accelerate (CPU).
 ```
 
 Soft alerts: memory growth > 50 MB, dropped frames > 60/h, quality downshifts > 3, ML force dispatches > 10/h. Hard failure: `MemoryReporter` nil > 5 times.
+
+---
+
+## Long-Session Resilience (Increment 7.2, D-061)
+
+Three coordinator classes handle disruptions that arise during extended sessions without touching `SessionManager.state` or `livePlan` except where explicitly required.
+
+### DisplayChangeCoordinator
+
+Owned by `PlaybackView` as `@State`. Subscribes to `DisplayManager.$allScreens` and `.$currentScreen` via Combine. When the active display is removed (or the window moves to a different screen), it calls `FrameBudgetManager.resetRecentFrameBuffer()` — clearing only the 30-slot rolling timing window so the post-reparent jitter frames don't poison `MLDispatchScheduler`'s "recent frames over budget" signal. `currentLevel` is preserved (D-061(a)). Screen-added events fire a toast via `MultiDisplayToastBridge` and take no governor action.
+
+### CaptureModeSwitchCoordinator
+
+Owned by `PlaybackView` as `@State`. Subscribes to `SettingsStore.captureModeChanged`. On every non-`.localFile` mode switch, it opens a 5-second grace window by:
+- Setting `VisualizerEngine.captureModeSwitchGraceWindowEndsAt = Date() + 5s`
+- Raising `PlaybackErrorBridge.effectiveThresholdSeconds` to 20 s (from the normal 15 s)
+
+`applyLiveUpdate` in `VisualizerEngine+Orchestrator.swift` checks `isCaptureModeSwitchGraceActive` and discards `presetOverride` events while the window is open; `updatedTransition` (boundary rescheduling) still fires normally. After 5 seconds a `Task` calls `closeGraceWindow()` which restores both values. Consecutive `openGraceWindow()` calls cancel the prior task. `.localFile` mode gets no grace window (D-052 path, D-061(b,c)).
+
+### NetworkRecoveryCoordinator
+
+Owned by `PreparationProgressView` as `@State`. Subscribes to `ReachabilityMonitor.isOnlinePublisher`. On a `false → true` transition (network restored), it waits an additional 2 seconds (composing to 3 s total with the monitor's existing 1 s debounce) then calls `SessionManager.resumeFailedNetworkTracks()` — which retries only network-class failures (`.noPreviewURL`, `.downloadFailed`); stem-separation failures stay failed. Guards: state must be `.preparing` (tracked from an injected `sessionStatePublisher`); attempt count must be below 3 (cap per preparation session). `resetForNewSession()` resets the counter and cancels any pending debounce task (D-061(d,e)).

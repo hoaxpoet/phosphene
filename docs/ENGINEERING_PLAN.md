@@ -1311,17 +1311,22 @@ Runs in parallel with Phase V.7+ once Phase V.1–V.3 utilities are available.
 
 ---
 
-### Increment 7.2 — Display Hot-Plug & Source Switching
+### Increment 7.2 — Display Hot-Plug & Source Switching ✅ **LANDED 2026-04-26**
 
 **Scope:** Handle external display connect/disconnect during a session. Handle switching between capture modes (system → app → system). Handle playlist reconnection after network interruption.
 
-**Done when:**
-- Display change triggers drawable resize without crash.
-- Capture mode switch preserves session state.
-- Preparation resumes after network recovery.
-- 6+ unit tests for each scenario.
+**What landed:**
+- `FrameBudgetManager.resetRecentFrameBuffer()` — clears rolling timing window only, preserving `currentLevel` (D-061(a))
+- `DisplayChangeCoordinator` — subscribes to `DisplayManager` publishers; calls `resetRecentFrameBuffer()` on active-screen removal or window move; no session-state changes
+- `CaptureModeSwitchCoordinator` + `CaptureModeSwitchEngineInterface` — 5-second grace window on non-`.localFile` mode switches; suppresses `presetOverride` events in `applyLiveUpdate`; raises silence toast threshold to 20 s (D-061(b,c))
+- `PlaybackErrorBridge.effectiveThresholdSeconds` — mutable threshold replacing static constant; `silenceToastGraceWindowThresholdSeconds = 20`
+- `VisualizerEngine.captureModeSwitchGraceWindowEndsAt` + `isCaptureModeSwitchGraceActive` — grace window state, with `CaptureModeSwitchEngineInterface` conformance
+- `SessionPreparer.resumeFailedNetworkTracks()` — retries network-class failures only; pass-through on `SessionManager` (D-061(d))
+- `NetworkRecoveryCoordinator` — 2s additional debounce, 3-attempt cap, state guard via injected `sessionStatePublisher` (D-061(e))
+- 4 test files: `DisplayChangeCoordinatorTests` (6), `CaptureModeSwitchCoordinatorTests` (5), `NetworkRecoveryCoordinatorTests` (6), `DrawableResizeRegressionTests` (3) — 20 new tests total
+- D-061 in DECISIONS.md; ARCHITECTURE.md resilience subsection; RUNBOOK.md 3 new failure modes
 
-**Verify:** `swift test --package-path PhospheneEngine`
+**Phase 7 complete.**
 
 ---
 

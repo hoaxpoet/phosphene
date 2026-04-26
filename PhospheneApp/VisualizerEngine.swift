@@ -322,6 +322,24 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Set on entry, reset to nil when `buildPlan()` succeeds (real plan takes over).
     var reactiveSessionStart: Date?
 
+    // MARK: - Capture-Mode Switch Grace Window
+
+    // MARK: - CaptureModeSwitchEngineInterface conformance (see CaptureModeSwitchCoordinator.swift)
+
+    /// Wall-clock time at which the current capture-mode switch grace window expires.
+    ///
+    /// Set by `CaptureModeSwitchCoordinator` at the start of a live mode switch.
+    /// The orchestrator's mood-override path checks this before applying a preset
+    /// override, so a silence-derived mood divergence during the brief tap restart
+    /// can't prematurely yank the user to a different preset. D-061(b).
+    var captureModeSwitchGraceWindowEndsAt: Date?
+
+    /// Returns `true` while a capture-mode switch grace window is active.
+    var isCaptureModeSwitchGraceActive: Bool {
+        guard let ends = captureModeSwitchGraceWindowEndsAt else { return false }
+        return Date() < ends
+    }
+
     /// Session-relative time of the last reactive preset switch.
     /// Prevents switching more often than once per 60 seconds.
     var lastReactiveSwitchTime: TimeInterval = -.infinity
@@ -461,4 +479,10 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         logger.info("MoodClassifier loaded")
         return classifier
     }
+}
+
+// MARK: - CaptureModeSwitchEngineInterface
+
+extension VisualizerEngine: CaptureModeSwitchEngineInterface {
+    // captureModeSwitchGraceWindowEndsAt is declared in VisualizerEngine.swift — no body needed.
 }

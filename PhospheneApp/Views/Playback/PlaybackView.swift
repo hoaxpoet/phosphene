@@ -55,6 +55,8 @@ struct PlaybackView: View {
     @State private var playbackErrorBridge: PlaybackErrorBridge?
     @State private var displayManager: DisplayManager?
     @State private var multiDisplayBridge: MultiDisplayToastBridge?
+    @State private var displayChangeCoordinator: DisplayChangeCoordinator?
+    @State private var captureModeSwitchCoordinator: CaptureModeSwitchCoordinator?
 
     @Namespace private var trackAnimNamespace
 
@@ -176,12 +178,25 @@ struct PlaybackView: View {
             dm.attach(to: window)
             displayManager = dm
             multiDisplayBridge = MultiDisplayToastBridge(toastManager: toastManager, displayManager: dm)
+            // 7.2: resilience coordinator — resets FrameBudgetManager rolling buffer on hot-plug.
+            displayChangeCoordinator = DisplayChangeCoordinator(
+                displayManager: dm,
+                frameBudgetManager: engine.pipeline.frameBudgetManager
+            )
         }
 
         // §9.4 playback errors — silence at 15s, condition-ID auto-dismiss
-        playbackErrorBridge = PlaybackErrorBridge(
+        let errorBridge = PlaybackErrorBridge(
             audioSignalStatePublisher: engine.$audioSignalState.eraseToAnyPublisher(),
             toastManager: toastManager
+        )
+        playbackErrorBridge = errorBridge
+
+        // 7.2: capture-mode switch coordinator — 5s grace window on mode changes.
+        captureModeSwitchCoordinator = CaptureModeSwitchCoordinator(
+            engine: engine,
+            playbackErrorBridge: errorBridge,
+            settingsStore: settingsStore
         )
 
         // Build registry — closures capture weak refs to avoid retain cycles

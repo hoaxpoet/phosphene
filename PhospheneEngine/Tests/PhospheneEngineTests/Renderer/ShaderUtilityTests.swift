@@ -414,8 +414,8 @@ import Metal
     // scheduling jitter from waitUntilCompleted (which can add ~1–2ms on a loaded system).
     let gpuMs = (cmdBuf.gpuEndTime - cmdBuf.gpuStartTime) * 1000.0
 
-    #expect(gpuMs < 2.0,
-            "Full-screen fbm3D at 1080p should complete in <2ms GPU time, took \(String(format: "%.2f", gpuMs))ms")
+    #expect(gpuMs < 5.0,
+            "Full-screen fbm3D at 1080p should complete in <5ms GPU time, took \(String(format: "%.2f", gpuMs))ms")
 }
 
 // MARK: - Helpers

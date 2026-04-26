@@ -139,6 +139,40 @@ Checks:
 - Weights: 172 `.bin` files in `ML/Weights/`, tracked via Git LFS. Verify `manifest.json`.
 - Performance gate: warm predict must be <400ms.
 
+### Display hot-plug causes jank or quality downshift after reconnect
+
+When an external display is connected or disconnected, the `MTKView` drawable reparents and emits a burst of anomalous frame timings that can temporarily suppress stem separation via `MLDispatchScheduler`.
+
+Expected behaviour:
+- `DisplayChangeCoordinator` calls `FrameBudgetManager.resetRecentFrameBuffer()` on active-screen removal or window move.
+- The rolling timing window is cleared. `MLDispatchScheduler` loses its deferral signal and reverts to `dispatchNow` until the window refills with real frames (~0.5 s at 60 fps).
+- Quality level (`currentLevel`) is **not** reset — the governor retains its downshift position.
+
+If quality unexpectedly drops to `.reducedMesh` after reconnect: check `session.log` for `quality: rolling window cleared (display event)` — if absent, `DisplayChangeCoordinator` was not wired in `PlaybackView.setup()`. See [Architecture §Long-Session Resilience](ARCHITECTURE.md#long-session-resilience-increment-72-d-061).
+
+### Capture-mode switch during playback triggers spurious preset change
+
+When the user changes the capture mode (Settings → Audio) while music is playing, `CaptureModeReconciler` relaunches the audio tap. `SilenceDetector` briefly enters `.silent`, which can cause `LiveAdapter` to compute a large mood delta and trigger a preset override.
+
+Expected behaviour:
+- `CaptureModeSwitchCoordinator` opens a 5-second grace window: `VisualizerEngine.captureModeSwitchGraceWindowEndsAt` is set and `PlaybackErrorBridge.effectiveThresholdSeconds` is raised to 20 s.
+- `applyLiveUpdate` discards any `presetOverride` events during the window. Structural-boundary transitions still fire normally.
+- The silence toast does not appear unless audio is still absent after 20 s.
+
+If the preset still changes during mode switch: verify `isCaptureModeSwitchGraceActive` guard in `VisualizerEngine+Orchestrator.swift:applyLiveUpdate`. If the silence toast still fires at 15 s: verify `PlaybackErrorBridge.effectiveThresholdSeconds` is being raised by `CaptureModeSwitchCoordinator.openGraceWindow()`.
+
+### Preparation stalls after brief network outage (tracks remain .failed)
+
+During session preparation, a brief network outage may leave tracks in `.failed` status with no automatic retry.
+
+Expected behaviour:
+- `NetworkRecoveryCoordinator` monitors `ReachabilityMonitor.isOnlinePublisher`.
+- On `false → true`, it waits 3 s (1 s from monitor + 2 s additional debounce) then calls `SessionManager.resumeFailedNetworkTracks()`.
+- Only network-class failures (`.noPreviewURL`, `.downloadFailed`) are retried. Stem-separation failures are not.
+- Cap: 3 automatic attempts per preparation session.
+
+If tracks are still stuck after reconnect: check `session.log` for `NetworkRecoveryCoordinator: network restored — resuming failed tracks`. If absent, verify `NetworkRecoveryCoordinator` is wired in `PreparationProgressView.onAppear`. After 3 automatic attempts, use the "Retry" button in `PreparationFailureView` for a manual hard-restart.
+
 ## Diagnostic Session Captures
 
 Every Phosphene launch creates `~/Documents/phosphene_sessions/<ISO-timestamp>/` and writes diagnostic data continuously while the app runs. Use these to triage user-reported issues (visualizer behaviour, audio dropouts, stem-quality concerns).

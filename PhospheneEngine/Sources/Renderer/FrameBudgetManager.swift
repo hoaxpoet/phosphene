@@ -260,6 +260,19 @@ public final class FrameBudgetManager {
             logger.info("quality: reset to full (preset change from \(was.displayName, privacy: .public))")
         }
     }
+
+    /// Clear only the rolling frame-timing window, leaving `currentLevel` intact.
+    ///
+    /// Use after a display hot-plug or window reparent: the next ~30 frames will be
+    /// transient as AppKit resizes the drawable, so we don't want those samples
+    /// polluting the ML scheduler's "is render clean right now?" signal.
+    /// `currentLevel` is preserved — the governor already chose it for this preset. D-061(a).
+    public func resetRecentFrameBuffer() {
+        rollingWindow = [Float](repeating: 0, count: Self.rollingWindowCapacity)
+        rollingWindowHead = 0
+        rollingWindowCount = 0
+        logger.info("quality: rolling window cleared (display event)")
+    }
 }
 
 // MARK: - FrameTimingProviding

@@ -176,12 +176,28 @@ extension VisualizerEngine {
             }
         }
 
+        // During a capture-mode switch grace window, silence-derived mood features
+        // may produce a large Δmood that would trigger a spurious preset override.
+        // Discard presetOverride events during the grace window; boundary rescheduling
+        // (updatedTransition) is still allowed — structural boundaries are legitimate. D-061(b,c).
+        let effectiveAdaptation: LiveAdaptation
+        if isCaptureModeSwitchGraceActive, adaptation.presetOverride != nil {
+            effectiveAdaptation = LiveAdaptation(
+                updatedTransition: adaptation.updatedTransition,
+                presetOverride: nil,
+                events: adaptation.events.filter { $0.kind != .presetOverrideTriggered }
+            )
+            logger.info("Orchestrator: grace window active — preset override suppressed")
+        } else {
+            effectiveAdaptation = adaptation
+        }
+
         // Patch the plan only when something changed.
-        guard adaptation.updatedTransition != nil || adaptation.presetOverride != nil else {
+        guard effectiveAdaptation.updatedTransition != nil || effectiveAdaptation.presetOverride != nil else {
             return
         }
 
-        let patched = plan.applying(adaptation, at: trackIndex)
+        let patched = plan.applying(effectiveAdaptation, at: trackIndex)
         orchestratorLock.withLock { livePlan = patched }
     }
 

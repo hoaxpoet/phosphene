@@ -87,6 +87,13 @@ public final class SessionPreparer: ObservableObject {
 
     private var preparationTask: Task<SessionPreparationResult, Never>?
 
+    // MARK: - Network Failure Tracking
+
+    /// Tracks tracks that failed specifically due to network-class errors (download or
+    /// preview resolution failures). Used by `resumeFailedNetworkTracks()` to retry
+    /// only the subset that can actually recover from a network change. D-061(d).
+    private var networkFailedTracks: Set<TrackIdentity> = []
+
     // MARK: - Init
 
     /// Create a preparer with all injectable dependencies.
@@ -134,6 +141,7 @@ public final class SessionPreparer: ObservableObject {
         // Initialize all tracks to .queued at once before any async work begins.
         trackStatuses = Dictionary(uniqueKeysWithValues: tracks.map { ($0, .queued) })
         progress = (0, tracks.count)
+        networkFailedTracks = []
 
         // Wrap the loop in a stored Task so cancelPreparation() can cancel it.
         // withTaskCancellationHandler propagates outer-task cancellation into the
@@ -190,10 +198,12 @@ public final class SessionPreparer: ObservableObject {
             } catch SessionPreparationError.noPreviewURL(let title) {
                 failedTracks.append(track)
                 trackStatuses[track] = .failed(reason: "Preview not available")
+                networkFailedTracks.insert(track)
                 logger.info("No preview for '\(title)'")
             } catch SessionPreparationError.downloadFailed(let title) {
                 failedTracks.append(track)
                 trackStatuses[track] = .failed(reason: "Download failed")
+                networkFailedTracks.insert(track)
                 logger.info("Download failed for '\(title)'")
             } catch SessionPreparationError.analysisError(let detail) {
                 // Download succeeded; stems failed — playable in reactive mode.
@@ -251,6 +261,52 @@ public final class SessionPreparer: ObservableObject {
         } catch {
             throw SessionPreparationError.analysisError(error.localizedDescription)
         }
+    }
+}
+
+// MARK: - Network Recovery
+
+extension SessionPreparer {
+
+    /// Retry tracks that previously failed due to network-class errors.
+    ///
+    /// Called by `NetworkRecoveryCoordinator` when reachability transitions
+    /// `false → true` during `.preparing`. Resets eligible tracks to `.queued`
+    /// and re-runs the preparation pipeline for them. Non-network failures
+    /// (stem separation, malformed audio, missing preview) are left unchanged.
+    ///
+    /// If the original preparation task is still running, the recovered tracks
+    /// will be processed sequentially after the current work finishes.
+    /// If it has finished, a fresh task is spawned for the recovered tracks. D-061(d).
+    public func resumeFailedNetworkTracks() async {
+        let recoverCandidates = networkFailedTracks.filter {
+            // Only attempt tracks still in a .failed state (not manually retried).
+            if case .failed = trackStatuses[$0] { return true }
+            return false
+        }
+        guard !recoverCandidates.isEmpty else { return }
+
+        logger.info("NetworkRecovery: resuming \(recoverCandidates.count) network-failed track(s)")
+
+        // Remove from the network-failed set immediately so a second rapid recovery
+        // event doesn't queue them again while we're already retrying. D-061(d).
+        networkFailedTracks.subtract(recoverCandidates)
+
+        // Reset status to .queued so the UI reflects the resumed state.
+        for track in recoverCandidates {
+            trackStatuses[track] = .queued
+        }
+
+        // The original preparationTask may have completed. Always spawn a fresh task
+        // for the recovered set — the sequential loop won't race because we own the
+        // @MainActor here and the new task runs asynchronously. D-061 risk-note.
+        let sortedCandidates = Array(recoverCandidates)
+        let task = Task { [self] in
+            await self._runPreparation(tracks: sortedCandidates)
+        }
+        preparationTask = task
+        _ = await task.value
+        preparationTask = nil
     }
 }
 
