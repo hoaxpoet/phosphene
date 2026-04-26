@@ -260,6 +260,15 @@ public final class SessionManager: ObservableObject {
     ///
     /// Safe to call from any state. During `.preparing`, cancels the in-flight
     /// preparation pass (current track may finish its MPSGraph predict — ≤ 142 ms).
+    /// Resume preparation for tracks that previously failed due to network errors.
+    ///
+    /// Pass-through to `SessionPreparer.resumeFailedNetworkTracks()`. Safe to call
+    /// when state is not `.preparing` — the preparer will find no eligible tracks
+    /// and return immediately. D-061(d).
+    public func resumeFailedNetworkTracks() async {
+        await preparer.resumeFailedNetworkTracks()
+    }
+
     /// Transitions state to `.idle` immediately.
     ///
     /// A no-op when state is already `.idle`.

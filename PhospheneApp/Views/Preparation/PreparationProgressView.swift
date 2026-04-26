@@ -34,6 +34,11 @@ struct PreparationProgressView: View {
     private let onPickAnotherPlaylist: (() -> Void)?
     private let onStartReactive: (() -> Void)?
 
+    // 7.2: NetworkRecoveryCoordinator — resumes network-failed tracks on connectivity restore.
+    @State private var networkRecoveryCoordinator: NetworkRecoveryCoordinator?
+    private let sessionManager: SessionManager?
+    private let reachabilityForRecovery: (any ReachabilityPublishing)?
+
     // MARK: - Init
 
     /// Create the view, instantiating its ViewModels from the given publisher and reachability.
@@ -56,6 +61,7 @@ struct PreparationProgressView: View {
         progressiveReadinessPublisher: AnyPublisher<ProgressiveReadinessLevel, Never> =
             Just(.preparing).eraseToAnyPublisher(),
         reachability: any ReachabilityPublishing = ReachabilityMonitor(),
+        sessionManager: SessionManager? = nil,
         onCancel: @escaping () -> Void,
         onStartNow: @escaping () -> Void = {},
         onPickAnotherPlaylist: (() -> Void)? = nil,
@@ -81,6 +87,8 @@ struct PreparationProgressView: View {
         self.onStartNow = onStartNow
         self.onPickAnotherPlaylist = onPickAnotherPlaylist
         self.onStartReactive = onStartReactive
+        self.sessionManager = sessionManager
+        self.reachabilityForRecovery = reachability
     }
 
     // MARK: - Body
@@ -114,6 +122,21 @@ struct PreparationProgressView: View {
             }
         }
         .accessibilityIdentifier(Self.accessibilityID)
+        .onAppear {
+            // 7.2: wire NetworkRecoveryCoordinator when a real session manager is present.
+            if let sm = sessionManager, let reach = reachabilityForRecovery {
+                let coordinator = NetworkRecoveryCoordinator(
+                    sessionManager: sm,
+                    reachability: reach,
+                    sessionStatePublisher: sm.$state.eraseToAnyPublisher()
+                )
+                coordinator.resetForNewSession()
+                networkRecoveryCoordinator = coordinator
+            }
+        }
+        .onDisappear {
+            networkRecoveryCoordinator = nil
+        }
         .confirmationDialog(
             String(localized: "preparation.cancel.confirm_title"),
             isPresented: $viewModel.showCancelConfirmation,

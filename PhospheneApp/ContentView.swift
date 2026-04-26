@@ -104,6 +104,7 @@ struct ContentView: View {
                 playlistName: "",
                 progressiveReadinessPublisher: engine.sessionManager.$progressiveReadinessLevel
                     .eraseToAnyPublisher(),
+                sessionManager: engine.sessionManager,
                 onCancel: { engine.sessionManager.cancel() },
                 onStartNow: { engine.sessionManager.startNow() }
             )

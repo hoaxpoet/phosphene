@@ -1010,3 +1010,39 @@ Force dispatches (stem separation fired despite over-budget frames) are a signal
 - **Per-frame memory sampling:** `task_info` Mach call is cheap but not free. Sampling every frame at 60 fps (3600 calls/minute) would itself become a source of timing noise. Sampling every `sampleInterval` seconds (default 60 s) is sufficient for soak observability.
 - **Putting the 2-hour run in a slow-test lane in `swift test`:** No reliable mechanism exists in Swift Testing for "skip unless explicit flag + budget = 2+ hours". CLI is cleaner.
 - **Separate timing collection in `SoakTestHarness`:** Would require hooking into the render loop from the Diagnostics module, creating an upward dependency (Diagnostics → Renderer). The fan-out closure keeps the dependency direction correct: Renderer declares `onFrameTimingObserved`; Diagnostics wires it.
+
+---
+
+## D-061 — Display hot-plug & source-switch resilience: coordinator design and session-state preservation (Increment 7.2)
+
+### Context
+
+Long sessions surfaced three reliability paths not covered by earlier increments: (a) external display hot-plug events, which cause `MTKView`'s drawable to reparent and trigger a burst of anomalous frame timings that poison `MLDispatchScheduler`'s signal; (b) capture-mode switches mid-session (`CaptureModeReconciler` relaunches the audio tap), which cause `SilenceDetector` to briefly enter `.silent` and can trigger spurious preset-override events from `LiveAdapter`; (c) brief network outages during session preparation, which leave a subset of tracks in `.failed` status with no automatic retry.
+
+### Decisions
+
+**(a) `FrameBudgetManager.resetRecentFrameBuffer()` clears only the rolling timing window, not `currentLevel`.**
+
+`mtkView(_:drawableSizeWillChange:)` triggers after a display hot-plug. The next 30–50 frames contain reparent-jitter that isn't representative of the real render cost. Clearing only the rolling window means `MLDispatchScheduler` loses its "recent frames are over budget" signal and defaults to `dispatchNow` — which is the safe failure mode (stem separation fires immediately rather than being deferred indefinitely). Resetting `currentLevel` would visually downgrade quality for no reason; the governor re-warms in ~3s of real frames either way.
+
+**(b) `CaptureModeSwitchCoordinator` opens a 5-second grace window on every non-`.localFile` mode switch.**
+
+`CaptureModeReconciler` calls `AudioInputRouter.switchMode(_:)` on every `captureMode` settings change. The tap restart causes `SilenceDetector` to cycle through `.suspect → .silent → .recovering → .active` over ~2–3 seconds. Without a grace window: (1) `LiveAdapter.adapt()` may compute a large mood delta against the transient silence-derived features and trigger a preset override at exactly the moment the user is confirming their new audio source works; (2) `PlaybackErrorBridge` fires the silence toast at 15 s even though the silence is expected and transient. Five seconds covers Bluetooth wake latency (~2 s) plus SilenceDetector recovery (~2–3 s) with margin. `.localFile` mode receives no grace window — it shows a "coming later" toast and never touches the router (D-052).
+
+**(c) Grace window suppresses `presetOverride` events but not `updatedTransition` events.**
+
+`applyLiveUpdate` in `VisualizerEngine+Orchestrator.swift` runs `liveAdapter.adapt()` normally (so structural boundaries are still detected) and then filters the result: if `captureModeSwitchGraceWindowEndsAt > Date.now`, any `presetOverride` payload is discarded before the plan is patched. Boundary rescheduling (`updatedTransition`) remains live because structural events reflect the music, not the silence transient.
+
+**(d) `NetworkRecoveryCoordinator` uses `sessionStatePublisher` (not `SessionManager.state` directly) for the guard.**
+
+The coordinator receives `sessionStatePublisher: AnyPublisher<SessionState, Never>` and stores the latest value in `latestSessionState`. This makes the state guard injectable in tests without needing a real `SessionManager` in `.preparing` state (which would require connecting to a real playlist source). The coordinator still holds a weak reference to `SessionManager` to call `resumeFailedNetworkTracks()` — the two are orthogonal.
+
+**(e) 2s additional debounce + 3-attempt cap for network recovery.**
+
+`ReachabilityMonitor` already debounces at 1 s. An additional 2 s means 3 s total before the first retry attempt — long enough that a brief DHCP renewal or VPN reconnect does not trigger a download attempt that will immediately fail again. The 3-attempt cap prevents unbounded retry loops on persistently unstable connections; after the cap, `PreparationFailureView`'s manual "Retry" button provides a user-initiated hard restart. `resetForNewSession()` clears the counter so each preparation session gets a fresh 3-attempt budget.
+
+### What Was Rejected
+
+- **Resetting `currentLevel` on display hot-plug:** Would demote quality from e.g. `noBloom` back to `full`, causing the shader complexity to spike just as the user is looking at the window. The rolling-buffer-only reset is strictly less disruptive.
+- **Opening the grace window for `.localFile` mode switches:** `.localFile` doesn't touch the audio router — it shows a "coming later" toast. No silence transient means no grace window needed, and the D-052 path must stay clean.
+- **Single global debounce on `ReachabilityMonitor`:** `ReachabilityMonitor` is also consumed by `PreparationErrorViewModel` for copy changes (online/offline indicator). The copy change should be fast (1 s); the retry attempt should be slower (3 s total). Keeping the two debounces separate lets each consumer set its own latency.

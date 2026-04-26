@@ -28,6 +28,17 @@ final class PlaybackErrorBridge {
     /// Seconds of sustained silence before the degradation toast fires.
     static let silenceToastThresholdSeconds: TimeInterval = 15
 
+    /// Extended threshold applied during a capture-mode switch grace window. D-061(b).
+    static let silenceToastGraceWindowThresholdSeconds: TimeInterval = 20
+
+    // MARK: - Configurable Threshold
+
+    /// The effective silence threshold used when starting a new silence-tracking window.
+    ///
+    /// `CaptureModeSwitchCoordinator` raises this to `silenceToastGraceWindowThresholdSeconds`
+    /// at the start of a capture-mode switch and resets it at window end. D-061(b).
+    var effectiveThresholdSeconds: TimeInterval = silenceToastThresholdSeconds
+
     // MARK: - Private
 
     private let toastManager: ToastManager
@@ -69,11 +80,11 @@ final class PlaybackErrorBridge {
 
     private func beginSilenceTracking() {
         guard silenceTask == nil else { return }
-        let threshold = Self.silenceToastThresholdSeconds
+        let threshold = effectiveThresholdSeconds
         logger.debug("PlaybackErrorBridge: silence started — waiting \(threshold, format: .fixed(precision: 0))s")
 
         silenceTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(Self.silenceToastThresholdSeconds))
+            try? await Task.sleep(for: .seconds(threshold))
             guard !Task.isCancelled, let self else { return }
             self.showSilenceExtendedToast()
         }
