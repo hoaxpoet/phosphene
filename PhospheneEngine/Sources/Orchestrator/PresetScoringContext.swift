@@ -93,6 +93,24 @@ public struct PresetScoringContext: Sendable {
     /// `.ultra` lifts the gate entirely. Defaults to `.auto` for backward-compat.
     public let qualityCeiling: QualityCeiling
 
+    /// Per-family additive boost applied after the weighted raw score (U.6b).
+    ///
+    /// Added to the final 0–1 score before clamping. Positive only; map is sparse.
+    /// Defaults to empty so all existing callers and golden-session tests are unaffected.
+    public let familyBoosts: [PresetCategory: Float]
+
+    /// Families temporarily excluded by the user pressing `-` (U.6b).
+    ///
+    /// Pre-resolved from time-stamped expiry records at context-build time.
+    /// Defaults to empty for backward-compat.
+    public let temporarilyExcludedFamilies: Set<PresetCategory>
+
+    /// Preset IDs the user has permanently excluded this session via `-` (U.6b).
+    ///
+    /// Survives family-exclusion expiry — pressing `+` does not clear it.
+    /// Defaults to empty for backward-compat.
+    public let sessionExcludedPresets: Set<String>
+
     // MARK: - Init
 
     public init(
@@ -103,7 +121,10 @@ public struct PresetScoringContext: Sendable {
         elapsedSessionTime: TimeInterval = 0,
         currentSection: SongSection? = nil,
         excludedFamilies: Set<PresetCategory> = [],
-        qualityCeiling: QualityCeiling = .auto
+        qualityCeiling: QualityCeiling = .auto,
+        familyBoosts: [PresetCategory: Float] = [:],
+        temporarilyExcludedFamilies: Set<PresetCategory> = [],
+        sessionExcludedPresets: Set<String> = []
     ) {
         self.deviceTier = deviceTier
         self.frameBudgetMs = frameBudgetMs ?? deviceTier.frameBudgetMs
@@ -113,6 +134,9 @@ public struct PresetScoringContext: Sendable {
         self.currentSection = currentSection
         self.excludedFamilies = excludedFamilies
         self.qualityCeiling = qualityCeiling
+        self.familyBoosts = familyBoosts
+        self.temporarilyExcludedFamilies = temporarilyExcludedFamilies
+        self.sessionExcludedPresets = sessionExcludedPresets
     }
 
     // MARK: - Factory

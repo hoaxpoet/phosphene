@@ -108,6 +108,9 @@ struct PlaybackErrorBridgeTests {
     @Test("suspect state does not clear silence tracking")
     func test_suspectState_doesNotClear() async {
         let fix = makeSUT()
+        // Drain the initial .active value from CurrentValueSubject before setting up
+        // mock state — otherwise clearSilence() fires when the initial value dispatches.
+        await Task.yield()
         fix.tracker.assert("silence.extended")
         let toast = PhospheneToast(
             severity: .degradation,

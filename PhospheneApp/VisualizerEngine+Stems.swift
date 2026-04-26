@@ -1,12 +1,19 @@
 // VisualizerEngine+Stems — Background stem separation pipeline.
 // Runs StemSeparator on a utility-QoS queue at 5-second cadence,
 // feeds per-stem analysis to the render pipeline via buffer(3).
+//
+// Increment 6.3: dispatch is gated by MLDispatchScheduler. When recent render
+// frames are over budget, the 5s separation timer defers the actual MPSGraph call
+// to a lighter render moment. Deferral is bounded by maxDeferralMs (2000 ms on
+// Tier 1, 1500 ms on Tier 2) to prevent stems from going stale.
 
 import DSP
 import Foundation
 import Metal
 import ML
 import os.log
+import QuartzCore
+import Renderer
 import Session
 import Shared
 
@@ -56,8 +63,72 @@ extension VisualizerEngine {
     /// 1e-6 catches near-zero noise floors without false-positive skips.
     private static let silenceRMSThreshold: Float = 1e-6
 
-    /// Run a single stem separation + analysis cycle on the stem queue.
+    // MARK: - Scheduler Gate (Increment 6.3)
+
+    /// Entry point fired by the 5s DispatchSourceTimer on stemQueue.
+    ///
+    /// Hops to @MainActor to consult `MLDispatchScheduler` using the latest
+    /// frame timing from `FrameBudgetManager`. If recent frames are over budget,
+    /// the dispatch is deferred and retried after 100 ms. Once the frame window
+    /// is clean (or the 2s deferral ceiling is hit), the actual MPSGraph call
+    /// is dispatched back to stemQueue via `performStemSeparation()`.
     func runStemSeparation() {
+        let now = CACurrentMediaTime()
+
+        // Record the start of the pending window on first entry (not on retries).
+        if pendingDispatchStartTime == nil {
+            pendingDispatchStartTime = now
+            logger.debug("ML: stem dispatch requested, starting pending window")
+        }
+        let start = pendingDispatchStartTime ?? now
+        let pendingForMs = Float((now - start) * 1000)
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+
+            guard let scheduler = self.mlDispatchScheduler else {
+                // No scheduler wired (tests / headless) — dispatch immediately.
+                self.stemQueue.async { [weak self] in
+                    self?.performStemSeparation()
+                }
+                return
+            }
+
+            let budgetMs: Float = self.deviceTier == .tier1 ? 14.0 : 16.0
+            let context = MLDispatchScheduler.DispatchContext(
+                recentMaxFrameMs: self.pipeline.frameBudgetManager?.recentMaxFrameMs ?? 0,
+                recentFramesObserved: self.pipeline.frameBudgetManager?.recentFramesObserved ?? 0,
+                currentTierBudgetMs: budgetMs,
+                pendingForMs: pendingForMs
+            )
+
+            switch scheduler.decide(context: context) {
+            case .dispatchNow, .forceDispatch:
+                let elapsed = String(format: "%.0f", pendingForMs)
+                logger.debug("ML: dispatch after \(elapsed, privacy: .public)ms pending")
+                self.pendingDispatchStartTime = nil
+                // Return to stemQueue for the actual 142ms MPSGraph call.
+                self.stemQueue.async { [weak self] in
+                    self?.performStemSeparation()
+                }
+
+            case .defer(let retryInMs):
+                // Keep pendingDispatchStartTime intact to preserve the elapsed duration.
+                let deadline: DispatchTime = .now() + .milliseconds(Int(retryInMs))
+                self.stemQueue.asyncAfter(deadline: deadline) { [weak self] in
+                    self?.runStemSeparation()
+                }
+            }
+        }
+    }
+
+    // MARK: - Separation Work
+
+    /// Perform the actual stem separation + waveform handoff.
+    ///
+    /// Extracted from the pre-6.3 `runStemSeparation`. Runs on stemQueue after the
+    /// scheduler gate in `runStemSeparation` clears the frame timing check.
+    func performStemSeparation() {
         guard let separator = stemSeparator else { return }
 
         // Snapshot ~10s of interleaved stereo audio.
@@ -137,6 +208,9 @@ extension VisualizerEngine {
             self.latestSeparatedStems = []
             self.latestSeparationTimestamp = 0
         }
+
+        // A deferred dispatch from the previous track is irrelevant on the new track.
+        pendingDispatchStartTime = nil
 
         pipeline.spectralHistory.reset()
 

@@ -6,6 +6,15 @@ import Testing
 import Foundation
 @testable import Session
 
+// MARK: - Thread-safe counter for concurrent test assertions
+
+private final class AtomicCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    func increment() { lock.withLock { count += 1 } }
+    var value: Int { lock.withLock { count } }
+}
+
 // MARK: - Helpers
 
 private func makeResolver() -> PreviewResolver {
@@ -106,9 +115,10 @@ struct PreviewResolverTests {
         resolver.rateLimitPerWindow = 3
         resolver.rateLimitWindow = 0.5
 
-        var callCount = 0
+        // Use a thread-safe counter — networkFetcher is called from concurrent tasks.
+        let counter = AtomicCounter()
         resolver.networkFetcher = { _ in
-            callCount += 1
+            counter.increment()
             return (itunesResponse(), ok200())
         }
 
@@ -129,7 +139,7 @@ struct PreviewResolverTests {
         // 4 requests at 3/0.5s limit means the 4th must wait at least ~0.5s.
         #expect(elapsed >= 0.4)
         // All 4 calls eventually went through.
-        #expect(callCount == 4)
+        #expect(counter.value == 4)
     }
 
     // MARK: - Network Timeout

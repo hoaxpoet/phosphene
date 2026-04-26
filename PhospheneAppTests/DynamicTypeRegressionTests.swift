@@ -33,11 +33,11 @@ struct DynamicTypeRegressionTests {
         "PhospheneApp/Views/FullScreenErrorView.swift",
     ]
 
-    private class BundleSentinel {}
-
-    private func projectRoot() throws -> URL {
-        // Walk up from the test bundle to the repo root — look for CLAUDE.md as a sentinel.
-        var url = Bundle(for: BundleSentinel.self).bundleURL
+    private func projectRoot(file: StaticString = #filePath) throws -> URL {
+        // Walk up from this source file to the repo root — look for CLAUDE.md as a sentinel.
+        // #filePath (not #file) gives the full absolute path in Swift 6 — #file now gives
+        // the module-relative identifier (SE-0285) which produces a relative URL.
+        var url = URL(fileURLWithPath: "\(file)")
         for _ in 0..<10 {
             url = url.deletingLastPathComponent()
             if FileManager.default.fileExists(atPath: url.appendingPathComponent("CLAUDE.md").path) {

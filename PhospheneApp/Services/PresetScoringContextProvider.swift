@@ -36,7 +36,10 @@ final class PresetScoringContextProvider {
         elapsedSessionTime: TimeInterval = 0,
         recentHistory: [PresetHistoryEntry] = [],
         currentPreset: PresetDescriptor? = nil,
-        currentSection: SongSection? = nil
+        currentSection: SongSection? = nil,
+        familyBoosts: [PresetCategory: Float] = [:],
+        temporarilyExcludedFamilies: Set<PresetCategory> = [],
+        sessionExcludedPresets: Set<String> = []
     ) -> PresetScoringContext {
         PresetScoringContext(
             deviceTier: effectiveTier,
@@ -45,7 +48,10 @@ final class PresetScoringContextProvider {
             elapsedSessionTime: elapsedSessionTime,
             currentSection: currentSection,
             excludedFamilies: settingsStore.excludedPresetCategories,
-            qualityCeiling: settingsStore.qualityCeiling
+            qualityCeiling: settingsStore.qualityCeiling,
+            familyBoosts: familyBoosts,
+            temporarilyExcludedFamilies: temporarilyExcludedFamilies,
+            sessionExcludedPresets: sessionExcludedPresets
         )
     }
 }

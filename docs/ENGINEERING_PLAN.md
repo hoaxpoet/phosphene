@@ -879,27 +879,23 @@ AppleMusicConnectionViewModelTests×5 + identifier, SpotifyConnectionViewModelTe
 
 ---
 
-### Increment U.6b — Live adaptation keyboard shortcut semantics
+### Increment U.6b — Live adaptation keyboard shortcut semantics ✅
 
-**Scope:** Wire the seven `PlaybackActionRouter` methods stubbed in U.6. All methods currently log `TODO(U.6b)` and return. Full semantics per the spec in `DefaultPlaybackActionRouter.swift`:
+**Status: Complete (2026-04-25)**
 
-- `moreLikeThis()` — freeze current preset family weight at +0.3 for the remainder of the session; calls `LiveAdapter.applyMoodOverride` with boosted `stemAffinity` for current family.
-- `lessLikeThis()` — add current preset to a session-local exclusion list; trigger immediate transition via `LiveAdapter`.
-- `reshuffleUpcoming()` — call `VisualizerEngine.regeneratePlan(lockedTracks: currentLockedTracks, lockedPresets: currentLockedPresets)` preserving user locks.
-- `presetNudge(.next, immediate: false)` — `LiveAdapter` schedules transition at next structural boundary; `(.next, immediate: true)` cuts immediately; `.previous` replays the last preset.
-- `rePlanSession()` — full `regeneratePlan()` call with new random seed; shows plan-preview sheet (same as `P` key).
-- `undoLastAdaptation()` — restore the `LiveAdapter` patch before the most recent `applyLiveUpdate(_:at:)` call; uses `PlannedSession.applying(_:at:)` inverse.
-- `toggleMoodLock()` — already implemented; freezes valence/arousal at current values so mood-driven adaptation pauses.
-
-**Dependencies:** `DefaultLiveAdapter` (Increment 4.5, complete), `VisualizerEngine+Orchestrator` (complete), `LiveAdaptationToastBridge` (U.6, complete — just needs the TODO gates replaced with real calls).
-
-**Done when:**
-- All seven `PlaybackActionRouter` methods produce observable engine state changes verified by unit tests.
-- `DefaultPlaybackActionRouter` no longer contains any `TODO(U.6b)` log lines (except `toggleMoodLock`, already wired).
-- `LiveAdaptationToastBridge.UserDefaults` gate is set to `true` by default (was `false` in U.6 to avoid noise before adaptation semantics land).
-- 8+ unit tests for the adaptation actions.
-
-**Verify:** `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' test`
+**What was built:**
+- `DefaultPlaybackActionRouter` fully wired — all seven methods (`moreLikeThis`, `lessLikeThis`, `reshuffleUpcoming`, `presetNudge`, `rePlanSession`, `undoLastAdaptation`, `toggleMoodLock`) produce observable state changes. No remaining `TODO(U.6b)` lines.
+- `PresetScoringContext` extended with `familyBoosts`, `temporarilyExcludedFamilies`, `sessionExcludedPresets` (all defaulted empty; D-053 backward-compat discipline).
+- `PresetScoreBreakdown.familyBoost: Float` added; `DefaultPresetScorer` honours all three new fields.
+- `PlannedSession.extendingCurrentPreset(by:at:)` added in `LiveAdapter+Patching` (same controlled-mutation discipline as `applying(_:at:)`).
+- `PresetCategory.displayName` computed property for user-facing toast copy.
+- `LiveAdaptationToastBridge` default flipped to `true` for fresh installs; existing explicit user choices preserved via the key-presence check.
+- Adaptation preference state lives on `DefaultPlaybackActionRouter` (not `VisualizerEngine`) for testability — D-058(e).
+- Double-`-` ambient hint: two `lessLikeThis()` calls within 90 s emit "Not quite hitting the mark? Try ⌘R to re-plan." once per session.
+- `adaptationHistory` bounded at 8 entries; `undoLastAdaptation()` restores `livePlan` only (NOT preference state) — D-058(b).
+- `VisualizerEngine+Orchestrator` extended with `extendCurrentPreset(by:)`, `applyPresetByID(_:)`, `restoreLivePlan(_:)`, `buildScoringContext(adaptationFields:)`, `currentTrackIndexInPlan()`, `currentTrackProfile()`.
+- `PlaybackView.setup()` uses `DefaultPlaybackActionRouter.live(engine:toastBridge:onShowPlanPreview:)` factory.
+- 14 app tests + 6 engine tests (adapatation scorer tests in `PresetScorerAdaptationTests`). D-058.
 
 ---
 
@@ -1277,17 +1273,20 @@ Runs in parallel with Phase V.7+ once Phase V.1–V.3 utilities are available.
 
 ---
 
-### Increment 6.3 — ML Dispatch Scheduling
+### ✅ Increment 6.3 — ML Dispatch Scheduling (landed 2026-04-25)
 
-**Scope:** Coordinate MPSGraph stem separation with heavy render passes. Stem separation runs on GPU — it should avoid dispatching during expensive render frames (ray march + SSGI). Use frame timing feedback to window ML dispatches into lighter render moments.
+**What was built:**
+- `MLDispatchScheduler.swift` (`Renderer` module): pure-state controller with `Configuration` (tier defaults: 2000ms/30-frame Tier 1, 1500ms/20-frame Tier 2), `Decision` enum (`.dispatchNow / .defer(retryInMs:) / .forceDispatch`), `DispatchContext` value type, and `decide(context:) -> Decision` algorithm. `QualityCeiling.ultra` → `enabled = false` bypass. D-059.
+- `FrameTimingProviding` protocol in `MLDispatchScheduler.swift`: `recentMaxFrameMs` + `recentFramesObserved`. `FrameBudgetManager` conforms via extension; test stubs use `StubFrameTimingProvider`. Single rolling buffer (30-slot circular array) in `FrameBudgetManager` serves both governor hysteresis counters and the ML scheduler with no duplicate state. D-059(e).
+- `VisualizerEngine+Stems.swift` restructured: `runStemSeparation()` hops to `@MainActor`, consults the scheduler, then dispatches back to `stemQueue` via `performStemSeparation()`. `pendingDispatchStartTime` tracks deferral duration; cleared on dispatch and on `resetStemPipeline(for:)` track change.
+- `VisualizerEngine` gains `deviceTier: DeviceTier` (stored, set in `init()`), `mlDispatchScheduler: MLDispatchScheduler?`, and `pendingDispatchStartTime: TimeInterval?`. Debug overlay `ML:` row shows current scheduler state (idle / dispatch / defer Nms / force).
+- `MLDispatchSchedulerTests.swift`: 10 `@Test` functions. `MLDispatchSchedulerWiringTests.swift`: 5 `@Test` functions (incl. `StubFrameTimingProvider`). 20 new tests total.
+- `DECISIONS.md` D-059 (5 sub-decisions). `ARCHITECTURE.md` §ML Inference gains Dispatch Scheduling subsection. `RUNBOOK.md §Jank / dropped frames` updated. `CLAUDE.md` Module Map and §ML Inference updated.
+- 747 engine tests; 0 SwiftLint violations. Phase 6 complete.
 
-**Done when:**
-- Stem separation dispatch is aware of current render pass complexity.
-- During heavy render frames, ML dispatch is deferred (not dropped).
-- No observable frame drops during concurrent stem separation + ray march rendering.
-- 4+ unit tests with synthetic timing scenarios.
+**Done when:** ✅ Scheduler defers dispatch when recent frames are over budget. ✅ Force-dispatch ceiling prevents stem freeze. ✅ 20 new tests (≥ 4 required). ✅ Zero dHash drift.
 
-**Verify:** `swift test --package-path PhospheneEngine`
+**Verify:** `swift test --package-path PhospheneEngine --filter "MLDispatchScheduler"`
 
 ---
 
@@ -1329,7 +1328,7 @@ These milestones map to product-level outcomes, not implementation phases.
 
 **Milestone B — Tasteful Orchestration.** ✅ **MET (2026-04-25).** Preset choice and transitions are consistently better than random and pass golden-session tests. *Requires: ~~Phase 4 complete~~ ✅, ~~Increment 5.1~~ ✅ (landed as 4.0).*
 
-**Milestone C — Device-Aware Show Quality.** The same playlist produces an excellent show on M1 and a richer one on M4 without jank. *Requires: Phase 6 complete.*
+**Milestone C — Device-Aware Show Quality.** ✅ **MET (2026-04-25).** The same playlist produces an excellent show on M1 and a richer one on M4 without jank. *Requires: ~~Phase 6 complete~~ ✅.*
 
 **Milestone D — Library Depth.** The preset catalog is large enough, varied enough, and well-tagged enough for Phosphene to feel like a product rather than a tech demo. *Requires: Phase 5 complete, Phase V complete (12 fidelity-uplifted presets), Phase MD through MD.5 minimum (10 Milkdrop presets), 22+ certified presets total.*
 

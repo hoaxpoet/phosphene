@@ -918,3 +918,57 @@ The frame budget governor operates exclusively through five scalar properties: `
 
 **Decision — One-frame governor lag by design:**
 `commandBuffer.addCompletedHandler` fires asynchronously after GPU completion. The handler bounces to `@MainActor` and calls `applyQualityLevel`, which takes effect at the start of the next `draw(in:)` call. This means the governor reacts to frame N's timing during frame N+1 setup. A zero-lag architecture would require predicting budget violations before encoding, which is not feasible. The one-frame lag is invisible at 60fps and eliminates any risk of the governor mutating render state mid-encoding.
+
+## D-058 — U.6b live-adaptation keyboard semantics: architecture and undo semantics
+
+### Context
+
+Increment U.6b wires the seven `PlaybackActionRouter` keyboard actions stubbed in U.6. Several architectural decisions were required:
+
+**(a) Family boost is additive on the final 0–1 score, not multiplicative on sub-scores.**
+
+`context.familyBoosts[family] ?? 0` is added to `raw * familyMult * fatigueMult` before clamping, keeping it fully independent of the four-weight structure established in D-032. A multiplicative approach would compound with the fatigue and repeat penalties in non-obvious ways; an additive approach on the final score is transparent ("always +0.3 for this family, regardless of other factors"). Boost is capped at 0.3 and idempotent (pressing `+` twice gives 0.3, not 0.6).
+
+**(b) `undoLastAdaptation()` restores `livePlan` only, NOT the boost/exclusion state.**
+
+`adaptationHistory` stores `PlannedSession` snapshots, which are the plan. Preference state (`familyBoosts`, `temporaryFamilyExclusions`, `sessionExcludedPresets`) is intentionally NOT reverted by undo. Rationale: a user who pressed `-` to dislike a family and then `⌘Z` to undo the preset swap did not express a desire to re-include that family — they may just want to go back to the previous visual. Clearing preference state on undo would be surprising. Users who want to fully reverse a `-` can wait 10 minutes for the exclusion to expire.
+
+**(c) `LiveAdaptationToastBridge` default changed to `true` for fresh installs.**
+
+The `isEnabled` check now reads `UserDefaults.standard.object(forKey:)` first. If the key is absent (new install), it returns `true`. If the key is present (user has explicitly set it either way), it reads the stored bool. This preserves existing users' explicit choice while shipping the feature on by default.
+
+**(d) `adaptationHistory` capacity is 8.**
+
+Typical in-session adaptation depth is 2–4 actions (a couple of `+`/`-` presses and maybe one reshuffle). 8 entries covers the 99th percentile of realistic use and keeps memory overhead trivially small. Entries are plain `PlannedSession` values (a handful of structs); 8 × ~2 KB ≈ 16 KB maximum.
+
+**(e) Adaptation preference state lives on `DefaultPlaybackActionRouter`, not `VisualizerEngine`.**
+
+The spec draft suggested placing U.6b state on `VisualizerEngine+Orchestrator`, but this would make app-layer unit tests impossible without a Metal context. Following the protocol-first / injectable-closures pattern already established in `PlanPreviewViewModel` and `PlaybackChromeViewModel`, all preference state (`familyBoosts`, `temporaryFamilyExclusions`, etc.) lives on the router. The engine reads it back at plan-build time via the `adaptationFields(at:)` snapshot method. This keeps the router fully unit-testable with pure Swift.
+
+---
+
+## D-059 — ML Dispatch Scheduling: scheduler design, budget signal, deferral caps (Increment 6.3)
+
+### Context
+
+`MLDispatchScheduler` coordinates MPSGraph stem separation with render-loop frame timing. When the GPU is stressed by a heavy ray-march+SSGI frame, a 142ms stem-separation burst landing on top of it causes a visible double-jank. The scheduler defers the 5s separation timer to a lighter moment rather than firing blindly.
+
+**(a) Scheduler reads `recentMaxFrameMs` rather than `FrameBudgetManager.currentLevel`.**
+
+`currentLevel` reflects long-term hysteresis: it can remain degraded for 180 frames after the renderer has actually recovered (per D-057's asymmetric upshift window). For ML scheduling we need the tighter "is the render clean right now?" signal. `recentMaxFrameMs` is the worst frame in the last 30-frame rolling window — it falls immediately when jank clears, giving the scheduler accurate real-time feedback. Using `currentLevel` would defer ML dispatches for up to 3 seconds after recovery, which is not useful.
+
+**(b) `maxDeferralMs`: 2000 ms Tier 1, 1500 ms Tier 2. `requireCleanFramesCount`: 30 Tier 1, 20 Tier 2.**
+
+Stem features from the 5s background cycle already lag real audio by 5–10 seconds (Increment 3.5.4.9 — per-frame analysis from cached waveforms continues regardless). Adding 2 s of ML deferral extends that lag to at most 7–12 s, which is within the acceptable range for preset routing freshness. Tier 2 (M3+) gets a tighter 1500 ms cap because jank is rarer on M3+ hardware; when it does occur, recovery is faster and the scheduler can react sooner.
+
+**(c) Deferral always retries — never drops.**
+
+A dropped stem dispatch means stems go completely stale for a full 5 s cycle, producing a visible freeze-and-jump in stem-driven preset visuals (the original defect fixed by Increment 3.5.4.9). Retrying every 100 ms with a hard force-dispatch ceiling guarantees stems are refreshed within `maxDeferralMs` of when they were requested, accepting one over-budget frame to prevent multi-second stem freeze.
+
+**(d) Scheduler exempt under `QualityCeiling.ultra`.**
+
+Recording mode wants consistent ML cadence at all times — frame consistency is more important than jank avoidance when producing a diagnostic capture. `enabled = false` when ultra; every `decide()` call returns `.dispatchNow` immediately.
+
+**(e) `FrameTimingProviding` protocol for testability; single rolling buffer.**
+
+The scheduler reads `recentMaxFrameMs` / `recentFramesObserved` via `FrameTimingProviding`, which both `FrameBudgetManager` and test stubs conform to. There is no parallel timing collection in the scheduler itself — `FrameBudgetManager.observe(_:)` records every frame into a 30-slot circular buffer shared by both the governor hysteresis logic and the ML scheduler. This is a single source of truth; duplicating the buffer would create divergence risk.

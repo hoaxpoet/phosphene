@@ -272,6 +272,77 @@ extension VisualizerEngine {
         }
     }
 
+    // MARK: - U.6b Router Support
+
+    /// Monotonic wall-clock time used for exclusion-expiry and double-`-` hint windows.
+    var currentAbsoluteTime: TimeInterval { Date().timeIntervalSinceReferenceDate }
+
+    /// Descriptor of the currently active preset, or nil.
+    var currentPresetDescriptor: PresetDescriptor? { presetLoader.currentPreset?.descriptor }
+
+    /// Extends the current track's planned end time in the live plan, shifting all following tracks.
+    @MainActor
+    func extendCurrentPreset(by seconds: TimeInterval) {
+        let now = currentAbsoluteTime
+        orchestratorLock.withLock {
+            guard let plan = livePlan else { return }
+            livePlan = plan.extendingCurrentPreset(by: seconds, at: now)
+        }
+        livePlannedSession = orchestratorLock.withLock { livePlan }
+    }
+
+    /// Applies the named preset (by ID) and shows its name banner.
+    @MainActor
+    func applyPresetByID(_ presetID: String) {
+        guard let loaded = presetLoader.presets.first(where: { $0.descriptor.id == presetID }) else {
+            logger.warning("Orchestrator: applyPresetByID '\(presetID)' not found in loader")
+            return
+        }
+        applyPreset(loaded)
+        showPresetName(loaded.descriptor.name)
+    }
+
+    /// Restores the live plan from a saved snapshot (for undo).
+    @MainActor
+    func restoreLivePlan(_ plan: PlannedSession) {
+        orchestratorLock.withLock { livePlan = plan }
+        livePlannedSession = plan
+    }
+
+    /// Builds a scoring context for the current session state, incorporating adaptation fields.
+    @MainActor
+    func buildScoringContext(adaptationFields: AdaptationFields) -> PresetScoringContext {
+        let tier = Self.detectDeviceTier(device: context.device)
+        return PresetScoringContext(
+            deviceTier: tier,
+            currentPreset: currentPresetDescriptor,
+            familyBoosts: adaptationFields.familyBoosts,
+            temporarilyExcludedFamilies: adaptationFields.temporarilyExcludedFamilies,
+            sessionExcludedPresets: adaptationFields.sessionExcludedPresets
+        )
+    }
+
+    /// Index of the currently playing track in the live plan, or 0.
+    @MainActor
+    func currentTrackIndexInPlan() -> Int {
+        guard let plan = orchestratorLock.withLock({ livePlan }) else { return 0 }
+        let now = currentAbsoluteTime
+        return plan.tracks.firstIndex(where: {
+            now >= $0.plannedStartTime && now < $0.plannedEndTime
+        }) ?? 0
+    }
+
+    /// Track profile for the currently playing track, or nil.
+    @MainActor
+    func currentTrackProfile() -> TrackProfile? {
+        guard let identity = currentTrack.map({ TrackIdentity(
+            title: $0.title ?? "",
+            artist: $0.artist ?? "",
+            duration: $0.duration
+        ) }) else { return nil }
+        return sessionManager.cache.trackProfile(for: identity)
+    }
+
     // MARK: - Device Tier Detection
 
     /// Infer the Apple Silicon generation from the Metal device name.

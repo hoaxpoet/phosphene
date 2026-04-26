@@ -214,7 +214,8 @@ final class PlaybackChromeViewModel: ObservableObject {
             guard let self else { return }
             try? await self.delay.sleep(seconds: 3)
             guard !Task.isCancelled else { return }
-            await MainActor.run { self.overlayVisible = false }
+            // Task inherits @MainActor from its creation context — set directly.
+            self.overlayVisible = false
         }
     }
 

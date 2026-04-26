@@ -29,7 +29,15 @@ final class LiveAdaptationToastBridge {
     // MARK: - Settings flag
 
     static let userDefaultsKey = "phosphene.settings.visuals.showLiveAdaptationToasts"
-    private var isEnabled: Bool { UserDefaults.standard.bool(forKey: Self.userDefaultsKey) }
+
+    // U.6b: default flipped to true for fresh installs.
+    // Existing users who explicitly set the key (either way) keep their choice.
+    private var isEnabled: Bool {
+        guard UserDefaults.standard.object(forKey: Self.userDefaultsKey) != nil else {
+            return true  // Key not set → new install → default on.
+        }
+        return UserDefaults.standard.bool(forKey: Self.userDefaultsKey)
+    }
 
     // MARK: - Coalescing
 

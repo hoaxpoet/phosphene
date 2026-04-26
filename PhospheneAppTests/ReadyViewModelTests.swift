@@ -53,7 +53,8 @@ private func makeTestPreset() throws -> PresetDescriptor {
 private func makeViewModel(
     source: PlaylistSource? = .appleMusicCurrentPlaylist,
     signalState: AudioSignalState = .silent,
-    reduceMotion: Bool = false
+    reduceMotion: Bool = false,
+    delayProvider: any DelayProviding = RealDelay()
 ) -> (ReadyViewModel, FakeStatePublisher, FakePlanPublisher, SessionManager) {
     let sigPub = FakeStatePublisher(signalState)
     let planPub = FakePlanPublisher()
@@ -63,7 +64,8 @@ private func makeViewModel(
         sessionManager: mgr,
         audioSignalStatePublisher: sigPub.publisher,
         planPublisher: planPub.publisher,
-        reduceMotion: reduceMotion
+        reduceMotion: reduceMotion,
+        delayProvider: delayProvider
     )
     return (vm, sigPub, planPub, mgr)
 }
@@ -101,19 +103,19 @@ struct ReadyViewModelTests {
     }
 
     @Test func firstAudioDetected_emitsAdvanceSignal() async throws {
-        let (vm, sigPub, _, _) = makeViewModel()
+        let (vm, sigPub, _, _) = makeViewModel(delayProvider: InstantDelay())
         var advanced = false
         let cancellable = vm.shouldAdvanceToPlaying.sink { advanced = true }
         sigPub.send(.active)
-        try await Task.sleep(for: .milliseconds(300))
+        try await Task.sleep(for: .milliseconds(50))
         #expect(advanced)
         _ = cancellable
     }
 
     @Test func audioDetectedBeforeTimeout_hasDetectedAudioFlips() async throws {
-        let (vm, sigPub, _, _) = makeViewModel()
+        let (vm, sigPub, _, _) = makeViewModel(delayProvider: InstantDelay())
         sigPub.send(.active)
-        try await Task.sleep(for: .milliseconds(300))
+        try await Task.sleep(for: .milliseconds(50))
         #expect(vm.hasDetectedAudio)
         #expect(!vm.isTimedOut)
     }
@@ -124,9 +126,9 @@ struct ReadyViewModelTests {
     }
 
     @Test func retry_resetsDetectorAndClearsTimeout() async throws {
-        let (vm, sigPub, _, _) = makeViewModel()
+        let (vm, sigPub, _, _) = makeViewModel(delayProvider: InstantDelay())
         sigPub.send(.active)
-        try await Task.sleep(for: .milliseconds(300))
+        try await Task.sleep(for: .milliseconds(50))
         #expect(vm.hasDetectedAudio)
 
         vm.retry()

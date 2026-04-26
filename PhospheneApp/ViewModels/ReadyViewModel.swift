@@ -82,13 +82,15 @@ final class ReadyViewModel: ObservableObject {
         sessionManager: SessionManager,
         audioSignalStatePublisher: AnyPublisher<AudioSignalState, Never>,
         planPublisher: AnyPublisher<PlannedSession?, Never>,
-        reduceMotion: Bool
+        reduceMotion: Bool,
+        delayProvider: any DelayProviding = RealDelay()
     ) {
         self.sourceName = sessionSource?.displayName ?? "your music app"
         self.sessionManager = sessionManager
         self.reduceMotion = reduceMotion
         self.firstAudioDetector = FirstAudioDetector(
-            audioSignalStatePublisher: audioSignalStatePublisher
+            audioSignalStatePublisher: audioSignalStatePublisher,
+            delayProvider: delayProvider
         )
 
         // Seed initial track count / duration from plan if already available.

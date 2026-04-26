@@ -116,6 +116,18 @@ struct DebugOverlayView: View {
                     .foregroundColor(ql == .full ? .green : .orange)
             }
 
+            // ML dispatch scheduler state (Increment 6.3).
+            let mlState = engine.currentMLSchedulerState
+            HStack(spacing: 4) {
+                Text("ML:")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.5))
+                    .frame(width: 70, alignment: .trailing)
+                Text(mlState)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundColor(mlState == "idle" ? .white.opacity(0.4) : .cyan)
+            }
+
             Divider().background(.white.opacity(0.3))
 
             // Raw MIR diagnostics.

@@ -237,6 +237,7 @@ public struct DefaultSessionPlanner: SessionPlanning {
                     fatigueMultiplier: bd.fatigueMultiplier,
                     excluded: bd.excluded,
                     exclusionReason: bd.exclusionReason,
+                    familyBoost: bd.familyBoost,
                     total: max(0, min(1, bd.total + noise))
                 )
             }

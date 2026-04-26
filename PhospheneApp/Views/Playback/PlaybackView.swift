@@ -158,8 +158,15 @@ struct PlaybackView: View {
     private func setup() {
         engine.startAudio()
 
-        // Build action router
-        let router = DefaultPlaybackActionRouter(sessionManager: engine.sessionManager)
+        // Build live-adaptation toast bridge (default on per U.6b).
+        let toastBridge = LiveAdaptationToastBridge(toastManager: toastManager)
+
+        // Build action router — U.6b: uses live factory wired to the engine.
+        let router = DefaultPlaybackActionRouter.live(
+            engine: engine,
+            toastBridge: toastBridge,
+            onShowPlanPreview: { showPlanPreview = true }
+        )
         actionRouter = router
 
         // Fullscreen + display management

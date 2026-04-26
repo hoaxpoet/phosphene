@@ -32,9 +32,14 @@ struct FirstAudioDetectorTests {
 
     @Test func activeSustained250ms_firesDetection() async throws {
         let pub = StatePublisher(.silent)
-        let detector = FirstAudioDetector(audioSignalStatePublisher: pub.publisher)
+        // InstantDelay makes the 250ms confirmation timer fire immediately — the
+        // 50ms sleep is well above zero and lets all actor context-switches settle.
+        let detector = FirstAudioDetector(
+            audioSignalStatePublisher: pub.publisher,
+            delayProvider: InstantDelay()
+        )
         pub.send(.active)
-        try await Task.sleep(for: .milliseconds(300))
+        try await Task.sleep(for: .milliseconds(50))
         #expect(detector.hasDetectedAudio)
     }
 
@@ -63,17 +68,23 @@ struct FirstAudioDetectorTests {
 
     @Test func coldStartPath_silentToActiveViaRecovering_fires() async throws {
         let pub = StatePublisher(.recovering)
-        let detector = FirstAudioDetector(audioSignalStatePublisher: pub.publisher)
+        let detector = FirstAudioDetector(
+            audioSignalStatePublisher: pub.publisher,
+            delayProvider: InstantDelay()
+        )
         pub.send(.active)
-        try await Task.sleep(for: .milliseconds(300))
+        try await Task.sleep(for: .milliseconds(50))
         #expect(detector.hasDetectedAudio)
     }
 
     @Test func reset_clearsDetection_allowsRefire() async throws {
         let pub = StatePublisher(.silent)
-        let detector = FirstAudioDetector(audioSignalStatePublisher: pub.publisher)
+        let detector = FirstAudioDetector(
+            audioSignalStatePublisher: pub.publisher,
+            delayProvider: InstantDelay()
+        )
         pub.send(.active)
-        try await Task.sleep(for: .milliseconds(300))
+        try await Task.sleep(for: .milliseconds(50))
         #expect(detector.hasDetectedAudio)
 
         detector.reset()
@@ -81,7 +92,7 @@ struct FirstAudioDetectorTests {
 
         pub.send(.silent)
         pub.send(.active)
-        try await Task.sleep(for: .milliseconds(300))
+        try await Task.sleep(for: .milliseconds(50))
         #expect(detector.hasDetectedAudio)
     }
 
