@@ -108,7 +108,7 @@ Checks:
 - Inspect frame timing in debug overlay.
 - Test with simpler preset to isolate.
 - Ray march presets with SSGI are the most expensive (~8ms + 1ms overhead at 1080p).
-- MPSGraph stem separation runs on GPU — check for contention with heavy render passes.
+- MPSGraph stem separation runs on GPU — check for contention with heavy render passes. (Increment 6.3 mitigates this; check `ML: dispatch ...` log lines in `session.log` for force-dispatches, which indicate the 2s ceiling was hit under sustained jank.)
 
 ### Wrong or missing metadata
 

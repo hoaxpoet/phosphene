@@ -20,9 +20,10 @@ struct RealDelay: DelayProviding {
 
 // MARK: - InstantDelay
 
-/// Test double: yields the actor once so Tasks can interleave, but adds no real wall-clock delay.
+/// Test double: 1 ms sleep — a true suspension point that lets scheduled tasks run.
+/// `Task.yield()` is unreliable as a sleep substitute on serial executors (@MainActor).
 struct InstantDelay: DelayProviding {
     func sleep(seconds: Double) async throws {
-        await Task.yield()
+        try await Task.sleep(for: .milliseconds(1))
     }
 }

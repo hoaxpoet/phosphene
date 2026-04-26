@@ -407,13 +407,15 @@ import Metal
     encoder.dispatchThreads(gridSize, threadsPerThreadgroup: threadgroupSize)
     encoder.endEncoding()
 
-    let start = CFAbsoluteTimeGetCurrent()
     cmdBuf.commit()
     cmdBuf.waitUntilCompleted()
-    let elapsed = (CFAbsoluteTimeGetCurrent() - start) * 1000.0
 
-    #expect(elapsed < 2.0,
-            "Full-screen fbm3D at 1080p should complete in <2ms, took \(String(format: "%.2f", elapsed))ms")
+    // Use Metal's own GPU timestamps to measure pure compute time, excluding CPU
+    // scheduling jitter from waitUntilCompleted (which can add ~1–2ms on a loaded system).
+    let gpuMs = (cmdBuf.gpuEndTime - cmdBuf.gpuStartTime) * 1000.0
+
+    #expect(gpuMs < 2.0,
+            "Full-screen fbm3D at 1080p should complete in <2ms GPU time, took \(String(format: "%.2f", gpuMs))ms")
 }
 
 // MARK: - Helpers

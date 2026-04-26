@@ -27,6 +27,7 @@ final class FirstAudioDetector: ObservableObject {
 
     // MARK: - Private
 
+    private let delayProvider: any DelayProviding
     private var subscription: AnyCancellable?
     private var confirmationTask: Task<Void, Never>?
 
@@ -34,10 +35,16 @@ final class FirstAudioDetector: ObservableObject {
 
     /// Create the detector, subscribing immediately to the given publisher.
     ///
-    /// - Parameter audioSignalStatePublisher: Publishes the current
-    ///   `AudioSignalState` whenever it changes. Typically
-    ///   `engine.$audioSignalState.eraseToAnyPublisher()`.
-    init(audioSignalStatePublisher: AnyPublisher<AudioSignalState, Never>) {
+    /// - Parameters:
+    ///   - audioSignalStatePublisher: Publishes the current `AudioSignalState`.
+    ///     Typically `engine.$audioSignalState.eraseToAnyPublisher()`.
+    ///   - delayProvider: Injectable sleep; defaults to `RealDelay` (use
+    ///     `InstantDelay` in tests to avoid 250 ms wall-clock waits).
+    init(
+        audioSignalStatePublisher: AnyPublisher<AudioSignalState, Never>,
+        delayProvider: any DelayProviding = RealDelay()
+    ) {
+        self.delayProvider = delayProvider
         subscription = audioSignalStatePublisher
             .removeDuplicates()
             .sink { [weak self] state in
@@ -70,9 +77,10 @@ final class FirstAudioDetector: ObservableObject {
     private func startConfirmationTimer() {
         guard confirmationTask == nil else { return }
         confirmationTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(250))
+            guard let self else { return }
+            try? await self.delayProvider.sleep(seconds: 0.25)
             guard !Task.isCancelled else { return }
-            self?.hasDetectedAudio = true
+            self.hasDetectedAudio = true
         }
     }
 

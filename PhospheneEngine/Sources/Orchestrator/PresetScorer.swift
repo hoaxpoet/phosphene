@@ -30,6 +30,8 @@ public struct PresetScoreBreakdown: Sendable, Hashable {
     public let excluded: Bool
     /// Human-readable reason for exclusion, nil when `excluded` is false.
     public let exclusionReason: String?
+    /// Additive family boost applied after weighted aggregation (U.6b). 0 when none.
+    public let familyBoost: Float
     /// Final combined score in [0, 1]. Always 0 when `excluded` is true.
     public let total: Float
 }
@@ -136,6 +138,7 @@ public struct DefaultPresetScorer: PresetScoring {
                 fatigueMultiplier: 0,
                 excluded: true,
                 exclusionReason: reason,
+                familyBoost: 0,
                 total: 0
             )
         }
@@ -156,7 +159,10 @@ public struct DefaultPresetScorer: PresetScoring {
             + Self.weightStemAffinity * affinityScore
             + Self.weightSectionSuitability * sectionScore
 
-        let total = min(1, max(0, raw * familyMult * fatigueMult))
+        // -- U.6b additive family boost (independent of the four-weight structure) --
+        let boost = context.familyBoosts[preset.family] ?? 0
+
+        let total = min(1, max(0, raw * familyMult * fatigueMult + boost))
 
         return PresetScoreBreakdown(
             mood: moodScore,
@@ -167,6 +173,7 @@ public struct DefaultPresetScorer: PresetScoring {
             fatigueMultiplier: fatigueMult,
             excluded: false,
             exclusionReason: nil,
+            familyBoost: boost,
             total: total
         )
     }
@@ -174,6 +181,12 @@ public struct DefaultPresetScorer: PresetScoring {
     // MARK: - Hard Exclusion
 
     private func exclusionReason(preset: PresetDescriptor, context: PresetScoringContext) -> String? {
+        if context.sessionExcludedPresets.contains(preset.id) {
+            return "preset '\(preset.id)' excluded by user this session"
+        }
+        if context.temporarilyExcludedFamilies.contains(preset.family) {
+            return "preset '\(preset.id)' family '\(preset.family)' temporarily excluded by user"
+        }
         if context.excludedFamilies.contains(preset.family) {
             return "preset '\(preset.id)' family '\(preset.family)' is in user blocklist"
         }

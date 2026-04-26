@@ -137,6 +137,12 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Metadata pre-fetcher for external API queries.
     var preFetcher: MetadataPreFetcher?
 
+    // MARK: - Device Tier
+
+    /// GPU capability tier: .tier1 (M1/M2) or .tier2 (M3/M4).
+    /// Drives per-tier defaults for FrameBudgetManager and MLDispatchScheduler.
+    let deviceTier: DeviceTier
+
     // MARK: - Stem Pipeline
 
     /// Session manager that coordinates playlist preparation. Created at init;
@@ -162,6 +168,15 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
 
     /// Repeating timer that triggers stem separation every 5 seconds.
     var stemTimer: DispatchSourceTimer?
+
+    /// ML dispatch scheduler — defers stem separation to frame-timing-clean moments.
+    /// Nil in test/headless contexts where no scheduler is wired. Increment 6.3.
+    var mlDispatchScheduler: MLDispatchScheduler?
+
+    /// Wall-clock timestamp of when the current stem dispatch was first requested.
+    /// Set at the start of the pending window; cleared when the dispatch fires.
+    /// Nil when no dispatch is pending (timer has not yet fired, or last dispatch completed).
+    var pendingDispatchStartTime: TimeInterval?
 
     // MARK: - Stem Per-Frame Analysis State
     //
@@ -199,6 +214,17 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// refreshes on VisualizerEngine objectWillChange. D-057.
     var currentQualityLevel: FrameBudgetManager.QualityLevel {
         pipeline.frameBudgetManager?.currentLevel ?? .full
+    }
+
+    /// Human-readable ML dispatch state for the debug overlay. Increment 6.3.
+    var currentMLSchedulerState: String {
+        guard pendingDispatchStartTime != nil else { return "idle" }
+        switch mlDispatchScheduler?.lastDecision {
+        case .none:                         return "pending"
+        case .dispatchNow:                  return "dispatch"
+        case .forceDispatch:               return "force"
+        case .defer(let ms):               return "defer \(Int(ms))ms"
+        }
     }
 
     // MARK: - Capture/Recording State
@@ -354,14 +380,16 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         // Ad-hoc mode never invokes the preparer; session mode uses it for pre-analysis.
         self.sessionManager = Self.makeSessionManager(sep: sep, analyzer: analyzer, classifier: classifier)
 
-        // Wire the frame-budget governor. Read QualityCeiling from UserDefaults to
-        // determine if ultra mode (recording) disables the governor. D-057(d).
+        // Wire the frame-budget governor and ML dispatch scheduler. Read QualityCeiling
+        // from UserDefaults to determine if ultra mode (recording) disables both. D-057(d), D-059(d).
         let tier = Self.detectDeviceTier(device: ctx.device)
         let qualityCeilingRaw = UserDefaults.standard.string(
             forKey: "phosphene.settings.visuals.qualityCeiling"
         )
         let isUltra = qualityCeilingRaw == "ultra"
+        self.deviceTier = tier
         pipe.frameBudgetManager = FrameBudgetManager(deviceTier: tier, qualityCeilingIsUltra: isUltra)
+        self.mlDispatchScheduler = MLDispatchScheduler(deviceTier: tier, qualityCeilingIsUltra: isUltra)
 
         setupCaptureHook(pipe: pipe, ctx: ctx)
         setupBackgroundTextures(pipe: pipe, ctx: ctx, lib: lib)

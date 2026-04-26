@@ -158,6 +158,17 @@ public final class FrameBudgetManager {
     private var consecutiveOverruns: Int = 0
     private var consecutiveRecovered: Int = 0
 
+    // MARK: - Rolling Frame Timing Window (FrameTimingProviding — D-059)
+
+    /// Capacity of the rolling window. 30 frames covers the largest `requireCleanFramesCount`
+    /// value used by `MLDispatchScheduler` (Tier 1 default). The governor's own hysteresis
+    /// logic (3 overruns / 180 recovery) uses the running counters above; this buffer serves
+    /// the tighter "is the render clean right now?" signal the ML scheduler needs.
+    private static let rollingWindowCapacity = 30
+    private var rollingWindow = [Float](repeating: 0, count: rollingWindowCapacity)
+    private var rollingWindowHead = 0
+    private var rollingWindowCount = 0
+
     // MARK: - Init
 
     public init(configuration: Configuration) {
@@ -183,10 +194,18 @@ public final class FrameBudgetManager {
     /// When `configuration.enabled == false`, returns `.full` immediately as a no-op.
     @discardableResult
     public func observe(_ sample: FrameTimingSample) -> QualityLevel {
-        guard configuration.enabled else { return .full }
-
         // Use whichever path actually pinned the frame.
         let effectiveMs = max(sample.cpuFrameMs, sample.gpuFrameMs ?? 0)
+
+        // Always record to the rolling window regardless of enabled flag — the ML
+        // dispatch scheduler reads this even when the governor is in bypass mode.
+        rollingWindow[rollingWindowHead] = effectiveMs
+        rollingWindowHead = (rollingWindowHead + 1) % Self.rollingWindowCapacity
+        if rollingWindowCount < Self.rollingWindowCapacity {
+            rollingWindowCount += 1
+        }
+
+        guard configuration.enabled else { return .full }
 
         let overrunThreshold   = configuration.targetFrameMs + configuration.overrunMarginMs
         let recoveryThreshold  = configuration.targetFrameMs - configuration.sustainedRecoveryHeadroomMs
@@ -234,8 +253,29 @@ public final class FrameBudgetManager {
         currentLevel = .full
         consecutiveOverruns = 0
         consecutiveRecovered = 0
+        // Rolling window is intentionally NOT cleared on reset — the ML scheduler needs
+        // the real recent frame history. Resetting it would cause a false "startup warmup"
+        // defer on every preset change while the buffer refills.
         if was != .full {
             logger.info("quality: reset to full (preset change from \(was.displayName, privacy: .public))")
         }
+    }
+}
+
+// MARK: - FrameTimingProviding
+
+extension FrameBudgetManager: FrameTimingProviding {
+    /// Worst frame time (ms) in the rolling window. Returns 0 when no frames observed yet.
+    public var recentMaxFrameMs: Float {
+        guard rollingWindowCount > 0 else { return 0 }
+        if rollingWindowCount < Self.rollingWindowCapacity {
+            return rollingWindow.prefix(rollingWindowCount).max() ?? 0
+        }
+        return rollingWindow.max() ?? 0
+    }
+
+    /// Number of valid samples in the rolling window (0 … rollingWindowCapacity).
+    public var recentFramesObserved: Int {
+        rollingWindowCount
     }
 }

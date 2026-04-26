@@ -35,13 +35,15 @@ struct AppleMusicConnectionViewModelTests {
             delayProvider: InstantDelay()
         )
         vm.beginConnect()
-        // First attempt: empty → .noCurrentPlaylist → auto-retry fires immediately.
-        try await Task.sleep(for: .milliseconds(100))
+        // First attempt: empty → .noCurrentPlaylist → InstantDelay fires immediately.
+        // 500ms gives the full async chain (connect → noCurrentPlaylist → yield →
+        // retry → connect → connected) ample time regardless of executor scheduling.
+        try await Task.sleep(for: .milliseconds(500))
         // Second attempt should have succeeded.
         if case .connected(let count) = vm.state {
             #expect(count == 1)
         } else {
-            Issue.record("Expected .connected after retry, got \(vm.state)")
+            #expect(Bool(false), "Expected .connected after retry, got \(vm.state)")
         }
     }
 

@@ -27,3 +27,27 @@ public enum PresetCategory: String, Sendable, CaseIterable, Codable {
     /// Organic, natural-world motion: bioluminescent strands, mycelium, arachnid geometry.
     case organic
 }
+
+// MARK: - Display
+
+public extension PresetCategory {
+    /// Human-readable label for user-facing toasts and UI (U.6b).
+    var displayName: String {
+        switch self {
+        case .waveform:    return "Waveform"
+        case .fractal:     return "Fractal"
+        case .geometric:   return "Geometric"
+        case .particles:   return "Particles"
+        case .hypnotic:    return "Hypnotic"
+        case .supernova:   return "Supernova"
+        case .reaction:    return "Reaction"
+        case .drawing:     return "Drawing"
+        case .dancer:      return "Dancer"
+        case .transition:  return "Transition"
+        case .abstract:    return "Abstract"
+        case .fluid:       return "Fluid"
+        case .instrument:  return "Instrument"
+        case .organic:     return "Organic"
+        }
+    }
+}

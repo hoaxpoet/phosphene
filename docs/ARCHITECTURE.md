@@ -241,8 +241,25 @@ The app shell routes `SessionManager.state` to one top-level SwiftUI view per se
 
 No CoreML dependency. All ML runs on MPSGraph (GPU) or Accelerate (CPU).
 
-- **Stem separator** (MPSGraph): Open-Unmix HQ, Float32 throughout, 142ms warm predict for 10s audio. STFT/iSTFT via Accelerate/vDSP.
+- **Stem separator** (MPSGraph): Open-Unmix HQ, Float32 throughout, 142ms warm predict for 10s audio. STFT/iSTFT via Accelerate/vDSP. The 5s background timer fires every 5 seconds; actual dispatch may be deferred up to 2 s (Tier 1) or 1.5 s (Tier 2) if recent frames are over budget — see Dispatch Scheduling below.
 - **Mood classifier** (Accelerate): 4-layer MLP (10→64→32→16→2) via `vDSP_mmul`. 3,346 hardcoded Float32 params from DEAM training.
+
+### Dispatch Scheduling (Increment 6.3)
+
+`MLDispatchScheduler` (`Renderer` module) coordinates the 5s stem separation cycle with render-loop frame timing. When a heavy ray-march+SSGI frame is in flight, a 142ms MPSGraph burst landing on top causes visible double-jank.
+
+**Algorithm:** on each 5s timer fire, the scheduler checks:
+1. If `QualityCeiling == .ultra` → dispatch immediately (recording mode, D-059d).
+2. If the dispatch has been pending ≥ `maxDeferralMs` → force-dispatch to prevent stem freeze (D-059c).
+3. If fewer than `requireCleanFramesCount` frames have been observed → defer (startup warmup).
+4. If `recentMaxFrameMs > currentTierBudgetMs` → defer 100 ms and retry.
+5. Else → dispatch now.
+
+**Budget signal:** the scheduler reads `FrameBudgetManager.recentMaxFrameMs` — the worst frame in the last 30-frame rolling window, not `currentLevel`. The level has 180-frame upshift hysteresis; the rolling max reflects the current render state immediately (D-059a).
+
+**Deferral caps:** Tier 1 (M1/M2): `maxDeferralMs = 2000`, `requireCleanFramesCount = 30`. Tier 2 (M3+): 1500 ms / 20 frames. Stems already lag real audio by 5–10 s (per-frame analysis from cached waveforms runs continuously regardless — Increment 3.5.4.9), so a 2 s extra lag is within acceptable routing freshness bounds (D-059b).
+
+**Testability:** `FrameTimingProviding` protocol (`recentMaxFrameMs`, `recentFramesObserved`) is conformed to by both `FrameBudgetManager` and test stubs. Single source of truth — no parallel timing buffer in the scheduler (D-059e).
 
 **Mood injection into the renderer.** Mood (`valence`, `arousal`) is computed on the analysis queue, attenuated by feature-stability, and pushed to the renderer via `RenderPipeline.setMood(valence:arousal:)`. The renderer's `setFeatures` preserves the most recent mood values across MIR-driven feature updates so the slower-cadence mood signal is not overwritten every frame. Without this dedicated path, mood values stay at zero in the GPU-bound `FeatureVector` even though the classifier is running.
 

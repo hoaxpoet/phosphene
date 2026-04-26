@@ -64,6 +64,69 @@ public extension PlannedSession {
         )
     }
 
+    /// Returns a new `PlannedSession` with the current track's end time extended by `seconds`.
+    ///
+    /// All subsequent track start/end times shift forward by the same amount so session
+    /// timing remains internally consistent. Used by `moreLikeThis()` (U.6b).
+    ///
+    /// - Parameters:
+    ///   - seconds: Amount to extend the current track's planned duration.
+    ///   - sessionTime: Current session time used to identify the active track.
+    /// - Returns: Patched session, or `self` if no track is active at `sessionTime`.
+    public func extendingCurrentPreset(by seconds: TimeInterval, at sessionTime: TimeInterval) -> PlannedSession {
+        guard let activeTrack = track(at: sessionTime),
+              let trackIndex = tracks.firstIndex(where: { $0.track == activeTrack.track })
+        else { return self }
+
+        var updatedTracks = tracks
+        let current = updatedTracks[trackIndex]
+        updatedTracks[trackIndex] = PlannedTrack(
+            track: current.track,
+            trackProfile: current.trackProfile,
+            preset: current.preset,
+            presetScore: current.presetScore,
+            scoreBreakdown: current.scoreBreakdown,
+            plannedStartTime: current.plannedStartTime,
+            plannedEndTime: current.plannedEndTime + seconds,
+            incomingTransition: current.incomingTransition
+        )
+
+        // Shift all subsequent tracks forward.
+        for idx in (trackIndex + 1)..<updatedTracks.count {
+            let entry = updatedTracks[idx]
+            let shift = seconds
+            let newStart = entry.plannedStartTime + shift
+            let newEnd = entry.plannedEndTime + shift
+            let newIncoming = entry.incomingTransition.map { transition in
+                PlannedTransition(
+                    fromPreset: transition.fromPreset,
+                    toPreset: transition.toPreset,
+                    style: transition.style,
+                    duration: transition.duration,
+                    scheduledAt: transition.scheduledAt + shift,
+                    reason: transition.reason
+                )
+            }
+            updatedTracks[idx] = PlannedTrack(
+                track: entry.track,
+                trackProfile: entry.trackProfile,
+                preset: entry.preset,
+                presetScore: entry.presetScore,
+                scoreBreakdown: entry.scoreBreakdown,
+                plannedStartTime: newStart,
+                plannedEndTime: newEnd,
+                incomingTransition: newIncoming
+            )
+        }
+
+        return PlannedSession(
+            deviceTier: deviceTier,
+            tracks: updatedTracks,
+            totalDuration: totalDuration + seconds,
+            warnings: warnings
+        )
+    }
+
     /// Returns a new `PlannedSession` with every track in `overrides` having its preset replaced.
     ///
     /// Used by `regeneratePlan(lockedTracks:lockedPresets:)` to preserve manually locked picks

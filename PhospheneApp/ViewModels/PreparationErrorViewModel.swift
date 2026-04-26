@@ -108,6 +108,11 @@ final class PreparationErrorViewModel: ObservableObject {
 
     private func handleReachability(isOnline: Bool) {
         guard !isOnline else {
+            // Coming back online: clear the offline error before recomputing so that
+            // recompute() doesn't early-return on the .fullScreen(.networkOffline) guard.
+            if case .fullScreen(.networkOffline) = presentationState {
+                presentationState = .normal
+            }
             recompute()
             return
         }
@@ -122,6 +127,7 @@ final class PreparationErrorViewModel: ObservableObject {
 
     private func recompute() {
         // Rule 1: Network check handled by reachability subscription.
+        // Guard prevents lower-priority rules from overriding an active offline error.
         if case .fullScreen(.networkOffline) = presentationState { return }
 
         // Rule 2: All tracks failed.
