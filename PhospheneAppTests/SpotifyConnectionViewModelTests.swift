@@ -50,19 +50,23 @@ struct SpotifyConnectionViewModelTests {
         let vm = makeVM(connector: connector)
 
         // Set state to .preview so connect() is allowed.
+        // 700ms gives 400ms margin over the 300ms hardcoded debounce — needed
+        // because @MainActor contention during parallel test runs can delay
+        // the debounce continuation beyond the old 400ms sleep.
         vm.text = "https://open.spotify.com/playlist/abc"
-        try await Task.sleep(for: .milliseconds(400))
+        try await Task.sleep(for: .milliseconds(700))
 
-        // Kick off the connect. With InstantDelay + Task.yield(), the loop yields
-        // between each retry so we can observe intermediate .rateLimited states.
+        // Pre-condition: debounce must have fired and transitioned to .preview.
+        guard case .preview = vm.state else {
+            Issue.record("Debounce did not fire: expected .preview, got \(vm.state)")
+            return
+        }
+
+        // Kick off the connect. InstantDelay makes all retry delays instant.
         vm.connect(startSession: { _ in })
 
-        // Poll until final state is reached (InstantDelay makes this fast).
-        for _ in 0..<100 {
-            await Task.yield()
-            if case .error = vm.state { break }
-            if case .rateLimited = vm.state { /* still in progress */ }
-        }
+        // Give all retries time to complete (up to 500ms; InstantDelay makes them near-instant).
+        try await Task.sleep(for: .milliseconds(500))
 
         // After all 3 retries fail, state must be .error.
         if case .error = vm.state { } else {
