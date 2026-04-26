@@ -12,10 +12,8 @@ private let preambleLogger = Logger(subsystem: "com.phosphene.presets", category
 extension PresetLoader {
 
     /// Shared Metal code prepended to every preset shader.
-    /// Contains FeatureVector struct, VertexOut, fullscreen_vertex, color utilities,
-    /// the Noise utility tree, the PBR utility tree, and ShaderUtilities.metal.
-    /// Concatenation: struct boilerplate → Noise (V.1) → PBR (V.1) → Geometry (V.2)
-    ///   → Volume (V.2) → Texture (V.2) → ShaderUtilities (legacy). LOCKED per D-055.
+    /// Concatenation: structs → Noise (V.1) → PBR → Geometry → Volume → Texture
+    ///   → Color (V.3) → ShaderUtilities (legacy) → Materials (V.3). D-055, D-062(d).
     static let shaderPreamble: String = {
         let structPreamble = """
         #include <metal_stdlib>
@@ -180,6 +178,7 @@ extension PresetLoader {
         // only use a subset.
 
         var utilitySource = ""
+        var materialsSource = ""
 
         if let shadersURL = Bundle.module.url(forResource: "Shaders", withExtension: nil) {
             let startMs = Date().timeIntervalSinceReferenceDate
@@ -194,7 +193,12 @@ extension PresetLoader {
                 "Utilities/Volume", priorityOrder: volumeLoadOrder, from: shadersURL)
             let textureSrc = loadUtilityDirectory(
                 "Utilities/Texture", priorityOrder: textureLoadOrder, from: shadersURL)
-            utilitySource = noiseSrc + pbrSrc + geometrySrc + volumeSrc + textureSrc
+            // V.3: Color before ShaderUtilities (palette canonical, D-062); Materials after.
+            let colorSrc = loadUtilityDirectory(
+                "Utilities/Color", priorityOrder: colorLoadOrder, from: shadersURL)
+            materialsSource = loadUtilityDirectory(
+                "Utilities/Materials", priorityOrder: materialsLoadOrder, from: shadersURL)
+            utilitySource = noiseSrc + pbrSrc + geometrySrc + volumeSrc + textureSrc + colorSrc
 
             let elapsedMs = (Date().timeIntervalSinceReferenceDate - startMs) * 1000
             preambleLogger.info("Utility trees loaded in \(String(format: "%.1f", elapsedMs)) ms (\(utilitySource.count) chars)")
@@ -202,7 +206,7 @@ extension PresetLoader {
             preambleLogger.warning("Shaders bundle directory not found — utility trees unavailable")
         }
 
-        // Legacy ShaderUtilities.metal (preserved; functions have different names so no collision).
+        // Legacy ShaderUtilities.metal (palette() removed in V.3; toneMapACES/Reinhard kept).
         let shaderUtilitiesSource: String
         if let url = Bundle.module.url(
             forResource: "ShaderUtilities",
@@ -216,7 +220,8 @@ extension PresetLoader {
             preambleLogger.warning("ShaderUtilities.metal not found in Presets bundle")
         }
 
-        let combinedUtils = utilitySource + "\n" + shaderUtilitiesSource
+        // Full load order: Noise→PBR→Geometry→Volume→Texture→Color→ShaderUtilities→Materials.
+        let combinedUtils = utilitySource + "\n" + shaderUtilitiesSource + "\n" + materialsSource
         let utilsWrapped = """
         #pragma clang diagnostic push
         #pragma clang diagnostic ignored "-Wunused-function"
@@ -226,15 +231,10 @@ extension PresetLoader {
 
     // MARK: - Ray March G-buffer Preamble
 
-    /// Additional shader preamble prepended only when compiling ray march presets.
-    ///
-    /// Contains `SceneUniforms`, `GBufferOutput`, forward declarations for
-    /// `sceneSDF`/`sceneMaterial`, and the full `raymarch_gbuffer_fragment` function.
-    ///
-    /// This is kept separate from `shaderPreamble` because `raymarch_gbuffer_fragment`
-    /// calls the preset-defined `sceneSDF` and `sceneMaterial` functions which are
-    /// undefined in standard (non-ray-march) presets.  Including it in the shared
-    /// preamble would cause "symbol(s) not found" errors for all non-ray-march presets.
+    /// Additional shader preamble for ray march presets only.
+    /// Contains `SceneUniforms`, `GBufferOutput`, `sceneSDF`/`sceneMaterial` forward
+    /// declarations, and `raymarch_gbuffer_fragment`. Kept separate from `shaderPreamble`
+    /// because it calls preset-defined functions undefined in non-ray-march presets.
     static let rayMarchGBufferPreamble: String = {
         // rayMarchPreamble is embedded here (copied from the shaderPreamble closure)
         // so it can be accessed independently without recomputing shaderPreamble.

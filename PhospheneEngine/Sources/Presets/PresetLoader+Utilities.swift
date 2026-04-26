@@ -55,6 +55,24 @@ extension PresetLoader {
         "Procedural.metal", "Grunge.metal"
     ]
 
+    // V.3 — Color utility subtree.
+    // Palettes first (canonical palette(); supersedes legacy in ShaderUtilities).
+    // ColorSpaces, ChromaticAberration, ToneMapping are independent of each other.
+    static let colorLoadOrder = [
+        "Palettes.metal", "ColorSpaces.metal", "ChromaticAberration.metal", "ToneMapping.metal"
+    ]
+
+    // V.3 — Materials cookbook subtree.
+    // MaterialResult must be first: defines MaterialResult struct, FiberParams,
+    // triplanar_detail_normal, and triplanar_normal 3-param overload.
+    // Metals, Dielectrics, Organic, Exotic depend on MaterialResult and the
+    // Noise/PBR/Geometry trees (loaded before Materials in the full preamble).
+    // D-062(d): Materials loads after ShaderUtilities to preserve additive safety.
+    static let materialsLoadOrder = [
+        "MaterialResult.metal", "Metals.metal", "Dielectrics.metal",
+        "Organic.metal", "Exotic.metal"
+    ]
+
     /// Concatenate all Metal utility files from a bundle subdirectory.
     ///
     /// Files are ordered using `priorityOrder`: listed files come first in that

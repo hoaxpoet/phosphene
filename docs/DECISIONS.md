@@ -1046,3 +1046,44 @@ The coordinator receives `sessionStatePublisher: AnyPublisher<SessionState, Neve
 - **Resetting `currentLevel` on display hot-plug:** Would demote quality from e.g. `noBloom` back to `full`, causing the shader complexity to spike just as the user is looking at the window. The rolling-buffer-only reset is strictly less disruptive.
 - **Opening the grace window for `.localFile` mode switches:** `.localFile` doesn't touch the audio router — it shows a "coming later" toast. No silence transient means no grace window needed, and the D-052 path must stay clean.
 - **Single global debounce on `ReachabilityMonitor`:** `ReachabilityMonitor` is also consumed by `PreparationErrorViewModel` for copy changes (online/offline indicator). The copy change should be fast (1 s); the retry attempt should be slower (3 s total). Keeping the two debounces separate lets each consumer set its own latency.
+
+---
+
+## D-062 — V.3 Color + Materials cookbook: placement, collision resolution, composition convention, and preamble order (Increment V.3)
+
+### Context
+
+Increment V.3 adds two new utility subtrees — `Color/` and `Materials/` — to the shader preamble, completing the V.1–V.3 utility library. Three decisions required resolution before implementation: (a) where `MaterialResult` lives; (b) how name collisions between V.3 and legacy `ShaderUtilities.metal` are resolved; (c) how cookbook recipes interact with the engine's `sceneMaterial()` out-parameter signature; and (d) preamble byte-order rationale.
+
+### Decisions
+
+**(a) `MaterialResult` in `Materials/MaterialResult.metal`, not in V.1 PBR.**
+
+`MaterialResult` is a cookbook-level type: it exists to give the 16 material recipes a clean return type, and its contract is tied to preset authoring conventions (the composition pattern). Placing it in V.1 PBR would create a downward dependency (PBR utilities referencing materials-level conventions). Keeping it as the first file in the `Materials/` subtree makes the dependency direction explicit: V.1/V.2 utilities → cookbook (not the reverse). `FiberParams` and the two cookbook-local helpers (`triplanar_detail_normal`, `triplanar_normal` 3-param overload) also live in `MaterialResult.metal` because they are used by multiple recipes without belonging to any one recipe file.
+
+**Note on `triplanar_detail_normal`:** SHADER_CRAFT.md §4.7 calls `triplanar_detail_normal(m.normal, wp * 30.0, 0.04)` in `mat_bark`, but this function does not exist in V.1's `Triplanar.metal` (which provides only the 5-param texture form). V.3 introduces `triplanar_detail_normal` as a 3-param procedural overload (no texture, pure fbm8) in `MaterialResult.metal`. Similarly, `triplanar_normal(wp * 3.0, n, 0.08)` in `mat_wet_stone` is a 3-param overload vs V.1's 5-param form — Metal resolves these as distinct overloads by parameter count.
+
+**(b) Legacy collision resolution: `palette()` deleted; `toneMapACES`/`toneMapReinhard` retained as superseded aliases.**
+
+`palette()` in `ShaderUtilities.metal` (line 576): identical IQ cosine formula to V.3's `Palettes.metal`. Since `Color/` loads **before** `ShaderUtilities` in the preamble, both being present would cause a Metal duplicate-symbol compile error. Decision: **delete the legacy `palette()`**. All call sites (VolumetricLithograph, ReactionDiffusion, and others) continue to resolve to V.3's canonical version without any change to preset shader code.
+
+`toneMapACES`/`toneMapReinhard` in `ShaderUtilities.metal`: camelCase names differ from V.3's `tone_map_aces`/`tone_map_reinhard` (snake_case). **No symbol collision** — Metal treats them as distinct identifiers. Decision: retain the camelCase forms as superseded aliases with a deprecation comment, and add V.3 canonical snake_case forms in `ToneMapping.metal`. There are zero callers of the camelCase forms in preset shader code (confirmed by grep at V.3 landing), so migration is deferred to a future cleanup increment. The camelCase forms are documented as superseded in `ShaderUtilities.metal`.
+
+Caller migration list: `palette()` — VolumetricLithograph.metal:406 (now resolves to V.3 canonical, no code change needed). No other callers found for `palette`, `toneMapACES`, or `toneMapReinhard` in preset shaders.
+
+**(c) Cookbook recipes return `MaterialResult`; `sceneMaterial()` engine signature unchanged in V.3.**
+
+The engine's ray-march pipeline forwards `sceneMaterial(p, matID, f, s, stems, albedo, roughness, metallic)` with thread out-parameters. The V.3 cookbook recipes return `MaterialResult` for cleanliness and composability. These two interfaces are intentionally decoupled: preset authors call a cookbook recipe and then unpack `.albedo / .roughness / .metallic` into the engine's out-params themselves. The composition pattern is documented in `MaterialResult.metal`'s file header. Refactoring `sceneMaterial()` to return `MaterialResult` (rather than using out-params) is a separate engine change with cross-preset blast radius and is deferred beyond V.3.
+
+**(d) Preamble byte-order: Color before ShaderUtilities; Materials after ShaderUtilities.**
+
+Color loads before ShaderUtilities because `palette()` must resolve to the V.3 canonical version (D-062(b) requires the legacy to be deleted; if Color loaded after ShaderUtilities, the legacy would be defined first and V.3 would be the duplicate). Materials loads after ShaderUtilities for additive safety: materials recipes may transitively depend on helper functions in ShaderUtilities (e.g. `hsv2rgb`, fog helpers), and keeping Materials last ensures those definitions are always in scope when recipes are compiled.
+
+Full load order: `FeatureVector` → `Noise` → `PBR` → `Geometry` → `Volume` → `Texture` → **`Color`** → `ShaderUtilities` → **`Materials`** → preset.
+
+### What Was Rejected
+
+- **`MaterialResult` in V.1 PBR:** Would require PBR utilities to reference cookbook conventions, inverting the dependency direction. The V.1 tree is for BRDF primitives only; `MaterialResult` is a composition-layer concept.
+- **Guarding legacy `palette()` with `#ifndef`:** Would add complexity without benefit — V.3's version is byte-identical. Deletion is simpler and correct.
+- **Deleting `toneMapACES`/`toneMapReinhard`:** No callers exist, so no migration cost either way. Retaining them as superseded aliases avoids breaking any future code that might call them before the camelCase forms are formally removed in a future lint pass.
+- **Materials loading before ShaderUtilities:** Would break any recipe that calls a ShaderUtilities helper (e.g. `hsv2rgb`). The after-ShaderUtilities position is strictly safer.
