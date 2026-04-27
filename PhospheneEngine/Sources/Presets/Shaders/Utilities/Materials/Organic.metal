@@ -1,11 +1,11 @@
 // Organic.metal — Organic and biological surface material recipes.
 //
-// Recipes: mat_bark, mat_leaf, mat_silk_thread, mat_chitin.
+// Recipes: mat_bark, mat_leaf, mat_silk_thread, mat_chitin, mat_velvet.
 //
 // All recipes follow the cookbook convention: return MaterialResult.
 // See MaterialResult.metal for the composition pattern.
 //
-// Reference: SHADER_CRAFT.md §4.3, §4.7, §4.8, §4.18
+// Reference: SHADER_CRAFT.md §4.3, §4.7, §4.8, §4.12, §4.18
 //
 // Depends on: Noise tree (fbm8, worley3d), PBR tree (fiber_marschner_lite,
 //             sss_backlit, thinfilm_rgb), Materials/MaterialResult (FiberParams,
@@ -167,6 +167,32 @@ MaterialResult mat_chitin(float3 wp, float3 n,
 
     m.normal   = n;
     m.emission = iridescent * 0.5 + biolum * rim * 0.6;
+
+    return m;
+}
+
+// ─── 4.12 Velvet (retro-reflective fuzz) ─────────────────────────────────────
+// Source: SHADER_CRAFT.md §4.12 (Increment V.4)
+
+/// Velvet: Oren-Nayar diffuse base with Fresnel-driven fuzz term.
+///
+/// Retro-reflective at grazing angles (opposite of normal Fresnel dielectrics).
+/// Fuzz term brightens at silhouette edges — characteristic velvet sheen.
+///
+/// Caller responsibilities:
+///   - `velvet_color`: fabric colour. Deep, saturated colors read best.
+///   - `NdotV` ∈ [0, 1]: view-incidence cosine.
+MaterialResult mat_velvet(float3 wp, float3 n, float3 velvet_color, float NdotV) {
+    MaterialResult m;
+    m.albedo    = velvet_color;
+    m.roughness = 0.90;   // Oren-Nayar-equivalent matte diffuse base
+    m.metallic  = 0.0;
+    m.normal    = n;
+
+    // Fuzz term: brightens at grazing angles (sigma=0.35 Oren-Nayar approximation).
+    // pow(1-NdotV, 2) peaks at silhouette edges, zero at direct view.
+    float fuzz = pow(1.0 - NdotV, 2.0);
+    m.emission = velvet_color * fuzz * 0.5;
 
     return m;
 }

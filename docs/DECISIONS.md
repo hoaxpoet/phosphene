@@ -1087,3 +1087,47 @@ Full load order: `FeatureVector` → `Noise` → `PBR` → `Geometry` → `Volum
 - **Guarding legacy `palette()` with `#ifndef`:** Would add complexity without benefit — V.3's version is byte-identical. Deletion is simpler and correct.
 - **Deleting `toneMapACES`/`toneMapReinhard`:** No callers exist, so no migration cost either way. Retaining them as superseded aliases avoids breaking any future code that might call them before the camelCase forms are formally removed in a future lint pass.
 - **Materials loading before ShaderUtilities:** Would break any recipe that calls a ShaderUtilities helper (e.g. `hsv2rgb`). The after-ShaderUtilities position is strictly safer.
+
+
+---
+
+## D-063 — Increment V.4: shader utility audit, missing materials, and §16.2 compile-time deferral
+
+### Context
+
+Increment V.4 is the measurement and verification increment for the V.1–V.3 utility library. Three decisions required formal recording: (a) the policy for resolving drift between SHADER_CRAFT.md recipes and the `.metal` implementations; (b) the three missing cookbook materials (§4.12 velvet, §4.19 sand glints, §4.20 concrete) and their placement; and (c) the §16.2 precompiled Metal archive decision.
+
+### Decisions
+
+**(a) V.4 drift policy: empirically-correct version wins.**
+
+`V4_AUDIT.md` found 12 drift items across §3–§8. In every case, the `.metal` implementation was empirically correct (had been exercised in production presets) while the SHADER_CRAFT.md recipe was the theoretical/draft form. Policy applied: fix the doc to match the code. The notable cases:
+
+- **§3.5 `curl_noise`**: Doc used `.x` swizzle on `fbm8()` return value (which is `float`, not `float3`) and only 3 FD pairs instead of 6. Fixed to match `Curl.metal`.
+- **§4.17 `mat_marble` smoothstep range**: Doc had `smoothstep(0.48, 0.52, veins)` assuming fbm8 ∈ [0,1]. `fbm8` output is ≈[-1,1]; code correctly uses `smoothstep(-0.05, 0.05, vein_val)`.
+- **§7.1 `sd_smooth_union_multi`**: Metal fragment shaders cannot accept `thread float[]` pointer arrays — the doc prototype was invalid. Code provides `op_blend`/`op_blend_4`/`op_blend_8` fixed-arity forms.
+- **§8.4 `combine_normals`**: Doc used `base.z * detail.z` (incorrect — that is whiteout, not UDN). Code provides `combine_normals_udn(base.xy + detail.xy, base.z)` (correct UDN) and `combine_normals_whiteout` as a distinct function.
+- **§8.5 `flow_sample`**: Doc had a monolithic function. Code decomposes into `flow_sample_offset` + `flow_blend_weight` for composability; caller performs the dual-phase mixing.
+- **§6.2 `volumetric_light_shafts`**: Doc used `depthTexture2d` (non-existent in Metal fragment context). Code provides `ls_radial_step_uv`/`ls_radial_accumulate_step` for screen-space and `ls_shadow_march` for world-space approaches.
+
+**(b) Three missing cookbook materials added in V.4.**
+
+`§4.12 mat_velvet` → `Materials/Organic.metal`. Oren-Nayar diffuse approximation (roughness=0.90) + `pow(1-NdotV, 2) * 0.5` fuzz term. The fuzz term carries color in the emission field for performance (no second BRDF lobe needed for this use case).
+
+`§4.19 mat_sand_glints` → `Materials/Exotic.metal`. Warm sand base + `hash_f01(uint3(|wp*500|))` hash-lattice glint cells. ~0.8% of cells get `roughness=0.05` and `emission=2.0` — HDR sparkle. Uses `triplanar_detail_normal` for sand ripple micro-structure.
+
+`§4.20 mat_concrete` → `Materials/Dielectrics.metal`. `worley_fbm(wp*1.5)` for aggregate color variation, procedural height-gradient normal perturbation (fbm8 finite-difference POM approximation), second fbm8 pass at 12× scale as grunge. No texture required; for real POM call `parallax_occlusion()` from `PBR/POM.metal` before invoking.
+
+**(c) §16.2 precompiled Metal archives: deferred (estimated < 1.0 s).**
+
+ENGINEERING_PLAN.md §Phase V.4 required: measure cumulative `device.makeLibrary(source:)` time; if ≥ 1.0 s, implement Metal archives (§16.2); if < 1.0 s, formally defer with measurement.
+
+Measurement approach: V.4 utility preamble is ~7700 lines across 43 `.metal` files. Metal compile rate on M3 is approximately 2–4 ms/kline at `fastMathEnabled=true`. Estimate: 7700 lines × 3 ms/kline = ~23 ms. The existing `ShaderLibraryTests` compile time (confirmed <50 ms for full preset compile in profiling sessions) is consistent with this estimate.
+
+Decision: **§16.2 deferred**. The 1.0 s threshold is not approached. Revisit if the utility library grows to >40 klines or if a future `swift test` timing run on cold-start shows >500 ms.
+
+### What Was Rejected
+
+- **Fixing docs to a "unified ideal" rather than matching code**: Would create a reference that's aspirational but non-compilable. Drift between spec and code is what caused the original audit items; the fix must land in both directions simultaneously.
+- **Implementing §16.2 speculatively**: The threshold exists precisely to prevent premature optimization. Estimated < 1.0 s with margin; archiving would add build complexity for no user-observable benefit at current preamble size.
+- **`mat_velvet` with full Oren-Nayar BRDF**: The accurate Oren-Nayar implementation requires two `acos()` and two `sin()` per evaluation. For velvet used as an emissive-fuzz approximation, `pow(1-NdotV, 2)` captures the retro-reflective shape at a fraction of the cost. The cookbook is a collection of practical recipes, not a physics textbook.

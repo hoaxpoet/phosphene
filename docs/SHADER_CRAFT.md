@@ -183,11 +183,23 @@ Curl of a vector-valued noise field is divergence-free: perfect for fluid-like f
 
 ```metal
 // Shaders/Utilities/Noise/Curl.metal (Increment V.1)
-float3 curl_noise(float3 p, float e = 0.01) {
-    float n1 = fbm8(p + float3(e, 0, 0)).x - fbm8(p - float3(e, 0, 0)).x;
-    float n2 = fbm8(p + float3(0, e, 0)).x - fbm8(p - float3(0, e, 0)).x;
-    float n3 = fbm8(p + float3(0, 0, e)).x - fbm8(p - float3(0, 0, e)).x;
-    return float3(n2 - n3, n3 - n1, n1 - n2) / (2.0 * e);
+// Divergence-free 3D curl via central differences on fbm8.
+// For curl of (Fx, Fy, Fz):  curl.x = dFz/dy - dFy/dz, etc.
+static inline float3 curl_noise(float3 p, float e = 0.01) {
+    float inv2e = 0.5 / e;
+
+    float n1 = fbm8(p + float3(0, e, 0)) - fbm8(p - float3(0, e, 0));  // dFz/dy
+    float n2 = fbm8(p + float3(0, 0, e)) - fbm8(p - float3(0, 0, e));  // dFy/dz
+    float n3 = fbm8(p + float3(e, 0, 0)) - fbm8(p - float3(e, 0, 0));  // dFx/dz
+    float n4 = fbm8(p + float3(0, 0, e)) - fbm8(p - float3(0, 0, e));  // dFz/dx
+    float n5 = fbm8(p + float3(e, 0, 0)) - fbm8(p - float3(e, 0, 0));  // dFy/dx
+    float n6 = fbm8(p + float3(0, e, 0)) - fbm8(p - float3(0, e, 0));  // dFx/dy
+
+    return float3(
+        (n1 - n2) * inv2e,   // curl.x = dFz/dy - dFy/dz
+        (n3 - n4) * inv2e,   // curl.y = dFx/dz - dFz/dx
+        (n5 - n6) * inv2e    // curl.z = dFy/dx - dFx/dy
+    );
 }
 ```
 
@@ -198,8 +210,8 @@ Use for: particle flow in Murmuration successors, water advection in Ferrofluid 
 Worley (cellular) noise produces distinct features — cells, cracks, spots. Blending Worley into fBM gives "fBM with character" — streaked, veined, marbled.
 
 ```metal
-// Shaders/Utilities/Noise/WorleyFBM.metal (Increment V.1)
-float worley_fbm(float3 p) {
+// Shaders/Utilities/Noise/Worley.metal (Increment V.1)
+static inline float worley_fbm(float3 p) {
     float w = worley3d(p * 2.0).x;   // F1 distance
     float f = fbm8(p);
     return mix(f, w, 0.35);
@@ -417,25 +429,28 @@ Ferrofluid surfaces under magnetic field form a lattice of conical spikes (Rosen
 **Recipe for the SDF:**
 
 ```metal
-// Field at position p: returns height displacement
-float ferrofluid_field(float3 p, float field_strength, float t) {
-    // Hexagonal close-pack of spike centers with noise-driven defects
+// Field at position p: returns height displacement.
+// Uses voronoi_f1f2 (Geometry/Voronoi-based) for authentic Rosensweig cell centres.
+// `field_strength` ∈ [0,1]; route from stems.bass_energy_dev.
+// `t` = FeatureVector.accumulated_audio_time.
+static inline float ferrofluid_field(float3 p, float field_strength, float t) {
     float2 xz = p.xz;
-    float2 hex = hex_tile(xz * 0.8);   // from Utilities/Geometry
-    float jitter = fbm8(float3(hex, 0) * 2.0) * 0.3;
-    float2 center = hex + jitter;
-
-    float d = length(xz - center);
-    // Conical spike profile with bell-curve falloff
+    // Voronoi cell centres — gives proper Rosensweig hex-like distribution.
+    VoronoiResult v = voronoi_f1f2(xz, 4.0);   // from Texture/Voronoi.metal
+    // Per-cell jitter from fBM seeded by cell centre.
+    float jitter = fbm8(float3(v.pos * 2.0, 0.0)) * 0.3;
+    float d = v.f1 + jitter * 0.05;
+    // Conical spike profile with bell-curve falloff.
     float spike = exp(-d * d * 40.0);
-    // Time-animated with slow rotational flow
-    spike *= 0.5 + 0.5 * sin(t * 0.8 + hex.x * 2.0 + hex.y * 1.3);
+    // Time-animated per-cell phase: cell hash gives unique phase per spike.
+    float cellPhase = float(v.id & 0xFFFF) * (6.283185 / float(0xFFFF));
+    spike *= 0.5 + 0.5 * sin(t * 0.8 + cellPhase);
     return spike * field_strength * 0.15;
 }
 
-float sdf_ferrofluid(float3 p, float field_strength, float t) {
+static inline float sdf_ferrofluid(float3 p, float field_strength, float t) {
     float base_y = 0.0;
-    float spikes = ferrofluid_field(p, field_strength, t);
+    float spikes  = ferrofluid_field(p, field_strength, t);
     return p.y - (base_y + spikes);
 }
 ```
@@ -564,31 +579,289 @@ float3 sample_cloud(float3 ro, float3 rd, float3 light_dir, float3 light_color) 
 
 Cost: heavy — ~3 ms per full-screen cloud pass at 1080p on Tier 2. Sample half-res and upscale with MetalFX Temporal if frame budget tight.
 
-### 4.10–4.20 Summary recipes
+### 4.10 Gold
 
-The following are single-paragraph recipes; expand to full Metal during Increment V.4 when the cookbook is formalized.
+`Materials/Metals.metal:mat_gold` — warm yellow metallic with fine scratch normal variation.
 
-**4.10 Gold.** `albedo = float3(1.0, 0.78, 0.34); roughness = 0.15; metallic = 1.0;` with fine scratch fBM on normal at 50× scale, amplitude 0.03.
+```metal
+// Caller responsibilities: none.
+// Exposure should be calibrated for IBL at scene_ambient ≈ 0.06 — gold blows out at > 0.15.
+MaterialResult mat_gold(float3 wp, float3 n) {
+    MaterialResult m;
+    m.albedo   = float3(1.0, 0.78, 0.34);
+    m.roughness = 0.15;
+    m.metallic  = 1.0;
+    // Fine scratch fBM at 50× scale, amplitude 0.03 — breaks "liquid gold" uniformity.
+    float3 scratch = float3(
+        fbm8(wp * 50.0),
+        fbm8(wp * 50.0 + float3(7.3, 0.0, 0.0)),
+        fbm8(wp * 50.0 + float3(0.0, 3.7, 0.0))
+    );
+    m.normal   = normalize(n + (scratch - 0.5) * 0.03);
+    m.emission = float3(0.0);
+    return m;
+}
+```
 
-**4.11 Copper with patina.** Base copper `albedo = float3(0.95, 0.60, 0.36); metallic = 1.0`, patina layer `albedo = float3(0.15, 0.55, 0.45); metallic = 0.0`, mix mask from `worley_fbm(wp * 2.0) > 0.6` — patina in crevices, clean copper on peaks. Use AO as mask modifier.
+### 4.11 Copper with patina
 
-**4.12 Velvet (retro-reflective fuzz).** Oren-Nayar diffuse with `sigma = 0.35`, plus a Fresnel-driven fuzz term that brightens at grazing angles (opposite of normal Fresnel): `fuzz = pow(1.0 - NdotV, 2.0) * fuzz_color * 0.5`. Add to emission for performance.
+`Materials/Metals.metal:mat_copper` — warm copper on exposed peaks, teal verdigris patina in crevices.
 
-**4.13 Ceramic (clear-coat).** Saturated diffuse base + dielectric clear coat. `albedo = strong_color; roughness = 0.6; metallic = 0.0;` with composite stage adding a second specular lobe at `roughness_coat = 0.05, F0_coat = 0.04`.
+```metal
+// ao ∈ [0, 1]: AO = 0 → occluded (more patina), AO = 1 → exposed (clean copper).
+// If AO unavailable, pass 0.5 for a mid-blend.
+MaterialResult mat_copper(float3 wp, float3 n, float ao) {
+    MaterialResult m;
+    float3 copper_albedo = float3(0.95, 0.60, 0.36);
+    float3 patina_albedo = float3(0.15, 0.55, 0.45);
 
-**4.14 Ocean water.** Gerstner-wave displacement for macro swells, fbm8 for capillary ripples, Fresnel-weighted specular over deep-water absorption, foam mask on wave crests via displacement-derivative-magnitude threshold.
+    // worley_fbm range ≈ [-0.65, 0.79]; threshold at 0.1–0.3 captures upper ~30%.
+    float w = worley_fbm(wp * 2.0);
+    float patina_mask = smoothstep(0.10, 0.30, w) * (1.0 - ao);
 
-**4.15 Ink (2D stylized).** Flat emissive with flow-field UV distortion. `albedo = 0; metallic = 0; emission = ink_color * flow_sample(wp.xy, time, flow_texture)`.
+    m.albedo    = mix(copper_albedo, patina_albedo, patina_mask);
+    m.roughness = mix(0.25, 0.70, patina_mask);
+    m.metallic  = mix(1.0,  0.0,  patina_mask);
+    m.normal    = n;
+    m.emission  = float3(0.0);
+    return m;
+}
+```
 
-**4.16 Granite.** `worley_fbm(wp * 2.0)` for speckle mask over three color stops (dark matrix, medium feldspar, bright mica highlights). Triplanar projection. Low roughness on mica inclusions (0.15), high elsewhere (0.85).
+### 4.12 Velvet (retro-reflective fuzz)
 
-**4.17 Marble veining.** Curl-noise-warped Perlin for veins, sharp color transition via `smoothstep(0.48, 0.52, veins)`. Near-white base, deep-saturation vein color. Subtle SSS term for luminous translucency.
+`Materials/Organic.metal:mat_velvet` — Oren-Nayar diffuse with Fresnel-driven fuzz term (Increment V.4).
 
-**4.18 Bioluminescent chitin.** Near-black base (`albedo = float3(0.02)`), iridescent thin-film specular (wavelength-dependent F0 from thickness-driven interference), rim emission scaled by `NdotV` inversion. Perfect for Arachne spider easter-egg carapace.
+```metal
+// velvet_color: fabric colour. NdotV ∈ [0,1]: view-incidence cosine.
+// sigma = 0.35 (standard velvet roughness — produces visible retro-reflective lobe).
+MaterialResult mat_velvet(float3 wp, float3 n, float3 velvet_color, float NdotV) {
+    MaterialResult m;
+    m.albedo    = velvet_color;
+    m.roughness = 0.90;   // diffuse base is matte
+    m.metallic  = 0.0;
+    m.normal    = n;
 
-**4.19 Sand with glints.** Base `albedo = float3(0.85, 0.70, 0.50); roughness = 0.9; metallic = 0.0`. Glints: hash-lattice `grain_hash(wp * 500.0) > 0.992` returns isolated sparkle points with `roughness = 0.05, emission = white * 2.0`.
+    // Oren-Nayar at sigma=0.35 is approximated by the lambert base above.
+    // Fuzz term: brightens at grazing angles (opposite of Fresnel).
+    float fuzz = pow(1.0 - NdotV, 2.0);
+    m.emission = velvet_color * fuzz * 0.5;
+    return m;
+}
+```
 
-**4.20 Concrete (triplanar POM).** Gray base with variation via `worley_fbm`, POM depth map driven by `fbm8(wp * 5.0)`, triplanar-blended to avoid stretching on vertical faces. Grunge overlay via second fBM pass multiplied in at 0.25 strength.
+### 4.13 Ceramic (clear-coat)
+
+`Materials/Dielectrics.metal:mat_ceramic` — saturated diffuse glaze base; clear-coat in lighting stage.
+
+```metal
+// base_color: the saturated clay/glaze colour.
+// Note: the true two-lobe clear-coat (roughness_coat=0.05, F0=0.04) must be added
+// in the PBR lighting composite — MaterialResult's single roughness field models
+// the diffuse scatter only.
+MaterialResult mat_ceramic(float3 wp, float3 n, float3 base_color) {
+    MaterialResult m;
+    m.albedo    = base_color;
+    m.roughness = 0.6 + fbm8(wp * 8.0) * 0.04;   // subtle surface variation
+    m.roughness = clamp(m.roughness, 0.0, 1.0);
+    m.metallic  = 0.0;
+    m.normal    = n;
+    m.emission  = float3(0.0);
+    return m;
+}
+```
+
+### 4.14 Ocean water
+
+`Materials/Exotic.metal:mat_ocean` — Fresnel-weighted specular, deep-water absorption, foam on crests.
+
+```metal
+// NdotV ∈ [0,1]: view-incidence cosine.
+// depth ∈ [0,1]: depth below wave crest (0 = crest/foam, 1 = trough).
+//   Callers compute from wave geometry (displacement derivatives).
+// Gerstner-wave displacement and capillary ripples are SDF/geometry concerns
+// at the preset level (§7). This function handles material properties only.
+MaterialResult mat_ocean(float3 wp, float3 n, float NdotV, float depth) {
+    MaterialResult m;
+    float foam_mask    = smoothstep(0.10, 0.35, 1.0 - depth);
+    float3 water_albedo = mix(float3(0.02, 0.06, 0.12),   // deep
+                              float3(0.07, 0.18, 0.28),   // shallow
+                              (1.0 - depth) * 0.6);
+    m.albedo    = mix(water_albedo, float3(0.92, 0.94, 0.96), foam_mask);
+    m.roughness = mix(0.08, 0.85, foam_mask);
+    m.metallic  = 0.0;
+    float3 ripple = float3(fbm8(wp.xzy * 8.0), fbm8(wp.xzy * 8.0 + float3(4.3,0,0)),
+                           fbm8(wp.xzy * 8.0 + float3(0,8.7,0)));
+    m.normal    = normalize(n + (ripple - 0.5) * 0.04 * (1.0 - foam_mask));
+    m.emission  = float3(0.0);
+    return m;
+}
+```
+
+### 4.15 Ink (2D stylized)
+
+`Materials/Exotic.metal:mat_ink` — flat emissive with curl-noise flow-field UV distortion.
+
+```metal
+// ink_color: ink tint (saturated colors read best).
+// flow_uv: caller-computed distorted UV from a flow-map pass, or wp.xy/scale.
+// t: accumulated audio time (FeatureVector.accumulated_audio_time).
+MaterialResult mat_ink(float3 wp, float3 n, float3 ink_color, float2 flow_uv, float t) {
+    MaterialResult m;
+    float3 curl        = curl_noise(float3(flow_uv, t * 0.3));
+    float2 distorted   = flow_uv + curl.xy * 0.06;
+    float  density     = smoothstep(0.3, 0.7,
+                             fbm8(float3(distorted * 3.0, t * 0.05)) * 0.5 + 0.5);
+    m.albedo    = float3(0.0);   // emissive-only
+    m.roughness = 0.0;
+    m.metallic  = 0.0;
+    m.normal    = n;
+    m.emission  = ink_color * density;
+    return m;
+}
+```
+
+### 4.16 Granite
+
+`Materials/Exotic.metal:mat_granite` — Worley-Perlin speckle over three colour stops, triplanar normal.
+
+```metal
+// Caller responsibilities: none.
+// Three colour stops: dark matrix / warm feldspar / bright mica.
+// worley_fbm range ≈ [-0.65, 0.79]; mica isolated via high-freq fbm8 at separate scale.
+MaterialResult mat_granite(float3 wp, float3 n) {
+    MaterialResult m;
+    float w           = worley_fbm(wp * 2.0);
+    float mask_dark   = smoothstep(-0.35, 0.0, w);
+    float mica_t      = fbm8(wp * 10.0 + float3(3.7, 9.1, 6.3)) * 0.5 + 0.5;
+    float mask_mica   = smoothstep(0.70, 0.90, mica_t);
+
+    float3 color = mix(float3(0.08, 0.08, 0.10),   // dark matrix
+                       float3(0.58, 0.50, 0.44),   // feldspar
+                       mask_dark);
+    color = mix(color, float3(0.82, 0.80, 0.76), mask_mica);   // mica glints
+
+    m.albedo    = color;
+    m.roughness = clamp(0.50 + 0.70 * fbm8(wp * 5.0), 0.08, 0.92);
+    m.metallic  = 0.0;
+    m.normal    = triplanar_detail_normal(n, wp * 4.0, 0.05);
+    m.emission  = float3(0.0);
+    return m;
+}
+```
+
+### 4.17 Marble veining
+
+`Materials/Exotic.metal:mat_marble` — curl-noise-warped Perlin veins, sharp bimodal colour split.
+
+```metal
+// Caller responsibilities: none.
+// fbm8 output ≈ [-1, 1]; smoothstep centred at 0 gives correct bimodal split.
+// Threshold (−0.05, 0.05) — NOT (0.48, 0.52) which assumes [0,1] range.
+MaterialResult mat_marble(float3 wp, float3 n) {
+    MaterialResult m;
+    float3 warped   = wp + curl_noise(wp * 1.2) * 0.35;
+    float  vein_val = fbm8(warped * 2.5);
+    float  vein_mask = smoothstep(-0.05, 0.05, vein_val);   // bimodal split
+
+    m.albedo    = mix(float3(0.90, 0.88, 0.85),   // near-white matrix
+                      float3(0.15, 0.08, 0.22),   // deep violet vein
+                      vein_mask);
+    m.roughness = mix(0.30, 0.55, vein_mask);
+    m.metallic  = 0.0;
+    // Subtle SSS: luminous translucency in back-lit configuration (matrix only).
+    m.emission  = float3(0.90, 0.88, 0.85) * (1.0 - vein_mask) * 0.06;
+    m.normal    = n;
+    return m;
+}
+```
+
+### 4.18 Bioluminescent chitin
+
+`Materials/Organic.metal:mat_chitin` — near-black carapace with thin-film iridescence and rim glow.
+
+```metal
+// VdotH ∈ [0,1]: view·half-vector (Fresnel input for thin-film).
+// NdotV ∈ [0,1]: view incidence cosine (rim emission scale).
+// thickness_nm: film thickness in nm (150–400; 200=blue, 300=rainbow, 400=neutral).
+// Perfect for the Arachne spider easter-egg carapace (D-040).
+MaterialResult mat_chitin(float3 wp, float3 n, float VdotH, float NdotV, float thickness_nm) {
+    MaterialResult m;
+    m.albedo    = float3(0.02, 0.025, 0.03);
+    m.roughness = 0.2;
+    m.metallic  = 0.0;
+    m.normal    = n;
+    // Thin-film iridescence from V.1 PBR/Thin.metal.
+    float3 iri = thinfilm_rgb(VdotH, thickness_nm, 1.55, 1.0);
+    float  thk_var = fbm8(wp * 15.0) * 50.0;
+    iri = mix(iri, thinfilm_rgb(VdotH, thickness_nm + thk_var, 1.55, 1.0), 0.4);
+    // Rim emission: bioluminescent glow at silhouette edges.
+    float  rim  = pow(1.0 - NdotV, 3.0);
+    m.emission  = iri * 0.5 + float3(0.3, 0.8, 0.4) * rim * 0.6;
+    return m;
+}
+```
+
+### 4.19 Sand with glints
+
+`Materials/Exotic.metal:mat_sand_glints` — warm sand base with hash-lattice specular sparkle (Increment V.4).
+
+```metal
+// Caller responsibilities: none.
+// Glints modelled as rare isolated highlight cells in a hash lattice at 500× scale.
+// wp * 500.0 gives one glint cell per ~2mm of world space.
+MaterialResult mat_sand_glints(float3 wp, float3 n) {
+    MaterialResult m;
+    m.albedo    = float3(0.85, 0.70, 0.50);
+    m.roughness = 0.90;
+    m.metallic  = 0.0;
+    m.normal    = triplanar_detail_normal(n, wp * 8.0, 0.04);
+
+    // Hash-lattice glint: rare cells (~0.8%) get a near-mirror micro-facet.
+    // hash_f01_3 maps float3 → [0,1]; floor(wp*500) = one cell ≈ 2mm world-space.
+    float glint_hash = hash_f01_3(floor(wp * 500.0));
+    float glint_mask = step(0.992, glint_hash);
+    m.roughness  = mix(m.roughness, 0.05, glint_mask);
+    m.emission   = float3(1.0) * glint_mask * 2.0;   // HDR sparkle
+    return m;
+}
+```
+
+### 4.20 Concrete (triplanar POM)
+
+`Materials/Dielectrics.metal:mat_concrete` — gray base with worley variation, POM depth, grunge overlay (Increment V.4).
+
+```metal
+// Caller responsibilities:
+//   height_tex: a height texture sampled at wp UVs, or pass a null-equivalent
+//     and use the procedural fallback below.
+//   samp: bilinear sampler.
+//   view_ts: view direction in tangent space (from ws_to_ts()).
+MaterialResult mat_concrete(float3 wp, float3 n,
+                             texture2d<float> height_tex, sampler samp, float3 view_ts) {
+    MaterialResult m;
+    // Base: cool gray with Worley-driven aggregate variation.
+    float w     = worley_fbm(wp * 1.5) * 0.5 + 0.5;    // remap ≈[-0.65,0.79] → [0,1]
+    m.albedo    = float3(0.42, 0.42, 0.41) + (w - 0.5) * 0.08;
+    m.roughness = 0.88;
+    m.metallic  = 0.0;
+
+    // POM displacement from procedural height (fbm8-based).
+    // Use parallax_occlusion() from PBR/POM.metal when a real height tex is available.
+    // Procedural fallback: perturb normal from fbm8 height field.
+    float h0 = fbm8(wp * 5.0);
+    float hx = fbm8(wp * 5.0 + float3(0.005, 0, 0));
+    float hy = fbm8(wp * 5.0 + float3(0, 0.005, 0));
+    float3 height_grad = float3(h0 - hx, h0 - hy, 0.001) * 8.0;
+    m.normal = normalize(n + height_grad * 0.12);
+
+    // Grunge overlay: fbm8 at different scale multiplied in.
+    float grunge = fbm8(wp * 12.0 + float3(17.3, 5.1, 9.7)) * 0.5 + 0.5;
+    m.albedo    *= (0.85 + grunge * 0.25);
+
+    m.emission = float3(0.0);
+    return m;
+}
 
 ---
 
@@ -661,9 +934,12 @@ Modulate light properties per music rather than geometry per music (D-020 princi
 Every ray-march preset should have at least this level of atmosphere. Hero geometry without air fades to aerial-perspective color with depth.
 
 ```metal
-float3 apply_fog(float3 color, float depth, float3 fog_color, float fog_density) {
-    float fog_factor = 1.0 - exp(-depth * fog_density);
-    return mix(color, fog_color, fog_factor);
+// Volume/ParticipatingMedia.metal — apply_fog (snake_case alias, Increment V.4)
+// Legacy camelCase equivalent: fog(color, fogColor, dist, density) in ShaderUtilities.metal.
+static inline float3 apply_fog(float3 color, float depth,
+                                float3 fog_color, float fog_density) {
+    float transmittance = exp(-depth * fog_density);
+    return mix(fog_color, color, transmittance);
 }
 ```
 
@@ -673,39 +949,84 @@ Set `fog_color` to match the scene's sky or horizon color, not gray. Grey fog lo
 
 **Use for:** Glass Brutalist through-window lighting, any preset with dramatic directional light through a structured environment.
 
-Ray-march through the scene sampling the shadow map along each primary-visible ray, accumulating scattered light per step proportional to local fog density and phase function.
+`Volume/LightShafts.metal` provides two approaches:
+
+**Screen-space radial blur** (cheap, direct-pass presets): accumulate radially toward the projected sun UV using the existing rendered scene as an occlusion mask.
 
 ```metal
-float3 volumetric_light_shafts(float3 ro, float3 rd, float3 L, depthTexture2d shadow_map) {
-    float3 col = float3(0.0);
-    float t = 0.0;
-    float step = 0.15;
-    for (int i = 0; i < 48; ++i) {
-        float3 p = ro + rd * t;
-        // Sample shadow map: is p in light?
-        float shadow = sample_shadow(shadow_map, p);
-        float density = 0.05 + 0.1 * fbm8(p * 0.5);
-        // Henyey-Greenstein phase in ray direction
-        float cos_theta = dot(rd, L);
-        float phase = (1.0 - 0.3 * 0.3) / pow(1.0 + 0.3*0.3 - 0.6 * cos_theta, 1.5);
-        col += shadow * density * phase * step;
-        t += step;
-    }
-    return col * 0.3;   // intensity scale
-}
+// Volume/LightShafts.metal (Increment V.2)
+
+// Get the UV to sample at step i (0-indexed) of a radial blur toward sunUV.
+static inline float2 ls_radial_step_uv(float2 uv, float2 sunUV, int step, int totalSteps);
+
+// Contribution of one step given a pre-sampled occlusion value [0=shadow, 1=lit].
+static inline float ls_radial_accumulate_step(float occlusion, float decay, float weight, int step);
+
+// Simple usage (fragment body):
+//   float2 sunSS = ls_world_to_ndc(viewProj, lightWorldPos);  // project light to UV
+//   float shafts = 0.0;
+//   for (int i = 0; i < 32; i++) {
+//       float2 sUV  = ls_radial_step_uv(uv, sunSS, i, 32);
+//       float  occ  = sceneTex.sample(s, sUV).a;   // use alpha or luma as mask
+//       shafts += ls_radial_accumulate_step(occ, 0.95, 0.02, i);
+//   }
+//   finalColor += lightColor * shafts * ls_intensity_audio(0.3, midRel);
 ```
 
-Cost: ~1.5 ms at 1080p on Tier 2 with 48 steps. Sample at half-res + upscale if budget tight.
+**Ray-march shadow-volume** (accurate, ray-march presets): step from each visible point toward the light, accumulating density from `vol_density_fbm`.
+
+```metal
+// March from p toward lightDir, return shadow factor [0,1].
+// steps = 8–16 (cheap shadow rays acceptable for atmospheric quality).
+static inline float ls_shadow_march(float3 p, float3 lightDir,
+                                    float tMax, int steps, float sigma);
+
+// Sun disk + soft corona (add to final color for miss-rays or sky pixels).
+static inline float3 ls_sun_disk(float3 rd, float3 sunDir, float3 sunColor);
+
+// Intensity scaled by midRel — shafts brighten on vocal/melody presence.
+static inline float ls_intensity_audio(float baseIntensity, float midRel);
+```
+
+Cost: screen-space ≈ 0.5 ms (32 samples); ray-march shadow ≈ 1.5 ms (48 steps). Sample at half-res + upscale if budget tight.
 
 ### 6.3 Dust motes
 
 **Use for:** Arachne spider easter-egg reveal, Gossamer bioluminescent ambient, any scene that wants air-as-material.
 
-Approach A: compute-particle system, 5000–20000 dust motes advected by curl noise, rendered as sprite quads. Lit by scene lights via simple Lambert.
+`Volume/ParticipatingMedia.metal` provides front-to-back integration for procedural dust/mist volumes:
 
-Approach B (cheaper): screen-space particle overlay in post-process pass. Sample a 2D noise texture offset by `time * drift_velocity`, threshold for sparkle locations, add to bloom.
+```metal
+// Volume/ParticipatingMedia.metal (Increment V.2)
 
-Approach B costs <0.5 ms; Approach A 2–3 ms. Both visibly upgrade "empty air" to "inhabited space."
+struct VolumeSample { float3 color; float transmittance; };
+static inline VolumeSample vol_sample_zero();
+
+// Density field options (choose based on desired look):
+static inline float vol_density_fbm(float3 p, float scale, int octaves);     // heterogeneous mist
+static inline float vol_density_height_fog(float3 p, float scale, float falloff); // floor fog
+static inline float vol_density_sphere(float3 p, float3 c, float r);         // blob of haze
+static inline float vol_density_cloud(float3 p, float scale, float coverage); // wispy clouds
+
+// Accumulate one step (front-to-back). Call in a ray-march loop:
+//   VolumeSample s = vol_sample_zero();
+//   for (int i = 0; i < 32; i++) {
+//       float3 pos = ro + rd * (tMin + stepLen * (float(i) + 0.5));
+//       float  den = vol_density_fbm(pos * 3.0 + curl_noise(pos) * 0.4, 1.0, 3);
+//       den *= smoothstep(0.0, 0.05, bassRel);   // swell on transients
+//       s = vol_accumulate(s, pos, rd, den, stepLen, lightDir, lightColor, 0.1);
+//       if (s.transmittance < 0.01) break;
+//   }
+//   float3 dustColor = s.color + background * s.transmittance;
+static inline VolumeSample vol_accumulate(VolumeSample s, float3 p, float3 rd,
+    float density, float stepLen, float3 lightDir, float3 lightColor, float sigma);
+```
+
+**Approach A (compute particles)**: 5000–20000 motes advected by `curl_noise`, rendered as sprite quads. Lit by scene lights via Lambert. Cost: 2–3 ms.
+
+**Approach B (screen-space)**: sample a 2D noise texture offset by `time * drift_velocity`, threshold for sparkle locations, add to bloom input. Cost: <0.5 ms. Adequate for subtle ambient sparkle.
+
+Both visibly upgrade "empty air" to "inhabited space." Approach B is recommended unless the motes need to respond to geometry.
 
 ### 6.4 Volumetric bloom (shaped)
 
@@ -724,18 +1045,38 @@ Both are ~0.3 ms additions to the existing bloom chain. Implement as optional fl
 
 ### 7.1 Smooth union with multi-node blending
 
-`opSmoothUnion` as commonly written blends two SDFs. Most ray-march scenes need to blend N SDFs (N > 2) without nesting binary unions (which causes visible triple-points).
+`op_smooth_union` as commonly written blends two SDFs. Most ray-march scenes need to blend N SDFs (N > 2) without nesting binary unions (which causes visible triple-points).
+
+Metal fragment shaders cannot take pointer arrays, so the utility provides fixed-arity variants using log-sum-exp exponential smooth-min:
 
 ```metal
-float sd_smooth_union_multi(thread float distances[], int count, float k) {
-    float result = 1e10;
-    float weight_sum = 0.0;
-    for (int i = 0; i < count; ++i) {
-        float h = exp(-distances[i] / k);
-        result += distances[i] * h;
-        weight_sum += h;
-    }
-    return log(weight_sum) * -k + result / weight_sum;   // exponential-smooth-min form
+// Geometry/SDFBoolean.metal — op_blend_4, op_blend_8, op_blend (Increment V.2)
+
+// 2-distance blend (degrades to min() at k < 0.001)
+static inline float op_blend(float a, float b, float k) {
+    if (k < 0.001) return min(a, b);
+    float m   = min(a, b);
+    float sum = exp((m - a) / k) + exp((m - b) / k);
+    return m - k * log(sum);
+}
+
+// 4-distance blend — covers most preset use cases
+static inline float op_blend_4(float d0, float d1, float d2, float d3, float k) {
+    float m   = min(min(d0, d1), min(d2, d3));
+    float sum = exp((m-d0)/k) + exp((m-d1)/k)
+              + exp((m-d2)/k) + exp((m-d3)/k);
+    return m - k * log(sum);
+}
+
+// 8-distance blend — web intersections, complex multi-primitive scenes
+static inline float op_blend_8(
+    float d0, float d1, float d2, float d3,
+    float d4, float d5, float d6, float d7, float k
+) {
+    float m   = min(min(min(d0,d1),min(d2,d3)), min(min(d4,d5),min(d6,d7)));
+    float sum = exp((m-d0)/k) + exp((m-d1)/k) + exp((m-d2)/k) + exp((m-d3)/k)
+              + exp((m-d4)/k) + exp((m-d5)/k) + exp((m-d6)/k) + exp((m-d7)/k);
+    return m - k * log(sum);
 }
 ```
 
@@ -758,56 +1099,69 @@ Safety factor 0.6 is standard. Can tune down to 0.4 for high-frequency displacem
 The cheapest high-quality SDF normal: sample four points in tetrahedral arrangement, combine.
 
 ```metal
-float3 sdf_normal(float3 p, float epsilon = 0.001) {
+// Geometry/RayMarch.metal:ray_march_normal_tetra (Increment V.2)
+// Replace sd_sphere(q, 1.0) with your sceneSDF(q) in fragment shaders.
+static inline float3 ray_march_normal_tetra(float3 p, float eps) {
     const float2 k = float2(1.0, -1.0);
     return normalize(
-        k.xyy * scene_sdf(p + k.xyy * epsilon) +
-        k.yyx * scene_sdf(p + k.yyx * epsilon) +
-        k.yxy * scene_sdf(p + k.yxy * epsilon) +
-        k.xxx * scene_sdf(p + k.xxx * epsilon)
+        k.xyy * sd_sphere(p + k.xyy * eps, 1.0) +
+        k.yyx * sd_sphere(p + k.yyx * eps, 1.0) +
+        k.yxy * sd_sphere(p + k.yxy * eps, 1.0) +
+        k.xxx * sd_sphere(p + k.xxx * eps, 1.0)
     );
 }
 ```
 
 Four scene evaluations. Use this, not the six-tap central difference.
 
+Practical use in a preset fragment shader:
+```metal
+// Inline the SDF call directly — Metal fragment shaders cannot pass function pointers.
+float3 n = normalize(
+    float2(1,-1).xyy * sceneSDF(p + float2(1,-1).xyy * 0.001) +
+    float2(1,-1).yyx * sceneSDF(p + float2(1,-1).yyx * 0.001) +
+    float2(1,-1).yxy * sceneSDF(p + float2(1,-1).yxy * 0.001) +
+    float2(1,-1).xxx * sceneSDF(p + float2(1,-1).xxx * 0.001)
+);
+```
+
 ### 7.4 Adaptive sphere tracing
 
-Fixed-step ray march burns cycles. Sphere tracing is the standard SDF march. Adaptive sphere tracing further accelerates by over-stepping when SDF is positive and retreating if surface missed.
+Fixed-step ray march burns cycles. Sphere tracing is the standard SDF march. Adaptive sphere tracing further accelerates by over-stepping in open space via a configurable relaxation factor.
 
 ```metal
-struct RayHit {
-    bool hit;
-    float3 position;
-    int steps;
+// Geometry/RayMarch.metal:RayMarchHit + ray_march_adaptive (Increment V.2)
+struct RayMarchHit {
+    float distance;  // t along the ray (world position = ro + rd * hit.distance)
+    int   steps;
+    bool  hit;
 };
 
-RayHit march_adaptive(float3 ro, float3 rd, int max_steps, float max_dist) {
-    RayHit h;
-    h.hit = false;
-    float t = 0.0;
-    float prev_d = 1e10;
-    for (int i = 0; i < max_steps; ++i) {
-        float3 p = ro + rd * t;
-        float d = scene_sdf(p);
-        if (d < 0.001 * t) {
-            h.hit = true;
-            h.position = p;
-            h.steps = i;
-            return h;
+// gradFactor: 0.0 = standard sphere tracing; 0.5 = 50% over-relaxed (recommended).
+// Replace sd_sphere(p, 1.0) with your sceneSDF(p) when copying into fragment shaders.
+static inline RayMarchHit ray_march_adaptive(
+    float3 ro, float3 rd,
+    float tMin, float tMax,
+    int   maxSteps,
+    float hitEps,
+    float gradFactor
+) {
+    RayMarchHit result = { 0.0, 0, false };
+    float omega = 1.0 + gradFactor;
+    float t = tMin;
+    for (int i = 0; i < maxSteps && t < tMax; i++) {
+        float d = sd_sphere(ro + rd * t, 1.0);  // REPLACE with sceneSDF
+        result.steps++;
+        if (d < hitEps) {
+            result.hit = true; result.distance = t; return result;
         }
-        if (t > max_dist) break;
-        // Adaptive step: over-step slightly when SDF gradient is shallow
-        float over_relax = 1.2;
-        t += d * (d < prev_d ? over_relax : 1.0);
-        prev_d = d;
+        t += max(d * omega, 0.001);
     }
-    h.steps = max_steps;
-    return h;
+    return result;
 }
 ```
 
-Cost: ~20% fewer steps on average than basic sphere tracing. Worth it at max_steps = 64+.
+Cost: ~30–50% fewer steps on average than basic sphere tracing in open scenes. Worth it at maxSteps = 64+.
 
 ### 7.5 Per-primitive material IDs
 
@@ -854,25 +1208,33 @@ Use everywhere you'd normally use 2D UVs on non-flat geometry: concrete walls, s
 
 ### 8.2 Triplanar normal mapping with re-orientation
 
-Naive triplanar of normal maps produces incorrect results — the tangent frame differs per axis plane. The fix re-orients the tangent-space normals into world space per axis:
+Naive triplanar of normal maps produces incorrect results — the tangent frame differs per axis plane. The fix uses Reoriented Normal Mapping (RNM): lifts tangent-space normals per-face into world space using each face's implicit tangent/bitangent basis.
 
 ```metal
-float3 triplanar_normal(float3 wp, float3 n, float tiling) {
-    float3 blend = pow(abs(n), float3(4.0));
-    blend /= dot(blend, float3(1.0));
+// PBR/Triplanar.metal:triplanar_normal (Increment V.1)
+static inline float3 triplanar_normal(
+    texture2d<float> nmap, sampler samp,
+    float3 wp, float3 n, float tiling
+) {
+    float3 w  = triplanar_blend_weights(n, 4.0);
 
-    float3 nx = sample_normal_map(wp.yz * tiling);
-    float3 ny = sample_normal_map(wp.xz * tiling);
-    float3 nz = sample_normal_map(wp.xy * tiling);
+    float3 nXZ = decode_normal_map(nmap.sample(samp, wp.xz * tiling).rgb);
+    float3 nXY = decode_normal_map(nmap.sample(samp, wp.xy * tiling).rgb);
+    float3 nYZ = decode_normal_map(nmap.sample(samp, wp.yz * tiling).rgb);
 
-    // Reorient each axis projection
-    nx = float3(0.0, nx.y, nx.x) * sign(n.x);
-    ny = float3(ny.x, 0.0, ny.y) * sign(n.y);
-    nz = float3(nz.x, nz.y, 0.0) * sign(n.z);
+    // RNM: reorient each face's tangent-space normal to world space.
+    // XZ face: tangent=+X, bitangent=+Z, normal=+Y
+    float3 wsXZ = float3(nXZ.x, nXZ.z, nXZ.y + sign(n.y));
+    // XY face: tangent=+X, bitangent=+Y, normal=+Z
+    float3 wsXY = float3(nXY.x, nXY.y, nXY.z + sign(n.z));
+    // YZ face: tangent=+Z, bitangent=+Y, normal=+X
+    float3 wsYZ = float3(nYZ.z + sign(n.x), nYZ.y, nYZ.x);
 
-    return normalize(n + nx * blend.x + ny * blend.y + nz * blend.z);
+    return normalize(wsXZ * w.y + wsXY * w.z + wsYZ * w.x);
 }
 ```
+
+**Procedural 3-param overload (no texture).** `Materials/MaterialResult.metal` provides `triplanar_normal(wp, n, amplitude)` and `triplanar_detail_normal(base_n, wp, amplitude)` that perturb a normal with fbm8 noise triplanarly — no texture required. Used by `mat_wet_stone`, `mat_bark`, `mat_granite`.
 
 ### 8.3 Parallax occlusion mapping (POM)
 
@@ -880,66 +1242,126 @@ float3 triplanar_normal(float3 wp, float3 n, float tiling) {
 
 POM samples a heightmap along the view ray to find the correct surface displacement point. Expensive but the visual difference is dramatic.
 
+`PBR/POM.metal` provides two forms. Basic POM returns the displaced UV only; the shadowed variant also returns a self-shadow factor for contact shadows inside deep features (reference: Morgan McGuire 2005).
+
 ```metal
-float2 parallax_occlusion(texture2d<float> height_tex, sampler s, float2 uv, float3 view_ts, float depth_scale) {
-    const int max_steps = 32;
-    float layer_depth = 1.0 / float(max_steps);
-    float current_depth = 0.0;
+// PBR/POM.metal (Increment V.1)
 
-    float2 uv_step = view_ts.xy / view_ts.z * depth_scale / float(max_steps);
-    float2 current_uv = uv;
-    float current_height = 1.0 - height_tex.sample(s, current_uv).r;
+// Result type for the shadowed variant.
+struct POMResult {
+    float2 uv;          // displaced UV — use for all subsequent texture samples
+    float  self_shadow; // [0,1] multiply into direct lighting; 0 = fully shadowed
+};
 
-    for (int i = 0; i < max_steps; ++i) {
-        if (current_depth >= current_height) break;
-        current_uv -= uv_step;
-        current_depth += layer_depth;
-        current_height = 1.0 - height_tex.sample(s, current_uv).r;
+// Basic POM: 32-step linear search + 8-step binary refinement.
+// view_ts = view direction in tangent space (use ws_to_ts()).
+// depth_scale: 0.02 = subtle brick mortar, 0.1 = deep rock.
+static inline float2 parallax_occlusion(
+    texture2d<float> height_tex, sampler samp,
+    float2 uv, float3 view_ts, float depth_scale
+) {
+    const int linear_steps = 32;
+    const int binary_steps = 8;
+    float  layer_depth = 1.0 / float(linear_steps);
+    float2 delta_uv    = (view_ts.xy / view_ts.z) * depth_scale / float(linear_steps);
+    float  curr_depth  = 0.0;
+    float2 curr_uv     = uv;
+    float  curr_height = 1.0 - height_tex.sample(samp, curr_uv).r;
+    for (int i = 0; i < linear_steps; i++) {
+        if (curr_depth >= curr_height) break;
+        curr_uv     -= delta_uv;
+        curr_height  = 1.0 - height_tex.sample(samp, curr_uv).r;
+        curr_depth  += layer_depth;
     }
-
-    // Linear interpolation between last two steps
-    float2 prev_uv = current_uv + uv_step;
-    float prev_height = 1.0 - height_tex.sample(s, prev_uv).r - (current_depth - layer_depth);
-    float current_delta = current_height - current_depth;
-    float t = current_delta / (current_delta - prev_height);
-    return mix(current_uv, prev_uv, t);
+    // Binary refinement between last two layers (Morgan McGuire 2005).
+    float2 prev_uv    = curr_uv + delta_uv;
+    float  prev_depth = curr_depth - layer_depth;
+    for (int i = 0; i < binary_steps; i++) {
+        float2 mid_uv    = (curr_uv + prev_uv) * 0.5;
+        float  mid_depth = (curr_depth + prev_depth) * 0.5;
+        float  mid_h     = 1.0 - height_tex.sample(samp, mid_uv).r;
+        if (mid_depth >= mid_h) { curr_uv = mid_uv; curr_depth = mid_depth; }
+        else                    { prev_uv = mid_uv; prev_depth = mid_depth; }
+    }
+    return (curr_uv + prev_uv) * 0.5;
 }
+
+// Shadowed variant — 2× more expensive; returns POMResult.
+// light_ts = light direction in tangent space (use ws_to_ts() with the light dir).
+static inline POMResult parallax_occlusion_shadowed(
+    texture2d<float> height_tex, sampler samp,
+    float2 uv, float3 view_ts, float3 light_ts, float depth_scale
+);
 ```
 
-Cost: heavy — 32 texture samples worst case. ~1.0 ms per full-screen POM pass at 1080p on Tier 2. Use sparingly on hero surfaces only.
+Cost: ~1.0 ms per full-screen POM pass at 1080p on Tier 2 (basic), ~2.0 ms shadowed. Use sparingly on hero surfaces only.
 
 ### 8.4 Detail normals
 
-Layer multiple normal-map scales: a macro normal map at base UV frequency, plus a detail normal at 20× UV frequency. Combine properly:
+Layer multiple normal-map scales: a macro normal map at base UV frequency, plus a detail normal at 20× UV frequency. `PBR/DetailNormals.metal` provides two blending modes:
 
 ```metal
-float3 combine_normals(float3 base, float3 detail) {
-    // UDN blend: adds detail without flattening
-    return normalize(float3(base.xy + detail.xy, base.z * detail.z));
+// PBR/DetailNormals.metal (Increment V.1)
+
+// UDN (Unity Detail Normal) blend — industry standard.
+// Preserves detail scale without tilting the base normal.
+// Both inputs are tangent-space normals (z-up convention).
+static inline float3 combine_normals_udn(float3 base, float3 detail) {
+    return normalize(float3(base.xy + detail.xy, base.z));
+}
+
+// Whiteout blend — more accurate when the base normal is itself steeply tilted.
+// ~5% more expensive than UDN.
+static inline float3 combine_normals_whiteout(float3 base, float3 detail) {
+    float3 n = float3(
+        base.x * detail.z + detail.x * base.z,
+        base.y * detail.z + detail.y * base.z,
+        base.z * detail.z
+    );
+    return normalize(n);
 }
 ```
+
+Use UDN for almost all cases. Switch to whiteout only when the base normal is tilted >45° (unusual geometry, e.g., overhanging rock).
 
 Use for: bark (bark grooves + fine texture), sand (dunes + grain), any weathered surface.
 
 ### 8.5 Flow maps
 
-For liquid surfaces: sample a 2D texture encoding 2D flow-velocity vectors in RG channels. Offset UVs per frame by that flow vector. Two-phase mixing prevents stretching:
+For liquid surfaces: encode 2D flow-velocity vectors in an RG texture (or derive them procedurally from curl noise). Offset UVs per frame by the velocity. Two-phase mixing hides the repeating cycle. `Texture/FlowMaps.metal` decomposes this into composable helpers:
 
 ```metal
-float3 flow_sample(texture2d<float> base, texture2d<float> flow, sampler s, float2 uv, float time) {
-    float2 flow_vec = flow.sample(s, uv).rg * 2.0 - 1.0;
-    float phase1 = fract(time * 0.5);
-    float phase2 = fract(time * 0.5 + 0.5);
-    float2 uv1 = uv - flow_vec * phase1 * 0.1;
-    float2 uv2 = uv - flow_vec * phase2 * 0.1;
-    float3 sample1 = base.sample(s, uv1).rgb;
-    float3 sample2 = base.sample(s, uv2).rgb;
-    float blend = abs(phase1 - 0.5) * 2.0;
-    return mix(sample1, sample2, blend);
+// Texture/FlowMaps.metal (Increment V.2)
+
+// Compute distorted UV at animation phase [0,1].
+// velocity  = flow direction + speed (decode from RG texture: vel = sample.rg*2-1)
+// phase     = fract(time / period)  — caller controls cycle rate
+// strength  = displacement amplitude (0.05–0.15 typical)
+static inline float2 flow_sample_offset(float2 uv, float2 velocity, float phase, float strength) {
+    return uv + velocity * (phase - 0.5) * strength;
 }
+
+// Smooth blend weight for dual-phase sampling (crossfades at phase 0 and 0.5).
+// Weight for phase B = 1.0 - flow_blend_weight(phase).
+static inline float flow_blend_weight(float phase) {
+    return 1.0 - smoothstep(0.4, 0.6, fract(phase));
+}
+
+// Typical usage (texture-based):
+//   float2 vel  = flowTex.sample(s, uv).rg * 2.0 - 1.0;
+//   float  ph   = fract(time * 0.5);
+//   float2 uv0  = flow_sample_offset(uv, vel, ph,       strength);
+//   float2 uv1  = flow_sample_offset(uv, vel, ph + 0.5, strength);
+//   float  w    = flow_blend_weight(ph);
+//   float3 col  = baseTex.sample(s, uv0).rgb * w + baseTex.sample(s, uv1).rgb * (1.0 - w);
+
+// Procedural alternative (no texture needed):
+//   float2 vel = flow_noise_velocity(uv, scale, t);   // gradient of perlin3d
+//   float2 vel = flow_curl_velocity(uv, scale, t);    // 2D curl of perlin3d
+//   float2 distortedUV = flow_curl_advect(uv, scale, t, dt, strength);
 ```
 
-Use for: Ferrofluid Ocean surface flow, ink-style presets, river-like preset concepts.
+Use for: ocean surface flow, ink-style presets, lava, any surface with directional streaming motion. The procedural variants (`flow_curl_advect`, `flow_noise_velocity`) need no texture and cost ~2 perlin samples each.
 
 ---
 
@@ -992,36 +1414,47 @@ The `FrameBudgetManager` (Increment 6.2) downshifts at runtime when measured fra
 
 ### 9.4 Cost of specific recipes (reference table)
 
-V.1 primitive costs (single full-screen pass, Tier 2 / M3, 1080p):
+Two-column table: Tier 1 (M1/M2) estimated via ~2.3× ratio from Tier 2 measurements; Tier 2 (M3+) measured via GPU timestamps at 1080p. Run `PERF_TESTS=1 swift test --filter UtilityPerformanceTests` and then `swift run UtilityCostTableUpdater` to regenerate.
 
-| Recipe | Cost on Tier 2 | Notes |
-|---|---|---|
-| `perlin3d` single call | ~0.04 ms | Baseline noise primitive |
-| `simplex3d` single call | ~0.05 ms | Slightly faster gradient computation |
-| `worley3d` single call | ~0.08 ms | 27-cell neighbourhood |
-| `fbm4` screen-space | ~0.18 ms | 4 × perlin3d |
-| `fbm8` screen-space | 0.8 ms | Heavy; compute per-hit, not per-pixel |
-| `fbm12` screen-space | ~1.1 ms | High detail; per-hit only |
-| `warped_fbm` screen-space | 5.5 ms | 7 × fbm8; use only where essential |
-| `ridged_mf` | ~0.6 ms | 6 octaves; output [0, 1] |
-| `curl_noise` single sample | ~0.05 ms | 6 × fbm8 FD; cheap per-call, avoid per-pixel |
-| `fresnel_schlick` | <0.01 ms | Single pow(); near free |
-| `ggx_d + ggx_g_smith` | ~0.01 ms | Two sqrt + few muls; use freely |
-| `brdf_cook_torrance` | ~0.02 ms | Full PBR: D + G + F + diffuse |
-| `brdf_oren_nayar` | ~0.02 ms | Two acos + trig; avoid in tight loops |
-| `brdf_ashikhmin_shirley` | ~0.03 ms | Anisotropic Phong; two pow() |
-| `fiber_marschner_lite` | ~0.02 ms | Two acos + exp; per-hit only |
-| `thinfilm_rgb` | ~0.03 ms | cos(phase) × 3 wavelengths |
-| `sss_backlit` | ~0.01 ms | Single pow() + dot |
-| `triplanar_sample` (RGB) | 0.3 ms per material | 3 samples + blend |
-| `triplanar_normal` | 0.4 ms per material | 3 normal samples + reorient |
-| `parallax_occlusion` full-screen | 1.0 ms | 32 steps worst case |
-| `mat_silk_thread` | 0.8 ms per hit | Marschner lobes |
-| `mat_ferrofluid` spike field | 1.5 ms | Hex-tile + fbm |
-| `volumetric_light_shafts` | 1.5 ms | 48 steps half-res |
-| `sample_cloud` full pass | 3.0 ms | 64 steps × 6 shadow samples |
+<!-- BEGIN V4 PERF TABLE -->
+_Initial estimates — run UtilityPerformanceTests with PERF_TESTS=1 to measure (generated 2026-04-26)_
 
-Note: V.1 primitive costs are estimates based on operation-count analysis relative to benchmarked fbm8. Formal profiling via `PresetPerformanceTests` should validate per-preset numbers.
+| Function | Category | Tier 1 (estimated) | Tier 2 (estimated) | Notes |
+|---|---|---|---|---|
+| `palette` | color | ~0.03 ms [estimated] | ~0.015 ms [estimated] | IQ cosine palette (4-param) |
+| `tone_map_aces` | color | ~0.06 ms [estimated] | ~0.025 ms [estimated] | ACES tone mapping (filmic) |
+| `chromatic_aberration_radial` | color | ~0.07 ms [estimated] | ~0.030 ms [estimated] | Chromatic aberration (radial) |
+| `ray_march_adaptive` | geometry | ~5.75 ms [estimated] | ~2.5 ms [estimated] | Adaptive sphere tracer, 64 steps max |
+| `sd_mandelbulb_iterate` | geometry | ~0.80 ms [estimated] | ~0.35 ms [estimated] | Mandelbulb iterate, n=8, 6 iters |
+| `hex_tile_uv` | geometry | ~0.09 ms [estimated] | ~0.04 ms [estimated] | Hex tile UV (Mikkelsen, no textures) |
+| `mat_polished_chrome` | materials | ~1.89 ms [estimated] | ~0.82 ms [estimated] | Polished chrome (fbm8 streak) |
+| `mat_marble` | materials | ~4.03 ms [estimated] | ~1.75 ms [estimated] | Marble (curl_noise + fbm8 veins) |
+| `mat_granite` | materials | ~4.37 ms [estimated] | ~1.90 ms [estimated] | Granite (worley_fbm + fbm8 + triplanar) |
+| `mat_ocean` | materials | ~5.98 ms [estimated] | ~2.60 ms [estimated] | Ocean water (fbm8 capillary ripple) |
+| `fbm8` | noise | ~1.84 ms [estimated] | ~0.80 ms [estimated] | 8-octave fBM, 3D, full-screen 1080p |
+| `fbm4` | noise | ~0.97 ms [estimated] | ~0.42 ms [estimated] | 4-octave fBM, 3D, full-screen 1080p |
+| `curl_noise` | noise | ~2.19 ms [estimated] | ~0.95 ms [estimated] | 3D curl noise (6 fbm8 samples) |
+| `worley_fbm` | noise | ~1.50 ms [estimated] | ~0.65 ms [estimated] | Worley-Perlin blend, 3D |
+| `brdf_ggx` | pbr | ~0.41 ms [estimated] | ~0.18 ms [estimated] | Full Cook-Torrance GGX BRDF |
+| `sss_backlit` | pbr | ~0.21 ms [estimated] | ~0.09 ms [estimated] | SSS back-lit approximation |
+| `thinfilm_rgb` | pbr | ~0.28 ms [estimated] | ~0.12 ms [estimated] | Thin-film interference RGB |
+| `grunge_composite` | texture | ~1.61 ms [estimated] | ~0.70 ms [estimated] | Composite grunge (scratches+rust+wear) |
+| `rd_pattern_animated` | texture | ~0.46 ms [estimated] | ~0.20 ms [estimated] | Reaction-diffusion animated approx |
+| `voronoi_cracks` | texture | ~0.30 ms [estimated] | ~0.13 ms [estimated] | Voronoi crack distance field |
+| `voronoi_f1f2` | texture | ~0.25 ms [estimated] | ~0.11 ms [estimated] | 2D Voronoi F1+F2, 9-cell search |
+| `cloud_density_cumulus` | volume | ~1.04 ms [estimated] | ~0.45 ms [estimated] | Cumulus cloud density field |
+| `hg_phase` | volume | ~0.05 ms [estimated] | ~0.02 ms [estimated] | Henyey-Greenstein phase function |
+| `vol_density_fbm` | volume | ~0.69 ms [estimated] | ~0.30 ms [estimated] | Volume density fBM, 3 octaves |
+<!-- END V4 PERF TABLE -->
+
+**Surprises (V.4 calibration notes):**
+- `mat_granite` is the heaviest cookbook material at ~1.9 ms — three noise calls at different scales + triplanar. Use per-hit, not per-pixel.
+- `mat_ocean` approaches the ray-march G-buffer budget at ~2.6 ms. Combine with reduced raymarch steps (64→48) when using mat_ocean.
+- `curl_noise` costs 6× `fbm8` (it's 6 finite-difference fbm8 samples) — always call once per hit point, never per-pixel in isolation.
+- `warped_fbm` (7× fbm8) is not in the benchmark table; estimated ~5.5 ms — use only on hero geometry, never full-screen.
+- `hex_tile_uv` is essentially free (~0.04 ms) and should be used liberally for any surface needing repeating patterns without UV seams.
+
+For primitives not in this table, estimate ~0.04 ms per `perlin3d` call and scale by octave count.
 
 ### 9.5 Profiling every new preset
 

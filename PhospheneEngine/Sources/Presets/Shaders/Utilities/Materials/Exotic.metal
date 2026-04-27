@@ -1,13 +1,14 @@
 // Exotic.metal — Exotic and stylized surface material recipes.
 //
-// Recipes: mat_ocean, mat_ink, mat_marble, mat_granite.
+// Recipes: mat_ocean, mat_ink, mat_marble, mat_granite, mat_sand_glints.
 //
 // All recipes follow the cookbook convention: return MaterialResult.
 // See MaterialResult.metal for the composition pattern.
 //
-// Reference: SHADER_CRAFT.md §4.14, §4.15, §4.16, §4.17
+// Reference: SHADER_CRAFT.md §4.14, §4.15, §4.16, §4.17, §4.19
 //
-// Depends on: Noise tree (fbm8, worley_fbm, curl_noise), PBR tree (sss_backlit).
+// Depends on: Noise tree (fbm8, worley_fbm, curl_noise, hash_f01),
+//             PBR tree (sss_backlit), Materials/MaterialResult.
 //
 // DO NOT add #include <metal_stdlib> or using namespace metal.
 
@@ -182,5 +183,36 @@ MaterialResult mat_granite(float3 wp, float3 n) {
     m.normal = triplanar_detail_normal(n, wp * 4.0, 0.05);
 
     m.emission = float3(0.0);
+    return m;
+}
+
+// ─── 4.19 Sand with glints ────────────────────────────────────────────────────
+// Source: SHADER_CRAFT.md §4.19 (Increment V.4)
+
+/// Sand with specular glints: warm base with hash-lattice micro-facet sparkle.
+///
+/// Glints modelled as isolated high-frequency cells in a 3D hash lattice.
+/// ~0.8% of cells get a near-mirror micro-facet (roughness 0.05, HDR emission).
+///
+/// Caller responsibilities: none.
+MaterialResult mat_sand_glints(float3 wp, float3 n) {
+    MaterialResult m;
+
+    // Warm sand base with subtle fbm8 color variation.
+    float var    = fbm8(wp * 4.0) * 0.5 + 0.5;
+    m.albedo     = float3(0.85, 0.70, 0.50) * (0.85 + var * 0.20);
+    m.roughness  = 0.90;
+    m.metallic   = 0.0;
+
+    // Triplanar detail normal for sand ripple micro-structure.
+    m.normal = triplanar_detail_normal(n, wp * 8.0, 0.04);
+
+    // Hash-lattice glint: rare cells (step(0.992, ...) ≈ 0.8%) fire a sparkle.
+    // hash_f01_3 maps float3 → [0,1]; floor(wp*500) gives one cell ≈ 2mm world-space.
+    float glint_hash = hash_f01_3(floor(wp * 500.0));
+    float glint_mask = step(0.992, glint_hash);
+    m.roughness = mix(m.roughness, 0.05, glint_mask);
+    m.emission  = float3(1.0) * glint_mask * 2.0;   // HDR sparkle
+
     return m;
 }

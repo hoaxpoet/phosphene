@@ -1,13 +1,13 @@
 // Dielectrics.metal — Dielectric (non-metallic) surface material recipes.
 //
-// Recipes: mat_ceramic, mat_frosted_glass, mat_wet_stone.
+// Recipes: mat_ceramic, mat_frosted_glass, mat_wet_stone, mat_concrete.
 //
 // All recipes follow the cookbook convention: return MaterialResult.
 // See MaterialResult.metal for the composition pattern.
 //
-// Reference: SHADER_CRAFT.md §4.4, §4.5, §4.13
+// Reference: SHADER_CRAFT.md §4.4, §4.5, §4.13, §4.20
 //
-// Depends on: Noise tree (fbm8), Materials/MaterialResult (triplanar_normal).
+// Depends on: Noise tree (fbm8, worley_fbm), Materials/MaterialResult (triplanar_detail_normal).
 //
 // DO NOT add #include <metal_stdlib> or using namespace metal.
 
@@ -98,6 +98,44 @@ MaterialResult mat_ceramic(float3 wp, float3 n, float3 base_color) {
     m.roughness = clamp(m.roughness, 0.0, 1.0);
 
     m.normal   = n;
+    m.emission = float3(0.0);
+    return m;
+}
+
+// ─── 4.20 Concrete (triplanar POM) ───────────────────────────────────────────
+// Source: SHADER_CRAFT.md §4.20 (Increment V.4)
+
+/// Concrete: cool gray base with Worley aggregate variation, procedural height
+/// perturbation (POM-equivalent), and fbm8 grunge overlay.
+///
+/// For full POM with a real height texture, call parallax_occlusion() from
+/// PBR/POM.metal in the fragment shader before calling this function, then
+/// evaluate at the displaced UV. This procedural fallback approximates POM
+/// by perturbing the normal from an fbm8 height gradient.
+///
+/// Caller responsibilities: none (all procedural).
+MaterialResult mat_concrete(float3 wp, float3 n) {
+    MaterialResult m;
+
+    // Cool gray base: Worley-driven aggregate gives pebble texture variation.
+    // worley_fbm range ≈ [-0.65, 0.79]; remap to [0,1] for color modulation.
+    float w      = worley_fbm(wp * 1.5) * 0.5 + 0.5;
+    m.albedo     = float3(0.42, 0.42, 0.41) + (w - 0.5) * 0.08;
+    m.roughness  = 0.88;
+    m.metallic   = 0.0;
+
+    // Procedural height-gradient normal perturbation (POM approximation).
+    // Finite-difference on fbm8 height field at world-space scale 5.
+    float h0 = fbm8(wp * 5.0);
+    float hx = fbm8(wp * 5.0 + float3(0.005, 0.0,   0.0));
+    float hy = fbm8(wp * 5.0 + float3(0.0,   0.005, 0.0));
+    float3 height_grad = float3(h0 - hx, h0 - hy, 0.001);
+    m.normal = normalize(n + height_grad * 0.12);
+
+    // Grunge overlay: second fbm8 pass at 12× scale multiplied into albedo.
+    float grunge = fbm8(wp * 12.0 + float3(17.3, 5.1, 9.7)) * 0.5 + 0.5;
+    m.albedo    *= (0.85 + grunge * 0.25);
+
     m.emission = float3(0.0);
     return m;
 }

@@ -4,10 +4,14 @@ description: Current passing test count and known pre-existing failures; a new f
 type: project
 ---
 
-419 tests total (415 prior + 4 from Increment 5.2 PresetAcceptanceTests), 4 pre-existing Apple Music environment failures. Any 5th failure is a regression that must be investigated before merging.
+830 engine tests (84 suites) after Increment V.4. Known flaky tests:
+- **MemoryReporter** — "residentBytes grows by ≥ 5 MB" fails intermittently; macOS memory compression can suppress apparent physical-footprint growth for a 10 MB allocation. Environmental, not a code failure.
+- **MetadataPreFetcher / PreviewResolver** — timing-sensitive; require network or run too fast in CI.
 
-Note: Swift Testing counts @Test function declarations, not parametrized cases. The 4 acceptance tests each run against 11 presets via @Test(arguments:), but Swift Testing reports them as 4 tests.
+Any new failure beyond these is a regression that must be investigated before merging.
 
-**Why:** The Apple Music failures require a running instance of Apple Music — they are environmental, not code failures. All other tests must pass.
+Note: Swift Testing counts @Test function declarations, not parametrized cases. Acceptance tests run against 11 presets via @Test(arguments:) but count as 4 @Test functions.
 
-**How to apply:** After any code change, run `swift test --package-path PhospheneEngine` and confirm the count is 419 with ≤ 4 failures. A new failure (5th+) is a regression.
+**Why:** The pre-existing failures are environmental (memory compression, network, Apple Music presence). All other tests must pass.
+
+**How to apply:** After any code change, run `swift test --package-path PhospheneEngine` and confirm count is 830 with failures limited to the known flakes above.

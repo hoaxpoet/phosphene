@@ -11,5 +11,7 @@
 - [Diagnostic testing discipline](feedback_diagnostic_testing.md) — Diagnostic tests that pass do not prove the preset still renders; visually verify every affected preset after test changes
 - [Never use synthetic audio](feedback_synthetic_audio.md) — Diagnostic harnesses must use real preview clips, replayed FeatureVectors, or in-app recording during real playback — never hand-authored envelopes
 - [SwiftLint baseline](project_swiftlint_baseline.md) — 0 violations after L-1 cleanup; any violation in active source paths is a regression
-- [DECISIONS.md numbering](project_decisions_numbering.md) — Next decision is D-037; D-036 was reactive orchestrator design (4.6); grep docs/DECISIONS.md for '## D-0' before assigning
-- [Test suite baseline](project_test_baseline.md) — 415 tests, 4 pre-existing failures; 5th failure = regression
+- [DECISIONS.md numbering](project_decisions_numbering.md) — Next decision is D-064; D-063 was V.4 audit + missing materials; grep docs/DECISIONS.md for '## D-0' before assigning
+- [Test suite baseline](project_test_baseline.md) — 830 engine tests after V.4; known flakes: MemoryReporter (env), MetadataPreFetcher/PreviewResolver (timing/network)
+- [Phase V progress](project_milestone_v4.md) — V.4 complete 2026-04-26; next is V.5 (Visual References library)
+- [Metal hash API](feedback_hash_api.md) — Use hash_f01_3(float3) for 3D positions; hash_f01(uint) is scalar-only

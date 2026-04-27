@@ -178,6 +178,10 @@ enum MaterialID: Int {
     case ink              = 13
     case marble           = 14
     case granite          = 15
+    // V.4 additions
+    case velvet           = 16
+    case sandGlints       = 17
+    case concrete         = 18
 }
 
 private func makeMaterialDispatchKernel() -> String {
@@ -239,6 +243,9 @@ private func makeMaterialDispatchKernel() -> String {
         else if (mid == 13) { m = mat_ink(wp, n, float3(0.1, 0.2, 0.8), wp.xy, 0.0); }
         else if (mid == 14) { m = mat_marble(wp, n); }
         else if (mid == 15) { m = mat_granite(wp, n); }
+        else if (mid == 16) { m = mat_velvet(wp, n, float3(0.6, 0.1, 0.2), NdotV); }
+        else if (mid == 17) { m = mat_sand_glints(wp, n); }
+        else if (mid == 18) { m = mat_concrete(wp, n); }
 
         int b = tid * 11;
         outputs[b + 0] = m.albedo.x;
