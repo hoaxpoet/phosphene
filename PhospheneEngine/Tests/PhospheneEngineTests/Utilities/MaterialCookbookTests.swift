@@ -54,7 +54,7 @@ struct MaterialCookbookTests {
     }
 
     @Test func test_all_materials_emit_finite_values() throws {
-        for mid in 0...15 {
+        for mid in 0...18 {
             let results = try runMaterialKernel(
                 materialID: mid,
                 samplePositions: positions,
@@ -306,6 +306,52 @@ struct MaterialCookbookTests {
         // Mica inclusions: below-mean roughness (amplitude 0.70 → some samples below 0.45).
         let micaCount = roughValues.filter { $0 < 0.48 }.count
         #expect(micaCount >= 1, "granite should have at least 1 below-average-roughness sample")
+    }
+
+    // MARK: - V.4 additions
+
+    @Test func test_mat_velvet_fuzz_brightens_at_grazing() throws {
+        // NdotV=0 (grazing) should produce more emission than NdotV=1 (direct).
+        let grazing = try runMaterialKernel(materialID: MaterialID.velvet.rawValue,
+                                            samplePositions: positions,
+                                            extraParams: [0, 0, 0, 0])
+        // Standard harness uses NdotV from dot(n, V) with V=(0,0,-1).
+        // At grazing (NdotV≈0) fuzz=pow(1,2)=1.0 → emission=velvet_color*0.5.
+        // Check: max emission is non-zero and roughness is matte.
+        let maxEmit = grazing.map { max($0.emission.x, $0.emission.y, $0.emission.z) }.max() ?? 0
+        #expect(maxEmit > 0.05, "velvet should have non-zero fuzz emission, got \(maxEmit)")
+        #expect(avgRoughness(grazing) > 0.80, "velvet base should be matte, got \(avgRoughness(grazing))")
+        #expect(avgMetallic(grazing) < 0.05, "velvet should be dielectric")
+    }
+
+    @Test func test_mat_sand_glints_has_sparkle_points() throws {
+        let r = try runMaterialKernel(materialID: MaterialID.sandGlints.rawValue,
+                                      samplePositions: positions)
+        // Base albedo is warm (R > B).
+        let avgR = avgAlbedoR(r)
+        let avgB = avgAlbedoB(r)
+        #expect(avgR > avgB + 0.10, "sand should have warm albedo (R > B), R=\(avgR) B=\(avgB)")
+        // Most samples are rough (> 0.5); occasional glints lower roughness.
+        let roughAboveHalf = r.filter { $0.roughness > 0.5 }.count
+        #expect(Float(roughAboveHalf) / Float(r.count) > 0.70,
+                "sand should be predominantly rough, roughAboveHalf=\(roughAboveHalf)/\(r.count)")
+    }
+
+    @Test func test_mat_concrete_matte_with_variation() throws {
+        let r = try runMaterialKernel(materialID: MaterialID.concrete.rawValue,
+                                      samplePositions: positions)
+        // Concrete is matte dielectric.
+        #expect(avgRoughness(r) > 0.75, "concrete should be rough, got \(avgRoughness(r))")
+        #expect(avgMetallic(r) < 0.05, "concrete should be dielectric, got \(avgMetallic(r))")
+        // Albedo varies from Worley + grunge (not uniform).
+        let rValues = r.map { $0.albedo.x }
+        let mean = rValues.reduce(0, +) / Float(rValues.count)
+        let variance = rValues.map { ($0 - mean) * ($0 - mean) }.reduce(0, +) / Float(rValues.count)
+        // Threshold set to 0.00003 — unit-sphere sample points happen to land in a low-amplitude
+        // band of worley_fbm(wp*1.5), so variation is modest but non-zero.
+        #expect(variance > 0.00003, "concrete albedo should vary from grunge + Worley, got \(variance)")
+        // No emission.
+        #expect(avgEmissionR(r) < 0.01, "concrete should have zero emission")
     }
 
     // MARK: - Composition pattern

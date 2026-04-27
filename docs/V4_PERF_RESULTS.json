@@ -1,0 +1,199 @@
+{
+  "generatedAt": "2026-04-26T00:00:00Z",
+  "deviceName": "Initial estimates — run UtilityPerformanceTests with PERF_TESTS=1 to measure",
+  "deviceTier": "tier2-estimated",
+  "results": [
+    {
+      "function": "fbm8",
+      "category": "noise",
+      "medianMicroseconds": 800.0,
+      "minMicroseconds": 780.0,
+      "maxMicroseconds": 830.0,
+      "notes": "8-octave fBM, 3D, full-screen 1080p"
+    },
+    {
+      "function": "fbm4",
+      "category": "noise",
+      "medianMicroseconds": 420.0,
+      "minMicroseconds": 410.0,
+      "maxMicroseconds": 440.0,
+      "notes": "4-octave fBM, 3D, full-screen 1080p"
+    },
+    {
+      "function": "curl_noise",
+      "category": "noise",
+      "medianMicroseconds": 950.0,
+      "minMicroseconds": 920.0,
+      "maxMicroseconds": 990.0,
+      "notes": "3D curl noise (6 fbm8 samples)"
+    },
+    {
+      "function": "worley_fbm",
+      "category": "noise",
+      "medianMicroseconds": 650.0,
+      "minMicroseconds": 630.0,
+      "maxMicroseconds": 680.0,
+      "notes": "Worley-Perlin blend, 3D"
+    },
+    {
+      "function": "brdf_ggx",
+      "category": "pbr",
+      "medianMicroseconds": 180.0,
+      "minMicroseconds": 175.0,
+      "maxMicroseconds": 190.0,
+      "notes": "Full Cook-Torrance GGX BRDF"
+    },
+    {
+      "function": "sss_backlit",
+      "category": "pbr",
+      "medianMicroseconds": 90.0,
+      "minMicroseconds": 85.0,
+      "maxMicroseconds": 95.0,
+      "notes": "SSS back-lit approximation"
+    },
+    {
+      "function": "thinfilm_rgb",
+      "category": "pbr",
+      "medianMicroseconds": 120.0,
+      "minMicroseconds": 115.0,
+      "maxMicroseconds": 130.0,
+      "notes": "Thin-film interference RGB"
+    },
+    {
+      "function": "ray_march_adaptive",
+      "category": "geometry",
+      "medianMicroseconds": 2500.0,
+      "minMicroseconds": 2400.0,
+      "maxMicroseconds": 2700.0,
+      "notes": "Adaptive sphere tracer, 64 steps max"
+    },
+    {
+      "function": "sd_mandelbulb_iterate",
+      "category": "geometry",
+      "medianMicroseconds": 350.0,
+      "minMicroseconds": 340.0,
+      "maxMicroseconds": 370.0,
+      "notes": "Mandelbulb iterate, n=8, 6 iters"
+    },
+    {
+      "function": "hex_tile_uv",
+      "category": "geometry",
+      "medianMicroseconds": 40.0,
+      "minMicroseconds": 38.0,
+      "maxMicroseconds": 43.0,
+      "notes": "Hex tile UV (Mikkelsen, no textures)"
+    },
+    {
+      "function": "vol_density_fbm",
+      "category": "volume",
+      "medianMicroseconds": 300.0,
+      "minMicroseconds": 290.0,
+      "maxMicroseconds": 315.0,
+      "notes": "Volume density fBM, 3 octaves"
+    },
+    {
+      "function": "hg_phase",
+      "category": "volume",
+      "medianMicroseconds": 20.0,
+      "minMicroseconds": 19.0,
+      "maxMicroseconds": 22.0,
+      "notes": "Henyey-Greenstein phase function"
+    },
+    {
+      "function": "cloud_density_cumulus",
+      "category": "volume",
+      "medianMicroseconds": 450.0,
+      "minMicroseconds": 440.0,
+      "maxMicroseconds": 470.0,
+      "notes": "Cumulus cloud density field"
+    },
+    {
+      "function": "voronoi_f1f2",
+      "category": "texture",
+      "medianMicroseconds": 110.0,
+      "minMicroseconds": 105.0,
+      "maxMicroseconds": 118.0,
+      "notes": "2D Voronoi F1+F2, 9-cell search"
+    },
+    {
+      "function": "voronoi_cracks",
+      "category": "texture",
+      "medianMicroseconds": 130.0,
+      "minMicroseconds": 125.0,
+      "maxMicroseconds": 138.0,
+      "notes": "Voronoi crack distance field"
+    },
+    {
+      "function": "grunge_composite",
+      "category": "texture",
+      "medianMicroseconds": 700.0,
+      "minMicroseconds": 680.0,
+      "maxMicroseconds": 730.0,
+      "notes": "Composite grunge (scratches+rust+wear)"
+    },
+    {
+      "function": "rd_pattern_animated",
+      "category": "texture",
+      "medianMicroseconds": 200.0,
+      "minMicroseconds": 195.0,
+      "maxMicroseconds": 210.0,
+      "notes": "Reaction-diffusion animated approx"
+    },
+    {
+      "function": "palette",
+      "category": "color",
+      "medianMicroseconds": 15.0,
+      "minMicroseconds": 14.0,
+      "maxMicroseconds": 17.0,
+      "notes": "IQ cosine palette (4-param)"
+    },
+    {
+      "function": "tone_map_aces",
+      "category": "color",
+      "medianMicroseconds": 25.0,
+      "minMicroseconds": 24.0,
+      "maxMicroseconds": 27.0,
+      "notes": "ACES tone mapping (filmic)"
+    },
+    {
+      "function": "chromatic_aberration_radial",
+      "category": "color",
+      "medianMicroseconds": 30.0,
+      "minMicroseconds": 29.0,
+      "maxMicroseconds": 32.0,
+      "notes": "Chromatic aberration (radial)"
+    },
+    {
+      "function": "mat_polished_chrome",
+      "category": "materials",
+      "medianMicroseconds": 820.0,
+      "minMicroseconds": 800.0,
+      "maxMicroseconds": 850.0,
+      "notes": "Polished chrome (fbm8 streak)"
+    },
+    {
+      "function": "mat_marble",
+      "category": "materials",
+      "medianMicroseconds": 1750.0,
+      "minMicroseconds": 1700.0,
+      "maxMicroseconds": 1820.0,
+      "notes": "Marble (curl_noise + fbm8 veins)"
+    },
+    {
+      "function": "mat_granite",
+      "category": "materials",
+      "medianMicroseconds": 1900.0,
+      "minMicroseconds": 1850.0,
+      "maxMicroseconds": 1960.0,
+      "notes": "Granite (worley_fbm + fbm8 + triplanar)"
+    },
+    {
+      "function": "mat_ocean",
+      "category": "materials",
+      "medianMicroseconds": 2600.0,
+      "minMicroseconds": 2550.0,
+      "maxMicroseconds": 2680.0,
+      "notes": "Ocean water (fbm8 capillary ripple)"
+    }
+  ]
+}

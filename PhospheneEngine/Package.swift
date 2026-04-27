@@ -105,6 +105,13 @@ let package = Package(
             ],
             path: "Sources/SoakRunner"
         ),
+        .executableTarget(
+            name: "UtilityCostTableUpdater",
+            dependencies: [
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+            ],
+            path: "Sources/UtilityCostTableUpdater"
+        ),
         .testTarget(
             name: "PhospheneEngineTests",
             dependencies: [
