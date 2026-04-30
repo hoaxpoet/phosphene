@@ -19,5 +19,6 @@
   "fatigue_risk": "medium",
   "transition_affordances": ["crossfade"],
   "section_suitability": ["buildup", "peak"],
-  "complexity_cost": { "tier1": 0.8, "tier2": 0.4 }
+  "complexity_cost": { "tier1": 0.8, "tier2": 0.4 },
+  "certified": false
 }

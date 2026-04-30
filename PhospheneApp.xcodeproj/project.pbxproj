@@ -147,6 +147,7 @@
 		K10041 /* SettingsMigratorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20041; };
 		K10042 /* SettingsViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20042; };
 		K10043 /* SettingsViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20043; };
+		K10044 /* SettingsStoreCertifiedToggleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20044; };
 		K10050 /* PresetScoringContextProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20050; };
 		K10051 /* SessionRecorderRetentionPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20051; };
 		K10052 /* OnboardingResetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20052; };
@@ -309,6 +310,7 @@
 		K20041 /* SettingsMigratorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsMigratorTests.swift; sourceTree = "<group>"; };
 		K20042 /* SettingsViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewModelTests.swift; sourceTree = "<group>"; };
 		K20043 /* SettingsViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewTests.swift; sourceTree = "<group>"; };
+		K20044 /* SettingsStoreCertifiedToggleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStoreCertifiedToggleTests.swift; sourceTree = "<group>"; };
 		K20050 /* PresetScoringContextProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetScoringContextProviderTests.swift; sourceTree = "<group>"; };
 		K20051 /* SessionRecorderRetentionPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionRecorderRetentionPolicyTests.swift; sourceTree = "<group>"; };
 		K20052 /* OnboardingResetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingResetTests.swift; sourceTree = "<group>"; };
@@ -624,6 +626,7 @@
 				K20041 /* SettingsMigratorTests.swift */,
 				K20042 /* SettingsViewModelTests.swift */,
 				K20043 /* SettingsViewTests.swift */,
+				K20044 /* SettingsStoreCertifiedToggleTests.swift */,
 				K20050 /* PresetScoringContextProviderTests.swift */,
 				K20051 /* SessionRecorderRetentionPolicyTests.swift */,
 				K20052 /* OnboardingResetTests.swift */,
@@ -885,6 +888,7 @@
 				K10041 /* SettingsMigratorTests.swift in Sources */,
 				K10042 /* SettingsViewModelTests.swift in Sources */,
 				K10043 /* SettingsViewTests.swift in Sources */,
+				K10044 /* SettingsStoreCertifiedToggleTests.swift in Sources */,
 				K10050 /* PresetScoringContextProviderTests.swift in Sources */,
 				K10051 /* SessionRecorderRetentionPolicyTests.swift in Sources */,
 				K10052 /* OnboardingResetTests.swift in Sources */,

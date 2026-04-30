@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "duration_target_seconds": 180,
+  "rationale": "Multi-genre coverage exercises the V.6 fidelity rubric across mood quadrants and stem-energy distributions. Track choices are Matt's; this file is the canonical record so the reel is reproducible.",
+  "segments": [
+    {
+      "label": "sparse jazz",
+      "duration_seconds": 60,
+      "track_title": "Blue in Green",
+      "artist": "Miles Davis",
+      "rationale": "Low arousal, high valence; tests silence fallback and quiet-passage fixtures (Increment 5.2). Exercises AGC behaviour on low-density material — kick-less, brush-drums or piano trio preferred.",
+      "expected_mood_quadrant": "calm",
+      "estimated_bpm_range": [70, 110]
+    },
+    {
+      "label": "hard electronic",
+      "duration_seconds": 60,
+      "track_title": "Love Rehab",
+      "artist": "Chaim",
+      "rationale": "High arousal, mixed valence; exercises beat-heavy fixture, tests beat-pulse amplitude clamps from Increment U.9. Sustained kick at 125–140 BPM exercises the bass AGC path and drums_beat deviation primitive.",
+      "expected_mood_quadrant": "tense_or_happy",
+      "estimated_bpm_range": [120, 160]
+    },
+    {
+      "label": "symphonic or wide-dynamic-range",
+      "duration_seconds": 60,
+      "track_title": "Mountains",
+      "artist": "Hans Zimmer",
+      "rationale": "Wide dynamic range; exercises AGC ramp-up and ramp-down, dynamics-driven preset selection, and the SilenceDetector .suspect → .silent → .recovering cycle on quiet passages.",
+      "expected_mood_quadrant": "wide_arc",
+      "estimated_bpm_range": [60, 180]
+    }
+  ],
+  "notes": [
+    "Record the reel in one unedited take — do not cut between segments. Transitions are part of the artefact.",
+    "Re-recording: when V.6+ uplifts land, increment 'version' and commit a dated copy quality_reel_v2.mp4. Prior artefacts remain referenceable.",
+    "See RUNBOOK.md → 'Recording the quality reel' for the capture procedure."
+  ]
+}

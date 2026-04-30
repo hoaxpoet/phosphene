@@ -5,6 +5,52 @@
 import Foundation
 import Shared
 
+// MARK: - RubricProfile
+
+/// Which fidelity rubric ladder a preset is evaluated against (V.6, D-###).
+///
+/// Four stylized-2D / diagnostic presets (Plasma, Waveform, Nebula, SpectralCartograph)
+/// use `.lightweight` — they are exempt from the full detail-cascade and material-count
+/// requirements. All other presets use `.full`.
+public enum RubricProfile: String, Sendable, Codable, Hashable {
+    /// 7 mandatory + 4 expected + 4 preferred = 15 items.
+    case full
+    /// 4-item stylization contract (silence, deviation, perf, frame-match).
+    case lightweight
+}
+
+// MARK: - RubricHints
+
+/// Author-asserted rubric flags for items that cannot be statically detected.
+///
+/// Set these in the JSON sidecar's `"rubric_hints"` object when the preset meets
+/// the criterion but the static analyzer cannot confirm it from source alone.
+public struct RubricHints: Sendable, Codable, Equatable {
+    /// P1: a distinct hero specular highlight is visible in ≥60% of frames.
+    public let heroSpecular: Bool
+    /// P3: volumetric light shafts or dust motes are present.
+    public let dustMotes: Bool
+
+    public init(heroSpecular: Bool = false, dustMotes: Bool = false) {
+        self.heroSpecular = heroSpecular
+        self.dustMotes = dustMotes
+    }
+
+    /// Default: all hints false (no author assertions).
+    public static let allFalse = RubricHints()
+
+    private enum CodingKeys: String, CodingKey {
+        case heroSpecular = "hero_specular"
+        case dustMotes    = "dust_motes"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        heroSpecular = try c.decodeIfPresent(Bool.self, forKey: .heroSpecular) ?? false
+        dustMotes    = try c.decodeIfPresent(Bool.self, forKey: .dustMotes)    ?? false
+    }
+}
+
 // MARK: - FatigueRisk
 
 /// How visually fatiguing this preset is over extended viewing.

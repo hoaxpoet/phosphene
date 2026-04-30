@@ -111,6 +111,12 @@ public struct PresetScoringContext: Sendable {
     /// Defaults to empty for backward-compat.
     public let sessionExcludedPresets: Set<String>
 
+    /// When false (default), the scorer hard-excludes presets where `certified == false`.
+    ///
+    /// Set to true via Settings → Visuals → "Show uncertified presets" to reveal
+    /// in-progress presets for testing. Defaults to false for backward-compat (D-053).
+    public let includeUncertifiedPresets: Bool
+
     // MARK: - Init
 
     public init(
@@ -124,7 +130,8 @@ public struct PresetScoringContext: Sendable {
         qualityCeiling: QualityCeiling = .auto,
         familyBoosts: [PresetCategory: Float] = [:],
         temporarilyExcludedFamilies: Set<PresetCategory> = [],
-        sessionExcludedPresets: Set<String> = []
+        sessionExcludedPresets: Set<String> = [],
+        includeUncertifiedPresets: Bool = false
     ) {
         self.deviceTier = deviceTier
         self.frameBudgetMs = frameBudgetMs ?? deviceTier.frameBudgetMs
@@ -137,6 +144,7 @@ public struct PresetScoringContext: Sendable {
         self.familyBoosts = familyBoosts
         self.temporarilyExcludedFamilies = temporarilyExcludedFamilies
         self.sessionExcludedPresets = sessionExcludedPresets
+        self.includeUncertifiedPresets = includeUncertifiedPresets
     }
 
     // MARK: - Factory

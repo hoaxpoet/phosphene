@@ -98,6 +98,22 @@ struct VisualsSettingsSection: View {
                     )
                 )
             }
+
+            Section(NSLocalizedString("settings.visuals.certification.title", comment: "")) {
+                Toggle(
+                    NSLocalizedString("settings.visuals.show_uncertified_presets.label", comment: ""),
+                    isOn: Binding(
+                        get: { viewModel.showUncertifiedPresets },
+                        set: { viewModel.showUncertifiedPresets = $0 }
+                    )
+                )
+                .accessibilityLabel(
+                    NSLocalizedString("settings.visuals.show_uncertified_presets.accessibility", comment: "")
+                )
+                Text(NSLocalizedString("settings.visuals.show_uncertified_presets.hint", comment: ""))
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
         }
         .formStyle(.grouped)
         .navigationTitle(NSLocalizedString("settings.group.visuals", comment: ""))

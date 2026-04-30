@@ -1,1 +1,4 @@
 PhospheneEngine/Sources/ML/Weights/*.bin filter=lfs diff=lfs merge=lfs -text
+docs/quality_reel*.mp4 filter=lfs diff=lfs merge=lfs -text
+docs/VISUAL_REFERENCES/**/*.jpg filter=lfs diff=lfs merge=lfs -text
+docs/VISUAL_REFERENCES/**/*.png filter=lfs diff=lfs merge=lfs -text

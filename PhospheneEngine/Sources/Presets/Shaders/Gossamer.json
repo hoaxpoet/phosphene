@@ -21,5 +21,6 @@
   "fatigue_risk": "low",
   "transition_affordances": ["crossfade", "morph"],
   "section_suitability": ["ambient", "bridge", "comedown"],
-  "complexity_cost": { "tier1": 6.0, "tier2": 3.5 }
+  "complexity_cost": { "tier1": 6.0, "tier2": 3.5 },
+  "certified": false
 }

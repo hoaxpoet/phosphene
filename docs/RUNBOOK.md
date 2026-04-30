@@ -349,3 +349,46 @@ prior reel as `quality_reel_v<N>.mp4` so prior artefacts remain referenceable.
 **Do NOT build an in-engine capture pipeline for this.** QuickTime is sufficient;
 adding video output to the engine is a cross-cutting change with frame-pacing
 and file-handling scope that doesn't belong in a curation increment. (D-064(d))
+
+---
+
+## Reviewing rubric reports (Increment V.6)
+
+### Print the full rubric breakdown for all presets
+
+```bash
+swift test --package-path PhospheneEngine --filter "FidelityRubricReportTests/rubricReport_allPresetsLoad" 2>&1 | grep -E "\[.\]|pass|FAIL|manual"
+```
+
+Runs Suite 1 of `FidelityRubricTests` and prints each preset's per-item breakdown. No content assertions — this is a diagnostic readout only.
+
+### Locking in a newly passing preset (Suite 2 gate)
+
+After a fidelity uplift that flips a preset's `meetsAutomatedGate` from `false → true`:
+
+1. Run the report above and confirm the preset shows `[✓]`.
+2. Open `PhospheneEngine/Tests/PhospheneEngineTests/Renderer/FidelityRubricTests.swift`.
+3. In `expectedAutomatedGate` (Suite 2), change the preset's entry from `false` to `true`.
+4. Run `swift test --package-path PhospheneEngine --filter FidelityRubricGateTests` to confirm no regressions.
+5. Commit the updated dictionary referencing the preset and D-067.
+
+### Certifying a preset (setting `certified: true`)
+
+1. Confirm `meetsAutomatedGate == true` in the report above.
+2. Open each reference image in `docs/VISUAL_REFERENCES/<preset>/README.md` and compare against a live session frame.
+3. If visually satisfactory, set `"certified": true` in `PhospheneEngine/Sources/Presets/Shaders/<Preset>.json`.
+4. Run `swift test --package-path PhospheneEngine --filter FidelityRubricTests` — all suites must pass.
+5. Run `swift test --package-path PhospheneEngine --filter OrchestratorCertifiedFilterTests` — preset should now be included by the Orchestrator.
+
+### Debugging a failing rubric item
+
+| Item | Diagnosis |
+|------|-----------|
+| M1 (detail cascade) | Add `// macro`, `// meso`, `// micro` comments OR 3+ distinct scale literals in noise calls |
+| M2 (octave count) | Use `fbm8(` or `warped_fbm(` — single-octave noise fails |
+| M3 (materials) | Add 3+ `mat_*` cookbook calls: `mat_polished_chrome(`, `mat_frosted_glass(`, `mat_wet_stone(`, etc. |
+| M4 (deviation) | Replace `f.bass > 0.x` with `f.bass_dev`/`f.bass_rel`; at least one deviation field required |
+| M5 (silence) | Check D-019 warmup: `smoothstep(0.02, 0.06, totalStemEnergy)` gate before stem reads |
+| M6 (perf) | Lower `complexity_cost.tier2` in JSON sidecar or optimize shader |
+| P1 (hero specular) | Set `"rubric_hints": {"hero_specular": true}` in JSON after visual confirmation |
+| P3 (dust motes) | Set `"rubric_hints": {"dust_motes": true}` or add `ls_radial_step_uv(` call |

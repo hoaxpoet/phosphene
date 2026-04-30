@@ -1106,6 +1106,8 @@ The Claude Code session landed the V.5 runway in one sitting. Matt's curation ru
 
 ### Increment V.6 — Fidelity rubric + certification pipeline
 
+**Delivered (2026-04-30):** `Sources/Presets/Certification/` (3 files): `RubricResult.swift`, `FidelityRubric.swift` (`DefaultFidelityRubric` — M1–M7 mandatory, E1–E4 expected, P1–P4 preferred, lightweight L1–L4), `PresetCertificationStore.swift` (actor, lazy cache). `PresetDescriptor` + all 13 JSON sidecars extended with `certified/rubric_profile/rubric_hints`. `PresetScoringContext.includeUncertifiedPresets` gate. `DefaultPresetScorer` uncertified check first; `excludedReason: "uncertified"`. `SettingsStore.showUncertifiedPresets` + Settings toggle. 4 test files (26+ @Test functions). D-067.
+
 **Scope:** Implement the `SHADER_CRAFT.md §12` rubric as automated + manual gates:
 - Automated: detail-cascade detection via static analysis of preset Metal source (look for `fbm8` / `worley_fbm` / multiple material calls / triplanar usage); noise-octave counting; material-count verification; D-026 deviation-primitive usage; silence-fallback regression test.
 - Manual: Matt-approved reference frame match gates certification.
@@ -1115,11 +1117,11 @@ The Claude Code session landed the V.5 runway in one sitting. Matt's curation ru
 Supersedes (without deleting) Increment 5.2's weak invariants — those stay as a passing prerequisite.
 
 **Done when:**
-- Automated rubric scores every preset; report prints each preset's 7+4+4 breakdown.
-- `certified: Bool` field defaults to false for Matt-approved presets only.
-- Orchestrator filter excludes uncertified.
-- Toggle in Settings reveals uncertified.
-- Increment 5.2 invariants still passing.
+- [x] Automated rubric scores every preset; report prints each preset's 7+4+4 breakdown.
+- [x] `certified: Bool` field defaults to false for Matt-approved presets only.
+- [x] Orchestrator filter excludes uncertified.
+- [x] Toggle in Settings reveals uncertified.
+- [x] Increment 5.2 invariants still passing.
 
 **Verify:** `swift test --package-path PhospheneEngine --filter FidelityRubricTests`
 
@@ -1193,7 +1195,7 @@ Supersedes (without deleting) Increment 5.2's weak invariants — those stay as 
 
 ### Increment V.12 — Glass Brutalist v2 + Kinetic Sculpture v2
 
-**Scope:** Fidelity uplift for the remaining ray-march presets not covered in V.7–V.11. Glass Brutalist: detail normals on concrete; POM on walls; frosted glass material for fins; volumetric light shafts through windows. Kinetic Sculpture: brushed aluminum material per `§4.2`; polished chrome with anisotropic streaks; dust motes in ambient space.
+**Scope:** Fidelity uplift for the remaining ray-march presets not covered in V.7–V.11. Glass Brutalist: board-form concrete lineage (plank impressions, tie-rod holes, weathering — Salk/Scarpa direction, not Ando smooth); detail normals on concrete; POM on walls; pattern-glass material for fins per `SHADER_CRAFT.md §4.5b` (voronoi cellular, NOT fbm-frost); volumetric light shafts through windows. Wet-concrete variant explicitly out of scope — `mat_wet_stone` reserved for other presets. References curated in `docs/VISUAL_REFERENCES/glass_brutalist/` (8 images, 7 trait slots + 1 anti). Kinetic Sculpture: brushed aluminum material per `§4.2`; polished chrome with anisotropic streaks; dust motes in ambient space.
 
 **Done when:** both presets pass fidelity rubric 10/15 with all mandatory; `certified: true` on both.
 

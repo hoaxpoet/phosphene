@@ -217,6 +217,28 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
     /// visual-wiring layer; the scorer only checks key membership.
     public let stemAffinity: [String: String]
 
+    // MARK: - V.6 Certification Metadata
+
+    /// V.6 certification flag. Set to `true` only after Matt has performed a visual
+    /// reference-frame match against `docs/VISUAL_REFERENCES/<preset>/`.
+    ///
+    /// The Orchestrator excludes uncertified presets from session planning unless the
+    /// user enables "Show uncertified presets" in Settings → Visuals. Defaults to `false`.
+    public let certified: Bool
+
+    /// Which rubric ladder this preset is evaluated against (full vs. lightweight).
+    ///
+    /// Lightweight presets (Plasma, Waveform, Nebula, SpectralCartograph) are evaluated
+    /// against a 4-item stylization contract instead of the full 15-item rubric. Per D-064.
+    /// Defaults to `.full`.
+    public let rubricProfile: RubricProfile
+
+    /// Author-asserted rubric hints for items P1 (hero specular) and P3 (dust motes).
+    ///
+    /// Static analysis cannot determine these; the preset author sets them in the sidecar.
+    /// Defaults to `.allFalse`.
+    public let rubricHints: RubricHints
+
     // MARK: - CodingKeys
 
     /// Keys for all stored properties — used by both `init(from:)` and `encode(to:)`.
@@ -248,6 +270,9 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         case sectionSuitability = "section_suitability"
         case complexityCost = "complexity_cost"
         case stemAffinity = "stem_affinity"
+        case certified
+        case rubricProfile = "rubric_profile"
+        case rubricHints = "rubric_hints"
     }
 
     /// Keys for legacy boolean flags — decode-only, not stored as properties.
@@ -324,6 +349,24 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
             ComplexityCost.self, forKey: .complexityCost) ?? ComplexityCost()
         stemAffinity = try container.decodeIfPresent(
             [String: String].self, forKey: .stemAffinity) ?? [:]
+
+        // MARK: V.6 Certification Fields
+        certified = try container.decodeIfPresent(Bool.self, forKey: .certified) ?? false
+
+        if let rawProfile = try container.decodeIfPresent(String.self, forKey: .rubricProfile) {
+            if let parsed = RubricProfile(rawValue: rawProfile) {
+                rubricProfile = parsed
+            } else {
+                let presetName = name
+                Logging.renderer.warning(
+                    "PresetDescriptor '\(presetName)': unknown rubric_profile '\(rawProfile)' — using .full")
+                rubricProfile = .full
+            }
+        } else {
+            rubricProfile = .full
+        }
+
+        rubricHints = (try? container.decodeIfPresent(RubricHints.self, forKey: .rubricHints)) ?? .allFalse
     }
 
     /// Synthesise a `passes` array from legacy boolean flags.

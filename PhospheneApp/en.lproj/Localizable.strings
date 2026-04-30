@@ -250,6 +250,12 @@
 "settings.visuals.toasts.title"              = "Live adaptation";
 "settings.visuals.adaptation_toasts.label"   = "Show adaptation notifications";
 
+// Visuals — certification (V.6)
+"settings.visuals.certification.title"                    = "Preset quality";
+"settings.visuals.show_uncertified_presets.label"         = "Show uncertified presets";
+"settings.visuals.show_uncertified_presets.hint"          = "Off by default. Reveals presets that haven't passed quality review. Useful for testing work-in-progress presets.";
+"settings.visuals.show_uncertified_presets.accessibility" = "Show uncertified presets. Turn on to include presets pending quality review in sessions.";
+
 // Diagnostics — session recorder
 "settings.diagnostics.recorder.title"   = "Session recording";
 "settings.diagnostics.recorder.label"   = "Record sessions to disk";
