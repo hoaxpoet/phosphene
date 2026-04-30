@@ -1131,3 +1131,122 @@ Decision: **§16.2 deferred**. The 1.0 s threshold is not approached. Revisit if
 - **Fixing docs to a "unified ideal" rather than matching code**: Would create a reference that's aspirational but non-compilable. Drift between spec and code is what caused the original audit items; the fix must land in both directions simultaneously.
 - **Implementing §16.2 speculatively**: The threshold exists precisely to prevent premature optimization. Estimated < 1.0 s with margin; archiving would add build complexity for no user-observable benefit at current preamble size.
 - **`mat_velvet` with full Oren-Nayar BRDF**: The accurate Oren-Nayar implementation requires two `acos()` and two `sin()` per evaluation. For velvet used as an emissive-fuzz approximation, `pow(1-NdotV, 2)` captures the retro-reflective shape at a fraction of the cost. The cookbook is a collection of practical recipes, not a physics textbook.
+
+
+---
+
+## D-064 — Increment V.5: visual references library structure, rubric-exempt classification, lint tool placement, and quality reel capture approach
+
+### Context
+
+Increment V.5 creates `docs/VISUAL_REFERENCES/` — the fidelity contract enforcing per-preset trait requirements across V.7+ authoring sessions. Four design decisions required recording.
+
+### Decisions
+
+**(a) Per-preset README structure: full-rubric vs lightweight variant.**
+
+Two README variants were introduced. **Full-rubric** applies to the 9 artistic presets (Arachne, FerrofluidOcean, FractalTree, GlassBrutalist, Gossamer, KineticSculpture, Membrane, Starburst, VolumetricLithograph). The README carries three rubric sections (mandatory 7/7, expected ≥2/4, strongly preferred ≥1/4) matching `SHADER_CRAFT.md §12`. **Lightweight** applies to 4 presets: Plasma (demoscene hypnotic, family `hypnotic`), Waveform (family `waveform`, diagnostic spectrum view), Nebula (family `particles`, stylized particle system), SpectralCartograph (family `instrument`, diagnostic instrumentation panel). Lightweight READMEs replace the three rubric sections with a single "Stylization contract" listing what *does* matter: color modulation by audio energy, audio coverage, and readability at silence and peak. The four-layer detail cascade and 3+ material count are not meaningful requirements for these presets.
+
+Membrane (family `fluid`, passes `feedback`) was classified as full-rubric because it is an artistic feedback-loop fluid preset with depth potential for meso/micro detail and material variation, despite being a simpler render path than a ray march preset.
+
+**(b) Rubric-exempt list and rationale.**
+
+The four lightweight presets and their exemption reasons:
+- **Plasma** (`hypnotic/direct`): Demoscene interference-pattern aesthetic; the "3 distinct materials" and "4-layer detail cascade" requirements are undefined for a 2D colour-field shader. The relevant contract is: hue/saturation modulation must remain readable at silence vs peak energy.
+- **Waveform** (`waveform/direct`): Diagnostic spectrum visualiser. Rubric does not apply; the relevant contract is legibility and colour accuracy at all signal levels.
+- **Nebula** (`particles/direct`): Stylized particle system. No geometry cascade or material system; the particle render path doesn't support PBR materials. The relevant contract is palette coherence and emission density tied to energy.
+- **SpectralCartograph** (`instrument/direct`): Four-panel MIR diagnostic. This is an instrument, not an aesthetic preset. The rubric has no meaningful application. The relevant contract is readability and correctness of displayed MIR data.
+
+**(c) Lint tool placement: PhospheneTools (new package) vs PhospheneEngine (existing).**
+
+The `CheckVisualReferences` lint CLI was placed in a new `PhospheneTools/` package rather than in `PhospheneEngine/Sources/`. Rationale: the lint check has no runtime dependency on the PhospheneEngine module graph (Audio, DSP, ML, Renderer, etc.); bundling it in PhospheneEngine would add build-time cost to a tool with no coupling to that code. A separate lightweight package (`PhospheneTools/Package.swift`) depends only on `swift-argument-parser`. This also establishes the package location for future `PhospheneTools/MilkdropTranspiler` (Phase MD.1+), consistent with `ENGINEERING_PLAN.md §Phase MD`.
+
+The lint tool discovers presets by replicating `PresetLoader`'s flat filesystem scan (`Shaders/*.metal`, excluding `ShaderUtilities.metal`), so the preset list is always authoritative without importing the runtime module. This avoids hardcoding and keeps the lint correct even as new presets are added.
+
+Default mode: fail-soft (prints warnings, exits 0). `--strict` flag: exits non-zero on any warning. The default flips to strict in V.6 once Matt's curation is complete; the decision is documented here to prevent the flip from being forgotten.
+
+**(d) Quality reel capture: QuickTime, not in-engine pipeline.**
+
+The quality reel (`docs/quality_reel.mp4`) is captured using macOS QuickTime Screen Recording (Cmd+Shift+5). An in-engine capture pipeline (ScreenCaptureKit video output, AVAssetWriter, frame-paced recording loop) was explicitly ruled out. Phosphene already uses ScreenCaptureKit for audio; adding simultaneous video output introduces a cross-cutting concern: frame-pacing interaction with the Metal render loop, `AVAssetWriter` initialization timing, drawable-size locking (see Failed Approach #28), and file-handling at session boundaries. These concerns have nothing to do with V.5's curation-framework scope. QuickTime delivers adequate quality (H.264 1080p60) with zero engine risk. The no-in-engine-capture decision is enforced in `RUNBOOK.md § Recording the quality reel`.
+
+### What Was Rejected
+
+- **Plasma and Waveform as full-rubric with a "2D exemption" on the cascade**: Creates a half-measured rubric that's harder to verify than a clean lightweight/full split. The distinction is clearer as a discrete variant than as per-rule exemptions.
+- **Nebula as full-rubric (borderline)**: Nebula uses a `particles` pass, which has no PBR material system or geometry detail cascade. Treating it as full-rubric would require fabricating rubric compliance for requirements the render path fundamentally doesn't support.
+- **Bash script for the lint check**: A bash script would hardcode the preset list (drift risk when new presets land) or use `find` + string manipulation to discover them (fragile). Swift CLI reads the same `Shaders/` directory that `PresetLoader` reads; the canonical preset list can never drift.
+- **PhospheneEngine/Sources/CheckVisualReferences/**: Placing the tool inside PhospheneEngine was the V.4 pattern (`UtilityCostTableUpdater`). Rejected here because that tool needs `ArgumentParser` only and has zero runtime coupling; a new lightweight `PhospheneTools` package communicates the separation clearly and sets the precedent for Phase MD tooling.
+
+---
+
+## D-065 — §2.3 amendment: composite-preset image counts and AI-generated anti-reference carve-out
+
+**Status:** Accepted
+
+### Context
+
+`SHADER_CRAFT.md §2.1` step 2 (established in D-064 / Increment V.5) specifies "3–5 reference images" per preset. `§2.3` of the same document requires that references be "curated, not AI-generated." Two divergences from these rules surfaced during Ferrofluid Ocean reference curation (V.9, pre-implementation):
+
+1. **Composite-preset image count.** Ferrofluid Ocean's traits are not contained in any single photographable subject. The §10.3 spec borrows from ferrofluid lab macro, salt flats, dark coastlines, lotus leaves, sculpture lighting, storm photography, and underwater photography. Each trait requires its own dedicated reference; the resulting folder contains 11 images, well past the §2.1 "3–5" target. Trimming would require collapsing distinct-trait references into composites, forcing Claude Code sessions to read traits from images that aren't dedicated to teaching them.
+
+2. **Anti-reference sourcing.** The anti-reference slot (`05_anti_*`) depicts a *failure mode* of the preset, not a target. For Ferrofluid Ocean the most pedagogically useful anti-reference is "ferrofluid that has lost its Rosensweig spike topology and become a generic chrome blob" — a phenomenon that does not occur in nature and therefore cannot be photographed. The alternatives are an AI-generated image of the failure mode, or a v1-baseline frame capture from the preset's existing implementation; the v1 capture is the long-term right answer but is not available pre-implementation.
+
+### Decisions
+
+**(a) Image count target softened from "3–5" to "3–5 typical, more permitted for composite presets, each image must isolate a distinct trait."**
+
+`SHADER_CRAFT.md §2.1` step 2 amended. The 3–5 target is preserved as the default expectation; composite presets earn additional images by per-image trait justification, not by padding. The lint tool (`CheckVisualReferences`, D-064) is unchanged — it does not enforce a count ceiling, only that each preset has a populated folder with conformant filenames.
+
+**(b) §2.3 amended to permit AI-generated images in the anti-reference slot only, under a narrow carve-out.**
+
+Carve-out conditions:
+- Only the anti-reference slot (`05_anti_*`).
+- Filename must carry the `_AIGEN` suffix (e.g. `05_anti_chrome_blob_AIGEN.jpg`) so the AI provenance is visible in any session prompt that cites the file.
+- README annotation must state that *every* trait of the image is anti — there is no partial-trust read of any visual property.
+- README Provenance section must record a replacement plan, typically a v1-baseline frame capture, to be substituted when the preset's first implementation ships.
+
+The carve-out does not extend to any other slot (`01_macro_*` through `04_specular_*`, `06_palette_*`, `07_atmosphere_*`, `08_lighting_*`, `09_*`). Real photography or controlled in-engine capture remains mandatory for those slots.
+
+**(c) "Actively disregard" annotation convention promoted to a rule-level requirement.**
+
+Reference annotations must specify three things, not two: (1) which traits are mandatory, (2) which are decorative, and (3) which traits of the image must be *actively disregarded* by Claude Code sessions reading the folder. The third category is added because real photography routinely contains structural cues that read as directives but are not — e.g. the radial vein pattern in a lotus-leaf droplet reference is not a directive about spike arrangement, and the colored gels in studio ferrofluid macros are not directives about palette. Without explicit disregard annotations, the more references a folder accumulates, the more confounders Claude Code sessions ingest. The Ferrofluid Ocean folder demonstrates the pattern; future preset folders inherit the convention.
+
+### What Was Rejected
+
+- **Hard image-count ceiling (e.g. "≤8 images per folder").** Would force composite presets to collapse distinct-trait references into composites, defeating the purpose of per-image annotation. The right enforcement is per-image trait justification, not a count.
+- **Blanket AI-generation permission.** Would erode the §2.3 "curated > generated" intent in the cases where it actually matters (the target-trait slots). Confining the carve-out to the anti-reference slot preserves the rule's force everywhere it's pedagogically meaningful.
+- **No `_AIGEN` suffix; AI-provenance only in the README.** Filename suffix is enforceable by lint and visible in session prompts; README-only disclosure is forgettable.
+- **Permanent acceptance of AI-generated anti-references.** The replacement-plan requirement (v1-baseline capture once the preset ships) ensures AI generation is a stopgap, not a permanent feature of the reference library.
+
+---
+
+## D-066 — Spotify as accepted canonical reel source despite reactive-mode degradation (Increment V.5)
+
+**Status:** Accepted
+
+### Context
+
+The v1 quality reel (`docs/quality_reel.mp4`) was captured using Spotify Lossless as the audio source (Blue in Green → Love Rehab → Mountains). Phosphene has no Spotify OAuth integration, which means the normal preparation pipeline (`startSession(source: .spotify(...))` → `.ready`) cannot run. The session operated in reactive mode: `startAdHocSession()` → `.playing` directly, with `DefaultReactiveOrchestrator` driving preset selection live. Two questions arose: (1) does reactive-mode degradation invalidate the reel as a quality artifact? (2) should Apple Music be required for all future reels?
+
+### Decision
+
+**Spotify is accepted for the v1 reel.** Reactive-mode degradation does not invalidate V.6 fidelity evaluation because the certification rubric (`SHADER_CRAFT.md §12`) is per-preset visual quality: detail cascade, material count, noise octaves, deviation-primitive audio, reference frame match. None of these criteria depend on the Orchestrator having a pre-planned session or on transitions occurring at structural boundaries. The rubric evaluates individual preset frames, not session-arc quality.
+
+The known degradation is:
+- No stem pre-analysis: the Orchestrator cannot use `StemCache` data for preset scoring at session start. Stems arrive from live separation after ~10 s.
+- No structural transitions: `DefaultReactiveOrchestrator` switches presets on score gap (> 0.20) or confidence (≥ 0.5), not on song-structure boundaries. Transitions may feel arbitrary.
+- No session plan: `PlannedSession` is nil; `PreparationProgressView` and `ReadyView` are bypassed.
+
+These degrade session-arc quality, not per-preset rendering quality. V.6 certification is per-preset; session-arc quality is evaluated separately in Phase MD and Phase V.7+ uplift sessions.
+
+**Future reels should prefer Apple Music** when session-arc quality is under evaluation — specifically for any reel used to verify Orchestrator behavior, transition policy, or plan fidelity. For pure visual-quality evaluation (V.6+), either source is acceptable provided the Spotify source settings (Normalize Volume off, Lossless quality) and post-recording sanity checks in `RUNBOOK.md § Using Spotify as the source` are followed.
+
+### What Was Rejected
+
+- **Requiring a re-record with Apple Music before V.6.** Would delay V.6 with no improvement to the criteria being evaluated. The reel's purpose at V.6 is to provide reference frames for the per-preset rubric — session arc is irrelevant.
+- **Treating reactive mode as equivalent to full-session mode for all future artifacts.** Reactive mode is a known degradation. Future reels that test session-planning quality must use Apple Music or a local-file playlist that allows the full preparation pipeline to run.
+
+### Implication
+
+`SHADER_CRAFT.md §2.1` step 2 and `§2.3` opening paragraph are amended in this commit. `CheckVisualReferences` (D-064) does not require updates — neither the count change nor the anti-reference carve-out introduces new enforceable invariants beyond filename conformance, which already accepts the `_AIGEN` suffix. Future amendment to lint: optional `--strict-no-aigen` flag that fails on any `_AIGEN`-suffixed file, useful for verifying anti-reference replacements after a preset's first implementation ships.
+
+The Ferrofluid Ocean reference folder (`docs/VISUAL_REFERENCES/ferrofluid_ocean/`) is the first folder authored under the amended rule and serves as the worked example for future composite presets.

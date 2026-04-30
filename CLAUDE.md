@@ -505,7 +505,7 @@ A preset that skips any cascade layer reads as primitive, regardless of clever a
 
 **Authoring workflow (mandatory).** Coarse-to-fine, 9 passes: macro geometry → materials → meso variation → micro detail → specular breakup → atmosphere → lighting polish → audio reactivity → review. See `SHADER_CRAFT.md §2.2`. Writing a finished-looking shader in a single pass is the observed cause of every primitive output.
 
-**Reference-image-first (mandatory).** Before writing MSL, read `docs/VISUAL_REFERENCES/<preset>/README.md` and the curated images. Authoring from prose description alone is observed Failed Approach #40. Session prompts must cite specific reference image filenames for the traits being implemented.
+**Reference-image-first (mandatory).** Before writing MSL, read `docs/VISUAL_REFERENCES/<preset>/README.md` and the curated images. Authoring from prose description alone is observed Failed Approach #40. Session prompts must cite specific reference image filenames for the traits being implemented. Completeness and naming are enforced by `swift run --package-path PhospheneTools CheckVisualReferences` (Increment V.5, D-064).
 
 **Rubric (enforced at certification — Increment V.6).**
 
@@ -688,7 +688,7 @@ No CoreML dependency. All ML uses MPSGraph (GPU) or Accelerate (CPU).
 
 ## Current Status
 
-**Phase U (UX Architecture) complete — U.1 through U.9 + U.6b. Phase 6 complete (6.1, 6.2, 6.3). Phase 7 complete (7.1, 7.2). Phase V through V.4 complete. Phase 4 (Orchestrator), Phase 3, and Phase 2.5 (session preparation) complete. Milestones A, B, and C achieved.** Recent landed work:
+**Phase U (UX Architecture) complete — U.1 through U.9 + U.6b. Phase 6 complete (6.1, 6.2, 6.3). Phase 7 complete (7.1, 7.2). Phase V through V.4 complete. V.5 in progress (reel ✅, references 5/11). Phase 4 (Orchestrator), Phase 3, and Phase 2.5 (session preparation) complete. Milestones A, B, and C achieved.** Recent landed work:
 
 - **Test suite stabilization** — Fixed all pre-existing test failures. Root causes fixed: (1) `@MainActor` backlog under 769-test parallel execution — widened sleep margins in timing-sensitive tests; (2) Increment 7.1 untracked service files (`DisplayChangeCoordinator`, `CaptureModeSwitchCoordinator`, `NetworkRecoveryCoordinator`) missing from Xcode project — added; (3) `SessionPreparer.swift` stray `}` from linter refactor leaving `resumeFailedNetworkTracks()` outside class body — wrapped in extension; (4) `FrameTimingReporter` P99 float-precision bug (`Float(100) × 0.99 = 98.99...` truncates to 98, returning wrong bucket) — fixed by using `Double` for threshold; (5) `SoakTestHarness.swift` missing `import Audio` + `import Renderer`, `@available(macOS 14.2, *)` annotation, and stored-property visibility for cross-file extensions. **769 engine tests (81 suites); 143 app tests (3 skipped); 0 SwiftLint violations.**
 - **Increment U.6b: Live adaptation keyboard shortcut semantics** — `DefaultPlaybackActionRouter` fully wired (all 7 methods: `moreLikeThis`, `lessLikeThis`, `reshuffleUpcoming`, `presetNudge`, `rePlanSession`, `undoLastAdaptation`, `toggleMoodLock`). Adaptation state on router (`familyBoosts`, `temporaryFamilyExclusions`, `sessionExcludedPresets`, `adaptationHistory` bounded at 8, `lastNegativeNudgeAt`, `ambientHintShown`, `lastPlayedPresetID`). `PresetScoringContext` extended with `familyBoosts`, `temporarilyExcludedFamilies`, `sessionExcludedPresets` (D-053 additive-defaults, backward-compat). `PresetScoreBreakdown` gains `familyBoost: Float`; `DefaultPresetScorer` checks session/family exclusions first, then adds boost. `PlannedSession.extendingCurrentPreset(by:at:)` in `LiveAdapter+Patching.swift`. `PresetCategory.displayName` for toast copy. Injectable closures pattern throughout for testability. Double-`-` ambient hint fires once per session after two `lessLikeThis()` calls within 90 s. Undo restores `livePlan` only (preference state intentionally not reverted, D-058b). `LiveAdaptationToastBridge` default flipped to `true` for fresh installs. `PlaybackView.setup()` wired to live factory. 14 app tests + 6 engine tests. D-058.
@@ -734,7 +734,7 @@ No CoreML dependency. All ML uses MPSGraph (GPU) or Accelerate (CPU).
 
 The next ordered increments are:
 
-1. **Increment V.5 — Visual references library + quality reel.** Follows V.4 (audit + missing materials complete). Create `docs/VISUAL_REFERENCES/` per-preset folders with reference images and annotated READMEs. See `docs/ENGINEERING_PLAN.md §Phase V`.
+1. **Increment V.5 — Visual references library + quality reel (in progress).** Reel committed (`docs/quality_reel.mp4`, Spotify Lossless: Blue in Green / Love Rehab / Mountains, reactive mode — D-066). References 5/11 done: Arachne, Gossamer, FerrofluidOcean, FractalTree, VolumetricLithograph. Remaining 6 presets planned for next session; V.5 closes when `CheckVisualReferences --strict` passes. See `docs/ENGINEERING_PLAN.md §Phase V`.
 
 See `docs/ENGINEERING_PLAN.md` for the full forward plan with done-when criteria and verification commands. See `docs/MILKDROP_ARCHITECTURE.md` for the research that scopes Phase MV and now also gates Phase MD (Milkdrop ingestion). See `docs/UX_SPEC.md` for the product-UX source of truth and `docs/SHADER_CRAFT.md` for the shader authoring handbook.
 
