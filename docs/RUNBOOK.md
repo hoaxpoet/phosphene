@@ -268,3 +268,84 @@ caffeinate -i PhospheneEngine/.build/release/SoakRunner \
 - ML force dispatches: > 10/hour
 
 Pass these as `SoakTestHarness.Configuration` overrides for different workloads.
+
+---
+
+## Recording the quality reel
+
+The quality reel is a 3-minute screen capture of Phosphene playing the canonical
+playlist (`docs/quality_reel_playlist.json`). Output: `docs/quality_reel.mp4`,
+1080p60, H.264, ~50–150 MB. Committed via Git LFS.
+
+**Procedure:**
+
+1. Confirm all three playlist tracks are present in your Apple Music library
+   and queueable via the Phosphene Apple Music connector.
+2. Build Phosphene Release: `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' -configuration Release`.
+3. Set your display to 1920×1080 (external display or Sidecar at 1080p).
+4. Open Phosphene and connect the playlist. Wait for `.ready` state.
+5. Open macOS Screen Recording (Cmd+Shift+5 → "Record Selected Portion"), target
+   the Phosphene window. Set audio source to OFF — the reel captures visuals only.
+6. Start recording, then immediately start playback in your music app.
+7. Record continuously through all three segments (∼3 min). Do not stop and
+   re-start between segments — transitions are part of the artefact.
+8. Save as `docs/quality_reel.mp4`. Git LFS commits automatically on `git add`.
+
+**Using Spotify as the source (v1 reel procedure):**
+
+Spotify is a viable reel source — the canonical v1 reel (`docs/quality_reel.mp4`)
+was captured this way. Two settings are mandatory and one architectural difference
+requires adjustment.
+
+*Spotify settings (before recording):*
+- **Settings → Playback → Normalize volume: OFF.** Default normalization (-14 LUFS)
+  drops mastered peaks to ~0.15–0.20 RMS, compressing AGC headroom and degrading
+  the mood classifier. Failed Approach #30.
+- **Settings → Playback → Audio quality → Streaming quality: Lossless (or Very
+  High).** Lower bitrates introduce encoding artifacts that corrupt spectral flux
+  thresholds and produce spurious onsets.
+
+*Reactive-mode caveat:*
+Phosphene has no Spotify OAuth integration. Without OAuth, `SessionManager` cannot
+call `startSession(source: .spotify(...))` — the `.ready` state is never reached
+via the normal preparation pipeline. Instead, launch Phosphene and invoke
+`startAdHocSession()` (the "Start listening now" CTA in IdleView), which advances
+directly to `.playing` (reactive mode). The AI Orchestrator has no pre-planned
+session; `DefaultReactiveOrchestrator` drives preset selection live. This is a
+known degradation relative to a full Apple Music session — the Orchestrator has not
+pre-analyzed stems and cannot schedule transitions at structural boundaries. For
+V.6 fidelity evaluation, which is per-preset visual quality rather than plan
+quality, this is acceptable. See D-066.
+
+*Post-recording sanity checks:*
+1. **raw_tap.wav peak level**: Open the session's `raw_tap.wav` (in
+   `~/Documents/phosphene_sessions/<timestamp>/`) in QuickLook or Audacity.
+   Peak level should be −3 to −9 dBFS. If peak is below −12 dBFS, Spotify
+   normalization was still active — re-record.
+2. **DRM-silence scan**: `grep -i "drm\|silence\|silent\|recovering" ~/Documents/phosphene_sessions/<timestamp>/session.log`.
+   Expect zero `DRM silence` lines for Spotify Lossless. If DRM silence appears,
+   the track triggered FairPlay and the captured segment is visually inert — discard
+   that segment.
+3. **Tap-reinstall scan**: `grep -i "tap reinstall" ~/Documents/phosphene_sessions/<timestamp>/session.log`.
+   Any reinstall entries indicate a scrub-induced silence; if they appear inside a
+   recording segment, that segment's visuals will show a freeze gap — discard.
+4. **Love Rehab onset-count spot-check**: From the session's `features.csv`, count
+   `sub_bass` onset rows in any consecutive 5-second window during the Love Rehab
+   segment. Reference: 11 sub_bass onsets per 5 s at ~125 BPM (CLAUDE.md Validated
+   Onset Counts table). Counts below 6 indicate normalization was active or Lossless
+   quality was not set.
+
+**Clone instructions (if LFS not yet pulled):**
+
+```bash
+git lfs install
+git lfs pull   # downloads quality reel + ML weights + reference images
+```
+
+**Re-recording policy:** when V.6+ uplifts land, re-record if visuals changed
+materially. Increment `"version"` in `quality_reel_playlist.json` and save the
+prior reel as `quality_reel_v<N>.mp4` so prior artefacts remain referenceable.
+
+**Do NOT build an in-engine capture pipeline for this.** QuickTime is sufficient;
+adding video output to the engine is a cross-cutting change with frame-pacing
+and file-handling scope that doesn't belong in a curation increment. (D-064(d))

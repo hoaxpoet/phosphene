@@ -1052,15 +1052,55 @@ SwiftLint `file_length` special-cased for `.metal` files (raise to 1000 or path-
 
 ### Increment V.5 — Visual references library + quality reel
 
-**Scope:** Create `docs/VISUAL_REFERENCES/` directory with per-preset folders for all 11 existing presets plus placeholders for Phase MD presets. Each folder: 3–5 curated reference images with an annotated `README.md` specifying which visual traits are mandatory. Matt curates; Claude Code sessions reference by filename. Additionally: build a **quality reel** — a 3-minute multi-genre capture across (sparse jazz → hard electronic → symphonic), used as a one-glance quality-review artifact for future increments.
+**Scope:** Create `docs/VISUAL_REFERENCES/` directory with per-preset folders for all registered presets plus scaffolding for Phase MD presets. Each folder: 3–5 curated reference images with an annotated `README.md` specifying which visual traits are mandatory. Matt curates; Claude Code sessions reference by filename. Additionally: build a **quality reel** — a 3-minute multi-genre capture across (sparse jazz → hard electronic → symphonic), used as a one-glance quality-review artifact for future increments. Plus a `CheckVisualReferences` lint CLI (`PhospheneTools`) that enforces completeness and naming convention.
 
 **Done when:**
-- Every existing preset has a `docs/VISUAL_REFERENCES/<preset>/` folder with reference images and annotated README.
+- Every registered preset has a `docs/VISUAL_REFERENCES/<preset>/` folder with 3–5 reference images and fully-annotated README.
 - Quality reel `docs/quality_reel.mp4` checked in (Git LFS).
+- `swift run --package-path PhospheneTools CheckVisualReferences --strict` passes with zero warnings.
 - `SHADER_CRAFT.md §2.3` reference-image discipline is enforceable — Claude Code sessions cite filenames.
 - Matt approves curation round.
 
-**Verify:** Manual Matt review.
+**Verify:**
+```bash
+swift run --package-path PhospheneTools CheckVisualReferences --strict
+swift test --package-path PhospheneEngine --filter UtilityTests
+swift test --package-path PhospheneEngine --filter PresetRegressionTests
+xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build
+```
+
+#### Session scaffolding shipped (2026-04-26)
+
+The Claude Code session landed the V.5 runway in one sitting. Matt's curation runs in parallel and is tracked separately in `docs/VISUAL_REFERENCES/README.md`.
+
+**Pre-flight findings:**
+- **Preset count corrected: 13** (not 11 as CLAUDE.md stated). Confirmed by flat scan of `PhospheneEngine/Sources/Presets/Shaders/*.metal` matching `PresetLoader` behaviour.
+- **FerrofluidOcean and FractalTree already ship** — both have `.metal` shader files and `.json` sidecars. CLAUDE.md listed them as V.9/V.10 "full rebuild" targets implying they were new; they are existing presets targeted for rebuild. Reference folders created as required.
+- **Membrane is an undocumented production preset** — `family: fluid`, `passes: feedback`, full-rubric treatment. Not mentioned in CLAUDE.md's module map. No engine changes made; CLAUDE.md module map update deferred to V.6 housekeeping.
+- **Stalker has no `.metal` file** — CLAUDE.md describes Increment 3.5.7 (Stalker) as complete, but no `Stalker.metal`, `StalkerGait.swift`, or `StalkerState.swift` exist in the repository. No reference folder created. Flag for Matt: either the increment is in progress and the metal file hasn't landed yet, or the code was deleted. D-064 records the observation.
+- **No existing `VISUAL_REFERENCES/` precedent** — naming convention defined from scratch per Part C of the increment spec; the §2.3 example filenames (`04_specular_fiber_highlight.jpg`) are the canonical exemplar.
+- **Git LFS**: pre-existing for `ML/Weights/*.bin`; extended for `docs/quality_reel*.mp4` and `docs/VISUAL_REFERENCES/**/*.{jpg,png}`.
+- **PhospheneTools**: new package (not pre-existing); establishes the location for future `MilkdropTranspiler` (Phase MD.1+).
+
+**What shipped:**
+- `docs/VISUAL_REFERENCES/` — 13 preset folders (9 full-rubric + 4 lightweight) + `_TEMPLATE/` (2 variants) + `_NAMING_CONVENTION.md` + `phase_md/` + top-level `README.md` (curation kickoff)
+- `PhospheneTools/Package.swift` + `Sources/CheckVisualReferences/main.swift` — 5 lint rules, fail-soft default, `--strict` flag
+- `docs/quality_reel_playlist.json` — 3-segment playlist contract with rationale fields
+- `.gitattributes` — LFS rules for images + quality reel
+- `docs/RUNBOOK.md` — "Recording the quality reel" section
+- `docs/SHADER_CRAFT.md §2.3` — lint-check paragraph + `--strict` flip guidance
+- `CLAUDE.md §Visual Quality Floor` — cross-reference to lint tool
+- `docs/DECISIONS.md D-064` — records four design decisions
+
+**Lint baseline (expected pre-curation state):**
+`swift run --package-path PhospheneTools CheckVisualReferences` reports 13 "no reference images" warnings (one per preset folder), 0 errors. This is the correct intermediate state — folders scaffolded, images pending Matt's curation. Build and test suite unaffected (no engine code changed).
+
+#### Reel + partial curation landed (2026-04-30)
+
+- **Quality reel ✅** — `docs/quality_reel.mp4` committed via Git LFS. Source: Spotify Lossless (Blue in Green → Love Rehab → Mountains). Captured in reactive mode — no Spotify OAuth means no `.ready` state; `startAdHocSession()` → `.playing` directly. See D-066 for rationale on accepting reactive-mode capture for V.6 fidelity evaluation.
+- **Visual references 5/11** — Arachne ✅, Gossamer ✅, FerrofluidOcean ✅, FractalTree ✅, VolumetricLithograph ✅. Remaining 6 (GlassBrutalist, KineticSculpture, Membrane, Starburst, Nebula, SpectralCartograph — counting Matt's working total of 11 curated targets) planned for next session.
+
+**V.5 remains open.** Done-when criteria not met: 6 preset reference folders still require curation, and `CheckVisualReferences --strict` will not pass until all targeted preset folders are populated with conformant images and annotated READMEs.
 
 ---
 
