@@ -112,6 +112,11 @@ final class SettingsViewModel: ObservableObject {
         set { store.showLiveAdaptationToasts = newValue }
     }
 
+    var showUncertifiedPresets: Bool {
+        get { store.showUncertifiedPresets }
+        set { store.showUncertifiedPresets = newValue }
+    }
+
     var sessionRecorderEnabled: Bool {
         get { store.sessionRecorderEnabled }
         set { store.sessionRecorderEnabled = newValue }

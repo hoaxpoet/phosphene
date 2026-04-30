@@ -47,6 +47,7 @@ final class SettingsStore: ObservableObject {
         static let reducedMotion       = "phosphene.settings.visuals.reducedMotion"
         static let excludedPresetCategories = "phosphene.settings.visuals.excludedPresetCategories"
         static let showLiveAdaptationToasts = "phosphene.settings.visuals.showLiveAdaptationToasts"
+        static let showUncertifiedPresets   = "phosphene.settings.visuals.showUncertifiedPresets"
         // Diagnostics
         static let sessionRecorderEnabled  = "phosphene.settings.diagnostics.sessionRecorderEnabled"
         static let sessionRetention        = "phosphene.settings.diagnostics.sessionRetention"
@@ -90,6 +91,12 @@ final class SettingsStore: ObservableObject {
 
     @Published var showLiveAdaptationToasts: Bool = false {
         didSet { defaults.set(showLiveAdaptationToasts, forKey: Keys.showLiveAdaptationToasts) }
+    }
+
+    /// When true, uncertified presets appear in session planning (for testing).
+    /// Default: false — the Orchestrator only schedules certified presets.
+    @Published var showUncertifiedPresets: Bool = false {
+        didSet { defaults.set(showUncertifiedPresets, forKey: Keys.showUncertifiedPresets) }
     }
 
     // MARK: - Diagnostics
@@ -147,6 +154,7 @@ final class SettingsStore: ObservableObject {
         reducedMotion = decodeOrDefault(.matchSystem, forKey: Keys.reducedMotion)
         excludedPresetCategories = decodeSet(PresetCategory.self, forKey: Keys.excludedPresetCategories)
         showLiveAdaptationToasts = defaults.bool(forKey: Keys.showLiveAdaptationToasts)
+        showUncertifiedPresets   = defaults.bool(forKey: Keys.showUncertifiedPresets)
         sessionRecorderEnabled = defaults.object(forKey: Keys.sessionRecorderEnabled) == nil
             ? true
             : defaults.bool(forKey: Keys.sessionRecorderEnabled)

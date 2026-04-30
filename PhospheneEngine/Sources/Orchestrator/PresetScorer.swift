@@ -32,6 +32,10 @@ public struct PresetScoreBreakdown: Sendable, Hashable {
     public let exclusionReason: String?
     /// Additive family boost applied after weighted aggregation (U.6b). 0 when none.
     public let familyBoost: Float
+    /// Concise reason this preset was filtered, nil when `excluded` is false.
+    /// Distinct from `exclusionReason` — this field surfaces the specific gate name
+    /// (e.g. "uncertified", "budget", "active") for logging and test assertions.
+    public let excludedReason: String?
     /// Final combined score in [0, 1]. Always 0 when `excluded` is true.
     public let total: Float
 }
@@ -128,7 +132,7 @@ public struct DefaultPresetScorer: PresetScoring {
         context: PresetScoringContext
     ) -> PresetScoreBreakdown {
         // -- Hard exclusions -------------------------------------------------
-        if let reason = exclusionReason(preset: preset, context: context) {
+        if let (reason, tag) = exclusionReasonAndTag(preset: preset, context: context) {
             return PresetScoreBreakdown(
                 mood: 0,
                 tempoMotion: 0,
@@ -139,6 +143,7 @@ public struct DefaultPresetScorer: PresetScoring {
                 excluded: true,
                 exclusionReason: reason,
                 familyBoost: 0,
+                excludedReason: tag,
                 total: 0
             )
         }
@@ -174,30 +179,52 @@ public struct DefaultPresetScorer: PresetScoring {
             excluded: false,
             exclusionReason: nil,
             familyBoost: boost,
+            excludedReason: nil,
             total: total
         )
     }
 
     // MARK: - Hard Exclusion
 
-    private func exclusionReason(preset: PresetDescriptor, context: PresetScoringContext) -> String? {
+    /// Returns `(humanReadableReason, shortTag)` when the preset should be excluded,
+    /// or `nil` when the preset is eligible for scoring.
+    private func exclusionReasonAndTag(
+        preset: PresetDescriptor,
+        context: PresetScoringContext
+    ) -> (String, String)? {
+        // V.6: certification gate — checked first so uncertified presets never enter scoring.
+        if !context.includeUncertifiedPresets && !preset.certified {
+            return (
+                "preset '\(preset.id)' is uncertified (certified: false in JSON sidecar)",
+                "uncertified"
+            )
+        }
         if context.sessionExcludedPresets.contains(preset.id) {
-            return "preset '\(preset.id)' excluded by user this session"
+            return ("preset '\(preset.id)' excluded by user this session", "session_excluded")
         }
         if context.temporarilyExcludedFamilies.contains(preset.family) {
-            return "preset '\(preset.id)' family '\(preset.family)' temporarily excluded by user"
+            return (
+                "preset '\(preset.id)' family '\(preset.family)' temporarily excluded by user",
+                "family_temp_excluded"
+            )
         }
         if context.excludedFamilies.contains(preset.family) {
-            return "preset '\(preset.id)' family '\(preset.family)' is in user blocklist"
+            return (
+                "preset '\(preset.id)' family '\(preset.family)' is in user blocklist",
+                "family_blocklisted"
+            )
         }
         if let budget = context.qualityCeiling.complexityThresholdMs(for: context.deviceTier) {
             if preset.complexityCost.cost(for: context.deviceTier) > budget {
-                return "complexity cost \(preset.complexityCost.cost(for: context.deviceTier)) ms " +
-                       "exceeds quality-ceiling budget \(budget) ms on \(context.deviceTier)"
+                return (
+                    "complexity cost \(preset.complexityCost.cost(for: context.deviceTier)) ms " +
+                    "exceeds quality-ceiling budget \(budget) ms on \(context.deviceTier)",
+                    "budget_exceeded"
+                )
             }
         }
         if preset.id == context.currentPreset?.id {
-            return "preset '\(preset.id)' is already active"
+            return ("preset '\(preset.id)' is already active", "active")
         }
         return nil
     }

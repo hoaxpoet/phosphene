@@ -238,6 +238,7 @@ public struct DefaultSessionPlanner: SessionPlanning {
                     excluded: bd.excluded,
                     exclusionReason: bd.exclusionReason,
                     familyBoost: bd.familyBoost,
+                    excludedReason: bd.excludedReason,
                     total: max(0, min(1, bd.total + noise))
                 )
             }

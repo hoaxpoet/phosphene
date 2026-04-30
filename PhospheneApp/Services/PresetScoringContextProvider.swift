@@ -51,7 +51,8 @@ final class PresetScoringContextProvider {
             qualityCeiling: settingsStore.qualityCeiling,
             familyBoosts: familyBoosts,
             temporarilyExcludedFamilies: temporarilyExcludedFamilies,
-            sessionExcludedPresets: sessionExcludedPresets
+            sessionExcludedPresets: sessionExcludedPresets,
+            includeUncertifiedPresets: settingsStore.showUncertifiedPresets
         )
     }
 }

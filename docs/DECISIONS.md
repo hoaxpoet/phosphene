@@ -1250,3 +1250,25 @@ These degrade session-arc quality, not per-preset rendering quality. V.6 certifi
 `SHADER_CRAFT.md §2.1` step 2 and `§2.3` opening paragraph are amended in this commit. `CheckVisualReferences` (D-064) does not require updates — neither the count change nor the anti-reference carve-out introduces new enforceable invariants beyond filename conformance, which already accepts the `_AIGEN` suffix. Future amendment to lint: optional `--strict-no-aigen` flag that fails on any `_AIGEN`-suffixed file, useful for verifying anti-reference replacements after a preset's first implementation ships.
 
 The Ferrofluid Ocean reference folder (`docs/VISUAL_REFERENCES/ferrofluid_ocean/`) is the first folder authored under the amended rule and serves as the worked example for future composite presets.
+
+---
+
+## D-067 — V.6 certification pipeline: module placement, lightweight exemptions, manual gate, and fallback behavior (Increment V.6)
+
+**Status:** Accepted
+
+### (a) Module placement: Presets, not Renderer
+
+The rubric analyzer lives in `Sources/Presets/Certification/`, not `Sources/Renderer/`. The Renderer module depends on Presets (for `PresetDescriptor`), but not vice versa. Placing `FidelityRubric` in Renderer would require Renderer to circularly import Presets, or would force `PresetDescriptor` out of Presets. Placing it in Presets keeps the dependency graph acyclic and requires no `Package.swift` changes.
+
+### (b) Lightweight profile exemptions
+
+Plasma, Waveform, Nebula, and SpectralCartograph use a 4-item lightweight rubric (L1 silence, L2 deviation primitives, L3 perf, L4 frame match) instead of the full 15-item ladder. These presets are either 2D spectrum visualizers (Waveform/Plasma) or diagnostic panels (SpectralCartograph) where detail cascade, 3D material count, and triplanar texturing are inapplicable by design. The exemption is declared per-preset via `"rubric_profile": "lightweight"` in the JSON sidecar. `DefaultFidelityRubric` routes to a separate 4-item evaluation path. See D-064 for the original classification rationale.
+
+### (c) `certified` is manual-only
+
+The `certified: Bool` field is never set to `true` by automation. `meetsAutomatedGate` captures what the static/runtime analyzer can verify; the `certified` field is exclusively Matt's signal after a reference-frame match review against `docs/VISUAL_REFERENCES/<preset>/`. The two flags are intentionally separate so a preset can pass all automatable items and still await manual review. `RubricResult.isCertified = meetsAutomatedGate && certified`.
+
+### (d) All-uncertified fallback: warn, do not throw
+
+When all presets score 0 (all uncertified, toggle off), `DefaultSessionPlanner` already has a `noEligiblePresets` path that emits a `PlanningWarning` and falls back to the cheapest non-excluded preset. No new error case is needed. The window between V.6 landing and Matt's first certification flip is handled by this existing ladder — users with the toggle off get the cheapest preset rather than an error.

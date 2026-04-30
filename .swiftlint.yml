@@ -4,6 +4,7 @@ excluded:
   - .claude
   - DerivedData
   - PhospheneEngine/.build
+  - PhospheneTools/.build
   - PhospheneEngine/Tests
   - tools
 

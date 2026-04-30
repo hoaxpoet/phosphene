@@ -50,7 +50,7 @@ This is the quality bar. Not "better than Milkdrop 1999" (a low bar). Not "good 
 Before a single line of MSL is written:
 
 1. Read `docs/VISUAL_REFERENCES/<preset_name>/README.md`.
-2. Study the 3–5 reference images curated there. Each reference has annotations specifying which visual traits are mandatory and which are decorative.
+2. Study the reference images curated there. The typical preset has 3–5 references; composite presets may require more, with each image earning its place by isolating a distinct trait (per D-065). Each reference has annotations specifying which visual traits are mandatory, which are decorative, and which traits of the image must be *actively disregarded* by Claude Code sessions reading the folder (e.g. the radial vein pattern in a lotus-leaf droplet reference is not a directive about spike arrangement).
 3. Write down the four detail-cascade layers you intend to implement. Sketch each as a one-line description referencing specific utility functions from `Shaders/Utilities/`.
 
 Claude Code sessions that skip step 1–2 produce primitive output. Observed on every iteration v1 → v3 of every preset before Phase V. This is `Failed Approach §35` in `CLAUDE.md`.
@@ -73,7 +73,7 @@ Passes 1–7 are the fidelity work. Pass 8 is what every prior preset iteration 
 
 ### 2.3 Reference-image discipline
 
-Every new preset requires a VISUAL_REFERENCES folder before its first session prompt can be written. Matt owns the references (they're curated, not AI-generated). Claude Code sessions reference them by filename:
+Every new preset requires a VISUAL_REFERENCES folder before its first session prompt can be written. Matt owns the references. Photographic references must be sourced from real photography or in-engine capture — AI-generated images are not permitted *except* in the anti-reference slot (`05_anti_*`), under the narrow carve-out described below (per D-065). Claude Code sessions reference them by filename:
 
 ```
 docs/VISUAL_REFERENCES/arachne/
@@ -86,6 +86,26 @@ docs/VISUAL_REFERENCES/arachne/
 ```
 
 Session prompts reference images directly: "Implement strand specular per `04_specular_fiber_highlight.jpg`, specifically the narrow axial highlight running along each fiber."
+
+**Anti-reference AI-generation carve-out (per D-065).** The anti-reference slot (`05_anti_*`) may use an AI-generated image when (a) the failure mode being depicted is non-photographable (e.g. "ferrofluid that has lost its Rosensweig spike topology and become a chrome blob" — a phenomenon that does not occur in nature), and (b) sourcing a real-photograph or in-engine v1-baseline alternative is impractical. AI-generated anti-references must:
+- Use the `_AIGEN` suffix in the filename (e.g. `05_anti_chrome_blob_AIGEN.jpg`) so the AI provenance is visible in any session prompt that cites the file.
+- Carry an annotation stating that *every* trait of the image is anti — there is no partial-trust read of any visual property.
+- Be flagged in the README's Provenance section with a planned replacement, typically a v1-baseline frame capture once the preset's first iteration ships.
+
+The carve-out does not extend to any other slot. Real photography or controlled in-engine capture remains mandatory for `01_macro_*` through `04_specular_*`, `06_palette_*`, `07_atmosphere_*`, `08_lighting_*`, and `09_*`.
+
+The lint check at `PhospheneTools/Sources/CheckVisualReferences` (Increment V.5)
+verifies that every registered preset has a populated VISUAL_REFERENCES folder and
+that filenames follow `docs/VISUAL_REFERENCES/_NAMING_CONVENTION.md`. Run via:
+
+```bash
+swift run --package-path PhospheneTools CheckVisualReferences
+```
+
+Session prompts SHOULD cite specific reference filenames inline
+(e.g. "implement strand specular per `04_specular_fiber_highlight.jpg`").
+Reviewers SHOULD reject session prompts for V.7+ that do not cite at least one
+reference filename for each major implementation pass.
 
 ### 2.4 The rubric
 
@@ -419,6 +439,72 @@ MaterialResult mat_frosted_glass(float3 wp, float3 n) {
 ```
 
 Cost: ~0.5 ms. Current Glass Brutalist glass is too clean — frost variation is what sells the diffusion.
+
+Recipe is matched to sandblasted / acid-etched glass aesthetics. For pebbled
+or hammered pattern glass — coherent cellular dimples rather than uniform
+frost — use `mat_pattern_glass` (§4.5b) instead. Glass Brutalist v2 commits
+to the pattern variant per V.12 scope; `mat_frosted_glass` remains canonical
+for any preset wanting sandblasted diffusion.
+
+### 4.5b Pattern glass (voronoi cellular)
+
+**Use for:** Glass Brutalist glass fins (per V.12 scope); any architectural
+pattern-glass / hammered-glass / pebbled-diffuser surface where the cellular
+structure should read as coherent geometry rather than noise.
+
+**Differs from `mat_frosted_glass`** in that diffusion comes from a Voronoi
+cellular pattern (each cell a domed dimple separated by a sharp ridge) rather
+than fbm-noise normal perturbation. Architecturally this matches pebbled and
+hammered patterned glass; the fbm-frost variant matches sandblasted / acid-
+etched glass. Pick per preset.
+
+**Recipe:**
+
+```metal
+MaterialResult mat_pattern_glass(float3 wp, float3 n) {
+    MaterialResult m;
+    // Same base optics as mat_frosted_glass, with slightly lower roughness —
+    // pattern glass tends to have crisper highlights between cells than frost.
+    m.albedo    = float3(0.85, 0.88, 0.90);
+    m.roughness = 0.40;
+    m.metallic  = 0.0;
+
+    // Sample voronoi_f1f2 at world-position and two ε-offsets so a height
+    // gradient can be derived. scale 18 ≈ 3-5 cells per architectural unit
+    // at typical viewing distance; tune per preset via uniform if needed.
+    // For non-axis-aligned faces, project wp into the fin's face plane
+    // before sampling (e.g. wp.yz for X-aligned vertical fins).
+    const float scale = 18.0;
+    const float eps   = 0.005;
+    float2 p  =  wp.xy                       * scale;
+    float2 px = (wp.xy + float2(eps, 0.0))   * scale;
+    float2 py = (wp.xy + float2(0.0, eps))   * scale;
+
+    VoronoiResult v0 = voronoi_f1f2(p,  4.0);   // Texture/Voronoi.metal
+    VoronoiResult vx = voronoi_f1f2(px, 4.0);
+    VoronoiResult vy = voronoi_f1f2(py, 4.0);
+
+    // Domed cells: F1 small at cell centre, large at cell edge → invert for
+    // height. The (F2 - F1) factor gates the dome down to zero at cell
+    // boundaries, producing a sharp inter-cell ridge that catches highlights.
+    float h0 = (1.0 - saturate(v0.f1 * scale)) * smoothstep(0.0, 0.04, v0.f2 - v0.f1);
+    float hx = (1.0 - saturate(vx.f1 * scale)) * smoothstep(0.0, 0.04, vx.f2 - vx.f1);
+    float hy = (1.0 - saturate(vy.f1 * scale)) * smoothstep(0.0, 0.04, vy.f2 - vy.f1);
+
+    float3 height_grad = float3(h0 - hx, h0 - hy, 0.001) * (1.0 / eps);
+    m.normal = normalize(n + height_grad * 0.04);
+
+    // Faint internal scattering approximation — same as mat_frosted_glass.
+    m.emission = m.albedo * 0.15;
+
+    return m;
+}
+```
+
+Cost: ~0.5–0.6 ms (three `voronoi_f1f2` calls at ~0.11 ms each plus arithmetic).
+The cell-edge ridge — driven by the smoothstep on F2−F1 — is what sells this
+as patterned rather than noisy; a flat dome without the ridge collapses back
+toward fbm-frost in appearance.
 
 ### 4.6 Ferrofluid (Rosensweig spikes)
 
@@ -1702,6 +1788,27 @@ Every preset must pass this rubric before certification (Increment V.6). Replace
 Minimum score: **10/15** with all mandatory items. Falling short on any mandatory = not certified regardless of optional score.
 
 Uncertified presets exist in the catalog but the Orchestrator excludes them from session planning by default. A "show uncertified presets" toggle in `SettingsView` exists for testing but is off by default.
+
+### 12.5 Certification pipeline (Increment V.6)
+
+The rubric is enforced by `DefaultFidelityRubric` in `Sources/Presets/Certification/FidelityRubric.swift`. It evaluates each preset's Metal source and JSON sidecar statically and surfaces failures in `RubricResult`. `PresetCertificationStore` (actor) caches results for all production presets.
+
+**To read the current rubric report for all presets:**
+
+```bash
+swift test --package-path PhospheneEngine --filter "FidelityRubricReportTests/rubricReport_allPresetsLoad" 2>&1 | grep -A 3 "\[✓\]\|\[✗\]"
+```
+
+**To certify a preset** after a fidelity uplift session:
+
+1. Verify `meetsAutomatedGate == true` in the rubric report (Suite 1 output above).
+2. Review the preset against `docs/VISUAL_REFERENCES/<preset>/README.md` reference images.
+3. Set `"certified": true` in the preset's JSON sidecar.
+4. Run `swift test --package-path PhospheneEngine --filter FidelityRubricTests` — Suite 2 gate dict must be updated (change `false → true` for the newly certified preset).
+
+**Lightweight presets** (Plasma, Waveform, Nebula, SpectralCartograph) use a 4-item ladder (L1–L4) instead of the full 15. Add `"rubric_profile": "lightweight"` to the sidecar. Detail-cascade and material-count requirements are waived for stylized 2D / diagnostic presets. See D-067(b).
+
+**`rubric_hints`** allows authors to assert P1 (hero specular) and P3 (dust motes) when the static analyzer cannot detect them from function names alone. Add `"rubric_hints": {"hero_specular": true, "dust_motes": false}` to the sidecar. The hints do not affect M1–M6 or the mandatory gate.
 
 ---
 
