@@ -172,8 +172,25 @@ Checks:
 - Fix: tap "Log in with Spotify" again to re-authenticate.
 
 **Private playlist** (`privatePlaylist` state, "That playlist is private"):
-- HTTP 403 while the user IS authenticated: the playlist is genuinely private.
-- Fix: user must paste a public playlist link, or the owner must make the playlist public.
+- HTTP 403 while the user IS authenticated. Two distinct causes:
+
+  **Cause A — Playlist is genuinely private:** Most common. The playlist owner has set it to private.
+  - Fix: make the playlist public in Spotify, or use a different playlist.
+
+  **Cause B — Spotify Developer App not configured for Web API (403 on any playlist, even public ones):**
+  Spotify's Developer Dashboard requires apps to explicitly opt in to Web API access. If "Web API"
+  was not checked when creating the app, the access token is issued without playlist permissions,
+  and all `/v1/playlists/{id}/tracks` requests return `{"error":{"status":403,"message":"Forbidden"}}`.
+  This happens even for public playlists with a valid OAuth token.
+  - Diagnosis: Check `Console.app` → filter for "Spotify 403 body" in the `com.phosphene.app` process.
+    If body is exactly `{"error":{"status":403,"message":"Forbidden"}}`, it's Cause B.
+  - Fix:
+    1. Go to [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard), open your app.
+    2. Click **Edit** → under "Which API/SDKs are you planning to use?", tick **Web API**.
+    3. Add or re-confirm redirect URI: `phosphene://spotify-callback`.
+    4. Click **Save**.
+    5. Delete the stored refresh token: open Keychain Access → search "com.phosphene.spotify" → delete it.
+    6. Relaunch Phosphene and log in again. The new token will carry playlist permissions.
 
 **Rate limit exhausted** (after [2s, 5s, 15s] backoff fails):
 - Spotify API quota exceeded.
