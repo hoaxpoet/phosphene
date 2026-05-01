@@ -97,7 +97,7 @@ final class SpotifyConnectionViewModel: ObservableObject {
     // MARK: - Actions
 
     /// Called when the user taps Continue. Only valid when state == .preview.
-    func connect(startSession: @escaping @Sendable (PlaylistSource) async -> Void) {
+    func connect(startSession: @escaping @Sendable ([TrackIdentity], PlaylistSource) async -> Void) {
         guard case .preview(let id) = state, !id.isEmpty else { return }
         connectTask?.cancel()
         connectTask = Task { [weak self] in
@@ -106,7 +106,7 @@ final class SpotifyConnectionViewModel: ObservableObject {
     }
 
     /// Called when the user taps "Log in with Spotify" from the `.requiresLogin` state.
-    func login(startSession: @escaping @Sendable (PlaylistSource) async -> Void) {
+    func login(startSession: @escaping @Sendable ([TrackIdentity], PlaylistSource) async -> Void) {
         guard let loginAction else {
             state = .authFailure
             return
@@ -167,7 +167,7 @@ final class SpotifyConnectionViewModel: ObservableObject {
 
     private func runConnect(
         playlistID: String,
-        startSession: @escaping @Sendable (PlaylistSource) async -> Void
+        startSession: @escaping @Sendable ([TrackIdentity], PlaylistSource) async -> Void
     ) async {
         isConnecting = true
         defer { isConnecting = false }
@@ -181,7 +181,7 @@ final class SpotifyConnectionViewModel: ObservableObject {
 
     private func runLogin(
         loginAction: @Sendable () async throws -> Void,
-        startSession: @escaping @Sendable (PlaylistSource) async -> Void
+        startSession: @escaping @Sendable ([TrackIdentity], PlaylistSource) async -> Void
     ) async {
         isConnecting = true
         defer { isConnecting = false }
@@ -210,12 +210,14 @@ final class SpotifyConnectionViewModel: ObservableObject {
     private func applyResult(
         _ result: AttemptResult,
         source: PlaylistSource,
-        startSession: @escaping @Sendable (PlaylistSource) async -> Void,
+        startSession: @escaping @Sendable ([TrackIdentity], PlaylistSource) async -> Void,
         afterLogin: Bool = false
     ) async {
         switch result {
-        case .success:
-            await startSession(source)
+        case .success(let tracks):
+            // Pass pre-fetched tracks so SessionManager can skip re-fetching via its own
+            // connector (which would use client-credentials and get a 401 for OAuth-gated playlists).
+            await startSession(tracks, source)
         case .requiresLogin:
             state = afterLogin ? .authFailure : .requiresLogin
         case .privatePlaylist:
@@ -233,7 +235,7 @@ final class SpotifyConnectionViewModel: ObservableObject {
 
     private func retryAfterRateLimit(
         source: PlaylistSource,
-        startSession: @escaping @Sendable (PlaylistSource) async -> Void
+        startSession: @escaping @Sendable ([TrackIdentity], PlaylistSource) async -> Void
     ) async {
         let retryDelays = [2.0, 5.0, 15.0]
         for (index, delay) in retryDelays.enumerated() {
@@ -242,8 +244,8 @@ final class SpotifyConnectionViewModel: ObservableObject {
             if Task.isCancelled { return }
             let result = await attempt(source: source)
             switch result {
-            case .success:
-                await startSession(source)
+            case .success(let tracks):
+                await startSession(tracks, source)
                 return
             case .requiresLogin:
                 state = .requiresLogin

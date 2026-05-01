@@ -4,7 +4,8 @@
 // Client-credentials (public playlists only) is supported via DefaultSpotifyTokenProvider.
 //
 // Endpoint: /v1/playlists/{id}/items (not the deprecated /tracks — deprecated 2024,
-// returns 403 for development-mode apps).
+// returns 403 for development-mode apps). Per Spotify Web API docs, each PlaylistTrackObject
+// uses "item" as the key for the track/episode object; "track" is the deprecated field name.
 //
 // 401 handling: on a 401 the token is invalidated and the call is retried once.
 // A second 401 throws .spotifyAuthFailure immediately.
@@ -137,13 +138,19 @@ public final class SpotifyWebAPIConnector: SpotifyWebAPIConnecting, @unchecked S
                 let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                 let items = json["items"] as? [[String: Any]]
             else {
+                let preview = String(data: data.prefix(500), encoding: .utf8) ?? "<binary>"
+                logger.error("Spotify /items parse failure. Response preview: \(preview)")
                 throw PlaylistConnectorError.parseFailure("Invalid playlist tracks JSON")
             }
 
             let batch = items.compactMap { item -> TrackIdentity? in
-                guard let track = item["item"] as? [String: Any] else { return nil }
+                // Per Spotify Web API docs: the current key is "item" (TrackObject|EpisodeObject).
+                // The "track" key is deprecated but retained as a fallback for backward compatibility.
+                let trackObj = (item["item"] as? [String: Any]) ?? (item["track"] as? [String: Any])
+                guard let track = trackObj else { return nil }
                 return parseTrack(track)
             }
+            logger.info("Spotify /items page: \(batch.count) tracks parsed from \(items.count) items")
             accumulated.append(contentsOf: batch)
 
             // Follow `next` URL if the API provides one.
@@ -157,11 +164,15 @@ public final class SpotifyWebAPIConnector: SpotifyWebAPIConnecting, @unchecked S
     }
 
     private func makeTracksURL(playlistID: String, offset: Int) -> URL? {
-        // Use /items (not the deprecated /tracks) — Spotify deprecated /tracks in 2024;
-        // /items is the current endpoint and uses "item" key instead of "track" in the response.
+        // Use /items (not the deprecated /tracks) — Spotify deprecated /tracks in 2024.
+        // Note on `fields`: field filtering is intentionally omitted. The /items endpoint
+        // silently omits items whose `track` field is null when a fields filter is applied,
+        // causing compactMap to produce an empty array even for valid playlists.
+        // `market=from_token` is required: without it the API can return null track objects
+        // for region-restricted content, also silently dropping items.
         var comps = URLComponents(string: "https://api.spotify.com/v1/playlists/\(playlistID)/items")
         comps?.queryItems = [
-            URLQueryItem(name: "fields", value: "items(item(id,name,artists(name),duration_ms,album(name))),next"),
+            URLQueryItem(name: "market", value: "from_token"),
             URLQueryItem(name: "limit", value: "100"),
             URLQueryItem(name: "offset", value: "\(offset)")
         ]

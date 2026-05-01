@@ -111,7 +111,6 @@ public final class SessionManager: ObservableObject {
 
     // MARK: - Lifecycle
 
-    // swiftlint:disable function_body_length
     /// Start a playlist session.
     ///
     /// Transitions: `.idle`/`.ended` → `.connecting` → `.preparing`.
@@ -151,6 +150,35 @@ public final class SessionManager: ObservableObject {
             return
         }
 
+        await _beginPreparation(tracks: tracks)
+    }
+
+    /// Start a playlist session using a pre-fetched track list.
+    ///
+    /// Used when the app layer has already fetched tracks via an OAuth-aware connector
+    /// (e.g. Spotify) and re-fetching via `SessionManager`'s own connector would use
+    /// the wrong credentials. Skips the `connecting` phase and goes directly to `.preparing`.
+    ///
+    /// A no-op when state is already `.connecting`, `.preparing`, `.ready`, or `.playing`.
+    ///
+    /// - Parameters:
+    ///   - tracks: Pre-fetched ordered track list.
+    ///   - source: The originating playlist source (stored for session metadata).
+    public func startSession(preFetchedTracks tracks: [TrackIdentity], source: PlaylistSource) async {
+        sessionSource = source
+        guard state == .idle || state == .ended else {
+            let current = self.state.rawValue
+            logger.info("SessionManager: ignoring startSession (state=\(current))")
+            return
+        }
+
+        cancellationRequested = false
+        logger.info("SessionManager: connected (pre-fetched) — \(tracks.count) track(s)")
+        await _beginPreparation(tracks: tracks)
+    }
+
+    /// Shared preparation entry point used by both `startSession` variants.
+    private func _beginPreparation(tracks: [TrackIdentity]) async {
         allSessionTracks = tracks
         preparingTracks = tracks
         currentPlan = SessionPlan(tracks: tracks)     // full list available immediately
@@ -211,7 +239,6 @@ public final class SessionManager: ObservableObject {
         sessionPreparationTask = prepTask
         // Returns here while preparation runs in the background.
     }
-    // swiftlint:enable function_body_length
 
     /// Advance from `.preparing` to `.ready` immediately.
     ///

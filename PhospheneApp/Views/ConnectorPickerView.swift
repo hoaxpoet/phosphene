@@ -14,8 +14,9 @@ struct ConnectorPickerView: View {
     static let accessibilityID = "phosphene.view.connectorPicker"
 
     /// Called when a connector successfully identifies a playlist.
-    /// Caller is responsible for starting the session; this view just provides source.
-    let onConnect: @Sendable (PlaylistSource) async -> Void
+    /// `tracks` contains pre-fetched tracks when available (Spotify OAuth path);
+    /// passes `[]` for Apple Music (SessionManager fetches via its own connector).
+    let onConnect: @Sendable ([TrackIdentity], PlaylistSource) async -> Void
 
     @StateObject private var viewModel = ConnectorPickerViewModel()
     @Environment(\.dismiss) private var dismiss
@@ -136,6 +137,7 @@ struct ConnectorPickerView: View {
             OAuthSpotifyConnectionWrapper(oauth: oauth, onConnect: onConnect)
         } else {
             // Fallback: no OAuth provider injected (e.g. SwiftUI preview or plain unit test).
+            // SpotifyConnectionView now expects ([TrackIdentity], PlaylistSource) — pass through.
             SpotifyConnectionView(
                 viewModel: SpotifyConnectionViewModel(),
                 onConnect: onConnect,
@@ -159,12 +161,12 @@ struct ConnectorPickerView: View {
 private struct OAuthSpotifyConnectionWrapper: View {
 
     let oauth: SpotifyOAuthTokenProvider
-    let onConnect: @Sendable (PlaylistSource) async -> Void
+    let onConnect: @Sendable ([TrackIdentity], PlaylistSource) async -> Void
 
     @StateObject private var viewModel: SpotifyConnectionViewModel
 
     init(oauth: SpotifyOAuthTokenProvider,
-         onConnect: @escaping @Sendable (PlaylistSource) async -> Void) {
+         onConnect: @escaping @Sendable ([TrackIdentity], PlaylistSource) async -> Void) {
         self.oauth = oauth
         self.onConnect = onConnect
         let connector = SpotifyOAuthPlaylistConnector(

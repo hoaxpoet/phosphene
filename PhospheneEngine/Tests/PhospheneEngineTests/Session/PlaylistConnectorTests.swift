@@ -153,7 +153,7 @@ struct PlaylistConnectorTests {
         let spotifyConnector = SpotifyWebAPIConnector(tokenProvider: mockToken)
         let connector = makeConnector(spotifyConnector: spotifyConnector)
 
-        // /items endpoint uses "item" key (not deprecated "track" key from /tracks endpoint)
+        // /items endpoint uses "item" key per current Spotify Web API docs; "track" is deprecated.
         let items = (1...3).map { i -> [String: Any] in
             ["item": spotifyTrack(name: "Song \(i)", artist: "Band", id: "sid_\(i)")]
         }

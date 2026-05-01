@@ -11,7 +11,8 @@ struct AppleMusicConnectionView: View {
     static let accessibilityID = "phosphene.view.appleMusic.connection"
 
     @ObservedObject var viewModel: AppleMusicConnectionViewModel
-    let onConnect: @Sendable (PlaylistSource) async -> Void
+    // Apple Music has no pre-fetched tracks — passes [] so the caller uses startSession(source:).
+    let onConnect: @Sendable ([TrackIdentity], PlaylistSource) async -> Void
     let onUseSpotifyInstead: () -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -32,7 +33,7 @@ struct AppleMusicConnectionView: View {
         .onDisappear { viewModel.cancelRetry() }
         .onChange(of: viewModel.state) { _, newState in
             if case .connected = newState {
-                Task { await onConnect(.appleMusicCurrentPlaylist) }
+                Task { await onConnect([], .appleMusicCurrentPlaylist) }
             }
         }
         .navigationTitle(String(localized: "connector.apple_music.title"))

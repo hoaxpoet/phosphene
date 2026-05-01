@@ -63,11 +63,21 @@ struct IdleView: View {
             }
         }
         .sheet(isPresented: $showConnectorPicker) {
-            ConnectorPickerView { source in
+            ConnectorPickerView { tracks, source in
                 // No explicit dismiss needed — startSession transitions state to
                 // .connecting, which causes ContentView to replace IdleView (and
                 // this sheet) with ConnectingView automatically.
-                await engine.sessionManager.startSession(source: source)
+                //
+                // Route by SOURCE, not tracks.isEmpty:
+                // - Spotify: always use preFetchedTracks (even if empty) to avoid
+                //   SessionManager re-fetching via client-credentials (→ 401).
+                // - Apple Music / other: no pre-fetched tracks; SM fetches itself.
+                switch source {
+                case .spotifyPlaylistURL, .spotifyCurrentQueue:
+                    await engine.sessionManager.startSession(preFetchedTracks: tracks, source: source)
+                default:
+                    await engine.sessionManager.startSession(source: source)
+                }
             }
         }
     }
