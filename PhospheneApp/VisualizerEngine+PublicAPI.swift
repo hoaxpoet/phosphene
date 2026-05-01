@@ -77,6 +77,18 @@ extension VisualizerEngine {
         currentRayMarchPipeline?.setA11yReducedMotion(reduceMotion)
     }
 
+    // MARK: - Preset Settings
+
+    /// Forward the "show uncertified presets" user preference into the engine.
+    ///
+    /// Called from `PhospheneApp` whenever `SettingsStore.showUncertifiedPresets` changes.
+    /// Stored so `applyReactiveUpdate` can pass it through to `PresetScoringContext`,
+    /// which otherwise defaults to `includeUncertifiedPresets: false`.
+    @MainActor
+    func applyShowUncertifiedPresets(_ show: Bool) {
+        showUncertifiedPresets = show
+    }
+
     // MARK: - Toggles
 
     /// Toggle the debug metadata overlay.

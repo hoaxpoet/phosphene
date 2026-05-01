@@ -84,6 +84,8 @@ public protocol ReactiveOrchestrating: Sendable {
     ///   - currentPreset: Currently displayed preset, or nil if none has been set.
     ///   - catalog: Full preset catalog to score against.
     ///   - deviceTier: Apple Silicon generation for complexity-cost exclusion gating.
+    ///   - includeUncertifiedPresets: When `true`, uncertified presets are eligible for
+    ///     selection. Mirrors `SettingsStore.showUncertifiedPresets`. Default `false`.
     /// - Returns: A `ReactiveDecision` — `suggestedPreset` is nil when holding.
     func evaluate(
         liveMood: EmotionalState,
@@ -91,7 +93,8 @@ public protocol ReactiveOrchestrating: Sendable {
         elapsedSessionTime: TimeInterval,
         currentPreset: PresetDescriptor?,
         catalog: [PresetDescriptor],
-        deviceTier: DeviceTier
+        deviceTier: DeviceTier,
+        includeUncertifiedPresets: Bool
     ) -> ReactiveDecision
     // swiftlint:enable function_parameter_count
 }
@@ -150,7 +153,8 @@ public struct DefaultReactiveOrchestrator: ReactiveOrchestrating {
         elapsedSessionTime: TimeInterval,
         currentPreset: PresetDescriptor?,
         catalog: [PresetDescriptor],
-        deviceTier: DeviceTier
+        deviceTier: DeviceTier,
+        includeUncertifiedPresets: Bool = false
     ) -> ReactiveDecision {
         let state = ReactiveAccumulationState(elapsedTime: elapsedSessionTime)
         let confidence = Self.computeConfidence(elapsed: elapsedSessionTime)
@@ -177,7 +181,8 @@ public struct DefaultReactiveOrchestrator: ReactiveOrchestrating {
             deviceTier: deviceTier,
             recentHistory: [],
             currentPreset: currentPreset,
-            elapsedSessionTime: elapsedSessionTime
+            elapsedSessionTime: elapsedSessionTime,
+            includeUncertifiedPresets: includeUncertifiedPresets
         )
         let ranked = scorer.rank(presets: catalog, track: liveProfile, context: altCtx)
 
@@ -211,7 +216,8 @@ public struct DefaultReactiveOrchestrator: ReactiveOrchestrating {
             elapsedSessionTime: elapsedSessionTime,
             state: state,
             confidence: confidence,
-            deviceTier: deviceTier
+            deviceTier: deviceTier,
+            includeUncertifiedPresets: includeUncertifiedPresets
         )
     }
     // swiftlint:enable function_parameter_count
@@ -229,13 +235,15 @@ public struct DefaultReactiveOrchestrator: ReactiveOrchestrating {
         elapsedSessionTime: TimeInterval,
         state: ReactiveAccumulationState,
         confidence: Float,
-        deviceTier: DeviceTier
+        deviceTier: DeviceTier,
+        includeUncertifiedPresets: Bool = false
     ) -> ReactiveDecision {
         let currentCtx = PresetScoringContext(
             deviceTier: deviceTier,
             recentHistory: [],
             currentPreset: nil,
-            elapsedSessionTime: elapsedSessionTime
+            elapsedSessionTime: elapsedSessionTime,
+            includeUncertifiedPresets: includeUncertifiedPresets
         )
         let currentScore = scorer.score(preset: current, track: liveProfile, context: currentCtx)
         let scoreGapMet = topScore - currentScore > Self.minScoreGapForSwitch

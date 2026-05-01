@@ -66,6 +66,14 @@ struct PhospheneApp: App {
                     beatAmplitudeScale: accessibilityState.beatAmplitudeScale
                 )
             }
+            // Push uncertified-presets preference into the engine so reactive mode
+            // honours the setting without requiring a SettingsStore dependency in the engine.
+            .task {
+                engine.applyShowUncertifiedPresets(settingsStore.showUncertifiedPresets)
+                for await value in settingsStore.$showUncertifiedPresets.values {
+                    engine.applyShowUncertifiedPresets(value)
+                }
+            }
             // Route phosphene://spotify-callback back to the OAuth actor.
             .onOpenURL { url in
                 guard url.scheme == "phosphene", url.host == "spotify-callback" else { return }
