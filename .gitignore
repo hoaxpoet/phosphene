@@ -42,5 +42,11 @@ tools/audio-tap-test
 # Claude Code session worktrees (auto-managed; not project source)
 .claude/worktrees/
 
+# Claude Code / agent tooling (not project source)
+.agents/
+.claude/skills/
+.impeccable.md
+skills-lock.json
+
 # Local xcconfig overrides — contain real credentials; never commit.
 *.local.xcconfig
