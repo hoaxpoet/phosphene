@@ -362,6 +362,11 @@ fragment float4 arachne_fragment(
     // V.7.5 §10.1.4: TT-lobe warm rim (back-lit silk per ref 04). Shared by
     // anchor + pool silk material sites and by the §5.3 backsideCue blend.
     const float3 kWarmTT = float3(1.00, 0.78, 0.45);
+    // V.7.5 §10.1.6: warm directional key + cool ambient fill (ref 05).
+    // Cool ambient prevents the off-rim threads from going pure-warm and
+    // reading as cyberpunk-orange (the §10.1.6 caveat).
+    const float3 kLightCol = float3(1.00, 0.85, 0.65);
+    const float3 kAmbCol   = float3(0.55, 0.65, 0.85) * 0.15;
 
     // SSS bioluminescent rim constant: evaluated once per fragment, shared by all strands.
     // N = screen normal (0,0,1), L = behind screen (0,0,-1), V = kV.
@@ -431,6 +436,9 @@ fragment float4 arachne_fragment(
             // D-026 deviation emission gain (replaces brightness × bassBoost, D-020 safe)
             float emGain = baseEmissionGain + beatAccent;
             silk.emission *= emGain;
+            // V.7.5 §10.1.6: warm key tint + cool ambient fill (ref 05).
+            silk.emission *= kLightCol;
+            silk.emission += silk.albedo * kAmbCol;
 
             // Hub fallback: tangent undefined → clamp to base bioluminescent glow
             float tangStrength = saturate(length(tang2D) * 8.0);
@@ -524,6 +532,9 @@ fragment float4 arachne_fragment(
             // D-026 deviation emission gain (same global gain for all pool webs)
             float emGain = baseEmissionGain + beatAccent;
             silk.emission *= emGain;
+            // V.7.5 §10.1.6: warm key tint + cool ambient fill (ref 05).
+            silk.emission *= kLightCol;
+            silk.emission += silk.albedo * kAmbCol;
 
             float tangStrength = saturate(length(tang2D) * 8.0);
             silk.emission = mix(silkTint * 0.22 * emGain * w.opacity,
