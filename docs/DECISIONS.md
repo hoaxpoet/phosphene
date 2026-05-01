@@ -1343,3 +1343,37 @@ The VM has no knowledge of `NSWorkspace` or `SpotifyOAuthTokenProvider` directly
 **Decision 8: `SpotifyClientSecret` key removed from Info.plist for OAuth.**
 
 Client-credentials required a `SpotifyClientSecret`. PKCE does not send a client secret — only the `client_id` is needed in the authorize URL and token-exchange requests. The `SpotifyClientSecret` xcconfig variable and Info.plist key are retained for backward-compat tooling but the OAuth provider only reads `SpotifyClientID`. Any future client that reads `SpotifyClientSecret` will find it empty in PKCE configurations, which is correct.
+
+---
+
+## D-070 — Spotify /items response schema, preview_url capture, and pre-fetched track threading (U.11 follow-up)
+
+**Status:** Accepted (2026-05-01)
+
+**Context:** After U.11 landed, connecting a Spotify playlist always resulted in reactive mode — `SessionManager` entered `.preparing` with 0 tracks. Three cascading bugs were identified via console log analysis and Spotify Web API documentation review.
+
+**Bug 1: Wrong JSON key — "item" not "track".**
+
+When Spotify deprecated `/v1/playlists/{id}/tracks` and replaced it with `/v1/playlists/{id}/items`, the `PlaylistTrackObject` schema changed: each item now uses `"item"` as the key for the track/episode object. The `"track"` key is retained for backward compatibility but is deprecated. Code from U.10 that read `item["track"]` returned nil for every item and silently produced an empty track list. Confirmed by console diagnostic: `hasItem=true hasTrack=false`. The correct parsing is: try `item["item"]` first, fall back to `item["track"]`.
+
+**Bug 2: Dual-connector re-fetch with client-credentials.**
+
+`SessionManager` owns a `PlaylistConnector()` constructed at init time using `DefaultSpotifyTokenProvider` (client-credentials). After `SpotifyConnectionViewModel` successfully fetched tracks via OAuth and called `startSession(source:)`, `SessionManager` re-fetched using its own client-credentials connector → HTTP 401 → reactive fallback. Fix: add `startSession(preFetchedTracks: [TrackIdentity], source: PlaylistSource)` to `SessionManager`, thread `[TrackIdentity]` from the OAuth connector through the full callback chain (`SpotifyConnectionViewModel` → `SpotifyConnectionView.onConnect` → `ConnectorPickerView.onConnect` → `IdleView`), and route Spotify sources to the pre-fetched variant. `IdleView` routes by source type (`.spotifyPlaylistURL`, `.spotifyCurrentQueue`) rather than `tracks.isEmpty` — an empty Spotify response should still avoid the client-credentials re-fetch.
+
+**Bug 3: `fields` parameter silently returned empty item dictionaries.**
+
+The `fields=items(track(name,artists,album,id,duration_ms))` query parameter on the `/items` endpoint causes Spotify to return `{}` (empty object) for any item where the `track` field is null or where the filter path does not match the available data. This produced a 200 response with correct `total` and `items.count` but `{}` dictionaries for each item — `compactMap` returned zero tracks. Root cause confirmed by logging: `first-item keys: []`. Fix: remove the `fields` parameter entirely. Add `market=from_token` instead — without it, region-restricted tracks can return null track objects, also silently dropping items.
+
+**Decision: capture `preview_url` from the Spotify response directly.**
+
+Spotify's `/items` response includes `preview_url` in each `TrackObject` — a CDN URL for the 30-second MP3 preview (or `null` for rights-restricted tracks). The previous code discarded this field and then queried iTunes Search API (20 req/min, fuzzy text matching) to find the same URL. This wasted a network round-trip and caused false "Preview not available" results for tracks that iTunes Search couldn't match.
+
+Fix: add `spotifyPreviewURL: URL?` to `TrackIdentity` as a hint field. This field is explicitly excluded from `Equatable` and `Hashable` (custom implementations covering the seven identity fields) and from `Codable` (explicit `CodingKeys` enum). `SpotifyWebAPIConnector.parseTrack(_:)` captures `(track["preview_url"] as? String).flatMap(URL.init)`. `PreviewResolver.resolvePreviewURL(for:)` short-circuits to `track.spotifyPreviewURL` when present, seeding the in-memory cache and returning immediately without touching iTunes. Tracks where Spotify returns `null` (rights-restricted content like some Mclusky tracks) fall through to the existing iTunes Search path.
+
+**Why exclude spotifyPreviewURL from identity:**
+
+`TrackIdentity` is used as a dictionary key in `StemCache` and `PreviewResolver`. Including `spotifyPreviewURL` in hash/equality would break the cache key contract: two `TrackIdentity` instances referring to the same track (one from Spotify with a preview URL, one from another source without) would hash differently and miss the cache. Hint fields that are not part of a track's musical identity must be excluded.
+
+**Why exclude spotifyPreviewURL from Codable:**
+
+`preview_url` is an ephemeral CDN URL — it may change between API calls and need not survive encoding round-trips (e.g. to `StemCache` persistence). Excluding it keeps serialized form identical to the pre-D-070 schema, preventing any decode failures on upgrade.
