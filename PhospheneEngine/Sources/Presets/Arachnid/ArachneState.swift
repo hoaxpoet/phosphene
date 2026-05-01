@@ -248,7 +248,7 @@ public final class ArachneState: @unchecked Sendable {
 
         webCount = webs.filter { $0.isAlive != 0 }.count
 
-        updateSpider(dt: dt, features: features)
+        updateSpider(dt: dt, features: features, stems: stems)
 
         #if DEBUG && ARACHNE_M7_DIAG
         m7DiagSnapshot(features: features)

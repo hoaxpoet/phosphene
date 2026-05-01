@@ -353,12 +353,29 @@ private func stems(drumsOnsetRate: Float = 0, totalEnergy: Float = 0.1) -> StemF
 
     // MARK: Spider Tests (Increment 3.5.9)
 
-    // Helper: FeatureVector with strong sub-bass (above 0.65 threshold).
+    // Helper: FeatureVector with sub-bass above the V.7.5 §10.1.9 threshold (0.30).
+    // 0.40 keeps the field comfortably above without overstating the LTYL distribution.
     private func subBassFV(deltaTime: Float = 1.0 / 60.0) -> FeatureVector {
         var f = FeatureVector.zero
-        f.subBass   = 0.80    // above 0.65 threshold — typical James Blake bass drop value
+        f.subBass   = 0.40    // above 0.30 threshold (V.7.5 §10.1.9)
         f.deltaTime = deltaTime
         return f
+    }
+
+    /// Helper: StemFeatures with bassAttackRatio in the sustained-bass band (< 0.55).
+    /// The V.7.5 §10.1.9 AR gate requires `bassAttackRatio > 0 && < 0.55`; .zero
+    /// fails the gate.
+    private func sustainedBassStems() -> StemFeatures {
+        var s = StemFeatures.zero
+        s.bassAttackRatio = 0.30  // sustained resonant bass character
+        return s
+    }
+
+    /// Helper: StemFeatures resembling a kick drum — high attack ratio, fails AR gate.
+    private func kickDrumStems() -> StemFeatures {
+        var s = StemFeatures.zero
+        s.bassAttackRatio = 0.85
+        return s
     }
 
     @Test("sustained sub-bass triggers spider materialisation")
@@ -368,11 +385,13 @@ private func stems(drumsOnsetRate: Float = 0, totalEnergy: Float = 0.1) -> StemF
         }
         let state = try #require(ArachneState(device: device, seed: 42))
 
-        // Tick for just over 0.75 s with continuous sub-bass above threshold.
+        // Tick for just over 0.75 s with continuous sub-bass above threshold,
+        // and stems satisfying the §10.1.9 AR gate (bassAttackRatio < 0.55).
         // dt = 1/60 s → 60 ticks = 1.0 s ≥ 0.75 s sustain threshold.
         let fv = subBassFV()
+        let stems = sustainedBassStems()
         for _ in 0..<60 {
-            state.tick(features: fv, stems: .zero)
+            state.tick(features: fv, stems: stems)
         }
 
         let ptr = state.spiderBuffer.contents().bindMemory(to: ArachneSpiderGPU.self, capacity: 1)
@@ -388,11 +407,14 @@ private func stems(drumsOnsetRate: Float = 0, totalEnergy: Float = 0.1) -> StemF
 
         // A kick drum fires for ~100 ms then decays — far less than the 750 ms threshold.
         // 9 frames × (1/60 s) = 150 ms above threshold, then 120 frames of silence.
-        var high = subBassFV(); high.subBass = 0.80
-        var low  = subBassFV(); low.subBass  = 0.10   // below threshold
+        // Use kickDrumStems (high attack ratio) so the §10.1.9 AR gate also rejects
+        // — this test covers the AR-gate path as well as the sustain-accumulator path.
+        var high = subBassFV(); high.subBass = 0.40
+        var low  = subBassFV(); low.subBass  = 0.05   // below threshold
+        let kStems = kickDrumStems()
 
-        for _ in 0..<9   { state.tick(features: high, stems: .zero) }  // 150 ms burst
-        for _ in 0..<120 { state.tick(features: low,  stems: .zero) }  // 2 s decay
+        for _ in 0..<9   { state.tick(features: high, stems: kStems) }  // 150 ms burst
+        for _ in 0..<120 { state.tick(features: low,  stems: kStems) }  // 2 s decay
 
         let ptr = state.spiderBuffer.contents().bindMemory(to: ArachneSpiderGPU.self, capacity: 1)
         #expect(ptr[0].blend == 0, "Brief kick pulse (150 ms) must not trigger the spider")
@@ -405,9 +427,9 @@ private func stems(drumsOnsetRate: Float = 0, totalEnergy: Float = 0.1) -> StemF
         }
         let state = try #require(ArachneState(device: device, seed: 42))
 
-        // Phase 1: trigger the spider.
+        // Phase 1: trigger the spider (§10.1.9 AR-gate-compatible stems).
         let fv  = subBassFV()
-        let stm = StemFeatures.zero
+        let stm = sustainedBassStems()
         for _ in 0..<60 { state.tick(features: fv, stems: stm) }
 
         let ptrAfterTrigger = state.spiderBuffer.contents()
@@ -428,9 +450,9 @@ private func stems(drumsOnsetRate: Float = 0, totalEnergy: Float = 0.1) -> StemF
         }
         let state = try #require(ArachneState(device: device, seed: 42))
 
-        // Phase 1: trigger the spider normally.
+        // Phase 1: trigger the spider normally (§10.1.9 AR-gate-compatible stems).
         let fv  = subBassFV()
-        let stm = StemFeatures.zero
+        let stm = sustainedBassStems()
         for _ in 0..<60 { state.tick(features: fv, stems: stm) }
 
         // Confirm spider triggered and then reset it manually (simulate full appearance + fade).
