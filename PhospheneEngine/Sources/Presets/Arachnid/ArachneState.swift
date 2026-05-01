@@ -9,6 +9,14 @@
 // The `webBuffer` MTLBuffer carries WebGPU structs (64 bytes each) that the
 // Arachne mesh shader reads at object/mesh buffer(1) to determine which webs
 // to render and how to build their geometry.
+//
+// Diagnostic build flags:
+//   ARACHNE_DIAG     — one-shot per-slot stable-web parameters (geometry log).
+//   ARACHNE_M7_DIAG  — once-per-second snapshot of pool occupancy + spawn cadence
+//                      + spider trigger state + numeric proxies for silk-vs-drop
+//                      luminance ratio. Used to verify V.7.5 step deltas
+//                      (pool cap, drops-as-hero) numerically rather than visually.
+//                      Activate with: -Xswiftc -DARACHNE_M7_DIAG.
 
 import Metal
 import Shared
@@ -137,13 +145,18 @@ public final class ArachneState: @unchecked Sendable {
 
     var webs: [WebGPU]
     var globalBeatIndex: Float = 0
-    private var lastSpawnBeatIndex: Float = -10
+    /// Beat-index at last spawn fire. Internal so M7 diag extension can read.
+    var lastSpawnBeatIndex: Float = -10
     private var prevBeatPhase01: Float = 0
     private var prevBeatComposite: Float = 0
     var rng: UInt32
     let lock = NSLock()
     #if DEBUG && ARACHNE_DIAG
     private var loggedStableSlots: Set<Int> = []
+    #endif
+    #if DEBUG && ARACHNE_M7_DIAG
+    /// Last `Int(globalBeatIndex / 2)` bucket logged. Internal so M7 diag extension can read.
+    var lastM7DiagBucket: Int = -1
     #endif
 
     // MARK: - Init
@@ -231,6 +244,10 @@ public final class ArachneState: @unchecked Sendable {
         webCount = webs.filter { $0.isAlive != 0 }.count
 
         updateSpider(dt: dt, features: features)
+
+        #if DEBUG && ARACHNE_M7_DIAG
+        m7DiagSnapshot(features: features)
+        #endif
 
         #if DEBUG && ARACHNE_DIAG
         for i in 0..<Self.maxWebs
