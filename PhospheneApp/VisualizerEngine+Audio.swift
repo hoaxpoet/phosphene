@@ -204,6 +204,7 @@ extension VisualizerEngine {
 
         let features = stemAnalyzer.analyze(stemWaveforms: window, fps: fps)
         pipeline.setStemFeatures(features)
+        latestBassAttackRatio = features.bassAttackRatio
     }
 
     /// EMA-accumulate the 10 features that the mood classifier consumes.
@@ -281,7 +282,9 @@ extension VisualizerEngine {
             minorCorr: mir.latestMinorKeyCorrelation,
             callbackCount: analysisFrameCount,
             onsetsPerSec: mir.onsetsPerSecond,
-            totalEnergy: totalEnergy
+            totalEnergy: totalEnergy,
+            subBass: fv.subBass,
+            bassAttackRatio: latestBassAttackRatio
         )
     }
 

@@ -5,17 +5,23 @@
 // Burial) from transient kick drums. Session cooldown of 5 minutes prevents
 // back-to-back appearances.
 //
-// ArachneSpiderGPU (80 bytes) is bound at fragment buffer(4) in drawWithMeshShader
-// and consumed by the spider SDF ray-march in arachne_fragment.
+// ArachneSpiderGPU (80 bytes) is bound at fragment buffer(7) in the mv_warp/direct
+// fragment pass and consumed by the spider SDF in arachne_fragment.
+// (D-040 originally specified buffer(4)/meshPresetFragmentBuffer; the buffer moved
+// to buffer(7)/directPresetFragmentBuffer2 in the ray-march remaster, Increment 3.5.10.)
 //
-// Trigger: stems.bassEnergy*1.5 (or features.subBass) > 0.65
-//          AND stems.bassAttackRatio (or bassAttRel proxy) < 0.55
-//          held continuously for ≥0.75 s
+// Trigger: features.subBass > 0.65
+//          held continuously for ≥ 0.75 s
 //          AND timeSinceLastSpider ≥ 300 s
+// (The bassAttackRatio gate specified in D-040 was removed: the 0.75 s accumulator
+// alone debounces transient kicks reliably. Documented here to avoid re-adding it.)
 
 import Metal
+import os.log
 import Shared
 import simd
+
+private let spiderLogger = Logger(subsystem: "com.phosphene.presets", category: "ArachneSpider")
 
 // MARK: - ArachneSpiderGPU
 
@@ -56,6 +62,20 @@ public struct ArachneSpiderGPU: Sendable {
         tip6: .zero,
         tip7: .zero
     )
+}
+
+// MARK: - ArachneSpiderDiag
+
+/// Read-only snapshot of spider trigger and render state for debug overlay.
+public struct ArachneSpiderDiag: Sendable {
+    /// Sustained sub-bass accumulator — counts up to 0.75 s then fires.
+    public let accumulator: Float
+    /// Current blend value (0 = absent, 1 = fully visible).
+    public let blend: Float
+    /// Seconds remaining before organic fire is allowed again.
+    public let cooldownRemaining: Float
+    /// Whether the force-trigger is active (DEBUG builds only; always false in Release).
+    public let isForced: Bool
 }
 
 // MARK: - Spider extension
@@ -107,6 +127,10 @@ extension ArachneState {
             && timeSinceLastSpider >= Self.sessionCooldownDuration
             && sustainedSubBassAccumulator >= Self.sustainedTriggerThreshold {
             activateSpider()
+            let cdStr = String(Int(Self.sessionCooldownDuration))
+            let sbStr = String(format: "%.2f", features.subBass)
+            spiderLogger.notice("[arachne.spider] organic trigger fired")
+            spiderLogger.notice("  cooldown +\(cdStr)s subBass=\(sbStr)")
         }
 
         // Dematerialise when the triggering condition no longer holds.
@@ -121,6 +145,16 @@ extension ArachneState {
             spiderBlend = max(spiderBlend - dt / Self.spiderFadeOutDuration, 0.0)
         }
 
+        // Force-override: applied after organic logic so organic state is fully preserved.
+        // When forced, position is set once (no re-jitter on subsequent ticks) and blend is
+        // pinned to 1.0. Turning force off lets the organic blend path take over naturally.
+        #if DEBUG
+        if forceSpiderActive {
+            activateSpiderIfNeeded()
+            spiderBlend = 1.0
+        }
+        #endif
+
         if spiderBlend > 0 { updateSpiderGait(dt: dt) }
     }
 
@@ -130,8 +164,19 @@ extension ArachneState {
         spiderActive = true
         timeSinceLastSpider = 0
         sustainedSubBassAccumulator = 0
+        placeSpiderAtBestHub()
+    }
 
-        // Position at the hub of the most-opaque stable web (fallback: screen centre).
+    /// Position the spider at the most-opaque stable web hub, only when not already placed.
+    /// Organic `spiderActive` flag and cooldown state are untouched.
+    private func activateSpiderIfNeeded() {
+        // Guard: spider already placed if position is non-zero (no stable web is at exact origin).
+        guard spiderPosX == 0.0 && spiderPosY == 0.0 else { return }
+        placeSpiderAtBestHub()
+    }
+
+    /// Set position + heading + leg tips from the best available stable web.
+    private func placeSpiderAtBestHub() {
         var bestX: Float = 0, bestY: Float = 0, bestOpacity: Float = -1
         for web in webs where web.isAlive != 0 && WebStage(rawValue: web.stage) == .stable {
             if web.opacity > bestOpacity {
@@ -140,12 +185,11 @@ extension ArachneState {
                 bestY = web.hubY
             }
         }
-        spiderPosX  = bestOpacity >= 0 ? bestX : 0
-        spiderPosY  = bestOpacity >= 0 ? bestY : 0
-        spiderHeading   = lcg(&rng) * .pi * 2
-        spiderLegPhase  = 0
+        spiderPosX    = bestOpacity >= 0 ? bestX : 0
+        spiderPosY    = bestOpacity >= 0 ? bestY : 0
+        spiderHeading = lcg(&rng) * .pi * 2
+        spiderLegPhase = 0
 
-        // Initialise leg tips in a resting spread around the body.
         for idx in 0..<8 {
             let angle = spiderHeading + Float(idx) * (.pi * 2 / 8)
             spiderLegTips[idx] = SIMD2<Float>(
@@ -204,6 +248,60 @@ extension ArachneState {
         )
         spiderBuffer.contents().bindMemory(to: ArachneSpiderGPU.self, capacity: 1)[0] = gpu
     }
+
+    // MARK: - Diagnostics
+
+    /// Thread-safe snapshot of spider trigger + render state for the debug overlay.
+    ///
+    /// - Returns: `ArachneSpiderDiag` populated from current spider state.
+    public func spiderDiagnostics() -> ArachneSpiderDiag {
+        lock.withLock {
+            ArachneSpiderDiag(
+                accumulator: sustainedSubBassAccumulator,
+                blend: spiderBlend,
+                cooldownRemaining: max(0, Self.sessionCooldownDuration - timeSinceLastSpider),
+                isForced: {
+                    #if DEBUG
+                    return forceSpiderActive
+                    #else
+                    return false
+                    #endif
+                }()
+            )
+        }
+    }
+
+    // MARK: - Test helpers
+
+    #if DEBUG
+    /// Pin the spider to a deterministic state for fixture rendering tests.
+    ///
+    /// Sets blend=1, positions the body at the given UV coordinate, heading=0,
+    /// and all leg tips at their rest-pose angular offsets. Does not run the
+    /// gait solver — tips are set directly so the output is frame-stable.
+    ///
+    /// - Parameter uvPosition: UV-space anchor point (e.g. `SIMD2(0.42, 0.40)`).
+    public func forceActivateForTest(at uvPosition: SIMD2<Float>) {
+        // Convert UV → clip space: clipX = uv.x * 2 − 1, clipY = 1 − uv.y * 2.
+        let clipX = uvPosition.x * 2.0 - 1.0
+        let clipY = 1.0 - uvPosition.y * 2.0
+        lock.withLock {
+            spiderBlend    = 1.0
+            spiderPosX     = clipX
+            spiderPosY     = clipY
+            spiderHeading  = 0
+            spiderLegPhase = 0
+            for idx in 0..<8 {
+                let angle = Float(idx) * (.pi * 2 / 8)
+                spiderLegTips[idx] = SIMD2<Float>(
+                    clipX + cos(angle) * Self.spiderLegRadius,
+                    clipY + sin(angle) * Self.spiderLegRadius
+                )
+            }
+        }
+        writeSpiderToGPU()
+    }
+    #endif
 
     // MARK: - Helpers used by both ArachneState.swift and this extension
 

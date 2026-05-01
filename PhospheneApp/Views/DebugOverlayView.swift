@@ -141,6 +141,36 @@ struct DebugOverlayView: View {
             label("onsets/s", "\(diag.onsetsPerSec)")
             label("frames", "\(diag.callbackCount)")
 
+            // Arachne spider easter-egg trigger diagnostics (Increment SPV).
+            // Visible only when the Arachne preset is active.
+            if let arachneState = engine.arachneState {
+                Divider().background(.white.opacity(0.3))
+                let spiderDiag = arachneState.spiderDiagnostics()
+                let spiderSubBass = engine.mirDiag.subBass
+                let spiderAttackR = engine.mirDiag.bassAttackRatio
+                let spiderTag: String = {
+                    if spiderDiag.isForced { return "[forced]" }
+                    if spiderDiag.cooldownRemaining > 0 {
+                        return "[cooldown]"
+                    }
+                    return "[organic]"
+                }()
+                HStack(spacing: 4) {
+                    Text("SPIDER:")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundColor(.purple.opacity(0.8))
+                        .frame(width: 70, alignment: .trailing)
+                    Text(spiderTag)
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundColor(spiderDiag.isForced ? .yellow : .purple.opacity(0.7))
+                }
+                label("subBass", String(format: "%.2f", spiderSubBass))
+                label("attackR", String(format: "%.2f", spiderAttackR))
+                label("accum", String(format: "%.2fs", spiderDiag.accumulator))
+                label("blend", String(format: "%.2f", spiderDiag.blend))
+                label("cooldown", String(format: "%.0fs", spiderDiag.cooldownRemaining))
+            }
+
             if engine.debugGBufferMode {
                 Divider().background(.white.opacity(0.3))
                 Text("■ G-BUFFER DEBUG (G to exit)")

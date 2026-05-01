@@ -213,7 +213,21 @@ struct PlaybackView: View {
     // MARK: - Registry factory
 
     private func buildRegistry(router: DefaultPlaybackActionRouter) -> PlaybackShortcutRegistry {
-        PlaybackShortcutRegistry(
+        #if DEBUG
+        let forceSpiderAction: (@MainActor () -> Void)? = { [weak engine = self.engine, weak tm = self.toastManager] in
+            guard let engine, let tm else { return }
+            let isOn = engine.toggleForceSpider()
+            tm.enqueue(PhospheneToast(
+                severity: .info,
+                copy: isOn ? "Spider forced: ON" : "Spider forced: OFF",
+                duration: 3,
+                conditionID: "debug.spider.forced"
+            ))
+        }
+        #else
+        let forceSpiderAction: (@MainActor () -> Void)? = nil
+        #endif
+        return PlaybackShortcutRegistry(
             actionRouter: router,
             onToggleFullscreen: { [weak fo = self.fullscreenObserver] in
                 fo?.toggleFullscreen()
@@ -238,7 +252,8 @@ struct PlaybackView: View {
                 }
             },
             onShowHelp: { showHelp = true },
-            onShowPlanPreview: { showPlanPreview = true }
+            onShowPlanPreview: { showPlanPreview = true },
+            onToggleForceSpider: forceSpiderAction
         )
     }
 }
