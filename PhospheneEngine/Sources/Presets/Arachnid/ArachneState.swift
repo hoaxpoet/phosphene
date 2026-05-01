@@ -473,6 +473,7 @@ public final class ArachneState: @unchecked Sendable {
     static func diagSpokeCount(seed: UInt32) -> Int { 11 + Int(diagHash(seed &+ 0xA1) * 6.99) }
     static func diagAspect(seed: UInt32) -> Float { 0.85 + diagHash(seed &+ 0xB2) * 0.30 }
     static func diagAspectAngle(seed: UInt32) -> Float { diagHash(seed &+ 0xC3) * 2.0 * .pi }
-    static func diagKSag(seed: UInt32) -> Float { 0.04 + diagHash(seed &+ 0xD4) * 0.06 }
+    /// V.7.5 §10.1.2: must match arachKSag in Arachne.metal — range [0.06, 0.14].
+    static func diagKSag(seed: UInt32) -> Float { 0.06 + diagHash(seed &+ 0xD4) * 0.08 }
     #endif
 }
