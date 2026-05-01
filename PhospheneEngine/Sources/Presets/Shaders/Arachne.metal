@@ -7,7 +7,8 @@
 //         tRel now equals pRel directly; mv_warp temporal echo (decay=0.92) is the
 //         "alive" mechanism per CLAUDE.md Architecture note.
 //   §3.3  brightness = 0.12 + f.bass × 0.76 + ... rewritten to deviation form (D-026).
-//         New scheme: static tint (silkTint × 0.50) + post-BRDF deviation gain:
+//         V.7.5 §10.1.3: silkTint factor 0.50 → 0.32 so drops carry the visual focus.
+//         New scheme: static tint (silkTint × 0.32) + post-BRDF deviation gain:
 //           baseEmissionGain = 1.0 + 0.18 × f.bass_att_rel   (continuous, ±≈0.09)
 //           beatAccent       = 0.07 × max(0, drums_energy_dev) (accent, ≤ 0.07)
 //         Continuous/beat ratio = 0.18/0.07 ≈ 2.57× — satisfies ≥2× rule (CLAUDE.md).
@@ -277,12 +278,14 @@ static ArachneWebResult arachneEvalWeb(
 
         // §4.3 micro: adhesive droplets — spiral threads only (radial spokes are glue-free
         // per silk biology). Only evaluate for pixels close to the spiral strand.
-        float dropRadius = 0.0035; // ≈ 3.8 px at 1080p
+        // V.7.5 §10.1.3: drops are the visual hero — radius doubled (3.8 → 8.6 px at 1080p),
+        // spacing halved (4–6 px) so chains visibly bead-touch.
+        float dropRadius = 0.008;  // ≈ 8.6 px at 1080p (V.7.5 §10.1.3)
         result.dropRadius = dropRadius;
 
         if (inZone > 0.0 && spirDist < dropRadius + 0.0005) {
-            // Per-web spacing derived from seed: 8–12 px at 1080p = 0.0074–0.0111 UV.
-            float spacingUV   = 0.0074 + arachHash(seed + 0x1337u) * 0.0037;
+            // V.7.5 §10.1.3: per-web spacing 4–6 px at 1080p = 0.0037–0.0056 UV.
+            float spacingUV   = 0.0037 + arachHash(seed + 0x1337u) * 0.0019;
             float dropsPerRev = max(3.0, 2.0 * M_PI_F * rT / spacingUV);
             float dTheta      = 2.0 * M_PI_F / dropsPerRev;
 
@@ -422,7 +425,8 @@ fragment float4 arachne_fragment(
             fp.azimuthal_r   = 0.35;
             fp.azimuthal_tt  = 0.55;
             fp.absorption    = 0.10;
-            fp.tint          = silkTint * 0.50;  // static base — gain applied after BRDF
+            // V.7.5 §10.1.3: silkTint factor 0.50 → 0.32 so drops carry the visual focus.
+            fp.tint          = silkTint * 0.32;  // static base — gain applied after BRDF
             MaterialResult silk = mat_silk_thread(float3(uv, 0.0), fp, kL, V_silk);
             silk.emission = min(silk.emission, float3(1.6)); // HDR cap
 
@@ -467,12 +471,18 @@ fragment float4 arachne_fragment(
             // §4.3 micro: droplet spherical-cap detail_normal (analytic)
             float3 detail_normal = normalize(float3(d2 / max(wr.dropRadius, 1e-5), h));
             MaterialResult glass = mat_frosted_glass(float3(uv, 0.0), detail_normal);
-            glass.emission = glass.albedo * 0.04; // reduce SSS: 0.15 → 0.04 (dielectric, not glowing)
-            // Mirror glint: single bright point per droplet, distinct from silk's axial sheen
-            float3 Rdrop = reflect(-kL, detail_normal);
-            float spec   = pow(saturate(dot(Rdrop, kV)), 64.0);
-            float3 glintAdd = float3(0.95, 0.97, 1.00) * spec * 1.4;
-            dropColorAccum += (glass.emission + glintAdd) * wr.dropCov;
+            // V.7.5 §10.1.3: drops as visual hero. Warm-amber emissive base
+            // (was glass.albedo * 0.04, neutral white); warm-white pinpoint
+            // specular (was cool white); audio-gain modulated by the same
+            // factor as silk so drops swell with the music.
+            float3 dropAmber = float3(1.00, 0.78, 0.45);
+            glass.emission   = dropAmber * 0.18;
+            float3 Rdrop     = reflect(-kL, detail_normal);
+            float spec       = pow(saturate(dot(Rdrop, kV)), 64.0);
+            float3 glintAdd  = float3(1.00, 0.95, 0.85) * spec * 1.4;
+            float3 dropEmission = glass.emission + glintAdd;
+            dropEmission    *= (baseEmissionGain + beatAccent);
+            dropColorAccum  += dropEmission * wr.dropCov;
         }
     }
 
@@ -520,7 +530,8 @@ fragment float4 arachne_fragment(
             fp.azimuthal_r   = 0.35;
             fp.azimuthal_tt  = 0.55;
             fp.absorption    = 0.10;
-            fp.tint          = silkTint * 0.50 * w.opacity;  // static base with opacity
+            // V.7.5 §10.1.3: silkTint factor 0.50 → 0.32 so drops carry the visual focus.
+            fp.tint          = silkTint * 0.32 * w.opacity;  // static base with opacity
             MaterialResult silk = mat_silk_thread(float3(uv, 0.0), fp, kL, V_silk);
             silk.emission = min(silk.emission, float3(1.6));
 
@@ -561,11 +572,15 @@ fragment float4 arachne_fragment(
             float h      = sqrt(max(0.0, 1.0 - r_norm * r_norm));
             float3 detail_normal = normalize(float3(d2 / max(wr.dropRadius, 1e-5), h));
             MaterialResult glass = mat_frosted_glass(float3(uv, 0.0), detail_normal);
-            glass.emission = glass.albedo * 0.04;
-            float3 Rdrop  = reflect(-kL, detail_normal);
-            float spec    = pow(saturate(dot(Rdrop, kV)), 64.0);
-            float3 glintAdd = float3(0.95, 0.97, 1.00) * spec * 1.4;
-            dropColorAccum += (glass.emission + glintAdd) * scaledDrop;
+            // V.7.5 §10.1.3: drops as visual hero — same recipe as anchor block.
+            float3 dropAmber = float3(1.00, 0.78, 0.45);
+            glass.emission   = dropAmber * 0.18;
+            float3 Rdrop     = reflect(-kL, detail_normal);
+            float spec       = pow(saturate(dot(Rdrop, kV)), 64.0);
+            float3 glintAdd  = float3(1.00, 0.95, 0.85) * spec * 1.4;
+            float3 dropEmission = glass.emission + glintAdd;
+            dropEmission    *= (baseEmissionGain + beatAccent);
+            dropColorAccum  += dropEmission * scaledDrop;
         }
     }
 

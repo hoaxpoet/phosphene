@@ -40,12 +40,14 @@ extension ArachneState {
         }
         let beatsSinceSpawn = globalBeatIndex - lastSpawnBeatIndex
 
-        // Numeric proxies (v4 baseline). Step 5 (drops-as-hero) will modulate
-        // dropEmissionGain by audio and reduce silk tint — the ratio shifts
-        // from ~2.0 (v4: silk dominates) to ~3.0 (v5: drops dominate).
+        // Numeric proxies for the silk-vs-drop luminance ratio.
+        // v5 (post §10.1.3): silk uses tint × 0.32 (was 0.50 in v4); drops are
+        // audio-gain-modulated by (baseEmissionGain + beatAccent). Both gains
+        // share baseEmissionGain so the ratio is dominated by the static
+        // factors: drops_factor / strand_factor ≈ 1.0 / 0.32 ≈ 3.1.
         let baseEmissionGain = 1.0 + 0.18 * features.bassAttRel
-        let expectedStrandLuma = baseEmissionGain * 0.50  // v4: silkTint × 0.50
-        let expectedDropLuma: Float = 1.0                 // v4: drops not gain-modulated
+        let expectedStrandLuma = baseEmissionGain * 0.32  // v5: silkTint × 0.32
+        let expectedDropLuma   = baseEmissionGain * 1.0   // v5: drop emissive base + gain
         let dropOverStrand = expectedDropLuma / max(expectedStrandLuma, 1e-4)
         let cooldown = max(0, Self.sessionCooldownDuration - timeSinceLastSpider)
 
