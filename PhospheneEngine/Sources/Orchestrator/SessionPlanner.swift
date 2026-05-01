@@ -23,13 +23,14 @@ private let logger = Logging.session
 /// Protocol for playlist planning implementations.
 ///
 /// Conforming types must be `Sendable` and deterministic: the same
-/// `(tracks, catalog, deviceTier)` must always produce byte-identical output.
+/// `(tracks, catalog, deviceTier, includeUncertifiedPresets)` must always produce byte-identical output.
 public protocol SessionPlanning: Sendable {
     /// Synchronously build a `PlannedSession` for the given playlist.
     func plan(
         tracks: [(TrackIdentity, TrackProfile)],
         catalog: [PresetDescriptor],
-        deviceTier: DeviceTier
+        deviceTier: DeviceTier,
+        includeUncertifiedPresets: Bool
     ) throws -> PlannedSession
 }
 
@@ -86,9 +87,16 @@ public struct DefaultSessionPlanner: SessionPlanning {
     public func plan(
         tracks: [(TrackIdentity, TrackProfile)],
         catalog: [PresetDescriptor],
-        deviceTier: DeviceTier
+        deviceTier: DeviceTier,
+        includeUncertifiedPresets: Bool = false
     ) throws -> PlannedSession {
-        try plan(tracks: tracks, catalog: catalog, deviceTier: deviceTier, seed: 0)
+        try plan(
+            tracks: tracks,
+            catalog: catalog,
+            deviceTier: deviceTier,
+            seed: 0,
+            includeUncertifiedPresets: includeUncertifiedPresets
+        )
     }
 
     /// Seeded variant for "Regenerate Plan" (D-047).
@@ -101,7 +109,8 @@ public struct DefaultSessionPlanner: SessionPlanning {
         tracks: [(TrackIdentity, TrackProfile)],
         catalog: [PresetDescriptor],
         deviceTier: DeviceTier,
-        seed: UInt64
+        seed: UInt64,
+        includeUncertifiedPresets: Bool = false
     ) throws -> PlannedSession {
         guard !tracks.isEmpty else { throw SessionPlanningError.emptyPlaylist }
         guard !catalog.isEmpty else { throw SessionPlanningError.emptyCatalog }
@@ -117,7 +126,8 @@ public struct DefaultSessionPlanner: SessionPlanning {
                 deviceTier: deviceTier,
                 recentHistory: history,
                 currentPreset: currentPreset,
-                elapsedSessionTime: sessionClock
+                elapsedSessionTime: sessionClock,
+                includeUncertifiedPresets: includeUncertifiedPresets
             )
             let (chosen, breakdown) = selectPreset(
                 catalog: catalog,

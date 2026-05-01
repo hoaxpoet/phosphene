@@ -91,7 +91,11 @@ extension VisualizerEngine {
 
         do {
             var plan = try sessionPlanner.plan(
-                tracks: readyTracks, catalog: catalog, deviceTier: tier, seed: seed
+                tracks: readyTracks,
+                catalog: catalog,
+                deviceTier: tier,
+                seed: seed,
+                includeUncertifiedPresets: showUncertifiedPresets
             )
 
             // Attach partial-preparation warning when coverage is incomplete.
