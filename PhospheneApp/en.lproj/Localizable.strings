@@ -139,6 +139,11 @@
 "connector.spotify.not_found"           = "Phosphene couldn’t find that playlist. It may be private or deleted.";
 "connector.spotify.private_playlist"    = "That playlist is private. Paste a link to a public playlist.";
 "connector.spotify.auth_failure"        = "Couldn’t connect to Spotify. Check your configuration and try again.";
+"connector.spotify.login_required_headline" = "Log in to Spotify";
+"connector.spotify.login_required_body"     = "Phosphene needs your Spotify account to load this playlist. Your login is saved securely so you won’t need to do this again.";
+"connector.spotify.login_button"            = "Log in with Spotify";
+"connector.spotify.waiting_for_callback_headline" = "Waiting for Spotify…";
+"connector.spotify.waiting_for_callback_body"     = "Finish logging in on the page that just opened, then come back here.";
 "connector.spotify.error.headline"      = "Couldn’t reach Spotify.";
 "connector.spotify.try_again_button"    = "Try again";
 "connector.spotify.use_apple_music"     = "Use Apple Music instead";

@@ -31,6 +31,9 @@ public enum PlaylistConnectorError: Error, Sendable, Equatable {
     case appleMusicNotRunning
     /// Spotify client credentials are missing, invalid, or rejected by the token endpoint.
     case spotifyAuthFailure(String)
+    /// The Spotify API requires the user to complete OAuth login (user-level scope needed).
+    /// The token provider has no valid access token and no refresh token to exchange.
+    case spotifyLoginRequired
     /// The Spotify playlist is private or otherwise inaccessible (HTTP 403).
     case spotifyPlaylistInaccessible
     /// The Spotify playlist was not found (HTTP 404).

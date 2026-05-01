@@ -132,10 +132,11 @@ struct FidelityRubricGateTests {
         }
     }
 
-    /// Presets approved by Matt after M7 review and V.7 Session 3 delivery (2026-04-30).
-    private let certifiedPresets: Set<String> = ["Arachne"]
+    // V.7 (2026-05-01): Arachne certified=true after V.7 Session 2+3 Matt approval.
+    // This set is the ground truth — add to it as each preset is certified.
+    private static let certifiedPresets: Set<String> = ["Arachne"]
 
-    @Test func automatedGate_certifiedMatchesExpected() async {
+    @Test func automatedGate_uncertifiedPresetsAreUncertified() async {
         let store = PresetCertificationStore()
         let results = await store.results()
 
@@ -145,11 +146,15 @@ struct FidelityRubricGateTests {
         }
 
         for (presetID, result) in results {
-            let expectCertified = certifiedPresets.contains(presetID)
-            #expect(result.certified == expectCertified, "\(presetID): certified=\(result.certified) expected=\(expectCertified)")
-            // isCertified = meetsAutomatedGate && certified — only true when both hold.
-            let expectICertified = expectCertified && result.meetsAutomatedGate
-            #expect(result.isCertified == expectICertified, "\(presetID): isCertified=\(result.isCertified) expected=\(expectICertified)")
+            let shouldBeCertified = Self.certifiedPresets.contains(presetID)
+            #expect(
+                result.certified == shouldBeCertified,
+                "\(presetID): certified should be \(shouldBeCertified) per certifiedPresets ground truth"
+            )
+            #expect(
+                result.isCertified == shouldBeCertified,
+                "\(presetID): isCertified should be \(shouldBeCertified)"
+            )
         }
     }
 }

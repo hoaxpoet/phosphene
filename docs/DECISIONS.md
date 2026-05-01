@@ -1304,3 +1304,42 @@ The Spotify logic was previously inlined in `PlaylistConnector.swift`. Extractio
 **Rejected alternative: env-var credential pattern matching Soundcharts.**
 
 `ProcessInfo.processInfo.environment` requires the developer to set `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` in the Xcode scheme before running, which is invisible and fragile. The xcconfig pattern is visible in the source tree, documented in RUNBOOK, and consistent with how Xcode projects handle other build-time secrets (bundle IDs, entitlements).
+
+
+## D-069 — Spotify OAuth Authorization Code + PKCE: user-level auth for playlist access (Increment U.11)
+
+**Status:** Accepted (2026-05-01)
+
+**Context:** In late 2024 Spotify deprecated client-credential access for the `/v1/playlists/{id}/tracks` endpoint — it now returns HTTP 403 for all client-credential tokens regardless of playlist visibility. U.10's `DefaultSpotifyTokenProvider` is therefore blocked from reading any playlist. U.11 replaces it with a full user-level OAuth Authorization Code + PKCE flow.
+
+**Decision 1: Authorization Code + PKCE (not Implicit Grant or Client Credentials).**
+
+PKCE (RFC 7636) is the current IETF best practice for native apps: no client secret goes over the wire; a one-time `code_verifier` / `code_challenge = base64url(SHA-256(verifier))` pair proves possession. Implicit Grant is deprecated. Client Credentials lack playlist-read scope. PKCE is the only flow that satisfies both "no secret in binary" (App Store compliance / security) and "playlist-read-private + playlist-read-collaborative" scope.
+
+**Decision 2: `SpotifyOAuthTokenProvider` lives in `PhospheneApp`, not the engine `Session` module.**
+
+`SpotifyOAuthTokenProvider.login()` needs `NSWorkspace.shared.open(_:)` to launch the system browser. `NSWorkspace` is in `AppKit`, which should not be imported by the engine module. The actor conforms to the engine's `SpotifyTokenProviding` protocol (in `Session`), so `SpotifyWebAPIConnector` accepts it via the existing injection seam without any engine changes. Only the concrete implementation lives in the app layer.
+
+**Decision 3: Keychain refresh-token persistence via `SpotifyKeychainStore`.**
+
+Refresh tokens are long-lived secrets. `UserDefaults` is not appropriate (no ACL, visible to other tools). The Keychain is the correct store. Phosphene runs unsandboxed so no entitlement is required. Service key: `com.phosphene.spotify`, account: `refresh_token`. `SpotifyKeychainStore` accepts injectable `service`/`account` parameters so tests use a test-specific namespace without touching production tokens.
+
+**Decision 4: `phosphene://spotify-callback` custom URL scheme as redirect_uri.**
+
+The redirect URI must be registered in `CFBundleURLTypes` (Info.plist). SwiftUI's `.onOpenURL` in `PhospheneApp.body` routes incoming `phosphene://spotify-callback?code=…` URLs to `SpotifyOAuthTokenProvider.handleCallback(url:)`. `NSAppleEventManager` was considered but `.onOpenURL` is simpler, idiomatic SwiftUI, and does not require AppKit boilerplate.
+
+**Decision 5: `CheckedContinuation<Void, Error>` bridges the async OAuth round-trip.**
+
+`login()` is `async throws` — it suspends until `handleCallback(url:)` resumes the continuation. A `Task.detached` timeout (5 minutes) cancels the wait if the user does not complete the browser flow. This keeps `login()` as a clean async function from the VM's perspective: `try await loginAction()` either returns (success) or throws (denied / timeout / network error).
+
+**Decision 6: Error mapping — 403 means "login required" for client-credentials, "private playlist" for OAuth.**
+
+`SpotifyWebAPIConnector.performRequest` maps all HTTP 403 → `.spotifyLoginRequired`. `SpotifyOAuthPlaylistConnector` wraps `PlaylistConnector` and remaps `.spotifyLoginRequired` → `.spotifyPlaylistInaccessible` when the provider is already authenticated. `SpotifyConnectionViewModel.attempt()` also checks `oauthProvider.isAuthenticated` as a fallback for the same mapping. This keeps `SpotifyWebAPIConnector` ignorant of auth context while giving the VM the right user-facing error in both states.
+
+**Decision 7: `loginAction` closure injection into `SpotifyConnectionViewModel`; `oauthProvider` protocol for auth-state queries.**
+
+The VM has no knowledge of `NSWorkspace` or `SpotifyOAuthTokenProvider` directly. It receives a `@Sendable () async throws -> Void` closure for initiating login and an optional `any SpotifyOAuthLoginProviding` for querying `isAuthenticated`. This preserves VM testability (mock closures in tests) and keeps AppKit out of the engine and VM layers.
+
+**Decision 8: `SpotifyClientSecret` key removed from Info.plist for OAuth.**
+
+Client-credentials required a `SpotifyClientSecret`. PKCE does not send a client secret — only the `client_id` is needed in the authorize URL and token-exchange requests. The `SpotifyClientSecret` xcconfig variable and Info.plist key are retained for backward-compat tooling but the OAuth provider only reads `SpotifyClientID`. Any future client that reads `SpotifyClientSecret` will find it empty in PKCE configurations, which is correct.

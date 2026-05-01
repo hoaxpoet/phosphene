@@ -8,23 +8,33 @@
 - Screen capture permission for live audio capture
 - Swift 6.0, Metal 3.1+
 
-## Spotify connector setup
+## Spotify connector setup (U.11 — OAuth PKCE)
 
-Phosphene uses Spotify's client-credentials flow to fetch public playlist track lists. No user login is required; this is a free developer-account feature.
+Phosphene uses Spotify's Authorization Code + PKCE flow (user-level OAuth). The user logs in once via their system browser; the refresh token is stored in the macOS Keychain and used silently on subsequent launches.
 
-**One-time setup:**
+**One-time developer setup:**
 
-1. Go to [https://developer.spotify.com/dashboard](https://developer.spotify.com/dashboard) and log in with any Spotify account (free tier is fine).
-2. Click **Create app**. Name it "Phosphene" (or anything). Redirect URI: `http://localhost` (required by the form but never used). Check **Web API**. Accept terms.
-3. Copy the **Client ID** and **Client Secret** from the app dashboard.
+1. Go to [https://developer.spotify.com/dashboard](https://developer.spotify.com/dashboard) and log in.
+2. Click **Create app**. Name it "Phosphene". Add redirect URI: **`phosphene://spotify-callback`** (exact, required). Check **Web API**. Accept terms.
+3. Copy the **Client ID** from the app dashboard. (No client secret is needed for PKCE.)
 4. Create `PhospheneApp/Phosphene.local.xcconfig` (gitignored) with:
    ```
    SPOTIFY_CLIENT_ID = your_client_id_here
-   SPOTIFY_CLIENT_SECRET = your_client_secret_here
    ```
-5. In Xcode: Project → Info → Configurations. For **Debug** and **Release**, set the xcconfig to `Phosphene.local` (or point the **PhospheneApp** target to it as a local override).
+5. In Xcode: Project → Info → Configurations. For **Debug** and **Release**, set the xcconfig to `Phosphene.local`.
 
-The app reads these at launch via `Bundle.main.infoDictionary["SpotifyClientID/Secret"]`. Empty strings cause every Spotify connect attempt to fail with `.spotifyAuthFailure` and surface the §9.2 "Phosphene couldn't reach Spotify right now" copy immediately — no silent degrade.
+The app reads `SpotifyClientID` at runtime via `Bundle.main.infoDictionary`. An empty or missing Client ID causes every Spotify connect attempt to throw `.spotifyAuthFailure` immediately.
+
+**User flow (end-user, one-time):**
+
+1. Paste a Spotify playlist URL in the connector view.
+2. Phosphene shows "Log in with Spotify" if not yet authenticated.
+3. Tap "Log in with Spotify" → system browser opens `accounts.spotify.com/authorize`.
+4. User approves → browser redirects to `phosphene://spotify-callback?code=…`.
+5. Phosphene exchanges the code for tokens; refresh token stored in Keychain.
+6. Future sessions skip the login step (silent token refresh).
+
+**Logout:** Not yet exposed in the Settings UI. Developer workaround: delete the Keychain item via Keychain Access.app → search "com.phosphene.spotify".
 
 ## Build and Test
 
@@ -140,25 +150,34 @@ Checks:
 
 ### Spotify connector failure modes
 
-**Missing credentials** (`authFailure` state in VM, "Phosphene couldn't reach Spotify right now"):
-- `SpotifyClientID` or `SpotifyClientSecret` in Info.plist is empty.
-- Cause: `Phosphene.local.xcconfig` was not created or not wired into the target's xcconfig configuration.
-- Fix: follow the setup in §Spotify connector setup above. Build again after editing the xcconfig.
+**Missing Client ID** (`authFailure` state, "Couldn't connect to Spotify"):
+- `SpotifyClientID` in Info.plist is empty.
+- Cause: `Phosphene.local.xcconfig` not created, or not wired into the xcconfig configuration.
+- Fix: follow §Spotify connector setup above. Build again after editing the xcconfig.
 
-**Bad credentials** (same `authFailure` copy):
-- The token endpoint returns 400 or 401 for the base64-encoded `clientID:clientSecret` pair.
-- Cause: client secret was regenerated on the dashboard without updating `Phosphene.local.xcconfig`, or the credentials were copy-pasted with trailing whitespace.
-- Fix: re-copy credentials from the Spotify dashboard, then clean-build.
+**Redirect URI mismatch** (browser shows Spotify error page after login):
+- Cause: the redirect URI registered in Spotify's developer dashboard does not exactly match `phosphene://spotify-callback`.
+- Fix: re-open the app on developer.spotify.com, edit the redirect URI, and save.
+
+**Authorization denied by user** (`authFailure` state):
+- User clicked "Cancel" or "Deny" on the Spotify authorization page.
+- Fix: tap "Log in with Spotify" again and approve.
+
+**Login timeout** (`authFailure` state, "Login timed out"):
+- The user did not complete the browser flow within 5 minutes.
+- Fix: tap "Log in with Spotify" again.
+
+**Refresh token revoked** (`requiresLogin` state reappears on launch):
+- Cause: user revoked Phosphene's access in Spotify account settings, or the token expired after a very long period.
+- Fix: tap "Log in with Spotify" again to re-authenticate.
 
 **Private playlist** (`privatePlaylist` state, "That playlist is private"):
-- HTTP 403 from the playlist tracks endpoint.
-- Cause: the playlist has been set to private by its owner after the link was shared.
-- Fix: user must paste a different link. Private-playlist access requires user OAuth (v2 feature, not yet implemented).
+- HTTP 403 while the user IS authenticated: the playlist is genuinely private.
+- Fix: user must paste a public playlist link, or the owner must make the playlist public.
 
 **Rate limit exhausted** (after [2s, 5s, 15s] backoff fails):
-- Spotify client-credentials quota exceeded; rare in normal use.
-- Cause: too many token requests in a short window (e.g. rapid repeated connect/cancel in the UI).
-- Fix: wait 60 seconds and retry. The token is cached for its full lifetime (~1 hour) so normal usage should never hit this.
+- Spotify API quota exceeded.
+- Fix: wait 60 seconds and retry. Access tokens are cached for their full lifetime (~1 hour).
 
 ### Preparation takes too long
 

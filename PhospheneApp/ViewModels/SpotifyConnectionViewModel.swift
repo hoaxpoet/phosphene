@@ -1,12 +1,20 @@
 // SpotifyConnectionViewModel — State machine for the Spotify URL-paste connection flow.
 //
 // Increment U.10: client-credentials auth via SpotifyTokenProvider.
-// Connector.connect() now performs real API calls; the silent-degrade path
-// (.spotifyAuthRequired → startSession with empty token) has been removed.
-// Three new error states surface the typed errors from SpotifyWebAPIConnector:
-//   .privatePlaylist  → §9.2 "That playlist is private."
-//   .authFailure      → §9.2 "Phosphene couldn't reach Spotify right now."
-//   .notFound         → §9.2 "Couldn't find that playlist."
+// Increment U.11: OAuth Authorization Code + PKCE replaces client-credentials.
+//
+// New states added in U.11:
+//   .requiresLogin       → user has not authenticated with Spotify yet; shows login CTA
+//   .waitingForCallback  → browser open, waiting for phosphene://spotify-callback redirect
+//
+// Error mapping when authenticated:
+//   .spotifyLoginRequired with oauthProvider.isAuthenticated == true
+//       → mapped to .privatePlaylist (the playlist is genuinely private / inaccessible)
+//   .spotifyLoginRequired with oauthProvider.isAuthenticated == false
+//       → mapped to .requiresLogin (the user needs to log in first)
+//
+// loginAction is injected from ConnectorPickerView so the VM stays free of
+// AppKit/NSWorkspace dependencies. In tests it can be replaced with a stub.
 
 import Combine
 import Session
@@ -28,9 +36,13 @@ enum SpotifyConnectionState: Equatable {
     case rateLimited(attempt: Int)
     /// HTTP 404 — playlist not found (deleted or wrong link).
     case notFound
-    /// HTTP 403 — playlist is private or otherwise inaccessible.
+    /// HTTP 403 while authenticated — playlist is private or otherwise inaccessible.
     case privatePlaylist
-    /// Auth failure — credentials missing or rejected by Spotify.
+    /// User needs to authenticate with Spotify (OAuth). Shows "Log in with Spotify" CTA.
+    case requiresLogin
+    /// OAuth browser is open; waiting for the phosphene://spotify-callback redirect.
+    case waitingForCallback
+    /// Auth failure — credentials missing, rejected, or OAuth flow failed.
     case authFailure
     /// Unrecoverable error. Message is user-facing.
     case error(String)
@@ -51,6 +63,13 @@ final class SpotifyConnectionViewModel: ObservableObject {
 
     private let connector: any PlaylistConnecting
     private let delayProvider: any DelayProviding
+    /// Called when state reaches `.requiresLogin` and the user taps "Log in with Spotify".
+    /// Injected from ConnectorPickerView so the VM has no AppKit dependency.
+    /// Returns when a valid access token has been obtained (or throws on failure/timeout).
+    private let loginAction: (@Sendable () async throws -> Void)?
+    /// Read to distinguish "need to log in" (unauthenticated 403) from
+    /// "playlist is private" (authenticated 403).
+    private let oauthProvider: (any SpotifyOAuthLoginProviding)?
 
     // MARK: - Private
 
@@ -64,10 +83,14 @@ final class SpotifyConnectionViewModel: ObservableObject {
 
     init(
         connector: any PlaylistConnecting = PlaylistConnector(),
-        delayProvider: any DelayProviding = RealDelay()
+        delayProvider: any DelayProviding = RealDelay(),
+        loginAction: (@Sendable () async throws -> Void)? = nil,
+        oauthProvider: (any SpotifyOAuthLoginProviding)? = nil
     ) {
         self.connector = connector
         self.delayProvider = delayProvider
+        self.loginAction = loginAction
+        self.oauthProvider = oauthProvider
         observeTextChanges()
     }
 
@@ -82,7 +105,19 @@ final class SpotifyConnectionViewModel: ObservableObject {
         }
     }
 
-    // MARK: - Private
+    /// Called when the user taps "Log in with Spotify" from the `.requiresLogin` state.
+    func login(startSession: @escaping @Sendable (PlaylistSource) async -> Void) {
+        guard let loginAction else {
+            state = .authFailure
+            return
+        }
+        connectTask?.cancel()
+        connectTask = Task { [weak self] in
+            await self?.runLogin(loginAction: loginAction, startSession: startSession)
+        }
+    }
+
+    // MARK: - Private — Text Parsing
 
     private func observeTextChanges() {
         $text
@@ -128,6 +163,8 @@ final class SpotifyConnectionViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Private — Connect
+
     private func runConnect(
         playlistID: String,
         startSession: @escaping @Sendable (PlaylistSource) async -> Void
@@ -139,9 +176,48 @@ final class SpotifyConnectionViewModel: ObservableObject {
         let initialResult = await attempt(source: source)
         if Task.isCancelled { return }
 
-        switch initialResult {
+        await applyResult(initialResult, source: source, startSession: startSession)
+    }
+
+    private func runLogin(
+        loginAction: @Sendable () async throws -> Void,
+        startSession: @escaping @Sendable (PlaylistSource) async -> Void
+    ) async {
+        isConnecting = true
+        defer { isConnecting = false }
+
+        state = .waitingForCallback
+        do {
+            try await loginAction()
+        } catch {
+            state = .authFailure
+            return
+        }
+
+        // Login succeeded — retry the connect with the new OAuth token.
+        guard !parsedURL.isEmpty else {
+            state = .empty
+            return
+        }
+        let source: PlaylistSource = .spotifyPlaylistURL(parsedURL)
+        let result = await attempt(source: source)
+        if Task.isCancelled { return }
+        await applyResult(result, source: source, startSession: startSession, afterLogin: true)
+    }
+
+    /// Apply an `AttemptResult` to the current state. `afterLogin` changes the
+    /// `.requiresLogin` mapping to `.authFailure` (still no token after a fresh login).
+    private func applyResult(
+        _ result: AttemptResult,
+        source: PlaylistSource,
+        startSession: @escaping @Sendable (PlaylistSource) async -> Void,
+        afterLogin: Bool = false
+    ) async {
+        switch result {
         case .success:
             await startSession(source)
+        case .requiresLogin:
+            state = afterLogin ? .authFailure : .requiresLogin
         case .privatePlaylist:
             state = .privatePlaylist
         case .notFound:
@@ -169,6 +245,9 @@ final class SpotifyConnectionViewModel: ObservableObject {
             case .success:
                 await startSession(source)
                 return
+            case .requiresLogin:
+                state = .requiresLogin
+                return
             case .privatePlaylist:
                 state = .privatePlaylist
                 return
@@ -188,8 +267,11 @@ final class SpotifyConnectionViewModel: ObservableObject {
         state = .error("Couldn't reach Spotify. Check your network or try a different source.")
     }
 
+    // MARK: - Private — Attempt
+
     private enum AttemptResult {
         case success([TrackIdentity])
+        case requiresLogin
         case privatePlaylist
         case notFound
         case authFailure
@@ -203,6 +285,12 @@ final class SpotifyConnectionViewModel: ObservableObject {
             return .success(tracks)
         } catch PlaylistConnectorError.spotifyAuthFailure {
             return .authFailure
+        } catch PlaylistConnectorError.spotifyLoginRequired {
+            // Map to the right visual state based on whether the user is already authenticated.
+            // SpotifyOAuthPlaylistConnector already handles most of this, but the oauthProvider
+            // check provides a fallback when the connector is a plain PlaylistConnector.
+            let authenticated = await oauthProvider?.isAuthenticated ?? false
+            return authenticated ? .privatePlaylist : .requiresLogin
         } catch PlaylistConnectorError.spotifyPlaylistInaccessible {
             return .privatePlaylist
         } catch PlaylistConnectorError.spotifyPlaylistNotFound {

@@ -164,6 +164,11 @@
 		M10001 /* DisplayChangeCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = M20001; };
 		M10002 /* CaptureModeSwitchCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = M20002; };
 		M10003 /* NetworkRecoveryCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = M20003; };
+		N10001 /* SpotifyKeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = N20001; };
+		N10002 /* SpotifyOAuthTokenProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = N20002; };
+		N10003 /* SpotifyKeychainStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = N20003; };
+		N10004 /* SpotifyOAuthTokenProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = N20004; };
+		N10005 /* SpotifyOAuthPlaylistConnector.swift in Sources */ = {isa = PBXBuildFile; fileRef = N20005; };
 		/* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -327,6 +332,11 @@
 		M20001 /* DisplayChangeCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisplayChangeCoordinator.swift; sourceTree = "<group>"; };
 		M20002 /* CaptureModeSwitchCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureModeSwitchCoordinator.swift; sourceTree = "<group>"; };
 		M20003 /* NetworkRecoveryCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkRecoveryCoordinator.swift; sourceTree = "<group>"; };
+		N20001 /* SpotifyKeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotifyKeychainStore.swift; sourceTree = "<group>"; };
+		N20002 /* SpotifyOAuthTokenProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotifyOAuthTokenProvider.swift; sourceTree = "<group>"; };
+		N20003 /* SpotifyKeychainStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotifyKeychainStoreTests.swift; sourceTree = "<group>"; };
+		N20004 /* SpotifyOAuthTokenProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotifyOAuthTokenProviderTests.swift; sourceTree = "<group>"; };
+		N20005 /* SpotifyOAuthPlaylistConnector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotifyOAuthPlaylistConnector.swift; sourceTree = "<group>"; };
 		/* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -500,6 +510,9 @@
 				M20001 /* DisplayChangeCoordinator.swift */,
 				M20002 /* CaptureModeSwitchCoordinator.swift */,
 				M20003 /* NetworkRecoveryCoordinator.swift */,
+				N20001 /* SpotifyKeychainStore.swift */,
+				N20002 /* SpotifyOAuthTokenProvider.swift */,
+				N20005 /* SpotifyOAuthPlaylistConnector.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -637,6 +650,8 @@
 				L20040 /* AccessibilityStateTests.swift */,
 				L20041 /* DynamicTypeRegressionTests.swift */,
 				L20042 /* AccessibilityLabelsTests.swift */,
+				N20003 /* SpotifyKeychainStoreTests.swift */,
+				N20004 /* SpotifyOAuthTokenProviderTests.swift */,
 			);
 			path = PhospheneAppTests;
 			sourceTree = "<group>";
@@ -844,6 +859,9 @@
 				M10001 /* DisplayChangeCoordinator.swift in Sources */,
 				M10002 /* CaptureModeSwitchCoordinator.swift in Sources */,
 				M10003 /* NetworkRecoveryCoordinator.swift in Sources */,
+				N10001 /* SpotifyKeychainStore.swift in Sources */,
+				N10002 /* SpotifyOAuthTokenProvider.swift in Sources */,
+				N10005 /* SpotifyOAuthPlaylistConnector.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -899,6 +917,8 @@
 				L10040 /* AccessibilityStateTests.swift in Sources */,
 				L10041 /* DynamicTypeRegressionTests.swift in Sources */,
 				L10042 /* AccessibilityLabelsTests.swift in Sources */,
+				N10003 /* SpotifyKeychainStoreTests.swift in Sources */,
+				N10004 /* SpotifyOAuthTokenProviderTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

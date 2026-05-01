@@ -1,6 +1,10 @@
 // SpotifyConnectionView — URL-paste connection flow for Spotify.
 // User pastes a Spotify playlist URL; the view validates it and shows a preview card.
 // Continue starts the session. Rate-limit and error states have appropriate copy and CTAs.
+//
+// U.11 additions:
+//   .requiresLogin      → "Log in with Spotify" button; tapping calls viewModel.login()
+//   .waitingForCallback → spinner while the browser OAuth flow completes
 
 import Session
 import SwiftUI
@@ -77,6 +81,10 @@ struct SpotifyConnectionView: View {
             validationMessage(String(localized: "connector.spotify.not_found"))
         case .privatePlaylist:
             validationMessage(String(localized: "connector.spotify.private_playlist"))
+        case .requiresLogin:
+            requiresLoginBody
+        case .waitingForCallback:
+            waitingForCallbackBody
         case .authFailure:
             validationMessage(String(localized: "connector.spotify.auth_failure"))
         case .error(let msg):
@@ -147,6 +155,55 @@ struct SpotifyConnectionView: View {
                     .font(.body)
                     .foregroundColor(.white.opacity(0.6))
             }
+        }
+    }
+
+    private var requiresLoginBody: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 10) {
+                Image(systemName: "person.crop.circle.badge.questionmark")
+                    .foregroundColor(.white.opacity(0.6))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(String(localized: "connector.spotify.login_required_headline"))
+                        .font(.headline)
+                        .foregroundColor(.white)
+                    Text(String(localized: "connector.spotify.login_required_body"))
+                        .font(.body)
+                        .foregroundColor(.white.opacity(0.55))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.white.opacity(0.07))
+            .cornerRadius(10)
+
+            Button(String(localized: "connector.spotify.login_button")) {
+                viewModel.login(startSession: onConnect)
+            }
+            .buttonStyle(.borderedProminent)
+            .keyboardShortcut(.defaultAction)
+            .accessibilityIdentifier("phosphene.spotify.loginButton")
+        }
+    }
+
+    private var waitingForCallbackBody: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                ProgressView().controlSize(.small).tint(.white.opacity(0.6))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(String(localized: "connector.spotify.waiting_for_callback_headline"))
+                        .font(.headline)
+                        .foregroundColor(.white)
+                    Text(String(localized: "connector.spotify.waiting_for_callback_body"))
+                        .font(.body)
+                        .foregroundColor(.white.opacity(0.5))
+                }
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.white.opacity(0.07))
+            .cornerRadius(10)
         }
     }
 
