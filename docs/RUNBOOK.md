@@ -8,6 +8,24 @@
 - Screen capture permission for live audio capture
 - Swift 6.0, Metal 3.1+
 
+## Spotify connector setup
+
+Phosphene uses Spotify's client-credentials flow to fetch public playlist track lists. No user login is required; this is a free developer-account feature.
+
+**One-time setup:**
+
+1. Go to [https://developer.spotify.com/dashboard](https://developer.spotify.com/dashboard) and log in with any Spotify account (free tier is fine).
+2. Click **Create app**. Name it "Phosphene" (or anything). Redirect URI: `http://localhost` (required by the form but never used). Check **Web API**. Accept terms.
+3. Copy the **Client ID** and **Client Secret** from the app dashboard.
+4. Create `PhospheneApp/Phosphene.local.xcconfig` (gitignored) with:
+   ```
+   SPOTIFY_CLIENT_ID = your_client_id_here
+   SPOTIFY_CLIENT_SECRET = your_client_secret_here
+   ```
+5. In Xcode: Project → Info → Configurations. For **Debug** and **Release**, set the xcconfig to `Phosphene.local` (or point the **PhospheneApp** target to it as a local override).
+
+The app reads these at launch via `Bundle.main.infoDictionary["SpotifyClientID/Secret"]`. Empty strings cause every Spotify connect attempt to fail with `.spotifyAuthFailure` and surface the §9.2 "Phosphene couldn't reach Spotify right now" copy immediately — no silent degrade.
+
 ## Build and Test
 
 ```bash
@@ -119,6 +137,28 @@ Checks:
 - MetadataPreFetcher has 3s per-fetcher timeouts.
 - PreviewResolver rate limiter: 20 req/60s sliding window.
 - Continue with audio-only mode if all external sources fail.
+
+### Spotify connector failure modes
+
+**Missing credentials** (`authFailure` state in VM, "Phosphene couldn't reach Spotify right now"):
+- `SpotifyClientID` or `SpotifyClientSecret` in Info.plist is empty.
+- Cause: `Phosphene.local.xcconfig` was not created or not wired into the target's xcconfig configuration.
+- Fix: follow the setup in §Spotify connector setup above. Build again after editing the xcconfig.
+
+**Bad credentials** (same `authFailure` copy):
+- The token endpoint returns 400 or 401 for the base64-encoded `clientID:clientSecret` pair.
+- Cause: client secret was regenerated on the dashboard without updating `Phosphene.local.xcconfig`, or the credentials were copy-pasted with trailing whitespace.
+- Fix: re-copy credentials from the Spotify dashboard, then clean-build.
+
+**Private playlist** (`privatePlaylist` state, "That playlist is private"):
+- HTTP 403 from the playlist tracks endpoint.
+- Cause: the playlist has been set to private by its owner after the link was shared.
+- Fix: user must paste a different link. Private-playlist access requires user OAuth (v2 feature, not yet implemented).
+
+**Rate limit exhausted** (after [2s, 5s, 15s] backoff fails):
+- Spotify client-credentials quota exceeded; rare in normal use.
+- Cause: too many token requests in a short window (e.g. rapid repeated connect/cancel in the UI).
+- Fix: wait 60 seconds and retry. The token is cached for its full lifetime (~1 hour) so normal usage should never hit this.
 
 ### Preparation takes too long
 

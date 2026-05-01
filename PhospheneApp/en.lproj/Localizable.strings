@@ -137,6 +137,8 @@
 "connector.spotify.continue_button"     = "Continue";
 "connector.spotify.connecting_button"   = "Connecting\u2026";
 "connector.spotify.not_found"           = "Phosphene couldn’t find that playlist. It may be private or deleted.";
+"connector.spotify.private_playlist"    = "That playlist is private. Paste a link to a public playlist.";
+"connector.spotify.auth_failure"        = "Couldn’t connect to Spotify. Check your configuration and try again.";
 "connector.spotify.error.headline"      = "Couldn’t reach Spotify.";
 "connector.spotify.try_again_button"    = "Try again";
 "connector.spotify.use_apple_music"     = "Use Apple Music instead";
