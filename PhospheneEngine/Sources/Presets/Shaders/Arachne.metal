@@ -40,7 +40,8 @@
 //   sss_backlit: bioluminescent rim glow on all strands (E4 — fiber SSS).
 //   §5.1  2D screen-space mist via fbm8 multiplicative field. No apply_fog (D-029).
 //   §5.2  Screen-space dust motes via fbm4, drift via accumulated_audio_time (FA33).
-//   §5.3  Cool-blue rim back-light cue: backsideCue from R-lobe accumulation.
+//   §5.3  Warm TT-lobe back-rim cue (V.7.5 §10.1.4 — was cool-blue): backsideCue
+//         from R-lobe accumulation, tinted amber per ref 04 annotation.
 //   Cascade markers added: // macro, // meso, // micro, // specular (M1 gate).
 //
 // Clip-space → UV: hub_uv = float2((hub_x+1)/2, (1-hub_y)/2).  webR = radius × 0.5.
@@ -355,9 +356,12 @@ fragment float4 arachne_fragment(
     // When V=T, the R lobe fires for strands aligned with kL (theta_h→0 when T‖L),
     // and the TT lobe fires for anti-parallel strands. Different orientations glow
     // differently — producing the axial-streak directionality of 04_specular_silk_fiber_highlight.jpg.
-    const float3 kL    = normalize(float3(0.45, 0.65, 0.30));
-    const float3 kV    = float3(0.0, 0.0, 1.0);
-    const float3 kBioL = normalize(float3(0.0, 0.0, -1.0));
+    const float3 kL      = normalize(float3(0.45, 0.65, 0.30));
+    const float3 kV      = float3(0.0, 0.0, 1.0);
+    const float3 kBioL   = normalize(float3(0.0, 0.0, -1.0));
+    // V.7.5 §10.1.4: TT-lobe warm rim (back-lit silk per ref 04). Shared by
+    // anchor + pool silk material sites and by the §5.3 backsideCue blend.
+    const float3 kWarmTT = float3(1.00, 0.78, 0.45);
 
     // SSS bioluminescent rim constant: evaluated once per fragment, shared by all strands.
     // N = screen normal (0,0,1), L = behind screen (0,0,-1), V = kV.
@@ -370,7 +374,7 @@ fragment float4 arachne_fragment(
     float3 strandColor  = float3(0.0);
     float3 dropColorAccum = float3(0.0); // per-web drop material accumulator (replaces dropPseudo)
 
-    // §5.3 R-lobe + coverage accumulators for cool-blue backsideCue
+    // §5.3 R-lobe + coverage accumulators for warm TT-lobe backsideCue (V.7.5 §10.1.4)
     float strandCovTotal = 0.0;
     float rLobeTotal     = 0.0;
 
@@ -400,9 +404,9 @@ fragment float4 arachne_fragment(
 
             // §3.3 Cool-warm tint with rim modulation
             float3 silkBase = hsv2rgb(float3(fract(0.52 + hueDrift * 0.10), 0.55, 1.00));
-            float3 coolRim  = float3(0.55, 0.78, 1.00);
+            // V.7.5 §10.1.4: warm TT-lobe replaces cool-blue rim (ref 04 mandatory).
             float rimT = saturate(1.0 - abs(dot(T, kL)));
-            float3 silkTint = mix(silkBase, coolRim, rimT * 0.45);
+            float3 silkTint = mix(silkBase, kWarmTT, rimT * 0.45);
 
             // mat_silk_thread: Marschner-lite fiber BRDF (§3)
             // azimuthal_r=0.35: wider than 3D default (0.18) for 2D V=T adaptation.
@@ -498,9 +502,9 @@ fragment float4 arachne_fragment(
             // Per-web cool-warm tint using birth_hue (D-026 hue drift modulation)
             float finalHue  = fract(w.birth_hue + hueDrift * 0.12);
             float3 silkBase = hsv2rgb(float3(finalHue, 0.55, 1.00));
-            float3 coolRim  = float3(0.55, 0.78, 1.00);
+            // V.7.5 §10.1.4: warm TT-lobe replaces cool-blue rim (ref 04 mandatory).
             float rimT      = saturate(1.0 - abs(dot(T, kL)));
-            float3 silkTint = mix(silkBase, coolRim, rimT * 0.45);
+            float3 silkTint = mix(silkBase, kWarmTT, rimT * 0.45);
 
             FiberParams fp;
             fp.fiber_tangent = T;
@@ -609,7 +613,8 @@ fragment float4 arachne_fragment(
 
     // ── §5.3 Cool-blue rim back-light + combine strands ───────────────────────
     float3 webColor = strandColor + dropColorAccum;
-    webColor += float3(0.40, 0.62, 0.95) * backsideCue * 0.20;
+    // V.7.5 §10.1.4: warm back-rim cue (was cool-blue 0.40,0.62,0.95).
+    webColor += float3(0.95, 0.70, 0.45) * backsideCue * 0.20;
 
     // Spider overlay
     if (spider.blend > 0.01) {
