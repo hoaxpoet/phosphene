@@ -225,7 +225,8 @@ extension VisualizerEngine {
             elapsedSessionTime: elapsed,
             currentPreset: currentDesc,
             catalog: catalog,
-            deviceTier: tier
+            deviceTier: tier,
+            includeUncertifiedPresets: showUncertifiedPresets
         )
 
         switch decision.accumulationState {

@@ -56,6 +56,10 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Whether the debug overlay is visible (toggle with 'D' key).
     @Published var showDebugOverlay = false
 
+    /// Whether uncertified presets are eligible for reactive-mode selection.
+    /// Mirrors `SettingsStore.showUncertifiedPresets`; pushed via `applyShowUncertifiedPresets(_:)`.
+    var showUncertifiedPresets: Bool = false
+
     /// Current track metadata from Now Playing.
     @Published var currentTrack: TrackMetadata?
 
