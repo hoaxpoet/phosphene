@@ -40,8 +40,10 @@ struct SettingsView: View {
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button(NSLocalizedString("settings.done_button", comment: "")) { dismiss() }
+                    .keyboardShortcut(.return, modifiers: .command)
             }
         }
+        .onExitCommand { dismiss() }
         .accessibilityIdentifier(Self.accessibilityID)
     }
 }
