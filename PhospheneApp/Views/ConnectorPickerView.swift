@@ -124,24 +124,16 @@ struct ConnectorPickerView: View {
 
     /// Builds the SpotifyConnectionView wired with the OAuth provider when available.
     /// Falls back to a plain (client-credentials) connector in previews / unit tests.
+    ///
+    /// Uses `OAuthSpotifyConnectionWrapper` so the ViewModel (and its in-flight Task,
+    /// parsedURL, and text state) survive SwiftUI body re-evaluations caused by app
+    /// foregrounding via the `phosphene://` URL scheme callback. A ViewModel created
+    /// inline in a `@ViewBuilder` property is destroyed on every body re-evaluation;
+    /// `@StateObject` inside the wrapper ensures it lives for the view's full lifetime.
     @ViewBuilder
     private var spotifyDestination: some View {
         if let oauth = spotifyOAuth {
-            let oauthConnector = SpotifyOAuthPlaylistConnector(
-                inner: PlaylistConnector(
-                    spotifyConnector: SpotifyWebAPIConnector(tokenProvider: oauth)
-                ),
-                oauthProvider: oauth
-            )
-            SpotifyConnectionView(
-                viewModel: SpotifyConnectionViewModel(
-                    connector: oauthConnector,
-                    loginAction: { try await oauth.login() },
-                    oauthProvider: oauth
-                ),
-                onConnect: onConnect,
-                onUseAppleMusicInstead: { }
-            )
+            OAuthSpotifyConnectionWrapper(oauth: oauth, onConnect: onConnect)
         } else {
             // Fallback: no OAuth provider injected (e.g. SwiftUI preview or plain unit test).
             SpotifyConnectionView(
@@ -150,5 +142,49 @@ struct ConnectorPickerView: View {
                 onUseAppleMusicInstead: { }
             )
         }
+    }
+}
+
+// MARK: - OAuthSpotifyConnectionWrapper
+
+/// A thin view wrapper that owns the `SpotifyConnectionViewModel` as a `@StateObject`,
+/// ensuring the VM and its in-flight OAuth Task survive across SwiftUI body re-evaluations.
+///
+/// When the user completes the PKCE browser flow and macOS routes `phosphene://spotify-callback`
+/// back to the app, SwiftUI triggers a body re-evaluation of `ConnectorPickerView`. Any
+/// ViewModel created inline in a `@ViewBuilder` computed property would be torn down and
+/// recreated at that point — losing `parsedURL`, the active `connectTask`, and the
+/// post-login connect retry. `@StateObject` here persists the VM for the full lifetime of
+/// this view, regardless of how many times the parent re-evaluates.
+private struct OAuthSpotifyConnectionWrapper: View {
+
+    let oauth: SpotifyOAuthTokenProvider
+    let onConnect: @Sendable (PlaylistSource) async -> Void
+
+    @StateObject private var viewModel: SpotifyConnectionViewModel
+
+    init(oauth: SpotifyOAuthTokenProvider,
+         onConnect: @escaping @Sendable (PlaylistSource) async -> Void) {
+        self.oauth = oauth
+        self.onConnect = onConnect
+        let connector = SpotifyOAuthPlaylistConnector(
+            inner: PlaylistConnector(
+                spotifyConnector: SpotifyWebAPIConnector(tokenProvider: oauth)
+            ),
+            oauthProvider: oauth
+        )
+        _viewModel = StateObject(wrappedValue: SpotifyConnectionViewModel(
+            connector: connector,
+            loginAction: { try await oauth.login() },
+            oauthProvider: oauth
+        ))
+    }
+
+    var body: some View {
+        SpotifyConnectionView(
+            viewModel: viewModel,
+            onConnect: onConnect,
+            onUseAppleMusicInstead: { }
+        )
     }
 }
