@@ -1,5 +1,7 @@
 // PreviewResolver — Resolves 30-second preview URLs for playlist tracks.
-// Primary source: iTunes Search API (free, no auth, 20 req/min).
+// Primary source: TrackIdentity.spotifyPreviewURL (Spotify Web API, inline in /items response).
+// Fallback: iTunes Search API (free, no auth, 20 req/min) for non-Spotify tracks or tracks
+// where Spotify returns null for preview_url.
 // Results are cached in memory so each track is only ever fetched once.
 
 import Foundation
@@ -16,7 +18,12 @@ public protocol PreviewResolving: Sendable {
 
 // MARK: - Concrete Implementation
 
-/// Resolves preview URLs via the iTunes Search API.
+/// Resolves 30-second preview URLs for tracks.
+///
+/// Primary source: `TrackIdentity.spotifyPreviewURL` (inline from the Spotify
+/// Web API `/items` response — no network request needed).
+/// Fallback: iTunes Search API (free, no auth, 20 req/min) for non-Spotify tracks
+/// or tracks where Spotify returns `null` for `preview_url`.
 ///
 /// Results are cached in memory — a second call for the same `TrackIdentity`
 /// returns immediately without a network request. Rate-limiting is enforced
@@ -59,6 +66,13 @@ public final class PreviewResolver: PreviewResolving, @unchecked Sendable {
         // Fast path: return cached result if present (including "no preview" nil).
         if let cached = lockedCachedURL(for: track) {
             return cached
+        }
+
+        // Fast path: Spotify already provided the preview URL in the playlist response.
+        // Seed the cache and return immediately — no iTunes Search API call needed.
+        if let spotifyURL = track.spotifyPreviewURL {
+            stateLock.withLock { cache[track] = .some(spotifyURL) }
+            return spotifyURL
         }
 
         // Enforce rate limit before sending a request.

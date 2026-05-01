@@ -96,6 +96,41 @@ struct SpotifyWebAPIConnectorTests {
         #expect(tracks[2].title == "Track 3")
     }
 
+    @Test("preview_url is captured in spotifyPreviewURL when present")
+    func previewURLParsed() async throws {
+        let previewURLString = "https://p.scdn.co/mp3-preview/abc123.mp3"
+        var trackJSON = apiTrack(name: "Roslyn", artist: "Bon Iver", id: "t1")
+        trackJSON["preview_url"] = previewURLString
+
+        let items: [[String: Any]] = [["item": trackJSON]]
+        let payload: [String: Any] = ["items": items]
+        let data = try jsonData(payload)
+
+        let connector = SpotifyWebAPIConnector(tokenProvider: FixedTokenProvider())
+        connector.networkFetcher = { _ in (data, ok200()) }
+
+        let tracks = try await connector.connect(playlistID: "abc")
+        #expect(tracks.count == 1)
+        #expect(tracks[0].spotifyPreviewURL == URL(string: previewURLString))
+    }
+
+    @Test("null preview_url results in nil spotifyPreviewURL")
+    func nullPreviewURLYieldsNil() async throws {
+        var trackJSON = apiTrack(name: "Restricted Track", artist: "Artist", id: "t2")
+        trackJSON["preview_url"] = NSNull()
+
+        let items: [[String: Any]] = [["item": trackJSON]]
+        let payload: [String: Any] = ["items": items]
+        let data = try jsonData(payload)
+
+        let connector = SpotifyWebAPIConnector(tokenProvider: FixedTokenProvider())
+        connector.networkFetcher = { _ in (data, ok200()) }
+
+        let tracks = try await connector.connect(playlistID: "abc")
+        #expect(tracks.count == 1)
+        #expect(tracks[0].spotifyPreviewURL == nil)
+    }
+
     @Test("connect paginates across 3 pages totalling 250 tracks")
     func threePagePagination() async throws {
         // Page 1: 100 tracks + next URL
