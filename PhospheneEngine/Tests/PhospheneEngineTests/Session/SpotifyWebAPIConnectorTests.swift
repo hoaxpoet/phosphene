@@ -82,7 +82,7 @@ struct SpotifyWebAPIConnectorTests {
     @Test("connect returns tracks from single-page response")
     func singlePageSuccess() async throws {
         let items = (1...3).map { i -> [String: Any] in
-            ["track": apiTrack(name: "Track \(i)", artist: "Artist", id: "id\(i)")]
+            ["item": apiTrack(name: "Track \(i)", artist: "Artist", id: "id\(i)")]
         }
         let payload: [String: Any] = ["items": items]
         let data = try jsonData(payload)
@@ -110,7 +110,7 @@ struct SpotifyWebAPIConnectorTests {
             callIndex += 1
             let batchSize = callIndex < 3 ? 100 : 50
             let items = (1...batchSize).map { i -> [String: Any] in
-                ["track": apiTrack(name: "T\(callIndex)-\(i)", artist: "A", id: "t\(callIndex)\(i)")]
+                ["item": apiTrack(name: "T\(callIndex)-\(i)", artist: "A", id: "t\(callIndex)\(i)")]
             }
             var payload: [String: Any] = ["items": items]
             if callIndex < 3 {
@@ -132,7 +132,7 @@ struct SpotifyWebAPIConnectorTests {
 
     @Test("401 on playlist call invalidates token and retries once, then succeeds")
     func retryOnce401ThenSuccess() async throws {
-        let items = [["track": apiTrack(name: "Song", artist: "A", id: "s1")]]
+        let items = [["item": apiTrack(name: "Song", artist: "A", id: "s1")]]
         let successData = try jsonData(["items": items])
         // swiftlint:disable:next nonisolated_unsafe
         nonisolated(unsafe) var callIndex = 0

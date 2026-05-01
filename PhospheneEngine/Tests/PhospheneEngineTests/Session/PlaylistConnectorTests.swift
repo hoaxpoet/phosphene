@@ -153,8 +153,9 @@ struct PlaylistConnectorTests {
         let spotifyConnector = SpotifyWebAPIConnector(tokenProvider: mockToken)
         let connector = makeConnector(spotifyConnector: spotifyConnector)
 
+        // /items endpoint uses "item" key (not deprecated "track" key from /tracks endpoint)
         let items = (1...3).map { i -> [String: Any] in
-            ["track": spotifyTrack(name: "Song \(i)", artist: "Band", id: "sid_\(i)")]
+            ["item": spotifyTrack(name: "Song \(i)", artist: "Band", id: "sid_\(i)")]
         }
         let payload: [String: Any] = ["items": items, "next": NSNull()]
         let responseData = try jsonData(payload)

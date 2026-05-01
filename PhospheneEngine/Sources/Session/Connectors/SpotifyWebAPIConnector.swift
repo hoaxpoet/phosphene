@@ -1,7 +1,10 @@
 // SpotifyWebAPIConnector — Fetches Spotify playlist track lists via the Web API.
 //
-// Uses client-credentials auth (public playlists only — v1 scope).
-// Private-playlist access requires user OAuth and is deferred to v2.
+// Uses OAuth (user-level) token via SpotifyOAuthTokenProvider for full playlist access.
+// Client-credentials (public playlists only) is supported via DefaultSpotifyTokenProvider.
+//
+// Endpoint: /v1/playlists/{id}/items (not the deprecated /tracks — deprecated 2024,
+// returns 403 for development-mode apps).
 //
 // 401 handling: on a 401 the token is invalidated and the call is retried once.
 // A second 401 throws .spotifyAuthFailure immediately.
@@ -9,7 +12,7 @@
 // Status code mapping:
 //   200 → success
 //   401 → invalidate token, retry once; second 401 → .spotifyAuthFailure
-//   403 → .spotifyPlaylistInaccessible (private playlist)
+//   403 → .spotifyLoginRequired (client-credentials hitting OAuth-gated endpoint)
 //   404 → .spotifyPlaylistNotFound
 //   429 → .rateLimited (parses Retry-After if present)
 //   other → .networkFailure
@@ -138,7 +141,7 @@ public final class SpotifyWebAPIConnector: SpotifyWebAPIConnecting, @unchecked S
             }
 
             let batch = items.compactMap { item -> TrackIdentity? in
-                guard let track = item["track"] as? [String: Any] else { return nil }
+                guard let track = item["item"] as? [String: Any] else { return nil }
                 return parseTrack(track)
             }
             accumulated.append(contentsOf: batch)
@@ -154,9 +157,11 @@ public final class SpotifyWebAPIConnector: SpotifyWebAPIConnecting, @unchecked S
     }
 
     private func makeTracksURL(playlistID: String, offset: Int) -> URL? {
-        var comps = URLComponents(string: "https://api.spotify.com/v1/playlists/\(playlistID)/tracks")
+        // Use /items (not the deprecated /tracks) — Spotify deprecated /tracks in 2024;
+        // /items is the current endpoint and uses "item" key instead of "track" in the response.
+        var comps = URLComponents(string: "https://api.spotify.com/v1/playlists/\(playlistID)/items")
         comps?.queryItems = [
-            URLQueryItem(name: "fields", value: "items(track(id,name,artists(name),duration_ms,album(name))),next"),
+            URLQueryItem(name: "fields", value: "items(item(id,name,artists(name),duration_ms,album(name))),next"),
             URLQueryItem(name: "limit", value: "100"),
             URLQueryItem(name: "offset", value: "\(offset)")
         ]
