@@ -111,7 +111,9 @@ static float arachSegDist(float2 p, float2 a, float2 b) {
 static int    arachSpokeCount(uint seed)  { return 11 + int(arachHash(seed + 0xA1u) * 6.99); }
 static float  arachAspect(uint seed)      { return 0.85 + arachHash(seed + 0xB2u) * 0.30; }
 static float  arachAspectAngle(uint seed) { return arachHash(seed + 0xC3u) * 2.0 * M_PI_F; }
-static float  arachKSag(uint seed)        { return 0.04 + arachHash(seed + 0xD4u) * 0.06; }
+// V.7.5 §10.1.2: range widened [0.04, 0.10] → [0.06, 0.14] so longer radials
+// visibly droop. Gravity-direction weighting applied per-spoke at the call site.
+static float  arachKSag(uint seed)        { return 0.06 + arachHash(seed + 0xD4u) * 0.08; }
 
 // ±5% UV hub jitter applied at the fragment call site (keeps WebGPU layout stable).
 static float2 arachHubJitter(uint seed) {
@@ -212,9 +214,14 @@ static ArachneWebResult arachneEvalWeb(
             float2 d     = float2(cos(spAng), sin(spAng));
 
             // Segment distance with parabolic gravity sag (+v = downward).
-            float tProj   = saturate(dot(tRel, d) / max(webR, 1e-5));
-            float sagDisp = sagAmount * 4.0 * tProj * (1.0 - tProj);
-            float2 spokePt = tProj * webR * d + float2(0.0, sagDisp);
+            // V.7.5 §10.1.2: gravity-direction weighting. sin(spAng) is positive
+            // for downward-pointing spokes (UV +Y is down), so max(0, sin) zeroes
+            // out the upward half (no sag against gravity). 0.4 floor preserves
+            // some droop on horizontal spokes — they still hang slightly.
+            float tProj      = saturate(dot(tRel, d) / max(webR, 1e-5));
+            float gravityW   = mix(0.4, 1.0, max(0.0, sin(spAng)));
+            float sagDisp    = sagAmount * 4.0 * tProj * (1.0 - tProj) * gravityW;
+            float2 spokePt   = tProj * webR * d + float2(0.0, sagDisp);
             float  spDist  = length(tRel - spokePt);
             if (spDist < minSpokeDist) {
                 minSpokeDist     = spDist;
