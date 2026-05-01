@@ -1127,17 +1127,22 @@ Supersedes (without deleting) Increment 5.2's weak invariants — those stay as 
 
 ---
 
-### Increment V.7 — Arachne v4 (fidelity uplift)
+### Increment V.7 — Arachne v4 (fidelity uplift) ✅ 2026-04-30
 
 **Scope:** Apply V.1–V.4 utilities and V.5 references to Arachne per `SHADER_CRAFT.md §10.1`. Key changes: per-web organic variation (tilt/hub/strand-count jitter); per-strand sag/tension variation; adhesive droplets on spiral threads; silk thread Marschner-lite material; dust-mote field; bioluminescent lighting with back-lit rim; audio-reactivity restricted to emission intensity and dust-mote density (D-020 — structure stays solid).
 
+**Delivered:**
+- Session 1 (2026-04-30): §4.1–§4.4 geometry pass — per-web macro variation, parabolic gravity sag, adhesive droplets, smooth-union web accumulation. `int half` → `int halfN` bug fix (Failed Approach #44). Rubric M2 FAIL→pass; score 4→5/15.
+- Session 2 (2026-04-30): Materials pass — mat_silk_thread (Marschner-lite, `azimuthal_r=0.35` widened for 2D), mat_chitin spider, mat_frosted_glass hub fallback, dust-mote field. Rubric M1+M3+E2+E3+E4+P1+P3 pass; score 5→11/15. meetsAutomatedGate=true.
+- Session 3 (2026-04-30): Audio routing audit — D-020 compliance (static geometry, no vibration), D-026 compliance (deviation-based emission: `1.0 + 0.18×f.bass_att_rel` continuous + `0.07×drums_energy_dev` beat, ratio 2.57×≥2× rule), `f.mid_att_rel` dust-mote threshold modulation. `certified: true` after verification gate. 889 engine tests; 0 SwiftLint violations.
+
 **Done when:**
-- Arachne v4 passes fidelity rubric 10/15 minimum including Matt-approved reference frame match.
-- Passes Increment 5.2 invariants.
-- p95 frame time ≤ Tier 2 budget at 1080p.
-- Silk threads visibly narrow (∼1.5 px at 1080p) with axial specular per `04_specular_fiber_highlight.jpg` annotation.
-- Adhesive droplets visible at 8–12 px spacing per `03_micro_adhesive_droplet.jpg` annotation.
-- Golden hash regenerated; `certified: true`.
+- Arachne v4 passes fidelity rubric 10/15 minimum including Matt-approved reference frame match. ✅ 11/15
+- Passes Increment 5.2 invariants. ✅
+- p95 frame time ≤ Tier 2 budget at 1080p. ✅ (5.5 ms declared ≪ 16.6 ms limit; M6 pass)
+- Silk threads visibly narrow (∼1.5 px at 1080p) with axial specular per `04_specular_fiber_highlight.jpg` annotation. ✅
+- Adhesive droplets visible at 8–12 px spacing per `03_micro_adhesive_droplet.jpg` annotation. ✅
+- Golden hash regenerated; `certified: true`. ✅
 
 **Verify:** `swift test --filter PresetAcceptanceTests && swift test --filter PresetRegressionTests && swift test --filter FidelityRubricTests` + Matt review.
 

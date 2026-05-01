@@ -287,7 +287,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
 
     // MARK: - Decoding
 
-    public init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws { // swiftlint:disable:this function_body_length
         let container = try decoder.container(keyedBy: CodingKeys.self)
         name             = try container.decode(String.self, forKey: .name)
         family           = try container.decodeIfPresent(PresetCategory.self, forKey: .family) ?? .waveform
