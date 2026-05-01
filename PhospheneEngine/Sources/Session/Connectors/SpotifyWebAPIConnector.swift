@@ -30,9 +30,6 @@ private let logger = Logging.session
 public protocol SpotifyWebAPIConnecting: AnyObject, Sendable {
     /// Fetch the ordered track list for the given Spotify playlist ID.
     func connect(playlistID: String) async throws -> [TrackIdentity]
-
-    /// Fetch the current user's player queue (up to 20 tracks).
-    func queue(accessToken: String) async throws -> [TrackIdentity]
 }
 
 // MARK: - SpotifyWebAPIConnector
@@ -92,18 +89,6 @@ public final class SpotifyWebAPIConnector: SpotifyWebAPIConnecting, @unchecked S
         return tracks
     }
 
-    public func queue(accessToken: String) async throws -> [TrackIdentity] {
-        guard let url = URL(string: "https://api.spotify.com/v1/me/player/queue") else {
-            throw PlaylistConnectorError.networkFailure("Invalid Spotify queue URL")
-        }
-        var request = URLRequest(url: url)
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        let data = try await performRequest(request, context: "Spotify queue", token: accessToken, retried: true)
-        let tracks = try parseQueueData(data)
-        logger.info("Spotify queue: loaded \(tracks.count) track(s)")
-        return tracks
-    }
-
     // MARK: - Playlist Fetch
 
     private func fetchPlaylistTracks(
@@ -113,7 +98,7 @@ public final class SpotifyWebAPIConnector: SpotifyWebAPIConnecting, @unchecked S
     ) async throws -> [TrackIdentity] {
         // Paginate using the `next` URL returned by the API.
         var accumulated: [TrackIdentity] = []
-        var nextURL: URL? = makeTracksURL(playlistID: playlistID, offset: 0)
+        var nextURL: URL? = makeTracksURL(playlistID: playlistID)
         var currentToken = token
 
         while let url = nextURL {
@@ -163,18 +148,20 @@ public final class SpotifyWebAPIConnector: SpotifyWebAPIConnecting, @unchecked S
         return accumulated
     }
 
-    private func makeTracksURL(playlistID: String, offset: Int) -> URL? {
+    private func makeTracksURL(playlistID: String) -> URL? {
         // Use /items (not the deprecated /tracks) — Spotify deprecated /tracks in 2024.
         // Note on `fields`: field filtering is intentionally omitted. The /items endpoint
         // silently omits items whose `track` field is null when a fields filter is applied,
         // causing compactMap to produce an empty array even for valid playlists.
         // `market=from_token` is required: without it the API can return null track objects
         // for region-restricted content, also silently dropping items.
+        // Pagination after the first page follows API-provided `next` URLs, so offset is
+        // always 0 here.
         var comps = URLComponents(string: "https://api.spotify.com/v1/playlists/\(playlistID)/items")
         comps?.queryItems = [
             URLQueryItem(name: "market", value: "from_token"),
             URLQueryItem(name: "limit", value: "100"),
-            URLQueryItem(name: "offset", value: "\(offset)")
+            URLQueryItem(name: "offset", value: "0")
         ]
         return comps?.url
     }
@@ -238,20 +225,6 @@ public final class SpotifyWebAPIConnector: SpotifyWebAPIConnecting, @unchecked S
 
     // MARK: - Parsing
 
-    private func parseQueueData(_ data: Data) throws -> [TrackIdentity] {
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw PlaylistConnectorError.parseFailure("Invalid Spotify queue JSON")
-        }
-        var raw: [[String: Any]] = []
-        if let current = json["currently_playing"] as? [String: Any] {
-            raw.append(current)
-        }
-        if let queue = json["queue"] as? [[String: Any]] {
-            raw.append(contentsOf: queue)
-        }
-        return raw.compactMap(parseTrack)
-    }
-
     private func parseTrack(_ track: [String: Any]) -> TrackIdentity? {
         guard
             let name = track["name"] as? String, !name.isEmpty,
@@ -263,13 +236,17 @@ public final class SpotifyWebAPIConnector: SpotifyWebAPIConnecting, @unchecked S
         let album = (track["album"] as? [String: Any])?["name"] as? String
         let duration = (track["duration_ms"] as? Double).map { $0 / 1000.0 }
         let spotifyID = track["id"] as? String
+        // Capture Spotify's own preview URL (null → nil). PreviewResolver uses this
+        // to skip the iTunes Search API round-trip for tracks where Spotify has a preview.
+        let spotifyPreviewURL = (track["preview_url"] as? String).flatMap(URL.init)
 
         return TrackIdentity(
             title: name,
             artist: artistName,
             album: album,
             duration: duration,
-            spotifyID: spotifyID
+            spotifyID: spotifyID,
+            spotifyPreviewURL: spotifyPreviewURL
         )
     }
 }
