@@ -59,7 +59,7 @@ struct SpotifyConnectionViewModelTests {
             return
         }
 
-        vm.connect(startSession: { _ in })
+        vm.connect(startSession: { _, _ in })
         try await Task.sleep(for: .milliseconds(500))
 
         if case .error = vm.state { } else {
@@ -76,7 +76,7 @@ struct SpotifyConnectionViewModelTests {
         let vm = makeVM(connector: connector)
         vm.text = "https://open.spotify.com/playlist/abc"
         try await Task.sleep(for: .milliseconds(700))
-        vm.connect(startSession: { _ in })
+        vm.connect(startSession: { _, _ in })
         try await Task.sleep(for: .milliseconds(250))
         #expect(vm.state == .notFound)
     }
@@ -89,7 +89,7 @@ struct SpotifyConnectionViewModelTests {
         let vm = makeVM(connector: connector)
         vm.text = "https://open.spotify.com/playlist/abc"
         try await Task.sleep(for: .milliseconds(700))
-        vm.connect(startSession: { _ in })
+        vm.connect(startSession: { _, _ in })
         try await Task.sleep(for: .milliseconds(250))
         #expect(vm.state == .privatePlaylist)
     }
@@ -102,7 +102,7 @@ struct SpotifyConnectionViewModelTests {
         let vm = makeVM(connector: connector)
         vm.text = "https://open.spotify.com/playlist/abc"
         try await Task.sleep(for: .milliseconds(700))
-        vm.connect(startSession: { _ in })
+        vm.connect(startSession: { _, _ in })
         try await Task.sleep(for: .milliseconds(250))
         #expect(vm.state == .authFailure)
     }
@@ -116,7 +116,7 @@ struct SpotifyConnectionViewModelTests {
 
         // nonisolated(unsafe): written only once in this @Sendable closure, read after Task.sleep.
         nonisolated(unsafe) var capturedSource: PlaylistSource?
-        vm.connect(startSession: { source in capturedSource = source })
+        vm.connect(startSession: { _, source in capturedSource = source })
         try await Task.sleep(for: .milliseconds(200))
 
         if case .spotifyPlaylistURL = capturedSource {
@@ -175,7 +175,7 @@ struct SpotifyConnectionViewModelOAuthTests {
         )
         vm.text = "https://open.spotify.com/playlist/abc"
         try await Task.sleep(for: .milliseconds(700))
-        vm.connect(startSession: { _ in })
+        vm.connect(startSession: { _, _ in })
         try await Task.sleep(for: .milliseconds(400))
         #expect(vm.state == .requiresLogin)
     }
@@ -192,7 +192,7 @@ struct SpotifyConnectionViewModelOAuthTests {
         )
         vm.text = "https://open.spotify.com/playlist/abc"
         try await Task.sleep(for: .milliseconds(700))
-        vm.connect(startSession: { _ in })
+        vm.connect(startSession: { _, _ in })
         try await Task.sleep(for: .milliseconds(400))
         #expect(vm.state == .privatePlaylist)
     }
@@ -208,7 +208,7 @@ struct SpotifyConnectionViewModelOAuthTests {
         )
         vm.text = "https://open.spotify.com/playlist/abc"
         try await Task.sleep(for: .milliseconds(700))
-        vm.login(startSession: { _ in sessionStarted = true })
+        vm.login(startSession: { _, _ in sessionStarted = true })
         try await Task.sleep(for: .milliseconds(400))
         #expect(sessionStarted)
     }
@@ -223,7 +223,7 @@ struct SpotifyConnectionViewModelOAuthTests {
         )
         vm.text = "https://open.spotify.com/playlist/abc"
         try await Task.sleep(for: .milliseconds(700))
-        vm.login(startSession: { _ in })
+        vm.login(startSession: { _, _ in })
         try await Task.sleep(for: .milliseconds(400))
         #expect(vm.state == .authFailure)
     }

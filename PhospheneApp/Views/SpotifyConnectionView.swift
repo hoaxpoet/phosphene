@@ -15,7 +15,7 @@ struct SpotifyConnectionView: View {
     static let accessibilityID = "phosphene.view.spotify.connection"
 
     @ObservedObject var viewModel: SpotifyConnectionViewModel
-    let onConnect: @Sendable (PlaylistSource) async -> Void
+    let onConnect: @Sendable ([TrackIdentity], PlaylistSource) async -> Void
     let onUseAppleMusicInstead: () -> Void
 
     var body: some View {
