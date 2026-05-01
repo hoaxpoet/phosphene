@@ -1132,7 +1132,9 @@ Supersedes (without deleting) Increment 5.2's weak invariants — those stay as 
 
 ---
 
-### Increment V.7 — Arachne v4 (fidelity uplift) ✅ 2026-04-30
+### Increment V.7 — Arachne v4 (fidelity uplift) ⚠ 2026-04-30
+
+**M7 outcome (2026-05-01):** Failed visual review. Rendered output matches anti-reference `10_anti_neon_stylized_glow.jpg`. Resolution scheduled as V.7.5 + V.7.6 per D-071. V.7 Session 1–3 work and golden hashes preserved as the v4 baseline; V.7.5 modifies that baseline.
 
 **Scope:** Apply V.1–V.4 utilities and V.5 references to Arachne per `SHADER_CRAFT.md §10.1`. Key changes: per-web organic variation (tilt/hub/strand-count jitter); per-strand sag/tension variation; adhesive droplets on spiral threads; silk thread Marschner-lite material; dust-mote field; bioluminescent lighting with back-lit rim; audio-reactivity restricted to emission intensity and dust-mote density (D-020 — structure stays solid).
 
@@ -1147,11 +1149,44 @@ Supersedes (without deleting) Increment 5.2's weak invariants — those stay as 
 - p95 frame time ≤ Tier 2 budget at 1080p. ✅ (5.5 ms declared ≪ 16.6 ms limit; M6 pass)
 - Silk threads visibly narrow (∼1.5 px at 1080p) with axial specular per `04_specular_fiber_highlight.jpg` annotation. ✅
 - Adhesive droplets visible at 8–12 px spacing per `03_micro_adhesive_droplet.jpg` annotation. ✅
-- Golden hash regenerated; `certified: true`. ⏳ (automated gate passes; awaiting Matt M7 visual review)
+- Golden hash regenerated; `certified: true`. ❌ (M7 failed 2026-05-01 — see V.7.5)
 
 **Verify:** `swift test --filter PresetAcceptanceTests && swift test --filter PresetRegressionTests && swift test --filter FidelityRubricTests` + Matt review.
 
 **Estimated sessions:** 3 (geometry + variation / materials / polish + audio routing).
+
+---
+
+### Increment V.7.5 — Arachne v5 (composition + warm restoration + drops + spider cleanup)
+
+**Scope:** Apply `SHADER_CRAFT.md §10.1` items 1, 2, 3, 4, 6, 9 (post-M7 rewrite, per D-071) to Arachne v4. Cap `ArachneState.maxWebs` from 12 → 4. Increase `arachKSag` range and add gravity-direction weighting. Drops become the visual hero — radius 0.0035 → 0.008, spacing 8–12px → 4–6px, warm-amber emission, warm specular pinpoint. Restore Marschner TT-lobe warm back-rim (replaces V.7 Session 2 cool-blue override at Arachne.metal lines 396–398 + 605). Add warm directional key + cool ambient fill. Reduce strand emission so drops carry the visual. Spider rendered as small dark silhouette with thin warm rim; restore `bassAttackRatio < 0.55` gate per D-040 and re-tune `subBassThreshold` against the M7 data (current 0.65 is unreachable; data supports 0.30 sustained).
+
+**Done when:**
+- Arachne golden hashes regenerated (pool size change is hash-affecting).
+- M7 contact-sheet step run; "matches anti-ref `10`?" returns false; ≥ 4/6 positive references return pass (refs `01`, `04`, `05`, `08` are the must-pass set; `02` and `07` are V.7.6's domain).
+- `swift test --package-path PhospheneEngine --filter PresetAcceptanceTests,PresetRegressionTests,FidelityRubricTests,ArachneStateTests` all pass; 0 SwiftLint violations.
+- p95 frame time at 1080p ≤ 5.5 ms (Tier 2).
+- `Arachne.json` re-flips to `certified: true`.
+
+**Verify:** `swift test --package-path PhospheneEngine` + `xcodebuild -scheme PhospheneApp build` + M7 contact sheet reviewed.
+
+**Estimated sessions:** 1.
+
+---
+
+### Increment V.7.6 — Arachne v5 (atmosphere + beam-bound motes)
+
+**Scope:** Apply `SHADER_CRAFT.md §10.1` items 5 and 7 (post-M7 rewrite, per D-071). Replace multiplicative `fbm8` mist with valence-tinted aerial-perspective gradient drawn into bg pass; `fbm8` becomes additive distance-density. Replace isotropic `fbm4` mote field with beam-bound directional density (project `kL` to UV, 2–3 beam centers, perpendicular-distance gating). Mote color shifts from cool-blue `(0.70, 0.85, 1.00) × 0.35` to neutral-warm `(0.85, 0.85, 0.75) × 0.4`. Distant tree-silhouette SDFs deferred to optional V.7.7.
+
+**Done when:**
+- M7 contact-sheet step; refs `02`, `06`, `07` now also pass; full 6/6 positive references at pass.
+- All test suites pass; 0 SwiftLint violations.
+- p95 frame time at 1080p ≤ 5.5 ms.
+- Arachne golden hashes regenerated.
+
+**Verify:** Same as V.7.5.
+
+**Estimated sessions:** 1.
 
 ---
 
