@@ -74,9 +74,10 @@ final class PlaybackShortcutRegistry {
         onToggleDebug: @escaping @MainActor () -> Void,
         onHandleEsc: @escaping @MainActor () -> Void,
         onShowHelp: @escaping @MainActor () -> Void,
-        onShowPlanPreview: @escaping @MainActor () -> Void
+        onShowPlanPreview: @escaping @MainActor () -> Void,
+        onToggleForceSpider: (@MainActor () -> Void)? = nil
     ) {
-        shortcuts = Self.buildShortcuts(
+        var all = Self.buildShortcuts(
             actionRouter: actionRouter,
             onToggleFullscreen: onToggleFullscreen,
             onMoveToSecondaryDisplay: onMoveToSecondaryDisplay,
@@ -86,6 +87,19 @@ final class PlaybackShortcutRegistry {
             onShowHelp: onShowHelp,
             onShowPlanPreview: onShowPlanPreview
         )
+        #if DEBUG
+        if let fn = onToggleForceSpider {
+            all.append(PlaybackShortcut(
+                id: "debugForceSpider",
+                key: "s",
+                modifiers: [.command, .shift, .option],
+                label: "Force spider easter egg (debug)",
+                category: .developer,
+                action: fn
+            ))
+        }
+        #endif
+        shortcuts = all
     }
 
     // MARK: - Shortcut Table

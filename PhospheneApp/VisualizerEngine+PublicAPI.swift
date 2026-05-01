@@ -84,6 +84,18 @@ extension VisualizerEngine {
         showDebugOverlay.toggle()
     }
 
+    #if DEBUG
+    /// Toggle forced-spider mode for visual verification. DEBUG builds only.
+    ///
+    /// - Returns: The new `forceSpiderActive` state (`true` = forced on).
+    @discardableResult
+    func toggleForceSpider() -> Bool {
+        guard let state = arachneState else { return false }
+        state.forceSpiderActive.toggle()
+        return state.forceSpiderActive
+    }
+    #endif
+
     // MARK: - Display Helpers
 
     /// Briefly display the preset name, then fade it out after 2 seconds.

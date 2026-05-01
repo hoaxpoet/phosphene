@@ -117,7 +117,7 @@ public final class ArachneState: @unchecked Sendable {
 
     // MARK: - Spider State (Increment 3.5.9)
 
-    /// GPU-side spider descriptor buffer — 80 bytes; bound at fragment buffer(4).
+    /// GPU-side spider descriptor buffer — 80 bytes; bound at fragment buffer(7).
     public let spiderBuffer: MTLBuffer
     var spiderBlend: Float = 0
     var spiderActive: Bool = false
@@ -126,6 +126,12 @@ public final class ArachneState: @unchecked Sendable {
     var spiderPosX: Float = 0; var spiderPosY: Float = 0; var spiderHeading: Float = 0
     var spiderLegPhase: Float = 0
     var spiderLegTips: [SIMD2<Float>] = Array(repeating: .zero, count: 8)
+
+    #if DEBUG
+    /// Force the spider active regardless of organic trigger conditions. DEBUG builds only.
+    /// Does not modify the organic trigger accumulator or cooldown state.
+    public var forceSpiderActive: Bool = false
+    #endif
 
     // MARK: - Private State
 

@@ -34,6 +34,10 @@ struct MIRDiagnostics {
     var callbackCount: Int = 0
     var onsetsPerSec: Int = 0
     var totalEnergy: Float = 0
+    /// AGC-normalised 20–80 Hz sub-bass band (spider trigger input).
+    var subBass: Float = 0
+    /// Bass stem attack ratio (ratio of attack energy to sustained RMS).
+    var bassAttackRatio: Float = 0
 }
 
 // MARK: - VisualizerEngine
@@ -96,6 +100,10 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// nil otherwise. Tick closure and webBuffer are wired into the render pipeline
     /// via `setMeshPresetTick` / `setMeshPresetBuffer` in `applyPreset`.
     var arachneState: ArachneState?
+
+    /// Latest bass stem attack ratio — updated each per-frame stem analysis pass,
+    /// forwarded into MIRDiagnostics for the spider debug overlay.
+    var latestBassAttackRatio: Float = 0
 
     /// Gossamer wave-pool state — allocated when the Gossamer preset is active,
     /// nil otherwise. Tick closure and waveBuffer are wired into the render pipeline
