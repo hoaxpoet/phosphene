@@ -1,7 +1,8 @@
 // ArachneState — Per-preset world state for the Arachne mesh-shader preset (Increment 3.5.5).
 // swiftlint:disable file_length
 //
-// Manages a fixed pool of up to 12 webs. Each web progresses through stages
+// Manages a fixed pool of up to `maxWebs` webs (V.7.5 §10.1.1: 4). Each web
+// progresses through stages
 // (.anchorPulse → .radial → .spiral → .stable → .evicting) measured in beats,
 // so spinning is slower on slow music and faster on fast music — a
 // Phosphene-exclusive behavior derived from MV-3b BeatPredictor.
@@ -97,9 +98,13 @@ public final class ArachneState: @unchecked Sendable {
 
     // MARK: - Constants
 
-    public static let maxWebs: Int = 12
+    // V.7.5 §10.1.1: pool capped to 4 (was 12) for single hero composition.
+    // 2 slots are pre-seeded; the remaining 2 transient slots churn slowly so
+    // the composition does not feel busy. minSpawnGapBeats raised 2→8 to slow
+    // spawn cadence to ~one transient web every 4 s at 120 BPM.
+    public static let maxWebs: Int = 4
     static let spawnThreshold: Float = 3.0
-    static let minSpawnGapBeats: Float = 2.0
+    static let minSpawnGapBeats: Float = 8.0
 
     // Stage durations in beats.
     // Deliberately slow: at 120 BPM a full web build takes ~18–24 s.
@@ -295,7 +300,7 @@ public final class ArachneState: @unchecked Sendable {
     private func trySpawn(features: FeatureVector, stems: StemFeatures, stemMix: Float, slot: Int) {
         lastSpawnBeatIndex = globalBeatIndex
 
-        // Per-slot golden-ratio hue so each of the 12 web slots has a distinct, evenly
+        // Per-slot golden-ratio hue so each web slot has a distinct, evenly
         // distributed color. Small centroid jitter (±0.03) prevents adjacent spawns
         // looking identical even when the same slot is reused.
         let centroidJitter = arachMix(features.spectralCentroid,
