@@ -81,7 +81,7 @@ struct ReadyViewModelTests {
     }
 
     @Test func init_spotifySource_setsSourceName() {
-        let (vm, _, _, _) = makeViewModel(source: .spotifyCurrentQueue(accessToken: "tok"))
+        let (vm, _, _, _) = makeViewModel(source: .spotifyCurrentQueue)
         #expect(vm.sourceName == "Spotify")
     }
 

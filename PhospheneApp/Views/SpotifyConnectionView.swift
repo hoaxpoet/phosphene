@@ -75,6 +75,10 @@ struct SpotifyConnectionView: View {
             rateLimitBody(attempt: attempt)
         case .notFound:
             validationMessage(String(localized: "connector.spotify.not_found"))
+        case .privatePlaylist:
+            validationMessage(String(localized: "connector.spotify.private_playlist"))
+        case .authFailure:
+            validationMessage(String(localized: "connector.spotify.auth_failure"))
         case .error(let msg):
             errorBody(message: msg)
         }

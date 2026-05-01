@@ -1,5 +1,6 @@
 // SpotifyConnectionViewModelTests — Unit tests for SpotifyConnectionViewModel.
 // Uses MockSpotifyConnector with InstantDelay for synchronous retry testing.
+// Increment U.10: silent-degrade tests removed; new error-state tests added.
 
 import Session
 import Testing
@@ -45,41 +46,31 @@ struct SpotifyConnectionViewModelTests {
     func connectRateLimitedRetriesAtBackoffSchedule() async throws {
         // Connector returns 429 every time (initial + 3 retries = 4 calls total).
         let connector = MockSpotifyConnector(
-            result: .failure(PlaylistConnectorError.networkFailure("Spotify queue: HTTP 429"))
+            result: .failure(PlaylistConnectorError.rateLimited(retryAfterSeconds: 1.0))
         )
         let vm = makeVM(connector: connector)
 
-        // Set state to .preview so connect() is allowed.
-        // 700ms gives 400ms margin over the 300ms hardcoded debounce — needed
-        // because @MainActor contention during parallel test runs can delay
-        // the debounce continuation beyond the old 400ms sleep.
         vm.text = "https://open.spotify.com/playlist/abc"
         try await Task.sleep(for: .milliseconds(700))
 
-        // Pre-condition: debounce must have fired and transitioned to .preview.
         guard case .preview = vm.state else {
             Issue.record("Debounce did not fire: expected .preview, got \(vm.state)")
             return
         }
 
-        // Kick off the connect. InstantDelay makes all retry delays instant.
         vm.connect(startSession: { _ in })
-
-        // Give all retries time to complete (up to 500ms; InstantDelay makes them near-instant).
         try await Task.sleep(for: .milliseconds(500))
 
-        // After all 3 retries fail, state must be .error.
         if case .error = vm.state { } else {
             Issue.record("Expected .error after exhausting retries, got \(vm.state)")
         }
-        // All 4 attempts made (initial + 3 retries).
         #expect(connector.callCount == 4)
     }
 
-    @Test("connect with HTTP 404 sets .notFound state")
+    @Test("connect with spotifyPlaylistNotFound sets .notFound state")
     func connectNotFound() async throws {
         let connector = MockSpotifyConnector(
-            result: .failure(PlaylistConnectorError.networkFailure("playlist tracks: HTTP 404"))
+            result: .failure(PlaylistConnectorError.spotifyPlaylistNotFound)
         )
         let vm = makeVM(connector: connector)
         vm.text = "https://open.spotify.com/playlist/abc"
@@ -87,6 +78,51 @@ struct SpotifyConnectionViewModelTests {
         vm.connect(startSession: { _ in })
         try await Task.sleep(for: .milliseconds(100))
         #expect(vm.state == .notFound)
+    }
+
+    @Test("connect with spotifyPlaylistInaccessible sets .privatePlaylist state")
+    func connectPrivatePlaylist() async throws {
+        let connector = MockSpotifyConnector(
+            result: .failure(PlaylistConnectorError.spotifyPlaylistInaccessible)
+        )
+        let vm = makeVM(connector: connector)
+        vm.text = "https://open.spotify.com/playlist/abc"
+        try await Task.sleep(for: .milliseconds(400))
+        vm.connect(startSession: { _ in })
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(vm.state == .privatePlaylist)
+    }
+
+    @Test("connect with spotifyAuthFailure sets .authFailure state")
+    func connectAuthFailure() async throws {
+        let connector = MockSpotifyConnector(
+            result: .failure(PlaylistConnectorError.spotifyAuthFailure("bad creds"))
+        )
+        let vm = makeVM(connector: connector)
+        vm.text = "https://open.spotify.com/playlist/abc"
+        try await Task.sleep(for: .milliseconds(400))
+        vm.connect(startSession: { _ in })
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(vm.state == .authFailure)
+    }
+
+    @Test("successful connect calls startSession with .spotifyPlaylistURL source")
+    func successfulConnectCallsStartSession() async throws {
+        let connector = MockSpotifyConnector(result: .success([]))
+        let vm = makeVM(connector: connector)
+        vm.text = "https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M"
+        try await Task.sleep(for: .milliseconds(400))
+
+        // nonisolated(unsafe): written only once in this @Sendable closure, read after Task.sleep.
+        nonisolated(unsafe) var capturedSource: PlaylistSource?
+        vm.connect(startSession: { source in capturedSource = source })
+        try await Task.sleep(for: .milliseconds(200))
+
+        if case .spotifyPlaylistURL = capturedSource {
+            // Expected — no accessToken associated value.
+        } else {
+            Issue.record("Expected .spotifyPlaylistURL, got \(String(describing: capturedSource))")
+        }
     }
 
     @Test("SpotifyConnectionView carries correct accessibilityID")

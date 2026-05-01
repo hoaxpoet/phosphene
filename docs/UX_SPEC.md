@@ -149,7 +149,7 @@ UI response per case:
 
 ### 4.4 Spotify flow
 
-`SpotifyWebAPIConnector` is URL-paste only in v1. No OAuth.
+`SpotifyWebAPIConnector` is URL-paste only in v1. No OAuth. v1 supports **public playlists only** — private-playlist access requires user OAuth and is a v2 feature.
 
 UI: single text field captioned "Paste a Spotify playlist link." Placeholder: `https://open.spotify.com/playlist/...`. Accepts any URL variant (`spotify:playlist:...`, `open.spotify.com/playlist/...`, with or without query params).
 
@@ -553,6 +553,9 @@ This is the canonical mapping from internal error states to user-facing language
 | Spotify URL is track/album | "That's a track, not a playlist. Phosphene needs a playlist URL." | "Paste again" | — |
 | Spotify API rate-limited | "Spotify is being slow — still trying." (auto-retries with backoff) | — | "Cancel" |
 | Spotify API unreachable | "Couldn't reach Spotify. Check your network or try a different source." | "Try again" | "Use Apple Music" |
+| Spotify private playlist (HTTP 403) | "That playlist is private. Phosphene needs a public Spotify playlist." | "Paste a different link" | — |
+| Spotify playlist not found (HTTP 404) | "Couldn't find that playlist. The link may be wrong or the playlist may have been deleted." | "Paste again" | — |
+| Spotify auth failure (missing/bad credentials) | "Phosphene couldn't reach Spotify right now. Check your network or try Apple Music." | "Try again" | "Use Apple Music" |
 | Empty playlist | "That playlist doesn't have any tracks yet." | "Pick a different playlist" | — |
 
 ### 9.3 Preparation errors (state: `.preparing`)

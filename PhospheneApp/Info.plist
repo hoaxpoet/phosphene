@@ -8,5 +8,9 @@
 	<string>Phosphene reads track info from music apps (Apple Music, Spotify) to display what's currently playing.</string>
 	<key>NSAppleMusicUsageDescription</key>
 	<string>Phosphene searches the Apple Music catalog to look up track details like BPM and genre for the currently playing song.</string>
+	<key>SpotifyClientID</key>
+	<string>$(SPOTIFY_CLIENT_ID)</string>
+	<key>SpotifyClientSecret</key>
+	<string>$(SPOTIFY_CLIENT_SECRET)</string>
 </dict>
 </plist>

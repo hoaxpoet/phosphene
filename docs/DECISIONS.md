@@ -725,7 +725,7 @@ The app's top-level content model is a pure enum switch — there is no `Navigat
 
 The Spotify rate-limit retry ([2s, 5s, 15s]) and Apple Music auto-retry (2s) use wall-clock delays. Injecting a `DelayProviding` protocol with `RealDelay` (production) and `InstantDelay` (tests, uses `await Task.yield()`) allows retry paths to be exercised in fast unit tests without wall-clock waits. `Task.yield()` is the correct implementation for `InstantDelay` — it suspends and resumes the current task, giving other tasks (including test observations) a chance to run, without introducing any real-time delay. An empty `async throws {}` body would not yield the actor and retry loops would spin synchronously.
 
-**Decision 4: `.spotifyAuthRequired` silently degrades to `startSession`.**
+**Decision 4: `.spotifyAuthRequired` silently degrades to `startSession`.** *(Superseded by D-068, Increment U.10 — do not follow this pattern.)*
 
 Without OAuth (deferred to v2), `PlaylistConnector.connect()` immediately throws `.spotifyAuthRequired` (empty access token check). Rather than showing an error, the ViewModel calls `startSession(.spotifyPlaylistURL(url, accessToken: ""))` directly. `SessionManager` degrades gracefully: it starts a session with an empty plan and enters live-only reactive mode. This is a valid and useful state — the user gets responsive real-time visuals while the Orchestrator uses the reactive path. An error message here would lie: the session IS starting, just without pre-analyzed stems. User-visible error copy would be `UX_SPEC §8` compliant only if the session actually fails to start.
 
@@ -1272,3 +1272,35 @@ The `certified: Bool` field is never set to `true` by automation. `meetsAutomate
 ### (d) All-uncertified fallback: warn, do not throw
 
 When all presets score 0 (all uncertified, toggle off), `DefaultSessionPlanner` already has a `noEligiblePresets` path that emits a `PlanningWarning` and falls back to the cheapest non-excluded preset. No new error case is needed. The window between V.6 landing and Matt's first certification flip is handled by this existing ladder — users with the toggle off get the cheapest preset rather than an error.
+
+---
+
+## D-068 — Spotify client-credentials connector: credential pattern, public-playlist scope, and silent-degrade removal (Increment U.10)
+
+**Status:** Accepted (2026-04-30)
+
+**Context:** UX_SPEC §4.4 specified client-credentials auth from the start. Increment U.3 deferred it, implementing a silent-degrade path (D-046 Decision 4) where `SpotifyConnectionViewModel` treated `.spotifyAuthRequired` as a success signal and called `startSession` with an empty access token. This left users with a "connected" session that never prepared any tracks and always ran in live-only reactive mode with no explanation.
+
+**Decision 1: Info.plist + xcconfig credential pattern, not env vars.**
+
+Soundcharts uses `ProcessInfo.processInfo.environment` (runtime injection). Spotify credentials in a macOS app bundle are more naturally build-time secrets: they go into `Phosphene.xcconfig` as empty-default build settings, are referenced in `Info.plist` as `$(SPOTIFY_CLIENT_ID)` / `$(SPOTIFY_CLIENT_SECRET)`, and are overridden in `Phosphene.local.xcconfig` (gitignored). This matches how Apple recommends handling app-level credentials and avoids requiring developers to set env vars before building. The xcconfig/Info.plist pattern is appropriate for client-credentials because these are not user secrets — they are app secrets associated with the developer account, and rotating them is a developer action, not a user action.
+
+**Decision 2: No string-literal credentials in Swift source.**
+
+The only place credentials appear is `Phosphene.local.xcconfig` (gitignored) and `Info.plist` (via a build-setting reference, not a literal). `DefaultSpotifyTokenProvider.init(urlSession:)` reads from `Bundle.main.infoDictionary` at runtime. Empty strings in the xcconfig produce a `MissingCredentialsTokenProvider` at runtime, which throws `.spotifyAuthFailure` on every `acquire()` rather than sending a malformed request to the Spotify token endpoint.
+
+**Decision 3: Remove the silent-degrade path entirely.**
+
+D-046 Decision 4's rationale ("the session IS starting, just without pre-analyzed stems") was sound when client-credentials were deferred, but now that the connector is real, surfacing the error is strictly better: the user learns their credentials are not configured and can take action. Connector failures are real errors with §9.2 copy — there is no "graceful degrade" to reactive-only mode on a playlist the user explicitly pasted. If a user wants reactive mode they use "Start listening now" from IdleView.
+
+**Decision 4: Public playlists only in v1; no fallback on private-playlist 403.**
+
+The spec explicitly scopes v1 to public playlists. A 403 response maps to `.spotifyPlaylistInaccessible` → VM state `.privatePlaylist` → copy "That playlist is private. Phosphene needs a public Spotify playlist." There is no fallback to reactive mode: the playlist was inaccessible, not the user's audio.
+
+**Decision 5: `SpotifyWebAPIConnector` extracted from `PlaylistConnector`.**
+
+The Spotify logic was previously inlined in `PlaylistConnector.swift`. Extraction into `Sources/Session/Connectors/SpotifyWebAPIConnector.swift` (plus `SpotifyTokenProvider.swift`) keeps the two concerns separate, makes each individually testable, and gives `PlaylistConnector` a clean injection seam for tests (`SpotifyWebAPIConnecting` protocol).
+
+**Rejected alternative: env-var credential pattern matching Soundcharts.**
+
+`ProcessInfo.processInfo.environment` requires the developer to set `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` in the Xcode scheme before running, which is invisible and fragile. The xcconfig pattern is visible in the source tree, documented in RUNBOOK, and consistent with how Xcode projects handle other build-time secrets (bundle IDs, entitlements).

@@ -1,15 +1,12 @@
 // SpotifyConnectionViewModel — State machine for the Spotify URL-paste connection flow.
 //
-// PRE-FLIGHT AUDIT NOTES (U.3):
-// - No lightweight Spotify preview method exists. Without OAuth (deferred to v2),
-//   connector.connect() immediately throws .spotifyAuthRequired (empty token check).
-//   For U.3: URL parsing alone provides the "preview" (playlist ID confirmed valid).
-//   On Continue, connect() is called for pre-validation with retry logic; if it throws
-//   .spotifyAuthRequired, startSession() is called directly (SessionManager degrades
-//   gracefully to .ready with empty plan — live-only reactive mode).
-// - Rate-limit (HTTP 429) detection: parsed from networkFailure("...: HTTP 429") string.
-// - TODO(U.3-followup): Add OAuth flow in v2. Pass real access token to connector and
-//   use the returned [TrackIdentity] preview count in the preview card.
+// Increment U.10: client-credentials auth via SpotifyTokenProvider.
+// Connector.connect() now performs real API calls; the silent-degrade path
+// (.spotifyAuthRequired → startSession with empty token) has been removed.
+// Three new error states surface the typed errors from SpotifyWebAPIConnector:
+//   .privatePlaylist  → §9.2 "That playlist is private."
+//   .authFailure      → §9.2 "Phosphene couldn't reach Spotify right now."
+//   .notFound         → §9.2 "Couldn't find that playlist."
 
 import Combine
 import Session
@@ -29,8 +26,12 @@ enum SpotifyConnectionState: Equatable {
     case invalid
     /// HTTP 429 received; `attempt` is 1-indexed (1 of 3).
     case rateLimited(attempt: Int)
-    /// HTTP 404 — playlist not found (private or deleted).
+    /// HTTP 404 — playlist not found (deleted or wrong link).
     case notFound
+    /// HTTP 403 — playlist is private or otherwise inaccessible.
+    case privatePlaylist
+    /// Auth failure — credentials missing or rejected by Spotify.
+    case authFailure
     /// Unrecoverable error. Message is user-facing.
     case error(String)
 }
@@ -134,15 +135,19 @@ final class SpotifyConnectionViewModel: ObservableObject {
         isConnecting = true
         defer { isConnecting = false }
 
-        let source: PlaylistSource = .spotifyPlaylistURL(parsedURL, accessToken: "")
+        let source: PlaylistSource = .spotifyPlaylistURL(parsedURL)
         let initialResult = await attempt(source: source)
         if Task.isCancelled { return }
 
         switch initialResult {
-        case .success, .authRequired:
+        case .success:
             await startSession(source)
+        case .privatePlaylist:
+            state = .privatePlaylist
         case .notFound:
             state = .notFound
+        case .authFailure:
+            state = .authFailure
         case .rateLimited:
             await retryAfterRateLimit(source: source, startSession: startSession)
         case .error(let msg):
@@ -161,11 +166,17 @@ final class SpotifyConnectionViewModel: ObservableObject {
             if Task.isCancelled { return }
             let result = await attempt(source: source)
             switch result {
-            case .success, .authRequired:
+            case .success:
                 await startSession(source)
+                return
+            case .privatePlaylist:
+                state = .privatePlaylist
                 return
             case .notFound:
                 state = .notFound
+                return
+            case .authFailure:
+                state = .authFailure
                 return
             case .rateLimited:
                 continue
@@ -174,13 +185,14 @@ final class SpotifyConnectionViewModel: ObservableObject {
                 return
             }
         }
-        state = .error("Couldn't reach Spotify. Try again in a minute.")
+        state = .error("Couldn't reach Spotify. Check your network or try a different source.")
     }
 
     private enum AttemptResult {
         case success([TrackIdentity])
-        case authRequired
+        case privatePlaylist
         case notFound
+        case authFailure
         case rateLimited
         case error(String)
     }
@@ -189,12 +201,14 @@ final class SpotifyConnectionViewModel: ObservableObject {
         do {
             let tracks = try await connector.connect(source: source)
             return .success(tracks)
-        } catch PlaylistConnectorError.spotifyAuthRequired {
-            return .authRequired
-        } catch PlaylistConnectorError.networkFailure(let msg) where msg.contains("HTTP 429") {
-            return .rateLimited
-        } catch PlaylistConnectorError.networkFailure(let msg) where msg.contains("HTTP 404") {
+        } catch PlaylistConnectorError.spotifyAuthFailure {
+            return .authFailure
+        } catch PlaylistConnectorError.spotifyPlaylistInaccessible {
+            return .privatePlaylist
+        } catch PlaylistConnectorError.spotifyPlaylistNotFound {
             return .notFound
+        } catch PlaylistConnectorError.rateLimited {
+            return .rateLimited
         } catch PlaylistConnectorError.unrecognizedPlaylistURL {
             return .error("That doesn't look like a Spotify playlist link.")
         } catch {

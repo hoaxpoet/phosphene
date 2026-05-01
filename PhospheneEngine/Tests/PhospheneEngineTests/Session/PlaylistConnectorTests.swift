@@ -6,10 +6,30 @@ import Testing
 import Foundation
 @testable import Session
 
+// MARK: - StubTokenProvider
+
+final class StubTokenProvider: SpotifyTokenProviding, @unchecked Sendable {
+    private let token: String?
+    private let error: (any Error)?
+
+    init(token: String) { self.token = token; self.error = nil }
+    init(error: any Error) { self.token = nil; self.error = error }
+
+    func acquire() async throws -> String {
+        if let error { throw error }
+        return token!
+    }
+    func invalidate() async {}
+}
+
 // MARK: - Helpers
 
-private func makeConnector() -> PlaylistConnector {
-    PlaylistConnector()
+private func makeConnector(
+    spotifyConnector: SpotifyWebAPIConnector = SpotifyWebAPIConnector(
+        tokenProvider: StubTokenProvider(token: "stub")
+    )
+) -> PlaylistConnector {
+    PlaylistConnector(spotifyConnector: spotifyConnector)
 }
 
 /// Build a minimal Spotify track JSON object.
@@ -110,39 +130,40 @@ struct PlaylistConnectorTests {
 
     // MARK: - Spotify Queue
 
-    @Test func spotifyQueue_returnsUpTo20Tracks() async throws {
+    @Test func spotifyQueue_isV2Feature_throwsNetworkFailure() async throws {
+        // .spotifyCurrentQueue requires OAuth (v2). Connector surfaces this as a
+        // .networkFailure rather than a silent no-op so callers cannot accidentally
+        // pass a queue source and get empty results.
         let connector = makeConnector()
-
-        let queueTracks = (1...5).map { i in
-            spotifyTrack(name: "Track \(i)", artist: "Artist", id: "id_\(i)")
+        var caught: PlaylistConnectorError?
+        do {
+            _ = try await connector.connect(source: .spotifyCurrentQueue)
+        } catch let err as PlaylistConnectorError {
+            caught = err
         }
-        let payload: [String: Any] = [
-            "currently_playing": spotifyTrack(name: "Track 0", artist: "Artist", id: "id_0"),
-            "queue": queueTracks
-        ]
-        let responseData = try jsonData(payload)
-        connector.networkFetcher = { _ in (responseData, ok200("https://api.spotify.com/v1/me/player/queue")) }
-
-        let tracks = try await connector.connect(source: .spotifyCurrentQueue(accessToken: "tok"))
-
-        // 1 currently_playing + 5 queue = 6
-        #expect(tracks.count == 6)
-        #expect(tracks[0].title == "Track 0")
-        #expect(tracks[5].title == "Track 5")
+        if case .networkFailure = caught {
+            // Expected.
+        } else {
+            Issue.record("Expected .networkFailure for v2 queue path, got \(String(describing: caught))")
+        }
     }
 
     @Test func spotifyPlaylistURL_returnsFullTrackList() async throws {
-        let connector = makeConnector()
+        let mockToken = StubTokenProvider(token: "tok")
+        let spotifyConnector = SpotifyWebAPIConnector(tokenProvider: mockToken)
+        let connector = makeConnector(spotifyConnector: spotifyConnector)
 
         let items = (1...3).map { i -> [String: Any] in
             ["track": spotifyTrack(name: "Song \(i)", artist: "Band", id: "sid_\(i)")]
         }
-        let payload: [String: Any] = ["items": items, "total": 3]
+        let payload: [String: Any] = ["items": items, "next": NSNull()]
         let responseData = try jsonData(payload)
-        connector.networkFetcher = { _ in (responseData, ok200("https://api.spotify.com/v1/playlists/abc/tracks")) }
+        spotifyConnector.networkFetcher = { _ in
+            (responseData, ok200("https://api.spotify.com/v1/playlists/abc/tracks"))
+        }
 
         let tracks = try await connector.connect(
-            source: .spotifyPlaylistURL("https://open.spotify.com/playlist/abc", accessToken: "tok")
+            source: .spotifyPlaylistURL("https://open.spotify.com/playlist/abc")
         )
 
         #expect(tracks.count == 3)
@@ -151,23 +172,24 @@ struct PlaylistConnectorTests {
         #expect(tracks[2].title == "Song 3")
     }
 
-    @Test func networkFailure_throwsGracefully() async throws {
-        let connector = makeConnector()
-        connector.networkFetcher = { _ in
-            throw URLError(.notConnectedToInternet)
-        }
+    @Test func spotifyAuthFailure_propagatesFromConnector() async throws {
+        let mockToken = StubTokenProvider(error: PlaylistConnectorError.spotifyAuthFailure("bad creds"))
+        let spotifyConnector = SpotifyWebAPIConnector(tokenProvider: mockToken)
+        let connector = makeConnector(spotifyConnector: spotifyConnector)
 
         var caught: PlaylistConnectorError?
         do {
-            _ = try await connector.connect(source: .spotifyCurrentQueue(accessToken: "tok"))
+            _ = try await connector.connect(
+                source: .spotifyPlaylistURL("https://open.spotify.com/playlist/abc")
+            )
         } catch let err as PlaylistConnectorError {
             caught = err
         }
 
-        if case .networkFailure = caught {
-            // Expected — test passes.
+        if case .spotifyAuthFailure = caught {
+            // Expected.
         } else {
-            Issue.record("Expected .networkFailure, got \(String(describing: caught))")
+            Issue.record("Expected .spotifyAuthFailure, got \(String(describing: caught))")
         }
     }
 

@@ -41,3 +41,6 @@ tools/audio-tap-test
 
 # Claude Code session worktrees (auto-managed; not project source)
 .claude/worktrees/
+
+# Local xcconfig overrides — contain real credentials; never commit.
+*.local.xcconfig

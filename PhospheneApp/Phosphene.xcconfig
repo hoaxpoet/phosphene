@@ -11,3 +11,9 @@
 // leaving dependencies untouched.
 
 SWIFT_TREAT_WARNINGS_AS_ERRORS = YES
+
+// Spotify Web API client credentials (public-playlist access, v1).
+// Do NOT put real values here — this file is checked in.
+// Override in Phosphene.local.xcconfig (see RUNBOOK §Spotify connector setup).
+SPOTIFY_CLIENT_ID =
+SPOTIFY_CLIENT_SECRET =
