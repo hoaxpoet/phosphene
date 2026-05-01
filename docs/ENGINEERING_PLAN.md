@@ -412,6 +412,7 @@ These are ordered by dependency. Each has done-when criteria and verification co
 3. **Phase MD — Milkdrop Ingestion** (MD.1 → MD.7). Starts once Phase V.1–V.3 utilities land. Parallelizable with V.7+.
 4. **Phase 6** (Progressive readiness, Frame budget manager, ML dispatch scheduling). 6.1 specifically unblocks the "Start now" CTA in Increment U.4 — either pull 6.1 forward or ship U.4 with the CTA dormant.
 5. **Phase 7** (Long-session stability). Unchanged.
+6. **Phase SB — Starburst Fidelity Uplift** (SB.1 → SB.5). Active. Independent of Phase MD; runs in parallel with V.8+ since it touches Starburst only.
 
 Phase MV is complete; see below for its historical record.
 
@@ -1402,7 +1403,133 @@ Runs in parallel with Phase V.7+ once Phase V.1–V.3 utilities are available.
 
 ---
 
-## Milestones
+## Phase SB — Starburst Fidelity Uplift
+
+Starburst (Murmuration) is the particle-system preset: a murmuration of birds against a vivid sunrise/sunset sky, rendered as a compute-kernel particle field composited over a 2D fragment sky. The preset currently sits at `certified: false` with the full rubric unapplied. Its fragment shader (136 lines) uses its own custom hash/noise/fbm functions rather than the V.1 Noise utility tree, drives audio from raw `features.bass_att` and `stems.vocals_energy` (D-026 violation), and has no materials layer.
+
+This phase applies V.1–V.4 utilities and V.5 reference images to bring Starburst to rubric compliance and Matt-approved certification. It runs independently of Phase MD and in parallel with V.8+ since it touches only `Starburst.metal`, `Starburst.json`, and the murmuration particle kernel in `Particles.metal`.
+
+---
+
+### Increment SB.0 — Documentation prep ✅ 2026-05-01
+
+**Delivered:**
+- `CLAUDE.md` — removed stale "no git history" caveat; documented `[increment-id] component: description` commit convention and preference for multiple small commits per increment over one large commit.
+- Commit: `5d9731d5 [SB.0] Docs: remove stale no-git-history caveat, document commit conventions`
+
+---
+
+### Increment SB.1 — JSON sidecar audit + routing review
+
+**Scope:** Verify Starburst's JSON sidecar is internally consistent post-D-029, document the audio routing gaps as the baseline for SB.3, and note the family field semantics.
+
+- Confirm `passes: ["feedback", "particles"]` matches the actual render path in `RenderPipeline`.
+- Confirm no stale `mvWarpPerFrame`/`mvWarpPerVertex` stubs remain in `Starburst.metal`.
+- Audit `Starburst.metal` fragment shader and the murmuration kernel in `Particles.metal` for D-026 violations: raw `features.bass_att`, raw `stems.vocals_energy`, absolute `smoothstep` thresholds against AGC-normalized values.
+- Document all D-026 gaps as numbered items for SB.3 to address.
+- Note: `family: "abstract"` in the JSON sidecar is the Orchestrator scoring category and is correct — it drives preset-selection heuristics. The "particle system" framing in the README and CLAUDE.md describes the rendering paradigm (D-029 table row), not the aesthetic family. No change needed unless appetite exists to reclassify to a more specific family (e.g., `"organic"` for the murmuration-as-living-flock framing) — defer that decision to SB.1 review.
+
+**Done when:**
+- [ ] JSON sidecar fields verified consistent with code.
+- [ ] No stale mv_warp stubs present in Starburst.metal.
+- [ ] D-026 gap list documented (can be inline commit message or comment in .metal file header).
+
+**Verify:** `grep -n "mvWarp\|mv_warp" PhospheneEngine/Sources/Presets/Shaders/Starburst.metal` returns empty; `grep -n "bass_att\b\|vocals_energy\b" PhospheneEngine/Sources/Presets/Shaders/Starburst.metal` confirms remaining D-026 targets for SB.3.
+
+**Estimated sessions:** 0.5 (audit + commit only; no shader edits).
+
+---
+
+### Increment SB.2 — Visual references curation
+
+**Scope:** Populate `docs/VISUAL_REFERENCES/starburst/` with annotated reference images per the V.5 curation contract (`SHADER_CRAFT.md §2.3`).
+
+- Minimum 4 reference images covering: murmuration silhouette shape vocabulary, sky gradient color palette (peach/amber/rose/lavender/deep blue), cloud detail quality, and particle density-to-silence contrast.
+- `README.md` with per-image annotations linking traits to rubric items and target shader behaviour.
+- Confirm `swift run --package-path PhospheneTools CheckVisualReferences` lint passes for the starburst folder.
+
+**Done when:**
+- [ ] `docs/VISUAL_REFERENCES/starburst/` passes `CheckVisualReferences --strict` lint.
+- [ ] README.md annotations present; at least one image per cascade level (macro/meso/micro/specular-breakup) identified.
+
+**Verify:** `swift run --package-path PhospheneTools CheckVisualReferences --strict`
+
+**Estimated sessions:** 1 (Matt curation session).
+
+---
+
+### Increment SB.3 — Audio routing pass (D-026 compliance)
+
+**Scope:** Replace all raw AGC-normalized energy reads in `Starburst.metal` and the murmuration particle kernel with deviation-primitive equivalents per D-026, and verify the 2–4× continuous-to-beat ratio rule.
+
+- Replace `features.bass_att` with `features.bass_att_rel` for continuous cloud drift.
+- Replace `stems.vocals_energy` with `stems.vocals_energy_dev` (positive-only) for vocal warmth accent.
+- Replace any absolute `smoothstep(x, y, f.bass)` or similar patterns with deviation-form equivalents.
+- Verify murmuration particle kernel: flock cohesion / bird speed / scatter burst should read from `bass_att_rel`, `mid_att_rel`, `drums_energy_dev` respectively, not raw energy values.
+- Confirm ratio: continuous motion drivers (sky warmth, cloud drift speed, flock density) should be 2–4× larger contributors than beat-accent drivers (scatter burst, horizon flash).
+- D-019 warmup: if `totalStemEnergy` warmup guard is absent, add `smoothstep(0.02, 0.06, totalStemEnergy)` blend per VolumetricLithograph reference.
+
+**Done when:**
+- [ ] No raw `features.bass`, `features.bass_att`, `stems.vocals_energy` (unqualified) remain as primary visual drivers.
+- [ ] Continuous:beat ratio ≥ 2× for all motion drivers.
+- [ ] D-019 warmup present if stems are read.
+- [ ] `swift test --filter PresetAcceptanceTests` passes (no regression).
+
+**Verify:** `swift test --filter PresetAcceptanceTests && swift test --filter PresetRegressionTests`
+
+**Estimated sessions:** 1.
+
+---
+
+### Increment SB.4 — Detail cascade + materials pass (rubric gate)
+
+**Scope:** Replace Starburst's bespoke `sky_hash`/`sky_noise`/`sky_fbm` with the V.1 Noise utility tree, layer the sky to the mandatory 4-octave minimum, and introduce 3 distinct materials.
+
+- Replace `sky_hash`/`sky_noise`/`sky_fbm` with `perlin2d` + `fbm4`/`fbm8` from the V.1 Noise utility tree (removes duplicate code, adds Perlin quality).
+- Sky cloud layer: upgrade from `sky_fbm(uv, 5)` call with custom noise to `warped_fbm` or `fbm8` from the V.1 tree at ≥ 4 octaves. Recalibrate thresholds to fbm centroid-near-0 range (Failed Approach #42: threshold at 0 not 0.5).
+- Three materials: (1) sky gradient layer (atmospheric gradient recipe or palette-driven), (2) cloud layer (thin-film / SSS backlit for volumetric softness via V.1 PBR), (3) bird silhouettes (near-black chitin or organic dark material — `mat_chitin` or simple emissive-rim dark). Exact recipes to be chosen with reference images in hand.
+- Macro/meso/micro/specular-breakup detail cascade for the sky surface (the primary hero surface):
+  - Macro: full-screen gradient arc (existing, correct).
+  - Meso: large cloud bank variation via `fbm8` at 0.3–0.5 UV scale.
+  - Micro: wisp fine detail via `fbm8` or `warped_fbm` at 0.05–0.1 UV scale.
+  - Specular breakup: chromatic scattering near horizon (`chromatic_aberration_radial` from V.3 Color, or IQ cosine palette variation on cloud highlights).
+
+**Done when:**
+- [ ] No custom hash/noise/fbm functions remain in `Starburst.metal`; V.1 utility calls used throughout.
+- [ ] Hero sky surface uses ≥ 4 noise octaves (M2 rubric pass).
+- [ ] ≥ 3 distinct materials present (M3 rubric pass).
+- [ ] All 4 detail cascade levels present on sky surface (M1 rubric pass).
+- [ ] `swift test --filter FidelityRubricTests` shows Starburst M1+M2+M3 passing.
+- [ ] `swift test --filter PresetAcceptanceTests && swift test --filter PresetRegressionTests` pass; golden hash regenerated.
+
+**Verify:** `swift test --filter FidelityRubricTests && swift test --filter PresetAcceptanceTests && swift test --filter PresetRegressionTests`
+
+**Estimated sessions:** 2 (noise/utility migration + cloud detail / materials + specular breakup).
+
+---
+
+### Increment SB.5 — Certification
+
+**Scope:** Full rubric evaluation, Matt-approved reference frame match, and `certified: true` flip.
+
+- Run `DefaultFidelityRubric` against updated Starburst; confirm ≥ 10/15 with all 7 mandatory items passing.
+- Matt reviews rendered output against `docs/VISUAL_REFERENCES/starburst/` reference annotations (M7 manual gate).
+- On approval: flip `Starburst.json` `certified` field to `true`; regenerate golden hashes.
+- Update `rubric_hints` if any P1–P4 preferred items were addressed (e.g., `hero_specular: true` if a specular band on the horizon cloud layer is present).
+- Reclassify `rubric_profile` if applicable (Starburst is a full-rubric preset; `"full"` is correct).
+
+**Done when:**
+- [ ] Rubric score ≥ 10/15, all 7 mandatory items pass, per `FidelityRubricTests`.
+- [ ] Matt has approved the reference frame match (M7).
+- [ ] `Starburst.json` `certified` field flipped to `true`.
+- [ ] Golden hash regenerated and committed.
+- [ ] `swift test --filter PresetRegressionTests` passes with new hash.
+
+**Verify:** `swift test --filter FidelityRubricTests && swift test --filter PresetRegressionTests` + Matt visual review.
+
+**Estimated sessions:** 1 (rubric run + Matt review + certification commit).
+
+---
 
 These milestones map to product-level outcomes, not implementation phases.
 
