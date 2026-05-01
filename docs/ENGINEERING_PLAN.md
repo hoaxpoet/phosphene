@@ -363,7 +363,7 @@ New `mv_warp` render pass implementing Milkdrop-style 32×24 per-vertex feedback
 
 **Presets converted:**
 - `VolumetricLithograph` — `passes: ["ray_march", "post_process", "mv_warp"]`. Melody-driven zoom breath (`mid_att_rel × 0.003`), valence rotation, decay=0.96, terrain-coherent UV ripple from bass (horizontal) and melody (vertical) at 0.004 UV amplitude.
-- `Starburst (Murmuration)` — `passes: ["mv_warp"]` (replaced `["feedback", "particles"]`). Bass breath zoom, melody rotation, decay=0.97 for long cloud smear.
+- `Starburst (Murmuration)` — initially converted to `passes: ["mv_warp"]` (replacing `["feedback", "particles"]`) with bass breath zoom, melody rotation, decay=0.97 for long cloud smear. **Reverted per D-029** — current passes: `["feedback", "particles"]` per Starburst.json. The mv_warp conversion did not survive the paradigm analysis: particle systems already integrate state in world-space; stacking mv_warp over them double-integrates and smears particle trails into mush. The feedback+particles render path was restored. Stale `mvWarpPerFrame`/`mvWarpPerVertex` stubs were removed.
 
 **Tests:** `MVWarpPipelineTests.swift` — identity warp test (seed red, assert output stays red) and accumulation test (10 frames with blue scene, assert red decays measurably).
 
