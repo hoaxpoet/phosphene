@@ -376,7 +376,8 @@ private func makePreset(
         "color_temperature_range": [\(colorTempRange.x), \(colorTempRange.y)],
         "visual_density": \(visualDensity),
         "complexity_cost": {"tier1": \(complexityCost.tier1), "tier2": \(complexityCost.tier2)},
-        "transition_affordances": [\(affordJSON)]
+        "transition_affordances": [\(affordJSON)],
+        "certified": true
     }
     """
     // swiftlint:disable:next force_try

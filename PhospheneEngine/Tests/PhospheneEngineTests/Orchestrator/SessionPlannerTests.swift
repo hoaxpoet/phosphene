@@ -403,7 +403,8 @@ private func makePreset(
         "section_suitability": [\(sectionJSON)],
         "stem_affinity": {\(stemJSON)},
         "complexity_cost": {"tier1": \(complexityCost.tier1), "tier2": \(complexityCost.tier2)},
-        "transition_affordances": [\(affordJSON)]
+        "transition_affordances": [\(affordJSON)],
+        "certified": true
     }
     """
     // swiftlint:disable:next force_try

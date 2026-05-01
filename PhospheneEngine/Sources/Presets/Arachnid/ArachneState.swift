@@ -1,4 +1,5 @@
 // ArachneState — Per-preset world state for the Arachne mesh-shader preset (Increment 3.5.5).
+// swiftlint:disable file_length
 //
 // Manages a fixed pool of up to 12 webs. Each web progresses through stages
 // (.anchorPulse → .radial → .spiral → .stable → .evicting) measured in beats,
@@ -135,6 +136,9 @@ public final class ArachneState: @unchecked Sendable {
     private var prevBeatComposite: Float = 0
     var rng: UInt32
     let lock = NSLock()
+    #if DEBUG && ARACHNE_DIAG
+    private var loggedStableSlots: Set<Int> = []
+    #endif
 
     // MARK: - Init
 
@@ -221,6 +225,33 @@ public final class ArachneState: @unchecked Sendable {
         webCount = webs.filter { $0.isAlive != 0 }.count
 
         updateSpider(dt: dt, features: features)
+
+        #if DEBUG && ARACHNE_DIAG
+        for i in 0..<Self.maxWebs
+            where webs[i].isAlive != 0
+            && WebStage(rawValue: webs[i].stage) == .stable
+            && !loggedStableSlots.contains(i) {
+            loggedStableSlots.insert(i)
+            let web    = webs[i]
+            let spokes = Self.diagSpokeCount(seed: web.rngSeed)
+            let asp    = Self.diagAspect(seed: web.rngSeed)
+            let ang    = Self.diagAspectAngle(seed: web.rngSeed)
+            let ksag   = Self.diagKSag(seed: web.rngSeed)
+            let jx     = (Self.diagHash(web.rngSeed &+ 0xE5) - 0.5) * 0.10
+            let jy     = (Self.diagHash(web.rngSeed &+ 0xF6) - 0.5) * 0.10
+            logger.debug("""
+                ARACHNE_DIAG slot=\(i) seed=\(web.rngSeed) \
+                hub=(x:\(web.hubX, format: .fixed(precision: 3)) \
+                y:\(web.hubY, format: .fixed(precision: 3))) \
+                jitter=(dx:\(jx, format: .fixed(precision: 3)) \
+                dy:\(jy, format: .fixed(precision: 3))) \
+                radius=\(web.radius, format: .fixed(precision: 3)) \
+                spokes=\(spokes) aspect=\(asp, format: .fixed(precision: 3)) \
+                aspectAngle=\(ang, format: .fixed(precision: 3)) \
+                kSag=\(ksag, format: .fixed(precision: 4))
+                """)
+        }
+        #endif
     }
 
     // MARK: - Private: beat index advancement
@@ -397,4 +428,23 @@ public final class ArachneState: @unchecked Sendable {
         seed = seed &* 1_664_525 &+ 1_013_904_223
         return Float(seed >> 8) / Float(1 << 24)
     }
+
+    // MARK: - Private: Diagnostic helpers (mirrors Metal arachHash + seed-derived funcs)
+    // These reproduce the Metal-shader math so diagnostic logs match render output.
+
+    #if DEBUG && ARACHNE_DIAG
+    static func diagHash(_ seed: UInt32) -> Float {
+        var sv = seed
+        sv = (sv ^ 61) ^ (sv >> 16)
+        sv = sv &* 9
+        sv ^= sv >> 4
+        sv = sv &* 0x27d4eb2d
+        sv ^= sv >> 15
+        return Float(sv) * Float(1.0 / 4_294_967_296.0)
+    }
+    static func diagSpokeCount(seed: UInt32) -> Int { 11 + Int(diagHash(seed &+ 0xA1) * 6.99) }
+    static func diagAspect(seed: UInt32) -> Float { 0.85 + diagHash(seed &+ 0xB2) * 0.30 }
+    static func diagAspectAngle(seed: UInt32) -> Float { diagHash(seed &+ 0xC3) * 2.0 * .pi }
+    static func diagKSag(seed: UInt32) -> Float { 0.04 + diagHash(seed &+ 0xD4) * 0.06 }
+    #endif
 }

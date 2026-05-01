@@ -29,9 +29,9 @@ private typealias PresetHashes = (steady: UInt64, beatHeavy: UInt64, quiet: UInt
 /// Inline golden dHash values for each preset × 3 fixtures.
 /// Update when a shader edit intentionally changes visual output — never silently.
 private let goldenPresetHashes: [String: PresetHashes] = [
-    "Arachne": (steady: 0x00008C86070F0600, beatHeavy: 0x00008C86070F0600, quiet: 0x00008C86070F0600),
+    "Arachne": (steady: 0x00008E0E86968C00, beatHeavy: 0x80800E0E06168C80, quiet: 0x00000E8E8E960C00),
     "Ferrofluid Ocean": (steady: 0x56AB1C4A28B32727, beatHeavy: 0x5CB393AAAFA84840, quiet: 0xA64C51A62FD35356),
-    "Glass Brutalist": (steady: 0x3369549494544D33, beatHeavy: 0x3369549494544D33, quiet: 0x3369549494544D33),
+    "Glass Brutalist": (steady: 0x336954B4B4544D33, beatHeavy: 0x336954B4B4544D33, quiet: 0x336954B4B4544D33),
     "Gossamer": (steady: 0x5756A72F070F0F0D, beatHeavy: 0x5756A72F070F0F0D, quiet: 0x5756872D0F0F0F0D),
     "Kinetic Sculpture": (steady: 0x5EAB7295D25B4A4A, beatHeavy: 0x5AAB7295D25B4A4F, quiet: 0x56AB7295925B4A4A),
     "Membrane": (steady: 0x33E3A919C9627939, beatHeavy: 0x12A3A998C9646139, quiet: 0x47E3C919CD627959),

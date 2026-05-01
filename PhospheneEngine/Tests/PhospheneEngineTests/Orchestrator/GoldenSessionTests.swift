@@ -257,7 +257,8 @@ private func makePreset(
      "fatigue_risk":"\(fatigueRisk.rawValue)","section_suitability":[\(secs)],
      "stem_affinity":{\(stms)},
      "complexity_cost":{"tier1":\(complexityCost.tier1),"tier2":\(complexityCost.tier2)},
-     "transition_affordances":[\(affs)]}
+     "transition_affordances":[\(affs)],
+     "certified":true}
     """
     // swiftlint:disable:next force_try
     return try! JSONDecoder().decode(PresetDescriptor.self, from: Data(json.utf8))

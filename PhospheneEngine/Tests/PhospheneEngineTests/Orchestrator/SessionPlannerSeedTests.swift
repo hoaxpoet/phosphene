@@ -20,7 +20,7 @@ private func makePreset(name: String) throws -> PresetDescriptor {
     {"name":"\(name)","family":"abstract","motion_intensity":0.5,
      "color_temperature_range":[0.3,0.7],"fatigue_risk":"medium",
      "complexity_cost":{"tier1":1.0,"tier2":1.0},
-     "transition_affordances":["crossfade"]}
+     "transition_affordances":["crossfade"],"certified":true}
     """
     return try JSONDecoder().decode(PresetDescriptor.self, from: Data(json.utf8))
 }

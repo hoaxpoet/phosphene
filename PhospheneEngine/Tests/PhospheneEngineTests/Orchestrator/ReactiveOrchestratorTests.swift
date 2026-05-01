@@ -278,7 +278,8 @@ private func makePreset(
         "color_temperature_range": [\(colorTempRange.x), \(colorTempRange.y)],
         "visual_density": \(visualDensity),
         "complexity_cost": {"tier1": 2.0, "tier2": 1.5},
-        "transition_affordances": ["crossfade"]
+        "transition_affordances": ["crossfade"],
+        "certified": true
     }
     """
     // swiftlint:disable:next force_try
