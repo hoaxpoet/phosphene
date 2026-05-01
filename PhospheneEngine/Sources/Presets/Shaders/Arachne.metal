@@ -603,11 +603,6 @@ fragment float4 arachne_fragment(
         float  bodyCov = max(smoothstep(0.003, -0.001, bodyD),
                              smoothstep(0.002, -0.001, headD));
 
-        // Iridescent chitin rim: hue varies with angle around body
-        float  rimD    = 1.0 - smoothstep(0.013, 0.019, length(spRel));
-        float  rimHue  = fract(atan2(spRel.y, spRel.x) / (2.0 * M_PI_F) + 0.40 + hueDrift);
-        float3 rimCol  = hsv2rgb(float3(rimHue, 0.88, 1.0)) * rimD * bodyCov * 1.5;
-
         // 8 legs
         float legMinDist = 1e6;
         for (int k = 0; k < 8; k++) {
@@ -617,17 +612,16 @@ fragment float4 arachne_fragment(
         }
         float legCov = smoothstep(0.0045, 0.001, legMinDist);
 
-        // mat_chitin: bioluminescent carapace (M3 — replaces inline near-black float3)
-        // VdotH ≈ bodyCov (body coverage proxies grazing incidence), NdotV = bodyCov,
-        // thickness_nm = 280 (blue-spectrum chitin, per D-040 reference).
-        MaterialResult chitinMat = mat_chitin(float3(spRel, 0.0),
-                                              float3(0.0, 0.0, 1.0),
-                                              bodyCov * 0.7, bodyCov, 280.0);
-        float3 chitin    = chitinMat.albedo;
-        float3 spiderCol = chitin * bodyCov + rimCol
-                         + float3(0.025, 0.090, 0.110) * legCov;
-        spiderMaskOut    = max(bodyCov, legCov * 0.65);
-        spiderContrib    = spiderCol;
+        // V.7.5 §10.1.9: dark silhouette + thin warm rim catching kL through silk.
+        // Spider deliberately dark per README §24 ("do not over-render the spider")
+        // and ref 05 (backlit atmosphere). mat_chitin reserved for other presets.
+        float3 bodyDark    = float3(0.04, 0.03, 0.02);
+        float  rimT_local  = saturate(1.0 - bodyCov);          // edge of body silhouette
+        float3 rimWarm     = float3(0.85, 0.55, 0.30) * rimT_local * bodyCov;
+        float3 spiderCol   = bodyDark * bodyCov + rimWarm
+                           + bodyDark * legCov * 0.6;          // legs share body tone
+        spiderMaskOut      = max(bodyCov, legCov * 0.65);
+        spiderContrib      = spiderCol;
     }
 
     // ── Background (valence/arousal-tinted near-black) ─────────────────────────

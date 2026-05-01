@@ -10,11 +10,19 @@
 // (D-040 originally specified buffer(4)/meshPresetFragmentBuffer; the buffer moved
 // to buffer(7)/directPresetFragmentBuffer2 in the ray-march remaster, Increment 3.5.10.)
 //
-// Trigger: features.subBass > 0.65
-//          held continuously for ≥ 0.75 s
-//          AND timeSinceLastSpider ≥ 300 s
-// (The bassAttackRatio gate specified in D-040 was removed: the 0.75 s accumulator
-// alone debounces transient kicks reliably. Documented here to avoid re-adding it.)
+// Trigger (V.7.5 §10.1.9, restoring D-040 + re-tuned per M7 data):
+//   features.subBass > 0.30
+//   AND stems.bassAttackRatio ∈ (0, 0.55)
+//   held continuously for ≥ 0.75 s
+//   AND timeSinceLastSpider ≥ 300 s
+//
+// History: D-040 specified an attack-ratio gate; pre-V.7.5 it was removed on the
+// theory that the 0.75 s sustain accumulator alone debounces kicks. M7 capture
+// session 2026-05-01T22-14-25Z showed the threshold was unreachable in live
+// AGC for the originally-targeted James Blake "Limit to Your Love" — max
+// sustained subBass > 0.65 was 0.43 s, never the 0.75 s required. Re-tuning
+// to 0.30 brings the threshold back into the reachable distribution; restoring
+// the AR gate provides the kick-debounce that the lower threshold loses.
 
 import Metal
 import os.log
@@ -87,9 +95,13 @@ extension ArachneState {
     /// Seconds of sustained sub-bass required to trigger the spider.
     static let sustainedTriggerThreshold: Float = 0.75
     /// Sub-bass energy level gate — AGC-normalised FV subBass (20–80 Hz).
-    /// Typical resting value ≈ 0.5; 0.65 = ~30% above average. During James Blake
-    /// "Limit to Your Love" the field reaches 3.9–5.9 at the bass drop.
-    static let subBassThreshold: Float = 0.65
+    /// V.7.5 §10.1.9 / D-071: re-tuned from 0.65 → 0.30 after M7 session
+    /// 2026-05-01T22-14-25Z showed f.subBass mean ≈ 0.13 in LTYL with sustained
+    /// values up to ~0.30 (14.8 % of frames). The original 0.65 threshold from
+    /// D-040 — based on an assumption that LTYL hits 3.9–5.9 at the drop — was
+    /// unreachable in live AGC. Lowering the threshold reopens the trigger;
+    /// the restored AR gate (bassAttackRatio < 0.55) supplies the kick debounce.
+    static let subBassThreshold: Float = 0.30
     /// Minimum seconds between spider appearances (session-level cooldown).
     static let sessionCooldownDuration: Float = 300.0
     /// Seconds to blend blend 0→1 on materialisation.
@@ -104,17 +116,21 @@ extension ArachneState {
     // MARK: - Spider Update (called from _tick while lock is held)
 
     /// Advance spider state by one frame. Call from `_tick` while holding the lock.
-    func updateSpider(dt: Float, features: FeatureVector) {
+    func updateSpider(dt: Float, features: FeatureVector, stems: StemFeatures) {
         // Advance cooldown timer only when the spider is absent.
         if !spiderActive { timeSinceLastSpider += dt }
 
-        // Sub-bass trigger: always use FV features.subBass (AGC-normalised 20–80 Hz band).
-        // stems.bassEnergy is an absolute energy value on a completely different scale and
-        // does not capture sub-bass reliably — Open-Unmix attributes deep electronic sub-bass
-        // (James Blake 40–60 Hz) to "other", not "bass". The FV band IS correct.
-        // Attack-ratio gate removed: the 0.75 s accumulator is the kick debounce — a kick
-        // decays in <100 ms and cannot sustain the threshold regardless of attack character.
+        // Sub-bass trigger: AGC-normalised FV subBass (20–80 Hz). stems.bassEnergy is
+        // unreliable for deep electronic sub-bass (Open-Unmix attributes 40–60 Hz to
+        // "other", not "bass"), so the FV band remains the energy source.
+        //
+        // V.7.5 §10.1.9 / D-040 / D-071: AR gate restored. bassAttackRatio < 0.55
+        // distinguishes sustained resonant bass from transient kick drums whose
+        // attack ratio is closer to 1.0. The > 0 check guards against zero-stem
+        // frames before the warmup completes.
         let conditionMet = features.subBass > Self.subBassThreshold
+                        && stems.bassAttackRatio > 0.0
+                        && stems.bassAttackRatio < 0.55
 
         if conditionMet {
             sustainedSubBassAccumulator += dt
