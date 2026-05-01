@@ -84,7 +84,7 @@ struct DefaultPlaybackActionRouterU6bTests {
              "visual_density":0.5,"motion_intensity":0.5,
              "color_temperature_range":[0.3,0.7],"fatigue_risk":"medium",
              "complexity_cost":{"tier1":1.0,"tier2":1.0},
-             "transition_affordances":["crossfade"]}
+             "transition_affordances":["crossfade"],"certified":true}
             """
             return try JSONDecoder().decode(PresetDescriptor.self, from: Data(json.utf8))
         }
@@ -281,7 +281,8 @@ struct DefaultPlaybackActionRouterU6bTests {
         let presetsJson = """
         {"name":"NextPreset","family":"geometric","visual_density":0.5,"motion_intensity":0.5,
          "color_temperature_range":[0.3,0.7],"fatigue_risk":"medium",
-         "complexity_cost":{"tier1":1.0,"tier2":1.0},"transition_affordances":["crossfade"]}
+         "complexity_cost":{"tier1":1.0,"tier2":1.0},"transition_affordances":["crossfade"],
+         "certified":true}
         """
         let catalog = [try JSONDecoder().decode(PresetDescriptor.self, from: Data(presetsJson.utf8))]
         let tracker = CallTracker()

@@ -134,7 +134,8 @@ private func makePreset(
         "motion_intensity": \(motionIntensity),
         "color_temperature_range": [\(colorTemperatureRange.x), \(colorTemperatureRange.y)],
         "fatigue_risk": "medium",
-        "complexity_cost": {"tier1": 2.0, "tier2": 1.5}
+        "complexity_cost": {"tier1": 2.0, "tier2": 1.5},
+        "certified": true
     }
     """
     // swiftlint:disable:next force_try

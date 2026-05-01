@@ -267,7 +267,8 @@ private func makePreset(
         "name": "\(name)",
         "family": "abstract",
         "duration": \(duration),
-        "transition_affordances": [\(affordancesJSON)]
+        "transition_affordances": [\(affordancesJSON)],
+        "certified": true
     }
     """
     // swiftlint:disable:next force_try

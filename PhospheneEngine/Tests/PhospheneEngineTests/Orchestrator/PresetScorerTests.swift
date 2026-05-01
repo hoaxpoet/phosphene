@@ -277,7 +277,8 @@ private func makePreset(
         "fatigue_risk": "\(fatigueRisk.rawValue)",
         "section_suitability": [\(sectionSuitability.map { "\"\($0.rawValue)\"" }.joined(separator: ","))],
         "stem_affinity": {\(stemAffinity.map { "\"\($0.key)\": \"\($0.value)\"" }.joined(separator: ","))},
-        "complexity_cost": {"tier1": \(complexityCost.tier1), "tier2": \(complexityCost.tier2)}
+        "complexity_cost": {"tier1": \(complexityCost.tier1), "tier2": \(complexityCost.tier2)},
+        "certified": true
     }
     """
     // swiftlint:disable:next force_try

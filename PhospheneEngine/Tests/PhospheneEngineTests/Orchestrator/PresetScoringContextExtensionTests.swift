@@ -100,7 +100,8 @@ struct PresetScoringContextExtensionTests {
         {
             "name": "TestPreset",
             "family": "\(family.rawValue)",
-            "complexity_cost": {"tier1": \(complexityCostMs), "tier2": \(complexityCostMs)}
+            "complexity_cost": {"tier1": \(complexityCostMs), "tier2": \(complexityCostMs)},
+            "certified": true
         }
         """
         // swiftlint:disable:next force_try
