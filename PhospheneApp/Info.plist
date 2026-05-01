@@ -12,5 +12,16 @@
 	<string>$(SPOTIFY_CLIENT_ID)</string>
 	<key>SpotifyClientSecret</key>
 	<string>$(SPOTIFY_CLIENT_SECRET)</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.phosphene.spotify-oauth</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>phosphene</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

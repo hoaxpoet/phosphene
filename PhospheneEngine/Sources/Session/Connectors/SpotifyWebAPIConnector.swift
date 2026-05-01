@@ -199,7 +199,16 @@ public final class SpotifyWebAPIConnector: SpotifyWebAPIConnecting, @unchecked S
             // Signal to callers that they should acquire a fresh token and retry once.
             throw PlaylistConnectorError.spotifyAuthFailure("401 from \(context)")
         case 403:
-            throw PlaylistConnectorError.spotifyPlaylistInaccessible
+            let body = String(data: data, encoding: .utf8) ?? "<unreadable>"
+            logger.error("Spotify 403 body: \(body)")
+            // As of late 2024, Spotify's playlist endpoints require user-level OAuth.
+            // A 403 from a client-credentials token means the endpoint needs OAuth scope;
+            // surface .spotifyLoginRequired so the VM can prompt the user to log in.
+            // If a user-level OAuth token is in use, 403 means genuinely private playlist
+            // and callers should map this to .spotifyPlaylistInaccessible instead.
+            // Token providers that perform OAuth should override this by catching the error
+            // and rethrowing as .spotifyPlaylistInaccessible when authenticated.
+            throw PlaylistConnectorError.spotifyLoginRequired
         case 404:
             throw PlaylistConnectorError.spotifyPlaylistNotFound
         case 429:

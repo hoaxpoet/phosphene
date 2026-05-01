@@ -1,6 +1,9 @@
 // ConnectorPickerView — Three-tile picker for Apple Music, Spotify, and Local Folder.
 // Presented as a sheet from IdleView. Uses NavigationStack internally so each
 // connector flow view is pushed onto the stack — back button returns to this picker.
+//
+// U.11: reads `spotifyOAuthProvider` from the environment (set by PhospheneApp) to
+// build a `SpotifyConnectionViewModel` with OAuth login capability.
 
 import Session
 import SwiftUI
@@ -16,6 +19,7 @@ struct ConnectorPickerView: View {
 
     @StateObject private var viewModel = ConnectorPickerViewModel()
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.spotifyOAuthProvider) private var spotifyOAuth
 
     var body: some View {
         NavigationStack {
@@ -109,18 +113,42 @@ struct ConnectorPickerView: View {
                 onUseSpotifyInstead: { dismiss() }
             )
         case .spotify:
-            SpotifyConnectionView(
-                viewModel: SpotifyConnectionViewModel(),
-                onConnect: onConnect,
-                onUseAppleMusicInstead: {
-                    // Navigation stack will pop; Apple Music tile is there if running.
-                }
-            )
+            spotifyDestination
         case .localFolder:
             Text(String(localized: "connector.picker.local_placeholder"))
                 .foregroundColor(.white.opacity(0.5))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color.black)
+        }
+    }
+
+    /// Builds the SpotifyConnectionView wired with the OAuth provider when available.
+    /// Falls back to a plain (client-credentials) connector in previews / unit tests.
+    @ViewBuilder
+    private var spotifyDestination: some View {
+        if let oauth = spotifyOAuth {
+            let oauthConnector = SpotifyOAuthPlaylistConnector(
+                inner: PlaylistConnector(
+                    spotifyConnector: SpotifyWebAPIConnector(tokenProvider: oauth)
+                ),
+                oauthProvider: oauth
+            )
+            SpotifyConnectionView(
+                viewModel: SpotifyConnectionViewModel(
+                    connector: oauthConnector,
+                    loginAction: { try await oauth.login() },
+                    oauthProvider: oauth
+                ),
+                onConnect: onConnect,
+                onUseAppleMusicInstead: { }
+            )
+        } else {
+            // Fallback: no OAuth provider injected (e.g. SwiftUI preview or plain unit test).
+            SpotifyConnectionView(
+                viewModel: SpotifyConnectionViewModel(),
+                onConnect: onConnect,
+                onUseAppleMusicInstead: { }
+            )
         }
     }
 }

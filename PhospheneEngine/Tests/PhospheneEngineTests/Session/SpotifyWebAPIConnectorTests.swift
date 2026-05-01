@@ -169,16 +169,21 @@ struct SpotifyWebAPIConnectorTests {
 
     // MARK: - Error mapping
 
-    @Test("403 maps to spotifyPlaylistInaccessible")
-    func forbiddenMapsToInaccessible() async throws {
+    // U.11: Spotify API policy change (late 2024) — HTTP 403 on the playlist endpoint now
+    // signals that user-level OAuth is required, not that the playlist is private.
+    // SpotifyWebAPIConnector maps 403 → .spotifyLoginRequired so the app-layer VM can
+    // prompt the user to log in. SpotifyOAuthPlaylistConnector (app layer) re-maps this
+    // to .spotifyPlaylistInaccessible when the user IS already authenticated.
+    @Test("403 maps to spotifyLoginRequired")
+    func forbiddenMapsToLoginRequired() async throws {
         let connector = SpotifyWebAPIConnector(tokenProvider: FixedTokenProvider())
         connector.networkFetcher = { _ in (Data(), httpResponse(status: 403)) }
 
         do {
             _ = try await connector.connect(playlistID: "private_id")
-            Issue.record("Expected spotifyPlaylistInaccessible")
-        } catch PlaylistConnectorError.spotifyPlaylistInaccessible {
-            // Expected.
+            Issue.record("Expected spotifyLoginRequired, but no error was thrown")
+        } catch PlaylistConnectorError.spotifyLoginRequired {
+            // Expected — 403 from the connector layer means "need OAuth login".
         }
     }
 

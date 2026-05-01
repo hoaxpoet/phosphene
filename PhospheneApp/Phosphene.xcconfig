@@ -17,3 +17,6 @@ SWIFT_TREAT_WARNINGS_AS_ERRORS = YES
 // Override in Phosphene.local.xcconfig (see RUNBOOK §Spotify connector setup).
 SPOTIFY_CLIENT_ID =
 SPOTIFY_CLIENT_SECRET =
+
+// Local credential overrides — gitignored, never checked in.
+#include? "Phosphene.local.xcconfig"
