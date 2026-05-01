@@ -100,6 +100,7 @@ Specific audio→visual mappings that must hold:
 - [ ] **Compress all images to ≤ 500 KB** before final commit. Current sizes (per disk): `03` is 1.3 MB, `04` is 3.2 MB, `06` is 2.7 MB, `07` is 7.9 MB. These need compression.
 - [ ] **Write the JSON sidecar `complexity_cost.tier2 = 5.5`** to match the §10.1 budget called out in this README's mandatory traits.
 - [ ] **Fill in image attributions** in the Provenance section below.
+- [ ] **M7 review 2026-05-01: failed (D-071).** Rendered output matched `10_anti_neon_stylized_glow.jpg`. Resolution: V.7.5 + V.7.6. Re-run M7 after V.7.6.
 
 ## Provenance
 

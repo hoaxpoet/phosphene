@@ -1552,25 +1552,35 @@ Before a new preset is certified: run `swift test --filter PresetPerformanceTest
 
 Concrete uplift recipes for the five presets Matt called out. Each references sections above.
 
-### 10.1 Arachne (V.7)
+### 10.1 Arachne (V.7 — references-anchored, post-M7 rewrite)
 
-**Current state:** 3D SDF ray march of spider webs. Cylindrical silk tubes, uniform glow. Reads as clipart.
+**Hero reference:** `01_macro_dewy_web_on_dark.jpg`. If a session matches one frame, match this one. **Anti-references:** `09_anti_clipart_symmetry.jpg` (failure mode #1: clipart) and `10_anti_neon_stylized_glow.jpg` (failure mode #2: graphic-glow). The pre-M7 V.7 build matched anti-ref `10_anti_neon_stylized_glow.jpg`; closing that gap is the goal of this rewrite. (Background: D-071, M7 session 2026-05-01T22-14-25Z.)
 
-**Target:** nature-documentary close-up of a dew-covered orb-weaver web at dawn, bioluminescent instead of dew-lit.
+**Target:** nature-documentary close-up of a dewy orb-weaver web at dawn. Single hero web fills the frame. Drops are the bioluminescent emission peaks; threads are nearly-invisible scaffolding visible mostly through the drops they hold. Atmosphere has volumetric depth — distant tree silhouettes or warm light shafts behind, never flat void during playback. Pure black is the silence-state calibration anchor (per `08_palette_bioluminescent_organism.jpg`), not the steady-playback state.
 
-**Uplift plan:**
+1. **Macro** — single hero composition. Per `01_macro_dewy_web_on_dark.jpg` and `02_meso_per_strand_sag.jpg`. One dominant web fills the frame, off-center hub at UV ≈ (0.42, 0.40), 17 jittered radials, Archimedean spiral of 6–7 turns. Cap `ArachneState.maxWebs` from 12 to 4 — two D-037-invariant pre-seeded webs plus at most two transient pool webs at lower opacity. Anti-ref check: if a frame contains 4+ visible webs, you've matched ref `10`, not ref `01`.
 
-1. **Macro:** keep current web-pool structure (D-041). Add per-web organic variation — tilt jitter, hub-offset jitter, strand-count jitter (11–17 radial per web). §7.1 smooth-union for the web-on-web intersections.
-2. **Meso:** per-strand sag/tension variation. Each radial thread subtly droops based on its length (longer = saggier). Spiral threads have micro-wobble from wind. Implement as per-vertex displacement in mesh shader, or per-segment in SDF.
-3. **Micro:** adhesive droplets on spiral threads (the sticky capture threads have beaded glue; the radial spokes do not — silk biology). Procedurally place droplets at 8–12 px spacing along spiral threads via hash-lattice. Render as small spheres with dielectric material.
-4. **Specular:** silk thread material from §4.3 (Marschner-lite). Narrow axial highlight on every thread. Adhesive droplets get mirror specular.
-5. **Atmosphere:** dust-mote field (§6.3) at low density behind web. Volumetric hint of mist (0.02 fog) so web reads against spatial air, not void.
-6. **Lighting:** bioluminescent (§5.3) — silk emission scaled by `stems.drums_beat_rel`. Rim back-light (cool blue) to edge-light the silk from behind.
-7. **Audio reactivity:** keep current stage lifecycle; modulate only emission intensity and dust-mote density with music. Web geometry stays mostly static (D-020 principle — structure stays solid).
+2. **Meso** — visible per-strand sag and tension variation. Per `02_meso_per_strand_sag.jpg`. Increase `arachKSag` range from [0.04, 0.10] to [0.06, 0.14] so longer radials visibly droop. Add gravity-direction weighting: spokes whose UV angle is closer to +Y (downward) sag more than horizontal spokes — multiply `sagAmount` by `mix(0.4, 1.0, max(0, sin(spAng)))`. Keep the existing time-invariant `fbm4` micro-wobble on spirals.
 
-**Budget:** ~5.5 ms on Tier 2 (silk material is the heaviest component).
+3. **Micro** — drops are the visual hero. Per `01_macro_dewy_web_on_dark.jpg`, `02_meso_per_strand_sag.jpg`, `03_micro_adhesive_droplet.jpg`, and `04_specular_silk_fiber_highlight.jpg`. This is the biggest single change. Increase drop UV radius from 0.0035 (3.8 px at 1080p) to 0.008 (8.6 px at 1080p). Decrease spacing from 8–12 px to 4–6 px so drop chains visibly bead-touch as in refs `01` and `02`. Drops remain on spiral threads only per silk biology (per this README §22 mandatory trait). Reduce strand emission strength so drops carry the visual focus rather than competing with strand glow. Drop emissive base: warm amber `float3(1.00, 0.78, 0.45) * dropEmissionGain`. Mirror specular pinpoint: `float3(1.00, 0.95, 0.85) * spec * 1.4` (replaces current cool-white (0.95, 0.97, 1.00)). Both modulated by the same audio gain as silk emission per §10.1.8 — drops are the bioluminescent emission peaks the hero reference describes.
 
-**Sessions estimated:** 3 (geometry + variation / materials / polish + audio routing).
+4. **Specular** — restore the warm TT lobe. Per `04_specular_silk_fiber_highlight.jpg` and this README §60 mandatory trait. Replace the cool-blue rim override (Arachne.metal lines 396–398, V.7 Session 2) with the canonical Marschner TT-lobe back-lit warm rim: `coolRim → warmTT = float3(1.00, 0.78, 0.45)`; the `mix(silkBase, warmTT, rimT * 0.45)` blend stays. Also flip the line-605 `backsideCue` from cool blue (0.40, 0.62, 0.95) to warm amber (0.95, 0.70, 0.45). The R-lobe axial highlight along the strand tangent is already correct per V.7 Session 2 — leave it. The result: silk reads warm at glancing-angle back-lit edges, neutral-cool elsewhere.
+
+5. **Atmosphere** — depth, not noise. Per `06_atmosphere_dark_misty_forest.jpg` and `07_atmosphere_dust_light_shaft.jpg`. Replace the multiplicative `fbm8` mist (Arachne.metal lines 612–617) with an actual atmospheric layer drawn into the bg pass: a vertical aerial-perspective gradient (warm amber-brown bottom for valence-positive states, cool blue-grey top for valence-negative; per ref `06` cool palette anchor) tinted by valence, fading to a darker compressed near-black at the edges. The `fbm8` field becomes an additive density that fades the gradient toward gray with distance, not a multiplier on the web. Optional V.7.7-deferred: 2–3 distant tree-silhouette SDFs at low opacity for the "stacked layers fading into mist" quality of ref `06`.
+
+6. **Lighting** — directional warm key + cool fill. Per `05_lighting_backlit_atmosphere.jpg`. Direction stays at `kL = normalize(0.45, 0.65, 0.30)`. Tint the key warm: `kLightCol = float3(1.00, 0.85, 0.65)`. Add a cool ambient fill: `kAmbCol = float3(0.55, 0.65, 0.85) * 0.15`. The warm rim that ref `05` demands is what §10.1.4's TT-lobe restoration produces; the cool fill prevents off-rim threads from going pure-warm and reading as cyberpunk-orange.
+
+7. **Dust motes** — beam-bound, not isotropic. Per `07_atmosphere_dust_light_shaft.jpg`. Replace the threshold-on-`fbm4(driftUV × 80.0)` (Arachne.metal lines 619–629) with beam-modulated density. Project `kL` to UV space; define 2–3 beam centers across the frame; compute perpendicular UV distance to nearest beam; multiply mote density by `smoothstep(beamHalfWidth, 0, perpDist)`. Mote color stays cool-tinted but slightly warmer: `float3(0.85, 0.85, 0.75) * 0.4` (a near-white, not blue-shifted). Density modulation by `f.mid_att_rel` per §10.1.8 stays.
+
+8. **Audio reactivity** (unchanged from V.7 Session 3 — do NOT relitigate). D-026 deviation primitives. Continuous: `f.bass_att_rel` for emission gain (`1.0 + 0.18 * f.bass_att_rel`). Beat accent: `0.07 * max(0, stems.drums_energy_dev)`. Mote density: `f.mid_att_rel`. Geometry static per D-020. Continuous/beat ratio ≥ 2× per CLAUDE.md rule of thumb. The audio→visual mapping is correct; the visual outputs are what changes in items 1–7.
+
+9. **Spider** — small, silhouetted, rare. Per `05_lighting_backlit_atmosphere.jpg` and this README §24 ("do not over-render the spider"). Replace the iridescent chitin rim at Arachne.metal lines 569–572 with a thin warm rim catching the key light: body color `float3(0.04, 0.03, 0.02)`, rim `float3(0.85, 0.55, 0.30) * bodyCov * rimT_local`. Legs darker still. Restore the `bassAttackRatio < 0.55` gate at `ArachneState+Spider.swift` line 87 per D-040 / this README §96 — the gate is not redundant with the 0.75 s accumulator: M7 session data shows max sustained `subBass > 0.65` was 0.43 s, so the accumulator alone is not currently triggering on the calibration track. Threshold tuning belongs in V.7.5, not in the spec.
+
+**Budget:** ≤ 5.5 ms p95 at 1080p Tier 2 (unchanged).
+
+**Sessions estimated:** 2 — V.7.5 covers items 1, 2, 3, 4, 6, 9. V.7.6 covers items 5, 7. Item 8 is unchanged.
+
+**M7 prep (mandatory final step of every V.7+ session per D-071):** Capture a single representative frame at steady mid-energy. Place it in a 2×4 contact sheet with `01`, `02`, `04`, `05`, `06`, `07`, `08`, `10`. Record pass/fail per positive reference and a "matches anti-ref?" boolean for `10`. The session is not done if the anti-ref boolean is true on `10`, regardless of automated rubric score.
 
 ### 10.2 Gossamer (V.8)
 
