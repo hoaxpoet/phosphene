@@ -12,6 +12,7 @@ struct SettingsView: View {
 
     @StateObject private var viewModel: SettingsViewModel
     @State private var selection: SettingsSection? = .audio
+    @Environment(\.dismiss) private var dismiss
 
     init(store: SettingsStore) {
         _viewModel = StateObject(wrappedValue: SettingsViewModel(store: store))
@@ -36,6 +37,11 @@ struct SettingsView: View {
             .frame(minWidth: 480, minHeight: 360)
         }
         .frame(width: 720, height: 520)
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                Button(NSLocalizedString("settings.done_button", comment: "")) { dismiss() }
+            }
+        }
         .accessibilityIdentifier(Self.accessibilityID)
     }
 }

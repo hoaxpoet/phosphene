@@ -219,6 +219,7 @@
 "settings.group.visuals"     = "Visuals";
 "settings.group.diagnostics" = "Diagnostics";
 "settings.group.about"       = "About";
+"settings.done_button"       = "Done";
 
 // Audio — capture mode
 "settings.audio.capture_mode.label"    = "Audio source";
