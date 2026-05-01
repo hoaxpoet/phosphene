@@ -89,13 +89,11 @@ struct FidelityRubricReportTests {
 
 /// Expected meetsAutomatedGate values for all 13 production presets.
 ///
-/// Initial values committed after first run (2026-04-30). No preset passes the
-/// full automated gate yet — all full-profile presets fail M3 (no V.3 cookbook
-/// mat_* calls in source). SpectralCartograph passes as the only lightweight
-/// preset that uses deviation primitives (D-026) in its shader source.
+/// Updated 2026-04-30 after V.7 Session 2. Arachne now passes (11/15, meetsAutomatedGate).
+/// SpectralCartograph passes as lightweight. All other presets still fail M3.
 /// Update this dictionary when rubric logic or shader source is intentionally changed.
 private let expectedAutomatedGate: [String: Bool] = [
-    "Arachne":              false,   // full; M3 fails — no mat_* cookbook calls yet
+    "Arachne":              true,    // full; V.7 S2 — M1-M6 all pass, E2+E3+E4 ≥2, P1+P3 ≥1
     "Ferrofluid Ocean":     false,   // full; M3 fails
     "Fractal Tree":         false,   // full; M3 fails
     "Glass Brutalist":      false,   // full; M3 fails
@@ -134,7 +132,10 @@ struct FidelityRubricGateTests {
         }
     }
 
-    @Test func automatedGate_certifiedIsFalseForAll() async {
+    /// Presets approved by Matt after M7 review and V.7 Session 3 delivery (2026-04-30).
+    private let certifiedPresets: Set<String> = ["Arachne"]
+
+    @Test func automatedGate_certifiedMatchesExpected() async {
         let store = PresetCertificationStore()
         let results = await store.results()
 
@@ -144,8 +145,11 @@ struct FidelityRubricGateTests {
         }
 
         for (presetID, result) in results {
-            #expect(result.certified == false, "\(presetID): certified should be false — no preset approved yet")
-            #expect(result.isCertified == false, "\(presetID): isCertified should be false")
+            let expectCertified = certifiedPresets.contains(presetID)
+            #expect(result.certified == expectCertified, "\(presetID): certified=\(result.certified) expected=\(expectCertified)")
+            // isCertified = meetsAutomatedGate && certified — only true when both hold.
+            let expectICertified = expectCertified && result.meetsAutomatedGate
+            #expect(result.isCertified == expectICertified, "\(presetID): isCertified=\(result.isCertified) expected=\(expectICertified)")
         }
     }
 }

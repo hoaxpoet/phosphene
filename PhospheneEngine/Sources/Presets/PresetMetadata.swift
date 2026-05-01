@@ -45,9 +45,9 @@ public struct RubricHints: Sendable, Codable, Equatable {
     }
 
     public init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        heroSpecular = try c.decodeIfPresent(Bool.self, forKey: .heroSpecular) ?? false
-        dustMotes    = try c.decodeIfPresent(Bool.self, forKey: .dustMotes)    ?? false
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        heroSpecular = try container.decodeIfPresent(Bool.self, forKey: .heroSpecular) ?? false
+        dustMotes = try container.decodeIfPresent(Bool.self, forKey: .dustMotes) ?? false
     }
 }
 
