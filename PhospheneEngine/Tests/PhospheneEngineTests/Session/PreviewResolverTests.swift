@@ -155,6 +155,56 @@ struct PreviewResolverTests {
         #expect(url == nil)
     }
 
+    // MARK: - Spotify fast path
+
+    @Test func spotifyPreviewURL_returnedWithoutNetworkCall() async throws {
+        let resolver = makeResolver()
+        var networkCallCount = 0
+        resolver.networkFetcher = { _ in
+            networkCallCount += 1
+            return (itunesResponse(), ok200())
+        }
+
+        let spotifyURL = URL(string: "https://p.scdn.co/mp3-preview/abc123.mp3")
+        let track = TrackIdentity(title: "Roslyn", artist: "Bon Iver", spotifyPreviewURL: spotifyURL)
+
+        let resolved = try await resolver.resolvePreviewURL(for: track)
+        #expect(resolved == spotifyURL)
+        #expect(networkCallCount == 0, "iTunes Search API must not be called when Spotify provides a URL")
+    }
+
+    @Test func spotifyPreviewURL_cachedOnSecondCall() async throws {
+        let resolver = makeResolver()
+        var networkCallCount = 0
+        resolver.networkFetcher = { _ in
+            networkCallCount += 1
+            return (itunesResponse(), ok200())
+        }
+
+        let spotifyURL = URL(string: "https://p.scdn.co/mp3-preview/abc123.mp3")
+        let track = TrackIdentity(title: "Roslyn", artist: "Bon Iver", spotifyPreviewURL: spotifyURL)
+
+        _ = try await resolver.resolvePreviewURL(for: track)
+        let second = try await resolver.resolvePreviewURL(for: track)
+        #expect(second == spotifyURL)
+        #expect(networkCallCount == 0)
+    }
+
+    @Test func nullSpotifyPreviewURL_fallsBackToItunes() async throws {
+        let resolver = makeResolver()
+        var networkCallCount = 0
+        resolver.networkFetcher = { _ in
+            networkCallCount += 1
+            return (itunesResponse(previewURL: "https://example.com/fallback.m4a"), ok200())
+        }
+
+        // spotifyPreviewURL == nil means Spotify had no preview; fall through to iTunes.
+        let track = TrackIdentity(title: "Bohemian Rhapsody", artist: "Queen", spotifyPreviewURL: nil)
+        let resolved = try await resolver.resolvePreviewURL(for: track)
+        #expect(resolved == URL(string: "https://example.com/fallback.m4a"))
+        #expect(networkCallCount == 1)
+    }
+
     // MARK: - Cache
 
     @Test func multipleResolves_usesCache() async throws {
