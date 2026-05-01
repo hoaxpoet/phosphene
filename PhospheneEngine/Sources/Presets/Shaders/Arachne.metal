@@ -17,7 +17,7 @@
 //           moteThresh = 0.66 − 0.04 × max(0, f.mid_att_rel)  [~1–3% density range]
 //
 // Architecture: 2D direct fragment — per D-043. No ray march.
-// Renders up to 12 pool webs from ArachneWebGPU buffer in UV space.
+// Renders up to `kArachWebs` pool webs (V.7.5 §10.1.1: 4) from ArachneWebGPU buffer in UV space.
 //
 // V.7 Session 1 changes (geometry + meso fidelity):
 //   §4.1  Per-web macro variation: hub jitter ±5% UV, elliptical aspect 0.85–1.15,
@@ -48,7 +48,7 @@
 // Buffer bindings:
 //   buffer(0) = FeatureVector      (192 bytes)
 //   buffer(3) = StemFeatures       (256 bytes)
-//   buffer(6) = ArachneWebGPU[12]  (768 bytes — ArachneState.webBuffer)
+//   buffer(6) = ArachneWebGPU[kArachWebs]  (256 bytes at kArachWebs=4 — ArachneState.webBuffer)
 //   buffer(7) = ArachneSpiderGPU   (80 bytes  — ArachneState.spiderBuffer)
 //
 // D-026 deviation-first, D-019 warmup, D-037: two seed webs guarantee visibility.
@@ -70,7 +70,7 @@ struct ArachneSpiderGPU {
 // ── Constants ─────────────────────────────────────────────────────────────────
 // Spoke count is now per-web via rng_seed (11–17); kArachSpokes removed in V.7.
 
-constant int kArachWebs = 12;
+constant int kArachWebs = 4;  // V.7.5 §10.1.1: pool capped 12→4 (single hero composition)
 
 // ── Web coverage result ───────────────────────────────────────────────────────
 // Extended in V.7 Session 2 with per-pixel strand tangent and droplet normal data

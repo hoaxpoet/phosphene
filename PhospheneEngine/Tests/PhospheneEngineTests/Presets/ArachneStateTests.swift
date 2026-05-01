@@ -306,16 +306,17 @@ private func stems(drumsOnsetRate: Float = 0, totalEnergy: Float = 0.1) -> StemF
         }
         let state = try #require(ArachneState(device: device, seed: 42))
 
-        // Phase 1: fill all 12 slots using large dt so spawns fire rapidly and
-        // spawned webs advance past anchorPulse in the same tick (beatsDt=4.0 >>
-        // anchorPulseDuration=1.0 >> minSpawnGapBeats=0.5).
+        // Phase 1: fill all `maxWebs` slots using large dt so spawns fire rapidly
+        // and spawned webs advance past anchorPulse in the same tick.
+        // Post-V.7.5 §10.1.1: maxWebs=4 and minSpawnGapBeats=8.0, so dt=4.5
+        // (beatsDt=9.0 >= 8.0) is needed to pass the gap gate every tick.
         var bigS = StemFeatures.zero
         bigS.drumsOnsetRate = 20.0
         bigS.drumsEnergy = 0.05; bigS.bassEnergy = 0.05
         bigS.otherEnergy = 0.05; bigS.vocalsEnergy = 0.05
         for _ in 0..<20 {
             var f = FeatureVector.zero
-            f.deltaTime = 2.0   // beatsDt=4.0 → skips every stage in one tick
+            f.deltaTime = 4.5   // beatsDt=9.0 ≥ minSpawnGapBeats=8.0
             state.tick(features: f, stems: bigS)
         }
 
@@ -327,13 +328,15 @@ private func stems(drumsOnsetRate: Float = 0, totalEnergy: Float = 0.1) -> StemF
         let stableWebs = fullWebs.filter { $0.isAlive != 0 && $0.stage == WebStage.stable.rawValue }
         let oldestBirth = stableWebs.min(by: { $0.birthBeatPhase < $1.birthBeatPhase })?.birthBeatPhase
 
-        // Phase 2: trigger eviction with dt=1.0 so beatsDt=2.0 ≥ minSpawnGapBeats=2.0
-        // (passes the gap check), while progress += 2.0/4.0 = 0.5 so the evicting
-        // web survives the tick and is observable in the buffer.
-        // The accumulator is very high from phase 1, so no extra drum drive is needed.
+        // Phase 2: trigger eviction with 4 ticks at dt=1.0. beatsDt=2.0 per tick is
+        // small enough that an evicted web's progress only advances 2/4=0.5 of
+        // evictingDuration, so it survives the tick and is observable.
+        // We need 4 ticks because phase 1 ends on a fresh spawn (gap=0) and the
+        // §10.1.1 minSpawnGapBeats=8.0 gate requires 4 × beatsDt(2.0) = 8 beats of
+        // accumulated gap before the spawn attempt fires the eviction.
         var evictF = FeatureVector.zero
         evictF.deltaTime = 1.0
-        state.tick(features: evictF, stems: .zero)
+        for _ in 0..<4 { state.tick(features: evictF, stems: .zero) }
 
         let afterWebs = readWebs(state)
         let evictingWebs = afterWebs.filter { $0.isAlive != 0 && $0.stage == WebStage.evicting.rawValue }
