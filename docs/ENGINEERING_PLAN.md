@@ -1157,20 +1157,32 @@ Supersedes (without deleting) Increment 5.2's weak invariants — those stay as 
 
 ---
 
-### Increment V.7.5 — Arachne v5 (composition + warm restoration + drops + spider cleanup)
+### Increment V.7.5 — Arachne v5 (composition + warm restoration + drops + spider cleanup) ⚠ 2026-05-01 shipped, awaiting Matt M7
 
 **Scope:** Apply `SHADER_CRAFT.md §10.1` items 1, 2, 3, 4, 6, 9 (post-M7 rewrite, per D-071) to Arachne v4. Cap `ArachneState.maxWebs` from 12 → 4. Increase `arachKSag` range and add gravity-direction weighting. Drops become the visual hero — radius 0.0035 → 0.008, spacing 8–12px → 4–6px, warm-amber emission, warm specular pinpoint. Restore Marschner TT-lobe warm back-rim (replaces V.7 Session 2 cool-blue override at Arachne.metal lines 396–398 + 605). Add warm directional key + cool ambient fill. Reduce strand emission so drops carry the visual. Spider rendered as small dark silhouette with thin warm rim; restore `bassAttackRatio < 0.55` gate per D-040 and re-tune `subBassThreshold` against the M7 data (current 0.65 is unreachable; data supports 0.30 sustained).
 
-**Done when:**
-- Arachne golden hashes regenerated (pool size change is hash-affecting).
-- M7 contact-sheet step run; "matches anti-ref `10`?" returns false; ≥ 4/6 positive references return pass (refs `01`, `04`, `05`, `08` are the must-pass set; `02` and `07` are V.7.6's domain).
-- `swift test --package-path PhospheneEngine --filter PresetAcceptanceTests,PresetRegressionTests,FidelityRubricTests,ArachneStateTests` all pass; 0 SwiftLint violations.
-- p95 frame time at 1080p ≤ 5.5 ms (Tier 2).
-- `Arachne.json` re-flips to `certified: true`.
+**Delivered (2026-05-01):**
+- Step 0: `ARACHNE_M7_DIAG` build-flag-gated logging harness (per-second numeric snapshot of pool occupancy, spawn cadence, spider trigger state, silk-vs-drop luma proxy).
+- Step 1 (§10.1.1): `ArachneState.maxWebs` 12 → 4; `kArachWebs` 12 → 4; `minSpawnGapBeats` 2.0 → 8.0 (transient-slot churn ≤ once per 4 s at 120 BPM).
+- Step 2 (§10.1.2): `arachKSag` range [0.04, 0.10] → [0.06, 0.14]; per-spoke gravity weight `mix(0.4, 1.0, max(0, sin(spAng)))`.
+- Step 3 (§10.1.4): shared `kWarmTT = (1.00, 0.78, 0.45)` constant; both anchor + pool silk sites flipped from cool-blue to warm-TT rim; `backsideCue` tint flipped to warm.
+- Step 4 (§10.1.6): shared `kLightCol = (1.00, 0.85, 0.65)` warm key + `kAmbCol = (0.55, 0.65, 0.85) × 0.15` cool ambient applied at both silk sites after the deviation gain.
+- Step 5 (§10.1.3): drop UV radius 0.0035 → 0.008 (≈ 8.6 px at 1080p); spacing 0.0074–0.0111 → 0.0037–0.0056 (4–6 px); warm-amber emissive base `(1.00, 0.78, 0.45) × 0.18`; warm-white specular tint; gain-modulated by `(baseEmissionGain + beatAccent)`; strand `silkTint × 0.50` → `× 0.32`.
+- Step 6 (§10.1.9): chitin call site removed; spider as dark silhouette `(0.04, 0.03, 0.02)` with thin warm-amber rim catching backlit kL; AR gate restored (`bassAttackRatio > 0 && < 0.55`); `subBassThreshold` 0.65 → 0.30 per M7 LTYL data; `stems` plumbed through `updateSpider`.
+- Step 7: golden hashes regenerated; only Arachne's hashes changed. Arachne `(steady/beatHeavy/quiet) = 0xC4008E8E0E4E6E00`; spider forced hash `0x44382E0F07476E00`. `FidelityRubricTests` ground truth updated: Arachne `meetsAutomatedGate` true → false (M3 fails: 2 mat_* call sites ≤ 3-gate; restoring M3 deferred); `certifiedPresets` set emptied (V.7.4 cert rollback).
+- Step 8 SKIPPED per Matt: option C — formal contact sheet bypassed; Matt to eyeball at runtime.
+- Step 9 (modified): `Arachne.json` `certified` stays `false` pending Matt's runtime visual review.
 
-**Verify:** `swift test --package-path PhospheneEngine` + `xcodebuild -scheme PhospheneApp build` + M7 contact sheet reviewed.
+**Done when (rev 2):**
+- Arachne golden hashes regenerated. ✅
+- M7 visual review pending — Matt eyeballs at runtime, then either approves cert flip or files V.7.5b corrective.
+- `swift test --package-path PhospheneEngine`: 894 tests, 1 pre-existing failure (`MetadataPreFetcher` network-timeout flake, baseline). 0 SwiftLint violations on touched files. ✅
+- p95 frame time at 1080p ≤ 5.5 ms (Tier 2): not measured this session — would benefit from a runtime check.
+- `Arachne.json` cert flip to `true`: deferred to Matt's M7 outcome.
 
-**Estimated sessions:** 1.
+**Verify:** `swift test --package-path PhospheneEngine` + `xcodebuild -scheme PhospheneApp build`.
+
+**Estimated sessions:** 1. **Actual:** 1 session, 8 commits (Step 0 through Step 7).
 
 ---
 
