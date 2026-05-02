@@ -1175,10 +1175,10 @@ Supersedes (without deleting) Increment 5.2's weak invariants — those stay as 
 
 **Done when (rev 2):**
 - Arachne golden hashes regenerated. ✅
-- M7 visual review pending — Matt eyeballs at runtime, then either approves cert flip or files V.7.5b corrective.
+- M7 visual review (2026-05-02): **failed**. Rendered output is still a stylized 2D bullseye; references show drops-on-a-world with refraction + DoF + atmosphere — compositing layers the renderer doesn't have. See D-072 for the architectural pivot. V.7.5 commits stay in the tree as the v5 baseline; V.8 builds on top.
 - `swift test --package-path PhospheneEngine`: 894 tests, 1 pre-existing failure (`MetadataPreFetcher` network-timeout flake, baseline). 0 SwiftLint violations on touched files. ✅
-- p95 frame time at 1080p ≤ 5.5 ms (Tier 2): not measured this session — would benefit from a runtime check.
-- `Arachne.json` cert flip to `true`: deferred to Matt's M7 outcome.
+- p95 frame time at 1080p ≤ 5.5 ms (Tier 2): not measured this session.
+- `Arachne.json` cert flip: stays `false`. V.7.5 alone does not reach the cert bar; V.8 is required.
 
 **Verify:** `swift test --package-path PhospheneEngine` + `xcodebuild -scheme PhospheneApp build`.
 
@@ -1186,17 +1186,71 @@ Supersedes (without deleting) Increment 5.2's weak invariants — those stay as 
 
 ---
 
-### Increment V.7.6 — Arachne v5 (atmosphere + beam-bound motes)
+### Increment V.7.6 — Arachne v5 (atmosphere + beam-bound motes) ❌ ABANDONED 2026-05-02
 
-**Scope:** Apply `SHADER_CRAFT.md §10.1` items 5 and 7 (post-M7 rewrite, per D-071). Replace multiplicative `fbm8` mist with valence-tinted aerial-perspective gradient drawn into bg pass; `fbm8` becomes additive distance-density. Replace isotropic `fbm4` mote field with beam-bound directional density (project `kL` to UV, 2–3 beam centers, perpendicular-distance gating). Mote color shifts from cool-blue `(0.70, 0.85, 1.00) × 0.35` to neutral-warm `(0.85, 0.85, 0.75) × 0.4`. Distant tree-silhouette SDFs deferred to optional V.7.7.
+**Status:** Abandoned per D-072. The original V.7.6 plan was to patch atmosphere onto the existing single-pass renderer (multiplicative `fbm8` mist → additive density; isotropic mote field → beam-bound, projected-`kL` directional density). The V.7.5 M7 review on 2026-05-02 found the architectural ceiling described in D-072 — the references depend on compositing layers (background world, refractive drops, depth-of-field) that no patch on the single-pass renderer can produce. Atmosphere moves into the new V.7.7 (background atmosphere pass) where it has the right architectural shape; beam motes are reframed as a property of the bg pass rather than a separate isotropic mote field. Listed here in abandoned form to preserve the audit trail.
+
+---
+
+### Increment V.7.7 — Arachne: background atmosphere pass
+
+**Scope:** Implement `SHADER_CRAFT.md §10.1.A`. Add a new render-to-texture background pass that runs before the existing `arachne_fragment`. Output texture bound at fragment texture index 12 for V.7.8 to refract through. Layers in the bg pass:
+- Mood-tinted vertical aerial-perspective gradient (warm bottom + cool top, valence-driven). Pure black is the silence-calibration anchor only.
+- Defocused foliage via `worley_fbm` at low frequency, mottled with `fbm8`, baked-in 3–5 px Gaussian blur.
+- Optional volumetric backlight beam from `kL` projected to UV space, gated on `f.mid_att_rel > 0.05`, perpendicular-distance falloff.
+- Subtle radial vignette (~30 % attenuation at corners).
+- Resolution: half-res (`drawableSize / 2`) — defocused anyway.
 
 **Done when:**
-- M7 contact-sheet step; refs `02`, `06`, `07` now also pass; full 6/6 positive references at pass.
+- Background pass renders correctly in isolation. New `bgPipelineState` compiled and bound; new texture allocation tracked for resize.
+- Composited under existing web pass; bullseye composition remains visible but now reads against an atmospherically textured world instead of pure black.
+- M7 contact-sheet step; refs `05`, `06`, `07` cite the bg pass as the atmosphere mechanism; refs `01`, `04`, `08` show palette compatibility (warm/cool/dark calibration).
 - All test suites pass; 0 SwiftLint violations.
-- p95 frame time at 1080p ≤ 5.5 ms.
+- p95 frame time at 1080p ≤ 6.0 ms Tier 2 / ≤ 7.5 ms Tier 1.
+- Arachne golden hashes regenerated for the new bg layer.
+
+**Verify:** `swift test --package-path PhospheneEngine` + `xcodebuild -scheme PhospheneApp build` + Matt runtime visual review.
+
+**Estimated sessions:** 1.
+
+---
+
+### Increment V.7.8 — Arachne: refractive drops + visual hierarchy inversion
+
+**Scope:** Implement `SHADER_CRAFT.md §10.1.B`. Replace the V.7.5 emissive-amber drop recipe with a refractive-glass recipe that samples the V.7.7 background texture through the spherical-cap normal. Snell's-law refraction (eta ≈ 0.752 for water-in-air), fresnel rim (pow-5 falloff), tighter specular pinpoint (pow-96), dark edge ring. Drop spacing tighter (3–5 px) so chains visibly bead-touch. Strand emission falls further: anchor `silkTint × 0.18`, pool `× 0.12 × w.opacity` — drops carry the visual, threads become connective tissue. Audio modulation moves from drop emissive to bg-pass beam intensity.
+
+**Done when:**
+- Drops visibly refract the bg texture — moving the camera (or modulating the bg) shows the drop image inverting and shifting.
+- Visual hierarchy inverted: drops are the dominant detail in any fixture; threads read as faint scaffolding.
+- M7 contact-sheet step; refs `01`, `03`, `04` cite drop refraction + bead-chain density; ref `02` cites the reduced strand emission.
+- All test suites pass; 0 SwiftLint violations.
+- p95 frame time at 1080p ≤ 6.0 ms Tier 2.
 - Arachne golden hashes regenerated.
 
-**Verify:** Same as V.7.5.
+**Verify:** Same as V.7.7.
+
+**Estimated sessions:** 1.
+
+---
+
+### Increment V.7.9 — Arachne: chord-segment spiral + selective DoF
+
+**Scope:** Implement `SHADER_CRAFT.md §10.1.C`. Replace the continuous Archimedean spiral SDF with discrete chord-segment SDFs — straight `arachSegDist` between `(N, θᵢ)` and `(N, θᵢ₊₁)` attachment points on each spiral revolution. Visually breaks the bullseye effect because the spiral now reads as a sequence of straight chords rather than a degenerate ring stack. Add depth-weighted bokeh DoF pass to `PostProcessChain`: foreground anchor web sharp; pool webs at higher `depth` get progressive 9-tap disc-kernel blur applied. Tier 1 reduces `spirRevs` to 4 to bound segment-eval cost.
+
+**Done when:**
+- Spirals visibly read as straight chord segments, not concentric circles, in any rendered frame.
+- Distant pool webs and out-of-focus drops blur into circular-aperture bokeh shapes; foreground anchor stays sharp.
+- M7 contact-sheet step; refs `01`, `03` cite the bokeh; ref `04` cites the chord-segment threads; anti-ref `09` (clipart symmetry) explicitly NOT matched.
+- All test suites pass; 0 SwiftLint violations.
+- p95 frame time at 1080p ≤ 6.0 ms Tier 2.
+- Arachne golden hashes regenerated.
+- **Cert review (Matt runtime eyeball, not engineering work).** If positive: `Arachne.json` `certified: true`, add `"Arachne"` back to `FidelityRubricTests.certifiedPresets`, mark V.5 references action complete, log M7 outcome in references README. If iteration needed: file a follow-up tuning increment (V.7.10, V.7.11, …) — the post-V.7.9 baseline is the renderer; subsequent passes are tuning on top, not architectural.
+
+**Verify:** Same as V.7.7.
+
+**Estimated sessions:** 1 (½ if DoF reuses bloom infrastructure cleanly).
+
+**V.8 remains reserved for Gossamer** per `SHADER_CRAFT.md §10.2`.
 
 **Estimated sessions:** 1.
 
