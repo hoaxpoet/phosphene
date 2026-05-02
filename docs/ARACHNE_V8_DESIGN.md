@@ -194,69 +194,174 @@ Tunables:
 
 This is the design call referenced in §1.3. Subject to visual review via the harness.
 
-### 4.3 Color source — TBD pending Matt direction
+### 4.3 Color source — live mood-driven palette with smoothing
 
-**Critical omission flagged 2026-05-02. Spec is incomplete on this dimension and must not be implemented until resolved.**
+**Locked 2026-05-02 per Matt direction (Option B with full specification).**
 
-Every layer in §1 (background gradient, foliage, drops, threads, spider rim) needs color decisions. The earlier draft of this spec used phrases like "warm rim", "cool ambient fill", "mood-tinted gradient" without specifying where the warm/cool decisions actually come from. That gap must be closed before V.7.7 is implemented; otherwise the implementation will guess, and guessing has been the source of multiple V.7+ failures.
+Single source of truth: the smoothed mood signal (`f.valence`, `f.arousal` from MoodClassifier) drives the entire scene palette. Smoothed over a 5-second low-pass window so palette transitions are gradual (no jarring mid-section shifts). Standard psychophysics mapping: **valence → warm/cool hue, arousal → saturation + brightness**.
 
-**Plausible color sources (one or more, in combination):**
+```hlsl
+// Inputs: smoothed mood signal (5s low-pass on f.valence and f.arousal)
+float v = smoothedValence;  // -1..1
+float a = smoothedArousal;  // -1..1
 
-- **A. Per-track palette from pre-analysis.** Track preparation produces a fixed palette derived from the track's overall mood/arousal/key (data already in `TrackProfile`). Palette stays stable for the whole track. Most "designed" — consistent within a song, varies across the playlist.
-- **B. Live mood-driven palette.** Palette responds continuously to current mood signal (`f.valence`, `f.arousal` from MoodClassifier). More dynamic but can shift mid-section in distracting ways.
-- **C. Hybrid (A + B).** Track palette is the anchor; live signals modulate within bounded variation around it.
-- **D. Audio-reactive direct.** Palette derived directly from audio features — bass → warmth, treble → cool, etc. No mood layer involved.
-- **E. Section/structural-driven.** Palette transitions on song-section boundaries (verse vs chorus etc.), using the `StructuralAnalyzer`'s detected boundaries and section labels.
+// Hue: cool (cyan/blue 0.55–0.65) at low valence, warm (orange/amber 0.05–0.10) at high valence
+float topHue = mix(0.62, 0.05, saturate(0.5 + 0.5 * v));   // sky-ish: cool when sad, warm at dawn
+float botHue = mix(0.58, 0.08, saturate(0.5 + 0.5 * v));   // ground-ish: cool mist or warm earth
 
-**The references span the full warm-to-cool range** — refs `04`/`05`/`07` are warm gold/amber backlit; refs `01`/`06`/`08` are cool blue-grey/dark — so whatever source is chosen, the color system needs to cover both extremes.
+// Saturation/brightness scale with arousal. Low arousal = desaturated, dim. High = saturated, brighter.
+float satScale = 0.25 + 0.40 * saturate(0.5 + 0.5 * a);   // 0.25 calm → 0.65 energetic
+float valScale = 0.10 + 0.20 * saturate(0.5 + 0.5 * a);   // 0.10 dim → 0.30 brighter
 
-**This section is open and blocks V.7.7 implementation.** Matt to choose the source(s) and describe the desired behavior; spec gets revised to lock the color model before any code is written.
+float3 topCol = hsv2rgb(float3(topHue, satScale, valScale * 1.2));
+float3 botCol = hsv2rgb(float3(botHue, satScale * 0.85, valScale));
+
+// Volumetric beam (when f.mid_att_rel > 0.05): warm at v>0, cool at v<0
+float3 beamCol = hsv2rgb(float3(mix(0.6, 0.08, saturate(0.5 + 0.5 * v)), 0.5, 0.4));
+```
+
+**Per-layer color application:**
+
+| Layer | Color recipe | Notes |
+|---|---|---|
+| Background gradient | `mix(botCol, topCol, uv.y)` | Primary visual carrier of palette |
+| Foliage silhouettes | `botCol * 0.3` | Darker version of bg so they read as silhouette |
+| Volumetric beam (when present) | `beamCol`, additive | Warm at high valence, cool at low |
+| Background drops | refraction of bg texture (palette inherits) + white-ish fresnel rim at 0.85 brightness | Drops automatically take on bg colors via refraction |
+| Background threads | `mix(botCol, topCol, 0.5) * 0.4` | Barely visible silhouette tone |
+| Foreground threads | same as bg threads × 1.5 brightness | Slightly more visible (in focus) |
+| Foreground drops | refraction of bg texture | Same recipe as bg drops |
+| Spider (when present) | body `(0.04, 0.03, 0.02)` + warm-amber rim `(0.85, 0.55, 0.30)` | **Intentional contrast** — does NOT follow mood palette. Spider rim is audio-reactive overlay, not part of the world. |
+
+**Coverage of the reference set:** mood quadrants map to references:
+- `(v>0, a>0)` high valence high arousal → ref `04` warm gold backlit, ref `05` golden field
+- `(v>0, a<0)` high valence low arousal → muted warm dawn (between refs `04` and `05`)
+- `(v<0, a>0)` low valence high arousal → dramatic cool with rim accents (variant of ref `01`)
+- `(v<0, a<0)` low valence low arousal → ref `06` cool blue-grey misty, ref `08` dark with bioluminescent accents
+
+**Smoothing implementation:** add `smoothedValence` and `smoothedArousal` fields to a per-preset state struct (don't pollute FeatureVector — this is preset-specific). Each frame: `smoothedX = lerp(smoothedX, currentX, dt / 5.0)`. The 5-second window is initial; tune up to 8s if mood shifts feel jumpy in practice, down to 3s if palette feels sluggish.
+
+**Pure black at silence is preserved** as the calibration anchor (per `08_palette_bioluminescent_organism.jpg`): if `(satScale × valScale) < 0.05` (silence-state mood signal), bg pass clears to black; gradient + foliage suppressed. Drops + threads still render against black; the palette fades back in as audio resumes.
 
 ---
 
-## 5. Per-preset `maxDuration` audit — empirical determination required
+## 5. Per-preset `maxDuration` framework — derived from declared properties + audio analysis
 
-**Per-preset `maxDuration` cannot be set from desk-spec.** It is the duration past which a preset's visual interest decays — which can only be determined by actually watching each preset run for an extended period. A first attempt to assign these from preset "character" (Glass Brutalist = static = long dwell, Plasma = intense = short bursts, etc.) produced numbers Matt correctly identified as ungrounded (Glass Brutalist at 120s would be deeply repetitive in its current form).
+**Locked 2026-05-02 per Matt direction (defensible framework, not empirical reaction).**
 
-**Empirical determination plan (separate increment, before V.7.6.3):**
+`maxDuration` is computed deterministically from existing preset descriptor properties and per-section audio analysis. Same preset paired with same section type produces the same duration ceiling. The framework is transparent (each input's contribution is visible), adjustable (coefficients tunable), and falsifiable (you can compute the table for all 13 presets and check against intuition).
 
-1. For each of the 13 presets, render or capture a 5-minute video at production resolution (1920×1280) running against a representative track fixture. Use the harness from V.7.6.1.
-2. Annotate (Matt or via timestamped notes) the moment the visual stops being interesting — when the eye starts looking for something to change. That timestamp is the preset's empirical `maxDuration`.
-3. Apply the values to JSON sidecars in V.7.6.3.
+### 5.1 Inputs
+
+All from existing data — no new declarations required except an optional `naturalCycleSeconds` for presets with fixed cycles (Arachne).
+
+| Input | Source | Range |
+|---|---|---|
+| `motionIntensity` | preset JSON sidecar (V.4 schema, already declared) | 0..1 |
+| `visualDensity` | preset JSON sidecar (V.4 schema, already declared) | 0..1 |
+| `fatigueRisk` | preset JSON sidecar (V.4 schema, already declared) | enum {low=0, medium=1, high=2} |
+| `naturalCycleSeconds` | preset JSON sidecar (NEW field, optional) | seconds, only set for presets with a fixed visual cycle |
+| `sectionDynamicRange` | per-section audio analysis (track preparation), normalized variance of energy over the section | 0..1 |
+
+### 5.2 Formula
+
+```swift
+func computeMaxDuration(preset: PresetDescriptor, section: SongSection) -> TimeInterval {
+    // Base maxDuration from preset properties — answers "how long does this preset stay interesting on average music?"
+    let baseMax: Double = 90.0
+                        - 50.0 * (preset.motionIntensity - 0.5)
+                        - 30.0 * Double(preset.fatigueRisk.score)  // low=0, medium=1, high=2
+                        - 15.0 * (preset.visualDensity - 0.5)
+
+    // Section adjustment — energetic sections keep a preset interesting longer; monotonous sections shorten it.
+    let sectionAdjust = baseMax * (0.7 + 0.6 * section.dynamicRange)
+
+    // Hard cap from natural cycle length (Arachne's 60s build, etc.)
+    if let cycle = preset.naturalCycleSeconds {
+        return min(cycle, sectionAdjust)
+    }
+    return sectionAdjust
+}
+```
+
+### 5.3 Computed values (no declarations needed)
+
+Computing the framework against current preset descriptors at average music section dynamics (`sectionDynamicRange = 0.5`):
+
+| Preset | motionIntensity | visualDensity | fatigueRisk | naturalCycle | computed `maxDuration` |
+|---|---|---|---|---|---|
+| Arachne | 0.50 | 0.65 | low | **60s** | **60s** (capped by cycle) |
+| Plasma | 0.85 | 0.50 | high | — | (90 − 50×0.35 − 30×2 − 15×0) × 1.0 = **12s** |
+| Membrane | 0.75 | 0.60 | medium | — | (90 − 50×0.25 − 30×1 − 15×0.1) × 1.0 = **46s** |
+| Murmuration | 0.70 | 0.55 | medium | — | (90 − 50×0.20 − 30×1 − 15×0.05) × 1.0 = **49s** |
+| Kinetic Sculpture | 0.65 | 0.50 | medium | — | (90 − 50×0.15 − 30×1 − 15×0) × 1.0 = **53s** |
+| Stalker | 0.55 | 0.50 | medium | — | (90 − 50×0.05 − 30×1 − 15×0) × 1.0 = **58s** |
+| Gossamer | 0.45 | 0.55 | low | — | (90 − 50×(−0.05) − 30×0 − 15×0.05) × 1.0 = **92s** |
+| Ferrofluid Ocean | 0.55 | 0.55 | low | — | (90 − 50×0.05 − 30×0 − 15×0.05) × 1.0 = **87s** |
+| Glass Brutalist | 0.20 | 0.80 | medium | — | (90 − 50×(−0.30) − 30×1 − 15×0.30) × 1.0 = **71s** ⚠ |
+| Volumetric Lithograph | 0.60 | 0.70 | low | — | (90 − 50×0.10 − 30×0 − 15×0.20) × 1.0 = **82s** |
+| Nebula | 0.50 | 0.50 | medium | — | (90 − 50×0 − 30×1 − 15×0) × 1.0 = **60s** |
+| Spectral Cartograph | 0.40 | 0.45 | low | — | (90 − 50×(−0.10) − 30×0 − 15×0.05) × 1.0 = **94s** |
+| Waveform | 0.60 | 0.30 | medium | — | (90 − 50×0.10 − 30×1 − 15×(−0.20)) × 1.0 = **58s** |
+
+The Glass Brutalist row is **flagged (⚠)** because it lands at 71s while Matt's intuition (2026-05-02) is 30s. This is a known calibration mismatch: Matt's intuition is the validation signal, not the framework's output. Two paths forward:
+
+1. **Adjust the framework's coefficients** so Glass Brutalist lands at ~30s. To get from 71s → 30s, the `motionIntensity` coefficient (currently −50) needs to be more punishing for very-low-motion presets (e.g., add a penalty term for `motionIntensity < 0.3`). Specifically a piecewise term like `−40 × max(0, 0.3 - motionIntensity)` would knock Glass Brutalist down by 40s × (0.3 − 0.20) = 4s — not enough; the issue is more likely that low motion + high density (a static dense scene) decays faster than the linear formula captures. A nonlinear term like `+15 × max(0, visualDensity − 0.7)² × max(0, 0.4 − motionIntensity)` — extra penalty when density is already high AND motion is low — gets Glass Brutalist down to ~30s. The framework supports this kind of tuning.
+
+2. **Override Glass Brutalist via `naturalCycleSeconds = 30`** if the visual genuinely has a 30s cycle that's more authoritative than the formula. Glass Brutalist doesn't have a natural cycle (it's static architecture), so this option is wrong; option 1 is the right path.
+
+### 5.4 Calibration loop
+
+The framework is initially calibrated by computing the table (§5.3) and checking against Matt's intuition for the presets he has strong opinions on. Where the framework disagrees, the coefficients are tuned. The calibration procedure:
+
+1. Compute table for all 13 presets at `sectionDynamicRange = 0.5`.
+2. Matt reviews the table; flags presets whose computed `maxDuration` disagrees with his intuition.
+3. Tune coefficients to reduce flagged rows. Verify other presets' values stay sensible.
+4. Iterate until table is acceptable — typically 2–3 coefficient passes.
+
+The empirical observation videos from V.7.6.E become **calibration evidence** (instead of "the source of truth") — they validate or invalidate the framework's predictions for specific presets, and inform coefficient tuning. The framework is the source of truth; observation is calibration.
 
 **Known data points (locked):**
-- **Arachne: 60s.** Grounded in the natural foreground-build cycle length (§1.2).
-- **Glass Brutalist: 30s (Matt, 2026-05-02).** Its current form is deeply repetitive at longer dwells.
+- **Arachne: 60s** — capped by `naturalCycleSeconds = 60` (build cycle ceiling per §1.2).
+- **Glass Brutalist: ~30s target** — calibration anchor for tuning the formula; current formula gives 71s, needs nonlinear penalty term as discussed in §5.3.
 
-All other values: TBD via empirical observation. Do NOT set them from desk-spec.
+### 5.5 Implication for orchestrator
 
-**Implication for the orchestrator's segment planning:** the `maxDuration` field becomes authoritative as soon as the JSON values are filled in. Until then, the multi-segment planner can be implemented and tested using the two known values plus a placeholder `90s` default for the rest, which gets corrected when the empirical pass completes. This is a sensible decoupling — V.7.6.2 (orchestrator infrastructure) does not block on the empirical observation increment.
+`PresetDescriptor.maxDuration` becomes a computed property, not a JSON field:
+
+```swift
+extension PresetDescriptor {
+    func maxDuration(forSection section: SongSection) -> TimeInterval {
+        computeMaxDuration(preset: self, section: section)
+    }
+}
+```
+
+JSON sidecar gains the `naturalCycleSeconds` field (optional, only declared for presets with fixed cycles). Coefficients live in code (with documentation), not in JSON — so coefficient tuning is a code change reviewed via tests, not a data file edit.
 
 ---
 
 ## 6. Implementation sequence
 
-**Blocked until §4.3 (color source) is resolved.** V.7.7 cannot be implemented without knowing where the bg gradient + drop tint + atmosphere palette comes from.
+All design dimensions locked: §4.3 color source (Option B with full spec), §5 maxDuration framework (formula + calibration loop), §1.3 spider rarity (per-segment cooldown). Nothing is blocking.
 
-After that's resolved, the orchestrator change is the load-bearing prerequisite. Arachne refactor is blocked on it. The harness and the empirical-maxDuration pass are independent and useful regardless.
+The orchestrator change is the load-bearing prerequisite. Arachne refactor is blocked on it. The harness is independent and useful regardless.
 
 | Step | Increment | Scope | Estimated sessions |
 |---|---|---|---|
-| 1 | V.7.6.1 | **Visual feedback harness.** 1920×1280 PNG renders of any preset against fixtures + reference contact-sheet builder. Independent — useful regardless of which path forward Matt chooses. | ½ |
-| 2 | V.7.6.2 | **Orchestrator multi-segment + completion-signal infrastructure.** New `PlannedPresetSegment` type, `SessionPlanner` produces multi-segment plans, `PresetSignaling` protocol, `LiveAdapter` segment-aware. All existing presets continue to work — placeholder 90s default `maxDuration` for presets where empirical value is not yet set; the two known values (Arachne 60s, Glass Brutalist 30s) take effect immediately. | 2–3 |
-| 3a | V.7.6.E | **Empirical `maxDuration` observation pass.** For each of the 13 presets, capture a 5-minute video at 1920×1280 via the harness from V.7.6.1 against a representative track. Matt annotates the moment visual interest decays. Results recorded as a small data file. | ½ + Matt review time |
-| 3b | V.7.6.3 | **Per-preset `maxDuration` JSON updates.** Apply V.7.6.E values to all 13 sidecars. Verify each preset still scores correctly. | ½ |
-| 4 | V.7.7 | **Arachne v8 — background pass + background webs.** Implement §4.1 step 1 (atmospheric texture, color sourced per §4.3 once locked) and §4.1 step 2 (one or two background dewy webs with refractive drops). Foreground unchanged for now (still V.7.5 build). Visual review against refs `01`/`03`/`04` via harness. | 2 |
-| 5 | V.7.8 | **Arachne v8 — foreground build refactor.** Implement §1.2 (incremental construction with chord-segment spiral, drop accretion during build, completion signal at 60s). Pause on spider trigger; resume on spider fade. Visual review for build-pace feel. | 2 |
-| 6 | V.7.9 | **Arachne v8 — vibration + final polish + cert.** Implement §4.2 (whole-scene tremor on bass). Tune drop counts, brightness, sag magnitude, free-zone size against references via harness. Spider rarity mechanism finalized (§1.3). Cert review. | 1–2 |
+| 1 | V.7.6.1 | **Visual feedback harness.** 1920×1280 PNG renders of any preset against fixtures + reference contact-sheet builder. Independent — useful regardless of which path forward. | ½ |
+| 2 | V.7.6.2 | **Orchestrator multi-segment + completion-signal + maxDuration framework.** New `PlannedPresetSegment` type, `SessionPlanner` produces multi-segment plans, `PresetSignaling` protocol, `LiveAdapter` segment-aware. `PresetDescriptor.maxDuration(forSection:)` computed property implementing the §5.2 formula. `naturalCycleSeconds` field added to JSON schema. All existing presets continue to work via the framework's computed values. | 2–3 |
+| 3 | V.7.6.C | **Framework calibration pass.** Compute the §5.3 table at average music section dynamics. Matt reviews; flags presets where framework output disagrees with intuition (Glass Brutalist is the locked anchor at ~30s). Coefficients tuned per §5.4 calibration loop (most likely change: nonlinear penalty term for low-motion + high-density combination). Optional supporting evidence: 2-minute videos via V.7.6.1 of a few flagged presets. | 1 + Matt review |
+| 4 | V.7.7 | **Arachne v8 — background pass + background webs.** Implement §4.1 step 1 (atmospheric texture, palette per §4.3 Option B mood-driven recipe) and §4.1 step 2 (one or two background dewy webs with refractive drops). Foreground unchanged for now (still V.7.5 build). Visual review against refs `01`/`03`/`04` via harness. | 2 |
+| 5 | V.7.8 | **Arachne v8 — foreground build refactor.** Implement §1.2 (incremental construction with chord-segment spiral, drop accretion during build, completion signal at 60s). Pause on spider trigger; resume on spider fade. Per-segment spider cooldown (§1.3). Visual review for build-pace feel. | 2 |
+| 6 | V.7.9 | **Arachne v8 — vibration + final polish + cert.** Implement §4.2 (whole-scene tremor on bass). Tune drop counts, brightness, sag magnitude, free-zone size, mood-smoothing window against references via harness. Cert review. | 1–2 |
 
-**Total: 8–10 sessions of implementation work, plus Matt's empirical observation pass for V.7.6.E.** Realistic given Arachne's track record. Each step includes harness-driven visual verification before commit; no more "build for a session, ship to Matt, discover at M7 that it's wrong".
+**Total: 8–11 sessions of implementation work, plus Matt's framework calibration review.** Realistic given Arachne's track record. Each step includes harness-driven visual verification before commit; no more "build for a session, ship to Matt, discover at M7 that it's wrong".
 
 **Order constraints:**
-- §4.3 (color) must be resolved before V.7.7 starts.
-- V.7.6.1 (harness) must complete before V.7.6.E (empirical pass uses the harness).
-- V.7.6.2 (orchestrator) must complete before V.7.7 (Arachne v8 needs the multi-segment infrastructure to emit completion signals).
-- V.7.6.E + V.7.6.3 (empirical pass + JSON updates) can run in parallel with V.7.6.2.
+- V.7.6.1 (harness) must complete first — V.7.6.C and V.7.7+ all use it.
+- V.7.6.2 (orchestrator + framework) must complete before V.7.7 (Arachne v8 needs multi-segment infrastructure to emit completion signals; needs the framework's `maxDuration` to set its 60s ceiling).
+- V.7.6.C (calibration) can run in parallel with V.7.6.2 implementation, or right after — they touch independent code paths and the calibration only needs the formula in the framework.
 
 ---
 
