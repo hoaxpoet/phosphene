@@ -89,11 +89,14 @@ struct FidelityRubricReportTests {
 
 /// Expected meetsAutomatedGate values for all 13 production presets.
 ///
-/// Updated 2026-04-30 after V.7 Session 2. Arachne now passes (11/15, meetsAutomatedGate).
+/// Updated 2026-05-01 after V.7.5 §10.1.9: Arachne now drops to false because the
+/// spider's `mat_chitin` call site was removed (§10.1.9 / D-071), leaving only
+/// `mat_silk_thread` + `mat_frosted_glass` — below M3's ≥3-distinct-materials gate.
+/// Restoring M3 is out of scope for V.7.5; track for a future iteration.
 /// SpectralCartograph passes as lightweight. All other presets still fail M3.
 /// Update this dictionary when rubric logic or shader source is intentionally changed.
 private let expectedAutomatedGate: [String: Bool] = [
-    "Arachne":              true,    // full; V.7 S2 — M1-M6 all pass, E2+E3+E4 ≥2, P1+P3 ≥1
+    "Arachne":              false,   // full; V.7.5 §10.1.9 — M3 fails (chitin removed from spider)
     "Ferrofluid Ocean":     false,   // full; M3 fails
     "Fractal Tree":         false,   // full; M3 fails
     "Glass Brutalist":      false,   // full; M3 fails
@@ -132,9 +135,11 @@ struct FidelityRubricGateTests {
         }
     }
 
-    // V.7 (2026-05-01): Arachne certified=true after V.7 Session 2+3 Matt approval.
-    // This set is the ground truth — add to it as each preset is certified.
-    private static let certifiedPresets: Set<String> = ["Arachne"]
+    // V.7.4 (2026-05-01): Arachne cert rolled back to false per D-071 (M7 outcome
+    // matched anti-ref 10). V.7.5 ships the §10.1 corrective rewrite but cert
+    // remains false pending Matt's runtime visual review. Empty set until
+    // Matt re-approves any preset.
+    private static let certifiedPresets: Set<String> = []
 
     @Test func automatedGate_uncertifiedPresetsAreUncertified() async {
         let store = PresetCertificationStore()
