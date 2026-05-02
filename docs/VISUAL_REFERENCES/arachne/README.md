@@ -101,6 +101,7 @@ Specific audio→visual mappings that must hold:
 - [ ] **Write the JSON sidecar `complexity_cost.tier2 = 5.5`** to match the §10.1 budget called out in this README's mandatory traits.
 - [ ] **Fill in image attributions** in the Provenance section below.
 - [ ] **M7 review 2026-05-01: failed (D-071).** Rendered output matched `10_anti_neon_stylized_glow.jpg`. Resolution: V.7.5 + V.7.6. Re-run M7 after V.7.6.
+- [ ] **M7 re-run after V.7.5 (in progress, 2026-05-01).** V.7.5 (composition + warm restoration + drops + spider cleanup) shipped per `SHADER_CRAFT.md §10.1` items 1, 2, 3, 4, 6, 9. Formal contact-sheet step bypassed by Matt's choice; visual review will happen at runtime when Matt next launches the build. `Arachne.json` `certified` stays `false` until that pass succeeds. V.7.6 (atmosphere + beam-bound motes — items 5 + 7) still pending after V.7.5 is approved.
 
 ## Provenance
 
