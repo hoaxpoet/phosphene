@@ -281,7 +281,17 @@ extension VisualizerEngine {
         currentSessionPlanSeed = seed   // so extendPlan() uses the new seed too
 
         do {
-            var plan = try sessionPlanner.plan(tracks: tracks, catalog: catalog, deviceTier: tier, seed: seed)
+            // includeUncertifiedPresets must propagate here too — otherwise the
+            // Plan Preview "Regenerate Plan" button silently throws
+            // SessionPlanningError.noEligiblePresets when the catalog is fully
+            // uncertified, and the live plan is not updated.
+            var plan = try sessionPlanner.plan(
+                tracks: tracks,
+                catalog: catalog,
+                deviceTier: tier,
+                seed: seed,
+                includeUncertifiedPresets: showUncertifiedPresets
+            )
             if !lockedPresets.isEmpty {
                 plan = plan.applying(overrides: lockedPresets)
             }
@@ -339,7 +349,12 @@ extension VisualizerEngine {
             currentPreset: currentPresetDescriptor,
             familyBoosts: adaptationFields.familyBoosts,
             temporarilyExcludedFamilies: adaptationFields.temporarilyExcludedFamilies,
-            sessionExcludedPresets: adaptationFields.sessionExcludedPresets
+            sessionExcludedPresets: adaptationFields.sessionExcludedPresets,
+            // Settings → Visuals → "Show uncertified presets" must propagate here
+            // or Shift+→ (presetNudge) produces "no eligible preset found" with
+            // a fully-uncertified catalog. Other context builders (lines 98, 233)
+            // already pass this; this one was missing.
+            includeUncertifiedPresets: showUncertifiedPresets
         )
     }
 

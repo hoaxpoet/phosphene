@@ -75,7 +75,9 @@ final class PlaybackShortcutRegistry {
         onHandleEsc: @escaping @MainActor () -> Void,
         onShowHelp: @escaping @MainActor () -> Void,
         onShowPlanPreview: @escaping @MainActor () -> Void,
-        onToggleForceSpider: (@MainActor () -> Void)? = nil
+        onToggleForceSpider: (@MainActor () -> Void)? = nil,
+        onDebugNextPreset: (@MainActor () -> Void)? = nil,
+        onDebugPreviousPreset: (@MainActor () -> Void)? = nil
     ) {
         var all = Self.buildShortcuts(
             actionRouter: actionRouter,
@@ -96,6 +98,32 @@ final class PlaybackShortcutRegistry {
                 label: "Force spider easter egg (debug)",
                 category: .developer,
                 action: fn
+            ))
+        }
+        // Cmd+] / Cmd+[ : direct preset cycle that bypasses the orchestrator
+        // entirely (rotates through PresetLoader.presets ignoring cert state,
+        // scoring, and family-repeat penalties). For visual iteration during
+        // preset development. Survives only as long as the orchestrator's
+        // next preset switch — at the next track boundary or live adaptation,
+        // the planned preset takes back over.
+        if let next = onDebugNextPreset {
+            all.append(PlaybackShortcut(
+                id: "debugNextPreset",
+                key: "]",
+                modifiers: [.command],
+                label: "Cycle to next preset (debug)",
+                category: .developer,
+                action: next
+            ))
+        }
+        if let prev = onDebugPreviousPreset {
+            all.append(PlaybackShortcut(
+                id: "debugPreviousPreset",
+                key: "[",
+                modifiers: [.command],
+                label: "Cycle to previous preset (debug)",
+                category: .developer,
+                action: prev
             ))
         }
         #endif
