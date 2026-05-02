@@ -1207,16 +1207,16 @@ Supersedes (without deleting) Increment 5.2's weak invariants — those stay as 
 
 ---
 
-### Increment V.7.6.2 — Orchestrator: multi-segment-per-track + preset-completion-signal channel
+### Increment V.7.6.2 — Orchestrator: multi-segment + completion-signal + maxDuration framework
 
-**Scope:** Per `docs/ARACHNE_V8_DESIGN.md §3 + §6 step 2`. Preset-system-wide infrastructure change. Touches:
-- `PresetDescriptor.maxDuration` becomes authoritative (was: hint). Each preset's JSON declares its hard ceiling.
+**Scope:** Per `docs/ARACHNE_V8_DESIGN.md §3, §5, §6 step 2`. Preset-system-wide infrastructure change. Touches:
 - New `PlannedPresetSegment` value type. `PlannedTrack` becomes `let segments: [PlannedPresetSegment]` (was: `let preset: PresetDescriptor`).
 - `SessionPlanner` rewritten to walk each track's section list and produce multi-segment plans, respecting per-preset `maxDuration` and section boundaries.
 - `PresetSignaling` protocol with `presetCompletionEvent: PassthroughSubject<Void, Never>`. Orchestrator subscribes per active preset; transitions on event if `minDuration` satisfied.
 - `LiveAdapter` segment-aware: `presetNudge(.next)` advances to next segment, not next track.
-- Migration: existing presets without completion signals run to `maxDuration` and transition by the planned boundary.
-- Initial `maxDuration` values for all 13 presets per `ARACHNE_V8_DESIGN.md §5`.
+- **`maxDuration` framework** per `ARACHNE_V8_DESIGN.md §5.2`. New `PresetDescriptor.maxDuration(forSection:)` computed property implementing the formula (motionIntensity, fatigueRisk, visualDensity inputs; sectionDynamicRange adjustment; naturalCycleSeconds cap). Coefficients live in code (default −50, −30, −15, 0.7+0.6) with documentation comments. Tunable via V.7.6.C.
+- New `naturalCycleSeconds: Float?` field added to `PresetDescriptor` and JSON schema. Initially set only for Arachne (60s).
+- Migration: existing presets without completion signals run to formula-computed `maxDuration` and transition by planned boundary.
 
 **Done when:**
 - All existing presets continue to work end-to-end (no visual regressions on Plasma, Waveform, VL, etc.).
@@ -1231,45 +1231,26 @@ Supersedes (without deleting) Increment 5.2's weak invariants — those stay as 
 
 ---
 
-### Increment V.7.6.E — Empirical `maxDuration` observation pass
+### Increment V.7.6.C — Framework calibration pass
 
-**Scope:** Per `ARACHNE_V8_DESIGN.md §5`. For each of the 13 presets, render or capture a 5-minute video at 1920×1280 against a representative track via the V.7.6.1 harness. Matt annotates the moment visual interest decays — that timestamp is the preset's empirical `maxDuration`. Results captured as a small data file (e.g. `docs/PRESET_MAX_DURATIONS.md` or similar).
-
-**Known values (locked from prior observation):**
-- Arachne: 60s (build cycle ceiling)
-- Glass Brutalist: 30s (Matt 2026-05-02)
+**Scope:** Per `ARACHNE_V8_DESIGN.md §5.4`. The `maxDuration` framework (formula at §5.2) lives in code with default coefficients (−50 motion, −30 fatigue, −15 density, sectionAdjust 0.7+0.6×dynamicRange). After V.7.6.2 lands the formula, Matt reviews the §5.3 computed table and flags presets where output disagrees with intuition. Glass Brutalist is the locked anchor at ~30s (current formula gives 71s). Coefficients tuned to bring flagged rows in line; most likely a nonlinear penalty for low-motion + high-density combinations. Optional: 2-minute videos via V.7.6.1 of a few flagged presets to validate predictions.
 
 **Done when:**
-- 13 preset videos captured and reviewed.
-- Empirical `maxDuration` recorded for each preset.
-- Data file committed.
-
-**Verify:** Matt review.
-
-**Estimated sessions:** ½ engineering + Matt's observation time.
-
----
-
-### Increment V.7.6.3 — Per-preset `maxDuration` JSON updates
-
-**Scope:** Apply V.7.6.E empirical values to all 13 preset JSON sidecars. Verify each preset's `PresetScoreBreakdown` still produces correct rankings under the new contract.
-
-**Done when:**
-- All 13 sidecars updated. Schema docs in CLAUDE.md "Preset Metadata Format" updated.
-- `PresetDescriptorMetadataTests` passing with new field semantics.
+- Computed table reviewed by Matt; flagged-rows count ≤ 1.
+- Glass Brutalist computed `maxDuration` ≈ 30s at average music section.
+- Coefficient changes committed to code (with documentation comments).
+- Tests added covering the formula's behavior at known inputs.
 - 0 SwiftLint violations.
 
-**Verify:** `swift test --package-path PhospheneEngine --filter PresetDescriptor`.
+**Verify:** `swift test --package-path PhospheneEngine --filter MaxDurationFramework` + Matt review of the table.
 
-**Estimated sessions:** ½.
+**Estimated sessions:** 1 engineering + Matt review time.
 
 ---
 
 ### Increment V.7.7 — Arachne v8: background pass + background webs
 
-**BLOCKED:** This increment cannot start until `ARACHNE_V8_DESIGN.md §4.3` (color source) is resolved. The bg pass needs to know where its palette comes from.
-
-**Scope:** Per `ARACHNE_V8_DESIGN.md §6 step 4` and §4.1 steps 1–2. Atmospheric texture pass (mood-tinted gradient + defocused foliage + optional warm beam + vignette, half-res — palette source per §4.3). One or two pre-populated background dewy webs with refractive drops sampling the bg texture (Snell's law refraction, fresnel rim, sharp specular pinpoint, dark edge ring). Background webs vibrate per §4.2. Foreground unchanged for now (still V.7.5 build code — will refactor in V.7.8).
+**Scope:** Per `ARACHNE_V8_DESIGN.md §6 step 4`, §4.1 steps 1–2, and §4.3 (color recipe). Atmospheric texture pass implementing the §4.3 mood-driven palette: `mix(botCol, topCol, uv.y)` gradient + defocused `worley_fbm` foliage tinted at `botCol × 0.3` + optional warm beam (`beamCol`) + radial vignette, half-res. One or two pre-populated background dewy webs with refractive drops sampling the bg texture (Snell's law refraction, fresnel rim at 0.85 brightness, sharp specular pinpoint, dark edge ring). Background webs vibrate per §4.2. Foreground unchanged for now (still V.7.5 build code — will refactor in V.7.8). Includes the smoothedValence/smoothedArousal state with 5s low-pass filter.
 
 **Done when:**
 - Visual review via harness contact sheet: background webs read as photorealistic dewdrops side-by-side with refs `01`/`03`/`04`. Atmosphere reads against ref `05`.
