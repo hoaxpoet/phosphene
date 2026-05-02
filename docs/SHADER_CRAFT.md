@@ -1552,7 +1552,15 @@ Before a new preset is certified: run `swift test --filter PresetPerformanceTest
 
 Concrete uplift recipes for the five presets Matt called out. Each references sections above.
 
-### 10.1 Arachne (V.7.7+ — compositing-anchored, post-V.7.5 pivot)
+### 10.1 Arachne (V.8 — see `docs/ARACHNE_V8_DESIGN.md`)
+
+**This section is superseded by `docs/ARACHNE_V8_DESIGN.md` (2026-05-02).** The compositing-anchored sketch below was a partial design that didn't yet incorporate Matt's design conversation about (a) the construction-sequence-as-subject reframing prompted by the BBC Earth time-lapse references and (b) the orchestrator-side change to support multi-segment-per-track preset transitions on preset-declared cadences. The full v8 design lives in the dedicated doc.
+
+The sketch below is preserved only for context — it documents the architectural pivot from V.7.5 (constant-tweaking) to compositing layers. The implementation plan in `ARACHNE_V8_DESIGN.md` §6 supersedes the V.7.7-V.7.9 sequence below.
+
+---
+
+#### 10.1 (legacy sketch) Arachne (V.7.7+ — compositing-anchored, post-V.7.5 pivot)
 
 **Hero reference:** `01_macro_dewy_web_on_dark.jpg`. If a session matches one frame, match this one. **Anti-references:** `09_anti_clipart_symmetry.jpg` (failure mode #1: clipart) and `10_anti_neon_stylized_glow.jpg` (failure mode #2: graphic-glow). The V.7.5 build still reads as a stylized 2D bullseye visually distant from the references — not because individual constants are wrong, but because the renderer is missing entire compositing layers the references depend on. (Background: D-072, M7 session `2026-05-02T01-35-34Z`.)
 
