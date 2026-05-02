@@ -212,6 +212,9 @@ struct PlaybackView: View {
 
     // MARK: - Registry factory
 
+    // Wiring-only function: each new shortcut adds a few lines of closure.
+    // Splitting would obscure the shortcut → action mapping.
+    // swiftlint:disable:next function_body_length
     private func buildRegistry(router: DefaultPlaybackActionRouter) -> PlaybackShortcutRegistry {
         #if DEBUG
         let forceSpiderAction: (@MainActor () -> Void)? = { [weak engine = self.engine, weak tm = self.toastManager] in
@@ -224,8 +227,37 @@ struct PlaybackView: View {
                 conditionID: "debug.spider.forced"
             ))
         }
+        // Cmd+] / Cmd+[ — direct preset cycle that bypasses the orchestrator.
+        // Pure debug navigation for preset development (V.7.5 / V.7.6 etc.).
+        // Toast announces the new preset name so Matt knows where he landed.
+        let debugNext: (@MainActor () -> Void)? = { [weak engine = self.engine, weak tm = self.toastManager] in
+            guard let engine else { return }
+            engine.nextPreset()
+            if let name = engine.presetLoader.currentPreset?.descriptor.name {
+                tm?.enqueue(PhospheneToast(
+                    severity: .info,
+                    copy: "Preset → \(name)",
+                    duration: 2,
+                    conditionID: "debug.preset.cycle"
+                ))
+            }
+        }
+        let debugPrev: (@MainActor () -> Void)? = { [weak engine = self.engine, weak tm = self.toastManager] in
+            guard let engine else { return }
+            engine.previousPreset()
+            if let name = engine.presetLoader.currentPreset?.descriptor.name {
+                tm?.enqueue(PhospheneToast(
+                    severity: .info,
+                    copy: "Preset → \(name)",
+                    duration: 2,
+                    conditionID: "debug.preset.cycle"
+                ))
+            }
+        }
         #else
         let forceSpiderAction: (@MainActor () -> Void)? = nil
+        let debugNext: (@MainActor () -> Void)? = nil
+        let debugPrev: (@MainActor () -> Void)? = nil
         #endif
         return PlaybackShortcutRegistry(
             actionRouter: router,
@@ -253,7 +285,9 @@ struct PlaybackView: View {
             },
             onShowHelp: { showHelp = true },
             onShowPlanPreview: { showPlanPreview = true },
-            onToggleForceSpider: forceSpiderAction
+            onToggleForceSpider: forceSpiderAction,
+            onDebugNextPreset: debugNext,
+            onDebugPreviousPreset: debugPrev
         )
     }
 }
