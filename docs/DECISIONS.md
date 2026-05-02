@@ -1392,6 +1392,18 @@ The implementation was technically faithful to `SHADER_CRAFT.md §10.1` as writt
 
 ## D-072 — V.7.5 fidelity ceiling: pivot from constant-tweaking to compositing
 
+**Update 2026-05-02 (post research + Matt design conversation):** The compositing-pivot diagnosis below is correct, but the design that followed (V.7.7-V.7.9 sketched in `SHADER_CRAFT.md §10.1`) was incomplete. Subsequent conversation with Matt and a research dive into orb-weaver biology, silk physics, real-time refraction technique, and procedural web prior art produced a fuller v8 design captured in `docs/ARACHNE_V8_DESIGN.md`. The full design adds two dimensions the original pivot missed:
+
+1. **Visual-target reframing.** Matt's reference target is not the static photographic dewy web (refs 01–08 are the *finished surface*) but the BBC Earth time-lapse construction sequence — a spider web *being drawn over time*. Arachne is now a 3-layer scene: background dewy completed webs (where refs 01/03/04 apply), a foreground web in active construction (slowly drawn, no spider visible), and a spider/vibration overlay triggered by sustained bass (with whole-scene tremor on heavy bass). The foreground build cycle is ≤ 60 s and emits a completion signal.
+2. **Orchestrator-side change.** "One preset per song" is wrong for this design — Arachne's 60 s build cycle would run far beyond the song section it's musically right for. The orchestrator becomes multi-segment-per-track: per-preset `maxDuration` becomes authoritative, `PlannedTrack` carries `[PlannedPresetSegment]`, transitions land on song-section boundaries OR at the preset's max duration ceiling OR on a new `presetCompletionEvent` signal channel (whichever fires first).
+
+Both changes are preset-system-wide. The compositing techniques (background-pass + refractive drops + chord-segment threads) are preserved as the right rendering primitives; what's added is the temporal structure (build animation) and the orchestrator support for it. See `docs/ARACHNE_V8_DESIGN.md` for the complete spec; see `docs/ENGINEERING_PLAN.md` for the implementation sequence (V.7.6.1 harness → V.7.6.2 orchestrator → V.7.6.3 maxDuration audit → V.7.7 background → V.7.8 foreground build → V.7.9 vibration + cert).
+
+The original D-072 text below stands as the architectural diagnosis. The implementation specifics in the original "Sessions estimated" paragraph are superseded by `ARACHNE_V8_DESIGN.md §6`.
+
+---
+
+
 **Status:** Accepted (2026-05-02)
 
 **Context:** Increment V.7.5 (Arachne v5) shipped 2026-05-01 implementing `SHADER_CRAFT.md §10.1` items 1, 2, 3, 4, 6, 9 as a coordinated constant-tuning pass: pool capped 12 → 4, sag range widened, drops resized, warm rim restored, warm key + cool ambient added, spider re-silhouetted. M7 visual review on 2026-05-02 (session `2026-05-02T01-35-34Z`) found that while every change landed mechanically (commits dcb55ea7 → 31dfc738), the rendered output is still a stylized 2D bullseye visually distant from the reference set. Specific failures:

@@ -1188,71 +1188,115 @@ Supersedes (without deleting) Increment 5.2's weak invariants — those stay as 
 
 ### Increment V.7.6 — Arachne v5 (atmosphere + beam-bound motes) ❌ ABANDONED 2026-05-02
 
-**Status:** Abandoned per D-072. The original V.7.6 plan was to patch atmosphere onto the existing single-pass renderer (multiplicative `fbm8` mist → additive density; isotropic mote field → beam-bound, projected-`kL` directional density). The V.7.5 M7 review on 2026-05-02 found the architectural ceiling described in D-072 — the references depend on compositing layers (background world, refractive drops, depth-of-field) that no patch on the single-pass renderer can produce. Atmosphere moves into the new V.7.7 (background atmosphere pass) where it has the right architectural shape; beam motes are reframed as a property of the bg pass rather than a separate isotropic mote field. Listed here in abandoned form to preserve the audit trail.
+**Status:** Abandoned per D-072. Original scope (atmosphere/motes patch on existing single-pass renderer) is structurally insufficient for the references. Replaced by the v8 design in `docs/ARACHNE_V8_DESIGN.md`, which decomposes Arachne into three layers (background dewy webs + foreground time-lapse build + spider/vibration overlay) and requires preset-system-wide orchestrator changes (multi-segment per track, preset-completion-signal channel) to support the build → transition handoff. Listed here in abandoned form to preserve the audit trail.
 
 ---
 
-### Increment V.7.7 — Arachne: background atmosphere pass
+### Increment V.7.6.1 — Visual feedback harness
 
-**Scope:** Implement `SHADER_CRAFT.md §10.1.A`. Add a new render-to-texture background pass that runs before the existing `arachne_fragment`. Output texture bound at fragment texture index 12 for V.7.8 to refract through. Layers in the bg pass:
-- Mood-tinted vertical aerial-perspective gradient (warm bottom + cool top, valence-driven). Pure black is the silence-calibration anchor only.
-- Defocused foliage via `worley_fbm` at low frequency, mottled with `fbm8`, baked-in 3–5 px Gaussian blur.
-- Optional volumetric backlight beam from `kL` projected to UV space, gated on `f.mid_att_rel > 0.05`, perpendicular-distance falloff.
-- Subtle radial vignette (~30 % attenuation at corners).
-- Resolution: half-res (`drawableSize / 2`) — defocused anyway.
+**Scope:** Per `docs/ARACHNE_V8_DESIGN.md §6 step 1`. New test file `ArachneVisualReviewTests.swift` (or similar), gated by `RENDER_VISUAL=1`. Renders any preset at 1920×1280 for three FeatureVector fixtures (silence / steady mid-energy / beat-heavy). Encodes BGRA → PNG via `CGImageDestination`. Writes to `/tmp/phosphene_visual/<timestamp>/{silence,mid,beat}.png`. Contact-sheet variant composes the steady-mid render alongside the four must-pass references (`01`, `04`, `05`, `08`) into a single 8-up grid.
 
 **Done when:**
-- Background pass renders correctly in isolation. New `bgPipelineState` compiled and bound; new texture allocation tracked for resize.
-- Composited under existing web pass; bullseye composition remains visible but now reads against an atmospherically textured world instead of pure black.
-- M7 contact-sheet step; refs `05`, `06`, `07` cite the bg pass as the atmosphere mechanism; refs `01`, `04`, `08` show palette compatibility (warm/cool/dark calibration).
+- Tests run, PNGs generated for any preset name passed as a parameter.
+- Contact sheet renders correctly with refs at matched scale.
+- Build clean; 0 SwiftLint violations.
+
+**Verify:** `RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter ArachneVisualReview`.
+
+**Estimated sessions:** ½. Independent of all subsequent work — useful regardless of which path forward Matt chooses.
+
+---
+
+### Increment V.7.6.2 — Orchestrator: multi-segment-per-track + preset-completion-signal channel
+
+**Scope:** Per `docs/ARACHNE_V8_DESIGN.md §3 + §6 step 2`. Preset-system-wide infrastructure change. Touches:
+- `PresetDescriptor.maxDuration` becomes authoritative (was: hint). Each preset's JSON declares its hard ceiling.
+- New `PlannedPresetSegment` value type. `PlannedTrack` becomes `let segments: [PlannedPresetSegment]` (was: `let preset: PresetDescriptor`).
+- `SessionPlanner` rewritten to walk each track's section list and produce multi-segment plans, respecting per-preset `maxDuration` and section boundaries.
+- `PresetSignaling` protocol with `presetCompletionEvent: PassthroughSubject<Void, Never>`. Orchestrator subscribes per active preset; transitions on event if `minDuration` satisfied.
+- `LiveAdapter` segment-aware: `presetNudge(.next)` advances to next segment, not next track.
+- Migration: existing presets without completion signals run to `maxDuration` and transition by the planned boundary.
+- Initial `maxDuration` values for all 13 presets per `ARACHNE_V8_DESIGN.md §5`.
+
+**Done when:**
+- All existing presets continue to work end-to-end (no visual regressions on Plasma, Waveform, VL, etc.).
+- Multi-segment plans generated for tracks longer than the chosen preset's `maxDuration`.
+- Preset-completion signal can be wired in (Arachne not yet using it; just the channel is there).
+- `SessionPlannerTests` updated for multi-segment outputs.
+- Live tests still pass; 0 SwiftLint violations.
+
+**Verify:** `swift test --package-path PhospheneEngine` + Matt runtime test on a multi-track playlist (verify presets transition mid-song, not just on track boundaries).
+
+**Estimated sessions:** 2–3. Load-bearing prerequisite for V.7.7+.
+
+---
+
+### Increment V.7.6.3 — Per-preset `maxDuration` JSON updates
+
+**Scope:** Apply `ARACHNE_V8_DESIGN.md §5` table values to all 13 preset JSON sidecars. Verify each preset's `PresetScoreBreakdown` still produces correct rankings under the new contract.
+
+**Done when:**
+- All 13 sidecars updated. Schema docs in CLAUDE.md "Preset Metadata Format" updated.
+- `PresetDescriptorMetadataTests` passing with new field semantics.
+- 0 SwiftLint violations.
+
+**Verify:** `swift test --package-path PhospheneEngine --filter PresetDescriptor`.
+
+**Estimated sessions:** ½.
+
+---
+
+### Increment V.7.7 — Arachne v8: background pass + background webs
+
+**Scope:** Per `ARACHNE_V8_DESIGN.md §6 step 4` and §4.1 steps 1–2. Atmospheric texture pass (mood-tinted gradient + defocused foliage + optional warm beam + vignette, half-res). One or two pre-populated background dewy webs with refractive drops sampling the bg texture (Snell's law refraction, fresnel rim, sharp specular pinpoint, dark edge ring). Background webs vibrate per §4.2. Foreground unchanged for now (still V.7.5 build code — will refactor in V.7.8).
+
+**Done when:**
+- Visual review via harness contact sheet: background webs read as photorealistic dewdrops side-by-side with refs `01`/`03`/`04`. Atmosphere reads against ref `05`.
 - All test suites pass; 0 SwiftLint violations.
 - p95 frame time at 1080p ≤ 6.0 ms Tier 2 / ≤ 7.5 ms Tier 1.
-- Arachne golden hashes regenerated for the new bg layer.
+- Matt runtime visual review of the background-only state passes.
 
-**Verify:** `swift test --package-path PhospheneEngine` + `xcodebuild -scheme PhospheneApp build` + Matt runtime visual review.
+**Verify:** Same as V.7.6.1 + Matt runtime review.
 
-**Estimated sessions:** 1.
-
----
-
-### Increment V.7.8 — Arachne: refractive drops + visual hierarchy inversion
-
-**Scope:** Implement `SHADER_CRAFT.md §10.1.B`. Replace the V.7.5 emissive-amber drop recipe with a refractive-glass recipe that samples the V.7.7 background texture through the spherical-cap normal. Snell's-law refraction (eta ≈ 0.752 for water-in-air), fresnel rim (pow-5 falloff), tighter specular pinpoint (pow-96), dark edge ring. Drop spacing tighter (3–5 px) so chains visibly bead-touch. Strand emission falls further: anchor `silkTint × 0.18`, pool `× 0.12 × w.opacity` — drops carry the visual, threads become connective tissue. Audio modulation moves from drop emissive to bg-pass beam intensity.
-
-**Done when:**
-- Drops visibly refract the bg texture — moving the camera (or modulating the bg) shows the drop image inverting and shifting.
-- Visual hierarchy inverted: drops are the dominant detail in any fixture; threads read as faint scaffolding.
-- M7 contact-sheet step; refs `01`, `03`, `04` cite drop refraction + bead-chain density; ref `02` cites the reduced strand emission.
-- All test suites pass; 0 SwiftLint violations.
-- p95 frame time at 1080p ≤ 6.0 ms Tier 2.
-- Arachne golden hashes regenerated.
-
-**Verify:** Same as V.7.7.
-
-**Estimated sessions:** 1.
+**Estimated sessions:** 2.
 
 ---
 
-### Increment V.7.9 — Arachne: chord-segment spiral + selective DoF
+### Increment V.7.8 — Arachne v8: foreground build refactor
 
-**Scope:** Implement `SHADER_CRAFT.md §10.1.C`. Replace the continuous Archimedean spiral SDF with discrete chord-segment SDFs — straight `arachSegDist` between `(N, θᵢ)` and `(N, θᵢ₊₁)` attachment points on each spiral revolution. Visually breaks the bullseye effect because the spiral now reads as a sequence of straight chords rather than a degenerate ring stack. Add depth-weighted bokeh DoF pass to `PostProcessChain`: foreground anchor web sharp; pool webs at higher `depth` get progressive 9-tap disc-kernel blur applied. Tier 1 reduces `spirRevs` to 4 to bound segment-eval cost.
+**Scope:** Per `ARACHNE_V8_DESIGN.md §6 step 5` and §1.2. Replace V.7.5 pool-of-webs system with single-foreground-build state machine: hub → radials extending one at a time → chord-segment capture spiral winding outward → settle → completion signal at 60s ceiling. Drop accretion happens during build on the just-laid spiral chords. Pause on spider trigger; resume on spider fade. Foreground completion emits `presetCompletionEvent` (V.7.6.2 channel).
 
 **Done when:**
-- Spirals visibly read as straight chord segments, not concentric circles, in any rendered frame.
-- Distant pool webs and out-of-focus drops blur into circular-aperture bokeh shapes; foreground anchor stays sharp.
-- M7 contact-sheet step; refs `01`, `03` cite the bokeh; ref `04` cites the chord-segment threads; anti-ref `09` (clipart symmetry) explicitly NOT matched.
+- Visual review via harness: foreground build is visibly progressing — radials extend one-at-a-time, spiral winds outward chord-by-chord, completion fires at ≤ 60s under typical music.
+- Spider trigger visibly pauses construction; spider fade visibly resumes.
+- Orchestrator transitions on completion event when `minDuration` satisfied.
 - All test suites pass; 0 SwiftLint violations.
-- p95 frame time at 1080p ≤ 6.0 ms Tier 2.
-- Arachne golden hashes regenerated.
-- **Cert review (Matt runtime eyeball, not engineering work).** If positive: `Arachne.json` `certified: true`, add `"Arachne"` back to `FidelityRubricTests.certifiedPresets`, mark V.5 references action complete, log M7 outcome in references README. If iteration needed: file a follow-up tuning increment (V.7.10, V.7.11, …) — the post-V.7.9 baseline is the renderer; subsequent passes are tuning on top, not architectural.
+- p95 frame time ≤ 6.0 ms Tier 2.
+- Matt runtime visual review passes.
 
-**Verify:** Same as V.7.7.
+**Verify:** Same.
 
-**Estimated sessions:** 1 (½ if DoF reuses bloom infrastructure cleanly).
+**Estimated sessions:** 2.
+
+---
+
+### Increment V.7.9 — Arachne v8: vibration + final polish + cert
+
+**Scope:** Per `ARACHNE_V8_DESIGN.md §6 step 6` and §4.2. Whole-scene tremor on bass — 12 Hz audio-rate vibration applied per-vertex to all webs (foreground + background), amplitude driven by `max(f.subBass_dev, f.bass_dev)` plus per-kick spike from `f.beatBass`. Per-strand random phase. Final tuning of drop counts, brightness, sag magnitude, free-zone size against references via the harness.
+
+**Done when:**
+- Visual review via harness contact sheet matches all 5 acceptance criteria from `ARACHNE_V8_DESIGN.md §8`.
+- Web vibration is visible during heavy bass — whole-scene tremor with audio-rate frequency.
+- Anti-refs `09` and `10` explicitly NOT matched.
+- All test suites pass; 0 SwiftLint violations.
+- p95 frame time ≤ 6.0 ms Tier 2.
+- **Matt cert review.** If positive: `Arachne.json` `certified: true`, add `"Arachne"` back to `FidelityRubricTests.certifiedPresets`, mark V.5 references action complete, log M7 outcome in references README.
+
+**Verify:** Same.
+
+**Estimated sessions:** 1–2.
 
 **V.8 remains reserved for Gossamer** per `SHADER_CRAFT.md §10.2`.
-
-**Estimated sessions:** 1.
 
 ---
 
