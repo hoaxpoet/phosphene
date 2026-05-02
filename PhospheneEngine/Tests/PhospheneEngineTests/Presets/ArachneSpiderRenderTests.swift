@@ -27,7 +27,8 @@ import simd
 
 /// 64-bit dHash for the forced-spider render at steady energy (bass/mid/treble = 0.5).
 /// Regenerate with UPDATE_GOLDEN_SNAPSHOTS=1 swift test --filter test_printSpiderGoldenHash.
-private let goldenSpiderForcedHash: UInt64 = 0x44381C2707D72E00
+/// V.7.5 v5: regenerated for §10.1.9 dark-silhouette spider + warm rim.
+private let goldenSpiderForcedHash: UInt64 = 0x44382E0F07476E00
 
 // MARK: - Test Suite
 
