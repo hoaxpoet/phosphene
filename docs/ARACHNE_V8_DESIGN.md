@@ -34,12 +34,15 @@
 
 See §2 (audio mapping) for trigger conditions and §4.2 (vibration model) for shake characteristics.
 
-- **Spider appears on the foreground web** when sustained bass exceeds threshold.
+- **Spider remains an easter egg.** Triggered by sustained sub-bass with `bassAttackRatio < 0.55` (V.7.5 §10.1.9 gate, unchanged). Per-segment or per-session cooldown enforces rarity — spider should NOT appear on every Arachne segment. Rough target: 1 in 5–10 Arachne segments.
+- **Spider appears on the foreground web** when triggered.
 - **Construction PAUSES while spider is visible.** The drawing-itself animation freezes; the spider becomes the focus.
-- **Web shake applies to ALL webs** (foreground in-progress + background completed). Whole-scene tremor.
+- **Web shake applies to ALL webs** (foreground in-progress + background completed). Whole-scene tremor. Vibration is driven by sub-bass + heavy bass continuously (§4.2) — independent of the spider trigger; the web shakes whenever heavy bass is present, with or without the spider.
 - **Spider position:** centered on the foreground web's hub, slightly offset, oriented at an angle that reads as "occupying" the web rather than standing on it.
 - **Spider visual:** dark silhouette (V.7.5 §10.1.9 recipe — `(0.04, 0.03, 0.02)` body, thin warm-amber rim catching backlit `kL`, alternating-tetrapod gait).
 - **When bass eases, spider fades** (over ~2s). Construction RESUMES from where it left off — does NOT restart the build cycle.
+
+**Rarity mechanism (TBD detail):** the V.7.5 implementation used a 300s session-level cooldown. For v8 with 60s Arachne segments, that translates to "at most one spider appearance per ~5 segments" — roughly the right rarity. Implementation can either keep the session cooldown (simpler) or use a per-segment "did spider already appear?" flag (more deterministic). Decide during V.7.9 implementation.
 
 ### 1.4 Web geometry — naturalistic, not geometric
 
@@ -189,48 +192,71 @@ Tunables:
 - `beat_spike_amplitude = 0.0015` (brief per-kick spike)
 - `length-scaling factor` so tips of long radials shake more than near-hub points (physically correct — anchor stays still, tip moves)
 
-This is the design call referenced in §1.3. Subject to visual review via the harness (§5).
+This is the design call referenced in §1.3. Subject to visual review via the harness.
+
+### 4.3 Color source — TBD pending Matt direction
+
+**Critical omission flagged 2026-05-02. Spec is incomplete on this dimension and must not be implemented until resolved.**
+
+Every layer in §1 (background gradient, foliage, drops, threads, spider rim) needs color decisions. The earlier draft of this spec used phrases like "warm rim", "cool ambient fill", "mood-tinted gradient" without specifying where the warm/cool decisions actually come from. That gap must be closed before V.7.7 is implemented; otherwise the implementation will guess, and guessing has been the source of multiple V.7+ failures.
+
+**Plausible color sources (one or more, in combination):**
+
+- **A. Per-track palette from pre-analysis.** Track preparation produces a fixed palette derived from the track's overall mood/arousal/key (data already in `TrackProfile`). Palette stays stable for the whole track. Most "designed" — consistent within a song, varies across the playlist.
+- **B. Live mood-driven palette.** Palette responds continuously to current mood signal (`f.valence`, `f.arousal` from MoodClassifier). More dynamic but can shift mid-section in distracting ways.
+- **C. Hybrid (A + B).** Track palette is the anchor; live signals modulate within bounded variation around it.
+- **D. Audio-reactive direct.** Palette derived directly from audio features — bass → warmth, treble → cool, etc. No mood layer involved.
+- **E. Section/structural-driven.** Palette transitions on song-section boundaries (verse vs chorus etc.), using the `StructuralAnalyzer`'s detected boundaries and section labels.
+
+**The references span the full warm-to-cool range** — refs `04`/`05`/`07` are warm gold/amber backlit; refs `01`/`06`/`08` are cool blue-grey/dark — so whatever source is chosen, the color system needs to cover both extremes.
+
+**This section is open and blocks V.7.7 implementation.** Matt to choose the source(s) and describe the desired behavior; spec gets revised to lock the color model before any code is written.
 
 ---
 
-## 5. Per-preset `maxDuration` audit (initial values)
+## 5. Per-preset `maxDuration` audit — empirical determination required
 
-To be set in each preset's JSON sidecar. Subject to revision after live testing.
+**Per-preset `maxDuration` cannot be set from desk-spec.** It is the duration past which a preset's visual interest decays — which can only be determined by actually watching each preset run for an extended period. A first attempt to assign these from preset "character" (Glass Brutalist = static = long dwell, Plasma = intense = short bursts, etc.) produced numbers Matt correctly identified as ungrounded (Glass Brutalist at 120s would be deeply repetitive in its current form).
 
-| Preset | `maxDuration` (s) | Reasoning |
-|---|---|---|
-| Arachne | 60 | Web-build cycle ceiling |
-| Gossamer | 90 | Slow resonant — needs more time to develop the wave-propagation visuals |
-| Glass Brutalist | 120 | Static architecture — long dwell tolerable |
-| Volumetric Lithograph | 90 | Camera-dolly progression — longer dwells let the terrain reveal itself |
-| Kinetic Sculpture | 60 | Geometric — gets old fast |
-| Ferrofluid Ocean | 75 | Fluid simulation has natural rhythm |
-| Membrane | 45 | High-arousal — short bursts |
-| Murmuration | 75 | Particle field needs time to develop motion patterns |
-| Plasma | 30 | Very intense — short bursts only |
-| Nebula | 60 | Mid-tempo |
-| Spectral Cartograph | 45 | Diagnostic preset — short shows |
-| Waveform | 30 | Bar visualizer — short shows |
-| Stalker | 75 | Spider gait wants time to read |
+**Empirical determination plan (separate increment, before V.7.6.3):**
 
-Total catalogue range: 30s (Plasma, Waveform) to 120s (Glass Brutalist). Average ≈ 70s. For a 4-minute song this means 3–4 preset transitions per track on average — which is the rhythm Matt described.
+1. For each of the 13 presets, render or capture a 5-minute video at production resolution (1920×1280) running against a representative track fixture. Use the harness from V.7.6.1.
+2. Annotate (Matt or via timestamped notes) the moment the visual stops being interesting — when the eye starts looking for something to change. That timestamp is the preset's empirical `maxDuration`.
+3. Apply the values to JSON sidecars in V.7.6.3.
+
+**Known data points (locked):**
+- **Arachne: 60s.** Grounded in the natural foreground-build cycle length (§1.2).
+- **Glass Brutalist: 30s (Matt, 2026-05-02).** Its current form is deeply repetitive at longer dwells.
+
+All other values: TBD via empirical observation. Do NOT set them from desk-spec.
+
+**Implication for the orchestrator's segment planning:** the `maxDuration` field becomes authoritative as soon as the JSON values are filled in. Until then, the multi-segment planner can be implemented and tested using the two known values plus a placeholder `90s` default for the rest, which gets corrected when the empirical pass completes. This is a sensible decoupling — V.7.6.2 (orchestrator infrastructure) does not block on the empirical observation increment.
 
 ---
 
 ## 6. Implementation sequence
 
-The orchestrator change is the load-bearing prerequisite. Arachne refactor is blocked on it. The harness is independent and useful regardless.
+**Blocked until §4.3 (color source) is resolved.** V.7.7 cannot be implemented without knowing where the bg gradient + drop tint + atmosphere palette comes from.
+
+After that's resolved, the orchestrator change is the load-bearing prerequisite. Arachne refactor is blocked on it. The harness and the empirical-maxDuration pass are independent and useful regardless.
 
 | Step | Increment | Scope | Estimated sessions |
 |---|---|---|---|
 | 1 | V.7.6.1 | **Visual feedback harness.** 1920×1280 PNG renders of any preset against fixtures + reference contact-sheet builder. Independent — useful regardless of which path forward Matt chooses. | ½ |
-| 2 | V.7.6.2 | **Orchestrator multi-segment + completion-signal infrastructure.** New `PlannedPresetSegment` type, `SessionPlanner` produces multi-segment plans, `PresetSignaling` protocol, `LiveAdapter` segment-aware. All existing presets continue to work (`maxDuration` from §5 applied; presets without completion signals run to `maxDuration`). | 2–3 |
-| 3 | V.7.6.3 | **Per-preset `maxDuration` JSON updates.** Apply §5 values to all 13 sidecars. Verify each preset still scores correctly. | ½ |
-| 4 | V.7.7 | **Arachne v8 — background pass + background webs.** Implement §4.1 step 1 (atmospheric texture) and §4.1 step 2 (one or two background dewy webs with refractive drops). Foreground unchanged for now (still V.7.5 build). Visual review against refs `01`/`03`/`04` via harness. | 2 |
+| 2 | V.7.6.2 | **Orchestrator multi-segment + completion-signal infrastructure.** New `PlannedPresetSegment` type, `SessionPlanner` produces multi-segment plans, `PresetSignaling` protocol, `LiveAdapter` segment-aware. All existing presets continue to work — placeholder 90s default `maxDuration` for presets where empirical value is not yet set; the two known values (Arachne 60s, Glass Brutalist 30s) take effect immediately. | 2–3 |
+| 3a | V.7.6.E | **Empirical `maxDuration` observation pass.** For each of the 13 presets, capture a 5-minute video at 1920×1280 via the harness from V.7.6.1 against a representative track. Matt annotates the moment visual interest decays. Results recorded as a small data file. | ½ + Matt review time |
+| 3b | V.7.6.3 | **Per-preset `maxDuration` JSON updates.** Apply V.7.6.E values to all 13 sidecars. Verify each preset still scores correctly. | ½ |
+| 4 | V.7.7 | **Arachne v8 — background pass + background webs.** Implement §4.1 step 1 (atmospheric texture, color sourced per §4.3 once locked) and §4.1 step 2 (one or two background dewy webs with refractive drops). Foreground unchanged for now (still V.7.5 build). Visual review against refs `01`/`03`/`04` via harness. | 2 |
 | 5 | V.7.8 | **Arachne v8 — foreground build refactor.** Implement §1.2 (incremental construction with chord-segment spiral, drop accretion during build, completion signal at 60s). Pause on spider trigger; resume on spider fade. Visual review for build-pace feel. | 2 |
-| 6 | V.7.9 | **Arachne v8 — vibration + final polish.** Implement §4.2 (whole-scene tremor on bass). Tune drop counts, brightness, sag magnitude, free-zone size against references via harness. Cert review. | 1–2 |
+| 6 | V.7.9 | **Arachne v8 — vibration + final polish + cert.** Implement §4.2 (whole-scene tremor on bass). Tune drop counts, brightness, sag magnitude, free-zone size against references via harness. Spider rarity mechanism finalized (§1.3). Cert review. | 1–2 |
 
-**Total: 8–10 sessions.** Realistic given Arachne's track record. Each step includes harness-driven visual verification before commit; no more "build for a session, ship to Matt, discover at M7 that it's wrong".
+**Total: 8–10 sessions of implementation work, plus Matt's empirical observation pass for V.7.6.E.** Realistic given Arachne's track record. Each step includes harness-driven visual verification before commit; no more "build for a session, ship to Matt, discover at M7 that it's wrong".
+
+**Order constraints:**
+- §4.3 (color) must be resolved before V.7.7 starts.
+- V.7.6.1 (harness) must complete before V.7.6.E (empirical pass uses the harness).
+- V.7.6.2 (orchestrator) must complete before V.7.7 (Arachne v8 needs the multi-segment infrastructure to emit completion signals).
+- V.7.6.E + V.7.6.3 (empirical pass + JSON updates) can run in parallel with V.7.6.2.
 
 ---
 

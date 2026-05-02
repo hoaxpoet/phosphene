@@ -1231,9 +1231,28 @@ Supersedes (without deleting) Increment 5.2's weak invariants — those stay as 
 
 ---
 
+### Increment V.7.6.E — Empirical `maxDuration` observation pass
+
+**Scope:** Per `ARACHNE_V8_DESIGN.md §5`. For each of the 13 presets, render or capture a 5-minute video at 1920×1280 against a representative track via the V.7.6.1 harness. Matt annotates the moment visual interest decays — that timestamp is the preset's empirical `maxDuration`. Results captured as a small data file (e.g. `docs/PRESET_MAX_DURATIONS.md` or similar).
+
+**Known values (locked from prior observation):**
+- Arachne: 60s (build cycle ceiling)
+- Glass Brutalist: 30s (Matt 2026-05-02)
+
+**Done when:**
+- 13 preset videos captured and reviewed.
+- Empirical `maxDuration` recorded for each preset.
+- Data file committed.
+
+**Verify:** Matt review.
+
+**Estimated sessions:** ½ engineering + Matt's observation time.
+
+---
+
 ### Increment V.7.6.3 — Per-preset `maxDuration` JSON updates
 
-**Scope:** Apply `ARACHNE_V8_DESIGN.md §5` table values to all 13 preset JSON sidecars. Verify each preset's `PresetScoreBreakdown` still produces correct rankings under the new contract.
+**Scope:** Apply V.7.6.E empirical values to all 13 preset JSON sidecars. Verify each preset's `PresetScoreBreakdown` still produces correct rankings under the new contract.
 
 **Done when:**
 - All 13 sidecars updated. Schema docs in CLAUDE.md "Preset Metadata Format" updated.
@@ -1248,7 +1267,9 @@ Supersedes (without deleting) Increment 5.2's weak invariants — those stay as 
 
 ### Increment V.7.7 — Arachne v8: background pass + background webs
 
-**Scope:** Per `ARACHNE_V8_DESIGN.md §6 step 4` and §4.1 steps 1–2. Atmospheric texture pass (mood-tinted gradient + defocused foliage + optional warm beam + vignette, half-res). One or two pre-populated background dewy webs with refractive drops sampling the bg texture (Snell's law refraction, fresnel rim, sharp specular pinpoint, dark edge ring). Background webs vibrate per §4.2. Foreground unchanged for now (still V.7.5 build code — will refactor in V.7.8).
+**BLOCKED:** This increment cannot start until `ARACHNE_V8_DESIGN.md §4.3` (color source) is resolved. The bg pass needs to know where its palette comes from.
+
+**Scope:** Per `ARACHNE_V8_DESIGN.md §6 step 4` and §4.1 steps 1–2. Atmospheric texture pass (mood-tinted gradient + defocused foliage + optional warm beam + vignette, half-res — palette source per §4.3). One or two pre-populated background dewy webs with refractive drops sampling the bg texture (Snell's law refraction, fresnel rim, sharp specular pinpoint, dark edge ring). Background webs vibrate per §4.2. Foreground unchanged for now (still V.7.5 build code — will refactor in V.7.8).
 
 **Done when:**
 - Visual review via harness contact sheet: background webs read as photorealistic dewdrops side-by-side with refs `01`/`03`/`04`. Atmosphere reads against ref `05`.
