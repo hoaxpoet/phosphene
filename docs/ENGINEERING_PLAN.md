@@ -1192,18 +1192,17 @@ Supersedes (without deleting) Increment 5.2's weak invariants — those stay as 
 
 ---
 
-### Increment V.7.6.1 — Visual feedback harness
+### Increment V.7.6.1 — Visual feedback harness ✅ 2026-05-02
 
-**Scope:** Per `docs/ARACHNE_V8_DESIGN.md §6 step 1`. New test file `ArachneVisualReviewTests.swift` (or similar), gated by `RENDER_VISUAL=1`. Renders any preset at 1920×1280 for three FeatureVector fixtures (silence / steady mid-energy / beat-heavy). Encodes BGRA → PNG via `CGImageDestination`. Writes to `/tmp/phosphene_visual/<timestamp>/{silence,mid,beat}.png`. Contact-sheet variant composes the steady-mid render alongside the four must-pass references (`01`, `04`, `05`, `08`) into a single 8-up grid.
+**Status:** Landed (commit `eca8723d`). New test file `PhospheneEngine/Tests/PhospheneEngineTests/Renderer/PresetVisualReviewTests.swift`, gated by `RENDER_VISUAL=1`. Renders any preset (parameterized; currently `["Arachne"]`) at 1920×1280 for three FeatureVector fixtures (silence / steady mid-energy / beat-heavy). Encodes BGRA → PNG via `CGImageDestination`. Writes to `/tmp/phosphene_visual/<ISO8601>/<preset>_{silence,mid,beat}.png`. Contact sheet (Arachne only) composes the steady-mid render in the top half above refs 01 / 04 / 05 / 08 in the bottom half, with NSAttributedString labels.
 
-**Done when:**
-- Tests run, PNGs generated for any preset name passed as a parameter.
-- Contact sheet renders correctly with refs at matched scale.
-- Build clean; 0 SwiftLint violations.
+Per-preset state setup handles Arachne (allocates `ArachneState`, warms 30 ticks, binds `webBuffer` at fragment buffer 6 and `spiderBuffer` at 7); other presets use only standard bindings. Mesh-shader presets are skipped (cannot be invoked via `drawPrimitives`). Adding a preset is one line — append to the `@Test(arguments:)` list.
 
-**Verify:** `RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter ArachneVisualReview`.
+**Verify (used):** `RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter PresetVisualReview` produced 4 valid 1920×1280 PNGs. Without the env var, the harness is dormant. SwiftLint strict on the new file → clean. `xcodebuild -scheme PhospheneApp` → BUILD SUCCEEDED.
 
-**Estimated sessions:** ½. Independent of all subsequent work — useful regardless of which path forward Matt chooses.
+**M7-style report (Arachne v5 vs refs 01/04/05/08), 2026-05-02:** Render shows two warm-tan concentric ring spirals on flat near-black. No droplets, no specular silk highlight, no atmospheric backlight, no bioluminescent palette. Reads as a 2D line pattern; references read as illuminated 3D objects in atmosphere. Confirms the D-072 diagnosis: the missing layers are compositing (background atmosphere, refractive drops, fibre material), not constants. Justifies the V.7.7+ scope.
+
+**Estimated sessions:** ½. **Actual:** ½ (one commit).
 
 ---
 
