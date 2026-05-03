@@ -60,6 +60,17 @@ extension BeatDetector {
         emitDumpLine("[DSP.1 dump] \(label) early reason=\(reason)")
     }
 
+    /// Emit one line per timestamp recorded into the IOI histogram source.
+    /// This is the EXACT event stream feeding `computeStableTempo` —
+    /// `bandFlux[0]+bandFlux[1] > bassP75*2`, with 150ms minimum spacing.
+    /// Compare per-band onset events (from runner) against this stream
+    /// to localize tempo failures to the threshold/fusion logic.
+    func dumpTempoTimestamp(time: Double, bassFlux: Float, threshold: Float) {
+        guard Self.dumpHistogramEnabled else { return }
+        let fmt = "[DSP.1 ts] t=%.4f flux=%.4f thr=%.4f"
+        emitDumpLine(String(format: fmt, time, bassFlux, threshold))
+    }
+
     /// Emit one line: unified-log notice + optional file append.
     /// `notice` (not `info`) so `log show` captures without extra flags.
     private func emitDumpLine(_ line: String) {
