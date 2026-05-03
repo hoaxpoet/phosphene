@@ -1436,3 +1436,38 @@ The V.7.5 implementation was technically faithful to §10.1 items 1–4, 6, 9 as
 **Rule:** When a fidelity gap survives a coordinated constant-tuning pass that landed every spec'd change mechanically, the gap is compositional, not parametric. Do not schedule another tuning pass. Decompose the reference visual signature into compositing layers (background, refraction, optical depth, etc.) and add render-pass infrastructure rather than tuning constants.
 
 **Rule:** Before any further fidelity uplift on any preset, decompose the reference set into its compositing layers explicitly: what is the background, what is the foreground subject, what optical phenomena (refraction, DoF, bokeh, aerial perspective, volumetric scattering) carry the photographic look. If the current preset's renderer cannot produce those layers, schedule the missing infrastructure as its own increment before the constants pass.
+
+---
+
+## D-073 — `maxDuration` per-section linger factors inverted (Option B); diagnostic class added (V.7.6.C calibration)
+
+**Date:** 2026-05-03
+
+**Context:** V.7.6.2 shipped the `maxDuration` framework (formula in `PresetMaxDuration.swift`, computed property on `PresetDescriptor`, multi-segment walk in `SessionPlanner`). V.7.6.C is the calibration pass against the §5.3 reference table. Matt reviewed the printed table at the §5.2 default coefficients.
+
+**Problems Matt flagged:**
+
+1. **Spectral Cartograph is diagnostic, not aesthetic.** The framework was treating it as a normal preset and giving it a finite ceiling. Diagnostics should remain in place until manually switched — they have a different operational role (instrument-family observability) and the segment scheduler should never insert a boundary mid-diagnostic.
+2. **Per-section linger model was inverted.** Original §5.2 had `ambient=0.30` (shortest) and `peak=0.80` (longest), on the theory that low-variance audio gives the preset less to chew on. Matt's intuition is the opposite: ambient sections are exactly where you'd want a preset to *linger* — meditative, contemplative, a switch would feel disruptive.
+
+**Decision:**
+
+(1) **Add diagnostic class.** New `is_diagnostic` JSON field on `PresetDescriptor` (default `false`). When true, `maxDuration(forSection:)` short-circuits to `.infinity`. Spectral Cartograph is flagged true (only diagnostic in the catalog). Implementation is one boolean and one short-circuit; no formula change. The broader "diagnostic presets are manual-switch only / never auto-selected" semantic (Scorer hard-exclusion + LiveAdapter no-override) is **out of V.7.6.C scope**, scheduled as V.7.6.D.
+
+(2) **Invert per-section linger to Option B.** Two models considered: Option A — linger on slow only (ambient=0.80, peak=0.30); Option B — linger on emotional cores (ambient=0.80, peak=0.75) with transitional sections shortened (buildup=0.40, bridge=0.35). Matt picked Option B: ambient and peak both linger because they're the emotional-core moments of a song; buildup and bridge are transitional moments where preset changes feel natural. Final table: `ambient=0.80, peak=0.75, comedown=0.65, buildup=0.40, bridge=0.35`. Default (section=nil) stays 0.5. Field renamed `sectionDynamicRange` → `sectionLingerFactor` to reflect that values are now author-set per-section weights, not derived from audio variance.
+
+(3) **No formula coefficient changes.** `baseDurationSeconds=90`, `motionPenalty=-50`, `fatiguePenalty=-30`, `densityPenalty=-15`, `sectionAdjustBase=0.7`, `sectionLingerWeight=0.6` all unchanged. The original V.7.6.2 agent's calibration notes (Glass Brutalist ~30s intuition; Gossamer feels long for limited compositional variation; Murmuration computes same as Glass Brutalist) were observations, not directives. Matt's V.7.6.C review note: *"Note that you are grading presets that are all not certified and VERY far from ready."* Tuning the formula to one uncertified outlier optimises for an artistic target the preset hasn't reached yet. If a future certified Glass Brutalist genuinely cycles every 30s, declaring `natural_cycle_seconds: 30` is the right tool, not a coefficient warp.
+
+**Why no Glass Brutalist `naturalCycleSeconds` cap landed in V.7.6.C:** The 30s intuition was from the V.7.6.2 agent, not directly from Matt. Matt's review explicitly flagged that the presets are uncertified and far from ready. Adding a cap now would lock in a number that's likely wrong for the certified version of the preset.
+
+**§5.3 reference table is now authoritative against current production sidecars.** Old §5.3 had several stale metadata values (e.g. Plasma motion 0.85 vs actual 0.5, Nebula 0.50 vs actual 0.30); the V.7.6.C rewrite reflects what's actually in the JSON. Stalker dropped (no production assets in `Shaders/`); Fractal Tree added.
+
+**Implementation:** `PresetMaxDuration.swift` (formula + linger factors), `PresetDescriptor.swift` (`isDiagnostic` field + CodingKeys + decode), `SpectralCartograph.json` (`is_diagnostic: true`), `MaxDurationFrameworkTests.swift` (reference table + diagnostic test + Option B ordering test + `isDiagnostic` default test), `docs/ARACHNE_V8_DESIGN.md` §5.2/§5.3/§5.4 updated.
+
+**Verification:** 912 engine tests / 97 suites green. App build succeeds. SwiftLint 0 violations on touched files. GoldenSessionTests not regenerated — default-section maxDuration unchanged at lingerFactor=0.5 (multiplier 1.0); planner sequences identical.
+
+**Rule:** Per-section weights in the `maxDuration` framework are author-set linger factors, not audio-variance signals. Naming reflects that. Future calibration sessions tune the per-section table by intuition, not by computing audio variance from track preparation data.
+
+**Rule:** Diagnostic presets (`is_diagnostic: true`) are exempt from segment scheduling and (per the V.7.6.D follow-up) auto-selection. They are operational tools, not aesthetic content. Spectral Cartograph is the prototype; future diagnostics use the same flag.
+
+**Rule:** Do not coefficient-tune the `maxDuration` formula to an uncertified preset's intuition target. Use `natural_cycle_seconds` for outliers only when the visual genuinely has a fixed cycle. If the artistic target moves with certification, the coefficient-tuned value will become wrong.
