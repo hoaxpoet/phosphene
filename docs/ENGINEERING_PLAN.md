@@ -1230,20 +1230,32 @@ Per-preset state setup handles Arachne (allocates `ArachneState`, warms 30 ticks
 
 ---
 
-### Increment V.7.6.C — Framework calibration pass
+### Increment V.7.6.C — Framework calibration pass ✅ 2026-05-03
 
-**Scope:** Per `ARACHNE_V8_DESIGN.md §5.4`. The `maxDuration` framework (formula at §5.2) lives in code with default coefficients (−50 motion, −30 fatigue, −15 density, sectionAdjust 0.7+0.6×dynamicRange). After V.7.6.2 lands the formula, Matt reviews the §5.3 computed table and flags presets where output disagrees with intuition. Glass Brutalist is the locked anchor at ~30s (current formula gives 71s). Coefficients tuned to bring flagged rows in line; most likely a nonlinear penalty for low-motion + high-density combinations. Optional: 2-minute videos via V.7.6.1 of a few flagged presets to validate predictions.
+**Outcome:** Two changes landed (commits `7e6671de`, `cee85159`). (1) Per-section linger factors inverted to Option B — ambient and peak (the meditative + climactic emotional cores) extend `maxDuration`; buildup and bridge (transitional moments where preset changes feel natural) shorten it. New per-section table: `ambient=0.80, peak=0.75, comedown=0.65, buildup=0.40, bridge=0.35`. Default (section=nil) stays 0.5. Field renamed `sectionDynamicRange` → `sectionLingerFactor` to reflect that values are now author-set per-section weights, not derived from audio variance. (2) Diagnostic class added — new `is_diagnostic` JSON field (default false) on `PresetDescriptor`. When true, `maxDuration(forSection:)` returns `.infinity`. Spectral Cartograph flagged true. The "manual-switch only / never auto-selected" Orchestrator semantic is the **V.7.6.D follow-up scope** (Scorer hard-exclusion + LiveAdapter no-override).
+
+**No formula coefficient changes.** `baseDurationSeconds`, `motionPenalty`, `fatiguePenalty`, `densityPenalty`, `sectionAdjustBase`, `sectionLingerWeight` unchanged from §5.2 defaults. Per Matt's review note ("the presets are uncertified and very far from ready"), Glass Brutalist's earlier ~30s intuition is deferred — tuning to one outlier is not the right move at this stage.
+
+**Verification:** 912 engine tests / 97 suites green. App build succeeds. SwiftLint 0 violations on touched files. GoldenSessionTests not regenerated — default-section maxDuration unchanged at lingerFactor=0.5 (multiplier 1.0); planner sequences identical. See D-073 for the calibration decision record.
+
+---
+
+### Increment V.7.6.D — Diagnostic preset orchestrator semantics
+
+**Scope:** Follow-up to V.7.6.C. The `is_diagnostic` flag added in V.7.6.C only short-circuits `maxDuration(forSection:)` to `.infinity`. The full "diagnostic presets are operational tools, not aesthetic content" semantic also requires:
+- `DefaultPresetScorer` hard-excludes `isDiagnostic` presets from auto-selection (ranks them at `-Float.infinity` or returns `excludedReason: "diagnostic"`).
+- `LiveAdapter` never proposes a `presetOverride` to a diagnostic preset.
+- Manual switch via `PlaybackActionRouter` (or future settings UI) is the only path to render Spectral Cartograph or any future diagnostic.
 
 **Done when:**
-- Computed table reviewed by Matt; flagged-rows count ≤ 1.
-- Glass Brutalist computed `maxDuration` ≈ 30s at average music section.
-- Coefficient changes committed to code (with documentation comments).
-- Tests added covering the formula's behavior at known inputs.
-- 0 SwiftLint violations.
+- Scorer test asserts diagnostic preset has `total = 0` / `excludedReason: "diagnostic"` for every track + context combination.
+- LiveAdapter test asserts no override can land on a diagnostic preset under any audio condition.
+- Manual-switch path verified end-to-end (PlaybackActionRouter `selectPreset(_:)` accepts diagnostic targets).
+- All 912+ engine tests pass; 0 SwiftLint violations.
 
-**Verify:** `swift test --package-path PhospheneEngine --filter MaxDurationFramework` + Matt review of the table.
+**Verify:** `swift test --package-path PhospheneEngine --filter "PresetScorer|LiveAdapter"` + manual switch UI test.
 
-**Estimated sessions:** 1 engineering + Matt review time.
+**Estimated sessions:** 1.
 
 ---
 
