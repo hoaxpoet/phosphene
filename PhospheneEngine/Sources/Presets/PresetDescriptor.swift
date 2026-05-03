@@ -1,6 +1,7 @@
 // PresetDescriptor — Metadata for a single visual preset.
 // Loaded from JSON sidecar files that accompany each .metal shader.
 // See CLAUDE.md "Scene Metadata Format" for field documentation.
+// swiftlint:disable file_length
 
 import Foundation
 import Shared
