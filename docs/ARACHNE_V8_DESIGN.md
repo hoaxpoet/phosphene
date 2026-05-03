@@ -260,21 +260,27 @@ All from existing data — no new declarations required except an optional `natu
 | `motionIntensity` | preset JSON sidecar (V.4 schema, already declared) | 0..1 |
 | `visualDensity` | preset JSON sidecar (V.4 schema, already declared) | 0..1 |
 | `fatigueRisk` | preset JSON sidecar (V.4 schema, already declared) | enum {low=0, medium=1, high=2} |
-| `naturalCycleSeconds` | preset JSON sidecar (NEW field, optional) | seconds, only set for presets with a fixed visual cycle |
-| `sectionDynamicRange` | per-section audio analysis (track preparation), normalized variance of energy over the section | 0..1 |
+| `naturalCycleSeconds` | preset JSON sidecar (V.7.6.2 field, optional) | seconds, only set for presets with a fixed visual cycle |
+| `isDiagnostic` | preset JSON sidecar (V.7.6.C field, default false) | bool — diagnostic presets are exempt and return `.infinity` |
+| `sectionLingerFactor` | per-section table, see §5.2 below | 0..1 |
 
 ### 5.2 Formula
 
+V.7.6.C calibration (Option B): per-section linger factors are tuned so ambient and peak (the meditative + climactic emotional cores) extend `maxDuration`, while buildup and bridge (transitional moments where preset changes feel natural) shorten it. The field name `sectionDynamicRange` from the original §5.2 spec was renamed to `sectionLingerFactor` to reflect that the values are no longer derived from audio variance — they are author-set per-section weights.
+
 ```swift
-func computeMaxDuration(preset: PresetDescriptor, section: SongSection) -> TimeInterval {
+func computeMaxDuration(preset: PresetDescriptor, section: SongSection?) -> TimeInterval {
+    // Diagnostic presets are exempt — they remain in place until manually switched.
+    if preset.isDiagnostic { return .infinity }
+
     // Base maxDuration from preset properties — answers "how long does this preset stay interesting on average music?"
     let baseMax: Double = 90.0
                         - 50.0 * (preset.motionIntensity - 0.5)
                         - 30.0 * Double(preset.fatigueRisk.score)  // low=0, medium=1, high=2
                         - 15.0 * (preset.visualDensity - 0.5)
 
-    // Section adjustment — energetic sections keep a preset interesting longer; monotonous sections shorten it.
-    let sectionAdjust = baseMax * (0.7 + 0.6 * section.dynamicRange)
+    // Section adjustment — ambient/peak linger; buildup/bridge are transitional.
+    let sectionAdjust = baseMax * (0.7 + 0.6 * lingerFactor(section))
 
     // Hard cap from natural cycle length (Arachne's 60s build, etc.)
     if let cycle = preset.naturalCycleSeconds {
@@ -282,48 +288,62 @@ func computeMaxDuration(preset: PresetDescriptor, section: SongSection) -> TimeI
     }
     return sectionAdjust
 }
+
+// V.7.6.C Option B linger factors:
+//   ambient  = 0.80   (longest — meditative)
+//   peak     = 0.75   (climactic moments are the emotional core)
+//   comedown = 0.65
+//   buildup  = 0.40   (transitional)
+//   bridge   = 0.35   (transitional, shortest)
+//   nil      = 0.50   (neutral midpoint when no section context)
 ```
 
-### 5.3 Computed values (no declarations needed)
+### 5.3 Computed values (V.7.6.C calibrated)
 
-Computing the framework against current preset descriptors at average music section dynamics (`sectionDynamicRange = 0.5`):
+Computed against current production preset descriptors with the V.7.6.C Option B linger factors. The table shows the default (section=nil, factor=0.5) value plus the per-section ceiling. Authoritative source-of-truth: the Swift formula in `PresetMaxDuration.swift` evaluated at runtime — these values are reproduced here for review and are asserted in `MaxDurationFrameworkTests`.
 
-| Preset | motionIntensity | visualDensity | fatigueRisk | naturalCycle | computed `maxDuration` |
-|---|---|---|---|---|---|
-| Arachne | 0.50 | 0.65 | low | **60s** | **60s** (capped by cycle) |
-| Plasma | 0.85 | 0.50 | high | — | (90 − 50×0.35 − 30×2 − 15×0) × 1.0 = **12s** |
-| Membrane | 0.75 | 0.60 | medium | — | (90 − 50×0.25 − 30×1 − 15×0.1) × 1.0 = **46s** |
-| Murmuration | 0.70 | 0.55 | medium | — | (90 − 50×0.20 − 30×1 − 15×0.05) × 1.0 = **49s** |
-| Kinetic Sculpture | 0.65 | 0.50 | medium | — | (90 − 50×0.15 − 30×1 − 15×0) × 1.0 = **53s** |
-| Stalker | 0.55 | 0.50 | medium | — | (90 − 50×0.05 − 30×1 − 15×0) × 1.0 = **58s** |
-| Gossamer | 0.45 | 0.55 | low | — | (90 − 50×(−0.05) − 30×0 − 15×0.05) × 1.0 = **92s** |
-| Ferrofluid Ocean | 0.55 | 0.55 | low | — | (90 − 50×0.05 − 30×0 − 15×0.05) × 1.0 = **87s** |
-| Glass Brutalist | 0.20 | 0.80 | medium | — | (90 − 50×(−0.30) − 30×1 − 15×0.30) × 1.0 = **71s** ⚠ |
-| Volumetric Lithograph | 0.60 | 0.70 | low | — | (90 − 50×0.10 − 30×0 − 15×0.20) × 1.0 = **82s** |
-| Nebula | 0.50 | 0.50 | medium | — | (90 − 50×0 − 30×1 − 15×0) × 1.0 = **60s** |
-| Spectral Cartograph | 0.40 | 0.45 | low | — | (90 − 50×(−0.10) − 30×0 − 15×0.05) × 1.0 = **94s** |
-| Waveform | 0.60 | 0.30 | medium | — | (90 − 50×0.10 − 30×1 − 15×(−0.20)) × 1.0 = **58s** |
+| Preset | motionIntensity | visualDensity | fatigueRisk | naturalCycle | default | ambient | peak | comedown | buildup | bridge |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Arachne | 0.50 | 0.65 | low | **60s** | 60 | 60 | 60 | 60 | 60 | 60 |
+| Ferrofluid Ocean | 0.65 | 0.75 | medium | — | 49 | 58 | 56 | 53 | 46 | 44 |
+| Fractal Tree | 0.55 | 0.65 | medium | — | 55 | 65 | 64 | 60 | 52 | 50 |
+| Glass Brutalist | 0.40 | 0.40 | medium | — | 67 | 79 | 77 | 73 | 63 | 61 |
+| Gossamer | 0.30 | 0.40 | low | — | 102 | 120 | 117 | 111 | 95 | 92 |
+| Kinetic Sculpture | 0.70 | 0.60 | medium | — | 49 | 57 | 56 | 53 | 46 | 44 |
+| Membrane | 0.70 | 0.55 | medium | — | 49 | 58 | 57 | 54 | 46 | 45 |
+| Murmuration | 0.85 | 0.90 | low | — | 67 | 79 | 77 | 73 | 63 | 61 |
+| Nebula | 0.30 | 0.80 | low | — | 96 | 113 | 110 | 104 | 90 | 87 |
+| Plasma | 0.50 | 0.70 | high | — | 27 | 32 | 31 | 29 | 25 | 25 |
+| Spectral Cartograph | 0.00 | 0.10 | low | — | ∞ | ∞ | ∞ | ∞ | ∞ | ∞ |
+| Volumetric Lithograph | 0.60 | 0.70 | low | — | 82 | 97 | 94 | 89 | 77 | 75 |
+| Waveform | 0.60 | 0.30 | medium | — | 58 | 68 | 67 | 63 | 54 | 53 |
 
-The Glass Brutalist row is **flagged (⚠)** because it lands at 71s while Matt's intuition (2026-05-02) is 30s. This is a known calibration mismatch: Matt's intuition is the validation signal, not the framework's output. Two paths forward:
+**Spectral Cartograph** is flagged `is_diagnostic: true` (V.7.6.C). Diagnostic presets are exempt from the framework — they return `.infinity` and are never auto-segmented. The orchestrator's "diagnostic presets are manual-switch only" semantic (Scorer hard-exclusion + LiveAdapter no-override) is the V.7.6.D follow-up scope.
 
-1. **Adjust the framework's coefficients** so Glass Brutalist lands at ~30s. To get from 71s → 30s, the `motionIntensity` coefficient (currently −50) needs to be more punishing for very-low-motion presets (e.g., add a penalty term for `motionIntensity < 0.3`). Specifically a piecewise term like `−40 × max(0, 0.3 - motionIntensity)` would knock Glass Brutalist down by 40s × (0.3 − 0.20) = 4s — not enough; the issue is more likely that low motion + high density (a static dense scene) decays faster than the linear formula captures. A nonlinear term like `+15 × max(0, visualDensity − 0.7)² × max(0, 0.4 − motionIntensity)` — extra penalty when density is already high AND motion is low — gets Glass Brutalist down to ~30s. The framework supports this kind of tuning.
+**Glass Brutalist** computes at 67s default. Matt's earlier intuition (2026-05-02) suggested ~30s, but per Matt's V.7.6.C review note ("the presets are uncertified and very far from ready"), this row is left as-is — fine-tuning here would optimise for an artistic target the preset hasn't reached yet. If a future certified Glass Brutalist genuinely cycles every 30s, declaring `natural_cycle_seconds: 30` is the right tool. Coefficient overrides for one outlier are not.
 
-2. **Override Glass Brutalist via `naturalCycleSeconds = 30`** if the visual genuinely has a 30s cycle that's more authoritative than the formula. Glass Brutalist doesn't have a natural cycle (it's static architecture), so this option is wrong; option 1 is the right path.
+**Per-section shape (Option B):** ambient and peak linger; buildup and bridge are transitional. Comedown sits between. The neutral default (section=nil) is the midpoint at factor=0.5.
 
 ### 5.4 Calibration loop
 
 The framework is initially calibrated by computing the table (§5.3) and checking against Matt's intuition for the presets he has strong opinions on. Where the framework disagrees, the coefficients are tuned. The calibration procedure:
 
-1. Compute table for all 13 presets at `sectionDynamicRange = 0.5`.
+1. Compute table for all 13 presets at `lingerFactor = 0.5`.
 2. Matt reviews the table; flags presets whose computed `maxDuration` disagrees with his intuition.
 3. Tune coefficients to reduce flagged rows. Verify other presets' values stay sensible.
 4. Iterate until table is acceptable — typically 2–3 coefficient passes.
 
 The empirical observation videos from V.7.6.E become **calibration evidence** (instead of "the source of truth") — they validate or invalidate the framework's predictions for specific presets, and inform coefficient tuning. The framework is the source of truth; observation is calibration.
 
+**V.7.6.C calibration outcome (2026-05-02):**
+- **Diagnostic class added.** `is_diagnostic` JSON flag (default false). When true, `maxDuration(forSection:)` returns `.infinity`. Spectral Cartograph is the only preset with the flag. The "manual-switch only / never auto-selected" semantic is the V.7.6.D follow-up.
+- **Per-section linger inverted (Option B).** Old §5.2 had ambient=0.30 (shortest) and peak=0.80 (longest), which inverted Matt's intuition that ambient sections are exactly where presets should linger. New per-section factors: ambient=0.80, peak=0.75, comedown=0.65, buildup=0.40, bridge=0.35. Default (section=nil) stays 0.5. The field name `sectionDynamicRange` was renamed to `sectionLingerFactor` to reflect that values are now author-set per-section weights, not derived from audio variance.
+- **No formula coefficient changes.** `baseDurationSeconds`, `motionPenalty`, `fatiguePenalty`, `densityPenalty`, `sectionAdjustBase`, `sectionLingerWeight` are unchanged from §5.2 defaults.
+
 **Known data points (locked):**
 - **Arachne: 60s** — capped by `naturalCycleSeconds = 60` (build cycle ceiling per §1.2).
-- **Glass Brutalist: ~30s target** — calibration anchor for tuning the formula; current formula gives 71s, needs nonlinear penalty term as discussed in §5.3.
+- **Spectral Cartograph: ∞** — `is_diagnostic: true`.
+- **Glass Brutalist** earlier intuition (~30s) is deferred — the preset is uncertified and far from ready; tuning the formula to one outlier is not the right move at this stage.
 
 ### 5.5 Implication for orchestrator
 
