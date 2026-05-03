@@ -186,7 +186,10 @@ public struct DefaultReactiveOrchestrator: ReactiveOrchestrating {
         )
         let ranked = scorer.rank(presets: catalog, track: liveProfile, context: altCtx)
 
-        guard let (topPreset, topScore) = ranked.first else {
+        // V.7.6.D: defensive filter — Scorer returns total 0 for diagnostics, but a
+        // catalog-only-of-diagnostics (or scoring tie) could otherwise elevate one.
+        // Per D-074, diagnostics are categorically auto-selection-ineligible.
+        guard let (topPreset, topScore) = ranked.first(where: { !$0.0.isDiagnostic }) else {
             return holdDecision(
                 state: state,
                 confidence: confidence,
