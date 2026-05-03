@@ -88,6 +88,19 @@ struct TempoDumpRunnerCommand: ParsableCommand {
             print("TempoDumpRunner: metadata BPM=\(bpm) (no-op until voting lands)")
         }
 
+        runAnalysisLoop(
+            samples: samples, sampleRate: sampleRate, fft: fft, beatDetector: beatDetector
+        )
+
+        print("TempoDumpRunner: complete → \(out)")
+    }
+
+    private func runAnalysisLoop(
+        samples: [Float],
+        sampleRate: Float,
+        fft: FFTProcessor,
+        beatDetector: BeatDetector
+    ) {
         let hop = 1024
         let fps = sampleRate / Float(hop)
         let deltaTime = Float(hop) / sampleRate
@@ -102,25 +115,25 @@ struct TempoDumpRunnerCommand: ParsableCommand {
                 magnitudes: mags, fps: fps, deltaTime: deltaTime
             )
             elapsedSec += deltaTime
+            for bandIdx in result.onsets.indices where result.onsets[bandIdx] {
+                let onsetFmt = "[DSP.1 onset] band=%d t=%.4f"
+                appendLine(path: out, line: String(format: onsetFmt, bandIdx, elapsedSec))
+            }
             let currentSecond = Int(elapsedSec)
             if currentSecond > lastSecondDumped {
                 lastSecondDumped = currentSecond
-                let bpm = result.estimatedTempo ?? 0
-                let conf = result.tempoConfidence
-                let fmt = "[DSP.1 dump] autocorr bpm=%.2f conf=%.3f stable=%.0f instant=%.0f"
-                let line = String(
-                    format: fmt,
-                    bpm,
-                    conf,
+                let acFmt = "[DSP.1 dump] autocorr bpm=%.2f conf=%.3f stable=%.0f instant=%.0f"
+                let acLine = String(
+                    format: acFmt,
+                    result.estimatedTempo ?? 0,
+                    result.tempoConfidence,
                     result.stableBPM,
                     result.instantBPM
                 )
-                appendLine(path: out, line: line)
+                appendLine(path: out, line: acLine)
             }
             offset += hop
         }
-
-        print("TempoDumpRunner: complete → \(out)")
     }
 
     private func appendLine(path: String, line: String) {

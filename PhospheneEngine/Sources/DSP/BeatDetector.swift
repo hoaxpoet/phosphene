@@ -384,6 +384,9 @@ public final class BeatDetector: @unchecked Sendable {
         onsetTimestampCount = min(
             onsetTimestampCount + 1, Self.onsetTimestampWindowSize
         )
+        dumpTempoTimestamp(
+            time: elapsedTime, bassFlux: bassFlux, threshold: tempoThreshold
+        )
     }
 
     /// Append composite flux to the onset history buffer.
