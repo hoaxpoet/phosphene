@@ -1,0 +1,433 @@
+===== love_rehab file=/Users/braesidebandit/Documents/Projects/phosphene/PhospheneEngine/Tests/Fixtures/tempo/love_rehab.m4a rate=44100 duration=29.9s metadataBPM=125.0 =====
+[DSP.1 dump] stable early reason=recent<4(3) e=1.0 ws=-9.0 first=0.4 last=0.9 buf=3
+[DSP.1 dump] stable early reason=noPeak(in=3,out=2,recent=6)
+[DSP.1 dump] stable raw=117.00 sel=117.00
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=2
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=1
+[DSP.1 dump]   bin bpm=152 period=0.3947 count=1
+[DSP.1 dump]   bin bpm=172 period=0.3488 count=1
+[DSP.1 dump] stable raw=117.00 sel=117.00
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=2
+[DSP.1 dump]   bin bpm=152 period=0.3947 count=2
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=1
+[DSP.1 dump]   bin bpm=172 period=0.3488 count=1
+[DSP.1 dump]   bin bpm=185 period=0.3243 count=1
+[DSP.1 dump] stable raw=117.00 sel=117.00
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=3
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=2
+[DSP.1 dump]   bin bpm=152 period=0.3947 count=2
+[DSP.1 dump]   bin bpm=172 period=0.3488 count=1
+[DSP.1 dump]   bin bpm=185 period=0.3243 count=1
+[DSP.1 dump] stable raw=117.00 sel=117.00
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=4
+[DSP.1 dump]   bin bpm=152 period=0.3947 count=3
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=2
+[DSP.1 dump]   bin bpm=172 period=0.3488 count=1
+[DSP.1 dump]   bin bpm=185 period=0.3243 count=1
+[DSP.1 dump] stable raw=117.00 sel=117.00
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=4
+[DSP.1 dump]   bin bpm=152 period=0.3947 count=4
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=3
+[DSP.1 dump]   bin bpm=172 period=0.3488 count=1
+[DSP.1 dump]   bin bpm=185 period=0.3243 count=1
+[DSP.1 dump] stable raw=117.00 sel=117.00
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=4
+[DSP.1 dump]   bin bpm=152 period=0.3947 count=4
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=3
+[DSP.1 dump]   bin bpm=172 period=0.3488 count=1
+[DSP.1 dump]   bin bpm=185 period=0.3243 count=1
+[DSP.1 dump] stable raw=152.00 sel=152.00
+[DSP.1 dump]   bin bpm=152 period=0.3947 count=5
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=4
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=3
+[DSP.1 dump]   bin bpm=161 period=0.3727 count=1
+[DSP.1 dump]   bin bpm=172 period=0.3488 count=1
+[DSP.1 dump] stable raw=152.00 sel=152.00
+[DSP.1 dump]   bin bpm=152 period=0.3947 count=5
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=4
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=3
+[DSP.1 dump]   bin bpm=99 period=0.6061 count=1
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=1
+[DSP.1 dump] stable raw=152.00 sel=152.00
+[DSP.1 dump]   bin bpm=152 period=0.3947 count=5
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=4
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=3
+[DSP.1 dump]   bin bpm=99 period=0.6061 count=2
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=1
+[DSP.1 dump] stable raw=152.00 sel=152.00
+[DSP.1 dump]   bin bpm=152 period=0.3947 count=5
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=4
+[DSP.1 dump]   bin bpm=99 period=0.6061 count=2
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=2
+[DSP.1 dump]   bin bpm=96 period=0.6250 count=1
+[DSP.1 dump] stable raw=152.00 sel=152.00
+[DSP.1 dump]   bin bpm=152 period=0.3947 count=5
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=4
+[DSP.1 dump]   bin bpm=99 period=0.6061 count=2
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=2
+[DSP.1 dump]   bin bpm=96 period=0.6250 count=1
+[DSP.1 dump] stable raw=152.00 sel=152.00
+[DSP.1 dump]   bin bpm=152 period=0.3947 count=5
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=4
+[DSP.1 dump]   bin bpm=99 period=0.6061 count=2
+[DSP.1 dump]   bin bpm=161 period=0.3727 count=2
+[DSP.1 dump]   bin bpm=96 period=0.6250 count=1
+[DSP.1 dump] stable raw=152.00 sel=152.00
+[DSP.1 dump]   bin bpm=152 period=0.3947 count=6
+[DSP.1 dump]   bin bpm=96 period=0.6250 count=2
+[DSP.1 dump]   bin bpm=99 period=0.6061 count=2
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=2
+[DSP.1 dump]   bin bpm=161 period=0.3727 count=2
+[DSP.1 dump] stable raw=152.00 sel=152.00
+[DSP.1 dump]   bin bpm=152 period=0.3947 count=4
+[DSP.1 dump]   bin bpm=96 period=0.6250 count=2
+[DSP.1 dump]   bin bpm=99 period=0.6061 count=2
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=2
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=2
+[DSP.1 dump] stable raw=152.00 sel=152.00
+[DSP.1 dump]   bin bpm=152 period=0.3947 count=5
+[DSP.1 dump]   bin bpm=99 period=0.6061 count=3
+[DSP.1 dump]   bin bpm=96 period=0.6250 count=2
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=2
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=2
+[DSP.1 dump] stable raw=152.00 sel=152.00
+[DSP.1 dump]   bin bpm=152 period=0.3947 count=7
+[DSP.1 dump]   bin bpm=99 period=0.6061 count=3
+[DSP.1 dump]   bin bpm=96 period=0.6250 count=2
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=2
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=2
+[DSP.1 dump] stable raw=152.00 sel=152.00
+[DSP.1 dump]   bin bpm=152 period=0.3947 count=7
+[DSP.1 dump]   bin bpm=96 period=0.6250 count=3
+[DSP.1 dump]   bin bpm=99 period=0.6061 count=2
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=2
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=2
+[DSP.1 dump] stable raw=152.00 sel=152.00
+[DSP.1 dump]   bin bpm=152 period=0.3947 count=7
+[DSP.1 dump]   bin bpm=96 period=0.6250 count=3
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=3
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=2
+[DSP.1 dump]   bin bpm=161 period=0.3727 count=2
+[DSP.1 dump] stable raw=152.00 sel=152.00
+[DSP.1 dump]   bin bpm=152 period=0.3947 count=7
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=3
+[DSP.1 dump]   bin bpm=96 period=0.6250 count=2
+[DSP.1 dump]   bin bpm=99 period=0.6061 count=2
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=2
+[DSP.1 dump] stable raw=152.00 sel=152.00
+[DSP.1 dump]   bin bpm=152 period=0.3947 count=8
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=3
+[DSP.1 dump]   bin bpm=96 period=0.6250 count=2
+[DSP.1 dump]   bin bpm=99 period=0.6061 count=2
+[DSP.1 dump]   bin bpm=161 period=0.3727 count=2
+[DSP.1 dump] stable raw=152.00 sel=152.00
+[DSP.1 dump]   bin bpm=152 period=0.3947 count=8
+[DSP.1 dump]   bin bpm=96 period=0.6250 count=3
+[DSP.1 dump]   bin bpm=99 period=0.6061 count=2
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=2
+[DSP.1 dump]   bin bpm=161 period=0.3727 count=2
+[DSP.1 dump] stable raw=152.00 sel=152.00
+[DSP.1 dump]   bin bpm=152 period=0.3947 count=9
+[DSP.1 dump]   bin bpm=96 period=0.6250 count=3
+[DSP.1 dump]   bin bpm=99 period=0.6061 count=2
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=2
+[DSP.1 dump]   bin bpm=112 period=0.5357 count=1
+[DSP.1 dump] stable raw=152.00 sel=152.00
+[DSP.1 dump]   bin bpm=152 period=0.3947 count=8
+[DSP.1 dump]   bin bpm=96 period=0.6250 count=3
+[DSP.1 dump]   bin bpm=99 period=0.6061 count=3
+[DSP.1 dump]   bin bpm=112 period=0.5357 count=1
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=1
+[DSP.1 dump] stable raw=152.00 sel=152.00
+[DSP.1 dump]   bin bpm=152 period=0.3947 count=9
+[DSP.1 dump]   bin bpm=96 period=0.6250 count=3
+[DSP.1 dump]   bin bpm=99 period=0.6061 count=3
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=1
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=1
+[DSP.1 dump] stable raw=152.00 sel=152.00
+[DSP.1 dump]   bin bpm=152 period=0.3947 count=8
+[DSP.1 dump]   bin bpm=96 period=0.6250 count=3
+[DSP.1 dump]   bin bpm=99 period=0.6061 count=3
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=2
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=1
+[DSP.1 dump] stable raw=152.00 sel=152.00
+[DSP.1 dump]   bin bpm=152 period=0.3947 count=7
+[DSP.1 dump]   bin bpm=99 period=0.6061 count=3
+[DSP.1 dump]   bin bpm=96 period=0.6250 count=2
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=2
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=2
+[DSP.1 dump] stable raw=152.00 sel=152.00
+[DSP.1 dump]   bin bpm=152 period=0.3947 count=7
+[DSP.1 dump]   bin bpm=99 period=0.6061 count=3
+[DSP.1 dump]   bin bpm=96 period=0.6250 count=2
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=2
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=2
+
+===== so_what file=/Users/braesidebandit/Documents/Projects/phosphene/PhospheneEngine/Tests/Fixtures/tempo/so_what.m4a rate=44100 duration=30.0s metadataBPM=136.0 =====
+[DSP.1 dump] stable early reason=recent<4(3) e=1.0 ws=-9.0 first=0.2 last=0.8 buf=3
+[DSP.1 dump] stable early reason=noPeak(in=2,out=2,recent=5)
+[DSP.1 dump] stable early reason=noPeak(in=4,out=3,recent=8)
+[DSP.1 dump] stable early reason=noPeak(in=4,out=7,recent=12)
+[DSP.1 dump] stable early reason=noPeak(in=7,out=7,recent=15)
+[DSP.1 dump] stable early reason=noPeak(in=8,out=8,recent=17)
+[DSP.1 dump] stable early reason=noPeak(in=8,out=13,recent=22)
+[DSP.1 dump] stable early reason=noPeak(in=9,out=14,recent=24)
+[DSP.1 dump] stable early reason=noPeak(in=10,out=15,recent=26)
+[DSP.1 dump] stable early reason=noPeak(in=11,out=17,recent=29)
+[DSP.1 dump] stable raw=144.00 sel=144.00
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=2
+[DSP.1 dump]   bin bpm=70 period=0.8571 count=1
+[DSP.1 dump]   bin bpm=81 period=0.7407 count=1
+[DSP.1 dump]   bin bpm=96 period=0.6250 count=1
+[DSP.1 dump]   bin bpm=99 period=0.6061 count=1
+[DSP.1 dump] stable raw=144.00 sel=144.00
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=2
+[DSP.1 dump]   bin bpm=199 period=0.3015 count=2
+[DSP.1 dump]   bin bpm=70 period=0.8571 count=1
+[DSP.1 dump]   bin bpm=81 period=0.7407 count=1
+[DSP.1 dump]   bin bpm=96 period=0.6250 count=1
+[DSP.1 dump] stable raw=144.00 sel=144.00
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=2
+[DSP.1 dump]   bin bpm=199 period=0.3015 count=2
+[DSP.1 dump]   bin bpm=70 period=0.8571 count=1
+[DSP.1 dump]   bin bpm=81 period=0.7407 count=1
+[DSP.1 dump]   bin bpm=96 period=0.6250 count=1
+[DSP.1 dump] stable raw=144.00 sel=144.00
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=2
+[DSP.1 dump]   bin bpm=199 period=0.3015 count=2
+[DSP.1 dump]   bin bpm=70 period=0.8571 count=1
+[DSP.1 dump]   bin bpm=81 period=0.7407 count=1
+[DSP.1 dump]   bin bpm=99 period=0.6061 count=1
+[DSP.1 dump] stable raw=144.00 sel=144.00
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=2
+[DSP.1 dump]   bin bpm=70 period=0.8571 count=1
+[DSP.1 dump]   bin bpm=96 period=0.6250 count=1
+[DSP.1 dump]   bin bpm=99 period=0.6061 count=1
+[DSP.1 dump]   bin bpm=108 period=0.5556 count=1
+[DSP.1 dump] stable raw=144.00 sel=144.00
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=2
+[DSP.1 dump]   bin bpm=70 period=0.8571 count=1
+[DSP.1 dump]   bin bpm=78 period=0.7692 count=1
+[DSP.1 dump]   bin bpm=96 period=0.6250 count=1
+[DSP.1 dump]   bin bpm=99 period=0.6061 count=1
+[DSP.1 dump] stable raw=108.00 sel=108.00
+[DSP.1 dump]   bin bpm=108 period=0.5556 count=2
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=2
+[DSP.1 dump]   bin bpm=70 period=0.8571 count=1
+[DSP.1 dump]   bin bpm=78 period=0.7692 count=1
+[DSP.1 dump]   bin bpm=96 period=0.6250 count=1
+[DSP.1 dump] stable raw=108.00 sel=108.00
+[DSP.1 dump]   bin bpm=108 period=0.5556 count=2
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=2
+[DSP.1 dump]   bin bpm=78 period=0.7692 count=1
+[DSP.1 dump]   bin bpm=96 period=0.6250 count=1
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=1
+[DSP.1 dump] stable raw=144.00 sel=144.00
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=2
+[DSP.1 dump]   bin bpm=172 period=0.3488 count=2
+[DSP.1 dump]   bin bpm=78 period=0.7692 count=1
+[DSP.1 dump]   bin bpm=96 period=0.6250 count=1
+[DSP.1 dump]   bin bpm=108 period=0.5556 count=1
+[DSP.1 dump] stable raw=199.00 sel=99.50
+[DSP.1 dump]   bin bpm=199 period=0.3015 count=3
+[DSP.1 dump]   bin bpm=172 period=0.3488 count=2
+[DSP.1 dump]   bin bpm=78 period=0.7692 count=1
+[DSP.1 dump]   bin bpm=96 period=0.6250 count=1
+[DSP.1 dump]   bin bpm=108 period=0.5556 count=1
+[DSP.1 dump] stable raw=199.00 sel=99.50
+[DSP.1 dump]   bin bpm=199 period=0.3015 count=4
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=2
+[DSP.1 dump]   bin bpm=172 period=0.3488 count=2
+[DSP.1 dump]   bin bpm=78 period=0.7692 count=1
+[DSP.1 dump]   bin bpm=96 period=0.6250 count=1
+[DSP.1 dump] stable raw=199.00 sel=99.50
+[DSP.1 dump]   bin bpm=199 period=0.3015 count=3
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=2
+[DSP.1 dump]   bin bpm=172 period=0.3488 count=2
+[DSP.1 dump]   bin bpm=78 period=0.7692 count=1
+[DSP.1 dump]   bin bpm=96 period=0.6250 count=1
+[DSP.1 dump] stable raw=199.00 sel=99.50
+[DSP.1 dump]   bin bpm=199 period=0.3015 count=4
+[DSP.1 dump]   bin bpm=96 period=0.6250 count=2
+[DSP.1 dump]   bin bpm=172 period=0.3488 count=2
+[DSP.1 dump]   bin bpm=78 period=0.7692 count=1
+[DSP.1 dump]   bin bpm=108 period=0.5556 count=1
+[DSP.1 dump] stable raw=199.00 sel=99.50
+[DSP.1 dump]   bin bpm=199 period=0.3015 count=4
+[DSP.1 dump]   bin bpm=172 period=0.3488 count=2
+[DSP.1 dump]   bin bpm=78 period=0.7692 count=1
+[DSP.1 dump]   bin bpm=96 period=0.6250 count=1
+[DSP.1 dump]   bin bpm=108 period=0.5556 count=1
+[DSP.1 dump] stable raw=199.00 sel=99.50
+[DSP.1 dump]   bin bpm=199 period=0.3015 count=4
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=2
+[DSP.1 dump]   bin bpm=172 period=0.3488 count=2
+[DSP.1 dump]   bin bpm=96 period=0.6250 count=1
+[DSP.1 dump]   bin bpm=108 period=0.5556 count=1
+[DSP.1 dump] stable raw=199.00 sel=99.50
+[DSP.1 dump]   bin bpm=199 period=0.3015 count=5
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=2
+[DSP.1 dump]   bin bpm=172 period=0.3488 count=2
+[DSP.1 dump]   bin bpm=96 period=0.6250 count=1
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=1
+[DSP.1 dump] stable raw=199.00 sel=99.50
+[DSP.1 dump]   bin bpm=199 period=0.3015 count=5
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=2
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=2
+[DSP.1 dump]   bin bpm=172 period=0.3488 count=2
+[DSP.1 dump]   bin bpm=96 period=0.6250 count=1
+[DSP.1 dump] stable raw=199.00 sel=99.50
+[DSP.1 dump]   bin bpm=199 period=0.3015 count=6
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=2
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=2
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=2
+[DSP.1 dump]   bin bpm=96 period=0.6250 count=1
+[DSP.1 dump] stable raw=199.00 sel=99.50
+[DSP.1 dump]   bin bpm=199 period=0.3015 count=4
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=2
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=2
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=2
+[DSP.1 dump]   bin bpm=96 period=0.6250 count=1
+
+===== there_there file=/Users/braesidebandit/Documents/Projects/phosphene/PhospheneEngine/Tests/Fixtures/tempo/there_there.m4a rate=44100 duration=29.9s metadataBPM=none =====
+[DSP.1 dump] stable early reason=recent<4(2) e=1.0 ws=-9.0 first=0.2 last=0.5 buf=2
+[DSP.1 dump] stable early reason=recent<4(3) e=2.0 ws=-8.0 first=0.2 last=1.8 buf=3
+[DSP.1 dump] stable early reason=noPeak(in=2,out=4,recent=7)
+[DSP.1 dump] stable early reason=noPeak(in=3,out=6,recent=10)
+[DSP.1 dump] stable raw=199.00 sel=99.50
+[DSP.1 dump]   bin bpm=199 period=0.3015 count=2
+[DSP.1 dump]   bin bpm=81 period=0.7407 count=1
+[DSP.1 dump]   bin bpm=185 period=0.3243 count=1
+[DSP.1 dump] stable raw=199.00 sel=99.50
+[DSP.1 dump]   bin bpm=199 period=0.3015 count=2
+[DSP.1 dump]   bin bpm=63 period=0.9524 count=1
+[DSP.1 dump]   bin bpm=81 period=0.7407 count=1
+[DSP.1 dump]   bin bpm=185 period=0.3243 count=1
+[DSP.1 dump] stable raw=199.00 sel=99.50
+[DSP.1 dump]   bin bpm=199 period=0.3015 count=2
+[DSP.1 dump]   bin bpm=63 period=0.9524 count=1
+[DSP.1 dump]   bin bpm=81 period=0.7407 count=1
+[DSP.1 dump]   bin bpm=185 period=0.3243 count=1
+[DSP.1 dump] stable raw=199.00 sel=99.50
+[DSP.1 dump]   bin bpm=199 period=0.3015 count=2
+[DSP.1 dump]   bin bpm=63 period=0.9524 count=1
+[DSP.1 dump]   bin bpm=74 period=0.8108 count=1
+[DSP.1 dump]   bin bpm=81 period=0.7407 count=1
+[DSP.1 dump]   bin bpm=185 period=0.3243 count=1
+[DSP.1 dump] stable raw=199.00 sel=99.50
+[DSP.1 dump]   bin bpm=199 period=0.3015 count=2
+[DSP.1 dump]   bin bpm=63 period=0.9524 count=1
+[DSP.1 dump]   bin bpm=74 period=0.8108 count=1
+[DSP.1 dump]   bin bpm=81 period=0.7407 count=1
+[DSP.1 dump]   bin bpm=108 period=0.5556 count=1
+[DSP.1 dump] stable raw=199.00 sel=99.50
+[DSP.1 dump]   bin bpm=199 period=0.3015 count=3
+[DSP.1 dump]   bin bpm=63 period=0.9524 count=1
+[DSP.1 dump]   bin bpm=74 period=0.8108 count=1
+[DSP.1 dump]   bin bpm=81 period=0.7407 count=1
+[DSP.1 dump]   bin bpm=108 period=0.5556 count=1
+[DSP.1 dump] stable raw=199.00 sel=99.50
+[DSP.1 dump]   bin bpm=199 period=0.3015 count=3
+[DSP.1 dump]   bin bpm=63 period=0.9524 count=1
+[DSP.1 dump]   bin bpm=74 period=0.8108 count=1
+[DSP.1 dump]   bin bpm=81 period=0.7407 count=1
+[DSP.1 dump]   bin bpm=86 period=0.6977 count=1
+[DSP.1 dump] stable raw=199.00 sel=99.50
+[DSP.1 dump]   bin bpm=199 period=0.3015 count=2
+[DSP.1 dump]   bin bpm=63 period=0.9524 count=1
+[DSP.1 dump]   bin bpm=74 period=0.8108 count=1
+[DSP.1 dump]   bin bpm=81 period=0.7407 count=1
+[DSP.1 dump]   bin bpm=86 period=0.6977 count=1
+[DSP.1 dump] stable raw=199.00 sel=99.50
+[DSP.1 dump]   bin bpm=199 period=0.3015 count=2
+[DSP.1 dump]   bin bpm=62 period=0.9677 count=1
+[DSP.1 dump]   bin bpm=63 period=0.9524 count=1
+[DSP.1 dump]   bin bpm=74 period=0.8108 count=1
+[DSP.1 dump]   bin bpm=86 period=0.6977 count=1
+[DSP.1 dump] stable raw=199.00 sel=99.50
+[DSP.1 dump]   bin bpm=199 period=0.3015 count=2
+[DSP.1 dump]   bin bpm=62 period=0.9677 count=1
+[DSP.1 dump]   bin bpm=63 period=0.9524 count=1
+[DSP.1 dump]   bin bpm=74 period=0.8108 count=1
+[DSP.1 dump]   bin bpm=86 period=0.6977 count=1
+[DSP.1 dump] stable raw=199.00 sel=99.50
+[DSP.1 dump]   bin bpm=199 period=0.3015 count=2
+[DSP.1 dump]   bin bpm=62 period=0.9677 count=1
+[DSP.1 dump]   bin bpm=74 period=0.8108 count=1
+[DSP.1 dump]   bin bpm=86 period=0.6977 count=1
+[DSP.1 dump]   bin bpm=108 period=0.5556 count=1
+[DSP.1 dump] stable raw=123.00 sel=123.00
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=2
+[DSP.1 dump]   bin bpm=199 period=0.3015 count=2
+[DSP.1 dump]   bin bpm=62 period=0.9677 count=1
+[DSP.1 dump]   bin bpm=74 period=0.8108 count=1
+[DSP.1 dump]   bin bpm=86 period=0.6977 count=1
+[DSP.1 dump] stable raw=123.00 sel=123.00
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=2
+[DSP.1 dump]   bin bpm=199 period=0.3015 count=2
+[DSP.1 dump]   bin bpm=62 period=0.9677 count=1
+[DSP.1 dump]   bin bpm=83 period=0.7229 count=1
+[DSP.1 dump]   bin bpm=86 period=0.6977 count=1
+[DSP.1 dump] stable raw=123.00 sel=123.00
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=2
+[DSP.1 dump]   bin bpm=199 period=0.3015 count=2
+[DSP.1 dump]   bin bpm=62 period=0.9677 count=1
+[DSP.1 dump]   bin bpm=83 period=0.7229 count=1
+[DSP.1 dump]   bin bpm=86 period=0.6977 count=1
+[DSP.1 dump] stable raw=86.00 sel=86.00
+[DSP.1 dump]   bin bpm=86 period=0.6977 count=2
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=2
+[DSP.1 dump]   bin bpm=62 period=0.9677 count=1
+[DSP.1 dump]   bin bpm=83 period=0.7229 count=1
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=1
+[DSP.1 dump] stable raw=123.00 sel=123.00
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=2
+[DSP.1 dump]   bin bpm=62 period=0.9677 count=1
+[DSP.1 dump]   bin bpm=81 period=0.7407 count=1
+[DSP.1 dump]   bin bpm=83 period=0.7229 count=1
+[DSP.1 dump]   bin bpm=86 period=0.6977 count=1
+[DSP.1 dump] stable early reason=noPeak(in=10,out=14,recent=25)
+[DSP.1 dump] stable early reason=noPeak(in=9,out=13,recent=23)
+[DSP.1 dump] stable raw=161.00 sel=80.50
+[DSP.1 dump]   bin bpm=161 period=0.3727 count=2
+[DSP.1 dump]   bin bpm=76 period=0.7895 count=1
+[DSP.1 dump]   bin bpm=81 period=0.7407 count=1
+[DSP.1 dump]   bin bpm=83 period=0.7229 count=1
+[DSP.1 dump]   bin bpm=86 period=0.6977 count=1
+[DSP.1 dump] stable raw=112.00 sel=112.00
+[DSP.1 dump]   bin bpm=112 period=0.5357 count=2
+[DSP.1 dump]   bin bpm=161 period=0.3727 count=2
+[DSP.1 dump]   bin bpm=76 period=0.7895 count=1
+[DSP.1 dump]   bin bpm=81 period=0.7407 count=1
+[DSP.1 dump]   bin bpm=83 period=0.7229 count=1
+[DSP.1 dump] stable raw=112.00 sel=112.00
+[DSP.1 dump]   bin bpm=112 period=0.5357 count=2
+[DSP.1 dump]   bin bpm=76 period=0.7895 count=1
+[DSP.1 dump]   bin bpm=81 period=0.7407 count=1
+[DSP.1 dump]   bin bpm=83 period=0.7229 count=1
+[DSP.1 dump]   bin bpm=86 period=0.6977 count=1
+[DSP.1 dump] stable raw=112.00 sel=112.00
+[DSP.1 dump]   bin bpm=112 period=0.5357 count=2
+[DSP.1 dump]   bin bpm=161 period=0.3727 count=2
+[DSP.1 dump]   bin bpm=76 period=0.7895 count=1
+[DSP.1 dump]   bin bpm=81 period=0.7407 count=1
+[DSP.1 dump]   bin bpm=86 period=0.6977 count=1
+[DSP.1 dump] stable raw=99.00 sel=99.00
+[DSP.1 dump]   bin bpm=99 period=0.6061 count=2
+[DSP.1 dump]   bin bpm=112 period=0.5357 count=2
+[DSP.1 dump]   bin bpm=161 period=0.3727 count=2
+[DSP.1 dump]   bin bpm=76 period=0.7895 count=1
+[DSP.1 dump]   bin bpm=81 period=0.7407 count=1
+[DSP.1 dump] stable raw=161.00 sel=80.50
+[DSP.1 dump]   bin bpm=161 period=0.3727 count=3
+[DSP.1 dump]   bin bpm=99 period=0.6061 count=2
+[DSP.1 dump]   bin bpm=112 period=0.5357 count=2
+[DSP.1 dump]   bin bpm=76 period=0.7895 count=1
+[DSP.1 dump]   bin bpm=81 period=0.7407 count=1
+[DSP.1 dump] stable raw=99.00 sel=99.00
+[DSP.1 dump]   bin bpm=99 period=0.6061 count=3
+[DSP.1 dump]   bin bpm=161 period=0.3727 count=3
+[DSP.1 dump]   bin bpm=112 period=0.5357 count=2
+[DSP.1 dump]   bin bpm=76 period=0.7895 count=1
+[DSP.1 dump]   bin bpm=103 period=0.5825 count=1
+
