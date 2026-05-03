@@ -192,7 +192,16 @@ public struct DefaultPresetScorer: PresetScoring {
         preset: PresetDescriptor,
         context: PresetScoringContext
     ) -> (String, String)? {
-        // V.6: certification gate — checked first so uncertified presets never enter scoring.
+        // V.7.6.D: diagnostic gate — categorical exclusion, no settings toggle.
+        // Diagnostic presets are operational tools (e.g. Spectral Cartograph), never
+        // aesthetic content. They render only via manual switch. Per D-074.
+        if preset.isDiagnostic {
+            return (
+                "preset '\(preset.id)' is a diagnostic — manual-switch only",
+                "diagnostic"
+            )
+        }
+        // V.6: certification gate — checked after diagnostic so uncertified presets never enter scoring.
         if !context.includeUncertifiedPresets && !preset.certified {
             return (
                 "preset '\(preset.id)' is uncertified (certified: false in JSON sidecar)",
