@@ -1765,6 +1765,175 @@ Existing tests in `BeatDetectorRegressionTests.swift` must continue to pass with
 
 **Estimated sessions:** 2 (logging+baseline → voting+tests → docs).
 
+**Delivered (2026-05-03 — scope shifted from voting):** Diagnostic harness + analyzer revealed the failure was not classical half-tempo octave error. Two real bugs:
+1. `recordOnsetTimestamps` consumed `bandFlux[0]+bandFlux[1]` (sub_bass + low_bass fused) — produced frame-aliased IOIs because each band fired on slightly different frames per kick.
+2. Histogram-mode BPM picking has period-quantization bias toward faster BPMs (BPM bucket widths grow with BPM in period space), so the histogram mode systematically picks 144 over 136.
+
+Shipped:
+- `recordOnsetTimestamps` now sources from `result.onsets[0]` (sub_bass per-band onset events from `detectOnsets`, which has 400ms cooldown). Never fuses bands.
+- `applyOctaveCorrection` replaced with `computeRobustBPM`: trimmed mean of recent IOIs (within [0.5×, 2×] of median).
+
+Reference-track results: love_rehab 117/152→**122–126** (true 125), so_what 152→**135–138** (true 136). For there_there the histogram still reads kick-pattern (140) not underlying meter (~86) — that's a syncopation limitation outside DSP.1's scope and motivates DSP.2. See commits `9f4c8e1e..bbad760f` and `docs/diagnostics/DSP.1-baseline*.txt`. D-073.
+
+---
+
+### Increment DSP.2 — BeatNet (CRNN + particle filter) via MPSGraph
+
+**Goal:** Replace the histogram/IOI custom Tier 2 with BeatNet running on MPSGraph for online beat and downbeat tracking. Provides per-frame beat activations at the research-stated ~80% F1 ceiling for causal models, fixing the cases DSP.1 cannot reach (syncopated rock, swing, hip-hop with offbeat kicks). Same MPSGraph + Accelerate idiom used by StemSeparator — no CoreML, no third-party C libs, no virtual audio drivers.
+
+**Why now:** DSP.1's diagnosis proved Phosphene's current Tier 2 is at the classical-pipeline floor (~70% F1, "good enough for visualizer pulse" per the May 2026 streaming-audio research deliverable). For "as flawless as possible" beat sync (Matt's stated bar), this increment is the right answer to the no-CoreML constraint. BeatNet (Heydari et al., ISMIR 2021) is MIT-licensed and the most cited online beat tracker outside madmom (which is offline-only). Its CRNN + particle-filter shape matches Phosphene's existing ML pattern: `StemSeparator` already runs Open-Unmix HQ — a CRNN with bidirectional 3-layer LSTM and 135.9 MB of weights — via MPSGraph at 142ms warm predict.
+
+**Architecture mirrors `StemSeparator`:**
+
+```
+PhospheneEngine/Sources/ML/
+  BeatTracker.swift              → top-level wrapper, BeatTracking protocol (mirrors StemSeparator.swift)
+  BeatTrackerModel.swift         → MPSGraph engine, pre-allocated UMA I/O (mirrors StemModel.swift)
+  BeatTrackerModel+Graph.swift   → MPSGraph build: conv → LSTM → dense → sigmoid (mirrors StemModel+Graph)
+  BeatTrackerModel+Weights.swift → manifest + .bin loading + BN fusion at init (mirrors StemModel+Weights)
+  Weights/beatnet/               → vendored .bin weights via Git LFS (mirrors Weights/openunmix-hq/)
+
+PhospheneEngine/Sources/DSP/
+  MelSpectrogram.swift           → vDSP resample (48k→22050) + STFT + mel filterbank (precomputed init)
+  ParticleFilter.swift           → pure Swift, ~500–1000 particles over (beat phase, period) state space
+```
+
+**Implementation order:**
+
+1. **Close DSP.1 docs** — D-073 entry, CLAUDE.md Tempo section + Failed Approach #17 update. Required before this increment opens.
+
+2. **Weight acquisition + conversion** — pull pre-trained PyTorch state_dict from BeatNet's official repo (Heydari, github.com/mjhydri/BeatNet, MIT). Write a one-shot Python converter script (`Scripts/convert_beatnet_weights.py`) that emits Phosphene's `.bin` weight format — same format as StemSeparator. Vendor under `ML/Weights/beatnet/` with Git LFS pointers. Add CREDITS.md attribution.
+
+3. **Mel-spectrogram preprocessing** — `MelSpectrogram.swift`. Match BeatNet's reference impl bit-for-bit within FP tolerance: 22050 Hz internal rate (vDSP_resamplef from 48k native), 2048-pt STFT, hop 220 samples (10ms), 81 mel bins. Pre-allocate UMA buffer for the rolling spectrogram; zero-alloc per frame. Test: feed a 1 kHz sine and compare mel-bin output against librosa reference within 0.5 dB.
+
+4. **MPSGraph build** — `BeatTrackerModel+Graph.swift`. Architecture (per BeatNet paper §III): two 1D conv layers (kernels 3, 64 filters) → bidirectional GRU 1-layer (hidden 25) → dense head 3-output (beat / downbeat / no-beat) → softmax. BN fused at init. Forward pass takes a single mel-frame plus carried hidden state; returns 3-vector. Mirror `StemModel+Graph.swift` for graph-construction style.
+
+5. **Inference loop** — `BeatTracker.swift`. Per ~10ms mel-frame: write to UMA → forward graph → read 3-vector → push to activation ring buffer (10s window, 1000 frames). Carry GRU hidden state across frames (single Tensor, ~25 floats). Hop to `mlQueue` (utility QoS) for the forward pass; result returned via UMA read. Should be <2ms per frame on M1.
+
+6. **Particle filter (Stage 3)** — `ParticleFilter.swift`. ~500 particles, each carrying (beat phase ∈ [0, period), period ∈ [0.3s, 1.5s], beat-or-downbeat-or-none state). At each frame: advance phase by deltaTime; resample particles weighted by activation likelihood; periodically resample with low-variance sampling. Outputs: most-likely beat-period (BPM), beat-phase01, downbeatProbability. Reference: BeatNet paper §IV, ~250 lines of Python.
+
+7. **Output integration** — extend `FeatureVector` with `downbeatPhase01` (or reuse beatPhase01 — decide during impl). Replace `BeatPredictor` outputs with BeatNet's particle-filter outputs when BeatTracker is healthy; fall through to BeatPredictor when not. Existing GPU contract (buffer(2), 192 bytes) unchanged.
+
+8. **Fallback path** — `BEATTRACKER_USE_BEATNET=0` env var and `Settings.useBeatNet` toggle disable BeatNet at runtime; system falls through to DSP.1's histogram/IOI tempo + BeatPredictor IIR phase. Verify by running the existing BeatDetector unit tests with BeatNet disabled — all 9 tests should pass unchanged.
+
+9. **A/B harness extension** — extend `TempoDumpRunner` with `--engine beatnet|legacy|both` flag. In `both` mode, dump tempo lines from both pipelines per second, prefixed `legacy:` and `beatnet:`. Record the same three reference fixtures with `--engine both`; commit results to `docs/diagnostics/DSP.2-comparison.txt`.
+
+**Files to touch:**
+
+- `PhospheneEngine/Sources/ML/BeatTracker.swift` — new top-level wrapper.
+- `PhospheneEngine/Sources/ML/BeatTrackerModel.swift` — new MPSGraph engine.
+- `PhospheneEngine/Sources/ML/BeatTrackerModel+Graph.swift` — new graph construction.
+- `PhospheneEngine/Sources/ML/BeatTrackerModel+Weights.swift` — new weight loader.
+- `PhospheneEngine/Sources/ML/Weights/beatnet/*.bin` — vendored weights (Git LFS).
+- `PhospheneEngine/Sources/DSP/MelSpectrogram.swift` — new preprocessor.
+- `PhospheneEngine/Sources/DSP/ParticleFilter.swift` — new filter.
+- `PhospheneEngine/Sources/Audio/MIRPipeline.swift` — wire BeatTracker output into `FeatureVector`; gate on settings flag.
+- `PhospheneEngine/Sources/Shared/AudioFeatures.swift` — add `downbeatProbability` / `isDownbeat` field if needed.
+- `PhospheneEngine/Sources/TempoDumpRunner/main.swift` — extend with `--engine` flag.
+- `PhospheneEngine/Tests/PhospheneEngineTests/ML/BeatTrackerModelTests.swift` — new.
+- `PhospheneEngine/Tests/PhospheneEngineTests/DSP/MelSpectrogramTests.swift` — new.
+- `PhospheneEngine/Tests/PhospheneEngineTests/DSP/ParticleFilterTests.swift` — new.
+- `PhospheneEngine/Tests/PhospheneEngineTests/Integration/BeatTrackerIntegrationTests.swift` — new.
+- `PhospheneEngine/Tests/PhospheneEngineTests/Performance/BeatTrackerPerformanceTests.swift` — new.
+- `Scripts/convert_beatnet_weights.py` — one-shot converter.
+- `Scripts/dump_tempo_baselines.sh` — extend to run with `--engine both` for the comparison report.
+- `docs/CLAUDE.md` — Module Map (`ML/BeatTracker*`, `DSP/MelSpectrogram`, `DSP/ParticleFilter`), ML Inference section update, Failed Approaches updated if any new ones found.
+- `docs/DECISIONS.md` — D-074 entry: "BeatNet via MPSGraph for online beat tracking; rationale for rejecting CoreML, aubio, and continued custom DSP."
+- `docs/CREDITS.md` (create if missing) — BeatNet attribution per MIT license.
+
+**Tests:**
+
+1. **Unit — `MelSpectrogramTests`:**
+   - 1 kHz sine at 48 kHz → resample to 22050 Hz → mel-spec → assert peak energy in mel bin matching 1 kHz.
+   - Reference comparison: feed the love_rehab fixture, write mel output to JSON, compare against a `librosa.feature.melspectrogram` reference dump within 0.5 dB.
+   - Zero-input → zero output.
+
+2. **Unit — `BeatTrackerModelTests`:**
+   - Weight load → no crash; expected number of parameters match manifest.
+   - Forward pass on zero input → output near silence-class probability.
+   - Forward pass on synthetic 120 BPM kick → activation peaks every ~500 ms (within ±50 ms tolerance).
+   - Hidden-state continuity: feeding two adjacent mel frames and feeding a single concatenated frame produce equivalent outputs.
+
+3. **Unit — `ParticleFilterTests`:**
+   - Synthetic 120 BPM activation pulses → BPM converges to 120 ± 2 within 2 s.
+   - Synthetic 86 BPM activation pulses → converges to 86 ± 2 within 2 s.
+   - Synthetic ambiguous (peaks at every 250 ms but every 4th peak louder) → downbeat probability rises on the louder peaks.
+   - Tempo change mid-stream (120 → 140 BPM at t = 5 s) → re-locks to 140 within 3 s.
+
+4. **Integration — `BeatTrackerIntegrationTests`:**
+   - Reference fixtures (love_rehab, so_what, there_there) — assert BPM matches metadata ±2 BPM.
+   - **there_there must read 84–92 BPM** (the meter, not the kick rate of 140) — this is the case DSP.1 can't reach and is the load-bearing assertion for the increment.
+
+5. **Performance — `BeatTrackerPerformanceTests`:**
+   - Per-mel-frame inference budget: < 2 ms on M1, < 1 ms on M3 (beat tracking runs at ~100 Hz, ~10× more frequent than StemSeparator's 5 s cadence).
+   - Particle filter: < 0.5 ms per frame on M1.
+   - Mel-spectrogram preprocessing: < 0.5 ms per frame on M1.
+   - Combined budget: < 3 ms per frame, well under the 16.6 ms render budget.
+
+6. **A/B regression — `docs/diagnostics/DSP.2-comparison.txt`:**
+   - Three fixtures × two engines × 30 s — committed artifact showing per-second BPM from both pipelines side by side. The "after" evidence for the increment.
+
+7. **Existing tests:**
+   - All 9 BeatDetector unit tests pass unchanged with `BEATTRACKER_USE_BEATNET=0` and `=1`.
+   - `BeatPredictorTests` pass unchanged.
+   - `MIRPipelineUnitTests` pass unchanged.
+
+**Performance budget:**
+
+- Per-frame inference: < 2 ms on M1 (≤ 12 % of frame budget), < 1 ms on M3.
+- Memory: < 50 MB for weights + activations buffer + particles. Stays well below StemSeparator's 135.9 MB.
+- Init cost: < 200 ms for graph build + weight load (one-time, during preparation).
+- Drop-frame behavior: if inference exceeds budget on a given frame, fall through to legacy path for that frame and resume on the next. Same pattern as `MLDispatchScheduler` (D-059).
+
+**Done when:**
+
+- [ ] DSP.1 closure complete (D-073, CLAUDE.md, DECISIONS.md updates landed).
+- [ ] Weights vendored under `ML/Weights/beatnet/` via Git LFS pointers.
+- [ ] `Scripts/convert_beatnet_weights.py` checked in and reproducible.
+- [ ] `MelSpectrogramTests` pass.
+- [ ] `BeatTrackerModelTests` pass.
+- [ ] `ParticleFilterTests` pass.
+- [ ] `BeatTrackerIntegrationTests` pass — including the load-bearing there_there 84–92 BPM assertion.
+- [ ] `BeatTrackerPerformanceTests` confirm per-frame budget < 2 ms on M1.
+- [ ] `docs/diagnostics/DSP.2-comparison.txt` committed; shows BeatNet matching or exceeding DSP.1 on so_what / love_rehab and crossing the threshold on there_there.
+- [ ] All existing BeatDetector / BeatPredictor / MIRPipeline tests pass with both engine modes.
+- [ ] Fallback verified: app boots and runs end-to-end with `BEATTRACKER_USE_BEATNET=0`.
+- [ ] `swift test --package-path PhospheneEngine` passes (pre-existing flakes in `MetadataPreFetcher` / `MemoryReporter` acceptable).
+- [ ] `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build` passes.
+- [ ] No `import CoreML` anywhere in the engine. `grep -rn 'import CoreML' PhospheneEngine/Sources` returns empty.
+- [ ] CLAUDE.md Module Map and ML Inference section updated; CREDITS.md attribution present.
+- [ ] DECISIONS.md D-074 entry: "BeatNet via MPSGraph for online beat tracking; rejection of CoreML, aubio, and continued custom DSP."
+
+**Verify:** `swift test --filter BeatTrackerModel && swift test --filter MelSpectrogram && swift test --filter ParticleFilter && swift test --filter BeatTrackerIntegration && swift test --filter BeatTrackerPerformance && Scripts/dump_tempo_baselines.sh after`.
+
+**Out of scope (do not re-litigate):**
+
+- aubio (native C dependency; rejected — staying within Swift / MPSGraph idiom).
+- BEAST (research code, not packaged for production; revisit if BeatNet underperforms).
+- madmom (offline only; non-causal BLSTM cannot run online).
+- CoreML in any form (project hard constraint, see Failed Approach #20 and CLAUDE.md "ML Inference").
+- Replacing `BeatPredictor`'s IIR predictor entirely — keep as fallback when BeatNet is disabled or unhealthy.
+- Per-frame downbeat *visual presets* — separate work; this increment exposes the signal only.
+- Multi-track-aware downbeat persistence — single-track per session for now; revisit when Orchestrator wants bar-aligned transitions.
+
+**License sourcing:**
+
+- BeatNet is MIT-licensed; pre-trained weights ship with the official repo. Vendor with attribution in `docs/CREDITS.md`.
+- The architecture itself is published in Heydari et al., ISMIR 2021 — implementing it from the paper is unencumbered.
+
+**Risks:**
+
+- Weight quantization: BeatNet is trained in FP32; MPSGraph supports FP32 natively. No quantization needed.
+- Resampler quality: vDSP_resamplef from 48 k → 22050 Hz must not introduce artifacts that degrade activations. Mitigation: validate against librosa-reference mel-specs in the unit test (step 3).
+- Particle-filter stability: known to be the trickiest part. Mitigation: closely follow Heydari's reference impl; test against synthetic constant-BPM and tempo-change scenarios before integrating with real audio.
+- Performance: per-frame inference at 100 Hz is more aggressive than StemSeparator's 5 s cadence. Mitigation: enforce < 2 ms per frame in `BeatTrackerPerformanceTests` from the start; if violated, drop to half-rate inference (50 Hz) before considering more invasive changes.
+
+**Reference principle (do not violate):**
+
+Continuous energy is the primary visual driver; beat onset pulses are accents only (D-004). BeatNet's outputs feed accent-layer fields (`beatPhase01`, `isDownbeat`) only — they do not displace the continuous-energy fields driving primary visual motion.
+
+**Estimated sessions:** 5–7 (weights + mel-spec → 1, MPSGraph build + inference → 2, particle filter → 2, integration + tests + docs → 2).
+
 ---
 
 These milestones map to product-level outcomes, not implementation phases.
