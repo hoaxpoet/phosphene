@@ -71,6 +71,7 @@ extension BeatDetector {
                 lastTs,
                 onsetTimestampCount
             )
+            dumpEarly(label: "stable", reason: tempoDebug)
             return
         }
 
@@ -81,6 +82,7 @@ extension BeatDetector {
             tempoDebug = "noPeak(in=\(histResult.inRange),"
                 + "out=\(histResult.outOfRange),"
                 + "recent=\(recentTimestamps.count))"
+            dumpEarly(label: "stable", reason: tempoDebug)
             return
         }
 
