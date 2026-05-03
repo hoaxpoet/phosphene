@@ -93,6 +93,8 @@ extension BeatDetector {
 
         instantBPM = correctedBPM
 
+        dumpHistogram(label: "stable", hist: histResult.histogram, raw: histResult.bestBPM, sel: correctedBPM)
+
         // Diagnostic log.
         let ioiValues = (1..<recentTimestamps.count).map {
             recentTimestamps[$0] - recentTimestamps[$0 - 1]
