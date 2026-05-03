@@ -1250,29 +1250,33 @@ Per-preset state setup handles Arachne (allocates `ArachneState`, warms 30 ticks
 
 ---
 
-### Increment V.7.7 — Arachne v8: background pass + background webs
+### Increment V.7.7 — Arachne v8: WORLD pillar + 1–2 background dewy webs
 
-**Scope:** Per `ARACHNE_V8_DESIGN.md §6 step 4`, §4.1 steps 1–2, and §4.3 (color recipe). Atmospheric texture pass implementing the §4.3 mood-driven palette: `mix(botCol, topCol, uv.y)` gradient + defocused `worley_fbm` foliage tinted at `botCol × 0.3` + optional warm beam (`beamCol`) + radial vignette, half-res. One or two pre-populated background dewy webs with refractive drops sampling the bg texture (Snell's law refraction, fresnel rim at 0.85 brightness, sharp specular pinpoint, dark edge ring). Background webs vibrate per §4.2. Foreground unchanged for now (still V.7.5 build code — will refactor in V.7.8). Includes the smoothedValence/smoothedArousal state with 5s low-pass filter.
+**Scope:** Per `ARACHNE_V8_DESIGN.md §4` (full WORLD pillar) + §5.12 (background webs) + §8.1 step 1–2 (render-pass layout). The 2026-05-03 spec rewrite expanded V.7.7 from a thin atmosphere pass into the full layered WORLD — implementing §4.2's six depth layers into a half-res `arachneWorldTex`: sky band (4.2.1) + distant tree silhouettes (4.2.2) + mid-distance trees with bark detail (4.2.3) + near-frame anchor branches (4.2.4) + forest floor (4.2.5) + volumetric atmosphere (4.2.6 fog + light shafts + dust motes). Mood-driven palette per §4.3 (preserved verbatim from V.7.6.C-locked recipe — `topCol`/`botCol`/`beamCol` + per-layer color application table). Includes 5s low-pass `smoothedValence`/`smoothedArousal` state per §4.3. Then 1–2 pre-populated background dewy webs (§5.12) with refractive drops sampling `arachneWorldTex` per the §5.8 recipe (Snell's law, eta ≈ 0.752, fresnel rim, specular pinpoint, dark edge ring). Background webs vibrate per §8.2. Foreground unchanged (still V.7.5 build code — refactored in V.7.8).
 
 **Done when:**
-- Visual review via harness contact sheet: background webs read as photorealistic dewdrops side-by-side with refs `01`/`03`/`04`. Atmosphere reads against ref `05`.
+- WORLD reads as a forest with depth — six layers individually identifiable. Side-by-side via harness contact sheet against refs `06` / `15` / `16` / `17` / `18` / `07`.
+- Background webs read as photorealistic dewdrops side-by-side with refs `01` / `03` / `04` via the harness contact sheet.
+- Pure-black silence anchor preserved (§8.3) — `(satScale × valScale) < 0.05` clears WORLD pass to black.
 - All test suites pass; 0 SwiftLint violations.
 - p95 frame time at 1080p ≤ 6.0 ms Tier 2 / ≤ 7.5 ms Tier 1.
-- Matt runtime visual review of the background-only state passes.
+- Matt runtime visual review of the WORLD + background-webs state passes.
 
 **Verify:** Same as V.7.6.1 + Matt runtime review.
 
-**Estimated sessions:** 2.
+**Estimated sessions:** 3.
 
 ---
 
-### Increment V.7.8 — Arachne v8: foreground build refactor
+### Increment V.7.8 — Arachne v8: WEB pillar — foreground build refactor (corrected biology)
 
-**Scope:** Per `ARACHNE_V8_DESIGN.md §6 step 5` and §1.2. Replace V.7.5 pool-of-webs system with single-foreground-build state machine: hub → radials extending one at a time → chord-segment capture spiral winding outward → settle → completion signal at 60s ceiling. Drop accretion happens during build on the just-laid spiral chords. Pause on spider trigger; resume on spider fade. Foreground completion emits `presetCompletionEvent` (V.7.6.2 channel).
+**Scope:** Per `ARACHNE_V8_DESIGN.md §5.1–§5.11` (WEB pillar in full). Replace V.7.5 pool-of-webs system with single-foreground-build state machine implementing the corrected orb-weaver biology: frame polygon (§5.3, 4–7 anchors on near-frame branches from V.7.7) → hub (§5.4, dense knot, NOT concentric rings) → radials (§5.5, 12–17, alternating-pair order, ±20% jitter, drawn one at a time over ~1.5s each) → **capture spiral winding INWARD** (§5.6, chord-segment SDF from outer frame to hub — corrects the 2026-05-02 spec error which had the spiral winding outward) → settle (§5.2, completion signal at 60s ceiling). Sag per §5.7 (`kSag ∈ [0.10, 0.18]`, drop weight modifies sag). Drops per §5.8 with accretion over time on just-laid spiral chords (foreground starts sparse, grows dense; background webs stay saturated). Anchor terminations per §5.9 — small adhesive blobs where outer frame threads meet near-frame branches. Silk material per §5.10 (minor finishing — Marschner-lite removed). Pause on spider trigger; resume on spider fade. Foreground completion emits `presetCompletionEvent` via the V.7.6.2 channel.
 
 **Done when:**
-- Visual review via harness: foreground build is visibly progressing — radials extend one-at-a-time, spiral winds outward chord-by-chord, completion fires at ≤ 60s under typical music.
-- Spider trigger visibly pauses construction; spider fade visibly resumes.
+- Visual review via harness: foreground build is visibly progressing — radials extend one-at-a-time, spiral winds **inward** chord-by-chord, completion fires at ≤ 60s under typical music.
+- Drops are the visual hero — viewer's eye lands on drops first, threads second. Drops show refraction + fresnel rim + specular pinpoint + dark edge ring per §5.8.
+- Anchor structure reads as solid — frame polygon visibly meets near-frame branches at adhesive blobs. Side-by-side with ref `11`. Polygon is irregular, not circular.
+- Spider trigger visibly pauses construction; spider fade visibly resumes from paused accumulator (does not restart).
 - Orchestrator transitions on completion event when `minDuration` satisfied.
 - All test suites pass; 0 SwiftLint violations.
 - p95 frame time ≤ 6.0 ms Tier 2.
@@ -1280,25 +1284,26 @@ Per-preset state setup handles Arachne (allocates `ArachneState`, warms 30 ticks
 
 **Verify:** Same.
 
-**Estimated sessions:** 2.
+**Estimated sessions:** 3.
 
 ---
 
-### Increment V.7.9 — Arachne v8: vibration + final polish + cert
+### Increment V.7.9 — Arachne v8: SPIDER pillar deepening + whole-scene vibration + cert
 
-**Scope:** Per `ARACHNE_V8_DESIGN.md §6 step 6` and §4.2. Whole-scene tremor on bass — 12 Hz audio-rate vibration applied per-vertex to all webs (foreground + background), amplitude driven by `max(f.subBass_dev, f.bass_dev)` plus per-kick spike from `f.beatBass`. Per-strand random phase. Final tuning of drop counts, brightness, sag magnitude, free-zone size against references via the harness.
+**Scope:** Per `ARACHNE_V8_DESIGN.md §6` (full SPIDER pillar) + §8.2 (vibration model) + §12 (acceptance criteria). The 2026-05-03 spec rewrite expanded V.7.9 from "polish + vibration" into a full spider-anatomy refactor — V.7.5's "dark silhouette + warm rim" was the right *direction* but wrong *depth* for an easter egg that earns its rare appearance. Implements §6.1 anatomy (cephalothorax + abdomen + petiole, 8 articulated legs with outward-bending knee IK, eye cluster as 6–8 small dots in tight forward arrangement — refs `12` + `13`, NOT the jumping-spider 2x2 of ref `19`), §6.2 material (chitin base + thin-film iridescence at biological strength + Oren-Nayar-like hair fuzz + per-eye specular per ref `19` technique), §6.3 pose / gait / listening pose (resting at hub by default; listening pose — front legs raised ~30° — fires on sustained low-attack-ratio bass for ≥ 1.5s), §6.4 lighting (deep body shadow + warm-amber rim + eye sparkle), §6.5 trigger and behavior (per-segment cooldown replaces V.7.5's 300s session-level lock). Whole-scene tremor on bass per §8.2 — 12 Hz audio-rate vibration applied per-vertex to all webs + near-frame branches + spider, amplitude driven by `max(f.subBass_dev, f.bass_dev)` + per-kick spike from `f.beatBass`. Forest floor and distant layers don't shake. Final tuning of drop counts, brightness, sag magnitude, free-zone size, mood-smoothing window against references via the harness. Cert review.
 
 **Done when:**
-- Visual review via harness contact sheet matches all 5 acceptance criteria from `ARACHNE_V8_DESIGN.md §8`.
-- Web vibration is visible during heavy bass — whole-scene tremor with audio-rate frequency.
-- Anti-refs `09` and `10` explicitly NOT matched.
+- Visual review via harness contact sheet matches all 10 acceptance criteria from `ARACHNE_V8_DESIGN.md §12`.
+- Spider, when present, is detailed — viewer can see cephalothorax, abdomen, 8 legs with visible knee bends, eye cluster, abdominal pattern. Material reads as biological iridescent chitin (ref `14`), not neon (ref `10`). Listening pose visibly fires on sustained bass.
+- Web vibration visible during heavy bass — whole-scene tremor (~12 Hz) on background + foreground webs + branches + spider; ground/distant layers stable.
+- Anti-refs `09` (clipart symmetry) and `10` (neon glow) explicitly NOT matched. Refs `01`, `03`, `04`, `05`, `06`, `08`, `11`, `12`, `15`, `16` cited as reachable.
 - All test suites pass; 0 SwiftLint violations.
 - p95 frame time ≤ 6.0 ms Tier 2.
 - **Matt cert review.** If positive: `Arachne.json` `certified: true`, add `"Arachne"` back to `FidelityRubricTests.certifiedPresets`, mark V.5 references action complete, log M7 outcome in references README.
 
 **Verify:** Same.
 
-**Estimated sessions:** 1–2.
+**Estimated sessions:** 2.
 
 **V.8 remains reserved for Gossamer** per `SHADER_CRAFT.md §10.2`.
 
