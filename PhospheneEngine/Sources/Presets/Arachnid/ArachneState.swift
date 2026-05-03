@@ -18,6 +18,15 @@
 //                      luminance ratio. Used to verify V.7.5 step deltas
 //                      (pool cap, drops-as-hero) numerically rather than visually.
 //                      Activate with: -Xswiftc -DARACHNE_M7_DIAG.
+//
+// V.7.6.2 breadcrumb (TODO V.7.8): when ArachneState moves to the v8 design
+// (foreground build cycle, ~60 s per ARACHNE_V8_DESIGN.md §1.2 step 4), it will
+// emit `presetCompletionEvent` upon reaching the `.settle` stage so the
+// orchestrator advances to the next planned segment. The PresetSignaling
+// protocol and subscription wiring (VisualizerEngine+Presets) are already in
+// place — only the emit point + Combine stored property are pending. Do NOT
+// emit yet; current ArachneState is the V.7.5 mesh-pool state and has no
+// natural completion.
 
 import Metal
 import Shared

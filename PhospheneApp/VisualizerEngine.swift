@@ -334,6 +334,23 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Set on entry, reset to nil when `buildPlan()` succeeds (real plan takes over).
     var reactiveSessionStart: Date?
 
+    // MARK: - Preset Signaling (V.7.6.2)
+
+    /// Subscription to the active preset's `presetCompletionEvent`. Replaced on
+    /// every `applyPreset` call; cleared when the active preset does not conform
+    /// to `PresetSignaling`.
+    var presetCompletionCancellable: AnyCancellable?
+
+    /// Wall-clock time at which the current segment became active, in
+    /// `Date.timeIntervalSinceReferenceDate` seconds. Set on each `applyPreset`.
+    /// Used to gate completion events against `PresetSignalingDefaults.minSegmentDuration`.
+    var currentSegmentStartTime: TimeInterval = 0
+
+    /// Number of force-dispatched preset transitions this session — counter for
+    /// telemetry / debug overlay. Each `presetCompletionEvent` honoured (above the
+    /// `minSegmentDuration` floor) increments this.
+    var presetCompletionAdvanceCount: Int = 0
+
     // MARK: - Capture-Mode Switch Grace Window
 
     // MARK: - CaptureModeSwitchEngineInterface conformance (see CaptureModeSwitchCoordinator.swift)

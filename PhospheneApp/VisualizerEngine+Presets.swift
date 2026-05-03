@@ -1,7 +1,10 @@
 // VisualizerEngine+Presets — Preset switching and render-path configuration.
 
+import Combine
 import CoreGraphics
+import Foundation
 import os.log
+import Orchestrator
 import Presets
 import Renderer
 import Shared
@@ -229,6 +232,12 @@ extension VisualizerEngine {
 
         // Activate the passes after all subsystems are configured.
         pipeline.setActivePasses(desc.passes)
+
+        // V.7.6.2: subscribe to preset completion signal if the active state object
+        // conforms to `PresetSignaling`. Resets on every applyPreset call so a stale
+        // subscription cannot fire after a preset switch.
+        wirePresetCompletionSubscription()
+        currentSegmentStartTime = Date().timeIntervalSinceReferenceDate
     }
     // swiftlint:enable cyclomatic_complexity function_body_length
 
@@ -240,5 +249,51 @@ extension VisualizerEngine {
     /// camera math is testable without an app-layer dependency.
     func makeSceneUniforms(from desc: PresetDescriptor) -> SceneUniforms {
         return desc.makeSceneUniforms()
+    }
+
+    // MARK: - Preset Completion Signal (V.7.6.2)
+
+    /// Connects the active preset's `PresetSignaling.presetCompletionEvent` to the
+    /// orchestrator. Cancels any prior subscription. No-op for presets that do not
+    /// conform to `PresetSignaling` (most do not).
+    func wirePresetCompletionSubscription() {
+        presetCompletionCancellable?.cancel()
+        presetCompletionCancellable = nil
+
+        let signal = activePresetSignaling()
+        guard let signal else { return }
+
+        presetCompletionCancellable = signal.presetCompletionEvent
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.handlePresetCompletionEvent()
+                }
+            }
+    }
+
+    /// Returns the currently active per-preset state object that conforms to
+    /// `PresetSignaling`, or nil. Currently only `ArachneState` is a candidate
+    /// (Gossamer/Stalker/etc. are cyclical and never emit).
+    private func activePresetSignaling() -> (any PresetSignaling)? {
+        if let state = arachneState as? PresetSignaling { return state }
+        return nil
+    }
+
+    /// Handle a `PresetSignaling.presetCompletionEvent` firing.
+    ///
+    /// Honours the event only when the segment has been on screen for at least
+    /// `PresetSignalingDefaults.minSegmentDuration` seconds. Below the floor, the
+    /// event is dropped — preset authors should treat the signal as a *request*.
+    @MainActor
+    private func handlePresetCompletionEvent() {
+        let elapsed = Date().timeIntervalSinceReferenceDate - currentSegmentStartTime
+        guard elapsed >= PresetSignalingDefaults.minSegmentDuration else {
+            logger.info("Orchestrator: preset completion ignored (\(elapsed) s < min)")
+            return
+        }
+        presetCompletionAdvanceCount += 1
+        logger.info("Orchestrator: preset completion honoured — advancing segment")
+        nextPreset()
     }
 }
