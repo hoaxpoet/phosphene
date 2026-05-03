@@ -1,5 +1,6 @@
 ===== love_rehab file=/Users/braesidebandit/Documents/Projects/phosphene/PhospheneEngine/Tests/Fixtures/tempo/love_rehab.m4a rate=44100 duration=29.9s metadataBPM=125.0 =====
 [DSP.1 dump] autocorr bpm=0.00 conf=0.000 stable=0 instant=0
+[DSP.1 ts] t=0.1161 flux=0.0249 thr=0.0000
 [DSP.1 onset] band=0 t=0.1161
 [DSP.1 onset] band=1 t=0.1161
 [DSP.1 onset] band=4 t=0.1161
@@ -9,24 +10,23 @@
 [DSP.1 onset] band=4 t=0.3019
 [DSP.1 onset] band=5 t=0.3019
 [DSP.1 onset] band=3 t=0.3947
-[DSP.1 ts] t=0.4180 flux=0.6149 thr=0.1362
 [DSP.1 onset] band=2 t=0.4180
 [DSP.1 onset] band=4 t=0.5108
 [DSP.1 onset] band=5 t=0.5108
 [DSP.1 onset] band=1 t=0.5573
+[DSP.1 ts] t=0.5805 flux=0.0235 thr=0.0000
 [DSP.1 onset] band=0 t=0.5805
 [DSP.1 onset] band=3 t=0.6037
 [DSP.1 onset] band=2 t=0.6734
 [DSP.1 onset] band=5 t=0.6734
-[DSP.1 ts] t=0.7663 flux=0.1647 thr=0.1456
 [DSP.1 onset] band=4 t=0.7663
 [DSP.1 onset] band=3 t=0.8127
 [DSP.1 onset] band=2 t=0.8824
 [DSP.1 onset] band=5 t=0.8824
-[DSP.1 ts] t=0.9288 flux=0.2527 thr=0.1563
 [DSP.1 onset] band=4 t=0.9288
+[DSP.1 ts] t=0.9985 flux=0.1258 thr=0.0000
 [DSP.1 onset] band=0 t=0.9985
-[DSP.1 dump] stable early reason=recent<4(3) e=1.0 ws=-9.0 first=0.4 last=0.9 buf=3
+[DSP.1 dump] stable early reason=recent<4(3) e=1.0 ws=-9.0 first=0.1 last=1.0 buf=3
 [DSP.1 onset] band=3 t=1.0217
 [DSP.1 dump] autocorr bpm=0.00 conf=0.000 stable=0 instant=0
 [DSP.1 onset] band=5 t=1.0681
@@ -36,10 +36,9 @@
 [DSP.1 onset] band=3 t=1.3003
 [DSP.1 onset] band=4 t=1.3003
 [DSP.1 onset] band=5 t=1.3003
-[DSP.1 ts] t=1.3235 flux=0.3348 thr=0.2203
 [DSP.1 onset] band=2 t=1.3235
+[DSP.1 ts] t=1.4629 flux=0.6639 thr=0.0000
 [DSP.1 onset] band=0 t=1.4629
-[DSP.1 ts] t=1.4861 flux=0.3026 thr=0.2326
 [DSP.1 onset] band=4 t=1.5093
 [DSP.1 onset] band=5 t=1.5093
 [DSP.1 onset] band=2 t=1.5325
@@ -51,23 +50,26 @@
 [DSP.1 onset] band=3 t=1.7415
 [DSP.1 onset] band=4 t=1.8344
 [DSP.1 onset] band=5 t=1.8344
-[DSP.1 ts] t=1.9505 flux=0.4565 thr=0.2137
 [DSP.1 onset] band=2 t=1.9505
+[DSP.1 ts] t=1.9737 flux=0.7054 thr=0.0000
 [DSP.1 onset] band=0 t=1.9737
 [DSP.1 onset] band=3 t=2.0201
 [DSP.1 onset] band=4 t=2.0201
 [DSP.1 onset] band=5 t=2.0201
 [DSP.1 dump] autocorr bpm=0.00 conf=0.000 stable=0 instant=0
-[DSP.1 dump] stable early reason=noPeak(in=3,out=2,recent=6)
+[DSP.1 dump] stable raw=129.00 sel=129.20
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=2
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=1
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=1
 [DSP.1 onset] band=1 t=2.0898
 [DSP.1 onset] band=4 t=2.1827
 [DSP.1 onset] band=5 t=2.1827
 [DSP.1 onset] band=2 t=2.2059
 [DSP.1 onset] band=3 t=2.2291
 [DSP.1 onset] band=5 t=2.3452
+[DSP.1 ts] t=2.4149 flux=0.0067 thr=0.0000
 [DSP.1 onset] band=0 t=2.4149
 [DSP.1 onset] band=4 t=2.4149
-[DSP.1 ts] t=2.4613 flux=0.7375 thr=0.1424
 [DSP.1 onset] band=2 t=2.4613
 [DSP.1 onset] band=3 t=2.4613
 [DSP.1 onset] band=5 t=2.5310
@@ -77,18 +79,18 @@
 [DSP.1 onset] band=2 t=2.7167
 [DSP.1 onset] band=5 t=2.7400
 [DSP.1 onset] band=4 t=2.7864
+[DSP.1 ts] t=2.8328 flux=0.0259 thr=0.0000
 [DSP.1 onset] band=0 t=2.8328
 [DSP.1 onset] band=2 t=2.9257
 [DSP.1 onset] band=3 t=2.9489
 [DSP.1 onset] band=4 t=2.9489
 [DSP.1 onset] band=5 t=2.9489
-[DSP.1 ts] t=2.9722 flux=0.6618 thr=0.1479
-[DSP.1 dump] autocorr bpm=0.00 conf=0.000 stable=0 instant=0
-[DSP.1 dump] stable raw=117.00 sel=117.00
-[DSP.1 dump]   bin bpm=117 period=0.5128 count=2
-[DSP.1 dump]   bin bpm=129 period=0.4651 count=1
-[DSP.1 dump]   bin bpm=152 period=0.3947 count=1
-[DSP.1 dump]   bin bpm=172 period=0.3488 count=1
+[DSP.1 dump] autocorr bpm=0.00 conf=0.000 stable=0 instant=129
+[DSP.1 dump] stable raw=129.00 sel=132.51
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=2
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=2
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=1
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=1
 [DSP.1 onset] band=1 t=3.0883
 [DSP.1 onset] band=4 t=3.1115
 [DSP.1 onset] band=2 t=3.1347
@@ -97,12 +99,11 @@
 [DSP.1 onset] band=4 t=3.2972
 [DSP.1 onset] band=2 t=3.3437
 [DSP.1 onset] band=5 t=3.3437
-[DSP.1 ts] t=3.3669 flux=0.2194 thr=0.1220
+[DSP.1 ts] t=3.3669 flux=0.0722 thr=0.0000
 [DSP.1 onset] band=0 t=3.3669
 [DSP.1 onset] band=3 t=3.4598
 [DSP.1 onset] band=4 t=3.4598
 [DSP.1 onset] band=1 t=3.5062
-[DSP.1 ts] t=3.5294 flux=0.2865 thr=0.1395
 [DSP.1 onset] band=2 t=3.5759
 [DSP.1 onset] band=5 t=3.5759
 [DSP.1 onset] band=3 t=3.6688
@@ -110,31 +111,30 @@
 [DSP.1 onset] band=5 t=3.7384
 [DSP.1 onset] band=2 t=3.7849
 [DSP.1 onset] band=4 t=3.8313
-[DSP.1 ts] t=3.8545 flux=0.1382 thr=0.1318
+[DSP.1 ts] t=3.8545 flux=0.0308 thr=0.0000
 [DSP.1 onset] band=0 t=3.8545
 [DSP.1 onset] band=1 t=3.9242
 [DSP.1 onset] band=3 t=3.9706
 [DSP.1 onset] band=5 t=3.9706
-[DSP.1 ts] t=4.0171 flux=0.4991 thr=0.1616
-[DSP.1 dump] autocorr bpm=117.45 conf=1.000 stable=0 instant=117
-[DSP.1 dump] stable raw=117.00 sel=117.00
-[DSP.1 dump]   bin bpm=117 period=0.5128 count=2
-[DSP.1 dump]   bin bpm=152 period=0.3947 count=2
-[DSP.1 dump]   bin bpm=129 period=0.4651 count=1
-[DSP.1 dump]   bin bpm=172 period=0.3488 count=1
-[DSP.1 dump]   bin bpm=185 period=0.3243 count=1
+[DSP.1 dump] autocorr bpm=117.45 conf=1.000 stable=0 instant=133
+[DSP.1 dump] stable raw=129.00 sel=128.40
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=2
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=2
+[DSP.1 dump]   bin bpm=112 period=0.5357 count=1
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=1
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=1
 [DSP.1 onset] band=2 t=4.0867
 [DSP.1 onset] band=4 t=4.0867
 [DSP.1 onset] band=3 t=4.1796
 [DSP.1 onset] band=5 t=4.2028
 [DSP.1 onset] band=4 t=4.2493
+[DSP.1 ts] t=4.3189 flux=0.0288 thr=0.0000
 [DSP.1 onset] band=0 t=4.3189
 [DSP.1 onset] band=2 t=4.3421
 [DSP.1 onset] band=1 t=4.3886
 [DSP.1 onset] band=5 t=4.3886
 [DSP.1 onset] band=3 t=4.4350
 [DSP.1 onset] band=4 t=4.4350
-[DSP.1 ts] t=4.4815 flux=0.2621 thr=0.1549
 [DSP.1 onset] band=5 t=4.5743
 [DSP.1 onset] band=2 t=4.5976
 [DSP.1 onset] band=4 t=4.5976
@@ -143,51 +143,51 @@
 [DSP.1 onset] band=2 t=4.8530
 [DSP.1 onset] band=4 t=4.8530
 [DSP.1 onset] band=5 t=4.8530
+[DSP.1 ts] t=4.8762 flux=0.0349 thr=0.0000
 [DSP.1 onset] band=0 t=4.8762
-[DSP.1 ts] t=4.9923 flux=0.4307 thr=0.1936
 [DSP.1 onset] band=3 t=4.9923
-[DSP.1 dump] autocorr bpm=117.45 conf=1.000 stable=0 instant=117
+[DSP.1 dump] autocorr bpm=117.45 conf=1.000 stable=129 instant=128
 [DSP.1 onset] band=2 t=5.0620
-[DSP.1 dump] stable raw=117.00 sel=117.00
-[DSP.1 dump]   bin bpm=117 period=0.5128 count=3
-[DSP.1 dump]   bin bpm=129 period=0.4651 count=2
-[DSP.1 dump]   bin bpm=152 period=0.3947 count=2
-[DSP.1 dump]   bin bpm=172 period=0.3488 count=1
-[DSP.1 dump]   bin bpm=185 period=0.3243 count=1
+[DSP.1 dump] stable raw=129.00 sel=126.05
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=3
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=2
+[DSP.1 dump]   bin bpm=108 period=0.5556 count=1
+[DSP.1 dump]   bin bpm=112 period=0.5357 count=1
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=1
 [DSP.1 onset] band=4 t=5.1548
 [DSP.1 onset] band=5 t=5.1548
 [DSP.1 onset] band=3 t=5.2013
 [DSP.1 onset] band=1 t=5.2477
 [DSP.1 onset] band=2 t=5.2709
+[DSP.1 ts] t=5.3174 flux=0.0318 thr=0.0000
 [DSP.1 onset] band=0 t=5.3174
 [DSP.1 onset] band=4 t=5.3638
 [DSP.1 onset] band=5 t=5.3638
 [DSP.1 onset] band=2 t=5.4799
-[DSP.1 ts] t=5.5031 flux=0.6253 thr=0.1305
 [DSP.1 onset] band=3 t=5.5031
 [DSP.1 onset] band=4 t=5.5728
 [DSP.1 onset] band=5 t=5.5960
 [DSP.1 onset] band=1 t=5.6889
 [DSP.1 onset] band=2 t=5.7121
+[DSP.1 ts] t=5.7353 flux=0.0265 thr=0.0000
 [DSP.1 onset] band=0 t=5.7353
 [DSP.1 onset] band=4 t=5.7353
 [DSP.1 onset] band=3 t=5.7586
 [DSP.1 onset] band=5 t=5.7586
-[DSP.1 ts] t=5.8979 flux=0.3033 thr=0.1313
 [DSP.1 onset] band=4 t=5.8979
 [DSP.1 onset] band=2 t=5.9211
 [DSP.1 onset] band=5 t=5.9211
 [DSP.1 onset] band=3 t=6.0140
-[DSP.1 dump] autocorr bpm=117.45 conf=1.000 stable=117 instant=117
-[DSP.1 ts] t=6.0604 flux=0.1706 thr=0.1287
+[DSP.1 dump] autocorr bpm=117.45 conf=1.000 stable=129 instant=126
 [DSP.1 onset] band=4 t=6.0836
 [DSP.1 onset] band=5 t=6.1069
-[DSP.1 dump] stable raw=117.00 sel=117.00
-[DSP.1 dump]   bin bpm=117 period=0.5128 count=4
-[DSP.1 dump]   bin bpm=152 period=0.3947 count=3
-[DSP.1 dump]   bin bpm=129 period=0.4651 count=2
-[DSP.1 dump]   bin bpm=172 period=0.3488 count=1
-[DSP.1 dump]   bin bpm=185 period=0.3243 count=1
+[DSP.1 dump] stable raw=129.00 sel=128.13
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=3
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=3
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=2
+[DSP.1 dump]   bin bpm=108 period=0.5556 count=1
+[DSP.1 dump]   bin bpm=112 period=0.5357 count=1
+[DSP.1 ts] t=6.1533 flux=0.0208 thr=0.0000
 [DSP.1 onset] band=0 t=6.1533
 [DSP.1 onset] band=1 t=6.1533
 [DSP.1 onset] band=2 t=6.1997
@@ -195,10 +195,10 @@
 [DSP.1 onset] band=4 t=6.2462
 [DSP.1 onset] band=5 t=6.2694
 [DSP.1 onset] band=4 t=6.4087
-[DSP.1 ts] t=6.4551 flux=0.1207 thr=0.1153
 [DSP.1 onset] band=2 t=6.4552
 [DSP.1 onset] band=3 t=6.5248
 [DSP.1 onset] band=5 t=6.5248
+[DSP.1 ts] t=6.5712 flux=0.3131 thr=0.0000
 [DSP.1 onset] band=0 t=6.5713
 [DSP.1 onset] band=4 t=6.6177
 [DSP.1 onset] band=1 t=6.6641
@@ -206,65 +206,61 @@
 [DSP.1 onset] band=3 t=6.7570
 [DSP.1 onset] band=4 t=6.7802
 [DSP.1 onset] band=5 t=6.8963
-[DSP.1 ts] t=6.9195 flux=0.2518 thr=0.1194
 [DSP.1 onset] band=2 t=6.9196
 [DSP.1 onset] band=3 t=6.9660
 [DSP.1 onset] band=4 t=6.9892
-[DSP.1 dump] autocorr bpm=117.45 conf=1.000 stable=117 instant=117
+[DSP.1 dump] autocorr bpm=117.45 conf=1.000 stable=129 instant=128
+[DSP.1 ts] t=7.0589 flux=0.7541 thr=0.0000
 [DSP.1 onset] band=0 t=7.0589
-[DSP.1 ts] t=7.0821 flux=0.2207 thr=0.1388
 [DSP.1 onset] band=1 t=7.0821
-[DSP.1 dump] stable raw=117.00 sel=117.00
-[DSP.1 dump]   bin bpm=117 period=0.5128 count=4
-[DSP.1 dump]   bin bpm=152 period=0.3947 count=4
+[DSP.1 dump] stable raw=144.00 sel=129.63
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=5
 [DSP.1 dump]   bin bpm=129 period=0.4651 count=3
-[DSP.1 dump]   bin bpm=172 period=0.3488 count=1
-[DSP.1 dump]   bin bpm=185 period=0.3243 count=1
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=2
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=2
+[DSP.1 dump]   bin bpm=108 period=0.5556 count=1
 [DSP.1 onset] band=2 t=7.1518
 [DSP.1 onset] band=4 t=7.1750
 [DSP.1 onset] band=3 t=7.1982
 [DSP.1 onset] band=5 t=7.1982
-[DSP.1 ts] t=7.2678 flux=0.3314 thr=0.1121
 [DSP.1 onset] band=2 t=7.4072
 [DSP.1 onset] band=3 t=7.4072
 [DSP.1 onset] band=4 t=7.4072
 [DSP.1 onset] band=5 t=7.4072
-[DSP.1 ts] t=7.4304 flux=0.6368 thr=0.1216
+[DSP.1 ts] t=7.5465 flux=0.1702 thr=0.0000
 [DSP.1 onset] band=0 t=7.5465
 [DSP.1 onset] band=1 t=7.5465
 [DSP.1 onset] band=3 t=7.6162
 [DSP.1 onset] band=2 t=7.6394
 [DSP.1 onset] band=4 t=7.6394
 [DSP.1 onset] band=5 t=7.6394
-[DSP.1 ts] t=7.7090 flux=0.1338 thr=0.1328
 [DSP.1 onset] band=5 t=7.8019
 [DSP.1 onset] band=2 t=7.9180
 [DSP.1 onset] band=3 t=7.9180
 [DSP.1 onset] band=4 t=7.9180
-[DSP.1 ts] t=7.9412 flux=0.4228 thr=0.1929
 [DSP.1 onset] band=1 t=7.9645
+[DSP.1 ts] t=8.0109 flux=0.0091 thr=0.0000
 [DSP.1 onset] band=0 t=8.0109
-[DSP.1 dump] autocorr bpm=117.45 conf=1.000 stable=117 instant=117
+[DSP.1 dump] autocorr bpm=117.45 conf=1.000 stable=129 instant=130
 [DSP.1 onset] band=5 t=8.0341
 [DSP.1 onset] band=3 t=8.1270
 [DSP.1 onset] band=4 t=8.1270
-[DSP.1 dump] stable raw=117.00 sel=117.00
-[DSP.1 dump]   bin bpm=117 period=0.5128 count=4
-[DSP.1 dump]   bin bpm=152 period=0.3947 count=4
-[DSP.1 dump]   bin bpm=129 period=0.4651 count=3
-[DSP.1 dump]   bin bpm=172 period=0.3488 count=1
-[DSP.1 dump]   bin bpm=185 period=0.3243 count=1
+[DSP.1 dump] stable raw=144.00 sel=129.20
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=5
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=4
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=3
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=2
+[DSP.1 dump]   bin bpm=108 period=0.5556 count=1
 [DSP.1 onset] band=2 t=8.1735
 [DSP.1 onset] band=4 t=8.2896
 [DSP.1 onset] band=5 t=8.2896
-[DSP.1 ts] t=8.3127 flux=0.2395 thr=0.1835
 [DSP.1 onset] band=2 t=8.3824
 [DSP.1 onset] band=1 t=8.4057
 [DSP.1 onset] band=3 t=8.4289
+[DSP.1 ts] t=8.4521 flux=0.0368 thr=0.0000
 [DSP.1 onset] band=0 t=8.4521
 [DSP.1 onset] band=4 t=8.5450
 [DSP.1 onset] band=5 t=8.5450
-[DSP.1 ts] t=8.5682 flux=0.6962 thr=0.2001
 [DSP.1 onset] band=2 t=8.6146
 [DSP.1 onset] band=3 t=8.7075
 [DSP.1 onset] band=4 t=8.7075
@@ -274,27 +270,27 @@
 [DSP.1 onset] band=5 t=8.9165
 [DSP.1 onset] band=1 t=8.9397
 [DSP.1 onset] band=2 t=8.9397
-[DSP.1 ts] t=8.9629 flux=0.4139 thr=0.1690
+[DSP.1 ts] t=8.9629 flux=0.2535 thr=0.0000
 [DSP.1 onset] band=0 t=8.9629
-[DSP.1 dump] autocorr bpm=117.45 conf=1.000 stable=117 instant=117
+[DSP.1 dump] autocorr bpm=117.45 conf=1.000 stable=129 instant=129
 [DSP.1 onset] band=5 t=9.0790
 [DSP.1 onset] band=3 t=9.1719
 [DSP.1 onset] band=4 t=9.1719
-[DSP.1 dump] stable raw=152.00 sel=152.00
-[DSP.1 dump]   bin bpm=152 period=0.3947 count=5
-[DSP.1 dump]   bin bpm=117 period=0.5128 count=4
-[DSP.1 dump]   bin bpm=129 period=0.4651 count=3
-[DSP.1 dump]   bin bpm=161 period=0.3727 count=1
-[DSP.1 dump]   bin bpm=172 period=0.3488 count=1
+[DSP.1 dump] stable raw=144.00 sel=128.86
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=5
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=4
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=3
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=3
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=2
 [DSP.1 onset] band=2 t=9.1951
 [DSP.1 onset] band=5 t=9.3112
 [DSP.1 onset] band=4 t=9.3345
 [DSP.1 onset] band=1 t=9.3809
 [DSP.1 onset] band=3 t=9.4041
 [DSP.1 onset] band=2 t=9.4506
+[DSP.1 ts] t=9.4737 flux=0.0290 thr=0.0000
 [DSP.1 onset] band=0 t=9.4738
 [DSP.1 onset] band=4 t=9.5434
-[DSP.1 ts] t=9.5666 flux=0.2379 thr=0.1987
 [DSP.1 onset] band=5 t=9.5667
 [DSP.1 onset] band=3 t=9.6595
 [DSP.1 onset] band=2 t=9.6828
@@ -304,28 +300,28 @@
 [DSP.1 onset] band=2 t=9.9382
 [DSP.1 onset] band=3 t=9.9382
 [DSP.1 onset] band=4 t=9.9614
-[DSP.1 ts] t=9.9846 flux=0.2454 thr=0.2263
+[DSP.1 ts] t=9.9846 flux=0.1434 thr=0.0000
 [DSP.1 onset] band=0 t=9.9846
 [DSP.1 onset] band=5 t=9.9846
-[DSP.1 dump] autocorr bpm=117.45 conf=1.000 stable=117 instant=152
+[DSP.1 dump] autocorr bpm=117.45 conf=1.000 stable=129 instant=129
 [DSP.1 onset] band=2 t=10.1472
 [DSP.1 onset] band=4 t=10.1704
 [DSP.1 onset] band=5 t=10.1704
-[DSP.1 dump] stable raw=152.00 sel=152.00
-[DSP.1 dump]   bin bpm=152 period=0.3947 count=5
+[DSP.1 dump] stable raw=144.00 sel=127.60
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=5
 [DSP.1 dump]   bin bpm=117 period=0.5128 count=4
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=3
 [DSP.1 dump]   bin bpm=129 period=0.4651 count=3
-[DSP.1 dump]   bin bpm=99 period=0.6061 count=1
-[DSP.1 dump]   bin bpm=144 period=0.4167 count=1
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=3
 [DSP.1 onset] band=3 t=10.2168
 [DSP.1 onset] band=1 t=10.2400
 [DSP.1 onset] band=4 t=10.3329
 [DSP.1 onset] band=5 t=10.3329
 [DSP.1 onset] band=2 t=10.3561
+[DSP.1 ts] t=10.4258 flux=0.0687 thr=0.0000
 [DSP.1 onset] band=0 t=10.4258
 [DSP.1 onset] band=3 t=10.4722
 [DSP.1 onset] band=4 t=10.4955
-[DSP.1 ts] t=10.5883 flux=0.3797 thr=0.2134
 [DSP.1 onset] band=2 t=10.5883
 [DSP.1 onset] band=5 t=10.5883
 [DSP.1 onset] band=3 t=10.6812
@@ -336,53 +332,54 @@
 [DSP.1 onset] band=4 t=10.8438
 [DSP.1 onset] band=5 t=10.9134
 [DSP.1 onset] band=3 t=10.9599
-[DSP.1 ts] t=10.9830 flux=0.2687 thr=0.2118
+[DSP.1 ts] t=10.9830 flux=0.0588 thr=0.0000
 [DSP.1 onset] band=0 t=10.9831
-[DSP.1 dump] autocorr bpm=117.45 conf=0.984 stable=117 instant=152
+[DSP.1 dump] autocorr bpm=117.45 conf=0.984 stable=129 instant=128
 [DSP.1 onset] band=2 t=11.0527
 [DSP.1 onset] band=4 t=11.0760
 [DSP.1 onset] band=5 t=11.0760
 [DSP.1 onset] band=3 t=11.2153
-[DSP.1 dump] stable raw=152.00 sel=152.00
-[DSP.1 dump]   bin bpm=152 period=0.3947 count=5
+[DSP.1 dump] stable raw=117.00 sel=126.05
 [DSP.1 dump]   bin bpm=117 period=0.5128 count=4
-[DSP.1 dump]   bin bpm=129 period=0.4651 count=3
-[DSP.1 dump]   bin bpm=99 period=0.6061 count=2
-[DSP.1 dump]   bin bpm=144 period=0.4167 count=1
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=4
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=4
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=3
+[DSP.1 dump]   bin bpm=108 period=0.5556 count=2
 [DSP.1 onset] band=1 t=11.2385
 [DSP.1 onset] band=2 t=11.2617
 [DSP.1 onset] band=4 t=11.2617
 [DSP.1 onset] band=5 t=11.2617
+[DSP.1 ts] t=11.4242 flux=0.0454 thr=0.0000
 [DSP.1 onset] band=0 t=11.4243
 [DSP.1 onset] band=3 t=11.4707
 [DSP.1 onset] band=4 t=11.4707
 [DSP.1 onset] band=5 t=11.4707
 [DSP.1 onset] band=2 t=11.4939
-[DSP.1 ts] t=11.6100 flux=0.4760 thr=0.2034
 [DSP.1 onset] band=2 t=11.7029
 [DSP.1 onset] band=3 t=11.7029
 [DSP.1 onset] band=4 t=11.7029
 [DSP.1 onset] band=1 t=11.7261
 [DSP.1 onset] band=5 t=11.7261
+[DSP.1 ts] t=11.8422 flux=0.0520 thr=0.0000
 [DSP.1 onset] band=0 t=11.8422
 [DSP.1 onset] band=4 t=11.8654
 [DSP.1 onset] band=2 t=11.9351
 [DSP.1 onset] band=3 t=11.9583
 [DSP.1 onset] band=5 t=12.0048
-[DSP.1 dump] autocorr bpm=117.45 conf=0.940 stable=117 instant=152
+[DSP.1 dump] autocorr bpm=117.45 conf=0.940 stable=129 instant=126
 [DSP.1 onset] band=4 t=12.0280
-[DSP.1 ts] t=12.1208 flux=0.3715 thr=0.2077
 [DSP.1 onset] band=1 t=12.1673
 [DSP.1 onset] band=2 t=12.1905
 [DSP.1 onset] band=3 t=12.1905
 [DSP.1 onset] band=4 t=12.1905
 [DSP.1 onset] band=5 t=12.2137
-[DSP.1 dump] stable raw=152.00 sel=152.00
-[DSP.1 dump]   bin bpm=152 period=0.3947 count=5
-[DSP.1 dump]   bin bpm=117 period=0.5128 count=4
-[DSP.1 dump]   bin bpm=99 period=0.6061 count=2
-[DSP.1 dump]   bin bpm=129 period=0.4651 count=2
-[DSP.1 dump]   bin bpm=96 period=0.6250 count=1
+[DSP.1 ts] t=12.2601 flux=0.0272 thr=0.0000
+[DSP.1 dump] stable raw=144.00 sel=127.98
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=6
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=4
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=3
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=3
+[DSP.1 dump]   bin bpm=108 period=0.5556 count=2
 [DSP.1 onset] band=0 t=12.2602
 [DSP.1 onset] band=4 t=12.3531
 [DSP.1 onset] band=5 t=12.3763
@@ -390,8 +387,8 @@
 [DSP.1 onset] band=3 t=12.4924
 [DSP.1 onset] band=1 t=12.5853
 [DSP.1 onset] band=4 t=12.6085
-[DSP.1 ts] t=12.6317 flux=0.4516 thr=0.2142
 [DSP.1 onset] band=5 t=12.6317
+[DSP.1 ts] t=12.6781 flux=0.0391 thr=0.0000
 [DSP.1 onset] band=0 t=12.6781
 [DSP.1 onset] band=2 t=12.7246
 [DSP.1 onset] band=3 t=12.7478
@@ -401,29 +398,28 @@
 [DSP.1 onset] band=2 t=12.9568
 [DSP.1 onset] band=1 t=13.0032
 [DSP.1 onset] band=3 t=13.0032
-[DSP.1 dump] autocorr bpm=117.45 conf=0.894 stable=117 instant=152
-[DSP.1 ts] t=13.0264 flux=0.3769 thr=0.2010
+[DSP.1 dump] autocorr bpm=117.45 conf=0.894 stable=129 instant=128
 [DSP.1 onset] band=4 t=13.0961
 [DSP.1 onset] band=5 t=13.1193
+[DSP.1 ts] t=13.1657 flux=0.5608 thr=0.0000
 [DSP.1 onset] band=0 t=13.1658
 [DSP.1 onset] band=3 t=13.2122
 [DSP.1 onset] band=2 t=13.2354
 [DSP.1 onset] band=4 t=13.2586
-[DSP.1 dump] stable raw=152.00 sel=152.00
-[DSP.1 dump]   bin bpm=152 period=0.3947 count=5
-[DSP.1 dump]   bin bpm=117 period=0.5128 count=4
-[DSP.1 dump]   bin bpm=99 period=0.6061 count=2
-[DSP.1 dump]   bin bpm=129 period=0.4651 count=2
-[DSP.1 dump]   bin bpm=96 period=0.6250 count=1
+[DSP.1 dump] stable raw=144.00 sel=128.59
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=6
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=4
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=4
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=3
+[DSP.1 dump]   bin bpm=108 period=0.5556 count=2
 [DSP.1 onset] band=5 t=13.3747
 [DSP.1 onset] band=1 t=13.4212
 [DSP.1 onset] band=3 t=13.4676
 [DSP.1 onset] band=2 t=13.4908
 [DSP.1 onset] band=4 t=13.4908
-[DSP.1 ts] t=13.5140 flux=0.2766 thr=0.1892
 [DSP.1 onset] band=5 t=13.5373
+[DSP.1 ts] t=13.6069 flux=0.0187 thr=0.0000
 [DSP.1 onset] band=0 t=13.6069
-[DSP.1 ts] t=13.6766 flux=0.3910 thr=0.1969
 [DSP.1 onset] band=3 t=13.6998
 [DSP.1 onset] band=4 t=13.7230
 [DSP.1 onset] band=5 t=13.7230
@@ -433,8 +429,8 @@
 [DSP.1 onset] band=5 t=13.8856
 [DSP.1 onset] band=3 t=13.9088
 [DSP.1 onset] band=2 t=13.9552
-[DSP.1 dump] autocorr bpm=117.45 conf=0.867 stable=117 instant=152
-[DSP.1 ts] t=14.0481 flux=0.3575 thr=0.1943
+[DSP.1 dump] autocorr bpm=117.45 conf=0.867 stable=129 instant=129
+[DSP.1 ts] t=14.0481 flux=0.2937 thr=0.0000
 [DSP.1 onset] band=0 t=14.0481
 [DSP.1 onset] band=4 t=14.0481
 [DSP.1 onset] band=5 t=14.0481
@@ -442,115 +438,115 @@
 [DSP.1 onset] band=4 t=14.2339
 [DSP.1 onset] band=5 t=14.2339
 [DSP.1 onset] band=1 t=14.2803
-[DSP.1 dump] stable raw=152.00 sel=152.00
-[DSP.1 dump]   bin bpm=152 period=0.3947 count=5
-[DSP.1 dump]   bin bpm=117 period=0.5128 count=4
-[DSP.1 dump]   bin bpm=99 period=0.6061 count=2
-[DSP.1 dump]   bin bpm=161 period=0.3727 count=2
-[DSP.1 dump]   bin bpm=96 period=0.6250 count=1
+[DSP.1 dump] stable raw=136.00 sel=129.51
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=6
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=6
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=3
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=3
+[DSP.1 dump]   bin bpm=108 period=0.5556 count=2
 [DSP.1 onset] band=2 t=14.3500
 [DSP.1 onset] band=3 t=14.3732
 [DSP.1 onset] band=4 t=14.3964
 [DSP.1 onset] band=5 t=14.3964
+[DSP.1 ts] t=14.4660 flux=0.0347 thr=0.0000
 [DSP.1 onset] band=0 t=14.4661
 [DSP.1 onset] band=2 t=14.5590
 [DSP.1 onset] band=4 t=14.5590
 [DSP.1 onset] band=3 t=14.6286
 [DSP.1 onset] band=5 t=14.6518
-[DSP.1 ts] t=14.6750 flux=0.5969 thr=0.2092
 [DSP.1 onset] band=1 t=14.7215
 [DSP.1 onset] band=2 t=14.7679
 [DSP.1 onset] band=4 t=14.7679
 [DSP.1 onset] band=5 t=14.8144
+[DSP.1 ts] t=14.8840 flux=0.0600 thr=0.0000
 [DSP.1 onset] band=0 t=14.8840
 [DSP.1 onset] band=3 t=14.8840
 [DSP.1 onset] band=5 t=14.9769
-[DSP.1 dump] autocorr bpm=117.45 conf=0.866 stable=117 instant=152
+[DSP.1 dump] autocorr bpm=117.45 conf=0.866 stable=129 instant=130
 [DSP.1 onset] band=4 t=15.0234
 [DSP.1 onset] band=2 t=15.0466
-[DSP.1 ts] t=15.0698 flux=0.3094 thr=0.1854
 [DSP.1 onset] band=5 t=15.1395
 [DSP.1 onset] band=1 t=15.1627
 [DSP.1 onset] band=3 t=15.1627
 [DSP.1 onset] band=4 t=15.2788
+[DSP.1 ts] t=15.3019 flux=0.0446 thr=0.0000
 [DSP.1 onset] band=0 t=15.3020
-[DSP.1 dump] stable raw=152.00 sel=152.00
-[DSP.1 dump]   bin bpm=152 period=0.3947 count=6
-[DSP.1 dump]   bin bpm=96 period=0.6250 count=2
-[DSP.1 dump]   bin bpm=99 period=0.6061 count=2
-[DSP.1 dump]   bin bpm=117 period=0.5128 count=2
-[DSP.1 dump]   bin bpm=161 period=0.3727 count=2
+[DSP.1 dump] stable raw=144.00 sel=131.71
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=8
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=5
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=3
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=3
+[DSP.1 dump]   bin bpm=108 period=0.5556 count=1
 [DSP.1 onset] band=2 t=15.3252
 [DSP.1 onset] band=5 t=15.3252
 [DSP.1 onset] band=3 t=15.3717
 [DSP.1 onset] band=4 t=15.5342
 [DSP.1 onset] band=5 t=15.5342
-[DSP.1 ts] t=15.5574 flux=0.2663 thr=0.2050
 [DSP.1 onset] band=2 t=15.5574
 [DSP.1 onset] band=1 t=15.5807
 [DSP.1 onset] band=3 t=15.6039
+[DSP.1 ts] t=15.7199 flux=0.0598 thr=0.0000
 [DSP.1 onset] band=0 t=15.7200
 [DSP.1 onset] band=4 t=15.7896
 [DSP.1 onset] band=5 t=15.7896
 [DSP.1 onset] band=2 t=15.8129
 [DSP.1 onset] band=3 t=15.9057
-[DSP.1 dump] autocorr bpm=117.45 conf=0.871 stable=152 instant=152
+[DSP.1 dump] autocorr bpm=117.45 conf=0.871 stable=129 instant=132
 [DSP.1 onset] band=2 t=16.0451
 [DSP.1 onset] band=1 t=16.0683
 [DSP.1 onset] band=4 t=16.0683
 [DSP.1 onset] band=5 t=16.0683
-[DSP.1 ts] t=16.0914 flux=0.2487 thr=0.2076
 [DSP.1 onset] band=3 t=16.1147
+[DSP.1 ts] t=16.2075 flux=0.6076 thr=0.0000
 [DSP.1 onset] band=0 t=16.2076
 [DSP.1 onset] band=2 t=16.2540
 [DSP.1 onset] band=4 t=16.2540
 [DSP.1 onset] band=5 t=16.3005
 [DSP.1 onset] band=3 t=16.3237
-[DSP.1 dump] stable raw=152.00 sel=152.00
-[DSP.1 dump]   bin bpm=152 period=0.3947 count=4
-[DSP.1 dump]   bin bpm=96 period=0.6250 count=2
-[DSP.1 dump]   bin bpm=99 period=0.6061 count=2
-[DSP.1 dump]   bin bpm=117 period=0.5128 count=2
-[DSP.1 dump]   bin bpm=123 period=0.4878 count=2
+[DSP.1 dump] stable raw=144.00 sel=130.76
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=7
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=5
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=4
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=3
+[DSP.1 dump]   bin bpm=108 period=0.5556 count=1
 [DSP.1 onset] band=4 t=16.4398
 [DSP.1 onset] band=2 t=16.4630
 [DSP.1 onset] band=1 t=16.5095
 [DSP.1 onset] band=3 t=16.5559
 [DSP.1 onset] band=4 t=16.6488
 [DSP.1 onset] band=5 t=16.6488
-[DSP.1 ts] t=16.6951 flux=0.5698 thr=0.2092
 [DSP.1 onset] band=2 t=16.6952
+[DSP.1 ts] t=16.7184 flux=0.6914 thr=0.0000
 [DSP.1 onset] band=0 t=16.7184
 [DSP.1 onset] band=3 t=16.7649
 [DSP.1 onset] band=4 t=16.8113
 [DSP.1 onset] band=5 t=16.8113
 [DSP.1 onset] band=2 t=16.9042
-[DSP.1 dump] autocorr bpm=117.45 conf=0.894 stable=152 instant=152
+[DSP.1 dump] autocorr bpm=117.45 conf=0.894 stable=129 instant=131
 [DSP.1 onset] band=1 t=17.0667
 [DSP.1 onset] band=3 t=17.0667
 [DSP.1 onset] band=4 t=17.0667
 [DSP.1 onset] band=5 t=17.0667
-[DSP.1 ts] t=17.0899 flux=0.3230 thr=0.1888
+[DSP.1 ts] t=17.1828 flux=0.0235 thr=0.0000
 [DSP.1 onset] band=0 t=17.1828
 [DSP.1 onset] band=2 t=17.2061
 [DSP.1 onset] band=4 t=17.2989
 [DSP.1 onset] band=3 t=17.3222
-[DSP.1 dump] stable raw=152.00 sel=152.00
-[DSP.1 dump]   bin bpm=152 period=0.3947 count=5
-[DSP.1 dump]   bin bpm=99 period=0.6061 count=3
-[DSP.1 dump]   bin bpm=96 period=0.6250 count=2
-[DSP.1 dump]   bin bpm=117 period=0.5128 count=2
+[DSP.1 dump] stable raw=144.00 sel=130.76
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=7
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=5
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=4
 [DSP.1 dump]   bin bpm=123 period=0.4878 count=2
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=2
 [DSP.1 onset] band=5 t=17.3686
 [DSP.1 onset] band=2 t=17.4615
 [DSP.1 onset] band=4 t=17.4615
-[DSP.1 ts] t=17.4846 flux=0.2021 thr=0.1983
 [DSP.1 onset] band=1 t=17.4847
 [DSP.1 onset] band=3 t=17.5776
 [DSP.1 onset] band=5 t=17.5776
+[DSP.1 ts] t=17.6239 flux=0.0243 thr=0.0000
 [DSP.1 onset] band=0 t=17.6240
 [DSP.1 onset] band=2 t=17.6705
-[DSP.1 ts] t=17.7168 flux=0.5069 thr=0.1850
 [DSP.1 onset] band=4 t=17.7866
 [DSP.1 onset] band=5 t=17.7866
 [DSP.1 onset] band=3 t=17.8098
@@ -558,10 +554,10 @@
 [DSP.1 onset] band=1 t=17.9027
 [DSP.1 onset] band=4 t=17.9491
 [DSP.1 onset] band=5 t=17.9491
-[DSP.1 dump] autocorr bpm=117.45 conf=0.928 stable=152 instant=152
+[DSP.1 dump] autocorr bpm=117.45 conf=0.928 stable=129 instant=131
 [DSP.1 onset] band=2 t=18.0884
 [DSP.1 onset] band=3 t=18.0884
-[DSP.1 ts] t=18.1116 flux=0.2826 thr=0.2032
+[DSP.1 ts] t=18.1116 flux=0.2250 thr=0.0000
 [DSP.1 onset] band=0 t=18.1116
 [DSP.1 onset] band=4 t=18.1116
 [DSP.1 onset] band=5 t=18.1116
@@ -569,32 +565,32 @@
 [DSP.1 onset] band=4 t=18.2974
 [DSP.1 onset] band=5 t=18.3206
 [DSP.1 onset] band=1 t=18.3671
-[DSP.1 dump] stable raw=152.00 sel=152.00
-[DSP.1 dump]   bin bpm=152 period=0.3947 count=7
-[DSP.1 dump]   bin bpm=99 period=0.6061 count=3
-[DSP.1 dump]   bin bpm=96 period=0.6250 count=2
-[DSP.1 dump]   bin bpm=117 period=0.5128 count=2
-[DSP.1 dump]   bin bpm=123 period=0.4878 count=2
+[DSP.1 dump] stable raw=144.00 sel=130.44
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=7
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=5
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=4
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=3
+[DSP.1 dump]   bin bpm=108 period=0.5556 count=1
 [DSP.1 onset] band=2 t=18.3903
 [DSP.1 onset] band=4 t=18.4599
 [DSP.1 onset] band=5 t=18.4832
+[DSP.1 ts] t=18.5760 flux=0.0322 thr=0.0000
 [DSP.1 onset] band=0 t=18.5760
 [DSP.1 onset] band=2 t=18.5993
 [DSP.1 onset] band=3 t=18.5993
 [DSP.1 onset] band=4 t=18.6225
 [DSP.1 onset] band=5 t=18.7154
-[DSP.1 ts] t=18.7385 flux=0.5471 thr=0.1914
 [DSP.1 onset] band=1 t=18.7850
 [DSP.1 onset] band=3 t=18.8082
 [DSP.1 onset] band=4 t=18.8082
 [DSP.1 onset] band=2 t=18.8547
 [DSP.1 onset] band=5 t=18.8779
 [DSP.1 onset] band=3 t=19.0172
-[DSP.1 dump] autocorr bpm=117.45 conf=0.897 stable=152 instant=152
+[DSP.1 dump] autocorr bpm=117.45 conf=0.897 stable=129 instant=130
 [DSP.1 onset] band=4 t=19.0404
 [DSP.1 onset] band=5 t=19.0404
 [DSP.1 onset] band=2 t=19.0637
-[DSP.1 ts] t=19.1332 flux=0.3372 thr=0.1881
+[DSP.1 ts] t=19.1332 flux=0.2207 thr=0.0000
 [DSP.1 onset] band=0 t=19.1333
 [DSP.1 onset] band=1 t=19.2262
 [DSP.1 onset] band=3 t=19.2262
@@ -603,83 +599,81 @@
 [DSP.1 onset] band=2 t=19.3423
 [DSP.1 onset] band=4 t=19.3887
 [DSP.1 onset] band=5 t=19.3887
-[DSP.1 dump] stable raw=152.00 sel=152.00
-[DSP.1 dump]   bin bpm=152 period=0.3947 count=7
-[DSP.1 dump]   bin bpm=96 period=0.6250 count=3
-[DSP.1 dump]   bin bpm=99 period=0.6061 count=2
+[DSP.1 dump] stable raw=144.00 sel=130.44
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=7
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=5
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=3
+[DSP.1 dump]   bin bpm=108 period=0.5556 count=2
 [DSP.1 dump]   bin bpm=117 period=0.5128 count=2
-[DSP.1 dump]   bin bpm=123 period=0.4878 count=2
 [DSP.1 onset] band=3 t=19.4584
 [DSP.1 onset] band=2 t=19.5513
 [DSP.1 onset] band=4 t=19.5513
-[DSP.1 ts] t=19.6209 flux=0.4028 thr=0.2280
+[DSP.1 ts] t=19.6209 flux=0.1513 thr=0.0000
 [DSP.1 onset] band=0 t=19.6209
 [DSP.1 onset] band=5 t=19.6209
 [DSP.1 onset] band=1 t=19.6442
 [DSP.1 onset] band=3 t=19.6674
 [DSP.1 onset] band=4 t=19.7370
-[DSP.1 ts] t=19.7834 flux=0.3041 thr=0.2540
 [DSP.1 onset] band=5 t=19.8764
 [DSP.1 onset] band=2 t=19.8996
 [DSP.1 onset] band=3 t=19.9925
 [DSP.1 onset] band=4 t=19.9925
-[DSP.1 dump] autocorr bpm=117.45 conf=0.838 stable=152 instant=152
+[DSP.1 dump] autocorr bpm=117.45 conf=0.838 stable=129 instant=130
 [DSP.1 onset] band=1 t=20.1318
 [DSP.1 onset] band=2 t=20.1318
 [DSP.1 onset] band=5 t=20.1318
-[DSP.1 ts] t=20.1549 flux=0.3061 thr=0.2133
+[DSP.1 ts] t=20.1549 flux=0.1811 thr=0.0000
 [DSP.1 onset] band=0 t=20.1550
 [DSP.1 onset] band=4 t=20.1550
 [DSP.1 onset] band=3 t=20.2247
 [DSP.1 onset] band=5 t=20.3408
 [DSP.1 onset] band=2 t=20.3640
 [DSP.1 onset] band=4 t=20.3640
-[DSP.1 dump] stable raw=152.00 sel=152.00
-[DSP.1 dump]   bin bpm=152 period=0.3947 count=7
-[DSP.1 dump]   bin bpm=96 period=0.6250 count=3
-[DSP.1 dump]   bin bpm=123 period=0.4878 count=3
-[DSP.1 dump]   bin bpm=117 period=0.5128 count=2
-[DSP.1 dump]   bin bpm=161 period=0.3727 count=2
+[DSP.1 dump] stable raw=144.00 sel=130.83
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=7
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=4
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=4
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=2
+[DSP.1 dump]   bin bpm=108 period=0.5556 count=1
 [DSP.1 onset] band=3 t=20.4336
 [DSP.1 onset] band=5 t=20.5033
 [DSP.1 onset] band=1 t=20.5497
 [DSP.1 onset] band=2 t=20.5962
+[DSP.1 ts] t=20.6193 flux=0.0451 thr=0.0000
 [DSP.1 onset] band=0 t=20.6194
 [DSP.1 onset] band=3 t=20.6426
 [DSP.1 onset] band=4 t=20.7123
 [DSP.1 onset] band=5 t=20.7123
-[DSP.1 ts] t=20.7586 flux=0.5166 thr=0.2329
 [DSP.1 onset] band=2 t=20.8748
 [DSP.1 onset] band=4 t=20.8748
 [DSP.1 onset] band=5 t=20.8748
 [DSP.1 onset] band=3 t=20.8980
 [DSP.1 onset] band=1 t=20.9677
-[DSP.1 dump] autocorr bpm=117.45 conf=0.847 stable=152 instant=152
+[DSP.1 dump] autocorr bpm=117.45 conf=0.847 stable=129 instant=131
 [DSP.1 onset] band=5 t=21.0838
 [DSP.1 onset] band=2 t=21.1302
 [DSP.1 onset] band=4 t=21.1302
-[DSP.1 ts] t=21.1534 flux=0.3005 thr=0.1799
+[DSP.1 ts] t=21.1534 flux=0.1120 thr=0.0000
 [DSP.1 onset] band=0 t=21.1535
 [DSP.1 onset] band=3 t=21.1535
 [DSP.1 onset] band=5 t=21.2696
-[DSP.1 ts] t=21.3159 flux=0.2687 thr=0.2211
 [DSP.1 onset] band=2 t=21.3624
 [DSP.1 onset] band=4 t=21.3624
 [DSP.1 onset] band=1 t=21.3857
 [DSP.1 onset] band=3 t=21.3857
 [DSP.1 onset] band=5 t=21.4321
-[DSP.1 dump] stable raw=152.00 sel=152.00
-[DSP.1 dump]   bin bpm=152 period=0.3947 count=7
-[DSP.1 dump]   bin bpm=123 period=0.4878 count=3
-[DSP.1 dump]   bin bpm=96 period=0.6250 count=2
-[DSP.1 dump]   bin bpm=99 period=0.6061 count=2
-[DSP.1 dump]   bin bpm=117 period=0.5128 count=2
+[DSP.1 dump] stable raw=144.00 sel=128.88
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=6
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=4
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=3
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=3
+[DSP.1 dump]   bin bpm=112 period=0.5357 count=2
 [DSP.1 onset] band=4 t=21.5250
 [DSP.1 onset] band=2 t=21.5714
 [DSP.1 onset] band=3 t=21.6411
 [DSP.1 onset] band=5 t=21.6411
+[DSP.1 ts] t=21.6874 flux=0.0421 thr=0.0000
 [DSP.1 onset] band=0 t=21.6875
-[DSP.1 ts] t=21.7803 flux=0.5174 thr=0.1901
 [DSP.1 onset] band=2 t=21.7804
 [DSP.1 onset] band=4 t=21.7804
 [DSP.1 onset] band=1 t=21.8268
@@ -687,10 +681,10 @@
 [DSP.1 onset] band=3 t=21.8965
 [DSP.1 onset] band=2 t=21.9894
 [DSP.1 onset] band=4 t=22.0126
-[DSP.1 dump] autocorr bpm=117.45 conf=0.884 stable=152 instant=152
+[DSP.1 dump] autocorr bpm=117.45 conf=0.884 stable=129 instant=129
 [DSP.1 onset] band=5 t=22.0358
 [DSP.1 onset] band=3 t=22.1055
-[DSP.1 ts] t=22.1751 flux=0.2247 thr=0.1789
+[DSP.1 ts] t=22.1751 flux=0.0615 thr=0.0000
 [DSP.1 onset] band=0 t=22.1751
 [DSP.1 onset] band=4 t=22.1751
 [DSP.1 onset] band=5 t=22.1984
@@ -699,32 +693,32 @@
 [DSP.1 onset] band=3 t=22.3609
 [DSP.1 onset] band=4 t=22.3609
 [DSP.1 onset] band=5 t=22.3841
-[DSP.1 dump] stable raw=152.00 sel=152.00
-[DSP.1 dump]   bin bpm=152 period=0.3947 count=8
-[DSP.1 dump]   bin bpm=123 period=0.4878 count=3
-[DSP.1 dump]   bin bpm=96 period=0.6250 count=2
-[DSP.1 dump]   bin bpm=99 period=0.6061 count=2
-[DSP.1 dump]   bin bpm=161 period=0.3727 count=2
+[DSP.1 dump] stable raw=123.00 sel=126.36
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=5
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=4
+[DSP.1 dump]   bin bpm=112 period=0.5357 count=3
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=3
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=3
 [DSP.1 onset] band=2 t=22.5002
 [DSP.1 onset] band=4 t=22.5234
 [DSP.1 onset] band=5 t=22.5467
+[DSP.1 ts] t=22.6395 flux=0.0438 thr=0.0000
 [DSP.1 onset] band=0 t=22.6395
 [DSP.1 onset] band=3 t=22.6628
 [DSP.1 onset] band=1 t=22.6860
 [DSP.1 onset] band=4 t=22.6860
 [DSP.1 onset] band=2 t=22.7092
-[DSP.1 ts] t=22.8020 flux=0.4035 thr=0.1812
 [DSP.1 onset] band=5 t=22.8021
 [DSP.1 onset] band=4 t=22.8717
 [DSP.1 onset] band=3 t=22.8950
 [DSP.1 onset] band=2 t=22.9182
-[DSP.1 dump] autocorr bpm=117.45 conf=0.938 stable=152 instant=152
+[DSP.1 dump] autocorr bpm=117.45 conf=0.938 stable=129 instant=126
 [DSP.1 onset] band=4 t=23.0575
 [DSP.1 onset] band=5 t=23.0575
 [DSP.1 onset] band=2 t=23.1272
 [DSP.1 onset] band=3 t=23.1504
 [DSP.1 onset] band=1 t=23.1736
-[DSP.1 ts] t=23.1967 flux=0.2692 thr=0.1838
+[DSP.1 ts] t=23.1967 flux=0.2544 thr=0.0000
 [DSP.1 onset] band=0 t=23.1968
 [DSP.1 onset] band=4 t=23.2897
 [DSP.1 onset] band=5 t=23.2897
@@ -732,61 +726,61 @@
 [DSP.1 onset] band=3 t=23.4290
 [DSP.1 onset] band=5 t=23.4523
 [DSP.1 onset] band=4 t=23.4755
-[DSP.1 dump] stable raw=152.00 sel=152.00
-[DSP.1 dump]   bin bpm=152 period=0.3947 count=8
-[DSP.1 dump]   bin bpm=96 period=0.6250 count=3
-[DSP.1 dump]   bin bpm=99 period=0.6061 count=2
-[DSP.1 dump]   bin bpm=123 period=0.4878 count=2
-[DSP.1 dump]   bin bpm=161 period=0.3727 count=2
+[DSP.1 dump] stable raw=123.00 sel=125.13
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=4
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=4
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=4
+[DSP.1 dump]   bin bpm=112 period=0.5357 count=3
+[DSP.1 dump]   bin bpm=108 period=0.5556 count=2
 [DSP.1 onset] band=1 t=23.5916
+[DSP.1 ts] t=23.6379 flux=0.0534 thr=0.0000
 [DSP.1 onset] band=0 t=23.6380
 [DSP.1 onset] band=2 t=23.6845
 [DSP.1 onset] band=3 t=23.6845
 [DSP.1 onset] band=4 t=23.6845
 [DSP.1 onset] band=5 t=23.6845
-[DSP.1 ts] t=23.8237 flux=0.3487 thr=0.1890
 [DSP.1 onset] band=2 t=23.8934
 [DSP.1 onset] band=4 t=23.9167
 [DSP.1 onset] band=5 t=23.9167
 [DSP.1 onset] band=3 t=23.9399
 [DSP.1 onset] band=1 t=24.0095
-[DSP.1 dump] autocorr bpm=117.45 conf=0.902 stable=152 instant=152
+[DSP.1 dump] autocorr bpm=117.45 conf=0.902 stable=129 instant=125
 [DSP.1 onset] band=5 t=24.0792
 [DSP.1 onset] band=3 t=24.1489
 [DSP.1 onset] band=2 t=24.1721
 [DSP.1 onset] band=4 t=24.1953
-[DSP.1 ts] t=24.2184 flux=0.3994 thr=0.2010
+[DSP.1 ts] t=24.2184 flux=0.2423 thr=0.0000
 [DSP.1 onset] band=0 t=24.2185
 [DSP.1 onset] band=5 t=24.3114
 [DSP.1 onset] band=3 t=24.3811
 [DSP.1 onset] band=4 t=24.4043
 [DSP.1 onset] band=1 t=24.4507
 [DSP.1 onset] band=2 t=24.4507
-[DSP.1 dump] stable raw=152.00 sel=152.00
-[DSP.1 dump]   bin bpm=152 period=0.3947 count=9
-[DSP.1 dump]   bin bpm=96 period=0.6250 count=3
-[DSP.1 dump]   bin bpm=99 period=0.6061 count=2
-[DSP.1 dump]   bin bpm=123 period=0.4878 count=2
-[DSP.1 dump]   bin bpm=112 period=0.5357 count=1
+[DSP.1 dump] stable raw=123.00 sel=122.13
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=4
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=4
+[DSP.1 dump]   bin bpm=112 period=0.5357 count=3
+[DSP.1 dump]   bin bpm=108 period=0.5556 count=2
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=2
 [DSP.1 onset] band=4 t=24.5668
 [DSP.1 onset] band=5 t=24.5668
 [DSP.1 onset] band=3 t=24.5900
 [DSP.1 onset] band=2 t=24.6829
+[DSP.1 ts] t=24.7060 flux=0.0623 thr=0.0000
 [DSP.1 onset] band=0 t=24.7061
 [DSP.1 onset] band=4 t=24.7758
-[DSP.1 ts] t=24.8221 flux=0.3089 thr=0.2130
 [DSP.1 onset] band=3 t=24.8222
 [DSP.1 onset] band=5 t=24.8222
 [DSP.1 onset] band=1 t=24.8687
 [DSP.1 onset] band=2 t=24.9383
 [DSP.1 onset] band=4 t=24.9616
 [DSP.1 onset] band=5 t=24.9848
-[DSP.1 dump] autocorr bpm=117.45 conf=0.860 stable=152 instant=152
+[DSP.1 dump] autocorr bpm=117.45 conf=0.860 stable=129 instant=122
 [DSP.1 onset] band=3 t=25.0544
 [DSP.1 onset] band=2 t=25.1473
 [DSP.1 onset] band=4 t=25.1473
 [DSP.1 onset] band=5 t=25.1473
-[DSP.1 ts] t=25.2401 flux=0.2916 thr=0.1878
+[DSP.1 ts] t=25.2401 flux=0.2060 thr=0.0000
 [DSP.1 onset] band=0 t=25.2402
 [DSP.1 onset] band=3 t=25.3099
 [DSP.1 onset] band=4 t=25.3099
@@ -795,64 +789,64 @@
 [DSP.1 onset] band=2 t=25.4260
 [DSP.1 onset] band=4 t=25.4956
 [DSP.1 onset] band=5 t=25.4956
-[DSP.1 dump] stable raw=152.00 sel=152.00
-[DSP.1 dump]   bin bpm=152 period=0.3947 count=8
-[DSP.1 dump]   bin bpm=96 period=0.6250 count=3
-[DSP.1 dump]   bin bpm=99 period=0.6061 count=3
-[DSP.1 dump]   bin bpm=112 period=0.5357 count=1
-[DSP.1 dump]   bin bpm=123 period=0.4878 count=1
+[DSP.1 dump] stable raw=123.00 sel=119.75
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=5
+[DSP.1 dump]   bin bpm=112 period=0.5357 count=4
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=4
+[DSP.1 dump]   bin bpm=108 period=0.5556 count=2
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=2
 [DSP.1 onset] band=3 t=25.5421
+[DSP.1 ts] t=25.6580 flux=0.0425 thr=0.0000
 [DSP.1 onset] band=0 t=25.6582
 [DSP.1 onset] band=2 t=25.6582
 [DSP.1 onset] band=4 t=25.6814
 [DSP.1 onset] band=5 t=25.6814
 [DSP.1 onset] band=1 t=25.7510
 [DSP.1 onset] band=3 t=25.7975
-[DSP.1 ts] t=25.8438 flux=0.4142 thr=0.1834
 [DSP.1 onset] band=4 t=25.8439
 [DSP.1 onset] band=2 t=25.9368
 [DSP.1 onset] band=5 t=25.9368
-[DSP.1 dump] autocorr bpm=117.45 conf=0.906 stable=152 instant=152
+[DSP.1 dump] autocorr bpm=117.45 conf=0.906 stable=129 instant=120
 [DSP.1 onset] band=3 t=26.0297
+[DSP.1 ts] t=26.0760 flux=0.0548 thr=0.0000
 [DSP.1 onset] band=0 t=26.0761
 [DSP.1 onset] band=4 t=26.0761
 [DSP.1 onset] band=5 t=26.0993
 [DSP.1 onset] band=1 t=26.1690
 [DSP.1 onset] band=2 t=26.1690
-[DSP.1 ts] t=26.2385 flux=0.1818 thr=0.1780
 [DSP.1 onset] band=3 t=26.2387
 [DSP.1 onset] band=4 t=26.2387
 [DSP.1 onset] band=5 t=26.2619
-[DSP.1 ts] t=26.4011 flux=0.2248 thr=0.1745
 [DSP.1 onset] band=4 t=26.4244
 [DSP.1 onset] band=5 t=26.4476
 [DSP.1 onset] band=2 t=26.4709
+[DSP.1 ts] t=26.4940 flux=0.0444 thr=0.0000
 [DSP.1 onset] band=0 t=26.4941
 [DSP.1 onset] band=3 t=26.5405
-[DSP.1 dump] stable raw=152.00 sel=152.00
-[DSP.1 dump]   bin bpm=152 period=0.3947 count=9
-[DSP.1 dump]   bin bpm=96 period=0.6250 count=3
-[DSP.1 dump]   bin bpm=99 period=0.6061 count=3
-[DSP.1 dump]   bin bpm=123 period=0.4878 count=1
-[DSP.1 dump]   bin bpm=129 period=0.4651 count=1
+[DSP.1 dump] stable raw=112.00 sel=122.75
+[DSP.1 dump]   bin bpm=112 period=0.5357 count=4
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=4
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=4
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=3
+[DSP.1 dump]   bin bpm=108 period=0.5556 count=2
 [DSP.1 onset] band=1 t=26.5870
 [DSP.1 onset] band=4 t=26.6102
 [DSP.1 onset] band=5 t=26.6102
 [DSP.1 onset] band=2 t=26.6798
 [DSP.1 onset] band=3 t=26.7495
-[DSP.1 ts] t=26.8655 flux=0.4465 thr=0.1768
 [DSP.1 onset] band=4 t=26.8656
 [DSP.1 onset] band=5 t=26.8656
+[DSP.1 ts] t=26.9119 flux=0.1660 thr=0.0000
 [DSP.1 onset] band=0 t=26.9120
 [DSP.1 onset] band=2 t=26.9585
 [DSP.1 onset] band=3 t=26.9817
 [DSP.1 onset] band=1 t=27.0049
-[DSP.1 dump] autocorr bpm=117.45 conf=0.979 stable=152 instant=152
+[DSP.1 dump] autocorr bpm=117.45 conf=0.979 stable=129 instant=123
 [DSP.1 onset] band=4 t=27.1210
 [DSP.1 onset] band=5 t=27.1210
 [DSP.1 onset] band=3 t=27.1907
 [DSP.1 onset] band=2 t=27.2371
-[DSP.1 ts] t=27.2602 flux=0.2614 thr=0.1723
+[DSP.1 ts] t=27.3299 flux=0.0227 thr=0.0000
 [DSP.1 onset] band=0 t=27.3300
 [DSP.1 onset] band=4 t=27.3532
 [DSP.1 onset] band=5 t=27.3532
@@ -861,102 +855,101 @@
 [DSP.1 onset] band=2 t=27.4925
 [DSP.1 onset] band=4 t=27.5390
 [DSP.1 onset] band=5 t=27.5390
-[DSP.1 dump] stable raw=152.00 sel=152.00
-[DSP.1 dump]   bin bpm=152 period=0.3947 count=8
-[DSP.1 dump]   bin bpm=96 period=0.6250 count=3
-[DSP.1 dump]   bin bpm=99 period=0.6061 count=3
-[DSP.1 dump]   bin bpm=129 period=0.4651 count=2
-[DSP.1 dump]   bin bpm=123 period=0.4878 count=1
+[DSP.1 dump] stable raw=144.00 sel=123.64
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=5
+[DSP.1 dump]   bin bpm=112 period=0.5357 count=4
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=4
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=3
+[DSP.1 dump]   bin bpm=108 period=0.5556 count=2
 [DSP.1 onset] band=3 t=27.7015
 [DSP.1 onset] band=2 t=27.7480
 [DSP.1 onset] band=4 t=27.7480
 [DSP.1 onset] band=5 t=27.7480
-[DSP.1 ts] t=27.7711 flux=0.3671 thr=0.1710
+[DSP.1 ts] t=27.7711 flux=0.1662 thr=0.0000
 [DSP.1 onset] band=0 t=27.7712
 [DSP.1 onset] band=2 t=27.9802
 [DSP.1 onset] band=3 t=27.9802
 [DSP.1 onset] band=4 t=27.9802
 [DSP.1 onset] band=5 t=27.9802
 [DSP.1 onset] band=1 t=28.0034
-[DSP.1 dump] autocorr bpm=117.45 conf=0.984 stable=152 instant=152
+[DSP.1 dump] autocorr bpm=117.45 conf=0.984 stable=129 instant=124
 [DSP.1 onset] band=4 t=28.1427
 [DSP.1 onset] band=5 t=28.1427
 [DSP.1 onset] band=2 t=28.2588
 [DSP.1 onset] band=3 t=28.2588
-[DSP.1 ts] t=28.2819 flux=0.2749 thr=0.1799
+[DSP.1 ts] t=28.2819 flux=0.2309 thr=0.0000
 [DSP.1 onset] band=0 t=28.2820
 [DSP.1 onset] band=4 t=28.3749
 [DSP.1 onset] band=5 t=28.3749
 [DSP.1 onset] band=1 t=28.4213
 [DSP.1 onset] band=3 t=28.4678
 [DSP.1 onset] band=2 t=28.4910
-[DSP.1 dump] stable raw=152.00 sel=152.00
-[DSP.1 dump]   bin bpm=152 period=0.3947 count=7
-[DSP.1 dump]   bin bpm=99 period=0.6061 count=3
-[DSP.1 dump]   bin bpm=96 period=0.6250 count=2
-[DSP.1 dump]   bin bpm=117 period=0.5128 count=2
+[DSP.1 dump] stable raw=144.00 sel=124.61
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=5
+[DSP.1 dump]   bin bpm=112 period=0.5357 count=4
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=3
 [DSP.1 dump]   bin bpm=129 period=0.4651 count=2
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=2
 [DSP.1 onset] band=4 t=28.6303
 [DSP.1 onset] band=5 t=28.6303
-[DSP.1 ts] t=28.6534 flux=0.2232 thr=0.2037
 [DSP.1 onset] band=2 t=28.7232
+[DSP.1 ts] t=28.7463 flux=0.0785 thr=0.0000
 [DSP.1 onset] band=0 t=28.7464
 [DSP.1 onset] band=3 t=28.7696
 [DSP.1 onset] band=4 t=28.8393
 [DSP.1 onset] band=1 t=28.8625
 [DSP.1 onset] band=5 t=28.8857
-[DSP.1 ts] t=28.9088 flux=0.6780 thr=0.2248
 [DSP.1 onset] band=2 t=28.9786
 [DSP.1 onset] band=3 t=28.9786
 [DSP.1 onset] band=4 t=29.0018
-[DSP.1 dump] autocorr bpm=117.45 conf=0.937 stable=152 instant=152
+[DSP.1 dump] autocorr bpm=117.45 conf=0.937 stable=129 instant=125
 [DSP.1 onset] band=5 t=29.0483
 [DSP.1 onset] band=4 t=29.1644
 [DSP.1 onset] band=2 t=29.2340
 [DSP.1 onset] band=3 t=29.2340
 [DSP.1 onset] band=1 t=29.2805
 [DSP.1 onset] band=5 t=29.2805
-[DSP.1 ts] t=29.3036 flux=0.3547 thr=0.1935
+[DSP.1 ts] t=29.3036 flux=0.2200 thr=0.0000
 [DSP.1 onset] band=0 t=29.3037
 [DSP.1 onset] band=4 t=29.3966
 [DSP.1 onset] band=2 t=29.4895
 [DSP.1 onset] band=3 t=29.4895
 [DSP.1 onset] band=4 t=29.5591
 [DSP.1 onset] band=5 t=29.5591
-[DSP.1 dump] stable raw=152.00 sel=152.00
-[DSP.1 dump]   bin bpm=152 period=0.3947 count=7
-[DSP.1 dump]   bin bpm=99 period=0.6061 count=3
-[DSP.1 dump]   bin bpm=96 period=0.6250 count=2
-[DSP.1 dump]   bin bpm=117 period=0.5128 count=2
-[DSP.1 dump]   bin bpm=129 period=0.4651 count=2
+[DSP.1 dump] stable raw=144.00 sel=124.61
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=5
+[DSP.1 dump]   bin bpm=112 period=0.5357 count=3
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=3
+[DSP.1 dump]   bin bpm=108 period=0.5556 count=2
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=2
 [DSP.1 onset] band=2 t=29.6984
 [DSP.1 onset] band=3 t=29.6984
 [DSP.1 onset] band=1 t=29.7217
 [DSP.1 onset] band=4 t=29.7449
 [DSP.1 onset] band=5 t=29.7681
+[DSP.1 ts] t=29.8144 flux=0.0551 thr=0.0000
 [DSP.1 onset] band=0 t=29.8145
-[DSP.1 ts] t=29.9073 flux=0.3190 thr=0.2219
 [DSP.1 onset] band=2 t=29.9074
 [DSP.1 onset] band=3 t=29.9074
 [DSP.1 onset] band=4 t=29.9074
 
 ===== so_what file=/Users/braesidebandit/Documents/Projects/phosphene/PhospheneEngine/Tests/Fixtures/tempo/so_what.m4a rate=44100 duration=30.0s metadataBPM=136.0 =====
 [DSP.1 dump] autocorr bpm=0.00 conf=0.000 stable=0 instant=0
+[DSP.1 ts] t=0.1161 flux=0.0056 thr=0.0000
 [DSP.1 onset] band=0 t=0.1161
 [DSP.1 onset] band=2 t=0.1161
 [DSP.1 onset] band=3 t=0.1161
 [DSP.1 onset] band=4 t=0.1393
 [DSP.1 onset] band=5 t=0.1393
 [DSP.1 onset] band=1 t=0.1625
-[DSP.1 ts] t=0.2090 flux=0.1039 thr=0.0134
 [DSP.1 onset] band=4 t=0.3019
 [DSP.1 onset] band=2 t=0.3251
 [DSP.1 onset] band=3 t=0.3251
 [DSP.1 onset] band=5 t=0.3251
-[DSP.1 ts] t=0.3947 flux=0.0227 thr=0.0146
 [DSP.1 onset] band=4 t=0.5108
 [DSP.1 onset] band=2 t=0.5341
 [DSP.1 onset] band=3 t=0.5341
+[DSP.1 ts] t=0.5805 flux=0.0034 thr=0.0000
 [DSP.1 onset] band=0 t=0.5805
 [DSP.1 onset] band=5 t=0.6269
 [DSP.1 onset] band=1 t=0.6734
@@ -964,12 +957,12 @@
 [DSP.1 onset] band=2 t=0.7430
 [DSP.1 onset] band=3 t=0.7663
 [DSP.1 onset] band=5 t=0.7895
-[DSP.1 ts] t=0.8127 flux=0.0513 thr=0.0146
 [DSP.1 onset] band=4 t=0.8591
 [DSP.1 onset] band=2 t=0.9520
+[DSP.1 ts] t=0.9985 flux=0.0038 thr=0.0000
 [DSP.1 onset] band=0 t=0.9985
 [DSP.1 onset] band=3 t=0.9985
-[DSP.1 dump] stable early reason=recent<4(3) e=1.0 ws=-9.0 first=0.2 last=0.8 buf=3
+[DSP.1 dump] stable early reason=recent<4(3) e=1.0 ws=-9.0 first=0.1 last=1.0 buf=3
 [DSP.1 dump] autocorr bpm=0.00 conf=0.000 stable=0 instant=0
 [DSP.1 onset] band=1 t=1.0913
 [DSP.1 onset] band=4 t=1.0913
@@ -978,6 +971,7 @@
 [DSP.1 onset] band=3 t=1.2074
 [DSP.1 onset] band=5 t=1.2539
 [DSP.1 onset] band=2 t=1.3932
+[DSP.1 ts] t=1.4164 flux=0.0008 thr=0.0000
 [DSP.1 onset] band=0 t=1.4164
 [DSP.1 onset] band=4 t=1.4164
 [DSP.1 onset] band=3 t=1.4861
@@ -985,47 +979,50 @@
 [DSP.1 onset] band=5 t=1.5325
 [DSP.1 onset] band=2 t=1.6022
 [DSP.1 onset] band=4 t=1.6022
-[DSP.1 ts] t=1.6951 flux=0.0639 thr=0.0102
 [DSP.1 onset] band=3 t=1.6951
 [DSP.1 onset] band=5 t=1.6951
 [DSP.1 onset] band=4 t=1.7879
 [DSP.1 onset] band=2 t=1.8112
+[DSP.1 ts] t=1.8344 flux=0.0093 thr=0.0000
 [DSP.1 onset] band=0 t=1.8344
-[DSP.1 ts] t=1.8808 flux=0.0116 thr=0.0102
 [DSP.1 onset] band=5 t=1.9040
 [DSP.1 onset] band=3 t=1.9273
 [DSP.1 onset] band=4 t=1.9737
 [DSP.1 onset] band=2 t=2.0201
 [DSP.1 dump] autocorr bpm=0.00 conf=0.000 stable=0 instant=0
-[DSP.1 dump] stable early reason=noPeak(in=2,out=2,recent=5)
+[DSP.1 dump] stable raw=144.00 sel=139.67
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=3
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=1
 [DSP.1 onset] band=1 t=2.0434
 [DSP.1 onset] band=5 t=2.0666
-[DSP.1 ts] t=2.1362 flux=0.0139 thr=0.0102
 [DSP.1 onset] band=3 t=2.1362
 [DSP.1 onset] band=4 t=2.1362
 [DSP.1 onset] band=2 t=2.2291
+[DSP.1 ts] t=2.2756 flux=0.0028 thr=0.0000
 [DSP.1 onset] band=0 t=2.2756
 [DSP.1 onset] band=5 t=2.2988
 [DSP.1 onset] band=4 t=2.3452
 [DSP.1 onset] band=3 t=2.3917
-[DSP.1 ts] t=2.4613 flux=0.0526 thr=0.0101
 [DSP.1 onset] band=1 t=2.4613
 [DSP.1 onset] band=2 t=2.4613
 [DSP.1 onset] band=5 t=2.4613
 [DSP.1 onset] band=4 t=2.5542
 [DSP.1 onset] band=2 t=2.6703
+[DSP.1 ts] t=2.6935 flux=0.0072 thr=0.0000
 [DSP.1 onset] band=0 t=2.6935
 [DSP.1 onset] band=3 t=2.6935
 [DSP.1 onset] band=4 t=2.7632
 [DSP.1 onset] band=1 t=2.8793
-[DSP.1 ts] t=2.9025 flux=0.0258 thr=0.0133
 [DSP.1 onset] band=2 t=2.9025
 [DSP.1 onset] band=3 t=2.9025
 [DSP.1 onset] band=4 t=2.9489
 [DSP.1 onset] band=5 t=2.9722
-[DSP.1 dump] autocorr bpm=0.00 conf=0.000 stable=0 instant=0
-[DSP.1 dump] stable early reason=noPeak(in=4,out=3,recent=8)
-[DSP.1 ts] t=3.0883 flux=0.0721 thr=0.0137
+[DSP.1 dump] autocorr bpm=0.00 conf=0.000 stable=0 instant=140
+[DSP.1 dump] stable raw=144.00 sel=139.67
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=4
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=1
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=1
+[DSP.1 ts] t=3.1115 flux=0.0232 thr=0.0000
 [DSP.1 onset] band=0 t=3.1115
 [DSP.1 onset] band=2 t=3.1115
 [DSP.1 onset] band=4 t=3.1347
@@ -1033,62 +1030,66 @@
 [DSP.1 onset] band=3 t=3.1811
 [DSP.1 onset] band=2 t=3.3205
 [DSP.1 onset] band=5 t=3.3205
-[DSP.1 ts] t=3.3437 flux=0.0848 thr=0.0347
 [DSP.1 onset] band=1 t=3.3437
 [DSP.1 onset] band=4 t=3.3437
 [DSP.1 onset] band=3 t=3.4366
 [DSP.1 onset] band=5 t=3.4830
-[DSP.1 ts] t=3.5062 flux=0.1120 thr=0.0464
 [DSP.1 onset] band=4 t=3.5062
 [DSP.1 onset] band=2 t=3.5294
+[DSP.1 ts] t=3.5527 flux=0.0023 thr=0.0000
 [DSP.1 onset] band=0 t=3.5527
 [DSP.1 onset] band=3 t=3.6455
 [DSP.1 onset] band=4 t=3.6920
-[DSP.1 ts] t=3.7849 flux=0.0756 thr=0.0488
 [DSP.1 onset] band=1 t=3.7849
 [DSP.1 onset] band=2 t=3.7849
 [DSP.1 onset] band=5 t=3.8081
 [DSP.1 onset] band=4 t=3.8777
 [DSP.1 onset] band=3 t=3.9010
 [DSP.1 onset] band=2 t=3.9938
+[DSP.1 ts] t=4.0171 flux=0.0004 thr=0.0000
 [DSP.1 onset] band=0 t=4.0171
-[DSP.1 dump] autocorr bpm=143.55 conf=0.554 stable=0 instant=0
+[DSP.1 dump] autocorr bpm=143.55 conf=0.554 stable=0 instant=140
 [DSP.1 onset] band=4 t=4.0403
 [DSP.1 onset] band=5 t=4.0403
-[DSP.1 dump] stable early reason=noPeak(in=4,out=7,recent=12)
+[DSP.1 dump] stable raw=144.00 sel=138.43
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=5
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=2
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=2
 [DSP.1 onset] band=3 t=4.1099
 [DSP.1 onset] band=1 t=4.2260
 [DSP.1 onset] band=4 t=4.2260
 [DSP.1 onset] band=5 t=4.2260
 [DSP.1 onset] band=2 t=4.3189
 [DSP.1 onset] band=3 t=4.3421
-[DSP.1 ts] t=4.4118 flux=0.0449 thr=0.0224
+[DSP.1 ts] t=4.4350 flux=0.0045 thr=0.0000
 [DSP.1 onset] band=0 t=4.4350
 [DSP.1 onset] band=4 t=4.5047
 [DSP.1 onset] band=5 t=4.5047
 [DSP.1 onset] band=2 t=4.5511
 [DSP.1 onset] band=3 t=4.5743
 [DSP.1 onset] band=5 t=4.6904
-[DSP.1 ts] t=4.7137 flux=0.0458 thr=0.0177
 [DSP.1 onset] band=1 t=4.7137
 [DSP.1 onset] band=4 t=4.7137
 [DSP.1 onset] band=2 t=4.7833
 [DSP.1 onset] band=3 t=4.8065
+[DSP.1 ts] t=4.8762 flux=0.0025 thr=0.0000
 [DSP.1 onset] band=0 t=4.8762
 [DSP.1 onset] band=4 t=4.9459
 [DSP.1 onset] band=2 t=4.9923
 [DSP.1 onset] band=5 t=5.0155
-[DSP.1 dump] autocorr bpm=143.55 conf=0.492 stable=0 instant=0
+[DSP.1 dump] autocorr bpm=143.55 conf=0.492 stable=140 instant=138
 [DSP.1 onset] band=3 t=5.0387
-[DSP.1 ts] t=5.0852 flux=0.0166 thr=0.0163
-[DSP.1 dump] stable early reason=noPeak(in=7,out=7,recent=15)
+[DSP.1 dump] stable raw=144.00 sel=138.65
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=6
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=3
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=2
 [DSP.1 onset] band=4 t=5.1084
 [DSP.1 onset] band=1 t=5.1781
 [DSP.1 onset] band=5 t=5.1781
 [DSP.1 onset] band=2 t=5.2013
-[DSP.1 ts] t=5.2477 flux=0.0366 thr=0.0142
 [DSP.1 onset] band=3 t=5.2477
 [DSP.1 onset] band=4 t=5.2709
+[DSP.1 ts] t=5.3174 flux=0.0102 thr=0.0000
 [DSP.1 onset] band=0 t=5.3174
 [DSP.1 onset] band=5 t=5.3638
 [DSP.1 onset] band=2 t=5.4103
@@ -1098,58 +1099,62 @@
 [DSP.1 onset] band=2 t=5.6192
 [DSP.1 onset] band=3 t=5.6192
 [DSP.1 onset] band=4 t=5.6425
+[DSP.1 ts] t=5.7818 flux=0.0014 thr=0.0000
 [DSP.1 onset] band=0 t=5.7818
 [DSP.1 onset] band=2 t=5.8282
 [DSP.1 onset] band=3 t=5.8514
 [DSP.1 onset] band=4 t=5.8747
 [DSP.1 onset] band=5 t=5.9211
-[DSP.1 ts] t=5.9907 flux=0.0136 thr=0.0114
 [DSP.1 onset] band=1 t=6.0140
-[DSP.1 dump] autocorr bpm=143.55 conf=0.450 stable=0 instant=0
+[DSP.1 dump] autocorr bpm=143.55 conf=0.450 stable=140 instant=139
 [DSP.1 onset] band=2 t=6.0604
 [DSP.1 onset] band=3 t=6.0604
 [DSP.1 onset] band=4 t=6.0836
 [DSP.1 onset] band=5 t=6.1069
-[DSP.1 dump] stable early reason=noPeak(in=8,out=8,recent=17)
+[DSP.1 dump] stable raw=144.00 sel=137.67
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=6
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=4
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=3
+[DSP.1 ts] t=6.1997 flux=0.0029 thr=0.0000
 [DSP.1 onset] band=0 t=6.1997
-[DSP.1 ts] t=6.2462 flux=0.0328 thr=0.0188
 [DSP.1 onset] band=4 t=6.2462
 [DSP.1 onset] band=2 t=6.2926
 [DSP.1 onset] band=5 t=6.3158
 [DSP.1 onset] band=3 t=6.3391
 [DSP.1 onset] band=4 t=6.4087
 [DSP.1 onset] band=1 t=6.4552
-[DSP.1 ts] t=6.4784 flux=0.0475 thr=0.0230
 [DSP.1 onset] band=5 t=6.4784
 [DSP.1 onset] band=2 t=6.5480
 [DSP.1 onset] band=3 t=6.5480
 [DSP.1 onset] band=4 t=6.5713
-[DSP.1 ts] t=6.6409 flux=0.2189 thr=0.0253
+[DSP.1 ts] t=6.6409 flux=0.0619 thr=0.0000
 [DSP.1 onset] band=0 t=6.6409
 [DSP.1 onset] band=3 t=6.7570
 [DSP.1 onset] band=2 t=6.7802
 [DSP.1 onset] band=4 t=6.7802
 [DSP.1 onset] band=5 t=6.8731
 [DSP.1 onset] band=1 t=6.8963
-[DSP.1 ts] t=6.9195 flux=0.0721 thr=0.0440
 [DSP.1 onset] band=4 t=6.9660
 [DSP.1 onset] band=2 t=6.9892
 [DSP.1 onset] band=3 t=6.9892
-[DSP.1 dump] autocorr bpm=107.67 conf=0.556 stable=0 instant=0
+[DSP.1 dump] autocorr bpm=107.67 conf=0.556 stable=140 instant=138
 [DSP.1 onset] band=5 t=7.0357
-[DSP.1 ts] t=7.0821 flux=0.0823 thr=0.0512
+[DSP.1 ts] t=7.0821 flux=0.0094 thr=0.0000
 [DSP.1 onset] band=0 t=7.0821
-[DSP.1 dump] stable early reason=noPeak(in=8,out=13,recent=22)
+[DSP.1 dump] stable raw=144.00 sel=137.81
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=7
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=6
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=3
 [DSP.1 onset] band=3 t=7.2214
 [DSP.1 onset] band=4 t=7.2214
 [DSP.1 onset] band=5 t=7.2214
 [DSP.1 onset] band=2 t=7.2446
-[DSP.1 ts] t=7.3607 flux=0.1425 thr=0.0528
 [DSP.1 onset] band=1 t=7.3607
 [DSP.1 onset] band=4 t=7.3840
 [DSP.1 onset] band=5 t=7.3840
 [DSP.1 onset] band=2 t=7.4536
 [DSP.1 onset] band=3 t=7.4769
+[DSP.1 ts] t=7.5000 flux=0.0020 thr=0.0000
 [DSP.1 onset] band=0 t=7.5001
 [DSP.1 onset] band=4 t=7.5930
 [DSP.1 onset] band=5 t=7.5930
@@ -1159,19 +1164,23 @@
 [DSP.1 onset] band=2 t=7.8019
 [DSP.1 onset] band=5 t=7.8019
 [DSP.1 onset] band=3 t=7.8948
+[DSP.1 ts] t=7.9412 flux=0.0034 thr=0.0000
 [DSP.1 onset] band=0 t=7.9413
 [DSP.1 onset] band=4 t=7.9413
-[DSP.1 ts] t=7.9644 flux=0.0858 thr=0.0231
-[DSP.1 dump] autocorr bpm=136.00 conf=0.554 stable=0 instant=0
+[DSP.1 dump] autocorr bpm=136.00 conf=0.554 stable=140 instant=138
 [DSP.1 onset] band=2 t=8.0341
 [DSP.1 onset] band=3 t=8.1038
 [DSP.1 onset] band=5 t=8.1502
-[DSP.1 dump] stable early reason=noPeak(in=9,out=14,recent=24)
+[DSP.1 dump] stable raw=144.00 sel=138.02
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=8
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=7
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=3
 [DSP.1 onset] band=4 t=8.2199
 [DSP.1 onset] band=1 t=8.2431
 [DSP.1 onset] band=2 t=8.2431
 [DSP.1 onset] band=3 t=8.3128
 [DSP.1 onset] band=5 t=8.3128
+[DSP.1 ts] t=8.3824 flux=0.0030 thr=0.0000
 [DSP.1 onset] band=0 t=8.3824
 [DSP.1 onset] band=4 t=8.3824
 [DSP.1 onset] band=5 t=8.4753
@@ -1183,16 +1192,19 @@
 [DSP.1 onset] band=5 t=8.7540
 [DSP.1 onset] band=2 t=8.7772
 [DSP.1 onset] band=3 t=8.8004
-[DSP.1 ts] t=8.8236 flux=0.0355 thr=0.0084
+[DSP.1 ts] t=8.8236 flux=0.0138 thr=0.0000
 [DSP.1 onset] band=0 t=8.8236
 [DSP.1 onset] band=4 t=8.9165
 [DSP.1 onset] band=5 t=8.9165
-[DSP.1 ts] t=9.0093 flux=0.0105 thr=0.0089
-[DSP.1 dump] autocorr bpm=136.00 conf=0.551 stable=0 instant=0
+[DSP.1 dump] autocorr bpm=136.00 conf=0.551 stable=140 instant=138
 [DSP.1 onset] band=2 t=9.0790
 [DSP.1 onset] band=1 t=9.1023
 [DSP.1 onset] band=4 t=9.1255
-[DSP.1 dump] stable early reason=noPeak(in=10,out=15,recent=26)
+[DSP.1 dump] stable raw=136.00 sel=137.81
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=9
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=8
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=3
+[DSP.1 ts] t=9.2415 flux=0.0086 thr=0.0000
 [DSP.1 onset] band=0 t=9.2416
 [DSP.1 onset] band=5 t=9.2648
 [DSP.1 onset] band=2 t=9.3112
@@ -1200,12 +1212,11 @@
 [DSP.1 onset] band=4 t=9.4970
 [DSP.1 onset] band=1 t=9.5434
 [DSP.1 onset] band=2 t=9.5434
-[DSP.1 ts] t=9.5666 flux=0.0206 thr=0.0084
 [DSP.1 onset] band=3 t=9.5899
 [DSP.1 onset] band=5 t=9.5899
 [DSP.1 onset] band=4 t=9.6595
+[DSP.1 ts] t=9.7059 flux=0.0132 thr=0.0000
 [DSP.1 onset] band=0 t=9.7060
-[DSP.1 ts] t=9.7988 flux=0.0144 thr=0.0108
 [DSP.1 onset] band=2 t=9.7989
 [DSP.1 onset] band=3 t=9.7989
 [DSP.1 onset] band=4 t=9.8453
@@ -1214,13 +1225,15 @@
 [DSP.1 onset] band=2 t=10.0078
 [DSP.1 onset] band=3 t=10.0078
 [DSP.1 onset] band=4 t=10.0078
-[DSP.1 dump] autocorr bpm=107.67 conf=0.582 stable=0 instant=0
-[DSP.1 ts] t=10.0310 flux=0.1080 thr=0.0109
+[DSP.1 dump] autocorr bpm=107.67 conf=0.582 stable=140 instant=138
 [DSP.1 onset] band=5 t=10.1239
+[DSP.1 ts] t=10.1703 flux=0.0001 thr=0.0000
 [DSP.1 onset] band=0 t=10.1704
 [DSP.1 onset] band=4 t=10.1704
-[DSP.1 ts] t=10.1936 flux=0.0222 thr=0.0106
-[DSP.1 dump] stable early reason=noPeak(in=11,out=17,recent=29)
+[DSP.1 dump] stable raw=136.00 sel=137.65
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=9
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=9
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=4
 [DSP.1 onset] band=2 t=10.2168
 [DSP.1 onset] band=3 t=10.2865
 [DSP.1 onset] band=5 t=10.3097
@@ -1229,7 +1242,7 @@
 [DSP.1 onset] band=2 t=10.4258
 [DSP.1 onset] band=5 t=10.4722
 [DSP.1 onset] band=3 t=10.5187
-[DSP.1 ts] t=10.6115 flux=0.0599 thr=0.0109
+[DSP.1 ts] t=10.6115 flux=0.0149 thr=0.0000
 [DSP.1 onset] band=0 t=10.6116
 [DSP.1 onset] band=4 t=10.6116
 [DSP.1 onset] band=2 t=10.6348
@@ -1241,126 +1254,116 @@
 [DSP.1 onset] band=5 t=10.9599
 [DSP.1 onset] band=2 t=10.9831
 [DSP.1 onset] band=4 t=10.9831
-[DSP.1 dump] autocorr bpm=83.35 conf=0.573 stable=0 instant=0
-[DSP.1 ts] t=11.0295 flux=0.0182 thr=0.0098
+[DSP.1 dump] autocorr bpm=83.35 conf=0.573 stable=140 instant=138
+[DSP.1 ts] t=11.0295 flux=0.0029 thr=0.0000
 [DSP.1 onset] band=0 t=11.0295
 [DSP.1 onset] band=4 t=11.1456
 [DSP.1 onset] band=2 t=11.1921
-[DSP.1 dump] stable raw=144.00 sel=144.00
-[DSP.1 dump]   bin bpm=144 period=0.4167 count=2
-[DSP.1 dump]   bin bpm=70 period=0.8571 count=1
-[DSP.1 dump]   bin bpm=81 period=0.7407 count=1
-[DSP.1 dump]   bin bpm=96 period=0.6250 count=1
-[DSP.1 dump]   bin bpm=99 period=0.6061 count=1
+[DSP.1 dump] stable raw=136.00 sel=137.31
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=10
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=8
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=4
 [DSP.1 onset] band=1 t=11.2385
 [DSP.1 onset] band=3 t=11.2385
 [DSP.1 onset] band=4 t=11.3082
 [DSP.1 onset] band=5 t=11.3314
 [DSP.1 onset] band=2 t=11.4243
+[DSP.1 ts] t=11.4474 flux=0.0023 thr=0.0000
 [DSP.1 onset] band=0 t=11.4475
 [DSP.1 onset] band=3 t=11.4939
 [DSP.1 onset] band=4 t=11.4939
 [DSP.1 onset] band=5 t=11.4939
-[DSP.1 ts] t=11.5171 flux=0.0460 thr=0.0085
 [DSP.1 onset] band=2 t=11.6332
 [DSP.1 onset] band=5 t=11.6565
 [DSP.1 onset] band=1 t=11.6797
 [DSP.1 onset] band=4 t=11.7493
 [DSP.1 onset] band=3 t=11.7726
-[DSP.1 ts] t=11.8190 flux=0.0107 thr=0.0084
 [DSP.1 onset] band=5 t=11.8422
+[DSP.1 ts] t=11.8886 flux=0.0001 thr=0.0000
 [DSP.1 onset] band=0 t=11.8887
 [DSP.1 onset] band=2 t=11.8887
 [DSP.1 onset] band=4 t=11.9119
-[DSP.1 ts] t=12.0047 flux=0.0137 thr=0.0076
 [DSP.1 onset] band=3 t=12.0048
 [DSP.1 onset] band=5 t=12.0048
-[DSP.1 dump] autocorr bpm=136.00 conf=0.660 stable=0 instant=144
+[DSP.1 dump] autocorr bpm=136.00 conf=0.660 stable=140 instant=137
 [DSP.1 onset] band=4 t=12.0976
 [DSP.1 onset] band=1 t=12.1209
 [DSP.1 onset] band=2 t=12.1905
 [DSP.1 onset] band=3 t=12.2137
 [DSP.1 onset] band=5 t=12.2137
-[DSP.1 ts] t=12.2369 flux=0.0539 thr=0.0085
-[DSP.1 dump] stable raw=144.00 sel=144.00
-[DSP.1 dump]   bin bpm=144 period=0.4167 count=2
-[DSP.1 dump]   bin bpm=199 period=0.3015 count=2
-[DSP.1 dump]   bin bpm=70 period=0.8571 count=1
-[DSP.1 dump]   bin bpm=81 period=0.7407 count=1
-[DSP.1 dump]   bin bpm=96 period=0.6250 count=1
+[DSP.1 dump] stable raw=136.00 sel=137.31
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=10
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=8
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=4
 [DSP.1 onset] band=4 t=12.3298
+[DSP.1 ts] t=12.3762 flux=0.0134 thr=0.0000
 [DSP.1 onset] band=0 t=12.3763
 [DSP.1 onset] band=5 t=12.3763
 [DSP.1 onset] band=2 t=12.3995
-[DSP.1 ts] t=12.4227 flux=0.0145 thr=0.0107
 [DSP.1 onset] band=3 t=12.4227
 [DSP.1 onset] band=4 t=12.4924
 [DSP.1 onset] band=1 t=12.5620
 [DSP.1 onset] band=5 t=12.5853
-[DSP.1 ts] t=12.6317 flux=0.0134 thr=0.0116
 [DSP.1 onset] band=2 t=12.6549
 [DSP.1 onset] band=4 t=12.7478
 [DSP.1 onset] band=5 t=12.7478
+[DSP.1 ts] t=12.7942 flux=0.0023 thr=0.0000
 [DSP.1 onset] band=0 t=12.7942
 [DSP.1 onset] band=3 t=12.7942
 [DSP.1 onset] band=2 t=12.9336
-[DSP.1 ts] t=12.9567 flux=0.0100 thr=0.0096
 [DSP.1 onset] band=4 t=12.9568
 [DSP.1 onset] band=1 t=12.9800
 [DSP.1 onset] band=3 t=13.0032
-[DSP.1 dump] autocorr bpm=136.00 conf=0.753 stable=0 instant=144
-[DSP.1 ts] t=13.1193 flux=0.0560 thr=0.0106
+[DSP.1 dump] autocorr bpm=136.00 conf=0.753 stable=140 instant=137
 [DSP.1 onset] band=4 t=13.1193
 [DSP.1 onset] band=5 t=13.1193
 [DSP.1 onset] band=2 t=13.1425
 [DSP.1 onset] band=3 t=13.2122
+[DSP.1 ts] t=13.2354 flux=0.0021 thr=0.0000
 [DSP.1 onset] band=0 t=13.2354
-[DSP.1 dump] stable raw=144.00 sel=144.00
-[DSP.1 dump]   bin bpm=144 period=0.4167 count=2
-[DSP.1 dump]   bin bpm=199 period=0.3015 count=2
-[DSP.1 dump]   bin bpm=70 period=0.8571 count=1
-[DSP.1 dump]   bin bpm=81 period=0.7407 count=1
-[DSP.1 dump]   bin bpm=96 period=0.6250 count=1
+[DSP.1 dump] stable raw=136.00 sel=136.33
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=10
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=7
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=4
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=1
 [DSP.1 onset] band=4 t=13.3051
 [DSP.1 onset] band=2 t=13.3515
 [DSP.1 onset] band=5 t=13.3747
 [DSP.1 onset] band=1 t=13.3980
 [DSP.1 onset] band=3 t=13.4676
 [DSP.1 onset] band=4 t=13.4676
-[DSP.1 ts] t=13.5605 flux=0.0347 thr=0.0100
 [DSP.1 onset] band=2 t=13.5605
 [DSP.1 onset] band=5 t=13.5605
 [DSP.1 onset] band=4 t=13.6302
+[DSP.1 ts] t=13.6998 flux=0.0017 thr=0.0000
 [DSP.1 onset] band=0 t=13.6998
 [DSP.1 onset] band=3 t=13.6998
 [DSP.1 onset] band=5 t=13.7230
-[DSP.1 ts] t=13.7462 flux=0.1282 thr=0.0172
 [DSP.1 onset] band=2 t=13.7695
 [DSP.1 onset] band=1 t=13.8391
 [DSP.1 onset] band=4 t=13.8856
 [DSP.1 onset] band=5 t=13.8856
 [DSP.1 onset] band=3 t=13.9552
 [DSP.1 onset] band=2 t=13.9785
-[DSP.1 dump] autocorr bpm=99.38 conf=0.507 stable=144 instant=144
-[DSP.1 ts] t=14.0249 flux=0.1108 thr=0.0218
+[DSP.1 dump] autocorr bpm=99.38 conf=0.507 stable=140 instant=136
+[DSP.1 ts] t=14.1177 flux=0.0044 thr=0.0000
 [DSP.1 onset] band=0 t=14.1178
 [DSP.1 onset] band=4 t=14.1410
 [DSP.1 onset] band=5 t=14.1410
 [DSP.1 onset] band=2 t=14.2339
-[DSP.1 dump] stable raw=144.00 sel=144.00
-[DSP.1 dump]   bin bpm=144 period=0.4167 count=2
-[DSP.1 dump]   bin bpm=199 period=0.3015 count=2
-[DSP.1 dump]   bin bpm=70 period=0.8571 count=1
-[DSP.1 dump]   bin bpm=81 period=0.7407 count=1
-[DSP.1 dump]   bin bpm=99 period=0.6061 count=1
+[DSP.1 dump] stable raw=136.00 sel=136.33
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=10
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=7
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=4
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=1
 [DSP.1 onset] band=3 t=14.3035
 [DSP.1 onset] band=1 t=14.3500
 [DSP.1 onset] band=4 t=14.3732
-[DSP.1 ts] t=14.4196 flux=0.0429 thr=0.0238
 [DSP.1 onset] band=5 t=14.4661
 [DSP.1 onset] band=2 t=14.4893
 [DSP.1 onset] band=3 t=14.5357
 [DSP.1 onset] band=4 t=14.5357
+[DSP.1 ts] t=14.5589 flux=0.0046 thr=0.0000
 [DSP.1 onset] band=0 t=14.5590
 [DSP.1 onset] band=2 t=14.6983
 [DSP.1 onset] band=4 t=14.7447
@@ -1369,25 +1372,25 @@
 [DSP.1 onset] band=5 t=14.8376
 [DSP.1 onset] band=4 t=14.9305
 [DSP.1 onset] band=2 t=14.9537
+[DSP.1 ts] t=15.0001 flux=0.0081 thr=0.0000
 [DSP.1 onset] band=0 t=15.0001
 [DSP.1 onset] band=3 t=15.0001
 [DSP.1 onset] band=5 t=15.0001
-[DSP.1 dump] autocorr bpm=143.55 conf=0.654 stable=144 instant=144
-[DSP.1 ts] t=15.0465 flux=0.0554 thr=0.0222
+[DSP.1 dump] autocorr bpm=143.55 conf=0.654 stable=140 instant=136
 [DSP.1 onset] band=4 t=15.1163
 [DSP.1 onset] band=5 t=15.1627
 [DSP.1 onset] band=2 t=15.1859
 [DSP.1 onset] band=1 t=15.2091
 [DSP.1 onset] band=3 t=15.2324
-[DSP.1 dump] stable raw=144.00 sel=144.00
-[DSP.1 dump]   bin bpm=144 period=0.4167 count=2
-[DSP.1 dump]   bin bpm=70 period=0.8571 count=1
-[DSP.1 dump]   bin bpm=96 period=0.6250 count=1
-[DSP.1 dump]   bin bpm=99 period=0.6061 count=1
-[DSP.1 dump]   bin bpm=108 period=0.5556 count=1
+[DSP.1 dump] stable raw=136.00 sel=136.68
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=10
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=7
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=3
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=1
 [DSP.1 onset] band=5 t=15.3717
 [DSP.1 onset] band=4 t=15.4181
 [DSP.1 onset] band=2 t=15.4413
+[DSP.1 ts] t=15.4645 flux=0.0093 thr=0.0000
 [DSP.1 onset] band=0 t=15.4646
 [DSP.1 onset] band=3 t=15.4646
 [DSP.1 onset] band=4 t=15.5807
@@ -1396,27 +1399,26 @@
 [DSP.1 onset] band=5 t=15.6735
 [DSP.1 onset] band=3 t=15.6968
 [DSP.1 onset] band=4 t=15.7664
-[DSP.1 ts] t=15.8128 flux=0.0121 thr=0.0109
 [DSP.1 onset] band=5 t=15.8361
+[DSP.1 ts] t=15.8824 flux=0.0015 thr=0.0000
 [DSP.1 onset] band=0 t=15.8825
 [DSP.1 onset] band=2 t=15.8825
 [DSP.1 onset] band=3 t=15.9057
 [DSP.1 onset] band=4 t=15.9754
 [DSP.1 onset] band=5 t=16.0218
-[DSP.1 dump] autocorr bpm=143.55 conf=0.641 stable=144 instant=144
-[DSP.1 ts] t=16.0914 flux=0.0121 thr=0.0108
+[DSP.1 dump] autocorr bpm=143.55 conf=0.641 stable=140 instant=137
 [DSP.1 onset] band=1 t=16.0915
 [DSP.1 onset] band=2 t=16.1844
 [DSP.1 onset] band=5 t=16.1844
 [DSP.1 onset] band=3 t=16.2076
 [DSP.1 onset] band=4 t=16.2308
+[DSP.1 ts] t=16.3236 flux=0.0038 thr=0.0000
 [DSP.1 onset] band=0 t=16.3237
-[DSP.1 dump] stable raw=144.00 sel=144.00
-[DSP.1 dump]   bin bpm=144 period=0.4167 count=2
-[DSP.1 dump]   bin bpm=70 period=0.8571 count=1
-[DSP.1 dump]   bin bpm=78 period=0.7692 count=1
-[DSP.1 dump]   bin bpm=96 period=0.6250 count=1
-[DSP.1 dump]   bin bpm=99 period=0.6061 count=1
+[DSP.1 dump] stable raw=136.00 sel=136.33
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=10
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=7
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=4
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=1
 [DSP.1 onset] band=5 t=16.3469
 [DSP.1 onset] band=4 t=16.3934
 [DSP.1 onset] band=2 t=16.4398
@@ -1424,87 +1426,80 @@
 [DSP.1 onset] band=1 t=16.5559
 [DSP.1 onset] band=5 t=16.5791
 [DSP.1 onset] band=4 t=16.6023
-[DSP.1 ts] t=16.6487 flux=0.0146 thr=0.0107
 [DSP.1 onset] band=3 t=16.6720
 [DSP.1 onset] band=2 t=16.6952
+[DSP.1 ts] t=16.7880 flux=0.0064 thr=0.0000
 [DSP.1 onset] band=0 t=16.7881
 [DSP.1 onset] band=4 t=16.7881
 [DSP.1 onset] band=5 t=16.7881
-[DSP.1 ts] t=16.9041 flux=0.0154 thr=0.0125
 [DSP.1 onset] band=2 t=16.9042
 [DSP.1 onset] band=3 t=16.9506
 [DSP.1 onset] band=4 t=16.9739
 [DSP.1 onset] band=1 t=16.9971
 [DSP.1 onset] band=5 t=17.0203
-[DSP.1 dump] autocorr bpm=143.55 conf=0.635 stable=144 instant=144
-[DSP.1 ts] t=17.1131 flux=0.0744 thr=0.0128
+[DSP.1 dump] autocorr bpm=143.55 conf=0.635 stable=140 instant=136
 [DSP.1 onset] band=2 t=17.1132
 [DSP.1 onset] band=4 t=17.1596
 [DSP.1 onset] band=3 t=17.1828
 [DSP.1 onset] band=5 t=17.2293
-[DSP.1 ts] t=17.2756 flux=0.0459 thr=0.0135
+[DSP.1 ts] t=17.2756 flux=0.0105 thr=0.0000
 [DSP.1 onset] band=0 t=17.2757
-[DSP.1 dump] stable raw=108.00 sel=108.00
-[DSP.1 dump]   bin bpm=108 period=0.5556 count=2
-[DSP.1 dump]   bin bpm=144 period=0.4167 count=2
-[DSP.1 dump]   bin bpm=70 period=0.8571 count=1
-[DSP.1 dump]   bin bpm=78 period=0.7692 count=1
-[DSP.1 dump]   bin bpm=96 period=0.6250 count=1
+[DSP.1 dump] stable raw=136.00 sel=135.03
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=9
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=6
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=5
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=2
 [DSP.1 onset] band=2 t=17.3686
 [DSP.1 onset] band=3 t=17.3918
 [DSP.1 onset] band=4 t=17.3918
 [DSP.1 onset] band=5 t=17.5311
-[DSP.1 ts] t=17.5543 flux=0.1058 thr=0.0212
 [DSP.1 onset] band=1 t=17.5544
 [DSP.1 onset] band=4 t=17.5544
 [DSP.1 onset] band=2 t=17.5776
 [DSP.1 onset] band=3 t=17.6240
 [DSP.1 onset] band=5 t=17.6937
-[DSP.1 ts] t=17.7168 flux=0.0847 thr=0.0290
+[DSP.1 ts] t=17.7168 flux=0.0100 thr=0.0000
 [DSP.1 onset] band=0 t=17.7169
 [DSP.1 onset] band=2 t=17.7866
 [DSP.1 onset] band=4 t=17.7866
 [DSP.1 onset] band=3 t=17.8562
 [DSP.1 onset] band=5 t=17.9027
 [DSP.1 onset] band=4 t=17.9491
-[DSP.1 ts] t=17.9722 flux=0.0790 thr=0.0234
 [DSP.1 onset] band=1 t=17.9723
-[DSP.1 dump] autocorr bpm=143.55 conf=0.750 stable=144 instant=108
+[DSP.1 dump] autocorr bpm=143.55 conf=0.750 stable=140 instant=135
 [DSP.1 onset] band=2 t=18.0420
 [DSP.1 onset] band=5 t=18.0652
 [DSP.1 onset] band=3 t=18.0884
 [DSP.1 onset] band=4 t=18.1116
+[DSP.1 ts] t=18.2044 flux=0.0012 thr=0.0000
 [DSP.1 onset] band=0 t=18.2045
 [DSP.1 onset] band=2 t=18.2510
 [DSP.1 onset] band=4 t=18.2742
-[DSP.1 ts] t=18.3205 flux=0.0129 thr=0.0095
 [DSP.1 onset] band=3 t=18.3206
 [DSP.1 onset] band=5 t=18.3206
-[DSP.1 dump] stable raw=108.00 sel=108.00
-[DSP.1 dump]   bin bpm=108 period=0.5556 count=2
-[DSP.1 dump]   bin bpm=144 period=0.4167 count=2
-[DSP.1 dump]   bin bpm=78 period=0.7692 count=1
-[DSP.1 dump]   bin bpm=96 period=0.6250 count=1
-[DSP.1 dump]   bin bpm=123 period=0.4878 count=1
+[DSP.1 dump] stable raw=136.00 sel=134.32
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=7
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=6
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=5
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=3
 [DSP.1 onset] band=1 t=18.4367
 [DSP.1 onset] band=4 t=18.4599
 [DSP.1 onset] band=2 t=18.4832
 [DSP.1 onset] band=5 t=18.5296
-[DSP.1 ts] t=18.5527 flux=0.0163 thr=0.0094
 [DSP.1 onset] band=3 t=18.5528
 [DSP.1 onset] band=4 t=18.6921
+[DSP.1 ts] t=18.7153 flux=0.0035 thr=0.0000
 [DSP.1 onset] band=0 t=18.7154
 [DSP.1 onset] band=2 t=18.7154
 [DSP.1 onset] band=5 t=18.7154
 [DSP.1 onset] band=3 t=18.8315
 [DSP.1 onset] band=5 t=18.8779
-[DSP.1 ts] t=18.9010 flux=0.1429 thr=0.0152
 [DSP.1 onset] band=1 t=18.9011
 [DSP.1 onset] band=2 t=18.9243
 [DSP.1 onset] band=4 t=18.9243
-[DSP.1 dump] autocorr bpm=143.55 conf=0.690 stable=144 instant=108
+[DSP.1 dump] autocorr bpm=143.55 conf=0.690 stable=140 instant=134
 [DSP.1 onset] band=3 t=19.1101
-[DSP.1 ts] t=19.1332 flux=0.0123 thr=0.0120
+[DSP.1 ts] t=19.1332 flux=0.0123 thr=0.0000
 [DSP.1 onset] band=0 t=19.1333
 [DSP.1 onset] band=4 t=19.1333
 [DSP.1 onset] band=2 t=19.1565
@@ -1513,84 +1508,81 @@
 [DSP.1 onset] band=5 t=19.3191
 [DSP.1 onset] band=2 t=19.3887
 [DSP.1 onset] band=3 t=19.3887
-[DSP.1 dump] stable raw=144.00 sel=144.00
-[DSP.1 dump]   bin bpm=144 period=0.4167 count=2
-[DSP.1 dump]   bin bpm=172 period=0.3488 count=2
-[DSP.1 dump]   bin bpm=78 period=0.7692 count=1
-[DSP.1 dump]   bin bpm=96 period=0.6250 count=1
-[DSP.1 dump]   bin bpm=108 period=0.5556 count=1
-[DSP.1 ts] t=19.4351 flux=0.0249 thr=0.0120
+[DSP.1 dump] stable raw=136.00 sel=133.65
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=7
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=6
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=4
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=3
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=1
 [DSP.1 onset] band=4 t=19.4584
 [DSP.1 onset] band=5 t=19.4816
+[DSP.1 ts] t=19.5744 flux=0.0069 thr=0.0000
 [DSP.1 onset] band=0 t=19.5745
 [DSP.1 onset] band=2 t=19.5977
 [DSP.1 onset] band=4 t=19.7138
-[DSP.1 ts] t=19.7370 flux=0.0102 thr=0.0092
 [DSP.1 onset] band=1 t=19.7370
 [DSP.1 onset] band=3 t=19.7370
 [DSP.1 onset] band=5 t=19.7603
 [DSP.1 onset] band=4 t=19.8764
-[DSP.1 ts] t=19.9227 flux=0.0097 thr=0.0095
 [DSP.1 onset] band=2 t=19.9228
 [DSP.1 onset] band=3 t=19.9460
 [DSP.1 onset] band=5 t=19.9692
+[DSP.1 ts] t=19.9924 flux=0.0002 thr=0.0000
 [DSP.1 onset] band=0 t=19.9925
-[DSP.1 dump] autocorr bpm=143.55 conf=0.724 stable=144 instant=144
+[DSP.1 dump] autocorr bpm=143.55 conf=0.724 stable=140 instant=134
 [DSP.1 onset] band=4 t=20.0621
 [DSP.1 onset] band=1 t=20.1782
 [DSP.1 onset] band=5 t=20.1782
-[DSP.1 ts] t=20.2014 flux=0.0340 thr=0.0093
 [DSP.1 onset] band=2 t=20.2247
 [DSP.1 onset] band=3 t=20.2247
 [DSP.1 onset] band=4 t=20.2247
 [DSP.1 onset] band=5 t=20.3408
+[DSP.1 ts] t=20.4103 flux=0.0051 thr=0.0000
 [DSP.1 onset] band=0 t=20.4104
-[DSP.1 dump] stable raw=199.00 sel=99.50
-[DSP.1 dump]   bin bpm=199 period=0.3015 count=3
-[DSP.1 dump]   bin bpm=172 period=0.3488 count=2
-[DSP.1 dump]   bin bpm=78 period=0.7692 count=1
-[DSP.1 dump]   bin bpm=96 period=0.6250 count=1
-[DSP.1 dump]   bin bpm=108 period=0.5556 count=1
+[DSP.1 dump] stable raw=144.00 sel=134.71
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=8
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=7
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=3
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=3
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=1
 [DSP.1 onset] band=4 t=20.4336
 [DSP.1 onset] band=2 t=20.4801
 [DSP.1 onset] band=3 t=20.4801
 [DSP.1 onset] band=5 t=20.5265
 [DSP.1 onset] band=1 t=20.5962
-[DSP.1 ts] t=20.6425 flux=0.0147 thr=0.0117
 [DSP.1 onset] band=4 t=20.6891
 [DSP.1 onset] band=5 t=20.6891
 [DSP.1 onset] band=2 t=20.7123
 [DSP.1 onset] band=3 t=20.7355
-[DSP.1 ts] t=20.8051 flux=0.0182 thr=0.0136
+[DSP.1 ts] t=20.8283 flux=0.0115 thr=0.0000
 [DSP.1 onset] band=0 t=20.8284
 [DSP.1 onset] band=4 t=20.8748
 [DSP.1 onset] band=2 t=20.9445
 [DSP.1 onset] band=3 t=20.9445
 [DSP.1 onset] band=5 t=20.9677
-[DSP.1 dump] autocorr bpm=143.55 conf=0.566 stable=144 instant=100
-[DSP.1 ts] t=21.1069 flux=0.1292 thr=0.0147
+[DSP.1 dump] autocorr bpm=143.55 conf=0.566 stable=140 instant=135
 [DSP.1 onset] band=1 t=21.1070
 [DSP.1 onset] band=4 t=21.1070
 [DSP.1 onset] band=2 t=21.1535
 [DSP.1 onset] band=3 t=21.1767
 [DSP.1 onset] band=5 t=21.2231
+[DSP.1 ts] t=21.2463 flux=0.0012 thr=0.0000
 [DSP.1 onset] band=0 t=21.2463
-[DSP.1 ts] t=21.2695 flux=0.0165 thr=0.0164
 [DSP.1 onset] band=2 t=21.3857
 [DSP.1 onset] band=4 t=21.4089
-[DSP.1 dump] stable raw=199.00 sel=99.50
-[DSP.1 dump]   bin bpm=199 period=0.3015 count=4
-[DSP.1 dump]   bin bpm=136 period=0.4412 count=2
-[DSP.1 dump]   bin bpm=172 period=0.3488 count=2
-[DSP.1 dump]   bin bpm=78 period=0.7692 count=1
-[DSP.1 dump]   bin bpm=96 period=0.6250 count=1
+[DSP.1 dump] stable raw=144.00 sel=134.65
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=8
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=6
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=3
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=3
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=1
 [DSP.1 onset] band=3 t=21.4553
 [DSP.1 onset] band=5 t=21.4553
-[DSP.1 ts] t=21.5249 flux=0.0804 thr=0.0195
 [DSP.1 onset] band=1 t=21.5250
 [DSP.1 onset] band=2 t=21.5946
 [DSP.1 onset] band=4 t=21.6179
 [DSP.1 onset] band=5 t=21.6179
+[DSP.1 ts] t=21.6642 flux=0.0038 thr=0.0000
 [DSP.1 onset] band=0 t=21.6643
 [DSP.1 onset] band=3 t=21.6643
 [DSP.1 onset] band=4 t=21.7804
@@ -1599,9 +1591,9 @@
 [DSP.1 onset] band=5 t=21.9197
 [DSP.1 onset] band=1 t=21.9662
 [DSP.1 onset] band=4 t=21.9662
-[DSP.1 ts] t=21.9893 flux=0.0247 thr=0.0106
 [DSP.1 onset] band=2 t=22.0126
-[DSP.1 dump] autocorr bpm=143.55 conf=0.675 stable=144 instant=100
+[DSP.1 dump] autocorr bpm=143.55 conf=0.675 stable=140 instant=135
+[DSP.1 ts] t=22.1054 flux=0.0014 thr=0.0000
 [DSP.1 onset] band=0 t=22.1055
 [DSP.1 onset] band=3 t=22.1055
 [DSP.1 onset] band=5 t=22.1055
@@ -1610,93 +1602,89 @@
 [DSP.1 onset] band=3 t=22.3145
 [DSP.1 onset] band=5 t=22.3145
 [DSP.1 onset] band=4 t=22.4073
-[DSP.1 dump] stable raw=199.00 sel=99.50
-[DSP.1 dump]   bin bpm=199 period=0.3015 count=3
-[DSP.1 dump]   bin bpm=136 period=0.4412 count=2
-[DSP.1 dump]   bin bpm=172 period=0.3488 count=2
-[DSP.1 dump]   bin bpm=78 period=0.7692 count=1
-[DSP.1 dump]   bin bpm=96 period=0.6250 count=1
+[DSP.1 dump] stable raw=144.00 sel=135.32
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=8
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=7
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=3
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=2
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=1
 [DSP.1 onset] band=1 t=22.5002
 [DSP.1 onset] band=2 t=22.5002
+[DSP.1 ts] t=22.5234 flux=0.0020 thr=0.0000
 [DSP.1 onset] band=0 t=22.5234
 [DSP.1 onset] band=3 t=22.5234
 [DSP.1 onset] band=5 t=22.5234
-[DSP.1 ts] t=22.6162 flux=0.0121 thr=0.0057
 [DSP.1 onset] band=5 t=22.6860
 [DSP.1 onset] band=3 t=22.7324
 [DSP.1 onset] band=2 t=22.8021
 [DSP.1 onset] band=4 t=22.8717
-[DSP.1 ts] t=22.9181 flux=0.0080 thr=0.0052
 [DSP.1 onset] band=1 t=22.9182
+[DSP.1 ts] t=22.9413 flux=0.0009 thr=0.0000
 [DSP.1 onset] band=0 t=22.9414
 [DSP.1 onset] band=3 t=22.9414
 [DSP.1 onset] band=5 t=22.9414
-[DSP.1 dump] autocorr bpm=143.55 conf=0.693 stable=144 instant=100
+[DSP.1 dump] autocorr bpm=143.55 conf=0.693 stable=140 instant=135
 [DSP.1 onset] band=2 t=23.0343
 [DSP.1 onset] band=4 t=23.0575
 [DSP.1 onset] band=5 t=23.1040
-[DSP.1 ts] t=23.1271 flux=0.0266 thr=0.0062
 [DSP.1 onset] band=3 t=23.2201
 [DSP.1 onset] band=4 t=23.2433
-[DSP.1 ts] t=23.3128 flux=0.0075 thr=0.0066
+[DSP.1 ts] t=23.3593 flux=0.0031 thr=0.0000
 [DSP.1 onset] band=0 t=23.3594
 [DSP.1 onset] band=2 t=23.3594
 [DSP.1 onset] band=5 t=23.3594
 [DSP.1 onset] band=1 t=23.3826
 [DSP.1 onset] band=3 t=23.4290
 [DSP.1 onset] band=4 t=23.4290
-[DSP.1 dump] stable raw=199.00 sel=99.50
-[DSP.1 dump]   bin bpm=199 period=0.3015 count=4
-[DSP.1 dump]   bin bpm=96 period=0.6250 count=2
-[DSP.1 dump]   bin bpm=172 period=0.3488 count=2
-[DSP.1 dump]   bin bpm=78 period=0.7692 count=1
-[DSP.1 dump]   bin bpm=108 period=0.5556 count=1
+[DSP.1 dump] stable raw=144.00 sel=136.65
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=11
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=6
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=2
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=2
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=1
 [DSP.1 onset] band=2 t=23.5684
 [DSP.1 onset] band=3 t=23.6612
 [DSP.1 onset] band=4 t=23.6612
-[DSP.1 ts] t=23.7308 flux=0.0167 thr=0.0111
 [DSP.1 onset] band=5 t=23.7309
 [DSP.1 onset] band=2 t=23.7773
+[DSP.1 ts] t=23.8005 flux=0.0126 thr=0.0000
 [DSP.1 onset] band=0 t=23.8006
 [DSP.1 onset] band=1 t=23.8006
 [DSP.1 onset] band=4 t=23.8238
 [DSP.1 onset] band=3 t=23.9863
 [DSP.1 onset] band=4 t=23.9863
-[DSP.1 ts] t=24.0094 flux=0.0171 thr=0.0143
 [DSP.1 onset] band=2 t=24.0095
-[DSP.1 dump] autocorr bpm=143.55 conf=0.687 stable=144 instant=100
+[DSP.1 dump] autocorr bpm=143.55 conf=0.687 stable=140 instant=137
 [DSP.1 onset] band=5 t=24.1024
 [DSP.1 onset] band=4 t=24.1489
-[DSP.1 ts] t=24.1720 flux=0.0186 thr=0.0146
+[DSP.1 ts] t=24.2184 flux=0.0502 thr=0.0000
 [DSP.1 onset] band=0 t=24.2185
 [DSP.1 onset] band=1 t=24.2185
 [DSP.1 onset] band=3 t=24.2185
 [DSP.1 onset] band=2 t=24.2417
 [DSP.1 onset] band=4 t=24.3114
 [DSP.1 onset] band=5 t=24.3114
-[DSP.1 ts] t=24.3577 flux=0.0572 thr=0.0191
 [DSP.1 onset] band=3 t=24.4739
-[DSP.1 dump] stable raw=199.00 sel=99.50
-[DSP.1 dump]   bin bpm=199 period=0.3015 count=4
-[DSP.1 dump]   bin bpm=172 period=0.3488 count=2
-[DSP.1 dump]   bin bpm=78 period=0.7692 count=1
-[DSP.1 dump]   bin bpm=96 period=0.6250 count=1
-[DSP.1 dump]   bin bpm=108 period=0.5556 count=1
+[DSP.1 dump] stable raw=144.00 sel=136.65
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=11
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=6
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=2
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=2
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=1
 [DSP.1 onset] band=2 t=24.5436
 [DSP.1 onset] band=4 t=24.5436
-[DSP.1 ts] t=24.6132 flux=0.1429 thr=0.0214
 [DSP.1 onset] band=5 t=24.6133
+[DSP.1 ts] t=24.6596 flux=0.0073 thr=0.0000
 [DSP.1 onset] band=0 t=24.6597
 [DSP.1 onset] band=1 t=24.6597
 [DSP.1 onset] band=4 t=24.7294
 [DSP.1 onset] band=2 t=24.7526
 [DSP.1 onset] band=3 t=24.7526
-[DSP.1 ts] t=24.7757 flux=0.0345 thr=0.0240
 [DSP.1 onset] band=4 t=24.8919
 [DSP.1 onset] band=2 t=24.9848
-[DSP.1 dump] autocorr bpm=143.55 conf=0.668 stable=144 instant=100
+[DSP.1 dump] autocorr bpm=143.55 conf=0.668 stable=140 instant=137
 [DSP.1 onset] band=3 t=25.0312
-[DSP.1 ts] t=25.0543 flux=0.0931 thr=0.0245
+[DSP.1 ts] t=25.0776 flux=0.0020 thr=0.0000
 [DSP.1 onset] band=0 t=25.0777
 [DSP.1 onset] band=5 t=25.0777
 [DSP.1 onset] band=4 t=25.1241
@@ -1708,27 +1696,26 @@
 [DSP.1 onset] band=3 t=25.4724
 [DSP.1 onset] band=4 t=25.4724
 [DSP.1 onset] band=2 t=25.4956
-[DSP.1 ts] t=25.5187 flux=0.0216 thr=0.0204
+[DSP.1 ts] t=25.5187 flux=0.0016 thr=0.0000
 [DSP.1 onset] band=0 t=25.5188
-[DSP.1 dump] stable raw=199.00 sel=99.50
-[DSP.1 dump]   bin bpm=199 period=0.3015 count=4
-[DSP.1 dump]   bin bpm=129 period=0.4651 count=2
-[DSP.1 dump]   bin bpm=172 period=0.3488 count=2
-[DSP.1 dump]   bin bpm=96 period=0.6250 count=1
-[DSP.1 dump]   bin bpm=108 period=0.5556 count=1
+[DSP.1 dump] stable raw=144.00 sel=136.98
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=11
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=7
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=2
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=1
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=1
 [DSP.1 onset] band=5 t=25.5885
 [DSP.1 onset] band=1 t=25.6117
 [DSP.1 onset] band=2 t=25.7046
 [DSP.1 onset] band=3 t=25.7046
 [DSP.1 onset] band=4 t=25.7278
-[DSP.1 ts] t=25.8206 flux=0.0129 thr=0.0127
 [DSP.1 onset] band=2 t=25.9600
 [DSP.1 onset] band=3 t=25.9600
 [DSP.1 onset] band=4 t=25.9600
 [DSP.1 onset] band=5 t=25.9600
-[DSP.1 ts] t=25.9831 flux=0.1003 thr=0.0127
+[DSP.1 ts] t=25.9831 flux=0.0206 thr=0.0000
 [DSP.1 onset] band=0 t=25.9832
-[DSP.1 dump] autocorr bpm=143.55 conf=0.606 stable=144 instant=100
+[DSP.1 dump] autocorr bpm=143.55 conf=0.606 stable=140 instant=137
 [DSP.1 onset] band=1 t=26.0761
 [DSP.1 onset] band=3 t=26.1690
 [DSP.1 onset] band=2 t=26.2154
@@ -1737,35 +1724,35 @@
 [DSP.1 onset] band=2 t=26.4244
 [DSP.1 onset] band=3 t=26.4244
 [DSP.1 onset] band=4 t=26.4476
-[DSP.1 ts] t=26.4940 flux=0.0158 thr=0.0110
+[DSP.1 ts] t=26.4940 flux=0.0031 thr=0.0000
 [DSP.1 onset] band=0 t=26.4941
 [DSP.1 onset] band=1 t=26.4941
 [DSP.1 onset] band=5 t=26.4941
-[DSP.1 dump] stable raw=199.00 sel=99.50
-[DSP.1 dump]   bin bpm=199 period=0.3015 count=5
-[DSP.1 dump]   bin bpm=129 period=0.4651 count=2
-[DSP.1 dump]   bin bpm=172 period=0.3488 count=2
-[DSP.1 dump]   bin bpm=96 period=0.6250 count=1
-[DSP.1 dump]   bin bpm=117 period=0.5128 count=1
+[DSP.1 dump] stable raw=144.00 sel=136.00
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=11
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=6
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=2
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=2
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=1
 [DSP.1 onset] band=2 t=26.6334
 [DSP.1 onset] band=3 t=26.6798
 [DSP.1 onset] band=4 t=26.6798
-[DSP.1 ts] t=26.7262 flux=0.0143 thr=0.0121
 [DSP.1 onset] band=4 t=26.8656
 [DSP.1 onset] band=5 t=26.8656
 [DSP.1 onset] band=2 t=26.8888
+[DSP.1 ts] t=26.9119 flux=0.0022 thr=0.0000
 [DSP.1 onset] band=0 t=26.9120
 [DSP.1 onset] band=1 t=26.9120
 [DSP.1 onset] band=3 t=26.9120
-[DSP.1 dump] autocorr bpm=143.55 conf=0.607 stable=100 instant=100
+[DSP.1 dump] autocorr bpm=143.55 conf=0.607 stable=140 instant=136
 [DSP.1 onset] band=4 t=27.0746
 [DSP.1 onset] band=5 t=27.0746
 [DSP.1 onset] band=2 t=27.0978
 [DSP.1 onset] band=3 t=27.1675
-[DSP.1 ts] t=27.2370 flux=0.0220 thr=0.0120
 [DSP.1 onset] band=4 t=27.2371
 [DSP.1 onset] band=5 t=27.2371
 [DSP.1 onset] band=2 t=27.3068
+[DSP.1 ts] t=27.3531 flux=0.0016 thr=0.0000
 [DSP.1 onset] band=0 t=27.3532
 [DSP.1 onset] band=1 t=27.3764
 [DSP.1 onset] band=3 t=27.3764
@@ -1773,33 +1760,31 @@
 [DSP.1 onset] band=5 t=27.3997
 [DSP.1 onset] band=2 t=27.5158
 [DSP.1 onset] band=4 t=27.5622
-[DSP.1 dump] stable raw=199.00 sel=99.50
-[DSP.1 dump]   bin bpm=199 period=0.3015 count=5
+[DSP.1 dump] stable raw=144.00 sel=136.98
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=12
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=6
 [DSP.1 dump]   bin bpm=117 period=0.5128 count=2
-[DSP.1 dump]   bin bpm=129 period=0.4651 count=2
-[DSP.1 dump]   bin bpm=172 period=0.3488 count=2
-[DSP.1 dump]   bin bpm=96 period=0.6250 count=1
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=1
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=1
 [DSP.1 onset] band=3 t=27.5854
 [DSP.1 onset] band=5 t=27.6551
-[DSP.1 ts] t=27.6782 flux=0.0508 thr=0.0127
 [DSP.1 onset] band=2 t=27.7247
 [DSP.1 onset] band=4 t=27.7944
 [DSP.1 onset] band=3 t=27.8176
 [DSP.1 onset] band=5 t=27.8176
-[DSP.1 ts] t=27.8639 flux=0.1823 thr=0.0159
+[DSP.1 ts] t=27.8639 flux=0.0568 thr=0.0000
 [DSP.1 onset] band=0 t=27.8641
 [DSP.1 onset] band=1 t=27.8641
 [DSP.1 onset] band=2 t=27.9337
 [DSP.1 onset] band=5 t=27.9802
 [DSP.1 onset] band=4 t=28.0034
-[DSP.1 dump] autocorr bpm=136.00 conf=0.624 stable=100 instant=100
+[DSP.1 dump] autocorr bpm=136.00 conf=0.624 stable=140 instant=137
 [DSP.1 onset] band=3 t=28.0266
-[DSP.1 ts] t=28.1194 flux=0.0475 thr=0.0167
 [DSP.1 onset] band=2 t=28.1427
 [DSP.1 onset] band=5 t=28.1427
 [DSP.1 onset] band=4 t=28.1891
 [DSP.1 onset] band=3 t=28.2356
-[DSP.1 ts] t=28.2819 flux=0.0431 thr=0.0289
+[DSP.1 ts] t=28.2819 flux=0.0012 thr=0.0000
 [DSP.1 onset] band=0 t=28.2820
 [DSP.1 onset] band=1 t=28.2820
 [DSP.1 onset] band=4 t=28.3517
@@ -1807,16 +1792,15 @@
 [DSP.1 onset] band=3 t=28.4678
 [DSP.1 onset] band=5 t=28.5142
 [DSP.1 onset] band=4 t=28.5374
-[DSP.1 ts] t=28.5838 flux=0.1209 thr=0.0313
-[DSP.1 dump] stable raw=199.00 sel=99.50
-[DSP.1 dump]   bin bpm=199 period=0.3015 count=6
+[DSP.1 dump] stable raw=144.00 sel=137.98
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=13
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=6
 [DSP.1 dump]   bin bpm=117 period=0.5128 count=2
-[DSP.1 dump]   bin bpm=129 period=0.4651 count=2
-[DSP.1 dump]   bin bpm=136 period=0.4412 count=2
-[DSP.1 dump]   bin bpm=96 period=0.6250 count=1
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=1
 [DSP.1 onset] band=2 t=28.6535
 [DSP.1 onset] band=3 t=28.6768
 [DSP.1 onset] band=5 t=28.6768
+[DSP.1 ts] t=28.6999 flux=0.0006 thr=0.0000
 [DSP.1 onset] band=0 t=28.7000
 [DSP.1 onset] band=4 t=28.7000
 [DSP.1 onset] band=1 t=28.7232
@@ -1824,14 +1808,14 @@
 [DSP.1 onset] band=3 t=28.9090
 [DSP.1 onset] band=4 t=28.9090
 [DSP.1 onset] band=5 t=28.9322
-[DSP.1 dump] autocorr bpm=136.00 conf=0.610 stable=100 instant=100
+[DSP.1 dump] autocorr bpm=136.00 conf=0.610 stable=140 instant=138
 [DSP.1 onset] band=4 t=29.0947
+[DSP.1 ts] t=29.1178 flux=0.0143 thr=0.0000
 [DSP.1 onset] band=0 t=29.1179
 [DSP.1 onset] band=3 t=29.1179
 [DSP.1 onset] band=5 t=29.1179
 [DSP.1 onset] band=1 t=29.1412
 [DSP.1 onset] band=2 t=29.1412
-[DSP.1 ts] t=29.1875 flux=0.0442 thr=0.0315
 [DSP.1 onset] band=4 t=29.3037
 [DSP.1 onset] band=3 t=29.3269
 [DSP.1 onset] band=5 t=29.3269
@@ -1839,15 +1823,15 @@
 [DSP.1 onset] band=4 t=29.4662
 [DSP.1 onset] band=3 t=29.5359
 [DSP.1 onset] band=5 t=29.5359
+[DSP.1 ts] t=29.5822 flux=0.0019 thr=0.0000
 [DSP.1 onset] band=0 t=29.5823
 [DSP.1 onset] band=1 t=29.5823
 [DSP.1 onset] band=2 t=29.5823
-[DSP.1 dump] stable raw=199.00 sel=99.50
-[DSP.1 dump]   bin bpm=199 period=0.3015 count=4
+[DSP.1 dump] stable raw=144.00 sel=137.65
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=13
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=5
 [DSP.1 dump]   bin bpm=117 period=0.5128 count=2
 [DSP.1 dump]   bin bpm=129 period=0.4651 count=2
-[DSP.1 dump]   bin bpm=136 period=0.4412 count=2
-[DSP.1 dump]   bin bpm=96 period=0.6250 count=1
 [DSP.1 onset] band=5 t=29.7217
 [DSP.1 onset] band=3 t=29.7449
 [DSP.1 onset] band=2 t=29.7913
@@ -1857,23 +1841,23 @@
 [DSP.1 onset] band=4 t=29.9771
 [DSP.1 onset] band=1 t=30.0003
 [DSP.1 onset] band=2 t=30.0003
-[DSP.1 dump] autocorr bpm=136.00 conf=0.599 stable=100 instant=100
+[DSP.1 dump] autocorr bpm=136.00 conf=0.599 stable=140 instant=138
 
 ===== there_there file=/Users/braesidebandit/Documents/Projects/phosphene/PhospheneEngine/Tests/Fixtures/tempo/there_there.m4a rate=44100 duration=29.9s metadataBPM=none =====
 [DSP.1 dump] autocorr bpm=0.00 conf=0.000 stable=0 instant=0
 [DSP.1 onset] band=2 t=0.1161
 [DSP.1 onset] band=4 t=0.1161
 [DSP.1 onset] band=5 t=0.1161
+[DSP.1 ts] t=0.1393 flux=0.0437 thr=0.0000
 [DSP.1 onset] band=0 t=0.1393
 [DSP.1 onset] band=3 t=0.1393
-[DSP.1 ts] t=0.1625 flux=0.3523 thr=0.3175
 [DSP.1 onset] band=1 t=0.1625
 [DSP.1 onset] band=2 t=0.3251
 [DSP.1 onset] band=3 t=0.3483
 [DSP.1 onset] band=4 t=0.3483
 [DSP.1 onset] band=5 t=0.3483
-[DSP.1 ts] t=0.4876 flux=0.2541 thr=0.2101
 [DSP.1 onset] band=5 t=0.5341
+[DSP.1 ts] t=0.5573 flux=0.0549 thr=0.0000
 [DSP.1 onset] band=0 t=0.5573
 [DSP.1 onset] band=2 t=0.5573
 [DSP.1 onset] band=3 t=0.5805
@@ -1883,9 +1867,10 @@
 [DSP.1 onset] band=5 t=0.7663
 [DSP.1 onset] band=3 t=0.7895
 [DSP.1 onset] band=4 t=0.8359
+[DSP.1 ts] t=0.9752 flux=0.0251 thr=0.0000
 [DSP.1 onset] band=0 t=0.9752
 [DSP.1 onset] band=2 t=0.9752
-[DSP.1 dump] stable early reason=recent<4(2) e=1.0 ws=-9.0 first=0.2 last=0.5 buf=2
+[DSP.1 dump] stable early reason=recent<4(3) e=1.0 ws=-9.0 first=0.1 last=1.0 buf=3
 [DSP.1 onset] band=3 t=1.0217
 [DSP.1 dump] autocorr bpm=0.00 conf=0.000 stable=0 instant=0
 [DSP.1 onset] band=1 t=1.0449
@@ -1895,6 +1880,7 @@
 [DSP.1 onset] band=2 t=1.3003
 [DSP.1 onset] band=5 t=1.3003
 [DSP.1 onset] band=3 t=1.3235
+[DSP.1 ts] t=1.4164 flux=0.0035 thr=0.0000
 [DSP.1 onset] band=0 t=1.4164
 [DSP.1 onset] band=1 t=1.4629
 [DSP.1 onset] band=5 t=1.5325
@@ -1903,27 +1889,27 @@
 [DSP.1 onset] band=3 t=1.5790
 [DSP.1 onset] band=4 t=1.7183
 [DSP.1 onset] band=5 t=1.7183
-[DSP.1 ts] t=1.7647 flux=0.1309 thr=0.1210
 [DSP.1 onset] band=2 t=1.7879
 [DSP.1 onset] band=3 t=1.7879
+[DSP.1 ts] t=1.8344 flux=0.0138 thr=0.0000
 [DSP.1 onset] band=0 t=1.8344
 [DSP.1 onset] band=1 t=1.8808
 [DSP.1 onset] band=2 t=2.0201
 [DSP.1 onset] band=4 t=2.0201
 [DSP.1 onset] band=5 t=2.0201
 [DSP.1 dump] autocorr bpm=0.00 conf=0.000 stable=0 instant=0
-[DSP.1 dump] stable early reason=recent<4(3) e=2.0 ws=-8.0 first=0.2 last=1.8 buf=3
+[DSP.1 dump] stable raw=144.00 sel=141.59
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=3
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=1
 [DSP.1 onset] band=3 t=2.0434
-[DSP.1 ts] t=2.0666 flux=0.6063 thr=0.1101
 [DSP.1 onset] band=2 t=2.2291
-[DSP.1 ts] t=2.2523 flux=0.2254 thr=0.1266
+[DSP.1 ts] t=2.2523 flux=0.0580 thr=0.0000
 [DSP.1 onset] band=0 t=2.2523
 [DSP.1 onset] band=3 t=2.2523
 [DSP.1 onset] band=4 t=2.2523
 [DSP.1 onset] band=5 t=2.2523
 [DSP.1 onset] band=1 t=2.3220
 [DSP.1 onset] band=5 t=2.4845
-[DSP.1 ts] t=2.5078 flux=0.3486 thr=0.1416
 [DSP.1 onset] band=2 t=2.5078
 [DSP.1 onset] band=3 t=2.5078
 [DSP.1 onset] band=4 t=2.5078
@@ -1932,14 +1918,18 @@
 [DSP.1 onset] band=3 t=2.7400
 [DSP.1 onset] band=4 t=2.7400
 [DSP.1 onset] band=5 t=2.7400
-[DSP.1 ts] t=2.7632 flux=0.3079 thr=0.1508
+[DSP.1 ts] t=2.7632 flux=0.1735 thr=0.0000
 [DSP.1 onset] band=0 t=2.7632
 [DSP.1 onset] band=4 t=2.9025
 [DSP.1 onset] band=5 t=2.9257
 [DSP.1 onset] band=2 t=2.9722
 [DSP.1 onset] band=3 t=2.9722
-[DSP.1 dump] autocorr bpm=0.00 conf=0.000 stable=0 instant=0
-[DSP.1 dump] stable early reason=noPeak(in=2,out=4,recent=7)
+[DSP.1 dump] autocorr bpm=0.00 conf=0.000 stable=0 instant=142
+[DSP.1 dump] stable raw=144.00 sel=137.20
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=4
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=1
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=1
+[DSP.1 ts] t=3.1811 flux=0.0041 thr=0.0000
 [DSP.1 onset] band=0 t=3.1811
 [DSP.1 onset] band=4 t=3.1811
 [DSP.1 onset] band=3 t=3.2044
@@ -1950,58 +1940,60 @@
 [DSP.1 onset] band=2 t=3.4598
 [DSP.1 onset] band=4 t=3.4598
 [DSP.1 onset] band=5 t=3.4598
-[DSP.1 ts] t=3.5062 flux=0.1325 thr=0.1118
+[DSP.1 ts] t=3.5991 flux=0.0458 thr=0.0000
 [DSP.1 onset] band=0 t=3.5991
 [DSP.1 onset] band=3 t=3.6223
 [DSP.1 onset] band=5 t=3.6223
 [DSP.1 onset] band=1 t=3.6688
 [DSP.1 onset] band=4 t=3.6688
 [DSP.1 onset] band=2 t=3.6920
-[DSP.1 ts] t=3.7384 flux=0.1232 thr=0.0990
 [DSP.1 onset] band=3 t=3.8313
 [DSP.1 onset] band=4 t=3.8313
 [DSP.1 onset] band=2 t=3.9010
 [DSP.1 onset] band=5 t=3.9242
-[DSP.1 ts] t=3.9474 flux=0.2895 thr=0.1101
 [DSP.1 onset] band=4 t=3.9938
+[DSP.1 ts] t=4.0171 flux=0.0077 thr=0.0000
 [DSP.1 onset] band=0 t=4.0171
-[DSP.1 dump] autocorr bpm=136.00 conf=0.538 stable=0 instant=0
-[DSP.1 dump] stable early reason=noPeak(in=3,out=6,recent=10)
+[DSP.1 dump] autocorr bpm=136.00 conf=0.538 stable=0 instant=137
+[DSP.1 dump] stable raw=144.00 sel=139.26
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=7
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=1
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=1
 [DSP.1 onset] band=1 t=4.0867
 [DSP.1 onset] band=2 t=4.1099
 [DSP.1 onset] band=3 t=4.1099
 [DSP.1 onset] band=4 t=4.1564
 [DSP.1 onset] band=5 t=4.1564
-[DSP.1 ts] t=4.2493 flux=0.3474 thr=0.1278
 [DSP.1 onset] band=2 t=4.3189
 [DSP.1 onset] band=4 t=4.3421
 [DSP.1 onset] band=5 t=4.3654
 [DSP.1 onset] band=3 t=4.3886
-[DSP.1 ts] t=4.4118 flux=0.2218 thr=0.1488
+[DSP.1 ts] t=4.4350 flux=0.0995 thr=0.0000
 [DSP.1 onset] band=0 t=4.4350
 [DSP.1 onset] band=1 t=4.5047
 [DSP.1 onset] band=2 t=4.5279
 [DSP.1 onset] band=4 t=4.5279
 [DSP.1 onset] band=5 t=4.6208
-[DSP.1 ts] t=4.6672 flux=0.4587 thr=0.2002
 [DSP.1 onset] band=3 t=4.6672
 [DSP.1 onset] band=2 t=4.7369
 [DSP.1 onset] band=4 t=4.8065
 [DSP.1 onset] band=5 t=4.8298
+[DSP.1 ts] t=4.8530 flux=0.0698 thr=0.0000
 [DSP.1 onset] band=0 t=4.8530
 [DSP.1 onset] band=3 t=4.9226
 [DSP.1 onset] band=1 t=4.9459
 [DSP.1 onset] band=2 t=4.9459
 [DSP.1 onset] band=4 t=4.9691
 [DSP.1 onset] band=5 t=5.0155
-[DSP.1 dump] autocorr bpm=99.38 conf=0.466 stable=0 instant=0
-[DSP.1 dump] stable raw=199.00 sel=99.50
-[DSP.1 dump]   bin bpm=199 period=0.3015 count=2
-[DSP.1 dump]   bin bpm=81 period=0.7407 count=1
-[DSP.1 dump]   bin bpm=185 period=0.3243 count=1
+[DSP.1 dump] autocorr bpm=99.38 conf=0.466 stable=142 instant=139
+[DSP.1 dump] stable raw=144.00 sel=140.02
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=9
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=1
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=1
 [DSP.1 onset] band=3 t=5.1316
 [DSP.1 onset] band=4 t=5.1316
 [DSP.1 onset] band=2 t=5.1781
+[DSP.1 ts] t=5.2709 flux=0.0174 thr=0.0000
 [DSP.1 onset] band=0 t=5.2709
 [DSP.1 onset] band=4 t=5.3174
 [DSP.1 onset] band=5 t=5.3406
@@ -2011,38 +2003,36 @@
 [DSP.1 onset] band=4 t=5.5496
 [DSP.1 onset] band=5 t=5.5496
 [DSP.1 onset] band=3 t=5.5960
-[DSP.1 ts] t=5.6192 flux=0.3434 thr=0.1334
 [DSP.1 onset] band=2 t=5.6192
+[DSP.1 ts] t=5.7585 flux=0.0223 thr=0.0000
 [DSP.1 onset] band=0 t=5.7586
 [DSP.1 onset] band=1 t=5.8050
 [DSP.1 onset] band=3 t=5.8050
 [DSP.1 onset] band=2 t=5.8282
 [DSP.1 onset] band=4 t=5.8282
 [DSP.1 onset] band=5 t=5.8282
-[DSP.1 ts] t=5.8514 flux=0.2066 thr=0.0959
-[DSP.1 ts] t=6.0140 flux=0.1623 thr=0.0888
 [DSP.1 onset] band=4 t=6.0140
-[DSP.1 dump] autocorr bpm=86.13 conf=0.450 stable=0 instant=100
+[DSP.1 dump] autocorr bpm=86.13 conf=0.450 stable=142 instant=140
 [DSP.1 onset] band=2 t=6.0372
 [DSP.1 onset] band=3 t=6.0372
 [DSP.1 onset] band=5 t=6.0604
-[DSP.1 dump] stable raw=199.00 sel=99.50
-[DSP.1 dump]   bin bpm=199 period=0.3015 count=2
-[DSP.1 dump]   bin bpm=63 period=0.9524 count=1
-[DSP.1 dump]   bin bpm=81 period=0.7407 count=1
-[DSP.1 dump]   bin bpm=185 period=0.3243 count=1
-[DSP.1 ts] t=6.1997 flux=0.3214 thr=0.1021
+[DSP.1 dump] stable raw=144.00 sel=138.81
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=10
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=1
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=1
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=1
+[DSP.1 ts] t=6.1997 flux=0.0813 thr=0.0000
 [DSP.1 onset] band=0 t=6.1997
 [DSP.1 onset] band=1 t=6.2462
 [DSP.1 onset] band=2 t=6.2694
 [DSP.1 onset] band=3 t=6.2926
 [DSP.1 onset] band=4 t=6.3158
 [DSP.1 onset] band=5 t=6.3158
-[DSP.1 ts] t=6.4784 flux=0.1663 thr=0.1458
 [DSP.1 onset] band=4 t=6.4784
 [DSP.1 onset] band=3 t=6.5016
 [DSP.1 onset] band=2 t=6.5248
 [DSP.1 onset] band=5 t=6.5480
+[DSP.1 ts] t=6.6409 flux=0.0612 thr=0.0000
 [DSP.1 onset] band=0 t=6.6409
 [DSP.1 onset] band=1 t=6.6641
 [DSP.1 onset] band=3 t=6.7106
@@ -2053,56 +2043,54 @@
 [DSP.1 onset] band=3 t=6.9660
 [DSP.1 onset] band=4 t=6.9892
 [DSP.1 onset] band=5 t=7.0124
-[DSP.1 dump] autocorr bpm=86.13 conf=0.439 stable=0 instant=100
+[DSP.1 dump] autocorr bpm=86.13 conf=0.439 stable=142 instant=139
+[DSP.1 ts] t=7.0589 flux=0.0040 thr=0.0000
 [DSP.1 onset] band=0 t=7.0589
 [DSP.1 onset] band=1 t=7.0821
-[DSP.1 dump] stable raw=199.00 sel=99.50
-[DSP.1 dump]   bin bpm=199 period=0.3015 count=2
-[DSP.1 dump]   bin bpm=63 period=0.9524 count=1
-[DSP.1 dump]   bin bpm=81 period=0.7407 count=1
-[DSP.1 dump]   bin bpm=185 period=0.3243 count=1
+[DSP.1 dump] stable raw=144.00 sel=138.74
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=11
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=3
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=1
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=1
 [DSP.1 onset] band=2 t=7.1750
 [DSP.1 onset] band=3 t=7.1982
 [DSP.1 onset] band=4 t=7.2446
 [DSP.1 onset] band=5 t=7.2446
-[DSP.1 ts] t=7.2911 flux=0.3163 thr=0.1651
 [DSP.1 onset] band=2 t=7.3840
 [DSP.1 onset] band=3 t=7.4304
 [DSP.1 onset] band=4 t=7.4304
-[DSP.1 ts] t=7.4536 flux=0.1864 thr=0.1299
+[DSP.1 ts] t=7.4768 flux=0.0217 thr=0.0000
 [DSP.1 onset] band=0 t=7.4769
 [DSP.1 onset] band=5 t=7.4769
 [DSP.1 onset] band=1 t=7.5930
 [DSP.1 onset] band=2 t=7.5930
 [DSP.1 onset] band=4 t=7.6162
 [DSP.1 onset] band=3 t=7.6626
-[DSP.1 ts] t=7.7322 flux=0.1551 thr=0.1292
 [DSP.1 onset] band=5 t=7.7323
 [DSP.1 onset] band=4 t=7.8019
 [DSP.1 onset] band=2 t=7.8252
 [DSP.1 onset] band=3 t=7.8716
+[DSP.1 ts] t=7.8948 flux=0.0012 thr=0.0000
 [DSP.1 onset] band=0 t=7.8948
-[DSP.1 ts] t=7.9180 flux=0.1510 thr=0.1299
 [DSP.1 onset] band=5 t=7.9413
 [DSP.1 onset] band=4 t=7.9645
-[DSP.1 dump] autocorr bpm=129.20 conf=0.475 stable=100 instant=100
+[DSP.1 dump] autocorr bpm=129.20 conf=0.475 stable=142 instant=139
 [DSP.1 onset] band=2 t=8.0341
 [DSP.1 onset] band=1 t=8.0574
 [DSP.1 onset] band=3 t=8.0806
 [DSP.1 onset] band=4 t=8.1502
-[DSP.1 dump] stable raw=199.00 sel=99.50
-[DSP.1 dump]   bin bpm=199 period=0.3015 count=2
-[DSP.1 dump]   bin bpm=63 period=0.9524 count=1
-[DSP.1 dump]   bin bpm=74 period=0.8108 count=1
-[DSP.1 dump]   bin bpm=81 period=0.7407 count=1
-[DSP.1 dump]   bin bpm=185 period=0.3243 count=1
+[DSP.1 dump] stable raw=144.00 sel=139.26
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=13
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=3
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=1
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=1
 [DSP.1 onset] band=5 t=8.1967
 [DSP.1 onset] band=2 t=8.2663
 [DSP.1 onset] band=3 t=8.2896
+[DSP.1 ts] t=8.3127 flux=0.0227 thr=0.0000
 [DSP.1 onset] band=0 t=8.3128
 [DSP.1 onset] band=4 t=8.3360
 [DSP.1 onset] band=5 t=8.4289
-[DSP.1 ts] t=8.4753 flux=0.3145 thr=0.1763
 [DSP.1 onset] band=1 t=8.4753
 [DSP.1 onset] band=2 t=8.4753
 [DSP.1 onset] band=3 t=8.4985
@@ -2111,63 +2099,61 @@
 [DSP.1 onset] band=3 t=8.7075
 [DSP.1 onset] band=4 t=8.7075
 [DSP.1 onset] band=5 t=8.7075
+[DSP.1 ts] t=8.7539 flux=0.0142 thr=0.0000
 [DSP.1 onset] band=0 t=8.7540
 [DSP.1 onset] band=4 t=8.8701
 [DSP.1 onset] band=5 t=8.8701
 [DSP.1 onset] band=1 t=8.8933
 [DSP.1 onset] band=2 t=8.8933
 [DSP.1 onset] band=3 t=8.9397
-[DSP.1 ts] t=9.0093 flux=0.1285 thr=0.1233
-[DSP.1 dump] autocorr bpm=129.20 conf=0.471 stable=100 instant=100
+[DSP.1 dump] autocorr bpm=129.20 conf=0.471 stable=142 instant=139
 [DSP.1 onset] band=4 t=9.0790
 [DSP.1 onset] band=2 t=9.1255
 [DSP.1 onset] band=5 t=9.1487
+[DSP.1 ts] t=9.1719 flux=0.0344 thr=0.0000
 [DSP.1 onset] band=0 t=9.1719
-[DSP.1 ts] t=9.1951 flux=0.2599 thr=0.1187
-[DSP.1 dump] stable raw=199.00 sel=99.50
-[DSP.1 dump]   bin bpm=199 period=0.3015 count=2
-[DSP.1 dump]   bin bpm=63 period=0.9524 count=1
-[DSP.1 dump]   bin bpm=74 period=0.8108 count=1
-[DSP.1 dump]   bin bpm=81 period=0.7407 count=1
-[DSP.1 dump]   bin bpm=108 period=0.5556 count=1
+[DSP.1 dump] stable raw=144.00 sel=139.50
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=15
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=4
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=1
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=1
 [DSP.1 onset] band=3 t=9.1951
 [DSP.1 onset] band=4 t=9.2648
 [DSP.1 onset] band=1 t=9.3112
 [DSP.1 onset] band=5 t=9.3345
-[DSP.1 ts] t=9.3576 flux=0.1424 thr=0.1104
 [DSP.1 onset] band=2 t=9.3577
 [DSP.1 onset] band=3 t=9.4273
 [DSP.1 onset] band=4 t=9.4273
 [DSP.1 onset] band=2 t=9.5667
+[DSP.1 ts] t=9.5898 flux=0.0268 thr=0.0000
 [DSP.1 onset] band=0 t=9.5899
 [DSP.1 onset] band=3 t=9.6363
 [DSP.1 onset] band=4 t=9.6363
-[DSP.1 ts] t=9.6595 flux=0.2527 thr=0.1221
 [DSP.1 onset] band=5 t=9.6595
 [DSP.1 onset] band=1 t=9.7292
 [DSP.1 onset] band=2 t=9.7756
 [DSP.1 onset] band=4 t=9.7989
 [DSP.1 onset] band=3 t=9.8453
 [DSP.1 onset] band=5 t=9.8685
-[DSP.1 ts] t=9.9381 flux=0.1869 thr=0.1663
-[DSP.1 dump] autocorr bpm=129.20 conf=0.455 stable=100 instant=100
+[DSP.1 dump] autocorr bpm=129.20 conf=0.455 stable=142 instant=139
 [DSP.1 onset] band=2 t=10.0311
+[DSP.1 ts] t=10.0542 flux=0.0161 thr=0.0000
 [DSP.1 onset] band=0 t=10.0543
 [DSP.1 onset] band=5 t=10.1007
 [DSP.1 onset] band=3 t=10.1239
 [DSP.1 onset] band=4 t=10.1239
 [DSP.1 onset] band=1 t=10.1472
-[DSP.1 dump] stable raw=199.00 sel=99.50
-[DSP.1 dump]   bin bpm=199 period=0.3015 count=3
-[DSP.1 dump]   bin bpm=63 period=0.9524 count=1
-[DSP.1 dump]   bin bpm=74 period=0.8108 count=1
-[DSP.1 dump]   bin bpm=81 period=0.7407 count=1
-[DSP.1 dump]   bin bpm=108 period=0.5556 count=1
+[DSP.1 dump] stable raw=144.00 sel=138.99
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=15
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=4
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=1
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=1
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=1
 [DSP.1 onset] band=2 t=10.2633
 [DSP.1 onset] band=4 t=10.3097
 [DSP.1 onset] band=5 t=10.3329
-[DSP.1 ts] t=10.3793 flux=0.3328 thr=0.2063
 [DSP.1 onset] band=3 t=10.3794
+[DSP.1 ts] t=10.4722 flux=0.0401 thr=0.0000
 [DSP.1 onset] band=0 t=10.4722
 [DSP.1 onset] band=2 t=10.4955
 [DSP.1 onset] band=4 t=10.4955
@@ -2179,54 +2165,53 @@
 [DSP.1 onset] band=5 t=10.7973
 [DSP.1 onset] band=3 t=10.8205
 [DSP.1 onset] band=4 t=10.8205
+[DSP.1 ts] t=10.8902 flux=0.0239 thr=0.0000
 [DSP.1 onset] band=0 t=10.8902
 [DSP.1 onset] band=2 t=10.9366
 [DSP.1 onset] band=4 t=11.0063
-[DSP.1 dump] autocorr bpm=129.20 conf=0.470 stable=100 instant=100
+[DSP.1 dump] autocorr bpm=129.20 conf=0.470 stable=142 instant=139
 [DSP.1 onset] band=5 t=11.0295
 [DSP.1 onset] band=1 t=11.0527
-[DSP.1 ts] t=11.0759 flux=0.1791 thr=0.1525
 [DSP.1 onset] band=3 t=11.0760
 [DSP.1 onset] band=2 t=11.1456
 [DSP.1 onset] band=5 t=11.2153
-[DSP.1 dump] stable raw=199.00 sel=99.50
-[DSP.1 dump]   bin bpm=199 period=0.3015 count=3
-[DSP.1 dump]   bin bpm=63 period=0.9524 count=1
-[DSP.1 dump]   bin bpm=74 period=0.8108 count=1
-[DSP.1 dump]   bin bpm=81 period=0.7407 count=1
-[DSP.1 dump]   bin bpm=86 period=0.6977 count=1
+[DSP.1 dump] stable raw=144.00 sel=139.33
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=16
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=3
+[DSP.1 dump]   bin bpm=117 period=0.5128 count=1
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=1
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=1
 [DSP.1 onset] band=4 t=11.2617
 [DSP.1 onset] band=3 t=11.2849
+[DSP.1 ts] t=11.3313 flux=0.0491 thr=0.0000
 [DSP.1 onset] band=0 t=11.3314
 [DSP.1 onset] band=2 t=11.3778
 [DSP.1 onset] band=1 t=11.4939
 [DSP.1 onset] band=4 t=11.4939
 [DSP.1 onset] band=5 t=11.5171
 [DSP.1 onset] band=3 t=11.5404
-[DSP.1 ts] t=11.5635 flux=0.3469 thr=0.1297
 [DSP.1 onset] band=2 t=11.6565
 [DSP.1 onset] band=4 t=11.6565
 [DSP.1 onset] band=5 t=11.7261
+[DSP.1 ts] t=11.7493 flux=0.0200 thr=0.0000
 [DSP.1 onset] band=0 t=11.7493
 [DSP.1 onset] band=3 t=11.7726
-[DSP.1 ts] t=11.8422 flux=0.2263 thr=0.1412
 [DSP.1 onset] band=2 t=11.8887
 [DSP.1 onset] band=1 t=11.9351
 [DSP.1 onset] band=4 t=11.9351
 [DSP.1 onset] band=5 t=12.0048
-[DSP.1 dump] autocorr bpm=86.13 conf=0.468 stable=100 instant=100
+[DSP.1 dump] autocorr bpm=86.13 conf=0.468 stable=142 instant=139
 [DSP.1 onset] band=3 t=12.0280
 [DSP.1 onset] band=2 t=12.0976
 [DSP.1 onset] band=4 t=12.0976
+[DSP.1 ts] t=12.1673 flux=0.0331 thr=0.0000
 [DSP.1 onset] band=0 t=12.1673
 [DSP.1 onset] band=5 t=12.2370
-[DSP.1 ts] t=12.2601 flux=0.2749 thr=0.1591
-[DSP.1 dump] stable raw=199.00 sel=99.50
-[DSP.1 dump]   bin bpm=199 period=0.3015 count=2
-[DSP.1 dump]   bin bpm=63 period=0.9524 count=1
-[DSP.1 dump]   bin bpm=74 period=0.8108 count=1
-[DSP.1 dump]   bin bpm=81 period=0.7407 count=1
-[DSP.1 dump]   bin bpm=86 period=0.6977 count=1
+[DSP.1 dump] stable raw=144.00 sel=140.36
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=16
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=4
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=1
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=1
 [DSP.1 onset] band=3 t=12.2602
 [DSP.1 onset] band=4 t=12.2602
 [DSP.1 onset] band=2 t=12.3298
@@ -2235,6 +2220,7 @@
 [DSP.1 onset] band=5 t=12.4459
 [DSP.1 onset] band=3 t=12.4692
 [DSP.1 onset] band=2 t=12.5388
+[DSP.1 ts] t=12.6317 flux=0.0147 thr=0.0000
 [DSP.1 onset] band=0 t=12.6317
 [DSP.1 onset] band=3 t=12.6781
 [DSP.1 onset] band=4 t=12.6781
@@ -2245,52 +2231,49 @@
 [DSP.1 onset] band=4 t=12.9336
 [DSP.1 onset] band=2 t=12.9800
 [DSP.1 onset] band=5 t=12.9800
-[DSP.1 dump] autocorr bpm=123.05 conf=0.475 stable=100 instant=100
+[DSP.1 dump] autocorr bpm=123.05 conf=0.475 stable=142 instant=140
+[DSP.1 ts] t=13.0496 flux=0.0286 thr=0.0000
 [DSP.1 onset] band=0 t=13.0497
 [DSP.1 onset] band=3 t=13.1425
 [DSP.1 onset] band=4 t=13.1425
 [DSP.1 onset] band=5 t=13.1425
-[DSP.1 ts] t=13.2354 flux=0.1898 thr=0.1305
 [DSP.1 onset] band=2 t=13.2354
-[DSP.1 dump] stable raw=199.00 sel=99.50
-[DSP.1 dump]   bin bpm=199 period=0.3015 count=2
-[DSP.1 dump]   bin bpm=62 period=0.9677 count=1
-[DSP.1 dump]   bin bpm=63 period=0.9524 count=1
-[DSP.1 dump]   bin bpm=74 period=0.8108 count=1
-[DSP.1 dump]   bin bpm=86 period=0.6977 count=1
+[DSP.1 dump] stable raw=144.00 sel=139.67
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=15
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=4
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=2
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=1
 [DSP.1 onset] band=1 t=13.2819
 [DSP.1 onset] band=3 t=13.3747
 [DSP.1 onset] band=4 t=13.3980
 [DSP.1 onset] band=5 t=13.3980
-[DSP.1 ts] t=13.4444 flux=0.1660 thr=0.1335
 [DSP.1 onset] band=2 t=13.4444
+[DSP.1 ts] t=13.4676 flux=0.3379 thr=0.0000
 [DSP.1 onset] band=0 t=13.4676
 [DSP.1 onset] band=3 t=13.5837
 [DSP.1 onset] band=4 t=13.6534
 [DSP.1 onset] band=5 t=13.6534
 [DSP.1 onset] band=2 t=13.6766
-[DSP.1 ts] t=13.7462 flux=0.2201 thr=0.1519
 [DSP.1 onset] band=1 t=13.7463
 [DSP.1 onset] band=3 t=13.8391
 [DSP.1 onset] band=4 t=13.8624
 [DSP.1 onset] band=5 t=13.8624
+[DSP.1 ts] t=13.8855 flux=0.0029 thr=0.0000
 [DSP.1 onset] band=0 t=13.8856
 [DSP.1 onset] band=2 t=13.8856
-[DSP.1 ts] t=13.9552 flux=0.1687 thr=0.1664
-[DSP.1 dump] autocorr bpm=123.05 conf=0.480 stable=100 instant=100
+[DSP.1 dump] autocorr bpm=123.05 conf=0.480 stable=142 instant=140
 [DSP.1 onset] band=3 t=14.0713
 [DSP.1 onset] band=2 t=14.0946
 [DSP.1 onset] band=4 t=14.0946
 [DSP.1 onset] band=5 t=14.1178
-[DSP.1 ts] t=14.1642 flux=0.1729 thr=0.1687
 [DSP.1 onset] band=1 t=14.1642
 [DSP.1 onset] band=3 t=14.2803
-[DSP.1 dump] stable raw=199.00 sel=99.50
-[DSP.1 dump]   bin bpm=199 period=0.3015 count=2
-[DSP.1 dump]   bin bpm=62 period=0.9677 count=1
-[DSP.1 dump]   bin bpm=63 period=0.9524 count=1
-[DSP.1 dump]   bin bpm=74 period=0.8108 count=1
-[DSP.1 dump]   bin bpm=86 period=0.6977 count=1
+[DSP.1 ts] t=14.3035 flux=0.0651 thr=0.0000
+[DSP.1 dump] stable raw=144.00 sel=139.84
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=16
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=4
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=2
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=1
 [DSP.1 onset] band=0 t=14.3035
 [DSP.1 onset] band=4 t=14.3035
 [DSP.1 onset] band=2 t=14.3268
@@ -2300,66 +2283,62 @@
 [DSP.1 onset] band=1 t=14.5822
 [DSP.1 onset] band=2 t=14.5822
 [DSP.1 onset] band=5 t=14.6054
-[DSP.1 ts] t=14.6286 flux=0.2274 thr=0.1896
 [DSP.1 onset] band=4 t=14.6286
+[DSP.1 ts] t=14.7215 flux=0.0102 thr=0.0000
 [DSP.1 onset] band=0 t=14.7215
 [DSP.1 onset] band=3 t=14.7447
 [DSP.1 onset] band=4 t=14.8376
 [DSP.1 onset] band=5 t=14.8376
 [DSP.1 onset] band=2 t=14.8608
 [DSP.1 onset] band=3 t=14.9537
-[DSP.1 ts] t=14.9769 flux=0.1596 thr=0.1495
 [DSP.1 onset] band=1 t=15.0001
-[DSP.1 dump] autocorr bpm=86.13 conf=0.433 stable=100 instant=100
+[DSP.1 dump] autocorr bpm=86.13 conf=0.433 stable=142 instant=140
 [DSP.1 onset] band=2 t=15.0698
 [DSP.1 onset] band=4 t=15.0698
 [DSP.1 onset] band=5 t=15.0698
+[DSP.1 ts] t=15.1394 flux=0.0312 thr=0.0000
 [DSP.1 onset] band=0 t=15.1395
 [DSP.1 onset] band=3 t=15.1627
 [DSP.1 onset] band=5 t=15.2788
 [DSP.1 onset] band=2 t=15.3020
-[DSP.1 dump] stable raw=199.00 sel=99.50
-[DSP.1 dump]   bin bpm=199 period=0.3015 count=2
-[DSP.1 dump]   bin bpm=62 period=0.9677 count=1
-[DSP.1 dump]   bin bpm=74 period=0.8108 count=1
-[DSP.1 dump]   bin bpm=86 period=0.6977 count=1
-[DSP.1 dump]   bin bpm=108 period=0.5556 count=1
+[DSP.1 dump] stable raw=144.00 sel=140.71
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=16
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=4
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=2
 [DSP.1 onset] band=4 t=15.3252
-[DSP.1 ts] t=15.3484 flux=0.3676 thr=0.1620
 [DSP.1 onset] band=3 t=15.3949
 [DSP.1 onset] band=1 t=15.4181
 [DSP.1 onset] band=5 t=15.4646
 [DSP.1 onset] band=2 t=15.5342
 [DSP.1 onset] band=4 t=15.5342
+[DSP.1 ts] t=15.5574 flux=0.0341 thr=0.0000
 [DSP.1 onset] band=0 t=15.5574
 [DSP.1 onset] band=3 t=15.6968
 [DSP.1 onset] band=4 t=15.6968
 [DSP.1 onset] band=2 t=15.7432
 [DSP.1 onset] band=5 t=15.7664
-[DSP.1 ts] t=15.8360 flux=0.3583 thr=0.2230
 [DSP.1 onset] band=1 t=15.8361
 [DSP.1 onset] band=4 t=15.8825
 [DSP.1 onset] band=3 t=15.9057
 [DSP.1 onset] band=2 t=15.9522
+[DSP.1 ts] t=15.9985 flux=0.0347 thr=0.0000
 [DSP.1 onset] band=0 t=15.9986
 [DSP.1 onset] band=5 t=15.9986
-[DSP.1 dump] autocorr bpm=123.05 conf=0.460 stable=100 instant=100
+[DSP.1 dump] autocorr bpm=123.05 conf=0.460 stable=142 instant=141
 [DSP.1 onset] band=4 t=16.0451
-[DSP.1 ts] t=16.0682 flux=0.3752 thr=0.2327
 [DSP.1 onset] band=3 t=16.1147
 [DSP.1 onset] band=2 t=16.1612
 [DSP.1 onset] band=4 t=16.2076
 [DSP.1 onset] band=5 t=16.2540
 [DSP.1 onset] band=1 t=16.2773
 [DSP.1 onset] band=3 t=16.3237
-[DSP.1 dump] stable raw=123.00 sel=123.00
-[DSP.1 dump]   bin bpm=123 period=0.4878 count=2
-[DSP.1 dump]   bin bpm=199 period=0.3015 count=2
-[DSP.1 dump]   bin bpm=62 period=0.9677 count=1
-[DSP.1 dump]   bin bpm=74 period=0.8108 count=1
-[DSP.1 dump]   bin bpm=86 period=0.6977 count=1
+[DSP.1 dump] stable raw=144.00 sel=141.06
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=17
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=3
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=2
 [DSP.1 onset] band=2 t=16.3701
 [DSP.1 onset] band=4 t=16.4166
+[DSP.1 ts] t=16.4397 flux=0.0396 thr=0.0000
 [DSP.1 onset] band=0 t=16.4398
 [DSP.1 onset] band=5 t=16.4630
 [DSP.1 onset] band=3 t=16.5327
@@ -2368,39 +2347,35 @@
 [DSP.1 onset] band=3 t=16.7649
 [DSP.1 onset] band=4 t=16.7649
 [DSP.1 onset] band=5 t=16.7649
-[DSP.1 ts] t=16.7880 flux=0.1866 thr=0.1620
 [DSP.1 onset] band=2 t=16.8345
+[DSP.1 ts] t=16.8809 flux=0.0171 thr=0.0000
 [DSP.1 onset] band=0 t=16.8810
 [DSP.1 onset] band=4 t=16.9506
 [DSP.1 onset] band=5 t=16.9506
 [DSP.1 onset] band=3 t=16.9739
-[DSP.1 ts] t=17.0202 flux=0.1865 thr=0.1398
-[DSP.1 dump] autocorr bpm=86.13 conf=0.446 stable=100 instant=123
+[DSP.1 dump] autocorr bpm=86.13 conf=0.446 stable=142 instant=141
 [DSP.1 onset] band=2 t=17.0435
 [DSP.1 onset] band=5 t=17.1596
 [DSP.1 onset] band=1 t=17.1828
 [DSP.1 onset] band=3 t=17.2061
 [DSP.1 onset] band=4 t=17.2293
-[DSP.1 ts] t=17.2524 flux=0.2196 thr=0.1096
 [DSP.1 onset] band=2 t=17.2525
+[DSP.1 ts] t=17.2989 flux=0.0583 thr=0.0000
 [DSP.1 onset] band=0 t=17.2989
 [DSP.1 onset] band=5 t=17.3222
-[DSP.1 dump] stable raw=123.00 sel=123.00
-[DSP.1 dump]   bin bpm=123 period=0.4878 count=2
-[DSP.1 dump]   bin bpm=199 period=0.3015 count=2
-[DSP.1 dump]   bin bpm=62 period=0.9677 count=1
-[DSP.1 dump]   bin bpm=83 period=0.7229 count=1
-[DSP.1 dump]   bin bpm=86 period=0.6977 count=1
+[DSP.1 dump] stable raw=144.00 sel=140.50
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=16
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=5
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=2
 [DSP.1 onset] band=3 t=17.4150
 [DSP.1 onset] band=4 t=17.4150
-[DSP.1 ts] t=17.4382 flux=0.2194 thr=0.1398
 [DSP.1 onset] band=2 t=17.4847
 [DSP.1 onset] band=5 t=17.4847
 [DSP.1 onset] band=1 t=17.6240
 [DSP.1 onset] band=3 t=17.6240
 [DSP.1 onset] band=5 t=17.6472
 [DSP.1 onset] band=4 t=17.6705
-[DSP.1 ts] t=17.7168 flux=0.1883 thr=0.1337
+[DSP.1 ts] t=17.7168 flux=0.0681 thr=0.0000
 [DSP.1 onset] band=0 t=17.7169
 [DSP.1 onset] band=2 t=17.7169
 [DSP.1 onset] band=5 t=17.8098
@@ -2408,11 +2383,11 @@
 [DSP.1 onset] band=4 t=17.9027
 [DSP.1 onset] band=2 t=17.9491
 [DSP.1 onset] band=5 t=17.9723
-[DSP.1 ts] t=17.9955 flux=0.1867 thr=0.1741
-[DSP.1 dump] autocorr bpm=86.13 conf=0.436 stable=100 instant=123
+[DSP.1 dump] autocorr bpm=86.13 conf=0.436 stable=142 instant=141
 [DSP.1 onset] band=4 t=18.0652
 [DSP.1 onset] band=3 t=18.0884
 [DSP.1 onset] band=1 t=18.1116
+[DSP.1 ts] t=18.1348 flux=0.0313 thr=0.0000
 [DSP.1 onset] band=0 t=18.1349
 [DSP.1 onset] band=2 t=18.1581
 [DSP.1 onset] band=5 t=18.1813
@@ -2420,47 +2395,43 @@
 [DSP.1 onset] band=5 t=18.3438
 [DSP.1 onset] band=2 t=18.3671
 [DSP.1 onset] band=3 t=18.3671
-[DSP.1 dump] stable raw=123.00 sel=123.00
-[DSP.1 dump]   bin bpm=123 period=0.4878 count=2
-[DSP.1 dump]   bin bpm=199 period=0.3015 count=2
-[DSP.1 dump]   bin bpm=62 period=0.9677 count=1
-[DSP.1 dump]   bin bpm=83 period=0.7229 count=1
-[DSP.1 dump]   bin bpm=86 period=0.6977 count=1
+[DSP.1 dump] stable raw=144.00 sel=140.71
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=16
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=4
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=2
 [DSP.1 onset] band=4 t=18.4367
 [DSP.1 onset] band=1 t=18.5296
+[DSP.1 ts] t=18.5527 flux=0.0242 thr=0.0000
 [DSP.1 onset] band=0 t=18.5528
 [DSP.1 onset] band=5 t=18.5528
 [DSP.1 onset] band=2 t=18.5760
 [DSP.1 onset] band=3 t=18.5993
 [DSP.1 onset] band=4 t=18.6457
-[DSP.1 ts] t=18.6921 flux=0.2735 thr=0.1200
 [DSP.1 onset] band=5 t=18.7154
 [DSP.1 onset] band=2 t=18.8082
 [DSP.1 onset] band=4 t=18.8082
 [DSP.1 onset] band=3 t=18.8779
 [DSP.1 onset] band=5 t=18.8779
-[DSP.1 ts] t=18.9707 flux=0.2103 thr=0.1304
+[DSP.1 ts] t=18.9707 flux=0.0241 thr=0.0000
 [DSP.1 onset] band=0 t=18.9708
 [DSP.1 onset] band=1 t=18.9708
-[DSP.1 dump] autocorr bpm=86.13 conf=0.460 stable=100 instant=123
+[DSP.1 dump] autocorr bpm=86.13 conf=0.460 stable=142 instant=141
 [DSP.1 onset] band=4 t=19.0404
 [DSP.1 onset] band=2 t=19.0637
 [DSP.1 onset] band=5 t=19.0637
 [DSP.1 onset] band=3 t=19.0869
-[DSP.1 ts] t=19.1565 flux=0.1419 thr=0.1216
 [DSP.1 onset] band=4 t=19.2030
 [DSP.1 onset] band=5 t=19.2262
 [DSP.1 onset] band=2 t=19.2959
 [DSP.1 onset] band=3 t=19.3191
 [DSP.1 onset] band=4 t=19.3655
+[DSP.1 ts] t=19.3887 flux=0.0262 thr=0.0000
 [DSP.1 onset] band=0 t=19.3887
 [DSP.1 onset] band=5 t=19.3887
-[DSP.1 dump] stable raw=86.00 sel=86.00
-[DSP.1 dump]   bin bpm=86 period=0.6977 count=2
-[DSP.1 dump]   bin bpm=123 period=0.4878 count=2
-[DSP.1 dump]   bin bpm=62 period=0.9677 count=1
-[DSP.1 dump]   bin bpm=83 period=0.7229 count=1
-[DSP.1 dump]   bin bpm=129 period=0.4651 count=1
+[DSP.1 dump] stable raw=144.00 sel=140.83
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=17
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=4
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=2
 [DSP.1 onset] band=1 t=19.4120
 [DSP.1 onset] band=2 t=19.5281
 [DSP.1 onset] band=4 t=19.5745
@@ -2468,33 +2439,33 @@
 [DSP.1 onset] band=3 t=19.5977
 [DSP.1 onset] band=5 t=19.7370
 [DSP.1 onset] band=4 t=19.7603
+[DSP.1 ts] t=19.8066 flux=0.0416 thr=0.0000
 [DSP.1 onset] band=0 t=19.8067
 [DSP.1 onset] band=2 t=19.8067
 [DSP.1 onset] band=3 t=19.8067
 [DSP.1 onset] band=1 t=19.8764
-[DSP.1 ts] t=19.8995 flux=0.4993 thr=0.2393
 [DSP.1 onset] band=2 t=20.0157
-[DSP.1 dump] autocorr bpm=86.13 conf=0.485 stable=100 instant=86
+[DSP.1 dump] autocorr bpm=86.13 conf=0.485 stable=142 instant=141
 [DSP.1 onset] band=5 t=20.0389
 [DSP.1 onset] band=4 t=20.1086
 [DSP.1 onset] band=3 t=20.1318
 [DSP.1 onset] band=2 t=20.2247
+[DSP.1 ts] t=20.2710 flux=0.0223 thr=0.0000
 [DSP.1 onset] band=0 t=20.2711
 [DSP.1 onset] band=5 t=20.3175
 [DSP.1 onset] band=1 t=20.3408
 [DSP.1 onset] band=3 t=20.3408
 [DSP.1 onset] band=4 t=20.3408
-[DSP.1 dump] stable raw=123.00 sel=123.00
-[DSP.1 dump]   bin bpm=123 period=0.4878 count=2
-[DSP.1 dump]   bin bpm=62 period=0.9677 count=1
-[DSP.1 dump]   bin bpm=81 period=0.7407 count=1
-[DSP.1 dump]   bin bpm=83 period=0.7229 count=1
-[DSP.1 dump]   bin bpm=86 period=0.6977 count=1
+[DSP.1 dump] stable raw=144.00 sel=140.83
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=17
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=4
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=2
 [DSP.1 onset] band=2 t=20.4569
 [DSP.1 onset] band=4 t=20.5265
 [DSP.1 onset] band=5 t=20.5497
 [DSP.1 onset] band=3 t=20.5962
 [DSP.1 onset] band=2 t=20.6891
+[DSP.1 ts] t=20.7354 flux=0.0695 thr=0.0000
 [DSP.1 onset] band=0 t=20.7355
 [DSP.1 onset] band=4 t=20.7819
 [DSP.1 onset] band=5 t=20.7819
@@ -2502,37 +2473,40 @@
 [DSP.1 onset] band=1 t=20.8980
 [DSP.1 onset] band=2 t=20.9213
 [DSP.1 onset] band=4 t=20.9677
-[DSP.1 dump] autocorr bpm=86.13 conf=0.473 stable=100 instant=123
+[DSP.1 dump] autocorr bpm=86.13 conf=0.473 stable=142 instant=141
 [DSP.1 onset] band=3 t=21.0374
-[DSP.1 ts] t=21.0605 flux=0.2454 thr=0.1312
 [DSP.1 onset] band=5 t=21.0606
 [DSP.1 onset] band=4 t=21.1302
 [DSP.1 onset] band=2 t=21.1535
+[DSP.1 ts] t=21.1998 flux=0.0780 thr=0.0000
 [DSP.1 onset] band=0 t=21.1999
 [DSP.1 onset] band=3 t=21.2463
-[DSP.1 ts] t=21.2695 flux=0.2875 thr=0.1408
 [DSP.1 onset] band=5 t=21.2696
 [DSP.1 onset] band=4 t=21.2928
 [DSP.1 onset] band=1 t=21.3160
 [DSP.1 onset] band=2 t=21.3857
-[DSP.1 dump] stable early reason=noPeak(in=10,out=14,recent=25)
+[DSP.1 dump] stable raw=144.00 sel=139.67
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=15
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=4
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=3
 [DSP.1 onset] band=3 t=21.4553
 [DSP.1 onset] band=4 t=21.4553
 [DSP.1 onset] band=5 t=21.5018
 [DSP.1 onset] band=4 t=21.6179
+[DSP.1 ts] t=21.6410 flux=0.0032 thr=0.0000
 [DSP.1 onset] band=0 t=21.6411
 [DSP.1 onset] band=2 t=21.6643
 [DSP.1 onset] band=3 t=21.6643
 [DSP.1 onset] band=5 t=21.6643
 [DSP.1 onset] band=1 t=21.7340
 [DSP.1 onset] band=4 t=21.7804
-[DSP.1 ts] t=21.8035 flux=0.4417 thr=0.1810
 [DSP.1 onset] band=5 t=21.8268
 [DSP.1 onset] band=2 t=21.8733
 [DSP.1 onset] band=3 t=21.8733
 [DSP.1 onset] band=4 t=21.9429
-[DSP.1 dump] autocorr bpm=86.13 conf=0.477 stable=100 instant=123
+[DSP.1 dump] autocorr bpm=86.13 conf=0.477 stable=142 instant=140
 [DSP.1 onset] band=5 t=22.0358
+[DSP.1 ts] t=22.0590 flux=0.0310 thr=0.0000
 [DSP.1 onset] band=0 t=22.0590
 [DSP.1 onset] band=3 t=22.1287
 [DSP.1 onset] band=1 t=22.1519
@@ -2543,11 +2517,14 @@
 [DSP.1 onset] band=4 t=22.3609
 [DSP.1 onset] band=5 t=22.3609
 [DSP.1 onset] band=2 t=22.4306
-[DSP.1 dump] stable early reason=noPeak(in=9,out=13,recent=23)
+[DSP.1 ts] t=22.4769 flux=0.0480 thr=0.0000
+[DSP.1 dump] stable raw=144.00 sel=140.17
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=16
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=4
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=3
 [DSP.1 onset] band=0 t=22.4770
 [DSP.1 onset] band=1 t=22.5699
 [DSP.1 onset] band=3 t=22.5699
-[DSP.1 ts] t=22.5930 flux=0.1703 thr=0.1458
 [DSP.1 onset] band=4 t=22.6163
 [DSP.1 onset] band=2 t=22.6395
 [DSP.1 onset] band=5 t=22.6395
@@ -2555,37 +2532,35 @@
 [DSP.1 onset] band=4 t=22.7789
 [DSP.1 onset] band=5 t=22.8021
 [DSP.1 onset] band=2 t=22.8485
+[DSP.1 ts] t=22.8949 flux=0.0183 thr=0.0000
 [DSP.1 onset] band=0 t=22.8950
 [DSP.1 onset] band=4 t=22.9414
-[DSP.1 ts] t=22.9645 flux=0.4605 thr=0.1507
 [DSP.1 onset] band=5 t=22.9646
 [DSP.1 onset] band=3 t=22.9879
 [DSP.1 onset] band=1 t=23.0111
-[DSP.1 dump] autocorr bpm=86.13 conf=0.430 stable=100 instant=123
+[DSP.1 dump] autocorr bpm=86.13 conf=0.430 stable=142 instant=140
 [DSP.1 onset] band=2 t=23.0575
 [DSP.1 onset] band=5 t=23.1272
-[DSP.1 ts] t=23.1735 flux=0.2261 thr=0.1539
 [DSP.1 onset] band=3 t=23.1968
 [DSP.1 onset] band=4 t=23.1968
+[DSP.1 ts] t=23.3128 flux=0.0156 thr=0.0000
 [DSP.1 onset] band=0 t=23.3129
 [DSP.1 onset] band=2 t=23.3129
 [DSP.1 onset] band=5 t=23.3362
 [DSP.1 onset] band=4 t=23.3594
 [DSP.1 onset] band=3 t=23.4290
 [DSP.1 onset] band=1 t=23.4523
-[DSP.1 dump] stable raw=161.00 sel=80.50
-[DSP.1 dump]   bin bpm=161 period=0.3727 count=2
-[DSP.1 dump]   bin bpm=76 period=0.7895 count=1
-[DSP.1 dump]   bin bpm=81 period=0.7407 count=1
-[DSP.1 dump]   bin bpm=83 period=0.7229 count=1
-[DSP.1 dump]   bin bpm=86 period=0.6977 count=1
+[DSP.1 dump] stable raw=144.00 sel=140.02
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=15
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=4
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=3
 [DSP.1 onset] band=2 t=23.5219
 [DSP.1 onset] band=4 t=23.5219
 [DSP.1 onset] band=5 t=23.5916
 [DSP.1 onset] band=3 t=23.6380
 [DSP.1 onset] band=4 t=23.6845
-[DSP.1 ts] t=23.7076 flux=0.3453 thr=0.2461
 [DSP.1 onset] band=2 t=23.7309
+[DSP.1 ts] t=23.7772 flux=0.0094 thr=0.0000
 [DSP.1 onset] band=0 t=23.7773
 [DSP.1 onset] band=5 t=23.8006
 [DSP.1 onset] band=3 t=23.8470
@@ -2593,13 +2568,13 @@
 [DSP.1 onset] band=1 t=23.9167
 [DSP.1 onset] band=5 t=23.9631
 [DSP.1 onset] band=2 t=23.9863
-[DSP.1 dump] autocorr bpm=112.35 conf=0.414 stable=100 instant=80
+[DSP.1 dump] autocorr bpm=112.35 conf=0.414 stable=142 instant=140
 [DSP.1 onset] band=3 t=24.0560
 [DSP.1 onset] band=4 t=24.0560
 [DSP.1 onset] band=5 t=24.1256
 [DSP.1 onset] band=2 t=24.1953
+[DSP.1 ts] t=24.2184 flux=0.0377 thr=0.0000
 [DSP.1 onset] band=0 t=24.2185
-[DSP.1 ts] t=24.2881 flux=0.3080 thr=0.2583
 [DSP.1 onset] band=3 t=24.3346
 [DSP.1 onset] band=4 t=24.3346
 [DSP.1 onset] band=5 t=24.3346
@@ -2607,110 +2582,101 @@
 [DSP.1 onset] band=2 t=24.4043
 [DSP.1 onset] band=4 t=24.4972
 [DSP.1 onset] band=5 t=24.4972
-[DSP.1 dump] stable raw=112.00 sel=112.00
-[DSP.1 dump]   bin bpm=112 period=0.5357 count=2
-[DSP.1 dump]   bin bpm=161 period=0.3727 count=2
-[DSP.1 dump]   bin bpm=76 period=0.7895 count=1
-[DSP.1 dump]   bin bpm=81 period=0.7407 count=1
-[DSP.1 dump]   bin bpm=83 period=0.7229 count=1
+[DSP.1 dump] stable raw=144.00 sel=138.99
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=13
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=5
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=4
 [DSP.1 onset] band=3 t=24.5900
 [DSP.1 onset] band=2 t=24.6365
+[DSP.1 ts] t=24.6596 flux=0.0338 thr=0.0000
 [DSP.1 onset] band=0 t=24.6597
 [DSP.1 onset] band=4 t=24.7294
 [DSP.1 onset] band=5 t=24.7294
 [DSP.1 onset] band=3 t=24.7990
 [DSP.1 onset] band=1 t=24.8222
-[DSP.1 ts] t=24.8918 flux=0.3885 thr=0.2480
 [DSP.1 onset] band=2 t=24.8919
 [DSP.1 onset] band=5 t=24.8919
 [DSP.1 onset] band=4 t=24.9151
-[DSP.1 dump] autocorr bpm=136.00 conf=0.415 stable=100 instant=112
+[DSP.1 dump] autocorr bpm=136.00 conf=0.415 stable=142 instant=139
 [DSP.1 onset] band=3 t=25.0544
 [DSP.1 onset] band=5 t=25.0544
+[DSP.1 ts] t=25.0776 flux=0.0474 thr=0.0000
 [DSP.1 onset] band=0 t=25.0777
 [DSP.1 onset] band=4 t=25.0777
 [DSP.1 onset] band=2 t=25.1009
 [DSP.1 onset] band=5 t=25.2402
 [DSP.1 onset] band=1 t=25.2866
 [DSP.1 onset] band=3 t=25.2866
-[DSP.1 ts] t=25.3330 flux=0.2512 thr=0.2153
 [DSP.1 onset] band=4 t=25.3331
 [DSP.1 onset] band=2 t=25.3795
 [DSP.1 onset] band=5 t=25.4492
+[DSP.1 ts] t=25.5187 flux=0.0270 thr=0.0000
 [DSP.1 onset] band=0 t=25.5188
 [DSP.1 onset] band=3 t=25.5188
 [DSP.1 onset] band=4 t=25.5188
-[DSP.1 dump] stable raw=112.00 sel=112.00
-[DSP.1 dump]   bin bpm=112 period=0.5357 count=2
-[DSP.1 dump]   bin bpm=76 period=0.7895 count=1
-[DSP.1 dump]   bin bpm=81 period=0.7407 count=1
-[DSP.1 dump]   bin bpm=83 period=0.7229 count=1
-[DSP.1 dump]   bin bpm=86 period=0.6977 count=1
-[DSP.1 ts] t=25.5884 flux=0.2975 thr=0.1838
+[DSP.1 dump] stable raw=144.00 sel=138.54
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=12
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=7
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=4
 [DSP.1 onset] band=2 t=25.5885
 [DSP.1 onset] band=5 t=25.7046
 [DSP.1 onset] band=1 t=25.7278
 [DSP.1 onset] band=3 t=25.7278
 [DSP.1 onset] band=4 t=25.7510
 [DSP.1 onset] band=2 t=25.7975
+[DSP.1 ts] t=25.9367 flux=0.0027 thr=0.0000
 [DSP.1 onset] band=0 t=25.9368
-[DSP.1 ts] t=25.9599 flux=0.1697 thr=0.1528
-[DSP.1 dump] autocorr bpm=136.00 conf=0.422 stable=100 instant=112
+[DSP.1 dump] autocorr bpm=136.00 conf=0.422 stable=142 instant=139
 [DSP.1 onset] band=4 t=26.0297
 [DSP.1 onset] band=5 t=26.0297
 [DSP.1 onset] band=2 t=26.0529
 [DSP.1 onset] band=3 t=26.0529
-[DSP.1 ts] t=26.1457 flux=0.1984 thr=0.1717
 [DSP.1 onset] band=1 t=26.1458
 [DSP.1 onset] band=4 t=26.1922
 [DSP.1 onset] band=3 t=26.2619
 [DSP.1 onset] band=5 t=26.2619
 [DSP.1 onset] band=2 t=26.3083
+[DSP.1 ts] t=26.4011 flux=0.0265 thr=0.0000
 [DSP.1 onset] band=0 t=26.4012
 [DSP.1 onset] band=4 t=26.4476
 [DSP.1 onset] band=3 t=26.4941
 [DSP.1 onset] band=5 t=26.4941
-[DSP.1 dump] stable raw=112.00 sel=112.00
-[DSP.1 dump]   bin bpm=112 period=0.5357 count=2
-[DSP.1 dump]   bin bpm=161 period=0.3727 count=2
-[DSP.1 dump]   bin bpm=76 period=0.7895 count=1
-[DSP.1 dump]   bin bpm=81 period=0.7407 count=1
-[DSP.1 dump]   bin bpm=86 period=0.6977 count=1
+[DSP.1 dump] stable raw=144.00 sel=138.65
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=13
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=5
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=4
 [DSP.1 onset] band=1 t=26.5637
 [DSP.1 onset] band=2 t=26.5637
 [DSP.1 onset] band=3 t=26.7031
 [DSP.1 onset] band=4 t=26.7031
-[DSP.1 ts] t=26.7494 flux=0.1809 thr=0.1728
 [DSP.1 onset] band=5 t=26.7495
 [DSP.1 onset] band=2 t=26.7959
+[DSP.1 ts] t=26.8655 flux=0.0228 thr=0.0000
 [DSP.1 onset] band=0 t=26.8656
-[DSP.1 ts] t=26.9119 flux=0.1874 thr=0.1826
 [DSP.1 onset] band=5 t=26.9120
 [DSP.1 onset] band=4 t=26.9585
 [DSP.1 onset] band=3 t=26.9817
 [DSP.1 onset] band=1 t=27.0049
-[DSP.1 dump] autocorr bpm=86.13 conf=0.407 stable=100 instant=112
+[DSP.1 dump] autocorr bpm=86.13 conf=0.407 stable=142 instant=139
 [DSP.1 onset] band=2 t=27.0281
 [DSP.1 onset] band=5 t=27.1675
 [DSP.1 onset] band=3 t=27.1907
 [DSP.1 onset] band=4 t=27.2139
 [DSP.1 onset] band=2 t=27.2371
+[DSP.1 ts] t=27.2834 flux=0.0091 thr=0.0000
 [DSP.1 onset] band=0 t=27.2836
 [DSP.1 onset] band=4 t=27.3764
-[DSP.1 ts] t=27.4228 flux=0.2122 thr=0.1807
 [DSP.1 onset] band=1 t=27.4229
 [DSP.1 onset] band=3 t=27.4229
 [DSP.1 onset] band=5 t=27.4229
 [DSP.1 onset] band=2 t=27.4693
-[DSP.1 dump] stable raw=99.00 sel=99.00
-[DSP.1 dump]   bin bpm=99 period=0.6061 count=2
-[DSP.1 dump]   bin bpm=112 period=0.5357 count=2
-[DSP.1 dump]   bin bpm=161 period=0.3727 count=2
-[DSP.1 dump]   bin bpm=76 period=0.7895 count=1
-[DSP.1 dump]   bin bpm=81 period=0.7407 count=1
+[DSP.1 dump] stable raw=144.00 sel=137.98
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=12
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=6
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=4
 [DSP.1 onset] band=2 t=27.6783
 [DSP.1 onset] band=4 t=27.6783
-[DSP.1 ts] t=27.7014 flux=0.2231 thr=0.1955
+[DSP.1 ts] t=27.7014 flux=0.0617 thr=0.0000
 [DSP.1 onset] band=0 t=27.7015
 [DSP.1 onset] band=3 t=27.7015
 [DSP.1 onset] band=5 t=27.7015
@@ -2719,10 +2685,10 @@
 [DSP.1 onset] band=5 t=27.9105
 [DSP.1 onset] band=3 t=27.9337
 [DSP.1 onset] band=4 t=27.9337
-[DSP.1 dump] autocorr bpm=86.13 conf=0.407 stable=100 instant=99
-[DSP.1 ts] t=28.0729 flux=0.3562 thr=0.1717
+[DSP.1 dump] autocorr bpm=86.13 conf=0.407 stable=142 instant=138
 [DSP.1 onset] band=2 t=28.1427
 [DSP.1 onset] band=3 t=28.1427
+[DSP.1 ts] t=28.1890 flux=0.0563 thr=0.0000
 [DSP.1 onset] band=0 t=28.1891
 [DSP.1 onset] band=4 t=28.1891
 [DSP.1 onset] band=5 t=28.1891
@@ -2732,50 +2698,47 @@
 [DSP.1 onset] band=5 t=28.3749
 [DSP.1 onset] band=3 t=28.3981
 [DSP.1 onset] band=2 t=28.5839
-[DSP.1 dump] stable raw=161.00 sel=80.50
-[DSP.1 dump]   bin bpm=161 period=0.3727 count=3
-[DSP.1 dump]   bin bpm=99 period=0.6061 count=2
-[DSP.1 dump]   bin bpm=112 period=0.5357 count=2
-[DSP.1 dump]   bin bpm=76 period=0.7895 count=1
-[DSP.1 dump]   bin bpm=81 period=0.7407 count=1
+[DSP.1 dump] stable raw=144.00 sel=136.68
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=10
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=6
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=4
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=1
 [DSP.1 onset] band=4 t=28.6071
 [DSP.1 onset] band=5 t=28.6071
+[DSP.1 ts] t=28.6534 flux=0.0348 thr=0.0000
 [DSP.1 onset] band=0 t=28.6535
 [DSP.1 onset] band=3 t=28.6535
-[DSP.1 ts] t=28.6766 flux=0.6045 thr=0.1981
 [DSP.1 onset] band=1 t=28.7929
 [DSP.1 onset] band=4 t=28.8161
 [DSP.1 onset] band=2 t=28.8393
 [DSP.1 onset] band=5 t=28.8625
 [DSP.1 onset] band=3 t=28.8857
-[DSP.1 dump] autocorr bpm=86.13 conf=0.414 stable=100 instant=80
+[DSP.1 dump] autocorr bpm=86.13 conf=0.414 stable=142 instant=137
+[DSP.1 ts] t=29.0714 flux=0.0764 thr=0.0000
 [DSP.1 onset] band=0 t=29.0715
 [DSP.1 onset] band=2 t=29.0715
 [DSP.1 onset] band=5 t=29.0947
 [DSP.1 onset] band=3 t=29.1179
 [DSP.1 onset] band=4 t=29.1179
-[DSP.1 ts] t=29.1410 flux=0.3187 thr=0.2015
 [DSP.1 onset] band=1 t=29.2573
 [DSP.1 onset] band=2 t=29.2805
 [DSP.1 onset] band=3 t=29.3269
 [DSP.1 onset] band=5 t=29.3269
 [DSP.1 onset] band=4 t=29.3501
-[DSP.1 ts] t=29.4429 flux=0.3655 thr=0.1929
+[DSP.1 ts] t=29.4893 flux=0.0348 thr=0.0000
 [DSP.1 onset] band=0 t=29.4895
 [DSP.1 onset] band=2 t=29.5359
 [DSP.1 onset] band=4 t=29.5359
 [DSP.1 onset] band=3 t=29.5591
 [DSP.1 onset] band=5 t=29.5823
-[DSP.1 dump] stable raw=99.00 sel=99.00
-[DSP.1 dump]   bin bpm=99 period=0.6061 count=3
-[DSP.1 dump]   bin bpm=161 period=0.3727 count=3
-[DSP.1 dump]   bin bpm=112 period=0.5357 count=2
-[DSP.1 dump]   bin bpm=76 period=0.7895 count=1
-[DSP.1 dump]   bin bpm=103 period=0.5825 count=1
+[DSP.1 dump] stable raw=144.00 sel=136.33
+[DSP.1 dump]   bin bpm=144 period=0.4167 count=10
+[DSP.1 dump]   bin bpm=129 period=0.4651 count=7
+[DSP.1 dump]   bin bpm=136 period=0.4412 count=4
+[DSP.1 dump]   bin bpm=123 period=0.4878 count=1
 [DSP.1 onset] band=1 t=29.6752
 [DSP.1 onset] band=4 t=29.6984
 [DSP.1 onset] band=3 t=29.7681
 [DSP.1 onset] band=5 t=29.7913
 [DSP.1 onset] band=2 t=29.8145
-[DSP.1 ts] t=29.8841 flux=0.2561 thr=0.1879
 

@@ -229,7 +229,7 @@ public final class BeatDetector: @unchecked Sendable {
 
         // Track elapsed time and record onset timestamps for tempo.
         elapsedTime += Double(deltaTime)
-        recordOnsetTimestamps(bandFlux: bandFlux)
+        recordOnsetTimestamps(onsets: onsets, bandFlux: bandFlux)
 
         // Once per second: compute stable tempo via IOI histogram.
         if elapsedTime - lastTempoComputeTime >= 1.0 {
@@ -359,16 +359,15 @@ public final class BeatDetector: @unchecked Sendable {
     }
 
     /// Record bass onset timestamps for IOI-based tempo estimation.
-    /// Uses 75th percentile threshold (median is near-zero for half-wave rectified flux).
-    private func recordOnsetTimestamps(bandFlux: [Float]) {
-        let bassFlux = bandFlux[0] + bandFlux[1]
-        let bassP75 = percentileOfBuffer(
-            fluxBuffers[0], count: fluxCounts[0], percentile: 0.75
-        ) + percentileOfBuffer(
-            fluxBuffers[1], count: fluxCounts[1], percentile: 0.75
-        )
-        let tempoThreshold = bassP75 * 2.0
-        guard bassFlux > tempoThreshold && fluxCounts[0] >= 5 else { return }
+    /// Sources from sub_bass per-band onset events produced by `detectOnsets`.
+    /// The 400ms per-band cooldown gives clean kick-rate IOIs. We deliberately
+    /// do NOT OR with low_bass: each band is clean alone, but combining the
+    /// two creates frame-aliasing IOIs (one band fires 18 frames after a kick,
+    /// the other fires 19 frames after the next, alternating 418/441ms IOIs
+    /// for a true 441ms beat). Tracks with empty sub_bass fall through to the
+    /// autocorrelation tempo fallback. See DECISIONS D-073.
+    private func recordOnsetTimestamps(onsets: [Bool], bandFlux: [Float]) {
+        guard onsets[0] else { return }
 
         let lastTs = onsetTimestampCount > 0
             ? onsetTimestamps[
@@ -377,7 +376,8 @@ public final class BeatDetector: @unchecked Sendable {
             ]
             : -1.0
 
-        // 150ms minimum spacing = 400 BPM max.
+        // 150ms minimum spacing = 400 BPM max. detectOnsets already enforces
+        // a 400ms cooldown for sub_bass; this guard is defensive only.
         guard elapsedTime - lastTs > 0.15 else { return }
         onsetTimestamps[onsetTimestampHead] = elapsedTime
         onsetTimestampHead = (onsetTimestampHead + 1) % Self.onsetTimestampWindowSize
@@ -385,7 +385,7 @@ public final class BeatDetector: @unchecked Sendable {
             onsetTimestampCount + 1, Self.onsetTimestampWindowSize
         )
         dumpTempoTimestamp(
-            time: elapsedTime, bassFlux: bassFlux, threshold: tempoThreshold
+            time: elapsedTime, bassFlux: bandFlux[0], threshold: 0
         )
     }
 
