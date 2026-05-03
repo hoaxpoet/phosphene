@@ -86,12 +86,14 @@ extension BeatDetector {
             return
         }
 
-        // Apply octave correction and clamping.
-        let correctedBPM = applyOctaveCorrection(
-            bestBPM: histResult.bestBPM,
-            peakCount: histResult.peakCount,
-            histogram: histResult.histogram
-        )
+        // Robust BPM from trimmed-mean IOI; avoids histogram bucket
+        // quantization bias toward faster BPMs. See D-073.
+        let correctedBPM = computeRobustBPM(from: recentTimestamps)
+        guard correctedBPM > 0 else {
+            tempoDebug = "robustBPM=0 recent=\(recentTimestamps.count)"
+            dumpEarly(label: "stable", reason: tempoDebug)
+            return
+        }
 
         instantBPM = correctedBPM
 
@@ -174,36 +176,26 @@ extension BeatDetector {
         )
     }
 
-    /// Apply octave error correction and BPM clamping to the histogram peak.
-    private func applyOctaveCorrection(
-        bestBPM: Float, peakCount: Int, histogram: [Int]
-    ) -> Float {
-        let peakBucket = Int(round(bestBPM)) - 60
-
-        // Find the second-strongest peak (at least 10 buckets away).
-        var secondPeakCount = 0
-        var secondPeakBucket = 0
-        for idx in 0..<141 {
-            if histogram[idx] > secondPeakCount && abs(idx - peakBucket) > 10 {
-                secondPeakCount = histogram[idx]
-                secondPeakBucket = idx
-            }
-        }
-
-        var result = bestBPM
-        let peakBPM2 = Float(secondPeakBucket + 60)
-
-        if secondPeakCount > peakCount / 4 {
-            let ratio = max(bestBPM, peakBPM2) / min(bestBPM, peakBPM2)
-            if ratio > 1.8 && ratio < 2.2 {
-                result = max(bestBPM, peakBPM2)
-            }
-        }
-
-        // Clamp to 80-160 range.
-        if result > 160 { result /= 2 }
-        if result < 80 { result *= 2 }
-        return result
+    /// Robust BPM from recent IOI timestamps. Replaces the histogram-mode
+    /// pick (which has bucket quantization bias toward faster BPMs since
+    /// BPM buckets get wider in period space as BPM increases). Computes
+    /// median IOI, then trimmed mean of IOIs within [0.5x, 2x] of median
+    /// to reject outliers from dropped beats or occasional fills.
+    private func computeRobustBPM(from timestamps: [Double]) -> Float {
+        guard timestamps.count >= 4 else { return 0 }
+        let iois = (1..<timestamps.count).map { timestamps[$0] - timestamps[$0 - 1] }
+        let sorted = iois.sorted()
+        let median = sorted[sorted.count / 2]
+        let lo = median * 0.5
+        let hi = median * 2.0
+        let inliers = iois.filter { $0 >= lo && $0 <= hi }
+        guard !inliers.isEmpty else { return 0 }
+        let meanIOI = inliers.reduce(0, +) / Double(inliers.count)
+        guard meanIOI > 0 else { return 0 }
+        var bpm = Float(60.0 / meanIOI)
+        if bpm > 160 { bpm /= 2 }
+        if bpm < 80 { bpm *= 2 }
+        return bpm
     }
 
     /// Apply hysteresis filtering to a new tempo estimate.
