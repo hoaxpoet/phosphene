@@ -20,5 +20,6 @@
   "section_suitability": ["ambient"],
   "complexity_cost": { "tier1": 0.3, "tier2": 0.15 },
   "certified": false,
-  "rubric_profile": "lightweight"
+  "rubric_profile": "lightweight",
+  "is_diagnostic": true
 }

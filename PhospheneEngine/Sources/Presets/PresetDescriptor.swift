@@ -248,6 +248,15 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
     /// Defaults to `.allFalse`.
     public let rubricHints: RubricHints
 
+    // MARK: - V.7.6.C Diagnostic Class
+
+    /// Diagnostic presets are exempt from automatic segment scheduling. When `true`,
+    /// `maxDuration(forSection:)` returns `.infinity` so SessionPlanner never inserts a
+    /// boundary, and (per the V.7.6.D follow-up scope) the Orchestrator excludes the
+    /// preset from automatic selection entirely — diagnostics are manual-switch only.
+    /// Defaults to `false`.
+    public let isDiagnostic: Bool
+
     // MARK: - CodingKeys
 
     /// Keys for all stored properties — used by both `init(from:)` and `encode(to:)`.
@@ -283,6 +292,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         case certified
         case rubricProfile = "rubric_profile"
         case rubricHints = "rubric_hints"
+        case isDiagnostic = "is_diagnostic"
     }
 
     /// Keys for legacy boolean flags — decode-only, not stored as properties.
@@ -378,6 +388,9 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         }
 
         rubricHints = (try? container.decodeIfPresent(RubricHints.self, forKey: .rubricHints)) ?? .allFalse
+
+        // MARK: V.7.6.C Diagnostic Class
+        isDiagnostic = try container.decodeIfPresent(Bool.self, forKey: .isDiagnostic) ?? false
     }
 
     /// Synthesise a `passes` array from legacy boolean flags.
