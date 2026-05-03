@@ -50,3 +50,6 @@ skills-lock.json
 
 # Local xcconfig overrides — contain real credentials; never commit.
 *.local.xcconfig
+
+# Local audio fixtures for DSP.1 tempo capture (preview clips are licensed).
+PhospheneEngine/Tests/Fixtures/tempo/

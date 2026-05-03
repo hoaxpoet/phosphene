@@ -106,6 +106,15 @@ let package = Package(
             path: "Sources/SoakRunner"
         ),
         .executableTarget(
+            name: "TempoDumpRunner",
+            dependencies: [
+                "Audio",
+                "DSP",
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+            ],
+            path: "Sources/TempoDumpRunner"
+        ),
+        .executableTarget(
             name: "UtilityCostTableUpdater",
             dependencies: [
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),

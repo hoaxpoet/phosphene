@@ -17,17 +17,15 @@ extension BeatDetector {
     static let dumpHistogramEnabled: Bool =
         ProcessInfo.processInfo.environment["BEATDETECTOR_DUMP_HIST"] == "1"
 
-    /// Optional file destination. Truncated at first access so each process
-    /// run replaces the previous file. Lock serializes appends across
-    /// concurrent BeatDetector instances.
+    /// Optional file destination. Caller (e.g. TempoDumpRunner) is
+    /// responsible for truncation / header lines before BeatDetector runs.
+    /// Lock serializes appends across concurrent BeatDetector instances.
     static let dumpFileURL: URL? = {
         let env = ProcessInfo.processInfo.environment
         guard let path = env["BEATDETECTOR_DUMP_FILE"], !path.isEmpty else {
             return nil
         }
-        let url = URL(fileURLWithPath: path)
-        try? Data().write(to: url)
-        return url
+        return URL(fileURLWithPath: path)
     }()
 
     static let dumpFileLock = NSLock()
@@ -72,7 +70,7 @@ extension BeatDetector {
         guard let data = (line + "\n").data(using: .utf8),
               let handle = try? FileHandle(forWritingTo: url) else { return }
         defer { try? handle.close() }
-        try? handle.seekToEnd()
-        try? handle.write(contentsOf: data)
+        _ = try? handle.seekToEnd()
+        _ = try? handle.write(contentsOf: data)
     }
 }
