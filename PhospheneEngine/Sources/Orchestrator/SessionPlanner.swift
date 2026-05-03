@@ -122,47 +122,43 @@ public struct DefaultSessionPlanner: SessionPlanning {
         var warnings: [PlanningWarning] = []
 
         for (index, (identity, profile)) in tracks.enumerated() {
-            let ctx = PresetScoringContext(
-                deviceTier: deviceTier,
-                recentHistory: history,
-                currentPreset: currentPreset,
-                elapsedSessionTime: sessionClock,
-                includeUncertifiedPresets: includeUncertifiedPresets
-            )
-            let (chosen, breakdown) = selectPreset(
-                catalog: catalog,
+            let trackStart = sessionClock
+            let trackEnd = sessionClock + (identity.duration ?? Self.defaultTrackDuration)
+            let priorTrackLastPreset = currentPreset
+
+            let (segments, lastPreset) = planSegments(
+                trackStart: trackStart,
+                trackEnd: trackEnd,
+                identity: identity,
                 profile: profile,
-                context: ctx,
-                trackRef: (index, identity.title),
+                catalog: catalog,
+                deviceTier: deviceTier,
+                includeUncertifiedPresets: includeUncertifiedPresets,
                 seed: seed,
+                trackIndex: index,
+                history: &history,
+                currentPreset: &currentPreset,
                 warnings: &warnings
             )
-            if currentPreset?.family == chosen.family {
-                warnings.append(familyRepeatWarning(index: index, title: identity.title, chosen: chosen))
+
+            // Family-repeat warning relative to the *previous track's last preset*.
+            if let firstSeg = segments.first,
+               let prior = priorTrackLastPreset,
+               prior.family == firstSeg.preset.family {
+                warnings.append(
+                    familyRepeatWarning(index: index, title: identity.title, chosen: firstSeg.preset)
+                )
             }
-            let lastEntry = history.last
-            let transition = currentPreset.map {
-                buildTransition(from: $0, to: chosen, profile: profile, at: sessionClock, lastEntry: lastEntry)
-            }
-            let plannedEnd = sessionClock + (identity.duration ?? Self.defaultTrackDuration)
+
             planned.append(PlannedTrack(
                 track: identity,
                 trackProfile: profile,
-                preset: chosen,
-                presetScore: breakdown.total,
-                scoreBreakdown: breakdown,
-                plannedStartTime: sessionClock,
-                plannedEndTime: plannedEnd,
-                incomingTransition: transition
+                segments: segments,
+                plannedStartTime: trackStart,
+                plannedEndTime: trackEnd
             ))
-            history.append(PresetHistoryEntry(
-                presetID: chosen.id,
-                family: chosen.family,
-                startTime: sessionClock,
-                endTime: plannedEnd
-            ))
-            currentPreset = chosen
-            sessionClock = plannedEnd
+            currentPreset = lastPreset
+            sessionClock = trackEnd
         }
 
         return PlannedSession(
@@ -205,7 +201,188 @@ public struct DefaultSessionPlanner: SessionPlanning {
         return session
     }
 
-    // MARK: - Preset Selection
+    // MARK: - Multi-segment walk (V.7.6.2)
+
+    /// Section-list shape for a single track, derived from `TrackProfile.estimatedSectionCount`.
+    ///
+    /// Sections divide the track into equal-length spans with a default `nil` section type
+    /// (which maps to `defaultSectionDynamicRange = 0.5` inside `maxDuration(forSection:)`).
+    /// This is intentionally minimal — once `TrackProfile` carries explicit per-section types
+    /// (V.7.6.C+), the planner can pass them through.
+    private struct TrackSection {
+        let start: TimeInterval
+        let end: TimeInterval
+        let section: SongSection?
+    }
+
+    private static func makeSections(
+        trackStart: TimeInterval,
+        trackEnd: TimeInterval,
+        profile: TrackProfile
+    ) -> [TrackSection] {
+        let count = max(1, profile.estimatedSectionCount)
+        let span = trackEnd - trackStart
+        guard span > 0 else {
+            return [TrackSection(start: trackStart, end: trackEnd, section: nil)]
+        }
+        let perSection = span / Double(count)
+        var sections: [TrackSection] = []
+        sections.reserveCapacity(count)
+        for i in 0..<count {
+            let s = trackStart + Double(i) * perSection
+            let e = (i == count - 1) ? trackEnd : trackStart + Double(i + 1) * perSection
+            sections.append(TrackSection(start: s, end: e, section: nil))
+        }
+        return sections
+    }
+
+    /// Walk a single track's section list emitting one or more `PlannedPresetSegment`.
+    ///
+    /// Per V.7.6.2 §3.3:
+    /// - For each section, score eligible presets and pick the best.
+    /// - Constrain segment to `min(remainingInSection, preset.maxDuration(forSection:))`.
+    /// - If section longer than maxDuration, insert mid-section transition to a different
+    ///   preset (subject to family-repeat penalty in the scorer).
+    ///
+    /// Returns `(segments, lastPresetUsed)` so the outer loop can update history.
+    // swiftlint:disable function_parameter_count function_body_length
+    private func planSegments(
+        trackStart: TimeInterval,
+        trackEnd: TimeInterval,
+        identity: TrackIdentity,
+        profile: TrackProfile,
+        catalog: [PresetDescriptor],
+        deviceTier: DeviceTier,
+        includeUncertifiedPresets: Bool,
+        seed: UInt64,
+        trackIndex: Int,
+        history: inout [PresetHistoryEntry],
+        currentPreset: inout PresetDescriptor?,
+        warnings: inout [PlanningWarning]
+    ) -> ([PlannedPresetSegment], PresetDescriptor?) {
+
+        var segments: [PlannedPresetSegment] = []
+        let sections = Self.makeSections(trackStart: trackStart, trackEnd: trackEnd, profile: profile)
+        var firstSegmentEmitted = false
+
+        for (sectionIdx, sectionEntry) in sections.enumerated() {
+            let isLastSection = sectionIdx == sections.count - 1
+            var sectionClock = sectionEntry.start
+
+            while sectionClock < sectionEntry.end {
+                let ctx = PresetScoringContext(
+                    deviceTier: deviceTier,
+                    recentHistory: history,
+                    currentPreset: currentPreset,
+                    elapsedSessionTime: sectionClock,
+                    currentSection: sectionEntry.section,
+                    includeUncertifiedPresets: includeUncertifiedPresets
+                )
+                let (chosen, breakdown) = selectPreset(
+                    catalog: catalog,
+                    profile: profile,
+                    context: ctx,
+                    trackRef: (trackIndex, identity.title),
+                    seed: seed,
+                    warnings: &warnings
+                )
+
+                let remainingInSection = sectionEntry.end - sectionClock
+                let maxByPreset = chosen.maxDuration(forSection: sectionEntry.section)
+                // Floor segments at 1 s so we don't emit zero-duration crumbs at the tail.
+                let segLen = max(1.0, min(remainingInSection, maxByPreset))
+                // Don't run past the section end.
+                let actualLen = min(segLen, remainingInSection)
+                let segStart = sectionClock
+                let segEnd = sectionClock + actualLen
+
+                let isLastSegmentOfTrack = isLastSection && segEnd >= trackEnd - 0.001
+
+                let terminationReason: SegmentTerminationReason
+                if isLastSegmentOfTrack {
+                    terminationReason = .trackEnded
+                } else if maxByPreset < remainingInSection {
+                    terminationReason = .maxDurationReached
+                } else {
+                    terminationReason = .sectionBoundary
+                }
+
+                // Build the incoming transition for this segment.
+                let incomingTransition: PlannedTransition?
+                if !firstSegmentEmitted, let prior = currentPreset {
+                    // Track-boundary transition (relative to the previous track's last preset).
+                    incomingTransition = buildTransition(
+                        from: prior,
+                        to: chosen,
+                        profile: profile,
+                        at: segStart,
+                        lastEntry: history.last
+                    )
+                } else if firstSegmentEmitted, let prior = currentPreset {
+                    // Mid-track transition (between segments inside this track).
+                    incomingTransition = buildTransition(
+                        from: prior,
+                        to: chosen,
+                        profile: profile,
+                        at: segStart,
+                        lastEntry: history.last
+                    )
+                } else {
+                    // Very first segment of the very first track in the session.
+                    incomingTransition = nil
+                }
+
+                segments.append(PlannedPresetSegment(
+                    preset: chosen,
+                    presetScore: breakdown.total,
+                    scoreBreakdown: breakdown,
+                    plannedStartTime: segStart,
+                    plannedEndTime: segEnd,
+                    incomingTransition: incomingTransition,
+                    terminationReason: terminationReason
+                ))
+                history.append(PresetHistoryEntry(
+                    presetID: chosen.id,
+                    family: chosen.family,
+                    startTime: segStart,
+                    endTime: segEnd
+                ))
+                currentPreset = chosen
+                sectionClock = segEnd
+                firstSegmentEmitted = true
+
+                // Avoid infinite loops on degenerate input.
+                if actualLen <= 0 { break }
+            }
+        }
+
+        // Defensive: every track must have at least one segment. If a degenerate input
+        // produced none (e.g. zero-length track), synthesise a single placeholder segment.
+        if segments.isEmpty, let preset = catalog.first {
+            let breakdown = scorer.breakdown(
+                preset: preset,
+                track: profile,
+                context: PresetScoringContext(
+                    deviceTier: deviceTier,
+                    elapsedSessionTime: trackStart,
+                    includeUncertifiedPresets: includeUncertifiedPresets
+                )
+            )
+            segments.append(PlannedPresetSegment(
+                preset: preset,
+                presetScore: breakdown.total,
+                scoreBreakdown: breakdown,
+                plannedStartTime: trackStart,
+                plannedEndTime: trackEnd,
+                incomingTransition: nil,
+                terminationReason: .trackEnded
+            ))
+            currentPreset = preset
+        }
+
+        return (segments, currentPreset)
+    }
+    // swiftlint:enable function_parameter_count function_body_length
 
     // MARK: - Seed Noise (D-047)
 
