@@ -1240,22 +1240,13 @@ Per-preset state setup handles Arachne (allocates `ArachneState`, warms 30 ticks
 
 ---
 
-### Increment V.7.6.D — Diagnostic preset orchestrator semantics
+### Increment V.7.6.D — Diagnostic preset orchestrator semantics ✅ 2026-05-03
 
-**Scope:** Follow-up to V.7.6.C. The `is_diagnostic` flag added in V.7.6.C only short-circuits `maxDuration(forSection:)` to `.infinity`. The full "diagnostic presets are operational tools, not aesthetic content" semantic also requires:
-- `DefaultPresetScorer` hard-excludes `isDiagnostic` presets from auto-selection (ranks them at `-Float.infinity` or returns `excludedReason: "diagnostic"`).
-- `LiveAdapter` never proposes a `presetOverride` to a diagnostic preset.
-- Manual switch via `PlaybackActionRouter` (or future settings UI) is the only path to render Spectral Cartograph or any future diagnostic.
+**Outcome:** Three Orchestrator surfaces gained the diagnostic exclusion gate (D-074). (1) `DefaultPresetScorer.exclusionReasonAndTag` now checks `preset.isDiagnostic` first, returning `excludedReason: "diagnostic"` and `total: 0`; this is a categorical exclusion with no settings toggle (unlike `includeUncertifiedPresets`). (2) `DefaultLiveAdapter` adds `!topPreset.isDiagnostic` to the mood-override emission `guard` — defense in depth against future scoring ties. (3) `DefaultReactiveOrchestrator` switches `ranked.first` → `ranked.first(where: { !$0.0.isDiagnostic })` for the same reason. `SessionPlanner` inherits the exclusion transparently through `PresetScoring`. Manual switch path is unchanged — `PlaybackActionRouter` and the keyboard / dev surfaces operate on `PresetDescriptor` directly without scoring, so Spectral Cartograph remains reachable. New `OrchestratorDiagnosticExclusionTests.swift` adds 7 tests covering scorer, adapter (incl. uncertified-toggle interaction and family-boost case), planner, reactive, and manual-switch positive case.
 
-**Done when:**
-- Scorer test asserts diagnostic preset has `total = 0` / `excludedReason: "diagnostic"` for every track + context combination.
-- LiveAdapter test asserts no override can land on a diagnostic preset under any audio condition.
-- Manual-switch path verified end-to-end (PlaybackActionRouter `selectPreset(_:)` accepts diagnostic targets).
-- All 912+ engine tests pass; 0 SwiftLint violations.
+**Verification:** 919 engine tests / 98 suites, 918 pass — sole failure is the pre-existing flaky `MetadataPreFetcherTests.fetch_networkTimeout_returnsWithinBudget` (unrelated). App build clean. SwiftLint 0 violations on touched files. `GoldenSessionTests` unchanged (Spectral Cartograph was already excluded by `certified: false`).
 
-**Verify:** `swift test --package-path PhospheneEngine --filter "PresetScorer|LiveAdapter"` + manual switch UI test.
-
-**Estimated sessions:** 1.
+**Verify:** `swift test --package-path PhospheneEngine --filter "OrchestratorDiagnosticExclusion|LiveAdapter|ReactiveOrchestrator|PresetScorer"`.
 
 ---
 

@@ -1471,3 +1471,27 @@ The V.7.5 implementation was technically faithful to §10.1 items 1–4, 6, 9 as
 **Rule:** Diagnostic presets (`is_diagnostic: true`) are exempt from segment scheduling and (per the V.7.6.D follow-up) auto-selection. They are operational tools, not aesthetic content. Spectral Cartograph is the prototype; future diagnostics use the same flag.
 
 **Rule:** Do not coefficient-tune the `maxDuration` formula to an uncertified preset's intuition target. Use `natural_cycle_seconds` for outliers only when the visual genuinely has a fixed cycle. If the artistic target moves with certification, the coefficient-tuned value will become wrong.
+
+## D-074 — Diagnostic preset orchestrator semantics (V.7.6.D)
+
+**Date:** 2026-05-03
+
+**Context:** V.7.6.C (D-073) added the `is_diagnostic` flag with one effect — `maxDuration(forSection:)` returns `.infinity` so `SessionPlanner` never inserts a segment boundary mid-diagnostic. The broader semantic — diagnostics are operational tools, not aesthetic content, so they must never be auto-selected, never receive a mid-track override, and only render via manual switch — was scoped as a V.7.6.D follow-up.
+
+**Decision:** Extend the flag's effect into the Orchestrator at three surfaces:
+
+1. **`DefaultPresetScorer` hard exclusion.** A new gate runs *first* in `exclusionReasonAndTag`, before the certification check, and returns `excludedReason: "diagnostic"` with `total: 0`. Unlike `includeUncertifiedPresets`, there is no settings toggle that re-enables diagnostics for auto-selection — the gate is categorical.
+2. **`DefaultLiveAdapter` emission-site guard.** The mood-override path's `guard let (topPreset, topScore) = ranked.first, …` is extended with `!topPreset.isDiagnostic`. The Scorer change already gives diagnostics `total = 0`, but the explicit guard at the emission site is harder to regress when the scoring math changes.
+3. **`DefaultReactiveOrchestrator` defensive filter.** The `ranked.first` selection becomes `ranked.first(where: { !$0.0.isDiagnostic })` so a degenerate catalog (e.g. all-zero scoring tie containing diagnostics) cannot resurrect one.
+
+`SessionPlanner` and the multi-segment walker inherit the gate transparently because they consume `PresetScoring` — no planner-level change needed; tests confirm diagnostics never appear in `plan.tracks[].preset`.
+
+**Manual-switch path is unchanged.** `PlaybackActionRouter` and the keyboard / dev surfaces operate on `PresetDescriptor` directly without going through scoring. The exclusion is auto-only by design — diagnostics like Spectral Cartograph remain reachable through the existing manual paths.
+
+**Implementation:** `PresetScorer.swift` (new diagnostic exclusion as first gate), `LiveAdapter.swift` (one-line guard on the override-emission `guard`), `ReactiveOrchestrator.swift` (`first(where:)` filter), `OrchestratorDiagnosticExclusionTests.swift` (7 tests covering scorer, adapter, planner, reactive, and the manual-switch positive case).
+
+**Verification:** 919 engine tests / 98 suites; 918 pass — the single failure is the pre-existing flaky `MetadataPreFetcherTests.fetch_networkTimeout_returnsWithinBudget` (network timing under load, unrelated). App build succeeds. SwiftLint 0 violations on touched files. `GoldenSessionTests` unchanged — diagnostic presets were already absent from production goldens (Spectral Cartograph carries `certified: false`), so the additional gate is a no-op against current sequences.
+
+**Rule:** Diagnostic presets are categorically excluded from auto-selection at every Orchestrator surface. The exclusion fires before certification, before family boost, before any user toggle. The only path that renders a diagnostic is manual switch on the renderer/keyboard surface, which bypasses scoring entirely.
+
+**Rule:** When a flag has both a data-model effect and an Orchestrator-policy effect (like `is_diagnostic`), implement the data-model effect first (here: `maxDuration` short-circuit, V.7.6.C / D-073) and the policy effect second (here: scorer + adapter exclusions, V.7.6.D / D-074). Splitting keeps each commit's blast radius small and lets each layer's tests be written and reviewed independently.
