@@ -1495,3 +1495,63 @@ The V.7.5 implementation was technically faithful to §10.1 items 1–4, 6, 9 as
 **Rule:** Diagnostic presets are categorically excluded from auto-selection at every Orchestrator surface. The exclusion fires before certification, before family boost, before any user toggle. The only path that renders a diagnostic is manual switch on the renderer/keyboard surface, which bypasses scoring entirely.
 
 **Rule:** When a flag has both a data-model effect and an Orchestrator-policy effect (like `is_diagnostic`), implement the data-model effect first (here: `maxDuration` short-circuit, V.7.6.C / D-073) and the policy effect second (here: scorer + adapter exclusions, V.7.6.D / D-074). Splitting keeps each commit's blast radius small and lets each layer's tests be written and reviewed independently.
+
+---
+
+## D-075 — Tempo BPM via sub_bass-only onset timestamps + trimmed-mean IOI (DSP.1)
+
+**Date:** 2026-05-03
+
+**Context:** The IOI histogram in `BeatDetector+Tempo.swift` was producing systematic tempo errors on real music — Failed Approach #17 ("autocorrelation half-tempo, known octave error") in CLAUDE.md. The DSP.1 increment was originally scoped as IOI histogram half/double voting (a scoring pass over harmonic candidates {0.5×, 0.667×, 1×, 1.5×, 2×} of the histogram peak). A diagnostic harness (`PhospheneEngine/Sources/TempoDumpRunner` + `Scripts/analyze_tempo_baselines.py`) capturing per-band onset timestamps on three reference clips (Love Rehab @ 125 BPM, So What @ 136 BPM, There There rock-syncopated) revealed the failures were not classical octave errors and that voting could not fix them.
+
+**Two diagnoses surfaced:**
+
+1. **Fusion frame-aliasing.** `recordOnsetTimestamps` consumed `bandFlux[0] + bandFlux[1]` (sub_bass + low_bass summed into a single threshold gate). Per-band cooldowns in `detectOnsets` (400 ms each) are independent across bands. A 60 Hz kick fires flux events in *both* bands at slightly different frames — the kick fundamental peaks first, the harmonic peaks one or two FFT-hop frames later. With sub_bass firing at frame 19 and low_bass firing at frame 18 of the next kick, the OR-stream produces alternating 18-frame (418 ms) and 19-frame (441 ms) IOIs for a true 441 ms (136 BPM) beat. Per-band fixtures showed clean meanIOI 440 ms for so_what's sub_bass alone; the fused stream's meanIOI was 322 ms.
+
+2. **Histogram-mode quantization bias toward faster BPMs.** The histogram bucketed by `Int(round(60/ioi)) - 60` — integer BPM. BPM bucket widths *grow* with BPM in period space (the 144 BPM bucket spans 414–420 ms; the 136 BPM bucket spans 437–443 ms). So an evenly-quantized stream of 18-frame (418 ms) and 19-frame (441 ms) IOIs lands more events in the 144 bucket than the 136 bucket even when the underlying tempo is 136. Picking the histogram mode systematically biased toward 144.
+
+**Decision — two changes shipped together as DSP.1 (commit `bbad760f`):**
+
+1. **Source IOI timestamps from sub_bass `result.onsets[0]` only.** `recordOnsetTimestamps(onsets:bandFlux:)` now `guard onsets[0] else { return }`. Never OR with low_bass. The 400 ms `detectOnsets` cooldown gives clean kick-rate IOIs without bass-note pollution, and using a single band avoids the inter-band frame-aliasing entirely. Tracks with empty sub_bass fall through to the autocorrelation tempo path (`estimateTempo`) — graceful degradation, not silent failure.
+
+2. **Replace histogram-mode BPM with trimmed-mean IOI (`computeRobustBPM`).** Compute median IOI over the 10 s window, drop IOIs outside [0.5×, 2×] median (rejecting outliers from dropped beats or fills), take the mean of the inliers, BPM = `60 / meanIOI`. The 80–160 octave clamp is preserved. Mean is FP-precise — meanIOI 440 ms maps to 60/0.440 = 136.36 BPM, exactly matching the audio. The histogram is still built (cheaply) for the diagnostic dump only; the BPM selection bypasses it.
+
+**Reference-track results (pre-DSP.1 → post-DSP.1):**
+
+| Track | True BPM | Pre | Post | Status |
+|---|---|---|---|---|
+| Love Rehab (Chaim) | 125 | 117 / 152 (cycling) | 122–126 | ±1 BPM |
+| So What (Miles Davis) | 136 | 152 | 135–138 | ±2 BPM |
+| There There (Radiohead) | ~86 (syncopated) | 144 | 137–140 | unfixed (kick rate, not meter) |
+
+There There remains wrong because the bass kick is not on every beat — the histogram correctly reads the kick-pattern interval, but for syncopated rock the underlying meter is half that. This is a syncopation limitation outside DSP.1's scope and is the load-bearing motivation for DSP.2 (BeatNet, D-076 reserved).
+
+**Alternatives considered:**
+
+- **Voting over harmonic candidates (original DSP.1 scope).** Rejected after diagnosis — the failures aren't octave errors. love_rehab's histogram peak was 117 BPM, with autocorrelation independently agreeing at 117.45 BPM conf 0.93 across the run. Both methods read the same skewed evidence; voting over {58.5, 78, 117, 175.5, 234} cannot recover 125 because none of those are 125. The voting math was structurally inapplicable.
+- **Fuse with hysteresis.** Keep the OR-of-bands but require sub_bass+low_bass agree within X frames before firing. Rejected — adds a tunable parameter without solving the underlying frame-aliasing; per-band cooldowns in `detectOnsets` already enforce within-band kick rate.
+- **Band-picker (P75 of sub_bass vs low_bass, use whichever is louder).** Implemented and tested mid-iteration. Did not help — the picker oscillates frame-to-frame near the boundary, producing the same staggering artifacts as fusion.
+- **300 ms minimum spacing widened from 150 ms.** Implemented mid-iteration and reverted. With sub_bass-only sourcing, the 400 ms `detectOnsets` cooldown already enforces clean spacing; the `recordOnsetTimestamps` guard is defensive only, and 150 ms is sufficient.
+- **TempoCNN.** AGPL — incompatible with Phosphene's MIT license.
+- **Sound Analysis framework.** Genre-classification, not beat-tracking — orthogonal to BPM estimation.
+- **aubio integration.** A native C library would be a real dependency the project has not taken on. Deferred to DSP.2's "stay within Swift / MPSGraph idiom" path; if BeatNet underperforms, aubio becomes a fallback option to revisit then.
+
+**Consequences:**
+
+- DSP.1 ships a tempo improvement for kick-on-the-beat tracks (electronic, jazz, most pop). Reference fixtures so_what and love_rehab are now within ±2 BPM of metadata; both were 10–20 % off pre-DSP.1.
+- The histogram remains in the codebase for diagnostic-dump use only. Future tempo work should not re-introduce histogram-mode picking; mean-of-inlier-IOIs is the baseline.
+- Tracks where the bass kick is not on every beat (syncopated rock, swing, hip-hop with off-beat kicks) remain unsolved. These motivate DSP.2 (BeatNet via MPSGraph). DSP.1 is the floor; DSP.2 raises the ceiling.
+- The diagnostic harness (`TempoDumpRunner`, `analyze_tempo_baselines.py`, fetched 30 s preview fixtures) becomes permanent regression infrastructure for DSP.2 and any future tempo work. The fixtures themselves are gitignored (`Tests/Fixtures/tempo/`) — preview clips are licensed; users run `Scripts/fetch_tempo_fixtures.sh` locally to populate them.
+- Failed Approach #17 in CLAUDE.md needs amendment: the "autocorrelation half-tempo" framing is inaccurate. The real failure was fusion-induced frame aliasing plus histogram-mode quantization bias, both of which are now fixed for the kick-on-the-beat case. Tracks where DSP.1 still fails (syncopated rock) fail for a *different* reason than #17 originally described — that's a beat-tracking-vs-tempo-estimation distinction belonging to DSP.2.
+
+**Rule:** Tempo estimators that operate on inter-onset intervals must source events from a single, well-cooled band. Fusing onset events across bands (even by summing flux) creates frame-aliased spurious IOIs.
+
+**Rule:** Do not bucket continuous quantities by integer-rounded BPM when the natural quantization is frame-period (in time, not BPM). Compute robust statistics (median, trimmed mean) directly on the period samples.
+
+**Rule:** When a hypothesized failure mode (here: half-tempo octave error) is documented in `CLAUDE.md` and an increment is scoped against it, the *first* commit should be diagnostic instrumentation that captures the actual failure shape — not implementation of the fix. The DSP.1 voting work would have shipped uselessly without the per-band onset diagnostic that revealed the real bugs. Diagnostic-first applies even when the documented failure mode is widely known to the team.
+
+---
+
+## D-076 (reserved) — BeatNet via MPSGraph for online beat tracking
+
+Reserved for Increment DSP.2. Will document: the architectural decision to mirror `StemSeparator`'s MPSGraph + Accelerate pattern; the rejection of CoreML (project hard constraint, Failed Approach #20), aubio (native C dependency the project has avoided), continued custom DSP (~70 % F1 floor per May 2026 streaming-audio research), and madmom/Beat Transformer/BEAST (offline or research code); the choice of BeatNet (Heydari et al., ISMIR 2021, MIT-licensed) over BEAST despite ~5 pp lower F1 because BeatNet has shipping pre-trained weights, a stable reference implementation, and a particle-filter post-processor that is portable to Swift; the per-frame inference budget; and the fallback path through DSP.1 when BeatNet is disabled or unhealthy.

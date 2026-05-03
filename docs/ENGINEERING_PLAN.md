@@ -1773,7 +1773,7 @@ Shipped:
 - `recordOnsetTimestamps` now sources from `result.onsets[0]` (sub_bass per-band onset events from `detectOnsets`, which has 400ms cooldown). Never fuses bands.
 - `applyOctaveCorrection` replaced with `computeRobustBPM`: trimmed mean of recent IOIs (within [0.5×, 2×] of median).
 
-Reference-track results: love_rehab 117/152→**122–126** (true 125), so_what 152→**135–138** (true 136). For there_there the histogram still reads kick-pattern (140) not underlying meter (~86) — that's a syncopation limitation outside DSP.1's scope and motivates DSP.2. See commits `9f4c8e1e..bbad760f` and `docs/diagnostics/DSP.1-baseline*.txt`. D-073.
+Reference-track results: love_rehab 117/152→**122–126** (true 125), so_what 152→**135–138** (true 136). For there_there the histogram still reads kick-pattern (140) not underlying meter (~86) — that's a syncopation limitation outside DSP.1's scope and motivates DSP.2. See commits `9f4c8e1e..bbad760f` and `docs/diagnostics/DSP.1-baseline*.txt`. D-075.
 
 ---
 
@@ -1838,7 +1838,7 @@ PhospheneEngine/Sources/DSP/
 - `Scripts/convert_beatnet_weights.py` — one-shot converter.
 - `Scripts/dump_tempo_baselines.sh` — extend to run with `--engine both` for the comparison report.
 - `docs/CLAUDE.md` — Module Map (`ML/BeatTracker*`, `DSP/MelSpectrogram`, `DSP/ParticleFilter`), ML Inference section update, Failed Approaches updated if any new ones found.
-- `docs/DECISIONS.md` — D-074 entry: "BeatNet via MPSGraph for online beat tracking; rationale for rejecting CoreML, aubio, and continued custom DSP."
+- `docs/DECISIONS.md` — D-076 entry: "BeatNet via MPSGraph for online beat tracking; rationale for rejecting CoreML, aubio, and continued custom DSP."
 - `docs/CREDITS.md` (create if missing) — BeatNet attribution per MIT license.
 
 **Tests:**
@@ -1902,7 +1902,7 @@ PhospheneEngine/Sources/DSP/
 - [ ] `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build` passes.
 - [ ] No `import CoreML` anywhere in the engine. `grep -rn 'import CoreML' PhospheneEngine/Sources` returns empty.
 - [ ] CLAUDE.md Module Map and ML Inference section updated; CREDITS.md attribution present.
-- [ ] DECISIONS.md D-074 entry: "BeatNet via MPSGraph for online beat tracking; rejection of CoreML, aubio, and continued custom DSP."
+- [ ] DECISIONS.md D-076 entry: "BeatNet via MPSGraph for online beat tracking; rejection of CoreML, aubio, and continued custom DSP."
 
 **Verify:** `swift test --filter BeatTrackerModel && swift test --filter MelSpectrogram && swift test --filter ParticleFilter && swift test --filter BeatTrackerIntegration && swift test --filter BeatTrackerPerformance && Scripts/dump_tempo_baselines.sh after`.
 
