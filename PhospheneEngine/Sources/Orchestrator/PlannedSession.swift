@@ -113,31 +113,144 @@ public struct PlannedTransition: Sendable {
     public let reason: String
 }
 
+// MARK: - SegmentTerminationReason
+
+/// Why a `PlannedPresetSegment` terminates (V.7.6.2, ARACHNE_V8_DESIGN.md §3.2).
+///
+/// Computed by `DefaultSessionPlanner` and surfaced for inspection by the live
+/// adapter, the plan-preview UI, and golden-session tests.
+public enum SegmentTerminationReason: String, Sendable, Hashable, Codable, CaseIterable {
+    /// Last segment of the track — runs to `track.plannedEndTime`.
+    case trackEnded
+    /// Aligned to a structural section boundary within the track.
+    case sectionBoundary
+    /// Capped by `PresetDescriptor.maxDuration(forSection:)` (§5).
+    case maxDurationReached
+    /// Preset emitted a `PresetSignaling.presetCompletionEvent`.
+    case completionSignal
+}
+
+// MARK: - PlannedPresetSegment
+
+/// One preset slot inside a `PlannedTrack` (V.7.6.2, ARACHNE_V8_DESIGN.md §3.2).
+///
+/// A track is now an ordered list of segments. A "single-segment" track behaves
+/// identically to the pre-V.7.6.2 `PlannedTrack` — the track-level `preset` /
+/// `presetScore` / `scoreBreakdown` / `incomingTransition` accessors below
+/// transparently forward to `segments[0]`.
+public struct PlannedPresetSegment: Sendable {
+    /// The preset selected for this segment.
+    public let preset: PresetDescriptor
+    /// The combined score from `DefaultPresetScorer` (0–1).
+    public let presetScore: Float
+    /// Sub-score breakdown for full inspection.
+    public let scoreBreakdown: PresetScoreBreakdown
+    /// Session time (seconds from session start) when this segment begins.
+    public let plannedStartTime: TimeInterval
+    /// Session time when this segment ends.
+    public let plannedEndTime: TimeInterval
+    /// How to transition *into* this segment. Nil for the first segment of the
+    /// first track in the session; non-nil for every other segment.
+    public let incomingTransition: PlannedTransition?
+    /// Why this segment ends.
+    public let terminationReason: SegmentTerminationReason
+
+    public init(
+        preset: PresetDescriptor,
+        presetScore: Float,
+        scoreBreakdown: PresetScoreBreakdown,
+        plannedStartTime: TimeInterval,
+        plannedEndTime: TimeInterval,
+        incomingTransition: PlannedTransition?,
+        terminationReason: SegmentTerminationReason
+    ) {
+        self.preset = preset
+        self.presetScore = presetScore
+        self.scoreBreakdown = scoreBreakdown
+        self.plannedStartTime = plannedStartTime
+        self.plannedEndTime = plannedEndTime
+        self.incomingTransition = incomingTransition
+        self.terminationReason = terminationReason
+    }
+}
+
 // MARK: - PlannedTrack
 
-/// One entry in a `PlannedSession`: a track paired with its selected preset
-/// and the transition that leads into it.
+/// One entry in a `PlannedSession`: a track paired with one or more preset segments
+/// (V.7.6.2 — was: single preset).
 ///
-/// `scoreBreakdown` carries the full sub-score breakdown from `DefaultPresetScorer`
-/// so callers can inspect why a preset was chosen (D-014, D-032).
+/// Backward-compat accessors (`preset`, `presetScore`, `scoreBreakdown`,
+/// `incomingTransition`) forward to `segments[0]` so existing callers keep working.
+/// Multi-segment-aware callers should iterate `segments` directly.
 public struct PlannedTrack: Sendable {
 
     /// The track this entry is for.
     public let track: TrackIdentity
     /// The MIR profile used for scoring.
     public let trackProfile: TrackProfile
-    /// The preset selected for this track.
-    public let preset: PresetDescriptor
-    /// The combined score from `DefaultPresetScorer` (0–1).
-    public let presetScore: Float
-    /// Sub-score breakdown for full inspection.
-    public let scoreBreakdown: PresetScoreBreakdown
+    /// Ordered preset segments covering this track. Always non-empty.
+    public let segments: [PlannedPresetSegment]
     /// Session time (seconds from session start) when this track begins.
     public let plannedStartTime: TimeInterval
     /// Session time when this track ends (`plannedStartTime + track duration`).
     public let plannedEndTime: TimeInterval
-    /// How to transition *into* this track. Nil for the first track.
-    public let incomingTransition: PlannedTransition?
+
+    /// V.7.6.2 multi-segment init.
+    public init(
+        track: TrackIdentity,
+        trackProfile: TrackProfile,
+        segments: [PlannedPresetSegment],
+        plannedStartTime: TimeInterval,
+        plannedEndTime: TimeInterval
+    ) {
+        precondition(!segments.isEmpty, "PlannedTrack must have at least one segment")
+        self.track = track
+        self.trackProfile = trackProfile
+        self.segments = segments
+        self.plannedStartTime = plannedStartTime
+        self.plannedEndTime = plannedEndTime
+    }
+
+    /// Backward-compat init: single-segment construction matches the pre-V.7.6.2 shape.
+    /// Used by `LiveAdapter+Patching.swift` and any caller that has a single preset.
+    public init(
+        track: TrackIdentity,
+        trackProfile: TrackProfile,
+        preset: PresetDescriptor,
+        presetScore: Float,
+        scoreBreakdown: PresetScoreBreakdown,
+        plannedStartTime: TimeInterval,
+        plannedEndTime: TimeInterval,
+        incomingTransition: PlannedTransition?
+    ) {
+        let segment = PlannedPresetSegment(
+            preset: preset,
+            presetScore: presetScore,
+            scoreBreakdown: scoreBreakdown,
+            plannedStartTime: plannedStartTime,
+            plannedEndTime: plannedEndTime,
+            incomingTransition: incomingTransition,
+            terminationReason: .trackEnded
+        )
+        self.init(
+            track: track,
+            trackProfile: trackProfile,
+            segments: [segment],
+            plannedStartTime: plannedStartTime,
+            plannedEndTime: plannedEndTime
+        )
+    }
+
+    // MARK: - Backward-compat accessors (forward to segments[0])
+
+    /// The first segment's preset. Equivalent to `segments[0].preset`.
+    public var preset: PresetDescriptor { segments[0].preset }
+    /// The first segment's score. Equivalent to `segments[0].presetScore`.
+    public var presetScore: Float { segments[0].presetScore }
+    /// The first segment's score breakdown.
+    public var scoreBreakdown: PresetScoreBreakdown { segments[0].scoreBreakdown }
+    /// The first segment's incoming transition.
+    public var incomingTransition: PlannedTransition? { segments[0].incomingTransition }
 }
 
 // MARK: - PlannedSession
@@ -178,6 +291,21 @@ public struct PlannedSession: Sendable {
         }
     }
 
+    /// Returns the `PlannedPresetSegment` active at the given session time, or nil.
+    ///
+    /// Walks each `PlannedTrack`'s `segments` in order. A segment is active when
+    /// `sessionTime ∈ [plannedStartTime, plannedEndTime)`.
+    public func segment(at sessionTime: TimeInterval) -> PlannedPresetSegment? {
+        for trackEntry in tracks {
+            for seg in trackEntry.segments {
+                if sessionTime >= seg.plannedStartTime && sessionTime < seg.plannedEndTime {
+                    return seg
+                }
+            }
+        }
+        return nil
+    }
+
     /// Returns the `PlannedTransition` whose `scheduledAt` is within `tolerance` of
     /// the given session time.
     ///
@@ -189,9 +317,17 @@ public struct PlannedSession: Sendable {
         at sessionTime: TimeInterval,
         tolerance: TimeInterval = 0.5
     ) -> PlannedTransition? {
-        tracks.compactMap(\.incomingTransition).first {
-            abs($0.scheduledAt - sessionTime) <= tolerance
+        // Walk every segment's incomingTransition (V.7.6.2 — was tracks-only).
+        // Multi-segment tracks expose mid-track transitions here.
+        for trackEntry in tracks {
+            for seg in trackEntry.segments {
+                if let transition = seg.incomingTransition,
+                   abs(transition.scheduledAt - sessionTime) <= tolerance {
+                    return transition
+                }
+            }
         }
+        return nil
     }
 
     /// Returns a copy of this plan with additional warnings appended.
