@@ -92,15 +92,45 @@ struct TempoDumpRunnerCommand: ParsableCommand {
         let fps = sampleRate / Float(hop)
         let deltaTime = Float(hop) / sampleRate
         var offset = 0
+        var elapsedSec: Float = 0
+        var lastSecondDumped = -1
         while offset + hop <= samples.count {
             let window = Array(samples[offset..<offset + hop])
             _ = fft.process(samples: window, sampleRate: sampleRate)
             let mags = Array(fft.magnitudeBuffer.pointer)
-            _ = beatDetector.process(magnitudes: mags, fps: fps, deltaTime: deltaTime)
+            let result = beatDetector.process(
+                magnitudes: mags, fps: fps, deltaTime: deltaTime
+            )
+            elapsedSec += deltaTime
+            let currentSecond = Int(elapsedSec)
+            if currentSecond > lastSecondDumped {
+                lastSecondDumped = currentSecond
+                let bpm = result.estimatedTempo ?? 0
+                let conf = result.tempoConfidence
+                let fmt = "[DSP.1 dump] autocorr bpm=%.2f conf=%.3f stable=%.0f instant=%.0f"
+                let line = String(
+                    format: fmt,
+                    bpm,
+                    conf,
+                    result.stableBPM,
+                    result.instantBPM
+                )
+                appendLine(path: out, line: line)
+            }
             offset += hop
         }
 
         print("TempoDumpRunner: complete → \(out)")
+    }
+
+    private func appendLine(path: String, line: String) {
+        guard let data = (line + "\n").data(using: .utf8),
+              let handle = try? FileHandle(forWritingTo: URL(fileURLWithPath: path)) else {
+            return
+        }
+        defer { try? handle.close() }
+        _ = try? handle.seekToEnd()
+        _ = try? handle.write(contentsOf: data)
     }
 
     private func decodeMonoFloat32(url: URL) throws -> (samples: [Float], sampleRate: Float) {
