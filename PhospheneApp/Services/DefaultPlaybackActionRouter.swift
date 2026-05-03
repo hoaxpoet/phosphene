@@ -194,6 +194,38 @@ final class DefaultPlaybackActionRouter: PlaybackActionRouter, @unchecked Sendab
         lastPlayedPresetID = outgoingPresetID
     }
 
+    // MARK: - V.7.6.2 Segment-Aware Helpers
+
+    /// Find the next `PlannedPresetSegment` in the live plan after the segment that
+    /// currently contains `sessionTime`. Returns nil when there is no plan, no
+    /// matching active segment, or the active segment is the last in the session.
+    private func nextPlannedSegment(
+        in plan: PlannedSession?,
+        sessionTime: TimeInterval,
+        currentPresetID: String?
+    ) -> PlannedPresetSegment? {
+        guard let plan else { return nil }
+
+        // Flatten all segments in playback order so we can look up "next".
+        let allSegments: [PlannedPresetSegment] = plan.tracks.flatMap { $0.segments }
+        guard let activeIdx = allSegments.firstIndex(where: { seg in
+            sessionTime >= seg.plannedStartTime && sessionTime < seg.plannedEndTime
+        }) else { return nil }
+
+        let nextIdx = activeIdx + 1
+        guard nextIdx < allSegments.count else { return nil }
+
+        // Avoid suggesting the same preset back-to-back unless the planner did.
+        let candidate = allSegments[nextIdx]
+        if let currentPresetID, candidate.preset.id == currentPresetID {
+            // Walk forward until we find a different preset, or fall back to the planner's pick.
+            for forward in (nextIdx + 1)..<allSegments.count where allSegments[forward].preset.id != currentPresetID {
+                return allSegments[forward]
+            }
+        }
+        return candidate
+    }
+
     // MARK: - Undo Stack Helpers
 
     private func pushHistory() {
@@ -301,6 +333,22 @@ final class DefaultPlaybackActionRouter: PlaybackActionRouter, @unchecked Sendab
 
         switch direction {
         case .next:
+            // V.7.6.2: prefer the next planned segment (within current track or, failing that,
+            // the first segment of the next track) over a fresh-scoring nudge. Falls back to
+            // scoring when there is no live plan or the current preset is the last segment.
+            if let plannedNext = nextPlannedSegment(in: getLivePlan(),
+                                                    sessionTime: getSessionTime(),
+                                                    currentPresetID: getCurrentPresetID()) {
+                let suffix = immediate ? "" : " — at next boundary"
+                toastBridge?.emitAck("Nudged forward\(suffix)")
+                onApplyPresetOverride(plannedNext.preset.id, immediate)
+                if !immediate {
+                    scheduleNudgeCeiling(presetID: plannedNext.preset.id)
+                }
+                logger.info("U.6b: presetNudge(.next) plannedSegment=\(plannedNext.preset.id) immediate=\(immediate)")
+                return
+            }
+
             let ranked = scorer.rank(presets: catalog, track: profile, context: context)
             guard let top = ranked.first(where: { $0.1 > 0 }) else {
                 logger.warning("U.6b: presetNudge(.next) — no eligible preset found")
