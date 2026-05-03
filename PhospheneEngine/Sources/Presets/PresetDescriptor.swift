@@ -79,8 +79,16 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
     public let name: String
     /// Aesthetic family: "waveform", "geometric", "fractal", etc.
     public let family: PresetCategory
-    /// Preferred scene duration in seconds.
+    /// Preferred segment-length **hint** in seconds (V.7.6.2: was "preferred duration").
+    ///
+    /// Informs the orchestrator's scoring heuristics. The hard ceiling on segment
+    /// length is `maxDuration(forSection:)` (V.7.6.2 §5), not this field.
     public let duration: Int
+    /// Natural cycle length in seconds, when this preset has a fixed visual cycle
+    /// (V.7.6.2 §5). Optional — only set for presets like Arachne whose visual
+    /// cycle (e.g. 60-second build sequence) is more authoritative than the
+    /// formula-computed `maxDuration`. When set, caps `maxDuration(forSection:)`.
+    public let naturalCycleSeconds: Float?
     /// Human-readable description.
     public let description: String
     /// Preset author.
@@ -244,6 +252,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
     /// Keys for all stored properties — used by both `init(from:)` and `encode(to:)`.
     enum CodingKeys: String, CodingKey {
         case name, family, duration, description, author
+        case naturalCycleSeconds = "natural_cycle_seconds"
         case beatSource = "beat_source"
         case beatZoom = "beat_zoom"
         case beatRot = "beat_rot"
@@ -292,6 +301,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         name             = try container.decode(String.self, forKey: .name)
         family           = try container.decodeIfPresent(PresetCategory.self, forKey: .family) ?? .waveform
         duration         = try container.decodeIfPresent(Int.self, forKey: .duration) ?? 30
+        naturalCycleSeconds = try container.decodeIfPresent(Float.self, forKey: .naturalCycleSeconds)
         description      = try container.decodeIfPresent(String.self, forKey: .description) ?? ""
         author           = try container.decodeIfPresent(String.self, forKey: .author) ?? ""
         beatSource       = try container.decodeIfPresent(BeatSource.self, forKey: .beatSource) ?? .bass

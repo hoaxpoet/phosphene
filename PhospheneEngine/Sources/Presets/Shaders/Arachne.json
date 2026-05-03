@@ -2,6 +2,7 @@
   "name": "Arachne",
   "family": "organic",
   "duration": 45,
+  "natural_cycle_seconds": 60,
   "description": "A field of bioluminescent spider webs — silk strands glow with music, beat-phase vibration plucks every thread, sub-bass triggers the spider.",
   "author": "Matt",
   "passes": ["mv_warp"],
