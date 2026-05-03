@@ -357,7 +357,7 @@ public struct DefaultLiveAdapter: LiveAdapting {
         )
         let ranked = scorer.rank(presets: catalog, track: liveMoodProfile, context: altCtx)
 
-        guard let (topPreset, topScore) = ranked.first,
+        guard let (topPreset, topScore) = ranked.first, !topPreset.isDiagnostic, // V.7.6.D D-074
               topScore - currentScore > Self.overrideScoreGap else {
             logger.info("""
                 LiveAdapter: mood diverging at track \(trackIndex) \
