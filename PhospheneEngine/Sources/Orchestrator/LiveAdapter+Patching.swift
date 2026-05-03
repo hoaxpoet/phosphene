@@ -90,6 +90,7 @@ public extension PlannedSession {
         )
     }
 
+    // swiftlint:disable function_body_length
     /// Returns a new `PlannedSession` with the current track's end time extended by `seconds`.
     ///
     /// All subsequent track start/end times shift forward by the same amount so session
@@ -174,6 +175,7 @@ public extension PlannedSession {
             warnings: warnings
         )
     }
+    // swiftlint:enable function_body_length
 
     /// Returns a new `PlannedSession` with every track in `overrides` having its preset replaced.
     ///

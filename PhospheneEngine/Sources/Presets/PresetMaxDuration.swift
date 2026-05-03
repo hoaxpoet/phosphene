@@ -86,9 +86,9 @@ public extension PresetDescriptor {
     /// Returns seconds; never negative (clamped at 0).
     func maxDuration(forSection section: SongSection?) -> TimeInterval {
         let baseMax = Self.baseDurationSeconds
-            + Self.motionPenalty   * (Double(motionIntensity) - 0.5)
-            + Self.fatiguePenalty  * fatigueRiskScore
-            + Self.densityPenalty  * (Double(visualDensity) - 0.5)
+            + Self.motionPenalty * (Double(motionIntensity) - 0.5)
+            + Self.fatiguePenalty * fatigueRiskScore
+            + Self.densityPenalty * (Double(visualDensity) - 0.5)
 
         let dynamicRange = Self.defaultDynamicRange(for: section)
         let adjusted = baseMax
