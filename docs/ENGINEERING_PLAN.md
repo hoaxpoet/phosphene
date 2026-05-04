@@ -1782,144 +1782,169 @@ Reference-track results: love_rehab 117/152→**122–126** (true 125), so_what 
 
 ---
 
-### Increment DSP.2 — BeatNet (CRNN + particle filter) via MPSGraph
+### Increment DSP.2 — Beat This! transformer via MPSGraph (offline pre-analysis) + drift-tracker live path
 
-**Goal:** Replace the histogram/IOI custom Tier 2 with BeatNet running on MPSGraph for online beat and downbeat tracking. Provides per-frame beat activations at the research-stated ~80% F1 ceiling for causal models, fixing the cases DSP.1 cannot reach (syncopated rock, swing, hip-hop with offbeat kicks). Same MPSGraph + Accelerate idiom used by StemSeparator — no CoreML, no third-party C libs, no virtual audio drivers.
+**2026-05-04 pivot.** Originally scoped as a BeatNet (CRNN + particle filter) port; pivoted to Beat This! (Foscarin et al., ISMIR 2024 — transformer encoder, MIT) after a Session-2 audit pass found paraphrased-spec drift in the BeatNet preprocessing stage and weak performance on irregular meters that are load-bearing for Phosphene (Pyramid Song 16/8, Money 7/4, Schism 7/8). The original BeatNet plan is preserved in `docs/diagnostics/DSP.2-beatnet-archive.md`. Decision: **D-077**. The vendored BeatNet GTZAN weights (Session 1 of the original plan, commit `3f5f652b`) are retained as a fallback; everything below describes the Beat This! port.
 
-**Why now:** DSP.1's diagnosis proved Phosphene's current Tier 2 is at the classical-pipeline floor (~70% F1, "good enough for visualizer pulse" per the May 2026 streaming-audio research deliverable). For "as flawless as possible" beat sync (Matt's stated bar), this increment is the right answer to the no-CoreML constraint. BeatNet (Heydari et al., ISMIR 2021) is MIT-licensed and the most cited online beat tracker outside madmom (which is offline-only). Its CRNN + particle-filter shape matches Phosphene's existing ML pattern: `StemSeparator` already runs Open-Unmix HQ — a CRNN with bidirectional 3-layer LSTM and 135.9 MB of weights — via MPSGraph at 142ms warm predict.
+**Goal:** Compute a high-quality beat / downbeat / time-signature grid once per track during pre-analysis (`SessionPreparer.prepareTrack` running on the cached 30 s preview clip), cache it on `TrackProfile` as a new `BeatGrid` value type, and drive `FeatureVector.beatPhase01` / `beatsUntilNext` analytically from `playbackTime + drift` against that grid. The live audio path runs no transformer; a small `LiveBeatDriftTracker` cross-correlates `BeatDetector`'s sub_bass onset stream against the cached grid in a ±50 ms phase window and emits a smooth drift estimate. Same MPSGraph + Accelerate idiom used by StemSeparator — no CoreML, no third-party C libs at runtime.
+
+**Why now:** DSP.1's diagnosis proved Phosphene's classical-pipeline tempo path is at the ~70% F1 floor. For "as flawless as possible" beat sync (Matt's stated bar) on the irregular-meter tracks the product cares about, a transformer with whole-bar self-attention is the smallest model class that closes the gap. Beat This! is the smallest such model with a stable, MIT-licensed reference implementation and shipped pre-trained weights.
 
 **Architecture mirrors `StemSeparator`:**
 
 ```
 PhospheneEngine/Sources/ML/
-  BeatTracker.swift              → top-level wrapper, BeatTracking protocol (mirrors StemSeparator.swift)
-  BeatTrackerModel.swift         → MPSGraph engine, pre-allocated UMA I/O (mirrors StemModel.swift)
-  BeatTrackerModel+Graph.swift   → MPSGraph build: conv → LSTM → dense → sigmoid (mirrors StemModel+Graph)
-  BeatTrackerModel+Weights.swift → manifest + .bin loading + BN fusion at init (mirrors StemModel+Weights)
-  Weights/beatnet/               → vendored .bin weights via Git LFS (mirrors Weights/openunmix-hq/)
+  BeatThisModel.swift            → MPSGraph engine, pre-allocated UMA I/O (mirrors StemModel.swift)
+  BeatThisModel+Graph.swift      → MPSGraph build: encoder block stack (mirrors StemModel+Graph)
+  BeatThisModel+Weights.swift    → manifest + .bin loading; LN/BN fusion at init where applicable
+  Weights/beat_this/             → vendored .bin weights via Git LFS pointers
 
 PhospheneEngine/Sources/DSP/
-  MelSpectrogram.swift           → vDSP resample (48k→22050) + STFT + mel filterbank (precomputed init)
-  ParticleFilter.swift           → pure Swift, ~500–1000 particles over (beat phase, period) state space
+  BeatThisPreprocessor.swift     → vDSP resample + STFT + log-mel pipeline (parameters confirmed in Session 1)
+  BeatGridResolver.swift         → probability → (beats, downbeats, BPM, meter); peak picking + meter inference
+  LiveBeatDriftTracker.swift     → cross-correlation drift tracker; FeatureVector wiring
+
+PhospheneEngine/Sources/Session/
+  BeatGrid.swift                 → Sendable value type stored on CachedTrackData
 ```
 
-**Implementation order:**
+**Implementation order (sessions, each one PR / commit-chain):**
 
-1. **Close DSP.1 docs** — D-073 entry, CLAUDE.md Tempo section + Failed Approach #17 update. Required before this increment opens.
+1. **Session 1 — Architecture audit + weight vendoring.** Clone github.com/CPJKU/beat_this @ main; record commit hash. Read paper end-to-end. Inspect repo: model architecture, preprocessing, inference path, shipped checkpoints, license. Set up Python 3.12 venv; run reference inference on six fixtures (love_rehab, so_what, there_there + Pyramid Song / Money / one user-picked) → capture per-frame probabilities and decoded beats/downbeats as JSON. Write `docs/diagnostics/DSP.2-architecture.md` (replaces the BeatNet archive): every layer's input/output shape, every weight tensor's shape and source key, preprocessing parameter table, attribution requirements. `Scripts/convert_beatthis_weights.py` mirroring `convert_beatnet_weights.py`; byte-identical reproducibility from a fresh clone. Vendor weights to `PhospheneEngine/Sources/ML/Weights/beat_this/`. **Done when:** architecture doc complete; weights vendored; six reference fixtures captured; converter script reproducible.
 
-2. **Weight acquisition + conversion** — pull pre-trained PyTorch state_dict from BeatNet's official repo (Heydari, github.com/mjhydri/BeatNet, **CC-BY-4.0** — not MIT as previously assumed; preserved attribution lives in `docs/CREDITS.md`). Write a one-shot Python converter script (`Scripts/convert_beatnet_weights.py`) that emits Phosphene's `.bin` weight format — same format as StemSeparator. Vendor under `ML/Weights/beatnet/` (LFS-routed via existing `.gitattributes`). Three checkpoints ship in the repo (GTZAN / Ballroom / Rock_corpus); only the GTZAN-trained variant is vendored by default. Add CREDITS.md attribution. **Done 2026-05-03 (Session 1).** See `docs/diagnostics/DSP.2-architecture.md` for the audit trail.
+2. **Session 2 — Preprocessor port (Swift).** Implement `BeatThisPreprocessor` in `Sources/DSP/`. Match the model's exact input feature (likely log-mel; Session 1 confirms parameters). **Per-stage golden tests against the Python reference**: synthetic impulse, sine, white noise, plus love_rehab. Per-stage delta dashboard. Tolerance: float32 ULP per stage where mathematically possible; documented numerical bound where not (resampler). Resampler chosen to match what the Python pipeline uses. **Done when:** Swift preprocessor matches Python within ULP per-stage on synthetic inputs and within a measured numerical bound on real audio; 5 unit tests; no heap allocations in `process()` hot path.
 
-3. **Log-spectrogram preprocessing** (originally "Mel-spectrogram") — `LogSpectrogram.swift`. BeatNet does not use mel filtering; it uses a madmom-style logarithmic-frequency filterbank with a positive temporal-difference channel. Match BeatNet's reference impl bit-for-bit within FP tolerance: 22050 Hz internal rate (vDSP_resamplef from 48k native), 2048-pt STFT (zero-padded from a 1411-sample analysis window ≈ 64 ms), **hop 441 samples (≈20 ms, 50 fps)**, log-frequency filterbank with **24 bands/octave** from fmin=30 Hz to fmax=17000 Hz (norm_filters=True) → ~136 filters; `log(1 + |X|)` compression; horizontally concatenated positive first-order temporal difference (diff_ratio=0.5) → **272-dim** input vector per frame. Pre-allocate UMA buffer for the rolling spectrogram; zero-alloc per frame. Test: feed a 1 kHz sine and compare filterbank output against a madmom reference dump within 0.5 dB. (Spec previously said "81 mel bins, 10 ms hop"; both wrong — see DSP.2-architecture.md §2 + §8.)
+3. **Session 3 — Transformer encoder graph (MPSGraph build only).** Build the model graph in MPSGraph: input projection, positional encoding, encoder block stack (multi-head attention + FFN + LN, in the order Beat This! uses), output head(s). No weight loading yet; random init validates shapes. Layer-by-layer shape tests against architecture-doc numbers. Catch attention-head reshape bugs, layer-norm axis mistakes, off-by-one positional encoding. Reference: `StemModel+Graph.swift` for code style. **Done when:** graph builds cleanly; per-layer output shapes match doc exactly; one full forward pass on random input completes; no MPSGraph compilation warnings.
 
-4. **MPSGraph build** — `BeatTrackerModel+Graph.swift`. Architecture (verified against `src/BeatNet/model.py` and the loaded `model_1_weights.pt` state_dict): single 1D conv layer (`Conv1d` 1→2 channels, kernel 10, stride 1, padding 0) → ReLU → MaxPool1d(2, stride 2) → flatten to 262 → `Linear` (262 → 150) → unidirectional **LSTM** (`hidden=150, num_layers=2`) → `Linear` (150 → 3) → softmax over the 3-class axis. Output classes: `[beat, downbeat, no_beat]`. The published model has no BatchNorm, so no BN-fusion at init (this is the load-bearing simplification vs. Open-Unmix). Forward pass takes a single 272-dim log-spec frame plus carried `(h, c)` LSTM state of shape `(2, 1, 150)` each; returns the 3-vector and the updated `(h, c)`. Mirror `StemModel+Graph.swift` for graph-construction style. See DSP.2-architecture.md §3 for the exact tensor shapes.
+4. **Session 4 — Weight loading + numerical validation.** Implement `BeatThisModel+Weights.swift` mirroring `StemModel+Weights.swift`. Manifest parsing, .bin loading, LN/BN fusion at init where applicable. **Per-layer numerical golden tests against PyTorch FP32**: load the same checkpoint in PyTorch, run the same input through both, dump intermediates after each encoder block, compare. Tolerance: 1e-4 absolute / 1e-3 relative. Warm-predict timing on M1 for 30 s clip. **Done when:** Swift inference matches PyTorch FP32 within tolerance on all six fixtures, layer-by-layer; warm-predict < 300 ms on M1 (loosened from BeatNet's 142 ms; transformer is bigger).
 
-5. **Inference loop** — `BeatTracker.swift`. Per ~20 ms log-spec frame (50 fps): write 272-float input + carried `(h, c)` to UMA → forward graph → read 3-vector + updated `(h, c)` → push activation to a ring buffer (10s window, 500 frames at 50 fps). Hop to `mlQueue` (utility QoS) for the forward pass; result returned via UMA read. Reset `(h, c)` to zero on track change. Per-frame budget < 2 ms on M1 (≈ 10 % of the 20 ms inter-frame interval).
+5. **Session 5 — Beat grid resolver + post-processing.** Peak picking on per-frame beat / downbeat probabilities (use the algorithm Beat This! uses; confirm S1). Meter inference (3/4, 4/4, 5/4, 6/8, 7/8, 11/8, ...) from downbeat spacing distribution; reject implausible meters with a confidence score. BPM from beat spacing — median of inter-beat intervals (no histogram-mode trap from D-075 / Failed Approach #51). `BeatGrid` value type; Sendable, Hashable, Codable for `TrackProfile` cache embedding. **Done when:** end-to-end pipeline on six fixtures: beats within ±20 ms of reference, downbeats within ±40 ms, BPM within ±0.5, time signature correct on ≥5/6.
 
-6. **Particle filter (Stage 3)** — `ParticleFilter.swift`. ~500 particles, each carrying (beat phase ∈ [0, period), period ∈ [0.3s, 1.5s], beat-or-downbeat-or-none state). At each frame: advance phase by deltaTime; resample particles weighted by activation likelihood; periodically resample with low-variance sampling. Outputs: most-likely beat-period (BPM), beat-phase01, downbeatProbability. Reference: BeatNet paper §IV, ~250 lines of Python.
+6. **Session 6 — `SessionPreparer` integration.** Wire `BeatThisModel` into `prepareTrack`. One call per track during preparation; result cached. Extend `CachedTrackData` to include `BeatGrid`. Bump cache version key for invalidation. Respect `MLDispatchScheduler` (D-059): Beat This! is heavier than stem separation; per-call budget needs widening. Recompute Tier 1 / Tier 2 thresholds. Backfill: cached tracks predating Beat This! lazily compute on first access. **Done when:** all production-test playlists prepare with valid `BeatGrid`s; the 919-engine baseline holds; new `BeatGridIntegrationTests` cover preparation, cache hit, cache invalidation.
 
-7. **Output integration** — extend `FeatureVector` with `downbeatPhase01` (or reuse beatPhase01 — decide during impl). Replace `BeatPredictor` outputs with BeatNet's particle-filter outputs when BeatTracker is healthy; fall through to BeatPredictor when not. Existing GPU contract (buffer(2), 192 bytes) unchanged.
+7. **Session 7 — Live drift tracker + FeatureVector wiring.** `LiveBeatDriftTracker` consumes `BeatDetector.Result.onsets[0]` (sub_bass) and cross-correlates against the cached grid in ±50 ms phase window; smooth drift estimate (EMA, τ ≈ 200 ms). Replace `BeatPredictor` invocations in `MIRPipeline`. `FeatureVector.beatPhase01` and `beatsUntilNext` computed analytically: `phase01 = ((playbackTime + drift - lastBeat) / period).fract()`. Reactive-mode fallback: keep `BeatPredictor` only for the no-cached-grid case; mark deprecated. Visual regression: re-capture goldens for presets that read `beatPhase01` (Arachne, Gossamer, Stalker, VolumetricLithograph). Re-record `docs/quality_reel.mp4` on the user's three reference tracks + Pyramid Song + Money. **Done when:** Phosphene tracks the beat correctly on 5/4, 7/8, 16/8, swing fixtures (subjective + numerical against S1 ground truth); golden hashes regenerated for affected presets; quality reel rerecorded; user signs off.
 
-8. **Fallback path** — `BEATTRACKER_USE_BEATNET=0` env var and `Settings.useBeatNet` toggle disable BeatNet at runtime; system falls through to DSP.1's histogram/IOI tempo + BeatPredictor IIR phase. Verify by running the existing BeatDetector unit tests with BeatNet disabled — all 9 tests should pass unchanged.
+**Architectural placement (locked 2026-05-04):**
 
-9. **A/B harness extension** — extend `TempoDumpRunner` with `--engine beatnet|legacy|both` flag. In `both` mode, dump tempo lines from both pipelines per second, prefixed `legacy:` and `beatnet:`. Record the same three reference fixtures with `--engine both`; commit results to `docs/diagnostics/DSP.2-comparison.txt`.
+- **Pre-analysis path** (`SessionPreparer.prepareTrack`, offline, runs once per 30 s preview clip): single Beat This! forward pass; output cached on `TrackProfile.beatGrid`. Per-track cost ~100–300 ms on M1, absorbed in the existing 20–30 s playlist preparation budget.
+- **Live path** (60 fps render loop): no transformer. `LiveBeatDriftTracker` aligns the cached grid to the live playback timeline via sub_bass onset cross-correlation. `FeatureVector.beatPhase01` / `beatsUntilNext` (floats 35–36) computed analytically. **No GPU contract change** — existing presets unchanged.
+- **Replaces:** `BeatPredictor` (deleted in Session 7); `BeatDetector+Tempo.computeRobustBPM` as primary BPM source (kept as ad-hoc reactive-mode fallback).
+- **Stays:** `BeatDetector` itself (onset stream still feeds StemAnalyzer + drift tracker); `StructuralAnalyzer` / `NoveltyDetector` (unchanged this increment; possible All-In-One follow-up).
+
+**Test fixtures (acquisition required before Session 1):**
+
+- love_rehab.m4a (electronic ~125 BPM, 4/4) — already vendored.
+- so_what.m4a (jazz ~136 BPM, swing) — already vendored.
+- there_there.m4a (rock, syncopated kick — DSP.1's load-bearing failure) — already vendored.
+- **Pyramid Song (Radiohead) — 16/8 grouped 3+3+4+3+3, extreme irregular-meter stress test.**
+- **Money (Pink Floyd) — 7/4.**
+- One user-picked sixth fixture, slot reserved.
+
+The Pyramid Song / Money / so_what triple is the load-bearing test set: if Beat This! tracks all three correctly, the increment is product-ready. If it fails on Pyramid Song specifically, that's the All-In-One follow-up trigger.
 
 **Files to touch:**
 
-- `PhospheneEngine/Sources/ML/BeatTracker.swift` — new top-level wrapper.
-- `PhospheneEngine/Sources/ML/BeatTrackerModel.swift` — new MPSGraph engine.
-- `PhospheneEngine/Sources/ML/BeatTrackerModel+Graph.swift` — new graph construction.
-- `PhospheneEngine/Sources/ML/BeatTrackerModel+Weights.swift` — new weight loader.
-- `PhospheneEngine/Sources/ML/Weights/beatnet/*.bin` — vendored weights (Git LFS).
-- `PhospheneEngine/Sources/DSP/MelSpectrogram.swift` — new preprocessor.
-- `PhospheneEngine/Sources/DSP/ParticleFilter.swift` — new filter.
-- `PhospheneEngine/Sources/Audio/MIRPipeline.swift` — wire BeatTracker output into `FeatureVector`; gate on settings flag.
-- `PhospheneEngine/Sources/Shared/AudioFeatures.swift` — add `downbeatProbability` / `isDownbeat` field if needed.
-- `PhospheneEngine/Sources/TempoDumpRunner/main.swift` — extend with `--engine` flag.
-- `PhospheneEngine/Tests/PhospheneEngineTests/ML/BeatTrackerModelTests.swift` — new.
-- `PhospheneEngine/Tests/PhospheneEngineTests/DSP/MelSpectrogramTests.swift` — new.
-- `PhospheneEngine/Tests/PhospheneEngineTests/DSP/ParticleFilterTests.swift` — new.
-- `PhospheneEngine/Tests/PhospheneEngineTests/Integration/BeatTrackerIntegrationTests.swift` — new.
-- `PhospheneEngine/Tests/PhospheneEngineTests/Performance/BeatTrackerPerformanceTests.swift` — new.
-- `Scripts/convert_beatnet_weights.py` — one-shot converter.
-- `Scripts/dump_tempo_baselines.sh` — extend to run with `--engine both` for the comparison report.
-- `docs/CLAUDE.md` — Module Map (`ML/BeatTracker*`, `DSP/MelSpectrogram`, `DSP/ParticleFilter`), ML Inference section update, Failed Approaches updated if any new ones found.
-- `docs/DECISIONS.md` — D-076 entry: "BeatNet via MPSGraph for online beat tracking; rationale for rejecting CoreML, aubio, and continued custom DSP."
-- `docs/CREDITS.md` (create if missing) — BeatNet attribution per MIT license.
+- `PhospheneEngine/Sources/ML/BeatThisModel.swift` — new MPSGraph engine.
+- `PhospheneEngine/Sources/ML/BeatThisModel+Graph.swift` — new graph construction.
+- `PhospheneEngine/Sources/ML/BeatThisModel+Weights.swift` — new weight loader.
+- `PhospheneEngine/Sources/ML/Weights/beat_this/*.bin` — vendored weights (Git LFS).
+- `PhospheneEngine/Sources/DSP/BeatThisPreprocessor.swift` — new preprocessor.
+- `PhospheneEngine/Sources/DSP/BeatGridResolver.swift` — new probability → grid resolver.
+- `PhospheneEngine/Sources/DSP/LiveBeatDriftTracker.swift` — new drift tracker.
+- `PhospheneEngine/Sources/Session/BeatGrid.swift` — new value type.
+- `PhospheneEngine/Sources/Session/SessionPreparer.swift` — call BeatThisModel during prepareTrack; cache BeatGrid.
+- `PhospheneEngine/Sources/Session/StemCache.swift` (or equivalent) — extend `CachedTrackData` with `BeatGrid?`.
+- `PhospheneEngine/Sources/Audio/MIRPipeline.swift` — replace BeatPredictor invocations with LiveBeatDriftTracker; keep BeatPredictor for reactive-mode fallback.
+- `PhospheneEngine/Sources/DSP/BeatPredictor.swift` — deleted in Session 7 (superseded by analytic phase calc + drift tracker).
+- `PhospheneEngine/Tests/PhospheneEngineTests/ML/BeatThisModelTests.swift` — new.
+- `PhospheneEngine/Tests/PhospheneEngineTests/DSP/BeatThisPreprocessorTests.swift` — new.
+- `PhospheneEngine/Tests/PhospheneEngineTests/DSP/BeatGridResolverTests.swift` — new.
+- `PhospheneEngine/Tests/PhospheneEngineTests/DSP/LiveBeatDriftTrackerTests.swift` — new.
+- `PhospheneEngine/Tests/PhospheneEngineTests/Integration/BeatGridIntegrationTests.swift` — new.
+- `PhospheneEngine/Tests/PhospheneEngineTests/Performance/BeatThisPerformanceTests.swift` — new.
+- `Scripts/convert_beatthis_weights.py` — one-shot converter (mirror of `convert_beatnet_weights.py`).
+- `Scripts/dump_beatthis_reference.py` — Python reference-dump script for Session 2 / 4 golden tests.
+- `docs/diagnostics/DSP.2-architecture.md` — new audit doc (replaces archived BeatNet version).
+- `docs/CLAUDE.md` — Module Map updates, ML Inference section, Failed Approaches as discovered.
+- `docs/DECISIONS.md` — D-077 (landed alongside this pivot); follow-up sub-decisions in the D-077 thread for any architectural choices made during the sessions.
+- `docs/CREDITS.md` — Beat This! attribution per MIT license (cite paper + repo).
 
 **Tests:**
 
-1. **Unit — `MelSpectrogramTests`:**
-   - 1 kHz sine at 48 kHz → resample to 22050 Hz → mel-spec → assert peak energy in mel bin matching 1 kHz.
-   - Reference comparison: feed the love_rehab fixture, write mel output to JSON, compare against a `librosa.feature.melspectrogram` reference dump within 0.5 dB.
-   - Zero-input → zero output.
+1. **Unit — `BeatThisPreprocessorTests` (Session 2):**
+   - Synthetic impulse / sine / white noise: per-stage match against Python reference within float32 ULP where mathematically possible.
+   - Real audio (love_rehab): output within a measured numerical bound vs. the Python reference (set in S1 architecture doc).
+   - Zero input → zero output (or model-defined silence vector).
+   - No heap allocation in `process()` hot path.
 
-2. **Unit — `BeatTrackerModelTests`:**
-   - Weight load → no crash; expected number of parameters match manifest.
-   - Forward pass on zero input → output near silence-class probability.
-   - Forward pass on synthetic 120 BPM kick → activation peaks every ~500 ms (within ±50 ms tolerance).
-   - Hidden-state continuity: feeding two adjacent mel frames and feeding a single concatenated frame produce equivalent outputs.
+2. **Unit — `BeatThisModelTests` (Session 4):**
+   - Weight load → no crash; parameter count matches manifest.
+   - Forward pass on random input: per-layer activations match PyTorch FP32 within 1e-4 absolute / 1e-3 relative.
+   - Forward pass on six reference fixtures: end-to-end output matches PyTorch FP32 within tolerance.
+   - Warm-predict latency on M1 < 300 ms for 30 s clip.
 
-3. **Unit — `ParticleFilterTests`:**
-   - Synthetic 120 BPM activation pulses → BPM converges to 120 ± 2 within 2 s.
-   - Synthetic 86 BPM activation pulses → converges to 86 ± 2 within 2 s.
-   - Synthetic ambiguous (peaks at every 250 ms but every 4th peak louder) → downbeat probability rises on the louder peaks.
-   - Tempo change mid-stream (120 → 140 BPM at t = 5 s) → re-locks to 140 within 3 s.
+3. **Unit — `BeatGridResolverTests` (Session 5):**
+   - Synthetic 120 BPM activation pulses → 120 ± 0.5 BPM, beats every 500 ± 20 ms, time signature 4/4.
+   - Synthetic 7/4 at 90 BPM → 90 ± 0.5 BPM, time signature 7/4 detected, downbeats every 7 beats.
+   - Tempo change mid-stream (120 → 140 BPM at t = 5 s) → re-locks within the offline post-processing window.
 
-4. **Integration — `BeatTrackerIntegrationTests`:**
-   - Reference fixtures (love_rehab, so_what, there_there) — assert BPM matches metadata ±2 BPM.
-   - **there_there must read 84–92 BPM** (the meter, not the kick rate of 140) — this is the case DSP.1 can't reach and is the load-bearing assertion for the increment.
+4. **Unit — `LiveBeatDriftTrackerTests` (Session 7):**
+   - Cached grid + perfectly-aligned onsets → drift = 0 ± 5 ms.
+   - Cached grid + onsets shifted by +30 ms → drift converges to +30 ms within 2 s.
+   - No onsets in window → drift estimate decays toward 0 (no runaway).
 
-5. **Performance — `BeatTrackerPerformanceTests`:**
-   - Per-mel-frame inference budget: < 2 ms on M1, < 1 ms on M3 (beat tracking runs at ~100 Hz, ~10× more frequent than StemSeparator's 5 s cadence).
-   - Particle filter: < 0.5 ms per frame on M1.
-   - Mel-spectrogram preprocessing: < 0.5 ms per frame on M1.
-   - Combined budget: < 3 ms per frame, well under the 16.6 ms render budget.
+5. **Integration — `BeatGridIntegrationTests` (Session 6):**
+   - Six reference fixtures end-to-end: BPM within ±0.5, time signature correct on ≥5/6, beats within ±20 ms vs. S1 ground truth.
+   - **Pyramid Song must read 16/8 (or equivalent grouped meter) with downbeats on the 1 of each 16-cycle.** Load-bearing assertion for the increment.
+   - **Money must read 7/4 at ~123 BPM.** Load-bearing assertion.
+   - **there_there must read 84–92 BPM** (the meter, not the kick rate). Carries forward from the BeatNet plan as the DSP.1-failure assertion.
+   - Cache hit: re-prepare same track → `BeatGrid` reused, no second model call.
+   - Cache invalidation: bump model variant string → re-runs.
 
-6. **A/B regression — `docs/diagnostics/DSP.2-comparison.txt`:**
-   - Three fixtures × two engines × 30 s — committed artifact showing per-second BPM from both pipelines side by side. The "after" evidence for the increment.
+6. **Performance — `BeatThisPerformanceTests`:**
+   - Per-track preparation: < 500 ms on M1 (preprocessing + transformer + post-processing combined).
+   - Drift tracker: < 0.1 ms per frame on M1 (live-path budget).
 
 7. **Existing tests:**
-   - All 9 BeatDetector unit tests pass unchanged with `BEATTRACKER_USE_BEATNET=0` and `=1`.
-   - `BeatPredictorTests` pass unchanged.
-   - `MIRPipelineUnitTests` pass unchanged.
+   - All 919 engine-test baseline holds.
+   - `BeatDetector` unit tests pass unchanged (its onset stream is the drift tracker's input — interface unchanged).
+   - `BeatPredictorTests` pass while BeatPredictor exists (until S7 retirement).
+   - `MIRPipelineUnitTests` pass — replace BeatPredictor wiring with drift tracker.
 
 **Performance budget:**
 
-- Per-frame inference: < 2 ms on M1 (≤ 12 % of frame budget), < 1 ms on M3.
-- Memory: < 50 MB for weights + activations buffer + particles. Stays well below StemSeparator's 135.9 MB.
-- Init cost: < 200 ms for graph build + weight load (one-time, during preparation).
-- Drop-frame behavior: if inference exceeds budget on a given frame, fall through to legacy path for that frame and resume on the next. Same pattern as `MLDispatchScheduler` (D-059).
+- Per-track preparation cost (one-time per 30 s clip): < 500 ms on M1, < 250 ms on M3. Absorbed in the existing playlist-preparation window.
+- Live-path cost: < 0.1 ms per frame on M1 (drift tracker only; no transformer at runtime). Negligible vs. the 16.6 ms render budget.
+- Memory: < 80 MB for weights (FP16 transformer ~28 MB + activation scratch). Stays well under StemSeparator's 135.9 MB.
+- Init cost: < 300 ms for graph build + weight load (one-time at session start).
+- Drop-frame behavior in pre-analysis: respect `MLDispatchScheduler` (D-059) — if Beat This! inference would push a frame past budget, defer the dispatch. Track-change resets state.
 
-**Done when:**
+**Done when (cumulative across sessions):**
 
-- [ ] DSP.1 closure complete (D-073, CLAUDE.md, DECISIONS.md updates landed).
-- [ ] Weights vendored under `ML/Weights/beatnet/` via Git LFS pointers.
-- [ ] `Scripts/convert_beatnet_weights.py` checked in and reproducible.
-- [ ] `MelSpectrogramTests` pass.
-- [ ] `BeatTrackerModelTests` pass.
-- [ ] `ParticleFilterTests` pass.
-- [ ] `BeatTrackerIntegrationTests` pass — including the load-bearing there_there 84–92 BPM assertion.
-- [ ] `BeatTrackerPerformanceTests` confirm per-frame budget < 2 ms on M1.
-- [ ] `docs/diagnostics/DSP.2-comparison.txt` committed; shows BeatNet matching or exceeding DSP.1 on so_what / love_rehab and crossing the threshold on there_there.
-- [ ] All existing BeatDetector / BeatPredictor / MIRPipeline tests pass with both engine modes.
-- [ ] Fallback verified: app boots and runs end-to-end with `BEATTRACKER_USE_BEATNET=0`.
+- [ ] §0 cleanup committed (BeatNet stubs removed; archive marked superseded; D-077 in DECISIONS.md). **2026-05-04.**
+- [ ] **S1:** Architecture audit `docs/diagnostics/DSP.2-architecture.md` complete; weights vendored under `ML/Weights/beat_this/`; `Scripts/convert_beatthis_weights.py` reproducible; six reference fixtures captured (love_rehab, so_what, there_there, Pyramid Song, Money, +1 user pick) as JSON ground truth.
+- [ ] **S2:** `BeatThisPreprocessorTests` pass; per-stage golden match against Python reference within tolerance; no heap alloc in hot path.
+- [ ] **S3:** MPSGraph forward pass on random input runs cleanly; per-layer shapes match audit doc.
+- [ ] **S4:** `BeatThisModelTests` pass; per-layer numerical match against PyTorch FP32 within tolerance; warm-predict < 300 ms on M1.
+- [ ] **S5:** `BeatGridResolverTests` pass; six fixtures resolve to beats / downbeats / BPM / meter within target tolerances.
+- [ ] **S6:** `BeatGridIntegrationTests` pass — including the Pyramid Song 16/8, Money 7/4, there_there 84–92 BPM load-bearing assertions; 919-engine test baseline holds.
+- [ ] **S7:** `LiveBeatDriftTrackerTests` pass; `BeatPredictor.swift` deleted (or kept reactive-mode-only and marked deprecated); golden hashes regenerated for presets that read `beatPhase01` (Arachne, Gossamer, Stalker, VolumetricLithograph); `docs/quality_reel.mp4` re-recorded; subjective listen-and-watch sign-off from Matt on Pyramid Song + Money + so_what.
 - [ ] `swift test --package-path PhospheneEngine` passes (pre-existing flakes in `MetadataPreFetcher` / `MemoryReporter` acceptable).
 - [ ] `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build` passes.
-- [ ] No `import CoreML` anywhere in the engine. `grep -rn 'import CoreML' PhospheneEngine/Sources` returns empty.
-- [ ] CLAUDE.md Module Map and ML Inference section updated; CREDITS.md attribution present.
-- [ ] DECISIONS.md D-076 entry: "BeatNet via MPSGraph for online beat tracking; rejection of CoreML, aubio, and continued custom DSP."
+- [ ] No `import CoreML` anywhere in the engine.
+- [ ] CLAUDE.md Module Map updated; CREDITS.md Beat This! attribution present.
 
-**Verify:** `swift test --filter BeatTrackerModel && swift test --filter MelSpectrogram && swift test --filter ParticleFilter && swift test --filter BeatTrackerIntegration && swift test --filter BeatTrackerPerformance && Scripts/dump_tempo_baselines.sh after`.
+**Verify (per session, run cumulatively at the end):** `swift test --filter BeatThisPreprocessor && swift test --filter BeatThisModel && swift test --filter BeatGridResolver && swift test --filter LiveBeatDriftTracker && swift test --filter BeatGridIntegration && swift test --filter BeatThisPerformance`.
 
 **Out of scope (do not re-litigate):**
 
 - aubio (native C dependency; rejected — staying within Swift / MPSGraph idiom).
-- BEAST (research code, not packaged for production; revisit if BeatNet underperforms).
-- madmom (offline only; non-causal BLSTM cannot run online).
+- madmom (offline-only Python+C; non-portable to runtime).
 - CoreML in any form (project hard constraint, see Failed Approach #20 and CLAUDE.md "ML Inference").
-- Replacing `BeatPredictor`'s IIR predictor entirely — keep as fallback when BeatNet is disabled or unhealthy.
-- Per-frame downbeat *visual presets* — separate work; this increment exposes the signal only.
-- Multi-track-aware downbeat persistence — single-track per session for now; revisit when Orchestrator wants bar-aligned transitions.
+- All-In-One (Kim et al., ISMIR 2023) — strictly more capable (joint beat / downbeat / section), but two-axis scope creep in a single increment. Reserved as a follow-up; the architecture in this increment is designed so the model can be swapped with no upstream / downstream changes.
+- Live transformer inference at 50 Hz — explicitly rejected; the pre-analysis-then-drift-track architecture is the load-bearing design choice.
+- Per-frame downbeat *visual presets* — separate work; this increment exposes `downbeats` on `BeatGrid`, presets opt in later.
+- Streaming-mode Beat This! inference for reactive mode — fallback path keeps `BeatPredictor` (or runs a one-shot transformer pass on the first 10–15 s of live audio). Decide in S7.
 
 **License sourcing:**
 
