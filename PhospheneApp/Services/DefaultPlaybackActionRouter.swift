@@ -393,20 +393,22 @@ final class DefaultPlaybackActionRouter: PlaybackActionRouter, @unchecked Sendab
         }
     }
 
-    /// Alphabetical walk through the catalog (excluding diagnostics) for the
-    /// reactive / ad-hoc nudge fallback. Returns `true` if a preset was applied
-    /// (the caller should `return`); `false` if the catalog had no eligible
-    /// entries (caller should fall through to the planned-segment / scorer path).
+    /// Alphabetical walk through the full catalog for the reactive / ad-hoc
+    /// nudge fallback. Returns `true` if a preset was applied (the caller
+    /// should `return`); `false` if the catalog was empty.
+    ///
+    /// Diagnostic presets (`is_diagnostic: true`, e.g. Spectral Cartograph) are
+    /// included here. D-074 keeps them out of orchestrator auto-selection but
+    /// `Shift+arrow` is explicit manual-switch — exactly the path D-074
+    /// reserves for reaching diagnostic surfaces.
     private func reactiveWalkNudge(
         direction: NudgeDirection,
         immediate: Bool,
         catalog: [PresetDescriptor]
     ) -> Bool {
-        let eligible = catalog
-            .filter { !$0.isDiagnostic }
-            .sorted { $0.name < $1.name }
+        let eligible = catalog.sorted { $0.name < $1.name }
         guard !eligible.isEmpty else {
-            logger.warning("U.6b: presetNudge — no non-diagnostic presets in catalog")
+            logger.warning("U.6b: presetNudge — empty catalog")
             return false
         }
         let count = eligible.count
