@@ -331,6 +331,17 @@ final class DefaultPlaybackActionRouter: PlaybackActionRouter, @unchecked Sendab
         let profile = getTrackProfile() ?? TrackProfile.empty
         let scorer = DefaultPresetScorer()
 
+        // Reactive / ad-hoc fallback: in the absence of a live plan AND a real
+        // track profile, the scorer is degenerate (sub-scores collapse to
+        // constants on TrackProfile.empty) and produces a small fixed cycle
+        // (typically 2–3 presets). Fall back to alphabetical walking so the
+        // user can reach every preset via Shift+→ in reactive mode.
+        if getLivePlan() == nil && getTrackProfile() == nil && !catalog.isEmpty {
+            if reactiveWalkNudge(direction: direction, immediate: immediate, catalog: catalog) {
+                return
+            }
+        }
+
         switch direction {
         case .next:
             // V.7.6.2: prefer the next planned segment (within current track or, failing that,
@@ -377,6 +388,43 @@ final class DefaultPlaybackActionRouter: PlaybackActionRouter, @unchecked Sendab
             }
             logger.info("U.6b: presetNudge(.previous) preset=\(prevID) immediate=\(immediate)")
         }
+    }
+
+    /// Alphabetical walk through the catalog (excluding diagnostics) for the
+    /// reactive / ad-hoc nudge fallback. Returns `true` if a preset was applied
+    /// (the caller should `return`); `false` if the catalog had no eligible
+    /// entries (caller should fall through to the planned-segment / scorer path).
+    private func reactiveWalkNudge(
+        direction: NudgeDirection,
+        immediate: Bool,
+        catalog: [PresetDescriptor]
+    ) -> Bool {
+        let eligible = catalog
+            .filter { !$0.isDiagnostic }
+            .sorted { $0.name < $1.name }
+        guard !eligible.isEmpty else {
+            logger.warning("U.6b: presetNudge — no non-diagnostic presets in catalog")
+            return false
+        }
+        let count = eligible.count
+        let currentIdx = eligible.firstIndex(where: { $0.id == getCurrentPresetID() })
+        let nextIdx: Int
+        switch direction {
+        case .next:
+            nextIdx = (((currentIdx ?? -1) + 1) % count + count) % count
+        case .previous:
+            nextIdx = (((currentIdx ?? 0) - 1) % count + count) % count
+        }
+        let nextDesc = eligible[nextIdx]
+        let suffix = immediate ? "" : " — at next boundary"
+        let label = direction == .next ? "Nudged forward" : "Nudged back"
+        toastBridge?.emitAck("\(label)\(suffix)")
+        onApplyPresetOverride(nextDesc.id, immediate)
+        if !immediate {
+            scheduleNudgeCeiling(presetID: nextDesc.id)
+        }
+        logger.info("U.6b: presetNudge(.\(String(describing: direction))) reactive-walk → \(nextDesc.id)")
+        return true
     }
 
     func rePlanSession() {
