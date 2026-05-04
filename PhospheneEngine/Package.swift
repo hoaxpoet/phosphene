@@ -128,7 +128,10 @@ let package = Package(
                 "Renderer", "Session", "Orchestrator", "Diagnostics",
             ],
             path: "Tests/PhospheneEngineTests",
-            resources: [.copy("Regression/Fixtures")]
+            resources: [
+                .copy("Regression/Fixtures"),
+                .copy("Fixtures/beat_this_reference"),
+            ]
         ),
     ]
 )
