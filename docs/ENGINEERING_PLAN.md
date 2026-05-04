@@ -1838,9 +1838,9 @@ PhospheneEngine/Sources/Session/
 - there_there.m4a (rock, syncopated kick — DSP.1's load-bearing failure) — already vendored.
 - **Pyramid Song (Radiohead) — 16/8 grouped 3+3+4+3+3, extreme irregular-meter stress test.**
 - **Money (Pink Floyd) — 7/4.**
-- **If I Were With Her Now (Spiritualized) — slow, drifting, sparse percussion. Stresses the low-onset-density floor where the IOI method silently degrades; if Beat This! locks this one cleanly the live drift-tracker is on solid ground.**
+- **If I Were With Her Now (Spiritualized) — syncopation plus mid-track meter changes. The fixture that stresses temporal *instability*: a model that locks to one period at the start and rides it through the track will pass Pyramid Song / Money (irregular but locked) and fail here.**
 
-The Pyramid Song / Money / so_what triple is the irregular-meter readiness gate; If I Were With Her Now is the sparse-onset gate. If Beat This! tracks all four correctly, the increment is product-ready. If it fails on Pyramid Song specifically, that's the All-In-One follow-up trigger.
+Five of the six fixtures actively stress non-stable-period behavior — only love_rehab is the clean 4/4 control. Pyramid Song / Money / so_what / there_there cover irregular-meter, swing, and offbeat-kick. If I Were With Her Now is the meter-change adaptation gate. If Beat This! tracks all six correctly, the increment is product-ready. If it fails specifically on the meter-change passage, that's the trigger to evaluate streaming-mode inference (re-running the model mid-track) before falling back to All-In-One.
 
 **Files to touch:**
 
