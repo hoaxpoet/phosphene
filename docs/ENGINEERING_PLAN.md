@@ -1924,7 +1924,7 @@ Five of the six fixtures actively stress non-stable-period behavior — only lov
 - [x] §0 cleanup committed (BeatNet stubs removed; archive marked superseded; D-077 in DECISIONS.md). **2026-05-04.**
 - [x] **S1:** Architecture audit `docs/diagnostics/DSP.2-architecture.md` complete; weights vendored under `ML/Weights/beat_this/` (161 tensors, 8.4 MB, `small0`); `Scripts/convert_beatthis_weights.py` reproducible; six reference fixtures captured as JSON ground truth. Commits `afb75954..9cd0efb8`. **2026-05-04.**
 - [x] **S2:** `BeatThisPreprocessorTests` pass (5 tests: shape×2 + dcSignal + sineAtMelBin + loveRehab golden match); per-stage golden match max|Δ|=3×10⁻⁵ within tolerance=1e-3; all buffers pre-allocated at init. Commits `d26e3c2b..b2cb5a8b`. **2026-05-04.**
-- [ ] **S3:** MPSGraph forward pass on random input runs cleanly; per-layer shapes match audit doc.
+- [x] **S3:** `BeatThisModel` builds zero-init MPSGraph encoder; 5 shape/finiteness tests pass (929/100 suite green); 0 SwiftLint violations. Commit `c71569b1`. **2026-05-04.**
 - [ ] **S4:** `BeatThisModelTests` pass; per-layer numerical match against PyTorch FP32 within tolerance; warm-predict < 300 ms on M1.
 - [ ] **S5:** `BeatGridResolverTests` pass; six fixtures resolve to beats / downbeats / BPM / meter within target tolerances.
 - [ ] **S6:** `BeatGridIntegrationTests` pass — including the Pyramid Song 16/8, Money 7/4, there_there 84–92 BPM load-bearing assertions; 919-engine test baseline holds.
