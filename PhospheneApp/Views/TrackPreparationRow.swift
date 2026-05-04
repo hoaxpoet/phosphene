@@ -71,7 +71,7 @@ struct TrackPreparationRow: View {
             return "\(String(localized: "preparation.track.downloading")) — \(Int(pct * 100))%"
         case .analyzing(let stage):
             switch stage {
-            case .stemSeparation, .mir:
+            case .stemSeparation, .mir, .beatGrid:
                 return String(localized: "preparation.track.analyzing")
             case .caching:
                 return String(localized: "preparation.track.caching")

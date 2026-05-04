@@ -196,7 +196,7 @@ final class PreparationProgressViewModel: ObservableObject {
         case .downloading: return .downloading
         case .analyzing(let stage):
             switch stage {
-            case .stemSeparation, .mir: return .stemSeparation
+            case .stemSeparation, .mir, .beatGrid: return .stemSeparation
             case .caching: return .caching
             }
         default: return nil

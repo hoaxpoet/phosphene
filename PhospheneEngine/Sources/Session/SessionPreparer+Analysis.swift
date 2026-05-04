@@ -50,12 +50,15 @@ extension SessionPreparer {
     ///   - separator: Stem separator to use (injected for testing).
     ///   - analyzer: Stem energy analyzer (injected for testing).
     ///   - classifier: Mood classifier (injected for testing).
+    ///   - beatGridAnalyzer: Optional Beat This! analyzer. When `nil`, the
+    ///     returned `CachedTrackData.beatGrid` is `.empty`.
     /// - Returns: Fully populated `CachedTrackData`.
     nonisolated static func analyzePreview(
         _ preview: PreviewAudio,
         separator: any StemSeparating,
         analyzer: any StemAnalyzing,
-        classifier: any MoodClassifying
+        classifier: any MoodClassifying,
+        beatGridAnalyzer: (any BeatGridAnalyzing)? = nil
     ) throws -> CachedTrackData {
 
         // Step 1: Separate stems from preview PCM.
@@ -97,10 +100,22 @@ extension SessionPreparer {
             estimatedSectionCount: mir.sectionCount
         )
 
+        // Step 5: Beat This! offline beat grid (nil analyzer → BeatGrid.empty).
+        let beatGrid: BeatGrid
+        if let gridAnalyzer = beatGridAnalyzer {
+            beatGrid = gridAnalyzer.analyzeBeatGrid(
+                samples: preview.pcmSamples,
+                sampleRate: Double(preview.sampleRate)
+            )
+        } else {
+            beatGrid = .empty
+        }
+
         return CachedTrackData(
             stemWaveforms: stemWaveforms,
             stemFeatures: stemFeatures,
-            trackProfile: profile
+            trackProfile: profile,
+            beatGrid: beatGrid
         )
     }
 

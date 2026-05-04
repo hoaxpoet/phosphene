@@ -2,6 +2,7 @@
 // Populated by SessionPreparer before playback; consumed by VisualizerEngine
 // on track change to eliminate the ~10-second stem warmup gap.
 
+import DSP
 import Foundation
 import Shared
 
@@ -23,16 +24,22 @@ public struct CachedTrackData: Sendable {
     /// MIR summary: BPM, key, mood, spectral centroid, stem energy balance.
     public let trackProfile: TrackProfile
 
+    /// Offline beat/downbeat grid resolved from Beat This! over the preview clip.
+    /// Defaults to `.empty` when no beat-grid analyzer is wired (backward compat).
+    public let beatGrid: BeatGrid
+
     // MARK: - Init
 
     public init(
         stemWaveforms: [[Float]],
         stemFeatures: StemFeatures,
-        trackProfile: TrackProfile
+        trackProfile: TrackProfile,
+        beatGrid: BeatGrid = .empty
     ) {
         self.stemWaveforms = stemWaveforms
         self.stemFeatures = stemFeatures
         self.trackProfile = trackProfile
+        self.beatGrid = beatGrid
     }
 }
 
@@ -71,6 +78,11 @@ public final class StemCache: @unchecked Sendable {
     /// Return the `TrackProfile` for the given track, or nil if not cached.
     public func trackProfile(for identity: TrackIdentity) -> TrackProfile? {
         lock.withLock { storage[identity]?.trackProfile }
+    }
+
+    /// Return the offline `BeatGrid` for the given track, or nil if not cached.
+    public func beatGrid(for identity: TrackIdentity) -> BeatGrid? {
+        lock.withLock { storage[identity]?.beatGrid }
     }
 
     /// Return the full `CachedTrackData` bundle for playback, or nil if uncached.

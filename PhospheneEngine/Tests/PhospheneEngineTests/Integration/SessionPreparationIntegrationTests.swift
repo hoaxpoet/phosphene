@@ -123,6 +123,8 @@ private final class MockSineDownloader: PreviewDownloading, @unchecked Sendable 
     #expect(cached != nil, "Cache entry must exist")
     #expect(cached?.stemWaveforms.count == 4, "Four stem waveforms expected")
     #expect(cached?.stemFeatures != .zero, "StemFeatures must be non-zero")
+    // BeatGrid defaults to .empty when no beatGridAnalyzer is injected (S6 nil-default contract).
+    #expect(cached?.beatGrid == .empty)
 }
 
 /// TrackProfile from real analysis must have plausible values.
