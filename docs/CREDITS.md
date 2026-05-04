@@ -49,6 +49,70 @@ See license text for the full disclaimer.
 
 ---
 
+## Beat This! — beat / downbeat tracking weights
+
+**Used in:** `PhospheneEngine/Sources/ML/Weights/beat_this/` (vendored
+weights), `Scripts/convert_beatthis_weights.py` (converter),
+`Scripts/dump_beatthis_reference.py` (reference fixture generator).
+
+**Source:** Francesco Foscarin, Jan Schlüter, Gerhard Widmer.
+*Beat This! Accurate Beat Tracking Without DBN Postprocessing.*
+Proceedings of the 25th International Society for Music Information
+Retrieval Conference (ISMIR), 2024.
+
+**Repository:** https://github.com/CPJKU/beat_this
+
+**Specific artifact:** `small0` variant checkpoint
+(`beat_this-small0.ckpt`, downloaded via `torch.hub` from the JKU
+cloud), at commit `9d787b9797eaa325856a20897187734175467074`,
+retrieved 2026-05-04.
+
+**License:** MIT — https://opensource.org/licenses/MIT
+
+```
+Copyright 2024 Institute of Computational Perception, JKU Linz, Austria
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
+BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+**Preferred citation:**
+
+```bibtex
+@inproceedings{foscarin2024beat,
+  title={Beat This! Accurate Beat Tracking Without DBN Postprocessing},
+  author={Foscarin, Francesco and Schl{\"u}ter, Jan and Widmer, Gerhard},
+  booktitle={Proceedings of the 25th International Society for Music
+             Information Retrieval Conference (ISMIR)},
+  year={2024}
+}
+```
+
+**Modifications:** PyTorch Lightning checkpoint re-encoded to one `.bin`
+file per tensor + `manifest.json`. Five training-only `num_batches_tracked`
+int64 buffers omitted (not used at inference). All float32 tensor values
+are byte-identical to the source after endianness normalization. No
+retraining or fine-tuning.
+
+---
+
 ## Open-Unmix HQ — stem separation weights
 
 **Used in:** `PhospheneEngine/Sources/ML/Weights/` (vendored weights
@@ -81,8 +145,8 @@ required.
 
 If you ship a derivative of Phosphene, you must:
 
-1. Preserve the MIT notice in `LICENSE` and the BeatNet CC-BY notice
-   in this file.
+1. Preserve the MIT notice in `LICENSE`, the BeatNet CC-BY notice, and
+   the Beat This! MIT notice in this file.
 2. Make this `CREDITS.md` (or an equivalent compilation of the
    notices) reachable from a user-visible surface — e.g. an "About"
    panel — alongside license text or hyperlinks.
