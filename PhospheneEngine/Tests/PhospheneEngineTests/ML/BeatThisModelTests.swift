@@ -2,6 +2,8 @@
 
 import Testing
 import Metal
+import Foundation
+@testable import DSP
 @testable import ML
 
 @Suite struct BeatThisModelTests {
@@ -102,31 +104,82 @@ import Metal
         #expect(elapsed < 0.3, "Inference took \(String(format: "%.1f", elapsed * 1000))ms — expected < 300ms")
     }
 
-    // MARK: - 9. love_rehab Beat Logits Match PyTorch (disabled by default)
+    // MARK: - 9. End-to-End: Real Audio → Real Beats (KNOWN-FAILING)
 
-    /// Numerical match against PyTorch reference fixture.
-    /// Enable with: BEATTHIS_GOLDEN=1 swift test --filter test_loveRehab_beatLogits_matchPyTorch
-    @Test func test_loveRehab_beatLogits_matchPyTorch() throws {
-        guard ProcessInfo.processInfo.environment["BEATTHIS_GOLDEN"] == "1" else { return }
+    /// End-to-end gate: feed `love_rehab.m4a` through preprocessor + model and
+    /// assert the output is a usable BeatGrid signal — peaks above 0.5
+    /// threshold at roughly the rate of musical beats. The Python Beat This!
+    /// reference produces max(sigmoid)=1.0 with ~120 frames > 0.5 over 30s of
+    /// 4/4 music. Our Swift port currently produces max ≈ 0.29 with 0 frames
+    /// > 0.5 — visibly compressed and sub-threshold. This is a real model bug
+    /// (likely in the frontend partial-FT block weight load, RoPE indexing,
+    /// or BN fusion) that surfaced when QualityReelAnalyzer first exercised
+    /// the full pipeline against ground-truth fixtures (2026-05-04).
+    ///
+    /// Wrapped in `withKnownIssue` so it stays in CI without breaking the
+    /// suite, while ensuring the failure is visible. Remove the wrapper once
+    /// the model bug is fixed — that's the "S7 actually engaged in
+    /// production" milestone.
+    @Test func test_loveRehab_endToEnd_producesBeats() throws {
         guard let device = MTLCreateSystemDefaultDevice() else { return }
-        // Load love_rehab spectrogram (T×128) from fixture
-        guard let spectURL = Bundle.module.url(
-            forResource: "love_rehab_spect_reference",
-            withExtension: "json",
-            subdirectory: "Fixtures/beat_this_reference"
-        ) else {
-            Issue.record("love_rehab_spect_reference.json fixture not found")
+
+        let testDir = URL(fileURLWithPath: String(#filePath)).deletingLastPathComponent()
+        let audioURL = testDir
+            .deletingLastPathComponent()  // PhospheneEngineTests/
+            .deletingLastPathComponent()  // Tests/
+            .appendingPathComponent("Fixtures/tempo/love_rehab.m4a")
+        guard FileManager.default.fileExists(atPath: audioURL.path) else {
+            print("BeatThisModelTests: skipping endToEnd_producesBeats (audio fixture absent)")
             return
         }
-        let spectData = try Data(contentsOf: spectURL)
-        let frames = try JSONDecoder().decode([[Float]].self, from: spectData)
-        let frameCount = frames.count
-        let flat = frames.flatMap { $0 }
+        let samples = try decodeMono22050(url: audioURL)
+
+        let pre = BeatThisPreprocessor()
+        let (spect, frameCount) = pre.process(samples: samples, inputSampleRate: 22050)
         let model = try BeatThisModel(device: device)
-        let (beats, _) = try model.predict(spectrogram: flat, frameCount: frameCount)
-        // Sanity: outputs should be in [0, 1] and not all 0.5
-        #expect(beats.allSatisfy { $0 >= 0 && $0 <= 1 }, "beat probabilities out of [0,1]")
-        let allHalf = beats.allSatisfy { abs($0 - 0.5) < 1e-4 }
-        #expect(!allHalf, "All beats == 0.5 — model produced uniform output (degenerate)")
+        let (beats, _) = try model.predict(spectrogram: spect, frameCount: frameCount)
+        let maxProb = beats.max() ?? 0
+        let aboveHalf = beats.filter { $0 > 0.5 }.count
+
+        // What we WANT (Python reference: max ≈ 1.0, ~120 frames > 0.5).
+        // What we GET today: max ≈ 0.29, 0 frames > 0.5 → BeatGridResolver
+        // produces an empty grid → S7's drift tracker stays dormant.
+        withKnownIssue("BeatThisModel produces sub-threshold output on real audio (DSP.2 followup)") {
+            #expect(maxProb > 0.9,
+                    "max sigmoid should be near 1.0 at strong beats; got \(maxProb)")
+            #expect(aboveHalf >= 50,
+                    "expected ≥50 frames above 0.5 in 30s of 4/4 music; got \(aboveHalf)")
+        }
+    }
+
+    // MARK: - Helpers
+
+    private func decodeMono22050(url: URL) throws -> [Float] {
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        proc.arguments = [
+            "ffmpeg", "-loglevel", "error",
+            "-i", url.path,
+            "-ac", "1", "-ar", "22050",
+            "-f", "f32le", "-"
+        ]
+        let stdoutPipe = Pipe()
+        proc.standardOutput = stdoutPipe
+        proc.standardError = Pipe()
+        try proc.run()
+        let raw = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+        proc.waitUntilExit()
+        guard proc.terminationStatus == 0 else {
+            throw NSError(
+                domain: "BeatThisModelTests",
+                code: Int(proc.terminationStatus),
+                userInfo: [NSLocalizedDescriptionKey: "ffmpeg decode failed"]
+            )
+        }
+        let count = raw.count / MemoryLayout<Float>.size
+        return raw.withUnsafeBytes { buf in
+            let typed = buf.bindMemory(to: Float.self)
+            return Array(UnsafeBufferPointer(start: typed.baseAddress, count: count))
+        }
     }
 }

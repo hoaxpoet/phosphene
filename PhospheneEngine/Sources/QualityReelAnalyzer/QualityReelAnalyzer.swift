@@ -37,12 +37,7 @@ struct QualityReelAnalyzerCommand: ParsableCommand {
     @Option(name: .long, help: "Path to reel video file (mp4, mov, etc.).")
     var reel: String
 
-    @Option(
-        name: .long,
-        help: "Optional separate audio file (wav, m4a). When given, audio is "
-            + "extracted from it rather than from --reel. Pair Phosphene's own "
-            + "session outputs: --reel video.mp4 --audio raw_tap.wav."
-    )
+    @Option(name: .long, help: "Optional separate audio file (wav, m4a) paired with --reel.")
     var audio: String?
 
     @Option(name: .long, help: "Output Markdown report path.")
@@ -130,24 +125,63 @@ struct QualityReelAnalyzerCommand: ParsableCommand {
     }
 
     private func runBeatThis(samples: [Float]) throws -> BeatGrid {
-        print("[QRA] running BeatThisPreprocessor …")
-        let pre = BeatThisPreprocessor()
-        let (spect, frameCount) = pre.process(
-            samples: samples, inputSampleRate: 22050.0
-        )
-        print("[QRA] spectrogram: \(frameCount) frames × 128 mels")
+        var peak: Float = 0
+        for value in samples {
+            let abs = value < 0 ? -value : value
+            if abs > peak { peak = abs }
+        }
+        print(String(format: "[QRA] input audio peak abs: %.4f", peak))
 
         guard let device = MTLCreateSystemDefaultDevice() else {
             throw RuntimeError("no Metal device available")
         }
-        print("[QRA] running BeatThisModel.predict …")
         let model = try BeatThisModel(device: device)
-        let predStart = Date()
-        let (beatProbs, downbeatProbs) = try model.predict(
-            spectrogram: spect, frameCount: frameCount
+        let pre = BeatThisPreprocessor()
+
+        // Beat This! has a fixed input window of tMax=1500 frames @ 50 fps =
+        // 30 s. The production pipeline (SessionPreparer) only ever feeds it
+        // 30-second preview clips, so the full-track case isn't a problem in
+        // production. For reel analysis we have to chunk: process the audio
+        // in 30 s windows, concatenate the per-window beat / downbeat
+        // probabilities, then resolve the union into one BeatGrid.
+        let chunkSeconds = 30.0
+        let chunkSamples = Int(chunkSeconds * 22050.0)
+        let totalSamples = samples.count
+        let chunkCount = (totalSamples + chunkSamples - 1) / chunkSamples
+        print(
+            "[QRA] chunking \(String(format: "%.1f", Double(totalSamples) / 22050.0))s of audio "
+            + "into \(chunkCount) × \(Int(chunkSeconds))s windows"
         )
+
+        var beatProbs: [Float] = []
+        var downbeatProbs: [Float] = []
+        let predStart = Date()
+        for chunkIdx in 0..<chunkCount {
+            let start = chunkIdx * chunkSamples
+            let end = min(start + chunkSamples, totalSamples)
+            let window = Array(samples[start..<end])
+            let (spect, frameCount) = pre.process(
+                samples: window, inputSampleRate: 22050.0
+            )
+            let result = try model.predict(spectrogram: spect, frameCount: frameCount)
+            beatProbs.append(contentsOf: result.beats.prefix(frameCount))
+            downbeatProbs.append(contentsOf: result.downbeats.prefix(frameCount))
+            if chunkIdx % 4 == 0 {
+                print("[QRA]  chunk \(chunkIdx + 1)/\(chunkCount) processed")
+            }
+        }
         let predMs = String(format: "%.0f", Date().timeIntervalSince(predStart) * 1000)
-        print("[QRA] inference complete in \(predMs) ms")
+        let beatMax = beatProbs.max() ?? 0
+        let beatMean = beatProbs.reduce(0, +) / Float(max(beatProbs.count, 1))
+        let aboveHalf = beatProbs.filter { $0 > 0.5 }.count
+        print(
+            "[QRA] BeatThis complete in \(predMs) ms; "
+            + "\(beatProbs.count) frames"
+        )
+        print(String(
+            format: "[QRA] beat probs: max=%.4f mean=%.4f frames>0.5=%d",
+            beatMax, beatMean, aboveHalf
+        ))
 
         return BeatGridResolver.resolve(
             beatProbs: beatProbs,
