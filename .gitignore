@@ -53,3 +53,9 @@ skills-lock.json
 
 # Local audio fixtures for DSP.1 tempo capture (preview clips are licensed).
 PhospheneEngine/Tests/Fixtures/tempo/
+
+# Vendored third-party repos (tracked by pinned commit hash in docs).
+# Beat This! reference impl for DSP.2 S8 layer-diff:
+#   git clone --depth 1 https://github.com/CPJKU/beat_this vendor/beat_this_repo
+#   cd vendor/beat_this_repo && git checkout 9d787b9797eaa325856a20897187734175467074
+vendor/
