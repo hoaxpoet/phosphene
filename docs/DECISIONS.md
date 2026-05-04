@@ -1552,6 +1552,31 @@ There There remains wrong because the bass kick is not on every beat — the his
 
 ---
 
-## D-076 (reserved) — BeatNet via MPSGraph for online beat tracking
+## D-076 (reserved, abandoned) — BeatNet via MPSGraph for online beat tracking
 
-Reserved for Increment DSP.2. Will document: the architectural decision to mirror `StemSeparator`'s MPSGraph + Accelerate pattern; the rejection of CoreML (project hard constraint, Failed Approach #20), aubio (native C dependency the project has avoided), continued custom DSP (~70 % F1 floor per May 2026 streaming-audio research), and madmom/Beat Transformer/BEAST (offline or research code); the choice of BeatNet (Heydari et al., ISMIR 2021, MIT-licensed) over BEAST despite ~5 pp lower F1 because BeatNet has shipping pre-trained weights, a stable reference implementation, and a particle-filter post-processor that is portable to Swift; the per-frame inference budget; and the fallback path through DSP.1 when BeatNet is disabled or unhealthy.
+Reserved 2026-04-22 for Increment DSP.2 BeatNet port. **Abandoned 2026-05-04** in favor of Beat This! — see D-077. Session 1 of the BeatNet path landed (commit `3f5f652b`: weight conversion, vendored GTZAN weights at `PhospheneEngine/Sources/ML/Weights/beatnet/`, architecture audit in `docs/diagnostics/DSP.2-beatnet-archive.md`). Session 2 was started, abandoned mid-flight when an audit pass found the architecture doc had paraphrased FFT parameters incorrectly (claimed `fft_size=2048`; madmom uses `fft_size=frame_size=1411` with `include_nyquist=False` → 705 bins). The vendored weights are kept as a Tier 1 / reactive-mode fallback while Beat This! settles; full retirement is a follow-up after Beat This! proves out across the Phase MV preset catalog.
+
+This decision ID is retained as a permanent breadcrumb so that future grep on DECISIONS for "BeatNet" lands here, not on phantom references to the original ENGINEERING_PLAN scope.
+
+---
+
+## D-077 — Phase DSP.2 pivot from BeatNet to Beat This!
+
+**2026-05-04.** Phase DSP.2 retargets the offline beat / downbeat path from BeatNet (Heydari & Duan, 2021 — CRNN + particle filter cascade, CC-BY-4.0) to Beat This! (Foscarin et al., ISMIR 2024 — transformer encoder, MIT). The product reason is single-sentence: complex meters are a load-bearing requirement for Phosphene's beat lock (Pyramid Song 16/8, Money 7/4, Schism 7/8, swing tracks like So What), and BeatNet's particle filter is a known weak point on irregular meters whereas Beat This!'s self-attention captures whole-bar context.
+
+**Alternatives considered:**
+
+* **BeatNet (incumbent).** CRNN + particle filter, ~0.4 M params, native streaming mode (~84 ms latency), particle filter is the bottleneck on 5/4, 7/8, swing. Octave-error history per `docs/diagnostics/DSP.1-baseline-there_there.txt`. Stays vendored as a fallback per D-076 retirement note.
+* **All-In-One** (Kim et al., ISMIR 2023). Joint beat / downbeat / section-boundary transformer. Strictly more capable than Beat This! for Phosphene's needs (would also retire `StructuralAnalyzer` / `NoveltyDetector`), but two-axis scope creep in a single increment is too risky. Reserved as a follow-up; if All-In-One supersedes Beat This! later, the Sessions 2–7 architecture in this increment was designed to swap the model with no upstream / downstream changes.
+* **madmom DBN beat tracker.** Offline DBN over autocorrelation; classical baseline. Older numbers, no MPS-graph-portable model, requires the full madmom Python runtime. Not viable.
+* **Beat Transformer / BEAST.** Research code; no shipped pre-trained weights with a usable license. Not viable.
+
+**Architectural placement:** Beat This! runs once per track during `SessionPreparer.prepareTrack` on the cached 30 s preview clip (the existing pre-analysis budget absorbs ~100–300 ms of transformer inference per track on M1). Output is cached on `TrackProfile` as a new `BeatGrid` value type (`beats`, `downbeats`, `bpm`, `timeSignature`, `confidence`, `modelVariant`). The live audio path *does not* run a transformer; instead, a new `LiveBeatDriftTracker` cross-correlates `BeatDetector`'s sub_bass onset stream against the cached grid in a ±50 ms phase window and emits a smooth drift estimate. `FeatureVector.beatPhase01` and `beatsUntilNext` are then computed analytically from `playbackTime + drift` against the cached grid — no contract change for any existing preset shader.
+
+**Replaces:** `BeatPredictor` (deleted in Session 7); `BeatDetector+Tempo.computeRobustBPM` as the primary BPM source (kept only as ad-hoc reactive-mode fallback). `BeatDetector` itself stays — its onset stream is the input to the live drift tracker and continues to feed `StemAnalyzer` rich metadata. `StructuralAnalyzer` / `NoveltyDetector` are unchanged in this increment.
+
+**License & attribution:** Beat This! ships under MIT (cleaner than BeatNet's CC-BY-4.0 attribution requirement). Attribution lives in `docs/CREDITS.md` and the shipped app's About surface; details locked in Session 1.
+
+**Cleanup committed alongside this decision:** the in-flight BeatNet preprocessor stub (`PhospheneEngine/Sources/DSP/LogSpectrogram.swift`), the vendored filterbank corner triples (`PhospheneEngine/Sources/DSP/Resources/beatnet_filterbank.json`), the `dump_logspec_reference.py` reference dump script, and the `love_rehab_logspec_reference.json` test fixture were deleted. The architecture audit (`docs/diagnostics/DSP.2-architecture.md`) was renamed to `DSP.2-beatnet-archive.md` and marked superseded. The BeatNet weight set under `PhospheneEngine/Sources/ML/Weights/beatnet/` is retained.
+
+**Spec drift discipline.** The trigger for the pivot was a Session-2-of-DSP.2 audit pass that found the BeatNet architecture doc had paraphrased the FFT spec (claimed `fft_size=2048` next-pow2; madmom's actual default is `fft_size=frame_size=1411` with `include_nyquist=False`). This is the second time in a row (D-075 trimmed-mean IOI fix was the first) that paraphrased-from-prose specs landed code that diverged silently from the reference. The Beat This! port adds a per-stage golden-test gate at every pipeline boundary (Session 2 preprocessor; Session 4 layer-by-layer numerical match) so any future drift fails fast at the right stage, not three sessions downstream.

@@ -1,6 +1,15 @@
-# DSP.2 — BeatNet architecture audit
+# DSP.2 — BeatNet architecture audit (SUPERSEDED)
 
-**Status:** Session 1 deliverable. Reference for Sessions 2–7.
+**Status:** Archived 2026-05-04. Phase DSP.2 pivoted from BeatNet to
+Beat This! (Foscarin et al., ISMIR 2024). See D-077 in
+`docs/DECISIONS.md` for the rationale, and the new
+`docs/diagnostics/DSP.2-architecture.md` written in Session 1 of the
+redux. This document is preserved as the BeatNet audit-of-record;
+do not treat it as authoritative for any new work.
+
+---
+
+**Original status:** Session 1 deliverable. Reference for Sessions 2–7.
 **Source of truth:** github.com/mjhydri/BeatNet @ `main`, commit pushed 2026-04-13.
 **Files inspected:** `src/BeatNet/BeatNet.py`, `src/BeatNet/model.py`, `src/BeatNet/log_spect.py`, `src/BeatNet/models/model_1_weights.pt`.
 
