@@ -323,12 +323,16 @@ extension VisualizerEngine {
     }
 
     /// Applies the named preset (by ID) and shows its name banner.
+    /// `selectPreset(named:)` first so the loader's `currentIndex` matches —
+    /// without it, the scorer's `"already active"` exclusion stays stuck on a
+    /// stale value and `Shift+→` keeps re-picking the same top preset.
     @MainActor
     func applyPresetByID(_ presetID: String) {
         guard let loaded = presetLoader.presets.first(where: { $0.descriptor.id == presetID }) else {
             logger.warning("Orchestrator: applyPresetByID '\(presetID)' not found in loader")
             return
         }
+        presetLoader.selectPreset(named: loaded.descriptor.name)
         applyPreset(loaded)
         showPresetName(loaded.descriptor.name)
     }
