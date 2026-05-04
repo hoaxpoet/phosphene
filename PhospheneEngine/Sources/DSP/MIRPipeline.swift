@@ -21,8 +21,16 @@ public final class MIRPipeline: @unchecked Sendable {
     public let chromaExtractor: ChromaExtractor
     public let beatDetector: BeatDetector
     public let structuralAnalyzer: StructuralAnalyzer
-    /// MV-3b: Beat phase predictor — exposes beatPhase01 and beatsUntilNext to shaders.
+    /// MV-3b: Beat phase predictor — used in reactive mode (no offline grid).
+    /// Live tracks fall back to this when `liveDriftTracker.hasGrid == false`.
     public let beatPredictor: BeatPredictor
+
+    /// DSP.2 S7: drift tracker against an offline `BeatGrid`. Owns the live
+    /// `beatPhase01` / `beatsUntilNext` for tracks with cached Beat This!
+    /// analysis. Created once at init; populated via `setBeatGrid(_:)` on
+    /// track change. Empty grid → tracker returns zero phase and the pipeline
+    /// falls back to `beatPredictor` in `buildFeatureVector`.
+    public let liveDriftTracker: LiveBeatDriftTracker
 
     // MARK: - CPU-Side Properties
 
@@ -106,6 +114,7 @@ public final class MIRPipeline: @unchecked Sendable {
         )
         self.structuralAnalyzer = StructuralAnalyzer()
         self.beatPredictor = BeatPredictor()
+        self.liveDriftTracker = LiveBeatDriftTracker()
         self.nyquist = sampleRate / 2.0
 
         logger.info("MIRPipeline created: \(binCount) bins, \(sampleRate) Hz")
@@ -294,17 +303,40 @@ public final class MIRPipeline: @unchecked Sendable {
         fv.bassAttRel = (fv.bassAtt - 0.5) * 2.0
         fv.midAttRel  = (fv.midAtt - 0.5) * 2.0
         fv.trebAttRel = (fv.trebleAtt - 0.5) * 2.0
-        // MV-3b: Beat phase prediction.
-        let beatPhase = beatPredictor.update(
-            beatBass: ctx.beat.beatBass,
-            beatMid: ctx.beat.beatMid,
-            beatComposite: ctx.beat.beatComposite,
-            time: ctx.time,
-            deltaTime: ctx.deltaTime
-        )
-        fv.beatPhase01    = beatPhase.beatPhase01
-        fv.beatsUntilNext = beatPhase.beatsUntilNext
+        // DSP.2 S7: prefer the offline-grid drift tracker when a cached
+        // `BeatGrid` is installed.  In reactive mode (no grid), fall back to
+        // the legacy `BeatPredictor` IIR estimator.
+        if liveDriftTracker.hasGrid {
+            let driftResult = liveDriftTracker.update(
+                subBassOnset: ctx.beat.onsets[0],
+                playbackTime: elapsedSeconds,
+                deltaTime: ctx.deltaTime
+            )
+            fv.beatPhase01    = driftResult.beatPhase01
+            fv.beatsUntilNext = driftResult.beatsUntilNext
+        } else {
+            let predictorResult = beatPredictor.update(
+                beatBass: ctx.beat.beatBass,
+                beatMid: ctx.beat.beatMid,
+                beatComposite: ctx.beat.beatComposite,
+                time: ctx.time,
+                deltaTime: ctx.deltaTime
+            )
+            fv.beatPhase01    = predictorResult.beatPhase01
+            fv.beatsUntilNext = predictorResult.beatsUntilNext
+        }
         return fv
+    }
+
+    // MARK: - Live Drift Grid
+
+    /// Install or clear the offline `BeatGrid` consumed by `liveDriftTracker`.
+    /// Pass `nil` (or `.empty`) to revert to reactive-mode behaviour, which
+    /// uses `BeatPredictor` for `beatPhase01` / `beatsUntilNext`.
+    /// Call from the app layer on track change after consulting `StemCache`.
+    public func setBeatGrid(_ grid: BeatGrid?) {
+        liveDriftTracker.setGrid(grid ?? .empty)
+        logger.info("MIR_BEAT_GRID: set (\(grid?.beats.count ?? 0) beats)")
     }
 
     /// Reset all analyzers and internal state.
@@ -316,6 +348,7 @@ public final class MIRPipeline: @unchecked Sendable {
         chromaExtractor.resetAccumulators()
         structuralAnalyzer.reset()
         beatPredictor.reset()
+        liveDriftTracker.reset()
 
         lock.lock()
         fluxRunningMax = 1e-6
