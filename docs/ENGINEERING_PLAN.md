@@ -1838,9 +1838,9 @@ PhospheneEngine/Sources/Session/
 - there_there.m4a (rock, syncopated kick — DSP.1's load-bearing failure) — already vendored.
 - **Pyramid Song (Radiohead) — 16/8 grouped 3+3+4+3+3, extreme irregular-meter stress test.**
 - **Money (Pink Floyd) — 7/4.**
-- One user-picked sixth fixture, slot reserved.
+- **If I Were With Her Now (Spiritualized) — slow, drifting, sparse percussion. Stresses the low-onset-density floor where the IOI method silently degrades; if Beat This! locks this one cleanly the live drift-tracker is on solid ground.**
 
-The Pyramid Song / Money / so_what triple is the load-bearing test set: if Beat This! tracks all three correctly, the increment is product-ready. If it fails on Pyramid Song specifically, that's the All-In-One follow-up trigger.
+The Pyramid Song / Money / so_what triple is the irregular-meter readiness gate; If I Were With Her Now is the sparse-onset gate. If Beat This! tracks all four correctly, the increment is product-ready. If it fails on Pyramid Song specifically, that's the All-In-One follow-up trigger.
 
 **Files to touch:**
 
