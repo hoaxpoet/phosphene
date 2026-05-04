@@ -111,9 +111,13 @@ public final class SessionRecorder: @unchecked Sendable {
     var rawTapSamplesWritten: Int = 0
     var rawTapMaxSamples: Int = 0
     var rawTapHeaderWritten: Bool = false
-    /// Set once the 30s cap is reached or `finish()` closes the file.
+    /// Set once the duration cap is reached or `finish()` closes the file.
     var rawTapDone: Bool = false
-    let rawTapDurationSeconds: Double = 30.0
+    /// Default 30 s diagnostic cap. Set `PHOSPHENE_FULL_RAW_TAP=1` to capture
+    /// the entire session — required by `QualityReelAnalyzer`, which needs
+    /// audio coverage matching the visual reel for beat alignment.
+    let rawTapDurationSeconds: Double = ProcessInfo.processInfo
+        .environment["PHOSPHENE_FULL_RAW_TAP"] == "1" ? 86_400.0 : 30.0
 
     /// True once `finish()` has closed all handles.
     var didFinish: Bool = false

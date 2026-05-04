@@ -115,6 +115,15 @@ let package = Package(
             path: "Sources/TempoDumpRunner"
         ),
         .executableTarget(
+            name: "QualityReelAnalyzer",
+            dependencies: [
+                "DSP",
+                "ML",
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+            ],
+            path: "Sources/QualityReelAnalyzer"
+        ),
+        .executableTarget(
             name: "UtilityCostTableUpdater",
             dependencies: [
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
