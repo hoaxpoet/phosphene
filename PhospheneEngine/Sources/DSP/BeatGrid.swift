@@ -78,3 +78,114 @@ public struct BeatGrid: Sendable, Hashable, Codable {
         frameCount: 0
     )
 }
+
+// MARK: - Lookup Helpers
+
+extension BeatGrid {
+
+    /// Median IOI across consecutive beats. Falls back to `60 / bpm` when fewer
+    /// than two beats; 0 if the grid carries no tempo information.
+    public var medianBeatPeriod: Double {
+        guard beats.count >= 2 else {
+            return bpm > 0 ? 60.0 / bpm : 0.0
+        }
+        var iois: [Double] = []
+        iois.reserveCapacity(beats.count - 1)
+        for i in 1..<beats.count {
+            iois.append(beats[i] - beats[i - 1])
+        }
+        iois.sort()
+        return iois[iois.count / 2]
+    }
+
+    /// Index of the beat at-or-immediately-before `time`. `nil` if `time` is
+    /// strictly before the first beat or the grid is empty. Bisect search —
+    /// O(log n) — so safe on long grids.
+    public func beatIndex(at time: Double) -> Int? {
+        guard !beats.isEmpty, time >= beats[0] else { return nil }
+        var lo = 0
+        var hi = beats.count - 1
+        while lo < hi {
+            let mid = (lo + hi + 1) / 2
+            if beats[mid] <= time {
+                lo = mid
+            } else {
+                hi = mid - 1
+            }
+        }
+        return lo
+    }
+
+    /// Local timing at `time`: the beat period (current-to-next IOI, or
+    /// `60/bpm` past the last beat) plus the count of beats since the most
+    /// recent downbeat. Returns nil if `time` is before the first beat.
+    public func localTiming(at time: Double) -> (period: Double, beatsSinceDownbeat: Int)? {
+        guard let idx = beatIndex(at: time) else { return nil }
+        let period: Double
+        if idx + 1 < beats.count {
+            period = beats[idx + 1] - beats[idx]
+        } else if bpm > 0 {
+            period = 60.0 / bpm
+        } else {
+            period = 0.5
+        }
+        let beatsSince = beatsSinceDownbeat(beatIndex: idx)
+        return (period, beatsSince)
+    }
+
+    /// Nearest beat to `time` whose absolute distance is ≤ `window` seconds, or
+    /// nil if no beat falls within. Internal helper for LiveBeatDriftTracker.
+    func nearestBeat(to time: Double, within window: Double) -> Double? {
+        guard !beats.isEmpty else { return nil }
+        var lo = 0
+        var hi = beats.count - 1
+        while lo < hi {
+            let mid = (lo + hi) / 2
+            if beats[mid] < time {
+                lo = mid + 1
+            } else {
+                hi = mid
+            }
+        }
+        var best = Double.infinity
+        var bestVal: Double?
+        for cand in [lo - 1, lo] where cand >= 0 && cand < beats.count {
+            let dist = abs(beats[cand] - time)
+            if dist < best {
+                best = dist
+                bestVal = beats[cand]
+            }
+        }
+        guard best <= window else { return nil }
+        return bestVal
+    }
+
+    /// Beats since the most recent downbeat at-or-before the beat at `beatIndex`.
+    /// Falls back to `beatIndex % beatsPerBar` if no downbeats are available
+    /// (or `time` precedes the first downbeat).
+    private func beatsSinceDownbeat(beatIndex idx: Int) -> Int {
+        let bpb = max(beatsPerBar, 1)
+        guard !downbeats.isEmpty else {
+            return idx % bpb
+        }
+        let beatTime = beats[idx]
+        guard beatTime + 0.005 >= downbeats[0] else {
+            return idx % bpb
+        }
+        var lo = 0
+        var hi = downbeats.count - 1
+        while lo < hi {
+            let mid = (lo + hi + 1) / 2
+            if downbeats[mid] <= beatTime + 0.005 {
+                lo = mid
+            } else {
+                hi = mid - 1
+            }
+        }
+        let dbTime = downbeats[lo]
+        guard let dbBeatIdx = beatIndex(at: dbTime + 0.001) else {
+            return idx % bpb
+        }
+        return max(0, idx - dbBeatIdx)
+    }
+}
