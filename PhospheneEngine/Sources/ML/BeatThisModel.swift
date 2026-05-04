@@ -80,7 +80,10 @@ public final class BeatThisModel: @unchecked Sendable {
         }
         self.commandQueue = queue
         do {
-            self.graphBundle = try Self.buildGraph()
+            let weights = try Self.loadWeights()
+            self.graphBundle = try Self.buildGraph(weights: weights)
+        } catch let err as BeatThisModelError {
+            throw err
         } catch {
             throw BeatThisModelError.graphBuildFailed(error.localizedDescription)
         }

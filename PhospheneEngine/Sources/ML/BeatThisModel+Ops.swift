@@ -25,13 +25,14 @@ extension BeatThisModel {
         input: MPSGraphTensor,
         gamma: MPSGraphTensor,
         dim: Int,
+        normAxis: Int = 1,
         name: String
     ) -> MPSGraphTensor {
         let scalar: [NSNumber] = [1]
         let invDimC = graph.constant(1.0 / Double(dim), shape: scalar, dataType: .float32)
         let epsC = graph.constant(1e-6, shape: scalar, dataType: .float32)
         let xSq = graph.square(with: input, name: "\(name)sq")
-        let sumSq = graph.reductionSum(with: xSq, axis: 1, name: "\(name)sum")
+        let sumSq = graph.reductionSum(with: xSq, axis: normAxis, name: "\(name)sum")
         let meanSq = graph.multiplication(sumSq, invDimC, name: "\(name)mean")
         let rms = graph.squareRoot(
             with: graph.addition(meanSq, epsC, name: "\(name)eps"),
@@ -94,7 +95,7 @@ extension BeatThisModel {
         return graph.addition(mm, biasR, name: "\(name)ab")
     }
 
-    // MARK: - Constant Helpers
+        // MARK: - Constant Helpers
 
     static func makeZerosConst(_ graph: MPSGraph, shape: [NSNumber], name: String) -> MPSGraphTensor {
         graph.constant(0.0, shape: shape, dataType: .float32)
@@ -103,5 +104,16 @@ extension BeatThisModel {
     /// All-ones tensor [1, dim] — used as RMSNorm γ (broadcasts over T).
     static func makeOnesConst(_ graph: MPSGraph, dim: Int, name: String) -> MPSGraphTensor {
         graph.constant(1.0, shape: [1, NSNumber(value: dim)], dataType: .float32)
+    }
+
+    /// Create a Float32 constant from a [Float] array with the given shape.
+    static func makeConst(
+        _ graph: MPSGraph, _ vals: [Float], shape: [NSNumber], name: String
+    ) -> MPSGraphTensor {
+        graph.constant(
+            Data(bytes: vals, count: vals.count * MemoryLayout<Float>.size),
+            shape: shape,
+            dataType: .float32
+        )
     }
 }
