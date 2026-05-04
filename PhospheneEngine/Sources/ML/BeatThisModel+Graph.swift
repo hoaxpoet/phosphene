@@ -1,11 +1,13 @@
 // BeatThisModel+Graph — MPSGraph construction for Beat This! small0 encoder.
 //
-// S3: zero-weight initialisation. S4 replaces with checkpoint weights.
+// S4: real weights loaded from checkpoint.
 //
 // Three macOS-14 workarounds:
 //   RMSNorm  — manual: reductionSum(x²)/D + ε → √ → x/rms × γ  (see BeatThisModel+Ops)
 //   SDPA     — manual: Q@K.T/√D → softmax → @V  (scaledDotProductAttention is macOS 15+)
 //   RoPE     — precomputed (tMax, headDim/2) cos/sin constant tables
+
+// swiftlint:disable file_length
 
 import Foundation
 import MetalPerformanceShadersGraph
@@ -14,14 +16,27 @@ extension BeatThisModel {
 
     // MARK: - Build
 
-    static func buildGraph() throws -> BeatThisGraphBundle {
+    // swiftlint:disable:next function_body_length
+    static func buildGraph(weights: BeatThisWeights) throws -> BeatThisGraphBundle {
         let graph = MPSGraph()
 
         let inputShape: [NSNumber] = [NSNumber(value: tMax), NSNumber(value: inputMels)]
-        let input = graph.placeholder(shape: inputShape, dataType: .float32, name: "spectrogram")
+        let input = graph.placeholder(
+            shape: inputShape,
+            dataType: .float32,
+            name: "spectrogram"
+        )
 
         let (cosTable, sinTable) = buildRoPETables(graph: graph)
-        var x = buildFrontendLinear(graph: graph, input: input)
+
+        var x = buildFrontend(
+            graph: graph,
+            input: input,
+            weights: weights,
+            cosTable: cosTable,
+            sinTable: sinTable,
+            name: "fe"
+        )
 
         for idx in 0..<numBlocks {
             x = buildTransformerBlock(
@@ -29,25 +44,42 @@ extension BeatThisModel {
                 input: x,
                 cosTable: cosTable,
                 sinTable: sinTable,
+                blkWeights: weights.transformerBlocks[idx],
                 name: "blk\(idx)"
             )
         }
 
-        let postGamma = makeOnesConst(graph, dim: embedDim, name: "pn_g")
-        x = buildRMSNorm(graph: graph, input: x, gamma: postGamma, dim: embedDim, name: "pn")
+        let postGamma = makeConst(
+            graph,
+            weights.postNormGamma,
+            shape: [1, NSNumber(value: embedDim)],
+            name: "pn_g"
+        )
+        x = buildRMSNorm(
+            graph: graph,
+            input: x,
+            gamma: postGamma,
+            dim: embedDim,
+            name: "pn"
+        )
 
         let headSpec = BeatLinearSpec(
-            weight: makeZerosConst(
+            weight: makeConst(
                 graph,
+                weights.headWeight,
                 shape: [NSNumber(value: outputClasses), NSNumber(value: embedDim)],
                 name: "head_w"
             ),
-            bias: makeZerosConst(graph, shape: [NSNumber(value: outputClasses)], name: "head_b"),
+            bias: makeConst(
+                graph,
+                weights.headBias,
+                shape: [NSNumber(value: outputClasses)],
+                name: "head_b"
+            ),
             outDim: outputClasses
         )
         let headOut = buildLinear(graph: graph, input: x, spec: headSpec, name: "head")
 
-        // beats = col0 + col1 (downbeats ⊂ beats), downbeats = col1
         let col0 = graph.sliceTensor(headOut, dimension: 1, start: 0, length: 1, name: "col0")
         let col1 = graph.sliceTensor(headOut, dimension: 1, start: 1, length: 1, name: "col1")
         let beatLogits = graph.squeeze(
@@ -66,24 +98,6 @@ extension BeatThisModel {
         )
     }
 
-    // MARK: - Frontend Placeholder
-
-    private static func buildFrontendLinear(
-        graph: MPSGraph,
-        input: MPSGraphTensor
-    ) -> MPSGraphTensor {
-        let spec = BeatLinearSpec(
-            weight: makeZerosConst(
-                graph,
-                shape: [NSNumber(value: embedDim), NSNumber(value: inputMels)],
-                name: "fe_w"
-            ),
-            bias: makeZerosConst(graph, shape: [NSNumber(value: embedDim)], name: "fe_b"),
-            outDim: embedDim
-        )
-        return buildLinear(graph: graph, input: input, spec: spec, name: "fe")
-    }
-
     // MARK: - RoPE Tables
 
     private static func buildRoPETables(
@@ -94,11 +108,11 @@ extension BeatThisModel {
         var sinVals = [Float](repeating: 0, count: tMax * half)
 
         for pos in 0..<tMax {
-            for i in 0..<half {
-                let freq = 1.0 / pow(10000.0, Double(2 * i) / Double(headDim))
+            for idx in 0..<half {
+                let freq = 1.0 / pow(10000.0, Double(2 * idx) / Double(headDim))
                 let angle = Float(Double(pos) * freq)
-                cosVals[pos * half + i] = Foundation.cos(angle)
-                sinVals[pos * half + i] = Foundation.sin(angle)
+                cosVals[pos * half + idx] = Foundation.cos(angle)
+                sinVals[pos * half + idx] = Foundation.sin(angle)
             }
         }
 
@@ -118,11 +132,13 @@ extension BeatThisModel {
 
     // MARK: - Transformer Block
 
+    // swiftlint:disable:next function_parameter_count
     private static func buildTransformerBlock(
         graph: MPSGraph,
         input: MPSGraphTensor,
         cosTable: MPSGraphTensor,
         sinTable: MPSGraphTensor,
+        blkWeights: BeatThisTransformerBlockWeights,
         name: String
     ) -> MPSGraphTensor {
         let attnOut = buildAttention(
@@ -130,48 +146,64 @@ extension BeatThisModel {
             input: input,
             cosTable: cosTable,
             sinTable: sinTable,
+            blkWeights: blkWeights.attn,
             name: "\(name)a"
         )
         let res1 = graph.addition(input, attnOut, name: "\(name)r1")
         return graph.addition(
             res1,
-            buildFFN(graph: graph, input: res1, name: "\(name)f"),
+            buildFFN(
+                graph: graph,
+                input: res1,
+                blkWeights: blkWeights.ffn,
+                name: "\(name)f"
+            ),
             name: "\(name)r2"
         )
     }
 
-    // MARK: - Attention
+    // MARK: - Transformer Attention
 
-    // swiftlint:disable:next function_body_length
+    // swiftlint:disable:next function_body_length function_parameter_count
     private static func buildAttention(
         graph: MPSGraph,
         input: MPSGraphTensor,
         cosTable: MPSGraphTensor,
         sinTable: MPSGraphTensor,
+        blkWeights: BeatThisAttnWeights,
         name: String
     ) -> MPSGraphTensor {
-        let inner = numHeads * headDim  // 128
-        let qkvDim = 3 * inner          // 384
+        let inner = numHeads * headDim
+        let qkvDim = 3 * inner
 
+        let gamma = makeConst(
+            graph,
+            blkWeights.normGamma,
+            shape: [1, NSNumber(value: embedDim)],
+            name: "\(name)ng"
+        )
         let xNorm = buildRMSNorm(
             graph: graph,
             input: input,
-            gamma: makeOnesConst(graph, dim: embedDim, name: "\(name)ng"),
+            gamma: gamma,
             dim: embedDim,
             name: "\(name)n"
+        )
+
+        let qkvSpec = BeatLinearSpec(
+            weight: makeConst(
+                graph,
+                blkWeights.qkvWeight,
+                shape: [NSNumber(value: qkvDim), NSNumber(value: embedDim)],
+                name: "\(name)qw"
+            ),
+            bias: nil,
+            outDim: qkvDim
         )
         let qkvFlat = buildLinear(
             graph: graph,
             input: xNorm,
-            spec: BeatLinearSpec(
-                weight: makeZerosConst(
-                    graph,
-                    shape: [NSNumber(value: qkvDim), NSNumber(value: embedDim)],
-                    name: "\(name)qw"
-                ),
-                bias: nil,
-                outDim: qkvDim
-            ),
+            spec: qkvSpec,
             name: "\(name)qkv"
         )
 
@@ -204,18 +236,30 @@ extension BeatThisModel {
         let vHT = graph.transposeTensor(v3d, dimension: 0, withDimension: 1, name: "\(name)vHT")
 
         let qRoPE = applyRoPE(
-            graph: graph, x: qHT, cosTable: cosTable, sinTable: sinTable, name: "\(name)qr"
+            graph: graph,
+            x: qHT,
+            cosTable: cosTable,
+            sinTable: sinTable,
+            name: "\(name)qr"
         )
         let kRoPE = applyRoPE(
-            graph: graph, x: kHT, cosTable: cosTable, sinTable: sinTable, name: "\(name)kr"
+            graph: graph,
+            x: kHT,
+            cosTable: cosTable,
+            sinTable: sinTable,
+            name: "\(name)kr"
         )
 
-        let scaleShape: [NSNumber] = [1]
+        let scaleConst = graph.constant(
+            1.0 / sqrt(Double(headDim)),
+            shape: [1],
+            dataType: .float32
+        )
         let kT = graph.transposeTensor(kRoPE, dimension: 1, withDimension: 2, name: "\(name)kT")
         let attn = graph.softMax(
             with: graph.multiplication(
                 graph.matrixMultiplication(primary: qRoPE, secondary: kT, name: "\(name)sc"),
-                graph.constant(1.0 / sqrt(Double(headDim)), shape: scaleShape, dataType: .float32),
+                scaleConst,
                 name: "\(name)scl"
             ),
             axis: 2,
@@ -223,21 +267,23 @@ extension BeatThisModel {
         )
         let attnOut = graph.matrixMultiplication(primary: attn, secondary: vHT, name: "\(name)av")
 
-        let gatesSig = graph.sigmoid(
-            with: buildLinear(
-                graph: graph,
-                input: xNorm,
-                spec: BeatLinearSpec(
-                    weight: makeZerosConst(
-                        graph,
-                        shape: [NSNumber(value: numHeads), NSNumber(value: embedDim)],
-                        name: "\(name)gw"
-                    ),
-                    bias: makeZerosConst(graph, shape: [NSNumber(value: numHeads)], name: "\(name)gb"),
-                    outDim: numHeads
-                ),
-                name: "\(name)g"
+        let gateSpec = BeatLinearSpec(
+            weight: makeConst(
+                graph,
+                blkWeights.gateWeight,
+                shape: [NSNumber(value: numHeads), NSNumber(value: embedDim)],
+                name: "\(name)gw"
             ),
+            bias: makeConst(
+                graph,
+                blkWeights.gateBias,
+                shape: [NSNumber(value: numHeads)],
+                name: "\(name)gb"
+            ),
+            outDim: numHeads
+        )
+        let gatesSig = graph.sigmoid(
+            with: buildLinear(graph: graph, input: xNorm, spec: gateSpec, name: "\(name)g"),
             name: "\(name)gs"
         )
         let gatesExp = graph.expandDims(
@@ -259,8 +305,9 @@ extension BeatThisModel {
             graph: graph,
             input: outFlat,
             spec: BeatLinearSpec(
-                weight: makeZerosConst(
+                weight: makeConst(
                     graph,
+                    blkWeights.outWeight,
                     shape: [NSNumber(value: embedDim), NSNumber(value: inner)],
                     name: "\(name)tow"
                 ),
@@ -271,7 +318,7 @@ extension BeatThisModel {
         )
     }
 
-    // MARK: - RoPE Application
+    // MARK: - RoPE Application (transformer blocks)
 
     private static func applyRoPE(
         graph: MPSGraph,
@@ -296,17 +343,24 @@ extension BeatThisModel {
         return graph.concatTensors([r1, r2], dimension: 2, name: "\(name)cat")
     }
 
-    // MARK: - FFN
+    // MARK: - Transformer FFN
 
     private static func buildFFN(
         graph: MPSGraph,
         input: MPSGraphTensor,
+        blkWeights: BeatThisFFNWeights,
         name: String
     ) -> MPSGraphTensor {
+        let gamma = makeConst(
+            graph,
+            blkWeights.normGamma,
+            shape: [1, NSNumber(value: embedDim)],
+            name: "\(name)ng"
+        )
         let xNorm = buildRMSNorm(
             graph: graph,
             input: input,
-            gamma: makeOnesConst(graph, dim: embedDim, name: "\(name)ng"),
+            gamma: gamma,
             dim: embedDim,
             name: "\(name)n"
         )
@@ -316,12 +370,18 @@ extension BeatThisModel {
                 graph: graph,
                 input: xNorm,
                 spec: BeatLinearSpec(
-                    weight: makeZerosConst(
+                    weight: makeConst(
                         graph,
+                        blkWeights.upWeight,
                         shape: [NSNumber(value: ffnDim), NSNumber(value: embedDim)],
                         name: "\(name)uw"
                     ),
-                    bias: makeZerosConst(graph, shape: [NSNumber(value: ffnDim)], name: "\(name)ub"),
+                    bias: makeConst(
+                        graph,
+                        blkWeights.upBias,
+                        shape: [NSNumber(value: ffnDim)],
+                        name: "\(name)ub"
+                    ),
                     outDim: ffnDim
                 ),
                 name: "\(name)up"
@@ -332,12 +392,18 @@ extension BeatThisModel {
             graph: graph,
             input: activated,
             spec: BeatLinearSpec(
-                weight: makeZerosConst(
+                weight: makeConst(
                     graph,
+                    blkWeights.downWeight,
                     shape: [NSNumber(value: embedDim), NSNumber(value: ffnDim)],
                     name: "\(name)dw"
                 ),
-                bias: makeZerosConst(graph, shape: [NSNumber(value: embedDim)], name: "\(name)db"),
+                bias: makeConst(
+                    graph,
+                    blkWeights.downBias,
+                    shape: [NSNumber(value: embedDim)],
+                    name: "\(name)db"
+                ),
                 outDim: embedDim
             ),
             name: "\(name)dn"
