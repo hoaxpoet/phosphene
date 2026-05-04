@@ -216,9 +216,11 @@ extension VisualizerEngine {
 
         if let identity, let cached = stemCache?.loadForPlayback(track: identity) {
             pipeline.setStemFeatures(cached.stemFeatures)
+            mirPipeline.setBeatGrid(cached.beatGrid)
             logger.info("Stem pipeline loaded from cache: \(identity.title) by \(identity.artist)")
         } else {
             pipeline.setStemFeatures(.zero)
+            mirPipeline.setBeatGrid(nil)
             logger.info("Stem pipeline reset (track change, no cache entry)")
         }
         // StemSampleBuffer intentionally not reset — continues accumulating for live separation.

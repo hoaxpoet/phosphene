@@ -33,6 +33,14 @@ private let logger = Logger(subsystem: "com.phosphene.dsp", category: "BeatPredi
 // MARK: - BeatPredictor
 
 /// Predicts beat phase and time-until-next-beat from BeatDetector onset pulses.
+///
+/// > Deprecated for tracks with cached `BeatGrid` analysis (DSP.2 S7, 2026-05-04).
+/// > Tracks where `MIRPipeline.setBeatGrid(_:)` has been called with a non-empty
+/// > grid drive `FeatureVector.beatPhase01` / `beatsUntilNext` from
+/// > `LiveBeatDriftTracker` instead. This class remains the load-bearing
+/// > fallback for **reactive mode** — ad-hoc playback, preview-unavailable
+/// > tracks, or any path where Beat This! offline analysis did not run. New
+/// > shader code should not assume this is the active source of phase.
 public final class BeatPredictor: @unchecked Sendable {
 
     // MARK: - Result
