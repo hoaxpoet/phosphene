@@ -77,6 +77,7 @@ public final class SessionPreparer: ObservableObject {
     private let stemSeparator: any StemSeparating
     private let stemAnalyzer: any StemAnalyzing
     private let moodClassifier: any MoodClassifying
+    private let beatGridAnalyzer: (any BeatGridAnalyzing)?
 
     // MARK: - Cache
 
@@ -104,6 +105,9 @@ public final class SessionPreparer: ObservableObject {
     ///   - stemSeparator: MPSGraph-based stem separator (injectable for testing).
     ///   - stemAnalyzer: Per-stem energy analyzer (injectable for testing).
     ///   - moodClassifier: Valence/arousal classifier (injectable for testing).
+    ///   - beatGridAnalyzer: Beat This! offline analyzer (optional). When `nil`,
+    ///     `CachedTrackData.beatGrid` is `.empty` for every track — the live
+    ///     beat-detection path remains the source of truth.
     ///   - cache: The StemCache to populate. Defaults to a fresh instance.
     public init(
         resolver: any PreviewResolving,
@@ -111,6 +115,7 @@ public final class SessionPreparer: ObservableObject {
         stemSeparator: any StemSeparating,
         stemAnalyzer: any StemAnalyzing,
         moodClassifier: any MoodClassifying,
+        beatGridAnalyzer: (any BeatGridAnalyzing)? = nil,
         cache: StemCache = StemCache()
     ) {
         self.resolver = resolver
@@ -118,6 +123,7 @@ public final class SessionPreparer: ObservableObject {
         self.stemSeparator = stemSeparator
         self.stemAnalyzer = stemAnalyzer
         self.moodClassifier = moodClassifier
+        self.beatGridAnalyzer = beatGridAnalyzer
         self.cache = cache
     }
 
@@ -183,6 +189,16 @@ public final class SessionPreparer: ObservableObject {
         for track in tracks {
             if Task.isCancelled { break }
 
+            // Cache-hit short-circuit — idempotent prepare(tracks:) skips re-analysis.
+            if cache.loadForPlayback(track: track) != nil {
+                trackStatuses[track] = .ready
+                cachedTracks.append(track)
+                let done = cachedTracks.count + failedTracks.count
+                progress = (done, tracks.count)
+                logger.info("Cache hit: \(track.title) — skipping re-analysis")
+                continue
+            }
+
             do {
                 let data = try await prepareTrack(track)
 
@@ -243,11 +259,13 @@ public final class SessionPreparer: ObservableObject {
         }
 
         // All CPU-bound analysis runs off the main actor.
-        // NOTE: .mir sub-stage not emitted separately (MIR runs inside detached task).
+        // NOTE: .mir and .beatGrid sub-stages are not emitted separately
+        // (both run inside the detached task alongside stem separation).
         trackStatuses[track] = .analyzing(stage: .stemSeparation)
         let separator = stemSeparator
         let analyzer = stemAnalyzer
         let classifier = moodClassifier
+        let gridAnalyzer = beatGridAnalyzer
 
         do {
             return try await Task.detached(priority: .userInitiated) {
@@ -255,7 +273,8 @@ public final class SessionPreparer: ObservableObject {
                     preview,
                     separator: separator,
                     analyzer: analyzer,
-                    classifier: classifier
+                    classifier: classifier,
+                    beatGridAnalyzer: gridAnalyzer
                 )
             }.value
         } catch {

@@ -7,11 +7,15 @@ import Foundation
 // MARK: - AnalysisStage
 
 /// Sub-stage within the analysis phase of session preparation.
+///
+/// Four stages: stem separation → MIR → Beat This! beat grid → caching.
 public enum AnalysisStage: Sendable, Equatable {
     /// MPSGraph stem separation running (the bottleneck — up to 142 ms).
     case stemSeparation
     /// MIR pipeline: BPM, key, mood, spectral centroid.
     case mir
+    /// Beat This! transformer: preprocessing → MPSGraph → BeatGridResolver.
+    case beatGrid
     /// Writing completed analysis to StemCache.
     case caching
 }

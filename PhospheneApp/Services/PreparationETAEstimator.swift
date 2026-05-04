@@ -87,6 +87,7 @@ struct PreparationETAEstimator {
             switch stage {
             case .stemSeparation: return [.caching]
             case .mir: return [.caching]
+            case .beatGrid: return [.caching]
             case .caching: return []
             }
         case .ready, .partial, .failed:
