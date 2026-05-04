@@ -331,12 +331,15 @@ final class DefaultPlaybackActionRouter: PlaybackActionRouter, @unchecked Sendab
         let profile = getTrackProfile() ?? TrackProfile.empty
         let scorer = DefaultPresetScorer()
 
-        // Reactive / ad-hoc fallback: in the absence of a live plan AND a real
-        // track profile, the scorer is degenerate (sub-scores collapse to
-        // constants on TrackProfile.empty) and produces a small fixed cycle
-        // (typically 2–3 presets). Fall back to alphabetical walking so the
-        // user can reach every preset via Shift+→ in reactive mode.
-        if getLivePlan() == nil && getTrackProfile() == nil && !catalog.isEmpty {
+        // Manual override: Shift+arrow (immediate==true) always walks the full
+        // catalog alphabetically. The scorer-driven "stylistic nudge at
+        // boundary" path (plain arrow, immediate==false) is preserved for
+        // normal listening, but `immediate` is the user explicitly taking
+        // control — they want a predictable cycle, not a fresh-scored pick
+        // that may collapse to a 2–3 preset cycle when sub-scores are
+        // degenerate (TrackProfile.empty / no plan / metadata-driven profiles
+        // that don't differentiate descriptors).
+        if immediate && !catalog.isEmpty {
             if reactiveWalkNudge(direction: direction, immediate: immediate, catalog: catalog) {
                 return
             }
