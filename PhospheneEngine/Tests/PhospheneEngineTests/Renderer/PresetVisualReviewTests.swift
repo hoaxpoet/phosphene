@@ -65,7 +65,7 @@ struct PresetVisualReviewTests {
     // MARK: - Tests
 
     @Test("Render preset to PNGs + contact sheet (RENDER_VISUAL=1)",
-          arguments: ["Arachne"])
+          arguments: ["Arachne", "Gossamer", "Volumetric Lithograph"])
     func renderPresetVisualReview(_ presetName: String) throws {
         guard ProcessInfo.processInfo.environment["RENDER_VISUAL"] == "1" else {
             print("[PresetVisualReview] RENDER_VISUAL not set, skipping \(presetName)")
