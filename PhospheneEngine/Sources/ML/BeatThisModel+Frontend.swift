@@ -227,6 +227,7 @@ extension BeatThisModel {
             sinTable: sinFSlice,
             name: "\(name)aF"
         )
+        intermediates["frontend.blocks.\(blockIdx).partial.attnF"] = attnFOut
         let xFAttn = graph.addition(xF, attnFOut, name: "\(name)aFr")
         let ffFOut = buildBatchedFFN(
             graph: graph,
@@ -235,6 +236,7 @@ extension BeatThisModel {
             dim: inDim,
             name: "\(name)fF"
         )
+        intermediates["frontend.blocks.\(blockIdx).partial.ffF"] = ffFOut
         let xFFF = graph.addition(xFAttn, ffFOut, name: "\(name)fFr")
         // Restore [tMax, freqDim, inDim] → transpose → [freqDim, tMax, inDim]
         //       → [1, freqDim, tMax, inDim]
@@ -263,6 +265,7 @@ extension BeatThisModel {
             sinTable: sinTable,
             name: "\(name)aT"
         )
+        intermediates["frontend.blocks.\(blockIdx).partial.attnT"] = attnTOut
         let xTAttn = graph.addition(xT, attnTOut, name: "\(name)aTr")
         let ffTOut = buildBatchedFFN(
             graph: graph,
@@ -271,6 +274,7 @@ extension BeatThisModel {
             dim: inDim,
             name: "\(name)fT"
         )
+        intermediates["frontend.blocks.\(blockIdx).partial.ffT"] = ffTOut
         let xTFF = graph.addition(xTAttn, ffTOut, name: "\(name)fTr")
         x = graph.reshape(
             xTFF,
@@ -586,6 +590,17 @@ extension BeatThisModel {
     // MARK: - 4D RoPE (frontend batched attention)
 
     // Apply RoPE to [B, H, S, Hd] using cos/sin [1, 1, S, Hd/2].
+    //
+    // Matches `rotary_embedding_torch.rotate_half`: pairs ADJACENT elements
+    // ((x[0],x[1]), (x[2],x[3]), …) — NOT halves ((x[0],x[D/2]), (x[1],x[D/2+1]), …).
+    // Each pair (a, b) at position s rotates as:
+    //   new_a = a·cos[s] − b·sin[s]
+    //   new_b = a·sin[s] + b·cos[s]
+    // This was a real DSP.2 S8 bug in the prior implementation: half-and-half
+    // pairing produced wrong attention everywhere.
+    //
+    // Implementation: reshape last dim D → (D/2, 2), slice the inner-2 axis
+    // for the even/odd halves of each pair, compute rotation, stack back.
     private static func applyRoPE4D(
         graph: MPSGraph,
         x: MPSGraphTensor,
@@ -593,19 +608,40 @@ extension BeatThisModel {
         sinTable: MPSGraphTensor,
         name: String
     ) -> MPSGraphTensor {
+        // swiftlint:disable force_unwrapping
+        let xShape = x.shape!
+        // swiftlint:enable force_unwrapping
         let halfD = headDim / 2
-        let x1 = graph.sliceTensor(x, dimension: 3, start: 0, length: halfD, name: "\(name)x1")
-        let x2 = graph.sliceTensor(x, dimension: 3, start: halfD, length: halfD, name: "\(name)x2")
-        let r1 = graph.subtraction(
-            graph.multiplication(x1, cosTable, name: "\(name)x1c"),
-            graph.multiplication(x2, sinTable, name: "\(name)x2s"),
-            name: "\(name)r1"
+        // Reshape [B, H, S, D] → [B, H, S, D/2, 2]
+        let pairedShape: [NSNumber] = [
+            xShape[0], xShape[1], xShape[2],
+            NSNumber(value: halfD), 2
+        ]
+        let xPaired = graph.reshape(x, shape: pairedShape, name: "\(name)pair")
+        // Slice along axis 4: even at [...,0:1], odd at [...,1:2]
+        let evenSlice4d = graph.sliceTensor(
+            xPaired, dimension: 4, start: 0, length: 1, name: "\(name)ev"
         )
-        let r2 = graph.addition(
-            graph.multiplication(x1, sinTable, name: "\(name)x1s"),
-            graph.multiplication(x2, cosTable, name: "\(name)x2c"),
-            name: "\(name)r2"
+        let xEven4d = graph.squeeze(evenSlice4d, axis: 4, name: "\(name)evSq")
+        let oddSlice4d = graph.sliceTensor(
+            xPaired, dimension: 4, start: 1, length: 1, name: "\(name)od"
         )
-        return graph.concatTensors([r1, r2], dimension: 3, name: "\(name)cat")
+        let xOdd4d = graph.squeeze(oddSlice4d, axis: 4, name: "\(name)odSq")
+        // Now xEven and xOdd are [B, H, S, D/2]. cos/sin tables match.
+        let rEven = graph.subtraction(
+            graph.multiplication(xEven4d, cosTable, name: "\(name)evC"),
+            graph.multiplication(xOdd4d, sinTable, name: "\(name)odS"),
+            name: "\(name)rEv"
+        )
+        let rOdd = graph.addition(
+            graph.multiplication(xEven4d, sinTable, name: "\(name)evS"),
+            graph.multiplication(xOdd4d, cosTable, name: "\(name)odC"),
+            name: "\(name)rOd"
+        )
+        // Stack: re-add axis=4 and concat along it → [B, H, S, D/2, 2]
+        let rEvenE = graph.expandDims(rEven, axis: 4, name: "\(name)rEvEx")
+        let rOddE = graph.expandDims(rOdd, axis: 4, name: "\(name)rOdEx")
+        let rPaired = graph.concatTensors([rEvenE, rOddE], dimension: 4, name: "\(name)pCat")
+        return graph.reshape(rPaired, shape: xShape, name: "\(name)merge")
     }
 }

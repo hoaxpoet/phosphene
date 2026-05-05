@@ -71,6 +71,13 @@ public final class BeatThisModel: @unchecked Sendable {
     private let graphBundle: BeatThisGraphBundle
     private let inputBuffer: MTLBuffer
     private let lock = NSLock()
+    /// Per-mel pad value such that `bn1d(padValue) == 0`. Padding the
+    /// spectrogram with these instead of zeros means the BN1d output for the
+    /// padded region is genuinely zero, matching PyTorch's "padding is zeros"
+    /// expectation downstream of the BN. Without this, BN1d transforms zero
+    /// padding into shift values that bleed through the stem conv and corrupt
+    /// the last 3 timesteps — propagating through every subsequent layer.
+    private let bn1dPadValues: [Float]
 
     // MARK: - Init
 
@@ -84,14 +91,23 @@ public final class BeatThisModel: @unchecked Sendable {
             throw BeatThisModelError.deviceError("Failed to create command queue")
         }
         self.commandQueue = queue
+        let loadedWeights: BeatThisWeights
         do {
-            let weights = try Self.loadWeights()
-            self.graphBundle = try Self.buildGraph(weights: weights)
+            loadedWeights = try Self.loadWeights()
+            self.graphBundle = try Self.buildGraph(weights: loadedWeights)
         } catch let err as BeatThisModelError {
             throw err
         } catch {
             throw BeatThisModelError.graphBuildFailed(error.localizedDescription)
         }
+        // Compute -shift/scale per mel so padded positions map to zero post-BN1d.
+        var padVals = [Float](repeating: 0, count: Self.inputMels)
+        for melIdx in 0..<Self.inputMels {
+            let scale = loadedWeights.stemBN1d.scale[melIdx]
+            let shift = loadedWeights.stemBN1d.shift[melIdx]
+            padVals[melIdx] = scale != 0 ? -shift / scale : 0
+        }
+        self.bn1dPadValues = padVals
         let inputBytes = Self.tMax * Self.inputMels * MemoryLayout<Float>.size
         guard let buf = device.makeBuffer(length: inputBytes, options: .storageModeShared) else {
             throw BeatThisModelError.deviceError("Failed to allocate input buffer")
@@ -224,6 +240,19 @@ public final class BeatThisModel: @unchecked Sendable {
         if spectrogram.count >= total {
             return Array(spectrogram.prefix(total))
         }
-        return spectrogram + [Float](repeating: 0, count: total - spectrogram.count)
+        // Pad with the per-mel BN1d-pre-zero values so the padded region
+        // maps to zero after BN1d (matching PyTorch's zero-padding semantics).
+        var out = [Float]()
+        out.reserveCapacity(total)
+        out.append(contentsOf: spectrogram)
+        let remainingFrames = (total - spectrogram.count) / Self.inputMels
+        for _ in 0..<remainingFrames {
+            out.append(contentsOf: bn1dPadValues)
+        }
+        let leftover = total - out.count
+        if leftover > 0 {
+            out.append(contentsOf: bn1dPadValues.prefix(leftover))
+        }
+        return out
     }
 }

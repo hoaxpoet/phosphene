@@ -111,9 +111,14 @@ def main() -> int:
     handles.append(stem.bn2d.register_forward_hook(hook("stem.bn2d")))
     handles.append(stem.activation.register_forward_hook(hook("stem.activation")))
 
-    # Frontend blocks (3 of them).
+    # Frontend blocks (3 of them) + partial-FT sub-modules to localise the
+    # remaining DSP.2 S8 divergence inside attnF/ffF/attnT/ffT.
     for i, block in enumerate(model.frontend.blocks):
         handles.append(block.partial.register_forward_hook(hook(f"frontend.blocks.{i}.partial")))
+        handles.append(block.partial.attnF.register_forward_hook(hook(f"frontend.blocks.{i}.partial.attnF")))
+        handles.append(block.partial.ffF.register_forward_hook(hook(f"frontend.blocks.{i}.partial.ffF")))
+        handles.append(block.partial.attnT.register_forward_hook(hook(f"frontend.blocks.{i}.partial.attnT")))
+        handles.append(block.partial.ffT.register_forward_hook(hook(f"frontend.blocks.{i}.partial.ffT")))
         handles.append(block.conv2d.register_forward_hook(hook(f"frontend.blocks.{i}.conv2d")))
         handles.append(block.norm.register_forward_hook(hook(f"frontend.blocks.{i}.norm")))
         handles.append(block.activation.register_forward_hook(hook(f"frontend.blocks.{i}.activation")))

@@ -141,15 +141,15 @@ import Foundation
         let maxProb = beats.max() ?? 0
         let aboveHalf = beats.filter { $0 > 0.5 }.count
 
-        // What we WANT (Python reference: max ≈ 1.0, ~120 frames > 0.5).
-        // What we GET today: max ≈ 0.29, 0 frames > 0.5 → BeatGridResolver
-        // produces an empty grid → S7's drift tracker stays dormant.
-        withKnownIssue("BeatThisModel produces sub-threshold output on real audio (DSP.2 followup)") {
-            #expect(maxProb > 0.9,
-                    "max sigmoid should be near 1.0 at strong beats; got \(maxProb)")
-            #expect(aboveHalf >= 50,
-                    "expected ≥50 frames above 0.5 in 30s of 4/4 music; got \(aboveHalf)")
-        }
+        // Python reference on the same audio: max ≈ 0.9999, ~124 frames > 0.5.
+        // After DSP.2 S8 fixes (norm-after-conv with correct out_dim shape,
+        // transpose-before-reshape on stem input, BN1d-aware padding, paired
+        // RoPE in BOTH 4D frontend attention and 3D transformer attention)
+        // Swift now produces equivalent output and these assertions pass.
+        #expect(maxProb > 0.9,
+                "max sigmoid should be near 1.0 at strong beats; got \(maxProb)")
+        #expect(aboveHalf >= 50,
+                "expected ≥50 frames above 0.5 in 30s of 4/4 music; got \(aboveHalf)")
     }
 
     // MARK: - Helpers
