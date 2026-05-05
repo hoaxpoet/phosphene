@@ -850,41 +850,113 @@ fragment float4 arachne_fragment(
     return float4(color, 1.0);
 }
 
-// ── MV-Warp functions ─────────────────────────────────────────────────────────
-// decay 0.92: short echo smears thread halos into bioluminescent trails. (D-041)
+// ── V.7.7A: Staged composition WORLD + COMPOSITE (placeholder) ───────────────
+//
+// The mv_warp helpers (`mvWarpPerFrame`, `mvWarpPerVertex`) and the
+// `arachne_fragment` v5/v7 fragment above are no longer dispatched at
+// runtime — the Arachne JSON sidecar now declares `passes: ["staged"]`
+// and routes through the two staged fragments below. The legacy code
+// remains in this file as a reference for the v8 WORLD/WEB/DROPLET
+// rebuild scheduled in V.7.7B+; the staged-composition compile path
+// (PresetLoader.compileStagedShader) does not pull in the mv_warp
+// preamble, so any dead helper that depended on `MVWarpPerFrame` had
+// to be removed to keep the staged compile clean.
+// Minimum two-stage scaffold that proves the Arachne v8 staged-rendering
+// architecture per docs/VISUAL_REFERENCES/arachne/Arachne_Rendering_Architecture_Contract.md
+// and the V.ENGINE.1 design.
+//
+//   Stage A "world"     → renders a primitive forest backdrop into an
+//                         offscreen .rgba16Float texture.
+//   Stage B "composite" → samples the world texture at [[texture(13)]] and
+//                         overlays a placeholder hub-and-spokes web before
+//                         writing to the drawable.
+//
+// Real WORLD detail (forest layers, dewy background webs, atmosphere — refs
+// 01/04/05/08), refractive droplets, full-quality silk geometry, and the
+// spider all arrive in V.7.7B+. The existing `arachne_fragment` above is kept
+// in the file as the v5/v7 reference and is no longer dispatched at runtime
+// (the JSON sidecar now declares passes:["staged"]).
 
-MVWarpPerFrame mvWarpPerFrame(
-    constant FeatureVector& f,
-    constant StemFeatures&  stems,
-    constant SceneUniforms& s
+constant constexpr sampler arachne_world_sampler(filter::linear,
+                                                  address::clamp_to_edge);
+
+fragment float4 arachne_world_fragment(
+    VertexOut in [[stage_in]],
+    constant FeatureVector& f [[buffer(0)]]
 ) {
-    MVWarpPerFrame pf;
-    pf.cx = 0.0; pf.cy = 0.0;
-    pf.dx = 0.0; pf.dy = 0.0;
-    pf.sx = 1.0; pf.sy = 1.0;
-    pf.warp = 0.0;
+    float2 uv = in.uv;
 
-    pf.zoom  = 1.0 + f.bass_att_rel * 0.007 + f.mid_att_rel * 0.004;
-    pf.rot   = f.mid_att_rel * 0.002;
-    pf.decay = 0.92;
+    // Cool→deep vertical gradient suggesting a damp, low-light forest stage.
+    float3 topCol = float3(0.18, 0.22, 0.28);
+    float3 botCol = float3(0.04, 0.05, 0.07);
+    float3 col    = mix(topCol, botCol, uv.y);
 
-    pf.q1 = f.bass_att_rel;
-    pf.q2 = f.mid_att_rel;
-    pf.q3 = 0.0; pf.q4 = 0.0;
-    pf.q5 = 0.0; pf.q6 = 0.0; pf.q7 = 0.0; pf.q8 = 0.0;
-    return pf;
+    // Horizon haze band reads as distant atmosphere.
+    float horizon = smoothstep(0.55, 0.78, uv.y);
+    col = mix(col, float3(0.09, 0.11, 0.13), horizon * 0.55);
+
+    // Forest-floor fade at the very bottom.
+    float floorFade = smoothstep(0.82, 1.0, uv.y);
+    col = mix(col, float3(0.025, 0.030, 0.035), floorFade * 0.85);
+
+    // Three dark trunk silhouettes — vertical-line SDFs, taper to floor.
+    float treeXs[3] = { 0.18, 0.52, 0.84 };
+    float treeWs[3] = { 0.020, 0.027, 0.016 };
+    float silhouette = 0.0;
+    for (int i = 0; i < 3; i++) {
+        float w = treeWs[i] * mix(0.55, 1.0, uv.y);
+        float d = abs(uv.x - treeXs[i]);
+        silhouette = max(silhouette, smoothstep(w + 0.005, w - 0.005, d));
+    }
+    col = mix(col, float3(0.012, 0.015, 0.018), silhouette);
+
+    // Hash dither so the offscreen texture is not perfectly banded.
+    float n = fract(sin(dot(uv * 137.0, float2(12.9898, 78.233))) * 43758.5453);
+    col *= (0.97 + 0.03 * n);
+
+    return float4(col, 1.0);
 }
 
-float2 mvWarpPerVertex(
-    float2 uv, float rad, float ang,
-    thread const MVWarpPerFrame& pf,
-    constant FeatureVector& f,
-    constant StemFeatures& stems
+fragment float4 arachne_composite_fragment(
+    VertexOut in [[stage_in]],
+    constant FeatureVector& f [[buffer(0)]],
+    texture2d<float, access::sample> worldTex [[texture(13)]]
 ) {
-    float2 centre = float2(0.5, 0.5);
-    float2 p      = uv - centre;
-    float  zoomAmt = 1.0 / max(pf.zoom, 0.001);
-    float2 zoomed  = p * zoomAmt + centre;
-    float  wobble  = (pf.q1 * 0.010 + pf.q2 * 0.006) * rad;
-    return zoomed + p * wobble;
+    float2 uv = in.uv;
+
+    // World backdrop from stage A — proves cross-pass texture sampling.
+    float3 col = worldTex.sample(arachne_world_sampler, uv).rgb;
+
+    // Placeholder web overlay: hub + 12 radial spokes + concentric rings.
+    float2 hub  = float2(0.50, 0.42);
+    float2 d2   = uv - hub;
+    float dist  = length(d2);
+    float ang   = atan2(d2.y, d2.x);
+
+    // 12 radials — periodic distance-to-line.
+    float spokeStep = 6.2831853 / 12.0;
+    float spokeAng  = fract(ang / spokeStep + 0.5) - 0.5;
+    float perp      = abs(spokeAng) * spokeStep * dist;
+    float spokeMask = smoothstep(0.0030, 0.0014, perp)
+                    * smoothstep(0.34, 0.32, dist);
+
+    // Concentric capture rings — periodic distance-to-radius.
+    float ringDist = abs(fract(dist * 9.0) - 0.5);
+    float ringMask = smoothstep(0.05, 0.02, ringDist)
+                   * smoothstep(0.05, 0.07, dist)
+                   * smoothstep(0.34, 0.30, dist);
+
+    float web = max(spokeMask, ringMask * 0.5);
+
+    // Hub dot.
+    float hubMask = smoothstep(0.020, 0.010, dist);
+    web = max(web, hubMask);
+
+    // Audio-reactive emission gain — deviation form per D-026.
+    //   continuous: 1.0 + 0.18 × bass_att_rel
+    // Silence (bass_att_rel = -0.5..0) leaves the web visibly dim but present.
+    float gain = 1.0 + 0.18 * f.bass_att_rel;
+    col += float3(0.85, 0.92, 1.00) * web * 0.55 * gain;
+    col = min(col, float3(1.0));
+    return float4(col, 1.0);
 }

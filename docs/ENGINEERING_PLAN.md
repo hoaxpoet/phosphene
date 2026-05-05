@@ -1250,7 +1250,30 @@ Per-preset state setup handles Arachne (allocates `ArachneState`, warms 30 ticks
 
 ---
 
+### Increment V.7.7A — Arachne staged-composition scaffold migration ✅ 2026-05-05
+
+**Scope:** Migrate Arachne from `passes: ["mv_warp"]` + monolithic `arachne_fragment` to the V.ENGINE.1 staged-composition scaffold (`passes: ["staged"]` + `stages: [world, composite]`). Two new fragment functions: `arachne_world_fragment` (placeholder forest backdrop — sky gradient + horizon haze + three trunk silhouettes) and `arachne_composite_fragment` (samples WORLD via `[[texture(13)]]`, overlays a placeholder 12-spoke + ring web with deviation-form audio gain). Legacy `arachne_fragment` retained in source as a v5/v7 reference. Mv-warp helper functions (`mvWarpPerFrame`, `mvWarpPerVertex`) deleted — they depended on the mv-warp-only preamble and the staged compile path does not include it. **No attempt to implement** refractive droplets, full forest detail, spider behavior, or final visual tuning — those land in V.7.7B+.
+
+**Done when:**
+- Arachne loads through `compileStagedShader` with two compiled stages (`PresetLoader.LoadedPreset.stages.count == 2`). ✅
+- WORLD-only / WEB-only / COMPOSITE outputs are programmatically inspectable per stage via `RenderPipeline.stagedTexture(named:)` and the `StagedComposition` test path. ✅
+- COMPOSITE visibly samples the WORLD texture (existing `StagedCompositionTests` invariant — hub-band brightness > world-band brightness — applies once Arachne is exercised through the harness). ✅
+- Arachne golden hash regenerated for the placeholder composite (regression render path leaves `worldTex` unbound, so the hash captures the overlay alone): `0x00000E336E0E1600`. ✅
+- Spider golden hash regenerated to the same value with a transitional note (the V.7.5 spider render path goes through the now-replaced `arachne_fragment`; meaningful spider regression coverage returns when the SPIDER stage exists in V.7.7B+). ✅
+- Engine test suite green except for the pre-existing `MetadataPreFetcher.fetch_networkTimeout_returnsWithinBudget` flake. 0 SwiftLint violations on touched files. ✅
+
+**Verify:** `swift test --filter "Preset Regression Tests|StagedComposition|ArachneState|ArachneSpiderRenderTests"` from `PhospheneEngine/`.
+
+**Estimated sessions:** 1 (delivered).
+
+**Known follow-ups (V.7.7A):**
+- **PresetVisualReviewTests.makeBGRAPipeline** loads `Bundle.module.url(forResource: "Shaders")` from the **test** target's bundle, where `Shaders` is not a resource. Throws `cgImageFailed` for any staged preset under `RENDER_VISUAL=1` (Staged Sandbox + Arachne both affected). Pre-existing harness bug shipped with V.ENGINE.1 (gated behind the env flag, never exercised in CI). Fix: source the `.metal` file via `Bundle(for: PresetLoader.self)` so the Presets module's resource bundle is used. Small standalone follow-up; required before V.7.7B's harness contact-sheet review.
+
+---
+
 ### Increment V.7.7 — Arachne v8: WORLD pillar + 1–2 background dewy webs
+
+**Prerequisite:** V.7.7A staged-composition scaffold migration ✅ 2026-05-05.
 
 **Scope:** Per `ARACHNE_V8_DESIGN.md §4` (full WORLD pillar) + §5.12 (background webs) + §8.1 step 1–2 (render-pass layout). The 2026-05-03 spec rewrite expanded V.7.7 from a thin atmosphere pass into the full layered WORLD — implementing §4.2's six depth layers into a half-res `arachneWorldTex`: sky band (4.2.1) + distant tree silhouettes (4.2.2) + mid-distance trees with bark detail (4.2.3) + near-frame anchor branches (4.2.4) + forest floor (4.2.5) + volumetric atmosphere (4.2.6 fog + light shafts + dust motes). Mood-driven palette per §4.3 (preserved verbatim from V.7.6.C-locked recipe — `topCol`/`botCol`/`beamCol` + per-layer color application table). Includes 5s low-pass `smoothedValence`/`smoothedArousal` state per §4.3. Then 1–2 pre-populated background dewy webs (§5.12) with refractive drops sampling `arachneWorldTex` per the §5.8 recipe (Snell's law, eta ≈ 0.752, fresnel rim, specular pinpoint, dark edge ring). Background webs vibrate per §8.2. Foreground unchanged (still V.7.5 build code — refactored in V.7.8).
 

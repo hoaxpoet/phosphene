@@ -69,7 +69,7 @@ struct PresetVisualReviewTests {
     /// the WORLD pass alone, the COMPOSITE pass, and any intermediate stages.
     /// Setting `RENDER_STAGE=<name>` limits output to a single stage.
     @Test("Render staged preset per-stage PNGs (RENDER_VISUAL=1)",
-          arguments: ["Staged Sandbox"])
+          arguments: ["Staged Sandbox", "Arachne"])
     func renderStagedPresetPerStage(_ presetName: String) throws {
         guard ProcessInfo.processInfo.environment["RENDER_VISUAL"] == "1" else {
             print("[PresetVisualReview] RENDER_VISUAL not set, skipping staged \(presetName)")

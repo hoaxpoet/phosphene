@@ -27,8 +27,15 @@ import simd
 
 /// 64-bit dHash for the forced-spider render at steady energy (bass/mid/treble = 0.5).
 /// Regenerate with UPDATE_GOLDEN_SNAPSHOTS=1 swift test --filter test_printSpiderGoldenHash.
-/// V.7.9: regenerated for simple-silk BRDF (Marschner removed) + frame-first build order.
-private let goldenSpiderForcedHash: UInt64 = 0x761B3F1F07078E0F
+///
+/// V.7.7A note: Arachne is now a staged-composition preset; `preset.pipelineState`
+/// resolves to the final-stage placeholder composite fragment, which does not
+/// dispatch the spider. This hash captures the placeholder composite alone and
+/// is therefore not a meaningful spider regression gate until the SPIDER stage
+/// is added in V.7.7B+. The test still confirms the staged path compiles and
+/// renders; spider-specific coverage will be restored once the dedicated stage
+/// exists.
+private let goldenSpiderForcedHash: UInt64 = 0x00000E336E0E1600
 
 // MARK: - Test Suite
 
