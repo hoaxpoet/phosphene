@@ -151,6 +151,12 @@ extension VisualizerEngine {
         // only 25 unique drumsBeat values appeared across 8,987 frames).
         runPerFrameStemAnalysis(fps: effectiveFps)
 
+        // Live Beat This! trigger — fires once per track after 10s of buffered
+        // audio, installing a BeatGrid for ad-hoc/reactive sessions. Spotify-
+        // prepared tracks are skipped because they already have a grid from
+        // the offline pre-analysis path.
+        runLiveBeatAnalysisIfNeeded()
+
         guard let mood = moodClassifier else { return }
         runMoodClassifier(mood: mood, fv: fv, mir: mir, magnitudes: magnitudes)
     }

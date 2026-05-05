@@ -58,6 +58,9 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
         /// Phase across the current bar, [0, 1]. 0 at downbeat, ramps linearly.
         /// Computed as `(beatsSinceDownbeat + beatPhase01) / beatsPerBar`.
         public var barPhase01: Float
+        /// Time-signature numerator from the installed BeatGrid (e.g. 4 for 4/4).
+        /// 1 when no grid is installed (reactive-mode fallback).
+        public var beatsPerBar: Int
         /// Tracker confidence.
         public var lockState: LockState
     }
@@ -180,7 +183,7 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
 
         // Reactive-mode fallback: no grid → caller must use BeatPredictor.
         guard !grid.beats.isEmpty else {
-            return Result(beatPhase01: 0, beatsUntilNext: 1, barPhase01: 0, lockState: .unlocked)
+            return Result(beatPhase01: 0, beatsUntilNext: 1, barPhase01: 0, beatsPerBar: 1, lockState: .unlocked)
         }
 
         let pt = Double(playbackTime)
@@ -222,6 +225,7 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
             beatPhase01: phase.beatPhase01,
             beatsUntilNext: phase.beatsUntilNext,
             barPhase01: phase.barPhase01,
+            beatsPerBar: grid.beatsPerBar,
             lockState: lockState
         )
     }

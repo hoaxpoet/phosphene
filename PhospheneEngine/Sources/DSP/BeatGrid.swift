@@ -79,6 +79,29 @@ public struct BeatGrid: Sendable, Hashable, Codable {
     )
 }
 
+// MARK: - Transformation
+
+extension BeatGrid {
+
+    /// Return a new grid with all beat and downbeat times shifted by `seconds`.
+    ///
+    /// Used when a BeatGrid is analyzed from a buffer window that starts at some
+    /// offset within the track (e.g. the last 10 seconds of live tap audio). Add
+    /// `trackStartOffset` so beat times align with the track-relative playback
+    /// clock used by `LiveBeatDriftTracker`.
+    public func offsetBy(_ seconds: Double) -> BeatGrid {
+        BeatGrid(
+            beats:         beats.map { $0 + seconds },
+            downbeats:     downbeats.map { $0 + seconds },
+            bpm:           bpm,
+            beatsPerBar:   beatsPerBar,
+            barConfidence: barConfidence,
+            frameRate:     frameRate,
+            frameCount:    frameCount
+        )
+    }
+}
+
 // MARK: - Lookup Helpers
 
 extension BeatGrid {

@@ -50,8 +50,7 @@ private func readFloat(_ buf: MTLBuffer, at index: Int) -> Float {
     fv.bassDev     = 0.31
 
     var stems = StemFeatures.zero
-    stems.vocalsPitchHz          = 320.0  // voiced
-    stems.vocalsPitchConfidence  = 0.85
+    fv.barPhase01 = 0.25
 
     history.append(features: fv, stems: stems)
 
@@ -61,11 +60,7 @@ private func readFloat(_ buf: MTLBuffer, at index: Int) -> Float {
     #expect(ptr[SpectralHistoryBuffer.offsetArousal   + 0] == -0.5)
     #expect(ptr[SpectralHistoryBuffer.offsetBeatPhase + 0] == 0.42)
     #expect(ptr[SpectralHistoryBuffer.offsetBassDev   + 0] == 0.31)
-
-    // Pitch: log2(320/80) / log2(10) = log2(4) / log2(10) = 2 / 3.3219 ≈ 0.602
-    let expectedPitch = log2(Float(320) / 80.0) / log2(Float(10.0))
-    let actualPitch   = ptr[SpectralHistoryBuffer.offsetPitchNorm + 0]
-    #expect(abs(actualPitch - expectedPitch) < 0.001)
+    #expect(abs(ptr[SpectralHistoryBuffer.offsetBarPhase + 0] - 0.25) < 0.001)
 
     #expect(readFloat(history.gpuBuffer, at: SpectralHistoryBuffer.offsetWriteHead)     == 1.0)
     #expect(readFloat(history.gpuBuffer, at: SpectralHistoryBuffer.offsetSamplesValid)  == 1.0)
@@ -114,43 +109,35 @@ private func readFloat(_ buf: MTLBuffer, at index: Int) -> Float {
     #expect(abs(ptr[SpectralHistoryBuffer.offsetBassDev + 0] - 0.999) < 0.001)
 }
 
-@Test func test_pitchNormalization_voiced_knownValues() throws {
+@Test func test_barPhase_multipleValues() throws {
     let device  = try makeDevice()
     let history = SpectralHistoryBuffer(device: device)
     var fv      = FeatureVector.zero
     var stems   = StemFeatures.zero
-    stems.vocalsPitchConfidence = 0.9
     let ptr     = history.gpuBuffer.contents().assumingMemoryBound(to: Float.self)
 
-    // 80 Hz → should map to ~0.0
-    stems.vocalsPitchHz = 80
+    fv.barPhase01 = 0.0
     history.append(features: fv, stems: stems)
-    #expect(abs(ptr[SpectralHistoryBuffer.offsetPitchNorm + 0]) < 0.001)
+    #expect(abs(ptr[SpectralHistoryBuffer.offsetBarPhase + 0]) < 0.001)
 
-    // 800 Hz → should map to ~1.0
-    stems.vocalsPitchHz = 800
+    fv.barPhase01 = 1.0
     history.append(features: fv, stems: stems)
-    #expect(abs(ptr[SpectralHistoryBuffer.offsetPitchNorm + 1] - 1.0) < 0.001)
+    #expect(abs(ptr[SpectralHistoryBuffer.offsetBarPhase + 1] - 1.0) < 0.001)
 
-    // ~253 Hz → log2(253/80) / log2(10) ≈ 0.499
-    stems.vocalsPitchHz = 253
+    fv.barPhase01 = 0.5
     history.append(features: fv, stems: stems)
-    let mid = ptr[SpectralHistoryBuffer.offsetPitchNorm + 2]
-    #expect(abs(mid - 0.5) < 0.02, "253 Hz should map near 0.5, got \(mid)")
+    #expect(abs(ptr[SpectralHistoryBuffer.offsetBarPhase + 2] - 0.5) < 0.001)
 }
 
-@Test func test_pitchNormalization_unvoiced_returnsZero() throws {
+@Test func test_barPhase_zeroWhenNoGrid() throws {
     let device  = try makeDevice()
     let history = SpectralHistoryBuffer(device: device)
     var fv      = FeatureVector.zero
-    var stems   = StemFeatures.zero
-    stems.vocalsPitchHz         = 440.0
-    stems.vocalsPitchConfidence = 0.3    // below threshold
+    // barPhase01 defaults to 0 in FeatureVector.zero
+    history.append(features: fv, stems: StemFeatures.zero)
 
-    history.append(features: fv, stems: stems)
-
-    let pitch = readFloat(history.gpuBuffer, at: SpectralHistoryBuffer.offsetPitchNorm)
-    #expect(pitch == 0.0, "Low-confidence pitch should write 0, got \(pitch)")
+    let stored = readFloat(history.gpuBuffer, at: SpectralHistoryBuffer.offsetBarPhase)
+    #expect(stored == 0.0, "barPhase01 should be 0 when no BeatGrid is installed")
 }
 
 @Test func test_reset_zerosBufferAndIndices() throws {

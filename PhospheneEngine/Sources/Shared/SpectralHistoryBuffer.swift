@@ -1,7 +1,7 @@
 // SpectralHistoryBuffer — Per-frame MIR history ring buffer, bound at buffer(5).
 //
 // Maintains 5 parallel ring buffers of 480 float samples (~8s at 60 fps):
-//   valence, arousal, beat_phase01, bass_dev, vocal pitch (log-normalized).
+//   valence, arousal, beat_phase01, bass_dev, bar_phase01.
 //
 // Single-writer (render thread), single-reader (GPU). No lock required.
 // Bound unconditionally at fragment buffer index 5 in all direct-pass encoders.
@@ -50,7 +50,7 @@ public protocol SpectralHistoryPublishing: AnyObject, Sendable {
 /// [480..959]  arousal        (-1..1, raw)
 /// [960..1439] beat_phase01   (0..1, raw sawtooth)
 /// [1440..1919] bass_dev      (0..1, positive deviation)
-/// [1920..2399] pitch_norm    (0..1, log-mapped 80-800 Hz; 0 = unvoiced/low confidence)
+/// [1920..2399] bar_phase01   (0..1, phrase-level sawtooth; 0 = no BeatGrid)
 /// [2400]      write_head     (integer stored as Float, 0..479)
 /// [2401]      samples_valid  (integer stored as Float, capped at 480)
 /// [2402..4095] reserved      (zeroed; future consumers)
@@ -70,7 +70,7 @@ public final class SpectralHistoryBuffer: SpectralHistoryPublishing, @unchecked 
     public static let offsetArousal: Int = 480
     public static let offsetBeatPhase: Int = 960
     public static let offsetBassDev: Int = 1440
-    public static let offsetPitchNorm: Int = 1920
+    public static let offsetBarPhase: Int = 1920
     public static let offsetWriteHead: Int = 2400
     public static let offsetSamplesValid: Int = 2401
     /// 16 beat times relative to the playback head (seconds). `Float.infinity` = unused slot.
@@ -81,11 +81,6 @@ public final class SpectralHistoryBuffer: SpectralHistoryPublishing, @unchecked 
     public static let offsetBPM: Int = 2418
     /// Drift-tracker lock state stored as float: 0 = unlocked, 1 = locking, 2 = locked.
     public static let offsetLockState: Int = 2419
-
-    // Pitch: log2(hz/80) / log2(10) -> [0..1] for 80..800 Hz.
-    private static let pitchMinHz: Float = 80.0
-    private static let pitchLog10Divisor: Float = Float(log2(10.0))  // ~3.3219
-    private static let pitchConfidenceThreshold: Float = 0.6
 
     // MARK: - State
 
@@ -126,10 +121,7 @@ public final class SpectralHistoryBuffer: SpectralHistoryPublishing, @unchecked 
         ptr[Self.offsetArousal + slot] = features.arousal
         ptr[Self.offsetBeatPhase + slot] = features.beatPhase01
         ptr[Self.offsetBassDev + slot] = features.bassDev
-        ptr[Self.offsetPitchNorm + slot] = Self.normalizePitch(
-            hz: stems.vocalsPitchHz,
-            confidence: stems.vocalsPitchConfidence
-        )
+        ptr[Self.offsetBarPhase + slot] = features.barPhase01
 
         writeHead = (writeHead + 1) % Self.historyLength
         samplesValid = min(samplesValid + 1, Self.historyLength)
@@ -174,17 +166,5 @@ public final class SpectralHistoryBuffer: SpectralHistoryPublishing, @unchecked 
         for i in 0..<Self.beatTimesCount {
             ptr[Self.offsetBeatTimes + i] = Float.infinity
         }
-    }
-
-    // MARK: - Private
-
-    /// Map vocal pitch to [0..1]. Returns 0 when unvoiced or low confidence.
-    ///
-    /// Formula: log2(hz / 80) / log2(10), clamped to [0..1].
-    /// Maps 80 Hz -> 0.0, 800 Hz -> 1.0, ~253 Hz -> 0.5 (perceptual midpoint).
-    private static func normalizePitch(hz: Float, confidence: Float) -> Float {
-        guard confidence >= pitchConfidenceThreshold, hz > 0 else { return 0 }
-        let norm = log2(hz / pitchMinHz) / pitchLog10Divisor
-        return max(0, min(1, norm))
     }
 }

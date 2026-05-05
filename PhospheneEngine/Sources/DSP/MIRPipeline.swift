@@ -315,6 +315,8 @@ public final class MIRPipeline: @unchecked Sendable {
             )
             fv.beatPhase01    = driftResult.beatPhase01
             fv.beatsUntilNext = driftResult.beatsUntilNext
+            fv.barPhase01     = driftResult.barPhase01
+            fv.beatsPerBar    = Float(driftResult.beatsPerBar)
         } else {
             let predictorResult = beatPredictor.update(
                 subBassOnset: ctx.beat.onsets[0],
@@ -326,6 +328,8 @@ public final class MIRPipeline: @unchecked Sendable {
             )
             fv.beatPhase01    = predictorResult.beatPhase01
             fv.beatsUntilNext = predictorResult.beatsUntilNext
+            fv.barPhase01     = 0   // reactive: no downbeat info
+            fv.beatsPerBar    = 4   // assume 4/4 until BeatGrid available
         }
         return fv
     }

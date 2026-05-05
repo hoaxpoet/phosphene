@@ -33,8 +33,11 @@ import Foundation
 ///     float bass_att_rel, mid_att_rel, treb_att_rel;
 ///     // MV-3b beat phase (floats 35–36)
 ///     float beat_phase01, beats_until_next;
-///     // Padding to 192 bytes (floats 37–48)
-///     float _pad1, _pad2, _pad3, _pad4, _pad5, _pad6, _pad7,
+///     // Bar phase (floats 37–38)
+///     float bar_phase01;   // 0 in reactive mode
+///     float beats_per_bar; // 4 default
+///     // Padding to 192 bytes (floats 39–48)
+///     float _pad3, _pad4, _pad5, _pad6, _pad7,
 ///           _pad8, _pad9, _pad10, _pad11, _pad12;
 /// };
 /// ```
@@ -159,10 +162,17 @@ public struct FeatureVector: Sendable {
     /// Fractional beats until next predicted beat. 1.0 immediately after a beat.
     public var beatsUntilNext: Float
 
-    // --- Padding to 192 bytes (48 floats total — floats 37–48) ---
+    // --- Bar phase (floats 37–38) ---
+
+    /// Phrase-level bar phase: 0 at downbeat, linearly rises to 1 at next downbeat.
+    /// Always 0 in reactive mode (no BeatGrid installed).
+    public var barPhase01: Float
+    /// Time-signature numerator (4 for 4/4, 3 for 3/4, 7 for 7/8, etc.).
+    /// Defaults to 4 when no BeatGrid is installed.
+    public var beatsPerBar: Float
+
+    // --- Padding to 192 bytes (48 floats total — floats 39–48) ---
     // swiftlint:disable identifier_name
-    var _pad1: Float
-    var _pad2: Float
     var _pad3: Float
     var _pad4: Float
     var _pad5: Float
@@ -205,10 +215,12 @@ public struct FeatureVector: Sendable {
         self.midRel  = 0; self.midDev  = 0
         self.trebRel = 0; self.trebDev = 0
         self.bassAttRel = 0; self.midAttRel = 0; self.trebAttRel = 0
-        // MV-3b beat phase — computed by BeatPredictor each frame.
+        // MV-3b beat phase — computed by BeatPredictor / LiveBeatDriftTracker each frame.
         self.beatPhase01 = 0; self.beatsUntilNext = 0
+        // Bar phase — from LiveBeatDriftTracker when a BeatGrid is installed.
+        self.barPhase01 = 0; self.beatsPerBar = 4
         // Padding
-        self._pad1 = 0; self._pad2 = 0; self._pad3 = 0; self._pad4 = 0
+        self._pad3 = 0; self._pad4 = 0
         self._pad5 = 0; self._pad6 = 0; self._pad7 = 0; self._pad8 = 0
         self._pad9 = 0; self._pad10 = 0; self._pad11 = 0; self._pad12 = 0
     }

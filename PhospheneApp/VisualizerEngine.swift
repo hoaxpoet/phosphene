@@ -194,6 +194,14 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Nil when no dispatch is pending (timer has not yet fired, or last dispatch completed).
     var pendingDispatchStartTime: TimeInterval?
 
+    /// Beat This! analyzer used for live tap audio analysis. Allocated lazily on first
+    /// use in `runLiveBeatAnalysisIfNeeded()` — weight loading is heavy.
+    var liveBeatGridAnalyzer: DefaultBeatGridAnalyzer?
+
+    /// Set to true after live Beat This! analysis has fired once for the current track.
+    /// Reset to false on `resetStemPipeline(for:)` so each track gets one live grid.
+    var liveBeatAnalysisDone: Bool = false
+
     // MARK: - Stem Per-Frame Analysis State
     //
     // After each 5s stem separation completes on `stemQueue`, the produced
