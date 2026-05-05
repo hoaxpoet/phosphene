@@ -1580,3 +1580,36 @@ This decision ID is retained as a permanent breadcrumb so that future grep on DE
 **Cleanup committed alongside this decision:** the in-flight BeatNet preprocessor stub (`PhospheneEngine/Sources/DSP/LogSpectrogram.swift`), the vendored filterbank corner triples (`PhospheneEngine/Sources/DSP/Resources/beatnet_filterbank.json`), the `dump_logspec_reference.py` reference dump script, and the `love_rehab_logspec_reference.json` test fixture were deleted. The architecture audit (`docs/diagnostics/DSP.2-architecture.md`) was renamed to `DSP.2-beatnet-archive.md` and marked superseded. The BeatNet weight set under `PhospheneEngine/Sources/ML/Weights/beatnet/` is retained.
 
 **Spec drift discipline.** The trigger for the pivot was a Session-2-of-DSP.2 audit pass that found the BeatNet architecture doc had paraphrased the FFT spec (claimed `fft_size=2048` next-pow2; madmom's actual default is `fft_size=frame_size=1411` with `include_nyquist=False`). This is the second time in a row (D-075 trimmed-mean IOI fix was the first) that paraphrased-from-prose specs landed code that diverged silently from the reference. The Beat This! port adds a per-stage golden-test gate at every pipeline boundary (Session 2 preprocessor; Session 4 layer-by-layer numerical match) so any future drift fails fast at the right stage, not three sessions downstream.
+
+---
+
+## D-078 — Diagnostic hold semantics and prepared-BeatGrid authority (DSP.3.1/3.2)
+
+**2026-05-05.** Establishes two standing conventions for the diagnostic environment and the beat-grid lifecycle.
+
+### Convention 1: Diagnostic hold pins the visual surface, not the planner
+
+`VisualizerEngine.diagnosticPresetLocked` suppresses `LiveAdaptation.presetOverride` (the mood-derived preset switch emitted by `DefaultLiveAdapter`) but has no effect on:
+
+- `livePlan` — the planned session remains loaded and continues to evolve via structural-boundary rescheduling (`updatedTransition`).
+- `mirPipeline.liveDriftTracker` — beat tracking and lock state continue accumulating.
+- `SpectralHistoryBuffer` — all slots including session_mode [2420] continue updating.
+- `applyPresetByID(_:)` / `nextPreset()` / `previousPreset()` — manual surface controls always work.
+
+The hold strips `presetOverride` from `LiveAdaptation` before it patches `livePlan`, so the plan itself is not dirtied. Structural-boundary rescheduling (`updatedTransition`) is never suppressed — planned end times of upcoming tracks can still shift in response to detected section boundaries.
+
+**Motivation:** A diagnostic observer needs the engine to stay on Spectral Cartograph long enough to confirm the beat-lock transition. Without the hold, `DefaultLiveAdapter` evicts Spectral Cartograph within ~60 seconds because its orchestrator score is 0.0 (`is_diagnostic: true` excludes it from scoring). The hold prevents that eviction without disturbing any state the observer is trying to measure.
+
+**Rule:** Diagnostic hold is a display-layer suppression, not a session-state freeze. Never implement it by pausing the planner, the drift tracker, or the MIR pipeline. Hold means "don't switch away from what I'm looking at"; not "pause everything else."
+
+### Convention 2: Prepared BeatGrid is authoritative; reactive beat tracking is fallback only
+
+When `mirPipeline.liveDriftTracker.hasGrid == true`, `MIRPipeline.buildFeatureVector` drives `beatPhase01` and `beatsUntilNext` from the cached grid plus live drift estimate. `BeatPredictor` is bypassed on the grid path and runs only when `hasGrid == false`.
+
+The grid is installed early: `_buildPlan(seed:)` calls `resetStemPipeline(for: plan.tracks.first?.track)` immediately after `livePlan` is stored, before the user presses play. The drift tracker is loaded and ready to match onsets from the very first beat of the session.
+
+**Motivation:** Before DSP.3.2, the BeatGrid was only installed on the first track-change event (after the first audio callback). In the `.ready → .playing` window, `hasGrid` was false and Spectral Cartograph showed `○ REACTIVE` even for a fully-prepared Spotify session — visually indistinguishable from a truly reactive ad-hoc session. The pre-fire call closes that window.
+
+**Rule:** Any code path that calls `_buildPlan()` should ensure `resetStemPipeline(for:)` fires for the first track when a BeatGrid is available. `extendPlan()` and `regeneratePlan()` both delegate to `_buildPlan()` and are already covered. The `is_diagnostic` flag on `SpectralCartograph.json` causes the orchestrator scorer to return 0.0, preventing auto-selection while keeping the preset reachable via manual controls.
+
+**Implementation:** Commit `56359c07`. Audit context: `docs/diagnostics/DSP.3-beat-sync-test-environment-audit.md`.
