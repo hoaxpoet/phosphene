@@ -3,9 +3,10 @@
 // Draws all text labels for the four-panel MIR diagnostic visualisation using
 // Core Text + Core Graphics. Called once per frame from DynamicTextOverlay.refresh(_:).
 //
-// The CGContext uses bottom-left origin (Y up). Metal samples with flipped Y so
-// positions here are specified in Metal-UV terms and converted to CG pixels
-// via metalToCG(). The helper makes reasoning about the panel layout natural.
+// DynamicTextOverlay applies a permanent CTM flip (translateBy+scaleBy) so the
+// user coordinate space is top-down (y=0 = screen top) matching Metal UV convention.
+// Positions are specified in Metal-UV terms [0..1] and converted to CG pixels
+// via metalToCG(mx, my). No Y-flip needed in either metalToCG or the Metal shader.
 //
 // Panel layout (matches SpectralCartograph.metal):
 //   TL [0,0.5]×[0,0.5]  — FFT SPECTRUM
@@ -179,12 +180,12 @@ public enum SpectralCartographText {
 
     // MARK: - Helpers
 
-    /// Convert Metal UV coordinates to CGContext pixels (bottom-left origin).
+    /// Convert Metal UV coordinates to CGContext pixels.
     ///
-    /// Metal UV Y=0 = screen top = CGContext Y = height.
-    /// Metal UV Y=1 = screen bottom = CGContext Y = 0.
+    /// After DynamicTextOverlay's CTM flip, user-space y=0 = screen top and y=h = screen bottom,
+    /// matching Metal UV convention directly.  No Y-flip needed here.
     private static func metalToCG(_ mx: Double, _ my: Double, _ w: CGFloat, _ h: CGFloat) -> CGPoint {
-        return CGPoint(x: CGFloat(mx) * w, y: (1.0 - CGFloat(my)) * h)
+        return CGPoint(x: CGFloat(mx) * w, y: CGFloat(my) * h)
     }
 
     /// Draw a left-aligned text label at the given CGContext position.
