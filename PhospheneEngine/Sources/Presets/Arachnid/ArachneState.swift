@@ -37,13 +37,13 @@ private let logger = Logger(subsystem: "com.phosphene.presets", category: "Arach
 
 // MARK: - WebStage
 
-/// Lifecycle stage of a single web.
+/// Lifecycle stage of a single web (V.7.9 — §5.2 60-second biology-correct cycle).
 public enum WebStage: UInt32, Sendable {
-    case anchorPulse = 0   // Anchor dots pulse before downbeat
-    case radial      = 1   // Radial spokes extend one by one
-    case spiral      = 2   // Capture spiral winds outward
-    case stable      = 3   // Fully spun; quivers to audio
-    case evicting    = 4   // Fading out to make room in the pool
+    case frame    = 0   // Frame polygon draws first (bridge + outer polygon, 0–3 s)
+    case radial   = 1   // Radial spokes extend alternating-pair, one by one (3–25 s)
+    case spiral   = 2   // Capture spiral winds inward chord-by-chord (25–55 s)
+    case stable   = 3   // Fully spun; quivers to audio
+    case evicting = 4   // Fading out to make room in the pool
 }
 
 // MARK: - WebGPU
@@ -119,14 +119,17 @@ public final class ArachneState: @unchecked Sendable {
     static let spawnThreshold: Float = 3.0
     static let minSpawnGapBeats: Float = 8.0
 
-    // Stage durations in beats.
-    // Deliberately slow: at 120 BPM a full web build takes ~18–24 s.
-    static let anchorPulseDuration: Float = 2.0
+    // Stage durations in beats (V.7.9 — calibrated to §5.2 60-second cycle at 120 BPM).
+    // Frame:   6 beats ≈  3 s at 120 BPM  (§5.2: Frame 0–3 s)
+    // Radial: ~42 beats ≈ 21 s at 120 BPM (§5.2: Radials 3–25 s, ~1.5 s each)
+    // Spiral:  60 beats =  30 s at 120 BPM (§5.2: Capture spiral 25–55 s)
+    // Total: ~108 beats ≈ 54 s — within the 60 s ceiling.
+    static let frameDuration: Float = 6.0
     static func radialDuration(_ anchorCount: UInt32) -> Float {
-        Float(anchorCount) * 2.0          // 10–16 beats for 5–8 anchors
+        Float(anchorCount) * 6.5          // 5→32.5, 8→52 beats; avg ~42 beats ≈ 21 s at 120 BPM
     }
     static func spiralDuration(_ revolutions: Float) -> Float {
-        max(20.0, revolutions * 2.5)      // ≥20 beats; 40 segments appear over 20 beats = 2s/segment at 120 BPM
+        max(60.0, revolutions * 8.0)      // ≥60 beats (30 s at 120 BPM); 4–8 revs → 60–64 beats
     }
     static let evictingDuration: Float = 4.0
 
@@ -357,7 +360,7 @@ public final class ArachneState: @unchecked Sendable {
             spiralRevolutions: revs,
             rngSeed: seed,
             birthBeatPhase: globalBeatIndex,
-            stage: WebStage.anchorPulse.rawValue,
+            stage: WebStage.frame.rawValue,
             progress: 0,
             opacity: 1,
             birthHue: hue,
@@ -374,8 +377,8 @@ public final class ArachneState: @unchecked Sendable {
         let stage = WebStage(rawValue: web.stage) ?? .stable
 
         switch stage {
-        case .anchorPulse:
-            web.progress = min(web.progress + beatsDt / Self.anchorPulseDuration, 1)
+        case .frame:
+            web.progress = min(web.progress + beatsDt / Self.frameDuration, 1)
             if web.progress >= 1 { web.stage = WebStage.radial.rawValue; web.progress = 0 }
 
         case .radial:

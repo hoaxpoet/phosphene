@@ -11,18 +11,20 @@
 // live musicians and feel-good VJ performance.
 //
 // Algorithm:
-//   1. Detect rising edge on beatBass ONLY (sub_bass onset channel).
-//      beatMid and beatComposite are NOT used for period estimation — they
-//      fire on bass-guitar note articulations and other non-beat events
-//      that would produce 2–4× the true beat rate on bass-heavy tracks
-//      (e.g. Pink Floyd - Money, Chaim - Love Rehab). D-075 principle.
-//   2. On bass onset: if a valid inter-beat interval (0.3s–1.5s) was measured,
+//   1. Detect rising edge on sub_bass raw onset boolean (BeatDetector.Result.onsets[0]).
+//      Grouped `beatBass` pulse (sub_bass OR low_bass) is NOT used for period
+//      estimation: on tracks like Love Rehab the low_bass synthesiser fires at
+//      ~417 ms (just over the 400 ms per-band cooldown) while the kick lives at
+//      480 ms (125 BPM).  sub_bass alone sees only the kick.  D-075 principle.
+//   2. stableBPM (BeatDetector trimmed-mean IOI, also sub_bass-only) is blended
+//      per-frame to keep the period anchored on tracks where sub_bass onsets are
+//      sparse or delayed.
+//   3. On sub_bass onset: if a valid inter-beat interval (0.3s–1.5s) was measured,
 //      update the IIR period: period = 0.3 × period + 0.7 × interval.
-//      Floor of 0.3s = 200 BPM max, preventing note articulations from
-//      being mistaken for beats.
-//   3. Each frame: phase = (now − lastBeatTime) / estimatedPeriod, clamped 0–1.
-//   4. If no beat for > 3 × estimatedPeriod: phase resets to 0 (tempo lost).
-//   5. Bootstrap: `bootstrapBPM` seeds the period estimate so that once the
+//      Floor of 0.3s (200 BPM max) prevents note articulations from polluting.
+//   4. Each frame: phase = (now − lastBeatTime) / estimatedPeriod, clamped 0–1.
+//   5. If no beat for > 3 × estimatedPeriod: phase resets to 0 (tempo lost).
+//   6. Bootstrap: `bootstrapBPM` seeds the period estimate so that once the
 //      first live onset arrives the predictor can produce a valid phase
 //      immediately (instead of needing two onsets to measure a period).
 //      Phase remains 0 until the first onset lands.
@@ -66,7 +68,6 @@ public final class BeatPredictor: @unchecked Sendable {
     private var lastBeatTime: Double = -1.0
     private var estimatedPeriod: Double = 0.5      // 120 BPM default
     private var hasPeriod: Bool = false
-    private var prevBeatValue: Float = 0
     private var _bootstrapBPM: Float?
     private let lock = NSLock()
 
@@ -99,16 +100,20 @@ public final class BeatPredictor: @unchecked Sendable {
     /// Advance the predictor by one frame and return the current phase.
     ///
     /// - Parameters:
-    ///   - beatBass: Bass beat pulse from BeatDetector (0–1 decaying). Only this
-    ///     channel drives period estimation — see algorithm note above re. D-075.
+    ///   - subBassOnset: Raw sub_bass onset flag from `BeatDetector.Result.onsets[0]`.
+    ///     Fires at most once per 400 ms cooldown.  Used for rising-edge phase anchor
+    ///     and IOI period measurement (D-075: sub_bass only, never fused with low_bass).
     ///   - beatMid: Mid beat pulse (unused for estimation, retained for API compat).
     ///   - beatComposite: Composite beat pulse (unused for estimation, retained).
+    ///   - stableBPM: Trimmed-mean BPM from `BeatDetector.stableBPM` (0 = unavailable).
+    ///     Blended per-frame to keep the period anchored while live IOIs are sparse.
     ///   - time: Current time in seconds (same domain across all calls — e.g.
     ///     MIRPipeline's `elapsedSeconds`).
     ///   - deltaTime: Seconds since the last call.
     /// - Returns: Beat phase prediction for this frame.
     public func update(
-        beatBass: Float, beatMid: Float, beatComposite: Float,
+        subBassOnset: Bool, beatMid: Float, beatComposite: Float,
+        stableBPM: Float = 0,
         time: Float, deltaTime: Float
     ) -> Result {
         lock.lock()
@@ -119,12 +124,16 @@ public final class BeatPredictor: @unchecked Sendable {
         elapsedTime += Double(max(deltaTime, 0.001))
         let now = elapsedTime
 
-        // Rising edge on sub_bass ONLY (D-075). beatMid fires on bass-guitar
-        // note articulations at 2–4× the true beat rate on bass-heavy tracks.
-        let onsetDetected = beatBass > 0.5 && prevBeatValue <= 0.5
-        prevBeatValue = beatBass
+        // Anchor period toward BeatDetector's trimmed-mean BPM (sub_bass-only
+        // IOI, D-075) when available.  ~5-second time constant at 60 fps so the
+        // IIR can still respond to genuine tempo changes.
+        if stableBPM > 0 {
+            let targetPeriod = Double(60.0 / stableBPM)
+            estimatedPeriod = 0.997 * estimatedPeriod + 0.003 * targetPeriod
+            hasPeriod = true
+        }
 
-        if onsetDetected {
+        if subBassOnset {
             if lastBeatTime >= 0 {
                 let interval = now - lastBeatTime
                 // Valid BPM range: 40–200 BPM → period 0.3s–1.5s.
@@ -169,7 +178,6 @@ public final class BeatPredictor: @unchecked Sendable {
         elapsedTime = 0
         lastBeatTime = -1.0
         hasPeriod = false
-        prevBeatValue = 0
         // Re-seed from bootstrap BPM if available.
         if let bpm = _bootstrapBPM, bpm > 0 {
             estimatedPeriod = Double(60.0 / bpm)

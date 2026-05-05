@@ -317,9 +317,10 @@ public final class MIRPipeline: @unchecked Sendable {
             fv.beatsUntilNext = driftResult.beatsUntilNext
         } else {
             let predictorResult = beatPredictor.update(
-                beatBass: ctx.beat.beatBass,
+                subBassOnset: ctx.beat.onsets[0],
                 beatMid: ctx.beat.beatMid,
                 beatComposite: ctx.beat.beatComposite,
+                stableBPM: stableBPM ?? 0,
                 time: ctx.time,
                 deltaTime: ctx.deltaTime
             )

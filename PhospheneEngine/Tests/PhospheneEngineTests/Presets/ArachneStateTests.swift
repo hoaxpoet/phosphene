@@ -220,7 +220,7 @@ private func stems(drumsOnsetRate: Float = 0, totalEnergy: Float = 0.1) -> StemF
         }
 
         let webs = readWebs(state)
-        let anchorPulseWebs = webs.filter { $0.isAlive != 0 && $0.stage == WebStage.anchorPulse.rawValue }
+        let anchorPulseWebs = webs.filter { $0.isAlive != 0 && $0.stage == WebStage.frame.rawValue }
 
         #expect(anchorPulseWebs.count >= 1)
         #expect(state.webCount == 3)
@@ -263,9 +263,9 @@ private func stems(drumsOnsetRate: Float = 0, totalEnergy: Float = 0.1) -> StemF
         #expect(state.webCount <= ArachneState.maxWebs)
     }
 
-    // MARK: Invariant 7: Stage progression anchorPulse → radial
+    // MARK: Invariant 7: Stage progression frame → radial
 
-    @Test("enough beats advance anchorPulse to radial")
+    @Test("enough beats advance frame to radial")
     func stageAdvancesToRadial() throws {
         guard let device = MTLCreateSystemDefaultDevice() else {
             throw ArachneTestError.noMetalDevice
@@ -273,7 +273,7 @@ private func stems(drumsOnsetRate: Float = 0, totalEnergy: Float = 0.1) -> StemF
         let state = try #require(ArachneState(device: device, seed: 42))
 
         // Drive many large-dt ticks to both trigger spawns and advance stages.
-        // dt=1.0 × 2.0 (fallback) = 2.0 beats per tick >> anchorPulseDuration(1.0).
+        // dt=1.0 × 2.0 (fallback) = 2.0 beats per tick >> frameDuration(6.0 beats).
         // Also deliver beat pulses to trigger spawns.
         var f = FeatureVector.zero
         f.deltaTime = 1.0
@@ -285,16 +285,16 @@ private func stems(drumsOnsetRate: Float = 0, totalEnergy: Float = 0.1) -> StemF
             f.beatComposite = 0.8
         }
 
-        // After 20+ beats any spawned web must have advanced past anchorPulse.
+        // After 20+ beats any spawned web must have advanced past frame stage.
         let webs = readWebs(state).filter { $0.isAlive != 0 }
         let stagesPresent = Set(webs.map { $0.stage })
         // The initial stable webs are always present; at least one of radial/spiral/stable
         // confirms stage advancement worked correctly.
         let hasAdvanced = stagesPresent.contains(WebStage.stable.rawValue)
         #expect(hasAdvanced)
-        // No web should be stuck at anchorPulse after 20+ beats.
-        let stillInAnchorPulse = webs.filter { $0.stage == WebStage.anchorPulse.rawValue }
-        #expect(stillInAnchorPulse.isEmpty)
+        // No web should be stuck at frame stage after 20+ beats.
+        let stillInFrame = webs.filter { $0.stage == WebStage.frame.rawValue }
+        #expect(stillInFrame.isEmpty)
     }
 
     // MARK: Invariant 8: Eviction when pool full
