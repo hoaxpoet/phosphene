@@ -23,14 +23,25 @@ public protocol SpectralHistoryPublishing: AnyObject, Sendable {
     /// Call exactly once per frame, before fragment encoders are created.
     func append(features: FeatureVector, stems: StemFeatures)
 
+    // swiftlint:disable function_parameter_count
     /// Write cached beat-grid metadata for the SpectralCartograph diagnostic overlay.
     /// Thread-safe — may be called from the analysis queue while `append` runs on the render thread.
     /// `relativeBeatTimes`: up to 16 beat times in seconds relative to current playback head
     ///   (positive = upcoming). Pass `Float.infinity` or fewer than 16 entries for unused slots.
+    /// `relativeDownbeatTimes`: up to 8 downbeat times (same convention). Unused = `Float.infinity`.
     /// `bpm`: BPM from the cached BeatGrid (0 = no grid).
     /// `lockState`: 0 = unlocked, 1 = locking, 2 = locked.
     /// `sessionMode`: 0 = reactive, 1 = planned+unlocked, 2 = planned+locking, 3 = planned+locked.
-    func updateBeatGridData(relativeBeatTimes: [Float], bpm: Float, lockState: Int, sessionMode: Int)
+    /// `driftMs`: current drift-tracker correction in milliseconds (0 = no grid / reactive).
+    func updateBeatGridData(
+        relativeBeatTimes: [Float],
+        relativeDownbeatTimes: [Float],
+        bpm: Float,
+        lockState: Int,
+        sessionMode: Int,
+        driftMs: Float
+    )
+    // swiftlint:enable function_parameter_count
 
     /// Read cached BPM and lock state for the DynamicTextOverlay callback.
     /// Thread-safe — uses the beat-grid lock.
@@ -41,6 +52,11 @@ public protocol SpectralHistoryPublishing: AnyObject, Sendable {
     /// Thread-safe — uses the beat-grid lock.
     /// Returns 0 (reactive) when no mode has been written.
     func readSessionMode() -> Int
+
+    /// Read the drift-tracker correction in milliseconds.
+    /// Thread-safe — uses the beat-grid lock.
+    /// Returns 0 when no grid is installed.
+    func readDriftMs() -> Float
 
     /// Zero the buffer and reset ring indices. Call on track change.
     func reset()
@@ -89,6 +105,14 @@ public final class SpectralHistoryBuffer: SpectralHistoryPublishing, @unchecked 
     public static let offsetLockState: Int = 2419
     /// Session mode: 0=reactive, 1=planned+unlocked, 2=planned+locking, 3=planned+locked.
     public static let offsetSessionMode: Int = 2420
+    /// 8 downbeat times relative to the playback head (seconds). `Float.infinity` = unused slot.
+    /// Visually distinct from beat ticks in SpectralCartograph (wider, brighter flash).
+    public static let offsetDownbeatTimes: Int = 2421
+    /// Number of downbeat time slots.
+    public static let downbeatTimesCount: Int = 8
+    /// Current drift tracker correction in milliseconds (positive = beats arrive earlier).
+    /// 0 = no grid / reactive mode.
+    public static let offsetDriftMs: Int = 2429
 
     // MARK: - State
 
@@ -142,13 +166,15 @@ public final class SpectralHistoryBuffer: SpectralHistoryPublishing, @unchecked 
     /// Thread-safe — uses its own lock, independent of the render-thread ring-buffer writes.
     public func updateBeatGridData(
         relativeBeatTimes: [Float],
+        relativeDownbeatTimes: [Float] = [],
         bpm: Float,
         lockState: Int,
-        sessionMode: Int
+        sessionMode: Int,
+        driftMs: Float = 0
     ) {
         beatGridLock.lock(); defer { beatGridLock.unlock() }
         let ptr = gpuBuffer.contents().assumingMemoryBound(to: Float.self)
-        // Write beat times, padding unused slots with Float.infinity.
+        // Beat times (16 slots).
         for i in 0..<Self.beatTimesCount {
             ptr[Self.offsetBeatTimes + i] = i < relativeBeatTimes.count
                 ? relativeBeatTimes[i]
@@ -157,6 +183,13 @@ public final class SpectralHistoryBuffer: SpectralHistoryPublishing, @unchecked 
         ptr[Self.offsetBPM] = bpm
         ptr[Self.offsetLockState] = Float(max(0, min(2, lockState)))
         ptr[Self.offsetSessionMode] = Float(max(0, min(3, sessionMode)))
+        // Downbeat times (8 slots).
+        for i in 0..<Self.downbeatTimesCount {
+            ptr[Self.offsetDownbeatTimes + i] = i < relativeDownbeatTimes.count
+                ? relativeDownbeatTimes[i]
+                : Float.infinity
+        }
+        ptr[Self.offsetDriftMs] = driftMs
     }
 
     /// Read cached BPM and lock state for the DynamicTextOverlay text callback.
@@ -178,15 +211,27 @@ public final class SpectralHistoryBuffer: SpectralHistoryPublishing, @unchecked 
         return Int(ptr[Self.offsetSessionMode] + 0.5)
     }
 
+    /// Read the drift-tracker correction in milliseconds.
+    /// Thread-safe — uses the beat-grid lock.
+    public func readDriftMs() -> Float {
+        beatGridLock.lock(); defer { beatGridLock.unlock() }
+        let ptr = gpuBuffer.contents().assumingMemoryBound(to: Float.self)
+        return ptr[Self.offsetDriftMs]
+    }
+
     /// Zero the entire buffer and reset ring indices. Call on track change.
     public func reset() {
         memset(gpuBuffer.contents(), 0, Self.bufferSizeBytes)
         writeHead = 0
         samplesValid = 0
-        // Initialize beat time slots to infinity (sentinel = no tick).
+        // Initialize beat and downbeat time slots to infinity (sentinel = no tick).
         let ptr = gpuBuffer.contents().assumingMemoryBound(to: Float.self)
         for i in 0..<Self.beatTimesCount {
             ptr[Self.offsetBeatTimes + i] = Float.infinity
         }
+        for i in 0..<Self.downbeatTimesCount {
+            ptr[Self.offsetDownbeatTimes + i] = Float.infinity
+        }
+        ptr[Self.offsetDriftMs] = 0
     }
 }

@@ -233,6 +233,22 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Whether MIR recording is active.
     var mirPipelineIsRecording: Bool { mirPipeline.isRecording }
 
+    /// Visual phase offset in milliseconds applied to beat/bar phase display only.
+    /// Positive = flash fires earlier. Developer-only calibration — default 0.
+    /// Backed by `LiveBeatDriftTracker.visualPhaseOffsetMs` (thread-safe).
+    var beatPhaseOffsetMs: Float {
+        get { mirPipeline.liveDriftTracker.visualPhaseOffsetMs }
+        set { mirPipeline.liveDriftTracker.visualPhaseOffsetMs = newValue }
+    }
+
+    /// Shift the visual beat phase by `delta` ms. Clamped to ±500 ms.
+    /// `[` key = −10 ms, `]` key = +10 ms in the developer shortcut map.
+    func adjustBeatPhaseOffset(ms delta: Float) {
+        let clamped = max(-500, min(500, beatPhaseOffsetMs + delta))
+        beatPhaseOffsetMs = clamped
+        logger.info("Beat phase offset adjusted to \(clamped, format: .fixed(precision: 1)) ms")
+    }
+
     /// Current frame-budget quality level. Read directly from the governor each
     /// time the debug overlay repaints — no @Published needed since the overlay
     /// refreshes on VisualizerEngine objectWillChange. D-057.
@@ -250,6 +266,14 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         case .defer(let ms):               return "defer \(Int(ms))ms"
         }
     }
+
+    // MARK: - Beat Sync Diagnostic State
+
+    /// Most-recent beat-sync snapshot from the analysis queue.
+    /// Written on analysisQueue; read on the GPU completion handler queue.
+    /// Guards both writes and reads with `beatSyncLock`.
+    var latestBeatSyncSnapshot: BeatSyncSnapshot = .zero
+    let beatSyncLock = NSLock()
 
     // MARK: - Capture/Recording State
 

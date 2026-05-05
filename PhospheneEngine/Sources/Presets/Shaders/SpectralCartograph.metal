@@ -8,7 +8,16 @@
 //   TL [0,0.5]×[0,0.5]   — 512-bin FFT spectrum, log-frequency, centroid-driven colour
 //   TR [0.5,1]×[0,0.5]   — 3-band deviation meters (att_rel signed bar + dev fill + beat tick)
 //   BL [0,0.5]×[0.5,1]   — Valence/arousal phase plot, 8-second fading trail
-//   BR [0.5,1]×[0.5,1]   — Scrolling line graphs: beat_phase01, bass_dev, vocal pitch
+//   BR [0.5,1]×[0.5,1]   — Scrolling line graphs: beat_phase01, bass_dev, bar_phase01
+//
+// DSP.3.3 additions:
+//   • Full-viewport beat flash: thin amber band every beat (beatPhase01 near 0).
+//   • Full-viewport downbeat flash: wider white band every downbeat (barPhase01 near 0
+//     and barPhase01 * beatsPerBar < 1).
+//   • Beat-in-bar + beatsPerBar displayed as large text via DynamicTextOverlay.
+//   • Drift in ms displayed via DynamicTextOverlay.
+//   • Downbeat tick marks in BR panel (magenta, wider than beat ticks).
+//   • Drift bar in BR panel row 0 header area.
 //
 // V2 additions (DSP.2 sign-off):
 //   • Centred beat orb at viewport (0.5, 0.5) showing beat phase + lock-confidence gate
@@ -17,9 +26,6 @@
 //
 // V3 additions (text infrastructure):
 //   • All text labels rendered via DynamicTextOverlay (Core Text / SF Mono) at texture(12).
-//   • Panel headers, band row labels, axis ticks, quadrant hints, BPM, lock state
-//     all use real font families instead of the 3×5 bitmap-pixel font.
-//   • texture(12) sampled with flipped Y (CGContext bottom-left → Metal top-left).
 //
 // Buffer / texture bindings (direct-pass layout):
 //   buffer(0)  = FeatureVector (192 bytes)
@@ -52,9 +58,14 @@ constant float3 kVAColor      = float3(0.310, 0.820, 0.773);
 constant float3 kGridColor    = float3(0.18);
 
 // BR scrolling graphs
-constant float3 kBeatPhaseClr = float3(1.0,  0.784, 0.341);  // amber
-constant float3 kBassDevClr   = float3(1.0,  0.361, 0.361);  // coral
-constant float3 kBarPhaseClr  = float3(0.482, 0.361, 1.000); // violet
+constant float3 kBeatPhaseClr  = float3(1.0,  0.784, 0.341);  // amber
+constant float3 kBassDevClr    = float3(1.0,  0.361, 0.361);  // coral
+constant float3 kBarPhaseClr   = float3(0.482, 0.361, 1.000); // violet
+
+// DSP.3.3 flash colours
+constant float3 kBeatFlashClr     = float3(1.0,  0.784, 0.341);  // amber beat flash
+constant float3 kDownbeatFlashClr = float3(1.0,  1.0,   1.0);    // white downbeat flash
+constant float3 kDownbeatTickClr  = float3(1.0,  0.4,   1.0);    // magenta downbeat ticks
 
 // ── History buffer offsets (mirror SpectralHistoryBuffer.swift) ───────────────
 
@@ -67,10 +78,16 @@ constant int kOffBarPhase     = 1920;
 constant int kOffWriteHead    = 2400;
 constant int kOffSamplesValid = 2401;
 // Beat-grid overlay (SpectralHistoryBuffer.swift offsetBeatTimes=2402 .. offsetLockState=2419)
-constant int kOffBeatTimes    = 2402;
-constant int kBeatTimesCount  = 16;
+constant int kOffBeatTimes     = 2402;
+constant int kBeatTimesCount   = 16;
 // kOffBPM = 2418 — read by SpectralHistoryBuffer.readOverlayState() for text overlay; not used in shader.
-constant int kOffLockState    = 2419;
+constant int kOffLockState     = 2419;
+// DSP.3.1 session mode
+constant int kOffSessionMode   = 2420;
+// DSP.3.3 downbeat times and drift (SpectralHistoryBuffer offsets 2421..2429)
+constant int kOffDownbeatTimes = 2421;
+constant int kDownbeatTimesCount = 8;
+constant int kOffDriftMs       = 2429;
 
 // ── Layout constants ──────────────────────────────────────────────────────────
 
@@ -192,7 +209,7 @@ static inline float3 drawValenceArousal(
     return color;
 }
 
-// ── BR: Scrolling line graphs with cached-BeatGrid tick overlay ───────────────
+// ── BR: Scrolling line graphs with beat + downbeat tick overlays ──────────────
 
 static inline float3 drawFeatureGraphs(float2 uv, constant float* history) {
     const float kRowH = 1.0 / 3.0;
@@ -243,25 +260,35 @@ static inline float3 drawFeatureGraphs(float2 uv, constant float* history) {
 
     float3 result = lineClr * lineA + float3(midA);
 
-    // Cached BeatGrid tick overlay on the beat_phase01 row.
-    // Draw a thin white vertical line for each beat within the visible 8-second window.
-    // kHistLen frames ≈ 8s at 60 fps.  x = 1 - age/kHistLen maps age to UV x.
-    // relativeBeatTime = seconds until/since beat; positive = upcoming (right of now).
-    // age_for_beat = −relTime * fps ≈ −relTime * (kHistLen / 8)
+    // ── Cached BeatGrid tick overlays on the beat_phase01 row (row 0) ───────
+    // Beat ticks: thin white vertical lines. Downbeat ticks: wider magenta lines.
+    // Convention: relativeBeatTime = seconds until/since beat (positive = upcoming).
+    // age_for_beat = −relTime × fps ≈ −relTime × (kHistLen / 8)
     if (row == 0) {
-        const float kSecsPerHistLen = 8.0;  // approximate: kHistLen samples at ~60 fps
-        const float kTickHalfW = 0.003;
+        const float kSecsPerHistLen = 8.0;
+
+        // Beat ticks (white, half-width 0.003 UV)
+        const float kBeatTickHW = 0.003;
         for (int ti = 0; ti < kBeatTimesCount; ++ti) {
             float relTime = history[kOffBeatTimes + ti];
             if (isinf(relTime)) continue;
-            // Convert relative time (seconds) to UV x position.
-            // Beat at relTime=0 → x=1 (right edge = "now").
-            // Beat at relTime=-kSecsPerHistLen → x=0 (left edge = "oldest").
             float tickX = 1.0 + relTime / kSecsPerHistLen;
             if (tickX < 0.0 || tickX > 1.0) continue;
             float d = abs(uv.x - tickX);
-            float tickA = (1.0 - smoothstep(0.0, kTickHalfW, d)) * 0.9;
+            float tickA = (1.0 - smoothstep(0.0, kBeatTickHW, d)) * 0.9;
             result = max(result, float3(tickA));
+        }
+
+        // Downbeat ticks (magenta, half-width 0.008 UV — visually wider)
+        const float kDownbeatTickHW = 0.008;
+        for (int di = 0; di < kDownbeatTimesCount; ++di) {
+            float relTime = history[kOffDownbeatTimes + di];
+            if (isinf(relTime)) continue;
+            float tickX = 1.0 + relTime / kSecsPerHistLen;
+            if (tickX < 0.0 || tickX > 1.0) continue;
+            float d = abs(uv.x - tickX);
+            float tickA = (1.0 - smoothstep(0.0, kDownbeatTickHW, d)) * 1.0;
+            result = max(result, kDownbeatTickClr * tickA);
         }
     }
 
@@ -297,10 +324,6 @@ static inline float3 drawBeatOrb(float2 uv, constant FeatureVector& fv, constant
     result = max(result, ambColor * fillBright * discA * 0.85);
 
     // ── white ring flash at beat onset ───────────────────────────────────────
-    // Confidence gate: ring is bright when the drift tracker is locked to a
-    // verified BeatGrid (lock_state=2), dim when locking (1), barely visible
-    // in reactive/fallback mode (0). Prevents the orb from appearing to pulse
-    // confidently when the beat source is just BeatPredictor guesswork.
     int   lockState    = int(history[kOffLockState] + 0.5);
     float lockConf     = lockState == 2 ? 1.0 : (lockState == 1 ? 0.45 : 0.12);
     float ringAlpha    = smoothstep(0.04, 0.0, phase) * lockConf;
@@ -311,6 +334,51 @@ static inline float3 drawBeatOrb(float2 uv, constant FeatureVector& fv, constant
 
     // ── amber fill also dims in reactive mode so it doesn't mislead ──────────
     result = mix(result * 0.35, result, lockConf);
+
+    return result;
+}
+
+// ── DSP.3.3: Full-viewport beat and downbeat flash strips ─────────────────────
+//
+// These are unambiguous calibration aids: a thin horizontal amber band fires on
+// every beat (beatPhase01 < 0.06) and a thicker white band on every downbeat
+// (barPhase01 * beatsPerBar < 1 and barPhase01 < threshold).
+// The flashes span the full viewport width so they are impossible to miss.
+// Beat flash: top 3% of screen. Downbeat flash: top 5% of screen (wider).
+// Gated by lock state — unreliable in reactive mode.
+
+static inline float3 drawBeatFlash(
+    float2                  uv,
+    constant FeatureVector& fv,
+    constant float*         history)
+{
+    int   lockState = int(history[kOffLockState] + 0.5);
+    float lockConf  = lockState == 2 ? 1.0 : (lockState == 1 ? 0.5 : 0.0);
+    if (lockConf < 0.01) return float3(0.0);
+
+    float beatPhase = fv.beat_phase01;
+    float barPhase  = fv.bar_phase01;
+    float bpb       = max(fv.beats_per_bar, 1.0);
+
+    // Beat-in-bar (0-indexed): 0 means downbeat.
+    float beatInBarF = barPhase * bpb;
+    bool  isDownbeat = (beatInBarF < 1.0);  // first beat of bar
+
+    float3 result = float3(0.0);
+
+    // Beat flash: thin amber strip at top 3% of viewport.
+    if (uv.y < 0.030) {
+        float beatA = smoothstep(0.06, 0.0, beatPhase) * lockConf;
+        float stripA = smoothstep(0.030, 0.020, uv.y);  // fade at top edge
+        result = max(result, kBeatFlashClr * beatA * stripA * 0.92);
+    }
+
+    // Downbeat flash: taller white strip at top 5% of viewport.
+    if (uv.y < 0.050 && isDownbeat) {
+        float dbA = smoothstep(0.08, 0.0, barPhase) * lockConf;
+        float stripA = smoothstep(0.050, 0.030, uv.y);
+        result = max(result, kDownbeatFlashClr * dbA * stripA * 0.88);
+    }
 
     return result;
 }
@@ -378,6 +446,10 @@ fragment float4 spectral_cartograph_fragment(
     // Beat orb: overlaid on top of all panels at the viewport centre intersection.
     float3 orb = drawBeatOrb(uv, fv, history);
     color = max(color, orb);
+
+    // DSP.3.3: Full-viewport beat / downbeat flash strips.
+    float3 flash = drawBeatFlash(uv, fv, history);
+    color = max(color, flash);
 
     // Text overlay: CPU-rendered Core Text labels blended on top.
     // Alpha-over composite: result = textColor * textAlpha + color * (1 - textAlpha).

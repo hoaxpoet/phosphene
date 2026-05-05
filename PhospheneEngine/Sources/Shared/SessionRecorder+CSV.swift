@@ -6,16 +6,36 @@ extension SessionRecorder {
 
     // swiftlint:disable multiline_arguments
     static func csvRow(features fv: FeatureVector, frame: Int, wallclock: CFAbsoluteTime) -> String {
-        String(format: "%d,%.4f,%.4f,%.4f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,"
-                     + "%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,"
-                     + "%.5f,%.5f,%.5f,%.5f\n",
-               frame, wallclock, fv.time, fv.deltaTime,
-               fv.bass, fv.mid, fv.treble,
-               fv.subBass, fv.lowBass, fv.lowMid, fv.midHigh, fv.highMid, fv.high,
-               fv.beatBass, fv.beatMid, fv.beatTreble, fv.beatComposite,
-               fv.spectralCentroid, fv.spectralFlux, fv.valence, fv.arousal,
-               fv.accumulatedAudioTime,
-               fv.beatPhase01, fv.bassRel, fv.bassDev, fv.bassAttRel)
+        csvRow(features: fv, beatSync: .zero, frame: frame, wallclock: wallclock)
+    }
+
+    static func csvRow(
+        features fv: FeatureVector,
+        beatSync bs: BeatSyncSnapshot,
+        frame: Int,
+        wallclock: CFAbsoluteTime
+    ) -> String {
+        let base = String(format: "%d,%.4f,%.4f,%.4f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,"
+                               + "%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,"
+                               + "%.5f,%.5f,%.5f,%.5f",
+                          frame, wallclock, fv.time, fv.deltaTime,
+                          fv.bass, fv.mid, fv.treble,
+                          fv.subBass, fv.lowBass, fv.lowMid, fv.midHigh, fv.highMid, fv.high,
+                          fv.beatBass, fv.beatMid, fv.beatTreble, fv.beatComposite,
+                          fv.spectralCentroid, fv.spectralFlux, fv.valence, fv.arousal,
+                          fv.accumulatedAudioTime,
+                          fv.beatPhase01, fv.bassRel, fv.bassDev, fv.bassAttRel)
+        let sync = String(format: ",%d,%d,%d,%d,%d,%d,%.3f,%.4f,%.3f\n",
+                          Int(bs.barPhase01 * 1000),  // barPhase01 as integer permille
+                          bs.beatsPerBar,
+                          bs.beatInBar,
+                          bs.isDownbeat ? 1 : 0,
+                          bs.sessionMode,
+                          bs.lockState,
+                          bs.gridBPM,
+                          bs.playbackTimeS,
+                          bs.driftMs)
+        return base + sync
     }
 
     static func csvRow(stems: StemFeatures, frame: Int, wallclock: CFAbsoluteTime) -> String {

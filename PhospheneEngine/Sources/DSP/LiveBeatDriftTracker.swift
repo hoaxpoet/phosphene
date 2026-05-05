@@ -68,7 +68,7 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
     // MARK: - Tunables
 
     /// Search window for matching an onset to a cached beat: ±50 ms.
-    private static let driftSearchWindow: Double = 0.05
+    static let driftSearchWindow: Double = 0.05
     /// Per-onset EMA blend factor: each matched onset moves drift this fraction
     /// toward the freshly-measured `instantDrift`. After 4 matched onsets the
     /// drift is within ~13% of equilibrium; after 8 within ~1.7%.
@@ -115,6 +115,47 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
     public var currentLockState: LockState {
         lock.lock(); defer { lock.unlock() }
         return computeLockState()
+    }
+
+    /// Current drift in milliseconds (positive = beats arrive earlier than expected).
+    /// 0 when no grid is installed.
+    public var currentDriftMs: Double {
+        lock.lock(); defer { lock.unlock() }
+        return drift * 1000.0
+    }
+
+    /// Additional visual phase offset in milliseconds, applied to the displayed
+    /// `beatPhase01` / `barPhase01` without affecting onset matching or drift tracking.
+    /// Positive = shift phases forward (visual beat fires earlier).
+    /// Developer-only diagnostic calibration — default 0.
+    public var visualPhaseOffsetMs: Float {
+        get { lock.lock(); defer { lock.unlock() }; return _visualPhaseOffsetMs }
+        set { lock.lock(); defer { lock.unlock() }; _visualPhaseOffsetMs = newValue }
+    }
+    private var _visualPhaseOffsetMs: Float = 0
+
+    /// Drift-adjusted downbeat times relative to `playbackTime`, limited to `count`
+    /// downbeats within ±`window` seconds of now. Positive = upcoming, negative = past.
+    /// Returns an empty array when no grid is installed.
+    public func relativeDownbeatTimes(playbackTime: Double, count: Int, window: Double = 8.0) -> [Float] {
+        lock.lock(); defer { lock.unlock() }
+        guard !grid.downbeats.isEmpty else { return [] }
+        var result: [Float] = []
+        result.reserveCapacity(min(count, 16))
+        let adjustedNow = playbackTime + drift
+        var lo = 0
+        var hi = grid.downbeats.count - 1
+        while lo < hi {
+            let mid = (lo + hi) / 2
+            if grid.downbeats[mid] < adjustedNow - window { lo = mid + 1 } else { hi = mid }
+        }
+        for i in lo..<grid.downbeats.count {
+            let rel = Float(grid.downbeats[i] - adjustedNow)
+            if rel > Float(window) { break }
+            if result.count >= count { break }
+            result.append(rel)
+        }
+        return result
     }
 
     /// Drift-adjusted beat times relative to `playbackTime`, limited to `count`
@@ -219,7 +260,10 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
         }
 
         let lockState = computeLockState()
-        let phase = computePhase(at: pt + drift)
+        // Apply visual phase offset to the display phase only; onset matching
+        // and drift estimation always use the real (unshifted) playback time.
+        let displayTime = pt + drift + Double(_visualPhaseOffsetMs) / 1000.0
+        let phase = computePhase(at: displayTime)
 
         return Result(
             beatPhase01: phase.beatPhase01,

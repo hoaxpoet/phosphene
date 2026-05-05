@@ -22,8 +22,11 @@ extension VisualizerEngine {
     func setupCaptureHook(pipe: RenderPipeline, ctx: MetalContext) {
         guard let recorder = self.sessionRecorder else { return }
         let device = ctx.device
-        pipe.onFrameRendered = { [weak recorder] drawableTex, features, stems, commandBuffer in
+        pipe.onFrameRendered = { [weak recorder, weak self] drawableTex, features, stems, commandBuffer in
             guard let recorder = recorder else { return }
+            // Snapshot the latest beat-sync data before encoding the command buffer
+            // so the completion handler captures a point-in-time value from this frame.
+            let beatSync = self?.beatSyncLock.withLock { self?.latestBeatSyncSnapshot } ?? .zero
             let canBlit = !drawableTex.isFramebufferOnly
                 && drawableTex.width > 0
                 && drawableTex.height > 0
@@ -38,7 +41,7 @@ extension VisualizerEngine {
                 blit.endEncoding()
             }
             commandBuffer.addCompletedHandler { [weak recorder] _ in
-                recorder?.recordFrame(features: features, stems: stems)
+                recorder?.recordFrame(features: features, stems: stems, beatSync: beatSync)
             }
         }
     }

@@ -299,7 +299,13 @@ struct PlaybackView: View {
             onToggleDiagnosticHold: diagHoldAction,
             onToggleForceSpider: forceSpiderAction,
             onDebugNextPreset: debugNext,
-            onDebugPreviousPreset: debugPrev
+            onDebugPreviousPreset: debugPrev,
+            onDecreaseBeatPhaseOffset: { [weak engine] in
+                engine?.adjustBeatPhaseOffset(ms: -10)
+            },
+            onIncreaseBeatPhaseOffset: { [weak engine] in
+                engine?.adjustBeatPhaseOffset(ms: +10)
+            }
         )
     }
 }

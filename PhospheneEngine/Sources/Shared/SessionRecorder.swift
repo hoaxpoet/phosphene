@@ -206,13 +206,22 @@ public final class SessionRecorder: @unchecked Sendable {
 
     /// Record one rendered frame. Safe to call from the command buffer completion handler.
     public func recordFrame(features: FeatureVector, stems: StemFeatures) {
+        recordFrame(features: features, stems: stems, beatSync: .zero)
+    }
+
+    /// Record one rendered frame with beat-sync diagnostic columns.
+    /// Safe to call from the command buffer completion handler.
+    public func recordFrame(features: FeatureVector, stems: StemFeatures, beatSync: BeatSyncSnapshot) {
         let now = CFAbsoluteTimeGetCurrent()
         let throttled = (now - lastVideoFrameTime) < minVideoInterval
         queue.async { [weak self] in
             guard let self = self else { return }
             let idx = self.frameIndex
             self.frameIndex += 1
-            let fRow = SessionRecorder.csvRow(features: features, frame: idx, wallclock: now)
+            // swiftlint:disable multiline_arguments
+            let fRow = SessionRecorder.csvRow(features: features, beatSync: beatSync,
+                                              frame: idx, wallclock: now)
+            // swiftlint:enable multiline_arguments
             self.featuresHandle.write(fRow.data(using: .utf8) ?? Data())
             let sRow = SessionRecorder.csvRow(stems: stems, frame: idx, wallclock: now)
             self.stemsHandle.write(sRow.data(using: .utf8) ?? Data())
@@ -316,7 +325,9 @@ public final class SessionRecorder: @unchecked Sendable {
             subBass,lowBass,lowMid,midHigh,highMid,high,\
             beatBass,beatMid,beatTreble,beatComposite,\
             spectralCentroid,spectralFlux,valence,arousal,accumulatedAudioTime,\
-            beatPhase01,bassRel,bassDev,bassAttRel
+            beatPhase01,bassRel,bassDev,bassAttRel,\
+            barPhase01_permille,beatsPerBar,beat_in_bar,is_downbeat,\
+            beat_sync_mode,lock_state,grid_bpm,playback_time_s,drift_ms
 
             """
         let stemsHeader = """

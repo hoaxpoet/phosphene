@@ -256,17 +256,24 @@ extension VisualizerEngine {
                 spectralCartographOverlay = overlay
                 pipeline.setDynamicTextOverlay(overlay)
                 let histBuf = pipeline.spectralHistory
-                pipeline.setTextOverlayCallback { [weak histBuf] overlay in
-                    guard let histBuf else { return }
+                pipeline.setTextOverlayCallback { [weak histBuf, weak self] overlay, features in
+                    guard let histBuf, let self else { return }
                     let (bpm, lockState) = histBuf.readOverlayState()
                     let sessionMode = histBuf.readSessionMode()
+                    let driftMs = histBuf.readDriftMs()
+                    let phaseOffsetMs = self.mirPipeline.liveDriftTracker.visualPhaseOffsetMs
                     overlay.refresh { ctx, size in
                         SpectralCartographText.draw(
                             in: ctx,
                             size: size,
                             bpm: bpm,
                             lockState: lockState,
-                            sessionMode: sessionMode
+                            sessionMode: sessionMode,
+                            beatPhase01: features.beatPhase01,
+                            barPhase01: features.barPhase01,
+                            beatsPerBar: Int(features.beatsPerBar.rounded()),
+                            driftMs: driftMs,
+                            phaseOffsetMs: phaseOffsetMs
                         )
                     }
                 }

@@ -151,11 +151,15 @@ private func readFloat(_ buf: MTLBuffer, at index: Int) -> Float {
     history.reset()
 
     let ptr = history.gpuBuffer.contents().assumingMemoryBound(to: Float.self)
-    let beatTimesStart = SpectralHistoryBuffer.offsetBeatTimes
-    let beatTimesEnd   = beatTimesStart + SpectralHistoryBuffer.beatTimesCount
+    let beatTimesStart    = SpectralHistoryBuffer.offsetBeatTimes
+    let beatTimesEnd      = beatTimesStart + SpectralHistoryBuffer.beatTimesCount
+    let downbeatTimesStart = SpectralHistoryBuffer.offsetDownbeatTimes
+    let downbeatTimesEnd   = downbeatTimesStart + SpectralHistoryBuffer.downbeatTimesCount
     for i in 0..<SpectralHistoryBuffer.totalFloats {
-        if i >= beatTimesStart && i < beatTimesEnd {
-            // Beat-time slots are reset to Float.infinity (sentinel = no tick).
+        let isInfinitySlot = (i >= beatTimesStart && i < beatTimesEnd)
+                          || (i >= downbeatTimesStart && i < downbeatTimesEnd)
+        if isInfinitySlot {
+            // Beat-time and downbeat-time slots are reset to Float.infinity (no-tick sentinel).
             #expect(ptr[i].isInfinite, "slot \(i) should be ∞ after reset")
         } else {
             #expect(ptr[i] == 0.0, "slot \(i) should be 0 after reset")
@@ -222,4 +226,60 @@ private func readFloat(_ buf: MTLBuffer, at index: Int) -> Float {
     history.updateBeatGridData(relativeBeatTimes: [], bpm: 0.0, lockState: 0, sessionMode: 99)
     let stored = readFloat(history.gpuBuffer, at: SpectralHistoryBuffer.offsetSessionMode)
     #expect(stored == 3.0, "sessionMode should be clamped to 3, got \(stored)")
+}
+
+// MARK: - DSP.3.3: downbeats + drift slots
+
+@Test func test_downbeatSlots_infinityAfterReset() throws {
+    let device = try makeDevice()
+    let history = SpectralHistoryBuffer(device: device)
+    history.updateBeatGridData(
+        relativeBeatTimes: [], relativeDownbeatTimes: [0.5, 1.0, 2.0],
+        bpm: 120, lockState: 1, sessionMode: 2, driftMs: 15.0
+    )
+    history.reset()
+    let ptr = history.gpuBuffer.contents().assumingMemoryBound(to: Float.self)
+    for i in 0..<SpectralHistoryBuffer.downbeatTimesCount {
+        let slot = SpectralHistoryBuffer.offsetDownbeatTimes + i
+        #expect(ptr[slot].isInfinite, "downbeat slot \(i) should be ∞ after reset")
+    }
+}
+
+@Test func test_driftMs_storedAndReadBack() throws {
+    let device = try makeDevice()
+    let history = SpectralHistoryBuffer(device: device)
+    history.updateBeatGridData(relativeBeatTimes: [], bpm: 120, lockState: 2,
+                               sessionMode: 3, driftMs: 23.5)
+    let read = history.readDriftMs()
+    #expect(abs(read - 23.5) < 0.01, "drift should round-trip; got \(read)")
+}
+
+@Test func test_driftMs_zeroAfterReset() throws {
+    let device = try makeDevice()
+    let history = SpectralHistoryBuffer(device: device)
+    history.updateBeatGridData(relativeBeatTimes: [], bpm: 120, lockState: 2,
+                               sessionMode: 3, driftMs: 50.0)
+    history.reset()
+    let read = history.readDriftMs()
+    #expect(read == 0.0, "driftMs should be 0 after reset; got \(read)")
+}
+
+@Test func test_downbeatTimes_roundTrip() throws {
+    let device = try makeDevice()
+    let history = SpectralHistoryBuffer(device: device)
+    let downbeats: [Float] = [-0.5, 0.0, 1.5, 3.0]
+    history.updateBeatGridData(
+        relativeBeatTimes: [], relativeDownbeatTimes: downbeats,
+        bpm: 120, lockState: 2, sessionMode: 3, driftMs: 0
+    )
+    let ptr = history.gpuBuffer.contents().assumingMemoryBound(to: Float.self)
+    for (i, expected) in downbeats.enumerated() {
+        let slot = SpectralHistoryBuffer.offsetDownbeatTimes + i
+        #expect(abs(ptr[slot] - expected) < 0.001, "downbeat[\(i)] mismatch: \(ptr[slot]) vs \(expected)")
+    }
+    // Unused slots should be infinity.
+    for i in downbeats.count..<SpectralHistoryBuffer.downbeatTimesCount {
+        let slot = SpectralHistoryBuffer.offsetDownbeatTimes + i
+        #expect(ptr[slot].isInfinite, "unused downbeat slot \(i) should be ∞")
+    }
 }
