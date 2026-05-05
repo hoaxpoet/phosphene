@@ -31,7 +31,7 @@ private typealias PresetHashes = (steady: UInt64, beatHeavy: UInt64, quiet: UInt
 private let goldenPresetHashes: [String: PresetHashes] = [
     // V.7.7 build: WORLD pillar (six-layer forest) + background dewy webs with
     // Snell's-law drop refraction; foreground web code bit-identical to V.7.5.
-    "Arachne": (steady: 0x67D31707568E4D8C, beatHeavy: 0x67D31707568E4D8C, quiet: 0x67D31707568E4D8C),
+    "Arachne": (steady: 0x76BB0F070F0F8E0F, beatHeavy: 0x76BB0F070F0F8E0F, quiet: 0x76BB0F070F0F8E0F),
     "Ferrofluid Ocean": (steady: 0x56AB1C4A28B32727, beatHeavy: 0x5CB393AAAFA84840, quiet: 0xA64C51A62FD35356),
     "Glass Brutalist": (steady: 0x336954B4B4544D33, beatHeavy: 0x336954B4B4544D33, quiet: 0x336954B4B4544D33),
     "Gossamer": (steady: 0x5756A72F070F0F0D, beatHeavy: 0x5756A72F070F0F0D, quiet: 0x5756872D0F0F0F0D),
