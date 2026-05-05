@@ -9,11 +9,11 @@
 // Core Graphics wrote to.
 //
 // Coordinate convention:
-//   CGContext uses standard CG origin (bottom-left, Y up).
-//   The Metal fragment shader must sample with flipped Y:
-//       textOverlay.sample(s, float2(uv.x, 1.0 - uv.y))
-//   This lets draw callbacks specify positions with the natural "top-left = high Y"
-//   mental model by working in CG coordinates directly.
+//   A permanent CTM flip is applied in init: translateBy(0, height) + scaleBy(1, -1).
+//   This makes the user coordinate space top-down (y=0 = screen top, y=height = bottom),
+//   matching Metal's UV convention.  Core Text renders right-side-up in this space.
+//   The Metal fragment shader samples WITHOUT Y-flip:
+//       textOverlay.sample(s, float2(uv.x, uv.y))
 //
 // Thread safety:
 //   `refresh(_:)` must be called on the render thread, before the draw command
@@ -87,6 +87,14 @@ public final class DynamicTextOverlay: @unchecked Sendable {
         ctx.setShouldSmoothFonts(false)
         ctx.setShouldAntialias(true)
         ctx.setAllowsAntialiasing(true)
+
+        // Apply a permanent Y-flip CTM so that the user coordinate system has
+        // y=0 at the TOP (matching Metal UV y=0 = screen top) and y=height at
+        // the BOTTOM.  Without this, CGBitmapContext's default lower-left origin
+        // causes Core Text glyphs to render upside-down when viewed as a Metal
+        // texture.  The Metal shader therefore samples with no Y-flip.
+        ctx.translateBy(x: 0, y: CGFloat(height))
+        ctx.scaleBy(x: 1, y: -1)
 
         self.texture = tex
         self.cgContext = ctx

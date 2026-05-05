@@ -69,7 +69,7 @@ constant int kOffSamplesValid = 2401;
 // Beat-grid overlay (SpectralHistoryBuffer.swift offsetBeatTimes=2402 .. offsetLockState=2419)
 constant int kOffBeatTimes    = 2402;
 constant int kBeatTimesCount  = 16;
-constant int kOffBPM          = 2418;
+// kOffBPM = 2418 — read by SpectralHistoryBuffer.readOverlayState() for text overlay; not used in shader.
 constant int kOffLockState    = 2419;
 
 // ── Layout constants ──────────────────────────────────────────────────────────
@@ -329,7 +329,9 @@ static inline float4 sampleTextOverlay(
     texture2d<float, access::sample> tex,
     float2 uv)
 {
-    return tex.sample(kTextSampler, float2(uv.x, 1.0 - uv.y));
+    // No Y-flip: CGContext CTM is flipped in DynamicTextOverlay.init so memory
+    // row 0 corresponds to user y=0 (top), matching Metal's UV y=0 = screen top.
+    return tex.sample(kTextSampler, float2(uv.x, uv.y));
 }
 
 // ── Entry point ───────────────────────────────────────────────────────────────
