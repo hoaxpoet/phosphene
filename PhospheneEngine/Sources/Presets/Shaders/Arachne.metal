@@ -50,7 +50,7 @@
 // Buffer bindings:
 //   buffer(0) = FeatureVector      (192 bytes)
 //   buffer(3) = StemFeatures       (256 bytes)
-//   buffer(6) = ArachneWebGPU[kArachWebs]  (256 bytes at kArachWebs=4 — ArachneState.webBuffer)
+//   buffer(6) = ArachneWebGPU[kArachWebs]  (320 bytes at kArachWebs=4 — ArachneState.webBuffer)
 //   buffer(7) = ArachneSpiderGPU   (80 bytes  — ArachneState.spiderBuffer)
 //
 // D-026 deviation-first, D-019 warmup, D-037: two seed webs guarantee visibility.
@@ -62,6 +62,9 @@ struct ArachneWebGPU {
     float rot_angle; uint anchor_count; float spiral_revolutions; uint rng_seed;
     float birth_beat_phase; uint stage; float progress, opacity;
     float birth_hue, birth_sat, birth_brt; uint is_alive;
+    // Row 4: global mood — x=smoothedValence, y=smoothedArousal, z=accTime, w=reserved.
+    // Written to all slots each frame by ArachneState._tick(). drawWorld() reads webs[0].row4.
+    float4 row4;
 };
 
 struct ArachneSpiderGPU {
@@ -121,6 +124,106 @@ static float  arachKSag(uint seed)        { return 0.06 + arachHash(seed + 0xD4u
 static float2 arachHubJitter(uint seed) {
     return float2((arachHash(seed + 0xE5u) - 0.5) * 0.10,
                   (arachHash(seed + 0xF6u) - 0.5) * 0.10);
+}
+
+// ── V.7.7: WORLD pillar ───────────────────────────────────────────────────────
+// Six-layer forest stage rendered inline (not a render target) so drawBackgroundWeb()
+// can call drawWorld(refractedUV, ...) for Snell's-law refraction through drops.
+//
+// References: 06_atmosphere_dark_misty_forest.jpg, 07_atmosphere_dust_light_shaft.jpg,
+//             15_atmosphere_aurora_forest.jpg, 16_atmosphere_dappled_pine_forest.jpg,
+//             17_floor_moss_leaf_litter.jpg, 18_bark_close_up.jpg
+//
+// UV convention: (0,0) = top-left, (1,1) = bottom-right.
+// moodRow: x=smoothedValence [-1,1], y=smoothedArousal [-1,1], z=accumulatedAudioTime.
+// No per-frame audio drivers inside — palette is fully mood-derived (D-026 satisfied:
+// moodRow is smoothed in ArachneState._tick() from FeatureVector.valence/arousal).
+
+static float3 drawWorld(float2 uv, float4 moodRow, float accTime) {
+    float v = clamp(moodRow.x, -1.0, 1.0);
+    float a = clamp(moodRow.y, -1.0, 1.0);
+
+    // §4.3 mood palette scale factors — arousal drives saturation and brightness.
+    float satScale = 0.25 + 0.40 * saturate(0.5 + 0.5 * a);
+    float valScale = 0.10 + 0.20 * saturate(0.5 + 0.5 * a);
+
+    // Silence anchor (ref 08): pure black at very low valence AND very low arousal.
+    if (satScale * valScale < 0.05) return float3(0.0);
+
+    // §4.3 hue recipe — valence shifts cool (teal/blue) vs warm (orange/amber).
+    float topHue  = mix(0.62, 0.05, saturate(0.5 + 0.5 * v));  // sky top: teal → orange
+    float botHue  = mix(0.58, 0.08, saturate(0.5 + 0.5 * v));  // horizon: teal → amber
+    float3 topCol  = hsv2rgb(float3(topHue,        satScale,          valScale * 1.2));
+    float3 botCol  = hsv2rgb(float3(botHue,         satScale * 0.85,   valScale));
+    float3 beamCol = hsv2rgb(float3(mix(0.60, 0.08, saturate(0.5 + 0.5 * v)), 0.50, 0.40));
+
+    // Layer 1 (macro): sky gradient — cool/teal near top, warm/amber at horizon.
+    float3 col = mix(topCol, botCol, uv.y);
+
+    // Layer 2 (macro): distant tree silhouettes — fbm4-displaced skyline at y ≈ 0.60.
+    float distNoise   = fbm4(float3(uv.x * 3.0 + 0.50, 0.0, 0.0)) * 0.08;
+    float distHorizon = uv.y - (0.60 + distNoise);
+    float distSil     = smoothstep(0.0, 0.025, distHorizon);
+    col = mix(col, botCol * 0.25, distSil);
+
+    // Layer 3 (meso): mid-distance trees with bark — closer horizon at y ≈ 0.54.
+    float midNoise   = fbm4(float3(uv.x * 5.5 + 1.30, 0.0, 0.0)) * 0.06;
+    float midHorizon = uv.y - (0.54 + midNoise);
+    float midSil     = smoothstep(0.0, 0.015, midHorizon);
+    // micro: bark via fbm4 in the tree region (ref 18_bark_close_up.jpg).
+    float barkN = fbm4(float3(uv.x * 14.0, (uv.y - 0.54) * 22.0, 0.13)) * 0.5 + 0.5;
+    col = mix(col, mix(botCol * 0.14, botCol * 0.22, barkN), midSil);
+
+    // Layer 4 (meso): near-frame anchor branches — two capsule SDFs.
+    // Left branch: from upper-left corner toward mid-screen (ref 16_dappled_pine_forest.jpg).
+    {
+        float2 ba  = float2(0.04, 0.22);
+        float2 bb  = float2(0.30, 0.54);
+        float2 dir = bb - ba;
+        float2 pa  = uv - ba;
+        float  tc  = saturate(dot(pa, dir) / max(dot(dir, dir), 1e-6));
+        float  bd  = length(pa - dir * tc);
+        float  cov = smoothstep(0.012, 0.007, bd);
+        float  bkL = fbm4(float3(tc * 9.0 + 0.17, bd * 25.0, 0.0)) * 0.5 + 0.5;
+        col = mix(col, mix(botCol * 0.11, botCol * 0.19, bkL), cov);
+    }
+    // Right branch: from upper-right corner toward mid-screen.
+    {
+        float2 ba  = float2(0.96, 0.18);
+        float2 bb  = float2(0.70, 0.48);
+        float2 dir = bb - ba;
+        float2 pa  = uv - ba;
+        float  tc  = saturate(dot(pa, dir) / max(dot(dir, dir), 1e-6));
+        float  bd  = length(pa - dir * tc);
+        float  cov = smoothstep(0.012, 0.007, bd);
+        float  bkR = fbm4(float3(tc * 9.0 + 0.83, bd * 25.0, 0.0)) * 0.5 + 0.5;
+        col = mix(col, mix(botCol * 0.11, botCol * 0.19, bkR), cov);
+    }
+
+    // Layer 5 (macro): forest floor — dark moss/leaf-litter at y > 0.75 (ref 17).
+    float floorN   = fbm4(float3(uv.x * 7.0, 0.0, 0.41)) * 0.04;
+    float floorSil = smoothstep(0.0, 0.02, uv.y - (0.75 + floorN));
+    float mossN    = fbm4(float3(uv.x * 9.0, uv.y * 18.0, 0.67)) * 0.5 + 0.5;
+    col = mix(col, mix(botCol * 0.09, botCol * 0.17, mossN), floorSil);
+
+    // Layer 6 (specular): volumetric atmosphere.
+    // Fog: peaked at horizon band (ref 06_dark_misty_forest.jpg).
+    float fogDens = exp(-abs(uv.y - 0.62) * 12.0) * 0.35 * satScale;
+    col = mix(col, mix(topCol, botCol, 0.55) * 0.75, fogDens);
+
+    // Light shaft: narrow Gaussian beam near screen centre (ref 07_dust_light_shaft.jpg).
+    float shaftDx   = uv.x - 0.50;
+    float shaftFade = smoothstep(0.80, 0.15, uv.y);  // stronger high in frame
+    float shaftI    = exp(-shaftDx * shaftDx / (0.07 * 0.07))
+                    * shaftFade * 0.10 * valScale;
+    col += beamCol * shaftI;
+
+    // Dust motes: accTime-drifted fbm4; pauses at silence (anti-FA33).
+    float2 driftUV = uv * float2(45.0, 22.0) + float2(accTime * 0.006, accTime * 0.003);
+    float  moteN   = fbm4(float3(driftUV, 0.31)) * 0.5 + 0.5;
+    col += beamCol * smoothstep(0.76, 0.82, moteN) * 0.06 * valScale;
+
+    return col;
 }
 
 // ── Per-web 2D evaluation ─────────────────────────────────────────────────────
@@ -327,6 +430,66 @@ static ArachneWebResult arachneEvalWeb(
     return result;
 }
 
+// ── V.7.7: Background dewy web ────────────────────────────────────────────────
+// Fully-stable web placed in the forest mid-ground; threads render at 0.12× silk
+// brightness so they recede behind the foreground pool webs; drops act as lenses
+// onto the WORLD scene via Snell's-law refraction (ARACHNE_V8_DESIGN.md §5.12).
+// References: 01_macro_dewy_web_on_dark.jpg, 03_micro_adhesive_droplet.jpg.
+//
+// NOTE: drawWorld() must be defined above this function in the compilation unit.
+
+static float3 drawBackgroundWeb(
+    float2 uv, float2 hubUV, float webRBg,
+    uint   seed, float4 moodRow, float accTime
+) {
+    float kSagBg = 0.14 + arachHash(seed + 0x77u) * 0.04;  // [0.14, 0.18]
+    float rotBg  = arachHash(seed + 0x55u) * 2.0 * M_PI_F;
+
+    ArachneWebResult wr = arachneEvalWeb(
+        uv, hubUV, webRBg, rotBg, 5.5, seed,
+        3u, 1.0,
+        arachSpokeCount(seed), arachAspect(seed),
+        arachAspectAngle(seed), kSagBg
+    );
+
+    float3 result = float3(0.0);
+
+    // Dim threads — cool bioluminescent tint; 0.12 factor keeps them behind foreground.
+    if (wr.strandCov > 0.005) {
+        float3 bgSilk = hsv2rgb(float3(0.55, 0.55, 0.75));
+        result += bgSilk * 0.12 * wr.strandCov;
+    }
+
+    // Refractive drops — Snell's law, air (n=1.0) → water (n=1.33), eta = 0.752.
+    if (wr.dropCov > 0.01) {
+        float  dropR = wr.dropRadius;
+        float2 d2    = wr.dropVec / max(dropR, 1e-5);
+        float  hh    = sqrt(max(0.0, 1.0 - dot(d2, d2)));
+        float3 sphN  = normalize(float3(d2, hh));
+        const float3 kViewRay = float3(0.0, 0.0, 1.0);
+
+        // Incident ray is -kViewRay (pointing into screen); dot(sphN, I) = -hh < 0 ✓
+        float3 refr        = refract(-kViewRay, sphN, 0.752);
+        float2 refractedUV = uv + refr.xy * dropR * 8.0;
+        float3 bgSeen      = drawWorld(refractedUV, moodRow, accTime);
+
+        // Fresnel blend: grazing angle → white rim; centre → refracted world image.
+        float  cosTheta = abs(dot(sphN, kViewRay));
+        float  fresnel  = pow(1.0 - cosTheta, 3.0);
+        float3 dropCol  = mix(bgSeen, float3(1.0), fresnel * 0.30);
+
+        // Pinpoint specular glint (ref 03_micro_adhesive_droplet.jpg).
+        const float3 kLbg = normalize(float3(0.45, 0.65, 0.30));
+        float3 Rdrop = reflect(-kLbg, sphN);
+        float  spec  = pow(saturate(dot(Rdrop, kViewRay)), 64.0);
+        dropCol += float3(1.0, 0.97, 0.93) * spec * 1.0;
+
+        result += dropCol * wr.dropCov;
+    }
+
+    return result;
+}
+
 // ── Fragment ──────────────────────────────────────────────────────────────────
 
 fragment float4 arachne_fragment(
@@ -339,6 +502,9 @@ fragment float4 arachne_fragment(
     constant ArachneSpiderGPU&  spider  [[buffer(7)]]
 ) {
     float2 uv = in.uv;
+    // V.7.7: WORLD palette mood state — smoothed in ArachneState._tick() and broadcast
+    // to all web slots; drawWorld() + drawBackgroundWeb() read moodRow.x/y for palette.
+    float4 moodRow = webs[0].row4;  // x=smoothedValence, y=smoothedArousal, z=accTime
 
     // D-026 audio drivers — deviation-form only (Session 3 D-026/D-020 audit)
     float hueDrift = fract(f.accumulated_audio_time * 0.025 + f.mid_att_rel * 0.08);
@@ -624,12 +790,10 @@ fragment float4 arachne_fragment(
         spiderContrib      = spiderCol;
     }
 
-    // ── Background (valence/arousal-tinted near-black) ─────────────────────────
-    float  gv    = saturate(f.valence * 0.5 + 0.5);
-    float  ga    = saturate(f.arousal * 0.5 + 0.5);
-    float3 bgLow  = mix(float3(0.004, 0.004, 0.018), float3(0.008, 0.014, 0.006), ga);
-    float3 bgHigh = mix(float3(0.005, 0.009, 0.040), float3(0.015, 0.009, 0.024), ga);
-    float3 bgCol  = mix(bgLow, bgHigh, uv.y * gv);
+    // ── V.7.7: WORLD pillar — six-layer forest stage + background dewy webs ────
+    float3 bgColor  = drawWorld(uv, moodRow, moodRow.z);
+    bgColor += drawBackgroundWeb(uv, float2(0.28, 0.61), 0.18, 7331u, moodRow, moodRow.z);
+    bgColor += drawBackgroundWeb(uv, float2(0.68, 0.58), 0.18, 9137u, moodRow, moodRow.z);
 
     // ── §5.3 Cool-blue rim back-light + combine strands ───────────────────────
     float3 webColor = strandColor + dropColorAccum;
@@ -660,7 +824,7 @@ fragment float4 arachne_fragment(
     float3 moteColor = float3(0.70, 0.85, 1.00) * 0.35;
     webColor        += moteColor * mote;
 
-    float3 color = webColor + bgCol;
+    float3 color = webColor + bgColor;
     color = min(color, float3(0.95));
     return float4(color, 1.0);
 }
