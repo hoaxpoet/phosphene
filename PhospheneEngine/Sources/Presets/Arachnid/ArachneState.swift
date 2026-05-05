@@ -48,7 +48,7 @@ public enum WebStage: UInt32, Sendable {
 
 // MARK: - WebGPU
 
-/// GPU-side web descriptor — 64 bytes (16 × 4-byte words, 4 rows of 4).
+/// GPU-side web descriptor — 80 bytes (20 × 4-byte words, 5 rows of 4).
 /// Must match `ArachneWebGPU` in Arachne.metal byte-for-byte.
 public struct WebGPU: Sendable {
     // Row 0: clip-space position and scale
@@ -74,6 +74,10 @@ public struct WebGPU: Sendable {
     public var birthSat: Float
     public var birthBrt: Float
     public var isAlive: UInt32          // 0 = dead slot, 1 = alive
+
+    // Row 4: global mood — written identically to all slots each frame by _tick().
+    // drawWorld() in Arachne.metal reads webs[0].row4 for the V.7.7 WORLD palette.
+    public var moodData: SIMD4<Float> = .zero  // x=smoothedValence, y=smoothedArousal, z=accTime, w=reserved
 
     public static var zero: WebGPU {
         WebGPU(
@@ -164,6 +168,12 @@ public final class ArachneState: @unchecked Sendable {
     private var prevBeatPhase01: Float = 0
     private var prevBeatComposite: Float = 0
     var rng: UInt32
+
+    // Mood smoothing for WORLD palette (V.7.7 — ARACHNE_V8_DESIGN.md §4.3).
+    // 5s low-pass filter; protected by lock (written in _tick, never read externally).
+    private var smoothedValence: Float = 0.0
+    private var smoothedArousal: Float = 0.0
+
     let lock = NSLock()
     #if DEBUG && ARACHNE_DIAG
     private var loggedStableSlots: Set<Int> = []
@@ -218,6 +228,13 @@ public final class ArachneState: @unchecked Sendable {
 
         // Advance globalBeatIndex from beat_phase01 (wraparound-safe; 120 BPM fallback).
         let beatsDt = advanceBeatIndex(features: features, dt: dt)
+
+        // V.7.7: 5s low-pass mood smoothing for WORLD palette (ARACHNE_V8_DESIGN.md §4.3).
+        // dt / 5.0 is the RC fraction per frame; clamped to 1.0 to prevent overshoot.
+        smoothedValence += (features.valence - smoothedValence) * min(dt / 5.0, 1.0)
+        smoothedArousal += (features.arousal - smoothedArousal) * min(dt / 5.0, 1.0)
+        let moodRow = SIMD4<Float>(smoothedValence, smoothedArousal, features.accumulatedAudioTime, 0)
+        for i in 0..<Self.maxWebs { webs[i].moodData = moodRow }
 
         // D-019 warmup blend: 0 = FV only, 1 = stems fully warm.
         let totalStemEnergy = stems.drumsEnergy + stems.bassEnergy
