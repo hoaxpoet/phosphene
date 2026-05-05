@@ -444,3 +444,23 @@ Add a soak-style test or scripted run that:
 > After implementing DSP.3.1 and DSP.3.2: Matt connects a Spotify playlist, preparation completes, presses `L` to hold Spectral Cartograph, starts music, and observes the center orb transition from "PLANNED (UNLOCKED)" → "PLANNED (LOCKING)" → "PLANNED (LOCKED)" within 5 seconds. The BPM label matches the track's true tempo. The beat-grid tick marks in the BR panel align with perceived beat events. The orb stays on Spectral Cartograph for the full track without the engine switching away.
 
 Until that observation is made and confirmed, Beat This! is not production-validated in the app regardless of how many unit tests pass.
+
+---
+
+## Implementation Note — DSP.3.1 + DSP.3.2 complete (2026-05-05)
+
+Commit `56359c07` implements both blocking fixes identified by this audit.
+
+**DSP.3.1 — Diagnostic hold + session-mode signal:**
+
+- `VisualizerEngine.diagnosticPresetLocked: Bool` added. Toggled by the `L` dev shortcut registered in `PlaybackShortcutRegistry` and wired in `PlaybackView`. Info toast "Diagnostic hold ON / OFF" confirms the state change.
+- `applyLiveUpdate()` in `VisualizerEngine+Orchestrator.swift` checks `diagnosticPresetLocked || isCaptureModeSwitchGraceActive`. When true, `LiveAdaptation.presetOverride` is stripped and the corresponding `.presetOverrideTriggered` event is removed before the adaptation is applied. `LiveAdaptation.updatedTransition` (structural-boundary reschedule) passes through unchanged in all cases.
+- `SpectralHistoryBuffer[2420]` allocated as `offsetSessionMode`. Written by `updateBeatGridData(relativeBeatTimes:bpm:lockState:sessionMode:)` on `analysisQueue`. Read by `readSessionMode()` for the overlay callback.
+- `SpectralCartographText.draw()` signature extended with `sessionMode: Int = 0`. `drawModeLabel(sessionMode:orbBelowY:ctx:cw:ch:)` maps the four values to colour-coded labels: `○ REACTIVE` (grey), `◐ PLANNED · UNLOCKED` (muted amber), `◑ PLANNED · LOCKING` (yellow-green), `● PLANNED · LOCKED` (bright green). The legacy `lockState`-only labels ("LOCKED" / "LOCKING" / "UNLOCKED" / "REACTIVE") are replaced; `lockState` is no longer passed to the text layer.
+- `VisualizerEngine+Audio.updateSpectralCartographBeatGrid(mir:)` computes `sessionMode` from `liveDriftTracker.hasGrid` and `liveDriftTracker.currentLockState`, then passes it to `updateBeatGridData`.
+
+**DSP.3.2 — Pre-fire BeatGrid on session start:**
+
+- `_buildPlan(seed:)` in `VisualizerEngine+Orchestrator.swift` calls `resetStemPipeline(for: plan.tracks.first?.track)` immediately after storing `livePlan`. `resetStemPipeline(for:)` is idempotent via the `currentTrackIdentity` guard, so the subsequent track-change call on first audio arrival is a cache hit and a no-op from the stem pipeline's perspective. The BeatGrid is installed into `mirPipeline.liveDriftTracker` before the user presses play.
+
+**Tests added:** 4 `SpectralHistoryBufferTests` (session_mode slot write/round-trip/reset/clamp), 3 `DiagnosticHoldTests` (suppress-override, pass-through-when-unlocked, boundary-reschedule survives), 2 `SpectralCartographTests` pixel-level label tests, 6 `SpectralCartographTests` infrastructure tests. Total: 15 new tests. Engine test suite green at commit time.

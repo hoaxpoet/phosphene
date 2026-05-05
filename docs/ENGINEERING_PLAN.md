@@ -2000,8 +2000,8 @@ Continuous energy is the primary visual driver; beat onset pulses are accents on
 
 **Sub-increments:**
 
-- **DSP.3.1 — Diagnostic hold + session-mode signal.** `diagnosticPresetLocked` flag in `VisualizerEngine`; suppresses mood-override in `applyLiveUpdate()`. `SpectralHistoryBuffer[2420]` session-mode slot (0=reactive, 1=planned+unlocked, 2=planned+locking, 3=planned+locked). `SpectralCartographText` updated to show "PLANNED (LOCKING)" / "PLANNED (LOCKED)" / "REACTIVE." `L` dev shortcut to toggle hold.
-- **DSP.3.2 — Pre-fire BeatGrid on session start.** In `buildPlan()` or `.ready` state observer, call `resetStemPipeline(for: firstPlannedTrack.track)` when `stemCache != nil`. BeatGrid present before music starts.
+- **DSP.3.1 — Diagnostic hold + session-mode signal.** `diagnosticPresetLocked` flag in `VisualizerEngine`; suppresses mood-override in `applyLiveUpdate()`. `SpectralHistoryBuffer[2420]` session-mode slot (0=reactive, 1=planned+unlocked, 2=planned+locking, 3=planned+locked). `SpectralCartographText` updated to show "PLANNED · UNLOCKED" / "PLANNED · LOCKING" / "PLANNED · LOCKED" / "REACTIVE." `L` dev shortcut to toggle hold. **✅ 2026-05-05 — commit `56359c07`.**
+- **DSP.3.2 — Pre-fire BeatGrid on session start.** At end of `_buildPlan()` after `livePlan` is stored, call `resetStemPipeline(for: plan.tracks.first?.track)`. BeatGrid present before music starts; idempotent via `currentTrackIdentity` guard in `resetStemPipeline`. **✅ 2026-05-05 — commit `56359c07`.**
 - **DSP.3.3 — Spectral Cartograph diagnostic overlays.** Downbeat tick marks (BR panel). Drift ±N ms below BPM. Time-signature label ("7/4"/"4/4"). Session mode text.
 - **DSP.3.4 — CSV export beat-sync columns.** Add `lock_state`, `session_mode`, `drift_ms`, `beat_in_bar`, `downbeat`, `beats_per_bar`, `bar_phase01` to `SessionRecorder.features.csv`.
 - **DSP.3.5 — App-layer wiring test.** Integration test: `SessionPreparer.prepare()` → `StemCache.store()` → `resetStemPipeline(for:)` → `mirPipeline.liveDriftTracker.hasGrid == true`.
@@ -2011,8 +2011,8 @@ Continuous energy is the primary visual driver; beat onset pulses are accents on
 
 **Status:**
 - [x] DSP.3 audit complete: `docs/diagnostics/DSP.3-beat-sync-test-environment-audit.md`. **2026-05-05.**
-- [ ] DSP.3.1 — Diagnostic hold + session-mode signal.
-- [ ] DSP.3.2 — Pre-fire BeatGrid on session start.
+- [x] DSP.3.1 — Diagnostic hold + session-mode signal. **2026-05-05.**
+- [x] DSP.3.2 — Pre-fire BeatGrid on session start. **2026-05-05.**
 - [ ] DSP.3.3 — Spectral Cartograph overlays.
 - [ ] DSP.3.4 — CSV export beat-sync columns.
 - [ ] DSP.3.5 — App-layer wiring test.
