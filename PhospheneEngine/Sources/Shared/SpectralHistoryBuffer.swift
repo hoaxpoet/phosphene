@@ -23,6 +23,14 @@ public protocol SpectralHistoryPublishing: AnyObject, Sendable {
     /// Call exactly once per frame, before fragment encoders are created.
     func append(features: FeatureVector, stems: StemFeatures)
 
+    /// Write cached beat-grid metadata for the SpectralCartograph diagnostic overlay.
+    /// Thread-safe — may be called from the analysis queue while `append` runs on the render thread.
+    /// `relativeBeatTimes`: up to 16 beat times in seconds relative to current playback head
+    ///   (positive = upcoming). Pass `Float.infinity` or fewer than 16 entries for unused slots.
+    /// `bpm`: BPM from the cached BeatGrid (0 = no grid).
+    /// `lockState`: 0 = unlocked, 1 = locking, 2 = locked.
+    func updateBeatGridData(relativeBeatTimes: [Float], bpm: Float, lockState: Int)
+
     /// Zero the buffer and reset ring indices. Call on track change.
     func reset()
 }
@@ -60,6 +68,14 @@ public final class SpectralHistoryBuffer: SpectralHistoryPublishing, @unchecked 
     public static let offsetPitchNorm: Int = 1920
     public static let offsetWriteHead: Int = 2400
     public static let offsetSamplesValid: Int = 2401
+    /// 16 beat times relative to the playback head (seconds). `Float.infinity` = unused slot.
+    public static let offsetBeatTimes: Int = 2402
+    /// Number of beat time slots.
+    public static let beatTimesCount: Int = 16
+    /// Cached BeatGrid BPM (0 = no grid / reactive mode).
+    public static let offsetBPM: Int = 2418
+    /// Drift-tracker lock state stored as float: 0 = unlocked, 1 = locking, 2 = locked.
+    public static let offsetLockState: Int = 2419
 
     // Pitch: log2(hz/80) / log2(10) -> [0..1] for 80..800 Hz.
     private static let pitchMinHz: Float = 80.0
@@ -73,6 +89,9 @@ public final class SpectralHistoryBuffer: SpectralHistoryPublishing, @unchecked 
 
     private var writeHead: Int = 0
     private var samplesValid: Int = 0
+    /// Separate lock for the beat-grid section so analysis-queue writes don't
+    /// race with render-thread ring-buffer writes (different memory slots).
+    private let beatGridLock = NSLock()
 
     // MARK: - Init
 
@@ -114,11 +133,31 @@ public final class SpectralHistoryBuffer: SpectralHistoryPublishing, @unchecked 
         ptr[Self.offsetSamplesValid] = Float(samplesValid)
     }
 
+    /// Write cached beat-grid metadata for the SpectralCartograph diagnostic overlay.
+    /// Thread-safe — uses its own lock, independent of the render-thread ring-buffer writes.
+    public func updateBeatGridData(relativeBeatTimes: [Float], bpm: Float, lockState: Int) {
+        beatGridLock.lock(); defer { beatGridLock.unlock() }
+        let ptr = gpuBuffer.contents().assumingMemoryBound(to: Float.self)
+        // Write beat times, padding unused slots with Float.infinity.
+        for i in 0..<Self.beatTimesCount {
+            ptr[Self.offsetBeatTimes + i] = i < relativeBeatTimes.count
+                ? relativeBeatTimes[i]
+                : Float.infinity
+        }
+        ptr[Self.offsetBPM] = bpm
+        ptr[Self.offsetLockState] = Float(max(0, min(2, lockState)))
+    }
+
     /// Zero the entire buffer and reset ring indices. Call on track change.
     public func reset() {
         memset(gpuBuffer.contents(), 0, Self.bufferSizeBytes)
         writeHead = 0
         samplesValid = 0
+        // Initialize beat time slots to infinity (sentinel = no tick).
+        let ptr = gpuBuffer.contents().assumingMemoryBound(to: Float.self)
+        for i in 0..<Self.beatTimesCount {
+            ptr[Self.offsetBeatTimes + i] = Float.infinity
+        }
     }
 
     // MARK: - Private

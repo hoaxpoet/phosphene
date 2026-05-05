@@ -159,7 +159,7 @@ PhospheneEngine/
     Shaders/GlassBrutalist.metal → Brutalist corridor — static architecture; only the glass-fin X-position deforms with bass (Option A design, see DECISIONS D-020). Light/fog/colour modulated in shared Swift path.
     Shaders/KineticSculpture.metal → Interlocking lattice of Brushed Aluminum + Frosted Glass + Liquid Mercury, abstract ray march. FOV in degrees (post-fix; was radians, see commit history).
     Shaders/TestSphere.metal → Minimal pipeline-verification SDF (sphere + floor); used for end-to-end ray-march compile/render test.
-    Shaders/SpectralCartograph.metal → Instrument-family diagnostic preset. Four-panel real-time MIR visualiser: TL=FFT spectrum (log-freq, centroid-coloured), TR=3-band deviation meters (D-026 compliant), BL=valence/arousal phase plot with 8s trail, BR=scrolling graphs for beat_phase01/bass_dev/vocal pitch. Reads SpectralHistoryBuffer at buffer(5). Direct pass only; no feedback, no warp.
+    Shaders/SpectralCartograph.metal → Instrument-family diagnostic preset. Four-panel real-time MIR visualiser: TL=FFT spectrum (log-freq, centroid-coloured), TR=3-band deviation meters (D-026 compliant), BL=valence/arousal phase plot with 8s trail, BR=scrolling graphs for beat_phase01/bass_dev/vocal pitch. Reads SpectralHistoryBuffer at buffer(5). Direct pass only; no feedback, no warp. V2 (DSP.2 sign-off): per-panel header labels via inline 3×5 bitmap font (no texture atlas); centered beat orb at (0.5,0.5) with amber fill keyed to beat_phase01 + white ring flash at onset + BPM digits above + lock-state text ("LOCKED"/"LOCKING"/"UNLOCKED") below; BR panel beat_phase01 row overlaid with cached-BeatGrid tick marks from SpectralHistoryBuffer[2402..2417] so zero-crossings can be visually verified against ground truth. Reactive mode: orb pulses via BeatPredictor fallback, ticks hidden (Float.infinity sentinel).
     Shaders/Arachne.metal → Bioluminescent spider web 3D SDF ray march (Increment 3.5.10, D-041). Direct fragment + mv_warp (decay=0.92). 64-step ray march from z=−1.8; anchor web at (0,0,0.2) always present. Pool webs (up to 11) at hub_xy×{0.9,0.8} spread, depth z∈[−0.4,1.4]. sdWebElement: hub cap + progressive radial draw (alternating-pair order {0,6,3,9,1,7,4,10,2,8,5,11}, ±22% angular jitter per-spoke) + Archimedean spiral (7 turns, min(fract,1-fract) correct SDF). Tube radius 0.012. Beat-phase vibration. Miss-ray bioluminescent glow exp2(−dist×14) ensures D-037 acceptance. Spider SDF (ArachneSpiderGPU at buffer(7)) on anchor web when triggered. D-019/D-026 compliant.
     Arachnid/ArachneState.swift → Per-preset world state: 12-web pool, stages (anchorPulse→radial→spiral→stable→evicting), beat-measured stage advancement, drum-driven spawn accumulator, LCG PRNG, GPU webBuffer flush. (Increment 3.5.5)
     Shaders/Gossamer.metal → Bioluminescent hero-web sonic resonator (Increment 3.5.6, v3 geometry). Direct fragment + mv_warp. 17 explicitly-defined irregular spoke angles (spacing 0.27–0.77 rad, one 0.77 rad open sector lower-right). Hub at (0.465, 0.32) — upper screen — clips top spiral rings into asymmetric arcs naturally. No formula, no hash-jitter. Up to 32 propagating color waves emitted when vocalsPitchConfidence > 0.35 OR |vocalsEnergyDev| > 0.05; wave hue baked from YIN pitch, saturation from other-stem density. mv_warp trails accumulate wave echoes. Ambient drift floor keeps ≥2 waves at silence. D-026/D-019 compliant.
@@ -346,6 +346,9 @@ enum AudioSignalState         // .active, .suspect, .silent, .recovering
 enum RenderPass               // direct, feedback, particles, mesh_shader, post_process, ray_march, icb, ssgi
 class SpectralHistoryBuffer   // 16 KB UMA ring buffer at buffer(5). 480-sample trails for
                               // valence, arousal, beat_phase01, bass_dev, vocals_pitch_norm.
+                              // Reserved section [2402..2419]: beat_times[16] (Float.infinity=unused),
+                              // bpm, lock_state — written by analysisQueue via updateBeatGridData()
+                              // (separate beatGridLock, non-overlapping with ring-buffer writes).
                               // Conforms to SpectralHistoryPublishing for test injection.
 enum DeviceTier               // .tier1 (M1/M2), .tier2 (M3/M4). frameBudgetMs = 16.6ms.
 struct PresetScoringContext   // Sendable session snapshot: deviceTier, frameBudgetMs, recentHistory,
@@ -417,6 +420,12 @@ buffer(5) = SpectralHistory (4096 Float32, 16 KB) — direct-pass fragment encod
               [1440..1919] bass_dev history (0..1)
               [1920..2399] vocals_pitch_norm history (0..1, log-mapped 80..800 Hz, 0 = unvoiced)
               [2400] write_head  [2401] samples_valid
+              [2402..2417] beat_times[16] — relative beat times in seconds (positive=upcoming).
+                           Float.infinity sentinel = unused slot. Written by analysisQueue via
+                           updateBeatGridData(). Used by SpectralCartograph tick overlay.
+              [2418] bpm — BPM from cached BeatGrid (0 = no grid / reactive mode)
+              [2419] lock_state — drift-tracker lock: 0=unlocked, 1=locking, 2=locked
+              [2420..4095] reserved (zeroed)
 buffer(6–7) = future use
 ```
 

@@ -66,7 +66,8 @@ public final class MIRPipeline: @unchecked Sendable {
     public private(set) var rawSmoothedFlux: Float = 0
     /// Raw smoothed spectral centroid in Hz (not normalized). For mood classifier z-score input.
     public private(set) var rawSmoothedCentroid: Float = 0
-    var elapsedSeconds: Float = 0
+    /// Track-relative playback clock in seconds. Reset to 0 on track change.
+    public private(set) var elapsedSeconds: Float = 0
     /// Latest structural prediction from StructuralAnalyzer.
     public private(set) var latestStructuralPrediction: StructuralPrediction = .none
     /// Number of onsets detected per second (for BPM debugging).

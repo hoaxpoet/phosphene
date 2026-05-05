@@ -102,6 +102,43 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
         return !grid.beats.isEmpty
     }
 
+    /// BPM from the installed grid, or 0 when no grid is present.
+    public var currentBPM: Double {
+        lock.lock(); defer { lock.unlock() }
+        return grid.bpm
+    }
+
+    /// Current tracker confidence. `.unlocked` when no grid is installed.
+    public var currentLockState: LockState {
+        lock.lock(); defer { lock.unlock() }
+        return computeLockState()
+    }
+
+    /// Drift-adjusted beat times relative to `playbackTime`, limited to `count`
+    /// beats within ±`window` seconds of now. Positive = upcoming, negative = past.
+    /// Returns an empty array when no grid is installed.
+    public func relativeBeatTimes(playbackTime: Double, count: Int, window: Double = 8.0) -> [Float] {
+        lock.lock(); defer { lock.unlock() }
+        guard !grid.beats.isEmpty else { return [] }
+        var result: [Float] = []
+        result.reserveCapacity(min(count, 32))
+        let adjustedNow = playbackTime + drift
+        // Binary-search start index to avoid scanning the full grid.
+        var lo = 0
+        var hi = grid.beats.count - 1
+        while lo < hi {
+            let mid = (lo + hi) / 2
+            if grid.beats[mid] < adjustedNow - window { lo = mid + 1 } else { hi = mid }
+        }
+        for i in lo..<grid.beats.count {
+            let rel = Float(grid.beats[i] - adjustedNow)
+            if rel > Float(window) { break }
+            if result.count >= count { break }
+            result.append(rel)
+        }
+        return result
+    }
+
     /// Install a new grid and reset drift state. `.empty` puts the tracker into
     /// the reactive-mode fallback (emits zero phase / `.unlocked`).
     public func setGrid(_ newGrid: BeatGrid) {

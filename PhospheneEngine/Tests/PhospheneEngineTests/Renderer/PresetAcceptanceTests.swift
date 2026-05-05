@@ -86,9 +86,12 @@ struct PresetAcceptanceTests {
     // MARK: - Invariant 2: No white clip on steady energy (non-HDR)
 
     // HDR presets that include post_process are exempt: tone-mapping clips internally.
+    // Diagnostic presets are exempt: intentional white text labels for MIR data display
+    // are not HDR overflow — they are by design.
     @Test("Preset does not clip to white on steady energy (non-HDR)", arguments: _acceptanceFixture.presets)
     func test_noWhiteClip_steadyEnergy(_ preset: PresetLoader.LoadedPreset) throws {
         guard !preset.descriptor.passes.contains(.postProcess) else { return }
+        guard !preset.descriptor.isDiagnostic else { return }
         let ctx = try MetalContext()
         var fixture = steadyFixture
         let pixels = try renderFrame(preset: preset, features: &fixture, context: ctx)
