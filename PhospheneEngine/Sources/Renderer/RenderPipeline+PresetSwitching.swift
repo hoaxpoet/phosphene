@@ -133,7 +133,7 @@ extension RenderPipeline {
     /// Set the per-frame callback that populates the dynamic text overlay.
     /// Called once per frame from `drawDirect` if an overlay is attached.
     /// Pass `nil` to detach. Thread-safe — can be called from any queue.
-    public func setTextOverlayCallback(_ callback: ((DynamicTextOverlay) -> Void)?) {
+    public func setTextOverlayCallback(_ callback: ((DynamicTextOverlay, FeatureVector) -> Void)?) {
         textOverlayCallbackLock.withLock { textOverlayCallback = callback }
     }
 }

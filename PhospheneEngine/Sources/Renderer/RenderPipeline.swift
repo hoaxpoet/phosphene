@@ -161,7 +161,8 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
 
     /// Per-frame callback invoked in `refresh()` to populate the text overlay.
     /// Set by the app layer when a text-overlay preset is active.
-    var textOverlayCallback: ((DynamicTextOverlay) -> Void)?
+    /// The callback receives the overlay and the current frame's FeatureVector.
+    var textOverlayCallback: ((DynamicTextOverlay, FeatureVector) -> Void)?
     let textOverlayCallbackLock = NSLock()
 
     // MARK: - IBL Textures (Increment 3.16)

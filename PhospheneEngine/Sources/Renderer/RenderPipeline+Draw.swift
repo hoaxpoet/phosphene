@@ -297,7 +297,7 @@ extension RenderPipeline {
         let textOverlay = dynamicTextOverlayLock.withLock { dynamicTextOverlay }
         let textCB = textOverlayCallbackLock.withLock { textOverlayCallback }
         if let overlay = textOverlay {
-            textCB?(overlay)
+            textCB?(overlay, features)
         }
 
         // Draw preset visualization.

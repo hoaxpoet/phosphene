@@ -2002,8 +2002,8 @@ Continuous energy is the primary visual driver; beat onset pulses are accents on
 
 - **DSP.3.1 — Diagnostic hold + session-mode signal.** `diagnosticPresetLocked` flag in `VisualizerEngine`; suppresses mood-override in `applyLiveUpdate()`. `SpectralHistoryBuffer[2420]` session-mode slot (0=reactive, 1=planned+unlocked, 2=planned+locking, 3=planned+locked). `SpectralCartographText` updated to show "PLANNED · UNLOCKED" / "PLANNED · LOCKING" / "PLANNED · LOCKED" / "REACTIVE." `L` dev shortcut to toggle hold. **✅ 2026-05-05 — commit `56359c07`.**
 - **DSP.3.2 — Pre-fire BeatGrid on session start.** At end of `_buildPlan()` after `livePlan` is stored, call `resetStemPipeline(for: plan.tracks.first?.track)`. BeatGrid present before music starts; idempotent via `currentTrackIdentity` guard in `resetStemPipeline`. **✅ 2026-05-05 — commit `56359c07`.**
-- **DSP.3.3 — Spectral Cartograph diagnostic overlays.** Downbeat tick marks (BR panel). Drift ±N ms below BPM. Time-signature label ("7/4"/"4/4"). Session mode text.
-- **DSP.3.4 — CSV export beat-sync columns.** Add `lock_state`, `session_mode`, `drift_ms`, `beat_in_bar`, `downbeat`, `beats_per_bar`, `bar_phase01` to `SessionRecorder.features.csv`.
+- **DSP.3.3 — Beat sync observability: text overlays + CSV + calibration shortcuts.** `SpectralCartographText.draw()` extended with beat-in-bar counter ("3 / 4"), drift readout ("Δ +12 ms"), phase offset indicator ("φ+10ms"); `textOverlayCallback` type updated to pass `FeatureVector` per frame; `[`/`]` dev shortcuts for ±10 ms visual phase calibration; `BeatSyncSnapshot` struct (9 fields) for offline analysis; `SessionRecorder.features.csv` gains 9 new beat-sync columns (`barPhase01_permille`, `beatsPerBar`, `beat_in_bar`, `is_downbeat`, `beat_sync_mode`, `lock_state`, `grid_bpm`, `playback_time_s`, `drift_ms`); `SpectralHistoryBuffer[2429]` drift_ms slot; 31 new tests (BeatInBarComputationTests 16+, SpectralHistoryBuffer slot stability 4+, others). Core Text mirroring fix in `DynamicTextOverlay.refresh()`. `docs/diagnostics/DSP.3.3-beat-sync-latency-phase-notes.md`. **✅ 2026-05-05.**
+- **DSP.3.4 — CSV export beat-sync columns.** Add `lock_state`, `session_mode`, `drift_ms`, `beat_in_bar`, `downbeat`, `beats_per_bar`, `bar_phase01` to `SessionRecorder.features.csv`. **✅ 2026-05-05 — merged into DSP.3.3.**
 - **DSP.3.5 — App-layer wiring test.** Integration test: `SessionPreparer.prepare()` → `StemCache.store()` → `resetStemPipeline(for:)` → `mirPipeline.liveDriftTracker.hasGrid == true`.
 - **DSP.3.6 — Live drift validation test.** Replay `love_rehab` via `AudioInputRouter(.localFile)` with prepared BeatGrid; assert LOCKED within 5 s, drift < 50 ms, `beatPhase01` zero-crossings within ±30 ms of ground truth.
 
@@ -2013,8 +2013,8 @@ Continuous energy is the primary visual driver; beat onset pulses are accents on
 - [x] DSP.3 audit complete: `docs/diagnostics/DSP.3-beat-sync-test-environment-audit.md`. **2026-05-05.**
 - [x] DSP.3.1 — Diagnostic hold + session-mode signal. **2026-05-05.**
 - [x] DSP.3.2 — Pre-fire BeatGrid on session start. **2026-05-05.**
-- [ ] DSP.3.3 — Spectral Cartograph overlays.
-- [ ] DSP.3.4 — CSV export beat-sync columns.
+- [x] DSP.3.3 — Beat sync observability: text overlays + CSV + calibration shortcuts. **2026-05-05.**
+- [x] DSP.3.4 — CSV beat-sync columns. **2026-05-05 — merged into DSP.3.3.**
 - [ ] DSP.3.5 — App-layer wiring test.
 - [ ] DSP.3.6 — Live drift validation test.
 

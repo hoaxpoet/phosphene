@@ -55,6 +55,7 @@ final class PlaybackShortcutRegistry {
 
     // MARK: - Init
 
+    // swiftlint:disable function_body_length
     /// Build the registry.
     ///
     /// - Parameters:
@@ -78,7 +79,9 @@ final class PlaybackShortcutRegistry {
         onToggleDiagnosticHold: (@MainActor () -> Void)? = nil,
         onToggleForceSpider: (@MainActor () -> Void)? = nil,
         onDebugNextPreset: (@MainActor () -> Void)? = nil,
-        onDebugPreviousPreset: (@MainActor () -> Void)? = nil
+        onDebugPreviousPreset: (@MainActor () -> Void)? = nil,
+        onDecreaseBeatPhaseOffset: (@MainActor () -> Void)? = nil,
+        onIncreaseBeatPhaseOffset: (@MainActor () -> Void)? = nil
     ) {
         var all = Self.buildShortcuts(
             actionRouter: actionRouter,
@@ -96,6 +99,26 @@ final class PlaybackShortcutRegistry {
                 key: "l",
                 modifiers: [],
                 label: "Toggle diagnostic preset hold",
+                category: .developer,
+                action: fn
+            ))
+        }
+        if let fn = onDecreaseBeatPhaseOffset {
+            all.append(PlaybackShortcut(
+                id: "decreaseBeatPhaseOffset",
+                key: "[",
+                modifiers: [],
+                label: "Beat phase −10 ms (calibration)",
+                category: .developer,
+                action: fn
+            ))
+        }
+        if let fn = onIncreaseBeatPhaseOffset {
+            all.append(PlaybackShortcut(
+                id: "increaseBeatPhaseOffset",
+                key: "]",
+                modifiers: [],
+                label: "Beat phase +10 ms (calibration)",
                 category: .developer,
                 action: fn
             ))
@@ -140,6 +163,7 @@ final class PlaybackShortcutRegistry {
         #endif
         shortcuts = all
     }
+    // swiftlint:enable function_body_length
 
     // MARK: - Shortcut Table
 

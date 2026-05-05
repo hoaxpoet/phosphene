@@ -1,5 +1,6 @@
 // VisualizerEngine+Audio — Audio routing, MIR analysis, mood classification,
 // and metadata pre-fetching setup.
+// swiftlint:disable file_length
 
 import Audio
 import DSP
@@ -137,7 +138,7 @@ extension VisualizerEngine {
         pipeline.updateFeedbackBeatValue(from: fv)
 
         // Update SpectralCartograph beat-grid overlay (diagnostic preset).
-        updateSpectralCartographBeatGrid(mir: mir)
+        updateSpectralCartographBeatGrid(mir: mir, fv: fv)
 
         analysisFrameCount += 1
 
@@ -301,7 +302,7 @@ extension VisualizerEngine {
     /// Called from the analysis queue after each MIR frame. No-op when the drift tracker
     /// has no grid installed (reactive mode) — ticks are suppressed by the `Float.infinity`
     /// sentinel already written by `reset()`.
-    func updateSpectralCartographBeatGrid(mir: MIRPipeline) {
+    func updateSpectralCartographBeatGrid(mir: MIRPipeline, fv: FeatureVector) {
         let tracker = mir.liveDriftTracker
         let bpm = Float(tracker.currentBPM)
         let lockStateInt: Int
@@ -325,16 +326,41 @@ extension VisualizerEngine {
             sessionMode = 0
         }
 
+        let pt = Double(mir.elapsedSeconds)
         let relTimes = tracker.relativeBeatTimes(
-            playbackTime: Double(mir.elapsedSeconds),
+            playbackTime: pt,
             count: SpectralHistoryBuffer.beatTimesCount
         )
+        let relDownbeats = tracker.relativeDownbeatTimes(
+            playbackTime: pt,
+            count: SpectralHistoryBuffer.downbeatTimesCount
+        )
+        let driftMs = Float(tracker.currentDriftMs)
         pipeline.spectralHistory.updateBeatGridData(
             relativeBeatTimes: relTimes,
+            relativeDownbeatTimes: relDownbeats,
             bpm: bpm,
             lockState: lockStateInt,
-            sessionMode: sessionMode
+            sessionMode: sessionMode,
+            driftMs: driftMs
         )
+
+        // Build per-frame BeatSyncSnapshot for SessionRecorder CSV.
+        let bpb = max(1, Int(fv.beatsPerBar.rounded()))
+        let rawBeatIndex = Int(fv.barPhase01 * Float(bpb)) + 1
+        let beatInBar = max(1, min(rawBeatIndex, bpb))
+        let snapshot = BeatSyncSnapshot(
+            barPhase01: fv.barPhase01,
+            beatsPerBar: bpb,
+            beatInBar: beatInBar,
+            isDownbeat: beatInBar == 1,
+            sessionMode: sessionMode,
+            lockState: lockStateInt,
+            gridBPM: bpm,
+            playbackTimeS: mir.elapsedSeconds,
+            driftMs: driftMs
+        )
+        beatSyncLock.withLock { latestBeatSyncSnapshot = snapshot }
     }
 
     /// Once-per-second textual diagnostic line written to ~/phosphene_diag.log.

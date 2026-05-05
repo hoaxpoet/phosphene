@@ -107,14 +107,24 @@ public final class DynamicTextOverlay: @unchecked Sendable {
 
     /// Clear the canvas and invoke `callback` to populate it for this frame.
     ///
-    /// The callback receives the `CGContext` (bottom-left origin, Y up) and the
-    /// canvas size. Text drawn there will appear in the Metal render after the
-    /// fragment shader samples `texture(12)` with `float2(uv.x, 1.0 - uv.y)`.
+    /// The callback receives the `CGContext` (top-left origin, Y down — matching Metal UV
+    /// convention after the permanent CTM flip applied in `init`) and the canvas size.
+    /// Text drawn there appears in the Metal render when the fragment shader samples
+    /// `texture(12)` with `float2(uv.x, uv.y)` (no additional Y-flip needed in the shader).
+    ///
+    /// The text matrix is pre-set to `CGAffineTransform(scaleX: 1, y: -1)` so that Core Text
+    /// renders glyphs right-side-up and left-to-right in the flipped coordinate system.
+    /// Without this, the CTM's negative determinant causes Core Text to mirror text
+    /// horizontally. Callers should NOT reset the text matrix to `.identity`.
     ///
     /// Must be called on the **render thread**, before encoding the draw call.
     public func refresh(_ callback: (CGContext, CGSize) -> Void) {
         cgContext.clear(CGRect(x: 0, y: 0, width: width, height: height))
-        cgContext.textMatrix = .identity
+        // Counteract Core Text's horizontal mirroring in negative-determinant CTMs.
+        // The CTM scaleY=-1 makes det(CTM)=-1; CTLineDraw detects this and renders
+        // text mirrored. Setting textMatrix scaleY=-1 makes det(textMatrix)=-1, giving
+        // det(CTM) * det(textMatrix) = +1 net determinant — text renders left-to-right.
+        cgContext.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
         callback(cgContext, CGSize(width: width, height: height))
     }
 }
