@@ -28,6 +28,11 @@ struct BeatThisGraphBundle {
     let inputTensor: MPSGraphTensor
     let beatOutputTensor: MPSGraphTensor
     let downbeatOutputTensor: MPSGraphTensor
+    /// Diagnostic intermediate tensors keyed by stage name (matching the Python
+    /// activation-dump schema: "stem.bn1d", "frontend.blocks.0.partial",
+    /// "transformer.0.attn", etc). Populated by `buildGraph`; consumed by
+    /// `predictDiagnostic` for layer-diff against the Python reference.
+    var intermediates: [String: MPSGraphTensor] = [:]
 }
 
 // MARK: - Internal Result
@@ -117,6 +122,52 @@ public final class BeatThisModel: @unchecked Sendable {
         frameCount: Int
     ) throws -> CorePrediction {
         try predictCore(spectrogram: spectrogram, frameCount: frameCount)
+    }
+
+    /// Diagnostic-only: run inference and capture every intermediate tensor
+    /// registered in `BeatThisGraphBundle.intermediates` (frontend output,
+    /// each transformer block output, post-norm, head linear, logits, sigmoid).
+    /// Returned dict maps stage name → (shape, flat row-major Float32 values).
+    /// Used by DSP.2 S8 layer-diff against Python reference.
+    public func predictDiagnostic(
+        spectrogram: [Float],
+        frameCount: Int
+    ) throws -> [String: (shape: [Int], values: [Float])] {
+        lock.lock()
+        defer { lock.unlock() }
+
+        _ = min(max(frameCount, 0), Self.tMax)
+        let padded = padInput(spectrogram: spectrogram)
+        let dst = inputBuffer.contents().assumingMemoryBound(to: Float.self)
+        padded.withUnsafeBufferPointer { srcBuf in
+            guard let base = srcBuf.baseAddress else { return }
+            memcpy(dst, base, padded.count * MemoryLayout<Float>.size)
+        }
+        let inputShape: [NSNumber] = [NSNumber(value: Self.tMax), NSNumber(value: Self.inputMels)]
+        let inputData = MPSGraphTensorData(
+            inputBuffer,
+            shape: inputShape,
+            dataType: .float32
+        )
+        let feeds: [MPSGraphTensor: MPSGraphTensorData] = [graphBundle.inputTensor: inputData]
+        let targets = Array(graphBundle.intermediates.values)
+        let results = graphBundle.graph.run(
+            with: commandQueue,
+            feeds: feeds,
+            targetTensors: targets,
+            targetOperations: nil
+        )
+        var out: [String: (shape: [Int], values: [Float])] = [:]
+        for (name, tensor) in graphBundle.intermediates {
+            guard let data = results[tensor] else { continue }
+            let shapeNS = data.shape
+            let shape = shapeNS.map { $0.intValue }
+            let count = shape.reduce(1, *)
+            var values = [Float](repeating: 0, count: count)
+            data.mpsndarray().readBytes(&values, strideBytes: nil)
+            out[name] = (shape, values)
+        }
+        return out
     }
 
     // MARK: - Private Inference

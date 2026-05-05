@@ -25,13 +25,15 @@ extension BeatThisModel {
         weights: BeatThisWeights,
         cosTable: MPSGraphTensor,
         sinTable: MPSGraphTensor,
-        name: String
+        name: String,
+        intermediates: inout [String: MPSGraphTensor]
     ) -> MPSGraphTensor {
         var x = buildStemConv(
             graph: graph,
             input: input,
             weights: weights,
-            name: "\(name)s"
+            name: "\(name)s",
+            intermediates: &intermediates
         )
 
         // (inDim, freqDim) after stem: (32, 32) → (64, 16) → (128, 8)
@@ -45,7 +47,9 @@ extension BeatThisModel {
                 freqDim: freqDim,
                 cosTable: cosTable,
                 sinTable: sinTable,
-                name: "\(name)b\(idx)"
+                name: "\(name)b\(idx)",
+                blockIdx: idx,
+                intermediates: &intermediates
             )
         }
 
@@ -90,7 +94,8 @@ extension BeatThisModel {
         graph: MPSGraph,
         input: MPSGraphTensor,
         weights: BeatThisWeights,
-        name: String
+        name: String,
+        intermediates: inout [String: MPSGraphTensor]
     ) -> MPSGraphTensor {
         // BN1d: [tMax, 128] × scale[1,128] + shift[1,128]
         let bn1Scale = makeConst(
@@ -110,16 +115,28 @@ extension BeatThisModel {
             bn1Shift,
             name: "\(name)1add"
         )
+        intermediates["stem.bn1d"] = normed
 
-        // Reshape to NHWC [1, 128_freq, tMax_time, 1_channel]
+        // `normed` shape is [T, F] (T outer / time-major). We need NHWC
+        // [B=1, H=F, W=T, C=1] for the 2D conv. A direct reshape would
+        // reinterpret the bytes wrong (giving the conv a scrambled mel
+        // spectrogram and producing flat sub-threshold output downstream
+        // — DSP.2 S8 root cause). Transpose T↔F first, THEN reshape.
+        let normedFT = graph.transposeTensor(
+            normed, dimension: 0, withDimension: 1, name: "\(name)tr"
+        )
+        // `normedFT` shape is now [F, T] in row-major. Reshape to NHWC
+        // [B=1, H=F, W=T, C=1].
         let xNHWC = graph.reshape(
-            normed,
+            normedFT,
             shape: [1, NSNumber(value: inputMels), NSNumber(value: tMax), 1],
             name: "\(name)rs"
         )
 
-        // Conv2d: kernel(kH=4,kW=3), stride(sY=4,sX=1), pad(top=0,bot=0,left=1,right=1)
-        let convW = rearrangeConvOIHW_to_HWIO(data: weights.stemConvWeight, outC: 32, inC: 1, kH: 4, kW: 3)
+        // Conv2d: kernel(kH=4,kW=3), stride(sY=4,sX=1), pad(top=0,bot=0,left=1,right=1).
+        let convW = rearrangeConvOIHW_to_HWIO(
+            data: weights.stemConvWeight, outC: 32, inC: 1, kH: 4, kW: 3
+        )
         let convConst = makeConst(graph, convW, shape: [4, 3, 1, 32], name: "\(name)cw")
         // swiftlint:disable force_unwrapping
         let convDesc = MPSGraphConvolution2DOpDescriptor(
@@ -143,6 +160,7 @@ extension BeatThisModel {
             descriptor: convDesc,
             name: "\(name)cv"
         )
+        intermediates["stem.conv2d"] = convOut
 
         // BN2d: [1, 1, 1, 32] broadcast
         let bn2Scale = makeConst(
@@ -162,7 +180,10 @@ extension BeatThisModel {
             bn2Shift,
             name: "\(name)2add"
         )
-        return buildGELU(graph: graph, input: bn2Out, name: "\(name)ge")
+        intermediates["stem.bn2d"] = bn2Out
+        let stemOut = buildGELU(graph: graph, input: bn2Out, name: "\(name)ge")
+        intermediates["stem.activation"] = stemOut
+        return stemOut
     }
 
     // MARK: - PartialFT Block
@@ -178,7 +199,9 @@ extension BeatThisModel {
         freqDim: Int,
         cosTable: MPSGraphTensor,
         sinTable: MPSGraphTensor,
-        name: String
+        name: String,
+        blockIdx: Int,
+        intermediates: inout [String: MPSGraphTensor]
     ) -> MPSGraphTensor {
         let heads = inDim / headDim
 
@@ -254,28 +277,17 @@ extension BeatThisModel {
             shape: [1, NSNumber(value: freqDim), NSNumber(value: tMax), NSNumber(value: inDim)],
             name: "\(name)aTrrs"
         )
+        intermediates["frontend.blocks.\(blockIdx).partial"] = x
 
-        // BN2d norm (blocks.N.norm, fused) before downsampling
+        // PyTorch frontend block ordering: partial → conv2d(in→out) → norm(out_dim) → GELU.
+        // Earlier Swift port had the norm BEFORE the conv with the wrong shape
+        // ([1,1,1,inDim] truncating the loaded out_dim weights), which produced a
+        // structurally degraded forward pass — max sigmoid 0.29 vs Python 1.0
+        // on love_rehab. The fix is purely the order + the shape.
+
         let outDim = inDim * 2
-        let normS = makeConst(
-            graph,
-            blkWeights.norm.scale,
-            shape: [1, 1, 1, NSNumber(value: inDim)],
-            name: "\(name)ns"
-        )
-        let normSh = makeConst(
-            graph,
-            blkWeights.norm.shift,
-            shape: [1, 1, 1, NSNumber(value: inDim)],
-            name: "\(name)nsh"
-        )
-        let normed = graph.addition(
-            graph.multiplication(x, normS, name: "\(name)nmul"),
-            normSh,
-            name: "\(name)nadd"
-        )
 
-        // Downsampling Conv2d: kernel(kH=2,kW=3), stride(sY=2,sX=1), pad(top=0,bot=0,L=1,R=1)
+        // Downsampling Conv2d: kernel(kH=2,kW=3), stride(sY=2,sX=1), pad(top=0,bot=0,L=1,R=1).
         let dcW = rearrangeConvOIHW_to_HWIO(data: blkWeights.convWeight, outC: outDim, inC: inDim, kH: 2, kW: 3)
         let dcConst = makeConst(
             graph,
@@ -300,12 +312,35 @@ extension BeatThisModel {
         )!
         // swiftlint:enable force_unwrapping
         let dcOut = graph.convolution2D(
-            normed,
+            x,
             weights: dcConst,
             descriptor: dcDesc,
             name: "\(name)dc"
         )
-        return buildGELU(graph: graph, input: dcOut, name: "\(name)dge")
+        intermediates["frontend.blocks.\(blockIdx).conv2d"] = dcOut
+
+        // BN2d norm (blocks.N.norm, fused) on the conv OUTPUT (outDim channels).
+        let normS = makeConst(
+            graph,
+            blkWeights.norm.scale,
+            shape: [1, 1, 1, NSNumber(value: outDim)],
+            name: "\(name)ns"
+        )
+        let normSh = makeConst(
+            graph,
+            blkWeights.norm.shift,
+            shape: [1, 1, 1, NSNumber(value: outDim)],
+            name: "\(name)nsh"
+        )
+        let normed = graph.addition(
+            graph.multiplication(dcOut, normS, name: "\(name)nmul"),
+            normSh,
+            name: "\(name)nadd"
+        )
+        intermediates["frontend.blocks.\(blockIdx).norm"] = normed
+        let blockOut = buildGELU(graph: graph, input: normed, name: "\(name)dge")
+        intermediates["frontend.blocks.\(blockIdx).activation"] = blockOut
+        return blockOut
     }
 
     // MARK: - Batched Attention (frontend PartialFT)

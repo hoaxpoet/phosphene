@@ -29,14 +29,18 @@ extension BeatThisModel {
 
         let (cosTable, sinTable) = buildRoPETables(graph: graph)
 
+        var intermediates: [String: MPSGraphTensor] = [:]
+
         var x = buildFrontend(
             graph: graph,
             input: input,
             weights: weights,
             cosTable: cosTable,
             sinTable: sinTable,
-            name: "fe"
+            name: "fe",
+            intermediates: &intermediates
         )
+        intermediates["frontend.linear"] = x
 
         for idx in 0..<numBlocks {
             x = buildTransformerBlock(
@@ -47,6 +51,7 @@ extension BeatThisModel {
                 blkWeights: weights.transformerBlocks[idx],
                 name: "blk\(idx)"
             )
+            intermediates["transformer.\(idx)"] = x
         }
 
         let postGamma = makeConst(
@@ -62,6 +67,7 @@ extension BeatThisModel {
             dim: embedDim,
             name: "pn"
         )
+        intermediates["transformer.norm"] = x
 
         let headSpec = BeatLinearSpec(
             weight: makeConst(
@@ -79,6 +85,7 @@ extension BeatThisModel {
             outDim: outputClasses
         )
         let headOut = buildLinear(graph: graph, input: x, spec: headSpec, name: "head")
+        intermediates["head.linear"] = headOut
 
         let col0 = graph.sliceTensor(headOut, dimension: 1, start: 0, length: 1, name: "col0")
         let col1 = graph.sliceTensor(headOut, dimension: 1, start: 1, length: 1, name: "col1")
@@ -87,14 +94,18 @@ extension BeatThisModel {
             axis: 1,
             name: "beat_sq"
         )
+        intermediates["output.beat_logits"] = beatLogits
+        let beatSig = graph.sigmoid(with: beatLogits, name: "beat_sig")
+        intermediates["output.beat_sigmoid"] = beatSig
         return BeatThisGraphBundle(
             graph: graph,
             inputTensor: input,
-            beatOutputTensor: graph.sigmoid(with: beatLogits, name: "beat_sig"),
+            beatOutputTensor: beatSig,
             downbeatOutputTensor: graph.sigmoid(
                 with: graph.squeeze(col1, axis: 1, name: "db_sq"),
                 name: "db_sig"
-            )
+            ),
+            intermediates: intermediates
         )
     }
 
