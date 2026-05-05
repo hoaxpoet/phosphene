@@ -1992,6 +1992,34 @@ Continuous energy is the primary visual driver; beat onset pulses are accents on
 
 ---
 
+### Increment DSP.3 — Beat Sync + Diagnostic Environment (audit + fixes)
+
+**2026-05-05 audit.** Full architecture audit of the Beat This! BeatGrid lifecycle, live drift tracking, reactive-mode surface, Spectral Cartograph diagnostic coverage, FeatureVector product contract for complex meters, and test fixture gaps. Audit document: `docs/diagnostics/DSP.3-beat-sync-test-environment-audit.md`.
+
+**Root cause of observed "Phosphene shifts into Reactive mode" when switching to Spectral Cartograph:** The `SpectralCartographText` overlay labels `lockState=0` as "REACTIVE." When `LiveBeatDriftTracker` is in UNLOCKED state — either because `resetStemPipeline(for:)` has not yet fired (music not started) or because fewer than 4 tight-match onsets have been accumulated — the orb reads "REACTIVE" even though `livePlan` is non-nil and the engine is in planned mode. This is a display ambiguity, not a session mode regression. However, a second structural problem makes Spectral Cartograph unusable as a held diagnostic surface: `DefaultLiveAdapter` mood-override fires every ~60 seconds when the current preset scores 0.0 (diagnostic-excluded), switching the engine away from Spectral Cartograph.
+
+**Sub-increments:**
+
+- **DSP.3.1 — Diagnostic hold + session-mode signal.** `diagnosticPresetLocked` flag in `VisualizerEngine`; suppresses mood-override in `applyLiveUpdate()`. `SpectralHistoryBuffer[2420]` session-mode slot (0=reactive, 1=planned+unlocked, 2=planned+locking, 3=planned+locked). `SpectralCartographText` updated to show "PLANNED (LOCKING)" / "PLANNED (LOCKED)" / "REACTIVE." `L` dev shortcut to toggle hold.
+- **DSP.3.2 — Pre-fire BeatGrid on session start.** In `buildPlan()` or `.ready` state observer, call `resetStemPipeline(for: firstPlannedTrack.track)` when `stemCache != nil`. BeatGrid present before music starts.
+- **DSP.3.3 — Spectral Cartograph diagnostic overlays.** Downbeat tick marks (BR panel). Drift ±N ms below BPM. Time-signature label ("7/4"/"4/4"). Session mode text.
+- **DSP.3.4 — CSV export beat-sync columns.** Add `lock_state`, `session_mode`, `drift_ms`, `beat_in_bar`, `downbeat`, `beats_per_bar`, `bar_phase01` to `SessionRecorder.features.csv`.
+- **DSP.3.5 — App-layer wiring test.** Integration test: `SessionPreparer.prepare()` → `StemCache.store()` → `resetStemPipeline(for:)` → `mirPipeline.liveDriftTracker.hasGrid == true`.
+- **DSP.3.6 — Live drift validation test.** Replay `love_rehab` via `AudioInputRouter(.localFile)` with prepared BeatGrid; assert LOCKED within 5 s, drift < 50 ms, `beatPhase01` zero-crossings within ±30 ms of ground truth.
+
+**Done when (gating assertion):** Matt connects a Spotify playlist, preparation completes, switches to Spectral Cartograph, presses `L` to hold, starts music, and observes "PLANNED (UNLOCKED)" → "PLANNED (LOCKING)" → "PLANNED (LOCKED)" within 5 seconds. BPM matches. Beat-grid ticks align with perceived beats. Engine does not switch away. This observation — not unit-test counts — is the production-validation milestone for Beat This!
+
+**Status:**
+- [x] DSP.3 audit complete: `docs/diagnostics/DSP.3-beat-sync-test-environment-audit.md`. **2026-05-05.**
+- [ ] DSP.3.1 — Diagnostic hold + session-mode signal.
+- [ ] DSP.3.2 — Pre-fire BeatGrid on session start.
+- [ ] DSP.3.3 — Spectral Cartograph overlays.
+- [ ] DSP.3.4 — CSV export beat-sync columns.
+- [ ] DSP.3.5 — App-layer wiring test.
+- [ ] DSP.3.6 — Live drift validation test.
+
+---
+
 These milestones map to product-level outcomes, not implementation phases.
 
 **Milestone A — Trustworthy Playback Session.** ✅ **MET (2026-04-25).** A user can connect a playlist, obtain a usable prepared session, and complete a full listening session without instability. *Requires: ~~2.5.4~~ ✅, ~~Phase U increments U.1–U.7~~ ✅, ~~progressive readiness basics (6.1)~~ ✅.*
