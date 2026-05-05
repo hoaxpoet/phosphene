@@ -397,84 +397,128 @@ static ArachneWebResult arachneEvalWeb(
     float frameHalo = exp(-minFrameDist * minFrameDist / (spokeHaloSig * spokeHaloSig))
                     * 0.22 * frameFade;
 
-    // ── §4.2 Archimedean spiral + micro-wobble ─────────────────────────────
-    // §4.3 micro: adhesive droplets on spiral threads, hash-lattice (8–12 px spacing)
+    // ── Chord-segment capture spiral — outside-in construction (V.7.8) ──────────
+    // Replaces Archimedean SDF. Each "ring" k is a polygon of N chord segments
+    // connecting attachment points on consecutive spoke radials. Spider constructs
+    // from outer ring inward (ring 0 is outermost, revealed first during stage 2).
+    //
+    // Proportional (geometric) spacing: r_k = r_outer × alpha^k so the inter-ring
+    // radial gap scales with r — tighter near hub, wider near frame — matching the
+    // biological observation that the spider pays out thread at roughly constant rate
+    // while spiralling, so angular step is constant and radial step ∝ current radius.
+    //
+    // Free zone: no capture silk within r_inner = hubR × 1.8 (only radials inside).
+    // References: ARACHNE_V8_DESIGN.md §5.5; biology refs 01, 03, 12.
     float spirCov      = 0.0;
     float spirHalo     = 0.0;
     float dropCovLocal = 0.0;
-    float spirDist     = 1e6;
-    float theta        = 0.0;
-    float2 spirTangent2D = float2(1.0, 0.0); // tangent of closest spiral point
+    float2 spirTangent2D = float2(1.0, 0.0);
     float bestDropDist = 1e6;
     float2 bestDropVec = float2(0.0, 0.0);
+    float minChordDist = 1e6;
+    float dropRadius   = 0.008;  // ≈ 8.6 px at 1080p (V.7.5 §10.1.3 — visual hero)
+    result.dropRadius  = dropRadius;
 
-    float progressR = (stage >= 3u) ? webR
-                    : (stage == 2u) ? progress * webR
-                    : 0.0;
+    int   N_RINGS = max(2, int(spirRevs + 0.5));
+    float r_outer = webR * 0.95;
+    float r_inner = hubR * 1.8;  // free zone inner boundary
 
-    if (rT >= hubR && rT <= progressR + spokeW * 2.0) {
-        theta  = atan2(tRel.y, tRel.x);
-        float sCoord = theta - (rT / webR) * spirRevs * 2.0 * M_PI_F;
+    // logAlpha: r_k = r_outer × exp(k × logAlpha). alpha < 1 so radii decrease inward.
+    float logAlpha = (N_RINGS > 1)
+                   ? log(r_inner / max(r_outer, 1e-5)) / float(N_RINGS - 1)
+                   : 0.0;
 
-        // §4.2 meso: time-invariant micro-wobble (0.003/rT × fbm4 — no time term)
-        float arcParam  = rT / max(webR, 1e-5);
-        float seedF     = float(seed) * 2.3283064e-10;  // seed / 2^32 → [0,1)
-        float wobbleAng = (0.003 / max(rT, 0.001))
-                        * fbm4(float3(arcParam * 6.0 * spirRevs, seedF * 113.7, 0.0));
-        sCoord += wobbleAng;
+    // Precompute spoke directions and gravity weights for all visible spokes.
+    // Reused across all N_RINGS ring iterations to avoid redundant trig.
+    int   nSpk = min(nVisible, 17);
+    float2 sdDir[17];
+    float  sdGrav[17];
+    for (int si = 0; si < nSpk; si++) {
+        float jitS = (arachHash(seed + uint(si) * 7u) - 0.5) * baseStep * 0.44;
+        float angS = rotAngle + float(si) * baseStep + jitS;
+        sdDir[si]  = float2(cos(angS), sin(angS));
+        sdGrav[si] = mix(0.4, 1.0, max(0.0, sin(angS)));
+    }
 
-        float sf      = fract(sCoord / (2.0 * M_PI_F));
-        spirDist = min(sf, 1.0 - sf) * webR / max(spirRevs, 0.1);
-        // Spiral tangent: angular direction at the closest point on the arc.
-        spirTangent2D = float2(-sin(theta), cos(theta));
+    float spirW   = 0.0013;
+    float spirSig = max(webR * 0.009, 1e-4);
 
-        float inZone   = (rT >= hubR && rT <= progressR) ? 1.0 : 0.0;
-        float spirW    = 0.0013;
-        float spirSig  = max(webR * 0.009, 1e-4);
-        spirCov  = smoothstep(spirW + aaW, spirW - aaW, spirDist) * inZone;
-        spirHalo = exp(-spirDist * spirDist / (spirSig * spirSig)) * 0.25 * inZone;
+    if (rT >= r_inner * 0.78 && rT <= r_outer + spirW * 2.0 && nSpk >= 2) {
+        for (int k = 0; k < N_RINGS; k++) {
+            // Outside-in: ring 0 is outermost (first placed by spider).
+            float ringR = r_outer * exp(logAlpha * float(k));
 
-        // §4.3 micro: adhesive droplets — spiral threads only (radial spokes are glue-free
-        // per silk biology). Only evaluate for pixels close to the spiral strand.
-        // V.7.5 §10.1.3: drops are the visual hero — radius doubled (3.8 → 8.6 px at 1080p),
-        // spacing halved (4–6 px) so chains visibly bead-touch.
-        float dropRadius = 0.008;  // ≈ 8.6 px at 1080p (V.7.5 §10.1.3)
-        result.dropRadius = dropRadius;
+            // Stage gating: outer rings appear first — ring k visible once
+            // progress passes k/N_RINGS. At stage ≥ 3 all rings are stable.
+            bool kVis = (stage >= 3u) ||
+                        (stage == 2u && float(k) / float(N_RINGS) <= progress);
+            if (!kVis) continue;
 
-        if (inZone > 0.0 && spirDist < dropRadius + 0.0005) {
-            // V.7.5 §10.1.3: per-web spacing 4–6 px at 1080p = 0.0037–0.0056 UV.
-            float spacingUV   = 0.0037 + arachHash(seed + 0x1337u) * 0.0019;
-            float dropsPerRev = max(3.0, 2.0 * M_PI_F * rT / spacingUV);
-            float dTheta      = 2.0 * M_PI_F / dropsPerRev;
+            // Radius early exit: skip this ring if pixel is too far away.
+            // Max chord distance from ring circle ≈ ringR × baseStep (half arc length).
+            float ringGuard = ringR * baseStep * 1.3 + spirW;
+            if (rT < ringR - ringGuard || rT > ringR + ringGuard) continue;
 
-            float thetaN   = fract(theta / (2.0 * M_PI_F));
-            int   dropBase = int(thetaN * dropsPerRev);
+            // Parabolic sag at this ring radius (same formula as spoke SDF).
+            float tProjR  = ringR / webR;
+            float sagScale = sagAmount * 4.0 * tProjR * (1.0 - tProjR);
 
-            for (int di = dropBase - 2; di <= dropBase + 2; di++) {
-                float dropAngle = float(di) * dTheta;
-                // Hash-lattice jitter: ±25% of spacing along tangent (organic spacing)
-                uint  dKey  = seed * 1024u + uint((di + 4096) & 0xFFFF);
-                dropAngle  += (arachHash(dKey) - 0.5) * 0.5 * dTheta;
-                float2 dropPos = float2(cos(dropAngle), sin(dropAngle)) * rT;
-                float  dist    = length(tRel - dropPos);
-                if (dist < dropRadius + 0.0005) {
-                    dropCovLocal = max(dropCovLocal,
-                        smoothstep(dropRadius + 0.0003, dropRadius - 0.0003, dist));
-                    // Track closest drop center for spherical-cap detail_normal
-                    if (dist < bestDropDist) {
-                        bestDropDist = dist;
-                        bestDropVec  = tRel - dropPos; // pixel − drop_center in tRel space
+            // Per-ring drop spacing (slight per-ring variation for organic feel).
+            float spacingUV = 0.0037 + arachHash(seed + 0x1337u + uint(k) * 31u) * 0.0019;
+
+            for (int si = 0; si < nSpk; si++) {
+                // Sequential spoke order — adjacent si/sj pairs form polygon edges.
+                int sj = (si + 1) % spokeCount;
+                if (sj >= nSpk) continue;  // guard for partial-reveal stages
+
+                float2 pI = ringR * sdDir[si] + float2(0.0, sagScale * sdGrav[si]);
+                float2 pJ = ringR * sdDir[sj] + float2(0.0, sagScale * sdGrav[sj]);
+
+                float2 seg  = pJ - pI;
+                float  segL = length(seg);
+                float2 ptV  = tRel - pI;
+                float  ht   = saturate(dot(ptV, seg) / max(dot(seg, seg), 1e-8));
+                float  cd   = length(tRel - (pI + seg * ht));
+
+                if (cd < minChordDist) {
+                    minChordDist = cd;
+                    spirTangent2D = (segL > 1e-6) ? normalize(seg) : float2(1.0, 0.0);
+                }
+
+                // Adhesive droplets: 5 candidates near the closest point on chord.
+                // Parametric placement avoids O(numDrops) iteration (O(5) instead).
+                if (cd < dropRadius + 0.0008) {
+                    float spacingT = spacingUV / max(segL, 1e-5);
+                    float dropBase = round(ht / max(spacingT, 1e-5)) * spacingT;
+                    for (int di = -2; di <= 2; di++) {
+                        float dt = dropBase + float(di) * spacingT;
+                        int   dIdx = int(dt / max(spacingT, 1e-5) + 0.5) + 4096;
+                        uint  dKey = seed * 2048u + uint(k * 200 + si * 17 + (dIdx & 0xFF));
+                        dt += (arachHash(dKey) - 0.5) * spacingT * 0.5;
+                        dt = saturate(dt);
+                        float2 dropPos = pI + seg * dt;
+                        float  dist    = length(tRel - dropPos);
+                        if (dist < dropRadius + 0.0005) {
+                            dropCovLocal = max(dropCovLocal,
+                                smoothstep(dropRadius + 0.0003, dropRadius - 0.0003, dist));
+                            if (dist < bestDropDist) {
+                                bestDropDist = dist;
+                                bestDropVec  = tRel - dropPos;
+                            }
+                        }
                     }
                 }
             }
         }
     }
 
-    // ── §4.4 Dominant strand tangent (spoke or spiral) ────────────────────────
-    // Chose whichever strand type the pixel is closest to, for BRDF lift in fragment.
-    // Hub pixels use default tangent (strandTangent initialized to (1,0) above).
+    float inZone = (rT >= r_inner && rT <= r_outer + spirW * 2.0) ? 1.0 : 0.0;
+    spirCov  = smoothstep(spirW + aaW, spirW - aaW, minChordDist) * inZone;
+    spirHalo = exp(-minChordDist * minChordDist / (spirSig * spirSig)) * 0.25 * inZone;
+
+    // ── §4.4 Dominant strand tangent (spoke or chord) ─────────────────────────
     if (rT >= hubR * 1.5) {
-        result.strandTangent = (minSpokeDist <= spirDist && minSpokeDist < 1e5)
+        result.strandTangent = (minSpokeDist <= minChordDist && minSpokeDist < 1e5)
                                 ? bestSpokeTangent2D
                                 : spirTangent2D;
     }

@@ -28,7 +28,7 @@ import simd
 /// 64-bit dHash for the forced-spider render at steady energy (bass/mid/treble = 0.5).
 /// Regenerate with UPDATE_GOLDEN_SNAPSHOTS=1 swift test --filter test_printSpiderGoldenHash.
 /// V.7.7: regenerated for WORLD pillar (forest background) behind spider.
-private let goldenSpiderForcedHash: UInt64 = 0x763B0F0F03078E0F
+private let goldenSpiderForcedHash: UInt64 = 0x761B1F1F07078E0F
 
 // MARK: - Test Suite
 
