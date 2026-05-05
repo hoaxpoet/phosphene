@@ -188,6 +188,82 @@ extension VisualizerEngine {
         }
     }
 
+    // MARK: - Live Beat This! Analysis
+
+    /// Minimum buffered audio before triggering live Beat This! inference.
+    private static let liveBeatMinSeconds: Double = 10.0
+
+    /// Run Beat This! on the live tap audio buffer once per track, after
+    /// `liveBeatMinSeconds` of audio has accumulated.
+    ///
+    /// Called from `VisualizerEngine+Audio.processAnalysisFrame` at audio-callback
+    /// rate. Guards ensure this fires at most once per track and only when the
+    /// drift tracker has no grid already installed (Spotify-prepared tracks skip this).
+    ///
+    /// The 10-second mono buffer covers playback-time window
+    /// `[elapsedSeconds − 10, elapsedSeconds]`. Beat times from the analyzer are
+    /// relative to the buffer's start, so we shift by `elapsedSeconds − 10` to
+    /// produce track-relative times for `LiveBeatDriftTracker`.
+    func runLiveBeatAnalysisIfNeeded() {
+        guard !liveBeatAnalysisDone else { return }
+        guard !mirPipeline.liveDriftTracker.hasGrid else {
+            // Already have a grid (Spotify-prepared) — skip live analysis.
+            liveBeatAnalysisDone = true
+            return
+        }
+        let elapsed = Double(mirPipeline.elapsedSeconds)
+        guard elapsed >= Self.liveBeatMinSeconds else { return }
+
+        liveBeatAnalysisDone = true   // prevent concurrent/duplicate calls
+
+        // Snapshot interleaved stereo PCM, downmix to mono.
+        let interleaved = stemSampleBuffer.snapshotLatest(seconds: Self.liveBeatMinSeconds)
+        guard interleaved.count >= 2 else { return }
+
+        var mono = [Float](repeating: 0, count: interleaved.count / 2)
+        for i in 0..<mono.count {
+            mono[i] = (interleaved[i * 2] + interleaved[i * 2 + 1]) * 0.5
+        }
+
+        let bufferStartTime = elapsed - Self.liveBeatMinSeconds
+        logger.info("LiveBeat: launching Beat This! on \(mono.count) samples (t=\(String(format:"%.1f",elapsed))s)")
+
+        stemQueue.async { [weak self] in
+            guard let self else { return }
+
+            // Lazy-load the analyzer on first use (weight loading is heavy).
+            if self.liveBeatGridAnalyzer == nil {
+                let device = self.context.device
+                do {
+                    self.liveBeatGridAnalyzer = try DefaultBeatGridAnalyzer(device: device)
+                } catch {
+                    self.logger_liveBeat("LiveBeat: analyzer init failed: \(error)")
+                    return
+                }
+            }
+
+            guard let analyzer = self.liveBeatGridAnalyzer else { return }
+            let rawGrid = analyzer.analyzeBeatGrid(samples: mono, sampleRate: 44100)
+            guard !rawGrid.beats.isEmpty else {
+                self.logger_liveBeat("LiveBeat: Beat This! returned empty grid")
+                return
+            }
+
+            // Shift beat times from buffer-relative to track-relative.
+            let grid = rawGrid.offsetBy(bufferStartTime)
+            let bpmStr = String(format: "%.1f", grid.bpm)
+            self.logger_liveBeat("LiveBeat: grid ready — \(grid.beats.count) beats, \(bpmStr) BPM, \(grid.beatsPerBar)/X meter")
+
+            Task { @MainActor [weak self] in
+                self?.mirPipeline.setBeatGrid(grid)
+            }
+        }
+    }
+
+    private func logger_liveBeat(_ msg: String) {
+        logger.info("\(msg, privacy: .public)")
+    }
+
     /// Reset the stem pipeline on track change, loading pre-analyzed data from cache
     /// when available.
     ///
@@ -211,6 +287,9 @@ extension VisualizerEngine {
 
         // A deferred dispatch from the previous track is irrelevant on the new track.
         pendingDispatchStartTime = nil
+
+        // Allow live Beat This! to re-fire for the new track.
+        liveBeatAnalysisDone = false
 
         pipeline.spectralHistory.reset()
 

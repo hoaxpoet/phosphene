@@ -49,7 +49,7 @@ private func drive(
     let dt = 1.0 / fps
     var t = 0.0
     var last = LiveBeatDriftTracker.Result(
-        beatPhase01: 0, beatsUntilNext: 1, barPhase01: 0, lockState: .unlocked
+        beatPhase01: 0, beatsUntilNext: 1, barPhase01: 0, beatsPerBar: 4, lockState: .unlocked
     )
     while t < durationSeconds {
         last = tracker.update(

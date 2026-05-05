@@ -54,7 +54,7 @@ constant float3 kGridColor    = float3(0.18);
 // BR scrolling graphs
 constant float3 kBeatPhaseClr = float3(1.0,  0.784, 0.341);  // amber
 constant float3 kBassDevClr   = float3(1.0,  0.361, 0.361);  // coral
-constant float3 kPitchClr     = float3(0.482, 0.361, 1.000); // violet
+constant float3 kBarPhaseClr  = float3(0.482, 0.361, 1.000); // violet
 
 // ── History buffer offsets (mirror SpectralHistoryBuffer.swift) ───────────────
 
@@ -63,7 +63,7 @@ constant int kOffValence      = 0;
 constant int kOffArousal      = 480;
 constant int kOffBeatPhase    = 960;
 constant int kOffBassDev      = 1440;
-constant int kOffPitchNorm    = 1920;
+constant int kOffBarPhase     = 1920;
 constant int kOffWriteHead    = 2400;
 constant int kOffSamplesValid = 2401;
 // Beat-grid overlay (SpectralHistoryBuffer.swift offsetBeatTimes=2402 .. offsetLockState=2419)
@@ -205,7 +205,7 @@ static inline float3 drawFeatureGraphs(float2 uv, constant float* history) {
     } else if (uv.y < 2.0 * kRowH) {
         row = 1; offset = kOffBassDev;   lineClr = kBassDevClr;
     } else {
-        row = 2; offset = kOffPitchNorm; lineClr = kPitchClr;
+        row = 2; offset = kOffBarPhase;  lineClr = kBarPhaseClr;
     }
     float yInRow = fract(uv.y * 3.0);
 

@@ -20,7 +20,7 @@
 //   • TR row labels (BASS / MID / TREBLE)  (SF Mono Regular 11pt)
 //   • TR axis tick labels (–1 / 0 / +1)   (SF Mono Regular 9pt)
 //   • BL axis labels + quadrant hints      (SF Mono Regular 9pt)
-//   • BR row labels (BEAT φ / BASS DEV / PITCH)  (SF Mono Regular 11pt)
+//   • BR row labels (BEAT φ / BASS DEV / BAR φ)   (SF Mono Regular 11pt)
 //   • BR time axis (← 8s … now →)          (SF Mono Regular 9pt)
 //   • BPM number (SF Mono Bold 32pt)
 //   • Lock-state string (SF Mono Regular 13pt, colour-coded)
@@ -119,16 +119,16 @@ public enum SpectralCartographText {
 
         // ── BR: timeseries row labels + time axis ─────────────────────────────────
         //
-        // Three rows (beat_phase01 / bass_dev / vocal_pitch), content Y [0.068,1.0] in BR.
+        // Three rows (beat_phase01 / bass_dev / bar_phase01), content Y [0.068,1.0] in BR.
         // BR panel Metal UV: X ∈ [0.515, 0.985], Y ∈ [0.568, 0.980]
         // Row span ≈ 0.137 each; label placed near each row's top-left.
         let beatPhaseClr = CGColor(red: 1.0,  green: 0.784, blue: 0.341, alpha: 0.9)
         let bassDevClr   = CGColor(red: 1.0,  green: 0.361, blue: 0.361, alpha: 0.9)
-        let pitchClr     = CGColor(red: 0.482, green: 0.361, blue: 1.0,   alpha: 0.9)
+        let barPhaseClr  = CGColor(red: 0.482, green: 0.361, blue: 1.0,   alpha: 0.9)
 
         drawLabel("BEAT φ",   at: metalToCG(0.513, 0.605, w, h), font: rowFont, color: beatPhaseClr, ctx: ctx)
         drawLabel("BASS DEV", at: metalToCG(0.513, 0.742, w, h), font: rowFont, color: bassDevClr,   ctx: ctx)
-        drawLabel("PITCH",    at: metalToCG(0.513, 0.879, w, h), font: rowFont, color: pitchClr,     ctx: ctx)
+        drawLabel("BAR φ",    at: metalToCG(0.513, 0.879, w, h), font: rowFont, color: barPhaseClr,  ctx: ctx)
 
         // Time axis labels (bottom of BR content area)
         drawLabel("← 8 s",  at: metalToCG(0.515, 0.975, w, h), font: tickFont, color: tickDim, ctx: ctx)

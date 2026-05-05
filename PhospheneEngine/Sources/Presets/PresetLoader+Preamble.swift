@@ -47,8 +47,11 @@ extension PresetLoader {
             float bass_att_rel, mid_att_rel, treb_att_rel;
             // MV-3b beat phase: 0 at last beat, rises to 1 at next (D-028).
             float beat_phase01, beats_until_next;
-            // Padding to 192 bytes (floats 37–48).
-            float _pad1, _pad2, _pad3, _pad4, _pad5, _pad6, _pad7,
+            // Bar phase: 0 at downbeat, rises to 1 at next downbeat (floats 37–38).
+            float bar_phase01;    // phrase-level envelope; 0 in reactive mode
+            float beats_per_bar; // time-sig numerator (4 for 4/4, 3 for 3/4)
+            // Padding to 192 bytes (floats 39–48).
+            float _pad3, _pad4, _pad5, _pad6, _pad7,
                   _pad8, _pad9, _pad10, _pad11, _pad12;
         };
 
