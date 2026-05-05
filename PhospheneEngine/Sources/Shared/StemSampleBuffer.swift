@@ -20,6 +20,14 @@ public protocol StemSampleBuffering: AnyObject, Sendable {
     /// Returns an empty array if insufficient data has been written.
     func snapshotLatest(seconds: Double) -> [Float]
 
+    /// Copy the latest `seconds` of interleaved stereo samples using `sampleRate`
+    /// as the actual audio rate instead of the buffer's stored initialization rate.
+    ///
+    /// Use this when the Core Audio tap rate differs from the rate the buffer was
+    /// initialized with (e.g. tap at 48000 Hz, buffer initialized at 44100 Hz).
+    /// Passing the actual rate ensures the correct number of frames is retrieved.
+    func snapshotLatest(seconds: Double, sampleRate: Double) -> [Float]
+
     /// Compute the RMS energy of the latest `seconds` of buffered audio.
     /// Returns 0 if no data is available. Thread-safe.
     func rms(seconds: Double) -> Float
@@ -101,7 +109,11 @@ public final class StemSampleBuffer: StemSampleBuffering, @unchecked Sendable {
     }
 
     public func snapshotLatest(seconds: Double) -> [Float] {
-        let requestedSamples = Int(sampleRate * Double(channelCount) * seconds)
+        snapshotLatest(seconds: seconds, sampleRate: sampleRate)
+    }
+
+    public func snapshotLatest(seconds: Double, sampleRate actualRate: Double) -> [Float] {
+        let requestedSamples = Int(actualRate * Double(channelCount) * seconds)
         lock.lock()
         let available = min(totalWritten, capacity)
         let count = min(requestedSamples, available)

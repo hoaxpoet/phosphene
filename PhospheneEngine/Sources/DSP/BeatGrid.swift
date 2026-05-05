@@ -83,21 +83,53 @@ public struct BeatGrid: Sendable, Hashable, Codable {
 
 extension BeatGrid {
 
-    /// Return a new grid with all beat and downbeat times shifted by `seconds`.
+    /// Return a new grid with all beat and downbeat times shifted by `seconds`,
+    /// then extrapolated forward to `horizon` seconds past the last shifted beat.
     ///
     /// Used when a BeatGrid is analyzed from a buffer window that starts at some
     /// offset within the track (e.g. the last 10 seconds of live tap audio). Add
     /// `trackStartOffset` so beat times align with the track-relative playback
     /// clock used by `LiveBeatDriftTracker`.
-    public func offsetBy(_ seconds: Double) -> BeatGrid {
-        BeatGrid(
-            beats:         beats.map { $0 + seconds },
-            downbeats:     downbeats.map { $0 + seconds },
-            bpm:           bpm,
-            beatsPerBar:   beatsPerBar,
+    ///
+    /// Without forward extrapolation the grid only covers ~10 seconds of beats from
+    /// the live-trigger window. Once `playbackTime` passes the last recorded beat,
+    /// `computePhase` clamps `beatPhase01` at 1.0 and `nearestBeat` can never find
+    /// a match within ±50 ms, so `consecutiveMisses` grows indefinitely and the
+    /// tracker never reaches `.locked`. Extrapolating to 300 s makes the grid
+    /// effectively infinite for a typical session.
+    public func offsetBy(_ seconds: Double, horizon: Double = 300.0) -> BeatGrid {
+        var shiftedBeats = beats.map { $0 + seconds }
+        var shiftedDownbeats = downbeats.map { $0 + seconds }
+
+        // Extrapolate forward using the stored BPM so the grid covers
+        // future playback without requiring another Beat This! inference.
+        if let lastBeat = shiftedBeats.last, bpm > 0 {
+            let period = 60.0 / bpm
+            let ceiling = lastBeat + horizon
+            var next = lastBeat + period
+            while next <= ceiling {
+                shiftedBeats.append(next)
+                next += period
+            }
+            // Extrapolate downbeats at the bar period.
+            let dbPeriod = period * Double(max(beatsPerBar, 1))
+            let dbBase = shiftedDownbeats.last ?? lastBeat
+            let dbCeiling = dbBase + horizon
+            var nextDb = dbBase + dbPeriod
+            while nextDb <= dbCeiling {
+                shiftedDownbeats.append(nextDb)
+                nextDb += dbPeriod
+            }
+        }
+
+        return BeatGrid(
+            beats: shiftedBeats,
+            downbeats: shiftedDownbeats,
+            bpm: bpm,
+            beatsPerBar: beatsPerBar,
             barConfidence: barConfidence,
-            frameRate:     frameRate,
-            frameCount:    frameCount
+            frameRate: frameRate,
+            frameCount: frameCount
         )
     }
 }

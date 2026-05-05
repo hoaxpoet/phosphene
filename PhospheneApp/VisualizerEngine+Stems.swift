@@ -216,8 +216,14 @@ extension VisualizerEngine {
 
         liveBeatAnalysisDone = true   // prevent concurrent/duplicate calls
 
-        // Snapshot interleaved stereo PCM, downmix to mono.
-        let interleaved = stemSampleBuffer.snapshotLatest(seconds: Self.liveBeatMinSeconds)
+        // Snapshot interleaved stereo PCM using the actual tap sample rate.
+        // The buffer was initialized at 44100 Hz but the tap typically runs at
+        // 48000 Hz. Passing the real rate ensures we retrieve a full 10 seconds
+        // of audio instead of ~9.2 seconds (882000 vs 960000 samples).
+        let actualRate = tapSampleRate
+        let interleaved = stemSampleBuffer.snapshotLatest(
+            seconds: Self.liveBeatMinSeconds, sampleRate: actualRate
+        )
         guard interleaved.count >= 2 else { return }
 
         var monoMutable = [Float](repeating: 0, count: interleaved.count / 2)
@@ -228,7 +234,8 @@ extension VisualizerEngine {
 
         let bufferStartTime = elapsed - Self.liveBeatMinSeconds
         let elapsedStr = String(format: "%.1f", elapsed)
-        logger.info("LiveBeat: launching Beat This! on \(mono.count) samples (t=\(elapsedStr)s)")
+        let rateStr = String(format: "%.0f", actualRate)
+        logger.info("LiveBeat: launching Beat This! on \(mono.count) samples @ \(rateStr) Hz (t=\(elapsedStr)s)")
 
         stemQueue.async { [weak self] in
             guard let self else { return }
@@ -245,7 +252,9 @@ extension VisualizerEngine {
             }
 
             guard let analyzer = self.liveBeatGridAnalyzer else { return }
-            let rawGrid = analyzer.analyzeBeatGrid(samples: mono, sampleRate: 44100)
+            // Use the actual tap rate (typically 48000 Hz) so the Beat This!
+            // mel spectrogram covers the correct duration and BPM is accurate.
+            let rawGrid = analyzer.analyzeBeatGrid(samples: mono, sampleRate: actualRate)
             guard !rawGrid.beats.isEmpty else {
                 self.logger_liveBeat("LiveBeat: Beat This! returned empty grid")
                 return
