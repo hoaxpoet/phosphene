@@ -92,6 +92,11 @@ extension VisualizerEngine {
             // analysis queue from the FFT magnitudes already computed below.
             self?.inputLevelMonitor.submitSamples(pointer: samples, count: count)
 
+            // Capture the actual tap sample rate so Beat This! and the
+            // snapshot helper use the correct frame count. Updated every
+            // callback but value is stable after the first frame.
+            self?.tapSampleRate = Double(rate)
+
             // Feed stem sample buffer (interleaved stereo, lightweight write).
             self?.stemSampleBuffer.write(samples: samples, count: count)
 

@@ -1,11 +1,18 @@
 // BeatGridUnitTests — DSP.2 S7 unit tests for the BeatGrid lookup helpers
 // added alongside LiveBeatDriftTracker.
 //
-// Four contracts:
+// Four contracts (DSP.2 S7):
 //   1. beatIndex(at:) — boundary sentinels (before first / on a beat / past last).
 //   2. localTiming(at:) — beats-since-downbeat correct on an irregular grid.
 //   3. medianBeatPeriod — within 1 ms of `60/bpm` on a uniform grid.
 //   4. beatIndex(at:) is bisect (large-grid sanity test).
+//
+// Five contracts (DSP.3.4 — horizon extrapolation):
+//   5. offsetBy extrapolates beats to 300-second horizon.
+//   6. extrapolated beats preserve correct BPM period.
+//   7. extrapolated downbeats are appended and spaced by bar period.
+//   8. beatPhase01 stays in [0,1) at t >> lastRecordedBeat (no freeze at 1.0).
+//   9. nearestBeat finds a match within ±50 ms well past the original grid end.
 
 import Foundation
 import Testing
@@ -87,6 +94,139 @@ struct BeatGridUnitTests {
         // Empty grid with bpm=0 → 0.
         let empty = BeatGrid.empty
         #expect(empty.medianBeatPeriod == 0)
+    }
+
+    // MARK: 5. offsetBy extrapolates to 300-second horizon (DSP.3.4)
+
+    @Test("offsetBy_extrapolatesBeatsToHorizon")
+    func test_offsetBy_extrapolatesBeatsToHorizon() {
+        // Tiny 10-beat grid at 120 BPM (0.5 s period), covering 0–4.5 s.
+        let bpm = 120.0
+        let period = 60.0 / bpm
+        let beats = (0..<10).map { Double($0) * period }
+        let downbeats = [0.0, 2.0]
+        let grid = BeatGrid(
+            beats: beats, downbeats: downbeats, bpm: bpm, beatsPerBar: 4,
+            barConfidence: 1.0, frameRate: 50, frameCount: 500
+        )
+
+        // Shift by 5 s (bufferStartTime offset typical in live-trigger path).
+        let shifted = grid.offsetBy(5.0)
+
+        // Shifted last recorded beat is at 5 + 4.5 = 9.5 s.
+        // Extrapolation extends to 9.5 + 300 = 309.5 s.
+        let lastBeat = shifted.beats.last!
+        #expect(lastBeat >= 309.0, "last beat should reach ~309 s, got \(lastBeat)")
+
+        // Beat count: 10 original + ⌊300/0.5⌋ = 600 extrapolated = 610 total.
+        #expect(shifted.beats.count >= 610)
+    }
+
+    // MARK: 6. Extrapolated beats maintain BPM period (DSP.3.4)
+
+    @Test("offsetBy_extrapolatedBeatsPeriod")
+    func test_offsetBy_extrapolatedBeatsPeriod() {
+        let bpm = 125.0
+        let period = 60.0 / bpm
+        let beats = (0..<20).map { Double($0) * period }
+        let grid = BeatGrid(
+            beats: beats, downbeats: [], bpm: bpm, beatsPerBar: 4,
+            barConfidence: 1.0, frameRate: 50, frameCount: 1000
+        )
+        let shifted = grid.offsetBy(0.0)
+
+        // All consecutive IOIs in the extrapolated portion should equal `period`
+        // within floating-point rounding (~1 µs).
+        let originalCount = beats.count
+        guard shifted.beats.count > originalCount + 10 else {
+            #expect(Bool(false), "expected extrapolated beats")
+            return
+        }
+        for i in (originalCount)..<min(originalCount + 50, shifted.beats.count - 1) {
+            let ioi = shifted.beats[i + 1] - shifted.beats[i]
+            #expect(abs(ioi - period) < 1e-6,
+                    "IOI at extrapolated index \(i) should be \(period), got \(ioi)")
+        }
+    }
+
+    // MARK: 7. Extrapolated downbeats are appended at bar period (DSP.3.4)
+
+    @Test("offsetBy_extrapolatesDownbeats")
+    func test_offsetBy_extrapolatesDownbeats() {
+        let bpm = 120.0
+        let period = 60.0 / bpm
+        let beats = (0..<8).map { Double($0) * period }
+        let downbeats = [0.0, 2.0]  // 4/4 → bar period = 4 × 0.5 = 2.0 s
+        let grid = BeatGrid(
+            beats: beats, downbeats: downbeats, bpm: bpm, beatsPerBar: 4,
+            barConfidence: 1.0, frameRate: 50, frameCount: 400
+        )
+        let shifted = grid.offsetBy(0.0)
+
+        // Shifted downbeats: at 0, 2, 4, 6, 8 … up to ~302 s.
+        // Should have many more than the original 2.
+        #expect(shifted.downbeats.count >= 100)
+
+        // Check that extrapolated downbeats are spaced by barPeriod = 2.0 s.
+        let dbPeriod = period * 4
+        for i in 2..<min(shifted.downbeats.count - 1, 10) {
+            let gap = shifted.downbeats[i + 1] - shifted.downbeats[i]
+            #expect(abs(gap - dbPeriod) < 1e-6,
+                    "downbeat gap at \(i) should be \(dbPeriod), got \(gap)")
+        }
+    }
+
+    // MARK: 8. beatPhase01 stays valid past original grid end (DSP.3.4)
+
+    @Test("offsetBy_beatPhaseStaysValidPastHorizon")
+    func test_offsetBy_beatPhaseStaysValidPastHorizon() {
+        // Simulate the live-trigger scenario: 10-beat grid at 125 BPM,
+        // shifted by bufferStartTime=0 (simplification). Without extrapolation,
+        // any lookup past lastBeat (~4.56 s at 125 BPM) would clamp to 1.0.
+        let bpm = 125.0
+        let period = 60.0 / bpm
+        let beats = (0..<10).map { Double($0) * period }
+        let grid = BeatGrid(
+            beats: beats, downbeats: [], bpm: bpm, beatsPerBar: 4,
+            barConfidence: 1.0, frameRate: 50, frameCount: 500
+        )
+        let extended = grid.offsetBy(0.0)
+
+        // Query at t = 60 s (well past the 10-beat window).
+        let t = 60.0
+        guard let idx = extended.beatIndex(at: t) else {
+            #expect(Bool(false), "beatIndex at \(t) should not be nil after extrapolation")
+            return
+        }
+        let beatTime = extended.beats[idx]
+        let rawPhase = (t - beatTime) / period
+        // rawPhase should be in [0, 1) — not clamped to 1.0.
+        #expect(rawPhase >= 0 && rawPhase < 1.0,
+                "rawPhase at t=\(t) should be in [0,1), got \(rawPhase)")
+    }
+
+    // MARK: 9. nearestBeat finds a match within ±50 ms past original end (DSP.3.4)
+
+    @Test("offsetBy_nearestBeatFindsMatchPastOriginalEnd")
+    func test_offsetBy_nearestBeatFindsMatchPastOriginalEnd() {
+        let bpm = 120.0
+        let period = 60.0 / bpm  // 0.5 s
+        let beats = (0..<12).map { Double($0) * period }  // covers 0–5.5 s
+        let grid = BeatGrid(
+            beats: beats, downbeats: [], bpm: bpm, beatsPerBar: 4,
+            barConfidence: 1.0, frameRate: 50, frameCount: 600
+        )
+        let extended = grid.offsetBy(0.0)
+
+        // At t = 30 s the nearest extrapolated beat should be within 0 + ε.
+        // 30 s / 0.5 s = 60 beats exactly.
+        let t = 30.0
+        let nearest = extended.nearestBeat(to: t, within: 0.05)  // ±50 ms window
+        #expect(nearest != nil, "nearestBeat at t=\(t) should find an extrapolated beat")
+        if let n = nearest {
+            #expect(abs(n - t) < 0.05,
+                    "nearest beat at \(n) should be within 50 ms of \(t)")
+        }
     }
 
     // MARK: 4. Bisect search on a long grid

@@ -174,7 +174,16 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     let stemSeparator: StemSeparator?
 
     /// Ring buffer accumulating interleaved stereo PCM for stem separation.
+    /// Initialized at 44100 Hz; `tapSampleRate` is captured from the first audio
+    /// callback and used to correctly size snapshot requests at the actual rate.
     let stemSampleBuffer = StemSampleBuffer(sampleRate: 44100, maxSeconds: 15)
+
+    /// Actual sample rate delivered by the Core Audio tap, captured on the first
+    /// audio callback and used by the live Beat This! path. Typically 48000 Hz
+    /// when Audio MIDI Setup is left at its default; may be 44100 Hz on some
+    /// hardware. Initialized to 44100 to match the buffer default; updated once
+    /// the first real callback arrives.
+    var tapSampleRate: Double = 44100
 
     /// Per-stem energy + beat analysis.
     let stemAnalyzer: StemAnalyzer
