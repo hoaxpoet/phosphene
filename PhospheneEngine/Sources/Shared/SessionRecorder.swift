@@ -315,7 +315,8 @@ public final class SessionRecorder: @unchecked Sendable {
             frame,wallclock_s,time,deltaTime,bass,mid,treble,\
             subBass,lowBass,lowMid,midHigh,highMid,high,\
             beatBass,beatMid,beatTreble,beatComposite,\
-            spectralCentroid,spectralFlux,valence,arousal,accumulatedAudioTime
+            spectralCentroid,spectralFlux,valence,arousal,accumulatedAudioTime,\
+            beatPhase01,bassRel,bassDev,bassAttRel
 
             """
         let stemsHeader = """

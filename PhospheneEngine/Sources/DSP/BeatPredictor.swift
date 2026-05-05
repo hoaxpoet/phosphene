@@ -11,10 +11,15 @@
 // live musicians and feel-good VJ performance.
 //
 // Algorithm:
-//   1. Detect rising edge: beatValue = max(bass, mid, composite) > 0.5
-//      and previous frame's value was ≤ 0.5.
-//   2. On onset: if a valid inter-beat interval (0.2s–1.5s) was measured,
+//   1. Detect rising edge on beatBass ONLY (sub_bass onset channel).
+//      beatMid and beatComposite are NOT used for period estimation — they
+//      fire on bass-guitar note articulations and other non-beat events
+//      that would produce 2–4× the true beat rate on bass-heavy tracks
+//      (e.g. Pink Floyd - Money, Chaim - Love Rehab). D-075 principle.
+//   2. On bass onset: if a valid inter-beat interval (0.3s–1.5s) was measured,
 //      update the IIR period: period = 0.3 × period + 0.7 × interval.
+//      Floor of 0.3s = 200 BPM max, preventing note articulations from
+//      being mistaken for beats.
 //   3. Each frame: phase = (now − lastBeatTime) / estimatedPeriod, clamped 0–1.
 //   4. If no beat for > 3 × estimatedPeriod: phase resets to 0 (tempo lost).
 //   5. Bootstrap: `bootstrapBPM` seeds the period estimate so that once the
@@ -94,13 +99,13 @@ public final class BeatPredictor: @unchecked Sendable {
     /// Advance the predictor by one frame and return the current phase.
     ///
     /// - Parameters:
-    ///   - beatBass: Bass beat pulse from BeatDetector (0–1 decaying).
-    ///   - beatMid: Mid beat pulse from BeatDetector (0–1 decaying).
-    ///   - beatComposite: Composite beat pulse (0–1 decaying).
+    ///   - beatBass: Bass beat pulse from BeatDetector (0–1 decaying). Only this
+    ///     channel drives period estimation — see algorithm note above re. D-075.
+    ///   - beatMid: Mid beat pulse (unused for estimation, retained for API compat).
+    ///   - beatComposite: Composite beat pulse (unused for estimation, retained).
     ///   - time: Current time in seconds (same domain across all calls — e.g.
     ///     MIRPipeline's `elapsedSeconds`).
-    ///   - deltaTime: Seconds since the last call (unused for phase, kept for
-    ///     API consistency with other analyzers).
+    ///   - deltaTime: Seconds since the last call.
     /// - Returns: Beat phase prediction for this frame.
     public func update(
         beatBass: Float, beatMid: Float, beatComposite: Float,
@@ -114,17 +119,18 @@ public final class BeatPredictor: @unchecked Sendable {
         elapsedTime += Double(max(deltaTime, 0.001))
         let now = elapsedTime
 
-        // Detect rising edge on any of the three pulse signals.
-        let beatValue = max(beatBass, max(beatMid, beatComposite))
-        let onsetDetected = beatValue > 0.5 && prevBeatValue <= 0.5
-        prevBeatValue = beatValue
+        // Rising edge on sub_bass ONLY (D-075). beatMid fires on bass-guitar
+        // note articulations at 2–4× the true beat rate on bass-heavy tracks.
+        let onsetDetected = beatBass > 0.5 && prevBeatValue <= 0.5
+        prevBeatValue = beatBass
 
         if onsetDetected {
             if lastBeatTime >= 0 {
                 let interval = now - lastBeatTime
-                // Valid BPM range: 40–300 BPM → period 0.2s–1.5s.
-                if interval >= 0.2 && interval <= 1.5 {
-                    // IIR period smoother: mostly measured, small prior contribution.
+                // Valid BPM range: 40–200 BPM → period 0.3s–1.5s.
+                // Floor 0.3s (200 BPM) prevents bass-guitar articulations from
+                // being mistaken for beats (they land at ~0.2–0.25s on Money).
+                if interval >= 0.3 && interval <= 1.5 {
                     estimatedPeriod = 0.3 * estimatedPeriod + 0.7 * interval
                     hasPeriod = true
                     let iStr = String(format: "%.3f", interval)

@@ -75,15 +75,24 @@ extension VisualizerEngine {
     static func makeSessionManager(
         sep: StemSeparator?,
         analyzer: StemAnalyzer,
-        classifier: MoodClassifier?
+        classifier: MoodClassifier?,
+        device: MTLDevice
     ) -> SessionManager {
         let resolvedSep: any StemSeparating = sep ?? NullStemSeparator()
+        let beatGridAnalyzer: (any BeatGridAnalyzing)? = {
+            guard let a = try? DefaultBeatGridAnalyzer(device: device) else {
+                initLogger.warning("DefaultBeatGridAnalyzer init failed — beat grid analysis disabled")
+                return nil
+            }
+            return a
+        }()
         let preparer = SessionPreparer(
             resolver: PreviewResolver(),
             downloader: PreviewDownloader(),
             stemSeparator: resolvedSep,
             stemAnalyzer: analyzer,
-            moodClassifier: classifier ?? MoodClassifier()
+            moodClassifier: classifier ?? MoodClassifier(),
+            beatGridAnalyzer: beatGridAnalyzer
         )
         return SessionManager(connector: PlaylistConnector(), preparer: preparer)
     }

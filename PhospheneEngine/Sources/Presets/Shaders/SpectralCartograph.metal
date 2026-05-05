@@ -437,11 +437,20 @@ static inline float3 drawBeatOrb(float2 uv, constant FeatureVector& fv, constant
     result = max(result, ambColor * fillBright * discA * 0.85);
 
     // ── white ring flash at beat onset ───────────────────────────────────────
-    float ringAlpha = smoothstep(0.04, 0.0, phase);
-    float ringDist  = abs(dist - kOrbRadius * 0.98);
-    float ringA     = (1.0 - smoothstep(0.0, kOrbRadius * 0.025, ringDist)) * ringAlpha;
+    // Confidence gate: ring is bright when the drift tracker is locked to a
+    // verified BeatGrid (lock_state=2), dim when locking (1), barely visible
+    // in reactive/fallback mode (0). Prevents the orb from appearing to pulse
+    // confidently when the beat source is just BeatPredictor guesswork.
+    int   lockState    = int(history[kOffLockState] + 0.5);
+    float lockConf     = lockState == 2 ? 1.0 : (lockState == 1 ? 0.45 : 0.12);
+    float ringAlpha    = smoothstep(0.04, 0.0, phase) * lockConf;
+    float ringDist     = abs(dist - kOrbRadius * 0.98);
+    float ringA        = (1.0 - smoothstep(0.0, kOrbRadius * 0.025, ringDist)) * ringAlpha;
     // Cap at 0.94 so max channel value stays below the acceptance-test's 250/255 threshold.
     result = max(result, float3(ringA * 0.94));
+
+    // ── amber fill also dims in reactive mode so it doesn't mislead ──────────
+    result = mix(result * 0.35, result, lockConf);
 
     // ── BPM text above orb ────────────────────────────────────────────────────
     // Draw 3 digits centered horizontally, baseline just above the orb.
