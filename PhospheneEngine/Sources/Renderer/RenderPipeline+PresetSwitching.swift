@@ -121,4 +121,19 @@ extension RenderPipeline {
     public func setDirectPresetFragmentBuffer2(_ buffer: MTLBuffer?) {
         directPresetFragmentBuffer2Lock.withLock { directPresetFragmentBuffer2 = buffer }
     }
+
+    /// Attach a dynamic text overlay for presets that declare `text_overlay: true`.
+    /// The overlay texture is bound at fragment texture(12) during direct-pass draws.
+    /// Pass `nil` to detach (e.g. on preset switch away from a text-overlay preset).
+    /// Thread-safe — can be called from any queue.
+    public func setDynamicTextOverlay(_ overlay: DynamicTextOverlay?) {
+        dynamicTextOverlayLock.withLock { dynamicTextOverlay = overlay }
+    }
+
+    /// Set the per-frame callback that populates the dynamic text overlay.
+    /// Called once per frame from `drawDirect` if an overlay is attached.
+    /// Pass `nil` to detach. Thread-safe — can be called from any queue.
+    public func setTextOverlayCallback(_ callback: ((DynamicTextOverlay) -> Void)?) {
+        textOverlayCallbackLock.withLock { textOverlayCallback = callback }
+    }
 }

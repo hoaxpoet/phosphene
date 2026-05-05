@@ -151,6 +151,18 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     var directPresetFragmentBuffer2: MTLBuffer?
     let directPresetFragmentBuffer2Lock = NSLock()
 
+    // MARK: - Dynamic Text Overlay (texture 12)
+
+    /// Per-frame CPU text rasterization for text-overlay presets (e.g. SpectralCartograph).
+    /// Bound at fragment texture(12). Created/destroyed by `setDynamicTextOverlay(_:)`.
+    var dynamicTextOverlay: DynamicTextOverlay?
+    let dynamicTextOverlayLock = NSLock()
+
+    /// Per-frame callback invoked in `refresh()` to populate the text overlay.
+    /// Set by the app layer when a text-overlay preset is active.
+    var textOverlayCallback: ((DynamicTextOverlay) -> Void)?
+    let textOverlayCallbackLock = NSLock()
+
     // MARK: - IBL Textures (Increment 3.16)
 
     /// Optional IBL texture manager — binds irradiance, prefiltered env, and BRDF LUT at slots 9–11.

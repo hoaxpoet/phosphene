@@ -275,6 +275,16 @@ extension RenderPipeline {
             return
         }
 
+        // Refresh and bind the dynamic text overlay when a text-overlay preset is active.
+        // refresh() clears the CGContext and invokes the callback on the render thread —
+        // must happen before the encoder is created so the CPU write completes before
+        // the GPU reads the shared-memory texture.
+        let textOverlay = dynamicTextOverlayLock.withLock { dynamicTextOverlay }
+        let textCB = textOverlayCallbackLock.withLock { textOverlayCallback }
+        if let overlay = textOverlay {
+            textCB?(overlay)
+        }
+
         // Draw preset visualization.
         encoder.setRenderPipelineState(activePipeline)
         encoder.setFragmentBytes(&features, length: MemoryLayout<FeatureVector>.size, index: 0)
@@ -284,6 +294,10 @@ extension RenderPipeline {
         encoder.setFragmentBytes(&stems, length: MemoryLayout<StemFeatures>.size, index: 3)
         encoder.setFragmentBuffer(spectralHistory.gpuBuffer, offset: 0, index: 5)
         bindNoiseTextures(to: encoder)
+        // Bind dynamic text overlay at texture(12) when active.
+        if let overlay = textOverlay {
+            encoder.setFragmentTexture(overlay.texture, index: 12)
+        }
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
 
         // Draw particles on top.

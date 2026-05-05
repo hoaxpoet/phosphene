@@ -257,6 +257,15 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
     /// Defaults to `false`.
     public let isDiagnostic: Bool
 
+    // MARK: - Text Overlay
+
+    /// When `true`, the engine creates a `DynamicTextOverlay` for this preset and binds
+    /// it at fragment texture(12). The fragment shader is expected to declare
+    /// `texture2d<float, access::sample> textOverlay [[texture(12)]]` and blend it
+    /// over the visualization output using flipped-Y sampling.
+    /// Defaults to `false`.
+    public let textOverlay: Bool
+
     // MARK: - CodingKeys
 
     /// Keys for all stored properties — used by both `init(from:)` and `encode(to:)`.
@@ -293,6 +302,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         case rubricProfile = "rubric_profile"
         case rubricHints = "rubric_hints"
         case isDiagnostic = "is_diagnostic"
+        case textOverlay  = "text_overlay"
     }
 
     /// Keys for legacy boolean flags — decode-only, not stored as properties.
@@ -391,6 +401,9 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
 
         // MARK: V.7.6.C Diagnostic Class
         isDiagnostic = try container.decodeIfPresent(Bool.self, forKey: .isDiagnostic) ?? false
+
+        // MARK: Text Overlay
+        textOverlay = try container.decodeIfPresent(Bool.self, forKey: .textOverlay) ?? false
     }
 
     /// Synthesise a `passes` array from legacy boolean flags.
