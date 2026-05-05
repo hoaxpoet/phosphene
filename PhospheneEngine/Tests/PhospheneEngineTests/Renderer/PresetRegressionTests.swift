@@ -40,7 +40,7 @@ private let goldenPresetHashes: [String: PresetHashes] = [
     "Murmuration": (steady: 0x07449B6727773FF8, beatHeavy: 0x0B449A4727373FF8, quiet: 0x0744936727773FF8),
     "Nebula": (steady: 0x0000080C0C080000, beatHeavy: 0x0000080C0C080000, quiet: 0x0000080C0C080000),
     "Plasma": (steady: 0x030F170A072F1B0F, beatHeavy: 0x4193254F0E8E87C7, quiet: 0x0F1F0F0F0F07070F),
-    "Spectral Cartograph": (steady: 0x0000000000000000, beatHeavy: 0x00000000000060E0, quiet: 0x0000000000000000),
+    "Spectral Cartograph": (steady: 0x00180C8E0C0C0012, beatHeavy: 0x00180C8E0C0C6012, quiet: 0x00180C8E0C0C0012),
     "Volumetric Lithograph": (steady: 0x8C63D43512030000, beatHeavy: 0x8C63D43512030000, quiet: 0x8C63D43512030000),
     "Waveform": (steady: 0x000F0F0000000000, beatHeavy: 0x000F0F0000000000, quiet: 0x000F0F0000000000),
 ]

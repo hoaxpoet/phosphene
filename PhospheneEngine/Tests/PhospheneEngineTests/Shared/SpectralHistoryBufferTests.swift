@@ -164,8 +164,15 @@ private func readFloat(_ buf: MTLBuffer, at index: Int) -> Float {
     history.reset()
 
     let ptr = history.gpuBuffer.contents().assumingMemoryBound(to: Float.self)
+    let beatTimesStart = SpectralHistoryBuffer.offsetBeatTimes
+    let beatTimesEnd   = beatTimesStart + SpectralHistoryBuffer.beatTimesCount
     for i in 0..<SpectralHistoryBuffer.totalFloats {
-        #expect(ptr[i] == 0.0, "byte \(i) should be 0 after reset")
+        if i >= beatTimesStart && i < beatTimesEnd {
+            // Beat-time slots are reset to Float.infinity (sentinel = no tick).
+            #expect(ptr[i].isInfinite, "slot \(i) should be ∞ after reset")
+        } else {
+            #expect(ptr[i] == 0.0, "slot \(i) should be 0 after reset")
+        }
     }
     // After reset + single append, writeHead should be 1, samplesValid 1.
     fv.valence = 0.5

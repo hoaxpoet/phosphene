@@ -136,6 +136,9 @@ extension VisualizerEngine {
         pipeline.setFeatures(fv)
         pipeline.updateFeedbackBeatValue(from: fv)
 
+        // Update SpectralCartograph beat-grid overlay (diagnostic preset).
+        updateSpectralCartographBeatGrid(mir: mir)
+
         analysisFrameCount += 1
 
         accumulateMoodFeatures(fv: fv, mir: mir)
@@ -285,6 +288,30 @@ extension VisualizerEngine {
             totalEnergy: totalEnergy,
             subBass: fv.subBass,
             bassAttackRatio: latestBassAttackRatio
+        )
+    }
+
+    /// Updates the SpectralCartograph beat-grid overlay data in the spectral history buffer.
+    /// Called from the analysis queue after each MIR frame. No-op when the drift tracker
+    /// has no grid installed (reactive mode) — ticks are suppressed by the `Float.infinity`
+    /// sentinel already written by `reset()`.
+    func updateSpectralCartographBeatGrid(mir: MIRPipeline) {
+        let tracker = mir.liveDriftTracker
+        let bpm = Float(tracker.currentBPM)
+        let lockStateInt: Int
+        switch tracker.currentLockState {
+        case .unlocked: lockStateInt = 0
+        case .locking:  lockStateInt = 1
+        case .locked:   lockStateInt = 2
+        }
+        let relTimes = tracker.relativeBeatTimes(
+            playbackTime: Double(mir.elapsedSeconds),
+            count: SpectralHistoryBuffer.beatTimesCount
+        )
+        pipeline.spectralHistory.updateBeatGridData(
+            relativeBeatTimes: relTimes,
+            bpm: bpm,
+            lockState: lockStateInt
         )
     }
 
