@@ -29,9 +29,11 @@ private typealias PresetHashes = (steady: UInt64, beatHeavy: UInt64, quiet: UInt
 /// Inline golden dHash values for each preset × 3 fixtures.
 /// Update when a shader edit intentionally changes visual output — never silently.
 private let goldenPresetHashes: [String: PresetHashes] = [
-    // V.7.9 build: silk-as-thin-lines (Marschner BRDF removed, §5.10); frame-first
-    // build order (§5.2 60s cycle); hub as worley_fbm noise knot (§5.4).
-    "Arachne": (steady: 0x763B0F0F07078E0F, beatHeavy: 0x763B0F0F07078E0F, quiet: 0x763B0F0F07078E0F),
+    // V.7.7A staged-composition placeholder: regression test renders only the
+    // composite stage (worldTex unbound → samples zero), so the hash captures
+    // the placeholder hub-and-spokes web overlay alone. Real WORLD/WEB outputs
+    // are exercised by the staged path in PresetVisualReviewTests.
+    "Arachne": (steady: 0x00000E336E0E1600, beatHeavy: 0x00000E336E0E1600, quiet: 0x00000E336E0E1600),
     "Ferrofluid Ocean": (steady: 0x56AB1C4A28B32727, beatHeavy: 0x5CB393AAAFA84840, quiet: 0xA64C51A62FD35356),
     "Glass Brutalist": (steady: 0x336954B4B4544D33, beatHeavy: 0x336954B4B4544D33, quiet: 0x336954B4B4544D33),
     "Gossamer": (steady: 0x5756A72F070F0F0D, beatHeavy: 0x5756A72F070F0F0D, quiet: 0x5756872D0F0F0F0D),

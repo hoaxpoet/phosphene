@@ -164,7 +164,7 @@ The capability gaps above shape what preset families are buildable today, what i
 
 ### Unblocked by V.ENGINE.1
 
-- **Per-preset multipass with named offscreen textures and pass-separated harness capture.** The `RenderPass.staged` scaffold (linear DAG, samples bound at `[[texture(13)]]`+) plus the `RENDER_VISUAL=1` per-stage harness landed in V.ENGINE.1. `StagedSandbox` is the live diagnostic. **Arachne v8 should adopt this path as its first integration step (V.7.7A).** Refractive 2D droplets sampling a previously-rendered WORLD texture, depth-of-focus on a single named layer, and any future "small foreground elements refract the scene behind them" preset (rain on a window, oil-on-water, wet fabric, aquarium glass) can now be authored without further renderer changes.
+- **Per-preset multipass with named offscreen textures and pass-separated harness capture.** The `RenderPass.staged` scaffold (linear DAG, samples bound at `[[texture(13)]]`+) plus the `RENDER_VISUAL=1` per-stage harness landed in V.ENGINE.1. `StagedSandbox` is the live diagnostic. **V.7.7A (2026-05-05) migrated Arachne onto this path** with placeholder WORLD + COMPOSITE stages; full WORLD detail, refractive droplets, full silk geometry, and the spider arrive in V.7.7B+. Refractive 2D droplets sampling a previously-rendered WORLD texture, depth-of-focus on a single named layer, and any future "small foreground elements refract the scene behind them" preset (rain on a window, oil-on-water, wet fabric, aquarium glass) can now be authored without further renderer changes.
 
 ### Still blocked or severely limited until renderer changes land
 
@@ -178,7 +178,7 @@ The capability gaps above shape what preset families are buildable today, what i
 
 ### Implication for the implementation queue
 
-V.ENGINE.1 (2026-05-05) landed the highest-leverage engine investment: per-preset multipass orchestration with named offscreen textures and a pass-separated harness hook. This unblocks Arachne v8 (next: V.7.7A migrates the existing monolithic `arachne_fragment` into staged WORLD / FG_WEB / DROPLETS / COMPOSITE pipelines) and any future preset family that needs cross-pass texture sampling.
+V.ENGINE.1 (2026-05-05) landed the highest-leverage engine investment: per-preset multipass orchestration with named offscreen textures and a pass-separated harness hook. V.7.7A (2026-05-05) migrated Arachne onto the scaffold with placeholder WORLD + COMPOSITE stages — V.7.7B+ now layers the real WORLD detail, refractive droplets, full silk geometry, and spider on top of the staged shape. Any future preset family that needs cross-pass texture sampling is unblocked.
 
 The remaining engine investments, in priority order:
 
@@ -188,3 +188,4 @@ The remaining engine investments, in priority order:
 4. **Per-pass GPU timing attribution** for the budget governor. Frame-level only today; per-stage cost data would let the governor scale the most expensive stage instead of dropping the whole pass.
 5. **Anti-reference rejection gate** in the certification harness — automated dHash comparison against known anti-reference JPEGs (refs 09 / 10 for Arachne).
 6. **Atmosphere-utility promotion** (sky band, dust motes, light-shaft helpers) into shared utilities once Arachne's WORLD stage is authored, so future "in-the-world" presets reuse rather than re-author.
+7. **Harness PNG-export bug for staged presets** (small follow-up). `PresetVisualReviewTests.makeBGRAPipeline` currently calls `Bundle.module.url(forResource: "Shaders")` from the test target's bundle, where `Shaders` is not a resource — throws `cgImageFailed` for any staged preset under `RENDER_VISUAL=1`. Fix: source the `.metal` file via `Bundle(for: PresetLoader.self)`. Required before V.7.7B's harness contact-sheet review since per-stage PNGs are how WORLD-only / WEB-only / COMPOSITE outputs are inspected during authoring.
