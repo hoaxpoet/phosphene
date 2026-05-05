@@ -31,6 +31,11 @@ public protocol SpectralHistoryPublishing: AnyObject, Sendable {
     /// `lockState`: 0 = unlocked, 1 = locking, 2 = locked.
     func updateBeatGridData(relativeBeatTimes: [Float], bpm: Float, lockState: Int)
 
+    /// Read cached BPM and lock state for the DynamicTextOverlay callback.
+    /// Thread-safe — uses the beat-grid lock.
+    /// Returns `(bpm: 0, lockState: 0)` when no grid is available.
+    func readOverlayState() -> (bpm: Float, lockState: Int)
+
     /// Zero the buffer and reset ring indices. Call on track change.
     func reset()
 }
@@ -146,6 +151,17 @@ public final class SpectralHistoryBuffer: SpectralHistoryPublishing, @unchecked 
         }
         ptr[Self.offsetBPM] = bpm
         ptr[Self.offsetLockState] = Float(max(0, min(2, lockState)))
+    }
+
+    /// Read cached BPM and lock state for the DynamicTextOverlay text callback.
+    /// Safe to call from the render thread — uses the beat-grid lock which guards
+    /// only the reserved section [2418..2419], never the ring-buffer section.
+    public func readOverlayState() -> (bpm: Float, lockState: Int) {
+        beatGridLock.lock(); defer { beatGridLock.unlock() }
+        let ptr = gpuBuffer.contents().assumingMemoryBound(to: Float.self)
+        let bpm = ptr[Self.offsetBPM]
+        let lockState = Int(ptr[Self.offsetLockState] + 0.5)
+        return (bpm: bpm, lockState: lockState)
     }
 
     /// Zero the entire buffer and reset ring indices. Call on track change.

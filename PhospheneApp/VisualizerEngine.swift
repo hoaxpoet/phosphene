@@ -114,6 +114,10 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// via `setMeshPresetTick` / `setDirectPresetFragmentBuffer` in `applyPreset`.
     var gossamerState: GossamerState?
 
+    /// Dynamic text overlay for SpectralCartograph — allocated when that preset is
+    /// active, nil otherwise. Freed and detached on every `applyPreset` call.
+    var spectralCartographOverlay: DynamicTextOverlay?
+
     // MARK: - Pipeline References
 
     /// Metal context shared across the pipeline.

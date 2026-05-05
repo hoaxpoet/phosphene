@@ -11,16 +11,23 @@
 //   BR [0.5,1]×[0.5,1]   — Scrolling line graphs: beat_phase01, bass_dev, vocal pitch
 //
 // V2 additions (DSP.2 sign-off):
-//   • Per-panel header labels via inline 3×5 bitmap font
-//   • Centered beat orb at viewport (0.5, 0.5) showing beat phase + BPM + lock state
-//   • BR panel beat_phase01 row overlaid with cached-BeatGrid tick marks (buffer(5)[2402..])
+//   • Centred beat orb at viewport (0.5, 0.5) showing beat phase + lock-confidence gate
+//   • BR panel beat_phase01 row overlaid with cached-BeatGrid tick marks
+//   • Lock-state confidence gating on orb ring/fill (0.12 / 0.45 / 1.0)
 //
-// Buffer bindings (direct-pass layout):
-//   buffer(0) = FeatureVector (192 bytes)
-//   buffer(1) = FFT magnitudes (512 floats)
-//   buffer(2) = waveform (unused)
-//   buffer(3) = StemFeatures (256 bytes)
-//   buffer(5) = SpectralHistory (4096 floats, 16 KB)
+// V3 additions (text infrastructure):
+//   • All text labels rendered via DynamicTextOverlay (Core Text / SF Mono) at texture(12).
+//   • Panel headers, band row labels, axis ticks, quadrant hints, BPM, lock state
+//     all use real font families instead of the 3×5 bitmap-pixel font.
+//   • texture(12) sampled with flipped Y (CGContext bottom-left → Metal top-left).
+//
+// Buffer / texture bindings (direct-pass layout):
+//   buffer(0)  = FeatureVector (192 bytes)
+//   buffer(1)  = FFT magnitudes (512 floats)
+//   buffer(2)  = waveform (unused)
+//   buffer(3)  = StemFeatures (256 bytes)
+//   buffer(5)  = SpectralHistory (4096 floats, 16 KB)
+//   texture(12) = DynamicTextOverlay (2048×1024 .rgba8Unorm, refreshed CPU-side each frame)
 //
 // D-026 compliance: drawBandDeviation reads only deviation primitives.
 
@@ -49,9 +56,6 @@ constant float3 kBeatPhaseClr = float3(1.0,  0.784, 0.341);  // amber
 constant float3 kBassDevClr   = float3(1.0,  0.361, 0.361);  // coral
 constant float3 kPitchClr     = float3(0.482, 0.361, 1.000); // violet
 
-// Header text
-constant float3 kHeaderColor  = float3(1.0);  // white
-
 // ── History buffer offsets (mirror SpectralHistoryBuffer.swift) ───────────────
 
 constant int kHistLen         = 480;
@@ -75,70 +79,6 @@ constant float kHeaderH       = 0.12;
 // Beat orb radius in screen-height UV units (~22% of viewport height).
 constant float kOrbRadius     = 0.22;
 
-// ── 3×5 Bitmap font ───────────────────────────────────────────────────────────
-// Encoding: uint16, row-major top-to-bottom, MSB-left. Bit = 14 - row*3 - col.
-// glyphPixel(g, col, row) = (g >> (14 - row*3 - col)) & 1
-
-constant uint16_t glyph_SPACE = 0x0000;
-// Digits
-constant uint16_t glyph_0 = 0x7B6F;  // 111/101/101/101/111
-constant uint16_t glyph_1 = 0x2C97;  // 010/110/010/010/111
-constant uint16_t glyph_2 = 0x73E7;  // 111/001/111/100/111
-constant uint16_t glyph_3 = 0x728F;  // 111/001/011/001/111
-constant uint16_t glyph_4 = 0x5BC9;  // 101/101/111/001/001
-constant uint16_t glyph_5 = 0x798F;  // 111/100/111/001/111
-constant uint16_t glyph_6 = 0x79AF;  // 111/100/111/101/111
-constant uint16_t glyph_7 = 0x7249;  // 111/001/001/001/001
-constant uint16_t glyph_8 = 0x7BEF;  // 111/101/111/101/111
-constant uint16_t glyph_9 = 0x7BCF;  // 111/101/111/001/111
-// Uppercase letters
-constant uint16_t glyph_A = 0x2BED;  // 010/101/111/101/101
-constant uint16_t glyph_B = 0x6BAE;  // 110/101/110/101/110
-constant uint16_t glyph_C = 0x7927;  // 111/100/100/100/111
-constant uint16_t glyph_D = 0x6B6E;  // 110/101/101/101/110
-constant uint16_t glyph_E = 0x7987;  // 111/100/110/100/111
-constant uint16_t glyph_F = 0x7984;  // 111/100/110/100/100
-constant uint16_t glyph_G = 0x796F;  // 111/100/101/101/111
-constant uint16_t glyph_H = 0x5BED;  // 101/101/111/101/101
-constant uint16_t glyph_I = 0x7497;  // 111/010/010/010/111
-constant uint16_t glyph_K = 0x5BAD;  // 101/101/110/101/101
-constant uint16_t glyph_L = 0x4927;  // 100/100/100/100/111
-constant uint16_t glyph_M = 0x7B6D;  // 111/101/101/101/101  (3-wide: top bar = M)
-constant uint16_t glyph_N = 0x5FED;  // 101/111/111/101/101  (diagonal in 3-wide)
-constant uint16_t glyph_O = 0x7B6F;  // 111/101/101/101/111  (same as 0)
-constant uint16_t glyph_P = 0x7BE4;  // 111/101/111/100/100
-constant uint16_t glyph_R = 0x6BAD;  // 110/101/110/101/101
-constant uint16_t glyph_S = 0x798F;  // 111/100/111/001/111  (same as 5)
-constant uint16_t glyph_T = 0x7492;  // 111/010/010/010/010
-constant uint16_t glyph_U = 0x5B6F;  // 101/101/101/101/111
-constant uint16_t glyph_V = 0x5B6A;  // 101/101/101/101/010
-constant uint16_t glyph_W = 0x5BFD;  // 101/101/111/111/101
-constant uint16_t glyph_X = 0x5AAD;  // 101/101/010/101/101
-constant uint16_t glyph_Y = 0x5A92;  // 101/101/010/010/010
-constant uint16_t glyph_Z = 0x72A7;  // 111/001/010/100/111
-// Punctuation
-constant uint16_t glyph_SLASH  = 0x12A4;  // 001/001/010/100/100
-constant uint16_t glyph_MINUS  = 0x01C0;  // 000/000/111/000/000
-constant uint16_t glyph_COLON  = 0x0410;  // 000/010/000/010/000
-constant uint16_t glyph_DOT    = 0x0001;  // 000/000/000/000/001
-constant uint16_t glyph_C_open = 0x7924;  // 111/100/100/100/100  (bracket-like)
-
-// ── Font helpers ──────────────────────────────────────────────────────────────
-
-/// Return 1 when pixel (col, row) is lit in glyph bitmap g.
-static inline float glyphPixel(uint16_t g, int col, int row) {
-    int bit = 14 - row * 3 - col;
-    return float((g >> bit) & 1u);
-}
-
-/// Sample glyph g at position uv relative to the character's top-left corner.
-/// pixSz = size of one pixel in UV space. Returns coverage [0,1].
-static inline float drawChar(float2 uv, uint16_t g, float2 origin, float pixSz) {
-    float2 d = (uv - origin) / pixSz;
-    if (d.x < 0.0 || d.x >= 3.0 || d.y < 0.0 || d.y >= 5.0) return 0.0;
-    return glyphPixel(g, int(d.x), int(d.y));
-}
-
 // ── Panel helpers ─────────────────────────────────────────────────────────────
 
 static inline bool onPanelBorder(float2 uv) {
@@ -150,72 +90,6 @@ static inline bool onPanelBorder(float2 uv) {
 static inline float2 toContent(float2 panelUV) {
     return (panelUV - kPadding) / (1.0 - 2.0 * kPadding);
 }
-
-// ── Panel header labels ───────────────────────────────────────────────────────
-// Each function renders one panel's header text.
-// `uv` is the full content UV [0,1]²; the header strip occupies y < kHeaderH.
-// pixSz = 0.015, stride = pixSz*4. All strings left-aligned at x=0.03.
-
-#define CHAR(ch, ox) a = max(a, drawChar(uv, glyph_##ch, float2((ox), orgY), pSz));
-
-static inline float3 drawHeaderTL(float2 uv) {
-    // "FFT SPECTRUM"
-    const float pSz = 0.015;
-    const float str = pSz * 4.0;
-    float orgY = (kHeaderH - pSz * 5.0) * 0.5;
-    float a = 0.0;
-    float x = 0.03;
-    CHAR(F,x) x+=str; CHAR(F,x) x+=str; CHAR(T,x) x+=str;
-    x += str;  // space
-    CHAR(S,x) x+=str; CHAR(P,x) x+=str; CHAR(E,x) x+=str; CHAR(C,x) x+=str;
-    CHAR(T,x) x+=str; CHAR(R,x) x+=str; CHAR(U,x) x+=str; CHAR(M,x)
-    return kHeaderColor * a;
-}
-
-static inline float3 drawHeaderTR(float2 uv) {
-    // "BAND DEVIATION"
-    const float pSz = 0.015;
-    const float str = pSz * 4.0;
-    float orgY = (kHeaderH - pSz * 5.0) * 0.5;
-    float a = 0.0;
-    float x = 0.03;
-    CHAR(B,x) x+=str; CHAR(A,x) x+=str; CHAR(N,x) x+=str; CHAR(D,x)
-    x += str * 2.0;  // space
-    CHAR(D,x) x+=str; CHAR(E,x) x+=str; CHAR(V,x) x+=str; CHAR(I,x)
-    x+=str; CHAR(A,x) x+=str; CHAR(T,x) x+=str; CHAR(I,x) x+=str; CHAR(O,x) x+=str; CHAR(N,x)
-    return kHeaderColor * a;
-}
-
-static inline float3 drawHeaderBL(float2 uv) {
-    // "VALENCE/AROUSAL"
-    const float pSz = 0.015;
-    const float str = pSz * 4.0;
-    float orgY = (kHeaderH - pSz * 5.0) * 0.5;
-    float a = 0.0;
-    float x = 0.03;
-    CHAR(V,x) x+=str; CHAR(A,x) x+=str; CHAR(L,x) x+=str; CHAR(E,x)
-    x+=str; CHAR(N,x) x+=str; CHAR(C,x) x+=str; CHAR(E,x) x+=str; CHAR(SLASH,x)
-    x+=str; CHAR(A,x) x+=str; CHAR(R,x) x+=str; CHAR(O,x) x+=str; CHAR(U,x)
-    x+=str; CHAR(S,x) x+=str; CHAR(A,x) x+=str; CHAR(L,x)
-    return kHeaderColor * a;
-}
-
-static inline float3 drawHeaderBR(float2 uv) {
-    // "BEAT BASS PITCH"
-    const float pSz = 0.015;
-    const float str = pSz * 4.0;
-    float orgY = (kHeaderH - pSz * 5.0) * 0.5;
-    float a = 0.0;
-    float x = 0.03;
-    CHAR(B,x) x+=str; CHAR(E,x) x+=str; CHAR(A,x) x+=str; CHAR(T,x)
-    x += str * 2.0;  // space
-    CHAR(B,x) x+=str; CHAR(A,x) x+=str; CHAR(S,x) x+=str; CHAR(S,x)
-    x += str * 2.0;  // space
-    CHAR(P,x) x+=str; CHAR(I,x) x+=str; CHAR(T,x) x+=str; CHAR(C,x) x+=str; CHAR(H,x)
-    return kHeaderColor * a;
-}
-
-#undef CHAR
 
 // ── TL: FFT spectrum ──────────────────────────────────────────────────────────
 
@@ -398,24 +272,10 @@ static inline float3 drawFeatureGraphs(float2 uv, constant float* history) {
 //
 // Ingredients:
 //   1. Dim disc background
-//   2. Amber fill brightening on beat (pow(1 - phase, 3))
-//   3. White ring flash at beat onset (phase < 0.04)
-//   4. BPM digit text above the orb center
-//   5. Lock-state text below the orb center
-
-/// Returns a uint16_t glyph for a single decimal digit 0-9.
-static inline uint16_t digitGlyph(int d) {
-    if (d == 0) return glyph_0;
-    if (d == 1) return glyph_1;
-    if (d == 2) return glyph_2;
-    if (d == 3) return glyph_3;
-    if (d == 4) return glyph_4;
-    if (d == 5) return glyph_5;
-    if (d == 6) return glyph_6;
-    if (d == 7) return glyph_7;
-    if (d == 8) return glyph_8;
-    return glyph_9;
-}
+//   2. Amber fill brightening on beat (pow(1 - phase, 3)) gated by lock confidence
+//   3. White ring flash at beat onset (phase < 0.04) gated by lock confidence
+//
+// BPM and lock-state text are rendered by DynamicTextOverlay (texture(12)).
 
 static inline float3 drawBeatOrb(float2 uv, constant FeatureVector& fv, constant float* history) {
     float ar  = max(fv.aspect_ratio, 0.1);
@@ -452,102 +312,36 @@ static inline float3 drawBeatOrb(float2 uv, constant FeatureVector& fv, constant
     // ── amber fill also dims in reactive mode so it doesn't mislead ──────────
     result = mix(result * 0.35, result, lockConf);
 
-    // ── BPM text above orb ────────────────────────────────────────────────────
-    // Draw 3 digits centered horizontally, baseline just above the orb.
-    {
-        float bpm   = history[kOffBPM];
-        int   bpmI  = int(bpm + 0.5);
-        bool  hasBPM = bpmI > 0 && bpmI < 1000;
-
-        const float pSz   = 0.022;   // pixel size in viewport UV
-        const float aStr  = pSz * 4.0;
-        const float nChars = hasBPM && bpmI >= 100 ? 3.0 : 2.0;
-        float totalW = nChars * 3.0 * pSz + (nChars - 1.0) * pSz;  // chars + gaps
-        // y: top of text block, just above orb top edge
-        float textTop = 0.5 - kOrbRadius - pSz * 5.5;
-        float textX0  = 0.5 - totalW * 0.5;
-
-        if (hasBPM) {
-            if (bpmI >= 100) {
-                int hundreds = bpmI / 100;
-                int tens     = (bpmI / 10) % 10;
-                int ones     = bpmI % 10;
-                float a = 0.0;
-                a = max(a, drawChar(uv, digitGlyph(hundreds), float2(textX0,              textTop), pSz));
-                a = max(a, drawChar(uv, digitGlyph(tens),     float2(textX0 + aStr,       textTop), pSz));
-                a = max(a, drawChar(uv, digitGlyph(ones),     float2(textX0 + aStr * 2.0, textTop), pSz));
-                result = max(result, float3(a) * kHeaderColor);
-            } else {
-                int tens = (bpmI / 10) % 10;
-                int ones = bpmI % 10;
-                float a = 0.0;
-                a = max(a, drawChar(uv, digitGlyph(tens), float2(textX0,        textTop), pSz));
-                a = max(a, drawChar(uv, digitGlyph(ones), float2(textX0 + aStr, textTop), pSz));
-                result = max(result, float3(a) * kHeaderColor);
-            }
-        }
-    }
-
-    // ── Lock state text below orb ─────────────────────────────────────────────
-    // 0=UNLOCKED (8 chars), 1=LOCKING (7 chars), 2=LOCKED (6 chars)
-    {
-        int lockState = int(history[kOffLockState] + 0.5);
-        const float pSz  = 0.016;
-        const float aStr = pSz * 4.0;
-        float textTop    = 0.5 + kOrbRadius + pSz * 0.5;
-        float a = 0.0;
-
-        if (lockState == 2) {
-            // "LOCKED" (6 chars, total width = 5*aStr + 3*pSz = 5*0.064+0.048=0.368)
-            const float nw = 5.0 * aStr + 3.0 * pSz;
-            float x0 = 0.5 - nw * 0.5;
-            a = max(a, drawChar(uv, glyph_L, float2(x0,           textTop), pSz));
-            a = max(a, drawChar(uv, glyph_O, float2(x0 + aStr,    textTop), pSz));
-            a = max(a, drawChar(uv, glyph_C, float2(x0 + aStr*2,  textTop), pSz));
-            a = max(a, drawChar(uv, glyph_K, float2(x0 + aStr*3,  textTop), pSz));
-            a = max(a, drawChar(uv, glyph_E, float2(x0 + aStr*4,  textTop), pSz));
-            a = max(a, drawChar(uv, glyph_D, float2(x0 + aStr*5,  textTop), pSz));
-            result = max(result, float3(a) * float3(0.3, 1.0, 0.3));  // green = locked
-        } else if (lockState == 1) {
-            // "LOCKING" (7 chars)
-            const float nw = 6.0 * aStr + 3.0 * pSz;
-            float x0 = 0.5 - nw * 0.5;
-            a = max(a, drawChar(uv, glyph_L, float2(x0,           textTop), pSz));
-            a = max(a, drawChar(uv, glyph_O, float2(x0 + aStr,    textTop), pSz));
-            a = max(a, drawChar(uv, glyph_C, float2(x0 + aStr*2,  textTop), pSz));
-            a = max(a, drawChar(uv, glyph_K, float2(x0 + aStr*3,  textTop), pSz));
-            a = max(a, drawChar(uv, glyph_I, float2(x0 + aStr*4,  textTop), pSz));
-            a = max(a, drawChar(uv, glyph_N, float2(x0 + aStr*5,  textTop), pSz));
-            a = max(a, drawChar(uv, glyph_G, float2(x0 + aStr*6,  textTop), pSz));
-            result = max(result, float3(a) * float3(1.0, 0.85, 0.2));  // amber = locking
-        } else {
-            // "UNLOCKED" (8 chars)
-            const float nw = 7.0 * aStr + 3.0 * pSz;
-            float x0 = 0.5 - nw * 0.5;
-            a = max(a, drawChar(uv, glyph_U, float2(x0,           textTop), pSz));
-            a = max(a, drawChar(uv, glyph_N, float2(x0 + aStr,    textTop), pSz));
-            a = max(a, drawChar(uv, glyph_L, float2(x0 + aStr*2,  textTop), pSz));
-            a = max(a, drawChar(uv, glyph_O, float2(x0 + aStr*3,  textTop), pSz));
-            a = max(a, drawChar(uv, glyph_C, float2(x0 + aStr*4,  textTop), pSz));
-            a = max(a, drawChar(uv, glyph_K, float2(x0 + aStr*5,  textTop), pSz));
-            a = max(a, drawChar(uv, glyph_E, float2(x0 + aStr*6,  textTop), pSz));
-            a = max(a, drawChar(uv, glyph_D, float2(x0 + aStr*7,  textTop), pSz));
-            result = max(result, float3(a) * float3(0.55, 0.55, 0.55));  // grey = no grid
-        }
-    }
-
     return result;
+}
+
+// ── Text overlay sampler ──────────────────────────────────────────────────────
+
+constexpr sampler kTextSampler(coord::normalized,
+                                filter::linear,
+                                address::clamp_to_zero);
+
+/// Sample the CPU-rendered text overlay at `uv`.
+///
+/// The DynamicTextOverlay uses a CGContext with bottom-left origin, so
+/// Y must be flipped when sampling from Metal (top-left UV origin).
+static inline float4 sampleTextOverlay(
+    texture2d<float, access::sample> tex,
+    float2 uv)
+{
+    return tex.sample(kTextSampler, float2(uv.x, 1.0 - uv.y));
 }
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 
 fragment float4 spectral_cartograph_fragment(
-    VertexOut               in       [[stage_in]],
-    constant FeatureVector& fv       [[buffer(0)]],
-    constant float*         fftBins  [[buffer(1)]],
-    constant float*         waveform [[buffer(2)]],
-    constant StemFeatures&  stems    [[buffer(3)]],
-    constant float*         history  [[buffer(5)]])
+    VertexOut               in         [[stage_in]],
+    constant FeatureVector& fv         [[buffer(0)]],
+    constant float*         fftBins    [[buffer(1)]],
+    constant float*         waveform   [[buffer(2)]],
+    constant StemFeatures&  stems      [[buffer(3)]],
+    constant float*         history    [[buffer(5)]],
+    texture2d<float, access::sample> textOverlay [[texture(12)]])
 {
     float2 uv = in.uv;
 
@@ -566,14 +360,10 @@ fragment float4 spectral_cartograph_fragment(
     if (any(content < 0.0) || any(content > 1.0))
         return float4(0.0, 0.0, 0.0, 1.0);
 
-    // Header strip occupies the top kHeaderH of each panel's content area.
+    // Header strip: blank dark area — text is rendered by the CPU-side overlay.
     float3 color;
     if (content.y < kHeaderH) {
-        // Render panel label text.
-        if      (panelX == 0 && panelY == 0) color = drawHeaderTL(content);
-        else if (panelX == 1 && panelY == 0) color = drawHeaderTR(content);
-        else if (panelX == 0 && panelY == 1) color = drawHeaderBL(content);
-        else                                 color = drawHeaderBR(content);
+        color = float3(0.0);
     } else {
         // Remap content UV so panel visualisations use full [0,1] within their zone.
         float2 c = float2(content.x, (content.y - kHeaderH) / (1.0 - kHeaderH));
@@ -586,6 +376,11 @@ fragment float4 spectral_cartograph_fragment(
     // Beat orb: overlaid on top of all panels at the viewport centre intersection.
     float3 orb = drawBeatOrb(uv, fv, history);
     color = max(color, orb);
+
+    // Text overlay: CPU-rendered Core Text labels blended on top.
+    // Alpha-over composite: result = textColor * textAlpha + color * (1 - textAlpha).
+    float4 textSample = sampleTextOverlay(textOverlay, uv);
+    color = mix(color, textSample.rgb, textSample.a);
 
     return float4(color, 1.0);
 }

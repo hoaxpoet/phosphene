@@ -55,6 +55,9 @@ extension VisualizerEngine {
         pipeline.setMeshPresetTick(nil)
         arachneState = nil
         gossamerState = nil
+        spectralCartographOverlay = nil
+        pipeline.setDynamicTextOverlay(nil)
+        pipeline.setTextOverlayCallback(nil)
         pipeline.setDirectPresetFragmentBuffer(nil)
         pipeline.setDirectPresetFragmentBuffer2(nil)
         pipeline.setPostProcessChain(nil)
@@ -227,6 +230,24 @@ extension VisualizerEngine {
 
             case .direct:
                 break // No subsystem setup required; direct rendering is the default fallback.
+            }
+        }
+
+        // Text overlay: allocate and wire when the preset declares text_overlay: true.
+        if desc.textOverlay {
+            if let overlay = DynamicTextOverlay(device: context.device) {
+                spectralCartographOverlay = overlay
+                pipeline.setDynamicTextOverlay(overlay)
+                let histBuf = pipeline.spectralHistory
+                pipeline.setTextOverlayCallback { [weak histBuf] overlay in
+                    guard let histBuf else { return }
+                    let (bpm, lockState) = histBuf.readOverlayState()
+                    overlay.refresh { ctx, size in
+                        SpectralCartographText.draw(in: ctx, size: size, bpm: bpm, lockState: lockState)
+                    }
+                }
+            } else {
+                logger.error("DynamicTextOverlay: init failed for preset '\(desc.name)' — text overlay disabled")
             }
         }
 
