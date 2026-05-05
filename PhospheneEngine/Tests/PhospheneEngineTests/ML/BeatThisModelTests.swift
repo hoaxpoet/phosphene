@@ -104,22 +104,21 @@ import Foundation
         #expect(elapsed < 0.3, "Inference took \(String(format: "%.1f", elapsed * 1000))ms — expected < 300ms")
     }
 
-    // MARK: - 9. End-to-End: Real Audio → Real Beats (KNOWN-FAILING)
+    // MARK: - 9. End-to-End: Real Audio → Real Beats
 
     /// End-to-end gate: feed `love_rehab.m4a` through preprocessor + model and
     /// assert the output is a usable BeatGrid signal — peaks above 0.5
-    /// threshold at roughly the rate of musical beats. The Python Beat This!
-    /// reference produces max(sigmoid)=1.0 with ~120 frames > 0.5 over 30s of
-    /// 4/4 music. Our Swift port currently produces max ≈ 0.29 with 0 frames
-    /// > 0.5 — visibly compressed and sub-threshold. This is a real model bug
-    /// (likely in the frontend partial-FT block weight load, RoPE indexing,
-    /// or BN fusion) that surfaced when QualityReelAnalyzer first exercised
-    /// the full pipeline against ground-truth fixtures (2026-05-04).
+    /// threshold at roughly the rate of musical beats.
     ///
-    /// Wrapped in `withKnownIssue` so it stays in CI without breaking the
-    /// suite, while ensuring the failure is visible. Remove the wrapper once
-    /// the model bug is fixed — that's the "S7 actually engaged in
-    /// production" milestone.
+    /// Python Beat This! reference: max(sigmoid)=0.9999, 124 frames > 0.5.
+    /// Swift output after DSP.2 S8 fixes (norm-after-conv with correct out_dim
+    /// shape, transpose-before-reshape on stem input, BN1d-aware padding,
+    /// paired-adjacent RoPE in both 4D frontend attention and 3D transformer
+    /// attention): max=0.9999, 126 frames > 0.5. Passes unconditionally.
+    ///
+    /// Tight thresholds (> 0.99, ≥ 100) catch any regression back toward the
+    /// pre-fix values (max ≈ 0.29, 0 frames > 0.5). A 1% margin on max and
+    /// 20% margin on count accommodate float32 jitter without hiding real bugs.
     @Test func test_loveRehab_endToEnd_producesBeats() throws {
         guard let device = MTLCreateSystemDefaultDevice() else { return }
 
@@ -141,15 +140,13 @@ import Foundation
         let maxProb = beats.max() ?? 0
         let aboveHalf = beats.filter { $0 > 0.5 }.count
 
-        // Python reference on the same audio: max ≈ 0.9999, ~124 frames > 0.5.
-        // After DSP.2 S8 fixes (norm-after-conv with correct out_dim shape,
-        // transpose-before-reshape on stem input, BN1d-aware padding, paired
-        // RoPE in BOTH 4D frontend attention and 3D transformer attention)
-        // Swift now produces equivalent output and these assertions pass.
-        #expect(maxProb > 0.9,
-                "max sigmoid should be near 1.0 at strong beats; got \(maxProb)")
-        #expect(aboveHalf >= 50,
-                "expected ≥50 frames above 0.5 in 30s of 4/4 music; got \(aboveHalf)")
+        // Python reference: max=0.9999, 124 frames > 0.5.
+        // Swift post-S8: max=0.9999, 126 frames > 0.5.
+        // Tight bounds catch any regression toward the pre-S8 values (max≈0.29, 0 frames>0.5).
+        #expect(maxProb > 0.99,
+                "max sigmoid should be ≥0.99 (Python ref 0.9999); got \(maxProb). Pre-S8 was ≈0.29.")
+        #expect(aboveHalf >= 100,
+                "expected ≥100 frames >0.5 in 30s 4/4 music (Python ref 124); got \(aboveHalf).")
     }
 
     // MARK: - Helpers
