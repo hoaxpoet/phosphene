@@ -2,6 +2,8 @@
 
 **Status:** Three-pillar deep rewrite, 2026-05-03. Replaces the 2026-05-02 layer-structured draft. Several subsystems described here have already shipped (V.7.6.1 harness, V.7.6.2 orchestrator multi-segment, V.7.6.C framework calibration, V.7.6.D diagnostic semantics) and are preserved verbatim as reference; their behavior is unchanged. Implementation increments V.7.7 → V.7.9 are listed in `ENGINEERING_PLAN.md`; this spec is the source of design truth they cite.
 
+**Material-priority decision, 2026-05-05:** For Arachne v8, droplets are the primary fidelity carrier. Silk is secondary. Keep axial silk highlights as a minor lighting effect, but do not implement full Marschner-lite as the first material priority. Prioritize refractive droplet material, sag, irregular geometry, and world interaction.
+
 **Why this rewrite:** The 2026-05-02 draft was structured as three render layers (background / foreground / overlay), which led to the WORLD pillar being underspecified — one paragraph in §4.1 plus the §4.3 color recipe. The 2026-05-02 design conversation reframed Arachne as three pillars at *equal* fidelity: a forest in which a single web is being drawn, in which a spider rarely appears. WORLD is not "background"; it is the stage. SPIDER is not a "dark silhouette"; it is a detailed biological organism that earns its rare appearances. This rewrite specifies all three pillars at the depth required to implement them.
 
 **Reference set.** Refs 01–10 (curated original) plus refs 11–19 (extension set landed 2026-05-03) in `docs/VISUAL_REFERENCES/arachne/`. One previously-listed reference (anchor-to-bark macro) was dropped 2026-05-03 — real orb-weaver webs predominantly anchor to twigs, leaf petioles, and grass stems, not to bark trunks; ref 11 covers the polygon-of-anchors context without it. Two time-lapse stills (radials laid no spiral, capture spiral mid-construction) are reclassified P1 — the construction sequence is grounded in the biology citations (§13) and is implementable without photographic refs.
@@ -41,6 +43,124 @@ The visual target is the BBC Earth orb-weaver time-lapse footage (§13): a docum
 The three pillars compose into a single rendered frame. They are NOT three separate render targets the user toggles. The pillar separation is for design and authoring depth, not runtime structure. Each pillar must be implementable, reviewable, and certifiable on its own merits.
 
 **Vibration is independent of the SPIDER pillar.** Whole-scene tremor on bass fires whenever heavy bass is present, with or without the spider visible. See §8.2.
+
+
+## 3A. Core rendering architecture
+
+Arachne v8 must be implemented as a staged renderer, not as a monolithic web-drawing shader.
+
+The purpose of this architecture is to prevent the known failure mode where Arachne renders as graphic web geometry — rings, shields, dart boards, neon strokes, or clipart — instead of a material-rendered nature scene. The visual target is a fixed forest world in which a physical dewy orb-weaver web exists, with droplets, atmosphere, light, and rare spider behavior all composed into one scene.
+
+### Required pass structure
+
+#### Pass 1 — WORLD
+
+Render the forest stage before any web or spider elements.
+
+Includes:
+- sky band;
+- distant tree silhouettes;
+- mid-distance trunks with bark detail;
+- near-frame branches / twigs used as web anchors;
+- forest floor;
+- fog volume;
+- light shafts;
+- dust motes.
+
+Output:
+- `arachneWorldTex`, or the closest engine-supported equivalent.
+
+Acceptance gate:
+- With WEB and SPIDER disabled, WORLD-only output must read as a misty forest stage with depth, atmosphere, and physical anchor geometry. It must not read as a flat color field or abstract backdrop.
+
+#### Pass 2 — BACKGROUND WEBS
+
+Render 1–2 already-finished dewy webs at depth.
+
+Includes:
+- irregular web geometry;
+- saturated droplets from frame zero;
+- upper-range sag;
+- mild blur / depth treatment;
+- low visual priority relative to the foreground web.
+
+Acceptance gate:
+- Background webs must read as existing dewy webs in the scene, not as duplicate foreground meshes or flat decorative overlays.
+
+#### Pass 3 — FOREGROUND WEB GEOMETRY
+
+Render the active foreground web under construction.
+
+Includes:
+- irregular branch-anchored polygon frame;
+- hub knot, not concentric rings;
+- 12–17 jittered radials;
+- inward chord-segment capture spiral;
+- parabolic sag;
+- build lifecycle.
+
+Acceptance gate:
+- The web must not contain perfect circular rings, target hubs, shield shapes, sand-dollar geometry, or regular clipart symmetry.
+
+#### Pass 4 — DROPLET MATERIAL
+
+Render adhesive droplets as the primary fidelity carrier.
+
+Includes:
+- droplets only on capture spiral chords;
+- near-uniform biological spacing with low jitter;
+- spherical-cap normals;
+- screen-space refraction using `arachneWorldTex`;
+- Fresnel rim;
+- dark edge ring;
+- pinpoint specular highlight;
+- time-based accretion after each chord is laid.
+
+Acceptance gate:
+- Droplets must visibly refract / invert the world behind them. If droplets read as flat dots, pearls, neon beads, or simple glow sprites, this pass fails.
+
+#### Pass 5 — ATMOSPHERIC / LIGHTING COMPOSITE
+
+Composite the scene lighting and atmosphere.
+
+Includes:
+- backlit silk interaction;
+- local fog depth;
+- light shafts;
+- dust motes;
+- depth/focus treatment;
+- mood-driven palette integration.
+
+Acceptance gate:
+- The final scene must read as web-in-air, not web-on-background. Atmosphere must create depth without overpowering the web.
+
+#### Pass 6 — SPIDER EASTER EGG
+
+Render the spider only when triggered.
+
+Includes:
+- rare trigger behavior;
+- biological orb-weaver anatomy;
+- articulated legs;
+- chitin material;
+- dorsal pattern;
+- eye specular;
+- listening pose;
+- bass-driven whole-scene vibration.
+
+Acceptance gate:
+- The spider must be rare and high-fidelity when present. It must not become the main subject of every Arachne segment.
+
+### Architectural non-negotiables
+
+- Arachne is not a spiderweb drawing. It is a staged, material-rendered nature scene.
+- Droplets are the primary fidelity carrier. Silk is secondary.
+- Full Marschner-lite silk is not the first material priority.
+- The WORLD pass must exist before refractive droplets can be certified.
+- The foreground web must be anchored to the WORLD's near-frame branches or twigs.
+- Audio may modulate material, light, atmosphere, vibration, and build pace, but must not randomly deform the web topology.
+- Major motion must be audio-anchored or beat-phase anchored, not free-running `sin(time)`.
+- Every major pass must support debug / harness capture.
 
 ---
 
@@ -277,9 +397,9 @@ Silk threads themselves are barely visible in refs 01, 02, 03. Drops do the visu
 
 For Phosphene: silk threads are rendered as thin (1–2 px) lines with a subtle axial highlight when the `kL` direction grazes them at low angle (`abs(dot(strandDir, kL.xy)) < 0.3`). Color: `mix(botCol, topCol, 0.5) * silkTint` where `silkTint ≈ 0.5–0.7` (V.7.5's 0.32 was correct in spirit but Marschner-lite was over-spec).
 
-The Marschner-lite fiber BRDF specified in earlier versions of the spec is **removed.** Ref 04 (the silk close-up) is preserved as a reference, but not as the primary silk recipe — ref 04 represents the silk material at extreme zoom; at typical Arachne frame scale, threads read as faint translucent lines plus drops, not as silk fibers with axial Marschner highlights. The earlier choice to make Marschner-lite mandatory was a misreading of ref 04's role: it's an edge case in the reference set, not the dominant visual goal.
+The Marschner-lite fiber BRDF specified in earlier versions of the spec is **removed as a v8 implementation priority.** Ref 04 (the silk close-up) is preserved as a reference for restrained axial glints, but not as the primary silk recipe — ref 04 represents the silk material at extreme zoom; at typical Arachne frame scale, threads read as faint translucent lines plus drops, not as silk fibers with axial Marschner highlights. The earlier choice to make Marschner-lite mandatory was a misreading of ref 04's role: it's an edge case in the reference set, not the dominant visual goal.
 
-This is the section where this rewrite materially differs from V.7's spec. V.7 made silk a featured material and got primitive output anyway; V.8 demotes silk to "a line drops hang on" and lets drops + sag + construction sequence carry the fidelity.
+This is the section where this rewrite materially differs from V.7's spec. V.7 made silk a featured material and got primitive output anyway; V.8 demotes silk to "a line drops hang on" and lets refractive droplets + sag + irregular geometry + world interaction carry the fidelity.
 
 ### 5.11 Lighting interaction with the world
 
@@ -309,7 +429,7 @@ Two lighting interactions matter:
 | Drop refraction signature | `01`, `03`, `04` | — |
 | Anchor polygon context | `11_anchor_web_in_branch_frame.jpg` | — |
 | Backlit silk + atmosphere | `04_specular_silk_fiber_highlight.jpg` | `05`, `01` |
-| Silk axial highlight (edge case) | `04_specular_silk_fiber_highlight.jpg` | — |
+| Silk axial highlight (minor lighting effect) | `04_specular_silk_fiber_highlight.jpg` | — |
 | Anti-reference (clipart) | `09_anti_clipart_symmetry.jpg` | — |
 | Anti-reference (neon) | `10_anti_neon_stylized_glow.jpg` | — |
 
