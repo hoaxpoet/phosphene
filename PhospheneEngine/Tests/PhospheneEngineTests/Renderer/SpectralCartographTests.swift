@@ -4,6 +4,7 @@
 import Testing
 import Metal
 import Foundation
+import CoreGraphics
 @testable import Renderer
 @testable import Presets
 @testable import Shared
@@ -243,4 +244,81 @@ private enum SCTestError: Error {
     }
     #expect(foundNonBlack,
             "BR panel should contain at least one non-black pixel (polyline continuity)")
+}
+
+// MARK: - SpectralCartographText mode-label tests (DSP.3.1)
+
+/// Draw into a CGBitmapContext and read back a row of pixels to verify text was rendered.
+private func makeBitmapContext(width: Int = 512, height: Int = 256) -> CGContext? {
+    let cs = CGColorSpaceCreateDeviceRGB()
+    return CGContext(
+        data: nil,
+        width: width, height: height,
+        bitsPerComponent: 8, bytesPerRow: width * 4,
+        space: cs,
+        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    )
+}
+
+@Test func test_spectralCartographText_sessionMode0_producesReactiveLabel() {
+    guard let ctx = makeBitmapContext() else {
+        Issue.record("Failed to create CGBitmapContext")
+        return
+    }
+    // DynamicTextOverlay applies a CTM flip — apply the same here so text appears in frame.
+    ctx.translateBy(x: 0, y: CGFloat(ctx.height))
+    ctx.scaleBy(x: 1, y: -1)
+
+    let size = CGSize(width: ctx.width, height: ctx.height)
+    SpectralCartographText.draw(in: ctx, size: size, bpm: 0, lockState: 0, sessionMode: 0)
+
+    // Verify non-black pixels exist somewhere in the lower half (label area).
+    guard let data = ctx.data else {
+        Issue.record("No pixel data from context")
+        return
+    }
+    let ptr = data.assumingMemoryBound(to: UInt8.self)
+    var hasPixels = false
+    let startRow = ctx.height / 2
+    for y in startRow..<ctx.height {
+        for x in 0..<ctx.width {
+            let idx = (y * ctx.width + x) * 4
+            if ptr[idx] > 5 || ptr[idx + 1] > 5 || ptr[idx + 2] > 5 {
+                hasPixels = true; break
+            }
+        }
+        if hasPixels { break }
+    }
+    #expect(hasPixels, "sessionMode=0 should render 'REACTIVE' label with visible pixels")
+}
+
+@Test func test_spectralCartographText_sessionMode3_producesPlannedLockedLabel() {
+    guard let ctx = makeBitmapContext() else {
+        Issue.record("Failed to create CGBitmapContext")
+        return
+    }
+    ctx.translateBy(x: 0, y: CGFloat(ctx.height))
+    ctx.scaleBy(x: 1, y: -1)
+
+    let size = CGSize(width: ctx.width, height: ctx.height)
+    // Render sessionMode=3 with a valid BPM so BPM text also renders.
+    SpectralCartographText.draw(in: ctx, size: size, bpm: 120, lockState: 2, sessionMode: 3)
+
+    guard let data = ctx.data else {
+        Issue.record("No pixel data from context")
+        return
+    }
+    let ptr = data.assumingMemoryBound(to: UInt8.self)
+    var hasPixels = false
+    let startRow = ctx.height / 2
+    for y in startRow..<ctx.height {
+        for x in 0..<ctx.width {
+            let idx = (y * ctx.width + x) * 4
+            if ptr[idx] > 5 || ptr[idx + 1] > 5 || ptr[idx + 2] > 5 {
+                hasPixels = true; break
+            }
+        }
+        if hasPixels { break }
+    }
+    #expect(hasPixels, "sessionMode=3 should render 'PLANNED · LOCKED' label with visible pixels")
 }

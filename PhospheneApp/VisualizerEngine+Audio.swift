@@ -310,6 +310,21 @@ extension VisualizerEngine {
         case .locking:  lockStateInt = 1
         case .locked:   lockStateInt = 2
         }
+
+        // Session mode distinguishes "reactive session (no grid)" from "planned
+        // session awaiting drift-tracker lock" so Spectral Cartograph can show
+        // informative labels rather than collapsing both into "REACTIVE". DSP.3.1.
+        let sessionMode: Int
+        if tracker.hasGrid {
+            switch tracker.currentLockState {
+            case .unlocked: sessionMode = 1
+            case .locking:  sessionMode = 2
+            case .locked:   sessionMode = 3
+            }
+        } else {
+            sessionMode = 0
+        }
+
         let relTimes = tracker.relativeBeatTimes(
             playbackTime: Double(mir.elapsedSeconds),
             count: SpectralHistoryBuffer.beatTimesCount
@@ -317,7 +332,8 @@ extension VisualizerEngine {
         pipeline.spectralHistory.updateBeatGridData(
             relativeBeatTimes: relTimes,
             bpm: bpm,
-            lockState: lockStateInt
+            lockState: lockStateInt,
+            sessionMode: sessionMode
         )
     }
 

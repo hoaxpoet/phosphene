@@ -80,11 +80,11 @@ extension VisualizerEngine {
     ) -> SessionManager {
         let resolvedSep: any StemSeparating = sep ?? NullStemSeparator()
         let beatGridAnalyzer: (any BeatGridAnalyzing)? = {
-            guard let a = try? DefaultBeatGridAnalyzer(device: device) else {
+            guard let analyzer = try? DefaultBeatGridAnalyzer(device: device) else {
                 initLogger.warning("DefaultBeatGridAnalyzer init failed — beat grid analysis disabled")
                 return nil
             }
-            return a
+            return analyzer
         }()
         let preparer = SessionPreparer(
             resolver: PreviewResolver(),
@@ -106,6 +106,18 @@ extension VisualizerEngine {
         ) { [weak self] _ in
             self?.sessionRecorder?.finish()
         }
+    }
+
+    // MARK: - Device Tier Detection
+
+    /// Infer the Apple Silicon generation from the Metal device name.
+    ///
+    /// Returns `.tier2` for M3/M4 devices, `.tier1` for all others (M1, M2,
+    /// or unrecognised names — conservative fallback).
+    static func detectDeviceTier(device: MTLDevice) -> DeviceTier {
+        let name = device.name.lowercased()
+        if name.contains("m3") || name.contains("m4") { return .tier2 }
+        return .tier1
     }
 }
 

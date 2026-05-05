@@ -385,6 +385,11 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Prevents switching more often than once per 60 seconds.
     var lastReactiveSwitchTime: TimeInterval = -.infinity
 
+    /// When true, the LiveAdapter mood-override path is suppressed so the current
+    /// preset (e.g. Spectral Cartograph) is not replaced by the orchestrator.
+    /// Toggled via the L dev shortcut. Structural-boundary rescheduling still runs.
+    var diagnosticPresetLocked: Bool = false
+
     // MARK: - Initialization
 
     // swiftlint:disable cyclomatic_complexity function_body_length
@@ -437,7 +442,9 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         self.sessionRecorder = SessionRecorder()
         // SessionManager is always created — uses the same component instances as the engine.
         // Ad-hoc mode never invokes the preparer; session mode uses it for pre-analysis.
-        self.sessionManager = Self.makeSessionManager(sep: sep, analyzer: analyzer, classifier: classifier, device: ctx.device)
+        self.sessionManager = Self.makeSessionManager(
+            sep: sep, analyzer: analyzer, classifier: classifier, device: ctx.device
+        )
 
         // Wire the frame-budget governor and ML dispatch scheduler. Read QualityCeiling
         // from UserDefaults to determine if ultra mode (recording) disables both. D-057(d), D-059(d).

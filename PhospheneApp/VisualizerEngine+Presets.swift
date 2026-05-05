@@ -259,8 +259,15 @@ extension VisualizerEngine {
                 pipeline.setTextOverlayCallback { [weak histBuf] overlay in
                     guard let histBuf else { return }
                     let (bpm, lockState) = histBuf.readOverlayState()
+                    let sessionMode = histBuf.readSessionMode()
                     overlay.refresh { ctx, size in
-                        SpectralCartographText.draw(in: ctx, size: size, bpm: bpm, lockState: lockState)
+                        SpectralCartographText.draw(
+                            in: ctx,
+                            size: size,
+                            bpm: bpm,
+                            lockState: lockState,
+                            sessionMode: sessionMode
+                        )
                     }
                 }
             } else {

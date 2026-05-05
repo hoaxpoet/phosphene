@@ -29,12 +29,18 @@ public protocol SpectralHistoryPublishing: AnyObject, Sendable {
     ///   (positive = upcoming). Pass `Float.infinity` or fewer than 16 entries for unused slots.
     /// `bpm`: BPM from the cached BeatGrid (0 = no grid).
     /// `lockState`: 0 = unlocked, 1 = locking, 2 = locked.
-    func updateBeatGridData(relativeBeatTimes: [Float], bpm: Float, lockState: Int)
+    /// `sessionMode`: 0 = reactive, 1 = planned+unlocked, 2 = planned+locking, 3 = planned+locked.
+    func updateBeatGridData(relativeBeatTimes: [Float], bpm: Float, lockState: Int, sessionMode: Int)
 
     /// Read cached BPM and lock state for the DynamicTextOverlay callback.
     /// Thread-safe — uses the beat-grid lock.
     /// Returns `(bpm: 0, lockState: 0)` when no grid is available.
     func readOverlayState() -> (bpm: Float, lockState: Int)
+
+    /// Read the session mode written by the analysis queue.
+    /// Thread-safe — uses the beat-grid lock.
+    /// Returns 0 (reactive) when no mode has been written.
+    func readSessionMode() -> Int
 
     /// Zero the buffer and reset ring indices. Call on track change.
     func reset()
@@ -81,6 +87,8 @@ public final class SpectralHistoryBuffer: SpectralHistoryPublishing, @unchecked 
     public static let offsetBPM: Int = 2418
     /// Drift-tracker lock state stored as float: 0 = unlocked, 1 = locking, 2 = locked.
     public static let offsetLockState: Int = 2419
+    /// Session mode: 0=reactive, 1=planned+unlocked, 2=planned+locking, 3=planned+locked.
+    public static let offsetSessionMode: Int = 2420
 
     // MARK: - State
 
@@ -132,7 +140,12 @@ public final class SpectralHistoryBuffer: SpectralHistoryPublishing, @unchecked 
 
     /// Write cached beat-grid metadata for the SpectralCartograph diagnostic overlay.
     /// Thread-safe — uses its own lock, independent of the render-thread ring-buffer writes.
-    public func updateBeatGridData(relativeBeatTimes: [Float], bpm: Float, lockState: Int) {
+    public func updateBeatGridData(
+        relativeBeatTimes: [Float],
+        bpm: Float,
+        lockState: Int,
+        sessionMode: Int
+    ) {
         beatGridLock.lock(); defer { beatGridLock.unlock() }
         let ptr = gpuBuffer.contents().assumingMemoryBound(to: Float.self)
         // Write beat times, padding unused slots with Float.infinity.
@@ -143,17 +156,26 @@ public final class SpectralHistoryBuffer: SpectralHistoryPublishing, @unchecked 
         }
         ptr[Self.offsetBPM] = bpm
         ptr[Self.offsetLockState] = Float(max(0, min(2, lockState)))
+        ptr[Self.offsetSessionMode] = Float(max(0, min(3, sessionMode)))
     }
 
     /// Read cached BPM and lock state for the DynamicTextOverlay text callback.
     /// Safe to call from the render thread — uses the beat-grid lock which guards
-    /// only the reserved section [2418..2419], never the ring-buffer section.
+    /// only the reserved section [2418..2420], never the ring-buffer section.
     public func readOverlayState() -> (bpm: Float, lockState: Int) {
         beatGridLock.lock(); defer { beatGridLock.unlock() }
         let ptr = gpuBuffer.contents().assumingMemoryBound(to: Float.self)
         let bpm = ptr[Self.offsetBPM]
         let lockState = Int(ptr[Self.offsetLockState] + 0.5)
         return (bpm: bpm, lockState: lockState)
+    }
+
+    /// Read the session mode from the reserved section.
+    /// Thread-safe — uses the beat-grid lock.
+    public func readSessionMode() -> Int {
+        beatGridLock.lock(); defer { beatGridLock.unlock() }
+        let ptr = gpuBuffer.contents().assumingMemoryBound(to: Float.self)
+        return Int(ptr[Self.offsetSessionMode] + 0.5)
     }
 
     /// Zero the entire buffer and reset ring indices. Call on track change.
