@@ -7,13 +7,15 @@ extension SessionRecorder {
     // swiftlint:disable multiline_arguments
     static func csvRow(features fv: FeatureVector, frame: Int, wallclock: CFAbsoluteTime) -> String {
         String(format: "%d,%.4f,%.4f,%.4f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,"
-                     + "%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f\n",
+                     + "%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,"
+                     + "%.5f,%.5f,%.5f,%.5f\n",
                frame, wallclock, fv.time, fv.deltaTime,
                fv.bass, fv.mid, fv.treble,
                fv.subBass, fv.lowBass, fv.lowMid, fv.midHigh, fv.highMid, fv.high,
                fv.beatBass, fv.beatMid, fv.beatTreble, fv.beatComposite,
                fv.spectralCentroid, fv.spectralFlux, fv.valence, fv.arousal,
-               fv.accumulatedAudioTime)
+               fv.accumulatedAudioTime,
+               fv.beatPhase01, fv.bassRel, fv.bassDev, fv.bassAttRel)
     }
 
     static func csvRow(stems: StemFeatures, frame: Int, wallclock: CFAbsoluteTime) -> String {
