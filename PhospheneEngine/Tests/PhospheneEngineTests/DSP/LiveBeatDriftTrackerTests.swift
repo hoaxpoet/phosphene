@@ -289,4 +289,99 @@ struct LiveBeatDriftTrackerTests {
         #expect(abs(r.barPhase01 - 0.5) < 0.05,
                 "expected barPhase01 ≈ 0.5 at beat 2 of a 4/4 bar, got \(r.barPhase01)")
     }
+
+    // MARK: 9–15. Public API coverage (SC overhaul prerequisite)
+    //
+    // Tests 9–10 cover `currentBPM`, tests 11 cover `currentLockState`, and
+    // tests 12–15 cover `relativeBeatTimes`.  These APIs ship in DSP.2 S7 and
+    // are consumed by the SC overhaul; unit tests here ensure any breakage
+    // surfaces in the cheap unit suite before the more expensive visual review.
+
+    // MARK: 9. currentBPM — no grid
+
+    @Test("currentBPM_noGrid_returnsZero")
+    func test_currentBPM_noGrid_returnsZero() {
+        let tracker = LiveBeatDriftTracker()
+        #expect(tracker.currentBPM == 0.0, "currentBPM should be 0 when no grid is installed")
+    }
+
+    // MARK: 10. currentBPM — with grid
+
+    @Test("currentBPM_withGrid_matchesGridBPM")
+    func test_currentBPM_withGrid_matchesGridBPM() {
+        let tracker = LiveBeatDriftTracker()
+        let grid = makeUniformGrid(bpm: 125.0, beats: 32)
+        tracker.setGrid(grid)
+        #expect(abs(tracker.currentBPM - 125.0) < 0.01,
+                "currentBPM should reflect the grid's BPM=125, got \(tracker.currentBPM)")
+    }
+
+    // MARK: 11. currentLockState — no grid
+
+    @Test("currentLockState_noGrid_returnsUnlocked")
+    func test_currentLockState_noGrid_returnsUnlocked() {
+        let tracker = LiveBeatDriftTracker()
+        if case .unlocked = tracker.currentLockState {
+            // expected
+        } else {
+            #expect(Bool(false), "expected .unlocked with no grid, got \(tracker.currentLockState)")
+        }
+    }
+
+    // MARK: 12. relativeBeatTimes — no grid → empty
+
+    @Test("relativeBeatTimes_noGrid_returnsEmpty")
+    func test_relativeBeatTimes_noGrid_returnsEmpty() {
+        let tracker = LiveBeatDriftTracker()
+        let times = tracker.relativeBeatTimes(playbackTime: 0, count: 4)
+        #expect(times.isEmpty, "relativeBeatTimes should be empty when no grid is installed")
+    }
+
+    // MARK: 13. relativeBeatTimes — count ceiling respected
+
+    @Test("relativeBeatTimes_respectsCountCeiling")
+    func test_relativeBeatTimes_respectsCountCeiling() {
+        let tracker = LiveBeatDriftTracker()
+        let grid = makeUniformGrid(bpm: 120, beats: 32)
+        tracker.setGrid(grid)
+        // Request only 3 beats from a window that contains many more.
+        let times = tracker.relativeBeatTimes(playbackTime: 0, count: 3, window: 30.0)
+        #expect(times.count <= 3,
+                "relativeBeatTimes should return at most count=3 entries, got \(times.count)")
+    }
+
+    // MARK: 14. relativeBeatTimes — past beats have negative relative times
+
+    @Test("relativeBeatTimes_includesPastBeatsAsNegative")
+    func test_relativeBeatTimes_includesPastBeatsAsNegative() {
+        let tracker = LiveBeatDriftTracker()
+        let grid = makeUniformGrid(bpm: 120, beats: 32)  // beats at 0, 0.5, 1.0, ...
+        tracker.setGrid(grid)
+
+        // At playbackTime = 1.0, the beat at t=0.5 should appear as relative ≈ -0.5.
+        let times = tracker.relativeBeatTimes(playbackTime: 1.0, count: 20, window: 3.0)
+        let pastBeats = times.filter { $0 < 0 }
+        #expect(!pastBeats.isEmpty, "beats before playbackTime=1.0 should appear with negative relative times")
+
+        // Beat at t=0.5 → relative = 0.5 − 1.0 = -0.5 (with drift=0).
+        #expect(times.contains(where: { abs($0 - (-0.5)) < 0.05 }),
+                "beat at t=0.5 should appear as ≈ -0.5 relative to playbackTime=1.0; times=\(times)")
+    }
+
+    // MARK: 15. relativeBeatTimes — upcoming beats are positive
+
+    @Test("relativeBeatTimes_upcomingBeatsArePositive")
+    func test_relativeBeatTimes_upcomingBeatsArePositive() {
+        let tracker = LiveBeatDriftTracker()
+        let grid = makeUniformGrid(bpm: 120, beats: 32)  // beats at 0, 0.5, 1.0, ...
+        tracker.setGrid(grid)
+
+        // At playbackTime = 0.1 (just past beat 0), the next beat is at t=0.5.
+        // Its relative time = 0.5 − 0.1 = +0.4.
+        let times = tracker.relativeBeatTimes(playbackTime: 0.1, count: 4, window: 5.0)
+        let upcoming = times.filter { $0 > 0 }
+        #expect(!upcoming.isEmpty, "expected upcoming beats (positive) at playbackTime=0.1")
+        #expect(times.contains(where: { abs($0 - 0.4) < 0.05 }),
+                "beat at t=0.5 should appear as ≈ +0.4 relative to playbackTime=0.1; times=\(times)")
+    }
 }
