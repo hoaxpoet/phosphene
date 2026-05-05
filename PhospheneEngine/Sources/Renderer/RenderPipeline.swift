@@ -1,6 +1,7 @@
 // RenderPipeline — MTKViewDelegate that drives the audio-reactive render loop.
 // Supports both direct rendering and Milkdrop-style feedback (double-buffered ping-pong).
 // Binds FFT magnitude and PCM waveform UMA buffers to a full-screen fragment shader.
+// swiftlint:disable file_length
 
 import Metal
 @preconcurrency import MetalKit
@@ -179,6 +180,13 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     var activePasses: [RenderPass] = [.direct]
     let passesLock = NSLock()
 
+    // MARK: - Staged Composition (V.ENGINE.1)
+
+    /// Active staged stages + per-stage offscreen textures. See RenderPipeline+Staged.
+    var stagedStages: [StagedStageSpec] = []
+    var stagedTextures: [String: MTLTexture] = [:]
+    let stagedLock = NSLock()
+
     // MARK: - Accessibility Flags (U.9, D-054)
 
     /// Beat-pulse amplitude scale. `1.0` normal; `0.5` reduced-motion. See D-054.
@@ -342,6 +350,8 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
 
         // Reallocate mv_warp textures if the active preset uses the warp pass.
         reallocateMVWarpTextures(size: size)
+        // Reallocate per-stage offscreen textures for staged-composition presets.
+        reallocateStagedTextures(size: size)
 
         logger.info("Feedback textures allocated: \(width)×\(height)")
     }

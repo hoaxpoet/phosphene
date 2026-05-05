@@ -266,6 +266,17 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
     /// Defaults to `false`.
     public let textOverlay: Bool
 
+    // MARK: - Staged Composition (V.ENGINE.1)
+
+    /// Ordered stages for `.staged` presets. Empty for non-staged presets.
+    ///
+    /// When `passes` contains `.staged`, `PresetLoader` compiles one pipeline state
+    /// per stage; `RenderPipeline` walks the stages each frame, rendering non-final
+    /// stages into per-stage `.rgba16Float` offscreen textures and the final stage
+    /// into the drawable. Each stage's `samples` array names earlier stages whose
+    /// outputs are bound at fragment textures starting at `[[texture(13)]]`.
+    public let stages: [PresetStage]
+
     // MARK: - CodingKeys
 
     /// Keys for all stored properties — used by both `init(from:)` and `encode(to:)`.
@@ -303,6 +314,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         case rubricHints = "rubric_hints"
         case isDiagnostic = "is_diagnostic"
         case textOverlay  = "text_overlay"
+        case stages
     }
 
     /// Keys for legacy boolean flags — decode-only, not stored as properties.
@@ -404,6 +416,9 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
 
         // MARK: Text Overlay
         textOverlay = try container.decodeIfPresent(Bool.self, forKey: .textOverlay) ?? false
+
+        // MARK: Staged Composition (V.ENGINE.1)
+        stages = try container.decodeIfPresent([PresetStage].self, forKey: .stages) ?? []
     }
 
     /// Synthesise a `passes` array from legacy boolean flags.
