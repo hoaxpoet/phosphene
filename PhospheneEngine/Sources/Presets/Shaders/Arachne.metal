@@ -127,101 +127,122 @@ static float2 arachHubJitter(uint seed) {
 }
 
 // ── V.7.7: WORLD pillar ───────────────────────────────────────────────────────
-// Six-layer forest stage rendered inline (not a render target) so drawBackgroundWeb()
-// can call drawWorld(refractedUV, ...) for Snell's-law refraction through drops.
+// Dark close-up forest atmosphere — camera is inches from the web (refs 01, 06, 08).
+// No landscape, no skyline, no horizon bands. Background is near-black deep forest with
+// atmospheric mist from above (dawn light through canopy), a narrow light shaft, drifting
+// dust motes, organic forest floor at bottom, and substantial bark-textured near-frame
+// branches the web anchors to (ref 11, 18).
 //
-// References: 06_atmosphere_dark_misty_forest.jpg, 07_atmosphere_dust_light_shaft.jpg,
-//             15_atmosphere_aurora_forest.jpg, 16_atmosphere_dappled_pine_forest.jpg,
-//             17_floor_moss_leaf_litter.jpg, 18_bark_close_up.jpg
+// drawBackgroundWeb() can call drawWorld(refractedUV, ...) for Snell's-law refraction.
+// References: 01, 05, 06, 07, 08, 11, 17, 18.
 //
-// UV convention: (0,0) = top-left, (1,1) = bottom-right.
-// moodRow: x=smoothedValence [-1,1], y=smoothedArousal [-1,1], z=accumulatedAudioTime.
-// No per-frame audio drivers inside — palette is fully mood-derived (D-026 satisfied:
-// moodRow is smoothed in ArachneState._tick() from FeatureVector.valence/arousal).
+// UV: (0,0)=top-left, (1,1)=bottom-right.
+// moodRow.x=smoothedValence [-1,1], .y=smoothedArousal [-1,1], .z=accumulatedAudioTime.
 
 static float3 drawWorld(float2 uv, float4 moodRow, float accTime) {
     float v = clamp(moodRow.x, -1.0, 1.0);
     float a = clamp(moodRow.y, -1.0, 1.0);
 
-    // §4.3 mood palette scale factors — arousal drives saturation and brightness.
-    float satScale = 0.25 + 0.40 * saturate(0.5 + 0.5 * a);
-    float valScale = 0.10 + 0.20 * saturate(0.5 + 0.5 * a);
+    float sat = 0.22 + 0.38 * saturate(0.5 + 0.5 * a);
+    float val = 0.08 + 0.18 * saturate(0.5 + 0.5 * a);
+    if (sat * val < 0.04) return float3(0.0);  // silence anchor (ref 08)
 
-    // Silence anchor (ref 08): pure black at very low valence AND very low arousal.
-    if (satScale * valScale < 0.05) return float3(0.0);
+    // §4.3 hue: valence shifts teal (cool/dark, ref 06) → amber (warm/dawn, ref 05).
+    float atmHue   = mix(0.60, 0.09, saturate(0.5 + 0.5 * v));
+    float3 atmDark = hsv2rgb(float3(atmHue, sat * 0.75, val));
+    float3 atmMid  = hsv2rgb(float3(atmHue, sat * 0.45, val * 2.4));  // brighter mist tint
 
-    // §4.3 hue recipe — valence shifts cool (teal/blue) vs warm (orange/amber).
-    float topHue  = mix(0.62, 0.05, saturate(0.5 + 0.5 * v));  // sky top: teal → orange
-    float botHue  = mix(0.58, 0.08, saturate(0.5 + 0.5 * v));  // horizon: teal → amber
-    float3 topCol  = hsv2rgb(float3(topHue,        satScale,          valScale * 1.2));
-    float3 botCol  = hsv2rgb(float3(botHue,         satScale * 0.85,   valScale));
-    float3 beamCol = hsv2rgb(float3(mix(0.60, 0.08, saturate(0.5 + 0.5 * v)), 0.50, 0.40));
+    // Deep background: near-black with subtle fbm tonal variation (refs 06, 08).
+    // No horizon — you're inches from the web; background is dark forest depth.
+    float deepN = fbm4(float3(uv * 1.8, 0.23)) * 0.5 + 0.5;
+    float3 col  = atmDark * (0.07 + deepN * 0.05);
 
-    // Layer 1 (macro): sky gradient — cool/teal near top, warm/amber at horizon.
-    float3 col = mix(topCol, botCol, uv.y);
+    // Atmospheric mist: radial soft glow from upper portion of frame (refs 05, 06).
+    // Dawn light filtering through canopy above the anchor branches — NOT a band.
+    float mistR = length(uv - float2(0.50, -0.08));
+    float mistN = fbm4(float3(uv * 3.8 + float2(0.18, 0.73), 0.47)) * 0.5 + 0.5;
+    float mist  = exp(-mistR * mistR / 0.30) * 0.24 * sat;
+    col += atmMid * mist * (0.55 + 0.45 * mistN);
 
-    // Layer 2 (macro): distant tree silhouettes — fbm4-displaced skyline at y ≈ 0.60.
-    float distNoise   = fbm4(float3(uv.x * 3.0 + 0.50, 0.0, 0.0)) * 0.08;
-    float distHorizon = uv.y - (0.60 + distNoise);
-    float distSil     = smoothstep(0.0, 0.025, distHorizon);
-    col = mix(col, botCol * 0.25, distSil);
+    // Light shaft: narrow diagonal beam from upper-left (ref 07 — beam structure only;
+    // warm tone is incidental to that ref; our shaft stays cool-tinted per palette).
+    float2 shO = uv - float2(0.16, 0.0);
+    float2 shD = normalize(float2(0.20, 1.0));
+    float  shT = dot(shO, shD);
+    float  shP = length(shO - shT * shD);
+    float  shI = exp(-shP * shP / (0.011 * 0.011))
+               * smoothstep(0.0, 0.22, shT) * smoothstep(1.15, 0.55, shT)
+               * 0.06 * val;
+    col += atmMid * 1.6 * shI;
 
-    // Layer 3 (meso): mid-distance trees with bark — closer horizon at y ≈ 0.54.
-    float midNoise   = fbm4(float3(uv.x * 5.5 + 1.30, 0.0, 0.0)) * 0.06;
-    float midHorizon = uv.y - (0.54 + midNoise);
-    float midSil     = smoothstep(0.0, 0.015, midHorizon);
-    // micro: bark via fbm4 in the tree region (ref 18_bark_close_up.jpg).
-    float barkN = fbm4(float3(uv.x * 14.0, (uv.y - 0.54) * 22.0, 0.13)) * 0.5 + 0.5;
-    col = mix(col, mix(botCol * 0.14, botCol * 0.22, barkN), midSil);
+    // Dust motes: accTime-drifted hash field; pauses at silence (anti-FA33).
+    float2 driftUV = uv * float2(44.0, 22.0) + float2(accTime * 0.006, accTime * 0.003);
+    float moteN = fbm4(float3(driftUV, 0.31)) * 0.5 + 0.5;
+    col += atmMid * smoothstep(0.79, 0.85, moteN) * 0.04 * val;
 
-    // Layer 4 (meso): near-frame anchor branches — two capsule SDFs.
-    // Left branch: from upper-left corner toward mid-screen (ref 16_dappled_pine_forest.jpg).
+    // Forest floor: organic dark texture at bottom (ref 17 — moss, leaf litter).
+    // Smooth fade — no hard edge at any particular y value.
+    float floorFade = smoothstep(0.52, 1.0, uv.y);
+    float floorN    = fbm4(float3(uv.x * 9.0, uv.y * 14.0, 0.67)) * 0.5 + 0.5;
+    col = mix(col, atmDark * (0.05 + floorN * 0.09), floorFade * 0.70);
+
+    // ── Near-frame branches: substantial bark-textured trunks (refs 11, 18) ────
+    // Positioned so the web's outermost radials anchor to them (ref 11).
+    // Each branch tapers toward its tip; fbm4 gives deeply furrowed bark ridges (ref 18).
+    // Cool rim on the upper-lit edge (dawn backlight from above, ref 05).
+
+    // Left branch — upper-left corner → centre-left (primary anchor, thickest trunk).
     {
-        float2 ba  = float2(0.04, 0.22);
-        float2 bb  = float2(0.30, 0.54);
+        float2 ba  = float2(-0.04, 0.06);
+        float2 bb  = float2(0.27, 0.56);
         float2 dir = bb - ba;
         float2 pa  = uv - ba;
         float  tc  = saturate(dot(pa, dir) / max(dot(dir, dir), 1e-6));
         float  bd  = length(pa - dir * tc);
-        float  cov = smoothstep(0.012, 0.007, bd);
-        float  bkL = fbm4(float3(tc * 9.0 + 0.17, bd * 25.0, 0.0)) * 0.5 + 0.5;
-        col = mix(col, mix(botCol * 0.11, botCol * 0.19, bkL), cov);
+        float  br  = mix(0.044, 0.013, tc);  // tapers: thick root, thin tip
+        float  cov = smoothstep(br + 0.005, br - 0.005, bd);
+        // Bark: along-axis furrowing + cross-axis ridge texture (ref 18).
+        float bkA  = fbm4(float3(tc * 9.0 + 0.11, bd * 38.0, 0.13)) * 0.5 + 0.5;
+        float bkC  = fbm4(float3(tc * 0.5, bd * 52.0 + 0.44, 0.0)) * 0.5 + 0.5;
+        float3 bkC3 = mix(atmDark * 0.22, atmDark * 0.38, bkA * bkC);
+        // Faint rim on upper-lit edge from dawn light (ref 05).
+        float rim  = smoothstep(br, br + 0.004, bd) * cov;
+        bkC3 += atmMid * 0.08 * rim;
+        col = mix(col, bkC3, cov);
     }
-    // Right branch: from upper-right corner toward mid-screen.
+
+    // Right branch — upper-right corner → centre-right.
     {
-        float2 ba  = float2(0.96, 0.18);
-        float2 bb  = float2(0.70, 0.48);
+        float2 ba  = float2(1.04, 0.09);
+        float2 bb  = float2(0.73, 0.51);
         float2 dir = bb - ba;
         float2 pa  = uv - ba;
         float  tc  = saturate(dot(pa, dir) / max(dot(dir, dir), 1e-6));
         float  bd  = length(pa - dir * tc);
-        float  cov = smoothstep(0.012, 0.007, bd);
-        float  bkR = fbm4(float3(tc * 9.0 + 0.83, bd * 25.0, 0.0)) * 0.5 + 0.5;
-        col = mix(col, mix(botCol * 0.11, botCol * 0.19, bkR), cov);
+        float  br  = mix(0.034, 0.011, tc);
+        float  cov = smoothstep(br + 0.004, br - 0.004, bd);
+        float bkA  = fbm4(float3(tc * 8.0 + 0.83, bd * 34.0, 0.27)) * 0.5 + 0.5;
+        float bkC  = fbm4(float3(tc * 0.4, bd * 46.0 + 0.91, 0.0)) * 0.5 + 0.5;
+        float3 bkC3 = mix(atmDark * 0.19, atmDark * 0.32, bkA * bkC);
+        float rim  = smoothstep(br, br + 0.003, bd) * cov;
+        bkC3 += atmMid * 0.06 * rim;
+        col = mix(col, bkC3, cov);
     }
 
-    // Layer 5 (macro): forest floor — dark moss/leaf-litter at y > 0.75 (ref 17).
-    float floorN   = fbm4(float3(uv.x * 7.0, 0.0, 0.41)) * 0.04;
-    float floorSil = smoothstep(0.0, 0.02, uv.y - (0.75 + floorN));
-    float mossN    = fbm4(float3(uv.x * 9.0, uv.y * 18.0, 0.67)) * 0.5 + 0.5;
-    col = mix(col, mix(botCol * 0.09, botCol * 0.17, mossN), floorSil);
-
-    // Layer 6 (specular): volumetric atmosphere.
-    // Fog: peaked at horizon band (ref 06_dark_misty_forest.jpg).
-    float fogDens = exp(-abs(uv.y - 0.62) * 12.0) * 0.35 * satScale;
-    col = mix(col, mix(topCol, botCol, 0.55) * 0.75, fogDens);
-
-    // Light shaft: narrow Gaussian beam near screen centre (ref 07_dust_light_shaft.jpg).
-    float shaftDx   = uv.x - 0.50;
-    float shaftFade = smoothstep(0.80, 0.15, uv.y);  // stronger high in frame
-    float shaftI    = exp(-shaftDx * shaftDx / (0.07 * 0.07))
-                    * shaftFade * 0.10 * valScale;
-    col += beamCol * shaftI;
-
-    // Dust motes: accTime-drifted fbm4; pauses at silence (anti-FA33).
-    float2 driftUV = uv * float2(45.0, 22.0) + float2(accTime * 0.006, accTime * 0.003);
-    float  moteN   = fbm4(float3(driftUV, 0.31)) * 0.5 + 0.5;
-    col += beamCol * smoothstep(0.76, 0.82, moteN) * 0.06 * valScale;
+    // Lower twig — bottom-right, smaller secondary anchor.
+    {
+        float2 ba  = float2(0.86, 1.04);
+        float2 bb  = float2(0.60, 0.70);
+        float2 dir = bb - ba;
+        float2 pa  = uv - ba;
+        float  tc  = saturate(dot(pa, dir) / max(dot(dir, dir), 1e-6));
+        float  bd  = length(pa - dir * tc);
+        float  br  = mix(0.018, 0.008, tc);
+        float  cov = smoothstep(br + 0.002, br - 0.002, bd);
+        float bkA  = fbm4(float3(tc * 7.0 + 0.55, bd * 40.0, 0.0)) * 0.5 + 0.5;
+        float3 bkC3 = atmDark * (0.17 + 0.13 * bkA);
+        col = mix(col, bkC3, cov);
+    }
 
     return col;
 }
@@ -304,6 +325,19 @@ static ArachneWebResult arachneEvalWeb(
     float spokeLen  = webR - hubR;
     float sagAmount = kSag * spokeLen * spokeLen;
 
+    // Pre-compute outermost spoke tip positions for frame thread rendering (ref 11).
+    // Tips are at webR × d (sag formula is 0 at tProj=1). Stored in tRel space.
+    int    nTips = min(nVisible, 17);
+    float2 tipPos[17];
+    for (int ti = 0; ti < nTips; ti++) {
+        int halfNt = spokeCount / 2;
+        int revIt  = (ti % 2 == 0) ? (ti / 2) : (ti / 2 + halfNt);
+        int it     = revIt % spokeCount;
+        float jitT = (arachHash(seed + uint(it) * 7u) - 0.5) * baseStep * 0.44;
+        float angT = rotAngle + float(it) * baseStep + jitT;
+        tipPos[ti] = webR * float2(cos(angT), sin(angT));
+    }
+
     float minSpokeDist = 1e6;
     float2 bestSpokeTangent2D = float2(1.0, 0.0); // tangent of closest spoke
     if (rT > hubR && rT < webR * 1.18) {
@@ -341,6 +375,27 @@ static ArachneWebResult arachneEvalWeb(
     float spokeCov     = smoothstep(spokeW + aaW, spokeW - aaW, minSpokeDist) * anchorFade;
     float spokeHalo    = exp(-minSpokeDist * minSpokeDist / (spokeHaloSig * spokeHaloSig))
                         * 0.38 * anchorFade;
+
+    // ── Frame threads: irregular polygon connecting outermost spoke tips (ref 11) ──
+    // These replace the implicit circular outer boundary with an irregular polygon that
+    // matches how real orb-weaver webs terminate at branch attachment points.
+    float minFrameDist = 1e6;
+    if (nTips >= 2 && rT >= webR * 0.72) {
+        for (int fi = 0; fi < nTips; fi++) {
+            float2 ta = tipPos[fi];
+            float2 tb = tipPos[(fi + 1) % nTips];
+            float2 ba = tb - ta;
+            float2 pa = tRel - ta;
+            float  h  = saturate(dot(pa, ba) / max(dot(ba, ba), 1e-8));
+            float  fd = length(pa - ba * h);
+            minFrameDist = min(minFrameDist, fd);
+        }
+    }
+    float frameW    = mix(0.0022, 0.0013, taper);
+    float frameFade = rT > webR ? exp(-(rT - webR) * 6.0) : 1.0;
+    float frameCov  = smoothstep(frameW + aaW, frameW - aaW, minFrameDist) * frameFade;
+    float frameHalo = exp(-minFrameDist * minFrameDist / (spokeHaloSig * spokeHaloSig))
+                    * 0.22 * frameFade;
 
     // ── §4.2 Archimedean spiral + micro-wobble ─────────────────────────────
     // §4.3 micro: adhesive droplets on spiral threads, hash-lattice (8–12 px spacing)
@@ -425,7 +480,8 @@ static ArachneWebResult arachneEvalWeb(
     }
     result.dropVec = bestDropVec;
 
-    result.strandCov = max(max(spokeCov, spirCov), max(max(spokeHalo, spirHalo), hubCov));
+    result.strandCov = max(max(max(spokeCov, spirCov), max(spokeHalo, spirHalo)),
+                          max(hubCov, max(frameCov, frameHalo)));
     result.dropCov   = dropCovLocal;
     return result;
 }
@@ -790,10 +846,10 @@ fragment float4 arachne_fragment(
         spiderContrib      = spiderCol;
     }
 
-    // ── V.7.7: WORLD pillar — six-layer forest stage + background dewy webs ────
-    float3 bgColor  = drawWorld(uv, moodRow, moodRow.z);
-    bgColor += drawBackgroundWeb(uv, float2(0.28, 0.61), 0.18, 7331u, moodRow, moodRow.z);
-    bgColor += drawBackgroundWeb(uv, float2(0.68, 0.58), 0.18, 9137u, moodRow, moodRow.z);
+    // ── V.7.7 redo: WORLD pillar — dark close-up forest atmosphere ────────────
+    // drawBackgroundWeb() removed — circular drop-patches produced oval artefacts.
+    // Background webs reintroduced in V.7.8 after web outer boundary is fixed.
+    float3 bgColor = drawWorld(uv, moodRow, moodRow.z);
 
     // ── §5.3 Cool-blue rim back-light + combine strands ───────────────────────
     float3 webColor = strandColor + dropColorAccum;
