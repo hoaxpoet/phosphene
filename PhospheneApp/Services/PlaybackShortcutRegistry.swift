@@ -75,6 +75,7 @@ final class PlaybackShortcutRegistry {
         onHandleEsc: @escaping @MainActor () -> Void,
         onShowHelp: @escaping @MainActor () -> Void,
         onShowPlanPreview: @escaping @MainActor () -> Void,
+        onToggleDiagnosticHold: (@MainActor () -> Void)? = nil,
         onToggleForceSpider: (@MainActor () -> Void)? = nil,
         onDebugNextPreset: (@MainActor () -> Void)? = nil,
         onDebugPreviousPreset: (@MainActor () -> Void)? = nil
@@ -89,6 +90,16 @@ final class PlaybackShortcutRegistry {
             onShowHelp: onShowHelp,
             onShowPlanPreview: onShowPlanPreview
         )
+        if let fn = onToggleDiagnosticHold {
+            all.append(PlaybackShortcut(
+                id: "toggleDiagnosticHold",
+                key: "l",
+                modifiers: [],
+                label: "Toggle diagnostic preset hold",
+                category: .developer,
+                action: fn
+            ))
+        }
         #if DEBUG
         if let fn = onToggleForceSpider {
             all.append(PlaybackShortcut(

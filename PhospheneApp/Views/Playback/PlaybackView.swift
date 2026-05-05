@@ -259,6 +259,17 @@ struct PlaybackView: View {
         let debugNext: (@MainActor () -> Void)? = nil
         let debugPrev: (@MainActor () -> Void)? = nil
         #endif
+        let diagHoldAction: (@MainActor () -> Void)? = { [weak engine = self.engine, weak tm = self.toastManager] in
+            guard let engine, let tm else { return }
+            engine.diagnosticPresetLocked.toggle()
+            let isOn = engine.diagnosticPresetLocked
+            tm.enqueue(PhospheneToast(
+                severity: .info,
+                copy: isOn ? "Diagnostic hold ON" : "Diagnostic hold OFF",
+                duration: 3,
+                conditionID: "debug.diagnostic.hold"
+            ))
+        }
         return PlaybackShortcutRegistry(
             actionRouter: router,
             onToggleFullscreen: { [weak fo = self.fullscreenObserver] in
@@ -285,6 +296,7 @@ struct PlaybackView: View {
             },
             onShowHelp: { showHelp = true },
             onShowPlanPreview: { showPlanPreview = true },
+            onToggleDiagnosticHold: diagHoldAction,
             onToggleForceSpider: forceSpiderAction,
             onDebugNextPreset: debugNext,
             onDebugPreviousPreset: debugPrev

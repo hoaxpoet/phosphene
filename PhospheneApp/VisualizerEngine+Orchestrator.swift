@@ -115,6 +115,16 @@ extension VisualizerEngine {
             let totalSecs = String(format: "%.0f", plan.totalDuration)
             let warnCount = plan.warnings.count
             logger.info("Orchestrator: plan — \(plan.tracks.count)/\(fullCount) tracks, \(totalSecs)s, \(warnCount) warnings")
+
+            // Pre-load the BeatGrid for the first planned track so Spectral Cartograph
+            // shows "PLANNED · UNLOCKED" immediately after plan-build, rather than
+            // "REACTIVE" until the first track-change event fires. DSP.3.2.
+            // resetStemPipeline(for:) is idempotent — the track-change call on first
+            // audio arrival will be a cache hit and will be a no-op from the stem
+            // pipeline's perspective.
+            if let firstTrack = plan.tracks.first?.track {
+                resetStemPipeline(for: firstTrack)
+            }
         } catch {
             logger.error("Orchestrator: plan failed — \(error)")
         }
@@ -180,18 +190,19 @@ extension VisualizerEngine {
             }
         }
 
-        // During a capture-mode switch grace window, silence-derived mood features
-        // may produce a large Δmood that would trigger a spurious preset override.
-        // Discard presetOverride events during the grace window; boundary rescheduling
-        // (updatedTransition) is still allowed — structural boundaries are legitimate. D-061(b,c).
+        // Suppress mood-derived preset overrides during: (a) capture-mode switch grace window
+        // (silence may produce spurious Δmood), (b) diagnostic hold (user explicitly pinned a
+        // diagnostic preset). Boundary rescheduling (updatedTransition) is always allowed. D-061(b,c), DSP.3.1.
         let effectiveAdaptation: LiveAdaptation
-        if isCaptureModeSwitchGraceActive, adaptation.presetOverride != nil {
+        let suppressOverride = isCaptureModeSwitchGraceActive || diagnosticPresetLocked
+        if suppressOverride, adaptation.presetOverride != nil {
             effectiveAdaptation = LiveAdaptation(
                 updatedTransition: adaptation.updatedTransition,
                 presetOverride: nil,
                 events: adaptation.events.filter { $0.kind != .presetOverrideTriggered }
             )
-            logger.info("Orchestrator: grace window active — preset override suppressed")
+            let reason = isCaptureModeSwitchGraceActive ? "grace window" : "diagnostic hold"
+            logger.info("Orchestrator: \(reason) active — preset override suppressed")
         } else {
             effectiveAdaptation = adaptation
         }
@@ -381,17 +392,5 @@ extension VisualizerEngine {
             duration: $0.duration
         ) }) else { return nil }
         return sessionManager.cache.trackProfile(for: identity)
-    }
-
-    // MARK: - Device Tier Detection
-
-    /// Infer the Apple Silicon generation from the Metal device name.
-    ///
-    /// Returns `.tier2` for M3/M4 devices, `.tier1` for all others (M1, M2,
-    /// or unrecognised names — conservative fallback).
-    static func detectDeviceTier(device: MTLDevice) -> DeviceTier {
-        let name = device.name.lowercased()
-        if name.contains("m3") || name.contains("m4") { return .tier2 }
-        return .tier1
     }
 }

@@ -180,3 +180,46 @@ private func readFloat(_ buf: MTLBuffer, at index: Int) -> Float {
     let stored = readFloat(history.gpuBuffer, at: SpectralHistoryBuffer.offsetBassDev)
     #expect(abs(stored - 0.42) < 1e-6, "bassDev 0.42 should be stored verbatim, got \(stored)")
 }
+
+// MARK: - sessionMode tests (DSP.3.1)
+
+@Test func test_updateBeatGridData_sessionMode_writtenToSlot2420() throws {
+    let device = try makeDevice()
+    let history = SpectralHistoryBuffer(device: device)
+
+    history.updateBeatGridData(relativeBeatTimes: [], bpm: 120.0, lockState: 2, sessionMode: 3)
+
+    let stored = readFloat(history.gpuBuffer, at: SpectralHistoryBuffer.offsetSessionMode)
+    #expect(stored == 3.0, "sessionMode 3 should be stored at offsetSessionMode, got \(stored)")
+}
+
+@Test func test_readSessionMode_returnsWrittenValue() throws {
+    let device = try makeDevice()
+    let history = SpectralHistoryBuffer(device: device)
+
+    for mode in 0...3 {
+        history.updateBeatGridData(relativeBeatTimes: [], bpm: 120.0, lockState: 0, sessionMode: mode)
+        let read = history.readSessionMode()
+        #expect(read == mode, "readSessionMode should return \(mode), got \(read)")
+    }
+}
+
+@Test func test_sessionMode_zeroAfterReset() throws {
+    let device = try makeDevice()
+    let history = SpectralHistoryBuffer(device: device)
+
+    history.updateBeatGridData(relativeBeatTimes: [], bpm: 120.0, lockState: 2, sessionMode: 3)
+    history.reset()
+
+    let read = history.readSessionMode()
+    #expect(read == 0, "sessionMode should be 0 after reset(), got \(read)")
+}
+
+@Test func test_sessionMode_clampedTo0_3() throws {
+    let device = try makeDevice()
+    let history = SpectralHistoryBuffer(device: device)
+
+    history.updateBeatGridData(relativeBeatTimes: [], bpm: 0.0, lockState: 0, sessionMode: 99)
+    let stored = readFloat(history.gpuBuffer, at: SpectralHistoryBuffer.offsetSessionMode)
+    #expect(stored == 3.0, "sessionMode should be clamped to 3, got \(stored)")
+}

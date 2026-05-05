@@ -220,13 +220,15 @@ extension VisualizerEngine {
         let interleaved = stemSampleBuffer.snapshotLatest(seconds: Self.liveBeatMinSeconds)
         guard interleaved.count >= 2 else { return }
 
-        var mono = [Float](repeating: 0, count: interleaved.count / 2)
-        for i in 0..<mono.count {
-            mono[i] = (interleaved[i * 2] + interleaved[i * 2 + 1]) * 0.5
+        var monoMutable = [Float](repeating: 0, count: interleaved.count / 2)
+        for i in 0..<monoMutable.count {
+            monoMutable[i] = (interleaved[i * 2] + interleaved[i * 2 + 1]) * 0.5
         }
+        let mono = monoMutable
 
         let bufferStartTime = elapsed - Self.liveBeatMinSeconds
-        logger.info("LiveBeat: launching Beat This! on \(mono.count) samples (t=\(String(format:"%.1f",elapsed))s)")
+        let elapsedStr = String(format: "%.1f", elapsed)
+        logger.info("LiveBeat: launching Beat This! on \(mono.count) samples (t=\(elapsedStr)s)")
 
         stemQueue.async { [weak self] in
             guard let self else { return }
@@ -252,7 +254,9 @@ extension VisualizerEngine {
             // Shift beat times from buffer-relative to track-relative.
             let grid = rawGrid.offsetBy(bufferStartTime)
             let bpmStr = String(format: "%.1f", grid.bpm)
-            self.logger_liveBeat("LiveBeat: grid ready — \(grid.beats.count) beats, \(bpmStr) BPM, \(grid.beatsPerBar)/X meter")
+            let beatCount = grid.beats.count
+            let meter = grid.beatsPerBar
+            self.logger_liveBeat("LiveBeat: grid ready — \(beatCount) beats, \(bpmStr) BPM, \(meter)/X meter")
 
             Task { @MainActor [weak self] in
                 self?.mirPipeline.setBeatGrid(grid)
