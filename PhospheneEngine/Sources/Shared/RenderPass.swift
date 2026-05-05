@@ -73,4 +73,13 @@ public enum RenderPass: String, Codable, Sendable, CaseIterable {
     /// array; those passes render to an offscreen scene texture, then `mvWarp` applies
     /// the warp and blits to the drawable.
     case mvWarp = "mv_warp"
+
+    /// Staged direct-fragment composition (V.ENGINE.1).
+    /// The preset declares an ordered `stages: [...]` array; each stage names a
+    /// fragment function and an optional list of earlier stages whose outputs it
+    /// samples at fragment textures starting at `[[texture(13)]]`. Non-final stages
+    /// render to per-stage `.rgba16Float` offscreen textures; the final stage renders
+    /// to the drawable. See `docs/ENGINE/RENDER_CAPABILITY_REGISTRY.md` and the
+    /// `StagedSandbox` diagnostic preset for usage.
+    case staged = "staged"
 }

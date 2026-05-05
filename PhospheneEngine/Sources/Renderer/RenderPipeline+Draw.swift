@@ -229,6 +229,21 @@ extension RenderPipeline {
                 )
                 return
 
+            case .staged:
+                // V.ENGINE.1: per-preset staged composition. Walks the stage list,
+                // rendering non-final stages to per-stage offscreen textures and the
+                // final stage to the drawable. Earlier-stage outputs are bound at
+                // fragment textures starting at slot 13 (kStagedSampledTextureFirstSlot).
+                let hasStages = stagedLock.withLock { !stagedStages.isEmpty }
+                guard hasStages else { continue }
+                drawWithStaged(
+                    commandBuffer: commandBuffer,
+                    view: view,
+                    features: &features,
+                    stemFeatures: stemFeatures
+                )
+                return
+
             case .direct, .particles, .ssgi:
                 // .direct: fallback below. .particles: handled in drawWithFeedback.
                 // .ssgi: companion to .rayMarch, wired in drawWithRayMarch.

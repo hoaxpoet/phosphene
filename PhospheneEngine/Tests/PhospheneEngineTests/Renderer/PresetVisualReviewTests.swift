@@ -64,6 +64,58 @@ struct PresetVisualReviewTests {
 
     // MARK: - Tests
 
+    /// Pass-separated capture for staged-composition presets (V.ENGINE.1).
+    /// Renders one PNG per stage per fixture so harness reviewers can inspect
+    /// the WORLD pass alone, the COMPOSITE pass, and any intermediate stages.
+    /// Setting `RENDER_STAGE=<name>` limits output to a single stage.
+    @Test("Render staged preset per-stage PNGs (RENDER_VISUAL=1)",
+          arguments: ["Staged Sandbox"])
+    func renderStagedPresetPerStage(_ presetName: String) throws {
+        guard ProcessInfo.processInfo.environment["RENDER_VISUAL"] == "1" else {
+            print("[PresetVisualReview] RENDER_VISUAL not set, skipping staged \(presetName)")
+            return
+        }
+        let stageFilter = ProcessInfo.processInfo.environment["RENDER_STAGE"]
+
+        let ctx = try MetalContext()
+        guard let preset = _acceptanceFixture.presets.first(where: {
+            $0.descriptor.name == presetName
+        }) else {
+            print("[PresetVisualReview] preset '\(presetName)' not found, skipping")
+            return
+        }
+        guard !preset.stages.isEmpty else {
+            print("[PresetVisualReview] preset '\(presetName)' has no staged compilation, skipping")
+            return
+        }
+
+        let outputDir = try makeOutputDirectory()
+        print("[PresetVisualReview] staged output dir: \(outputDir.path)")
+
+        let fixtures: [(name: String, fv: FeatureVector)] = [
+            ("silence", silenceFixture),
+            ("mid", midFixture),
+            ("beat", beatFixture),
+        ]
+
+        for fixture in fixtures {
+            var fv = fixture.fv
+            let stagePixels = try renderStagedFrame(preset: preset,
+                                                    context: ctx,
+                                                    features: &fv)
+            for (stageName, pixels) in stagePixels {
+                if let stageFilter, stageFilter != stageName { continue }
+                let safeName = presetName.replacingOccurrences(of: " ", with: "_")
+                let url = outputDir.appendingPathComponent(
+                    "\(safeName)_\(fixture.name)_\(stageName).png")
+                try writePNG(bgraPixels: pixels,
+                             width: Self.renderWidth, height: Self.renderHeight,
+                             to: url)
+                print("[PresetVisualReview] wrote \(url.lastPathComponent)")
+            }
+        }
+    }
+
     @Test("Render preset to PNGs + contact sheet (RENDER_VISUAL=1)",
           arguments: ["Arachne", "Gossamer", "Volumetric Lithograph"])
     func renderPresetVisualReview(_ presetName: String) throws {
@@ -213,6 +265,196 @@ struct PresetVisualReviewTests {
         cmdBuf.waitUntilCompleted()
         guard cmdBuf.status == .completed else { throw VisualReviewError.renderFailed }
 
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        texture.getBytes(&pixels, bytesPerRow: width * 4,
+                         from: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0)
+        return pixels
+    }
+
+    // MARK: - Render (staged)
+
+    /// Render a staged preset stage-by-stage. Returns BGRA pixel arrays keyed
+    /// by stage name so the caller can write one PNG per stage.
+    ///
+    /// Implementation: stage 0..N-2 are rendered into per-stage `.rgba16Float`
+    /// offscreen textures (the same textures stage N samples). For PNG output
+    /// each stage is also re-rendered into a parallel BGRA texture so it can
+    /// be encoded as 8-bit. Final stage (N-1) renders directly into BGRA.
+    private func renderStagedFrame(
+        preset: PresetLoader.LoadedPreset,
+        context: MetalContext,
+        features: inout FeatureVector
+    ) throws -> [(stage: String, pixels: [UInt8])] {
+        let width = Self.renderWidth
+        let height = Self.renderHeight
+
+        let floatStride = MemoryLayout<Float>.stride
+        guard
+            let fftBuf = context.makeSharedBuffer(length: 512 * floatStride),
+            let waveBuf = context.makeSharedBuffer(length: 2048 * floatStride),
+            let stemBuf = context.makeSharedBuffer(length: MemoryLayout<StemFeatures>.size),
+            let histBuf = context.makeSharedBuffer(length: 4096 * floatStride)
+        else { throw VisualReviewError.bufferAllocationFailed }
+        _ = stemBuf.contents().initializeMemory(as: UInt8.self, repeating: 0,
+                                                count: MemoryLayout<StemFeatures>.size)
+        _ = histBuf.contents().initializeMemory(as: UInt8.self, repeating: 0,
+                                                count: 4096 * floatStride)
+
+        // One offscreen `.rgba16Float` texture per non-final stage (used by
+        // later stages that name it in `samples`).
+        var offscreen: [String: MTLTexture] = [:]
+        for stage in preset.stages where !stage.writesToDrawable {
+            let desc = MTLTextureDescriptor.texture2DDescriptor(
+                pixelFormat: .rgba16Float,
+                width: width, height: height, mipmapped: false)
+            desc.usage = [.renderTarget, .shaderRead]
+            desc.storageMode = .private
+            guard let tex = context.device.makeTexture(descriptor: desc) else {
+                throw VisualReviewError.textureAllocationFailed
+            }
+            offscreen[stage.name] = tex
+        }
+
+        // Encode the staged dispatch into a single command buffer.
+        guard let cmd = context.commandQueue.makeCommandBuffer() else {
+            throw VisualReviewError.commandBufferFailed
+        }
+        for stage in preset.stages where !stage.writesToDrawable {
+            guard let target = offscreen[stage.name] else { continue }
+            try encodeStagePass(stage: stage, target: target, commandBuffer: cmd,
+                                features: &features,
+                                fft: fftBuf, wave: waveBuf, stems: stemBuf, hist: histBuf,
+                                samples: offscreen)
+        }
+        cmd.commit()
+        cmd.waitUntilCompleted()
+
+        // Read each stage back as BGRA pixels for PNG export.
+        var result: [(stage: String, pixels: [UInt8])] = []
+        // 1) Each non-final stage: re-render into a BGRA shared texture so we can `getBytes`.
+        for stage in preset.stages where !stage.writesToDrawable {
+            let bgra = try makeShared8BitTexture(device: context.device,
+                                                 format: context.pixelFormat,
+                                                 width: width, height: height)
+            // Build a one-off pipeline that runs the same fragment but writes to BGRA.
+            let bgraPipeline = try makeBGRAPipeline(for: stage,
+                                                     preset: preset,
+                                                     context: context)
+            guard let cb = context.commandQueue.makeCommandBuffer() else {
+                throw VisualReviewError.commandBufferFailed
+            }
+            try encodeStagePass(stage: stage,
+                                explicitPipeline: bgraPipeline,
+                                target: bgra,
+                                commandBuffer: cb,
+                                features: &features,
+                                fft: fftBuf, wave: waveBuf, stems: stemBuf, hist: histBuf,
+                                samples: offscreen)
+            cb.commit()
+            cb.waitUntilCompleted()
+            result.append((stage.name, readBGRA(bgra, width: width, height: height)))
+        }
+        // 2) Final stage: render directly into a BGRA shared texture.
+        if let finalStage = preset.stages.last, finalStage.writesToDrawable {
+            let bgra = try makeShared8BitTexture(device: context.device,
+                                                 format: context.pixelFormat,
+                                                 width: width, height: height)
+            guard let cb = context.commandQueue.makeCommandBuffer() else {
+                throw VisualReviewError.commandBufferFailed
+            }
+            try encodeStagePass(stage: finalStage,
+                                target: bgra,
+                                commandBuffer: cb,
+                                features: &features,
+                                fft: fftBuf, wave: waveBuf, stems: stemBuf, hist: histBuf,
+                                samples: offscreen)
+            cb.commit()
+            cb.waitUntilCompleted()
+            result.append((finalStage.name, readBGRA(bgra, width: width, height: height)))
+        }
+        return result
+    }
+
+    private func encodeStagePass(
+        stage: PresetLoader.LoadedStage,
+        explicitPipeline: MTLRenderPipelineState? = nil,
+        target: MTLTexture,
+        commandBuffer: MTLCommandBuffer,
+        features: inout FeatureVector,
+        fft: MTLBuffer, wave: MTLBuffer, stems: MTLBuffer, hist: MTLBuffer,
+        samples: [String: MTLTexture]
+    ) throws {
+        let rpd = MTLRenderPassDescriptor()
+        rpd.colorAttachments[0].texture = target
+        rpd.colorAttachments[0].loadAction = .clear
+        rpd.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
+        rpd.colorAttachments[0].storeAction = .store
+        guard let enc = commandBuffer.makeRenderCommandEncoder(descriptor: rpd) else {
+            throw VisualReviewError.encoderCreationFailed
+        }
+        enc.setRenderPipelineState(explicitPipeline ?? stage.pipelineState)
+        enc.setFragmentBytes(&features, length: MemoryLayout<FeatureVector>.size, index: 0)
+        enc.setFragmentBuffer(fft, offset: 0, index: 1)
+        enc.setFragmentBuffer(wave, offset: 0, index: 2)
+        enc.setFragmentBuffer(stems, offset: 0, index: 3)
+        enc.setFragmentBuffer(hist, offset: 0, index: 5)
+        for (offset, name) in stage.samples.enumerated() {
+            guard let tex = samples[name] else { continue }
+            enc.setFragmentTexture(tex, index: kStagedSampledTextureFirstSlot + offset)
+        }
+        enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+        enc.endEncoding()
+    }
+
+    /// Build a BGRA-target pipeline for an intermediate stage so the harness
+    /// can write its output to PNG. Recompiles the preset shader file once
+    /// per call; only used for `RENDER_VISUAL=1` runs.
+    private func makeBGRAPipeline(
+        for stage: PresetLoader.LoadedStage,
+        preset: PresetLoader.LoadedPreset,
+        context: MetalContext
+    ) throws -> MTLRenderPipelineState {
+        guard let bundleShaders = Bundle.module.url(forResource: "Shaders",
+                                                    withExtension: nil) else {
+            throw VisualReviewError.cgImageFailed
+        }
+        let metalURL = bundleShaders.appendingPathComponent(
+            preset.descriptor.shaderFileName)
+        let source = try String(contentsOf: metalURL, encoding: .utf8)
+        let fullSource = PresetLoader.shaderPreamble + "\n\n" + source
+        let options = MTLCompileOptions()
+        options.fastMathEnabled = true
+        options.languageVersion = .version3_1
+        let library = try context.device.makeLibrary(source: fullSource, options: options)
+
+        guard let descStage = preset.descriptor.stages.first(where: { $0.name == stage.name }),
+              let vertexFn = library.makeFunction(name: preset.descriptor.vertexFunction),
+              let fragmentFn = library.makeFunction(name: descStage.fragmentFunction) else {
+            throw VisualReviewError.cgImageFailed
+        }
+        let desc = MTLRenderPipelineDescriptor()
+        desc.vertexFunction = vertexFn
+        desc.fragmentFunction = fragmentFn
+        desc.colorAttachments[0].pixelFormat = context.pixelFormat
+        return try context.device.makeRenderPipelineState(descriptor: desc)
+    }
+
+    private func makeShared8BitTexture(
+        device: MTLDevice,
+        format: MTLPixelFormat,
+        width: Int, height: Int
+    ) throws -> MTLTexture {
+        let desc = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: format, width: width, height: height, mipmapped: false)
+        desc.usage = [.renderTarget, .shaderRead]
+        desc.storageMode = .shared
+        guard let tex = device.makeTexture(descriptor: desc) else {
+            throw VisualReviewError.textureAllocationFailed
+        }
+        return tex
+    }
+
+    private func readBGRA(_ texture: MTLTexture, width: Int, height: Int) -> [UInt8] {
         var pixels = [UInt8](repeating: 0, count: width * height * 4)
         texture.getBytes(&pixels, bytesPerRow: width * 4,
                          from: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0)

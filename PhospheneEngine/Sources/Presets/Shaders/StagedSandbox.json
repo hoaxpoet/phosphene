@@ -1,0 +1,31 @@
+{
+  "name": "Staged Sandbox",
+  "family": "instrument",
+  "description": "Two-stage diagnostic preset proving the V.ENGINE.1 staged-composition scaffold: pass A renders a sky+silhouette WORLD into an offscreen texture, pass B samples it and overlays a placeholder web. Used by the visual review harness for pass-separated capture.",
+  "author": "Phosphene engine",
+  "passes": ["staged"],
+  "stages": [
+    {
+      "name": "world",
+      "fragment_function": "staged_sandbox_world_fragment"
+    },
+    {
+      "name": "composite",
+      "fragment_function": "staged_sandbox_composite_fragment",
+      "samples": ["world"]
+    }
+  ],
+  "vertex_function": "fullscreen_vertex",
+  "fragment_function": "staged_sandbox_composite_fragment",
+  "duration": 30,
+  "visual_density": 0.30,
+  "motion_intensity": 0.10,
+  "color_temperature_range": [0.30, 0.55],
+  "fatigue_risk": "high",
+  "transition_affordances": ["cut"],
+  "section_suitability": ["ambient"],
+  "complexity_cost": { "tier1": 1.5, "tier2": 1.0 },
+  "certified": false,
+  "is_diagnostic": true,
+  "rubric_profile": "lightweight"
+}

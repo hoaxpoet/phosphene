@@ -66,6 +66,7 @@ extension VisualizerEngine {
         pipeline.setFeedbackComposePipeline(nil)
         pipeline.setParticleGeometry(nil)
         pipeline.clearMVWarpState()
+        pipeline.setStagedRuntime(nil, drawableSize: pipeline.mvWarpDrawableSize)
         currentRayMarchPipeline = nil
 
         // Set the primary pipeline state (overridden for ray march below).
@@ -227,6 +228,22 @@ extension VisualizerEngine {
                         logger.error("GossamerState: failed to allocate wave pool for preset '\(desc.name)'")
                     }
                 }
+
+            case .staged:
+                // V.ENGINE.1: bridge per-stage compiled pipelines into the renderer.
+                let stageSpecs = preset.stages.map { stage in
+                    StagedStageSpec(
+                        name: stage.name,
+                        pipelineState: stage.pipelineState,
+                        samples: stage.samples,
+                        writesToDrawable: stage.writesToDrawable
+                    )
+                }
+                guard !stageSpecs.isEmpty else {
+                    logger.error("Staged preset '\(desc.name)' has no compiled stages — skipping setup")
+                    break
+                }
+                pipeline.setStagedRuntime(stageSpecs, drawableSize: pipeline.mvWarpDrawableSize)
 
             case .direct:
                 break // No subsystem setup required; direct rendering is the default fallback.

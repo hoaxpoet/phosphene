@@ -41,6 +41,32 @@ public final class PresetLoader: @unchecked Sendable {
         public let blitState: MTLRenderPipelineState
     }
 
+    /// One compiled stage of a staged-composition preset (V.ENGINE.1).
+    public struct LoadedStage: Sendable {
+        /// Stage identifier (matches `PresetStage.name`).
+        public let name: String
+        /// Compiled fragment pipeline. Non-final stages target `.rgba16Float`; the
+        /// final stage targets the drawable pixel format.
+        public let pipelineState: MTLRenderPipelineState
+        /// Names of earlier stages whose outputs this stage samples (texture(13)+).
+        public let samples: [String]
+        /// True if this stage's color attachment is the drawable pixel format.
+        /// False if it targets `.rgba16Float` (intermediate pass).
+        public let writesToDrawable: Bool
+
+        public init(
+            name: String,
+            pipelineState: MTLRenderPipelineState,
+            samples: [String],
+            writesToDrawable: Bool
+        ) {
+            self.name = name
+            self.pipelineState = pipelineState
+            self.samples = samples
+            self.writesToDrawable = writesToDrawable
+        }
+    }
+
     /// A preset with its compiled pipeline state ready for rendering.
     public struct LoadedPreset: Sendable {
         public let descriptor: PresetDescriptor
@@ -51,6 +77,24 @@ public final class PresetLoader: @unchecked Sendable {
         public let rayMarchPipelineState: MTLRenderPipelineState?
         /// Per-vertex warp pipeline states (MV-2). Nil for non-mv_warp presets.
         public let mvWarpPipelines: MVWarpCompiledPipelines?
+        /// Ordered staged-composition pipelines (V.ENGINE.1). Empty for non-staged presets.
+        public let stages: [LoadedStage]
+
+        public init(
+            descriptor: PresetDescriptor,
+            pipelineState: MTLRenderPipelineState,
+            feedbackPipelineState: MTLRenderPipelineState? = nil,
+            rayMarchPipelineState: MTLRenderPipelineState? = nil,
+            mvWarpPipelines: MVWarpCompiledPipelines? = nil,
+            stages: [LoadedStage] = []
+        ) {
+            self.descriptor = descriptor
+            self.pipelineState = pipelineState
+            self.feedbackPipelineState = feedbackPipelineState
+            self.rayMarchPipelineState = rayMarchPipelineState
+            self.mvWarpPipelines = mvWarpPipelines
+            self.stages = stages
+        }
     }
 
     // MARK: - Private State
@@ -193,7 +237,8 @@ public final class PresetLoader: @unchecked Sendable {
                 pipelineState: pipelines.standard,
                 feedbackPipelineState: pipelines.feedback,
                 rayMarchPipelineState: pipelines.rayMarch,
-                mvWarpPipelines: pipelines.mvWarp
+                mvWarpPipelines: pipelines.mvWarp,
+                stages: pipelines.stages
             )
 
             lock.withLock {
@@ -238,15 +283,18 @@ public final class PresetLoader: @unchecked Sendable {
         let feedback: MTLRenderPipelineState?
         let rayMarch: MTLRenderPipelineState?
         let mvWarp: MVWarpCompiledPipelines?
+        let stages: [LoadedStage]
 
         init(standard: MTLRenderPipelineState,
              feedback: MTLRenderPipelineState? = nil,
              rayMarch: MTLRenderPipelineState? = nil,
-             mvWarp: MVWarpCompiledPipelines? = nil) {
+             mvWarp: MVWarpCompiledPipelines? = nil,
+             stages: [LoadedStage] = []) {
             self.standard  = standard
             self.feedback  = feedback
             self.rayMarch  = rayMarch
             self.mvWarp    = mvWarp
+            self.stages    = stages
         }
     }
 
@@ -264,8 +312,85 @@ public final class PresetLoader: @unchecked Sendable {
         if descriptor.passes.contains(.rayMarch) {
             return compileRayMarchShader(at: url, descriptor: descriptor)
         }
+        if descriptor.passes.contains(.staged) {
+            return compileStagedShader(at: url, descriptor: descriptor)
+        }
         guard let result = compileStandardShader(at: url, descriptor: descriptor) else { return nil }
         return CompiledShader(standard: result.standard, feedback: result.feedback)
+    }
+
+    /// Compile a staged-composition preset (V.ENGINE.1). The preset declares an
+    /// ordered `stages: [...]` array; one fragment pipeline state is built per stage.
+    /// Non-final stages target `.rgba16Float`; the final stage targets the drawable
+    /// pixel format. The first stage's pipeline is also returned as the LoadedPreset
+    /// `pipelineState` so any code path that expects a non-nil primary state still works.
+    private func compileStagedShader(
+        at url: URL, descriptor: PresetDescriptor
+    ) -> CompiledShader? {
+        guard !descriptor.stages.isEmpty else {
+            logger.error("Staged preset '\(descriptor.name)' has no `stages` array — skipping")
+            return nil
+        }
+        guard let fragmentSource = try? String(contentsOf: url, encoding: .utf8) else {
+            logger.error("Could not read staged shader file: \(url.lastPathComponent)")
+            return nil
+        }
+
+        let fullSource = Self.shaderPreamble + "\n\n" + fragmentSource
+        let options = MTLCompileOptions()
+        options.fastMathEnabled = true
+        options.languageVersion = .version3_1
+
+        let library: MTLLibrary
+        do {
+            library = try device.makeLibrary(source: fullSource, options: options)
+        } catch {
+            logger.error("Staged shader compilation failed for \(url.lastPathComponent): \(error)")
+            return nil
+        }
+
+        guard let vertexFn = library.makeFunction(name: descriptor.vertexFunction) else {
+            logger.error("Vertex function '\(descriptor.vertexFunction)' not found in \(url.lastPathComponent)")
+            return nil
+        }
+
+        let lastIndex = descriptor.stages.count - 1
+        var loaded: [LoadedStage] = []
+        loaded.reserveCapacity(descriptor.stages.count)
+
+        for (index, stage) in descriptor.stages.enumerated() {
+            guard let fragmentFn = library.makeFunction(name: stage.fragmentFunction) else {
+                logger.error("""
+                    Stage '\(stage.name)' fragment function '\(stage.fragmentFunction)' \
+                    not found in \(url.lastPathComponent)
+                    """)
+                return nil
+            }
+            let isFinal = (index == lastIndex)
+            let pipelineDescriptor = MTLRenderPipelineDescriptor()
+            pipelineDescriptor.vertexFunction = vertexFn
+            pipelineDescriptor.fragmentFunction = fragmentFn
+            pipelineDescriptor.colorAttachments[0].pixelFormat = isFinal ? pixelFormat : .rgba16Float
+
+            do {
+                let state = try device.makeRenderPipelineState(descriptor: pipelineDescriptor)
+                loaded.append(LoadedStage(
+                    name: stage.name,
+                    pipelineState: state,
+                    samples: stage.samples,
+                    writesToDrawable: isFinal
+                ))
+            } catch {
+                logger.error("Stage '\(stage.name)' pipeline creation failed for \(url.lastPathComponent): \(error)")
+                return nil
+            }
+        }
+
+        // Use the final stage's pipeline as the primary `pipelineState` so any code
+        // path that expects a single non-nil state still has one.
+        guard let primary = loaded.last?.pipelineState else { return nil }
+        logger.info("Compiled staged preset '\(descriptor.name)' with \(loaded.count) stage(s)")
+        return CompiledShader(standard: primary, stages: loaded)
     }
 
     /// Compile a standard (non-mesh, non-ray-march) preset shader.
