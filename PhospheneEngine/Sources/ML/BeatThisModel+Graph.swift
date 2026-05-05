@@ -331,6 +331,9 @@ extension BeatThisModel {
 
     // MARK: - RoPE Application (transformer blocks)
 
+    // Apply RoPE to [B, S, headDim] using cos/sin [1, S, headDim/2].
+    // Matches `rotary_embedding_torch.rotate_half` paired-adjacent semantics
+    // — same bug as the 4D version in BeatThisModel+Frontend.swift.
     private static func applyRoPE(
         graph: MPSGraph,
         x: MPSGraphTensor,
@@ -338,20 +341,38 @@ extension BeatThisModel {
         sinTable: MPSGraphTensor,
         name: String
     ) -> MPSGraphTensor {
-        let half = headDim / 2
-        let x1 = graph.sliceTensor(x, dimension: 2, start: 0, length: half, name: "\(name)x1")
-        let x2 = graph.sliceTensor(x, dimension: 2, start: half, length: half, name: "\(name)x2")
-        let r1 = graph.subtraction(
-            graph.multiplication(x1, cosTable, name: "\(name)x1c"),
-            graph.multiplication(x2, sinTable, name: "\(name)x2s"),
-            name: "\(name)r1"
+        // swiftlint:disable force_unwrapping
+        let xShape = x.shape!
+        // swiftlint:enable force_unwrapping
+        let halfD = headDim / 2
+        // Reshape [B, S, D] → [B, S, D/2, 2]
+        let pairedShape: [NSNumber] = [
+            xShape[0], xShape[1],
+            NSNumber(value: halfD), 2
+        ]
+        let xPaired = graph.reshape(x, shape: pairedShape, name: "\(name)pair")
+        let evenSlice = graph.sliceTensor(
+            xPaired, dimension: 3, start: 0, length: 1, name: "\(name)ev"
         )
-        let r2 = graph.addition(
-            graph.multiplication(x1, sinTable, name: "\(name)x1s"),
-            graph.multiplication(x2, cosTable, name: "\(name)x2c"),
-            name: "\(name)r2"
+        let xEven = graph.squeeze(evenSlice, axis: 3, name: "\(name)evSq")
+        let oddSlice = graph.sliceTensor(
+            xPaired, dimension: 3, start: 1, length: 1, name: "\(name)od"
         )
-        return graph.concatTensors([r1, r2], dimension: 2, name: "\(name)cat")
+        let xOdd = graph.squeeze(oddSlice, axis: 3, name: "\(name)odSq")
+        let rEven = graph.subtraction(
+            graph.multiplication(xEven, cosTable, name: "\(name)evC"),
+            graph.multiplication(xOdd, sinTable, name: "\(name)odS"),
+            name: "\(name)rEv"
+        )
+        let rOdd = graph.addition(
+            graph.multiplication(xEven, sinTable, name: "\(name)evS"),
+            graph.multiplication(xOdd, cosTable, name: "\(name)odC"),
+            name: "\(name)rOd"
+        )
+        let rEvenE = graph.expandDims(rEven, axis: 3, name: "\(name)rEvEx")
+        let rOddE = graph.expandDims(rOdd, axis: 3, name: "\(name)rOdEx")
+        let rPaired = graph.concatTensors([rEvenE, rOddE], dimension: 3, name: "\(name)pCat")
+        return graph.reshape(rPaired, shape: xShape, name: "\(name)merge")
     }
 
     // MARK: - Transformer FFN
