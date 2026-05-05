@@ -67,6 +67,10 @@ def main() -> int:
     parser.add_argument("--audio", required=True, type=Path)
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--variant", default="small0")
+    parser.add_argument(
+        "--raw-dir", type=Path, default=None,
+        help="If set, also dump each stage's full Float32 tensor as raw .bin"
+    )
     args = parser.parse_args()
 
     print(f"[py-dump] decoding {args.audio.name} …")
@@ -89,13 +93,14 @@ def main() -> int:
 
     handles = []
 
+    raw_tensors: dict[str, np.ndarray] = {}
+
     def hook(name):
         def _hook(_module, _inputs, output):
             if isinstance(output, torch.Tensor):
                 captures.append(tensor_summary(name, output))
+                raw_tensors[name] = output.detach().cpu().numpy().astype(np.float32)
             else:
-                # Sequential output is just the tensor; tuple-output modules
-                # need explicit unpacking, but we don't expect any here.
                 print(f"[py-dump] WARN: {name} produced non-Tensor output: {type(output)}")
         return _hook
 
@@ -145,6 +150,12 @@ def main() -> int:
 
     for h in handles:
         h.remove()
+
+    if args.raw_dir is not None:
+        args.raw_dir.mkdir(parents=True, exist_ok=True)
+        for name, arr in raw_tensors.items():
+            arr.tofile(str(args.raw_dir / f"{name}.bin"))
+        print(f"[py-dump] wrote {len(raw_tensors)} raw tensors → {args.raw_dir}")
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     payload = {
