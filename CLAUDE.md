@@ -23,6 +23,41 @@ Deployment target: macOS 14.0+ (Sonoma). Swift 6.0. Metal 3.1+.
 
 All tests must pass before any new code is merged (regression gate).
 
+## Increment Completion Protocol
+
+Every increment — engine, preset, UX, docs, infrastructure — ends the same way. The protocol below is the standing rule. Skipping a step turns a finished increment into one that "looked finished in chat" and rots within a session or two.
+
+**Closeout report.** At the end of every increment, produce a short report covering:
+
+1. **Files changed** — concrete paths, grouped new vs. edited.
+2. **Tests run** — which suites, pass/fail counts, any pre-existing flakes called out.
+3. **Visual harness output** — when the increment is preset-facing or otherwise visually observable, include the `RENDER_VISUAL=1` per-stage / contact-sheet output paths or attach key frames. State explicitly when a change is not visually verifiable.
+4. **Documentation updates** — list every doc file touched.
+5. **Capability registry updates** — see below; cite the rows changed.
+6. **Engineering plan updates** — see below; cite the increment ID.
+7. **Known risks and follow-ups** — bounded list of what could break, what was deferred, and what the next recommended increment is.
+8. **Git status** — branch, commit hash(es), `git status` clean / dirty, files staged outside the increment's scope.
+
+**Durable learnings stay in docs.** Anything a future session will need to know — a non-obvious tuning constant, a Failed Approach, a renderer convention, a preset-author rule — goes into `CLAUDE.md`, `docs/DECISIONS.md`, `docs/SHADER_CRAFT.md`, the relevant docs/ subtree, or memory. **Do not leave durable learnings only in chat.** If the only record of "we learned X" is a paragraph in this conversation, future Claude will not have it.
+
+**`docs/ENGINEERING_PLAN.md` is mandatory to update.** Update it whenever an increment is **completed, split, renamed, deferred, or discovered to require prerequisite work**. Each increment ID should map to a row that says what done-when looks like and whether it's done. Plans drift fast — if the plan and the code disagree, treat that as a bug in the plan.
+
+**`docs/ENGINE/RENDER_CAPABILITY_REGISTRY.md` is mandatory to update** whenever **renderer, visual harness, certification pipeline, shader infrastructure, or preset architecture capabilities change**. New capability → new row. Capability promoted Missing → Partial → Supported → flip the status and cite the files. New blocker discovered → add it. Preset implications section gets the same treatment: what's now buildable, what's still blocked. The registry is the load-bearing document for "can preset family X be built today" — let it drift and audit work doubles in cost.
+
+**Commit locally to `main` after tests and docs are complete.** Use the standard commit message format (`[<increment-id>] <component>: <description>`). Prefer multiple small commits within an increment over one large commit — it makes `git bisect` useful.
+
+**Do not push to the remote without Matt's explicit approval.** Local `main` commits stay local. `git push` requires "yes, push" in the chat. This applies even when the work is clearly green and clearly Matt's request — pushing remains a separate decision.
+
+**Stop and report instead of forging ahead** when:
+
+- tests fail (engine or app), even pre-existing flakes that the increment touched;
+- preset acceptance gates or rubric checks fail;
+- implementing the increment as written would require broader architectural changes than were authorized — pause, surface the scope, get approval before expanding;
+- documentation conflicts with code that just changed (e.g. CLAUDE.md describes an API that no longer exists) and resolving the conflict requires judgement calls outside the increment's scope;
+- the commit would include unrelated files (`git status` shows changes outside the increment's stated scope) — back those changes out or surface them for approval before committing.
+
+When in doubt, write a short status update and ask. The cost of pausing to confirm is low. The cost of an increment that silently expanded scope, partially landed, or quietly skipped a doc update is high.
+
 ## Module Map
 
 ```
