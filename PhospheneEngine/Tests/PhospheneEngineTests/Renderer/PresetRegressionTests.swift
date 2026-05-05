@@ -29,9 +29,9 @@ private typealias PresetHashes = (steady: UInt64, beatHeavy: UInt64, quiet: UInt
 /// Inline golden dHash values for each preset × 3 fixtures.
 /// Update when a shader edit intentionally changes visual output — never silently.
 private let goldenPresetHashes: [String: PresetHashes] = [
-    // V.7.7 build: WORLD pillar (six-layer forest) + background dewy webs with
-    // Snell's-law drop refraction; foreground web code bit-identical to V.7.5.
-    "Arachne": (steady: 0x76BB0F0F07078E0F, beatHeavy: 0x76BB0F0F07078E0F, quiet: 0x76BB0F0F07078E0F),
+    // V.7.9 build: silk-as-thin-lines (Marschner BRDF removed, §5.10); frame-first
+    // build order (§5.2 60s cycle); hub as worley_fbm noise knot (§5.4).
+    "Arachne": (steady: 0x763B0F0F07078E0F, beatHeavy: 0x763B0F0F07078E0F, quiet: 0x763B0F0F07078E0F),
     "Ferrofluid Ocean": (steady: 0x56AB1C4A28B32727, beatHeavy: 0x5CB393AAAFA84840, quiet: 0xA64C51A62FD35356),
     "Glass Brutalist": (steady: 0x336954B4B4544D33, beatHeavy: 0x336954B4B4544D33, quiet: 0x336954B4B4544D33),
     "Gossamer": (steady: 0x5756A72F070F0F0D, beatHeavy: 0x5756A72F070F0F0D, quiet: 0x5756872D0F0F0F0D),
@@ -40,7 +40,7 @@ private let goldenPresetHashes: [String: PresetHashes] = [
     "Murmuration": (steady: 0x07449B6727773FF8, beatHeavy: 0x0B449A4727373FF8, quiet: 0x0744936727773FF8),
     "Nebula": (steady: 0x0000080C0C080000, beatHeavy: 0x0000080C0C080000, quiet: 0x0000080C0C080000),
     "Plasma": (steady: 0x030F170A072F1B0F, beatHeavy: 0x4193254F0E8E87C7, quiet: 0x0F1F0F0F0F07070F),
-    "Spectral Cartograph": (steady: 0x00180C8E0C0C0012, beatHeavy: 0x00180C8E0C0C6012, quiet: 0x00180C8E0C0C0012),
+    "Spectral Cartograph": (steady: 0x00180C0C0C0C0000, beatHeavy: 0x00180C0C0C0C6080, quiet: 0x00180C0C0C0C0000),
     "Volumetric Lithograph": (steady: 0x8C63D43512030000, beatHeavy: 0x8C63D43512030000, quiet: 0x8C63D43512030000),
     "Waveform": (steady: 0x000F0F0000000000, beatHeavy: 0x000F0F0000000000, quiet: 0x000F0F0000000000),
 ]

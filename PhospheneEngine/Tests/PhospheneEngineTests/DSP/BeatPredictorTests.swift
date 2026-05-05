@@ -34,7 +34,7 @@ private func drivePredictor(
         if phase < dt { pulse = beatPulse }
 
         let result = predictor.update(
-            beatBass: pulse, beatMid: 0, beatComposite: 0,
+            subBassOnset: pulse > 0.5, beatMid: 0, beatComposite: 0,
             time: Float(time), deltaTime: Float(dt)
         )
         results.append(result)
@@ -63,7 +63,7 @@ func beatPredictor_phaseRises0to1_over125BPMClickTrack() {
     var t = beatTime
     while t < beatTime + period {
         let pulse: Float = (t - beatTime) < dt ? 0.8 : 0
-        let res = predictor.update(beatBass: pulse, beatMid: 0, beatComposite: 0,
+        let res = predictor.update(subBassOnset: pulse > 0.5, beatMid: 0, beatComposite: 0,
                                    time: Float(t), deltaTime: Float(dt))
         phases.append(res.beatPhase01)
         t += dt
@@ -103,11 +103,11 @@ func beatPredictor_phaseResets_after3PeriodSilence() {
     let silenceStart = 6 * period
     let silenceDuration = period * 3.5
     var t = silenceStart
-    var lastResult = predictor.update(beatBass: 0, beatMid: 0, beatComposite: 0,
+    var lastResult = predictor.update(subBassOnset: false, beatMid: 0, beatComposite: 0,
                                       time: Float(t), deltaTime: Float(dt))
     t += dt
     while t < silenceStart + silenceDuration {
-        lastResult = predictor.update(beatBass: 0, beatMid: 0, beatComposite: 0,
+        lastResult = predictor.update(subBassOnset: false, beatMid: 0, beatComposite: 0,
                                       time: Float(t), deltaTime: Float(dt))
         t += dt
     }
@@ -129,11 +129,11 @@ func beatPredictor_bootstrap_enablesValidPhaseFromFirstOnset() {
     // Advance a quarter period without any onset pulse.
     // Expected phase after 0.125s with 0.5s period: ~0.25.
     var t: Float = 0.05   // start slightly after 0 to avoid trigger edge
-    var result = predictor.update(beatBass: 0, beatMid: 0, beatComposite: 0,
+    var result = predictor.update(subBassOnset: false, beatMid: 0, beatComposite: 0,
                                   time: t, deltaTime: dt)
     t += dt
     while t < 0.25 {
-        result = predictor.update(beatBass: 0, beatMid: 0, beatComposite: 0,
+        result = predictor.update(subBassOnset: false, beatMid: 0, beatComposite: 0,
                                   time: t, deltaTime: dt)
         t += dt
     }
@@ -142,12 +142,12 @@ func beatPredictor_bootstrap_enablesValidPhaseFromFirstOnset() {
     // After the first onset, the seeded period lets the predictor track phase immediately.
 
     // Fire first real beat and check phase resets to near 0.
-    let beatResult = predictor.update(beatBass: 0.9, beatMid: 0, beatComposite: 0,
+    let beatResult = predictor.update(subBassOnset: true, beatMid: 0, beatComposite: 0,
                                       time: t, deltaTime: dt)
     t += dt
 
     // After the onset, phase should restart near 0.
-    let postBeatResult = predictor.update(beatBass: 0, beatMid: 0, beatComposite: 0,
+    let postBeatResult = predictor.update(subBassOnset: false, beatMid: 0, beatComposite: 0,
                                           time: t, deltaTime: dt)
     _ = beatResult   // onset frame may have non-zero phase from previous lastBeatTime
 
@@ -160,7 +160,7 @@ func beatPredictor_bootstrap_enablesValidPhaseFromFirstOnset() {
     var midResult = postBeatResult
     let halfPeriodEnd = t + 0.25
     while t < halfPeriodEnd {
-        midResult = predictor.update(beatBass: 0, beatMid: 0, beatComposite: 0,
+        midResult = predictor.update(subBassOnset: false, beatMid: 0, beatComposite: 0,
                                      time: t, deltaTime: dt)
         t += dt
     }

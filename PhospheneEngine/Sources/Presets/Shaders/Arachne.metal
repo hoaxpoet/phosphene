@@ -303,13 +303,19 @@ static ArachneWebResult arachneEvalWeb(
     float  aaW   = 0.0006;
     float  hubR  = webR * 0.10;
 
-    // Hub concentric rings (unchanged from V.3.5.12)
+    // Hub: dense silk knot (§5.4) — overlapping strand noise, NOT concentric rings.
+    // Two-scale fbm4 min gives tangled-thread look matching refs 01, 11, 12.
+    // Only visible from radial stage (1+): hub forms as radials converge, not before.
     float hubCov = 0.0;
-    if (rT < hubR) {
-        float hCoord  = rT / hubR * 3.0;
-        float hf      = fract(hCoord);
-        float hubDist = min(hf, 1.0 - hf) * hubR / 3.0;
-        hubCov = smoothstep(0.0010 + aaW, 0.0010 - aaW, hubDist) * 0.65;
+    if (rT < hubR && stage >= 1u) {
+        float2 hubN  = tRel / max(hubR, 1e-5) * 4.5;
+        float  seedF = float(seed & 0xFFu) * (1.0 / 256.0);
+        float hA = fbm4(float3(hubN, seedF)) * 0.5 + 0.5;
+        float hB = fbm4(float3(hubN * 2.3 + float2(1.27, 0.74), seedF + 0.5)) * 0.5 + 0.5;
+        float raw = min(hA, hB);
+        // Threshold at 0.54→0.43: fbm4 remapped to [0,1], gives ~35% strand density.
+        hubCov = smoothstep(0.54, 0.43, raw) * 0.80
+               * smoothstep(hubR, hubR * 0.15, rT);  // fade at exact center
         // Hub tangent is degenerate — keep default (1,0)
     }
 
@@ -325,9 +331,10 @@ static ArachneWebResult arachneEvalWeb(
     float spokeLen  = webR - hubR;
     float sagAmount = kSag * spokeLen * spokeLen;
 
-    // Pre-compute outermost spoke tip positions for frame thread rendering (ref 11).
-    // Tips are at webR × d (sag formula is 0 at tProj=1). Stored in tRel space.
-    int    nTips = min(nVisible, 17);
+    // Pre-compute ALL spoke tip positions for frame thread polygon.
+    // nTips always uses full spokeCount so the frame polygon is available in stage 0
+    // (frame phase) BEFORE any radials appear — matching §5.2 biology-correct order.
+    int    nTips = min(spokeCount, 17);
     float2 tipPos[17];
     for (int ti = 0; ti < nTips; ti++) {
         int halfNt = spokeCount / 2;
@@ -376,14 +383,29 @@ static ArachneWebResult arachneEvalWeb(
     float spokeHalo    = exp(-minSpokeDist * minSpokeDist / (spokeHaloSig * spokeHaloSig))
                         * 0.38 * anchorFade;
 
-    // ── Frame threads: irregular polygon connecting outermost spoke tips (ref 11) ──
-    // These replace the implicit circular outer boundary with an irregular polygon that
-    // matches how real orb-weaver webs terminate at branch attachment points.
+    // ── Frame thread polygon — segment-by-segment reveal during stage 0 (§5.2 Frame) ──
+    // Stage 0 (frame phase): edges appear one at a time as progress advances 0→1.
+    //   Polygon stays OPEN (no closing edge) until all segments are laid.
+    // Stages 1+ (radial/spiral/stable/evicting): full polygon always present.
+    // This makes the frame polygon appear BEFORE any radials — matching §5.1 step 3
+    // biology and §5.2 "Frame 0–3 s" spec (ARACHNE_V8_DESIGN.md).
+    int  nFrameSegs;
+    bool closeFrame;
+    if (stage == 0u) {
+        nFrameSegs = clamp(int(progress * float(nTips + 1)), 0, nTips);
+        closeFrame = false;
+    } else {
+        nFrameSegs = nTips;
+        closeFrame = true;
+    }
     float minFrameDist = 1e6;
-    if (nTips >= 2 && rT >= webR * 0.72) {
-        for (int fi = 0; fi < nTips; fi++) {
+    if (nTips >= 2 && rT >= webR * 0.70) {
+        for (int fi = 0; fi < nFrameSegs; fi++) {
+            int fj = fi + 1;
+            if (!closeFrame && fj >= nFrameSegs) continue;  // open polygon during frame stage
+            fj = fj % nTips;
             float2 ta = tipPos[fi];
-            float2 tb = tipPos[(fi + 1) % nTips];
+            float2 tb = tipPos[fj];
             float2 ba = tb - ta;
             float2 pa = tRel - ta;
             float  h  = saturate(dot(pa, ba) / max(dot(ba, ba), 1e-8));
@@ -625,32 +647,18 @@ fragment float4 arachne_fragment(
     // When V=T, the R lobe fires for strands aligned with kL (theta_h→0 when T‖L),
     // and the TT lobe fires for anti-parallel strands. Different orientations glow
     // differently — producing the axial-streak directionality of 04_specular_silk_fiber_highlight.jpg.
-    const float3 kL      = normalize(float3(0.45, 0.65, 0.30));
-    const float3 kV      = float3(0.0, 0.0, 1.0);
-    const float3 kBioL   = normalize(float3(0.0, 0.0, -1.0));
-    // V.7.5 §10.1.4: TT-lobe warm rim (back-lit silk per ref 04). Shared by
-    // anchor + pool silk material sites and by the §5.3 backsideCue blend.
-    const float3 kWarmTT = float3(1.00, 0.78, 0.45);
-    // V.7.5 §10.1.6: warm directional key + cool ambient fill (ref 05).
-    // Cool ambient prevents the off-rim threads from going pure-warm and
-    // reading as cyberpunk-orange (the §10.1.6 caveat).
+    // §5.10 (V.7.9): Marschner-lite BRDF removed. Silk = thin lines + axial highlight.
+    // kL used for axial highlight; kV for drop spherical-cap; kLightCol/kAmbCol for tint.
+    const float3 kL       = normalize(float3(0.45, 0.65, 0.30));
+    const float3 kV       = float3(0.0, 0.0, 1.0);
     const float3 kLightCol = float3(1.00, 0.85, 0.65);
     const float3 kAmbCol   = float3(0.55, 0.65, 0.85) * 0.15;
-
-    // SSS bioluminescent rim constant: evaluated once per fragment, shared by all strands.
-    // N = screen normal (0,0,1), L = behind screen (0,0,-1), V = kV.
-    // sss_backlit result ≈ 0.052 — subtle uniform rim on all strands (E4 gate).
-    float kSSSRim = sss_backlit(float3(0.0, 0.0, 1.0), kBioL, kV, 0.25, 0.2);
 
     // ── §4.4 Smooth-union strand accumulation ─────────────────────────────────
     float strandPseudo  = 1.0;
     float prevStrandCov = 0.0;
     float3 strandColor  = float3(0.0);
     float3 dropColorAccum = float3(0.0); // per-web drop material accumulator (replaces dropPseudo)
-
-    // §5.3 R-lobe + coverage accumulators for warm TT-lobe backsideCue (V.7.5 §10.1.4)
-    float strandCovTotal = 0.0;
-    float rLobeTotal     = 0.0;
 
     // ── Permanent anchor web (D-037: always visible; seed=1984u, hub upper-centre)
     {
@@ -668,62 +676,19 @@ fragment float4 arachne_fragment(
         float delta        = max(0.0, newStrandCov - prevStrandCov);
 
         if (delta > 0.001) {
-            // §4.3 specular: silk Marschner-lite per-strand (mat_silk_thread, M3+E4)
-            float2 tang2D = wr.strandTangent;
-            float3 T      = normalize(float3(tang2D, 0.0));
-            float3 N_fib  = float3(-tang2D.y, tang2D.x, 0.0);
-
-            // 2D-adapted V: view along fiber axis so R lobe fires for L-aligned strands
-            float3 V_silk = T;
-
-            // §3.3 Cool-warm tint with rim modulation
-            float3 silkBase = hsv2rgb(float3(fract(0.52 + hueDrift * 0.10), 0.55, 1.00));
-            // V.7.5 §10.1.4: warm TT-lobe replaces cool-blue rim (ref 04 mandatory).
-            float rimT = saturate(1.0 - abs(dot(T, kL)));
-            float3 silkTint = mix(silkBase, kWarmTT, rimT * 0.45);
-
-            // mat_silk_thread: Marschner-lite fiber BRDF (§3)
-            // azimuthal_r=0.35: wider than 3D default (0.18) for 2D V=T adaptation.
-            // Static base tint — D-026 deviation gain applied post-BRDF (see below).
-            FiberParams fp;
-            fp.fiber_tangent = T;
-            fp.fiber_normal  = N_fib;
-            fp.azimuthal_r   = 0.35;
-            fp.azimuthal_tt  = 0.55;
-            fp.absorption    = 0.10;
-            // V.7.5 §10.1.3: silkTint factor 0.50 → 0.32 so drops carry the visual focus.
-            fp.tint          = silkTint * 0.32;  // static base — gain applied after BRDF
-            MaterialResult silk = mat_silk_thread(float3(uv, 0.0), fp, kL, V_silk);
-            silk.emission = min(silk.emission, float3(1.6)); // HDR cap
-
-            // Bioluminescent SSS rim (E4 — static; gain applied below with strand emission)
-            silk.emission += silkTint * kSSSRim * 0.40;
-
-            // detail_normal: analytic fiber cross-section normal (E2 gate)
-            float3 detail_normal = N_fib;
-            silk.emission *= (0.88 + 0.12 * abs(detail_normal.x));
-
-            // D-026 deviation emission gain (replaces brightness × bassBoost, D-020 safe)
+            // §5.10 (V.7.9): silk as thin lines + axial highlight (Marschner-lite removed).
+            // Real silk at Arachne frame scale = faint connective tissue; drops carry 80%.
+            float2 tang2D   = wr.strandTangent;
+            float3 silkBase = hsv2rgb(float3(fract(0.52 + hueDrift * 0.10), 0.45, 0.80));
+            // Axial highlight fires when kL grazes strand at shallow angle (abs dot < 0.35).
+            float axial  = 1.0 + 0.6 * smoothstep(0.35, 0.05, abs(dot(tang2D, kL.xy)));
             float emGain = baseEmissionGain + beatAccent;
-            silk.emission *= emGain;
-            // V.7.5 §10.1.6: warm key tint + cool ambient fill (ref 05).
-            silk.emission *= kLightCol;
-            silk.emission += silk.albedo * kAmbCol;
-
-            // Hub fallback: tangent undefined → clamp to base bioluminescent glow
-            float tangStrength = saturate(length(tang2D) * 8.0);
-            silk.emission = mix(silkTint * 0.22 * emGain, silk.emission, tangStrength);
-
-            strandColor  += silk.emission * delta;
+            float3 silk_col = silkBase * 0.60 * axial * emGain;
+            silk_col *= kLightCol;
+            silk_col += silkBase * kAmbCol * 0.25;
+            strandColor  += silk_col * delta;
             strandPseudo  = newStrandD;
             prevStrandCov = newStrandCov;
-
-            // §5.3 R-lobe accumulation for backsideCue
-            float TdotL   = dot(T, kL);
-            float thetaHR = acos(clamp((TdotL + 1.0) * 0.5, 0.0, 1.0)); // V=T → theta_o=0
-            float rLobe   = exp(-thetaHR * thetaHR / (2.0 * 0.35 * 0.35));
-            rLobeTotal    += rLobe * delta;
-            strandCovTotal += delta;
         } else {
             strandPseudo  = op_blend(strandPseudo, 1.0 - wr.strandCov, 0.012);
             prevStrandCov = 1.0 - strandPseudo;
@@ -777,55 +742,18 @@ fragment float4 arachne_fragment(
         float delta        = max(0.0, newStrandCov - prevStrandCov);
 
         if (delta > 0.001) {
-            // §4.3 specular: silk Marschner-lite for pool web strands
+            // §5.10 (V.7.9): silk as thin lines + axial highlight (Marschner-lite removed)
             float2 tang2D   = wr.strandTangent;
-            float3 T        = normalize(float3(tang2D, 0.0));
-            float3 N_fib    = float3(-tang2D.y, tang2D.x, 0.0);
-            float3 V_silk   = T;
-
-            // Per-web cool-warm tint using birth_hue (D-026 hue drift modulation)
-            float finalHue  = fract(w.birth_hue + hueDrift * 0.12);
-            float3 silkBase = hsv2rgb(float3(finalHue, 0.55, 1.00));
-            // V.7.5 §10.1.4: warm TT-lobe replaces cool-blue rim (ref 04 mandatory).
-            float rimT      = saturate(1.0 - abs(dot(T, kL)));
-            float3 silkTint = mix(silkBase, kWarmTT, rimT * 0.45);
-
-            FiberParams fp;
-            fp.fiber_tangent = T;
-            fp.fiber_normal  = N_fib;
-            fp.azimuthal_r   = 0.35;
-            fp.azimuthal_tt  = 0.55;
-            fp.absorption    = 0.10;
-            // V.7.5 §10.1.3: silkTint factor 0.50 → 0.32 so drops carry the visual focus.
-            fp.tint          = silkTint * 0.32 * w.opacity;  // static base with opacity
-            MaterialResult silk = mat_silk_thread(float3(uv, 0.0), fp, kL, V_silk);
-            silk.emission = min(silk.emission, float3(1.6));
-
-            silk.emission += silkTint * kSSSRim * 0.40 * w.opacity;
-
-            float3 detail_normal = N_fib;
-            silk.emission *= (0.88 + 0.12 * abs(detail_normal.x));
-
-            // D-026 deviation emission gain (same global gain for all pool webs)
+            float  finalHue = fract(w.birth_hue + hueDrift * 0.12);
+            float3 silkBase = hsv2rgb(float3(finalHue, 0.45, 0.80));
+            float axial  = 1.0 + 0.6 * smoothstep(0.35, 0.05, abs(dot(tang2D, kL.xy)));
             float emGain = baseEmissionGain + beatAccent;
-            silk.emission *= emGain;
-            // V.7.5 §10.1.6: warm key tint + cool ambient fill (ref 05).
-            silk.emission *= kLightCol;
-            silk.emission += silk.albedo * kAmbCol;
-
-            float tangStrength = saturate(length(tang2D) * 8.0);
-            silk.emission = mix(silkTint * 0.22 * emGain * w.opacity,
-                                silk.emission, tangStrength);
-
-            strandColor    += silk.emission * delta;
+            float3 silk_col = silkBase * 0.60 * w.opacity * axial * emGain;
+            silk_col *= kLightCol;
+            silk_col += silkBase * kAmbCol * 0.25;
+            strandColor    += silk_col * delta;
             strandPseudo    = newStrandD;
             prevStrandCov   = newStrandCov;
-
-            float TdotL   = dot(T, kL);
-            float thetaHR = acos(clamp((TdotL + 1.0) * 0.5, 0.0, 1.0));
-            float rLobe   = exp(-thetaHR * thetaHR / (2.0 * 0.35 * 0.35));
-            rLobeTotal    += rLobe * delta;
-            strandCovTotal += delta;
         } else {
             strandPseudo  = op_blend(strandPseudo, 1.0 - scaledStrand, 0.012);
             prevStrandCov = 1.0 - strandPseudo;
@@ -849,11 +777,6 @@ fragment float4 arachne_fragment(
             dropColorAccum  += dropEmission * scaledDrop;
         }
     }
-
-    // §5.3 Cool-blue rim back-light cue ─────────────────────────────────────
-    // Back-face of strands (R-lobe minimal) catch the bioluminescent back-light
-    // as a cool-blue rim, simulating photon scatter through the silk structure.
-    float backsideCue = strandCovTotal * saturate(1.0 - rLobeTotal);
 
     // ── Spider (2D — clip-space → UV, Y-flipped; D-040 overlay; not in smooth-union)
     float3 spiderContrib = float3(0.0);
@@ -895,10 +818,8 @@ fragment float4 arachne_fragment(
     // Background webs reintroduced in V.7.8 after web outer boundary is fixed.
     float3 bgColor = drawWorld(uv, moodRow, moodRow.z);
 
-    // ── §5.3 Cool-blue rim back-light + combine strands ───────────────────────
+    // ── Combine strands ────────────────────────────────────────────────────────
     float3 webColor = strandColor + dropColorAccum;
-    // V.7.5 §10.1.4: warm back-rim cue (was cool-blue 0.40,0.62,0.95).
-    webColor += float3(0.95, 0.70, 0.45) * backsideCue * 0.20;
 
     // Spider overlay
     if (spider.blend > 0.01) {
