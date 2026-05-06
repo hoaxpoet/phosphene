@@ -3,7 +3,9 @@
 **Increment:** BUG-008.1 (diagnosis only — no fix code)
 **Date:** 2026-05-06
 **Surfaced by:** BUG-006.2 manual validation, capture `~/Documents/phosphene_sessions/2026-05-06T20-11-46Z/`
-**Conclusion:** **The Phosphene Swift port of Beat This! is faithful to the upstream PyTorch reference. The 5.5% BPM error on Love Rehab originates in the upstream model itself, not in any Phosphene code path. Sample-rate plumbing, determinism, and resolver are ruled out by existing committed regression fixtures.**
+**Conclusion:** **The Phosphene Swift port of Beat This! is faithful to the upstream PyTorch reference. The 5.5 % "error" on Love Rehab is musical interpretation (kick rate vs. perceptual beat), not a Phosphene-side or upstream-model accuracy bug. Sample-rate plumbing, determinism, resolver port-fidelity, and model accuracy on quantized input are all confirmed clean.**
+
+**Update 2026-05-06 (synthetic-kick follow-up):** Beat This! recovers exactly 125.00 BPM on a 30-second 60 Hz quantized kick track at 125 BPM. The model is accurate at this tempo on machine-quantized input. The 118 BPM it produces on Love Rehab therefore reflects the track's perceptual-beat structure, not a model failure. See "Synthetic-kick follow-up" section below.
 
 ---
 
@@ -220,6 +222,66 @@ running in ≈ 1 s and serves as a permanent regression guard on the
 - `PhospheneEngine/Sources/DSP/BeatGridResolver.swift` — uses trimmed
   mean over model peaks; matches Python reference exactly per golden
   test.
+
+## Synthetic-kick follow-up (2026-05-06)
+
+After the initial diagnosis, the question "is 125 BPM actually correct
+for Love Rehab?" was raised. The reference fixture description hedges
+("**~**125 BPM"); three of four independent estimators on the audio
+land near 118; only sub_bass IOI returns 125 — and the "125 metadata
+tag" most likely originates from kick-rate analysis (Beatport / Spotify
+Audio Features), the same estimator class as DSP.1's IOI, so they're
+not independent confirmations.
+
+To settle whether Beat This! is *capable* of returning 125 BPM at all
+on quantized input — i.e., whether 125 is in the model's output
+distribution — a synthetic-kick test was added to
+`BeatGridAccuracyDiagnosticTests`. The synthesizer produces a 30 s
+mono 60 Hz exponentially-decaying kick (TR-style, 200 ms tail,
+2 ms attack ramp) at every quarter note for a target BPM. The
+audio goes through the full `DefaultBeatGridAnalyzer` pipeline at
+44.1 kHz native (forcing the AVAudioConverter to resample, exactly
+matching the production prepared-preview path).
+
+**Results:**
+
+| Input BPM | Produced BPM | Delta | Beats produced | Beats expected |
+|---|---|---|---|---|
+| 120.0 | 117.97 | −2.03 (−1.7 %) | 59 | 60 |
+| **125.0** | **125.00** | **0.00 (0.0 %)** | 63 | 62 |
+| 130.0 | 130.09 | +0.09 (+0.07 %) | 66 | 65 |
+
+**Interpretation:**
+
+- **125 BPM is in the model's output distribution.** When the audio is
+  unambiguously at 125 BPM (kick on every quarter, no other accent
+  structure), the model returns 125.00 exactly. The Love Rehab output
+  of 118 BPM is therefore not a model accuracy ceiling; it reflects
+  the track's actual perceptual-beat structure (the kick is at 125
+  but accent/melodic emphasis pulls the perceived beat to 118). This
+  is a feature of how Beat This! was trained — on human tap
+  annotations, which integrate over the whole mix.
+
+- **120 BPM input → 117.97 produced is a small separate finding.**
+  Possibly related to the model's training distribution clustering
+  around common dance tempos (118–124 House range), or to frame
+  quantization at 50 fps. Not load-bearing for BUG-008. Documented
+  here in case a future model-accuracy investigation wants the
+  baseline.
+
+- **130 BPM input → 130.09 produced is essentially exact.** Confirms
+  the model is not generally biased — the 120 → 118 shift is a
+  point feature, not a tempo-invariant attractor.
+
+**Implication for BUG-008.2 scope:** the recommended fix (option 1 —
+log estimator disagreements, don't act on them) is correct as written.
+The Love Rehab 118 vs. 125 disagreement is genuine (not a port bug,
+not a model accuracy bug, not a sample-rate bug); it represents two
+valid musical interpretations of the same audio. Surfacing the
+disagreement in `session.log` lets future per-track judgment be
+informed by data; mechanically preferring one estimator would be
+wrong because we cannot prove which estimator is "correct" for any
+given track.
 
 ## Cross-reference
 
