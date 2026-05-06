@@ -275,7 +275,7 @@ Note: the diagnosis document stated 5; the implemented value is 7. The determini
 
 Fix A closes the primary issue on all tracks (prepared-cache sessions, playback > 30 s). Fix B eliminates oscillation on any cadence-mismatch scenario. Both shipped in one increment. Widening `strictMatchWindow` is explicitly NOT needed.
 
-**Related:** DSP.2 S7, DSP.3.4 (fixed the same issue on live path — prepared-cache path missed), D-077, D-079 (touched file but did not change lock semantics), BUG-008 (Love Rehab has an additional BPM-offset symptom on top of this bug). Commits: BUG-007.1 diagnosis `f616bdb1`; BUG-007.2 fix (this increment).
+**Related:** DSP.2 S7, DSP.3.4 (fixed the same issue on live path — prepared-cache path missed), D-077, D-079 (touched file but did not change lock semantics), BUG-008 (Love Rehab has an additional BPM-offset symptom on top of this bug). Commits: BUG-007.1 diagnosis `f616bdb1`; BUG-007.2 fix `4fc58bdf` + SwiftLint cleanup `3a5c9a86`.
 
 ---
 
