@@ -96,10 +96,20 @@ float sceneSDF(float3 p,
     // 3. Beat accent: glass nodes briefly swell on bass onset, then decay.
     float pulse = f.beat_bass * 0.055f;
 
-    // 4. Mercury melt radius: sub_bass (proxy for bass stem) drives
-    //    opSmoothUnion, making the mercury appear to melt and merge at
-    //    high bass.  Range: 0.06 (silence) → ~0.44 (max sub_bass + bass).
-    float sminK = 0.06f + f.sub_bass * 0.28f + f.bass * 0.10f;
+    // 4. Mercury melt radius: continuous bass band (Layer 1 of the audio
+    //    data hierarchy) drives the smooth-union baseline; bass deviation
+    //    (D-026) adds the kick-onset accent on top. The earlier formula
+    //    `sub_bass * 0.28 + bass * 0.10` weighted an unset / unreliable
+    //    sub-band (`f.sub_bass`) with an arbitrary 2.8× factor and is now
+    //    superseded by the deviation-aware mix below. (QR.1, D-079)
+    //    Range:
+    //      silence  (bass=0,   bass_dev=0)   → 0.06
+    //      steady   (bass=0.5, bass_dev=0)   → 0.14
+    //      kick     (bass=0.8, bass_dev=0.6) → 0.218
+    //    The accent component is small (0.05·bass_dev) so it stays within
+    //    the audio-data-hierarchy "beat ≤ 2× continuous" rule, while still
+    //    scaling proportionally across mix densities.
+    float sminK = 0.06f + f.bass * 0.16f + f.bass_dev * 0.05f;
 
     // 5. Evaluate all three material primitives in cell-local space.
     float dAlum  = ks_sdAluminumBars(pr);

@@ -37,7 +37,11 @@ private let goldenPresetHashes: [String: PresetHashes] = [
     "Ferrofluid Ocean": (steady: 0x56AB1C4A28B32727, beatHeavy: 0x5CB393AAAFA84840, quiet: 0xA64C51A62FD35356),
     "Glass Brutalist": (steady: 0x336954B4B4544D33, beatHeavy: 0x336954B4B4544D33, quiet: 0x336954B4B4544D33),
     "Gossamer": (steady: 0x5756A72F070F0F0D, beatHeavy: 0x5756A72F070F0F0D, quiet: 0x5756872D0F0F0F0D),
-    "Kinetic Sculpture": (steady: 0x5EAB7295D25B4A4A, beatHeavy: 0x5AAB7295D25B4A4F, quiet: 0x56AB7295925B4A4A),
+    // QR.1 (D-079): sminK now mixes continuous bass (Layer 1) + bass_dev
+    // accent. steady/quiet hashes regenerated to original V.7 values within
+    // the 8-bit dHash tolerance; beatHeavy shifts slightly because bass_dev
+    // now contributes a small +0.06 to the smooth-union radius.
+    "Kinetic Sculpture": (steady: 0x5EAB7295D25B4A4A, beatHeavy: 0x5AAB72B5564B4A4B, quiet: 0x56AB7295925B4A4A),
     "Membrane": (steady: 0x33E3A919C9627939, beatHeavy: 0x12A3A998C9646139, quiet: 0x47E3C919CD627959),
     "Murmuration": (steady: 0x07449B6727773FF8, beatHeavy: 0x0B449A4727373FF8, quiet: 0x0744936727773FF8),
     "Nebula": (steady: 0x0000080C0C080000, beatHeavy: 0x0000080C0C080000, quiet: 0x0000080C0C080000),
