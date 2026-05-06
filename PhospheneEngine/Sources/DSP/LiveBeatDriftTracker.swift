@@ -29,6 +29,31 @@ import os.log
 
 private let logger = Logger(subsystem: "com.phosphene.dsp", category: "LiveBeatDriftTracker")
 
+// MARK: - Diagnostic Trace (BUG_007_DIAGNOSIS)
+
+/// Per-onset trace entry captured when `diagnosticTrace` is set on a
+/// `LiveBeatDriftTracker`. Gated at call sites — zero overhead in production.
+public struct LiveBeatDriftTraceEntry: Sendable {
+    /// Playback time when the sub_bass onset fired (seconds).
+    public let onsetTime: Double
+    /// Nearest grid beat found within `driftSearchWindow`, or nil.
+    public let nearestBeat: Double?
+    /// `nearest - onsetTime` when a beat was found, else nil.
+    public let instantDriftMs: Double?
+    /// Smoothed drift immediately before this onset (ms).
+    public let prevDriftMs: Double
+    /// Smoothed drift after EMA update (ms). Equal to `prevDriftMs` when no beat found.
+    public let newDriftMs: Double
+    /// Whether `abs(instantDrift − prevDrift) < strictMatchWindow`.
+    public let isTightMatch: Bool
+    /// `matchedOnsets` counter after this update.
+    public let matchedOnsets: Int
+    /// `consecutiveMisses` counter after this update.
+    public let consecutiveMisses: Int
+    /// Lock state after this update.
+    public let lockState: LiveBeatDriftTracker.LockState
+}
+
 // MARK: - LiveBeatDriftTracker
 
 /// Aligns live `beatPhase01` to a cached offline `BeatGrid` via drift tracking.
@@ -82,6 +107,16 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
     private static let lockThreshold: Int = 4
     /// Consecutive misses to drop `.locked` back to `.locking`.
     private static let lockReleaseMisses: Int = 3
+
+    // MARK: - Diagnostic (BUG_007_DIAGNOSIS)
+
+    /// Optional per-onset trace callback. Set in tests only; never in production code.
+    /// Called from within the NSLock — implementations must not call back into the tracker.
+    public var diagnosticTrace: (@Sendable (LiveBeatDriftTraceEntry) -> Void)? {
+        get { lock.lock(); defer { lock.unlock() }; return _diagnosticTrace }
+        set { lock.lock(); defer { lock.unlock() }; _diagnosticTrace = newValue }
+    }
+    private var _diagnosticTrace: (@Sendable (LiveBeatDriftTraceEntry) -> Void)?
 
     // MARK: - State (lock-guarded)
 
@@ -236,6 +271,7 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
 
         if subBassOnset {
             lastOnsetTime = pt
+            let prevDrift = drift
             if let nearest = grid.nearestBeat(
                 to: pt + drift, within: Self.driftSearchWindow
             ) {
@@ -245,14 +281,36 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
                 // Tight-match counter for lock progression. The instant drift
                 // landing within ±30 ms of the smoothed drift means the onset
                 // sat tightly on the cached beat.
-                if abs(instantDrift - drift) < Self.strictMatchWindow {
+                let isTight = abs(instantDrift - drift) < Self.strictMatchWindow
+                if isTight {
                     matchedOnsets = min(matchedOnsets + 1, Int.max - 1)
                     consecutiveMisses = 0
                 } else {
                     consecutiveMisses += 1
                 }
+                if let cb = _diagnosticTrace {
+                    let entry = LiveBeatDriftTraceEntry(
+                        onsetTime: pt, nearestBeat: nearest,
+                        instantDriftMs: instantDrift * 1000,
+                        prevDriftMs: prevDrift * 1000, newDriftMs: drift * 1000,
+                        isTightMatch: isTight,
+                        matchedOnsets: matchedOnsets, consecutiveMisses: consecutiveMisses,
+                        lockState: computeLockState()
+                    )
+                    cb(entry)
+                }
             } else {
                 consecutiveMisses += 1
+                if let cb = _diagnosticTrace {
+                    let entry = LiveBeatDriftTraceEntry(
+                        onsetTime: pt, nearestBeat: nil, instantDriftMs: nil,
+                        prevDriftMs: prevDrift * 1000, newDriftMs: drift * 1000,
+                        isTightMatch: false,
+                        matchedOnsets: matchedOnsets, consecutiveMisses: consecutiveMisses,
+                        lockState: computeLockState()
+                    )
+                    cb(entry)
+                }
             }
         }
 
