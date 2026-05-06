@@ -181,10 +181,11 @@ func cacheHit_skipsAnalyzer() async throws {
     let track = TrackIdentity(title: "Cache Hit", artist: "Test")
 
     _ = await preparer.prepare(tracks: [track])
-    #expect(counting.callCount == 1, "First prepare should call analyzer once")
+    // DSP.4: two calls per prepare — Step 5 (full-mix) + Step 6 (drums stem).
+    #expect(counting.callCount == 2, "First prepare should call analyzer twice (full-mix + drums)")
 
     _ = await preparer.prepare(tracks: [track])
-    #expect(counting.callCount == 1, "Second prepare should short-circuit on cache hit")
+    #expect(counting.callCount == 2, "Second prepare should short-circuit on cache hit")
 }
 
 /// Full pipeline with real DefaultBeatGridAnalyzer must produce a non-empty
@@ -247,6 +248,65 @@ func cacheAccessor_beatGrid_matchesCachedTrackData() {
 
     let recalled = cache.beatGrid(for: track)
     #expect(recalled == grid)
+}
+
+// MARK: - DSP.4 — drumsBeatGrid wiring smoke test
+
+/// With a stub analyzer wired, `prepare()` must populate both `beatGrid` and
+/// `drumsBeatGrid` on the cached data. `drumsBeatGrid` is populated from
+/// `stemWaveforms[1]` (drums stem index per StemSeparator.stemLabels).
+@Test
+@MainActor
+func drumsBeatGrid_wiring_populatesCachedField() async throws {
+    let device = try #require(MTLCreateSystemDefaultDevice(), "Metal device required")
+    let separator = try StubSeparator(device: device)
+    let counting = CountingBeatGridAnalyzer()
+
+    let preparer = SessionPreparer(
+        resolver: FixedURLResolver(),
+        downloader: SinePreviewDownloader(sampleRate: 44100, duration: 5.0),
+        stemSeparator: separator,
+        stemAnalyzer: StubAnalyzer(),
+        moodClassifier: MoodClassifier(),
+        beatGridAnalyzer: counting
+    )
+
+    let track = TrackIdentity(title: "DSP.4 Wiring", artist: "Test")
+    let result = await preparer.prepare(tracks: [track])
+    let cached = try #require(result.cache.loadForPlayback(track: track))
+
+    // Analyzer called twice: once for full mix (Step 5), once for drums stem (Step 6).
+    #expect(counting.callCount == 2, "Step 5 (full mix) + Step 6 (drums stem) = 2 calls")
+
+    // Both grids should exist on the cached data (CountingBeatGridAnalyzer returns .empty
+    // which satisfies the non-nil check — field is populated, just with an empty grid).
+    // The drumsBeatGrid accessor must also work.
+    let drumsGrid = result.cache.drumsBeatGrid(for: track)
+    #expect(drumsGrid != nil, "drumsBeatGrid accessor must return a non-nil value when cached")
+    #expect(drumsGrid == cached.drumsBeatGrid, "accessor must return the same value as the stored field")
+}
+
+/// With no analyzer (nil), `drumsBeatGrid` must be `.empty` — same contract as `beatGrid`.
+@Test
+@MainActor
+func nilAnalyzer_producesEmptyDrumsBeatGrid() async throws {
+    let device = try #require(MTLCreateSystemDefaultDevice(), "Metal device required")
+    let separator = try StubSeparator(device: device)
+
+    let preparer = SessionPreparer(
+        resolver: FixedURLResolver(),
+        downloader: SinePreviewDownloader(),
+        stemSeparator: separator,
+        stemAnalyzer: StubAnalyzer(),
+        moodClassifier: MoodClassifier()
+    )
+
+    let track = TrackIdentity(title: "DSP.4 Nil Analyzer", artist: "Test")
+    let result = await preparer.prepare(tracks: [track])
+    let cached = try #require(result.cache.loadForPlayback(track: track))
+
+    #expect(cached.drumsBeatGrid == .empty, "nil analyzer must produce .empty drumsBeatGrid")
+    #expect(result.cache.drumsBeatGrid(for: track) == .empty)
 }
 
 // MARK: - BUG-008.2 — BPM mismatch wiring smoke test

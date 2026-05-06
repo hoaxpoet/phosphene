@@ -633,7 +633,7 @@ Minimum score: **10/15** with all mandatory passing. Uncertified presets stay in
 
 **Lifecycle:** `idle` → `connecting` → `preparing` → `ready` → `playing` → `ended`.
 
-**Per-track preparation:** Download preview (iTunes Search API `previewUrl`) → decode to PCM (AVAudioFile) → stem separation (MPSGraph, ~142ms) → MIR pipeline (BPM, key, mood, spectral, structural) → cache in StemCache.
+**Per-track preparation:** Download preview (iTunes Search API `previewUrl`) → decode to PCM (AVAudioFile) → stem separation (MPSGraph, ~142ms) → MIR pipeline (BPM, key, mood, spectral, structural) → Beat This! on full mix (offline `beatGrid`) → Beat This! on drums stem only (`drumsBeatGrid`, DSP.4 diagnostic, same analyzer instance) → cache in StemCache. `drumsBeatGrid` is logged in `session.log` alongside `beatGrid` but not consumed by `LiveBeatDriftTracker` at runtime.
 
 **Track transition behavior:** On track change, `VisualizerEngine` loads cached stems from StemCache — StemFeatures is populated immediately, never zeroed. StemSampleBuffer is NOT cleared (ring buffer continues for real-time refinement). Real-time separation crossfades with cached data after ~10–15s. No preset ever sees zero stems during a playlist session.
 

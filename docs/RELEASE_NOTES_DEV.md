@@ -6,6 +6,35 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-06-d] DSP.4 — Drums-stem Beat This! diagnostic (third BPM estimator)
+
+**Increment:** DSP.4
+**Type:** Diagnostic enhancement (`dsp.beat`)
+
+**What changed.** Added a third BPM estimator — Beat This! run on the isolated drums stem — logged at preparation time alongside the existing MIR (kick-rate IOI) and full-mix Beat This! estimates. No runtime behaviour change.
+
+**Files changed:**
+- `PhospheneEngine/Sources/Session/StemCache.swift` — `CachedTrackData.drumsBeatGrid: BeatGrid` (default `.empty`); `StemCache.drumsBeatGrid(for:)` accessor.
+- `PhospheneEngine/Sources/Session/SessionPreparer+Analysis.swift` — Step 6: feed `stemWaveforms[1]` (drums) into the same `DefaultBeatGridAnalyzer` used for the full mix.
+- `PhospheneEngine/Sources/Session/BPMMismatchCheck.swift` — `ThreeWayBPMReading` struct + `detectThreeWayBPMDisagreement` pure function.
+- `PhospheneEngine/Sources/Session/SessionPreparer+WiringLogs.swift` — `WIRING: SessionPreparer.drumsBeatGrid` per track; precedence logic: `WARN: BPM 3-way` (preferred, all three present) / `WARN: BPM mismatch` (fallback, drumsBPM zero).
+- `PhospheneEngine/Tests/.../Session/BPMMismatchCheckTests.swift` — 7 new 3-way detector tests.
+- `PhospheneEngine/Tests/.../Integration/BeatGridIntegrationTests.swift` — 2 new drumsBeatGrid wiring tests.
+- `docs/ENGINEERING_PLAN.md`, `docs/RELEASE_NOTES_DEV.md`, `CLAUDE.md` — updated.
+
+**Log lines added per prepared track:**
+```
+WIRING: SessionPreparer.beatGrid track='...' bpm=118.1 beats=60 isEmpty=false
+WIRING: SessionPreparer.drumsBeatGrid track='...' bpm=125.0 beats=60 isEmpty=false
+WARN: BPM 3-way track='Love Rehab' mir_bpm=125.0 grid_bpm=118.1 drums_bpm=125.0 mir-grid=5.6% mir-drums=0.0% grid-drums=5.6% (DSP.4: estimators on full-mix vs drums-stem vs kick-rate IOI)
+```
+
+**Performance:** one additional Beat This! inference call per prepared track (~415 ms on M-class silicon, absorbed in existing preparation window).
+
+**Next step:** collect 2–3 fresh captures across genres; design fusion logic (OR.4 / DSP.5) when the fan-out pattern is understood.
+
+---
+
 ## [dev-2026-05-06-c] BUG-008.1 + BUG-008.2 — Diagnose & surface offline-grid vs MIR BPM disagreement
 
 **Increments:** BUG-008.1 (diagnosis), BUG-008.1 follow-up (synthetic-kick test), BUG-008.2 (fix)
