@@ -16,6 +16,7 @@
 		A10022 /* MusicKitFetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20022; };
 		A10040 /* VisualizerEngine+Orchestrator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20040; };
 		N10006 /* VisualizerEngine+WiringLogs.swift in Sources */ = {isa = PBXBuildFile; fileRef = N20006; };
+		N10007 /* VisualizerEngine+TrackIdentityResolution.swift in Sources */ = {isa = PBXBuildFile; fileRef = N20007; };
 		C10001 /* SessionStateViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20001; };
 		C10002 /* IdleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20002; };
 		C10003 /* ConnectingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20003; };
@@ -200,6 +201,7 @@
 		A20030 /* Phosphene.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Phosphene.xcconfig; sourceTree = "<group>"; };
 		A20040 /* VisualizerEngine+Orchestrator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VisualizerEngine+Orchestrator.swift"; sourceTree = "<group>"; };
 		N20006 /* VisualizerEngine+WiringLogs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VisualizerEngine+WiringLogs.swift"; sourceTree = "<group>"; };
+		N20007 /* VisualizerEngine+TrackIdentityResolution.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VisualizerEngine+TrackIdentityResolution.swift"; sourceTree = "<group>"; };
 		C20001 /* SessionStateViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStateViewModel.swift; sourceTree = "<group>"; };
 		C20002 /* IdleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdleView.swift; sourceTree = "<group>"; };
 		C20003 /* ConnectingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectingView.swift; sourceTree = "<group>"; };
@@ -404,6 +406,7 @@
 				A20037 /* VisualizerEngine+PublicAPI.swift */,
 				A20040 /* VisualizerEngine+Orchestrator.swift */,
 				N20006 /* VisualizerEngine+WiringLogs.swift */,
+				N20007 /* VisualizerEngine+TrackIdentityResolution.swift */,
 				A20022 /* MusicKitFetcher.swift */,
 				D40001 /* Permissions */,
 				H40001 /* Models */,
@@ -777,6 +780,7 @@
 				A10022 /* MusicKitFetcher.swift in Sources */,
 				A10040 /* VisualizerEngine+Orchestrator.swift in Sources */,
 				N10006 /* VisualizerEngine+WiringLogs.swift in Sources */,
+				N10007 /* VisualizerEngine+TrackIdentityResolution.swift in Sources */,
 				C10001 /* SessionStateViewModel.swift in Sources */,
 				C10002 /* IdleView.swift in Sources */,
 				C10003 /* ConnectingView.swift in Sources */,

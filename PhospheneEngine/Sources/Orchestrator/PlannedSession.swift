@@ -281,6 +281,28 @@ public struct PlannedSession: Sendable {
     /// True when the plan contains no tracks.
     public var isEmpty: Bool { tracks.isEmpty }
 
+    /// Resolve the canonical `TrackIdentity` for a streaming-metadata
+    /// observation that only carries `title` + `artist`.
+    ///
+    /// Streaming sources (Apple Music / Spotify Now Playing AppleScript) do
+    /// not deliver `duration` or catalog IDs. The plan was constructed from
+    /// full identities (Spotify Web API or pre-fetched), so the cache key
+    /// `SessionPreparer.store(_:for:)` used differs from any partial identity
+    /// the audio path might construct. Searching the plan by title+artist and
+    /// returning the planned identity gives downstream cache lookups the
+    /// correct hash key.
+    ///
+    /// Returns `nil` when no track matches or when more than one matches
+    /// (ambiguity — caller falls back to the partial identity rather than
+    /// risk pinning the wrong cache entry). (BUG-006.2)
+    public func canonicalIdentity(matchingTitle title: String, artist: String) -> TrackIdentity? {
+        let matches = tracks.filter {
+            $0.track.title == title && $0.track.artist == artist
+        }
+        guard matches.count == 1 else { return nil }
+        return matches[0].track
+    }
+
     /// Returns the `PlannedTrack` that is active at the given session time.
     ///
     /// A track is active when `sessionTime ∈ [plannedStartTime, plannedEndTime)`.
