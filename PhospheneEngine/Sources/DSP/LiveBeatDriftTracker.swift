@@ -293,29 +293,11 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
                 } else {
                     consecutiveMisses += 1
                 }
-                if let cb = _diagnosticTrace {
-                    let entry = LiveBeatDriftTraceEntry(
-                        onsetTime: pt, nearestBeat: nearest,
-                        instantDriftMs: instantDrift * 1000,
-                        prevDriftMs: prevDrift * 1000, newDriftMs: drift * 1000,
-                        isTightMatch: isTight,
-                        matchedOnsets: matchedOnsets, consecutiveMisses: consecutiveMisses,
-                        lockState: computeLockState()
-                    )
-                    cb(entry)
-                }
+                // swiftlint:disable:next line_length
+                emitDiagnosticTrace(onset: pt, nearest: nearest, instantDrift: instantDrift, prevDrift: prevDrift, isTight: isTight)
             } else {
                 consecutiveMisses += 1
-                if let cb = _diagnosticTrace {
-                    let entry = LiveBeatDriftTraceEntry(
-                        onsetTime: pt, nearestBeat: nil, instantDriftMs: nil,
-                        prevDriftMs: prevDrift * 1000, newDriftMs: drift * 1000,
-                        isTightMatch: false,
-                        matchedOnsets: matchedOnsets, consecutiveMisses: consecutiveMisses,
-                        lockState: computeLockState()
-                    )
-                    cb(entry)
-                }
+                emitDiagnosticTrace(onset: pt, nearest: nil, instantDrift: nil, prevDrift: prevDrift, isTight: false)
             }
         }
 
@@ -342,6 +324,28 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
     }
 
     // MARK: - Helpers
+
+    private func emitDiagnosticTrace(
+        onset pt: Double,
+        nearest: Double?,
+        instantDrift: Double?,
+        prevDrift: Double,
+        isTight: Bool
+    ) {
+        guard let cb = _diagnosticTrace else { return }
+        let entry = LiveBeatDriftTraceEntry(
+            onsetTime: pt,
+            nearestBeat: nearest,
+            instantDriftMs: instantDrift.map { $0 * 1000 },
+            prevDriftMs: prevDrift * 1000,
+            newDriftMs: drift * 1000,
+            isTightMatch: isTight,
+            matchedOnsets: matchedOnsets,
+            consecutiveMisses: consecutiveMisses,
+            lockState: computeLockState()
+        )
+        cb(entry)
+    }
 
     private func computeLockState() -> LockState {
         if matchedOnsets >= Self.lockThreshold && consecutiveMisses < Self.lockReleaseMisses {
