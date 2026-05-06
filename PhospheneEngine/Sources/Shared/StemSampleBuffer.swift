@@ -32,6 +32,13 @@ public protocol StemSampleBuffering: AnyObject, Sendable {
     /// Returns 0 if no data is available. Thread-safe.
     func rms(seconds: Double) -> Float
 
+    /// Compute the RMS energy of the latest `seconds` using `sampleRate` as the
+    /// actual audio rate, mirroring the rate-aware `snapshotLatest` overload so
+    /// callers running on a tap whose rate differs from the buffer init rate
+    /// (e.g. tap at 48000 Hz, buffer initialized at 44100 Hz) measure energy
+    /// over the correct number of frames.
+    func rms(seconds: Double, sampleRate: Double) -> Float
+
     /// Clear all stored samples (e.g., on track change). Thread-safe.
     func reset()
 }
@@ -150,7 +157,11 @@ public final class StemSampleBuffer: StemSampleBuffering, @unchecked Sendable {
     /// Compute the RMS energy of the latest `seconds` of buffered audio.
     /// Returns 0 if no data is available. Thread-safe.
     public func rms(seconds: Double) -> Float {
-        let requestedSamples = Int(sampleRate * Double(channelCount) * seconds)
+        rms(seconds: seconds, sampleRate: sampleRate)
+    }
+
+    public func rms(seconds: Double, sampleRate actualRate: Double) -> Float {
+        let requestedSamples = Int(actualRate * Double(channelCount) * seconds)
         lock.lock()
         let available = min(totalWritten, capacity)
         let count = min(requestedSamples, available)
