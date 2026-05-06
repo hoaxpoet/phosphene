@@ -15,6 +15,7 @@
 
 import Combine
 import Foundation
+import Shared
 import os.log
 
 private let logger = Logging.session
@@ -63,6 +64,11 @@ public final class SessionManager: ObservableObject {
     private let connector: any PlaylistConnecting
     private let preparer: SessionPreparer
 
+    /// Optional SessionRecorder for `WIRING:` instrumentation logs (BUG-006.1).
+    /// Wired through from `VisualizerEngine` so handoff to engine cache attach
+    /// is observable in `session.log` for diagnosis.
+    private let sessionRecorder: SessionRecorder?
+
     // MARK: - Cancellation
 
     private var cancellationRequested = false
@@ -103,10 +109,12 @@ public final class SessionManager: ObservableObject {
     ///   - preparer: Runs batch stem separation + MIR on 30-second preview clips.
     public init(
         connector: any PlaylistConnecting,
-        preparer: SessionPreparer
+        preparer: SessionPreparer,
+        sessionRecorder: SessionRecorder? = nil
     ) {
         self.connector = connector
         self.preparer = preparer
+        self.sessionRecorder = sessionRecorder
     }
 
     // MARK: - Lifecycle
@@ -173,6 +181,13 @@ public final class SessionManager: ObservableObject {
         }
 
         cancellationRequested = false
+        // BUG-006.1 instrumentation: discriminate the Spotify-pre-fetched path
+        // from the standard connector-driven `startSession(source:)` path
+        // (hypothesis 1).
+        let preFetchMsg = "WIRING: SessionManager.startSession SOURCE=spotifyPreFetched " +
+            "preFetchedCount=\(tracks.count)"
+        sessionRecorder?.log(preFetchMsg)
+        logger.info("\(preFetchMsg, privacy: .public)")
         logger.info("SessionManager: connected (pre-fetched) — \(tracks.count) track(s)")
         await _beginPreparation(tracks: tracks)
     }
@@ -227,6 +242,14 @@ public final class SessionManager: ObservableObject {
             self.progressiveReadinessLevel = finalReadiness
 
             if self.state == .preparing {
+                // BUG-006.1 instrumentation: log the .ready transition with cache
+                // size so we can confirm the engine has a populated cache to wire
+                // (hypothesis 2 discriminator).
+                let readyMsg = "WIRING: SessionManager.startSession→ready " +
+                    "cacheTrackCount=\(self.preparer.cache.count)"
+                self.sessionRecorder?.log(readyMsg)
+                logger.info("\(readyMsg, privacy: .public)")
+
                 // Natural completion path — no startNow() was called.
                 self.preparingTracks = []
                 self.state = .ready
@@ -253,6 +276,12 @@ public final class SessionManager: ObservableObject {
             logger.info("SessionManager: startNow ignored (state=\(self.state.rawValue))")
             return
         }
+        // BUG-006.1 instrumentation: this is the user-driven .ready transition;
+        // distinguish it from natural completion above.
+        let nowMsg = "WIRING: SessionManager.startSession→ready (startNow) " +
+            "cacheTrackCount=\(preparer.cache.count)"
+        sessionRecorder?.log(nowMsg)
+        logger.info("\(nowMsg, privacy: .public)")
         preparingTracks = []
         state = .ready
         logger.info("SessionManager: startNow — .preparing → .ready (background prep continues)")
@@ -321,77 +350,5 @@ public final class SessionManager: ObservableObject {
         logger.info("SessionManager: session ended")
     }
 
-    // MARK: - Progressive Readiness Computation
-
-    // swiftlint:disable cyclomatic_complexity
-    /// Compute the progressive readiness level from the current track statuses.
-    ///
-    /// Rules (D-056):
-    /// - `.partial` tracks count toward the consecutive prefix only when their cached
-    ///   `TrackProfile` has a non-nil BPM **and** at least one genre tag.
-    /// - A `.failed` track (or any in-flight track) in the prefix breaks the run.
-    /// - `fullyPrepared` requires every track to be in a terminal state
-    ///   (`.ready`, `.partial`, or `.failed`) with at least one usable track.
-    /// - `reactiveFallback` when all terminal tracks are `.failed` (nothing to plan).
-    public static func computeReadiness(
-        statuses: [TrackIdentity: TrackPreparationStatus],
-        trackList: [TrackIdentity],
-        cache: StemCache
-    ) -> ProgressiveReadinessLevel {
-        guard !trackList.isEmpty else { return .reactiveFallback }
-
-        let threshold = defaultProgressiveReadinessThreshold
-        let total = trackList.count
-
-        var prefixCount = 0
-        var prefixBroken = false
-        var readyCount = 0       // .ready or .partial
-        var allTerminal = true
-
-        for track in trackList {
-            let status = statuses[track] ?? .queued
-
-            let isTerminal: Bool
-            switch status {
-            case .ready, .partial, .failed: isTerminal = true
-            default:                        isTerminal = false
-            }
-            if !isTerminal { allTerminal = false }
-
-            let isReady: Bool
-            switch status {
-            case .ready, .partial: isReady = true
-            default:               isReady = false
-            }
-            if isReady { readyCount += 1 }
-
-            // Prefix: consecutive qualifying tracks from position 1.
-            if !prefixBroken {
-                let countsForPrefix: Bool
-                switch status {
-                case .ready:
-                    countsForPrefix = true
-                case .partial:
-                    if let profile = cache.trackProfile(for: track),
-                       profile.bpm != nil,
-                       !profile.genreTags.isEmpty {
-                        countsForPrefix = true
-                    } else {
-                        countsForPrefix = false
-                    }
-                default:
-                    countsForPrefix = false
-                }
-                if countsForPrefix { prefixCount += 1 } else { prefixBroken = true }
-            }
-        }
-
-        if allTerminal && readyCount == 0 { return .reactiveFallback }
-        if allTerminal { return .fullyPrepared }
-        if prefixCount < threshold { return .preparing }
-
-        let readyPercent = Double(readyCount) / Double(total)
-        return readyPercent >= 0.5 ? .partiallyPlanned : .readyForFirstTracks
-    }
-    // swiftlint:enable cyclomatic_complexity
+    // Progressive readiness computation lives in `SessionManager+Readiness.swift`.
 }

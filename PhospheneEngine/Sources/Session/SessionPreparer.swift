@@ -79,6 +79,11 @@ public final class SessionPreparer: ObservableObject {
     private let moodClassifier: any MoodClassifying
     private let beatGridAnalyzer: (any BeatGridAnalyzing)?
 
+    /// Optional SessionRecorder for `WIRING:` instrumentation logs (BUG-006.1).
+    /// `nil` in tests; wired through from `VisualizerEngine` in production so
+    /// preparation-lifecycle log entries land in `session.log` for diagnosis.
+    private let sessionRecorder: SessionRecorder?
+
     // MARK: - Cache
 
     /// Populated during `prepare(tracks:)`. Pass to VisualizerEngine before playback.
@@ -116,7 +121,8 @@ public final class SessionPreparer: ObservableObject {
         stemAnalyzer: any StemAnalyzing,
         moodClassifier: any MoodClassifying,
         beatGridAnalyzer: (any BeatGridAnalyzing)? = nil,
-        cache: StemCache = StemCache()
+        cache: StemCache = StemCache(),
+        sessionRecorder: SessionRecorder? = nil
     ) {
         self.resolver = resolver
         self.downloader = downloader
@@ -125,6 +131,7 @@ public final class SessionPreparer: ObservableObject {
         self.moodClassifier = moodClassifier
         self.beatGridAnalyzer = beatGridAnalyzer
         self.cache = cache
+        self.sessionRecorder = sessionRecorder
     }
 
     // MARK: - Prepare
@@ -144,6 +151,15 @@ public final class SessionPreparer: ObservableObject {
     /// - Parameter tracks: Ordered list of tracks from the connected playlist.
     /// - Returns: Result with lists of cached/failed tracks and the populated cache.
     public func prepare(tracks: [TrackIdentity]) async -> SessionPreparationResult {
+        // BUG-006.1 instrumentation: confirm preparation pipeline entry, including
+        // whether the optional beat-grid analyzer is wired (hypothesis 3 discriminator).
+        let firstTitle = tracks.first?.title ?? "<empty>"
+        let bgPresent = beatGridAnalyzer == nil ? "nil" : "present"
+        let enterMsg = "WIRING: SessionPreparer.prepare ENTER count=\(tracks.count) " +
+            "firstTrack='\(firstTitle)' bgAnalyzer=\(bgPresent)"
+        sessionRecorder?.log(enterMsg)
+        logger.info("\(enterMsg, privacy: .public)")
+
         // Initialize all tracks to .queued at once before any async work begins.
         trackStatuses = Dictionary(uniqueKeysWithValues: tracks.map { ($0, .queued) })
         progress = (0, tracks.count)
@@ -237,6 +253,8 @@ public final class SessionPreparer: ObservableObject {
         }
 
         logger.info("Preparation complete: \(cachedTracks.count)/\(tracks.count) cached, \(failedTracks.count) failed")
+        logWiringDoneSummary(cachedTracks: cachedTracks, failedTracks: failedTracks)
+
         return SessionPreparationResult(
             cachedTracks: cachedTracks,
             failedTracks: failedTracks,
@@ -332,3 +350,39 @@ extension SessionPreparer {
 // MARK: - PreparationProgressPublishing Conformance
 
 extension SessionPreparer: PreparationProgressPublishing {}
+
+// MARK: - BUG-006.1 Wiring Logs
+
+extension SessionPreparer {
+
+    /// Emit per-track BeatGrid summaries plus the DONE line. Extracted from
+    /// `_runPreparation` to keep that function within the 60-line SwiftLint gate.
+    fileprivate func logWiringDoneSummary(
+        cachedTracks: [TrackIdentity],
+        failedTracks: [TrackIdentity]
+    ) {
+        var withGrid = 0
+        var emptyGrid = 0
+        for track in cachedTracks {
+            if let grid = cache.beatGrid(for: track), !grid.beats.isEmpty {
+                withGrid += 1
+                let bpmStr = String(format: "%.1f", grid.bpm)
+                let beatCount = grid.beats.count
+                sessionRecorder?.log(
+                    "WIRING: SessionPreparer.beatGrid track='\(track.title)' " +
+                    "bpm=\(bpmStr) beats=\(beatCount) isEmpty=false"
+                )
+            } else {
+                emptyGrid += 1
+                sessionRecorder?.log(
+                    "WIRING: SessionPreparer.beatGrid track='\(track.title)' " +
+                    "bpm=0 beats=0 isEmpty=true"
+                )
+            }
+        }
+        let doneMsg = "WIRING: SessionPreparer.prepare DONE prepared=\(cachedTracks.count) " +
+            "withGrid=\(withGrid) empty=\(emptyGrid) failed=\(failedTracks.count)"
+        sessionRecorder?.log(doneMsg)
+        logger.info("\(doneMsg, privacy: .public)")
+    }
+}

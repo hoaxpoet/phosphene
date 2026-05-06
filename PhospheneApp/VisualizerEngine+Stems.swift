@@ -345,17 +345,13 @@ extension VisualizerEngine {
     }
 
     /// Reset the stem pipeline on track change, loading pre-analyzed data from cache
-    /// when available.
-    ///
-    /// Per the session preparation architecture:
-    /// - `StemSampleBuffer` is NOT cleared — real-time audio keeps accumulating so
-    ///   live separation can begin immediately.
-    /// - If `stemCache` has data for the given identity, `StemFeatures` is seeded
-    ///   from the pre-separated preview; otherwise it resets to `.zero`.
-    ///
-    /// - Parameter identity: The newly playing track. Pass nil when the identity is
-    ///   unknown (falls back to `.zero` stems).
-    func resetStemPipeline(for identity: TrackIdentity? = nil) {
+    /// when available. `caller` (BUG-006.1) identifies which code path invoked us.
+    func resetStemPipeline(
+        for identity: TrackIdentity? = nil,
+        caller: ResetStemPipelineCaller = .trackChange
+    ) {
+        logWiringResetStemPipelineEnter(title: identity?.title ?? "<nil>", caller: caller)   // BUG-006.1
+
         stemAnalyzer.reset()
 
         // Clear the per-frame analyzer's source waveforms so stems don't
@@ -372,6 +368,9 @@ extension VisualizerEngine {
         liveBeatAnalysisAttempts = 0
 
         pipeline.spectralHistory.reset()
+
+        // BUG-006.1 instrumentation: cache-lookup log (see WiringLogs helpers).
+        if let identity { logWiringStemCacheLookup(identity: identity) }
 
         if let identity, let cached = stemCache?.loadForPlayback(track: identity) {
             let replacedExisting = mirPipeline.liveDriftTracker.hasGrid

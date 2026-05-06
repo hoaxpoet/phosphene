@@ -507,7 +507,11 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         // SessionManager is always created — uses the same component instances as the engine.
         // Ad-hoc mode never invokes the preparer; session mode uses it for pre-analysis.
         self.sessionManager = Self.makeSessionManager(
-            sep: sep, analyzer: analyzer, classifier: classifier, device: ctx.device
+            sep: sep,
+            analyzer: analyzer,
+            classifier: classifier,
+            device: ctx.device,
+            sessionRecorder: self.sessionRecorder
         )
 
         // Wire the frame-budget governor and ML dispatch scheduler. Read QualityCeiling

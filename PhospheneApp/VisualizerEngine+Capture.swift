@@ -130,7 +130,24 @@ extension VisualizerEngine {
                 title: event.current.title ?? "",
                 artist: event.current.artist ?? ""
             )
-            self.resetStemPipeline(for: identity)
+            // BUG-006.1 instrumentation: confirm track-change handler fires and
+            // observe the truncated TrackIdentity (only title+artist set — no
+            // duration, spotifyID, or preview URL). Discriminates hypothesis 4
+            // (cache key mismatch).
+            let prevTitle: String = event.previous?.title ?? "<nil>"
+            let newTitle: String = event.current.title ?? "<nil>"
+            let durStr: String
+            if let dur = identity.duration {
+                durStr = String(dur)
+            } else {
+                durStr = "nil"
+            }
+            let spotifyIDStr: String = identity.spotifyID ?? "nil"
+            let trackChangeMsg = "WIRING: trackChange OBSERVED title='\(newTitle)' " +
+                "previousTitle='\(prevTitle)' identity.duration=\(durStr) " +
+                "identity.spotifyID=\(spotifyIDStr) aboutToReset=true"
+            self.sessionRecorder?.log(trackChangeMsg)
+            self.resetStemPipeline(for: identity, caller: .trackChange)
             self.kickoffPreFetch(for: event.current, fetcher: fetcher)
         }
     }

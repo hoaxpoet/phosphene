@@ -67,8 +67,10 @@ extension VisualizerEngine {
     /// appends a `.partialPreparation` warning when coverage is incomplete.
     @MainActor
     private func _buildPlan(seed: UInt64) {
+        logWiringBuildPlanEnter()   // BUG-006.1
         guard let sessionPlan = sessionManager.currentPlan else {
             logger.info("Orchestrator: no session plan available — skipping")
+            logWiringBuildPlanEarlyReturn(reason: "no session plan")
             return
         }
         let fullCount = sessionPlan.tracks.count
@@ -83,6 +85,7 @@ extension VisualizerEngine {
 
         guard !readyTracks.isEmpty else {
             logger.info("Orchestrator: no cached tracks — deferring plan")
+            logWiringBuildPlanEarlyReturn(reason: "no cached tracks")
             return
         }
 
@@ -117,16 +120,17 @@ extension VisualizerEngine {
             logger.info("Orchestrator: plan — \(plan.tracks.count)/\(fullCount) tracks, \(totalSecs)s, \(warnCount) warnings")
 
             // Pre-load the BeatGrid for the first planned track so Spectral Cartograph
-            // shows "PLANNED · UNLOCKED" immediately after plan-build, rather than
-            // "REACTIVE" until the first track-change event fires. DSP.3.2.
-            // resetStemPipeline(for:) is idempotent — the track-change call on first
-            // audio arrival will be a cache hit and will be a no-op from the stem
-            // pipeline's perspective.
+            // shows "PLANNED · UNLOCKED" immediately after plan-build. DSP.3.2.
+            let firstTrackTitle = plan.tracks.first?.track.title ?? "<none>"
+            let aboutToPreFire = plan.tracks.first?.track != nil
+            logWiringBuildPlanDone(firstTrackTitle: firstTrackTitle, aboutToPreFire: aboutToPreFire)
+
             if let firstTrack = plan.tracks.first?.track {
-                resetStemPipeline(for: firstTrack)
+                resetStemPipeline(for: firstTrack, caller: .preFire)
             }
         } catch {
             logger.error("Orchestrator: plan failed — \(error)")
+            logWiringBuildPlanFailed(error)
         }
     }
 
