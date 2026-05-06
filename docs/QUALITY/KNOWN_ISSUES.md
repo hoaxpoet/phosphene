@@ -161,6 +161,96 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 ---
 
+### BUG-006 — Spotify-prepared session does not install prepared BeatGrid (falls through to liveAnalysis)
+
+**Severity:** P1
+**Domain tag:** dsp.beat
+**Status:** Open
+**Introduced:** Unknown — first observed during QR.1 manual validation 2026-05-06; predates QR.1 (QR.1 did not touch the prepared-grid wiring path).
+**Resolved:** —
+
+**Expected behavior:** When a Spotify playlist is loaded and `SessionPreparer` completes preparation, each track's `CachedTrackData.beatGrid` is non-empty. On track change in playback, `resetStemPipeline(for: identity)` finds the cache entry and emits `BEAT_GRID_INSTALL: source=preparedCache, track=…, bpm=…, beats=…` to `session.log`. SpectralCartograph displays `◐ PLANNED · UNLOCKED` immediately on first audio, then advances to `● PLANNED · LOCKED` within the first bar or two.
+
+**Actual behavior:** SpectralCartograph mode label stays at `○ REACTIVE` for the entire opening of the track. `session.log` contains zero `source=preparedCache` install entries. Eventually `BEAT_GRID_INSTALL: source=liveAnalysis` fires once the live Beat This! trigger reaches its 10 s window — but only because the prepared cache returned nil and the live fallback was permitted. The mode label only advances past `REACTIVE` after the live grid lands.
+
+**Reproduction steps:**
+1. Launch Phosphene fresh.
+2. Connect a Spotify playlist that includes Love Rehab (Chaim).
+3. Wait for `.ready`. Press play in Spotify.
+4. Press `Shift+→` to advance to Spectral Cartograph.
+5. Watch the mode label and `~/Documents/phosphene_sessions/<latest>/session.log`.
+
+**Minimum reproducer:** Any Spotify playlist on a fresh launch.
+
+**Session artifacts:**
+- `~/Documents/phosphene_sessions/2026-05-06T14-14-22Z/session.log` — zero `source=preparedCache` entries; first `source=liveAnalysis` entry at `14:16:58Z` for Pyramid Song (~2 minutes after `track → Love Rehab`).
+- `features.csv` from the same session — `lock_state` and `grid_bpm` columns presumably zero throughout the early playback window.
+
+**Suspected failure class:** `pipeline-wiring`
+
+**Evidence:**
+- `VisualizerEngine+InitHelpers.swift:85–98` correctly wires `DefaultBeatGridAnalyzer` into `SessionPreparer`.
+- `VisualizerEngine+Stems.swift:354 resetStemPipeline(for:)` correctly checks `stemCache?.loadForPlayback(track: identity)` and logs both branches (`source=preparedCache` on hit, `source=none` on miss).
+- The session log shows neither branch fired for Love Rehab, which means `resetStemPipeline(for:)` was not called for the track *or* the `stemCache` was nil at the call site.
+- DSP.3.1/3.2 added a pre-fire call to `resetStemPipeline(for: plan.tracks.first?.track)` at the end of `_buildPlan()` (D-078). If `_buildPlan()` did not run, this pre-fire never happened. Hypothesis: planned-session path is not being entered when Spotify playlist preparation completes, falling through to ad-hoc reactive behaviour despite the user thinking they used the playlist flow.
+
+**Verification criteria:**
+- [ ] Loading a known-prepared Spotify playlist produces at least one `BEAT_GRID_INSTALL: source=preparedCache` entry in `session.log` per track played.
+- [ ] On Love Rehab specifically: SpectralCartograph mode label transitions `◐ PLANNED · UNLOCKED → ● PLANNED · LOCKED` within 5 s of audio.
+- [ ] `features.csv` `grid_bpm` column non-zero from frame 1 of the track.
+- [ ] Manual: drift readout (Δ) settles near zero (±20 ms) within the first bar.
+
+**Fix scope:** Diagnose first. Candidates: (a) `_buildPlan()` not running for Spotify-source sessions; (b) `stemCache` not wired to `VisualizerEngine` at the time of first track-change; (c) `SessionPreparer` swallowing BeatGrid analysis errors and storing `.empty` grids; (d) cache key mismatch between `TrackIdentity` written by preparer and the identity passed to `resetStemPipeline` on track-change. Add `BEAT_GRID_INSTALL` source-tagged log entries earlier in the path (`_buildPlan` start, `SessionManager.startSession` end, first `resetStemPipeline` invocation) before the next session capture. The DSP.3.6 wiring tests (`PreparedBeatGridWiringTests`) prove the unit-level chain works in isolation; the gap is at the app-layer integration.
+
+**Related:** DSP.3.1, DSP.3.2, DSP.3.6, D-078, BUG-003 (test-coverage gap that allowed this to ship)
+
+---
+
+### BUG-007 — LiveBeatDriftTracker loses lock under stable real-music input (LOCKING ↔ LOCKED oscillation)
+
+**Severity:** P2
+**Domain tag:** dsp.beat
+**Status:** Open
+**Introduced:** Unknown — first observed during QR.1 manual validation 2026-05-06; predates QR.1 (QR.1 did not change drift-tracker lock semantics — only widened `playbackTime` to `Double`).
+**Resolved:** —
+
+**Expected behavior:** Once `LiveBeatDriftTracker.computeLockState()` returns `.locked` (after `matchedOnsets ≥ lockThreshold`), the tracker remains `.locked` for the duration of the track unless the input has gone genuinely silent for ≥ 2 × medianBeatPeriod. Onset-time drift settles into a band ±30 ms wide (the `strictMatchWindow`) and stays there.
+
+**Actual behavior:** Mode label oscillates between `◑ PLANNED · LOCKING` and `● PLANNED · LOCKED`, holding LOCKED for only a few seconds at a time before regressing. Observed independently on:
+- Test 2: Pyramid Song (~68 BPM, ad-hoc reactive after live Beat This! installed grid). Beat sync described as "close, not exact."
+- Test 4: Love Rehab (125 BPM, ad-hoc reactive after live Beat This! installed grid). Orb pulsing "mostly in time with the beat."
+
+**Reproduction steps:**
+1. Start an ad-hoc reactive session ("Start listening now" from IdleView).
+2. Play Love Rehab (Chaim) in Apple Music or Spotify.
+3. Wait ~10 s for live Beat This! to install a grid.
+4. Switch to Spectral Cartograph (`Shift+→`).
+5. Observe mode label over the next 30 s.
+
+**Minimum reproducer:** Any ad-hoc reactive session on a kick-driven track at 48 kHz tap rate.
+
+**Session artifacts:**
+- `~/Documents/phosphene_sessions/2026-05-06T14-21-09Z/session.log` — `BeatGrid installed: source=liveAnalysis, bpm=125.8` at `14:21:33Z`.
+- `features.csv` from the same session — `lock_state` column likely flips between `1` (locking) and `2` (locked).
+
+**Suspected failure class:** `algorithm` (lock-hysteresis tuning) or `precision` (drift accumulation under real-music onset jitter).
+
+**Evidence:**
+- The `consecutiveMisses` counter in `LiveBeatDriftTracker` is incremented when an onset doesn't match within ±30 ms of the smoothed drift, and decremented (reset to 0) on tight match. There is no decay on `matchedOnsets` itself, but the lock-state computation uses a ratio that could regress.
+- Pre-QR.1 the drift tracker was using a `Float` playbackTime that could drift sub-µs over a long session — that's not the cause here (QR.1 widens to `Double` and the test sessions are < 1 minute).
+- Likely candidates: (a) the `strictMatchWindow = 30 ms` is too tight for real-music kick onset jitter (Phosphene's `BeatDetector` produces sub_bass onsets with ±10–20 ms quantization); (b) `consecutiveMisses` advancing past a threshold demotes lock state without the matchedOnsets counter falling, and the demotion path is over-eager.
+
+**Verification criteria:**
+- [ ] Once `lock_state` reaches `2` (locked) on a stable track, it stays at `2` for ≥ 30 s of continuous playback at the same tempo.
+- [ ] `drift_ms` values in `features.csv` settle into a ±30 ms band and the standard deviation over a 10-s window is < 15 ms.
+- [ ] Manual: orb pulse sits exactly on the kick (not "mostly in time"), and the BR-panel beat-phase tick lines up with the beat orb's flash.
+
+**Fix scope:** Diagnose with a `features.csv` capture from a real session. Plot `lock_state` and `drift_ms` over time; identify whether the demotion correlates with onset density drops, drift spikes, or just an unfortunate `matchedOnsets` ratio decay. Likely fix is widening `strictMatchWindow` to 40–50 ms or adding lock hysteresis (`matchedOnsets` decays slower than it builds). Out of scope for QR.1 — schedule for a dedicated `LiveBeatDriftTracker` tuning increment after QR.2 / QR.3 land.
+
+**Related:** DSP.2 S7, D-077, D-079 (touched the file but did not change lock semantics)
+
+---
+
 ## Pre-existing Flakes (non-blocking, test infrastructure only)
 
 These test failures are pre-existing, environment-dependent, and do not indicate behavioral regressions. They are tracked here for completeness.

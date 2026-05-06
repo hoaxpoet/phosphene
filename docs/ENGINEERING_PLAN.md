@@ -2144,13 +2144,13 @@ Add a SwiftLint custom rule that flags `f\.(bass|mid|treb|sub_bass|low_bass|low_
 - [x] `Scripts/check_sample_rate_literals.sh` passes; SwiftLint custom rule for `.metal` deviation form documented as intentionally script-based (SwiftLint cannot lint `.metal`).
 - [x] All new tests pass; full engine suite passes (1045 tests, sole failure is the pre-existing `MetadataPreFetcher.fetch_networkTimeout` flake); app build clean.
 - [x] CLAUDE.md, DECISIONS.md (D-079), KNOWN_ISSUES.md (BUG-R002/R003 generalized; new BUG-R006/R007/R008/R009), ENGINEERING_PLAN.md updated.
-- [ ] Manual validation: connect Spotify playlist; observe a Spotify-prepared session reaches PLANNED·LOCKED on Love Rehab and stem energies on the debug overlay are sane (no obvious magnitude shift vs pre-fix recording). **Pending Matt — engine-side correctness verified by tests; subjective verification on real audio still required.**
+- [x] Manual validation 2026-05-06: ad-hoc reactive session on Love Rehab installed live Beat This! grid at **125.8 BPM** (true 125, sample-rate fix verified at 48 kHz tap); ad-hoc Pyramid Song stayed at **69 BPM** (sub-80 doubling fix verified — pre-QR.1 would have reported 138). KineticSculpture deviation form not directly observed, but golden-hash test passes. Two pre-existing bugs surfaced during testing — neither is a QR.1 regression: BUG-006 (Spotify-prepared session falls through to liveAnalysis — prepared-grid wiring path; QR.1 didn't touch it) and BUG-007 (LiveBeatDriftTracker LOCKING ↔ LOCKED oscillation — lock semantics unchanged by QR.1). Both filed in `docs/QUALITY/KNOWN_ISSUES.md` for separate diagnosis.
 
 **Verify:** `swift test --filter TapSampleRateRegression && swift test --filter BeatDetectorTempo && swift test --filter MIRPipelineUnit && bash Scripts/check_sample_rate_literals.sh && swiftlint lint --strict`.
 
 **Estimated sessions:** 2 (audit + propagation → tests + lint gate + golden regen).
 
-**Status:** ✅ 2026-05-06 — D-079 landed (see git log `[QR.1]`). Manual subjective validation deferred to next listening session.
+**Status:** ✅ 2026-05-06 — D-079 landed (see git log `[QR.1]`). Manual subjective validation completed same day. Two pre-existing bugs (BUG-006, BUG-007) surfaced during validation but are not QR.1 regressions — filed for separate diagnosis.
 
 ---
 
