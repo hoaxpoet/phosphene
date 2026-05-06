@@ -215,7 +215,15 @@ extension VisualizerEngine {
     func runLiveBeatAnalysisIfNeeded() {
         guard liveBeatAnalysisAttempts < Self.liveBeatMaxAttempts else { return }
         guard !mirPipeline.liveDriftTracker.hasGrid else {
-            // Already have a grid (Spotify-prepared) — cap attempts so we skip.
+            // Prepared-cache grid already installed — live inference must not overwrite it.
+            // The offline 30-second path is more reliable than the live 10-second window,
+            // especially for complex-meter tracks (Money 7/4, Pyramid Song 16/8).
+            let bpmStr = String(format: "%.1f", mirPipeline.liveDriftTracker.currentBPM)
+            let trackTitle = currentTrack?.title ?? "unknown"
+            logger_liveBeat(
+                "LiveBeat: prepared grid present (\(bpmStr) BPM) — " +
+                "skipping live inference for '\(trackTitle)'"
+            )
             liveBeatAnalysisAttempts = Self.liveBeatMaxAttempts
             return
         }
@@ -304,13 +312,27 @@ extension VisualizerEngine {
         let bpmStr = String(format: "%.1f", grid.bpm)
         let beatCount = grid.beats.count
         let meter = grid.beatsPerBar
+        let firstBeat = grid.beats.first.map { String(format: "%.3f", $0) } ?? "none"
         logger_liveBeat(
             "LiveBeat: grid ready (attempt \(attemptNum)) — " +
-            "\(beatCount) beats, \(bpmStr) BPM, \(meter)/X meter"
+            "\(beatCount) beats, \(bpmStr) BPM, \(meter)/X meter, firstBeat=\(firstBeat)s"
         )
 
         Task { @MainActor [weak self] in
-            self?.mirPipeline.setBeatGrid(grid)
+            guard let self else { return }
+            let replacedExisting = self.mirPipeline.liveDriftTracker.hasGrid
+            let trackTitle = self.currentTrack?.title ?? "unknown"
+            self.mirPipeline.setBeatGrid(grid)
+            let replaceNote = replacedExisting ? " (replaced existing grid)" : ""
+            self.logger_liveBeat(
+                "BEAT_GRID_INSTALL: source=liveAnalysis, track='\(trackTitle)', " +
+                "bpm=\(bpmStr), beats=\(beatCount), meter=\(meter)/X, " +
+                "firstBeat=\(firstBeat)s\(replaceNote)"
+            )
+            self.sessionRecorder?.log(
+                "BeatGrid installed: source=liveAnalysis, track='\(trackTitle)', " +
+                "bpm=\(bpmStr), beats=\(beatCount), meter=\(meter)/X"
+            )
         }
     }
 
@@ -348,13 +370,38 @@ extension VisualizerEngine {
         pipeline.spectralHistory.reset()
 
         if let identity, let cached = stemCache?.loadForPlayback(track: identity) {
+            let replacedExisting = mirPipeline.liveDriftTracker.hasGrid
             pipeline.setStemFeatures(cached.stemFeatures)
             mirPipeline.setBeatGrid(cached.beatGrid)
             logger.info("Stem pipeline loaded from cache: \(identity.title) by \(identity.artist)")
+            // Log full BeatGrid install details so session.log shows source each track change.
+            let grid = cached.beatGrid
+            if !grid.beats.isEmpty {
+                let bpmStr = String(format: "%.1f", grid.bpm)
+                let firstBeat = grid.beats.first.map { String(format: "%.3f", $0) } ?? "none"
+                let replaceNote = replacedExisting ? " (replaced existing grid)" : ""
+                let title = identity.title
+                let beatCount = grid.beats.count
+                let meter = grid.beatsPerBar
+                logger.info(
+                    "BEAT_GRID_INSTALL: source=preparedCache, track='\(title)', bpm=\(bpmStr), beats=\(beatCount), meter=\(meter)/X, firstBeat=\(firstBeat)s\(replaceNote)"
+                )
+                sessionRecorder?.log(
+                    "BeatGrid installed: source=preparedCache, track='\(title)', bpm=\(bpmStr), beats=\(beatCount), meter=\(meter)/X"
+                )
+            } else {
+                let title = identity.title
+                logger.info(
+                    "BEAT_GRID_INSTALL: source=preparedCache, track='\(title)' — empty grid, live inference will be allowed"
+                )
+            }
         } else {
             pipeline.setStemFeatures(.zero)
             mirPipeline.setBeatGrid(nil)
-            logger.info("Stem pipeline reset (track change, no cache entry)")
+            let trackDesc = identity.map { "'\($0.title)'" } ?? "unknown"
+            logger.info(
+                "BEAT_GRID_INSTALL: source=none, track=\(trackDesc) — no cache entry, live inference will be allowed"
+            )
         }
         // StemSampleBuffer intentionally not reset — continues accumulating for live separation.
     }
