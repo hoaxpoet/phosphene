@@ -405,16 +405,15 @@ Also: `MusicKitBridge` unused `artistLower` removed; `SessionRecorder` `_ = try?
 
 These are ordered by dependency. Each has done-when criteria and verification commands.
 
-**Current priority ordering (post-2026-04-22 documentation audit):**
+**Current priority ordering (post-2026-05-06 multi-agent codebase review):**
 
-1. **Phase U — UX Architecture** (U.1 → U.7 gates Milestone A). Sequential.
-2. **Phase V — Visual Fidelity Uplift** (V.1 → V.6 build the library; V.7 → V.12 apply it). V.1–V.6 can run in parallel with Phase U since they touch disjoint modules. V.7+ starts once V.1–V.3 utilities land.
-3. **Phase MD — Milkdrop Ingestion** (MD.1 → MD.7). Starts once Phase V.1–V.3 utilities land. Parallelizable with V.7+.
-4. **Phase 6** (Progressive readiness, Frame budget manager, ML dispatch scheduling). 6.1 specifically unblocks the "Start now" CTA in Increment U.4 — either pull 6.1 forward or ship U.4 with the CTA dormant.
-5. **Phase 7** (Long-session stability). Unchanged.
-6. **Phase SB — Starburst Fidelity Uplift** (SB.1 → SB.5). Active. Independent of Phase MD; runs in parallel with V.8+ since it touches Starburst only.
+1. **Phase QR — Quality Review Remediation** (QR.1 → QR.6). New top priority. QR.1 → QR.4 are sequenced; QR.5 + QR.6 run after QR.1–QR.4 land. See "Phase QR" section below.
+2. **Phase DSP — DSP Hardening.** DSP.3.7 (Live drift validation test) merges into QR.3.
+3. **Phase V — Visual Fidelity Uplift** (V.5 reference completion + V.7.7B WORLD pillar) — can run in parallel with QR since they touch disjoint modules.
+4. **Phase MD — Milkdrop Ingestion** (MD.1 → MD.7). Unchanged dependency on V.1–V.3 utilities.
+5. **Phase SB — Starburst Fidelity Uplift** (SB.1 → SB.5). Independent.
 
-Phase MV is complete; see below for its historical record.
+Phase U / Phase 4 / Phase 5 / Phase 6 / Phase 7 / Phase MV all complete; see historical records below.
 
 ## Phase MV — Milkdrop-Informed Musical Architecture
 
@@ -2046,6 +2045,461 @@ Continuous energy is the primary visual driver; beat onset pulses are accents on
 - [x] DSP.3.5 — Halving octave correction + retry. **2026-05-05 — commit `eac2e140`.**
 - [x] DSP.3.6 — App-layer wiring test. **2026-05-05.**
 - [ ] DSP.3.7 — Live drift validation test.
+
+---
+
+## Phase QR — Quality Review Remediation (2026-05-06)
+
+**Origin.** A 7-agent parallel codebase review on 2026-05-06 (Architect / Audio+DSP / ML / Renderer+Presets / Orchestrator+Session / App+UX / Tests+Quality) produced a ranked findings document focused on *precision*, *performance*, and *simplicity* against the "member of the band" product goal. This phase converts those findings into ordered, scoped increments.
+
+**Why a phase, not a single sweep.** The findings span every subsystem and several interact (e.g. sample-rate fixes change BeatGrid input, which affects drift-tracker tests, which affects regression goldens). Sequencing prevents one increment's fix from invalidating another's verification.
+
+**Priority ordering** (do not reorder without re-reading the cross-cutting analysis below):
+
+1. **QR.1 (DSP.4) — Sample-rate plumbing audit.** Highest-precision payoff. Single bug class, five sites, confirmed by three independent reviewers.
+2. **QR.2 (OR.1) — Stem-affinity rescaling + reactive-mode TrackProfile fix.** Highest musicality payoff per LOC. The "AI VJ" promise is currently being carried by mood + section weights only; stem-affinity is mostly noise.
+3. **QR.3 (TEST.1) — Close silent-skip test holes.** Cheap to do; protects the work in QR.1 + QR.2 from silent regression.
+4. **QR.4 (U.12) — UX dead ends + duplicate `SettingsStore`.** Small, isolated, user-visible.
+5. **QR.5 (CLEAN.1) — Mechanical cleanup pass.** Pure deletion of dead code + dead comments. Schedule when the four above have landed; ride along with their cleanups.
+6. **QR.6 (ARCH.1) — `VisualizerEngine` decomposition.** Largest debt in the codebase. Defer until QR.1–QR.4 ship, then schedule with explicit risk acknowledgement.
+
+**Cross-cutting context (read before any QR increment):**
+
+- The 2026-05-06 review found **the 44100/48000 sample-rate bug class confirmed at five distinct sites** across three subsystems. DSP.3.4 fixed it once; the underlying pattern (literal `44100` instead of the captured tap rate) recurred in stem separator dispatch, per-frame stem analysis, and `StemSampleBuffer` init. QR.1 closes the class, not just instances.
+- The review found **the orchestrator's stem-affinity sub-score saturates** because `stemEnergy` is AGC-normalized at 0.5; summing 2+ matching stems hits ~1.0 trivially. 25% of score weight does not discriminate. QR.2 normalizes against the deviation primitives (D-026) the rest of the system already uses.
+- **Reactive mode systematically penalizes presets with stem affinities** because `TrackProfile.empty.stemEnergyBalance == .zero` → presets with declared affinities score 0; presets without score 0.5. Adversarial against the most musically-engaged catalog members. QR.2 fixes both at once.
+- The architect's H1 finding (`VisualizerEngine` is a 2,580-line god object with 8 NSLocks + `@unchecked Sendable`) is real but big. QR.6 schedules it after the precision fixes; the smaller QRs do not need decomposition first.
+
+---
+
+### Increment QR.1 (DSP.4) — Sample-rate plumbing audit
+
+**Goal.** Eliminate the literal `44100` sample-rate constant from every site that should use the live tap rate. Capture `tapSampleRate` immutably, propagate through stem separation + per-frame stem analysis + `StemSampleBuffer` + `StemAnalyzer` init + Beat This! live inference. Add a regression test gate so future literal-`44100` reintroductions fail loud.
+
+**Why now.** Three independent reviewers (Architect H1 / Audio+DSP D1 / ML #1+#2) flagged this. Symptoms on a 48 kHz tap: stems are 8.8% time-stretched and pitch-shifted; per-frame stem analysis reads bands at the wrong window; live Beat This! attempts the right fix already (DSP.3.4) but stem-side callers were not audited. Manifests in production as wrong stem energy magnitudes, wrong onset rates, and biased preset scoring on the mid-bar tracks the orchestrator most needs to handle musically.
+
+**Sites to fix (audit-confirmed):**
+
+| File | Symbol / line | Current | Target |
+|---|---|---|---|
+| `PhospheneApp/VisualizerEngine.swift:179` | `StemSampleBuffer(sampleRate: 44100, …)` | literal | `tapSampleRate` (deferred allocation, or re-init on rate-change) |
+| `PhospheneApp/VisualizerEngine.swift:435` | `StemAnalyzer(sampleRate: 44100)` default arg | literal | thread `tapSampleRate` |
+| `PhospheneApp/VisualizerEngine+Audio.swift:194` | `runPerFrameStemAnalysis` literal | literal | `tapSampleRate` |
+| `PhospheneApp/VisualizerEngine+Stems.swift:151` | `separator.separate(… sampleRate: 44100)` | literal | `tapSampleRate` |
+| `PhospheneApp/VisualizerEngine+Stems.swift:183` | `sessionRecorder?.recordStemSeparation(sampleRate: 44100, …)` | literal | `tapSampleRate` |
+
+**Concurrency hardening (Architect H1, Audio+DSP D1):**
+
+- `tapSampleRate: Double` is currently mutated from the audio callback (`VisualizerEngine+Audio.swift:98`) and read on `stemQueue` (`+Stems.swift:296`) without a synchronization primitive. On Apple Silicon, atomic 8-byte writes are guaranteed but cross-core *visibility* is not. This is the kind of bug that produces wrong-tempo grids ~1-in-1000 sessions and is invisible in tests.
+- Fix: capture `tapSampleRate` once per `installTap(...)` call. Promote to `let tapSampleRate: Double` set in the initializer that wires the tap, or guard with `os_unfair_lock` if it must remain mutable for capture-mode switching.
+- If capture-mode switching changes the rate (System tap → file playback at a different rate), tear down and re-init the dependent buffers (`StemSampleBuffer`, `StemAnalyzer`) on the rate change rather than mutating the rate field.
+
+**Octave-correction policy unification (Audio+DSP A2):**
+
+`BeatGrid.halvingOctaveCorrected` is halving-only (preserves Pyramid Song ~68 BPM). `BeatDetector+Tempo.computeRobustBPM:196` and `estimateTempo:269` both still double sub-80 BPM. The two policies disagree. Drop the `bpm < 80 → bpm *= 2` branch from both `computeRobustBPM` and `estimateTempo`. Any track in [40, 80) BPM is now treated as genuine, matching the offline path and CLAUDE.md.
+
+**`MIRPipeline.elapsedSeconds: Float` → `Double` (Audio+DSP D3):**
+
+Float accumulation of `+= deltaTime` reaches ULP ≈ 240 µs after 30 minutes — smaller than the ±30 ms tight-match window but a guaranteed monotonic drift. Promote to `Double`. Conversion to `Float` happens once at FeatureVector write. Touches `MIRPipeline.swift:70`, all callers reading `elapsedSeconds`, and `LiveBeatDriftTracker.update(playbackTime:)` parameter.
+
+**KineticSculpture D-026 violation (Audio+DSP B1):**
+
+`Sources/Presets/Shaders/KineticSculpture.metal:102`: `f.sub_bass * 0.28 + f.bass * 0.10` — exact Failed Approach #31 anti-pattern on AGC-normalized fields. Convert to `f.bass_dev` / `f.bass_rel` deviation primitives. Re-record golden hash for the preset.
+
+**Lint gate to prevent recurrence:**
+
+Add a `Scripts/check_sample_rate_literals.sh` script that fails CI when any `44100` literal appears outside an explicit allowlist (`StemSeparator.modelSampleRate`, `BeatThisPreprocessor` 22050 internal, test fixtures). Wire into the test target's pre-build phase. Same pattern as the existing `check_visual_references` enforcement.
+
+Add a SwiftLint custom rule that flags `f\.(bass|mid|treb|sub_bass|low_bass|low_mid|mid_high|high_mid|high)\s*[*+\-]` in `.metal` files (see Audio+DSP B2). Whitelist deviation suffixes (`_rel`, `_dev`, `_att_rel`).
+
+**Files to touch:**
+
+- `PhospheneApp/VisualizerEngine.swift`, `+Audio.swift`, `+Stems.swift` — propagate `tapSampleRate`.
+- `PhospheneEngine/Sources/DSP/BeatDetector+Tempo.swift` — drop sub-80 doubling in `computeRobustBPM` + `estimateTempo`.
+- `PhospheneEngine/Sources/DSP/MIRPipeline.swift` — `elapsedSeconds: Double`.
+- `PhospheneEngine/Sources/DSP/LiveBeatDriftTracker.swift` — accept `Double` playbackTime.
+- `PhospheneEngine/Sources/Presets/Shaders/KineticSculpture.metal` — D-026 conversion.
+- `Scripts/check_sample_rate_literals.sh` (new), `.swiftlint.yml` (custom rule), CI hook.
+- `PhospheneEngine/Tests/PhospheneEngineTests/Integration/TapSampleRateRegressionTests.swift` (new) — see Tests below.
+- `PhospheneEngine/Tests/PhospheneEngineTests/DSP/BeatDetectorTempoTests.swift` — assert no doubling for 60 BPM input.
+- `docs/CLAUDE.md` — Failed Approach #52 (sample-rate literal recurrence), update Tempo section, update KineticSculpture entry.
+- `docs/DECISIONS.md` — D-078: "Sample rate is captured once per tap install; literal `44100` is a CI-banned constant."
+- `docs/QUALITY/KNOWN_ISSUES.md` — close BUG-R002 / BUG-R003 with QR.1 commit hash.
+
+**Tests:**
+
+1. **`TapSampleRateRegressionTests` (new).** Inject a recording `BeatGridAnalyzing` mock; drive with synthetic 48 kHz audio; assert `analyzeBeatGrid(samples:sampleRate:)` is called with `sampleRate == 48000` and `samples.count == sampleRate * 10`. Repeat for the stem-separator dispatch path with a `RecordingStemSeparating` mock.
+2. **Octave-correction unification (`BeatDetectorTempoTests`).** Add: `computeRobustBPM` on synthetic 75 BPM IOIs returns ≈ 75 (not 150). `estimateTempo` on synthetic 65 BPM autocorrelation returns ≈ 65 (not 130). Pyramid Song golden fixture stays at ~68 BPM unchanged.
+3. **`MIRPipeline` long-session drift (`MIRPipelineUnitTests`).** Synthetic 60-minute playback; assert `elapsedSeconds.isMultiple(of: 0)` not relevant — instead assert that two repeats of `update(deltaTime: 1/60)` over 1 hour produce a `Double` clock equal to 3600.0 within 1 µs.
+4. **Lint gate.** `Scripts/check_sample_rate_literals.sh` exits non-zero on a synthetic source file containing `let foo = 44100`.
+5. **Existing tests.** Full engine suite passes; Pyramid Song / Money golden fixtures unchanged; KineticSculpture golden hash regenerated and committed.
+
+**Done when:**
+
+- [ ] All five literal-`44100` sites use `tapSampleRate`.
+- [ ] `tapSampleRate` capture is race-free (immutable post-install or `os_unfair_lock`-guarded).
+- [ ] `computeRobustBPM` and `estimateTempo` no longer double sub-80 BPM.
+- [ ] `MIRPipeline.elapsedSeconds` is `Double`.
+- [ ] KineticSculpture uses deviation primitives; golden hash regenerated.
+- [ ] `Scripts/check_sample_rate_literals.sh` passes; SwiftLint custom rule enforced.
+- [ ] All new tests pass; full engine suite passes; full app build clean.
+- [ ] CLAUDE.md, DECISIONS.md (D-078), KNOWN_ISSUES.md updated.
+- [ ] Manual validation: connect Spotify playlist; observe a Spotify-prepared session reaches PLANNED·LOCKED on Love Rehab and stem energies on the debug overlay are sane (no obvious magnitude shift vs pre-fix recording).
+
+**Verify:** `swift test --filter TapSampleRateRegression && swift test --filter BeatDetectorTempo && swift test --filter MIRPipelineUnit && bash Scripts/check_sample_rate_literals.sh && swiftlint lint --strict`.
+
+**Estimated sessions:** 2 (audit + propagation → tests + lint gate + golden regen).
+
+---
+
+### Increment QR.2 (OR.1) — Stem-affinity rescaling + reactive-mode TrackProfile fix
+
+**Goal.** Make `stemAffinitySubScore` discriminate. Make reactive mode score stem-affinity-bearing presets fairly. The 25% score-weight slot currently does neither.
+
+**Why now.** Direct hit on the "member of the band" goal. The Orchestrator+Session reviewer's findings #1, #2, and #6 collapse into one root cause: the scorer reads AGC-normalized stem energies as if they were absolute, then sums them. AGC centers each stem at 0.5; any preset declaring 2+ matching affinities saturates at ~1.0 on most music. Two presets with totally different declared affinities end up scoring nearly identically, so the 0.25 weight does no work.
+
+**Algorithm changes:**
+
+1. **`stemAffinitySubScore` reads deviation primitives.** Replace `stemEnergy[stem]` lookups with `stemEnergyDev[stem]` (D-026, MV-1, already on `StemFeatures` floats 17–24). A preset that declares "responds to drums + bass" now scores high only when those stems are *above their AGC average*, not just present at all. Presets with mismatched affinity declarations actually diverge in score on most tracks.
+2. **Affinity-weighted (not summed) score.** For a preset declaring N affinity stems, score = mean of `max(0, stem_dev)` over the N stems, NOT clamped sum. Mean preserves "this preset's stems must all be active" semantics; sum allowed any-one-stem to saturate.
+3. **`TrackProfile.empty` neutralizes affinity instead of zeroing it.** When `stemEnergyBalance == .zero` (reactive-mode initial state), `stemAffinitySubScore` returns 0.5 for all presets — the same neutral baseline as `affinities.isEmpty`. Otherwise reactive mode systematically rejects the most musical presets.
+4. **Live `stemEnergyBalance` plumbing for reactive mode.** `DefaultReactiveOrchestrator` currently uses `TrackProfile.empty`; add an overload accepting a live `StemFeatures` snapshot. After ≥10 s of listening (when the live stem analyzer has converged), score against the live snapshot. Same time scale as the existing reactive-mode confidence ramp.
+
+**Mood-override per-track cooldown (Orchestrator+Session #3):**
+
+`DefaultLiveAdapter.applyLiveUpdate()` currently re-evaluates and re-patches the plan every analysis frame (~94 Hz) when conditions hold. Add a `lastOverrideTimePerTrack: [TrackIdentity: Float]` state with a 30 s cooldown. Suppress override evaluation entirely within the cooldown (don't even build the scoring contexts). Leaves boundary reschedule unaffected (it has its own per-evaluation gate).
+
+**Reactive boundary-only switching gate (Orchestrator+Session #5):**
+
+`DefaultReactiveOrchestrator` currently fires `boundaryFired` switches without a score-gap check, so every confident boundary every 60 s is a coin-flip. Tighten to `boundaryFired AND topScore > currentScore + 0.05` (small gap, not the full 0.20 used for non-boundary switches — boundaries are still preferred, just not random).
+
+**Hard-cut threshold raise (Orchestrator+Session, transitions #3):**
+
+`cutEnergyThreshold = 0.7` paired with `energy = 0.5 + 0.4 * arousal` means any track with `arousal > 0.5` cuts at every track change. Most non-ambient music sits 0.5–0.8. Raise to `cutEnergyThreshold = 0.85` so the warm-crossfade ladder actually fires on most music. A/B-listenable.
+
+**`recentHistory` trim (Orchestrator+Session #4):**
+
+`SessionPlanner+Segments.swift:219` appends to `recentHistory` unbounded; per-track scoring scans the array via `last(where:)`. At ~400 segments this becomes measurable. Trim to last 50 entries on append.
+
+**Files to touch:**
+
+- `PhospheneEngine/Sources/Orchestrator/PresetScorer.swift` — `stemAffinitySubScore` rewrite (deviation primitives + mean instead of clamped sum + neutral 0.5 on empty profile).
+- `PhospheneEngine/Sources/Orchestrator/ReactiveOrchestrator.swift` — accept live `StemFeatures` snapshot; tighten boundary-switch gate.
+- `PhospheneEngine/Sources/Orchestrator/LiveAdapter.swift` — `lastOverrideTimePerTrack` cooldown.
+- `PhospheneEngine/Sources/Orchestrator/SessionPlanner+Segments.swift` — `recentHistory` 50-entry trim.
+- `PhospheneEngine/Sources/Orchestrator/TransitionPolicy.swift` — `cutEnergyThreshold = 0.85`.
+- `PhospheneApp/VisualizerEngine+Orchestrator.swift` — pass live `StemFeatures` snapshot into `applyReactiveUpdate`.
+- `PhospheneEngine/Tests/PhospheneEngineTests/Orchestrator/StemAffinityScoringTests.swift` (new).
+- `PhospheneEngine/Tests/PhospheneEngineTests/Orchestrator/ReactiveOrchestratorTests.swift` — add boundary-gate cases.
+- `PhospheneEngine/Tests/PhospheneEngineTests/Orchestrator/LiveAdapterTests.swift` — add cooldown cases.
+- `PhospheneEngine/Tests/PhospheneEngineTests/Orchestrator/GoldenSessionTests.swift` — regenerate goldens; document the changes inline (cite the QR.2 increment).
+- `docs/CLAUDE.md` — Failed Approach #53 (stem-affinity AGC saturation) + #54 (reactive `TrackProfile.empty` bias).
+- `docs/DECISIONS.md` — D-079: "Stem-affinity scoring uses deviation primitives, not absolute AGC-normalized energies."
+
+**Tests:**
+
+1. **`StemAffinityScoringTests` (new).**
+   - Two presets with disjoint affinities (e.g. drums-only vs vocals-only) on a drums-heavy track produce score gap ≥ 0.3. (Was ≤ 0.05 pre-fix.)
+   - Preset with empty affinities scores neutral 0.5 regardless of track.
+   - Preset declaring 2 affinities on a track with one stem at +dev and one at -dev scores ~0.25 (mean of `max(0, +x)` and `max(0, -y)`). NOT 1.0 (sum saturation).
+   - `TrackProfile.empty` with non-empty affinities scores 0.5 (neutral), not 0 (rejection).
+2. **`ReactiveOrchestratorTests` extension.**
+   - Boundary fires with `topScore == currentScore` → no switch (was: switch).
+   - Boundary fires with `topScore == currentScore + 0.10` → switch.
+   - 60 s cooldown still respected.
+3. **`LiveAdapterTests` extension.**
+   - 100 consecutive `applyLiveUpdate` calls with conditions held → only one override patch applied (was: 100).
+   - Override cooldown clears on track change.
+4. **`GoldenSessionTests` regeneration.** All three curated playlists regenerated. Document the score-gap shift in the test file's commit message and inline comments.
+5. **Manual validation:** Matt listens to Love Rehab (drums-heavy) and a vocal-led track in reactive mode and confirms the preset selection feels different from the pre-fix baseline. Subjective gate.
+
+**Done when:**
+
+- [ ] `stemAffinitySubScore` uses deviation primitives + mean.
+- [ ] Reactive mode receives live `StemFeatures` after 10 s and uses neutral 0.5 before then.
+- [ ] Mood-override 30 s per-track cooldown.
+- [ ] Boundary-switch score gap ≥ 0.05.
+- [ ] `cutEnergyThreshold = 0.85`.
+- [ ] `recentHistory` trimmed at 50.
+- [ ] All new tests pass; goldens regenerated and committed; full engine suite green.
+- [ ] CLAUDE.md + DECISIONS.md updated.
+- [ ] Matt subjective sign-off on reactive-mode preset selection (Love Rehab + one vocal-led track).
+
+**Verify:** `swift test --filter StemAffinityScoring && swift test --filter ReactiveOrchestrator && swift test --filter LiveAdapter && swift test --filter GoldenSession`.
+
+**Estimated sessions:** 2 (algorithm changes + tests → goldens regen + manual sign-off).
+
+---
+
+### Increment QR.3 (TEST.1) — Close silent-skip test holes
+
+**Goal.** No test in the suite silently skips on a missing fixture or broken harness. Failures fail loud; missing data fails loud. Add the closed-loop musical-sync test the suite is missing.
+
+**Why now.** Two of four DSP.2 S8 bugs are only catchable by `BeatThisLayerMatchTests`, which silently skips when fixtures are absent (`:97-104`). Fresh checkout = entire S8 regression surface gone with zero failure signal. `PresetVisualReviewTests` is broken for staged presets (BUG-002 in KNOWN_ISSUES.md); every staged preset added after Arachne V.7.7A is invisible to the harness. `LiveBeatDriftTrackerTests` uses synthetic uniform grids; no test asserts `beatPhase01` zero-crossings vs ground truth on real audio. Manual reel sign-off is the only live-musical-sync test.
+
+**Sub-scope:**
+
+1. **`BeatThisFixturePresenceGate` (new).** Trivial test asserting `Bundle.module.url(forResource: "love_rehab", withExtension: "m4a")` is non-nil AND `URL(fileURLWithPath: "docs/diagnostics/DSP.2-S8-python-activations.json")` exists. Fails (does not skip) when missing. Locks the fixture supply chain.
+2. **`BeatThisLayerMatchTests` skip → fail.** Replace `withKnownIssue` / silent return with a hard `Issue.record(...)` if fixtures are missing. Same change in `BeatThisBugRegressionTests` if it has a similar branch.
+3. **Standalone Bug 2 test (`BeatThisStemReshapeTests`).** Synthetic input with a known per-mel pattern; assert post-reshape `stem.bn1d[t, mel]` matches the transposed-then-reshaped expectation, not the byte-reinterpreted shape. ~30 LOC, no external fixture.
+4. **Standalone Bug 4 test (`BeatThisRoPEPairingTests`).** Synthetic Q tensor with known values; apply RoPE; assert the rotated output matches the adjacent-pair `(x[2i], x[2i+1])` rotation, not half-and-half. ~30 LOC.
+5. **`PresetVisualReviewTests` staged-preset fix (BUG-002).** Switch `Bundle.module.url(forResource: "Shaders")` to `Bundle(for: PresetLoader.self).url(...)` so the test target finds the engine's shader resources. Verify by adding Arachne to the harness fixture list and rendering successfully under `RENDER_VISUAL=1`.
+6. **`LiveDriftValidationTests` (new — closed-loop musical-sync test).** Drive `LiveBeatDriftTracker` against real onsets. Reuse `Fixtures/tempo/love_rehab.m4a`; run through `BeatDetector` to get the live onset stream; install the cached love_rehab `BeatGrid` (also in fixtures); assert: locks within 5 s, |drift_ms| < 50 ms steady-state, `beatPhase01` zero-crossings within ±30 ms of grid beats over 30 s of audio. This is the test that catches the regressions Matt would actually notice.
+7. **`PresetLoaderCompileFailureTest` (new).** Asserts `PresetLoader.presets.count == expectedProductionCount` so a silent shader compilation failure (preset dropped from fixture, Failed Approach #44) is loud at test time, not at "regression test passes trivially" time.
+8. **Spotify schema regression test (`SpotifyItemsSchemaTests`).** One test decoding a fixture playlist `/items` response with the `"item"` key. Locks Failed Approach #45 against silent re-introduction.
+9. **MoodClassifier golden-fixture test (`MoodClassifierGoldenTests`).** Ten input feature vectors → expected valence/arousal within 1e-4. Locks the hardcoded weights (3,346 floats) against silent re-extraction errors. ML reviewer flagged this as missing.
+
+**Files to touch:**
+
+- `PhospheneEngine/Tests/PhospheneEngineTests/ML/BeatThisFixturePresenceGate.swift` (new)
+- `PhospheneEngine/Tests/PhospheneEngineTests/ML/BeatThisLayerMatchTests.swift` — skip → fail
+- `PhospheneEngine/Tests/PhospheneEngineTests/ML/BeatThisStemReshapeTests.swift` (new)
+- `PhospheneEngine/Tests/PhospheneEngineTests/ML/BeatThisRoPEPairingTests.swift` (new)
+- `PhospheneEngine/Tests/PhospheneEngineTests/Renderer/PresetVisualReviewTests.swift` — `Bundle(for:)` fix
+- `PhospheneEngine/Tests/PhospheneEngineTests/Integration/LiveDriftValidationTests.swift` (new)
+- `PhospheneEngine/Tests/PhospheneEngineTests/Presets/PresetLoaderCompileFailureTest.swift` (new)
+- `PhospheneEngine/Tests/PhospheneEngineTests/Session/SpotifyItemsSchemaTests.swift` (new)
+- `PhospheneEngine/Tests/PhospheneEngineTests/ML/MoodClassifierGoldenTests.swift` (new)
+- `PhospheneEngine/Tests/PhospheneEngineTests/Fixtures/spotify_items_response.json` (new fixture)
+- `PhospheneEngine/Tests/PhospheneEngineTests/Fixtures/mood_classifier_golden.json` (new fixture)
+- `docs/QUALITY/KNOWN_ISSUES.md` — close BUG-002 with QR.3 commit hash; close BUG-003 once `LiveDriftValidationTests` lands.
+
+**Done when:**
+
+- [ ] All 9 sub-tests land and pass on a clean checkout.
+- [ ] `BeatThisLayerMatchTests` fails (does not skip) when fixtures missing.
+- [ ] `PresetVisualReviewTests` renders Arachne staged composition under `RENDER_VISUAL=1`.
+- [ ] `LiveDriftValidationTests` locks within 5 s on love_rehab.m4a and asserts `beatPhase01` zero-crossings.
+- [ ] `PresetLoaderCompileFailureTest` fails when a preset is silently dropped (verify by temporarily breaking Stalker.metal and confirming the test catches it).
+- [ ] Full engine suite passes.
+
+**Verify:** `swift test --filter BeatThisFixturePresence && swift test --filter BeatThisLayerMatch && swift test --filter BeatThisStemReshape && swift test --filter BeatThisRoPEPairing && swift test --filter LiveDriftValidation && swift test --filter PresetLoaderCompile && swift test --filter SpotifyItemsSchema && swift test --filter MoodClassifierGolden && RENDER_VISUAL=1 swift test --filter PresetVisualReview`.
+
+**Estimated sessions:** 2 (sub-tests 1–5 → sub-tests 6–9).
+
+---
+
+### Increment QR.4 (U.12) — UX dead ends + duplicate `SettingsStore` + dead settings + hardcoded strings
+
+**Goal.** Close the user-facing rough edges flagged in the App+UX review. Each is small in isolation; together they restore the "uninterrupted ambient member of the band" feel that the architecture promises.
+
+**Sub-scope:**
+
+1. **EndedView dead end.** `Views/Ended/EndedView.swift` is currently a U.1 stub with no CTA. Add a "Start another session" button that calls `sessionManager.endSession()` → `.idle` (or directly transitions to `.idle`); add session summary text per UX_SPEC §3.6. Localize all strings.
+2. **`.connecting` cancel affordance.** `Views/Connecting/ConnectingView.swift` is a static spinner. Add a "Cancel" button that calls `sessionManager.cancel()` (already exists). Per-connector spinner (Apple Music vs Spotify vs Local Folder) per UX_SPEC §3.2.
+3. **Duplicate `SettingsStore` collapse.** Remove `@StateObject private var settingsStore = SettingsStore()` from `Views/Playback/PlaybackView.swift:50`. Replace with `@EnvironmentObject var settingsStore: SettingsStore`. Verify `CaptureModeSwitchCoordinator` (set up in `PlaybackView.setup()`) and other reconcilers receive `captureModeChanged` events from the global store. Add a regression test that toggles capture mode in the global store and asserts the playback-side reconciler observes the change.
+4. **Dead settings.** `SettingsStore.showPerformanceWarnings` and `SettingsStore.includeMilkdropPresets` persist user toggles that are read by nothing. For each: either wire the consumer or delete the property + UI row + Localizable.strings keys + view-model binding. `includeMilkdropPresets` documented as Phase MD gate; if Phase MD is genuinely deferred, hide the row behind `#if DEBUG` or a build-time flag rather than ship a permanently-disabled toggle.
+5. **Hardcoded English strings (12 sites).** Externalize per UX_SPEC §8.5. Specific call sites:
+   - `Views/Connecting/ConnectingView.swift:15,18`
+   - `Views/Idle/IdleView.swift:26` ("Phosphene" — keep as `appName` key)
+   - `Views/Playback/PlaybackView.swift:130,134,135,137` (end-session confirm dialog)
+   - `Views/Playback/PlaybackControlsCluster.swift:36,47` (replace "Settings (coming soon)" tooltip with localized "Settings")
+   - `Views/Plan/PlanPreviewView.swift:101,104,132`
+   - `Views/Plan/PlanPreviewRowView.swift:85,89`
+   - `Views/Playback/ListeningBadgeView.swift:36`
+   - `Views/Playback/SessionProgressDotsView.swift:49,56`
+6. **Plan Preview "Modify" button.** Currently disabled with empty closure (`PlanPreviewView.swift:131-135`). Hide entirely for v1 rather than ship a permanently-disabled control. Restore when V.5 plan-modification work lands.
+7. **`PlaybackChromeViewModel.refreshProgress` string-matching.** Replace lowercased title+artist matching against the plan with `currentTrackIndex: Int?` published by `VisualizerEngine`. Track index already known engine-side from the `PlannedSession` walk. Removes covers/remasters fragility.
+8. **Tooltip lies.** "Settings (coming soon)" on the wired settings button (`PlaybackControlsCluster.swift:36`) → "Settings" localized.
+
+**Files to touch:**
+
+- `PhospheneApp/Views/Ended/EndedView.swift` — full implementation per UX_SPEC §3.6.
+- `PhospheneApp/Views/Connecting/ConnectingView.swift` — cancel button, per-connector spinner.
+- `PhospheneApp/Views/Playback/PlaybackView.swift` — remove duplicate `SettingsStore`.
+- `PhospheneApp/SettingsStore.swift` — delete `showPerformanceWarnings` + `includeMilkdropPresets` (or wire them).
+- `PhospheneApp/Views/Settings/VisualsSettingsSection.swift` (and related) — remove dead toggle rows.
+- `PhospheneApp/ViewModels/PlaybackChromeViewModel.swift` — `currentTrackIndex` plumbing.
+- `PhospheneApp/VisualizerEngine.swift` — publish `@Published var currentTrackIndex: Int?`.
+- `PhospheneApp/Views/Playback/PlaybackControlsCluster.swift` — localized tooltips.
+- `PhospheneApp/Views/Plan/PlanPreviewView.swift` — hide Modify button.
+- `PhospheneApp/Localizable.strings` (English) — new keys.
+- `PhospheneApp/Services/AccessibilityLabels.swift` — localized labels for new buttons.
+- `Tests/PhospheneAppTests/EndedViewTests.swift` (new), `ConnectingViewCancelTests.swift` (new), `SettingsStoreEnvironmentRegressionTests.swift` (new), `PlaybackChromeIndexBindingTests.swift` (new).
+- `docs/UX_SPEC.md` — confirm EndedView and ConnectingView copy match the spec.
+- `docs/CLAUDE.md` — UX Contract section: note that `SettingsStore` MUST be consumed via `@EnvironmentObject`, never re-instantiated.
+
+**Tests:**
+
+1. **`SettingsStoreEnvironmentRegressionTests`.** Construct one `SettingsStore`; inject into a test view hierarchy; toggle `captureMode`; assert any view-side observer reads the new value. Catches the duplicate-instance bug if it ever recurs.
+2. **`EndedViewTests`.** Renders summary; "Start another session" button calls a stub action.
+3. **`ConnectingViewCancelTests`.** Cancel button calls the injected cancel closure.
+4. **`PlaybackChromeIndexBindingTests`.** Update `currentTrackIndex` → chrome shows the new track without title-matching.
+5. **String externalization audit.** Add a script (`Scripts/check_user_strings.sh`) that greps `Text\("[A-Z]` in `PhospheneApp/Views/` and fails on any hit not in an allowlist of acknowledged debug strings.
+6. **Existing tests:** all 305 app tests pass; engine tests untouched.
+
+**Done when:**
+
+- [ ] EndedView and ConnectingView no longer block flow.
+- [ ] One `SettingsStore` instance app-wide; capture-mode toggles propagate to playback reconcilers.
+- [ ] Dead settings removed (or wired) + UI rows removed.
+- [ ] All 12 hardcoded strings externalized; tooltip lies fixed.
+- [ ] `currentTrackIndex` plumbing replaces title-matching.
+- [ ] All new tests pass; full app build clean.
+- [ ] Manual validation: complete a full session end-to-end without ever needing to relaunch.
+
+**Verify:** `swift test --filter SettingsStoreEnvironmentRegression && swift test --filter EndedView && swift test --filter ConnectingViewCancel && swift test --filter PlaybackChromeIndexBinding && bash Scripts/check_user_strings.sh && xcodebuild -scheme PhospheneApp -destination 'platform=macOS' test`.
+
+**Estimated sessions:** 2 (views + cancel + duplicate store → strings + dead settings + tests).
+
+---
+
+### Increment QR.5 (CLEAN.1) — Mechanical cleanup pass
+
+**Goal.** Pure deletion of dead code + dead binaries + stale doc comments. No behavior change. ~600 LOC and ~1.6 MB removed.
+
+**Why now.** Each individual cleanup is too small to justify its own increment, but together they reduce read-cost on every subsequent session. Schedule after QR.1–QR.4 land so their cleanups can ride along (QR.1 adds Failed Approaches, QR.2 deletes `BeatPredictor` once retired, etc.).
+
+**Cleanup catalog (cite each commit message with the agent finding):**
+
+| # | Cleanup | Lines/size | Files |
+|---|---|---|---|
+| 1 | Delete `Sources/ML/Weights/beatnet/` (D-076 abandoned) | ~1.6 MB binaries + 14 .bin + manifest | `Sources/ML/Weights/beatnet/` directory |
+| 2 | Delete `Scripts/convert_beatnet_weights.py` | ~80 LOC | `Scripts/` |
+| 3 | Delete IOI histogram + `dumpHistogram` consumers (dead post-D-075) | ~50 LOC | `Sources/DSP/BeatDetector+Tempo.swift:144-177` |
+| 4 | Dedup `ShaderUtilities.metal` legacy bodies vs V.1+V.2 trees | 13 functions, ~400 LOC; ~30% off every preset preamble compile | `Sources/Presets/Shaders/ShaderUtilities.metal` |
+| 5 | Migrate production presets calling legacy `fbm3D`/`perlin2D`/`sdPlane`/`sdBox` to V.1+V.2 names (precondition for #4) | renames only | `VolumetricLithograph.metal`, `GlassBrutalist.metal`, others identified by grep |
+| 6 | Delete placeholder `Sources/Orchestrator/Orchestrator.swift` (5 LOC empty) | 5 LOC | `Sources/Orchestrator/Orchestrator.swift` |
+| 7 | Delete placeholder `Sources/Session/Session.swift` (5 LOC empty) | 5 LOC | `Sources/Session/Session.swift` |
+| 8 | Delete `Sources/Orchestrator/PresetSignaling.swift` (no preset emits) | 39 LOC | `Sources/Orchestrator/PresetSignaling.swift` |
+| 9 | Inline `Views/Ready/ReadyBackgroundPresetView.swift` into `ReadyView.swift` | 34 LOC moved | `Views/Ready/` |
+| 10 | Delete or wire `Services/PresetPreviewController.swift` (52 LOC stub, no caller) | 52 LOC | `Services/PresetPreviewController.swift` |
+| 11 | Stale CoreML doc comments in 7+ files | doc-only | `Sources/Audio/Protocols.swift:101,166,188,190,192`, `Sources/Shared/AudioFeatures+Frame.swift:71`, `Sources/Shared/StemSampleBuffer.swift:46`, `PhospheneApp/VisualizerEngine.swift:173`, `+Stems.swift:62,142` |
+| 12 | Centralize EMA / `pow(rate, 30/fps)` in `Shared/Smoother` value type | replaces 5 copy-pasted impls | new `Sources/Shared/Smoother.swift`; delete duplicate impls in `BeatDetector`, `LiveBeatDriftTracker`, `BandEnergyProcessor`, `MIRPipeline`, `StemAnalyzer` |
+| 13 | Delete `BeatPredictor.swift` (subordinate to `LiveBeatDriftTracker`; QR.1 retires reactive-only fallback per Architect simplification #3) | ~150 LOC + tests | `Sources/DSP/BeatPredictor.swift`, `Tests/.../DSP/BeatPredictorTests.swift` |
+| 14 | Audit `Tests/TestDoubles/` for stale doubles; standardize naming (Mock vs Stub vs Fake) | naming + delete stale | `Tests/TestDoubles/` |
+| 15 | Consolidate `Tests/.../Orchestrator/SessionPlanner*Tests.swift` (4 files → 2: unit + golden) | naming + reorg | `Tests/.../Orchestrator/` |
+| 16 | Pre-allocate buffer in `AudioInputRouter.swift:252-263` (file-playback path: 46 buffers/sec of fresh allocation) | ~10 LOC | `Sources/Audio/AudioInputRouter.swift` |
+| 17 | `AudioBuffer.latestSamples` `unsafeReadInto(_ ptr:count:)` overload to eliminate per-FFT-frame allocation | ~30 LOC | `Sources/Audio/AudioBuffer.swift` |
+
+**Implementation order:**
+
+1. Mechanical deletions first (#1, #2, #6, #7, #8, #9, #10) — no behavior risk, small commits.
+2. Stale comments (#11) — doc-only.
+3. Preset migrations (#5) before utility dedup (#4) — sequencing matters.
+4. EMA centralization (#12) — touches DSP hot paths; run full test suite after.
+5. `BeatPredictor` retirement (#13) — depends on QR.1 having landed (since QR.1 fixes the live Beat This! retry path that makes BeatPredictor truly dispensable).
+6. Test cleanups (#14, #15) — last; doesn't affect production.
+7. Allocation fixes (#16, #17) — micro-perf; verify no behavior change with full suite + soak test.
+
+**Files to touch:** see catalog above.
+
+**Tests:**
+
+- Full engine suite passes after every catalog item.
+- `PresetRegressionTests` golden hashes unchanged after #4 + #5 (utility dedup is a name change only; if a hash drifts, the dedup was not literal-equivalent and needs investigation).
+- `MIRPipelineUnitTests`, `BeatDetectorTests` pass after #12 (EMA centralization — verify FPS-independent decay constants are byte-identical).
+- Soak test (2 hours) passes after #16 + #17 — confirm no allocation regression in `MemoryReporter` output.
+
+**Done when:**
+
+- [ ] All 17 catalog items landed in separate commits (one per item) with `[QR.5] <component>: <description>` messages.
+- [ ] Full engine suite + full app build green after each commit (`git bisect` retains value).
+- [ ] Preset regression hashes unchanged.
+- [ ] CLAUDE.md Module Map updated for any deleted/added files.
+- [ ] DECISIONS.md not touched (this increment is mechanical, no design decisions).
+
+**Verify:** `swift test --package-path PhospheneEngine && xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build && bash Scripts/run_soak_test.sh --duration 600`.
+
+**Estimated sessions:** 3 (deletions + comments → preset migration + dedup → EMA centralization + tests + soak).
+
+---
+
+### Increment QR.6 (ARCH.1) — `VisualizerEngine` decomposition
+
+**Goal.** Split `VisualizerEngine` (2,580 LOC, 8 NSLocks, `@unchecked Sendable`, 7 extension files) into 3-4 owned services with a 200-line composition root. Replace `RenderPipeline`'s 24-NSLock switchboard with a single `RenderGraphState` value type updated atomically per preset switch.
+
+**Why now (and why last in QR).** The architect's H1 + H2 findings together represent the largest single piece of debt in the codebase. They are *also* the highest-risk change: every concern in the engine integrates here. Schedule after QR.1–QR.5 have landed so that:
+
+- QR.1 has cleaned up the sample-rate plumbing this refactor would otherwise have to thread through.
+- QR.2 has fixed the orchestrator surface this refactor exposes.
+- QR.3 has hardened the test suite that will validate the decomposition.
+- QR.5 has retired `BeatPredictor`, deduplicated `ShaderUtilities`, and centralized EMA — all of which would be friction during decomposition if left in place.
+
+This increment is **the first one that requires Matt to explicitly approve scope at the start**, because the safe path is to ship the decomposition behind feature flags and migrate one subsystem at a time over multiple sessions.
+
+**Proposed shape (subject to architect's pre-implementation pass):**
+
+```
+PhospheneApp/
+  VisualizerEngine.swift              → 200-line composition root: owns the three hosts, wires publishers, exposes the public API
+  AudioPipelineHost.swift             → router, FFT, MIR, stems, signal-state callbacks. Owns the audio-thread → analysis-queue boundary.
+  RenderHost.swift                    → pipeline, presets, mesh/preset state, mvwarp, preset switching. Owns the render-pipeline lock surface.
+  OrchestratorHost.swift              → planner, live adapter, reactive orchestrator, plan publisher, action router. Owns the orchestrator state.
+```
+
+Each host is a `@MainActor`-bound `final class`, owns its state (no `@unchecked Sendable`), exposes a small public surface to the composition root. Cross-host communication via Combine publishers (typed events), not direct property reads.
+
+**`RenderGraphState` value type (RenderPipeline H2 fix):**
+
+```
+struct RenderGraphState {
+    var preset: PresetDescriptor
+    var passes: [RenderPass]
+    var icb: ICBState?
+    var raymarch: RayMarchState?
+    var mvwarp: MVWarpState?
+    var mesh: MeshState?
+    var postProcess: PostProcessState?
+    // … one slot per pass family
+}
+```
+
+`RenderPipeline` holds `var graphState: RenderGraphState` under a single lock. Per-frame `draw(in:)` snapshots one struct under one lock. Adding a pass family = adding a slot, not a lock.
+
+**Frame-budget governor latency fix (Renderer + Architect H3):**
+
+`RenderPipeline.swift:371-384` does `Task { @MainActor in observe(...) }` every frame in the completed handler. Move the `FrameBudgetManager` and `MLDispatchScheduler` to a dedicated serial DispatchQueue; only hop to `@MainActor` for `@Published` UI updates. Decisions stay synchronous on the timing path; UI lags by at most one frame, but `MLDispatchScheduler` no longer misses budget breaches under main-thread contention.
+
+**Live Beat This! routed through `MLDispatchScheduler` (ML #3):**
+
+`runLiveBeatAnalysisIfNeeded`'s `analyzer.analyzeBeatGrid(...)` currently dispatches to `stemQueue` at utility QoS without consulting `MLDispatchScheduler`. Route through the scheduler the same way stem separation does. Pre-warm Beat This! graph + weight load at session start (after first audio frame) to avoid the t=10s lazy-init stutter.
+
+**`MIRPipeline` `@unchecked Sendable` cleanup (Architect M2):**
+
+Convert `MIRPipeline` to a `@MainActor` final class with explicit per-property locks where cross-thread access is genuinely needed. Removes the unsynchronized `private(set) var` reads-from-main / writes-from-analysis-queue pattern.
+
+**`Diagnostics → Audio + Renderer` dependency leak (Architect M3):**
+
+Move `SoakTestHarness` into a `Tests/` target or a separate non-shipped SPM dev product. Keeps `Diagnostics` engine library reusable.
+
+**`Presets` and `Renderer` shader resource directories consolidation (Architect M4):**
+
+Pick one source of truth (recommended: `Presets/Shaders/`). Remove the duplicate from the other target's `resources` declaration in `Package.swift`. Verify no `.metal` lookup silently fails.
+
+**Files to touch:** `PhospheneApp/VisualizerEngine*.swift` (split into 4+ files), `PhospheneEngine/Sources/Renderer/RenderPipeline*.swift` (RenderGraphState refactor), `PhospheneEngine/Sources/DSP/MIRPipeline.swift`, `PhospheneEngine/Package.swift`, related tests.
+
+**Tests:**
+
+- All existing tests pass at every intermediate commit.
+- New `AudioPipelineHostTests`, `RenderHostTests`, `OrchestratorHostTests` cover each host's API.
+- New `RenderGraphStateTests` covers atomic state-transition contract.
+- `LiveDriftValidationTests` (from QR.3) passes — proves the refactor preserves musical sync.
+- Full soak test passes (no allocation regression).
+
+**Done when:**
+
+- [ ] `VisualizerEngine.swift` is ≤ 250 LOC; `+Audio/+Stems/+Orchestrator/+Capture/+InitHelpers/+PublicAPI` extension files deleted.
+- [ ] Three hosts own their state; no `@unchecked Sendable` outside explicit audio-thread boundaries.
+- [ ] `RenderPipeline` uses one lock + one `RenderGraphState`.
+- [ ] Frame-budget observer runs on a dedicated queue; `MLDispatchScheduler` decisions are synchronous on the timing path.
+- [ ] Live Beat This! routed through `MLDispatchScheduler`; pre-warmed at session start.
+- [ ] `MIRPipeline` is `@MainActor`; no `@unchecked Sendable`.
+- [ ] `Diagnostics` no longer depends on `Audio + Renderer` for shipped library product.
+- [ ] One canonical `Shaders/` resource directory.
+- [ ] Full engine + app + soak test suites green.
+- [ ] Performance regression test confirms no per-frame regression.
+- [ ] CLAUDE.md Module Map fully rewritten for the new shape; DECISIONS.md D-080: "VisualizerEngine decomposition + RenderPipeline single-state refactor."
+
+**Verify:** Full suite + soak test + manual reel re-record.
+
+**Estimated sessions:** 5–8. **Matt approval required at the start** because the increment is large enough that mid-flight scope changes would be costly. Each session ships one subsystem migration with full test pass; abort path is clean (revert to last green commit).
+
+**Risks:**
+
+- Decomposition surfaces hidden coupling. Each host migration may require refactors in unrelated files.
+- `RenderGraphState` atomic snapshot under load may regress per-frame timing if not benchmarked. Mitigation: gate the refactor behind a runtime flag and A/B against the legacy switchboard for one session.
+- `MIRPipeline` `@MainActor` conversion may cause unexpected `await` propagation. Mitigation: stage in a separate session with isolated test coverage.
 
 ---
 
