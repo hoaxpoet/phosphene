@@ -1271,6 +1271,33 @@ Per-preset state setup handles Arachne (allocates `ArachneState`, warms 30 ticks
 
 ---
 
+### Increment QS.1 — Quality System Documentation ✅ 2026-05-05
+
+**Scope:** Establish the defect taxonomy, bug report template, known-issues tracker, release checklist, and developer release notes. Update `CLAUDE.md` with the Defect Handling Protocol. No production code changes.
+
+**New files:**
+- `docs/QUALITY/DEFECT_TAXONOMY.md` — severity definitions (P0–P3), domain tags, failure classes, defect process by severity, multi-increment fix flow.
+- `docs/QUALITY/BUG_REPORT_TEMPLATE.md` — structured template: expected behavior, actual behavior, reproduction steps, session artifacts, suspected failure class, verification criteria.
+- `docs/QUALITY/KNOWN_ISSUES.md` — active tracker: BUG-001 through BUG-005 (open), pre-existing test flakes, and BUG-R001 through BUG-R005 (recently resolved from DSP.3.x).
+- `docs/QUALITY/RELEASE_CHECKLIST.md` — 10-section gate covering build, DSP/beat-sync, stem routing, preset fidelity, render pipeline, session/UX, performance, documentation, and git hygiene.
+- `docs/RELEASE_NOTES_DEV.md` — developer-facing release notes seeded with entries from dev-2026-04-25 through dev-2026-05-05.
+
+**Updated files:**
+- `CLAUDE.md` — `Defect Handling Protocol` section added after `Increment Completion Protocol`.
+- `docs/ENGINEERING_PLAN.md` — this increment.
+
+**Done when:**
+- All five docs files exist and are internally consistent with current codebase state. ✅
+- `CLAUDE.md` Defect Handling Protocol section matches the requirements in the task specification. ✅
+- `KNOWN_ISSUES.md` accurately reflects the five open defects identified from the DSP.3.x work and V.7.7A known follow-ups. ✅
+- `RELEASE_NOTES_DEV.md` covers the DSP.2/DSP.3/V.7.x session history without contradicting `ENGINEERING_PLAN.md`. ✅
+
+**Verify:** `grep -c "BUG-00" docs/QUALITY/KNOWN_ISSUES.md` — returns ≥ 5. `grep "Defect Handling Protocol" CLAUDE.md` — returns the section header.
+
+**Estimated sessions:** 1 (delivered).
+
+---
+
 ### Increment V.7.7 — Arachne v8: WORLD pillar + 1–2 background dewy webs
 
 **Prerequisite:** V.7.7A staged-composition scaffold migration ✅ 2026-05-05.

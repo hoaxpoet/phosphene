@@ -58,6 +58,48 @@ Every increment — engine, preset, UX, docs, infrastructure — ends the same w
 
 When in doubt, write a short status update and ask. The cost of pausing to confirm is low. The cost of an increment that silently expanded scope, partially landed, or quietly skipped a doc update is high.
 
+---
+
+## Defect Handling Protocol
+
+See `docs/QUALITY/DEFECT_TAXONOMY.md` for full severity definitions, domain tags, and failure classes. See `docs/QUALITY/BUG_REPORT_TEMPLATE.md` for the required report structure. See `docs/QUALITY/KNOWN_ISSUES.md` for the active issue tracker.
+
+**Evidence before implementation (P0/P1/P2).** Do not modify code in response to a reported P0, P1, or P2 defect until the following are documented:
+
+1. **Expected behavior** — observable output described in concrete terms (values, units, state names). Not implementation internals.
+2. **Actual behavior** — what actually happens, with observed values. Include frequency if intermittent.
+3. **Reproduction steps** — minimum reproducer. A specific track or fixture if the defect is domain-specific.
+4. **Session artifacts** — relevant `features.csv` columns, `session.log` lines, contact sheet screenshot, or diagnostic dump. For beat-sync and stem-routing defects, `features.csv` beat columns and a `BeatSyncSnapshot` are the primary artifacts. For render defects, a `RENDER_VISUAL=1` contact sheet is required where available.
+5. **Suspected failure class** — one class from the taxonomy (`algorithm`, `concurrency`, `api-contract`, `calibration`, `pipeline-wiring`, `resource-management`, `sample-rate`, `precision`, `test-isolation`, `sdf-geometry`, `render-state`, `regression`, `documentation-drift`).
+6. **Verification criteria** — written before the fix, not after. At minimum: one automated gate + one manual check for any defect affecting musical feel or visual fidelity.
+
+**Fix increment obligations.** Every fix increment must:
+- Update `docs/QUALITY/KNOWN_ISSUES.md` — fill in the `Resolved` field and commit hash.
+- Update `docs/RELEASE_NOTES_DEV.md` — add or extend the current release entry.
+- Not skip these updates under "it's obvious from the commit."
+
+**Multi-increment process for P0/P1.** Unless a defect is trivial (< 5 lines of change, root cause obvious from existing artifacts, no architectural risk — requires Matt's explicit approval to collapse), the fix process uses separate increments:
+
+1. **Instrumentation** — add logging, diagnostic capture, or test infrastructure to expose the failure. Commit and stop.
+2. **Diagnosis** — reproduce from artifacts, identify root cause, document in `KNOWN_ISSUES.md`. Do not write fix code in this increment.
+3. **Fix** — implement the fix, add or extend regression tests.
+4. **Validation** — run full test suite, produce required domain artifacts, perform manual validation where mandated.
+5. **Release notes** — update `RELEASE_NOTES_DEV.md`, mark resolved in `KNOWN_ISSUES.md`.
+
+Trivial P1 defects may collapse steps 1–4 into one increment. State this explicitly in the commit message and in `KNOWN_ISSUES.md`.
+
+**Domain-specific artifact requirements.** These domains require diagnostic artifacts before and after fix work:
+
+- **Beat sync / tempo** (`dsp.beat`): `features.csv` beat-sync columns (`lock_state`, `grid_bpm`, `drift_ms`, `barPhase01_permille`), SpectralCartograph mode label capture, and `BeatSyncSnapshot` data from a real music session. Minimum: Love Rehab at 125 BPM.
+- **Stem routing** (`dsp.stem`): `stems.csv` showing non-constant deviation-field values across 500+ frames, plus manual observation that visual response feels musically connected.
+- **Preset fidelity** (`preset.fidelity`): contact sheet from `RENDER_VISUAL=1` compared against `docs/VISUAL_REFERENCES/<preset>/` reference images. Anti-references must be explicitly checked (see Failed Approach #48).
+- **Render pipeline** (`renderer`): `PresetRegressionTests` golden hash before and after; Metal GPU trace if frame budget is affected.
+
+**Manual validation is required for:**
+- Musical feel: beat alignment, stem-visual coupling, tempo tracking. Automated tests prove pipeline correctness; they do not prove the result feels musical. These judgments require listening at normal volume.
+- Visual fidelity: M7 review for any preset approaching certification. Matt's approval is required; no automated metric substitutes.
+- UX flow: any change to the session lifecycle or playback chrome. Walk the affected flow end-to-end; do not rely solely on unit tests of view models.
+
 ## Module Map
 
 ```
