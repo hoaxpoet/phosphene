@@ -134,6 +134,80 @@ extension BeatGrid {
     }
 }
 
+// MARK: - Octave Correction
+
+extension BeatGrid {
+
+    /// Return a copy with beats thinned so that BPM falls into the practical
+    /// range [80, 160], correcting double-time detection from short audio windows.
+    ///
+    /// **Halving only** — BPM > 160 is halved (and every other beat is dropped);
+    /// BPM < 80 is left unchanged because some tracks genuinely have slow tempos
+    /// (e.g. Pyramid Song ~68 BPM) and doubling would be incorrect. The upper-bound
+    /// correction is applied recursively until BPM ≤ 160.
+    ///
+    /// Used exclusively by the live 10-second Beat This! trigger path in
+    /// `VisualizerEngine+Stems`. The offline 30-second prep path does not need this
+    /// because longer context produces reliable beat-level detection.
+    ///
+    /// After thinning, downbeats are re-snapped to the surviving beats within ±40 ms.
+    /// Downbeats that fall on removed (odd-indexed) beats beyond the snap window are
+    /// discarded; `beatsPerBar` is recalculated from the corrected downbeat set.
+    public func halvingOctaveCorrected() -> BeatGrid {
+        guard bpm > 160, beats.count >= 2 else { return self }
+
+        var correctedBeats = beats
+        var correctedBPM = bpm
+
+        // Halve repeatedly until BPM ≤ 160 (handles pathological triple-time, etc.).
+        while correctedBPM > 160, correctedBeats.count >= 2 {
+            correctedBPM /= 2
+            correctedBeats = stride(from: 0, to: correctedBeats.count, by: 2)
+                .map { correctedBeats[$0] }
+        }
+
+        // Re-snap downbeats to surviving beats within ±40 ms (one downbeat per beat).
+        let snapTolerance = 0.04
+        var usedIndices = Set<Int>()
+        let correctedDownbeats: [Double] = downbeats.compactMap { db in
+            guard let idx = correctedBeats.indices.min(
+                by: { abs(correctedBeats[$0] - db) < abs(correctedBeats[$1] - db) }
+            ),
+            abs(correctedBeats[idx] - db) <= snapTolerance,
+            !usedIndices.contains(idx) else { return nil }
+            usedIndices.insert(idx)
+            return correctedBeats[idx]
+        }
+
+        // Recompute meter from corrected downbeats.
+        let beatPeriod = correctedBPM > 0 ? 60.0 / correctedBPM : 0
+        let (correctedBPB, correctedConf): (Int, Float) = {
+            guard correctedDownbeats.count >= 2, beatPeriod > 0 else {
+                return (beatsPerBar, barConfidence)
+            }
+            let dbIOIs = zip(correctedDownbeats, correctedDownbeats.dropFirst())
+                .map { $1 - $0 }
+            let sorted = dbIOIs.sorted()
+            let median = sorted[sorted.count / 2]
+            let bpb = max(1, Int((median / beatPeriod).rounded()))
+            let matching = dbIOIs.filter {
+                Int(($0 / beatPeriod).rounded()) == bpb
+            }.count
+            return (bpb, Float(matching) / Float(dbIOIs.count))
+        }()
+
+        return BeatGrid(
+            beats: correctedBeats,
+            downbeats: correctedDownbeats,
+            bpm: correctedBPM,
+            beatsPerBar: correctedBPB,
+            barConfidence: correctedConf,
+            frameRate: frameRate,
+            frameCount: frameCount
+        )
+    }
+}
+
 // MARK: - Lookup Helpers
 
 extension BeatGrid {

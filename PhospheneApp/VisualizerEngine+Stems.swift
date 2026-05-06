@@ -190,31 +190,42 @@ extension VisualizerEngine {
 
     // MARK: - Live Beat This! Analysis
 
-    /// Minimum buffered audio before triggering live Beat This! inference.
+    /// Minimum buffered audio before the first live Beat This! attempt.
     private static let liveBeatMinSeconds: Double = 10.0
 
-    /// Run Beat This! on the live tap audio buffer once per track, after
-    /// `liveBeatMinSeconds` of audio has accumulated.
+    /// Seconds at which a second attempt is made when the first returns empty.
+    /// Gives tracks with quiet intros (Pyramid Song) or complex meters (Money 7/4)
+    /// a second shot with more accumulated audio.
+    private static let liveBeatRetrySeconds: Double = 20.0
+
+    /// Maximum Beat This! attempts per track. One at 10 s; one retry at 20 s.
+    private static let liveBeatMaxAttempts: Int = 2
+
+    /// Run Beat This! on the live tap audio buffer, triggering once at 10 s and
+    /// retrying once at 20 s if the first attempt returns an empty grid.
     ///
     /// Called from `VisualizerEngine+Audio.processAnalysisFrame` at audio-callback
-    /// rate. Guards ensure this fires at most once per track and only when the
-    /// drift tracker has no grid already installed (Spotify-prepared tracks skip this).
+    /// rate. Guards cap at `liveBeatMaxAttempts` per track and skip when a grid is
+    /// already installed (Spotify-prepared tracks).
     ///
-    /// The 10-second mono buffer covers playback-time window
-    /// `[elapsedSeconds − 10, elapsedSeconds]`. Beat times from the analyzer are
-    /// relative to the buffer's start, so we shift by `elapsedSeconds − 10` to
-    /// produce track-relative times for `LiveBeatDriftTracker`.
+    /// Beat times from the analyzer are buffer-relative; they are shifted by
+    /// `elapsedSeconds − liveBeatMinSeconds` to produce track-relative times for
+    /// `LiveBeatDriftTracker`. Raw grids with BPM > 160 are halving-octave-corrected
+    /// (double-time artefact from short audio windows) before installing.
     func runLiveBeatAnalysisIfNeeded() {
-        guard !liveBeatAnalysisDone else { return }
+        guard liveBeatAnalysisAttempts < Self.liveBeatMaxAttempts else { return }
         guard !mirPipeline.liveDriftTracker.hasGrid else {
-            // Already have a grid (Spotify-prepared) — skip live analysis.
-            liveBeatAnalysisDone = true
+            // Already have a grid (Spotify-prepared) — cap attempts so we skip.
+            liveBeatAnalysisAttempts = Self.liveBeatMaxAttempts
             return
         }
         let elapsed = Double(mirPipeline.elapsedSeconds)
-        guard elapsed >= Self.liveBeatMinSeconds else { return }
+        let nextTrigger = liveBeatAnalysisAttempts == 0
+            ? Self.liveBeatMinSeconds
+            : Self.liveBeatRetrySeconds
+        guard elapsed >= nextTrigger else { return }
 
-        liveBeatAnalysisDone = true   // prevent concurrent/duplicate calls
+        liveBeatAnalysisAttempts += 1   // prevent concurrent/duplicate calls
 
         // Snapshot interleaved stereo PCM using the actual tap sample rate.
         // The buffer was initialized at 44100 Hz but the tap typically runs at
@@ -233,43 +244,73 @@ extension VisualizerEngine {
         let mono = monoMutable
 
         let bufferStartTime = elapsed - Self.liveBeatMinSeconds
+        let attemptNum = liveBeatAnalysisAttempts   // capture before async
         let elapsedStr = String(format: "%.1f", elapsed)
         let rateStr = String(format: "%.0f", actualRate)
-        logger.info("LiveBeat: launching Beat This! on \(mono.count) samples @ \(rateStr) Hz (t=\(elapsedStr)s)")
+        let sampleCountStr = "\(mono.count)"
+        logger_liveBeat(
+            "LiveBeat: attempt \(attemptNum)/\(Self.liveBeatMaxAttempts) on " +
+            "\(sampleCountStr) samples @ \(rateStr) Hz (t=\(elapsedStr)s)"
+        )
 
         stemQueue.async { [weak self] in
-            guard let self else { return }
+            self?.performLiveBeatInference(
+                mono: mono,
+                sampleRate: actualRate,
+                bufferStartTime: bufferStartTime,
+                attemptNum: attemptNum
+            )
+        }
+    }
 
-            // Lazy-load the analyzer on first use (weight loading is heavy).
-            if self.liveBeatGridAnalyzer == nil {
-                let device = self.context.device
-                do {
-                    self.liveBeatGridAnalyzer = try DefaultBeatGridAnalyzer(device: device)
-                } catch {
-                    self.logger_liveBeat("LiveBeat: analyzer init failed: \(error)")
-                    return
-                }
-            }
-
-            guard let analyzer = self.liveBeatGridAnalyzer else { return }
-            // Use the actual tap rate (typically 48000 Hz) so the Beat This!
-            // mel spectrogram covers the correct duration and BPM is accurate.
-            let rawGrid = analyzer.analyzeBeatGrid(samples: mono, sampleRate: actualRate)
-            guard !rawGrid.beats.isEmpty else {
-                self.logger_liveBeat("LiveBeat: Beat This! returned empty grid")
+    /// Run the actual Beat This! inference and install the resulting grid.
+    ///
+    /// Extracted from `runLiveBeatAnalysisIfNeeded` to keep that function within
+    /// the 60-line SwiftLint gate. Always called on `stemQueue`.
+    private func performLiveBeatInference(
+        mono: [Float], sampleRate: Double,
+        bufferStartTime: Double, attemptNum: Int
+    ) {
+        // Lazy-load the analyzer on first use (weight loading is heavy).
+        if liveBeatGridAnalyzer == nil {
+            let device = context.device
+            do {
+                liveBeatGridAnalyzer = try DefaultBeatGridAnalyzer(device: device)
+            } catch {
+                logger_liveBeat("LiveBeat: analyzer init failed: \(error)")
                 return
             }
+        }
 
-            // Shift beat times from buffer-relative to track-relative.
-            let grid = rawGrid.offsetBy(bufferStartTime)
-            let bpmStr = String(format: "%.1f", grid.bpm)
-            let beatCount = grid.beats.count
-            let meter = grid.beatsPerBar
-            self.logger_liveBeat("LiveBeat: grid ready — \(beatCount) beats, \(bpmStr) BPM, \(meter)/X meter")
+        guard let analyzer = liveBeatGridAnalyzer else { return }
+        // Use the actual tap rate (typically 48000 Hz) so the Beat This!
+        // mel spectrogram covers the correct duration and BPM is accurate.
+        let rawGrid = analyzer.analyzeBeatGrid(samples: mono, sampleRate: sampleRate)
+        guard !rawGrid.beats.isEmpty else {
+            let retryNote = attemptNum < Self.liveBeatMaxAttempts
+                ? "will retry at \(Int(Self.liveBeatRetrySeconds))s"
+                : "no more retries"
+            logger_liveBeat("LiveBeat: attempt \(attemptNum) returned empty grid — \(retryNote)")
+            return
+        }
 
-            Task { @MainActor [weak self] in
-                self?.mirPipeline.setBeatGrid(grid)
-            }
+        // Apply halving octave-correction (BPM > 160 → double-time artefact
+        // common in 10-second windows). BPM < 80 is intentionally left alone —
+        // some tracks genuinely have slow tempos (Pyramid Song ~68 BPM).
+        let correctedGrid = rawGrid.halvingOctaveCorrected()
+
+        // Shift beat times from buffer-relative to track-relative.
+        let grid = correctedGrid.offsetBy(bufferStartTime)
+        let bpmStr = String(format: "%.1f", grid.bpm)
+        let beatCount = grid.beats.count
+        let meter = grid.beatsPerBar
+        logger_liveBeat(
+            "LiveBeat: grid ready (attempt \(attemptNum)) — " +
+            "\(beatCount) beats, \(bpmStr) BPM, \(meter)/X meter"
+        )
+
+        Task { @MainActor [weak self] in
+            self?.mirPipeline.setBeatGrid(grid)
         }
     }
 
@@ -301,8 +342,8 @@ extension VisualizerEngine {
         // A deferred dispatch from the previous track is irrelevant on the new track.
         pendingDispatchStartTime = nil
 
-        // Allow live Beat This! to re-fire for the new track.
-        liveBeatAnalysisDone = false
+        // Allow live Beat This! to re-fire (up to liveBeatMaxAttempts) for the new track.
+        liveBeatAnalysisAttempts = 0
 
         pipeline.spectralHistory.reset()
 
