@@ -174,16 +174,42 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     let stemSeparator: StemSeparator?
 
     /// Ring buffer accumulating interleaved stereo PCM for stem separation.
-    /// Initialized at 44100 Hz; `tapSampleRate` is captured from the first audio
-    /// callback and used to correctly size snapshot requests at the actual rate.
-    let stemSampleBuffer = StemSampleBuffer(sampleRate: 44100, maxSeconds: 15)
+    /// Buffer capacity is sized at `StemSeparator.modelSampleRate` (44100 Hz)
+    /// for `maxSeconds` of stereo audio; on a 48 kHz tap it still holds ≈ 13.8 s,
+    /// which exceeds every consumer's 10 s window. The actual tap rate is
+    /// supplied to the rate-aware `snapshotLatest`/`rms` overloads so the
+    /// retrieved sample count matches real wall-clock time. (D-079, QR.1)
+    let stemSampleBuffer = StemSampleBuffer(
+        sampleRate: Double(StemSeparator.modelSampleRate),
+        maxSeconds: 15
+    )
 
-    /// Actual sample rate delivered by the Core Audio tap, captured on the first
-    /// audio callback and used by the live Beat This! path. Typically 48000 Hz
-    /// when Audio MIDI Setup is left at its default; may be 44100 Hz on some
-    /// hardware. Initialized to 44100 to match the buffer default; updated once
-    /// the first real callback arrives.
-    var tapSampleRate: Double = 44100
+    /// Lock guarding `_tapSampleRate`. Writes happen on the audio thread; reads
+    /// from `stemQueue` and `analysisQueue`. Cross-core visibility for an
+    /// 8-byte field is not guaranteed without a synchronization barrier on
+    /// Apple Silicon, so all access goes through `tapSampleRate` /
+    /// `updateTapSampleRate(_:)`. (Architect H1, D-079, QR.1)
+    private let tapSampleRateLock = NSLock()
+
+    /// Backing store for `tapSampleRate`. Read/write under `tapSampleRateLock`.
+    private var _tapSampleRate: Double = Double(StemSeparator.modelSampleRate)
+
+    /// Actual sample rate delivered by the Core Audio tap. Typically 48000 Hz
+    /// when Audio MIDI Setup is left at its default; 44100 Hz on some hardware.
+    /// Initialized to `StemSeparator.modelSampleRate`; the audio callback
+    /// updates it on every frame via `updateTapSampleRate(_:)`. The lock
+    /// provides cross-core visibility for the stem queue and analysis queue.
+    var tapSampleRate: Double {
+        tapSampleRateLock.withLock { _tapSampleRate }
+    }
+
+    /// Update the captured tap sample rate. Called from the audio callback.
+    /// The audio thread always passes the current install's rate, so the
+    /// stored value is stable for the lifetime of a tap install (and changes
+    /// only across capture-mode switches that re-install the tap).
+    func updateTapSampleRate(_ rate: Double) {
+        tapSampleRateLock.withLock { _tapSampleRate = rate }
+    }
 
     /// Per-stem energy + beat analysis.
     let stemAnalyzer: StemAnalyzer
@@ -432,7 +458,10 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     init() {
         // Create shared instances up front — these go into both the engine pipeline
         // and the SessionPreparer (local vars used to avoid reading self before phase 2).
-        let analyzer = StemAnalyzer(sampleRate: 44100)
+        // StemAnalyzer consumes mono stem waveforms output by `StemSeparator`,
+        // which always run at the model's native rate (44100 Hz) regardless of
+        // tap rate. This is `StemSeparator.modelSampleRate`, not `tapSampleRate`.
+        let analyzer = StemAnalyzer(sampleRate: StemSeparator.modelSampleRate)
         let classifier = Self.loadMoodClassifier()
 
         // Metal setup is required for the app to function — a failure here
