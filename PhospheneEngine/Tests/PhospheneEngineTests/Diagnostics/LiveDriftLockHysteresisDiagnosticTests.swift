@@ -69,17 +69,17 @@ struct LiveDriftLockHysteresisDiagnosticTests {
 
     // MARK: - Check 1 / Mechanism B: Prepared grid freeze after 30 s
 
-    /// Replays 50 seconds of sub_bass onsets against a 30-second prepared grid.
-    /// After t≈30 s all onsets miss (nearestBeat returns nil because the grid has
-    /// no extrapolated beats). drift freezes; lock permanently drops to .locking.
+    /// Replays 50 seconds of sub_bass onsets against an extrapolated grid (offsetBy(0)).
+    /// Fix A (BUG-007.2) calls offsetBy(0) in the production prepared-cache install path,
+    /// extrapolating beats to a 300-second horizon so nearestBeat() always returns non-nil.
+    /// Lock should reach .locked and stay there throughout the 50-second run.
     ///
-    /// INTENTIONALLY FAILS on the current codebase: the assertion
-    /// "lock_state stays .locked after 35 s" will fail because the tracker
-    /// regresses to .locking once the grid is exhausted.
+    /// The raw-grid (pre-fix) behaviour is tested by the unit regression gate
+    /// `test_preparedGridExhaustion_withoutOffsetBy_dropsLock` in LiveBeatDriftTrackerTests.
     @Test("Mechanism B: prepared grid freeze after 30-second coverage exhausted")
     func test_mechanismB_preparedGridFreezesAt30s() {
-        let grid = makeMoneySyntheticGrid(bpm: 123.2, coverageSeconds: 30.0)
-        // intentionally: no offsetBy() call — same as the production prepared-cache path
+        let rawGrid = makeMoneySyntheticGrid(bpm: 123.2, coverageSeconds: 30.0)
+        let grid = rawGrid.offsetBy(0)   // Fix A: extrapolate beats to 300 s horizon
 
         let tracker = LiveBeatDriftTracker()
         tracker.setGrid(grid)
@@ -116,8 +116,11 @@ struct LiveDriftLockHysteresisDiagnosticTests {
             let nb = e.nearestBeat.map { String(format: "%.4f", $0) } ?? "nil"
             let id = e.instantDriftMs.map { String(format: "%+.1f", $0) } ?? "nil"
             let lock = e.lockState == .locked ? "LOCKED" : e.lockState == .locking ? "LOCKING" : "UNLOCKED"
-            print(String(format: "%.3f | %-8s | %7s | %+7.1f | %+7.1f | %@ | %d | %d | %@",
-                e.onsetTime, nb, id,
+            // Use %@ (not %s) — Swift Strings are not C strings; %s causes SIGSEGV.
+            let nbPad = nb + String(repeating: " ", count: max(0, 8 - nb.count))
+            let idPad = String(repeating: " ", count: max(0, 7 - id.count)) + id
+            print(String(format: "%.3f | %@ | %@ | %+7.1f | %+7.1f | %@ | %d | %d | %@",
+                e.onsetTime, nbPad, idPad,
                 e.prevDriftMs, e.newDriftMs,
                 e.isTightMatch ? "Y" : "N",
                 e.matchedOnsets, e.consecutiveMisses, lock))
@@ -140,9 +143,8 @@ struct LiveDriftLockHysteresisDiagnosticTests {
         let frozenEntries = capture.entries.filter { $0.nearestBeat == nil && $0.onsetTime > 30.0 }
         print("nil-nearest-beat entries after t=30 s: \(frozenEntries.count)")
 
-        // INTENTIONAL FAILURE: this assertion documents the bug.
-        // The fix (BUG-007.2) is to call grid.offsetBy(0) when installing the
-        // prepared-cache grid, extrapolating beats to a 300-second horizon.
+        // Fix A regression gate: with offsetBy(0) applied, the grid is extrapolated to 300 s.
+        // nearestBeat() returns non-nil for all onsets past t=30 s; lock must remain .locked.
         let lockedAt40s = lockSamples.filter { $0.time >= 40.0 && $0.time <= 41.0 }.first?.lock ?? 0
         // swiftlint:disable line_length
         #expect(lockedAt40s == 2, "BUG-007 Mechanism B: lock should stay .locked at t=40 s but prepared grid has no extrapolated beats past t=30 s. Fix: setBeatGrid(cached.beatGrid.offsetBy(0))")
