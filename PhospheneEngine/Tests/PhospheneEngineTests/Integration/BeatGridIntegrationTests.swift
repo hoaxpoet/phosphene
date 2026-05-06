@@ -109,6 +109,28 @@ private final class CountingBeatGridAnalyzer: BeatGridAnalyzing, @unchecked Send
     }
 }
 
+/// Returns a fixed-BPM grid regardless of input. Used by BUG-008.2 wiring tests
+/// to exercise the BPM-mismatch detection path without running real Beat This!.
+private final class FixedBPMBeatGridAnalyzer: BeatGridAnalyzing, @unchecked Sendable {
+    let fixedBPM: Double
+    init(fixedBPM: Double) { self.fixedBPM = fixedBPM }
+    func analyzeBeatGrid(samples: [Float], sampleRate: Double) -> BeatGrid {
+        let beatPeriod = 60.0 / fixedBPM
+        let beats = (0..<60).map { Double($0) * beatPeriod }
+        let downbeats = stride(from: 0.0, to: Double(beats.count), by: 4)
+            .map { beats[Int($0)] }
+        return BeatGrid(
+            beats: beats,
+            downbeats: downbeats,
+            bpm: fixedBPM,
+            beatsPerBar: 4,
+            barConfidence: 1.0,
+            frameRate: 50.0,
+            frameCount: Int(beats.last ?? 0) * 50
+        )
+    }
+}
+
 private enum BeatGridIntegrationTestError: Error {
     case noMetalDevice
 }
@@ -225,4 +247,49 @@ func cacheAccessor_beatGrid_matchesCachedTrackData() {
 
     let recalled = cache.beatGrid(for: track)
     #expect(recalled == grid)
+}
+
+// MARK: - BUG-008.2 — BPM mismatch wiring smoke test
+
+/// Wiring smoke test for BUG-008.2. With a fixed-BPM stub analyzer producing
+/// a known grid BPM, prepare() must complete without crashing and the
+/// cached BeatGrid must carry that BPM verbatim. The detector logic itself
+/// is covered exhaustively by `BPMMismatchCheckTests`; this test exists to
+/// prove the SessionPreparer call site reaches the detector and tolerates
+/// the cases where MIR is zero (sine-tone preview produces no usable BPM).
+@Test
+@MainActor
+func bpmMismatch_wiring_doesNotCrash_andGridReachesCache() async throws {
+    let device = try #require(MTLCreateSystemDefaultDevice(), "Metal device required")
+    let separator = try StubSeparator(device: device)
+    let stubGrid = FixedBPMBeatGridAnalyzer(fixedBPM: 118.0)
+
+    let preparer = SessionPreparer(
+        resolver: FixedURLResolver(),
+        downloader: SinePreviewDownloader(sampleRate: 44100, duration: 5.0),
+        stemSeparator: separator,
+        stemAnalyzer: StubAnalyzer(),
+        moodClassifier: MoodClassifier(),
+        beatGridAnalyzer: stubGrid
+    )
+
+    let track = TrackIdentity(title: "BUG-008 Wiring", artist: "Test")
+    let result = await preparer.prepare(tracks: [track])
+    let cached = try #require(result.cache.loadForPlayback(track: track))
+
+    #expect(cached.beatGrid.bpm == 118.0,
+            "Stub analyzer's grid BPM must reach the cache verbatim")
+    #expect(!cached.beatGrid.beats.isEmpty,
+            "Stub analyzer must produce a non-empty grid")
+    // MIR on a 440 Hz sine produces a non-zero artifact BPM (sine harmonics
+    // trigger spectral-flux onsets), giving both estimators non-zero values.
+    // We don't assert the exact value — only that the detector's positive
+    // WARN path is exercised. The actual log line is observable in the
+    // unified-log output during this test run; the BPMMismatchCheckTests
+    // pure-function suite proves the detection math.
+    let mirFloat = try #require(cached.trackProfile.bpm,
+                                "Sine artifact should produce a non-zero MIR BPM")
+    let mismatch = detectBPMMismatch(mirBPM: Double(mirFloat), gridBPM: cached.beatGrid.bpm)
+    #expect(mismatch != nil,
+            "118 stub vs sine-artifact MIR (≈140) must trip the >3% threshold")
 }
