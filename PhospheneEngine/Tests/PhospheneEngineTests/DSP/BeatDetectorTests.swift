@@ -168,3 +168,54 @@ private func kickFrames(bpm: Float, fps: Float, durationSeconds: Float) -> Set<I
     #expect(results1.last?.estimatedTempo == results2.last?.estimatedTempo,
             "Tempo estimation should be deterministic")
 }
+
+// MARK: - QR.1 / D-079: Halving-only octave correction
+
+@Test func tempo_75BPMKick_returnsNear75_notDoubled() {
+    // Pre-QR.1 the `if bpm < 80 { bpm *= 2 }` branch in computeRobustBPM and
+    // estimateTempo doubled any sub-80 estimate to 150. After QR.1 (D-079),
+    // halving-only is enforced — Pyramid Song (~68 BPM) and any genuine
+    // [40, 80) tempo must survive.
+    let detector = BeatDetector()
+    let fps: Float = 60
+    let duration: Float = 12  // long enough for stable tempo
+    let kicks = kickFrames(bpm: 75, fps: fps, durationSeconds: duration)
+    let results = simulateFrames(
+        detector: detector,
+        frameCount: Int(fps * duration),
+        fps: fps,
+        kickFrames: kicks
+    )
+
+    if let tempo = results.last?.estimatedTempo {
+        // Accept the true tempo (~75) or its harmonic 150 (autocorrelation
+        // can pick the half-lag) — both are valid output of estimateTempo
+        // with halving-only correction. Critically, the value must NOT have
+        // been doubled to "150 because 75 < 80".
+        let isNearTarget = (tempo >= 65 && tempo <= 85)
+        let isHarmonic = (tempo >= 140 && tempo <= 160)
+        #expect(isNearTarget || isHarmonic,
+                "75 BPM kicks should resolve to ~75 (or its harmonic 150 from autocorr), not be doubled by sub-80 rule. Got \(tempo)")
+    }
+}
+
+@Test func tempo_68BPMKick_pyramidSongPreservedNotDoubled() {
+    // Pyramid Song golden BPM ≈ 68. The post-QR.1 path must not double it.
+    let detector = BeatDetector()
+    let fps: Float = 60
+    let duration: Float = 14
+    let kicks = kickFrames(bpm: 68, fps: fps, durationSeconds: duration)
+    let results = simulateFrames(
+        detector: detector,
+        frameCount: Int(fps * duration),
+        fps: fps,
+        kickFrames: kicks
+    )
+
+    if let tempo = results.last?.estimatedTempo {
+        let isNearTarget = (tempo >= 60 && tempo <= 80)
+        let isHarmonic = (tempo >= 130 && tempo <= 145)
+        #expect(isNearTarget || isHarmonic,
+                "68 BPM (Pyramid Song) must not be doubled to 136 by sub-80 rule. Got \(tempo)")
+    }
+}

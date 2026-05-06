@@ -193,8 +193,10 @@ extension BeatDetector {
         let meanIOI = inliers.reduce(0, +) / Double(inliers.count)
         guard meanIOI > 0 else { return 0 }
         var bpm = Float(60.0 / meanIOI)
+        // Halving-only octave correction. Sub-80 doubling was deleted in QR.1
+        // (D-079) — Pyramid Song genuinely runs at ~68 BPM and any track in
+        // [40, 80) BPM is preserved. This matches BeatGrid.halvingOctaveCorrected.
         if bpm > 160 { bpm /= 2 }
-        if bpm < 80 { bpm *= 2 }
         return bpm
     }
 
@@ -265,9 +267,10 @@ extension BeatDetector {
             fps: fps
         )
 
-        // Clamp to 80-160 BPM range.
+        // Halving-only octave correction (matches computeRobustBPM and
+        // BeatGrid.halvingOctaveCorrected). Sub-80 doubling deleted in QR.1
+        // (D-079) so genuinely slow tracks (Pyramid Song ~68 BPM) survive.
         if bpm > 160 { bpm /= 2 }
-        if bpm < 80 { bpm *= 2 }
 
         // Compute confidence.
         let confidence = computeAutocorrelationConfidence(
