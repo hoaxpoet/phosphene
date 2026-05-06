@@ -82,7 +82,9 @@ public final class SessionPreparer: ObservableObject {
     /// Optional SessionRecorder for `WIRING:` instrumentation logs (BUG-006.1).
     /// `nil` in tests; wired through from `VisualizerEngine` in production so
     /// preparation-lifecycle log entries land in `session.log` for diagnosis.
-    private let sessionRecorder: SessionRecorder?
+    /// Optional SessionRecorder for `WIRING:` instrumentation logs (BUG-006.1).
+    /// Visibility is `internal` so `SessionPreparer+WiringLogs.swift` can access it.
+    let sessionRecorder: SessionRecorder?
 
     // MARK: - Cache
 
@@ -351,38 +353,5 @@ extension SessionPreparer {
 
 extension SessionPreparer: PreparationProgressPublishing {}
 
-// MARK: - BUG-006.1 Wiring Logs
-
-extension SessionPreparer {
-
-    /// Emit per-track BeatGrid summaries plus the DONE line. Extracted from
-    /// `_runPreparation` to keep that function within the 60-line SwiftLint gate.
-    fileprivate func logWiringDoneSummary(
-        cachedTracks: [TrackIdentity],
-        failedTracks: [TrackIdentity]
-    ) {
-        var withGrid = 0
-        var emptyGrid = 0
-        for track in cachedTracks {
-            if let grid = cache.beatGrid(for: track), !grid.beats.isEmpty {
-                withGrid += 1
-                let bpmStr = String(format: "%.1f", grid.bpm)
-                let beatCount = grid.beats.count
-                sessionRecorder?.log(
-                    "WIRING: SessionPreparer.beatGrid track='\(track.title)' " +
-                    "bpm=\(bpmStr) beats=\(beatCount) isEmpty=false"
-                )
-            } else {
-                emptyGrid += 1
-                sessionRecorder?.log(
-                    "WIRING: SessionPreparer.beatGrid track='\(track.title)' " +
-                    "bpm=0 beats=0 isEmpty=true"
-                )
-            }
-        }
-        let doneMsg = "WIRING: SessionPreparer.prepare DONE prepared=\(cachedTracks.count) " +
-            "withGrid=\(withGrid) empty=\(emptyGrid) failed=\(failedTracks.count)"
-        sessionRecorder?.log(doneMsg)
-        logger.info("\(doneMsg, privacy: .public)")
-    }
-}
+// BUG-006.1 wiring logs and BUG-008.2 BPM-mismatch warning live in
+// `SessionPreparer+WiringLogs.swift` so this file stays under the 400-line gate.

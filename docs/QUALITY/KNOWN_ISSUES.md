@@ -258,17 +258,17 @@ The `WIRING:` instrumentation from BUG-006.1 stays in place — it costs nothing
 
 ---
 
-### BUG-008 — Offline BeatGrid systematic BPM error on kick-driven 4/4 tracks
+### BUG-008 — Offline BeatGrid disagrees with MIR BPM estimator on some tracks
 
 **Severity:** P2
 **Domain tag:** dsp.beat
-**Status:** Diagnosed (BUG-008.1, 2026-05-06) — fix scoping deferred to BUG-008.2.
-**Introduced:** Surfaced by BUG-006.2 fix on 2026-05-06; predates BUG-006.2 (the offline analyzer has been producing this output since DSP.2 S5 landed — was previously masked because `engine.stemCache` was never assigned, so the prepared grid was never actually used at runtime). Diagnosis (BUG-008.1) traces the 5.5 % error to the upstream Beat This! model itself, *not* to any Phosphene code path.
-**Resolved:** —
+**Status:** Resolved (BUG-008.2, 2026-05-06) — disagreement is now logged at preparation time. Underlying upstream-model behaviour unchanged by design; neither estimator is mechanically "right" per BUG-008.1 diagnosis.
+**Introduced:** Surfaced by BUG-006.2 fix on 2026-05-06; predates BUG-006.2 (the offline analyzer has been producing this output since DSP.2 S5 landed — was previously masked because `engine.stemCache` was never assigned, so the prepared grid was never actually used at runtime). Diagnosis (BUG-008.1) traces the disagreement to genuine musical interpretation differences between the two estimators, *not* to any Phosphene code path.
+**Resolved:** 2026-05-06 (BUG-008.2 — `BPMMismatchCheck.swift` + wiring in `SessionPreparer+WiringLogs.swift`. Disagreement now surfaces as a `WARN: BPM mismatch` line in `session.log` whenever the offline grid and MIR estimator differ by more than 3 %. No runtime behaviour change — `LiveBeatDriftTracker` continues to consume the offline grid).
 
-**Expected behavior:** `DefaultBeatGridAnalyzer` running over the 30-second Spotify preview of Love Rehab (Chaim) returns a BPM within ±1.5 BPM of the true 125 BPM. Prepared grid is then accurate enough that `LiveBeatDriftTracker` keeps `drift_ms` inside the ±30 ms strict-match window for the full track.
+**Expected behavior:** Two BPM estimators run during preparation — `TrackProfile.bpm` (MIR / DSP.1 trimmed-mean IOI on sub_bass kicks) and `CachedTrackData.beatGrid.bpm` (Beat This! transformer). When they disagree by more than 3 %, the disagreement is surfaced in `session.log` so future per-track judgment can be informed by data rather than tags. Phosphene does not assert which estimator is "correct"; both are valid interpretations of the same audio.
 
-**Actual behavior:** Beat This! returns **bpm=118.1, beats=59** for Love Rehab — a 5.5% systematic BPM error. The prepared grid is then 5.5% slow relative to the actual playback. `drift_ms` walks linearly more negative each beat (≈ 26 ms drift per 480 ms beat period at 5.5% offset), exits the ±30 ms strict-match window after ~3 beats, exits the ±90 ms onset-search window after ~30 s, then pegs at the search-window edge (`drift_ms = -90.490`) for the rest of the track. The drift tracker is structurally unable to recover from a mistuned grid — it has no mechanism to re-estimate BPM from accumulated drift, only to track instantaneous offset.
+**Actual behavior (pre-BUG-008.2):** The disagreement was silent. Love Rehab specifically reports MIR=125.0 / grid=118.1 (5.5 % delta), Beat This! locks to the perceptual beat (broader-spectrum accent integration, what the model was trained to predict on human tap annotations) while the kick-rate IOI estimator locks to the kick interval. Money 7/4 (1.4 %) and Pyramid Song 16/8 (2.86 %) fell within the threshold and would not warn. The `LiveBeatDriftTracker` consumes the offline grid; on Love Rehab specifically this drives `drift_ms` linearly negative against the live tap (which corresponds to the kick rate), pegging at the −90 ms search-window edge by 31 s. **That secondary symptom is BUG-007** — independent and not addressed by this fix.
 
 **Reproduction steps:**
 1. Connect a Spotify playlist that includes Love Rehab (Chaim).
@@ -306,7 +306,9 @@ The `WIRING:` instrumentation from BUG-006.1 stays in place — it costs nothing
 - [x] `DefaultBeatGridAnalyzer` BPM matches the upstream PyTorch reference within ±0.5 BPM. **Confirmed** by `BeatGridAccuracyDiagnosticTests` (passing).
 - [x] Phosphene preprocessing chain pinned to upstream reference at 1e-3 spectrogram tolerance. **Confirmed** by existing `BeatThisPreprocessorTests.test_loveRehab_goldenMatch`.
 - [x] Phosphene model output pinned to upstream reference at layer-by-layer tolerance. **Confirmed** by existing `BeatThisLayerMatchTests` + `BeatThisBugRegressionTests`.
-- [ ] `drift_ms` stays inside ±30 ms for the duration of a 60-second segment on Love Rehab. **Still blocked** — but root cause is not a Phosphene-side BPM error; see fix proposal below.
+- [x] Beat This! is accurate at 125 BPM on machine-quantized input. **Confirmed** by `test_synthesizedKick_modelRecoversKnownBPM` (125.0 BPM input → 125.00 produced exactly). The 118 BPM on Love Rehab reflects the track's perceptual-beat structure, not a model accuracy ceiling.
+- [x] Disagreement between MIR and offline-grid BPM is surfaced in `session.log` when delta > 3 %. **Confirmed** by `BPMMismatchCheckTests` (7 pure-function tests) and `bpmMismatch_wiring_doesNotCrash_andGridReachesCache` (integration smoke).
+- [ ] `drift_ms` stays inside ±30 ms for the duration of a 60-second segment on Love Rehab. **Tracked under BUG-007** — the drift-tracker lock-hysteresis bug is independent of which BPM is "correct" and must be closed first before this can be re-evaluated meaningfully.
 
 **Fix proposal (BUG-008.2 scope):** The fix is *not* a port-fix. Three options in increasing scope:
 
