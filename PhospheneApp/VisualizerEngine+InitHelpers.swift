@@ -79,7 +79,8 @@ extension VisualizerEngine {
         sep: StemSeparator?,
         analyzer: StemAnalyzer,
         classifier: MoodClassifier?,
-        device: MTLDevice
+        device: MTLDevice,
+        sessionRecorder: SessionRecorder? = nil
     ) -> SessionManager {
         let resolvedSep: any StemSeparating = sep ?? NullStemSeparator()
         let beatGridAnalyzer: (any BeatGridAnalyzing)? = {
@@ -95,9 +96,14 @@ extension VisualizerEngine {
             stemSeparator: resolvedSep,
             stemAnalyzer: analyzer,
             moodClassifier: classifier ?? MoodClassifier(),
-            beatGridAnalyzer: beatGridAnalyzer
+            beatGridAnalyzer: beatGridAnalyzer,
+            sessionRecorder: sessionRecorder
         )
-        return SessionManager(connector: PlaylistConnector(), preparer: preparer)
+        return SessionManager(
+            connector: PlaylistConnector(),
+            preparer: preparer,
+            sessionRecorder: sessionRecorder
+        )
     }
 
     /// Register the willTerminate observer so the session recorder finalises the MP4.
