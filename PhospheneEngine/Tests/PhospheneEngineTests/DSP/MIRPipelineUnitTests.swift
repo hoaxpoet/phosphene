@@ -82,3 +82,40 @@ import Foundation
     // Spectral rolloff should be updated.
     #expect(pipeline.spectralRolloff > 0, "Rolloff should be non-zero for non-silent input")
 }
+
+// MARK: - QR.1 / D-079: elapsedSeconds is Double-precision
+
+@Test("elapsedSeconds_accumulatesAsDouble_isMoreAccurateThanFloat")
+func test_elapsedSeconds_accumulatesAsDouble() {
+    // Drive 3600 frames at 1/60 s. Compare elapsedSeconds (Double-stored,
+    // Float-deltaTime widened in `+=`) against a parallel Float accumulator
+    // using the same `+= 1/60` pattern. The pipeline accumulator must be at
+    // least as accurate. At 30 minutes the gap grows to ≈ 240 µs in favour
+    // of Double — too slow to test directly, but the principle holds at any
+    // accumulation length and the type guarantees it.
+    let pipeline = MIRPipeline()
+    let magnitudes = [Float](repeating: 0.0, count: 512)
+    let dt: Float = 1.0 / 60.0
+    var floatAccumulator: Float = 0
+    for _ in 0..<3600 {
+        _ = pipeline.process(magnitudes: magnitudes, fps: 60, time: 0, deltaTime: dt)
+        floatAccumulator += dt
+    }
+    let actual = pipeline.elapsedSeconds
+    let expected = 60.0
+    let doubleDrift = abs(actual - expected)
+    let floatDrift = abs(Double(floatAccumulator) - expected)
+    #expect(doubleDrift <= floatDrift,
+            "Double-typed elapsedSeconds must be at least as accurate as the parallel Float accumulator. Double drift=\(doubleDrift) s, Float drift=\(floatDrift) s.")
+    #expect(doubleDrift < 1e-4,
+            "elapsedSeconds drift after 60 s should be < 100 µs; got \(doubleDrift) s.")
+}
+
+@Test("elapsedSeconds_typeIsDouble")
+func test_elapsedSeconds_typeIsDouble() {
+    let pipeline = MIRPipeline()
+    // Compile-time guarantee: assigning to a Double via `let x = pipeline.elapsedSeconds`
+    // would fail if the type were Float without an explicit cast.
+    let elapsed: Double = pipeline.elapsedSeconds
+    #expect(elapsed == 0.0)
+}

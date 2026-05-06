@@ -54,7 +54,7 @@ private func drive(
     while t < durationSeconds {
         last = tracker.update(
             subBassOnset: onsetAt(t),
-            playbackTime: Float(t),
+            playbackTime: t,
             deltaTime: Float(dt)
         )
         t += dt
@@ -130,7 +130,7 @@ struct LiveBeatDriftTrackerTests {
         // computed beatPhase01 reflects (pt + drift − beats[idx]) / period.
         // If drift ≈ +0.030, then at pt=period, phase ≈ 0.030 / period = 0.06.
         let probe = tracker.update(
-            subBassOnset: false, playbackTime: Float(period), deltaTime: 0.01
+            subBassOnset: false, playbackTime: period, deltaTime: 0.01
         )
         // 30 ms / 500 ms = 0.06.  Tolerance ±0.02 (≈ 10 ms drift slack).
         #expect(abs(probe.beatPhase01 - 0.06) < 0.02,
@@ -161,13 +161,13 @@ struct LiveBeatDriftTrackerTests {
         var t = 3.0
         for _ in 0..<500 {
             _ = tracker.update(
-                subBassOnset: false, playbackTime: Float(t), deltaTime: Float(dt)
+                subBassOnset: false, playbackTime: t, deltaTime: Float(dt)
             )
             t += dt
         }
         // Probe at a cached beat.  pt + drift ≈ pt (drift decayed).
         let probe = tracker.update(
-            subBassOnset: false, playbackTime: Float(period * 6), deltaTime: 0.01
+            subBassOnset: false, playbackTime: period * 6, deltaTime: 0.01
         )
         // Drift may not fully decay to 0 in 5 s with τ=0.2 — but should be ≪ 30 ms.
         // 30 ms / 500 ms = 0.06; expect phase ≪ 0.06.
@@ -190,7 +190,7 @@ struct LiveBeatDriftTrackerTests {
         var t = 0.001  // start a hair past the first beat
         while t < period - 0.001 {
             let r = tracker.update(
-                subBassOnset: false, playbackTime: Float(t), deltaTime: Float(dt)
+                subBassOnset: false, playbackTime: t, deltaTime: Float(dt)
             )
             samples.append(r.beatPhase01)
             t += dt
@@ -228,12 +228,12 @@ struct LiveBeatDriftTrackerTests {
             let target = Double(beatIdx) * period
             while t + dt < target {
                 _ = tracker.update(
-                    subBassOnset: false, playbackTime: Float(t), deltaTime: Float(dt)
+                    subBassOnset: false, playbackTime: t, deltaTime: Float(dt)
                 )
                 t += dt
             }
             // Fire one onset frame at the beat.
-            last = tracker.update(subBassOnset: true, playbackTime: Float(t), deltaTime: Float(dt))
+            last = tracker.update(subBassOnset: true, playbackTime: t, deltaTime: Float(dt))
             t += dt
         }
 

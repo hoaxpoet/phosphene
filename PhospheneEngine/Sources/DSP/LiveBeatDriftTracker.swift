@@ -215,9 +215,13 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
     /// `BeatDetector.Result.onsets[0]`, the playback time in seconds since
     /// track start (same domain as `BeatGrid.beats`), and the wall-clock
     /// `deltaTime` since the last call.
+    ///
+    /// `playbackTime` is `Double` (D-079, QR.1) so long-session callers
+    /// (`MIRPipeline.elapsedSeconds`) keep their full precision through the
+    /// onset-matching and lock-state path.
     public func update(
         subBassOnset: Bool,
-        playbackTime: Float,
+        playbackTime: Double,
         deltaTime: Float
     ) -> Result {
         lock.lock(); defer { lock.unlock() }
@@ -227,7 +231,7 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
             return Result(beatPhase01: 0, beatsUntilNext: 1, barPhase01: 0, beatsPerBar: 1, lockState: .unlocked)
         }
 
-        let pt = Double(playbackTime)
+        let pt = playbackTime
         let dt = Double(max(deltaTime, 0.001))
 
         if subBassOnset {
