@@ -100,7 +100,7 @@ extension SessionPreparer {
             estimatedSectionCount: mir.sectionCount
         )
 
-        // Step 5: Beat This! offline beat grid (nil analyzer → BeatGrid.empty).
+        // Step 5: Beat This! offline beat grid on full mix (nil analyzer → BeatGrid.empty).
         let beatGrid: BeatGrid
         if let gridAnalyzer = beatGridAnalyzer {
             beatGrid = gridAnalyzer.analyzeBeatGrid(
@@ -111,11 +111,25 @@ extension SessionPreparer {
             beatGrid = .empty
         }
 
+        // Step 6: Beat This! offline beat grid on drums stem only (DSP.4 diagnostic).
+        // Drums stem is at index 1 per StemSeparator.stemLabels: ["vocals","drums","bass","other"].
+        // Same analyzer instance — the MPSGraph graph is reusable across calls (no re-init).
+        let drumsBeatGrid: BeatGrid
+        if let gridAnalyzer = beatGridAnalyzer, stemWaveforms.count > 1 {
+            drumsBeatGrid = gridAnalyzer.analyzeBeatGrid(
+                samples: stemWaveforms[1],
+                sampleRate: Double(preview.sampleRate)
+            )
+        } else {
+            drumsBeatGrid = .empty
+        }
+
         return CachedTrackData(
             stemWaveforms: stemWaveforms,
             stemFeatures: stemFeatures,
             trackProfile: profile,
-            beatGrid: beatGrid
+            beatGrid: beatGrid,
+            drumsBeatGrid: drumsBeatGrid
         )
     }
 

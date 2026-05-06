@@ -1,7 +1,8 @@
 // SessionPreparer+WiringLogs — Extracted to keep SessionPreparer.swift under
 // the SwiftLint 400-line gate (BUG-008.2). Holds the per-track summary line
 // emitted at the end of every prepare(), the BUG-006.1 WIRING: instrumentation
-// (cleanup tracked under QR.5), and the BUG-008.2 BPM-mismatch warning.
+// (cleanup tracked under QR.5), and the BPM-mismatch warnings (2-way BUG-008.2
+// and 3-way DSP.4).
 
 import Foundation
 import os.log
@@ -25,7 +26,6 @@ extension SessionPreparer {
                     "WIRING: SessionPreparer.beatGrid track='\(track.title)' " +
                     "bpm=\(bpmStr) beats=\(beatCount) isEmpty=false"
                 )
-                logBPMMismatchIfAny(track: track, gridBPM: grid.bpm)
             } else {
                 emptyGrid += 1
                 sessionRecorder?.log(
@@ -33,6 +33,8 @@ extension SessionPreparer {
                     "bpm=0 beats=0 isEmpty=true"
                 )
             }
+            logDrumsBeatGridLine(track: track)
+            logBPMMismatchIfAny(track: track)
         }
         let doneMsg = "WIRING: SessionPreparer.prepare DONE prepared=\(cachedTracks.count) " +
             "withGrid=\(withGrid) empty=\(emptyGrid) failed=\(failedTracks.count)"
@@ -40,16 +42,67 @@ extension SessionPreparer {
         wiringLogsLogger.info("\(doneMsg, privacy: .public)")
     }
 
-    /// Compare the offline BeatGrid BPM against the MIR-derived BPM for a
-    /// prepared track and emit a `WARN: BPM mismatch` line when they
-    /// disagree by more than 3 % (BUG-008.2). No runtime behaviour change —
-    /// `LiveBeatDriftTracker` continues to consume the offline BeatGrid.
-    fileprivate func logBPMMismatchIfAny(track: TrackIdentity, gridBPM: Double) {
+    // MARK: - DSP.4 Drums BeatGrid
+
+    /// Emit a `WIRING: SessionPreparer.drumsBeatGrid` line for every prepared track.
+    /// Diagnostic-only — the live drift tracker does not consume this grid.
+    fileprivate func logDrumsBeatGridLine(track: TrackIdentity) {
+        if let grid = cache.drumsBeatGrid(for: track), !grid.beats.isEmpty {
+            let bpmStr = String(format: "%.1f", grid.bpm)
+            let beatCount = grid.beats.count
+            sessionRecorder?.log(
+                "WIRING: SessionPreparer.drumsBeatGrid track='\(track.title)' " +
+                "bpm=\(bpmStr) beats=\(beatCount) isEmpty=false"
+            )
+        } else {
+            sessionRecorder?.log(
+                "WIRING: SessionPreparer.drumsBeatGrid track='\(track.title)' " +
+                "bpm=0 beats=0 isEmpty=true"
+            )
+        }
+    }
+
+    // MARK: - BPM Mismatch
+
+    /// Emit a BPM-mismatch warning for a prepared track.
+    ///
+    /// **Precedence (DSP.4):** when all three estimators (MIR, full-mix grid,
+    /// drums-stem grid) are non-zero and at least one pair disagrees by > 3 %,
+    /// emits `WARN: BPM 3-way` and suppresses the 2-way line. When drumsBPM is
+    /// zero or missing, falls through to the existing `WARN: BPM mismatch`
+    /// (2-way, BUG-008.2) for backward grep-ability.
+    fileprivate func logBPMMismatchIfAny(track: TrackIdentity) {
         guard let mirFloat = cache.trackProfile(for: track)?.bpm else { return }
-        guard let mismatch = detectBPMMismatch(
-            mirBPM: Double(mirFloat),
-            gridBPM: gridBPM
-        ) else { return }
+        let mirBPM = Double(mirFloat)
+        let gridBPM = cache.beatGrid(for: track)?.bpm ?? 0
+        let drumsBPM = cache.drumsBeatGrid(for: track)?.bpm ?? 0
+
+        // 3-way preferred: all three estimators present and at least one pair disagrees.
+        if let three = detectThreeWayBPMDisagreement(
+            mirBPM: mirBPM,
+            gridBPM: gridBPM,
+            drumsBPM: drumsBPM
+        ) {
+            let mirStr = String(format: "%.1f", three.mirBPM)
+            let gridStr = String(format: "%.1f", three.gridBPM)
+            let drumsStr = String(format: "%.1f", three.drumsBPM)
+            let mgStr = String(format: "%.1f", three.mirGridDeltaPct * 100.0)
+            let mdStr = String(format: "%.1f", three.mirDrumsDeltaPct * 100.0)
+            let gdStr = String(format: "%.1f", three.gridDrumsDeltaPct * 100.0)
+            let line = "WARN: BPM 3-way track='\(track.title)' " +
+                "mir_bpm=\(mirStr) grid_bpm=\(gridStr) drums_bpm=\(drumsStr) " +
+                "mir-grid=\(mgStr)% mir-drums=\(mdStr)% grid-drums=\(gdStr)% " +
+                "(DSP.4: estimators on full-mix vs drums-stem vs kick-rate IOI)"
+            sessionRecorder?.log(line)
+            wiringLogsLogger.warning("\(line, privacy: .public)")
+            return
+        }
+
+        // 2-way fallback: drumsBPM zero/missing, or all three agree (3-way returned nil).
+        // Preserved verbatim for BUG-008.2 backward grep-ability.
+        guard gridBPM > 0,
+              let mismatch = detectBPMMismatch(mirBPM: mirBPM, gridBPM: gridBPM)
+        else { return }
 
         let mirStr = String(format: "%.1f", mismatch.mirBPM)
         let gridStr = String(format: "%.1f", mismatch.gridBPM)

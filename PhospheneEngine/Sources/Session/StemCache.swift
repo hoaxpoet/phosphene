@@ -28,18 +28,26 @@ public struct CachedTrackData: Sendable {
     /// Defaults to `.empty` when no beat-grid analyzer is wired (backward compat).
     public let beatGrid: BeatGrid
 
+    /// Offline beat/downbeat grid resolved from Beat This! over the **drums stem only**.
+    /// Logged alongside `beatGrid` at preparation time (DSP.4 diagnostic).
+    /// Not consumed by `LiveBeatDriftTracker` — full-mix grid is the runtime source.
+    /// Defaults to `.empty` when no beat-grid analyzer is wired.
+    public let drumsBeatGrid: BeatGrid
+
     // MARK: - Init
 
     public init(
         stemWaveforms: [[Float]],
         stemFeatures: StemFeatures,
         trackProfile: TrackProfile,
-        beatGrid: BeatGrid = .empty
+        beatGrid: BeatGrid = .empty,
+        drumsBeatGrid: BeatGrid = .empty
     ) {
         self.stemWaveforms = stemWaveforms
         self.stemFeatures = stemFeatures
         self.trackProfile = trackProfile
         self.beatGrid = beatGrid
+        self.drumsBeatGrid = drumsBeatGrid
     }
 }
 
@@ -83,6 +91,12 @@ public final class StemCache: @unchecked Sendable {
     /// Return the offline `BeatGrid` for the given track, or nil if not cached.
     public func beatGrid(for identity: TrackIdentity) -> BeatGrid? {
         lock.withLock { storage[identity]?.beatGrid }
+    }
+
+    /// Return the drums-stem `BeatGrid` for the given track, or nil if not cached.
+    /// Diagnostic only (DSP.4) — not consumed by the live drift tracker.
+    public func drumsBeatGrid(for identity: TrackIdentity) -> BeatGrid? {
+        lock.withLock { storage[identity]?.drumsBeatGrid }
     }
 
     /// Return the full `CachedTrackData` bundle for playback, or nil if uncached.
