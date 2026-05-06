@@ -58,9 +58,7 @@ extension VisualizerEngine {
         stemTimer = nil
     }
 
-    /// RMS threshold below which the stem pipeline skips CoreML inference.
-    /// Interleaved stereo silence from Core Audio taps reads as true zero;
-    /// 1e-6 catches near-zero noise floors without false-positive skips.
+    /// RMS silence floor — below this the stem pipeline skips CoreML inference.
     private static let silenceRMSThreshold: Float = 1e-6
 
     // MARK: - Scheduler Gate (Increment 6.3)
@@ -164,13 +162,8 @@ extension VisualizerEngine {
             }
 
             // Hand off to the per-frame analyzer on analysisQueue.
-            // runPerFrameStemAnalysis (VisualizerEngine+Audio) slides a
-            // 1024-sample window through these waveforms at real-time rate
-            // so StemFeatures values in GPU buffer(3) update continuously
-            // (at ~audio-callback rate, ~94 Hz) instead of once per 5s.
-            // Eliminates the piecewise-constant-for-5s behaviour that
-            // produced visible terrain freeze-and-jump artefacts in
-            // session 2026-04-16T20-56-46Z.
+            // runPerFrameStemAnalysis slides a 1024-sample window at ~94 Hz
+            // so StemFeatures update continuously rather than once per 5s.
             let sepTime = CFAbsoluteTimeGetCurrent()
             stemsStateLock.withLock {
                 self.latestSeparatedStems = stemWaveforms
@@ -376,27 +369,21 @@ extension VisualizerEngine {
             let replacedExisting = mirPipeline.liveDriftTracker.hasGrid
             pipeline.setStemFeatures(cached.stemFeatures)
             mirPipeline.setBeatGrid(cached.beatGrid.offsetBy(0))
-            logger.info("Stem pipeline loaded from cache: \(identity.title) by \(identity.artist)")
-            // Log full BeatGrid install details so session.log shows source each track change.
             let grid = cached.beatGrid
+            let title = identity.title
             if !grid.beats.isEmpty {
                 let bpmStr = String(format: "%.1f", grid.bpm)
                 let firstBeat = grid.beats.first.map { String(format: "%.3f", $0) } ?? "none"
                 let replaceNote = replacedExisting ? " (replaced existing grid)" : ""
-                let title = identity.title
                 let beatCount = grid.beats.count
                 let meter = grid.beatsPerBar
-                logger.info(
-                    "BEAT_GRID_INSTALL: source=preparedCache, track='\(title)', bpm=\(bpmStr), beats=\(beatCount), meter=\(meter)/X, firstBeat=\(firstBeat)s\(replaceNote)"
-                )
-                sessionRecorder?.log(
-                    "BeatGrid installed: source=preparedCache, track='\(title)', bpm=\(bpmStr), beats=\(beatCount), meter=\(meter)/X"
-                )
+                // swiftlint:disable:next line_length
+                logger.info("BEAT_GRID_INSTALL: source=preparedCache, track='\(title)', bpm=\(bpmStr), beats=\(beatCount), meter=\(meter)/X, firstBeat=\(firstBeat)s\(replaceNote)")
+                // swiftlint:disable:next line_length
+                sessionRecorder?.log("BeatGrid installed: source=preparedCache, track='\(title)', bpm=\(bpmStr), beats=\(beatCount), meter=\(meter)/X")
             } else {
-                let title = identity.title
-                logger.info(
-                    "BEAT_GRID_INSTALL: source=preparedCache, track='\(title)' — empty grid, live inference will be allowed"
-                )
+                // swiftlint:disable:next line_length
+                logger.info("BEAT_GRID_INSTALL: source=preparedCache, track='\(title)' — empty grid, live inference will be allowed")
             }
         } else {
             pipeline.setStemFeatures(.zero)
