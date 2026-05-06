@@ -165,9 +165,15 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// exposes `cache` which is wired to `stemCache` when the session reaches `.ready`.
     var sessionManager: SessionManager
 
-    /// Pre-analyzed stem data from session preparation. Set by the app layer
-    /// after `SessionPreparer.prepare(tracks:)` completes. When non-nil, each
-    /// track change loads cached stems instead of waiting for live separation.
+    /// Pre-analyzed stem data from session preparation.
+    ///
+    /// Wired eagerly in `init` to `sessionManager.cache` (the same `StemCache`
+    /// instance that `SessionPreparer` populates during preparation). The cache
+    /// fills with entries as background preparation completes, so the field is
+    /// always non-nil after init even though entries become available
+    /// progressively. This is the cache that `resetStemPipeline(for:)` reads
+    /// on track change to load pre-separated stems and the prepared `BeatGrid`.
+    /// (BUG-006.2 fix for cause 1 — was declared but never assigned.)
     var stemCache: StemCache?
 
     /// Stem separator (CoreML on ANE).
@@ -513,6 +519,12 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
             device: ctx.device,
             sessionRecorder: self.sessionRecorder
         )
+        // BUG-006.2 fix (cause 1): wire engine.stemCache to the SessionPreparer's
+        // cache instance. The cache reference is stable from init; entries get
+        // added as `SessionPreparer.prepare(tracks:)` completes per-track.
+        // Before this assignment, every `resetStemPipeline(for:)` call took the
+        // cache-miss branch and the prepared BeatGrid never installed.
+        self.stemCache = self.sessionManager.cache
 
         // Wire the frame-budget governor and ML dispatch scheduler. Read QualityCeiling
         // from UserDefaults to determine if ultra mode (recording) disables both. D-057(d), D-059(d).

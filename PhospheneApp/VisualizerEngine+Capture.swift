@@ -126,27 +126,18 @@ extension VisualizerEngine {
             }
             mir.reset()
             self.pipeline.resetAccumulatedAudioTime()
-            let identity = TrackIdentity(
-                title: event.current.title ?? "",
-                artist: event.current.artist ?? ""
-            )
-            // BUG-006.1 instrumentation: confirm track-change handler fires and
-            // observe the truncated TrackIdentity (only title+artist set — no
-            // duration, spotifyID, or preview URL). Discriminates hypothesis 4
-            // (cache key mismatch).
-            let prevTitle: String = event.previous?.title ?? "<nil>"
-            let newTitle: String = event.current.title ?? "<nil>"
-            let durStr: String
-            if let dur = identity.duration {
-                durStr = String(dur)
-            } else {
-                durStr = "nil"
-            }
-            let spotifyIDStr: String = identity.spotifyID ?? "nil"
-            let trackChangeMsg = "WIRING: trackChange OBSERVED title='\(newTitle)' " +
-                "previousTitle='\(prevTitle)' identity.duration=\(durStr) " +
-                "identity.spotifyID=\(spotifyIDStr) aboutToReset=true"
-            self.sessionRecorder?.log(trackChangeMsg)
+            let title = event.current.title ?? ""
+            let artist = event.current.artist ?? ""
+            let partialIdentity = TrackIdentity(title: title, artist: artist)
+            // BUG-006.2 fix (cause 2): resolve the canonical TrackIdentity from
+            // livePlan when one is present. Streaming metadata only carries
+            // title+artist; the PlannedSession was constructed with full
+            // identities (duration + spotifyID + spotifyPreviewURL hint) so a
+            // partial-identity hash would miss the cache key SessionPreparer
+            // stored. Falls back to the partial identity for ad-hoc/reactive
+            // sessions where livePlan is nil.
+            let identity = self.canonicalTrackIdentity(matching: partialIdentity) ?? partialIdentity
+            self.logTrackChangeObserved(event: event, identity: identity)
             self.resetStemPipeline(for: identity, caller: .trackChange)
             self.kickoffPreFetch(for: event.current, fetcher: fetcher)
         }

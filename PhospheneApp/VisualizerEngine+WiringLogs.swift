@@ -8,6 +8,7 @@
 // Pure logging — no behaviour changes. Each helper writes once to
 // sessionRecorder?.log (lands in session.log) and once via os.Logger.
 
+import Audio
 import Foundation
 import os.log
 import Session
@@ -65,6 +66,19 @@ extension VisualizerEngine {
             "caller=\(caller.rawValue) engine.stemCache=\(engineCacheState)"
         sessionRecorder?.log(msg)
         wiringLogger.info("\(msg, privacy: .public)")
+    }
+
+    func logTrackChangeObserved(event: TrackChangeEvent, identity: TrackIdentity) {
+        let prevTitle = event.previous?.title ?? "<nil>"
+        let newTitle = event.current.title ?? "<nil>"
+        let durStr = identity.duration.map { String($0) } ?? "nil"
+        let spotifyIDStr = identity.spotifyID ?? "nil"
+        let resolved = (identity.duration != nil || identity.spotifyID != nil)
+            ? "fromLivePlan" : "partialFallback"
+        let msg = "WIRING: trackChange OBSERVED title='\(newTitle)' " +
+            "previousTitle='\(prevTitle)' identity.duration=\(durStr) " +
+            "identity.spotifyID=\(spotifyIDStr) resolution=\(resolved) aboutToReset=true"
+        sessionRecorder?.log(msg)
     }
 
     func logWiringStemCacheLookup(identity: TrackIdentity) {
