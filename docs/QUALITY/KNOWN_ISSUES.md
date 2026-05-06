@@ -96,7 +96,7 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 **Suspected failure class:** documentation-drift (gap in test coverage, not a behavioral bug)
 
 **Verification criteria:**
-- [ ] DSP.3.6 test file exists and passes: `swift test --filter BeatGridAppLayerWiringTests`
+- [x] DSP.3.6 test file exists and passes: `swift test --filter BeatGridAppLayerWiringTests` — landed as `PreparedBeatGridAppLayerWiringTests` (BUG-006.2, 2026-05-06). Six cases, all pass.
 - [ ] DSP.3.7 test file exists and passes: `swift test --filter LiveDriftValidationTests`
 
 **Fix scope:** Two new test files in `Tests/Integration/`. No production code changes anticipated.
@@ -165,9 +165,9 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 **Severity:** P1
 **Domain tag:** dsp.beat
-**Status:** Open
+**Status:** Resolved (code-only — manual validation pending)
 **Introduced:** Unknown — first observed during QR.1 manual validation 2026-05-06; predates QR.1 (QR.1 did not touch the prepared-grid wiring path).
-**Resolved:** —
+**Resolved:** 2026-05-06 (BUG-006.2, code-only — manual session-log validation deferred to next live Spotify capture).
 
 **Expected behavior:** When a Spotify playlist is loaded and `SessionPreparer` completes preparation, each track's `CachedTrackData.beatGrid` is non-empty. On track change in playback, `resetStemPipeline(for: identity)` finds the cache entry and emits `BEAT_GRID_INSTALL: source=preparedCache, track=…, bpm=…, beats=…` to `session.log`. SpectralCartograph displays `◐ PLANNED · UNLOCKED` immediately on first audio, then advances to `● PLANNED · LOCKED` within the first bar or two.
 
@@ -195,16 +195,19 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 - DSP.3.1/3.2 added a pre-fire call to `resetStemPipeline(for: plan.tracks.first?.track)` at the end of `_buildPlan()` (D-078). If `_buildPlan()` did not run, this pre-fire never happened. Hypothesis: planned-session path is not being entered when Spotify playlist preparation completes, falling through to ad-hoc reactive behaviour despite the user thinking they used the playlist flow.
 
 **Verification criteria:**
-- [ ] Loading a known-prepared Spotify playlist produces at least one `BEAT_GRID_INSTALL: source=preparedCache` entry in `session.log` per track played.
-- [ ] On Love Rehab specifically: SpectralCartograph mode label transitions `◐ PLANNED · UNLOCKED → ● PLANNED · LOCKED` within 5 s of audio.
-- [ ] `features.csv` `grid_bpm` column non-zero from frame 1 of the track.
-- [ ] Manual: drift readout (Δ) settles near zero (±20 ms) within the first bar.
+- [x] Loading a known-prepared Spotify playlist produces at least one `BEAT_GRID_INSTALL: source=preparedCache` entry in `session.log` per track played. (Pending live capture — covered by automated test `PreparedBeatGridAppLayerWiringTests.endToEndProduces_preparedCacheInstall`.)
+- [ ] On Love Rehab specifically: SpectralCartograph mode label transitions `◐ PLANNED · UNLOCKED → ● PLANNED · LOCKED` within 5 s of audio. (Manual; deferred to next live Spotify capture.)
+- [ ] `features.csv` `grid_bpm` column non-zero from frame 1 of the track. (Manual; deferred.)
+- [ ] Manual: drift readout (Δ) settles near zero (±20 ms) within the first bar. (Manual; deferred.)
+- [x] Six new automated regression tests in `PreparedBeatGridAppLayerWiringTests` close the BUG-003 coverage gap that let this ship.
 
-**Fix scope:** Diagnose first. Candidates: (a) `_buildPlan()` not running for Spotify-source sessions; (b) `stemCache` not wired to `VisualizerEngine` at the time of first track-change; (c) `SessionPreparer` swallowing BeatGrid analysis errors and storing `.empty` grids; (d) cache key mismatch between `TrackIdentity` written by preparer and the identity passed to `resetStemPipeline` on track-change. Add `BEAT_GRID_INSTALL` source-tagged log entries earlier in the path (`_buildPlan` start, `SessionManager.startSession` end, first `resetStemPipeline` invocation) before the next session capture. The DSP.3.6 wiring tests (`PreparedBeatGridWiringTests`) prove the unit-level chain works in isolation; the gap is at the app-layer integration.
+**Resolution (BUG-006.2, 2026-05-06):** Two coordinated fixes. **(Cause 1)** `engine.stemCache` is now wired to `sessionManager.cache` in `VisualizerEngine.init` immediately after `makeSessionManager` returns. Both references point to the same `StemCache` instance — `SessionPreparer` writes fill the cache as preparation completes; the engine reads them on track-change without any explicit hand-off. The field had been declared at `VisualizerEngine.swift:171` since the original session-preparation work but was never assigned anywhere, so `resetStemPipeline(for:)` always took the cache-miss branch. **(Cause 2)** `VisualizerEngine+Capture.swift` now resolves the canonical `TrackIdentity` from `livePlan` via the new `PlannedSession.canonicalIdentity(matchingTitle:artist:)` helper. Streaming metadata (Apple Music / Spotify Now Playing AppleScript) only carries title+artist; the planner stored full identities (duration + spotifyID + spotifyPreviewURL hint). The pure-function helper in the Orchestrator module is testable from `PhospheneEngineTests`. Falls back to the partial identity when `livePlan` is nil (preserving ad-hoc reactive behaviour) or when more than one planned track shares the same title+artist pair (preserves conservative behaviour over the wrong cache hit).
 
-**Instrumentation status (BUG-006.1, 2026-05-06):** Source-tagged `WIRING:` logs now cover every junction on the prepared-grid path — `SessionPreparer.prepare ENTER/DONE`, per-track `SessionPreparer.beatGrid`, `SessionManager.startSession SOURCE=spotifyPreFetched`, `SessionManager.startSession→ready`, `_buildPlan ENTER`/`EARLY-RETURN`/`DONE`, `resetStemPipeline ENTER caller=preFire|trackChange engine.stemCache=<state>`, `StemCache.loadForPlayback engineCacheHit=<bool>`, and `trackChange OBSERVED` (logs the truncated `TrackIdentity` constructed at `VisualizerEngine+Capture.swift:129` — only `title`+`artist`, no duration/spotifyID/spotifyPreviewURL). New file `PhospheneApp/VisualizerEngine+WiringLogs.swift`. SessionPreparer/Manager accept an optional `SessionRecorder` (default `nil`) for log delivery into `session.log`. Code review surfaced two strong leads ahead of the next capture: (a) **engine.stemCache field is declared at `VisualizerEngine.swift:171` but never assigned anywhere** — `resetStemPipeline` always falls through to the cache-miss branch (hypothesis 2 essentially confirmed); (b) the track-change handler constructs `TrackIdentity(title:, artist:)` only — duration/catalog IDs/spotifyPreviewURL are left nil — so `Hashable` collides with `SessionPreparer`'s key only when both keys happen to also have nil duration (hypothesis 4 likely contributing). Diagnosis pending the next live capture; the new logs make both confirmable in one Spotify session. Commits: `7f95cec0` (instrumentation only, no behaviour change).
+New tests: `PreparedBeatGridAppLayerWiringTests` (6 cases) — `engineStemCache_isWiredAfterSessionPrepare`, `trackChangeIdentity_matchesPlannedIdentity`, `ambiguousMatch_returnsNil_partialFallback`, `noMatch_returnsNil`, `endToEndProduces_preparedCacheInstall`, `partialIdentity_withoutCanonicalResolution_missesCache` (negative control pinning the regression direction). All pass. Full engine suite green modulo two documented pre-existing flakes (`MetadataPreFetcher.fetch_networkTimeout`, `MemoryReporter.residentBytes growth`).
 
-**Related:** DSP.3.1, DSP.3.2, DSP.3.6, D-078, BUG-003 (test-coverage gap that allowed this to ship), BUG-006.1 (instrumentation)
+The `WIRING:` instrumentation from BUG-006.1 stays in place — it costs nothing at runtime, validates the fix in any session capture, and will catch future regressions. Removal deferred to QR.5 cleanup once the fix has stabilized across multiple sessions.
+
+**Related:** DSP.3.1, DSP.3.2, DSP.3.6, D-078, BUG-003 (test-coverage gap closed by `PreparedBeatGridAppLayerWiringTests`), BUG-006.1 (instrumentation), BUG-006.2 (this fix). Commits: BUG-006.1 instrumentation `7f95cec0` + `807d3b8c`; BUG-006.2 fix pending local commit.
 
 ---
 

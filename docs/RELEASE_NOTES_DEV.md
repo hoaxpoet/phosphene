@@ -6,6 +6,49 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-06-b] BUG-006.2 — Prepared-BeatGrid wiring fix
+
+**Increments:** BUG-006.1 (instrumentation, prior commit), BUG-006.2 (fix)
+**Type:** P1 defect fix (`dsp.beat` / `pipeline-wiring`)
+
+**Fixed:**
+- **Cause 1 — engine.stemCache never assigned.** `VisualizerEngine.swift:171` declared `var stemCache: StemCache?` but no code in the codebase ever assigned to it. Every `resetStemPipeline(for:)` call therefore took the cache-miss branch and the prepared `BeatGrid` never installed. Now wired in `init` to `sessionManager.cache` (the same `StemCache` instance `SessionPreparer` populates) — entries become visible by reference as preparation completes.
+- **Cause 2 — Track-change handler built a partial `TrackIdentity`.** `VisualizerEngine+Capture.swift:129` constructed `TrackIdentity(title:, artist:)` only — duration, catalog IDs, and `spotifyPreviewURL` left nil. `Hashable` therefore mismatched the keys `SessionPreparer` stored from full Spotify-API identities. Now resolves the canonical identity from `livePlan` via the new `PlannedSession.canonicalIdentity(matchingTitle:artist:)` helper. Falls back to the partial identity for ad-hoc/reactive sessions and ambiguous matches.
+
+**New tests:**
+- `Tests/Integration/PreparedBeatGridAppLayerWiringTests.swift` (6 cases) — closes the BUG-003 coverage gap that allowed BUG-006 to ship. Tests cover `engineStemCache_isWiredAfterSessionPrepare`, `trackChangeIdentity_matchesPlannedIdentity`, `ambiguousMatch_returnsNil_partialFallback`, `noMatch_returnsNil`, `endToEndProduces_preparedCacheInstall`, `partialIdentity_withoutCanonicalResolution_missesCache` (negative control pinning the regression direction).
+
+**Files added:**
+- `PhospheneApp/VisualizerEngine+TrackIdentityResolution.swift` — `canonicalTrackIdentity(matching:)` instance method delegating to the Orchestrator-module pure helper.
+- `PhospheneEngine/Tests/PhospheneEngineTests/Integration/PreparedBeatGridAppLayerWiringTests.swift`.
+
+**Files changed:**
+- `PhospheneApp/VisualizerEngine.swift` — assigns `self.stemCache = self.sessionManager.cache` after `makeSessionManager`.
+- `PhospheneApp/VisualizerEngine+Capture.swift` — track-change handler resolves canonical identity before `resetStemPipeline`.
+- `PhospheneApp/VisualizerEngine+WiringLogs.swift` — `logTrackChangeObserved` now reports `resolution=fromLivePlan|partialFallback`.
+- `PhospheneEngine/Sources/Orchestrator/PlannedSession.swift` — `canonicalIdentity(matchingTitle:artist:)` pure-function helper added.
+- `PhospheneApp.xcodeproj/project.pbxproj` — registered `VisualizerEngine+TrackIdentityResolution.swift` (N10007 / N20007).
+
+**Tests:** 1051 engine tests / 116 suites. Pass except the two documented baseline flakes (`MetadataPreFetcher.fetch_networkTimeout`, `MemoryReporter.residentBytes growth`). App build clean. SwiftLint baseline preserved on touched files (zero new violations).
+
+**Manual validation:** Pending the next live Spotify capture. The BUG-006.1 `WIRING:` instrumentation logs will surface end-to-end behaviour in `session.log`. Verification criteria from the BUG-006 entry remain unchecked until a live session is captured (SpectralCartograph mode label, drift readout settling, `grid_bpm` column in `features.csv`).
+
+**Known issues introduced:** None.
+**Known issues resolved:** BUG-006 (code-only — manual sign-off pending). BUG-003's first verification criterion checked off (`PreparedBeatGridAppLayerWiringTests`); LiveDriftValidationTests still pending.
+
+**Related:** BUG-006, BUG-003, BUG-006.1, DSP.3.6, D-070 (`TrackIdentity.spotifyPreviewURL` excluded from `Hashable`).
+
+---
+
+## [dev-2026-05-06-a] BUG-006.1 — Wiring instrumentation
+
+**Increments:** BUG-006.1
+**Type:** Instrumentation (no behaviour change)
+
+Source-tagged `WIRING:` log entries added across the prepared-BeatGrid path so a live session capture surfaces the failure mode end-to-end. Optional `SessionRecorder` threaded through `SessionPreparer` and `SessionManager` so logs land in `session.log`. New file `PhospheneApp/VisualizerEngine+WiringLogs.swift` consolidates helpers; `SessionManager+Readiness.swift` extracted to keep `SessionManager.swift` under the SwiftLint 400-line gate. New `caller:` parameter on `resetStemPipeline(for:caller:)` discriminates pre-fire (planner) from track-change paths. Commits `7f95cec0` + `807d3b8c`.
+
+---
+
 ## [dev-2026-05-05-c] Quality System Documentation
 
 **Increments:** QS.1
