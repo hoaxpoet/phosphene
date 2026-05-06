@@ -215,46 +215,65 @@ The `WIRING:` instrumentation from BUG-006.1 stays in place — it costs nothing
 
 **Severity:** P2
 **Domain tag:** dsp.beat
-**Status:** Open
+**Status:** Diagnosed (BUG-007.1, 2026-05-06)
 **Introduced:** Unknown — first observed during QR.1 manual validation 2026-05-06; predates QR.1 (QR.1 did not change drift-tracker lock semantics — only widened `playbackTime` to `Double`).
 **Resolved:** —
 
 **Expected behavior:** Once `LiveBeatDriftTracker.computeLockState()` returns `.locked` (after `matchedOnsets ≥ lockThreshold`), the tracker remains `.locked` for the duration of the track unless the input has gone genuinely silent for ≥ 2 × medianBeatPeriod. Onset-time drift settles into a band ±30 ms wide (the `strictMatchWindow`) and stays there.
 
-**Actual behavior:** Mode label oscillates between `◑ PLANNED · LOCKING` and `● PLANNED · LOCKED`, holding LOCKED for only a few seconds at a time before regressing. Observed independently on:
-- Test 2: Pyramid Song (~68 BPM, ad-hoc reactive after live Beat This! installed grid). Beat sync described as "close, not exact."
-- Test 4: Love Rehab (125 BPM, ad-hoc reactive after live Beat This! installed grid). Orb pulsing "mostly in time with the beat."
+**Actual behavior:** Two independent mechanisms prevent lock from holding:
+
+- **Mechanism B (primary — plateau/freeze after ~30 s):** The prepared-cache install path (`resetStemPipeline(for:)`) calls `mirPipeline.setBeatGrid(cached.beatGrid)` without `offsetBy()`. The prepared grid covers only the 30-second Spotify preview. Once `playbackTime` exceeds ~30 s, `nearestBeat()` returns nil for all subsequent onsets. `consecutiveMisses` reaches `lockReleaseMisses=3` after 3 × 400 ms = 1.2 s, lock drops to `.locking`, and never recovers. Drift EMA freezes at its last-update value permanently.
+
+- **Mechanism A (secondary — oscillation in 0..30 s window):** Sub_bass BeatDetector cooldown is 400 ms; Money's beat period is 487 ms. These cadences produce a ~71 % miss rate (44 of 62 onsets in the session capture). With `lockReleaseMisses=3`, 3 consecutive misses (~1.2 s) drop lock; the next hit (~400 ms later) re-acquires. Net: lock oscillates at ~1–2 s frequency throughout the 30-second live window.
 
 **Reproduction steps:**
-1. Start an ad-hoc reactive session ("Start listening now" from IdleView).
-2. Play Love Rehab (Chaim) in Apple Music or Spotify.
-3. Wait ~10 s for live Beat This! to install a grid.
-4. Switch to Spectral Cartograph (`Shift+→`).
-5. Observe mode label over the next 30 s.
+1. Start a Spotify-prepared session for a playlist containing Money (Pink Floyd).
+2. Play Money in Spotify while Phosphene is running.
+3. Switch to Spectral Cartograph (`Shift+→`).
+4. Observe mode label: oscillates `◑ PLANNED · LOCKING` ↔ `● PLANNED · LOCKED` in 0..30 s, then drops permanently to `◑` after ~30 s.
 
-**Minimum reproducer:** Any ad-hoc reactive session on a kick-driven track at 48 kHz tap rate.
+**Minimum reproducer:** Any Spotify-prepared session where `playbackTime > 30 s`. The 30-second Spotify preview always produces a grid of ~30 s coverage; without `offsetBy()`, every track freezes at ~30 s.
 
 **Session artifacts:**
-- `~/Documents/phosphene_sessions/2026-05-06T14-21-09Z/session.log` — `BeatGrid installed: source=liveAnalysis, bpm=125.8` at `14:21:33Z`.
-- `features.csv` from the same session — `lock_state` column likely flips between `1` (locking) and `2` (locked).
-- **Additional evidence (post-BUG-006.2 capture, 2026-05-06T20-11-46Z):** Money 7/4 with prepared grid `bpm=123.2, meter=2/X` — `drift_ms` settled at +5 to +17 ms (well inside the ±30 ms strict-match window) for ~25 s, yet `lock_state` flipped 1↔2 throughout that window without ever holding 2. After 28 s drift pegs at exactly 14.396 ms — same plateau pattern as Love Rehab below — meaning onsets stopped matching at all (likely `consecutiveMisses` exceeded the search-window cap and `nearestBeat` started returning nil). This is the cleanest BUG-007 evidence to date because the grid itself is correct; only the lock hysteresis is failing.
+- `~/Documents/phosphene_sessions/2026-05-06T20-11-46Z/` — Money 7/4, prepared grid bpm=123.2.
+  - 62 onsets, 18 hits (71 % miss rate).
+  - Last match: t=29.8121 s, drift=+14.396 ms.
+  - Lock dropped to LOCKING: t=31.0949 s (frame 5459), drift frozen at +14.396 ms permanently.
+- Diagnosis document: `docs/diagnostics/BUG-007-diagnosis.md`.
+- Diagnostic test suite: `PhospheneEngine/Tests/PhospheneEngineTests/Diagnostics/LiveDriftLockHysteresisDiagnosticTests.swift` (gated: `BUG_007_DIAGNOSIS=1`).
 
-**Suspected failure class:** `algorithm` (lock-hysteresis tuning) or `precision` (drift accumulation under real-music onset jitter).
+**Confirmed failure class:** `api-contract` (BUG-R001 fix applied to live Beat This! path in DSP.3.4 but not to the prepared-cache path) + `algorithm` (lock-hysteresis `lockReleaseMisses=3` too small for 71 % miss-rate input).
 
-**Evidence:**
-- The `consecutiveMisses` counter in `LiveBeatDriftTracker` is incremented when an onset doesn't match within ±30 ms of the smoothed drift, and decremented (reset to 0) on tight match. There is no decay on `matchedOnsets` itself, but the lock-state computation uses a ratio that could regress.
-- Pre-QR.1 the drift tracker was using a `Float` playbackTime that could drift sub-µs over a long session — that's not the cause here (QR.1 widens to `Double` and the test sessions are < 1 minute).
-- Likely candidates: (a) the `strictMatchWindow = 30 ms` is too tight for real-music kick onset jitter (Phosphene's `BeatDetector` produces sub_bass onsets with ±10–20 ms quantization); (b) `consecutiveMisses` advancing past a threshold demotes lock state without the matchedOnsets counter falling, and the demotion path is over-eager.
-- **The `drift_ms` plateau pattern (constant value persisting across many frames) is a tell.** Both Love Rehab (plateau at −90.490 ms — exactly the ±90 ms onset-search-window edge) and Money (plateau at +14.396 ms with no onsets matching) suggest that once `consecutiveMisses` exceeds an internal threshold, no further updates land — the EMA freezes at its last value. Whatever path produces the plateau is also the path that prevents lock recovery on stable input.
+**Diagnosis notes:**
+- The plateau at −90.490 ms on Love Rehab is the same Mechanism B. Love Rehab's plateau is negative (BUG-008: grid BPM 5.5 % too slow → drift walks negative) rather than positive, but the freeze mechanism is identical.
+- Check 2 (sensitivity sweep): widening `strictMatchWindow` from 30 ms to 50 ms would make ~83 %→100 % of the 18 hits count as tight, but does NOT reduce the 71 % nil-return miss rate. Not the fix.
+- Check 3 (decay path): inter-onset gap 400 ms < 2 × 487 ms = 974 ms decay threshold → decay path never fires. Not the cause of the plateau.
 
 **Verification criteria:**
 - [ ] Once `lock_state` reaches `2` (locked) on a stable track, it stays at `2` for ≥ 30 s of continuous playback at the same tempo.
 - [ ] `drift_ms` values in `features.csv` settle into a ±30 ms band and the standard deviation over a 10-s window is < 15 ms.
 - [ ] Manual: orb pulse sits exactly on the kick (not "mostly in time"), and the BR-panel beat-phase tick lines up with the beat orb's flash.
+- [ ] `BUG_007_DIAGNOSIS=1 swift test --filter test_mechanismB` prints a lock_state of `2` at t=40 s (was: `1`).
+- [ ] `BUG_007_DIAGNOSIS=1 swift test --filter test_mechanismA` prints ≤ 2 oscillations in 60 s (was: multiple per minute).
 
-**Fix scope:** Diagnose with a `features.csv` capture from a real session. Plot `lock_state` and `drift_ms` over time; identify whether the demotion correlates with onset density drops, drift spikes, or just an unfortunate `matchedOnsets` ratio decay. Likely fix is widening `strictMatchWindow` to 40–50 ms or adding lock hysteresis (`matchedOnsets` decays slower than it builds). Out of scope for QR.1 — schedule for a dedicated `LiveBeatDriftTracker` tuning increment after QR.2 / QR.3 land.
+**Fix scope (BUG-007.2 — one increment):**
 
-**Related:** DSP.2 S7, D-077, D-079 (touched the file but did not change lock semantics), BUG-008 (Love Rehab can't lock for the separate reason that its prepared grid has the wrong BPM)
+Fix A (primary, 1 line — eliminates Mechanism B entirely):
+```swift
+// In VisualizerEngine+Stems.swift resetStemPipeline(for:), prepared-cache branch:
+mirPipeline.setBeatGrid(cached.beatGrid.offsetBy(0))   // was: no offsetBy()
+```
+
+Fix B (secondary, 1 line — reduces Mechanism A oscillation frequency):
+```swift
+// In LiveBeatDriftTracker.swift:
+private static let lockReleaseMisses: Int = 5   // was: 3
+```
+
+Fix A closes the primary issue on all tracks (prepared-cache sessions, playback > 30 s). Fix B improves robustness for any cadence-mismatch scenario. Both can ship in a single increment. Widening `strictMatchWindow` is explicitly NOT needed.
+
+**Related:** DSP.2 S7, DSP.3.4 (fixed the same issue on live path — prepared-cache path missed), D-077, D-079 (touched file but did not change lock semantics), BUG-008 (Love Rehab has an additional BPM-offset symptom on top of this bug). Commits: BUG-007.1 diagnosis `(pending)`.
 
 ---
 
