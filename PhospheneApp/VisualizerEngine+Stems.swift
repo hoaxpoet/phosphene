@@ -131,24 +131,27 @@ extension VisualizerEngine {
     func performStemSeparation() {
         guard let separator = stemSeparator else { return }
 
-        // Snapshot ~10s of interleaved stereo audio.
-        let samples = stemSampleBuffer.snapshotLatest(seconds: 10)
-        let requiredStereo = StemSeparator.requiredMonoSamples * 2
+        // Snapshot ~10s using the actual tap rate (D-079, QR.1).
+        let actualRate = tapSampleRate
+        let samples = stemSampleBuffer.snapshotLatest(seconds: 10, sampleRate: actualRate)
+        let requiredStereo = Int(actualRate) * 10 * 2
         guard samples.count >= requiredStereo else {
             logger.debug("Stem pipeline: warmup (\(samples.count)/\(requiredStereo) samples)")
             return
         }
 
         // Idle suppression: skip CoreML inference when the buffer is silence.
-        let rms = stemSampleBuffer.rms(seconds: 10)
+        let rms = stemSampleBuffer.rms(seconds: 10, sampleRate: actualRate)
         guard rms > Self.silenceRMSThreshold else {
             logger.debug("Stem pipeline: skipping — silence (RMS=\(rms))")
             return
         }
 
         do {
+            // Pass the actual tap rate; the separator resamples internally
+            // to its model rate (D-079, QR.1).
             let result = try separator.separate(
-                audio: samples, channelCount: 2, sampleRate: 44100
+                audio: samples, channelCount: 2, sampleRate: Float(actualRate)
             )
 
             // Extract mono waveforms from each stem buffer.
@@ -178,9 +181,10 @@ extension VisualizerEngine {
 
             // Diagnostic capture: dump the four separated stem waveforms as WAV
             // files so we can listen to separation quality against real audio.
+            // Stem waveforms are at the model rate, not the tap rate (D-079).
             sessionRecorder?.recordStemSeparation(
                 stemWaveforms: stemWaveforms,
-                sampleRate: 44100,
+                sampleRate: Int(StemSeparator.modelSampleRate),
                 trackTitle: currentTrack?.title
             )
         } catch {
@@ -227,7 +231,7 @@ extension VisualizerEngine {
             liveBeatAnalysisAttempts = Self.liveBeatMaxAttempts
             return
         }
-        let elapsed = Double(mirPipeline.elapsedSeconds)
+        let elapsed = mirPipeline.elapsedSeconds   // Double since QR.1 / D-079
         let nextTrigger = liveBeatAnalysisAttempts == 0
             ? Self.liveBeatMinSeconds
             : Self.liveBeatRetrySeconds
@@ -238,7 +242,7 @@ extension VisualizerEngine {
         // Snapshot interleaved stereo PCM using the actual tap sample rate.
         // The buffer was initialized at 44100 Hz but the tap typically runs at
         // 48000 Hz. Passing the real rate ensures we retrieve a full 10 seconds
-        // of audio instead of ~9.2 seconds (882000 vs 960000 samples).
+        // of audio instead of ~9.2 seconds (882000 vs 960000 samples). (D-079)
         let actualRate = tapSampleRate
         let interleaved = stemSampleBuffer.snapshotLatest(
             seconds: Self.liveBeatMinSeconds, sampleRate: actualRate

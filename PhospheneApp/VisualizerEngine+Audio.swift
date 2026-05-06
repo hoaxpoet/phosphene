@@ -93,9 +93,13 @@ extension VisualizerEngine {
             self?.inputLevelMonitor.submitSamples(pointer: samples, count: count)
 
             // Capture the actual tap sample rate so Beat This! and the
-            // snapshot helper use the correct frame count. Updated every
-            // callback but value is stable after the first frame.
-            self?.tapSampleRate = Double(rate)
+            // snapshot helper use the correct frame count. The setter is
+            // NSLock-guarded for cross-core visibility (D-079, QR.1) — the
+            // value is stable for the lifetime of a tap install, but the
+            // audio thread and the stem/analysis queues run on different
+            // cores, and an unsynchronized 8-byte write is not guaranteed
+            // visible without a barrier.
+            self?.updateTapSampleRate(Double(rate))
 
             // Feed stem sample buffer (interleaved stereo, lightweight write).
             self?.stemSampleBuffer.write(samples: samples, count: count)
@@ -191,7 +195,10 @@ extension VisualizerEngine {
         guard stems.count == 4, stems[0].count >= 1024 else { return }
 
         let chunkSampleCount = stems[0].count
-        let sampleRate: Float = 44100
+        // Stem waveforms are at the model rate, not the tap rate — the
+        // separator resamples internally before iSTFT. Use the canonical
+        // constant rather than a literal. (D-079, QR.1)
+        let sampleRate: Float = StemSeparator.modelSampleRate
         let windowSize = 1024
 
         // Start scanning from the 5-second mark into the 10-second chunk.
@@ -331,7 +338,7 @@ extension VisualizerEngine {
             sessionMode = 0
         }
 
-        let pt = Double(mir.elapsedSeconds)
+        let pt = mir.elapsedSeconds   // Double since QR.1 / D-079
         let relTimes = tracker.relativeBeatTimes(
             playbackTime: pt,
             count: SpectralHistoryBuffer.beatTimesCount
@@ -362,7 +369,10 @@ extension VisualizerEngine {
             sessionMode: sessionMode,
             lockState: lockStateInt,
             gridBPM: bpm,
-            playbackTimeS: mir.elapsedSeconds,
+            // BeatSyncSnapshot.playbackTimeS is Float for compact CSV output;
+            // resolution loss at 30 min ≈ 240 µs is irrelevant for diagnostic
+            // viewing. The Double accumulator prevents long-session drift.
+            playbackTimeS: Float(mir.elapsedSeconds),
             driftMs: driftMs
         )
         beatSyncLock.withLock { latestBeatSyncSnapshot = snapshot }
