@@ -67,18 +67,26 @@ public final class MIRPipeline: @unchecked Sendable {
     /// Raw smoothed spectral centroid in Hz (not normalized). For mood classifier z-score input.
     public private(set) var rawSmoothedCentroid: Float = 0
     /// Track-relative playback clock in seconds. Reset to 0 on track change.
-    public private(set) var elapsedSeconds: Float = 0
+    ///
+    /// Stored as `Double` (D-079, QR.1) so per-frame `+= deltaTime`
+    /// accumulation has stable resolution over a long session. At Float
+    /// precision the ULP at 30 minutes is ≈ 240 µs — smaller than the ±30 ms
+    /// tight-match window used by `LiveBeatDriftTracker`, but a guaranteed
+    /// monotonic drift that compounds over hours of listening. Consumers
+    /// that need a Float (FeatureVector field, BeatSyncSnapshot CSV column)
+    /// cast at the read site, not the storage site.
+    public private(set) var elapsedSeconds: Double = 0
     /// Latest structural prediction from StructuralAnalyzer.
     public private(set) var latestStructuralPrediction: StructuralPrediction = .none
     /// Number of onsets detected per second (for BPM debugging).
     public private(set) var onsetsPerSecond: Int = 0
     private var onsetCountThisSecond: Int = 0
-    private var lastOnsetRateTime: Float = 0
+    private var lastOnsetRateTime: Double = 0
 
     // MARK: - Feature Recording
 
     var recordingHandle: FileHandle?
-    var lastRecordTime: Float = 0
+    var lastRecordTime: Double = 0
     /// Whether recording mode is active.
     public var isRecording: Bool { recordingHandle != nil }
     /// Current track info for recording. Set by the app layer.
@@ -203,8 +211,8 @@ public final class MIRPipeline: @unchecked Sendable {
     private func updateCPUSideProperties(_ ctx: ProcessContext) {
         lock.lock()
 
-        elapsedSeconds += ctx.deltaTime
-        featureStability = min(1.0, max(0.0, (elapsedSeconds - 3.0) / 7.0))
+        elapsedSeconds += Double(ctx.deltaTime)
+        featureStability = Float(min(1.0, max(0.0, (elapsedSeconds - 3.0) / 7.0)))
 
         latestChroma = ctx.chroma.chroma
         estimatedKey = ctx.chroma.stableKey ?? ctx.chroma.estimatedKey
@@ -310,7 +318,7 @@ public final class MIRPipeline: @unchecked Sendable {
         if liveDriftTracker.hasGrid {
             let driftResult = liveDriftTracker.update(
                 subBassOnset: ctx.beat.onsets[0],
-                playbackTime: elapsedSeconds,
+                playbackTime: elapsedSeconds,   // Double (QR.1 / D-079)
                 deltaTime: ctx.deltaTime
             )
             fv.beatPhase01    = driftResult.beatPhase01
