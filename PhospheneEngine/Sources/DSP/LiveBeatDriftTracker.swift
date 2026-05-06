@@ -106,7 +106,12 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
     /// Matched onsets required to reach `.locked`.
     private static let lockThreshold: Int = 4
     /// Consecutive misses to drop `.locked` back to `.locking`.
-    private static let lockReleaseMisses: Int = 3
+    /// 7 × 400 ms cooldown = 2.8 s of apparent silence before releasing lock.
+    /// Value 5 fails the lock-oscillation regression test on the 400 ms/487 ms
+    /// adversarial scenario (BUG-007.2): mean gap between hits ≈ 4.8 misses,
+    /// so threshold=5 triggers drops on most cycles; threshold=7 is above the
+    /// typical worst-case gap and gives ≤ 2 oscillations in 60 s.
+    private static let lockReleaseMisses: Int = 7
 
     // MARK: - Diagnostic (BUG_007_DIAGNOSIS)
 

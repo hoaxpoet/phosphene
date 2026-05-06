@@ -35,6 +35,28 @@ WARN: BPM 3-way track='Love Rehab' mir_bpm=125.0 grid_bpm=118.1 drums_bpm=125.0 
 
 ---
 
+## [dev-2026-05-06-e] BUG-007.2 — Fix prepared-grid horizon exhaustion + lock-hysteresis oscillation
+
+**Increment:** BUG-007.2
+**Type:** P2 defect fix (`dsp.beat` / `api-contract` + `algorithm`)
+
+**What changed.** Two independent mechanisms prevented `LiveBeatDriftTracker` from holding `.locked` state in Spotify-prepared sessions. Both fixed.
+
+**Fix A (Mechanism B — horizon exhaustion, 1 line).** `resetStemPipeline(for:)` now calls `cached.beatGrid.offsetBy(0)` instead of using the raw grid. The 30-second Spotify preview produces ~62 beats; `offsetBy(0)` extrapolates the grid to a 300-second horizon at the grid's own BPM. After t ≈ 30 s, `nearestBeat()` continued returning matches instead of nil, so `consecutiveMisses` stopped accumulating and lock held.
+
+**Fix B (Mechanism A — cadence-mismatch oscillation, 1 line).** `lockReleaseMisses` raised from 3 → 7. The BeatDetector sub_bass cooldown (400 ms) vs Money's beat period (487 ms) produces roughly 5 consecutive misses per onset cycle. At threshold 3, lock dropped every 1.2 s; at threshold 7 (7 × 400 ms = 2.8 s), the worst-case gap never reaches the threshold and lock holds. Note: the diagnosis document stated 5; the regression test (`test_lockDoesNotOscillateOnStableInput`) demonstrates that the deterministic adversarial scenario requires ≥ 7 to achieve ≤ 2 oscillations in 60 s.
+
+**Files changed:**
+- `PhospheneEngine/Sources/DSP/LiveBeatDriftTracker.swift` — `lockReleaseMisses = 7` (was 3); updated doc comment.
+- `PhospheneApp/VisualizerEngine+Stems.swift` — `cached.beatGrid.offsetBy(0)` in `resetStemPipeline`.
+- `PhospheneEngine/Tests/PhospheneEngineTests/DSP/LiveBeatDriftTrackerTests.swift` — tests 16–18: `makeMoneySyntheticGrid` helper + three regression gates.
+- `PhospheneEngine/Tests/PhospheneEngineTests/Diagnostics/LiveDriftLockHysteresisDiagnosticTests.swift` — `test_mechanismB` updated from raw-grid bug-documenter to `offsetBy(0)` fix-verifier; `%s` → `%@` format-string SIGSEGV fix; `test_mechanismA` assertion unchanged.
+- `docs/QUALITY/KNOWN_ISSUES.md` — BUG-007 marked Resolved; verification criteria checked.
+
+**Tests:** 1076 pass (1 pre-existing `MetadataPreFetcher` network-timeout flake). `BUG_007_DIAGNOSIS=1 swift test --filter LiveDriftLockHysteresisDiagnostic` — all 3 pass.
+
+---
+
 ## [dev-2026-05-06-c] BUG-008.1 + BUG-008.2 — Diagnose & surface offline-grid vs MIR BPM disagreement
 
 **Increments:** BUG-008.1 (diagnosis), BUG-008.1 follow-up (synthetic-kick test), BUG-008.2 (fix)

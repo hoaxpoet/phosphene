@@ -375,7 +375,7 @@ extension VisualizerEngine {
         if let identity, let cached = stemCache?.loadForPlayback(track: identity) {
             let replacedExisting = mirPipeline.liveDriftTracker.hasGrid
             pipeline.setStemFeatures(cached.stemFeatures)
-            mirPipeline.setBeatGrid(cached.beatGrid)
+            mirPipeline.setBeatGrid(cached.beatGrid.offsetBy(0))
             logger.info("Stem pipeline loaded from cache: \(identity.title) by \(identity.artist)")
             // Log full BeatGrid install details so session.log shows source each track change.
             let grid = cached.beatGrid

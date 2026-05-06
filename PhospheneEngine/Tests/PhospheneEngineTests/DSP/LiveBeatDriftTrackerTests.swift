@@ -16,6 +16,35 @@ import Testing
 
 // MARK: - Fixtures
 
+/// Synthetic Money 7/4-style grid. First beat at 0.14 s, period = 60/bpm.
+/// `coverageSeconds` controls the raw span (30 s = same as a Spotify preview).
+/// Does NOT call offsetBy() — callers that want extrapolation must do so explicitly.
+private func makeMoneySyntheticGrid(
+    bpm: Double = 123.2,
+    coverageSeconds: Double = 30.0
+) -> BeatGrid {
+    let period = 60.0 / bpm
+    var beats: [Double] = []
+    var downbeats: [Double] = []
+    var t = 0.14
+    while t <= coverageSeconds {
+        beats.append(t)
+        t += period
+    }
+    for i in stride(from: 0, to: beats.count, by: 2) {
+        downbeats.append(beats[i])
+    }
+    return BeatGrid(
+        beats: beats,
+        downbeats: downbeats,
+        bpm: bpm,
+        beatsPerBar: 2,
+        barConfidence: 0.7,
+        frameRate: 50.0,
+        frameCount: Int(coverageSeconds * 50)
+    )
+}
+
 private func makeUniformGrid(
     bpm: Double = 120,
     beats: Int = 32,
@@ -383,5 +412,118 @@ struct LiveBeatDriftTrackerTests {
         #expect(!upcoming.isEmpty, "expected upcoming beats (positive) at playbackTime=0.1")
         #expect(times.contains(where: { abs($0 - 0.4) < 0.05 }),
                 "beat at t=0.5 should appear as ≈ +0.4 relative to playbackTime=0.1; times=\(times)")
+    }
+
+    // MARK: 16. BUG-007.2 regression — extrapolated grid holds lock past 30 s (Fix A gate)
+
+    /// Installs a Money-style grid via offsetBy(0) (mirroring the production prepared-cache path
+    /// after Fix A). Drives 50 s of 400 ms onsets and asserts that lock is .locked at t = 40 s.
+    /// Before Fix A the prepared grid had no extrapolated beats past t ≈ 30 s, so nearestBeat()
+    /// returned nil for all subsequent onsets and lock permanently dropped to .locking.
+    @Test("lockHoldsAfter30sWithExtrapolatedGrid")
+    func test_lockHoldsAfter30sWithExtrapolatedGrid() {
+        let rawGrid = makeMoneySyntheticGrid(bpm: 123.2, coverageSeconds: 30.0)
+        let grid = rawGrid.offsetBy(0)   // mirrors the Fix-A production path
+        let tracker = LiveBeatDriftTracker()
+        tracker.setGrid(grid)
+
+        let fps: Double = 60
+        let dt = Float(1.0 / fps)
+        var onsetAccum: Double = 0
+        let onsetIntervalS: Double = 0.400
+        var sampledLockState: LiveBeatDriftTracker.LockState = .unlocked
+
+        for frame in 0..<Int(50.0 * fps) {
+            let t = Double(frame) / fps
+            onsetAccum += 1.0 / fps
+            let isOnset = onsetAccum >= onsetIntervalS
+            if isOnset { onsetAccum -= onsetIntervalS }
+
+            let result = tracker.update(subBassOnset: isOnset, playbackTime: t, deltaTime: dt)
+            if t >= 40.0 && t < 40.0 + 1.0 / fps + 0.001 {
+                sampledLockState = result.lockState
+            }
+        }
+
+        if case .locked = sampledLockState {
+            // expected — Fix A: extrapolated grid keeps nearestBeat() returning non-nil at t=40 s
+        } else {
+            #expect(Bool(false), "BUG-007.2 Fix A regression: expected .locked at t=40 s with extrapolated grid, got \(sampledLockState)")
+        }
+    }
+
+    // MARK: 17. BUG-007.2 regression — lock oscillations bounded on extrapolated grid (Fix B gate)
+
+    /// With an extrapolated grid (Fix A) and lockReleaseMisses = 5 (Fix B), Money's 400 ms
+    /// onset cadence vs 487 ms beat period should produce at most 2 LOCKED→LOCKING transitions
+    /// in 60 s of deterministic 400 ms onsets. Before Fix B (lockReleaseMisses = 3), runs of
+    /// 3 consecutive misses dropped lock every ~1–2 s, producing many oscillations per minute.
+    @Test("lockDoesNotOscillateOnStableInput")
+    func test_lockDoesNotOscillateOnStableInput() {
+        let rawGrid = makeMoneySyntheticGrid(bpm: 123.2, coverageSeconds: 30.0)
+        let grid = rawGrid.offsetBy(0)
+        let tracker = LiveBeatDriftTracker()
+        tracker.setGrid(grid)
+
+        let fps: Double = 60
+        let dt = Float(1.0 / fps)
+        var onsetAccum: Double = 0
+        let onsetIntervalS: Double = 0.400
+        var prevLock: LiveBeatDriftTracker.LockState = .unlocked
+        var lockedToLockingTransitions = 0
+
+        for frame in 0..<Int(60.0 * fps) {
+            let t = Double(frame) / fps
+            onsetAccum += 1.0 / fps
+            let isOnset = onsetAccum >= onsetIntervalS
+            if isOnset { onsetAccum -= onsetIntervalS }
+
+            let result = tracker.update(subBassOnset: isOnset, playbackTime: t, deltaTime: dt)
+            if case .locked = prevLock, case .locking = result.lockState {
+                lockedToLockingTransitions += 1
+            }
+            prevLock = result.lockState
+        }
+
+        // swiftlint:disable:next line_length
+        #expect(lockedToLockingTransitions <= 2, "BUG-007.2 Fix B regression: expected ≤2 LOCKED→LOCKING transitions in 60 s on a correctly extrapolated grid; got \(lockedToLockingTransitions)")
+    }
+
+    // MARK: 18. BUG-007.2 regression — raw grid (no offsetBy) drops lock after coverage (negative case)
+
+    /// Documents the pre-fix behaviour as a known-bad path. Without offsetBy(), the prepared-cache
+    /// grid covers only ~30 s of beats. Once playbackTime exceeds that window, all onsets miss
+    /// and lock permanently drops to .locking. This test prevents a future regression where
+    /// offsetBy(0) is accidentally removed from the production prepared-cache install path.
+    @Test("preparedGridExhaustion_withoutOffsetBy_dropsLock")
+    func test_preparedGridExhaustion_withoutOffsetBy_dropsLock() {
+        // Intentionally: raw grid with no offsetBy() — same as pre-Fix-A production behaviour.
+        let grid = makeMoneySyntheticGrid(bpm: 123.2, coverageSeconds: 30.0)
+        let tracker = LiveBeatDriftTracker()
+        tracker.setGrid(grid)
+
+        let fps: Double = 60
+        let dt = Float(1.0 / fps)
+        var onsetAccum: Double = 0
+        let onsetIntervalS: Double = 0.400
+        var stateAt35s: LiveBeatDriftTracker.LockState = .unlocked
+
+        for frame in 0..<Int(40.0 * fps) {
+            let t = Double(frame) / fps
+            onsetAccum += 1.0 / fps
+            let isOnset = onsetAccum >= onsetIntervalS
+            if isOnset { onsetAccum -= onsetIntervalS }
+
+            let result = tracker.update(subBassOnset: isOnset, playbackTime: t, deltaTime: dt)
+            if t >= 35.0 && t < 35.0 + 1.0 / fps + 0.001 {
+                stateAt35s = result.lockState
+            }
+        }
+
+        if case .locked = stateAt35s {
+            // swiftlint:disable:next line_length
+            #expect(Bool(false), "BUG-007.2 negative regression: raw grid (no offsetBy) should NOT hold .locked at t=35 s — if this passes, someone re-introduced a grid exhaustion workaround that hides the bug")
+        }
+        // Any other state (.locking or .unlocked) is the expected pre-fix behaviour.
     }
 }
