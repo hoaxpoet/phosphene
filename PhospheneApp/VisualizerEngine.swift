@@ -207,9 +207,11 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// use in `runLiveBeatAnalysisIfNeeded()` — weight loading is heavy.
     var liveBeatGridAnalyzer: DefaultBeatGridAnalyzer?
 
-    /// Set to true after live Beat This! analysis has fired once for the current track.
-    /// Reset to false on `resetStemPipeline(for:)` so each track gets one live grid.
-    var liveBeatAnalysisDone: Bool = false
+    /// Number of live Beat This! analysis attempts made for the current track.
+    /// Reset to 0 on `resetStemPipeline(for:)`. Allows one retry at 20 s if the
+    /// first attempt at 10 s returns an empty grid (e.g. quiet intros, complex
+    /// meters like Money 7/4 that Beat This! misses in a short window).
+    var liveBeatAnalysisAttempts: Int = 0
 
     // MARK: - Stem Per-Frame Analysis State
     //

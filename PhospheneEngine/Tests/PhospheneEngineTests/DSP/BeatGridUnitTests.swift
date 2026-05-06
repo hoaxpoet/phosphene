@@ -229,6 +229,99 @@ struct BeatGridUnitTests {
         }
     }
 
+    // MARK: 10. halvingOctaveCorrected — double-time (BPM > 160)
+
+    @Test("halvingOctaveCorrected_doubletimeBPM_halvesBeatsAndBPM")
+    func test_halvingOctaveCorrected_doubletimeBPM() {
+        // Simulate Love Rehab live-trigger artefact: 245 BPM detected (true 125 BPM).
+        let rawBPM = 244.770
+        let period = 60.0 / rawBPM   // ~0.245 s
+        // 41 beats covering ~10 s at 245 BPM.
+        let beats = (0..<41).map { Double($0) * period }
+        // Downbeats every 4 beats (4/4 at double-time).
+        let downbeats = stride(from: 0, to: 41, by: 4).map { Double($0) * period }
+        let grid = BeatGrid(
+            beats: beats, downbeats: downbeats, bpm: rawBPM, beatsPerBar: 4,
+            barConfidence: 1.0, frameRate: 50, frameCount: 500
+        )
+        let corrected = grid.halvingOctaveCorrected()
+
+        // BPM must be halved into [80, 160].
+        #expect(corrected.bpm > 80 && corrected.bpm <= 160,
+                "corrected BPM \(corrected.bpm) not in [80, 160]")
+        #expect(abs(corrected.bpm - rawBPM / 2) < 0.01,
+                "expected ~\(rawBPM / 2), got \(corrected.bpm)")
+
+        // Beat count halved (take every other).
+        #expect(corrected.beats.count == (beats.count + 1) / 2,
+                "expected ~\(beats.count / 2) beats, got \(corrected.beats.count)")
+
+        // First beat unchanged.
+        #expect(abs(corrected.beats[0] - beats[0]) < 1e-9)
+
+        // Inter-beat interval is now ~0.49 s (double the original 0.245 s).
+        let correctedPeriod = 60.0 / corrected.bpm
+        if corrected.beats.count >= 2 {
+            let actualIOI = corrected.beats[1] - corrected.beats[0]
+            #expect(abs(actualIOI - correctedPeriod) < 0.001,
+                    "IOI \(actualIOI) vs period \(correctedPeriod)")
+        }
+    }
+
+    // MARK: 11. halvingOctaveCorrected — genuinely slow (BPM < 80, no-op)
+
+    @Test("halvingOctaveCorrected_slowBPM_isNoOp")
+    func test_halvingOctaveCorrected_slowBPM_isNoOp() {
+        // Pyramid Song ~68 BPM — must NOT be doubled.
+        let period = 60.0 / 68.18
+        let beats = (0..<12).map { Double($0) * period }
+        let grid = BeatGrid(
+            beats: beats, downbeats: [0.0, beats[3]], bpm: 68.18, beatsPerBar: 3,
+            barConfidence: 0.9, frameRate: 50, frameCount: 500
+        )
+        let corrected = grid.halvingOctaveCorrected()
+
+        // Must be identical — no correction applied.
+        #expect(corrected.bpm == grid.bpm)
+        #expect(corrected.beats.count == grid.beats.count)
+        #expect(corrected.beatsPerBar == grid.beatsPerBar)
+    }
+
+    // MARK: 12. halvingOctaveCorrected — in-range (no-op)
+
+    @Test("halvingOctaveCorrected_inRangeBPM_isNoOp")
+    func test_halvingOctaveCorrected_inRangeBPM_isNoOp() {
+        let period = 60.0 / 120.0
+        let beats = (0..<24).map { Double($0) * period }
+        let grid = BeatGrid(
+            beats: beats, downbeats: [], bpm: 120, beatsPerBar: 4,
+            barConfidence: 0.8, frameRate: 50, frameCount: 600
+        )
+        let corrected = grid.halvingOctaveCorrected()
+        #expect(corrected.bpm == 120)
+        #expect(corrected.beats.count == beats.count)
+    }
+
+    // MARK: 13. halvingOctaveCorrected — extreme (> 320 BPM, double-halve)
+
+    @Test("halvingOctaveCorrected_extremeBPM_halvesTwice")
+    func test_halvingOctaveCorrected_extremeBPM_halvesTwice() {
+        // 320 BPM → 160 → still > 160? No, 160 is the boundary. Use 320.01 to trigger twice.
+        let rawBPM = 322.0
+        let period = 60.0 / rawBPM
+        let beats = (0..<54).map { Double($0) * period }   // ~10 s
+        let grid = BeatGrid(
+            beats: beats, downbeats: [], bpm: rawBPM, beatsPerBar: 4,
+            barConfidence: 0, frameRate: 50, frameCount: 500
+        )
+        let corrected = grid.halvingOctaveCorrected()
+        // 322 → 161 (still > 160) → 80.5 (in range)
+        #expect(corrected.bpm > 80 && corrected.bpm <= 160,
+                "corrected BPM \(corrected.bpm) not in [80, 160]")
+        // Beat count should be quartered (factor 4 thinning).
+        #expect(corrected.beats.count <= (beats.count + 3) / 4 + 1)
+    }
+
     // MARK: 4. Bisect search on a long grid
 
     @Test("beatIndex_isBisectNotLinear")
