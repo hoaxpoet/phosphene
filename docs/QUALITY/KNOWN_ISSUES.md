@@ -165,9 +165,9 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 **Severity:** P1
 **Domain tag:** dsp.beat
-**Status:** Resolved (code-only — manual validation pending)
+**Status:** Resolved (wiring — downstream BUG-007 / BUG-008 prevent full LOCKED but the prepared-grid path itself is wired correctly end-to-end)
 **Introduced:** Unknown — first observed during QR.1 manual validation 2026-05-06; predates QR.1 (QR.1 did not touch the prepared-grid wiring path).
-**Resolved:** 2026-05-06 (BUG-006.2, code-only — manual session-log validation deferred to next live Spotify capture).
+**Resolved:** 2026-05-06 (BUG-006.2, wiring path validated end-to-end via session capture `2026-05-06T20-11-46Z`. Two downstream issues — BUG-007 lock-hysteresis, BUG-008 offline BPM accuracy — prevent SpectralCartograph from reaching `● PLANNED · LOCKED` but are independent of BUG-006 and tracked separately).
 
 **Expected behavior:** When a Spotify playlist is loaded and `SessionPreparer` completes preparation, each track's `CachedTrackData.beatGrid` is non-empty. On track change in playback, `resetStemPipeline(for: identity)` finds the cache entry and emits `BEAT_GRID_INSTALL: source=preparedCache, track=…, bpm=…, beats=…` to `session.log`. SpectralCartograph displays `◐ PLANNED · UNLOCKED` immediately on first audio, then advances to `● PLANNED · LOCKED` within the first bar or two.
 
@@ -195,10 +195,10 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 - DSP.3.1/3.2 added a pre-fire call to `resetStemPipeline(for: plan.tracks.first?.track)` at the end of `_buildPlan()` (D-078). If `_buildPlan()` did not run, this pre-fire never happened. Hypothesis: planned-session path is not being entered when Spotify playlist preparation completes, falling through to ad-hoc reactive behaviour despite the user thinking they used the playlist flow.
 
 **Verification criteria:**
-- [x] Loading a known-prepared Spotify playlist produces at least one `BEAT_GRID_INSTALL: source=preparedCache` entry in `session.log` per track played. (Pending live capture — covered by automated test `PreparedBeatGridAppLayerWiringTests.endToEndProduces_preparedCacheInstall`.)
-- [ ] On Love Rehab specifically: SpectralCartograph mode label transitions `◐ PLANNED · UNLOCKED → ● PLANNED · LOCKED` within 5 s of audio. (Manual; deferred to next live Spotify capture.)
-- [ ] `features.csv` `grid_bpm` column non-zero from frame 1 of the track. (Manual; deferred.)
-- [ ] Manual: drift readout (Δ) settles near zero (±20 ms) within the first bar. (Manual; deferred.)
+- [x] Loading a known-prepared Spotify playlist produces at least one `BEAT_GRID_INSTALL: source=preparedCache` entry in `session.log` per track played. **Confirmed in capture `2026-05-06T20-11-46Z`** — 6 tracks prepared with non-empty grids; 2 tracks played (Love Rehab, Money) and both produced `source=preparedCache` install lines on track-change.
+- [ ] On Love Rehab specifically: SpectralCartograph mode label transitions `◐ PLANNED · UNLOCKED → ● PLANNED · LOCKED` within 5 s of audio. **Blocked by BUG-008** (Love Rehab prepared grid is 5.5% slow → drift accumulates beyond search window) and **BUG-007** (lock hysteresis fails even with correct drift).
+- [x] `features.csv` `grid_bpm` column non-zero from frame 1 of the track. **Confirmed**: Love Rehab `grid_bpm=118.126`, Money `grid_bpm=123.232` — non-zero from frame 1 in `2026-05-06T20-11-46Z` capture. Accuracy issue tracked separately as BUG-008.
+- [ ] Manual: drift readout (Δ) settles near zero (±20 ms) within the first bar. **Blocked by BUG-007 + BUG-008.**
 - [x] Six new automated regression tests in `PreparedBeatGridAppLayerWiringTests` close the BUG-003 coverage gap that let this ship.
 
 **Resolution (BUG-006.2, 2026-05-06):** Two coordinated fixes. **(Cause 1)** `engine.stemCache` is now wired to `sessionManager.cache` in `VisualizerEngine.init` immediately after `makeSessionManager` returns. Both references point to the same `StemCache` instance — `SessionPreparer` writes fill the cache as preparation completes; the engine reads them on track-change without any explicit hand-off. The field had been declared at `VisualizerEngine.swift:171` since the original session-preparation work but was never assigned anywhere, so `resetStemPipeline(for:)` always took the cache-miss branch. **(Cause 2)** `VisualizerEngine+Capture.swift` now resolves the canonical `TrackIdentity` from `livePlan` via the new `PlannedSession.canonicalIdentity(matchingTitle:artist:)` helper. Streaming metadata (Apple Music / Spotify Now Playing AppleScript) only carries title+artist; the planner stored full identities (duration + spotifyID + spotifyPreviewURL hint). The pure-function helper in the Orchestrator module is testable from `PhospheneEngineTests`. Falls back to the partial identity when `livePlan` is nil (preserving ad-hoc reactive behaviour) or when more than one planned track shares the same title+artist pair (preserves conservative behaviour over the wrong cache hit).
@@ -207,7 +207,7 @@ New tests: `PreparedBeatGridAppLayerWiringTests` (6 cases) — `engineStemCache_
 
 The `WIRING:` instrumentation from BUG-006.1 stays in place — it costs nothing at runtime, validates the fix in any session capture, and will catch future regressions. Removal deferred to QR.5 cleanup once the fix has stabilized across multiple sessions.
 
-**Related:** DSP.3.1, DSP.3.2, DSP.3.6, D-078, BUG-003 (test-coverage gap closed by `PreparedBeatGridAppLayerWiringTests`), BUG-006.1 (instrumentation), BUG-006.2 (this fix). Commits: BUG-006.1 instrumentation `7f95cec0` + `807d3b8c`; BUG-006.2 fix pending local commit.
+**Related:** DSP.3.1, DSP.3.2, DSP.3.6, D-078, BUG-003 (test-coverage gap closed by `PreparedBeatGridAppLayerWiringTests`), BUG-006.1 (instrumentation), BUG-006.2 (this fix), BUG-007 + BUG-008 (downstream issues exposed but not caused by the fix). Commits: BUG-006.1 instrumentation `7f95cec0` + `807d3b8c`; BUG-006.2 fix `982bf93d` + docs `d56acd89`. Manual validation capture: `~/Documents/phosphene_sessions/2026-05-06T20-11-46Z/`.
 
 ---
 
@@ -237,6 +237,7 @@ The `WIRING:` instrumentation from BUG-006.1 stays in place — it costs nothing
 **Session artifacts:**
 - `~/Documents/phosphene_sessions/2026-05-06T14-21-09Z/session.log` — `BeatGrid installed: source=liveAnalysis, bpm=125.8` at `14:21:33Z`.
 - `features.csv` from the same session — `lock_state` column likely flips between `1` (locking) and `2` (locked).
+- **Additional evidence (post-BUG-006.2 capture, 2026-05-06T20-11-46Z):** Money 7/4 with prepared grid `bpm=123.2, meter=2/X` — `drift_ms` settled at +5 to +17 ms (well inside the ±30 ms strict-match window) for ~25 s, yet `lock_state` flipped 1↔2 throughout that window without ever holding 2. After 28 s drift pegs at exactly 14.396 ms — same plateau pattern as Love Rehab below — meaning onsets stopped matching at all (likely `consecutiveMisses` exceeded the search-window cap and `nearestBeat` started returning nil). This is the cleanest BUG-007 evidence to date because the grid itself is correct; only the lock hysteresis is failing.
 
 **Suspected failure class:** `algorithm` (lock-hysteresis tuning) or `precision` (drift accumulation under real-music onset jitter).
 
@@ -244,6 +245,7 @@ The `WIRING:` instrumentation from BUG-006.1 stays in place — it costs nothing
 - The `consecutiveMisses` counter in `LiveBeatDriftTracker` is incremented when an onset doesn't match within ±30 ms of the smoothed drift, and decremented (reset to 0) on tight match. There is no decay on `matchedOnsets` itself, but the lock-state computation uses a ratio that could regress.
 - Pre-QR.1 the drift tracker was using a `Float` playbackTime that could drift sub-µs over a long session — that's not the cause here (QR.1 widens to `Double` and the test sessions are < 1 minute).
 - Likely candidates: (a) the `strictMatchWindow = 30 ms` is too tight for real-music kick onset jitter (Phosphene's `BeatDetector` produces sub_bass onsets with ±10–20 ms quantization); (b) `consecutiveMisses` advancing past a threshold demotes lock state without the matchedOnsets counter falling, and the demotion path is over-eager.
+- **The `drift_ms` plateau pattern (constant value persisting across many frames) is a tell.** Both Love Rehab (plateau at −90.490 ms — exactly the ±90 ms onset-search-window edge) and Money (plateau at +14.396 ms with no onsets matching) suggest that once `consecutiveMisses` exceeds an internal threshold, no further updates land — the EMA freezes at its last value. Whatever path produces the plateau is also the path that prevents lock recovery on stable input.
 
 **Verification criteria:**
 - [ ] Once `lock_state` reaches `2` (locked) on a stable track, it stays at `2` for ≥ 30 s of continuous playback at the same tempo.
@@ -252,7 +254,60 @@ The `WIRING:` instrumentation from BUG-006.1 stays in place — it costs nothing
 
 **Fix scope:** Diagnose with a `features.csv` capture from a real session. Plot `lock_state` and `drift_ms` over time; identify whether the demotion correlates with onset density drops, drift spikes, or just an unfortunate `matchedOnsets` ratio decay. Likely fix is widening `strictMatchWindow` to 40–50 ms or adding lock hysteresis (`matchedOnsets` decays slower than it builds). Out of scope for QR.1 — schedule for a dedicated `LiveBeatDriftTracker` tuning increment after QR.2 / QR.3 land.
 
-**Related:** DSP.2 S7, D-077, D-079 (touched the file but did not change lock semantics)
+**Related:** DSP.2 S7, D-077, D-079 (touched the file but did not change lock semantics), BUG-008 (Love Rehab can't lock for the separate reason that its prepared grid has the wrong BPM)
+
+---
+
+### BUG-008 — Offline BeatGrid systematic BPM error on kick-driven 4/4 tracks
+
+**Severity:** P2
+**Domain tag:** dsp.beat
+**Status:** Open
+**Introduced:** Surfaced by BUG-006.2 fix on 2026-05-06; predates BUG-006.2 (the offline analyzer has been producing this output since DSP.2 S5 landed — was previously masked because `engine.stemCache` was never assigned, so the prepared grid was never actually used at runtime).
+**Resolved:** —
+
+**Expected behavior:** `DefaultBeatGridAnalyzer` running over the 30-second Spotify preview of Love Rehab (Chaim) returns a BPM within ±1.5 BPM of the true 125 BPM. Prepared grid is then accurate enough that `LiveBeatDriftTracker` keeps `drift_ms` inside the ±30 ms strict-match window for the full track.
+
+**Actual behavior:** Beat This! returns **bpm=118.1, beats=59** for Love Rehab — a 5.5% systematic BPM error. The prepared grid is then 5.5% slow relative to the actual playback. `drift_ms` walks linearly more negative each beat (≈ 26 ms drift per 480 ms beat period at 5.5% offset), exits the ±30 ms strict-match window after ~3 beats, exits the ±90 ms onset-search window after ~30 s, then pegs at the search-window edge (`drift_ms = -90.490`) for the rest of the track. The drift tracker is structurally unable to recover from a mistuned grid — it has no mechanism to re-estimate BPM from accumulated drift, only to track instantaneous offset.
+
+**Reproduction steps:**
+1. Connect a Spotify playlist that includes Love Rehab (Chaim).
+2. Wait for `.ready`. Inspect `WIRING: SessionPreparer.beatGrid track='Love Rehab'` in `session.log`.
+3. Confirm `bpm=118.1` (or thereabouts — re-check determinism on repeated preparations).
+4. Play the track. Observe `features.csv`: `grid_bpm` column reads `118.126`, `drift_ms` walks negative, lock_state never reaches 2 stably.
+
+**Minimum reproducer:** Any Spotify preparation of Love Rehab with the post-BUG-006.2 wiring active.
+
+**Session artifacts:**
+- `~/Documents/phosphene_sessions/2026-05-06T20-11-46Z/session.log` lines 5–10 — all six tracks' offline BPMs:
+  - Blue in Green (true ~70 swing): bpm=56.1
+  - Love Rehab (true 125): **bpm=118.1**
+  - Mountains: bpm=96.1
+  - Pyramid Song (true ~68): bpm=70.0
+  - Money (true ~120 in 7/4): bpm=123.2
+  - If I Were with Her Now: bpm=103.7
+- `features.csv` from the same session — Love Rehab `drift_ms` column walks −20 → −90 → plateau at −90.490 by frame 2398 (31 s in).
+
+**Suspected failure class:** `algorithm` (Beat This! accuracy on kick-driven 4/4 short windows) or `calibration` (preprocessing might be feeding the model audio at the wrong sample rate / scale).
+
+**Evidence:**
+- Beat This! is documented as accurate to ~98% on full-track input. The 30-second preview is short — the trained transformer expects ~10 s of context, so 30 s is in-distribution. A 5.5% error on a clean kick track is unexpectedly large.
+- 118.1 is not a halving (125/2 = 62.5) or a doubling (125×2 = 250) — `halvingOctaveCorrected()` shouldn't be involved. `BeatGridResolver` is doing trimmed-mean IOI on detected beat peaks, so 118.1 reflects the actual peak spacing the model returned.
+- Possible causes worth checking before code changes:
+  - **Determinism check:** prepare Love Rehab twice in two fresh sessions. Same BPM both times → deterministic model output. Different → preprocessing nondeterminism (resampling, mel filter quantization).
+  - **Sample-rate check:** `BeatThisPreprocessor.sourceSampleRate` is fixed at 22050 Hz. The Spotify preview is delivered at 44100 Hz. The resampler must produce a 22050 Hz stream — if it's actually delivering 23310 Hz (5.5% too fast) the model would see the audio as slowed, returning 118 instead of 125. **Check the resampler ratio first.**
+  - **Preview-clip startpoint:** Spotify preview clips start at variable offsets in the track. If Love Rehab's preview is from a section with subtle tempo variation (intro / breakdown), the model's BPM estimate could legitimately differ from the song's average. Less likely on a steady electronic track but worth ruling out by checking the preview file (`preview.m4a` if cached).
+- This bug has been latent since DSP.2 S5 (2026-05-04) but was masked: pre-BUG-006.2, `engine.stemCache` was never assigned, so the prepared grid was never installed at runtime. The live Beat This! path on the 10-second tap window may have been more accurate (or less — this is now testable). BUG-006.2's fix exposes the offline grid to the runtime drift tracker for the first time.
+
+**Verification criteria:**
+- [ ] `DefaultBeatGridAnalyzer` returns BPM within ±1.5 BPM of the canonical reference (125 for Love Rehab) over the 30-second Spotify preview. Repeat across 5 fresh preparations to test determinism.
+- [ ] `features.csv` `grid_bpm` for Love Rehab reads ~125 across the entire track playback.
+- [ ] `drift_ms` stays inside ±30 ms for the duration of a 60-second segment on Love Rehab.
+- [ ] Smoke-test on the other reference fixtures: Money 7/4 (120–125 expected, currently 123.2 — passes), Pyramid Song 16/8 (~68 expected, currently 70.0 — passes within ±2.5 BPM), so_what (136 expected, not in this session).
+
+**Fix scope:** Diagnose first. Three orthogonal checks: (1) re-prepare Love Rehab from a fresh launch and verify BPM is consistent — eliminates non-determinism; (2) verify the audio handed to the Beat This! model is at the expected 22050 Hz with a known-good test signal (e.g. a 125 BPM click track resampled through the preprocessor) — eliminates sample-rate plumbing as a cause; (3) compare the Spotify preview clip against the full-track BPM ground truth using an independent BPM tool (Mixed In Key, RecordBox, librosa.beat.beat_track) — confirms the preview itself is at 125. If (1)–(3) all check out, the failure is in Beat This! itself on this audio and the fix is calibration metadata or a different model checkpoint.
+
+**Related:** BUG-006.2 (exposed this latent issue), DSP.2 S5 (introduced offline BeatGrid resolver), BUG-007 (compounds with — even a perfectly accurate grid wouldn't lock cleanly while BUG-007 is open). Failed Approach #52 (sample-rate plumbing — was thoroughly audited in QR.1 but `BeatThisPreprocessor.sourceSampleRate` is in the allowlist; worth re-auditing the resampler chain end-to-end against the prepared path specifically).
 
 ---
 
