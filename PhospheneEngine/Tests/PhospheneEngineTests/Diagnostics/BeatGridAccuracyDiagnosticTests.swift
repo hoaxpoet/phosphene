@@ -130,7 +130,109 @@ struct BeatGridAccuracyDiagnosticTests {
         )
     }
 
+    /// Synthesizes a 30-second mono kick-on-every-quarter-note track at a
+    /// known input BPM and asserts `DefaultBeatGridAnalyzer` recovers it.
+    ///
+    /// Settled the Love Rehab interpretation question (BUG-008.1 follow-up,
+    /// 2026-05-06): the model hits 125.00 BPM exactly on synthetic
+    /// quantized input. So the 118 BPM Beat This! produces on Love Rehab
+    /// is musical interpretation (kick rate vs. perceptual beat), not a
+    /// model accuracy failure at this tempo. BUG-008.2 scope (surface
+    /// disagreement, don't act on it) is correct.
+    ///
+    /// Side finding: at 120 BPM input, the model returns 117.97 BPM (-1.7 %).
+    /// 130 BPM returns 130.09 BPM (+0.07 %). 125 BPM is exact. The 120 BPM
+    /// undershoot is a small, tempo-specific artifact unrelated to Love
+    /// Rehab; documented for forensic value, not gated tightly.
+    ///
+    /// Tolerance is ±2.5 BPM (matches the Pyramid Song criterion in the
+    /// original BUG-008 verification). The PRINT line on every test is
+    /// the real deliverable — if these numbers shift in the future, they
+    /// surface in test output regardless of pass/fail.
+    @Test(
+        "synthesizedKick: BeatThis! recovers known machine-quantized BPM",
+        arguments: [120.0, 125.0, 130.0]
+    )
+    func test_synthesizedKick_modelRecoversKnownBPM(inputBPM: Double) throws {
+        guard let device = MTLCreateSystemDefaultDevice() else { return }
+
+        let sampleRate: Double = 44100
+        let durationSec: Double = 30.0
+        let samples = synthesizeKickTrack(
+            bpm: inputBPM,
+            durationSeconds: durationSec,
+            sampleRate: sampleRate
+        )
+        #expect(samples.count == Int(sampleRate * durationSec))
+
+        let analyzer = try DefaultBeatGridAnalyzer(device: device)
+        let grid = analyzer.analyzeBeatGrid(samples: samples, sampleRate: sampleRate)
+
+        // Print so the result is visible regardless of pass/fail —
+        // this is a diagnostic test, the numbers themselves are the deliverable.
+        let expectedBeats = Int(durationSec * inputBPM / 60.0)
+        print("""
+            BUG-008 synthetic kick: input=\(String(format: "%.1f", inputBPM)) BPM \
+            → produced=\(String(format: "%.2f", grid.bpm)) BPM, \
+            beats=\(grid.beats.count) (expected ~\(expectedBeats)), \
+            downbeats=\(grid.downbeats.count), \
+            beatsPerBar=\(grid.beatsPerBar)
+            """)
+
+        #expect(grid != .empty, "BeatGrid must not be empty for synthesized input")
+        #expect(grid.beats.count > expectedBeats / 2,
+                "Expected ~\(expectedBeats) beats, got \(grid.beats.count) — model is missing kicks")
+        #expect(
+            abs(grid.bpm - inputBPM) < 2.5,
+            """
+            BUG-008 diagnostic: input \(inputBPM) BPM kick track produced \
+            \(String(format: "%.2f", grid.bpm)) BPM (delta=\(String(format: "%.2f", grid.bpm - inputBPM))). \
+            Tolerance is intentionally generous (±2.5) — observed values at \
+            time of writing: 120→117.97, 125→125.00, 130→130.09. A delta \
+            outside ±2.5 indicates a real shift from those baselines.
+            """
+        )
+    }
+
     // MARK: - Helpers
+
+    /// Synthesize a mono 30-second kick-on-every-quarter-note track.
+    ///
+    /// Each kick is a 60 Hz sine pulse with a sharp attack (linear ramp over
+    /// 2 ms) and exponential decay (τ=0.06 s) — TR-style kick centered in
+    /// the sub_bass mel band. Quantized exactly to the input BPM.
+    private func synthesizeKickTrack(
+        bpm: Double,
+        durationSeconds: Double,
+        sampleRate: Double
+    ) -> [Float] {
+        let totalSamples = Int(sampleRate * durationSeconds)
+        var samples = [Float](repeating: 0, count: totalSamples)
+
+        let beatPeriodSamples = Int((60.0 / bpm) * sampleRate)
+        let kickFreq: Double = 60.0
+        let kickDecayTau: Double = 0.06    // seconds
+        let kickAttackSamples = Int(0.002 * sampleRate)  // 2 ms
+        let kickLengthSamples = Int(0.20 * sampleRate)   // 200 ms (well past decay)
+
+        var beatStart = 0
+        while beatStart < totalSamples {
+            for i in 0..<kickLengthSamples {
+                let idx = beatStart + i
+                if idx >= totalSamples { break }
+                let t = Double(i) / sampleRate
+                let attackEnv: Double = i < kickAttackSamples
+                    ? Double(i) / Double(kickAttackSamples)
+                    : 1.0
+                let decayEnv = exp(-t / kickDecayTau)
+                let phase = 2.0 * .pi * kickFreq * t
+                samples[idx] += Float(0.6 * attackEnv * decayEnv * sin(phase))
+            }
+            beatStart += beatPeriodSamples
+        }
+
+        return samples
+    }
 
     private func decodeMonoFloat32(url: URL) throws -> (samples: [Float], sampleRate: Double) {
         let proc = Process()
