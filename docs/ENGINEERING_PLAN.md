@@ -2124,7 +2124,7 @@ Add a SwiftLint custom rule that flags `f\.(bass|mid|treb|sub_bass|low_bass|low_
 - `PhospheneEngine/Tests/PhospheneEngineTests/DSP/BeatDetectorTempoTests.swift` — assert no doubling for 60 BPM input.
 - `docs/CLAUDE.md` — Failed Approach #52 (sample-rate literal recurrence), update Tempo section, update KineticSculpture entry.
 - `docs/DECISIONS.md` — D-078: "Sample rate is captured once per tap install; literal `44100` is a CI-banned constant."
-- `docs/QUALITY/KNOWN_ISSUES.md` — close BUG-R002 / BUG-R003 with QR.1 commit hash.
+- `docs/QUALITY/KNOWN_ISSUES.md` — close BUG-R002 / BUG-R003 with QR.1 commit hash; add new BUG-R006 (sample-rate plumbing audit), BUG-R007 (octave correction split), BUG-R008 (elapsedSeconds Float drift), BUG-R009 (KineticSculpture D-026 violation).
 
 **Tests:**
 
@@ -2136,19 +2136,21 @@ Add a SwiftLint custom rule that flags `f\.(bass|mid|treb|sub_bass|low_bass|low_
 
 **Done when:**
 
-- [ ] All five literal-`44100` sites use `tapSampleRate`.
-- [ ] `tapSampleRate` capture is race-free (immutable post-install or `os_unfair_lock`-guarded).
-- [ ] `computeRobustBPM` and `estimateTempo` no longer double sub-80 BPM.
-- [ ] `MIRPipeline.elapsedSeconds` is `Double`.
-- [ ] KineticSculpture uses deviation primitives; golden hash regenerated.
-- [ ] `Scripts/check_sample_rate_literals.sh` passes; SwiftLint custom rule enforced.
-- [ ] All new tests pass; full engine suite passes; full app build clean.
-- [ ] CLAUDE.md, DECISIONS.md (D-078), KNOWN_ISSUES.md updated.
-- [ ] Manual validation: connect Spotify playlist; observe a Spotify-prepared session reaches PLANNED·LOCKED on Love Rehab and stem energies on the debug overlay are sane (no obvious magnitude shift vs pre-fix recording).
+- [x] All five literal-`44100` sites use `tapSampleRate` (or the canonical `StemSeparator.modelSampleRate` where the post-separation rate is correct, not the tap rate).
+- [x] `tapSampleRate` capture is race-free (NSLock-guarded `_tapSampleRate` with `updateTapSampleRate(_:)` writer + `tapSampleRate` reader).
+- [x] `computeRobustBPM` and `estimateTempo` no longer double sub-80 BPM.
+- [x] `MIRPipeline.elapsedSeconds` is `Double`; `LiveBeatDriftTracker.update(playbackTime:)` widened to `Double`.
+- [x] KineticSculpture uses deviation primitives (`0.06 + f.bass * 0.16 + f.bass_dev * 0.05`); golden hash regenerated.
+- [x] `Scripts/check_sample_rate_literals.sh` passes; SwiftLint custom rule for `.metal` deviation form documented as intentionally script-based (SwiftLint cannot lint `.metal`).
+- [x] All new tests pass; full engine suite passes (1045 tests, sole failure is the pre-existing `MetadataPreFetcher.fetch_networkTimeout` flake); app build clean.
+- [x] CLAUDE.md, DECISIONS.md (D-079), KNOWN_ISSUES.md (BUG-R002/R003 generalized; new BUG-R006/R007/R008/R009), ENGINEERING_PLAN.md updated.
+- [ ] Manual validation: connect Spotify playlist; observe a Spotify-prepared session reaches PLANNED·LOCKED on Love Rehab and stem energies on the debug overlay are sane (no obvious magnitude shift vs pre-fix recording). **Pending Matt — engine-side correctness verified by tests; subjective verification on real audio still required.**
 
 **Verify:** `swift test --filter TapSampleRateRegression && swift test --filter BeatDetectorTempo && swift test --filter MIRPipelineUnit && bash Scripts/check_sample_rate_literals.sh && swiftlint lint --strict`.
 
 **Estimated sessions:** 2 (audit + propagation → tests + lint gate + golden regen).
+
+**Status:** ✅ 2026-05-06 — D-079 landed (see git log `[QR.1]`). Manual subjective validation deferred to next listening session.
 
 ---
 
