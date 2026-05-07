@@ -1,3 +1,4 @@
+// swiftlint:disable file_length
 // LiveBeatDriftTracker — Drift cross-correlation against an offline BeatGrid.
 //
 // Phase DSP.2 S7. Replaces BeatPredictor's IIR rising-edge tracker for tracks
@@ -174,6 +175,23 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
     }
     private var _visualPhaseOffsetMs: Float = 0
 
+    /// Bar-phase rotation offset (BUG-007.4 dev shortcut). Range 0..(beatsPerBar-1).
+    /// Rotates the visible "which beat is 1" labelling for the current track without
+    /// touching beat-phase or drift. Used to confirm the Spotify-clip-phase hypothesis:
+    /// Beat This! identifies bar phase *of the 30 s preview clip*; if the clip didn't
+    /// start on a song bar boundary, the displayed "1" lands on a non-downbeat. Cycle
+    /// with `Shift+B` until "1" lines up with the song's perceived downbeat.
+    /// Reset to 0 on `setGrid` / `reset`. Default 0.
+    public var barPhaseOffset: Int {
+        get { lock.lock(); defer { lock.unlock() }; return _barPhaseOffset }
+        set {
+            lock.lock(); defer { lock.unlock() }
+            let bpb = max(grid.beatsPerBar, 1)
+            _barPhaseOffset = ((newValue % bpb) + bpb) % bpb   // wrap into [0, bpb)
+        }
+    }
+    private var _barPhaseOffset: Int = 0
+
     /// Drift-adjusted downbeat times relative to `playbackTime`, limited to `count`
     /// downbeats within ±`window` seconds of now. Positive = upcoming, negative = past.
     /// Returns an empty array when no grid is installed.
@@ -247,6 +265,7 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
         matchedOnsets = 0
         consecutiveMisses = 0
         lastOnsetTime = -1.0
+        _barPhaseOffset = 0   // BUG-007.4: cleared on track change so each track starts fresh
     }
 
     // MARK: - Update
@@ -375,8 +394,11 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
 
         // Bar phase: linear ramp across `beatsPerBar` beats since the last
         // downbeat. Falls back to 0 when no downbeats are present.
+        // BUG-007.4 dev shortcut: rotate by `_barPhaseOffset` so the user can
+        // confirm the Spotify-clip-phase hypothesis via Shift+B.
         let bpb = max(grid.beatsPerBar, 1)
-        let barPhaseRaw = (Double(timing.beatsSinceDownbeat) + Double(phase01)) / Double(bpb)
+        let rotatedBeatsSinceDB = (timing.beatsSinceDownbeat + _barPhaseOffset) % bpb
+        let barPhaseRaw = (Double(rotatedBeatsSinceDB) + Double(phase01)) / Double(bpb)
         let barPhase01 = Float(barPhaseRaw - floor(barPhaseRaw))
 
         return PhaseTriple(

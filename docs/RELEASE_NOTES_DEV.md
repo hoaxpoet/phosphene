@@ -6,6 +6,49 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-07-h] BUG-007.4a — Bar-phase rotation dev shortcut (Shift+B)
+
+**Increment:** BUG-007.4a
+**Type:** Bug fix / diagnostic enabler
+
+**What changed.**
+
+5-track A/B test on 2026-05-07 (sessions `T15-50-23Z` + `T15-58-17Z`) confirmed BUG-007.4's root cause: Spotify preview clips don't start on song bar boundaries, so Beat This!'s "beat 1 of bar 1" lands on a non-downbeat in the song's coordinate system. Per-track off-by-N: One More Time +3, Midnight City +3, HUMBLE +2, SLTS 0 (preview = first 30 s), Everlong +2. SLTS being the only correct case correlates with its preview being the song intro.
+
+This increment lands a developer shortcut so the user can confirm the rotation hypothesis on more tracks and provide an escape hatch until the durable fix (BUG-007.4b — kick-density auto-rotate) lands.
+
+**API changes:**
+
+- `LiveBeatDriftTracker.barPhaseOffset: Int` (`public`, NSLock-guarded). Range 0..(beatsPerBar−1); setter wraps modulo `beatsPerBar`. Applied in `computePhase` to rotate `barPhase01` and downstream `beat_in_bar` text. Beat-phase, drift, and lock-state are untouched. Reset to 0 on `setGrid` / `reset` so each track starts fresh.
+- `VisualizerEngine.cycleBarPhaseOffset()` — increments by 1 and logs.
+- `PlaybackShortcutRegistry` gains `onCycleBarPhaseOffset` callback; new shortcut `Shift+B` in the developer category labelled "Cycle bar-phase offset (BUG-007.4)".
+
+**Files edited.**
+
+- `PhospheneEngine/Sources/DSP/LiveBeatDriftTracker.swift` — `barPhaseOffset` property + reset hook + `computePhase` rotation. `swiftlint:disable file_length`.
+- `PhospheneApp/VisualizerEngine.swift` — `cycleBarPhaseOffset()`.
+- `PhospheneApp/Services/PlaybackShortcutRegistry.swift` — `Shift+B` keybind.
+- `PhospheneApp/Views/Playback/PlaybackView.swift` — wiring to engine.
+- `PhospheneEngine/Tests/PhospheneEngineTests/DSP/LiveBeatDriftTrackerTests.swift` — 1 new test (`barPhaseOffset_rotatesBarPhase_modBeatsPerBar`) covering rotation, modulo wrap, reset on setGrid.
+- `docs/QUALITY/KNOWN_ISSUES.md` (BUG-007.4 root cause confirmed; fix plan ranked C/A/B).
+- `docs/RELEASE_NOTES_DEV.md`.
+
+**How to use.**
+
+In a Spotify-prepared session with the SpectralCartograph diagnostic preset locked (`L`):
+1. Play any track. Listen for the song's downbeat ("1").
+2. If the visual "1" doesn't match, press `Shift+B` to advance the offset by 1.
+3. Cycle 0..(beatsPerBar−1) until "1" lines up. Console log shows current offset.
+4. Offset resets to 0 on track change — re-cycle for the next track.
+
+This is a *diagnostic*, not the durable fix. Each track may need its own cycle count. BUG-007.4b will auto-rotate via kick-density heuristic.
+
+**Test counts:** 18 → 19 LiveBeatDriftTrackerTests. Full engine suite green except the documented pre-existing `MetadataPreFetcher.fetch_networkTimeout_returnsWithinBudget` flake. 0 SwiftLint violations on touched files. App build clean.
+
+**Out of scope (deferred to BUG-007.4b).** Auto-rotation via kick-density heuristic at lock-in time. Persistence of per-track offset across sessions (the dev shortcut is ephemeral by design).
+
+---
+
 ## [dev-2026-05-07-g] DASH.5 — Frame budget card
 
 **Increment:** DASH.5

@@ -81,7 +81,8 @@ final class PlaybackShortcutRegistry {
         onDebugNextPreset: (@MainActor () -> Void)? = nil,
         onDebugPreviousPreset: (@MainActor () -> Void)? = nil,
         onDecreaseBeatPhaseOffset: (@MainActor () -> Void)? = nil,
-        onIncreaseBeatPhaseOffset: (@MainActor () -> Void)? = nil
+        onIncreaseBeatPhaseOffset: (@MainActor () -> Void)? = nil,
+        onCycleBarPhaseOffset: (@MainActor () -> Void)? = nil
     ) {
         var all = Self.buildShortcuts(
             actionRouter: actionRouter,
@@ -119,6 +120,16 @@ final class PlaybackShortcutRegistry {
                 key: "]",
                 modifiers: [],
                 label: "Beat phase +10 ms (calibration)",
+                category: .developer,
+                action: fn
+            ))
+        }
+        if let fn = onCycleBarPhaseOffset {
+            all.append(PlaybackShortcut(
+                id: "cycleBarPhaseOffset",
+                key: "b",
+                modifiers: [.shift],
+                label: "Cycle bar-phase offset (BUG-007.4)",
                 category: .developer,
                 action: fn
             ))

@@ -292,6 +292,17 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         logger.info("Beat phase offset adjusted to \(clamped, format: .fixed(precision: 1)) ms")
     }
 
+    /// Cycle the bar-phase rotation offset by +1 (BUG-007.4 dev shortcut).
+    /// `Shift+B` walks through 0..(beatsPerBar-1) so the user can confirm the
+    /// Spotify-clip-phase hypothesis: keep cycling until the SpectralCartograph "1"
+    /// lands on the song's perceived downbeat. Resets on track change.
+    /// Setter wraps modulo the installed grid's beatsPerBar — no need to know it here.
+    func cycleBarPhaseOffset() {
+        let tracker = mirPipeline.liveDriftTracker
+        tracker.barPhaseOffset += 1
+        logger.info("Bar-phase offset cycled to \(tracker.barPhaseOffset) (BUG-007.4)")
+    }
+
     /// Current frame-budget quality level. Read directly from the governor each
     /// time the debug overlay repaints — no @Published needed since the overlay
     /// refreshes on VisualizerEngine objectWillChange. D-057.
