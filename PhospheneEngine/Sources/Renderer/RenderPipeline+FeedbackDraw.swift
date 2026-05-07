@@ -101,6 +101,7 @@ extension RenderPipeline {
             particles?.render(encoder: encoder, features: features)
             encoder.endEncoding()
         }
+        compositeDashboard(commandBuffer: commandBuffer, view: view)
         commandBuffer.present(drawable)
     }
 
@@ -143,6 +144,7 @@ extension RenderPipeline {
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
             encoder.endEncoding()
         }
+        compositeDashboard(commandBuffer: commandBuffer, view: view)
         commandBuffer.present(drawable)
     }
 

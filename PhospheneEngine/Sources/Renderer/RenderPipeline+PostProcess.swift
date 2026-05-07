@@ -64,6 +64,7 @@ extension RenderPipeline {
             noiseTextures: noiseTextures
         )
 
+        compositeDashboard(commandBuffer: commandBuffer, view: view)
         commandBuffer.present(drawable)
     }
     // swiftlint:enable function_parameter_count

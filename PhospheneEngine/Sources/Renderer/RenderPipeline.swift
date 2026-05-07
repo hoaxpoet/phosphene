@@ -152,6 +152,38 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     var directPresetFragmentBuffer2: MTLBuffer?
     let directPresetFragmentBuffer2Lock = NSLock()
 
+    // MARK: - Dashboard Composer (DASH.6)
+
+    /// Optional dashboard composer — owns the BEAT/STEMS/PERF cards' layer +
+    /// composite pipeline. When non-nil and `composer.enabled == true`, the
+    /// composer's render-pass is encoded at the tail of each draw path
+    /// (immediately before `commandBuffer.present(drawable)`). RenderPipeline
+    /// holds a weak read; strong ownership lives on `VisualizerEngine`.
+    var dashboardComposer: DashboardComposer?
+    let dashboardComposerLock = NSLock()
+
+    /// Public accessor for tests to confirm the composer was attached.
+    public var hasDashboardComposer: Bool {
+        dashboardComposerLock.withLock { dashboardComposer != nil }
+    }
+
+    /// Attach (or detach) the dashboard composer. Call from VisualizerEngine
+    /// after construction. Mirrors the `setDynamicTextOverlay` setter pattern.
+    public func setDashboardComposer(_ composer: DashboardComposer?) {
+        dashboardComposerLock.withLock { dashboardComposer = composer }
+    }
+
+    /// Encode the dashboard composite if a composer is attached and enabled.
+    /// Called at the tail of every draw path, immediately before `present`.
+    /// No-op when no composer is attached or `enabled == false`.
+    @MainActor
+    func compositeDashboard(commandBuffer: MTLCommandBuffer, view: MTKView) {
+        guard let composer = dashboardComposerLock.withLock({ dashboardComposer }),
+              let drawable = view.currentDrawable
+        else { return }
+        composer.composite(into: commandBuffer, drawable: drawable)
+    }
+
     // MARK: - Dynamic Text Overlay (texture 12)
 
     /// Per-frame CPU text rasterization for text-overlay presets (e.g. SpectralCartograph).
@@ -353,6 +385,11 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
         reallocateMVWarpTextures(size: size)
         // Reallocate per-stage offscreen textures for staged-composition presets.
         reallocateStagedTextures(size: size)
+
+        // Forward to the dashboard composer so it can recompute layer placement.
+        Task { @MainActor [weak self] in
+            self?.dashboardComposerLock.withLock { self?.dashboardComposer }?.resize(to: size)
+        }
 
         logger.info("Feedback textures allocated: \(width)×\(height)")
     }

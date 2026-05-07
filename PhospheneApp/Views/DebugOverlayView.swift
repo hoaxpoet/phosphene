@@ -74,9 +74,7 @@ struct DebugOverlayView: View {
                   + "(V:\(String(format: "%.2f", mood.valence)) "
                   + "A:\(String(format: "%.2f", mood.arousal)))")
             if let key = engine.estimatedKey { label("Key", key) }
-            if let bpm = engine.estimatedTempo {
-                label("Tempo", String(format: "%.0f BPM", bpm))
-            }
+            // BPM moved to the dashboard BEAT card (DASH.6).
 
             // Input signal quality — surfaces output-chain problems that
             // the post-AGC features cannot expose (low peak, BT-codec
@@ -104,31 +102,8 @@ struct DebugOverlayView: View {
 
             Divider().background(.white.opacity(0.3))
 
-            // Frame budget governor quality level.
-            let ql = engine.currentQualityLevel
-            HStack(spacing: 4) {
-                Text("QUALITY:")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .foregroundColor(.white.opacity(0.5))
-                    .frame(width: 70, alignment: .trailing)
-                Text(ql.displayName)
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
-                    .foregroundColor(ql == .full ? .green : .orange)
-            }
-
-            // ML dispatch scheduler state (Increment 6.3).
-            let mlState = engine.currentMLSchedulerState
-            HStack(spacing: 4) {
-                Text("ML:")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .foregroundColor(.white.opacity(0.5))
-                    .frame(width: 70, alignment: .trailing)
-                Text(mlState)
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundColor(mlState == "idle" ? .white.opacity(0.4) : .cyan)
-            }
-
-            Divider().background(.white.opacity(0.3))
+            // Frame-budget quality level + ML dispatch state moved to the
+            // dashboard PERF card (DASH.6).
 
             // Raw MIR diagnostics.
             let diag = engine.mirDiag

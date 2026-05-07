@@ -54,6 +54,9 @@ public struct DashboardTokens: Sendable {
         public static let lg: CGFloat = 16
         public static let xl: CGFloat = 24
         public static let xxl: CGFloat = 32
+        /// Vertical gap between stacked dashboard cards. Aliased to `md` (12 pt)
+        /// in v1; the named token reserves a DASH.6.1 retune slot.
+        public static let cardGap: CGFloat = md
     }
 
     // MARK: - Color
