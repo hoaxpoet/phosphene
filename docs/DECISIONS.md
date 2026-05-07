@@ -1757,3 +1757,37 @@ The DASH.1 token file was a placeholder with a self-imposed deferral comment ("C
 - `PhospheneEngine/Sources/Renderer/Dashboard/DashboardTextLayer.swift` — added `internal var graphicsContext: CGContext`.
 
 **Test count:** 6 new (18 dashboard total: DASH.1 12 + DASH.2 6). 1102 engine tests / 125 suites pass; 0 SwiftLint violations on touched files; app build clean.
+
+## D-082 — Amendment 1 (DASH.2.1, 2026-05-07): row redesign + WCAG-AA labels + brighter chrome
+
+The original DASH.2 implementation followed the prompt-prescribed row API (`.singleValue` horizontal split, `.pair` four-way, `.bar` label-top/bar-full-width/value-top-right). Review of the rendered artifact (`/impeccable` flow) surfaced four issues that no constant-tuning could fix:
+
+1. **Horizontal `label LEFT … value RIGHT` swallows the relationship** at card widths of 280+. The eye does not bind a label on the left to a value 250 pt away on the right. Stacking is the right move.
+2. **`textMuted` (oklch 0.50 / 0.014 / 278) on the surface yields ~3.3:1 contrast** — fails WCAG AA for body-size text (4.5:1 required). The .impeccable.md spec assigned `textMuted` to "labels" without verifying contrast; that was a spec defect inherited by DASH.2. Labels move to `textBody` (oklch 0.80 / 0.010 / 278), which gives ~10:1.
+3. **`Color.surface` (oklch 0.13 / 0.015) chrome reads near-black** against typical visualizer backdrops. `Color.surfaceRaised` (oklch 0.17 / 0.018) is brighter and slightly more chromatic — the purple tint is now perceptible without violating the spec's chroma-restraint rule.
+4. **Pair-row 1 px divider is invisible** at viewing distance. Once rows stack, the pair variant becomes redundant: two single rows beat any horizontal pair. Pair is dropped.
+5. **Bar row label/bar/value were spatially detached** (label top-left, value top-right, bar bottom-full-width). The eye couldn't bind them. New layout: label on top, then bar + right-aligned value text on the same line below — visually contiguous.
+
+**API changes:**
+
+- `DashboardCardLayout.Row` cases reduced to two: `.singleValue(label, value, valueColor)` and `.bar(label, value, valueText, fillColor, range)`. The `.pair` variant is removed (no callers; no migration needed).
+- Row heights: `singleHeight = 39` (11 pt label + 4 pt gap + 24 pt value), `barHeight = 32` (11 pt label + 4 pt gap + 17 pt bar+value band). New constant `DashboardCardLayout.labelToValueGap = 4`.
+- `DashboardCardLayout.height` skips the `titleSize` term when `title.isEmpty` so headerless cards (used by stem panels in DASH.4) don't reserve a phantom title strip.
+
+**Renderer changes:**
+
+- Card chrome: `Color.surface.withAlphaComponent(0.92)` → `Color.surfaceRaised.withAlphaComponent(0.92)`. Alpha unchanged (the .impeccable.md "purposeful glassmorphism" exception still applies — the cards float over a moving visualizer).
+- Title and all row labels: `Color.textMuted` → `Color.textBody`.
+- Bar row geometry: bar reserves an explicit 56 pt right-side column for value text plus 8 pt gap. Bar centre is the bar's own mid-x, NOT `origin.x + width/2`. Negative values fill to the left of bar-centre, positive to the right. The rest of the card layout (innerWidth, padding) is unaffected.
+- Bar fill computation refactored into `drawBarChrome` + `drawBarFill` helpers to satisfy SwiftLint `function_body_length: 60`.
+
+**Test changes (still 6 in `@Suite("DashboardCardRenderer")`):**
+
+- The pair-divider test was removed (variant deleted) and replaced with `render_singleValueRow_stacksLabelAboveValue`, which scans the canvas for high-luma glyph rows and asserts the vertical span between the first and last glyph row is ≥ 12 pt — proving the label and value occupy separate vertical bands.
+- The canonical artifact test renames to `render_beatCard_*` and now renders `card_beat.png` against a representative deep-indigo backdrop (oklch 0.18 / 0.06 / 285) painted into the layer's CGContext via the new `paintVisualizerBackdrop` test helper. This makes the saved artifact reflect production conditions; on transparent black (the previous behaviour) the chrome's purple tint was invisible, leading to the reviewer's "looks black" feedback.
+- Bar-row tests rebuilt around the new geometry: a `barGeometry(for:at:)` helper reproduces the renderer's reserved-column math so left/right sample positions land at one-quarter and three-quarters of the *bar*'s width — well inside the fill, not on its edge.
+- The right-edge clipping test still uses Rec. 601 luma rather than alpha, since chrome at the canvas edge legitimately produces high alpha but low luma.
+
+**Demo fixture (`beatCardFixture`):** card titled `BEAT` with four rows in the order MODE / BPM / BAR / BASS — matching the .impeccable Beat panel. MODE's value uses `Color.statusGreen` so the locked state has a colour cue distinct from the neutral white-ish numerics.
+
+**Test count:** 18 dashboard tests still pass (12 DASH.1 + 6 DASH.2.1). Full engine suite green; 0 SwiftLint violations on touched files; app build clean.

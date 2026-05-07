@@ -2587,16 +2587,19 @@ Foundation: `DashboardTokens`, `DashboardFontLoader`, `DashboardTextLayer`.
 - [x] Color token applies to rendered pixels (teal G > R and G > B).
 - [x] All 12 tests pass; 0 SwiftLint violations; app build clean.
 
-### Increment DASH.2 — Metrics card layout engine ✅ 2026-05-07
+### Increment DASH.2 — Metrics card layout engine ✅ 2026-05-07 (amended DASH.2.1)
 
-`DashboardCardLayout` value type: positions labeled metric values in a fixed-width card (title row + N value rows). `DashboardCardRenderer` composes `DashboardTextLayer` calls to paint one card. Cards support: single-value, two-column pair, bar-chart rows. Card chrome (rounded surface fill at 0.92 alpha + 1 px tinted border) is the one sanctioned glassmorphic surface in the dashboard. Right-edge clipping enforced via `align: .right` on every value column; bar geometry bounded by `padding` on both inner edges. `DashboardTextLayer` exposes the underlying `CGContext` via an `internal var graphicsContext` so the renderer can paint chrome and bar geometry into the same shared buffer.
+`DashboardCardLayout` value type: positions labeled metric values in a fixed-width card (title row + N value rows). `DashboardCardRenderer` composes `DashboardTextLayer` calls to paint one card. Cards support **stacked single-value rows** (label on top, value below) and **stacked bar rows** (label on top, bar + right-aligned value text on the next line). Card chrome (rounded `Color.surfaceRaised` fill at 0.92 alpha + 1 px `Color.border` stroke) is the one sanctioned glassmorphic surface in the dashboard. Right-edge clipping enforced via `align: .right` on bar value text; bar geometry bounded by an explicit reserved-right-column width. `DashboardTextLayer` exposes the underlying `CGContext` via an `internal var graphicsContext` so the renderer can paint chrome and bar geometry into the same shared buffer.
+
+**Amendment DASH.2.1 (2026-05-07).** The original prompt prescribed three row variants (`.singleValue` horizontal label-LEFT/value-RIGHT, `.pair` four-way split, `.bar` label-top/bar-bottom-full-width/value-top-right). After /impeccable review of the artifact, the design was rebuilt: rows now stack label-above-value, the pair variant was dropped (two single rows beat any horizontal pair at typical card widths), label colour switched from `textMuted` (~3.3:1, fails WCAG AA) to `textBody` (~10:1, passes AA), card chrome switched from `Color.surface` to `Color.surfaceRaised` so the purple tint reads against any visualizer backdrop, and the test artifact paints a representative deep-indigo backdrop before drawing the card so the saved PNG reflects production conditions. See D-082 amendment for full rationale.
 
 **Done when:** ✅
-- [x] A `DashboardCardRenderer` test renders a 3-row card to a texture and pixel-verifies label positions.
+- [x] A `DashboardCardRenderer` test renders the canonical 4-row beat card and pixel-verifies title and bottom-clear.
 - [x] Cards clip correctly at the right edge (no text glyph past `width - padding`).
-- [x] Bar row negative value fills left of centre; positive value fills right; zero value draws no foreground.
-- [x] Pair row draws a 1 px `Color.border` divider at the midpoint.
-- [x] All 18 dashboard tests pass; 0 SwiftLint violations; app build clean.
+- [x] Bar row negative value fills left of bar centre; positive value fills right of bar centre; zero value draws no foreground.
+- [x] Single-value rows stack their label above their value (geometric span ≥ label height + gap).
+- [x] Label colour passes WCAG AA contrast on the card chrome.
+- [x] All 18 dashboard tests pass; 0 SwiftLint violations on touched files; app build clean.
 
 ### Increment DASH.3 — Beat & BPM card
 

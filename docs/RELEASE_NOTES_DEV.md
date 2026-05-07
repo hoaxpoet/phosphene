@@ -6,6 +6,48 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-07-c] DASH.2.1 — Card layout redesign: stacked rows + WCAG-AA labels + brighter chrome
+
+**Increment:** DASH.2.1 (amendment to DASH.2)
+**Type:** Design (renderer)
+
+**What changed.**
+
+`/impeccable` review of the DASH.2 artifact surfaced five issues that constant-tuning could not fix: (1) horizontal `label LEFT … value RIGHT` swallowed the label-value relationship at typical card widths; (2) `textMuted` on the card surface gave ~3.3:1 contrast — failing WCAG AA for body-size text; (3) `Color.surface` (oklch 0.13) read as near-black against any backdrop; (4) the pair-row 1 px divider was invisible; (5) bar rows had label/bar/value spatially detached. All five resolved.
+
+**API changes:**
+
+- `DashboardCardLayout.Row` cases reduced to two: `.singleValue` and `.bar` (the `.pair` variant is removed; no callers).
+- Stacked layout: label 11 pt UPPERCASE on top, value below. Heights: `singleHeight = 39` (11 + 4 + 24), `barHeight = 32` (11 + 4 + 17). New constant `DashboardCardLayout.labelToValueGap = 4`.
+- `DashboardCardLayout.height` skips the `titleSize` term when `title.isEmpty`.
+
+**Renderer changes:**
+
+- Card chrome: `Color.surface` → `Color.surfaceRaised` (oklch 0.17 / 0.018, slightly brighter and more chromatic). Alpha 0.92 unchanged.
+- Title and all row labels: `Color.textMuted` → `Color.textBody` (~10:1 vs ~3.3:1).
+- Bar row geometry: bar reserves a 56 pt right-side column for value text + 8 pt gap; bar centre is the bar's own mid-x, not the card centre. Bar fill refactored into `drawBarChrome` + `drawBarFill` helpers (SwiftLint compliance).
+
+**Test changes (still 6 in `@Suite("DashboardCardRenderer")`):**
+
+- `render_pairRow_dividerVisible` removed (variant deleted); replaced with `render_singleValueRow_stacksLabelAboveValue` (asserts vertical span between first and last glyph row ≥ 12 pt).
+- Canonical artifact test renamed to `render_beatCard_pixelVerifyLabelPositions`. New test helper `paintVisualizerBackdrop` paints a representative deep-indigo backdrop (oklch 0.18 / 0.06 / 285) before the card is drawn — the saved `card_beat.png` now reflects production conditions over a visualizer rather than over transparent black.
+- Bar-row tests rebuilt around the new geometry: `barGeometry(for:at:)` helper reproduces the renderer's reserved-column math so sample positions land well inside the fill rather than on its edge.
+
+**Demo fixture (`beatCardFixture`):** card titled `BEAT` with four rows MODE / BPM / BAR / BASS, matching the .impeccable Beat panel. MODE's value uses `Color.statusGreen` for the locked-state colour cue.
+
+**Files edited:**
+
+- `PhospheneEngine/Sources/Renderer/Dashboard/DashboardCardLayout.swift`
+- `PhospheneEngine/Sources/Renderer/Dashboard/DashboardCardRenderer.swift`
+- `PhospheneEngine/Tests/PhospheneEngineTests/Renderer/DashboardCardRendererTests.swift`
+- `docs/ENGINEERING_PLAN.md`, `docs/DECISIONS.md` (D-082 Amendment 1), `CLAUDE.md`
+
+**Test counts:** 6 DASH.2 tests rebuilt (still 6); 18 dashboard tests total. Full engine suite green; 0 SwiftLint violations on touched files; app build clean. Decisions: D-082 Amendment 1.
+
+**Visual approval:** Matt approved the new artifact `card_beat.png` 2026-05-07.
+
+---
+
 ## [dev-2026-05-07-b] BUG-007.3 — Lock hysteresis + live BPM credibility
 
 **Increment:** BUG-007.3
