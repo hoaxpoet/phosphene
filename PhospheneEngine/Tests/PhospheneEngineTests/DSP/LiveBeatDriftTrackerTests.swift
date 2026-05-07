@@ -783,6 +783,144 @@ struct LiveBeatDriftTrackerTests {
                 "BUG-007.5 pt2: variance ring must reset on setGrid (no carryover from prior track)")
     }
 
+    // MARK: 27. BUG-007.4b — auto-rotate selects the dominant kick-density slot
+
+    /// Synthetic kick-on-beats-1+3 pattern (HUMBLE-style trap groove), but with
+    /// the prepared grid's "downbeat" at slot 2 (off by 2 — typical Spotify-clip
+    /// rotation error). After 8+ tight onsets, auto-rotate should pick slot 2
+    /// (where kicks land most) and rotate it to displayed "1".
+    @Test("autoRotate_picksDominantKickSlotAfterLockAcquired")
+    func test_autoRotatePicksDominantKickSlot() {
+        // Build a 4/4 grid with downbeats at every 4th beat. Beat times are at
+        // 0.5 s spacing (120 BPM); downbeats at 0.0, 2.0, 4.0, ...
+        let grid = makeUniformGrid(bpm: 120, beats: 64, beatsPerBar: 4)
+        let tracker = LiveBeatDriftTracker()
+        tracker.audioOutputLatencyMs = 0
+        tracker.setGrid(grid)
+
+        // Drive aligned kicks on raw slots 1 and 3 only (the "kick" slots).
+        // Slot 0 and 2 get nothing. After enough onsets, slot 1 or 3 is dominant
+        // (whichever has more hits). To make slot 2 dominant in this test we'd
+        // need to feed only on slot 2 — but with `beatsSinceDownbeat` indexing
+        // that's just every 4th beat starting from beat 2. Let's set up: kick on
+        // raw slots {2} predominantly.
+        let dt: Float = 1.0 / 60.0
+        let beatPeriod = 0.5
+        // Drive 12 onsets, all on raw slot 2 (every 4th beat starting from beat 2).
+        // beats 2, 6, 10, 14, ... at times 1.0, 3.0, 5.0, 7.0, ... s.
+        for i in 0..<12 {
+            let t = 1.0 + Double(i) * 4.0 * beatPeriod
+            _ = tracker.update(subBassOnset: true, playbackTime: t, deltaTime: dt)
+        }
+        // After 12 aligned onsets all on slot 2, auto-rotate should fire and
+        // map slot 2 → displayed slot 0. Offset = (4 − 2) % 4 = 2.
+        #expect(tracker.barPhaseOffset == 2,
+                "BUG-007.4b: dominant slot 2 should auto-rotate offset to 2; got \(tracker.barPhaseOffset)")
+    }
+
+    // MARK: 28. BUG-007.4b — auto-rotate is suppressed by manual Shift+B
+
+    /// If the user presses `Shift+B` (sets `barPhaseOffset` externally) before
+    /// auto-rotate fires, the manual choice wins and auto-rotate is permanently
+    /// suppressed for the current track.
+    @Test("autoRotate_suppressedByManualPress")
+    func test_autoRotateSuppressedByManualPress() {
+        let grid = makeUniformGrid(bpm: 120, beats: 64, beatsPerBar: 4)
+        let tracker = LiveBeatDriftTracker()
+        tracker.audioOutputLatencyMs = 0
+        tracker.setGrid(grid)
+
+        // User presses Shift+B once before any onsets arrive (offset → 1).
+        tracker.barPhaseOffset = 1
+        #expect(tracker.barPhaseOffset == 1)
+
+        // Now drive 12 onsets on raw slot 2 — would normally trigger auto-rotate to 2.
+        let dt: Float = 1.0 / 60.0
+        let beatPeriod = 0.5
+        for i in 0..<12 {
+            let t = 1.0 + Double(i) * 4.0 * beatPeriod
+            _ = tracker.update(subBassOnset: true, playbackTime: t, deltaTime: dt)
+        }
+        // Manual press wins: offset stays at 1, NOT 2.
+        #expect(tracker.barPhaseOffset == 1,
+                "BUG-007.4b: manual Shift+B must suppress auto-rotate; got \(tracker.barPhaseOffset)")
+    }
+
+    // MARK: 29. BUG-007.4b — auto-rotate is no-op when no clear winner (4-on-the-floor)
+
+    /// Four-on-the-floor electronic music (OMT) puts equal kick density on all
+    /// 4 slots. Auto-rotate must NOT pick a random slot — it should leave the
+    /// offset at 0 (Beat This!'s default) and let manual `Shift+B` handle the
+    /// rotation. Otherwise we'd corrupt the offset on tracks where the heuristic
+    /// has no signal.
+    @Test("autoRotate_noOpWhenAllSlotsEqual")
+    func test_autoRotateNoOpWhenAllSlotsEqual() {
+        let grid = makeUniformGrid(bpm: 120, beats: 64, beatsPerBar: 4)
+        let tracker = LiveBeatDriftTracker()
+        tracker.audioOutputLatencyMs = 0
+        tracker.setGrid(grid)
+
+        // Drive 16 perfectly aligned onsets on EVERY beat — equal density on all
+        // 4 slots (each gets 4 hits). No clear winner.
+        let dt: Float = 1.0 / 60.0
+        let beatPeriod = 0.5
+        for i in 0..<16 {
+            let t = Double(i) * beatPeriod
+            _ = tracker.update(subBassOnset: true, playbackTime: t, deltaTime: dt)
+        }
+        // No clear winner → offset stays at default 0.
+        #expect(tracker.barPhaseOffset == 0,
+                "BUG-007.4b: equal-density input should NOT trigger rotation; got \(tracker.barPhaseOffset)")
+    }
+
+    // MARK: 30. BUG-007.4b — auto-rotate fires only once per track
+
+    /// Once auto-rotate has attempted (whether it rotated or not), it must not
+    /// fire again on the same track even if subsequent kick density changes
+    /// would now suggest a different rotation. This protects against mid-track
+    /// section changes (e.g. drop, breakdown) jerking the visual into a new
+    /// rotation. Track changes (`setGrid`) reset the flag.
+    @Test("autoRotate_firesOnceUntilSetGrid")
+    func test_autoRotateFiresOnceUntilSetGrid() {
+        let grid = makeUniformGrid(bpm: 120, beats: 64, beatsPerBar: 4)
+        let tracker = LiveBeatDriftTracker()
+        tracker.audioOutputLatencyMs = 0
+        tracker.setGrid(grid)
+
+        // Phase 1: 12 onsets on raw slot 2 — auto-rotate fires, offset = 2.
+        let dt: Float = 1.0 / 60.0
+        let beatPeriod = 0.5
+        for i in 0..<12 {
+            let t = 1.0 + Double(i) * 4.0 * beatPeriod
+            _ = tracker.update(subBassOnset: true, playbackTime: t, deltaTime: dt)
+        }
+        #expect(tracker.barPhaseOffset == 2)
+
+        // Phase 2: 16 more onsets all on raw slot 0 — IF auto-rotate could
+        // re-fire, it would override to offset=0. But it's one-shot, so the
+        // offset must stay at 2.
+        let phase2Start = 1.0 + 12.0 * 4.0 * beatPeriod   // continue past phase 1
+        for i in 0..<16 {
+            let t = phase2Start + Double(i) * 4.0 * beatPeriod
+            // raw slot 0 hits at times that are integer multiples of (4 × 0.5) = 2.0 s.
+            let alignedTime = (t / 2.0).rounded() * 2.0
+            _ = tracker.update(subBassOnset: true, playbackTime: alignedTime, deltaTime: dt)
+        }
+        #expect(tracker.barPhaseOffset == 2,
+                "BUG-007.4b: one-shot auto-rotate must not re-fire; offset stayed at 2")
+
+        // Phase 3: track change — setGrid resets the flag. Now phase 1's pattern
+        // would re-trigger auto-rotate (proving the flag is per-track).
+        tracker.setGrid(grid)
+        #expect(tracker.barPhaseOffset == 0, "setGrid must reset offset")
+        for i in 0..<12 {
+            let t = 1.0 + Double(i) * 4.0 * beatPeriod
+            _ = tracker.update(subBassOnset: true, playbackTime: t, deltaTime: dt)
+        }
+        #expect(tracker.barPhaseOffset == 2,
+                "BUG-007.4b: after setGrid the auto-rotate fires again on new evidence")
+    }
+
     // MARK: 18. BUG-007.2 regression — raw grid (no offsetBy) drops lock after coverage (negative case)
 
     /// Documents the pre-fix behaviour as a known-bad path. Without offsetBy(), the prepared-cache

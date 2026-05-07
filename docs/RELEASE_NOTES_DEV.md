@@ -6,6 +6,43 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-07-m] BUG-007.4b — auto-rotate bar phase via kick density
+
+**Increment:** BUG-007.4b
+**Type:** Bug fix (DSP / live beat tracking)
+
+**What changed.** Eliminates the per-track `Shift+B` manual rotation requirement for tracks with a clear kick density signal. After lock has stabilised (8+ matched onsets), the tracker examines its per-slot kick-onset histogram and auto-rotates `barPhaseOffset` so the dominant slot becomes the displayed "1." One-shot per track.
+
+**How it works.**
+
+- Each tight onset increments a counter for `timing.beatsSinceDownbeat` (raw, before any rotation). Histogram is sized to `grid.beatsPerBar` on `setGrid` and resets on track change.
+- After `matchedOnsets >= 8`, the tracker selects the slot with the highest count. Requires ≥ 4 onsets in that slot *and* ≥ 1.5× the runner-up's count to qualify as a clear winner — otherwise it's a no-op (four-on-the-floor electronic, ambient material).
+- Auto-rotate is preempted if the user pressed `Shift+B` first. Manual intent wins.
+- One-shot per track: once attempted (whether rotated or not), it doesn't re-fire on the same track. `setGrid` resets the flag.
+
+**Expected behaviour per the 5-track battery:**
+
+- HUMBLE (kick on 1+3 with 1 emphasised) → likely auto-rotates within ~6 s.
+- Everlong / SLTS (rock with strong downbeat) → likely auto-rotates within ~4 s.
+- Midnight City → may auto-rotate via snare-on-2/4 density shift; to be observed.
+- One More Time (four-on-the-floor electronic) → equal density → no auto-rotate, `Shift+B` remains.
+
+**API.** New private state (`slotOnsetCounts`, `autoRotateAttempted`, `manualRotationPressed`) and helper `maybeAutoRotateBarPhaseLocked`. New tunables: `autoRotateMatchThreshold=8`, `autoRotateDominanceRatio=1.5`, `autoRotateMinDominantCount=4`. `barPhaseOffset` external setter sets `manualRotationPressed=true`.
+
+**Files edited.**
+
+- `PhospheneEngine/Sources/DSP/LiveBeatDriftTracker.swift` — auto-rotate logic, slot counter, manual-press guard. Adds `swiftlint:disable type_body_length`.
+- `PhospheneEngine/Tests/PhospheneEngineTests/DSP/LiveBeatDriftTrackerTests.swift` — 4 new tests (MARKs 27–30).
+- `docs/QUALITY/KNOWN_ISSUES.md` — BUG-007.4 marked Resolved.
+
+**Tests.** 30/30 `LiveBeatDriftTrackerTests` pass. Full engine suite green except documented pre-existing flakes. 0 SwiftLint violations on touched files.
+
+**Manual validation pending.** Same 5-track battery — confirm auto-rotate works on HUMBLE/Everlong/SLTS and `Shift+B` remains the override.
+
+**Out of scope.** BUG-007.5 part 3 (BPM-aware time gate for HUMBLE — next increment).
+
+---
+
 ## [dev-2026-05-07-l] BUG-007.5 part 2 — variance-adaptive tight gate
 
 **Increment:** BUG-007.5 part 2
