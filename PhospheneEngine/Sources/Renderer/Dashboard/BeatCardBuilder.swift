@@ -69,18 +69,21 @@ public struct BeatCardBuilder: Sendable {
     // MARK: - Row makers
 
     private func makeModeRow(sessionMode: Int) -> DashboardCardLayout.Row {
-        // Status colours mapped onto the brand palette (DASH.7.1, D-088):
-        //   REACTIVE / UNLOCKED → textMuted    (no signal yet)
-        //   LOCKING             → coralMuted   (warmth arriving, not yet at rest)
-        //   LOCKED              → teal         (analytical/precision — the data is locked in)
-        // Replaces the foreign statusYellow / statusGreen from DASH.3.
+        // Status colours mapped onto the brand palette and tuned for AA-grade
+        // legibility on the dark dashboard surface (DASH.7.2, D-089):
+        //   REACTIVE / UNLOCKED → textBody  (real status — must be readable; muted fails AA on dark)
+        //   LOCKING             → coral     (system warming — full coral reads at 7.8:1 on dark)
+        //   LOCKED              → teal      (data locked in — 8.2:1 on dark, AAA)
+        // The DASH.7.1 `coralMuted` (oklch 0.45) failed WCAG AA at 2.6:1 against
+        // the dark surface; promoting to full `coral` (0.70) restores legibility
+        // without changing brand semantics.
         let value: String
         let color: NSColor
         switch sessionMode {
-        case 1:  value = "UNLOCKED"; color = DashboardTokens.Color.textMuted
-        case 2:  value = "LOCKING";  color = DashboardTokens.Color.coralMuted
+        case 1:  value = "UNLOCKED"; color = DashboardTokens.Color.textBody
+        case 2:  value = "LOCKING";  color = DashboardTokens.Color.coral
         case 3:  value = "LOCKED";   color = DashboardTokens.Color.teal
-        default: value = "REACTIVE"; color = DashboardTokens.Color.textMuted
+        default: value = "REACTIVE"; color = DashboardTokens.Color.textBody
         }
         return .singleValue(label: "MODE", value: value, valueColor: color)
     }
@@ -106,19 +109,23 @@ public struct BeatCardBuilder: Sendable {
         beatInBar: Int,
         beatsPerBar: Int
     ) -> DashboardCardLayout.Row {
+        // BAR fill uses full `purple` (DASH.7.2, D-089) — `purpleGlow` (oklch
+        // 0.35) failed the WCAG 3:1 non-text floor at ~2.5:1 against the dark
+        // surface. Full `purple` (oklch 0.62) gives ~4.5:1, brand-aligned for
+        // "ambient presence / depth" — phrase-level position.
         if !hasGrid {
             return .progressBar(
                 label: "BAR",
                 value: 0,
                 valueText: "— / 4",
-                fillColor: DashboardTokens.Color.purpleGlow
+                fillColor: DashboardTokens.Color.purple
             )
         }
         return .progressBar(
             label: "BAR",
             value: clamp01(barPhase01),
             valueText: "\(beatInBar) / \(beatsPerBar)",
-            fillColor: DashboardTokens.Color.purpleGlow
+            fillColor: DashboardTokens.Color.purple
         )
     }
 

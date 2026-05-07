@@ -45,6 +45,7 @@
 		O10004 /* DashboardOverlayViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = O20004; };
 		O10005 /* VisualizerEngine+Dashboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = O20005; };
 		O10006 /* DashboardOverlayViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = O20006; };
+		O10007 /* DarkVibrancyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = O20007; };
 		A10003 /* PhospheneEngine in Frameworks */ = {isa = PBXBuildFile; productRef = A80001; };
 		A10010 /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20010; };
 		A10011 /* MetalKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20011; };
@@ -201,6 +202,7 @@
 		O20004 /* DashboardOverlayViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardOverlayViewModel.swift; sourceTree = "<group>"; };
 		O20005 /* VisualizerEngine+Dashboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VisualizerEngine+Dashboard.swift"; sourceTree = "<group>"; };
 		O20006 /* DashboardOverlayViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardOverlayViewModelTests.swift; sourceTree = "<group>"; };
+		O20007 /* DarkVibrancyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DarkVibrancyView.swift; sourceTree = "<group>"; };
 		A20004 /* PhospheneApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PhospheneApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A20005 /* PhospheneEngine */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = PhospheneEngine; path = PhospheneEngine; sourceTree = "<group>"; };
 		A20010 /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
@@ -597,6 +599,7 @@
 				O20002 /* DashboardCardView.swift */,
 				O20003 /* DashboardRowView.swift */,
 				O20004 /* DashboardOverlayViewModel.swift */,
+				O20007 /* DarkVibrancyView.swift */,
 			);
 			path = Dashboard;
 			sourceTree = "<group>";
@@ -806,6 +809,7 @@
 				O10003 /* DashboardRowView.swift in Sources */,
 				O10004 /* DashboardOverlayViewModel.swift in Sources */,
 				O10005 /* VisualizerEngine+Dashboard.swift in Sources */,
+				O10007 /* DarkVibrancyView.swift in Sources */,
 				A10020 /* MetalView.swift in Sources */,
 				A10021 /* DebugOverlayView.swift in Sources */,
 				A10022 /* MusicKitFetcher.swift in Sources */,
