@@ -182,6 +182,13 @@ public final class DashboardTextLayer: @unchecked Sendable {
         _ = commandBuffer  // suppress unused-parameter warning
     }
 
+    // MARK: - Internal access
+
+    /// Internal access for renderers that need direct CGPath geometry
+    /// (e.g. card chrome, bar charts). External callers must prefer
+    /// `drawText`.
+    internal var graphicsContext: CGContext { cgContext }
+
     /// Reallocate the canvas for a new drawable size.
     ///
     /// Call when the MTKView drawable size changes. Drops the existing buffer and
