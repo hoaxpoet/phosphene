@@ -1,18 +1,26 @@
 // DashboardCardRenderer — Composes drawText + bar geometry onto a DashboardTextLayer.
 //
-// Painting order matters: chrome (rounded surface fill + 1px border) → bar
-// geometry → text. Reversing the order causes bar fills to paint over text
-// glyphs because the text layer's CGContext shares pixels with the bar fills.
+// Painting order matters: chrome (rounded surfaceRaised fill + 1 px border) →
+// bar geometry → text. Reversing the order causes bar fills to paint over
+// text glyphs because the text layer's CGContext shares pixels with the bar
+// fills.
 //
-// Right-edge clipping: every value column on the right of a card is rendered
-// with `align: .right` so the rightmost glyph never extends past
-// `origin.x + width - padding`. The bar fill is bounded by `padding` on both
-// inner edges; a card's bar can never overflow its declared width.
+// Layout philosophy (DASH.2.1, post-/impeccable redesign):
+//   Rows stack their label above their value. The horizontal split layout
+//   (label left / value right) was abandoned because at card widths of 280+
+//   the empty space between paired data swallowed the relationship. Stacked
+//   rows make label-value adjacency unmistakable. The pair row variant was
+//   dropped entirely — once each cell stacks, two single rows beat any pair.
 //
-// Card chrome is the one place in the dashboard where alpha < 1 is sanctioned
-// (0.92 surface fill). The cards float over a moving visualizer; the slight
-// transparency is the .impeccable.md "purposeful glassmorphism" exception
-// (D-082).
+// Card chrome uses `Color.surfaceRaised` (oklch 0.17 / 0.018 / 278) instead
+// of `Color.surface` (oklch 0.13 / 0.015 / 278) so the purple tint reads
+// against any visualizer backdrop. Alpha 0.92 stays — the cards float over
+// the visualizer; this is the .impeccable.md "purposeful glassmorphism"
+// exception (D-082, amended in D-082.1).
+//
+// Label color uses `Color.textBody` (oklch 0.80) not `Color.textMuted`
+// (oklch 0.50). On the surfaceRaised backdrop, textMuted gives ~3.3:1
+// contrast — failing WCAG AA for body-size text. textBody gives ~10:1.
 
 import CoreGraphics
 import Shared
@@ -28,12 +36,6 @@ public struct DashboardCardRenderer: Sendable {
     public init() {}
 
     /// Render `layout` onto `textLayer` at top-left `origin`.
-    ///
-    /// - Parameter cgContext: The CGContext backing `textLayer` (obtained via
-    ///   `textLayer.graphicsContext`). Passed explicitly so callers see the
-    ///   shared-context contract at the call site.
-    /// - Returns: The Y coordinate immediately below the card. Callers may
-    ///   stack cards by adding `Spacing.sm` between successive returns.
     @discardableResult
     public func render(
         _ layout: DashboardCardLayout,
@@ -50,7 +52,7 @@ public struct DashboardCardRenderer: Sendable {
         let leftX = origin.x + pad
         let rightX = origin.x + layout.width - pad
 
-        var y = origin.y + pad + layout.titleSize
+        var y = origin.y + pad + (layout.title.isEmpty ? 0 : layout.titleSize)
         for row in layout.rows {
             y += layout.rowSpacing
             drawRow(
@@ -91,7 +93,7 @@ public struct DashboardCardRenderer: Sendable {
         )
 
         cgContext.saveGState()
-        let surface = DashboardTokens.Color.surface.withAlphaComponent(0.92)
+        let surface = DashboardTokens.Color.surfaceRaised.withAlphaComponent(0.92)
         cgContext.setFillColor(surface.cgColor)
         cgContext.addPath(path)
         cgContext.fillPath()
@@ -110,13 +112,14 @@ public struct DashboardCardRenderer: Sendable {
         origin: CGPoint,
         on textLayer: DashboardTextLayer
     ) {
+        guard !layout.title.isEmpty else { return }
         textLayer.drawText(
             layout.title,
             at: CGPoint(x: origin.x + layout.padding, y: origin.y + layout.padding),
             size: layout.titleSize,
             weight: .medium,
             font: .prose,
-            color: DashboardTokens.Color.textMuted,
+            color: DashboardTokens.Color.textBody,
             tracking: DashboardTokens.TypeScale.labelTracking
         )
     }
@@ -142,22 +145,7 @@ public struct DashboardCardRenderer: Sendable {
                 valueColor: valueColor,
                 rowTopY: rowTopY,
                 leftX: leftX,
-                rightX: rightX,
                 on: textLayer
-            )
-        case let .pair(leftLabel, leftValue, rightLabel, rightValue, valueColor):
-            drawPairRow(
-                leftLabel: leftLabel,
-                leftValue: leftValue,
-                rightLabel: rightLabel,
-                rightValue: rightValue,
-                valueColor: valueColor,
-                rowTopY: rowTopY,
-                leftX: leftX,
-                rightX: rightX,
-                centerX: centerX,
-                on: textLayer,
-                cgContext: cgContext
             )
         case let .bar(label, value, valueText, fillColor, range):
             drawBarRow(
@@ -178,7 +166,7 @@ public struct DashboardCardRenderer: Sendable {
     }
     // swiftlint:enable function_parameter_count
 
-    // MARK: Single-value
+    // MARK: Single-value (stacked: label on top, value below)
 
     // swiftlint:disable:next function_parameter_count
     private func drawSingleValueRow(
@@ -187,100 +175,30 @@ public struct DashboardCardRenderer: Sendable {
         valueColor: NSColor,
         rowTopY: CGFloat,
         leftX: CGFloat,
-        rightX: CGFloat,
         on textLayer: DashboardTextLayer
     ) {
         textLayer.drawText(
             label,
             at: CGPoint(x: leftX, y: rowTopY),
-            size: DashboardTokens.TypeScale.body,
-            weight: .regular,
+            size: DashboardTokens.TypeScale.label,
+            weight: .medium,
             font: .prose,
-            color: DashboardTokens.Color.textMuted
+            color: DashboardTokens.Color.textBody,
+            tracking: DashboardTokens.TypeScale.labelTracking
         )
+        let valueY = rowTopY + DashboardTokens.TypeScale.label
+            + DashboardCardLayout.labelToValueGap
         textLayer.drawText(
             value,
-            at: CGPoint(x: rightX, y: rowTopY),
-            size: DashboardTokens.TypeScale.numeric,
+            at: CGPoint(x: leftX, y: valueY),
+            size: DashboardTokens.TypeScale.hero,
             weight: .medium,
             font: .mono,
-            color: valueColor,
-            align: .right
+            color: valueColor
         )
     }
 
-    // MARK: Pair
-
-    // swiftlint:disable function_parameter_count
-    private func drawPairRow(
-        leftLabel: String,
-        leftValue: String,
-        rightLabel: String,
-        rightValue: String,
-        valueColor: NSColor,
-        rowTopY: CGFloat,
-        leftX: CGFloat,
-        rightX: CGFloat,
-        centerX: CGFloat,
-        on textLayer: DashboardTextLayer,
-        cgContext: CGContext
-    ) {
-        // Left half: label at leftX, value right-aligned at midpoint - a small gap.
-        let dividerInset: CGFloat = 4
-        let leftValueX = centerX - dividerInset
-        textLayer.drawText(
-            leftLabel,
-            at: CGPoint(x: leftX, y: rowTopY),
-            size: DashboardTokens.TypeScale.body,
-            weight: .regular,
-            font: .prose,
-            color: DashboardTokens.Color.textMuted
-        )
-        textLayer.drawText(
-            leftValue,
-            at: CGPoint(x: leftValueX, y: rowTopY),
-            size: DashboardTokens.TypeScale.numeric,
-            weight: .medium,
-            font: .mono,
-            color: valueColor,
-            align: .right
-        )
-
-        // Vertical 1px divider at midpoint.
-        cgContext.saveGState()
-        cgContext.setFillColor(DashboardTokens.Color.border.cgColor)
-        let dividerRect = CGRect(
-            x: centerX,
-            y: rowTopY + 2,
-            width: 1,
-            height: DashboardCardLayout.Row.pairHeight - 4
-        )
-        cgContext.fill(dividerRect)
-        cgContext.restoreGState()
-
-        // Right half: label after divider, value right-aligned at rightX.
-        let rightLabelX = centerX + dividerInset
-        textLayer.drawText(
-            rightLabel,
-            at: CGPoint(x: rightLabelX, y: rowTopY),
-            size: DashboardTokens.TypeScale.body,
-            weight: .regular,
-            font: .prose,
-            color: DashboardTokens.Color.textMuted
-        )
-        textLayer.drawText(
-            rightValue,
-            at: CGPoint(x: rightX, y: rowTopY),
-            size: DashboardTokens.TypeScale.numeric,
-            weight: .medium,
-            font: .mono,
-            color: valueColor,
-            align: .right
-        )
-    }
-    // swiftlint:enable function_parameter_count
-
-    // MARK: Bar
+    // MARK: Bar (stacked: label on top, bar + value text on a single line below)
 
     // swiftlint:disable function_parameter_count
     private func drawBarRow(
@@ -297,66 +215,114 @@ public struct DashboardCardRenderer: Sendable {
         on textLayer: DashboardTextLayer,
         cgContext: CGContext
     ) {
-        // Top: label (left, muted) + value text (right, body).
+        // Top: label.
         textLayer.drawText(
             label,
             at: CGPoint(x: leftX, y: rowTopY),
             size: DashboardTokens.TypeScale.label,
             weight: .medium,
             font: .prose,
-            color: DashboardTokens.Color.textMuted,
+            color: DashboardTokens.Color.textBody,
             tracking: DashboardTokens.TypeScale.labelTracking
         )
+
+        // Bottom: bar (left) + value text (right) on the same line.
+        // The value text is reserved a fixed-width column so the bar's
+        // geometry stays predictable for tests.
+        let valueColumnWidth: CGFloat = 56
+        let valueColumnGap: CGFloat = 8
+        let barRightLimit = rightX - valueColumnWidth - valueColumnGap
+        let barAreaWidth = barRightLimit - leftX
+        let barHeight: CGFloat = 6
+        let barAreaY = rowTopY + DashboardTokens.TypeScale.label
+            + DashboardCardLayout.labelToValueGap
+        let barY = barAreaY + ((17 - barHeight) / 2)              // vertical-centre in the 17pt band
+        let barRect = CGRect(x: leftX, y: barY, width: barAreaWidth, height: barHeight)
+        let cornerRadius: CGFloat = 1
+
+        drawBarChrome(
+            barRect: barRect,
+            cornerRadius: cornerRadius,
+            cgContext: cgContext
+        )
+        drawBarFill(
+            value: value,
+            range: range,
+            fillColor: fillColor,
+            barLeft: leftX,
+            barWidth: barAreaWidth,
+            barY: barY,
+            barHeight: barHeight,
+            cgContext: cgContext
+        )
+
+        // Value text right-aligned in its reserved column. Vertical centre
+        // matches the bar's row.
         textLayer.drawText(
             valueText,
-            at: CGPoint(x: rightX, y: rowTopY),
+            at: CGPoint(x: rightX, y: barAreaY),
             size: DashboardTokens.TypeScale.body,
             weight: .regular,
             font: .mono,
-            color: DashboardTokens.Color.textBody,
+            color: fillColor,
             align: .right
         )
+        // Suppress unused-parameter warning for centerX, innerWidth: kept on
+        // the signature so signature parity with future row variants holds.
+        _ = centerX
+        _ = innerWidth
+    }
+    // swiftlint:enable function_parameter_count
 
-        // Bar at the bottom of the row, full inner width, 6pt high.
-        let barHeight: CGFloat = 6
-        let barY = rowTopY + DashboardCardLayout.Row.barHeight - barHeight
-        let barRect = CGRect(x: leftX, y: barY, width: innerWidth, height: barHeight)
-        let cornerRadius: CGFloat = 1
-
+    private func drawBarChrome(
+        barRect: CGRect,
+        cornerRadius: CGFloat,
+        cgContext: CGContext
+    ) {
         cgContext.saveGState()
-        // Background.
         let bgPath = CGPath(
             roundedRect: barRect,
             cornerWidth: cornerRadius,
             cornerHeight: cornerRadius,
             transform: nil
         )
-        cgContext.setFillColor(DashboardTokens.Color.surfaceRaised.cgColor)
+        cgContext.setFillColor(DashboardTokens.Color.border.cgColor)
         cgContext.addPath(bgPath)
         cgContext.fillPath()
+        cgContext.restoreGState()
+    }
 
-        // Foreground: signed slice from centre. Clamp value to range first.
-        let halfBarWidth = innerWidth / 2
+    // swiftlint:disable:next function_parameter_count
+    private func drawBarFill(
+        value: Float,
+        range: ClosedRange<Float>,
+        fillColor: NSColor,
+        barLeft: CGFloat,
+        barWidth: CGFloat,
+        barY: CGFloat,
+        barHeight: CGFloat,
+        cgContext: CGContext
+    ) {
+        let barCenterX = barLeft + barWidth / 2
+        let halfBarWidth = barWidth / 2
         let clamped = min(max(value, range.lowerBound), range.upperBound)
+        guard clamped != 0 else { return }
+        cgContext.saveGState()
+        cgContext.setFillColor(fillColor.cgColor)
         if clamped > 0 {
             let extent = max(range.upperBound, .leastNonzeroMagnitude)
             let fillWidth = CGFloat(clamped / extent) * halfBarWidth
-            let fillRect = CGRect(x: centerX, y: barY, width: fillWidth, height: barHeight)
-            cgContext.setFillColor(fillColor.cgColor)
-            cgContext.fill(fillRect)
-        } else if clamped < 0 {
+            cgContext.fill(CGRect(x: barCenterX, y: barY, width: fillWidth, height: barHeight))
+        } else {
             let extent = max(-range.lowerBound, .leastNonzeroMagnitude)
             let fillWidth = CGFloat(-clamped / extent) * halfBarWidth
-            let fillRect = CGRect(
-                x: centerX - fillWidth,
+            cgContext.fill(CGRect(
+                x: barCenterX - fillWidth,
                 y: barY,
                 width: fillWidth,
                 height: barHeight
-            )
-            cgContext.setFillColor(fillColor.cgColor)
-            cgContext.fill(fillRect)
+            ))
         }
         cgContext.restoreGState()
     }
-    // swiftlint:enable function_parameter_count
 }
