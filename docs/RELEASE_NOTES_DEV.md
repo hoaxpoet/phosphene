@@ -30,6 +30,43 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-07-i] BUG-007.5 + BUG-007.6 — Time-based lock release + audio output latency calibration
+
+**Increment:** BUG-007.5 + BUG-007.6 (joint)
+**Type:** Bug fix (DSP / live beat tracking)
+
+**What changed.**
+
+Two complementary fixes informed by the 2026-05-07T18-21-37Z manual session evidence:
+
+**BUG-007.6 — audio output latency calibration.** All tracks showed systematic negative drift averaging −36 to −76 ms (visual fires before audio is heard). Cause: tap captures audio ~50 ms before the listener hears it (CoreAudio output buffer + DAC + driver), plus onset-detection processing delay. Fix: new `LiveBeatDriftTracker.audioOutputLatencyMs: Float` applied to the *display path only* (`displayTime = pt + drift + L/1000`). Does NOT touch onset matching — that would cancel out algebraically. Default 0 in engine; `VisualizerEngine` sets it to 50 ms for internal Mac speakers in app-layer init. Tunable at runtime via `,` (−5 ms) / `.` (+5 ms) shortcuts. Persists across track changes (system property). Range clamped ±500 ms.
+
+**BUG-007.5 — time-based lock release.** Replaced count-based `lockReleaseMisses=7` gate with time-based `lockReleaseTimeSeconds=2.5` gate. Lock now drops only when 2.5 s of consecutive non-tight matches have elapsed since the last tight hit, regardless of how many onsets occurred in between. Sparse-onset tracks (HUMBLE half-time at 76 BPM, 790 ms beat period — 15 lock drops in the prior session) no longer trip the gate accidentally — what matters is *time*, not *count*. Diagnostic counter `consecutiveMisses` retained on `LiveBeatDriftTraceEntry` for backward compat.
+
+**API changes:**
+
+- `LiveBeatDriftTracker.audioOutputLatencyMs: Float` (public, NSLock-guarded, clamped ±500 ms, default 0).
+- `VisualizerEngine.audioOutputLatencyMs` proxy + `adjustAudioOutputLatency(ms:)` method.
+- `PlaybackShortcutRegistry` gains `,` and `.` shortcuts in the developer category.
+- New `lockReleaseTimeSeconds: Double = 2.5` constant replaces `lockReleaseMisses` for the lock-decision logic.
+
+**Files edited.**
+
+- `PhospheneEngine/Sources/DSP/LiveBeatDriftTracker.swift`
+- `PhospheneApp/VisualizerEngine.swift`
+- `PhospheneApp/Services/PlaybackShortcutRegistry.swift`
+- `PhospheneApp/Views/Playback/PlaybackView.swift`
+- `PhospheneEngine/Tests/PhospheneEngineTests/DSP/LiveBeatDriftTrackerTests.swift` — 5 new tests (MARKs 20–24).
+- `docs/QUALITY/KNOWN_ISSUES.md` — both bugs marked Resolved (automated); manual validation pending.
+
+**Tests:** `LiveBeatDriftTrackerTests` 24/24 pass. Full engine suite green except documented pre-existing flake. App build clean. 0 SwiftLint violations.
+
+**Manual validation pending.** Next session capture with the same 5-track battery should confirm: beat orb visually pulses on the kick (BUG-007.6); lock holds through HUMBLE's sparse half-time and Everlong's noisy onsets (BUG-007.5); `,`/`.` adjust visual sync; no regression on `Shift+B` rotation.
+
+**Out of scope (deferred).** Persisting `audioOutputLatencyMs` across launches (settings field, future increment). Per-device automatic detection. Variance-adaptive lock window — re-evaluate after manual validation of the time-based gate alone.
+
+---
+
 ## [dev-2026-05-07-h] BUG-007.4a — Bar-phase rotation dev shortcut (Shift+B)
 
 **Increment:** BUG-007.4a
