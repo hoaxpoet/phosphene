@@ -42,6 +42,31 @@ The 2026-05-07T20-34-57Z manual session showed that the time-based lock release 
 
 ---
 
+## [dev-2026-05-07-m] DASH.7.2 — Dark-surface legibility pass
+
+**Increment:** DASH.7.2 (D-089)
+**Type:** Accessibility / aesthetic correction
+
+**What changed.** Matt's first-look review of DASH.7.1 surfaced four issues:
+- `.regularMaterial` is system-appearance-adaptive — on macOS Light it rendered the panel as a beige material, putting near-white dashboard text on tan with sub-AA contrast.
+- `coralMuted` (oklch 0.45) and `purpleGlow` (oklch 0.35) — chosen in DASH.7.1 for muted brand semantic — failed WCAG AA against dark surfaces anyway (2.6:1 and 2.5:1).
+- MODE / BPM rendered as stacked "label-on-top, 24pt mono value below" while BAR / BEAT rendered as "label + bar + small inline value" — visually inconsistent.
+- FRAME value `"20.0 / 14 ms"` truncated to `"20.0 / 14…"` in the 86pt column.
+
+**Fixes.**
+
+- **`DarkVibrancyView`** — new `NSViewRepresentable` wrapping `NSVisualEffectView` pinned to `.appearance = .vibrantDark` + `.material = .hudWindow`. Replaces `.regularMaterial` so the surface is dark regardless of system appearance. Combined with `.environment(\.colorScheme, .dark)` on the SwiftUI subtree.
+- **Surface tint at 0.96α.** Bumped from 0.55 — the dashboard sits over the visualizer and must guarantee AA contrast against the worst-case bright preset frame. At 0.96 opaque, teal text passes AA (4.77:1); at 0.55 it failed (1.16:1).
+- **Colour promotions to AAA-grade contrast.** `coralMuted` → **`coral`** in `BeatCardBuilder.makeModeRow` (LOCKING) and throughout `PerfCardBuilder` (FRAME stressed, QUALITY downshifted, ML WAIT/FORCED). `purpleGlow` → **`purple`** in `BeatCardBuilder.makeBarRow`. `textMuted` → **`textBody`** for MODE REACTIVE / UNLOCKED. All preserve brand semantics; just brighter intensity for legibility.
+- **Inline `.singleValue` rendering.** Rewrote `DashboardRowView.singleValueRow` as `HStack(label LEFT, Spacer, value RIGHT)` at 13pt mono — matches `.bar` / `.progressBar` row rhythm. MODE / BPM / QUALITY / ML now read at the same scale and column position as BAR / BEAT values. The 24pt hero-numeric is retired from the dashboard.
+- **FRAME column 86pt → 110pt** + format `"X / Y ms"` → `"X / Yms"` (no space). Combined, values never truncate regardless of frame time.
+
+**Decisions.** D-089 captures the contrast math, the macOS-appearance pinning rationale, the colour promotions, the inline-row redesign, and the format compaction. `coralMuted` / `purpleGlow` remain defined in `DashboardTokens.Color` for future callers but no card builder references them after DASH.7.2.
+
+**Tests.** Dashboard count unchanged at 27. Fixture updates: `BeatCardBuilderTests.locking` / `.unlocked` / `.zero` (coral / textBody / purple); `PerfCardBuilderTests.warningRatio` / `.downshifted` / `.forcedDispatch` (coral); `.healthy` / `.clampOverBudget` (compact format). Engine + app builds clean. SwiftLint clean on touched files.
+
+---
+
 ## [dev-2026-05-07-k] DASH.7.1 — Brand-alignment pass (impeccable review)
 
 **Increment:** DASH.7.1

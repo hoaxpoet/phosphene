@@ -2155,3 +2155,62 @@ Engine: 1117 tests pass (pre-existing flakes — `MemoryReporter.residentBytes` 
 **Edited:** `Renderer/Dashboard/StemsCardBuilder.swift`, `BeatCardBuilder.swift`, `PerfCardBuilder.swift`, `DashboardFontLoader.swift`. `App/Views/Dashboard/DashboardOverlayView.swift`, `DashboardCardView.swift`, `DashboardRowView.swift`. `App/Views/Playback/PlaybackView.swift` (spring-choreographed toggle). `App/PhospheneApp.swift` (font registration at launch). Three engine builder test files + one app view-model test file. `Resources/Fonts/README.md` (Clash Display drop-in instructions).
 
 **No retirements** of files in this increment — the changes are all in-place. `statusGreen` / `statusYellow` tokens stay defined in `DashboardTokens.Color` but are no longer referenced from card builders.
+
+## D-089 — DASH.7.2 dark-surface legibility pass
+
+DASH.7.1 shipped brand-aligned colours but two latent issues surfaced on Matt's first-look review against macOS Light appearance: (a) `.regularMaterial` is *system-adaptive*, so the panel rendered as a light beige material in System Settings → Appearance: Light, making the near-white dashboard text fail WCAG AA against the backdrop; (b) the brand colours `coralMuted` (oklch 0.45) and `purpleGlow` (oklch 0.35) chosen in D-088 for their muted semantic still failed WCAG AA against dark surfaces (2.6:1 and 2.5:1). Plus two layout issues: MODE / BPM rendered as stacked 24pt-hero-numerics inconsistent with BAR / BEAT's inline value text, and the FRAME `.progressBar` value column was 86pt (too narrow for `"20.0 / 14 ms"`).
+
+### Decision 1 — Pin the dashboard surface to dark via `NSVisualEffectView` with `.vibrantDark`
+
+`.impeccable.md §Aesthetic Direction` is unambiguous: **"Theme: Dark. Phosphene runs in dim rooms, often on a TV."** The DASH.7.1 use of SwiftUI's `.regularMaterial` was wrong because that material picks light or dark based on the *system appearance* of the host window. On macOS Light, the panel rendered as a beige material — the screenshot Matt shared had near-white text on tan, with most values reading sub-AA contrast.
+
+DASH.7.2 introduces `DarkVibrancyView` (`NSViewRepresentable`) that wraps `NSVisualEffectView` with `.material = .hudWindow`, `.appearance = NSAppearance(named: .vibrantDark)`. This is the macOS-native way to force a dark blur surface regardless of system appearance, and it matches the `.impeccable.md §macOS Considerations` directive: "Materials: use `NSVisualEffectView` (.hudWindow or .underWindowBackground) for overlapping panels, not opaque surfaces." The DASH.7.1 attempt at `.regularMaterial` was the SwiftUI-wrapped equivalent, but its appearance behaviour broke the dark-theme rule. The explicit NSVisualEffectView path bypasses that.
+
+### Decision 2 — `Color.surface` tint at 0.96α over the vibrancy
+
+The dashboard sits over the visualizer, which can render any colour. To guarantee WCAG AA contrast for body / teal / coral text in the worst case (a bright preset frame underneath), the surface must be near-opaque. Math: with `surface` at oklch 0.13 (Y ≈ 0.0023) and the brightest possible visualizer frame underneath (Y ≈ 0.95), an effective backdrop at α=0.55 (DASH.7.1) gives `Y ≈ 0.43` — teal at Y=0.379 fails to register against it. At α=0.96, backdrop falls to `Y ≈ 0.040` and teal contrast is 4.77:1 (passes AA). The 4% remaining translucency is decorative softening at the panel edges; not load-bearing.
+
+The SwiftUI subtree is also marked `.environment(\.colorScheme, .dark)` so any SwiftUI dynamic-colour token resolves to dark variants — belt and suspenders.
+
+### Decision 3 — `coralMuted` → `coral` for all warning/stressed states
+
+DASH.7.1 chose `coralMuted` (oklch 0.45) for "warmth arriving but at rest" warning states. Against the dark surface (Y ≈ 0.002), `coralMuted` (Y ≈ 0.085) gives contrast 2.58:1 — fails AA at the body 13pt size. The muted-warning intent was sound, but legibility comes first.
+
+DASH.7.2 promotes warning states to full **`coral`** (oklch 0.70, Y ≈ 0.379). Contrast vs surface: 7.8:1 — passes AAA. Brand semantic preserved: full coral signals "energy / action / warmth arriving" — appropriate for the system *exerting itself* (FRAME nearing budget, QUALITY downshifted, ML deferring/forcing, BEAT MODE LOCKING). Same hue, brighter intensity. The single token `coral` now covers both (a) BEAT row's beat-moment fill and (b) status-stressed indicators across PERF and BEAT MODE — the user reads coral as "warmth is here," whether that's a kick drum or the renderer working hard. Cohesive, not contradictory.
+
+### Decision 4 — `purpleGlow` → `purple` for the BAR row fill
+
+Same problem class. `purpleGlow` (oklch 0.35, Y ≈ 0.078) gives 2.5:1 contrast vs the dark surface — fails the WCAG 3:1 floor for non-text UI components. Promoted to **`purple`** (oklch 0.62, Y ≈ 0.288). Contrast: 4.5:1, passes the 3:1 non-text threshold with margin. Brand semantic: `purple` = "ambient presence, session depth" — the BAR row's phrase-level position ramp is exactly that. The brighter purple now reads cleanly against the chrome's `border` background fill (Y ≈ 0.034).
+
+### Decision 5 — `textMuted` → `textBody` for REACTIVE / UNLOCKED MODE values
+
+`textMuted` (oklch 0.50, Y ≈ 0.127) gives 3.4:1 contrast vs dark surface — passes 3:1 for non-text but fails AA at the 13pt mono body size. The MODE row's REACTIVE / UNLOCKED states are *real status labels* the user wants to read, not decorative placeholders. Promoted to **`textBody`** (oklch 0.80, Y ≈ 0.564) — contrast 8+:1, passes AAA. `textMuted` is retained for genuinely-decorative `"—"` placeholders (BPM no-grid, FRAME no-observations) where readability is non-critical.
+
+### Decision 6 — `.singleValue` rendering inlined (label LEFT, value RIGHT)
+
+DASH.7 + DASH.7.1 rendered `.singleValue` as a stacked block: 11pt UPPERCASE label on top, 24pt mono value below. This made MODE / BPM / QUALITY / ML rows visually disjoint from BAR / BEAT, which use the `.bar` / `.progressBar` "label + bar + 13pt value" structure. Matt's feedback: "move the BPM and Mode values to be inline with the Bar and Beat values."
+
+DASH.7.2 rewrites `singleValueRow` in `DashboardRowView` as `HStack { rowLabel, Spacer(), Text(value).font(body, .monospaced).foregroundColor(...) }` at 17pt row height — visually identical scale to the value text in `.bar` and `.progressBar` rows. The dashboard now reads as a uniform horizontal scan: every row is "label LEFT — optional bar / sparkline MIDDLE — value RIGHT." This is more Sakamoto-liner-note, more Braun-component, more aligned with the brand's "fewer pixels, more breath" rule. The 24pt hero-numeric pattern is retired entirely from the dashboard — no current row variant uses it. (`Row.singleHeight` constant retained at the original 39pt for any future caller; SwiftUI's actual row height is determined by content and renders at 17pt.)
+
+### Decision 7 — FRAME value column 86pt → 110pt + format compaction
+
+The DASH.7 / DASH.7.1 reserved column for `.progressBar` value text was 86pt. SF Mono at 13pt is ~7.8pt per character; `"20.0 / 14 ms"` is 12 characters = ~94pt — overflows the column, gets truncated to `"20.0 / 14…"`. DASH.7.2 widens the column to 110pt (with `.fixedSize(horizontal: true)` to disable any further truncation) and compacts the format from `"%.1f / %.0f ms"` → `"%.1f / %.0fms"` (drops the space before `ms`). Combined, the value never truncates regardless of frame time.
+
+### Tests
+
+Dashboard test count unchanged at 27. Test fixtures updated:
+- `BeatCardBuilderTests.locking` — coralMuted → coral.
+- `BeatCardBuilderTests.unlocked` — textMuted → textBody.
+- `BeatCardBuilderTests.zero` — textBody assertion added for REACTIVE; purpleGlow → purple assertion for BAR.
+- `PerfCardBuilderTests.warningRatio` / `.downshifted` / `.forcedDispatch` — coralMuted → coral.
+- `PerfCardBuilderTests.healthy` / `.clampOverBudget` — value text format `"X / Yms"` (no space).
+
+Engine: 1117 tests pass. SwiftLint clean on touched files. xcodebuild app build clean.
+
+### Files changed
+
+**New:** `App/Views/Dashboard/DarkVibrancyView.swift`. Registered in `pbxproj` (PBXBuildFile + PBXFileReference + Dashboard PBXGroup + Sources phase).
+
+**Edited:** `App/Views/Dashboard/DashboardOverlayView.swift` (DarkVibrancyView + 0.96α tint + colorScheme lock + border stroke). `App/Views/Dashboard/DashboardRowView.swift` (inline singleValueRow, FRAME 110pt column with fixedSize). `Renderer/Dashboard/PerfCardBuilder.swift` (coralMuted → coral, format compaction). `Renderer/Dashboard/BeatCardBuilder.swift` (MODE colours, BAR purple). Three card-builder test files updated to match.
+
+**Note on retired tokens:** `coralMuted` and `purpleGlow` remain defined in `DashboardTokens.Color` for future callers (the brand table still includes them as "at rest" / "subtle" variants of their parent hues), but no card builder references them after DASH.7.2.
