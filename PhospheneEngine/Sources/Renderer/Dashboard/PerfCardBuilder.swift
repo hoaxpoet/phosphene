@@ -17,12 +17,15 @@
 //             row.
 //
 // DASH.7.1 brand-alignment: the foreign `statusGreen` / `statusYellow`
-// tokens used in DASH.5-7 are replaced with `teal` / `coralMuted` so the
+// tokens used in DASH.5-7 are replaced with `teal` / `coral` so the
 // PERF card uses only the project's three brand colours (purple / coral /
 // teal). See D-088 for the rationale — the alarm-coloured palette
 // conflicted with the .impeccable.md "color carries meaning, never
-// decorate" principle. Per-row colour uniform `coral` was used in DASH.5;
-// also retired here.
+// decorate" principle.
+//
+// DASH.7.2 (D-089): `coralMuted` (oklch 0.45) failed WCAG AA at 2.6:1
+// against the dark dashboard surface. Promoted to full `coral` (oklch
+// 0.70, 7.8:1 — AAA) so warning states stay legible on dark.
 
 import CoreGraphics
 import Shared
@@ -35,8 +38,8 @@ import AppKit
 public struct PerfCardBuilder: Sendable {
 
     /// Frame-time ratio above which FRAME flips from `teal` (healthy) →
-    /// `coralMuted` (stressed). Empirically a comfortable headroom above
-    /// the per-tier budget.
+    /// `coral` (stressed). Empirically a comfortable headroom above the
+    /// per-tier budget.
     public static let warningRatio: Float = 0.70
 
     public init() {}
@@ -74,8 +77,8 @@ public struct PerfCardBuilder: Sendable {
         } else {
             color = rawRatio < Self.warningRatio
                 ? DashboardTokens.Color.teal
-                : DashboardTokens.Color.coralMuted
-            valueText = String(format: "%.1f / %.0f ms", snapshot.recentMaxFrameMs, snapshot.targetFrameMs)
+                : DashboardTokens.Color.coral
+            valueText = String(format: "%.1f / %.0fms", snapshot.recentMaxFrameMs, snapshot.targetFrameMs)
         }
         return .progressBar(
             label: "FRAME",
@@ -92,7 +95,7 @@ public struct PerfCardBuilder: Sendable {
         }
         let color: NSColor = snapshot.recentFramesObserved == 0
             ? DashboardTokens.Color.textMuted
-            : DashboardTokens.Color.coralMuted
+            : DashboardTokens.Color.coral
         return .singleValue(
             label: "QUALITY",
             value: snapshot.qualityLevelDisplayName,
@@ -111,13 +114,13 @@ public struct PerfCardBuilder: Sendable {
             return .singleValue(
                 label: "ML",
                 value: value,
-                valueColor: DashboardTokens.Color.coralMuted
+                valueColor: DashboardTokens.Color.coral
             )
         case 3:
             return .singleValue(
                 label: "ML",
                 value: "FORCED",
-                valueColor: DashboardTokens.Color.coralMuted
+                valueColor: DashboardTokens.Color.coral
             )
         default:
             return nil

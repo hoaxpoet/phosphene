@@ -67,12 +67,12 @@ struct PerfCardBuilderTests {
         #expect(layout.rows.count == 1)
         let frame = try #require(extractProgressBar(layout.rows[0]))
         #expect(abs(frame.value - 8.2 / 14.0) < 1e-5)
-        #expect(frame.valueText == "8.2 / 14 ms")
+        #expect(frame.valueText == "8.2 / 14ms")
         // Brand-aligned: healthy → teal (analytical), not statusGreen (D-088).
         #expect(colorEquals(frame.color, DashboardTokens.Color.teal))
     }
 
-    @Test("over-warning ratio flips FRAME to coralMuted")
+    @Test("over-warning ratio flips FRAME to coral")
     func warningRatio() throws {
         let snap = PerfSnapshot(
             recentMaxFrameMs: 12.6,            // 12.6 / 14 = 0.9 > 0.7 warning threshold
@@ -85,8 +85,8 @@ struct PerfCardBuilderTests {
         )
         let layout = PerfCardBuilder().build(from: snap)
         let frame = try #require(extractProgressBar(layout.rows[0]))
-        // Brand-aligned: warning → coralMuted ("warmth arriving at rest"), not statusYellow (D-088).
-        #expect(colorEquals(frame.color, DashboardTokens.Color.coralMuted))
+        // DASH.7.2: warning uses full `coral` (D-089) — `coralMuted` failed WCAG AA on dark.
+        #expect(colorEquals(frame.color, DashboardTokens.Color.coral))
     }
 
     @Test("frame time above budget clamps bar at 1.0; valueText shows raw")
@@ -103,10 +103,10 @@ struct PerfCardBuilderTests {
         let layout = PerfCardBuilder().build(from: snap)
         let frame = try #require(extractProgressBar(layout.rows[0]))
         #expect(frame.value == 1.0)
-        #expect(frame.valueText == "42.0 / 14 ms")
+        #expect(frame.valueText == "42.0 / 14ms")
     }
 
-    @Test("downshifted snapshot produces coralMuted QUALITY 'noBloom'; ML hidden if dispatchNow")
+    @Test("downshifted snapshot produces coral QUALITY 'noBloom'; ML hidden if dispatchNow")
     func downshifted() throws {
         let snap = PerfSnapshot(
             recentMaxFrameMs: 11.0,
@@ -121,11 +121,11 @@ struct PerfCardBuilderTests {
         #expect(layout.rows.count == 2)
         let quality = try #require(extractSingleValue(layout.rows[1]))
         #expect(quality.value == "noBloom")
-        // Brand-aligned: downshifted → coralMuted, not statusYellow (D-088).
-        #expect(colorEquals(quality.color, DashboardTokens.Color.coralMuted))
+        // DASH.7.2: downshifted uses full `coral` (D-089) — `coralMuted` failed WCAG AA on dark.
+        #expect(colorEquals(quality.color, DashboardTokens.Color.coral))
     }
 
-    @Test("forced dispatch snapshot produces FORCED ML row (coralMuted)")
+    @Test("forced dispatch snapshot produces FORCED ML row (coral)")
     func forcedDispatch() throws {
         let snap = PerfSnapshot(
             recentMaxFrameMs: 11.0,
@@ -142,8 +142,8 @@ struct PerfCardBuilderTests {
         let ml = try #require(extractSingleValue(layout.rows[1]))
         #expect(ml.label == "ML")
         #expect(ml.value == "FORCED")
-        // Brand-aligned: forced → coralMuted, not statusYellow (D-088).
-        #expect(colorEquals(ml.color, DashboardTokens.Color.coralMuted))
+        // DASH.7.2: forced uses full `coral` (D-089) — `coralMuted` failed WCAG AA on dark.
+        #expect(colorEquals(ml.color, DashboardTokens.Color.coral))
     }
 
     @Test("defer ML decision shows WAIT with retry-ms text")

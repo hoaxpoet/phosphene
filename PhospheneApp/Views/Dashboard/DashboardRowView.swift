@@ -56,14 +56,23 @@ struct DashboardRowView: View {
     }
 
     // MARK: - .singleValue
+    //
+    // DASH.7.2 (D-089): rendered inline (label-left, value-right) so MODE /
+    // BPM / QUALITY / ML rows visually align with the value text in `.bar`
+    // and `.progressBar` rows. Replaces the DASH.7 stacked "label on top,
+    // 24pt mono value below" layout — every row in the dashboard now reads
+    // as the same horizontal scan, matching the Sakamoto-liner-note rhythm.
 
     private func singleValueRow(label: String, value: String, valueColor: NSColor) -> some View {
-        VStack(alignment: .leading, spacing: DashboardCardLayout.labelToValueGap) {
+        HStack(spacing: 8) {
             rowLabel(label)
+            Spacer(minLength: 8)
             Text(value)
-                .font(.system(size: DashboardTokens.TypeScale.numeric, weight: .medium, design: .monospaced))
+                .font(.system(size: DashboardTokens.TypeScale.body, weight: .medium, design: .monospaced))
                 .foregroundColor(Color(nsColor: valueColor))
+                .lineLimit(1)
         }
+        .frame(height: 17)
     }
 
     // MARK: - .bar
@@ -110,7 +119,9 @@ struct DashboardRowView: View {
                     Text(valueText)
                         .font(.system(size: DashboardTokens.TypeScale.body, design: .monospaced))
                         .foregroundColor(Color(nsColor: fillColor))
-                        .frame(width: 86, alignment: .trailing)
+                        .frame(width: 110, alignment: .trailing)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                 }
             }
             .frame(height: 17)
