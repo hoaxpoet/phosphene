@@ -8,6 +8,34 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 ---
 
+### BUG-007.9 — Hybrid runtime recalibration
+
+**Severity:** P2 (visible on tracks where prep-time calibration over-shoots).
+**Domain tag:** dsp.beat
+**Status:** **Resolved 2026-05-07** — manual validation pending.
+**Introduced:** Surfaced by manual validation of BUG-007.8 in session `2026-05-07T22-51-36Z`. Of 8 tracks tested, 5 improved, 1 stable, 2 regressed (Around the World drift went from −28 → +101 ms; Levitating from −50 → +56 ms). Cause: prep-time calibrator measures onset timing on **preview MP3** (22 050 Hz, ~96 kbps, non-overlapping FFT = 46 ms resolution) but live tracker fires onsets on **tap audio** (48 000 Hz, full quality, overlapping FFT). When encodings diverge enough, prep bias points wrong way.
+
+**Resolved:** 2026-05-07. Runtime recalibration pass: after stem separation completes (≥10 s of tap audio buffered) AND lock has stabilised (`matchedOnsetCount >= 8`), replay the latest 12 s of tap audio through the same `GridOnsetCalibrator` and override the prep-time bias via new `LiveBeatDriftTracker.applyCalibration(driftMs:)`. One-shot per track. Runtime calibration uses the audio the listener actually hears.
+
+**Expected behavior:** All 8 tracks from session `T22-51-36Z` show drift near zero by ~15 s. Tracks that regressed under BUG-007.8 (Around the World, Levitating) recover; tracks that worked stay correct.
+
+**Diagnosis notes:**
+- Same calibration algorithm, different audio sources. Runtime always wins because it measures against played audio.
+- Prep-time bias still useful for the first ~15 s before runtime fires.
+- If runtime calibrator returns 0 (silent intro, no onsets), prep-time bias retained; `runtimeRecalibrationDone` set true regardless to avoid retry storms.
+- Stem-separation cadence (5 s) drives the trigger. Recalibration fires on the first stem-sep callback that meets all gates.
+- BUG-007.6 `audioOutputLatencyMs` orthogonal.
+
+**Verification criteria:**
+- [x] Automated: `LiveBeatDriftTrackerTests` MARKs 39–41 — applyCalibration overrides drift, clamps to ±500 ms, currentGrid + matchedOnsetCount accessors.
+- [ ] Manual: drift averages near zero within 15 s of lock on all 8 tracks (especially Around the World, Levitating).
+- [ ] Manual: no regression on tracks that worked pre-7.9.
+- [ ] Manual: `BUG-007.9: runtime recalibration fired` log line in `session.log` once per track.
+
+**Related:** BUG-007.8 (prep-time calibration — kept as initial bias). BUG-007.6 (display shift — orthogonal). BUG-010 (stem-separation audit — separate).
+
+---
+
 ### BUG-007.8 — Per-track grid-vs-onset offset calibration
 
 **Severity:** P1 (visible — visual fires off the beat by track-specific amounts up to ±100 ms; the dominant residual sync issue after BUG-007.4/5/6 landed).

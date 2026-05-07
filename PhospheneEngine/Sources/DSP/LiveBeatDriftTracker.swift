@@ -262,6 +262,40 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
         return drift * 1000.0
     }
 
+    /// Snapshot of the currently-installed grid. Returns `.empty` if none.
+    /// Used by BUG-007.9 hybrid runtime recalibration to feed the grid
+    /// into a fresh `GridOnsetCalibrator` invocation on tap audio.
+    public var currentGrid: BeatGrid {
+        lock.lock(); defer { lock.unlock() }
+        return grid
+    }
+
+    /// Number of tight (within-window) onset matches accumulated on the
+    /// current track. Read-only — exposed so the app layer can gate the
+    /// BUG-007.9 runtime recalibration trigger on lock acquisition.
+    public var matchedOnsetCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        return matchedOnsets
+    }
+
+    /// Override the drift EMA with a calibrated value (BUG-007.9). Used by
+    /// the hybrid runtime recalibration path: after ~15 s of tap audio is
+    /// available, re-run `GridOnsetCalibrator` against the actual playback
+    /// audio (not the prep-time preview) and apply the result here. This
+    /// replaces the prep-time bias from `setGrid(_:initialDriftMs:)` with a
+    /// runtime-accurate value computed from the audio the listener actually
+    /// hears, eliminating preview-vs-tap encoding mismatch.
+    /// Clamps to ±500 ms.
+    public func applyCalibration(driftMs: Double) {
+        lock.lock(); defer { lock.unlock() }
+        let clampedMs = max(-500.0, min(500.0, driftMs))
+        let oldDriftMs = drift * 1000.0
+        drift = clampedMs / 1000.0
+        let oldStr = String(format: "%+.1f", oldDriftMs)
+        let newStr = String(format: "%+.1f", clampedMs)
+        logger.info("BUG-007.9 runtime recalibration: drift \(oldStr) → \(newStr) ms")
+    }
+
     /// Additional visual phase offset in milliseconds, applied to the displayed
     /// `beatPhase01` / `barPhase01` without affecting onset matching or drift tracking.
     /// Positive = shift phases forward (visual beat fires earlier).

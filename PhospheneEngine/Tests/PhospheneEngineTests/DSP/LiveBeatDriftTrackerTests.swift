@@ -1129,6 +1129,65 @@ struct LiveBeatDriftTrackerTests {
                 "BUG-007.8: single-arg setGrid must default initialDriftMs=0")
     }
 
+    // MARK: 39. BUG-007.9 — applyCalibration overrides drift EMA
+
+    /// Simulates the hybrid runtime recalibration path: prep-time bias was
+    /// +50 ms, runtime calibration on tap audio measures −20 ms, applyCalibration
+    /// overrides the EMA. Subsequent reads of currentDriftMs reflect the new
+    /// runtime-calibrated value.
+    @Test("applyCalibration_overridesDriftEMA")
+    func test_applyCalibrationOverridesDriftEMA() {
+        let grid = makeUniformGrid(bpm: 120, beats: 32)
+        let tracker = LiveBeatDriftTracker()
+        tracker.audioOutputLatencyMs = 0
+        tracker.setGrid(grid, initialDriftMs: 50.0)
+        #expect(abs(tracker.currentDriftMs - 50.0) < 0.01,
+                "BUG-007.9: bias seeded at +50 ms")
+
+        // Runtime calibration says drift should be −20 ms. Apply.
+        tracker.applyCalibration(driftMs: -20.0)
+        #expect(abs(tracker.currentDriftMs - (-20.0)) < 0.01,
+                "BUG-007.9: applyCalibration must override; got \(tracker.currentDriftMs)")
+    }
+
+    // MARK: 40. BUG-007.9 — applyCalibration clamps to ±500 ms
+
+    @Test("applyCalibration_clampsToRange")
+    func test_applyCalibrationClampsToRange() {
+        let grid = makeUniformGrid(bpm: 120, beats: 32)
+        let tracker = LiveBeatDriftTracker()
+        tracker.audioOutputLatencyMs = 0
+        tracker.setGrid(grid, initialDriftMs: 0)
+
+        tracker.applyCalibration(driftMs: 1000.0)
+        #expect(abs(tracker.currentDriftMs - 500.0) < 0.01)
+
+        tracker.applyCalibration(driftMs: -1000.0)
+        #expect(abs(tracker.currentDriftMs - (-500.0)) < 0.01)
+    }
+
+    // MARK: 41. BUG-007.9 — currentGrid + matchedOnsetCount accessors
+
+    @Test("currentGrid_andMatchedOnsetCount_exposed")
+    func test_currentGridAndMatchedOnsetCountExposed() {
+        let grid = makeUniformGrid(bpm: 120, beats: 32, beatsPerBar: 4)
+        let tracker = LiveBeatDriftTracker()
+        tracker.audioOutputLatencyMs = 0
+        tracker.setGrid(grid)
+        #expect(tracker.currentGrid.beats.count == grid.beats.count,
+                "BUG-007.9: currentGrid must expose installed grid")
+        #expect(tracker.matchedOnsetCount == 0,
+                "Initial matchedOnsetCount is 0")
+
+        // Drive 4 aligned onsets to acquire lock.
+        let dt: Float = 1.0 / 60.0
+        for i in 0..<4 {
+            _ = tracker.update(subBassOnset: true, playbackTime: Double(i) * 0.5, deltaTime: dt)
+        }
+        #expect(tracker.matchedOnsetCount >= 4,
+                "matchedOnsetCount should reflect tight matches")
+    }
+
     // MARK: 18. BUG-007.2 regression — raw grid (no offsetBy) drops lock after coverage (negative case)
 
     /// Documents the pre-fix behaviour as a known-bad path. Without offsetBy(), the prepared-cache

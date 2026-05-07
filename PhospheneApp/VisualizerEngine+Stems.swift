@@ -184,6 +184,73 @@ extension VisualizerEngine {
         } catch {
             logger.error("Stem separation failed: \(error)")
         }
+
+        // BUG-007.9: hybrid runtime recalibration. After stem separation succeeds
+        // (i.e. we have ≥10 s of buffered tap audio AND lock has stabilised),
+        // re-run GridOnsetCalibrator against the *tap* audio to override the
+        // prep-time bias. Closes the preview-vs-tap encoding mismatch.
+        runtimeRecalibrationIfDue()
+    }
+
+    // MARK: - BUG-007.9: hybrid runtime recalibration
+
+    /// Minimum tap-audio duration (seconds) to snapshot for runtime recalibration.
+    /// Sized to fit comfortably within `stemSampleBuffer.maxSeconds` (~13 s).
+    private static let runtimeRecalibrationWindowSeconds: Double = 12.0
+
+    /// Minimum `matchedOnsetCount` before runtime recalibration fires. After
+    /// this many tight matches, the EMA has settled enough that overriding
+    /// the bias won't introduce transient mid-track jumps.
+    private static let runtimeRecalibrationMinMatchedOnsets: Int = 8
+
+    /// Replay the latest 12 s of tap audio through GridOnsetCalibrator and
+    /// override the drift EMA with the runtime-derived offset. One-shot per
+    /// track. Runs on `stemQueue` (already on it from `performStemSeparation`).
+    /// Skips when:
+    ///   - already done for this track
+    ///   - no grid is installed (reactive mode)
+    ///   - lock hasn't stabilised yet (matchedOnsets < 8)
+    ///   - insufficient tap-audio buffered
+    ///   - calibrator returns 0 (no signal — keep prep-time bias)
+    private func runtimeRecalibrationIfDue() {
+        guard !runtimeRecalibrationDone else { return }
+        let tracker = mirPipeline.liveDriftTracker
+        guard tracker.hasGrid else { return }
+        guard tracker.matchedOnsetCount >= Self.runtimeRecalibrationMinMatchedOnsets else { return }
+        let actualRate = tapSampleRate
+        let interleaved = stemSampleBuffer.snapshotLatest(
+            seconds: Self.runtimeRecalibrationWindowSeconds, sampleRate: actualRate
+        )
+        guard interleaved.count >= 2 else { return }
+        var mono = [Float](repeating: 0, count: interleaved.count / 2)
+        for i in 0..<mono.count {
+            mono[i] = (interleaved[i * 2] + interleaved[i * 2 + 1]) * 0.5
+        }
+        let grid = tracker.currentGrid
+        let calibrator = GridOnsetCalibrator()
+        let runtimeOffsetMs = calibrator.calibrate(
+            samples: mono, sampleRate: actualRate, grid: grid
+        )
+        // Skip apply if calibrator couldn't compute a result (no onsets in
+        // window, etc.) — keep the prep-time bias rather than zeroing out.
+        guard runtimeOffsetMs != 0 else {
+            runtimeRecalibrationDone = true
+            logger_liveBeat(
+                "BUG-007.9: runtime recalibration skipped — calibrator returned 0 (insufficient signal)"
+            )
+            return
+        }
+        let priorMs = tracker.currentDriftMs
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.mirPipeline.liveDriftTracker.applyCalibration(driftMs: runtimeOffsetMs)
+            self.runtimeRecalibrationDone = true
+            let priorStr = String(format: "%+.1f", priorMs)
+            let newStr = String(format: "%+.1f", runtimeOffsetMs)
+            self.logger_liveBeat(
+                "BUG-007.9: runtime recalibration fired — drift \(priorStr) → \(newStr) ms (12 s tap audio)"
+            )
+        }
     }
 
     // MARK: - Live Beat This! Analysis
@@ -360,6 +427,9 @@ extension VisualizerEngine {
 
         // Allow live Beat This! to re-fire (up to liveBeatMaxAttempts) for the new track.
         liveBeatAnalysisAttempts = 0
+
+        // BUG-007.9: hybrid runtime recalibration is one-shot per track.
+        runtimeRecalibrationDone = false
 
         pipeline.spectralHistory.reset()
 
