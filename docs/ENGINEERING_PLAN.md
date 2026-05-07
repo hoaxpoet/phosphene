@@ -2651,6 +2651,29 @@ Third live card. New `PerfSnapshot` Sendable value type wraps renderer governor 
 
 **Superseded note (2026-05-07):** Live D-toggle review on `~/Documents/phosphene_sessions/2026-05-07T19-03-44Z` (Love Rehab / So What / There There / Pyramid Song) surfaced three issues with the Metal-composite path: (a) hazy text vs. crisp SwiftUI from a contentsScale-detection bug, (b) the 0.92α purple-tinted surface didn't read against bright preset backdrops, (c) `.bar` rows for STEMS made stem-rhythm separation hard to read (Matt's feedback explicitly cited the SpectralCartograph timeseries panel as the desired pattern). Investigation showed the original Metal-path justifications (crisp text via direct CGContext→texture, frame-rate buffer-bound updates, lifetime coupling to render pipeline) didn't materialize: text was hazy, snapshot updates are bounded by snapshot-change cadence rather than frame rate, and lifetime is naturally one-frame ahead via `@Published`. **DASH.7 ports the dashboard to SwiftUI, retiring `DashboardComposer` + `DashboardCardRenderer` + `DashboardTextLayer` + `Dashboard.metal`.** The Sendable card builders + `DashboardCardLayout` + tokens + `PerfSnapshot` + `BeatCardBuilder` survive unchanged; only the rendering layer changes. See D-087 for the rationale and D-086 retirement details.
 
+### Increment DASH.7.2 — Dark-surface legibility pass ✅ 2026-05-07
+
+DASH.7.1 shipped brand-aligned colours but two failures surfaced on Matt's first-look review:
+- The `.regularMaterial` panel rendered *light* on macOS Light system appearance, putting the dashboard's near-white text on a beige backdrop with sub-AA contrast.
+- `coralMuted` (oklch 0.45) and `purpleGlow` (oklch 0.35) — chosen in DASH.7.1 for their muted brand semantic — failed WCAG AA against a dark surface anyway (2.6:1 and 2.5:1 respectively).
+- Matt also flagged the row hierarchy: MODE / BPM rendered as stacked "label-on-top, 24pt mono value below" while BAR / BEAT rendered as "label + bar + small inline value" — visually inconsistent.
+- The PERF FRAME value text `"20.0 / 14 ms"` truncated to `"20.0 / 14…"` in the 86pt fixed column.
+
+DASH.7.2 corrects all four:
+
+1. **`DarkVibrancyView`** — new `NSViewRepresentable` wrapping `NSVisualEffectView` pinned to `.vibrantDark` + `.hudWindow`. Replaces `.regularMaterial` so the dashboard surface is dark *regardless* of system appearance. The `.environment(\.colorScheme, .dark)` modifier locks the SwiftUI subtree to dark too. Above the vibrancy, an explicit `Color.surface` tint at **0.96α** guarantees the worst-case contrast floor (a bright preset frame underneath cannot bleed through).
+2. **Colour promotion to AAA-grade.** `coralMuted` → **`coral`** in `BeatCardBuilder.makeModeRow` (LOCKING) and throughout `PerfCardBuilder` (FRAME stressed, QUALITY downshifted, ML WAIT/FORCED). `purpleGlow` → **`purple`** in `BeatCardBuilder.makeBarRow`. `textMuted` → **`textBody`** for the MODE REACTIVE/UNLOCKED states (real status labels need to be readable; muted fails AA at 13pt). All three changes preserve brand semantics while clearing AA on dark.
+3. **Inline `.singleValue` rendering.** The `DashboardRowView.singleValueRow` is rewritten as `HStack(label LEFT, Spacer, value RIGHT)` at 13pt mono — matching the `.bar` and `.progressBar` row rhythm. MODE / BPM / QUALITY / ML now align horizontally with BAR / BEAT value text. The 24pt hero numeric is retired; the dashboard collapses to a tighter, more uniform horizontal scan.
+4. **FRAME column widened + format compacted.** Reserved column 86pt → **110pt** with `.fixedSize(horizontal: true, vertical: false)` so the `.progressBar` won't truncate the value text. Format `%.1f / %.0f ms` → `%.1f / %.0fms` (no space before "ms") shaves another character.
+
+**Done when:**
+- [x] Dashboard renders dark surface regardless of macOS Appearance setting (Light / Dark / Auto).
+- [x] Every text colour passes WCAG AA against the surface (`textBody` AAA, `teal` AAA, `coral` AAA, `purple` 4.5:1 AA, `textMuted` only used for "—" placeholders).
+- [x] MODE / BPM / QUALITY / ML render inline (label-left, value-right) at 13pt mono.
+- [x] FRAME value `"20.0 / 14ms"` no longer truncates.
+- [x] Engine + app builds clean. 27 dashboard tests pass. 0 SwiftLint violations on touched files.
+- [x] D-089 captures: macOS appearance pinning rationale, contrast math, colour promotions, inline-row redesign, format compaction.
+
 ### Increment DASH.7.1 — Brand-alignment pass (impeccable review) ✅ 2026-05-07
 
 After DASH.7 shipped, an impeccable-skill review against `.impeccable.md` surfaced three brand violations and seven smaller issues. DASH.7.1 lands the corrective pass in one increment. P0 (semantic / structural):
