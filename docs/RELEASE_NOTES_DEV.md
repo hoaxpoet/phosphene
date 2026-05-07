@@ -6,6 +6,49 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-07-e] DASH.3 — Beat & BPM card
+
+**Increment:** DASH.3
+**Type:** Feature (dashboard)
+
+**What changed.**
+
+The first **live** dashboard card binds `BeatSyncSnapshot` → `DashboardCardLayout`. New pure `BeatCardBuilder` produces a four-row card titled `BEAT`: MODE / BPM / BAR / BEAT. Lock-state colour mapping per .impeccable: REACTIVE/UNLOCKED `textMuted`, LOCKING `statusYellow`, LOCKED `statusGreen`. No-grid renders `—` placeholders with bars at zero — a stable visual state, not a transient.
+
+**API changes:**
+
+- `DashboardCardLayout.Row` gains `.progressBar(label:value:valueText:fillColor:)` — unsigned 0–1 left-to-right fill (distinct from `.bar` which is a signed slice from centre). Row height matches `.bar`.
+- New `BeatCardBuilder` (`Sendable`, `public`) with `init()` and `build(from:width:) -> DashboardCardLayout`.
+- `DashboardCardRenderer.drawBarChrome` access widened from `private` to `internal` so the new `DashboardCardRenderer+ProgressBar` extension can reuse the chrome path. No public surface change on the renderer struct itself.
+- `BeatSyncSnapshot` is **unchanged**. BEAT phase is derived as `barPhase01 × beatsPerBar − (beatInBar − 1)` clamped to `[0, 1]`. Promoting `beatPhase01` to a first-class snapshot field is deferred to a future increment with its own scope (touches `Sendable` struct, every construction site, and `SessionRecorder.features.csv` column ordering).
+
+**Files added.**
+
+- `PhospheneEngine/Sources/Renderer/Dashboard/BeatCardBuilder.swift`
+- `PhospheneEngine/Sources/Renderer/Dashboard/DashboardCardRenderer+ProgressBar.swift`
+- `PhospheneEngine/Tests/PhospheneEngineTests/Renderer/BeatCardBuilderTests.swift` (6 tests)
+- `PhospheneEngine/Tests/PhospheneEngineTests/Renderer/DashboardCardRendererProgressBarTests.swift` (3 tests)
+
+**Files edited.**
+
+- `PhospheneEngine/Sources/Renderer/Dashboard/DashboardCardLayout.swift` (`.progressBar` row case + `progressBarHeight` constant + `Row.height` switch arm)
+- `PhospheneEngine/Sources/Renderer/Dashboard/DashboardCardRenderer.swift` (dispatch case for `.progressBar`; `drawBarChrome` access `private → internal`)
+
+**Not in this increment (deferred).**
+
+- Wiring `BeatCardBuilder` into `RenderPipeline` / `PlaybackView` / `DebugOverlayView` — DASH.6 owns wiring + multi-card composition + `D` key toggle.
+- Adding `beatPhase01: Float` to `BeatSyncSnapshot` and the corresponding `features.csv` column.
+- Animations / hover / focus — the dashboard remains read-only typographic telemetry.
+- Frame-budget card and stem energy card — DASH.4 and DASH.5.
+
+**Decisions:** D-083 in `docs/DECISIONS.md` (rationale: `.progressBar` row variant for unsigned ramps, lock-state colour mapping, no-grid graceful policy, derived beat phase + deferral of `beatPhase01` snapshot field).
+
+**Test count delta.** 18 → 27 dashboard tests (12 DASH.1 + 6 DASH.2.1 + 6 BeatCardBuilder + 3 progress-bar). Full engine suite green except the documented pre-existing flakes (`MetadataPreFetcher.fetch_networkTimeout_returnsWithinBudget`, `MemoryReporter.residentBytes` env-dependent). 0 SwiftLint violations on touched files. `xcodebuild -scheme PhospheneApp` clean.
+
+**Artifact.** `card_beat_locked.png` rendered at 320×220 onto the deep-indigo backdrop matches the eyeball criteria: BEAT title in muted UPPERCASE, MODE `LOCKED` in green, BPM `140` clean and mono, BAR fills ~62% with purpleGlow + `3 / 4` valueText, BEAT fills ~50% with coral + `3` valueText. Card chrome reads as purple-tinted, not black.
+
+---
+
 ## [dev-2026-05-07-d] BUG-007.3 — Reverted (failed manual validation)
 
 **Increment:** BUG-007.3 (revert)

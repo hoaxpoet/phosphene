@@ -1791,3 +1791,68 @@ The original DASH.2 implementation followed the prompt-prescribed row API (`.sin
 **Demo fixture (`beatCardFixture`):** card titled `BEAT` with four rows in the order MODE / BPM / BAR / BASS — matching the .impeccable Beat panel. MODE's value uses `Color.statusGreen` so the locked state has a colour cue distinct from the neutral white-ish numerics.
 
 **Test count:** 18 dashboard tests still pass (12 DASH.1 + 6 DASH.2.1). Full engine suite green; 0 SwiftLint violations on touched files; app build clean.
+
+## D-083 — BEAT card data binding: `.progressBar` row variant + lock-state colour mapping + no-grid policy + derived beat phase (Phase DASH.3)
+
+**Decision:** The first live dashboard card binds `BeatSyncSnapshot` → `DashboardCardLayout` via a pure `BeatCardBuilder`. Four rows in display order: MODE / BPM / BAR / BEAT. A new `.progressBar` row variant is added to `DashboardCardLayout` for the BAR and BEAT ramps. Lock-state colour mapping comes from `.impeccable.md`'s Color section; the no-grid case renders `—` placeholders with bars at zero. BEAT phase is derived from `barPhase01` and bar-position fields rather than promoting `beatPhase01` to a `BeatSyncSnapshot` field — that plumbing change is deferred.
+
+### `.progressBar` rationale
+
+`.bar` (DASH.2) is a *signed* slice from bar centre (negative → left, positive → right). It is correct for stem-energy deviation rows where `range = -1...1` and zero sits at centre. It is wrong for ramp signals like `beat_phase01` and `bar_phase01` where the value is naturally unsigned and the visual reading should be "fill from left to right." Reusing `.bar` with `range = 0...1` would waste the entire left half of the bar and put zero at bar-centre instead of bar-left — a worse visual reading than two row variants.
+
+The two helpers (`drawBarFill` for signed, `drawProgressBarFill` for unsigned) are kept separate rather than collapsing into a `signed:` Boolean parameter on a single helper. The geometry intent — "fill from centre" vs. "fill from left" — is more legible as two named functions than as one Boolean-branched function. Row height and chrome geometry (56 pt right column, 8 pt gap, 6 pt bar height, 1 pt corner radius) are bit-identical to `.bar` so the visual mass between the two variants matches.
+
+### Lock-state colour mapping
+
+Source: `.impeccable.md` Color section. The four `sessionMode` values carry the analytical state of the live beat-grid drift tracker:
+
+- `0 → REACTIVE` — `Color.textMuted`. No grid, no precision claim — the colour recedes deliberately.
+- `1 → UNLOCKED` — `Color.textMuted`. Grid present, drift unbounded — same recede until lock acquires.
+- `2 → LOCKING` — `Color.statusYellow`. The "acquiring" state. Yellow on the dark purple-tinted card chrome reads as transition.
+- `3 → LOCKED` — `Color.statusGreen`. Precision/data signal arrived.
+
+Defensive `default` falls back to REACTIVE / `textMuted` rather than throwing, so an out-of-range writer cannot poison the dashboard.
+
+### No-grid policy
+
+When `gridBPM <= 0` (the `BeatSyncSnapshot.zero` sentinel and any other "no grid present" condition):
+
+- BPM value text is `—` in `Color.textMuted`.
+- BAR valueText is `— / 4`. The literal `4` mirrors `BeatSyncSnapshot.zero`'s default `beatsPerBar: 4` so the two stay in lockstep.
+- BEAT valueText is `—`.
+- Both progress bars render at `value = 0`.
+
+The card stays *visible*. There is no "loading" or "—.—" or other transient state for the no-grid case. The absence of a grid is a stable visual state and reads accordingly.
+
+If `beatsPerBar > 0` in the snapshot, the builder uses that value, not the literal 4. The `4` only appears in the no-grid valueText.
+
+### Derived BEAT phase
+
+`BeatSyncSnapshot` carries `barPhase01`, `beatsPerBar`, and `beatInBar` but not `beatPhase01` directly. (`beatPhase01` is computed live in `MIRPipeline.buildFeatureVector` and stored on `FeatureVector` — see DSP.2 S9 / D-077.) For DASH.3 the builder derives:
+
+```
+beat_phase01 ≈ fract(barPhase01 × beatsPerBar)
+            ≡  barPhase01 × beatsPerBar − (beatInBar − 1)        // when integer-aligned
+```
+
+clamped to `[0, 1]`. Exact when `beatInBar` and `beatsPerBar` are integer-aligned with `barPhase01`. Close enough for visual feedback when they aren't (DASH.6 will visually verify against a live cached BeatGrid). The clamp protects against `barPhase01` and `beatInBar` updating on different analysis frames — DASH.3.5 / DSP.3.5 history shows that cross-field invariants on `BeatSyncSnapshot` get violated under live conditions.
+
+### Why not promote `beatPhase01` to `BeatSyncSnapshot` now
+
+Adding `beatPhase01: Float` to `BeatSyncSnapshot` is a multi-touch change: it affects the `Sendable` snapshot struct, every site that constructs one (currently only `VisualizerEngine+Audio.updateSpectralCartographBeatGrid`), and `SessionRecorder.features.csv` column ordering. That's a clean, separate increment with its own scope and review surface; folding it into DASH.3 would expand the risk envelope of an otherwise pure renderer-side change. The clamped derivation above is good enough to ship the live BEAT card today; the snapshot-field plumbing follows when it has a justification beyond the dashboard.
+
+### Test surface
+
+Six `BeatCardBuilder` tests cover: zero/reactive layout, locking with amber, locked with derived phase + artifact, BPM rounding (124.4 → "124"; 124.5 platform-half-to-even tolerance), unlocked-with-grid (muted MODE + heading-coloured BPM — confirms grid-present ≠ no-grid), and the width override default-arg path. Three `DashboardCardRenderer.ProgressBar` tests cover: value=0 (no foreground anywhere), value=1 (full coral fill), value=0.5 (left half filled, right half not). Renderer tests reuse the `pixelAt` / `readPixels` / `makeLayerAndQueue` / `renderFrame` / `maxChromaPixel` helper pattern from `DashboardCardRendererTests` — copied locally rather than hoisted to a shared file (file-independence convention).
+
+Test (c) writes `card_beat_locked.png` to `.build/dash1_artifacts/` rendered onto the same deep-indigo backdrop as DASH.2.1's artifact, so the M7-style review picks up the same lighting context as the prior dashboard work.
+
+### Test count
+
+After DASH.3: **27 dashboard tests pass** (12 DASH.1 + 6 DASH.2.1 + 6 BeatCardBuilder + 3 progress-bar). Full engine suite green except the pre-existing `MetadataPreFetcher.fetch_networkTimeout_returnsWithinBudget` and `MemoryReporter.residentBytes` env-dependent flakes documented in CLAUDE.md. 0 SwiftLint violations on touched files; app build clean.
+
+### Files changed
+
+New: `PhospheneEngine/Sources/Renderer/Dashboard/BeatCardBuilder.swift`, `PhospheneEngine/Sources/Renderer/Dashboard/DashboardCardRenderer+ProgressBar.swift`, `PhospheneEngine/Tests/PhospheneEngineTests/Renderer/BeatCardBuilderTests.swift`, `PhospheneEngine/Tests/PhospheneEngineTests/Renderer/DashboardCardRendererProgressBarTests.swift`.
+
+Edited: `PhospheneEngine/Sources/Renderer/Dashboard/DashboardCardLayout.swift` (`.progressBar` case + `progressBarHeight` + `Row.height` switch arm), `PhospheneEngine/Sources/Renderer/Dashboard/DashboardCardRenderer.swift` (dispatch case + `drawBarChrome` access widened to `internal` so the extension can reuse it).
