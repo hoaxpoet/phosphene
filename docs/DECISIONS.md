@@ -1856,3 +1856,56 @@ After DASH.3: **27 dashboard tests pass** (12 DASH.1 + 6 DASH.2.1 + 6 BeatCardBu
 New: `PhospheneEngine/Sources/Renderer/Dashboard/BeatCardBuilder.swift`, `PhospheneEngine/Sources/Renderer/Dashboard/DashboardCardRenderer+ProgressBar.swift`, `PhospheneEngine/Tests/PhospheneEngineTests/Renderer/BeatCardBuilderTests.swift`, `PhospheneEngine/Tests/PhospheneEngineTests/Renderer/DashboardCardRendererProgressBarTests.swift`.
 
 Edited: `PhospheneEngine/Sources/Renderer/Dashboard/DashboardCardLayout.swift` (`.progressBar` case + `progressBarHeight` + `Row.height` switch arm), `PhospheneEngine/Sources/Renderer/Dashboard/DashboardCardRenderer.swift` (dispatch case + `drawBarChrome` access widened to `internal` so the extension can reuse it).
+
+---
+
+## D-084 — STEMS card data binding: `.bar` (signed) + uniform coral v1 + builder-as-pass-through (Phase DASH.4)
+
+**Status:** Accepted, 2026-05-07.
+
+**Context:** DASH.4 is the second live dashboard card after DASH.3's BEAT card. It binds the four `StemFeatures.*EnergyRel` fields (MV-1 / D-026, floats 17–24) to a four-row STEMS card driven by a pure `StemsCardBuilder: Sendable` struct. Six decisions warrant capture.
+
+### Decision 1 — `.bar` (signed-from-centre), not `.progressBar` (unsigned)
+
+`*EnergyRel` is naturally signed: positive when a stem is louder than its AGC running average (kick = bar grows right), negative when ducked (bar grows left). DASH.3's `.progressBar` (unsigned 0–1 left-to-right fill) would lose the duck information entirely — a quiet stem would render identically to one at AGC average. The `.bar` row variant added in DASH.2 is exactly the right primitive for signed deviation; using it here is a straight reuse, not a new variant. (D-083 explicitly scoped `.progressBar` to ramps — beat phase, bar phase, frame budget — where the value is unsigned by construction.)
+
+### Decision 2 — Builder reads `StemFeatures` directly (no `StemEnergySnapshot`)
+
+DASH.3 used `BeatSyncSnapshot` because that snapshot already existed for diagnostic capture (Spectral Cartograph, `SessionRecorder.features.csv`) and was a natural input. There is no analogous "stem snapshot" type in the codebase. Introducing one for DASH.4 would duplicate the four `*EnergyRel` fields already on the live `StemFeatures` value (MV-1 contract, GPU buffer(3)) for no behavioural gain. The cost of a four-field read is negligible per frame. If a future increment needs a downsampled / time-shifted / smoothed stem snapshot, that's its own scope; DASH.4 doesn't pre-empt it.
+
+### Decision 3 — Uniform `Color.coral` across all four rows (v1)
+
+`.impeccable.md`'s "purposeful colour" rule says colour must carry meaning, not decoration. The load-bearing signal for each stem row is the *direction* of bar growth (left vs right of centre) — that already encodes the duck/accent semantic without colour participation. Tagging drums coral, bass purple, vocals yellow, other muted (or any similar palette) would either:
+
+- Reproduce a stereo VU meter / DAW mixer reading — categorically wrong product cue (the STEMS card describes one piece of music heard through four AGC-normalized lenses, not four independent input channels).
+- Recruit status colours (yellow / green / red) for non-status meaning, conflicting with D-083's lock-state colour mapping in the BEAT card.
+
+Coral × 4 reads as "one instrument, four channels" which is what STEMS *is*. The DASH.4.1 amendment slot is reserved for per-stem palette tuning if Matt's eyeball flags monotony on the artifact; the DASH.2 → DASH.2.1 redesign cycle exists precisely so amendments don't bloat the originating increment.
+
+### Decision 4 — Builder does not clamp values
+
+`.bar` clamps to its declared `range` defensively in `drawBarFill` (DASH.2.1). Adding a clamp at the builder layer would put defence-in-depth at two layers, not one — both layers would have to agree on the clamp policy, and divergence would silently hide upstream bugs. Test (e) (`build_largeValue_passesThroughUnclampedAtBuilderLayer`) regression-locks the pass-through invariant: a `drumsEnergyRel = 1.5` snapshot produces a `value: 1.5` row payload, and the renderer is the single authority that turns it into a saturated full-right bar.
+
+### Decision 5 — Range `-1.0 ... 1.0`
+
+`*EnergyRel` is centred at 0 with typical envelope ±0.5 (CLAUDE.md "AGC authoring implication"). Picking a tight range `-0.5 ... 0.5` would mean typical content saturates the bar — visible motion would only happen on quiet sections, the inverse of intent. Picking a generous range `-1.0 ... 1.0` puts typical content at ~50% bar fill (visible motion) and reserves headroom for loud transients without clipping. This matches the DASH.3 BAR / BEAT progress bars' range-headroom philosophy.
+
+### Decision 6 — Row order DRUMS / BASS / VOCALS / OTHER
+
+`.impeccable.md`'s Beat-panel precedent reads percussion-first: the kick is the most reliable visual anchor on most music, so DRUMS at row 0 makes the eye land on the most active bar by default. BASS second mirrors the rhythm-section pairing (kick + sub). VOCALS and OTHER follow because they're more variable in any given track. There is no stable "energy ranking" across genres; the ordering is convention, locked by test (d)'s mixed-snapshot row-order assertion so a transposition bug surfaces (the four near-identical rows otherwise hide field-mapping mistakes — a row labelled VOCALS reading `bassEnergyRel` is the most likely silent failure mode).
+
+### Test surface
+
+Six `StemsCardBuilder` tests cover: zero snapshot (all four rows at value 0, valueText `+0.00`, coral, range `-1.0...1.0`), positive drums (row 0 only, valueText `+0.42`), negative bass (row 1 only, valueText `-0.30`), mixed snapshot with row-order assertions + artifact write, unclamped passthrough at value 1.5 (regression lock for Decision 4), width override default-arg path. Switch-pattern row extraction + sRGB-channel colour comparator copied locally from `BeatCardBuilderTests` rather than hoisted (file-independence convention).
+
+Test (d) writes `card_stems_active.png` to `.build/dash1_artifacts/` rendered onto the same deep-indigo backdrop as DASH.3's artifact, so the M7-style review picks up the same lighting context.
+
+### Test count
+
+After DASH.4: **33 dashboard tests pass** (12 DASH.1 + 6 DASH.2.1 + 6 BeatCardBuilder + 3 progress-bar + 6 StemsCardBuilder). Full engine suite green except the pre-existing `MetadataPreFetcher.fetch_networkTimeout_returnsWithinBudget` and `MemoryReporter.residentBytes` env-dependent flakes documented in CLAUDE.md, plus two GPU-perf tests (`RenderPipelineICBTests.test_gpuDrivenRendering_cpuFrameTimeReduced`, `SSGITests.test_ssgi_performance_under1ms_at1080p`) that pass in isolation but flake under full-suite parallel-run contention — neither touches Dashboard code. 0 SwiftLint violations on touched files; app build clean.
+
+### Files changed
+
+New: `PhospheneEngine/Sources/Renderer/Dashboard/StemsCardBuilder.swift`, `PhospheneEngine/Tests/PhospheneEngineTests/Renderer/StemsCardBuilderTests.swift`.
+
+No existing files edited (the builder reuses the `.bar` row variant from DASH.2.1; no new row variant means no renderer change in this increment).
