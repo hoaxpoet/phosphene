@@ -209,6 +209,10 @@ PhospheneEngine/
     Geometry/MeshGenerator  → M3+ mesh shader + M1/M2 vertex fallback, draw dispatch abstraction. densityMultiplier passed at object/mesh buffer(1) for M3+ opt-in; no-op on M1/M2 vertex path.
     RayTracing/BVHBuilder   → MTLPrimitiveAccelerationStructure, blocking + non-blocking paths
     RayTracing/RayIntersector → Compute-pipeline intersector, nearest-hit + shadow kernels
+    Dashboard/DashboardFontLoader → Resolves Epilogue TTF from bundle Fonts/ subdir; falls back to system sans; OSAllocatedUnfairLock cache; resetCacheForTesting() (DASH.1).
+    Dashboard/DashboardTextLayer → Zero-copy MTLBuffer→CGContext→MTLTexture text rasterizer; .bgra8Unorm; permanent CTM flip + textMatrix scaleY=-1; beginFrame()/drawText(...)/commit(into:)/resize. `internal var graphicsContext` exposes the underlying CGContext to DashboardCardRenderer (DASH.2, D-082).
+    Dashboard/DashboardCardLayout → Pure value type: title + ordered Row enum (.singleValue / .pair / .bar) + fixed width + padding/title size/row spacing. Static row heights (single=18, pair=18, bar=22). `height` computed from `padding + titleSize + (rowSpacing + rowHeight)×N + padding` (DASH.2, D-082).
+    Dashboard/DashboardCardRenderer → Stateless Sendable struct. Composes DashboardTextLayer.drawText + direct CGPath geometry into the same shared CGContext. Painting order: chrome (rounded `Color.surface`@0.92α + 1px `Color.border` stroke) → bar geometry → text. Right-edge clipping via `align: .right` on every value column; bar fill bounded by padding on both inner edges. The 0.92α chrome is the only sanctioned glassmorphic surface in the dashboard (.impeccable.md "purposeful glassmorphism" exception). DASH.2, D-082.
     Shaders/Common.metal    → FeatureVector/FeedbackParams structs, hsv2rgb, fullscreen_vertex, feedback shaders
     Shaders/MVWarp.metal    → Default engine-library mvWarp implementations (mvWarp_vertex_default, identity warpPerFrame/Vertex); fixed fragment shaders shared by all presets (mvWarp_fragment, mvWarp_compose_fragment, mvWarp_blit_fragment)
     Shaders/MeshShaders.metal → Mesh pipeline structs, object/mesh/fragment + fallback vertex shaders

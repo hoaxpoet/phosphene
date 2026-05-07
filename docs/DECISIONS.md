@@ -1725,3 +1725,35 @@ The DASH.1 token file was a placeholder with a self-imposed deferral comment ("C
 **Test changes:** `DashboardTokensTests.colorValues()` rewritten to assert the OKLCH ladder (surface ascending in luminance, neutrals tinted toward purple via blue-channel-exceeds-red, text ladder ascending). `DashboardTextLayerTests` renamed `textPrimary` → `textHeading`, `textSecondary` → `textBody` at all five call sites.
 
 **Sourced from:** `.impeccable.md` Design Context §Aesthetic Direction → Color palette table.
+
+## D-082 — Dashboard card layout engine: rigid value types + shared-context renderer (Phase DASH.2)
+
+**Decision (2026-05-07):** The Telemetry dashboard's metrics cards are built from two pieces — a value-type layout description (`DashboardCardLayout`, `Sources/Renderer/Dashboard/DashboardCardLayout.swift`) and a renderer (`DashboardCardRenderer`, `Sources/Renderer/Dashboard/DashboardCardRenderer.swift`) that composes `DashboardTextLayer.drawText` calls plus direct `CGPath` geometry into the same shared `CGContext`. Cards are intentionally rigid (fixed width, fixed row heights, three row variants only).
+
+**Context:** Phase DASH.2 follows DASH.1 + DASH.1.1. DASH.3/4/5 (Beat & BPM, Stems, Frame budget) all consume this primitive. Getting it right makes the next three increments trivial composition exercises; getting it wrong means each card re-fights the same layout battles.
+
+**Reasoning:**
+
+1. **Fixed-width cards, no flex.** The dashboard reads as a set of identical instruments, not a CSS flexbox. Variable widths would let card chrome drift across the canvas frame to frame and would force every numeric to fight for horizontal space. The cost is that very long values must be truncated by the producer; the upside is byte-for-byte stable layout that does not flicker on data changes. Row heights are static constants on `DashboardCardLayout.Row` (single = 18 pt, pair = 18 pt, bar = 22 pt) so future row-height edits surface as test failures (`layoutHeight_matchesSumOfRows`).
+
+2. **Pure data + pure renderer split.** `DashboardCardLayout` and `Row` are value types with no rendering API. `DashboardCardRenderer` is a stateless `Sendable` struct. Cards are fully describable from tests without a Metal device (the layout-height test runs on CI without GPU). `DashboardTextLayer` retains exclusive ownership of text rasterization; it exposes the underlying `CGContext` only via an `internal var graphicsContext` so external callers cannot bypass `drawText`. The renderer is the single sanctioned consumer of that backdoor.
+
+3. **Card chrome at 0.92 alpha is the one purposeful glassmorphism.** `.impeccable.md` "no glassmorphism unless purposeful" lists the corner case where chrome floats over a moving visualizer. Cards do exactly that. The 0.92 alpha lets the visualizer breathe through the surface without compromising legibility (text and bar foregrounds remain opaque). A 1 px `Color.border` stroke is the depth cue — drop shadows would read as generic AI dashboard. This is the only place in the dashboard where alpha < 1 is sanctioned.
+
+4. **Right-edge clipping is structural, not a check.** Every value column on the right of a card is rendered with `align: .right` so the rightmost glyph never extends past `origin.x + width - padding`. The bar fill is bounded by `padding` on both inner edges. A card placed at `origin.x = canvasWidth - width` therefore cannot paint a text glyph past the canvas edge — the card chrome's 1 px border appears at the canvas edge (correct) but text alpha at the rightmost column is bounded by what `align: .right` allows.
+
+5. **Painting order: chrome → bar geometry → text.** Reversing this order is observed Failed Approach: text glyphs get painted over by the bar fill because both share the same shared-memory buffer. The renderer enforces this order in `render(...)`.
+
+6. **No icons in the layout engine.** The dashboard is typographic. Status letters ("L" / "U" for locked / unlocked) replace icons in DASH.3+. If a future row variant proves a need for a glyph, the bitmap-glyph approach from `SpectralCartographText` is the precedent — strictly defer until that need is concrete.
+
+**Tests added:** `DashboardCardRendererTests.swift` (6 `@Test` functions in `@Suite("DashboardCardRenderer")`) — `layoutHeight_matchesSumOfRows`, `render_threeRowCard_pixelVerifyLabelPositions` (writes `.build/dash1_artifacts/card_three_row.png`), `render_cardNearRightEdge_clipsCorrectly`, `render_barRow_negativeValueFillsLeft`, `render_barRow_positiveValueFillsRight`, `render_pairRow_dividerVisible`. Pixel-assertion brittleness mitigated via 3-pixel-window sampling: `maxChromaPixel(around:)` selects the highest-chroma pixel in a ±1 window so coral fills are detected even when the geometric fill boundary lands exactly on the prescribed sample column. The right-edge overflow check uses Rec. 601 luma rather than alpha so chrome (low-luma surface fill) is correctly distinguished from text glyphs (high-luma `textHeading`).
+
+**Files added:**
+- `PhospheneEngine/Sources/Renderer/Dashboard/DashboardCardLayout.swift`
+- `PhospheneEngine/Sources/Renderer/Dashboard/DashboardCardRenderer.swift`
+- `PhospheneEngine/Tests/PhospheneEngineTests/Renderer/DashboardCardRendererTests.swift`
+
+**Files edited:**
+- `PhospheneEngine/Sources/Renderer/Dashboard/DashboardTextLayer.swift` — added `internal var graphicsContext: CGContext`.
+
+**Test count:** 6 new (18 dashboard total: DASH.1 12 + DASH.2 6). 1102 engine tests / 125 suites pass; 0 SwiftLint violations on touched files; app build clean.
