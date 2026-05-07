@@ -489,6 +489,47 @@ struct LiveBeatDriftTrackerTests {
         #expect(lockedToLockingTransitions <= 2, "BUG-007.2 Fix B regression: expected ≤2 LOCKED→LOCKING transitions in 60 s on a correctly extrapolated grid; got \(lockedToLockingTransitions)")
     }
 
+    // MARK: 19. BUG-007.4 — barPhaseOffset rotates barPhase01 modulo beatsPerBar
+
+    /// Cycling `barPhaseOffset` shifts which beat is labelled "1" without affecting beat-phase.
+    /// Setter wraps modulo `beatsPerBar` — passing offset = beatsPerBar must equal offset = 0.
+    @Test("barPhaseOffset_rotatesBarPhase_modBeatsPerBar")
+    func test_barPhaseOffsetRotates() {
+        let grid = makeUniformGrid(bpm: 120, beats: 32, beatsPerBar: 4)
+        let tracker = LiveBeatDriftTracker()
+        tracker.setGrid(grid)
+        // Drive a few onsets so phase is computable.
+        let dt: Float = 1.0 / 60.0
+        for frame in 0..<60 {
+            _ = tracker.update(subBassOnset: frame % 30 == 0,
+                               playbackTime: Double(frame) / 60.0, deltaTime: dt)
+        }
+        // At playbackTime = 0.5 s (start of beat 2 of bar 1, 120 BPM), with offset=0:
+        // beatsSinceDownbeat=1 → barPhase01 ≈ 0.25.
+        let probe0 = tracker.update(subBassOnset: false, playbackTime: 0.5, deltaTime: dt)
+        let phaseAtZero = probe0.barPhase01
+
+        tracker.barPhaseOffset = 1
+        let probe1 = tracker.update(subBassOnset: false, playbackTime: 0.5, deltaTime: dt)
+        // Offset=1 should advance bar phase by 1/4 (one beat in 4/4).
+        let expectedDelta = Float(0.25)
+        let observedDelta = probe1.barPhase01 - phaseAtZero
+        let normalised = observedDelta - floor(observedDelta)
+        #expect(abs(normalised - expectedDelta) < 0.05,
+                "Expected barPhase01 to advance by ~0.25 with offset=1; got Δ=\(observedDelta)")
+
+        // Wrap: offset = beatsPerBar should equal offset = 0.
+        tracker.barPhaseOffset = 4
+        #expect(tracker.barPhaseOffset == 0,
+                "Setter must wrap modulo beatsPerBar (4 → 0); got \(tracker.barPhaseOffset)")
+
+        // Reset on setGrid:
+        tracker.barPhaseOffset = 2
+        tracker.setGrid(grid)
+        #expect(tracker.barPhaseOffset == 0,
+                "barPhaseOffset must reset to 0 on setGrid")
+    }
+
     // MARK: 18. BUG-007.2 regression — raw grid (no offsetBy) drops lock after coverage (negative case)
 
     /// Documents the pre-fix behaviour as a known-bad path. Without offsetBy(), the prepared-cache

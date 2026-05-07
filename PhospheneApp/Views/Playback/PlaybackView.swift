@@ -305,6 +305,9 @@ struct PlaybackView: View {
             },
             onIncreaseBeatPhaseOffset: { [weak engine] in
                 engine?.adjustBeatPhaseOffset(ms: +10)
+            },
+            onCycleBarPhaseOffset: { [weak engine] in
+                engine?.cycleBarPhaseOffset()
             }
         )
     }

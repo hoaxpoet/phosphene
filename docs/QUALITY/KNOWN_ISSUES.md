@@ -12,8 +12,24 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 **Severity:** P2
 **Domain tag:** dsp.beat
-**Status:** Open (investigation needed — root cause not confirmed)
+**Status:** Open — **root cause confirmed 2026-05-07**: Spotify preview clip phase mismatch (see "Confirmed root cause" below).
 **Introduced:** Reported 2026-05-07 from manual validation captures (`2026-05-07T14-28-40Z/` and prior). User-observed: when watching the SpectralCartograph beat-in-bar counter and listening to SLTS / Everlong (Spotify-prepared), the visual "1" does not land on the song's actual perceived downbeat — it lands on what feels like beat 2 or beat 3 of the bar.
+
+**Confirmed root cause (2026-05-07, after 5-track diagnostic A/B):** Spotify preview URLs return a 30-second clip from somewhere in the song — *often the chorus, not the first 30 seconds*. Beat This! analyzes the clip, builds a grid, and labels the first beat in the clip as "beat 1 of bar 1." That beat in the clip is typically beat 2, 3, or 4 of the original song's bar. When playback starts from the song's beginning and we install the grid with `offsetBy(0)`, the clip's "beat 1" maps to playback time 0 — but the song's actual beat 1 of bar 1 is at playback time 0. The two don't agree. Result: bar-phase rotation per track, depending on where in the bar Spotify's clip happens to begin.
+
+This is **not** a flaw in Beat This!'s downbeat detection — Beat This! is correctly identifying the bar phase *of the clip*. The mismatch is between the clip's coordinate system and the live-playback song coordinate system.
+
+**5-track A/B evidence (sessions `2026-05-07T15-50-23Z` + `2026-05-07T15-58-17Z`):**
+
+| Track | Visual "1" lands on song's | Off by | Spotify preview likely from |
+|---|---|---|---|
+| One More Time (Daft Punk) | beat 4 | +3 | chorus mid-bar |
+| Midnight City (M83) | beat 4 | +3 | chorus mid-bar |
+| HUMBLE. (Kendrick) | beat 3 | +2 | chorus / verse mid-bar |
+| SLTS (Nirvana) | beat 1 ✓ | 0 | first 30 s (intro) |
+| Everlong (Foo Fighters) | beat 3 | +2 | chorus / verse mid-bar |
+
+The varying off-by-N (0, 2, 3) per track rules out a constant pipeline rotation bug. SLTS being the only one that worked correlates with SLTS's preview being the song intro (less commercial tracks tend to preview from start; popular dance/pop tracks preview from chorus).
 
 **Expected behavior:** On a 4/4 prepared-cache track, the SpectralCartograph beat-in-bar counter shows "1" exactly when the song's bar starts (the kick drum + accent that listeners hear as the downbeat). For SLTS, that's the kick on the strong beat after each pickup. For Everlong, the same. `is_downbeat=1` rows in `features.csv` should land at song-relative times that match the ear's perception.
 
@@ -32,30 +48,29 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 - `~/Documents/phosphene_sessions/2026-05-07T14-28-40Z/features.csv` — SLTS first observed `is_downbeat=1` at `playback_time=42.96` (during locked window). Earlier downbeats during locking phase. BPM=117.6 → bar period 2.04 s. Observed downbeat distribution across 4 beat-in-bar values is roughly uniform (1461 / 1462 / 1412 / 1442 frames each), consistent with the meter being identified correctly but the *rotation* (which beat is "1") possibly off.
 - `2026-05-07T14-33-47Z/features.csv` — reactive Everlong got `meter=2/X` from a half-time grid (`bpm=85.4`) — that's BUG-009, separate from this bug.
 
-**Suspected failure class:** `algorithm` — Beat This! `small0` model is documented to have higher error on downbeat estimation than on beat estimation. SLTS has a quiet 8-second guitar-only intro that could fool downbeat selection. Alternative classes to rule out: `pipeline-wiring` (downbeats array incorrectly indexed), `documentation-drift` (beat-in-bar = 1 means something other than downbeat).
+**Confirmed failure class:** `calibration` (Spotify clip start-position not on song bar boundary; Beat This! is correctly identifying bar phase *of the clip*, but the clip's bar phase doesn't equal the song's bar phase from start).
 
-**Diagnosis steps before any fix attempt:**
-1. Add a one-shot diagnostic dump in `BeatGridResolver.resolve()` that prints `beats[0..7]` and `downbeats[0..3]` to `session.log` for prepared cache loads. Confirms what Beat This! actually emitted.
-2. Walk SLTS audio file by ear with a stopwatch; locate the *actual* downbeat (drum hit on song's beat 1 of bar 1) and compare to `beats[0]` + `downbeats[0]` in the prepared cache.
-3. Repeat on a track where downbeats are *unambiguous* (e.g. a four-on-the-floor electronic track) to rule out our bar-phase math.
-4. Walk through `MIRPipeline → SpectralHistoryBuffer[2421..2428] → SpectralCartographText` to confirm the relative-downbeat-times pipeline isn't introducing an offset.
+**Fix scope (three options, ranked by leverage):**
 
-**Fix decision deferred until diagnosis complete.** Possible fixes once root cause is known:
-- (a) If Beat This! downbeat is wrong: pre-rotate the bar phase using a heuristic (kick density at downbeat candidates) or accept the limitation and document.
-- (b) If our pipeline is rotating: fix the rotation.
-- (c) Manual override: developer shortcut (e.g. `Shift+B` cycles beat-in-bar offset by 1) so Matt can A/B comparing rotations.
+**(C) — Developer rotation shortcut (FIRST: ship as BUG-007.4a, ~1 hour).** Add `Shift+B` to `PlaybackShortcutRegistry` to cycle `barPhaseOffset` between 0..N-1 (where N = `beatsPerBar`). Apply offset when computing `beat_in_bar` and `barPhase01` for the SpectralCartograph readouts. Does not fix anything automatically — but lets the user confirm the rotation hypothesis in seconds (cycle Shift+B until "1" lands on the audio's downbeat) and provides an escape hatch for the long-tail tracks the auto-fix won't catch. Cheap, fully reversible.
+
+**(A) — Auto-rotate via kick-density heuristic (durable fix; BUG-007.4b, ~80 LOC + tests).** After the grid is installed and the drift tracker has 8+ matched onsets, examine which of the N beat-in-bar slots has the highest kick energy on average. That slot is the actual song downbeat. Rotate `beat_in_bar` numbering accordingly. Doesn't require Spotify metadata; works on prepared and live grids equally; converges in ~5–10 seconds. Beat This! identifies *meter* (correctly); the heuristic identifies *which beat in that meter is "1"*.
+
+**(B) — Pre-rotate at preparation time (alternative to A).** Run the kick-density heuristic on the cached 30-second preview audio at preparation time, before the grid is stored in `StemCache`. Faster lock-in (no live convergence period), but requires re-running an onset detector on the cached audio. Higher complexity; defer unless (A)'s convergence delay is unacceptable.
+
+**Recommended sequence:** (C) first to confirm theory in <1 hour. Then (A) as the durable fix. (B) deferred unless needed.
 
 **Out of scope:**
-- Reactive-mode downbeat detection — different code path; if this bug exists there, file separately.
+- Reactive-mode downbeat detection — different code path; live grids will benefit from (A) automatically since the same heuristic applies post-install.
 - Time-displacement (visual ahead of / behind audio in absolute time). Drift CSV shows beats are aligned. This bug is about *which* beat gets labelled "1", not about *when* beats fire.
+- Asking Spotify for clip-start-time-in-song metadata — not exposed by their API.
 
-**Verification criteria (set after diagnosis):**
-- [ ] Diagnostic dump confirms whether `BeatGrid.downbeats[0]` matches the song's perceived first downbeat.
-- [ ] On SLTS: beat-in-bar "1" lands on the song's downbeat (manual ear check).
-- [ ] On Everlong: same.
-- [ ] On a four-on-the-floor electronic track: no regression.
+**Verification criteria:**
+- [ ] (C) lands: `Shift+B` cycles bar-phase offset; visual "1" can be aligned to song's "1" on all 5 test tracks within 0..3 presses. Toast/log confirms current offset.
+- [ ] (A) lands: visual "1" lands on song's "1" automatically within 10 s of lock-in on OMT, Midnight City, HUMBLE, SLTS, Everlong. No regression on SLTS.
+- [ ] On a fully ambient / non-metric track (no obvious kick density per slot): system gracefully holds the Beat This! choice rather than picking a random slot.
 
-**Related:** BUG-008 (offline BPM disagreement — orthogonal), BUG-007 / 007.2 (lock hysteresis — orthogonal), BUG-007.3 (reverted, `78ade5aa`).
+**Related:** BUG-008 (offline BPM disagreement — orthogonal), BUG-007 / 007.2 (lock hysteresis — orthogonal), BUG-007.3 (reverted, `78ade5aa`), BUG-007.5 (separately confirmed by Everlong "pulse slightly off" observation in 2026-05-07T15-58-17Z).
 
 ---
 
