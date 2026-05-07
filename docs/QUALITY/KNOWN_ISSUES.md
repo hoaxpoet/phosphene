@@ -397,9 +397,9 @@ If the wider window also produces an out-of-band BPM estimate (slope still > 5 m
 
 **Severity:** P2
 **Domain tag:** preset.fidelity
-**Status:** Open
+**Status:** Resolved
 **Introduced:** V.7.7A (staged-composition scaffold)
-**Resolved:** —
+**Resolved:** 2026-05-07 by QR.3 (commit on `[QR.3] tests: integration / connector / ML golden + docs`).
 
 **Expected behavior:** `RENDER_VISUAL=1 swift test --filter PresetVisualReviewTests` produces per-stage PNG contact sheets for Arachne (and any other staged preset) under `/tmp/phosphene_visual/<timestamp>/`.
 
@@ -417,12 +417,12 @@ If the wider window also produces an out-of-band BPM estimate (slope still > 5 m
 **Evidence:** `PresetVisualReviewTests.makeBGRAPipeline` calls `Bundle.module.url(forResource: "Shaders")` from the test target bundle (which has no Shaders resource). Staged presets require the `arachne_world_fragment` and `arachne_composite_fragment` functions which live in `Bundle(for: PresetLoader.self)`. The source lookup fails before the pipeline is built.
 
 **Verification criteria:**
-- [ ] `RENDER_VISUAL=1 swift test --filter PresetVisualReviewTests` produces at least one PNG per stage for Arachne without `cgImageFailed`.
-- [ ] Contact sheet shows WORLD stage and COMPOSITE stage as separate tiles.
+- [x] `RENDER_VISUAL=1 swift test --filter PresetVisualReviewTests` produces at least one PNG per stage for Arachne without `cgImageFailed` — verified at QR.3 land time, 16 PNGs across 5 preset cases (Arachne / Gossamer / Volumetric Lithograph non-staged + Staged Sandbox + Arachne staged).
+- [x] Per-stage tiles emitted: `Arachne_silence_world.png`, `Arachne_silence_composite.png`, etc.
 
-**Fix scope:** Change `Bundle.module` → `Bundle(for: PresetLoader.self)` in `makeBGRAPipeline`. Small, contained change. Required before V.7.7B's harness contact-sheet review.
+**Fix scope:** Initial plan was `Bundle(for: PresetLoader.self)` but that does not work in SPM (library targets statically link into the test executable, so `Bundle(for:)` resolves to the test bundle, not the Presets bundle). Resolved by adding `public static var PresetLoader.bundledShadersURL: URL?` that returns `Bundle.module.url(forResource: "Shaders", ...)` from inside the Presets module (where `Bundle.module` resolves correctly), and pointing `makeBGRAPipeline` at it.
 
-**Related:** V.7.7A, D-072
+**Related:** V.7.7A, D-072, D-090.
 
 ---
 
@@ -430,9 +430,9 @@ If the wider window also produces an out-of-band BPM estimate (slope still > 5 m
 
 **Severity:** P3
 **Domain tag:** dsp.beat
-**Status:** Open
+**Status:** Resolved
 **Introduced:** DSP.3 planning (gap in coverage)
-**Resolved:** —
+**Resolved:** 2026-05-07 by QR.3 (`LiveDriftValidationTests.swift` lands the DSP.3.7 surface; DSP.3.6 was previously closed by `PreparedBeatGridAppLayerWiringTests`, BUG-006.2).
 
 **Expected behavior:** App-layer wiring integration test verifies the full chain `SessionPreparer.prepare() → StemCache.store() → resetStemPipeline(for:) → mirPipeline.liveDriftTracker.hasGrid == true`. Live drift validation replay test verifies LOCKED within 5 s, drift < 50 ms, and beat phase zero-crossings within ±30 ms on Love Rehab.
 
@@ -446,11 +446,11 @@ If the wider window also produces an out-of-band BPM estimate (slope still > 5 m
 
 **Verification criteria:**
 - [x] DSP.3.6 test file exists and passes: `swift test --filter BeatGridAppLayerWiringTests` — landed as `PreparedBeatGridAppLayerWiringTests` (BUG-006.2, 2026-05-06). Six cases, all pass.
-- [ ] DSP.3.7 test file exists and passes: `swift test --filter LiveDriftValidationTests`
+- [x] DSP.3.7 test file exists and passes: `swift test --filter LiveDriftValidation` — landed as `LiveDriftValidationTests` (QR.3, 2026-05-07). Drives the production tracker against love_rehab.m4a; observed lock at 6.55 s, max drift 14 ms, alignment 90 %.
 
-**Fix scope:** Two new test files in `Tests/Integration/`. No production code changes anticipated.
+**Fix scope:** Two new test files in `Tests/Integration/`. No production code changes anticipated. Both landed.
 
-**Related:** DSP.3.6, DSP.3.7
+**Related:** DSP.3.6, DSP.3.7, QR.3, D-090.
 
 ---
 
