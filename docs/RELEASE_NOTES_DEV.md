@@ -6,6 +6,60 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-07-p] BUG-007.8 — Per-track grid-vs-onset offset calibration
+
+**Increment:** BUG-007.8
+**Type:** Bug fix (DSP / live beat tracking) — systemic fix.
+
+**What changed.**
+
+Session `2026-05-07T22-00-00Z` showed drift averages spanning **−95 to +96 ms across a single playlist** — Beat This!'s grid timing and our sub-bass onset detector disagree by track-specific amounts. Previous BUG-007 fixes patched symptoms (lock-state hysteresis, latency calibration constants); this one addresses the root cause.
+
+**Mechanism.** During Spotify preparation, after `BeatGridAnalyzer` produces the grid, the new `GridOnsetCalibrator` replays the same preview audio through our live `BeatDetector` offline, finds sub-bass onset timestamps, cross-correlates against the grid's beats, and computes the median `(gridBeat − onsetTime)` offset. This is the *exact same* gap the live drift EMA would chase — but measured deterministically at preparation time using the same detector that fires at runtime.
+
+**Storage + apply.** New `gridOnsetOffsetMs: Double` field on `CachedTrackData`. New `LiveBeatDriftTracker.setGrid(_:initialDriftMs:)` overload + `MIRPipeline.setBeatGrid(_:initialDriftMs:)`. The prepared-cache install path in `VisualizerEngine+Stems.resetStemPipeline` passes the calibrated value as the initial drift bias, so the EMA starts at the right offset rather than converging from zero over ~4 onsets.
+
+**Why this is a systemic fix.**
+
+- Replaces the global `audioOutputLatencyMs = 50` heuristic with per-track values measured from the actual audio.
+- Eliminates the sign-mismatch problem (some tracks drifted positive, some negative — fixed-constant compensation can only correct one direction).
+- Drift EMA still runs at playback time and fine-tunes if runtime conditions differ slightly from preparation.
+- Manual `Shift+B` rotation, `,`/`.` latency tuning, and lock-state hysteresis fixes remain as-is — they're complementary.
+
+**API changes.**
+
+- `CachedTrackData` gains `gridOnsetOffsetMs: Double` (default 0 for backward compat).
+- `LiveBeatDriftTracker.setGrid(_:)` retained as backward-compat shim that calls `setGrid(_:initialDriftMs: 0)`.
+- New `LiveBeatDriftTracker.setGrid(_:initialDriftMs:)` — clamps drift to ±500 ms at the entry point.
+- New `MIRPipeline.setBeatGrid(_:initialDriftMs:)` — same pattern.
+- New `GridOnsetCalibrator` (`Sendable`, public) in the Session module: `init()` + `calibrate(samples:sampleRate:grid:) -> Double`.
+
+**Files added.**
+
+- `PhospheneEngine/Sources/Session/GridOnsetCalibrator.swift` (~200 LOC).
+- `PhospheneEngine/Tests/PhospheneEngineTests/Session/GridOnsetCalibratorTests.swift` (5 tests).
+
+**Files edited.**
+
+- `PhospheneEngine/Sources/Session/StemCache.swift` — `gridOnsetOffsetMs` field.
+- `PhospheneEngine/Sources/Session/SessionPreparer+Analysis.swift` — Step 7 calibration call extracted to nonisolated static helper.
+- `PhospheneEngine/Sources/DSP/LiveBeatDriftTracker.swift` — `setGrid(_:initialDriftMs:)` overload.
+- `PhospheneEngine/Sources/DSP/MIRPipeline.swift` — `setBeatGrid(_:initialDriftMs:)` overload.
+- `PhospheneApp/VisualizerEngine+Stems.swift` — wires `cached.gridOnsetOffsetMs` into the prepared-cache install. `swiftlint:disable file_length` added (file grew past 400).
+- `PhospheneEngine/Tests/PhospheneEngineTests/DSP/LiveBeatDriftTrackerTests.swift` — 3 new tests (MARKs 36–38).
+
+**Tests.** 41/41 `LiveBeatDriftTrackerTests` + 5/5 `GridOnsetCalibratorTests` pass. Full engine suite: 1143/1143 green. 0 SwiftLint violations on touched files.
+
+**Manual validation pending.** Replay the 8-track bass-forward playlist from session `2026-05-07T22-00-00Z`. Predicted: drift averages near ±20 ms across all tracks (vs the previous ±95 to +96 ms range). LOCKED-time should rise on the tracks that previously drifted (Another One Bites the Dust, Get Lucky, bad guy, Superstition).
+
+**Out of scope.**
+
+- Stem-separation quality impact on calibration accuracy (see Matt's question about stem separation — addressed separately).
+- Audio source quality variations (Spotify vs lossless).
+- Multi-band onset signals (snare + bass-stem cross-check) — could refine but needs evidence the current single-band sub-bass calibration is insufficient.
+
+---
+
 ## [dev-2026-05-07-o] BUG-007.4c — auto-rotate for kick-on-1+3 patterns
 
 **Increment:** BUG-007.4c

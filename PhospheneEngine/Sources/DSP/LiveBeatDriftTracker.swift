@@ -361,6 +361,17 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
     /// Install a new grid and reset drift state. `.empty` puts the tracker into
     /// the reactive-mode fallback (emits zero phase / `.unlocked`).
     public func setGrid(_ newGrid: BeatGrid) {
+        setGrid(newGrid, initialDriftMs: 0)
+    }
+
+    /// Install a new grid AND seed the drift EMA at a known offset (BUG-007.8).
+    /// Used by the prepared-cache install path to apply
+    /// `CachedTrackData.gridOnsetOffsetMs` — the per-track grid-vs-onset offset
+    /// measured at preparation time by `GridOnsetCalibrator`. Pre-loading drift
+    /// to the calibrated value means the visual fires correctly from frame 1
+    /// instead of waiting ~4 onsets for the EMA to converge from zero.
+    /// Live-analysis grids pass 0 (no preparation-time calibration available).
+    public func setGrid(_ newGrid: BeatGrid, initialDriftMs: Double) {
         lock.lock(); defer { lock.unlock() }
         self.grid = newGrid
         let median = newGrid.medianBeatPeriod
@@ -369,9 +380,17 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
         // BUG-007.4b: size the per-slot kick-density histogram to the grid's meter.
         // resetStateLocked already cleared old contents.
         slotOnsetCounts = [Int](repeating: 0, count: max(newGrid.beatsPerBar, 1))
+        // BUG-007.8: seed drift EMA with the calibrated offset (clamped ±500 ms
+        // for safety — values outside that range indicate a calibration error).
+        let clampedMs = max(-500.0, min(500.0, initialDriftMs))
+        self.drift = clampedMs / 1000.0
         let beatCount = newGrid.beats.count
         let bpmStr = String(format: "%.1f", newGrid.bpm)
-        logger.info("LiveBeatDriftTracker grid set: \(beatCount) beats, \(bpmStr) BPM, \(newGrid.beatsPerBar)/X")
+        let driftStr = String(format: "%+.1f", clampedMs)
+        let meter = newGrid.beatsPerBar
+        logger.info(
+            "LiveBeatDriftTracker grid: \(beatCount) beats, \(bpmStr) BPM, \(meter)/X, initialDrift=\(driftStr) ms"
+        )
     }
 
     /// Clear drift / onset / lock state. Does NOT clear the installed grid.

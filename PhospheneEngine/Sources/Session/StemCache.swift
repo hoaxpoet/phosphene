@@ -34,6 +34,15 @@ public struct CachedTrackData: Sendable {
     /// Defaults to `.empty` when no beat-grid analyzer is wired.
     public let drumsBeatGrid: BeatGrid
 
+    /// Per-track offset (ms) between Beat This! grid timing and the live sub-bass
+    /// onset detector (BUG-007.8). Computed at preparation time by
+    /// `GridOnsetCalibrator` running our `BeatDetector` offline against the same
+    /// preview audio that produced `beatGrid`. Consumed by
+    /// `LiveBeatDriftTracker.setGrid(_:initialDriftMs:)` as the EMA's initial
+    /// bias so drift starts at the right value rather than chasing it at runtime.
+    /// Defaults to 0 for backward compatibility — pre-fix calibration omitted.
+    public let gridOnsetOffsetMs: Double
+
     // MARK: - Init
 
     public init(
@@ -41,13 +50,15 @@ public struct CachedTrackData: Sendable {
         stemFeatures: StemFeatures,
         trackProfile: TrackProfile,
         beatGrid: BeatGrid = .empty,
-        drumsBeatGrid: BeatGrid = .empty
+        drumsBeatGrid: BeatGrid = .empty,
+        gridOnsetOffsetMs: Double = 0
     ) {
         self.stemWaveforms = stemWaveforms
         self.stemFeatures = stemFeatures
         self.trackProfile = trackProfile
         self.beatGrid = beatGrid
         self.drumsBeatGrid = drumsBeatGrid
+        self.gridOnsetOffsetMs = gridOnsetOffsetMs
     }
 }
 

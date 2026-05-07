@@ -1084,6 +1084,51 @@ struct LiveBeatDriftTrackerTests {
                 "BUG-007.4c: 4-on-the-floor must NOT trigger rotation; got offset=\(tracker.barPhaseOffset)")
     }
 
+    // MARK: 36. BUG-007.8 — setGrid(_:initialDriftMs:) seeds the EMA at the calibrated offset
+
+    /// Pre-loading drift to the per-track calibrated offset (from
+    /// `GridOnsetCalibrator` at preparation time) eliminates the ~4-onset
+    /// convergence delay where the visual lags audio at track start.
+    @Test("setGrid_initialDriftMs_seedsTheDriftEMA")
+    func test_setGridInitialDriftMsSeedsTheDriftEMA() {
+        let grid = makeUniformGrid(bpm: 120, beats: 32)
+        let tracker = LiveBeatDriftTracker()
+        tracker.audioOutputLatencyMs = 0
+        // Apply +50 ms initial drift (grid is 50 ms later than detector onsets).
+        tracker.setGrid(grid, initialDriftMs: 50.0)
+        #expect(abs(tracker.currentDriftMs - 50.0) < 0.01,
+                "BUG-007.8: drift must be seeded at +50 ms; got \(tracker.currentDriftMs)")
+    }
+
+    // MARK: 37. BUG-007.8 — initial drift clamped to ±500 ms
+
+    @Test("setGrid_initialDriftMs_clampsToRange")
+    func test_setGridInitialDriftClampsToRange() {
+        let grid = makeUniformGrid(bpm: 120, beats: 32)
+        let tracker = LiveBeatDriftTracker()
+        tracker.audioOutputLatencyMs = 0
+
+        tracker.setGrid(grid, initialDriftMs: 1000.0)
+        #expect(abs(tracker.currentDriftMs - 500.0) < 0.01)
+
+        tracker.setGrid(grid, initialDriftMs: -1000.0)
+        #expect(abs(tracker.currentDriftMs - (-500.0)) < 0.01)
+    }
+
+    // MARK: 38. BUG-007.8 — backward-compat setGrid(_:) starts drift at 0
+
+    @Test("setGrid_backwardCompat_driftStartsAtZero")
+    func test_setGridBackwardCompatDriftStartsAtZero() {
+        let grid = makeUniformGrid(bpm: 120, beats: 32)
+        let tracker = LiveBeatDriftTracker()
+        tracker.audioOutputLatencyMs = 0
+        // Old single-argument setGrid path — must preserve existing behaviour
+        // (drift starts at 0, not at some inherited value).
+        tracker.setGrid(grid)
+        #expect(tracker.currentDriftMs == 0.0,
+                "BUG-007.8: single-arg setGrid must default initialDriftMs=0")
+    }
+
     // MARK: 18. BUG-007.2 regression — raw grid (no offsetBy) drops lock after coverage (negative case)
 
     /// Documents the pre-fix behaviour as a known-bad path. Without offsetBy(), the prepared-cache
