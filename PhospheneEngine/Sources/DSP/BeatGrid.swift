@@ -139,12 +139,21 @@ extension BeatGrid {
 extension BeatGrid {
 
     /// Return a copy with beats thinned so that BPM falls into the practical
-    /// range [80, 160], correcting double-time detection from short audio windows.
+    /// range [80, 175], correcting double-time detection from short audio windows.
     ///
-    /// **Halving only** — BPM > 160 is halved (and every other beat is dropped);
+    /// **Halving only** — BPM > 175 is halved (and every other beat is dropped);
     /// BPM < 80 is left unchanged because some tracks genuinely have slow tempos
     /// (e.g. Pyramid Song ~68 BPM) and doubling would be incorrect. The upper-bound
-    /// correction is applied recursively until BPM ≤ 160.
+    /// correction is applied recursively until BPM ≤ 175.
+    ///
+    /// **Threshold rationale (BUG-009, 2026-05-07).** Originally 160 BPM. Raised
+    /// to 175 because legitimate fast tracks live in [160, 175]: drum'n'bass
+    /// (170–175), fast indie rock (Foo Fighters' "Everlong" ~158, Strokes / Arctic
+    /// Monkeys 155–170), fast metal (180+ — still halved correctly). On the live
+    /// 10-second Beat This! window, the analyser sometimes outputs 165–180 for a
+    /// true ~158 BPM source; the old 160 threshold halved those down to ~85,
+    /// producing a half-rate visual orb. 175 captures the fast-rock band without
+    /// re-enabling true double-time errors (those land at ≥ 200 typically).
     ///
     /// Used exclusively by the live 10-second Beat This! trigger path in
     /// `VisualizerEngine+Stems`. The offline 30-second prep path does not need this
@@ -154,13 +163,13 @@ extension BeatGrid {
     /// Downbeats that fall on removed (odd-indexed) beats beyond the snap window are
     /// discarded; `beatsPerBar` is recalculated from the corrected downbeat set.
     public func halvingOctaveCorrected() -> BeatGrid {
-        guard bpm > 160, beats.count >= 2 else { return self }
+        guard bpm > 175, beats.count >= 2 else { return self }
 
         var correctedBeats = beats
         var correctedBPM = bpm
 
-        // Halve repeatedly until BPM ≤ 160 (handles pathological triple-time, etc.).
-        while correctedBPM > 160, correctedBeats.count >= 2 {
+        // Halve repeatedly until BPM ≤ 175 (handles pathological triple-time, etc.).
+        while correctedBPM > 175, correctedBeats.count >= 2 {
             correctedBPM /= 2
             correctedBeats = stride(from: 0, to: correctedBeats.count, by: 2)
                 .map { correctedBeats[$0] }

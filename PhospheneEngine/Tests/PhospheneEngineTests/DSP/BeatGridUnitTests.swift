@@ -229,7 +229,7 @@ struct BeatGridUnitTests {
         }
     }
 
-    // MARK: 10. halvingOctaveCorrected — double-time (BPM > 160)
+    // MARK: 10. halvingOctaveCorrected — double-time (BPM > 175)
 
     @Test("halvingOctaveCorrected_doubletimeBPM_halvesBeatsAndBPM")
     func test_halvingOctaveCorrected_doubletimeBPM() {
@@ -246,9 +246,9 @@ struct BeatGridUnitTests {
         )
         let corrected = grid.halvingOctaveCorrected()
 
-        // BPM must be halved into [80, 160].
-        #expect(corrected.bpm > 80 && corrected.bpm <= 160,
-                "corrected BPM \(corrected.bpm) not in [80, 160]")
+        // BPM must be halved into [80, 175] (BUG-009, threshold raised from 160).
+        #expect(corrected.bpm > 80 && corrected.bpm <= 175,
+                "corrected BPM \(corrected.bpm) not in [80, 175]")
         #expect(abs(corrected.bpm - rawBPM / 2) < 0.01,
                 "expected ~\(rawBPM / 2), got \(corrected.bpm)")
 
@@ -302,24 +302,56 @@ struct BeatGridUnitTests {
         #expect(corrected.beats.count == beats.count)
     }
 
-    // MARK: 13. halvingOctaveCorrected — extreme (> 320 BPM, double-halve)
+    // MARK: 13. halvingOctaveCorrected — extreme (double-halve)
 
     @Test("halvingOctaveCorrected_extremeBPM_halvesTwice")
     func test_halvingOctaveCorrected_extremeBPM_halvesTwice() {
-        // 320 BPM → 160 → still > 160? No, 160 is the boundary. Use 320.01 to trigger twice.
-        let rawBPM = 322.0
+        // 360 BPM → 180 (still > 175) → 90 (in range). Picks a clean
+        // double-halve fixture under the BUG-009 threshold of 175.
+        let rawBPM = 360.0
         let period = 60.0 / rawBPM
-        let beats = (0..<54).map { Double($0) * period }   // ~10 s
+        let beats = (0..<60).map { Double($0) * period }   // ~10 s
         let grid = BeatGrid(
             beats: beats, downbeats: [], bpm: rawBPM, beatsPerBar: 4,
             barConfidence: 0, frameRate: 50, frameCount: 500
         )
         let corrected = grid.halvingOctaveCorrected()
-        // 322 → 161 (still > 160) → 80.5 (in range)
-        #expect(corrected.bpm > 80 && corrected.bpm <= 160,
-                "corrected BPM \(corrected.bpm) not in [80, 160]")
+        // 360 → 180 (still > 175) → 90 (in range).
+        #expect(corrected.bpm > 80 && corrected.bpm <= 175,
+                "corrected BPM \(corrected.bpm) not in [80, 175]")
+        #expect(abs(corrected.bpm - 90) < 0.01,
+                "expected 90 BPM after two halvings, got \(corrected.bpm)")
         // Beat count should be quartered (factor 4 thinning).
         #expect(corrected.beats.count <= (beats.count + 3) / 4 + 1)
+    }
+
+    // MARK: 13b. halvingOctaveCorrected — fast-rock band [160, 175] is no-op (BUG-009)
+
+    @Test("halvingOctaveCorrected_fastRockBPM_isNoOp")
+    func test_halvingOctaveCorrected_fastRockBPM_isNoOp() {
+        // BUG-009: tracks in [160, 175] BPM are now preserved un-halved.
+        // Pre-BUG-009 (threshold 160) halved Everlong (~158) when the live
+        // analyser overshot to 165–180 — visual orb pulsed at half rate.
+        // Post-BUG-009 (threshold 175): legitimate fast tempos pass through.
+        let fixtures: [(label: String, bpm: Double)] = [
+            ("Everlong-class fast rock", 158.0),
+            ("live-overshoot Everlong", 168.0),
+            ("drum'n'bass", 172.5),
+            ("at-threshold", 175.0)
+        ]
+        for fixture in fixtures {
+            let period = 60.0 / fixture.bpm
+            let beats = (0..<28).map { Double($0) * period }
+            let grid = BeatGrid(
+                beats: beats, downbeats: [0.0], bpm: fixture.bpm, beatsPerBar: 4,
+                barConfidence: 1.0, frameRate: 50, frameCount: 500
+            )
+            let corrected = grid.halvingOctaveCorrected()
+            #expect(corrected.bpm == fixture.bpm,
+                    "\(fixture.label) at \(fixture.bpm) BPM was incorrectly halved to \(corrected.bpm)")
+            #expect(corrected.beats.count == grid.beats.count,
+                    "\(fixture.label): beat count changed from \(grid.beats.count) to \(corrected.beats.count)")
+        }
     }
 
     // MARK: 4. Bisect search on a long grid

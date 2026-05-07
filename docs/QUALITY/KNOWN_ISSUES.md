@@ -171,7 +171,7 @@ Variance ring resets on `setGrid` / `reset` so each track starts fresh at the fl
 
 **Severity:** P2
 **Domain tag:** dsp.beat
-**Status:** Open
+**Status:** **Resolved 2026-05-07** — threshold raised 160 → 175 in `BeatGrid.halvingOctaveCorrected()`. New regression test `halvingOctaveCorrected_fastRockBPM_isNoOp` covers four fixtures (158 / 168 / 172.5 / 175 BPM) and confirms each passes through unchanged. Existing tests updated for the new boundary; the extreme-double-halve fixture moved from 322 → 360 BPM to retain factor-4 thinning coverage. **Manual validation pending** — next reactive Everlong session should install at `bpm=158 ± 8` (not the pre-fix 85.4 half-time alias).
 **Introduced:** DSP.3.5 (2026-05-05). `BeatGrid.halvingOctaveCorrected()` halves any BPM > 160 to the nearest sub-160 value. Threshold chosen at 160 because most pop / rock / electronic music falls below it. Surfaced 2026-05-07 when reactive Everlong (true ≈158 BPM) received a Beat This! raw output > 160, triggering halving down to 85.4 BPM — visibly wrong.
 
 **Expected behavior:** A track with true tempo in [160, 200] BPM (drum'n'bass, fast metal, jungle, fast electronic, "Everlong"-class rock) gets a grid at its true tempo, not the half-time alias. Halving should fire only when the raw analyser output is more than ~10–15 % above the genuine perceptual tempo — i.e. for true double-time errors.
