@@ -73,17 +73,27 @@ public struct DashboardCardLayout: Sendable {
             label: String, value: Float, valueText: String,
             fillColor: NSColor, range: ClosedRange<Float>
         )
+        /// Stacked: UPPERCASE 11 pt label on top, then a *progress* bar with
+        /// right-aligned value text on the same line below. Bar fills from
+        /// left to `value × innerBarWidth`. Value is clamped to [0, 1].
+        /// Use for unsigned ramps (beat phase, bar phase, frame budget).
+        /// Distinct from `.bar` which is a signed slice from centre.
+        case progressBar(label: String, value: Float, valueText: String, fillColor: NSColor)
 
         // Fixed row heights — encoded as static constants so future edits
         // surface as test failures (see `layoutHeight_matchesSumOfRows`).
         // Stacked rows: 11 pt label + 4 pt gap + (numeric 24 / bar+value 17).
         public static let singleHeight: CGFloat = 11 + labelToValueGap + 24    // = 39
         public static let barHeight: CGFloat    = 11 + labelToValueGap + 17    // = 32
+        /// Progress bars share the bar visual mass (label + 4 pt gap +
+        /// 17 pt bar+value band).
+        public static let progressBarHeight: CGFloat = barHeight
 
         public var height: CGFloat {
             switch self {
             case .singleValue: return Row.singleHeight
             case .bar:         return Row.barHeight
+            case .progressBar: return Row.progressBarHeight
             }
         }
     }

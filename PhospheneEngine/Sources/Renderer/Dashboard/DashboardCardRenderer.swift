@@ -162,6 +162,18 @@ public struct DashboardCardRenderer: Sendable {
                 on: textLayer,
                 cgContext: cgContext
             )
+        case let .progressBar(label, value, valueText, fillColor):
+            drawProgressBarRow(
+                label: label,
+                value: value,
+                valueText: valueText,
+                fillColor: fillColor,
+                rowTopY: rowTopY,
+                leftX: leftX,
+                rightX: rightX,
+                on: textLayer,
+                cgContext: cgContext
+            )
         }
     }
     // swiftlint:enable function_parameter_count
@@ -274,7 +286,7 @@ public struct DashboardCardRenderer: Sendable {
     }
     // swiftlint:enable function_parameter_count
 
-    private func drawBarChrome(
+    internal func drawBarChrome(
         barRect: CGRect,
         cornerRadius: CGFloat,
         cgContext: CGContext
