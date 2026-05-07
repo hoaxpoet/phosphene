@@ -124,12 +124,33 @@ extension SessionPreparer {
             drumsBeatGrid = .empty
         }
 
+        // Step 7 (BUG-007.8): per-track grid-vs-onset offset calibration.
+        let gridOnsetOffsetMs = Self.computeGridOnsetOffsetMs(preview: preview, grid: beatGrid)
+
         return CachedTrackData(
             stemWaveforms: stemWaveforms,
             stemFeatures: stemFeatures,
             trackProfile: profile,
             beatGrid: beatGrid,
-            drumsBeatGrid: drumsBeatGrid
+            drumsBeatGrid: drumsBeatGrid,
+            gridOnsetOffsetMs: gridOnsetOffsetMs
+        )
+    }
+
+    /// Replay the preview audio through the live BeatDetector offline and
+    /// return the median (gridBeat − onsetTime) offset in milliseconds
+    /// (BUG-007.8). Stored on `CachedTrackData` and applied at playback time
+    /// as the drift EMA's initial bias — eliminates the per-track drift
+    /// wandering observed in session 2026-05-07T22-00-00Z (drift averages
+    /// spanned −95 to +96 ms across a single playlist). Returns 0 when the
+    /// grid is empty or there's insufficient data.
+    nonisolated private static func computeGridOnsetOffsetMs(
+        preview: PreviewAudio, grid: BeatGrid
+    ) -> Double {
+        GridOnsetCalibrator().calibrate(
+            samples: preview.pcmSamples,
+            sampleRate: Double(preview.sampleRate),
+            grid: grid
         )
     }
 

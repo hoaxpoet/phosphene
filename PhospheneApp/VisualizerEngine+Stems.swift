@@ -1,3 +1,4 @@
+// swiftlint:disable file_length
 // VisualizerEngine+Stems — Background stem separation pipeline.
 // Runs StemSeparator on a utility-QoS queue at 5-second cadence,
 // feeds per-stem analysis to the render pipeline via buffer(3).
@@ -368,7 +369,11 @@ extension VisualizerEngine {
         if let identity, let cached = stemCache?.loadForPlayback(track: identity) {
             let replacedExisting = mirPipeline.liveDriftTracker.hasGrid
             pipeline.setStemFeatures(cached.stemFeatures)
-            mirPipeline.setBeatGrid(cached.beatGrid.offsetBy(0))
+            // BUG-007.8: pass per-track grid-vs-onset offset as initial drift bias.
+            mirPipeline.setBeatGrid(
+                cached.beatGrid.offsetBy(0),
+                initialDriftMs: cached.gridOnsetOffsetMs
+            )
             let grid = cached.beatGrid
             let title = identity.title
             if !grid.beats.isEmpty {

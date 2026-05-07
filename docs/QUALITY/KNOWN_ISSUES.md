@@ -8,6 +8,46 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 ---
 
+### BUG-007.8 — Per-track grid-vs-onset offset calibration
+
+**Severity:** P1 (visible — visual fires off the beat by track-specific amounts up to ±100 ms; the dominant residual sync issue after BUG-007.4/5/6 landed).
+**Domain tag:** dsp.beat
+**Status:** **Resolved 2026-05-07** — manual validation pending.
+**Introduced:** Pre-existing in all prior code; surfaced by session `2026-05-07T22-00-00Z` running an 8-track bass-forward playlist (Billie Jean / AOBTD / Seven Nation Army / Around the World / Get Lucky / Superstition / Levitating / bad guy). Drift averages spanned −95 to +96 ms across the playlist — a 191 ms range. The fixed `audioOutputLatencyMs = 50` constant from BUG-007.6 only compensated one direction; positive-drift tracks were over-corrected, negative-drift tracks under-corrected.
+
+**Resolved:** 2026-05-07. New `GridOnsetCalibrator` runs at preparation time alongside `BeatGridAnalyzer`, replaying the preview audio through the live `BeatDetector` offline and computing the median `(gridBeat − onsetTime)` offset. Stored on `CachedTrackData.gridOnsetOffsetMs`. Applied at playback-time `setBeatGrid` as the EMA's initial drift bias. The drift tracker still runs at runtime to fine-tune if conditions differ; calibration just gives it a correct starting point per track.
+
+**Expected behavior:** Visual orb fires on the kick the listener hears, regardless of track-specific differences in Beat This! grid timing vs sub-bass onset detector latency. Drift EMA converges near zero rather than chasing ±100 ms offsets.
+
+**Actual behavior (pre-fix):**
+- Drift varies ±95 ms per track on bass-forward playlists.
+- Fixed `audioOutputLatencyMs = 50` correction works for some tracks (negative-drift), fails on others (positive-drift).
+- User reports visual sync wandering across tracks even when lock state holds.
+
+**Reproduction steps:**
+1. Spotify-prepared session with mixed-genre playlist (rock + pop + hip-hop).
+2. Watch SpectralCartograph drift readout per track.
+3. Pre-fix: drift averages vary widely (Billie Jean −77 ms, bad guy +96 ms, AOBTD −95 ms).
+4. Visual orb sync varies track-to-track.
+
+**Suspected failure class:** `algorithm` (variable per-track offset between grid timing and onset detector — runtime EMA chases instead of preparation-time calibrating).
+
+**Diagnosis notes:**
+- Beat This! is calibrated on broadband perceptual beat; sub-bass onset detector fires on kick spectral peak in the 20–80 Hz band. The two timestamps for "the beat" can differ by track-specific amounts (10–150 ms).
+- Sources of variability: kick attack envelope shapes, sub-bass leakage from synth pads / bass guitar, Beat This!'s training-data biases, our onset detector's FFT-window centring.
+- Runtime drift EMA does eventually converge to the right offset, but takes ~4 onsets (~2 s) at 120 BPM. During that time the visual is off. Pre-loading the EMA to the calibrated value fixes this.
+- This is a *systemic* fix — not patching a symptom. Replaces the BUG-007.6 `audioOutputLatencyMs = 50` heuristic with per-track measured values. The BUG-007.6 constant is retained as a fallback for live-analysis tracks (no preparation-time calibration available).
+
+**Verification criteria:**
+- [x] Automated: `GridOnsetCalibratorTests` (5 tests) — empty grid, insufficient samples, silence, aligned kicks, offset kicks.
+- [x] Automated: `LiveBeatDriftTrackerTests` MARKs 36–38 — initialDriftMs seeds EMA, clamps to ±500 ms, backward-compat single-arg setGrid defaults to 0.
+- [ ] Manual: replay the 8-track bass-forward playlist from session `T22-00-00Z`; drift averages near ±20 ms (down from ±100 ms).
+- [ ] Manual: visual orb fires on the kick the listener hears across all tracks.
+
+**Related:** BUG-007.4/5/6 (orthogonal — patch other symptoms). BUG-008 (offline BPM disagreement — also addresses Beat This! limitations but at the BPM level, not timing).
+
+---
+
 ### BUG-007.4 — Beat-counter "1" misaligned with song's actual downbeat on prepared-cache tracks
 
 **Severity:** P2

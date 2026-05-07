@@ -353,6 +353,14 @@ public final class MIRPipeline: @unchecked Sendable {
         logger.info("MIR_BEAT_GRID: set (\(grid?.beats.count ?? 0) beats)")
     }
 
+    /// Set the offline `BeatGrid` AND seed the drift EMA with the calibrated
+    /// per-track offset (BUG-007.8). Used by the prepared-cache install path.
+    public func setBeatGrid(_ grid: BeatGrid?, initialDriftMs: Double) {
+        liveDriftTracker.setGrid(grid ?? .empty, initialDriftMs: initialDriftMs)
+        let driftStr = String(format: "%+.1f", initialDriftMs)
+        logger.info("MIR_BEAT_GRID: set (\(grid?.beats.count ?? 0) beats, initialDrift=\(driftStr) ms)")
+    }
+
     /// Reset all analyzers and internal state.
     public func reset() {
         logger.info("MIR_RESET: resetting all analyzers (track change)")
