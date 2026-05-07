@@ -18,6 +18,15 @@ public final class PresetLoader: @unchecked Sendable {
     /// All loaded presets, sorted by name.
     public private(set) var presets: [LoadedPreset] = []
 
+    /// Resource URL of the bundled `Shaders/` directory in the Presets module.
+    /// Public so harness tests in other modules (e.g. `PresetVisualReviewTests`) can
+    /// reach the shader sources via the same lookup the loader uses internally
+    /// — `Bundle.module` resolves to the test target's bundle when called from
+    /// outside this module, which has no `Shaders` resource. BUG-002.
+    public static var bundledShadersURL: URL? {
+        Bundle.module.url(forResource: "Shaders", withExtension: nil)
+    }
+
     /// Index of the currently active preset.
     public private(set) var currentIndex: Int = 0
 
