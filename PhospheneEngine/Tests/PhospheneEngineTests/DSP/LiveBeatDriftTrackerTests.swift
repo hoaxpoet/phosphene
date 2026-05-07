@@ -1005,6 +1005,85 @@ struct LiveBeatDriftTrackerTests {
         }
     }
 
+    // MARK: 33. BUG-007.4c — kick-on-1+3 alternating pattern auto-rotates via first-onset tiebreaker
+
+    /// HUMBLE / SLTS / Everlong style: kick on raw slots 0 + 2 with similar
+    /// counts. BUG-007.4b's 1.5× ratio rejects this (1.0× ratio). BUG-007.4c's
+    /// alternating-pattern detector picks the slot matching the first tight
+    /// onset (typically the song's downbeat).
+    @Test("autoRotate_kickOn1And3_picksFirstOnsetSlot")
+    func test_autoRotateKickOn1And3PicksFirstOnsetSlot() {
+        let grid = makeUniformGrid(bpm: 120, beats: 64, beatsPerBar: 4)
+        let tracker = LiveBeatDriftTracker()
+        tracker.audioOutputLatencyMs = 0
+        tracker.setGrid(grid)
+
+        // Drive 8 onsets alternating raw slot 2 then raw slot 0:
+        //   First onset on slot 2 → firstTightOnsetRawSlot = 2.
+        //   Counts end up [4, 0, 4, 0]. Top = 4 (slot 0), runner = 4 (slot 2).
+        //   1.25× tie → BUG-007.4c kicks in. Tiebreaker: slot 2 (first onset).
+        //   Expected offset = (4 − 2) % 4 = 2.
+        let dt: Float = 1.0 / 60.0
+        let beatPeriod = 0.5
+        for i in 0..<8 {
+            // Even i → slot 2 (beats 2, 6, 10, ... at times 1.0, 3.0, 5.0, ...)
+            // Odd i → slot 0 (beats 4, 8, 12, ... at times 2.0, 4.0, 6.0, ...)
+            let beatIdx = (i % 2 == 0) ? (2 + (i / 2) * 4) : (4 + (i / 2) * 4)
+            let t = Double(beatIdx) * beatPeriod
+            _ = tracker.update(subBassOnset: true, playbackTime: t, deltaTime: dt)
+        }
+        #expect(tracker.barPhaseOffset == 2,
+                "BUG-007.4c: kick-on-1+3 with first onset on slot 2 → offset should be 2; got \(tracker.barPhaseOffset)")
+    }
+
+    // MARK: 34. BUG-007.4c — alternating pattern with first onset on slot 0 stays at offset 0
+
+    /// Same alternating distribution but first onset on slot 0 → tiebreaker
+    /// picks slot 0 → offset stays 0 (no rotation needed).
+    @Test("autoRotate_kickOn1And3_firstOnsetSlot0_noRotation")
+    func test_autoRotateKickOn1And3FirstOnsetSlot0() {
+        let grid = makeUniformGrid(bpm: 120, beats: 64, beatsPerBar: 4)
+        let tracker = LiveBeatDriftTracker()
+        tracker.audioOutputLatencyMs = 0
+        tracker.setGrid(grid)
+
+        // Drive 8 onsets: slot 0 first, then alternating with slot 2.
+        let dt: Float = 1.0 / 60.0
+        let beatPeriod = 0.5
+        for i in 0..<8 {
+            let beatIdx = (i % 2 == 0) ? (0 + (i / 2) * 4) : (2 + (i / 2) * 4)
+            let t = Double(beatIdx) * beatPeriod
+            _ = tracker.update(subBassOnset: true, playbackTime: t, deltaTime: dt)
+        }
+        #expect(tracker.barPhaseOffset == 0,
+                "BUG-007.4c: kick-on-1+3 with first onset on slot 0 → no rotation; got offset=\(tracker.barPhaseOffset)")
+    }
+
+    // MARK: 35. BUG-007.4c — 4-on-the-floor still produces no rotation (regression guard)
+
+    /// 4-on-the-floor (all 4 slots equal) must NOT trigger auto-rotate. The
+    /// alternating-pattern detector requires the *other* slots be near-zero.
+    /// With all slots holding ~25 % of total, the pattern is rejected.
+    @Test("autoRotate_fourOnTheFloor_noRotation_BUG_007_4c_regression")
+    func test_autoRotateFourOnTheFloorNoRotationRegression() {
+        let grid = makeUniformGrid(bpm: 120, beats: 64, beatsPerBar: 4)
+        let tracker = LiveBeatDriftTracker()
+        tracker.audioOutputLatencyMs = 0
+        tracker.setGrid(grid)
+
+        // Drive 16 onsets — every beat. Counts = [4, 4, 4, 4]. Top = runner = 4
+        // → tie ratio met. BUT others (slots 1+3) have 8 hits, NOT ≤20 % of top.
+        // Pattern rejected. No rotation.
+        let dt: Float = 1.0 / 60.0
+        let beatPeriod = 0.5
+        for i in 0..<16 {
+            let t = Double(i) * beatPeriod
+            _ = tracker.update(subBassOnset: true, playbackTime: t, deltaTime: dt)
+        }
+        #expect(tracker.barPhaseOffset == 0,
+                "BUG-007.4c: 4-on-the-floor must NOT trigger rotation; got offset=\(tracker.barPhaseOffset)")
+    }
+
     // MARK: 18. BUG-007.2 regression — raw grid (no offsetBy) drops lock after coverage (negative case)
 
     /// Documents the pre-fix behaviour as a known-bad path. Without offsetBy(), the prepared-cache

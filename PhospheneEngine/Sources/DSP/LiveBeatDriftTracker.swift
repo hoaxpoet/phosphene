@@ -149,6 +149,19 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
     /// Sub-threshold = "not enough data," skip and try again at next match. Prevents
     /// premature rotation on a 1-onset histogram.
     private static let autoRotateMinDominantCount: Int = 4
+    /// Tolerance for the kick-on-1+3 close-tie detection (BUG-007.4c). Top and
+    /// runner-up are considered "tied" if their counts are within this ratio of
+    /// each other (e.g. 4 vs 5 = 1.25× → tied). Most rock/hip-hop tracks have
+    /// kick on 1+3 with slight emphasis on 1; allowing up to 1.25× covers normal
+    /// variance while still detecting clear-winner cases (which take the original
+    /// `autoRotateDominanceRatio` path).
+    private static let autoRotateAlternatingTieRatio: Double = 1.25
+    /// Floor (as fraction of top count) below which "other" slots are considered
+    /// near-zero for kick-on-1+3 detection (BUG-007.4c). With 8 onsets on slots
+    /// 0+2, slots 1+3 should sum to ≤ 20 % of slot 0's count to qualify as the
+    /// alternating pattern. Looser fraction admits noise; tighter rejects valid
+    /// kick-on-1+3 with occasional hi-hat-as-bass false positives.
+    private static let autoRotateAlternatingNoiseFraction: Double = 0.20
     /// Floor for the BPM-aware lock-release gate (BUG-007.5 part 1 + part 3).
     /// At fast tempos (120+ BPM, 500 ms beat period) the gate stays at this
     /// floor — 2.5 s ≈ 5 beats. At slow tempos (HUMBLE half-time at 76 BPM,
@@ -210,6 +223,12 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
     /// True after the user pressed `Shift+B` (or `barPhaseOffset` was set
     /// externally). Suppresses any pending auto-rotate so user intent wins.
     private var manualRotationPressed: Bool = false
+    /// Raw slot (`beatsSinceDownbeat`) of the *first* tight onset in the current
+    /// track (BUG-007.4c). Used as the tiebreaker when the kick-on-1+3 pattern
+    /// is detected: two slots have similar high counts and the first tight onset
+    /// usually lands on the song's downbeat (most listeners start playback at
+    /// or near a strong-beat moment). Reset to nil on `setGrid` / `reset`.
+    private var firstTightOnsetRawSlot: Int?
     private let lock = NSLock()
 
     // MARK: - Init
@@ -371,6 +390,7 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
         slotOnsetCounts.removeAll(keepingCapacity: true)      // BUG-007.4b
         autoRotateAttempted = false                            // BUG-007.4b
         manualRotationPressed = false                          // BUG-007.4b
+        firstTightOnsetRawSlot = nil                           // BUG-007.4c
         _barPhaseOffset = 0   // BUG-007.4: cleared on track change so each track starts fresh
         // _audioOutputLatencyMs intentionally NOT reset — it's a system property.
     }
@@ -439,6 +459,13 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
                         if rawSlot < slotOnsetCounts.count {
                             slotOnsetCounts[rawSlot] += 1
                         }
+                        // BUG-007.4c: capture the very first tight onset's slot
+                        // as the kick-on-1+3 tiebreaker. Most tracks start with
+                        // a clear downbeat (or the first kick we see is on the
+                        // song's "1" of the bar after the intro).
+                        if firstTightOnsetRawSlot == nil {
+                            firstTightOnsetRawSlot = rawSlot
+                        }
                     }
                     maybeAutoRotateBarPhaseLocked()
                 } else {
@@ -483,15 +510,21 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
     // MARK: - Helpers
 
     /// Auto-rotate `_barPhaseOffset` once per track based on the kick-density
-    /// histogram in `slotOnsetCounts` (BUG-007.4b). Fires when:
+    /// histogram in `slotOnsetCounts`. Fires when:
     ///   - `matchedOnsets >= autoRotateMatchThreshold` (lock has stabilised)
     ///   - The user has not manually rotated this track yet
     ///   - The auto-rotate has not already attempted on this track
-    /// Selects the dominant raw slot (with `beatsSinceDownbeat` indexing) and
-    /// computes the offset that rotates that slot to position 0 (the displayed
-    /// "1"). If no clear winner (top count < `autoRotateDominanceRatio` × runner-up,
-    /// or top < `autoRotateMinDominantCount`), leaves the offset alone — manual
-    /// `Shift+B` remains the fallback for ambiguous cases (four-on-the-floor).
+    ///
+    /// Two paths:
+    ///   - **BUG-007.4b** (single dominant slot): top count ≥ 1.5× runner-up.
+    ///     Picks the dominant raw slot and rotates to displayed "1".
+    ///   - **BUG-007.4c** (kick-on-1+3 alternating pattern): top and runner-up
+    ///     within 1.25× of each other AND other slots near zero. Tiebreaker:
+    ///     `firstTightOnsetRawSlot` if it matches one of the two leaders;
+    ///     else falls back to the dominant.
+    ///
+    /// Otherwise (no signal — four-on-the-floor with equal density on all
+    /// slots), leaves the offset alone. Manual `Shift+B` remains the fallback.
     /// Caller must hold the lock.
     private func maybeAutoRotateBarPhaseLocked() {
         guard !autoRotateAttempted,
@@ -503,29 +536,71 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
         autoRotateAttempted = true   // one-shot regardless of outcome
         let bpb = slotOnsetCounts.count
         guard bpb >= 2 else { return }   // 1/X meter has nothing to rotate
-        // Find dominant slot and runner-up. Avoid `.enumerated().sorted` —
-        // SwiftLint's `unused_enumerated` flags the closure even when `.offset`
-        // is consumed downstream.
+        // Find dominant slot and runner-up.
         var dominantSlot = 0
         var topCount = slotOnsetCounts[0]
         for idx in slotOnsetCounts.indices where slotOnsetCounts[idx] > topCount {
             topCount = slotOnsetCounts[idx]
             dominantSlot = idx
         }
+        var runnerUpSlot = -1
         var runnerUp = 0
         for idx in slotOnsetCounts.indices where idx != dominantSlot && slotOnsetCounts[idx] > runnerUp {
             runnerUp = slotOnsetCounts[idx]
+            runnerUpSlot = idx
         }
         guard topCount >= Self.autoRotateMinDominantCount else { return }
-        let ratioFloor = max(Double(runnerUp), 1.0) * Self.autoRotateDominanceRatio
-        guard Double(topCount) >= ratioFloor else { return }
-        // Rotate so the dominant slot maps to displayed slot 0:
-        //   displayedSlot = (rawSlot + offset) mod bpb = 0  ⇒  offset = -rawSlot mod bpb
-        _barPhaseOffset = ((bpb - dominantSlot) % bpb + bpb) % bpb
+        let chosenSlot = chooseAutoRotateSlotLocked(
+            dominantSlot: dominantSlot,
+            topCount: topCount,
+            runnerUpSlot: runnerUpSlot,
+            runnerUp: runnerUp,
+            totalOnsets: slotOnsetCounts.reduce(0, +)
+        )
+        guard let chosen = chosenSlot else { return }
+        // Rotate so the chosen slot maps to displayed slot 0:
+        //   displayedSlot = (rawSlot + offset) mod bpb = 0 ⇒ offset = −rawSlot mod bpb
+        _barPhaseOffset = ((bpb - chosen) % bpb + bpb) % bpb
         let countsStr = slotOnsetCounts.map(String.init).joined(separator: ",")
         logger.info(
-            "BUG-007.4b auto-rotate: counts=[\(countsStr)] dominant=\(dominantSlot) → offset=\(self._barPhaseOffset)"
+            "BUG-007.4 auto-rotate: counts=[\(countsStr)] chosen=\(chosen) → offset=\(self._barPhaseOffset)"
         )
+    }
+
+    /// Pick the slot to rotate to "1" (or return nil to leave the offset alone).
+    /// Implements BUG-007.4b (single dominant) + BUG-007.4c (alternating-pattern
+    /// tiebreaker). Caller must hold the lock; pure given the inputs.
+    private func chooseAutoRotateSlotLocked(
+        dominantSlot: Int, topCount: Int,
+        runnerUpSlot: Int, runnerUp: Int,
+        totalOnsets: Int
+    ) -> Int? {
+        // BUG-007.4b: clear single dominant slot.
+        let dominanceFloor = max(Double(runnerUp), 1.0) * Self.autoRotateDominanceRatio
+        if Double(topCount) >= dominanceFloor {
+            return dominantSlot
+        }
+        // BUG-007.4c: kick-on-1+3 alternating pattern.
+        // Need: runner-up has enough hits, top/runner counts are within tie ratio,
+        // and the rest of the slots are negligible (other-slot total ≤ 20 % of top).
+        guard runnerUp >= Self.autoRotateMinDominantCount,
+              runnerUpSlot >= 0 else {
+            return nil
+        }
+        let tieRatioMet =
+            Double(topCount) <= Double(runnerUp) * Self.autoRotateAlternatingTieRatio
+            && Double(runnerUp) <= Double(topCount) * Self.autoRotateAlternatingTieRatio
+        let othersCount = totalOnsets - topCount - runnerUp
+        let noiseCeiling = max(2, Int(Self.autoRotateAlternatingNoiseFraction * Double(topCount)))
+        let othersAreNoise = othersCount <= noiseCeiling
+        guard tieRatioMet, othersAreNoise else { return nil }
+        // Tiebreaker: pick whichever of {dominantSlot, runnerUpSlot} matches
+        // `firstTightOnsetRawSlot` (typically the song's downbeat). If first-onset
+        // doesn't match either, fall back to the dominant slot.
+        if let first = firstTightOnsetRawSlot, first == dominantSlot || first == runnerUpSlot {
+            return first
+        }
+        return dominantSlot
     }
 
     /// Push a signed `instantDrift − drift` value into the variance ring buffer
