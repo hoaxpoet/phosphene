@@ -42,18 +42,9 @@ struct DiagnosticsSettingsSection: View {
                 }
             }
 
-            Section(NSLocalizedString("settings.diagnostics.performance.title", comment: "")) {
-                Toggle(
-                    NSLocalizedString("settings.diagnostics.performance_warnings.label", comment: ""),
-                    isOn: Binding(
-                        get: { viewModel.showPerformanceWarnings },
-                        set: { viewModel.showPerformanceWarnings = $0 }
-                    )
-                )
-                Text(NSLocalizedString("settings.diagnostics.performance_warnings.caption", comment: ""))
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
+            // showPerformanceWarnings deleted in QR.4 / D-091: setting was never
+            // wired to a consumer. The dashboard PERF card already surfaces
+            // frame-budget overruns; a separate toast surface was redundant.
 
             Section {
                 Button(NSLocalizedString("settings.diagnostics.open_sessions_folder", comment: "")) {

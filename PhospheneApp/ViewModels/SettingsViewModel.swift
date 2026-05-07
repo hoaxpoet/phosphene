@@ -92,10 +92,14 @@ final class SettingsViewModel: ObservableObject {
         set { store.qualityCeiling = newValue }
     }
 
+    #if DEBUG
+    /// QR.4 / D-091: persistence retained so DEBUG users round-trip their state,
+    /// but the UI surface is gated on `#if DEBUG` until Phase MD ships.
     var includeMilkdropPresets: Bool {
         get { store.includeMilkdropPresets }
         set { store.includeMilkdropPresets = newValue }
     }
+    #endif
 
     var reducedMotion: ReducedMotionPreference {
         get { store.reducedMotion }
@@ -127,10 +131,8 @@ final class SettingsViewModel: ObservableObject {
         set { store.sessionRetention = newValue }
     }
 
-    var showPerformanceWarnings: Bool {
-        get { store.showPerformanceWarnings }
-        set { store.showPerformanceWarnings = newValue }
-    }
+    // showPerformanceWarnings was deleted in QR.4 / D-091. The dashboard PERF
+    // card already surfaces frame-budget overruns; a separate toast was redundant.
 
     // MARK: - Actions
 

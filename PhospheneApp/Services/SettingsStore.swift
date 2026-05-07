@@ -6,8 +6,9 @@
 //      existing call sites compiling).
 //   3. DeviceTier override implemented in PresetScoringContextProvider (app layer only).
 //   4. PresetCategory enum used for blocklist (no PresetFamily in codebase).
-//   5. Only phosphene.showLiveAdaptationToasts requires migration; showPerformanceWarnings
-//      is new (no old key). SettingsMigrator handles the one migration.
+//   5. Only phosphene.showLiveAdaptationToasts requires migration. (showPerformanceWarnings
+//      was deleted in QR.4 / D-091 — no consumer ever wired it; FrameBudgetManager's
+//      dashboard PERF card already surfaces frame-budget overruns.)
 //   6. SessionRecorder gains enabled: Bool param (applies at next session start).
 //
 // Key scheme: "phosphene.settings.<group>.<key>"
@@ -17,7 +18,7 @@
 //   - sessionRecorderEnabled:   next session start
 //   - reducedMotion:            next frame / render tick (read by SessionStateViewModel)
 //   - showLiveAdaptationToasts: immediate (LiveAdaptationToastBridge reads on each event)
-//   - showPerformanceWarnings:  Inc 6.2 downstream wiring; flag stored now
+//   - includeMilkdropPresets:   persisted; UI surface gated on #if DEBUG (QR.4 / D-091)
 //   - resetOnboarding:          next app launch
 
 import Combine
@@ -51,7 +52,6 @@ final class SettingsStore: ObservableObject {
         // Diagnostics
         static let sessionRecorderEnabled  = "phosphene.settings.diagnostics.sessionRecorderEnabled"
         static let sessionRetention        = "phosphene.settings.diagnostics.sessionRetention"
-        static let showPerformanceWarnings = "phosphene.settings.diagnostics.showPerformanceWarnings"
         // Onboarding (not settings — cleared by resetOnboarding only)
         static let photosensitivityAcknowledged = "phosphene.onboarding.photosensitivityAcknowledged"
     }
@@ -109,10 +109,6 @@ final class SettingsStore: ObservableObject {
         didSet { encode(sessionRetention, forKey: Keys.sessionRetention) }
     }
 
-    @Published var showPerformanceWarnings: Bool = false {
-        didSet { defaults.set(showPerformanceWarnings, forKey: Keys.showPerformanceWarnings) }
-    }
-
     // MARK: - Events
 
     /// Published when captureMode or sourceAppOverride changes so CaptureModeReconciler
@@ -159,7 +155,6 @@ final class SettingsStore: ObservableObject {
             ? true
             : defaults.bool(forKey: Keys.sessionRecorderEnabled)
         sessionRetention = decodeOrDefault(.lastN10, forKey: Keys.sessionRetention)
-        showPerformanceWarnings = defaults.bool(forKey: Keys.showPerformanceWarnings)
     }
 
     // MARK: - Encode helpers

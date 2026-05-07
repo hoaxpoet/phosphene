@@ -49,6 +49,10 @@ struct VisualsSettingsSection: View {
             }
 
             Section(NSLocalizedString("settings.visuals.presets.title", comment: "")) {
+                #if DEBUG
+                // QR.4 / D-091: gated behind #if DEBUG until Phase MD ships.
+                // Persistence is retained in SettingsStore so debug round-trips
+                // preserve user state; production builds never see the toggle.
                 Toggle(
                     NSLocalizedString("settings.visuals.milkdrop.label", comment: ""),
                     isOn: Binding(
@@ -63,6 +67,7 @@ struct VisualsSettingsSection: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
+                #endif
 
                 Picker(
                     NSLocalizedString("settings.visuals.reduced_motion.label", comment: ""),

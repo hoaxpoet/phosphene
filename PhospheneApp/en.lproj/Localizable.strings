@@ -198,10 +198,25 @@
 "playback.shortcut_help.title"          = "Keyboard Shortcuts";
 "playback.shortcut_help.dismiss_hint"   = "Press any key to dismiss";
 
+// MARK: - Connecting (QR.4)
+
+"connecting.headline"             = "Connecting";
+"connecting.subtext"              = "Reading your playlist…";
+"connecting.appleMusic.subtext"   = "Reading your Apple Music playlist…";
+"connecting.spotify.subtext"      = "Reading your Spotify playlist…";
+"connecting.localFolder.subtext"  = "Reading the folder…";
+"connecting.cta.cancel"           = "Cancel";
+
 // MARK: - Ended
 
-"ended.headline"    = "Session Ended";
-"ended.subtext"     = "Start a new session to continue";
+"ended.headline"            = "Session complete";
+"ended.subtext"             = "Start a new session to continue";
+/* %lld = track count (Int) */
+"ended.summary.tracks"      = "%lld tracks";
+/* %@ = formatted duration string e.g. "12 min" or "—" */
+"ended.summary.duration"    = "%@";
+"ended.cta.newSession"      = "Start another session";
+"ended.cta.openFolder"      = "Open sessions folder";
 
 // MARK: - Full-screen error view (Part B)
 
@@ -277,10 +292,8 @@
 "settings.diagnostics.retention.one_day"   = "Last 24 hours";
 "settings.diagnostics.retention.one_week"  = "Last 7 days";
 
-// Diagnostics — performance
-"settings.diagnostics.performance.title"              = "Developer";
-"settings.diagnostics.performance_warnings.label"     = "Show performance warnings";
-"settings.diagnostics.performance_warnings.caption"   = "Logs frame budget overruns to the debug overlay.";
+// Diagnostics — performance: showPerformanceWarnings was deleted in QR.4 / D-091.
+// The dashboard PERF card surfaces frame-budget overruns; a separate toast was redundant.
 
 // Diagnostics — actions
 "settings.diagnostics.open_sessions_folder" = "Open sessions folder";
