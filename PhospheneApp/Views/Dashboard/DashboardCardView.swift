@@ -1,12 +1,12 @@
-// DashboardCardView — Renders one `DashboardCardLayout` as SwiftUI (DASH.7).
+// DashboardCardView — Renders one `DashboardCardLayout` as SwiftUI
+// (DASH.7 + DASH.7.1).
 //
-// Painting order: chrome (rounded `Color.surfaceRaised`@0.92α + 1px
-// `Color.border` stroke) → title → rows. The rounded chrome is the .impeccable
-// "purposeful glassmorphism" exception (D-082) — kept identical to DASH.6.
-//
-// Width is fixed at `layout.width` to honor the design contract; height
-// reflows to match `rows.reduce(...)` since DASH.7 cards may include or
-// omit rows based on state (PerfCardBuilder hides QUALITY / ML when healthy).
+// Per DASH.7.1 brand-alignment (D-088): no per-card chrome. The card
+// is now a typographic section — Clash Display title at 18pt, followed
+// by rows. Container chrome (material panel + dividers) is shared at
+// the `DashboardOverlayView` level. This honors the .impeccable.md
+// anti-pattern "no rounded-rectangle cards … use whitespace and
+// typography hierarchy instead".
 
 import Renderer
 import Shared
@@ -17,27 +17,30 @@ import SwiftUI
 struct DashboardCardView: View {
     let layout: DashboardCardLayout
 
+    /// Lazily resolve once per app launch — the resolution is cached
+    /// inside `DashboardFontLoader` so subsequent calls are free.
+    private var fontResolution: DashboardFontLoader.FontResolution {
+        DashboardFontLoader.resolveFonts(in: nil)
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: layout.rowSpacing) {
+        VStack(alignment: .leading, spacing: DashboardTokens.Spacing.sm) {
             if !layout.title.isEmpty {
                 Text(layout.title)
-                    .font(.system(size: layout.titleSize, weight: .medium))
-                    .tracking(DashboardTokens.TypeScale.labelTracking)
-                    .foregroundColor(Color(nsColor: DashboardTokens.Color.textBody))
+                    .font(.custom(
+                        fontResolution.displayFontName,
+                        size: DashboardTokens.TypeScale.bodyLarge,
+                        relativeTo: .title3
+                    ))
+                    .foregroundColor(Color(nsColor: DashboardTokens.Color.textHeading))
+                    .accessibilityAddTraits(.isHeader)
             }
-            ForEach(Array(layout.rows.enumerated()), id: \.offset) { _, row in
-                DashboardRowView(row: row)
+            VStack(alignment: .leading, spacing: layout.rowSpacing) {
+                ForEach(Array(layout.rows.enumerated()), id: \.offset) { _, row in
+                    DashboardRowView(row: row, fontResolution: fontResolution)
+                }
             }
         }
-        .padding(layout.padding)
-        .frame(width: layout.width, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: DashboardTokens.Spacing.xs)
-                .fill(Color(nsColor: DashboardTokens.Color.surfaceRaised).opacity(0.92))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: DashboardTokens.Spacing.xs)
-                .strokeBorder(Color(nsColor: DashboardTokens.Color.border), lineWidth: 1)
-        )
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

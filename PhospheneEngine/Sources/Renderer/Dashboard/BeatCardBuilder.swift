@@ -69,12 +69,17 @@ public struct BeatCardBuilder: Sendable {
     // MARK: - Row makers
 
     private func makeModeRow(sessionMode: Int) -> DashboardCardLayout.Row {
+        // Status colours mapped onto the brand palette (DASH.7.1, D-088):
+        //   REACTIVE / UNLOCKED → textMuted    (no signal yet)
+        //   LOCKING             → coralMuted   (warmth arriving, not yet at rest)
+        //   LOCKED              → teal         (analytical/precision — the data is locked in)
+        // Replaces the foreign statusYellow / statusGreen from DASH.3.
         let value: String
         let color: NSColor
         switch sessionMode {
         case 1:  value = "UNLOCKED"; color = DashboardTokens.Color.textMuted
-        case 2:  value = "LOCKING";  color = DashboardTokens.Color.statusYellow
-        case 3:  value = "LOCKED";   color = DashboardTokens.Color.statusGreen
+        case 2:  value = "LOCKING";  color = DashboardTokens.Color.coralMuted
+        case 3:  value = "LOCKED";   color = DashboardTokens.Color.teal
         default: value = "REACTIVE"; color = DashboardTokens.Color.textMuted
         }
         return .singleValue(label: "MODE", value: value, valueColor: color)

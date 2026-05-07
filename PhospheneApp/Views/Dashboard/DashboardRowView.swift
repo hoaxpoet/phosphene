@@ -1,16 +1,19 @@
 // DashboardRowView — Renders one `DashboardCardLayout.Row` as SwiftUI
-// (DASH.7).
+// (DASH.7 + DASH.7.1).
 //
 // Four row variants:
 //   .singleValue   — UPPERCASE label on top, large numeric value below.
 //   .bar           — UPPERCASE label, signed bar from centre + value text.
 //   .progressBar   — UPPERCASE label, left-to-right unsigned ramp + value.
-//   .timeseries    — UPPERCASE label, sparkline (last N samples) + value.
+//   .timeseries    — UPPERCASE label, sparkline (last N samples).
 //
-// Color tokens drawn from `DashboardTokens.Color` so the SwiftUI port matches
-// the DASH.6 contract. SF Symbol status indicators decorate the .progressBar
-// row when its `fillColor` reads as a status colour (PERF FRAME's primary
-// signal — D-087 PERF semantic clarity).
+// DASH.7.1 brand-alignment changes (D-088):
+//   • Drops SF Symbol status icons (web-admin trope; Sakamoto-liner-note
+//     aesthetic is text-and-form). Status reads via value-text colour.
+//   • Empty `.timeseries` valueText collapses the right-side numeric column
+//     entirely — the sparkline IS the readout.
+//   • Labels and value text use Epilogue when registered; SF Mono retained
+//     for numerics where mono alignment matters.
 
 import Renderer
 import Shared
@@ -20,6 +23,7 @@ import SwiftUI
 
 struct DashboardRowView: View {
     let row: DashboardCardLayout.Row
+    let fontResolution: DashboardFontLoader.FontResolution
 
     var body: some View {
         switch row {
@@ -56,12 +60,9 @@ struct DashboardRowView: View {
     private func singleValueRow(label: String, value: String, valueColor: NSColor) -> some View {
         VStack(alignment: .leading, spacing: DashboardCardLayout.labelToValueGap) {
             rowLabel(label)
-            HStack(spacing: 6) {
-                statusIcon(for: valueColor)
-                Text(value)
-                    .font(.system(size: DashboardTokens.TypeScale.hero, weight: .medium, design: .monospaced))
-                    .foregroundColor(Color(nsColor: valueColor))
-            }
+            Text(value)
+                .font(.system(size: DashboardTokens.TypeScale.numeric, weight: .medium, design: .monospaced))
+                .foregroundColor(Color(nsColor: valueColor))
         }
     }
 
@@ -80,10 +81,12 @@ struct DashboardRowView: View {
                 SignedBarView(value: value, range: range, fillColor: fillColor)
                     .frame(height: 6)
                     .frame(maxWidth: .infinity)
-                Text(valueText)
-                    .font(.system(size: DashboardTokens.TypeScale.body, design: .monospaced))
-                    .foregroundColor(Color(nsColor: fillColor))
-                    .frame(width: 56, alignment: .trailing)
+                if !valueText.isEmpty {
+                    Text(valueText)
+                        .font(.system(size: DashboardTokens.TypeScale.body, design: .monospaced))
+                        .foregroundColor(Color(nsColor: fillColor))
+                        .frame(width: 56, alignment: .trailing)
+                }
             }
             .frame(height: 17)
         }
@@ -98,18 +101,17 @@ struct DashboardRowView: View {
         fillColor: NSColor
     ) -> some View {
         VStack(alignment: .leading, spacing: DashboardCardLayout.labelToValueGap) {
-            HStack(spacing: 6) {
-                rowLabel(label)
-                statusIcon(for: fillColor)
-            }
+            rowLabel(label)
             HStack(spacing: 8) {
                 ProgressBarView(value: value, fillColor: fillColor)
                     .frame(height: 6)
                     .frame(maxWidth: .infinity)
-                Text(valueText)
-                    .font(.system(size: DashboardTokens.TypeScale.body, design: .monospaced))
-                    .foregroundColor(Color(nsColor: fillColor))
-                    .frame(width: 86, alignment: .trailing)
+                if !valueText.isEmpty {
+                    Text(valueText)
+                        .font(.system(size: DashboardTokens.TypeScale.body, design: .monospaced))
+                        .foregroundColor(Color(nsColor: fillColor))
+                        .frame(width: 86, alignment: .trailing)
+                }
             }
             .frame(height: 17)
         }
@@ -130,10 +132,16 @@ struct DashboardRowView: View {
                 SparklineView(samples: samples, range: range, fillColor: fillColor)
                     .frame(height: 32)
                     .frame(maxWidth: .infinity)
-                Text(valueText)
-                    .font(.system(size: DashboardTokens.TypeScale.body, design: .monospaced))
-                    .foregroundColor(Color(nsColor: fillColor))
-                    .frame(width: 56, alignment: .trailing)
+                // valueText is intentionally empty for STEMS rows (D-088 P1.6) —
+                // the sparkline IS the readout. The fallback below preserves the
+                // .timeseries variant's API for any future caller that does
+                // want a numeric trailer.
+                if !valueText.isEmpty {
+                    Text(valueText)
+                        .font(.system(size: DashboardTokens.TypeScale.body, design: .monospaced))
+                        .foregroundColor(Color(nsColor: fillColor))
+                        .frame(width: 56, alignment: .trailing)
+                }
             }
             .frame(height: 32)
         }
@@ -143,25 +151,13 @@ struct DashboardRowView: View {
 
     private func rowLabel(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: DashboardTokens.TypeScale.label, weight: .medium))
+            .font(.custom(
+                fontResolution.proseMediumFontName,
+                size: DashboardTokens.TypeScale.label,
+                relativeTo: .caption
+            ))
             .tracking(DashboardTokens.TypeScale.labelTracking)
             .foregroundColor(Color(nsColor: DashboardTokens.Color.textBody))
-    }
-
-    /// SF Symbol decorating status-coloured rows — green check, yellow
-    /// warning, muted dot. Helps Matt's "is this good or bad?" question
-    /// without relying on colour alone (also accessibility positive).
-    @ViewBuilder
-    private func statusIcon(for color: NSColor) -> some View {
-        if color == DashboardTokens.Color.statusGreen {
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundColor(Color(nsColor: color))
-                .font(.system(size: 11))
-        } else if color == DashboardTokens.Color.statusYellow {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundColor(Color(nsColor: color))
-                .font(.system(size: 11))
-        }
     }
 }
 

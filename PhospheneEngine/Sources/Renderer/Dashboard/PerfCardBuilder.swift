@@ -1,30 +1,28 @@
 // PerfCardBuilder — Maps a `PerfSnapshot` to a `DashboardCardLayout` for
-// the PERF card (DASH.5 → DASH.7).
+// the PERF card.
 //
 // Pure function: no Metal, no allocations beyond the resulting layout.
 // Safe to call every frame.
 //
-// Display contract (DASH.7 — supersedes DASH.5):
+// Display contract (DASH.7 + DASH.7.1):
 //   FRAME   — always present. valueText shows "{recent} / {target} ms"
-//             so the budget headroom is legible at a glance. Bar fill
-//             ratio is clamped to [0, 1] (single source of truth — the
-//             `.progressBar` row variant has no range field, asymmetric
-//             with STEMS where the renderer clamps).
-//             Status colour: muted (no obs yet) / green (ratio < 0.7) /
-//             yellow (ratio ≥ 0.7).
+//             so the budget headroom is legible at a glance. Status
+//             colour: textMuted (no obs yet) / teal (data healthy) /
+//             coralMuted (data stressed — nearing budget).
 //   QUALITY — present ONLY when the governor has downshifted (level > 0)
 //             OR no observations have arrived yet. When the renderer is at
-//             `full` and warmed up, this row is omitted entirely so the
-//             card stays at a clean two-row "all healthy" surface.
+//             `full` and warmed up, this row is omitted entirely.
 //   ML      — present ONLY when the dispatch scheduler is in a non-quiet
 //             state (defer or forceDispatch). Idle / dispatchNow omit the
-//             row — those are the steady-state happy paths.
+//             row.
 //
-// Two design rules carry forward from DASH.5:
-//   • No `statusRed` token introduced (D-085 Decision 6). Over-budget reads
-//     as `statusYellow`; the governor downshifting is the correct response.
-//   • Per-row palette uniform `coral` for the bar fill (D-085 Decision 7).
-//     Status colour lives on value-text only.
+// DASH.7.1 brand-alignment: the foreign `statusGreen` / `statusYellow`
+// tokens used in DASH.5-7 are replaced with `teal` / `coralMuted` so the
+// PERF card uses only the project's three brand colours (purple / coral /
+// teal). See D-088 for the rationale — the alarm-coloured palette
+// conflicted with the .impeccable.md "color carries meaning, never
+// decorate" principle. Per-row colour uniform `coral` was used in DASH.5;
+// also retired here.
 
 import CoreGraphics
 import Shared
@@ -36,8 +34,9 @@ import AppKit
 /// Maps a `PerfSnapshot` to a `DashboardCardLayout` for the PERF card.
 public struct PerfCardBuilder: Sendable {
 
-    /// Frame-time ratio above which FRAME flips from green → yellow.
-    /// Empirically a comfortable headroom above the per-tier budget.
+    /// Frame-time ratio above which FRAME flips from `teal` (healthy) →
+    /// `coralMuted` (stressed). Empirically a comfortable headroom above
+    /// the per-tier budget.
     public static let warningRatio: Float = 0.70
 
     public init() {}
@@ -74,8 +73,8 @@ public struct PerfCardBuilder: Sendable {
             valueText = "—"
         } else {
             color = rawRatio < Self.warningRatio
-                ? DashboardTokens.Color.statusGreen
-                : DashboardTokens.Color.statusYellow
+                ? DashboardTokens.Color.teal
+                : DashboardTokens.Color.coralMuted
             valueText = String(format: "%.1f / %.0f ms", snapshot.recentMaxFrameMs, snapshot.targetFrameMs)
         }
         return .progressBar(
@@ -93,7 +92,7 @@ public struct PerfCardBuilder: Sendable {
         }
         let color: NSColor = snapshot.recentFramesObserved == 0
             ? DashboardTokens.Color.textMuted
-            : DashboardTokens.Color.statusYellow
+            : DashboardTokens.Color.coralMuted
         return .singleValue(
             label: "QUALITY",
             value: snapshot.qualityLevelDisplayName,
@@ -112,13 +111,13 @@ public struct PerfCardBuilder: Sendable {
             return .singleValue(
                 label: "ML",
                 value: value,
-                valueColor: DashboardTokens.Color.statusYellow
+                valueColor: DashboardTokens.Color.coralMuted
             )
         case 3:
             return .singleValue(
                 label: "ML",
                 value: "FORCED",
-                valueColor: DashboardTokens.Color.statusYellow
+                valueColor: DashboardTokens.Color.coralMuted
             )
         default:
             return nil

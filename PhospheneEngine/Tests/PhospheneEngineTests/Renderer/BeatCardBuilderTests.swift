@@ -62,7 +62,7 @@ private func colorEquals(_ lhs: NSColor, _ rhs: NSColor) -> Bool {
 @Suite("BeatCardBuilder")
 struct BeatCardBuilderTests {
 
-    @Test("locked snapshot produces LOCKED/green MODE, BPM=140, BAR=2/4")
+    @Test("locked snapshot produces LOCKED/teal MODE, BPM=140, BAR=2/4")
     func locked() throws {
         let layout = BeatCardBuilder().build(from: snapshot(bpm: 140, sessionMode: 3))
         #expect(layout.title == "BEAT")
@@ -70,17 +70,19 @@ struct BeatCardBuilderTests {
         let mode = try #require(extractSingleValue(layout.rows[0]))
         #expect(mode.label == "MODE")
         #expect(mode.value == "LOCKED")
-        #expect(colorEquals(mode.color, DashboardTokens.Color.statusGreen))
+        // Brand-aligned: LOCKED → teal (analytical/precision), not statusGreen (D-088).
+        #expect(colorEquals(mode.color, DashboardTokens.Color.teal))
         let bpm = try #require(extractSingleValue(layout.rows[1]))
         #expect(bpm.value == "140")
     }
 
-    @Test("locking snapshot (sessionMode=2) → LOCKING/yellow MODE")
+    @Test("locking snapshot (sessionMode=2) → LOCKING/coralMuted MODE")
     func locking() throws {
         let layout = BeatCardBuilder().build(from: snapshot(sessionMode: 2))
         let mode = try #require(extractSingleValue(layout.rows[0]))
         #expect(mode.value == "LOCKING")
-        #expect(colorEquals(mode.color, DashboardTokens.Color.statusYellow))
+        // Brand-aligned: LOCKING → coralMuted ("warmth arriving"), not statusYellow (D-088).
+        #expect(colorEquals(mode.color, DashboardTokens.Color.coralMuted))
     }
 
     @Test("unlocked snapshot (sessionMode=1) → UNLOCKED/muted")
