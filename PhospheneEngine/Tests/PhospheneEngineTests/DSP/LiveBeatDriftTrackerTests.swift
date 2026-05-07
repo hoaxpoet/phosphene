@@ -530,6 +530,160 @@ struct LiveBeatDriftTrackerTests {
                 "barPhaseOffset must reset to 0 on setGrid")
     }
 
+    // MARK: 20. BUG-007.5 — sparse onsets do not drop lock by count
+
+    /// Half-time trap groove (~76 BPM, beat period ~790 ms) produces 7 consecutive
+    /// non-tight onsets across roughly 5.5 seconds. Pre-fix, the count gate
+    /// (`lockReleaseMisses=7`) would drop lock the moment the 7th non-tight arrived.
+    /// Time-based gate (`lockReleaseTimeSeconds=2.5`) drops lock after 2.5 s — which
+    /// is correct: HUMBLE-style sparse onsets that span 5+ s of non-tight events
+    /// genuinely indicate a lost lock, but 7 onsets within 2.5 s do not.
+    @Test("sparseNonTightOnsets_doNotDropLockByCount")
+    func test_sparseNonTightOnsetsDoNotDropLockByCount() {
+        let grid = makeUniformGrid(bpm: 120, beats: 64)
+        let tracker = LiveBeatDriftTracker()
+        // Disable latency for this test — we're measuring lock semantics, not timing.
+        tracker.audioOutputLatencyMs = 0
+        tracker.setGrid(grid)
+
+        // Phase 1: drive 4 perfectly-aligned onsets to acquire lock.
+        let dt: Float = 1.0 / 60.0
+        let beatPeriod = 0.5  // 120 BPM
+        for i in 0..<4 {
+            let t = Double(i) * beatPeriod
+            _ = tracker.update(subBassOnset: true, playbackTime: t, deltaTime: dt)
+        }
+        if case .locked = tracker.currentLockState {} else {
+            #expect(Bool(false), "Should be locked after 4 aligned onsets")
+        }
+
+        // Phase 2: 7 onsets each shifted +40 ms (just outside ±30 ms tight gate).
+        // At 120 BPM with 7 sparse onsets at e.g. half-rate, they span 7 × 0.5 = 3.5 s.
+        // Adjust onset spacing to 0.3 s so 7 onsets span only 7 × 0.3 = 2.1 s — UNDER
+        // the 2.5 s lock-release gate. Pre-fix would drop on the 7th miss; post-fix holds.
+        var dropCount = 0
+        var prevState: LiveBeatDriftTracker.LockState = .locked
+        for i in 0..<7 {
+            let t = 4.0 * beatPeriod + Double(i) * 0.3 + 0.040  // +40 ms shifted
+            let result = tracker.update(subBassOnset: true, playbackTime: t, deltaTime: dt)
+            if case .locked = prevState, case .locking = result.lockState { dropCount += 1 }
+            prevState = result.lockState
+        }
+        #expect(dropCount == 0,
+                "BUG-007.5: 7 non-tight onsets within 2.1 s must not drop lock; got \(dropCount) drops")
+    }
+
+    // MARK: 21. BUG-007.5 — sustained non-tight stream eventually drops lock by time
+
+    /// Alternating-sign jitter (±45 ms shifts) keeps the EMA near 0 while every
+    /// individual instantDrift is ~45 ms from the EMA — outside the ±30 ms tight
+    /// gate. After 2.5 s of this sustained non-tight pattern, lock must drop.
+    /// (Pure same-sign shifts let the EMA converge so the events become "tight"
+    /// relative to the moving EMA — see test 20 for that pattern.)
+    @Test("sustainedNonTightOnsets_dropsLockByTime")
+    func test_sustainedNonTightOnsetsDropsLockByTime() {
+        let grid = makeUniformGrid(bpm: 120, beats: 64)
+        let tracker = LiveBeatDriftTracker()
+        tracker.audioOutputLatencyMs = 0
+        tracker.setGrid(grid)
+
+        // Acquire lock.
+        let dt: Float = 1.0 / 60.0
+        let beatPeriod = 0.5
+        for i in 0..<4 {
+            _ = tracker.update(subBassOnset: true,
+                               playbackTime: Double(i) * beatPeriod, deltaTime: dt)
+        }
+        // 8 onsets at 0.5 s spacing, each shifted +80 ms from grid. 80 ms is
+        // outside the ±50 ms search window so `nearestBeat` returns nil for every
+        // onset — all non-tight. Span: 8 × 0.5 = 4 s, exceeding the 2.5 s gate.
+        var droppedAtIndex: Int?
+        var prevState: LiveBeatDriftTracker.LockState = .locked
+        for i in 0..<8 {
+            let t = 4.0 * beatPeriod + Double(i) * beatPeriod + 0.080
+            let result = tracker.update(subBassOnset: true, playbackTime: t, deltaTime: dt)
+            if case .locked = prevState, case .locking = result.lockState, droppedAtIndex == nil {
+                droppedAtIndex = i
+            }
+            prevState = result.lockState
+        }
+        #expect(droppedAtIndex != nil,
+                "BUG-007.5: lock must drop after 2.5 s of sustained non-tight onsets")
+    }
+
+    // MARK: 22. BUG-007.6 — audioOutputLatencyMs shifts display time, not matching
+
+    /// Latency comp does NOT touch onset matching (matching operates on tap-time
+    /// onsets). It shifts the display phase forward by L ms so visual orb fires
+    /// when the listener hears the audio, not when the tap captured it. Verify:
+    /// (a) drift converges to the same value with or without latency (matching unaffected);
+    /// (b) `beatPhase01` at a given playbackTime differs by L between latency=0 and latency=L.
+    @Test("audioOutputLatencyMs_shiftsDisplayNotMatching")
+    func test_audioOutputLatencyShiftsDisplayNotMatching() {
+        let grid = makeUniformGrid(bpm: 120, beats: 64)
+        let beatPeriod = 0.5
+        let dt: Float = 1.0 / 60.0
+
+        // Tracker A: no latency comp. Drive perfectly aligned onsets.
+        let trackerA = LiveBeatDriftTracker()
+        trackerA.audioOutputLatencyMs = 0
+        trackerA.setGrid(grid)
+        for i in 0..<8 {
+            _ = trackerA.update(subBassOnset: true, playbackTime: Double(i) * beatPeriod, deltaTime: dt)
+        }
+        let driftA = trackerA.currentDriftMs
+
+        // Tracker B: latency = 50 ms. Same input.
+        let trackerB = LiveBeatDriftTracker()
+        trackerB.audioOutputLatencyMs = 50.0
+        trackerB.setGrid(grid)
+        for i in 0..<8 {
+            _ = trackerB.update(subBassOnset: true, playbackTime: Double(i) * beatPeriod, deltaTime: dt)
+        }
+        let driftB = trackerB.currentDriftMs
+
+        // Matching path is unaffected by latency: drift values must be identical.
+        #expect(abs(driftA - driftB) < 0.5,
+                "BUG-007.6: latency must not affect drift convergence; got A=\(driftA) B=\(driftB)")
+
+        // Display path shifts by L: at the same playback time, beatPhase01 should be
+        // larger for tracker B (further along in the beat) by L/period = 50/500 = 0.1.
+        let probeA = trackerA.update(subBassOnset: false, playbackTime: 4.25 * beatPeriod, deltaTime: dt)
+        let probeB = trackerB.update(subBassOnset: false, playbackTime: 4.25 * beatPeriod, deltaTime: dt)
+        let phaseDelta = probeB.beatPhase01 - probeA.beatPhase01
+        // Expected delta: 0.10 (50 ms / 500 ms beat period). Tolerance ±0.02.
+        #expect(abs(phaseDelta - 0.10) < 0.02,
+                "BUG-007.6: latency=50 ms should advance beatPhase01 by ~0.10; got Δ=\(phaseDelta)")
+    }
+
+    // MARK: 23. BUG-007.6 — latency setter clamps to ±500 ms
+
+    @Test("audioOutputLatencyMs_setter_clampsToRange")
+    func test_audioOutputLatencyClampsRange() {
+        let tracker = LiveBeatDriftTracker()
+        tracker.audioOutputLatencyMs = 1000.0
+        #expect(tracker.audioOutputLatencyMs == 500.0)
+        tracker.audioOutputLatencyMs = -1000.0
+        #expect(tracker.audioOutputLatencyMs == -500.0)
+        tracker.audioOutputLatencyMs = 75.0
+        #expect(tracker.audioOutputLatencyMs == 75.0)
+    }
+
+    // MARK: 24. BUG-007.6 — latency persists across reset/setGrid (system property)
+
+    @Test("audioOutputLatencyMs_persistsAcrossSetGrid")
+    func test_audioOutputLatencyPersistsAcrossReset() {
+        let grid = makeUniformGrid(bpm: 120, beats: 32)
+        let tracker = LiveBeatDriftTracker()
+        tracker.audioOutputLatencyMs = 75.0
+        tracker.setGrid(grid)
+        #expect(tracker.audioOutputLatencyMs == 75.0,
+                "BUG-007.6: audioOutputLatencyMs is a system property and must persist across track changes")
+        tracker.reset()
+        #expect(tracker.audioOutputLatencyMs == 75.0,
+                "BUG-007.6: reset() must not reset audioOutputLatencyMs either")
+    }
+
     // MARK: 18. BUG-007.2 regression — raw grid (no offsetBy) drops lock after coverage (negative case)
 
     /// Documents the pre-fix behaviour as a known-bad path. Without offsetBy(), the prepared-cache

@@ -312,6 +312,12 @@ struct PlaybackView: View {
             },
             onCycleBarPhaseOffset: { [weak engine] in
                 engine?.cycleBarPhaseOffset()
+            },
+            onDecreaseAudioOutputLatency: { [weak engine] in
+                engine?.adjustAudioOutputLatency(ms: -5)
+            },
+            onIncreaseAudioOutputLatency: { [weak engine] in
+                engine?.adjustAudioOutputLatency(ms: +5)
             }
         )
     }

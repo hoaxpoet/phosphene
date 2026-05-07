@@ -74,12 +74,55 @@ The varying off-by-N (0, 2, 3) per track rules out a constant pipeline rotation 
 
 ---
 
-### BUG-007.5 — Adaptive-window lock hysteresis for asymmetric drift envelopes
+### BUG-007.6 — Tap-vs-output audio latency calibration
+
+**Severity:** P2 (visible — visual fires before audio is heard, persistent across all tracks).
+**Domain tag:** dsp.beat
+**Status:** **Resolved (calibration constant + dev shortcut landed 2026-05-07)** — manual validation pending.
+**Introduced:** Pre-existing in all prior code; surfaced by the 2026-05-07 5-track A/B (sessions `T15-50-23Z`, `T15-58-17Z`, `T18-21-37Z`) which showed systematic negative drift averaging −36 to −76 ms on every prepared-cache track regardless of BPM. Pattern: tap captures audio L ms before the listener hears it (CoreAudio output buffer + DAC + driver). The tracker's drift converges to roughly −L; the visual orb fires at `pt + drift = pt − L`, before the audio reaches the speaker. User-perceived as "beat in SC feels a little bit faster than the song's actual beat."
+**Resolved:** 2026-05-07. New `LiveBeatDriftTracker.audioOutputLatencyMs: Float` (default 0 in engine, set to 50 ms in `VisualizerEngine` app-layer init for internal Mac speakers). Applied to the *display path only* — `displayTime = pt + drift + (audioOutputLatencyMs + visualPhaseOffsetMs) / 1000`. Does NOT touch onset matching or drift estimation: those use unmodified `playbackTime` so the matching path is unchanged. Tunable at runtime via `,` (−5 ms) and `.` (+5 ms) developer shortcuts. Persists across track changes (it's a system property, not a per-track property).
+
+**Expected behavior:** With `audioOutputLatencyMs` calibrated to the platform's actual tap-to-speaker delay, the visual orb pulses in sync with the kick the listener hears.
+
+**Actual behavior (pre-fix):** Visual leads audio by ~50 ms on internal Mac speakers (typical CoreAudio output buffer). Up to several hundred ms on Bluetooth/AirPlay output devices.
+
+**Reproduction steps:**
+1. Spotify-prepared session, internal Mac speakers, any track that locks reliably (SLTS, OMT).
+2. Watch the SpectralCartograph beat orb while listening.
+3. Pre-fix: orb pulses just before each audible kick.
+
+**Confirmed failure class:** `calibration`.
+
+**Diagnosis notes:**
+- Tap captures pre-output-buffer audio. The audio then takes ~10–50 ms (internal Mac speaker), 100–300 ms (Bluetooth), 500–1500 ms (AirPlay) to reach the listener's ears.
+- Onset detection in our pipeline also has some processing delay (~50 ms FFT-window center bias). The combined effect of *output latency* + *detection delay* is what the user perceives. The single calibration constant `audioOutputLatencyMs` collapses both into one knob.
+- Applying compensation to *matching* (shifting `pt` before grid lookup) cancels itself out on the display side — `pt + drift` is invariant under shifts of `pt`. So compensation must go on display.
+- The diagnostic drift readout in SpectralCartograph remains at its raw negative value (e.g. −50 ms) — that's accurate; it represents detection delay, not perceptual sync. Visual sync is fixed by display-side compensation.
+
+**Verification criteria:**
+- [x] Automated: drift convergence is identical with `audioOutputLatencyMs=0` and `audioOutputLatencyMs=50` on the same input (matching path unaffected). Verified by `audioOutputLatencyMs_shiftsDisplayNotMatching`.
+- [x] Automated: at the same playback time, `beatPhase01` differs by L/period between latency=0 and latency=L. Verified by the same test.
+- [x] Automated: setter clamps to ±500 ms. Verified by `audioOutputLatencyMs_setter_clampsToRange`.
+- [x] Automated: persists across `setGrid` and `reset` (system property). Verified by `audioOutputLatencyMs_persistsAcrossSetGrid`.
+- [ ] Manual: SpectralCartograph beat orb pulses in audible sync with kick on SLTS, OMT, Midnight City, HUMBLE, Everlong using internal Mac speakers and the default 50 ms calibration.
+- [ ] Manual: `,` / `.` shortcuts adjust visual sync ±5 ms per press; user can dial in a per-output-device offset within 1–2 minutes.
+
+**Out of scope:**
+- Persisting `audioOutputLatencyMs` across app launches (currently resets on cold start). Will be a settings-panel field in a future increment.
+- Per-output-device automatic detection (Bluetooth vs internal). Future increment if needed.
+- Variance-adaptive lock-window logic — that's BUG-007.5.
+
+**Related:** BUG-007.3 (reverted), BUG-007.4 (orthogonal — bar phase rotation), BUG-007.5 (orthogonal — lock-release timing), the existing `visualPhaseOffsetMs` (`[`/`]` shortcut, ±10 ms) which is now additive with this constant on the display path.
+
+---
+
+### BUG-007.5 — Lock hysteresis for asymmetric drift envelopes
 
 **Severity:** P3 (cosmetic — visual flicker between LOCKED and LOCKING; doesn't affect beat-phase)
 **Domain tag:** dsp.beat
-**Status:** Open
+**Status:** **Resolved (time-based release gate landed 2026-05-07)** — adaptive-variance window deferred (re-evaluate after manual validation of the time-based gate alone).
 **Introduced:** Surfaced 2026-05-07. Pre-exists BUG-007.3 (the reverted attempt). The fixed-window Schmitt hysteresis (`staleMatchWindow=0.060` in commit `94309858`) attempted this and failed because the "right" stale window depends on the drift variance, which differs by track.
+**Resolved:** 2026-05-07 — Replaced the count-based `lockReleaseMisses=7` gate with a *time-based* `lockReleaseTimeSeconds=2.5` gate. Lock now drops when 2.5 s of consecutive non-tight matches have elapsed since the last tight hit, regardless of how many onsets occurred in between. Sparse-onset tracks (HUMBLE half-time at 76 BPM = 790 ms beat period) no longer trip the gate accidentally — what matters is the elapsed time, not the count. Diagnostic counter `consecutiveMisses` retained on `LiveBeatDriftTraceEntry` for backward compat.
 
 **Expected behavior:** Once `lock_state` reaches LOCKED on a track with correct grid BPM, it stays there for the duration of the song unless the input goes silent or the BPM is genuinely wrong. Lock should not flicker due to per-onset noise within ±60 ms of the EMA.
 

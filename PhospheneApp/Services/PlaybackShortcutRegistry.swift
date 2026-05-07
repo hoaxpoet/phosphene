@@ -82,7 +82,9 @@ final class PlaybackShortcutRegistry {
         onDebugPreviousPreset: (@MainActor () -> Void)? = nil,
         onDecreaseBeatPhaseOffset: (@MainActor () -> Void)? = nil,
         onIncreaseBeatPhaseOffset: (@MainActor () -> Void)? = nil,
-        onCycleBarPhaseOffset: (@MainActor () -> Void)? = nil
+        onCycleBarPhaseOffset: (@MainActor () -> Void)? = nil,
+        onDecreaseAudioOutputLatency: (@MainActor () -> Void)? = nil,
+        onIncreaseAudioOutputLatency: (@MainActor () -> Void)? = nil
     ) {
         var all = Self.buildShortcuts(
             actionRouter: actionRouter,
@@ -130,6 +132,26 @@ final class PlaybackShortcutRegistry {
                 key: "b",
                 modifiers: [.shift],
                 label: "Cycle bar-phase offset (BUG-007.4)",
+                category: .developer,
+                action: fn
+            ))
+        }
+        if let fn = onDecreaseAudioOutputLatency {
+            all.append(PlaybackShortcut(
+                id: "decreaseAudioOutputLatency",
+                key: ",",
+                modifiers: [],
+                label: "Audio output latency −5 ms (BUG-007.6)",
+                category: .developer,
+                action: fn
+            ))
+        }
+        if let fn = onIncreaseAudioOutputLatency {
+            all.append(PlaybackShortcut(
+                id: "increaseAudioOutputLatency",
+                key: ".",
+                modifiers: [],
+                label: "Audio output latency +5 ms (BUG-007.6)",
                 category: .developer,
                 action: fn
             ))

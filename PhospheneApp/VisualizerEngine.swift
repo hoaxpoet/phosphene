@@ -303,6 +303,21 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         logger.info("Bar-phase offset cycled to \(tracker.barPhaseOffset) (BUG-007.4)")
     }
 
+    /// Tap-to-output audio latency in milliseconds (BUG-007.6). Default 50 ms.
+    /// Backed by `LiveBeatDriftTracker.audioOutputLatencyMs`. Persists across tracks.
+    var audioOutputLatencyMs: Float {
+        get { mirPipeline.liveDriftTracker.audioOutputLatencyMs }
+        set { mirPipeline.liveDriftTracker.audioOutputLatencyMs = newValue }
+    }
+
+    /// Adjust audio output latency by `delta` ms (BUG-007.6). Setter clamps to ±500 ms.
+    /// `,` key = −5 ms, `.` key = +5 ms in the developer shortcut map.
+    func adjustAudioOutputLatency(ms delta: Float) {
+        audioOutputLatencyMs += delta
+        let actual = audioOutputLatencyMs
+        logger.info("Audio output latency adjusted to \(actual, format: .fixed(precision: 1)) ms (BUG-007.6)")
+    }
+
     /// Current frame-budget quality level. Read directly from the governor each
     /// time the debug overlay repaints — no @Published needed since the overlay
     /// refreshes on VisualizerEngine objectWillChange. D-057.
@@ -533,6 +548,11 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         self.presetLoader = loader
         self.shaderLibrary = lib
         self.mirPipeline = MIRPipeline()
+        // BUG-007.6: internal-Mac-speaker tap-to-output latency calibration.
+        // Empirical default from session 2026-05-07T18-21-37Z analysis. Tunable
+        // at runtime via `,`/`.` developer shortcuts. AirPods / Bluetooth users
+        // will need a higher value; surfaces as a setting in a future increment.
+        self.mirPipeline.liveDriftTracker.audioOutputLatencyMs = 50.0
         self.particleGeometry = Self.makeParticleGeometry(context: ctx, library: lib)
         self.moodClassifier = classifier
         self.stemAnalyzer = analyzer

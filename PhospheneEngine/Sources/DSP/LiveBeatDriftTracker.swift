@@ -106,13 +106,22 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
     private static let strictMatchWindow: Double = 0.030
     /// Matched onsets required to reach `.locked`.
     private static let lockThreshold: Int = 4
-    /// Consecutive misses to drop `.locked` back to `.locking`.
-    /// 7 × 400 ms cooldown = 2.8 s of apparent silence before releasing lock.
-    /// Value 5 fails the lock-oscillation regression test on the 400 ms/487 ms
-    /// adversarial scenario (BUG-007.2): mean gap between hits ≈ 4.8 misses,
-    /// so threshold=5 triggers drops on most cycles; threshold=7 is above the
-    /// typical worst-case gap and gives ≤ 2 oscillations in 60 s.
-    private static let lockReleaseMisses: Int = 7
+    /// Time-based lock-release gate (BUG-007.5). When at least this many seconds
+    /// of consecutive non-tight matches accumulate, lock drops to `.locking`.
+    /// Decoupled from onset *count* so sparse-onset tracks (HUMBLE half-time:
+    /// 790 ms beat period) don't trip the gate accidentally — what matters is
+    /// "no tight match in the last N seconds," not "N consecutive bad onsets."
+    /// 2.5 s ≈ 3 beats at 70 BPM (the slowest typical music we'd lock on);
+    /// well above transient noise but below "obviously dropped" threshold.
+    private static let lockReleaseTimeSeconds: Double = 2.5
+
+    /// Default audio output latency (BUG-007.6) for new tracker instances.
+    /// 0 by default — engine-level neutral. Production wiring (`MIRPipeline.init`
+    /// in the app layer, or any other live-tap context) should set this to a
+    /// platform-appropriate value. Internal Mac speakers measured ~50 ms during
+    /// the 2026-05-07T18-21-37Z session; AirPods / Bluetooth would be much higher.
+    /// Tunable via `,`/`.` dev shortcuts at runtime.
+    private static let defaultAudioOutputLatencyMs: Float = 0.0
 
     // MARK: - Diagnostic (BUG_007_DIAGNOSIS)
 
@@ -130,7 +139,13 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
     private var medianPeriod: Double = 0.5  // 120 BPM default
     private var drift: Double = 0
     private var matchedOnsets: Int = 0
+    /// Diagnostic counter — preserved for `LiveBeatDriftTraceEntry` reporting.
+    /// Lock decisions no longer use this; see `firstNonTightMatchTime` (BUG-007.5).
     private var consecutiveMisses: Int = 0
+    /// Playback time of the first non-tight match in the current run (BUG-007.5).
+    /// Cleared when a tight match arrives. Used for time-based lock release —
+    /// when `pt − firstNonTightMatchTime > lockReleaseTimeSeconds`, lock drops.
+    private var firstNonTightMatchTime: Double?
     private var lastOnsetTime: Double = -1.0
     private let lock = NSLock()
 
@@ -191,6 +206,24 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
         }
     }
     private var _barPhaseOffset: Int = 0
+
+    /// Tap-to-output audio latency in milliseconds (BUG-007.6). The audio captured
+    /// at the system tap reaches the listener's speaker some ms later (CoreAudio
+    /// output buffer + DAC + driver). Applied to the *display path only* — visual
+    /// orb fires L ms later than it would otherwise, aligning visual to when the
+    /// listener actually hears the audio. Does NOT touch onset matching or drift
+    /// estimation (those operate on tap-time onsets and would be made worse by
+    /// adding L there — see BUG-007.6 analysis). Range clamped to ±500 ms; tunable
+    /// via `,`/`.` dev shortcuts. Persists across track changes — it's a system
+    /// property (output device latency), not a per-track property.
+    public var audioOutputLatencyMs: Float {
+        get { lock.lock(); defer { lock.unlock() }; return _audioOutputLatencyMs }
+        set {
+            lock.lock(); defer { lock.unlock() }
+            _audioOutputLatencyMs = max(-500, min(500, newValue))
+        }
+    }
+    private var _audioOutputLatencyMs: Float = LiveBeatDriftTracker.defaultAudioOutputLatencyMs
 
     /// Drift-adjusted downbeat times relative to `playbackTime`, limited to `count`
     /// downbeats within ±`window` seconds of now. Positive = upcoming, negative = past.
@@ -264,8 +297,10 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
         drift = 0
         matchedOnsets = 0
         consecutiveMisses = 0
+        firstNonTightMatchTime = nil
         lastOnsetTime = -1.0
         _barPhaseOffset = 0   // BUG-007.4: cleared on track change so each track starts fresh
+        // _audioOutputLatencyMs intentionally NOT reset — it's a system property.
     }
 
     // MARK: - Update
@@ -290,6 +325,12 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
             return Result(beatPhase01: 0, beatsUntilNext: 1, barPhase01: 0, beatsPerBar: 1, lockState: .unlocked)
         }
 
+        // BUG-007.6: audio output latency does NOT touch the matching path.
+        // Matching uses the unmodified `playbackTime`. The latency is applied to
+        // display time only — visual orb fires later by L ms so it aligns with
+        // when the listener actually hears the audio (tap captures L ms before
+        // speaker output). The diagnostic drift readout reflects detection-delay
+        // bias (typically negative), not output latency.
         let pt = playbackTime
         let dt = Double(max(deltaTime, 0.001))
 
@@ -309,13 +350,16 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
                 if isTight {
                     matchedOnsets = min(matchedOnsets + 1, Int.max - 1)
                     consecutiveMisses = 0
+                    firstNonTightMatchTime = nil   // BUG-007.5: reset time gate on tight match
                 } else {
                     consecutiveMisses += 1
+                    if firstNonTightMatchTime == nil { firstNonTightMatchTime = pt }
                 }
                 // swiftlint:disable:next line_length
                 emitDiagnosticTrace(onset: pt, nearest: nearest, instantDrift: instantDrift, prevDrift: prevDrift, isTight: isTight)
             } else {
                 consecutiveMisses += 1
+                if firstNonTightMatchTime == nil { firstNonTightMatchTime = pt }
                 emitDiagnosticTrace(onset: pt, nearest: nil, instantDrift: nil, prevDrift: prevDrift, isTight: false)
             }
         }
@@ -327,10 +371,14 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
             drift *= (1 - decayAlpha)
         }
 
-        let lockState = computeLockState()
-        // Apply visual phase offset to the display phase only; onset matching
-        // and drift estimation always use the real (unshifted) playback time.
-        let displayTime = pt + drift + Double(_visualPhaseOffsetMs) / 1000.0
+        let lockState = computeLockStateLocked(at: pt)
+        // BUG-007.6 + existing visualPhaseOffsetMs: shift display time by
+        // (audioOutputLatency + visualPhaseOffset). Audio reaches speaker L ms
+        // after tap; visual fires L ms later so visual matches speaker timing.
+        // visualPhaseOffsetMs is the fine-tune knob ([/] shortcut, ±10 ms);
+        // audioOutputLatencyMs is the platform-class constant (,/. shortcut, ±5 ms).
+        let displayShiftS = Double(_visualPhaseOffsetMs + _audioOutputLatencyMs) / 1000.0
+        let displayTime = pt + drift + displayShiftS
         let phase = computePhase(at: displayTime)
 
         return Result(
@@ -366,14 +414,29 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
         cb(entry)
     }
 
-    private func computeLockState() -> LockState {
-        if matchedOnsets >= Self.lockThreshold && consecutiveMisses < Self.lockReleaseMisses {
-            return .locked
+    /// Lock-state computation using the time-based release gate (BUG-007.5).
+    /// `now` is the current latency-shifted playback time (`pt + L`). Lock is
+    /// retained while the *time since the first non-tight match* in the current
+    /// run is below `lockReleaseTimeSeconds`. Sparse-onset tracks (e.g. half-time
+    /// trap at 76 BPM, 790 ms beat period) no longer drop lock just because 7
+    /// non-tight onsets have accumulated — what matters is the elapsed time.
+    private func computeLockStateLocked(at now: Double) -> LockState {
+        guard matchedOnsets >= Self.lockThreshold else {
+            return (matchedOnsets > 0 || lastOnsetTime >= 0) ? .locking : .unlocked
         }
-        if matchedOnsets > 0 || lastOnsetTime >= 0 {
+        if let firstMissAt = firstNonTightMatchTime,
+           now - firstMissAt > Self.lockReleaseTimeSeconds {
             return .locking
         }
-        return .unlocked
+        return .locked
+    }
+
+    /// Convenience for callers without a current `pt` (e.g. the public
+    /// `currentLockState` getter). Uses `lastOnsetTime` as a stale clock —
+    /// good enough between onset events; readers care about the steady state.
+    private func computeLockState() -> LockState {
+        let now = max(lastOnsetTime, 0)
+        return computeLockStateLocked(at: now)
     }
 
     private struct PhaseTriple {
