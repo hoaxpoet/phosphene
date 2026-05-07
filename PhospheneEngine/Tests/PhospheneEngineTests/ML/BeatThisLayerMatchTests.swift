@@ -95,11 +95,17 @@ struct BeatThisLayerMatchTests {
             .appendingPathComponent("docs/diagnostics/DSP.2-S8-python-activations.json")
 
         guard FileManager.default.fileExists(atPath: audioURL.path) else {
-            print("BeatThisLayerMatchTests: skipping — audio fixture absent at \(audioURL.path)")
+            Issue.record("""
+                BeatThisLayerMatchTests: audio fixture absent at \(audioURL.path) — \
+                BeatThisFixturePresenceGate should also be failing; fix that first.
+                """)
             return
         }
         guard FileManager.default.fileExists(atPath: jsonURL.path) else {
-            print("BeatThisLayerMatchTests: skipping — JSON fixture absent at \(jsonURL.path)")
+            Issue.record("""
+                BeatThisLayerMatchTests: JSON fixture absent at \(jsonURL.path) — \
+                see docs/diagnostics/DSP.2-S8-python-activations.json
+                """)
             return
         }
 

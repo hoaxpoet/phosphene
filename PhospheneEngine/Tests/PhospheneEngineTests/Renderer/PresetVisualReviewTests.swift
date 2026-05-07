@@ -414,8 +414,11 @@ struct PresetVisualReviewTests {
         preset: PresetLoader.LoadedPreset,
         context: MetalContext
     ) throws -> MTLRenderPipelineState {
-        guard let bundleShaders = Bundle.module.url(forResource: "Shaders",
-                                                    withExtension: nil) else {
+        // BUG-002: `Bundle.module` here resolves the *test* target's bundle, which
+        // has no `Shaders` resource — the harness was silently failing the staged
+        // preset PNG export. `PresetLoader.bundledShadersURL` reaches the same
+        // Presets-module resource bundle the loader uses internally.
+        guard let bundleShaders = PresetLoader.bundledShadersURL else {
             throw VisualReviewError.cgImageFailed
         }
         let metalURL = bundleShaders.appendingPathComponent(
