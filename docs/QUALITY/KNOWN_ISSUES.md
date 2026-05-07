@@ -8,6 +8,98 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 ---
 
+### BUG-007.3 — Lock hysteresis still oscillates on drift-prone tracks; live BPM resolver fragile on busy mid-frequency content
+
+**Severity:** P2
+**Domain tag:** dsp.beat
+**Status:** Open
+**Introduced:** Surfaced 2026-05-07 during manual validation of two sessions captured post-QR.2 (`~/Documents/phosphene_sessions/2026-05-07T13-27-14Z/` planned, `~/Documents/phosphene_sessions/2026-05-07T13-30-46Z/` reactive). Predates QR.2 (QR.2 did not change drift-tracker semantics). BUG-007.2 widened `lockReleaseMisses` 3 → 7, which closed the 30 s freeze + the 400 ms/487 ms adversarial scenario but left two additional failure modes.
+
+**Expected behavior:** On any track where the offline/live BPM is within ±1 % of true tempo, `lock_state` reaches `2` (LOCKED) and stays there for the duration of the track, with `drift_ms` settling into a band whose `stddev` over a 10 s window is below ~25 ms. On busy mid-frequency tracks (rock, power chords) where the live 10 s window is insufficient, the system either widens its analysis window or surfaces a warning, but does not silently lock to a 4 % wrong BPM.
+
+**Actual behavior:** Two distinct mechanisms.
+
+- **Mechanism C — natural-music tempo variation drops lock under correct BPM.** Smells Like Teen Spirit (planned, prepared cache, `grid_bpm=117.6`, true ≈117) held lock for 80 s straight but `drift_ms` walked from +15 → −90 over 90 s. Everlong (planned, prepared, `grid_bpm=157.8`) dropped lock 5 times in 50 s with drift in the −30 to −68 ms band, even though BPM was correct. The drops were caused by individual onsets falling outside `abs(instantDrift − drift) < strictMatchWindow=30 ms` for ≥ 7 consecutive onsets. At ≈158 BPM that is a 2.7 s window, and noisy onsets (harmonics, reverb tail, snare bleed) cluster easily. The 30 ms tight-match gate is too strict for the natural micro-timing variation of real performances.
+
+- **Mechanism D — live BPM resolver returns 4 % low on busy mid-frequency content.** Reactive Everlong gave `grid_bpm=151.9` (true ≈158, 3.86 % low). Drift went from 0 → −358 ms over 75 s — roughly one full beat. Billie Jean (synth pop, kick on the beat) gave `grid_bpm=117.1` (true ≈117) and drift stayed bounded ±90 ms. The 10 s live window at busy power-chord-guitar onset density does not give Beat This! enough evidence to nail the BPM within 1 %.
+
+**Reproduction steps:**
+1. Start a Spotify-prepared session containing Smells Like Teen Spirit and Everlong.
+2. Play SLTS → Everlong while Phosphene runs.
+3. Observe: `lock_state` reaches 2 on both, but Everlong drops 5+ times; both walk negative drift.
+4. Then start an ad-hoc (reactive) session and play Everlong.
+5. Observe: `grid_bpm=151.9`, drift goes to −358 ms by ~75 s.
+
+**Minimum reproducer:**
+- Mechanism C: any prepared-cache session on a track with natural human tempo variation > 0.3 % over 60 s. SLTS, Everlong, and most rock/indie material qualify.
+- Mechanism D: any reactive session on Everlong (or comparable busy mid-frequency content). Quiet-intro tracks (SLTS) recover via the 20 s retry path; high-onset-density tracks do not.
+
+**Session artifacts:**
+- `~/Documents/phosphene_sessions/2026-05-07T13-27-14Z/features.csv` — SLTS held LOCKED 4806 frames (80 s); Everlong dropped 5 times. Drift slopes documented in chat analysis 2026-05-07.
+- `~/Documents/phosphene_sessions/2026-05-07T13-30-46Z/features.csv` — Reactive Everlong drift 0 → −358 ms over 75 s; reactive Billie Jean drift bounded ±90 ms (control case).
+
+**Confirmed failure class:** `algorithm` (Mechanism C — over-strict tight-match gate without asymmetric hysteresis) + `calibration` (Mechanism D — 10 s live window insufficient for busy mid-freq onset density).
+
+**Diagnosis notes:**
+- Mechanism C is *not* solved by raising `lockReleaseMisses` further. With the gate already at 7, raising it to 12 just delays inevitable drops on tracks with > 7-onset stretches of natural micro-timing variation. The fix is asymmetric hysteresis: keep the 30 ms gate for *entering* lock (selectivity), use a wider gate (e.g. 60 ms) for *staying* locked (stickiness). This is the standard Schmitt-trigger pattern.
+- Mechanism D cannot be solved by lock hysteresis at all — the BPM itself is wrong. The fix is at the resolver layer: wider live window (10 s → 20 s) on retry, and a drift-slope detector that re-triggers live analysis when sustained drift slope exceeds a threshold for ≥ 10 s.
+- Drift sign is consistently negative across all tracks, suggesting a small constant tap-output latency contribution (~10–15 ms) on top of any BPM error. Not addressed by this bug — would be a separate calibration constant if pursued.
+
+**Verification criteria:**
+- [ ] On SLTS planned (prepared cache, BPM=117.6): `lock_state == 2` for ≥ 95 % of frames after first lock; `stddev(drift_ms over 10 s window) < 25 ms`.
+- [ ] On Everlong planned (prepared cache, BPM=157.8): ≤ 1 lock drop in 50 s of continuous playback.
+- [ ] On Everlong reactive: either grid BPM converges to within ±1 % of 158 within 30 s of playback (via wider retry window), or `WARN: live BPM credibility low` is logged and the system stays in LOCKING rather than locking to a wrong grid.
+- [ ] On Billie Jean reactive (control): no regression — drift stays bounded ±90 ms, lock holds.
+- [ ] Automated: a deterministic regression test in `LiveBeatDriftTrackerTests` simulating an outlier-onset stream within a 30 ms-EMA-correct grid demonstrates Mechanism C is closed (≤ 1 lock drop per 60 s of synthetic input where current code drops ≥ 4).
+- [ ] Manual: drift readout in SpectralCartograph stays close to zero on SLTS and Everlong (planned). Beat orb pulse sits exactly on the kick across both tracks.
+
+**Fix scope (BUG-007.3 — one increment, two parts):**
+
+**Part (a) — Asymmetric Schmitt-style hysteresis (small, ~15 LOC + tests).** In `LiveBeatDriftTracker.swift`:
+
+```swift
+// New constant:
+private static let staleMatchWindow: Double = 0.060   // ±60 ms — once locked, stay locked
+
+// In update(), replace the single isTight gate with:
+let isTight = abs(instantDrift - drift) < Self.strictMatchWindow
+let isStaleOK = abs(instantDrift - drift) < Self.staleMatchWindow
+let alreadyLocked = (matchedOnsets >= Self.lockThreshold) && (consecutiveMisses < Self.lockReleaseMisses)
+
+if isTight {
+    matchedOnsets = min(matchedOnsets + 1, Int.max - 1)
+    consecutiveMisses = 0
+} else if alreadyLocked && isStaleOK {
+    // While locked, a "stale-OK" onset doesn't increment matchedOnsets but
+    // also doesn't increment consecutiveMisses — preserves lock under natural
+    // tempo variation without making lock easier to acquire initially.
+    // matchedOnsets unchanged
+} else {
+    consecutiveMisses += 1
+}
+```
+
+This keeps lock-acquisition selectivity (still need 4 ±30 ms hits) but raises lock-retention stickiness to ±60 ms.
+
+**Part (b) — Live-BPM credibility gate + retry with wider window (medium, ~50 LOC + tests).** Two pieces:
+
+1. **Drift-slope detector** in `LiveBeatDriftTracker`: maintain a small ring of `(playbackTime, drift)` samples (~30 entries, ~3 s at 10 Hz onset rate). Expose `currentDriftSlope() -> Double?` returning ms/sec when ≥ 5 samples cover ≥ 5 s; nil otherwise. Called from `MIRPipeline.buildFeatureVector` once per frame; result published on a new `latestDriftSlope` property.
+
+2. **Retry trigger** in `VisualizerEngine+Stems.runLiveBeatAnalysisIfNeeded()`: in addition to the existing two-attempt schedule (10 s, 20 s on empty grid), add a third condition — if `liveDriftTracker.hasGrid && abs(currentDriftSlope) > 5.0 ms/sec` sustained for ≥ 10 s, and at least 30 s have passed since the last attempt, trigger a re-analysis with a 20 s window (vs the standard 10 s). Cap retries at 3 per track. Log `WARN: live BPM credibility low (slope=Xms/s) — retrying with 20 s window`.
+
+If the wider window also produces an out-of-band BPM estimate (slope still > 5 ms/sec after the retry), log `WARN: live BPM unstable on this track` and *retain the previous grid* rather than installing a new wrong one — better to keep visuals close-but-drifting than to thrash through three different wrong grids.
+
+**Out of scope for this increment:**
+- Fixing the consistent ~10–15 ms negative-drift offset (likely tap-output latency calibration). Tracked separately if pursued.
+- Replacing the offline Beat This! resolver (BUG-008 — independent).
+- Changes to `strictMatchWindow` itself. Selectivity at acquisition time stays at ±30 ms.
+
+**Estimated effort:** 1 day. Part (a) is ~half a day including the deterministic regression test; part (b) is ~half a day including the 20 s window retry path and the slope-detector unit test.
+
+**Related:** BUG-007.2 (resolved upstream — covers Mechanism A + B; this bug covers Mechanisms C + D), BUG-008 (offline BPM disagreement — independent), DSP.3.4 (sample-rate fix on live path), DSP.3.5 (octave correction + retry — already established the multi-attempt pattern this fix extends), QR.1 (touched the file but did not change lock semantics).
+
+---
+
 ### BUG-001 — Money 7/4 stays REACTIVE on live path
 
 **Severity:** P2
