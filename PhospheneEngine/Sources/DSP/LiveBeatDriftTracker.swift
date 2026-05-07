@@ -149,14 +149,19 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
     /// Sub-threshold = "not enough data," skip and try again at next match. Prevents
     /// premature rotation on a 1-onset histogram.
     private static let autoRotateMinDominantCount: Int = 4
-    /// Time-based lock-release gate (BUG-007.5). When at least this many seconds
-    /// of consecutive non-tight matches accumulate, lock drops to `.locking`.
-    /// Decoupled from onset *count* so sparse-onset tracks (HUMBLE half-time:
-    /// 790 ms beat period) don't trip the gate accidentally — what matters is
-    /// "no tight match in the last N seconds," not "N consecutive bad onsets."
-    /// 2.5 s ≈ 3 beats at 70 BPM (the slowest typical music we'd lock on);
-    /// well above transient noise but below "obviously dropped" threshold.
-    private static let lockReleaseTimeSeconds: Double = 2.5
+    /// Floor for the BPM-aware lock-release gate (BUG-007.5 part 1 + part 3).
+    /// At fast tempos (120+ BPM, 500 ms beat period) the gate stays at this
+    /// floor — 2.5 s ≈ 5 beats. At slow tempos (HUMBLE half-time at 76 BPM,
+    /// 790 ms period) the gate scales up to `lockReleaseBeatMultiplier × period`
+    /// so 4–5 consecutive sparse onsets don't trip it. See BUG-007.5 part 3 —
+    /// `effectiveLockReleaseSecondsLocked()` returns `max(this, multiplier × medianPeriod)`.
+    private static let lockReleaseTimeSecondsFloor: Double = 2.5
+    /// Beat-period multiplier for the BPM-aware lock-release gate (BUG-007.5 pt 3).
+    /// Lock drops only after 4 × medianBeatPeriod of non-tight events. At 120 BPM
+    /// this gives 2.0 s (clamped up to 2.5 s floor); at 76 BPM half-time it gives
+    /// 3.16 s — enough headroom for HUMBLE-class sparse onset streams that
+    /// produce 3–4 consecutive non-tight events during instrumental breaks.
+    private static let lockReleaseBeatMultiplier: Double = 4.0
 
     /// Default audio output latency (BUG-007.6) for new tracker instances.
     /// 0 by default — engine-level neutral. Production wiring (`MIRPipeline.init`
@@ -578,18 +583,18 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
         cb(entry)
     }
 
-    /// Lock-state computation using the time-based release gate (BUG-007.5).
-    /// `now` is the current latency-shifted playback time (`pt + L`). Lock is
-    /// retained while the *time since the first non-tight match* in the current
-    /// run is below `lockReleaseTimeSeconds`. Sparse-onset tracks (e.g. half-time
-    /// trap at 76 BPM, 790 ms beat period) no longer drop lock just because 7
-    /// non-tight onsets have accumulated — what matters is the elapsed time.
+    /// Lock-state computation using the BPM-aware time-based release gate
+    /// (BUG-007.5 parts 1 + 3). `now` is the current latency-shifted playback
+    /// time. Lock is retained while *time since the first non-tight match* in
+    /// the current run is below `effectiveLockReleaseSecondsLocked()`, which
+    /// scales with grid period so HUMBLE-class half-time tracks (790 ms period)
+    /// get a wider gate than fast tracks (120+ BPM, 500 ms period).
     private func computeLockStateLocked(at now: Double) -> LockState {
         guard matchedOnsets >= Self.lockThreshold else {
             return (matchedOnsets > 0 || lastOnsetTime >= 0) ? .locking : .unlocked
         }
         if let firstMissAt = firstNonTightMatchTime,
-           now - firstMissAt > Self.lockReleaseTimeSeconds {
+           now - firstMissAt > effectiveLockReleaseSecondsLocked() {
             return .locking
         }
         return .locked
@@ -601,6 +606,19 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
     private func computeLockState() -> LockState {
         let now = max(lastOnsetTime, 0)
         return computeLockStateLocked(at: now)
+    }
+
+    /// BPM-aware lock-release window (BUG-007.5 part 3). Returns the larger of:
+    ///   - `lockReleaseTimeSecondsFloor` (2.5 s) — the minimum window for fast tracks,
+    ///   - `lockReleaseBeatMultiplier × medianPeriod` (4 × beat period) — scaled
+    ///     for sparse-onset tracks where 4 consecutive non-tight events are not
+    ///     yet a "lost lock" signal.
+    /// At 120 BPM (medianPeriod 0.5 s), returns max(2.5, 2.0) = 2.5 (floor).
+    /// At 76 BPM half-time (period 0.79 s), returns max(2.5, 3.16) = 3.16 (BPM-aware).
+    /// At 60 BPM (period 1.0 s), returns max(2.5, 4.0) = 4.0 (BPM-aware).
+    private func effectiveLockReleaseSecondsLocked() -> Double {
+        let bpmAware = Self.lockReleaseBeatMultiplier * medianPeriod
+        return max(Self.lockReleaseTimeSecondsFloor, bpmAware)
     }
 
     private struct PhaseTriple {

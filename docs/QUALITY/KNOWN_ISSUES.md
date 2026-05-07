@@ -126,7 +126,7 @@ The varying off-by-N (0, 2, 3) per track rules out a constant pipeline rotation 
 
 **Severity:** P3 (cosmetic — visual flicker between LOCKED and LOCKING; doesn't affect beat-phase)
 **Domain tag:** dsp.beat
-**Status:** **Resolved (time-based release gate + variance-adaptive tight gate, 2026-05-07)** — manual validation pending.
+**Status:** **Resolved (parts 1 + 2 + 3, 2026-05-07)** — manual validation pending.
 **Introduced:** Surfaced 2026-05-07. Pre-exists BUG-007.3 (the reverted attempt). The fixed-window Schmitt hysteresis (`staleMatchWindow=0.060` in commit `94309858`) attempted this and failed because the "right" stale window depends on the drift variance, which differs by track.
 **Resolved:** 2026-05-07 — Two-part fix.
 
@@ -135,6 +135,8 @@ The varying off-by-N (0, 2, 3) per track rules out a constant pipeline rotation 
 **Part 2 (variance-adaptive tight gate)**: Replaced the fixed ±30 ms tight-match window during the *retention* phase (after lock acquired) with an adaptive `effectiveTightWindow = clamp(2σ, 30 ms, 80 ms)` derived from the running stddev of the last 16 `instantDrift − drift` values. Acquisition path still uses the fixed 30 ms floor for selectivity. This closes the remaining lock-flicker on tracks where drift envelope is wider than ±30 ms despite small EMA bias (Midnight City: drift envelope ±20 ms with σ ≈ 12 ms → adaptive window ≈ 24 ms; HUMBLE: σ ≈ 25 ms → adaptive window ≈ 50 ms; B.O.B. polyrhythmic noise: σ ≈ 40 ms → adaptive window clamped at ceiling 80 ms).
 
 Variance ring resets on `setGrid` / `reset` so each track starts fresh at the floor.
+
+**Part 3 (BPM-aware time gate, landed same day)**: replaced the fixed 2.5 s `lockReleaseTimeSeconds` with `effectiveLockReleaseSeconds = max(2.5 s, 4 × medianBeatPeriod)`. At 120+ BPM the gate stays at the 2.5 s floor (4 × 0.5 = 2.0 s, below floor). At HUMBLE half-time (76 BPM, 790 ms period) the gate scales to 3.16 s — accommodates 4 consecutive sparse non-tight events without dropping lock. At 60 BPM (period 1.0 s) the gate reaches 4.0 s. This closes the failure mode where HUMBLE drops lock every ~5 seconds despite small per-onset deviations from the EMA — the issue was sparse onsets accumulating to 2.5 s before a tight match arrived.
 
 **Expected behavior:** Once `lock_state` reaches LOCKED on a track with correct grid BPM, it stays there for the duration of the song unless the input goes silent or the BPM is genuinely wrong. Lock should not flicker due to per-onset noise within ±60 ms of the EMA.
 
