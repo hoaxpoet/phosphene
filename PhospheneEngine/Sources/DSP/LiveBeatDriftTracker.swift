@@ -57,6 +57,8 @@ public struct LiveBeatDriftTraceEntry: Sendable {
 
 // MARK: - LiveBeatDriftTracker
 
+// swiftlint:disable type_body_length
+
 /// Aligns live `beatPhase01` to a cached offline `BeatGrid` via drift tracking.
 public final class LiveBeatDriftTracker: @unchecked Sendable {
 
@@ -126,6 +128,27 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
     private static let driftDeviationMinSamples: Int = 4
     /// Matched onsets required to reach `.locked`.
     private static let lockThreshold: Int = 4
+
+    /// Matched-onset threshold for the BUG-007.4b auto-rotate attempt. After this
+    /// many tight onsets, the tracker checks the per-slot kick-density histogram
+    /// and rotates `barPhaseOffset` so the dominant slot becomes "1". 8 matches
+    /// ≈ 4 s at 120 BPM — fast enough that the visual jumps into place quickly,
+    /// slow enough that the histogram is statistically meaningful (2 onsets per
+    /// slot in 4/4). One-shot: once attempted (whether or not it found a winner),
+    /// the auto-rotate doesn't fire again on the current track. Manual `Shift+B`
+    /// preempts it entirely if pressed before the threshold is reached.
+    private static let autoRotateMatchThreshold: Int = 8
+    /// Dominance ratio for BUG-007.4b auto-rotate: the leading slot must hold
+    /// at least this many times more onsets than the runner-up to qualify as a
+    /// clear "1" candidate. Tracks where kick is on every beat (four-on-the-floor)
+    /// produce ratio ~1.0 → no clear winner → auto-rotate is a no-op (manual
+    /// `Shift+B` remains the fallback). 1.5 chosen to admit kick-on-1+3 hip-hop
+    /// patterns while rejecting near-uniform distributions.
+    private static let autoRotateDominanceRatio: Double = 1.5
+    /// Minimum onsets required for the leading slot before auto-rotate fires.
+    /// Sub-threshold = "not enough data," skip and try again at next match. Prevents
+    /// premature rotation on a 1-onset histogram.
+    private static let autoRotateMinDominantCount: Int = 4
     /// Time-based lock-release gate (BUG-007.5). When at least this many seconds
     /// of consecutive non-tight matches accumulate, lock drops to `.locking`.
     /// Decoupled from onset *count* so sparse-onset tracks (HUMBLE half-time:
@@ -170,6 +193,18 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
     /// Ring of recent `instantDrift − drift` values (signed seconds) for the
     /// variance-adaptive tight gate (BUG-007.5 part 2). Reset on `setGrid` / `reset`.
     private var driftDeviationRing: [Double] = []
+    /// Per-slot kick-density histogram for BUG-007.4b auto-rotate. Sized to
+    /// `grid.beatsPerBar` on `setGrid`. Each tight onset increments the bin
+    /// at `timing.beatsSinceDownbeat % beatsPerBar` (raw, *before* `_barPhaseOffset`
+    /// rotation — we measure where the actual kicks are landing in Beat This!'s
+    /// coordinate system, then derive the offset that makes the dominant slot "1").
+    private var slotOnsetCounts: [Int] = []
+    /// True after the BUG-007.4b auto-rotate attempt has fired (either rotated
+    /// or determined no clear winner). One-shot per track.
+    private var autoRotateAttempted: Bool = false
+    /// True after the user pressed `Shift+B` (or `barPhaseOffset` was set
+    /// externally). Suppresses any pending auto-rotate so user intent wins.
+    private var manualRotationPressed: Bool = false
     private let lock = NSLock()
 
     // MARK: - Init
@@ -226,6 +261,8 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
             lock.lock(); defer { lock.unlock() }
             let bpb = max(grid.beatsPerBar, 1)
             _barPhaseOffset = ((newValue % bpb) + bpb) % bpb   // wrap into [0, bpb)
+            // BUG-007.4b: external setter signals user intent — preempt auto-rotate.
+            manualRotationPressed = true
         }
     }
     private var _barPhaseOffset: Int = 0
@@ -305,6 +342,9 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
         let median = newGrid.medianBeatPeriod
         self.medianPeriod = median > 0 ? median : 0.5
         resetStateLocked()
+        // BUG-007.4b: size the per-slot kick-density histogram to the grid's meter.
+        // resetStateLocked already cleared old contents.
+        slotOnsetCounts = [Int](repeating: 0, count: max(newGrid.beatsPerBar, 1))
         let beatCount = newGrid.beats.count
         let bpmStr = String(format: "%.1f", newGrid.bpm)
         logger.info("LiveBeatDriftTracker grid set: \(beatCount) beats, \(bpmStr) BPM, \(newGrid.beatsPerBar)/X")
@@ -323,6 +363,9 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
         firstNonTightMatchTime = nil
         lastOnsetTime = -1.0
         driftDeviationRing.removeAll(keepingCapacity: true)   // BUG-007.5 pt 2
+        slotOnsetCounts.removeAll(keepingCapacity: true)      // BUG-007.4b
+        autoRotateAttempted = false                            // BUG-007.4b
+        manualRotationPressed = false                          // BUG-007.4b
         _barPhaseOffset = 0   // BUG-007.4: cleared on track change so each track starts fresh
         // _audioOutputLatencyMs intentionally NOT reset — it's a system property.
     }
@@ -381,6 +424,18 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
                     matchedOnsets = min(matchedOnsets + 1, Int.max - 1)
                     consecutiveMisses = 0
                     firstNonTightMatchTime = nil   // BUG-007.5: reset time gate on tight match
+                    // BUG-007.4b: accumulate per-slot kick-density on tight matches only.
+                    // Use the *raw* `beatsSinceDownbeat` (before `_barPhaseOffset` rotation)
+                    // so we measure where the actual onsets land in Beat This!'s coordinate
+                    // system. Auto-rotate then maps the dominant raw slot to the displayed "1".
+                    if let timing = grid.localTiming(at: nearest) {
+                        let bpb = max(grid.beatsPerBar, 1)
+                        let rawSlot = ((timing.beatsSinceDownbeat % bpb) + bpb) % bpb
+                        if rawSlot < slotOnsetCounts.count {
+                            slotOnsetCounts[rawSlot] += 1
+                        }
+                    }
+                    maybeAutoRotateBarPhaseLocked()
                 } else {
                     consecutiveMisses += 1
                     if firstNonTightMatchTime == nil { firstNonTightMatchTime = pt }
@@ -421,6 +476,52 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
     }
 
     // MARK: - Helpers
+
+    /// Auto-rotate `_barPhaseOffset` once per track based on the kick-density
+    /// histogram in `slotOnsetCounts` (BUG-007.4b). Fires when:
+    ///   - `matchedOnsets >= autoRotateMatchThreshold` (lock has stabilised)
+    ///   - The user has not manually rotated this track yet
+    ///   - The auto-rotate has not already attempted on this track
+    /// Selects the dominant raw slot (with `beatsSinceDownbeat` indexing) and
+    /// computes the offset that rotates that slot to position 0 (the displayed
+    /// "1"). If no clear winner (top count < `autoRotateDominanceRatio` × runner-up,
+    /// or top < `autoRotateMinDominantCount`), leaves the offset alone — manual
+    /// `Shift+B` remains the fallback for ambiguous cases (four-on-the-floor).
+    /// Caller must hold the lock.
+    private func maybeAutoRotateBarPhaseLocked() {
+        guard !autoRotateAttempted,
+              !manualRotationPressed,
+              matchedOnsets >= Self.autoRotateMatchThreshold,
+              !slotOnsetCounts.isEmpty else {
+            return
+        }
+        autoRotateAttempted = true   // one-shot regardless of outcome
+        let bpb = slotOnsetCounts.count
+        guard bpb >= 2 else { return }   // 1/X meter has nothing to rotate
+        // Find dominant slot and runner-up. Avoid `.enumerated().sorted` —
+        // SwiftLint's `unused_enumerated` flags the closure even when `.offset`
+        // is consumed downstream.
+        var dominantSlot = 0
+        var topCount = slotOnsetCounts[0]
+        for idx in slotOnsetCounts.indices where slotOnsetCounts[idx] > topCount {
+            topCount = slotOnsetCounts[idx]
+            dominantSlot = idx
+        }
+        var runnerUp = 0
+        for idx in slotOnsetCounts.indices where idx != dominantSlot && slotOnsetCounts[idx] > runnerUp {
+            runnerUp = slotOnsetCounts[idx]
+        }
+        guard topCount >= Self.autoRotateMinDominantCount else { return }
+        let ratioFloor = max(Double(runnerUp), 1.0) * Self.autoRotateDominanceRatio
+        guard Double(topCount) >= ratioFloor else { return }
+        // Rotate so the dominant slot maps to displayed slot 0:
+        //   displayedSlot = (rawSlot + offset) mod bpb = 0  ⇒  offset = -rawSlot mod bpb
+        _barPhaseOffset = ((bpb - dominantSlot) % bpb + bpb) % bpb
+        let countsStr = slotOnsetCounts.map(String.init).joined(separator: ",")
+        logger.info(
+            "BUG-007.4b auto-rotate: counts=[\(countsStr)] dominant=\(dominantSlot) → offset=\(self._barPhaseOffset)"
+        )
+    }
 
     /// Push a signed `instantDrift − drift` value into the variance ring buffer
     /// (BUG-007.5 part 2). Caps at `driftDeviationRingCapacity`, dropping oldest.
@@ -534,3 +635,5 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
         )
     }
 }
+
+// swiftlint:enable type_body_length

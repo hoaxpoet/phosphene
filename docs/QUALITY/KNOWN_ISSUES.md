@@ -12,8 +12,14 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 **Severity:** P2
 **Domain tag:** dsp.beat
-**Status:** Open — **root cause confirmed 2026-05-07**: Spotify preview clip phase mismatch (see "Confirmed root cause" below).
+**Status:** **Resolved 2026-05-07** — BUG-007.4a (manual `Shift+B`) + BUG-007.4b (auto-rotate via kick density) landed. Manual validation pending for BUG-007.4b.
 **Introduced:** Reported 2026-05-07 from manual validation captures (`2026-05-07T14-28-40Z/` and prior). User-observed: when watching the SpectralCartograph beat-in-bar counter and listening to SLTS / Everlong (Spotify-prepared), the visual "1" does not land on the song's actual perceived downbeat — it lands on what feels like beat 2 or beat 3 of the bar.
+**Resolved:** 2026-05-07 — two-step fix.
+
+- **BUG-007.4a (`Shift+B` manual rotation, landed earlier today)**: developer-only keybind that cycles `barPhaseOffset` 0..(beatsPerBar−1). Resets on track change. Confirmed in session `T18-21-37Z` that rotation works as designed.
+- **BUG-007.4b (auto-rotate via kick density)**: after `matchedOnsets >= 8` (lock has stabilised), the tracker examines per-slot kick-onset histogram in `slotOnsetCounts` and rotates `_barPhaseOffset` so the dominant slot (where kicks land most often) becomes the displayed "1". One-shot per track. Suppressed if user pressed `Shift+B` first (manual intent wins). No-op if no clear winner — leading slot must have ≥ 4 onsets *and* ≥ 1.5× the runner-up's count. Four-on-the-floor electronic (OMT) has equal kick density on all slots → no rotation, manual `Shift+B` remains the fallback. Tracks with kick on 1+3 or 1-only patterns (HUMBLE, SLTS, Everlong, MC) auto-rotate within 4–8 seconds of lock acquisition.
+
+Variance ring + slot histogram + auto-rotate flags reset on `setGrid` so each track starts fresh.
 
 **Confirmed root cause (2026-05-07, after 5-track diagnostic A/B):** Spotify preview URLs return a 30-second clip from somewhere in the song — *often the chorus, not the first 30 seconds*. Beat This! analyzes the clip, builds a grid, and labels the first beat in the clip as "beat 1 of bar 1." That beat in the clip is typically beat 2, 3, or 4 of the original song's bar. When playback starts from the song's beginning and we install the grid with `offsetBy(0)`, the clip's "beat 1" maps to playback time 0 — but the song's actual beat 1 of bar 1 is at playback time 0. The two don't agree. Result: bar-phase rotation per track, depending on where in the bar Spotify's clip happens to begin.
 
@@ -58,7 +64,7 @@ The varying off-by-N (0, 2, 3) per track rules out a constant pipeline rotation 
 
 **(B) — Pre-rotate at preparation time (alternative to A).** Run the kick-density heuristic on the cached 30-second preview audio at preparation time, before the grid is stored in `StemCache`. Faster lock-in (no live convergence period), but requires re-running an onset detector on the cached audio. Higher complexity; defer unless (A)'s convergence delay is unacceptable.
 
-**Recommended sequence:** (C) first to confirm theory in <1 hour. Then (A) as the durable fix. (B) deferred unless needed.
+**Recommended sequence:** (C) first to confirm theory in <1 hour. Then (A) as the durable fix. (B) deferred unless needed. **Both (C) and (A) landed 2026-05-07.**
 
 **Out of scope:**
 - Reactive-mode downbeat detection — different code path; live grids will benefit from (A) automatically since the same heuristic applies post-install.
