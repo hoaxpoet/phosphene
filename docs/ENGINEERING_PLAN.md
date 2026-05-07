@@ -2583,13 +2583,16 @@ Foundation: `DashboardTokens`, `DashboardFontLoader`, `DashboardTextLayer`.
 - [x] Color token applies to rendered pixels (teal G > R and G > B).
 - [x] All 12 tests pass; 0 SwiftLint violations; app build clean.
 
-### Increment DASH.2 — Metrics card layout engine
+### Increment DASH.2 — Metrics card layout engine ✅ 2026-05-07
 
-`DashboardCardLayout` value type: positions labeled metric values in a fixed-width card (title row + N value rows). `DashboardCardRenderer` composes `DashboardTextLayer` calls to paint one card. Cards support: single-value, two-column pair, bar-chart rows.
+`DashboardCardLayout` value type: positions labeled metric values in a fixed-width card (title row + N value rows). `DashboardCardRenderer` composes `DashboardTextLayer` calls to paint one card. Cards support: single-value, two-column pair, bar-chart rows. Card chrome (rounded surface fill at 0.92 alpha + 1 px tinted border) is the one sanctioned glassmorphic surface in the dashboard. Right-edge clipping enforced via `align: .right` on every value column; bar geometry bounded by `padding` on both inner edges. `DashboardTextLayer` exposes the underlying `CGContext` via an `internal var graphicsContext` so the renderer can paint chrome and bar geometry into the same shared buffer.
 
-**Done when:**
-- [ ] A `DashboardCardRenderer` test renders a 3-row card to a texture and pixel-verifies label positions.
-- [ ] Cards clip correctly at the right edge.
+**Done when:** ✅
+- [x] A `DashboardCardRenderer` test renders a 3-row card to a texture and pixel-verifies label positions.
+- [x] Cards clip correctly at the right edge (no text glyph past `width - padding`).
+- [x] Bar row negative value fills left of centre; positive value fills right; zero value draws no foreground.
+- [x] Pair row draws a 1 px `Color.border` divider at the midpoint.
+- [x] All 18 dashboard tests pass; 0 SwiftLint violations; app build clean.
 
 ### Increment DASH.3 — Beat & BPM card
 

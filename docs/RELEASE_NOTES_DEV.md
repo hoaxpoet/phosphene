@@ -6,6 +6,49 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-07-a] DASH.2 — Metrics card layout engine
+
+**Increment:** DASH.2
+**Type:** Infrastructure (renderer)
+
+**What changed.**
+
+Added the layout primitive that DASH.3 (Beat & BPM), DASH.4 (Stems), and DASH.5 (Frame budget) will compose. Cards are the unit of visual identity for the dashboard — fixed width, fixed row heights, three row variants only.
+
+**Files added:**
+
+- `PhospheneEngine/Sources/Renderer/Dashboard/DashboardCardLayout.swift` — value type describing one card: title, ordered rows, fixed width, padding, title size, row spacing. `Row` enum with three cases (`.singleValue` / `.pair` / `.bar`) and static row-height constants (single = 18 pt, pair = 18 pt, bar = 22 pt). `height` is computed: `padding + titleSize + (rowSpacing + rowHeight) × N + padding`.
+- `PhospheneEngine/Sources/Renderer/Dashboard/DashboardCardRenderer.swift` — stateless `Sendable` struct. `render(_:at:on:cgContext:)` paints chrome (rounded `Color.surface` fill at 0.92 alpha + 1 px `Color.border` stroke) → bar geometry → text in that order; reversing the order is a known Failed Approach (text gets painted over). Right-edge clipping enforced via `align: .right` on every value column. Bar fill is signed slice from centre (negative left, positive right), clamped to the supplied range.
+
+**Files edited:**
+
+- `PhospheneEngine/Sources/Renderer/Dashboard/DashboardTextLayer.swift` — added `internal var graphicsContext: CGContext` so the renderer can paint chrome and bar geometry into the same shared buffer the text layer rasterises into.
+
+**Tests added (6 `@Test` functions in `@Suite("DashboardCardRenderer")`):**
+
+- `layoutHeight_matchesSumOfRows` — encodes the height formula explicitly so future row-height edits surface as test failures.
+- `render_threeRowCard_pixelVerifyLabelPositions` — renders the canonical three-row card, asserts title-strip glyph alpha and zero paint past `layout.height`. Writes `.build/dash1_artifacts/card_three_row.png` for M7-style review.
+- `render_cardNearRightEdge_clipsCorrectly` — places a 280 pt card at `canvasWidth - 280` on a 512 px canvas; asserts the rightmost column's luma is below the text-glyph threshold (chrome fill at the edge is allowed; a stray `textHeading` glyph would fail).
+- `render_barRow_negativeValueFillsLeft` — `value: -0.5, range: -1...1` with coral fill: left half coral, right half background.
+- `render_barRow_positiveValueFillsRight` — mirror of the negative test.
+- `render_pairRow_dividerVisible` — 1 px `Color.border` divider at the midpoint.
+
+Pixel-assertion brittleness (the prompt's risk note) is mitigated by `maxChromaPixel(around:)`: the bar background and foreground are both opaque, so alpha alone cannot distinguish them — chroma can. The right-edge overflow check uses Rec. 601 luma instead of alpha so chrome (low-luma) is correctly distinguished from text glyphs (high-luma `textHeading`).
+
+**What's intentionally NOT in this increment:**
+
+- No card is wired into `RenderPipeline`, `PlaybackView`, or `DebugOverlayView`. DASH.6 owns wiring.
+- No data binding (which metrics each card shows). DASH.3/4/5 own that.
+- No interactive state (hover, focus). The dashboard is read-only telemetry.
+- No animation / transition. Cards repaint each frame from current state.
+- No fourth row variant, no flex-width card, no sparkline. Adding variants is a separate increment with explicit Matt approval.
+
+**Decisions:** D-082 (this increment).
+
+**Test counts:** 6 new (18 dashboard total = DASH.1 12 + DASH.2 6). Full engine suite: **1102 tests / 125 suites**, all green. App build clean. 0 SwiftLint violations on touched files.
+
+---
+
 ## [dev-2026-05-06-e] DASH.1 — Telemetry dashboard text-rendering layer
 
 **Increment:** DASH.1
