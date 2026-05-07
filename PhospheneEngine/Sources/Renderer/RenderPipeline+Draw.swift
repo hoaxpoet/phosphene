@@ -320,7 +320,6 @@ extension RenderPipeline {
 
         encoder.endEncoding()
 
-        compositeDashboard(commandBuffer: commandBuffer, view: view)
         commandBuffer.present(drawable)
     }
 

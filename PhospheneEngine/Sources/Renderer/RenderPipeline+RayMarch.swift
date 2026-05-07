@@ -151,7 +151,6 @@ extension RenderPipeline {
         // Present only when rendering directly to the drawable (normal path).
         // When sceneOutputTexture is non-nil, the mv_warp blit pass presents instead.
         if let drawable = drawable {
-            compositeDashboard(commandBuffer: commandBuffer, view: view)
             commandBuffer.present(drawable)
         }
     }

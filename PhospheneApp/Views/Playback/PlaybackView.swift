@@ -40,6 +40,7 @@ struct PlaybackView: View {
     @StateObject private var chromeVM: PlaybackChromeViewModel
     @StateObject private var toastManager = ToastManager()
     @StateObject private var endSessionVM: EndSessionConfirmViewModel
+    @StateObject private var dashboardVM: DashboardOverlayViewModel
 
     // MARK: - View State
 
@@ -71,6 +72,8 @@ struct PlaybackView: View {
         reduceMotionPublisher: AnyPublisher<Bool, Never> = Just(false).eraseToAnyPublisher(),
         progressiveReadinessPublisher: AnyPublisher<ProgressiveReadinessLevel, Never> =
             Just(.fullyPrepared).eraseToAnyPublisher(),
+        dashboardSnapshotPublisher: AnyPublisher<DashboardSnapshot?, Never> =
+            Just(nil).eraseToAnyPublisher(),
         onEndSession: @escaping () -> Void,
         reduceMotion: Bool
     ) {
@@ -86,6 +89,9 @@ struct PlaybackView: View {
         ))
         _endSessionVM = StateObject(wrappedValue: EndSessionConfirmViewModel(
             sessionManager: sessionManager
+        ))
+        _dashboardVM = StateObject(wrappedValue: DashboardOverlayViewModel(
+            snapshotPublisher: dashboardSnapshotPublisher
         ))
     }
 
@@ -119,9 +125,15 @@ struct PlaybackView: View {
                 )
             }
 
-            // Layer 5: Debug overlay
+            // Layer 5: Debug overlay (bottom-leading SwiftUI — raw diagnostics).
             if showDebug {
                 DebugOverlayView(engine: engine)
+            }
+
+            // Layer 6: Dashboard overlay (top-trailing SwiftUI — instruments).
+            // DASH.7 SwiftUI port (D-087, supersedes the DASH.6 Metal composer).
+            if showDebug {
+                DashboardOverlayView(viewModel: dashboardVM)
             }
         }
         .frame(minWidth: 800, minHeight: 600)
@@ -286,10 +298,9 @@ struct PlaybackView: View {
             onToggleDebug: { [weak engine = self.engine] in
                 engine?.toggleDebugOverlay()
                 showDebug.toggle()
-                // DASH.6: D drives both the SwiftUI debug overlay (above) and
-                // the Metal dashboard cards (cards/SwiftUI complement each
-                // other — instruments vs raw diagnostics).
-                engine?.dashboardEnabled = showDebug
+                // DASH.7: `showDebug` drives both DebugOverlayView (Layer 5)
+                // and DashboardOverlayView (Layer 6). One toggle, two
+                // SwiftUI surfaces — instruments vs raw diagnostics.
             },
             onHandleEsc: { [weak fo = self.fullscreenObserver] in
                 if fo?.isFullscreen == true {

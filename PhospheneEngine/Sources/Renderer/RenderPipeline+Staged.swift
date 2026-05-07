@@ -179,7 +179,6 @@ extension RenderPipeline {
                     stemFeatures: stemFeatures,
                     textures: textures)
         encoder.endEncoding()
-        compositeDashboard(commandBuffer: commandBuffer, view: view)
         commandBuffer.present(drawable)
     }
 
