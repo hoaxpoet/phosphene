@@ -245,6 +245,27 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// meters like Money 7/4 that Beat This! misses in a short window).
     var liveBeatAnalysisAttempts: Int = 0
 
+    /// Number of slope-driven wider-window retries fired for the current track
+    /// (BUG-007.3). Capped at `liveBeatMaxSlopeRetries=1` — one chance to recover
+    /// from a 4 %-low BPM estimate via a 20 s window. After that the system holds
+    /// the existing grid and logs an unstable-grid warning.
+    var liveBeatSlopeRetryCount: Int = 0
+
+    /// `mirPipeline.elapsedSeconds` when high-slope drift was first observed
+    /// in the current sustain window (BUG-007.3). Cleared when slope falls back
+    /// below the threshold. Used to enforce the `liveBeatSlopeSustainSeconds` gate.
+    var liveBeatHighSlopeStartElapsed: Double?
+
+    /// `mirPipeline.elapsedSeconds` of the last live Beat This! attempt of any kind
+    /// (BUG-007.3). Used by the slope-retry path to enforce the 30 s cooldown.
+    var liveBeatLastAttemptElapsed: Double = -.infinity
+
+    /// Where the currently-installed `mirPipeline.liveDriftTracker` grid came from
+    /// (BUG-007.3). Slope-driven retries only fire on `.liveAnalysis` grids —
+    /// prepared-cache inaccuracy is BUG-008, out of scope for the slope path.
+    enum BeatGridSource { case none, preparedCache, liveAnalysis }
+    var liveBeatGridSource: BeatGridSource = .none
+
     // MARK: - Stem Per-Frame Analysis State
     //
     // After each 5s stem separation completes on `stemQueue`, the produced

@@ -12,8 +12,9 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 **Severity:** P2
 **Domain tag:** dsp.beat
-**Status:** Open
+**Status:** Resolved (automated gates, 2026-05-07) — manual validation pending
 **Introduced:** Surfaced 2026-05-07 during manual validation of two sessions captured post-QR.2 (`~/Documents/phosphene_sessions/2026-05-07T13-27-14Z/` planned, `~/Documents/phosphene_sessions/2026-05-07T13-30-46Z/` reactive). Predates QR.2 (QR.2 did not change drift-tracker semantics). BUG-007.2 widened `lockReleaseMisses` 3 → 7, which closed the 30 s freeze + the 400 ms/487 ms adversarial scenario but left two additional failure modes.
+**Resolved:** 2026-05-07 (automated gates). Part (a): Schmitt-style asymmetric hysteresis in `LiveBeatDriftTracker.update()` — new `staleMatchWindow=0.060` constant; while already locked, onsets within ±60 ms but outside ±30 ms are stale-OK (no `matchedOnsets`/`consecutiveMisses` change), preserving lock through natural expressive timing. Acquisition selectivity (±30 ms) unchanged. Part (b): drift-slope ring buffer + `currentDriftSlope() -> Double?` API on `LiveBeatDriftTracker`; restructured `runLiveBeatAnalysisIfNeeded()` into three paths (no-grid initial attempts / prepared-cache skip / live-grid slope-retry) with a 20 s wider-window retry capped at 1 fire per track + 30 s cooldown + previous-grid retention on second high-slope event. New `BeatGridSource` enum tracks install source. Manual validation gates remain pending until next session capture.
 
 **Expected behavior:** On any track where the offline/live BPM is within ±1 % of true tempo, `lock_state` reaches `2` (LOCKED) and stays there for the duration of the track, with `drift_ms` settling into a band whose `stddev` over a 10 s window is below ~25 ms. On busy mid-frequency tracks (rock, power chords) where the live 10 s window is insufficient, the system either widens its analysis window or surfaces a warning, but does not silently lock to a 4 % wrong BPM.
 
@@ -46,11 +47,12 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 - Drift sign is consistently negative across all tracks, suggesting a small constant tap-output latency contribution (~10–15 ms) on top of any BPM error. Not addressed by this bug — would be a separate calibration constant if pursued.
 
 **Verification criteria:**
-- [ ] On SLTS planned (prepared cache, BPM=117.6): `lock_state == 2` for ≥ 95 % of frames after first lock; `stddev(drift_ms over 10 s window) < 25 ms`.
-- [ ] On Everlong planned (prepared cache, BPM=157.8): ≤ 1 lock drop in 50 s of continuous playback.
-- [ ] On Everlong reactive: either grid BPM converges to within ±1 % of 158 within 30 s of playback (via wider retry window), or `WARN: live BPM credibility low` is logged and the system stays in LOCKING rather than locking to a wrong grid.
-- [ ] On Billie Jean reactive (control): no regression — drift stays bounded ±90 ms, lock holds.
-- [ ] Automated: a deterministic regression test in `LiveBeatDriftTrackerTests` simulating an outlier-onset stream within a 30 ms-EMA-correct grid demonstrates Mechanism C is closed (≤ 1 lock drop per 60 s of synthetic input where current code drops ≥ 4).
+- [ ] On SLTS planned (prepared cache, BPM=117.6): `lock_state == 2` for ≥ 95 % of frames after first lock; `stddev(drift_ms over 10 s window) < 25 ms`. **(Manual validation pending.)**
+- [ ] On Everlong planned (prepared cache, BPM=157.8): ≤ 1 lock drop in 50 s of continuous playback. **(Manual validation pending.)**
+- [ ] On Everlong reactive: either grid BPM converges to within ±1 % of 158 within 30 s of playback (via wider retry window), or `WARN: live BPM credibility low` is logged and the system stays in LOCKING rather than locking to a wrong grid. **(Manual validation pending.)**
+- [ ] On Billie Jean reactive (control): no regression — drift stays bounded ±90 ms, lock holds. **(Manual validation pending.)**
+- [x] Automated: `schmittHysteresis_preservesLockThroughExpressiveTempoVariation` regression test in `LiveBeatDriftTrackerTests` — synthetic 158 BPM grid + sinusoidal ±50 ms drift wander over 60 s asserts ≤ 1 lock drop. **Passes.**
+- [x] Automated: `currentDriftSlope` unit tests — flat drift returns < 1 ms/s; insufficient samples returns nil; linearly walking drift recovers slope within 2 ms/s of ground truth. **Pass.**
 - [ ] Manual: drift readout in SpectralCartograph stays close to zero on SLTS and Everlong (planned). Beat orb pulse sits exactly on the kick across both tracks.
 
 **Fix scope (BUG-007.3 — one increment, two parts):**

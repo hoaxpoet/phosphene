@@ -6,6 +6,51 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-07-b] BUG-007.3 — Lock hysteresis + live BPM credibility
+
+**Increment:** BUG-007.3
+**Type:** Bug fix (DSP / live beat tracking)
+
+**What changed.**
+
+Closes the two failure modes observed during 2026-05-07 manual validation that BUG-007.2 left unaddressed:
+
+- **Mechanism C — natural-music tempo variation drops lock under correct BPM.** Pre-fix, SLTS held lock 80 s but Everlong dropped 5 times in 50 s with drift in the −30 to −68 ms band, even though grid BPM was correct. Individual onsets falling outside `abs(instantDrift − drift) < 30 ms` for ≥ 7 consecutive onsets dropped lock; at 158 BPM that's a 2.7 s window, easily filled by harmonics, reverb tail, snare bleed.
+- **Mechanism D — live BPM resolver returns 4 % low on busy mid-frequency content.** Reactive Everlong locked to `grid_bpm=151.9` (true ≈158); drift went 0 → −358 ms over 75 s.
+
+**Part (a) — Schmitt-style asymmetric hysteresis** (`PhospheneEngine/Sources/DSP/LiveBeatDriftTracker.swift`):
+
+New `staleMatchWindow: Double = 0.060` constant. `update()` lock-decision rewritten — onsets within ±30 ms (`strictMatchWindow`) increment `matchedOnsets` toward `lockThreshold` (acquisition selectivity unchanged). While *already locked*, onsets within ±60 ms but outside ±30 ms are **stale-OK**: they do not increment `matchedOnsets` *or* `consecutiveMisses`, preserving lock through natural expressive timing. Only onsets outside ±60 ms (or no-match returns from `nearestBeat`) increment `consecutiveMisses` toward `lockReleaseMisses=7`.
+
+**Part (b) — drift-slope detector + wider-window retry**:
+
+- New ring buffer of 30 `(playbackTime, driftMs)` samples in `LiveBeatDriftTracker`, pushed on every matched onset. Public `currentDriftSlope() -> Double?` returns least-squares ms/sec slope when ≥ 5 samples cover ≥ 5 s; nil otherwise. Reset on `setGrid` / `reset`.
+- New retry trigger in `PhospheneApp/VisualizerEngine+Stems.swift runLiveBeatAnalysisIfNeeded()`. Three paths: (A) no grid → existing 10 s / 20 s initial attempts; (B) prepared-cache grid → skip live inference (BUG-008 territory); (C) live grid present → slope-driven 20 s wider retry when `abs(slope) > 5 ms/s` sustained ≥ 10 s, with 30 s cooldown and a hard cap at 1 retry per track. After the retry, a second high-slope event logs `WARN: live BPM unstable` and *retains* the previous grid rather than installing a third candidate.
+- New `BeatGridSource` enum on `VisualizerEngine` (`.none / .preparedCache / .liveAnalysis`) tracks where the installed grid came from so Path C only fires on live grids.
+
+**Files edited:**
+
+- `PhospheneEngine/Sources/DSP/LiveBeatDriftTracker.swift`
+- `PhospheneApp/VisualizerEngine.swift`
+- `PhospheneApp/VisualizerEngine+Stems.swift`
+- `PhospheneEngine/Tests/PhospheneEngineTests/DSP/LiveBeatDriftTrackerTests.swift` (4 new tests)
+- `docs/QUALITY/KNOWN_ISSUES.md`, `docs/ENGINEERING_PLAN.md`, `docs/RELEASE_NOTES_DEV.md`
+
+**Tests added** (MARKs 19–22 in `LiveBeatDriftTrackerTests`):
+
+- `schmittHysteresis_preservesLockThroughExpressiveTempoVariation` — synthetic 158 BPM grid + sinusoidal ±50 ms drift wander over 60 s. Asserts ≤ 1 lock drop. Pre-fix would drop ≥ 4.
+- `driftSlope_insufficientSamples_returnsNil` — slope returns nil before 5 samples accumulate.
+- `driftSlope_flatDrift_returnsNearZero` — perfectly aligned onsets for 12 s → slope < 1 ms/s.
+- `driftSlope_linearWalkingDrift_recoversSlope` — onsets pushed forward by 4 ms each (≈ 8 ms/s) → recovered |slope| within 2 ms/s of truth, sign negative (drift = nearest − pt convention).
+
+**Tests run.** `LiveBeatDriftTrackerTests` 22 / 22 pass. Full engine suite 1104 / 1106 (two pre-existing flakes: `MemoryReporter.residentBytes` env-dependent, `MetadataPreFetcher.fetch_networkTimeout` timing-sensitive — both pass on isolated re-run). `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build` — clean. `swiftlint --strict` — 0 violations on touched files.
+
+**Manual validation pending.** Acceptance gates in `KNOWN_ISSUES.md BUG-007.3`. Capture sessions to be run on SLTS planned, Everlong planned, Everlong reactive, Billie Jean reactive (control).
+
+**Out of scope (deferred).** Constant ~10–15 ms negative-drift offset (tap-output latency calibration). BUG-008 (offline BPM disagreement). `strictMatchWindow` widening (acquisition selectivity stays). Slope-driven retry on prepared-cache path.
+
+---
+
 ## [dev-2026-05-07-a] DASH.2 — Metrics card layout engine
 
 **Increment:** DASH.2
