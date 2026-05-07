@@ -1909,3 +1909,49 @@ After DASH.4: **33 dashboard tests pass** (12 DASH.1 + 6 DASH.2.1 + 6 BeatCardBu
 New: `PhospheneEngine/Sources/Renderer/Dashboard/StemsCardBuilder.swift`, `PhospheneEngine/Tests/PhospheneEngineTests/Renderer/StemsCardBuilderTests.swift`.
 
 No existing files edited (the builder reuses the `.bar` row variant from DASH.2.1; no new row variant means no renderer change in this increment).
+
+---
+
+## D-085 — PERF card data binding: `PerfSnapshot` value type + `.progressBar` for FRAME + builder-layer clamp (Phase DASH.5)
+
+**Status:** Accepted, 2026-05-07.
+
+**Context:** DASH.5 is the third live dashboard card after BEAT (D-083) and STEMS (D-084). It binds renderer governor state (`FrameBudgetManager.recentMaxFrameMs` / `currentLevel` / `targetFrameMs`) and ML dispatch state (`MLDispatchScheduler.lastDecision` / `forceDispatchCount`) to a three-row PERF card driven by a pure `PerfCardBuilder: Sendable` struct. Seven decisions warrant capture.
+
+### Decision 1 — `PerfSnapshot` value type rather than passing manager instances or individual scalars
+
+PERF state is genuinely spread across two manager classes — `FrameBudgetManager` (frame timing + quality level) and `MLDispatchScheduler` (dispatch decision). DASH.3 introduced `BeatSyncSnapshot` for the BEAT card; DASH.4 deliberately avoided introducing `StemEnergySnapshot` because a single live `StemFeatures` source already existed (D-084 Decision 2). DASH.5 is the inverse case of DASH.4: there is no single existing live source to read from, the call site needs to assemble values from two managers, and we want a single Sendable input crossing actor lines into the builder. A snapshot is the right seam. The snapshot lives inside the Renderer module and has no upward dependency on either manager.
+
+### Decision 2 — FRAME row uses `.progressBar` (unsigned ramp), not `.bar` (signed-from-centre)
+
+Frame time vs budget is naturally unsigned: the bar fills as the worst recent frame consumes more of the per-tier budget, headroom is the load-bearing signal, and "negative frame time" is meaningless. `.progressBar` (D-083) is exactly the variant designed for this case. `.bar` (D-084) would centre at 0.5 and waste half the visual real estate on a never-used left half.
+
+### Decision 3 — FRAME bar value clamps at the builder layer (asymmetric with STEMS)
+
+D-084 placed clamp authority for STEMS at the renderer (`drawBarFill`) because `.bar` carries an explicit `range: ClosedRange<Float>` field — the row variant defends itself end-to-end. `.progressBar` has no `range` field (the contract is "unsigned 0..1"); the row variant cannot defend itself the same way. A single source of truth for the FRAME clamp must therefore live in `PerfCardBuilder`. The value text passes through the raw `recentMaxFrameMs` value (`"42.0 ms"` when frame time is catastrophically over budget, not a clamped string) — the user wants to see how bad it actually is even when the bar pegs at 1.0. Test (e) regression-locks the asymmetry.
+
+### Decision 4 — Quality level encoded as `Int + displayName: String`, not the `FrameBudgetManager.QualityLevel` enum
+
+Re-exposing the enum on `PerfSnapshot` would pull `Renderer/FrameBudgetManager.swift` into anywhere that imports `PerfSnapshot` and could compile-leak its dependencies. Encoding the rawValue as `Int` plus a pre-formatted `displayName: String` keeps the snapshot a leaf value type, trivially `Sendable` without manager imports. Same pattern as `BeatSyncSnapshot.sessionMode`. The builder does not re-derive the display string — the caller owns formatting policy.
+
+### Decision 5 — ML decision encoded as `Int + Float retry-ms`, not the `MLDispatchScheduler.Decision` enum
+
+Same reasoning as Decision 4: keep the snapshot a leaf value type, no upward dependency on the scheduler's enum. The 0/1/2/3 encoding (no decision / dispatchNow / defer / forceDispatch) plus a separate `mlDeferRetryMs: Float` is sufficient to drive the row variant.
+
+### Decision 6 — No `statusRed` token introduced; durable across the dashboard
+
+The `.impeccable.md` token system has `textBody` / `textHeading` / `textMuted` / `statusYellow` / `statusGreen` / `coral` / `purpleGlow`. Red is not present and not added. The renderer governor never enters a state the user needs alarm-coloured signalling for: a quality downshift is the system doing its job, not failing. The "yellow = governor active / WAIT / FORCED" semantic is sufficient and consistent with D-083's three-state palette (muted / yellow / green) used for BEAT lock state. The "no red" rule is durable across the dashboard — future cards must not introduce it either.
+
+### Decision 7 — No per-row colour tuning for FRAME (uniform coral v1)
+
+D-084 decided STEMS uses uniform coral v1 because direction (left vs right of centre) is the load-bearing signal, not colour. The same logic applies to FRAME: bar fill ratio carries headroom, QUALITY's status-coloured text carries the discrete governor state, ML's status-coloured text carries dispatch state. Colour reinforces, it does not differentiate. A "coral when comfortable / yellow when nearing budget / red when over" scheme would triple-encode the same information already present in the QUALITY row, break Decision 6's no-red rule, and introduce three independent thresholds the user has no need to learn. If Matt's eyeball flags ambiguity at M7, that becomes a DASH.5.1 amendment ticket (slot reserved); it is not pre-empted within DASH.5.
+
+### Tests
+
+After DASH.5: **39 dashboard tests pass** (12 DASH.1 + 6 DASH.2.1 + 6 BeatCardBuilder + 3 progress-bar + 6 StemsCardBuilder + 6 PerfCardBuilder). Full engine suite green: 1123 tests. 0 SwiftLint violations on touched files; app build clean.
+
+### Files changed
+
+New: `PhospheneEngine/Sources/Renderer/Dashboard/PerfSnapshot.swift`, `PhospheneEngine/Sources/Renderer/Dashboard/PerfCardBuilder.swift`, `PhospheneEngine/Tests/PhospheneEngineTests/Renderer/PerfCardBuilderTests.swift`.
+
+No existing files edited (the builder reuses `.progressBar` and `.singleValue` row variants from DASH.2.1 / DASH.3; no new row variant means no renderer change in this increment).

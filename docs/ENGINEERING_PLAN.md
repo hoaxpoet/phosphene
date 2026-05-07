@@ -2625,13 +2625,19 @@ Second live card. `StemsCardBuilder` (pure, Sendable) maps a `StemFeatures` snap
 - [x] `card_stems_active.png` artifact written for M7-style review.
 - [x] D-084 captures: `.bar` over `.progressBar` rationale, builder reads `StemFeatures` directly (no `StemEnergySnapshot`), uniform-coral v1 + DASH.4.1 amendment slot, no-clamp-at-builder, range rationale, percussion-first row order.
 
-### Increment DASH.5 — Frame budget card
+### Increment DASH.5 — Frame budget card ✅ 2026-05-07
 
-"PERF" card: frame time (ms), quality level badge, ML-dispatch cooldown indicator.
+Third live card. New `PerfSnapshot` Sendable value type wraps renderer governor + ML dispatch state (`FrameBudgetManager.recentMaxFrameMs` / `currentLevel` / `targetFrameMs` + `MLDispatchScheduler.lastDecision` / `forceDispatchCount`) as a single input crossing actor lines — decision and quality enums are encoded as `Int + displayName: String` so the snapshot stays trivially `Sendable` without importing the manager enums (mirrors `BeatSyncSnapshot.sessionMode`). `PerfCardBuilder` (pure, Sendable) maps the snapshot to a `DashboardCardLayout` titled `PERF` with three rows in display order: FRAME (`.progressBar`, unsigned ramp `recentMaxFrameMs / targetFrameMs` with builder-layer clamp to `[0, 1]` since `.progressBar` carries no `range` field — single source of truth), QUALITY (`.singleValue`, displayName passed through verbatim), ML (`.singleValue`, mapped READY / WAIT _ms / FORCED / —). Status-colour discipline reuses the BEAT lock-state palette (D-083): muted = no information yet, green = healthy / READY, yellow = governor active / degraded / WAIT / FORCED. No `statusRed` introduced — the governor doing its job is the expected state under load. Wiring into `RenderPipeline` / `PlaybackView` is DASH.6 scope, not DASH.5.
 
 **Done when:**
-- [ ] Frame time string matches `FrameTimingReporter.recentMaxFrameMs` within ±0.5 ms.
-- [ ] Quality-level badge text matches `FrameBudgetManager.currentLevel.rawValue`.
+- [x] `PerfSnapshot` Sendable value type with `.zero` neutral default.
+- [x] `PerfCardBuilder` builds three-row PERF layout (FRAME / QUALITY / ML).
+- [x] FRAME bar value clamps to `[0, 1]` at the builder layer (no `range` field on `.progressBar`).
+- [x] Status colours: muted = no info, green = healthy / READY, yellow = governor active / WAIT / FORCED.
+- [x] No-observations state stable: FRAME bar at 0 + valueText `—`, QUALITY rendered in muted, ML rendered as muted `—`.
+- [x] 6 builder tests pass (`build_zeroSnapshot_*`, `build_healthyFullQuality_*`, `build_governorDownshifted_*`, `build_forcedDispatch_*`, `build_frameTimeAboveBudget_clampsBarValueAtOne`, `build_widthOverride_*`).
+- [x] `card_perf_active.png` artifact written for M7-style review (composes against the BEAT and STEMS artifacts on the same deep-indigo backdrop).
+- [x] D-085 captures: `PerfSnapshot` value-type rationale (snapshot crosses actor lines, two manager classes), `.progressBar` over `.bar` for FRAME, builder-layer clamp asymmetry vs D-084's renderer-layer clamp, Int-encoded enums, no `statusRed` durable rule, no per-row colour tuning for FRAME, DASH.5.1 amendment slot.
 
 ### Increment DASH.6 — Overlay wiring + `D` key toggle
 

@@ -6,6 +6,48 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-07-g] DASH.5 — Frame budget card
+
+**Increment:** DASH.5
+**Type:** Feature (dashboard)
+
+**What changed.**
+
+The third **live** dashboard card binds renderer governor + ML dispatch state to a `DashboardCardLayout` titled `PERF`. New `PerfSnapshot` Sendable value type wraps the inputs from two manager classes (`FrameBudgetManager` + `MLDispatchScheduler`) as a single seam crossing actor lines into the builder. New pure `PerfCardBuilder` produces a three-row card in display order: FRAME (`.progressBar`, unsigned ramp `recentMaxFrameMs / targetFrameMs` clamped to `[0, 1]` at the builder layer), QUALITY (`.singleValue`, displayName passed through verbatim), ML (`.singleValue`, mapped to READY / WAIT _ms / FORCED / —). Status-colour discipline reuses BEAT lock-state palette (D-083): muted = no info, green = healthy / READY, yellow = governor active / degraded / WAIT / FORCED. No `statusRed` introduced — durable rule across the dashboard. Wiring into `RenderPipeline` / `PlaybackView` is DASH.6 scope, not DASH.5.
+
+**Files added.**
+- `PhospheneEngine/Sources/Renderer/Dashboard/PerfSnapshot.swift` — Sendable value type with seven fields (`recentMaxFrameMs`, `recentFramesObserved`, `targetFrameMs`, `qualityLevelRawValue`, `qualityLevelDisplayName`, `mlDecisionCode`, `mlDeferRetryMs`). Decision/quality enums encoded as `Int + displayName: String` so the snapshot stays trivially `Sendable` without importing manager enums. `.zero` neutral default.
+- `PhospheneEngine/Sources/Renderer/Dashboard/PerfCardBuilder.swift` — pure `Sendable` struct: `build(from: PerfSnapshot, width: CGFloat = 280) -> DashboardCardLayout`. Three private row makers: FRAME (clamps `[0, 1]` at builder layer because `.progressBar` has no `range` field), QUALITY (status-colour mapped), ML (decision-code switch with WAIT-ms formatting that drops the trailing `0ms` when retry-ms is zero).
+- `PhospheneEngine/Tests/PhospheneEngineTests/Renderer/PerfCardBuilderTests.swift` — 6 `@Test` functions in `@Suite("PerfCardBuilder")`: zero snapshot (3 rows: FRAME 0/—, QUALITY full/muted, ML —/muted), healthy full quality (FRAME ≈ 0.586, QUALITY full/green, ML READY/green), governor downshifted (FRAME clamped 1.0, QUALITY no-bloom/yellow, ML WAIT 200ms/yellow), forced dispatch + artifact (FRAME ≈ 0.8, QUALITY full/green, ML FORCED/yellow, writes `card_perf_active.png`), frame-time-above-budget regression lock (FRAME clamps to 1.0 at the builder layer; valueText still shows raw `42.0 ms`), width override default-arg path.
+
+**Files edited.**
+- `docs/ENGINEERING_PLAN.md` — DASH.5 row flipped to ✅ with implementation summary.
+- `docs/DECISIONS.md` — D-085 appended (seven decisions: `PerfSnapshot` value-type rationale, `.progressBar` over `.bar` for FRAME, builder-layer clamp asymmetry vs D-084's renderer-layer clamp, Int-encoded quality enum, Int + retry-ms encoded ML decision, no `statusRed` durable rule, no per-row colour tuning for FRAME with DASH.5.1 amendment slot).
+- `CLAUDE.md` — `Renderer/Dashboard/` Module Map entries for `PerfSnapshot` and `PerfCardBuilder`.
+
+**Decisions captured.**
+- **D-085 — PERF card data binding.** Snapshot value type because PERF state is genuinely spread across two manager classes (no single live source like DASH.4's `StemFeatures`). `.progressBar` (unsigned ramp) over `.bar` (signed-from-centre) because frame time vs budget is naturally unsigned and headroom is the load-bearing signal. Builder-layer clamp because `.progressBar` has no `range` field — single source of truth lives in the builder; asymmetric with STEMS (D-084) where the renderer is the clamp authority. Int-encoded enums (quality + ML decision) keep the snapshot a leaf value type with no upward dependency on manager enums. No `statusRed` token introduced — yellow = governor active is sufficient; the rule is durable across the dashboard. Uniform coral on FRAME consistent with D-084's stems decision (bar fill ratio carries headroom; QUALITY text carries discrete state; colour reinforces, doesn't differentiate). DASH.5.1 amendment slot reserved for any per-row colour or formatting tuning surfaced by Matt's eyeball.
+
+**Test count delta.**
+- 6 dashboard tests added (33 → **39 dashboard tests pass**: 12 DASH.1 + 6 DASH.2.1 + 6 BeatCardBuilder + 3 progress-bar + 6 StemsCardBuilder + 6 PerfCardBuilder).
+- Full engine suite green: **1123 tests passed**. Pre-existing `MetadataPreFetcher.fetch_networkTimeout_returnsWithinBudget` / `MemoryReporter.residentBytes` env-dependent flakes and the two GPU-perf parallel-run flakes documented in CLAUDE.md remain documented (none touched by DASH.5).
+- 0 SwiftLint violations on touched files; app build clean.
+
+**What's intentionally NOT in this increment.**
+- No `RenderPipeline` / `DebugOverlayView` / `PlaybackView` wiring — DASH.6 scope.
+- No multi-card composition / screen positioning — DASH.6 scope.
+- No fourth row (GPU TIME, MEMORY, FPS, dropped-frames) — PERF is exactly FRAME / QUALITY / ML. Per-frame GPU timing belongs to a future increment if and only if soak-test reports show it carries information not already in `recentMaxFrameMs`.
+- No sparkline / mini-graph for frame time history — typographic + bar geometry, consistent with .impeccable "no animation" and DASH.2.1 / DASH.3 / DASH.4 precedent.
+- No `statusRed` token — durable rule across the dashboard.
+- No per-row colour tuning for FRAME — uniform coral v1, with DASH.5.1 amendment slot.
+- No convenience constructor accepting `FrameBudgetManager` + `MLDispatchScheduler` — `PerfSnapshot` is a pure value type; assembly happens at the call site in DASH.6.
+- No `Equatable` on `Row` (D-082, D-083, D-084 standing rule).
+
+**Artifact.**
+`.build/dash1_artifacts/card_perf_active.png` — PERF card rendered for `recentMaxFrameMs=11.2, targetFrameMs=14, qualityLevelDisplayName="full", mlDecisionCode=3 (forceDispatch)` over the deep-indigo backdrop. FRAME bar fills ~80% in coral with `"11.2 ms"` valueText; QUALITY reads `"full"` in `statusGreen`; ML reads `"FORCED"` in `statusYellow`. Composes visually with `card_beat_locked.png` and `card_stems_active.png` for M7-style review of the three live cards.
+
+---
+
 ## [dev-2026-05-07-f] DASH.4 — Stem energy card
 
 **Increment:** DASH.4
