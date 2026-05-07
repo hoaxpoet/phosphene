@@ -102,7 +102,7 @@ struct DashboardTextLayerTests {
                 size: DashboardTokens.TypeScale.display,
                 weight: .medium,
                 font: .mono,
-                color: DashboardTokens.Color.textPrimary
+                color: DashboardTokens.Color.textHeading
             )
         })
 
@@ -142,7 +142,7 @@ struct DashboardTextLayerTests {
                 size: DashboardTokens.TypeScale.body,
                 weight: .regular,
                 font: .prose,
-                color: DashboardTokens.Color.textSecondary
+                color: DashboardTokens.Color.textBody
             )
         })
 
@@ -169,7 +169,7 @@ struct DashboardTextLayerTests {
             layer.drawText("AAA", at: .zero,
                            size: DashboardTokens.TypeScale.display,
                            weight: .regular, font: .mono,
-                           color: DashboardTokens.Color.textPrimary)
+                           color: DashboardTokens.Color.textHeading)
         }
 
         // Second frame — beginFrame with no draws.
@@ -197,7 +197,7 @@ struct DashboardTextLayerTests {
             layer.drawText("X", at: CGPoint(x: 100, y: 50),
                            size: DashboardTokens.TypeScale.numeric,
                            weight: .regular, font: .mono,
-                           color: DashboardTokens.Color.textPrimary,
+                           color: DashboardTokens.Color.textHeading,
                            align: .left)
         })
 
@@ -206,7 +206,7 @@ struct DashboardTextLayerTests {
             layer.drawText("X", at: CGPoint(x: 100, y: 50),
                            size: DashboardTokens.TypeScale.numeric,
                            weight: .regular, font: .mono,
-                           color: DashboardTokens.Color.textPrimary,
+                           color: DashboardTokens.Color.textHeading,
                            align: .right)
         })
 

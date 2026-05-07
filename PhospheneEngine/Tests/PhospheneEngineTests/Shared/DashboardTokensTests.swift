@@ -1,5 +1,6 @@
 // DashboardTokensTests — 4 @Test functions, one per nested struct/enum.
-// Asserts the compile-time token values match the DASH.1 spec.
+// Asserts the compile-time token values match the DASH.1.1 spec
+// (derived from `.impeccable.md` OKLCH palette).
 
 import Testing
 @testable import Shared
@@ -13,19 +14,21 @@ struct DashboardTokensTests {
 
     @Test("TypeScale values match spec")
     func typeScaleValues() {
-        #expect(DashboardTokens.TypeScale.caption      == 10)
-        #expect(DashboardTokens.TypeScale.label        == 11)
-        #expect(DashboardTokens.TypeScale.body         == 13)
-        #expect(DashboardTokens.TypeScale.numeric      == 18)
-        #expect(DashboardTokens.TypeScale.hero         == 24)
-        #expect(DashboardTokens.TypeScale.display      == 36)
+        #expect(DashboardTokens.TypeScale.caption       == 10)
+        #expect(DashboardTokens.TypeScale.label         == 11)
+        #expect(DashboardTokens.TypeScale.body          == 13)
+        #expect(DashboardTokens.TypeScale.bodyLarge     == 15)
+        #expect(DashboardTokens.TypeScale.numeric       == 18)
+        #expect(DashboardTokens.TypeScale.hero          == 24)
+        #expect(DashboardTokens.TypeScale.display       == 36)
         #expect(DashboardTokens.TypeScale.labelTracking == 1.5)
-        // Scale must be monotonically increasing through hero; display is the largest.
-        #expect(DashboardTokens.TypeScale.caption < DashboardTokens.TypeScale.label)
-        #expect(DashboardTokens.TypeScale.label   < DashboardTokens.TypeScale.body)
-        #expect(DashboardTokens.TypeScale.body    < DashboardTokens.TypeScale.numeric)
-        #expect(DashboardTokens.TypeScale.numeric < DashboardTokens.TypeScale.hero)
-        #expect(DashboardTokens.TypeScale.hero    < DashboardTokens.TypeScale.display)
+        // Scale must be monotonically increasing.
+        #expect(DashboardTokens.TypeScale.caption   < DashboardTokens.TypeScale.label)
+        #expect(DashboardTokens.TypeScale.label     < DashboardTokens.TypeScale.body)
+        #expect(DashboardTokens.TypeScale.body      < DashboardTokens.TypeScale.bodyLarge)
+        #expect(DashboardTokens.TypeScale.bodyLarge < DashboardTokens.TypeScale.numeric)
+        #expect(DashboardTokens.TypeScale.numeric   < DashboardTokens.TypeScale.hero)
+        #expect(DashboardTokens.TypeScale.hero      < DashboardTokens.TypeScale.display)
     }
 
     @Test("Spacing values match spec")
@@ -36,7 +39,7 @@ struct DashboardTokensTests {
         #expect(DashboardTokens.Spacing.lg  == 16)
         #expect(DashboardTokens.Spacing.xl  == 24)
         #expect(DashboardTokens.Spacing.xxl == 32)
-        // 8-pt baseline: each step doubles or adds 8 from the previous.
+        // 4-pt baseline ladder: monotonically increasing.
         #expect(DashboardTokens.Spacing.xs  < DashboardTokens.Spacing.sm)
         #expect(DashboardTokens.Spacing.sm  < DashboardTokens.Spacing.md)
         #expect(DashboardTokens.Spacing.md  < DashboardTokens.Spacing.lg)
@@ -44,23 +47,43 @@ struct DashboardTokensTests {
         #expect(DashboardTokens.Spacing.xl  < DashboardTokens.Spacing.xxl)
     }
 
-    @Test("Color brand and chrome values are non-zero and opaque where specified")
+    @Test("Color tokens match `.impeccable.md` OKLCH spec")
     func colorValues() {
         // Brand colors are fully opaque.
         #expect(DashboardTokens.Color.purple.alphaComponent == 1.0)
         #expect(DashboardTokens.Color.coral.alphaComponent  == 1.0)
         #expect(DashboardTokens.Color.teal.alphaComponent   == 1.0)
-        // Teal should be green-dominant (G ≈ 0.769 > R ≈ 0.180, B ≈ 0.714).
-        let teal = DashboardTokens.Color.teal
-        let tealSRGB = teal.usingColorSpace(.sRGB)!
-        #expect(tealSRGB.greenComponent > tealSRGB.redComponent)
-        #expect(tealSRGB.greenComponent > tealSRGB.blueComponent)
-        // Chrome background is near-black with high opacity.
-        let bg = DashboardTokens.Color.chromeBg
-        #expect(bg.alphaComponent > 0.8)
-        // Text primary is near-white.
-        let txt = DashboardTokens.Color.textPrimary
-        #expect(txt.alphaComponent > 0.9)
+
+        // Teal at oklch(0.70 0.13 192) lands at the cyan-green edge of sRGB:
+        // R clips to 0, G ≈ 0.72, B ≈ 0.70. G must dominate both other channels.
+        let teal = DashboardTokens.Color.teal.usingColorSpace(.sRGB)!
+        #expect(teal.greenComponent > teal.redComponent)
+        #expect(teal.greenComponent > teal.blueComponent)
+
+        // Surface ladder is monotonically rising in luminance and never pure black.
+        // Use green channel as a brightness proxy — all three channels rise together
+        // for tinted neutrals, and `.brightnessComponent` requires HSB color space.
+        let bg = DashboardTokens.Color.bg.usingColorSpace(.sRGB)!
+        let surface = DashboardTokens.Color.surface.usingColorSpace(.sRGB)!
+        let surfaceRaised = DashboardTokens.Color.surfaceRaised.usingColorSpace(.sRGB)!
+        #expect(bg.greenComponent < surface.greenComponent)
+        #expect(surface.greenComponent < surfaceRaised.greenComponent)
+        #expect(bg.redComponent > 0.0 || bg.greenComponent > 0.0 || bg.blueComponent > 0.0)
+
+        // Neutrals are tinted toward the brand purple hue: blue channel exceeds red.
+        let surfaceTint = surface.blueComponent - surface.redComponent
+        #expect(surfaceTint > 0.005, "Surface should be tinted toward brand purple")
+
+        // Text ladder is monotonically rising.
+        let muted = DashboardTokens.Color.textMuted.usingColorSpace(.sRGB)!
+        let body = DashboardTokens.Color.textBody.usingColorSpace(.sRGB)!
+        let heading = DashboardTokens.Color.textHeading.usingColorSpace(.sRGB)!
+        #expect(muted.greenComponent < body.greenComponent)
+        #expect(body.greenComponent < heading.greenComponent)
+        // Heading is bright but not pure white (off-white tinted purple).
+        #expect(heading.greenComponent > 0.85)
+        #expect(heading.greenComponent < 1.0)
+
         // Status colors are opaque.
         #expect(DashboardTokens.Color.statusGreen.alphaComponent  == 1.0)
         #expect(DashboardTokens.Color.statusYellow.alphaComponent == 1.0)

@@ -38,6 +38,33 @@ Also fixed (pre-existing blockers):
 
 ---
 
+## [dev-2026-05-06-f] DASH.1.1 — Tokens aligned to `.impeccable.md` OKLCH spec
+
+**Increment:** DASH.1.1
+**Type:** Design-system alignment (shared tokens)
+
+**What changed.**
+
+The DASH.1 token placeholders are replaced with values derived from the `.impeccable.md` OKLCH palette, before DASH.2/3/4 cards reach for them.
+
+- Brand: `purple`, `coral`, `teal` re-tuned from sRGB approximations to OKLCH-derived values; `purpleGlow`, `coralMuted`, `tealMuted` added.
+- Surfaces: `bg`, `surface`, `surfaceRaised`, `border` added (4-step ladder, hue 275–278). Replaces the flat `chromeBg`/`chromeBorder`.
+- Text: renamed and re-tuned. `textPrimary` → `textHeading` `oklch(0.94 0.008 278)`, `textSecondary` → `textBody` `oklch(0.80 0.010 278)`, `textMuted` re-tuned to `oklch(0.50 0.014 278)`. All three are tinted toward brand purple (~278°) — no pure white anywhere.
+- TypeScale: `bodyLarge = 15` added (spec `md`, body in card content). Existing scale unchanged.
+- Status: `statusGreen/Yellow/Red` unchanged — held close to pure for legibility per the "color carries meaning" principle.
+
+Test changes:
+- `DashboardTokensTests.colorValues()` rewritten to assert the OKLCH ladder: surface monotonically rising, neutrals tinted toward purple (blue > red), text ladder monotonically rising, heading bright but not pure white.
+- `DashboardTextLayerTests` renamed `textPrimary` → `textHeading`, `textSecondary` → `textBody` at all five call sites.
+
+**Test suite:** All 12 dashboard tests pass; SwiftLint 0 violations on touched files; app build clean.
+
+**No behaviour change** — `DashboardTextLayer` is still not wired into the render pipeline (DASH.6).
+
+**Decision:** D-081 amendment in DECISIONS.md.
+
+---
+
 ## [dev-2026-05-06-d] DSP.4 — Drums-stem Beat This! diagnostic (third BPM estimator)
 
 **Increment:** DSP.4
