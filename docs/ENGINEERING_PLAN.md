@@ -2219,17 +2219,19 @@ Add a SwiftLint custom rule that flags `f\.(bass|mid|treb|sub_bass|low_bass|low_
 
 **Done when:**
 
-- [ ] `stemAffinitySubScore` uses deviation primitives + mean.
-- [ ] Reactive mode receives live `StemFeatures` after 10 s and uses neutral 0.5 before then.
-- [ ] Mood-override 30 s per-track cooldown.
-- [ ] Boundary-switch score gap ≥ 0.05.
-- [ ] `cutEnergyThreshold = 0.85`.
-- [ ] `recentHistory` trimmed at 50.
-- [ ] All new tests pass; goldens regenerated and committed; full engine suite green.
-- [ ] CLAUDE.md + DECISIONS.md updated.
-- [ ] Matt subjective sign-off on reactive-mode preset selection (Love Rehab + one vocal-led track).
+- [x] `stemAffinitySubScore` uses deviation primitives + mean. ✅ 2026-05-06
+- [x] Reactive mode receives live `StemFeatures` after 10 s and uses neutral 0.5 before then. ✅ 2026-05-06
+- [x] Mood-override 30 s per-track cooldown. ✅ 2026-05-06
+- [x] Boundary-switch score gap ≥ 0.05. ✅ 2026-05-06
+- [x] `cutEnergyThreshold = 0.85`. ✅ 2026-05-06
+- [x] `recentHistory` trimmed at 50. ✅ 2026-05-06
+- [x] All new tests pass; goldens regenerated and committed; full engine suite green (1084 pass, 1 pre-existing MetadataPreFetcher flake). ✅ 2026-05-06
+- [x] CLAUDE.md (Failed Approaches #53+#54 already present) + DECISIONS.md D-080 updated. ✅ 2026-05-06
+- [ ] Matt subjective sign-off on reactive-mode preset selection (Love Rehab + one vocal-led track). (pending)
 
 **Verify:** `swift test --filter StemAffinityScoring && swift test --filter ReactiveOrchestrator && swift test --filter LiveAdapter && swift test --filter GoldenSession`.
+
+**Landed:** 2026-05-06. All algorithmic changes implemented. Golden sequences regenerated — VL no longer dominates (stem bonus gone with zero-dev pre-analyzed profiles); mood+section+tempo now drive planned sessions. D-080 documented. Matt sign-off on reactive-mode listening pending.
 
 **Estimated sessions:** 2 (algorithm changes + tests → goldens regen + manual sign-off).
 

@@ -6,8 +6,8 @@
 // Conservative by design: at most one adaptation per call; boundary reschedule
 // wins when both triggers fire simultaneously.
 //
-// Pure function: no Date.now(), no randomness, no external state reads inside
-// DefaultLiveAdapter. All state is passed in as arguments.
+// QR.2/D-080: DefaultLiveAdapter is now a final class (not struct) to carry
+// per-track mood-override cooldown state (NSLock-guarded, analysis-queue safe).
 
 import Foundation
 import Presets
@@ -134,18 +134,20 @@ public protocol LiveAdapting: Sendable {
 /// **Boundary rescheduling** fires when `liveBoundary.confidence ≥ 0.5` and the
 /// live prediction differs from the planned transition time by more than 5 s.
 ///
-/// **Mood override** fires only when all three conditions are true:
+/// **Mood override** fires only when all four conditions are true:
 /// 1. Live mood diverges from the pre-analyzed mood
 ///    (`|Δvalence| > 0.4` or `|Δarousal| > 0.4`).
 /// 2. Less than 40 % of the track has elapsed.
 /// 3. A catalog preset scores more than 0.15 higher than the current preset
 ///    when rescored with live mood.
+/// 4. At least `moodOverrideCooldown` seconds have elapsed since the last override
+///    on this track (prevents re-patching `livePlan` at ~94 Hz, QR.2/D-080).
 ///
 /// If mood diverges but the override conditions are not all met, a
 /// `.moodDivergenceDetected` event is returned for logging — no plan change.
 ///
 /// See D-035 for design rationale.
-public struct DefaultLiveAdapter: LiveAdapting {
+public final class DefaultLiveAdapter: LiveAdapting, @unchecked Sendable {
     // MARK: - Tuning constants
 
     /// Minimum `StructuralPrediction.confidence` required to consider rescheduling.
@@ -164,10 +166,21 @@ public struct DefaultLiveAdapter: LiveAdapting {
     /// Minimum score advantage a replacement preset must have to justify an override.
     public static let overrideScoreGap: Float = 0.15
 
+    /// Minimum seconds between mood overrides for the same track (QR.2/D-080).
+    /// Prevents re-patching `livePlan` at the analysis-queue frame rate (~94 Hz).
+    public static let moodOverrideCooldown: TimeInterval = 30.0
+
     // MARK: - Dependencies
 
-    private let scorer: any PresetScoring
+    let scorer: any PresetScoring
     private let transitionPolicy: any TransitionDeciding
+
+    // MARK: - Per-track cooldown state (QR.2/D-080)
+
+    private let cooldownLock = NSLock()
+    /// Maps `PlannedTrack.track` → `elapsedTrackTime` when the last override was applied.
+    nonisolated(unsafe) private var lastOverrideTimePerTrack: [TrackIdentity: TimeInterval] = [:]
+
     // MARK: - Init
 
     public init(
@@ -311,11 +324,21 @@ public struct DefaultLiveAdapter: LiveAdapting {
             )])
         }
 
+        // Suppress override within cooldown window (QR.2/D-080).
+        let trackID = plannedTrack.track
+        if let blocked = cooldownAdaptation(
+            for: trackID,
+            at: elapsedTrackTime,
+            trackIndex: currentTrackIndex,
+            valenceDiff: valenceDiff,
+            arousalDiff: arousalDiff
+        ) { return blocked }
+
         var liveMoodProfile = plannedTrack.trackProfile
         liveMoodProfile.mood = liveMood
         let elapsedSession = plannedTrack.plannedStartTime + elapsedTrackTime
 
-        return applyOverrideIfBetter(
+        let result = applyOverrideIfBetter(
             plannedTrack: plannedTrack,
             liveMoodProfile: liveMoodProfile,
             elapsedSession: elapsedSession,
@@ -326,75 +349,38 @@ public struct DefaultLiveAdapter: LiveAdapting {
             arousalDiff: arousalDiff,
             elapsedFraction: elapsedFraction
         )
+        if result.events.contains(where: { $0.kind == .presetOverrideTriggered }) {
+            recordOverride(for: trackID, at: elapsedTrackTime)
+        }
+        return result
     }
 
-    // swiftlint:disable:next function_parameter_count
-    private func applyOverrideIfBetter(
-        plannedTrack: PlannedTrack,
-        liveMoodProfile: TrackProfile,
-        elapsedSession: TimeInterval,
-        deviceTier: DeviceTier,
-        catalog: [PresetDescriptor],
+    // MARK: - Cooldown Helper
+
+    /// Returns a suppression `LiveAdaptation` if the mood-override cooldown is active,
+    /// otherwise returns `nil` (caller may proceed with override evaluation).
+    fileprivate func cooldownAdaptation(
+        for trackID: TrackIdentity,
+        at elapsedTrackTime: TimeInterval,
         trackIndex: Int,
         valenceDiff: Float,
-        arousalDiff: Float,
-        elapsedFraction: Double
-    ) -> LiveAdaptation {
-        let currentPreset = plannedTrack.preset
-        let baseCtx = PresetScoringContext(
-            deviceTier: deviceTier,
-            recentHistory: [],
-            currentPreset: nil,
-            elapsedSessionTime: elapsedSession
-        )
-        let currentScore = scorer.score(preset: currentPreset, track: liveMoodProfile, context: baseCtx)
+        arousalDiff: Float
+    ) -> LiveAdaptation? {
+        let last = cooldownLock.withLock { lastOverrideTimePerTrack[trackID] }
+        guard let last, elapsedTrackTime - last < Self.moodOverrideCooldown else { return nil }
+        return LiveAdaptation(events: [AdaptationEvent(
+            kind: .moodDivergenceDetected,
+            trackIndex: trackIndex,
+            message: "Mood diverging "
+                + "(|Δv|=\(String(format: "%.2f", valenceDiff)), "
+                + "|Δa|=\(String(format: "%.2f", arousalDiff))) "
+                + "but cooldown active "
+                + "(\(String(format: "%.0f", elapsedTrackTime - last))s / "
+                + "\(Int(Self.moodOverrideCooldown))s)."
+        )])
+    }
 
-        let altCtx = PresetScoringContext(
-            deviceTier: deviceTier,
-            recentHistory: [],
-            currentPreset: currentPreset,
-            elapsedSessionTime: elapsedSession
-        )
-        let ranked = scorer.rank(presets: catalog, track: liveMoodProfile, context: altCtx)
-
-        guard let (topPreset, topScore) = ranked.first, !topPreset.isDiagnostic, // V.7.6.D D-074
-              topScore - currentScore > Self.overrideScoreGap else {
-            logger.info("""
-                LiveAdapter: mood diverging at track \(trackIndex) \
-                but no preset scores >\(Self.overrideScoreGap) higher
-                """)
-            return LiveAdaptation(events: [AdaptationEvent(
-                kind: .moodDivergenceDetected,
-                trackIndex: trackIndex,
-                message: "Mood diverging "
-                    + "(|Δv|=\(String(format: "%.2f", valenceDiff)), "
-                    + "|Δa|=\(String(format: "%.2f", arousalDiff))) "
-                    + "but no preset scores "
-                    + ">\(String(format: "%.2f", Self.overrideScoreGap)) higher."
-            )])
-        }
-
-        let reason = "Mood override: '\(topPreset.name)' "
-            + "(\(String(format: "%.2f", topScore))) replaces "
-            + "'\(currentPreset.name)' "
-            + "(\(String(format: "%.2f", currentScore))); "
-            + "|Δv|=\(String(format: "%.2f", valenceDiff)), "
-            + "|Δa|=\(String(format: "%.2f", arousalDiff)) "
-            + "at \(String(format: "%.0f", elapsedFraction * 100))% elapsed."
-
-        logger.info("LiveAdapter: preset override at track \(trackIndex): \(reason)")
-
-        return LiveAdaptation(
-            presetOverride: LiveAdaptation.PresetOverride(
-                preset: topPreset,
-                score: topScore,
-                reason: reason
-            ),
-            events: [AdaptationEvent(
-                kind: .presetOverrideTriggered,
-                trackIndex: trackIndex,
-                message: reason
-            )]
-        )
+    fileprivate func recordOverride(for trackID: TrackIdentity, at elapsedTrackTime: TimeInterval) {
+        cooldownLock.withLock { lastOverrideTimePerTrack[trackID] = elapsedTrackTime }
     }
 }

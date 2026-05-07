@@ -222,6 +222,7 @@ extension DefaultSessionPlanner {
             startTime: segStart,
             endTime: segEnd
         ))
+        if history.count > 50 { history.removeFirst(history.count - 50) }
         currentPreset = chosen
         return (segment, actualLen > 0)
     }

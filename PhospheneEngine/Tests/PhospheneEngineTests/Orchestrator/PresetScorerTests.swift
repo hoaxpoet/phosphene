@@ -116,20 +116,27 @@ struct PresetScorerTests {
 
     // MARK: 7 — Stem affinity match boosts score
 
-    @Test("Drum-heavy track scores higher stemAffinity for drum-responsive preset")
+    // QR.2: stemAffinity uses deviation primitives (D-080). Compare disjoint-affinity
+    // presets on a drum-heavy snapshot where drumsEnergyDev is high but vocalsEnergyDev is
+    // near zero — the drum preset should outscore the vocal preset by ≥ 0.3.
+    @Test("Drum-heavy snapshot: drum-affinity preset outscores vocal-affinity preset (QR.2)")
     func stemAffinityMatchBoostsScore() {
-        let drumPreset    = makePreset(name: "DrumResp", stemAffinity: ["drums": "beat_pulse"])
-        let neutralPreset = makePreset(name: "Neutral",  stemAffinity: [:])
-        let track = makeTrack(stemBalance: StemFeatures(
-            drumsEnergy: 0.6
-        ))
+        let drumPreset  = makePreset(name: "DrumResp",  stemAffinity: ["drums": "beat_pulse"])
+        let vocalPreset = makePreset(name: "VocalResp", stemAffinity: ["vocals": "hue_shift"])
+
+        // Live-playback snapshot: drums clearly above average, vocals near zero.
+        var drumSnapshot = StemFeatures(vocalsEnergy: 0.05, drumsEnergy: 0.75)
+        drumSnapshot.drumsEnergyDev  = 0.45   // well above EMA — drum hit in progress
+        drumSnapshot.vocalsEnergyDev = 0.0    // vocals silent
+
+        let track   = makeTrack(stemBalance: drumSnapshot)
         let context = makeContext()
 
-        let drumBD    = scorer.breakdown(preset: drumPreset,    track: track, context: context)
-        let neutralBD = scorer.breakdown(preset: neutralPreset, track: track, context: context)
+        let drumBD  = scorer.breakdown(preset: drumPreset,  track: track, context: context)
+        let vocalBD = scorer.breakdown(preset: vocalPreset, track: track, context: context)
 
-        #expect(drumBD.stemAffinity > neutralBD.stemAffinity,
-                "Drum-responsive preset should score higher stemAffinity on a drum-heavy track")
+        #expect(drumBD.stemAffinity - vocalBD.stemAffinity >= 0.3,
+                "Drum-responsive preset should outscore vocal-responsive by ≥ 0.3 on drum-heavy snapshot")
     }
 
     // MARK: 8 — Empty stem_affinity is exactly neutral (0.5)

@@ -141,7 +141,9 @@ public struct DefaultTransitionPolicy: TransitionDeciding {
     public static let minCrossfadeDuration: TimeInterval = 0.5
 
     /// Energy level above which the policy prefers a `.cut` over a `.crossfade`.
-    public static let cutEnergyThreshold: Float = 0.7
+    /// Raised from 0.7 → 0.85 (QR.2/D-080): 0.70 fired on moderately-busy sections where
+    /// a cut felt abrupt; 0.85 reserves hard cuts for peak-energy climax moments only.
+    public static let cutEnergyThreshold: Float = 0.85
 
     // MARK: TransitionDeciding
 

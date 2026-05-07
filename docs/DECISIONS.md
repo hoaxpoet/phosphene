@@ -1641,3 +1641,33 @@ If a capture-mode switch (CaptureModeSwitchCoordinator) re-installs the tap with
 
 - **#29 (recurrence at the code layer): hardcoded `44100` consumed live tap audio.** Five sites identified; all fixed in this increment.
 - **#52: literal `44100` regression in tap-consuming code paths.** Now CI-gated. Default-argument boilerplate retained on the explicit allowlist (`StemSampleBuffer`, `StemAnalyzer`, `PitchTracker`) for test ergonomics; production wiring overrides every default.
+
+---
+
+## D-080 — Stem-affinity scoring uses deviation primitives + mean formula (Phase QR.2)
+
+**2026-05-06.** Closes Failed Approaches #53 (AGC-saturated stem-affinity clamped sum) and #54 (reactive `TrackProfile.empty` adversarial penalty). The 2026-05-06 multi-agent codebase review (Orchestrator O1) showed `DefaultPresetScorer.stemAffinitySubScore` accumulated raw AGC-normalized energies across declared affinities and clamped to [0,1]. Because AGC centers each energy field at ~0.5, any preset declaring 2+ stems saturated at ~1.0 on almost all music — the 25% stem-affinity weight did no differentiation work. The same review showed `DefaultReactiveOrchestrator` constructed scoring contexts with `TrackProfile.empty.stemEnergyBalance == StemFeatures.zero`, causing presets with declared affinities to score 0 in stem affinity (zero-balance → devSum = 0) while neutral presets scored 0.5 — the most musically-engaged catalog members were the most penalized in reactive mode.
+
+### Rules
+
+1. **`stemAffinitySubScore` uses deviation primitives (MV-1, D-026) and mean formula.** Score = `mean(max(0, stemEnergyDev[stem]))` over declared affinities, clamped [0, 1]. Dev fields are already on `StemFeatures` floats 17–24. This formula produces score > 0.5 only during genuinely above-average stem transients, making stem affinity a true tiebreaker rather than an always-on bonus or always-on penalty.
+
+2. **Zero-balance guard: `StemFeatures.zero` returns neutral 0.5.** When `stemEnergyBalance == .zero` (EMA not yet converged — typically the first 10 s of live play, or pre-analyzed sessions where devs are near zero), return 0.5 for all presets. This prevents the adversarial penalty: stem-affinity presets are never scored *below* neutral during the unconverged phase.
+
+3. **`DefaultLiveAdapter` has a 30 s per-track mood-override cooldown.** `DefaultLiveAdapter` is now a `final class @unchecked Sendable` (not a struct) with `NSLock`-guarded `lastOverrideTimePerTrack: [TrackIdentity: TimeInterval]`. The first override on any track fires immediately; subsequent overrides within 30 s of the last are suppressed with a `moodDivergenceDetected` event. The cooldown resets on track change (new key in the dictionary).
+
+4. **`minBoundaryScoreGap = 0.05`: boundary-only switch gate tightened.** `DefaultReactiveOrchestrator.compareAndDecide` previously allowed a boundary to trigger a switch when `confidence >= 0.5` regardless of score gap. New gate: `confidence >= 0.5 && scoreGap > minBoundaryScoreGap(0.05)`. Prevents switches when the current preset is already the best option.
+
+5. **`cutEnergyThreshold` raised from 0.7 → 0.85.** Reserves hard-cut transitions for true climax moments (arousal-derived energy > 0.85).
+
+6. **`recentHistory` capped at 50 entries.** `DefaultSessionPlanner` trims the history deque after append; prevents unbounded memory growth in long sessions.
+
+7. **Live `StemFeatures` wired into reactive mode after 10 s.** `VisualizerEngine.applyReactiveUpdate()` passes `pipeline.currentStemFeatures()` as `liveStemFeatures` once `elapsed >= 10.0 s`. Before 10 s the zero-balance guard returns neutral 0.5 for all presets; after 10 s real dev values differentiate stem-affinity presets from neutral presets.
+
+### Consequence for planned sessions
+
+Pre-analyzed `TrackProfile.stemEnergyBalance` is populated from `StemFeatures` snapshots whose EMA has converged over the 30-second preview — dev fields are near zero. This means stem affinity is neutral (0.5) for all presets in planned-session scoring. The 25% weight is now shared equally, and mood + section + tempo dominate planned-session selection. Golden session sequences updated accordingly in `GoldenSessionTests.swift`.
+
+### Implementation
+
+`Sources/Orchestrator/PresetScorer.swift`: `stemAffinitySubScore` + `stemEnergyDeviation` helper. `Sources/Orchestrator/LiveAdapter.swift`: struct → class, `cooldownLock` + `lastOverrideTimePerTrack`. `Sources/Orchestrator/ReactiveOrchestrator.swift`: `minBoundaryScoreGap`, `liveStemFeatures` protocol parameter. `Sources/Orchestrator/TransitionPolicy.swift`: `cutEnergyThreshold` 0.7 → 0.85. `Sources/Orchestrator/SessionPlanner+Segments.swift`: history trim. `PhospheneApp/VisualizerEngine+Orchestrator.swift`: live stem wiring. Tests: `StemAffinityScoringTests.swift` (5 new), `LiveAdapterTests.swift` (+3 cooldown tests), `GoldenSessionTests.swift` (sequences regenerated), `PresetScorerTests.swift` (assertion updated).
