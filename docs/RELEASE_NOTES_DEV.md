@@ -34,6 +34,43 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-07-q] BUG-007.9 — Hybrid runtime recalibration
+
+**Increment:** BUG-007.9
+**Type:** Bug fix (DSP / live beat tracking) — addresses BUG-007.8 regression cases.
+
+**What changed.**
+
+Manual validation of BUG-007.8 (session `2026-05-07T22-51-36Z`) showed mixed results: 5/8 tracks improved, 1 stable, **2 regressed** (Around the World drift went from −28 → +101 ms; Levitating from −50 → +56 ms). Cause: the prep-time calibrator measures onset timing on the **preview MP3** (22 050 Hz, ~96 kbps, 46 ms FFT resolution); the live tracker fires onsets on the **tap audio** (48 000 Hz, full quality, overlapping FFT). When the encodings diverge enough, the prep-time bias points the wrong way.
+
+**Fix.** Add a runtime recalibration pass. After stem separation completes (i.e. ≥10 s of tap audio buffered) AND lock has stabilised (`matchedOnsetCount >= 8`), replay the latest 12 s of tap audio through the same `GridOnsetCalibrator` and override the prep-time bias via new `LiveBeatDriftTracker.applyCalibration(driftMs:)`. One-shot per track. Reset on track change.
+
+The runtime calibration uses the same audio the listener actually hears, so by definition it converges to the correct offset. Tracks that regressed under BUG-007.8 (Around the World, Levitating) should recover within ~15 s of lock.
+
+**API changes.**
+
+- `LiveBeatDriftTracker.currentGrid: BeatGrid` (read-only) — exposes installed grid for the runtime recalibrator.
+- `LiveBeatDriftTracker.matchedOnsetCount: Int` — read-only accessor for app-layer gating of the runtime recalibration trigger.
+- `LiveBeatDriftTracker.applyCalibration(driftMs:)` — overrides drift with a runtime-derived value. Clamped to ±500 ms.
+- `VisualizerEngine.runtimeRecalibrationDone: Bool` — per-track one-shot flag. Reset in `resetStemPipeline`.
+- `VisualizerEngine+Stems.runtimeRecalibrationIfDue()` — called at the end of `performStemSeparation`. Snapshots tap audio, downmixes to mono, runs `GridOnsetCalibrator`, applies via `applyCalibration`. Skips if calibrator returns 0.
+
+**Files edited.**
+
+- `PhospheneEngine/Sources/DSP/LiveBeatDriftTracker.swift`
+- `PhospheneApp/VisualizerEngine.swift`
+- `PhospheneApp/VisualizerEngine+Stems.swift`
+- `PhospheneEngine/Tests/PhospheneEngineTests/DSP/LiveBeatDriftTrackerTests.swift` — 3 new tests (MARKs 39–41).
+- `docs/QUALITY/KNOWN_ISSUES.md` — BUG-007.9 entry.
+
+**Tests.** 41/41 `LiveBeatDriftTrackerTests` pass. Full engine suite: 1149/1151 (2 pre-existing flakes). 0 SwiftLint violations on touched files. `xcodebuild PhospheneApp build` clean.
+
+**Manual validation pending.** Replay the 8-track bass-forward playlist from `T22-51-36Z`. Expected: drift averages near zero within ~15 s of lock on all tracks; Around the World + Levitating recover; no regression on tracks that worked pre-7.9.
+
+**Out of scope.** Persisting runtime-calibrated values across sessions (future BUG-012 cache idea). Multi-band onset signals. Stem-separation audit (BUG-010 — separate).
+
+---
+
 ## [dev-2026-05-07-p] BUG-007.8 — Per-track grid-vs-onset offset calibration
 
 **Increment:** BUG-007.8
