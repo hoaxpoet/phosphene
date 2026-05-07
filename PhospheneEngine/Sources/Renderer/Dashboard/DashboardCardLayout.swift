@@ -59,17 +59,16 @@ public struct DashboardCardLayout: Sendable {
 
     // MARK: - Row
 
+    /// Vertical gap between a stacked row's label (top) and value (bottom).
+    public static let labelToValueGap: CGFloat = 4
+
     public enum Row: Sendable {
-        /// `"BPM"          "125"`
+        /// Stacked: UPPERCASE 11 pt label on top, larger numeric value below.
+        /// `"BPM" \n "125"`
         case singleValue(label: String, value: String, valueColor: NSColor)
-        /// `"MODE"   "PLANNED · LOCKED"   |   "BAR"   "3 / 4"`
-        case pair(
-            leftLabel: String, leftValue: String,
-            rightLabel: String, rightValue: String,
-            valueColor: NSColor
-        )
-        /// `"BASS"  ▮▮▮▮▮▮▯▯▯▯  +0.42` — bar fill clamped to `range`;
-        /// negative values fill left of centre, positive values fill right.
+        /// Stacked: UPPERCASE 11 pt label on top, then a bar with right-aligned
+        /// value text on the same line below. Bar fill is signed slice from
+        /// centre — negative left, positive right — clamped to `range`.
         case bar(
             label: String, value: Float, valueText: String,
             fillColor: NSColor, range: ClosedRange<Float>
@@ -77,14 +76,13 @@ public struct DashboardCardLayout: Sendable {
 
         // Fixed row heights — encoded as static constants so future edits
         // surface as test failures (see `layoutHeight_matchesSumOfRows`).
-        public static let singleHeight: CGFloat = 18
-        public static let pairHeight: CGFloat = 18
-        public static let barHeight: CGFloat = 22
+        // Stacked rows: 11 pt label + 4 pt gap + (numeric 24 / bar+value 17).
+        public static let singleHeight: CGFloat = 11 + labelToValueGap + 24    // = 39
+        public static let barHeight: CGFloat    = 11 + labelToValueGap + 17    // = 32
 
         public var height: CGFloat {
             switch self {
             case .singleValue: return Row.singleHeight
-            case .pair:        return Row.pairHeight
             case .bar:         return Row.barHeight
             }
         }
