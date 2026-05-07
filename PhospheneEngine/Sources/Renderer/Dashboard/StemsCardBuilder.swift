@@ -1,27 +1,26 @@
-// StemsCardBuilder — Maps a `StemFeatures` snapshot to a `DashboardCardLayout`
-// for the STEMS card (DASH.4).
+// StemsCardBuilder — Maps a `StemEnergyHistory` snapshot to a
+// `DashboardCardLayout` for the STEMS card (DASH.7 — supersedes DASH.4's
+// signed-from-centre `.bar` design after Matt's live-toggle review found the
+// bars didn't read rhythmic separation across stems clearly).
 //
 // Pure function: no Metal, no allocations beyond the resulting layout.
-// Safe to call every frame. Wiring into `RenderPipeline` / `PlaybackView`
-// is DASH.6 scope, not DASH.4.
+// Safe to call every frame.
 //
 // Row order (.impeccable Beat-panel precedent — percussion first):
 //   DRUMS / BASS / VOCALS / OTHER.
 //
-// All four rows are `.bar` (signed-from-centre) with range −1.0 ... 1.0.
-// `*EnergyRel` (MV-1 / D-026) is centred at 0 with typical envelope ±0.5;
-// the wider range gives headroom for loud transients without clipping.
-// Positive deviation fills right of centre (kick = louder than AGC average);
-// negative fills left (duck = quieter than average); zero draws no fill —
-// the stable "absence-of-signal" state.
+// All four rows are `.timeseries` with range −1.0 ... 1.0 (matches the
+// envelope of `*EnergyRel` from MV-1 / D-026: typical ±0.5, headroom for
+// loud transients). The valueText shows the most recent sample in the
+// `%+.2f` Milkdrop-convention signed format.
 //
-// Uniform `Color.coral` across all four rows in v1 (D-084). Per-stem palette
-// tuning is reserved for a DASH.4.1 amendment if the artifact eyeball flags
-// monotony — direction (left vs right of centre) is the load-bearing signal,
-// not colour.
+// Uniform `Color.coral` v1 — the rhythm pattern across time carries the
+// signal, not per-stem hue. Per-stem palette tuning reserved for a future
+// amendment if monotony reads on the live review.
 //
-// No clamping at the builder layer: `.bar` row variant clamps to `range`
-// defensively in `drawBarFill`. Test (e) regression-locks this.
+// Empty history (no samples yet) produces empty `samples: []` rows with
+// valueText `—` — the timeseries renderer draws nothing, the chrome row
+// stays present (stable absence-of-information surface).
 
 import CoreGraphics
 import Shared
@@ -30,19 +29,19 @@ import Shared
 import AppKit
 #endif
 
-/// Maps a `StemFeatures` snapshot to a `DashboardCardLayout` for the STEMS card.
+/// Maps a `StemEnergyHistory` snapshot to a `DashboardCardLayout` for the STEMS card.
 public struct StemsCardBuilder: Sendable {
 
     public init() {}
 
     public func build(
-        from stems: StemFeatures,
+        from history: StemEnergyHistory,
         width: CGFloat = 280
     ) -> DashboardCardLayout {
-        let drums = makeRow(label: "DRUMS", value: stems.drumsEnergyRel)
-        let bass = makeRow(label: "BASS", value: stems.bassEnergyRel)
-        let vocals = makeRow(label: "VOCALS", value: stems.vocalsEnergyRel)
-        let other = makeRow(label: "OTHER", value: stems.otherEnergyRel)
+        let drums = makeRow(label: "DRUMS", samples: history.drums)
+        let bass = makeRow(label: "BASS", samples: history.bass)
+        let vocals = makeRow(label: "VOCALS", samples: history.vocals)
+        let other = makeRow(label: "OTHER", samples: history.other)
 
         return DashboardCardLayout(
             title: "STEMS",
@@ -51,13 +50,19 @@ public struct StemsCardBuilder: Sendable {
         )
     }
 
-    private func makeRow(label: String, value: Float) -> DashboardCardLayout.Row {
-        .bar(
+    private func makeRow(label: String, samples: [Float]) -> DashboardCardLayout.Row {
+        let valueText: String
+        if let last = samples.last {
+            valueText = String(format: "%+.2f", last)
+        } else {
+            valueText = "—"
+        }
+        return .timeseries(
             label: label,
-            value: value,
-            valueText: String(format: "%+.2f", value),
-            fillColor: DashboardTokens.Color.coral,
-            range: -1.0 ... 1.0
+            samples: samples,
+            range: -1.0 ... 1.0,
+            valueText: valueText,
+            fillColor: DashboardTokens.Color.coral
         )
     }
 }

@@ -75,6 +75,7 @@ struct ContentView: View {
             reduceMotionPublisher: accessibilityState.$reduceMotion.eraseToAnyPublisher(),
             progressiveReadinessPublisher: engine.sessionManager.$progressiveReadinessLevel
                 .eraseToAnyPublisher(),
+            dashboardSnapshotPublisher: engine.$dashboardSnapshot.eraseToAnyPublisher(),
             onEndSession: { engine.sessionManager.endSession() },
             reduceMotion: viewModel.reduceMotion
         )

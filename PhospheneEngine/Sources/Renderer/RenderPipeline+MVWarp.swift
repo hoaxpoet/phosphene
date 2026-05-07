@@ -242,7 +242,6 @@ extension RenderPipeline {
             encoder.endEncoding()
         }
 
-        compositeDashboard(commandBuffer: commandBuffer, view: view)
         commandBuffer.present(drawable)
 
         // ── Swap: composeTexture becomes next frame's warpTexture ─────────────
@@ -289,7 +288,6 @@ extension RenderPipeline {
             encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
             encoder.endEncoding()
         }
-        compositeDashboard(commandBuffer: commandBuffer, view: view)
         commandBuffer.present(drawable)
     }
 

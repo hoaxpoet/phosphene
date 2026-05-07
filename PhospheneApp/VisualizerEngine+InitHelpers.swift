@@ -46,69 +46,19 @@ extension VisualizerEngine {
         }
     }
 
-    /// Allocate the dashboard composer and wire it into the render pipeline.
-    /// The composer is enabled/disabled via `dashboardEnabled` (bound to `D`).
+    /// Wire per-frame dashboard snapshot push. Replaces the DASH.6 GPU
+    /// composer; SwiftUI overlay subscribes to `dashboardSnapshot` directly.
+    /// (DASH.7 — full implementation in `VisualizerEngine+Dashboard.swift`.)
     @MainActor
-    func setupDashboardComposer(pipe: RenderPipeline, ctx: MetalContext, lib: Renderer.ShaderLibrary) {
-        guard let composer = DashboardComposer(
-            device: ctx.device,
-            shaderLibrary: lib,
-            pixelFormat: ctx.pixelFormat
-        ) else {
-            initLogger.warning("DashboardComposer init failed — dashboard cards unavailable")
-            return
-        }
-        self.dashboardComposer = composer
-        pipe.setDashboardComposer(composer)
-
-        // Per-frame snapshot push. `onFrameRendered` already runs once per
-        // rendered frame on `@MainActor`, but it fires AFTER the draw paths
-        // have written to the drawable. The composer's `composite()` is invoked
-        // from inside each draw path (RenderPipeline.compositeDashboard, called
-        // immediately before `present`); the snapshot pushed here is what
-        // composite reads on the next frame's update — one-frame lag is
-        // imperceptible for instrumentation. Wire onto the existing capture
-        // hook so DASH.6 doesn't introduce a second per-frame closure path.
+    func setupDashboardSnapshotPump(pipe: RenderPipeline) {
         let previous = pipe.onFrameRendered
-        pipe.onFrameRendered = { [weak self, weak composer] drawableTex, features, stems, commandBuffer in
+        pipe.onFrameRendered = { [weak self] drawableTex, features, stems, commandBuffer in
             previous?(drawableTex, features, stems, commandBuffer)
-            guard let self, let composer else { return }
-            Task { @MainActor [weak self, weak composer] in
-                guard let self, let composer, composer.enabled else { return }
-                let beat = self.beatSyncLock.withLock { self.latestBeatSyncSnapshot }
-                let perf = self.assemblePerfSnapshot(pipeline: self.pipeline)
-                composer.update(beat: beat, stems: stems, perf: perf)
+            guard let self else { return }
+            Task { @MainActor [weak self] in
+                self?.publishDashboardSnapshot(stems: stems)
             }
         }
-    }
-
-    /// Build a `PerfSnapshot` from the current `FrameBudgetManager` +
-    /// `MLDispatchScheduler` state. Used by the dashboard composer's per-frame
-    /// snapshot push.
-    @MainActor
-    func assemblePerfSnapshot(pipeline pipe: RenderPipeline) -> PerfSnapshot {
-        let mgr = pipe.frameBudgetManager
-        let level = mgr?.currentLevel ?? .full
-        let recentMs = mgr?.recentMaxFrameMs ?? 0
-        let observed = mgr?.recentFramesObserved ?? 0
-        let target = mgr?.configuration.targetFrameMs ?? 14
-        let (mlCode, deferMs): (Int, Float) = {
-            switch self.mlDispatchScheduler?.lastDecision {
-            case .none:                          return (0, 0)
-            case .dispatchNow:                   return (1, 0)
-            case .defer(let ms):                 return (2, ms)
-            case .forceDispatch:                 return (3, 0)
-            }
-        }()
-        return PerfSnapshot(
-            recentMaxFrameMs: recentMs,
-            recentFramesObserved: observed,
-            targetFrameMs: target,
-            qualityLevelRawValue: level.rawValue,
-            qualityLevelDisplayName: level.displayName,
-            mlDecisionCode: mlCode,
-            mlDeferRetryMs: deferMs
-        )
     }
 
     /// Spin up background tasks to generate noise and IBL textures.

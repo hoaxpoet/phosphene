@@ -39,6 +39,12 @@
 		A10035 /* VisualizerEngine+Capture.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20035; };
 		A10036 /* VisualizerEngine+InitHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20036; };
 		A10037 /* VisualizerEngine+PublicAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20037; };
+		O10001 /* DashboardOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = O20001; };
+		O10002 /* DashboardCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = O20002; };
+		O10003 /* DashboardRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = O20003; };
+		O10004 /* DashboardOverlayViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = O20004; };
+		O10005 /* VisualizerEngine+Dashboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = O20005; };
+		O10006 /* DashboardOverlayViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = O20006; };
 		A10003 /* PhospheneEngine in Frameworks */ = {isa = PBXBuildFile; productRef = A80001; };
 		A10010 /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20010; };
 		A10011 /* MetalKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20011; };
@@ -189,6 +195,12 @@
 		A20035 /* VisualizerEngine+Capture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VisualizerEngine+Capture.swift"; sourceTree = "<group>"; };
 		A20036 /* VisualizerEngine+InitHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VisualizerEngine+InitHelpers.swift"; sourceTree = "<group>"; };
 		A20037 /* VisualizerEngine+PublicAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VisualizerEngine+PublicAPI.swift"; sourceTree = "<group>"; };
+		O20001 /* DashboardOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardOverlayView.swift; sourceTree = "<group>"; };
+		O20002 /* DashboardCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardCardView.swift; sourceTree = "<group>"; };
+		O20003 /* DashboardRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardRowView.swift; sourceTree = "<group>"; };
+		O20004 /* DashboardOverlayViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardOverlayViewModel.swift; sourceTree = "<group>"; };
+		O20005 /* VisualizerEngine+Dashboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VisualizerEngine+Dashboard.swift"; sourceTree = "<group>"; };
+		O20006 /* DashboardOverlayViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardOverlayViewModelTests.swift; sourceTree = "<group>"; };
 		A20004 /* PhospheneApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PhospheneApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A20005 /* PhospheneEngine */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = PhospheneEngine; path = PhospheneEngine; sourceTree = "<group>"; };
 		A20010 /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
@@ -403,6 +415,7 @@
 				A20034 /* VisualizerEngine+Presets.swift */,
 				A20035 /* VisualizerEngine+Capture.swift */,
 				A20036 /* VisualizerEngine+InitHelpers.swift */,
+				O20005 /* VisualizerEngine+Dashboard.swift */,
 				A20037 /* VisualizerEngine+PublicAPI.swift */,
 				A20040 /* VisualizerEngine+Orchestrator.swift */,
 				N20006 /* VisualizerEngine+WiringLogs.swift */,
@@ -471,6 +484,7 @@
 				C40005 /* Ready */,
 				C40006 /* Playback */,
 				C40007 /* Ended */,
+				O40001 /* Dashboard */,
 				E20004 /* ConnectorType.swift */,
 				E20005 /* ConnectorTileView.swift */,
 				E20006 /* ConnectorPickerView.swift */,
@@ -576,6 +590,17 @@
 			path = Playback;
 			sourceTree = "<group>";
 		};
+		O40001 /* Dashboard */ = {
+			isa = PBXGroup;
+			children = (
+				O20001 /* DashboardOverlayView.swift */,
+				O20002 /* DashboardCardView.swift */,
+				O20003 /* DashboardRowView.swift */,
+				O20004 /* DashboardOverlayViewModel.swift */,
+			);
+			path = Dashboard;
+			sourceTree = "<group>";
+		};
 		C40007 /* Ended */ = {
 			isa = PBXGroup;
 			children = (C20007 /* EndedView.swift */);
@@ -658,6 +683,7 @@
 				L20042 /* AccessibilityLabelsTests.swift */,
 				N20003 /* SpotifyKeychainStoreTests.swift */,
 				N20004 /* SpotifyOAuthTokenProviderTests.swift */,
+				O20006 /* DashboardOverlayViewModelTests.swift */,
 			);
 			path = PhospheneAppTests;
 			sourceTree = "<group>";
@@ -775,6 +801,11 @@
 				A10035 /* VisualizerEngine+Capture.swift in Sources */,
 				A10036 /* VisualizerEngine+InitHelpers.swift in Sources */,
 				A10037 /* VisualizerEngine+PublicAPI.swift in Sources */,
+				O10001 /* DashboardOverlayView.swift in Sources */,
+				O10002 /* DashboardCardView.swift in Sources */,
+				O10003 /* DashboardRowView.swift in Sources */,
+				O10004 /* DashboardOverlayViewModel.swift in Sources */,
+				O10005 /* VisualizerEngine+Dashboard.swift in Sources */,
 				A10020 /* MetalView.swift in Sources */,
 				A10021 /* DebugOverlayView.swift in Sources */,
 				A10022 /* MusicKitFetcher.swift in Sources */,
@@ -927,6 +958,7 @@
 				L10042 /* AccessibilityLabelsTests.swift in Sources */,
 				N10003 /* SpotifyKeychainStoreTests.swift in Sources */,
 				N10004 /* SpotifyOAuthTokenProviderTests.swift in Sources */,
+				O10006 /* DashboardOverlayViewModelTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

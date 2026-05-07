@@ -79,6 +79,18 @@ public struct DashboardCardLayout: Sendable {
         /// Use for unsigned ramps (beat phase, bar phase, frame budget).
         /// Distinct from `.bar` which is a signed slice from centre.
         case progressBar(label: String, value: Float, valueText: String, fillColor: NSColor)
+        /// Stacked: UPPERCASE 11 pt label on top, then a sparkline + right-
+        /// aligned current-value text on the same line below. Sparkline
+        /// reads `samples` (oldest first) clamped to `range`, drawn as a
+        /// filled area from the centre line. Use to show short-term
+        /// rhythm/pattern across stems (DASH.7).
+        case timeseries(
+            label: String,
+            samples: [Float],
+            range: ClosedRange<Float>,
+            valueText: String,
+            fillColor: NSColor
+        )
 
         // Fixed row heights — encoded as static constants so future edits
         // surface as test failures (see `layoutHeight_matchesSumOfRows`).
@@ -88,12 +100,16 @@ public struct DashboardCardLayout: Sendable {
         /// Progress bars share the bar visual mass (label + 4 pt gap +
         /// 17 pt bar+value band).
         public static let progressBarHeight: CGFloat = barHeight
+        /// Timeseries rows reserve a taller drawing band so the sparkline is
+        /// readable: 11 pt label + 4 pt gap + 32 pt sparkline+value band.
+        public static let timeseriesHeight: CGFloat = 11 + labelToValueGap + 32
 
         public var height: CGFloat {
             switch self {
             case .singleValue: return Row.singleHeight
             case .bar:         return Row.barHeight
             case .progressBar: return Row.progressBarHeight
+            case .timeseries:  return Row.timeseriesHeight
             }
         }
     }
