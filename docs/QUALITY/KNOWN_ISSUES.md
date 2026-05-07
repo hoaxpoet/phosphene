@@ -8,12 +8,155 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 ---
 
-### BUG-007.3 — Lock hysteresis still oscillates on drift-prone tracks; live BPM resolver fragile on busy mid-frequency content
+### BUG-007.4 — Beat-counter "1" misaligned with song's actual downbeat on prepared-cache tracks
+
+**Severity:** P2
+**Domain tag:** dsp.beat
+**Status:** Open (investigation needed — root cause not confirmed)
+**Introduced:** Reported 2026-05-07 from manual validation captures (`2026-05-07T14-28-40Z/` and prior). User-observed: when watching the SpectralCartograph beat-in-bar counter and listening to SLTS / Everlong (Spotify-prepared), the visual "1" does not land on the song's actual perceived downbeat — it lands on what feels like beat 2 or beat 3 of the bar.
+
+**Expected behavior:** On a 4/4 prepared-cache track, the SpectralCartograph beat-in-bar counter shows "1" exactly when the song's bar starts (the kick drum + accent that listeners hear as the downbeat). For SLTS, that's the kick on the strong beat after each pickup. For Everlong, the same. `is_downbeat=1` rows in `features.csv` should land at song-relative times that match the ear's perception.
+
+**Actual behavior:** User reports visual "1" lands 2–3 beats away from the audio's perceived "1" on at least SLTS and Everlong (planned, prepared cache, drift CSV near zero). Drift `mean ≈ +2.5 ms` on SLTS and lock state holds steady — beat-phase alignment is correct. Bar-phase / downbeat selection appears to be the variable.
+
+**Reproduction steps:**
+1. Spotify-prepared session containing SLTS + Everlong.
+2. Switch to SpectralCartograph (`Shift+→`); press `L` to lock the diagnostic preset.
+3. Play SLTS. Watch the beat-in-bar text readout and the BR-panel BAR-φ row.
+4. Listen for the song's perceived downbeats and count along.
+5. Observe whether "1" on the visual matches the ear's "1".
+
+**Minimum reproducer:** Any Spotify-prepared session on a 4/4 rock track where the user can mentally count beats. SLTS, Everlong are confirmed. May not affect electronic / four-on-the-floor tracks where every beat is a downbeat-feel.
+
+**Session artifacts:**
+- `~/Documents/phosphene_sessions/2026-05-07T14-28-40Z/features.csv` — SLTS first observed `is_downbeat=1` at `playback_time=42.96` (during locked window). Earlier downbeats during locking phase. BPM=117.6 → bar period 2.04 s. Observed downbeat distribution across 4 beat-in-bar values is roughly uniform (1461 / 1462 / 1412 / 1442 frames each), consistent with the meter being identified correctly but the *rotation* (which beat is "1") possibly off.
+- `2026-05-07T14-33-47Z/features.csv` — reactive Everlong got `meter=2/X` from a half-time grid (`bpm=85.4`) — that's BUG-009, separate from this bug.
+
+**Suspected failure class:** `algorithm` — Beat This! `small0` model is documented to have higher error on downbeat estimation than on beat estimation. SLTS has a quiet 8-second guitar-only intro that could fool downbeat selection. Alternative classes to rule out: `pipeline-wiring` (downbeats array incorrectly indexed), `documentation-drift` (beat-in-bar = 1 means something other than downbeat).
+
+**Diagnosis steps before any fix attempt:**
+1. Add a one-shot diagnostic dump in `BeatGridResolver.resolve()` that prints `beats[0..7]` and `downbeats[0..3]` to `session.log` for prepared cache loads. Confirms what Beat This! actually emitted.
+2. Walk SLTS audio file by ear with a stopwatch; locate the *actual* downbeat (drum hit on song's beat 1 of bar 1) and compare to `beats[0]` + `downbeats[0]` in the prepared cache.
+3. Repeat on a track where downbeats are *unambiguous* (e.g. a four-on-the-floor electronic track) to rule out our bar-phase math.
+4. Walk through `MIRPipeline → SpectralHistoryBuffer[2421..2428] → SpectralCartographText` to confirm the relative-downbeat-times pipeline isn't introducing an offset.
+
+**Fix decision deferred until diagnosis complete.** Possible fixes once root cause is known:
+- (a) If Beat This! downbeat is wrong: pre-rotate the bar phase using a heuristic (kick density at downbeat candidates) or accept the limitation and document.
+- (b) If our pipeline is rotating: fix the rotation.
+- (c) Manual override: developer shortcut (e.g. `Shift+B` cycles beat-in-bar offset by 1) so Matt can A/B comparing rotations.
+
+**Out of scope:**
+- Reactive-mode downbeat detection — different code path; if this bug exists there, file separately.
+- Time-displacement (visual ahead of / behind audio in absolute time). Drift CSV shows beats are aligned. This bug is about *which* beat gets labelled "1", not about *when* beats fire.
+
+**Verification criteria (set after diagnosis):**
+- [ ] Diagnostic dump confirms whether `BeatGrid.downbeats[0]` matches the song's perceived first downbeat.
+- [ ] On SLTS: beat-in-bar "1" lands on the song's downbeat (manual ear check).
+- [ ] On Everlong: same.
+- [ ] On a four-on-the-floor electronic track: no regression.
+
+**Related:** BUG-008 (offline BPM disagreement — orthogonal), BUG-007 / 007.2 (lock hysteresis — orthogonal), BUG-007.3 (reverted, `78ade5aa`).
+
+---
+
+### BUG-007.5 — Adaptive-window lock hysteresis for asymmetric drift envelopes
+
+**Severity:** P3 (cosmetic — visual flicker between LOCKED and LOCKING; doesn't affect beat-phase)
+**Domain tag:** dsp.beat
+**Status:** Open
+**Introduced:** Surfaced 2026-05-07. Pre-exists BUG-007.3 (the reverted attempt). The fixed-window Schmitt hysteresis (`staleMatchWindow=0.060` in commit `94309858`) attempted this and failed because the "right" stale window depends on the drift variance, which differs by track.
+
+**Expected behavior:** Once `lock_state` reaches LOCKED on a track with correct grid BPM, it stays there for the duration of the song unless the input goes silent or the BPM is genuinely wrong. Lock should not flicker due to per-onset noise within ±60 ms of the EMA.
+
+**Actual behavior (on Everlong planned, prepared, BPM=157.8):** Drift envelope spans −68 to +25 ms with EMA settling at −41 ms. Many individual onsets fall 50–80 ms from the EMA — outside the fixed ±60 ms gate that BUG-007.3 attempted. Lock drops 14 times in 75 s (sessions `2026-05-07T14-28-40Z`). On SLTS planned (drift envelope ~ ±50 ms with EMA near zero) the same fixed gate worked: only 2 drops in 105 s. The variance is the variable; a one-size-fits-all stale window doesn't fit both.
+
+**Reproduction steps:** Play Everlong from a Spotify-prepared session, watch the SpectralCartograph mode label flicker between `● PLANNED · LOCKED` and `◑ PLANNED · LOCKING` while the beat orb continues to pulse on the kick (beat-phase alignment is fine; only the lock indicator flickers).
+
+**Minimum reproducer:** Any rock track with a dense, slightly-rushed snare-and-cymbal pattern at 150+ BPM. Everlong is the gold reference.
+
+**Session artifacts:**
+- `~/Documents/phosphene_sessions/2026-05-07T14-28-40Z/features.csv` — Everlong rows at BPM=157.8: 14 lock drops, drift min/max −68 / +25, drift mean −41 ms.
+
+**Suspected failure class:** `algorithm`.
+
+**Diagnosis notes:**
+- BUG-007.3's premise that ±60 ms covers natural tempo variation was correct on SLTS but wrong on Everlong. SLTS's drift std-dev over a 10 s window is roughly half Everlong's.
+- Adaptive approach: track the running std-dev of `instantDrift` over the last N onsets. Define `staleMatchWindow = clamp(K × stddev, 30 ms, 120 ms)`. K ≈ 2 sigma. This auto-widens for noisy material and stays tight for clean material.
+- Alternative: track per-onset variance via Welford's algorithm (no allocation, lock-friendly).
+
+**Verification criteria:**
+- [ ] On Everlong planned: ≤ 1 lock drop in 50 s of continuous playback.
+- [ ] On SLTS planned: no regression — still ≤ 2 drops in 100 s.
+- [ ] On Billie Jean reactive (control): no regression.
+- [ ] Automated regression test: synthetic input with 60 ms-stddev jitter at 158 BPM should hold lock for 60 s with ≤ 1 drop.
+
+**Fix scope (~30 LOC + tests):**
+1. Add a small running-variance accumulator on per-onset `instantDrift` values to `LiveBeatDriftTracker` (Welford's online variance, ring of last 16 onsets).
+2. Compute `staleMatchWindow = clamp(2.0 × stddev, 30 ms, 120 ms)` per onset.
+3. Apply the same Schmitt branching as BUG-007.3's Part (a), but with the dynamic gate.
+
+**Out of scope:**
+- Replacing `strictMatchWindow` (acquisition selectivity unchanged).
+- Touching the slope-detector / wider-window-retry idea from BUG-007.3 Part (b). That belongs to a *future* increment if BUG-009 doesn't subsume it.
+
+**Related:** BUG-007.3 (reverted attempt — fixed gate). BUG-007.4 (downbeat alignment — orthogonal).
+
+---
+
+### BUG-009 — Halving-correction threshold (160 BPM) too aggressive; halves legitimate fast tempos
 
 **Severity:** P2
 **Domain tag:** dsp.beat
 **Status:** Open
+**Introduced:** DSP.3.5 (2026-05-05). `BeatGrid.halvingOctaveCorrected()` halves any BPM > 160 to the nearest sub-160 value. Threshold chosen at 160 because most pop / rock / electronic music falls below it. Surfaced 2026-05-07 when reactive Everlong (true ≈158 BPM) received a Beat This! raw output > 160, triggering halving down to 85.4 BPM — visibly wrong.
+
+**Expected behavior:** A track with true tempo in [160, 200] BPM (drum'n'bass, fast metal, jungle, fast electronic, "Everlong"-class rock) gets a grid at its true tempo, not the half-time alias. Halving should fire only when the raw analyser output is more than ~10–15 % above the genuine perceptual tempo — i.e. for true double-time errors.
+
+**Actual behavior:** Threshold is fixed at 160 BPM. Beat This! `small0` outputs ranging 165–180 on tracks with true tempo near 158 (off by < 15 %) get halved unconditionally. Result: half-time grid; visual orb pulses at half rate; bar-phase wrong; user listens to a song at 158 BPM but sees animation at 85.
+
+**Reproduction steps:**
+1. Reactive (ad-hoc) session, no Spotify preparation.
+2. Play Everlong (Foo Fighters).
+3. Wait for live grid install at ~10 s.
+4. Read `session.log`: `BeatGrid installed: source=liveAnalysis, ..., bpm=85.4, beats=443, meter=2/X`.
+
+**Minimum reproducer:** Any track with true BPM in roughly [160, 175] played in a reactive session. Everlong is the canonical case.
+
+**Session artifacts:**
+- `~/Documents/phosphene_sessions/2026-05-07T14-33-47Z/session.log` — `bpm=85.4, beats=443, meter=2/X` on Everlong reactive. True ~158 BPM.
+
+**Suspected failure class:** `calibration`.
+
+**Diagnosis notes:**
+- 160 BPM is below typical drum'n'bass (170–175), fast metal (180+), and fast indie rock (Foo Fighters, Strokes, Arctic Monkeys typically 155–170). The threshold was chosen for a 30 s offline window where Beat This! is more accurate; the live 10 s window is noisier and pushes more legitimate tracks above 160.
+- Two candidate fixes:
+  - (a) Raise threshold to 175 (or 180). Captures most fast-rock without re-enabling true-double-time errors. Risk: doesn't catch an actual 90 BPM track that Beat This! reports as 180.
+  - (b) Use BPM confidence from the grid output (number of beats supporting the BPM, drift slope, etc.) rather than a hard threshold. Heavier; would land in a follow-up.
+- Pyramid Song (true ≈68 BPM) must stay un-corrected — already protected by BPM > 160 condition. (a) preserves this.
+
+**Verification criteria:**
+- [ ] On Everlong reactive: live grid installs at `bpm=158 ± 8` (within ±5 %).
+- [ ] On Pyramid Song (true 68 BPM): grid stays at 68 BPM, not 136.
+- [ ] On Money 7/4 (~123 BPM): no regression.
+- [ ] On a confirmed-double-time test track (synthetic 80 BPM that triggers Beat This! to output 160+): halving still fires. Find or synthesize a fixture for this.
+
+**Fix scope (likely ~5 LOC + test):** raise threshold to 175 in `BeatGrid.halvingOctaveCorrected()`. Add regression test on a 158 BPM input that confirms no halving fires (currently halves; post-fix doesn't).
+
+**Out of scope:**
+- BPM-confidence-aware correction (option b above). Defer to future work if option (a) leaves residual bad cases.
+- Doubling correction for sub-80 BPM tracks (already disabled by design — Pyramid Song would break).
+
+**Related:** DSP.3.5 (introduced halving correction); BUG-008 (offline BPM disagreement — orthogonal). BUG-007.3 (reverted; surfaced this issue but didn't address it).
+
+---
+
+### BUG-007.3 — Lock hysteresis still oscillates on drift-prone tracks; live BPM resolver fragile on busy mid-frequency content
+
+**Severity:** P2
+**Domain tag:** dsp.beat
+**Status:** Closed (attempt reverted — see commit `78ade5aa`). Replaced by BUG-007.4 + BUG-007.5 + BUG-009.
 **Introduced:** Surfaced 2026-05-07 during manual validation of two sessions captured post-QR.2 (`~/Documents/phosphene_sessions/2026-05-07T13-27-14Z/` planned, `~/Documents/phosphene_sessions/2026-05-07T13-30-46Z/` reactive). Predates QR.2 (QR.2 did not change drift-tracker semantics). BUG-007.2 widened `lockReleaseMisses` 3 → 7, which closed the 30 s freeze + the 400 ms/487 ms adversarial scenario but left two additional failure modes.
+**Reverted:** 2026-05-07. The Schmitt hysteresis (Part a) + drift-slope retry (Part b) implementation in commit `94309858` was reverted in commit `78ade5aa` after manual validation evidence (`2026-05-07T14-28-40Z` + `T14-33-47Z`) showed Everlong planned regressed (14 lock drops vs 5 pre-fix). The fix's premise — that wider stale-OK retention would close natural-tempo-variation drops — held on SLTS but not on Everlong, where the drift envelope is asymmetric around its EMA (−68 to +25 ms with avg −41 ms) and many onsets land outside ±60 ms of the EMA. Net: the fix improved one track and worsened another. User also observed downbeat misalignment ("1" not on song's downbeat) which drift CSV cannot rule in or out — beat phase was correct (drift ≈ 0 on SLTS) but bar-phase / downbeat selection may be wrong. Three follow-up bugs scoped (BUG-007.4 / 007.5 / 009).
 
 **Expected behavior:** On any track where the offline/live BPM is within ±1 % of true tempo, `lock_state` reaches `2` (LOCKED) and stays there for the duration of the track, with `drift_ms` settling into a band whose `stddev` over a 10 s window is below ~25 ms. On busy mid-frequency tracks (rock, power chords) where the live 10 s window is insufficient, the system either widens its analysis window or surfaces a warning, but does not silently lock to a 4 % wrong BPM.
 

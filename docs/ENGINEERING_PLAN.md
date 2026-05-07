@@ -2060,11 +2060,11 @@ Continuous energy is the primary visual driver; beat onset pulses are accents on
 
 1. **QR.1 (DSP.4) — Sample-rate plumbing audit.** Highest-precision payoff. Single bug class, five sites, confirmed by three independent reviewers. ✅ 2026-05-06.
 2. **QR.2 (OR.1) — Stem-affinity rescaling + reactive-mode TrackProfile fix.** Highest musicality payoff per LOC. ✅ 2026-05-06.
-3. **BUG-007.3 — Lock hysteresis + live BPM credibility.** Surfaced 2026-05-07 from manual validation of two post-QR.2 sessions. Two failure modes (Mechanism C — natural tempo variation drops lock under correct BPM; Mechanism D — live resolver returns 4 % low BPM on busy mid-frequency content). Schedule before QR.3 because the fix touches `LiveBeatDriftTracker` and any new test work in QR.3 should validate against the corrected behaviour. ~1 day.
-4. **QR.3 (TEST.1) — Close silent-skip test holes.** Cheap to do; protects the work in QR.1 + QR.2 + BUG-007.3 from silent regression.
+3. **BUG-007.3 attempted 2026-05-07 — reverted same day** (commit `78ade5aa`). Three smaller replacement bugs in `KNOWN_ISSUES.md` to be sequenced: BUG-007.4 (downbeat alignment — investigation first, fix scope set after diagnosis) → BUG-009 (halving-correction threshold 160 → 175, ~5 LOC + test) → BUG-007.5 (adaptive-window lock hysteresis, ~30 LOC + test). Total ~1.5 days but each lands independently. See `KNOWN_ISSUES.md` for done-when criteria.
+4. **QR.3 (TEST.1) — Close silent-skip test holes.** Cheap to do; protects the work in QR.1 + QR.2 from silent regression.
 5. **QR.4 (U.12) — UX dead ends + duplicate `SettingsStore`.** Small, isolated, user-visible.
 6. **QR.5 (CLEAN.1) — Mechanical cleanup pass.** Pure deletion of dead code + dead comments. Schedule when the four above have landed; ride along with their cleanups.
-7. **QR.6 (ARCH.1) — `VisualizerEngine` decomposition.** Largest debt in the codebase. Defer until QR.1–QR.4 + BUG-007.3 ship, then schedule with explicit risk acknowledgement.
+7. **QR.6 (ARCH.1) — `VisualizerEngine` decomposition.** Largest debt in the codebase. Defer until QR.1–QR.4 ship, then schedule with explicit risk acknowledgement.
 
 **Cross-cutting context (read before any QR increment):**
 
@@ -2238,9 +2238,13 @@ Add a SwiftLint custom rule that flags `f\.(bass|mid|treb|sub_bass|low_bass|low_
 
 ---
 
-### Increment BUG-007.3 — Lock hysteresis + live BPM credibility
+### Increment BUG-007.3 — Lock hysteresis + live BPM credibility ⚠ REVERTED 2026-05-07
 
-**Goal.** Stop two failure modes observed on 2026-05-07 manual validation: (C) `LiveBeatDriftTracker` drops lock during natural-music tempo variation even when grid BPM is correct; (D) live BPM resolver returns ~4 % low on busy mid-frequency tracks (Everlong reactive: `grid_bpm=151.9` vs true ≈158, drift walks to −358 ms over 75 s).
+**Outcome:** Implementation in commit `94309858` failed manual validation. Everlong planned regressed (5 → 14 lock drops). Reverted in commit `78ade5aa`. Replacement bugs filed in `KNOWN_ISSUES.md`: BUG-007.4 (downbeat alignment investigation), BUG-007.5 (adaptive-window hysteresis), BUG-009 (halving threshold). Original spec retained below as historical context — do not re-implement.
+
+---
+
+**Goal (historical).** Stop two failure modes observed on 2026-05-07 manual validation: (C) `LiveBeatDriftTracker` drops lock during natural-music tempo variation even when grid BPM is correct; (D) live BPM resolver returns ~4 % low on busy mid-frequency tracks (Everlong reactive: `grid_bpm=151.9` vs true ≈158, drift walks to −358 ms over 75 s).
 
 **Why now.** Manual validation of two post-QR.2 sessions (`~/Documents/phosphene_sessions/2026-05-07T13-27-14Z/` planned, `~/Documents/phosphene_sessions/2026-05-07T13-30-46Z/` reactive) showed BUG-007.2 is *not* the end of the lock-stability story. SLTS held LOCKED for 80 s straight but drift walked +15 → −90 ms (correct BPM, expressive timing); Everlong dropped lock 5 times in 50 s; reactive Everlong locked to a 4 % wrong BPM and ran ~one full beat ahead by t=75 s. These are independent of BUG-007.2's adversarial-cadence + horizon-exhaustion fixes. Schedule before QR.3 because the fix touches `LiveBeatDriftTracker` directly and QR.3's `LiveDriftValidationTests` should validate against the corrected lock semantics, not the current ones.
 
@@ -2597,13 +2601,16 @@ Foundation: `DashboardTokens`, `DashboardFontLoader`, `DashboardTextLayer`.
 - [x] Label colour passes WCAG AA contrast on the card chrome.
 - [x] All 18 dashboard tests pass; 0 SwiftLint violations on touched files; app build clean.
 
-### Increment DASH.3 — Beat & BPM card
+### Increment DASH.3 — Beat & BPM card ✅ 2026-05-07
 
-First live card: "BEAT" card showing `grid_bpm`, `lock_state` (REACTIVE / LOCKING / LOCKED), `beat_phase01` progress bar, `bar_phase01`.
+First live card. `BeatCardBuilder` (pure, Sendable) maps a `BeatSyncSnapshot` to a `DashboardCardLayout` titled `BEAT` with four rows: MODE / BPM / BAR / BEAT. New `.progressBar` row variant (left-to-right unsigned 0–1 fill) added to `DashboardCardLayout` for the BAR and BEAT ramps — distinct from the existing `.bar` (signed slice from centre). Lock-state colour mapping per .impeccable: REACTIVE/UNLOCKED `textMuted`, LOCKING `statusYellow`, LOCKED `statusGreen`. Graceful no-grid rendering: BPM `—`, BAR valueText `— / 4` with bar at zero, BEAT valueText `—` with bar at zero. `BeatSyncSnapshot` is unchanged — DASH.3 derives BEAT phase as `barPhase01 × beatsPerBar − (beatInBar − 1)` clamped to [0, 1]; promoting `beatPhase01` to a first-class snapshot field is a future increment. Wiring into `RenderPipeline` / `PlaybackView` is DASH.6 scope, not DASH.3.
 
-**Done when:**
-- [ ] Card renders with correct BPM string from a test `BeatSyncSnapshot`.
-- [ ] Lock state label color changes by state (grey / amber / green).
+**Done when:** ✅
+- [x] Card renders with correct BPM string from a test `BeatSyncSnapshot`.
+- [x] Lock state label color changes by state (muted / amber / green).
+- [x] No-grid (`gridBPM <= 0`) renders `—` placeholders with bars at zero.
+- [x] `.progressBar` row variant fills left-to-right; tests verify zero / half / full.
+- [x] All 27 dashboard tests pass (12 DASH.1 + 6 DASH.2.1 + 6 BeatCardBuilder + 3 progress-bar); 0 SwiftLint violations on touched files; app build clean.
 
 ### Increment DASH.4 — Stem energy card
 
