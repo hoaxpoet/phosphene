@@ -77,6 +77,7 @@ extension RenderPipeline {
         meshGenerator.draw(encoder: encoder, features: features)
 
         encoder.endEncoding()
+        compositeDashboard(commandBuffer: commandBuffer, view: view)
         commandBuffer.present(drawable)
     }
 }

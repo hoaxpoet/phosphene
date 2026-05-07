@@ -468,6 +468,23 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Toggled via the L dev shortcut. Structural-boundary rescheduling still runs.
     var diagnosticPresetLocked: Bool = false
 
+    // MARK: - Dashboard Composer (DASH.6)
+
+    /// Owns the lifecycle of the BEAT/STEMS/PERF cards. Allocated in the init
+    /// helpers after `pipe` is constructed; bound to the existing `D` shortcut
+    /// via `dashboardEnabled` (PlaybackView pushes `showDebug` into it).
+    var dashboardComposer: DashboardComposer?
+
+    /// Mirror of `dashboardComposer?.enabled` — wired to `D` so the SwiftUI
+    /// debug overlay and the Metal dashboard cards toggle together.
+    /// `@MainActor` because `DashboardComposer.enabled` is `@MainActor`-isolated
+    /// and PlaybackView's `D` shortcut runs on `@MainActor` already.
+    @MainActor
+    var dashboardEnabled: Bool {
+        get { dashboardComposer?.enabled ?? false }
+        set { dashboardComposer?.enabled = newValue }
+    }
+
     // MARK: - Initialization
 
     // swiftlint:disable cyclomatic_complexity function_body_length
@@ -550,6 +567,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
 
         setupCaptureHook(pipe: pipe, ctx: ctx)
         setupBackgroundTextures(pipe: pipe, ctx: ctx, lib: lib)
+        setupDashboardComposer(pipe: pipe, ctx: ctx, lib: lib)
 
         loader.onPresetsReloaded = { [weak self] in
             guard let self, let current = self.presetLoader.currentPreset else { return }

@@ -286,6 +286,10 @@ struct PlaybackView: View {
             onToggleDebug: { [weak engine = self.engine] in
                 engine?.toggleDebugOverlay()
                 showDebug.toggle()
+                // DASH.6: D drives both the SwiftUI debug overlay (above) and
+                // the Metal dashboard cards (cards/SwiftUI complement each
+                // other — instruments vs raw diagnostics).
+                engine?.dashboardEnabled = showDebug
             },
             onHandleEsc: { [weak fo = self.fullscreenObserver] in
                 if fo?.isFullscreen == true {

@@ -326,6 +326,7 @@ extension RenderPipeline {
         encoder.executeCommandsInBuffer(icbState.icb, range: 0..<maxCount)
 
         encoder.endEncoding()
+        compositeDashboard(commandBuffer: commandBuffer, view: view)
         commandBuffer.present(drawable)
     }
     // swiftlint:enable function_parameter_count
