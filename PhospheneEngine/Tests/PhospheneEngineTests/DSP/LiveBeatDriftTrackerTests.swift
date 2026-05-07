@@ -921,6 +921,90 @@ struct LiveBeatDriftTrackerTests {
                 "BUG-007.4b: after setGrid the auto-rotate fires again on new evidence")
     }
 
+    // MARK: 31. BUG-007.5 part 3 — BPM-aware lock-release at slow tempos
+
+    /// HUMBLE-class half-time grid (76 BPM, 790 ms beat period). With a fixed
+    /// 2.5 s gate, 4 consecutive non-tight onsets at 790 ms spacing accumulate
+    /// 3.16 s — drops lock. BPM-aware gate (4 × 0.79 = 3.16 s) holds through 4
+    /// non-tight onsets and only drops on the 5th (~3.95 s after the first).
+    @Test("bpmAwareLockRelease_holdsLongerOnSlowGrid")
+    func test_bpmAwareLockReleaseHoldsLongerOnSlowGrid() {
+        // Build a 76 BPM grid (HUMBLE-style). Period = 60/76 ≈ 0.789 s.
+        let bpm = 76.0
+        let period = 60.0 / bpm
+        let beats = (0..<64).map { Double($0) * period }
+        let downbeats = stride(from: 0, to: 64, by: 4).map { Double($0) * period }
+        let grid = BeatGrid(
+            beats: beats, downbeats: downbeats, bpm: bpm, beatsPerBar: 4,
+            barConfidence: 0.9, frameRate: 50.0, frameCount: 1500
+        )
+        let tracker = LiveBeatDriftTracker()
+        tracker.audioOutputLatencyMs = 0
+        tracker.setGrid(grid)
+
+        // Acquire lock with 5 perfectly aligned onsets.
+        let dt: Float = 1.0 / 60.0
+        for i in 0..<5 {
+            _ = tracker.update(subBassOnset: true,
+                               playbackTime: Double(i) * period, deltaTime: dt)
+        }
+        // Drive 4 onsets at +80 ms shift (outside 50 ms search window — nil match
+        // counts as non-tight). 4 × 0.79 = 3.16 s span. Pre-fix gate (2.5 s)
+        // would drop lock on event 4 (at ~2.4 s). BPM-aware gate (3.16 s) holds.
+        var droppedAtIndex: Int?
+        var prevState: LiveBeatDriftTracker.LockState = .locked
+        for i in 0..<4 {
+            let t = 5.0 * period + Double(i) * period + 0.080
+            let result = tracker.update(subBassOnset: true, playbackTime: t, deltaTime: dt)
+            if case .locked = prevState, case .locking = result.lockState, droppedAtIndex == nil {
+                droppedAtIndex = i
+            }
+            prevState = result.lockState
+        }
+        #expect(droppedAtIndex == nil,
+                "BUG-007.5 pt3: BPM-aware gate must hold lock through 4 non-tight onsets at 76 BPM (3.16 s span); dropped at \(droppedAtIndex ?? -1)")
+    }
+
+    // MARK: 32. BUG-007.5 part 3 — fast-tempo gate stays at floor (2.5 s)
+
+    /// At 120 BPM (period 0.5 s), `4 × period = 2.0 s` — below the 2.5 s floor.
+    /// Gate must stay at 2.5 s for fast tracks (BPM-aware doesn't shorten the
+    /// floor — it only widens the gate at slow tempos).
+    @Test("bpmAwareLockRelease_floorHoldsForFastTracks")
+    func test_bpmAwareLockReleaseFloorHoldsForFastTracks() {
+        let grid = makeUniformGrid(bpm: 120, beats: 64, beatsPerBar: 4)
+        let tracker = LiveBeatDriftTracker()
+        tracker.audioOutputLatencyMs = 0
+        tracker.setGrid(grid)
+
+        // Acquire lock.
+        let dt: Float = 1.0 / 60.0
+        let beatPeriod = 0.5
+        for i in 0..<5 {
+            _ = tracker.update(subBassOnset: true,
+                               playbackTime: Double(i) * beatPeriod, deltaTime: dt)
+        }
+        // Drive 8 non-tight onsets at 0.5 s spacing — span 4 s, well past 2.5 s floor.
+        var droppedAtIndex: Int?
+        var prevState: LiveBeatDriftTracker.LockState = .locked
+        for i in 0..<8 {
+            let t = 5.0 * beatPeriod + Double(i) * beatPeriod + 0.080
+            let result = tracker.update(subBassOnset: true, playbackTime: t, deltaTime: dt)
+            if case .locked = prevState, case .locking = result.lockState, droppedAtIndex == nil {
+                droppedAtIndex = i
+            }
+            prevState = result.lockState
+        }
+        // Should drop after 2.5 s of non-tight events. At 0.5 s spacing that's
+        // event index ≥ 5 (5 × 0.5 = 2.5 s). Allow some slack.
+        #expect(droppedAtIndex != nil,
+                "BUG-007.5 pt3: floor 2.5 s must still drop lock on fast-tempo non-tight stream")
+        if let idx = droppedAtIndex {
+            #expect(idx >= 4 && idx <= 7,
+                    "BUG-007.5 pt3: drop should occur near 2.5 s (index ~5); got index \(idx)")
+        }
+    }
+
     // MARK: 18. BUG-007.2 regression — raw grid (no offsetBy) drops lock after coverage (negative case)
 
     /// Documents the pre-fix behaviour as a known-bad path. Without offsetBy(), the prepared-cache

@@ -6,6 +6,44 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-07-n] BUG-007.5 part 3 — BPM-aware lock-release gate
+
+**Increment:** BUG-007.5 part 3
+**Type:** Bug fix (DSP / live beat tracking)
+
+**What changed.**
+
+Closes the HUMBLE half-time lock-flicker that BUG-007.5 parts 1+2 didn't address. Replaced the fixed `lockReleaseTimeSeconds = 2.5` with `effectiveLockReleaseSeconds = max(2.5 s, 4 × medianBeatPeriod)`. At fast tempos (120+ BPM, 500 ms period) the gate stays at 2.5 s — 4 × period = 2.0 s, below floor. At HUMBLE half-time (76 BPM, 790 ms period) the gate scales to 3.16 s — accommodates 4 consecutive sparse non-tight events without dropping lock.
+
+**Why it matters.**
+
+HUMBLE-class tracks (sparse half-time grids) showed 6+ lock drops per ~60 s in the prior session despite small per-onset deviations. Cause: sub-bass onset detector occasionally returns nil on instrumental breaks; at 790 ms beat period, 3–4 consecutive nil-matches accumulate ~3 s — past the 2.5 s gate. With BPM-aware scaling, the same 4 misses fit within the 3.16 s gate, lock holds.
+
+Fast tracks (OMT/MC/SLTS at 105–125 BPM) keep the 2.5 s floor — they have plenty of onset density and don't need the wider gate.
+
+**API.**
+
+- New private static tunables: `lockReleaseTimeSecondsFloor=2.5` (renamed from `lockReleaseTimeSeconds`) and `lockReleaseBeatMultiplier=4.0`. Fixed `lockReleaseTimeSeconds` constant removed.
+- New private helper `effectiveLockReleaseSecondsLocked()` returns `max(floor, multiplier × medianPeriod)`.
+- `computeLockStateLocked` now consults the helper.
+- No public API changes.
+
+**Files edited.**
+
+- `PhospheneEngine/Sources/DSP/LiveBeatDriftTracker.swift` — BPM-aware gate logic.
+- `PhospheneEngine/Tests/PhospheneEngineTests/DSP/LiveBeatDriftTrackerTests.swift` — 2 new tests (MARKs 31–32): `bpmAwareLockRelease_holdsLongerOnSlowGrid`, `bpmAwareLockRelease_floorHoldsForFastTracks`.
+- `docs/QUALITY/KNOWN_ISSUES.md` — BUG-007.5 status updated.
+
+**Tests.** 32/32 `LiveBeatDriftTrackerTests` pass. Full engine suite green except documented pre-existing flakes. 0 SwiftLint violations on touched files.
+
+**Manual validation pending.** HUMBLE should now reach 70 %+ LOCKED with ≥ 15 s contiguous runs (was 43 % LOCKED, 5.4 s longest run pre-fix). OMT/MC/SLTS/Everlong should not regress.
+
+**Out of scope.** Onset-detection improvements on sparse / soft-attack content (a separate problem, not gate width).
+
+**BUG-007 family status:** all sub-bugs resolved (007.4a manual rotate ✓, 007.4b auto-rotate ✓, 007.5pt1 time gate ✓, 007.5pt2 variance-adaptive ✓, 007.5pt3 BPM-aware ✓, 007.6 latency calibration ✓). Remaining: 007.7 (SLTS slow tempo drift over long playback, requires architectural rework — defer). BUG-009 (halving threshold) untouched.
+
+---
+
 ## [dev-2026-05-07-m] BUG-007.4b — auto-rotate bar phase via kick density
 
 **Increment:** BUG-007.4b
