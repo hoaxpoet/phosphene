@@ -91,6 +91,13 @@ private func drive(
     return last
 }
 
+/// Sendable holder for capturing the most recent `isTightMatch` flag from a
+/// `LiveBeatDriftTraceEntry` callback. Swift Testing closures are `@Sendable`,
+/// so closures must not mutate stack-local vars directly.
+private final class TightCapture: @unchecked Sendable {
+    var value: Bool = false
+}
+
 // MARK: - Suite
 
 @Suite("LiveBeatDriftTracker")
@@ -682,6 +689,98 @@ struct LiveBeatDriftTrackerTests {
         tracker.reset()
         #expect(tracker.audioOutputLatencyMs == 75.0,
                 "BUG-007.6: reset() must not reset audioOutputLatencyMs either")
+    }
+
+    // MARK: 25. BUG-007.5 part 2 — adaptive tight gate widens for noisy onset streams
+
+    /// MC / HUMBLE pattern: drift envelope spans ~40 ms even when bounded near 0.
+    /// Pre-fix (fixed ±30 ms), individual onsets at the edge of the envelope tripped
+    /// the time gate. Adaptive gate widens to ~2σ ≈ 40-60 ms on noisy material so
+    /// lock retention catches up to the envelope.
+    @Test("adaptiveTightGate_widensForNoisyOnsetStream")
+    func test_adaptiveTightGateWidensForNoisyOnsetStream() {
+        let grid = makeUniformGrid(bpm: 120, beats: 64)
+        let trackerFloor = LiveBeatDriftTracker()
+        trackerFloor.audioOutputLatencyMs = 0
+        trackerFloor.setGrid(grid)
+        let trackerAdaptive = LiveBeatDriftTracker()
+        trackerAdaptive.audioOutputLatencyMs = 0
+        trackerAdaptive.setGrid(grid)
+
+        // Phase 1: acquire lock on both with 5 perfectly aligned onsets.
+        let beatPeriod = 0.5
+        let dt: Float = 1.0 / 60.0
+        for i in 0..<5 {
+            _ = trackerFloor.update(subBassOnset: true,
+                                    playbackTime: Double(i) * beatPeriod, deltaTime: dt)
+            _ = trackerAdaptive.update(subBassOnset: true,
+                                       playbackTime: Double(i) * beatPeriod, deltaTime: dt)
+        }
+        // Phase 2: 8 noisy onsets with ±35 ms uncorrelated jitter (just outside
+        // the 30 ms floor). The adaptive tracker should accumulate σ ≈ 25 ms,
+        // widening the gate to ~50 ms — onsets become tight relative to the EMA.
+        // The floor tracker keeps the 30 ms gate; many onsets remain non-tight.
+        let jitters: [Double] = [0.035, -0.032, 0.038, -0.034, 0.036, -0.030, 0.033, -0.037]
+        var tightCountAdaptive = 0
+        var tightCountFloor = 0
+        let captureFloor = TightCapture()
+        let captureAdaptive = TightCapture()
+        trackerFloor.diagnosticTrace = { entry in captureFloor.value = entry.isTightMatch }
+        trackerAdaptive.diagnosticTrace = { entry in captureAdaptive.value = entry.isTightMatch }
+        for i in 0..<jitters.count {
+            let t = Double(5 + i) * beatPeriod + jitters[i]
+            _ = trackerFloor.update(subBassOnset: true, playbackTime: t, deltaTime: dt)
+            _ = trackerAdaptive.update(subBassOnset: true, playbackTime: t, deltaTime: dt)
+            if captureFloor.value { tightCountFloor += 1 }
+            if captureAdaptive.value { tightCountAdaptive += 1 }
+        }
+        // Both trackers run identical code paths in this test (same instance
+        // type) — adaptive gate is on by default. The "floor" tracker can't be
+        // disabled at runtime, so this test verifies the *effect*: with 35 ms
+        // jitter we expect majority of onsets to be tight (gate widened above
+        // 35 ms) — at fixed 30 ms gate, 0/8 would be tight.
+        // swiftlint:disable:next line_length
+        #expect(tightCountAdaptive >= 4, "BUG-007.5 pt2: expected ≥4 tight matches with adaptive gate on ±35 ms jitter; got \(tightCountAdaptive)")
+    }
+
+    // MARK: 26. BUG-007.5 part 2 — adaptive ring resets on setGrid
+
+    @Test("adaptiveTightGate_ringResetsOnSetGrid")
+    func test_adaptiveRingResetsOnSetGrid() {
+        let grid1 = makeUniformGrid(bpm: 120, beats: 32)
+        let grid2 = makeUniformGrid(bpm: 100, beats: 32)
+        let tracker = LiveBeatDriftTracker()
+        tracker.audioOutputLatencyMs = 0
+
+        // First track: drive ±40 ms jitter for 12 onsets — σ accumulates large.
+        tracker.setGrid(grid1)
+        let dt: Float = 1.0 / 60.0
+        for i in 0..<12 {
+            let jitter = (i % 2 == 0) ? 0.040 : -0.040
+            _ = tracker.update(subBassOnset: true,
+                               playbackTime: Double(i) * 0.5 + jitter, deltaTime: dt)
+        }
+        // After 12 jittered onsets the ring has built a wide σ (around ~40 ms).
+        // If the ring carried over to a new track, a +60 ms shift would still be
+        // tight (~80 ms gate). After reset, ring is empty → floor gate (30 ms) →
+        // 60 ms shift is non-tight.
+
+        // Switch tracks: setGrid clears the ring. Then drive 5 *aligned* onsets
+        // to acquire lock without re-populating σ much. Ring entries: ~0, 0, 0, 0, 0.
+        tracker.setGrid(grid2)
+        let period2 = 0.6   // 100 BPM
+        for i in 0..<5 {
+            _ = tracker.update(subBassOnset: true,
+                               playbackTime: Double(i) * period2, deltaTime: dt)
+        }
+        // After 5 aligned onsets, σ ≈ 0, gate = floor (30 ms).
+        let tightCapture = TightCapture()
+        tracker.diagnosticTrace = { entry in tightCapture.value = entry.isTightMatch }
+        // Fire onset at +60 ms — well outside the floor. With ring reset → non-tight.
+        // If ring carried over from grid1's wide σ → would be tight (gate ≈ 80 ms).
+        _ = tracker.update(subBassOnset: true, playbackTime: 5 * period2 + 0.060, deltaTime: dt)
+        #expect(!tightCapture.value,
+                "BUG-007.5 pt2: variance ring must reset on setGrid (no carryover from prior track)")
     }
 
     // MARK: 18. BUG-007.2 regression — raw grid (no offsetBy) drops lock after coverage (negative case)

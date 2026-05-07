@@ -120,9 +120,15 @@ The varying off-by-N (0, 2, 3) per track rules out a constant pipeline rotation 
 
 **Severity:** P3 (cosmetic — visual flicker between LOCKED and LOCKING; doesn't affect beat-phase)
 **Domain tag:** dsp.beat
-**Status:** **Resolved (time-based release gate landed 2026-05-07)** — adaptive-variance window deferred (re-evaluate after manual validation of the time-based gate alone).
+**Status:** **Resolved (time-based release gate + variance-adaptive tight gate, 2026-05-07)** — manual validation pending.
 **Introduced:** Surfaced 2026-05-07. Pre-exists BUG-007.3 (the reverted attempt). The fixed-window Schmitt hysteresis (`staleMatchWindow=0.060` in commit `94309858`) attempted this and failed because the "right" stale window depends on the drift variance, which differs by track.
-**Resolved:** 2026-05-07 — Replaced the count-based `lockReleaseMisses=7` gate with a *time-based* `lockReleaseTimeSeconds=2.5` gate. Lock now drops when 2.5 s of consecutive non-tight matches have elapsed since the last tight hit, regardless of how many onsets occurred in between. Sparse-onset tracks (HUMBLE half-time at 76 BPM = 790 ms beat period) no longer trip the gate accidentally — what matters is the elapsed time, not the count. Diagnostic counter `consecutiveMisses` retained on `LiveBeatDriftTraceEntry` for backward compat.
+**Resolved:** 2026-05-07 — Two-part fix.
+
+**Part 1 (time-based release gate)**: Replaced the count-based `lockReleaseMisses=7` gate with a *time-based* `lockReleaseTimeSeconds=2.5` gate. Lock now drops when 2.5 s of consecutive non-tight matches have elapsed since the last tight hit, regardless of how many onsets occurred in between. Sparse-onset tracks (HUMBLE half-time at 76 BPM = 790 ms beat period) no longer trip the gate accidentally — what matters is the elapsed time, not the count. Diagnostic counter `consecutiveMisses` retained on `LiveBeatDriftTraceEntry` for backward compat.
+
+**Part 2 (variance-adaptive tight gate)**: Replaced the fixed ±30 ms tight-match window during the *retention* phase (after lock acquired) with an adaptive `effectiveTightWindow = clamp(2σ, 30 ms, 80 ms)` derived from the running stddev of the last 16 `instantDrift − drift` values. Acquisition path still uses the fixed 30 ms floor for selectivity. This closes the remaining lock-flicker on tracks where drift envelope is wider than ±30 ms despite small EMA bias (Midnight City: drift envelope ±20 ms with σ ≈ 12 ms → adaptive window ≈ 24 ms; HUMBLE: σ ≈ 25 ms → adaptive window ≈ 50 ms; B.O.B. polyrhythmic noise: σ ≈ 40 ms → adaptive window clamped at ceiling 80 ms).
+
+Variance ring resets on `setGrid` / `reset` so each track starts fresh at the floor.
 
 **Expected behavior:** Once `lock_state` reaches LOCKED on a track with correct grid BPM, it stays there for the duration of the song unless the input goes silent or the BPM is genuinely wrong. Lock should not flicker due to per-onset noise within ±60 ms of the EMA.
 
