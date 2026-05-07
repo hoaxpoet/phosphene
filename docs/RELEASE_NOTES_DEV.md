@@ -6,6 +6,42 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-07-l] BUG-007.5 part 2 — variance-adaptive tight gate
+
+**Increment:** BUG-007.5 part 2
+**Type:** Bug fix (DSP / live beat tracking)
+
+**What changed.**
+
+The 2026-05-07T20-34-57Z manual session showed that the time-based lock release (BUG-007.5 part 1) closed lock retention on simple kick-on-the-beat tracks (OMT, SLTS — 89-90 % LOCKED, 50-91 s contiguous runs) but not on tracks where drift envelope spans wider than ±30 ms despite small mean drift (Midnight City 58 % LOCKED, HUMBLE 44 %, Everlong 73 %). The cause: the fixed ±30 ms tight gate doesn't fit the natural variance of these tracks. Drift EMA centres correctly; individual onsets land on either edge of a 40-50 ms envelope; many trigger the time gate even though they're really fine.
+
+**Fix.** Variance-adaptive tight gate: replace the fixed ±30 ms with `effectiveTightWindow = clamp(2σ, 30 ms, 80 ms)` derived from the running stddev of the last 16 `instantDrift − drift` deviations. Acquisition path (before `matchedOnsets >= lockThreshold`) still uses the floor 30 ms for selectivity. Retention path widens to fit the track's actual variance — narrow for OMT/SLTS, wider for MC/HUMBLE/B.O.B. Ring resets on `setGrid`/`reset` so each track starts fresh.
+
+**API changes:**
+
+- `LiveBeatDriftTracker` gains private state: `driftDeviationRing: [Double]` (capacity 16, signed seconds), `pushDriftDeviationLocked(_:)`, `effectiveTightWindowLocked()`. No public API changes.
+- New private static tunables: `tightMatchWindowCeiling=0.080`, `tightMatchWindowK=2.0`, `driftDeviationRingCapacity=16`, `driftDeviationMinSamples=4`. `strictMatchWindow=0.030` retained as the floor.
+
+**Files edited.**
+
+- `PhospheneEngine/Sources/DSP/LiveBeatDriftTracker.swift` — variance ring + adaptive gate logic in `update()`.
+- `PhospheneEngine/Tests/PhospheneEngineTests/DSP/LiveBeatDriftTrackerTests.swift` — 2 new tests (MARKs 25–26): `adaptiveTightGate_widensForNoisyOnsetStream`, `adaptiveTightGate_ringResetsOnSetGrid`. Plus `TightCapture` helper for `@Sendable`-compatible diagnostic-trace capture.
+- `docs/QUALITY/KNOWN_ISSUES.md` — BUG-007.5 status updated to "Resolved (time-based release gate + variance-adaptive tight gate, 2026-05-07)".
+
+**Tests.** 26/26 `LiveBeatDriftTrackerTests` pass. Full engine suite passes except documented pre-existing flake (`MetadataPreFetcher.fetch_networkTimeout`) and DASH.5 string-format mismatch (`PerfCardBuilderTests`, separate work in flight). 0 SwiftLint violations on touched files.
+
+**App build status.** Not verified for this commit — DASH.7 work in flight has a pending `DarkVibrancyView` reference. Engine SPM target builds clean. Once DASH.7 completes, full app build can be confirmed.
+
+**Manual validation pending.** Same 5-track battery (OMT / Midnight City / HUMBLE / SLTS / Everlong) — confirm MC, HUMBLE, Everlong reach 80 %+ LOCKED with 30 s+ contiguous runs. OMT and SLTS should not regress (already at 89-90 %).
+
+**Out of scope.**
+
+- Adaptive widening on the slope-detector / wider-window-retry path (BUG-007.3 reverted).
+- Per-onset-class tight gates (drums vs bass vs claps).
+- BUG-007.4b (auto-rotate bar phase) — separate increment, scheduled next.
+
+---
+
 ## [dev-2026-05-07-k] DASH.7.1 — Brand-alignment pass (impeccable review)
 
 **Increment:** DASH.7.1

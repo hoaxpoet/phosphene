@@ -102,8 +102,28 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
     /// No-onset decay time-constant. When no onset has matched for > 2 ×
     /// medianBeatPeriod, drift decays toward 0 with this τ (seconds).
     private static let decayTau: Double = 1.0
-    /// Tight match window for the lock counter: ±30 ms.
+    /// Tight match window floor (BUG-007.5 part 2): minimum acceptable tight-gate
+    /// half-width. The acquisition path uses this exact value; the retention path
+    /// uses an adaptive window between this floor and `tightMatchWindowCeiling`,
+    /// derived from the running stddev of recent `instantDrift − drift` deviations.
     private static let strictMatchWindow: Double = 0.030
+    /// Tight match window ceiling (BUG-007.5 part 2). Adaptive window cannot
+    /// exceed this — protects against drift-tracking failure on truly chaotic
+    /// onset streams (e.g. B.O.B. polyrhythmic detection noise) where running
+    /// stddev gets large and would otherwise mask a genuinely-broken lock.
+    private static let tightMatchWindowCeiling: Double = 0.080
+    /// Adaptive-window K factor: `effectiveWindow = K × stddev`. K=2 covers ~95 %
+    /// of a normal distribution. Higher K = more permissive retention; lower K =
+    /// stricter lock. K=2 chosen empirically against the 2026-05-07T20-34-57Z
+    /// data: MC σ≈12 ms → window ≈ 24 ms (still bounded), HUMBLE σ≈25 ms → 50 ms.
+    private static let tightMatchWindowK: Double = 2.0
+    /// Capacity of the ring buffer of recent `instantDrift − drift` values used
+    /// to compute adaptive σ. 16 onsets ≈ 13 s at 76 BPM, ≈ 7 s at 120 BPM.
+    private static let driftDeviationRingCapacity: Int = 16
+    /// Minimum samples in the ring before the adaptive window kicks in. Below
+    /// this, the floor `strictMatchWindow` is used. Prevents single-sample noise
+    /// from widening the gate during initial lock acquisition.
+    private static let driftDeviationMinSamples: Int = 4
     /// Matched onsets required to reach `.locked`.
     private static let lockThreshold: Int = 4
     /// Time-based lock-release gate (BUG-007.5). When at least this many seconds
@@ -147,6 +167,9 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
     /// when `pt − firstNonTightMatchTime > lockReleaseTimeSeconds`, lock drops.
     private var firstNonTightMatchTime: Double?
     private var lastOnsetTime: Double = -1.0
+    /// Ring of recent `instantDrift − drift` values (signed seconds) for the
+    /// variance-adaptive tight gate (BUG-007.5 part 2). Reset on `setGrid` / `reset`.
+    private var driftDeviationRing: [Double] = []
     private let lock = NSLock()
 
     // MARK: - Init
@@ -299,6 +322,7 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
         consecutiveMisses = 0
         firstNonTightMatchTime = nil
         lastOnsetTime = -1.0
+        driftDeviationRing.removeAll(keepingCapacity: true)   // BUG-007.5 pt 2
         _barPhaseOffset = 0   // BUG-007.4: cleared on track change so each track starts fresh
         // _audioOutputLatencyMs intentionally NOT reset — it's a system property.
     }
@@ -343,10 +367,16 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
                 let instantDrift = nearest - pt
                 drift = (1 - Self.onsetAlpha) * drift + Self.onsetAlpha * instantDrift
 
-                // Tight-match counter for lock progression. The instant drift
-                // landing within ±30 ms of the smoothed drift means the onset
-                // sat tightly on the cached beat.
-                let isTight = abs(instantDrift - drift) < Self.strictMatchWindow
+                // BUG-007.5 part 2 — variance-adaptive tight gate. After a few
+                // onsets, the gate widens to ±2σ of recent deviations so noisy
+                // tracks (HUMBLE half-time, MC verse) hold lock without trip-
+                // ping the time gate. Acquisition path uses the floor (30 ms)
+                // until ≥ `driftDeviationMinSamples` deviations have accumulated.
+                let signedDeviation = instantDrift - drift
+                pushDriftDeviationLocked(signedDeviation)
+                let acquired = matchedOnsets >= Self.lockThreshold
+                let window = acquired ? effectiveTightWindowLocked() : Self.strictMatchWindow
+                let isTight = abs(signedDeviation) < window
                 if isTight {
                     matchedOnsets = min(matchedOnsets + 1, Int.max - 1)
                     consecutiveMisses = 0
@@ -391,6 +421,39 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
     }
 
     // MARK: - Helpers
+
+    /// Push a signed `instantDrift − drift` value into the variance ring buffer
+    /// (BUG-007.5 part 2). Caps at `driftDeviationRingCapacity`, dropping oldest.
+    /// Caller must hold the lock.
+    private func pushDriftDeviationLocked(_ deviation: Double) {
+        driftDeviationRing.append(deviation)
+        if driftDeviationRing.count > Self.driftDeviationRingCapacity {
+            driftDeviationRing.removeFirst(driftDeviationRing.count - Self.driftDeviationRingCapacity)
+        }
+    }
+
+    /// Compute the variance-adaptive tight window (BUG-007.5 part 2). Returns
+    /// `clamp(2 × σ, strictMatchWindow, tightMatchWindowCeiling)` once
+    /// `driftDeviationMinSamples` samples are present, otherwise the floor.
+    /// σ uses the unbiased (sample) estimator so small-sample variance isn't
+    /// underestimated. Caller must hold the lock.
+    private func effectiveTightWindowLocked() -> Double {
+        guard driftDeviationRing.count >= Self.driftDeviationMinSamples else {
+            return Self.strictMatchWindow
+        }
+        let count = Double(driftDeviationRing.count)
+        let mean = driftDeviationRing.reduce(0, +) / count
+        var sumSq = 0.0
+        for sample in driftDeviationRing {
+            let delta = sample - mean
+            sumSq += delta * delta
+        }
+        // Sample variance (n−1 divisor) — slightly more conservative for small n.
+        let variance = sumSq / max(count - 1, 1)
+        let sigma = variance.squareRoot()
+        let raw = Self.tightMatchWindowK * sigma
+        return min(max(raw, Self.strictMatchWindow), Self.tightMatchWindowCeiling)
+    }
 
     private func emitDiagnosticTrace(
         onset pt: Double,
