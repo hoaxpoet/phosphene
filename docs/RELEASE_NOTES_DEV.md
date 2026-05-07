@@ -42,6 +42,19 @@ The 2026-05-07T20-34-57Z manual session showed that the time-based lock release 
 
 ---
 
+## [dev-2026-05-07-n] BUG-009 — Halving-correction threshold 160 → 175 BPM
+
+**Increment:** BUG-009
+**Type:** Bug fix (calibration)
+
+**What changed.** Raised the halving threshold in `BeatGrid.halvingOctaveCorrected()` from 160 → 175 BPM. The `> 160` guard halved legitimate fast tracks down to half-time when the live 10 s Beat This! analyser overshot the true tempo: Foo Fighters' "Everlong" (true ≈ 158 BPM) installed at 85.4 BPM in the reactive session captured at `~/Documents/phosphene_sessions/2026-05-07T14-33-47Z/`. Drum'n'bass (170–175), fast indie rock (Strokes / Arctic Monkeys 155–170), and similar fast-rock tempos shared the same fate. 175 captures the fast-rock band without re-enabling true double-time errors (those land at ≥ 200 typically). Pyramid Song (~68 BPM) and Money 7/4 (~123 BPM) remain untouched (under-floor + in-range respectively).
+
+**Tests.** Added `halvingOctaveCorrected_fastRockBPM_isNoOp` covering four fixtures (158 / 168 / 172.5 / 175 BPM) — each must pass through un-halved. Updated existing assertions to use the `[80, 175]` range. Refreshed the extreme-double-halve fixture from 322 BPM → 360 BPM (322 → 161 used to trigger a second halve under the old `> 160` guard; under `> 175` it stops at 161, so the test now uses 360 → 180 → 90 to retain factor-4 thinning coverage). Engine: 1120 tests pass. SwiftLint clean on touched files.
+
+**Manual validation pending** at next reactive Everlong session: live grid should install at `bpm=158 ± 8`, not 85.4. Pyramid Song must remain at 68 BPM; Love Rehab live trigger (244.770 → halved to 122.4) must continue to halve. Documented in `KNOWN_ISSUES.md`.
+
+---
+
 ## [dev-2026-05-07-m] DASH.7.2 — Dark-surface legibility pass
 
 **Increment:** DASH.7.2 (D-089)
