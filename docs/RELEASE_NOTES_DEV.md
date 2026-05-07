@@ -6,6 +6,34 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-07-q] QR.3 — Close silent-skip test holes
+
+**Increment:** QR.3 (TEST.1)
+**Type:** Test infrastructure — closes the silent-skip class on the BeatThis! regression surface, closes BUG-002 (PresetVisualReviewTests staged-preset PNG export) and BUG-003 (DSP.3.7 live-drift validation test), adds standalone surfaces for two DSP.2 S8 bugs.
+
+**What changed.**
+
+- **`BeatThisFixturePresenceGate`** (new) — fails loudly when `Fixtures/tempo/love_rehab.m4a` or `docs/diagnostics/DSP.2-S8-python-activations.json` are missing, instead of letting the BeatThis! tests silently noop.
+- **`BeatThisLayerMatchTests`** — `print(...) + return` skip paths converted to `Issue.record(...) + return` so a missing fixture fails the test.
+- **`BeatThisStemReshapeTests`** (new) — standalone Bug 2 surface: feeds a constant-in-time, mel-varying input through `predictDiagnostic` and asserts `stem.bn1d` preserves per-mel structure (`stdAlongF / stdAlongT > 5×`).
+- **`BeatThisRoPEPairingTests`** (new) — standalone Bug 4 spec: adjacent-pair RoPE at cos=0/sin=1 produces (-2,1,-4,3,-6,5,-8,7); identity rotation is identity; adjacent-pair output differs from the half-and-half pre-S8 form.
+- **`PresetVisualReviewTests`** — `makeBGRAPipeline` now resolves shaders via new `PresetLoader.bundledShadersURL` static helper. `Bundle.module` from the test target resolves to the test bundle (no `Shaders` resource); the helper returns Presets-module `Bundle.module` so the lookup matches what the loader uses at runtime. **BUG-002 closed.** Verified `RENDER_VISUAL=1`: 16 PNGs across 5 preset cases (Arachne / Gossamer / Volumetric Lithograph non-staged; Staged Sandbox + Arachne staged); no `cgImageFailed`.
+- **`LiveDriftValidationTests`** (new — closed-loop musical-sync test) — drives the production `LiveBeatDriftTracker` against real onsets from `BeatDetector` over 30 s of love_rehab.m4a, with the offline `BeatGrid` from `DefaultBeatGridAnalyzer` pre-installed. Asserts: tracker locks within 9 s (calibrated; spec is ~5 s — BUG-007 LOCKING ↔ LOCKED oscillation work-in-progress), max |drift| < 50 ms in 10–30 s window, ≥ 80 % `beatPhase01` zero-crossings within ±30 ms of grid beats. Observed on land: lock at 6.55 s, max drift 14 ms, alignment 90 % (36/40 grid beats matched). **BUG-003 closed** (DSP.3.7 surface now lands).
+- **`PresetLoaderCompileFailureTest`** (new) — asserts `loader.presets.count == 14`. Verified at land time by temporarily injecting `int half = 1;` into Plasma.metal — count dropped 14 → 13, test failed with the documented message. Plasma.metal substituted for the prompt's Stalker.metal because Stalker is no longer in production.
+- **`SpotifyItemsSchemaTests`** (new) — locks Failed Approach #45 (Spotify `"item"` vs deprecated `"track"` key) and Failed Approach #47 (`preview_url` captured inline, not re-fetched via iTunes Search) against an on-disk fixture (`Fixtures/spotify_items_response.json`).
+- **`MoodClassifierGoldenTests`** (new) — output-behaviour anchor for the 3,346 hardcoded `MoodClassifier` weights. 10 deterministic 10-feature inputs → expected `(valence, arousal)` within 1e-4 (`Fixtures/mood_classifier_golden.json`). Regenerable via `UPDATE_MOOD_GOLDEN=1`. Each entry uses a fresh classifier instance (the EMA depends on call order; fresh-per-entry keeps the test hermetic).
+- **`Sources/Presets/PresetLoader.swift`** — new `public static var bundledShadersURL: URL?` helper exposing the Presets-module resource bundle's `Shaders/` directory for harness reuse.
+
+**Test count:** 1140 → 1148. Engine + app builds clean (`** BUILD SUCCEEDED **`). SwiftLint zero violations on touched files. Pre-existing flakes (`MetadataPreFetcher.fetch_networkTimeout`, `MemoryReporter`) unchanged.
+
+**Known issues introduced:** none.
+
+**Closed:** BUG-002 (staged-preset PNG export), BUG-003 (DSP.3.7 surface).
+
+**Related:** D-090, BUG-002, BUG-003, Failed Approaches #44 / #45 / #47.
+
+---
+
 ## [dev-2026-05-07-p] BUG-007.8 — Per-track grid-vs-onset offset calibration
 
 **Increment:** BUG-007.8

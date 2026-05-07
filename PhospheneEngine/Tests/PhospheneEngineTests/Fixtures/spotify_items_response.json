@@ -1,0 +1,39 @@
+{
+  "items": [
+    {
+      "added_at": "2026-01-01T00:00:00Z",
+      "item": {
+        "name": "Track A",
+        "artists": [{ "name": "Artist 1" }],
+        "album": { "name": "Album 1" },
+        "id": "track-a-id",
+        "preview_url": "https://example.com/preview-a.mp3",
+        "duration_ms": 180000
+      }
+    },
+    {
+      "added_at": "2026-01-02T00:00:00Z",
+      "item": {
+        "name": "Track B",
+        "artists": [{ "name": "Artist 2" }],
+        "album": { "name": "Album 2" },
+        "id": "track-b-id",
+        "preview_url": null,
+        "duration_ms": 200000
+      }
+    },
+    {
+      "added_at": "2026-01-03T00:00:00Z",
+      "item": {
+        "name": "Track C",
+        "artists": [{ "name": "Artist 3" }],
+        "album": { "name": "Album 3" },
+        "id": "track-c-id",
+        "preview_url": "https://example.com/preview-c.mp3",
+        "duration_ms": 220000
+      }
+    }
+  ],
+  "total": 3,
+  "next": null
+}
