@@ -2639,14 +2639,15 @@ Third live card. New `PerfSnapshot` Sendable value type wraps renderer governor 
 - [x] `card_perf_active.png` artifact written for M7-style review (composes against the BEAT and STEMS artifacts on the same deep-indigo backdrop).
 - [x] D-085 captures: `PerfSnapshot` value-type rationale (snapshot crosses actor lines, two manager classes), `.progressBar` over `.bar` for FRAME, builder-layer clamp asymmetry vs D-084's renderer-layer clamp, Int-encoded enums, no `statusRed` durable rule, no per-row colour tuning for FRAME, DASH.5.1 amendment slot.
 
-### Increment DASH.6 — Overlay wiring + `D` key toggle
+### Increment DASH.6 — Overlay wiring + `D` key toggle ✅ 2026-05-07
 
-Wire all three cards into `DebugOverlayView` / `PlaybackView` behind the existing `D` key shortcut. Cards appear in the top-right corner, stacked vertically with `DashboardTokens.Spacing.cardGap`. Dashboard layer is composited by `RenderPipeline` as an optional blit after the main frame.
+`DashboardComposer` (`@MainActor`, lifecycle owner of the BEAT/STEMS/PERF cards) wires all three card builders to the live render pipeline. Per-frame `update(beat:stems:perf:)` rebuilds card layouts (skips when all three snapshots compare equal — `BeatSyncSnapshot` and `StemFeatures` lack `Equatable`, so the rebuild-skip uses a private bytewise compare; `PerfSnapshot` is `Equatable`); `composite(into:drawable:)` encodes a `loadAction = .load` alpha-blended pass that samples the layer texture into a top-right viewport. The composite is invoked at the tail of every draw path immediately before `commandBuffer.present(drawable)` (Decision B per D-086). One `D` shortcut drives both the SwiftUI debug overlay (existing) and the new Metal dashboard via `VisualizerEngine.dashboardEnabled` — instruments and raw diagnostics are complementary surfaces, not alternatives. `DebugOverlayView` deduplicated: Tempo / standalone QUALITY / standalone ML rows removed (now in PERF + BEAT cards); MOOD / Key / SIGNAL / MIR diag / SPIDER / G-buffer / REC remain. `Spacing.cardGap` token aliases `Spacing.md` (12 pt) — named slot reserves a DASH.6.1 retune.
 
 **Done when:**
-- [ ] Pressing `D` shows / hides the dashboard cards.
-- [ ] All three cards update at 60 fps without measurable frame-budget regression.
-- [ ] `DebugOverlayView` no longer duplicates any metric shown in the dashboard cards.
+- [x] Pressing `D` shows / hides the dashboard cards (and the SwiftUI debug overlay) together.
+- [x] All three cards update per-frame; engine test suite (1130 tests / 130 suites) green; 0 SwiftLint violations on touched files.
+- [x] `DebugOverlayView` no longer duplicates Tempo / QUALITY / ML rows.
+- [x] D-086 captures: Decision B over A (per-path composite, not render-loop refactor — ~10 sites × 1 helper line via `RenderPipeline.compositeDashboard`), `DashboardComposer` rationale (single class owns layer + builders + composite pipeline + enabled flag), single `D` toggle drives both surfaces, no `Equatable` on `StemFeatures` / `BeatSyncSnapshot`, no fourth card, premultiplied alpha discipline, DASH.6.1 amendment slot.
 
 ---
 

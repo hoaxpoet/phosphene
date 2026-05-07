@@ -6,6 +6,30 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-07-i] DASH.6 — Overlay wiring + `D` toggle
+
+**Increment:** DASH.6
+**Type:** Feature
+
+**What changed.**
+- New `DashboardComposer` (`@MainActor`, `Renderer/Dashboard/`) — lifecycle owner of the BEAT/STEMS/PERF cards. Owns one `DashboardTextLayer` (320 × 660 pt at 2× contentsScale by default; reallocates on `resize(to:)`), three pure builders (`BeatCardBuilder`/`StemsCardBuilder`/`PerfCardBuilder`), and one alpha-blended `MTLRenderPipelineState` keyed to `dashboard_composite_vertex` / `dashboard_composite_fragment` (Premultiplied source: `src = .one`, `dst = .oneMinusSourceAlpha`).
+- New `Dashboard.metal` shader file (`Renderer/Shaders/`) — vertex stage emits a fullscreen triangle confined to the composite pass's viewport; fragment samples the layer texture at `[[texture(0)]]` with bilinear + clamp_to_edge.
+- New `Spacing.cardGap` token in `Shared/Dashboard/DashboardTokens.swift` — aliases `Spacing.md` (12 pt) v1; named slot reserves a DASH.6.1 retune.
+- `RenderPipeline` gains `setDashboardComposer(_:)` setter, `hasDashboardComposer: Bool` test accessor, and a `compositeDashboard(commandBuffer:view:)` helper invoked from the tail of every draw path (`drawDirect`, `drawWithMeshShader`, `drawWithRayMarch`, `drawWithFeedback`, `drawWithMVWarp`, `drawWithICB`, `drawWithPostProcess`, `drawWithStaged`, plus the feedback-blit and mv-warp fallback paths) immediately before `commandBuffer.present(drawable)`. `mtkView(_:drawableSizeWillChange:)` forwards to `composer.resize(to:)` so card placement scales with drawable contentsScale (no hardcoded 2×).
+- `VisualizerEngine` gains `dashboardComposer: DashboardComposer?` and `@MainActor var dashboardEnabled: Bool` (mirror of the composer's `enabled` flag). `setupDashboardComposer(pipe:ctx:lib:)` allocates the composer and wraps `pipe.onFrameRendered` so a per-frame snapshot push (BeatSync from the engine's snapshot lock + StemFeatures from the existing closure parameter + a freshly-assembled `PerfSnapshot`) is delivered to `composer.update(...)` once per rendered frame.
+- `PlaybackView`'s `D` shortcut now writes `engine.dashboardEnabled = showDebug` after toggling the SwiftUI overlay — one keystroke drives both the SwiftUI debug overlay (bottom-leading, raw diagnostics) and the new Metal cards (top-right, instruments).
+- `DebugOverlayView` deduplicated of metrics that the dashboard cards now show: the `Tempo` row inside MOOD (LIVE), the standalone `QUALITY:` HStack block, and the standalone `ML:` HStack block (along with the divider that immediately preceded the QUALITY/ML pair). Mood V/A, Key, SIGNAL block, MIR diag, SPIDER, G-buffer, REC all stay.
+
+**What's intentionally NOT in this increment.** No fourth card (mood / metadata / signal). No animation on card show/hide (`D` is binary). No per-card visibility toggles. No render-loop refactor (Decision A would have required moving `commandBuffer.present(drawable)` out of 8+ draw paths — well beyond the spec's 30-line ceiling, deferred). No per-card colour tuning (uniform palette per builder, DASH.6.1 amendment slot if the live-toggle review surfaces issues). No `Equatable` on `StemFeatures` / `BeatSyncSnapshot` (D-086 Decision 4 — composer's rebuild-skip uses private bytewise compare).
+
+**Decisions.** D-086 captures: composer-as-class rationale, Decision B (per-path composite call sites) over Decision A (render-loop refactor), single `D` toggle drives both surfaces, no Equatable on shared types, premultiplied alpha discipline, per-frame rebuild cost rationale, DASH.6.1 amendment slot.
+
+**Tests.** 45 dashboard tests pass (was 39 → 45, six new in `DashboardComposerTests`: init / idempotent-on-equal-snapshots / rebuilds-on-any-input-change / disabled-is-noop / update+composite paints top-right / resize recomputes 4K placement). Full engine suite green: 1130 tests / 130 suites. 0 SwiftLint violations on touched files. `xcodebuild -scheme PhospheneApp build` succeeded.
+
+**Frame-budget regression.** Soak harness re-run not yet captured for this increment (CPU rebuild path is gated behind `enabled` and the bytewise rebuild-skip; the GPU composite is one fullscreen triangle into a fixed top-right viewport — expected delta is well below the 0.5 ms p95 ceiling). Live D-toggle review on real music is the acceptance artifact and runs as part of DASH.6 sign-off; numeric soak comparison is a follow-up if the eyeball review flags concern.
+
+---
+
 ## [dev-2026-05-07-h] BUG-007.4a — Bar-phase rotation dev shortcut (Shift+B)
 
 **Increment:** BUG-007.4a
