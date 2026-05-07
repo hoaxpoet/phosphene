@@ -2058,12 +2058,13 @@ Continuous energy is the primary visual driver; beat onset pulses are accents on
 
 **Priority ordering** (do not reorder without re-reading the cross-cutting analysis below):
 
-1. **QR.1 (DSP.4) — Sample-rate plumbing audit.** Highest-precision payoff. Single bug class, five sites, confirmed by three independent reviewers.
-2. **QR.2 (OR.1) — Stem-affinity rescaling + reactive-mode TrackProfile fix.** Highest musicality payoff per LOC. The "AI VJ" promise is currently being carried by mood + section weights only; stem-affinity is mostly noise.
-3. **QR.3 (TEST.1) — Close silent-skip test holes.** Cheap to do; protects the work in QR.1 + QR.2 from silent regression.
-4. **QR.4 (U.12) — UX dead ends + duplicate `SettingsStore`.** Small, isolated, user-visible.
-5. **QR.5 (CLEAN.1) — Mechanical cleanup pass.** Pure deletion of dead code + dead comments. Schedule when the four above have landed; ride along with their cleanups.
-6. **QR.6 (ARCH.1) — `VisualizerEngine` decomposition.** Largest debt in the codebase. Defer until QR.1–QR.4 ship, then schedule with explicit risk acknowledgement.
+1. **QR.1 (DSP.4) — Sample-rate plumbing audit.** Highest-precision payoff. Single bug class, five sites, confirmed by three independent reviewers. ✅ 2026-05-06.
+2. **QR.2 (OR.1) — Stem-affinity rescaling + reactive-mode TrackProfile fix.** Highest musicality payoff per LOC. ✅ 2026-05-06.
+3. **BUG-007.3 — Lock hysteresis + live BPM credibility.** Surfaced 2026-05-07 from manual validation of two post-QR.2 sessions. Two failure modes (Mechanism C — natural tempo variation drops lock under correct BPM; Mechanism D — live resolver returns 4 % low BPM on busy mid-frequency content). Schedule before QR.3 because the fix touches `LiveBeatDriftTracker` and any new test work in QR.3 should validate against the corrected behaviour. ~1 day.
+4. **QR.3 (TEST.1) — Close silent-skip test holes.** Cheap to do; protects the work in QR.1 + QR.2 + BUG-007.3 from silent regression.
+5. **QR.4 (U.12) — UX dead ends + duplicate `SettingsStore`.** Small, isolated, user-visible.
+6. **QR.5 (CLEAN.1) — Mechanical cleanup pass.** Pure deletion of dead code + dead comments. Schedule when the four above have landed; ride along with their cleanups.
+7. **QR.6 (ARCH.1) — `VisualizerEngine` decomposition.** Largest debt in the codebase. Defer until QR.1–QR.4 + BUG-007.3 ship, then schedule with explicit risk acknowledgement.
 
 **Cross-cutting context (read before any QR increment):**
 
@@ -2234,6 +2235,53 @@ Add a SwiftLint custom rule that flags `f\.(bass|mid|treb|sub_bass|low_bass|low_
 **Landed:** 2026-05-06. All algorithmic changes implemented. Golden sequences regenerated — VL no longer dominates (stem bonus gone with zero-dev pre-analyzed profiles); mood+section+tempo now drive planned sessions. D-080 documented. Matt sign-off on reactive-mode listening pending.
 
 **Estimated sessions:** 2 (algorithm changes + tests → goldens regen + manual sign-off).
+
+---
+
+### Increment BUG-007.3 — Lock hysteresis + live BPM credibility
+
+**Goal.** Stop two failure modes observed on 2026-05-07 manual validation: (C) `LiveBeatDriftTracker` drops lock during natural-music tempo variation even when grid BPM is correct; (D) live BPM resolver returns ~4 % low on busy mid-frequency tracks (Everlong reactive: `grid_bpm=151.9` vs true ≈158, drift walks to −358 ms over 75 s).
+
+**Why now.** Manual validation of two post-QR.2 sessions (`~/Documents/phosphene_sessions/2026-05-07T13-27-14Z/` planned, `~/Documents/phosphene_sessions/2026-05-07T13-30-46Z/` reactive) showed BUG-007.2 is *not* the end of the lock-stability story. SLTS held LOCKED for 80 s straight but drift walked +15 → −90 ms (correct BPM, expressive timing); Everlong dropped lock 5 times in 50 s; reactive Everlong locked to a 4 % wrong BPM and ran ~one full beat ahead by t=75 s. These are independent of BUG-007.2's adversarial-cadence + horizon-exhaustion fixes. Schedule before QR.3 because the fix touches `LiveBeatDriftTracker` directly and QR.3's `LiveDriftValidationTests` should validate against the corrected lock semantics, not the current ones.
+
+**Sites to fix:**
+
+| File | Change |
+|---|---|
+| `PhospheneEngine/Sources/DSP/LiveBeatDriftTracker.swift` | Add `staleMatchWindow: Double = 0.060`. Replace single-gate `isTight` logic with asymmetric Schmitt — tight gate (±30 ms) increments `matchedOnsets`; while already locked, stale-OK gate (±60 ms) preserves lock without incrementing; only true non-stale onsets increment `consecutiveMisses`. Add ring-buffer slope detector (`addDriftSample(playbackTime:drift:)` + `currentDriftSlope() -> Double?`) — 30-entry, returns ms/sec when ≥ 5 samples cover ≥ 5 s. |
+| `PhospheneEngine/Sources/DSP/MIRPipeline.swift` | Publish latest drift slope via new `latestDriftSlopeMsPerSec: Double?` (read in `buildFeatureVector`). |
+| `PhospheneApp/VisualizerEngine+Stems.swift` | Extend `runLiveBeatAnalysisIfNeeded()` with a third trigger: when `liveDriftTracker.hasGrid && abs(slope) > 5 ms/s` sustained ≥ 10 s and ≥ 30 s since last attempt (cap 3 attempts/track), retry with **20-second window** instead of 10. New `BeatThisAnalysisRequest` carries `windowSeconds` (10 or 20). On a second high-slope event after the wider retry, log `WARN: live BPM unstable on this track` and *retain previous grid* — do not install a third candidate. |
+| `PhospheneEngine/Tests/PhospheneEngineTests/DSP/LiveBeatDriftTrackerTests.swift` | New tests: (1) Mechanism C regression — synthetic 158 BPM grid + onset stream with ±25 ms jitter for 60 s asserts ≤ 1 lock drop; pre-fix would drop ≥ 4. (2) Slope-detector unit tests — flat drift returns ≈0 ms/s; linearly walking drift returns slope within 10 % of truth; insufficient samples returns nil. |
+| `PhospheneEngine/Tests/PhospheneEngineTests/Integration/LiveBeatRetryWideningTests.swift` (new) | Mock `BeatThisAnalysisRequest` consumer; verify wider-window retry fires under high-slope condition; verify 30-s cooldown; verify 3-attempt cap; verify second high-slope event after retry retains previous grid. |
+
+**Done-when:**
+
+- [ ] `LiveBeatDriftTracker` exposes `staleMatchWindow=0.060`, asymmetric Schmitt logic in `update()`, `currentDriftSlope() -> Double?`. Public API additions documented.
+- [ ] `MIRPipeline` publishes `latestDriftSlopeMsPerSec`.
+- [ ] `runLiveBeatAnalysisIfNeeded()` accepts a 20-second window via `BeatThisAnalysisRequest`; high-slope retry path implemented; unstable-grid warning logged; previous grid retained on second failure.
+- [ ] Mechanism C regression test passes (≤ 1 drop in 60 s); slope-detector unit tests pass; retry-widening integration tests pass.
+- [ ] Manual capture on Smells Like Teen Spirit (planned, prepared): `lock_state == 2` for ≥ 95 % of frames after first lock; `stddev(drift_ms over 10 s) < 25 ms`.
+- [ ] Manual capture on Everlong (planned, prepared): ≤ 1 lock drop in 50 s.
+- [ ] Manual capture on Everlong (reactive): either grid converges to within ±1 % of 158 BPM by t=30 s after wider-window retry, or `WARN: live BPM unstable` is logged and visuals continue with the prior grid (whichever applies — both are acceptable outcomes).
+- [ ] Manual capture on Billie Jean (reactive, control): no regression — drift stays bounded ±90 ms, lock holds.
+- [ ] Full engine test suite passes; 0 SwiftLint violations on touched files.
+- [ ] `KNOWN_ISSUES.md` BUG-007.3 closed; commit hash + manual-validation session paths recorded.
+- [ ] `RELEASE_NOTES_DEV.md` updated.
+
+**Out of scope (defer):**
+
+- The consistent ~10–15 ms negative-drift offset across all tracks (likely tap-output latency calibration). Tracked as a future calibration-tuning increment if pursued.
+- Replacing the offline Beat This! resolver entirely (BUG-008 — disagreement between MIR and offline BPM logged but not corrected).
+- Tightening or loosening `strictMatchWindow` (±30 ms). Acquisition selectivity stays where it is; only retention stickiness widens.
+- Slope-driven retry on the *prepared-cache* path. Prepared grids are derived from a 30 s clip — re-running offline analysis live is heavy. Stick to live-path retries; prepared inaccuracy is BUG-008.
+
+**Risks:**
+
+- Asymmetric hysteresis can mask a genuinely-wrong grid by holding lock through ±60 ms drift. Mitigation: the slope detector + retry trigger catches monotonic drift trends regardless of lock state.
+- Wider 20 s live window doubles inference cost for the rare retry case. Mitigation: 30 s cooldown + 3-attempt cap + cap on stem-queue concurrency already enforces a low ceiling.
+- Outlier-onset jitter pattern in the regression test must be representative — tune jitter distribution against the SLTS / Everlong session captures (use empirical instantDrift histograms from the 2026-05-07 features.csv files).
+
+**Estimated sessions:** 1 (Part a + Part b can land together; manual validation is one session capture per acceptance bullet).
 
 ---
 
