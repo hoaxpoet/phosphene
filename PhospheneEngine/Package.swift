@@ -146,13 +146,6 @@ let package = Package(
                 "Renderer", "Session", "Orchestrator", "Diagnostics",
             ],
             path: "Tests/PhospheneEngineTests",
-            exclude: [
-                // Dashboard tests are in-progress (untracked); exclude until
-                // their Swift Testing interpolation API is resolved.
-                "Renderer/DashboardTextLayerTests.swift",
-                "Renderer/DashboardFontLoaderTests.swift",
-                "Shared/DashboardTokensTests.swift",
-            ],
             resources: [
                 .copy("Regression/Fixtures"),
                 .copy("Fixtures/beat_this_reference"),
