@@ -1703,3 +1703,25 @@ These thresholds are intentionally low — they prove text was drawn somewhere o
 ### Implementation
 
 `Sources/Shared/Dashboard/DashboardTokens.swift`: design tokens (TypeScale, Spacing, Color, Weight, TextFont, Alignment). `Sources/Renderer/Dashboard/DashboardFontLoader.swift`: font resolution with `OSAllocatedUnfairLock` cache + `resetCacheForTesting()`. `Sources/Renderer/Dashboard/DashboardTextLayer.swift`: text rendering layer (`beginFrame/drawText/commit/resize`). `Sources/Renderer/Resources/Fonts/README.md`: drop-in font instructions. Tests: `DashboardTokensTests` (4), `DashboardFontLoaderTests` (3), `DashboardTextLayerTests` (5) — 12 total.
+
+### Amendment — DASH.1.1 (2026-05-06): tokens aligned to `.impeccable.md` OKLCH spec
+
+The DASH.1 token file was a placeholder with a self-imposed deferral comment ("Color additions require Matt's approval; the tuning pass is DASH.5"). DASH.1.1 brings the tokens onto the `.impeccable.md` spec *now* — before DASH.2/3/4 cards reach for them — to avoid retuning every card layout in DASH.5.
+
+**Changes:**
+
+1. **Brand colors converted from sRGB approximations to OKLCH-derived values.** `purple` `oklch(0.62 0.20 292)` → sRGB `(0.550, 0.403, 0.949)`. `coral` `oklch(0.70 0.17 28)` → `(0.964, 0.430, 0.377)`. `teal` `oklch(0.70 0.13 192)` → `(0.000, 0.718, 0.702)` (red channel clamps at 0 — spec teal sits at the cyan-green sRGB gamut edge).
+
+2. **Surface ladder added.** New tokens: `bg`, `surface`, `surfaceRaised`, `border`. Drawn from `.impeccable.md` spec (`oklch(0.09 0.012 275)` through `oklch(0.22 0.014 278)`). Replaces the flat `chromeBg`/`chromeBorder` pair.
+
+3. **Text tokens tinted toward brand purple (~278°), renamed for spec parity.** `textPrimary` → `textHeading` (`oklch(0.94 0.008 278)`). `textSecondary` → `textBody` (`oklch(0.80 0.010 278)`). `textMuted` re-tuned to `oklch(0.50 0.014 278)`. Closes the "no pure black/white" rule from `.impeccable.md` Color section.
+
+4. **Brand resting variants added.** `purpleGlow`, `coralMuted`, `tealMuted` for hover / inactive / glow states.
+
+5. **TypeScale gains `bodyLarge = 15`.** Maps to spec `md` (body in card content). Existing `body = 13` (spec `sm`) kept for dense rows. `numeric = 18` (spec `lg`) kept; aliasing it as `lg` would create ambiguity at the call site.
+
+6. **Status colors held close to pure for legibility.** Tinting status indicators violates the "color carries meaning" principle from the design context — green/yellow/red must read instantly. Unchanged from DASH.1.
+
+**Test changes:** `DashboardTokensTests.colorValues()` rewritten to assert the OKLCH ladder (surface ascending in luminance, neutrals tinted toward purple via blue-channel-exceeds-red, text ladder ascending). `DashboardTextLayerTests` renamed `textPrimary` → `textHeading`, `textSecondary` → `textBody` at all five call sites.
+
+**Sourced from:** `.impeccable.md` Design Context §Aesthetic Direction → Color palette table.
