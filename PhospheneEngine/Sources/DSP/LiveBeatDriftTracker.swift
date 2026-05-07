@@ -1,4 +1,3 @@
-// swiftlint:disable file_length
 // LiveBeatDriftTracker — Drift cross-correlation against an offline BeatGrid.
 //
 // Phase DSP.2 S7. Replaces BeatPredictor's IIR rising-edge tracker for tracks
@@ -102,18 +101,8 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
     /// No-onset decay time-constant. When no onset has matched for > 2 ×
     /// medianBeatPeriod, drift decays toward 0 with this τ (seconds).
     private static let decayTau: Double = 1.0
-    /// Tight match window for lock acquisition: ±30 ms.
-    /// An onset within ±30 ms of the smoothed drift counts as a tight hit and
-    /// increments `matchedOnsets` toward `lockThreshold`. Selectivity matters
-    /// most at acquisition; do not widen this — see BUG-007.3.
+    /// Tight match window for the lock counter: ±30 ms.
     private static let strictMatchWindow: Double = 0.030
-    /// Stale-OK match window for lock retention: ±60 ms (BUG-007.3).
-    /// Once already locked, an onset within ±60 ms (but outside ±30 ms) preserves
-    /// the lock without incrementing `matchedOnsets` or `consecutiveMisses`.
-    /// Asymmetric Schmitt-trigger pattern: tight gate to enter, wider gate to
-    /// stay. Closes the natural-music-tempo-variation drop-out mode observed on
-    /// SLTS / Everlong (drift wandered to ±60 ms within minor expressive timing).
-    private static let staleMatchWindow: Double = 0.060
     /// Matched onsets required to reach `.locked`.
     private static let lockThreshold: Int = 4
     /// Consecutive misses to drop `.locked` back to `.locking`.
@@ -123,15 +112,6 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
     /// so threshold=5 triggers drops on most cycles; threshold=7 is above the
     /// typical worst-case gap and gives ≤ 2 oscillations in 60 s.
     private static let lockReleaseMisses: Int = 7
-
-    /// Drift-slope ring buffer capacity (BUG-007.3). 30 onset samples is the
-    /// post-lock target; trimmed to this depth on every push.
-    private static let driftSampleCapacity: Int = 30
-    /// Minimum samples required for `currentDriftSlope` to return a value.
-    private static let driftSlopeMinSamples: Int = 5
-    /// Minimum playback-time span (seconds) required for `currentDriftSlope`
-    /// to return a value. Prevents low-confidence slopes from short windows.
-    private static let driftSlopeMinSpanSeconds: Double = 5.0
 
     // MARK: - Diagnostic (BUG_007_DIAGNOSIS)
 
@@ -152,13 +132,6 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
     private var consecutiveMisses: Int = 0
     private var lastOnsetTime: Double = -1.0
     private let lock = NSLock()
-
-    /// Per-onset drift sample for the slope detector (BUG-007.3).
-    private struct DriftSample {
-        let playbackTime: Double
-        let driftMs: Double
-    }
-    private var driftSamples: [DriftSample] = []
 
     // MARK: - Init
 
@@ -189,20 +162,6 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
     public var currentDriftMs: Double {
         lock.lock(); defer { lock.unlock() }
         return drift * 1000.0
-    }
-
-    /// Drift slope in milliseconds per second over the trailing onset window
-    /// (BUG-007.3). Returns nil when fewer than 5 samples are present or the
-    /// trailing window covers less than 5 seconds. Used by the live-Beat-This!
-    /// retry path to detect a wrong grid BPM and trigger a wider-window retry.
-    ///
-    /// Linear-regression slope of `(playbackTime, driftMs)` samples accumulated
-    /// per matched-or-search-window onset. Positive slope = drift growing
-    /// upward over time (grid running slower than audio); negative slope = grid
-    /// running faster than audio.
-    public func currentDriftSlope() -> Double? {
-        lock.lock(); defer { lock.unlock() }
-        return computeDriftSlopeLocked()
     }
 
     /// Additional visual phase offset in milliseconds, applied to the displayed
@@ -288,7 +247,6 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
         matchedOnsets = 0
         consecutiveMisses = 0
         lastOnsetTime = -1.0
-        driftSamples.removeAll(keepingCapacity: true)
     }
 
     // MARK: - Update
@@ -324,24 +282,14 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
             ) {
                 let instantDrift = nearest - pt
                 drift = (1 - Self.onsetAlpha) * drift + Self.onsetAlpha * instantDrift
-                pushDriftSampleLocked(playbackTime: pt, driftMs: drift * 1000.0)
 
-                // Asymmetric Schmitt hysteresis (BUG-007.3): tight gate (±30 ms)
-                // increments `matchedOnsets` toward lock acquisition; while
-                // already locked, a stale-OK gate (±60 ms) preserves the lock
-                // without counting as either hit or miss. Closes the natural-
-                // music-tempo-variation drop-out mode (SLTS / Everlong walked
-                // to ±60 ms within minor expressive timing and dropped lock).
-                let deviation = abs(instantDrift - drift)
-                let isTight = deviation < Self.strictMatchWindow
-                let isStaleOK = deviation < Self.staleMatchWindow
-                let alreadyLocked = matchedOnsets >= Self.lockThreshold
-                                  && consecutiveMisses < Self.lockReleaseMisses
+                // Tight-match counter for lock progression. The instant drift
+                // landing within ±30 ms of the smoothed drift means the onset
+                // sat tightly on the cached beat.
+                let isTight = abs(instantDrift - drift) < Self.strictMatchWindow
                 if isTight {
                     matchedOnsets = min(matchedOnsets + 1, Int.max - 1)
                     consecutiveMisses = 0
-                } else if alreadyLocked && isStaleOK {
-                    // Stale-OK while locked: preserve lock, no counter change.
                 } else {
                     consecutiveMisses += 1
                 }
@@ -397,35 +345,6 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
             lockState: computeLockState()
         )
         cb(entry)
-    }
-
-    private func pushDriftSampleLocked(playbackTime: Double, driftMs: Double) {
-        driftSamples.append(DriftSample(playbackTime: playbackTime, driftMs: driftMs))
-        if driftSamples.count > Self.driftSampleCapacity {
-            driftSamples.removeFirst(driftSamples.count - Self.driftSampleCapacity)
-        }
-    }
-
-    private func computeDriftSlopeLocked() -> Double? {
-        guard driftSamples.count >= Self.driftSlopeMinSamples else { return nil }
-        guard let first = driftSamples.first, let last = driftSamples.last else { return nil }
-        let span = last.playbackTime - first.playbackTime
-        guard span >= Self.driftSlopeMinSpanSeconds else { return nil }
-
-        // Standard least-squares linear regression: slope = (N·ΣXY − ΣX·ΣY) / (N·ΣXX − ΣX²).
-        let sampleCount = Double(driftSamples.count)
-        var sumX = 0.0, sumY = 0.0, sumXY = 0.0, sumXX = 0.0
-        for sample in driftSamples {
-            let x = sample.playbackTime
-            let y = sample.driftMs
-            sumX += x
-            sumY += y
-            sumXY += x * y
-            sumXX += x * x
-        }
-        let denom = sampleCount * sumXX - sumX * sumX
-        guard denom > 1e-9 else { return nil }
-        return (sampleCount * sumXY - sumX * sumY) / denom
     }
 
     private func computeLockState() -> LockState {
