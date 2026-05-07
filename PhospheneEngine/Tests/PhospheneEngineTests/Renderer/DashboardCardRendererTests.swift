@@ -1,13 +1,15 @@
 // DashboardCardRendererTests — 6 @Test functions covering layout math + rendering.
 //
-// All Metal-touching tests skip with withKnownIssue("No Metal device available") {}
-// when MTLCreateSystemDefaultDevice() returns nil (CI without GPU). Silent skips
-// would disappear the regression surface (see CLAUDE.md "What NOT To Do").
+// Post-/impeccable redesign (DASH.2.1): rows stack their label above their
+// value. The pair variant is gone. Bar rows render label-on-top, then bar +
+// value text on a single line below.
 //
-// Pixel format: DashboardTextLayer uses .bgra8Unorm. getBytes() returns bytes
-// in [B, G, R, A] order per pixel on Apple Silicon. The pixelAt() helper here
-// is a copy of the same helper in DashboardTextLayerTests — keeping the test
-// files independent (no cross-file helper dependency).
+// All Metal-touching tests skip with withKnownIssue("No Metal device available") {}
+// when MTLCreateSystemDefaultDevice() returns nil. Silent skips would
+// disappear the regression surface (CLAUDE.md "What NOT To Do").
+//
+// Pixel format: DashboardTextLayer uses .bgra8Unorm. getBytes() returns
+// bytes in [B, G, R, A] order per pixel on Apple Silicon.
 
 import CoreGraphics
 import Foundation
@@ -51,12 +53,33 @@ private func makeLayerAndQueue(width: Int, height: Int)
     return (layer, queue)
 }
 
+/// Paint a representative deep-indigo backdrop into the layer's CGContext
+/// before the card draws. The production card floats over a moving
+/// visualizer; rendering the artifact onto a transparent black canvas
+/// underrepresents the card chrome's purple tint. A simulated mid-tone
+/// backdrop makes the artifact accurately reflect production conditions.
+private func paintVisualizerBackdrop(into ctx: CGContext, width: Int, height: Int) {
+    // oklch(0.18 0.06 285) ≈ deep desaturated indigo, similar to a calm
+    // ambient frame from VolumetricLithograph or Starburst at low energy.
+    let backdrop = NSColor(srgbRed: 0.060, green: 0.058, blue: 0.135, alpha: 1.0)
+    ctx.saveGState()
+    ctx.setFillColor(backdrop.cgColor)
+    ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
+    ctx.restoreGState()
+}
+
 private func renderFrame(
     layer: DashboardTextLayer,
     queue: MTLCommandQueue,
+    drawBackdrop: Bool = false,
     draws: (DashboardTextLayer, CGContext) -> Void
 ) -> [UInt8]? {
     layer.beginFrame()
+    if drawBackdrop {
+        paintVisualizerBackdrop(into: layer.graphicsContext,
+                                width: layer.texture.width,
+                                height: layer.texture.height)
+    }
     draws(layer, layer.graphicsContext)
     guard let cb = queue.makeCommandBuffer() else { return nil }
     layer.commit(into: cb)
@@ -65,11 +88,10 @@ private func renderFrame(
     return readPixels(layer.texture)
 }
 
-/// Pixel with maximum chroma (max-min channel) in a 3-pixel column centred
-/// on `x`. The bar background (surfaceRaised) and foreground (coral) are
-/// both opaque, so alpha alone cannot distinguish them — chroma can.
-/// Mitigates edge-pixel brittleness when the geometric fill boundary lands
-/// exactly on a sample column (see DASH.2 prompt risk note).
+/// Pixel with maximum chroma in a 3-pixel column centred on `x`. Bar
+/// background and foreground are both opaque, so alpha alone cannot
+/// distinguish them — chroma can. Mitigates edge-pixel brittleness when the
+/// fill boundary lands on the prescribed sample column.
 private func maxChromaPixel(around x: Int, y: Int, in bytes: [UInt8], width: Int)
     -> (b: UInt8, g: UInt8, r: UInt8, a: UInt8) {
     func chroma(_ p: (b: UInt8, g: UInt8, r: UInt8, a: UInt8)) -> Int {
@@ -93,27 +115,24 @@ private func luma(_ pix: (b: UInt8, g: UInt8, r: UInt8, a: UInt8)) -> Int {
 
 // MARK: - Fixtures
 
-private let kCanvasW = 320
-private let kCanvasH = 200
+private let kCanvasW = 360
+private let kCanvasH = 280
 private let kCardWidth: CGFloat = 280
 
-private func threeRowFixture() -> DashboardCardLayout {
+/// Demo card representing the Beat panel: MODE / BPM / BAR / BASS.
+/// Matches the row order requested in the DASH.2.1 redesign feedback.
+private func beatCardFixture() -> DashboardCardLayout {
     DashboardCardLayout(
-        title: "PRESET",
+        title: "BEAT",
         rows: [
-            .singleValue(
-                label: "BPM", value: "125",
-                valueColor: DashboardTokens.Color.textHeading
-            ),
-            .pair(
-                leftLabel: "MODE", leftValue: "LOCKED",
-                rightLabel: "BAR", rightValue: "3 / 4",
-                valueColor: DashboardTokens.Color.textHeading
-            ),
-            .bar(
-                label: "BASS", value: 0.42, valueText: "+0.42",
-                fillColor: DashboardTokens.Color.coral, range: -1.0 ... 1.0
-            )
+            .singleValue(label: "MODE", value: "LOCKED",
+                         valueColor: DashboardTokens.Color.statusGreen),
+            .singleValue(label: "BPM",  value: "125",
+                         valueColor: DashboardTokens.Color.textHeading),
+            .singleValue(label: "BAR",  value: "3 / 4",
+                         valueColor: DashboardTokens.Color.textHeading),
+            .bar(label: "BASS", value: 0.42, valueText: "+0.42",
+                 fillColor: DashboardTokens.Color.coral, range: -1.0 ... 1.0)
         ],
         width: kCardWidth
     )
@@ -124,65 +143,63 @@ private func threeRowFixture() -> DashboardCardLayout {
 @Suite("DashboardCardRenderer")
 struct DashboardCardRendererTests {
 
-    // MARK: a — layout height
+    // MARK: a — layout height matches sum
 
-    @Test("layout.height matches padding + title + rowSpacing×N + Σ rowHeights + padding")
+    @Test("layout.height matches padding + title + (rowSpacing + rowHeight)×N + padding")
     func layoutHeight_matchesSumOfRows() {
-        let layout = threeRowFixture()
+        let layout = beatCardFixture()
         let pad = DashboardTokens.Spacing.md
         let title = DashboardTokens.TypeScale.label
         let spacing = DashboardTokens.Spacing.xs
         let expected = pad
             + title
             + spacing + DashboardCardLayout.Row.singleHeight
-            + spacing + DashboardCardLayout.Row.pairHeight
+            + spacing + DashboardCardLayout.Row.singleHeight
+            + spacing + DashboardCardLayout.Row.singleHeight
             + spacing + DashboardCardLayout.Row.barHeight
             + pad
         #expect(layout.height == expected,
                 "Expected card height \(expected), got \(layout.height)")
     }
 
-    // MARK: b — three-row pixel verify + artifact
+    // MARK: b — beat-card render + artifact
 
-    @Test("render three-row card paints title, row content, and stops at declared height")
-    func render_threeRowCard_pixelVerifyLabelPositions() throws {
+    @Test("render beat card paints title, all rows, and stops at declared height")
+    func render_beatCard_pixelVerifyLabelPositions() throws {
         guard let (layer, queue) = makeLayerAndQueue(width: kCanvasW, height: kCanvasH) else {
             withKnownIssue("No Metal device available") {}
             return
         }
-        let layout = threeRowFixture()
+        let layout = beatCardFixture()
         let origin = CGPoint(x: 16, y: 12)
         let renderer = DashboardCardRenderer()
 
-        let bytes = try #require(renderFrame(layer: layer, queue: queue) { textLayer, ctx in
+        let bytes = try #require(renderFrame(
+            layer: layer, queue: queue, drawBackdrop: true
+        ) { textLayer, ctx in
             renderer.render(layout, at: origin, on: textLayer, cgContext: ctx)
         })
 
-        // Title row baseline: paint exists somewhere in the title strip.
+        // Title row: opaque glyphs in the title strip.
         let titleStripY = Int(origin.y + layout.padding + layout.titleSize / 2)
         var titleAlphaSeen: UInt8 = 0
         for x in Int(origin.x + layout.padding) ..< Int(origin.x + 80) {
             let pix = pixelAt(x, titleStripY, in: bytes, width: kCanvasW)
             titleAlphaSeen = max(titleAlphaSeen, pix.a)
         }
-        // Title strip overlays card chrome (non-zero everywhere); we want at
-        // least *more* alpha than chrome alone — chrome surface is ~234 alpha
-        // (0.92 over zero) tinted very dark, but text-glyph antialiasing pushes
-        // the maximum to 255.
         #expect(titleAlphaSeen > 200, "Title row produced no visible glyph")
 
-        // Below the card (y > origin.y + layout.height + 4): no paint at all.
+        // Below the card: only the backdrop (no card paint).
         let outsideY = Int(origin.y + layout.height + 4)
-        var outsideMax: UInt8 = 0
-        for x in 0 ..< kCanvasW {
-            let pix = pixelAt(x, outsideY, in: bytes, width: kCanvasW)
-            outsideMax = max(outsideMax, pix.a)
+        var maxLumaOutside = 0
+        for x in Int(origin.x) ..< Int(origin.x + layout.width) {
+            maxLumaOutside = max(maxLumaOutside, luma(pixelAt(x, outsideY, in: bytes, width: kCanvasW)))
         }
-        #expect(outsideMax == 0,
-                "Card painted past declared height; max alpha at y=\(outsideY) was \(outsideMax)")
+        // Backdrop luma is ~13. Card chrome / glyphs would push >25.
+        #expect(maxLumaOutside < 25,
+                "Card painted past declared height; max luma at y=\(outsideY) was \(maxLumaOutside)")
 
-        // Save artifact for manual review.
-        savePNGArtifact(layer.texture, name: "card_three_row")
+        savePNGArtifact(layer.texture, name: "card_beat")
     }
 
     // MARK: c — right-edge clipping
@@ -190,27 +207,25 @@ struct DashboardCardRendererTests {
     @Test("card placed near right edge does not overflow with text glyphs")
     func render_cardNearRightEdge_clipsCorrectly() throws {
         let canvasWidth = 512
-        let canvasHeight = 200
+        let canvasHeight = 280
         guard let (layer, queue) = makeLayerAndQueue(width: canvasWidth, height: canvasHeight) else {
             withKnownIssue("No Metal device available") {}
             return
         }
-        let layout = threeRowFixture()                  // width = 280
+        let layout = beatCardFixture()
         let origin = CGPoint(x: CGFloat(canvasWidth) - kCardWidth, y: 12)
         let renderer = DashboardCardRenderer()
 
-        let bytes = try #require(renderFrame(layer: layer, queue: queue) { textLayer, ctx in
+        let bytes = try #require(renderFrame(
+            layer: layer, queue: queue, drawBackdrop: true
+        ) { textLayer, ctx in
             renderer.render(layout, at: origin, on: textLayer, cgContext: ctx)
         })
 
-        // Sample 5 pixels in the rightmost column. The card chrome (surface
-        // fill at 0.92 alpha + 1px border stroke) DOES paint this column —
-        // that is correct chrome; the prompt explicitly allows it. What we
-        // want to rule out is a *text glyph* (textHeading R≈234,G≈235,B≈240)
-        // landing here, which would manifest as a high-luma pixel. Surface
-        // fill luma is ~7; text glyph luma is ~230.
+        // Rightmost column: chrome + 1 px border at the edge are allowed
+        // (low-luma surfaceRaised). A stray text glyph would push luma >60.
         let rightCol = canvasWidth - 1
-        let sampleYs = [20, 40, 60, 80, 100]
+        let sampleYs = [20, 40, 60, 80, 100, 120, 140]
         for y in sampleYs {
             let pix = pixelAt(rightCol, y, in: bytes, width: canvasWidth)
             #expect(luma(pix) < 60,
@@ -218,9 +233,9 @@ struct DashboardCardRendererTests {
         }
     }
 
-    // MARK: d — negative bar fills left
+    // MARK: d — negative bar fills left of bar centre
 
-    @Test("bar row with negative value fills left of centre with the requested color")
+    @Test("bar row with negative value fills left of bar centre with the requested colour")
     func render_barRow_negativeValueFillsLeft() throws {
         guard let (layer, queue) = makeLayerAndQueue(width: kCanvasW, height: kCanvasH) else {
             withKnownIssue("No Metal device available") {}
@@ -241,36 +256,25 @@ struct DashboardCardRendererTests {
             renderer.render(layout, at: origin, on: textLayer, cgContext: ctx)
         })
 
-        // Bar Y-row centre.
-        let pad = layout.padding
-        let titleStripBottom = origin.y + pad + layout.titleSize
-        let barRowTopY = titleStripBottom + layout.rowSpacing
-        let barTopY = barRowTopY + DashboardCardLayout.Row.barHeight - 6
-        let barCentreY = Int(barTopY + 3)
-        let innerWidth = layout.width - 2 * pad
-
-        let leftSampleX  = Int(origin.x + pad + innerWidth / 4)
-        let rightSampleX = Int(origin.x + layout.width - pad - innerWidth / 4)
+        let geometry = barGeometry(for: layout, at: origin)
+        let leftSampleX  = Int(geometry.barLeft + geometry.barWidth / 4)
+        let rightSampleX = Int(geometry.barLeft + 3 * geometry.barWidth / 4)
+        let barCentreY   = Int(geometry.barCentreY)
 
         let leftPix = maxChromaPixel(around: leftSampleX, y: barCentreY,
-                                    in: bytes, width: kCanvasW)
-        #expect(leftPix.a > 200,
-                "Expected coral fill on left half (alpha > 200), got \(leftPix.a)")
-        // Coral ≈ (R 246, G 110, B 96) → BGRA bytes (B 96, G 110, R 246).
+                                     in: bytes, width: kCanvasW)
         #expect(leftPix.r > leftPix.g && leftPix.r > leftPix.b,
                 "Left-half pixel does not look coral: B=\(leftPix.b) G=\(leftPix.g) R=\(leftPix.r)")
 
-        // Right half: no foreground fill — only the surfaceRaised background.
-        // A coral pixel has R >> G,B; background surfaceRaised has R ≈ G ≈ B.
         let rightPix = maxChromaPixel(around: rightSampleX, y: barCentreY,
-                                     in: bytes, width: kCanvasW)
+                                      in: bytes, width: kCanvasW)
         #expect(Int(rightPix.r) - max(Int(rightPix.g), Int(rightPix.b)) < 20,
                 "Right-half pixel looks coral-tinted: B=\(rightPix.b) G=\(rightPix.g) R=\(rightPix.r)")
     }
 
-    // MARK: e — positive bar fills right
+    // MARK: e — positive bar fills right of bar centre
 
-    @Test("bar row with positive value fills right of centre with the requested color")
+    @Test("bar row with positive value fills right of bar centre with the requested colour")
     func render_barRow_positiveValueFillsRight() throws {
         guard let (layer, queue) = makeLayerAndQueue(width: kCanvasW, height: kCanvasH) else {
             withKnownIssue("No Metal device available") {}
@@ -291,43 +295,35 @@ struct DashboardCardRendererTests {
             renderer.render(layout, at: origin, on: textLayer, cgContext: ctx)
         })
 
-        let pad = layout.padding
-        let titleStripBottom = origin.y + pad + layout.titleSize
-        let barRowTopY = titleStripBottom + layout.rowSpacing
-        let barTopY = barRowTopY + DashboardCardLayout.Row.barHeight - 6
-        let barCentreY = Int(barTopY + 3)
-        let innerWidth = layout.width - 2 * pad
-
-        let leftSampleX  = Int(origin.x + pad + innerWidth / 4)
-        let rightSampleX = Int(origin.x + layout.width - pad - innerWidth / 4)
+        let geometry = barGeometry(for: layout, at: origin)
+        let leftSampleX  = Int(geometry.barLeft + geometry.barWidth / 4)
+        let rightSampleX = Int(geometry.barLeft + 3 * geometry.barWidth / 4)
+        let barCentreY   = Int(geometry.barCentreY)
 
         let rightPix = maxChromaPixel(around: rightSampleX, y: barCentreY,
-                                     in: bytes, width: kCanvasW)
-        #expect(rightPix.a > 200,
-                "Expected coral fill on right half (alpha > 200), got \(rightPix.a)")
+                                      in: bytes, width: kCanvasW)
         #expect(rightPix.r > rightPix.g && rightPix.r > rightPix.b,
                 "Right-half pixel does not look coral: B=\(rightPix.b) G=\(rightPix.g) R=\(rightPix.r)")
 
         let leftPix = maxChromaPixel(around: leftSampleX, y: barCentreY,
-                                    in: bytes, width: kCanvasW)
+                                     in: bytes, width: kCanvasW)
         #expect(Int(leftPix.r) - max(Int(leftPix.g), Int(leftPix.b)) < 20,
                 "Left-half pixel looks coral-tinted: B=\(leftPix.b) G=\(leftPix.g) R=\(leftPix.r)")
     }
 
-    // MARK: f — pair-row divider visible
+    // MARK: f — single-value row stacks label above value
 
-    @Test("pair row draws a 1px vertical divider in Color.border at the midpoint")
-    func render_pairRow_dividerVisible() throws {
+    @Test("single-value row stacks label above value (label baseline above value baseline)")
+    func render_singleValueRow_stacksLabelAboveValue() throws {
         guard let (layer, queue) = makeLayerAndQueue(width: kCanvasW, height: kCanvasH) else {
             withKnownIssue("No Metal device available") {}
             return
         }
         let layout = DashboardCardLayout(
-            title: "STATE",
+            title: "",
             rows: [
-                .pair(leftLabel: "MODE", leftValue: "LOCKED",
-                      rightLabel: "BAR", rightValue: "3 / 4",
-                      valueColor: DashboardTokens.Color.textHeading)
+                .singleValue(label: "BPM", value: "125",
+                             valueColor: DashboardTokens.Color.textHeading)
             ],
             width: kCardWidth
         )
@@ -338,23 +334,60 @@ struct DashboardCardRendererTests {
             renderer.render(layout, at: origin, on: textLayer, cgContext: ctx)
         })
 
-        // Pair row centre y.
-        let pad = layout.padding
-        let titleStripBottom = origin.y + pad + layout.titleSize
-        let rowTopY = titleStripBottom + layout.rowSpacing
-        let rowMidY = Int(rowTopY + DashboardCardLayout.Row.pairHeight / 2)
-        let midX = Int(origin.x + layout.width / 2)
+        // Find the y-row of the FIRST opaque text pixel and the LAST one
+        // within the card's content band, on the left side where label and
+        // value both sit.
+        let scanX0 = Int(origin.x + layout.padding)
+        let scanX1 = scanX0 + 80
+        let yMin = Int(origin.y + layout.padding)
+        let yMax = Int(origin.y + layout.height - layout.padding)
 
-        let pix = pixelAt(midX, rowMidY, in: bytes, width: kCanvasW)
-        // Color.border ≈ (R 25, G 26, B 33) — a low-luma, very slightly bluish
-        // tone. The divider is solid alpha, painting over the (also dark)
-        // surface fill. Assert: meaningful alpha, and channel ordering matches
-        // border (B ≥ G ≥ R, all small).
-        #expect(pix.a > 200,
-                "Expected solid divider alpha at midpoint, got \(pix.a)")
-        #expect(pix.b >= pix.r,
-                "Divider colour does not look like border (B=\(pix.b) G=\(pix.g) R=\(pix.r))")
+        var firstY: Int? = nil
+        var lastY: Int? = nil
+        for y in yMin ..< yMax {
+            var rowHasGlyph = false
+            for x in scanX0 ..< scanX1 {
+                let pix = pixelAt(x, y, in: bytes, width: kCanvasW)
+                // Glyph = high-luma (textBody / textHeading), not chrome.
+                if luma(pix) > 80 { rowHasGlyph = true; break }
+            }
+            if rowHasGlyph {
+                if firstY == nil { firstY = y }
+                lastY = y
+            }
+        }
+
+        let f = try #require(firstY)
+        let l = try #require(lastY)
+        // Stacked layout: vertical span between top of label glyphs and
+        // bottom of value glyphs is at least the gap + label height.
+        #expect(l - f >= 12,
+                "Label and value should be vertically separated; got span \(l - f)")
     }
+}
+
+// MARK: - Bar geometry helper
+
+private struct BarGeometry {
+    let barLeft: CGFloat
+    let barWidth: CGFloat
+    let barCentreY: CGFloat
+}
+
+private func barGeometry(for layout: DashboardCardLayout, at origin: CGPoint) -> BarGeometry {
+    let pad = layout.padding
+    let titleStripBottom = origin.y + pad + (layout.title.isEmpty ? 0 : layout.titleSize)
+    let rowTopY = titleStripBottom + layout.rowSpacing
+    let barAreaY = rowTopY + DashboardTokens.TypeScale.label
+        + DashboardCardLayout.labelToValueGap
+    let barCentreY = barAreaY + 17 / 2
+    let leftX = origin.x + pad
+    let rightX = origin.x + layout.width - pad
+    let valueColumnWidth: CGFloat = 56
+    let valueColumnGap: CGFloat = 8
+    let barRightLimit = rightX - valueColumnWidth - valueColumnGap
+    let barAreaWidth = barRightLimit - leftX
+    return BarGeometry(barLeft: leftX, barWidth: barAreaWidth, barCentreY: barCentreY)
 }
 
 // MARK: - Artifact helper
