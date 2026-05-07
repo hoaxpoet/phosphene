@@ -2639,7 +2639,7 @@ Third live card. New `PerfSnapshot` Sendable value type wraps renderer governor 
 - [x] `card_perf_active.png` artifact written for M7-style review (composes against the BEAT and STEMS artifacts on the same deep-indigo backdrop).
 - [x] D-085 captures: `PerfSnapshot` value-type rationale (snapshot crosses actor lines, two manager classes), `.progressBar` over `.bar` for FRAME, builder-layer clamp asymmetry vs D-084's renderer-layer clamp, Int-encoded enums, no `statusRed` durable rule, no per-row colour tuning for FRAME, DASH.5.1 amendment slot.
 
-### Increment DASH.6 — Overlay wiring + `D` key toggle ✅ 2026-05-07
+### Increment DASH.6 — Overlay wiring + `D` key toggle ✅ 2026-05-07 (superseded by DASH.7)
 
 `DashboardComposer` (`@MainActor`, lifecycle owner of the BEAT/STEMS/PERF cards) wires all three card builders to the live render pipeline. Per-frame `update(beat:stems:perf:)` rebuilds card layouts (skips when all three snapshots compare equal — `BeatSyncSnapshot` and `StemFeatures` lack `Equatable`, so the rebuild-skip uses a private bytewise compare; `PerfSnapshot` is `Equatable`); `composite(into:drawable:)` encodes a `loadAction = .load` alpha-blended pass that samples the layer texture into a top-right viewport. The composite is invoked at the tail of every draw path immediately before `commandBuffer.present(drawable)` (Decision B per D-086). One `D` shortcut drives both the SwiftUI debug overlay (existing) and the new Metal dashboard via `VisualizerEngine.dashboardEnabled` — instruments and raw diagnostics are complementary surfaces, not alternatives. `DebugOverlayView` deduplicated: Tempo / standalone QUALITY / standalone ML rows removed (now in PERF + BEAT cards); MOOD / Key / SIGNAL / MIR diag / SPIDER / G-buffer / REC remain. `Spacing.cardGap` token aliases `Spacing.md` (12 pt) — named slot reserves a DASH.6.1 retune.
 
@@ -2648,6 +2648,24 @@ Third live card. New `PerfSnapshot` Sendable value type wraps renderer governor 
 - [x] All three cards update per-frame; engine test suite (1130 tests / 130 suites) green; 0 SwiftLint violations on touched files.
 - [x] `DebugOverlayView` no longer duplicates Tempo / QUALITY / ML rows.
 - [x] D-086 captures: Decision B over A (per-path composite, not render-loop refactor — ~10 sites × 1 helper line via `RenderPipeline.compositeDashboard`), `DashboardComposer` rationale (single class owns layer + builders + composite pipeline + enabled flag), single `D` toggle drives both surfaces, no `Equatable` on `StemFeatures` / `BeatSyncSnapshot`, no fourth card, premultiplied alpha discipline, DASH.6.1 amendment slot.
+
+**Superseded note (2026-05-07):** Live D-toggle review on `~/Documents/phosphene_sessions/2026-05-07T19-03-44Z` (Love Rehab / So What / There There / Pyramid Song) surfaced three issues with the Metal-composite path: (a) hazy text vs. crisp SwiftUI from a contentsScale-detection bug, (b) the 0.92α purple-tinted surface didn't read against bright preset backdrops, (c) `.bar` rows for STEMS made stem-rhythm separation hard to read (Matt's feedback explicitly cited the SpectralCartograph timeseries panel as the desired pattern). Investigation showed the original Metal-path justifications (crisp text via direct CGContext→texture, frame-rate buffer-bound updates, lifetime coupling to render pipeline) didn't materialize: text was hazy, snapshot updates are bounded by snapshot-change cadence rather than frame rate, and lifetime is naturally one-frame ahead via `@Published`. **DASH.7 ports the dashboard to SwiftUI, retiring `DashboardComposer` + `DashboardCardRenderer` + `DashboardTextLayer` + `Dashboard.metal`.** The Sendable card builders + `DashboardCardLayout` + tokens + `PerfSnapshot` + `BeatCardBuilder` survive unchanged; only the rendering layer changes. See D-087 for the rationale and D-086 retirement details.
+
+### Increment DASH.7 — SwiftUI dashboard port + visual amendments ✅ 2026-05-07
+
+Pivots the dashboard from the DASH.6 Metal composite path to a SwiftUI overlay. Bundled with two visual amendments surfaced by Matt's live review:
+- **STEMS card → timeseries.** New `.timeseries(label, samples, range, valueText, fillColor)` row variant on `DashboardCardLayout`. `StemsCardBuilder` now consumes a `StemEnergyHistory` (240-sample CPU ring buffer per stem, ≈ 8 s at 30 Hz) and emits four sparkline rows. The view model maintains the rings privately and snapshots into the immutable `StemEnergyHistory` value type per redraw. Matches the SpectralCartograph "instruments" aesthetic Matt cited.
+- **PERF semantic clarity.** FRAME row's value text now reads `"{ms} / {target} ms"` so headroom is legible; status colour flips green→yellow at 70% of budget (`PerfCardBuilder.warningRatio`). QUALITY row is omitted entirely when the governor is `full` and warmed up. ML row is omitted on idle / `dispatchNow` (READY); only surfaces on `defer` / `forceDispatch`. The card collapses to one row in the steady-state "all healthy" case — .impeccable absence-of-information principle.
+
+Engine snapshot path: `VisualizerEngine.@Published var dashboardSnapshot: DashboardSnapshot?` (Sendable bundle of beat+stems+perf), republished from the existing `pipe.onFrameRendered` hook on `@MainActor`. SwiftUI view model (`DashboardOverlayViewModel`) subscribes via Combine, throttles to ~30 Hz (`.throttle(for: .milliseconds(33))`), maintains the stem history rings, and publishes `[DashboardCardLayout]`. `DashboardOverlayView` sits as PlaybackView Layer 6 (above DebugOverlayView), conditionally rendered on `showDebug` so the existing `D` shortcut drives both surfaces without explicit binding. The DASH.6 commits stay in history; D-087 documents the supersession of D-086.
+
+**Done when:**
+- [x] DashboardComposer + DashboardCardRenderer + DashboardTextLayer + Dashboard.metal retired (deleted, not commented out). 10 `compositeDashboard` call sites reverted.
+- [x] SwiftUI overlay renders BEAT / STEMS / PERF top-right, gated on `showDebug`. Text crisp at native pixel scale; chrome surface visible against any preset backdrop.
+- [x] STEMS rows are sparklines that show ~8 s of recent stem energy.
+- [x] PERF card collapses to one row in healthy state; FRAME shows headroom + status colour.
+- [x] Engine + app builds clean. New + updated builder tests + 5 view-model tests pass. Dashboard test count 27 (was 39 with the DASH.6 GPU readback tests, now leaner). 0 SwiftLint violations on touched files.
+- [x] D-087 captures: pivot rationale (Metal-path justifications didn't materialize), what survives (Sendable builders + tokens + layout + snapshot value types), retirement of D-086, throttle-vs-buffer-update tradeoff, how the SwiftUI overlay handles the STEMS timeseries cleanly, .impeccable collapse rule for PERF.
 
 ---
 

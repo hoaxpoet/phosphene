@@ -1995,3 +1995,83 @@ After DASH.6: **45 dashboard tests pass** (12 DASH.1 + 6 DASH.2.1 + 6 BeatCardBu
 ### Files changed
 
 New: `PhospheneEngine/Sources/Renderer/Dashboard/DashboardComposer.swift`, `PhospheneEngine/Sources/Renderer/Shaders/Dashboard.metal`, `PhospheneEngine/Tests/PhospheneEngineTests/Renderer/DashboardComposerTests.swift`. Edited: `PhospheneEngine/Sources/Shared/Dashboard/DashboardTokens.swift` (`Spacing.cardGap`), `PhospheneEngine/Sources/Renderer/RenderPipeline.swift` (composer setter + `hasDashboardComposer` + `compositeDashboard` helper + resize forward), every `RenderPipeline+*.swift` draw-path file (composite call before each `present`), `PhospheneApp/VisualizerEngine.swift` (composer property + `dashboardEnabled`), `PhospheneApp/VisualizerEngine+InitHelpers.swift` (composer alloc + `assemblePerfSnapshot` + per-frame snapshot push wired onto `onFrameRendered`), `PhospheneApp/Views/Playback/PlaybackView.swift` (`D` toggle writes `engine.dashboardEnabled`), `PhospheneApp/Views/DebugOverlayView.swift` (Tempo / QUALITY / ML rows removed).
+
+## D-087 — DASH.7 SwiftUI dashboard port supersedes D-086
+
+The DASH.6 Metal composer landed working but Matt's live D-toggle review on `~/Documents/phosphene_sessions/2026-05-07T19-03-44Z` (Love Rehab / So What / There There / Pyramid Song) surfaced three issues that pivoted DASH.7 from a "fix the bugs in the Metal path" patch into a SwiftUI port. This decision retires D-086 outright. The DASH.6 commits stay in history (the data-shape + builders + tokens + layout abstractions all survived the port; the GPU composite layer did not).
+
+### Decision 1 — Pivot rationale
+
+The original D-086 justifications didn't materialize in production:
+
+| D-086 justification | Held up? |
+|---|---|
+| "Crisp text via direct CGContext→MTLBuffer→MTLTexture path" | ❌ Text rendered hazy at native pixel scale due to a contentsScale-detection bug in `DashboardComposer.resize`; even with the bug fixed it would only match SwiftUI Text, not exceed it. |
+| "Avoid SwiftUI redraw cost during 60 fps playback" | ⚠ Real but small. SwiftUI redraws on `@Published` mutations; the snapshot-change rate is bounded by analysis-queue cadence (~94 Hz), not the render loop. With `Combine.throttle` at 30 Hz, redraw cost is negligible. |
+| "Bind directly to GPU buffers (FeatureVector / StemFeatures)" | ❌ Cards consume `BeatSyncSnapshot` + `StemFeatures` + `PerfSnapshot` value types, never GPU buffer reads. The Metal path was solving a problem the cards didn't have. |
+| "Match `DynamicTextOverlay` precedent" | ✅ True but irrelevant — the precedent existed because SpectralCartograph wanted to bind to `SpectralHistoryBuffer` per frame, which the dashboard cards don't. |
+| "0.92α `surfaceRaised` chrome reads as purple" | ❌ Against a bright/colourful preset backdrop the dim source RGB (oklch lightness 0.17) gets washed toward grey because 92% of "almost black" reads as "almost black" regardless of the underlying hue. SwiftUI rendering with the same colour token has the same problem in principle but is easier to retune (a `.material` blur backdrop pulls the underlying preset colour toward neutral first). |
+
+Three bonus arguments for SwiftUI surfaced during the audit: (a) Dynamic Type + VoiceOver + Reduce Motion accessibility gates already invested in U.9 work for free, (b) the STEMS timeseries amendment (`Canvas` / `Path`) is trivial in SwiftUI vs. another GPU pass in Metal, (c) the PERF semantic clarity amendment (collapsed rows, status icons) needs dynamic row-count handling that maps cleanly to SwiftUI `if let row = makeQualityRow(...)` and is awkward as a Metal layout that has to fit into a fixed-height texture.
+
+### Decision 2 — What survives the pivot
+
+The Sendable card builders + `DashboardCardLayout` + `DashboardTokens` + `PerfSnapshot` + `BeatSyncSnapshot` survive *unchanged*. The data-shape we converged on across DASH.3 / DASH.4 / DASH.5 / DASH.6 was the part worth keeping; only the rendering layer changed. `DashboardFontLoader` was retired alongside `DashboardTextLayer` (Epilogue isn't currently registered for the SwiftUI path; if a custom font is wanted later, register at app launch via `CTFontManagerRegisterFontsForURL` directly). `DashboardSnapshot` was added as a Sendable bundle of `(beat, stems, perf)` that the engine publishes per frame — `Equatable` via synthesized `==` for `PerfSnapshot` plus a private `bytewiseEqual<T>` for `BeatSyncSnapshot` / `StemFeatures` (still no `Equatable` conformance on either — D-086 Decision 4 stands).
+
+### Decision 3 — STEMS bar → timeseries
+
+Matt's live-review feedback explicitly cited the SpectralCartograph timeseries panel as the pattern that makes stem-rhythm separation legible. The DASH.4 signed-from-centre `.bar` design reads "who is louder than the AGC average right now" but loses temporal pattern. New `.timeseries(label, samples, range, valueText, fillColor)` row variant on `DashboardCardLayout` carries up to ~240 samples (≈ 8 s at 30 Hz throttled redraw). `StemEnergyHistory` is a Sendable value type holding the four arrays; `StemsCardBuilder.build(from history:)` is the new entry point. The view model owns a private `MutableStemHistory` ring and snapshots into `StemEnergyHistory` per redraw — the builder stays pure. SparklineView in `DashboardRowView` renders both a filled area and a stroked line via `Canvas`; centre baseline is drawn even on empty samples so "absence of signal" stays a stable visual.
+
+### Decision 4 — PERF semantic clarity
+
+Three small changes addressed Matt's "good or bad?" feedback:
+- **FRAME** value text now reads `"{recent} / {target} ms"` so the user sees both the current frame time and the budget without context-switching to the docs. Status colour flips green → yellow at `PerfCardBuilder.warningRatio = 0.70` of budget (chosen empirically: matches the early-warning threshold the governor uses internally for downshift hysteresis).
+- **QUALITY** row hides entirely when the governor is `full` AND warmed up. Showing "QUALITY: full" on every healthy frame was visual noise; the row's job is to surface degradation. Hidden = healthy.
+- **ML** row hides on idle / `dispatchNow`. Like QUALITY, it surfaces only when interesting (`defer` / `forceDispatch`).
+
+The card collapses from three rows to one in the steady-state happy path. .impeccable absence-of-information principle. SF Symbols (`checkmark.circle.fill`, `exclamationmark.triangle.fill`) decorate the FRAME label so status reads in colour-blind contexts too — this also covers Matt's concern about the value being unclear at a glance.
+
+### Decision 5 — 30 Hz redraw throttle
+
+Snapshots arrive at the analysis-queue cadence (~94 Hz). SwiftUI redraw of three card layouts costs roughly the same as redrawing `DebugOverlayView` (already proven cheap in U.6). At 30 Hz the user sees no visible motion-quality drop on any of the surfaces (FRAME bar movement is perceptually identical, BPM display is integer-stable, STEMS sparkline updates one column per redraw at the throttled rate). 30 Hz halves redraw cost vs. unthrottled; pushing higher would gain nothing the eye can resolve.
+
+### Decision 6 — `D` shortcut binding
+
+The DASH.6 PlaybackView wrote `engine.dashboardEnabled = showDebug` after toggling `showDebug`. DASH.7 deletes that line: both `DebugOverlayView` (Layer 5) and `DashboardOverlayView` (Layer 6) are gated on `if showDebug { … }`. One toggle, two SwiftUI surfaces — symmetrical, no engine-level state to stay in sync.
+
+### Decision 7 — Retirement of D-086 surface
+
+These files / API surfaces are deleted, not deprecated:
+- `Renderer/Dashboard/DashboardComposer.swift`
+- `Renderer/Dashboard/DashboardCardRenderer.swift` + `+ProgressBar.swift`
+- `Renderer/Dashboard/DashboardTextLayer.swift`
+- `Renderer/Shaders/Dashboard.metal`
+- `RenderPipeline.setDashboardComposer`, `hasDashboardComposer`, `compositeDashboard` helper, `dashboardComposer` lock
+- `VisualizerEngine.dashboardComposer` / `dashboardEnabled`
+- `Tests/.../DashboardComposerTests.swift`, `DashboardCardRendererTests.swift`, `DashboardCardRendererProgressBarTests.swift`, `DashboardTextLayerTests.swift`
+
+`DashboardFontLoader` retired with the rest (no SwiftUI consumer). The 10 `compositeDashboard(...)` call sites in the draw paths were reverted in this commit.
+
+### Tests
+
+Dashboard test count after DASH.7: **27 tests** (was 39 with the DASH.6 GPU readback tests). Net `−12` because the heavy GPU-readback tests went away; the new pure-data builder tests are leaner. Specifically:
+- 6 `DashboardComposerTests` deleted
+- 1 `DashboardCardRendererTests` deleted
+- 3 `DashboardCardRendererProgressBarTests` deleted
+- 4 `DashboardTextLayerTests` deleted
+- BeatCardBuilderTests (6) updated — same coverage, artifact tail removed
+- StemsCardBuilderTests (6) rewritten — new history API, timeseries row assertions
+- PerfCardBuilderTests (8) expanded — dynamic row count, status colour transitions
+- DashboardFontLoaderTests (3) survive
+- DashboardTokens (4) survive
+- New `DashboardOverlayViewModelTests` (5) cover subscription + history accumulation + capacity cap
+
+Engine test suite: 1117 tests / 126 suites (was 1130 — drop reflects deleted GPU tests). App test suite: 310 tests / 55 suites (was 305 — gain reflects the new view model tests). 0 SwiftLint violations on touched files.
+
+### Files changed
+
+**Deleted:** `Renderer/Dashboard/DashboardComposer.swift`, `DashboardCardRenderer.swift`, `DashboardCardRenderer+ProgressBar.swift`, `DashboardTextLayer.swift`, `Renderer/Shaders/Dashboard.metal`, four `Tests/.../Dashboard*.swift` test files.
+
+**New:** `Renderer/Dashboard/DashboardSnapshot.swift`, `Renderer/Dashboard/StemEnergyHistory.swift`, `App/Views/Dashboard/DashboardOverlayView.swift` + `DashboardCardView.swift` + `DashboardRowView.swift` + `DashboardOverlayViewModel.swift`, `App/VisualizerEngine+Dashboard.swift`, `Tests/.../DashboardOverlayViewModelTests.swift`.
+
+**Edited:** `Renderer/Dashboard/DashboardCardLayout.swift` (`.timeseries` row variant), `StemsCardBuilder.swift` (history-based API), `PerfCardBuilder.swift` (dynamic rows + status colour), 10 `RenderPipeline+*.swift` draw paths (revert composite calls), `RenderPipeline.swift` (revert composer setter / lock / helper / resize forward), `App/VisualizerEngine.swift` (revert `dashboardComposer` / `dashboardEnabled`, add `@Published dashboardSnapshot`), `App/VisualizerEngine+InitHelpers.swift` (replace composer alloc with `setupDashboardSnapshotPump`), `App/Views/Playback/PlaybackView.swift` (Layer 6 + publisher injection + revert `D`-toggle binding), `App/Views/DebugOverlayView.swift` (DASH.6 dedup stays), `App/ContentView.swift` (publisher pass-through), three builder tests (rewrite for new APIs), `App.xcodeproj/project.pbxproj` (5 build files + 1 group + 5 file refs + 6 sources entries).
