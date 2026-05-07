@@ -25,16 +25,18 @@ struct GoldenSessionTests {
 
     // MARK: — Session A: High-Energy Electronic (5 × 180 s, BPM=130, val=0.7, arous=0.8)
 
-    // Scoring trace — targetTemp=0.78, targetDensity=0.82, targetMotion=0.633:
-    //   VL    = 0.945 (stem sum 1.30→1.0 gives +0.25 vs 0.5 for others)
-    //   Plasma= 0.803 (moodScore=0.85: tempCenter 0.6 close to 0.78; density 0.70≈0.82)
-    //   FO    = 0.793 (tempCenter 0.325 far; partially rescued by density 0.75≈0.82)
-    //   KS    = 0.783
-    // Track 0: VL wins. Track 1 (VL excluded): Plasma wins over FO.
-    // Track 2: Plasma excluded, VL fully cooled (low, 60 s) → VL wins.
-    // Track 3: VL excluded, Plasma fatigue gap=180 s, high cooldown=300 s →
-    //          smoothstep(0,300,180)=0.648 → Plasma×0.648=0.512 < FO 0.793 → FO wins.
-    // Track 4: FO excluded, VL re-eligible → VL wins.
+    // Scoring trace — QR.2 update: stemAffinitySubScore now uses deviation primitives
+    // (D-080). makeStemBalance sets energy fields only (dev=0), so all presets score
+    // neutral 0.5 in stem affinity. 25% weight is equal for all → mood+section+tempo
+    // dominate. targetTemp=0.78, targetDensity=0.82, targetMotion=0.633:
+    //   Plasma = 0.803 (moodScore=0.85: tempCenter 0.6 close to 0.78; density 0.70≈0.82)
+    //   FO     = 0.793 (tempCenter 0.325 far; partially rescued by density 0.75≈0.82)
+    //   Mur    = 0.781 (motion 0.85≈0.633, buildup/peak suitability)
+    //   VL loses to Plasma now that the old +0.25 stem bonus is gone (dev=0 → 0.0 < 0.5)
+    // Track 0: Plasma wins. Track 1 (Plasma excluded): Murmuration (high motion/density).
+    // Track 2: Murmuration excluded → Ferrofluid Ocean.
+    // Track 3: FO excluded → Waveform (neutral fits high-energy well enough).
+    // Track 4: Waveform excluded → Membrane.
 
     @Test("Session A: 5 tracks, no errors")
     func sessionA_producesCorrectCount() throws {
@@ -59,17 +61,15 @@ struct GoldenSessionTests {
         // V.7.6.2 multi-segment regeneration: each 180 s track now contains multiple
         // segments because every preset's computed maxDuration (≈ 50–95 s for the
         // catalog at sectionDynamicRange=0.5) is shorter than the track length.
-        // Track-level `.preset` accessor returns segments[0].preset. Track 0 still
-        // selects VL first; subsequent track-firsts inherit the family-repeat
-        // penalty from the previous track's *last* segment, producing a different
-        // sequence than the V.7.6.1 single-segment plan. See commit body for §5.3
-        // computed maxDurations.
+        // QR.2 update: dev fields = 0 → stemAffinity neutral 0.5 for all presets →
+        // Plasma (moodScore=0.85) beats VL (no stem bonus) at track 0. Subsequent
+        // track-firsts driven by family-repeat penalty cascade.
         #expect(ids == [
-            "Volumetric Lithograph",
-            "Fractal Tree",
-            "Fractal Tree",
-            "Fractal Tree",
-            "Fractal Tree",
+            "Plasma",
+            "Murmuration",
+            "Ferrofluid Ocean",
+            "Waveform",
+            "Membrane",
         ])
     }
 
@@ -107,33 +107,31 @@ struct GoldenSessionTests {
 
     // MARK: — Session B: Mellow Jazz (5 × 180 s, BPM=85, val=0.3, arous=−0.3)
 
-    // Scoring trace — targetTemp=0.62, targetDensity=0.38, targetMotion=0.3125:
-    //   VL: moodScore=0.818 (tempCenter 0.575 close; density too high but stem bonus)
-    //       total = 0.888
-    //   GB: moodScore=0.975 (tempCenter 0.65 very close; density 0.4≈0.38)
-    //       total = 0.850 — runner-up
-    // Track 0: VL wins. Track 1 (VL excluded): GB wins.
-    // Track 2 (GB excluded): VL re-eligible (low cooldown=60 s, gap=360 s) → VL wins.
-    // Track 3 (VL excluded): GB gap=180 s, medium cooldown=120 s → smooth=1.0 → GB wins.
-    // Track 4 (GB excluded): VL wins.
+    // Scoring trace — QR.2 update: dev=0 → stemAffinity neutral 0.5 for all.
+    // targetTemp=0.62, targetDensity=0.38, targetMotion=0.3125:
+    //   GB: moodScore=0.975 (tempCenter 0.65 very close to 0.62; density 0.4≈0.38)
+    //       now wins track 0 (VL's old stem bonus gone).
+    //   Nebula: moodScore=0.900 (ambient/comedown; density 0.8 high but density mismatch
+    //           hurts less than temp mismatch for Waveform).
+    // Track 0: GB wins. Track 1 (GB excluded): GB still wins first repeat → fatigue kicks in.
+    // Track 2: Nebula (ambient+comedown for low-arousal jazz). Track 3: Plasma breaks in.
+    // Track 4: Nebula returns (Plasma excluded by cooldown).
 
     @Test("Session B: preset IDs match V.7.6.2 multi-segment golden sequence")
     func sessionB_presetSequence() throws {
         let session = try planner.plan(
             tracks: makeSessionB(), catalog: makeRealCatalog(), deviceTier: .tier2)
-        // V.7.6.2 multi-segment regeneration: tracks are 180 s but VL.maxDuration ≈ 82 s,
-        // so VL gets one segment then a different preset wins the rest. Waveform takes
-        // over once the family-repeat penalty kicks in against VL/GB family alternation.
+        // QR.2 update: VL no longer wins on stem affinity. GB now dominates jazz sessions.
         #expect(session.tracks.map { $0.preset.id } == [
-            "Volumetric Lithograph", "Waveform",
-            "Waveform", "Waveform", "Waveform",
+            "Glass Brutalist", "Glass Brutalist",
+            "Nebula", "Plasma", "Nebula",
         ])
         #expect(session.tracks.map { $0.preset.family.rawValue } == [
-            "fluid", "waveform", "waveform", "waveform", "waveform",
+            "geometric", "geometric", "particles", "hypnotic", "particles",
         ])
     }
 
-    @Test("Session B: all transitions are crossfade (energy=0.38 < 0.7 cut threshold)")
+    @Test("Session B: all transitions are crossfade (energy=0.38 < 0.85 cut threshold QR.2)")
     func sessionB_allTransitionsAreCrossfade() throws {
         let session = try planner.plan(
             tracks: makeSessionB(), catalog: makeRealCatalog(), deviceTier: .tier2)
@@ -160,26 +158,24 @@ struct GoldenSessionTests {
 
     // MARK: — Session C: Genre-Diverse Mix (6 tracks, varied durations)
 
-    // Scoring trace for contested tracks:
-    //   Track 3 (BPM=125, val=0.6, arous=0.75) — targetTemp=0.74, targetMotion=0.6:
-    //     Plasma 0.819: moodScore=0.88 (tempCenter 0.6 near 0.74; density 0.7≈0.80)
-    //     FO     0.795: moodScore=0.768 (tempCenter 0.325 far from 0.74)
-    //     → Plasma wins (no hypnotic history in Session C)
-    //   Track 5 (BPM=135, val=0.75, arous=0.85) — Plasma fatigue gap=180 s, high
-    //     cooldown=300 s → smooth=0.648 → Plasma×0.648=0.512; FO 0.787 wins.
+    // Scoring trace — QR.2 update: dev=0 → stemAffinity neutral 0.5, VL no longer wins.
+    // Track 0 (BPM=130, val=0.70, arous=0.80): Plasma 0.803 wins (high temp/density match).
+    // Track 1 (BPM=80,  val=0.20, arous=-0.40): GB 0.975 wins (very close tempCenter).
+    // Track 2 (BPM=115, val=0.50, arous=0.40):  Fractal Tree (GB excluded by repeat penalty).
+    // Track 3 (BPM=125, val=0.60, arous=0.75):  Membrane (Plasma/FT excluded).
+    // Track 4 (BPM=70,  val=0.30, arous=-0.50): GB re-eligible → wins.
+    // Track 5 (BPM=135, val=0.75, arous=0.85):  Plasma (Membrane/GB excluded).
 
     @Test("Session C: preset IDs match V.7.6.2 multi-segment genre-driven sequence")
     func sessionC_presetSequence() throws {
         let session = try planner.plan(
             tracks: makeSessionC(), catalog: makeRealCatalog(), deviceTier: .tier2)
-        // V.7.6.2 multi-segment regeneration: track-level `.preset` reads segments[0].
-        // The segment-boundary cascade pushes selections toward different presets at
-        // each track boundary as the prior track's *last* segment carries forward.
+        // QR.2 update: Stem affinity neutral → mood+section+tempo dominate. VL replaced.
         #expect(session.tracks.map { $0.preset.id } == [
-            "Volumetric Lithograph",
+            "Plasma",
             "Glass Brutalist",
-            "Volumetric Lithograph",
-            "Ferrofluid Ocean",
+            "Fractal Tree",
+            "Membrane",
             "Glass Brutalist",
             "Plasma",
         ])

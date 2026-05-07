@@ -104,6 +104,12 @@ extension RenderPipeline {
         stemFeaturesLock.withLock { latestStemFeatures = features }
     }
 
+    /// Read the latest per-stem features snapshot. Thread-safe.
+    /// Returns `.zero` until the first stem separation completes.
+    public func currentStemFeatures() -> StemFeatures {
+        stemFeaturesLock.withLock { latestStemFeatures }
+    }
+
     /// Attach a per-preset fragment buffer for mesh presets (bound at fragment buffer(4)).
     /// Pass nil to detach. Thread-safe — can be called from any queue.
     public func setMeshPresetFragmentBuffer(_ buffer: MTLBuffer?) {

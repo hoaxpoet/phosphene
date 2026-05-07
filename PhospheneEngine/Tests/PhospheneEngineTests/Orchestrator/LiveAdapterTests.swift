@@ -273,6 +273,74 @@ struct LiveAdapterTests {
         )
         #expect(overrideResult.events.first?.kind == .presetOverrideTriggered)
     }
+
+    // MARK: 9 — Mood-override cooldown (QR.2 D-080)
+
+    @Test("First mood override on a track fires immediately (QR.2 cooldown)")
+    func moodOverrideCooldown_firstOverrideFires() throws {
+        let catalog = overrideCatalog()
+        let plan = try planWithCatalog(catalog,
+                                       mood: EmotionalState(valence: -0.5, arousal: -0.5),
+                                       duration: 120)
+        let divergentMood = EmotionalState(valence: 0.7, arousal: 0.7)
+
+        let result = adapter.adapt(
+            plan: plan, currentTrackIndex: 0, elapsedTrackTime: 20,
+            liveBoundary: noBoundarySignal(), liveMood: divergentMood, catalog: catalog
+        )
+        #expect(result.events.contains { $0.kind == .presetOverrideTriggered },
+                "First override on a track should fire immediately (cooldown starts from zero)")
+    }
+
+    @Test("Second mood override within 30 s cooldown is suppressed (QR.2 cooldown)")
+    func moodOverrideCooldown_secondWithin30sIsSuppressed() throws {
+        let catalog = overrideCatalog()
+        let plan = try planWithCatalog(catalog,
+                                       mood: EmotionalState(valence: -0.5, arousal: -0.5),
+                                       duration: 120)
+        let divergentMood = EmotionalState(valence: 0.7, arousal: 0.7)
+
+        // Fire the first override at t=20s.
+        _ = adapter.adapt(
+            plan: plan, currentTrackIndex: 0, elapsedTrackTime: 20,
+            liveBoundary: noBoundarySignal(), liveMood: divergentMood, catalog: catalog
+        )
+
+        // Second call at t=35s — only 15 s elapsed since first override (<30 s cooldown).
+        let result = adapter.adapt(
+            plan: plan, currentTrackIndex: 0, elapsedTrackTime: 35,
+            liveBoundary: noBoundarySignal(), liveMood: divergentMood, catalog: catalog
+        )
+        #expect(!result.events.contains { $0.kind == .presetOverrideTriggered },
+                "Override at t=35 (15 s since first at t=20) must be suppressed by 30 s cooldown")
+        // moodDivergenceDetected should appear since mood conditions still hold.
+        #expect(result.events.contains { $0.kind == .moodDivergenceDetected },
+                "moodDivergenceDetected should still appear when cooldown blocks override")
+    }
+
+    @Test("Third mood override after 30 s cooldown fires again (QR.2 cooldown)")
+    func moodOverrideCooldown_afterCooldownOverrideFiresAgain() throws {
+        let catalog = overrideCatalog()
+        // Use 300 s track so elapsed-fraction guard (40%) doesn't fire until t > 120 s.
+        let plan = try planWithCatalog(catalog,
+                                       mood: EmotionalState(valence: -0.5, arousal: -0.5),
+                                       duration: 300)
+        let divergentMood = EmotionalState(valence: 0.7, arousal: 0.7)
+
+        // First override at t=20s (6.7% elapsed — well under 40% guard).
+        _ = adapter.adapt(
+            plan: plan, currentTrackIndex: 0, elapsedTrackTime: 20,
+            liveBoundary: noBoundarySignal(), liveMood: divergentMood, catalog: catalog
+        )
+
+        // Third call at t=55s — 35 s since first override (> 30 s cooldown), 18% elapsed.
+        let result = adapter.adapt(
+            plan: plan, currentTrackIndex: 0, elapsedTrackTime: 55,
+            liveBoundary: noBoundarySignal(), liveMood: divergentMood, catalog: catalog
+        )
+        #expect(result.events.contains { $0.kind == .presetOverrideTriggered },
+                "Override at t=55 (35 s since first at t=20) should fire — cooldown has expired")
+    }
 }
 
 // MARK: - Session Builders

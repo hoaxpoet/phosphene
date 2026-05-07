@@ -238,6 +238,11 @@ extension VisualizerEngine {
         let currentDesc = presetLoader.currentPreset?.descriptor
         let tier = Self.detectDeviceTier(device: context.device)
 
+        // Pass live StemFeatures once the stem analyzer has converged (~10 s).
+        // Before convergence, pass nil so the scorer uses neutral 0.5 for stem affinity
+        // rather than adversarially penalising stem-affinity-bearing presets (QR.2/D-080).
+        let liveStemFeatures: StemFeatures? = elapsed >= 10.0 ? pipeline.currentStemFeatures() : nil
+
         let decision = reactiveOrchestrator.evaluate(
             liveMood: mood,
             liveBoundary: boundary,
@@ -245,7 +250,8 @@ extension VisualizerEngine {
             currentPreset: currentDesc,
             catalog: catalog,
             deviceTier: tier,
-            includeUncertifiedPresets: showUncertifiedPresets
+            includeUncertifiedPresets: showUncertifiedPresets,
+            liveStemFeatures: liveStemFeatures
         )
 
         switch decision.accumulationState {

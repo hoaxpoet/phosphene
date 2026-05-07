@@ -275,25 +275,29 @@ public struct DefaultPresetScorer: PresetScoring {
         return min(0.9, 0.7 + 0.2 * (bpm - 140) / 60)
     }
 
-    /// Stem affinity: sum of energy for stems the preset responds to, clamped to [0, 1].
+    /// Stem affinity: mean above-average deviation for stems the preset responds to.
     ///
     /// Empty `stem_affinity` dicts score 0.5 (neutral — no information).
+    /// Zero `stemEnergyBalance` (pre-convergence reactive mode) returns 0.5 for all presets.
+    /// Uses `stemEnergyDev` fields (D-026/QR.2, D-080) so AGC normalization cannot saturate
+    /// the sub-score when multiple affinities are declared.
     private func stemAffinitySubScore(preset: PresetDescriptor, track: TrackProfile) -> Float {
         let affinities = Set(preset.stemAffinity.keys)
         guard !affinities.isEmpty else { return 0.5 }
-        let total = affinities.reduce(0) { acc, stem in
-            acc + stemEnergy(stem, in: track.stemEnergyBalance)
+        guard track.stemEnergyBalance != .zero else { return 0.5 }
+        let devSum = affinities.reduce(Float(0)) { acc, stem in
+            acc + max(0, stemEnergyDeviation(stem, in: track.stemEnergyBalance))
         }
-        return min(1, max(0, total))
+        return min(1, max(0, devSum / Float(affinities.count)))
     }
 
-    /// Returns the per-stem energy from `StemFeatures` by name.
-    private func stemEnergy(_ stem: String, in features: StemFeatures) -> Float {
+    /// Returns the above-average energy deviation for a named stem (D-026).
+    private func stemEnergyDeviation(_ stem: String, in features: StemFeatures) -> Float {
         switch stem {
-        case "vocals": return features.vocalsEnergy
-        case "drums":  return features.drumsEnergy
-        case "bass":   return features.bassEnergy
-        case "other":  return features.otherEnergy
+        case "vocals": return features.vocalsEnergyDev
+        case "drums":  return features.drumsEnergyDev
+        case "bass":   return features.bassEnergyDev
+        case "other":  return features.otherEnergyDev
         default:       return 0
         }
     }

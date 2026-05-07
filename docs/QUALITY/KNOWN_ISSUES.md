@@ -493,3 +493,23 @@ These test failures are pre-existing, environment-dependent, and do not indicate
 **Fix:** Replaced with `0.06 + f.bass * 0.16 + f.bass_dev * 0.05` — continuous bass band (Layer 1) drives the baseline; bass deviation adds the per-onset accent. Stays within the "beat ≤ 2× continuous" rule from `PresetAcceptanceTests`. Golden hashes regenerated; original steady/quiet hashes unchanged within dHash tolerance, beatHeavy shifted slightly (deviation now contributes a small `+0.06` to sminK).
 
 **Verification:** `swift test --filter "PresetAcceptance|PresetRegression"` passes.
+
+---
+
+### QR.2 — Stem-affinity scoring AGC saturation + reactive-mode TrackProfile adversarial penalty
+
+**Severity:** P2 (orchestrator correctness; affected every Spotify/Apple Music session)
+**Domain tag:** orchestrator
+**Status:** Resolved
+**Introduced:** Increment 4.1 (PresetScorer original implementation)
+**Resolved:** QR.2 (D-080) — 2026-05-06.
+
+**Root cause (Issue #1):** `stemAffinitySubScore` accumulated raw AGC-normalized energies across declared affinities (`clamp(sum(stemEnergy[i]))`) and clamped to [0,1]. AGC centers each energy field at ~0.5; any preset declaring 2+ stems trivially saturated at ~1.0 on most music. Two presets with disjoint affinities ("drums" vs "vocals") both scored ~1.0 on a track where only drums were active. The 25% stem-affinity weight did no discriminative work.
+
+**Root cause (Issue #2):** `DefaultReactiveOrchestrator` built scoring contexts with `TrackProfile.empty`, whose `stemEnergyBalance == StemFeatures.zero`. Under the deviation formula, zero balance → devSum = 0 → score = 0 for ALL stem-affinity-bearing presets. Neutral presets (no affinities declared) scored 0.5 always. The most musically-engaged catalog members were adversarially penalized in the most common use case (reactive ad-hoc listening since U.3). Failed Approach #54.
+
+**Fix:** `stemAffinitySubScore` rewritten to use `stemEnergyDev[stem]` (deviation primitives, D-026/MV-1) and compute `mean(max(0, dev))` over declared stems. Zero-balance guard returns neutral 0.5 when `stemEnergyBalance == .zero`. `DefaultLiveAdapter` converted to class with 30 s per-track mood-override cooldown. Boundary-switch gate tightened with `minBoundaryScoreGap = 0.05`. `cutEnergyThreshold` raised 0.7 → 0.85. `recentHistory` capped at 50. Live `StemFeatures` wired into reactive mode after 10 s. D-080.
+
+**Consequence for planned sessions:** Pre-analyzed `TrackProfile.stemEnergyBalance` has dev≈0 (EMA converged over 30-second preview); stem affinity is neutral (0.5) for all presets in planned-session scoring. Golden session sequences updated in `GoldenSessionTests.swift` — VL no longer wins on a stem bonus.
+
+**Verification:** `swift test --filter StemAffinityScoring && swift test --filter GoldenSession && swift test --filter LiveAdapter` — all pass. 1084 total engine tests, 1 pre-existing flake (MetadataPreFetcher network timeout).

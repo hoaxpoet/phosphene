@@ -86,6 +86,10 @@ public protocol ReactiveOrchestrating: Sendable {
     ///   - deviceTier: Apple Silicon generation for complexity-cost exclusion gating.
     ///   - includeUncertifiedPresets: When `true`, uncertified presets are eligible for
     ///     selection. Mirrors `SettingsStore.showUncertifiedPresets`. Default `false`.
+    ///   - liveStemFeatures: Live `StemFeatures` snapshot from the real-time stem analyzer.
+    ///     Pass `nil` until the analyzer has converged (~10 s). When non-nil, stem deviation
+    ///     fields are used for scoring, making stem-affinity-bearing presets eligible
+    ///     for selection in reactive mode (QR.2/D-080).
     /// - Returns: A `ReactiveDecision` — `suggestedPreset` is nil when holding.
     func evaluate(
         liveMood: EmotionalState,
@@ -94,7 +98,8 @@ public protocol ReactiveOrchestrating: Sendable {
         currentPreset: PresetDescriptor?,
         catalog: [PresetDescriptor],
         deviceTier: DeviceTier,
-        includeUncertifiedPresets: Bool
+        includeUncertifiedPresets: Bool,
+        liveStemFeatures: StemFeatures?
     ) -> ReactiveDecision
     // swiftlint:enable function_parameter_count
 }
@@ -134,6 +139,11 @@ public struct DefaultReactiveOrchestrator: ReactiveOrchestrating {
     /// Minimum `StructuralPrediction.confidence` to treat a boundary as actionable.
     public static let boundaryConfidenceThreshold: Float = 0.5
 
+    /// Minimum score advantage required for a boundary-only switch (QR.2/D-080).
+    /// The original gate (`boundaryFired` alone) allowed random structural boundaries
+    /// to force switches even when the current preset scored better than any alternative.
+    public static let minBoundaryScoreGap: Float = 0.05
+
     // MARK: - Dependencies
 
     private let scorer: any PresetScoring
@@ -154,7 +164,8 @@ public struct DefaultReactiveOrchestrator: ReactiveOrchestrating {
         currentPreset: PresetDescriptor?,
         catalog: [PresetDescriptor],
         deviceTier: DeviceTier,
-        includeUncertifiedPresets: Bool = false
+        includeUncertifiedPresets: Bool = false,
+        liveStemFeatures: StemFeatures? = nil
     ) -> ReactiveDecision {
         let state = ReactiveAccumulationState(elapsedTime: elapsedSessionTime)
         let confidence = Self.computeConfidence(elapsed: elapsedSessionTime)
@@ -174,8 +185,13 @@ public struct DefaultReactiveOrchestrator: ReactiveOrchestrating {
             )
         }
 
+        // Build live profile: mood always live; stem balance from live analyzer once converged
+        // (QR.2/D-080 — avoids adversarial TrackProfile.empty penalising stem-affinity presets).
         var liveProfile = TrackProfile.empty
         liveProfile.mood = liveMood
+        if let stems = liveStemFeatures {
+            liveProfile.stemEnergyBalance = stems
+        }
 
         let altCtx = PresetScoringContext(
             deviceTier: deviceTier,
@@ -249,14 +265,20 @@ public struct DefaultReactiveOrchestrator: ReactiveOrchestrating {
             includeUncertifiedPresets: includeUncertifiedPresets
         )
         let currentScore = scorer.score(preset: current, track: liveProfile, context: currentCtx)
-        let scoreGapMet = topScore - currentScore > Self.minScoreGapForSwitch
+        let scoreGap = topScore - currentScore
+        let scoreGapMet = scoreGap > Self.minScoreGapForSwitch
+        // Boundary-only switches still require a small positive score advantage (QR.2/D-080):
+        // confidence ≥ 0.5 alone previously forced switches even when the current preset
+        // scored equally or better than any alternative.
         let boundaryFired = liveBoundary.confidence >= Self.boundaryConfidenceThreshold
+                         && scoreGap > Self.minBoundaryScoreGap
 
         guard scoreGapMet || boundaryFired else {
             let reason = "Reactive [\(state.rawValue)]: holding '\(current.name)' — "
-                + "gap \(String(format: "%.2f", topScore - currentScore)) < "
+                + "gap \(String(format: "%.2f", scoreGap)) < "
                 + "\(String(format: "%.2f", Self.minScoreGapForSwitch)), "
-                + "boundary confidence \(String(format: "%.2f", liveBoundary.confidence))."
+                + "boundary confidence \(String(format: "%.2f", liveBoundary.confidence)) "
+                + "(min gap \(String(format: "%.2f", Self.minBoundaryScoreGap)) for boundary switch)."
             return holdDecision(state: state, confidence: confidence, reason: reason)
         }
 

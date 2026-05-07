@@ -123,12 +123,12 @@ struct ReactiveOrchestratorTests {
         #expect(decision.accumulationState == .full)
     }
 
-    // MARK: 5 — Boundary triggers switch even without score gap
+    // MARK: 5 — Boundary alone does not fire when gap < minBoundaryScoreGap (QR.2/D-080)
 
-    @Test("Suggests switch when boundary fires even though gap is only 0.03")
-    func boundary_triggers_switch_even_without_score_gap() {
-        // Same catalog as test 4: gap = 0.030 < 0.20 (score gate fails).
-        // liveBoundary.confidence = 0.8 ≥ 0.5 → boundary gate passes → switch.
+    @Test("Holds when boundary fires but gap is only 0.03 (< minBoundaryScoreGap 0.05)")
+    func boundary_requires_minimum_score_gap() {
+        // QR.2/D-080: boundary-only switches require scoreGap > minBoundaryScoreGap (0.05).
+        // smallGapCatalog gap = 0.030 < 0.05 → boundary gate fails → hold.
         let catalog = smallGapCatalog()
         let currentDesc = catalog[0]  // CurrentPreset
 
@@ -141,17 +141,18 @@ struct ReactiveOrchestratorTests {
             deviceTier: .tier1
         )
 
-        #expect(decision.suggestedPreset != nil, "Boundary must trigger switch despite small gap")
-        #expect(decision.suggestedPreset?.name == "AltPreset")
+        #expect(decision.suggestedPreset == nil,
+                "Gap 0.03 < minBoundaryScoreGap 0.05: boundary must not trigger switch")
     }
 
     // MARK: 6 — Boundary schedules transition at correct session time
 
     @Test("scheduleTransitionAt equals elapsedSessionTime + predictedNextBoundary")
     func boundary_schedules_transition_at_correct_time() {
+        // mediumGapCatalog: gap ≈ 0.06 > minBoundaryScoreGap (0.05) but < 0.20 (score gate).
         // elapsedSessionTime = 45.0, predictedNextBoundary = 3.5, confidence = 0.8 ≥ 0.5
-        // scheduleTransitionAt = 3.5 + 45.0 = 48.5
-        let catalog = smallGapCatalog()
+        // → boundary gate fires; scheduleTransitionAt = 3.5 + 45.0 = 48.5
+        let catalog = mediumGapCatalog()
         let currentDesc = catalog[0]
 
         let decision = orchestrator.evaluate(
@@ -165,7 +166,8 @@ struct ReactiveOrchestratorTests {
 
         #expect(decision.suggestedPreset != nil, "Boundary must trigger a switch")
         #expect(decision.scheduleTransitionAt != nil)
-        #expect(abs(Float(decision.scheduleTransitionAt!) - 48.5) < 0.1,
+        let scheduledAt = Float(decision.scheduleTransitionAt!)
+        #expect(abs(scheduledAt - 48.5) < 0.1,
                 "scheduleTransitionAt must equal elapsedSessionTime + predictedNextBoundary")
     }
 
@@ -244,12 +246,31 @@ private func largeGapCatalog() -> [PresetDescriptor] {
     ]
 }
 
-/// Small-gap catalog (tests 4, 5, 6, 7).
+/// Medium-gap catalog (test 6).
+///
+/// With live (valence=0.7, arousal=0.7): targetTemp=0.78, targetDensity=0.78
+///   CurrentPreset: center=0.58, density=0.58
+///     moodScore = 1 - |0.58 - 0.78| = 0.80  → total = 0.30*0.80 + 0.575 = 0.815
+///   AltPreset: center=0.78, density=0.78 → moodScore=1.0, total=0.875
+///   gap ≈ 0.060 > minBoundaryScoreGap (0.05) but < minScoreGapForSwitch (0.20)
+///   → score gate fails; boundary gate fires.
+private func mediumGapCatalog() -> [PresetDescriptor] {
+    [
+        makePreset(name: "CurrentPreset", family: .fluid,
+                   colorTempRange: SIMD2(0.53, 0.63),   // center = 0.58
+                   visualDensity: 0.58),
+        makePreset(name: "AltPreset", family: .geometric,
+                   colorTempRange: SIMD2(0.73, 0.83),   // center = 0.78
+                   visualDensity: 0.78),
+    ]
+}
+
+/// Small-gap catalog (tests 4, 5, 7).
 ///
 /// With live (valence=0.7, arousal=0.7): targetTemp=0.78, targetDensity=0.78
 ///   CurrentPreset: center=0.68, density=0.68  → total=0.845
 ///   AltPreset:     center=0.78, density=0.78  → total=0.875
-///   gap = 0.030 < 0.20 — score gate fails; boundary gate still works.
+///   gap = 0.030 < minBoundaryScoreGap (0.05) — both score and boundary gates fail.
 private func smallGapCatalog() -> [PresetDescriptor] {
     [
         makePreset(name: "CurrentPreset", family: .fluid,
