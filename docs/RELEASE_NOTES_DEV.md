@@ -6,6 +6,51 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-07-o] BUG-007.4c — auto-rotate for kick-on-1+3 patterns
+
+**Increment:** BUG-007.4c
+**Type:** Bug fix (DSP / live beat tracking)
+
+**What changed.**
+
+Session `2026-05-07T21-35-22Z` showed the user "still had to press `Shift+B` a bunch" despite BUG-007.4b's auto-rotate landing. Cause: BUG-007.4b required the dominant slot to have ≥ 1.5× the runner-up's count to fire — but most rock/hip-hop tracks (HUMBLE, SLTS, Everlong, MC) put the kick on slots 0 + 2 with **similar** counts. Counts end up like `[4, 0, 4, 0]`, top : runner = 1.0, the gate rejects, no rotation.
+
+**Fix.** Add a second detection path for the kick-on-1+3 alternating pattern. Triggered when:
+- Top and runner-up are within `autoRotateAlternatingTieRatio = 1.25` of each other
+- The "other" slots (everything except top + runner-up) sum to ≤ 20 % of the top count
+- Both top and runner-up have ≥ `autoRotateMinDominantCount = 4` hits
+
+When detected, the slot matching `firstTightOnsetRawSlot` (typically the song's downbeat — most listeners start playback at or near a strong-beat moment) wins the tiebreak. Falls back to the dominant slot if the first-onset slot matches neither leader.
+
+**Coverage matrix:**
+
+| Track type | BUG-007.4b path | BUG-007.4c path |
+|---|---|---|
+| Single-dominant (kick-on-1 only, slow trap) | ✓ rotates | — |
+| Kick-on-1+3 (rock, hip-hop, indie) | rejected | **✓ rotates via first-onset tiebreak** |
+| Four-on-the-floor (OMT, electronic) | rejected | rejected (others not near-zero) — manual `Shift+B` remains |
+
+**API.**
+
+- New private state: `firstTightOnsetRawSlot: Int?`. Captured on the *first* tight onset of the current track. Reset on `setGrid` / `reset`.
+- New tunables: `autoRotateAlternatingTieRatio = 1.25`, `autoRotateAlternatingNoiseFraction = 0.20`.
+- New private helper `chooseAutoRotateSlotLocked(...)` extracted from `maybeAutoRotateBarPhaseLocked` — encapsulates both BUG-007.4b and BUG-007.4c selection logic.
+- No public API changes.
+
+**Files edited.**
+
+- `PhospheneEngine/Sources/DSP/LiveBeatDriftTracker.swift` — extended auto-rotate logic, new helper, new state.
+- `PhospheneEngine/Tests/PhospheneEngineTests/DSP/LiveBeatDriftTrackerTests.swift` — 3 new tests (MARKs 33–35): `autoRotate_kickOn1And3_picksFirstOnsetSlot`, `autoRotate_kickOn1And3_firstOnsetSlot0_noRotation`, `autoRotate_fourOnTheFloor_noRotation_BUG_007_4c_regression`.
+- `docs/QUALITY/KNOWN_ISSUES.md` — BUG-007.4 entry extended with BUG-007.4c paragraph.
+
+**Tests.** 35/35 `LiveBeatDriftTrackerTests` pass. Full engine suite green except the documented baseline flakes. 0 SwiftLint violations on touched files.
+
+**Manual validation pending.** Same 5-track battery — confirm HUMBLE / SLTS / Everlong / MC auto-rotate without `Shift+B`. OMT (four-on-the-floor) continues to require manual rotation.
+
+**Out of scope.** Multi-band onset signals (snare on 2/4, bass-stem energy) for tracks where kick-on-1+3 detection still fails. If the first-onset-slot tiebreaker ever picks wrong, the user can override with `Shift+B`.
+
+---
+
 ## [dev-2026-05-07-n] BUG-007.5 part 3 — BPM-aware lock-release gate
 
 **Increment:** BUG-007.5 part 3
