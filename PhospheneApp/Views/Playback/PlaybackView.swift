@@ -128,12 +128,20 @@ struct PlaybackView: View {
             // Layer 5: Debug overlay (bottom-leading SwiftUI — raw diagnostics).
             if showDebug {
                 DebugOverlayView(engine: engine)
+                    .transition(.opacity)
             }
 
             // Layer 6: Dashboard overlay (top-trailing SwiftUI — instruments).
-            // DASH.7 SwiftUI port (D-087, supersedes the DASH.6 Metal composer).
+            // DASH.7 SwiftUI port (D-087); DASH.7.1 brand-aligned (D-088).
+            // The transition is asymmetric — descend gently in, fade quietly
+            // out — per the .impeccable.md "appears when needed, disappears
+            // when not" principle.
             if showDebug {
                 DashboardOverlayView(viewModel: dashboardVM)
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .offset(y: -8)),
+                        removal: .opacity
+                    ))
             }
         }
         .frame(minWidth: 800, minHeight: 600)
@@ -297,10 +305,12 @@ struct PlaybackView: View {
             },
             onToggleDebug: { [weak engine = self.engine] in
                 engine?.toggleDebugOverlay()
-                showDebug.toggle()
-                // DASH.7: `showDebug` drives both DebugOverlayView (Layer 5)
-                // and DashboardOverlayView (Layer 6). One toggle, two
-                // SwiftUI surfaces — instruments vs raw diagnostics.
+                // DASH.7.1: spring-choreographed toggle (D-088). Both surfaces
+                // animate in/out via `withAnimation` — `showDebug` drives both
+                // DebugOverlayView (Layer 5) and DashboardOverlayView (Layer 6).
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                    showDebug.toggle()
+                }
             },
             onHandleEsc: { [weak fo = self.fullscreenObserver] in
                 if fo?.isFullscreen == true {

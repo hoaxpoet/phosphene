@@ -38,6 +38,13 @@ public enum DashboardFontLoader {
 
         /// `true` iff both Epilogue font files were found in the bundle and successfully registered.
         public let proseCustomLoaded: Bool
+
+        /// PostScript name for the display font used on card titles + state headlines.
+        /// Either "ClashDisplay-Medium" (when the OTF is registered) or the system semibold fallback.
+        public let displayFontName: String
+
+        /// `true` iff the Clash Display font file was found in the bundle and successfully registered.
+        public let displayCustomLoaded: Bool
     }
 
     // MARK: - State
@@ -76,34 +83,53 @@ public enum DashboardFontLoader {
     }
 
     private static func performResolution(bundle: Bundle) -> FontResolution {
+        // Epilogue (prose / labels / body)
         let regularURL = bundle.url(forResource: "Epilogue-Regular",
                                     withExtension: "ttf",
                                     subdirectory: "Fonts")
         let mediumURL = bundle.url(forResource: "Epilogue-Medium",
                                    withExtension: "ttf",
                                    subdirectory: "Fonts")
-
         let regularRegistered = registerFont(at: regularURL, name: "Epilogue-Regular")
         let mediumRegistered = registerFont(at: mediumURL, name: "Epilogue-Medium")
-        let customLoaded = regularRegistered && mediumRegistered
+        let proseCustomLoaded = regularRegistered && mediumRegistered
 
-        if customLoaded {
+        let proseRegular: String
+        let proseMedium: String
+        if proseCustomLoaded {
+            proseRegular = "Epilogue-Regular"
+            proseMedium = "Epilogue-Medium"
             log.info("DashboardFontLoader: Epilogue registered from bundle")
-            return FontResolution(
-                proseFontName: "Epilogue-Regular",
-                proseMediumFontName: "Epilogue-Medium",
-                proseCustomLoaded: true
-            )
+        } else {
+            // Fall back to system sans — postscript names vary by macOS version.
+            proseRegular = NSFont.systemFont(ofSize: 12, weight: .regular).fontName
+            proseMedium = NSFont.systemFont(ofSize: 12, weight: .medium).fontName
+            log.info("DashboardFontLoader: Epilogue not found, falling back to \(proseRegular)")
         }
 
-        // Fall back to system sans — postscript names vary by macOS version.
-        let regularFallback = NSFont.systemFont(ofSize: 12, weight: .regular).fontName
-        let mediumFallback  = NSFont.systemFont(ofSize: 12, weight: .medium).fontName
-        log.info("DashboardFontLoader: Epilogue not found, falling back to \(regularFallback)")
+        // Clash Display (card titles, state headlines)
+        let displayURL = bundle.url(forResource: "ClashDisplay-Medium",
+                                    withExtension: "otf",
+                                    subdirectory: "Fonts")
+            ?? bundle.url(forResource: "ClashDisplay-Medium",
+                          withExtension: "ttf",
+                          subdirectory: "Fonts")
+        let displayCustomLoaded = registerFont(at: displayURL, name: "ClashDisplay-Medium")
+        let displayName: String
+        if displayCustomLoaded {
+            displayName = "ClashDisplay-Medium"
+            log.info("DashboardFontLoader: ClashDisplay registered from bundle")
+        } else {
+            displayName = NSFont.systemFont(ofSize: 18, weight: .semibold).fontName
+            log.info("DashboardFontLoader: ClashDisplay not found, falling back to \(displayName)")
+        }
+
         return FontResolution(
-            proseFontName: regularFallback,
-            proseMediumFontName: mediumFallback,
-            proseCustomLoaded: false
+            proseFontName: proseRegular,
+            proseMediumFontName: proseMedium,
+            proseCustomLoaded: proseCustomLoaded,
+            displayFontName: displayName,
+            displayCustomLoaded: displayCustomLoaded
         )
     }
 

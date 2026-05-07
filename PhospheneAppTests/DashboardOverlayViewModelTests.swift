@@ -64,7 +64,8 @@ struct DashboardOverlayViewModelTests {
         }
         #expect(samples.count == 3)
         #expect(samples == [0.1, 0.4, 0.7])
-        #expect(valueText == "+0.70")
+        // DASH.7.1 (D-088): STEMS valueText is empty — sparkline is the readout.
+        #expect(valueText.isEmpty)
     }
 
     @Test("history capacity caps stem sample arrays at StemEnergyHistory.capacity")

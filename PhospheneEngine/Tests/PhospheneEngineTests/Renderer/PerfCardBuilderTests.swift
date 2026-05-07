@@ -52,7 +52,7 @@ struct PerfCardBuilderTests {
         #expect(colorEquals(quality.color, DashboardTokens.Color.textMuted))
     }
 
-    @Test("healthy snapshot produces only FRAME row (QUALITY + ML hidden)")
+    @Test("healthy snapshot produces only FRAME row (QUALITY + ML hidden) — teal status")
     func healthy() throws {
         let snap = PerfSnapshot(
             recentMaxFrameMs: 8.2,
@@ -68,10 +68,11 @@ struct PerfCardBuilderTests {
         let frame = try #require(extractProgressBar(layout.rows[0]))
         #expect(abs(frame.value - 8.2 / 14.0) < 1e-5)
         #expect(frame.valueText == "8.2 / 14 ms")
-        #expect(colorEquals(frame.color, DashboardTokens.Color.statusGreen))
+        // Brand-aligned: healthy → teal (analytical), not statusGreen (D-088).
+        #expect(colorEquals(frame.color, DashboardTokens.Color.teal))
     }
 
-    @Test("over-warning ratio flips FRAME to yellow")
+    @Test("over-warning ratio flips FRAME to coralMuted")
     func warningRatio() throws {
         let snap = PerfSnapshot(
             recentMaxFrameMs: 12.6,            // 12.6 / 14 = 0.9 > 0.7 warning threshold
@@ -84,7 +85,8 @@ struct PerfCardBuilderTests {
         )
         let layout = PerfCardBuilder().build(from: snap)
         let frame = try #require(extractProgressBar(layout.rows[0]))
-        #expect(colorEquals(frame.color, DashboardTokens.Color.statusYellow))
+        // Brand-aligned: warning → coralMuted ("warmth arriving at rest"), not statusYellow (D-088).
+        #expect(colorEquals(frame.color, DashboardTokens.Color.coralMuted))
     }
 
     @Test("frame time above budget clamps bar at 1.0; valueText shows raw")
@@ -104,7 +106,7 @@ struct PerfCardBuilderTests {
         #expect(frame.valueText == "42.0 / 14 ms")
     }
 
-    @Test("downshifted snapshot produces yellow QUALITY 'noBloom'; ML hidden if dispatchNow")
+    @Test("downshifted snapshot produces coralMuted QUALITY 'noBloom'; ML hidden if dispatchNow")
     func downshifted() throws {
         let snap = PerfSnapshot(
             recentMaxFrameMs: 11.0,
@@ -119,10 +121,11 @@ struct PerfCardBuilderTests {
         #expect(layout.rows.count == 2)
         let quality = try #require(extractSingleValue(layout.rows[1]))
         #expect(quality.value == "noBloom")
-        #expect(colorEquals(quality.color, DashboardTokens.Color.statusYellow))
+        // Brand-aligned: downshifted → coralMuted, not statusYellow (D-088).
+        #expect(colorEquals(quality.color, DashboardTokens.Color.coralMuted))
     }
 
-    @Test("forced dispatch snapshot produces FORCED ML row (yellow)")
+    @Test("forced dispatch snapshot produces FORCED ML row (coralMuted)")
     func forcedDispatch() throws {
         let snap = PerfSnapshot(
             recentMaxFrameMs: 11.0,
@@ -139,7 +142,8 @@ struct PerfCardBuilderTests {
         let ml = try #require(extractSingleValue(layout.rows[1]))
         #expect(ml.label == "ML")
         #expect(ml.value == "FORCED")
-        #expect(colorEquals(ml.color, DashboardTokens.Color.statusYellow))
+        // Brand-aligned: forced → coralMuted, not statusYellow (D-088).
+        #expect(colorEquals(ml.color, DashboardTokens.Color.coralMuted))
     }
 
     @Test("defer ML decision shows WAIT with retry-ms text")

@@ -1,3 +1,4 @@
+import Renderer
 import SwiftUI
 
 /// Phosphene application entry point.
@@ -36,6 +37,11 @@ struct PhospheneApp: App {
         let rawPolicy = UserDefaults.standard.string(forKey: "phosphene.settings.diagnostics.sessionRetention")
         let policy = SessionRetentionPolicy(rawValue: rawPolicy ?? "") ?? .lastN10
         SessionRecorderRetentionPolicy.apply(policy: policy)
+        // Register Epilogue + Clash Display from the Renderer bundle so the
+        // SwiftUI dashboard can resolve them via `.custom(_:size:)`. Falls back
+        // silently to system fonts if the TTF/OTF files aren't bundled
+        // (DASH.7.1, D-088). Idempotent — safe to call repeatedly.
+        _ = DashboardFontLoader.resolveFonts(in: nil)
     }
 
     var body: some Scene {
