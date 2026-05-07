@@ -2075,3 +2075,83 @@ Engine test suite: 1117 tests / 126 suites (was 1130 — drop reflects deleted G
 **New:** `Renderer/Dashboard/DashboardSnapshot.swift`, `Renderer/Dashboard/StemEnergyHistory.swift`, `App/Views/Dashboard/DashboardOverlayView.swift` + `DashboardCardView.swift` + `DashboardRowView.swift` + `DashboardOverlayViewModel.swift`, `App/VisualizerEngine+Dashboard.swift`, `Tests/.../DashboardOverlayViewModelTests.swift`.
 
 **Edited:** `Renderer/Dashboard/DashboardCardLayout.swift` (`.timeseries` row variant), `StemsCardBuilder.swift` (history-based API), `PerfCardBuilder.swift` (dynamic rows + status colour), 10 `RenderPipeline+*.swift` draw paths (revert composite calls), `RenderPipeline.swift` (revert composer setter / lock / helper / resize forward), `App/VisualizerEngine.swift` (revert `dashboardComposer` / `dashboardEnabled`, add `@Published dashboardSnapshot`), `App/VisualizerEngine+InitHelpers.swift` (replace composer alloc with `setupDashboardSnapshotPump`), `App/Views/Playback/PlaybackView.swift` (Layer 6 + publisher injection + revert `D`-toggle binding), `App/Views/DebugOverlayView.swift` (DASH.6 dedup stays), `App/ContentView.swift` (publisher pass-through), three builder tests (rewrite for new APIs), `App.xcodeproj/project.pbxproj` (5 build files + 1 group + 5 file refs + 6 sources entries).
+
+## D-088 — DASH.7.1 brand-alignment pass (impeccable review)
+
+DASH.7 shipped a working SwiftUI dashboard but inherited three aesthetic decisions from the DASH.6 Metal phase that violated `.impeccable.md`. An impeccable-skill review surfaced them; DASH.7.1 corrects in one focused increment. The Sendable card builders + layouts + tokens all survive — only the colour assignments, chrome treatment, and typography call sites changed.
+
+### Decision 1 — STEMS sparkline colour: `coral` → `teal`
+
+`.impeccable.md §Aesthetic Direction` is explicit: **"Teal = analytical/precision — preparation progress, MIR data, stem indicators."** Coral is reserved for **"energy, action, primary CTAs, beat moments."** Stems are MIR data (the audio analysis path's running output, not a CTA or beat moment) — they should be teal, not coral. DASH.4 picked coral as a uniform v1 colour without auditing against the brand semantic table; DASH.7 carried the choice through the SwiftUI port unexamined. DASH.7.1 corrects.
+
+### Decision 2 — Per-card chrome retired in favour of a shared `.regularMaterial` panel
+
+`.impeccable.md §Anti-Patterns` rejects three patterns we were combining:
+- "No rounded-rectangle cards with drop shadows as the primary UI pattern — use whitespace and typography hierarchy instead"
+- "No glassmorphism unless purposeful (the overlay chrome blur is purposeful; a card with blur behind it is not)"
+- macOS-specific: "Materials: use `NSVisualEffectView` (.hudWindow or .underWindowBackground) for overlapping panels, not opaque surfaces"
+
+DASH.6+7 had three rounded-rectangle cards stacked, each with `surfaceRaised @ 0.92α` fill plus a 1px `border` stroke. That's exactly the pattern the doc warns against — and the 0.92α opaque fill defeats the "use a material" guidance. DASH.7.1 collapses the three card chromes into one shared `.regularMaterial` panel (SwiftUI's `NSVisualEffectView` wrapper) containing three typographic sections separated by 1px `border` dividers. The cards become typographic content (a Clash Display title + rows) rather than contained boxes. The result is fewer rectangles, more breath, and a single purposeful glassmorphism instance instead of three decorative ones.
+
+### Decision 3 — Custom fonts wired through `DashboardFontLoader`
+
+`.impeccable.md §Typography` specifies Clash Display for headings + Epilogue for body/UI. The DASH.6 Metal layer used `DashboardFontLoader` to register Epilogue from the bundle. The DASH.7 SwiftUI port silently regressed to `.system(size:weight:)` everywhere, defaulting to SF Pro — a violation of the impeccable typography rules ("monoculture font choice"). DASH.7.1:
+
+- Extends `DashboardFontLoader.FontResolution` with `displayFontName: String` + `displayCustomLoaded: Bool` for Clash Display.
+- `performResolution()` searches for `ClashDisplay-Medium.otf` (or `.ttf`) in the Renderer bundle's `Fonts/` subdirectory; registers via `CTFontManagerRegisterFontsForURL` if found; falls back to the system semibold sans postscript name when absent.
+- `PhospheneApp.init()` calls `DashboardFontLoader.resolveFonts(in: nil)` once at launch — idempotent, safe to call repeatedly, registers fonts process-wide.
+- SwiftUI views (`DashboardCardView`, `DashboardRowView`) resolve via `.custom(fontResolution.displayFontName, size:relativeTo:)` and `.custom(fontResolution.proseMediumFontName, size:relativeTo:)` so Dynamic Type still scales the fonts (`.relativeTo:` parameter).
+- Numerics (BPM readout, FRAME ms, etc.) stay `.system(size:design:.monospaced)` because `.impeccable.md` sanctions SF Mono as the fallback when Berkeley Mono isn't licensed.
+
+The `Fonts/` README is updated with the Clash Display drop-in instructions; the actual TTF/OTF stays out of git per the existing convention.
+
+### Decision 4 — SF Symbol status icons retired
+
+DASH.7 added `checkmark.circle.fill` / `exclamationmark.triangle.fill` next to FRAME values to address Matt's "is this good or bad?" feedback. The icons read as web-admin chrome — the same "Stripe / Linear / Vercel admin panel" register the .impeccable doc explicitly avoids ("No iconography on every heading"). The Braun-component / Sakamoto-liner-note aesthetic is text-and-form. DASH.7.1 drops the SF Symbols. Status is communicated through value-text colour alone (which is already the brand palette via Decision 5).
+
+### Decision 5 — `statusGreen` / `statusYellow` retired from card builder use
+
+DashboardTokens carries `statusGreen` / `statusYellow` / `statusRed` from earlier work; D-085 ("no statusRed across the dashboard — durable rule") had already pruned red. DASH.7.1 extends that discipline: green/yellow are foreign to the brand palette (purple / coral / teal + neutrals). The same semantic ladder maps cleanly onto teal / coralMuted:
+
+- Healthy / data good (FRAME under budget, BEAT LOCKED) → `teal` (analytical/precision, the data is in)
+- Stressed / nearing limit (FRAME over warning ratio, QUALITY downshifted, ML deferring/forced, BEAT LOCKING) → `coralMuted` (warmth arriving but still at rest — not full coral, which is reserved for primary CTAs)
+- Warming / no observations / unlocked → `textMuted`
+
+The tokens themselves stay defined in DashboardTokens for any future caller, but no card builder references them after DASH.7.1.
+
+### Decision 6 — STEMS sparkline `valueText` collapsed to empty string
+
+The `.timeseries` row carried a 56pt right-side numeric column showing the most-recent sample (`+0.35` / `-0.55` / `—`). The sparkline already shows that value as the rightmost pixel. The redundant column was Sakamoto-violating ("every word carrying weight"). DASH.7.1 emits empty-string `valueText` from `StemsCardBuilder`; `DashboardRowView` already had the `if !valueText.isEmpty` guard so the column collapses entirely. The signed `+` prefix retired alongside it (Decision 9 in the increment plan — applied to whatever signed callers might exist; STEMS has none after this change).
+
+### Decision 7 — Spring-choreographed `D` toggle
+
+`.impeccable.md §macOS` specifies `spring(response: 0.4, dampingFraction: 0.85)` for state transitions. DASH.6+7 toggled the cards in/out with `if showDebug { … }` — instantaneous. DASH.7.1 wraps the toggle in `withAnimation(.spring(...))` and attaches an asymmetric `.transition` to the dashboard view: insertion is `.opacity.combined(with: .offset(y: -8))` so the panel descends gently into view; removal is plain `.opacity` so it fades out without reverse-rising. Honours the "appears when needed, disappears when not" principle.
+
+### Decision 8 — Card titles use Clash Display at the `bodyLarge` step (15pt)
+
+DASH.7 rendered `BEAT` / `STEMS` / `PERF` titles at 11pt UPPERCASE Epilogue with tracking — the same step as row labels. With per-card chrome dropped (Decision 2), titles needed to do the structural work that the rounded rectangles used to do. DASH.7.1 promotes them to **Clash Display Medium @ `bodyLarge` (15pt)** without uppercasing — they become typographic anchors of the dashboard column. The 18pt `lg` step proposed in the impeccable review was overkill at the current 280pt card width; 15pt is large enough to anchor and small enough not to crowd. Tightened against the actual layout, not the abstract recommendation.
+
+### What survives unchanged
+
+- `DashboardCardLayout` API + Row variants (`.singleValue` / `.bar` / `.progressBar` / `.timeseries`).
+- `BeatCardBuilder` BPM / BAR / BEAT row colour assignments (BAR stays purpleGlow for ambient phrase-level presence; BEAT stays coral for beat-moment energy — both are correct per the brand semantic table).
+- All Sendable contracts.
+- The DashboardOverlayViewModel + 30 Hz throttle.
+- The `D` shortcut binding semantics (one toggle, both surfaces).
+
+### Tests
+
+Dashboard test count unchanged at 27. Changes:
+- `BeatCardBuilderTests.locked` / `.locking` — assertions updated from statusGreen/Yellow → teal/coralMuted.
+- `StemsCardBuilderTests.uniformColour` + `.mixedHistory` — coral → teal.
+- `StemsCardBuilderTests.valueTextEmpty` (renamed from `.valueText`) — asserts empty-string instead of formatted decimals.
+- `PerfCardBuilderTests.healthy` / `.warningRatio` / `.downshifted` / `.forcedDispatch` — assertions updated to teal / coralMuted.
+- `DashboardOverlayViewModelTests.stemHistoryAccumulates` — asserts `valueText.isEmpty` instead of `"+0.70"`.
+
+Engine: 1117 tests pass (pre-existing flakes — `MemoryReporter.residentBytes` env-dependent, `MetadataPreFetcher.fetch_networkTimeout` — fired as expected, neither introduced by DASH.7.1). App: 5 view-model tests pass. SwiftLint clean on touched files. xcodebuild app build clean.
+
+### Files changed
+
+**Edited:** `Renderer/Dashboard/StemsCardBuilder.swift`, `BeatCardBuilder.swift`, `PerfCardBuilder.swift`, `DashboardFontLoader.swift`. `App/Views/Dashboard/DashboardOverlayView.swift`, `DashboardCardView.swift`, `DashboardRowView.swift`. `App/Views/Playback/PlaybackView.swift` (spring-choreographed toggle). `App/PhospheneApp.swift` (font registration at launch). Three engine builder test files + one app view-model test file. `Resources/Fonts/README.md` (Clash Display drop-in instructions).
+
+**No retirements** of files in this increment — the changes are all in-place. `statusGreen` / `statusYellow` tokens stay defined in `DashboardTokens.Color` but are no longer referenced from card builders.

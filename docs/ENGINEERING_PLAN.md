@@ -2651,6 +2651,35 @@ Third live card. New `PerfSnapshot` Sendable value type wraps renderer governor 
 
 **Superseded note (2026-05-07):** Live D-toggle review on `~/Documents/phosphene_sessions/2026-05-07T19-03-44Z` (Love Rehab / So What / There There / Pyramid Song) surfaced three issues with the Metal-composite path: (a) hazy text vs. crisp SwiftUI from a contentsScale-detection bug, (b) the 0.92α purple-tinted surface didn't read against bright preset backdrops, (c) `.bar` rows for STEMS made stem-rhythm separation hard to read (Matt's feedback explicitly cited the SpectralCartograph timeseries panel as the desired pattern). Investigation showed the original Metal-path justifications (crisp text via direct CGContext→texture, frame-rate buffer-bound updates, lifetime coupling to render pipeline) didn't materialize: text was hazy, snapshot updates are bounded by snapshot-change cadence rather than frame rate, and lifetime is naturally one-frame ahead via `@Published`. **DASH.7 ports the dashboard to SwiftUI, retiring `DashboardComposer` + `DashboardCardRenderer` + `DashboardTextLayer` + `Dashboard.metal`.** The Sendable card builders + `DashboardCardLayout` + tokens + `PerfSnapshot` + `BeatCardBuilder` survive unchanged; only the rendering layer changes. See D-087 for the rationale and D-086 retirement details.
 
+### Increment DASH.7.1 — Brand-alignment pass (impeccable review) ✅ 2026-05-07
+
+After DASH.7 shipped, an impeccable-skill review against `.impeccable.md` surfaced three brand violations and seven smaller issues. DASH.7.1 lands the corrective pass in one increment. P0 (semantic / structural):
+1. **STEMS sparkline colour: coral → teal.** `.impeccable.md` reserves teal for "MIR data, **stem indicators**." Coral is for "energy, action, beat moments." Stems are MIR data; teal is correct.
+2. **Per-card chrome retired.** Three rounded-rectangle cards (the .impeccable anti-pattern "no rounded-rectangle cards as the primary UI pattern") replaced with a **single shared `.regularMaterial` panel** containing three typographic sections separated by `border` dividers. Aligns with the macOS-specific note "use `NSVisualEffectView` for overlapping panels, not opaque surfaces."
+3. **Custom fonts wired (Clash Display + Epilogue).** `DashboardFontLoader` extended to register Clash Display alongside Epilogue. SwiftUI views resolve via `.custom(_:size:relativeTo:)`. App registers fonts at launch in `PhospheneApp.init()`. Card titles render in **Clash Display Medium @ 15pt**, row labels in **Epilogue Medium @ 11pt**, numerics stay SF Mono. Falls back gracefully to system fonts when the TTF/OTF aren't bundled (the README documents how to drop them in).
+
+P1 (significant aesthetic):
+4. **SF Symbol status icons dropped.** `checkmark.circle.fill` / `exclamationmark.triangle.fill` were a web-admin trope. Status now reads through value-text colour alone — Sakamoto-liner-note discipline.
+5. **PERF status colours mapped onto the brand palette.** `statusGreen` / `statusYellow` retired in favour of `teal` (data healthy) / `coralMuted` (data stressed) / `textMuted` (warming). Same change in `BeatCardBuilder`'s MODE row: LOCKED → teal, LOCKING → coralMuted. The card now uses only the project's three brand colours.
+6. **STEMS valueText dropped entirely.** The sparkline IS the readout. The redundant signed-decimal column on the right was Sakamoto-violating ("every word carrying weight").
+7. **Spring-choreographed `D` toggle.** `withAnimation(.spring(response: 0.4, dampingFraction: 0.85))` wraps the `showDebug` toggle; the dashboard cards fade in with an 8pt downward offset, fade out cleanly. Honors the .impeccable-spec transition values.
+
+P2 (smaller polish):
+8. **Stable `ForEach` IDs.** `id: \.element.title` instead of `\.offset` so card add/remove animations behave when PERF rows collapse.
+9. **`+` prefix dropped on signed valueText.** Bar direction encodes sign visually; the leading `+` was noise.
+10. **Card titles render at `bodyLarge` (15pt) Clash Display Medium**, becoming typographic anchors of the dashboard column rather than 11pt UPPERCASE labels-on-cards.
+
+**Done when:**
+- [x] STEMS rows render in teal at full opacity for line + 0.55 area fill.
+- [x] Dashboard is a single `.regularMaterial` panel with three sections (no per-card backdrop).
+- [x] Card titles render in Clash Display (or system semibold fallback). Labels in Epilogue (or system regular fallback).
+- [x] No SF Symbol decorations remain in the row variants.
+- [x] Status colours appear only as `teal` / `coralMuted` / `textMuted` across BEAT MODE + PERF FRAME / QUALITY / ML.
+- [x] STEMS sparklines have no right-side numeric column.
+- [x] Pressing `D` triggers a spring-damped fade-in for both surfaces.
+- [x] Engine + app builds clean. 27 dashboard tests pass. 0 SwiftLint violations on touched files.
+- [x] D-088 captures: brand-violation diagnoses, what was retired (statusGreen/Yellow tokens left in DashboardTokens but no longer referenced from card builders; SF Symbols; per-card chrome; STEMS valueText), what was added (Clash Display in DashboardFontLoader, FontResolution.displayFontName, app-launch font registration).
+
 ### Increment DASH.7 — SwiftUI dashboard port + visual amendments ✅ 2026-05-07
 
 Pivots the dashboard from the DASH.6 Metal composite path to a SwiftUI overlay. Bundled with two visual amendments surfaced by Matt's live review:

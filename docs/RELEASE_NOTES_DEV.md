@@ -6,6 +6,39 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-07-k] DASH.7.1 — Brand-alignment pass (impeccable review)
+
+**Increment:** DASH.7.1
+**Type:** Aesthetic refinement
+
+**What changed.** An impeccable-skill review of DASH.7 against `.impeccable.md` surfaced three brand violations and seven smaller issues; DASH.7.1 lands all corrections in one focused increment.
+
+**P0 — semantic / structural:**
+- **STEMS sparkline colour:** coral → **teal**. `.impeccable.md` reserves teal for "MIR data, stem indicators." Coral is for "energy, action, beat moments." Stems are MIR data; teal is correct.
+- **Per-card chrome retired.** Three rounded-rectangle cards (`.impeccable.md` anti-pattern: "no rounded-rectangle cards as the primary UI pattern") replaced with a **single shared `.regularMaterial` panel** (NSVisualEffectView wrapper, the macOS-spec'd material) containing three typographic sections separated by `border` dividers. Cards become typographic content; the panel is the only chrome.
+- **Custom fonts wired (Clash Display + Epilogue).** `DashboardFontLoader.FontResolution` extended with `displayFontName` + `displayCustomLoaded` for Clash Display. `PhospheneApp.init()` calls `DashboardFontLoader.resolveFonts(in: nil)` once at launch. SwiftUI views resolve via `.custom(_:size:relativeTo:)` so Dynamic Type still scales. Falls back gracefully to system fonts when TTF/OTF aren't bundled (the README documents the drop-in path).
+
+**P1 — significant aesthetic:**
+- **SF Symbol status icons retired.** `checkmark.circle.fill` / `exclamationmark.triangle.fill` were a web-admin trope. Status now reads through value-text colour alone — Sakamoto-liner-note discipline.
+- **PERF status colours mapped onto the brand palette.** `statusGreen` / `statusYellow` retired in favour of `teal` (data healthy) / `coralMuted` (data stressed). Same change in `BeatCardBuilder`'s MODE row: LOCKED → teal, LOCKING → coralMuted. The card uses only the project's three brand colours now.
+- **STEMS valueText dropped entirely.** The sparkline IS the readout; the redundant signed-decimal column on the right was Sakamoto-violating.
+- **Spring-choreographed `D` toggle.** `withAnimation(.spring(response: 0.4, dampingFraction: 0.85))` wraps the `showDebug` toggle; the dashboard cards fade in with an 8pt downward offset, fade out cleanly. The DebugOverlayView gets a plain opacity transition to match.
+
+**P2 — polish:**
+- Stable `ForEach` IDs (`id: \.element.title`) so card add/remove animates correctly when PERF rows collapse.
+- `+` prefix dropped on signed valueText (bar direction encodes sign visually).
+- Card titles render at `bodyLarge` (15pt) Clash Display Medium — typographic anchors of the dashboard column rather than 11pt UPPERCASE labels-on-cards.
+
+**What survives unchanged.** `DashboardCardLayout` API, all four Row variants, `DashboardSnapshot`, `StemEnergyHistory`, `BeatCardBuilder` non-MODE colour assignments (BAR=purpleGlow, BEAT=coral both stay — they're correct per the brand table). All Sendable contracts. The DashboardOverlayViewModel + 30 Hz throttle. The single-`D` toggle binding to both surfaces.
+
+**Decisions.** D-088 captures: brand-violation diagnoses, retirement details, font-loader extension, spring-transition spec, what survives.
+
+**Tests.** Dashboard test count unchanged at 27. Test fixtures updated: `BeatCardBuilderTests.locked`/`.locking` use teal/coralMuted; `StemsCardBuilderTests.mixedHistory`/`.uniformColour` use teal; `StemsCardBuilderTests.valueTextEmpty` (renamed) asserts empty-string; `PerfCardBuilderTests.healthy`/`.warningRatio`/`.downshifted`/`.forcedDispatch` use teal/coralMuted; `DashboardOverlayViewModelTests.stemHistoryAccumulates` asserts `valueText.isEmpty`.
+
+Engine + app builds clean. SwiftLint clean on touched files. Pre-existing flakes (`MemoryReporter.residentBytes`, `MetadataPreFetcher.fetch_networkTimeout`) fired as expected — none introduced.
+
+---
+
 ## [dev-2026-05-07-j] DASH.7 — SwiftUI dashboard port + visual amendments
 
 **Increment:** DASH.7 (supersedes DASH.6 / D-086)
