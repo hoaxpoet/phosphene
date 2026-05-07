@@ -2509,6 +2509,75 @@ Pick one source of truth (recommended: `Presets/Shaders/`). Remove the duplicate
 
 ---
 
+## Phase DASH — Telemetry Dashboard
+
+A dedicated HUD layer for Phosphene's diagnostic and operational telemetry. Renders floating monospace metrics cards over the live Metal view using a zero-alloc Core Text path backed by a shared-memory MTLTexture. Six increments; no Orchestrator or audio-pipeline changes — pure Renderer + Shared additions.
+
+**Goals:**
+- Real-time BPM, beat-lock state, stem energies, frame budget, and session-mode label without requiring Spectral Cartograph to be the active preset.
+- Developer-togglable (same `D` key overlay flow as `DebugOverlayView`).
+- Zero per-frame heap allocation; MTLBuffer-backed CGContext blit path inherited by `DashboardTextLayer`.
+
+### Increment DASH.1 — Text-rendering layer ✅ 2026-05-06
+
+Foundation: `DashboardTokens`, `DashboardFontLoader`, `DashboardTextLayer`.
+
+- `DashboardTokens.swift` (`Sources/Shared/Dashboard/`): static design-token namespace — `TypeScale` (6 sizes), `Spacing` (4 sizes), `Color` (11 swatches as `SIMD4<Float>`), `Weight`, `TextFont`, `Alignment` enums.
+- `DashboardFontLoader.swift` (`Sources/Renderer/Dashboard/`): resolves Epilogue-Regular/Medium TTF from bundle `Fonts/` subdirectory; falls back to system sans; `OSAllocatedUnfairLock` cache; `resetCacheForTesting()` for test isolation.
+- `DashboardTextLayer.swift` (`Sources/Renderer/Dashboard/`): zero-copy `MTLBuffer` → `CGContext` → `MTLTexture` pattern; Core Text permanent CTM flip; `beginFrame()` clears; `drawText(_:at:size:weight:font:color:align:)` renders; `commit(into:)` encodes blit; `.bgra8Unorm` pixel format.
+- 12 tests: `DashboardTokensTests` (4), `DashboardFontLoaderTests` (3), `DashboardTextLayerTests` (5).
+- `Resources/Fonts/README.md` placeholder for custom TTF drop-in.
+
+**Done when:** ✅
+- [x] `DashboardTextLayer` renders text to MTLTexture at correct pixel positions.
+- [x] `beginFrame()` clears the texture between frames.
+- [x] Alignment shifts render position (left vs. right at same origin).
+- [x] Color token applies to rendered pixels (teal G > R and G > B).
+- [x] All 12 tests pass; 0 SwiftLint violations; app build clean.
+
+### Increment DASH.2 — Metrics card layout engine
+
+`DashboardCardLayout` value type: positions labeled metric values in a fixed-width card (title row + N value rows). `DashboardCardRenderer` composes `DashboardTextLayer` calls to paint one card. Cards support: single-value, two-column pair, bar-chart rows.
+
+**Done when:**
+- [ ] A `DashboardCardRenderer` test renders a 3-row card to a texture and pixel-verifies label positions.
+- [ ] Cards clip correctly at the right edge.
+
+### Increment DASH.3 — Beat & BPM card
+
+First live card: "BEAT" card showing `grid_bpm`, `lock_state` (REACTIVE / LOCKING / LOCKED), `beat_phase01` progress bar, `bar_phase01`.
+
+**Done when:**
+- [ ] Card renders with correct BPM string from a test `BeatSyncSnapshot`.
+- [ ] Lock state label color changes by state (grey / amber / green).
+
+### Increment DASH.4 — Stem energy card
+
+"STEMS" card: four stem rows (Drums / Bass / Vocals / Other), each showing a deviation-bar and energy value.
+
+**Done when:**
+- [ ] Bar width tracks `stemEnergyDev` sign correctly (positive = right of centre, negative = left).
+- [ ] Zero-energy row renders a centred dim bar.
+
+### Increment DASH.5 — Frame budget card
+
+"PERF" card: frame time (ms), quality level badge, ML-dispatch cooldown indicator.
+
+**Done when:**
+- [ ] Frame time string matches `FrameTimingReporter.recentMaxFrameMs` within ±0.5 ms.
+- [ ] Quality-level badge text matches `FrameBudgetManager.currentLevel.rawValue`.
+
+### Increment DASH.6 — Overlay wiring + `D` key toggle
+
+Wire all three cards into `DebugOverlayView` / `PlaybackView` behind the existing `D` key shortcut. Cards appear in the top-right corner, stacked vertically with `DashboardTokens.Spacing.cardGap`. Dashboard layer is composited by `RenderPipeline` as an optional blit after the main frame.
+
+**Done when:**
+- [ ] Pressing `D` shows / hides the dashboard cards.
+- [ ] All three cards update at 60 fps without measurable frame-budget regression.
+- [ ] `DebugOverlayView` no longer duplicates any metric shown in the dashboard cards.
+
+---
+
 These milestones map to product-level outcomes, not implementation phases.
 
 **Milestone A — Trustworthy Playback Session.** ✅ **MET (2026-04-25).** A user can connect a playlist, obtain a usable prepared session, and complete a full listening session without instability. *Requires: ~~2.5.4~~ ✅, ~~Phase U increments U.1–U.7~~ ✅, ~~progressive readiness basics (6.1)~~ ✅.*

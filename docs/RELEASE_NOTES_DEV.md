@@ -6,6 +6,38 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-06-e] DASH.1 — Telemetry dashboard text-rendering layer
+
+**Increment:** DASH.1
+**Type:** Infrastructure (renderer + shared)
+
+**What changed.**
+
+Added the foundation layer for Phosphene's floating telemetry dashboard — a developer-togglable HUD that will display real-time metrics (BPM, lock state, stem energies, frame budget) over any active preset.
+
+New files:
+- `PhospheneEngine/Sources/Shared/Dashboard/DashboardTokens.swift` — design token namespace: `TypeScale` (6 point sizes from caption=10 to display=36), `Spacing` (4 sizes), `Color` (11 SIMD4 swatches), `Weight`/`TextFont`/`Alignment` enums.
+- `PhospheneEngine/Sources/Renderer/Dashboard/DashboardFontLoader.swift` — resolves Epilogue TTF from bundle `Fonts/` directory; falls back to system sans-serif; `OSAllocatedUnfairLock` cache; `resetCacheForTesting()` for test isolation.
+- `PhospheneEngine/Sources/Renderer/Dashboard/DashboardTextLayer.swift` — zero-copy `MTLBuffer` → `CGContext` → `MTLTexture` text renderer; `.bgra8Unorm` pixel format; Core Text with permanent CTM flip; `beginFrame()` clears each frame.
+- `PhospheneEngine/Sources/Renderer/Resources/Fonts/README.md` — custom TTF drop-in instructions.
+
+New tests (12):
+- `DashboardTokensTests` (4) — color channel ranges, type scale ordering, alignment enum, spacing values.
+- `DashboardFontLoaderTests` (3) — system fallback, idempotent caching, test reset.
+- `DashboardTextLayerTests` (5) — mono text coverage, prose text coverage, between-frame clear, alignment shift, color application.
+
+Also fixed (pre-existing blockers):
+- `LiveAdapter.swift`: added `nonisolated(unsafe)` to `lastOverrideTimePerTrack` (Swift 6.3.1 requirement for mutable stored properties on `@unchecked Sendable` classes).
+- `ReactiveOrchestratorTests`: updated Test 5 to expect a hold (not a switch) at gap=0.030 < `minBoundaryScoreGap(0.05)`; added `mediumGapCatalog()` for Test 6 with gap≈0.060 > 0.05.
+
+**Test suite:** 1096 engine tests; 2 pre-existing timing flakes (MetadataPreFetcher, AppleMusicConnectionViewModel). App build: `** BUILD SUCCEEDED **`. SwiftLint: 0 violations.
+
+**No behaviour change to existing presets or sessions.** `DashboardTextLayer` is not yet wired into the render pipeline; wiring lands in DASH.6.
+
+**Decision:** D-081 (font strategy, zero-copy pattern, SC retention, pixel-coverage calibration).
+
+---
+
 ## [dev-2026-05-06-d] DSP.4 — Drums-stem Beat This! diagnostic (third BPM estimator)
 
 **Increment:** DSP.4

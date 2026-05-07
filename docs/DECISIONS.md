@@ -1671,3 +1671,35 @@ Pre-analyzed `TrackProfile.stemEnergyBalance` is populated from `StemFeatures` s
 ### Implementation
 
 `Sources/Orchestrator/PresetScorer.swift`: `stemAffinitySubScore` + `stemEnergyDeviation` helper. `Sources/Orchestrator/LiveAdapter.swift`: struct → class, `cooldownLock` + `lastOverrideTimePerTrack`. `Sources/Orchestrator/ReactiveOrchestrator.swift`: `minBoundaryScoreGap`, `liveStemFeatures` protocol parameter. `Sources/Orchestrator/TransitionPolicy.swift`: `cutEnergyThreshold` 0.7 → 0.85. `Sources/Orchestrator/SessionPlanner+Segments.swift`: history trim. `PhospheneApp/VisualizerEngine+Orchestrator.swift`: live stem wiring. Tests: `StemAffinityScoringTests.swift` (5 new), `LiveAdapterTests.swift` (+3 cooldown tests), `GoldenSessionTests.swift` (sequences regenerated), `PresetScorerTests.swift` (assertion updated).
+
+---
+
+## D-081 — Telemetry dashboard infrastructure: scope, font strategy, SC retention (Phase DASH.1)
+
+**2026-05-06.** Establishes the infrastructure for Phosphene's floating telemetry HUD — a developer-togglable overlay that renders real-time metrics cards (BPM, lock state, stem energies, frame budget) without requiring Spectral Cartograph to be active.
+
+### Scope decisions
+
+1. **Dashboard lives in `Shared` (tokens) and `Renderer` (rendering), not `PhospheneApp`.** `DashboardTokens` are pure value types with no Metal dependency — they go in `Sources/Shared/Dashboard/`. `DashboardFontLoader` and `DashboardTextLayer` require `Metal`/`CoreText` and belong in `Sources/Renderer/Dashboard/`. This keeps the SPM dependency graph clean: `PhospheneApp` imports `Renderer` which imports `Shared`.
+
+2. **Zero-copy `MTLBuffer` → `CGContext` → `MTLTexture` pattern.** On Apple Silicon unified memory, a single `MTLBuffer` (`.storageModeShared`) can back both a `CGContext` (via `CGBitmapContextCreate` with the buffer's `contents` pointer) and an `MTLTexture` (via `MTLDevice.makeTexture(descriptor:buffer:offset:bytesPerRow:)`). No blit from CPU to GPU — the texture IS the buffer. This is the same pattern used by `DynamicTextOverlay` in Spectral Cartograph.
+
+3. **Spectral Cartograph is retained unchanged.** The dashboard does not replace SC. SC remains the four-panel MIR diagnostic when used as the active preset. The dashboard adds a lighter-weight always-available metrics read-out that works on top of any preset.
+
+4. **Font strategy: system fallback first, custom TTF via bundle drop-in.** `DashboardFontLoader.resolveFonts(in:)` checks the bundle's `Fonts/` subdirectory for `Epilogue-Regular.ttf` / `Epilogue-Medium.ttf`. If absent (typical development configuration), it falls back to the system sans-serif (SF Pro on macOS). A `Resources/Fonts/README.md` placeholder documents the drop-in path. This avoids a hard dependency on a commercial font and keeps CI green without font assets.
+
+5. **`.bgra8Unorm` pixel format matches `DynamicTextOverlay`.** The `getBytes()` layout on Apple Silicon is `[B, G, R, A]` per pixel. Test helpers use `(b, g, r, a)` tuple naming throughout to prevent index confusion.
+
+6. **`beginFrame()` clears the full texture on every frame.** The dashboard is a live display — stale metrics from N-1 must never persist. Clearing by `memset` on the shared buffer is O(width × height × 4) but fast enough on Apple Silicon UMA. Future optimization (dirty-region tracking) is deferred.
+
+### Text coverage calibration (test thresholds)
+
+Observed pixel coverage on a 512×256 canvas:
+- 36pt Epilogue/SF Pro Medium "TEMPO 125": ~1.2% opaque pixels (alpha > 127). Thin monospaced strokes + antialiasing produce much lower coverage than naive bounding-box estimates. Test threshold: ≥ 0.5%.
+- 13pt Epilogue/SF Pro Regular "Spectral Cartograph": ~0.15% opaque pixels. Test threshold: ≥ 0.1%.
+
+These thresholds are intentionally low — they prove text was drawn somewhere on the canvas, not that it filled a specific area.
+
+### Implementation
+
+`Sources/Shared/Dashboard/DashboardTokens.swift`: design tokens (TypeScale, Spacing, Color, Weight, TextFont, Alignment). `Sources/Renderer/Dashboard/DashboardFontLoader.swift`: font resolution with `OSAllocatedUnfairLock` cache + `resetCacheForTesting()`. `Sources/Renderer/Dashboard/DashboardTextLayer.swift`: text rendering layer (`beginFrame/drawText/commit/resize`). `Sources/Renderer/Resources/Fonts/README.md`: drop-in font instructions. Tests: `DashboardTokensTests` (4), `DashboardFontLoaderTests` (3), `DashboardTextLayerTests` (5) — 12 total.
