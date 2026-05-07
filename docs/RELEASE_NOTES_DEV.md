@@ -6,6 +6,17 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-07-d] BUG-007.3 — Reverted (failed manual validation)
+
+**Increment:** BUG-007.3 (revert)
+**Type:** Revert
+
+**What changed.** Commit `94309858` reverted in full. The Schmitt hysteresis + drift-slope retry implementation did not deliver the manual-validation gates: Everlong planned regressed (5 → 14 lock drops in comparable windows), reactive Everlong landed at `bpm=85.4` (halving-correction misfire — separate issue, BUG-009), and a previously-unseen ~1 s "visual ahead of audio" offset surfaced on internal speakers (BUG-007.4 — investigation bug). The `LiveBeatDriftTracker` returns to its BUG-007.2 state. Three replacement bugs filed in `KNOWN_ISSUES.md`: BUG-007.4 (visual phase offset on internal speakers — diagnostics first), BUG-007.5 (adaptive-window lock hysteresis on asymmetric drift envelopes), BUG-009 (halving-correction threshold).
+
+**Validation evidence:** `~/Documents/phosphene_sessions/2026-05-07T14-28-40Z/` (planned), `~/Documents/phosphene_sessions/2026-05-07T14-33-47Z/` (reactive). Everlong planned: 14 lock drops in 75 s, drift envelope −68 to +25 ms (pre-fix: 5 drops). Reactive Everlong: `grid_bpm=85.4` from `halvingOctaveCorrected()` halving a 170 BPM raw output. Reactive Billie Jean (control): no regression, 3 lock drops, drift bounded.
+
+---
+
 ## [dev-2026-05-07-c] DASH.2.1 — Card layout redesign: stacked rows + WCAG-AA labels + brighter chrome
 
 **Increment:** DASH.2.1 (amendment to DASH.2)

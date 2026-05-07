@@ -2256,21 +2256,17 @@ Add a SwiftLint custom rule that flags `f\.(bass|mid|treb|sub_bass|low_bass|low_
 
 **Done-when:**
 
-- [x] `LiveBeatDriftTracker` exposes `staleMatchWindow=0.060`, asymmetric Schmitt logic in `update()`, `currentDriftSlope() -> Double?`. Public API additions documented.
-- [x] `runLiveBeatAnalysisIfNeeded()` restructured into A/B/C paths (no-grid initial attempts / prepared-cache skip / live-grid slope-retry); 20 s wider-window retry implemented; unstable-grid warning logged; previous grid retained on second high-slope event. `BeatGridSource` enum tracks install source.
-- [x] Mechanism C regression test passes (≤ 1 drop in 60 s of ±50 ms drift wander); slope-detector unit tests pass (flat ≈ 0, linear walk recovers slope, insufficient samples returns nil).
+- [ ] `LiveBeatDriftTracker` exposes `staleMatchWindow=0.060`, asymmetric Schmitt logic in `update()`, `currentDriftSlope() -> Double?`. Public API additions documented.
+- [ ] `MIRPipeline` publishes `latestDriftSlopeMsPerSec`.
+- [ ] `runLiveBeatAnalysisIfNeeded()` accepts a 20-second window via `BeatThisAnalysisRequest`; high-slope retry path implemented; unstable-grid warning logged; previous grid retained on second failure.
+- [ ] Mechanism C regression test passes (≤ 1 drop in 60 s); slope-detector unit tests pass; retry-widening integration tests pass.
 - [ ] Manual capture on Smells Like Teen Spirit (planned, prepared): `lock_state == 2` for ≥ 95 % of frames after first lock; `stddev(drift_ms over 10 s) < 25 ms`.
 - [ ] Manual capture on Everlong (planned, prepared): ≤ 1 lock drop in 50 s.
 - [ ] Manual capture on Everlong (reactive): either grid converges to within ±1 % of 158 BPM by t=30 s after wider-window retry, or `WARN: live BPM unstable` is logged and visuals continue with the prior grid (whichever applies — both are acceptable outcomes).
 - [ ] Manual capture on Billie Jean (reactive, control): no regression — drift stays bounded ±90 ms, lock holds.
-- [x] Full engine test suite passes (1104 / 1106; two pre-existing flakes pass on isolated re-run); 0 SwiftLint violations on touched files; `xcodebuild -scheme PhospheneApp build` clean.
-- [x] `KNOWN_ISSUES.md` BUG-007.3 marked Resolved (automated); manual validation criteria still pending.
-- [x] `RELEASE_NOTES_DEV.md` entry added (`[dev-2026-05-07-b]`).
-
-**Decisions deferred from spec:**
-- `MIRPipeline.latestDriftSlopeMsPerSec` not added — the slope is consumed directly by `VisualizerEngine+Stems.maybeTriggerSlopeRetry()` via `mirPipeline.liveDriftTracker.currentDriftSlope()`. If a future surface (debug overlay readout, session.csv column) wants per-frame slope, it can call the same getter or we can add the publish-property then.
-- `BeatThisAnalysisRequest` value type not added; window seconds passed as a parameter to the existing `dispatchLiveBeatInference` helper. No external API consumer needed it.
-- Slope-retry integration test deferred — `VisualizerEngine` isn't unit-testable in isolation (requires Metal + `AudioBuffer` + `RenderPipeline` construction). The slope-detector unit tests + manual session captures cover the contract.
+- [ ] Full engine test suite passes; 0 SwiftLint violations on touched files.
+- [ ] `KNOWN_ISSUES.md` BUG-007.3 closed; commit hash + manual-validation session paths recorded.
+- [ ] `RELEASE_NOTES_DEV.md` updated.
 
 **Out of scope (defer):**
 

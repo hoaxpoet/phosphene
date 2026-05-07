@@ -1,4 +1,3 @@
-// swiftlint:disable file_length
 // VisualizerEngine+Stems — Background stem separation pipeline.
 // Runs StemSeparator on a utility-QoS queue at 5-second cadence,
 // feeds per-stem analysis to the render pipeline via buffer(3).
@@ -199,29 +198,6 @@ extension VisualizerEngine {
     /// Maximum Beat This! attempts per track. One at 10 s; one retry at 20 s.
     private static let liveBeatMaxAttempts: Int = 2
 
-    /// Drift slope (ms/s) above which the live grid BPM is considered wrong
-    /// and a wider-window retry is justified (BUG-007.3). Empirical: reactive
-    /// Everlong post-QR.2 showed −4.8 ms/s on a 4 %-low BPM estimate; tracks
-    /// with correct BPM stayed under ±2 ms/s.
-    private static let liveBeatSlopeMsThreshold: Double = 5.0
-
-    /// Sustained-high-slope duration required to trigger the wider retry
-    /// (BUG-007.3). Avoids reacting to transient onset jitter.
-    private static let liveBeatSlopeSustainSeconds: Double = 10.0
-
-    /// Minimum gap between live Beat This! attempts of any kind (BUG-007.3).
-    /// Prevents thrashing when the wider-window retry also lands wrong.
-    private static let liveBeatRetryCooldownSeconds: Double = 30.0
-
-    /// Cap on slope-driven wider-window retries per track (BUG-007.3). After one
-    /// 20 s retry we hold the existing grid and log "live BPM unstable".
-    private static let liveBeatMaxSlopeRetries: Int = 1
-
-    /// Audio window length (seconds) for slope-driven wider retries (BUG-007.3).
-    /// Twice the standard 10 s window — gives Beat This! more onsets to disambiguate
-    /// busy mid-frequency content (rock, power chords) where 10 s is insufficient.
-    private static let liveBeatWideWindowSeconds: Double = 20.0
-
     /// Run Beat This! on the live tap audio buffer, triggering once at 10 s and
     /// retrying once at 20 s if the first attempt returns an empty grid.
     ///
@@ -234,129 +210,60 @@ extension VisualizerEngine {
     /// `LiveBeatDriftTracker`. Raw grids with BPM > 160 are halving-octave-corrected
     /// (double-time artefact from short audio windows) before installing.
     func runLiveBeatAnalysisIfNeeded() {
-        let elapsed = mirPipeline.elapsedSeconds   // Double since QR.1 / D-079
-
-        // Path A — no grid: initial-attempts path (10 s, 20 s if first empty).
-        if !mirPipeline.liveDriftTracker.hasGrid {
-            tryInitialLiveBeatAttempt(elapsed: elapsed)
-            return
-        }
-
-        // Path B — prepared-cache grid present: skip live inference entirely.
-        // Slope-driven retry on prepared grids is BUG-008 territory, out of scope here.
-        if liveBeatGridSource == .preparedCache {
-            if liveBeatAnalysisAttempts < Self.liveBeatMaxAttempts {
-                let bpmStr = String(format: "%.1f", mirPipeline.liveDriftTracker.currentBPM)
-                let trackTitle = currentTrack?.title ?? "unknown"
-                logger_liveBeat(
-                    "LiveBeat: prepared grid present (\(bpmStr) BPM) — " +
-                    "skipping live inference for '\(trackTitle)'"
-                )
-                liveBeatAnalysisAttempts = Self.liveBeatMaxAttempts
-            }
-            return
-        }
-
-        // Path C — live grid installed: slope-driven wider retry (BUG-007.3).
-        maybeTriggerSlopeRetry(elapsed: elapsed)
-    }
-
-    /// Path A — initial attempts at 10 s and (if first returns empty) 20 s.
-    /// Pre-BUG-007.3 behaviour, extracted to keep `runLiveBeatAnalysisIfNeeded` short.
-    private func tryInitialLiveBeatAttempt(elapsed: Double) {
         guard liveBeatAnalysisAttempts < Self.liveBeatMaxAttempts else { return }
+        guard !mirPipeline.liveDriftTracker.hasGrid else {
+            // Prepared-cache grid already installed — live inference must not overwrite it.
+            // The offline 30-second path is more reliable than the live 10-second window,
+            // especially for complex-meter tracks (Money 7/4, Pyramid Song 16/8).
+            let bpmStr = String(format: "%.1f", mirPipeline.liveDriftTracker.currentBPM)
+            let trackTitle = currentTrack?.title ?? "unknown"
+            logger_liveBeat(
+                "LiveBeat: prepared grid present (\(bpmStr) BPM) — " +
+                "skipping live inference for '\(trackTitle)'"
+            )
+            liveBeatAnalysisAttempts = Self.liveBeatMaxAttempts
+            return
+        }
+        let elapsed = mirPipeline.elapsedSeconds   // Double since QR.1 / D-079
         let nextTrigger = liveBeatAnalysisAttempts == 0
             ? Self.liveBeatMinSeconds
             : Self.liveBeatRetrySeconds
         guard elapsed >= nextTrigger else { return }
 
-        liveBeatAnalysisAttempts += 1
-        liveBeatLastAttemptElapsed = elapsed
-        let attemptNum = liveBeatAnalysisAttempts
-        dispatchLiveBeatInference(
-            elapsed: elapsed,
-            windowSeconds: Self.liveBeatMinSeconds,
-            attemptLabel: "\(attemptNum)/\(Self.liveBeatMaxAttempts)"
-        )
-    }
+        liveBeatAnalysisAttempts += 1   // prevent concurrent/duplicate calls
 
-    /// Path C — slope-driven wider retry (BUG-007.3). Capped at one fire per track;
-    /// replaces the existing live grid only if Beat This! returns a non-empty 20 s grid.
-    /// On a second high-slope event after the retry, logs an unstable-grid warning
-    /// and retains the previous grid (no third attempt).
-    private func maybeTriggerSlopeRetry(elapsed: Double) {
-        guard let slope = mirPipeline.liveDriftTracker.currentDriftSlope() else {
-            liveBeatHighSlopeStartElapsed = nil
-            return
-        }
-        guard abs(slope) > Self.liveBeatSlopeMsThreshold else {
-            liveBeatHighSlopeStartElapsed = nil
-            return
-        }
-        if liveBeatHighSlopeStartElapsed == nil {
-            liveBeatHighSlopeStartElapsed = elapsed
-        }
-        let sustained = elapsed - (liveBeatHighSlopeStartElapsed ?? elapsed)
-        guard sustained >= Self.liveBeatSlopeSustainSeconds else { return }
-
-        if liveBeatSlopeRetryCount >= Self.liveBeatMaxSlopeRetries {
-            let slopeStr = String(format: "%+.1f", slope)
-            logger_liveBeat(
-                "LiveBeat: WARN live BPM unstable on this track (slope=\(slopeStr) ms/s " +
-                "after wider-window retry) — retaining previous grid"
-            )
-            liveBeatHighSlopeStartElapsed = nil
-            return
-        }
-        guard elapsed - liveBeatLastAttemptElapsed >= Self.liveBeatRetryCooldownSeconds else { return }
-
-        liveBeatSlopeRetryCount += 1
-        liveBeatHighSlopeStartElapsed = nil
-        liveBeatLastAttemptElapsed = elapsed
-        let slopeStr = String(format: "%+.1f", slope)
-        logger_liveBeat(
-            "LiveBeat: WARN live BPM credibility low (slope=\(slopeStr) ms/s sustained " +
-            "\(Int(Self.liveBeatSlopeSustainSeconds))s) — retrying with " +
-            "\(Int(Self.liveBeatWideWindowSeconds))s window"
-        )
-        dispatchLiveBeatInference(
-            elapsed: elapsed,
-            windowSeconds: Self.liveBeatWideWindowSeconds,
-            attemptLabel: "slope-retry"
-        )
-    }
-
-    /// Snapshot audio at `windowSeconds`, fold to mono, dispatch Beat This! on stemQueue.
-    /// Shared by Path A (10 s) and Path C (20 s).
-    private func dispatchLiveBeatInference(
-        elapsed: Double,
-        windowSeconds: Double,
-        attemptLabel: String
-    ) {
+        // Snapshot interleaved stereo PCM using the actual tap sample rate.
+        // The buffer was initialized at 44100 Hz but the tap typically runs at
+        // 48000 Hz. Passing the real rate ensures we retrieve a full 10 seconds
+        // of audio instead of ~9.2 seconds (882000 vs 960000 samples). (D-079)
         let actualRate = tapSampleRate
         let interleaved = stemSampleBuffer.snapshotLatest(
-            seconds: windowSeconds, sampleRate: actualRate
+            seconds: Self.liveBeatMinSeconds, sampleRate: actualRate
         )
         guard interleaved.count >= 2 else { return }
+
         var monoMutable = [Float](repeating: 0, count: interleaved.count / 2)
         for i in 0..<monoMutable.count {
             monoMutable[i] = (interleaved[i * 2] + interleaved[i * 2 + 1]) * 0.5
         }
         let mono = monoMutable
-        let bufferStartTime = elapsed - windowSeconds
+
+        let bufferStartTime = elapsed - Self.liveBeatMinSeconds
+        let attemptNum = liveBeatAnalysisAttempts   // capture before async
         let elapsedStr = String(format: "%.1f", elapsed)
         let rateStr = String(format: "%.0f", actualRate)
         let sampleCountStr = "\(mono.count)"
         logger_liveBeat(
-            "LiveBeat: attempt \(attemptLabel) on " +
+            "LiveBeat: attempt \(attemptNum)/\(Self.liveBeatMaxAttempts) on " +
             "\(sampleCountStr) samples @ \(rateStr) Hz (t=\(elapsedStr)s)"
         )
+
         stemQueue.async { [weak self] in
             self?.performLiveBeatInference(
                 mono: mono,
                 sampleRate: actualRate,
                 bufferStartTime: bufferStartTime,
-                attemptLabel: attemptLabel
+                attemptNum: attemptNum
             )
         }
     }
@@ -367,7 +274,7 @@ extension VisualizerEngine {
     /// the 60-line SwiftLint gate. Always called on `stemQueue`.
     private func performLiveBeatInference(
         mono: [Float], sampleRate: Double,
-        bufferStartTime: Double, attemptLabel: String
+        bufferStartTime: Double, attemptNum: Int
     ) {
         // Lazy-load the analyzer on first use (weight loading is heavy).
         if liveBeatGridAnalyzer == nil {
@@ -385,7 +292,10 @@ extension VisualizerEngine {
         // mel spectrogram covers the correct duration and BPM is accurate.
         let rawGrid = analyzer.analyzeBeatGrid(samples: mono, sampleRate: sampleRate)
         guard !rawGrid.beats.isEmpty else {
-            logger_liveBeat("LiveBeat: attempt \(attemptLabel) returned empty grid")
+            let retryNote = attemptNum < Self.liveBeatMaxAttempts
+                ? "will retry at \(Int(Self.liveBeatRetrySeconds))s"
+                : "no more retries"
+            logger_liveBeat("LiveBeat: attempt \(attemptNum) returned empty grid — \(retryNote)")
             return
         }
 
@@ -401,7 +311,7 @@ extension VisualizerEngine {
         let meter = grid.beatsPerBar
         let firstBeat = grid.beats.first.map { String(format: "%.3f", $0) } ?? "none"
         logger_liveBeat(
-            "LiveBeat: grid ready (attempt \(attemptLabel)) — " +
+            "LiveBeat: grid ready (attempt \(attemptNum)) — " +
             "\(beatCount) beats, \(bpmStr) BPM, \(meter)/X meter, firstBeat=\(firstBeat)s"
         )
 
@@ -410,7 +320,6 @@ extension VisualizerEngine {
             let replacedExisting = self.mirPipeline.liveDriftTracker.hasGrid
             let trackTitle = self.currentTrack?.title ?? "unknown"
             self.mirPipeline.setBeatGrid(grid)
-            self.liveBeatGridSource = .liveAnalysis   // BUG-007.3: source-track for slope retry path
             let replaceNote = replacedExisting ? " (replaced existing grid)" : ""
             self.logger_liveBeat(
                 "BEAT_GRID_INSTALL: source=liveAnalysis, track='\(trackTitle)', " +
@@ -451,12 +360,6 @@ extension VisualizerEngine {
         // Allow live Beat This! to re-fire (up to liveBeatMaxAttempts) for the new track.
         liveBeatAnalysisAttempts = 0
 
-        // BUG-007.3: per-track slope-retry bookkeeping resets on every track change.
-        liveBeatSlopeRetryCount = 0
-        liveBeatHighSlopeStartElapsed = nil
-        liveBeatLastAttemptElapsed = -.infinity
-        liveBeatGridSource = .none
-
         pipeline.spectralHistory.reset()
 
         // BUG-006.1 instrumentation: cache-lookup log (see WiringLogs helpers).
@@ -469,7 +372,6 @@ extension VisualizerEngine {
             let grid = cached.beatGrid
             let title = identity.title
             if !grid.beats.isEmpty {
-                liveBeatGridSource = .preparedCache   // BUG-007.3: tag for slope-retry routing
                 let bpmStr = String(format: "%.1f", grid.bpm)
                 let firstBeat = grid.beats.first.map { String(format: "%.3f", $0) } ?? "none"
                 let replaceNote = replacedExisting ? " (replaced existing grid)" : ""
