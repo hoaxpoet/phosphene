@@ -37,7 +37,6 @@ struct SettingsStoreTests {
         #expect(store.showLiveAdaptationToasts == false)
         #expect(store.sessionRecorderEnabled == true)
         #expect(store.sessionRetention == .lastN10)
-        #expect(store.showPerformanceWarnings == false)
     }
 
     @Test func setCaptureMode_persistsToUserDefaults() {
@@ -148,12 +147,7 @@ struct SettingsStoreTests {
         #expect(store.sessionRetention == .lastN10)
     }
 
-    @Test func showPerformanceWarnings_default_isFalse() {
-        let defaults = makeSuite()
-        defer { teardown(defaults) }
-        let store = SettingsStore(defaults: defaults)
-        #expect(store.showPerformanceWarnings == false)
-    }
+    // showPerformanceWarnings was deleted in QR.4 / D-091.
 
     @Test func showLiveAdaptationToasts_default_isFalse() {
         let defaults = makeSuite()

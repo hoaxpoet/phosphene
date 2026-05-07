@@ -48,7 +48,11 @@ struct PlaybackView: View {
     @State private var showHelp: Bool = false
     @State private var showPlanPreview: Bool = false
     @State private var showSettings: Bool = false
-    @StateObject private var settingsStore = SettingsStore()
+    /// QR.4 / D-091: must be `@EnvironmentObject`, never `@StateObject`. A
+    /// `@StateObject SettingsStore()` here creates a parallel state world —
+    /// user toggles in Settings would never reach the playback-side reconciler.
+    /// `SettingsStoreEnvironmentRegressionTests` enforces this invariant.
+    @EnvironmentObject private var settingsStore: SettingsStore
     @State private var currentRegistry: PlaybackShortcutRegistry?
     @State private var keyMonitor = PlaybackKeyMonitor()
     @State private var fullscreenObserver = FullscreenObserver()

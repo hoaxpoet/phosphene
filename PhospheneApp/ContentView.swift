@@ -52,7 +52,10 @@ struct ContentView: View {
         case .idle:
             IdleView()
         case .connecting:
-            ConnectingView()
+            ConnectingView(
+                source: engine.sessionManager.sessionSource,
+                onCancel: { engine.sessionManager.cancel() }
+            )
         case .preparing:
             preparingView
         case .ready:
@@ -60,7 +63,16 @@ struct ContentView: View {
         case .playing:
             playbackView
         case .ended:
-            EndedView()
+            // `cancel()` (not `endSession()`) transitions any state → `.idle` —
+            // the prompt assumed endSession() did the .ended → .idle transition,
+            // but it transitions any state → `.ended`. cancel() is the documented
+            // .idle return path.
+            EndedView(
+                trackCount: engine.sessionManager.currentPlan?.tracks.count ?? 0,
+                sessionDuration: nil,
+                onStartNewSession: { engine.sessionManager.cancel() },
+                onOpenSessionsFolder: { EndedView.openSessionsFolder() }
+            )
         }
     }
 

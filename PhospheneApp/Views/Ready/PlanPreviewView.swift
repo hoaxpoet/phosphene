@@ -128,11 +128,15 @@ struct PlanPreviewView: View {
             .disabled(viewModel.isRegenerating || viewModel.rows.isEmpty)
             .accessibilityIdentifier(Self.regenerateButtonID)
 
-            // TODO(U.5c): Full Modify editor — drag-to-reorder, transition overrides.
-            Button("Modify") {}
+            // QR.4 / D-091: hidden until V.5 plan-modification work lands.
+            // Tooltip lies ("coming in a future update" on a disabled control)
+            // are bugs per the post-QR.4 UX contract — hide instead.
+            #if ENABLE_PLAN_MODIFICATION
+            // TODO(V.5): Full Modify editor — drag-to-reorder, transition overrides.
+            Button(String(localized: "plan_preview.modify_button")) {}
                 .disabled(true)
                 .foregroundColor(.secondary)
-                .help("Full plan editing — coming in a future update.")
+            #endif
         }
         .padding(16)
         .background(.ultraThinMaterial)
