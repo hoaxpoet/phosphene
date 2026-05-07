@@ -2612,13 +2612,18 @@ First live card. `BeatCardBuilder` (pure, Sendable) maps a `BeatSyncSnapshot` to
 - [x] `.progressBar` row variant fills left-to-right; tests verify zero / half / full.
 - [x] All 27 dashboard tests pass (12 DASH.1 + 6 DASH.2.1 + 6 BeatCardBuilder + 3 progress-bar); 0 SwiftLint violations on touched files; app build clean.
 
-### Increment DASH.4 — Stem energy card
+### Increment DASH.4 — Stem energy card ✅ 2026-05-07
 
-"STEMS" card: four stem rows (Drums / Bass / Vocals / Other), each showing a deviation-bar and energy value.
+Second live card. `StemsCardBuilder` (pure, Sendable) maps a `StemFeatures` snapshot to a `DashboardCardLayout` titled `STEMS` with four `.bar` rows in percussion-first reading order — DRUMS / BASS / VOCALS / OTHER — each driven by the corresponding `*EnergyRel` field (MV-1 / D-026). Range is `-1.0 ... 1.0` (headroom over typical ±0.5 envelope; loud transients still readable). Sign-correct visual feedback: positive deviation fills right of centre, negative fills left, zero draws no fill (the dim background bar dominates — the .impeccable "absence-of-signal" stable state). `valueText` formatted `%+.2f` so the leading sign is always shown (Milkdrop-convention readback for signed bars). Uniform `Color.coral` across all four rows in v1; per-stem palette tuning is reserved for a DASH.4.1 amendment if Matt's eyeball flags monotony — direction (left vs right of centre) carries the stem-state semantics, colour reinforces. The builder is pass-through; clamping authority lives in the renderer's `drawBarFill` (defence-in-depth at one layer). Wiring into `RenderPipeline` / `PlaybackView` is DASH.6 scope, not DASH.4.
 
 **Done when:**
-- [ ] Bar width tracks `stemEnergyDev` sign correctly (positive = right of centre, negative = left).
-- [ ] Zero-energy row renders a centred dim bar.
+- [x] `StemsCardBuilder` maps `StemFeatures` → `DashboardCardLayout` (4 rows, range `-1.0...1.0`, uniform coral, `%+.2f` valueText).
+- [x] Bar width tracks `*EnergyRel` sign correctly (positive = right of centre, negative = left).
+- [x] Zero-energy row renders no fill (background bar only) — stable visual state.
+- [x] Builder passes raw `*EnergyRel` through unchanged (clamp authority in renderer; test e regression-locks).
+- [x] 6 `@Test` functions in `StemsCardBuilderTests` (zero, +drums, −bass, mixed-with-artifact, unclamped passthrough, width override).
+- [x] `card_stems_active.png` artifact written for M7-style review.
+- [x] D-084 captures: `.bar` over `.progressBar` rationale, builder reads `StemFeatures` directly (no `StemEnergySnapshot`), uniform-coral v1 + DASH.4.1 amendment slot, no-clamp-at-builder, range rationale, percussion-first row order.
 
 ### Increment DASH.5 — Frame budget card
 

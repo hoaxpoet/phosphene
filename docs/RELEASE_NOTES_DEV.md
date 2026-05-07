@@ -6,6 +6,48 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-07-f] DASH.4 — Stem energy card
+
+**Increment:** DASH.4
+**Type:** Feature (dashboard)
+
+**What changed.**
+
+The second **live** dashboard card binds `StemFeatures` → `DashboardCardLayout`. New pure `StemsCardBuilder` produces a four-row card titled `STEMS`: DRUMS / BASS / VOCALS / OTHER, each `.bar` row driven by the corresponding `*EnergyRel` field (MV-1 / D-026, floats 17–24 of `StemFeatures`). Range `-1.0 ... 1.0` (headroom over typical ±0.5 envelope). Sign-correct visual feedback: positive deviation fills right of centre (kick raises drums above AGC average), negative fills left (duck), zero draws no fill — the dim background bar dominates as the .impeccable "absence-of-signal" stable state. `valueText` formatted `%+.2f` so the leading sign is always shown (Milkdrop-convention readback). Uniform `Color.coral` across all four rows in v1; per-stem palette tuning is reserved for a DASH.4.1 amendment if Matt's eyeball flags monotony — direction (left vs right of centre) carries the stem-state semantic, colour reinforces. Builder is pass-through; clamping authority lives in the renderer's `drawBarFill` (defence-in-depth at one layer; test e regression-locks). Wiring into `RenderPipeline` / `PlaybackView` is DASH.6 scope, not DASH.4.
+
+**Files added.**
+- `PhospheneEngine/Sources/Renderer/Dashboard/StemsCardBuilder.swift` — pure `Sendable` struct: `build(from: StemFeatures, width: CGFloat = 280) -> DashboardCardLayout`. Single private `makeRow(label:value:)` helper produces a `.bar` row; uniform coral, range `-1.0 ... 1.0`, valueText `%+.2f`.
+- `PhospheneEngine/Tests/PhospheneEngineTests/Renderer/StemsCardBuilderTests.swift` — 6 `@Test` functions in `@Suite("StemsCardBuilder")`: zero snapshot (4 rows × {label, value=0, valueText=+0.00, coral, range -1...1}), positive drums (row 0 only, `+0.42`), negative bass (row 1 only, `-0.30`), mixed snapshot with row-order assertions + artifact write, unclamped passthrough at value 1.5 (regression lock for "renderer is the clamp authority"), width override default-arg path.
+
+**Files edited.**
+- `docs/ENGINEERING_PLAN.md` — DASH.4 row flipped to ✅ with implementation summary.
+- `docs/DECISIONS.md` — D-084 appended (six decisions: `.bar` over `.progressBar`, no `StemEnergySnapshot` intermediary, uniform coral v1 + DASH.4.1 amendment slot, no-clamp-at-builder, range rationale, percussion-first row order).
+- `CLAUDE.md` — `Renderer/Dashboard/` Module Map entry for `StemsCardBuilder`.
+
+**Decisions captured.**
+- **D-084 — STEMS card data binding.** `.bar` (signed) over `.progressBar` (unsigned) because `*EnergyRel` is naturally signed and unsigned would lose the duck information. Builder reads `StemFeatures` directly because no `StemEnergySnapshot` analog exists and adding one would only duplicate the MV-1 contract. Uniform `Color.coral` v1 because direction (left vs right of centre) is the load-bearing signal, not colour — multi-colour would read as a stereo VU meter / DAW mixer (wrong product cue) and would conflict with D-083's status-colour reservation. No clamp at builder layer; renderer's `drawBarFill` is the single authority. Range `-1.0 ... 1.0` puts typical ±0.5 envelope at ~50% bar fill (visible motion) with headroom for transients. Row order DRUMS / BASS / VOCALS / OTHER follows .impeccable's percussion-first reading order.
+
+**Test count delta.**
+- 6 dashboard tests added (3 → wait, 27 → 33 dashboard tests pass: 12 DASH.1 + 6 DASH.2.1 + 6 BeatCardBuilder + 3 progress-bar + 6 StemsCardBuilder).
+- Full engine suite remains green except the pre-existing `MetadataPreFetcher.fetch_networkTimeout_returnsWithinBudget` and `MemoryReporter.residentBytes` env-dependent flakes documented in CLAUDE.md.
+- Two GPU-perf tests (`RenderPipelineICBTests.test_gpuDrivenRendering_cpuFrameTimeReduced`, `SSGITests.test_ssgi_performance_under1ms_at1080p`) flaked under full-suite parallel-run contention; both pass in isolation. Neither touches Dashboard code; no regression from DASH.4 (the builder is pure CPU and changes no renderer pipeline state).
+- 0 SwiftLint violations on touched files; app build clean.
+
+**What's intentionally NOT in this increment.**
+- No `RenderPipeline` / `DebugOverlayView` / `PlaybackView` wiring — DASH.6 scope.
+- No multi-card composition / screen positioning — DASH.6 scope.
+- No per-stem fill colours — DASH.4.1 amendment slot if monotony reads on the artifact eyeball.
+- No fifth row (TOTAL / mood / frame budget) — STEMS is exactly DRUMS / BASS / VOCALS / OTHER. Frame budget is DASH.5; mood would be a future MOOD card.
+- No `StemEnergySnapshot` value type — builder reads `StemFeatures` directly.
+- No clamp at the builder layer — renderer is the single clamp authority.
+- No new row variant — `.bar` from DASH.2 already covers signed deviation. (One less commit than DASH.3.)
+- No `Equatable` on `Row` (D-082, D-083 standing rule) — tests use switch-pattern extraction.
+
+**Artifact.**
+`.build/dash1_artifacts/card_stems_active.png` — STEMS card rendered with `drumsEnergyRel = 0.5`, `bassEnergyRel = -0.4`, `vocalsEnergyRel = 0.2`, `otherEnergyRel = -0.1` over the deep-indigo backdrop. Bar directions readable: DRUMS right, BASS left, VOCALS right (small), OTHER left (small). Reserved for Matt's M7-style eyeball review of the live STEMS card.
+
+---
+
 ## [dev-2026-05-07-e] DASH.3 — Beat & BPM card
 
 **Increment:** DASH.3
