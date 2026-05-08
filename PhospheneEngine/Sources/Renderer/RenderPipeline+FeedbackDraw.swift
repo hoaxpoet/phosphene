@@ -81,7 +81,7 @@ extension RenderPipeline {
         features: inout FeatureVector,
         stemFeatures: StemFeatures,
         activePipeline: MTLRenderPipelineState,
-        particles: ProceduralGeometry?
+        particles: (any ParticleGeometry)?
     ) {
         guard let descriptor = view.currentRenderPassDescriptor,
               let drawable = view.currentDrawable else { return }

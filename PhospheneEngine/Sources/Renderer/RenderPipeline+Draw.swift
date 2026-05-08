@@ -23,7 +23,7 @@ struct FeedbackDrawContext {
     var stemFeatures: StemFeatures
     let activePipeline: MTLRenderPipelineState
     let composePipeline: MTLRenderPipelineState
-    let particles: ProceduralGeometry?
+    let particles: (any ParticleGeometry)?
     let textures: [MTLTexture]
     let texIndex: Int
 }
@@ -277,7 +277,7 @@ extension RenderPipeline {
         features: inout FeatureVector,
         stemFeatures: StemFeatures,
         activePipeline: MTLRenderPipelineState,
-        particles: ProceduralGeometry?
+        particles: (any ParticleGeometry)?
     ) {
         guard let descriptor = view.currentRenderPassDescriptor,
               let drawable = view.currentDrawable else { return }
