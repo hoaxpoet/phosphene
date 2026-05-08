@@ -3,7 +3,7 @@
 **Family:** organic
 **Render pipeline:** direct_fragment (2D SDF, per D-043) + mv_warp
 **Rubric:** full (gated by V.6 certification; uplift target is V.7)
-**Last curated:** 2026-05-03
+**Last curated:** 2026-05-09
 
 > **Architectural reminder.** Per D-043, Arachne is permanently ruled out of 3D ray
 > march. Fine-structure presets (silk, fibers, filaments) require sub-pixel SDF
@@ -21,9 +21,11 @@
 
 > **2026-05-05 material-priority decision.** For Arachne v8, droplets are the primary fidelity carrier. Silk is secondary. Keep axial silk highlights as a minor lighting effect, but do not implement full Marschner-lite as the first material priority. Prioritize refractive droplet material, sag, irregular geometry, and world interaction.
 
+> **2026-05-09 V.7.7C.5 reframe.** Section 4 of `ARACHNE_V8_DESIGN.md` was rewritten end-to-end from a six-layer dark close-up forest to a two-layer **atmospheric abstraction** backdrop after Matt's 2026-05-08 manual smoke flagged the forest framing as "completely devoid of value" / "lines do not read as branches". Reference `20_macro_backlit_purple_canvas_filling_web.jpg` was added as the V.7.7C.5 hero anchor. The forest-specific references **02, 11, 17, 18** are retired *for §4 implementation duty* (their detailed annotations below remain for historical comparison); they no longer drive what the WORLD pass renders. The `19_spider_eye_specular.jpg` reference is unaffected (it informs §6 spider material). All four anti-references (`09`, `10`) and the silence anchor (`08`) are unchanged. The full Q&A capturing the 15 V.7.7C.5 spec decisions lives in `ARACHNE_V8_DESIGN.md §4.5`.
+
 ## Reference images
 
-Files in this folder, ordered to walk the detail cascade (§1.2) from macro to micro to specular, then atmosphere/lighting, then palette anchor, then anti-references. References 11–19 are appended in the order they support: web-anchoring (11), spider anatomy (12–14), forest-world atmosphere/detail (15–18), spider eye specular (19). Each name encodes the trait it demonstrates per `../_NAMING_CONVENTION.md`. References should be ≤ 500 KB each; crop and compress before committing.
+Files in this folder, ordered to walk the detail cascade (§1.2) from macro to micro to specular, then atmosphere/lighting, then palette anchor, then anti-references. References 11–19 are appended in the order they support: web-anchoring (11), spider anatomy (12–14), forest-world atmosphere/detail (15–18), spider eye specular (19). Reference 20 was added for V.7.7C.5 as the canvas-filling-web + backlit-atmosphere hero. Each name encodes the trait it demonstrates per `../_NAMING_CONVENTION.md`. References should be ≤ 500 KB each; crop and compress before committing.
 
 | File | Annotation (what to learn from this image) |
 |---|---|
@@ -46,6 +48,7 @@ Files in this folder, ordered to walk the detail cascade (§1.2) from macro to m
 | `17_floor_moss_leaf_litter.jpg` | **Forest floor / bottom-of-frame ground layer.** Damp moss + decaying leaves + scattered twigs + small pine cones. Informs the ground-layer detail at the bottom edge of the frame in the V.7.7+ world model. Cool damp palette (greens + browns + decay-greys) consistent with `06`. Density of detail here sets the resolution target: the ground layer must be readable as forest floor, not abstract texture. |
 | `18_bark_close_up.jpg` | **Near-frame branch surface micro-detail.** Deeply furrowed bark with vertical ridge structure, brown-grey palette, sharp relief. This is the surface texture for the near-frame branch layer — branches that the web's outer radials anchor to (see `11`). Informs the bark normal/displacement detail when a branch passes close to camera. The high-contrast ridges should NOT bleed into rim-light blooming on the silk; bark stays matte and absorbing while silk catches highlights. |
 | `19_spider_eye_specular.jpg` | **Specular highlight on chitinous eye lens.** Macro showing the bright pinpoint reflections on the principal eyes of a spider. Informs the §4.18 spider-easter-egg material question: should the eyes carry a tiny mirror-specular sparkle? This image says yes — a single bright dot per eye lens reads as alive, not glassy. **Note: this is a jumping spider (Salticidae), not an orb-weaver. Orb-weaver eye clusters are smaller and more uniform — 8 small eyes in a tight cluster, not 2 large forward-facing principal eyes.** Use this image for the SPECULAR HIGHLIGHT QUESTION only; do not use it as anatomical reference for the Arachne spider's eye configuration. |
+| `20_macro_backlit_purple_canvas_filling_web.jpg` | **V.7.7C.5 hero anchor — canvas-filling web + backlit atmospheric abstraction.** Macro orb-weaver web filling the full frame against a soft purple-magenta backlit haze; anchor points are out of frame and the web reads as the dominant subject. Establishes three V.7.7C.5 invariants simultaneously: (1) **off-frame anchors** — the outer polygon vertices live at or beyond the canvas border (`kBranchAnchors[6]` at `[0,1]²` borders, no literal branches drawn); (2) **canvas-filling web** — `webR ≈ 0.55` (was 0.22) so the polygon spans most of the visible UV range; (3) **atmospheric abstraction backdrop** — no readable forest geometry, just a single sky-band gradient + soft volumetric haze keyed to mood (the §4 reframe retiring the six-layer dark forest). Per-strand sag, droplet beading, and the dim hub disc all stay legible despite the bright backdrop because the web silhouette stays darker than the atmosphere (§10.1.5). The purple palette here is one mood point, not a fixed target — the actual sky-band hue is driven by valence/arousal. |
 
 ## Mandatory traits (per SHADER_CRAFT.md §12.1)
 
@@ -56,7 +59,7 @@ For Arachne specifically:
   - meso = per-strand sag/tension variation (longer threads droop more, per `02_meso_per_strand_sag.jpg`); ±22% per-spoke angular jitter; per-web hub-offset and strand-count jitter
   - micro = adhesive droplets on spiral threads only, hash-lattice placed at 8–12 px spacing per `03_micro_adhesive_droplet.jpg`
   - specular = mirror specular on refractive droplets as the primary fidelity carrier + subtle axial silk glints per `04_specular_silk_fiber_highlight.jpg` as a secondary lighting effect
-- [ ] **Web-to-world anchor structure (V.7.7+):** outer frame is an irregular polygon of 4–7 branch-attachment points, not a circle; outermost radials terminate on near-frame branches with a small adhesive blob at the join. Reference `11_anchor_web_in_branch_frame.jpg`.
+- [ ] **Web-to-world anchor structure (V.7.7C.5 reframe):** outer frame is an irregular polygon of 4–6 vertices selected from `kBranchAnchors[6]` at canvas borders (`[0,1]²`); anchors are **off-frame** (no literal branches drawn) and the polygon spans most of the visible UV (`webR ≈ 0.55`, was 0.22). Outermost radials terminate at the polygon vertices, not on rendered branches. Reference `20_macro_backlit_purple_canvas_filling_web.jpg`. (The earlier V.7.7+ formulation citing `11_anchor_web_in_branch_frame.jpg` and "small adhesive blob at the join" is retired by the §4 reframe; ref 11 stays in the table for historical context only.)
 - [ ] **Hero noise function(s):** `fbm8` for per-strand micro-wobble and dust-mote density field; `hash_u32/f01` family for per-web seed jitter and droplet placement (from `Shaders/Utilities/Noise/`).
 - [ ] **Material count and recipes (≥ 3):**
   - dielectric droplet material (clear refractive spherical cap with world-texture refraction, Fresnel rim, dark edge ring, and pinpoint specular) — **primary fidelity carrier**
@@ -70,20 +73,20 @@ For Arachne specifically:
   - **No absolute thresholds.** Reject any `smoothstep(0.22, 0.32, f.bass)` style pattern (D-026).
 - [ ] **Silence fallback (D-019):** at `totalStemEnergy == 0`, blend via `smoothstep(0.02, 0.06, totalStemEnergy)` to FeatureVector proxies — silk emission falls back to `f.bass_dev * 0.6`; dust density falls back to a static low floor. Two pre-seeded stable webs guarantee D-037 invariants 1 and 4 from frame zero (per `ArachneState` seeding). Reference `08_palette_bioluminescent_organism.jpg` for the silence-state palette anchor — deep black background with soft emission readability.
 - [ ] **Performance ceiling:** ≤ 5.5 ms p95 at 1080p Tier 2 (matches `complexity_cost.tier2 = 5.5` in JSON sidecar; refractive droplet evaluation and world-texture sampling are expected to dominate cost).
-- [ ] **Hero reference image:** `01_macro_dewy_web_on_dark.jpg`. If a session only matches one frame, match this one.
+- [ ] **Hero reference images (dual, V.7.7C.5):** `20_macro_backlit_purple_canvas_filling_web.jpg` for canvas-fill composition, off-frame anchors, and atmospheric-abstraction backdrop; `01_macro_dewy_web_on_dark.jpg` for the strand/droplet/specular cascade at strand resolution. A session must match BOTH — `20` for the global framing, `01` for the per-strand fidelity. If only one can be matched, match `20` (the §4 reframe is the higher-order failure mode).
 
 ## Expected traits (per §12.2 — at least 2 of 4)
 
 - [ ] **Triplanar texturing on non-planar surfaces** — n/a in 2D SDF; surfaces are evaluated in screen UV. Not applicable.
-- [ ] **Detail normals** — applicable first to near-frame bark and branch surfaces per `18_bark_close_up.jpg`; bark normal/displacement gives the world depth that makes the web read as foreground. Silk micro-displacement is optional and secondary; do not let it displace the refractive droplet work.
-- [ ] **Volumetric fog or aerial perspective** — applicable. Soft 0.02 fog and a gentle dust-mote field behind the web make it read against air, not void. Mandatory per §10.1.5; references `06_atmosphere_dark_misty_forest.jpg` (volume + palette default), `07_atmosphere_dust_light_shaft.jpg` (mote density), `15_atmosphere_aurora_forest.jpg` (high-arousal sky variant), `16_atmosphere_dappled_pine_forest.jpg` (high-valence warm variant).
+- [ ] **Detail normals** — **N/A in V.7.7C.5.** Near-frame bark/branch surfaces are retired by the §4 reframe (no literal branches drawn; anchors are off-frame). Ref `18_bark_close_up.jpg` is retired for §4 implementation duty. The expected-trait slot is satisfied by volumetric fog + light shafts instead.
+- [ ] **Volumetric fog or aerial perspective (V.7.7C.5 reframe)** — applicable and mandatory. Two-layer atmospheric abstraction backdrop: (1) a single full-frame mood-driven sky-band gradient (valence/arousal-keyed hue, see §4.3); (2) volumetric god-ray-anchored haze with 1–2 mood-angled light shafts at brightness coefficient `0.30 × val` (raised from the V.7.7 placeholder `0.06 × val`), with dust motes concentrated **inside the shaft cones only** rather than as a uniform field. Reference `20_macro_backlit_purple_canvas_filling_web.jpg` for the soft purple-magenta backlit haze archetype. The earlier multi-reference set (`06`/`15`/`16` for sky variants, `07` for uniform mote density) is retired for §4 implementation duty by the V.7.7C.5 reframe; those entries stay in the table for historical comparison.
 - [ ] **SSS / fiber BRDF / anisotropic specular** — applicable but **secondary for Arachne v8.** Full Marschner-lite silk is no longer the first material priority. Keep a restrained axial highlight per `04_specular_silk_fiber_highlight.jpg` only where the key light grazes a strand. The largest fidelity lift is the refractive droplet system working against a real WORLD pass, plus sag, irregular geometry, and atmospheric depth.
 
 ## Strongly preferred traits (per §12.3 — at least 1 of 4)
 
 - [ ] **Hero specular highlight in ≥60% of frames** — applicable. Droplet mirror specular sparkles on capture-spiral threads should carry this requirement in most frames. Silk axial highlights are allowed as subtle secondary glints, not the dominant visual event. Reference `03_micro_adhesive_droplet.jpg` for bead spacing/material priority, `04_specular_silk_fiber_highlight.jpg` for restrained strand glints, and `19_spider_eye_specular.jpg` for spider eye sparkle when the easter egg is on screen.
 - [ ] **Parallax occlusion mapping** — n/a in 2D SDF. Not applicable.
-- [ ] **Volumetric light shafts or dust motes** — applicable and recommended. Dust-mote field at low density behind the web; faint god-ray hint from the rim back-light direction. Reference `07_atmosphere_dust_light_shaft.jpg`.
+- [ ] **Volumetric light shafts or dust motes (V.7.7C.5 reframe)** — applicable and **promoted to load-bearing** by the §4 reframe. 1–2 mood-angled god-ray shafts at brightness coefficient `0.30 × val`; dust motes concentrated inside the shaft cones (not a uniform field behind the web). Reference `20_macro_backlit_purple_canvas_filling_web.jpg` for the backlit-shaft archetype. Ref `07_atmosphere_dust_light_shaft.jpg` is retired for §4 implementation duty.
 - [ ] **Chromatic aberration / thin-film interference** — applicable on the spider easter-egg carapace only (§4.18 bioluminescent chitin's iridescent thin-film, per `14_spider_iridescent_chitin.jpg`). Skip on silk to preserve documentary realism (Gossamer V.8 owns chromatic aberration on wave peaks; not Arachne).
 
 **Score target:** 2/4 strongly preferred (hero specular, dust motes).
@@ -108,15 +111,15 @@ The anti-references cover two different ways a Claude Code session can produce a
 
 Specific audio→visual mappings that must hold:
 
-- **Continuous primary drivers** (deviation primitives, D-026): droplet brightness/refraction intensity and subtle silk accent intensity ← `f.bass_att_rel`; dust-mote density ← `f.mid_att_rel`; per-strand micro-quiver phase ← `f.beat_phase01` (MV-3b, not `time`).
-- **Beat accents** (deviation primitives, D-026): droplet specular/emission peaks ← `stems.drums_energy_dev` blended with `f.beat_bass_dev` fallback; hub anticipation pulse ← `f.beat_phase01` approach curve (`approachFrac * 0.004` style ramp, per `VolumetricLithograph` reference).
+- **Continuous primary drivers** (deviation primitives, D-026): droplet brightness/refraction intensity and subtle silk accent intensity ← `f.bass_att_rel`; dust-mote density (V.7.7C.5: motes live inside shaft cones only) ← `f.mid_att_rel`; per-strand micro-quiver phase ← `f.beat_phase01` (MV-3b, not `time`).
+- **Beat accents** (deviation primitives, D-026): droplet specular/emission peaks ← `stems.drums_energy_dev` blended with `f.beat_bass_dev` fallback; hub anticipation pulse ← `f.beat_phase01` approach curve (`approachFrac * 0.004` style ramp, per `VolumetricLithograph` reference). V.7.7C.4 hybrid coupling: per-beat global emission pulse `+= max(beat_bass, beat_composite) * 0.06` and rising-edge beat advances `spiralChordIndex` by 1 (preserves D-095 Decision 2's audio-modulated TIME-driven build clock).
 - **Stem warmup** (D-019): all `stems.*` reads must blend through `smoothstep(0.02, 0.06, totalStemEnergy)` to FeatureVector proxies. The first ~10 s of every track and all of ad-hoc mode must look correct without stems.
-- **Structure stays solid** (D-020): web geometry is mostly static. Audio modulates emission, dust density, and droplet brightness — **not** strand position, hub location, or radial count. Per-web stage lifecycle (anchorPulse → radial → spiral → stable → evicting) is beat-measured, not amplitude-driven.
-- **Spider easter-egg trigger** (D-040): `subBass > 0.65 AND bassAttackRatio < 0.55` held ≥ 0.75 s, with 300 s session cooldown. Sustained resonant bass only — never kick-drum transients.
+- **Structure stays solid** (D-020): web geometry is mostly static. Audio modulates emission, dust density, droplet brightness, and (V.7.7C.4) build pacing — **not** strand position, hub location, or radial count. Foreground hero web build advances on audio-modulated TIME (`pace = 1.0 + 0.18 × midAttRel + max(0, 0.5 × drumsEnergyDev)`, D-095) plus per-beat chord advance, NOT beat-counted measures (the V.7.5 beat-measured stage lifecycle is retired).
+- **Spider easter-egg trigger** (V.7.7C.4 / D-095): `f.bass_att_rel > 0.30` (smoothed bass envelope, the same primitive driving §8.2 vibration) held ≥ 0.75 s, with per-segment cooldown latch (replaces V.7.5's 300 s session cooldown). Brief kick pulses are filtered by the 0.75 s sustain accumulator unaided. The V.7.5 formulation `subBass > 0.65 AND bassAttackRatio < 0.55` is retired (Failed Approach #57 — acoustically impossible on real music).
 
 ## Outstanding actions
 
-- [ ] **Compress all images to ≤ 500 KB** before final commit. Current sizes (per disk): `03` is 1.3 MB, `04` is 3.2 MB, `06` is 2.7 MB, `07` is 7.9 MB. **New (V.7.7 extension):** `11` is 5.1 MB, `12` is 951 KB, `13` is 4.6 MB, `14` is 2.1 MB, `15` is 3.5 MB, `16` is 8.3 MB, `17` is 3.5 MB, `18` is 8.7 MB, `19` is 1.0 MB. Every extension-set image needs compression.
+- [ ] **Compress all images to ≤ 500 KB** before final commit. Current sizes (per disk): `03` is 1.3 MB, `04` is 3.2 MB, `06` is 2.7 MB, `07` is 7.9 MB. **New (V.7.7 extension):** `11` is 5.1 MB, `12` is 951 KB, `13` is 4.6 MB, `14` is 2.1 MB, `15` is 3.5 MB, `16` is 8.3 MB, `17` is 3.5 MB, `18` is 8.7 MB, `19` is 1.0 MB. **V.7.7C.5 addition:** verify `20` size on disk and compress if > 500 KB. Every extension-set image needs compression.
 - [x] **P0-#1 (anchor-to-bark macro): dropped 2026-05-03.** Empirical correction — real orb-weaver webs predominantly anchor to twigs, leaf petioles, and grass stems, not bark trunks. Ref 11 covers the polygon-of-anchors context at the right scale. `ARACHNE_V8_DESIGN.md §5.9` relaxes the bark-thickness assumption accordingly (twig-thickness branches are the common case; bark detail per ref 18 used only for trunk-thickness anchors).
 - [ ] **P1 enrichment refs (not blocking V.7.7+ implementation):**
   - **Mid-distance forest, moderate fog.** Boundary refinement between `06` (heavy fog, distant trees barely readable) and a clearer-mid-distance state — would refine §4.2.2 / §4.2.3 falloff. Source if V.7.7 harness review shows the boundary reads wrong.
@@ -132,6 +135,7 @@ Specific audio→visual mappings that must hold:
 
 Curated by: Matt
 Extension set (refs 11–19) curated by: Matt, 2026-05-03
+V.7.7C.5 hero anchor (ref 20) curated by: Matt, 2026-05-09
 
 Image sources:
 
@@ -154,5 +158,6 @@ Image sources:
 - `17_floor_moss_leaf_litter.jpg` — Unsplash, photographer Gryffyn M, photo ID `Xd6mLco-MYo`. Unsplash License.
 - `18_bark_close_up.jpg` — Unsplash, photographer Behnam Norouzi, photo ID `RxpjF9um4cg`. Unsplash License.
 - `19_spider_eye_specular.jpg` — Unsplash, photographer credited as "Getty Images" via Unsplash partnership, photo ID `6c-5EAYq8KE`. **Verify license terms before commit** — Getty/Unsplash partnership images may have stricter terms than standard Unsplash License. If license is restrictive, source an equivalent CC-BY or public-domain spider-eye macro from Wikimedia Commons (peacock spider macros by Jürgen Otto are CC-licensed).
+- `20_macro_backlit_purple_canvas_filling_web.jpg` — *(fill in source + license — provided by Matt 2026-05-09; verify origin before commit)*
 
 Unsplash License terms: free for commercial and non-commercial use, no attribution required but recommended. Recording attributions here protects future re-licensing audits.
