@@ -8,6 +8,12 @@ using namespace metal;
 
 // MARK: - FeatureVector
 
+// Matches Swift FeatureVector layout (48 floats = 192 bytes, MV-1/MV-3b).
+// Field order is byte-identical to PresetLoader+Preamble.swift's `FeatureVector`
+// so the same MTLBuffer is consumed by engine-library shaders (Particles*.metal,
+// MVWarp.metal, feedback shaders) and preset shaders interchangeably. The first
+// 32 floats / 128 bytes match the pre-MV-1 struct exactly; existing engine
+// readers (Murmuration's `particle_update` etc.) are byte-identical.
 struct FeatureVector {
     float bass, mid, treble;
     float bass_att, mid_att, treb_att;
@@ -18,7 +24,19 @@ struct FeatureVector {
     float time, delta_time;
     float _pad0, aspect_ratio;
     float accumulated_audio_time;
-    float _pad1, _pad2, _pad3, _pad4, _pad5, _pad6, _pad7;
+    // MV-1 deviation: xRel=(x-0.5)*2 (±0.5), xDev=max(0,xRel) (D-026).
+    float bass_rel, bass_dev;
+    float mid_rel,  mid_dev;
+    float treb_rel, treb_dev;
+    float bass_att_rel, mid_att_rel, treb_att_rel;
+    // MV-3b beat phase: 0 at last beat, rises to 1 at next (D-028).
+    float beat_phase01, beats_until_next;
+    // Bar phase: 0 at downbeat, rises to 1 at next downbeat (floats 37–38).
+    float bar_phase01;
+    float beats_per_bar;
+    // Padding to 192 bytes (floats 39–48).
+    float _pad3, _pad4, _pad5, _pad6, _pad7,
+          _pad8, _pad9, _pad10, _pad11, _pad12;
 };
 
 // MARK: - FeedbackParams
@@ -32,20 +50,53 @@ struct FeedbackParams {
 // MARK: - StemFeatures
 
 /// Per-stem audio features, bound at buffer(3) by the render pipeline.
-/// Matches Swift StemFeatures layout (16 floats = 64 bytes).
-/// During warmup (~first 10s) all values are zero.
+/// Matches Swift StemFeatures layout (64 floats = 256 bytes, MV-3, D-028).
+/// During warmup (~first 10s) all values are zero — apply the D-019 blend
+/// `smoothstep(0.02, 0.06, totalStemEnergy)` before consuming any field.
+/// First 16 floats are byte-identical to the pre-MV-3 struct so existing
+/// engine readers (Murmuration's `particle_update`, MVWarp.metal) are
+/// unchanged. New post-MV-1/MV-3 fields appear after byte 64.
 struct StemFeatures {
-    float vocals_energy;   float vocals_band0;
-    float vocals_band1;    float vocals_beat;
+    // Floats 1–16: per-stem energy/band/beat.
+    float vocals_energy;      float vocals_band0;
+    float vocals_band1;       float vocals_beat;
 
-    float drums_energy;    float drums_band0;
-    float drums_band1;     float drums_beat;
+    float drums_energy;       float drums_band0;
+    float drums_band1;        float drums_beat;
 
-    float bass_energy;     float bass_band0;
-    float bass_band1;      float bass_beat;
+    float bass_energy;        float bass_band0;
+    float bass_band1;         float bass_beat;
 
-    float other_energy;    float other_band0;
-    float other_band1;     float other_beat;
+    float other_energy;       float other_band0;
+    float other_band1;        float other_beat;
+
+    // MV-1 deviation primitives (floats 17–24, D-026).
+    float vocals_energy_rel;  float vocals_energy_dev;
+    float drums_energy_rel;   float drums_energy_dev;
+    float bass_energy_rel;    float bass_energy_dev;
+    float other_energy_rel;   float other_energy_dev;
+
+    // MV-3a rich per-stem metadata (floats 25–40, D-028).
+    float vocals_onset_rate;  float vocals_centroid;
+    float vocals_attack_ratio; float vocals_energy_slope;
+
+    float drums_onset_rate;   float drums_centroid;
+    float drums_attack_ratio; float drums_energy_slope;
+
+    float bass_onset_rate;    float bass_centroid;
+    float bass_attack_ratio;  float bass_energy_slope;
+
+    float other_onset_rate;   float other_centroid;
+    float other_attack_ratio; float other_energy_slope;
+
+    // MV-3c vocal pitch (floats 41–42, D-028).
+    // vocals_pitch_hz = 0 means unvoiced or confidence below 0.6.
+    float vocals_pitch_hz;    float vocals_pitch_confidence;
+
+    // Padding to 256 bytes (floats 43–64).
+    float _pad1,  _pad2,  _pad3,  _pad4,  _pad5,  _pad6,  _pad7,  _pad8;
+    float _pad9,  _pad10, _pad11, _pad12, _pad13, _pad14, _pad15, _pad16;
+    float _pad17, _pad18, _pad19, _pad20, _pad21, _pad22;
 };
 
 // MARK: - SceneUniforms
