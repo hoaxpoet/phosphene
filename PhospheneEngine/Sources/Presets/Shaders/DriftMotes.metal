@@ -91,19 +91,24 @@ fragment float4 drift_motes_sky_fragment(
     float arousalSatBoost = 0.10 * max(0.0, f.arousal);
     float arousalValBoost = 0.05 * max(0.0, f.arousal);
 
-    // ── 1. 3-stop sky gradient (DM.3.2 — replaces fixed warm-amber) ──────
-    // Top: deepest, lowest-sat. Mid: hue-shifted, higher sat. Bottom:
-    // darkest, opposite hue shift. Three distinct hue stops blended
-    // smoothly across uv.y produce a richer-than-2-stop chromatic body.
+    // ── 1. 3-stop sky gradient (DM.3.2.1 Hendrix-vibrant retune) ─────────
+    // Top: deepest hue. Mid: hue-shifted, brighter. Bottom: opposite hue
+    // shift. All three at high saturation (0.55–0.70) but kept at LOW
+    // value (0.15–0.30) so the backdrop reads as a deep saturated colour
+    // field — not a bright wash. Motes/shaft pop against the dark
+    // saturated sky like a Wes Wilson Fillmore poster: deep magenta
+    // background, hot yellow lettering. The brightness contrast is
+    // load-bearing for visual hierarchy; if the sky goes brighter the
+    // motes get lost.
     float3 topCol = hsv2rgb(float3(skyHue,
-                                    0.30 + arousalSatBoost * 0.5,
-                                    0.10 + arousalValBoost * 0.5));
+                                    0.55 + arousalSatBoost * 0.5,
+                                    0.15 + arousalValBoost * 0.5));
     float3 midCol = hsv2rgb(float3(fract(skyHue + 0.05),
-                                    0.45 + arousalSatBoost,
-                                    0.18 + arousalValBoost));
+                                    0.70 + arousalSatBoost,
+                                    0.30 + arousalValBoost));
     float3 botCol = hsv2rgb(float3(fract(skyHue - 0.05),
-                                    0.20 + arousalSatBoost * 0.5,
-                                    0.06 + arousalValBoost * 0.5));
+                                    0.45 + arousalSatBoost * 0.5,
+                                    0.10 + arousalValBoost * 0.5));
     // Two-segment blend: top→mid for upper half, mid→bottom for lower.
     float t = uv.y;
     float3 col;
@@ -119,11 +124,15 @@ fragment float4 drift_motes_sky_fragment(
     // atmospheric depth, not a saturated colour wash. The existing
     // `vol_density_height_fog` density math is preserved verbatim — only
     // the colour changes.
+    // DM.3.2.1: fog sat 0.20 → 0.50, value 0.28 → 0.32. The fog still
+    // needs to read as atmospheric depth (not a saturated wash), but
+    // pushing sat to 0.50 makes the complementary-hue contrast against
+    // the sky readable. Pre-DM.3.2.1 fog was nearly grey-tinted.
     float fogHue       = fract(baseHue + 0.5);
     float3 fogPos      = float3(0.0, max(0.0, 1.0 - uv.y), 0.0);
     float  fogDensity  = vol_density_height_fog(fogPos, 12.0, 0.85);
     float  fogMask     = clamp(fogDensity * kFogDensityNormalize, 0.0, 1.0);
-    float3 fogColor    = hsv2rgb(float3(fogHue, 0.20, 0.28));
+    float3 fogColor    = hsv2rgb(float3(fogHue, 0.50, 0.32));
     col = mix(col, col * fogColor * kFogTintAmplifier, fogMask);
 
     // ── 3. Cycle + pitch + beat reactive shaft (DM.3.2) ─────────────────
@@ -140,10 +149,13 @@ fragment float4 drift_motes_sky_fragment(
     float shaftBeatHueShift = 0.05 * stems.drums_beat;
     float shaftHue         = fract(shaftBaseHue + shaftPitchShift + shaftBeatHueShift);
 
-    // Saturation 0.60 keeps the shaft "lit, not glowing-saturated" —
-    // fits the muted-psychedelic palette territory. Value 0.85 makes
-    // the beam clearly brighter than the sky behind it.
-    float3 shaftColor = hsv2rgb(float3(shaftHue, 0.60, 0.85));
+    // DM.3.2.1: shaft sat 0.60 → 0.85, value 0.85 → 0.95. The beam now
+    // reads as a fully-saturated lit column of colour, not a desaturated
+    // light source. Hendrix-poster aesthetic — saturated everywhere,
+    // brightness contrast is what creates visual hierarchy. The sky's
+    // low value means the bright shaft still pops despite both being
+    // at high saturation.
+    float3 shaftColor = hsv2rgb(float3(shaftHue, 0.85, 0.95));
 
     // Sun anchor at UV (-0.15, 1.20): off-screen upper-left. Shaft axis runs
     // from the anchor through frame centre, giving the ≈30° from-vertical

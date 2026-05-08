@@ -354,19 +354,29 @@ kernel void motes_update(
         float pitchShift    = dm_pitch_hue_offset(stems.vocals_pitch_hz,
                                                   stems.vocals_pitch_confidence);
 
-        // 8% of emissions get a high-saturation "pop" — the 60s-poster
-        // accent that punches through the muted base. Deterministic per
-        // particle id (popRoll uses a different prime multiplier from
-        // jitter so they decorrelate).
+        // 8% of emissions get a "pop" — chromatic accent shifted into a
+        // split-complementary hue territory (+0.35 around the wheel) at
+        // max saturation/value. Hendrix-poster aesthetic: a dominant
+        // saturated palette with bold chromatic accents punching through,
+        // not just brightness pops. Deterministic per particle id (popRoll
+        // uses a different prime multiplier from jitter so they decorrelate).
         float popRoll = dm_hash_f01(float(id) * 2.71);
         bool  isPop   = popRoll < 0.08;
 
-        float arousalSatBoost = 0.10 * max(0.0, features.arousal);
+        // Base motes already at high saturation (0.85) — DM.3.2.1 retune
+        // per Matt 2026-05-08 ("Hendrix vibe, don't mute it"). Arousal
+        // adds a small extra boost on top.
+        float arousalSatBoost = 0.05 * max(0.0, features.arousal);
         float arousalValBoost = 0.05 * max(0.0, features.arousal);
 
-        float h = fract(baseHue + moodHueShift + jitter + pitchShift);
-        float s = isPop ? 0.95 : (0.55 + arousalSatBoost);
-        float v = isPop ? 0.95 : (0.75 + arousalValBoost);
+        float baseChromaticHue = fract(baseHue + moodHueShift + jitter + pitchShift);
+        // Pop motes shift +0.35 around the colour wheel — split-complementary,
+        // strong chromatic contrast against the dominant region. (A pure
+        // +0.5 complementary felt mechanical in spec review; +0.35 reads as
+        // "the eye-popping accent in a Wes Wilson Fillmore poster.")
+        float h = isPop ? fract(baseChromaticHue + 0.35) : baseChromaticHue;
+        float s = isPop ? 1.00 : (0.85 + arousalSatBoost);
+        float v = isPop ? 1.00 : (0.85 + arousalValBoost);
 
         float3 rgb = hsv2rgb(float3(h, s, v));
         p.color = packed_float4(rgb.x, rgb.y, rgb.z, 1.0);
