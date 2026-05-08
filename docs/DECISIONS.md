@@ -2639,7 +2639,6 @@ The prompt's EndedView spec calls for both track count and session duration. `Se
 
 **What DM.1 picks up.** Drift Motes ships a `DriftMotesGeometry: ParticleGeometry` conformer with its own particle buffer, `motes_update` compute kernel, `motes_vertex` / `motes_fragment` render functions, recycle-bounds + emission-position derivation, and (in Session 2) per-particle hue baking from `vocalsPitchHz`. `VisualizerEngine.makeParticleGeometry` gains a Drift Motes branch alongside the existing Murmuration branch — a small, focused factory addition rather than a parameterization of shared infrastructure.
 
-
 ## D-098 — DriftMotesNonFlockTest tolerances and centroid-spread substitute (Increment DM.1, filed 2026-05-08)
 
 **Status:** Accepted 2026-05-08.
@@ -2669,4 +2668,25 @@ The prompt's EndedView spec calls for both track count and session duration. `Se
 **Verification.** With the as-spec'd kernel, the test passes with `spreadRatio ≈ 0.94`, `medianRatio ≈ 0.87`, `meanRatio ≈ 0.96`, `p25Ratio ≈ 0.93`. Manual sanity-check: replacing the kernel's force computation with a cohesion force (`force = (centroid - p.position) * 0.5`) drops `spreadRatio` to < 0.05 within 50 frames, well below the 0.85 threshold — the test still catches real flocking decisively.
 
 **Carry-forward.** If DM.2's per-particle hue baking or DM.3's audio-driven wind scaling introduce new transients that drift the metrics outside their tolerances, revisit — by tightening the kernel rather than the thresholds. The thresholds in this decision are intended to be stable across the DM Phase; ratchet them up in a future increment if the kernel becomes more rigorously translation-invariant.
+
+
+## D-099 — Engine MSL `FeatureVector` / `StemFeatures` extended to match preset preamble (Increment DM.2, filed 2026-05-08)
+
+**Decision.** `PhospheneEngine/Sources/Renderer/Shaders/Common.metal` now declares `FeatureVector` at 192 bytes / 48 floats and `StemFeatures` at 256 bytes / 64 floats — byte-identical to the layouts in `PresetLoader+Preamble.swift`. Pre-DM.2, both engine MSL structs were stuck at the pre-MV-1 / pre-MV-3 sizes (32 floats / 128 bytes and 16 floats / 64 bytes respectively), even though the Swift sources of truth (`AudioFeatures+Analyzed.swift` and `StemFeatures.swift`) had been at the larger sizes since MV-1 / MV-3.
+
+**Context.** DM.2 Task 1 specifies that `motes_update` (engine library) reads `f.mid_att_rel` (FV float 32 = byte offset 128) for the cold-stems hue-shift fallback and `stems.vocals_pitch_hz` / `stems.vocals_pitch_confidence` (StemFeatures floats 41–42 = byte offset 160–164) for the warm-stems pitch hue. With the pre-DM.2 engine MSL layouts, neither field was readable — the kernel could only see the first 32 / 16 floats. The Swift binding always uploads the full `MemoryLayout<…>.stride` (192 / 256 bytes) so the trailing fields were on the device but unreachable from the engine kernels.
+
+**Two paths considered.**
+
+(a) **Extend the engine MSL struct definitions to match the preset preamble.** Pure additive change — first 32 / 16 floats keep their original offsets, new fields appear after. Murmuration's `particle_update`, MVWarp's vertex/fragment, and `feedback_warp_fragment` all read only fields in the original tail, so their byte access is unchanged.
+
+(b) **Pass `mid_att_rel` and `vocals_pitch_hz` through `DriftMotesConfig` (buffer 4) as Swift-prepared floats.** Avoids touching `Common.metal` but conflates "kernel tuning constants" (the existing `DriftMotesConfig` content) with "per-frame audio drivers" (a categorically different concern), and requires the Swift side to reach into `latestFeatures` / `latestStems` to denormalise the per-frame values.
+
+**Decision: (a).** The engine MSL has been a layout liar since MV-1 / MV-3 landed — every engine-library shader was working from a smaller view of the same buffer than presets see. Correcting it is a one-time additive change that preserves byte-identical reads for every existing consumer (verified by golden-hash regression: Murmuration's `0x07449B6727773FF8`/`0x0B449A4727373FF8`/`0x0744936727773FF8` and every other preset's hashes are unchanged). Path (b) would have wedged the audio-coupling concern into a config buffer that exists for kernel tuning constants, and would have had to be reverted later when DM.3's drum dispersion shock wants to read `stems.drums_beat` / `stems.drums_energy_dev` from the same kernel.
+
+**What was rejected.** Adding a third "audio passthrough" buffer slot for engine kernels — would have created a third copy of the same data already in buffers 1 and 3, and added a Swift-side denormalisation step every frame.
+
+**Murmuration invariant preserved.** All 15 preset golden hashes regenerated identically to the post-DM.1 baseline (`UPDATE_GOLDEN_SNAPSHOTS=1` run produced byte-identical output for every preset other than Drift Motes). `Particles.metal`, `ProceduralGeometry.swift`, `ParticleGeometry.swift`, and `RenderPipeline*.swift` are byte-identical to their post-DM.1 state — Common.metal is not in the prompt's "byte-identical to DM.1" invariant list, and the change is purely a struct-extension correction.
+
+**Carry-forward.** Engine library shaders can now read the full FV / StemFeatures surface. DM.3 will use this for emission-rate scaling (`f.mid_att_rel`) and drum dispersion shock (`stems.drums_beat`, `stems.drums_energy_dev`) without further struct edits. Future `Particles*` engine kernels also benefit — MV-1 deviation primitives, MV-3a per-stem rich metadata, and MV-3b beat phase are now in scope.
 
