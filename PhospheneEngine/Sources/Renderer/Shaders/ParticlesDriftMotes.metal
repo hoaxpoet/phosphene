@@ -16,17 +16,19 @@
 // to `Particles.metal` (D-020). Documented here and in CLAUDE.md so future
 // authors don't reorder the prefix without thinking.
 //
-// AUDIO COUPLING (Session 1):
-//   This kernel does NOT read audio. The wind force is fixed and the
-//   turbulence is purely positional curl noise advanced through time.
-//   Per-particle hue baking from `vocalsPitchNorm`, wind scaling from
-//   `f.bass_att_rel`, emission scaling from `f.mid_att_rel`, and the
-//   drum dispersion shock all arrive in Sessions 2 and 3. The protocol
-//   takes a `StemFeatures&` parameter for forward compatibility; we
-//   accept it but do NOT read any field. The D-019 stem-warmup blend
-//   lands with the first real stem consumer in DM.2 — at that point a
-//   `smoothstep(0.02, 0.06, totalStemEnergy)` guard wraps every stem
-//   read.
+// AUDIO COUPLING (post-DM.2):
+//   The kernel reads stems and FeatureVector at emission time only. Each
+//   particle bakes a hue at respawn that it then carries for life — the
+//   field's chromatic texture IS the recent vocal melody. Hue source is
+//   selected by the D-019 warmup blend `smoothstep(0.02, 0.06, totalStemEnergy)`:
+//     • Cold stems: per-particle hash jitter around warm amber,
+//       lightly modulated by `f.mid_att_rel` so the field still moves
+//       with the music when stems are zero.
+//     • Warm stems: `dm_pitch_hue(vocals_pitch_hz, vocals_pitch_confidence)`
+//       (octave-wrapped log mapping, see helper below).
+//   Wind/turbulence motion is still audio-independent in DM.2; the
+//   emission-rate scaling from `f.mid_att_rel` and the drum dispersion
+//   shock from `stems.drums_beat` arrive in DM.3.
 //
 // CONSTANTS (DriftMotesConfig at buffer(4)):
 //   Wind direction, wind magnitude, damping, turbulence amplitude /
@@ -139,6 +141,29 @@ struct DriftMotesConfig {
     float         _pad2;
 };
 
+// dm_pitch_hue — vocal pitch (Hz) → hue ∈ [0, 1] (DM.2, supersedes vl_pitchHueShift).
+//
+// Octave-wrapping log map: A2 (110 Hz) → 0.0 (red); A3 (220 Hz) → 0.25;
+// A4 (440 Hz) → 0.5; A5 (880 Hz) → 0.75; A6 (1760 Hz) → 1.0 (red again).
+// The 4-octave span keeps a typical vocal melody (one to two octaves) inside
+// a coherent hue arc rather than exhausting the colour wheel.
+//
+// `confidence` gates against noisy pitch readings: YIN's confidence
+// estimate dips below 0.6 on consonants and silence, and the
+// `vocalsPitchHz = 0` sentinel flows through here as a fallback regardless.
+// Below the 0.3 floor we return the cold-stem amber (0.08) so an
+// unvoiced frame doesn't paint a particle a wild colour at emission.
+//
+// Floor of 80 Hz on the input prevents `log2` going negative on
+// male-vocal sub-fundamentals or the 0 sentinel.
+inline float dm_pitch_hue(float pitchHz, float confidence) {
+    if (confidence < 0.3) {
+        return 0.08;
+    }
+    float safePitch = max(pitchHz, 80.0);
+    return fract(log2(safePitch / 110.0) / 4.0);
+}
+
 // Deterministic per-particle position near the top of the shaft volume.
 // Layout: a wide horizontal slab at y near +bounds.y, scattered in x and z
 // so motes feed into the shaft path from above as the wind sweeps down
@@ -164,7 +189,6 @@ kernel void motes_update(
     uint id [[thread_position_in_grid]]
 ) {
     if (id >= config.particleCount) return;
-    (void)stems;  // DM.1: no stem reads. DM.2 introduces the D-019 warmup-guarded blend.
 
     Particle p = particles[id];
     float dt = features.delta_time;
@@ -183,9 +207,38 @@ kernel void motes_update(
         pos = dm_sample_emission_position(id, t, bounds);
         // Slow downward drift on respawn — wind takes over from there.
         p.velocity = packed_float3(-0.05, -0.4, 0.0);
-        // Default warm hue. Session 2 will bake per-particle hue from
-        // `stems.vocalsPitchHz` here at emission time.
-        p.color = packed_float4(1.0, 0.78, 0.45, 1.0);
+
+        // ── D-019 warmup blend at emission (DM.2) ─────────────────────────
+        // Hue source is selected once per born particle and never modified
+        // afterward. Cold stems use a per-particle hash + `f.mid_att_rel`
+        // proxy so the field has intrinsic chromatic texture and still
+        // moves with the music when stems are zero. Warm stems substitute
+        // the vocal-pitch mapping. The blend ramps over a tiny stems-energy
+        // window so the crossover lands within the first stem updates.
+        float totalStemEnergy = stems.drums_energy + stems.bass_energy
+                              + stems.other_energy + stems.vocals_energy;
+        float blend = smoothstep(0.02, 0.06, totalStemEnergy);
+
+        // Cold-stem fallback. baseAmberHue matches the DM.1 sky.
+        // perMoteJitter spreads particles around amber by ±0.05 hue (rgb
+        // motion through warm-amber → warm-orange → warm-pink range).
+        // musicShift nudges the field's mean hue with melody — D-026
+        // deviation form, no absolute thresholds.
+        float baseAmberHue   = 0.08;
+        float perMoteJitter  = (dm_hash_f01(float(id) * 17.0 + t * 0.013) - 0.5) * 0.10;
+        float musicShift     = features.mid_att_rel * 0.04;
+        float pitchHueCold   = baseAmberHue + perMoteJitter + musicShift;
+
+        // Warm-stem source. Confidence gate handled inside the helper.
+        float pitchHueWarm = dm_pitch_hue(stems.vocals_pitch_hz,
+                                          stems.vocals_pitch_confidence);
+
+        float bakedHue = mix(pitchHueCold, pitchHueWarm, blend);
+        // Saturation/value calibrated against the DM.1 warm-amber sky so
+        // motes read as embers in the shaft, not neon dots.
+        float3 rgb = hsv2rgb(float3(bakedHue, 0.55, 0.85));
+        p.color = packed_float4(rgb.x, rgb.y, rgb.z, 1.0);
+
         p.age   = 0.0;
         p.life  = mc.lifeMin + mc.lifeRange * dm_hash_f01(float(id) * 0.31831);
         p.position = packed_float3(pos.x, pos.y, pos.z);
