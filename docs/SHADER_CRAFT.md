@@ -1552,9 +1552,9 @@ Before a new preset is certified: run `swift test --filter PresetPerformanceTest
 
 Concrete uplift recipes for the five presets Matt called out. Each references sections above.
 
-### 10.1 Arachne (V.8 — see `docs/ARACHNE_V8_DESIGN.md`)
+### 10.1 Arachne (V.8 — see `docs/presets/ARACHNE_V8_DESIGN.md`)
 
-**This section is superseded by `docs/ARACHNE_V8_DESIGN.md` (2026-05-02).** The compositing-anchored sketch below was a partial design that didn't yet incorporate Matt's design conversation about (a) the construction-sequence-as-subject reframing prompted by the BBC Earth time-lapse references and (b) the orchestrator-side change to support multi-segment-per-track preset transitions on preset-declared cadences. The full v8 design lives in the dedicated doc.
+**This section is superseded by `docs/presets/ARACHNE_V8_DESIGN.md` (2026-05-02).** The compositing-anchored sketch below was a partial design that didn't yet incorporate Matt's design conversation about (a) the construction-sequence-as-subject reframing prompted by the BBC Earth time-lapse references and (b) the orchestrator-side change to support multi-segment-per-track preset transitions on preset-declared cadences. The full v8 design lives in the dedicated doc.
 
 The sketch below is preserved only for context — it documents the architectural pivot from V.7.5 (constant-tweaking) to compositing layers. The implementation plan in `ARACHNE_V8_DESIGN.md` §6 supersedes the V.7.7-V.7.9 sequence below.
 

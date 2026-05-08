@@ -54,7 +54,7 @@ Entries should cite source files. When adding a capability, link to the files th
 | SSS / fiber BRDF (Marschner-lite, hair TT/TRT lobes) | Supported | `Utilities/PBR/Fiber.metal`, `SSS.metal` | Per-Arachne-v8 review, this is *secondary* for Arachne; reserved for other presets. |
 | Thin-film / iridescence | Supported | `Utilities/PBR/Thin.metal` (`thinfilm_rgb`, `hue_rotate`) | |
 | Image-based lighting (irradiance cubemap + prefiltered env + BRDF LUT) | Supported | `IBLManager.swift`; `Shaders/IBL.metal` | Bound at textures 9–11 for ray-march presets. |
-| Refractive material with screen-space sampling of a previously-rendered texture | Missing | — | Only `refract()` math is available (Metal stdlib). No engine-supported "scene texture" to sample for refraction in a 2D preset. Required for Arachne v8 droplets (`docs/ARACHNE_V8_DESIGN.md §5.8, Pass 4`). |
+| Refractive material with screen-space sampling of a previously-rendered texture | Missing | — | Only `refract()` math is available (Metal stdlib). No engine-supported "scene texture" to sample for refraction in a 2D preset. Required for Arachne v8 droplets (`docs/presets/ARACHNE_V8_DESIGN.md §5.8, Pass 4`). |
 | Refractive material with depth-aware DoF | Missing | — | No depth source for 2D presets, see §1. |
 | Per-fragment material ID routing in 2D presets | Partial | Ray-march path has materialID in the G-buffer; 2D presets typically branch on local SDF state | Works ad-hoc per preset; no engine convention. |
 

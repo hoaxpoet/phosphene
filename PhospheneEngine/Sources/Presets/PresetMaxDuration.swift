@@ -1,6 +1,6 @@
 // PresetMaxDuration — Computed `maxDuration(forSection:)` framework (V.7.6.2 §5).
 //
-// Formula source: docs/ARACHNE_V8_DESIGN.md §5.2. Coefficients live in code so
+// Formula source: docs/presets/ARACHNE_V8_DESIGN.md §5.2. Coefficients live in code so
 // tuning passes (V.7.6.C calibration) are reviewed via test, not data files.
 //
 // `maxDuration` is a *hard ceiling* on segment length. `PresetDescriptor.duration`
