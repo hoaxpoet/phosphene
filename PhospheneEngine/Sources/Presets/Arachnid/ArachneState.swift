@@ -119,6 +119,23 @@ public final class ArachneState: @unchecked Sendable {
     static let spawnThreshold: Float = 3.0
     static let minSpawnGapBeats: Float = 8.0
 
+    // V.7.7C.2 §5.9 — single source of truth for branch anchor positions
+    // (D-095). Both `Arachne.metal`'s `drawWorld()` (renders dark capsule
+    // twigs at these positions) and the WEB pillar's frame polygon builder
+    // consume these. Coordinate space: UV [0..1].
+    //
+    // MUST stay byte-for-byte in sync with `kBranchAnchors[6]` near
+    // line ~133 of Arachne.metal. `ArachneBranchAnchorsTests` regression-locks
+    // the sync by string-searching the .metal source for matching float pairs.
+    public static let branchAnchors: [SIMD2<Float>] = [
+        SIMD2(0.18, 0.22),  // upper-left
+        SIMD2(0.82, 0.18),  // upper-right (slightly higher)
+        SIMD2(0.92, 0.55),  // right-mid
+        SIMD2(0.78, 0.84),  // lower-right
+        SIMD2(0.20, 0.78),  // lower-left
+        SIMD2(0.10, 0.50)   // left-mid
+    ]
+
     // Stage durations in beats (V.7.9 — calibrated to §5.2 60-second cycle at 120 BPM).
     // Frame:   6 beats ≈  3 s at 120 BPM  (§5.2: Frame 0–3 s)
     // Radial: ~42 beats ≈ 21 s at 120 BPM (§5.2: Radials 3–25 s, ~1.5 s each)
