@@ -612,16 +612,61 @@ static float3 drawBackgroundWeb(
     return result;
 }
 
-// ── Fragment ──────────────────────────────────────────────────────────────────
+// ── V.7.7B: Staged composition WORLD + COMPOSITE ─────────────────────────────
+//
+// The legacy monolithic `arachne_fragment` was retired in V.7.7B alongside its
+// preceding `// ── Fragment ── …` divider; what remains in this file is the
+// staged dispatch path (`arachne_world_fragment` for stage WORLD,
+// `arachne_composite_fragment` for stage COMPOSITE). They reuse the
+// free-function building blocks above (`drawWorld`, `arachneEvalWeb`,
+// `drawBackgroundWeb` etc.), so total LOC drops by ~240 lines vs V.7.7A
+// while restoring V.7.5 v5 visual parity on the V.ENGINE.1 staged scaffold.
+//
+// `drawBackgroundWeb()` stays defined (Snell's-law refractive helper) but is
+// not dispatched — V.7.7C will reintroduce it once Snell's-law refraction +
+// the proper outer-boundary geometry land. Do NOT call it here.
 
-fragment float4 arachne_fragment(
-    VertexOut                   in      [[stage_in]],
-    constant FeatureVector&     f       [[buffer(0)]],
-    constant float*             fft     [[buffer(1)]],
-    constant float*             wave    [[buffer(2)]],
-    constant StemFeatures&      stems   [[buffer(3)]],
-    constant ArachneWebGPU*     webs    [[buffer(6)]],
-    constant ArachneSpiderGPU&  spider  [[buffer(7)]]
+constant constexpr sampler arachne_world_sampler(filter::linear,
+                                                  address::clamp_to_edge);
+
+// ── WORLD stage ───────────────────────────────────────────────────────────────
+//
+// Renders the six-layer dark close-up forest backdrop into a per-stage
+// .rgba16Float offscreen texture (sampled by COMPOSITE at [[texture(13)]]).
+// Reads `webs[0].row4` for the mood palette state broadcast by
+// ArachneState._tick(); buffer(6) is bound by RenderPipeline+Staged.encodeStage
+// (V.7.7B engine fix) and by the visual-review harness.
+
+fragment float4 arachne_world_fragment(
+    VertexOut                   in   [[stage_in]],
+    constant FeatureVector&     f    [[buffer(0)]],
+    device const ArachneWebGPU* webs [[buffer(6)]]
+) {
+    float4 moodRow = webs[0].row4;  // x=smoothedValence, y=smoothedArousal, z=accTime
+    float3 col = drawWorld(in.uv, moodRow, moodRow.z);
+    return float4(col, 1.0);
+}
+
+// ── COMPOSITE stage ───────────────────────────────────────────────────────────
+//
+// Samples the WORLD texture for the backdrop, then walks the active web pool
+// and overlays foreground silk strands, adhesive droplets, and the spider
+// silhouette. Mist + dust mote layers apply to the foreground only (matching
+// the legacy fragment's webColor-only modulation).
+//
+// Mechanically lifted from the V.7.5 v5 / V.7.7-redo / V.7.8 monolithic
+// `arachne_fragment` (deleted in V.7.7B): the only divergence is that
+// `bgColor = drawWorld(...)` becomes `bgColor = worldTex.sample(...)`. Every
+// other line (web walk, spider, mist, motes, final compose) is byte-identical
+// to the retired implementation.
+
+fragment float4 arachne_composite_fragment(
+    VertexOut                                in       [[stage_in]],
+    constant FeatureVector&                  f        [[buffer(0)]],
+    constant StemFeatures&                   stems    [[buffer(3)]],
+    device const ArachneWebGPU*              webs     [[buffer(6)]],
+    device const ArachneSpiderGPU&           spider   [[buffer(7)]],
+    texture2d<float, access::sample>         worldTex [[texture(13)]]
 ) {
     float2 uv = in.uv;
     // V.7.7: WORLD palette mood state — smoothed in ArachneState._tick() and broadcast
@@ -813,10 +858,11 @@ fragment float4 arachne_fragment(
         spiderContrib      = spiderCol;
     }
 
-    // ── V.7.7 redo: WORLD pillar — dark close-up forest atmosphere ────────────
-    // drawBackgroundWeb() removed — circular drop-patches produced oval artefacts.
-    // Background webs reintroduced in V.7.8 after web outer boundary is fixed.
-    float3 bgColor = drawWorld(uv, moodRow, moodRow.z);
+    // ── V.7.7B: WORLD backdrop sampled from the WORLD stage's texture ─────────
+    // The same drawWorld() six-layer dark close-up forest the legacy fragment
+    // computed inline now ships in `arachne_world_fragment` and is sampled
+    // here at [[texture(13)]]. drawBackgroundWeb() stays absent (V.7.7C).
+    float3 bgColor = worldTex.sample(arachne_world_sampler, uv).rgb;
 
     // ── Combine strands ────────────────────────────────────────────────────────
     float3 webColor = strandColor + dropColorAccum;
@@ -850,113 +896,3 @@ fragment float4 arachne_fragment(
     return float4(color, 1.0);
 }
 
-// ── V.7.7A: Staged composition WORLD + COMPOSITE (placeholder) ───────────────
-//
-// The mv_warp helpers (`mvWarpPerFrame`, `mvWarpPerVertex`) and the
-// `arachne_fragment` v5/v7 fragment above are no longer dispatched at
-// runtime — the Arachne JSON sidecar now declares `passes: ["staged"]`
-// and routes through the two staged fragments below. The legacy code
-// remains in this file as a reference for the v8 WORLD/WEB/DROPLET
-// rebuild scheduled in V.7.7B+; the staged-composition compile path
-// (PresetLoader.compileStagedShader) does not pull in the mv_warp
-// preamble, so any dead helper that depended on `MVWarpPerFrame` had
-// to be removed to keep the staged compile clean.
-// Minimum two-stage scaffold that proves the Arachne v8 staged-rendering
-// architecture per docs/VISUAL_REFERENCES/arachne/Arachne_Rendering_Architecture_Contract.md
-// and the V.ENGINE.1 design.
-//
-//   Stage A "world"     → renders a primitive forest backdrop into an
-//                         offscreen .rgba16Float texture.
-//   Stage B "composite" → samples the world texture at [[texture(13)]] and
-//                         overlays a placeholder hub-and-spokes web before
-//                         writing to the drawable.
-//
-// Real WORLD detail (forest layers, dewy background webs, atmosphere — refs
-// 01/04/05/08), refractive droplets, full-quality silk geometry, and the
-// spider all arrive in V.7.7B+. The existing `arachne_fragment` above is kept
-// in the file as the v5/v7 reference and is no longer dispatched at runtime
-// (the JSON sidecar now declares passes:["staged"]).
-
-constant constexpr sampler arachne_world_sampler(filter::linear,
-                                                  address::clamp_to_edge);
-
-fragment float4 arachne_world_fragment(
-    VertexOut in [[stage_in]],
-    constant FeatureVector& f [[buffer(0)]]
-) {
-    float2 uv = in.uv;
-
-    // Cool→deep vertical gradient suggesting a damp, low-light forest stage.
-    float3 topCol = float3(0.18, 0.22, 0.28);
-    float3 botCol = float3(0.04, 0.05, 0.07);
-    float3 col    = mix(topCol, botCol, uv.y);
-
-    // Horizon haze band reads as distant atmosphere.
-    float horizon = smoothstep(0.55, 0.78, uv.y);
-    col = mix(col, float3(0.09, 0.11, 0.13), horizon * 0.55);
-
-    // Forest-floor fade at the very bottom.
-    float floorFade = smoothstep(0.82, 1.0, uv.y);
-    col = mix(col, float3(0.025, 0.030, 0.035), floorFade * 0.85);
-
-    // Three dark trunk silhouettes — vertical-line SDFs, taper to floor.
-    float treeXs[3] = { 0.18, 0.52, 0.84 };
-    float treeWs[3] = { 0.020, 0.027, 0.016 };
-    float silhouette = 0.0;
-    for (int i = 0; i < 3; i++) {
-        float w = treeWs[i] * mix(0.55, 1.0, uv.y);
-        float d = abs(uv.x - treeXs[i]);
-        silhouette = max(silhouette, smoothstep(w + 0.005, w - 0.005, d));
-    }
-    col = mix(col, float3(0.012, 0.015, 0.018), silhouette);
-
-    // Hash dither so the offscreen texture is not perfectly banded.
-    float n = fract(sin(dot(uv * 137.0, float2(12.9898, 78.233))) * 43758.5453);
-    col *= (0.97 + 0.03 * n);
-
-    return float4(col, 1.0);
-}
-
-fragment float4 arachne_composite_fragment(
-    VertexOut in [[stage_in]],
-    constant FeatureVector& f [[buffer(0)]],
-    texture2d<float, access::sample> worldTex [[texture(13)]]
-) {
-    float2 uv = in.uv;
-
-    // World backdrop from stage A — proves cross-pass texture sampling.
-    float3 col = worldTex.sample(arachne_world_sampler, uv).rgb;
-
-    // Placeholder web overlay: hub + 12 radial spokes + concentric rings.
-    float2 hub  = float2(0.50, 0.42);
-    float2 d2   = uv - hub;
-    float dist  = length(d2);
-    float ang   = atan2(d2.y, d2.x);
-
-    // 12 radials — periodic distance-to-line.
-    float spokeStep = 6.2831853 / 12.0;
-    float spokeAng  = fract(ang / spokeStep + 0.5) - 0.5;
-    float perp      = abs(spokeAng) * spokeStep * dist;
-    float spokeMask = smoothstep(0.0030, 0.0014, perp)
-                    * smoothstep(0.34, 0.32, dist);
-
-    // Concentric capture rings — periodic distance-to-radius.
-    float ringDist = abs(fract(dist * 9.0) - 0.5);
-    float ringMask = smoothstep(0.05, 0.02, ringDist)
-                   * smoothstep(0.05, 0.07, dist)
-                   * smoothstep(0.34, 0.30, dist);
-
-    float web = max(spokeMask, ringMask * 0.5);
-
-    // Hub dot.
-    float hubMask = smoothstep(0.020, 0.010, dist);
-    web = max(web, hubMask);
-
-    // Audio-reactive emission gain — deviation form per D-026.
-    //   continuous: 1.0 + 0.18 × bass_att_rel
-    // Silence (bass_att_rel = -0.5..0) leaves the web visibly dim but present.
-    float gain = 1.0 + 0.18 * f.bass_att_rel;
-    col += float3(0.85, 0.92, 1.00) * web * 0.55 * gain;
-    col = min(col, float3(1.0));
-    return float4(col, 1.0);
-}

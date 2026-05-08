@@ -6,6 +6,36 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-07-s] V.7.7B — Arachne staged WORLD + WEB port
+
+**Increment:** V.7.7B. **Decision:** D-092. Two commits.
+
+**What changed.**
+
+- **Engine (commit 1):** `RenderPipeline+Staged.encodeStage` now binds `directPresetFragmentBuffer` at fragment slot 6 and `directPresetFragmentBuffer2` at slot 7 on every staged-stage encode (consults the same lock-protected fields the legacy `RenderPipeline+MVWarp.drawWithMVWarp` reads). Bound per-frame uniformly across every stage of a staged preset. Without this, V.7.7A's staged Arachne fragments would silently sample zeros for the web pool and spider state.
+- **Harness (commit 1):** `PresetVisualReviewTests.encodeStagePass` and `renderStagedFrame` accept an optional `arachneState:` parameter; `renderStagedPresetPerStage` constructs a warmed `ArachneState` (mirrors the existing 30-tick warmup at `:143`) for `presetName == "Arachne"` and passes nil for "Staged Sandbox". `RenderPipeline.encodeStage` visibility promoted from `private` to `internal` solely as a test seam.
+- **New regression (commit 1):** `StagedPresetBufferBindingTests.swift` — two tests inline-compile a synthetic single-stage shader that reads sentinel floats from slot 6 / slot 7 and writes them to the red channel; assert read-back matches the sentinel within 1e-2 (Float16 round-trip tolerance).
+- **Shader port (commit 2):** `arachne_world_fragment` calls `drawWorld(in.uv, moodRow, moodRow.z)` — the existing six-layer dark close-up forest free function, reading mood state from `webs[0].row4`. `arachne_composite_fragment` is the V.7.5 v5 / V.7.7-redo / V.7.8 monolithic `arachne_fragment` body byte-identical to its prior form, with two divergences only: (a) signature replaces `[[buffer(1)]] fft` + `[[buffer(2)]] wave` with `texture2d<float, access::sample> worldTex [[texture(13)]]`; (b) `bgColor = drawWorld(uv, moodRow, moodRow.z)` becomes `bgColor = worldTex.sample(arachne_world_sampler, uv).rgb`. Every other line — anchor + pool web walk, drop accumulator, spider silhouette, mist, dust motes — passes through unchanged. Legacy `arachne_fragment` (~240 LOC) deleted along with the V.7.7A placeholder block (vertical-gradient WORLD + 12-spoke COMPOSITE, ~110 LOC).
+- **App-layer wiring (commit 2):** `VisualizerEngine+Presets.applyPreset` `case .staged:` now allocates `ArachneState` and calls `setDirectPresetFragmentBuffer(state.webBuffer)` + `setDirectPresetFragmentBuffer2(state.spiderBuffer)` + `setMeshPresetTick { state.tick(...) }` for `desc.name == "Arachne"`. Mirrors the existing mv_warp branch. Without this the engine binding fix alone would read zero-buffers at runtime — V.7.7A had removed this wiring along with the migration. The prompt's STOP CONDITION #2 anticipated the contingency.
+- **Golden hashes regenerated:** Arachne `(steady/beatHeavy/quiet) = 0xC6168E8F87868C80` (regression renders COMPOSITE alone with `worldTex` unbound → samples zero → captures the foreground composition over a black backdrop). Spider forced render `0x461E3E1F07870C00`. "Staged Sandbox" added at `0x000022160A162A00` (was missing from the dictionary; printGoldenHashes now emits 13 entries including the sandbox).
+- **CLAUDE.md edits:** Module Map updated for `Arachne.metal`; GPU Contract / Buffer Binding Layout reserves slots 6 / 7 across the staged path; What NOT To Do gains "Do not call `drawWorld()` from `arachne_composite_fragment` — the WORLD stage owns it; COMPOSITE samples the texture"; Current Status forward-chain updated.
+
+**LOC delta on `Arachne.metal`:** 962 → 898 (−64 net; the legacy fragment body was repurposed as the new COMPOSITE rather than literally deleted-and-rewritten — every line in the new fragment is traceable to a line in the retired one, satisfying the prompt's mechanical-lift rule). The prompt's 480 LOC estimate assumed completely fresh hand-written staged fragments; in practice the V.7.5 anchor + pool walk + drop material + spider + post-process layers are all real and unavoidable.
+
+**Verification.**
+
+- `swift build --package-path PhospheneEngine` — clean.
+- `swift test --package-path PhospheneEngine --filter "StagedComposition|StagedPresetBufferBinding|PresetRegression|ArachneSpiderRender|ArachneState"` — 5 suites green (23 tests).
+- `RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter "renderStagedPresetPerStage"` — Arachne WORLD PNG (377 KB) + COMPOSITE PNG (1.16 MB) per fixture, non-placeholder content (forest backdrop in WORLD; web + drops + spider + mist + motes in COMPOSITE).
+- `RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter "renderPresetVisualReview"` — Arachne contact sheet emitted; the steady-mid render goes through the legacy `renderFrame` path (single-pipeline render, `worldTex` unbound), so the foreground composition reads correctly over a black backdrop. Full WORLD+COMPOSITE eyeball is via `renderStagedPresetPerStage`.
+- `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build` — clean.
+- `swiftlint lint --strict --config .swiftlint.yml --quiet` on touched files — 0 violations.
+- Full `swift test --package-path PhospheneEngine` reports two `ProgressiveReadinessTests` failures (`startNow_belowThreshold_isNoOp`, `startNow_atThreshold_transitions_to_ready`) under parallel @MainActor scheduling load (1153 tests across 135 suites). Both pass in isolation; CLAUDE.md documents the timing-margin pattern under the U.11 entry. Not a V.7.7B regression.
+
+**Carry-forward.** V.7.7C — refractive droplets (Snell's law sampling of `arachneWorldTex` through spherical-cap drop normals), biology-correct frame → radial → spiral build state machine, anchor logic. V.7.7D — spider pillar deepening (anatomy + material + gait + listening pose) + whole-scene 12 Hz vibration. V.7.10 — Matt M7 cert review (gated on V.7.7D landing).
+
+---
+
 ## [dev-2026-05-07-r] QR.4 — UX dead ends + duplicate `SettingsStore` + dead settings + hardcoded strings
 
 **Increment:** QR.4 (U.12). **Decision:** D-091. Two commits.

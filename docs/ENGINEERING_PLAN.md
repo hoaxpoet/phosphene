@@ -1297,22 +1297,26 @@ Per-preset state setup handles Arachne (allocates `ArachneState`, warms 30 ticks
 
 ---
 
-### Increment V.7.7B — Arachne staged WORLD + WEB port (filed 2026-05-07)
+### Increment V.7.7B — Arachne staged WORLD + WEB port ✅ 2026-05-07
 
 **Prerequisite:** V.7.7A staged-composition scaffold migration ✅ 2026-05-05.
 
 **Scope:** Promote V.7.7-redo's `drawWorld()` and V.7.8's chord-segment `arachneEvalWeb()` from dead reference code in `Arachne.metal` into the dispatched `arachne_world_fragment` and `arachne_composite_fragment` staged stages. Extend `RenderPipeline+Staged.encodeStage()` and `PresetVisualReviewTests.encodeStagePass()` so staged stages can read the per-preset fragment buffers at index 6 (`ArachneWebGPU`) and index 7 (`ArachneSpiderGPU`) — the legacy mv_warp / direct path used these via `directPresetFragmentBuffer` / `directPresetFragmentBuffer2`; the staged path currently does not bind them. Result is parity with the pre-V.7.7A monolithic shader output, on the staged-composition scaffold. Refractive droplets, biology-correct build state machine, spider deepening, and whole-scene vibration are V.7.7C / V.7.7D — not in scope for V.7.7B.
 
 **Done when:**
-- WORLD-only and COMPOSITE captures via the harness show parity with the pre-V.7.7A V.7.5 baseline (allowing for the chord-spiral + V.7.7-redo WORLD additions).
-- New `StagedPresetBufferBindingTests` regression test asserts buffer 6/7 propagate through staged dispatch.
-- Legacy `arachne_fragment` (~617 LOC) is deleted; `Arachne.metal` drops from ~962 LOC to ~480 LOC.
-- All test suites pass; 0 SwiftLint violations on touched files.
-- Golden hashes regenerated for `PresetRegressionTests` Arachne and `ArachneSpiderRenderTests`.
+- ✅ WORLD-only and COMPOSITE captures via the harness show parity with the pre-V.7.7A V.7.5 baseline (drawWorld six-layer forest in WORLD; web pool + drops + spider + mist + motes in COMPOSITE).
+- ✅ New `StagedPresetBufferBindingTests` regression test asserts buffer 6/7 propagate through staged dispatch (two tests, slot 6 + slot 7).
+- ✅ Legacy `arachne_fragment` is deleted; the V.7.7A placeholder fragments (vertical-gradient WORLD + 12-spoke COMPOSITE) are deleted; the legacy fragment body is repurposed as `arachne_composite_fragment` with the only divergence `bgColor = drawWorld(...)` → `worldTex.sample(...)`. `Arachne.metal` drops from 962 → 898 LOC (every line in the new COMPOSITE traceable to the legacy fragment, per the prompt's mechanical-lift rule).
+- ✅ Engine + harness staged dispatch bind `directPresetFragmentBuffer` / `…Buffer2` at fragment slots 6 / 7. App-layer `case .staged:` in `VisualizerEngine+Presets.applyPreset` allocates `ArachneState`, wires the per-frame tick, and sets the slot-6/7 buffers (mirrors the existing mv_warp branch — without this the buffers are silently zero at runtime, the gap that V.7.7A's migration left open).
+- ✅ All targeted suites pass (`StagedComposition` + `StagedPresetBufferBinding` + `PresetRegression` + `ArachneSpiderRender` + `ArachneState`); 0 SwiftLint violations on touched files; app build clean.
+- ✅ Golden hashes regenerated: Arachne `(steady/beatHeavy/quiet) = 0xC6168E8F87868C80` (regression test renders COMPOSITE with `worldTex` unbound → samples zero, so the hash captures the foreground composition over a black backdrop), Spider forced `0x461E3E1F07870C00`, and "Staged Sandbox" added (was previously missing from the dictionary).
 
-**Verify:** `RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter "PresetVisualReview/renderStagedPresetPerStage"` produces non-placeholder PNGs (forest WORLD + chord-segment spiral COMPOSITE). Full suite: `swift test --package-path PhospheneEngine`. Detailed protocol in `prompts/V.7.7B-prompt.md`.
+**Verify:** `RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter "renderStagedPresetPerStage"` produces non-placeholder PNGs (forest WORLD + chord-segment spiral COMPOSITE). Full suite: `swift test --package-path PhospheneEngine` — pre-existing `ProgressiveReadiness` flakes under parallel @MainActor scheduling are documented in CLAUDE.md and trip independently of this increment. Detailed protocol in `prompts/V.7.7B-prompt.md`.
 
-**Estimated sessions:** 2.
+**Carry-forward:**
+- V.7.7C — refractive droplets (Snell's law, sample `arachneWorldTex`), biology-correct build state machine (frame → radials → spiral), anchor logic.
+- V.7.7D — spider pillar deepening (anatomy, material, gait), whole-scene vibration.
+- V.7.10 — Matt M7 cert review.
 
 ---
 

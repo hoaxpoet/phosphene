@@ -2340,3 +2340,42 @@ The prompt's EndedView spec calls for both track count and session duration. `Se
 - `Scripts/check_user_strings.sh`.
 
 **Test count delta:** +17 new tests across four suites. SwiftLint zero violations on touched files. Engine suite untouched. App build clean.
+
+---
+
+## D-092 — V.7.7B Arachne staged WORLD + WEB port (filed 2026-05-07)
+
+**Context.** V.7.7A migrated Arachne onto the V.ENGINE.1 staged-composition scaffold but shipped placeholder fragments (vertical gradient + 12-spoke + concentric-ring overlay) and silently dropped the binding for the per-preset fragment buffers (`ArachneWebGPU` at slot 6, `ArachneSpiderGPU` at slot 7) that the legacy mv_warp / direct paths relied on. The V.7.7-redo six-layer `drawWorld()` and the V.7.8 chord-segment `arachneEvalWeb()` survived in the source file as dead reference code attached to the retired `arachne_fragment`. V.7.7B's job was a mechanical port — promote the dead code into the dispatched path; do not write new shader content.
+
+**Decision 1: bind `directPresetFragmentBuffer` / `…Buffer2` at slots 6 / 7 in the staged dispatch.** `RenderPipeline+Staged.encodeStage` now consults the same `directPresetFragmentBufferLock`-guarded fields the legacy `RenderPipeline+MVWarp.drawWithMVWarp` consults (`PhospheneEngine/Sources/Renderer/RenderPipeline+MVWarp.swift:350`). Bound per-frame uniformly across every stage of a staged preset — both WORLD and COMPOSITE see the same `ArachneState` snapshot, so any sampling decision in COMPOSITE is consistent with what WORLD rendered. The harness mirror (`PresetVisualReviewTests.encodeStagePass`) accepts an optional `arachneState:` parameter and binds the same slots when non-nil; "Staged Sandbox" passes nil. Engine `encodeStage` was promoted from `private` to `internal` solely as a test seam (`StagedPresetBufferBindingTests` drives it directly without an `MTKView`).
+
+**Why slot 6/7 instead of new slots.** Reusing the existing setter API (`setDirectPresetFragmentBuffer`, `setDirectPresetFragmentBuffer2`) lets the same `ArachneState` allocation flow through every dispatch path the engine supports — mv_warp, direct, and now staged. New per-preset buffers must use slots ≥ 8 (or extend `RenderPipeline` with `directPresetFragmentBuffer3` / `4`); never overload 6 / 7 for a different purpose. CLAUDE.md §GPU Contract Details / Buffer Binding Layout reserves them.
+
+**Decision 2: reuse `drawWorld()` and `arachneEvalWeb()` as free functions across legacy + staged paths rather than fork them.** Both were already free `static` functions in `Arachne.metal`; the staged WORLD and COMPOSITE fragments call into them as-is. No edits to either. Forking would have doubled the maintenance surface for any future tuning (silk material polish, drop refraction, gravity sag). The free-function shape costs nothing — Metal inlines them at compile time.
+
+**Decision 3: delete the legacy `arachne_fragment` (and the V.7.7A placeholder fragments) after the port.** The legacy fragment body becomes the new `arachne_composite_fragment` with two changes only: (a) signature replaces `[[buffer(1)]] fft` + `[[buffer(2)]] wave` with `texture2d<float, access::sample> worldTex [[texture(13)]]` (those FFT / waveform buffers were accepted but never read in the legacy fragment); (b) `bgColor = drawWorld(uv, moodRow, moodRow.z)` becomes `bgColor = worldTex.sample(arachne_world_sampler, uv).rgb` so COMPOSITE samples the WORLD stage's offscreen output instead of recomputing the forest inline. Every other line is byte-identical to the retired fragment — the V.7.5 v5 web walk + drop accumulator + spider silhouette + mist + dust motes blocks pass through unchanged. Net file shrink: 962 → 898 LOC. (The prompt estimated 480; the estimate assumed completely fresh hand-written staged fragments rather than mechanical lift, and the COMPOSITE body is unavoidably ~240 lines because the V.7.5 anchor + pool web walk + drop material + spider + post-process layers are all real.)
+
+**Decision 4: app-layer `case .staged:` allocates `ArachneState` and wires the slot-6/7 buffers.** The prompt's STOP CONDITION #2 anticipated this — V.7.7A's migration removed the `desc.name == "Arachne"` block from the staged branch in `VisualizerEngine+Presets.applyPreset`, so the engine binding fix alone would have read silently-zero buffers at runtime. The block now mirrors the mv_warp branch above it: `ArachneState(device: context.device)` → `setDirectPresetFragmentBuffer(state.webBuffer)` (slot 6) → `setDirectPresetFragmentBuffer2(state.spiderBuffer)` (slot 7) → `setMeshPresetTick { … state.tick(...) }`. The shared cleanup at the top of `applyPreset` already nils `arachneState` and detaches both buffers, so preset switches stay clean.
+
+**Why the prompt's spec was an under-spec.** The prompt's SCOPE listed the four sub-items inside `Sources/Renderer/RenderPipeline+Staged.swift`, the harness, and `Arachne.metal`, but did not call out the `case .staged:` app-layer change — the prompt's STOP CONDITION #2 documented the scenario as a contingent diagnosis ("If the buffer is unbound, … V.7.7A may have stopped calling `setDirectPresetFragmentBuffer()` for staged presets"). It had stopped, so the wiring landed alongside the shader port in Commit 2 to keep the runtime functional from the moment the new fragments shipped.
+
+**Failed Approach motivation.** Failed Approach #49 ("constant-tuning on a renderer structurally missing compositing layers") is the architectural reason V.7.7A → V.7.7B exists: V.7.5 spent six commits tweaking constants on a 2D fragment that lacked the references' compositing layers; the staged scaffold *is* the unwound version, and V.7.7B is the mechanical step that drops the V.7.5 v5 visual baseline back onto it. Future tuning (refractive drops, biology-correct build) lands on the staged scaffold in V.7.7C / V.7.7D, not by re-working the legacy fragment.
+
+**Verification.** `swift test --package-path PhospheneEngine --filter "StagedComposition|StagedPresetBufferBinding|PresetRegression|ArachneSpiderRender|ArachneState"` — 5 suites green. `RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter "renderStagedPresetPerStage"` — Arachne WORLD + COMPOSITE PNGs land at non-placeholder size (377 KB / 1.16 MB). `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build` — clean. `swiftlint lint --strict` — 0 violations on touched files. Golden hashes regenerated: Arachne `0xC6168E8F87868C80` across all three fixtures (regression renders COMPOSITE with `worldTex` unbound → foreground over zero backdrop), Spider forced `0x461E3E1F07870C00`, "Staged Sandbox" added at `0x000022160A162A00`. Pre-existing `ProgressiveReadinessTests` flakes under full-suite parallel @MainActor load (already documented in CLAUDE.md) trip independently of this increment.
+
+**Files changed (commit 1 — engine + harness binding):**
+- `PhospheneEngine/Sources/Renderer/RenderPipeline+Staged.swift` — `encodeStage` reads slots 6/7; visibility `private` → `internal` (test seam).
+- `PhospheneEngine/Tests/PhospheneEngineTests/Renderer/PresetVisualReviewTests.swift` — `encodeStagePass` + `renderStagedFrame` accept optional `ArachneState`; `renderStagedPresetPerStage` constructs warmed state for Arachne.
+- `PhospheneEngine/Tests/PhospheneEngineTests/Renderer/StagedPresetBufferBindingTests.swift` (new) — synthetic shader sentinel test, slot 6 + slot 7.
+
+**Files changed (commit 2 — shader port + app wiring + golden hashes):**
+- `PhospheneEngine/Sources/Presets/Shaders/Arachne.metal` — `arachne_world_fragment` + `arachne_composite_fragment` ported; legacy `arachne_fragment` and V.7.7A placeholder block deleted; 962 → 898 LOC.
+- `PhospheneApp/VisualizerEngine+Presets.swift` — `case .staged:` allocates `ArachneState` and binds slots 6/7 + tick (mirrors mv_warp branch).
+- `PhospheneEngine/Tests/PhospheneEngineTests/Renderer/PresetRegressionTests.swift` — Arachne hash + "Staged Sandbox" hash regenerated.
+- `PhospheneEngine/Tests/PhospheneEngineTests/Presets/ArachneSpiderRenderTests.swift` — spider forced hash regenerated, comment updated.
+- `docs/ENGINEERING_PLAN.md` — V.7.7B section flipped to ✅; carry-forward chain (V.7.7C / V.7.7D / V.7.10) restated.
+- `docs/DECISIONS.md` — this entry.
+- `docs/RELEASE_NOTES_DEV.md` — V.7.7B entry.
+- `CLAUDE.md` — Module Map, GPU Contract / Buffer Binding Layout, What NOT To Do, Recent landed work.
+
+**Test count delta:** +2 new tests (`StagedPresetBufferBindingTests`).
