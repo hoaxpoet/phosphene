@@ -6,6 +6,42 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-07-t] V.7.7C — Arachne refractive dewdrops (§5.8 Snell's-law)
+
+**Increment:** V.7.7C. **Decision:** D-093. One shader-only commit.
+
+**What changed.**
+
+- **Shader (`Arachne.metal`):** Both COMPOSITE drop blocks — the anchor-web block (~line 742) and the pool-web block (~line 832) — replaced with the §5.8 Snell's-law refractive recipe sampling `worldTex` at `[[texture(13)]]`. Per drop pixel: spherical-cap normal → `refract(-kViewRay, sphN, 0.752)` (air n=1.0 → water n=1.33) → sample WORLD at `uv + refr.xy × (rDrop × 2.5)` → Schlick fresnel rim `pow(1 − sphN.z, 5.0)` mixed with `kLightCol × 0.85` warm tint at `× 0.40` strength → pinpoint warm specular at the half-vector cap position with `1 − smoothstep(0, 0.20, specD)` mask → dark edge ring `smoothstep(0.85, 0.95) × (1 − smoothstep(0.95, 1.0))` at `× 0.5` → multiplied by the V.7.5 `(baseEmissionGain + beatAccent)` audio gain (preserves D-026 deviation-form modulation). Pool block additionally multiplies coverage by `w.opacity` (preserves V.7.5 fade semantics — older / fading webs contribute proportionally less). `mat_frosted_glass`, the warm-amber emissive base, the cool-white pinpoint specular, and `glintAdd` are all deleted from both call sites — superseded by the §5.8 recipe. Net `Arachne.metal` LOC change roughly ±0.
+- **Half-vector type correction.** Prompt's §5.8 recipe declared `float3 halfVec = normalize(kL.xy + kViewRay.xy)` but the right-hand side is `float2`; Metal rejects with `cannot initialize a variable of type 'float3' with an rvalue of type 'metal::float2'`. Fixed in-flight to `float2 halfDir = normalize(kL.xy + kViewRay.xy)`; `specPos = halfDir * rDrop * 0.6` works identically because the prompt's downstream code only consumed `halfVec.xy`. With `kViewRay = (0, 0, 1)` the math reduces to `normalize(kL.xy)` — the screen-space direction of the key light, exactly as §5.8 describes. An early test harness pass surfaced the failure cleanly via `PresetLoaderCompileFailureTest` (Arachne preset count dropped to 13; the QR.3 gate flagged Failed Approach #44 silent shader-compile drop). Documented in D-093 Decision 5 + this release note.
+- **Golden hashes.** Arachne dHash UNCHANGED at the V.7.7B values (`0xC6168E8F87868C80` across all three fixtures) — the regression render path leaves `worldTex` unbound, refraction reads zero, and the rim+specular+ring contributions sum below the dHash 9×8 luma quantization threshold. Spider forced regenerated within tolerance: `0x461E3E1F07870C00` → `0x461E2E1F07830C00` (3 bits drift, well under hamming ≤ 8). The `goldenPresetHashes` Arachne comment and `goldenSpiderForcedHash` doc-comment both updated to explain the V.7.7C divergence pattern.
+- **CLAUDE.md edits.** Module Map (`Arachne.metal` description updated for V.7.7C); What NOT To Do (rule extended — drop blocks must sample `worldTex`, never inline `drawWorld()`); Recent landed work entry; Current Status carry-forward updated (V.7.7C ✅, next is V.7.7C.2 / V.7.7D).
+
+**Visual signature delta vs V.7.7B.** V.7.7B drops were a flat warm-amber blob per drop with a bright cool-white specular dot — same emissive value regardless of position on the cap, no relationship to the WORLD pillar. V.7.7C drops are photographic dewdrops: each drop carries a small inverted forest fragment refracted through the spherical cap, framed by a thin warm fresnel rim, lit by a warm pinpoint specular at the half-vector position, with a subtle dark edge ring at the silhouette where refraction breaks down at grazing angles. The audio modulation shape is identical (`(baseEmissionGain + beatAccent)` swell). At silence the drops still read because the fresnel + specular + ring composition produces a thin warm crescent over the dark backdrop; under a fully-bound WORLD path (live runtime / staged per-stage harness) the drop interiors carry the forest signature as their dominant feature.
+
+**Verification.**
+
+- `swift test --package-path PhospheneEngine --filter "StagedComposition|StagedPresetBufferBinding|PresetRegression|ArachneSpiderRender|ArachneState"` — 23 tests / 5 suites green.
+- `swift test --package-path PhospheneEngine --filter "PresetLoaderCompileFailureTest"` — passes; Arachne preset count = 14.
+- `RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter "renderStagedPresetPerStage"` — Arachne PNGs land at non-placeholder size for silence / mid / beat fixtures; composite PNG grew from 1.16 MB (V.7.7B) to 1.2 MB.
+- Full engine suite — 1153 tests / 135 suites; only red are pre-existing flakes documented in CLAUDE.md (`MemoryReporter.residentBytes` env-dependent, `MetadataPreFetcher.fetch_networkTimeout` parallel-load timing).
+- App suite — 326 tests / 59 suites; only red are pre-existing flakes (`NetworkRecoveryCoordinator` debounce timing under @MainActor parallel load).
+- `swiftlint lint --strict --quiet …` on touched files — 0 violations.
+
+**Files changed:**
+
+- `PhospheneEngine/Sources/Presets/Shaders/Arachne.metal` — both drop blocks rewritten.
+- `PhospheneEngine/Tests/PhospheneEngineTests/Renderer/PresetRegressionTests.swift` — `goldenPresetHashes` Arachne comment extended (V.7.7C divergence note).
+- `PhospheneEngine/Tests/PhospheneEngineTests/Presets/ArachneSpiderRenderTests.swift` — `goldenSpiderForcedHash` regenerated; doc-comment extended.
+- `docs/ENGINEERING_PLAN.md` — V.7.7C section added (✅).
+- `docs/DECISIONS.md` — D-093.
+- `docs/RELEASE_NOTES_DEV.md` — this entry.
+- `CLAUDE.md` — Module Map + What NOT To Do + Recent landed work + Current Status carry-forward.
+
+**Carry-forward.** V.7.7C.2 / V.7.8 — single-foreground build state machine (frame → radials → INWARD spiral over 60s, per-chord drop accretion, anchor-blob terminations, completion event via V.7.6.2 channel). V.7.7D — spider pillar deepening + whole-scene 12 Hz vibration. V.7.10 — Matt M7 cert review. V.7.7C is **not** a cert run.
+
+---
+
 ## [dev-2026-05-07-s] V.7.7B — Arachne staged WORLD + WEB port
 
 **Increment:** V.7.7B. **Decision:** D-092. Two commits.

@@ -35,7 +35,13 @@ import simd
 /// foreground over a black backdrop — the spider silhouette is visible
 /// because the composite fragment overlays it on top of the (zero-sampled)
 /// world.
-private let goldenSpiderForcedHash: UInt64 = 0x461E3E1F07870C00
+///
+/// V.7.7C: drop overlay rewritten to the §5.8 Snell's-law refractive recipe
+/// (D-093). Under this regression path `worldTex` is unbound → bgSeen reads
+/// black; drops compose only as thin warm fresnel rim + warm specular pinpoint
+/// + dark edge ring multiplied by the audio gain. Hash drift from V.7.7B is a
+/// few bits — well within the dHash tolerance of 8.
+private let goldenSpiderForcedHash: UInt64 = 0x461E2E1F07830C00
 
 // MARK: - Test Suite
 
