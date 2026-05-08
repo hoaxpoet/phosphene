@@ -1,4 +1,56 @@
-# Drift Motes — Palette pass design (DM.3.2)
+# Drift Motes — Palette pass design (DM.3.2 / DM.3.2.1)
+
+## DM.3.2.1 calibration (2026-05-08)
+
+After landing DM.3.2 with a "muted-psychedelic / 60s-poster" aesthetic
+(base saturation 0.55, base value 0.75), Matt's directional feedback was
+**"Hendrix vibe — don't mute it."** The original calibration was too
+restrained for the intended aesthetic. DM.3.2.1 retunes the saturation
+and value floors to match a Hendrix-era Fillmore-poster aesthetic:
+saturated everywhere, brightness contrast carries visual hierarchy,
+chromatic accents punch through dominant regions via *hue offset* not
+just brightness.
+
+Calibration changes (all in DM.3.2.1):
+
+| element | DM.3.2 (muted) | DM.3.2.1 (Hendrix) | rationale |
+|---|---|---|---|
+| Particle base sat | 0.55 | **0.85** | Saturated dominant region |
+| Particle base val | 0.75 | **0.85** | Slightly brighter |
+| Pop-mote sat/val | 0.95 / 0.95 | **1.00 / 1.00** | Max-sat accents |
+| Pop-mote hue | dominant-region | **+0.35 split-complementary** | Chromatic pop, not brightness pop |
+| Sky top sat | 0.30 | **0.55** | Saturated backdrop |
+| Sky mid sat | 0.45 | **0.70** | Vivid mid-band |
+| Sky bot sat | 0.20 | **0.45** | Saturated floor anchor |
+| Sky top val | 0.10 | **0.15** | Still dark |
+| Sky mid val | 0.18 | **0.30** | Brighter mid |
+| Sky bot val | 0.06 | **0.10** | Still dark |
+| Fog sat | 0.20 | **0.50** | Readable complementary |
+| Fog val | 0.28 | **0.32** | Marginally brighter |
+| Shaft sat | 0.60 | **0.85** | Fully saturated beam |
+| Shaft val | 0.85 | **0.95** | Punches against dark sky |
+
+The 6-region cycle, the 60s base period, the smoothstep cross-fade, the
+mood/pitch/jitter overlay logic — all unchanged from DM.3.2. Only the
+saturation and value floors moved.
+
+**Why pop motes get a +0.35 hue offset (split-complementary)**: pure
++0.5 (complementary) felt mechanical in spec review — the eye reads
+"opposite colour wheel" as algorithmic. +0.35 is split-complementary —
+the dominant region's analogous-but-distant neighbour, with the bold
+chromatic energy of complementary contrast but a more organic feel.
+Hendrix-era poster art uses this relationship constantly: hot magenta
+posters with yellow-orange accents, royal-purple posters with chartreuse
+accents.
+
+**Why the sky stays dark**: at high saturation AND high value, the
+sky competes with the motes/shaft for visual attention. Brightness
+contrast is what creates visual hierarchy. The sky reads as a deep
+saturated colour field; the motes pop against it via brightness AND
+chromatic contrast (where pop motes get the +0.35 shift).
+
+---
+
 
 ## Why this exists
 
