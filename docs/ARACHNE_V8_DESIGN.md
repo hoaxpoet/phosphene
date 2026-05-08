@@ -22,13 +22,21 @@ Five Arachne attempts (3.5.5 mesh, 3.5.10 3D ray-march, 3.5.12 2D SDF rebuild, V
 
 **Outstanding implementation:** V.7.7 (WORLD pillar + 1–2 background dewy webs), V.7.8 (foreground build refactor with corrected biology), V.7.9 (spider deepening + whole-scene vibration + cert review).
 
+### 1.1 Visual target reframe (canonical, 2026-05-08, D-096)
+
+> The references define the aesthetic family — backlit macro nature photography, dewy webs, atmospheric forest, biological asymmetry, droplets as primary visual carrier. They are NOT pixel-match targets. The bar is: a frame from Arachne3D should look like it belongs in the same visual conversation as ref 01, not look identical to ref 01. A viewer seeing both side by side should classify them as 'same world, different rendering' — not 'photograph next to clipart.' Real-time constraints (Tier 1 14ms / Tier 2 16ms p95) are inviolable. If a fidelity feature cannot be achieved in budget, document the gap and pick the nearest achievable approximation.
+
+This reframe replaces any prior implicit "match the photographs" contract that earlier drafts of this document carried. It is **preset-system-wide**, not Arachne-specific — V.9 FerrofluidOcean, V.10 FractalTree, V.11 VolumetricLithograph, and V.12 GlassBrutalist + KineticSculpture all inherit the same principle. Everywhere this document refers to "the visual target," "matching the references," "documentary close-up of nature," "BBC Earth time-lapse footage," "photorealistic" or similar phrasing, read it through this reframe — the language describes the aesthetic family the rendering must join, not a per-pixel target it must hit. The anti-references (`09_anti_clipart_symmetry.jpg`, `10_anti_neon_stylized_glow.jpg`) define the failure modes that disqualify a frame from the visual conversation; staying out of those failure modes is the cert bar, not pixel-equivalence with a particular reference.
+
+The cert rubric (`SHADER_CRAFT.md §12.1`) still requires Matt's eyeball on a contact sheet at M7. The reframe shifts what M7 *means* — "does this frame belong in the same visual conversation as the references?" not "does this frame match the photograph?".
+
 ---
 
 ## 2. Goal
 
 A naturalistic time-lapse of a single spider web being drawn in a quietly-lit forest, with photographic dewy webs already present in the depth of the scene, and with a spider that appears in response to sustained bass and shakes the world during heavy bass.
 
-The visual target is the BBC Earth orb-weaver time-lapse footage (§13): a documentary close-up of nature, not a stylized graphic. Two anti-references — `09_anti_clipart_symmetry.jpg` and `10_anti_neon_stylized_glow.jpg` — are the failure modes the rubric rejects, and which V.7.5's V.5 build matched.
+The visual target is the *aesthetic family* of the BBC Earth orb-weaver time-lapse footage (§13): a documentary close-up of nature, not a stylized graphic — read through the §1.1 reframe (rendering joins the aesthetic family, does not pixel-match it). Two anti-references — `09_anti_clipart_symmetry.jpg` and `10_anti_neon_stylized_glow.jpg` — are the failure modes the rubric rejects, and which V.7.5's V.5 build matched.
 
 ---
 

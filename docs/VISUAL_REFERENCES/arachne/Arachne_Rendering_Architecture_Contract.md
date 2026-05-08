@@ -6,6 +6,8 @@ This contract defines the required staged rendering architecture for Arachne v8.
 
 This file is authoritative for implementation. `ARACHNE_V8_DESIGN.md` remains authoritative for visual intent.
 
+> **Visual target reframe (D-096, 2026-05-08).** All "must read as ..." acceptance gates below are aesthetic-family bars, not pixel-match contracts. A pass output that reads as belonging in the same visual conversation as the references — backlit macro nature photography, dewy webs, atmospheric forest, biological asymmetry, droplets as primary visual carrier — passes the gate. A pass output that reads like the named anti-reference (`09_anti_clipart_symmetry.jpg`, `10_anti_neon_stylized_glow.jpg`) fails it. Pixel-fidelity to a particular reference image is an explicit non-goal. Real-time constraints (Tier 1 14ms / Tier 2 16ms p95) are inviolable; if a fidelity feature cannot be achieved in budget, document the gap and pick the nearest achievable approximation. See `ARACHNE_V8_DESIGN.md §1.1` and `ARACHNE_3D_DESIGN.md §1.1` for the canonical reframe text and the system-wide application.
+
 ## Required passes
 
 | Pass | Name | Required output | Depends on | Debug view required |
