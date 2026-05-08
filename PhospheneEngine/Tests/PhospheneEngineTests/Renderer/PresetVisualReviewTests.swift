@@ -62,6 +62,10 @@ struct PresetVisualReviewTests {
         ("Ref 08", "docs/VISUAL_REFERENCES/arachne/08_palette_bioluminescent_organism.jpg"),
     ]
 
+    private static let driftMotesReferenceRelPath: (label: String, path: String) =
+        ("Ref 01: dust motes light shaft",
+         "docs/VISUAL_REFERENCES/drift_motes/01_atmosphere_dust_motes_light_shaft.jpg")
+
     // MARK: - Tests
 
     /// Pass-separated capture for staged-composition presets (V.ENGINE.1).
@@ -130,7 +134,7 @@ struct PresetVisualReviewTests {
     }
 
     @Test("Render preset to PNGs + contact sheet (RENDER_VISUAL=1)",
-          arguments: ["Arachne", "Gossamer", "Volumetric Lithograph"])
+          arguments: ["Arachne", "Gossamer", "Volumetric Lithograph", "Drift Motes"])
     func renderPresetVisualReview(_ presetName: String) throws {
         guard ProcessInfo.processInfo.environment["RENDER_VISUAL"] == "1" else {
             print("[PresetVisualReview] RENDER_VISUAL not set, skipping \(presetName)")
@@ -183,10 +187,15 @@ struct PresetVisualReviewTests {
             if fixtures[index].name == "mid" { midPNGURL = url }
         }
 
-        // Contact sheet — Arachne only (references are preset-specific).
+        // Contact sheet — preset-specific layouts.
         if presetName == "Arachne", let midURL = midPNGURL {
             let sheetURL = outputDir.appendingPathComponent("Arachne_contact_sheet.png")
             try buildArachneContactSheet(renderedMidPNG: midURL, to: sheetURL)
+            print("[PresetVisualReview] wrote \(sheetURL.lastPathComponent)")
+        }
+        if presetName == "Drift Motes", let midURL = midPNGURL {
+            let sheetURL = outputDir.appendingPathComponent("Drift_Motes_contact_sheet.png")
+            try buildDriftMotesContactSheet(renderedMidPNG: midURL, to: sheetURL)
             print("[PresetVisualReview] wrote \(sheetURL.lastPathComponent)")
         }
     }
@@ -588,6 +597,75 @@ struct PresetVisualReviewTests {
         ] + Self.arachneReferenceRelPaths.enumerated().map { index, ref in
             (ref.label, index * cellW + 12, cellH - 24)
         }
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 14),
+            .foregroundColor: NSColor.white,
+            .backgroundColor: NSColor(red: 0, green: 0, blue: 0, alpha: 0.7),
+        ]
+        for label in labels {
+            let attributed = NSAttributedString(string: " \(label.text) ", attributes: attrs)
+            attributed.draw(at: NSPoint(x: label.originX, y: label.originY))
+        }
+        NSGraphicsContext.restoreGraphicsState()
+
+        guard let cgImage = ctx.makeImage() else {
+            throw VisualReviewError.cgImageFailed
+        }
+        try writeCGImage(cgImage, to: outURL)
+    }
+
+    // MARK: - Contact sheet (Drift Motes)
+
+    /// Top half = rendered output (steady-mid fixture); bottom half =
+    /// `01_atmosphere_dust_motes_light_shaft.jpg` reference. Single-reference
+    /// stacked layout — Drift Motes' reference set is one image (DM.0 spec).
+    private func buildDriftMotesContactSheet(renderedMidPNG: URL, to outURL: URL) throws {
+        let sheetW = Self.renderWidth
+        let sheetH = Self.renderHeight
+        let halfH = sheetH / 2
+
+        guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else {
+            throw VisualReviewError.cgImageFailed
+        }
+        let bitmapInfo = CGBitmapInfo(rawValue:
+            CGImageAlphaInfo.premultipliedFirst.rawValue
+            | CGBitmapInfo.byteOrder32Little.rawValue)
+        guard let ctx = CGContext(data: nil,
+                                  width: sheetW, height: sheetH,
+                                  bitsPerComponent: 8,
+                                  bytesPerRow: sheetW * 4,
+                                  space: colorSpace,
+                                  bitmapInfo: bitmapInfo.rawValue) else {
+            throw VisualReviewError.cgImageFailed
+        }
+
+        ctx.setFillColor(red: 0, green: 0, blue: 0, alpha: 1)
+        ctx.fill(CGRect(x: 0, y: 0, width: sheetW, height: sheetH))
+
+        // Top half: rendered output.
+        if let renderedImage = loadCGImage(from: renderedMidPNG) {
+            let topRect = CGRect(x: 0, y: halfH, width: sheetW, height: halfH)
+            drawLetterboxed(image: renderedImage, in: topRect, ctx: ctx)
+        }
+
+        // Bottom half: single reference image, full-width letterboxed.
+        let projectRoot = projectRootURL()
+        let refURL = projectRoot.appendingPathComponent(
+            Self.driftMotesReferenceRelPath.path)
+        if let refImage = loadCGImage(from: refURL) {
+            let botRect = CGRect(x: 0, y: 0, width: sheetW, height: halfH)
+            drawLetterboxed(image: refImage, in: botRect, ctx: ctx)
+        }
+
+        let nsContext = NSGraphicsContext(cgContext: ctx, flipped: false)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = nsContext
+
+        let labels: [(text: String, originX: Int, originY: Int)] = [
+            ("Render: steady-mid (DM.3 — emission-rate scaling + dispersion shock)",
+             12, sheetH - 24),
+            (Self.driftMotesReferenceRelPath.label, 12, halfH - 24),
+        ]
         let attrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 14),
             .foregroundColor: NSColor.white,
