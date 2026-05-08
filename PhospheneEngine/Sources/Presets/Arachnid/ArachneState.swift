@@ -360,6 +360,12 @@ public final class ArachneState: @unchecked Sendable {
     var lastSpawnBeatIndex: Float = -10
     private var prevBeatPhase01: Float = 0
     private var prevBeatComposite: Float = 0
+    /// V.7.7C.4 / D-095 follow-up — rising-edge tracker for the hybrid audio
+    /// coupling. `advanceSpiralPhase` advances `spiralChordIndex` by 1 on
+    /// each rising-edge beat (in addition to the time-based pace), so the
+    /// chord laydown reads as "TIME pace + per-beat kick". Internal so
+    /// `advanceSpiralPhase` can read; reset on `arachneState.reset()`.
+    var prevBeatForSpiral: Float = 0
     var rng: UInt32
 
     // Mood smoothing for WORLD palette (V.7.7 — ARACHNE_V8_DESIGN.md §4.3).
@@ -783,7 +789,7 @@ public final class ArachneState: @unchecked Sendable {
         case .radial:
             advanceRadialPhase(by: effectiveDt)
         case .spiral:
-            advanceSpiralPhase(by: effectiveDt)
+            advanceSpiralPhase(by: effectiveDt, features: features)
         case .stable:
             advanceStablePhase(by: effectiveDt)
         case .evicting:
@@ -845,7 +851,7 @@ public final class ArachneState: @unchecked Sendable {
         }
     }
 
-    private func advanceSpiralPhase(by effectiveDt: Float) {
+    private func advanceSpiralPhase(by effectiveDt: Float, features: FeatureVector) {
         let total = buildState.spiralChordsTotal
         guard total > 0 else {
             buildState.stage = .stable
@@ -861,6 +867,24 @@ public final class ArachneState: @unchecked Sendable {
             buildState.spiralChordBirthTimes.append(buildState.stageElapsed)
             buildState.spiralChordProgress -= 1.0
         }
+
+        // V.7.7C.4 / D-095 follow-up — hybrid audio coupling. On rising-edge
+        // beats (`beat_bass` or `beat_composite` crossing 0.5), advance
+        // `spiralChordIndex` by 1 on top of the time-based pace. Keeps the
+        // build clock TIME-driven (D-095 Decision 2 preserved — sparse-beat
+        // tracks still complete in `naturalCycleSeconds`) while making the
+        // chord laydown perceptibly couple to the music. Pause-guard
+        // semantics preserved: `effectiveDt = 0` while spider is visible
+        // means `prevBeatForSpiral` is still tracked but no chord advance
+        // fires (the rising-edge check is gated on `effectiveDt > 0`).
+        let beatNow = max(features.beatBass, features.beatComposite)
+        let risingEdge = beatNow > 0.5 && prevBeatForSpiral <= 0.5
+        if risingEdge && effectiveDt > 0 && buildState.spiralChordIndex < total {
+            buildState.spiralChordIndex += 1
+            buildState.spiralChordBirthTimes.append(buildState.stageElapsed)
+        }
+        prevBeatForSpiral = beatNow
+
         if buildState.spiralChordIndex >= total {
             buildState.spiralToStableAtElapsed = buildState.stageElapsed
             buildState.stage = .stable
@@ -1002,6 +1026,9 @@ public final class ArachneState: @unchecked Sendable {
 
         // Per-segment spider cooldown reset (V.7.7C.2 Sub-item 8).
         spiderFiredInSegment = false
+        // V.7.7C.4 — reset rising-edge tracker so the new segment's first
+        // beat is treated as a real edge, not a spurious continuation.
+        prevBeatForSpiral = 0
 
         // Migration crossfade clears.
         migrationCrossfadeElapsed = nil

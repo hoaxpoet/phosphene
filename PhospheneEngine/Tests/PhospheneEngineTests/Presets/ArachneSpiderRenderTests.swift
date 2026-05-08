@@ -77,7 +77,17 @@ import simd
 /// edges land at the harness's low warmup progress). Polygon path coverage
 /// is meaningful regardless — every rendered pixel decodes polyV[] and
 /// invokes ray-polygon intersection through the foreground anchor block.
-private let goldenSpiderForcedHash: UInt64 = 0x46160011C2D80800
+///
+/// V.7.7C.4 (D-095 follow-up): substantial hash drift. The palette enrichment
+/// (silkTint 0.60 → 0.85; mood-driven hue; vocal-pitch coupling; ambient tint
+/// 0.25 → 0.40; hub knot 0.80 → 1.20) brightens every silk pixel visible at
+/// the test's frame-phase 16 % progress. The partial bridge thread + hub knot
+/// fragment are bright enough now to register through the spider patch under
+/// the foreground anchor block — large hamming-distance shift expected.
+/// Goldens regenerated. Polygon-mode + spider 3D anatomy both still active
+/// (ArachneState.reset() seeds the polygon; spider forced via
+/// `forceActivateForTest(at:)`).
+private let goldenSpiderForcedHash: UInt64 = 0x06129A55C258494D
 
 // MARK: - Test Suite
 

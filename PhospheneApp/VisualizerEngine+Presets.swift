@@ -167,7 +167,14 @@ extension VisualizerEngine {
                 pipeline.setFeedbackComposePipeline(fbPipeline)
 
             case .particles:
-                pipeline.setParticleGeometry(particleGeometry)
+                // Siblings, not subclasses (D-097). Resolution table lives in
+                // VisualizerEngine.resolveParticleGeometry; ParticleGeometryRegistry
+                // mirrors the catalog and ParticleDispatchRegistryTests gates it.
+                let geometry = resolveParticleGeometry(forPresetName: desc.name)
+                if geometry == nil {
+                    logger.error("No particle geometry registered for preset '\(desc.name)'")
+                }
+                pipeline.setParticleGeometry(geometry)
 
             case .icb:
                 // ICB preset switching deferred to the Orchestrator increment.
@@ -365,8 +372,22 @@ extension VisualizerEngine {
     /// Honours the event only when the segment has been on screen for at least
     /// `PresetSignalingDefaults.minSegmentDuration` seconds. Below the floor, the
     /// event is dropped — preset authors should treat the signal as a *request*.
+    ///
+    /// V.7.7C.4 / D-095 follow-up: also honours `diagnosticPresetLocked`. When
+    /// the L key (or any future "lock to preset" UX) is engaged, completion-
+    /// driven transitions are fully suppressed — letting Matt watch the full
+    /// build cycle on Arachne (or any future PresetSignaling-emitting preset)
+    /// without the orchestrator cycling away every ~60 s. Pre-V.7.7C.4 the
+    /// L lock only suppressed mood-override switching (in `applyLiveUpdate`);
+    /// the orchestrator continued to fire on completion events. Manual
+    /// `applyPresetByID(_:)` is unaffected — Matt can always cycle via
+    /// `⌘[`/`⌘]`.
     @MainActor
     private func handlePresetCompletionEvent() {
+        if diagnosticPresetLocked {
+            logger.info("Orchestrator: preset completion suppressed (diagnosticPresetLocked)")
+            return
+        }
         let elapsed = Date().timeIntervalSinceReferenceDate - currentSegmentStartTime
         guard elapsed >= PresetSignalingDefaults.minSegmentDuration else {
             logger.info("Orchestrator: preset completion ignored (\(elapsed) s < min)")
