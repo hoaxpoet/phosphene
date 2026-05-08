@@ -6,6 +6,41 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-08-c] V.7.7C.5 — Arachne §4 atmospheric reframe + off-frame anchors + canvas-filling foreground hero web
+
+**Increment:** V.7.7C.5. **Decision:** D-100. Single commit.
+
+**V.7.7C.4 manual smoke green confirmed by Matt 2026-05-08.** With that gate cleared, V.7.7C.5 lands the §4 spec rewrite + WEB pillar canvas-filling re-anchor that Matt's 2026-05-08T18-28-16Z manual smoke surfaced. Three coupled changes ride together because they share one coherent visual story: silk anchored off-frame, polygon spanning the canvas, and atmospheric backdrop replacing the V.7.7B–C.4 forest.
+
+**§4 atmospheric reframe.** `drawWorld()` retires the six-layer dark close-up forest entirely (deep background fbm + radial mist + V.7.7B narrow shaft + uniform-field dust motes + forest floor + three near-frame branch SDFs + the §5.9 `kBranchAnchors[]` capsule-twig loop) and replaces it with the §4 atmospheric abstraction: full-frame `mix(botCol, topCol, …)` sky band with low-frequency fbm4 modulation + aurora ribbon at high arousal + volumetric atmosphere — beam-anchored fog `0.15 + 0.15 × midAttRel` inside cones (raised from V.7.7B's 0.02–0.06 per Q7), 1–2 mood-driven god-ray light shafts at brightness `0.30 × val` (raised from V.7.7B's `0.06 × val` per Q8 — shafts now read as the dominant atmospheric light source), dust motes confined inside the shaft cones only (caustic-like, per Q9). The §4.3 mood palette (`topCol` / `botCol` / `beamCol`) is preserved verbatim per Q10. Silence anchor (`satScale × valScale < 0.04 → black`) preserved per Q11. `drawWorld()` signature gains a `midAttRel` parameter so shaft engagement (`smoothstep(0.05, 0.15, midAttRel)`) and fog-density modulation read directly from `f.mid_att_rel`; `arachne_world_fragment` passes `f.mid_att_rel`, the dead-reference `drawBackgroundWeb` passes `0.0`. Retired forest references (`02_meso_per_strand_sag.jpg`, `11_anchor_web_in_branch_frame.jpg`, `17_floor_moss_leaf_litter.jpg`, `18_bark_close_up.jpg`) stay in `docs/VISUAL_REFERENCES/arachne/` for V.7.10 historical comparison only.
+
+**Off-frame `kBranchAnchors[6]` (Q14).** Polygon vertex positions move from interior `[0.10, 0.92]² ` UV (V.7.7C.2) to off-frame `[-0.06, 1.06]² \ [0,1]²` so the WEB silk threads enter the canvas from outside, matching ref `20_macro_backlit_purple_canvas_filling_web.jpg`. Anchors at `(-0.05, 0.05) / (1.05, 0.02) / (1.06, 0.52) / (1.04, 0.97) / (-0.04, 0.95) / (-0.06, 0.48)` — distribution is asymmetric (no opposing-edge pair shares the same vertical position). The `decodePolygonAnchors` → `arachneEvalWeb` ray-clipping spoke tips + frame thread polygon edges path is unchanged; only the constants move. `ArachneState.branchAnchors` Swift mirror updated byte-for-byte. `ArachneBranchAnchorsTests` regenerated: bounds invariant rewritten for the new band; new asymmetry test added.
+
+**Canvas-filling foreground hero (Q15).** `arachne_composite_fragment`'s anchor block: hub UV `(0.42, 0.40)` → `(0.5, 0.5)` (canvas centre), `webR` `0.22` → `0.55` so the polygon spans ~70–85% of canvas area. `ArachneState.seedInitialWebs()` `webs[0]` mirror updated `hubX/hubY = 0.0`, `radius = 1.10` so CPU/GPU state stays internally consistent. `webs[1]` (background-pool) untouched.
+
+**V.7.7C.4 hybrid coupling re-tuned 0.06 → 0.025.** PresetAcceptance D-037 invariant 3 (`beatMotion ≤ continuousMotion × 2.0 + 1.0`; threshold collapses to ≤ 1.0 on the test fixtures since `bass_att_rel = 0`) caught the canvas-filling-foreground × 0.06 breach (`beatMotion = 1.7840983` vs ceiling 1.0 — the V.7.7C.4 coefficient was sized for ~5% silk coverage, the canvas-filling foreground covers ~30%). Per the prompt's STOP CONDITION the breach was surfaced before tuning; Matt elected Option 1 (constant reduction). `0.025` chosen via k² scaling for ~3× margin matching V.7.7C.4's headroom — predicted MSE ≈ 0.31, comfortable margin under 1.0. Per-silk-pixel lift drops 6 % → 2.5 % but screen-integrated pulse grows ~2.5× because the silk surface is bigger, which Matt's evident "less subtle" V.7.7C.4 directive rewards.
+
+**Tests + verification.**
+
+- **No new test files.** Only fixture-helper updates + golden hash regen.
+- **Golden hashes.** Arachne `steady`/`quiet` UNCHANGED at `0x06129A65E458494D` (PresetRegression doesn't bind slot 6/7 + worldTex; the §4 reframe + canvas-filling foreground don't surface in regression-mode). Arachne `beatHeavy` `0x0000000000000000` → `0xC6921125C4D85849` (the V.7.7C.4 all-zeros hash was an artifact of the 0.06 coefficient × frame-phase-0 composition collapsing under dHash quantization; smaller coefficient now produces a non-zero pattern reflecting dust mote phase difference between fixtures). Spider forced `0x06129A55C258494D` → `0x06D29A65E458494D` (7-bit Hamming drift — `ArachneSpiderRenderTests` binds a `state.reset()`-seeded `ArachneState` so the off-frame anchors flow through `decodePolygonAnchors` into ray-clipped spoke tips).
+- **Engine 1184 tests / 2 documented pre-existing flakes** (`MetadataPreFetcher.fetch_networkTimeout`, `SoakTestHarness.cancel`).
+- **App build clean.**
+- **SwiftLint 0 violations on touched files.**
+- **`Scripts/check_sample_rate_literals.sh` passes** (one pre-existing Gossamer warning unrelated to this increment).
+- **Visual harness.** `RENDER_VISUAL=1` PNGs at `/tmp/phosphene_visual/20260508T213106/Arachne_{silence,mid,beat}_{world,composite}.png`. WORLD silence/mid/beat are byte-identical (mood=0, midAttRel=0 in harness fixtures → no shaft engagement → sky band + ambient fog only); COMPOSITE shows the canvas-filling foreground over the WORLD; beat fixture shows the small silk pulse.
+
+**Retired (V.7.7C.5).** Six-layer dark close-up forest `drawWorld()` content. §5.9 anchor-twig SDF capsule loop. The four forest-specific reference images for §4 implementation purposes (they remain on disk for V.7.10 historical comparison).
+
+**Preserved (V.7.7C.5).** §4.3 mood palette (verbatim per Q10). Silence anchor (per Q11). `kBranchAnchors[6]` constants stay (now polygon vertex source only). `ArachneState.branchAnchors[]` regression-lock. WEB pillar (§5) entirely — staged WORLD + COMPOSITE scaffold, build state machine, polygon-from-`branchAnchors`, drop refraction recipe, 3D SDF spider, 12 Hz vibration, V.7.7C.4 palette enrichment, V.7.7C.4 Fix C rising-edge spiral chord advance.
+
+**Carry-forward.**
+- **Manual smoke re-run on real music** (Matt verifies the atmospheric abstraction reads as cinematographic god-rays, not residual forest, with the canvas-filling silk reading as anchored off-frame).
+- **V.7.7C.6** — spider movement system (off-camera entry + 10–15 s walk + min-visibility latch + N-segment cooldown). V.7.7D-scale increment, estimated 2–3 sessions.
+- **V.7.10** — Matt M7 contact-sheet review + cert sign-off. Five remaining prerequisites: per-chord drop accretion, anchor-blob discs at polygon vertices, background-web migration crossfade visual, V.7.7C.6 spider movement, V.7.7C.5 manual-smoke confirmation.
+
+---
+
 ## [dev-2026-05-08-b] DM.1 + DM.2 — Drift Motes preset (foundation + audio coupling) + closeout
 
 **Increments:** DM.1, DM.2, DM.2 closeout. **Decisions:** D-098, D-099. Ten commits (`89ddfb42..5f2e9355`).

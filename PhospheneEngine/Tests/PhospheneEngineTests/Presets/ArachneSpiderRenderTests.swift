@@ -87,7 +87,7 @@ import simd
 /// Goldens regenerated. Polygon-mode + spider 3D anatomy both still active
 /// (ArachneState.reset() seeds the polygon; spider forced via
 /// `forceActivateForTest(at:)`).
-private let goldenSpiderForcedHash: UInt64 = 0x06129A55C258494D
+private let goldenSpiderForcedHash: UInt64 = 0x06D29A65E458494D
 
 // MARK: - Test Suite
 
