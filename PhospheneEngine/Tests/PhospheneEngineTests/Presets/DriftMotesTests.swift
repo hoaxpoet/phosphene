@@ -159,51 +159,65 @@ private struct LCG {
     var features = FeatureVector.zero
     features.deltaTime = fixedDt
 
-    // Dispatch 50 warmup frames so the field has reached a steady drift.
-    for frame in 0..<50 {
+    // Compare two STEADY-STATE samples to catch flocking. Pre-DM.3.1 this
+    // test compared frame 50 (early) to frame 200 (still early) — both
+    // partway through the init-to-steady-state transition. With the
+    // DM.3.1 spawn-Y geometry fix, steady-state spawn is concentrated
+    // in a tight upper-right band (world ±3.64+pad, not ±8 uniform), so
+    // 50 vs 200 produces a transient spread ratio reflecting the init
+    // clearing out — not flocking. After DM.3.1, sample two frames
+    // both in the steady state (mean lifetime 7 s ≈ 420 frames; init
+    // has fully cycled out by frame 600). Flocking would still
+    // contract the ratio toward < 0.5 between any two steady-state
+    // samples; non-flocking force-field motion holds it near 1.0.
+    let warmupFrames = 600         // 10 s — past mean-lifetime turn-over
+    let secondSampleAt = 1500       // 25 s — well into steady state
+
+    for frame in 0..<warmupFrames {
         features.time = Float(frame) * fixedDt
         try dispatchOneFrame(geometry: geometry, features: features, queue: ctx.commandQueue)
     }
 
     let pairs = makePairs(count: 50, particleCount: 800)
-    let frame50 = sampleDistances(buffer: geometry.particleBuffer, count: 800, pairs: pairs)
-    let spread50 = measureCentroidSpread(buffer: geometry.particleBuffer, count: 800)
+    let frameA = sampleDistances(buffer: geometry.particleBuffer, count: 800, pairs: pairs)
+    let spreadA = measureCentroidSpread(buffer: geometry.particleBuffer, count: 800)
 
-    // Dispatch 150 more frames (200 total).
-    for frame in 50..<200 {
+    for frame in warmupFrames..<secondSampleAt {
         features.time = Float(frame) * fixedDt
         try dispatchOneFrame(geometry: geometry, features: features, queue: ctx.commandQueue)
     }
-    let frame200 = sampleDistances(buffer: geometry.particleBuffer, count: 800, pairs: pairs)
-    let spread200 = measureCentroidSpread(buffer: geometry.particleBuffer, count: 800)
+    let frameB = sampleDistances(buffer: geometry.particleBuffer, count: 800, pairs: pairs)
+    let spreadB = measureCentroidSpread(buffer: geometry.particleBuffer, count: 800)
 
-    let medianRatio = frame200.median / frame50.median
-    let meanRatio   = frame200.mean   / frame50.mean
-    let p25Ratio    = frame200.p25    / frame50.p25
-    let spreadRatio = spread200.rms   / spread50.rms
+    let medianRatio = frameB.median / frameA.median
+    let meanRatio   = frameB.mean   / frameA.mean
+    let p25Ratio    = frameB.p25    / frameA.p25
+    let spreadRatio = spreadB.rms   / spreadA.rms
 
     let diagnostic = """
-        DriftMotesNonFlockTest distribution diagnostics:
-          frame  50 pairwise:  median=\(frame50.median),  mean=\(frame50.mean),  p25=\(frame50.p25)
-          frame 200 pairwise:  median=\(frame200.median), mean=\(frame200.mean), p25=\(frame200.p25)
-          frame  50 centroid spread RMS: \(spread50.rms)
-          frame 200 centroid spread RMS: \(spread200.rms)
+        DriftMotesNonFlockTest steady-state distribution diagnostics:
+          frame \(warmupFrames) pairwise:   median=\(frameA.median),  mean=\(frameA.mean),  p25=\(frameA.p25)
+          frame \(secondSampleAt) pairwise:  median=\(frameB.median), mean=\(frameB.mean), p25=\(frameB.p25)
+          frame \(warmupFrames) centroid spread RMS: \(spreadA.rms)
+          frame \(secondSampleAt) centroid spread RMS: \(spreadB.rms)
           pairwise ratios:  median=\(medianRatio), mean=\(meanRatio), p25=\(p25Ratio)
           spread ratio:     \(spreadRatio)
         """
 
     // The flock-discriminator: centroid spread is translation-invariant,
     // so the wind-driven cloud drift cancels out. Real flocking would
-    // drop this ratio to < 0.5 within 150 frames; non-flocking dynamics
-    // hold spread within ~10% on the way to a new steady state.
+    // drop this ratio to < 0.5 between any two steady-state samples;
+    // non-flocking dynamics hold it near 1.0. 0.85 threshold catches
+    // flocking with margin.
     #expect(spreadRatio >= 0.85,
             "Centroid spread RMS contracted — flocking detected. \(diagnostic)")
 
-    // Pairwise distance check is intentionally looser. With a uniform-cube
-    // init and a top-slab respawn distribution, the distribution shifts
-    // ~10–15% as particles age out. Cohesion would shrink all three by
-    // far more (≥ 50%); 80% threshold catches that without false-firing
-    // on the natural transient.
+    // Pairwise distance check is intentionally looser. Even at steady
+    // state, particle ages drift slightly (some particles in the
+    // spawn-band are fresh, others are aged), producing ~5–10%
+    // pairwise variation. Cohesion would shrink all three by ≥ 50%;
+    // 80% threshold catches that without false-firing on natural
+    // steady-state variance.
     #expect(medianRatio >= 0.80,
             "Median pairwise distance contracted — flocking detected. \(diagnostic)")
     #expect(meanRatio   >= 0.80,
