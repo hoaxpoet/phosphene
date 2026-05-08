@@ -184,9 +184,25 @@ private func makeWarmStems(pitchHz: Float, confidence: Float = 0.9) -> StemFeatu
             "Per-particle colour distribution is too tight — D-019 hue baking may not be firing. R-var=\(rVar), G-var=\(gVar), B-var=\(bVar)")
 }
 
-// MARK: - Test 3 — Warm-stems variance > 2× cold-stems variance.
+// MARK: - Test 3 — Field is chromatic from frame zero in any stem state (DM.3.2).
+//
+// Pre-DM.3.2: this test asserted warm-stems variance > 2× cold-stems
+// variance, on the premise that cold-stems were nearly monochromatic
+// amber (D-019 stem-warmup blend) and warm-stems unlocked a 4-octave
+// pitch hue sweep. DM.3.2 retired the D-019 blend at the emission
+// branch — the field is now chromatic from frame zero in any stem
+// state, biased toward the current paletteCycle region with per-particle
+// jitter (±0.10) + ~8% high-sat pop motes. Cold and warm stems both
+// produce significant chromatic spread; warm stems add a small
+// ±0.10 vocal-pitch shift on top, marginal.
+//
+// New contract: BOTH cold and warm stem runs must produce significant
+// per-particle colour variance. Catches a regression where the
+// paletteCycle, jitter, or pop-mote logic stops contributing — the
+// field would collapse to a single hue (variance ≈ 0). See
+// `docs/presets/DRIFT_MOTES_PALETTE_DESIGN.md §4` for the design.
 
-@Test func test_driftMotes_warmStems_widerVarianceThanCold() throws {
+@Test func test_driftMotes_chromaticInBothStemStates() throws {
     let ctx = try MetalContext()
     let lib = try ShaderLibrary(context: ctx)
 
@@ -212,20 +228,28 @@ private func makeWarmStems(pitchHz: Float, confidence: Float = 0.9) -> StemFeatu
         return variance(r) + variance(g) + variance(b)
     }
 
-    // Cold stems: zero across the run. Hue source is the per-particle hash
-    // jitter ± musicShift (which is also zero here).
+    // Cold stems: zero across the run. paletteCycle = 0 (region 0,
+    // burnt amber 0.08). Variance comes from per-particle hue jitter
+    // (±0.10 around the region centre) + ~8% pop motes (high-sat
+    // accents). With 800 particles, this should produce variance
+    // well above 1e-3.
     let coldVar = try runFor { _ in .zero }
 
-    // Warm stems: pitch sweep over four octaves. Hue source is the
-    // log-octave-wrap mapping in `dm_pitch_hue`.
+    // Warm stems: same paletteCycle anchor (region 0) but with vocal
+    // pitch sweep adding a small additional ±0.10 shift per emission.
+    // Slightly higher variance than cold but not dramatically so.
     let warmVar = try runFor { frame in
         let progress = Float(frame) / 59.0
         let pitchHz: Float = 110.0 * pow(16.0, progress)
         return makeWarmStems(pitchHz: pitchHz)
     }
 
-    let ratio = warmVar / max(coldVar, 1e-6)
-    let diagnostic = "cold=\(coldVar), warm=\(warmVar), ratio=\(ratio)"
-    #expect(ratio >= 2.0,
-            "D-019 blend is not contributing real signal — variance ratio below the 2x floor. \(diagnostic)")
+    let diagnostic = "cold=\(coldVar), warm=\(warmVar)"
+    // Both states must have meaningful variance (chromatic field, not
+    // monochromatic). The 1e-3 floor catches a numeric no-op (jitter
+    // disabled or pop-mote roll always false).
+    #expect(coldVar > 1e-3,
+            "Cold-stems field has insufficient chromatic spread — palette logic may be broken. \(diagnostic)")
+    #expect(warmVar > 1e-3,
+            "Warm-stems field has insufficient chromatic spread — palette logic may be broken. \(diagnostic)")
 }

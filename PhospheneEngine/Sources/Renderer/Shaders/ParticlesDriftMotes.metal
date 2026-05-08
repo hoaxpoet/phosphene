@@ -16,27 +16,35 @@
 // to `Particles.metal` (D-020). Documented here and in CLAUDE.md so future
 // authors don't reorder the prefix without thinking.
 //
-// AUDIO COUPLING (post-DM.3):
+// AUDIO COUPLING (post-DM.3.2):
 //   The kernel reads stems and FeatureVector at emission time AND at
 //   integration time:
-//     • Emission time (respawn branch):
-//       - Hue baked once per particle, selected by the D-019 warmup blend
-//         `smoothstep(0.02, 0.06, totalStemEnergy)`. Cold stems use a
-//         per-particle hash jitter around warm amber lightly modulated by
-//         `f.mid_att_rel`; warm stems use `dm_pitch_hue(vocals_pitch_hz,
-//         vocals_pitch_confidence)` (octave-wrapped log mapping).
+//     • Emission time (respawn branch) — DM.3.2 muted-psychedelic palette:
+//       - Hue baked once per particle from the paletteCycle base region
+//         (60s cycle through 6 hue territories — burnt amber, dusty rose,
+//         faded plum, deep teal, mustard, burgundy) + mood hue shift
+//         (valence ×0.04) + per-particle jitter (±0.10) + vocal-pitch
+//         offset (±0.10 via `dm_pitch_hue_offset`, 1-octave wrap so
+//         adjacent semitones produce distinct hues). 8% of emissions are
+//         "pop motes" with high saturation (0.95) and value (0.95) — the
+//         60s-poster accent that punches through the muted base. See
+//         `docs/presets/DRIFT_MOTES_PALETTE_DESIGN.md` for the full spec.
 //       - Lifetime scaled by `1 / (1 + kEmissionRateGain * f.mid_att_rel)`
 //         (positive `mid_att_rel` only) so peak melody compresses cycle
 //         frequency without changing the 800-particle field density (DM.3).
+//       - The pre-DM.3.2 D-019 stem-warmup blend was retired here. Cold
+//         stems no longer fall back to amber; the field is chromatic from
+//         frame zero biased toward whatever paletteCycle region is active.
 //     • Integration time (every frame, every particle):
 //       - Drum dispersion shock — `smoothstep(0.30, 0.70, stems.drums_beat)`
 //         gate × `kDispersionShockGain` × `dt` adds a radial outward
 //         velocity impulse in the horizontal plane with a small +Y lift.
 //         The beat-detector envelope provides natural decay; damping
 //         settles the field back into wind drift between beats (DM.3).
-//   Wind/turbulence motion is still audio-independent through DM.3.
-//   DM.4 will add `f.bass_att_rel` × wind, valence-tinted backdrop, and
-//   anticipatory shaft pulse on `f.beat_phase01`.
+//   Wind/turbulence motion is still audio-independent through DM.3.2.
+//   DM.4 will add `f.bass_att_rel` × wind and anticipatory shaft pulse on
+//   `f.beat_phase01`. The valence-tinted backdrop originally specced for
+//   DM.4 is subsumed by DM.3.2's paletteCycle + mood bias (sky fragment).
 //
 // CONSTANTS (DriftMotesConfig at buffer(4)):
 //   Wind direction, wind magnitude, damping, turbulence amplitude /
@@ -179,12 +187,71 @@ struct DriftMotesConfig {
 //
 // Floor of 80 Hz on the input prevents `log2` going negative on
 // male-vocal sub-fundamentals or the 0 sentinel.
+//
+// DM.3.2: Drift Motes' kernel no longer uses `dm_pitch_hue` directly — it
+// uses `dm_pitch_hue_offset` below, which returns a small relative shift
+// for layering on top of a paletteCycle base hue. `dm_pitch_hue` stays
+// as the canonical helper for OTHER particle presets that want pitch as
+// a primary hue source.
 inline float dm_pitch_hue(float pitchHz, float confidence) {
     if (confidence < 0.3) {
         return 0.08;
     }
     float safePitch = max(pitchHz, 80.0);
     return fract(log2(safePitch / 110.0) / 4.0);
+}
+
+// dm_pitch_hue_offset — vocal pitch (Hz) → hue OFFSET ∈ [-0.10, +0.10] (DM.3.2).
+//
+// 1-octave wrap (vs `dm_pitch_hue`'s 4-octave) so adjacent semitones produce
+// visibly distinct shifts when applied on top of a base hue. Used by Drift
+// Motes' palette pass to add per-mote chromatic spread driven by vocal
+// melody on top of the paletteCycle base hue.
+//
+// Returns 0.0 below the 0.3 confidence floor (no shift — particle hue
+// stays at the paletteCycle + jitter, no pitch contribution).
+inline float dm_pitch_hue_offset(float pitchHz, float confidence) {
+    if (confidence < 0.3) {
+        return 0.0;
+    }
+    float safePitch = max(pitchHz, 80.0);
+    float octaveFrac = fract(log2(safePitch / 110.0));  // 1-octave wrap
+    return (octaveFrac - 0.5) * 0.20;                   // ±0.10 shift
+}
+
+// dm_palette_region_hue — paletteCycle ∈ [0, 1) → smooth-blended base hue (DM.3.2).
+//
+// Six muted-psychedelic palette regions per `DRIFT_MOTES_PALETTE_DESIGN.md §1`:
+//   region 0: 0.08 burnt amber, region 1: 0.95 dusty rose,
+//   region 2: 0.78 faded plum,  region 3: 0.50 deep teal,
+//   region 4: 0.15 mustard,     region 5: 0.02 burgundy.
+//
+// Each region occupies 1/6 of the cycle (~10 s at the 60 s base period). The
+// last half of each region cross-fades into the next via smoothstep — no hard
+// hue cuts. Hue interpolation takes the shortest path around the colour wheel
+// (so 0.95 → 0.08 wraps through 0.0 rather than going the long way).
+//
+// At silence, `accumulated_audio_time` doesn't advance (existing FA #33-
+// compliant behaviour) so the cycle stays put and the palette region holds.
+//
+// `constant` qualifier on arrays is an address-space qualifier in Metal —
+// must be declared at file scope, not function scope.
+constant float kPaletteRegionHues[6] = {
+    0.08f, 0.95f, 0.78f, 0.50f, 0.15f, 0.02f
+};
+
+inline float dm_palette_region_hue(float cycle) {
+    float regionFloat = cycle * 6.0;
+    int regionIdx = int(regionFloat) % 6;
+    int nextIdx = (regionIdx + 1) % 6;
+    float regionFrac = regionFloat - float(int(regionFloat));
+    float blend = smoothstep(0.5, 1.0, regionFrac);
+    float h0 = kPaletteRegionHues[regionIdx];
+    float h1 = kPaletteRegionHues[nextIdx];
+    float dh = h1 - h0;
+    if (dh > 0.5) dh -= 1.0;
+    if (dh < -0.5) dh += 1.0;
+    return fract(h0 + dh * blend);
 }
 
 // Deterministic per-particle respawn position. DM.3.1 spawn-Y geometry fix.
@@ -267,35 +334,41 @@ kernel void motes_update(
         // Slow downward drift on respawn — wind takes over from there.
         p.velocity = packed_float3(-0.05, -0.4, 0.0);
 
-        // ── D-019 warmup blend at emission (DM.2) ─────────────────────────
-        // Hue source is selected once per born particle and never modified
-        // afterward. Cold stems use a per-particle hash + `f.mid_att_rel`
-        // proxy so the field has intrinsic chromatic texture and still
-        // moves with the music when stems are zero. Warm stems substitute
-        // the vocal-pitch mapping. The blend ramps over a tiny stems-energy
-        // window so the crossover lands within the first stem updates.
-        float totalStemEnergy = stems.drums_energy + stems.bass_energy
-                              + stems.other_energy + stems.vocals_energy;
-        float blend = smoothstep(0.02, 0.06, totalStemEnergy);
+        // ── DM.3.2 muted-psychedelic palette ──────────────────────────────
+        // Hue baked once per born particle, never modified afterward
+        // (within-life invariance preserved — DriftMotesRespawnDeterminismTest
+        // gates this). Source is the paletteCycle base region + small
+        // mood/jitter/vocal-pitch shifts on top + 8% chance of a high-sat
+        // pop-mote accent.
+        //
+        // The pre-DM.3.2 D-019 stem-warmup blend is RETIRED here for design
+        // reasons: cold stems no longer fall back to amber, they fall back
+        // to whatever paletteCycle region we're currently in. The field is
+        // chromatic from frame zero whether stems are warm or cold. See
+        // `docs/presets/DRIFT_MOTES_PALETTE_DESIGN.md §4` for the full
+        // rationale.
+        float paletteCycle  = fract(features.accumulated_audio_time / 60.0);
+        float baseHue       = dm_palette_region_hue(paletteCycle);
+        float moodHueShift  = 0.04 * features.valence;
+        float jitter        = (dm_hash_f01(float(id) * 4.71) - 0.5) * 0.20;
+        float pitchShift    = dm_pitch_hue_offset(stems.vocals_pitch_hz,
+                                                  stems.vocals_pitch_confidence);
 
-        // Cold-stem fallback. baseAmberHue matches the DM.1 sky.
-        // perMoteJitter spreads particles around amber by ±0.05 hue (rgb
-        // motion through warm-amber → warm-orange → warm-pink range).
-        // musicShift nudges the field's mean hue with melody — D-026
-        // deviation form, no absolute thresholds.
-        float baseAmberHue   = 0.08;
-        float perMoteJitter  = (dm_hash_f01(float(id) * 17.0 + t * 0.013) - 0.5) * 0.10;
-        float musicShift     = features.mid_att_rel * 0.04;
-        float pitchHueCold   = baseAmberHue + perMoteJitter + musicShift;
+        // 8% of emissions get a high-saturation "pop" — the 60s-poster
+        // accent that punches through the muted base. Deterministic per
+        // particle id (popRoll uses a different prime multiplier from
+        // jitter so they decorrelate).
+        float popRoll = dm_hash_f01(float(id) * 2.71);
+        bool  isPop   = popRoll < 0.08;
 
-        // Warm-stem source. Confidence gate handled inside the helper.
-        float pitchHueWarm = dm_pitch_hue(stems.vocals_pitch_hz,
-                                          stems.vocals_pitch_confidence);
+        float arousalSatBoost = 0.10 * max(0.0, features.arousal);
+        float arousalValBoost = 0.05 * max(0.0, features.arousal);
 
-        float bakedHue = mix(pitchHueCold, pitchHueWarm, blend);
-        // Saturation/value calibrated against the DM.1 warm-amber sky so
-        // motes read as embers in the shaft, not neon dots.
-        float3 rgb = hsv2rgb(float3(bakedHue, 0.55, 0.85));
+        float h = fract(baseHue + moodHueShift + jitter + pitchShift);
+        float s = isPop ? 0.95 : (0.55 + arousalSatBoost);
+        float v = isPop ? 0.95 : (0.75 + arousalValBoost);
+
+        float3 rgb = hsv2rgb(float3(h, s, v));
         p.color = packed_float4(rgb.x, rgb.y, rgb.z, 1.0);
 
         p.age   = 0.0;
