@@ -101,6 +101,80 @@ final class SessionRecorderTests: XCTestCase {
         XCTAssertEqual(Float(row2[4]) ?? -1, 0.9, accuracy: 0.0001)
     }
 
+    // MARK: - DM.3a frame_cpu_ms / frame_gpu_ms columns
+
+    func test_featuresHeader_includesFrameTimingColumns() throws {
+        let recorder = try XCTUnwrap(SessionRecorder(baseDir: tempDir))
+        recorder.finish()
+
+        let csv = try String(
+            contentsOf: recorder.sessionDir.appendingPathComponent("features.csv"),
+            encoding: .utf8)
+        let header = csv.split(separator: "\n").first ?? ""
+        XCTAssertTrue(header.hasSuffix("frame_cpu_ms,frame_gpu_ms"),
+                      "DM.3a appends frame_cpu_ms,frame_gpu_ms at end of features.csv header (append-only invariant), got: \(header)")
+    }
+
+    func test_recordFrameTiming_thenRecordFrame_writesTimingValues() throws {
+        let recorder = try XCTUnwrap(SessionRecorder(baseDir: tempDir))
+        recorder.recordFrameTiming(cpuMs: 4.25, gpuMs: 1.75)
+        recorder.recordFrame(features: FeatureVector.zero, stems: StemFeatures.zero)
+        recorder.finish()
+
+        let csv = try String(
+            contentsOf: recorder.sessionDir.appendingPathComponent("features.csv"),
+            encoding: .utf8)
+        let rows = csv.split(separator: "\n")
+        XCTAssertEqual(rows.count, 2, "Header + 1 data row")
+        let cells = rows[1].split(separator: ",", omittingEmptySubsequences: false)
+            .map(String.init)
+        // frame_cpu_ms is the second-to-last column; frame_gpu_ms is the last.
+        XCTAssertEqual(Float(cells[cells.count - 2]) ?? -1, 4.25, accuracy: 0.001,
+                       "frame_cpu_ms round-trip")
+        XCTAssertEqual(Float(cells[cells.count - 1]) ?? -1, 1.75, accuracy: 0.001,
+                       "frame_gpu_ms round-trip")
+    }
+
+    func test_recordFrame_beforeAnyTiming_writesEmptyTimingCells() throws {
+        let recorder = try XCTUnwrap(SessionRecorder(baseDir: tempDir))
+        // Cold-start case: no recordFrameTiming has fired yet (frame N where
+        // the GPU completion handler hasn't returned). Both timing columns
+        // should be empty cells, not 0 or -1 — empty cell distinguishes
+        // "no measurement available" from "measurement was 0".
+        recorder.recordFrame(features: FeatureVector.zero, stems: StemFeatures.zero)
+        recorder.finish()
+
+        let csv = try String(
+            contentsOf: recorder.sessionDir.appendingPathComponent("features.csv"),
+            encoding: .utf8)
+        let rows = csv.split(separator: "\n")
+        XCTAssertEqual(rows.count, 2)
+        let cells = rows[1].split(separator: ",", omittingEmptySubsequences: false)
+            .map(String.init)
+        XCTAssertEqual(cells[cells.count - 2], "", "frame_cpu_ms empty before any timing observed")
+        XCTAssertEqual(cells[cells.count - 1], "", "frame_gpu_ms empty before any timing observed")
+    }
+
+    func test_recordFrameTiming_gpuNil_writesEmptyGPUCellOnly() throws {
+        let recorder = try XCTUnwrap(SessionRecorder(baseDir: tempDir))
+        // GPU timing nil case: cb.gpuEndTime <= cb.gpuStartTime in
+        // RenderPipeline → gpuMs is nil → empty gpu cell, cpu cell still written.
+        recorder.recordFrameTiming(cpuMs: 3.5, gpuMs: nil)
+        recorder.recordFrame(features: FeatureVector.zero, stems: StemFeatures.zero)
+        recorder.finish()
+
+        let csv = try String(
+            contentsOf: recorder.sessionDir.appendingPathComponent("features.csv"),
+            encoding: .utf8)
+        let rows = csv.split(separator: "\n")
+        let cells = rows[1].split(separator: ",", omittingEmptySubsequences: false)
+            .map(String.init)
+        XCTAssertEqual(Float(cells[cells.count - 2]) ?? -1, 3.5, accuracy: 0.001,
+                       "frame_cpu_ms still written when gpu nil")
+        XCTAssertEqual(cells[cells.count - 1], "",
+                       "frame_gpu_ms empty when gpuMs is nil")
+    }
+
     // MARK: - Stems CSV round-trips known StemFeatures exactly
 
     func test_recordFrame_writesStemFeaturesExactly() throws {

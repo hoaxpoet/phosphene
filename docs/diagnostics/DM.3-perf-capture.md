@@ -1,106 +1,104 @@
 # DM.3 Drift Motes — full-pipeline perf capture procedure
 
-## Why a runtime procedure
-
-`SoakTestHarnessTests.shortRunDriftMotes` measures the `motes_update`
-compute kernel only — that's the work that grew between DM.1 → DM.2 → DM.3
-and the right shape of regression gate for kernel-cost drift.
+## What this measures
 
 The Drift Motes architecture contract specifies a **full-frame** budget of
 1.6 ms (Tier 2) / 2.1 ms (Tier 1) covering: sky fragment + curl-noise
 compute + sprite render + feedback decay + composite. The sprite render
-needs a `CAMetalDrawable` from a real `MTKView`, so the `swift test`
-harness cannot exercise it in isolation. This file documents the runtime
-options for closing that gap.
+needs a `CAMetalDrawable` from a real `MTKView`, so it cannot be exercised
+inside `swift test`. This procedure runs the production app under
+representative audio and parses the resulting `features.csv` for
+percentile statistics.
 
-## What's actually available today
+`SoakTestHarnessTests.shortRunDriftMotes` is the kernel-only regression
+gate; this procedure is the full-pipeline budget gate and complements it.
 
-Drift Motes does not currently emit per-frame timing to a CSV. The
-`SessionRecorder.features.csv` columns cover audio features (FFT bands,
-beat sync, mood, stem state) but **not** frame time. Three real options:
+## How frame timing reaches features.csv
 
-### Option A — Dashboard PERF card (vibe check)
+`RenderPipeline.draw(in:)` registers a command-buffer completion handler
+that captures `cpuMs` (CPU wall-time of the encode) and
+`gpuMs = cb.gpuEndTime - cb.gpuStartTime` (GPU execution time of the
+buffer), then fires `onFrameTimingObserved`. `VisualizerEngine` wires
+that callback to `SessionRecorder.recordFrameTiming(cpuMs:gpuMs:)`,
+which buffers the values and consumes them into the next features.csv
+row's `frame_cpu_ms` / `frame_gpu_ms` columns (DM.3a).
 
-Fastest. Build the app, pin Drift Motes, watch the dashboard. The PERF
-card's `FRAME` row shows `recentMaxFrameMs / target ms` from the 30-slot
-rolling window in `FrameBudgetManager`. The `QUALITY` row only appears
-when the budget governor downshifts.
+**Lag.** Frame N's row carries timing from some earlier frame in
+`[N-3, N-1]` because RenderPipeline triple-buffers and the GPU
+completion handler runs after `recordFrame` for the same frame's
+features. Adequate for percentile capture over 60 s; slight
+misalignment for single-frame cross-correlation.
 
-```bash
-xcodebuild -scheme PhospheneApp -destination 'platform=macOS' \
-           -configuration Release build
-open ~/Library/Developer/Xcode/DerivedData/PhospheneApp-*/Build/Products/Release/PhospheneApp.app
-# In the app:
-# 1. Start an ad-hoc session.
-# 2. Press ⌘[ / ⌘] to cycle presets until the dashboard BEAT card shows
-#    "Drift Motes". Hold L (diagnostic-preset-locked) so the orchestrator
-#    does not migrate away.
-# 3. Play representative audio (Love Rehab — Chaim, 125 BPM electronic
-#    stresses emission-rate scaling; So What — Miles Davis, 136 BPM jazz
-#    with sparse drum hits stresses dispersion shock).
-# 4. Watch the PERF card for ~60 s.
-```
+## Tier 2 full-pipeline capture (M3+)
 
-**Pass criteria (eyeball):**
-- `FRAME` row stays under `14 / 14ms` (Tier 2 budget; downshift at 14 ms).
-- `QUALITY` row stays hidden (governor stays at `full`).
-- No visible jank during sustained playback.
+1. **Build the app.** Debug or Release; both wire the timing observer.
 
-This is a vibe check — it tells you "the budget is healthy" or "the budget
-is breached" but does not produce p50/p95/p99 percentiles. Sufficient for
-catching a regression that breaks budget; insufficient for tuning.
+   ```bash
+   xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build
+   ```
 
-### Option B — Temporary CSV instrumentation (rigorous)
+   For perf-realistic numbers prefer Release:
 
-For percentile capture, add ~20 LOC of throwaway instrumentation in
-`RenderPipeline.draw(in:)`:
+   ```bash
+   xcodebuild -scheme PhospheneApp -destination 'platform=macOS' \
+              -configuration Release build
+   ```
 
-```swift
-// TEMPORARY — DM.3 perf capture. Delete after measurement.
-private static let _dm3PerfFile: FileHandle? = {
-    let url = URL(fileURLWithPath: "/tmp/dm3_perf.csv")
-    FileManager.default.createFile(atPath: url.path,
-        contents: "frame,gpu_ms\n".data(using: .utf8))
-    return try? FileHandle(forWritingTo: url)
-}()
-```
+2. **Pin Drift Motes.** Launch the app, start an ad-hoc session, press
+   `⌘[` / `⌘]` to cycle presets until the dashboard `BEAT` card shows
+   "Drift Motes". Hold `L` (diagnostic-preset-locked) so the
+   orchestrator doesn't migrate away.
 
-Then in the per-frame block, after `commandBuffer.commit()` and
-`commandBuffer.addCompletedHandler { … }`:
+3. **Drive representative audio.** Play a track with mid energy and
+   distinct drum hits — Love Rehab (Chaim, 125 BPM electronic) and So
+   What (Miles Davis, 136 BPM jazz with sparse drum hits) are the two
+   reference fixtures. The first stresses emission-rate scaling
+   (continuous mid-frequency content); the second stresses dispersion
+   shock (sparse, clear kicks).
 
-```swift
-let gpuMs = (cmdBuf.gpuEndTime - cmdBuf.gpuStartTime) * 1000.0
-Self._dm3PerfFile?.write("\(frameIndex),\(gpuMs)\n".data(using: .utf8)!)
-```
+4. **Capture for ≥ 60 s.** The session recorder writes
+   `~/Documents/phosphene_sessions/<timestamp>/features.csv`. End the
+   session (or quit the app) so `finish()` flushes outstanding rows.
 
-After 60 s of playback, parse:
+5. **Compute percentiles.** Look up the `frame_gpu_ms` column by name
+   (it's the last column today; future increments may append more):
 
-```bash
-awk -F',' 'NR>1 {print $2}' /tmp/dm3_perf.csv | sort -n | \
-    awk 'BEGIN {n=0} {a[n++]=$1} END {
-      print "p50="a[int(n*0.50)]"ms p95="a[int(n*0.95)]"ms p99="a[int(n*0.99)]"ms"
-    }'
-```
+   ```bash
+   SESSION=~/Documents/phosphene_sessions/<timestamp>
+   awk -F',' 'NR==1 {
+     for (i=1; i<=NF; i++) if ($i == "frame_gpu_ms") col=i
+     next
+   } NR>1 && $col != "" { print $col }' "$SESSION/features.csv" \
+     | sort -n \
+     | awk 'BEGIN {n=0} {a[n++]=$1} END {
+       drops = 0; for (i=0; i<n; i++) if (a[i] > 32) drops++
+       print "n="n" p50="a[int(n*0.50)]"ms p95="a[int(n*0.95)]"ms p99="a[int(n*0.99)]"ms drops="drops
+     }'
+   ```
 
-**Pass criteria:**
-- p50 ≤ 8 ms (50% headroom over 16.6 ms refresh)
-- p95 ≤ 14 ms (within FrameBudgetManager Tier 2 downshift threshold)
-- p99 ≤ 25 ms (single-frame outliers tolerable; sustained breaches
-  trigger governor downshift)
-- drops (gpu_ms > 32 ms) ≤ 5 across 60 s ≈ ≤ 8% — exceeding this means
-  the `kEmissionRateGain` / `kDispersionShockGain` constants in
-  `ParticlesDriftMotes.metal` need lowering.
+   Substitute `frame_cpu_ms` for the CPU-side comparison if you also
+   want to see encode cost.
 
-Revert the instrumentation once measurements are captured.
+6. **Pass criteria (Tier 2).**
+   - p50 ≤ 8 ms (50 % headroom over 16.6 ms refresh)
+   - p95 ≤ 14 ms (within `FrameBudgetManager` Tier 2 downshift threshold)
+   - p99 ≤ 25 ms (single-frame outliers tolerable; sustained breaches
+     trigger governor downshift)
+   - drops (gpu_ms > 32 ms) ≤ 5 across 60 s ≈ ≤ 8 % — exceeding this
+     means the `kEmissionRateGain` and `kDispersionShockGain` constants
+     in `ParticlesDriftMotes.metal` need lowering.
 
-### Option C — `SoakRunner` CLI under synthetic audio
+## Notes on the timing data
 
-`Scripts/run_soak_test.sh` runs the app under `caffeinate -i` with the
-`SoakTestHarness` driving a procedural audio fixture. Produces full
-`FrameTimingReporter` percentiles. Limitation: doesn't pin Drift Motes
-specifically — it measures the app's overall full-pipeline cost across
-whatever presets the orchestrator selects. Best for "is the app healthy
-under load," not "is Drift Motes within budget."
+- Cold-start frames (before the first GPU completion handler returns)
+  produce empty `frame_cpu_ms,frame_gpu_ms` cells. The `awk` filter
+  above (`$col != ""`) skips them. Typically only the first 1–3 rows.
+- `frame_gpu_ms` may also be empty when `cb.gpuEndTime <= cb.gpuStartTime`
+  (Metal API contract: returns 0/0 if the buffer was scheduled but
+  timing was unavailable). Rare; same `awk` filter handles it.
+- `frame_cpu_ms` is encode time only — it does NOT include CPU work in
+  the per-frame analysis path (FFT, MIR, mood) that runs in parallel
+  on a different queue. To measure that, use Instruments.
 
 ## Notes on tuning regress
 
@@ -111,13 +109,12 @@ under load," not "is Drift Motes within budget."
   `motes_update`) is an in-line conditional; the cost cliff between
   "shock firing" and "shock idle" is small (smoothstep + length + 6 muls
   + 1 sqrt) but predictable.
-- If the kernel itself regresses, the `shortRunDriftMotes` SOAK test will
-  catch it before this full-pipeline measurement matters.
+- If the kernel itself regresses, the `shortRunDriftMotes` SOAK test
+  catches it before this full-pipeline measurement matters.
 
-## When Drift Motes ships a permanent perf-capture path
+## Tier 1 (M1/M2)
 
-Future work (not in DM.3 scope): a build-flag-gated `frame_ms` column on
-`features.csv`, written from a `RenderPipeline` `onFrameTimingObserved`
-fan-out closure. That would eliminate Options A/B/C entirely — every
-session would carry full-pipeline percentiles. Tracked as a candidate
-follow-up; not blocking M7 sign-off.
+See `DM.3-tier1-measurement.md`. The procedure is identical from
+step 2 onward; only the pass thresholds change (p95 ≤ 19 ms instead
+of 14, and the kernel regression gate is run with
+`particleCount = 400`).
