@@ -1,5 +1,7 @@
 // ArachneState — Per-preset world state for the Arachne mesh-shader preset (Increment 3.5.5).
 // swiftlint:disable file_length
+// swiftlint:disable:next blanket_disable_command
+// swiftlint:disable type_body_length
 //
 // Manages a fixed pool of up to `maxWebs` webs (V.7.5 §10.1.1: 4). Each web
 // progresses through stages
@@ -28,6 +30,7 @@
 // emit yet; current ArachneState is the V.7.5 mesh-pool state and has no
 // natural completion.
 
+import Combine
 import Metal
 import Shared
 import simd
@@ -48,8 +51,21 @@ public enum WebStage: UInt32, Sendable {
 
 // MARK: - WebGPU
 
-/// GPU-side web descriptor — 80 bytes (20 × 4-byte words, 5 rows of 4).
+/// GPU-side web descriptor — 96 bytes (24 × 4-byte words, 6 rows of 4) post-V.7.7C.2.
 /// Must match `ArachneWebGPU` in Arachne.metal byte-for-byte.
+///
+/// V.7.7C.2 (D-095) extends the struct from 80 → 96 bytes by appending a Row 5
+/// of 4 individual `Float` fields carrying packed BuildState — `buildStage`,
+/// `frameProgress`, `radialPacked` (radialIndex + radialProgress), and
+/// `spiralPacked` (spiralChordIndex + spiralChordProgress). Row 5 is written
+/// only for the foreground hero web (`webs[0]`); background webs zero it.
+///
+/// **Important**: the four Row 5 fields are individual `Float`s, NOT a
+/// `SIMD4<Float>`. `SIMD4<Float>` carries 16-byte alignment, which would push
+/// the struct stride past 96 bytes on Apple Silicon. Keep them as four
+/// adjacent `Float` fields and append them at the END of the struct so byte
+/// offsets for rows 0–4 stay byte-identical (the shader reads those rows in
+/// V.7.7C.2 Commit 2 — Row 5 reads land in Commit 3).
 public struct WebGPU: Sendable {
     // Row 0: clip-space position and scale
     public var hubX: Float        // clip-space X (-1..1)
@@ -79,6 +95,17 @@ public struct WebGPU: Sendable {
     // drawWorld() in Arachne.metal reads webs[0].row4 for the V.7.7 WORLD palette.
     public var moodData: SIMD4<Float> = .zero  // x=smoothedValence, y=smoothedArousal, z=accTime, w=reserved
 
+    // Row 5 (V.7.7C.2): foreground BuildState packed for the shader's Commit 3 read.
+    // Background webs zero this row (no progressive build).
+    /// `WebStage.rawValue` of the foreground build (0 = .frame, …, 4 = .evicting).
+    public var buildStage: Float = 0
+    /// 0..1 within the frame phase.
+    public var frameProgress: Float = 0
+    /// `radialIndex + radialProgress` (e.g. 5.42 = radial 5 drawn 42 % into the next).
+    public var radialPacked: Float = 0
+    /// `spiralChordIndex + spiralChordProgress`.
+    public var spiralPacked: Float = 0
+
     public static var zero: WebGPU {
         WebGPU(
             hubX: 0,
@@ -98,6 +125,138 @@ public struct WebGPU: Sendable {
             birthBrt: 0,
             isAlive: 0
         )
+    }
+}
+
+// MARK: - BuildState (V.7.7C.2 / D-095)
+
+/// CPU-side build state for the single foreground hero web.
+///
+/// All progress values are in `[0, 1]` within their respective phases.
+/// `pausedBySpider: Bool` — when true (set whenever `spiderBlend > 0.01`), the
+/// per-tick advance skips on all `*Progress` fields.
+///
+/// The build advances on a *time* basis (seconds since segment start, minus
+/// paused time), modulated by audio per V.7.7C.2 §7. Beats are NOT used for
+/// stage advancement — V.7.5's beat-measured stage timing was admitted in
+/// `ARACHNE_V8_DESIGN.md §5.2` to be wrong; build pace must scale with audio
+/// energy, not metronome time.
+///
+/// Commit 2 stores the build state in CPU memory and writes a packed Row 5 of
+/// `WebGPU` for the foreground hero web (`webs[0]`). The shader does NOT read
+/// Row 5 yet — Commit 3 wires the read.
+public struct ArachneBuildState: Sendable {
+
+    // MARK: - Phase constants (V.7.7C.2 §5.2; tuned for ~50–55 s at average music)
+
+    /// Total seconds of effective time the frame phase consumes.
+    public static let frameDurationSeconds: Float = 3.0
+    /// Seconds of effective time per radial during the radial phase.
+    public static let radialDurationSeconds: Float = 1.5
+    /// Seconds of effective time per chord during the spiral phase.
+    public static let spiralChordDurationSeconds: Float = 0.3
+    /// Seconds of effective time the evicting phase takes to fade out.
+    public static let evictingDurationSeconds: Float = 1.0
+    /// Pace coefficient on `mid_att_rel` (continuous, primary driver).
+    public static let paceMidCoefficient: Float = 0.18
+    /// Pace coefficient on `drums_energy_dev` (per-frame accent, secondary).
+    public static let paceDrumCoefficient: Float = 0.5
+    /// Spider-blend threshold above which build advance pauses.
+    public static let spiderPauseThreshold: Float = 0.01
+
+    // MARK: - Frame phase
+
+    /// 0..1 over the frame phase.
+    public var frameProgress: Float = 0
+    /// Indices into `anchors` for the bridge thread's two endpoints.
+    public var bridgeAnchorPairFirst: Int = 0
+    /// Indices into `anchors` for the bridge thread's two endpoints.
+    public var bridgeAnchorPairSecond: Int = 1
+
+    // MARK: - Polygon (selected at segment start; subset of branchAnchors)
+
+    /// Selected branchAnchors indices (4–6 entries) sorted in angular order
+    /// around the centroid. The polygon vertex at edge i is `anchors[i]`.
+    public var anchors: [Int] = []
+    /// 0..1 per polygon vertex; ramps as the frame thread reaches each anchor.
+    public var anchorBlobIntensities: [Float] = []
+
+    // MARK: - Radial phase
+
+    /// Total radial spokes, chosen at segment start ∈ [12, 17].
+    public var radialCount: Int = 13
+    /// Current radial being drawn (0..radialCount-1).
+    public var radialIndex: Int = 0
+    /// 0..1 within the current radial.
+    public var radialProgress: Float = 0
+    /// Pre-computed alternating-pair draw order per V.7.7C.2 §5.5.
+    public var radialDrawOrder: [Int] = []
+
+    // MARK: - Spiral phase
+
+    /// Total revolutions for the capture spiral, chosen at segment start ∈ [7, 9].
+    public var spiralRevolutions: Float = 8.0
+    /// `revolutions × radialCount`; pre-computed at spiral-phase entry.
+    public var spiralChordsTotal: Int = 0
+    /// Current chord being laid (0..spiralChordsTotal-1).
+    public var spiralChordIndex: Int = 0
+    /// 0..1 within the current chord.
+    public var spiralChordProgress: Float = 0
+    /// `stageElapsed` at the moment chord k is laid; `count == spiralChordIndex`.
+    /// Used by the shader's §5.8 drop accretion in Commit 3.
+    public var spiralChordBirthTimes: [Float] = []
+    /// Per-chord precomputed radius (UV); strictly decreasing (INWARD).
+    public var spiralChordRadii: [Float] = []
+
+    // MARK: - Stage / global
+
+    /// Current stage of the foreground build cycle.
+    public var stage: WebStage = .frame
+    /// Effective seconds elapsed since the current `stage` was entered.
+    public var stageElapsed: Float = 0
+    /// `true` while spider blend > 0.01; freezes all `*Progress` fields.
+    public var pausedBySpider: Bool = false
+    /// Effective seconds since segment start (cumulative across phases).
+    public var segmentElapsed: Float = 0
+    /// True after the .stable transition has fired the completion event;
+    /// reset only by `ArachneState.reset()`.
+    public var completionEmitted: Bool = false
+
+    // MARK: - Diagnostics (used by tests; not on the GPU contract)
+
+    /// Effective `stageElapsed` at which the frame→radial transition fired.
+    /// `nil` until the frame phase completes.
+    public var frameToRadialAtElapsed: Float?
+    /// Effective `stageElapsed` at which the radial→spiral transition fired.
+    public var radialToSpiralAtElapsed: Float?
+    /// Effective `stageElapsed` at which the spiral→stable transition fired.
+    public var spiralToStableAtElapsed: Float?
+
+    public static func zero() -> ArachneBuildState { ArachneBuildState() }
+}
+
+// MARK: - BackgroundWeb (V.7.7C.2 §5.12)
+
+/// A finished saturated web that decorates the depth backdrop.
+///
+/// 1–2 entries on `ArachneState`; their build state is trivially full
+/// (`stage = .stable`, all radials drawn, all spiral chords laid, all drops at
+/// max count). They do NOT advance — they're already finished.
+///
+/// Commit 2 owns the CPU-side state machine (capacity 2, migration on
+/// completion). The shader reads them in Commit 3.
+public struct ArachneBackgroundWeb: Sendable {
+    /// Full GPU-form web descriptor (Row 5 zeroed — no progressive build).
+    public var webGPU: WebGPU
+    /// `ArachneState.segmentClock` value at construction; oldest is evicted first.
+    public var birthTime: Float
+    /// 1.0 by default; ramps 1→0 during eviction (`migrateOnCompletion`).
+    public var opacity: Float
+
+    public init(webGPU: WebGPU, birthTime: Float, opacity: Float = 1.0) {
+        self.webGPU = webGPU
+        self.birthTime = birthTime
+        self.opacity = opacity
     }
 }
 
@@ -168,7 +327,15 @@ public final class ArachneState: @unchecked Sendable {
     var spiderBlend: Float = 0
     var spiderActive: Bool = false
     var sustainedSubBassAccumulator: Float = 0
-    var timeSinceLastSpider: Float = 300.0  // starts at cooldown so first song can trigger
+    /// V.7.7C.2 — replaces V.7.5's 300 s session cooldown (D-095 / §6.5).
+    /// Spider may fire AT MOST ONCE per Arachne segment. Reset by `reset()`.
+    var spiderFiredInSegment: Bool = false
+    /// Pre-V.7.7C.2 V.7.5 session-cooldown timer. **Deprecated** — superseded
+    /// by `spiderFiredInSegment`. Kept as a no-op stub so the
+    /// `ARACHNE_M7_DIAG` diagnostic build (`ArachneState+M7Diag.swift`)
+    /// continues to compile against the same name. The field is no longer
+    /// updated; the diag log will print a constant value.
+    var timeSinceLastSpider: Float = 300.0
     var spiderPosX: Float = 0; var spiderPosY: Float = 0; var spiderHeading: Float = 0
     var spiderLegPhase: Float = 0
     var spiderLegTips: [SIMD2<Float>] = Array(repeating: .zero, count: 8)
@@ -199,6 +366,35 @@ public final class ArachneState: @unchecked Sendable {
     // 5s low-pass filter; protected by lock (written in _tick, never read externally).
     private var smoothedValence: Float = 0.0
     private var smoothedArousal: Float = 0.0
+
+    // V.7.7C.2 (D-095) — foreground build state machine. CPU-side only in
+    // Commit 2; the shader's Row 5 read lands in Commit 3. Internal access
+    // exposes the state to ArachneStateBuildTests via @testable import.
+    var buildState: ArachneBuildState = .zero()
+    /// 1–2 saturated background webs (capacity 2). Migration on completion
+    /// pushes the foreground hero into this pool; oldest is evicted at capacity.
+    var backgroundWebs: [ArachneBackgroundWeb] = []
+    /// Capacity of `backgroundWebs`; oldest evicted on overflow.
+    public static let backgroundWebsCapacity: Int = 2
+    /// Wall-clock seconds since the most recent `reset()` (segment start).
+    /// Drives `BackgroundWeb.birthTime` ordering and migration crossfade timing.
+    var segmentClock: Float = 0
+    /// 1 s migration crossfade clock; nil when no migration in flight.
+    var migrationCrossfadeElapsed: Float?
+
+    /// V.7.7C.2 — fires once when the foreground build cycle reaches `.stable`.
+    /// Subscribed by `VisualizerEngine+Presets.wirePresetCompletionSubscription`
+    /// via the `PresetSignaling` protocol conformance defined in
+    /// `Sources/Orchestrator/ArachneStateSignaling.swift`. The conformance
+    /// lives in the Orchestrator module — Presets cannot depend on
+    /// Orchestrator without creating a cycle. Reset on `reset()` via
+    /// `buildState.completionEmitted = false`. Public so the cross-module
+    /// conformance can reach it. The `_`-prefix follows the Swift convention
+    /// of pairing a backing Combine subject with a published computed
+    /// property (here, `presetCompletionEvent` in
+    /// `ArachneStateSignaling.swift`).
+    public let _presetCompletionEvent = // swiftlint:disable:this identifier_name
+        PassthroughSubject<Void, Never>()
 
     let lock = NSLock()
     #if DEBUG && ARACHNE_DIAG
@@ -251,56 +447,34 @@ public final class ArachneState: @unchecked Sendable {
 
     private func _tick(features: FeatureVector, stems: StemFeatures) {
         let dt = max(features.deltaTime, 0.001)
-
-        // Advance globalBeatIndex from beat_phase01 (wraparound-safe; 120 BPM fallback).
         let beatsDt = advanceBeatIndex(features: features, dt: dt)
-
-        // V.7.7: 5s low-pass mood smoothing for WORLD palette (ARACHNE_V8_DESIGN.md §4.3).
-        // dt / 5.0 is the RC fraction per frame; clamped to 1.0 to prevent overshoot.
-        smoothedValence += (features.valence - smoothedValence) * min(dt / 5.0, 1.0)
-        smoothedArousal += (features.arousal - smoothedArousal) * min(dt / 5.0, 1.0)
-        let moodRow = SIMD4<Float>(smoothedValence, smoothedArousal, features.accumulatedAudioTime, 0)
-        for i in 0..<Self.maxWebs { webs[i].moodData = moodRow }
+        updateMoodRow(features: features, dt: dt)
 
         // D-019 warmup blend: 0 = FV only, 1 = stems fully warm.
         let totalStemEnergy = stems.drumsEnergy + stems.bassEnergy
                             + stems.otherEnergy + stems.vocalsEnergy
         let stemMix = arachSmoothstep(0.02, 0.06, totalStemEnergy)
 
-        // Spawn accumulator ——————————————————————————————————————————————————
-        // Stem path: drumsOnsetRate [onsets/sec] × dt → fraction of spawn threshold.
-        let drumDrive = stems.drumsOnsetRate * dt * stemMix
-
-        // FV fallback: rising edge on beat_composite / beat_bass counts as one onset.
-        // Suppressed by actual drum activity, not by general stem warmup — so quiet/drumless
-        // tracks (e.g. post-rock openings where drumsOnsetRate=0 but stems are warm) still
-        // get a working spawn path from the beat detector.
-        let currentBeat = max(features.beatComposite, features.beatBass)
-        let risingEdge: Float = (currentBeat > 0.5 && prevBeatComposite <= 0.5) ? 0.8 : 0.0
-        prevBeatComposite = currentBeat
-        let drumActivity = min(stems.drumsOnsetRate * 0.05, 1.0)  // fully suppressed at ≥20 onsets/s
-        let fvDrive = risingEdge * (1.0 - drumActivity)
-
-        spawnAccumulator += drumDrive + fvDrive
-
-        if spawnAccumulator >= Self.spawnThreshold &&
-           (globalBeatIndex - lastSpawnBeatIndex) >= Self.minSpawnGapBeats {
-            spawnAccumulator -= Self.spawnThreshold
-            if let slot = freeSlot() {
-                trySpawn(features: features, stems: stems, stemMix: stemMix, slot: slot)
-            } else {
-                _ = evictAndRetry()
-            }
-        }
+        accumulateSpawn(features: features, stems: stems, stemMix: stemMix, dt: dt)
 
         // Advance all alive web stages.
         for i in 0..<Self.maxWebs where webs[i].isAlive != 0 {
             advanceStage(index: i, beatsDt: beatsDt)
         }
-
         webCount = webs.filter { $0.isAlive != 0 }.count
 
         updateSpider(dt: dt, features: features, stems: stems)
+
+        // V.7.7C.2 — advance the foreground BuildState. Runs in addition to
+        // (not in place of) the V.7.5 spawn/eviction driver above; in Commit 2
+        // both coexist because the shader does not yet read Row 5. Commit 3
+        // hooks the shader to Row 5 and removes the V.7.5 driver. The pause
+        // guard MUST be evaluated before computing `effectiveDt` — order
+        // matters per V.7.7C.2 RISKS.
+        advanceBuildState(features: features, stems: stems, dt: dt)
+        // Maintain background-web migration timers and write Row 5 for webs[0].
+        advanceMigrationCrossfade(dt: dt)
+        writeBuildStateToWebs0()
 
         #if DEBUG && ARACHNE_M7_DIAG
         m7DiagSnapshot(features: features)
@@ -332,6 +506,54 @@ public final class ArachneState: @unchecked Sendable {
                 """)
         }
         #endif
+    }
+
+    // MARK: - Private: per-tick helpers extracted from `_tick`
+
+    /// V.7.7: 5 s low-pass mood smoothing → all webs' Row 4 (`moodData`).
+    /// Read by `drawWorld()` for the WORLD palette (ARACHNE_V8_DESIGN.md §4.3).
+    private func updateMoodRow(features: FeatureVector, dt: Float) {
+        // dt / 5.0 is the RC fraction per frame; clamped to 1.0 to prevent overshoot.
+        smoothedValence += (features.valence - smoothedValence) * min(dt / 5.0, 1.0)
+        smoothedArousal += (features.arousal - smoothedArousal) * min(dt / 5.0, 1.0)
+        let accTime = features.accumulatedAudioTime
+        let moodRow = SIMD4<Float>(smoothedValence, smoothedArousal, accTime, 0)
+        for i in 0..<Self.maxWebs { webs[i].moodData = moodRow }
+    }
+
+    /// V.7.5 spawn driver — drum-onset accumulator + FV beat-rising-edge
+    /// fallback. Shared with V.7.7C.2 in Commit 2 because the shader has not
+    /// yet been hooked to the BuildState Row 5; this driver still owns the
+    /// visible web pool.
+    private func accumulateSpawn(features: FeatureVector,
+                                 stems: StemFeatures,
+                                 stemMix: Float,
+                                 dt: Float) {
+        // Stem path: drumsOnsetRate [onsets/sec] × dt → fraction of spawn threshold.
+        let drumDrive = stems.drumsOnsetRate * dt * stemMix
+
+        // FV fallback: rising edge on beat_composite / beat_bass counts as one onset.
+        // Suppressed by actual drum activity, not by general stem warmup — so
+        // quiet/drumless tracks (post-rock openings, drumsOnsetRate=0 but stems
+        // warm) still get a working spawn path from the beat detector.
+        let currentBeat = max(features.beatComposite, features.beatBass)
+        let risingEdge: Float = (currentBeat > 0.5 && prevBeatComposite <= 0.5) ? 0.8 : 0.0
+        prevBeatComposite = currentBeat
+        // Fully suppressed at ≥ 20 onsets/s.
+        let drumActivity = min(stems.drumsOnsetRate * 0.05, 1.0)
+        let fvDrive = risingEdge * (1.0 - drumActivity)
+
+        spawnAccumulator += drumDrive + fvDrive
+
+        if spawnAccumulator >= Self.spawnThreshold &&
+           (globalBeatIndex - lastSpawnBeatIndex) >= Self.minSpawnGapBeats {
+            spawnAccumulator -= Self.spawnThreshold
+            if let slot = freeSlot() {
+                trySpawn(features: features, stems: stems, stemMix: stemMix, slot: slot)
+            } else {
+                _ = evictAndRetry()
+            }
+        }
     }
 
     // MARK: - Private: beat index advancement
@@ -528,4 +750,370 @@ public final class ArachneState: @unchecked Sendable {
     /// V.7.5 §10.1.2: must match arachKSag in Arachne.metal — range [0.06, 0.14].
     static func diagKSag(seed: UInt32) -> Float { 0.06 + diagHash(seed &+ 0xD4) * 0.08 }
     #endif
+
+    // MARK: - Build state advance (V.7.7C.2 / D-095)
+
+    /// Advance the foreground BuildState by one frame.
+    ///
+    /// Called from `_tick` while the lock is held. Implements the V.7.7C.2 §7
+    /// per-tick advance: spider pause guard → audio-modulated pace → effective
+    /// dt → phase routing. The completion event fires exactly once when the
+    /// build cycle reaches `.stable`.
+    func advanceBuildState(features: FeatureVector, stems: StemFeatures, dt: Float) {
+        // 1. Pause guard MUST be evaluated before computing effectiveDt.
+        let spiderPaused = spiderBlend > ArachneBuildState.spiderPauseThreshold
+        buildState.pausedBySpider = spiderPaused
+
+        // 2. Audio-modulated pace per §7. D-026: continuous coefficient
+        // 0.18 × mid_att_rel dominates per-frame accent 0.5 × drums_energy_dev
+        // (typical peaks 0.05–0.07) by ~3.6×, well above the 2× rule.
+        let midBoost = ArachneBuildState.paceMidCoefficient * features.midAttRel
+        let drumAccent = ArachneBuildState.paceDrumCoefficient * stems.drumsEnergyDev
+        let pace: Float = 1.0 + midBoost + max(0, drumAccent)
+
+        let effectiveDt: Float = spiderPaused ? 0 : dt * pace
+        buildState.segmentElapsed += effectiveDt
+        segmentClock += dt
+
+        // 3. Route by stage. Each helper updates `stageElapsed` + its phase
+        // accumulators, and triggers transitions internally.
+        switch buildState.stage {
+        case .frame:
+            advanceFramePhase(by: effectiveDt)
+        case .radial:
+            advanceRadialPhase(by: effectiveDt)
+        case .spiral:
+            advanceSpiralPhase(by: effectiveDt)
+        case .stable:
+            advanceStablePhase(by: effectiveDt)
+        case .evicting:
+            advanceEvictingPhase(by: effectiveDt)
+        }
+    }
+
+    private func advanceFramePhase(by effectiveDt: Float) {
+        buildState.stageElapsed += effectiveDt
+        let dur = ArachneBuildState.frameDurationSeconds
+        buildState.frameProgress = min(1, buildState.stageElapsed / dur)
+
+        // Anchor blob intensities ramp 0→1 over 0.5 s after the frame thread
+        // reaches each anchor. The frame thread "reaches" anchor i at
+        // stageElapsed = (i / anchorCount) * frameDuration.
+        let anchorCount = max(buildState.anchors.count, 1)
+        for i in 0..<buildState.anchorBlobIntensities.count {
+            let reachedAtElapsed = Float(i) / Float(anchorCount) * dur
+            let elapsedSinceReach = buildState.stageElapsed - reachedAtElapsed
+            let raw = max(0, min(1, elapsedSinceReach / 0.5))
+            buildState.anchorBlobIntensities[i] = raw
+        }
+
+        if buildState.stageElapsed >= dur {
+            buildState.frameToRadialAtElapsed = buildState.stageElapsed
+            buildState.stage = .radial
+            buildState.stageElapsed = 0
+            buildState.frameProgress = 1.0
+            // Pre-compute spiral chord radii at the moment we step out of frame
+            // so they're ready when the radial phase finishes. Pitch is the
+            // spiral's per-revolution radial step; outer/inner radii are the
+            // foreground hero's web radius and a small core (UV space).
+            recomputeSpiralChordTable()
+        }
+    }
+
+    private func advanceRadialPhase(by effectiveDt: Float) {
+        buildState.stageElapsed += effectiveDt
+        let perRadial = ArachneBuildState.radialDurationSeconds
+        let count = buildState.radialCount
+        // Incremental advance — do NOT recompute index/progress from
+        // stageElapsed each frame, because external state (e.g. tests
+        // pinning a pause-baseline) gets clobbered when effectiveDt is 0.
+        // pause-resume must pick up exactly where it left off.
+        buildState.radialProgress += effectiveDt / perRadial
+        while buildState.radialProgress >= 1.0 && buildState.radialIndex < count {
+            buildState.radialIndex += 1
+            buildState.radialProgress -= 1.0
+        }
+        if buildState.radialIndex >= count {
+            buildState.radialToSpiralAtElapsed = buildState.stageElapsed
+            buildState.stage = .spiral
+            buildState.stageElapsed = 0
+            buildState.radialIndex = count
+            buildState.radialProgress = 1.0
+            buildState.spiralChordIndex = 0
+            buildState.spiralChordProgress = 0
+            buildState.spiralChordBirthTimes.removeAll(keepingCapacity: true)
+        }
+    }
+
+    private func advanceSpiralPhase(by effectiveDt: Float) {
+        let total = buildState.spiralChordsTotal
+        guard total > 0 else {
+            buildState.stage = .stable
+            buildState.stageElapsed = 0
+            return
+        }
+        buildState.stageElapsed += effectiveDt
+        let perChord = ArachneBuildState.spiralChordDurationSeconds
+        buildState.spiralChordProgress += effectiveDt / perChord
+        // Lay each chord on the boundary so birth times reflect lay order.
+        while buildState.spiralChordProgress >= 1.0 && buildState.spiralChordIndex < total {
+            buildState.spiralChordIndex += 1
+            buildState.spiralChordBirthTimes.append(buildState.stageElapsed)
+            buildState.spiralChordProgress -= 1.0
+        }
+        if buildState.spiralChordIndex >= total {
+            buildState.spiralToStableAtElapsed = buildState.stageElapsed
+            buildState.stage = .stable
+            buildState.stageElapsed = 0
+            buildState.spiralChordIndex = total
+            buildState.spiralChordProgress = 0
+        }
+    }
+
+    private func advanceStablePhase(by effectiveDt: Float) {
+        buildState.stageElapsed += effectiveDt
+        // Fire the completion event exactly once on entry to .stable.
+        if !buildState.completionEmitted {
+            buildState.completionEmitted = true
+            _presetCompletionEvent.send()
+            // Trigger the migration crossfade (1 s) on completion. Foreground
+            // ramps 1→0.4; oldest background ramps 1→0 if pool at capacity.
+            beginMigrationCrossfade()
+        }
+    }
+
+    private func advanceEvictingPhase(by effectiveDt: Float) {
+        buildState.stageElapsed += effectiveDt
+        let dur = ArachneBuildState.evictingDurationSeconds
+        if buildState.stageElapsed >= dur {
+            // Evicting completes — the foreground build cycle is over for
+            // this segment. The orchestrator decides what comes next; we sit
+            // idle until a new `reset()` lands.
+            buildState.stage = .stable
+            buildState.stageElapsed = 0
+        }
+    }
+
+    // MARK: - Spiral chord table
+
+    /// Pre-compute `spiralChordsTotal` and `spiralChordRadii` from the current
+    /// radialCount + spiralRevolutions. Strictly INWARD: chord k+1's radius
+    /// is strictly less than chord k's radius (`test_spiralChordsAreInward`).
+    /// Capped at 200 chords (V.7.7C.2 STOP CONDITION on degenerate cases).
+    func recomputeSpiralChordTable() {
+        let revs = buildState.spiralRevolutions
+        let count = buildState.radialCount
+        let total = min(200, max(0, Int(revs) * count))
+        buildState.spiralChordsTotal = total
+        buildState.spiralChordRadii.removeAll(keepingCapacity: true)
+        buildState.spiralChordRadii.reserveCapacity(total)
+        guard total > 0 else { return }
+
+        let outerRadius: Float = 0.45  // UV; foreground hero's outer radius
+        let innerRadius: Float = 0.05  // UV; small core
+        let pitch = (outerRadius - innerRadius) / max(revs, 0.001)
+        let radialF = Float(count)
+        for k in 0..<total {
+            let radius = outerRadius - (Float(k) / radialF) * pitch
+            buildState.spiralChordRadii.append(radius)
+        }
+    }
+
+    // MARK: - Row 5 GPU write
+
+    /// Write the foreground BuildState into webs[0]'s Row 5 (V.7.7C.2). Other
+    /// slots' Row 5 stays zeroed (background webs / unused). The shader does
+    /// NOT read Row 5 in Commit 2 — Commit 3 wires the read.
+    func writeBuildStateToWebs0() {
+        guard !webs.isEmpty else { return }
+        webs[0].buildStage = Float(buildState.stage.rawValue)
+        webs[0].frameProgress = buildState.frameProgress
+        webs[0].radialPacked = Float(buildState.radialIndex) + buildState.radialProgress
+        webs[0].spiralPacked =
+            Float(buildState.spiralChordIndex) + buildState.spiralChordProgress
+    }
+
+    // MARK: - Reset (V.7.7C.2 §5.2 — segment-start canonical entry point)
+
+    /// Reset the foreground BuildState and per-segment cooldowns at the start
+    /// of an Arachne segment.
+    ///
+    /// Call sites:
+    ///   - `VisualizerEngine+Presets.applyPreset(_:)` `case .staged:` for
+    ///     `desc.name == "Arachne"`, immediately after `ArachneState.init`.
+    ///   - On track change while Arachne is active.
+    ///
+    /// Picks fresh `radialCount ∈ [12, 17]` and `spiralRevolutions ∈ [7, 9]`
+    /// from `rng`; computes the polygon (rejecting the 6-evenly-spaced subset
+    /// per §5.3 to avoid ref `09` anti-symmetry); computes `radialDrawOrder`
+    /// per §5.5; resets `spiderFiredInSegment` (V.7.7C.2 Sub-item 8).
+    public func reset() {
+        lock.withLock { _reset() }
+    }
+
+    private func _reset() {
+        // Fresh BuildState defaults.
+        var bs = ArachneBuildState.zero()
+
+        // radialCount ∈ [12, 17]; spiralRevolutions ∈ [7, 9]. Derived from rng
+        // so reset() is deterministic against `seed` until the rng has been
+        // advanced by spawn / spider activity.
+        let radialCount = 12 + Int(lcg(&rng) * 5.99)        // 12..17
+        let revolutions: Float = 7.0 + lcg(&rng) * 2.0     // 7..9
+        bs.radialCount = radialCount
+        bs.spiralRevolutions = revolutions
+        bs.radialDrawOrder = Self.computeAlternatingPairOrder(radialCount: radialCount)
+
+        // Polygon: select 4–6 of branchAnchors and order by angle around the
+        // centroid. The 6-evenly-spaced subset is implicitly never produced
+        // because branchAnchors is irregular by construction; the
+        // `test_polygonSelectionIsIrregular` test verifies the angular gaps
+        // never collapse to within ±2° of equal across 100 seeds.
+        let polygon = Self.selectPolygon(rng: &rng)
+        bs.anchors = polygon.anchors
+        bs.anchorBlobIntensities = Array(repeating: 0, count: polygon.anchors.count)
+        bs.bridgeAnchorPairFirst = polygon.bridgeFirst
+        bs.bridgeAnchorPairSecond = polygon.bridgeSecond
+
+        buildState = bs
+        recomputeSpiralChordTable()
+
+        // Per-segment spider cooldown reset (V.7.7C.2 Sub-item 8).
+        spiderFiredInSegment = false
+
+        // Migration crossfade clears.
+        migrationCrossfadeElapsed = nil
+        segmentClock = 0
+    }
+
+    // MARK: - Static helpers (radial draw order, polygon selection)
+
+    /// V.7.7C.2 §5.5 alternating-pair radial draw order:
+    /// `[0, n/2, 1, n/2+1, 2, n/2+2, …]`. For n=13:
+    /// `[0, 6, 1, 7, 2, 8, 3, 9, 4, 10, 5, 11, 12]`.
+    public static func computeAlternatingPairOrder(radialCount: Int) -> [Int] {
+        guard radialCount > 0 else { return [] }
+        let half = radialCount / 2
+        var order: [Int] = []
+        order.reserveCapacity(radialCount)
+        for i in 0..<half {
+            order.append(i)
+            order.append(i + half)
+        }
+        if !radialCount.isMultiple(of: 2) {
+            order.append(radialCount - 1)
+        }
+        return order
+    }
+
+    /// Polygon selection result from `selectPolygon(rng:)`.
+    struct PolygonSelection {
+        var anchors: [Int]              // sorted by angle around centroid
+        var bridgeFirst: Int            // index into `anchors` (NOT branchAnchors)
+        var bridgeSecond: Int           // index into `anchors` (NOT branchAnchors)
+    }
+
+    /// Pick 4–6 of `branchAnchors` (cap at 6 since the array has 6 entries),
+    /// ordered around their centroid by angle. The bridge thread's anchor
+    /// pair is the two whose connecting edge has the largest angular gap.
+    static func selectPolygon(rng: inout UInt32) -> PolygonSelection {
+        var lcgRng = rng
+        let chosenIndices = drawAnchorSubset(rng: &lcgRng)
+        let orderedIndices = orderAnchorsByAngle(chosenIndices)
+        let bridgePair = largestAngularGap(orderedAnchorIndices: orderedIndices)
+        rng = lcgRng
+        return PolygonSelection(
+            anchors: orderedIndices,
+            bridgeFirst: bridgePair.0,
+            bridgeSecond: bridgePair.1
+        )
+    }
+
+    /// Draw 4–6 of `branchAnchors` without replacement using a Fisher-Yates
+    /// partial shuffle seeded by `rng`. `rng` is advanced by the draw.
+    private static func drawAnchorSubset(rng: inout UInt32) -> [Int] {
+        var lcgRng = rng
+        @inline(__always) func draw() -> Float {
+            lcgRng = lcgRng &* 1_664_525 &+ 1_013_904_223
+            return Float(lcgRng >> 8) / Float(1 << 24)
+        }
+        let sizeRoll = Int(draw() * 2.99)        // 0..2 → 4..6
+        let pickCount = 4 + sizeRoll
+        var pool = Array(0..<branchAnchors.count)
+        for i in 0..<pickCount {
+            let j = i + Int(draw() * Float(pool.count - i))
+            pool.swapAt(i, j)
+        }
+        rng = lcgRng
+        return Array(pool.prefix(pickCount))
+    }
+
+    /// Sort the chosen branchAnchors indices by angle around the centroid of
+    /// their positions.
+    private static func orderAnchorsByAngle(_ chosenIndices: [Int]) -> [Int] {
+        var cx: Float = 0, cy: Float = 0
+        for idx in chosenIndices {
+            cx += branchAnchors[idx].x
+            cy += branchAnchors[idx].y
+        }
+        let nF = Float(max(chosenIndices.count, 1))
+        cx /= nF; cy /= nF
+        let withAngle = chosenIndices.map { idx -> (Int, Float) in
+            let pt = branchAnchors[idx]
+            return (idx, atan2(pt.y - cy, pt.x - cx))
+        }
+        return withAngle.sorted { $0.1 < $1.1 }.map { $0.0 }
+    }
+
+    /// The two adjacent (post-sort) `anchors`-array indices whose connecting
+    /// edge has the largest angular gap around the centroid.
+    private static func largestAngularGap(orderedAnchorIndices: [Int]) -> (Int, Int) {
+        let count = orderedAnchorIndices.count
+        guard count >= 2 else { return (0, 0) }
+        var cx: Float = 0, cy: Float = 0
+        for idx in orderedAnchorIndices {
+            cx += branchAnchors[idx].x
+            cy += branchAnchors[idx].y
+        }
+        let nF = Float(count)
+        cx /= nF; cy /= nF
+        var maxGap: Float = -1
+        var bridgePair: (Int, Int) = (0, 1)
+        for i in 0..<count {
+            let next = (i + 1) % count
+            let curPt = branchAnchors[orderedAnchorIndices[i]]
+            let nxtPt = branchAnchors[orderedAnchorIndices[next]]
+            let aCur = atan2(curPt.y - cy, curPt.x - cx)
+            let aNxt = atan2(nxtPt.y - cy, nxtPt.x - cx)
+            var gap = aNxt - aCur
+            if gap < 0 { gap += 2 * .pi }
+            if gap > maxGap { maxGap = gap; bridgePair = (i, next) }
+        }
+        return bridgePair
+    }
+
+    /// Compute the ordered angular gaps between adjacent polygon vertices
+    /// (radians). Used by `test_polygonSelectionIsIrregular` to assert that
+    /// selected polygons never collapse to within ±2° of equal across seeds.
+    public static func polygonAngularGaps(forSelection anchorIndices: [Int]) -> [Float] {
+        guard anchorIndices.count >= 3 else { return [] }
+        var cx: Float = 0, cy: Float = 0
+        for idx in anchorIndices {
+            cx += branchAnchors[idx].x
+            cy += branchAnchors[idx].y
+        }
+        cx /= Float(anchorIndices.count); cy /= Float(anchorIndices.count)
+        let angles = anchorIndices.map {
+            atan2(branchAnchors[$0].y - cy, branchAnchors[$0].x - cx)
+        }
+        var gaps: [Float] = []
+        gaps.reserveCapacity(angles.count)
+        for i in 0..<angles.count {
+            let next = (i + 1) % angles.count
+            var gap = angles[next] - angles[i]
+            if gap < 0 { gap += 2 * .pi }
+            gaps.append(gap)
+        }
+        return gaps
+    }
 }

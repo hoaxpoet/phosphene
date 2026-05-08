@@ -1,20 +1,24 @@
 // ArachneState+Spider — Sub-bass easter egg gait solver and GPU buffer (Increment 3.5.9).
 //
-// The spider materialises as a rare reward (~1-in-10 songs) triggered by sustained
-// sub-bass with low attack ratio — distinguishing deep resonant bass (James Blake,
-// Burial) from transient kick drums. Session cooldown of 5 minutes prevents
-// back-to-back appearances.
+// The spider materialises as a rare reward (≤ once per Arachne segment) triggered
+// by sustained sub-bass with low attack ratio — distinguishing deep resonant bass
+// (James Blake, Burial) from transient kick drums.
+//
+// V.7.7C.2 (D-095): the V.7.5 300 s session cooldown is REPLACED by a per-segment
+// guard (`spiderFiredInSegment`). At most one spider appearance per Arachne
+// segment; the flag is reset only by `ArachneState.reset()`. The V.7.5
+// sustained-bass conditions are preserved on top of the new guard.
 //
 // ArachneSpiderGPU (80 bytes) is bound at fragment buffer(7) in the mv_warp/direct
 // fragment pass and consumed by the spider SDF in arachne_fragment.
 // (D-040 originally specified buffer(4)/meshPresetFragmentBuffer; the buffer moved
 // to buffer(7)/directPresetFragmentBuffer2 in the ray-march remaster, Increment 3.5.10.)
 //
-// Trigger (V.7.5 §10.1.9, restoring D-040 + re-tuned per M7 data):
+// Trigger (V.7.5 §10.1.9, restoring D-040 + re-tuned per M7 data; per-segment gate per V.7.7C.2):
 //   features.subBass > 0.30
 //   AND stems.bassAttackRatio ∈ (0, 0.55)
 //   held continuously for ≥ 0.75 s
-//   AND timeSinceLastSpider ≥ 300 s
+//   AND !spiderFiredInSegment   (V.7.7C.2 / D-095 — replaces V.7.5's 300 s session timer)
 //
 // History: D-040 specified an attack-ratio gate; pre-V.7.5 it was removed on the
 // theory that the 0.75 s sustain accumulator alone debounces kicks. M7 capture
@@ -80,7 +84,12 @@ public struct ArachneSpiderDiag: Sendable {
     public let accumulator: Float
     /// Current blend value (0 = absent, 1 = fully visible).
     public let blend: Float
-    /// Seconds remaining before organic fire is allowed again.
+    /// V.7.7C.2: 0 if the spider can still fire this segment, 1 if it has
+    /// already fired (per-segment cooldown gate; resets at `reset()`).
+    /// Pre-V.7.7C.2 this field carried "seconds until session cooldown elapses";
+    /// the V.7.7C.2 per-segment semantic supersedes that. The debug overlay's
+    /// "cooldown" label still reads this field; non-zero means "spider has
+    /// already fired in this segment".
     public let cooldownRemaining: Float
     /// Whether the force-trigger is active (DEBUG builds only; always false in Release).
     public let isForced: Bool
@@ -94,6 +103,11 @@ extension ArachneState {
 
     /// Seconds of sustained sub-bass required to trigger the spider.
     static let sustainedTriggerThreshold: Float = 0.75
+    /// Pre-V.7.7C.2 V.7.5 session-cooldown duration. **Deprecated** —
+    /// superseded by the per-segment `spiderFiredInSegment` guard
+    /// (D-095 / §6.5). Retained as a no-op constant so the
+    /// `ARACHNE_M7_DIAG` build's logging line continues to compile.
+    static let sessionCooldownDuration: Float = 300.0
     /// Sub-bass energy level gate — AGC-normalised FV subBass (20–80 Hz).
     /// V.7.5 §10.1.9 / D-071: re-tuned from 0.65 → 0.30 after M7 session
     /// 2026-05-01T22-14-25Z showed f.subBass mean ≈ 0.13 in LTYL with sustained
@@ -102,8 +116,6 @@ extension ArachneState {
     /// unreachable in live AGC. Lowering the threshold reopens the trigger;
     /// the restored AR gate (bassAttackRatio < 0.55) supplies the kick debounce.
     static let subBassThreshold: Float = 0.30
-    /// Minimum seconds between spider appearances (session-level cooldown).
-    static let sessionCooldownDuration: Float = 300.0
     /// Seconds to blend blend 0→1 on materialisation.
     static let spiderFadeInDuration: Float = 2.0
     /// Seconds to blend blend 1→0 on dematerialisation.
@@ -117,9 +129,6 @@ extension ArachneState {
 
     /// Advance spider state by one frame. Call from `_tick` while holding the lock.
     func updateSpider(dt: Float, features: FeatureVector, stems: StemFeatures) {
-        // Advance cooldown timer only when the spider is absent.
-        if !spiderActive { timeSinceLastSpider += dt }
-
         // Sub-bass trigger: AGC-normalised FV subBass (20–80 Hz). stems.bassEnergy is
         // unreliable for deep electronic sub-bass (Open-Unmix attributes 40–60 Hz to
         // "other", not "bass"), so the FV band remains the energy source.
@@ -138,15 +147,17 @@ extension ArachneState {
             sustainedSubBassAccumulator = max(sustainedSubBassAccumulator - 2.0 * dt, 0)
         }
 
-        // Trigger when sustained sub-bass fires and cooldown has elapsed.
+        // V.7.7C.2 (D-095) §6.5: per-segment cooldown gate. The V.7.5 300 s
+        // session timer is REPLACED by `spiderFiredInSegment` — at most one
+        // spider appearance per Arachne segment; the flag resets only on
+        // `ArachneState.reset()`.
         if !spiderActive
-            && timeSinceLastSpider >= Self.sessionCooldownDuration
+            && !spiderFiredInSegment
             && sustainedSubBassAccumulator >= Self.sustainedTriggerThreshold {
             activateSpider()
-            let cdStr = String(Int(Self.sessionCooldownDuration))
             let sbStr = String(format: "%.2f", features.subBass)
-            spiderLogger.notice("[arachne.spider] organic trigger fired")
-            spiderLogger.notice("  cooldown +\(cdStr)s subBass=\(sbStr)")
+            spiderLogger.notice("[arachne.spider] organic trigger fired (per-segment)")
+            spiderLogger.notice("  subBass=\(sbStr)")
         }
 
         // Dematerialise when the triggering condition no longer holds.
@@ -184,7 +195,7 @@ extension ArachneState {
 
     private func activateSpider() {
         spiderActive = true
-        timeSinceLastSpider = 0
+        spiderFiredInSegment = true   // V.7.7C.2: per-segment guard latches on fire
         sustainedSubBassAccumulator = 0
         placeSpiderAtBestHub()
     }
@@ -292,7 +303,7 @@ extension ArachneState {
             ArachneSpiderDiag(
                 accumulator: sustainedSubBassAccumulator,
                 blend: spiderBlend,
-                cooldownRemaining: max(0, Self.sessionCooldownDuration - timeSinceLastSpider),
+                cooldownRemaining: spiderFiredInSegment ? 1.0 : 0.0,
                 isForced: {
                     #if DEBUG
                     return forceSpiderActive

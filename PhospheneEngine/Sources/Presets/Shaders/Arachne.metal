@@ -50,7 +50,7 @@
 // Buffer bindings:
 //   buffer(0) = FeatureVector      (192 bytes)
 //   buffer(3) = StemFeatures       (256 bytes)
-//   buffer(6) = ArachneWebGPU[kArachWebs]  (320 bytes at kArachWebs=4 — ArachneState.webBuffer)
+//   buffer(6) = ArachneWebGPU[kArachWebs]  (384 bytes at kArachWebs=4 — ArachneState.webBuffer; V.7.7C.2: 320→384 via Row 5)
 //   buffer(7) = ArachneSpiderGPU   (80 bytes  — ArachneState.spiderBuffer)
 //
 // D-026 deviation-first, D-019 warmup, D-037: two seed webs guarantee visibility.
@@ -65,6 +65,19 @@ struct ArachneWebGPU {
     // Row 4: global mood — x=smoothedValence, y=smoothedArousal, z=accTime, w=reserved.
     // Written to all slots each frame by ArachneState._tick(). drawWorld() reads webs[0].row4.
     float4 row4;
+    // Row 5 (V.7.7C.2 / D-095): foreground BuildState packed for Commit 3 reads.
+    // build_stage:    WebStage.rawValue of the foreground build cycle.
+    // frame_progress: 0..1 within the frame phase.
+    // radial_packed:  radialIndex + radialProgress (whole = current radial, fract = within).
+    // spiral_packed:  spiralChordIndex + spiralChordProgress.
+    // Background webs (slots 1..2) zero this row — no progressive build.
+    // Layout: 4 individual floats, NOT a float4, to match Swift's WebGPU struct
+    // byte-for-byte. The fragment shader does NOT read this row in Commit 2;
+    // existing reads of rows 0–4 must remain byte-offset preserved.
+    float build_stage;
+    float frame_progress;
+    float radial_packed;
+    float spiral_packed;
 };
 
 struct ArachneSpiderGPU {

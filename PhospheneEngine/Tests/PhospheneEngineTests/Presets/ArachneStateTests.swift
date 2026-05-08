@@ -443,7 +443,7 @@ private func stems(drumsOnsetRate: Float = 0, totalEnergy: Float = 0.1) -> StemF
         #expect(blendAfterSilence < 1.0, "Blend should have started decaying after condition ended")
     }
 
-    @Test("session cooldown prevents immediate re-trigger after appearance")
+    @Test("per-segment cooldown prevents immediate re-trigger after appearance")
     func cooldownPreventsImmediateRetrigger() throws {
         guard let device = MTLCreateSystemDefaultDevice() else {
             throw ArachneTestError.noMetalDevice
@@ -455,18 +455,22 @@ private func stems(drumsOnsetRate: Float = 0, totalEnergy: Float = 0.1) -> StemF
         let stm = sustainedBassStems()
         for _ in 0..<60 { state.tick(features: fv, stems: stm) }
 
-        // Confirm spider triggered and then reset it manually (simulate full appearance + fade).
+        // V.7.7C.2 (D-095): the V.7.5 300 s session timer is replaced by a
+        // per-segment latch. After the spider fires, `spiderFiredInSegment`
+        // latches to true and only `reset()` re-arms it.
+        #expect(state.spiderFiredInSegment == true,
+                "Per-segment cooldown latch must be set immediately after fire")
+
+        // Manually fade the spider (simulate appearance + fade).
         state.spiderActive = false
         state.spiderBlend  = 0
-        // timeSinceLastSpider is reset to 0 by activateSpider; cooldown now blocks.
-        #expect(state.timeSinceLastSpider < ArachneState.sessionCooldownDuration,
-                "Cooldown timer should be well below 300 s immediately after appearance")
 
-        // Phase 2: run more sub-bass ticks — cooldown should prevent re-trigger.
+        // Phase 2: run more sub-bass ticks — per-segment guard blocks re-trigger.
         state.sustainedSubBassAccumulator = 0
         for _ in 0..<120 { state.tick(features: fv, stems: stm) }
 
         let ptr = state.spiderBuffer.contents().bindMemory(to: ArachneSpiderGPU.self, capacity: 1)
-        #expect(ptr[0].blend == 0, "Spider must not re-appear during cooldown period")
+        #expect(ptr[0].blend == 0, "Spider must not re-appear within the same segment")
+        #expect(state.spiderFiredInSegment == true, "Latch stays true until reset()")
     }
 }
