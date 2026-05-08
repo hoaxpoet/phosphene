@@ -172,41 +172,36 @@ Acceptance gate:
 
 ---
 
-## 4. THE WORLD
+## 4. THE ATMOSPHERE
+
+> **V.7.7C.5 reframe (2026-05-09).** Section 4 was rewritten end-to-end from a six-layer dark close-up forest scene to a pure atmospheric-abstraction backdrop after Matt's 2026-05-08T18-28-16Z manual smoke flagged the V.7.7B–C.4 forest framing as "completely devoid of value" and "the lines do not read as branches" (full Q&A captured below the section). The forest layers (distant trees / mid-distance trees / near-frame branches / forest floor) are retired; what remains is sky band + volumetric atmosphere (fog + light shafts + dust motes). The §5.9 anchor-twig SDFs added in V.7.7C.2 Commit 1 are also retired (Q12) — polygon vertices alone provide the WEB attachment points; no literal "branch" or "twig" rendering anywhere in WORLD.
+>
+> The mood-driven color field (§4.3) is preserved verbatim from the 2026-05-02 spec — Matt elected to keep it locked (Q10). Reference cross-walk re-interprets existing references as mood-palette anchors only (Q13); the forest-specific references (02, 11, 17, 18) are retired for V.7.7C.5 implementation purposes but stay in `docs/VISUAL_REFERENCES/arachne/` for V.7.10 cert-review historical comparison.
 
 ### 4.1 Conceptual frame
 
-The forest is a fixed stage. The viewer's vantage is fixed (no camera dolly). What varies is mood-driven color, atmospheric volume density, and audio-driven vibration. Trees do not grow, branches do not appear or disappear, the ground does not change shape. The sense that the world is *solid and persistent* is what allows the WEB and SPIDER pillars to read as events happening *in* it. If the world is unstable, the web and the spider become abstractions.
+The atmosphere is a fixed stage. The viewer's vantage is fixed (no camera dolly). What varies is mood-driven color, atmospheric volume density, and audio-driven vibration. The atmosphere does NOT depict a literal scene — no trees, no forest floor, no horizon, no branches. It is purely volumetric: fog, light, motion of air, and the mood-driven palette colouring all of it. The web reads as floating *in* this atmosphere; the spider walks across the polygon perimeter when triggered. The sense that the world is *solid and persistent* comes from the consistent mood palette and the fixed vantage; literal scenic detail (the V.7.7B–C.4 forest) was retired because it competed with the foreground build rather than supporting it.
 
-The viewer's eye should be drawn forward through the depth: from sky and atmosphere at the back, through distant tree silhouettes, past mid-distance trees with visible bark, to the near-frame branches that the foreground web anchors to. Forest floor occupies the bottom edge of the frame as a stabilizer. Light shafts and dust motes carry the sense of *air* between layers.
-
-Reference 06 (`06_atmosphere_dark_misty_forest.jpg`) is the cool-default WORLD. Reference 16 (`16_atmosphere_dappled_pine_forest.jpg`) is the warm-bright WORLD. Reference 15 (`15_atmosphere_aurora_forest.jpg`) is the high-arousal psychedelic WORLD. The mood-driven color field (§4.3) interpolates among these.
+References 06 (`06_atmosphere_dark_misty_forest.jpg`), 16 (`16_atmosphere_dappled_pine_forest.jpg`), and 15 (`15_atmosphere_aurora_forest.jpg`) remain as **mood-palette anchors only** — the §4.3 mood field interpolates among their colour signatures, but the forest scenes those references depict are NOT the implementation target. The implementation target is the pure-atmospheric volumetric backdrop the references' colour palettes are extracted from.
 
 ### 4.2 Layer stack
 
-The WORLD is composed of six depth layers, rendered back-to-front into a half-resolution texture `arachneWorldTex` before WEB and SPIDER passes composite over it.
+The atmosphere is composed of two layers, rendered back-to-front into a half-resolution texture `arachneWorldTex` before WEB and SPIDER passes composite over it. Reduced from six layers in the V.7.7B–C.4 spec (Q3, Q4, Q5, Q6).
 
-**4.2.1 Sky band (back).** Vertical gradient `mix(botCol, topCol, uv.y)` over the upper ~40% of the frame. Slight noise modulation via low-frequency `fbm4` to break perfectly-smooth gradient (real skies have texture). At very high arousal (`smoothedArousal > 0.6`), aurora-like horizontal ribbon structure fades in (ref 15) — phase-anchored to `f.beat_phase01` so ribbon motion is musically coupled rather than free-running per Failed Approach #33. Suppressed at silence (pure-black calibration anchor per ref 08).
+**4.2.1 Atmospheric color band (full frame).** Vertical gradient `mix(botCol, topCol, uv.y)` over the **full** frame (Q2 — expanded from the V.7.7B–C.4 spec's "upper ~40%" since the forest floor is retired and the gradient now needs to fill the lower edge too). Slight noise modulation via low-frequency `fbm4` to break perfectly-smooth gradient. At very high arousal (`smoothedArousal > 0.6`), aurora-like horizontal ribbon structure fades in — phase-anchored to `f.beat_phase01` so ribbon motion is musically coupled (Failed Approach #33 compliance). Suppressed at silence (pure-black calibration anchor per ref 08, Q11 keeps the established convention).
 
-**4.2.2 Distant tree silhouettes.** Tree-trunk-shaped vertical structures occupying the upper-mid horizontal band, rendered as flat `botCol * 0.18` silhouettes against the sky band. Density modulated by a low-frequency hash field seeded by `rng_seed + segment_index` so each preset entry shows a different specific arrangement of distant trees within the same mood. Trees do not move within a preset segment. Ref 06 is the canonical fog-heavy variant. The mid-distance reference (#10 in P1, not yet sourced — moderate-fog tree silhouettes) would refine the falloff between this layer and 4.2.3; until sourced, render with fog density derived from `1.0 - smoothedArousal` (low arousal = heavy fog masking detail; high arousal = thinner fog showing more silhouette structure).
+**4.2.2 Volumetric atmosphere.** Three sub-elements composited additively. The atmospheric layer carries the entire visual weight that the V.7.7B–C.4 forest layers were meant to bear; brightness coefficients are raised significantly across the board so atmosphere reads as a hero element rather than a faint overlay.
 
-**4.2.3 Mid-distance trees with bark detail.** Two or three trunks visible, rendered with `worley_fbm`-generated bark texture (ref 18). Blurred slightly via the half-res texture but with enough detail that bark structure is readable. Color: `mix(botCol, topCol, 0.35) * 0.55` — bark is darker than the mid-tone but not pure silhouette. Ref 18 is the bark texture target; ref 06 is the depth-and-density target. Trunk positions seeded from `rng_seed`; trunks straight or with mild lean (no exaggerated organic curvature — these are forest trees, not character art).
+- **Fog density (Q7 — volumetric god-ray anchored).** Fog density is anchored *around* the light shafts (denser inside the shaft cones, thinner outside the cones). This produces the "visible particulate medium catching the light" reading — what cinematographers call volumetric god-ray fog. Modulated by `f.mid_att_rel` (continuous breath); range raised from V.7.7B's 0.02–0.06 to **0.15–0.30** for substantial fog presence (Q7's "raise fog amplitude significantly" combined with the beam-anchored density profile). Color inside the cones: `mix(botCol, topCol, 0.5) × kLightCol` (warm tint at the beam centroid). Outside the cones, fog falls to a much thinner ambient haze at `mix(botCol, topCol, 0.5) × 0.3`. Heavier overall fog at low valence (cooler, mistier); lighter at high valence (clearer dawn).
 
-**4.2.4 Near-frame branches.** The branches the WEB's outer radials anchor to. Rendered at higher detail (full-res, no blur) since the WEB's structure is anchored on them — they need to read as *solid structure*. 4–7 branches enter the frame from the edges (left, right, top — rarely from the bottom since the camera looks slightly upward) at irregular angles and irregular thicknesses. No two parallel.
+- **Light shafts (Q8 — 1–2 mood-driven, raised brightness).** When `f.mid_att_rel > 0.05` (lowered from V.7.7B's 0.10 so shafts engage on lighter music), 1–2 god-ray cones descend from the upper edges of the frame. **Mood-driven angle**:
+   - Warm valence (`v > 0`) → primary cone enters from the upper-LEFT at ~30° from vertical. Optional secondary cone from upper-LEFT at ~50° (engages at high arousal).
+   - Cool valence (`v < 0`) → primary cone enters from the upper-RIGHT at ~30° from vertical. Optional secondary cone from upper-RIGHT at ~50° (engages at high arousal).
+   - Neutral valence: defaults to the warm-side angles.
+  
+  Implementation: radial-blur in UV space along each shaft axis, sampled from a hash-jittered 1D noise (the `Volume/LightShafts.metal` `ls_radial_step_uv` family is the V.1 utility — discrete shafts, not uniform glow). Shaft color: `beamCol` from §4.3 (warm at high valence, cool at low). **Brightness coefficient raised from V.7.7B's `0.06 × val` to `0.30 × val`** — the V.7.7B coefficient produced barely-visible shafts per Matt's 2026-05-08T18-28-16Z manual smoke; V.7.7C.5 makes shafts the dominant atmospheric light source.
 
-Branch thickness varies. Two regimes:
-- **Trunk-thickness branches** (rare, perhaps 1 of the 4–7): >12 px wide; surface uses ref 18's bark recipe (Worley-FBM normal sampled in screen-space).
-- **Twig-thickness branches** (most): 4–8 px wide; smooth surface with a darker tone, no bark detail. This matches what real orb webs anchor to in nature (twigs, leaf petioles, grass stems — Matt's empirical correction 2026-05-03).
-
-The polygon of attachment points (§5.3) is a function of where these branches exit the visible frame. The branch geometry is sampled by both this WORLD pass and the WEB anchor logic, so they agree on attachment positions.
-
-**4.2.5 Forest floor.** Bottom ~15% of the frame. Damp moss + leaf litter texture per ref 17. Out of focus (heavy blur — the camera focuses on the WEB at mid-depth, not the ground). Color derived from `botCol * 0.4` with high-frequency variance from `fbm8`. The forest floor stabilizes the composition (gives the eye a base) and prevents the lower edge of the frame from feeling like void. It does not need detail — it needs *presence*. A single hint of a fallen leaf or a moss patch is enough; pure noise-texture is fine.
-
-**4.2.6 Volumetric atmosphere.** Three sub-elements composited additively at the end of the WORLD pass:
-
-- **Fog density.** Soft horizontal gradient that thickens with depth, modulated by `f.mid_att_rel` (continuous breath, 0.02–0.06 range). Color: `mix(botCol, topCol, 0.5)` at the band where fog is thickest (typically mid-frame vertically). Heavier fog at low valence (cooler, mistier — ref 06); lighter at high valence (clearer dawn — ref 16).
-- **Light shafts.** When `f.mid_att_rel > 0.10`, 1–2 god-ray cones descend from the upper-frame at angles consistent with `kL` (key-light direction). Implementation: radial-blur in UV space along the shaft axis, sampled from a hash-jittered 1D noise per ref 07 — discrete shafts, not uniform glow. Shaft color: `beamCol` from §4.3 (warm at high valence, cool at low). Brightness modulated by `f.mid_att_rel` so shafts brighten on continuous mid-band energy and fade in silence.
-- **Dust motes.** Hash-lattice particle field at low density throughout the visible volume. Each mote 1–2 px, opacity ~0.3, color matched to local fog. Density modulated by `f.mid_att_rel`. Phase per-mote anchored to `time` is acceptable here — motes are too small for free-running motion to read as out-of-sync, they read as Brownian / wind drift. (Caveat: if a future review finds them feeling mechanical, gate phase on `f.beat_phase01` per Failed Approach #33.)
+- **Dust motes (Q9 — caustic-concentrated inside light shafts).** Hash-lattice particle field, **concentrated inside the light shaft cones only** (not uniform across the volume as in V.7.7B). This is the "dust visible in sunlight" cinematographic signature — the motes outside the shafts are invisible because there's no key light to catch them. Per-mote opacity ~0.4 (raised from 0.3 since they only exist inside shafts now); color matched to local fog × `kLightCol` so motes glow within the shaft. Density modulated by `f.mid_att_rel`. Phase-anchored to `f.beat_phase01` (motes drift on beat phase, no free-running `time` motion — Failed Approach #33 compliance).
 
 ### 4.3 Mood-driven color field
 
@@ -259,19 +254,48 @@ float3 beamCol = hsv2rgb(float3(mix(0.6, 0.08, saturate(0.5 + 0.5 * v)), 0.5, 0.
 
 ### 4.4 Reference cross-walk
 
+V.7.7C.5 reframe (Q13). References are **mood-palette anchors only** — the references' colour signatures drive the §4.3 palette, but the literal compositional content of the references (forests, branches, etc.) is NOT the implementation target. The atmospheric-abstraction backdrop renders the colour palette and atmospheric depth derived from these references without depicting the references' subject matter.
+
 | Layer / element | Primary reference | Secondary references |
 |---|---|---|
-| Mood-cool default | `06_atmosphere_dark_misty_forest.jpg` | `02_meso_per_strand_sag.jpg` (web in similar mood) |
-| Mood-warm bright | `16_atmosphere_dappled_pine_forest.jpg` | `05_lighting_backlit_atmosphere.jpg` |
-| Mood-high arousal psychedelic | `15_atmosphere_aurora_forest.jpg` | — |
-| Mid-distance trees (mod fog) | (P1 — to source) | `06_atmosphere_dark_misty_forest.jpg` |
-| Near-frame branch + bark | `18_bark_close_up.jpg` | `11_anchor_web_in_branch_frame.jpg` |
-| Forest floor | `17_floor_moss_leaf_litter.jpg` | — |
+| Mood-cool default (palette only) | `06_atmosphere_dark_misty_forest.jpg` | — |
+| Mood-warm default (palette only) | `16_atmosphere_dappled_pine_forest.jpg` | `05_lighting_backlit_atmosphere.jpg` |
+| Mood-high-arousal psychedelic (palette only) | `15_atmosphere_aurora_forest.jpg` | — |
 | Light shafts | `07_atmosphere_dust_light_shaft.jpg` | — |
-| Dust motes | `07_atmosphere_dust_light_shaft.jpg` | — |
+| Dust motes (caustic in shaft) | `07_atmosphere_dust_light_shaft.jpg` | — |
 | Pure-black silence anchor | `08_palette_bioluminescent_organism.jpg` | — |
 | Anti-reference (clipart) | `09_anti_clipart_symmetry.jpg` | — |
 | Anti-reference (neon) | `10_anti_neon_stylized_glow.jpg` | — |
+
+**Retired references (V.7.7C.5)**: the following references no longer drive any §4 implementation choice. They remain in `docs/VISUAL_REFERENCES/arachne/` for V.7.10 cert-review historical comparison and for retrospective comparison against the V.7.7B–C.4 forest spec.
+
+| Reference | Was anchoring | Why retired |
+|---|---|---|
+| `02_meso_per_strand_sag.jpg` | Mood-cool secondary | Mood-cool palette now anchored on 06 only; 02's web composition is not a §4 element |
+| `11_anchor_web_in_branch_frame.jpg` | Near-frame branches (§4.2.4) | Branches retired per Q5(a) |
+| `17_floor_moss_leaf_litter.jpg` | Forest floor (§4.2.5) | Floor retired per Q6(a); sky band fills the lower edge |
+| `18_bark_close_up.jpg` | Bark texture on branches | Bark detail no longer rendered anywhere |
+
+### 4.5 Decisions log (V.7.7C.5 reframe Q&A)
+
+The §4 rewrite resolved the open spec questions surfaced by the V.7.7C.5 ENGINEERING_PLAN entry. Captured here for future reference:
+
+| Q | Decision | Rationale |
+|---|---|---|
+| Q0 — direction | (A) atmospheric abstraction | Matt: "I have no confidence that you can render a forest in 2D" — simplification primary motive |
+| Q1 — frame | "atmosphere is a fixed stage" | Direct rephrase of §4.1 opening |
+| Q2 — sky band | (b) expand to fill frame | Compensates for retired forest floor |
+| Q3 — distant trees | retire | (A) consequence |
+| Q4 — mid trees | retire | (A) consequence |
+| Q5 — near-frame branches | retire | "lines do not read as branches" — and retiring solves it cleanly |
+| Q6 — forest floor | retire | (A) consequence; sky band fills lower edge |
+| Q7 — fog density | (c) volumetric god-ray anchored | Beam-anchored fog reads as cinematographic god-rays |
+| Q8 — light shafts | (b) 1–2 shafts mood-driven; brightness raised from `0.06 × val` to `0.30 × val` | Matt's "fog and light behind the web" — shafts must read as hero elements |
+| Q9 — dust motes | (c) concentrate in shaft cones | Caustic-like; ties motes + shafts into a single visual element |
+| Q10 — mood palette | keep verbatim | Recipe is sound; issue was the layers, not the palette |
+| Q11 — silence anchor | keep | Cross-preset convention |
+| Q12 — §5.9 anchor twigs | retire entirely | Polygon vertices alone provide WEB attachment; no literal "branch" or "twig" anywhere |
+| Q13 — references | (b) reinterpret existing | Matt: "you don't follow the references anyway, so what does it matter?" — references stay as mood-palette anchors only |
 
 ---
 
@@ -387,17 +411,21 @@ Drops do 80% of the visual work. Threads are connective tissue between drop chai
 
 Implementation: for chord `k` laid at build time `t_k`, drop count at current time `t` is `min(maxDrops, baseDrops + accretionRate * (t - t_k))` where `accretionRate ≈ 0.5 drops/second/chord` and `maxDrops ≈ chord_length * dropDensity`.
 
-### 5.9 Anchor logic — terminate on near-frame branches
+### 5.9 Anchor logic — terminate at polygon vertices
 
-The web's outer frame threads terminate on the WORLD's near-frame branches (§4.2.4). Reference 11 shows the visual goal at polygon scale: the web is visibly attached to a polygon of branch positions.
+> **V.7.7C.5 reframe (2026-05-09).** Per Q12 the §5.9 literal-branch / literal-twig rendering is retired alongside §4.2.4 (near-frame branches) and §4.2.5 (forest floor) of the WORLD reframe. The web's frame threads now terminate at the polygon vertex positions in `kBranchAnchors[]` directly, without rendering visible branch or twig structure at those positions. Polygon vertices remain visible only as the implicit endpoints of frame thread polygon edges + radial spoke tips. The "anchor blob" detail (V.7.7C.2 deferred sub-item #2 — small adhesive silk discs at polygon vertices) is retained as the sole visual hint of attachment point at those positions; it remains a V.7.10 deferred sub-item.
 
-Implementation:
-- Each frame anchor point is the projection of a near-frame branch's edge into UV space.
-- At the anchor point, render a small adhesive blob (radius ~`drop_radius * 1.3`, color matching nearby silk + slight warm tint, no refraction — adhesive silk is opaque).
-- The frame thread terminates *into* the blob, not *at* the bare bark surface — visually, the silk wraps the anchor.
-- No "wrapping the bark with multiple loops of silk" detail — ref 11 doesn't show that detail at the polygon-overview scale, and faking it produces noise.
+The web's outer frame threads terminate at the polygon vertex positions defined by `kBranchAnchors[]` (constants in `Arachne.metal` line ~153 + `ArachneState.swift`). The constants stay — `ArachneState.selectPolygon(rng:)` continues to consume them as polygon vertex candidates, and `ArachneBranchAnchorsTests` continues to regression-lock the Swift / MSL sync.
 
-**Real webs don't anchor exclusively to bark.** Per Matt's empirical correction 2026-05-03: orb-weaver webs in nature anchor to twigs, leaf petioles, and grass stems more often than to bark trunks. This was the reason for dropping P0-#1 (anchor-to-bark macro reference). The near-frame branches in the WORLD layer can be twig-thickness (4–8 px wide at typical scale) rather than trunk-thickness; the anchor logic doesn't change. Bark close-up texture (ref 18) is still used for the surface where branches are thick; thinner branches use a simpler darker-tube look without bark detail.
+Implementation (V.7.7C.5):
+- Each frame anchor point is the polygon vertex position from `kBranchAnchors[bs.anchors[i]]`.
+- At the anchor point, render a small adhesive blob (radius ~`drop_radius * 1.3`, color matching nearby silk + slight warm tint, no refraction — adhesive silk is opaque). Implementation deferred to V.7.10 cert review (V.7.7C.2 deferred sub-item #2 still standing).
+- The frame thread terminates *into* the blob position. With the §4.2.4 branches retired in V.7.7C.5, the silk no longer "wraps" any visible structure — the blob alone marks the attachment.
+- The §5.9 anchor twigs added in V.7.7C.2 Commit 1 (`drawWorld()` rendering of six small dark capsule SDFs at `kBranchAnchors[i]` positions) are retired in V.7.7C.5 per Q12. The capsule-SDF rendering loop in `drawWorld()` is removed; the constants stay.
+
+**Why no literal branches anywhere in V.7.7C.5.** The V.7.7B–C.4 spec depicted branches at multiple scales (distant tree silhouettes / mid-distance trees / near-frame branches / anchor twigs). The 2026-05-08T18-28-16Z manual smoke confirmed they did not read as branches at any scale ("the lines do not read as branches"). V.7.7C.5 retires literal branch / twig rendering entirely; the polygon perimeter is now defined by abstract anchor positions in atmosphere, not by visible structures the silk attaches to. This is consistent with the "atmospheric abstraction" framing from §4.1.
+
+The V.7.5/V.7.7B–C.4 commentary on bark-vs-twig anchor scale (Matt's empirical correction 2026-05-03 about real webs anchoring to twigs/leaf petioles/grass stems) is retained in version-history form: it informed why V.7.7C.2's `kBranchAnchors[6]` are at irregular UV positions near frame edges rather than centered on imagined trunks. The constants' positions remain biologically defensible even though the rendered "twigs" are gone.
 
 ### 5.10 Silk material — minor finishing
 
