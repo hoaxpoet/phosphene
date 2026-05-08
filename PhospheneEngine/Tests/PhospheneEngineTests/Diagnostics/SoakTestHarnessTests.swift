@@ -216,7 +216,7 @@ struct SoakTestHarnessSoakTests {
         printSmokeSummary(report, label: "5min memory")
     }
 
-    // MARK: 30-second Drift Motes Kernel Cost (DM.2 Task 8)
+    // MARK: 30-second Drift Motes Kernel Cost (DM.2 Task 8 → DM.3 Task 4)
     //
     // Direct kernel-cost benchmark for `motes_update` at the Tier 2 particle
     // count (800). Dispatches one compute frame per simulated 60 Hz tick for
@@ -226,13 +226,23 @@ struct SoakTestHarnessSoakTests {
     // The 1.6 ms Tier 2 / 2.1 ms Tier 1 targets in the Drift Motes
     // architecture contract describe the FULL preset frame budget (sky
     // fragment + curl-noise compute + sprite render + feedback decay). This
-    // test isolates the compute kernel only — the post-DM.2 audio coupling
-    // (D-019 blend, hue baking, pitch-driven palette) is the only thing that
-    // grew the kernel cost between DM.1 and DM.2, so a kernel-cost regression
-    // gate here is the right shape. Full-pipeline timing requires a runtime
-    // app session and is reported in the Increment DM.2 landing block.
+    // test isolates the compute kernel only.
     //
-    // Tier 1 numbers are deferred to a hardware run (see DM.2 done-when).
+    // DM.3 (this update) extends the synthesised audio fixture to drive the
+    // dispersion-shock branch every ~30 frames (a 2 Hz square wave on
+    // `stems.drumsBeat`) and to vary `features.midAttRel` so the
+    // emission-rate divisor exercises both branches each cycle. The kernel's
+    // per-frame work in DM.3 includes a smoothstep + length + branch around
+    // a small SIMD radial impulse — measurable but bounded.
+    //
+    // Full-pipeline timing requires a runtime app session because the
+    // sprite pass needs a CAMetalDrawable. See
+    // `Scripts/dm3_perf_capture.md` for the procedure that pins Drift Motes,
+    // runs 30 s of representative audio, and emits per-frame timings to
+    // a JSON log.
+    //
+    // Tier 1 numbers require Tier 1 hardware (M1/M2). The procedure is
+    // documented in `docs/runbook/DM.3-tier1-measurement.md`.
 
     @Test("30-second Drift Motes kernel cost benchmark (Tier 2)")
     @MainActor
@@ -270,6 +280,14 @@ struct SoakTestHarnessSoakTests {
             // Sweep pitch so the warm-hue path produces varied output.
             stems.vocalsPitchHz = 110.0 * powf(16.0, Float(frame % 240) / 239.0)
             features.midAttRel = 0.2 + 0.3 * sinf(features.time * 0.5)
+            // DM.3: 2 Hz square wave on drumsBeat exercises the dispersion
+            // shock branch and the smoothstep evaluation roughly every other
+            // frame. Triangle envelope (0 → 1 → 0) over 30 frames more
+            // realistically emulates the BeatDetector envelope shape than a
+            // pure square wave but the cost difference per frame is
+            // negligible — we just need the branch to trigger.
+            let beatCycle = frame % 30
+            stems.drumsBeat = beatCycle < 15 ? 1.0 : 0.0
 
             guard let cmdBuf = ctx.commandQueue.makeCommandBuffer() else {
                 continue
