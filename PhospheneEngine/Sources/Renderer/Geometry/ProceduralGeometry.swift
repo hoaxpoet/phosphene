@@ -115,6 +115,13 @@ struct ParticleConfig {
 /// Allocates a `.storageModeShared` particle buffer (UMA zero-copy)
 /// and dispatches the `particle_update` compute kernel each frame.
 ///
+/// Conforms to `ParticleGeometry` — the engine schedules dispatch through that
+/// protocol so future particle presets can ship sibling conformers without
+/// parameterizing this implementation. See D-097. The conformance is satisfied
+/// by `activeParticleFraction` (Frame Budget Governor section), `update(...)`
+/// (Update section), and `render(...)` (Render section); existing MARK groupings
+/// stay lifecycle-organized rather than being collapsed under a single header.
+///
 /// Usage:
 /// ```swift
 /// let geometry = try ProceduralGeometry(device: ctx.device, library: shaderLib.library,
@@ -122,7 +129,7 @@ struct ParticleConfig {
 /// // Each frame:
 /// geometry.update(features: currentFeatures, commandBuffer: cmdBuf)
 /// ```
-public final class ProceduralGeometry: @unchecked Sendable {
+public final class ProceduralGeometry: ParticleGeometry, @unchecked Sendable {
 
     // MARK: - Properties
 
