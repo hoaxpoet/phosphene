@@ -931,13 +931,64 @@ fragment float4 arachne_composite_fragment(
     float3 strandColor  = float3(0.0);
     float3 dropColorAccum = float3(0.0); // per-web drop material accumulator (replaces dropPseudo)
 
-    // ── Permanent anchor web (D-037: always visible; seed=1984u, hub upper-centre)
+    // ── Foreground hero web (V.7.7C.2 / D-095): build-aware via webs[0] Row 5 ──
+    //
+    // V.7.7D and earlier hard-pinned this block at stage=3u, progress=1.0 — the
+    // foreground always rendered fully built. V.7.7C.2 retires that for the
+    // single-foreground build-cycle signature: the slot reads `webs[0]`'s Row 5
+    // BuildState (audio-modulated TIME, ARACHNE_V8_DESIGN.md §5.2 60 s cycle)
+    // and the existing arachneEvalWeb / drop blocks render the build-aware
+    // composition unchanged — frame polygon at stage 0, alternating-pair
+    // radials at stage 1, INWARD chord-segment spiral at stage 2, settle at
+    // stage ≥ 3. Hub knot + chord-spiral SDFs are byte-identical to V.7.7D
+    // (Failed Approach #34 + §5.4 hub-as-fbm-knot still hold).
+    //
+    // Row 5 → legacy (stage, progress) mapping:
+    //   .frame    (0) → stage=0u, progress=frame_progress
+    //   .radial   (1) → stage=1u, progress=radial_packed / radialCount_cpu
+    //   .spiral   (2) → stage=2u, progress=spiral_packed / spiralChordsTotal_cpu
+    //   ≥ .stable (3) → stage=3u, progress=1.0  (.evicting clamped to .stable)
+    //
+    // Normalisation constants below mirror CPU defaults (`radialCount = 13`,
+    // `spiralRevolutions × radialCount = 8 × 13 = 104`); shader-side
+    // `arachSpokeCount(ancSeed)` may differ from CPU's `radialCount` by ±2,
+    // which produces a visually negligible ±2-spoke lead/lag at the radial
+    // boundary. Acceptable for V.7.7C.2 — see D-095 carry-forward.
+    //
+    // Hub UV stays at the hardcoded V.7.5 anchor (0.42, 0.40); the seedInitial
+    // hub_x/hub_y on webs[0] are intentionally ignored for this slot. The
+    // hardcoded values are what M7 reviews against, so retaining them
+    // preserves cert-review comparability.
+    //
+    // Per-chord drop accretion + anchor-blob discs at polygon vertices +
+    // background-web migration crossfade visual are deferred (see D-095).
     {
         uint   ancSeed = 1984u;
         float2 ancHub  = float2(0.42, 0.40) + arachHubJitter(ancSeed);
+
+        // V.7.7C.2 / D-095 — derive (stage, progress) from webs[0] Row 5.
+        constexpr float kRadialCountCPUDefault = 13.0;
+        constexpr float kSpiralChordsTotalCPUDefault = 104.0;
+        float buildStageF = clamp(webs[0].build_stage, 0.0, 4.0);
+        uint  fgStage;
+        float fgProgress;
+        if (buildStageF < 0.5) {
+            fgStage    = 0u;
+            fgProgress = saturate(webs[0].frame_progress);
+        } else if (buildStageF < 1.5) {
+            fgStage    = 1u;
+            fgProgress = saturate(webs[0].radial_packed / kRadialCountCPUDefault);
+        } else if (buildStageF < 2.5) {
+            fgStage    = 2u;
+            fgProgress = saturate(webs[0].spiral_packed / kSpiralChordsTotalCPUDefault);
+        } else {
+            fgStage    = 3u;
+            fgProgress = 1.0;
+        }
+
         ArachneWebResult wr = arachneEvalWeb(
             vibUV, ancHub, 0.22, 0.30, 6.0, ancSeed,
-            3u, 1.0,
+            fgStage, fgProgress,
             arachSpokeCount(ancSeed), arachAspect(ancSeed),
             arachAspectAngle(ancSeed), arachKSag(ancSeed)
         );
@@ -1016,8 +1067,17 @@ fragment float4 arachne_composite_fragment(
         }
     }
 
-    // ── Pool webs ─────────────────────────────────────────────────────────────
-    for (int wi = 0; wi < kArachWebs; wi++) {
+    // ── Pool webs (V.7.7C.2 — wi=0 is the foreground hero handled above) ─────
+    //
+    // V.7.7C.2 / D-095: webs[0] is reserved as the build-aware foreground
+    // hero (read from Row 5 in the foreground anchor block above). Iterating
+    // it here would double-render the slot — once in build-aware form, once
+    // as the seedInitialWebs() stable web. Pool loop now starts at wi=1, so
+    // the second seeded stable web (webs[1]) and the V.7.5 transient slots
+    // (webs[2..3]) continue to provide background depth context. The full
+    // 1–2 saturated background pool with migration crossfade visual is
+    // deferred (D-095) — pool webs serve double duty for now.
+    for (int wi = 1; wi < kArachWebs; wi++) {
         ArachneWebGPU w = webs[wi];
         if (w.is_alive == 0u || w.opacity < 0.015) continue;
 

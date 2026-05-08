@@ -54,7 +54,18 @@ import simd
 /// is just too coarse to resolve a small isolated shape change. Real visual
 /// divergence is observed in PresetVisualReviewTests where pixels are
 /// captured directly.
-private let goldenSpiderForcedHash: UInt64 = 0x461E2E1F07830C00
+///
+/// V.7.7C.2 (D-095): the spider sits on the partially-built foreground web at
+/// the test fixture's elapsed time. With Commit 3's foreground-anchor block
+/// reading webs[0] Row 5 (frame phase, frameProgress ≈ 0.166 at the harness
+/// warmup), the silk composition under and around the spider footprint
+/// changes — the formerly-fully-built foreground (V.7.7D) is now an early
+/// frame thread, so the chord rings + radial spokes the spider was sitting on
+/// disappear. Hamming distance from V.7.7D: 14 bits, within the D-095
+/// expected [10, 30] band. Spider's own 3D anatomy + chitin material are
+/// byte-identical to V.7.7D (V.7.7D contract preserved); only the silk
+/// background composition under the patch changed.
+private let goldenSpiderForcedHash: UInt64 = 0x461E381912D80800
 
 // MARK: - Test Suite
 
