@@ -139,164 +139,192 @@ static float2 arachHubJitter(uint seed) {
                   (arachHash(seed + 0xF6u) - 0.5) * 0.10);
 }
 
-// ── V.7.7C.2 §5.9 anchor twigs — single source of truth ─────────────────────
-// Branchlet anchor points consumed by both WORLD (renders dark capsule SDFs at
-// these positions) and the WEB pillar (frame polygon vertices terminate on
-// these positions in Sub-item 3). Coordinate space: UV [0..1].
+// ── kBranchAnchors[6] — polygon vertex source (V.7.7C.5 / D-100) ─────────────
+// Branchlet anchor points consumed by the WEB pillar's polygon-from-anchors
+// path: `decodePolygonAnchors(webs[0].rng_seed, ...)` looks up indices in this
+// array; `arachneEvalWeb` ray-clips spoke tips against the polygon perimeter
+// and renders frame thread polygon edges between adjacent vertices. The §4
+// atmospheric reframe (D-100) retired the WORLD-side capsule-twig SDF loop
+// that previously also consumed these positions; the constants stay only as
+// the polygon source.
 //
 // MUST stay byte-for-byte in sync with `ArachneState.branchAnchors` in
 // `ArachneState.swift`. `ArachneBranchAnchorsTests` regression-locks the sync
 // by string-searching this file for the same float pairs.
 //
-// Positions chosen to give an irregular distribution near the screen edges
-// (avoiding the corners — anchors deep in corners read as forced).
+// V.7.7C.5 (D-100) update: positions moved to or just past the visible UV
+// border so the WEB threads enter the canvas from outside, matching ref
+// `20_macro_backlit_purple_canvas_filling_web.jpg`. All entries lie in the
+// off-frame band `[-0.06, 1.06]² \ [0,1]²`. Distribution is asymmetric (no
+// two opposing-edge anchors share the same vertical position), so polygons
+// drawn from any 4–6-subset still read as irregular per §5.3 / Q14.
 constant float2 kBranchAnchors[6] = {
-    float2(0.18, 0.22),  // upper-left
-    float2(0.82, 0.18),  // upper-right (slightly higher)
-    float2(0.92, 0.55),  // right-mid
-    float2(0.78, 0.84),  // lower-right
-    float2(0.20, 0.78),  // lower-left
-    float2(0.10, 0.50)   // left-mid
+    float2(-0.05, 0.05),  // upper-left, off-canvas
+    float2(1.05, 0.02),   // upper-right, off-canvas (slightly higher)
+    float2(1.06, 0.52),   // right, off-canvas
+    float2(1.04, 0.97),   // lower-right, off-canvas
+    float2(-0.04, 0.95),  // lower-left, off-canvas
+    float2(-0.06, 0.48)   // left, off-canvas
 };
 
-// ── V.7.7: WORLD pillar ───────────────────────────────────────────────────────
-// Dark close-up forest atmosphere — camera is inches from the web (refs 01, 06, 08).
-// No landscape, no skyline, no horizon bands. Background is near-black deep forest with
-// atmospheric mist from above (dawn light through canopy), a narrow light shaft, drifting
-// dust motes, organic forest floor at bottom, and substantial bark-textured near-frame
-// branches the web anchors to (ref 11, 18).
+// ── V.7.7C.5: WORLD pillar — atmospheric abstraction (D-100) ─────────────────
 //
-// drawBackgroundWeb() can call drawWorld(refractedUV, ...) for Snell's-law refraction.
-// References: 01, 05, 06, 07, 08, 11, 17, 18.
+// Section 4 of `ARACHNE_V8_DESIGN.md` was rewritten 2026-05-09 after Matt's
+// 2026-05-08T18-28-16Z manual smoke flagged the V.7.7B–C.4 forest framing as
+// "completely devoid of value" / "the lines do not read as branches". The
+// six-layer dark close-up forest (deep background + radial mist + V.7.7B
+// shaft + uniform dust motes + forest floor + three near-frame branch SDFs +
+// §5.9 anchor twigs loop) is retired. What remains is the §4.3 mood palette
+// + two atmospheric layers (§4.2):
+//   1. Sky band — full-frame `mix(botCol, topCol, ...)` gradient with
+//      low-frequency fbm4 modulation; aurora ribbon at high arousal.
+//   2. Volumetric atmosphere — beam-anchored fog + 1–2 mood-driven god-ray
+//      light shafts + dust motes confined inside the shaft cones.
+//
+// References (§4.4 cross-walk): mood-palette anchors only. 06 / 16 / 15 / 20
+// frame the colour signatures and atmospheric depth; the forest scenes those
+// references depict are explicitly NOT the implementation target. The
+// retired forest-specific references (02 / 11 / 17 / 18) remain in
+// `docs/VISUAL_REFERENCES/arachne/` for V.7.10 cert-review historical
+// comparison only.
+//
+// Audio coupling (§4.2.2):
+//   - Shaft engagement gate: `f.mid_att_rel > 0.05` (lowered from V.7.7B's
+//     0.10 so shafts engage on lighter music). Plumbed via the new
+//     `midAttRel` parameter.
+//   - Fog density inside cones: `0.15 + 0.15 × f.mid_att_rel` (range
+//     0.15–0.30 — Q7 raised significantly from V.7.7B's 0.02–0.06).
+//   - Shaft brightness: `0.30 × valScale` (raised from V.7.7B's
+//     `0.06 × val` per Q8). Mood-driven only; no per-beat gain (atmosphere
+//     is continuous, not beat-coupled — `base_zoom ≥ 2× beat_zoom` rule).
+//   - Aurora ribbon (high arousal): phase-anchored to `accTime` (Failed
+//     Approach #33 — drawWorld doesn't carry per-frame `beat_phase01`,
+//     `accumulated_audio_time` is the silence-pause-compatible substitute).
+//
+// drawBackgroundWeb() (dead-reference) calls drawWorld(refractedUV, ...) for
+// its Snell's-law refraction sample; it now passes 0.0 for midAttRel since
+// dead-reference paths shouldn't drive shaft engagement on synthetic UVs.
 //
 // UV: (0,0)=top-left, (1,1)=bottom-right.
-// moodRow.x=smoothedValence [-1,1], .y=smoothedArousal [-1,1], .z=accumulatedAudioTime.
+// moodRow.x = smoothedValence [-1,1], .y = smoothedArousal [-1,1],
+// .z = accumulatedAudioTime (passed separately as `accTime`).
 
-static float3 drawWorld(float2 uv, float4 moodRow, float accTime) {
+static float3 drawWorld(float2 uv, float4 moodRow, float accTime, float midAttRel) {
     float v = clamp(moodRow.x, -1.0, 1.0);
     float a = clamp(moodRow.y, -1.0, 1.0);
 
-    float sat = 0.22 + 0.38 * saturate(0.5 + 0.5 * a);
-    float val = 0.08 + 0.18 * saturate(0.5 + 0.5 * a);
-    if (sat * val < 0.04) return float3(0.0);  // silence anchor (ref 08)
+    // §4.3 mood palette — preserved verbatim from the 2026-05-02 spec (Q10).
+    float topHue   = mix(0.62, 0.05, saturate(0.5 + 0.5 * v));
+    float botHue   = mix(0.58, 0.08, saturate(0.5 + 0.5 * v));
+    float satScale = 0.25 + 0.40 * saturate(0.5 + 0.5 * a);
+    float valScale = 0.10 + 0.20 * saturate(0.5 + 0.5 * a);
 
-    // §4.3 hue: valence shifts teal (cool/dark, ref 06) → amber (warm/dawn, ref 05).
-    float atmHue   = mix(0.60, 0.09, saturate(0.5 + 0.5 * v));
-    float3 atmDark = hsv2rgb(float3(atmHue, sat * 0.75, val));
-    float3 atmMid  = hsv2rgb(float3(atmHue, sat * 0.45, val * 2.4));  // brighter mist tint
+    // Silence anchor: pure black when mood signal collapses (Q11; ref 08).
+    if (satScale * valScale < 0.04) return float3(0.0);
 
-    // Deep background: near-black with subtle fbm tonal variation (refs 06, 08).
-    // No horizon — you're inches from the web; background is dark forest depth.
-    float deepN = fbm4(float3(uv * 1.8, 0.23)) * 0.5 + 0.5;
-    float3 col  = atmDark * (0.07 + deepN * 0.05);
+    float3 topCol  = hsv2rgb(float3(topHue, satScale, valScale * 1.2));
+    float3 botCol  = hsv2rgb(float3(botHue, satScale * 0.85, valScale));
+    float3 beamCol = hsv2rgb(float3(mix(0.6, 0.08, saturate(0.5 + 0.5 * v)),
+                                      0.5, 0.4));
 
-    // Atmospheric mist: radial soft glow from upper portion of frame (refs 05, 06).
-    // Dawn light filtering through canopy above the anchor branches — NOT a band.
-    float mistR = length(uv - float2(0.50, -0.08));
-    float mistN = fbm4(float3(uv * 3.8 + float2(0.18, 0.73), 0.47)) * 0.5 + 0.5;
-    float mist  = exp(-mistR * mistR / 0.30) * 0.24 * sat;
-    col += atmMid * mist * (0.55 + 0.45 * mistN);
+    // ── §4.2.1 Sky band — full frame ──────────────────────────────────────
+    // Spec wording is `mix(botCol, topCol, uv.y)` with uv.y measured up; our
+    // convention has top at uv.y=0 so we flip the mix factor. Low-frequency
+    // fbm4 (~7% amplitude) breaks the perfectly-smooth gradient (Q2 — fills
+    // the lower edge that the retired forest floor used to occupy).
+    float skyT = 1.0 - uv.y;
+    float skyN = fbm4(float3(uv * 1.6, 0.13)) * 0.5 + 0.5;
+    float3 col = mix(botCol, topCol, skyT) * (0.93 + 0.14 * skyN);
 
-    // Light shaft: narrow diagonal beam from upper-left (ref 07 — beam structure only;
-    // warm tone is incidental to that ref; our shaft stays cool-tinted per palette).
-    float2 shO = uv - float2(0.16, 0.0);
-    float2 shD = normalize(float2(0.20, 1.0));
-    float  shT = dot(shO, shD);
-    float  shP = length(shO - shT * shD);
-    float  shI = exp(-shP * shP / (0.011 * 0.011))
-               * smoothstep(0.0, 0.22, shT) * smoothstep(1.15, 0.55, shT)
-               * 0.06 * val;
-    col += atmMid * 1.6 * shI;
-
-    // Dust motes: accTime-drifted hash field; pauses at silence (anti-FA33).
-    float2 driftUV = uv * float2(44.0, 22.0) + float2(accTime * 0.006, accTime * 0.003);
-    float moteN = fbm4(float3(driftUV, 0.31)) * 0.5 + 0.5;
-    col += atmMid * smoothstep(0.79, 0.85, moteN) * 0.04 * val;
-
-    // Forest floor: organic dark texture at bottom (ref 17 — moss, leaf litter).
-    // Smooth fade — no hard edge at any particular y value.
-    float floorFade = smoothstep(0.52, 1.0, uv.y);
-    float floorN    = fbm4(float3(uv.x * 9.0, uv.y * 14.0, 0.67)) * 0.5 + 0.5;
-    col = mix(col, atmDark * (0.05 + floorN * 0.09), floorFade * 0.70);
-
-    // ── Near-frame branches: substantial bark-textured trunks (refs 11, 18) ────
-    // Positioned so the web's outermost radials anchor to them (ref 11).
-    // Each branch tapers toward its tip; fbm4 gives deeply furrowed bark ridges (ref 18).
-    // Cool rim on the upper-lit edge (dawn backlight from above, ref 05).
-
-    // Left branch — upper-left corner → centre-left (primary anchor, thickest trunk).
-    {
-        float2 ba  = float2(-0.04, 0.06);
-        float2 bb  = float2(0.27, 0.56);
-        float2 dir = bb - ba;
-        float2 pa  = uv - ba;
-        float  tc  = saturate(dot(pa, dir) / max(dot(dir, dir), 1e-6));
-        float  bd  = length(pa - dir * tc);
-        float  br  = mix(0.044, 0.013, tc);  // tapers: thick root, thin tip
-        float  cov = smoothstep(br + 0.005, br - 0.005, bd);
-        // Bark: along-axis furrowing + cross-axis ridge texture (ref 18).
-        float bkA  = fbm4(float3(tc * 9.0 + 0.11, bd * 38.0, 0.13)) * 0.5 + 0.5;
-        float bkC  = fbm4(float3(tc * 0.5, bd * 52.0 + 0.44, 0.0)) * 0.5 + 0.5;
-        float3 bkC3 = mix(atmDark * 0.22, atmDark * 0.38, bkA * bkC);
-        // Faint rim on upper-lit edge from dawn light (ref 05).
-        float rim  = smoothstep(br, br + 0.004, bd) * cov;
-        bkC3 += atmMid * 0.08 * rim;
-        col = mix(col, bkC3, cov);
+    // Aurora ribbon — fades in at high arousal (smoothedArousal > 0.6).
+    // Two-frequency sin product for ribbon-like horizontal banding,
+    // phase-anchored to accTime (FA #33: drawWorld has no beat_phase01).
+    // Cap at ~10% brightness lift so the aurora reads as a subtle tell, not
+    // a hero element (§4.2.1).
+    float arousalGate = smoothstep(0.6, 0.85, a);
+    if (arousalGate > 0.001) {
+        float ribbonPhase = accTime * 0.18;
+        float ribbonA = sin(uv.y * 18.0 + ribbonPhase) * 0.5 + 0.5;
+        float ribbonB = sin(uv.y * 7.0  - ribbonPhase * 0.7) * 0.5 + 0.5;
+        col += topCol * ribbonA * ribbonB * 0.10 * arousalGate;
     }
 
-    // Right branch — upper-right corner → centre-right.
-    {
-        float2 ba  = float2(1.04, 0.09);
-        float2 bb  = float2(0.73, 0.51);
-        float2 dir = bb - ba;
-        float2 pa  = uv - ba;
-        float  tc  = saturate(dot(pa, dir) / max(dot(dir, dir), 1e-6));
-        float  bd  = length(pa - dir * tc);
-        float  br  = mix(0.034, 0.011, tc);
-        float  cov = smoothstep(br + 0.004, br - 0.004, bd);
-        float bkA  = fbm4(float3(tc * 8.0 + 0.83, bd * 34.0, 0.27)) * 0.5 + 0.5;
-        float bkC  = fbm4(float3(tc * 0.4, bd * 46.0 + 0.91, 0.0)) * 0.5 + 0.5;
-        float3 bkC3 = mix(atmDark * 0.19, atmDark * 0.32, bkA * bkC);
-        float rim  = smoothstep(br, br + 0.003, bd) * cov;
-        bkC3 += atmMid * 0.06 * rim;
-        col = mix(col, bkC3, cov);
-    }
+    // ── §4.2.2 Volumetric atmosphere — sun anchors + shaft axes ──────────
+    // Warm valence (v ≥ 0): primary shaft enters from upper-LEFT at ~30°
+    // from vertical; secondary at ~58° engages at higher arousal (a > 0.4).
+    // Cool valence (v < 0): mirror to upper-RIGHT.
+    bool warmSide = (v >= 0.0);
 
-    // Lower twig — bottom-right, smaller secondary anchor.
-    {
-        float2 ba  = float2(0.86, 1.04);
-        float2 bb  = float2(0.60, 0.70);
-        float2 dir = bb - ba;
-        float2 pa  = uv - ba;
-        float  tc  = saturate(dot(pa, dir) / max(dot(dir, dir), 1e-6));
-        float  bd  = length(pa - dir * tc);
-        float  br  = mix(0.018, 0.008, tc);
-        float  cov = smoothstep(br + 0.002, br - 0.002, bd);
-        float bkA  = fbm4(float3(tc * 7.0 + 0.55, bd * 40.0, 0.0)) * 0.5 + 0.5;
-        float3 bkC3 = atmDark * (0.17 + 0.13 * bkA);
-        col = mix(col, bkC3, cov);
-    }
+    // Sun anchors above/outside frame (UV.y < 0 means above the visible top).
+    float2 sunUV1 = warmSide ? float2(-0.15, -0.30) : float2(1.15, -0.30);
+    float2 sunUV2 = warmSide ? float2(-0.05, -0.40) : float2(1.05, -0.40);
 
-    // ── V.7.7C.2 §5.9: branchlet anchor twigs ─────────────────────────────────
-    // Six small dark line segments at kBranchAnchors[i], each 0.05 UV long and
-    // pointing roughly inward (toward screen centre). The WEB pillar's frame
-    // polygon (Sub-item 3) terminates on these positions, so the twigs need to
-    // read as small dark line segments the polygon vertices clearly attach to.
-    // Slightly warmer tint than the trunk silhouettes — warmer = "closer to the
-    // web", per ref 11. Same line-segment SDF pattern as the trunks above.
-    for (int i = 0; i < 6; i++) {
-        float2 ba  = kBranchAnchors[i];
-        float2 inward = normalize(float2(0.5) - ba);
-        float2 bb  = ba + inward * 0.05;
-        float2 dir = bb - ba;
-        float2 pa  = uv - ba;
-        float  tc  = saturate(dot(pa, dir) / max(dot(dir, dir), 1e-6));
-        float  bd  = length(pa - dir * tc);
-        float  br  = mix(0.005, 0.002, tc);  // tapers root → tip
-        float  cov = smoothstep(br + 0.0015, br - 0.0015, bd);
-        float3 twigCol = mix(atmDark, atmMid, 0.15) * 0.5;
-        col = mix(col, twigCol, cov * 0.8);
-    }
+    // Shaft direction unit vectors. Measured from vertical (uv.y down):
+    //   30° from vertical → (sin 30°, cos 30°) = (0.500, 0.866)
+    //   58° from vertical → (sin 58°, cos 58°) = (0.848, 0.530)
+    float2 dir1 = warmSide ? float2(0.5,   0.866) : float2(-0.5,   0.866);
+    float2 dir2 = warmSide ? float2(0.848, 0.530) : float2(-0.848, 0.530);
+
+    // Shaft brightness coefficient — §4.2.2 Q8: 0.30 × val (raised from
+    // V.7.7B's 0.06 × val so shafts read as the dominant atmospheric light
+    // source, not a faint overlay).
+    float shaftBrightness = 0.30 * valScale;
+
+    // Engagement gate — §4.2.2: f.mid_att_rel > 0.05 (lowered from 0.10).
+    float midGate = smoothstep(0.05, 0.15, midAttRel);
+
+    // Primary shaft: Gaussian falloff perpendicular to axis × 1D axial noise
+    // for "discrete shafts inside a cone" reading (§4.2.2 — uniform glow is
+    // the wrong reading per spec wording).
+    float2 d1     = uv - sunUV1;
+    float  along1 = dot(d1, dir1);
+    float  perp1  = length(d1 - dir1 * along1);
+    const float shW = 0.20;
+    float jit1   = fbm4(float3(along1 * 6.0, 0.31, 0.0)) * 0.5 + 0.5;
+    float gauss1 = exp(-(perp1 * perp1) / (shW * shW));
+    float fade1  = smoothstep(0.05, 0.30, along1) * smoothstep(2.2, 0.7, along1);
+    float beam1  = gauss1 * (0.50 + 0.50 * jit1) * fade1;
+
+    // Secondary shaft — engages at higher arousal.
+    float arousal2 = smoothstep(0.4, 0.7, a);
+    float2 d2vec   = uv - sunUV2;
+    float  along2  = dot(d2vec, dir2);
+    float  perp2   = length(d2vec - dir2 * along2);
+    float jit2   = fbm4(float3(along2 * 7.0, 0.71, 0.0)) * 0.5 + 0.5;
+    float gauss2 = exp(-(perp2 * perp2) / (shW * shW));
+    float fade2  = smoothstep(0.05, 0.30, along2) * smoothstep(2.2, 0.7, along2);
+    float beam2  = gauss2 * (0.50 + 0.50 * jit2) * fade2 * arousal2;
+
+    // Combined beam intensity used as cone-anchor for fog density + dust motes.
+    float beamMax = max(beam1, beam2);
+
+    // ── Fog density — beam-anchored ──────────────────────────────────────
+    // Inside shaft cones: density 0.15 + 0.15 × midAttRel (range 0.15–0.30).
+    // Outside cones: thinner ambient haze at `mix(botCol, topCol, 0.5) × 0.3`.
+    // Fog sits BEHIND shafts in composite — fog first, shafts on top (§4.2.2).
+    float fogInsideDensity = 0.15 + 0.15 * saturate(midAttRel);
+    float3 fogColInside    = mix(botCol, topCol, 0.5) * float3(1.00, 0.85, 0.65);
+    float3 fogColAmbient   = mix(botCol, topCol, 0.5) * 0.3;
+    float fogConeMix       = saturate(beamMax * 1.6);
+    float fogDensity       = mix(0.06, fogInsideDensity, fogConeMix);
+    float3 fogCol          = mix(fogColAmbient, fogColInside, fogConeMix);
+    col = mix(col, fogCol, saturate(fogDensity));
+
+    // ── Light shafts — additive on top of fog ────────────────────────────
+    col += beamCol * (beam1 + beam2) * shaftBrightness * midGate;
+
+    // ── Dust motes — caustic-concentrated inside shaft cones (§4.2.2 Q9) ─
+    // Hash-lattice particle field; only rendered inside shaft cones (motes
+    // outside have no key light to catch). Phase-anchored to accTime
+    // (Failed Approach #33 — accTime pauses at silence; FA-#33 compliant
+    // substitute when beat_phase01 isn't carried into drawWorld).
+    float2 driftUV = uv * float2(44.0, 22.0)
+                   + float2(accTime * 0.06, accTime * 0.03);
+    float moteN     = fbm4(float3(driftUV, 0.31)) * 0.5 + 0.5;
+    float moteMask  = smoothstep(0.79, 0.85, moteN);
+    float moteCone  = saturate(beamMax * 2.5);
+    const float moteOpacity = 0.4;
+    col += beamCol * moteMask * moteCone * moteOpacity * shaftBrightness * midGate * 4.0;
 
     return col;
 }
@@ -842,7 +870,11 @@ static float3 drawBackgroundWeb(
         // Incident ray is -kViewRay (pointing into screen); dot(sphN, I) = -hh < 0 ✓
         float3 refr        = refract(-kViewRay, sphN, 0.752);
         float2 refractedUV = uv + refr.xy * dropR * 8.0;
-        float3 bgSeen      = drawWorld(refractedUV, moodRow, accTime);
+        // V.7.7C.5 (D-100): drawWorld signature gained a `midAttRel` parameter
+        // for the §4.2.2 shaft engagement gate / fog density modulation.
+        // drawBackgroundWeb is dead-reference code (not dispatched); pass 0.0
+        // so a future revival doesn't drive shafts off synthetic refracted UVs.
+        float3 bgSeen      = drawWorld(refractedUV, moodRow, accTime, 0.0);
 
         // Fresnel blend: grazing angle → white rim; centre → refracted world image.
         float  cosTheta = abs(dot(sphN, kViewRay));
@@ -1023,7 +1055,12 @@ fragment float4 arachne_world_fragment(
     device const ArachneWebGPU* webs [[buffer(6)]]
 ) {
     float4 moodRow = webs[0].row4;  // x=smoothedValence, y=smoothedArousal, z=accTime
-    float3 col = drawWorld(in.uv, moodRow, moodRow.z);
+    // V.7.7C.5 (D-100): drawWorld now takes f.mid_att_rel for §4.2.2 shaft
+    // engagement gate + fog-density modulation. The atmospheric reframe
+    // gives shafts the dominant visual weight (`0.30 × val`) so the gate
+    // matters — silence/ambient passages collapse the shaft contribution
+    // smoothly back to the fog ambient floor.
+    float3 col = drawWorld(in.uv, moodRow, moodRow.z, f.mid_att_rel);
     return float4(col, 1.0);
 }
 
@@ -1150,16 +1187,23 @@ fragment float4 arachne_composite_fragment(
     // which produces a visually negligible ±2-spoke lead/lag at the radial
     // boundary. Acceptable for V.7.7C.2 — see D-095 carry-forward.
     //
-    // Hub UV stays at the hardcoded V.7.5 anchor (0.42, 0.40); the seedInitial
-    // hub_x/hub_y on webs[0] are intentionally ignored for this slot. The
-    // hardcoded values are what M7 reviews against, so retaining them
-    // preserves cert-review comparability.
+    // V.7.7C.5 (D-100, Q15): hub UV moved from the V.7.5/V.7.7C.4 anchor
+    // (0.42, 0.40) to canvas centre (0.5, 0.5) and webR bumped from 0.22 to
+    // 0.55 so the polygon spans most of the visible UV (Q15 target: ~70–85%
+    // of canvas area). Combined with the off-frame `kBranchAnchors[6]`
+    // positions (D-100 / Q14), the foreground hero web reads as anchored to
+    // implied off-frame structures — silk threads enter the canvas from
+    // outside, matching ref `20_macro_backlit_purple_canvas_filling_web.jpg`.
+    // The seedInitial hub_x/hub_y on webs[0] are still intentionally ignored
+    // for this slot (the hardcoded UV is what M7 reviews against), but the
+    // `ArachneState.seedInitialWebs()` hub_x/hub_y/radius mirror is updated
+    // to (0.0, 0.0, 1.10) so CPU/GPU state stays internally consistent.
     //
     // Per-chord drop accretion + anchor-blob discs at polygon vertices +
     // background-web migration crossfade visual are deferred (see D-095).
     {
         uint   ancSeed = 1984u;
-        float2 ancHub  = float2(0.42, 0.40) + arachHubJitter(ancSeed);
+        float2 ancHub  = float2(0.5, 0.5) + arachHubJitter(ancSeed);
 
         // V.7.7C.2 / D-095 — derive (stage, progress) from webs[0] Row 5.
         constexpr float kRadialCountCPUDefault = 13.0;
@@ -1189,8 +1233,14 @@ fragment float4 arachne_composite_fragment(
         float2 fgPoly[6];
         int    fgPolyCount = decodePolygonAnchors(webs[0].rng_seed, fgPoly);
 
+        // V.7.7C.5 / D-100 (Q15): webR bumped 0.22 → 0.55 so the foreground
+        // hero polygon fills the canvas. With `webR × 1.20 = 0.66`, the
+        // per-pixel early-exit envelope around the hub at (0.5, 0.5) covers
+        // most of the visible UV (only the ~5% corner regions outside the
+        // off-frame polygon are excluded — and those are where the polygon
+        // doesn't reach anyway).
         ArachneWebResult wr = arachneEvalWeb(
-            vibUV, ancHub, 0.22, 0.30, 6.0, ancSeed,
+            vibUV, ancHub, 0.55, 0.30, 6.0, ancSeed,
             fgStage, fgProgress,
             arachSpokeCount(ancSeed), arachAspect(ancSeed),
             arachAspectAngle(ancSeed), arachKSag(ancSeed),
@@ -1240,17 +1290,30 @@ fragment float4 arachne_composite_fragment(
             // beat coupling without driving the build clock from beats —
             // the chord laydown still uses audio-modulated TIME (D-095
             // Decision 2 preserved), but every beat flashes the visible
-            // silk so the user perceives the connection. Coefficient
-            // tuned against PresetAcceptance D-037 invariant 3 (beat
-            // response ≤ 2× continuous + 1.0): test fixtures have
-            // `bass_att_rel = 0` so the threshold collapses to ≤ 1.0
-            // MSE/pixel; 0.06 stays under the floor while remaining
-            // visible against the brighter silk palette (0.85 silkTint).
+            // silk so the user perceives the connection.
+            //
+            // V.7.7C.5 (D-100) recalibration: coefficient dropped 0.06 →
+            // 0.025 to compensate for the canvas-filling foreground
+            // (`webR` 0.22 → 0.55, hub at canvas centre). PresetAcceptance
+            // D-037 invariant 3 (beat response ≤ 2× continuous + 1.0)
+            // measures MSE across the whole frame; the V.7.7C.4 silk
+            // covered ~5% of pixels and 0.06 sat just under the 1.0 floor
+            // (test fixtures have `bass_att_rel = 0` so threshold
+            // collapses to ≤ 1.0 MSE/pixel). At canvas-filling scale
+            // ~30% of pixels respond, so the same coefficient produces
+            // ~6× the MSE (1.78 measured at 0.06 in V.7.7C.5). Using
+            // k² scaling, 0.025 keeps roughly the V.7.7C.4 ~3× headroom
+            // (predicted MSE ≈ 0.31 vs ceiling 1.0). Per-silk-pixel lift
+            // drops from 6 % → 2.5 %, but the screen-integrated pulse
+            // grows ~2.5× because the silk surface is bigger — closer
+            // to Matt's "less subtle" V.7.7C.4 directive once the
+            // canvas-filling foreground lands.
+            //
             // The CPU-side rising-edge spiral chord advance (Fix C in
             // ArachneState.advanceSpiralPhase) provides the second
             // beat-coupling channel without affecting per-pixel MSE.
             float beatPulse = max(f.beat_bass, f.beat_composite);
-            float emGain    = baseEmissionGain + beatAccent + beatPulse * 0.06;
+            float emGain    = baseEmissionGain + beatAccent + beatPulse * 0.025;
 
             // Bumped silkTint factor 0.60 → 0.85 (V.7.7C.4 palette).
             float3 silk_col = silkBase * 0.85 * axial * emGain;

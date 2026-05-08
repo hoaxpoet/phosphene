@@ -278,21 +278,31 @@ public final class ArachneState: @unchecked Sendable {
     static let spawnThreshold: Float = 3.0
     static let minSpawnGapBeats: Float = 8.0
 
-    // V.7.7C.2 §5.9 — single source of truth for branch anchor positions
-    // (D-095). Both `Arachne.metal`'s `drawWorld()` (renders dark capsule
-    // twigs at these positions) and the WEB pillar's frame polygon builder
-    // consume these. Coordinate space: UV [0..1].
+    // V.7.7C.5 §5.3 / Q14 (D-100) — single source of truth for polygon
+    // anchor positions. The WEB pillar's polygon-from-anchors path
+    // (`packPolygonAnchors` → shader `decodePolygonAnchors`) consumes these
+    // as polygon vertex sources. The §4 atmospheric reframe (D-100) retired
+    // the WORLD-side capsule-twig SDF that previously also consumed these
+    // positions; the constants now serve the polygon path only.
+    //
+    // V.7.7C.5 update: positions moved to or just past the visible UV
+    // border so the WEB threads enter the canvas from outside, matching
+    // ref `20_macro_backlit_purple_canvas_filling_web.jpg` (Matt
+    // 2026-05-09). All entries lie in `[-0.06, 1.06]² \ [0,1]²`. Distribution
+    // is asymmetric (no two opposing-edge anchors share the same vertical
+    // position), so polygons drawn from any 4–6-subset still read as
+    // irregular per §5.3.
     //
     // MUST stay byte-for-byte in sync with `kBranchAnchors[6]` near
-    // line ~133 of Arachne.metal. `ArachneBranchAnchorsTests` regression-locks
+    // line ~153 of Arachne.metal. `ArachneBranchAnchorsTests` regression-locks
     // the sync by string-searching the .metal source for matching float pairs.
     public static let branchAnchors: [SIMD2<Float>] = [
-        SIMD2(0.18, 0.22),  // upper-left
-        SIMD2(0.82, 0.18),  // upper-right (slightly higher)
-        SIMD2(0.92, 0.55),  // right-mid
-        SIMD2(0.78, 0.84),  // lower-right
-        SIMD2(0.20, 0.78),  // lower-left
-        SIMD2(0.10, 0.50)   // left-mid
+        SIMD2(-0.05, 0.05),  // upper-left, off-canvas
+        SIMD2(1.05, 0.02),   // upper-right, off-canvas (slightly higher)
+        SIMD2(1.06, 0.52),   // right, off-canvas
+        SIMD2(1.04, 0.97),   // lower-right, off-canvas
+        SIMD2(-0.04, 0.95),  // lower-left, off-canvas
+        SIMD2(-0.06, 0.48)   // left, off-canvas
     ]
 
     // Stage durations in beats (V.7.9 — calibrated to §5.2 60-second cycle at 120 BPM).
@@ -688,11 +698,20 @@ public final class ArachneState: @unchecked Sendable {
 
     private func seedInitialWebs() {
         // Two pre-spun stable webs satisfy D-037 invariants 1 and 4 from frame zero.
+        // V.7.7C.5 (D-100 / Q15) — `webs[0]` (foreground hero) hub moved to
+        // canvas centre and radius bumped 0.35 → 1.10 so the shader-side
+        // `webR = radius × 0.5 ≈ 0.55` aligns with the canvas-filling
+        // foreground. The shader's `arachne_composite_fragment` foreground
+        // anchor block hardcodes its own UV/webR (currently (0.5, 0.5) /
+        // 0.55), so these CPU values are not consumed for rendering — but
+        // keeping the CPU mirror in sync prevents drift between Swift and
+        // MSL at slot-6 buffer reads (`ArachneWebGPU.row0` carries hub_x,
+        // hub_y, radius for any future readers).
         let seed0 = rng; _ = lcg(&rng)
         webs[0] = WebGPU(
-            hubX: -0.35,
-            hubY: 0.25,
-            radius: 0.35,
+            hubX: 0.0,
+            hubY: 0.0,
+            radius: 1.10,
             depth: 0,
             rotAngle: lcg(&rng) * .pi * 2,
             anchorCount: 6,

@@ -1440,9 +1440,9 @@ Per-preset state setup handles Arachne (allocates `ArachneState`, warms 30 ticks
 
 ---
 
-### Increment V.7.7C.5 — Arachne atmospheric abstraction (WORLD reframe) — READY FOR IMPLEMENTATION
+### Increment V.7.7C.5 — Arachne atmospheric abstraction (WORLD reframe) ✅ 2026-05-08
 
-**Prerequisite:** V.7.7C.4 manual-smoke green sign-off (still pending). §4 spec revision **landed 2026-05-09** in `docs/presets/ARACHNE_V8_DESIGN.md` (full §4 rewrite from "six-layer dark close-up forest" to "two-layer atmospheric abstraction"; §5.9 updated to retire literal branch/twig rendering; §4.5 decisions log captures all 13 Q&A answers Matt provided). Implementation can start once V.7.7C.4 manual smoke passes.
+**Prerequisite:** V.7.7C.4 manual-smoke green sign-off — **confirmed by Matt 2026-05-08 (this session).** §4 spec revision landed 2026-05-09 in `docs/presets/ARACHNE_V8_DESIGN.md` (full §4 rewrite from "six-layer dark close-up forest" to "two-layer atmospheric abstraction"; §5.9 updated to retire literal branch/twig rendering; §4.5 decisions log captures all 13 Q&A answers Matt provided).
 
 **Scope:** Implement the V.7.7C.5 §4 + §5.9 spec revision. Single-commit increment. Replaces `drawWorld()` in `Arachne.metal` (currently the V.7.7B six-layer dark close-up forest with §5.9 anchor twigs added in V.7.7C.2 Commit 1) with a two-layer atmospheric backdrop:
 
@@ -1488,7 +1488,9 @@ Per-preset state setup handles Arachne (allocates `ArachneState`, warms 30 ticks
 
 **Estimated sessions:** 1 (single-commit increment; §4 spec is fully resolved).
 
-**Carry-forward:** V.7.7C.6 (spider movement) and V.7.10 (cert review) remain.
+**Landed (2026-05-08, single commit).** Files: `PhospheneEngine/Sources/Presets/Shaders/Arachne.metal` (drawWorld rewritten — sky band + beam-anchored fog + 1–2 mood-driven shafts at `0.30 × val` + cone-confined dust motes; midAttRel parameter threaded; foreground hero hub at `(0.5, 0.5)` + `webR = 0.55`; per-beat coefficient retuned `0.06 → 0.025` for canvas-filling area scale per D-100); `PhospheneEngine/Sources/Presets/Arachnid/ArachneState.swift` (`branchAnchors` Swift mirror moved off-frame; `webs[0]` hub `(0.0, 0.0)` / radius `1.10`); `PhospheneEngine/Tests/PhospheneEngineTests/Presets/ArachneBranchAnchorsTests.swift` (expected literals + bounds invariant rewritten for `[-0.06, 1.06]²`; new asymmetry test); `PhospheneEngine/Tests/PhospheneEngineTests/Presets/ArachneSpiderRenderTests.swift` (`goldenSpiderForcedHash` `0x06129A55C258494D → 0x06D29A65E458494D` — 7-bit Hamming drift from off-frame anchors flowing into polygon decode); `PhospheneEngine/Tests/PhospheneEngineTests/Renderer/PresetRegressionTests.swift` (Arachne `beatHeavy` `0x0000000000000000 → 0xC6921125C4D85849`; steady/quiet UNCHANGED — regression harness doesn't bind slot 6/7 + worldTex; comment block extended). Engine 1184 tests / 2 documented pre-existing flakes (`MetadataPreFetcher.fetch_networkTimeout`, `SoakTestHarness.cancel`); app build clean; SwiftLint 0 violations on touched files; `Scripts/check_sample_rate_literals.sh` passes. PresetAcceptance D-037 invariant 3 passes for Arachne after coefficient retune (predicted MSE ≈ 0.31 vs ceiling 1.0). RENDER_VISUAL=1 PNGs at `/tmp/phosphene_visual/20260508T213106/Arachne_{silence,mid,beat}_{world,composite}.png`. D-100.
+
+**Carry-forward:** Manual smoke re-run on real music (Matt verifies the atmospheric abstraction reads as cinematographic god-rays, not residual forest, with the canvas-filling foreground silk reading as anchored off-frame). V.7.7C.6 (spider movement) and V.7.10 (cert review) remain.
 
 ---
 
@@ -3131,6 +3133,66 @@ git diff <pre-DM.0> HEAD -- PhospheneEngine/Sources/Renderer/Shaders/Particles.m
 **Status:** ✅ landed 2026-05-08.
 
 **Carry-forward:** DM.3 adds emission-rate scaling from `f.mid_att_rel`, drum dispersion shock from `stems.drums_beat`, optional structural-flag scatter, the M7 frame-match review against `01_atmosphere_dust_motes_light_shaft.jpg`, and the deferred Tier 1 hardware perf measurement. `dm_pitch_hue` is the canonical pitch→hue helper for the project; future presets can adopt it by name.
+
+### Increment DM.3 — Drift Motes Session 3 (event-driven audio routing) ✅ landed 2026-05-08
+
+**Scope:** The two event-driven audio reactivities from DM.1's carry-forward arrive together: emission-rate scaling from `f.mid_att_rel` (lifetime divisor at respawn time) and drum dispersion shock from `stems.drums_beat` (radial outward velocity impulse gated by the BeatDetector envelope). The optional structural-flag scatter (Task 3) deferred to DM.4 — `StructuralPrediction` is CPU-only and not wired through the GPU `FeatureVector`; landing it would require a struct-extension violating D-099's just-locked layout. M7 contact-sheet harness extended to `Drift Motes`; full-pipeline + Tier 1 measurement procedures documented for the next hardware run. See `prompts/DM.3-prompt.md`.
+
+**Files created:**
+
+- `PhospheneEngine/Tests/PhospheneEngineTests/Presets/DriftMotesAudioCouplingTest.swift` — three tests covering the DM.3 audio reactivities:
+  - **Emission rate scaling:** 600 frames at `f.mid_att_rel = 0.1` vs. `0.9` (one full lifetime turn-over so the population converges near steady state); average particle age under high mid `< 0.7×` low baseline. Catches a no-op (ratio ≈ 1.0).
+  - **Dispersion shock raises velocity variance:** 240 frames under a 2 Hz square wave on `drumsBeat` (15 frames on, 15 off) raises per-particle velocity-magnitude variance ≥ 1.5× the silence baseline.
+  - **Dispersion shock decays between beats:** single beat impulse + 60 frames of silence settles velocity-magnitude variance back inside 1.2× the silence baseline. Proves the field doesn't accumulate runaway dispersion.
+  Total runtime: ~0.35 s for all three.
+- `docs/diagnostics/DM.3-perf-capture.md` — runtime app procedure for full-pipeline Tier 2 capture (pin Drift Motes, run 60 s of representative audio, parse `features.csv` `frame_ms` column for percentiles). Pass criteria: p50 ≤ 8 ms / p95 ≤ 14 ms / p99 ≤ 25 ms / drops ≤ 8 %.
+- `docs/diagnostics/DM.3-tier1-measurement.md` — Tier 1 (M1/M2) hardware procedure with kernel + full-pipeline gates (kernel p95 ≤ 1.5 ms; full-pipeline p50 ≤ 11 ms / p95 ≤ 19 ms / p99 ≤ 30 ms). Documents when to run, when to defer, and the first tuning lever (`kEmissionRateGain` 1.5 → 1.0).
+
+**Files modified:**
+
+- `PhospheneEngine/Sources/Renderer/Shaders/ParticlesDriftMotes.metal` — added two file-scope `constexpr constant` tuning constants (`kEmissionRateGain = 1.5f`, `kDispersionShockGain = 0.4f`) alongside the DM.2.closeout fog constants in `DriftMotes.metal`. Both `p.life` assignment sites in `motes_update` (the respawn branch and the safety-net `p.life <= 0.001` recovery) now multiply the random lifetime by `1 / (1 + kEmissionRateGain * max(0, f.mid_att_rel))` — the `max(0, ...)` clamp prevents quiet sections from extending lifetime (the deviation primitive is signed in [-0.5, 0.5]; we use only the positive 'melody peaks' half). Linear in `mid_att_rel`, D-026-compliant by construction (no smoothstep, no absolute threshold). After the wind+turb integration and before the position update, a new dispersion-shock branch fires when `smoothstep(0.30, 0.70, stems.drums_beat) > 0.0`: a radial outward impulse in the horizontal `(x, z)` plane with a small +y lift (0.2 of horizontal magnitude) — the BeatDetector envelope shape provides natural decay between beats; damping (0.97/frame) settles the field. The smoothstep absolute threshold is D-026-allowed because D-026 targets FV raw bands, not stem onset envelopes (VolumetricLithograph uses the same `smoothstep(0.30, 0.70, stems.drums_beat)` gate). Header comment rewritten to document the post-DM.3 reality: kernel reads stems and FeatureVector both at emission time AND at integration time. The DM.4 stub block is referenced explicitly in the header.
+- `PhospheneEngine/Tests/PhospheneEngineTests/Diagnostics/SoakTestHarnessTests.swift` — `shortRunDriftMotes` SOAK benchmark extended to drive `stems.drumsBeat` as a 2 Hz square wave (15 frames on / 15 off) so the dispersion-shock branch and its smoothstep evaluation are exercised every frame. Existing `f.midAttRel` modulation already exercised emission-rate scaling. Mark and header rewritten for DM.3: the kernel benchmark is now the regression gate for both DM.2 hue baking AND DM.3 audio routing. Full-pipeline measurement and Tier 1 numbers documented as runtime / hardware deferrals (per the new `DM.3-perf-capture.md` and `DM.3-tier1-measurement.md` procedure docs).
+- `PhospheneEngine/Tests/PhospheneEngineTests/Renderer/PresetVisualReviewTests.swift` — `renderPresetVisualReview` arguments extended from `["Arachne", "Gossamer", "Volumetric Lithograph"]` to include `"Drift Motes"`; new `driftMotesReferenceRelPath` constant; new `buildDriftMotesContactSheet(renderedMidPNG:to:)` helper produces a stacked layout (top half = rendered output at the steady-mid fixture, bottom half = `01_atmosphere_dust_motes_light_shaft.jpg`). Single-reference layout matches Drift Motes' DM.0-spec'd reference set of one image. The contact sheet is the M7 deliverable for Matt's review; this commit lands `certified: false` and Matt's eyeball + iteration close out the cert flip in a separate commit per the prompt's directive.
+
+**Performance (DM.3 Task 4, kernel-only Tier 2 measurement, this session):**
+
+- p50 = 0.115 ms, p95 = 0.162 ms, p99 = 0.781 ms, mean = 0.135 ms, kernel overruns (>14 ms) = 0 across 1800 frames.
+- Compared to DM.2 baseline (p50 = 0.107 / p95 = 0.158 / p99 = 0.763): the new per-frame work (smoothstep + length + branch + small SIMD impulse) costs ≤ 0.01 ms on top of DM.2. Well under the 1.6 ms full-frame Tier 2 budget.
+- **Tier 2 full-pipeline timing** still requires a runtime app session — the sprite pass needs a `CAMetalDrawable`, which `swift test` cannot produce. Procedure documented in `docs/diagnostics/DM.3-perf-capture.md`.
+- **Tier 1 timing** requires Tier 1 hardware (M1/M2). Procedure documented in `docs/diagnostics/DM.3-tier1-measurement.md`. This dev machine is M3+ (Tier 2); flag for Matt to run.
+
+**Audit:**
+
+- D-026 grep on `ParticlesDriftMotes.metal` returns zero hits for the canonical anti-pattern (`grep -nE 'mid_att_rel\s*>|drums_beat\s*>|treb\s*>|bass\s*>'`); the `smoothstep(0.30, 0.70, stems.drums_beat)` is a deliberate gate on a stem onset envelope (D-026 explicitly targets FV raw bands, not stem onset signals — VolumetricLithograph precedent).
+- D-019 grep returns the existing emission-time blend at the respawn branch — unchanged from DM.2.
+- D-029 pass set unchanged: `DriftMotes.json` still declares `["feedback", "particles"]`.
+- D-097 / DM.0 / DM.1 / DM.2 invariants: `Particles.metal`, `ProceduralGeometry.swift`, `ParticleGeometry.swift`, `RenderPipeline*.swift` are byte-identical to post-DM.2 (`git diff --stat` returns zero output for those paths). Murmuration's three regression hashes unchanged from DM.2 baseline.
+- D-099 invariant: `FeatureVector` / `StemFeatures` MSL struct sizes unchanged from DM.2 (192 / 256 bytes). DM.3 reads existing fields only.
+- Drift Motes regression hash unchanged (`0x0001070F1F3F7FFF` across all three fixtures) — the regression harness renders only the sky fragment, which doesn't see compute-kernel output. New `DriftMotesAudioCouplingTest` is the regression-lock for kernel audio routing.
+- `swiftlint lint --strict` reports 0 violations on touched files (test files excluded from lint by config; the Metal source isn't lintable).
+- Engine + app builds clean; targeted test surfaces (`DriftMotes`, `PresetRegression`, `PresetAcceptance` ex Arachne) green. A PresetAcceptance Arachne failure (`beatMotion 1.78 > 1.0`) surfaced during DM.3 verification. Root cause: uncommitted V.7.7C.5 work-in-progress in the working tree (canvas-filling silk increases the screen-integrated beat-pulse MSE; V.7.7C.5 itself recalibrates the beat-pulse coefficient `0.06 → 0.025` to compensate). Not a DM.3 regression — Arachne files are outside this commit's scope and tracked under V.7.7C.5; landing that increment closes the failure. (My initial DM.3 closeout misattributed this to V.7.7C.4 — V.7.7C.4 is committed at `3feb6330` and was green; the working-tree changes are V.7.7C.5.)
+
+**Estimated sessions:** 1.0 (this session itself).
+
+**Status:** ✅ landed 2026-05-08; preset stays `certified: false` pending M7 sign-off. Full-pipeline Tier 2 capture + Tier 1 hardware measurement deferred to runtime / hardware runs per the new procedure docs.
+
+**Carry-forward:** DM.4 — three world-feel reactivities deferred from DM.3 (wind force × `f.bass_att_rel`; backdrop palette tinted by `f.valence`; anticipatory shaft pulse on `f.beat_phase01`) plus the structural-flag scatter punted from this increment because `StructuralPrediction` is CPU-only.
+
+### Increment DM.4 — Drift Motes Session 4 (world-feel pass) — planned
+
+**Scope:** Three reactivities deferred from DM.3 that cohere as a "world-feel" grouping rather than discrete events:
+
+- **Wind force × `f.bass_att_rel`** — low-band continuous: bass shapes the motion-field intensity. Multiplier on the existing wind vector in `motes_update` (the kernel already reads the wind direction + magnitude from buffer(4); adding a bass scalar is a one-line product on the Swift side at frame-bind time, or directly in MSL).
+- **Backdrop palette tint by `f.valence`** — slow-moving emotional read of the world. Tints the warm-amber sky gradient toward warmer / cooler hues at positive / negative valence. Lands in `DriftMotes.metal`'s sky fragment.
+- **Anticipatory shaft pulse on `f.beat_phase01`** — pre-beat shimmer. The shaft intensity gets a `smoothstep(0.75, 1.0, f.beat_phase01)` boost in the last quarter of each beat, anticipating the drum hit.
+
+**Plus** the **structural-flag scatter** punted from DM.3 Task 3 — needs a small piece of design work first: either thread `StructuralPrediction.confidence` through the GPU `FeatureVector` (adds a float; touches D-099-locked layout — careful) or read it CPU-side and bake into a non-FeatureVector-bound config buffer. The Murmuration precedent (per-frame `ParticleConfig`) is the cheaper path.
+
+**Estimated sessions:** 1.0.
+
+**Status:** planned post-DM.3.
+
+**Carry-forward:** DM.5 (cert + polish) — Matt M7 sign-off for `certified: true`, any tuning iterations surfaced by review, hand-off to the catalog so Drift Motes counts toward Milestone D.
 
 ---
 
