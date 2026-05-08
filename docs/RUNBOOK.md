@@ -313,6 +313,14 @@ Reports are written to `$TMPDIR/phosphene_soak_smoke_<timestamp>/`.
 SOAK_TESTS=1 swift test --package-path PhospheneEngine --filter "SoakTestHarnessTests/fiveMinuteMemoryCheck"
 ```
 
+### 30-second Drift Motes kernel cost benchmark (DM.2)
+
+```bash
+SOAK_TESTS=1 swift test --package-path PhospheneEngine --filter shortRunDriftMotes
+```
+
+Drives `motes_update` directly for 30 simulated seconds at 60 Hz against an 800-particle Tier 2 buffer; reports p50 / p95 / p99 / kernel-overrun count from `MTLCommandBuffer.gpuStartTime/gpuEndTime`. Loose gate: kernel p95 < 5 ms. Failures here would indicate a kernel regression (e.g. a curl-noise octave bump or accidental neighbour query) rather than a full-pipeline budget breach. Tier 2 full-pipeline timing (sky fragment + sprite render + feedback decay) and Tier 1 hardware timing are deferred to a runtime app session — `SoakTestHarness` has no preset-pinned full-pipeline path within `swift test`.
+
 ### Full 2-hour production run (CLI, with App Nap prevention)
 
 ```bash
