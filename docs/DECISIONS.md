@@ -2690,3 +2690,5 @@ The prompt's EndedView spec calls for both track count and session duration. `Se
 
 **Carry-forward.** Engine library shaders can now read the full FV / StemFeatures surface. DM.3 will use this for emission-rate scaling (`f.mid_att_rel`) and drum dispersion shock (`stems.drums_beat`, `stems.drums_energy_dev`) without further struct edits. Future `Particles*` engine kernels also benefit — MV-1 deviation primitives, MV-3a per-stem rich metadata, and MV-3b beat phase are now in scope.
 
+**Note:** V.7.7C.5 (WORLD-reframe) reserved D-099 in spec text with an "or next-available ID" escape clause. DM.2 filed first; V.7.7C.5 lands as D-100.
+
