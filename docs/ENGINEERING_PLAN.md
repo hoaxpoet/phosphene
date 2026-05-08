@@ -1440,38 +1440,51 @@ Per-preset state setup handles Arachne (allocates `ArachneState`, warms 30 ticks
 
 ---
 
-### Increment V.7.7C.5 — Arachne WORLD reframe (atmospheric fog + light support) — DEFERRED, needs §4 spec revision
+### Increment V.7.7C.5 — Arachne atmospheric abstraction (WORLD reframe) — READY FOR IMPLEMENTATION
 
-**Prerequisite:** V.7.7C.4 manual-smoke green sign-off + Matt-authored §4 spec revision in `docs/presets/ARACHNE_V8_DESIGN.md`. Cannot start until the revised §4 lands — implementation against the current "dark close-up forest" spec produced the visual the manual smoke flagged ("completely devoid of value", "lines do not read as branches"); V.7.7C.5 is the implementation pass against the revised framing.
+**Prerequisite:** V.7.7C.4 manual-smoke green sign-off (still pending). §4 spec revision **landed 2026-05-09** in `docs/presets/ARACHNE_V8_DESIGN.md` (full §4 rewrite from "six-layer dark close-up forest" to "two-layer atmospheric abstraction"; §5.9 updated to retire literal branch/twig rendering; §4.5 decisions log captures all 13 Q&A answers Matt provided). Implementation can start once V.7.7C.4 manual smoke passes.
 
-**Scope:** Replace `drawWorld()` in `Arachne.metal` (currently a six-layer dark close-up forest atmosphere — sky/distant/mid trees/near-frame branches/forest floor/atmosphere) with a backdrop framed around atmospheric fog + light support. Per Matt's 2026-05-08T18-28-16Z manual smoke: "I would rather you put fog and light behind the web to add more visual interest. The lines do not read as branches." The new §4 (TBD by Matt) should specify whether the tree silhouettes are retired entirely or recast (e.g., as soft fog gradients without literal trunk shapes), how volumetric beams enter (currently the radial light shaft fires at `0.06 × val intensity` — barely visible), and how mood palette continues to drive the framing. The §5.9 anchor twigs may stay (they read as web attachment points, not as competing forest detail). Preserves V.7.7B/C/D contracts (staged scaffold, Snell's-law refractive drops, 3D SDF spider, 12 Hz vibration).
+**Scope:** Implement the V.7.7C.5 §4 + §5.9 spec revision. Single-commit increment. Replaces `drawWorld()` in `Arachne.metal` (currently the V.7.7B six-layer dark close-up forest with §5.9 anchor twigs added in V.7.7C.2 Commit 1) with a two-layer atmospheric backdrop:
 
-**Open questions for the §4 revision (Matt drafts; not Claude Code's call):**
+1. **Atmospheric color band (full frame).** Vertical gradient `mix(botCol, topCol, uv.y)` over the full frame (expanded from V.7.7B's upper 40 %). Low-frequency `fbm4` noise modulation. Aurora ribbons at high arousal (preserved from V.7.7B). Silence-anchor pure-black preserved.
+2. **Volumetric atmosphere** (three sub-elements composited additively):
+   - Fog density anchored around the light shaft cones (denser inside cones, thinner outside) — volumetric god-ray signature. Range raised from 0.02–0.06 to **0.15–0.30**. Inside cones: `mix(botCol, topCol, 0.5) × kLightCol`. Outside: `mix(botCol, topCol, 0.5) × 0.3`.
+   - Light shafts: 1–2 god-ray cones, mood-driven angle (warm valence → upper-LEFT, cool valence → upper-RIGHT, ~30° from vertical for primary, ~50° for optional secondary at high arousal). Brightness coefficient raised from `0.06 × val` to **`0.30 × val`** so shafts read as hero atmospheric elements. Engages above `f.mid_att_rel > 0.05` (lowered from V.7.7B's 0.10). Use `Volume/LightShafts.metal` `ls_radial_step_uv` family.
+   - Dust motes concentrated INSIDE the shaft cones only (caustic-like), per-mote opacity 0.4 (raised from 0.3), color `local_fog × kLightCol`, density modulated by `f.mid_att_rel`, phase-anchored to `f.beat_phase01` (Failed Approach #33 compliance).
 
-- Tree silhouettes: retire entirely, soft-shadow only, or replaced by depth gradients?
-- Light shaft hierarchy: single hero shaft, multiple beams, or volumetric god-rays?
-- Fog density profile: uniform, height-graded, or beam-anchored?
-- Mood palette mapping: keep current valence (teal → amber) + arousal (saturation/value) axes, or reframe?
-- Anchor twigs (§5.9): keep, simplify, or retire?
-- Silence anchor (§8.3): how does the new framing degrade gracefully when the music goes silent (current `(satScale × valScale) < 0.05` clears WORLD to black)?
-- Visual reference set: any new reference images needed in `docs/VISUAL_REFERENCES/arachne/` to anchor the new framing?
+**Retired (V.7.7C.5):**
 
-**Done when (subject to Matt's §4 spec):**
+- Distant tree silhouettes (V.7.7B §4.2.2)
+- Mid-distance trees with bark detail (V.7.7B §4.2.3)
+- Near-frame branches (V.7.7B §4.2.4) — `drawWorld()` branch-rendering loops removed
+- Forest floor (V.7.7B §4.2.5) — sky band fills the lower edge instead
+- §5.9 anchor twigs (V.7.7C.2 Commit 1) — `drawWorld()` capsule-SDF loop at `kBranchAnchors[i]` positions removed. **`kBranchAnchors[6]` constants stay** in `Arachne.metal` and `ArachneState.swift` — `selectPolygon(rng:)` still consumes them as polygon vertex candidates; `ArachneBranchAnchorsTests` regression test stays.
+- Forest-specific reference images for §4 implementation: `02_meso_per_strand_sag.jpg`, `11_anchor_web_in_branch_frame.jpg`, `17_floor_moss_leaf_litter.jpg`, `18_bark_close_up.jpg`. They stay in `docs/VISUAL_REFERENCES/arachne/` for V.7.10 historical comparison; they no longer drive any §4 implementation choice.
 
-- `drawWorld()` rewritten against the revised §4 spec; six-layer dark forest content retired or recast as the spec dictates.
-- WORLD pass renders as an atmospheric backdrop that supports the foreground web visually (fog + light + mood palette) rather than competing with it.
-- Anchor twigs (§5.9 / V.7.7C.2 Commit 1) retained, simplified, or retired per spec.
-- Silence anchor (§8.3) preserved or re-specced.
-- New visual reference images added to `docs/VISUAL_REFERENCES/arachne/` if the revised framing requires them.
-- All targeted suites pass (`PresetAcceptance`, `StagedComposition`, `StagedPresetBufferBinding`, `PresetRegression`, `ArachneSpiderRender`, `PresetLoaderCompileFailure`).
+**Preserved (V.7.7C.5):**
+
+- §4.3 mood-driven color field — verbatim from 2026-05-02 spec (Q10).
+- Silence anchor `(satScale × valScale) < 0.05` clears WORLD to black (Q11).
+- WEB pillar (§5) entirely — staged WORLD + COMPOSITE scaffold, build state machine, polygon-from-`branchAnchors`, drop refraction recipe, 3D SDF spider, 12 Hz vibration.
+- `ArachneState.branchAnchors[]` + `kBranchAnchors[6]` MSL constants (still used for polygon vertex selection).
+
+**Done when:**
+
+- `drawWorld()` rewritten as the two-layer atmospheric backdrop. Six-layer forest content + §5.9 anchor-twig SDF loop removed.
+- Sky band gradient covers full frame (uv.y from 0 to 1).
+- Volumetric fog anchored around shaft cones, range 0.15–0.30.
+- Light shafts 1–2 mood-driven angle, brightness coefficient 0.30 × val, engages above `f.mid_att_rel > 0.05`.
+- Dust motes concentrated inside shaft cones only, beat-phase-anchored.
+- Silence anchor `(satScale × valScale) < 0.05 → black` preserved.
+- All targeted suites pass (`PresetAcceptance`, `StagedComposition`, `StagedPresetBufferBinding`, `PresetRegression`, `ArachneSpiderRender`, `ArachneState`, `ArachneStateBuild`, `ArachneListeningPose`, `ArachneBranchAnchors`, `PresetLoaderCompileFailure`).
 - Goldens regenerated — substantial drift expected (every WORLD pixel changes).
-- Manual smoke confirms backdrop reads as atmospheric support per Matt's "fog and light behind the web" intent.
 - 0 SwiftLint violations on touched files.
-- D-095 follow-up #3 section in `docs/DECISIONS.md` documenting the §4 revision rationale + implementation.
+- New `D-099` decision in `docs/DECISIONS.md` (or next-available ID) documenting the V.7.7C.5 reframe rationale + the 13 Q&A decisions captured in §4.5.
+- Manual smoke confirms backdrop reads as atmospheric support: fog visible, light shafts hero, motes glow inside shafts, no literal trees / branches / twigs anywhere.
 
-**Verify:** Build → `PresetLoaderCompileFailureTest` → targeted suites pre-golden → visual harness contact sheet against the revised reference set → golden hash regen → targeted suites post-golden → full engine + app suites → SwiftLint → manual smoke re-run.
+**Verify:** Build → `PresetLoaderCompileFailureTest` → targeted suites pre-golden → `RENDER_VISUAL=1` visual harness sanity check (silence shows pure black; mid shows visible fog + 1 shaft + motes; beat shows shaft activated by `mid_att_rel`) → golden hash regen → targeted suites post-golden → full engine + app suites → SwiftLint → manual smoke re-run on real music (Matt verifies fog/light/mote framing dominates, no forest residue, build cycle still readable on top).
 
-**Estimated sessions:** 1–2 (depending on §4 revision scope).
+**Estimated sessions:** 1 (single-commit increment; §4 spec is fully resolved).
 
 **Carry-forward:** V.7.7C.6 (spider movement) and V.7.10 (cert review) remain.
 
