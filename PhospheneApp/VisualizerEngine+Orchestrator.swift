@@ -1,3 +1,4 @@
+// swiftlint:disable file_length
 // VisualizerEngine+Orchestrator — App-layer wiring for the AI VJ planner (Increment 4.5).
 //
 // Owns the live PlannedSession and coordinates between DefaultSessionPlanner,
@@ -391,6 +392,22 @@ extension VisualizerEngine {
         return plan.tracks.firstIndex(where: {
             now >= $0.plannedStartTime && now < $0.plannedEndTime
         }) ?? 0
+    }
+
+    /// QR.4 / D-091: index of `metadata` in the live plan, or nil when the track
+    /// is not part of the plan or no plan exists. Resolves via the canonical
+    /// title+artist match used by `canonicalTrackIdentity(matching:)` so cover
+    /// versions, remasters, and encoding-different variants behave identically
+    /// to the prepared cache lookup.
+    func indexInLivePlan(matching metadata: TrackMetadata) -> Int? {
+        let plan = orchestratorLock.withLock { livePlan }
+        guard let plan else { return nil }
+        let title = metadata.title ?? ""
+        let artist = metadata.artist ?? ""
+        guard let canonical = plan.canonicalIdentity(matchingTitle: title, artist: artist) else {
+            return nil
+        }
+        return plan.tracks.firstIndex(where: { $0.track == canonical })
     }
 
     /// Track profile for the currently playing track, or nil.

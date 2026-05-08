@@ -123,6 +123,12 @@ extension VisualizerEngine {
                 let artist = event.current.artist ?? "?"
                 captureLogger.info("Track: \(title) — \(artist)")
                 self.sessionRecorder?.log("track → \(title) — \(artist)")
+                // QR.4 / D-091: publish the live track's plan index so view models
+                // can bind directly instead of doing fragile lowercased title+artist
+                // string matches. nil when the track is not part of the plan
+                // (covers, remasters, encoding-different versions) or when no plan
+                // exists.
+                self.currentTrackIndex = self.indexInLivePlan(matching: event.current)
             }
             mir.reset()
             self.pipeline.resetAccumulatedAudioTime()

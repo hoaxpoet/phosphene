@@ -6,6 +6,40 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-07-r] QR.4 — UX dead ends + duplicate `SettingsStore` + dead settings + hardcoded strings
+
+**Increment:** QR.4 (U.12). **Decision:** D-091. Two commits.
+
+**What changed.**
+
+- **EndedView** (`Views/Ended/EndedView.swift`): replaces U.1 stub with a session-summary card. Localized headline, track-count summary (`%lld tracks`), em-dash placeholder for session duration (deferred per prompt fallback — would require `SessionManager` start-time plumbing), coral primary CTA "Start another session" (wired to `sessionManager.cancel()` — the documented `.ended → .idle` path; the prompt's `endSession()` assumption was stale), secondary "Open sessions folder" via `NSWorkspace.shared.open`.
+- **ConnectingView** (`Views/Connecting/ConnectingView.swift`): replaces U.1 stub with per-connector spinner (Apple Music / Spotify / Local Folder / generic) plus localized cancel CTA wired to `sessionManager.cancel()`. Headline drops the trailing ellipsis per UX_SPEC §8.5.
+- **PlaybackView duplicate-`SettingsStore` collapse**: `@StateObject private var settingsStore = SettingsStore()` (line 51) → `@EnvironmentObject private var settingsStore: SettingsStore`. Pre-fix, `CaptureModeSwitchCoordinator` (built in `setup()`) subscribed to a parallel store that never received toggles from the Settings sheet; capture-mode changes were silently swallowed. Same shape as Failed Approach #16 in product behaviour.
+- **`showPerformanceWarnings` deleted** from `SettingsStore`, `SettingsViewModel`, `DiagnosticsSettingsSection`, `Localizable.strings`, and the matching test in `SettingsStoreTests`. Wiring would have been >50 LOC of toast plumbing for a surface already covered by the dashboard PERF card. Decision recipe option (b).
+- **`includeMilkdropPresets` UI gated on `#if DEBUG`**. Persistence retained so DEBUG round-trips preserve user state; production builds never see the toggle. Drop the gate when Phase MD ships.
+- **PlanPreviewView "Modify" button**: hidden behind `#if ENABLE_PLAN_MODIFICATION`. Tooltip lies (e.g. "Full plan editing — coming in a future update" on a no-op disabled control) are bugs post-QR.4.
+- **`@Published var currentTrackIndex: Int?`** on `VisualizerEngine`, set in the track-change callback via new `indexInLivePlan(matching:)` orchestrator helper. `PlaybackChromeViewModel` accepts a `currentTrackIndexPublisher` (defaulted `Just(nil)` for backward-compat) and binds `sessionProgress.currentIndex` directly. The 12-line lowercased title+artist match in `refreshProgress()` is gone — covers/remasters/encoding-different variants no longer break the chrome.
+- **12+ hardcoded strings externalised** in `Views/`: end-session confirmDialog ("End this session?" / "End session" / common.cancel / "The visualizer session will stop."), `PlaybackControlsCluster` tooltips ("Settings (coming soon)" → `playback.controls.settings.tooltip` = "Settings"; end-session tooltip), `ListeningBadgeView` "Listening…", `SessionProgressDotsView` "Reactive" + "%lld of %lld", `IdleView` "Phosphene" → `appName`, `PlanPreviewView` empty-state + reactive-mode strings, `PlanPreviewRowView` context-menu items + accessibility label.
+- **`Scripts/check_user_strings.sh`** (new) — greps `Text\("[A-Z]`, `\.help\("[A-Z]`, `\.accessibilityLabel\("[A-Z]` under `PhospheneApp/Views/` and fails on any hit not in the allowlist (`DebugOverlayView.swift`). Mirrors the shape of `check_sample_rate_literals.sh` (D-079). Manual invocation; no CI aggregator yet.
+
+**Tests added (4 new files, 17 new tests):**
+
+- `SettingsStoreEnvironmentRegressionTests` (3 tests). Load-bearing gate for D-091. Asserts (1) an `@EnvironmentObject` consumer sees a `captureMode` toggle, (2) a shadow `@StateObject SettingsStore()` does NOT receive global-store updates (the regression discriminator), (3) `PlaybackView.swift` source contains the `@EnvironmentObject` declaration and not the `@StateObject` form.
+- `EndedViewTests` (5 tests). Verifies the five required Localizable.strings keys resolve, accessibility identifier constants are distinct, the view constructs without invoking the injected closures, the `ended.summary.tracks` format string substitutes the count, and `EndedView.openSessionsFolder()` creates the directory.
+- `ConnectingViewCancelTests` (5 tests). Verifies the six required keys resolve, headline drops the trailing ellipsis (UX_SPEC §8.5), accessibility identifier constants are distinct, the view constructs across all five `PlaylistSource` variants without invoking `onCancel`, and Apple Music / Spotify subtexts differ.
+- `PlaybackChromeIndexBindingTests` (4 tests). Verifies `sessionProgress.currentIndex` updates when the index publisher emits 2 (totalTracks=5), nil published index resets to -1 (not stale), title casing/whitespace mismatches do NOT change the index (proves the string-match path is gone), and nil plan keeps the reactive-mode display.
+
+**Stack we ran:** SwiftLint zero violations on touched files. Engine suite untouched (engine code unchanged). App build clean. New test suites pass in isolation. `PlaybackChromeViewModelTests` showed a parallel-execution flake under `xcodebuild test` but passes in isolation — same flake class previously documented for that suite under heavy parallel test load.
+
+**Two pivots from the prompt:**
+
+1. **"Start another session" wires to `cancel()`, not `endSession()`.** The prompt assumed `endSession()` did `.ended → .idle`. It does not — it transitions any state → `.ended`. The documented `.idle` return is `cancel()`. Documented in commit message and D-091 Decision 7.
+2. **`sessionDuration` plumbing deferred** per the prompt's own fallback ("If adding it requires > 30 LOC of session-state changes, STOP and surface to Matt"). `SessionManager` does not track a session-start timestamp; outside QR.4 scope. `EndedView.sessionDuration: TimeInterval?` is plumbed as an optional rendering an em-dash placeholder when nil.
+
+**Files:** see D-091 in `docs/DECISIONS.md` for the complete file-change list.
+
+---
+
 ## [dev-2026-05-07-q] QR.3 — Close silent-skip test holes
 
 **Increment:** QR.3 (TEST.1)

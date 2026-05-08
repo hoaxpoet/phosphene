@@ -198,6 +198,35 @@
 "playback.shortcut_help.title"          = "Keyboard Shortcuts";
 "playback.shortcut_help.dismiss_hint"   = "Press any key to dismiss";
 
+// QR.4: chrome strings (sub-item 5)
+"playback.endSession.title"             = "End this session?";
+"playback.endSession.confirm"           = "End session";
+"playback.endSession.message"           = "The visualizer session will stop.";
+"playback.controls.settings.tooltip"    = "Settings";
+"playback.controls.endSession.tooltip"  = "End session (Esc)";
+"playback.listening"                    = "Listening…";
+"playback.progress.reactive"            = "Reactive";
+/* %1$lld = current 1-based index, %2$lld = total tracks */
+"playback.progress.position"            = "%1$lld of %2$lld";
+
+// MARK: - Common (QR.4)
+
+"common.cancel"                         = "Cancel";
+
+// MARK: - Idle (QR.4)
+
+"appName"                               = "Phosphene";
+
+// MARK: - Plan preview empty / reactive states (QR.4)
+
+"plan_preview.empty"                    = "No plan available.";
+"plan_preview.reactive_mode"            = "Running in reactive mode — presets adapt in real time.";
+"plan_preview.modify_button"            = "Modify";
+"plan_preview.row.swap_preset"          = "Swap preset";
+"plan_preview.row.reset_lock"           = "Reset to planner pick";
+/* %1$lld = track number, %2$@ = title, %3$@ = artist, %4$@ = preset name, %5$@ = duration */
+"plan_preview.row.accessibility"        = "%1$lld. %2$@ by %3$@, %4$@, %5$@";
+
 // MARK: - Connecting (QR.4)
 
 "connecting.headline"             = "Connecting";

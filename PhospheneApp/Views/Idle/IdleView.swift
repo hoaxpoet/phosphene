@@ -23,7 +23,7 @@ struct IdleView: View {
     var body: some View {
         VStack(spacing: 20) {
             Spacer()
-            Text("Phosphene")
+            Text(String(localized: "appName"))
                 .font(.largeTitle)
                 .fontWeight(.thin)
                 .foregroundColor(.white)

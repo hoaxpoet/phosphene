@@ -82,6 +82,7 @@ struct ContentView: View {
             sessionManager: engine.sessionManager,
             audioSignalStatePublisher: engine.$audioSignalState.eraseToAnyPublisher(),
             currentTrackPublisher: engine.$currentTrack.eraseToAnyPublisher(),
+            currentTrackIndexPublisher: engine.$currentTrackIndex.eraseToAnyPublisher(),
             currentPresetNamePublisher: engine.$currentPresetName.eraseToAnyPublisher(),
             livePlanPublisher: engine.$livePlannedSession.eraseToAnyPublisher(),
             reduceMotionPublisher: accessibilityState.$reduceMotion.eraseToAnyPublisher(),

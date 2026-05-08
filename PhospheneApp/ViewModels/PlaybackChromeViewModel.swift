@@ -13,8 +13,11 @@
 //    copy to "Listening…" and moves it to ListeningBadgeView.
 //
 // 4. currentPreset(at:) exists on VisualizerEngine for planned sessions.
-//    livePlannedSession is @Published. No currentTrackIndex published — derived
-//    here by matching currentTrack against plan.tracks by title.
+//    livePlannedSession is @Published. currentTrackIndex is @Published by
+//    VisualizerEngine (QR.4 / D-091) — view models bind to it directly. The
+//    pre-QR.4 lowercased-title+artist string match was Failed Approach
+//    territory: covers, remasters, and encoding-different versions broke the
+//    match silently.
 //
 // 5. OrchestratorDisplayState: no existing property. Derived from livePlan != nil.
 //    .adapting requires U.6b wiring — omitted for now with TODO.
@@ -94,7 +97,7 @@ final class PlaybackChromeViewModel: ObservableObject {
     private let delay: any DelayProviding
 
     private var livePlan: PlannedSession?
-    private var rawCurrentTrack: TrackMetadata?
+    private var currentTrackIndex: Int?
 
     // MARK: - Init
 
@@ -115,6 +118,7 @@ final class PlaybackChromeViewModel: ObservableObject {
     init(
         audioSignalStatePublisher: AnyPublisher<AudioSignalState, Never>,
         currentTrackPublisher: AnyPublisher<TrackMetadata?, Never>,
+        currentTrackIndexPublisher: AnyPublisher<Int?, Never> = Just(nil).eraseToAnyPublisher(),
         currentPresetNamePublisher: AnyPublisher<String?, Never>,
         livePlanPublisher: AnyPublisher<PlannedSession?, Never>,
         reduceMotionPublisher: AnyPublisher<Bool, Never> = Just(false).eraseToAnyPublisher(),
@@ -148,7 +152,6 @@ final class PlaybackChromeViewModel: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] meta in
                 guard let self else { return }
-                self.rawCurrentTrack = meta
                 self.currentTrack = meta.map {
                     TrackInfoDisplay(
                         title: $0.title ?? "Unknown",
@@ -156,6 +159,18 @@ final class PlaybackChromeViewModel: ObservableObject {
                         albumArtURL: nil
                     )
                 }
+                self.refreshProgress()
+            }
+            .store(in: &cancellables)
+
+        // QR.4 / D-091: bind sessionProgress directly to the published
+        // currentTrackIndex from the engine. No more lowercased title+artist
+        // string matching (covers/remasters/encoding-different variants broke it).
+        currentTrackIndexPublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] idx in
+                guard let self else { return }
+                self.currentTrackIndex = idx
                 self.refreshProgress()
             }
             .store(in: &cancellables)
@@ -218,7 +233,12 @@ final class PlaybackChromeViewModel: ObservableObject {
         }
     }
 
-    /// Recompute sessionProgress from the current plan and raw track metadata.
+    /// QR.4 / D-091: recompute sessionProgress from the live plan + the
+    /// currentTrackIndex published by VisualizerEngine. The pre-QR.4
+    /// implementation matched lowercased title+artist against plan.tracks,
+    /// which silently failed on covers, remasters, and encoding-different
+    /// versions. The engine's plan walk knows the canonical index by
+    /// construction; view models bind to it directly.
     private func refreshProgress() {
         guard let plan = livePlan, !plan.tracks.isEmpty else {
             sessionProgress = SessionProgressData(
@@ -226,15 +246,9 @@ final class PlaybackChromeViewModel: ObservableObject {
             )
             return
         }
-        let title = rawCurrentTrack?.title
-        let artist = rawCurrentTrack?.artist
-        let idx = plan.tracks.firstIndex {
-            $0.track.title.lowercased() == (title ?? "").lowercased()
-            && $0.track.artist.lowercased() == (artist ?? "").lowercased()
-        } ?? -1
         sessionProgress = SessionProgressData(
             totalTracks: plan.tracks.count,
-            currentIndex: idx,
+            currentIndex: currentTrackIndex ?? -1,
             isReactiveMode: false
         )
     }

@@ -71,6 +71,7 @@ struct PlaybackView: View {
         sessionManager: SessionManager,
         audioSignalStatePublisher: AnyPublisher<AudioSignalState, Never>,
         currentTrackPublisher: AnyPublisher<TrackMetadata?, Never>,
+        currentTrackIndexPublisher: AnyPublisher<Int?, Never> = Just(nil).eraseToAnyPublisher(),
         currentPresetNamePublisher: AnyPublisher<String?, Never>,
         livePlanPublisher: AnyPublisher<PlannedSession?, Never>,
         reduceMotionPublisher: AnyPublisher<Bool, Never> = Just(false).eraseToAnyPublisher(),
@@ -86,6 +87,7 @@ struct PlaybackView: View {
         _chromeVM = StateObject(wrappedValue: PlaybackChromeViewModel(
             audioSignalStatePublisher: audioSignalStatePublisher,
             currentTrackPublisher: currentTrackPublisher,
+            currentTrackIndexPublisher: currentTrackIndexPublisher,
             currentPresetNamePublisher: currentPresetNamePublisher,
             livePlanPublisher: livePlanPublisher,
             reduceMotionPublisher: reduceMotionPublisher,
@@ -151,14 +153,18 @@ struct PlaybackView: View {
         .frame(minWidth: 800, minHeight: 600)
         .accessibilityIdentifier(Self.accessibilityID)
         .confirmationDialog(
-            "End this session?",
+            String(localized: "playback.endSession.title"),
             isPresented: $endSessionVM.isPresented,
             titleVisibility: .visible
         ) {
-            Button("End session", role: .destructive) { endSessionVM.confirm() }
-            Button("Cancel", role: .cancel) { endSessionVM.cancel() }
+            Button(String(localized: "playback.endSession.confirm"), role: .destructive) {
+                endSessionVM.confirm()
+            }
+            Button(String(localized: "common.cancel"), role: .cancel) {
+                endSessionVM.cancel()
+            }
         } message: {
-            Text("The visualizer session will stop.")
+            Text(String(localized: "playback.endSession.message"))
         }
         .onContinuousHover { phase in
             if case .active = phase { chromeVM.onActivity() }
