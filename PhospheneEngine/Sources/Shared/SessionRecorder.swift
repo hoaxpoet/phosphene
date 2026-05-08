@@ -104,6 +104,22 @@ public final class SessionRecorder: @unchecked Sendable {
     var frameIndex: Int = 0
     var stemDumpIndex: Int = 0
 
+    // MARK: Frame timing (DM.3a — full-pipeline perf capture).
+    //
+    // Updated by `recordFrameTiming(cpuMs:gpuMs:)` from RenderPipeline's
+    // command-buffer completion handler (`onFrameTimingObserved`). Consumed by
+    // the next `recordFrame` row write. Both unset → empty cells in
+    // features.csv (cold-start frames before the first GPU completion).
+    //
+    // Lag: 1–3 frames behind the features the row carries. RenderPipeline
+    // triple-buffers, so when frame N's `onFrameRendered` fires (synchronous
+    // in `draw(in:)`), the most-recent completion handler we've executed is
+    // for some earlier frame in [N-3, N-1]. Adequate for percentile capture
+    // over a 60 s window; slight misalignment for single-frame correlation.
+    // Both fields accessed only from the serial `queue` — no separate lock.
+    var latestFrameCPUms: Float?
+    var latestFrameGPUms: Float?
+
     // MARK: Raw-tap streaming WAV state (diagnostic — first 30s).
     var rawTapHandle: FileHandle?
     var rawTapSampleRate: UInt32 = 0
@@ -218,9 +234,12 @@ public final class SessionRecorder: @unchecked Sendable {
             guard let self = self else { return }
             let idx = self.frameIndex
             self.frameIndex += 1
+            let cpuMs = self.latestFrameCPUms
+            let gpuMs = self.latestFrameGPUms
             // swiftlint:disable multiline_arguments
             let fRow = SessionRecorder.csvRow(features: features, beatSync: beatSync,
-                                              frame: idx, wallclock: now)
+                                              frame: idx, wallclock: now,
+                                              frameCPUms: cpuMs, frameGPUms: gpuMs)
             // swiftlint:enable multiline_arguments
             self.featuresHandle.write(fRow.data(using: .utf8) ?? Data())
             let sRow = SessionRecorder.csvRow(stems: stems, frame: idx, wallclock: now)
@@ -228,6 +247,18 @@ public final class SessionRecorder: @unchecked Sendable {
             guard !throttled, let tex = self.captureTexture else { return }
             self.lastVideoFrameTime = now
             self.appendVideoFrame(from: tex, wallclock: now)
+        }
+    }
+
+    /// Record one frame's CPU + GPU timing as observed by `RenderPipeline`.
+    /// Wires `RenderPipeline.onFrameTimingObserved` to the next features.csv
+    /// row's `frame_cpu_ms` / `frame_gpu_ms` columns. Safe to call from any
+    /// thread — the update hops onto the recorder's serial queue. (DM.3a)
+    public func recordFrameTiming(cpuMs: Float, gpuMs: Float?) {
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            self.latestFrameCPUms = cpuMs
+            self.latestFrameGPUms = gpuMs
         }
     }
 
@@ -320,6 +351,10 @@ public final class SessionRecorder: @unchecked Sendable {
         stemsCSVURL: URL,
         logURL: URL
     ) -> CSVHandles? {
+        // CSV invariant: append-only. Existing columns stay in their existing
+        // positions so positional parsers (DSP.1 baselines, manual awk
+        // diagnostics) keep working. New columns go at the end.
+        // DM.3a appends frame_cpu_ms and frame_gpu_ms (full-pipeline timing).
         let featuresHeader = """
             frame,wallclock_s,time,deltaTime,bass,mid,treble,\
             subBass,lowBass,lowMid,midHigh,highMid,high,\
@@ -327,7 +362,8 @@ public final class SessionRecorder: @unchecked Sendable {
             spectralCentroid,spectralFlux,valence,arousal,accumulatedAudioTime,\
             beatPhase01,bassRel,bassDev,bassAttRel,\
             barPhase01_permille,beatsPerBar,beat_in_bar,is_downbeat,\
-            beat_sync_mode,lock_state,grid_bpm,playback_time_s,drift_ms
+            beat_sync_mode,lock_state,grid_bpm,playback_time_s,drift_ms,\
+            frame_cpu_ms,frame_gpu_ms
 
             """
         let stemsHeader = """
