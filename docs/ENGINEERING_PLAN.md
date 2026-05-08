@@ -1482,7 +1482,7 @@ Per-preset state setup handles Arachne (allocates `ArachneState`, warms 30 ticks
 - Goldens regenerated — substantial drift expected (every WORLD pixel changes; foreground polygon scale changes too).
 - 0 SwiftLint violations on touched files.
 - New `D-099` decision in `docs/DECISIONS.md` (or next-available ID) documenting the V.7.7C.5 reframe rationale + the 15 Q&A decisions captured in §4.5.
-- Manual smoke confirms backdrop reads as atmospheric support: fog visible, light shafts hero, motes glow inside shafts, no literal trees / branches / twigs anywhere. Web fills majority of canvas; anchors implied off-frame; visual signature matches `19_macro_backlit_purple_canvas_filling_web.jpg` reference.
+- Manual smoke confirms backdrop reads as atmospheric support: fog visible, light shafts hero, motes glow inside shafts, no literal trees / branches / twigs anywhere. Web fills majority of canvas; anchors implied off-frame; visual signature matches `20_macro_backlit_purple_canvas_filling_web.jpg` reference.
 
 **Verify:** Build → `PresetLoaderCompileFailureTest` → targeted suites pre-golden → `RENDER_VISUAL=1` visual harness sanity check (silence shows pure black; mid shows visible fog + 1 shaft + motes; beat shows shaft activated by `mid_att_rel`) → golden hash regen → targeted suites post-golden → full engine + app suites → SwiftLint → manual smoke re-run on real music (Matt verifies fog/light/mote framing dominates, no forest residue, build cycle still readable on top).
 

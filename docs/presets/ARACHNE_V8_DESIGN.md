@@ -261,12 +261,12 @@ V.7.7C.5 reframe (Q13). References are **mood-palette anchors only** — the ref
 | Mood-cool default (palette only) | `06_atmosphere_dark_misty_forest.jpg` | — |
 | Mood-warm default (palette only) | `16_atmosphere_dappled_pine_forest.jpg` | `05_lighting_backlit_atmosphere.jpg` |
 | Mood-high-arousal psychedelic (palette only) | `15_atmosphere_aurora_forest.jpg` | — |
-| Backlit purple atmosphere + canvas-filling web (V.7.7C.5 hero) | `19_macro_backlit_purple_canvas_filling_web.jpg` | — |
-| Light shafts | `07_atmosphere_dust_light_shaft.jpg` | `19_macro_backlit_purple_canvas_filling_web.jpg` (backlight as central glow rather than discrete shaft) |
+| Backlit purple atmosphere + canvas-filling web (V.7.7C.5 hero) | `20_macro_backlit_purple_canvas_filling_web.jpg` | — |
+| Light shafts | `07_atmosphere_dust_light_shaft.jpg` | `20_macro_backlit_purple_canvas_filling_web.jpg` (backlight as central glow rather than discrete shaft) |
 | Dust motes (caustic in shaft) | `07_atmosphere_dust_light_shaft.jpg` | — |
 | Pure-black silence anchor | `08_palette_bioluminescent_organism.jpg` | — |
-| Off-frame anchor convention (V.7.7C.5) | `19_macro_backlit_purple_canvas_filling_web.jpg` | — |
-| Canvas-filling polygon scale (V.7.7C.5) | `19_macro_backlit_purple_canvas_filling_web.jpg` | — |
+| Off-frame anchor convention (V.7.7C.5) | `20_macro_backlit_purple_canvas_filling_web.jpg` | — |
+| Canvas-filling polygon scale (V.7.7C.5) | `20_macro_backlit_purple_canvas_filling_web.jpg` | — |
 | Anti-reference (clipart) | `09_anti_clipart_symmetry.jpg` | — |
 | Anti-reference (neon) | `10_anti_neon_stylized_glow.jpg` | — |
 
@@ -299,7 +299,7 @@ The §4 rewrite resolved the open spec questions surfaced by the V.7.7C.5 ENGINE
 | Q11 — silence anchor | keep | Cross-preset convention |
 | Q12 — §5.9 anchor twigs | retire entirely | Polygon vertices alone provide WEB attachment; no literal "branch" or "twig" anywhere |
 | Q13 — references | (b) reinterpret existing | Matt: "you don't follow the references anyway, so what does it matter?" — references stay as mood-palette anchors only |
-| Q14 — anchors at canvas edge | (added 2026-05-09) `kBranchAnchors[]` positions on or just past `[0,1]² ` borders; web reads as anchored to off-frame structures | Matt's reference image `19_macro_backlit_purple_canvas_filling_web.jpg`: web threads enter the canvas from outside; anchors are implied not depicted. Updates to `kBranchAnchors[6]` constants required at V.7.7C.5 implementation. |
+| Q14 — anchors at canvas edge | (added 2026-05-09) `kBranchAnchors[]` positions on or just past `[0,1]² ` borders; web reads as anchored to off-frame structures | Matt's reference image `20_macro_backlit_purple_canvas_filling_web.jpg`: web threads enter the canvas from outside; anchors are implied not depicted. Updates to `kBranchAnchors[6]` constants required at V.7.7C.5 implementation. |
 | Q15 — canvas-filling web | (added 2026-05-09) polygon interior occupies ~70–85% of canvas area; `webR` bumps from `0.22` → `~0.55` | Same reference. With anchors at frame edges, the polygon naturally spans most of the canvas; `webR` controls the spoke early-exit + spiral ring sweep range so it must scale with the polygon. |
 
 ---
@@ -342,7 +342,7 @@ Build pace audio-modulated per §7. Average music: ~50–55s (within the 60s cei
 
 For Phosphene: 4–7 frame anchor points, distributed irregularly around the visible canvas. The polygon is computed when the segment begins from `kBranchAnchors[]` (the constants live in `Arachne.metal` line ~153 + `ArachneState.swift`); `selectPolygon(rng:)` Fisher-Yates picks a 4–6 subset and orders them angularly around the centroid; adjacent anchors connect with frame threads.
 
-> **V.7.7C.5 update (2026-05-09).** Two additional constraints from Matt's reference image (`docs/VISUAL_REFERENCES/arachne/19_macro_backlit_purple_canvas_filling_web.jpg`):
+> **V.7.7C.5 update (2026-05-09).** Two additional constraints from Matt's reference image (`docs/VISUAL_REFERENCES/arachne/20_macro_backlit_purple_canvas_filling_web.jpg`):
 >
 > 1. **Anchors at or beyond the canvas edges.** Every entry in `kBranchAnchors[6]` should sit at `x ≤ 0.05` or `x ≥ 0.95` or `y ≤ 0.05` or `y ≥ 0.95` (i.e., on or just past the visible frame border). The web reads as anchored to *something off-canvas*; the silk thread enters the visible area from outside and the anchor itself is implied, not depicted. This rule replaces the V.7.7C.2 `kBranchAnchors[6]` positions which sat inside the [0.10, 0.92] range and produced visible attachment points within the canvas. The V.7.7C.5 implementation pass updates the constants to off-frame positions; `ArachneBranchAnchorsTests` regenerates against the new values.
 >
