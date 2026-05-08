@@ -92,6 +92,18 @@ struct PresetVisualReviewTests {
         let outputDir = try makeOutputDirectory()
         print("[PresetVisualReview] staged output dir: \(outputDir.path)")
 
+        // Warm an ArachneState so the staged WORLD + COMPOSITE fragments can
+        // read mood / web / spider buffers at slots 6 / 7. Other staged
+        // presets (e.g. "Staged Sandbox") need no per-preset state.
+        let arachneState: ArachneState? = {
+            guard presetName == "Arachne" else { return nil }
+            guard let state = ArachneState(device: ctx.device, seed: 42) else { return nil }
+            let warmFV = FeatureVector(bass: 0.5, mid: 0.5, treble: 0.5,
+                                       time: 1.0, deltaTime: 1.0 / 60.0)
+            for _ in 0..<30 { state.tick(features: warmFV, stems: .zero) }
+            return state
+        }()
+
         let fixtures: [(name: String, fv: FeatureVector)] = [
             ("silence", silenceFixture),
             ("mid", midFixture),
@@ -102,7 +114,8 @@ struct PresetVisualReviewTests {
             var fv = fixture.fv
             let stagePixels = try renderStagedFrame(preset: preset,
                                                     context: ctx,
-                                                    features: &fv)
+                                                    features: &fv,
+                                                    arachneState: arachneState)
             for (stageName, pixels) in stagePixels {
                 if let stageFilter, stageFilter != stageName { continue }
                 let safeName = presetName.replacingOccurrences(of: " ", with: "_")
@@ -283,7 +296,8 @@ struct PresetVisualReviewTests {
     private func renderStagedFrame(
         preset: PresetLoader.LoadedPreset,
         context: MetalContext,
-        features: inout FeatureVector
+        features: inout FeatureVector,
+        arachneState: ArachneState? = nil
     ) throws -> [(stage: String, pixels: [UInt8])] {
         let width = Self.renderWidth
         let height = Self.renderHeight
@@ -324,7 +338,8 @@ struct PresetVisualReviewTests {
             try encodeStagePass(stage: stage, target: target, commandBuffer: cmd,
                                 features: &features,
                                 fft: fftBuf, wave: waveBuf, stems: stemBuf, hist: histBuf,
-                                samples: offscreen)
+                                samples: offscreen,
+                                arachneState: arachneState)
         }
         cmd.commit()
         cmd.waitUntilCompleted()
@@ -349,7 +364,8 @@ struct PresetVisualReviewTests {
                                 commandBuffer: cb,
                                 features: &features,
                                 fft: fftBuf, wave: waveBuf, stems: stemBuf, hist: histBuf,
-                                samples: offscreen)
+                                samples: offscreen,
+                                arachneState: arachneState)
             cb.commit()
             cb.waitUntilCompleted()
             result.append((stage.name, readBGRA(bgra, width: width, height: height)))
@@ -367,7 +383,8 @@ struct PresetVisualReviewTests {
                                 commandBuffer: cb,
                                 features: &features,
                                 fft: fftBuf, wave: waveBuf, stems: stemBuf, hist: histBuf,
-                                samples: offscreen)
+                                samples: offscreen,
+                                arachneState: arachneState)
             cb.commit()
             cb.waitUntilCompleted()
             result.append((finalStage.name, readBGRA(bgra, width: width, height: height)))
@@ -382,7 +399,8 @@ struct PresetVisualReviewTests {
         commandBuffer: MTLCommandBuffer,
         features: inout FeatureVector,
         fft: MTLBuffer, wave: MTLBuffer, stems: MTLBuffer, hist: MTLBuffer,
-        samples: [String: MTLTexture]
+        samples: [String: MTLTexture],
+        arachneState: ArachneState? = nil
     ) throws {
         let rpd = MTLRenderPassDescriptor()
         rpd.colorAttachments[0].texture = target
@@ -398,6 +416,13 @@ struct PresetVisualReviewTests {
         enc.setFragmentBuffer(wave, offset: 0, index: 2)
         enc.setFragmentBuffer(stems, offset: 0, index: 3)
         enc.setFragmentBuffer(hist, offset: 0, index: 5)
+        // Per-preset fragment buffers — mirrors RenderPipeline+Staged.encodeStage
+        // (slot 6 = ArachneWebGPU pool, slot 7 = ArachneSpiderGPU). Required for
+        // V.7.7B's staged Arachne fragments to read mood / web / spider state.
+        if let arachneState = arachneState {
+            enc.setFragmentBuffer(arachneState.webBuffer, offset: 0, index: 6)
+            enc.setFragmentBuffer(arachneState.spiderBuffer, offset: 0, index: 7)
+        }
         for (offset, name) in stage.samples.enumerated() {
             guard let tex = samples[name] else { continue }
             enc.setFragmentTexture(tex, index: kStagedSampledTextureFirstSlot + offset)
