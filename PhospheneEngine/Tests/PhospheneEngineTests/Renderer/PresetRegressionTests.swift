@@ -53,7 +53,20 @@ private let goldenPresetHashes: [String: PresetHashes] = [
     // produces a small UV jitter that drifts the silk pattern by a few bits;
     // hash updated to match. Real visual divergence — including the new 3D
     // spider — is observed in PresetVisualReviewTests / ArachneSpiderRenderTests.
-    "Arachne": (steady: 0xC6168E8F87868C80, beatHeavy: 0xC6168E87878E8480, quiet: 0xC6168E8F87868C80),
+    //
+    // V.7.7C.2 (D-095): Commit 3 swaps the foreground anchor's data source
+    // from hardcoded (stage=3, progress=1) to webs[0] Row 5 BuildState. At
+    // the harness's 0.5 s warmup the foreground hero is in frame phase at
+    // frameProgress ≈ 0.166 (only the partial bridge thread renders), so the
+    // V.7.7D upper-left fully-built foreground web disappears from the
+    // regression composition. webs[1] (the second seedInitialWebs() stable
+    // web) continues to render at lower-right unchanged, providing background
+    // depth context. All three fixtures converge to the same hash because
+    // the harness warmup uses one shared warmFV regardless of fixture — the
+    // per-fixture pace differences surface only on real-music playback
+    // (Matt's manual smoke gate). Hamming distance from V.7.7D `steady`:
+    // 16 bits, within the D-095 expected [10, 30] band.
+    "Arachne": (steady: 0xC6168081C0D88880, beatHeavy: 0xC6168081C0D88880, quiet: 0xC6168081C0D88880),
     "Ferrofluid Ocean": (steady: 0x56AB1C4A28B32727, beatHeavy: 0x5CB393AAAFA84840, quiet: 0xA64C51A62FD35356),
     "Glass Brutalist": (steady: 0x336954B4B4544D33, beatHeavy: 0x336954B4B4544D33, quiet: 0x336954B4B4544D33),
     "Gossamer": (steady: 0x5756A72F070F0F0D, beatHeavy: 0x5756A72F070F0F0D, quiet: 0x5756872D0F0F0F0D),

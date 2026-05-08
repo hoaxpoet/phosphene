@@ -227,6 +227,32 @@ struct PresetAcceptanceTests {
         _ = hist.contents().initializeMemory(as: UInt8.self, repeating: 0, count: 4096 * floatStride)
         _ = presetState.contents().initializeMemory(as: UInt8.self, repeating: 0, count: 1024)
 
+        // V.7.7C.2 / D-095 — Arachne foreground anchor block now reads
+        // `webs[0]` Row 5 BuildState (build_stage / frame_progress /
+        // radial_packed / spiral_packed). Without seeding, the zeroed buffer
+        // gives `build_stage = 0, frame_progress = 0` → frame phase at 0%
+        // progress, nothing rendered. PresetAcceptance expects a visible
+        // foreground hero at "normal music energy" (D-037 invariants 1 + 4),
+        // so write a fully-built `.stable` BuildState into webs[0]'s Row 5.
+        // CPU-side `arachneState.reset()` (in production via applyPreset) does
+        // the equivalent at preset bind; the acceptance harness doesn't run
+        // ArachneState, so we seed Row 5 directly. Other presets that bind
+        // slot 6 (Gossamer / Stalker / Staged Sandbox) read different structs
+        // and the first 96 bytes here either don't intersect their layout or
+        // are overwritten by their own initialization paths.
+        if preset.descriptor.fragmentFunction == "arachne_composite_fragment" {
+            let row5Offset = 80   // 5 rows × 16 bytes — Row 5 starts at byte 80 of webs[0]
+            let buildStage: Float = 3.0     // .stable
+            let frameProgress: Float = 1.0  // 100 %
+            let radialPacked: Float = 13.0  // CPU radialCount default; "all radials drawn"
+            let spiralPacked: Float = 104.0 // CPU spiralChordsTotal default (8 × 13)
+            let row5: [Float] = [buildStage, frameProgress, radialPacked, spiralPacked]
+            row5.withUnsafeBytes { src in
+                let dst = presetState.contents().advanced(by: row5Offset)
+                dst.copyMemory(from: src.baseAddress!, byteCount: src.count)
+            }
+        }
+
         // SceneUniforms for ray-march presets provide proper camera/lighting.
         // Without them, farPlane = 0 causes every ray to return sky depth — all-black output.
         var scene: MTLBuffer?
