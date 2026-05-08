@@ -82,18 +82,23 @@ struct PlanPreviewRowView: View {
         .onTapGesture { onPreview(row) }
         .contextMenu {
             // TODO(U.5.C): Enable "Swap preset" when preview loop lands in U.5b.
-            Button("Swap preset") {}
+            Button(String(localized: "plan_preview.row.swap_preset")) {}
                 .disabled(true)
 
             if row.isLocked {
-                Button("Reset to planner pick") {
+                Button(String(localized: "plan_preview.row.reset_lock")) {
                     onResetLock(row.id)
                 }
             }
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
-            "\(row.trackIndex + 1). \(row.trackTitle) by \(row.trackArtist), \(row.presetName), \(formattedDuration)"
+            String(format: String(localized: "plan_preview.row.accessibility"),
+                   row.trackIndex + 1,
+                   row.trackTitle,
+                   row.trackArtist,
+                   row.presetName,
+                   formattedDuration)
         )
     }
 

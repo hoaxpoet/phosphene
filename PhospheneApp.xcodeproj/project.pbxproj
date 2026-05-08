@@ -46,6 +46,10 @@
 		O10005 /* VisualizerEngine+Dashboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = O20005; };
 		O10006 /* DashboardOverlayViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = O20006; };
 		O10007 /* DarkVibrancyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = O20007; };
+		P10001 /* SettingsStoreEnvironmentRegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = P20001; };
+		P10002 /* EndedViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = P20002; };
+		P10003 /* ConnectingViewCancelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = P20003; };
+		P10004 /* PlaybackChromeIndexBindingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = P20004; };
 		A10003 /* PhospheneEngine in Frameworks */ = {isa = PBXBuildFile; productRef = A80001; };
 		A10010 /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20010; };
 		A10011 /* MetalKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20011; };
@@ -202,6 +206,10 @@
 		O20004 /* DashboardOverlayViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardOverlayViewModel.swift; sourceTree = "<group>"; };
 		O20005 /* VisualizerEngine+Dashboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VisualizerEngine+Dashboard.swift"; sourceTree = "<group>"; };
 		O20006 /* DashboardOverlayViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardOverlayViewModelTests.swift; sourceTree = "<group>"; };
+		P20001 /* SettingsStoreEnvironmentRegressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStoreEnvironmentRegressionTests.swift; sourceTree = "<group>"; };
+		P20002 /* EndedViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EndedViewTests.swift; sourceTree = "<group>"; };
+		P20003 /* ConnectingViewCancelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectingViewCancelTests.swift; sourceTree = "<group>"; };
+		P20004 /* PlaybackChromeIndexBindingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackChromeIndexBindingTests.swift; sourceTree = "<group>"; };
 		O20007 /* DarkVibrancyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DarkVibrancyView.swift; sourceTree = "<group>"; };
 		A20004 /* PhospheneApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PhospheneApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A20005 /* PhospheneEngine */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = PhospheneEngine; path = PhospheneEngine; sourceTree = "<group>"; };
@@ -687,6 +695,10 @@
 				N20003 /* SpotifyKeychainStoreTests.swift */,
 				N20004 /* SpotifyOAuthTokenProviderTests.swift */,
 				O20006 /* DashboardOverlayViewModelTests.swift */,
+				P20001 /* SettingsStoreEnvironmentRegressionTests.swift */,
+				P20002 /* EndedViewTests.swift */,
+				P20003 /* ConnectingViewCancelTests.swift */,
+				P20004 /* PlaybackChromeIndexBindingTests.swift */,
 			);
 			path = PhospheneAppTests;
 			sourceTree = "<group>";
@@ -963,6 +975,10 @@
 				N10003 /* SpotifyKeychainStoreTests.swift in Sources */,
 				N10004 /* SpotifyOAuthTokenProviderTests.swift in Sources */,
 				O10006 /* DashboardOverlayViewModelTests.swift in Sources */,
+				P10001 /* SettingsStoreEnvironmentRegressionTests.swift in Sources */,
+				P10002 /* EndedViewTests.swift in Sources */,
+				P10003 /* ConnectingViewCancelTests.swift in Sources */,
+				P10004 /* PlaybackChromeIndexBindingTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

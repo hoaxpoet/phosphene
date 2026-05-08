@@ -2254,3 +2254,89 @@ The prompt preferred testable-import access to the production `applyRoPE` / `app
 **Modified:** `Tests/PhospheneEngineTests/ML/BeatThisLayerMatchTests.swift` (skip → fail). `Tests/PhospheneEngineTests/Renderer/PresetVisualReviewTests.swift` (Bundle helper). `Sources/Presets/PresetLoader.swift` (added `bundledShadersURL` static helper).
 
 **Test count:** 1140 → 1148. Engine + app builds clean. SwiftLint zero violations on touched files.
+
+
+## D-091 — QR.4 dead-end views + duplicate `SettingsStore` collapse + dead settings + hardcoded strings
+
+**Date:** 2026-05-07. **Phase:** QR (Quality Review Remediation), Increment QR.4.
+
+QR.4 closes the user-facing rough-edges flagged by the multi-agent App+UX review and the Phosphene reviewer (2026-05-06). Each item is small in isolation; together they restore the "uninterrupted ambient member of the band" feel that the architecture promises. Two-commit boundary; this decision documents both.
+
+### Decision 1 — `@EnvironmentObject` is the only allowed `SettingsStore` consumption pattern
+
+`PlaybackView.swift:51` declared `@StateObject private var settingsStore = SettingsStore()` while `PhospheneApp.swift:25` constructed the global `SettingsStore` and injected it via `@EnvironmentObject` everywhere else. Toggles in the Settings sheet updated the global store, but `CaptureModeSwitchCoordinator` (built in `PlaybackView.setup()`) subscribed to the parallel `@StateObject` instance — every capture-mode change was silently swallowed. Same shape of bug as Failed Approach #16 (parallel state world that user inputs never reach) but in *product behaviour* rather than chrome state.
+
+Resolution: `@StateObject SettingsStore()` is forbidden anywhere in the app; `SettingsStoreEnvironmentRegressionTests` enforces this. The third test in the suite reads `PlaybackView.swift` source and asserts the binding is `@EnvironmentObject` and not `@StateObject`. Anyone who flips it back will trip the test at compile time on commit. CLAUDE.md `What NOT To Do` and `§UX Contract` get matching one-liners.
+
+### Decision 2 — `showPerformanceWarnings` deleted (delete vs wire option (b))
+
+`SettingsStore` declared `showPerformanceWarnings: Bool` with the comment "Inc 6.2 downstream wiring; flag stored now." Phase 6.2 (FrameBudgetManager) landed; the wiring never did. Wiring it now would mean a `PerformanceWarningToastBridge` listening to `dashboardSnapshot` for `currentLevel != .full` transitions with debouncing — at minimum 50 LOC of toast plumbing for a surface that's already covered: the dashboard PERF card (DASH.5+) surfaces frame-budget overruns directly when the user toggles the dashboard with `D`. A separate toast surface is redundant.
+
+Resolution: deleted. The property, the persistence key, the UI row in `DiagnosticsSettingsSection`, the `SettingsViewModel` binding, the `Localizable.strings` entries, and the test in `SettingsStoreTests` are all gone. No KNOWN_ISSUES entry needed — the setting was never consumed, so deletion is invisible to users.
+
+### Decision 3 — `includeMilkdropPresets` UI gated on `#if DEBUG`
+
+The other dead setting. The Phase MD work (Milkdrop ingestion) is genuinely deferred; the toggle reflects a real future surface, just not a v1 surface. Shipping a permanently-disabled toggle with a "Coming in a future update" caption violates the post-QR.4 UX contract that tooltip lies are bugs.
+
+Resolution: persistence retained in `SettingsStore.includeMilkdropPresets` so DEBUG round-trips preserve user state, but the UI surface in `VisualsSettingsSection` and the `SettingsViewModel.includeMilkdropPresets` binding are gated behind `#if DEBUG`. Production builds never see the toggle. When Phase MD lands, drop the `#if DEBUG`.
+
+### Decision 4 — Disabled "Modify" button hidden behind `#if ENABLE_PLAN_MODIFICATION`
+
+Same logic as Decision 3 but for the Plan Preview surface. The button rendered as `Button("Modify") {}.disabled(true).help("Full plan editing — coming in a future update.")` — a tooltip lie on a no-op control. V.5 plan-modification owns the future implementation.
+
+Resolution: wrapped in `#if ENABLE_PLAN_MODIFICATION`. The build flag mirrors the `LocalFolderConnector` pattern from U.3. Restore wiring in V.5.
+
+### Decision 5 — Publish `currentTrackIndex: Int?` from `VisualizerEngine`; ban string-match plan correlation
+
+`PlaybackChromeViewModel.refreshProgress()` matched the live track against `livePlan.tracks` via `title.lowercased() == ... && artist.lowercased() == ...`. Cover versions, remasters, and encoding-different variants broke the match silently. The orchestrator plan walk already knows the track index by construction (`canonicalTrackIdentity(matching:)` resolves the canonical identity for cache lookups; the same resolution gives the index).
+
+Resolution: new `@Published var currentTrackIndex: Int?` on `VisualizerEngine`, set in the track-change callback (`VisualizerEngine+Capture.swift`) via a new `indexInLivePlan(matching:)` helper on the orchestrator extension. `PlaybackChromeViewModel` accepts a `currentTrackIndexPublisher: AnyPublisher<Int?, Never>` (defaulted to `Just(nil)` for backward-compat in unit tests) and binds `sessionProgress.currentIndex` to the published value. The 12-line lowercased-match block is gone. CLAUDE.md `What NOT To Do` gains the rule. `PlaybackChromeIndexBindingTests` covers the four invariants (publisher → progress, nil → -1, title-mismatch → no re-derivation, nil-plan → reactive).
+
+### Decision 6 — `Scripts/check_user_strings.sh` is the externalisation gate
+
+The increment also externalised 12+ hardcoded strings under `PhospheneApp/Views/`. To prevent regression, `Scripts/check_user_strings.sh` greps for `Text\("[A-Z]`, `\.help\("[A-Z]`, and `\.accessibilityLabel\("[A-Z]` and fails on any hit not in the allowlist. Allowlisted: `DebugOverlayView.swift` (D-key gated developer overlay). Mirrors the shape of `Scripts/check_sample_rate_literals.sh` (D-079, QR.1).
+
+Run before every UX-touching commit: `bash Scripts/check_user_strings.sh`. CI integration deferred — Phosphene has no CI aggregator script yet; Matt invokes manually.
+
+### Decision 7 — "Start another session" wires to `cancel()`, not `endSession()`
+
+The prompt assumed `SessionManager.endSession()` transitioned `.ended → .idle`. It does not — `endSession()` transitions any state → `.ended`. The documented `.idle` return path is `cancel()`. The CTA in `EndedView` therefore wires to `engine.sessionManager.cancel()`. Stale prompt assumption; commit message documents the pivot.
+
+### Decision 8 — `sessionDuration` plumbing deferred (prompt fallback)
+
+The prompt's EndedView spec calls for both track count and session duration. `SessionManager` does not currently track a session-start timestamp, and adding one requires session-state changes outside QR.4 scope. Per the prompt's documented fallback ("ship just the track count + CTA, file a follow-up issue"), `sessionDuration: TimeInterval?` is plumbed as an optional with `nil` rendering an em-dash placeholder. Future increment can populate the value when the timestamp lands.
+
+### Files
+
+**Modified (commit 1):**
+- `PhospheneApp/Views/Ended/EndedView.swift` — session-summary card replaces U.1 stub.
+- `PhospheneApp/Views/Connecting/ConnectingView.swift` — per-connector spinner + cancel.
+- `PhospheneApp/Views/Playback/PlaybackView.swift` — `@StateObject` → `@EnvironmentObject`.
+- `PhospheneApp/Services/SettingsStore.swift` — `showPerformanceWarnings` deleted.
+- `PhospheneApp/ViewModels/SettingsViewModel.swift` — milkdrop binding `#if DEBUG`-gated.
+- `PhospheneApp/Views/Settings/{VisualsSettingsSection,DiagnosticsSettingsSection}.swift`.
+- `PhospheneApp/Views/Ready/PlanPreviewView.swift` — Modify button hidden.
+- `PhospheneApp/ContentView.swift` — new `EndedView` / `ConnectingView` signatures.
+- `PhospheneApp/en.lproj/Localizable.strings` — added `connecting.*`, `ended.*` keys.
+- `PhospheneAppTests/SettingsStoreTests.swift` — drop `showPerformanceWarnings` test.
+
+**Modified (commit 2):**
+- `PhospheneApp/VisualizerEngine.swift` — `@Published var currentTrackIndex: Int?`.
+- `PhospheneApp/VisualizerEngine+Capture.swift` — set index on track change.
+- `PhospheneApp/VisualizerEngine+Orchestrator.swift` — `indexInLivePlan(matching:)` helper.
+- `PhospheneApp/ViewModels/PlaybackChromeViewModel.swift` — bind to index publisher.
+- `PhospheneApp/Views/Playback/{PlaybackView,PlaybackControlsCluster,ListeningBadgeView,SessionProgressDotsView}.swift` — externalised strings.
+- `PhospheneApp/Views/Playback/PlaybackView.swift` — externalised confirmDialog strings.
+- `PhospheneApp/Views/Idle/IdleView.swift` — `Text("Phosphene")` → `appName` key.
+- `PhospheneApp/Views/Ready/{PlanPreviewView,PlanPreviewRowView}.swift` — externalised.
+- `PhospheneApp/en.lproj/Localizable.strings` — `playback.*`, `plan_preview.row.*`, `appName`, `common.cancel`.
+- `PhospheneApp.xcodeproj/project.pbxproj` — registered four new test files (P prefix).
+
+**New (commit 2):**
+- `PhospheneAppTests/SettingsStoreEnvironmentRegressionTests.swift` (load-bearing gate).
+- `PhospheneAppTests/EndedViewTests.swift`.
+- `PhospheneAppTests/ConnectingViewCancelTests.swift`.
+- `PhospheneAppTests/PlaybackChromeIndexBindingTests.swift`.
+- `Scripts/check_user_strings.sh`.
+
+**Test count delta:** +17 new tests across four suites. SwiftLint zero violations on touched files. Engine suite untouched. App build clean.

@@ -1297,7 +1297,28 @@ Per-preset state setup handles Arachne (allocates `ArachneState`, warms 30 ticks
 
 ---
 
+### Increment V.7.7B — Arachne staged WORLD + WEB port (filed 2026-05-07)
+
+**Prerequisite:** V.7.7A staged-composition scaffold migration ✅ 2026-05-05.
+
+**Scope:** Promote V.7.7-redo's `drawWorld()` and V.7.8's chord-segment `arachneEvalWeb()` from dead reference code in `Arachne.metal` into the dispatched `arachne_world_fragment` and `arachne_composite_fragment` staged stages. Extend `RenderPipeline+Staged.encodeStage()` and `PresetVisualReviewTests.encodeStagePass()` so staged stages can read the per-preset fragment buffers at index 6 (`ArachneWebGPU`) and index 7 (`ArachneSpiderGPU`) — the legacy mv_warp / direct path used these via `directPresetFragmentBuffer` / `directPresetFragmentBuffer2`; the staged path currently does not bind them. Result is parity with the pre-V.7.7A monolithic shader output, on the staged-composition scaffold. Refractive droplets, biology-correct build state machine, spider deepening, and whole-scene vibration are V.7.7C / V.7.7D — not in scope for V.7.7B.
+
+**Done when:**
+- WORLD-only and COMPOSITE captures via the harness show parity with the pre-V.7.7A V.7.5 baseline (allowing for the chord-spiral + V.7.7-redo WORLD additions).
+- New `StagedPresetBufferBindingTests` regression test asserts buffer 6/7 propagate through staged dispatch.
+- Legacy `arachne_fragment` (~617 LOC) is deleted; `Arachne.metal` drops from ~962 LOC to ~480 LOC.
+- All test suites pass; 0 SwiftLint violations on touched files.
+- Golden hashes regenerated for `PresetRegressionTests` Arachne and `ArachneSpiderRenderTests`.
+
+**Verify:** `RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter "PresetVisualReview/renderStagedPresetPerStage"` produces non-placeholder PNGs (forest WORLD + chord-segment spiral COMPOSITE). Full suite: `swift test --package-path PhospheneEngine`. Detailed protocol in `prompts/V.7.7B-prompt.md`.
+
+**Estimated sessions:** 2.
+
+---
+
 ### Increment V.7.7 — Arachne v8: WORLD pillar + 1–2 background dewy webs
+
+**Status correction (2026-05-07):** The `[V.7.7 redo]` commit (`fa5dacdf`, 2026-05-05 10:54) added the six-layer inline `drawWorld()` and frame threads to the *monolithic* `arachne_fragment`. Three hours later, `[V.7.7A]` (`ccefe065`, 2026-05-05 14:13) retired that fragment and shipped placeholder staged stubs. The V.7.7 work is therefore preserved as dead reference code in `PhospheneEngine/Sources/Presets/Shaders/Arachne.metal` (free-function `drawWorld` ~line 142, legacy `arachne_fragment` ~line 617), not in the dispatched path. Promotion into the staged path is V.7.7B.
 
 **Prerequisite:** V.7.7A staged-composition scaffold migration ✅ 2026-05-05.
 
@@ -1319,6 +1340,8 @@ Per-preset state setup handles Arachne (allocates `ArachneState`, warms 30 ticks
 
 ### Increment V.7.8 — Arachne v8: WEB pillar — foreground build refactor (corrected biology)
 
+**Status correction (2026-05-07):** The `[V.7.8]` commit (`3536a023`, 2026-05-05 11:06) added the chord-segment capture spiral to `arachneEvalWeb()` inside the monolithic fragment. Same retirement story as V.7.7 — code survives as dead reference at ~line 265 of `PhospheneEngine/Sources/Presets/Shaders/Arachne.metal`; port to staged dispatch is V.7.7B. The chord-segment SDF replacement for the degenerate Archimedean curve (Failed Approach #34) is a permanent reference for V.7.7B; do not regress to circular rings.
+
 **Scope:** Per `ARACHNE_V8_DESIGN.md §5.1–§5.11` (WEB pillar in full). Replace V.7.5 pool-of-webs system with single-foreground-build state machine implementing the corrected orb-weaver biology: frame polygon (§5.3, 4–7 anchors on near-frame branches from V.7.7) → hub (§5.4, dense knot, NOT concentric rings) → radials (§5.5, 12–17, alternating-pair order, ±20% jitter, drawn one at a time over ~1.5s each) → **capture spiral winding INWARD** (§5.6, chord-segment SDF from outer frame to hub — corrects the 2026-05-02 spec error which had the spiral winding outward) → settle (§5.2, completion signal at 60s ceiling). Sag per §5.7 (`kSag ∈ [0.10, 0.18]`, drop weight modifies sag). Drops per §5.8 with accretion over time on just-laid spiral chords (foreground starts sparse, grows dense; background webs stay saturated). Anchor terminations per §5.9 — small adhesive blobs where outer frame threads meet near-frame branches. Silk material per §5.10 (minor finishing — Marschner-lite removed). Pause on spider trigger; resume on spider fade. Foreground completion emits `presetCompletionEvent` via the V.7.6.2 channel.
 
 **Done when:**
@@ -1338,6 +1361,8 @@ Per-preset state setup handles Arachne (allocates `ArachneState`, warms 30 ticks
 ---
 
 ### Increment V.7.9 — Arachne v8: SPIDER pillar deepening + whole-scene vibration + cert
+
+**Status correction (2026-05-07):** The `[V.7.9 ✅]` commit (`97f42220`) was a CLAUDE.md status update only — 4 line changes, no shader code. The biology-correct frame → radial → spiral build order remains unimplemented in the dispatched path. SPIDER pillar deepening, vibration, and cert review remain unimplemented as well. Build-order work is scheduled for V.7.7C; SPIDER + vibration for V.7.7D; cert review for V.7.10.
 
 **Scope:** Per `ARACHNE_V8_DESIGN.md §6` (full SPIDER pillar) + §8.2 (vibration model) + §12 (acceptance criteria). The 2026-05-03 spec rewrite expanded V.7.9 from "polish + vibration" into a full spider-anatomy refactor — V.7.5's "dark silhouette + warm rim" was the right *direction* but wrong *depth* for an easter egg that earns its rare appearance. Implements §6.1 anatomy (cephalothorax + abdomen + petiole, 8 articulated legs with outward-bending knee IK, eye cluster as 6–8 small dots in tight forward arrangement — refs `12` + `13`, NOT the jumping-spider 2x2 of ref `19`), §6.2 material (chitin base + thin-film iridescence at biological strength + Oren-Nayar-like hair fuzz + per-eye specular per ref `19` technique), §6.3 pose / gait / listening pose (resting at hub by default; listening pose — front legs raised ~30° — fires on sustained low-attack-ratio bass for ≥ 1.5s), §6.4 lighting (deep body shadow + warm-amber rim + eye sparkle), §6.5 trigger and behavior (per-segment cooldown replaces V.7.5's 300s session-level lock). Whole-scene tremor on bass per §8.2 — 12 Hz audio-rate vibration applied per-vertex to all webs + near-frame branches + spider, amplitude driven by `max(f.subBass_dev, f.bass_dev)` + per-kick spike from `f.beatBass`. Forest floor and distant layers don't shake. Final tuning of drop counts, brightness, sag magnitude, free-zone size, mood-smoothing window against references via the harness. Cert review.
 
@@ -2339,7 +2364,9 @@ Add a SwiftLint custom rule that flags `f\.(bass|mid|treb|sub_bass|low_bass|low_
 
 ---
 
-### Increment QR.4 (U.12) — UX dead ends + duplicate `SettingsStore` + dead settings + hardcoded strings
+### Increment QR.4 (U.12) — UX dead ends + duplicate `SettingsStore` + dead settings + hardcoded strings  ✅ 2026-05-07 (D-091)
+
+**Status:** ✅ Landed. Two commits. Net: 17 new tests, ~12 strings externalised, dead settings deleted, duplicate `SettingsStore` collapsed, `currentTrackIndex` plumbing replaces string-match plan correlation.
 
 **Goal.** Close the user-facing rough edges flagged in the App+UX review. Each is small in isolation; together they restore the "uninterrupted ambient member of the band" feel that the architecture promises.
 
@@ -2390,17 +2417,19 @@ Add a SwiftLint custom rule that flags `f\.(bass|mid|treb|sub_bass|low_bass|low_
 
 **Done when:**
 
-- [ ] EndedView and ConnectingView no longer block flow.
-- [ ] One `SettingsStore` instance app-wide; capture-mode toggles propagate to playback reconcilers.
-- [ ] Dead settings removed (or wired) + UI rows removed.
-- [ ] All 12 hardcoded strings externalized; tooltip lies fixed.
-- [ ] `currentTrackIndex` plumbing replaces title-matching.
-- [ ] All new tests pass; full app build clean.
-- [ ] Manual validation: complete a full session end-to-end without ever needing to relaunch.
+- [x] EndedView and ConnectingView no longer block flow.
+- [x] One `SettingsStore` instance app-wide; capture-mode toggles propagate to playback reconcilers.
+- [x] Dead settings removed (`showPerformanceWarnings` deleted; `includeMilkdropPresets` UI gated on `#if DEBUG`).
+- [x] 12+ hardcoded strings externalized; tooltip lies fixed (`Settings (coming soon)` → `Settings`).
+- [x] `currentTrackIndex` plumbing replaces title-matching.
+- [x] All new tests pass; full app build clean.
+- [ ] Manual validation: Matt sign-off on end-to-end flow without relaunch.
 
 **Verify:** `swift test --filter SettingsStoreEnvironmentRegression && swift test --filter EndedView && swift test --filter ConnectingViewCancel && swift test --filter PlaybackChromeIndexBinding && bash Scripts/check_user_strings.sh && xcodebuild -scheme PhospheneApp -destination 'platform=macOS' test`.
 
-**Estimated sessions:** 2 (views + cancel + duplicate store → strings + dead settings + tests).
+**Estimated sessions:** 2 (views + cancel + duplicate store → strings + dead settings + tests). Actual: 1.
+
+**Implementation summary (D-091):** 4 view edits (EndedView, ConnectingView, PlaybackView, PlanPreviewView) + duplicate-store collapse + 12+ string externalisations + `currentTrackIndex: Int?` published from `VisualizerEngine` + `indexInLivePlan(matching:)` orchestrator helper + 4 new test files (17 tests) + 1 new lint script (`Scripts/check_user_strings.sh`). Two key pivots from the prompt: (1) "Start another session" wires to `cancel()`, not `endSession()` — the prompt assumed `endSession()` did `.ended → .idle` but it transitions any state → `.ended`; (2) `sessionDuration` plumbing deferred per the prompt's own fallback (would require >30 LOC of `SessionManager` changes). Decisions D-091.1–D-091.8 in `docs/DECISIONS.md`.
 
 ---
 

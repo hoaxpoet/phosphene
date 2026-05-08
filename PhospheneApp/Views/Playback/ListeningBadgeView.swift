@@ -33,7 +33,7 @@ struct ListeningBadgeView: View {
                         }
                     }
             }
-            Text("Listening…")
+            Text(String(localized: "playback.listening"))
                 .font(.caption.weight(.medium).monospaced())
         }
         .foregroundColor(.white.opacity(0.8))

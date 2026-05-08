@@ -46,14 +46,16 @@ struct SessionProgressDotsView: View {
                         pulseOpacity = 0.3
                     }
                 }
-            Text("Reactive")
+            Text(String(localized: "playback.progress.reactive"))
                 .font(.caption2.weight(.medium).monospaced())
                 .foregroundColor(.white.opacity(0.6))
         }
     }
 
     private var trackCountText: some View {
-        Text("\(progress.currentIndex + 1) of \(progress.totalTracks)")
+        Text(String(format: String(localized: "playback.progress.position"),
+                    progress.currentIndex + 1,
+                    progress.totalTracks))
             .font(.caption.monospaced())
             .foregroundColor(.white.opacity(0.7))
     }

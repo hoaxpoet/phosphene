@@ -68,6 +68,14 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Current track metadata from Now Playing.
     @Published var currentTrack: TrackMetadata?
 
+    /// 0-based index of the live track within `livePlannedSession`, or nil when
+    /// the track is not part of the plan (covers, remasters, encoding-different
+    /// versions) or when no plan exists. Set by the orchestrator plan walk in
+    /// `currentPreset(at:)` / `currentTrackIndexInPlan()`. QR.4 / D-091 — replaces
+    /// the lowercased title+artist string match in `PlaybackChromeViewModel`,
+    /// which silently failed on covers/remasters.
+    @Published var currentTrackIndex: Int?
+
     /// Pre-fetched profile from external APIs.
     @Published var preFetchedProfile: PreFetchedTrackProfile?
 

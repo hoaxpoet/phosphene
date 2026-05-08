@@ -33,7 +33,7 @@ struct PlaybackControlsCluster: View {
                     .foregroundColor(.white.opacity(0.7))
             }
             .buttonStyle(.plain)
-            .help("Settings (coming soon)")
+            .help(String(localized: "playback.controls.settings.tooltip"))
 
             // End session.
             Button {
@@ -44,7 +44,7 @@ struct PlaybackControlsCluster: View {
                     .foregroundColor(.white.opacity(0.7))
             }
             .buttonStyle(.plain)
-            .help("End session (Esc)")
+            .help(String(localized: "playback.controls.endSession.tooltip"))
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
