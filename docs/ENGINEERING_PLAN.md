@@ -3090,6 +3090,48 @@ git diff <pre-DM.0> HEAD -- PhospheneEngine/Sources/Renderer/Shaders/Particles.m
 
 **Carry-forward:** DM.2 wires the light shaft (`ls_shadow_march` or `ls_radial_step_uv`), floor fog (`vol_density_height_fog`), and per-particle hue baking from `vocalsPitchNorm` into the existing `Particle.color` lanes (no struct extension needed — DM.1 confirmed the four `packed_float4` lanes are sufficient). DM.3 wires the full audio routing (wind force ×= `f.bass_att_rel`, emission rate × `f.mid_att_rel`, backdrop palette tinted by `f.valence`, drum dispersion shock from `stems.drums_energy_dev`, anticipatory shaft pulse on `f.beat_phase01`) and the M7 frame-match review against `01_atmosphere_dust_motes_light_shaft.jpg`.
 
+### Increment DM.2 — Drift Motes Session 2 (audio coupling) ✅ landed 2026-05-08
+
+**Scope:** Three coupled audio reactivities arrive together because they share one coherent visual story — the field is musical, with a god-ray cutting through floor fog and per-mote hue carrying the recent vocal melody. Specifically: light shaft via `ls_radial_step_uv` in the sky fragment, floor fog via `vol_density_height_fog` in the same fragment, and per-particle hue baked at emission time in `motes_update` under a D-019 warmup-blended source. Sprite fragment additionally modulates per-mote brightness from shaft proximity. See `prompts/DM_2_PROMPT.md`.
+
+**Files created:**
+
+- `PhospheneEngine/Tests/PhospheneEngineTests/Presets/DriftMotesRespawnDeterminismTest.swift` — three tests covering the DM.2 hue-baking contract:
+  - **Within-life invariance:** color is bit-identical across 30 frames for every slot that did not respawn (gate: ≥ 100 stable slots).
+  - **Respawn changes hue across the field:** under warm stems with a 4-octave pitch sweep, after 240 frames the per-particle colour distribution shows variance > 1e-3 (vs. ≈ 0 for a uniform-amber field).
+  - **Warm-stems variance > 2× cold-stems:** 60-frame runs with `StemFeatures.zero` vs. realistic stems with sweeping vocal pitch produce a variance ratio that proves D-019 contributes real signal at warm stems (not a numeric no-op).
+  Total runtime: ~0.35 s for all three.
+
+**Files modified:**
+
+- `PhospheneEngine/Sources/Renderer/Shaders/ParticlesDriftMotes.metal` — added `dm_pitch_hue(pitchHz, confidence)` static helper (canonical pitch→hue replacement for the retired `vl_pitchHueShift`, octave-wrap log map: A2→0.0, A6→1.0); replaced the literal warm-amber emission color with the D-019-blended baked hue (`smoothstep(0.02, 0.06, totalStemEnergy)` between the cold-stems hash-jitter+`f.mid_att_rel`-shift fallback and the warm-stems pitch hue); removed the `(void)stems;` placeholder; vertex shader now passes per-particle UV; fragment modulates brightness by Gaussian falloff from the shaft axis (sun anchor `(-0.15, 1.20)`, axis through frame centre, cone width 16); header comment updated to reflect the post-DM.2 reality.
+- `PhospheneEngine/Sources/Presets/Shaders/DriftMotes.metal` — sky fragment now layers warm-amber gradient (DM.1 baseline) + multiplicative cool blue-gray floor fog via `vol_density_height_fog(scale=12.0, falloff=0.85)` + additive warm-gold light shaft via 32-step `ls_radial_step_uv` accumulation with `0.65 + 0.25 × f.mid_att_rel` continuous intensity. Same sun anchor as the sprite fragment so the highlight stays congruent.
+- `PhospheneEngine/Sources/Renderer/Shaders/Common.metal` — extended `FeatureVector` to 192 bytes / 48 floats (MV-1 deviation primitives + MV-3b beat phase + bar phase + pad) and `StemFeatures` to 256 bytes / 64 floats (MV-1 deviation primitives + MV-3a per-stem rich metadata + MV-3c vocals pitch + pad). Field order is byte-identical to `PresetLoader+Preamble.swift`'s preset preamble; the first 32 / 16 floats match the pre-MV-1 layout exactly so existing engine readers (Murmuration's `particle_update`, MVWarp shaders, feedback shaders) are byte-identical. Pre-DM.2 the engine MSL structs were stuck at the pre-MV-1/MV-3 sizes, so engine-library shaders could not read `f.mid_att_rel` / `stems.vocals_pitch_hz` — the kernel hue baking required this correction.
+- `PhospheneEngine/Tests/PhospheneEngineTests/Renderer/PresetRegressionTests.swift` — Drift Motes golden hash regenerated to `0x0001070F1F3F7FFF` for all three fixtures (the harness renders the sky fragment only and `f.mid_att_rel` is zero across all three regression fixtures, so steady/beatHeavy/quiet converge to the same hash); doc comment rewritten to describe what's actually under test (sky + shaft + fog) and to point at `DriftMotesRespawnDeterminismTest` as the regression-lock for per-particle hue. Murmuration's three hashes regenerated identically to the post-DM.1 baseline (byte-identical reads through extended struct, no shader logic change) — Murmuration invariant preserved.
+- `PhospheneEngine/Tests/PhospheneEngineTests/Diagnostics/SoakTestHarnessTests.swift` — added `shortRunDriftMotes` SOAK-gated kernel-cost benchmark (30 s simulated 60 Hz, 800 Tier 2 particles, GPU command-buffer timing). Tier 2 results below.
+
+**Performance (DM.2 Task 8, kernel-only Tier 2 measurement, this session):**
+
+- p50 = 0.107 ms, p95 = 0.158 ms, p99 = 0.763 ms, kernel overruns (>14 ms) = 0
+- Well under the 1.6 ms full-frame Tier 2 budget. The post-DM.2 audio coupling adds near-zero kernel cost on top of DM.1 (the work is at emission time only — one branch per respawn, ~tens of frames per particle lifetime).
+- **Tier 2 full-frame timing** (sky fragment + sprite render + feedback decay) is deferred to a runtime app session — `SoakTestHarness` has no preset-pinned full-pipeline path within `swift test`. The kernel-only benchmark is the right gate for this increment because the audio coupling is the only thing that grew between DM.1 and DM.2.
+- **Tier 1 timing deferred** to a hardware run (Mac M1/M2). Kernel cost on Tier 1 is bounded by the same fact: the work landed only on emission, and the curl-noise cost dominates per-frame.
+
+**Audit:**
+
+- D-026 deviation-primitives grep on `ParticlesDriftMotes.metal` returns zero hits for absolute-threshold patterns (`smoothstep` against `f.bass`/`f.mid`/`f.treb` direct values).
+- D-019 blend grep returns one hit at the emission branch in `motes_update`, exactly where the prompt specifies.
+- D-029 pass set: `DriftMotes.json` still declares `["feedback", "particles"]` — no new render pass.
+- D-097 / DM.0 / DM.1 invariants: `Particles.metal`, `ProceduralGeometry.swift`, `ParticleGeometry.swift`, and `RenderPipeline*.swift` are byte-identical to their post-DM.1 state. Murmuration's three regression hashes match the DM.1 baseline.
+- `swiftlint lint --strict` 0 violations on touched files.
+- Engine + app builds clean; full regression suite (15 presets × 3 fixtures = 45 cases) green.
+
+**Estimated sessions:** 1.0 (this session itself).
+
+**Status:** ✅ landed 2026-05-08.
+
+**Carry-forward:** DM.3 adds emission-rate scaling from `f.mid_att_rel`, drum dispersion shock from `stems.drums_beat`, optional structural-flag scatter, the M7 frame-match review against `01_atmosphere_dust_motes_light_shaft.jpg`, and the deferred Tier 1 hardware perf measurement. `dm_pitch_hue` is the canonical pitch→hue helper for the project; future presets can adopt it by name.
+
 ---
 
 These milestones map to product-level outcomes, not implementation phases.
