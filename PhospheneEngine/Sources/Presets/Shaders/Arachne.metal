@@ -126,6 +126,26 @@ static float2 arachHubJitter(uint seed) {
                   (arachHash(seed + 0xF6u) - 0.5) * 0.10);
 }
 
+// ── V.7.7C.2 §5.9 anchor twigs — single source of truth ─────────────────────
+// Branchlet anchor points consumed by both WORLD (renders dark capsule SDFs at
+// these positions) and the WEB pillar (frame polygon vertices terminate on
+// these positions in Sub-item 3). Coordinate space: UV [0..1].
+//
+// MUST stay byte-for-byte in sync with `ArachneState.branchAnchors` in
+// `ArachneState.swift`. `ArachneBranchAnchorsTests` regression-locks the sync
+// by string-searching this file for the same float pairs.
+//
+// Positions chosen to give an irregular distribution near the screen edges
+// (avoiding the corners — anchors deep in corners read as forced).
+constant float2 kBranchAnchors[6] = {
+    float2(0.18, 0.22),  // upper-left
+    float2(0.82, 0.18),  // upper-right (slightly higher)
+    float2(0.92, 0.55),  // right-mid
+    float2(0.78, 0.84),  // lower-right
+    float2(0.20, 0.78),  // lower-left
+    float2(0.10, 0.50)   // left-mid
+};
+
 // ── V.7.7: WORLD pillar ───────────────────────────────────────────────────────
 // Dark close-up forest atmosphere — camera is inches from the web (refs 01, 06, 08).
 // No landscape, no skyline, no horizon bands. Background is near-black deep forest with
@@ -242,6 +262,27 @@ static float3 drawWorld(float2 uv, float4 moodRow, float accTime) {
         float bkA  = fbm4(float3(tc * 7.0 + 0.55, bd * 40.0, 0.0)) * 0.5 + 0.5;
         float3 bkC3 = atmDark * (0.17 + 0.13 * bkA);
         col = mix(col, bkC3, cov);
+    }
+
+    // ── V.7.7C.2 §5.9: branchlet anchor twigs ─────────────────────────────────
+    // Six small dark line segments at kBranchAnchors[i], each 0.05 UV long and
+    // pointing roughly inward (toward screen centre). The WEB pillar's frame
+    // polygon (Sub-item 3) terminates on these positions, so the twigs need to
+    // read as small dark line segments the polygon vertices clearly attach to.
+    // Slightly warmer tint than the trunk silhouettes — warmer = "closer to the
+    // web", per ref 11. Same line-segment SDF pattern as the trunks above.
+    for (int i = 0; i < 6; i++) {
+        float2 ba  = kBranchAnchors[i];
+        float2 inward = normalize(float2(0.5) - ba);
+        float2 bb  = ba + inward * 0.05;
+        float2 dir = bb - ba;
+        float2 pa  = uv - ba;
+        float  tc  = saturate(dot(pa, dir) / max(dot(dir, dir), 1e-6));
+        float  bd  = length(pa - dir * tc);
+        float  br  = mix(0.005, 0.002, tc);  // tapers root → tip
+        float  cov = smoothstep(br + 0.0015, br - 0.0015, bd);
+        float3 twigCol = mix(atmDark, atmMid, 0.15) * 0.5;
+        col = mix(col, twigCol, cov * 0.8);
     }
 
     return col;
