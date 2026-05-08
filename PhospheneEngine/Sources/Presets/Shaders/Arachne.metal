@@ -255,14 +255,20 @@ static float3 drawWorld(float2 uv, float4 moodRow, float accTime, float midAttRe
     float topHueBase = mix(0.62, 0.05, valenceNorm);
     float botHueBase = mix(0.58, 0.08, valenceNorm);
 
-    // Audio-time hue cycle (~25 s period at accTime rate 0.04). ±0.15 hue
-    // swing keeps the cycle psychedelic but doesn't dominate the mood
-    // mapping. Top/bottom phase-offset by 0.5 cycles so the gradient never
-    // collapses to a single hue. Pauses at silence (FA #33 compliance —
-    // accTime is the FA-#33-safe substitute when beat_phase01 isn't carried).
+    // V.7.7C.5.2 (D-100 follow-up #2): hue cycle widened ±0.15 → ±0.45.
+    // V.7.7C.5.1's narrow ±0.15 swing kept the backdrop hue inside a
+    // valence-quadrant neighborhood (e.g. Love Rehab's neutral-warm valence
+    // → hue stayed in [0.15, 0.45] yellow-green band only across the entire
+    // session). Matt's 2026-05-08T22-58-49Z smoke: "just green, no other
+    // colors". ±0.45 sweeps roughly half the hue wheel per cycle so the
+    // backdrop visibly traverses cyan → green → yellow → amber → magenta
+    // every ~25 s instead of just shimmering one hue. Top/bottom still
+    // phase-offset by π so the gradient never collapses. Pauses at
+    // silence (FA #33 compliance — accTime is the FA-#33-safe substitute
+    // when beat_phase01 isn't carried).
     float cycle = accTime * 0.04;
-    float topHue = fract(topHueBase + sin(cycle * 6.28318) * 0.15);
-    float botHue = fract(botHueBase + cos(cycle * 6.28318 + 3.14159) * 0.15);
+    float topHue = fract(topHueBase + sin(cycle * 6.28318) * 0.45);
+    float botHue = fract(botHueBase + cos(cycle * 6.28318 + 3.14159) * 0.45);
 
     // Pumped saturation/value — vivid even at low arousal.
     float satScale = 0.55 + 0.40 * arousalNorm;  // 0.55–0.95
@@ -737,7 +743,14 @@ static ArachneWebResult arachneEvalWeb(
     float bestDropDist = 1e6;
     float2 bestDropVec = float2(0.0, 0.0);
     float minChordDist = 1e6;
-    float dropRadius   = 0.008;  // ≈ 8.6 px at 1080p (V.7.5 §10.1.3 — visual hero)
+    // V.7.7C.5.2 (D-100 follow-up #2) — drop radius 0.008 → 0.004 (~4 px at
+    // 1080p). V.7.5 §10.1.3 had bumped drops to 0.008 to make them the visual
+    // hero, but at V.7.7C.5's canvas-filling polygon scale the drops piled up
+    // along chord segments at 4–5 drop-diameter spacing and read as a
+    // continuous "fat crayon" yellow band — the spiral SDF (0.0007 UV) was
+    // invisible underneath. Halving the radius lets pearls read as discrete
+    // dewdrops along thin chords (Matt's 2026-05-08T22-58-49Z smoke).
+    float dropRadius   = 0.004;
     result.dropRadius  = dropRadius;
 
     int   N_RINGS = max(2, int(spirRevs + 0.5));
@@ -1415,16 +1428,18 @@ fragment float4 arachne_composite_fragment(
             float beatPulse = max(f.beat_bass, f.beat_composite);
             float emGain    = baseEmissionGain + beatAccent + beatPulse * 0.025;
 
-            // V.7.7C.5.1 (D-100 follow-up): silkTint 0.85 → 0.55, ambient
-            // tint factor 0.40 → 0.20. Pulls silk back to fine-detail weight
-            // so the elaborate canvas-filling polygon reads as detail, not
-            // toddler-scribble. Matt's 2026-05-08T22-01-07Z smoke: "lines and
-            // luminescence on them do not need to be so heavy". Compensated
-            // by re-saturating the §4.3 backdrop palette so the visual
-            // weight shifts to the WORLD pillar.
-            float3 silk_col = silkBase * 0.55 * axial * emGain;
+            // V.7.7C.5.2 (D-100 follow-up #2): silkTint 0.55 → 0.70, ambient
+            // 0.20 → 0.30. V.7.7C.5.1 dimmed silk to compensate for V.7.7C.5's
+            // muted backdrop, but V.7.7C.5.1 ALSO pumped the §4.3 backdrop
+            // palette to vivid sat 0.55–0.95 / val 0.30–0.70. Against that
+            // bright backdrop the 0.55 silkTint reads as faint cream-on-yellow
+            // — radials look like wisps with no scaffold (Matt's
+            // 2026-05-08T22-58-49Z smoke). 0.70 restores contrast vs the
+            // pumped backdrop without going back to V.7.7C.4's 0.85 (which
+            // was tuned for the muted palette and would now over-dominate).
+            float3 silk_col = silkBase * 0.70 * axial * emGain;
             silk_col *= kLightCol;
-            silk_col += silkBase * kAmbCol * 0.20;
+            silk_col += silkBase * kAmbCol * 0.30;
             strandColor  += silk_col * delta;
             strandPseudo  = newStrandD;
             prevStrandCov = newStrandCov;
