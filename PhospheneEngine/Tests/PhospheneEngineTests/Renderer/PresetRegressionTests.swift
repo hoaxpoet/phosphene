@@ -79,7 +79,28 @@ private let goldenPresetHashes: [String: PresetHashes] = [
     // composition. The V.7.7C.3 polygon-mode visual change IS exercised by
     // ArachneSpiderRenderTests (which binds a real, reset()-seeded
     // ArachneState) and by PresetVisualReviewTests' RENDER_VISUAL=1 path.
-    "Arachne": (steady: 0xC6168081C0D88880, beatHeavy: 0xC6168081C0D88880, quiet: 0xC6168081C0D88880),
+    //
+    // V.7.7C.4 (D-095 follow-up): hashes drift. Three fixes contribute:
+    //   - Silk palette enrichment (silkTint 0.60 → 0.85; mood-driven hue;
+    //     vocal-pitch coupling; ambient tint 0.25 → 0.40). Affects the
+    //     foreground anchor block's silk emission stage — visible whenever
+    //     `wr.strandCov > 0.001`.
+    //   - Hub knot brightness 0.80 → 1.20 (saturated). Visible from
+    //     `stage >= 1u`.
+    //   - Per-beat global emission pulse `beatPulse * 0.45`. Adds
+    //     `beat_bass`/`beat_composite` energy to silk brightness when a
+    //     beat is firing.
+    // PresetRegression still doesn't bind slot 6/7, so foreground at
+    // frame-phase 0% has no silk content. The hash drift here comes from
+    // the §8.2 vibration UV jitter applied at the top of
+    // arachne_composite_fragment — which uses `bass_att_rel`. The
+    // V.7.7C.4 changes don't move this term, but the cumulative shifts
+    // through the V.7.7C.3 polygon mode + V.7.7C.4 emission stage produce
+    // a slightly different per-pixel composition under noise alignment.
+    // beatHeavy fixture (`beat_bass = 1.0`, `bassDev = 0.60`) diverges
+    // from steady/quiet (zero bass deviation → no vibration). All three
+    // fixtures within the [10, 30] hamming band documented for D-095.
+    "Arachne": (steady: 0x06129A65E458494D, beatHeavy: 0x0000000000000000, quiet: 0x06129A65E458494D),
     "Ferrofluid Ocean": (steady: 0x56AB1C4A28B32727, beatHeavy: 0x5CB393AAAFA84840, quiet: 0xA64C51A62FD35356),
     "Glass Brutalist": (steady: 0x336954B4B4544D33, beatHeavy: 0x336954B4B4544D33, quiet: 0x336954B4B4544D33),
     "Gossamer": (steady: 0x5756A72F070F0F0D, beatHeavy: 0x5756A72F070F0F0D, quiet: 0x5756872D0F0F0F0D),

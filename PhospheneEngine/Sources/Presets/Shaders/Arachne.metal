@@ -473,8 +473,16 @@ static ArachneWebResult arachneEvalWeb(
         float hB = fbm4(float3(hubN * 2.3 + float2(1.27, 0.74), seedF + 0.5)) * 0.5 + 0.5;
         float raw = min(hA, hB);
         // Threshold at 0.54→0.43: fbm4 remapped to [0,1], gives ~35% strand density.
-        hubCov = smoothstep(0.54, 0.43, raw) * 0.80
+        // V.7.7C.4 / D-095 follow-up — hub coverage bumped 0.80 → 1.20 so the
+        // central knot reads as a bright source rather than a faint smudge
+        // (Matt's 2026-05-08T18-28-16Z smoke flagged "color far too subtle").
+        // Coverage is later channelled through `result.strandCov` and picked
+        // up by the brighter silkTint factor (0.60 → 0.85) downstream — the
+        // combined effect lifts the hub from a barely-visible dot to a
+        // distinct emissive knot at radial-phase entry.
+        hubCov = smoothstep(0.54, 0.43, raw) * 1.20
                * smoothstep(hubR, hubR * 0.15, rT);  // fade at exact center
+        hubCov = saturate(hubCov);
         // Hub tangent is degenerate — keep default (1,0)
     }
 
@@ -1194,16 +1202,60 @@ fragment float4 arachne_composite_fragment(
         float delta        = max(0.0, newStrandCov - prevStrandCov);
 
         if (delta > 0.001) {
-            // §5.10 (V.7.9): silk as thin lines + axial highlight (Marschner-lite removed).
-            // Real silk at Arachne frame scale = faint connective tissue; drops carry 80%.
-            float2 tang2D   = wr.strandTangent;
-            float3 silkBase = hsv2rgb(float3(fract(0.52 + hueDrift * 0.10), 0.45, 0.80));
+            // V.7.7C.4 / D-095 follow-up — palette enrichment.
+            //
+            // Pre-V.7.7C.4 the silk was deliberately faint per V.7.5 §10.1.3
+            // ("drops carry 80% of visual"). Matt's 2026-05-08T18-28-16Z
+            // smoke flagged the result as "color far too subtle ... no
+            // visual excitement to such a slow-moving preset". V.7.7C.4
+            // bumps silkTint 0.60 → 0.85, broadens hue across the mood-
+            // driven palette (valence: teal → amber), couples vocal pitch
+            // into hue when stem confidence ≥ 0.35 (Gossamer-style), and
+            // adds a per-beat global emission pulse (the hybrid audio
+            // coupling — Fix C — that keeps the build pace TIME-driven
+            // while making the visible silk respond to beats).
+            float2 tang2D = wr.strandTangent;
+
+            // Mood-driven hue base: valence shifts teal (cool, 0.55) →
+            // amber (warm, 0.10) along the §4.3 forest palette axis.
+            float v       = clamp(moodRow.x, -1.0, 1.0);
+            float moodHue = mix(0.55, 0.10, saturate(0.5 + 0.5 * v));
+
+            // Vocal-pitch coupling — when the YIN tracker has confidence,
+            // bake a hue from log2-pitch around A3 (220 Hz). Same shape
+            // as Gossamer waves; mixed in by confidence.
+            float vConf   = saturate(stems.vocals_pitch_confidence);
+            float vHz     = max(stems.vocals_pitch_hz, 60.0);
+            float vocHue  = fract(log2(vHz / 220.0) * 0.35 + 0.55);
+            float hueBase = mix(moodHue, vocHue, vConf * 0.6);
+
+            // Wider hueDrift for visible motion across the cycle.
+            float3 silkBase = hsv2rgb(float3(fract(hueBase + hueDrift * 0.20),
+                                              0.55, 0.85));
+
             // Axial highlight fires when kL grazes strand at shallow angle (abs dot < 0.35).
-            float axial  = 1.0 + 0.6 * smoothstep(0.35, 0.05, abs(dot(tang2D, kL.xy)));
-            float emGain = baseEmissionGain + beatAccent;
-            float3 silk_col = silkBase * 0.60 * axial * emGain;
+            float axial = 1.0 + 0.6 * smoothstep(0.35, 0.05, abs(dot(tang2D, kL.xy)));
+
+            // Per-beat global emission pulse (V.7.7C.4 Fix C). Visual
+            // beat coupling without driving the build clock from beats —
+            // the chord laydown still uses audio-modulated TIME (D-095
+            // Decision 2 preserved), but every beat flashes the visible
+            // silk so the user perceives the connection. Coefficient
+            // tuned against PresetAcceptance D-037 invariant 3 (beat
+            // response ≤ 2× continuous + 1.0): test fixtures have
+            // `bass_att_rel = 0` so the threshold collapses to ≤ 1.0
+            // MSE/pixel; 0.06 stays under the floor while remaining
+            // visible against the brighter silk palette (0.85 silkTint).
+            // The CPU-side rising-edge spiral chord advance (Fix C in
+            // ArachneState.advanceSpiralPhase) provides the second
+            // beat-coupling channel without affecting per-pixel MSE.
+            float beatPulse = max(f.beat_bass, f.beat_composite);
+            float emGain    = baseEmissionGain + beatAccent + beatPulse * 0.06;
+
+            // Bumped silkTint factor 0.60 → 0.85 (V.7.7C.4 palette).
+            float3 silk_col = silkBase * 0.85 * axial * emGain;
             silk_col *= kLightCol;
-            silk_col += silkBase * kAmbCol * 0.25;
+            silk_col += silkBase * kAmbCol * 0.40;  // ambient lifted 0.25 → 0.40
             strandColor  += silk_col * delta;
             strandPseudo  = newStrandD;
             prevStrandCov = newStrandCov;

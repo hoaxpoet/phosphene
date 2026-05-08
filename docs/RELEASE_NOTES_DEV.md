@@ -6,6 +6,47 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-09-c] V.7.7C.4 — Arachne palette + L lock + hybrid audio coupling (D-095 follow-up #2)
+
+**Increment:** V.7.7C.4. **Decision:** D-095 follow-up. One commit.
+
+Three fixes from Matt's 2026-05-08T18-28-16Z manual smoke. WORLD reframe + spider movement deferred to separate increments per Matt's sequencing call.
+
+**Fix A — L key full-lock (`VisualizerEngine+Presets.swift`).** `handlePresetCompletionEvent` now guards on `diagnosticPresetLocked`. Pre-V.7.7C.4 the L key only suppressed mood-override switching (in `applyLiveUpdate`); the orchestrator continued to fire on `presetCompletionEvent` from PresetSignaling-conforming presets every ~60 s — pulling Matt off Arachne mid-build and preventing him from watching a full cycle. V.7.7C.4 fully suppresses completion-driven transitions when the L key is held. Manual `⌘[`/`⌘]` cycling always works.
+
+**Fix B — Palette enrichment (`Arachne.metal` foreground anchor block + hub knot).** Reverses V.7.5 §10.1.3's deliberate silk dimming after Matt's "color far too subtle" feedback. Three coordinated changes:
+
+- `silkTint` factor 0.60 → 0.85 (silk reads brighter against the WORLD backdrop).
+- Mood-driven hue base — valence shifts teal (cool, hue=0.55) → amber (warm, hue=0.10) along the §4.3 forest palette axis. Plus vocal-pitch coupling: when `stems.vocals_pitch_confidence ≥ 0.35`, log2-pitch around A3 (220 Hz) bakes into the hue (Gossamer-style coupling, mixed in by confidence × 0.6). Wider `hueDrift` factor (0.10 → 0.20) for visible motion across the build cycle.
+- Ambient tint factor 0.25 → 0.40 (ambient adds a stronger cool fill alongside the warm key).
+- Hub knot coverage 0.80 → 1.20 (saturated). Bumps the central knot from a faint smudge to a distinct emissive feature at radial-phase entry.
+
+**Fix C — Hybrid audio coupling (Arachne.metal silk emission + ArachneState advanceSpiralPhase).** Two channels of beat coupling that PRESERVE D-095 Decision 2 (audio-modulated TIME pacing, not beat-driven build). Matt's "no connection between tempo / beat of the song and the addition of radial lines and / or the chord segments" feedback addressed without inverting the V.7.7C.2 build-clock contract:
+
+- **Per-beat global emission pulse.** `emGain += beatPulse * 0.06` where `beatPulse = max(beat_bass, beat_composite)`. Coefficient 0.06 calibrated against PresetAcceptance D-037 invariant 3 (`beatMotion ≤ continuousMotion × 2.0 + 1.0`) — test fixtures have `bass_att_rel = 0` so the threshold collapses to ≤ 1.0 MSE/pixel; 0.06 stays under the floor while remaining visible against the new brighter silk palette. Visible flash on every beat without overwhelming the beat-as-accent hierarchy.
+- **Rising-edge beat advances spiralChordIndex by 1.** `advanceSpiralPhase(by:features:)` checks `max(beatBass, beatComposite)` rising edge against the new `prevBeatForSpiral` tracker (reset by `arachneState.reset()`). On a beat, advances the chord by 1 in addition to the time-based pace. Sparse-beat tracks still complete in `naturalCycleSeconds` (TIME-driven baseline preserved); kick-heavy tracks see chords lay faster on each beat. Pause-guard semantics preserved: gated on `effectiveDt > 0` so the `prevBeatForSpiral` tracker is still updated during spider pause but no chord advance fires.
+
+`ArachneState` gains `prevBeatForSpiral: Float = 0` (reset on `_reset()` to avoid the new segment's first beat being treated as a spurious continuation).
+
+**Tests.** Zero new test files. `bassTriggerStems` removed an unused parameter; `bassTriggerFV` already used `bassAttRel` (V.7.7C.3 fixture update). `advanceSpiralPhase` signature gained `features:` parameter — single CPU call site updated in `advanceBuildState`. PresetAcceptance D-037 invariant 3 caught my initial overshoot (coefficient 0.45 → 0.06 retune); the test infrastructure worked exactly as intended.
+
+**Golden hashes.** Substantial drift this time (palette enrichment + brighter hub IS exercised by every test that has visible silk, including `ArachneSpiderRenderTests` which warmups to frame phase 16% with partial bridge thread visible). Documented inline:
+
+- Arachne `steady` / `quiet`: `0xC6168081C0D88880` → `0x06129A65E458494D` (both fixtures converge).
+- Arachne `beatHeavy`: `0xC6168081C0D88880` → `0x0000000000000000` (the small beat-pulse contribution at PresetRegression's frame-phase-0 % composition produces consistent left-vs-right luma differences at every dHash row, collapsing the difference-bit pattern to all zeros).
+- Spider forced: `0x46160011C2D80800` → `0x06129A55C258494D`.
+
+**Engine + app suites.** Engine 1174/1175 pass — sole failure is the documented pre-existing `MetadataPreFetcher.fetch_networkTimeout` parallel-load timing flake. App suite: same documented timing-flake baseline as V.7.7C.2/C.3. 0 SwiftLint violations on touched files (file_length 400 line ceiling on `VisualizerEngine+Presets.swift` enforced — comment trimmed during landing).
+
+**Manual smoke pending.** Matt re-runs against Limit To Your Love or similar to verify:
+1. **L key now fully locks** — staying on Arachne for the full build cycle without orchestrator transitioning every ~60 s.
+2. **Color reads brighter** — silk has visible mood-driven hue, hub knot is distinct, beat events flash the silk perceptibly.
+3. **Build couples to music** — chord laydown advances on beats (extra chord on each kick, on top of the TIME-based pace).
+
+**Carry-forward.** WORLD reframe (atmospheric fog/light support framing instead of dark forest, per Matt's "I would rather you put fog and light behind the web") needs ARACHNE_V8_DESIGN.md §4 spec revision before implementation — separate increment. Spider movement (off-camera entry + 10–15 s walk along web hooks + min-visibility latch + N-segment cooldown) is the largest deferred — comparable to V.7.7D scope. V.7.10 cert review still gated on these.
+
+---
+
 ## [dev-2026-05-09-b] V.7.7C.3 — Arachne manual-smoke remediation (D-095 follow-up)
 
 **Increment:** V.7.7C.3. **Decision:** D-095 follow-up. One commit.
