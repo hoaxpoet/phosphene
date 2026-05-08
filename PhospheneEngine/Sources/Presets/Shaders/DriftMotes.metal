@@ -17,6 +17,12 @@
 // is a deviation primitive — D-026 — so cold and warm sections of a track
 // produce comparable shaft brightness without absolute thresholds).
 
+// Empirical fog tuning. Anticipated to shift in DM.3 (emission rate
+// scaling will redistribute density) and during M7 contact-sheet review
+// against `01_atmosphere_dust_motes_light_shaft.jpg`.
+constexpr constant float kFogTintAmplifier    = 3.5f;
+constexpr constant float kFogDensityNormalize = 0.05f;
+
 fragment float4 drift_motes_sky_fragment(
     VertexOut in [[stage_in]],
     constant FeatureVector& f [[buffer(0)]]
@@ -33,15 +39,15 @@ fragment float4 drift_motes_sky_fragment(
     // Map uv.y → world-space height so the utility gives non-zero density
     // in the lower band of the frame. uv.y=1.0 (frame floor) → p.y=0; uv.y=0.0
     // (zenith) → p.y=1.0. Scale 12.0 controls overall density; falloff 0.85
-    // is the exponential decay rate. The 0.05 multiplier on the returned
-    // density tunes the visual band thickness — empirically, higher values
-    // bleed fog into the upper-mid frame where the shaft anchor lives.
+    // is the exponential decay rate. `kFogDensityNormalize` rescales the
+    // density into a visible band thickness; higher values bleed fog into
+    // the upper-mid frame where the shaft anchor lives.
     float3 fogPos     = float3(0.0, max(0.0, 1.0 - uv.y), 0.0);
     float  fogDensity = vol_density_height_fog(fogPos, 12.0, 0.85);
-    float  fogMask    = clamp(fogDensity * 0.05, 0.0, 1.0);
+    float  fogMask    = clamp(fogDensity * kFogDensityNormalize, 0.0, 1.0);
     float3 fogColor   = float3(0.18, 0.20, 0.24);
     // Multiplicative composite (warm sky × cool fog → desaturated shadow).
-    col = mix(col, col * fogColor * 3.5, fogMask);
+    col = mix(col, col * fogColor * kFogTintAmplifier, fogMask);
 
     // ── 3. Light shaft (ls_radial_step_uv) ────────────────────────────────
     // Sun anchor at UV (-0.15, 1.20): off-screen upper-left. Shaft axis runs
