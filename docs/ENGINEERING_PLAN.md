@@ -1394,6 +1394,29 @@ Per-preset state setup handles Arachne (allocates `ArachneState`, warms 30 ticks
 
 ---
 
+### Increment V.7.7C.3 — Arachne manual-smoke remediation: chord-by-chord spiral + V.7.5 pool retire + branchAnchors polygon + spider trigger reformulation ✅ 2026-05-09
+
+**Prerequisite:** V.7.7C.2 single-foreground build state machine ✅ 2026-05-09.
+
+**Scope:** Close four issues surfaced by Matt's 2026-05-08T17-01-15Z manual smoke that V.7.7C.2's deferred-sub-items list either deferred or did not anticipate. (1) Chord-by-chord spiral visibility gate — replace per-ring gate with per-chord gate so chords lay one-at-a-time outside-in, not full-ring complete ovals. (2) Retire V.7.5 spawn/eviction from rendering — disable shader pool loop entirely so flash-and-fade transient webs no longer compete with the foreground build. (3) Polygon vertices from `branchAnchors` (V.7.7C.2 deferred sub-item #4 lifted from deferred) — pack `bs.anchors[]` into `webs[0].rngSeed`; shader decodes + ray-clips spokes to polygon perimeter + uses irregular polyV[] for frame thread vertices with bridge-first stage-0 reveal. (4) Spider trigger reformulated — V.7.5 `subBass + bassAttackRatio < 0.55` gate confirmed acoustically impossible on real music (Failed Approach #57); replace with `bassAttRel` envelope primitive (same primitive the §8.2 vibration path uses correctly). Single commit. No new tests; only fixture-helper updates + golden hash regen (spider only).
+
+**Done when:**
+
+- ✅ Per-chord spiral visibility gate in `arachneEvalWeb`: `int totalChordCount = N_RINGS * nSpk; int visibleChordCount = (stage >= 3u) ? totalChordCount : ((stage == 2u) ? int(progress * totalChordCount) : 0)`. Inner spoke loop skips chords with `globalChordIdx >= visibleChordCount`. Sweep order: outside-in by ring (k=0 outermost, first), clockwise-by-spoke within each ring (`globalChordIdx = k * nSpk + si`).
+- ✅ V.7.5 pool spawn/eviction retired from rendering: shader's pool loop bound changed from `wi < kArachWebs` to `wi < 1` (empty body retained as a structural marker for the future §5.12 background-web flush). CPU-side spawn/eviction state continues to advance harmlessly so `ArachneState` unit tests still cover the spawn machinery; nothing reaches the shader.
+- ✅ Polygon-from-branchAnchors path: new `Self.packPolygonAnchors(_:)` static helper on `ArachneState` packs up to 6 anchor indices (4 bits count + 6 × 4 bits indices) into a single `UInt32`. `writeBuildStateToWebs0` writes the packed value to `webs[0].rngSeed`. Three new shader helpers above `arachneEvalWeb`: `decodePolygonAnchors`, `rayPolygonHit`, `findBridgeIndex`. `arachneEvalWeb` extended with `int polyCount, thread const float2 *polyV` parameters. Inside: squash transform bypassed in polygon mode; spoke tip computation clipped to polygon (used for both alternating-pair tipPos[] and sequential sdTip[]); frame thread polygon vertices come from polyV[] with bridge-first stage-0 reveal (`edgeIdx = (bridgeIdx + fi) % frameVCount`); spiral chord positions scaled along each spoke's polygon-clipped length (`pI = sdTip[si] * fracR + sag`, `fracR = ringR / r_outer`). V.7.5 fallback path preserved bytewise when `polyCount = 0`. Three call sites updated.
+- ✅ Spider trigger reformulated: `features.subBass > 0.30 AND stems.bassAttackRatio > 0 AND < 0.55` → `features.bassAttRel > Self.bassAttRelThreshold` (0.30). AR gate retired; brief kick pulses filtered by existing 0.75 s sustain-accumulator threshold. Trigger log line shows `bassAttRel` alongside `subBass` for diagnostic continuity.
+- ✅ Targeted suites pass (`PresetAcceptance` 56/56 + `StagedComposition` + `StagedPresetBufferBinding` + `ArachneState` + `ArachneStateBuild` 11/11 + `ArachneListeningPose` + `ArachneBranchAnchors` + `PresetLoaderCompileFailure` + `PresetRegression` + `ArachneSpiderRender`). 0 SwiftLint violations on touched files. Engine 1169/1171 pass (2 documented pre-existing flakes).
+- ✅ Golden hashes regenerated. Arachne `steady` / `beatHeavy` / `quiet` UNCHANGED at `0xC6168081C0D88880` (PresetRegression doesn't bind slot 6/7 → polyCount=0 V.7.5 fallback + frame phase at 0 % progress = WORLD-only composition). Spider forced: `0x461E381912D80800` → `0x46160011C2D80800` (7 bits drift; within dHash 8-bit tolerance — polygon-aware spoke clipping visibly affects only partial-bridge-thread pixels under the spider patch at the harness's frame-phase warmup).
+- ✅ Spider tests updated for `bassAttRel` primitive: `subBassFV()` in `ArachneStateTests` + `bassTriggerFV()` in `ArachneStateBuildTests` set `f.bassAttRel = 0.40` (above threshold). `ArachneSpiderRenderTests` calls `state.reset()` before warmup so polygon path is exercised; `PresetAcceptanceTests` slot-6 buffer additionally seeds packed polygon at `webs[0].rngSeed` (byte offset 28).
+- ✅ `D-095` follow-up section filed in `docs/DECISIONS.md` documenting all four fixes + V.7.7C.2 contract preservation guarantees + Failed Approach #57.
+
+**Verify:** Build → `PresetLoaderCompileFailureTest` → targeted suites pre-golden → visual harness sanity check → golden hash regen (spider only) → targeted suites post-golden → full engine + app suites → SwiftLint → manual smoke re-run (Matt watches build cycle on real music; verifies chord-by-chord lay, no transient web churn, irregular polygon, spider triggers on Limit To Your Love sub-bass drop).
+
+**Carry-forward:** Manual-smoke re-run on real music (Matt). On green: V.7.10 cert review. Three V.7.10 follow-ups remain: per-chord drop accretion via chord-age side buffer; anchor-blob discs at polygon vertices (§5.9 part 2); background-web migration crossfade rendered visual.
+
+---
+
 ### Increment V.8.0-spec — Arachne3D: parallel-preset commit + four pushbacks ✅ 2026-05-08 (D-096)
 
 **Scope.** Doc-only spec validation session against four pushbacks (perf budget honesty, screen-space refraction artifact, chromatic dispersion, parallel-preset feasibility). No code changed. Establishes the architectural commitments for V.8.1 onward: parallel preset (`Arachne3D` alongside V.7.7D `Arachne`), sampled WORLD backdrop, screen-space refraction with documented edge artifact, chromatic dispersion in V.8.2 (silhouette-band approach), Tier-1 mitigations (noSSGI default + capped drops + half-res lighting). System-wide reframe ("same visual conversation, not pixel-match") adopted as cert principle for the full preset ladder.
@@ -2876,6 +2899,60 @@ Engine snapshot path: `VisualizerEngine.@Published var dashboardSnapshot: Dashbo
 - [x] PERF card collapses to one row in healthy state; FRAME shows headroom + status colour.
 - [x] Engine + app builds clean. New + updated builder tests + 5 view-model tests pass. Dashboard test count 27 (was 39 with the DASH.6 GPU readback tests, now leaner). 0 SwiftLint violations on touched files.
 - [x] D-087 captures: pivot rationale (Metal-path justifications didn't materialize), what survives (Sendable builders + tokens + layout + snapshot value types), retirement of D-086, throttle-vs-buffer-update tradeoff, how the SwiftUI overlay handles the STEMS timeseries cleanly, .impeccable collapse rule for PERF.
+
+---
+
+## Phase DM — Drift Motes (particles preset)
+
+A second particles-family preset (sibling to Murmuration). Particles drift in a directional force field through a single dramatic god-ray light shaft — **not** a flock. See `docs/presets/DRIFT_MOTES_DESIGN.md` and `docs/VISUAL_REFERENCES/drift_motes/Drift_Motes_Rendering_Architecture_Contract.md`.
+
+DM.1 was paused at an architectural blocker: the existing `["feedback", "particles"]` pass dispatch is hardwired to Murmuration's `ProceduralGeometry` (single `particle_update` MSL function looked up by name, single Murmuration-tuned configuration). Plugging Drift Motes into that path would render Murmuration's flocking starlings over Drift Motes' sky backdrop. **DM.0** introduces a `ParticleGeometry` protocol so each particle preset can ship its own conformer; **DM.1** then implements Drift Motes' conformer.
+
+### Increment DM.0 — `ParticleGeometry` protocol introduction ✅ 2026-05-08
+
+**Scope:** Pure refactor. Introduce `ParticleGeometry` protocol; make `ProceduralGeometry` conform without behavior change; route `RenderPipeline` and `VisualizerEngine` through the protocol. Murmuration is the only conformer at end of DM.0.
+
+**Delivered:**
+- New `PhospheneEngine/Sources/Renderer/Geometry/ParticleGeometry.swift` — `AnyObject, Sendable` protocol with three members: `update(features:stemFeatures:commandBuffer:)`, `render(encoder:features:)`, `activeParticleFraction: Float { get set }`. Doc-commented per member; `// MARK: - ParticleGeometry` not added to `ProceduralGeometry.swift` (existing lifecycle MARKs are clearer than collapsing into one section — diff stays minimal).
+- `ProceduralGeometry` declares `: ParticleGeometry` conformance. Method signatures already matched the protocol — zero body changes; +8/−1 lines, all in the class doc-comment block.
+- `RenderPipeline.particleGeometry` storage and `setParticleGeometry(_:)` API typed `(any ParticleGeometry)?`. `FeedbackDrawContext.particles`, `drawDirect(...)` and `drawParticleMode(...)` parameter types widened to match. Dispatch logic byte-identical.
+- `VisualizerEngine.makeParticleGeometry` factory return type widened to `(any ParticleGeometry)?`. Construction logic unchanged — the Murmuration branch is the only branch.
+- `CLAUDE.md` Module Map gains `Geometry/ParticleGeometry` row; `What NOT To Do` gains a "do not parameterize ProceduralGeometry to host non-Murmuration behavior" rule.
+- `docs/DECISIONS.md` D-097 — "Particle preset architecture: siblings, not subclasses." Rejects parameterized common pipeline; documents the protocol surface and engine wiring.
+
+**Done when:**
+- [x] `ParticleGeometry` protocol exists with a minimal, documented surface.
+- [x] `ProceduralGeometry` conforms to `ParticleGeometry` with a near-zero-change diff.
+- [x] `VisualizerEngine` and `RenderPipeline` route through the protocol; no concrete `ProceduralGeometry` references outside the type's own file (verified via `grep -rn "ProceduralGeometry" PhospheneEngine/Sources/`).
+- [x] `PresetRegressionTests` passes with all 14 presets × 3 fixtures green — Murmuration's dHash is bit-identical.
+- [x] All other tests pass (1169/1171; the two failures are pre-existing parallel-load timing flakes — `MetadataPreFetcher.fetch_networkTimeout` and `SoakTestHarness.cancel()` — both pass when re-run in isolation).
+- [x] `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build` succeeds.
+- [x] `Particles.metal` and the `Particle` struct memory layout are byte-identical across the increment.
+- [x] CLAUDE.md / DECISIONS.md / ENGINEERING_PLAN.md updated.
+- [x] All commits use `[DM.0]` prefix.
+
+**Verify:**
+
+```bash
+xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build
+swift test --package-path PhospheneEngine --filter PresetRegressionTests
+swift test --package-path PhospheneEngine
+grep -rn "ProceduralGeometry" PhospheneEngine/Sources/   # only matches inside Geometry/ProceduralGeometry.swift + doc-comments
+ls PhospheneEngine/Sources/Presets/Shaders/ | grep -i drift   # zero matches (DM.0 ships no preset)
+git diff <pre-DM.0> HEAD -- PhospheneEngine/Sources/Renderer/Shaders/Particles.metal   # zero output
+```
+
+**Estimated sessions:** 1.0 (this session itself).
+
+**Status:** ✅ landed 2026-05-08.
+
+**Carry-forward:** DM.1 resumes with one revision to its Task 6 (pass wiring) — Drift Motes ships its own `DriftMotesGeometry: ParticleGeometry` conformer rather than treating Murmuration's path as inherited infrastructure. `VisualizerEngine.makeParticleGeometry` gains a Drift Motes branch.
+
+### Increment DM.1 — Drift Motes Session 1 (foundation) ⏳
+
+**Scope (resumes post-DM.0):** Compute kernel + sprite render + sky backdrop. Force-field motion (wind + curl_noise + lifecycle recycle), no flocking, no audio coupling beyond the D-019 stem-warmup blend. `DriftMotesNonFlockTest` is the acceptance gate. See `prompts/DRIFT_MOTES_SESSION_1_PROMPT.md`.
+
+**Status:** paused at DM.1's first attempt (no code written, blocker reported); resumable post-DM.0.
 
 ---
 
