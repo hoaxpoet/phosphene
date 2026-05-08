@@ -115,6 +115,21 @@ static float arachHash(uint seed) {
     return float(seed) * (1.0 / 4294967296.0);
 }
 
+/// Same bit-mixing scheme as `arachHash` but returns the scrambled uint
+/// instead of a float. V.7.7C.5.1 (D-100 follow-up) uses this to derive a
+/// uniform-random per-segment macro-shape seed from `webs[0].rng_seed`,
+/// whose bits 0–27 carry the polygon-anchor packing (V.7.7C.3 — see
+/// `ArachneState.packPolygonAnchors`) and would otherwise read as a
+/// structured non-uniform value when fed to `arachSpokeCount` etc.
+static uint arachHashU32(uint seed) {
+    seed = (seed ^ 61u) ^ (seed >> 16u);
+    seed *= 9u;
+    seed ^= (seed >> 4u);
+    seed *= 0x27d4eb2du;
+    seed ^= (seed >> 15u);
+    return seed;
+}
+
 /// Nearest distance from p to line segment a→b (used by spider legs only).
 static float arachSegDist(float2 p, float2 a, float2 b) {
     float2 ab = b - a, ap = p - a;
@@ -212,20 +227,52 @@ constant float2 kBranchAnchors[6] = {
 static float3 drawWorld(float2 uv, float4 moodRow, float accTime, float midAttRel) {
     float v = clamp(moodRow.x, -1.0, 1.0);
     float a = clamp(moodRow.y, -1.0, 1.0);
+    float arousalNorm = saturate(0.5 + 0.5 * a);
+    float valenceNorm = saturate(0.5 + 0.5 * v);
 
-    // §4.3 mood palette — preserved verbatim from the 2026-05-02 spec (Q10).
-    float topHue   = mix(0.62, 0.05, saturate(0.5 + 0.5 * v));
-    float botHue   = mix(0.58, 0.08, saturate(0.5 + 0.5 * v));
-    float satScale = 0.25 + 0.40 * saturate(0.5 + 0.5 * a);
-    float valScale = 0.10 + 0.20 * saturate(0.5 + 0.5 * a);
+    // V.7.7C.5.1 (D-100 follow-up) — §4.3 palette pumped + audio-cycled.
+    //
+    // Pre-V.7.7C.5.1 spec used satScale 0.25–0.65 / valScale 0.10–0.30. Q10
+    // locked this verbatim from the 2026-05-02 spec when the WORLD was the
+    // six-layer forest — the muted palette read as "moody atmosphere" with
+    // the forest providing compositional richness. V.7.7C.5's atmospheric
+    // reframe retired the forest; the bare gradient exposed the muteness as
+    // "psych ward" (Matt's 2026-05-08T22-01-07Z smoke).
+    //
+    // V.7.7C.5.1 pumps both ranges (sat 0.55–0.95, val 0.30–0.70) and adds
+    // a slow accumulated_audio_time hue cycle on top of the valence-driven
+    // base hue. Cross-preset silence anchor (Q11) keyed on raw mood product
+    // so deep-negative mood collapse → black still fires; vivid baseline
+    // applies everywhere else.
+    //
+    // Silence anchor (Q11): pure black when mood signal collapses to deep
+    // negative quadrant (a, v both strongly negative). Preserves cross-preset
+    // convention (ref 08). Fires when arousalNorm × valenceNorm < 0.05 → both
+    // a < ~-0.5 AND v < ~-0.5 simultaneously.
+    if (arousalNorm * valenceNorm < 0.05) return float3(0.0);
 
-    // Silence anchor: pure black when mood signal collapses (Q11; ref 08).
-    if (satScale * valScale < 0.04) return float3(0.0);
+    // Mood-biased base hues (Q10 axis: cool teal → warm amber by valence).
+    float topHueBase = mix(0.62, 0.05, valenceNorm);
+    float botHueBase = mix(0.58, 0.08, valenceNorm);
+
+    // Audio-time hue cycle (~25 s period at accTime rate 0.04). ±0.15 hue
+    // swing keeps the cycle psychedelic but doesn't dominate the mood
+    // mapping. Top/bottom phase-offset by 0.5 cycles so the gradient never
+    // collapses to a single hue. Pauses at silence (FA #33 compliance —
+    // accTime is the FA-#33-safe substitute when beat_phase01 isn't carried).
+    float cycle = accTime * 0.04;
+    float topHue = fract(topHueBase + sin(cycle * 6.28318) * 0.15);
+    float botHue = fract(botHueBase + cos(cycle * 6.28318 + 3.14159) * 0.15);
+
+    // Pumped saturation/value — vivid even at low arousal.
+    float satScale = 0.55 + 0.40 * arousalNorm;  // 0.55–0.95
+    float valScale = 0.30 + 0.40 * arousalNorm;  // 0.30–0.70
 
     float3 topCol  = hsv2rgb(float3(topHue, satScale, valScale * 1.2));
     float3 botCol  = hsv2rgb(float3(botHue, satScale * 0.85, valScale));
-    float3 beamCol = hsv2rgb(float3(mix(0.6, 0.08, saturate(0.5 + 0.5 * v)),
-                                      0.5, 0.4));
+    float3 beamCol = hsv2rgb(float3(mix(0.6, 0.08, valenceNorm),
+                                      saturate(satScale * 0.7),
+                                      valScale * 1.4));
 
     // ── §4.2.1 Sky band — full frame ──────────────────────────────────────
     // Spec wording is `mix(botCol, topCol, uv.y)` with uv.y measured up; our
@@ -270,8 +317,22 @@ static float3 drawWorld(float2 uv, float4 moodRow, float accTime, float midAttRe
     // source, not a faint overlay).
     float shaftBrightness = 0.30 * valScale;
 
-    // Engagement gate — §4.2.2: f.mid_att_rel > 0.05 (lowered from 0.10).
-    float midGate = smoothstep(0.05, 0.15, midAttRel);
+    // V.7.7C.5.1 (D-100 follow-up) — engagement gate reformulated from
+    // binary to floor-plus-scale. Pre-V.7.7C.5.1 used `smoothstep(0.05,
+    // 0.15, midAttRel)` per spec §4.2.2 — engages only when mid is
+    // sustained ABOVE AGC running average. On real AGC-warmed playlists
+    // (Matt's 2026-05-08T22-01-07Z smoke: 4705-frame Arachne windows,
+    // mean midAttRel ≈ -0.5, max never reached 0.05) the shaft never
+    // engaged → "no light shaft appreciated".
+    //
+    // V.7.7C.5.1 floors engagement at 25% always-on (so shafts are always
+    // part of the WORLD identity, never structurally invisible) and
+    // scales to 100% on positive deviation. Visual: shafts visible at
+    // baseline brightness, brightening during melody-rich passages.
+    // The 25% floor combined with the 0.30 × valScale brightness
+    // coefficient means a silent-music shaft contributes ~0.075 × valScale
+    // — perceptible but not dominant.
+    float midGate = 0.25 + 0.75 * smoothstep(-0.20, 0.10, midAttRel);
 
     // Primary shaft: Gaussian falloff perpendicular to axis × 1D axial noise
     // for "discrete shafts inside a cone" reading (§4.2.2 — uniform glow is
@@ -501,14 +562,15 @@ static ArachneWebResult arachneEvalWeb(
         float hB = fbm4(float3(hubN * 2.3 + float2(1.27, 0.74), seedF + 0.5)) * 0.5 + 0.5;
         float raw = min(hA, hB);
         // Threshold at 0.54→0.43: fbm4 remapped to [0,1], gives ~35% strand density.
-        // V.7.7C.4 / D-095 follow-up — hub coverage bumped 0.80 → 1.20 so the
-        // central knot reads as a bright source rather than a faint smudge
-        // (Matt's 2026-05-08T18-28-16Z smoke flagged "color far too subtle").
-        // Coverage is later channelled through `result.strandCov` and picked
-        // up by the brighter silkTint factor (0.60 → 0.85) downstream — the
-        // combined effect lifts the hub from a barely-visible dot to a
-        // distinct emissive knot at radial-phase entry.
-        hubCov = smoothstep(0.54, 0.43, raw) * 1.20
+        // V.7.7C.5.1 (D-100 follow-up) — hub coverage 1.20 → 0.70 to match
+        // the dimmer silk luminescence (silkTint 0.85 → 0.55, halos halved).
+        // V.7.7C.4 had pumped hub to 1.20 + silkTint to 0.85 to compensate
+        // for V.7.5's deliberate dim silk; V.7.7C.5's canvas-filling foreground
+        // made that bright-pumped silk dominate as toddler-scribble heavy
+        // lines (Matt's 2026-05-08T22-01-07Z smoke). V.7.7C.5.1 returns the
+        // silk to fine-detail weight without re-creating the V.7.5 muteness
+        // problem — backdrop saturation gets the visual lift instead.
+        hubCov = smoothstep(0.54, 0.43, raw) * 0.70
                * smoothstep(hubR, hubR * 0.15, rT);  // fade at exact center
         hubCov = saturate(hubCov);
         // Hub tangent is degenerate — keep default (1,0)
@@ -581,11 +643,17 @@ static ArachneWebResult arachneEvalWeb(
     }
 
     float anchorFade   = rT > webR ? exp(-(rT - webR) * 8.0) : 1.0;
-    float spokeW       = mix(0.0024, 0.0014, taper);
-    float spokeHaloSig = max(webR * 0.014, 1e-4);
+    // V.7.7C.5.1 (D-100 follow-up) — line widths halved for canvas-filling
+    // scale. At V.7.7C.4 webR=0.22 the silk read balanced; at V.7.7C.5
+    // webR=0.55 the polygon scaled 2.5× but lines didn't, producing the
+    // "toddler scribble" reading Matt flagged on the 2026-05-08T22-01-07Z
+    // smoke. Halving brings strand weight back into proportion with the
+    // canvas-filling polygon — lets density read as elaborate detail.
+    float spokeW       = mix(0.0010, 0.0006, taper);
+    float spokeHaloSig = max(webR * 0.008, 1e-4);
     float spokeCov     = smoothstep(spokeW + aaW, spokeW - aaW, minSpokeDist) * anchorFade;
     float spokeHalo    = exp(-minSpokeDist * minSpokeDist / (spokeHaloSig * spokeHaloSig))
-                        * 0.38 * anchorFade;
+                        * 0.20 * anchorFade;
 
     // ── Frame thread polygon — segment-by-segment reveal during stage 0 ──────
     //
@@ -643,11 +711,12 @@ static ArachneWebResult arachneEvalWeb(
             minFrameDist = min(minFrameDist, fd);
         }
     }
-    float frameW    = mix(0.0022, 0.0013, taper);
+    // V.7.7C.5.1 (D-100 follow-up) — frame thread width halved (matches spoke).
+    float frameW    = mix(0.0010, 0.0006, taper);
     float frameFade = rT > webR ? exp(-(rT - webR) * 6.0) : 1.0;
     float frameCov  = smoothstep(frameW + aaW, frameW - aaW, minFrameDist) * frameFade;
     float frameHalo = exp(-minFrameDist * minFrameDist / (spokeHaloSig * spokeHaloSig))
-                    * 0.22 * frameFade;
+                    * 0.11 * frameFade;
 
     // ── Chord-segment capture spiral — outside-in construction (V.7.8) ──────────
     // Replaces Archimedean SDF. Each "ring" k is a polygon of N chord segments
@@ -697,8 +766,9 @@ static ArachneWebResult arachneEvalWeb(
                    : webR * sdDir[si];
     }
 
-    float spirW   = 0.0013;
-    float spirSig = max(webR * 0.009, 1e-4);
+    // V.7.7C.5.1 (D-100 follow-up) — spiral chord width halved.
+    float spirW   = 0.0007;
+    float spirSig = max(webR * 0.005, 1e-4);
 
     // V.7.7C.3 / D-095 — per-chord visibility gate. Pre-V.7.7C.3 the gate was
     // per-ring (`k / N_RINGS <= progress`) so an entire ring's chord segments
@@ -807,7 +877,8 @@ static ArachneWebResult arachneEvalWeb(
 
     float inZone = (rT >= r_inner && rT <= r_outer + spirW * 2.0) ? 1.0 : 0.0;
     spirCov  = smoothstep(spirW + aaW, spirW - aaW, minChordDist) * inZone;
-    spirHalo = exp(-minChordDist * minChordDist / (spirSig * spirSig)) * 0.25 * inZone;
+    // V.7.7C.5.1 (D-100 follow-up) — spiral halo magnitude halved.
+    spirHalo = exp(-minChordDist * minChordDist / (spirSig * spirSig)) * 0.13 * inZone;
 
     // ── §4.4 Dominant strand tangent (spoke or chord) ─────────────────────────
     if (rT >= hubR * 1.5) {
@@ -1202,7 +1273,32 @@ fragment float4 arachne_composite_fragment(
     // Per-chord drop accretion + anchor-blob discs at polygon vertices +
     // background-web migration crossfade visual are deferred (see D-095).
     {
-        uint   ancSeed = 1984u;
+        // V.7.7C.5.1 (D-100 follow-up) — per-segment macro-shape variation.
+        //
+        // Pre-V.7.7C.5.1 the foreground hero web had `ancSeed = 1984u` hardcoded,
+        // so spoke count, aspect, sag, hub jitter, and per-spoke angular jitter
+        // were identical every Arachne instance — Matt's 2026-05-08T22-01-07Z
+        // smoke flagged this as "should the preset draw the SAME web in the SAME
+        // position EVERY time?". The polygon vertex *selection* already varied
+        // per segment (`ArachneState.reset()` Fisher-Yates), but macro shape
+        // was locked.
+        //
+        // Fix: derive `ancSeed` from `webs[0].rng_seed`, which `ArachneState`
+        // refreshes on each preset bind via `lcg(&rng)`. The lower 28 bits of
+        // `rng_seed` carry the polygon-anchor packing (V.7.7C.3 — see
+        // `packPolygonAnchors`), so a uint hash scrambles the structured bits
+        // back into a uniform-random seed for the macro-shape helpers.
+        //
+        // FUTURE OPTIONS (deferred from V.7.7C.5.1):
+        //   - Option B: per-track determinism. Plumb a track-identity hash into
+        //     `ArachneState.reset(trackSeed:)` so the same track always gets
+        //     the same web. Adds Swift wiring + a Renderer hook on track change.
+        //   - Option C: track + session-counter perturbation. Per-track base
+        //     seed gives identity; LCG step per-replay gives variant on Nth
+        //     listen. Variety + association.
+        // Documented in DECISIONS.md D-100 carry-forward + ENGINEERING_PLAN
+        // V.7.7C.5.2 stub.
+        uint   ancSeed = arachHashU32(webs[0].rng_seed ^ 0xCA51u);
         float2 ancHub  = float2(0.5, 0.5) + arachHubJitter(ancSeed);
 
         // V.7.7C.2 / D-095 — derive (stage, progress) from webs[0] Row 5.
@@ -1283,8 +1379,12 @@ fragment float4 arachne_composite_fragment(
             float3 silkBase = hsv2rgb(float3(fract(hueBase + hueDrift * 0.20),
                                               0.55, 0.85));
 
-            // Axial highlight fires when kL grazes strand at shallow angle (abs dot < 0.35).
-            float axial = 1.0 + 0.6 * smoothstep(0.35, 0.05, abs(dot(tang2D, kL.xy)));
+            // Axial highlight fires when kL grazes strand at shallow angle.
+            // V.7.7C.5.1 (D-100 follow-up) — coefficient 0.6 → 0.3 to match
+            // the lighter overall silk weight (line widths halved, silkTint
+            // 0.85 → 0.55). The grazing-angle accent stays present but
+            // doesn't dominate the strand colour.
+            float axial = 1.0 + 0.3 * smoothstep(0.35, 0.05, abs(dot(tang2D, kL.xy)));
 
             // Per-beat global emission pulse (V.7.7C.4 Fix C). Visual
             // beat coupling without driving the build clock from beats —
@@ -1315,10 +1415,16 @@ fragment float4 arachne_composite_fragment(
             float beatPulse = max(f.beat_bass, f.beat_composite);
             float emGain    = baseEmissionGain + beatAccent + beatPulse * 0.025;
 
-            // Bumped silkTint factor 0.60 → 0.85 (V.7.7C.4 palette).
-            float3 silk_col = silkBase * 0.85 * axial * emGain;
+            // V.7.7C.5.1 (D-100 follow-up): silkTint 0.85 → 0.55, ambient
+            // tint factor 0.40 → 0.20. Pulls silk back to fine-detail weight
+            // so the elaborate canvas-filling polygon reads as detail, not
+            // toddler-scribble. Matt's 2026-05-08T22-01-07Z smoke: "lines and
+            // luminescence on them do not need to be so heavy". Compensated
+            // by re-saturating the §4.3 backdrop palette so the visual
+            // weight shifts to the WORLD pillar.
+            float3 silk_col = silkBase * 0.55 * axial * emGain;
             silk_col *= kLightCol;
-            silk_col += silkBase * kAmbCol * 0.40;  // ambient lifted 0.25 → 0.40
+            silk_col += silkBase * kAmbCol * 0.20;
             strandColor  += silk_col * delta;
             strandPseudo  = newStrandD;
             prevStrandCov = newStrandCov;
