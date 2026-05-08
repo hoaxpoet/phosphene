@@ -421,39 +421,6 @@ If the wider window also produces an out-of-band BPM estimate (slope still > 5 m
 
 ---
 
-### BUG-002 — PresetVisualReviewTests PNG export broken for staged presets
-
-**Severity:** P2
-**Domain tag:** preset.fidelity
-**Status:** Resolved
-**Introduced:** V.7.7A (staged-composition scaffold)
-**Resolved:** 2026-05-07 by QR.3 (commit on `[QR.3] tests: integration / connector / ML golden + docs`).
-
-**Expected behavior:** `RENDER_VISUAL=1 swift test --filter PresetVisualReviewTests` produces per-stage PNG contact sheets for Arachne (and any other staged preset) under `/tmp/phosphene_visual/<timestamp>/`.
-
-**Actual behavior:** The export throws `cgImageFailed` for any staged preset's PNG output. Non-staged presets are unaffected.
-
-**Reproduction steps:**
-1. `RENDER_VISUAL=1 swift test --filter PresetVisualReviewTests`
-2. Observe `cgImageFailed` error for Arachne (staged); other presets export normally.
-
-**Minimum reproducer:** Any staged preset under `RENDER_VISUAL=1`.
-
-**Session artifacts:** Console output from the test run.
-
-**Suspected failure class:** pipeline-wiring
-**Evidence:** `PresetVisualReviewTests.makeBGRAPipeline` calls `Bundle.module.url(forResource: "Shaders")` from the test target bundle (which has no Shaders resource). Staged presets require the `arachne_world_fragment` and `arachne_composite_fragment` functions which live in `Bundle(for: PresetLoader.self)`. The source lookup fails before the pipeline is built.
-
-**Verification criteria:**
-- [x] `RENDER_VISUAL=1 swift test --filter PresetVisualReviewTests` produces at least one PNG per stage for Arachne without `cgImageFailed` — verified at QR.3 land time, 16 PNGs across 5 preset cases (Arachne / Gossamer / Volumetric Lithograph non-staged + Staged Sandbox + Arachne staged).
-- [x] Per-stage tiles emitted: `Arachne_silence_world.png`, `Arachne_silence_composite.png`, etc.
-
-**Fix scope:** Initial plan was `Bundle(for: PresetLoader.self)` but that does not work in SPM (library targets statically link into the test executable, so `Bundle(for:)` resolves to the test bundle, not the Presets bundle). Resolved by adding `public static var PresetLoader.bundledShadersURL: URL?` that returns `Bundle.module.url(forResource: "Shaders", ...)` from inside the Presets module (where `Bundle.module` resolves correctly), and pointing `makeBGRAPipeline` at it.
-
-**Related:** V.7.7A, D-072, D-090.
-
----
-
 ### BUG-003 — DSP.3.6 / DSP.3.7 tests not yet implemented
 
 **Severity:** P3
@@ -890,3 +857,38 @@ These test failures are pre-existing, environment-dependent, and do not indicate
 **Consequence for planned sessions:** Pre-analyzed `TrackProfile.stemEnergyBalance` has dev≈0 (EMA converged over 30-second preview); stem affinity is neutral (0.5) for all presets in planned-session scoring. Golden session sequences updated in `GoldenSessionTests.swift` — VL no longer wins on a stem bonus.
 
 **Verification:** `swift test --filter StemAffinityScoring && swift test --filter GoldenSession && swift test --filter LiveAdapter` — all pass. 1084 total engine tests, 1 pre-existing flake (MetadataPreFetcher network timeout).
+
+---
+
+### BUG-002 — PresetVisualReviewTests PNG export broken for staged presets
+
+**Severity:** P2
+**Domain tag:** preset.fidelity
+**Status:** Resolved
+**Introduced:** V.7.7A (staged-composition scaffold)
+**Resolved:** 2026-05-07 by QR.3 (commit on `[QR.3] tests: integration / connector / ML golden + docs`).
+
+**Note:** Moved from Open section to Resolved section by `[V.7.7B prep]` 2026-05-07 — entry was already marked Resolved but physically remained in Open, the documentation drift the V.7.7B prep prompt corrected.
+
+**Expected behavior:** `RENDER_VISUAL=1 swift test --filter PresetVisualReviewTests` produces per-stage PNG contact sheets for Arachne (and any other staged preset) under `/tmp/phosphene_visual/<timestamp>/`.
+
+**Actual behavior:** The export throws `cgImageFailed` for any staged preset's PNG output. Non-staged presets are unaffected.
+
+**Reproduction steps:**
+1. `RENDER_VISUAL=1 swift test --filter PresetVisualReviewTests`
+2. Observe `cgImageFailed` error for Arachne (staged); other presets export normally.
+
+**Minimum reproducer:** Any staged preset under `RENDER_VISUAL=1`.
+
+**Session artifacts:** Console output from the test run.
+
+**Suspected failure class:** pipeline-wiring
+**Evidence:** `PresetVisualReviewTests.makeBGRAPipeline` calls `Bundle.module.url(forResource: "Shaders")` from the test target bundle (which has no Shaders resource). Staged presets require the `arachne_world_fragment` and `arachne_composite_fragment` functions which live in `Bundle(for: PresetLoader.self)`. The source lookup fails before the pipeline is built.
+
+**Verification criteria:**
+- [x] `RENDER_VISUAL=1 swift test --filter PresetVisualReviewTests` produces at least one PNG per stage for Arachne without `cgImageFailed` — verified at QR.3 land time, 16 PNGs across 5 preset cases (Arachne / Gossamer / Volumetric Lithograph non-staged + Staged Sandbox + Arachne staged).
+- [x] Per-stage tiles emitted: `Arachne_silence_world.png`, `Arachne_silence_composite.png`, etc.
+
+**Fix scope:** Initial plan was `Bundle(for: PresetLoader.self)` but that does not work in SPM (library targets statically link into the test executable, so `Bundle(for:)` resolves to the test bundle, not the Presets bundle). Resolved by adding `public static var PresetLoader.bundledShadersURL: URL?` that returns `Bundle.module.url(forResource: "Shaders", ...)` from inside the Presets module (where `Bundle.module` resolves correctly), and pointing `makeBGRAPipeline` at it.
+
+**Related:** V.7.7A, D-072, D-090.
