@@ -187,16 +187,43 @@ inline float dm_pitch_hue(float pitchHz, float confidence) {
     return fract(log2(safePitch / 110.0) / 4.0);
 }
 
-// Deterministic per-particle position near the top of the shaft volume.
-// Layout: a wide horizontal slab at y near +bounds.y, scattered in x and z
-// so motes feed into the shaft path from above as the wind sweeps down
-// and leftward.
+// Deterministic per-particle respawn position. DM.3.1 spawn-Y geometry fix.
+//
+// The vertex shader maps world (x, y) → clip (x, y) via scale = 2.2 / 8.0,
+// so visible region is world ±3.64 in both axes. Wind direction is
+// (-1, -0.2, 0) normalised × 0.3, giving steady-state velocity of
+// (-0.294, -0.059, 0) m/s — particles drift LEFTWARD and slightly DOWNWARD
+// across the frame. Steady-state lifetime is 5–9 s.
+//
+// Pre-DM.3.1 spawn was world-Y in [5.6, 8.0] — 1.96 to 4.36 world-units
+// ABOVE visible top. With y-wind 0.059 m/s, time-to-enter-view was
+// 33–74 s, far exceeding the 5–9 s lifetime. Particles died before ever
+// becoming visible. M7 review of session 2026-05-08T22-01-07Z (Love
+// Rehab + So What) showed full depletion to zero visible particles by
+// t = 15 s into Drift Motes; DriftMotesVisibilityTest reproduced
+// the same in pure-silence simulation (samples at t = 10..29 s all zero).
+//
+// Fix: spawn in a tight band JUST OUTSIDE the upper-right of the visible
+// region. Wind drift carries particles diagonally into view within
+// 0–5 s, well inside the 5–9 s lifetime window. Most of each particle's
+// life is now spent IN view, drifting from upper-right to lower-left.
+//   x ∈ [3.64, 5.04] — wind brings into view in 0–4.8 s at 0.294 m/s
+//   y ∈ [3.64, 3.94] — wind brings into view in 0–5.1 s at 0.059 m/s
+//   z ∈ ±2 (visible depth, unchanged from pre-DM.3.1 — z is not
+//          mapped to clip space; affects only sprite UV / shaft-axis math)
+//
+// Steady-state visible-count target: kernel respawns at ~114 particles/s
+// (800 / 7 s mean lifetime) × ~6 s visible per life × particles in flight
+// ≈ 450 visible. Test floor is 50.
 inline float3 dm_sample_emission_position(uint id, float t, float3 bounds) {
     float seedA = dm_hash_f01(float(id) * 0.1234567);
     float seedB = dm_hash_f01(float(id) * 0.7654321 + t * 0.013);
     float seedC = dm_hash_f01(float(id) * 1.4142136 + t * 0.027);
-    float x = (seedA * 2.0 - 1.0) * bounds.x;
-    float y = bounds.y * (0.7 + 0.3 * seedB);
+    const float visibleEdge = 3.64;  // = 1.0 / (2.2 / 8.0); matches vertex scale.
+    const float xPad        = 1.40;  // x-wind 0.294 m/s × ~5 s entry budget.
+    const float yPad        = 0.30;  // y-wind 0.059 m/s × ~5 s entry budget.
+    float x = visibleEdge + seedA * xPad;
+    float y = visibleEdge + seedB * yPad;
     float z = (seedC * 2.0 - 1.0) * bounds.z * 0.5;
     return float3(x, y, z);
 }
