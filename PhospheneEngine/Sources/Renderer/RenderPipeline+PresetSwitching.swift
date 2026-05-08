@@ -56,8 +56,9 @@ extension RenderPipeline {
     }
 
     /// Attach a particle system to the render loop.
-    /// Thread-safe — can be called from any queue.
-    public func setParticleGeometry(_ geometry: ProceduralGeometry?) {
+    /// Accepts any `ParticleGeometry` conformer (D-097). Thread-safe — can be
+    /// called from any queue.
+    public func setParticleGeometry(_ geometry: (any ParticleGeometry)?) {
         particleLock.withLock { particleGeometry = geometry }
     }
 

@@ -26,7 +26,9 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     // MARK: - Particle System
 
     /// Optional particle geometry — compute update + point-sprite rendering.
-    var particleGeometry: ProceduralGeometry?
+    /// Typed as `any ParticleGeometry` so per-preset conformers (Murmuration's
+    /// `ProceduralGeometry`, future siblings) can attach via `setParticleGeometry`. D-097.
+    var particleGeometry: (any ParticleGeometry)?
     let particleLock = NSLock()
 
     // MARK: - Live Audio Features
