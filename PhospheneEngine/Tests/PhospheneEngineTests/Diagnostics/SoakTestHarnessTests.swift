@@ -13,8 +13,11 @@
 import Testing
 import Foundation
 import QuartzCore
+import Metal
 import Audio
+import Shared
 @testable import Diagnostics
+@testable import Renderer
 
 // MARK: - Always-run Tests
 
@@ -211,6 +214,105 @@ struct SoakTestHarnessSoakTests {
                 "5-minute run should not produce a hard failure. Alerts: \(alertsStr)")
 
         printSmokeSummary(report, label: "5min memory")
+    }
+
+    // MARK: 30-second Drift Motes Kernel Cost (DM.2 Task 8)
+    //
+    // Direct kernel-cost benchmark for `motes_update` at the Tier 2 particle
+    // count (800). Dispatches one compute frame per simulated 60 Hz tick for
+    // 30 seconds, captures `MTLCommandBuffer.gpuStartTime/gpuEndTime` per
+    // frame, and reports p50 / p95 / p99 / drop-count of the kernel cost.
+    //
+    // The 1.6 ms Tier 2 / 2.1 ms Tier 1 targets in the Drift Motes
+    // architecture contract describe the FULL preset frame budget (sky
+    // fragment + curl-noise compute + sprite render + feedback decay). This
+    // test isolates the compute kernel only — the post-DM.2 audio coupling
+    // (D-019 blend, hue baking, pitch-driven palette) is the only thing that
+    // grew the kernel cost between DM.1 and DM.2, so a kernel-cost regression
+    // gate here is the right shape. Full-pipeline timing requires a runtime
+    // app session and is reported in the Increment DM.2 landing block.
+    //
+    // Tier 1 numbers are deferred to a hardware run (see DM.2 done-when).
+
+    @Test("30-second Drift Motes kernel cost benchmark (Tier 2)")
+    @MainActor
+    func shortRunDriftMotes() async throws {
+        guard ProcessInfo.processInfo.environment["SOAK_TESTS"] == "1" else { return }
+
+        let ctx = try MetalContext()
+        let lib = try ShaderLibrary(context: ctx)
+        let geometry = try DriftMotesGeometry(
+            device: ctx.device,
+            library: lib.library,
+            particleCount: DriftMotesGeometry.tier2ParticleCount,
+            pixelFormat: nil
+        )
+
+        let dt: Float = 1.0 / 60.0
+        let frameCount = 30 * 60   // 30 seconds at simulated 60 Hz.
+        var features = FeatureVector.zero
+        features.deltaTime = dt
+        // Realistic-ish coupling so the D-019 blend selects the warm hue
+        // path on most respawns and exercises the pitch helper too.
+        var stems = StemFeatures.zero
+        stems.vocalsEnergy = 0.4
+        stems.drumsEnergy = 0.5
+        stems.bassEnergy = 0.4
+        stems.otherEnergy = 0.4
+        stems.vocalsPitchHz = 220.0
+        stems.vocalsPitchConfidence = 0.85
+
+        var kernelMs: [Double] = []
+        kernelMs.reserveCapacity(frameCount)
+
+        for frame in 0..<frameCount {
+            features.time = Float(frame) * dt
+            // Sweep pitch so the warm-hue path produces varied output.
+            stems.vocalsPitchHz = 110.0 * powf(16.0, Float(frame % 240) / 239.0)
+            features.midAttRel = 0.2 + 0.3 * sinf(features.time * 0.5)
+
+            guard let cmdBuf = ctx.commandQueue.makeCommandBuffer() else {
+                continue
+            }
+            geometry.update(features: features, stemFeatures: stems,
+                            commandBuffer: cmdBuf)
+            cmdBuf.commit()
+            await cmdBuf.completed()
+            let durationS = cmdBuf.gpuEndTime - cmdBuf.gpuStartTime
+            kernelMs.append(durationS * 1000.0)
+        }
+
+        // Sort once for percentiles + drop count.
+        kernelMs.sort()
+        let n = kernelMs.count
+        let p50 = kernelMs[n / 2]
+        let p95 = kernelMs[Int(Double(n) * 0.95)]
+        let p99 = kernelMs[Int(Double(n) * 0.99)]
+        let mean = kernelMs.reduce(0, +) / Double(n)
+        // "Drops" here = frames whose kernel time exceeded 14 ms (the Tier 2
+        // governor's downshift threshold). These are not full-pipeline
+        // drops, but they're the kernel-cost equivalent.
+        let kernelOverruns = kernelMs.filter { $0 > 14.0 }.count
+
+        print("""
+        ┌─ DriftMotesKernelCost [Tier 2, 800 particles] ─
+        │ frames=\(n)  mean=\(String(format: "%.3f", mean))ms
+        │ p50=\(String(format: "%.3f", p50))ms  \
+        p95=\(String(format: "%.3f", p95))ms  \
+        p99=\(String(format: "%.3f", p99))ms
+        │ kernel overruns (>14ms)=\(kernelOverruns)
+        │ Tier 2 full-frame budget=1.6ms (preset contract); kernel-only is
+        │ a bounded subset. Full-pipeline measurement deferred to a runtime
+        │ session per DM.2 Task 8.
+        └────────────────────────────────────────────────
+        """)
+
+        // Loose gate: kernel p95 should sit well under the full-pipeline
+        // Tier 2 budget. Failures here would indicate a kernel regression
+        // (e.g., a curl-noise octave bump or accidental neighbour query)
+        // rather than a full-pipeline budget breach.
+        #expect(p95 < 5.0,
+                "Kernel p95 \(p95) ms exceeds 5ms loose gate — investigate motes_update for regression.")
     }
 
     // MARK: Helpers
