@@ -1372,6 +1372,51 @@ Per-preset state setup handles Arachne (allocates `ArachneState`, warms 30 ticks
 
 ---
 
+### Increment V.8.0-spec — Arachne3D: parallel-preset commit + four pushbacks ✅ 2026-05-08 (D-096)
+
+**Scope.** Doc-only spec validation session against four pushbacks (perf budget honesty, screen-space refraction artifact, chromatic dispersion, parallel-preset feasibility). No code changed. Establishes the architectural commitments for V.8.1 onward: parallel preset (`Arachne3D` alongside V.7.7D `Arachne`), sampled WORLD backdrop, screen-space refraction with documented edge artifact, chromatic dispersion in V.8.2 (silhouette-band approach), Tier-1 mitigations (noSSGI default + capped drops + half-res lighting). System-wide reframe ("same visual conversation, not pixel-match") adopted as cert principle for the full preset ladder.
+
+**Done when:** ✅ All five doc files updated (`ARACHNE_3D_DESIGN.md`, `ARACHNE_V8_DESIGN.md`, `VISUAL_REFERENCES/arachne/Arachne_Rendering_Architecture_Contract.md`, `DECISIONS.md`, `ENGINEERING_PLAN.md`); ✅ `swift test --package-path PhospheneEngine` passes (no behavioral change); ✅ `xcodebuild -scheme PhospheneApp build` green; ✅ 0 new SwiftLint violations; ✅ `git diff --stat` shows only doc files changed; ✅ D-096 filed.
+
+**Carry-forward:** V.8.1 below.
+
+---
+
+### Increment V.8.1 — Arachne3D minimal end-to-end 3D scaffold
+
+**Prerequisite:** V.8.0-spec ✅ 2026-05-08 (D-096).
+
+**Scope.** Stand up `Arachne3D` as a parallel preset alongside V.7.7D `Arachne` per D-096 Decision 1. New `Arachne3D.metal` + `Arachne3D.json` (display name `"Arachne 3D"`, `certified: false`, default `rubric_profile`) under `PhospheneEngine/Sources/Presets/Shaders/`. `passes: ["ray_march", "post_process"]` (drop `["staged"]`); WORLD pass continues to ship via the existing V.7.7B `arachne_world_fragment` writing `arachneWorldTex` (bound at the same texture index Arachne uses today). The ray-march pass implements `sceneSDF` / `sceneMaterial` using the V.2 SDF tree (`sd_capsule`, `sd_sphere`, `op_smooth_union`) for a **single static web** at `(0, 0, 0)`: 12 procedurally-unrolled spokes, one spiral revolution, no chord-segment subdivision, no drops, no spider, no build cycle. Material: `mat_silk_thread` (V.3 cookbook) on silk strands. Lighting: directional key + flat ambient; **no IBL, no SSGI** (`noSSGI` is the Tier-1 default per D-096 Decision 5). Camera: static, framed on the hub, FoV ~50°. `ArachneState` reused unchanged from V.7.7D — Arachne3D binds the same instance; existing 2D Arachne preset continues to render in parallel. **No `Arachne3DState` is introduced.** Layout audit on `WebGPU` to confirm a `hubZ: Float` extension fits in the existing 80-byte slot (purely additive — V.7.7D Arachne ignores the new field).
+
+Out of scope for V.8.1: drops (V.8.2), refraction (V.8.2), chromatic dispersion (V.8.2), spider (V.8.3), IBL cubemap + DoF (V.8.4), multi-web pool + cinematic camera + foreground build state machine (V.8.5), cert (V.8.6).
+
+**Done when (D-096 Decision 8 — single structural acceptance gate):**
+
+1. **Single web visibly rendering through the deferred PBR pipeline at the correct screen position.** Manual verify by launching the app, cycling to Arachne3D via `⌘[` / `⌘]`, and confirming the silk-strand web renders at the framed hub.
+2. **Camera parallax visible.** A small (≤0.5 unit) camera offset injected via developer-shortcut or test fixture must produce visible 3D parallax of silk strands against the WORLD backdrop. The strands move relative to the backdrop; the backdrop does not move (it's a billboard sample per D-096 Decision 2). This proves real 3D rendering, not a 2D fragment shader simulating depth.
+3. **WORLD pass sampled correctly as backdrop.** Miss-ray pixels return `arachneWorldTex.sample(uv)` (not flat color, not the sky-only V.7.7B early-out). Verified by silencing the silk SDF in a debug build and confirming the full-frame WORLD render reads through.
+4. **Anti-reference visual rejection.** Rendered frame must NOT visually match `09_anti_clipart_symmetry.jpg` or `10_anti_neon_stylized_glow.jpg`. Operationally — until automated dHash-against-anti-refs lands — Matt eyeballs the V.8.1 contact sheet against both anti-refs at the phase boundary and signs off.
+5. **p95 frame time inside the budget forecast committed in D-096 Decision 5.** Single-web V.8.1 scene is a fraction of the V.8.5 forecast; Tier 2 expected ~3–5 ms p95, Tier 1 expected ~5–8 ms p95 with the noSSGI default engaged. **V.8.1's first task is to instrument the scene with `MTLCounterSet.timestampGPU` and validate per-component costs against the §4.4 forecast on a real Tier 1 (M1 or M2) device + a real Tier 2 (M3) device.** If Tier 1 exceeds 14 ms p95 even at this reduced scene complexity, the architecture is wrong for Tier 1 and V.8.x replans before V.8.2.
+6. **`PresetVisualReviewTests` extended to render `Arachne3D`** alongside `Arachne` for silence / steady / beat-heavy / sustained-bass fixtures into the harness contact sheet under `RENDER_VISUAL=1`. Net-new `Arachne3D` golden hashes added to `goldenPresetHashes` in `PresetRegressionTests`; existing Arachne hashes stay locked at V.7.7D values per D-096 Decision 1.
+7. **Visual feedback loop engaged at phase boundary** per `ARACHNE_3D_DESIGN.md §7.3`. Claude Code renders the contact sheet, summarises what changed structurally, and stops. Matt + a separate Claude.ai session produce the visual diff that feeds V.8.2.
+8. **Targeted suites pass:** `PresetAcceptance` (Arachne3D added to the parametrized list), `PresetRegression` (Arachne3D goldens), `PresetLoaderCompileFailure` (preset count 14 → 15, no silent compile drop per Failed Approach #44), the existing Arachne suites unchanged. 0 new SwiftLint violations.
+9. **Closeout report** per CLAUDE.md Increment Completion Protocol: files changed, tests run, harness output paths, doc updates (V.8.1 entry flipped to ✅; D-096 referenced as the architectural source), capability registry updates if any, known risks (anti-reference subjective check pending automated dHash; perf forecast unverified on Tier 1 hardware until Matt runs the harness on M1/M2), git status clean.
+
+**Verify:**
+- `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build` green.
+- `swift test --package-path PhospheneEngine` green; `swift test --package-path PhospheneEngine --filter PresetVisualReview` produces non-placeholder Arachne3D PNGs alongside Arachne PNGs.
+- `swiftlint lint --strict --config .swiftlint.yml` 0 violations on touched files.
+- `RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter PresetVisualReview` writes Arachne3D contact-sheet PNGs to `/tmp/phosphene_visual/<ISO8601>/`.
+- Manual: launch app, cycle to Arachne3D, verify acceptance criteria 1–4 above.
+
+**Estimated sessions:** 1 (scaffold-only).
+
+**Carry-forward:** V.8.2 — drops at chord-segment intersections (Tier 2: ~300–500/web; Tier 1: capped at 150/web per D-096 Decision 5) + screen-space Snell's-law refraction sampling `arachneWorldTex` + silhouette-band chromatic dispersion. V.8.3 — spider in 3D via `sceneSDF` (V.7.7D `sd_spider_combined` adapted) + chitin material via `sceneMaterial`. V.8.4 — IBL forest cubemap from V.7.7B WORLD palette + depth-of-field on `PostProcessChain`. V.8.5 — multi-web pool in 3D + cinematic camera (Decision E.3) + foreground build state machine + 3D vibration. V.8.6 — M7 cert + V.7.7D Arachne retirement (file deletion + `Arachne 3D` → `Arachne` rename in JSON sidecar).
+
+**V.8.2+ scope is intentionally NOT expanded yet.** Each subsequent increment gets its own ENGINEERING_PLAN entry once V.8.1 contact-sheet review lands and the visual feedback loop produces the diff that informs V.8.2's prompt.
+
+---
+
 ### Increment V.7.7 — Arachne v8: WORLD pillar + 1–2 background dewy webs
 
 **Status correction (2026-05-07):** The `[V.7.7 redo]` commit (`fa5dacdf`, 2026-05-05 10:54) added the six-layer inline `drawWorld()` and frame threads to the *monolithic* `arachne_fragment`. Three hours later, `[V.7.7A]` (`ccefe065`, 2026-05-05 14:13) retired that fragment and shipped placeholder staged stubs. The V.7.7 work is therefore preserved as dead reference code in `PhospheneEngine/Sources/Presets/Shaders/Arachne.metal` (free-function `drawWorld` ~line 142, legacy `arachne_fragment` ~line 617), not in the dispatched path. Promotion into the staged path is V.7.7B.
