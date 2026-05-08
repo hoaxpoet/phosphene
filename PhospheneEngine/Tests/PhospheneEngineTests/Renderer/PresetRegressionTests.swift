@@ -66,6 +66,19 @@ private let goldenPresetHashes: [String: PresetHashes] = [
     // per-fixture pace differences surface only on real-music playback
     // (Matt's manual smoke gate). Hamming distance from V.7.7D `steady`:
     // 16 bits, within the D-095 expected [10, 30] band.
+    //
+    // V.7.7C.3 (D-095 follow-up): hash UNCHANGED. PresetRegression's render
+    // harness does not bind slot 6 / 7 (sees zeroed buffers), so:
+    //   - webs[0].rng_seed = 0 → polyCount = 0 → V.7.5 fallback (circular
+    //     spoke tips, regular oval) instead of the new polygon path.
+    //   - Pool loop iterates `wi=1..1` (empty) so the V.7.5 churn that
+    //     V.7.7C.3 retired never appeared in this regression anyway.
+    //   - webs[0].build_stage = 0 → foreground frame phase at 0 % progress,
+    //     no visible foreground content.
+    // Net: only the WORLD backdrop renders, identical to V.7.7C.2's
+    // composition. The V.7.7C.3 polygon-mode visual change IS exercised by
+    // ArachneSpiderRenderTests (which binds a real, reset()-seeded
+    // ArachneState) and by PresetVisualReviewTests' RENDER_VISUAL=1 path.
     "Arachne": (steady: 0xC6168081C0D88880, beatHeavy: 0xC6168081C0D88880, quiet: 0xC6168081C0D88880),
     "Ferrofluid Ocean": (steady: 0x56AB1C4A28B32727, beatHeavy: 0x5CB393AAAFA84840, quiet: 0xA64C51A62FD35356),
     "Glass Brutalist": (steady: 0x336954B4B4544D33, beatHeavy: 0x336954B4B4544D33, quiet: 0x336954B4B4544D33),

@@ -924,6 +924,15 @@ public final class ArachneState: @unchecked Sendable {
     /// Write the foreground BuildState into webs[0]'s Row 5 (V.7.7C.2). Other
     /// slots' Row 5 stays zeroed (background webs / unused). The shader does
     /// NOT read Row 5 in Commit 2 — Commit 3 wires the read.
+    ///
+    /// V.7.7C.3 / D-095 follow-up: also packs the polygon anchor indices
+    /// (`bs.anchors[]`) into `webs[0].rngSeed` so the shader can reconstruct
+    /// the irregular `branchAnchors[]` polygon vertices and ray-clip radial
+    /// spokes against it. The V.7.5 driver no longer renders pool webs (per
+    /// V.7.7C.3 shader-loop disable), so `rngSeed` is free for repurposing
+    /// on the foreground hero slot. Layout: bits [0..3] = count (0–6),
+    /// bits [4..7] = anchors[0], bits [8..11] = anchors[1], …,
+    /// bits [24..27] = anchors[5]. Bits [28..31] are reserved.
     func writeBuildStateToWebs0() {
         guard !webs.isEmpty else { return }
         webs[0].buildStage = Float(buildState.stage.rawValue)
@@ -931,6 +940,19 @@ public final class ArachneState: @unchecked Sendable {
         webs[0].radialPacked = Float(buildState.radialIndex) + buildState.radialProgress
         webs[0].spiralPacked =
             Float(buildState.spiralChordIndex) + buildState.spiralChordProgress
+        webs[0].rngSeed = Self.packPolygonAnchors(buildState.anchors)
+    }
+
+    /// V.7.7C.3 / D-095 follow-up — pack up to 6 polygon anchor indices into
+    /// a single UInt32 for the shader's polygon-from-branchAnchors path.
+    /// Each index is masked to 4 bits (range 0–5 fits cleanly).
+    static func packPolygonAnchors(_ anchors: [Int]) -> UInt32 {
+        var packed: UInt32 = UInt32(min(max(anchors.count, 0), 6)) & 0xF
+        for (i, idx) in anchors.prefix(6).enumerated() {
+            let safeIdx = UInt32(min(max(idx, 0), 5)) & 0xF
+            packed |= safeIdx << UInt32(4 + i * 4)
+        }
+        return packed
     }
 
     // MARK: - Reset (V.7.7C.2 §5.2 — segment-start canonical entry point)

@@ -251,6 +251,21 @@ struct PresetAcceptanceTests {
                 let dst = presetState.contents().advanced(by: row5Offset)
                 dst.copyMemory(from: src.baseAddress!, byteCount: src.count)
             }
+
+            // V.7.7C.3 / D-095 follow-up — pack a 5-vertex polygon (anchors
+            // [0,1,2,3,4] of branchAnchors) into webs[0].rngSeed at byte
+            // offset 28 (Row 1, 4th uint32). This drives the foreground
+            // anchor block's polygon-aware spoke clipping + irregular frame
+            // thread, keeping PresetRegression goldens sensitive to polygon-
+            // mode regressions. polyCount=0 (uninitialised) would fall back
+            // to V.7.5 circular geometry and silently mask polygon bugs.
+            let rngSeedOffset = 28
+            let polyPacked: UInt32 = ArachneState.packPolygonAnchors([0, 1, 2, 3, 4])
+            var polyPackedCopy = polyPacked
+            withUnsafeBytes(of: &polyPackedCopy) { src in
+                let dst = presetState.contents().advanced(by: rngSeedOffset)
+                dst.copyMemory(from: src.baseAddress!, byteCount: src.count)
+            }
         }
 
         // SceneUniforms for ray-march presets provide proper camera/lighting.

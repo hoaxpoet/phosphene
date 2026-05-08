@@ -108,13 +108,25 @@ extension ArachneState {
     /// (D-095 / §6.5). Retained as a no-op constant so the
     /// `ARACHNE_M7_DIAG` build's logging line continues to compile.
     static let sessionCooldownDuration: Float = 300.0
-    /// Sub-bass energy level gate — AGC-normalised FV subBass (20–80 Hz).
-    /// V.7.5 §10.1.9 / D-071: re-tuned from 0.65 → 0.30 after M7 session
-    /// 2026-05-01T22-14-25Z showed f.subBass mean ≈ 0.13 in LTYL with sustained
-    /// values up to ~0.30 (14.8 % of frames). The original 0.65 threshold from
-    /// D-040 — based on an assumption that LTYL hits 3.9–5.9 at the drop — was
-    /// unreachable in live AGC. Lowering the threshold reopens the trigger;
-    /// the restored AR gate (bassAttackRatio < 0.55) supplies the kick debounce.
+    /// V.7.7C.3 / D-095 — sustained bass-envelope gate. Replaces the V.7.5
+    /// §10.1.9 `subBass + bassAttackRatio < 0.55` pair, which was acoustically
+    /// impossible on real music: kick-driven sections produced `subBass` above
+    /// threshold but with `bassAttackRatio > 1.0` (sharp transient against
+    /// AGC), and sustained sub-bass passages held `subBass` near AGC average
+    /// so `subBass > 0.30` rarely fired. Live LTYL session
+    /// `2026-05-08T17-01-15Z` confirmed the gate was structurally unreachable
+    /// on James Blake's bass drops.
+    ///
+    /// `bassAttRel` is the smoothed/attenuated FV bass envelope (0.95 decay
+    /// rate, AGC-normalised). It rises during sustained bass passages and
+    /// stays at 0 at AGC-average levels — exactly the primitive the §8.2
+    /// vibration path already uses correctly. Brief kick pulses are filtered
+    /// by the 0.75 s sustain accumulator threshold (matching the V.7.5
+    /// behaviour) so AR gating is no longer required.
+    static let bassAttRelThreshold: Float = 0.30
+    /// Pre-V.7.7C.3 V.7.5 sub-bass threshold. **Deprecated** — superseded
+    /// by `bassAttRelThreshold`. Kept as a no-op constant so external
+    /// references (`ARACHNE_M7_DIAG`, doc cross-refs) continue to compile.
     static let subBassThreshold: Float = 0.30
     /// Seconds to blend blend 0→1 on materialisation.
     static let spiderFadeInDuration: Float = 2.0
@@ -129,17 +141,16 @@ extension ArachneState {
 
     /// Advance spider state by one frame. Call from `_tick` while holding the lock.
     func updateSpider(dt: Float, features: FeatureVector, stems: StemFeatures) {
-        // Sub-bass trigger: AGC-normalised FV subBass (20–80 Hz). stems.bassEnergy is
-        // unreliable for deep electronic sub-bass (Open-Unmix attributes 40–60 Hz to
-        // "other", not "bass"), so the FV band remains the energy source.
-        //
-        // V.7.5 §10.1.9 / D-040 / D-071: AR gate restored. bassAttackRatio < 0.55
-        // distinguishes sustained resonant bass from transient kick drums whose
-        // attack ratio is closer to 1.0. The > 0 check guards against zero-stem
-        // frames before the warmup completes.
-        let conditionMet = features.subBass > Self.subBassThreshold
-                        && stems.bassAttackRatio > 0.0
-                        && stems.bassAttackRatio < 0.55
+        // V.7.7C.3 / D-095: sustained-bass-envelope trigger. Replaces the V.7.5
+        // §10.1.9 `subBass + bassAttackRatio < 0.55` pair after live LTYL
+        // session `2026-05-08T17-01-15Z` confirmed the AR-gated path was
+        // acoustically impossible on real music — kicks have `bassAttackRatio
+        // > 1.0` and sustained bass passages have `subBass` near AGC average.
+        // `bassAttRel` rises during sustained bass envelopes and matches the
+        // §8.2 vibration primitive that empirically responds correctly to the
+        // user's expected bass-drop trigger. Brief kick pulses are filtered
+        // by the 0.75 s sustain accumulator threshold below.
+        let conditionMet = features.bassAttRel > Self.bassAttRelThreshold
 
         if conditionMet {
             sustainedSubBassAccumulator += dt
@@ -155,9 +166,10 @@ extension ArachneState {
             && !spiderFiredInSegment
             && sustainedSubBassAccumulator >= Self.sustainedTriggerThreshold {
             activateSpider()
+            let envStr = String(format: "%.2f", features.bassAttRel)
             let sbStr = String(format: "%.2f", features.subBass)
             spiderLogger.notice("[arachne.spider] organic trigger fired (per-segment)")
-            spiderLogger.notice("  subBass=\(sbStr)")
+            spiderLogger.notice("  bassAttRel=\(envStr) subBass=\(sbStr)")
         }
 
         // Dematerialise when the triggering condition no longer holds.

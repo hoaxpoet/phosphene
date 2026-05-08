@@ -33,18 +33,21 @@ private func midEnergyFV(deltaTime: Float = 1.0 / 60.0,
     return f
 }
 
+// V.7.7C.3 / D-095 — spider trigger reformulated to use `bassAttRel` (smoothed
+// bass envelope) instead of the V.7.5 `subBass + bassAttackRatio < 0.55` pair,
+// which session 2026-05-08T17-01-15Z confirmed was acoustically impossible on
+// real music. `bassAttRel = 0.40` is comfortably above the 0.30 threshold.
 private func bassTriggerFV(deltaTime: Float = 1.0 / 60.0,
-                           subBass: Float = 0.45) -> FeatureVector {
+                           bassAttRel: Float = 0.40) -> FeatureVector {
     var f = FeatureVector.zero
     f.deltaTime = deltaTime
-    f.subBass = subBass
+    f.bassAttRel = bassAttRel
+    f.subBass = 0.45             // legacy field; not consumed by trigger
     return f
 }
 
-private func bassTriggerStems(bassAttackRatio: Float = 0.30,
-                              totalEnergy: Float = 0.20) -> StemFeatures {
+private func bassTriggerStems(totalEnergy: Float = 0.20) -> StemFeatures {
     var s = StemFeatures.zero
-    s.bassAttackRatio = bassAttackRatio
     s.drumsEnergy = totalEnergy / 4
     s.bassEnergy = totalEnergy / 4
     s.otherEnergy = totalEnergy / 4
