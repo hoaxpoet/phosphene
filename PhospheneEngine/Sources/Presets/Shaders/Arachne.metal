@@ -612,6 +612,137 @@ static float3 drawBackgroundWeb(
     return result;
 }
 
+// ── V.7.7D: 3D SDF spider anatomy + chitin material (D-094) ──────────────────
+//
+// Replaces the V.7.5 / V.7.7B/C 2D dark-silhouette overlay with a per-pixel
+// ray-marched 3D spider rendered into a screen-space patch around the spider's
+// UV anchor. The Spider pillar's "rare reward" semantics are preserved
+// (organic trigger + 5-min cooldown — V.7.7D does NOT touch trigger logic);
+// the visual fidelity is upgraded so every appearance reads as a real
+// orb-weaver: cephalothorax + abdomen + petiole + 8 IK legs + 6 eyes,
+// chitin material with biological-strength thin-film iridescence, listening
+// pose realised CPU-side via lifted tip[0]/tip[1] (see ArachneState+ListeningPose).
+//
+// Body-local frame: +x = heading direction, +y = right side (in body frame),
+// +z = up (away from web plane). All anatomy dimensions in §6.1 are body-
+// local; multiply by `kSpiderScale` to convert to UV.
+//
+// Ray-march dispatch is gated by a screen-space patch (`kSpiderPatchUV`)
+// around the spider's UV position so miss rays do not fire on every pixel.
+
+constant float kSpiderScale  = 0.018;  // body-local unit → UV scale
+constant float kSpiderPatchUV = 0.15;  // patch radius around spider UV anchor
+
+// Cephalothorax + abdomen + petiole — returns (distance, materialID 0).
+static float2 sd_spider_body(float3 p) {
+    // Cephalothorax — ellipsoid 1.0 long × 0.7 wide × 0.5 tall, centred at +x.
+    float3 cephP = (p - float3(0.55, 0.0, 0.0)) / float3(0.5, 0.35, 0.25);
+    float  cephD = (length(cephP) - 1.0) * 0.25;  // re-multiply by min radius
+
+    // Abdomen — ellipsoid 1.4 long × 1.1 wide × 0.95 tall, centred at -x (rear).
+    float3 abdP = (p - float3(-0.7, 0.0, 0.0)) / float3(0.7, 0.55, 0.475);
+    float  abdD = (length(abdP) - 1.0) * 0.475;
+
+    // Petiole cut — narrow neck via op_smooth_subtract of a cylindrical region.
+    float3 petP = p - float3(-0.05, 0.0, 0.0);
+    float  petR = length(petP.yz) - 0.10;
+    float  petD = max(petR, abs(petP.x) - 0.15);
+
+    float bodyD = op_smooth_union(cephD, abdD, 0.08);
+    bodyD = op_smooth_subtract(bodyD, petD, 0.04);
+    return float2(bodyD, 0.0);
+}
+
+// Six eye spheres clustered on the front of the cephalothorax — matID 1.
+static float2 sd_spider_eyes(float3 p) {
+    const float3 kEyeOff[6] = {
+        float3(0.95, +0.10, +0.10), float3(0.95, -0.10, +0.10),  // anterior pair
+        float3(0.85, +0.18, +0.05), float3(0.85, -0.18, +0.05),  // mid pair
+        float3(0.78, +0.10, +0.18), float3(0.78, -0.10, +0.18)   // top pair
+    };
+    const float kEyeR[6] = { 0.05, 0.05, 0.035, 0.035, 0.030, 0.030 };
+
+    float minD = 1e6;
+    for (int i = 0; i < 6; i++) {
+        minD = min(minD, length(p - kEyeOff[i]) - kEyeR[i]);
+    }
+    return float2(minD, 1.0);
+}
+
+// Convert UV → body-local 2D (z=0 implicit). Heading is the in-plane angle
+// of the spider's heading direction in UV; the convention matches the legacy
+// 2D head-offset code: +bodyX = `(cos(heading), -sin(heading))` in UV.
+static float2 spider_body_local_xy(float2 uv, float2 spiderUV, float heading) {
+    float2 dUV = uv - spiderUV;
+    float c = cos(heading);
+    float s = sin(heading);
+    // Inverse rotation: bodyX = +x_body when uvDir = (cos(h), -sin(h)).
+    return float2(c * dUV.x - s * dUV.y, s * dUV.x + c * dUV.y) / kSpiderScale;
+}
+
+// Leg SDF — 2-segment capsule with analytic outward-bending knee. The CPU
+// listening pose is realised by writing a lifted tip into `spider.tip[0]` /
+// `spider.tip[1]`; the IK below derives the raised knee organically from the
+// lifted tip with no listenLift channel required. tip[i] is in clip-space;
+// converted to body-local via clip→UV→body transformation.
+static float2 sd_spider_legs(
+    float3 p,
+    device const ArachneSpiderGPU& spider,
+    int    legIdx,
+    float2 spiderUV
+) {
+    // Hip on cephalothorax — 4 per side, alternating left/right, evenly
+    // spaced front-to-back (orb-weaver canonical posture per §6.1 / ref 13).
+    float legSideF = (legIdx & 1) ? -1.0 : 1.0;
+    float legBack  = float(legIdx / 2) * 0.18 + 0.40;
+    float3 hipL    = float3(0.55 - legBack, legSideF * 0.30, 0.0);
+
+    // tip[i] is in clip-space; convert to UV then to body-local.
+    float2 tipClip = spider.tip[legIdx];
+    float2 tipUV   = float2((tipClip.x + 1.0) * 0.5, (1.0 - tipClip.y) * 0.5);
+    float2 tipXY   = spider_body_local_xy(tipUV, spiderUV, spider.heading);
+    float3 tipL    = float3(tipXY.x, tipXY.y, 0.0);
+
+    // 2-segment IK: femur + tibia, equal length. Knee bends OUTWARD
+    // (perpendicular to (tip − hip), away from body centre, biased +z).
+    // Magnitude 0.20 tuned for §6.1 visual; see DECISIONS D-094.
+    float3 mid     = mix(hipL, tipL, 0.5);
+    float3 axis    = tipL - hipL;
+    // Guard: when legSide is small but axis is purely along z, cross is zero.
+    float3 outward = cross(axis, float3(0.0, 0.0, 1.0));
+    float  outLen  = length(outward);
+    float3 outN    = (outLen > 1e-5) ? (outward / outLen) : float3(0.0, 1.0, 0.0);
+    float3 kneeL   = mid + outN * 0.20 * legSideF + float3(0.0, 0.0, 0.10);
+
+    // Distance to two capsules (femur: hip→knee, tibia: knee→tip).
+    float dFemur = sd_capsule(p, hipL,  kneeL, 0.025);
+    float dTibia = sd_capsule(p, kneeL, tipL,  0.020);
+    return float2(min(dFemur, dTibia), 2.0);
+}
+
+// Combined spider SDF. Returns (distance, materialID).
+//   matID 0 = body (cephalothorax + abdomen)
+//   matID 1 = eye (per-eye specular path)
+//   matID 2 = leg
+static float2 sd_spider_combined(
+    float3 p,
+    device const ArachneSpiderGPU& spider,
+    float2 spiderUV
+) {
+    float2 body = sd_spider_body(p);
+    float2 eyes = sd_spider_eyes(p);
+
+    // Pick the closer surface; eyes take priority within their hit radius
+    // so the per-eye specular path can apply.
+    float2 anatomy = (eyes.x < body.x) ? eyes : body;
+
+    for (int i = 0; i < 8; i++) {
+        float2 leg = sd_spider_legs(p, spider, i, spiderUV);
+        if (leg.x < anatomy.x) anatomy = leg;
+    }
+    return anatomy;
+}
+
 // ── V.7.7B: Staged composition WORLD + COMPOSITE ─────────────────────────────
 //
 // The legacy monolithic `arachne_fragment` was retired in V.7.7B alongside its
@@ -699,6 +830,47 @@ fragment float4 arachne_composite_fragment(
     const float3 kLightCol = float3(1.00, 0.85, 0.65);
     const float3 kAmbCol   = float3(0.55, 0.65, 0.85) * 0.15;
 
+    // ── V.7.7D §8.2 whole-scene 12 Hz vibration (D-094) ──────────────────────
+    //
+    // Per-pixel UV jitter applied BEFORE the web walks. Length-scaling from
+    // screen centre approximates §8.2's "tip vibrates more than anchor"
+    // anchor-point physics — corners shake more than middle. WORLD sample
+    // at the bottom of this fragment intentionally stays on the original
+    // `uv` (forest floor + far layers do not shake — §8.2 anchor-vs-tip).
+    //
+    // Tunables match §8.2 with three CLAUDE.md-mandated divergences (D-094):
+    //   1. Continuous amplitude widened 0.0025 → 0.0030 to satisfy the 2×
+    //      continuous-vs-accent guideline.
+    //   2. Bass-amplitude driver substituted from §8.2's `subBass_dev` to FV
+    //      `bass_att_rel` (smoothed/attenuated bass deviation). FV has no
+    //      `subBass_dev` split. `bass_att_rel` is the natural Arachne-side
+    //      primitive for "sustained bass envelope" (it already drives
+    //      `baseEmissionGain` for continuous strand emission) and stays at 0
+    //      at AGC-average levels — exactly the audio-data-hierarchy contract
+    //      the PresetAcceptance "beat is accent only" test enforces.
+    //   3. The §8.2 per-kick spike `0.0015 × beat_bass × 0.4` is set to 0.
+    //      With `bass_att_rel` already capturing the sustained bass envelope
+    //      (its musical purpose), the additional per-kick term reads as a
+    //      Layer-4-as-primary anti-pattern (Audio Hierarchy rule, CLAUDE.md):
+    //      in the acceptance test fixture (steady bass_att_rel=0,
+    //      beat beat_bass=1.0, bass_att_rel=0) the spike alone fails the 2×
+    //      continuous-vs-beat invariant. Continuous-only is also closer to
+    //      the §8.2 musical intent — "tremor on sustained bass". The per-kick
+    //      character is preserved by the existing `beatAccent` strand
+    //      emission term (line ~815 above).
+    //
+    // Coarse-phase quantization: per-pixel hash produces TV-static; quantizing
+    // the random phase to an 8×8 grid gives coherent strand-scale tremor.
+    const float kTremorHz = 12.0;
+    float bassAmp        = max(f.bass_att_rel, 0.0);
+    float ampUV          = 0.0030 * bassAmp * length(uv - float2(0.5, 0.5));
+    float coarsePhase    = hash_f01_2(uv * 8.0) * 6.28318530718;
+    float tremorPhase    = 2.0 * M_PI_F * kTremorHz * f.accumulated_audio_time;
+    float tremorX        = sin(tremorPhase + coarsePhase);
+    float tremorY        = sin(tremorPhase + coarsePhase + 1.5708);
+    float2 vibOffset     = float2(tremorX, tremorY) * ampUV;
+    float2 vibUV         = uv + vibOffset;
+
     // ── §4.4 Smooth-union strand accumulation ─────────────────────────────────
     float strandPseudo  = 1.0;
     float prevStrandCov = 0.0;
@@ -710,7 +882,7 @@ fragment float4 arachne_composite_fragment(
         uint   ancSeed = 1984u;
         float2 ancHub  = float2(0.42, 0.40) + arachHubJitter(ancSeed);
         ArachneWebResult wr = arachneEvalWeb(
-            uv, ancHub, 0.22, 0.30, 6.0, ancSeed,
+            vibUV, ancHub, 0.22, 0.30, 6.0, ancSeed,
             3u, 1.0,
             arachSpokeCount(ancSeed), arachAspect(ancSeed),
             arachAspectAngle(ancSeed), arachKSag(ancSeed)
@@ -800,7 +972,7 @@ fragment float4 arachne_composite_fragment(
         float  webR  = w.radius * 0.5;
 
         ArachneWebResult wr = arachneEvalWeb(
-            uv, hubUV, webR, w.rot_angle, w.spiral_revolutions,
+            vibUV, hubUV, webR, w.rot_angle, w.spiral_revolutions,
             w.rng_seed, w.stage, w.progress,
             arachSpokeCount(w.rng_seed), arachAspect(w.rng_seed),
             arachAspectAngle(w.rng_seed), arachKSag(w.rng_seed)
@@ -872,39 +1044,98 @@ fragment float4 arachne_composite_fragment(
         }
     }
 
-    // ── Spider (2D — clip-space → UV, Y-flipped; D-040 overlay; not in smooth-union)
+    // ── V.7.7D Spider — 3D SDF anatomy + chitin material (D-094) ─────────────
+    //
+    // Replaces the V.7.5 2D dark-silhouette overlay with a per-pixel ray-march
+    // through a screen-space patch around the spider's UV anchor. Anatomy is
+    // ray-marched in body-local 3D (cephalothorax + abdomen + petiole + 8 IK
+    // legs + 6 eyes); the colour is composed from §6.2 chitin recipe (brown-
+    // amber base + thin-film iridescence at biological strength + Oren-Nayar
+    // hair fuzz + per-eye specular). Spider rides the vibrating web — its
+    // anchor UV translates by `(vibUV - uv)` so silk + body shake together.
     float3 spiderContrib = float3(0.0);
     float  spiderMaskOut = 0.0;
     if (spider.blend > 0.01) {
-        float2 spUV  = float2((spider.posX + 1.0) * 0.5, (1.0 - spider.posY) * 0.5);
-        float2 spRel = uv - spUV;
+        float2 spUVStatic = float2((spider.posX + 1.0) * 0.5,
+                                    (1.0 - spider.posY) * 0.5);
+        float2 spUV       = spUVStatic + vibOffset;
+        float  patchD     = length(uv - spUV);
 
-        // Abdomen + head
-        float2 headOff = float2(cos(spider.heading), -sin(spider.heading)) * 0.016;
-        float  bodyD   = length(spRel) - 0.018;
-        float  headD   = length(spRel - headOff) - 0.011;
-        float  bodyCov = max(smoothstep(0.003, -0.001, bodyD),
-                             smoothstep(0.002, -0.001, headD));
+        if (patchD < kSpiderPatchUV) {
+            // Body-local XY at z=0 plane for the current pixel. Ray march from
+            // (bodyXY, +z_high) toward -z to find the spider surface above.
+            float2 bodyXY = spider_body_local_xy(uv, spUV, spider.heading);
+            float3 ro     = float3(bodyXY.x, bodyXY.y, 5.0);
+            float3 rd     = float3(0.0, 0.0, -1.0);
 
-        // 8 legs
-        float legMinDist = 1e6;
-        for (int k = 0; k < 8; k++) {
-            float2 tipUV = float2((spider.tip[k].x + 1.0) * 0.5,
-                                  (1.0 - spider.tip[k].y) * 0.5);
-            legMinDist   = min(legMinDist, arachSegDist(uv, spUV, tipUV));
+            // Inlined adaptive sphere trace — `ray_march_adaptive` hardcodes
+            // sd_sphere; we substitute `sd_spider_combined`.
+            float t = 0.0;
+            const float tMax = 8.0;
+            const int   maxSteps = 32;
+            const float hitEps = 0.0008;
+            int   matID = -1;
+            bool  hitFound = false;
+            float lastDist = 1.0;
+            for (int sIdx = 0; sIdx < maxSteps && t < tMax; sIdx++) {
+                float3 pCur = ro + rd * t;
+                float2 sd   = sd_spider_combined(pCur, spider, spUV);
+                lastDist    = sd.x;
+                if (sd.x < hitEps) {
+                    matID    = int(sd.y + 0.5);
+                    hitFound = true;
+                    break;
+                }
+                t += max(sd.x, 0.001);
+            }
+
+            if (hitFound) {
+                float3 hitPos = ro + rd * t;
+                // Inlined tetrahedron-trick normal estimation — same SDF substitution.
+                const float kNormalEps = 0.0005;
+                const float2 kK = float2(1.0, -1.0);
+                float3 nMix =
+                    kK.xyy * sd_spider_combined(hitPos + kK.xyy * kNormalEps, spider, spUV).x +
+                    kK.yyx * sd_spider_combined(hitPos + kK.yyx * kNormalEps, spider, spUV).x +
+                    kK.yxy * sd_spider_combined(hitPos + kK.yxy * kNormalEps, spider, spUV).x +
+                    kK.xxx * sd_spider_combined(hitPos + kK.xxx * kNormalEps, spider, spUV).x;
+                float3 nrm = normalize(nMix);
+
+                if (matID == 1) {
+                    // Eye: dark sphere with pinpoint specular when the
+                    // half-vector aligns with the eye normal (§6.2).
+                    float3 halfV = normalize(kL + kV);
+                    float  spec  = (dot(halfV, nrm) > 0.95) ? 1.0 : 0.0;
+                    spiderContrib = float3(0.02) + kLightCol * spec;
+                    spiderMaskOut = 1.0;
+                } else {
+                    // Body / leg — chitin recipe at biological-iridescence
+                    // strength (blend = 0.15). NEVER call mat_chitin with
+                    // its V.3 default 1.0 blend in this path (CLAUDE.md
+                    // What NOT To Do — §6.2 anti-reference 10).
+                    const float3 baseAlbedo = float3(0.08, 0.05, 0.03);
+                    float  hueShift = 0.55 + 0.3 * dot(nrm, kV);
+                    float3 thin     = hsv2rgb(float3(fract(hueShift), 0.5, 0.4)) * 0.15;
+                    float3 bodyCol  = baseAlbedo + thin;
+
+                    // Hair fuzz — Oren-Nayar-like grazing-angle softening.
+                    float fuzz = pow(1.0 - saturate(dot(nrm, kV)), 1.5) * 0.18;
+                    bodyCol += fuzz * kLightCol;
+
+                    // Body shadow term — most of the body sits in deep shadow.
+                    float NdotL  = max(0.0, dot(nrm, kL));
+                    float bodyLit = 0.30 + 0.70 * NdotL;
+                    bodyCol *= bodyLit;
+
+                    // Thin warm rim (preserves the V.7.5 silhouette signature).
+                    float rim = pow(1.0 - saturate(dot(nrm, kV)), 3.0);
+                    bodyCol += kLightCol * rim * 0.55;
+
+                    spiderContrib = bodyCol;
+                    spiderMaskOut = 1.0;
+                }
+            }
         }
-        float legCov = smoothstep(0.0045, 0.001, legMinDist);
-
-        // V.7.5 §10.1.9: dark silhouette + thin warm rim catching kL through silk.
-        // Spider deliberately dark per README §24 ("do not over-render the spider")
-        // and ref 05 (backlit atmosphere). mat_chitin reserved for other presets.
-        float3 bodyDark    = float3(0.04, 0.03, 0.02);
-        float  rimT_local  = saturate(1.0 - bodyCov);          // edge of body silhouette
-        float3 rimWarm     = float3(0.85, 0.55, 0.30) * rimT_local * bodyCov;
-        float3 spiderCol   = bodyDark * bodyCov + rimWarm
-                           + bodyDark * legCov * 0.6;          // legs share body tone
-        spiderMaskOut      = max(bodyCov, legCov * 0.65);
-        spiderContrib      = spiderCol;
     }
 
     // ── V.7.7B: WORLD backdrop sampled from the WORLD stage's texture ─────────

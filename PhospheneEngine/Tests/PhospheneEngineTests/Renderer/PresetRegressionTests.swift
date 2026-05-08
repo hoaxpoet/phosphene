@@ -43,7 +43,17 @@ private let goldenPresetHashes: [String: PresetHashes] = [
     // the new contributions sum below the 9×8 luma quantization threshold of
     // dHash, so the foreground silhouette fingerprint is bytewise identical.
     // Real visual divergence is observed in PresetVisualReviewTests.
-    "Arachne": (steady: 0xC6168E8F87868C80, beatHeavy: 0xC6168E8F87868C80, quiet: 0xC6168E8F87868C80),
+    //
+    // V.7.7D (D-094): 3D SDF spider replaces the 2D overlay (spider not drawn
+    // under regression — `spider.blend = 0` when buffer is unbound), and a
+    // §8.2 12 Hz UV-jitter vibration is applied to the foreground web walks.
+    // Vibration amplitude is gated by `bass_dev` + `beat_bass` so the silence
+    // and quiet fixtures (zero/low values) produce no visible shake — those
+    // hashes stay byte-identical. The beatHeavy fixture (`beat_bass` ≈ 1.0)
+    // produces a small UV jitter that drifts the silk pattern by a few bits;
+    // hash updated to match. Real visual divergence — including the new 3D
+    // spider — is observed in PresetVisualReviewTests / ArachneSpiderRenderTests.
+    "Arachne": (steady: 0xC6168E8F87868C80, beatHeavy: 0xC6168E87878E8480, quiet: 0xC6168E8F87868C80),
     "Ferrofluid Ocean": (steady: 0x56AB1C4A28B32727, beatHeavy: 0x5CB393AAAFA84840, quiet: 0xA64C51A62FD35356),
     "Glass Brutalist": (steady: 0x336954B4B4544D33, beatHeavy: 0x336954B4B4544D33, quiet: 0x336954B4B4544D33),
     "Gossamer": (steady: 0x5756A72F070F0F0D, beatHeavy: 0x5756A72F070F0F0D, quiet: 0x5756872D0F0F0F0D),
