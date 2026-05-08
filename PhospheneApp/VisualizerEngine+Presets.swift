@@ -255,6 +255,10 @@ extension VisualizerEngine {
                 if desc.name == "Arachne" {
                     if let state = ArachneState(device: context.device) {
                         arachneState = state
+                        // V.7.7C.2 (D-095): reset the foreground BuildState +
+                        // per-segment spider cooldown at segment-start. The
+                        // canonical entry point per V.7.7C.2 §5.2 SUB-ITEM 2.
+                        state.reset()
                         pipeline.setDirectPresetFragmentBuffer(state.webBuffer)    // buffer(6)
                         pipeline.setDirectPresetFragmentBuffer2(state.spiderBuffer) // buffer(7)
                         pipeline.setMeshPresetTick { [weak state] features, stems in
@@ -347,9 +351,13 @@ extension VisualizerEngine {
     /// Returns the currently active per-preset state object that conforms to
     /// `PresetSignaling`, or nil. Currently only `ArachneState` is a candidate
     /// (Gossamer/Stalker/etc. are cyclical and never emit).
+    ///
+    /// V.7.7C.2: `ArachneState` now conforms via `Sources/Orchestrator/
+    /// ArachneStateSignaling.swift` (placement forced by the Presets→Orchestrator
+    /// module-cycle constraint — see that file's note). The conditional cast
+    /// became unconditional once the conformance landed.
     private func activePresetSignaling() -> (any PresetSignaling)? {
-        if let state = arachneState as? PresetSignaling { return state }
-        return nil
+        return arachneState
     }
 
     /// Handle a `PresetSignaling.presetCompletionEvent` firing.
