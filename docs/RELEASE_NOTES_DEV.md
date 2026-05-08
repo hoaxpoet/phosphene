@@ -6,6 +6,50 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-08-e] V.7.7C.5.2 — Arachne second cosmetic + spider-trigger pass (drops + silk re-brightening + hue cycle widening + spider sustain)
+
+**Increment:** V.7.7C.5.2. **Decision:** D-100 follow-up #2. Single commit.
+
+Same-day follow-up to V.7.7C.5.1. Matt's 2026-05-08T22-58-49Z manual smoke confirmed:
+
+- Frame thread: thin, sharp, vibrant white ✅
+- Radials: faint wisps with too much aura, no scaffold ❌
+- Spirals: large and thick like a fat crayon ❌
+- Spider: didn't appear (despite vibration) ❌
+- Background: more vibrant ✅ but only green, no other colors ❌
+
+V.7.7C.5.2 closes all four ❌ in a single cosmetic + spider-trigger commit.
+
+**Issues addressed.**
+
+1. **Spirals "fat crayon" — diagnosed as drops, not chord SDF.** Drop radius was 0.008 UV ≈ 8.6 px at 1080p (V.7.5 §10.1.3 had bumped to 0.008 to make drops the visual hero). At V.7.7C.5's canvas-filling polygon scale, drops piled up along chord segments at 4–5 drop-diameter spacing and read as a continuous thick yellow band — the chord SDF (0.0007 UV) was invisible underneath. **Drop radius halved 0.008 → 0.004** (~4 px). Pearls now read as discrete dewdrops along thin chords.
+
+2. **Radials "wispy, no scaffold".** V.7.7C.5.1 dimmed silkTint to 0.55 to compensate for the V.7.7C.5 muted backdrop, but V.7.7C.5.1 ALSO pumped the §4.3 palette to vivid sat 0.55–0.95 / val 0.30–0.70. Against that vivid backdrop, 0.55 silkTint reads as faint cream-on-yellow with no contrast. **silkTint factor 0.55 → 0.70, ambient tint 0.20 → 0.30.** Restores radial contrast vs the pumped backdrop without going back to V.7.7C.4's 0.85 (which was tuned for the muted palette and would now over-dominate).
+
+3. **"Only green, no other colors"** across a 17-track playlist. V.7.7C.5.1's ±0.15 audio-time hue cycle stayed inside one valence-quadrant neighborhood — Love Rehab's neutral-warm valence kept hue in [0.15, 0.45] yellow-green band the entire session. **Hue cycle ±0.15 → ±0.45 swing.** Sweeps roughly half the hue wheel per cycle so the backdrop visibly traverses cyan → green → yellow → amber → magenta every ~25 s.
+
+4. **Spider didn't fire on Love Rehab.** Telemetry from the V.7.7C.5.1 smoke (4705-frame Love Rehab Arachne window) showed max bassAttRel = 1.86 with **4.6 % of frames clearing the 0.30 trigger** — but they were scattered (electronic kicks: ~5–10 frames above threshold then ~30+ below, the 2× decay-when-below rate emptied the accumulator before it reached 0.75 s). **Sustained-trigger threshold 0.75 s → 0.4 s.** Lets bursty kick patterns at 4–6 kicks/sec accumulate while still rejecting single-kick spikes — one ~5-frame burst contributes ~83 ms, short of 0.4 s. Sustained sub-bass still fires within ~0.4 s of onset (vs ~0.75 s before).
+
+**Tests + verification.**
+
+- **No new test files.** Only golden hash regen + spider sustain constant change. Existing spider tests still pass: `sustainedSubBassTriggersSpider` (60 frames at bassAttRel = 0.40 → 1.0 s sustained, well above 0.4 s threshold) and `kickDrumPulseDoesNotTrigger` (9 frames burst then 120 frames decay → 150 ms is still below 0.4 s threshold and the decay returns the accumulator to 0).
+- **Arachne goldens drift further toward zero on PresetRegression.** Drop radius halved means even less foreground signal at the harness's frame-phase-0 + zeroed slot-6/7 buffer; steady/quiet collapse fully to 0. beatHeavy still differs because `bass_att_rel = 0.6` triggers §8.2 vibration. Real visual divergence is observed in `PresetVisualReviewTests`.
+- **PresetAcceptance D-037 invariant 3 still passes** — drop reduction shrinks beat-pulse-affected pixel area, silk lift is offset.
+- **Engine 1185 tests / 2–5 documented pre-existing parallel-load timing flakes** (`MetadataPreFetcher.fetch_networkTimeout`, `SoakTestHarness.cancel`, plus the SessionManager `.preparing == .ready` set under @MainActor backlog stress — all pass in isolation).
+- **App build clean.**
+- **SwiftLint 0 violations on touched files.**
+- **`Scripts/check_sample_rate_literals.sh` passes.**
+- **Visual harness.** `RENDER_VISUAL=1` PNGs at `/tmp/phosphene_visual/20260508T232351/`. WORLD now shows vivid green-to-magenta gradient at neutral mood (huge improvement over V.7.7C.5.1's single-hue green wash).
+
+**Carry-forward.**
+
+- **Manual smoke re-run on real music** — Matt verifies the four fixes deliver the expected reading: drops as discrete pearls (not fat crayon); radials as solid scaffold (not wisps); backdrop cycles through hues across a track (not psych-ward green); spider fires on Love Rehab kicks.
+- **V.7.7C.5.3** — per-track web identity (Options B/C, renumbered from V.7.7C.5.2 after that slot was claimed by this cosmetic pass). Awaiting product decision.
+- **V.7.7C.6** — spider movement system. Still deferred.
+- **V.7.10** — Matt M7 contact-sheet review + cert sign-off. Five remaining prerequisites: per-chord drop accretion, anchor-blob discs at polygon vertices, background-web migration crossfade visual, V.7.7C.6 spider movement, V.7.7C.5.2 manual-smoke confirmation.
+
+---
+
 ## [dev-2026-05-08-d] V.7.7C.5.1 — Arachne visual craft pass (line widths + luminescence + palette + shaft gate + per-segment seed)
 
 **Increment:** V.7.7C.5.1. **Decision:** D-100 follow-up. Single commit.

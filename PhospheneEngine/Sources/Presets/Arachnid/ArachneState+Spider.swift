@@ -102,7 +102,18 @@ extension ArachneState {
     // MARK: - Spider Constants
 
     /// Seconds of sustained sub-bass required to trigger the spider.
-    static let sustainedTriggerThreshold: Float = 0.75
+    /// V.7.7C.5.2 (D-100 follow-up #2): 0.75 → 0.4. The 0.75 s threshold
+    /// fired correctly on James-Blake-style sustained sub-bass but missed
+    /// kick-driven music entirely (Love Rehab kicks: ~5–10 frames above
+    /// 0.30 then ~30+ frames below; the 2× decay-when-below rate meant the
+    /// accumulator never reached 0.75 s on transient patterns). Matt's
+    /// 2026-05-08T22-58-49Z smoke confirmed the spider didn't appear on
+    /// Love Rehab despite max bassAttRel = 1.86 and 4.6 % of frames above
+    /// the 0.30 trigger. 0.4 s lets bursty kick patterns (4–6 sustained
+    /// kicks per second) accumulate enough to fire while still rejecting
+    /// single-kick spikes (one ~5-frame burst contributes ~83 ms — short
+    /// of 0.4 s). Sustained sub-bass still fires within ~0.4 s of onset.
+    static let sustainedTriggerThreshold: Float = 0.4
     /// Pre-V.7.7C.2 V.7.5 session-cooldown duration. **Deprecated** —
     /// superseded by the per-segment `spiderFiredInSegment` guard
     /// (D-095 / §6.5). Retained as a no-op constant so the

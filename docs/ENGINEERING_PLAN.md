@@ -1528,13 +1528,45 @@ Plus a separate observation: "should the preset draw the SAME web in the SAME po
 
 **Landed (2026-05-08, single commit).** Files: `PhospheneEngine/Sources/Presets/Shaders/Arachne.metal` (arachHashU32 helper added; silk line widths + halo sigmas + halo magnitudes halved in `arachneEvalWeb`; foreground anchor block silk luminescence dimmed; ancSeed switched to per-segment `arachHashU32(webs[0].rng_seed ^ 0xCA51u)`; §4.3 palette rewritten with pumped sat/val + audio-time hue cycle; shaft engagement gate reformulated to floor+scale); `PhospheneEngine/Tests/PhospheneEngineTests/Presets/ArachneSpiderRenderTests.swift` (`goldenSpiderForcedHash` regen); `PhospheneEngine/Tests/PhospheneEngineTests/Renderer/PresetRegressionTests.swift` (Arachne 3-tuple regen, comment block extended). Engine 1185 tests / 3 documented pre-existing parallel-load timing flakes (`MetadataPreFetcher.fetch_networkTimeout`, `SoakTestHarness.cancel`, `SessionManagerCancel.cancel_fromReady`); app build clean; SwiftLint 0 violations on touched files. RENDER_VISUAL=1 PNGs at `/tmp/phosphene_visual/20260508T224311/`. D-100.
 
-**Carry-forward:** Manual smoke re-run on real music (Matt verifies the four cosmetic + palette + shaft fixes deliver the expected reading: psychedelic-not-psych-ward backdrop, fine-detail silk, visible shaft at baseline, per-segment variation across multiple Arachne instances). V.7.7C.5.2 (per-track web identity, Options B/C) deferred awaiting product call. V.7.7C.6 (spider movement) and V.7.10 (cert review) still remain.
+**Carry-forward:** Manual smoke 2026-05-08T22-58-49Z surfaced four issues — drops piling into "fat crayon" spirals, silk wisps with no scaffold, only-green palette across a multi-track session, spider didn't fire on Love Rehab. All addressed in V.7.7C.5.2 (below). V.7.7C.5.3 (per-track web identity, Options B/C) deferred awaiting product call. V.7.7C.6 (spider movement) and V.7.10 (cert review) still remain.
 
 ---
 
-### Increment V.7.7C.5.2 — Per-track web identity (Options B / C) — DEFERRED, awaiting product decision
+### Increment V.7.7C.5.2 — Arachne second cosmetic + spider-trigger pass (drops + silk re-brightening + hue cycle widening + spider sustain) ✅ 2026-05-08
 
-**Prerequisite:** V.7.7C.5.1 manual-smoke green sign-off. Decision pending Matt's evaluation of whether the Option A per-segment variation (V.7.7C.5.1) is sufficient or whether webs should additionally be tied to track identity for aesthetic association.
+**Prerequisite:** V.7.7C.5.1 manual smoke completed. Matt's 2026-05-08T22-58-49Z session surfaced four issues despite the V.7.7C.5.1 cosmetic + palette pump:
+
+1. **Spirals "large and thick like a fat crayon"** — diagnosed as drops (radius `0.008` UV ≈ 8.6 px) piling up along chord segments at 4–5 drop-diameter spacing. The chord SDF (0.0007 UV) is invisible under the drop chain. Drops carry the visual mass that V.7.5 §10.1.3 intended ("drops as visual hero") but at canvas-filling scale that produces the fat-crayon reading.
+2. **Radials "wispy, no solid scaffold"** — V.7.7C.5.1 dimmed silkTint to 0.55 to compensate for the muted V.7.7C.5 backdrop, but V.7.7C.5.1 ALSO pumped the §4.3 palette to vivid sat 0.55–0.95 / val 0.30–0.70. Against the new vivid backdrop, 0.55 silkTint reads as faint cream-on-yellow with no contrast.
+3. **"Only green, no other colors"** — V.7.7C.5.1's ±0.15 audio-time hue cycle stays inside one valence-quadrant neighborhood across a session.
+4. **Spider didn't fire on Love Rehab** despite max bassAttRel = 1.86 (4.6 % of frames > 0.30 trigger). The 0.75 s sustain accumulator with 2× decay-when-below requires SUSTAINED bass; kick-driven music produces ~5–10 frames above threshold then ~30+ below, so the accumulator never reaches 0.75 s.
+
+**Scope:** Single-commit cosmetic + spider-trigger pass on V.7.7C.5.1. No state-machine changes; only drop radius, silk constants, hue cycle amplitude, and sustain threshold. Plus golden hash regen.
+
+**Done when:**
+
+- Drop radius halved `0.008 → 0.004` (~4 px at 1080 p) so pearls read as discrete dewdrops along thin chords instead of a continuous fat band.
+- Silk re-brightened: silkTint factor `0.55 → 0.70`, ambient tint factor `0.20 → 0.30`. Restores radial contrast vs the vivid backdrop without going back to V.7.7C.4's 0.85.
+- Audio-time hue cycle widened `±0.15 → ±0.45`. Backdrop visibly traverses cyan → green → yellow → amber → magenta every ~25 s instead of staying in one hue band.
+- Spider sustained-trigger threshold lowered `0.75 s → 0.4 s` so kick-driven music can accumulate (still rejects single-kick spikes — one ~5-frame burst contributes ~83 ms).
+- All targeted suites pass (`PresetAcceptance`, `StagedComposition`, `StagedPresetBufferBinding`, `PresetRegression`, `ArachneSpiderRender`, `ArachneState`, `ArachneStateBuild`, `ArachneListeningPose`, `ArachneBranchAnchors`, `PresetLoaderCompileFailure`).
+- Goldens regenerated (Arachne `(steady, beatHeavy, quiet)` `(0x8000000000000000, 0x04101A6444186969, 0x8000000000000000) → (0x0000000000000000, 0x66929B65E4D94849, 0x0000000000000000)`; spider forced `0x800080C004000000 → 0x000080C004000000`).
+- 0 SwiftLint violations on touched files.
+- `Scripts/check_sample_rate_literals.sh` passes.
+
+**Verify:** Build → targeted suites pre-golden → goldens regen → targeted suites post-golden → `RENDER_VISUAL=1` visual harness shows green-to-magenta gradient + thin sharp silk → full engine + app suites → SwiftLint → manual smoke re-run on real music (Matt verifies: discrete dewdrops along thin chords not fat crayon; radial scaffold visible; backdrop cycles through hues across a track; spider fires on Love Rehab kicks).
+
+**Estimated sessions:** 1 (single-commit cosmetic + sustain-tuning pass).
+
+**Landed (2026-05-08, single commit).** Files: `PhospheneEngine/Sources/Presets/Shaders/Arachne.metal` (drop radius 0.008→0.004 in arachneEvalWeb; silkTint 0.55→0.70 + ambient 0.20→0.30 in foreground anchor block; hue cycle ±0.15→±0.45 in drawWorld); `PhospheneEngine/Sources/Presets/Arachnid/ArachneState+Spider.swift` (`sustainedTriggerThreshold` 0.75→0.4); `PhospheneEngine/Tests/PhospheneEngineTests/Presets/ArachneSpiderRenderTests.swift` (golden regen); `PhospheneEngine/Tests/PhospheneEngineTests/Renderer/PresetRegressionTests.swift` (golden regen). Engine 1185 tests / 2–5 documented pre-existing parallel-load timing flakes; app build clean; SwiftLint 0 violations. RENDER_VISUAL=1 PNGs at `/tmp/phosphene_visual/20260508T232351/`. D-100 follow-up #2.
+
+**Carry-forward:** Manual smoke re-run on real music (Matt verifies the four V.7.7C.5.2 fixes deliver the expected reading on Love Rehab + LTYL — drops as discrete pearls; radials as solid scaffold; multi-hue gradient cycling; spider fires on kick drums). V.7.7C.5.3 (per-track web identity, Options B/C) deferred awaiting product call. V.7.7C.6 (spider movement) and V.7.10 (cert review) still remain.
+
+---
+
+### Increment V.7.7C.5.3 — Per-track web identity (Options B / C) — DEFERRED, awaiting product decision
+
+**Prerequisite:** V.7.7C.5.2 manual-smoke green sign-off. Renumbered from V.7.7C.5.2 after that slot was claimed by the second cosmetic pass. Decision pending Matt's evaluation of whether the Option A per-segment variation (landed in V.7.7C.5.1) is sufficient or whether webs should additionally be tied to track identity for aesthetic association.
 
 **Scope (if scheduled):** Two flavours, mutually-exclusive:
 

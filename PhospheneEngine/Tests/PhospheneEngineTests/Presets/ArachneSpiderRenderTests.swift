@@ -100,7 +100,7 @@ import simd
 /// spoke positions shift (different per-spoke jitter from the new seed),
 /// silk weight is halved, hub knot lighter. Hash drift reflects the
 /// cumulative cosmetic recalibration.
-private let goldenSpiderForcedHash: UInt64 = 0x800080C004000000
+private let goldenSpiderForcedHash: UInt64 = 0x000080C004000000
 
 // MARK: - Test Suite
 
