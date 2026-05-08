@@ -261,9 +261,12 @@ V.7.7C.5 reframe (Q13). References are **mood-palette anchors only** — the ref
 | Mood-cool default (palette only) | `06_atmosphere_dark_misty_forest.jpg` | — |
 | Mood-warm default (palette only) | `16_atmosphere_dappled_pine_forest.jpg` | `05_lighting_backlit_atmosphere.jpg` |
 | Mood-high-arousal psychedelic (palette only) | `15_atmosphere_aurora_forest.jpg` | — |
-| Light shafts | `07_atmosphere_dust_light_shaft.jpg` | — |
+| Backlit purple atmosphere + canvas-filling web (V.7.7C.5 hero) | `19_macro_backlit_purple_canvas_filling_web.jpg` | — |
+| Light shafts | `07_atmosphere_dust_light_shaft.jpg` | `19_macro_backlit_purple_canvas_filling_web.jpg` (backlight as central glow rather than discrete shaft) |
 | Dust motes (caustic in shaft) | `07_atmosphere_dust_light_shaft.jpg` | — |
 | Pure-black silence anchor | `08_palette_bioluminescent_organism.jpg` | — |
+| Off-frame anchor convention (V.7.7C.5) | `19_macro_backlit_purple_canvas_filling_web.jpg` | — |
+| Canvas-filling polygon scale (V.7.7C.5) | `19_macro_backlit_purple_canvas_filling_web.jpg` | — |
 | Anti-reference (clipart) | `09_anti_clipart_symmetry.jpg` | — |
 | Anti-reference (neon) | `10_anti_neon_stylized_glow.jpg` | — |
 
@@ -296,6 +299,8 @@ The §4 rewrite resolved the open spec questions surfaced by the V.7.7C.5 ENGINE
 | Q11 — silence anchor | keep | Cross-preset convention |
 | Q12 — §5.9 anchor twigs | retire entirely | Polygon vertices alone provide WEB attachment; no literal "branch" or "twig" anywhere |
 | Q13 — references | (b) reinterpret existing | Matt: "you don't follow the references anyway, so what does it matter?" — references stay as mood-palette anchors only |
+| Q14 — anchors at canvas edge | (added 2026-05-09) `kBranchAnchors[]` positions on or just past `[0,1]² ` borders; web reads as anchored to off-frame structures | Matt's reference image `19_macro_backlit_purple_canvas_filling_web.jpg`: web threads enter the canvas from outside; anchors are implied not depicted. Updates to `kBranchAnchors[6]` constants required at V.7.7C.5 implementation. |
+| Q15 — canvas-filling web | (added 2026-05-09) polygon interior occupies ~70–85% of canvas area; `webR` bumps from `0.22` → `~0.55` | Same reference. With anchors at frame edges, the polygon naturally spans most of the canvas; `webR` controls the spoke early-exit + spiral ring sweep range so it must scale with the polygon. |
 
 ---
 
@@ -333,14 +338,32 @@ Build pace audio-modulated per §7. Average music: ~50–55s (within the 60s cei
 
 ### 5.3 Frame polygon
 
-**Not a circle.** Real orb webs are bounded by an irregular polygon whose vertices are the anchor points the spider could find. Reference 11 shows this directly — the web is bounded by branches at multiple positions, not by a circular boundary.
+**Not a circle.** Real orb webs are bounded by an irregular polygon whose vertices are the anchor points the spider could find. Reference 11 shows the principle even though the V.7.7B–C.4 forest spec that depended on it has been retired (V.7.7C.5).
 
-For Phosphene: 4–7 frame anchor points, distributed irregularly around the visible web area but determined by the WORLD's near-frame branches (§4.2.4). The polygon is computed when the segment begins:
-- Identify the entry points of near-frame branches into the frame.
-- Pick a subset of 4–7 branch-edge points as anchor candidates, biased toward roughly-perimeter distribution but allowing irregularity.
-- Connect adjacent anchors (in angular order around the polygon centroid) with frame threads.
+For Phosphene: 4–7 frame anchor points, distributed irregularly around the visible canvas. The polygon is computed when the segment begins from `kBranchAnchors[]` (the constants live in `Arachne.metal` line ~153 + `ArachneState.swift`); `selectPolygon(rng:)` Fisher-Yates picks a 4–6 subset and orders them angularly around the centroid; adjacent anchors connect with frame threads.
 
-The polygon is asymmetric on purpose. Ref 09 is the symmetric anti-reference; symmetry is the failure mode. If the polygon comes out symmetric by chance, perturb it (rotate one anchor by 15°).
+> **V.7.7C.5 update (2026-05-09).** Two additional constraints from Matt's reference image (`docs/VISUAL_REFERENCES/arachne/19_macro_backlit_purple_canvas_filling_web.jpg`):
+>
+> 1. **Anchors at or beyond the canvas edges.** Every entry in `kBranchAnchors[6]` should sit at `x ≤ 0.05` or `x ≥ 0.95` or `y ≤ 0.05` or `y ≥ 0.95` (i.e., on or just past the visible frame border). The web reads as anchored to *something off-canvas*; the silk thread enters the visible area from outside and the anchor itself is implied, not depicted. This rule replaces the V.7.7C.2 `kBranchAnchors[6]` positions which sat inside the [0.10, 0.92] range and produced visible attachment points within the canvas. The V.7.7C.5 implementation pass updates the constants to off-frame positions; `ArachneBranchAnchorsTests` regenerates against the new values.
+>
+> 2. **Canvas-filling polygon.** The polygon's interior should occupy the majority of the visible canvas (target: ~70–85 % of frame area). With anchors at the edges, the polygon naturally spans most of the canvas. The V.7.7C.5 implementation pass must also bump `webR` from the V.7.7C.4 value of `0.22` to ~`0.55` in `arachne_composite_fragment`'s foreground anchor block so the spoke distance early-exit (`if (rT > webR * 1.20)`) and the spiral ring sweep range (`r_outer = webR * 0.95`) accommodate the larger polygon. Spider patch radius (`kSpiderPatchUV = 0.15`) and drop radius (`0.008` UV) stay at their V.7.7D values — those are body-local scales, not polygon-relative.
+
+Suggested updated `kBranchAnchors[6]` for V.7.7C.5 (off-frame, irregular distribution; final values may be tuned at implementation time):
+
+```swift
+public static let branchAnchors: [SIMD2<Float>] = [
+    SIMD2(0.05, 0.05),   // upper-left near-corner
+    SIMD2(0.92, 0.02),   // upper-right corner (slightly past frame on y)
+    SIMD2(1.00, 0.45),   // right edge mid
+    SIMD2(0.85, 0.98),   // lower-right (slightly past frame on y)
+    SIMD2(0.05, 0.92),   // lower-left near-corner
+    SIMD2(0.00, 0.40)    // left edge mid
+]
+```
+
+(MSL `kBranchAnchors[6]` constants in `Arachne.metal` mirror byte-for-byte; `ArachneBranchAnchorsTests` regression-locks the sync.)
+
+The polygon is asymmetric on purpose. Ref 09 is the symmetric anti-reference; symmetry is the failure mode. If the polygon comes out symmetric by chance (which is rare given the irregular branchAnchors positions but possible for some Fisher-Yates draws), perturb it (rotate one anchor by 15°).
 
 ### 5.4 Hub
 
