@@ -3063,11 +3063,32 @@ git diff <pre-DM.0> HEAD -- PhospheneEngine/Sources/Renderer/Shaders/Particles.m
 
 **Carry-forward:** DM.1 resumes with one revision to its Task 6 (pass wiring) — Drift Motes ships its own `DriftMotesGeometry: ParticleGeometry` conformer rather than treating Murmuration's path as inherited infrastructure. `VisualizerEngine.makeParticleGeometry` gains a Drift Motes branch.
 
-### Increment DM.1 — Drift Motes Session 1 (foundation) ⏳
+### Increment DM.1 — Drift Motes Session 1 (foundation) ✅ landed 2026-05-08
 
-**Scope (resumes post-DM.0):** Compute kernel + sprite render + sky backdrop. Force-field motion (wind + curl_noise + lifecycle recycle), no flocking, no audio coupling beyond the D-019 stem-warmup blend. `DriftMotesNonFlockTest` is the acceptance gate. See `prompts/DRIFT_MOTES_SESSION_1_PROMPT.md`.
+**Scope (resumed post-DM.0):** Compute kernel + sprite render + sky backdrop. Force-field motion (wind + curl_noise + lifecycle recycle), no flocking, no audio coupling beyond the D-019 stem-warmup blend (touched but not consumed in DM.1 — wired for DM.2). `DriftMotesNonFlockTest` is the acceptance gate. See `prompts/DM_1_PROMPT.md`.
 
-**Status:** paused at DM.1's first attempt (no code written, blocker reported); resumable post-DM.0.
+**Files created:**
+
+- `PhospheneEngine/Sources/Presets/Shaders/DriftMotes.json` — preset sidecar matching `Gossamer.json` schema. `passes: ["feedback", "particles"]`, `fragment_function: "drift_motes_sky_fragment"`, `family: particles`, `rubric_profile: lightweight`, `certified: false`.
+- `PhospheneEngine/Sources/Presets/Shaders/DriftMotes.metal` — sky-backdrop fragment shader. Static warm-amber vertical gradient (no audio reactivity in Session 1).
+- `PhospheneEngine/Sources/Renderer/Shaders/ParticlesDriftMotes.metal` — engine-library compute + sprite shaders (`motes_update` / `motes_vertex` / `motes_fragment`). Force-field motion: wind `normalize((-1, -0.2, 0)) * 0.3` + 4-octave curl-of-fBM turbulence × 0.15, recycle on bounds-exit or age expiry, default warm-amber emission. Filename uses `Particles*` prefix because `ShaderLibrary` concatenates files in lexicographic order — a `D`-prefixed name would precede `Particles.metal` and the shared `Particle` struct would not yet be in scope. Documented in the file header and in `CLAUDE.md`.
+- `PhospheneEngine/Sources/Renderer/Geometry/DriftMotesGeometry.swift` — `ParticleGeometry` conformer. 800 particles (Tier 2 target from `DRIFT_MOTES_DESIGN.md §5.7`), additive blend (`.one + .one`), uniform-cube init with steady-state wind velocity + age-randomised lifecycle so the field is in equilibrium from frame 0.
+- `PhospheneEngine/Tests/PhospheneEngineTests/Presets/DriftMotesTests.swift` — `DriftMotesNonFlockTest` running 200 frames of silence-fixture compute. Two metrics: pairwise distance distribution (50 deterministic random pairs; ≥ 80% of frame-50 value, looser to accommodate the natural cube → top-slab transient) and centroid-relative spread RMS (translation-invariant; ≥ 85%, the load-bearing flock discriminator — flocking would shrink this by 50%+).
+
+**Files modified:**
+
+- `PhospheneApp/VisualizerEngine.swift` — `particleGeometry: (any ParticleGeometry)?` split into two named properties (`murmurationGeometry`, `driftMotesGeometry`); `makeParticleGeometry` factory split into `makeMurmurationGeometry` + `makeDriftMotesGeometry`. Both built once at engine init.
+- `PhospheneApp/VisualizerEngine+Presets.swift` — `applyPreset .particles:` switches on `desc.name` to attach the right conformer.
+- `PhospheneEngine/Tests/PhospheneEngineTests/Presets/PresetLoaderCompileFailureTest.swift` — `expectedProductionPresetCount` 14 → 15 (Failed Approach #44 silent-drop gate).
+- `PhospheneEngine/Tests/PhospheneEngineTests/Renderer/PresetRegressionTests.swift` — added Drift Motes golden hash entry (`0x8000000000008000` for all three fixtures — the regression harness renders only the sky fragment, which is audio-independent in Session 1).
+
+**Audit results:** Murmuration's `ProceduralGeometry`, `Particles.metal`, the `ParticleGeometry` protocol surface, and `RenderPipeline*.swift` are byte-identical to the post-DM.0 baseline (`git diff` returns zero output). PresetRegressionTests' Murmuration golden hash unchanged at the post-DM.0 values. `swift test --package-path PhospheneEngine`: 1172 tests, 3 documented pre-existing flakes (`MetadataPreFetcher.fetch_networkTimeout`, `SessionManager.cancel_fromReady`, `SoakTestHarness.cancel`) — none related to DM.1. `xcodebuild` app build succeeds. SwiftLint: 0 violations on touched files. D-026 / D-019 / D-029 grep checks all return zero violations.
+
+**Estimated sessions:** 1.0 (this session itself, post-DM.0).
+
+**Status:** ✅ landed 2026-05-08.
+
+**Carry-forward:** DM.2 wires the light shaft (`ls_shadow_march` or `ls_radial_step_uv`), floor fog (`vol_density_height_fog`), and per-particle hue baking from `vocalsPitchNorm` into the existing `Particle.color` lanes (no struct extension needed — DM.1 confirmed the four `packed_float4` lanes are sufficient). DM.3 wires the full audio routing (wind force ×= `f.bass_att_rel`, emission rate × `f.mid_att_rel`, backdrop palette tinted by `f.valence`, drum dispersion shock from `stems.drums_energy_dev`, anticipatory shaft pulse on `f.beat_phase01`) and the M7 frame-match review against `01_atmosphere_dust_motes_light_shaft.jpg`.
 
 ---
 

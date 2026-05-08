@@ -1,0 +1,31 @@
+{
+  "name": "Drift Motes",
+  "family": "particles",
+  "duration": 30,
+  "description": "Pollen and dust drift in a warm directional force field. The cinematographic ambient floor.",
+  "author": "Matt",
+  "passes": ["feedback", "particles"],
+  "fragment_function": "drift_motes_sky_fragment",
+  "vertex_function": "fullscreen_vertex",
+  "beat_source": "composite",
+  "decay": 0.92,
+  "base_zoom": 0.0,
+  "base_rot": 0.0,
+  "beat_zoom": 0.0,
+  "beat_rot": 0.0,
+  "beat_sensitivity": 0.0,
+  "stem_affinity": {
+    "vocals": "mote_hue",
+    "bass": "wind_force",
+    "drums": "dispersion_shock"
+  },
+  "visual_density": 0.35,
+  "motion_intensity": 0.30,
+  "color_temperature_range": [0.55, 0.85],
+  "fatigue_risk": "low",
+  "transition_affordances": ["crossfade", "morph"],
+  "section_suitability": ["ambient", "comedown", "bridge"],
+  "complexity_cost": { "tier1": 1.6, "tier2": 2.1 },
+  "rubric_profile": "lightweight",
+  "certified": false
+}
