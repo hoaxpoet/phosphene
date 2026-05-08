@@ -1076,6 +1076,8 @@ static inline float ls_intensity_audio(float baseIntensity, float midRel);
 
 Cost: screen-space ≈ 0.5 ms (32 samples); ray-march shadow ≈ 1.5 ms (48 steps). Sample at half-res + upscale if budget tight.
 
+**Sky-only-fragment variant (no occlusion mask):** when the shaft is drawn into a backdrop fragment that has no scene texture to sample (Drift Motes' `drift_motes_sky_fragment` is the reference implementation, DM.2), substitute a perpendicular-distance cone mask for the per-step occlusion read. At each `ls_radial_step_uv` sample, evaluate `1 - smoothstep(0, coneHalfWidth, perpFromAxis)` where `perpFromAxis` is the perpendicular distance from the sample UV to the shaft's central axis (the line from `sunUV` through frame centre, or any anchor of the shader's choice). `coneHalfWidth` typically widens with along-axis distance from the sun (`0.04 + 0.12 * along` in Drift Motes). The accumulator otherwise behaves identically. Pair with `dm_pitch_hue` (engine-library, see `ParticlesDriftMotes.metal`) when the mote / sprite hue should ride the recent vocal melody at emission time — D-019 stem-warmup blend handles the cold-stems window.
+
 ### 6.3 Dust motes
 
 **Use for:** Arachne spider easter-egg reveal, Gossamer bioluminescent ambient, any scene that wants air-as-material.
