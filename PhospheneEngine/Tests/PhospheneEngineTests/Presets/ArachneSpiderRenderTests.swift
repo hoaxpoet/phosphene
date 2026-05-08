@@ -41,6 +41,19 @@ import simd
 /// black; drops compose only as thin warm fresnel rim + warm specular pinpoint
 /// + dark edge ring multiplied by the audio gain. Hash drift from V.7.7B is a
 /// few bits — well within the dHash tolerance of 8.
+///
+/// V.7.7D (D-094): 2D dark-silhouette spider replaced with a 3D SDF anatomy
+/// (cephalothorax + abdomen + petiole + 8 IK legs + 6 eyes) rendered into a
+/// `0.15 UV` screen-space patch and shaded via the §6.2 chitin recipe. Test
+/// fixture inputs (`bass_dev = 0`, `beat_bass = 0`) zero out the §8.2
+/// vibration jitter, and the spider's screen-space footprint at the 64×64
+/// dHash resolution is small enough that the body+legs contribute below the
+/// 9×8 luma quantization threshold of the digest — hash unchanged at the
+/// V.7.7C value. The new 3D spider IS rendered in this test (the colour
+/// values inside the patch differ from V.7.7C's dark silhouette); the dHash
+/// is just too coarse to resolve a small isolated shape change. Real visual
+/// divergence is observed in PresetVisualReviewTests where pixels are
+/// captured directly.
 private let goldenSpiderForcedHash: UInt64 = 0x461E2E1F07830C00
 
 // MARK: - Test Suite
