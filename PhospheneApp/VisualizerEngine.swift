@@ -155,7 +155,9 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     let moodClassifier: MoodClassifier?
 
     /// GPU compute particle system — attached to feedback presets only.
-    var particleGeometry: ProceduralGeometry?
+    /// Typed as the `ParticleGeometry` protocol (D-097) so future particle
+    /// presets can ship sibling conformers; Murmuration is the only conformer today.
+    var particleGeometry: (any ParticleGeometry)?
 
     /// Shader library for creating post-process chains on preset switch.
     let shaderLibrary: Renderer.ShaderLibrary
@@ -629,10 +631,14 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
 
     /// Build the GPU particle system used by the Murmuration preset.
     /// Quality of movement over quantity — each bird should be visible.
+    ///
+    /// Returns `any ParticleGeometry` (D-097). Murmuration is the only conformer
+    /// today; future particle presets each define their own conformer and add a
+    /// new factory branch here rather than parameterizing this construction.
     private static func makeParticleGeometry(
         context: MetalContext,
         library: Renderer.ShaderLibrary
-    ) -> ProceduralGeometry? {
+    ) -> (any ParticleGeometry)? {
         guard let particles = try? ProceduralGeometry(
             device: context.device,
             library: library.library,
