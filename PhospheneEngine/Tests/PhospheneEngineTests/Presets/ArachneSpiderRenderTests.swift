@@ -65,7 +65,19 @@ import simd
 /// expected [10, 30] band. Spider's own 3D anatomy + chitin material are
 /// byte-identical to V.7.7D (V.7.7D contract preserved); only the silk
 /// background composition under the patch changed.
-private let goldenSpiderForcedHash: UInt64 = 0x461E381912D80800
+///
+/// V.7.7C.3 (D-095 follow-up): test now calls `state.reset()` before warmup
+/// so `bs.anchors[]` is seeded by Fisher-Yates and `webs[0].rng_seed` carries
+/// a non-zero packed polygon — polyCount ≥ 3 inside `arachneEvalWeb`, and the
+/// polygon-from-branchAnchors path is exercised. The frame-phase foreground
+/// is still mostly invisible at warmup t=0.5 s (only partial bridge thread),
+/// so the visual change under the spider footprint is subtle: 7-bit drift
+/// from V.7.7C.2 (within the dHash 8-bit tolerance — the polygon-aware spoke
+/// clipping visibly affects only the very few pixels where partial frame
+/// edges land at the harness's low warmup progress). Polygon path coverage
+/// is meaningful regardless — every rendered pixel decodes polyV[] and
+/// invokes ray-polygon intersection through the foreground anchor block.
+private let goldenSpiderForcedHash: UInt64 = 0x46160011C2D80800
 
 // MARK: - Test Suite
 
@@ -91,6 +103,14 @@ struct ArachneSpiderRenderTests {
         guard let state = ArachneState(device: device, seed: 42) else {
             throw SpiderTestError.stateAllocationFailed
         }
+
+        // V.7.7C.3 / D-095 follow-up — `reset()` seeds the BuildState polygon
+        // (`bs.anchors[]` via Fisher-Yates) so the foreground anchor block
+        // exercises polygon-aware geometry. Without reset, anchors=[] →
+        // packed=0 → polyCount=0 → V.7.5 fallback (regression-mode silently
+        // skips polygon-mode bugs). Production calls `reset()` from
+        // `applyPreset .staged`; mirror that here.
+        state.reset()
 
         // Advance pool so the anchor webs are stable and the best hub is known.
         let warmupFV = FeatureVector(bass: 0.5, mid: 0.5, treble: 0.5, time: 1.0, deltaTime: 1.0 / 60.0)

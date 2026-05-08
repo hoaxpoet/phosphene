@@ -301,6 +301,92 @@ static float3 drawWorld(float2 uv, float4 moodRow, float accTime) {
     return col;
 }
 
+// ── V.7.7C.3 / D-095 — polygon-from-branchAnchors helpers ────────────────────
+//
+// Decode the polygon anchor indices packed by `ArachneState.packPolygonAnchors`
+// into `webs[0].rng_seed`. Layout: bits [0..3] = count (0–6), bits [4..7] =
+// anchors[0], bits [8..11] = anchors[1], …, bits [24..27] = anchors[5]. Bits
+// [28..31] reserved.
+//
+// Returns the count (0–6); fills `outPoly` (in UV space, 6 entries — unused
+// slots are zeroed). Count=0 signals "no polygon — fall back to circular
+// spoke tips" so V.7.5 callers (e.g., `drawBackgroundWeb`) keep working.
+static int decodePolygonAnchors(uint packed, thread float2 *outPoly) {
+    int count = int(packed & 0xFu);
+    if (count <= 0 || count > 6) {
+        for (int i = 0; i < 6; i++) outPoly[i] = float2(0.0);
+        return 0;
+    }
+    for (int i = 0; i < 6; i++) {
+        if (i < count) {
+            int idx = int((packed >> (4u + uint(i) * 4u)) & 0xFu);
+            if (idx < 0) idx = 0;
+            if (idx > 5) idx = 5;
+            outPoly[i] = kBranchAnchors[idx];
+        } else {
+            outPoly[i] = float2(0.0);
+        }
+    }
+    return count;
+}
+
+// Ray-polygon perimeter intersection. `origin` and `polyV` share UV space;
+// `dir` is unit. Returns hit position relative to origin (hub-local). Falls
+// back to `dir × fallbackRadius` if no edge is hit (degenerate case).
+static float2 rayPolygonHit(
+    float2 origin,
+    float2 dir,
+    thread const float2 *polyV,
+    int polyCount,
+    float fallbackRadius
+) {
+    if (polyCount < 3) return dir * fallbackRadius;
+    float bestT = 1e6;
+    float2 bestHit = dir * fallbackRadius;
+    for (int e = 0; e < polyCount; e++) {
+        int e2 = (e + 1) % polyCount;
+        float2 a = polyV[e]  - origin;
+        float2 b = polyV[e2] - origin;
+        float2 ab = b - a;
+        float denom = dir.x * ab.y - dir.y * ab.x;
+        if (abs(denom) < 1e-6) continue;          // parallel
+        float t = (a.x * ab.y - a.y * ab.x) / denom;
+        float s = (a.x * dir.y - a.y * dir.x) / denom;
+        if (t > 0.0 && s >= 0.0 && s <= 1.0 && t < bestT) {
+            bestT = t;
+            bestHit = dir * t;
+        }
+    }
+    return bestHit;
+}
+
+// Find polygon edge with the largest angular gap around the centroid — the
+// "bridge" thread per §5.3. Returns index of the first vertex of that edge.
+// Replicates `ArachneState.largestAngularGap` so the shader can render the
+// bridge-first stage-0 reveal without an extra round-trip.
+static int findBridgeIndex(thread const float2 *polyV, int polyCount) {
+    if (polyCount < 2) return 0;
+    float2 centroid = float2(0.0);
+    for (int i = 0; i < polyCount; i++) centroid += polyV[i];
+    centroid /= float(polyCount);
+    int bridgeIdx = 0;
+    float maxGap = -1.0;
+    for (int i = 0; i < polyCount; i++) {
+        int next = (i + 1) % polyCount;
+        float2 cur = polyV[i]  - centroid;
+        float2 nxt = polyV[next] - centroid;
+        float aCur = atan2(cur.y, cur.x);
+        float aNxt = atan2(nxt.y, nxt.x);
+        float gap = aNxt - aCur;
+        if (gap < 0.0) gap += 2.0 * M_PI_F;
+        if (gap > maxGap) {
+            maxGap = gap;
+            bridgeIdx = i;
+        }
+    }
+    return bridgeIdx;
+}
+
 // ── Per-web 2D evaluation ─────────────────────────────────────────────────────
 //
 // Returns ArachneWebResult for a single web at pixel uv.
@@ -315,6 +401,12 @@ static float3 drawWorld(float2 uv, float4 moodRow, float accTime) {
 //   aspectX      — elliptical squash [0.85, 1.15] along aspectAngle axis.
 //   aspectAngle  — in-plane tilt of ellipse axis [0, 2π].
 //   kSag         — gravity-sag coefficient [0.04, 0.10]; sag = kSag × length².
+//
+// V.7.7C.3 / D-095 follow-up parameters:
+//   polyCount    — 0 to fall back to V.7.5 circular tips; 3–6 to clip spokes
+//                  against the irregular `branchAnchors[]` polygon and use
+//                  polyV as frame thread vertices.
+//   polyV        — polygon vertices in UV space (count entries, rest zero).
 
 static ArachneWebResult arachneEvalWeb(
     float2 uv,
@@ -328,7 +420,9 @@ static ArachneWebResult arachneEvalWeb(
     int    spokeCount,
     float  aspectX,
     float  aspectAngle,
-    float  kSag
+    float  kSag,
+    int                       polyCount,
+    thread const float2      *polyV
 ) {
     ArachneWebResult result;
     result.strandCov    = 0.0;
@@ -339,12 +433,23 @@ static ArachneWebResult arachneEvalWeb(
 
     // ── §4.1 macro: web silhouette + elliptical per-web variation ─────────────
     // Transforms pRel into a squashed frame; rest of evaluation uses squashed coords.
+    //
+    // V.7.7C.3 / D-095 follow-up: polygon mode bypasses the squash — the
+    // irregular `branchAnchors`-derived polygon already provides per-segment
+    // shape variation, so a per-web elliptical squash on top reads as a
+    // duplicated source of irregularity. Fall back to V.7.5 squash only when
+    // polyCount < 3.
     float2 pRel0  = uv - hubUV;
-    float2 sqDir  = float2(cos(aspectAngle), sin(aspectAngle));
-    float2 sqPerp = float2(-sqDir.y, sqDir.x);
-    float2 pLocal = float2(dot(pRel0, sqDir), dot(pRel0, sqPerp));
-    pLocal *= float2(aspectX, 1.0 / aspectX);
-    float2 pRel = pLocal.x * sqDir + pLocal.y * sqPerp;
+    float2 pRel;
+    if (polyCount >= 3) {
+        pRel = pRel0;     // polygon defines silhouette; no squash
+    } else {
+        float2 sqDir  = float2(cos(aspectAngle), sin(aspectAngle));
+        float2 sqPerp = float2(-sqDir.y, sqDir.x);
+        float2 pLocal = float2(dot(pRel0, sqDir), dot(pRel0, sqPerp));
+        pLocal *= float2(aspectX, 1.0 / aspectX);
+        pRel = pLocal.x * sqDir + pLocal.y * sqPerp;
+    }
 
     float r = length(pRel);
     if (r > webR * 1.20) return result;
@@ -385,9 +490,12 @@ static ArachneWebResult arachneEvalWeb(
     float spokeLen  = webR - hubR;
     float sagAmount = kSag * spokeLen * spokeLen;
 
-    // Pre-compute ALL spoke tip positions for frame thread polygon.
-    // nTips always uses full spokeCount so the frame polygon is available in stage 0
-    // (frame phase) BEFORE any radials appear — matching §5.2 biology-correct order.
+    // Pre-compute ALL spoke tip positions in alternating-pair order. Used by
+    // the V.7.5 fallback frame polygon block; in V.7.7C.3 polygon mode the
+    // frame polygon vertices come from `polyV` instead (see frame block).
+    // Either way, spoke tips terminate at the polygon perimeter when
+    // polyCount ≥ 3 (`rayPolygonHit`) — this gives radials variable lengths
+    // along an irregular silhouette per §5.3.
     int    nTips = min(spokeCount, 17);
     float2 tipPos[17];
     for (int ti = 0; ti < nTips; ti++) {
@@ -396,7 +504,10 @@ static ArachneWebResult arachneEvalWeb(
         int it     = revIt % spokeCount;
         float jitT = (arachHash(seed + uint(it) * 7u) - 0.5) * baseStep * 0.44;
         float angT = rotAngle + float(it) * baseStep + jitT;
-        tipPos[ti] = webR * float2(cos(angT), sin(angT));
+        float2 dir = float2(cos(angT), sin(angT));
+        tipPos[ti] = (polyCount >= 3)
+                   ? rayPolygonHit(hubUV, dir, polyV, polyCount, webR)
+                   : webR * dir;
     }
 
     float minSpokeDist = 1e6;
@@ -413,16 +524,19 @@ static ArachneWebResult arachneEvalWeb(
             float spAng  = rotAngle + float(i) * baseStep + jitter;
             float2 d     = float2(cos(spAng), sin(spAng));
 
-            // Segment distance with parabolic gravity sag (+v = downward).
-            // V.7.5 §10.1.2: gravity-direction weighting. sin(spAng) is positive
-            // for downward-pointing spokes (UV +Y is down), so max(0, sin) zeroes
-            // out the upward half (no sag against gravity). 0.4 floor preserves
-            // some droop on horizontal spokes — they still hang slightly.
-            float tProj      = saturate(dot(tRel, d) / max(webR, 1e-5));
-            float gravityW   = mix(0.4, 1.0, max(0.0, sin(spAng)));
-            float sagDisp    = sagAmount * 4.0 * tProj * (1.0 - tProj) * gravityW;
-            float2 spokePt   = tProj * webR * d + float2(0.0, sagDisp);
-            float  spDist  = length(tRel - spokePt);
+            // V.7.7C.3: spoke length clipped to polygon perimeter (or webR
+            // fallback). Keeps the parabolic sag formulation in V.7.5 form
+            // for circular fallback (`tProj × webR × d`); polygon mode
+            // parameterises along the actual spoke length (`tProj × spokeTip`).
+            float2 spokeTip  = (polyCount >= 3)
+                             ? rayPolygonHit(hubUV, d, polyV, polyCount, webR)
+                             : webR * d;
+            float  spokeLen2 = max(length(spokeTip), 1e-5);
+            float  tProj     = saturate(dot(tRel, d) / spokeLen2);
+            float  gravityW  = mix(0.4, 1.0, max(0.0, sin(spAng)));
+            float  sagDisp   = sagAmount * 4.0 * tProj * (1.0 - tProj) * gravityW;
+            float2 spokePt   = tProj * spokeTip + float2(0.0, sagDisp);
+            float  spDist    = length(tRel - spokePt);
             if (spDist < minSpokeDist) {
                 minSpokeDist     = spDist;
                 bestSpokeTangent2D = d; // spoke direction = tangent
@@ -437,29 +551,55 @@ static ArachneWebResult arachneEvalWeb(
     float spokeHalo    = exp(-minSpokeDist * minSpokeDist / (spokeHaloSig * spokeHaloSig))
                         * 0.38 * anchorFade;
 
-    // ── Frame thread polygon — segment-by-segment reveal during stage 0 (§5.2 Frame) ──
-    // Stage 0 (frame phase): edges appear one at a time as progress advances 0→1.
-    //   Polygon stays OPEN (no closing edge) until all segments are laid.
-    // Stages 1+ (radial/spiral/stable/evicting): full polygon always present.
-    // This makes the frame polygon appear BEFORE any radials — matching §5.1 step 3
-    // biology and §5.2 "Frame 0–3 s" spec (ARACHNE_V8_DESIGN.md).
+    // ── Frame thread polygon — segment-by-segment reveal during stage 0 ──────
+    //
+    // V.7.7C.3 / D-095 follow-up: polygon mode replaces the V.7.5 alternating-
+    // pair-cross-connections form (which read as a regular oval at full reveal
+    // — user feedback on session 2026-05-08T17-01-15Z) with the irregular
+    // 4–6-vertex `branchAnchors` polygon §5.3 prescribes. Edges connect
+    // adjacent polyV[i] → polyV[(i+1) % polyCount] in angular order; the
+    // bridge thread (largest angular gap) reveals first in stage 0, with
+    // remaining edges revealed sequentially around the perimeter.
+    //
+    // V.7.5 fallback path preserved bytewise — still uses tipPos[] in
+    // alternating-pair order with sequential edge reveal.
+    int  frameVCount;
+    int  bridgeIdx;
+    float2 frameV[17];
+    if (polyCount >= 3) {
+        frameVCount = polyCount;
+        for (int i = 0; i < polyCount; i++) frameV[i] = polyV[i] - hubUV;  // hub-local
+        bridgeIdx = findBridgeIndex(polyV, polyCount);
+    } else {
+        frameVCount = nTips;
+        for (int i = 0; i < nTips; i++) frameV[i] = tipPos[i];              // already hub-local
+        bridgeIdx = 0;  // V.7.5 fallback: alternating-pair already places bridge first
+    }
+
     int  nFrameSegs;
     bool closeFrame;
     if (stage == 0u) {
-        nFrameSegs = clamp(int(progress * float(nTips + 1)), 0, nTips);
+        nFrameSegs = clamp(int(progress * float(frameVCount + 1)), 0, frameVCount);
         closeFrame = false;
     } else {
-        nFrameSegs = nTips;
+        nFrameSegs = frameVCount;
         closeFrame = true;
     }
     float minFrameDist = 1e6;
-    if (nTips >= 2 && rT >= webR * 0.70) {
+    // V.7.7C.3: lower the radius gate to 0.30 in polygon mode (irregular
+    // polygons can have edges close to the hub on short sides). V.7.5
+    // fallback keeps the original 0.70 threshold (regular oval).
+    float frameRadiusGate = (polyCount >= 3) ? webR * 0.30 : webR * 0.70;
+    if (frameVCount >= 2 && rT >= frameRadiusGate) {
         for (int fi = 0; fi < nFrameSegs; fi++) {
-            int fj = fi + 1;
-            if (!closeFrame && fj >= nFrameSegs) continue;  // open polygon during frame stage
-            fj = fj % nTips;
-            float2 ta = tipPos[fi];
-            float2 tb = tipPos[fj];
+            // Bridge-first reveal in polygon mode; sequential in fallback.
+            int edgeIdx = (polyCount >= 3)
+                        ? ((bridgeIdx + fi) % frameVCount)
+                        : fi;
+            int fj = (edgeIdx + 1) % frameVCount;
+            if (!closeFrame && fi + 1 >= nFrameSegs) continue;  // open polygon during stage 0
+            float2 ta = frameV[edgeIdx];
+            float2 tb = frameV[fj];
             float2 ba = tb - ta;
             float2 pa = tRel - ta;
             float  h  = saturate(dot(pa, ba) / max(dot(ba, ba), 1e-8));
@@ -504,36 +644,60 @@ static ArachneWebResult arachneEvalWeb(
                    ? log(r_inner / max(r_outer, 1e-5)) / float(N_RINGS - 1)
                    : 0.0;
 
-    // Precompute spoke directions and gravity weights for all visible spokes.
-    // Reused across all N_RINGS ring iterations to avoid redundant trig.
+    // Precompute spoke directions, gravity weights, and (V.7.7C.3) polygon-
+    // clipped spoke tip positions for all visible spokes — reused across all
+    // N_RINGS ring iterations to avoid redundant trig + ray-polygon casts.
     int   nSpk = min(nVisible, 17);
     float2 sdDir[17];
     float  sdGrav[17];
+    float2 sdTip[17];   // V.7.7C.3 — polygon-clipped tip (or webR × sdDir fallback)
     for (int si = 0; si < nSpk; si++) {
         float jitS = (arachHash(seed + uint(si) * 7u) - 0.5) * baseStep * 0.44;
         float angS = rotAngle + float(si) * baseStep + jitS;
         sdDir[si]  = float2(cos(angS), sin(angS));
         sdGrav[si] = mix(0.4, 1.0, max(0.0, sin(angS)));
+        sdTip[si]  = (polyCount >= 3)
+                   ? rayPolygonHit(hubUV, sdDir[si], polyV, polyCount, webR)
+                   : webR * sdDir[si];
     }
 
     float spirW   = 0.0013;
     float spirSig = max(webR * 0.009, 1e-4);
 
-    if (rT >= r_inner * 0.78 && rT <= r_outer + spirW * 2.0 && nSpk >= 2) {
+    // V.7.7C.3 / D-095 — per-chord visibility gate. Pre-V.7.7C.3 the gate was
+    // per-ring (`k / N_RINGS <= progress`) so an entire ring's chord segments
+    // (with drops) appeared at once as a complete oval — the user reported
+    // "one complete oval after another" on the 2026-05-08T17-01-15Z manual
+    // smoke. Per-chord gating reveals one chord segment at a time, sweeping
+    // outside-in by ring and clockwise-by-spoke within each ring — the
+    // "connections from one spoke to the next" signature §5.6 calls for.
+    int totalChordCount = N_RINGS * nSpk;
+    int visibleChordCount = (stage >= 3u)
+                            ? totalChordCount
+                            : ((stage == 2u)
+                               ? int(progress * float(totalChordCount))
+                               : 0);
+
+    if (rT >= r_inner * 0.78 && rT <= r_outer + spirW * 2.0 && nSpk >= 2 &&
+        visibleChordCount > 0) {
         for (int k = 0; k < N_RINGS; k++) {
             // Outside-in: ring 0 is outermost (first placed by spider).
             float ringR = r_outer * exp(logAlpha * float(k));
 
-            // Stage gating: outer rings appear first — ring k visible once
-            // progress passes k/N_RINGS. At stage ≥ 3 all rings are stable.
-            bool kVis = (stage >= 3u) ||
-                        (stage == 2u && float(k) / float(N_RINGS) <= progress);
-            if (!kVis) continue;
+            // Per-chord visibility (V.7.7C.3): if no chords of this ring are
+            // yet visible, skip the entire ring; if all of this ring's chords
+            // are visible, fall through to the spoke loop normally; otherwise
+            // the inner loop self-bounds via `globalChordIdx`.
+            if (k * nSpk >= visibleChordCount) break;
 
-            // Radius early exit: skip this ring if pixel is too far away.
-            // Max chord distance from ring circle ≈ ringR × baseStep (half arc length).
-            float ringGuard = ringR * baseStep * 1.3 + spirW;
-            if (rT < ringR - ringGuard || rT > ringR + ringGuard) continue;
+            // V.7.5 fallback (circular rings): radius early exit. In V.7.7C.3
+            // polygon mode the chord positions follow the irregular polygon
+            // shape (no concentric-ring assumption), so the early exit is
+            // skipped — the ~84-chord cost stays well within budget.
+            if (polyCount < 3) {
+                float ringGuard = ringR * baseStep * 1.3 + spirW;
+                if (rT < ringR - ringGuard || rT > ringR + ringGuard) continue;
+            }
 
             // Parabolic sag at this ring radius (same formula as spoke SDF).
             float tProjR  = ringR / webR;
@@ -542,13 +706,30 @@ static ArachneWebResult arachneEvalWeb(
             // Per-ring drop spacing (slight per-ring variation for organic feel).
             float spacingUV = 0.0037 + arachHash(seed + 0x1337u + uint(k) * 31u) * 0.0019;
 
+            // V.7.7C.3 / D-095 follow-up: in polygon mode each chord endpoint
+            // is `spokeTip × fracR` (along the polygon-clipped spoke at the
+            // current ring fraction). Inner rings naturally inherit the
+            // irregular polygon silhouette. V.7.5 fallback retains
+            // `pI = ringR × sdDir`.
+            float fracR = ringR / r_outer;
+
             for (int si = 0; si < nSpk; si++) {
+                // Per-chord visibility gate (V.7.7C.3).
+                int globalChordIdx = k * nSpk + si;
+                if (globalChordIdx >= visibleChordCount) break;
+
                 // Sequential spoke order — adjacent si/sj pairs form polygon edges.
                 int sj = (si + 1) % spokeCount;
                 if (sj >= nSpk) continue;  // guard for partial-reveal stages
 
-                float2 pI = ringR * sdDir[si] + float2(0.0, sagScale * sdGrav[si]);
-                float2 pJ = ringR * sdDir[sj] + float2(0.0, sagScale * sdGrav[sj]);
+                float2 pI, pJ;
+                if (polyCount >= 3) {
+                    pI = sdTip[si] * fracR + float2(0.0, sagScale * sdGrav[si]);
+                    pJ = sdTip[sj] * fracR + float2(0.0, sagScale * sdGrav[sj]);
+                } else {
+                    pI = ringR * sdDir[si] + float2(0.0, sagScale * sdGrav[si]);
+                    pJ = ringR * sdDir[sj] + float2(0.0, sagScale * sdGrav[sj]);
+                }
 
                 float2 seg  = pJ - pI;
                 float  segL = length(seg);
@@ -621,11 +802,17 @@ static float3 drawBackgroundWeb(
     float kSagBg = 0.14 + arachHash(seed + 0x77u) * 0.04;  // [0.14, 0.18]
     float rotBg  = arachHash(seed + 0x55u) * 2.0 * M_PI_F;
 
+    // V.7.7C.3 / D-095 follow-up: drawBackgroundWeb is dead-reference code
+    // (not dispatched); pass polyCount=0 so it falls back to the V.7.5
+    // circular-spoke-tip path if anyone ever revives it.
+    float2 bgPoly[6] = { float2(0.0), float2(0.0), float2(0.0),
+                          float2(0.0), float2(0.0), float2(0.0) };
     ArachneWebResult wr = arachneEvalWeb(
         uv, hubUV, webRBg, rotBg, 5.5, seed,
         3u, 1.0,
         arachSpokeCount(seed), arachAspect(seed),
-        arachAspectAngle(seed), kSagBg
+        arachAspectAngle(seed), kSagBg,
+        0, bgPoly
     );
 
     float3 result = float3(0.0);
@@ -986,11 +1173,20 @@ fragment float4 arachne_composite_fragment(
             fgProgress = 1.0;
         }
 
+        // V.7.7C.3 / D-095 follow-up — decode polygon anchors from
+        // webs[0].rng_seed (packed by ArachneState.packPolygonAnchors). The
+        // resulting polyV[] (UV space) drives polygon-aware spoke clipping +
+        // irregular frame thread inside arachneEvalWeb. polyCount=0 falls
+        // back to V.7.5 circular tips for safety (e.g., uninitialised state).
+        float2 fgPoly[6];
+        int    fgPolyCount = decodePolygonAnchors(webs[0].rng_seed, fgPoly);
+
         ArachneWebResult wr = arachneEvalWeb(
             vibUV, ancHub, 0.22, 0.30, 6.0, ancSeed,
             fgStage, fgProgress,
             arachSpokeCount(ancSeed), arachAspect(ancSeed),
-            arachAspectAngle(ancSeed), arachKSag(ancSeed)
+            arachAspectAngle(ancSeed), arachKSag(ancSeed),
+            fgPolyCount, fgPoly
         );
 
         float newStrandD   = op_blend(strandPseudo, 1.0 - wr.strandCov, 0.012);
@@ -1067,17 +1263,25 @@ fragment float4 arachne_composite_fragment(
         }
     }
 
-    // ── Pool webs (V.7.7C.2 — wi=0 is the foreground hero handled above) ─────
+    // ── V.7.5 pool webs RETIRED (V.7.7C.3 / D-095 follow-up) ─────────────────
     //
-    // V.7.7C.2 / D-095: webs[0] is reserved as the build-aware foreground
-    // hero (read from Row 5 in the foreground anchor block above). Iterating
-    // it here would double-render the slot — once in build-aware form, once
-    // as the seedInitialWebs() stable web. Pool loop now starts at wi=1, so
-    // the second seeded stable web (webs[1]) and the V.7.5 transient slots
-    // (webs[2..3]) continue to provide background depth context. The full
-    // 1–2 saturated background pool with migration crossfade visual is
-    // deferred (D-095) — pool webs serve double duty for now.
-    for (int wi = 1; wi < kArachWebs; wi++) {
+    // Pre-V.7.7C.3 the pool loop iterated webs[1..3] (V.7.5 spawn/eviction)
+    // as "background depth context". Live LTYL session 2026-05-08T17-01-15Z
+    // showed the user perceived this as "full webs flash on and fade away
+    // throughout playback ... new webs form over the central web being spun"
+    // — the V.7.5 churn competed with the foreground build, not framing it.
+    // V.7.7C.3 disables pool web rendering entirely; only the build-aware
+    // foreground hero (above) renders. CPU-side V.7.5 spawn/eviction state
+    // continues to advance harmlessly (preserved so existing ArachneState
+    // unit tests still cover the spawn machinery), but no slot reaches the
+    // shader after this commit. The 1–2 saturated background webs spec'd
+    // by §5.12 + ArachneBackgroundWeb CPU array remain a V.7.10 follow-up
+    // (would require a side buffer at slot 8).
+    //
+    // The empty loop body is retained as a structural marker for the future
+    // §5.12 background-web flush; if you remove it, also remove the loop
+    // header.
+    for (int wi = 1; wi < 1; wi++) {
         ArachneWebGPU w = webs[wi];
         if (w.is_alive == 0u || w.opacity < 0.015) continue;
 
@@ -1085,11 +1289,17 @@ fragment float4 arachne_composite_fragment(
                      + arachHubJitter(w.rng_seed);
         float  webR  = w.radius * 0.5;
 
+        // V.7.7C.3 / D-095 follow-up: empty-loop call site — polygon mode
+        // disabled (polyCount=0) so the dead-reference path stays at V.7.5
+        // circular geometry for any future revival.
+        float2 poolPoly[6] = { float2(0.0), float2(0.0), float2(0.0),
+                                float2(0.0), float2(0.0), float2(0.0) };
         ArachneWebResult wr = arachneEvalWeb(
             vibUV, hubUV, webR, w.rot_angle, w.spiral_revolutions,
             w.rng_seed, w.stage, w.progress,
             arachSpokeCount(w.rng_seed), arachAspect(w.rng_seed),
-            arachAspectAngle(w.rng_seed), arachKSag(w.rng_seed)
+            arachAspectAngle(w.rng_seed), arachKSag(w.rng_seed),
+            0, poolPoly
         );
 
         float scaledStrand = wr.strandCov * w.opacity;

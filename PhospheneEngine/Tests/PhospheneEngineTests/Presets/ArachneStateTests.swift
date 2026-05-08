@@ -353,29 +353,32 @@ private func stems(drumsOnsetRate: Float = 0, totalEnergy: Float = 0.1) -> StemF
 
     // MARK: Spider Tests (Increment 3.5.9)
 
-    // Helper: FeatureVector with sub-bass above the V.7.5 §10.1.9 threshold (0.30).
-    // 0.40 keeps the field comfortably above without overstating the LTYL distribution.
+    // V.7.7C.3 / D-095: spider trigger uses `features.bassAttRel` (smoothed
+    // bass envelope), NOT `features.subBass + stems.bassAttackRatio`. Live
+    // LTYL session 2026-05-08T17-01-15Z confirmed the prior subBass+AR gate
+    // pair was acoustically impossible on real music. `bassAttRel` rises
+    // during sustained bass passages and stays near 0 at AGC-average levels;
+    // brief kick pulses are filtered by the 0.75 s sustain threshold.
     private func subBassFV(deltaTime: Float = 1.0 / 60.0) -> FeatureVector {
         var f = FeatureVector.zero
-        f.subBass   = 0.40    // above 0.30 threshold (V.7.5 §10.1.9)
-        f.deltaTime = deltaTime
+        f.bassAttRel = 0.40     // above 0.30 threshold (V.7.7C.3)
+        f.subBass    = 0.40     // legacy field; not consumed by trigger
+        f.deltaTime  = deltaTime
         return f
     }
 
-    /// Helper: StemFeatures with bassAttackRatio in the sustained-bass band (< 0.55).
-    /// The V.7.5 §10.1.9 AR gate requires `bassAttackRatio > 0 && < 0.55`; .zero
-    /// fails the gate.
+    /// Helper: StemFeatures with no special configuration — V.7.7C.3 retires
+    /// the V.7.5 AR gate, so any zeroed StemFeatures passes the trigger
+    /// alongside a positive `bassAttRel` on the FeatureVector.
     private func sustainedBassStems() -> StemFeatures {
-        var s = StemFeatures.zero
-        s.bassAttackRatio = 0.30  // sustained resonant bass character
-        return s
+        StemFeatures.zero
     }
 
-    /// Helper: StemFeatures resembling a kick drum — high attack ratio, fails AR gate.
+    /// Helper: StemFeatures resembling a kick drum — V.7.7C.3 has no AR gate,
+    /// so the test relies on the 0.75 s sustain threshold to reject brief
+    /// pulses. Helper retained for symmetry with the sustained variant.
     private func kickDrumStems() -> StemFeatures {
-        var s = StemFeatures.zero
-        s.bassAttackRatio = 0.85
-        return s
+        StemFeatures.zero
     }
 
     @Test("sustained sub-bass triggers spider materialisation")
@@ -405,12 +408,13 @@ private func stems(drumsOnsetRate: Float = 0, totalEnergy: Float = 0.1) -> StemF
         }
         let state = try #require(ArachneState(device: device, seed: 42))
 
-        // A kick drum fires for ~100 ms then decays — far less than the 750 ms threshold.
-        // 9 frames × (1/60 s) = 150 ms above threshold, then 120 frames of silence.
-        // Use kickDrumStems (high attack ratio) so the §10.1.9 AR gate also rejects
-        // — this test covers the AR-gate path as well as the sustain-accumulator path.
-        var high = subBassFV(); high.subBass = 0.40
-        var low  = subBassFV(); low.subBass  = 0.05   // below threshold
+        // V.7.7C.3 / D-095: AR gate retired. The 0.75 s sustain accumulator
+        // is now the only debounce against brief kick pulses.
+        // 9 frames × (1/60 s) = 150 ms with bassAttRel above threshold, then
+        // 120 frames decay below threshold — the accumulator decays at 2× rate
+        // during sub-threshold frames, so it never reaches 0.75 s.
+        var high = subBassFV(); high.bassAttRel = 0.40    // above 0.30 threshold
+        var low  = subBassFV(); low.bassAttRel  = 0.05    // below threshold (decay)
         let kStems = kickDrumStems()
 
         for _ in 0..<9   { state.tick(features: high, stems: kStems) }  // 150 ms burst
