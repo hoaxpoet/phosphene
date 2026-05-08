@@ -245,6 +245,26 @@ extension VisualizerEngine {
                 }
                 pipeline.setStagedRuntime(stageSpecs, drawableSize: pipeline.mvWarpDrawableSize)
 
+                // V.7.7B: per-preset state for staged Arachne. Mirrors the mv_warp
+                // branch above — allocate the ArachneState pool, bind webBuffer at
+                // fragment slot 6 + spiderBuffer at slot 7 (per CLAUDE.md GPU
+                // Contract), and wire the per-frame tick so web stages advance and
+                // mood data lands in webs[0].row4. Without this the staged WORLD +
+                // COMPOSITE fragments read zeros from slots 6/7 and the WORLD
+                // palette collapses to the silence anchor.
+                if desc.name == "Arachne" {
+                    if let state = ArachneState(device: context.device) {
+                        arachneState = state
+                        pipeline.setDirectPresetFragmentBuffer(state.webBuffer)    // buffer(6)
+                        pipeline.setDirectPresetFragmentBuffer2(state.spiderBuffer) // buffer(7)
+                        pipeline.setMeshPresetTick { [weak state] features, stems in
+                            state?.tick(features: features, stems: stems)
+                        }
+                    } else {
+                        logger.error("ArachneState: failed to allocate web pool for staged preset '\(desc.name)'")
+                    }
+                }
+
             case .direct:
                 break // No subsystem setup required; direct rendering is the default fallback.
             }

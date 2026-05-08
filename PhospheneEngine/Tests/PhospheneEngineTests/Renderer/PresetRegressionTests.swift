@@ -29,11 +29,13 @@ private typealias PresetHashes = (steady: UInt64, beatHeavy: UInt64, quiet: UInt
 /// Inline golden dHash values for each preset × 3 fixtures.
 /// Update when a shader edit intentionally changes visual output — never silently.
 private let goldenPresetHashes: [String: PresetHashes] = [
-    // V.7.7A staged-composition placeholder: regression test renders only the
-    // composite stage (worldTex unbound → samples zero), so the hash captures
-    // the placeholder hub-and-spokes web overlay alone. Real WORLD/WEB outputs
-    // are exercised by the staged path in PresetVisualReviewTests.
-    "Arachne": (steady: 0x00000E336E0E1600, beatHeavy: 0x00000E336E0E1600, quiet: 0x00000E336E0E1600),
+    // V.7.7B Arachne: staged COMPOSITE fragment now ports the V.7.5 v5 web
+    // walk + spider + mist + dust motes. The regression renders the COMPOSITE
+    // stage in isolation with `worldTex` unbound (texture sampler returns 0),
+    // so the hash captures the foreground composition alone — silk strands,
+    // adhesive droplets, mist + motes — over a black backdrop. The full
+    // WORLD + COMPOSITE composite is exercised by PresetVisualReviewTests.
+    "Arachne": (steady: 0xC6168E8F87868C80, beatHeavy: 0xC6168E8F87868C80, quiet: 0xC6168E8F87868C80),
     "Ferrofluid Ocean": (steady: 0x56AB1C4A28B32727, beatHeavy: 0x5CB393AAAFA84840, quiet: 0xA64C51A62FD35356),
     "Glass Brutalist": (steady: 0x336954B4B4544D33, beatHeavy: 0x336954B4B4544D33, quiet: 0x336954B4B4544D33),
     "Gossamer": (steady: 0x5756A72F070F0F0D, beatHeavy: 0x5756A72F070F0F0D, quiet: 0x5756872D0F0F0F0D),
@@ -47,6 +49,7 @@ private let goldenPresetHashes: [String: PresetHashes] = [
     "Nebula": (steady: 0x0000080C0C080000, beatHeavy: 0x0000080C0C080000, quiet: 0x0000080C0C080000),
     "Plasma": (steady: 0x030F170A072F1B0F, beatHeavy: 0x4193254F0E8E87C7, quiet: 0x0F1F0F0F0F07070F),
     "Spectral Cartograph": (steady: 0x00180C0C0C0C0000, beatHeavy: 0x00180C0C0C0C6080, quiet: 0x00180C0C0C0C0000),
+    "Staged Sandbox": (steady: 0x000022160A162A00, beatHeavy: 0x000022160A162A00, quiet: 0x000022160A162A00),
     "Volumetric Lithograph": (steady: 0x8C63D43512030000, beatHeavy: 0x8C63D43512030000, quiet: 0x8C63D43512030000),
     "Waveform": (steady: 0x000F0F0000000000, beatHeavy: 0x000F0F0000000000, quiet: 0x000F0F0000000000),
 ]
