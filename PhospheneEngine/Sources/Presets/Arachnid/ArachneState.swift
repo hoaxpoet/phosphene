@@ -156,6 +156,12 @@ public final class ArachneState: @unchecked Sendable {
     var spiderLegPhase: Float = 0
     var spiderLegTips: [SIMD2<Float>] = Array(repeating: .zero, count: 8)
 
+    // V.7.7D listening-pose state — CPU-side only. The shader stays oblivious;
+    // listening pose is realised by lifting tip[0]/tip[1] before the GPU flush.
+    // Keeping this CPU-side preserves the V.7.7B 80-byte ArachneSpiderGPU contract.
+    var listenLiftAccumulator: Float = 0
+    var listenLiftEMA: Float = 0
+
     #if DEBUG
     /// Force the spider active regardless of organic trigger conditions. DEBUG builds only.
     /// Does not modify the organic trigger accumulator or cooldown state.

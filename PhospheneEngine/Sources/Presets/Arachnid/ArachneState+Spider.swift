@@ -172,6 +172,12 @@ extension ArachneState {
         #endif
 
         if spiderBlend > 0 { updateSpiderGait(dt: dt) }
+
+        // V.7.7D listening pose runs after the gait so the lift uses up-to-date
+        // tip positions when written to the GPU struct. Defined in
+        // ArachneState+ListeningPose.swift; CPU-side only — shader contract
+        // unchanged. D-094.
+        updateListeningPose(features: features, stems: stems, dt: dt)
     }
 
     // MARK: - Private: activation
@@ -247,14 +253,25 @@ extension ArachneState {
     // MARK: - GPU write
 
     /// Flush spider state to `spiderBuffer`. Called from `tick` (outside lock).
+    ///
+    /// V.7.7D: applies the listening-pose lift to legs 0+1 in clip-space Y just
+    /// before binding. The shader's IK then derives the raised knee analytically
+    /// from the lifted tip — no shader changes required for the listening pose.
+    /// Magnitude `0.5 × kSpiderScale × listenLiftEMA` per §6.1 / §6.3 (D-094).
     func writeSpiderToGPU() {
+        var tip0 = spiderLegTips[0]
+        var tip1 = spiderLegTips[1]
+        let lift = Self.listenLiftTipMagnitudeUV * listenLiftEMA
+        tip0.y += lift
+        tip1.y += lift
+
         let gpu = ArachneSpiderGPU(
             blend: spiderBlend,
             posX: spiderPosX,
             posY: spiderPosY,
             heading: spiderHeading,
-            tip0: spiderLegTips[0],
-            tip1: spiderLegTips[1],
+            tip0: tip0,
+            tip1: tip1,
             tip2: spiderLegTips[2],
             tip3: spiderLegTips[3],
             tip4: spiderLegTips[4],
