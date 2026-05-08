@@ -6,6 +6,50 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-08-d] V.7.7C.5.1 — Arachne visual craft pass (line widths + luminescence + palette + shaft gate + per-segment seed)
+
+**Increment:** V.7.7C.5.1. **Decision:** D-100 follow-up. Single commit.
+
+Same-day follow-up to V.7.7C.5. Matt's 2026-05-08T22-01-07Z manual smoke confirmed every geometry contract (canvas-filling polygon, off-frame anchors, hub at canvas centre, chord-by-chord lay) was reading correctly on real music — but flagged six issues with the visual craft and per-instance variation. V.7.7C.5.1 closes all six in a single cosmetic-only commit.
+
+**Issues addressed.**
+
+1. **Spirals too fast — chord-by-chord not readable** (reframed by Matt: "webs are elaborate, viewers should expect tighter spirals with many points of connection. The lines and luminescence on them do not need to be so heavy"). Resolved by thinning lines + dimming luminescence — keeping chord density (104 chords, 13 radials, 8 revolutions) but reducing strand weight so density reads as elaborate detail rather than scribbly chaos.
+2. **Lines too thick relative to canvas-filling polygon.** Silk widths halved: spoke `0.0024 → 0.0010`, frame `0.0022 → 0.0010`, spiral `0.0013 → 0.0007`. Halo sigmas halved (`spokeHaloSig` `webR×0.014 → webR×0.008`, `spirSig` `webR×0.009 → webR×0.005`). Halo magnitudes halved (spoke `0.38 → 0.20`, frame `0.22 → 0.11`, spiral `0.25 → 0.13`). Hub coverage `1.20 → 0.70`.
+3. **Toddler-drawing readability** — falls out of (1) + (2).
+4. **Spider didn't fire on LTYL.** Recording cut at LTYL +35 s, before James Blake's defining sub-bass drop arrives. Inconclusive; deferred to longer-LTYL smoke for V.7.7C.6 prerequisites.
+5. **Background palette too muted — psych ward, not psychedelic.** §4.3 palette pumped: saturation `0.25–0.65 → 0.55–0.95`, value `0.10–0.30 → 0.30–0.70`. Audio-time hue cycle ±0.15 swing on top of the Q10 valence-driven base (top/bottom phase-offset by π so the gradient never collapses to a single hue). Beam saturation/value pumped to match (`hsv2rgb(beamHue, satScale × 0.7, valScale × 1.4)`). Silence anchor (Q11) preserved by re-keying on raw mood product `arousalNorm × valenceNorm < 0.05`. Q10's "preserve verbatim" decision is reframed: §4.3's spec was correct for the V.7.7B–C.4 forest WORLD where compositional richness masked palette muteness; the V.7.7C.5 atmospheric reframe exposed the muteness as Matt's "psych ward" reading.
+6. **No light shaft appreciated.** Telemetry from Matt's smoke (4705-frame Arachne windows on So What + LTYL) showed `f.mid_att_rel` mean ≈ -0.5, max never reached the spec gate threshold of 0.05 → shaft never engaged on AGC-warmed real-music playlists. V.7.7C.5.1 reformulates the engagement gate from binary `smoothstep(0.05, 0.15, midAttRel)` to floor+scale `0.25 + 0.75 × smoothstep(-0.20, 0.10, midAttRel)`. Shafts are visible at 25 % baseline always — never structurally invisible — and ramp to 100 % on positive deviation. Combined with the `0.30 × valScale` brightness coefficient, baseline shaft contribution is ~0.075 × valScale (perceptible but not dominant).
+
+**Plus the per-instance variation question** Matt raised separately ("should the preset draw the SAME web in the SAME position EVERY time?"): V.7.7C.5.1 ships **Option A — per-segment variation**. The foreground anchor block's `ancSeed` switches from hardcoded `1984u` to `arachHashU32(webs[0].rng_seed ^ 0xCA51u)` so each Arachne instance gets a unique spoke count (11–17), aspect ratio (0.85–1.15), gravity-sag coefficient (0.06–0.14), hub UV jitter (±5 %), and per-spoke angular jitter pattern (±22 %). New `arachHashU32(uint) → uint` helper sits alongside `arachHash` (same bit-mixing scheme, returns the scrambled uint instead of a float). The CPU-side `webs[0].rng_seed` already refreshes on every `arachneState.reset()`, but its lower 28 bits carry the polygon-anchor packing (V.7.7C.3 — see `packPolygonAnchors`); the hash scrambles those structured bits back into a uniform-random seed for the macro-shape helpers.
+
+**Per-track + per-session web identity options documented as future work.** Two non-decided options surface in `docs/DECISIONS.md` D-100 carry-forward + a new `V.7.7C.5.2` ENGINEERING_PLAN stub:
+
+- **Option B** — per-track determinism. `hash(title + artist)` plumbed into `ArachneState.reset(trackSeed:)`. Same track always gets the same web. ~30 LOC + a determinism test.
+- **Option C** — track + session-counter perturbation. Per-track base seed + LCG step per replay. Variety + identity. ~40 LOC.
+
+Decision pending product call after V.7.7C.5.1 manual-smoke.
+
+**Tests + verification.**
+
+- **No new test files.** Only golden hash regen.
+- **Golden hashes drift hard.** Arachne `(steady, beatHeavy, quiet)` `(0x06129A65E458494D, 0xC6921125C4D85849, 0x06129A65E458494D) → (0x8000000000000000, 0x04101A6444186969, 0x8000000000000000)`. Spider forced `0x06D29A65E458494D → 0x800080C004000000`. The harness's frame-phase-0 + zeroed slot-6/7 buffer + thinner+dimmer silk pushes foreground contribution below dHash quantization for steady/quiet (top bit only); beatHeavy still differs because the `bass_att_rel = 0.6` fixture triggers §8.2 vibration. Real visual divergence is observed in `PresetVisualReviewTests`.
+- **PresetAcceptance D-037 invariant 3 still passes** — the dimmer silk further reduces beatMotion below the 1.0 ceiling.
+- **Engine 1185 tests / 3 documented pre-existing parallel-load timing flakes** (`MetadataPreFetcher.fetch_networkTimeout`, `SoakTestHarness.cancel`, `SessionManagerCancel.cancel_fromReady` — all pass in isolation, none introduced by this increment).
+- **App build clean.**
+- **SwiftLint 0 violations on touched files.**
+- **`Scripts/check_sample_rate_literals.sh` passes.**
+- **Visual harness.** `RENDER_VISUAL=1` PNGs at `/tmp/phosphene_visual/20260508T224311/Arachne_{silence,mid,beat}_{world,composite}.png`. WORLD shows vivid green-yellow gradient at neutral mood (huge improvement over V.7.7C.5's olive wash). COMPOSITE shows the canvas-filling polygon as fine thin silk over the new pumped backdrop.
+
+**Carry-forward.**
+
+- **Manual smoke re-run on real music** — Matt verifies the four cosmetic + palette + shaft fixes deliver the expected reading: psychedelic-not-psych-ward backdrop, fine-detail silk, visible shaft at baseline, per-segment variation across multiple Arachne instances.
+- **V.7.7C.5.2** — per-track web identity (Options B / C). Awaiting product decision.
+- **V.7.7C.6** — spider movement system. Still deferred.
+- **V.7.10** — Matt M7 contact-sheet review + cert sign-off. Five remaining prerequisites: per-chord drop accretion, anchor-blob discs at polygon vertices, background-web migration crossfade visual, V.7.7C.6 spider movement, V.7.7C.5.1 manual-smoke confirmation.
+
+---
+
 ## [dev-2026-05-08-c] V.7.7C.5 — Arachne §4 atmospheric reframe + off-frame anchors + canvas-filling foreground hero web
 
 **Increment:** V.7.7C.5. **Decision:** D-100. Single commit.

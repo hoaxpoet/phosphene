@@ -124,7 +124,22 @@ private let goldenPresetHashes: [String: PresetHashes] = [
     // beatHeavy fixture (`beat_bass = 1.0`, `bassDev = 0.60`) diverges
     // from steady/quiet (zero bass deviation → no vibration). All three
     // fixtures within the [10, 30] hamming band documented for D-095.
-    "Arachne": (steady: 0x06129A65E458494D, beatHeavy: 0xC6921125C4D85849, quiet: 0x06129A65E458494D),
+    //
+    // V.7.7C.5.1 (D-100 follow-up): hashes drift hard. The combined effect
+    // of (a) silk line widths halved (spoke/frame 0.0024 → 0.0010, spiral
+    // 0.0013 → 0.0007), (b) silk luminescence dimmed (silkTint 0.85 → 0.55,
+    // hub knot 1.20 → 0.70, ambient tint 0.40 → 0.20, axial coefficient
+    // 0.6 → 0.3, halo magnitudes ~halved), (c) per-segment macro variation
+    // (`ancSeed = arachHashU32(webs[0].rng_seed ^ 0xCA51u)` instead of
+    // hardcoded 1984u), (d) §4.3 palette pumped (sat 0.55–0.95 / val
+    // 0.30–0.70 / hue cycle on accumulated_audio_time), and (e) shaft
+    // engagement reformulated to floor+scale collapses the frame-phase-0
+    // foreground hash to near-zero (the harness's zeroed slot 6 makes
+    // foreground render minimally; thinner+dimmer lines push contribution
+    // below dHash quantization). Real visual divergence is observed in
+    // PresetVisualReviewTests where the harness binds a fully-built
+    // Arachne state with a real polygon.
+    "Arachne": (steady: 0x8000000000000000, beatHeavy: 0x04101A6444186969, quiet: 0x8000000000000000),
     "Ferrofluid Ocean": (steady: 0x56AB1C4A28B32727, beatHeavy: 0x5CB393AAAFA84840, quiet: 0xA64C51A62FD35356),
     "Glass Brutalist": (steady: 0x336954B4B4544D33, beatHeavy: 0x336954B4B4544D33, quiet: 0x336954B4B4544D33),
     // DM.2: Drift Motes regression fixtures capture the warm-amber sky +

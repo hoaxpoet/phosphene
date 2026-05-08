@@ -87,7 +87,20 @@ import simd
 /// Goldens regenerated. Polygon-mode + spider 3D anatomy both still active
 /// (ArachneState.reset() seeds the polygon; spider forced via
 /// `forceActivateForTest(at:)`).
-private let goldenSpiderForcedHash: UInt64 = 0x06D29A65E458494D
+///
+/// V.7.7C.5.1 (D-100 follow-up): cosmetic + per-segment-seed pass. Line
+/// widths halved (spoke/frame/spiral), silk luminescence dimmed (silkTint
+/// 0.85 → 0.55, hub knot 1.20 → 0.70, ambient tint 0.40 → 0.20, axial
+/// coefficient 0.6 → 0.3, halo magnitudes ~halved), §4.3 palette pumped
+/// (sat 0.55–0.95 / val 0.30–0.70 with audio-time hue cycle), shaft
+/// engagement gate reformulated to 25% floor + scale on midAttRel,
+/// foreground macro-shape seed switched from hardcoded 1984u to
+/// `arachHashU32(webs[0].rng_seed ^ 0xCA51u)`. Combined effect is a
+/// substantial visual change inside the spider patch — polygon-clipped
+/// spoke positions shift (different per-spoke jitter from the new seed),
+/// silk weight is halved, hub knot lighter. Hash drift reflects the
+/// cumulative cosmetic recalibration.
+private let goldenSpiderForcedHash: UInt64 = 0x800080C004000000
 
 // MARK: - Test Suite
 

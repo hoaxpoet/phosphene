@@ -1490,7 +1490,63 @@ Per-preset state setup handles Arachne (allocates `ArachneState`, warms 30 ticks
 
 **Landed (2026-05-08, single commit).** Files: `PhospheneEngine/Sources/Presets/Shaders/Arachne.metal` (drawWorld rewritten — sky band + beam-anchored fog + 1–2 mood-driven shafts at `0.30 × val` + cone-confined dust motes; midAttRel parameter threaded; foreground hero hub at `(0.5, 0.5)` + `webR = 0.55`; per-beat coefficient retuned `0.06 → 0.025` for canvas-filling area scale per D-100); `PhospheneEngine/Sources/Presets/Arachnid/ArachneState.swift` (`branchAnchors` Swift mirror moved off-frame; `webs[0]` hub `(0.0, 0.0)` / radius `1.10`); `PhospheneEngine/Tests/PhospheneEngineTests/Presets/ArachneBranchAnchorsTests.swift` (expected literals + bounds invariant rewritten for `[-0.06, 1.06]²`; new asymmetry test); `PhospheneEngine/Tests/PhospheneEngineTests/Presets/ArachneSpiderRenderTests.swift` (`goldenSpiderForcedHash` `0x06129A55C258494D → 0x06D29A65E458494D` — 7-bit Hamming drift from off-frame anchors flowing into polygon decode); `PhospheneEngine/Tests/PhospheneEngineTests/Renderer/PresetRegressionTests.swift` (Arachne `beatHeavy` `0x0000000000000000 → 0xC6921125C4D85849`; steady/quiet UNCHANGED — regression harness doesn't bind slot 6/7 + worldTex; comment block extended). Engine 1184 tests / 2 documented pre-existing flakes (`MetadataPreFetcher.fetch_networkTimeout`, `SoakTestHarness.cancel`); app build clean; SwiftLint 0 violations on touched files; `Scripts/check_sample_rate_literals.sh` passes. PresetAcceptance D-037 invariant 3 passes for Arachne after coefficient retune (predicted MSE ≈ 0.31 vs ceiling 1.0). RENDER_VISUAL=1 PNGs at `/tmp/phosphene_visual/20260508T213106/Arachne_{silence,mid,beat}_{world,composite}.png`. D-100.
 
-**Carry-forward:** Manual smoke re-run on real music (Matt verifies the atmospheric abstraction reads as cinematographic god-rays, not residual forest, with the canvas-filling foreground silk reading as anchored off-frame). V.7.7C.6 (spider movement) and V.7.10 (cert review) remain.
+**Carry-forward:** Manual smoke re-run completed 2026-05-08T22-01-07Z. Geometry contracts (canvas-filling polygon, off-frame anchors, hub at canvas centre, chord-by-chord lay) all read correctly. Cosmetic + palette feedback drove V.7.7C.5.1 (below). V.7.7C.6 (spider movement) and V.7.10 (cert review) remain.
+
+---
+
+### Increment V.7.7C.5.1 — Arachne visual craft pass (line widths + luminescence + palette + shaft gate + per-segment seed) ✅ 2026-05-08
+
+**Prerequisite:** V.7.7C.5 manual smoke completed. Matt's 2026-05-08T22-01-07Z session surfaced six issues with V.7.7C.5's visual craft despite the geometry contracts reading correctly:
+
+1. **Spirals too fast — chord-by-chord not readable.** Reframed by Matt: "webs are elaborate, so viewers should expect tighter spirals with many points of connection. The lines and luminescence on them do not need to be so heavy." → keep chord density; thin the lines + dim luminescence so density reads as elaborate detail rather than scribbly chaos.
+2. **Lines too thick relative to canvas-filling polygon.** Silk widths were absolute UV; at V.7.7C.4 webR=0.22 they were balanced; at V.7.7C.5 webR=0.55 the polygon scaled 2.5× but lines didn't.
+3. **Toddler-drawing readability** — downstream of (1) + (2).
+4. **Spider didn't fire on LTYL.** Recording cut at LTYL +35 s, before the song's sub-bass drop. Inconclusive; deferred to longer-LTYL smoke.
+5. **Background palette too muted — psych ward, not psychedelic.** V.7.7C.5 shipped Q10's verbatim §4.3 palette (sat 0.25–0.65 / val 0.10–0.30), correct for the V.7.7B–C.4 forest WORLD where compositional richness masked the muteness; the atmospheric reframe exposed it.
+6. **No light shaft appreciated.** Telemetry from the 4705-frame Arachne windows showed midAttRel mean ≈ -0.5, max never reached the §4.2.2 spec gate threshold of 0.05 → shaft never engaged.
+
+Plus a separate observation: "should the preset draw the SAME web in the SAME position EVERY time? Shouldn't it vary every time you play it, or based on the track it's paired with?" → per-segment macro-shape variation needed.
+
+**Scope:** Single-commit cosmetic + per-segment-seed pass on V.7.7C.5. No Swift state changes; no test rewrites; only line widths, luminescence constants, palette function rewrite, shaft gate reformulation, ancSeed source, plus golden hash regen.
+
+**Done when:**
+
+- Silk line widths halved: spoke/frame `0.0024 → 0.0010`, spiral `0.0013 → 0.0007`. Halo sigmas halved to match.
+- Silk luminescence dimmed: silkTint factor `0.85 → 0.55`; hub knot coverage `1.20 → 0.70`; ambient tint factor `0.40 → 0.20`; axial highlight coefficient `0.6 → 0.3`; halo magnitudes ~halved (`spokeHalo 0.38 → 0.20`, `frameHalo 0.22 → 0.11`, `spirHalo 0.25 → 0.13`).
+- §4.3 palette pumped: saturation `0.55–0.95`, value `0.30–0.70`. Audio-time hue cycle ±0.15 swing on top of the Q10 valence-driven base hues. Top/bottom phase-offset by π so the gradient never collapses to a single hue.
+- Shaft engagement gate reformulated: `0.25 + 0.75 × smoothstep(-0.20, 0.10, midAttRel)`. Floors engagement at 25% always-on baseline; scales to 100% on positive deviation.
+- Cross-preset silence anchor preserved (Q11) by re-keying on raw mood product `arousalNorm × valenceNorm < 0.05`.
+- Per-segment macro-shape variation (Option A): `ancSeed = arachHashU32(webs[0].rng_seed ^ 0xCA51u)` instead of hardcoded `1984u`. New `arachHashU32` helper — same bit-mixing as `arachHash` but returns the scrambled uint instead of a float.
+- All targeted suites pass (`PresetAcceptance`, `StagedComposition`, `StagedPresetBufferBinding`, `PresetRegression`, `ArachneSpiderRender`, `ArachneState`, `ArachneStateBuild`, `ArachneListeningPose`, `ArachneBranchAnchors`, `PresetLoaderCompileFailure`).
+- Goldens regenerated (Arachne `steady`/`quiet` `0x06129A65E458494D → 0x8000000000000000` — V.7.7C.5.1 dimmed silk pushes frame-phase-0 contribution below dHash quantization on the regression harness; `beatHeavy` `0xC6921125C4D85849 → 0x04101A6444186969`; spider forced `0x06D29A65E458494D → 0x800080C004000000`).
+- 0 SwiftLint violations on touched files.
+- `Scripts/check_sample_rate_literals.sh` passes.
+
+**Verify:** Build → targeted suites green → `RENDER_VISUAL=1` visual harness shows vivid green-yellow gradient + thin silk → full engine + app suites → SwiftLint → manual smoke re-run on real music (Matt verifies palette psychedelic not psych ward; lines fine-detail not toddler scribble; shaft visible at baseline; per-segment variation reads as different webs across multiple Arachne instances).
+
+**Estimated sessions:** 1 (single-commit cosmetic pass).
+
+**Landed (2026-05-08, single commit).** Files: `PhospheneEngine/Sources/Presets/Shaders/Arachne.metal` (arachHashU32 helper added; silk line widths + halo sigmas + halo magnitudes halved in `arachneEvalWeb`; foreground anchor block silk luminescence dimmed; ancSeed switched to per-segment `arachHashU32(webs[0].rng_seed ^ 0xCA51u)`; §4.3 palette rewritten with pumped sat/val + audio-time hue cycle; shaft engagement gate reformulated to floor+scale); `PhospheneEngine/Tests/PhospheneEngineTests/Presets/ArachneSpiderRenderTests.swift` (`goldenSpiderForcedHash` regen); `PhospheneEngine/Tests/PhospheneEngineTests/Renderer/PresetRegressionTests.swift` (Arachne 3-tuple regen, comment block extended). Engine 1185 tests / 3 documented pre-existing parallel-load timing flakes (`MetadataPreFetcher.fetch_networkTimeout`, `SoakTestHarness.cancel`, `SessionManagerCancel.cancel_fromReady`); app build clean; SwiftLint 0 violations on touched files. RENDER_VISUAL=1 PNGs at `/tmp/phosphene_visual/20260508T224311/`. D-100.
+
+**Carry-forward:** Manual smoke re-run on real music (Matt verifies the four cosmetic + palette + shaft fixes deliver the expected reading: psychedelic-not-psych-ward backdrop, fine-detail silk, visible shaft at baseline, per-segment variation across multiple Arachne instances). V.7.7C.5.2 (per-track web identity, Options B/C) deferred awaiting product call. V.7.7C.6 (spider movement) and V.7.10 (cert review) still remain.
+
+---
+
+### Increment V.7.7C.5.2 — Per-track web identity (Options B / C) — DEFERRED, awaiting product decision
+
+**Prerequisite:** V.7.7C.5.1 manual-smoke green sign-off. Decision pending Matt's evaluation of whether the Option A per-segment variation (V.7.7C.5.1) is sufficient or whether webs should additionally be tied to track identity for aesthetic association.
+
+**Scope (if scheduled):** Two flavours, mutually-exclusive:
+
+- **Option B — per-track determinism.** Plumb track-identity hash into `ArachneState.reset(trackSeed:)`. Same track always gets the same web (across replays, across sessions). Adds Swift wiring in `ArachneState` (new `reset` overload), a Renderer hook on track change (`PresetSignaling`-style identity passthrough), and a determinism test asserting two `reset(trackSeed:)` calls with the same seed produce byte-identical web state. ~30 LOC + 1 test.
+
+- **Option C — track + session-counter perturbation.** Per-track base seed gives identity; an LCG step per-replay gives variant on the Nth listen. Variety + association both. ~40 LOC + extends the determinism test with a per-replay variance assertion (Nth replay produces materially-different web state from N+1th replay).
+
+Trade-off: B gives consistent music-visual association at the cost of "this track's web always looks weak when it lands on a poor random draw"; C resolves that but adds session state (LCG-per-track replay counter) that needs persistence across track changes within a session.
+
+**Done when:** Manual smoke confirms the chosen flavour reads as intended on a 10+-track playlist with at least one repeated track. V.7.7C.5.1's Option A is preserved as the fallback when no track identity is available (e.g. ad-hoc reactive sessions before track change observation).
+
+**Estimated sessions:** 1 (single Swift-side commit).
 
 ---
 
