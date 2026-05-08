@@ -12,7 +12,7 @@ import Shared
 // MARK: - Reference Table
 
 /// §5.3 reference table values at default section context (nil, lingerFactor=0.5).
-/// Source: docs/ARACHNE_V8_DESIGN.md §5.3.
+/// Source: docs/presets/ARACHNE_V8_DESIGN.md §5.3.
 private struct ReferenceRow {
     let presetName: String
     /// Expected default-section maxDuration; nil for diagnostic presets (∞).
