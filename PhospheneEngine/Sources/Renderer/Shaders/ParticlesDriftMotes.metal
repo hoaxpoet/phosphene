@@ -284,6 +284,12 @@ struct MotesVertexOut {
     float pointSize [[point_size]];
     float4 color;
     float life;
+    // Particle position in the sky fragment's UV convention (top-left origin,
+    // y down). Used by the fragment to compute distance to the shaft axis so
+    // motes inside the beam glow brighter than motes drifting in the floor
+    // fog. Same UV space as `drift_motes_sky_fragment`'s `in.uv`, so the
+    // sun-anchor coordinates `(-0.15, 1.20)` match between the two shaders.
+    float2 particleUV;
 };
 
 vertex MotesVertexOut motes_vertex(
@@ -298,7 +304,15 @@ vertex MotesVertexOut motes_vertex(
     // to change it. Drift Motes' BOUNDS.x = 8 → screen edge at scale 0.125
     // would compress the field; 2.2 keeps the wide horizontal slab framed.
     const float scale = 2.2 / 8.0;  // BOUNDS.x = 8 maps to clip edge.
-    out.position = float4(p.position.x * scale, p.position.y * scale, 0.0, 1.0);
+    float clipX = p.position.x * scale;
+    float clipY = p.position.y * scale;
+    out.position = float4(clipX, clipY, 0.0, 1.0);
+
+    // Convert clip space → sky UV space (y flipped to match `fullscreen_vertex`).
+    // Particles outside [-1, 1] clip space land outside [0, 1] UV; the fragment
+    // discards them at point-size cull, but the shaft math still works on
+    // off-screen UVs (sunUV is itself off-screen at -0.15, 1.20).
+    out.particleUV = float2(clipX * 0.5 + 0.5, 0.5 - clipY * 0.5);
 
     // 6-px constant point size in DM.1; Session 3 gates on shaft density.
     out.pointSize = (p.life > 0.0 && p.age < p.life) ? 6.0 : 0.0;
@@ -325,8 +339,22 @@ fragment float4 motes_fragment(
     // out the highlights — each mote contributes a fraction of its hue.
     float alpha = exp(-r2 * 18.0);
 
-    // Particle.color is the default warm hue in DM.1 (Session 2 diversifies).
-    // Multiply by a fixed scalar to keep additive contribution gentle.
-    float3 rgb = in.color.rgb * 0.55;
+    // ── Shaft-proximity brightness modulation (DM.2) ─────────────────────
+    // Sun anchor matches the sky fragment so the per-mote highlight stays
+    // congruent with the beam in the backdrop. The shaft axis runs from
+    // sunUV through frame centre (0.5, 0.5); brightness peaks on-axis and
+    // falls off to a baseline outside the cone, producing the visual
+    // reading of "the beam picks out individual motes as they cross it."
+    const float2 sunUV    = float2(-0.15, 1.20);
+    float2 shaftDir   = normalize(float2(0.5, 0.5) - sunUV);
+    float2 toMote     = in.particleUV - sunUV;
+    float  alongShaft = dot(toMote, shaftDir);
+    float  perpDist   = length(toMote - alongShaft * shaftDir);
+    float  shaftLit   = exp(-perpDist * perpDist * 16.0);
+    float  brightness = 0.45 + shaftLit * 0.85;
+
+    // Per-particle hue is baked at emission (DM.2 Task 1) and varies across
+    // the field — fragment just modulates intensity here.
+    float3 rgb = in.color.rgb * 0.55 * brightness;
     return float4(rgb * alpha, alpha);
 }
