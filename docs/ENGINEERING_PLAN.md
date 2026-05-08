@@ -1320,6 +1320,31 @@ Per-preset state setup handles Arachne (allocates `ArachneState`, warms 30 ticks
 
 ---
 
+### Increment V.7.7C — Arachne refractive dewdrops (§5.8 Snell's-law) ✅ 2026-05-07
+
+**Prerequisite:** V.7.7B Arachne staged WORLD + WEB port ✅ 2026-05-07.
+
+**Scope:** Replace the V.7.5 `mat_frosted_glass` drop overlay (warm-amber emissive base + cool-white pinpoint specular) at both COMPOSITE call sites — the anchor-web block (~line 742) and the pool-web block (~line 832) — with the §5.8 Snell's-law refractive recipe sampling the WORLD stage's offscreen texture at `[[texture(13)]]`. Both blocks use the spec recipe verbatim (spherical-cap normal → `refract(-kViewRay, sphN, 0.752)` → `worldTex.sample` at `2.5 × rDrop` magnification → Schlick fresnel rim with `kLightCol × 0.85` warm tint → pinpoint specular at the half-vector cap position → `darkRing × 0.5` smoothstep ring at `[0.85, 0.95, 1.0]` radius bands → `(baseEmissionGain + beatAccent)` audio-reactive multiplier). Pool block additionally multiplies coverage by `w.opacity` to preserve V.7.5 fade semantics. Out of scope: build state machine, anchor blobs, spider deepening, vibration, `arachneEvalWeb` changes — V.7.7C.2 / V.7.7D / V.7.10.
+
+**Done when:**
+- ✅ Both drop blocks render via Snell's-law refraction sampling `worldTex`; `mat_frosted_glass` / `dropAmber` / `glintAdd` deleted from both call sites.
+- ✅ Single shader-only commit; net Arachne.metal LOC change roughly ±0.
+- ✅ Targeted suites pass (`StagedComposition` + `StagedPresetBufferBinding` + `PresetRegression` + `ArachneSpiderRender` + `ArachneState` — 23 tests / 5 suites).
+- ✅ `PresetLoaderCompileFailureTest` passes (Arachne preset count 14, no silent compile drop — see Failed Approach #44).
+- ✅ Visual harness `RENDER_VISUAL=1 swift test --filter renderStagedPresetPerStage` produces non-placeholder Arachne PNGs across silence / mid / beat fixtures (377 KB world + 1.2 MB composite).
+- ✅ 0 SwiftLint violations on touched files; full engine + app suites pass except documented pre-existing flakes (`MemoryReporter.residentBytes`, `MetadataPreFetcher.fetch_networkTimeout`, `NetworkRecoveryCoordinator` parallel-load timing).
+- ✅ Golden hashes documented: Arachne dHash UNCHANGED (`0xC6168E8F87868C80`) — under the regression render path `worldTex` is unbound, refraction reads zero, and the rim+specular+ring contributions sum below the dHash 9×8 luma quantization threshold. Spider forced regenerated (`0x461E3E1F07870C00` → `0x461E2E1F07830C00`).
+- ✅ `D-093` filed in `docs/DECISIONS.md` documenting the five non-trivial decisions: worldTex sample over inline `drawWorld()`, delete vs keep `mat_frosted_glass` fallback, defer build state machine to V.7.7C.2, `2.5 × rDrop` magnification choice over `8 × rDrop` background tuning, half-vector type-correction (`float2 halfDir` not `float3 halfVec` — prompt's recipe declared a float3 with a float2 RHS, fails to compile in Metal).
+
+**Verify:** Same as V.7.7B. Detailed protocol in `prompts/V.7.7C-prompt.md`.
+
+**Carry-forward:**
+- V.7.7C.2 / V.7.8 — single-foreground build state machine (frame → radials → INWARD spiral over 60s), per-chord drop accretion, anchor blobs.
+- V.7.7D — spider pillar deepening + whole-scene 12 Hz vibration.
+- V.7.10 — Matt M7 cert review.
+
+---
+
 ### Increment V.7.7 — Arachne v8: WORLD pillar + 1–2 background dewy webs
 
 **Status correction (2026-05-07):** The `[V.7.7 redo]` commit (`fa5dacdf`, 2026-05-05 10:54) added the six-layer inline `drawWorld()` and frame threads to the *monolithic* `arachne_fragment`. Three hours later, `[V.7.7A]` (`ccefe065`, 2026-05-05 14:13) retired that fragment and shipped placeholder staged stubs. The V.7.7 work is therefore preserved as dead reference code in `PhospheneEngine/Sources/Presets/Shaders/Arachne.metal` (free-function `drawWorld` ~line 142, legacy `arachne_fragment` ~line 617), not in the dispatched path. Promotion into the staged path is V.7.7B.

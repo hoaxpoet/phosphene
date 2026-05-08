@@ -739,26 +739,54 @@ fragment float4 arachne_composite_fragment(
             prevStrandCov = 1.0 - strandPseudo;
         }
 
-        // §4.3 micro: adhesive droplets — mat_frosted_glass with analytic detail_normal
+        // V.7.7C §5.8: photographic dewdrop — Snell's-law refraction sampling
+        // the WORLD stage texture, fresnel rim, pinpoint specular, dark edge ring.
+        // Replaces the V.7.5 mat_frosted_glass + warm-amber emissive recipe.
+        // worldTex is the WORLD stage's offscreen output bound at [[texture(13)]];
+        // sampling it (vs inline drawWorld()) preserves the staged-composition
+        // contract V.ENGINE.1 / D-072 / D-092 established. D-093.
         if (wr.dropCov > 0.01) {
-            float2 d2   = wr.dropVec; // vector from drop center to pixel in tRel space
-            float r_norm = length(d2) / max(wr.dropRadius, 1e-5);
-            float h      = sqrt(max(0.0, 1.0 - r_norm * r_norm));
-            // §4.3 micro: droplet spherical-cap detail_normal (analytic)
-            float3 detail_normal = normalize(float3(d2 / max(wr.dropRadius, 1e-5), h));
-            MaterialResult glass = mat_frosted_glass(float3(uv, 0.0), detail_normal);
-            // V.7.5 §10.1.3: drops as visual hero. Warm-amber emissive base
-            // (was glass.albedo * 0.04, neutral white); warm-white pinpoint
-            // specular (was cool white); audio-gain modulated by the same
-            // factor as silk so drops swell with the music.
-            float3 dropAmber = float3(1.00, 0.78, 0.45);
-            glass.emission   = dropAmber * 0.18;
-            float3 Rdrop     = reflect(-kL, detail_normal);
-            float spec       = pow(saturate(dot(Rdrop, kV)), 64.0);
-            float3 glintAdd  = float3(1.00, 0.95, 0.85) * spec * 1.4;
-            float3 dropEmission = glass.emission + glintAdd;
-            dropEmission    *= (baseEmissionGain + beatAccent);
-            dropColorAccum  += dropEmission * wr.dropCov;
+            float2 d2     = wr.dropVec;
+            float  rDrop  = wr.dropRadius;
+            float  rNorm  = length(d2) / max(rDrop, 1e-5);
+
+            // Spherical-cap normal at the sample point inside the drop.
+            float  h      = sqrt(max(0.0, 1.0 - rNorm * rNorm));
+            float3 sphN   = normalize(float3(d2 / max(rDrop, 1e-5), h));
+            const float3 kViewRay = float3(0.0, 0.0, 1.0);
+
+            // Snell's-law refraction (air n=1.0 → water n=1.33; eta = 0.752).
+            // worldSampleScale = 2.5 × rDrop per §5.8 (foreground dewdrop tuning;
+            // drawBackgroundWeb's 8× value is for background webs at depth, §5.12).
+            float3 refr        = refract(-kViewRay, sphN, 0.752);
+            float2 refractedUV = uv + refr.xy * (rDrop * 2.5);
+            float3 bgSeen      = worldTex.sample(arachne_world_sampler, refractedUV).rgb;
+
+            // Fresnel rim (Schlick power 5; warm-tint at edge).
+            float  fresnel  = pow(1.0 - saturate(sphN.z), 5.0);
+            float3 rimTint  = kLightCol * 0.85;
+            float3 dropCol  = mix(bgSeen, rimTint, saturate(fresnel * 0.40));
+
+            // Pinpoint specular at the half-vector position on the cap.
+            // 2D half-vector projection on the cap. kViewRay.xy = (0, 0) so this
+            // collapses to normalize(kL.xy) — the screen-space direction of the key
+            // light. specPos sits at 60% of the drop radius along that direction.
+            float2 halfDir  = normalize(kL.xy + kViewRay.xy);
+            float2 specPos  = halfDir * rDrop * 0.6;
+            float  specD    = length(d2 - specPos) / max(rDrop, 1e-5);
+            float  specMask = 1.0 - smoothstep(0.0, 0.20, specD);
+            dropCol += rimTint * specMask * 1.0;
+
+            // Dark edge ring inside the silhouette (refraction breakdown at grazing angles).
+            float  ring1    = smoothstep(0.85, 0.95, rNorm);
+            float  ring2    = 1.0 - smoothstep(0.95, 1.0, rNorm);
+            float  darkRing = ring1 * ring2;
+            dropCol *= (1.0 - darkRing * 0.50);
+
+            // Audio-reactive emission gain — preserves the V.7.5 D-026 modulation shape.
+            dropCol *= (baseEmissionGain + beatAccent);
+
+            dropColorAccum += dropCol * wr.dropCov;
         }
     }
 
@@ -804,22 +832,43 @@ fragment float4 arachne_composite_fragment(
             prevStrandCov = 1.0 - strandPseudo;
         }
 
-        // §4.3 micro: adhesive droplets via mat_frosted_glass
+        // V.7.7C §5.8: photographic dewdrop — same Snell's-law recipe as anchor block.
+        // scaledDrop = wr.dropCov × w.opacity preserves V.7.5 fade semantics; older /
+        // fading webs contribute proportionally less. D-093.
         if (scaledDrop > 0.01) {
-            float2 d2    = wr.dropVec;
-            float r_norm = length(d2) / max(wr.dropRadius, 1e-5);
-            float h      = sqrt(max(0.0, 1.0 - r_norm * r_norm));
-            float3 detail_normal = normalize(float3(d2 / max(wr.dropRadius, 1e-5), h));
-            MaterialResult glass = mat_frosted_glass(float3(uv, 0.0), detail_normal);
-            // V.7.5 §10.1.3: drops as visual hero — same recipe as anchor block.
-            float3 dropAmber = float3(1.00, 0.78, 0.45);
-            glass.emission   = dropAmber * 0.18;
-            float3 Rdrop     = reflect(-kL, detail_normal);
-            float spec       = pow(saturate(dot(Rdrop, kV)), 64.0);
-            float3 glintAdd  = float3(1.00, 0.95, 0.85) * spec * 1.4;
-            float3 dropEmission = glass.emission + glintAdd;
-            dropEmission    *= (baseEmissionGain + beatAccent);
-            dropColorAccum  += dropEmission * scaledDrop;
+            float2 d2     = wr.dropVec;
+            float  rDrop  = wr.dropRadius;
+            float  rNorm  = length(d2) / max(rDrop, 1e-5);
+
+            float  h      = sqrt(max(0.0, 1.0 - rNorm * rNorm));
+            float3 sphN   = normalize(float3(d2 / max(rDrop, 1e-5), h));
+            const float3 kViewRay = float3(0.0, 0.0, 1.0);
+
+            float3 refr        = refract(-kViewRay, sphN, 0.752);
+            float2 refractedUV = uv + refr.xy * (rDrop * 2.5);
+            float3 bgSeen      = worldTex.sample(arachne_world_sampler, refractedUV).rgb;
+
+            float  fresnel  = pow(1.0 - saturate(sphN.z), 5.0);
+            float3 rimTint  = kLightCol * 0.85;
+            float3 dropCol  = mix(bgSeen, rimTint, saturate(fresnel * 0.40));
+
+            // 2D half-vector projection on the cap. kViewRay.xy = (0, 0) so this
+            // collapses to normalize(kL.xy) — the screen-space direction of the key
+            // light. specPos sits at 60% of the drop radius along that direction.
+            float2 halfDir  = normalize(kL.xy + kViewRay.xy);
+            float2 specPos  = halfDir * rDrop * 0.6;
+            float  specD    = length(d2 - specPos) / max(rDrop, 1e-5);
+            float  specMask = 1.0 - smoothstep(0.0, 0.20, specD);
+            dropCol += rimTint * specMask * 1.0;
+
+            float  ring1    = smoothstep(0.85, 0.95, rNorm);
+            float  ring2    = 1.0 - smoothstep(0.95, 1.0, rNorm);
+            float  darkRing = ring1 * ring2;
+            dropCol *= (1.0 - darkRing * 0.50);
+
+            dropCol *= (baseEmissionGain + beatAccent);
+
+            dropColorAccum += dropCol * scaledDrop;
         }
     }
 

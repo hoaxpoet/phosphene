@@ -35,6 +35,14 @@ private let goldenPresetHashes: [String: PresetHashes] = [
     // so the hash captures the foreground composition alone — silk strands,
     // adhesive droplets, mist + motes — over a black backdrop. The full
     // WORLD + COMPOSITE composite is exercised by PresetVisualReviewTests.
+    //
+    // V.7.7C (D-093): drop overlay rewritten to §5.8 Snell's-law refractive
+    // recipe. Under this regression path `worldTex` is unbound → bgSeen reads
+    // black; drops compose as thin warm fresnel rim + warm specular pinpoint
+    // + dark edge ring × audio gain. dHash UNCHANGED at the V.7.7B values:
+    // the new contributions sum below the 9×8 luma quantization threshold of
+    // dHash, so the foreground silhouette fingerprint is bytewise identical.
+    // Real visual divergence is observed in PresetVisualReviewTests.
     "Arachne": (steady: 0xC6168E8F87868C80, beatHeavy: 0xC6168E8F87868C80, quiet: 0xC6168E8F87868C80),
     "Ferrofluid Ocean": (steady: 0x56AB1C4A28B32727, beatHeavy: 0x5CB393AAAFA84840, quiet: 0xA64C51A62FD35356),
     "Glass Brutalist": (steady: 0x336954B4B4544D33, beatHeavy: 0x336954B4B4544D33, quiet: 0x336954B4B4544D33),
