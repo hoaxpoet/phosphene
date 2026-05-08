@@ -1417,6 +1417,106 @@ Per-preset state setup handles Arachne (allocates `ArachneState`, warms 30 ticks
 
 ---
 
+### Increment V.7.7C.4 — Arachne palette + L lock + hybrid audio coupling (D-095 follow-up #2) ✅ 2026-05-09
+
+**Prerequisite:** V.7.7C.3 manual-smoke remediation ✅ 2026-05-09.
+
+**Scope:** Close three issues from Matt's 2026-05-08T18-28-16Z second manual smoke. WORLD reframe + spider movement deferred to V.7.7C.5 + V.7.7C.6 per Matt's sequencing call. **Fix A:** L key full-lock — `handlePresetCompletionEvent` guards on `diagnosticPresetLocked` so orchestrator-driven completion-event transitions are suppressed when the L key is held. Pre-V.7.7C.4 the L key only suppressed mood-override switching; V.7.7C.4 lets Matt watch the full ~50–55 s build cycle without the orchestrator cycling away every ~60 s. Manual `⌘[` / `⌘]` cycling unaffected. **Fix B:** Palette enrichment — reverses V.7.5 §10.1.3's deliberate silk dimming after Matt's "color far too subtle" feedback. silkTint factor 0.60 → 0.85; mood-driven hue base (valence: teal → amber); vocal-pitch coupling when `stems.vocals_pitch_confidence ≥ 0.35` (Gossamer-style); wider hueDrift factor 0.10 → 0.20; ambient tint factor 0.25 → 0.40; hub knot coverage 0.80 → 1.20 (saturated). **Fix C:** Hybrid audio coupling — PRESERVES D-095 Decision 2 (audio-modulated TIME pacing) while adding two beat-coupling channels. (1) Per-beat global emission pulse `emGain += beatPulse * 0.06` where `beatPulse = max(beat_bass, beat_composite)`. Coefficient 0.06 calibrated against PresetAcceptance D-037 invariant 3 (`beatMotion ≤ continuousMotion × 2.0 + 1.0`). (2) Rising-edge beat advances `spiralChordIndex` by 1 in `advanceSpiralPhase(by:features:)`. New `ArachneState.prevBeatForSpiral` rising-edge tracker (reset by `_reset()`). Sparse-beat tracks still complete in `naturalCycleSeconds`; kick-heavy tracks see chords lay faster on each beat. Pause-guard preserved: gated on `effectiveDt > 0`. Single commit; no new test files (only fixture-helper updates + golden hash regen).
+
+**Done when:**
+
+- ✅ L key suppresses orchestrator-driven completion-event transitions when held. `handlePresetCompletionEvent` checks `diagnosticPresetLocked` first, logs `"Orchestrator: preset completion suppressed (diagnosticPresetLocked)"` and returns early.
+- ✅ Silk palette: silkTint 0.85; hue derived from valence-driven base + vocal-pitch coupling (when `stems.vocals_pitch_confidence ≥ 0.35`); hueDrift coefficient 0.20; ambient 0.40. Hub knot coverage 1.20 saturated (visibly distinct emissive feature).
+- ✅ Per-beat global emission pulse `beatPulse * 0.06` on silk emission. Calibrated against D-037 invariant 3.
+- ✅ Rising-edge beat advances `spiralChordIndex` in `advanceSpiralPhase(by:features:)`. `prevBeatForSpiral` tracker on `ArachneState` reset by `_reset()`. Pause-guard preserved (gated on `effectiveDt > 0`).
+- ✅ Targeted suites pass (`PresetAcceptance` 60/60 + `StagedComposition` + `StagedPresetBufferBinding` + `ArachneState` + `ArachneStateBuild` + `ArachneListeningPose` + `ArachneBranchAnchors` + `PresetLoaderCompileFailure` + `PresetRegression` + `ArachneSpiderRender`). PresetAcceptance D-037 invariant 3 caught initial coefficient overshoot (0.45 → 0.06 retune); test infrastructure worked exactly as intended.
+- ✅ Engine 1174/1175 pass (sole `MetadataPreFetcher.fetch_networkTimeout` documented flake). App suite: same documented flake (better than V.7.7C.2/C.3 baseline). 0 SwiftLint violations on touched files (file_length 400 line ceiling on `VisualizerEngine+Presets.swift` enforced — comment trimmed during landing).
+- ✅ Golden hashes regenerated. Arachne `steady`/`quiet` `0xC6168081C0D88880` → `0x06129A65E458494D`; `beatHeavy` → `0x0000000000000000`. Spider forced: `0x46160011C2D80800` → `0x06129A55C258494D`.
+- ✅ D-095 follow-up section in `docs/DECISIONS.md` documenting the three fixes + V.7.7C.2/C.3 contract preservation.
+
+**Verify:** Build → `PresetLoaderCompileFailureTest` → targeted suites pre-golden → visual harness sanity check → golden hash regen → targeted suites post-golden → full engine + app suites → SwiftLint → manual smoke re-run (Matt verifies L lock holds, palette reads brighter, build couples to beats).
+
+**Carry-forward:** Manual-smoke re-run on real music (Matt). On green: V.7.7C.5 (WORLD reframe) and V.7.7C.6 (spider movement). V.7.10 cert review still gated on these.
+
+---
+
+### Increment V.7.7C.5 — Arachne WORLD reframe (atmospheric fog + light support) — DEFERRED, needs §4 spec revision
+
+**Prerequisite:** V.7.7C.4 manual-smoke green sign-off + Matt-authored §4 spec revision in `docs/presets/ARACHNE_V8_DESIGN.md`. Cannot start until the revised §4 lands — implementation against the current "dark close-up forest" spec produced the visual the manual smoke flagged ("completely devoid of value", "lines do not read as branches"); V.7.7C.5 is the implementation pass against the revised framing.
+
+**Scope:** Replace `drawWorld()` in `Arachne.metal` (currently a six-layer dark close-up forest atmosphere — sky/distant/mid trees/near-frame branches/forest floor/atmosphere) with a backdrop framed around atmospheric fog + light support. Per Matt's 2026-05-08T18-28-16Z manual smoke: "I would rather you put fog and light behind the web to add more visual interest. The lines do not read as branches." The new §4 (TBD by Matt) should specify whether the tree silhouettes are retired entirely or recast (e.g., as soft fog gradients without literal trunk shapes), how volumetric beams enter (currently the radial light shaft fires at `0.06 × val intensity` — barely visible), and how mood palette continues to drive the framing. The §5.9 anchor twigs may stay (they read as web attachment points, not as competing forest detail). Preserves V.7.7B/C/D contracts (staged scaffold, Snell's-law refractive drops, 3D SDF spider, 12 Hz vibration).
+
+**Open questions for the §4 revision (Matt drafts; not Claude Code's call):**
+
+- Tree silhouettes: retire entirely, soft-shadow only, or replaced by depth gradients?
+- Light shaft hierarchy: single hero shaft, multiple beams, or volumetric god-rays?
+- Fog density profile: uniform, height-graded, or beam-anchored?
+- Mood palette mapping: keep current valence (teal → amber) + arousal (saturation/value) axes, or reframe?
+- Anchor twigs (§5.9): keep, simplify, or retire?
+- Silence anchor (§8.3): how does the new framing degrade gracefully when the music goes silent (current `(satScale × valScale) < 0.05` clears WORLD to black)?
+- Visual reference set: any new reference images needed in `docs/VISUAL_REFERENCES/arachne/` to anchor the new framing?
+
+**Done when (subject to Matt's §4 spec):**
+
+- `drawWorld()` rewritten against the revised §4 spec; six-layer dark forest content retired or recast as the spec dictates.
+- WORLD pass renders as an atmospheric backdrop that supports the foreground web visually (fog + light + mood palette) rather than competing with it.
+- Anchor twigs (§5.9 / V.7.7C.2 Commit 1) retained, simplified, or retired per spec.
+- Silence anchor (§8.3) preserved or re-specced.
+- New visual reference images added to `docs/VISUAL_REFERENCES/arachne/` if the revised framing requires them.
+- All targeted suites pass (`PresetAcceptance`, `StagedComposition`, `StagedPresetBufferBinding`, `PresetRegression`, `ArachneSpiderRender`, `PresetLoaderCompileFailure`).
+- Goldens regenerated — substantial drift expected (every WORLD pixel changes).
+- Manual smoke confirms backdrop reads as atmospheric support per Matt's "fog and light behind the web" intent.
+- 0 SwiftLint violations on touched files.
+- D-095 follow-up #3 section in `docs/DECISIONS.md` documenting the §4 revision rationale + implementation.
+
+**Verify:** Build → `PresetLoaderCompileFailureTest` → targeted suites pre-golden → visual harness contact sheet against the revised reference set → golden hash regen → targeted suites post-golden → full engine + app suites → SwiftLint → manual smoke re-run.
+
+**Estimated sessions:** 1–2 (depending on §4 revision scope).
+
+**Carry-forward:** V.7.7C.6 (spider movement) and V.7.10 (cert review) remain.
+
+---
+
+### Increment V.7.7C.6 — Arachne spider movement system (off-camera entry + walking path + min-visibility latch + rarity gate) — DEFERRED, V.7.7D-scale increment
+
+**Prerequisite:** V.7.7C.4 manual-smoke green sign-off + V.7.7D 3D SDF spider + V.7.7C.4 trigger reformulation already landed.
+
+**Scope:** Add body translation + waypoint navigation + min-visibility latch + N-segment rarity gate to the existing static-position spider. Per Matt's 2026-05-08T18-28-16Z manual smoke: "the spider flashed on the screen for a second then immediately disappeared. I would want the spider to walk from off camera into the camera frame when triggered and move from one hook of the web to another over the span of 10–15 seconds. The trigger should be rare, but the spider should remain in view for longer, and most importantly should MOVE within the camera frame, ideally along the web." Closes V.7.7C.4's deferred sub-item — comparable scope to the V.7.7D 3D anatomy + chitin material increment.
+
+**Architecture decisions (to be filed as D-100 or next-available decision ID at implementation time):**
+
+1. **`SpiderState` enum.** Replace the current `spiderActive: Bool` + `spiderBlend: Float` pair with a state machine: `.idle` / `.entering(progress: Float)` / `.walking(fromIdx: Int, toIdx: Int, progress: Float)` / `.exiting(progress: Float)` / `.cooldown(remainingSegments: Int)`. State advances on each tick; `spiderBlend` becomes a derived value from the current state.
+2. **Off-camera entry path.** On trigger, spawn at UV (1.10, 0.50) (or randomly chosen edge-adjacent position outside [0,1]) and walk to the first polygon vertex over ~1.5 s. `.entering` state.
+3. **Walking path along polygon hooks.** Use `bs.anchors[]` (V.7.7C.3 polygon vertices) as waypoints. Spider visits 2–3 polygon vertices over 10–15 seconds, walking along silk thread paths (frame edges). Per-waypoint duration ~4–6 s. Body position interpolates smoothly along the silk edge between consecutive waypoints (catmull-rom or simple linear; spec TBD). Existing leg gait drives leg tips relative to body — animates naturally as body translates.
+4. **Min-visibility latch.** Once activated, spider stays visible for at least 12–15 seconds regardless of trigger condition. Replace the current `if spiderActive && !conditionMet { spiderActive = false }` with a min-visibility timer that holds. After expiry, transition to `.exiting` and walk off-frame.
+5. **N-segment cooldown for rarity.** Currently per-segment cooldown via `spiderFiredInSegment`. Expand to "spider may fire AT MOST once every N segments". Default N=3; configurable. New `ArachneState.spidersFiredCount: Int` increments on each `_reset()`; trigger gates on `spidersFiredCount % N == 0` AND `!spiderFiredInSegment`.
+6. **GPU contract.** `ArachneSpiderGPU` stays at 80 bytes (V.7.7D contract). Body position writes to existing `posX` / `posY` fields each frame. Heading writes to `heading` (rotates as spider walks turn corners). No struct expansion.
+7. **Pause-guard interaction.** While spider is active, the build state machine is paused (V.7.7C.2 contract). Spider movement progresses independently — body translates and gait animates regardless of build pause.
+8. **Music coupling (TBD):** does the spider walking pace couple to music (slower on quiet passages, faster on dense tracks), or is it on a fixed wallclock? Decide at implementation. D-095 audio-modulated TIME precedent suggests `pace = 1.0 + 0.18 × midAttRel` keeps it consistent with the build state machine.
+
+**Done when:**
+
+- Spider state machine implemented with all five states (`.idle` / `.entering` / `.walking` / `.exiting` / `.cooldown`).
+- Spider visibly walks from off-camera into the frame on bass-drop trigger.
+- Spider visits 2–3 polygon vertices over 10–15 seconds, walking along silk edges.
+- Spider remains in view for at least 12–15 seconds regardless of trigger condition.
+- Spider trigger fires AT MOST once every N segments (default N=3).
+- Existing per-segment cooldown (`spiderFiredInSegment`) preserved as a same-segment fallback.
+- All targeted suites pass.
+- Goldens regenerated (substantial drift expected — spider position now varies across the 10–15 s walk).
+- 0 SwiftLint violations on touched files.
+- New `ArachneSpiderMovementTests` test suite covering the five-state machine transitions, min-visibility latch, N-segment cooldown.
+- D-100 (or next-available) decision in `docs/DECISIONS.md` documenting the architectural choices above.
+- Manual smoke confirms all four behaviours: off-camera entry, walking along web, min-visibility hold, rarity (one trigger per N=3 segments).
+
+**Verify:** Build → `PresetLoaderCompileFailureTest` → targeted suites pre-golden → visual harness sanity check (force spider via `forceActivateForTest(at:)` and capture the walk path) → golden hash regen → targeted suites post-golden → full engine + app suites → SwiftLint → manual smoke (Matt watches multiple spider triggers across a full session, confirms walking path looks natural, min-visibility holds, rarity gate enforces N-segment cooldown).
+
+**Estimated sessions:** 2–3 (state machine + waypoint navigation + min-visibility + rarity + tests + golden regen).
+
+**Carry-forward:** V.7.10 cert review — final QA pass.
+
+---
+
 ### Increment V.8.0-spec — Arachne3D: parallel-preset commit + four pushbacks ✅ 2026-05-08 (D-096)
 
 **Scope.** Doc-only spec validation session against four pushbacks (perf budget honesty, screen-space refraction artifact, chromatic dispersion, parallel-preset feasibility). No code changed. Establishes the architectural commitments for V.8.1 onward: parallel preset (`Arachne3D` alongside V.7.7D `Arachne`), sampled WORLD backdrop, screen-space refraction with documented edge artifact, chromatic dispersion in V.8.2 (silhouette-band approach), Tier-1 mitigations (noSSGI default + capped drops + half-res lighting). System-wide reframe ("same visual conversation, not pixel-match") adopted as cert principle for the full preset ladder.
