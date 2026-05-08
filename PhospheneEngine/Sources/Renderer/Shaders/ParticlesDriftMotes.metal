@@ -16,19 +16,27 @@
 // to `Particles.metal` (D-020). Documented here and in CLAUDE.md so future
 // authors don't reorder the prefix without thinking.
 //
-// AUDIO COUPLING (post-DM.2):
-//   The kernel reads stems and FeatureVector at emission time only. Each
-//   particle bakes a hue at respawn that it then carries for life — the
-//   field's chromatic texture IS the recent vocal melody. Hue source is
-//   selected by the D-019 warmup blend `smoothstep(0.02, 0.06, totalStemEnergy)`:
-//     • Cold stems: per-particle hash jitter around warm amber,
-//       lightly modulated by `f.mid_att_rel` so the field still moves
-//       with the music when stems are zero.
-//     • Warm stems: `dm_pitch_hue(vocals_pitch_hz, vocals_pitch_confidence)`
-//       (octave-wrapped log mapping, see helper below).
-//   Wind/turbulence motion is still audio-independent in DM.2; the
-//   emission-rate scaling from `f.mid_att_rel` and the drum dispersion
-//   shock from `stems.drums_beat` arrive in DM.3.
+// AUDIO COUPLING (post-DM.3):
+//   The kernel reads stems and FeatureVector at emission time AND at
+//   integration time:
+//     • Emission time (respawn branch):
+//       - Hue baked once per particle, selected by the D-019 warmup blend
+//         `smoothstep(0.02, 0.06, totalStemEnergy)`. Cold stems use a
+//         per-particle hash jitter around warm amber lightly modulated by
+//         `f.mid_att_rel`; warm stems use `dm_pitch_hue(vocals_pitch_hz,
+//         vocals_pitch_confidence)` (octave-wrapped log mapping).
+//       - Lifetime scaled by `1 / (1 + kEmissionRateGain * f.mid_att_rel)`
+//         (positive `mid_att_rel` only) so peak melody compresses cycle
+//         frequency without changing the 800-particle field density (DM.3).
+//     • Integration time (every frame, every particle):
+//       - Drum dispersion shock — `smoothstep(0.30, 0.70, stems.drums_beat)`
+//         gate × `kDispersionShockGain` × `dt` adds a radial outward
+//         velocity impulse in the horizontal plane with a small +Y lift.
+//         The beat-detector envelope provides natural decay; damping
+//         settles the field back into wind drift between beats (DM.3).
+//   Wind/turbulence motion is still audio-independent through DM.3.
+//   DM.4 will add `f.bass_att_rel` × wind, valence-tinted backdrop, and
+//   anticipatory shaft pulse on `f.beat_phase01`.
 //
 // CONSTANTS (DriftMotesConfig at buffer(4)):
 //   Wind direction, wind magnitude, damping, turbulence amplitude /
@@ -50,6 +58,21 @@
 //
 // NEIGHBOR QUERIES: zero. No `for (uint j ...)` loop, no shared-memory
 // boid forces, no inter-particle distance reads. Particles are independent.
+
+// DM.3 audio-coupling tuning constants.
+// Match the scope and naming of the DM.2.closeout fog constants in
+// `DriftMotes.metal` so M7 retuning has one consistent surface area
+// across the preset/engine pair.
+//
+// kEmissionRateGain: lifetime divisor at emission time. With mid_att_rel
+// at peak (≈ 0.5 deviation), lifetime = base / (1 + 0.75) = base × 0.57
+// — the cycle runs ~1.75× faster, more shimmer, no density change.
+constexpr constant float kEmissionRateGain   = 1.5f;
+// kDispersionShockGain: per-frame radial impulse magnitude, gated by the
+// drums_beat envelope. Tuned against the wind baseline (0.3) so beats
+// produce a visible 'lift' without dispersing the field permanently;
+// damping (0.97) brings the field back into wind drift between beats.
+constexpr constant float kDispersionShockGain = 0.4f;
 
 inline float dm_hash_f01(float n) {
     return fract(sin(n) * 43758.5453);
@@ -203,6 +226,15 @@ kernel void motes_update(
                (abs(pos.z) > bounds.z);
     bool dead = (p.age > p.life);
 
+    // DM.3 Task 1 — emission rate scaling. Lifetime divisor at respawn time.
+    // Clamp `mid_att_rel` to non-negative so quiet sections do not extend
+    // lifetime (the deviation primitive is signed in [-0.5, 0.5]; we use
+    // the positive half as a 'melody peaks' driver). Linear in mid_att_rel
+    // — D-026-compliant by construction (no smoothstep, no absolute
+    // threshold).
+    float midRelPositive = max(0.0, features.mid_att_rel);
+    float emissionFactor = 1.0 / (1.0 + kEmissionRateGain * midRelPositive);
+
     if (oob || dead) {
         pos = dm_sample_emission_position(id, t, bounds);
         // Slow downward drift on respawn — wind takes over from there.
@@ -240,7 +272,8 @@ kernel void motes_update(
         p.color = packed_float4(rgb.x, rgb.y, rgb.z, 1.0);
 
         p.age   = 0.0;
-        p.life  = mc.lifeMin + mc.lifeRange * dm_hash_f01(float(id) * 0.31831);
+        p.life  = (mc.lifeMin + mc.lifeRange * dm_hash_f01(float(id) * 0.31831))
+                  * emissionFactor;
         p.position = packed_float3(pos.x, pos.y, pos.z);
         // Skip integration this frame — fresh particle starts clean next tick.
         particles[id] = p;
@@ -260,6 +293,24 @@ kernel void motes_update(
 
     float3 vel = float3(p.velocity.x, p.velocity.y, p.velocity.z);
     vel = vel * mc.dampingPerFrame + (wind + turb) * dt;
+
+    // DM.3 Task 2 — drum dispersion shock. The BeatDetector envelope on
+    // `stems.drums_beat` rises on onset and decays over ~200 ms. Smoothstep
+    // gates against the noisy tail; on a clear beat we add a radial
+    // outward impulse in the horizontal (xz) plane with a small +y lift
+    // so beats visually 'lift' the field. VolumetricLithograph uses the
+    // same `smoothstep(0.30, 0.70, stems.drums_beat)` gate (D-101); the
+    // absolute threshold on the per-stem onset signal is D-026-allowed
+    // (D-026 targets FV raw bands, not stem onset envelopes).
+    float beatGate = smoothstep(0.30, 0.70, stems.drums_beat);
+    if (beatGate > 0.0) {
+        float horizLen = sqrt(pos.x * pos.x + pos.z * pos.z);
+        float3 outward = (horizLen > 0.001)
+            ? float3(pos.x / horizLen, 0.2, pos.z / horizLen)
+            : float3(0.0, 1.0, 0.0);
+        vel += outward * (beatGate * kDispersionShockGain * dt);
+    }
+
     pos = pos + vel * dt;
 
     p.position = packed_float3(pos.x, pos.y, pos.z);
@@ -272,7 +323,8 @@ kernel void motes_update(
 
     p.age += dt;
     if (p.life <= 0.001) {
-        p.life = mc.lifeMin + mc.lifeRange * dm_hash_f01(float(id) * 0.31831);
+        p.life = (mc.lifeMin + mc.lifeRange * dm_hash_f01(float(id) * 0.31831))
+                 * emissionFactor;
     }
     particles[id] = p;
 }
