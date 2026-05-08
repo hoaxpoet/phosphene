@@ -154,10 +154,12 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// CoreML mood classifier (valence/arousal on ANE).
     let moodClassifier: MoodClassifier?
 
-    /// GPU compute particle system — attached to feedback presets only.
-    /// Typed as the `ParticleGeometry` protocol (D-097) so future particle
-    /// presets can ship sibling conformers; Murmuration is the only conformer today.
-    var particleGeometry: (any ParticleGeometry)?
+    /// GPU compute particle system for Murmuration — attached to feedback
+    /// presets via `ParticleGeometry` (D-097).
+    var murmurationGeometry: (any ParticleGeometry)?
+
+    /// GPU compute particle system for Drift Motes (DM.1).
+    var driftMotesGeometry: (any ParticleGeometry)?
 
     /// Shader library for creating post-process chains on preset switch.
     let shaderLibrary: Renderer.ShaderLibrary
@@ -556,7 +558,12 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         // at runtime via `,`/`.` developer shortcuts. AirPods / Bluetooth users
         // will need a higher value; surfaces as a setting in a future increment.
         self.mirPipeline.liveDriftTracker.audioOutputLatencyMs = 50.0
-        self.particleGeometry = Self.makeParticleGeometry(context: ctx, library: lib)
+        // Detect device tier early so the particle factories can size their
+        // buffers per the design's Tier 1 / Tier 2 targets (DRIFT_MOTES_DESIGN.md §5.7,
+        // CLAUDE.md particle architecture).
+        let earlyTier = Self.detectDeviceTier(device: ctx.device)
+        self.murmurationGeometry = Self.makeMurmurationGeometry(context: ctx, library: lib)
+        self.driftMotesGeometry = Self.makeDriftMotesGeometry(context: ctx, library: lib, tier: earlyTier)
         self.moodClassifier = classifier
         self.stemAnalyzer = analyzer
         self.stemSeparator = sep
@@ -579,7 +586,9 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
 
         // Wire the frame-budget governor and ML dispatch scheduler. Read QualityCeiling
         // from UserDefaults to determine if ultra mode (recording) disables both. D-057(d), D-059(d).
-        let tier = Self.detectDeviceTier(device: ctx.device)
+        // Tier was detected earlier (`earlyTier`) for the particle-geometry factories;
+        // reuse the same value here.
+        let tier = earlyTier
         let qualityCeilingRaw = UserDefaults.standard.string(
             forKey: "phosphene.settings.visuals.qualityCeiling"
         )
@@ -632,10 +641,9 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Build the GPU particle system used by the Murmuration preset.
     /// Quality of movement over quantity — each bird should be visible.
     ///
-    /// Returns `any ParticleGeometry` (D-097). Murmuration is the only conformer
-    /// today; future particle presets each define their own conformer and add a
-    /// new factory branch here rather than parameterizing this construction.
-    private static func makeParticleGeometry(
+    /// Returns `any ParticleGeometry` (D-097). Particle presets are siblings,
+    /// not subclasses — Drift Motes ships its own conformer alongside this one.
+    private static func makeMurmurationGeometry(
         context: MetalContext,
         library: Renderer.ShaderLibrary
     ) -> (any ParticleGeometry)? {
@@ -653,8 +661,51 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         ) else {
             return nil
         }
-        logger.info("Particle system created: 5K particles (attached per-preset)")
+        logger.info("Murmuration particle system created: 5K particles")
         return particles
+    }
+
+    /// Build the GPU particle system used by the Drift Motes preset (DM.1).
+    ///
+    /// Particle count follows `DRIFT_MOTES_DESIGN.md §5.7`: 800 on Tier 2
+    /// (M3+), 400 on Tier 1 (M1/M2). Both Murmuration and Drift Motes
+    /// geometries are built once at engine init and kept resident —
+    /// building per-preset-switch would introduce visible Metal
+    /// pipeline-state creation latency (~50–100 ms on Tier 1) every time
+    /// the user crosses between particle presets. Resident GPU cost is
+    /// well under any tier's headroom (~25 KB at 400 particles, ~50 KB at
+    /// 800; the buffer is the only tier-sized object — pipeline states
+    /// are tier-independent). D-097, DM.1.
+    private static func makeDriftMotesGeometry(
+        context: MetalContext,
+        library: Renderer.ShaderLibrary,
+        tier: DeviceTier
+    ) -> (any ParticleGeometry)? {
+        let count = (tier == .tier2) ? DriftMotesGeometry.tier2ParticleCount
+                                     : DriftMotesGeometry.tier1ParticleCount
+        guard let motes = try? DriftMotesGeometry(
+            device: context.device,
+            library: library.library,
+            particleCount: count,
+            pixelFormat: context.pixelFormat
+        ) else {
+            return nil
+        }
+        logger.info("Drift Motes particle system created: \(count) particles (tier=\(String(describing: tier)))")
+        return motes
+    }
+
+    /// Resolve a particle-preset name to the geometry conformer the engine
+    /// has built for it. Returns `nil` for any unknown preset name; the
+    /// caller is expected to log + fall through. Exposed as `internal` so
+    /// `applyPreset .particles:` and `ParticleDispatchResolutionTests` share
+    /// a single mapping (D-097, DM.1).
+    func resolveParticleGeometry(forPresetName name: String) -> (any ParticleGeometry)? {
+        switch name {
+        case "Murmuration":              return murmurationGeometry
+        case DriftMotesGeometry.presetName: return driftMotesGeometry
+        default:                         return nil
+        }
     }
 
     /// Load the mood classifier.
