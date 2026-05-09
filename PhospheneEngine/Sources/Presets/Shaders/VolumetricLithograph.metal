@@ -499,10 +499,14 @@ void sceneMaterial(float3 p,
                    thread float3& albedo,
                    thread float& roughness,
                    thread float& metallic,
-                   thread int& outMatID) {
+                   thread int& outMatID,
+                   constant LumenPatternState& lumen) {
     // outMatID stays at the caller's default (0 = standard dielectric); VL
     // ships through the existing Cook-Torrance dielectric path.
     (void)outMatID;
+    // `lumen` (LM.2 / D-LM-buffer-slot-8) is the trailing slot-8 buffer used
+    // by Lumen Mosaic. Non-Lumen presets ignore it.
+    (void)lumen;
     float audioPhase = s.sceneParamsA.x;
     float n          = vl_terrainNoise(p, audioPhase); // [0,1]
 

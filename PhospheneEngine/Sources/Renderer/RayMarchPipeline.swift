@@ -1,4 +1,5 @@
 // RayMarchPipeline — Deferred ray march pipeline for Increment 3.14.
+// swiftlint:disable file_length
 //
 // Owns G-buffer textures, the lit scene texture, and the fixed lighting and
 // composite pipeline states.  The G-buffer pass pipeline state is provided
@@ -158,6 +159,20 @@ public final class RayMarchPipeline: @unchecked Sendable {
     /// Bilinear, clamp-to-edge sampler shared across all passes.
     let sampler: MTLSamplerState
 
+    // MARK: - Slot 8 Placeholder Buffer (LM.2 / D-LM-buffer-slot-8)
+
+    /// Zero-filled placeholder buffer for fragment slot 8 — bound for ray-march
+    /// presets that do not own a per-preset slot-8 buffer (i.e. all presets
+    /// other than Lumen Mosaic at LM.2). Sized to `LumenPatternState`
+    /// (336 bytes); the preamble's `raymarch_gbuffer_fragment` declares the
+    /// slot via `constant LumenPatternState&` and Metal validation requires
+    /// every declared buffer to be bound at draw time.
+    ///
+    /// `sceneMaterial` for non-Lumen presets receives the placeholder via the
+    /// trailing `lumen` parameter and silences it via `(void)lumen;` — the
+    /// zero-filled state is never read.
+    let lumenPlaceholderBuffer: MTLBuffer
+
     // MARK: - Metal
 
     let context: MetalContext
@@ -235,6 +250,20 @@ public final class RayMarchPipeline: @unchecked Sendable {
         self.gbufferDebugPipeline = bundle.gbufferDebug
         self.depthDebugPipeline = bundle.depthDebug
         self.sampler = bundle.sampler
+
+        // Allocate the slot-8 zero placeholder once. Sized to match Swift
+        // `LumenPatternState.stride` (336 bytes); a static literal keeps the
+        // engine free of a Presets-module dependency. If the value drifts the
+        // `LumenPatternState_strideIs336` test traps before this binding can
+        // misalign the shader struct.
+        guard let placeholder = context.device.makeBuffer(
+            length: 336,
+            options: .storageModeShared
+        ) else {
+            throw RayMarchPipelineError.bufferAllocationFailed
+        }
+        memset(placeholder.contents(), 0, 336)
+        self.lumenPlaceholderBuffer = placeholder
         logger.info("RayMarchPipeline initialized")
     }
 
@@ -292,8 +321,10 @@ public final class RayMarchPipeline: @unchecked Sendable {
     ///   - iblManager: Optional IBL texture manager — binds at slots 9–11.
     ///   - postProcessChain: Optional bloom chain. When non-nil, replaces the composite pass.
     ///   - presetFragmentBuffer3: Optional per-preset CPU-driven state buffer bound at fragment slot 8
-    ///     of the lighting pass only (G-buffer pass intentionally excluded). First planned consumer:
-    ///     Lumen Mosaic's `LumenPatternState`. (D-LM-buffer-slot-8)
+    ///     of BOTH the G-buffer and lighting passes (LM.2 widened the contract from lighting-only).
+    ///     When nil the zero-filled `lumenPlaceholderBuffer` is bound — required because the
+    ///     preamble's `raymarch_gbuffer_fragment` declares `[[buffer(8)]]` on every ray-march preset.
+    ///     First consumer: Lumen Mosaic's `LumenPatternState`. (D-LM-buffer-slot-8)
     public func render(
         gbufferPipelineState: MTLRenderPipelineState,
         features: inout FeatureVector,
@@ -319,7 +350,8 @@ public final class RayMarchPipeline: @unchecked Sendable {
             fftBuffer: fftBuffer,
             waveformBuffer: waveformBuffer,
             stemFeatures: stemFeatures,
-            noiseTextures: noiseTextures
+            noiseTextures: noiseTextures,
+            presetFragmentBuffer3: presetFragmentBuffer3
         )
 
         // G-buffer debug bypass: skip lighting/SSGI/ACES entirely.
@@ -383,4 +415,8 @@ public enum RayMarchPipelineError: Error, Sendable {
     case functionNotFound(String)
     /// `MTLDevice.makeSamplerState` returned nil.
     case samplerCreationFailed
+    /// `MTLDevice.makeBuffer` returned nil for the slot-8 placeholder
+    /// (LM.2 / D-LM-buffer-slot-8). Indicates Metal is in a degraded state
+    /// — bail out of pipeline construction.
+    case bufferAllocationFailed
 }

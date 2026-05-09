@@ -132,10 +132,14 @@ void sceneMaterial(float3 p,
                    thread float3& albedo,
                    thread float& roughness,
                    thread float& metallic,
-                   thread int& outMatID) {
+                   thread int& outMatID,
+                   constant LumenPatternState& lumen) {
     // outMatID stays at the caller's default (0 = standard dielectric); the
     // lattice's three materials all dispatch through Cook-Torrance.
     (void)outMatID;
+    // `lumen` (LM.2 / D-LM-buffer-slot-8) is the trailing slot-8 buffer used
+    // by Lumen Mosaic. Non-Lumen presets ignore it.
+    (void)lumen;
     // Re-evaluate sub-SDFs at the hit position to determine material.
     // Twist correction is omitted: accumulated_audio_time is unavailable
     // here, but the twist is slow enough that boundary error is imperceptible.

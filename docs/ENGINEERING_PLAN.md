@@ -3356,6 +3356,34 @@ The preset is sequenced as 10 increments LM.0 → LM.9 with cert sign-off at LM.
 
 **Carry-forward.** LM.2 wires the 4-light analytical pattern engine: `LumenPatternEngine` Swift class populates `LumenPatternState` (4 × `LumenLightAgent` + 4 × `LumenPattern` + activeCounts + ambientFloorIntensity) once per frame, calls `pipeline.setDirectPresetFragmentBuffer3(...)` (LM.0 setter) to bind slot 8, and the shader's `lm_backlight_static` is replaced by `sample_backlight_at(cell_center_uv, ...)` reading the slot 8 buffer. Mood-coupled hue shift (Decision E.1) + D-019 silence fallback verification + per-stem hue offsets (Decision §P.4) all land at LM.2.
 
+### Increment LM.2 — Audio-driven 4-light backlight (continuous energy primary)
+
+**Scope.** Replace LM.1's static warm-amber backlight with four audio-driven light agents — one per stem (drums / bass / vocals / other) — sampled at the cell-centre uv per Decision D.1 (cell-quantized colour). Agent positions compose a slow mood-driven Lissajous **drift** (driftSpeed lerp(0.05, 0.20, normalized smoothedArousal)) plus a `beat_phase01`-locked figure-8 **dance** (contract §P.4: per-agent quarter-cycle phase offsets, amplitude `clamp(0.04 + 0.10 × f.arousal, 0.04, 0.14)` reading raw `f.arousal`). Intensity is the deviation-primitive stem read with FV fallback under the standard D-019 warmup; colour is per-stem base × `mood_tint(smoothedValence, smoothedArousal)` with a 5 s low-pass on valence/arousal (ARACHNE §11). Pattern slots stay zeroed (`activePatternCount = 0`) — the pattern engine bursts arrive at LM.4. Slot 8 binding is **widened** in LM.2 from "lighting pass only" (LM.0) to "G-buffer pass + lighting pass" so `sceneMaterial` can read `LumenPatternState` directly via the new D-021 trailing parameter `constant LumenPatternState& lumen`.
+
+**Done when.**
+
+- `Sources/Presets/Lumen/LumenPatternEngine.swift` ships `LumenLightAgent` (32 B), `LumenPattern` (48 B), `LumenPatternState` (336 B) value types byte-identical to the matching MSL structs in the preamble; `LumenPatternEngine` final class with `init?(device:seed:)`, `tick(features:stems:)`, `snapshot()`, `reset()`, and the `setAgentBasePositionForTesting(_:_:)` test seam.
+- The `sceneMaterial` D-021 signature gains a trailing `constant LumenPatternState& lumen` parameter. All 4 ray-march presets (Glass Brutalist, Kinetic Sculpture, Volumetric Lithograph, Lumen Mosaic) update; non-Lumen presets silence it via `(void)lumen;`. The preamble's `raymarch_gbuffer_fragment` declares `[[buffer(8)]]` and forwards to `sceneMaterial`. The two SSGI / RayMarch test fixture preset sources update too.
+- `RayMarchPipeline` allocates a 336-byte zero-filled `lumenPlaceholderBuffer` at init and binds it at slot 8 in BOTH `runGBufferPass` and `runLightingPass` whenever `presetFragmentBuffer3` is nil — so non-Lumen ray-march presets compile against the same fragment with a defined slot-8 binding.
+- `VisualizerEngine+Presets.swift` allocates `LumenPatternEngine` when the active ray-march preset is `"Lumen Mosaic"` and wires `setDirectPresetFragmentBuffer3(engine.patternBuffer)` plus a `setMeshPresetTick { engine?.tick(features:stems:) }` closure. Reset path nils both on every preset apply.
+- `Tests/PhospheneEngineTests/Presets/LumenPatternEngineTests.swift` ships 15 tests across 7 suites: struct layout (336 / 32 / 48), silence behaviour (intensities < 0.05, ambient floor propagated), HV-HA / LV-LA mood drift speed, mood smoothing time-constant (15 s → 95 %), stem-direct routing, FV warmup fallback (drums + bass), beat-locked dance figure-8 (pos(0) − pos(0.5) ≈ (0.18, 0)), dance amplitude scales with arousal, agent inset clamp under forced base outside ±0.85, byte-identical determinism. All 15 pass.
+- `PresetAcceptanceTests` + `PresetRegressionTests` + `PresetLoaderCompileFailureTest` continue to pass for all 15 production presets — golden hashes unchanged because non-Lumen presets render byte-identically with the new signature ignored.
+- CLAUDE.md updated: LumenMosaic.metal entry rewritten for LM.2; new `Lumen/LumenPatternEngine.swift` entry; slot 8 GPU contract widened; D-021 signature changelog (LM.1 + LM.2).
+
+**Verify.**
+
+- `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build`
+- `swift build --package-path PhospheneEngine`
+- `swift test --package-path PhospheneEngine --filter LumenPatternEngineTests`
+- `swift test --package-path PhospheneEngine --filter "PresetAcceptance|PresetRegression|PresetLoaderCompileFailure"`
+- `swift test --package-path PhospheneEngine --filter "SSGITests|RayMarchPipelineTests"` (covers the slot-8 binding contract widening + signature update)
+- `swift test --package-path PhospheneEngine` (full suite — pre-existing parallel-load timing flakes unchanged)
+- `swiftlint lint --strict --config .swiftlint.yml` (new file disables `file_length` / `large_tuple` per Arachne pattern; baseline violation count unchanged)
+
+**Status:** ✅ 2026-05-09.
+
+**Carry-forward.** LM.3 keeps the same engine + GPU contract and adjusts the per-stem hue offsets + drift bounds to match the LM.3 design-doc "stem-direct routing" recipe. LM.4 promotes pattern slots from idle → live (radial_ripple, sweep) keyed to bar boundaries (`f.barPhase01` rolls past 1.0) and drum onsets (`stems.drumsBeat` rising edge). Both LM.3 and LM.4 land without further changes to the slot-8 binding contract.
+
 ---
 
 These milestones map to product-level outcomes, not implementation phases.

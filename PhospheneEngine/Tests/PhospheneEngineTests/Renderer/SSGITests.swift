@@ -25,9 +25,9 @@ final class SSGITests: XCTestCase {
     private var gbufferPipeline: MTLRenderPipelineState!
 
     // Minimal sphere SDF preset: unit sphere at origin, matte grey material.
-    // Signature mirrors the LM.1 / D-LM-matid preamble (trailing
-    // `thread int& outMatID`); the sphere stays on standard dielectric
-    // (matID = 0) so outMatID is left at the caller's default.
+    // Signature mirrors the LM.2 / D-LM-buffer-slot-8 preamble (trailing
+    // `constant LumenPatternState& lumen`); the sphere stays on standard
+    // dielectric (matID = 0) so outMatID is left at the caller's default.
     private static let spherePresetSource = """
     float sceneSDF(float3 p,
                    constant FeatureVector& f,
@@ -44,8 +44,10 @@ final class SSGITests: XCTestCase {
                        thread float3& albedo,
                        thread float& roughness,
                        thread float& metallic,
-                       thread int& outMatID) {
+                       thread int& outMatID,
+                       constant LumenPatternState& lumen) {
         (void)outMatID;
+        (void)lumen;
         albedo    = float3(0.7, 0.7, 0.7);
         roughness = 0.5;
         metallic  = 0.0;
@@ -70,8 +72,10 @@ final class SSGITests: XCTestCase {
                        thread float3& albedo,
                        thread float& roughness,
                        thread float& metallic,
-                       thread int& outMatID) {
+                       thread int& outMatID,
+                       constant LumenPatternState& lumen) {
         (void)outMatID;
+        (void)lumen;
         albedo    = float3(1.0, 1.0, 1.0);   // pure white for max luminance
         roughness = 0.1;                       // low roughness = strong specular
         metallic  = 0.9;

@@ -1,4 +1,5 @@
 // PresetLoader+Preamble — Common Metal shader preamble prepended to all presets.
+// swiftlint:disable file_length
 //
 // Utility file loading (V.1 Noise + PBR trees) lives in PresetLoader+Utilities.swift.
 
@@ -269,10 +270,54 @@ extension PresetLoader {
             float4 gbuf2 [[color(2)]];
         };
 
+        // ── Lumen Mosaic preset-uniform state (slot 8, LM.2) ──────────────────
+        // Byte-identical to the Swift `LumenPatternState` value type defined in
+        // `Sources/Presets/Lumen/LumenPatternEngine.swift`. Bound at fragment
+        // slot 8 of BOTH the G-buffer pass and the ray-march lighting pass for
+        // any ray-march preset — non-Lumen presets receive a zeroed placeholder
+        // (RayMarchPipeline.lumenPlaceholderBuffer) so the binding is always
+        // defined. `sceneMaterial` receives the struct as its trailing
+        // parameter and may ignore it. (D-LM-buffer-slot-8)
+        struct LumenLightAgent {
+            float positionX;
+            float positionY;
+            float positionZ;
+            float attenuationRadius;
+            float colorR;
+            float colorG;
+            float colorB;
+            float intensity;
+        };
+        struct LumenPattern {
+            float originX;
+            float originY;
+            float directionX;
+            float directionY;
+            float colorR;
+            float colorG;
+            float colorB;
+            float phase;
+            float intensity;
+            float startTime;
+            float duration;
+            int   kindRaw;
+        };
+        struct LumenPatternState {
+            LumenLightAgent lights[4];
+            LumenPattern    patterns[4];
+            int   activeLightCount;
+            int   activePatternCount;
+            float ambientFloorIntensity;
+            float pad0;
+        };
+
         // ── Per-preset forward declarations ──────────────────────────────────
         // Ray march presets must define both. `stems` is bound at buffer(3) —
         // apply the D-019 warmup fallback when reading. `outMatID` is the LM.1
         // material-flag out-param (D-LM-matid); pre-zeroed by the caller.
+        // `lumen` is the LM.2 trailing slot-8 buffer; non-Lumen presets ignore
+        // it (declared in their `sceneMaterial` signature for ABI uniformity
+        // and silenced via `(void)lumen;`).
         float sceneSDF(float3 p,
                        constant FeatureVector& f,
                        constant SceneUniforms& s,
@@ -286,7 +331,8 @@ extension PresetLoader {
                            thread float3& albedo,
                            thread float& roughness,
                            thread float& metallic,
-                           thread int& outMatID);
+                           thread int& outMatID,
+                           constant LumenPatternState& lumen);
 
         // ── G-buffer fragment (compiled per-preset with sceneSDF + sceneMaterial) ──
         fragment GBufferOutput raymarch_gbuffer_fragment(
@@ -296,6 +342,7 @@ extension PresetLoader {
             constant float*         waveform [[buffer(2)]],
             constant StemFeatures&  stems    [[buffer(3)]],
             constant SceneUniforms& scene    [[buffer(4)]],
+            constant LumenPatternState& lumen [[buffer(8)]],
             texture2d<float> noiseLQ     [[texture(4)]],
             texture2d<float> noiseHQ     [[texture(5)]],
             texture3d<float> noiseVolume [[texture(6)]],
@@ -377,7 +424,7 @@ extension PresetLoader {
             float  metallic  = 0.0;
             int    outMatID  = 0;     // default: standard dielectric (matID 0)
             sceneMaterial(hitPos, 0, features, scene, stems,
-                          albedo, roughness, metallic, outMatID);
+                          albedo, roughness, metallic, outMatID, lumen);
 
             // Pack roughness + metallic into 8 bits (upper 4b + lower 4b) → [0,1].
             int    rByte = int(clamp(roughness, 0.0, 1.0) * 15.0 + 0.5);
