@@ -49,6 +49,40 @@ struct PresetVisualReviewTests {
         return fv
     }
 
+    /// HV-HA mood fixture (contract §"Certification fixtures"). Steady moderate
+    /// energy on top of high valence + high arousal so LumenPatternEngine
+    /// produces a warm-shifted palette and faster drift speed. Used in the LM.2
+    /// contact sheet to verify the mood-coupled hue shift (Decision E.1).
+    private var hvHaFixture: FeatureVector {
+        var fv = FeatureVector(
+            bass: 0.55, mid: 0.55, treble: 0.55,
+            valence: 0.6, arousal: 0.6,
+            time: 7.0, deltaTime: 1.0 / 60.0
+        )
+        fv.bassRel = 0.10
+        fv.midRel  = 0.10
+        fv.trebRel = 0.10
+        fv.bassAttRel = 0.05
+        fv.midAttRel  = 0.05
+        return fv
+    }
+
+    /// LV-LA mood fixture (contract §"Certification fixtures"). Steady moderate
+    /// energy on top of low valence + low arousal so LumenPatternEngine
+    /// produces a cool-shifted palette and slower drift speed. Pair with
+    /// `hvHaFixture` in the LM.2 contact sheet to confirm visible mood shift.
+    private var lvLaFixture: FeatureVector {
+        var fv = FeatureVector(
+            bass: 0.45, mid: 0.45, treble: 0.45,
+            valence: -0.5, arousal: -0.4,
+            time: 9.0, deltaTime: 1.0 / 60.0
+        )
+        fv.bassRel = -0.10
+        fv.midRel  = -0.10
+        fv.trebRel = -0.10
+        return fv
+    }
+
     // MARK: - Constants
 
     private static let renderWidth = 1920
@@ -164,7 +198,7 @@ struct PresetVisualReviewTests {
         let outputDir = try makeOutputDirectory()
         print("[PresetVisualReview] output dir: \(outputDir.path)")
 
-        // Per-preset state (currently only Arachne needs warmed buffers at 6/7).
+        // Per-preset state.
         let arachneState: ArachneState? = {
             guard presetName == "Arachne" else { return nil }
             guard let state = ArachneState(device: ctx.device, seed: 42) else { return nil }
@@ -174,17 +208,55 @@ struct PresetVisualReviewTests {
             return state
         }()
 
-        let fixtures: [(name: String, fv: FeatureVector)] = [
-            ("silence", silenceFixture),
-            ("mid", midFixture),
-            ("beat", beatFixture),
-        ]
+        // Lumen Mosaic: allocate the 4-light pattern engine once, re-prewarm
+        // it per fixture so mood smoothing converges to that fixture's
+        // valence/arousal before rendering. The engine flushes
+        // LumenPatternState into its UMA buffer; we pass the buffer as
+        // `presetFragmentBuffer3` to slot 8 in the deferred ray-march path.
+        let lumenEngine: LumenPatternEngine? = {
+            guard presetName == "Lumen Mosaic" else { return nil }
+            return LumenPatternEngine(device: ctx.device, seed: 42)
+        }()
+
+        // 5-fixture set for Lumen Mosaic — adds HV-HA + LV-LA mood frames so
+        // the contact sheet visibly shows the mood-coupled palette shift
+        // (Decision E.1). All other presets keep the existing 3-fixture set.
+        let fixtures: [(name: String, fv: FeatureVector)] = {
+            if presetName == "Lumen Mosaic" {
+                return [
+                    ("silence",    silenceFixture),
+                    ("mid",        midFixture),
+                    ("beat",       beatFixture),
+                    ("hv_ha_mood", hvHaFixture),
+                    ("lv_la_mood", lvLaFixture),
+                ]
+            }
+            return [
+                ("silence", silenceFixture),
+                ("mid", midFixture),
+                ("beat", beatFixture),
+            ]
+        }()
 
         var midPNGURL: URL?
         for index in 0..<fixtures.count {
             var fv = fixtures[index].fv
+            // Pre-warm Lumen Mosaic per fixture: one tick at dt=5.0 saturates
+            // the 5 s low-pass on valence/arousal in a single step, then 30
+            // ticks at dt=1/60 advance the drift Lissajous + dance to a
+            // representative phase before the GPU read.
+            if let engine = lumenEngine {
+                var primer = fv
+                primer.deltaTime = 5.0
+                engine.tick(features: primer, stems: .zero)
+                var advance = fv
+                advance.deltaTime = 1.0 / 60.0
+                for _ in 0..<30 { engine.tick(features: advance, stems: .zero) }
+            }
             let pixels = try renderFrame(preset: preset, context: ctx,
-                                         arachneState: arachneState, features: &fv)
+                                         arachneState: arachneState,
+                                         lumenEngine: lumenEngine,
+                                         features: &fv)
             let url = outputDir.appendingPathComponent(
                 "\(presetName.replacingOccurrences(of: " ", with: "_"))_\(fixtures[index].name).png"
             )
@@ -228,6 +300,7 @@ struct PresetVisualReviewTests {
         preset: PresetLoader.LoadedPreset,
         context: MetalContext,
         arachneState: ArachneState?,
+        lumenEngine: LumenPatternEngine? = nil,
         features: inout FeatureVector
     ) throws -> [UInt8] {
         // Dispatch: pure-ray-march presets go through the deferred pipeline so
@@ -238,6 +311,7 @@ struct PresetVisualReviewTests {
         if passes.contains(.rayMarch) && !passes.contains(.mvWarp) {
             return try renderDeferredRayMarchFrame(preset: preset,
                                                     context: context,
+                                                    lumenEngine: lumenEngine,
                                                     features: &features)
         }
 
@@ -330,13 +404,16 @@ struct PresetVisualReviewTests {
     ///   composite and stops. SSGI / bloom would only matter for matID == 0
     ///   presets that depend on them (Glass Brutalist's cyan glass bleed,
     ///   for example) — out of scope until those land in the @Test args list.
-    /// - **Slot 8 (`presetFragmentBuffer3`) unbound.** LM.1 doesn't use it;
-    ///   LM.2 will populate `LumenPatternState` and the harness will need to
-    ///   construct a representative buffer. For LM.1 the static-backlight
-    ///   path is independent of slot 8.
+    /// - **Slot 8 (`presetFragmentBuffer3`) bound when `lumenEngine` is non-nil.**
+    ///   LM.2 wired LumenPatternEngine into the harness for Lumen Mosaic so
+    ///   the contact sheet captures the dynamic 4-light backlight rather than
+    ///   the silence-fallback ambient floor. Other ray-march presets pass
+    ///   `lumenEngine: nil` and `RayMarchPipeline` binds the zero-filled
+    ///   placeholder buffer at slot 8.
     private func renderDeferredRayMarchFrame(
         preset: PresetLoader.LoadedPreset,
         context: MetalContext,
+        lumenEngine: LumenPatternEngine? = nil,
         features: inout FeatureVector
     ) throws -> [UInt8] {
         let width  = Self.renderWidth
@@ -388,7 +465,7 @@ struct PresetVisualReviewTests {
             noiseTextures: nil,
             iblManager: nil,
             postProcessChain: nil,
-            presetFragmentBuffer3: nil
+            presetFragmentBuffer3: lumenEngine?.patternBuffer
         )
 
         cmdBuf.commit()
