@@ -131,7 +131,11 @@ void sceneMaterial(float3 p,
                    constant StemFeatures& stems,
                    thread float3& albedo,
                    thread float& roughness,
-                   thread float& metallic) {
+                   thread float& metallic,
+                   thread int& outMatID) {
+    // outMatID stays at the caller's default (0 = standard dielectric); the
+    // lattice's three materials all dispatch through Cook-Torrance.
+    (void)outMatID;
     // Re-evaluate sub-SDFs at the hit position to determine material.
     // Twist correction is omitted: accumulated_audio_time is unavailable
     // here, but the twist is slow enough that boundary error is imperceptible.

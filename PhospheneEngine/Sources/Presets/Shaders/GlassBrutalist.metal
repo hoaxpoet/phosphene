@@ -163,7 +163,11 @@ void sceneMaterial(float3 p,
                    constant StemFeatures& stems,
                    thread float3& albedo,
                    thread float& roughness,
-                   thread float& metallic) {
+                   thread float& metallic,
+                   thread int& outMatID) {
+    // outMatID stays at the caller's default (0 = standard dielectric); Glass
+    // Brutalist materials are rendered through the existing Cook-Torrance path.
+    (void)outMatID;
     // Re-evaluate sub-SDFs with the SAME audio-reactive fin position used
     // in sceneSDF — otherwise fin edges at a displaced X would classify as
     // concrete when they should be glass (the "glass-turning-to-concrete"

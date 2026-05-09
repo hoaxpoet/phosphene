@@ -498,7 +498,11 @@ void sceneMaterial(float3 p,
                    constant StemFeatures& stems,
                    thread float3& albedo,
                    thread float& roughness,
-                   thread float& metallic) {
+                   thread float& metallic,
+                   thread int& outMatID) {
+    // outMatID stays at the caller's default (0 = standard dielectric); VL
+    // ships through the existing Cook-Torrance dielectric path.
+    (void)outMatID;
     float audioPhase = s.sceneParamsA.x;
     float n          = vl_terrainNoise(p, audioPhase); // [0,1]
 

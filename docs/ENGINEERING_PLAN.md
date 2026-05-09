@@ -3317,6 +3317,45 @@ The preset is sequenced as 10 increments LM.0 → LM.9 with cert sign-off at LM.
 
 **Carry-forward.** LM.1 implements `LumenPatternEngine` (CPU-side state populated each frame + setter call) + `LumenMosaic.metal` (lighting fragment reads `LumenPatternState` at `[[buffer(8)]]`). See `docs/presets/Lumen_Mosaic_Rendering_Architecture_Contract.md` §"Required uniforms / buffers" for the buffer layout.
 
+### Increment LM.1 — Minimum viable preset
+
+**Scope.** Land the first `LumenMosaic.metal` + `LumenMosaic.json` in the catalog: a single planar `sd_box` glass panel filling the camera frame plus 50 % bleed (Decision G.1, contract §P.1), per-cell Voronoi domed-cell relief + `fbm8` in-cell frost baked into `sceneSDF` as Lipschitz-safe displacements, and a fixed warm-amber backlight emitted through every cell. **No audio reactivity, no pattern engine, no slot 8 binding** — the pattern state buffer is wired up at LM.2 / LM.4. LM.1 proves the rendering pipeline works end-to-end (preamble compile + G-buffer + matID dispatch + lighting + bloom + ACES) before LM.2 layers on the 4-light analytical pattern engine.
+
+**Architectural decisions filed in this increment.** D-LM-matid (extending the D-021 `sceneMaterial` signature with `thread int& outMatID` + writing the value into `gbuf0.g` so `raymarch_lighting_fragment` can dispatch on emission-dominated dielectric without changing the deferred PBR pipeline's pixel formats). The 3 existing ray-march presets (Glass Brutalist, Kinetic Sculpture, Volumetric Lithograph) gain the trailing parameter and a single `(void)outMatID;` line — no behavioural change, they stay on the `matID == 0` Cook-Torrance path. `RayMarch.metal` gains file-scope `kLumenEmissionGain (4.0)` and `kLumenIBLFloor (0.05)` constants and a single early-return branch when `matID == 1`. CLAUDE.md GPU Contract §G-Buffer Layout extends the `gbuffer0.g` documentation accordingly.
+
+**Done when.**
+
+- `LumenMosaic.metal` + `LumenMosaic.json` land at `PhospheneEngine/Sources/Presets/Shaders/`. `family: geometric`, `passes: ["ray_march", "post_process"]`, `certified: false`, `lumen_mosaic.cell_density = 30.0`. SSGI intentionally omitted (emission dominates).
+- `sceneSDF` is a single `sd_box` sized `cameraTangents.xy * 1.50` with Voronoi domed-cell relief (`voronoi_f1f2(panel_uv, 30)` height-gradient + smoothstep ridge per SHADER_CRAFT.md §4.5b) and `fbm8(p * 80)` in-cell frost subtracted as Lipschitz-safe displacements (`kReliefAmplitude = 0.004`, `kFrostAmplitude = 0.0008`). The G-buffer central-differences normal picks them up automatically; D-021 `sceneMaterial` has no normal-output channel.
+- `sceneMaterial` writes `outMatID = 1` (emission-dominated dielectric), stores the static backlight (`(0.95, 0.60, 0.30)` warm amber + a `mood_tint(valence, arousal) × 0.04` ambient floor) into `albedo`, and sets `roughness = 0.40`, `metallic = 0.0` for cosmetic placeholder consistency with the §4.5b dielectric.
+- `raymarch_lighting_fragment` reads `gbuf0.g` and returns `albedo × 4.0 + irradiance × 0.05 × ao` for `matID == 1`. `matID == 0` path is byte-identical to pre-LM.1 (regression hashes for all 3 existing ray-march presets unchanged).
+- `presetLoaderBuiltInPresetsHaveValidPipelines` regression gate green (LumenMosaic compiles cleanly through `PresetLoader`).
+- `PresetAcceptanceTests` green for LumenMosaic against all 4 D-037 invariants (non-black at silence, no white clip on steady, beat response ≤ 2× continuous + 1.0, form complexity ≥ 2). The static backlight + per-cell relief should clear all four trivially.
+- `PresetRegressionTests` green for the 3 existing ray-march presets — golden hashes unchanged because their `sceneMaterial` bodies don't write `outMatID` (caller pre-zeros to 0, lighting falls through to the existing Cook-Torrance path). New entry for LumenMosaic added under `goldenPresetHashes` via `UPDATE_GOLDEN_SNAPSHOTS=1` regen.
+- LM.1 contact sheet captured at `docs/VISUAL_REFERENCES/lumen_mosaic/contact_sheets/LM.1/` for all six standard fixtures (silence / steady / beat-heavy / sustained-bass / HV-HA / LV-LA mood). Panel-edge invariant verified: every pixel in every fixture hits `matID == 1` (no `matID == 0` background pixels visible).
+- p95 ≤ 2.0 ms at Tier 2 / ≤ 2.5 ms at Tier 1 over `PresetPerformanceTests`.
+- `swiftlint lint --strict` green on touched files.
+- `CLAUDE.md` Shaders/ list gains LumenMosaic entry; G-Buffer Layout section documents `gbuffer0.g` matID convention.
+- This entry filed.
+
+**Verify.**
+
+- `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build`
+- `swift build --package-path PhospheneEngine`
+- `swift test --package-path PhospheneEngine`
+- `swift test --package-path PhospheneEngine --filter presetLoaderBuiltInPresetsHaveValidPipelines`
+- `swift test --package-path PhospheneEngine --filter PresetAcceptanceTests`
+- `swift test --package-path PhospheneEngine --filter PresetRegressionTests`
+- `swift test --package-path PhospheneEngine --filter PresetPerformanceTests`
+- `RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter PresetVisualReviewTests` (capture contact sheet)
+- `swift run --package-path PhospheneTools CheckVisualReferences` (verifies VISUAL_REFERENCES schema; `lumen_mosaic` already at green warnings-only state from the pre-LM.0 reference curation)
+
+**Estimated sessions:** 2.
+
+**Status:** planned for 2026-05-08.
+
+**Carry-forward.** LM.2 wires the 4-light analytical pattern engine: `LumenPatternEngine` Swift class populates `LumenPatternState` (4 × `LumenLightAgent` + 4 × `LumenPattern` + activeCounts + ambientFloorIntensity) once per frame, calls `pipeline.setDirectPresetFragmentBuffer3(...)` (LM.0 setter) to bind slot 8, and the shader's `lm_backlight_static` is replaced by `sample_backlight_at(cell_center_uv, ...)` reading the slot 8 buffer. Mood-coupled hue shift (Decision E.1) + D-019 silence fallback verification + per-stem hue offsets (Decision §P.4) all land at LM.2.
+
 ---
 
 These milestones map to product-level outcomes, not implementation phases.

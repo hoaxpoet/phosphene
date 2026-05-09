@@ -272,6 +272,7 @@ PhospheneEngine/
     Stalker/StalkerGait.swift → Pure alternating-tetrapod gait solver: 8 Leg structs with hip/tip/knee, 2-segment IK with outward knee bend, beat phase-lock with soft pull (not snap), free-run fallback at 2.5 cycles/sec, listening-pose front-leg raise blend. (Increment 3.5.7)
     Stalker/StalkerState.swift → Per-preset world state: GaitSolver + scene mode state machine (.entering→.crossing→.listening→.exiting→.pausing), sustained-bass accumulator (0.75s threshold, low bassAttackRatio gate), StalkerGPU buffer (352 bytes) at object/mesh buffer(1). FV fallback via sub_bass + bass_att_rel heuristic. (Increment 3.5.7)
     Shaders/VolumetricLithograph.metal → Psychedelic linocut terrain (MV-2 / v4.1). fbm3D heightfield swept by `s.sceneParamsA.x` at slow rate 0.015; melody-primary blend `0.75 × (0.5 + f.mid_att_rel) + 0.35 × (0.3 + f.bass_att_rel × 0.7)` — deviation-driven, genre-stable across AGC shifts (MV-1 / D-026). Stem-accurate drivers blend in via `smoothstep(0.02, 0.06, totalStemEnergy)` warmup (D-019). Forward camera dolly at 1.8 u/s (configured in VisualizerEngine+Presets.swift). Three strata with narrow linocut coverage (~15% peaks): palette-tinted near-black valleys, razor-thin emissive ridge-line seam, polished-metal peaks. Peaks use IQ cosine `palette()` driven by terrain noise + audio time + `0.5 + f.mid_att_rel × 0.5` (melody-modulated hue) + valence. Accent/strobe from `smoothstep(0.30/0.70, stems.drums_beat)` with FV fallback `smoothstep(0.35, 0.70, f.spectral_flux)`. `f.mid_dev × 1.5` polishes peak roughness. `scene_fog: 0` truly disables fog. Miss/sky pixels tinted by `scene.lightColor.rgb`. SSGI omitted. MV-2: mv_warp pass adds temporal feedback accumulation — melody-driven zoom breath (mid_att_rel × 0.003), valence-driven rotation, decay=0.96; per-vertex UV ripple from bass (horizontal) and melody (vertical) at 0.004 UV amplitude. Passes: ray_march + post_process + mv_warp.
+    Shaders/LumenMosaic.metal → Backlit pattern-glass panel (Phase LM, LM.1). Single planar `sd_box` at `z = 0`, half-extents = `cameraTangents.xy × 1.50` so panel bleeds 50% past frame on every side (Decision G.1, contract §P.1) — viewer never sees a panel boundary. Voronoi domed-cell relief (`voronoi_f1f2(panel_uv, 30)` height-gradient + smoothstep ridge per SHADER_CRAFT.md §4.5b) and `fbm8` in-cell frost are baked into `sceneSDF` as Lipschitz-safe displacements (kReliefAmplitude = 0.004, kFrostAmplitude = 0.0008) so the G-buffer central-differences normal picks them up; D-021 sceneMaterial signature has no normal channel. `sceneMaterial` writes `outMatID = 1` (emission-dominated dielectric, D-LM-matid) and stores the per-cell backlight signal in `albedo`; the lighting fragment (RayMarch.metal) dispatches on `gbuf0.g` to skip Cook-Torrance + screen-space shadows and emit `albedo × kLumenEmissionGain (4.0) + irradiance × kLumenIBLFloor (0.05) × ao` instead. **LM.1 ships zero audio reactivity** — the static backlight is a fixed `(0.95, 0.60, 0.30)` warm amber + a `mood_tint(valence, arousal) × 0.04` D-019 ambient floor; the 4-light analytical pattern engine arrives at LM.2 (slot 8 fragment buffer, contract §P.3 / §P.4). Passes: `ray_march` + `post_process` (SSGI intentionally omitted — emission dominates, SSGI invisible). `certified: false` until LM.9. JSON `lumen_mosaic` namespace forwards future tunables (cell_density, frost_amplitude, etc.) for LM.2+.
   Orchestrator/             → AI VJ: preset selection, transitions, session planning (Increments 4.1–4.3 complete — see ENGINEERING_PLAN.md Phase 4)
     PresetScorer            → DefaultPresetScorer: 4 weighted sub-scores (mood/tempoMotion/stemAffinity/sectionSuitability) + 2 multiplicative penalties (family-repeat, fatigue). PresetScoring protocol. PresetScoreBreakdown for inspection. (D-032)
     PresetScoringContext    → Immutable Sendable snapshot: deviceTier, frameBudgetMs, recentHistory, currentPreset, elapsedSessionTime, currentSection. PresetHistoryEntry for session history.
@@ -586,11 +587,35 @@ Ray march presets get a separate `rayMarchGBufferPreamble` (includes `raymarch_g
 
 ### G-Buffer Layout (Ray March)
 ```
-gbuffer0: .rg16Float   (depth + materialID)
-gbuffer1: .rgba8Snorm  (normals)
-gbuffer2: .rgba8Unorm  (albedo + material)
+gbuffer0: .rg16Float   (R = depth_normalized, G = preset matID — D-LM-matid)
+gbuffer1: .rgba8Snorm  (normals + AO)
+gbuffer2: .rgba8Unorm  (albedo + packed roughness/metallic)
 litTexture: .rgba16Float (lighting output)
 ```
+
+**`gbuffer0.g` — preset matID dispatch (LM.1 / D-LM-matid).** Half-float
+written by the G-buffer fragment as `float(outMatID)` (preset's `sceneMaterial`
+out-param); read by `raymarch_lighting_fragment` and dispatched on:
+
+- `matID == 0` (default) — standard dielectric: full Cook-Torrance + screen-space
+  soft shadows + IBL ambient + IBL specular + atmospheric fog. Existing presets
+  (Glass Brutalist, Kinetic Sculpture, Volumetric Lithograph) all stay on this
+  path; their `sceneMaterial` bodies leave `outMatID` at the caller's default 0.
+- `matID == 1` — emission-dominated dielectric. Albedo carries backlight
+  intensity rather than surface diffuse colour. Lighting path returns
+  `albedo × kLumenEmissionGain (4.0) + irradiance × kLumenIBLFloor (0.05) × ao`,
+  skipping Cook-Torrance + screen-space shadow march entirely. Used by
+  Lumen Mosaic; reusable by any future preset whose visible colour is
+  dominated by emission. The 4× gain pulls saturated cells over
+  PostProcessChain bloom's bright-pass threshold so backlight visibly
+  bleeds across cell ridges; the 0.05 IBL ambient floor keeps the panel
+  coloured at silence (D-019). `kLumenEmissionGain` and `kLumenIBLFloor`
+  are file-scope `constexpr constant` in `Renderer/Shaders/RayMarch.metal`.
+
+The `sceneMaterial` D-021 signature gained an out-param to support this —
+all ray-march presets must declare `thread int& outMatID` as the trailing
+parameter. Default behaviour for existing presets is to leave it untouched
+(the preamble's `raymarch_gbuffer_fragment` pre-zeros it before the call).
 
 ### SSGI
 Half-res `.rgba16Float`. 8-sample blue-noise-rotated spiral. `kIndirectStrength = 0.3`. Sky pixels (depth ≥ 0.999) early-exit. Additive blend (src=one, dst=one). `sceneParamsB.w` overrides sample radius (0 → default 0.08 UV).

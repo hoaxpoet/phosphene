@@ -32,7 +32,10 @@ struct PresetLoaderCompileFailureTest {
     /// added or retired AND a corresponding decision is recorded in
     /// `docs/DECISIONS.md`. A drop in this number without a decision means a
     /// preset was silently dropped from the fixture — Failed Approach #44 territory.
-    static let expectedProductionPresetCount = 15
+    ///
+    /// History: 14 → 15 at DM.1 (Drift Motes, D-097 / D-099). 15 → 16 at LM.1
+    /// (Lumen Mosaic, D-LM-matid).
+    static let expectedProductionPresetCount = 16
 
     @Test("PresetLoader.presets.count matches expectedProductionPresetCount — catches Failed Approach #44 silent drops")
     func test_presetLoaderProductionCount() {
