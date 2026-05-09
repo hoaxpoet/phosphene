@@ -239,8 +239,6 @@ extension PresetLoader {
     /// declarations, and `raymarch_gbuffer_fragment`. Kept separate from `shaderPreamble`
     /// because it calls preset-defined functions undefined in non-ray-march presets.
     static let rayMarchGBufferPreamble: String = {
-        // rayMarchPreamble is embedded here (copied from the shaderPreamble closure)
-        // so it can be accessed independently without recomputing shaderPreamble.
         return """
 
 
@@ -259,10 +257,12 @@ extension PresetLoader {
         };
         #endif
 
-        // G-buffer output for ray march presets.
-        //   color(0)  .rg16Float    R = depth_normalized [0..1), 1.0 = sky; G = unused
-        //   color(1)  .rgba8Snorm   RGB = world-space normal [-1..1]; A = ambient occlusion
-        //   color(2)  .rgba8Unorm   RGB = albedo [0..1]; A = packed roughness(upper4b)+metallic(lower4b)
+        // G-buffer output for ray march presets. See CLAUDE.md §G-Buffer Layout
+        // (Ray March) for the full layout + matID dispatch contract (D-LM-matid).
+        //   color(0)  .rg16Float    R = depth, G = preset matID (0 = standard
+        //                           dielectric; 1 = emission-dominated)
+        //   color(1)  .rgba8Snorm   RGB = world-space normal; A = AO
+        //   color(2)  .rgba8Unorm   RGB = albedo; A = packed roughness/metallic
         struct GBufferOutput {
             float4 gbuf0 [[color(0)]];
             float4 gbuf1 [[color(1)]];
@@ -270,14 +270,9 @@ extension PresetLoader {
         };
 
         // ── Per-preset forward declarations ──────────────────────────────────
-        // Ray march presets must define these two functions.
-        //
-        // `stems` is the StemFeatures struct bound at buffer(3), containing
-        // per-stem energy/band/beat values (vocals, drums, bass, other).
-        // Presets should apply the D-019 warmup fallback when reading stems —
-        // smoothstep(0.02, 0.06, totalStemEnergy) mixes between FeatureVector
-        // proxies and true stem values so the preset behaves correctly before
-        // stem separation has completed on the first chunk.
+        // Ray march presets must define both. `stems` is bound at buffer(3) —
+        // apply the D-019 warmup fallback when reading. `outMatID` is the LM.1
+        // material-flag out-param (D-LM-matid); pre-zeroed by the caller.
         float sceneSDF(float3 p,
                        constant FeatureVector& f,
                        constant SceneUniforms& s,
@@ -290,7 +285,8 @@ extension PresetLoader {
                            constant StemFeatures& stems,
                            thread float3& albedo,
                            thread float& roughness,
-                           thread float& metallic);
+                           thread float& metallic,
+                           thread int& outMatID);
 
         // ── G-buffer fragment (compiled per-preset with sceneSDF + sceneMaterial) ──
         fragment GBufferOutput raymarch_gbuffer_fragment(
@@ -379,7 +375,9 @@ extension PresetLoader {
             float3 albedo    = float3(0.7);
             float  roughness = 0.5;
             float  metallic  = 0.0;
-            sceneMaterial(hitPos, 0, features, scene, stems, albedo, roughness, metallic);
+            int    outMatID  = 0;     // default: standard dielectric (matID 0)
+            sceneMaterial(hitPos, 0, features, scene, stems,
+                          albedo, roughness, metallic, outMatID);
 
             // Pack roughness + metallic into 8 bits (upper 4b + lower 4b) → [0,1].
             int    rByte = int(clamp(roughness, 0.0, 1.0) * 15.0 + 0.5);
@@ -388,7 +386,8 @@ extension PresetLoader {
 
             float depthNorm = clamp(t / farPlane, 0.0, 0.9999);
 
-            out.gbuf0 = float4(depthNorm, 0.0, 0.0, 0.0);
+            // gbuf0.G = preset matID (D-LM-matid). Sky path returns before this.
+            out.gbuf0 = float4(depthNorm, float(outMatID), 0.0, 0.0);
             out.gbuf1 = float4(normal, ao);               // rgba8Snorm: [-1..1]
             out.gbuf2 = float4(albedo, packed);            // rgba8Unorm: [0..1]
 

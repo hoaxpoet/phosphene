@@ -133,6 +133,15 @@ struct PresetVisualReviewTests {
         }
     }
 
+    // NOTE: Lumen Mosaic (passes: ["ray_march", "post_process"]) is intentionally
+    // omitted — its `pipelineState` is the G-buffer state (3 color attachments,
+    // .rg16Float / .rgba8Snorm / .rgba8Unorm), but `renderFrame` below sets up
+    // a single .bgra8Unorm_srgb attachment. Binding a 3-attachment pipeline to
+    // a 1-attachment encoder produces a Metal validation mismatch and the
+    // rendered output is the raw G-buffer encoded as BGRA, not the deferred
+    // lit output. Visual review for deferred-ray-march presets needs a
+    // harness extension that runs the lighting + composite passes; deferred
+    // until LM.2+ when audio reactivity makes the visual review more useful.
     @Test("Render preset to PNGs + contact sheet (RENDER_VISUAL=1)",
           arguments: ["Arachne", "Gossamer", "Volumetric Lithograph", "Drift Motes"])
     func renderPresetVisualReview(_ presetName: String) throws {

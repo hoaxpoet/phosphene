@@ -159,6 +159,14 @@ private let goldenPresetHashes: [String: PresetHashes] = [
     // the 8-bit dHash tolerance; beatHeavy shifts slightly because bass_dev
     // now contributes a small +0.06 to the smooth-union radius.
     "Kinetic Sculpture": (steady: 0x5EAB7295D25B4A4A, beatHeavy: 0x5AAB72B5564B4A4B, quiet: 0x56AB7295925B4A4A),
+    // LM.1 (D-LM-matid): static-backlight glass panel. All three fixtures
+    // converge to the same hash because LM.1 has no audio reactivity — the
+    // backlight is fixed warm amber + a `mood_tint(valence, arousal) * 0.04`
+    // ambient floor, and the regression fixtures all drive valence/arousal
+    // at zero. The hash captures the per-cell relief + frost-perturbed
+    // normal pattern at 64×64 dHash quantization. LM.2 will drift these
+    // hashes when the 4-light analytical pattern engine lands.
+    "Lumen Mosaic": (steady: 0xF0F0C8CCCCC8F0F0, beatHeavy: 0xF0F0C8CCCCC8F0F0, quiet: 0xF0F0C8CCCCC8F0F0),
     "Membrane": (steady: 0x33E3A919C9627939, beatHeavy: 0x12A3A998C9646139, quiet: 0x47E3C919CD627959),
     "Murmuration": (steady: 0x07449B6727773FF8, beatHeavy: 0x0B449A4727373FF8, quiet: 0x0744936727773FF8),
     "Nebula": (steady: 0x0000080C0C080000, beatHeavy: 0x0000080C0C080000, quiet: 0x0000080C0C080000),

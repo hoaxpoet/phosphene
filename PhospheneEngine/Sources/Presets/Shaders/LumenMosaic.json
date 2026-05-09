@@ -1,0 +1,38 @@
+{
+  "name": "Lumen Mosaic",
+  "family": "geometric",
+  "duration": 60,
+  "passes": ["ray_march", "post_process"],
+  "scene_camera": { "position": [0.0, 0.0, -3.0], "target": [0.0, 0.0, 0.0], "fov": 30 },
+  "scene_lights": [{ "position": [0.0, 0.0, -1.0], "color": [0.9, 0.9, 0.9], "intensity": 0.5 }],
+  "scene_fog": 0.0,
+  "scene_ambient": 0.05,
+  "scene_far_plane": 8.0,
+  "visual_density": 0.65,
+  "motion_intensity": 0.25,
+  "color_temperature_range": [0.3, 0.7],
+  "fatigue_risk": "low",
+  "transition_affordances": ["crossfade"],
+  "section_suitability": ["ambient", "comedown", "bridge"],
+  "complexity_cost": { "tier1": 4.5, "tier2": 3.7 },
+  "stem_affinity": {
+    "drums": "ripple_origin",
+    "bass": "agent_drift_speed",
+    "vocals": "vocal_hotspot",
+    "other": "ambient_palette_drift"
+  },
+  "lumen_mosaic": {
+    "cell_density": 30.0,
+    "cell_jitter": 0.85,
+    "frost_amplitude": 0.10,
+    "frost_scale": 80.0,
+    "ambient_floor_intensity": 0.04,
+    "light_agent_count": 4,
+    "max_active_patterns": 4,
+    "mood_smoothing_seconds": 5.0,
+    "back_plane_depth": 1.5
+  },
+  "certified": false,
+  "rubric_profile": "full",
+  "rubric_hints": { "hero_specular": false, "dust_motes": false }
+}

@@ -17,7 +17,22 @@
 // and sceneMaterial() functions.
 //
 // G-buffer layout (set by the G-buffer pass, read by the lighting pass):
-//   texture(0)  .rg16Float      R = depth_normalized [0..1), 1.0 = sky/miss; G = unused
+//   texture(0)  .rg16Float      R = depth_normalized [0..1), 1.0 = sky/miss;
+//                               G = preset matID (LM.1 / D-LM-matid):
+//                                     0 = standard dielectric (default; full
+//                                         Cook-Torrance + IBL + screen-space
+//                                         soft shadows);
+//                                     1 = emission-dominated dielectric — the
+//                                         G-buffer's `albedo` channel carries
+//                                         backlight intensity instead of
+//                                         surface diffuse colour. The lighting
+//                                         path skips Cook-Torrance + shadow
+//                                         dispatch and instead returns
+//                                         `albedo * kEmissionGain` plus a
+//                                         small mood-tinted IBL ambient floor.
+//                                         Used by Lumen Mosaic; reusable by
+//                                         any future preset whose visible
+//                                         colour is dominated by emission.
 //   texture(1)  .rgba8Snorm     RGB = world-space normal [-1..1]; A = ambient occlusion [0..1]
 //   texture(2)  .rgba8Unorm     RGB = albedo [0..1]; A = packed roughness (upper 4b) + metallic (lower 4b)
 //
@@ -25,6 +40,22 @@
 
 #include <metal_stdlib>
 using namespace metal;
+
+// MARK: - matID emission-dominated tunables (LM.1 / D-LM-matid)
+
+/// Emission gain for matID == 1 (emission-dominated dielectric).
+/// The G-buffer's albedo channel carries backlight intensity scaled to [0, 1];
+/// multiplying by 4.0 lifts saturated cells (albedo == 1.0) to HDR ≈ 4.0,
+/// which crosses the PostProcessChain bloom bright-pass threshold so backlight
+/// bleeds across cell ridges.  Tunable in 0.5 increments based on Matt's M7
+/// review of LM.1 contact sheets.
+constexpr constant float kLumenEmissionGain = 4.0;
+
+/// Low IBL ambient floor for matID == 1.  Without it, an unlit cell (one with
+/// no light agent contribution) would render as pure black, breaking D-019
+/// silence fallback.  0.05 keeps the panel coloured at all times by adding
+/// a small fraction of the IBL irradiance to the emission output.
+constexpr constant float kLumenIBLFloor = 0.05;
 
 // MARK: - Helpers
 
@@ -175,6 +206,24 @@ static float rm_screenSpaceShadow(
 ///   texture(11) — BRDF split-sum LUT       → Fresnel split factors (ibl_sample_brdf_lut)
 /// When IBL textures are not yet bound, they return zero; the per-component max
 /// against `albedo * 0.04 * ao` prevents fully black surfaces during warmup.
+///
+/// matID dispatch (LM.1 / D-LM-matid):
+///   gbuf0.g carries a preset-supplied material flag.
+///   matID == 0 (default) — full Cook-Torrance + screen-space soft shadows + IBL
+///                          ambient and specular. Existing presets pre-LM.1.
+///   matID == 1 (Lumen Mosaic) — emission-dominated dielectric. Albedo is
+///                          treated as backlight intensity; the surface emits
+///                          `albedo * kLumenEmissionGain` plus a small
+///                          IBL-derived ambient floor. Cook-Torrance and the
+///                          screen-space shadow march are skipped entirely so
+///                          the path is cheap and deterministic regardless of
+///                          scene-light placement. The 4× gain pulls bright
+///                          cells over PostProcessChain's bloom threshold so
+///                          backlight visibly bleeds across cell ridges; the
+///                          0.05 IBL ambient floor keeps the panel coloured
+///                          when the preset has no analytical lights yet.
+///                          Tunable via the file-scope `kLumenEmissionGain`
+///                          and `kLumenIBLFloor` constants below.
 fragment float4 raymarch_lighting_fragment(
     VertexOut                   in        [[stage_in]],
     constant FeatureVector&     features  [[buffer(0)]],
@@ -238,6 +287,21 @@ fragment float4 raymarch_lighting_fragment(
     float3 albedo    = g2.rgb;
     float  roughness, metallic;
     rm_unpackMaterial(g2.a, roughness, metallic);
+
+    // ── matID == 1 — emission-dominated dielectric (LM.1 / D-LM-matid) ──
+    // Lumen Mosaic and similar emission-dominated presets store their
+    // backlight intensity in `albedo` rather than a surface diffuse colour.
+    // Skip Cook-Torrance + screen-space shadow march entirely; gain the
+    // emission and add a small IBL ambient floor so the panel stays
+    // coloured under D-019 silence fallback.  Existing matID == 0 presets
+    // continue down the standard path below.
+    int matID = int(g0.g + 0.5);
+    if (matID == 1) {
+        float3 irradiance = ibl_sample_irradiance(N, iblIrradiance, iblSamp);
+        float3 ambientFloor = irradiance * kLumenIBLFloor * ao;
+        // No tone-map here; ACES + bloom run downstream in PostProcessChain.
+        return float4(albedo * kLumenEmissionGain + ambientFloor, 1.0);
+    }
 
     // ── Lighting ───────────────────────────────────────────────────
     float3 V         = normalize(scene.cameraOriginAndFov.xyz - worldPos);
