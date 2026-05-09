@@ -254,15 +254,22 @@ public struct LumenPatternState {
     public var activePatternCount: Int32    // 4 B
     public var ambientFloorIntensity: Float // 4 B  (LM.2 D-019 floor; superseded by kSilenceIntensity at LM.3)
     public var smoothedValence: Float       // 4 B  (LM.3 — 5 s low-pass for palette `(a, d)` interpolation)
-    public var smoothedArousal: Float       // 4 B  (LM.3 — 5 s low-pass for palette `b` interpolation)
-    public var pad0: Float = 0              // 4 B  (pad to 16 B trailer alignment)
-    // Total: 344 B.  (LM.3 grew by 8 B: smoothedValence + smoothedArousal.)
+    public var smoothedArousal: Float       // 4 B  (LM.3 — 5 s low-pass for palette `(b, c)` interpolation)
+    public var pad0: Float = 0              // 4 B
+    public var trackPaletteSeedA: Float     // 4 B  (LM.3 — per-track perturbation of palette `a`, ±0.05)
+    public var trackPaletteSeedB: Float     // 4 B  (LM.3 — per-track perturbation of palette `b`, ±0.05)
+    public var trackPaletteSeedC: Float     // 4 B  (LM.3 — per-track perturbation of palette `c`, ±0.10)
+    public var trackPaletteSeedD: Float     // 4 B  (LM.3 — per-track perturbation of palette `d`, ±0.20)
+    // Total: 360 B.  (LM.3 grew by 24 B: smoothedValence + smoothedArousal + 4 × trackPaletteSeed.)
 }
 ```
 
-Total buffer size: **344 B** at LM.3 (was 336 B at LM.2). Use `.storageModeShared` per UMA convention (D-006). The struct stride is asserted to match the matching MSL struct (`PresetLoader+Preamble.swift`) byte-for-byte — the LM.2 `LumenPatternState_strideIs336` test becomes `LumenPatternState_strideIs344` at LM.3 and the placeholder buffer in `RayMarchPipeline.lumenPlaceholderBuffer` resizes correspondingly.
+Total buffer size: **360 B** at LM.3 (was 336 B at LM.2). Use `.storageModeShared` per UMA convention (D-006). The struct stride is asserted to match the matching MSL struct (`PresetLoader+Preamble.swift`) byte-for-byte — the LM.2 `LumenPatternState_strideIs336` test became `LumenPatternState_strideIs360` at LM.3 and the placeholder buffer in `RayMarchPipeline.lumenPlaceholderBuffer` resized to match.
 
-**Migration note.** The `ambientFloorIntensity` field stays on the struct for ABI continuity but is unused by LM.3+ sceneMaterial (the silence floor moves to a file-scope `kSilenceIntensity` constant inside LumenMosaic.metal). Future increments may reuse the field for a different purpose; keep it zero-initialised in `LumenPatternEngine.snapshot()` until it does.
+**Migration notes.**
+
+- The `ambientFloorIntensity` field stays on the struct for ABI continuity but is unused by LM.3+ sceneMaterial (the silence floor moved to a file-scope `kSilenceIntensity` constant inside LumenMosaic.metal). Future increments may reuse the field for a different purpose; the engine keeps it zero-initialised.
+- The four `trackPaletteSeed{A,B,C,D}` fields are written by `LumenPatternEngine.setTrackSeed(_:)` or `setTrackSeed(fromHash:)` once per track change. `_tick(...)` does **not** clear them. App-layer wiring lives in `VisualizerEngine+Stems.resetStemPipeline(for:)`, which derives an FNV-1a 64-bit hash from `title + artist` and forwards it to the engine.
 
 ### `RenderPipeline` extension
 
@@ -435,7 +442,7 @@ Target file length: 600–900 lines. Within SHADER_CRAFT.md §11.1's relaxed fil
 | LM.0 | `directPresetFragmentBuffer3` slot 8 wired in `RenderPipeline`. CLAUDE.md GPU Contract section updated. DECISIONS.md D-LM-buffer-slot-8 entry. New build green; existing tests untouched. ✅ |
 | LM.1 | Static-backlight glass panel renders. Contact sheet present. PresetAcceptanceTests passes. p95 ≤ 2.0 ms. ✅ |
 | LM.2 | Mood-coupled 4-light backlight. Continuous-energy primary drivers. D-019 silence fallback verified. Slot-8 binding wired. p95 ≤ 2.5 ms. ⚠ Engine + GPU contract verified; visual rejected at production review (output muted, cells invisible). LM.3 ships the substantive look. |
-| LM.3 | **Per-cell colour identity from `palette()` keyed on cell hash + audio time + mood** (D.4). **Procedural palette via V.3 IQ cosine** (E.3). `LumenPatternState` extended with `smoothedValence` / `smoothedArousal` scalars (struct grows to 344 B). `kCellHueRate` constant introduced; M7-tuned in LM.3 review. Vividness gate met across all six certification fixtures (no pastel, no cream-haze). Cells visibly cycle through palette during energetic playback. Cells held at silence (no fade to grey). p95 ≤ 2.8 ms. **The substantive visual ships here.** |
+| LM.3 | **Per-cell colour identity from `palette()` keyed on cell hash + audio time + mood** (D.4). **Procedural palette via V.3 IQ cosine** (E.3). `LumenPatternState` extended with `smoothedValence` / `smoothedArousal` + 4 × per-track palette seed fields (struct grows to 360 B). `kCellHueRate` (default 0.15) and `kSilenceIntensity` (default 0.55) constants introduced; M7-tuned in LM.3 review. Vividness gate met across all five contact-sheet fixtures (no pastel, no cream-haze). Cells visibly distinct (per-cell palette identity). Cells held at silence (no fade to grey). Per-track seed wired in `VisualizerEngine+Stems.resetStemPipeline(for:)` via FNV-1a hash of `title + artist`. p95 ≤ 2.8 ms. ✅ shipped 2026-05-09. |
 | LM.4 | Pattern engine v1 active (idle / radial_ripple / sweep). Bar-boundary triggers. Drum-onset ripples take per-cell palette colour (don't override with their own). p95 ≤ 3.0 ms. |
 | LM.5 | Pattern engine v2 (cluster_burst / breathing / noise_drift). **Optional**: per-stem hue affinity (Decision E.b) if LM.3 / LM.4 review judges unified-palette feel undifferentiated stem-wise. p95 ≤ 3.5 ms. |
 | LM.6 | Fidelity polish: micro-frost + specular tuning + cell density A/B vs ref `04`, palette parameter A/B vs ref `05`. p95 ≤ 3.5 ms. |

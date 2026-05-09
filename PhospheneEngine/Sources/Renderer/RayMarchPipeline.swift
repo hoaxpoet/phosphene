@@ -252,17 +252,18 @@ public final class RayMarchPipeline: @unchecked Sendable {
         self.sampler = bundle.sampler
 
         // Allocate the slot-8 zero placeholder once. Sized to match Swift
-        // `LumenPatternState.stride` (336 bytes); a static literal keeps the
-        // engine free of a Presets-module dependency. If the value drifts the
-        // `LumenPatternState_strideIs336` test traps before this binding can
-        // misalign the shader struct.
+        // `LumenPatternState.stride` (LM.3: 360 bytes after adding
+        // smoothedValence/Arousal + trackPaletteSeed{A,B,C,D}); a static
+        // literal keeps the engine free of a Presets-module dependency. If
+        // the value drifts the `LumenPatternState_strideIs360` test traps
+        // before this binding can misalign the shader struct.
         guard let placeholder = context.device.makeBuffer(
-            length: 336,
+            length: 360,
             options: .storageModeShared
         ) else {
             throw RayMarchPipelineError.bufferAllocationFailed
         }
-        memset(placeholder.contents(), 0, 336)
+        memset(placeholder.contents(), 0, 360)
         self.lumenPlaceholderBuffer = placeholder
         logger.info("RayMarchPipeline initialized")
     }

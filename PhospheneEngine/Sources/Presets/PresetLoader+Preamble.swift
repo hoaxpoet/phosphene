@@ -307,8 +307,14 @@ extension PresetLoader {
             LumenPattern    patterns[4];
             int   activeLightCount;
             int   activePatternCount;
-            float ambientFloorIntensity;
+            float ambientFloorIntensity;        // LM.2; unused at LM.3+ (cells hold colour at silence, no tinted floor)
+            float smoothedValence;              // LM.3 — 5 s low-pass valence; drives palette `(a, d)` interpolation
+            float smoothedArousal;              // LM.3 — 5 s low-pass arousal; drives palette `(b, c)` interpolation
             float pad0;
+            float trackPaletteSeedA;            // LM.3 — per-track perturbation of palette `a` (offset)
+            float trackPaletteSeedB;            // LM.3 — per-track perturbation of palette `b` (chroma amplitude)
+            float trackPaletteSeedC;            // LM.3 — per-track perturbation of palette `c` (channel rate)
+            float trackPaletteSeedD;            // LM.3 — per-track perturbation of palette `d` (phase / hue family)
         };
 
         // ── Per-preset forward declarations ──────────────────────────────────

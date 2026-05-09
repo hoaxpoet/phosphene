@@ -183,8 +183,31 @@ public struct LumenPatternState: Sendable {
     public var patterns: (LumenPattern, LumenPattern, LumenPattern, LumenPattern)
     public var activeLightCount: Int32
     public var activePatternCount: Int32
+    /// LM.2 D-019 ambient floor magnitude. Retained on the struct for ABI
+    /// continuity but unused at LM.3+ — the new design holds cells at their
+    /// last vivid colour at silence rather than fading toward an ambient
+    /// tint, so `LumenMosaic.metal` ignores this field. Kept zero-initialised
+    /// in `LumenPatternEngine.snapshot()`.
     public var ambientFloorIntensity: Float
+    /// 5-second low-pass on `f.valence`. Read by `LumenMosaic.metal` to
+    /// interpolate palette `a` (offset) and `d` (phase) parameters between
+    /// the cool-mood and warm-mood endpoints. (LM.3 / D-LM-d4)
+    public var smoothedValence: Float
+    /// 5-second low-pass on `f.arousal`. Read by `LumenMosaic.metal` to
+    /// interpolate palette `b` (chroma amplitude) and `c` (channel rate)
+    /// between subdued-mood and frantic-mood endpoints. (LM.3 / D-LM-d4)
+    public var smoothedArousal: Float
     public var pad0: Float
+    /// Per-track palette perturbation, derived from a hash of the active
+    /// track identity (LM.3 / D-LM-e3). Each component shifts a different
+    /// IQ palette parameter by a small amount (`±0.05 a`, `±0.05 b`,
+    /// `±0.10 c`, `±0.20 d`) so that two tracks at the same mood produce
+    /// visibly different palette character. Same track always reproduces
+    /// the same seed (deterministic from `track.identity`).
+    public var trackPaletteSeedA: Float
+    public var trackPaletteSeedB: Float
+    public var trackPaletteSeedC: Float
+    public var trackPaletteSeedD: Float
 
     public init(
         lights: (LumenLightAgent, LumenLightAgent, LumenLightAgent, LumenLightAgent) =
@@ -194,14 +217,26 @@ public struct LumenPatternState: Sendable {
         activeLightCount: Int32 = 0,
         activePatternCount: Int32 = 0,
         ambientFloorIntensity: Float = 0,
-        pad0: Float = 0
+        smoothedValence: Float = 0,
+        smoothedArousal: Float = 0,
+        pad0: Float = 0,
+        trackPaletteSeedA: Float = 0,
+        trackPaletteSeedB: Float = 0,
+        trackPaletteSeedC: Float = 0,
+        trackPaletteSeedD: Float = 0
     ) {
         self.lights = lights
         self.patterns = patterns
         self.activeLightCount = activeLightCount
         self.activePatternCount = activePatternCount
         self.ambientFloorIntensity = ambientFloorIntensity
+        self.smoothedValence = smoothedValence
+        self.smoothedArousal = smoothedArousal
         self.pad0 = pad0
+        self.trackPaletteSeedA = trackPaletteSeedA
+        self.trackPaletteSeedB = trackPaletteSeedB
+        self.trackPaletteSeedC = trackPaletteSeedC
+        self.trackPaletteSeedD = trackPaletteSeedD
     }
 
     /// Indexed light access (read-only). LM.2 has exactly 4 lights.
@@ -365,19 +400,23 @@ public final class LumenPatternEngine: @unchecked Sendable {
         self.patternBuffer = buf
         self.basePositions = Self.agentBasePositions
 
-        // Seed agents with their base positions, base colours scaled by the
-        // neutral-mood tint, and zero intensity. Patterns stay `.idle`.
+        // Seed agents with their base positions, raw per-stem base colours
+        // (no mood tint — the cream-pull baseline was retired at LM.3 because
+        // it produced muted output regardless of mood input), and zero
+        // intensity. The `colorR/G/B` fields are kept on the struct for ABI
+        // continuity but are unused by `LumenMosaic.metal` at LM.3 (cell
+        // colour comes from `palette()` keyed on cell hash, not from agent
+        // colour). Patterns stay `.idle`.
         var initial = LumenPatternState(
             activeLightCount: Int32(Self.agentCount),
             activePatternCount: 0,
-            ambientFloorIntensity: Self.defaultAmbientFloorIntensity
+            ambientFloorIntensity: 0   // LM.3: floor moves to a shader-side constant
         )
-        let neutralTint = lumenMoodTint(valence: 0, arousal: 0)
         initial.lights = (
-            Self.makeAgent(at: 0, position: Self.agentBasePositions[0], tintedBase: neutralTint),
-            Self.makeAgent(at: 1, position: Self.agentBasePositions[1], tintedBase: neutralTint),
-            Self.makeAgent(at: 2, position: Self.agentBasePositions[2], tintedBase: neutralTint),
-            Self.makeAgent(at: 3, position: Self.agentBasePositions[3], tintedBase: neutralTint)
+            Self.makeAgent(at: 0, position: Self.agentBasePositions[0]),
+            Self.makeAgent(at: 1, position: Self.agentBasePositions[1]),
+            Self.makeAgent(at: 2, position: Self.agentBasePositions[2]),
+            Self.makeAgent(at: 3, position: Self.agentBasePositions[3])
         )
         self.state = initial
         writeToGPU()
@@ -400,15 +439,60 @@ public final class LumenPatternEngine: @unchecked Sendable {
             elapsedTime = 0
             smoothedValence = 0
             smoothedArousal = 0
-            let neutralTint = lumenMoodTint(valence: 0, arousal: 0)
             state.lights = (
-                Self.makeAgent(at: 0, position: basePositions[0], tintedBase: neutralTint),
-                Self.makeAgent(at: 1, position: basePositions[1], tintedBase: neutralTint),
-                Self.makeAgent(at: 2, position: basePositions[2], tintedBase: neutralTint),
-                Self.makeAgent(at: 3, position: basePositions[3], tintedBase: neutralTint)
+                Self.makeAgent(at: 0, position: basePositions[0]),
+                Self.makeAgent(at: 1, position: basePositions[1]),
+                Self.makeAgent(at: 2, position: basePositions[2]),
+                Self.makeAgent(at: 3, position: basePositions[3])
             )
+            state.smoothedValence = 0
+            state.smoothedArousal = 0
+            // Per-track palette seed is not cleared on reset() — it persists
+            // until `setTrackSeed(_:)` is called with a new track. (Reset is
+            // called on preset re-apply, not on track change.)
         }
         writeToGPU()
+    }
+
+    // MARK: - Track palette seed (LM.3 / D-LM-e3)
+
+    /// Set the per-track palette perturbation. Call once per track change so
+    /// that two tracks at the same mood produce visibly different palette
+    /// character. The seed is a deterministic 4-component perturbation
+    /// derived from a hash of the track identity (typically `title + artist`),
+    /// scaled into perturbation magnitudes appropriate for each IQ palette
+    /// parameter:
+    ///
+    /// | Component | Perturbs | Magnitude |
+    /// |---|---|---|
+    /// | seed.x | palette `a` (offset)         | ±0.05 (subtle baseline shift) |
+    /// | seed.y | palette `b` (chroma swing)   | ±0.05 (subtle saturation shift) |
+    /// | seed.z | palette `c` (channel rate)   | ±0.10 (small cycle-rate shift) |
+    /// | seed.w | palette `d` (phase / family) | ±0.20 (larger hue family shift) |
+    ///
+    /// Each component is expected in `[-1, +1]`; `LumenMosaic.metal` scales
+    /// by the appropriate magnitude internally. Pass `.zero` for "no
+    /// perturbation" (e.g. test fixtures where you want the baseline mood
+    /// palette without per-track variation).
+    public func setTrackSeed(_ seed: SIMD4<Float>) {
+        lock.withLock {
+            state.trackPaletteSeedA = max(-1, min(1, seed.x))
+            state.trackPaletteSeedB = max(-1, min(1, seed.y))
+            state.trackPaletteSeedC = max(-1, min(1, seed.z))
+            state.trackPaletteSeedD = max(-1, min(1, seed.w))
+        }
+        writeToGPU()
+    }
+
+    /// Convenience — derive the seed from a 64-bit hash and call
+    /// `setTrackSeed`. The four components are pulled from the four 16-bit
+    /// halves of the hash, mapped to `[-1, +1]`.
+    public func setTrackSeed(fromHash hash: UInt64) {
+        let h0 = Float(Int16(bitPattern: UInt16(hash & 0xFFFF))) / 32768.0
+        let h1 = Float(Int16(bitPattern: UInt16((hash >> 16) & 0xFFFF))) / 32768.0
+        let h2 = Float(Int16(bitPattern: UInt16((hash >> 32) & 0xFFFF))) / 32768.0
+        let h3 = Float(Int16(bitPattern: UInt16((hash >> 48) & 0xFFFF))) / 32768.0
+        setTrackSeed(SIMD4<Float>(h0, h1, h2, h3))
     }
 
     // MARK: - Test seam
@@ -429,7 +513,9 @@ public final class LumenPatternEngine: @unchecked Sendable {
         elapsedTime += dt
 
         // 5 s low-pass on mood. dt / τ is the RC fraction per frame; clamp to
-        // 1 so a long first-tick deltaTime cannot overshoot the input.
+        // 1 so a long first-tick deltaTime cannot overshoot the input. The
+        // smoothed values are written to the GPU state so `LumenMosaic.metal`
+        // can interpolate palette parameters with them (LM.3 / D-LM-d4).
         let alpha = min(dt / Self.moodSmoothingSeconds, 1.0)
         smoothedValence += (features.valence - smoothedValence) * alpha
         smoothedArousal += (features.arousal - smoothedArousal) * alpha
@@ -439,9 +525,6 @@ public final class LumenPatternEngine: @unchecked Sendable {
             stems.drumsEnergy + stems.bassEnergy +
             stems.vocalsEnergy + stems.otherEnergy
         let stemMix = lumenSmoothstep(Self.stemWarmupLow, Self.stemWarmupHigh, totalStemEnergy)
-
-        // Mood tint, computed once and applied to all four agents.
-        let moodTintColor = lumenMoodTint(valence: smoothedValence, arousal: smoothedArousal)
 
         // Drift-speed map. (smoothedArousal + 1) / 2 maps arousal ∈ [-1, +1]
         // into [0, 1] for the lerp. Uses the smoothed arousal so the drift
@@ -467,7 +550,11 @@ public final class LumenPatternEngine: @unchecked Sendable {
         )
         let beatPhaseRad = features.beatPhase01 * 2 * .pi
 
-        // Update each agent.
+        // Update each agent. LM.3 retired the cream-baseline mood tint that
+        // multiplied the per-stem base colour — agents now write their raw
+        // base colour for ABI continuity, but `colorR/G/B` is unused by the
+        // LM.3 `sceneMaterial` (cell colour comes from `palette()` keyed on
+        // cell hash, not from agents). Agents drive cell INTENSITY only.
         let agents: [LumenLightAgent] = (0..<Self.agentCount).map { i in
             let basePos     = basePositions[i]
             let driftFreq   = Self.agentDriftFrequencies[i]
@@ -495,11 +582,6 @@ public final class LumenPatternEngine: @unchecked Sendable {
             pos.x = max(-Self.agentInset, min(Self.agentInset, pos.x))
             pos.y = max(-Self.agentInset, min(Self.agentInset, pos.y))
 
-            // Color: per-stem base × mood tint. Mood tint is in [0, ~1.05]
-            // per channel; a slight overshoot at warm peaks is preserved as
-            // pre-tone-map HDR signal.
-            let color = baseColor * moodTintColor
-
             // Intensity: stem-direct primary with FV fallback (D-019).
             let intensity = computeIntensity(agentIndex: i,
                                              features: features,
@@ -511,9 +593,9 @@ public final class LumenPatternEngine: @unchecked Sendable {
                 positionY: pos.y,
                 positionZ: 0,
                 attenuationRadius: Self.defaultAttenuationRadius,
-                colorR: color.x,
-                colorG: color.y,
-                colorB: color.z,
+                colorR: baseColor.x,
+                colorG: baseColor.y,
+                colorB: baseColor.z,
                 intensity: max(0, intensity)
             )
         }
@@ -521,8 +603,12 @@ public final class LumenPatternEngine: @unchecked Sendable {
         state.lights = (agents[0], agents[1], agents[2], agents[3])
         state.activeLightCount = Int32(Self.agentCount)
         state.activePatternCount = 0   // LM.4 promotes to ≥ 0 active patterns.
-        state.ambientFloorIntensity = Self.defaultAmbientFloorIntensity
-        // Patterns stay `.idle` (initial-zero) for LM.2.
+        state.ambientFloorIntensity = 0   // LM.3: silence floor lives in the shader.
+        state.smoothedValence = smoothedValence
+        state.smoothedArousal = smoothedArousal
+        // trackPaletteSeedA/B/C/D are written by setTrackSeed(_:) on track
+        // change — _tick must NOT clear them.
+        // Patterns stay `.idle` (initial-zero) for LM.3.
     }
 
     /// Per-agent intensity using deviation primitives, with D-019 FV fallback
@@ -576,19 +662,23 @@ public final class LumenPatternEngine: @unchecked Sendable {
 
     private static func makeAgent(
         at index: Int,
-        position: SIMD2<Float>,
-        tintedBase: SIMD3<Float>
+        position: SIMD2<Float>
     ) -> LumenLightAgent {
+        // Raw per-stem base colour — no mood tint (LM.3 retired the cream-
+        // baseline mood multiplication that produced muted output). The
+        // colour fields are unused by `LumenMosaic.metal` at LM.3 (cell
+        // colour comes from `palette()` keyed on cell hash, not from agents)
+        // but stay on the struct for ABI continuity with future LM.5+ work
+        // that may revisit per-stem hue affinity.
         let baseColor = agentBaseColors[index]
-        let color = baseColor * tintedBase
         return LumenLightAgent(
             positionX: position.x,
             positionY: position.y,
             positionZ: 0,
             attenuationRadius: defaultAttenuationRadius,
-            colorR: color.x,
-            colorG: color.y,
-            colorB: color.z,
+            colorR: baseColor.x,
+            colorG: baseColor.y,
+            colorB: baseColor.z,
             intensity: 0
         )
     }
@@ -596,29 +686,11 @@ public final class LumenPatternEngine: @unchecked Sendable {
 
 // MARK: - Math helpers (file-private)
 
-/// Mood tint: maps valence/arousal to a smooth warm/cool axis crossed with a
-/// saturation axis. Centred at neutral cream (valence=0, arousal=0). Mirrors
-/// `lm_mood_tint` in `LumenMosaic.metal` so the CPU-baked agent colour and the
-/// shader's silence-ambient term agree.
-private func lumenMoodTint(valence: Float, arousal: Float) -> SIMD3<Float> {
-    let warm = max(0, min(1, valence * 0.5 + 0.5))
-    let sat  = max(0, min(1, arousal * 0.4 + 0.4))
-    let cool       = SIMD3<Float>(0.60, 0.75, 1.00)
-    let warmColour = SIMD3<Float>(1.00, 0.65, 0.40)
-    let hue = lumenMix(cool, warmColour, t: warm)
-    let cream = SIMD3<Float>(1.00, 0.95, 0.85)
-    return lumenMix(cream, hue, t: sat)
-}
-
 private func lumenSmoothstep(_ edge0: Float, _ edge1: Float, _ value: Float) -> Float {
     let unit = max(0, min(1, (value - edge0) / max(edge1 - edge0, 1e-6)))
     return unit * unit * (3 - 2 * unit)
 }
 
 private func lumenMix(_ from: Float, _ to: Float, t blend: Float) -> Float {
-    from + (to - from) * blend
-}
-
-private func lumenMix(_ from: SIMD3<Float>, _ to: SIMD3<Float>, t blend: Float) -> SIMD3<Float> {
     from + (to - from) * blend
 }
