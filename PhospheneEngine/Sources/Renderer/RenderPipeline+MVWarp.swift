@@ -354,6 +354,10 @@ extension RenderPipeline {
         if let presetBuf2 = directPresetFragmentBuffer2Lock.withLock({ directPresetFragmentBuffer2 }) {
             encoder.setFragmentBuffer(presetBuf2, offset: 0, index: 7)
         }
+        // Bind optional tertiary per-preset fragment data at buffer(8) (D-LM-buffer-slot-8).
+        if let presetBuf3 = directPresetFragmentBuffer3Lock.withLock({ directPresetFragmentBuffer3 }) {
+            encoder.setFragmentBuffer(presetBuf3, offset: 0, index: 8)
+        }
         bindNoiseTextures(to: encoder)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         encoder.endEncoding()

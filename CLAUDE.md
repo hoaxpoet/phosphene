@@ -555,12 +555,24 @@ buffer(6) = per-preset fragment buffer #1 — bound by setDirectPresetFragmentBu
               bind this slot per-frame uniformly across every stage of a
               staged preset (RenderPipeline+MVWarp.swift +
               RenderPipeline+Staged.swift). Other presets that need additional
-              buffers must use slots ≥ 8 (extend RenderPipeline with
-              directPresetFragmentBuffer3 / 4); never overload 6/7.
+              buffers must use slot 8 (setDirectPresetFragmentBuffer3) or
+              extend RenderPipeline with directPresetFragmentBuffer4 / 5;
+              never overload 6/7.
 buffer(7) = per-preset fragment buffer #2 — bound by setDirectPresetFragmentBuffer2.
               Reserved for: Arachne spider state (ArachneSpiderGPU — 80 bytes,
               V.7.7D contract). Same per-frame uniform binding contract as
               slot 6.
+buffer(8) = per-preset fragment buffer #3 — bound by setDirectPresetFragmentBuffer3.
+              Reserved for future preset-uniform CPU-driven state. Currently
+              unused; first consumer planned: Lumen Mosaic (Phase LM) for
+              `LumenPatternState`. Slot is shared — any future preset that needs
+              a third per-frame state buffer binds here. Same per-frame uniform
+              binding contract as slots 6 / 7 in the staged + mv_warp + direct
+              paths. Additionally bound at fragment slot 8 of the ray-march
+              **lighting pass** (`RayMarchPipeline.runLightingPass`) — the
+              G-buffer pass intentionally does NOT bind slot 8. Null when no
+              preset has called the setter; existing presets unaffected.
+              (D-LM-buffer-slot-8)
 ```
 
 **Authoring note:** buffer(0) is `FeatureVector`, not FFT — the old documentation was wrong. All existing presets (Starburst, VolumetricLithograph, etc.) bind in this order. New preset fragment functions must declare `constant FeatureVector& fv [[buffer(0)]]`. The `SpectralHistory` buffer(5) is available in direct-pass presets; ray march presets currently skip it.

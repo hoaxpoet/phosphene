@@ -308,6 +308,14 @@ extension RenderPipeline {
         var stems = stemFeatures
         encoder.setFragmentBytes(&stems, length: MemoryLayout<StemFeatures>.size, index: 3)
         encoder.setFragmentBuffer(spectralHistory.gpuBuffer, offset: 0, index: 5)
+        // Bind optional tertiary per-preset fragment data at buffer(8) for direct-pass
+        // presets that need preset-uniform CPU-driven state (D-LM-buffer-slot-8).
+        // Slots 6 / 7 are not bound on the direct-pass today (no consumer); slot 8
+        // is reserved here for future direct-pass presets (e.g. ad-hoc state-bearing
+        // presets that don't go through the staged or mv_warp paths).
+        if let presetBuf3 = directPresetFragmentBuffer3Lock.withLock({ directPresetFragmentBuffer3 }) {
+            encoder.setFragmentBuffer(presetBuf3, offset: 0, index: 8)
+        }
         bindNoiseTextures(to: encoder)
         // Bind dynamic text overlay at texture(12) when active.
         if let overlay = textOverlay {

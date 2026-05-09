@@ -3284,6 +3284,41 @@ git diff <pre-DM.0> HEAD -- PhospheneEngine/Sources/Renderer/Shaders/Particles.m
 
 ---
 
+## Phase LM — Lumen Mosaic (glass-family ray-march preset)
+
+Lumen Mosaic is a contemplative glass-family preset for slow ambient / downtempo / dub. The visible surface is a flat `sd_box` glass panel filling the camera frame; the panel material is `mat_pattern_glass` (V.3 §4.5b) producing hex-biased Voronoi cells with per-cell dome+ridge shading and in-cell frost. The preset's character comes from an analytical multi-source backlight emitted through the cells: 4 audio-driven light agents drift, dance to the beat, and shift color with mood, producing a constantly-moving stained-glass field that never resolves to a static composition. Authoritative authoring docs at `docs/presets/LUMEN_MOSAIC_DESIGN.md` (visual intent), `docs/presets/Lumen_Mosaic_Rendering_Architecture_Contract.md` (implementation contract), `docs/presets/LUMEN_MOSAIC_CLAUDE_CODE_PROMPTS.md` (phased increments).
+
+The preset is sequenced as 10 increments LM.0 → LM.9 with cert sign-off at LM.9. The certification target is **the cheapest ray-march preset in the catalog** (p95 ≤ 3.7 ms at Tier 2 / ≤ 4.5 ms at Tier 1), making it suitable for ambient sections where Phosphene wants a quiet, low-energy preset that still reads as visually rich.
+
+### Increment LM.0 — Fragment buffer slot 8 infrastructure
+
+**Scope.** Reserve fragment buffer slot 8 in `RenderPipeline` as the canonical home for a third per-preset CPU-driven state buffer alongside the existing slots 6 and 7. This is pure infrastructure — no shader code, no Lumen Mosaic preset, no audio routing. The slot is wired so LM.1 (the first Lumen Mosaic shader) can bind state via the new setter and the lighting fragment can read `LumenPatternState` directly. Lumen Mosaic is the first planned consumer; the slot is shared and any future preset that needs a third per-frame state buffer binds here.
+
+**Done when.**
+
+- `RenderPipeline.directPresetFragmentBuffer3` storage + `setDirectPresetFragmentBuffer3(_:)` setter wired, mirroring the slot 6 / 7 setter pattern.
+- Slot 8 bound conditionally (null when no preset has called the setter) at every fragment encoder that already binds slots 6 / 7 (`RenderPipeline+Staged.encodeStage`, `RenderPipeline+MVWarp.renderSceneToTexture`) **plus** the direct-pass (`drawDirect`) and the ray-march **lighting** fragment (`RayMarchPipeline.runLightingPass`). The G-buffer pass intentionally does NOT bind slot 8 — only lighting consumes it today.
+- `CLAUDE.md` GPU Contract section lists `buffer(8)` with the same paragraph-structure as buffer(6) / buffer(7).
+- `DECISIONS.md` D-LM-buffer-slot-8 entry filed.
+- `ENGINEERING_PLAN.md` Phase LM header + LM.0 entry filed (this entry).
+- `swift build --package-path PhospheneEngine` green.
+- `swift test --package-path PhospheneEngine` green; existing presets unaffected (`PresetAcceptanceTests` + `PresetRegressionTests` both pass with golden hashes unchanged — slot 8 is null in both).
+
+**Verify.**
+
+- `swift build --package-path PhospheneEngine`
+- `swift test --package-path PhospheneEngine`
+- `swift test --package-path PhospheneEngine --filter PresetAcceptanceTests`
+- `swift test --package-path PhospheneEngine --filter PresetRegressionTests`
+
+**Estimated sessions:** 0.5 (this session itself).
+
+**Status:** planned for 2026-05-08.
+
+**Carry-forward.** LM.1 implements `LumenPatternEngine` (CPU-side state populated each frame + setter call) + `LumenMosaic.metal` (lighting fragment reads `LumenPatternState` at `[[buffer(8)]]`). See `docs/presets/Lumen_Mosaic_Rendering_Architecture_Contract.md` §"Required uniforms / buffers" for the buffer layout.
+
+---
+
 These milestones map to product-level outcomes, not implementation phases.
 
 **Milestone A — Trustworthy Playback Session.** ✅ **MET (2026-04-25).** A user can connect a playlist, obtain a usable prepared session, and complete a full listening session without instability. *Requires: ~~2.5.4~~ ✅, ~~Phase U increments U.1–U.7~~ ✅, ~~progressive readiness basics (6.1)~~ ✅.*

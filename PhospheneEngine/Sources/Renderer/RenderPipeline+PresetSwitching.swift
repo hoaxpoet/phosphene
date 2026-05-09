@@ -129,6 +129,18 @@ extension RenderPipeline {
         directPresetFragmentBuffer2Lock.withLock { directPresetFragmentBuffer2 = buffer }
     }
 
+    /// Attach a tertiary per-preset fragment buffer (bound at buffer(8)).
+    ///
+    /// Bound at fragment slot 8 in every per-frame uniform binding site that
+    /// also binds slots 6 / 7 (staged composition, mv_warp scene-to-texture,
+    /// direct-pass) plus the ray-march lighting pass. The G-buffer pass does
+    /// NOT bind this slot — only lighting / composite consumers see slot 8.
+    /// First planned consumer: Lumen Mosaic (Phase LM) for `LumenPatternState`.
+    /// Pass nil to detach. Thread-safe — can be called from any queue. (D-LM-buffer-slot-8)
+    public func setDirectPresetFragmentBuffer3(_ buffer: MTLBuffer?) {
+        directPresetFragmentBuffer3Lock.withLock { directPresetFragmentBuffer3 = buffer }
+    }
+
     /// Attach a dynamic text overlay for presets that declare `text_overlay: true`.
     /// The overlay texture is bound at fragment texture(12) during direct-pass draws.
     /// Pass `nil` to detach (e.g. on preset switch away from a text-overlay preset).

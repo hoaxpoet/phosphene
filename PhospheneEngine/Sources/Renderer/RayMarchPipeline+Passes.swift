@@ -81,11 +81,15 @@ extension RayMarchPipeline {
 
     /// Pass 2: Evaluate PBR lighting from G-buffer data → litTexture (.rgba16Float).
     /// IBL textures (Increment 3.16) are bound at slots 9–11 when `iblManager` is non-nil.
+    /// `presetFragmentBuffer3` (when non-nil) is bound at fragment slot 8 for presets that
+    /// declare per-frame CPU-driven state needed in the lighting fragment (D-LM-buffer-slot-8).
+    /// G-buffer pass intentionally does NOT bind slot 8 — only lighting consumes it today.
     func runLightingPass(
         commandBuffer: MTLCommandBuffer,
         features: inout FeatureVector,
         noiseTextures: TextureManager?,
-        iblManager: IBLManager? = nil
+        iblManager: IBLManager? = nil,
+        presetFragmentBuffer3: MTLBuffer? = nil
     ) {
         guard let g0 = gbuffer0, let g1 = gbuffer1, let g2 = gbuffer2,
               let lit = litTexture else { return }
@@ -100,6 +104,9 @@ extension RayMarchPipeline {
         encoder.setRenderPipelineState(lightingPipeline)
         encoder.setFragmentBytes(&features, length: MemoryLayout<FeatureVector>.stride, index: 0)
         encoder.setFragmentBytes(&sceneUniforms, length: MemoryLayout<SceneUniforms>.stride, index: 4)
+        if let presetBuf3 = presetFragmentBuffer3 {
+            encoder.setFragmentBuffer(presetBuf3, offset: 0, index: 8)
+        }
         encoder.setFragmentTexture(g0, index: 0)
         encoder.setFragmentTexture(g1, index: 1)
         encoder.setFragmentTexture(g2, index: 2)
