@@ -133,17 +133,16 @@ struct PresetVisualReviewTests {
         }
     }
 
-    // NOTE: Lumen Mosaic (passes: ["ray_march", "post_process"]) is intentionally
-    // omitted — its `pipelineState` is the G-buffer state (3 color attachments,
-    // .rg16Float / .rgba8Snorm / .rgba8Unorm), but `renderFrame` below sets up
-    // a single .bgra8Unorm_srgb attachment. Binding a 3-attachment pipeline to
-    // a 1-attachment encoder produces a Metal validation mismatch and the
-    // rendered output is the raw G-buffer encoded as BGRA, not the deferred
-    // lit output. Visual review for deferred-ray-march presets needs a
-    // harness extension that runs the lighting + composite passes; deferred
-    // until LM.2+ when audio reactivity makes the visual review more useful.
+    // Pure-ray-march presets (passes contain `.rayMarch` and NOT `.mvWarp`)
+    // dispatch through `renderDeferredRayMarchFrame`, which composes a
+    // standalone `RayMarchPipeline` to run G-buffer → lighting → composite.
+    // Mv_warp ray-march presets (Volumetric Lithograph) and direct presets
+    // (Gossamer, Drift Motes) continue down `renderFrame`. Without this
+    // dispatch, pure-ray-march presets would bind a 3-attachment G-buffer
+    // pipeline state to a 1-attachment encoder — a Metal format mismatch
+    // that produces raw G-buffer output instead of the deferred lit result.
     @Test("Render preset to PNGs + contact sheet (RENDER_VISUAL=1)",
-          arguments: ["Arachne", "Gossamer", "Volumetric Lithograph", "Drift Motes"])
+          arguments: ["Arachne", "Gossamer", "Volumetric Lithograph", "Drift Motes", "Lumen Mosaic"])
     func renderPresetVisualReview(_ presetName: String) throws {
         guard ProcessInfo.processInfo.environment["RENDER_VISUAL"] == "1" else {
             print("[PresetVisualReview] RENDER_VISUAL not set, skipping \(presetName)")
@@ -231,6 +230,17 @@ struct PresetVisualReviewTests {
         arachneState: ArachneState?,
         features: inout FeatureVector
     ) throws -> [UInt8] {
+        // Dispatch: pure-ray-march presets go through the deferred pipeline so
+        // the harness captures actual lit output rather than raw G-buffer.
+        // Mv_warp ray-march presets stay on the warp path below (their
+        // `pipelineState` is the warp pipeline, not the G-buffer state).
+        let passes = preset.descriptor.passes
+        if passes.contains(.rayMarch) && !passes.contains(.mvWarp) {
+            return try renderDeferredRayMarchFrame(preset: preset,
+                                                    context: context,
+                                                    features: &features)
+        }
+
         let width = Self.renderWidth
         let height = Self.renderHeight
 
@@ -298,6 +308,95 @@ struct PresetVisualReviewTests {
 
         var pixels = [UInt8](repeating: 0, count: width * height * 4)
         texture.getBytes(&pixels, bytesPerRow: width * 4,
+                         from: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0)
+        return pixels
+    }
+
+    // MARK: - Render (deferred ray-march)
+
+    /// Render a pure-ray-march preset (passes contain `.rayMarch` and NOT
+    /// `.mvWarp`) by composing a standalone `RayMarchPipeline` and running the
+    /// full G-buffer → lighting → composite sequence. Returns BGRA pixels
+    /// matching what the production app would draw, modulo:
+    ///
+    /// - **No IBL textures bound.** `iblManager` is nil; the lighting fragment's
+    ///   IBL samples return zero (the documented unbound-texture behaviour on
+    ///   Apple Silicon). matID == 1 emission paths are unaffected (they only
+    ///   read IBL for the small ambient floor `irradiance × 0.05 × ao`); matID
+    ///   == 0 paths fall back to the `albedo × 0.04 × ao` clamp at
+    ///   RayMarch.metal:280. Acceptable for visual review of LM.1 (matID == 1).
+    /// - **No noise textures, no SSGI, no bloom, no post-process chain.**
+    ///   `RayMarchPipeline.render(...)` runs G-buffer → lighting → ACES
+    ///   composite and stops. SSGI / bloom would only matter for matID == 0
+    ///   presets that depend on them (Glass Brutalist's cyan glass bleed,
+    ///   for example) — out of scope until those land in the @Test args list.
+    /// - **Slot 8 (`presetFragmentBuffer3`) unbound.** LM.1 doesn't use it;
+    ///   LM.2 will populate `LumenPatternState` and the harness will need to
+    ///   construct a representative buffer. For LM.1 the static-backlight
+    ///   path is independent of slot 8.
+    private func renderDeferredRayMarchFrame(
+        preset: PresetLoader.LoadedPreset,
+        context: MetalContext,
+        features: inout FeatureVector
+    ) throws -> [UInt8] {
+        let width  = Self.renderWidth
+        let height = Self.renderHeight
+
+        guard let gbufferState = preset.rayMarchPipelineState else {
+            throw VisualReviewError.preconditionFailed(
+                "preset '\(preset.descriptor.name)' missing rayMarchPipelineState")
+        }
+
+        let shaderLibrary = try ShaderLibrary(context: context)
+        let pipeline = try RayMarchPipeline(context: context,
+                                            shaderLibrary: shaderLibrary)
+        pipeline.allocateTextures(width: width, height: height)
+
+        // SceneUniforms — same construction as production. Override aspect
+        // ratio to match the harness render dimensions; audioTime stays at 0.
+        var sceneUniforms = preset.descriptor.makeSceneUniforms()
+        sceneUniforms.sceneParamsA.y = Float(width) / Float(height)
+        pipeline.sceneUniforms = sceneUniforms
+
+        let floatStride = MemoryLayout<Float>.stride
+        guard
+            let fftBuf = context.makeSharedBuffer(length: 512 * floatStride),
+            let wavBuf = context.makeSharedBuffer(length: 2048 * floatStride)
+        else { throw VisualReviewError.bufferAllocationFailed }
+
+        let outDesc = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: context.pixelFormat,
+            width: width, height: height, mipmapped: false)
+        outDesc.usage = [.renderTarget, .shaderRead]
+        outDesc.storageMode = .shared
+        guard let outTex = context.device.makeTexture(descriptor: outDesc) else {
+            throw VisualReviewError.textureAllocationFailed
+        }
+
+        guard let cmdBuf = context.commandQueue.makeCommandBuffer() else {
+            throw VisualReviewError.commandBufferFailed
+        }
+
+        pipeline.render(
+            gbufferPipelineState: gbufferState,
+            features: &features,
+            fftBuffer: fftBuf,
+            waveformBuffer: wavBuf,
+            stemFeatures: .zero,
+            outputTexture: outTex,
+            commandBuffer: cmdBuf,
+            noiseTextures: nil,
+            iblManager: nil,
+            postProcessChain: nil,
+            presetFragmentBuffer3: nil
+        )
+
+        cmdBuf.commit()
+        cmdBuf.waitUntilCompleted()
+        guard cmdBuf.status == .completed else { throw VisualReviewError.renderFailed }
+
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        outTex.getBytes(&pixels, bytesPerRow: width * 4,
                          from: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0)
         return pixels
     }
@@ -729,4 +828,5 @@ private enum VisualReviewError: Error {
     case renderFailed
     case cgImageFailed
     case pngWriteFailed
+    case preconditionFailed(String)
 }
