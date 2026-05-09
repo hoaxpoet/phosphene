@@ -2,7 +2,21 @@
 
 This document contains structured Claude Code session prompts for each increment in Phase LM. Each prompt is self-contained: it provides context, explicit file lists, numbered tasks, done-when criteria, and shell verification commands. Paste each prompt into a Claude Code session as the starting message; do not include this file's surrounding meta-text.
 
-Prompts assume that Matt has signed off on the recommended decisions in `LUMEN_MOSAIC_DESIGN.md §3` (A.1 Lumen Mosaic, B.1 analytical backlight, C.2 ~50 cells, D.1 cell-quantized color, E.1 valence/arousal palette, F.1 slot 8 buffer, G.1 fixed camera, H.1 standalone preset). If Matt picked differently, adjust per the divergence before pasting.
+**Decisions in force (post-2026-05-09 design rewrite — see `LUMEN_MOSAIC_DESIGN.md §11 Revision History`):**
+
+- A.1 Lumen Mosaic
+- B.1 analytical agent contributions
+- C.2 ~50 cells across
+- **D.4 per-cell colour identity from `palette()` keyed on cell hash + audio time + mood** (replaces retired D.1)
+- **E.3 procedural palette via V.3 IQ cosine; mood shifts `(a, b, c, d)` continuously; no authored palette banks** (replaces retired E.1 + E.2)
+- F.1 slot 8 fragment buffer
+- G.1 fixed camera (panel oversize 1.50×)
+- H.1 standalone preset
+
+**Status of these prompts (2026-05-09):**
+
+- LM.0 / LM.1 / LM.2 / LM.3 have all shipped. Their prompts below are kept as **historical reference** — they describe the actual session prompts used at the time of execution. The LM.2 + LM.3 prompts pre-date the design rewrite, so they cite retired decisions (D.1 / E.1 / E.2) and produce code that has since been replaced.
+- LM.4+ prompts below reflect the post-pivot architecture (per-cell palette + procedural mood, no authored banks). When pasting, double-check the "Decisions in force" list above is still accurate at the time of execution.
 
 **Convention notes:**
 
@@ -34,6 +48,8 @@ The first Claude Code session (LM.0) verifies this setup is in place before star
 ---
 
 ## LM.0 — Infrastructure: fragment buffer slot 8 + Phase LM scaffolding
+
+> **Status: ✅ EXECUTED 2026-05-08 (commit `6388e881`).** Slot 8 binding wired in `RenderPipeline` (later widened in LM.2 to bind on both G-buffer and lighting passes — see [`docs/CLAUDE.md`](../CLAUDE.md) GPU Contract). The prompt below is kept as historical reference; the actual on-disk slot-8 binding contract has evolved past it.
 
 ```
 Context: I'm starting Phase LM (Lumen Mosaic), a new ray-march preset that uses pattern_glass on a full-screen panel as its primary visual surface, with audio-driven backlight behind. The design is in docs/presets/LUMEN_MOSAIC_DESIGN.md and the rendering contract is in docs/presets/Lumen_Mosaic_Rendering_Architecture_Contract.md. Read both before starting.
@@ -112,6 +128,8 @@ If you hit a blocker (e.g., the binding contract assumes uniform binding across 
 ---
 
 ## LM.1 — Minimum viable preset: panel + pattern_glass + static backlight
+
+> **Status: ✅ EXECUTED 2026-05-08 (commit `d1c9c7ba`; remediations `93521485` + `7efe1932`).** Glass panel + Voronoi cell relief + fbm8 frost + static warm-amber backlight all shipped to the catalog. The matID == 1 emission-dominated dispatch in `RayMarch.metal` is still the load-bearing lighting path used by LM.2 / LM.3. Prompt below is historical — the actual implementation is on disk.
 
 ```
 Context: LM.0 wired the fragment buffer slot 8. This increment lands the first version of Lumen Mosaic. No audio reactivity yet, no pattern engine. Just: a glass panel filling the camera frame, rendered with mat_pattern_glass, with a single static warm-amber backlight emitted through every cell.
@@ -210,6 +228,8 @@ Anti-patterns to avoid:
 ---
 
 ## LM.2 — Audio-driven 4-light backlight (continuous energy primary)
+
+> **Status: ⚠ EXECUTED 2026-05-09 (commits `66999ff4` + `71e3d72a`); VISUAL SCOPE REJECTED AT PRODUCTION REVIEW.** The 4-light cell-quantized backlight model + cream-baseline mood tint produced muted, gradient-blob output with no visible cells. Engine + GPU contract scaffolding (slot-8 binding wired into both G-buffer and lighting passes; agent dance math; mood smoothing via 5 s low-pass; `LumenPatternEngine` lifecycle on preset apply / track change) verified correct and reused at LM.3. **Substantive look re-targeted to LM.3** under the design rewrite (commit `7bf96319 [LM-DESIGN]`). The prompt below is historical — it cites the now-retired Decisions D.1 (cell-quantized backlight sample) and E.1 (cream-baseline mood tint), and instructs the implementer to write `lm_mood_tint` / `lm_sample_backlight_at` helpers that LM.3 deleted.
 
 ```
 Context: LM.1 produced a static warm-amber glass panel. This increment replaces the static backlight with 4 audio-driven light agents that move and shift color according to continuous-energy bands and mood. Pattern engine still not introduced — LM.4 will do that.
@@ -338,147 +358,113 @@ Anti-patterns to avoid:
 
 ---
 
-## LM.3 — Stem-direct routing + per-stem drift bounds
+## LM.3 — Per-cell palette + procedural mood + drop cream baseline
 
-```
-Context: LM.2 wired the 4-light backlight with FeatureVector-driven intensities and mood color. This increment promotes the routing to stem-direct (with D-019 fallback) and tightens each stem's drift bounds and drift personality so the panel "regions" are visibly distinct per stem.
-
-Mostly CPU-side work in LumenPatternEngine. No new shader work.
-
-Read first:
-- PhospheneEngine/Sources/Presets/LumenPatternEngine.swift (from LM.2)
-- docs/CLAUDE.md (StemFeatures struct layout, D-019 patterns)
-- docs/ARACHNE_V8_DESIGN.md (per-stem affinity patterns for inspiration)
-
-Files to edit:
-
-1. PhospheneEngine/Sources/Presets/LumenPatternEngine.swift
-   - Refactor light agent update to make the per-stem characteristics first-class:
-     * drums agent: snappy, fast drift (high arousal sensitivity), warm orange-red palette, drift bounds 0.25 r centered on (-0.6, 0.5).
-     * bass agent: slow heavy drift (low arousal sensitivity), deep-red palette, drift bounds 0.20 r centered on (-0.1, -0.5).
-     * vocals agent: cream/peach palette, drift bounds 0.30 r centered on (0.0, 0.0); drift speed gated by stems.vocals_energy_dev (vocals-only drift).
-     * other agent: cool teal palette, drift bounds 0.30 r centered on (0.5, 0.4); drift speed gated by stems.other_energy_rel.
-   - Use the D-019 fallback pattern explicitly: smoothstep(0.02, 0.06, totalStemEnergy) gates a mix between stem-direct and FeatureVector-proxy intensities. Reference VolumetricLithograph for the canonical implementation.
-   - Add per-stem hue-offset modulation: the mood_tint applied per light is base_hue + per_stem_hue_offset, where per_stem_hue_offset is a small (±15° HSV) correction so the four stems remain distinguishable even at identical mood.
-
-2. PhospheneEngine/Tests/PhospheneEngineTests/LumenPatternEngineTests.swift
-   - Add tests for per-stem drift bounds: with full-intensity input on a single stem for 30s, that light's position must remain within its bounded region.
-   - Add tests for D-019 warmup transition: at totalStemEnergy = 0.0, fallback active; at totalStemEnergy = 0.10, fully on stem-direct; intermediate values show the smoothstep transition.
-   - Add a test that the four base colors (drums / bass / vocals / other) under mood = (0,0) are at minimum 30° HSV apart, ensuring visual separability.
-
-3. docs/ENGINEERING_PLAN.md — append LM.3 entry.
-
-Numbered tasks:
-1. Read LumenPatternEngine.swift in detail.
-2. Refactor the four light agents into a per-stem first-class structure; preserve the LumenPatternState struct layout (do not change byte ordering — only the CPU update logic changes).
-3. Implement the D-019 silence fallback transition explicitly per VolumetricLithograph reference.
-4. Add per-stem hue offset to the mood_tint application.
-5. Author the new tests in LumenPatternEngineTests.swift.
-6. Run tests; confirm green.
-7. Capture LM.3 contact sheet at the six fixtures.
-8. Visual sanity check: HV-HA contact sheet should show four visibly distinct color regions (one per stem). At silence, all four regions are at the ambient floor; the panel reads coherent.
-9. Performance: p95 should be unchanged from LM.2 (≤ 2.5 ms at Tier 2). This increment is CPU-only.
-10. Commit `[LM.3] LumenPatternEngine: stem-direct routing with D-019 fallback and per-stem drift bounds`.
-
-Done when:
-- All four light agents follow stem-direct routing with documented D-019 fallbacks.
-- Drift bounds are visibly distinct per stem in the contact sheet.
-- LumenPatternEngineTests covers stem routing + D-019 warmup + drift bounds + color separability.
-- p95 unchanged.
-
-Verify:
-- swift test --package-path PhospheneEngine --filter LumenPatternEngineTests
-- swift test --package-path PhospheneEngine --filter PresetAcceptanceTests
-- swift test --package-path PhospheneEngine --filter PresetPerformanceTests
-
-Matt review:
-- HV-HA contact sheet must show four distinct colored regions. If they blur into one warm wash, the per-stem hue offsets are too small (or the lights are too close). Adjust either drift bounds or hue offsets in a small follow-up.
-- Side-by-side LM.2 vs LM.3 at LV-LA: the LM.3 version should read as quieter and more spatially separated (slow-drifting cool-tinted regions instead of LM.2's faster generic drift).
-```
+> **Status: ⏳ EXECUTED 2026-05-09 (commits `d17dcf4f` [LM.3] + `d8a31aee` [LM.3.1]); awaiting M7 review on real session.** This prompt block was substantially redesigned at execution time. The original LM.3 prompt (in this document's earlier revision) called for "stem-direct routing + per-stem drift bounds" — that work was actually done in LM.2 and proved insufficient. The post-pivot LM.3 (per Matt's 2026-05-09 design rewrite) shipped:
+>
+> - **Per-cell colour identity from `palette()` keyed on cell hash + audio time + mood (D.4).** Each Voronoi cell hashes to a deterministic per-cell phase; cells visibly cycle through hues over `accumulated_audio_time × kCellHueRate (0.15)` during energetic playback, freeze at silence.
+> - **Procedural palette via V.3 IQ cosine (E.3).** Mood smoothly shifts `(a, b, c, d)` parameters between cool/warm × subdued/vivid endpoints; per-track palette seed perturbs the result so two tracks at the same mood get distinct palette character.
+> - **Cream baseline retired.** `lm_mood_tint` + `lm_sample_backlight_at` deleted from LumenMosaic.metal. `lumenMoodTint` deleted from LumenPatternEngine.swift.
+> - **Backlight character (LM.3.1, commit `d8a31aee`).** `lm_cell_intensity` rewritten with a position-based static field (max-of-falloffs over agent positions × `kAgentStaticIntensity = 0.50`) plus audio-driven sum, floored at `kCellMinIntensity = 0.05`. `defaultAttenuationRadius` sharpened from 6 → 12 for spotlit lobes.
+> - **`LumenPatternState` extended 336 → 360 B.** Added `smoothedValence`, `smoothedArousal`, four `trackPaletteSeed{A,B,C,D}` fields. `setTrackSeed(_:)` and `setTrackSeed(fromHash:)` public APIs on `LumenPatternEngine`. App-layer wiring lives in `VisualizerEngine+Stems.resetStemPipeline(for:)` — derives an FNV-1a 64-bit hash from `title|artist`.
+>
+> See [`docs/presets/LUMEN_MOSAIC_DESIGN.md`](LUMEN_MOSAIC_DESIGN.md) §11 Revision History and the [`docs/presets/Lumen_Mosaic_Rendering_Architecture_Contract.md`](Lumen_Mosaic_Rendering_Architecture_Contract.md) revision history for the full architectural detail. The LM.3 contact sheet at [`docs/VISUAL_REFERENCES/lumen_mosaic/contact_sheets/LM.3/`](../VISUAL_REFERENCES/lumen_mosaic/contact_sheets/LM.3/) shows the visible cell quantization, vivid palette, mood-coupled palette character shift, and visible backlight gradient.
+>
+> **M7 review pending: real-session capture against the test playlist.** The harness contact sheet can show cell quantization + mood character + backlight gradient but cannot show time-evolution (cells cycling through hues during loud passages) or per-track seed variation (different palette character across tracks). Both need a 30+ second real-music capture. **Increment status stays ⏳ until that review approves the visual** — this is the recurring process error called out in the engineering plan: tests passing + harness frames rendering ≠ done; only Matt's real-session approval marks ✅.
 
 ---
 
 ## LM.4 — Pattern engine v1 (idle + radial_ripple + sweep)
 
-```
-Context: LM.3 produced 4 visually distinct stem-driven light regions. This increment adds the pattern engine — per-cell accent fields that emerge on bar boundaries and beat onsets, painting transient patterns across the panel.
+> **PRECONDITION: LM.3 must be M7-approved on a real session before this prompt runs.** Tests passing and harness contact sheets rendering are not sufficient. If LM.3 is still ⏳ in the engineering plan, do not paste this prompt.
 
-Three patterns ship in v1: idle (no-op), radial_ripple (expanding ring from an origin), sweep (left-to-right or vertical wave).
+```
+Context: LM.3 shipped per-cell colour identity from the procedural palette (each Voronoi cell carries its own deterministic hue; cells visibly cycle through palette during energetic playback; per-track seed gives different tracks distinct palette character). LM.3.1 added position-based backlight character (cells under an agent are brighter than cells in the gaps). What's missing: PATTERN BURSTS — transient brightness spikes that fire on bar boundaries and drum onsets, painting moving accents across the panel.
+
+LM.4 ships three pattern types: idle (no-op), radial_ripple (expanding ring of brightness from an origin), sweep (linear wavefront crossing the panel).
+
+CRITICAL ARCHITECTURAL NOTE — PATTERNS INJECT INTENSITY, NOT COLOUR (post-LM.3 redesign):
+- Each Voronoi cell already has its own colour from `lm_cell_palette()`. Patterns do NOT override that colour.
+- Patterns add to `cell_intensity` — i.e. they BRIGHTEN cells they cross. A radial_ripple firing on a "warm-red" cell flashes warm-red brighter; on a "cool-cyan" cell, it flashes cool-cyan brighter. The pattern colour comes for free from the cell's own palette identity.
+- This is a deliberate departure from the pre-pivot design (which had patterns inject their own colour and `mix(backlight, pattern_color, pattern_value)`). The pre-pivot architecture was retired with the cream baseline.
 
 Read first:
 - docs/presets/LUMEN_MOSAIC_DESIGN.md §4.4 (pattern engine)
-- docs/CLAUDE.md (FeatureVector.beat_phase01 / beats_until_next, MV-3b anticipation)
-- PhospheneEngine/Sources/Presets/LumenPatternEngine.swift
+- docs/presets/Lumen_Mosaic_Rendering_Architecture_Contract.md (Required uniforms section — `LumenPattern` struct layout is already on the GPU buffer at LM.2; LM.4 just promotes its `kindRaw` field from idle → live)
+- docs/CLAUDE.md (FeatureVector.barPhase01 — added in DSP.2 S9; this is what bar-boundary detection should use, NOT beat_phase01)
+- PhospheneEngine/Sources/Presets/Lumen/LumenPatternEngine.swift (the engine + struct + setTrackSeed APIs are all in place — LM.4 fills in the patterns slot)
+- PhospheneEngine/Sources/Presets/Shaders/LumenMosaic.metal (lm_cell_intensity is the integration point — patterns add to its sum)
 
 Files to create:
 
-1. PhospheneEngine/Sources/Presets/LumenPatterns.swift
-   - public enum LumenPatternKind: Int32 (idle, radialRipple, sweep, clusterBurst (LM.5), breathing (LM.5), noiseDrift (LM.5)).
-   - public struct LumenPattern (matches the layout in the rendering contract).
-   - public protocol LumenPatternEvaluator (CPU-side parameter generation; the per-cell evaluation lives in the shader).
-   - struct IdlePattern, RadialRipplePattern, SweepPattern conforming to LumenPatternEvaluator.
-   - Each pattern type's CPU side knows how to seed itself from a beat/bar event (origin from drum-onset uv, direction for sweep, color from mood, etc.).
+1. PhospheneEngine/Sources/Presets/Lumen/LumenPatterns.swift
+   - struct IdlePattern, RadialRipplePattern, SweepPattern producing `LumenPattern` snapshots.
+   - Each pattern type's CPU side knows how to seed itself from a beat/bar event (origin from drum-onset uv, direction for sweep). Color fields stay zero (LM.3 architecture: patterns don't carry colour).
+   - The `LumenPatternKind` enum is already declared on `LumenPatternEngine` (idle = 0, radialRipple = 1, sweep = 2, …); LM.4 just promotes radialRipple + sweep from "reserved values" to "live evaluators".
 
-2. PhospheneEngine/Tests/PhospheneEngineTests/LumenPatternsTests.swift
-   - Verify pattern lifecycle: spawn -> active -> retire after duration.
+2. PhospheneEngine/Tests/PhospheneEngineTests/Presets/LumenPatternsTests.swift
+   - Verify pattern lifecycle: spawn → active → retire after duration.
    - Verify radialRipple expansion: at t=0, radius=0; at t=duration, radius reaches panel edge.
-   - Verify sweep direction: random direction is unit-length; direction is stable across the pattern's lifetime.
+   - Verify sweep direction: direction is unit-length; direction is stable across the pattern's lifetime.
 
 Files to edit:
 
-3. PhospheneEngine/Sources/Presets/LumenPatternEngine.swift
-   - Add patterns: [LumenPattern] state (≤ 4 active).
+3. PhospheneEngine/Sources/Presets/Lumen/LumenPatternEngine.swift
+   - Promote `state.activePatternCount` from 0 (LM.3 placeholder) to ≥ 0 live patterns.
    - Update logic:
-     * Detect bar boundary: f.beat_phase01 wraps from > 0.9 to < 0.1 (rising-edge-of-sawtooth). Retire oldest pattern; spawn new one (random selection from active pattern bank with weights).
-     * Detect drum onset: stems.drums_beat rising edge > 0.3 with 100 ms debounce. Spawn a radialRipple regardless of active pattern count (push out the oldest; accept the displacement).
+     * **Bar-boundary detection (use barPhase01, NOT beat_phase01):** `f.barPhase01` wraps from > 0.9 to < 0.1 each downbeat. Retire oldest pattern; spawn a new one (random selection from {radialRipple, sweep}, mood-weighted). Per-bar deterministic hash so the same track is reproducible. **If `f.beatsPerBar` reports 0 or barPhase01 stays at 0 (reactive mode without an installed BeatGrid), fall back to beat-onset-edge bar inference: count rising-edge beats and treat every Nth beat as the bar boundary, where N = 4.** This keeps LM.4 useful for tracks that haven't been Spotify-prepared.
+     * **Drum onset detection:** `stems.drumsBeat` rising edge > 0.3 with 100 ms debounce. Spawn a `radialRipple` regardless of active pattern count (push out the oldest if at capacity). Origin uv = drums-agent's current position (seeded from where the drums lobe is brightest at onset time).
      * Update active patterns: advance phase; auto-retire patterns whose phase > 1.0.
-   - Snapshot all 4 patterns into LumenPatternState.
+   - Snapshot all 4 patterns (active + idle padding) into `LumenPatternState.patterns`.
 
 4. PhospheneEngine/Sources/Presets/Shaders/LumenMosaic.metal
-   - Add pattern evaluator helpers per design doc §4.2:
-     * evaluate_pattern_radial_ripple(uv, p, time) — Gaussian peak at radius = p.phase, σ proportional to 1 - p.phase (ring narrows as it expands).
-     * evaluate_pattern_sweep(uv, p, time) — narrow band at sweep_position = p.phase; intensity = exp(-distance²/sigma²).
-     * evaluate_pattern_idle(...) — returns 0.
-     * evaluate_active_patterns(uv, cell_phase, ps, time) — sum of all active pattern values, clamped to 1.0.
-     * pattern_color_at(uv, cell_phase, ps) — first-active-pattern's color, weighted by its intensity. (More sophisticated blending in LM.5.)
-   - Apply the result in sceneMaterial: backlight = mix(backlight, pattern_color, pattern_value × pattern_strength_uniform). pattern_strength_uniform comes from JSON (default 0.7).
+   - Add pattern evaluator helpers (per-pattern returns a scalar intensity contribution at the cell's centre uv):
+     * `lm_pattern_radial_ripple(cell_center_uv, p)` — Gaussian peak at radius = `p.phase × kPanelOversize`; σ proportional to `1 − p.phase` (ring narrows as it expands). Returns intensity in `[0, 1]`.
+     * `lm_pattern_sweep(cell_center_uv, p)` — narrow band centred at `sweep_position = p.phase × 2 − 1` along the sweep direction; intensity = `exp(−distance² / σ²)`. Returns intensity in `[0, 1]`.
+     * `lm_pattern_idle(p)` — returns 0.
+     * `lm_evaluate_active_patterns(cell_center_uv, lumen)` — sums up to `lumen.activePatternCount` per-pattern intensities, scaled by each pattern's `intensity` field, clamped to a documented ceiling so D-037 beat-response invariant holds.
+   - **Integration**: in `lm_cell_intensity`, after computing `total = static_max × kAgentStaticIntensity + audio_acc`, ADD `lm_evaluate_active_patterns(cell_center_uv, lumen) × kPatternBoost`. The cell's colour is unchanged (still from `lm_cell_palette()`); patterns just brighten their cells.
+   - **kPatternBoost** is a new file-scope constant — start at 1.0 (a peak ripple roughly doubles a cell's brightness) and tune in M7 review.
 
-5. docs/CLAUDE.md — document the pattern engine API and the LumenPatternState pattern layout.
+5. docs/CLAUDE.md — document the pattern engine API + `kPatternBoost` tuning constant.
 6. docs/ENGINEERING_PLAN.md — append LM.4 entry.
 
 Numbered tasks:
 1. Read all "Read first" docs.
-2. Author LumenPatterns.swift with enum + struct + 3 evaluators.
-3. Author LumenPatternsTests.swift with lifecycle + expansion + direction tests.
-4. Edit LumenPatternEngine.swift to manage active patterns array; implement bar-boundary and drum-onset triggers.
-5. Edit LumenMosaic.metal with the per-pattern evaluators.
+2. Author `LumenPatterns.swift` with the three pattern types.
+3. Author `LumenPatternsTests.swift` with lifecycle + expansion + direction tests.
+4. Edit `LumenPatternEngine.swift` to manage the active patterns array and implement bar-boundary (via `barPhase01`) + drum-onset triggers.
+5. Edit `LumenMosaic.metal` with the per-pattern evaluators and the integration into `lm_cell_intensity`.
 6. Run tests; confirm green.
-7. Capture LM.4 contact sheet at six fixtures + a beat-heavy 30-second sequence (key frames at 0/2/5/10/20s) to verify pattern emergence and decay across time.
-8. Performance: p95 ≤ 3.0 ms at Tier 2. If exceeded, profile pattern eval cost — likely culprit is per-pixel evaluation; consider hash-keyed cell-level caching (this is the cell_phase mechanism Matt's design doc anticipates).
+7. Capture LM.4 contact sheet at six fixtures + a beat-heavy 30-second sequence (key frames at 0 / 2 / 5 / 10 / 20s) to verify pattern emergence and decay across time.
+8. Performance: p95 ≤ 3.0 ms at Tier 2. If exceeded, profile pattern eval cost.
 9. Commit `[LM.4] LumenMosaic: pattern engine v1 (idle + radial_ripple + sweep)`.
 
 Done when:
 - Pattern engine spawns and retires patterns on bar / drum-onset events.
-- Patterns visibly emerge in contact sheets at beat-heavy fixtures.
-- Patterns at silence are inactive (or idle); panel reads as 4-light backlight only.
-- LumenPatternsTests + LumenPatternEngineTests green.
+- Patterns visibly emerge in real-session captures at beat-heavy moments — cells they cross flash brighter while keeping their per-cell palette colour.
+- Patterns at silence are inactive (panel reads as the LM.3.1 backlit cell field with no transient bursts).
+- D-037 beat response invariant holds (`kPatternBoost` chosen so peak pattern brightness ≤ 2× continuous + 1.0 — automated test).
 - p95 ≤ 3.0 ms at Tier 2.
+- **Increment status stays ⏳ until Matt reviews on a real session.** Same discipline as LM.3 — tests passing + harness frames rendering ≠ done.
 
 Verify:
-- swift test --package-path PhospheneEngine --filter LumenPatternsTests
-- swift test --package-path PhospheneEngine --filter LumenPatternEngineTests
-- swift test --package-path PhospheneEngine --filter PresetAcceptanceTests
-- swift test --package-path PhospheneEngine --filter PresetPerformanceTests
+- swift test --package-path PhospheneEngine --filter LumenPatterns
+- swift test --package-path PhospheneEngine --filter LumenPatternEngine
+- swift test --package-path PhospheneEngine --filter PresetAcceptance
+- swift test --package-path PhospheneEngine --filter PresetPerformance
 
 Matt review:
-- Beat-heavy 30s sequence: do drum onsets visibly produce ripples expanding from coherent origins? If origins look random, the stem-driven origin logic needs work.
-- Bar-boundary patterns: does the pattern noticeably "change" at bar boundaries? Or does the changeover feel arbitrary?
-- D-037 beat response invariant: contact sheet at beat-heavy must satisfy "beat response ≤ 2× continuous response + 1.0". If it fails, the pattern_strength_uniform is too high (default 0.7); reduce to 0.5 and re-evaluate.
+- Beat-heavy real-session capture: do drum onsets visibly produce ripples expanding from coherent origins? If origins look random, the stem-driven origin logic needs work.
+- Bar-boundary patterns: does the pattern noticeably "change" at bar boundaries on a Spotify-prepared track? Does the fallback (Nth-beat inference) feel coherent on a reactive-mode track?
+- D-037 beat response invariant: contact sheet at beat-heavy must satisfy "beat response ≤ 2× continuous response + 1.0". If it fails, `kPatternBoost` is too high; halve it and re-evaluate.
 
 Anti-patterns to avoid:
-- Do not let patterns become the primary motion driver (D-004). pattern_strength_uniform max should be 0.7; backlight is still primary.
+- **Do NOT make patterns inject their own colour.** Cells take their colour from `lm_cell_palette()`; patterns brighten cells they cross, full stop. Re-introducing a `pattern_color_at()` would resurrect the pre-pivot architecture that was retired.
+- Do not let patterns become the primary motion driver (D-004). The continuous backlight + per-cell palette cycling is primary; patterns are accent only.
 - Do not implement clusterBurst / breathing / noiseDrift in this increment. LM.5.
-- Do not let bar-boundary detection use absolute time thresholds (smoothstep on the sawtooth wrap is the right pattern; reading raw beat_phase01 < 0.1 fails on irregular meters).
+- **Do not use beat_phase01 for bar-boundary detection.** `f.barPhase01` (DSP.2 S9) is the authority. Beat-phase wraps every beat (4× per bar in 4/4); bar-phase wraps every bar. Confusing the two will produce 4× too many bar events.
+- Do not let bar-boundary detection use absolute time thresholds. Smoothstep on the sawtooth wrap is the right pattern; reading raw `barPhase01 < 0.1` fails on irregular meters.
 ```
 
 ---
@@ -487,43 +473,52 @@ Anti-patterns to avoid:
 
 The first four increments above are the path to a working audio-reactive Lumen Mosaic. The remaining increments are described at outline detail; expand each into a full prompt when its predecessor is reviewed and Matt has confirmed the trajectory.
 
-### LM.5 — Pattern engine v2 + (optional) silhouette occluders
+### LM.5 — Pattern engine v2 + (optional) per-stem hue affinity / silhouette occluders
 
-**Scope.** Add `clusterBurst`, `breathing`, `noiseDrift` patterns. Improve `pattern_color_at` to blend up to 2 active patterns weighted by phase. If Matt's LM.4 review judges the panel reads flat, also adopt Decision B.2 (silhouette occluder masks) at this point.
+**Scope.** Add `clusterBurst`, `breathing`, `noiseDrift` patterns (still injecting **intensity**, not colour — same architecture as LM.4). Allow up to 2 patterns to be simultaneously active when bar boundaries and drum onsets coincide.
+
+**Optional sub-decisions** (adopt only if LM.3 / LM.4 review identifies a need):
+
+- **Per-stem hue affinity (Decision E.b).** Each agent's intensity contribution to a cell could be weighted by the cell's hue similarity to the agent's "preferred" hue family (drums → warm reds, bass → deep reds, vocals → peach, other → cool teal). This would give the panel a "different stems own different cell zones" character without quadrant-locking. Adopt only if LM.3 / LM.4 review judges the unified-palette feel undifferentiated stem-wise. If adopted, file a `D-LM-hue-affinity` decision entry.
+- **Silhouette occluder masks (Decision B.2).** If the panel still reads flat / "blob-y" after pattern engine v2 lands, add 1–3 simple silhouette shapes (rectangles, ellipses, organic blobs from `worley_fbm`) at notional mid-depth that attenuate light contribution to cells whose projected centre falls behind the silhouette. Adopt only if LM.4 review judges the panel reads flat without silhouettes. If adopted, file a `D-LM-silhouettes` decision entry.
 
 **Estimated sessions:** 2.
 
-**Prerequisites for prompt expansion:** Matt's LM.4 review notes (does the preset feel sparse at idle? do bar-boundary changes feel meaningful? is silhouette work justified?).
+**Prerequisites for prompt expansion:** Matt's LM.4 review notes (does the preset feel sparse at idle? do bar-boundary changes feel meaningful? are stems differentiated enough? is silhouette work justified?).
 
-### LM.6 — Fidelity polish (micro-frost, specular, cell density, aspect-ratio invariant)
+### LM.6 — Fidelity polish (micro-frost, specular, cell density, palette tuning, aspect-ratio invariant)
 
-**Scope.** A/B test cell density (scale 24 vs 30 vs 36) against `04_specular_pattern_glass_closeup.jpg`. Tune frost amplitude (current 0.10) and frost scale (current 80.0) for specular sparkle that matches the reference's micro-character. Optionally add chromatic aberration on cell-edge ridges (rubric "strongly preferred 4 — chromatic aberration"). Tune `pattern_strength_uniform` based on real-track session recording. **Aspect-ratio invariant: produce contact sheets at 16:9, 4:3, and 21:9 — verify the panel edge is never visible in any frame at any aspect ratio. If 21:9 reveals panel edges at corners, increase `kPanelOversize` in LumenMosaic.metal (note: this changes panel SDF only; cell density stays the same per contract §P.1).**
+**Scope.** A/B test cell density (scale 24 vs 30 vs 36) against ref `04`. Tune frost amplitude (current `kFrostAmplitude = 0.0008f`) and frost scale (current `kFrostScale = 80.0f`) for specular sparkle that matches the reference's micro-character. **Tune palette parameters** against real-track session recording — adjust the cool/warm × subdued/vivid × unison/offset × complementary/analogous endpoint vectors so each mood quadrant produces a distinctive palette character. **Tune `kCellHueRate`** (the master cycle-speed knob — LM.3 default 0.15) based on what feels right at 90 / 120 / 140 BPM. **Tune backlight contrast knobs** (`kAgentStaticIntensity`, `kCellMinIntensity`, `defaultAttenuationRadius`) if LM.3.1 review showed the bright/dim contrast wrong. Optionally add chromatic aberration on cell-edge ridges (rubric "strongly preferred 4 — chromatic aberration"). **Aspect-ratio invariant: produce contact sheets at 16:9, 4:3, and 21:9 — verify the panel edge is never visible in any frame at any aspect ratio. If 21:9 reveals panel edges at corners, increase `kPanelOversize` in LumenMosaic.metal (note: this changes panel SDF only; cell density stays the same per contract §P.1).**
 
 **Estimated sessions:** 1–2.
 
-**Prerequisites for prompt expansion:** LM.5 contact sheets + a recorded session against ≥ 3 real tracks Matt nominates (one ambient, one downtempo, one beat-heavy).
+**Prerequisites for prompt expansion:** LM.5 contact sheets + a recorded session against ≥ 3 real tracks Matt nominates (one ambient / downtempo, one mid-energy, one beat-heavy / dance).
 
 ### LM.7 — Beat accent layer + vocal hotspot
 
-**Scope.** Promote drum-onset ripples to a polished accent: rise time, peak amplitude, trail decay tuned for cross-genre legibility. Add bar-line shimmer (a low-amplitude sweep across the panel at bar boundaries). Add vocal hotspot: when `stems.vocals_energy_dev > threshold`, a small bright cluster emerges near the vocals light agent — distinct from the radial ripple.
+**Scope.** Promote drum-onset ripples (LM.4 baseline) to a polished accent: rise time, peak amplitude, trail decay tuned for cross-genre legibility. Add bar-line shimmer (a low-amplitude `sweep` across the panel at bar boundaries — uses the existing pattern system). Add vocal hotspot: when `stems.vocals_energy_dev > threshold`, a small bright cluster emerges near the vocals agent's current position — distinct from the radial ripple.
 
 **Estimated sessions:** 1.
 
-### LM.8 — Mood-quadrant palette banks (Decision E.2 promotion)
+### ~~LM.8 — Mood-quadrant palette banks (Decision E.2)~~
 
-**Scope.** Author 4 palette sets (HV-HA, HV-LA, LV-HA, LV-LA), each containing 4–6 colors that the lights and patterns draw from. Replace E.1's per-light-base × mood-tint with a quadrant-blended palette lookup. Session-recording iteration on the mood plane to tune perceived character per quadrant. Add a `D-LM-palette-banks` decision entry.
-
-**Estimated sessions:** 2.
-
-**Prerequisites for prompt expansion:** Matt's LM.7 review + a curated set of 8–12 reference tracks spanning the mood plane.
+**Status: RETIRED 2026-05-09.** Decision E.2 (4 hand-authored palette banks crossfaded by mood quadrant) was rejected during the LM.3 design pivot on monotony grounds (Matt 2026-05-09: "*Why are there four hand-picked palettes — this will lead to a very monotonous preset?*"). The procedural palette via V.3 IQ cosine `palette()` (Decision E.3) shipped at LM.3 instead and provides infinite palette character variation through (a) continuous mood interpolation across the `(a, b, c, d)` parameter space and (b) per-track seed perturbation. There is no LM.8 increment.
 
 ### LM.9 — Certification
 
-**Scope.** Final pass: rubric verification (mandatory 7/7, expected ≥ 2/4, strongly preferred ≥ 1/4); `PresetAcceptanceTests` regression; `PresetRegressionTests` golden hash registration via `UPDATE_GOLDEN_SNAPSHOTS=1`; `PresetPerformanceTests` p95 + p99 + max; soak harness 60-second captures across all fixtures; KNOWN_ISSUES.md sweep. Set `certified: true`. Update RELEASE_NOTES_DEV.md.
+**Scope.** Final pass: rubric verification (mandatory 7/7, expected ≥ 2/4, strongly preferred ≥ 1/4); `PresetAcceptanceTests` regression; `PresetRegressionTests` golden hash registration via `UPDATE_GOLDEN_SNAPSHOTS=1`; `PresetPerformanceTests` p95 + p99 + max; soak harness 60-second captures across all fixtures; `KNOWN_ISSUES.md` sweep. Set `certified: true`. Update `RELEASE_NOTES_DEV.md`.
+
+**LM.9-specific gates added at the design rewrite:**
+
+- **Vividness gate** (rendering contract §Certification fixtures, LM.3+): every fixture except silence must produce per-cell colour values where the dominant cells have at least one channel `< 0.30` AND another channel `> 0.70` in linear space pre-tone-map. The silence fixture has the same requirement applied to held cell colours. Catches accidental retain of any pastel / cream-haze formula. Automated check, runs against LM.9 contact sheets.
+- **Distinct-neighbour gate**: sample 50 random cell-centre uvs in any non-silence frame; the colour distribution must span at least 1/3 of the palette range. Verifies per-cell hash + palette is producing distinct hues, not a smooth field. Catches regressions to the LM.2-style smooth-blob failure mode.
+- **No-cream gate**: no fixture frame should have a dominant pixel value within ε of `(0.95, 0.85, 0.75)` (the retired LM.2 cream-haze region). Catches accidental retain of the old `mix(cream, hue, sat)` pattern.
+- **Time-evolution gate**: capture two frames 3 s apart at the same fixture under simulated `accumulated_audio_time` advance; cell colours must visibly differ in non-silence fixtures. Verifies `kCellHueRate` is producing the expected cycling.
+- **Per-track distinctiveness**: capture the same fixture with two different `setTrackSeed` perturbations; the resulting palette character must visibly differ.
 
 **Estimated sessions:** 1.
 
-**Prerequisites for prompt expansion:** All preceding increments green; Matt's M9 review against the reference image and the curated track set is positive.
+**Prerequisites for prompt expansion:** All preceding increments green; Matt's M9 review against ref `04` (cell + frost detail) + ref `05` (palette character) + the curated track set is positive.
 
 ---
 
@@ -535,28 +530,32 @@ Every increment from LM.1 onward must run `PresetPerformanceTests` and record p5
 
 ### D-026 / D-019 enforcement
 
-Every audio-routing edit must be reviewed by `grep -n 'f\.bass[^_]\|f\.mid[^_]\|f\.treble[^_]' PhospheneEngine/Sources/Presets/Shaders/LumenMosaic.metal`. The grep must return zero matches; raw band reads are an anti-pattern (D-026). The same grep against `LumenPatternEngine.swift` should also be empty (CPU side uses the same deviation primitives via FeatureVector accessors).
+Every audio-routing edit must be reviewed by `grep -n 'f\.bass[^_]\|f\.mid[^_]\|f\.treble[^_]' PhospheneEngine/Sources/Presets/Shaders/LumenMosaic.metal`. The grep must return zero matches; raw band reads are an anti-pattern (D-026). The same grep against `LumenPatternEngine.swift` should also be empty (CPU side uses the same deviation primitives via FeatureVector accessors). Note: at LM.3 the only remaining `f.treble` read is the FV fallback path for the "other" agent's intensity — a documented exception that lives in `computeIntensity` and is consumed during the brief stem-warmup window only.
 
-### Matt-review boundaries
+### Matt-review boundaries — increment status discipline
 
-Phase boundary contact sheets are deliverables, not nice-to-haves. Each increment from LM.1 onward must produce contact sheets at all six fixtures (silence / steady / beat-heavy / sustained-bass / HV-HA / LV-LA) before the increment is considered done. The contact sheet is what Matt reviews; without it, an increment cannot be signed off.
+Every increment from LM.1 onward must produce contact sheets at the documented certification fixtures (silence / steady / beat-heavy / sustained-bass / HV-HA / LV-LA) before the increment can be considered for completion. **An increment is ⏳ until Matt approves it on a real-music session — not when tests pass and harness frames render.** Recurring process error noted at LM.2 + LM.3: marking ✅ on commit landing, then watching the visual scope get rejected at production review. Going forward, the engineering plan's status field stays ⏳ until Matt's real-session sign-off.
 
 ### Documentation keep-up
 
-CLAUDE.md, DECISIONS.md, and ENGINEERING_PLAN.md are updated incrementally — every increment adds at least one paragraph somewhere. The accumulated diff at LM.9 should be a complete, self-contained snapshot of the preset's API contracts, decision history, and increment ledger. Documentation drift is silent regression; do not let it accumulate.
+CLAUDE.md, DECISIONS.md, and ENGINEERING_PLAN.md are updated incrementally — every increment adds at least one paragraph somewhere. The accumulated diff at LM.9 should be a complete, self-contained snapshot of the preset's API contracts, decision history, and increment ledger. Documentation drift is silent regression; do not let it accumulate. **This includes this prompts document** — when an increment ships under a different design from what the prompt describes, revise the prompt to match (or mark it historical with a clear pointer to the actual implementation).
 
 ### Anti-pattern audit
 
 Before LM.9, run a final audit:
 
-- No raw `f.bass` / `f.mid` / `f.treble` reads in LumenMosaic.metal or LumenPatternEngine.swift. Use deviation primitives.
-- No `smoothstep(0.22, 0.32, f.bass)` style absolute-threshold gates. Use D-026 deviation patterns.
-- No hardcoded BPM assumptions. Use `f.beat_phase01` / `stems.drums_beat` as authority.
-- No camera motion. Camera position is JSON-fixed (Decision G.1).
-- No SDF deformation from audio. `sceneSDF` is audio-independent (D-020).
-- No second-bounce ray tracing. Backlight is analytical (Decision B.1; B.2 if adopted).
-- No reproducing the reference image's content (this is for guidance; the preset is original work).
-- **Panel edges never visible.** Sweep all certification contact sheets (LM.9 fixtures × 16:9 / 4:3 / 21:9 aspect ratios). The matID == 0 (background / void) channel must be empty in every frame. Per Decision G.1 + contract §P.1.
-- **Beat-locked dance is co-primary, not deferred.** `LumenPatternEngine.update` must include the `beat_phase01`-locked oscillation term in agent position composition (contract §P.4). Verify by inspecting the position update path in LumenPatternEngine.swift and matching against §P.4 pseudocode.
+- **No raw `f.bass` / `f.mid` / `f.treble` reads in LumenMosaic.metal or LumenPatternEngine.swift.** Use deviation primitives. The single LM.3 exception (`f.treble × 1.4` as the other-agent FV fallback during stem warmup) must be documented inline; no other raw reads.
+- **No `smoothstep(0.22, 0.32, f.bass)` style absolute-threshold gates.** Use D-026 deviation patterns.
+- **No hardcoded BPM assumptions.** Use `f.beat_phase01` / `f.barPhase01` / `stems.drumsBeat` as authority.
+- **No camera motion.** Camera position is JSON-fixed (Decision G.1).
+- **No SDF deformation from audio.** `sceneSDF` is audio-independent (D-020).
+- **No second-bounce ray tracing.** Backlight is analytical (Decision B.1; B.2 if adopted at LM.5).
+- No reproducing the reference image's content (the references are for guidance; the preset is original work).
+- **Panel edges never visible.** Sweep all certification contact sheets (LM.9 fixtures × 16:9 / 4:3 / 21:9 aspect ratios). The `matID == 0` (background / void) channel must be empty in every frame. Per Decision G.1 + contract §P.1.
+- **Beat-locked dance is co-primary, not deferred.** `LumenPatternEngine._tick` must include the `beat_phase01`-locked oscillation term in agent position composition (contract §P.4). Verify by inspecting the position update path in `LumenPatternEngine.swift` and matching against §P.4 pseudocode.
+- **No cream baseline / pastel pull.** No `mix(cream, hue, sat)` formula anywhere in `LumenMosaic.metal` or `LumenPatternEngine.swift` (the LM.1/LM.2 anti-pattern that produced muted output, retired at LM.3 — `lm_mood_tint`, `lm_sample_backlight_at`, and `lm_backlight_static` were deleted, do not re-introduce).
+- **Per-cell colour identity stays.** `sceneMaterial` must call `lm_cell_palette(cell_id, accumulated_audio_time, lumen)` keyed on the per-cell hash. Replacing this with a per-pixel sample (LM.2-era D.1) would resurrect the smooth-gradient-blob failure mode.
+- **Patterns inject intensity, not colour (LM.4+).** `lm_evaluate_active_patterns` must return a scalar `[0, 1]` intensity contribution; cells take their colour from `lm_cell_palette()`, not from any per-pattern colour field. Re-introducing `pattern_color_at()` and `mix(backlight, pattern_color, ...)` would resurrect the pre-pivot architecture.
+- **Vividness gate at certification.** Every non-silence fixture must produce dominant cell colours with at least one channel `< 0.30` AND another channel `> 0.70` in linear space. Catches any accidental retreat to muted output.
 
 Pass: file `LM-9-audit-passed.txt` in `docs/VISUAL_REFERENCES/lumen_mosaic/` listing each check, the grep / inspection used, and the result.
