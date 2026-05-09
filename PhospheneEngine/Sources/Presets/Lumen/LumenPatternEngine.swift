@@ -303,8 +303,13 @@ public final class LumenPatternEngine: @unchecked Sendable {
     public static let defaultAmbientFloorIntensity: Float = 0.04
 
     /// Default falloff coefficient — `1 / (1 + r² × k)` half-falloff at r ≈ √(1/k).
-    /// k = 6 → half at r ≈ 0.41 uv, matching the per-stem base spread.
-    public static let defaultAttenuationRadius: Float = 6.0
+    /// LM.3.1 sharpened from LM.2's 6.0 → 12.0 (half at r ≈ 0.29 instead
+    /// of 0.41) to produce more spotlit backlight character. With softer
+    /// falloff, cells equidistant from multiple agents read brighter than
+    /// cells under a single agent (geometric overlap), which inverted the
+    /// "light from behind" intuition. Sharper falloff makes each agent's
+    /// lobe distinct.
+    public static let defaultAttenuationRadius: Float = 12.0
 
     /// Stem agent ordering (matches contract §P.2 base-position table).
     /// Index 0 = drums, 1 = bass, 2 = vocals, 3 = other.

@@ -120,13 +120,24 @@ constant float kReliefBandRadius = 0.02f;
 /// sub-cell micro-texture, not as a competing macro pattern.
 constant float kFrostScale = 80.0f;
 
-/// Silence floor: minimum cell intensity. Ensures cells stay vibrant at
-/// silence (Matt 2026-05-09: "cells freeze at whatever colors they had"
-/// — the panel doesn't fade to grey or cream, it just holds, brightness
-/// floored at this value so cells stay coloured even with all agents at
-/// zero intensity). 0.55 produces clearly-coloured cells while leaving
-/// headroom for agent contributions to push above it during active music.
-constant float kSilenceIntensity = 0.55f;
+/// Static-light-field magnitude (LM.3.1). Each agent's POSITION (not its
+/// audio-driven intensity) creates a permanent light pool around it via
+/// `falloff = 1 / (1 + r² × attenuationRadius)`. Cells under an agent see
+/// a strong static field; cells in the gaps between agents see a weak one.
+/// This is the **backlight character** — cells aren't uniformly painted;
+/// the panel reads as "lit from behind by 4 point sources." 0.50 puts
+/// near-agent cells at half brightness from position alone (audio adds on
+/// top); corners can drop to ~0.05 even before the safety floor kicks in.
+constant float kAgentStaticIntensity = 0.50f;
+
+/// Absolute minimum cell intensity. Catches cells in dead zones (far from
+/// every agent) so they don't render as black; well below
+/// `kAgentStaticIntensity` so the position-driven light field is the
+/// dominant variation source. Per Matt 2026-05-09: silence rests — cells
+/// hold their colours, but the panel can dim into dead zones (this is
+/// part of the backlight character — it's not supposed to be uniformly
+/// lit).
+constant float kCellMinIntensity = 0.05f;
 
 /// Per-cell hue cycle rate (LM.3 / Decision D.4). Cells cycle through the
 /// procedural palette as `accumulated_audio_time` advances. Larger values
@@ -204,23 +215,43 @@ static inline float2 lm_camera_tangents(constant SceneUniforms& s) {
     return float2(yFovTan * aspect, yFovTan) * kFocalDist;
 }
 
-/// Sum the four light-agent contributions at a cell's centre uv → scalar
-/// brightness. LM.3 reframe (Decision D.4): agents drive cell INTENSITY
-/// only; cell colour comes from `lm_cell_palette()` keyed on cell hash.
-/// Floored at `kSilenceIntensity` so cells stay vivid at silence (the
-/// palette colour multiplied by this floor is still saturated; the floor
-/// doesn't fade colour, it just keeps brightness above black).
+/// Compute the cell's scalar brightness — the backlight character (LM.3.1).
+///
+/// Two contributions:
+///
+/// 1. **Static field** (`static_max × kAgentStaticIntensity`) — driven by
+///    agent POSITIONS only, not intensities. The maximum-falloff agent
+///    determines the brightness; this gives spotlit character (cells under
+///    an agent are brighter than cells equidistant from all agents). At
+///    silence this creates the always-on backlight — cells under an agent
+///    are clearly brighter than cells in the gaps between agents.
+///
+/// 2. **Audio field** (`audio_acc`) — sum over agents of `intensity ×
+///    falloff`. Music-driven brightness adds on top of the static field.
+///    Multiple stems can each contribute additively to the same cell.
+///
+/// Floored at `kCellMinIntensity` to catch the deepest dead-zone cells.
+///
+/// Why max-of-falloffs for the static field, not sum: with 4 agents
+/// spread across the panel, summing falloffs gives the geometric centre
+/// (all agents at medium distance) higher static brightness than cells
+/// under a single agent — backwards. Max-of-falloffs gives the cleaner
+/// "this cell is in this agent's lobe" character.
 static inline float lm_cell_intensity(float2 cell_center_uv,
                                       constant LumenPatternState& lumen) {
-    float acc = 0.0f;
+    float static_max = 0.0f;
+    float audio_acc  = 0.0f;
     int agentCount = min(lumen.activeLightCount, 4);
     for (int i = 0; i < agentCount; ++i) {
         LumenLightAgent a = lumen.lights[i];
         float2 d = cell_center_uv - float2(a.positionX, a.positionY);
         float r2 = dot(d, d) + a.positionZ * a.positionZ + 1.0e-4f;
-        acc += a.intensity / (1.0f + r2 * a.attenuationRadius);
+        float falloff = 1.0f / (1.0f + r2 * a.attenuationRadius);
+        static_max = max(static_max, falloff);
+        audio_acc  += a.intensity * falloff;
     }
-    return max(acc, kSilenceIntensity);
+    float total = static_max * kAgentStaticIntensity + audio_acc;
+    return max(total, kCellMinIntensity);
 }
 
 /// Compute the cell's palette sample (Decision D.4 / E.3). Per-cell hash
