@@ -1,12 +1,14 @@
 # Lumen Mosaic Rendering Architecture Contract
 
+**Status:** Active. Revised 2026-05-09 alongside the LM.3 design pivot. This revision updates Decisions D and E (per-cell colour identity + procedural palette), the `sceneMaterial` D-021 signature usage, the `LumenPatternState` layout (adds smoothed mood scalars used by `palette()` parameter interpolation), and the certification fixtures (vivid-not-muted explicit). All other contract sections (panel sizing §P.1, agent bounds §P.2, agent sampling §P.3 reframed, the dance §P.4, slot 8 binding) carry forward unchanged. See §Revision History.
+
 ## Purpose
 
 This contract defines the required rendering architecture for Lumen Mosaic. It translates the design spec into implementation constraints, pass responsibilities, debug outputs, acceptance gates, and sequencing rules.
 
 This file is authoritative for implementation. `LUMEN_MOSAIC_DESIGN.md` remains authoritative for visual intent and creative decisions.
 
-This contract assumes the recommended decisions in `LUMEN_MOSAIC_DESIGN.md §3`: A.1 (Lumen Mosaic), B.1 (analytical backlight), C.2 (~50 cells across), D.1 (cell-quantized color), E.1 (valence/arousal hue mod, palette banks deferred to LM.8), F.1 (slot 8 fragment buffer), G.1 (fixed camera), H.1 (standalone preset). If Matt picks differently, this contract requires revision.
+**Decisions in force (LM.3+):** A.1 (Lumen Mosaic), B.1 (analytical agent contributions), C.2 (~50 cells across), **D.4 (per-cell colour identity from `palette()` keyed on cell hash + audio time + mood)**, **E.3 (procedural palette via V.3 IQ cosine `palette()`; mood shifts `(a, b, c, d)` continuously; no authored palette banks)**, F.1 (slot 8 fragment buffer), G.1 (fixed camera, panel oversize 1.50×), H.1 (standalone preset). LM.0 / LM.1 / LM.2 shipped under D.1 / E.1; that scaffolding is replaced at LM.3 by D.4 / E.3.
 
 ## Required passes
 
@@ -47,22 +49,42 @@ Lumen Mosaic cannot be certified if any of the following are missing or non-func
 
 ## sceneSDF / sceneMaterial signatures
 
-Per D-021 (DECISIONS.md). Lumen Mosaic implementations:
+Per D-021 + LM.1 + LM.2 extensions (DECISIONS.md). The current full signature, shared across every ray-march preset:
 
 ```metal
-float sceneSDF(float3 p, constant FeatureVector& f, constant SceneUniforms& s, constant StemFeatures& stems);
-void  sceneMaterial(float3 p, int matID, constant FeatureVector& f, constant SceneUniforms& s,
-                    thread float3& albedo, thread float& roughness, thread float& metallic);
+float sceneSDF(float3 p,
+               constant FeatureVector& f,
+               constant SceneUniforms& s,
+               constant StemFeatures& stems);
+
+void  sceneMaterial(float3 p, int matID,
+                    constant FeatureVector& f,
+                    constant SceneUniforms& s,
+                    constant StemFeatures& stems,
+                    thread float3& albedo,
+                    thread float& roughness,
+                    thread float& metallic,
+                    thread int& outMatID,                        // LM.1 / D-LM-matid
+                    constant LumenPatternState& lumen);          // LM.2 / D-LM-buffer-slot-8
 ```
 
-The shader **also** must define an emission-output path. The deferred PBR pipeline writes albedo to G-buffer and computes lit color from albedo + lights + IBL. Lumen Mosaic's color, however, is dominated by emission, not albedo. Two options:
+The shader **also** must define an emission-output path. The deferred PBR pipeline writes albedo to G-buffer and computes lit color from albedo + lights + IBL. Lumen Mosaic's color is emission-dominated:
 
-- **Option α (preferred)** — write the backlight value to the G-buffer's albedo channel and add a flag (a unique materialID for "emission-dominated") that causes the lighting pass to multiply albedo with a high gain (e.g., 4–8×) instead of running the full Cook-Torrance dielectric BRDF. Materially this re-purposes the existing G-buffer layout without schema changes; we just declare matID = 1 as "emission-dominated dielectric" for this preset and adjust the lighting fragment to handle it.
-- **Option β** — extend G-buffer with an emission lane. Requires a new MTLPixelFormat allocation and changes to `RayMarchPipeline.swift`. Heavier infrastructure work.
+- **matID == 1 (chosen at LM.1, kept at LM.3)** — write the backlight value to the G-buffer's albedo channel; the lighting pass multiplies by `kLumenEmissionGain (4.0)` and skips Cook-Torrance + screen-space shadows (`raymarch_lighting_fragment` matID == 1 branch). LM.3 keeps the same dispatch — what changes is *what value is written to albedo*.
 
-**Recommendation: Option α.** No infrastructure change; the matID dispatch in the lighting pass already exists (see KineticSculpture's per-material dispatch). One new matID + a few lines in the lighting fragment.
+**LM.3 sceneMaterial responsibilities (D.4):**
 
-If the lighting pass cannot accommodate Option α (Matt or Claude Code finds a blocker during LM.1), fall back to Option β, but document the cost in `DECISIONS.md` (a new `D-LM-α` entry).
+1. Compute `panel_uv = p.xy / s.cameraTangents.xy` (panel-face normalised coordinate).
+2. Run `voronoi_f1f2(panel_uv, kCellDensity)` to obtain the cell's `id` (deterministic hash) and `pos` (cell-centre uv).
+3. Derive per-cell phase: `cell_t = float(v.id & 0xFFFF) / 65535.0`.
+4. Compute palette phase: `phase = cell_t + f.accumulated_audio_time × kCellHueRate + lumen.smoothedValence × 0.10`.
+5. Compute palette parameters by interpolating between `kPaletteACool` / `kPaletteAWarm` etc. via `lumen.smoothedValence` and `lumen.smoothedArousal`.
+6. Sample the palette: `cell_hue = palette(phase, a, b, c, d)` (V.3 `Sources/Presets/Shaders/Utilities/Color/Palettes.metal`).
+7. Compute cell intensity by analytical sum over the four agents at `pos` (LM.2 §P.3 formula, unchanged).
+8. Floor intensity at `kSilenceIntensity` (D-019 silence fallback — cells stay coloured at silence).
+9. Write `albedo = clamp(cell_hue × cell_intensity, 0.0, 1.0)`, `outMatID = 1`.
+
+The `lumen.smoothedValence` / `lumen.smoothedArousal` fields are **new in LM.3** (see §Required uniforms); the engine already maintains 5 s smoothed mood values, the contract just exposes them on the GPU struct. The agent `colorR/G/B` fields stay on the GPU struct for ABI continuity but are **unused by LM.3 sceneMaterial** (reserved for LM.5+ per-stem hue affinity if adopted).
 
 ## Panel sizing, light agent bounds, and the dance
 
@@ -106,24 +128,27 @@ agent.position.xy = clamp(agent.position.xy, float2(-kAgentInset), float2(kAgent
 
 These are derived from the reference image's perceived light source positions and are deliberately offset from the frame center to give the panel a sense of multiple distinct light sources rather than one diffuse glow.
 
-### §P.3 Light agent emission sampling
+### §P.3 Light agent intensity sampling (LM.3 reframed)
 
-For Decision D.1 (cell-quantized color), the cell's color is computed from the analytical sum of N agent emissions sampled at the **cell center uv**, not at the per-pixel uv:
+Under D.4, the agents drive **per-cell intensity**, not per-cell colour. Per-cell colour comes from the procedural `palette()` sample keyed on cell hash + audio time + mood (sceneMaterial step 4–6). The agent loop produces a scalar brightness per cell:
 
 ```metal
-float2 cell_center_uv = voronoi.f1.pos / kCellScale;   // cell center in panel-face uv
+float2 cell_center_uv = voronoi.pos;   // cell center in panel-face uv (V.3 Voronoi.metal contract)
 
-float3 backlight = float3(0.0);
-for (uint i = 0; i < lumen.light_count; i++) {
+float cell_intensity = 0.0;
+int agentCount = min(lumen.activeLightCount, 4);
+for (int i = 0; i < agentCount; ++i) {
     LumenLightAgent a = lumen.lights[i];
-    float2 d = cell_center_uv - a.position;
-    float r2 = dot(d, d) + 1e-4;
-    float falloff = a.intensity / (1.0 + r2 * a.falloff_k);    // tunable per agent
-    backlight += a.color * falloff;
+    float2 d = cell_center_uv - float2(a.positionX, a.positionY);
+    float r2 = dot(d, d) + a.positionZ * a.positionZ + 1.0e-4;
+    cell_intensity += a.intensity / (1.0 + r2 * a.attenuationRadius);
 }
+cell_intensity = max(cell_intensity, kSilenceIntensity);   // D-019 silence floor
 ```
 
-The backlight is computed once per cell (cell-coherent) and used for all pixels within the cell — this is what gives Lumen Mosaic its "stained-glass" character vs. the per-pixel TV-static failure mode.
+The intensity is computed once per cell (cell-coherent) and multiplies the per-cell `cell_hue` from `palette()`. This preserves the cell-quantized character (every pixel in a cell shares one colour) while delivering visible cell identity (every cell has its own hue from the palette). Adjacent cells with similar `cell_t` get adjacent palette samples; distant cells can land on opposite sides of the palette wheel.
+
+**Why agents drive intensity, not colour (LM.3 reframe).** The LM.2 implementation summed `a.color × falloff` per agent and got a smoothly-varying RGB field — quantizing it per cell technically worked but produced visually identical cells (production review 2026-05-09). Driving per-cell colour from a deterministic per-cell hash sidesteps the smooth-field problem: cells differ because their hashes differ, not because they sample different points on a smooth field.
 
 ### §P.4 The dance — `beat_phase01`-locked agent oscillation
 
@@ -225,15 +250,19 @@ public struct LumenPattern {
 public struct LumenPatternState {
     public var lights: (LumenLightAgent, LumenLightAgent, LumenLightAgent, LumenLightAgent)  // 4 × 32 = 128 B
     public var patterns: (LumenPattern, LumenPattern, LumenPattern, LumenPattern)            // 4 × 48 = 192 B
-    public var activeLightCount: Int32     // 4 B
-    public var activePatternCount: Int32   // 4 B
-    public var ambientFloorIntensity: Float  // 4 B
-    public var pad0: Float = 0             // 4 B
-    // Total: 336 B.
+    public var activeLightCount: Int32      // 4 B
+    public var activePatternCount: Int32    // 4 B
+    public var ambientFloorIntensity: Float // 4 B  (LM.2 D-019 floor; superseded by kSilenceIntensity at LM.3)
+    public var smoothedValence: Float       // 4 B  (LM.3 — 5 s low-pass for palette `(a, d)` interpolation)
+    public var smoothedArousal: Float       // 4 B  (LM.3 — 5 s low-pass for palette `b` interpolation)
+    public var pad0: Float = 0              // 4 B  (pad to 16 B trailer alignment)
+    // Total: 344 B.  (LM.3 grew by 8 B: smoothedValence + smoothedArousal.)
 }
 ```
 
-Total buffer size: **336 B** (well under any reasonable per-frame budget). Use `.storageModeShared` per UMA convention (D-006).
+Total buffer size: **344 B** at LM.3 (was 336 B at LM.2). Use `.storageModeShared` per UMA convention (D-006). The struct stride is asserted to match the matching MSL struct (`PresetLoader+Preamble.swift`) byte-for-byte — the LM.2 `LumenPatternState_strideIs336` test becomes `LumenPatternState_strideIs344` at LM.3 and the placeholder buffer in `RayMarchPipeline.lumenPlaceholderBuffer` resizes correspondingly.
+
+**Migration note.** The `ambientFloorIntensity` field stays on the struct for ABI continuity but is unused by LM.3+ sceneMaterial (the silence floor moves to a file-scope `kSilenceIntensity` constant inside LumenMosaic.metal). Future increments may reuse the field for a different purpose; keep it zero-initialised in `LumenPatternEngine.snapshot()` until it does.
 
 ### `RenderPipeline` extension
 
@@ -276,16 +305,23 @@ If any increment exceeds its budget by > 25%, halt and report — do not press o
 
 Each phase must be rendered against:
 
-- **Silence** — `totalStemEnergy == 0`, all FeatureVector bands at AGC center (0.5). Verifies D-019 silence fallback.
+- **Silence** — `totalStemEnergy == 0`, all FeatureVector bands at AGC center (0.5). Verifies D-019 silence fallback **and the "cells stay coloured at silence (held, not faded)" rule** (Matt 2026-05-09).
 - **Steady moderate energy** — bands at AGC center + 0.15. Verifies the preset is active but not frantic.
-- **Beat-heavy** — `f.beat_bass = 0.7` periodic onsets at 120 BPM with 80 ms decay. Verifies pattern accents fire and beat response invariant (≤ 2× continuous + 1.0).
-- **Sustained bass** — `f.bass_dev = 0.4` constant. Verifies bass-light agent drifts and intensifies without overdriving.
-- **HV-HA mood** — `valence = 0.6, arousal = 0.6`. Verifies warm/saturated palette.
-- **LV-LA mood** — `valence = -0.5, arousal = -0.4`. Verifies cool/desaturated palette and slowed light-agent drift.
+- **Beat-heavy** — `f.beat_bass = 0.7` periodic onsets at 120 BPM with 80 ms decay. Verifies pattern accents fire (LM.4+) and beat response invariant (≤ 2× continuous + 1.0).
+- **Sustained bass** — `f.bass_dev = 0.4` constant. Verifies bass-agent intensity ramps without overdriving.
+- **HV-HA mood** — `valence = 0.6, arousal = 0.6`. Verifies warm-character vivid palette (saturated reds / oranges / golds dominating).
+- **LV-LA mood** — `valence = -0.5, arousal = -0.4`. Verifies cool-character **but still vivid** palette (saturated teals / blues / violets dominating). **Not desaturated, not pastel.**
 
 Per Preset_Development_Protocol.md Gate 6.
 
-Each contact sheet (six fixtures) is a deliverable at LM.1, LM.2, LM.4, LM.7, LM.8, LM.9. Stored in `docs/VISUAL_REFERENCES/lumen_mosaic/contact_sheets/` per Increment V.5 convention.
+**Vividness gate (LM.3+, hard requirement).** Every fixture except silence must produce per-cell colour values where the dominant cells have at least one channel `< 0.30` AND another channel `> 0.70` in linear space pre-tone-map (i.e. the palette must be saturated, not greyscale). The silence fixture has the same requirement applied to the held cell colours (cells frozen but still saturated). This gate exists because the LM.1 / LM.2 implementations failed it — both produced cream-haze output that visually clipped to the same channel ratio across the entire panel.
+
+**LM.3 contact-sheet review additions** (alongside the above):
+1. **Time-evolution check** — capture two frames 3 s apart at the same fixture; cell colours must visibly differ in the energetic fixtures (verifies `kCellHueRate` is producing cycling).
+2. **Distinct-neighbour check** — sample 50 random cell-centre uvs in any non-silence frame; the colour distribution must span at least 1/3 of the palette range (verifies per-cell hash + palette is producing distinct hues, not a smooth field).
+3. **No-cream check** — no fixture frame should have a dominant pixel value within ε of `(0.95, 0.85, 0.75)` (the retired LM.2 cream-haze region). Catches accidental retain of the old formula.
+
+Each contact sheet (six fixtures) is a deliverable at LM.1, LM.2, LM.3, LM.4, LM.7, LM.9. Stored in `docs/VISUAL_REFERENCES/lumen_mosaic/contact_sheets/<increment>/` per Increment V.5 convention.
 
 ## Stop conditions
 
@@ -317,10 +353,11 @@ These debug modes are gated behind the same `#ifdef DEBUG_LUMEN_MOSAIC` pattern 
 | LM.0 | `CLAUDE.md` (slot 8 fragment buffer documentation), `DECISIONS.md` (new D-LM-buffer-slot-8 entry), `ENGINEERING_PLAN.md` (Phase LM header + LM.0 entry). |
 | LM.1 | `CLAUDE.md` (Lumen Mosaic preset entry in Shaders/ list, JSON schema notes for `cell_density`, `cell_scale`, etc.), `ENGINEERING_PLAN.md` (LM.1 done-when results). |
 | LM.2 | `CLAUDE.md` (light-agent layout + audio routing), `ENGINEERING_PLAN.md`. |
-| LM.4 | `CLAUDE.md` (`LumenPatternEngine` ledger), `ENGINEERING_PLAN.md`, `KNOWN_ISSUES.md` if any pattern bugs surface. |
-| LM.5 | If silhouettes adopted: `DECISIONS.md` (D-LM-silhouettes), `CLAUDE.md`. |
+| LM.3 | `DECISIONS.md` (new D-LM-d4 entry for per-cell colour identity, new D-LM-e3 for procedural palette, retire D-LM-e2 authored banks), `CLAUDE.md` (Lumen Mosaic ledger updated for D.4 / E.3 + smoothedValence/Arousal in slot-8 struct + `kCellHueRate` tuning constant), `ENGINEERING_PLAN.md` (LM.3 done-when), `RELEASE_NOTES_DEV.md` (visible behaviour change). |
+| LM.4 | `CLAUDE.md` (`LumenPatternEngine` pattern slots ledger), `ENGINEERING_PLAN.md`, `KNOWN_ISSUES.md` if any pattern bugs surface. |
+| LM.5 | If per-stem hue affinity adopted: `DECISIONS.md` (D-LM-hue-affinity), `CLAUDE.md`. If silhouettes adopted: `DECISIONS.md` (D-LM-silhouettes). |
 | LM.6 | `SHADER_CRAFT.md` if any tuning learnings warrant a cookbook update. |
-| LM.8 | `DECISIONS.md` (palette-bank decision per Decision E promotion), per-track session-recording artifacts. |
+| ~~LM.8~~ | **Retired 2026-05-09**: E.2 authored palette banks rejected, E.3 procedural palette ships at LM.3. |
 | LM.9 | `RELEASE_NOTES_DEV.md`, `KNOWN_ISSUES.md` (close any tracked items), set `certified: true` in `LumenMosaic.json`, register golden hashes via `UPDATE_GOLDEN_SNAPSHOTS=1`. |
 
 ## JSON sidecar fields
@@ -395,13 +432,20 @@ Target file length: 600–900 lines. Within SHADER_CRAFT.md §11.1's relaxed fil
 
 | Increment | Done when |
 |---|---|
-| LM.0 | `directPresetFragmentBuffer3` slot 8 wired in `RenderPipeline`. CLAUDE.md GPU Contract section updated. DECISIONS.md D-LM-buffer-slot-8 entry. New build green; existing tests untouched. |
-| LM.1 | Static-backlight glass panel renders. Contact sheet present. PresetAcceptanceTests passes. p95 ≤ 2.0 ms. |
-| LM.2 | Mood-coupled 4-light backlight. Continuous-energy primary drivers. D-019 silence fallback verified. p95 ≤ 2.5 ms. |
-| LM.3 | Stem-direct routing live. Per-stem hue offsets + drift bounds. p95 ≤ 2.7 ms. |
-| LM.4 | Pattern engine v1 active (idle / radial_ripple / sweep). Bar-boundary triggers. Drum-onset ripples. p95 ≤ 3.0 ms. |
-| LM.5 | (If adopted) silhouette occluder masks; pattern engine v2 (cluster_burst / breathing / noise_drift). p95 ≤ 3.5 ms. |
-| LM.6 | Fidelity polish: micro-frost + specular tuning + cell density A/B. p95 ≤ 3.5 ms. |
-| LM.7 | Beat accent layer complete: drum ripples, bar shimmer, vocal hotspot. p95 ≤ 3.7 ms. |
-| LM.8 | Mood-quadrant palette banks live (Decision E.2 promotion). p95 ≤ 3.7 ms. |
-| LM.9 | Certification: rubric 10/15 mandatory met; perf verified across silence/steady/beat-heavy/HV-HA/LV-LA; golden hashes registered; `certified: true`. |
+| LM.0 | `directPresetFragmentBuffer3` slot 8 wired in `RenderPipeline`. CLAUDE.md GPU Contract section updated. DECISIONS.md D-LM-buffer-slot-8 entry. New build green; existing tests untouched. ✅ |
+| LM.1 | Static-backlight glass panel renders. Contact sheet present. PresetAcceptanceTests passes. p95 ≤ 2.0 ms. ✅ |
+| LM.2 | Mood-coupled 4-light backlight. Continuous-energy primary drivers. D-019 silence fallback verified. Slot-8 binding wired. p95 ≤ 2.5 ms. ⚠ Engine + GPU contract verified; visual rejected at production review (output muted, cells invisible). LM.3 ships the substantive look. |
+| LM.3 | **Per-cell colour identity from `palette()` keyed on cell hash + audio time + mood** (D.4). **Procedural palette via V.3 IQ cosine** (E.3). `LumenPatternState` extended with `smoothedValence` / `smoothedArousal` scalars (struct grows to 344 B). `kCellHueRate` constant introduced; M7-tuned in LM.3 review. Vividness gate met across all six certification fixtures (no pastel, no cream-haze). Cells visibly cycle through palette during energetic playback. Cells held at silence (no fade to grey). p95 ≤ 2.8 ms. **The substantive visual ships here.** |
+| LM.4 | Pattern engine v1 active (idle / radial_ripple / sweep). Bar-boundary triggers. Drum-onset ripples take per-cell palette colour (don't override with their own). p95 ≤ 3.0 ms. |
+| LM.5 | Pattern engine v2 (cluster_burst / breathing / noise_drift). **Optional**: per-stem hue affinity (Decision E.b) if LM.3 / LM.4 review judges unified-palette feel undifferentiated stem-wise. p95 ≤ 3.5 ms. |
+| LM.6 | Fidelity polish: micro-frost + specular tuning + cell density A/B vs ref `04`, palette parameter A/B vs ref `05`. p95 ≤ 3.5 ms. |
+| LM.7 | Beat accent layer complete: bar-line shimmer + vocal hotspot (drum ripples land at LM.4). p95 ≤ 3.7 ms. |
+| ~~LM.8~~ | **Retired 2026-05-09**: E.2 authored palette banks rejected on monotony grounds; E.3 procedural palette ships at LM.3. |
+| LM.9 | Certification: rubric 10/15 mandatory met; perf verified across silence/steady/beat-heavy/HV-HA/LV-LA; golden hashes registered; **vividness gate green at all six fixtures**; `certified: true`. |
+
+---
+
+## Revision history
+
+- **2026-05-09 (this revision)** — major pivot after LM.2 production review. Aesthetic role flipped from meditative to energetic (Matt 2026-05-09). **Decision D.1 (cell-quantized agent sample) retired**: produced gradient blob in production, no visible cells; D.4 (per-cell colour identity from `palette()` keyed on cell hash) adopted. **Decision E.1 (cream-baseline mood tint) and E.2 (4 authored palette banks) retired**: muted output and monotony respectively; E.3 (procedural V.3 IQ cosine palette, mood shifts `(a, b, c, d)` continuously) adopted. `LumenPatternState` extended +8 B (smoothedValence + smoothedArousal scalars; struct now 344 B). LM.8 retired; substantive look ships at LM.3. New "vividness gate" added to certification fixtures. New `kCellHueRate` constant introduced as the master tuning knob for per-cell hue cycling speed. `mat_pattern_glass` material recipe and `sceneSDF` glass panel layout (panel oversize 1.50×, Voronoi relief, fbm8 frost) all unchanged. Slot-8 binding contract widened in LM.2 (G-buffer + lighting both bind) is retained.
+- **2026-05-08 (LM.0 era)** — original document, supporting Decisions A.1 / B.1 / C.2 / D.1 / E.1 / F.1 / G.1 / H.1. LM.0–LM.2 implemented under this version.

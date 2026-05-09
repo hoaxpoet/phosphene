@@ -1,8 +1,6 @@
 # Lumen Mosaic Design Doc
 
-**Status:** Draft. Pending Matt sign-off on the open decisions in §3 before any code lands.
-
-**Working name:** Lumen Mosaic. Alternates: **Fenestra** (Latin "window", clean and architectural), **Backlit Pane** (descriptive). Pick one in Decision A.
+**Status:** Active. Revised 2026-05-09 after the LM.2 production review found the original "meditative co-performer" framing wrong and the LM.1–LM.2 visual output too muted. Changes in this revision (see §11 Revision History): aesthetic role flipped from meditative to **energetic**; Decision D promoted from D.1 (cell-quantized agent sample) to **D.4 (per-cell color identity from `palette()` keyed on cell hash + audio time + mood)**; Decision E promoted from E.1 / E.2 (cream-baseline tint / authored palette banks) to **E.3 (procedural palette via IQ cosine, no authored banks)**; cream baseline retired. The original LM.1 / LM.2 implementations stand as scaffolding that proved the slot-8 binding works; the **substantive look ships at LM.3** under the new architecture.
 
 **Companion docs:**
 - [`Lumen_Mosaic_Rendering_Architecture_Contract.md`](Lumen_Mosaic_Rendering_Architecture_Contract.md) — pass structure, buffer layouts, stop conditions, certification fixtures. Authoritative for implementation.
@@ -14,15 +12,17 @@
 
 ## 1. Why this preset exists
 
-The reference image (`04_specular_pattern_glass_closeup.jpg`) is a close-up of hammered pattern glass — irregular hex-biased cells, each a raised dimple (cell-scale shading relief, not panel-level curvature; the panel itself is flat) separated by sharp inter-cell ridges, every cell carrying a fine bumpy frost that catches light at sub-pixel scale, and behind the glass a tangible scene of strong colored light and dark silhouette. The visual subject is the cellular pattern itself; the colors come from whatever sits behind.
+The reference images (`04_specular_pattern_glass_closeup.jpg` for the cell + frost macro / micro detail, `05_lighting_pattern_glass_dual_color.jpg` for the saturated multi-color backlight character) show hammered pattern glass — irregular hex-biased cells, each a raised dimple separated by sharp inter-cell ridges, every cell carrying a fine bumpy frost that catches light at sub-pixel scale, and behind the glass strong colored light. **Each cell carries its own color**, vivid, often differing markedly from its neighbors. The visual subject is the cellular pattern itself; the colors arrive per cell.
 
-Phosphene's catalog already has the *material* for this — `mat_pattern_glass` (V.3 Materials cookbook §4.5b) was authored for Glass Brutalist v2 fins. What it doesn't have is a preset that uses pattern glass as the **entire** visual surface, with an audio-driven backlight scene as the source of color. This preset is that.
+Phosphene's catalog has the *material* for this — `mat_pattern_glass` (V.3 Materials cookbook §4.5b) was authored for Glass Brutalist v2 fins. What it doesn't have is a preset that uses pattern glass as the **entire** visual surface, with vivid per-cell color driven by music. This preset is that.
 
-Aesthetic role: a meditative co-performer. Where Arachne renders the build of a web and Volumetric Lithograph renders psychedelic terrain, Lumen Mosaic renders a fixed window onto a moving room of light. The cells are the band. The lights moving behind them are the music. The viewer's gaze rests on the panel and watches color and pattern emerge through cell-quantization rather than on continuous geometry.
+**Aesthetic role: an energetic dance partner.** Lumen Mosaic is the preset that makes people want to get up and dance. Cells change constantly — every cell carries its own evolving color, the panel as a whole shifts palette character with mood, and on a kick-driven track the field of cells reads as a vibrant honeycomb that pulses and cycles in time with the music. Where Arachne renders the build of a web and Volumetric Lithograph renders psychedelic terrain, Lumen Mosaic renders **a panel of stained glass alive with color, dancing to the music behind it**.
 
-This is **not** Glass Brutalist v3. Glass Brutalist depicts brutalist concrete corridor architecture; pattern glass is one element in a bigger spatial composition. Lumen Mosaic has no architectural depicted scene — the glass *is* the scene, and the world behind exists only to backlight it.
+Phosphene-wide invariant (CLAUDE.md): **muted palettes have no place in the catalog.** Quiet *moments* exist (silence, breakdowns, intros) but the active visual register is always vivid, saturated, alive. Lumen Mosaic is one of the strongest expressions of this invariant — the cellular structure is a substrate for color, and the color is the point.
 
-**The product question this preset answers:** what does Phosphene look like for tracks where the right visual response is *holding still and shifting color*, not *generating motion*? Slow ambient, downtempo, dub, contemplative jazz, sparse vocal-led ballads. None of the certified ray-march presets sit in that pocket — Volumetric Lithograph is too gestural, Glass Brutalist depicts a moving camera through a static space, Kinetic Sculpture is geometric motion. Lumen Mosaic owns the still-and-shift register.
+This is **not** Glass Brutalist v3. Glass Brutalist depicts brutalist concrete corridor architecture with pattern glass as one element in a bigger spatial composition; Lumen Mosaic has no architectural depicted scene — the glass *is* the scene, and color through the glass is the music.
+
+**The product question this preset answers:** what does Phosphene look like when the visual response is "the music makes a stained-glass window come alive"? Energetic electronic, kick-driven dance, danceable hip-hop, vocal-led pop, anything where the right reaction is "look at all the colors." None of the certified ray-march presets sit in that pocket — Volumetric Lithograph is gestural terrain, Glass Brutalist depicts moving architecture, Kinetic Sculpture is geometric motion. Lumen Mosaic owns the **vibrant-cell-field-dancing-with-the-music** register.
 
 ---
 
@@ -102,31 +102,73 @@ Each decision below has my recommendation, but **Matt picks**. Decisions are ind
 
 ---
 
-### Decision D — Cell color sourcing
+### Decision D — Cell color sourcing — RESOLVED 2026-05-09: D.4
 
-**Option D.1 — Per-cell uniform color from cell-center backlight sample.** Each cell takes its color from the backlight-field value sampled at the cell's *center*. Within the cell, the value is constant. The frosted micro-noise modulates the *normal* (so the specular highlight breaks up) but the diffuse base color is uniform across the cell.
+> **Original options D.1 / D.2 / D.3 are retired.** D.1 was implemented in LM.2 and the production review proved it doesn't paint visible cells: a smoothly-varying analytical light field, sampled at the cell-centre uv, produces values that vary too little between adjacent cells to read as discrete cells. The math was right; the model was wrong.
 
-**Option D.2 — Per-pixel backlight sample, cell-quantized.** Each pixel samples backlight at its own position, and the cell-quantization happens at the cell-edge ridge (the inter-cell line). This produces gradient tints within a single cell (a cell straddling a light-source edge is half-lit / half-shadow). More natural-looking, less graphic.
+**Adopted: D.4 — Per-cell color identity from `palette()` keyed on cell hash + audio time + mood.**
 
-**Option D.3 — Hybrid: cell-center for diffuse, per-pixel for emission.** Diffuse base color is cell-quantized (D.1); but a per-pixel emission term reads the backlight at the pixel position, so bright lights bloom across cells where they sit.
+```
+cell_t  = float(cell.id & 0xFFFF) / 65535.0       // [0, 1) per cell, deterministic
+phase   = cell_t + accumulated_audio_time × kCellHueRate + mood_drift
+hue_rgb = palette(phase, a, b, c, d)              // V.3 IQ cosine palette
+                                                   // a, b, c, d shifted by mood
+cell_intensity = sum over agents of (intensity / (1 + r² × k))   // unchanged
+albedo  = hue_rgb × cell_intensity
+```
 
-**Trade-off:** The reference image shows mostly per-cell uniform color (the orange stripe is whole orange cells, not gradient cells). D.1 most directly matches. D.2 is more photographically natural but loses the graphic stained-glass character. D.3 is a compromise that gets cell-quantization for the dominant tone but keeps highlight bleed for visual punch.
+**Why this works:**
 
-**Recommendation: D.1 for LM.1–LM.3; reassess at LM.4.** The cell-quantization is the visual identity. Per-pixel sampling can come later if the preset reads as too flat — but my read of the reference is that flatness IS the look. Phosphene already has continuous-color presets (Volumetric Lithograph, Murmuration); Lumen Mosaic earns its place by being graphically discrete. If LM.4 review says cells feel inert, D.3 is the upgrade path.
+- **Cell identity is per-cell, not per-position.** Each cell has its own deterministic phase from `cell.id`, so cells on opposite sides of the panel can carry wildly different colors simultaneously — the stained-glass character. Adjacent cells get adjacent palette samples (small phase difference) → smooth-but-discrete neighbors. Distant cells can be on opposite sides of the palette wheel.
+- **Cells change constantly because `accumulated_audio_time` advances with energy.** At silence `accumulated_audio_time` stops advancing → cells hold their hue (rest, per Matt 2026-05-09). At loud music it advances fast → cells visibly cycle through the palette. The user-facing tuning knob is `kCellHueRate`; first-pass default 0.05 cycles/audio-time-unit, M7-tuned in LM.3 review against a known-BPM track.
+- **Stems drive intensity, not hue.** A drum hit lights the cells overlapped by the drums-agent's lobe — the cells' *color* is whatever the palette gave them, the agent's contribution is brightness. This is the "simpler-first" stem mapping per Matt 2026-05-09; per-stem hue affinity (cells brighten preferentially for "their" stem based on hue similarity) is reserved for LM.5+ if review says the unified-palette feel is too undifferentiated.
+- **Mood shifts the palette character, not individual cell colors.** Valence rotates `d` (palette phase offset); arousal scales `b` (chroma amplitude). Same track at HV-HA gets a different palette than at LV-LA, but every cell within a frame sees the same `(a, b, c, d)` — they only differ in their per-cell `phase`. This keeps the panel coherent.
+
+**The cream baseline is retired.** The previous mood-tint formula `mix(cream, hue, sat)` always pulled toward `(1.0, 0.95, 0.85)` and produced pastel output regardless of input. D.4 has no cream baseline; cells are drawn directly from the palette and saturation is whatever the palette equation produces (typically `b ≈ 0.4–0.6` per channel → saturated by construction).
+
+**What's lost vs the original D.1 plan:** the "lights with positions and colors behind the glass" mental model. Agents are now intensity sources, not colored lights. The light-positions metaphor was coherent but the model didn't paint visibly, so it goes.
+
+**Reference-image fidelity:** `05_lighting_pattern_glass_dual_color.jpg` shows distinct vivid color zones across the panel. D.4 produces the same character via per-cell palette sampling — adjacent cells with similar phase form short color "runs", the panel as a whole spans the palette range.
 
 ---
 
-### Decision E — Mood-driven palette
+### Decision E — Mood-driven palette — RESOLVED 2026-05-09: E.3
 
-**Option E.1 — Valence/arousal → light color shift.** Each backlight uses a base color modulated by `f.valence` (warm/cool axis: orange-amber positive valence, blue-teal negative) and `f.arousal` (saturation/brightness: low arousal desaturated, high arousal punchy). Lights stay individually colored but the whole palette shifts.
+> **Original options E.1 (cream-baseline mood tint) and E.2 (4 authored palette banks) are retired.** E.1 produced the muted output that the LM.2 production review flagged. E.2 was rejected on monotony grounds — 4 hand-picked palettes mean every track in a given mood quadrant looks identical, defeating the "the panel reflects the music" intent. Per Matt 2026-05-09: "Why are there four hand-picked palettes — this will lead to a very monotonous preset?"
 
-**Option E.2 — Mood-quadrant palette switching.** Four authored palette sets (HV-HA, HV-LA, LV-HA, LV-LA), one active per current mood quadrant, smoothly crossfaded with a 5 s low-pass on mood. Each palette is 4–6 distinct colors that the lights pick from.
+**Adopted: E.3 — Procedural palette via IQ cosine.** The V.3 `palette()` utility (`Sources/Presets/Shaders/Utilities/Color/Palettes.metal`) is the canonical Inigo Quilez form `a + b × cos(2π × (c × t + d))`. Lumen Mosaic parameterizes it directly:
 
-**Option E.3 — IQ cosine palette + mood phase.** Use the V.3 `palette()` function with an IQ cosine palette parameterized so that valence rotates the palette phase and arousal scales chroma. One palette equation, full mood coverage.
+| Parameter | Mood mapping | Effect |
+|---|---|---|
+| `a` (offset) | `mix(a_cool, a_warm, warmAxis)` | Mid-grey baseline shifts warm/cool with valence |
+| `b` (amplitude) | `mix(b_subdued, b_vivid, arousalAxis)` | Chroma amplitude — saturated at high arousal |
+| `c` (frequency) | constant `(1.0, 1.0, 1.0)` | Per-cell phase covers full hue range across the palette |
+| `d` (phase offset) | `mix(d_warm_palette, d_cool_palette, warmAxis)` | Palette character (warm orange→pink vs cool teal→violet) shifts with valence |
 
-**Trade-off:** E.1 is simplest but gets monotonous on long valence-stable tracks. E.2 has the strongest "this song looks different from that song" identity but requires explicit palette authoring per quadrant. E.3 is mathematically elegant but harder to art-direct.
+`warmAxis = (smoothedValence + 1) / 2` and `arousalAxis = (smoothedArousal + 1) / 2`, both in `[0, 1]`. Mood smoothing stays at 5 s low-pass (ARACHNE §11 pattern). The palette parameters interpolate continuously across mood — no quadrant boundaries, no abrupt switches.
 
-**Recommendation: E.1 for LM.1–LM.4, E.2 for LM.5+.** Land the basic mood-color coupling first, then invest in the per-quadrant authored palettes when the preset is otherwise complete. Per-quadrant palettes are the kind of thing that benefits from session-recording iteration on real tracks across the mood plane (Arachne 5-second mood smoothing pattern from ARACHNE_V8_DESIGN.md is the template).
+**Vividness is non-negotiable.** Even at `arousalAxis = 0` (LV-LA quadrant), `b_subdued` is set so the palette stays saturated. "Subdued" means narrower hue range / cooler character, not desaturated. Specifically: `b_subdued = (0.35, 0.40, 0.45)` (still vivid blues / teals); `b_vivid = (0.50, 0.50, 0.50)` (full saturation neon range). At silence the panel rests by holding still — `accumulated_audio_time` stops advancing — but cells stay vibrant.
+
+**Per-cell hue cycling.** Time evolution comes through `phase = cell_t + accumulated_audio_time × kCellHueRate + mood_drift`. `kCellHueRate` is the master tuning knob for "how fast cells change":
+
+- `0.0` — cells static, hue determined by `cell_t` and mood only.
+- `0.05` (first-pass default) — full hue cycle takes ~20 seconds of energetic music. Visible cycling without strobing.
+- `0.20` — full cycle every ~5 seconds. Restless, possibly too busy.
+- `1.0` — full cycle per beat. Discotheque.
+
+LM.3 ships at 0.05; M7 review against a 120 BPM calibration track is the trigger to retune. Matt explicitly noted he can't pre-specify the right value without seeing it (2026-05-09); this constant is the obvious M7 tuning surface.
+
+**Why not authored palette banks (E.2)?** Two reasons. (1) Monotony: four palettes split the entire valence-arousal plane into four boxes; every HV-HA track plays back in the same palette, every LV-HA track plays back in the same other palette, etc. The procedural form has *infinite* palette characters because `(a, b, c, d)` interpolates smoothly through 4-D space. (2) Authoring cost: hand-picked palettes drift out of step with the rest of the catalog and require periodic retuning; the procedural form has one tuning surface (the four endpoint palette characters) shared with every preset that uses `palette()`.
+
+**Why not Decision D's per-cell hash + a *single* palette?** It would work, but the result wouldn't read differently between tracks of different mood. The mood-driven palette parameter shift is what makes "this song looks different from that song." E.3 keeps that property without authored palettes.
+
+---
+
+### Decision E.b (sub-decision) — Per-stem hue affinity? — DEFERRED to LM.5 review
+
+Open question: should each stem's intensity contribution to a cell be weighted by hue similarity, so a "warm-red" cell brightens preferentially when drums fire and a "cool-cyan" cell when "other" content plays? This would give the panel a "different stems own different cell zones" character emerging from hue proximity, without quadrant-locking.
+
+**LM.3 v1 ships without this** — stems drive intensity uniformly across all cells overlapped by their lobe. Per Matt 2026-05-09: "I like the hue family suggestion better. What do you think will yield the best outcome?" Answer: simpler-first; if LM.3 review says the panel feels undifferentiated stem-wise, we add hue affinity in LM.5. Don't pay the complexity cost until we know it earns its keep.
 
 ---
 
@@ -189,99 +231,119 @@ The `ray_march` pass is Phosphene's existing 3-pass deferred:
 
 ### 4.2 sceneSDF skeleton
 
+`sceneSDF` is unchanged from LM.1: single planar glass panel, half-extents `cameraTangents.xy × 1.50` so the panel bleeds past the frame on every side, with Voronoi domed-cell relief + `fbm8` frost baked in as Lipschitz-safe SDF displacements (D-020 architecture-stays-solid; G-buffer central-differences normal picks up the relief). LM.3 doesn't touch it.
+
 ```metal
 float sceneSDF(float3 p, constant FeatureVector& f, constant SceneUniforms& s, constant StemFeatures& stems) {
-    // Single planar glass panel. Fixed structure per D-020.
-    // Panel face at z = 0, thickness 0.04 (front face z = -0.02, back face z = +0.02).
-    // Panel half-extents = cameraTangents.xy * 1.50: panel must extend 50% beyond frame
-    // on every side so panel edges are NEVER visible (Decision G.1, contract §P.1).
     constexpr float kPanelOversize = 1.50;
     float3 panel_size = float3(s.cameraTangents.xy * kPanelOversize, 0.02);
-    return sd_box(p, panel_size);
-}
-
-void sceneMaterial(float3 p, int matID, constant FeatureVector& f, constant SceneUniforms& s,
-                   thread float3& albedo, thread float& roughness, thread float& metallic) {
-    // matID 0 = glass (only material in this preset)
-    
-    // Cell pattern: voronoi_f1f2 in panel-face uv space.
-    // NOTE: panel_uv divides by cameraTangents (NOT by cameraTangents * kPanelOversize).
-    // This makes uv ∈ [-1, +1] at the visible frame edges and ∈ [-1.5, +1.5] at panel SDF
-    // edges, so cell density is independent of the oversize factor (contract §P.1).
-    float2 panel_uv = p.xy / s.cameraTangents.xy;  // normalized -1..1 across visible frame
-    const float scale = 30.0;  // ≈ 50 cells across (Decision C.2)
-    
-    float2 q  =  panel_uv                       * scale;
-    float2 qx = (panel_uv + float2(0.005, 0.0)) * scale;
-    float2 qy = (panel_uv + float2(0.0, 0.005)) * scale;
-    
-    VoronoiResult v0 = voronoi_f1f2(q,  4.0);
-    VoronoiResult vx = voronoi_f1f2(qx, 4.0);
-    VoronoiResult vy = voronoi_f1f2(qy, 4.0);
-    
-    // Cell ID for addressability and per-cell hash:
-    uint cell_id = v0.id;
-    float cell_phase = float(cell_id & 0xFFFF) * (1.0 / 65535.0);
-    float2 cell_center_uv = v0.pos / scale;  // cell center in -1..1 panel-face uv
-    
-    // Domed cell + sharp ridge (V.3 §4.5b recipe):
-    float h0 = (1.0 - saturate(v0.f1 * scale)) * smoothstep(0.0, 0.04, v0.f2 - v0.f1);
-    float hx = (1.0 - saturate(vx.f1 * scale)) * smoothstep(0.0, 0.04, vx.f2 - vx.f1);
-    float hy = (1.0 - saturate(vy.f1 * scale)) * smoothstep(0.0, 0.04, vy.f2 - vy.f1);
-    float3 height_grad = float3(h0 - hx, h0 - hy, 0.001) * (1.0 / 0.005);
-    
-    // Micro-frost normal perturbation (the "hammered" feel — required per detail cascade §2.8):
-    float3 frost = float3(
-        fbm8(p * 80.0),
-        fbm8(p * 80.0 + float3(13.1, 0.0, 0.0)),
-        fbm8(p * 80.0 + float3(0.0, 17.3, 0.0))
-    );
-    float3 frost_n = (frost - 0.5) * 0.10;  // tighter than mat_frosted_glass (0.15) — ridges already strong
-    
-    float3 base_n = float3(0.0, 0.0, -1.0);  // panel face normal (camera looks down +z)
-    float3 perturbed_n = normalize(base_n + height_grad * 0.04 + frost_n);
-    
-    // Sample backlight at cell center (Decision D.1):
-    float3 backlight = sample_backlight_at(cell_center_uv, f, s, stems);
-    
-    // Apply per-cell pattern accent:
-    float pattern_value = evaluate_active_patterns(cell_center_uv, cell_phase, s);
-    float3 pattern_color = pattern_color_at(cell_center_uv, cell_phase, f, s);
-    backlight = mix(backlight, pattern_color, pattern_value);
-    
-    // Final material — pattern glass with emission carrying the backlight signal:
-    albedo    = float3(0.85, 0.88, 0.90);
-    roughness = 0.40;
-    metallic  = 0.0;
-    // emission set on a separate path (G-buffer's emission lane); see §4.3
+    float box_dist = sd_box(p, panel_size);
+    // Band-limited relief + frost displacement (LM.1 contract §P.1):
+    if (box_dist > kReliefBandRadius) return box_dist;
+    float2 panel_uv = p.xy / s.cameraTangents.xy;
+    float relief = lm_cell_relief(panel_uv);
+    float frost  = lm_frost(p) - 0.5;
+    return box_dist - relief * kReliefAmplitude - frost * kFrostAmplitude;
 }
 ```
 
-The emission term is the carrier of nearly all visible color. The albedo/roughness/metallic exist mostly to give the specular a clean dielectric character against IBL ambient (so the cells read as glass, not as flat colored cards).
-
-### 4.3 Backlight sampling (Decision B.1)
-
-Implemented as `sample_backlight_at(uv, f, s, stems)` in the shader. Reads the `LumenPatternState` buffer at slot 8 for light agent positions/colors/intensities. Pure function of cell position — no ray tracing.
+### 4.3 sceneMaterial — D.4 per-cell color identity
 
 ```metal
-float3 sample_backlight_at(float2 cell_center_uv, FeatureVector f, SceneUniforms s, StemFeatures stems) {
-    LumenPatternState ps = pattern_state_at_buffer(8);  // bound at slot 8 (Decision F.1)
-    
-    float3 acc = float3(0);
-    for (int i = 0; i < ps.active_light_count; i++) {
-        LightAgent L = ps.lights[i];
-        // L.position is in panel-face uv coords (-1..1 plus a notional depth axis).
-        float2 dxy = cell_center_uv - L.position.xy;
-        float r2 = dot(dxy, dxy) + L.position.z * L.position.z;  // z is "depth into panel" — affects spread, not geometric occlusion (B.1)
-        float att = L.intensity / (1.0 + L.attenuation_radius * r2);
-        acc += L.color * att;
+void sceneMaterial(float3 p, int matID,
+                   constant FeatureVector& f, constant SceneUniforms& s,
+                   constant StemFeatures& stems,
+                   thread float3& albedo, thread float& roughness,
+                   thread float& metallic, thread int& outMatID,
+                   constant LumenPatternState& lumen) {
+    // Project hit position into panel-face uv (D-LM-buffer-slot-8 contract):
+    float2 panel_uv = p.xy / s.cameraTangents.xy;
+
+    // Voronoi cell membership. v.id is the deterministic per-cell hash;
+    // v.pos is the cell-centre uv in panel space. (V.3 Voronoi.metal contract.)
+    VoronoiResult v = voronoi_f1f2(panel_uv, kCellDensity);
+    float cell_t   = float(v.id & 0xFFFF) * (1.0 / 65535.0);   // [0, 1) per cell
+    float2 cell_center_uv = v.pos;
+
+    // Per-cell hue from procedural palette. Phase composes:
+    //   - cell_t        : per-cell deterministic offset (each cell has its own colour)
+    //   - audio_phase   : f.accumulated_audio_time × kCellHueRate
+    //                     (cells cycle through palette during energetic music; rest at silence)
+    //   - mood_drift    : slow drift driven by 5 s smoothed valence
+    float audio_phase = f.accumulated_audio_time * kCellHueRate;
+    float mood_drift  = lumen.smoothedValence * 0.10;
+    float phase = cell_t + audio_phase + mood_drift;
+
+    // Palette parameters interpolate continuously across mood (E.3 — no quadrant
+    // boundaries). Vivid even at low arousal (no cream baseline).
+    float warmAxis    = saturate(lumen.smoothedValence * 0.5 + 0.5);
+    float arousalAxis = saturate(lumen.smoothedArousal * 0.5 + 0.5);
+    float3 a = mix(kPaletteACool, kPaletteAWarm, warmAxis);
+    float3 b = mix(kPaletteBSubdued, kPaletteBVivid, arousalAxis);
+    float3 c = float3(1.0, 1.0, 1.0);
+    float3 d = mix(kPaletteDCoolPalette, kPaletteDWarmPalette, warmAxis);
+    float3 cell_hue = palette(phase, a, b, c, d);   // V.3 IQ cosine palette
+
+    // Cell intensity: analytical agent falloff at the cell centre (unchanged
+    // from LM.2). Stems drive intensity, not hue. The agent's stored `colorR/G/B`
+    // is unused at LM.3 — kept for future per-stem hue affinity (LM.5+).
+    float cell_intensity = 0.0;
+    int agentCount = min(lumen.activeLightCount, 4);
+    for (int i = 0; i < agentCount; ++i) {
+        LumenLightAgent ag = lumen.lights[i];
+        float2 d_uv = cell_center_uv - float2(ag.positionX, ag.positionY);
+        float  r2   = dot(d_uv, d_uv) + ag.positionZ * ag.positionZ + 1.0e-4f;
+        cell_intensity += ag.intensity / (1.0 + r2 * ag.attenuationRadius);
     }
-    
-    // Ambient floor: mood-tinted, prevents black at silence (D-019/D-037).
-    float3 ambient_floor = mood_tint(f.valence, f.arousal) * 0.04;
-    return acc + ambient_floor;
+
+    // Vibrant baseline so silence stays vivid (just held — accumulated_audio_time
+    // stops advancing → cells hold their hue, but the baseline brightness keeps
+    // them lit). D-019 silence fallback: cell_intensity floors at kSilenceIntensity.
+    cell_intensity = max(cell_intensity, kSilenceIntensity);
+
+    // Albedo carries the per-cell colour signal (matID == 1 contract). Lighting
+    // fragment multiplies by kLumenEmissionGain (4.0) so the saturated palette
+    // values (b ≈ 0.4–0.6 per channel) clear PostProcessChain bloom threshold.
+    albedo = clamp(cell_hue * cell_intensity, 0.0, 1.0);
+    roughness = 0.40;
+    metallic  = 0.0;
+    outMatID  = 1;
 }
 ```
+
+### 4.4 Pattern engine
+
+CPU-side `LumenPatternEngine` (Swift) maintains the four light agents (still per-stem, unchanged from LM.2: drums / bass / vocals / other) plus the smoothed mood values used by sceneMaterial. **The agents now drive cell intensity only** — their `colorR/G/B` fields are present for ABI continuity but unused by D.4.
+
+LM.4 will add the pattern slot machinery (≤ 4 active patterns: idle / radial_ripple / sweep). Patterns inject *additional* per-cell intensity bursts at chosen origins; their colour comes from the same per-cell palette (so a radial ripple on a "warm-red" cell flashes warm-red, on a "cool-cyan" cell flashes cool-cyan). This preserves the unified-panel aesthetic — pattern bursts amplify the existing palette rather than overlaying their own colours.
+
+Pattern triggering (LM.4):
+- **Bar boundaries** (`f.barPhase01` rolls past 1.0): retire oldest pattern, start a new one. Deterministic per-bar hash for reproducibility.
+- **Drum onsets** (`stems.drumsBeat` rising edge with debounce): fire `radial_ripple` from a stem-driven origin, regardless of active patterns. Auto-retires when wavefront passes panel edge.
+- **Section transitions** (future): force palette parameter reset.
+
+### 4.5 Audio coupling — D-026 deviation primitives, D-019 silence fallback
+
+Per the project rules. All audio drivers use `_rel`/`_dev`/`_att_rel` fields.
+
+| Audio source | Visual target | Notes |
+|---|---|---|
+| `stems.drumsEnergyRel` (D-019 fallback `f.beatBass × 0.6 + f.beatMid × 0.4`) | Drums-agent intensity (1 of 4 light lobes) | Continuous; primary kick driver. |
+| `stems.bassEnergyRel` (D-019 fallback `f.bassDev × 0.6`) | Bass-agent intensity | Continuous; sustained-bass driver. |
+| `stems.vocalsEnergyDev` (D-019 fallback `0`) | Vocals-agent intensity | Vocals "speak" through their lobe. |
+| `stems.otherEnergyRel` (D-019 fallback `f.trebAttRel × 1.4`) | Other-agent intensity | Synths / pads / leads. |
+| `f.accumulated_audio_time` | Per-cell hue cycling phase | Cells cycle through palette during energetic music; rest at silence. **The "cells change constantly" mechanism** (Matt 2026-05-09). |
+| `f.valence` | Palette `a` + `d` shift (warm/cool axis) | 5 s low-pass; same track in different moods plays back in different palette character. |
+| `f.arousal` | Palette `b` shift (chroma amplitude) | 5 s low-pass; high arousal → more saturated palette. |
+| `f.beatPhase01` | Light-agent figure-8 dance position | Per LM.2 contract §P.4. The agents *move* (subtly) on the beat — their lobes drift across the cell field, lighting different cells in time. |
+| `stems.drumsBeat` (D-019 fallback `max(f.beatBass, f.beatMid, f.beatComposite)`) | Pattern-engine `radial_ripple` trigger (LM.4+) | Beat accent layer. |
+
+**The dance.** Two layers, both active:
+
+1. **Per-cell palette cycling (the new primary).** `accumulated_audio_time` advances faster during loud passages, so cells visibly cycle through the palette during energetic music. This is what reads as "the panel dancing." Tuning constant: `kCellHueRate` (LM.3 default 0.05; M7 retune in LM.3 review).
+2. **Light-agent motion (LM.2 contract §P.4 dance).** Each agent traces a small `beat_phase01`-locked figure-8 around its base position. As the lobe moves, different cells brighten, giving the panel a "wave of light moving through the cell field." Amplitude scales with arousal; survives unchanged from LM.2.
+
+**Silence.** `accumulated_audio_time` stops advancing → cells hold their current hue. `cell_intensity` floors at `kSilenceIntensity` so cells remain coloured (not black, not cream — *coloured*, just held). The floor is the D-019 silence fallback. Per Matt 2026-05-09: silence is a moment of rest, not a separate aesthetic register; the panel stays neutral by holding the palette still, not by retreating to grey.
 
 ### 4.4 Pattern engine
 
@@ -333,38 +395,41 @@ position = clamp_to_visible_uv(position)                          // stay within
 ```
 Detailed math, amplitudes, and clamp regions: contract §P.4.
 
-**Light agents:**
+**Light agents (LM.3 revised):**
 - 4 lights, one per stem (drums / bass / vocals / other).
-- Each light has a base position (drums upper-left, bass center-low, vocals center-mid, other upper-right) and dances within a stem-specific bounding region clamped to the visible frame area (uv ∈ [-1, +1]).
-- Drift speed and dance amplitude are both functions of `f.arousal` (slow + small at low arousal, faster + wider at high).
-- Color is a function of `f.valence` shifted by per-stem hue offset (drums = warm, bass = deep red, vocals = cream/peach, other = cool-blue).
+- Each light has a base position and a `beat_phase01`-locked figure-8 dance within a stem-specific bounding region clamped to the visible frame area (uv ∈ [-1, +1]). Geometry unchanged from LM.2 contract §P.4.
+- Drift speed and dance amplitude are functions of `f.arousal` (small at low arousal, wider at high).
+- **Agents drive cell *intensity*, not cell *colour*** (D.4). The agent's RGB colour fields stay on the GPU struct for ABI continuity with future LM.5 per-stem hue affinity work, but are not consumed by the LM.3 sceneMaterial.
 
-This produces the reference image's character: each region of the panel "belongs" to a stem, and the colors arrive in that region when that stem is active — and the whole field of light pulses with the beat.
+This produces the new D.4 character: every cell carries its own colour from the procedural palette, the four agents brighten cells overlapped by their lobes, and the whole field of cells reads as a unified panel of colour responding to the music — not four separate per-stem zones.
 
 ---
 
 ## 5. Reference and anti-reference
 
-### 5.1 Hero reference
+### 5.1 Hero references
 
-`04_specular_pattern_glass_closeup.jpg` — the user-uploaded close-up of hammered pattern glass.
+- **`04_specular_pattern_glass_closeup.jpg`** — close-up of hammered pattern glass; carries the cell + frost detail cascade (macro / meso / micro).
+- **`05_lighting_pattern_glass_dual_color.jpg`** — pattern glass with strong saturated multi-colour backlight; carries the **vivid per-cell colour identity** that is the LM.3+ visual goal. **This is the dominant fidelity reference for the energetic-dance design intent.**
 
 **Traits to extract** (per Gate 1 of Preset_Development_Protocol.md):
 
 - **Macro:** ~50 hex-biased Voronoi cells across, irregular hexagons not perfect hexagons.
 - **Meso:** each cell appears as a raised dimple (per-cell shading relief; the panel SDF stays flat — the dimpled appearance comes from `mat_pattern_glass` V.3's height-gradient normal perturbation, not from SDF deformation); sharp ridge between cells; thin dark seam between cell edges.
 - **Micro:** in-cell frosted bumpy texture; sub-cell-scale specular sparkle from random oriented micro-facets.
+- **Colour:** **vivid per-cell hue, varying widely across the panel** (orange next to red next to blue next to teal); not a smooth gradient. Saturated channels — primaries and near-primaries, not pastels.
 - **Material:** dielectric, near-white albedo, moderate roughness, high transmissive emission character (bright cells glow, not just reflect).
-- **Lighting:** evidently strong colored backlights at multiple positions producing the orange / blue / red regions; dark central vertical occluder.
-- **Motion:** N/A in the reference (still photo). For the preset: cell layout is static; light agents drift; colors shift; per-cell accents emerge and fade.
-- **Audio-reactive (this preset):** colors of cells change with mood and bands; cell-pattern accents emerge on beats; everything else stays still.
+- **Motion:** N/A in the reference (still photos). For the preset: cell layout is static; cell *colour* cycles continuously through the procedural palette; agents move on the beat; pattern bursts at LM.4 add high-frequency colour bursts on drum onsets.
+- **Audio-reactive (this preset):** every cell carries its own evolving colour driven by `accumulated_audio_time` + per-cell hash + mood; agents brighten cells in their lobes; pattern bursts (LM.4) inject extra brightness on beats. The panel is alive with colour at all times when music is playing.
 - **Failure modes to preflight against:**
-  - Reading as flat stained glass (cell-quantization without specular variation) — fix: micro-frost normal mandate (§2.8).
-  - Reading as TV static (per-pixel noise without cell coherence) — fix: cell-quantize the dominant tone (Decision D.1).
-  - Reading as a photo of glass (no audio reactivity visible) — fix: light agents move with continuous energy AND beat-locked oscillation; pattern accents fire on beats.
-  - Reading as a stained-glass cathedral cliché (saturated primaries in fixed iconographic arrangement) — fix: light-agent positions drift; mood-driven palette; no ecclesiastical symmetries.
+  - **Pastel / muted output** — *the LM.1 / LM.2 failure mode*. Fix: drop the cream baseline (D.4 / E.3), use procedural palette directly. **Muted has no place in Phosphene** (CLAUDE.md project-level rule).
+  - **Smooth gradient blob** — *the LM.2 production failure mode*, where cells are technically quantized but adjacent cells get nearly identical colours. Fix: per-cell colour identity from `palette(cell_hash, ...)` (D.4) — adjacent cells can carry different palette positions.
+  - **Cells static / unchanging** — fails the "cells change constantly" intent. Fix: per-cell hue cycling via `accumulated_audio_time × kCellHueRate` so cells visibly evolve during loud music.
+  - **Stained-glass cathedral cliché** (saturated primaries in fixed iconographic symmetry). Avoid radial-symmetry pattern motifs (LM.4 patterns must be asymmetric / drifting).
+  - **TV-static / film-grain glass** (per-pixel high-frequency noise that doesn't respect cell boundaries). Frost is *normal-perturbing*, not *colour-perturbing*. Frost adds specular sparkle; it does not modulate the cell's hue.
+  - **Lava-lamp / plasma blob aesthetic** (continuous gradient without cell quantization). The cellular grid is the visual identity; if it ever reads as a continuous colour field, the preset has failed.
   - **Panel boundary visible in frame** (sizing math wrong, or future camera-jitter pushes corners off panel) — fix: panel half-extents `cameraTangents.xy * 1.50` per Decision G.1; LM.6 contact sheet must verify zero panel edge artifacts at 16:9 + 4:3 + 21:9 aspect ratios.
-  - **Dance reads as random / not beat-locked** (lights wander but don't pulse with the beat) — fix: `beat_phase01`-locked oscillation amplitude is co-primary, not a small accent; LM.4 review must confirm peak-on-beat readability against a known-BPM track.
+  - **Dance reads as random / not beat-locked** (cells cycle but don't pulse with the beat) — fix: agent `beat_phase01`-locked figure-8 stays co-primary; LM.4 pattern bursts on drum onsets add the visible per-beat punch.
 
 ### 5.2 Trait matrix
 
@@ -372,22 +437,25 @@ This produces the reference image's character: each region of the panel "belongs
 |---|---|---|
 | Hex-biased Voronoi cells | ref macro | `voronoi_f1f2` at scale 30 (Decision C.2) |
 | Domed cell + sharp ridge | ref meso | V.3 §4.5b height-gradient recipe |
-| In-cell frost | ref micro | `fbm8(p * 80)` × 3 normal channels at amplitude 0.10 |
+| In-cell frost | ref micro | `fbm8(p × 80)` × 3 normal channels at amplitude 0.10 |
 | Specular sparkle | ref material | Cook-Torrance with frost-perturbed normal vs. IBL |
-| Backlit color zones | ref lighting | 4 audio-driven point lights, analytical sample (Decision B.1) |
-| Dark silhouette spine | ref lighting | **Deferred to LM.5 / Decision B.2** if Matt judges flat |
-| Cell-quantized tone | ref material | Sample backlight at cell center, not per-pixel (Decision D.1) |
-| Static panel | preset role | `sceneSDF` returns same shape every frame (D-020) |
-| Mood-driven palette | preset role | Light hue / sat / val mod by valence/arousal (Decision E.1) |
-| Beat-triggered ripples | preset role | `LumenPatternEngine` ripples on `stems.drums_beat` |
-| Bar-boundary palette shift | preset role | Pattern engine retires/spawns on bar |
+| **Vivid per-cell colour** | **ref `05` colour** | **Per-cell `palette(cell_hash + audio_time × kCellHueRate + mood_drift)` (Decision D.4)** |
+| **Saturated palette character** | **ref `05` colour** | **IQ cosine palette via V.3 `palette()`; mood shifts `(a, b, c, d)` continuously (Decision E.3)** |
+| Cells changing constantly | preset intent | `accumulated_audio_time` advances faster during loud music → cell hue cycles visibly |
+| Cell-quantized colour | preset role | Per-cell deterministic hash → discrete cells (Decision D.4) |
+| Static panel SDF | preset role | `sceneSDF` returns same shape every frame (D-020) |
+| Mood-driven palette character | preset role | Valence / arousal shift palette `(a, b, c, d)` smoothly (Decision E.3) |
+| Beat-locked agent dance | preset role | `beat_phase01` figure-8 per agent (LM.2 contract §P.4) |
+| Beat-triggered pattern bursts | preset role | Pattern engine `radial_ripple` on `stems.drumsBeat` (LM.4) |
+| Bar-boundary pattern spawn | preset role | Pattern engine retires/spawns on `f.barPhase01` rollover (LM.4) |
 
 ### 5.3 Anti-references
 
 - **Stained-glass cathedral imagery** (saturated primary RGB, religious-iconographic symmetry). Avoid all cross / mandala / radial-symmetry pattern presets. The pattern engine is explicitly biased toward asymmetric, off-center, drifting motifs.
-- **TV-static / film-grain glass** (per-pixel high-frequency noise that doesn't respect cell boundaries). The micro-frost is *normal-perturbing*, not *color-perturbing*. Frost adds specular sparkle; it does not modulate the cell's diffuse color.
-- **Lava lamp / plasma / blob aesthetic** (continuous gradient blobs without cell quantization). Lumen Mosaic's identity is the discrete cellular grid; if it ever reads as a continuous color field, the preset has failed.
-- **Reference-rejection check at LM review boundaries:** Matt must explicitly confirm "no stained-glass cathedral cliché" and "no continuous-blob aesthetic" at every contact-sheet review.
+- **TV-static / film-grain glass** (per-pixel high-frequency noise that doesn't respect cell boundaries). The micro-frost is *normal-perturbing*, not *colour-perturbing*. Frost adds specular sparkle; it does not modulate the cell's hue.
+- **Lava lamp / plasma / blob aesthetic** (continuous gradient blobs without cell quantization). Lumen Mosaic's identity is the discrete cellular grid; if it ever reads as a continuous colour field, the preset has failed.
+- **Pastel / cream-tinted output** (the LM.1 / LM.2 failure mode). The procedural palette has no cream baseline; saturation is whatever `palette()` produces (typically `b ≈ 0.4–0.6` per channel → vivid by construction). M7 review at every LM.3+ boundary must confirm "no pastel" + "no cream-haze".
+- **Reference-rejection check at LM review boundaries:** Matt must explicitly confirm "no stained-glass cathedral cliché", "no continuous-blob aesthetic", and **"no pastel/muted palette"** at every contact-sheet review.
 
 ---
 
@@ -395,20 +463,20 @@ This produces the reference image's character: each region of the panel "belongs
 
 Each increment lands in `ENGINEERING_PLAN.md` once approved. Done-when criteria and verify commands per increment are in `LUMEN_MOSAIC_CLAUDE_CODE_PROMPTS.md`.
 
-| Increment | Scope | Sessions (est.) |
+| Increment | Scope | Status |
 |---|---|---|
-| LM.0 | Gate audit; verify protocol intake completeness; extend `RenderPipeline` with `directPresetFragmentBuffer3` (Decision F.1) | 1 |
-| LM.1 | Minimum viable preset: glass panel + pattern_glass material + 1 static backlight color. Proves the rendering works. No audio. | 2 |
-| LM.2 | 4 audio-driven light agents (continuous energy primary). Mood-coupled hue shift. D-019 silence fallback. | 2 |
-| LM.3 | Stem-direct routing for the 4 light agents. Stem-driven base positions and per-stem hue offsets. | 1 |
-| LM.4 | Pattern engine v1: `idle`, `radial_ripple`, `sweep`. Bar-boundary triggering via `f.beat_phase01`. Drum-onset ripple. | 2 |
-| LM.5 | (Optional, Decision B.2) Silhouette occluder masks if Matt judges the panel reads flat without them. Pattern engine v2: `cluster_burst`, `breathing`, `noise_drift`. | 2 |
-| LM.6 | Fidelity polish: micro-frost tuning, specular sparkle calibration, cell-density A/B against reference. | 1 |
-| LM.7 | Beat accent layer: `stems.drums_beat` ripples, bar-line shimmer, vocal-hotspot sub-pattern. | 1 |
-| LM.8 | Mood-quadrant palette authoring (Decision E.2 promotion). Session-recording iteration on real tracks across the mood plane. | 2 |
-| LM.9 | Certification: rubric 10/15 pass, performance verification, golden hash registration, `certified: true`. | 1 |
+| LM.0 | Gate audit; extend `RenderPipeline` with `directPresetFragmentBuffer3` (Decision F.1) | ✅ landed |
+| LM.1 | Minimum viable preset: glass panel + pattern_glass material + static backlight color. No audio. | ✅ landed |
+| LM.2 | 4 audio-driven light agents + mood-coupled hue shift + D-019 silence fallback. **Result rejected at LM.2 production review (2026-05-09): output too muted, cells invisible, design intent wrong.** Slot-8 binding + agent dance proven correct; visual ships at LM.3. | ⚠ scaffolding |
+| LM.3 | **Substantive look ships here.** Per-cell colour identity from `palette()` keyed on cell hash + audio time + mood (D.4). Procedural palette via IQ cosine, no cream baseline (E.3). Mood-driven palette parameter shift. Cells visibly cycle through palette during energetic music; rest at silence. | ⏳ next |
+| LM.4 | Pattern engine v1: `idle`, `radial_ripple`, `sweep`. Bar-boundary triggering via `f.barPhase01`. Drum-onset ripples — patterns inject extra per-cell brightness without overriding palette colour (so a ripple takes the colour of the cells it crosses). | ⏳ |
+| LM.5 | Pattern engine v2: `cluster_burst`, `breathing`, `noise_drift`. **Optional**: per-stem hue affinity (cells brighten preferentially for "their" stem based on hue similarity). Add only if LM.3 / LM.4 review judges the unified-palette feel too undifferentiated stem-wise. | ⏳ |
+| LM.6 | Fidelity polish: micro-frost tuning, specular sparkle calibration, cell-density A/B against ref `04`, palette parameter A/B against ref `05`. | ⏳ |
+| LM.7 | Beat accent layer: bar-line shimmer, vocal-hotspot sub-pattern. (Drum-onset ripples land at LM.4; LM.7 adds the secondary accent layers.) | ⏳ |
+| ~~LM.8~~ | ~~Mood-quadrant palette authoring (Decision E.2 promotion).~~ **Retired 2026-05-09**: E.2 rejected on monotony grounds (Matt 2026-05-09); procedural palette via E.3 ships at LM.3. | ⊘ retired |
+| LM.9 | Certification: rubric 10/15 pass, performance verification, golden hash registration, `certified: true`. | ⏳ |
 
-**Total estimate: 13 sessions.** Comparable to V.7 (Arachne) in the V phase.
+**Total estimate: 9 sessions** (down from 13: LM.8 retired; LM.3 absorbs the palette-bank work via the procedural path; LM.5 keeps the per-stem hue affinity as an optional sub-step that doesn't add a session of its own).
 
 ---
 
@@ -448,19 +516,21 @@ Score: 1/4 mandatory met; 1 optional in LM.6.
 
 Mandatory 7/7 + Expected 2.5/4 + Strongly Preferred 1/4 = **10.5 / 15**. Threshold is 10/15 with all mandatory passing. **Cleared.**
 
-### 7.5 Acceptance against the reference image
+### 7.5 Acceptance against the reference image (LM.3 revised)
 
 A 30-second clip of the preset, captured at HV-HA mood with steady moderate energy, should produce a frame where:
 
-1. Cells are visibly hex-biased and tessellated, with consistent cell density.
-2. At least 3 distinct color regions are present (one per active stem-light + ambient).
-3. Specular sparkle is visible within at least 30% of cells in the bright regions.
-4. The cell-edge ridges produce a visible inter-cell network of dark seams.
-5. No cell exhibits gradient color across its area (Decision D.1 quantization is preserved).
-6. No two consecutive frames are visually identical (light agents are drifting).
-7. Beat hits produce a visible rippling change in cell brightness from a coherent origin point.
+1. Cells are visibly hex-biased and tessellated, with consistent cell density (~50 cells across the visible frame).
+2. **Cells carry visibly distinct colours.** Adjacent cells can differ markedly in hue; the panel as a whole spans the palette range. No "smooth gradient" reading.
+3. **The palette is vivid, not pastel.** Dominant cells read as saturated primaries / near-primaries; no cream or grey-haze.
+4. Specular sparkle is visible within at least 30% of cells in the bright regions.
+5. The cell-edge ridges produce a visible inter-cell network of dark seams.
+6. No cell exhibits gradient colour across its area (Decision D.4 cell quantization preserved).
+7. **Cells visibly cycle through the palette during 3 seconds of energetic playback.** Stop the clip at 0 s and at 3 s; cell colours must visibly differ.
+8. Light-agent dance is visible: bright regions of the panel (where agent lobes overlap cells) shift across the panel in time with the beat.
+9. Beat hits produce visible per-cell brightness pulses (LM.4+; not required at LM.3).
 
-**Matt M7 review** at LM.6 + LM.9 against this list and against the reference image side-by-side via harness contact sheet.
+**Matt M7 review** at LM.3 (first energetic-design check), LM.6 (polish gate), LM.9 (certification) against this list and against ref `04` (cell detail) + ref `05` (palette character) side-by-side via harness contact sheet.
 
 ---
 
@@ -489,17 +559,28 @@ A 30-second clip of the preset, captured at HV-HA mood with steady moderate ener
 
 ## 10. Sign-off
 
-This document is ready to take to Claude Code as soon as Matt has answered Decisions A through H in §3. The companion rendering contract (`Lumen_Mosaic_Rendering_Architecture_Contract.md`) and the session prompts (`LUMEN_MOSAIC_CLAUDE_CODE_PROMPTS.md`) assume the recommended decisions; adjust both if Matt picks differently.
+**Original sign-off (LM.0 era).** Matt confirmed Decisions A.1, B.1, C.2, D.1, E.1, F.1, G.1, H.1 before LM.0 / LM.1 / LM.2 landed. Decisions A, B, C, F, G, H stand unchanged.
 
-**For Matt's review:**
+**LM.3 sign-off (this revision).** The following pivots require fresh confirmation before LM.3 lands:
 
-- Confirm preset name (Decision A).
-- Confirm backlight scene structure (Decision B).
-- Confirm cell density (Decision C).
-- Confirm cell color sourcing (Decision D).
-- Confirm mood-palette plan (Decision E).
-- Confirm fragment buffer slot 8 addition (Decision F).
-- Confirm camera (Decision G).
-- Confirm standalone preset, not a Glass Brutalist variant (Decision H).
-- Confirm Phase LM as the increment-ledger phase tag.
-- Confirm out-of-scope items in §8 (none of these become quietly in-scope without a decision).
+- ✅ **Aesthetic role**: energetic, not meditative (Matt 2026-05-09).
+- ✅ **Decision D rejected → D.4 adopted**: per-cell colour identity from `palette()` keyed on cell hash + audio time + mood. Stems drive intensity, not hue. (Matt 2026-05-09 + design rewrite recommendation.)
+- ✅ **Decision E rejected (E.1 muted, E.2 monotonous) → E.3 adopted**: procedural palette via V.3 IQ cosine `palette()`; mood shifts `(a, b, c, d)` continuously; no authored palette banks. (Matt 2026-05-09.)
+- ✅ **Cells change constantly**: tied to `accumulated_audio_time × kCellHueRate`; first-pass `kCellHueRate = 0.05`, M7-tuned in LM.3 review. (Matt 2026-05-09.)
+- ✅ **Per-stem hue affinity**: deferred to LM.5 review — LM.3 ships with stems driving intensity uniformly. (Matt 2026-05-09.)
+- ✅ **Silence**: cells hold their hue (rest), no cream / grey-haze fallback. (Matt 2026-05-09.)
+- ✅ **CLAUDE.md project-level "muted has no place in Phosphene" rule** to be added.
+
+**LM.3 implementation gates** (sequence after design sign-off):
+
+1. **Companion contract revised** to match D.4 / E.3 / palette parameter slots in `LumenPatternState`.
+2. **`[LM.3] Per-cell palette + procedural mood`** lands as the substantive rebuild.
+3. **M7 review on real session** — `kCellHueRate` tuned, palette parameters verified vivid.
+4. Iterate or move to LM.4.
+
+---
+
+## 11. Revision history
+
+- **2026-05-09 (this revision)** — design pivot after LM.2 production review. "Meditative co-performer" framing replaced with "energetic dance partner". Decision D.1 retired (cell-quantized agent sample produced gradient blob, no visible cells); D.4 adopted (per-cell colour identity from `palette()` keyed on cell hash). Decision E.1 (cream-baseline mood tint) and E.2 (4 authored palette banks) retired; E.3 adopted (procedural palette via V.3 IQ cosine, mood shifts `(a, b, c, d)` continuously). Cream baseline retired across the board. LM.8 retired; the substantive look ships at LM.3. Acceptance criteria §7.5 rewritten around per-cell colour identity + vivid palette. Reference `05_lighting_pattern_glass_dual_color.jpg` promoted to dominant fidelity reference.
+- **2026-05-08 (LM.0 era)** — original document, with Matt's Decision A.1 / B.1 / C.2 / D.1 / E.1 / F.1 / G.1 / H.1 confirmed. LM.0–LM.2 implemented under this version.
