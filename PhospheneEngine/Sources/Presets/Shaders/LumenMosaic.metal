@@ -1,10 +1,13 @@
-// LumenMosaic.metal — Ray march preset: backlit pattern glass panel.
+// LumenMosaic.metal — Ray march preset: vibrant backlit pattern-glass panel.
 //
-// The "still-and-shift register" preset: a single planar glass panel fills
-// the camera frame and bleeds 50% past it on every side, so the viewer sees
-// only the field of cells filled with light. The 4-light pattern engine
-// (slot 8 fragment buffer, LM.2) drives the backlight; LM.4 will add the
-// pattern-engine bursts (radial ripples, sweeps) on top.
+// The energetic-dance-partner preset: a single planar glass panel fills the
+// camera frame and bleeds 50% past it on every side, so the viewer sees
+// only a field of vivid stained-glass cells dancing to the music. Each
+// cell has its own deterministic colour identity from a procedural IQ
+// palette keyed on cell hash + audio time + mood (Decision D.4); the four
+// per-stem light agents (slot 8 fragment buffer, LM.2 contract §P.4) drive
+// per-cell INTENSITY, not colour. LM.4 will add pattern-engine bursts
+// (radial ripples, sweeps) on top.
 //
 // Materials:
 //   matID 1 — Pattern glass (single material, panel-wide). Albedo carries
@@ -13,24 +16,32 @@
 //             (gain × albedo + IBL ambient floor) instead of full
 //             Cook-Torrance dielectric. See RayMarch.metal §matID dispatch.
 //
-// Detail cascade (LM.1 partial — full cascade lands LM.2 / LM.6):
+// Detail cascade (LM.3 partial — specular sparkle lands at LM.6):
 //   Macro      : sd_box panel oversized to bleed past frame (Decision G.1).
 //   Meso       : Voronoi domed-cell relief — sharp inter-cell ridges baked
 //                into the SDF as a Lipschitz-safe displacement so the G-buffer
 //                central-differences normal picks them up.
 //   Micro      : fbm8 in-cell frost, 8 octaves of Perlin at scale 80, baked
 //                as a smaller SDF displacement on top of the relief.
-//   Specular   : LM.1 carries no specular term (the matID==1 path skips
-//                Cook-Torrance entirely; the IBL ambient floor is diffuse).
-//                Specular sparkle from the frost normal lands at LM.2 / LM.6
-//                if Matt's review judges the panel reads flat. The detail
-//                cascade rubric is a LM.9 certification gate, not LM.1.
+//   Specular   : the matID == 1 emission-dominated path skips Cook-Torrance
+//                entirely; specular sparkle from the frost normal lands at
+//                LM.6 polish.
 //
-// Audio routing:
-//   LM.1 ships zero audio reactivity. The 4-light pattern engine (slot 8 buffer)
-//   arrives in LM.2; pattern-engine-driven beats and bar boundaries arrive in
-//   LM.4. Per the rendering contract §LM.1 acceptance, the static backlight
-//   case is the proof-of-rendering increment.
+// Audio routing (LM.3 / D-LM-d4 / D-LM-e3):
+//   - Per-cell COLOUR comes from a procedural IQ palette keyed on the cell
+//     hash + accumulated_audio_time + 5 s smoothed mood + per-track seed.
+//     Cells visibly cycle through the palette during energetic music; cells
+//     rest (hold their hue) at silence. The panel is always vivid — the
+//     LM.1/LM.2 cream baseline was retired (see LUMEN_MOSAIC_DESIGN.md §11).
+//   - Per-cell INTENSITY comes from the analytical sum over the four light
+//     agents at the cell-centre uv (LM.2 contract §P.3 formula). Each agent's
+//     intensity is driven by its stem's deviation primitive (D-026) with FV
+//     fallback (D-019). Stems brighten cells in their lobe; cell colour is
+//     unchanged.
+//   - LM.4 will add pattern-engine bursts (radial ripples on drum onsets,
+//     sweeps on bar boundaries) that inject extra per-cell brightness without
+//     overriding the cell's palette colour (so a ripple takes the colour of
+//     the cells it crosses).
 //
 // References:
 //   docs/presets/LUMEN_MOSAIC_DESIGN.md          — design intent + open decisions.
@@ -109,13 +120,70 @@ constant float kReliefBandRadius = 0.02f;
 /// sub-cell micro-texture, not as a competing macro pattern.
 constant float kFrostScale = 80.0f;
 
-/// LM.1 static backlight, retained as the silence-fixture safety floor for
-/// the brief moment between SceneSDF dispatching and the slot-8 pattern
-/// state being populated for the first time. Once LumenPatternEngine has
-/// produced its first state, the cell-quantized 4-light sum dominates.
-/// Kept at a low magnitude (0.05 brightness) so it can never overpower the
-/// mood-tinted ambient floor at silence.
-constant float3 kLumenInitialBacklight = float3(0.05f, 0.04f, 0.02f);
+/// Silence floor: minimum cell intensity. Ensures cells stay vibrant at
+/// silence (Matt 2026-05-09: "cells freeze at whatever colors they had"
+/// — the panel doesn't fade to grey or cream, it just holds, brightness
+/// floored at this value so cells stay coloured even with all agents at
+/// zero intensity). 0.55 produces clearly-coloured cells while leaving
+/// headroom for agent contributions to push above it during active music.
+constant float kSilenceIntensity = 0.55f;
+
+/// Per-cell hue cycle rate (LM.3 / Decision D.4). Cells cycle through the
+/// procedural palette as `accumulated_audio_time` advances. Larger values
+/// = faster cycling = busier visual register.
+///
+///   0.05  — full hue cycle every ~20 s of energetic music. Calm but visible.
+///   0.15  — full cycle every ~7 s. Energetic, dance-floor pace.       ← LM.3 default
+///   0.30  — full cycle every ~3 s. Restless, may strobe on quiet tracks.
+///   0.50  — full cycle per beat at 120 BPM. Discotheque.
+///
+/// The accumulated_audio_time accumulator advances faster during loud
+/// passages and stops at silence by construction (see CLAUDE.md §AccumulatedAudioTime),
+/// so silence freezes the cycle naturally — no separate freeze logic needed.
+/// M7-tunable in LM.3 review against a known-BPM track.
+constant float kCellHueRate = 0.15f;
+
+/// IQ palette parameters — endpoints interpolated by mood (LM.3 / E.3).
+///
+/// IQ form: `palette(t, a, b, c, d) = a + b * cos(2π * (c*t + d))`. Each of
+/// `a, b, c, d` is a float3 (per-channel control). `t` is the per-cell phase.
+///
+/// Mood interpolation:
+/// - `a` = mix(kPaletteACool, kPaletteAWarm, warmAxis)        ← valence
+/// - `b` = mix(kPaletteBSubdued, kPaletteBVivid, arousalAxis) ← arousal
+/// - `c` = mix(kPaletteCUnison, kPaletteCOffset, arousalAxis) ← arousal
+/// - `d` = mix(kPaletteDComplementary, kPaletteDAnalogous, warmAxis) ← valence
+///
+/// Per-track seed (`lumen.trackPaletteSeedA/B/C/D`) perturbs the result so
+/// two tracks at the same mood produce visibly different palette character.
+///
+/// All endpoints chosen for vivid bold output. NO cream baseline. NO
+/// pastel pull. Subdued ≠ desaturated — it just means narrower hue range.
+/// Per CLAUDE.md project rule: muted has no place in Phosphene.
+constant float3 kPaletteACool          = float3(0.50f, 0.50f, 0.55f);
+constant float3 kPaletteAWarm          = float3(0.55f, 0.45f, 0.45f);
+constant float3 kPaletteBSubdued       = float3(0.40f, 0.45f, 0.50f);
+constant float3 kPaletteBVivid         = float3(0.55f, 0.55f, 0.55f);
+constant float3 kPaletteCUnison        = float3(1.00f, 1.00f, 1.00f);
+constant float3 kPaletteCOffset        = float3(1.00f, 1.30f, 1.70f);
+constant float3 kPaletteDComplementary = float3(0.00f, 0.33f, 0.67f);
+constant float3 kPaletteDAnalogous     = float3(0.00f, 0.10f, 0.20f);
+
+/// Mood-driven palette phase drift — adds a slow whole-palette rotation as
+/// valence shifts, on top of the per-cell + audio-time phase. Small enough
+/// that it doesn't fight the per-cell hash for hue identity. 0.10 ≈ ⅓ of a
+/// palette cycle across the full valence range.
+constant float kPaletteMoodPhaseShift = 0.10f;
+
+/// Per-track seed perturbation magnitudes. Each seed component is in
+/// `[-1, +1]`; the magnitude here is what it scales to before being added
+/// to the palette parameter. Magnitudes deliberately chosen so the
+/// perturbation is visible (different tracks look different) without
+/// pushing the palette outside the saturated regime.
+constant float kSeedMagnitudeA = 0.05f;   // baseline shift  (small)
+constant float kSeedMagnitudeB = 0.05f;   // chroma shift    (small)
+constant float kSeedMagnitudeC = 0.10f;   // rate shift      (medium)
+constant float kSeedMagnitudeD = 0.20f;   // phase shift     (large — colour family character)
 
 /// Default attenuation coefficient for the slot-8 placeholder state
 /// (`LumenPatternState.activeLightCount == 0`). The fragment never
@@ -136,67 +204,71 @@ static inline float2 lm_camera_tangents(constant SceneUniforms& s) {
     return float2(yFovTan * aspect, yFovTan) * kFocalDist;
 }
 
-/// Mood tint: maps valence/arousal to a smooth warm/cool axis crossed
-/// with a saturation axis. Used for the silence ambient floor so the
-/// preset has a coherent mood-specific colour even with no audio
-/// reactivity yet. LM.1 reads a static FeatureVector (valence/arousal
-/// at zero in the silence fixture); LM.2+ subscribes to live mood.
-///
-/// Centred at neutral cream (valence=0, arousal=0). Warm axis at
-/// valence=+1 reads orange; cool at -1 reads cool blue. Saturation
-/// at arousal=+1 picks up the hue; arousal=-1 collapses to cream.
-static inline float3 lm_mood_tint(float valence, float arousal) {
-    float warm = clamp(valence * 0.5f + 0.5f, 0.0f, 1.0f);
-    float sat  = clamp(arousal * 0.4f + 0.4f, 0.0f, 1.0f);
-
-    float3 cool        = float3(0.60f, 0.75f, 1.00f);
-    float3 warm_colour = float3(1.00f, 0.65f, 0.40f);
-    float3 hue         = mix(cool, warm_colour, warm);
-
-    float3 cream = float3(1.00f, 0.95f, 0.85f);
-    return mix(cream, hue, sat);
-}
-
-/// Sample the backlight field at the given panel-face uv (LM.2,
-/// contract §P.3 / §P.4). Returns a linear RGB value in roughly
-/// `[0, ~3]` per channel; the lighting fragment multiplies by
-/// `kLumenEmissionGain (4.0)` then runs through PostProcessChain bloom +
-/// ACES, so the dynamic range stays headroom-aware.
-///
-/// The sample is computed at the cell-centre uv (caller's responsibility,
-/// per Decision D.1 — uniform color within a cell). Each agent contributes
-/// `intensity / (1 + r² × attenuationRadius)` where `r` is the panel-face
-/// distance from the cell centre to the agent xy plus the agent's
-/// notional `positionZ` depth-spread term. The mood-tinted ambient floor
-/// (`mood_tint × ambientFloorIntensity`) is added unconditionally so the
-/// panel is never pure black at silence (D-019 + D-037 invariant 1).
-///
-/// `lumen.activeLightCount` is the truth source for how many agents to
-/// walk; LM.2 always sets it to 4 but the loop respects the field so
-/// future increments can promote / retire agents without shader changes.
-static inline float3 lm_sample_backlight_at(float2 cell_center_uv,
-                                            constant FeatureVector& f,
-                                            constant LumenPatternState& lumen) {
-    // Walk the active agents. Loop bound is a small fixed integer; the
-    // compiler unrolls cleanly. `i < min(4, count)` guards the array
-    // access against a placeholder buffer where `activeLightCount`
-    // happens to be > 4 (the zero-init placeholder leaves it at 0,
-    // so this guard is belt-and-braces).
-    float3 acc = float3(0.0f);
+/// Sum the four light-agent contributions at a cell's centre uv → scalar
+/// brightness. LM.3 reframe (Decision D.4): agents drive cell INTENSITY
+/// only; cell colour comes from `lm_cell_palette()` keyed on cell hash.
+/// Floored at `kSilenceIntensity` so cells stay vivid at silence (the
+/// palette colour multiplied by this floor is still saturated; the floor
+/// doesn't fade colour, it just keeps brightness above black).
+static inline float lm_cell_intensity(float2 cell_center_uv,
+                                      constant LumenPatternState& lumen) {
+    float acc = 0.0f;
     int agentCount = min(lumen.activeLightCount, 4);
     for (int i = 0; i < agentCount; ++i) {
         LumenLightAgent a = lumen.lights[i];
         float2 d = cell_center_uv - float2(a.positionX, a.positionY);
         float r2 = dot(d, d) + a.positionZ * a.positionZ + 1.0e-4f;
-        float falloff = a.intensity / (1.0f + r2 * a.attenuationRadius);
-        acc += float3(a.colorR, a.colorG, a.colorB) * falloff;
+        acc += a.intensity / (1.0f + r2 * a.attenuationRadius);
     }
+    return max(acc, kSilenceIntensity);
+}
 
-    // Ambient floor: mood-tinted, scaled by the buffer's intensity field
-    // so the JSON `lumen_mosaic.ambient_floor_intensity` is the single
-    // source of truth (Swift CPU side wires it into the buffer each frame).
-    float3 ambient = lm_mood_tint(f.valence, f.arousal) * lumen.ambientFloorIntensity;
-    return acc + ambient + kLumenInitialBacklight;
+/// Compute the cell's palette sample (Decision D.4 / E.3). Per-cell hash
+/// drives the basic phase; accumulated_audio_time × kCellHueRate adds
+/// time evolution (cells visibly cycle during energetic playback);
+/// smoothed valence + arousal interpolate the IQ palette parameters
+/// between cool/warm and subdued/vivid endpoints; the per-track seed
+/// perturbs the parameters so different tracks produce different palette
+/// character even at the same mood.
+///
+/// Returns a linear RGB value with each channel in roughly `[0, 1]`. The
+/// lighting fragment multiplies by `kLumenEmissionGain (4.0)` then runs
+/// through PostProcessChain bloom + ACES, so saturated palette outputs
+/// (`b ≈ 0.55` per channel → channel range ≈ `[0, 1.1]`) get tone-mapped
+/// gracefully into HDR.
+static inline float3 lm_cell_palette(uint cell_id,
+                                     float accumulated_audio_time,
+                                     constant LumenPatternState& lumen) {
+    // Per-cell deterministic phase, in [0, 1).
+    float cell_t = float(cell_id & 0xFFFFu) * (1.0f / 65535.0f);
+
+    // Mood interpolation axes ∈ [0, 1].
+    float warm    = clamp(lumen.smoothedValence * 0.5f + 0.5f, 0.0f, 1.0f);
+    float arousal = clamp(lumen.smoothedArousal * 0.5f + 0.5f, 0.0f, 1.0f);
+
+    // IQ palette parameters interpolated by mood, then perturbed by the
+    // per-track seed. Per-track seed components are in [-1, +1]; we
+    // multiply by `kSeedMagnitude*` to scale into the desired
+    // perturbation magnitude per parameter.
+    float3 a = mix(kPaletteACool, kPaletteAWarm, warm)
+             + float3(lumen.trackPaletteSeedA * kSeedMagnitudeA);
+    float3 b = mix(kPaletteBSubdued, kPaletteBVivid, arousal)
+             + float3(lumen.trackPaletteSeedB * kSeedMagnitudeB);
+    float3 c = mix(kPaletteCUnison, kPaletteCOffset, arousal)
+             + float3(lumen.trackPaletteSeedC * kSeedMagnitudeC);
+    float3 d = mix(kPaletteDComplementary, kPaletteDAnalogous, warm)
+             + float3(lumen.trackPaletteSeedD * kSeedMagnitudeD);
+
+    // Phase: per-cell hash + time-driven cycling + small mood-driven shift.
+    // accumulated_audio_time naturally stops at silence (energy = 0 →
+    // no advance), so silence freezes the cycle without explicit logic.
+    float phase = cell_t
+                + accumulated_audio_time * kCellHueRate
+                + lumen.smoothedValence * kPaletteMoodPhaseShift;
+
+    // V.3 IQ cosine palette (Color/Palettes.metal). Saturated by
+    // construction; no cream pull.
+    return palette(phase, a, b, c, d);
 }
 
 /// Voronoi domed-cell relief field. Returns a per-pixel scalar in
@@ -282,15 +354,25 @@ float sceneSDF(float3 p,
 
 // ── Scene Material ─────────────────────────────────────────────────────────
 
-/// Pattern-glass material parameters for the panel. The albedo carries
-/// the cell-quantized backlight signal — sampled once per cell from the
-/// slot-8 LumenPatternState (4 audio-driven agents) and held constant
-/// across all pixels inside the cell, per Decision D.1.
+/// LM.3 sceneMaterial — per-cell colour identity from the procedural IQ
+/// palette (Decision D.4 / E.3). Each cell's albedo is the product of:
 ///
-/// roughness / metallic stay near the SHADER_CRAFT.md §4.5b values for
-/// dielectric-style glass character if a future preset re-uses matID 0,
-/// but for matID == 1 (this preset) the lighting fragment skips
-/// Cook-Torrance entirely so they're cosmetic placeholders only.
+///   1. Its palette colour (per-cell hash + accumulated_audio_time +
+///      smoothed mood + per-track seed) — `lm_cell_palette()`.
+///   2. Its scalar intensity (sum of the four light agents at the
+///      cell's centre uv, floored at `kSilenceIntensity` so cells stay
+///      vivid at silence) — `lm_cell_intensity()`.
+///
+/// All pixels within a Voronoi cell sample the same `cell_center_uv` →
+/// the same palette + the same intensity → exactly one colour per cell.
+/// That's the stained-glass quantization. Adjacent cells get adjacent
+/// palette samples (cell hashes differ → palette phases differ → cells
+/// can be on opposite sides of the hue wheel).
+///
+/// `roughness` / `metallic` are stored in the G-buffer's packed material
+/// byte but only affect output when `matID == 0`; for `matID == 1` (this
+/// preset) the lighting fragment skips Cook-Torrance entirely so they're
+/// cosmetic placeholders.
 ///
 /// `outMatID = 1` flags this hit pixel as emission-dominated dielectric
 /// (D-LM-matid). The G-buffer fragment encodes the value into gbuf0.g;
@@ -316,37 +398,31 @@ void sceneMaterial(float3 p,
     float2 cam_t   = lm_camera_tangents(s);
     float2 panel_uv = p.xy / cam_t;
 
-    // Cell quantization (Decision D.1): the same Voronoi as `lm_cell_relief`
-    // but here we want `v.pos` (cell-centre uv in input space) rather than
-    // the f1/f2 ridge fields. `voronoi_f1f2.pos` is already in panel-uv
-    // units (the utility divides by scale internally — Voronoi.metal:71).
+    // Voronoi cell membership. `v.id` is the deterministic per-cell hash
+    // (drives palette phase); `v.pos` is the cell-centre uv (drives
+    // intensity sampling). `voronoi_f1f2.pos` is in panel-uv units —
+    // the utility divides by scale internally (Voronoi.metal:71).
     VoronoiResult cellV = voronoi_f1f2(panel_uv, kCellDensity);
+    uint   cell_id        = uint(cellV.id);
     float2 cell_center_uv = cellV.pos;
 
-    // Cell-quantized backlight: 4 audio-driven agents sampled at the
-    // cell centre. `sample_backlight_at` adds the mood-tinted ambient
-    // floor so the panel is non-black at silence (D-019 + D-037 inv. 1).
-    float3 backlight = lm_sample_backlight_at(cell_center_uv, f, lumen);
+    // Per-cell colour from the procedural palette (D.4 / E.3).
+    float3 cell_hue = lm_cell_palette(cell_id, f.accumulated_audio_time, lumen);
 
-    // Albedo carries the backlight signal (matID == 1 contract). Clamp
-    // to [0, 1] so the rgba8Unorm G-buffer encoding is loss-free; the
-    // lighting fragment then multiplies by `kLumenEmissionGain` (4.0)
-    // to recover perceptual HDR before bloom + ACES. Bright cells where
-    // multiple agents converge clip into the upper rgba8Unorm bin and
-    // get their HDR back via the gain — the loss is < 1 % of cells in
-    // typical playback.
-    albedo = clamp(backlight, 0.0f, 1.0f);
+    // Per-cell scalar intensity from the four light agents.
+    float cell_intensity = lm_cell_intensity(cell_center_uv, lumen);
 
-    // Pattern-glass material aesthetic from SHADER_CRAFT.md §4.5b. These
-    // values are stored in the G-buffer's packed material byte but only
-    // affect output when matID == 0; for matID == 1 they're cosmetic
-    // placeholders that future presets can keep as a dielectric
-    // baseline.
+    // Albedo carries the per-cell colour signal (matID == 1 contract).
+    // Multiply palette × intensity; clamp to [0, 1] so the rgba8Unorm
+    // G-buffer encoding is loss-free; the lighting fragment multiplies
+    // by kLumenEmissionGain (4.0) to recover perceptual HDR before
+    // bloom + ACES.
+    albedo = clamp(cell_hue * cell_intensity, 0.0f, 1.0f);
+
+    // Pattern-glass material aesthetic from SHADER_CRAFT.md §4.5b.
     roughness = 0.40f;
     metallic  = 0.0f;
 
-    // Flag this pixel as emission-dominated dielectric. The lighting
-    // fragment in RayMarch.metal reads gbuf0.g and dispatches on this
-    // value (LM.1 / D-LM-matid).
+    // Flag this pixel as emission-dominated dielectric (D-LM-matid).
     outMatID  = 1;
 }

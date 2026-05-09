@@ -469,5 +469,30 @@ extension VisualizerEngine {
             )
         }
         // StemSampleBuffer intentionally not reset — continues accumulating for live separation.
+
+        // LM.3 (D-LM-e3): refresh Lumen Mosaic's per-track palette seed so
+        // two tracks at the same mood produce visibly different palette
+        // character. Hash the title + artist into a 64-bit seed; the
+        // engine derives 4 perturbation components in [-1, +1]. No-op
+        // when Lumen Mosaic is not the active preset.
+        if let identity, let lumenEngine = lumenPatternEngine {
+            let hash = Self.lumenTrackSeedHash(for: identity)
+            lumenEngine.setTrackSeed(fromHash: hash)
+        }
+    }
+
+    /// Derive a deterministic 64-bit seed from a track identity. Uses the
+    /// title + artist string (lowercased so cover-vs-original variants of
+    /// the same track on different services land on the same seed when
+    /// they differ only in casing). FNV-1a 64-bit — fast, collision rate
+    /// acceptable for a 4-component perturbation.
+    private static func lumenTrackSeedHash(for identity: TrackIdentity) -> UInt64 {
+        let key = (identity.title.lowercased() + "|" + identity.artist.lowercased())
+        var hash: UInt64 = 0xcbf29ce484222325
+        for byte in key.utf8 {
+            hash ^= UInt64(byte)
+            hash = hash &* 0x100000001b3
+        }
+        return hash
     }
 }

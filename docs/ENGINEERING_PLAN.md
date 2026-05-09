@@ -3384,6 +3384,36 @@ The preset is sequenced as 10 increments LM.0 → LM.9 with cert sign-off at LM.
 
 **Carry-forward.** LM.3 keeps the same engine + GPU contract and adjusts the per-stem hue offsets + drift bounds to match the LM.3 design-doc "stem-direct routing" recipe. LM.4 promotes pattern slots from idle → live (radial_ripple, sweep) keyed to bar boundaries (`f.barPhase01` rolls past 1.0) and drum onsets (`stems.drumsBeat` rising edge). Both LM.3 and LM.4 land without further changes to the slot-8 binding contract.
 
+> **Postscript 2026-05-09:** LM.2's visual scope was rejected at production review (the 4-light cell-quantized model + cream-baseline mood tint produced muted, gradient-blob output — no visible cells, no vivid colour). Engine + GPU contract verified correct (slot-8 binding, agent dance math, mood smoothing all working as specified). The substantive look re-targeted to LM.3 under a redesigned spec — see [`docs/presets/LUMEN_MOSAIC_DESIGN.md`](presets/LUMEN_MOSAIC_DESIGN.md) §11 Revision History and the `[LM-DESIGN]` commit (2026-05-09).
+
+### Increment LM.3 — Per-cell palette + procedural mood + drop cream baseline
+
+**Scope.** Replace LM.2's cell-quantized 4-light backlight with **per-cell colour identity from V.3 IQ cosine `palette()`** (Decision D.4). Each Voronoi cell hashes to a deterministic per-cell phase; phase advances over `accumulated_audio_time × kCellHueRate` so cells visibly cycle through hues during energetic playback and rest at silence. Palette parameters `(a, b, c, d)` interpolate continuously across mood (E.3 — no authored banks); per-track perturbation seed gives every track a distinct palette character at the same mood. **Cream baseline retired** — palette is vivid by construction at every mood / energy. Stems drive cell *intensity* only; agent colour fields are unused at LM.3 (kept on the GPU struct for ABI continuity, deferred to LM.5+ per-stem hue affinity work).
+
+**Done when.**
+
+- `Sources/Presets/Lumen/LumenPatternEngine.swift` extended: `LumenPatternState` grows from 336 → 360 B with new `smoothedValence`, `smoothedArousal`, and four `trackPaletteSeed{A,B,C,D}` fields. New public API: `setTrackSeed(_ seed: SIMD4<Float>)` and `setTrackSeed(fromHash hash: UInt64)`. `_tick(...)` writes smoothed mood scalars into the snapshot but **must not** clear the per-track seed (regression test gates this).
+- `Sources/Presets/PresetLoader+Preamble.swift` MSL `LumenPatternState` struct extended byte-identically.
+- `Sources/Presets/Shaders/LumenMosaic.metal` `sceneMaterial` rewritten: Voronoi → `lm_cell_palette(cell_id, accumulated_audio_time, lumen)` for per-cell hue + `lm_cell_intensity(cell_center_uv, lumen)` for per-cell scalar brightness (floored at `kSilenceIntensity = 0.55`). Cream baseline + `lm_mood_tint` + `lm_sample_backlight_at` deleted. New file-scope tuning constants: `kCellHueRate (0.15)`, `kSilenceIntensity (0.55)`, four cool/warm × subdued/vivid × unison/offset × complementary/analogous palette endpoints, four per-track seed magnitudes.
+- `Sources/Renderer/RayMarchPipeline.swift` placeholder buffer resized 336 → 360 B.
+- `PhospheneApp/VisualizerEngine+Stems.swift` `resetStemPipeline(for:)` calls `lumenPatternEngine?.setTrackSeed(fromHash:)` with FNV-1a 64-bit hash of `title + artist` so two tracks at the same mood get visibly different palette character.
+- `Tests/.../Presets/LumenPatternEngineTests.swift` updated: stride test 336 → 360, `ambientFloorIntensity == 0` (LM.2 floor moved to shader), 5 new tests for the LM.3 GPU-state contract (smoothed mood reaches snapshot, `setTrackSeed` direct + hash variants, clamp to `[-1, +1]`, hash determinism, hash distinguishes hashes, `_tick` does not clear seed).
+- `PresetAcceptance` + `PresetRegression` + `PresetLoaderCompileFailure` + `SSGITests` + `RayMarchPipelineTests` all pass — golden hashes unchanged for non-Lumen presets (the new ABI parameter passes through unused).
+- `docs/VISUAL_REFERENCES/lumen_mosaic/contact_sheets/LM.3/` ships 5 PNGs (silence / mid / beat / hv_ha_mood / lv_la_mood) + README.md. **Cell quantization paints visibly** (the LM.2 gradient-blob failure mode is gone). **Vivid throughout** — no cream haze. Mood-coupled palette character shift visible (HV-HA leans warm, LV-LA leans cool). Silence frame shows distinct vivid cells, not faded.
+- CLAUDE.md updated: LumenMosaic.metal entry rewritten for D.4 / E.3, LumenPatternEngine entry updated for 360 B + setTrackSeed, slot-8 contract footprint updated.
+
+**Verify.**
+
+- `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build`
+- `swift build --package-path PhospheneEngine`
+- `swift test --package-path PhospheneEngine --filter "LumenPatternEngine|PresetAcceptance|PresetRegression|PresetLoaderCompileFailure|SSGITests|RayMarchPipelineTests"`
+- `RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter PresetVisualReview` (capture LM.3 contact sheet)
+- `swiftlint lint --strict --config .swiftlint.yml` (baseline 55 violations preserved; 0 new from LM.3)
+
+**Status:** ✅ 2026-05-09.
+
+**Carry-forward.** LM.4 ships pattern bursts (radial ripples on drum onsets, sweeps on bar boundaries) that inject extra per-cell brightness — pattern colour comes from the same per-cell palette so a ripple takes the colour of the cells it crosses. The design doc covers per-stem hue affinity as an optional LM.5 sub-decision (deferred until LM.4 review tells us whether the LM.3 unified-palette feel needs stem differentiation). **M7 review surface: a real session capture against a varied playlist.** The single-frame stills can show the cell quantization + mood shift but cannot show the time-evolution (cells cycling through hues during loud passages) or the per-track seed variation (different palette character across tracks). Both need a 30+ second real-music capture; if the cycle speed feels wrong, `kCellHueRate` is the master tuning knob.
+
 ---
 
 These milestones map to product-level outcomes, not implementation phases.

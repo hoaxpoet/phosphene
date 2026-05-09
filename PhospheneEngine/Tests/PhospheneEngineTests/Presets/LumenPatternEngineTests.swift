@@ -113,9 +113,16 @@ private func driveSteady(
 @Suite("LumenPatternState struct layout")
 struct LumenPatternStateLayoutTests {
 
-    @Test func test_lumenPatternState_strideIs336() {
-        // Contract: lights (4 × 32 = 128) + patterns (4 × 48 = 192) + 4 × 4-byte fields = 336.
-        #expect(MemoryLayout<LumenPatternState>.stride == 336)
+    @Test func test_lumenPatternState_strideIs360() {
+        // Contract: lights (4 × 32 = 128) + patterns (4 × 48 = 192) + 10 × 4-byte
+        // trailing fields (activeLightCount, activePatternCount, ambientFloorIntensity,
+        // smoothedValence, smoothedArousal, pad0, trackPaletteSeed{A,B,C,D}) = 360.
+        // LM.3 grew the struct from 336 → 360 bytes (added smoothedValence,
+        // smoothedArousal, and 4 per-track palette seed fields). The
+        // RayMarchPipeline.lumenPlaceholderBuffer literal must match — if
+        // this test trips, update both this assertion AND the placeholder
+        // size in RayMarchPipeline.swift.
+        #expect(MemoryLayout<LumenPatternState>.stride == 360)
     }
 
     @Test func test_lumenLightAgent_strideIs32() {
@@ -148,13 +155,18 @@ struct LumenSilenceTests {
         }
     }
 
-    @Test func test_silence_ambientFloorPropagated() throws {
+    /// LM.3: the `ambientFloorIntensity` field stays on the struct for ABI
+    /// continuity but is unused — the silence-floor semantics moved to a
+    /// shader-side `kSilenceIntensity` constant (`LumenMosaic.metal`). The
+    /// engine writes 0 to keep the field deterministic. If a future
+    /// increment finds a use for this field it should make sure both sides
+    /// of the GPU contract agree on the new semantics.
+    @Test func test_silence_ambientFloorIntensity_isZero_atLM3() throws {
         let engine = try makeEngine()
         driveSteady(engine, seconds: 0.5, features: fv(), stems: StemFeatures.zero)
         let snapshot = engine.snapshot()
-        #expect(abs(snapshot.ambientFloorIntensity - LumenPatternEngine.defaultAmbientFloorIntensity)
-                < 1e-6,
-                "ambient floor intensity not propagated to slot-8 buffer")
+        #expect(snapshot.ambientFloorIntensity == 0,
+                "ambientFloorIntensity should be zero at LM.3 (silence floor moved to shader)")
     }
 }
 
@@ -380,5 +392,98 @@ struct LumenDeterminismTests {
         #expect(snapA.activeLightCount == snapB.activeLightCount)
         #expect(snapA.activePatternCount == snapB.activePatternCount)
         #expect(snapA.ambientFloorIntensity == snapB.ambientFloorIntensity)
+        #expect(snapA.smoothedValence == snapB.smoothedValence)
+        #expect(snapA.smoothedArousal == snapB.smoothedArousal)
+    }
+}
+
+// MARK: - Suite 8: LM.3 GPU-state contract — smoothed mood + per-track seed
+
+@Suite("LM.3 GPU state — smoothed mood + per-track seed")
+struct LumenLM3StateTests {
+
+    /// Smoothed mood values must reach the GPU buffer (the shader needs them
+    /// for palette parameter interpolation). Without this, `LumenMosaic.metal`
+    /// reads zero mood every frame and the palette stays stuck at the
+    /// neutral midpoint.
+    @Test func test_smoothedValenceArousal_writtenToSnapshot() throws {
+        let engine = try makeEngine()
+        // Saturate the 5 s low-pass in one tick by passing dt = 5.0.
+        engine.tick(features: fv(valence: 0.6, arousal: 0.4, deltaTime: 5.0),
+                    stems: StemFeatures.zero)
+        let snap = engine.snapshot()
+        #expect(abs(snap.smoothedValence - 0.6) < 0.05,
+                "smoothedValence not written to GPU snapshot — got \(snap.smoothedValence)")
+        #expect(abs(snap.smoothedArousal - 0.4) < 0.05,
+                "smoothedArousal not written to GPU snapshot — got \(snap.smoothedArousal)")
+    }
+
+    /// `setTrackSeed(_ seed:)` writes the four perturbation components into
+    /// the GPU buffer and clamps each to [-1, +1].
+    @Test func test_setTrackSeed_directInjection() throws {
+        let engine = try makeEngine()
+        engine.setTrackSeed(SIMD4<Float>(0.5, -0.25, 0.75, -0.5))
+        let snap = engine.snapshot()
+        #expect(snap.trackPaletteSeedA == 0.5)
+        #expect(snap.trackPaletteSeedB == -0.25)
+        #expect(snap.trackPaletteSeedC == 0.75)
+        #expect(snap.trackPaletteSeedD == -0.5)
+    }
+
+    /// Out-of-range seed components must clamp to [-1, +1].
+    @Test func test_setTrackSeed_clampsToUnitRange() throws {
+        let engine = try makeEngine()
+        engine.setTrackSeed(SIMD4<Float>(2.0, -3.0, 1.0, -1.0))
+        let snap = engine.snapshot()
+        #expect(snap.trackPaletteSeedA == 1.0, "trackPaletteSeedA above 1.0 not clamped")
+        #expect(snap.trackPaletteSeedB == -1.0, "trackPaletteSeedB below -1.0 not clamped")
+        #expect(snap.trackPaletteSeedC == 1.0, "trackPaletteSeedC at boundary changed")
+        #expect(snap.trackPaletteSeedD == -1.0, "trackPaletteSeedD at boundary changed")
+    }
+
+    /// `setTrackSeed(fromHash:)` derives all four components from the 64-bit
+    /// hash deterministically. Same hash → same seed; different hashes →
+    /// different seeds (across at least one component).
+    @Test func test_setTrackSeedFromHash_deterministic() throws {
+        let a = try makeEngine()
+        let b = try makeEngine()
+        a.setTrackSeed(fromHash: 0xDEAD_BEEF_CAFE_F00D)
+        b.setTrackSeed(fromHash: 0xDEAD_BEEF_CAFE_F00D)
+        #expect(a.snapshot().trackPaletteSeedA == b.snapshot().trackPaletteSeedA)
+        #expect(a.snapshot().trackPaletteSeedB == b.snapshot().trackPaletteSeedB)
+        #expect(a.snapshot().trackPaletteSeedC == b.snapshot().trackPaletteSeedC)
+        #expect(a.snapshot().trackPaletteSeedD == b.snapshot().trackPaletteSeedD)
+    }
+
+    @Test func test_setTrackSeedFromHash_distinguishesHashes() throws {
+        let a = try makeEngine()
+        let b = try makeEngine()
+        a.setTrackSeed(fromHash: 0xDEAD_BEEF_CAFE_F00D)
+        b.setTrackSeed(fromHash: 0x1234_5678_9ABC_DEF0)
+        let snapA = a.snapshot()
+        let snapB = b.snapshot()
+        let differs =
+            snapA.trackPaletteSeedA != snapB.trackPaletteSeedA ||
+            snapA.trackPaletteSeedB != snapB.trackPaletteSeedB ||
+            snapA.trackPaletteSeedC != snapB.trackPaletteSeedC ||
+            snapA.trackPaletteSeedD != snapB.trackPaletteSeedD
+        #expect(differs, "different hashes produced byte-identical seeds")
+    }
+
+    /// `tick(...)` must NOT clear the per-track seed. The seed is set on
+    /// track change and must persist across all subsequent frames in that
+    /// track. If a future refactor accidentally zeroes the seed in `_tick`,
+    /// every Lumen Mosaic track would look the same.
+    @Test func test_tickDoesNotClearTrackSeed() throws {
+        let engine = try makeEngine()
+        engine.setTrackSeed(SIMD4<Float>(0.7, 0.3, -0.5, 0.9))
+        for _ in 0..<60 {
+            engine.tick(features: fv(deltaTime: 1.0 / 60.0), stems: StemFeatures.zero)
+        }
+        let snap = engine.snapshot()
+        #expect(snap.trackPaletteSeedA == 0.7, "tick() cleared trackPaletteSeedA")
+        #expect(snap.trackPaletteSeedB == 0.3, "tick() cleared trackPaletteSeedB")
+        #expect(snap.trackPaletteSeedC == -0.5, "tick() cleared trackPaletteSeedC")
+        #expect(snap.trackPaletteSeedD == 0.9, "tick() cleared trackPaletteSeedD")
     }
 }
