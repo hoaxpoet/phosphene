@@ -1,6 +1,6 @@
 # Lumen Mosaic — LM.3 Contact Sheet
 
-Captured 2026-05-09 via `RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter "PresetVisualReview"`. First contact sheet under the LM.3 design pivot — per-cell colour identity from procedural palette + drop-the-cream-baseline + mood-driven palette parameters.
+Re-captured 2026-05-09 (LM.3.1) via `RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter "PresetVisualReview"`. The original LM.3 contact sheet showed cell quantization correctly but every cell rendered at the same brightness — flat-painted pixels rather than glass cells lit from behind. Matt 2026-05-09 flagged this; LM.3.1 fixes it by computing a position-based **static light field** (max-falloff over agent positions) so cells under an agent are clearly brighter than cells in the gaps. Each agent's lobe shows visibly as a bright pool; cells in the corners stay dim. Sharper falloff (`attenuationRadius` 6 → 12) tightens each lobe into a recognisable spotlight.
 
 ## What changed vs LM.2
 
