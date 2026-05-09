@@ -2,9 +2,9 @@
 //
 // The "still-and-shift register" preset: a single planar glass panel fills
 // the camera frame and bleeds 50% past it on every side, so the viewer sees
-// only the field of cells filled with light. Audio (LM.2+) drives a small
-// field of light agents behind the glass; LM.1 ships static warm-amber
-// backlight as the proof-of-rendering increment.
+// only the field of cells filled with light. The 4-light pattern engine
+// (slot 8 fragment buffer, LM.2) drives the backlight; LM.4 will add the
+// pattern-engine bursts (radial ripples, sweeps) on top.
 //
 // Materials:
 //   matID 1 — Pattern glass (single material, panel-wide). Albedo carries
@@ -109,17 +109,19 @@ constant float kReliefBandRadius = 0.02f;
 /// sub-cell micro-texture, not as a competing macro pattern.
 constant float kFrostScale = 80.0f;
 
-/// LM.1 static backlight color: warm amber. Replaced in LM.2 by a
-/// 4-light analytical sample over panel face uv. This single constant
-/// is the only color a LM.1 panel can show (modulo the small mood
-/// ambient floor below).
-constant float3 kLumenStaticBacklight = float3(0.95f, 0.60f, 0.30f);
+/// LM.1 static backlight, retained as the silence-fixture safety floor for
+/// the brief moment between SceneSDF dispatching and the slot-8 pattern
+/// state being populated for the first time. Once LumenPatternEngine has
+/// produced its first state, the cell-quantized 4-light sum dominates.
+/// Kept at a low magnitude (0.05 brightness) so it can never overpower the
+/// mood-tinted ambient floor at silence.
+constant float3 kLumenInitialBacklight = float3(0.05f, 0.04f, 0.02f);
 
-/// Mood-tinted ambient floor magnitude. Combines with mood_tint() for
-/// the panel's silence-fallback colour (D-019). Small enough that the
-/// static backlight dominates in LM.1; LM.2's continuous-energy lights
-/// will scale comparably.
-constant float kAmbientFloorIntensity = 0.04f;
+/// Default attenuation coefficient for the slot-8 placeholder state
+/// (`LumenPatternState.activeLightCount == 0`). The fragment never
+/// dereferences a non-existent agent — but kept here so future code
+/// changes have the centroid's expected falloff value to compare against.
+constant float kLumenDefaultFalloffK = 6.0f;
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -155,15 +157,46 @@ static inline float3 lm_mood_tint(float valence, float arousal) {
     return mix(cream, hue, sat);
 }
 
-/// LM.1 backlight sampling: returns a static warm-amber colour plus a
-/// tiny mood-tinted ambient floor so the panel reads as coloured at all
-/// times (D-019 silence fallback). LM.2 replaces this with an analytical
-/// sample over 4 audio-driven light agents at the cell-centre uv read
-/// from the slot 8 fragment buffer; the LM.2 successor will reintroduce
-/// a `cell_seed` parameter at the same call site in `sceneMaterial`.
-static inline float3 lm_backlight_static(constant FeatureVector& f) {
-    float3 ambient = lm_mood_tint(f.valence, f.arousal) * kAmbientFloorIntensity;
-    return kLumenStaticBacklight + ambient;
+/// Sample the backlight field at the given panel-face uv (LM.2,
+/// contract §P.3 / §P.4). Returns a linear RGB value in roughly
+/// `[0, ~3]` per channel; the lighting fragment multiplies by
+/// `kLumenEmissionGain (4.0)` then runs through PostProcessChain bloom +
+/// ACES, so the dynamic range stays headroom-aware.
+///
+/// The sample is computed at the cell-centre uv (caller's responsibility,
+/// per Decision D.1 — uniform color within a cell). Each agent contributes
+/// `intensity / (1 + r² × attenuationRadius)` where `r` is the panel-face
+/// distance from the cell centre to the agent xy plus the agent's
+/// notional `positionZ` depth-spread term. The mood-tinted ambient floor
+/// (`mood_tint × ambientFloorIntensity`) is added unconditionally so the
+/// panel is never pure black at silence (D-019 + D-037 invariant 1).
+///
+/// `lumen.activeLightCount` is the truth source for how many agents to
+/// walk; LM.2 always sets it to 4 but the loop respects the field so
+/// future increments can promote / retire agents without shader changes.
+static inline float3 lm_sample_backlight_at(float2 cell_center_uv,
+                                            constant FeatureVector& f,
+                                            constant LumenPatternState& lumen) {
+    // Walk the active agents. Loop bound is a small fixed integer; the
+    // compiler unrolls cleanly. `i < min(4, count)` guards the array
+    // access against a placeholder buffer where `activeLightCount`
+    // happens to be > 4 (the zero-init placeholder leaves it at 0,
+    // so this guard is belt-and-braces).
+    float3 acc = float3(0.0f);
+    int agentCount = min(lumen.activeLightCount, 4);
+    for (int i = 0; i < agentCount; ++i) {
+        LumenLightAgent a = lumen.lights[i];
+        float2 d = cell_center_uv - float2(a.positionX, a.positionY);
+        float r2 = dot(d, d) + a.positionZ * a.positionZ + 1.0e-4f;
+        float falloff = a.intensity / (1.0f + r2 * a.attenuationRadius);
+        acc += float3(a.colorR, a.colorG, a.colorB) * falloff;
+    }
+
+    // Ambient floor: mood-tinted, scaled by the buffer's intensity field
+    // so the JSON `lumen_mosaic.ambient_floor_intensity` is the single
+    // source of truth (Swift CPU side wires it into the buffer each frame).
+    float3 ambient = lm_mood_tint(f.valence, f.arousal) * lumen.ambientFloorIntensity;
+    return acc + ambient + kLumenInitialBacklight;
 }
 
 /// Voronoi domed-cell relief field. Returns a per-pixel scalar in
@@ -250,8 +283,10 @@ float sceneSDF(float3 p,
 // ── Scene Material ─────────────────────────────────────────────────────────
 
 /// Pattern-glass material parameters for the panel. The albedo carries
-/// the backlight signal — for LM.1 a static warm-amber + mood ambient
-/// floor; LM.2 replaces this with an analytical sum over light agents.
+/// the cell-quantized backlight signal — sampled once per cell from the
+/// slot-8 LumenPatternState (4 audio-driven agents) and held constant
+/// across all pixels inside the cell, per Decision D.1.
+///
 /// roughness / metallic stay near the SHADER_CRAFT.md §4.5b values for
 /// dielectric-style glass character if a future preset re-uses matID 0,
 /// but for matID == 1 (this preset) the lighting fragment skips
@@ -268,26 +303,39 @@ void sceneMaterial(float3 p,
                    thread float3& albedo,
                    thread float& roughness,
                    thread float& metallic,
-                   thread int& outMatID) {
-    (void)p;
+                   thread int& outMatID,
+                   constant LumenPatternState& lumen) {
     (void)matID;
-    (void)s;
     (void)stems;
 
-    // LM.1: backlight is uniform across the panel — no per-cell sampling
-    // is needed yet. LM.2 will reintroduce a `voronoi_f1f2(panel_uv, ...)`
-    // call here to derive a per-cell `cell_seed` for `sample_backlight_at`,
-    // matching the lm_backlight_static call shape kept stable for that
-    // promotion.
+    // Project hit position into the panel-face uv frame (`[-1, +1]`
+    // exactly at the visible frame edges; `[-1.5, +1.5]` at the SDF
+    // edges per kPanelOversize). Cell-density is decoupled from the
+    // oversize factor by dividing through `cameraTangents` only —
+    // contract §P.1 frame-edge invariant.
+    float2 cam_t   = lm_camera_tangents(s);
+    float2 panel_uv = p.xy / cam_t;
 
-    // Backlight signal carried in albedo (matID == 1 contract). Clamped
-    // to [0, 1] so the rgba8Unorm G-buffer encoding is loss-free in the
-    // single-cell case; the lighting fragment then gains by 4× to recover
-    // perceptual HDR. For LM.2+ where multiple agents may sum > 1, the
-    // clamp will become an artistic compromise that the LM.6 polish pass
-    // can revisit.
-    float3 backlight = lm_backlight_static(f);
-    albedo    = clamp(backlight, 0.0f, 1.0f);
+    // Cell quantization (Decision D.1): the same Voronoi as `lm_cell_relief`
+    // but here we want `v.pos` (cell-centre uv in input space) rather than
+    // the f1/f2 ridge fields. `voronoi_f1f2.pos` is already in panel-uv
+    // units (the utility divides by scale internally — Voronoi.metal:71).
+    VoronoiResult cellV = voronoi_f1f2(panel_uv, kCellDensity);
+    float2 cell_center_uv = cellV.pos;
+
+    // Cell-quantized backlight: 4 audio-driven agents sampled at the
+    // cell centre. `sample_backlight_at` adds the mood-tinted ambient
+    // floor so the panel is non-black at silence (D-019 + D-037 inv. 1).
+    float3 backlight = lm_sample_backlight_at(cell_center_uv, f, lumen);
+
+    // Albedo carries the backlight signal (matID == 1 contract). Clamp
+    // to [0, 1] so the rgba8Unorm G-buffer encoding is loss-free; the
+    // lighting fragment then multiplies by `kLumenEmissionGain` (4.0)
+    // to recover perceptual HDR before bloom + ACES. Bright cells where
+    // multiple agents converge clip into the upper rgba8Unorm bin and
+    // get their HDR back via the gain — the loss is < 1 % of cells in
+    // typical playback.
+    albedo = clamp(backlight, 0.0f, 1.0f);
 
     // Pattern-glass material aesthetic from SHADER_CRAFT.md §4.5b. These
     // values are stored in the G-buffer's packed material byte but only

@@ -272,7 +272,8 @@ PhospheneEngine/
     Stalker/StalkerGait.swift → Pure alternating-tetrapod gait solver: 8 Leg structs with hip/tip/knee, 2-segment IK with outward knee bend, beat phase-lock with soft pull (not snap), free-run fallback at 2.5 cycles/sec, listening-pose front-leg raise blend. (Increment 3.5.7)
     Stalker/StalkerState.swift → Per-preset world state: GaitSolver + scene mode state machine (.entering→.crossing→.listening→.exiting→.pausing), sustained-bass accumulator (0.75s threshold, low bassAttackRatio gate), StalkerGPU buffer (352 bytes) at object/mesh buffer(1). FV fallback via sub_bass + bass_att_rel heuristic. (Increment 3.5.7)
     Shaders/VolumetricLithograph.metal → Psychedelic linocut terrain (MV-2 / v4.1). fbm3D heightfield swept by `s.sceneParamsA.x` at slow rate 0.015; melody-primary blend `0.75 × (0.5 + f.mid_att_rel) + 0.35 × (0.3 + f.bass_att_rel × 0.7)` — deviation-driven, genre-stable across AGC shifts (MV-1 / D-026). Stem-accurate drivers blend in via `smoothstep(0.02, 0.06, totalStemEnergy)` warmup (D-019). Forward camera dolly at 1.8 u/s (configured in VisualizerEngine+Presets.swift). Three strata with narrow linocut coverage (~15% peaks): palette-tinted near-black valleys, razor-thin emissive ridge-line seam, polished-metal peaks. Peaks use IQ cosine `palette()` driven by terrain noise + audio time + `0.5 + f.mid_att_rel × 0.5` (melody-modulated hue) + valence. Accent/strobe from `smoothstep(0.30/0.70, stems.drums_beat)` with FV fallback `smoothstep(0.35, 0.70, f.spectral_flux)`. `f.mid_dev × 1.5` polishes peak roughness. `scene_fog: 0` truly disables fog. Miss/sky pixels tinted by `scene.lightColor.rgb`. SSGI omitted. MV-2: mv_warp pass adds temporal feedback accumulation — melody-driven zoom breath (mid_att_rel × 0.003), valence-driven rotation, decay=0.96; per-vertex UV ripple from bass (horizontal) and melody (vertical) at 0.004 UV amplitude. Passes: ray_march + post_process + mv_warp.
-    Shaders/LumenMosaic.metal → Backlit pattern-glass panel (Phase LM, LM.1). Single planar `sd_box` at `z = 0`, half-extents = `cameraTangents.xy × 1.50` so panel bleeds 50% past frame on every side (Decision G.1, contract §P.1) — viewer never sees a panel boundary. Voronoi domed-cell relief (`voronoi_f1f2(panel_uv, 30)` height-gradient + smoothstep ridge per SHADER_CRAFT.md §4.5b) and `fbm8` in-cell frost are baked into `sceneSDF` as Lipschitz-safe displacements (kReliefAmplitude = 0.004, kFrostAmplitude = 0.0008) so the G-buffer central-differences normal picks them up; D-021 sceneMaterial signature has no normal channel. `sceneMaterial` writes `outMatID = 1` (emission-dominated dielectric, D-LM-matid) and stores the per-cell backlight signal in `albedo`; the lighting fragment (RayMarch.metal) dispatches on `gbuf0.g` to skip Cook-Torrance + screen-space shadows and emit `albedo × kLumenEmissionGain (4.0) + irradiance × kLumenIBLFloor (0.05) × ao` instead. **LM.1 ships zero audio reactivity** — the static backlight is a fixed `(0.95, 0.60, 0.30)` warm amber + a `mood_tint(valence, arousal) × 0.04` D-019 ambient floor; the 4-light analytical pattern engine arrives at LM.2 (slot 8 fragment buffer, contract §P.3 / §P.4). Passes: `ray_march` + `post_process` (SSGI intentionally omitted — emission dominates, SSGI invisible). `certified: false` until LM.9. JSON `lumen_mosaic` namespace forwards future tunables (cell_density, frost_amplitude, etc.) for LM.2+.
+    Shaders/LumenMosaic.metal → Backlit pattern-glass panel (Phase LM, LM.2). Single planar `sd_box` at `z = 0`, half-extents = `cameraTangents.xy × 1.50` so panel bleeds 50% past frame on every side (Decision G.1, contract §P.1) — viewer never sees a panel boundary. Voronoi domed-cell relief (`voronoi_f1f2(panel_uv, 30)` height-gradient + smoothstep ridge per SHADER_CRAFT.md §4.5b) and `fbm8` in-cell frost are baked into `sceneSDF` as Lipschitz-safe displacements (kReliefAmplitude = 0.004, kFrostAmplitude = 0.0008) so the G-buffer central-differences normal picks them up; D-021 sceneMaterial signature has no normal channel. **LM.2:** `sceneMaterial` runs `voronoi_f1f2` again on the hit position to derive `cell_center_uv = v.pos`, calls `lm_sample_backlight_at(cell_center_uv, f, lumen)` to compute the 4-light analytical sum from the slot-8 `LumenPatternState` buffer, and writes the cell-quantized backlight to `albedo` (clamped [0, 1]) plus the mood-tinted ambient floor — Decision D.1 cell-quantization is preserved by sampling once at the cell centre and using that colour for every pixel inside the cell. `outMatID = 1` flags the hit as emission-dominated dielectric (D-LM-matid); the lighting fragment dispatches on `gbuf0.g` to skip Cook-Torrance + screen-space shadows and emit `albedo × kLumenEmissionGain (4.0) + irradiance × kLumenIBLFloor (0.05) × ao` instead. Passes: `ray_march` + `post_process` (SSGI intentionally omitted — emission dominates, SSGI invisible). `certified: false` until LM.9. JSON `lumen_mosaic` namespace forwards future tunables (cell_density, frost_amplitude, etc.) for LM.4+.
+    Lumen/LumenPatternEngine.swift → LM.2 per-preset world state. `LumenLightAgent` (32 B), `LumenPattern` (48 B), `LumenPatternState` (336 B) value types byte-identical to the matching MSL structs in `PresetLoader+Preamble.swift`. `LumenPatternEngine` final class (`@unchecked Sendable`): owns a 336-byte UMA buffer (`patternBuffer`) bound at fragment slot 8 of the ray-march G-buffer + lighting passes via `RenderPipeline.setDirectPresetFragmentBuffer3` while LumenMosaic is the active preset. Per-frame `tick(features:stems:)` (called from `RenderPipeline.meshPresetTick`) advances the four light agents (one per stem — drums upper-left, bass centre-low, vocals centre-mid, other upper-right) through (a) a slow mood-driven Lissajous **drift** with per-stem freqs/radii (driftSpeed lerp(0.05, 0.20, normalized smoothedArousal)), (b) a `beat_phase01`-locked figure-8 **dance** with per-agent quarter-cycle phase offsets (`agentBeatPhaseOffsets = [0, π/2, π, 3π/2]`) and amplitude `clamp(0.04 + 0.10 × f.arousal, 0.04, 0.14)` reading **raw** `f.arousal` per contract §P.4, then (c) clamps the composed position to ±`agentInset` (0.85). Color is per-stem base × `mood_tint(smoothedValence, smoothedArousal)` with a 5 s low-pass on valence/arousal (ARACHNE §11 pattern). Intensity is the deviation-primitive stem read with FV fallback under the standard D-019 warmup `smoothstep(0.02, 0.06, totalStemEnergy)`: drums → `stems.drumsEnergyRel` / fallback `f.beatBass × 0.6 + f.beatMid × 0.4`; bass → `stems.bassEnergyRel` / fallback `f.bassDev × 0.6`; vocals → `stems.vocalsEnergyDev` / fallback 0; other → `stems.otherEnergyRel` / fallback `f.treble × 1.4`. Pattern slots stay zeroed (`activePatternCount = 0`) until LM.4. `setAgentBasePositionForTesting(_:_:)` is the inset-clamp test seam.
   Orchestrator/             → AI VJ: preset selection, transitions, session planning (Increments 4.1–4.3 complete — see ENGINEERING_PLAN.md Phase 4)
     PresetScorer            → DefaultPresetScorer: 4 weighted sub-scores (mood/tempoMotion/stemAffinity/sectionSuitability) + 2 multiplicative penalties (family-repeat, fatigue). PresetScoring protocol. PresetScoreBreakdown for inspection. (D-032)
     PresetScoringContext    → Immutable Sendable snapshot: deviceTier, frameBudgetMs, recentHistory, currentPreset, elapsedSessionTime, currentSection. PresetHistoryEntry for session history.
@@ -564,16 +565,22 @@ buffer(7) = per-preset fragment buffer #2 — bound by setDirectPresetFragmentBu
               V.7.7D contract). Same per-frame uniform binding contract as
               slot 6.
 buffer(8) = per-preset fragment buffer #3 — bound by setDirectPresetFragmentBuffer3.
-              Reserved for future preset-uniform CPU-driven state. Currently
-              unused; first consumer planned: Lumen Mosaic (Phase LM) for
-              `LumenPatternState`. Slot is shared — any future preset that needs
-              a third per-frame state buffer binds here. Same per-frame uniform
-              binding contract as slots 6 / 7 in the staged + mv_warp + direct
-              paths. Additionally bound at fragment slot 8 of the ray-march
-              **lighting pass** (`RayMarchPipeline.runLightingPass`) — the
-              G-buffer pass intentionally does NOT bind slot 8. Null when no
-              preset has called the setter; existing presets unaffected.
-              (D-LM-buffer-slot-8)
+              First consumer (LM.2): Lumen Mosaic's `LumenPatternState` (336 B).
+              Slot is shared — any future preset that needs a third per-frame
+              state buffer binds here. Same per-frame uniform binding contract
+              as slots 6 / 7 in the staged + mv_warp + direct paths.
+              **LM.2 widened the ray-march binding contract**: slot 8 is bound
+              at BOTH `RayMarchPipeline.runGBufferPass` AND `runLightingPass`
+              for every ray-march preset. The preamble's
+              `raymarch_gbuffer_fragment` declares `[[buffer(8)]]`
+              unconditionally (every ray-march preset compiles against the
+              same fragment), so when a preset has not called the setter the
+              zero-filled `RayMarchPipeline.lumenPlaceholderBuffer` is bound
+              instead — Metal validation requires every declared fragment
+              buffer to be bound at draw time. The `sceneMaterial` D-021
+              signature gained a trailing `constant LumenPatternState& lumen`
+              parameter; non-Lumen presets receive the zero placeholder and
+              silence it via `(void)lumen;`. (D-LM-buffer-slot-8)
 ```
 
 **Authoring note:** buffer(0) is `FeatureVector`, not FFT — the old documentation was wrong. All existing presets (Starburst, VolumetricLithograph, etc.) bind in this order. New preset fragment functions must declare `constant FeatureVector& fv [[buffer(0)]]`. The `SpectralHistory` buffer(5) is available in direct-pass presets; ray march presets currently skip it.
@@ -612,10 +619,22 @@ out-param); read by `raymarch_lighting_fragment` and dispatched on:
   coloured at silence (D-019). `kLumenEmissionGain` and `kLumenIBLFloor`
   are file-scope `constexpr constant` in `Renderer/Shaders/RayMarch.metal`.
 
-The `sceneMaterial` D-021 signature gained an out-param to support this —
-all ray-march presets must declare `thread int& outMatID` as the trailing
-parameter. Default behaviour for existing presets is to leave it untouched
-(the preamble's `raymarch_gbuffer_fragment` pre-zeros it before the call).
+The `sceneMaterial` D-021 signature was extended in two steps:
+
+1. **LM.1 (D-LM-matid)** — added `thread int& outMatID` as the trailing
+   parameter. Default behaviour for existing presets is to leave it
+   untouched (the preamble's `raymarch_gbuffer_fragment` pre-zeros it
+   before the call).
+
+2. **LM.2 (D-LM-buffer-slot-8)** — added `constant LumenPatternState& lumen`
+   as the new trailing parameter (after `outMatID`). Bound at fragment
+   slot 8 in both the G-buffer and lighting passes. Non-Lumen presets
+   receive the zero-filled `RayMarchPipeline.lumenPlaceholderBuffer` and
+   silence the parameter via `(void)lumen;`. Lumen Mosaic's
+   `sceneMaterial` reads it to compute the cell-quantized 4-light
+   backlight (contract §P.3 / §P.4). The preamble defines the
+   `LumenLightAgent` (32 B) / `LumenPattern` (48 B) / `LumenPatternState`
+   (336 B) MSL structs once for every ray-march preset.
 
 ### SSGI
 Half-res `.rgba16Float`. 8-sample blue-noise-rotated spiral. `kIndirectStrength = 0.3`. Sky pixels (depth ≥ 0.999) early-exit. Additive blend (src=one, dst=one). `sceneParamsB.w` overrides sample radius (0 → default 0.08 UV).

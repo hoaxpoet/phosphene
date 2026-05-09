@@ -164,10 +164,14 @@ void sceneMaterial(float3 p,
                    thread float3& albedo,
                    thread float& roughness,
                    thread float& metallic,
-                   thread int& outMatID) {
+                   thread int& outMatID,
+                   constant LumenPatternState& lumen) {
     // outMatID stays at the caller's default (0 = standard dielectric); Glass
     // Brutalist materials are rendered through the existing Cook-Torrance path.
     (void)outMatID;
+    // `lumen` (LM.2 / D-LM-buffer-slot-8) is the trailing slot-8 buffer used
+    // by Lumen Mosaic. Non-Lumen presets ignore it.
+    (void)lumen;
     // Re-evaluate sub-SDFs with the SAME audio-reactive fin position used
     // in sceneSDF — otherwise fin edges at a displaced X would classify as
     // concrete when they should be glass (the "glass-turning-to-concrete"

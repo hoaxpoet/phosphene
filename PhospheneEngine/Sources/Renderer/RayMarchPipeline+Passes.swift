@@ -21,9 +21,15 @@ private let passLogger = Logger(subsystem: "com.phosphene.renderer", category: "
 extension RayMarchPipeline {
 
     // swiftlint:disable function_parameter_count
-    // `runGBufferPass` takes 7 parameters — the minimal set for encoding a preset draw call.
+    // `runGBufferPass` takes 8 parameters — the minimal set for encoding a preset draw call.
 
     /// Pass 1: Render the preset's SDF scene into the three G-buffer targets.
+    ///
+    /// Slot 8 is bound for every ray-march preset (LM.2 / D-LM-buffer-slot-8). When
+    /// `presetFragmentBuffer3` is nil (any preset other than Lumen Mosaic at the time
+    /// of writing) the zero-filled `lumenPlaceholderBuffer` is bound instead — the
+    /// preamble's `raymarch_gbuffer_fragment` declares `[[buffer(8)]]` and Metal
+    /// validation requires every declared buffer to be bound at draw time.
     func runGBufferPass(
         commandBuffer: MTLCommandBuffer,
         gbufferPipelineState: MTLRenderPipelineState,
@@ -31,7 +37,8 @@ extension RayMarchPipeline {
         fftBuffer: MTLBuffer,
         waveformBuffer: MTLBuffer,
         stemFeatures: StemFeatures,
-        noiseTextures: TextureManager?
+        noiseTextures: TextureManager?,
+        presetFragmentBuffer3: MTLBuffer? = nil
     ) {
         guard let g0 = gbuffer0, let g1 = gbuffer1, let g2 = gbuffer2 else {
             passLogger.error("runGBufferPass: G-buffer textures nil — skipping")
@@ -67,6 +74,11 @@ extension RayMarchPipeline {
         var stems = stemFeatures
         encoder.setFragmentBytes(&stems, length: MemoryLayout<StemFeatures>.stride, index: 3)
         encoder.setFragmentBytes(&sceneUniforms, length: MemoryLayout<SceneUniforms>.stride, index: 4)
+        // Slot 8: Lumen Mosaic preset state, or the zero-filled placeholder for
+        // every other ray-march preset. Always non-nil so the preamble's
+        // `[[buffer(8)]]` parameter is defined.
+        let slot8Buffer = presetFragmentBuffer3 ?? lumenPlaceholderBuffer
+        encoder.setFragmentBuffer(slot8Buffer, offset: 0, index: 8)
         noiseTextures?.bindTextures(to: encoder)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         encoder.endEncoding()
@@ -104,9 +116,14 @@ extension RayMarchPipeline {
         encoder.setRenderPipelineState(lightingPipeline)
         encoder.setFragmentBytes(&features, length: MemoryLayout<FeatureVector>.stride, index: 0)
         encoder.setFragmentBytes(&sceneUniforms, length: MemoryLayout<SceneUniforms>.stride, index: 4)
-        if let presetBuf3 = presetFragmentBuffer3 {
-            encoder.setFragmentBuffer(presetBuf3, offset: 0, index: 8)
-        }
+        // Slot 8: Lumen Mosaic preset state, or the zero-filled placeholder for
+        // any non-Lumen ray-march preset. Always bound for symmetry with the
+        // G-buffer pass — the lighting fragment doesn't currently declare
+        // `[[buffer(8)]]`, but binding eagerly keeps slot semantics uniform
+        // across both passes (matID == 1 path may grow to read slot 8 in
+        // a future LM increment without adding pass-specific binding logic).
+        let slot8Buffer = presetFragmentBuffer3 ?? lumenPlaceholderBuffer
+        encoder.setFragmentBuffer(slot8Buffer, offset: 0, index: 8)
         encoder.setFragmentTexture(g0, index: 0)
         encoder.setFragmentTexture(g1, index: 1)
         encoder.setFragmentTexture(g2, index: 2)

@@ -127,6 +127,13 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// via `setMeshPresetTick` / `setDirectPresetFragmentBuffer` in `applyPreset`.
     var gossamerState: GossamerState?
 
+    /// Lumen Mosaic 4-light pattern engine — allocated when the Lumen Mosaic
+    /// preset is active, nil otherwise. Tick closure flushes the engine state
+    /// to a 336-byte UMA buffer bound at fragment slot 8 of the ray-march
+    /// G-buffer + lighting passes via `setDirectPresetFragmentBuffer3` in
+    /// `applyPreset`. (LM.2 / D-LM-buffer-slot-8.)
+    var lumenPatternEngine: LumenPatternEngine?
+
     /// Dynamic text overlay for SpectralCartograph — allocated when that preset is
     /// active, nil otherwise. Freed and detached on every `applyPreset` call.
     var spectralCartographOverlay: DynamicTextOverlay?

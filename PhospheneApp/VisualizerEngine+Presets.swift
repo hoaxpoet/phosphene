@@ -1,4 +1,5 @@
 // VisualizerEngine+Presets — Preset switching and render-path configuration.
+// swiftlint:disable file_length
 
 import Combine
 import CoreGraphics
@@ -55,11 +56,13 @@ extension VisualizerEngine {
         pipeline.setMeshPresetTick(nil)
         arachneState = nil
         gossamerState = nil
+        lumenPatternEngine = nil
         spectralCartographOverlay = nil
         pipeline.setDynamicTextOverlay(nil)
         pipeline.setTextOverlayCallback(nil)
         pipeline.setDirectPresetFragmentBuffer(nil)
         pipeline.setDirectPresetFragmentBuffer2(nil)
+        pipeline.setDirectPresetFragmentBuffer3(nil)
         pipeline.setPostProcessChain(nil)
         pipeline.setRayMarchPipeline(nil)
         pipeline.setFeedbackParams(nil)
@@ -146,6 +149,26 @@ extension VisualizerEngine {
                     rmPipeline.lastDollyFrameTime = nil
 
                     currentRayMarchPipeline = rmPipeline
+
+                    // Lumen Mosaic: allocate the 4-light pattern engine and
+                    // wire its 336-byte slot-8 buffer + per-frame tick. The
+                    // tick reads (FeatureVector, StemFeatures), advances mood
+                    // smoothing + drift Lissajous + beat-locked dance, and
+                    // flushes the result for the next G-buffer + lighting
+                    // pass to read at fragment slot 8. (LM.2 / D-LM-buffer-slot-8.)
+                    if desc.name == "Lumen Mosaic" {
+                        if let engine = LumenPatternEngine(device: context.device) {
+                            lumenPatternEngine = engine
+                            pipeline.setDirectPresetFragmentBuffer3(engine.patternBuffer)
+                            pipeline.setMeshPresetTick { [weak engine] features, stems in
+                                engine?.tick(features: features, stems: stems)
+                            }
+                        } else {
+                            logger.error(
+                                "LumenPatternEngine: failed to allocate slot-8 buffer for preset '\(desc.name)'"
+                            )
+                        }
+                    }
                 } catch {
                     logger.error("Failed to create RayMarchPipeline for preset '\(desc.name)': \(error)")
                 }
