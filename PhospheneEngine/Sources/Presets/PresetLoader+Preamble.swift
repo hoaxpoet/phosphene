@@ -259,8 +259,8 @@ extension PresetLoader {
 
         // G-buffer output for ray march presets. See CLAUDE.md §G-Buffer Layout
         // (Ray March) for the full layout + matID dispatch contract (D-LM-matid).
-        //   color(0)  .rg16Float    R = depth, G = preset matID (0 = standard
-        //                           dielectric; 1 = emission-dominated)
+        // matID values are fp16 round-tripped — must fit in [0, 2048].
+        //   color(0)  .rg16Float    R = depth, G = preset matID (0 / 1)
         //   color(1)  .rgba8Snorm   RGB = world-space normal; A = AO
         //   color(2)  .rgba8Unorm   RGB = albedo; A = packed roughness/metallic
         struct GBufferOutput {

@@ -43,6 +43,12 @@ using namespace metal;
 
 // MARK: - matID emission-dominated tunables (LM.1 / D-LM-matid)
 
+/// matID encoding range: gbuf0.g is `.rg16Float`. matID values must fit
+/// within fp16's exact integer range [0, 2048]; values above 2048 silently
+/// truncate on the half-float round-trip and `int(g0.g + 0.5)` would read
+/// back the wrong matID. Phase LM ships matID 0 (standard dielectric) and
+/// matID 1 (emission-dominated); future presets may extend up to 2048.
+
 /// Emission gain for matID == 1 (emission-dominated dielectric).
 /// The G-buffer's albedo channel carries backlight intensity scaled to [0, 1];
 /// multiplying by 4.0 lifts saturated cells (albedo == 1.0) to HDR ≈ 4.0,
@@ -295,6 +301,12 @@ fragment float4 raymarch_lighting_fragment(
     // emission and add a small IBL ambient floor so the panel stays
     // coloured under D-019 silence fallback.  Existing matID == 0 presets
     // continue down the standard path below.
+    //
+    // Sky path (depth ≥ 0.999) returned at the gbuf-sample block above
+    // before this dispatch is reached — sky pixels never observe matID
+    // even when a preset writes matID = 1 to every hit (Lumen Mosaic).
+    // matID values must fit fp16's exact integer range [0, 2048]; see
+    // the kLumenEmissionGain block at the top of this file.
     int matID = int(g0.g + 0.5);
     if (matID == 1) {
         float3 irradiance = ibl_sample_irradiance(N, iblIrradiance, iblSamp);

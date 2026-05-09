@@ -89,6 +89,20 @@ constant float kReliefAmplitude = 0.004f;
 /// contribution below 0.07.
 constant float kFrostAmplitude = 0.0008f;
 
+/// Distance from the panel face inside which `sceneSDF` evaluates the
+/// relief + frost displacement; outside this band the SDF returns the
+/// raw `box_dist` so distant march samples skip the voronoi + fbm8
+/// cost. The band must be wider than the maximum displacement
+/// (kReliefAmplitude + kFrostAmplitude = 0.0048) by enough that the
+/// G-buffer fragment's eps=0.001 central-differences normal samples
+/// always fall inside the band when evaluated at a hit position
+/// (box_dist ≈ 0). 0.02 world units = ≈ 4× the maximum displacement;
+/// the safety margin also covers cases where the eventual hit's normal
+/// eps lands marginally outside the displaced surface. Eliminates ~30×
+/// of the voronoi + fbm8 cost per frame at 1080p (sphere tracing only
+/// touches the band on the last 1–2 march steps before convergence).
+constant float kReliefBandRadius = 0.02f;
+
 /// fbm8 spatial scale for the in-cell frost. Per SHADER_CRAFT.md §4.5b
 /// convention (mat_pattern_glass companion frost). 80 cycles per world
 /// unit ≈ 16 cycles per cell at kCellDensity = 30, so frost reads as
@@ -144,13 +158,10 @@ static inline float3 lm_mood_tint(float valence, float arousal) {
 /// LM.1 backlight sampling: returns a static warm-amber colour plus a
 /// tiny mood-tinted ambient floor so the panel reads as coloured at all
 /// times (D-019 silence fallback). LM.2 replaces this with an analytical
-/// sum over 4 audio-driven light agents read from the slot 8 fragment
-/// buffer. The function takes a cell_seed argument (unused in LM.1) so
-/// the call-site signature stays stable when LM.2 promotes per-cell
-/// sampling.
-static inline float3 lm_backlight_static(float2 cell_seed,
-                                          constant FeatureVector& f) {
-    (void)cell_seed;
+/// sample over 4 audio-driven light agents at the cell-centre uv read
+/// from the slot 8 fragment buffer; the LM.2 successor will reintroduce
+/// a `cell_seed` parameter at the same call site in `sceneMaterial`.
+static inline float3 lm_backlight_static(constant FeatureVector& f) {
     float3 ambient = lm_mood_tint(f.valence, f.arousal) * kAmbientFloorIntensity;
     return kLumenStaticBacklight + ambient;
 }
@@ -207,10 +218,22 @@ float sceneSDF(float3 p,
     float3 panel_size = float3(cam_t * kPanelOversize, kPanelThickness);
     float box_dist = sd_box(p, panel_size);
 
-    // Cell-relief displacement in panel-face uv. Sampling the relief
-    // field at every SDF query is acceptable on Apple Silicon — the
-    // central-differences normal already evaluates sceneSDF six times
-    // per hit, and voronoi_f1f2 is ≈ 0.11 ms at 1080p.
+    // Band-limited relief + frost evaluation. Sphere tracing visits ~128
+    // march samples per pixel; at 1080p with ~50% panel coverage that's
+    // ~7M voronoi + ~7M fbm8 calls per frame if every sample evaluates
+    // both. Most samples are far from the panel surface where the
+    // displacement contribution is noise-floor anyway. Gating on
+    // `box_dist > kReliefBandRadius` returns the raw box SDF for the
+    // ~99% of march samples that fall outside the band. The eventual
+    // hit + its 6 central-differences-normal neighbours all sit within
+    // box_dist ≈ ±0.001, well inside the 0.02 band.
+    if (box_dist > kReliefBandRadius) {
+        return box_dist;
+    }
+
+    // Cell-relief displacement in panel-face uv. voronoi_f1f2 ≈ 0.11 ms
+    // at 1080p; the gate above limits this evaluation to near-surface
+    // samples (typically 1–2 steps before march convergence).
     float2 panel_uv = p.xy / cam_t;
     float relief = lm_cell_relief(panel_uv);
     float frost  = lm_frost(p) - 0.5f;     // re-centre to [-0.5, +0.5]
@@ -246,17 +269,16 @@ void sceneMaterial(float3 p,
                    thread float& roughness,
                    thread float& metallic,
                    thread int& outMatID) {
+    (void)p;
     (void)matID;
+    (void)s;
     (void)stems;
 
-    // Cell coordinate for future per-cell backlight sampling (LM.2).
-    // For LM.1 the backlight is uniform across the panel, so v0 itself
-    // isn't read — but we keep the call-site stable so LM.2's per-cell
-    // sample only changes lm_backlight_static -> lm_backlight_at(...).
-    float2 cam_t = lm_camera_tangents(s);
-    float2 panel_uv = p.xy / cam_t;
-    VoronoiResult v0 = voronoi_f1f2(panel_uv, kCellDensity);
-    float2 cell_seed = v0.pos;
+    // LM.1: backlight is uniform across the panel — no per-cell sampling
+    // is needed yet. LM.2 will reintroduce a `voronoi_f1f2(panel_uv, ...)`
+    // call here to derive a per-cell `cell_seed` for `sample_backlight_at`,
+    // matching the lm_backlight_static call shape kept stable for that
+    // promotion.
 
     // Backlight signal carried in albedo (matID == 1 contract). Clamped
     // to [0, 1] so the rgba8Unorm G-buffer encoding is loss-free in the
@@ -264,7 +286,7 @@ void sceneMaterial(float3 p,
     // perceptual HDR. For LM.2+ where multiple agents may sum > 1, the
     // clamp will become an artistic compromise that the LM.6 polish pass
     // can revisit.
-    float3 backlight = lm_backlight_static(cell_seed, f);
+    float3 backlight = lm_backlight_static(f);
     albedo    = clamp(backlight, 0.0f, 1.0f);
 
     // Pattern-glass material aesthetic from SHADER_CRAFT.md §4.5b. These
