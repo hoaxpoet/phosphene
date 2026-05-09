@@ -2758,3 +2758,35 @@ The prompt's EndedView spec calls for both track count and session duration. `Se
 **Murmuration relationship.** Murmuration's `particle_update` already reads `stems.drums_beat` via the D-019 stem-warmup blend (`mix(fm_beat, stems.drums_beat, stemBlend)`). DM.3's dispersion shock follows the same route in `motes_update`, but unblended — the dispersion shock fires only when stems are warm enough for the smoothstep gate to trip, so a D-019 blend is redundant (cold stems = `drums_beat = 0` = no dispersion).
 
 **Carry-forward.** Future particles-family presets needing a "kick-driven impulse" should route to `stems.drums_beat` with the canonical `smoothstep(0.30, 0.70, ...)` gate. `stems.drums_energy_dev` remains the right choice for continuous percussion-intensity drivers (e.g. flock-density modulation by sustained percussion).
+
+## D-LM-buffer-slot-8 — Fragment buffer slot 8 reservation for per-preset CPU-driven state (Increment LM.0, filed 2026-05-08)
+
+**Status.** Accepted.
+
+**Decision.** Reserve fragment buffer slot 8 as a third per-preset CPU-driven state buffer, alongside the existing slots 6 and 7. New `RenderPipeline.directPresetFragmentBuffer3` storage + `setDirectPresetFragmentBuffer3(_:)` setter mirror the slot 6 / 7 setter pattern exactly. Bound at fragment slot 8 in every per-frame uniform binding site that already binds slots 6 / 7 (staged composition, mv_warp scene-to-texture) **plus** the direct-pass (`drawDirect`) and the ray-march **lighting** pass (`RayMarchPipeline.runLightingPass`). The G-buffer pass (`RayMarchPipeline.runGBufferPass`) intentionally does NOT bind slot 8 — only lighting consumes it today.
+
+**Context.** Phase LM (Lumen Mosaic) is the first preset to need a third per-preset state buffer beyond what slots 6 (`ArachneState.webBuffer` / `GossamerState.wavePool`) and 7 (`ArachneState.spiderBuffer`) already reserve. Lumen Mosaic's planned `LumenPatternState` (336 B — 4 light agents + 4 patterns + small scalars per `Lumen_Mosaic_Rendering_Architecture_Contract.md` §"Required uniforms / buffers") encodes per-frame CPU-driven state that the fragment shader reads to compute analytic backlight emission per Voronoi cell. The rendering contract calls out slot 8 explicitly (Decision F.1: "Bind at slot 8 in the same per-frame uniform contract as slots 6 and 7").
+
+LM.0 is pure infrastructure; no shader code lands in this increment. The slot is wired so LM.1 (the first Lumen Mosaic shader) can bind state via the new setter and the lighting fragment can read `LumenPatternState` directly.
+
+**Why slot 8, not a different mechanism.**
+
+- **Mirrors the slot 6 / 7 contract.** Slots 6 and 7 are already the documented "per-preset fragment buffer #1 / #2" reservations (CLAUDE.md GPU Contract). Adding slot 8 as "per-preset fragment buffer #3" extends the same idiom with no new abstraction. Future authors who already know how to use slot 6 / 7 immediately know how to use slot 8.
+- **Shared resource, first consumer is Lumen Mosaic.** The slot is not Lumen-Mosaic-specific. Any future preset that needs a third per-frame state buffer binds via `setDirectPresetFragmentBuffer3`. Lumen Mosaic is the first consumer because it is the first preset to outgrow slots 6 / 7.
+- **No struct extensions to `Common.metal`.** Extending `FeatureVector` or `StemFeatures` to carry the new state would force a byte-layout migration (cf. D-099) and pay a regression cost on every preset's golden hash. A dedicated slot is cheaper and additive.
+- **Per-frame uniform binding contract is uniform across stages.** Same rule as slots 6 / 7: in staged-composition presets, slot 8 is bound at every stage of the staged dispatch (WORLD, COMPOSITE, etc.) — both stages see the same snapshot. This avoids state divergence across stages.
+
+**Why the G-buffer pass is excluded from slot 8 binding.**
+
+Lumen Mosaic's pattern state is consumed by the lighting fragment (per Decision F.1: emission-dominated path with Option α — lighting pass multiplies albedo by emission gain when matID == 1). The G-buffer pass writes albedo / depth / normal / matID and does not need the pattern state. Excluding the G-buffer pass keeps that pass's binding surface stable and minimises the chance of slot 8 leaking into shaders that don't need it. If a future preset turns out to need slot 8 in the G-buffer pass, that is an additive change to `RayMarchPipeline+Passes.swift`'s `runGBufferPass` (and a follow-up entry to this decision).
+
+**What was rejected.**
+
+- **Extending `FeatureVector` or `StemFeatures` with the new fields.** Forces a byte-layout migration (cf. D-099) and regenerates every preset's golden hash. A dedicated slot is cheaper and additive.
+- **A new G-buffer channel for emission state.** Per the rendering contract (§sceneSDF/sceneMaterial Option β), this is heavier infrastructure work and unnecessary while Option α (matID == 1 emission gain) holds.
+- **Binding at a higher slot index (e.g. 16+) to leave headroom.** Slot 8 is the next contiguous slot after 6 / 7 and pre-noise textures (4–8). The TextureManager binds noise *textures* at slots 4–8, not buffers — Metal's buffer and texture argument-binding spaces are independent. Slot 8 in the buffer space is free.
+- **Making slot 8 ray-march-only.** The prompt initially considered this fallback. Mirroring the slot 6 / 7 contract (staged + mv_warp + direct + ray-march lighting) keeps a future direct-pass-only preset that needs a third state buffer eligible without further engine changes.
+
+**Rule.** Future presets that need a third per-frame state buffer bind via `setDirectPresetFragmentBuffer3(_:)` and read at fragment slot 8. **Do not** overload slots 6 / 7 / 8 for a different purpose; if a fourth state buffer becomes necessary, extend `RenderPipeline` with `directPresetFragmentBuffer4` / `5` and document the slot in CLAUDE.md GPU Contract. The G-buffer pass binding remains stable; only the lighting pass plus the staged / mv_warp / direct paths bind slot 8.
+
+**Carry-forward.** LM.1 implements `LumenPatternEngine` (CPU-side state + setter call) + `LumenMosaic.metal` (lighting fragment reads `LumenPatternState` at `[[buffer(8)]]`). No further engine changes expected for Lumen Mosaic; if LM.5 promotes silhouette occluder masks per Decision B.2 they ride the same slot or a future slot 9 — to be filed at LM.5 if needed.

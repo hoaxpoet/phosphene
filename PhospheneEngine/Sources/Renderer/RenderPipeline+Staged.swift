@@ -206,22 +206,27 @@ extension RenderPipeline {
                                  index: 3)
         encoder.setFragmentBuffer(spectralHistory.gpuBuffer, offset: 0, index: 5)
 
-        // MARK: Per-preset fragment buffers (slots 6 / 7)
+        // MARK: Per-preset fragment buffers (slots 6 / 7 / 8)
         //
         // Reserved for the same per-preset buffers the legacy mv_warp / direct
-        // paths bind via `setDirectPresetFragmentBuffer` / `…Buffer2` (e.g.
-        // `ArachneState.webBuffer` at index 6 + `ArachneState.spiderBuffer` at
-        // index 7). Binding here is per-frame uniform across every stage of a
-        // staged preset — both WORLD and COMPOSITE see the same snapshot, so
-        // sampling decisions in COMPOSITE remain consistent with what WORLD
-        // rendered. New per-preset buffers must use slots ≥ 8 (or extend
-        // `RenderPipeline` with `directPresetFragmentBuffer3` / `4`); never
-        // overload 6 / 7 for a different purpose.
+        // paths bind via `setDirectPresetFragmentBuffer` / `…Buffer2` /
+        // `…Buffer3` (e.g. `ArachneState.webBuffer` at index 6 +
+        // `ArachneState.spiderBuffer` at index 7; Lumen Mosaic's
+        // `LumenPatternState` planned at index 8). Binding here is per-frame
+        // uniform across every stage of a staged preset — both WORLD and
+        // COMPOSITE see the same snapshot, so sampling decisions in COMPOSITE
+        // remain consistent with what WORLD rendered. New per-preset buffers
+        // beyond slot 8 must extend `RenderPipeline` with
+        // `directPresetFragmentBuffer4` / `5`; never overload 6 / 7 / 8 for a
+        // different purpose.
         if let presetBuf = directPresetFragmentBufferLock.withLock({ directPresetFragmentBuffer }) {
             encoder.setFragmentBuffer(presetBuf, offset: 0, index: 6)
         }
         if let presetBuf2 = directPresetFragmentBuffer2Lock.withLock({ directPresetFragmentBuffer2 }) {
             encoder.setFragmentBuffer(presetBuf2, offset: 0, index: 7)
+        }
+        if let presetBuf3 = directPresetFragmentBuffer3Lock.withLock({ directPresetFragmentBuffer3 }) {
+            encoder.setFragmentBuffer(presetBuf3, offset: 0, index: 8)
         }
 
         bindNoiseTextures(to: encoder)

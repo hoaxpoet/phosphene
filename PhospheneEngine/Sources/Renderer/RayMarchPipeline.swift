@@ -291,6 +291,9 @@ public final class RayMarchPipeline: @unchecked Sendable {
     ///   - noiseTextures: Optional noise texture manager — binds at slots 4–8.
     ///   - iblManager: Optional IBL texture manager — binds at slots 9–11.
     ///   - postProcessChain: Optional bloom chain. When non-nil, replaces the composite pass.
+    ///   - presetFragmentBuffer3: Optional per-preset CPU-driven state buffer bound at fragment slot 8
+    ///     of the lighting pass only (G-buffer pass intentionally excluded). First planned consumer:
+    ///     Lumen Mosaic's `LumenPatternState`. (D-LM-buffer-slot-8)
     public func render(
         gbufferPipelineState: MTLRenderPipelineState,
         features: inout FeatureVector,
@@ -301,7 +304,8 @@ public final class RayMarchPipeline: @unchecked Sendable {
         commandBuffer: MTLCommandBuffer,
         noiseTextures: TextureManager? = nil,
         iblManager: IBLManager? = nil,
-        postProcessChain: PostProcessChain? = nil
+        postProcessChain: PostProcessChain? = nil,
+        presetFragmentBuffer3: MTLBuffer? = nil
     ) {
         guard gbuffer0 != nil, gbuffer1 != nil, gbuffer2 != nil, litTexture != nil else {
             logger.error("RayMarchPipeline.render called before textures allocated — skipping")
@@ -330,7 +334,8 @@ public final class RayMarchPipeline: @unchecked Sendable {
             commandBuffer: commandBuffer,
             features: &features,
             noiseTextures: noiseTextures,
-            iblManager: iblManager
+            iblManager: iblManager,
+            presetFragmentBuffer3: presetFragmentBuffer3
         )
 
         // Optional SSGI pass (Increment 3.17): indirect diffuse between lighting and composite.

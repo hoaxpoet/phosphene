@@ -154,6 +154,16 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     var directPresetFragmentBuffer2: MTLBuffer?
     let directPresetFragmentBuffer2Lock = NSLock()
 
+    // MARK: - Direct Preset Fragment Buffer 3 (buffer(8))
+
+    /// Tertiary per-preset fragment buffer at index 8. Reserved for future
+    /// preset-uniform CPU-driven state. Currently unused; first planned consumer
+    /// is Lumen Mosaic (Phase LM) for `LumenPatternState`. Slot is shared — any
+    /// future preset that needs a third per-frame state buffer binds here. See
+    /// CLAUDE.md GPU Contract for the slot 6 / 7 / 8 reservation list. (D-LM-buffer-slot-8)
+    var directPresetFragmentBuffer3: MTLBuffer?
+    let directPresetFragmentBuffer3Lock = NSLock()
+
     // MARK: - Dynamic Text Overlay (texture 12)
 
     /// Per-frame CPU text rasterization for text-overlay presets (e.g. SpectralCartograph).
