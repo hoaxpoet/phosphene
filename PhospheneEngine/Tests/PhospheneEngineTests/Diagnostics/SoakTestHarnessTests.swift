@@ -17,6 +17,7 @@ import Metal
 import Audio
 import Shared
 @testable import Diagnostics
+@testable import Presets
 @testable import Renderer
 
 // MARK: - Always-run Tests
@@ -331,6 +332,218 @@ struct SoakTestHarnessSoakTests {
         // rather than a full-pipeline budget breach.
         #expect(p95 < 5.0,
                 "Kernel p95 \(p95) ms exceeds 5ms loose gate — investigate motes_update for regression.")
+    }
+
+    // MARK: SOAK_TESTS=1 — Arachne composite-fragment kernel cost
+    //
+    // BUG-011 in-tree regression gate. The full-pipeline perf capture for
+    // Arachne (real-music + production app) is documented in
+    // `docs/diagnostics/DM.3-perf-capture.md` and is the closure gate for
+    // BUG-011; this SOAK test is the kernel-only equivalent that catches
+    // shader-side regressions before they reach the full-pipeline capture.
+    //
+    // Renders Arachne's COMPOSITE fragment to a 1920×1080 offscreen texture
+    // with the spider forced active and a placeholder WORLD texture bound at
+    // texture(13). This exercises:
+    //   • the foreground anchor block (web walk + drops + Snell's-law
+    //     refraction sampling worldTex per drop pixel — gated post-L2 at
+    //     `wr.dropCov > 0.5`),
+    //   • the V.7.7D 3D SDF spider patch ray-march (post-L1 at 24 steps,
+    //     dispatched via the post-L3 `spider.blend > 0.05` gate),
+    //   • §8.2 vibration UV jitter,
+    //   • final WORLD `worldTex.sample(uv)` + ambient + rim,
+    //   • mist + dust mote post-process.
+    //
+    // Loose gate p95 ≤ 16 ms kernel-only. The Drift Motes 1:3 kernel:full-
+    // pipeline ratio does NOT apply to Arachne — Arachne is fragment-only
+    // (no compute pre-pass to add on top), so kernel ≈ full-pipeline. The
+    // 16 ms gate sits ~10 % above the post-BUG-011 measurement on M2 Pro
+    // (this hardware's 2026-05-10 capture: kernel p95 = 14.6 ms with
+    // spider forced ON), giving margin for run-to-run variance + thermal
+    // state, and still catches a lever-revert regression (which would
+    // jump p95 back into the 22–26 ms range — pre-tuning baseline was
+    // 26.6 ms full-pipeline per BUG-011 KNOWN_ISSUES).
+    //
+    // The L3 dispatch gate (`spider.blend > 0.05`) is bypassed in this
+    // benchmark by `forceActivateForTest(at:)` which sets blend=1, so the
+    // patch ray-march fires every frame. This is the WORST-case path; in
+    // production the spider is idle ~75 % of the time, so real-music
+    // p95 will land below this number. The full-pipeline closure gate
+    // for BUG-011 is the M2 Pro real-music capture per
+    // docs/diagnostics/DM.3-perf-capture.md.
+
+    @Test("30-second Arachne COMPOSITE fragment kernel cost benchmark (Tier 2)")
+    @MainActor
+    func shortRunArachneComposite() async throws {
+        guard ProcessInfo.processInfo.environment["SOAK_TESTS"] == "1" else { return }
+
+        let ctx = try MetalContext()
+        let loader = PresetLoader(device: ctx.device,
+                                   pixelFormat: ctx.pixelFormat,
+                                   loadBuiltIn: true)
+        guard let preset = loader.presets.first(where: { $0.descriptor.name == "Arachne" }) else {
+            // Arachne preset absent (Metal shader compile failed) — skip.
+            return
+        }
+
+        // Locate the COMPOSITE stage's pipeline state (Arachne is staged-
+        // composition under V.7.7A+; the loaded preset's `pipelineState`
+        // already resolves to the COMPOSITE stage per the JSON sidecar's
+        // `fragment_function: arachne_composite_fragment`).
+        let pipeline = preset.pipelineState
+
+        guard let device = MTLCreateSystemDefaultDevice() else { return }
+        guard let arachneState = ArachneState(device: device, seed: 42) else { return }
+
+        // Polygon-seeded, mid-build foreground (matches `ArachneSpiderRenderTests`
+        // shape so the benchmark exercises the production polygon-aware path).
+        arachneState.reset()
+        let warmupFV = FeatureVector(bass: 0.5, mid: 0.5, treble: 0.5,
+                                       time: 1.0, deltaTime: 1.0 / 60.0)
+        for _ in 0..<30 { arachneState.tick(features: warmupFV, stems: .zero) }
+
+        // Force spider on at the canonical fixture position so the V.7.7D
+        // patch ray-march fires every frame (worst-case path).
+        arachneState.forceActivateForTest(at: SIMD2<Float>(0.42, 0.40))
+
+        // 1920×1080 offscreen render target — representative of production
+        // drawable resolution. .bgra8Unorm matches the production pixel
+        // format; ctx.pixelFormat returns .bgra8Unorm_srgb but the COMPOSITE
+        // pipeline state was compiled against ctx.pixelFormat so we use it
+        // here for compatibility.
+        let texDesc = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: ctx.pixelFormat,
+            width: 1920, height: 1080, mipmapped: false)
+        texDesc.usage = [.renderTarget, .shaderRead]
+        texDesc.storageMode = .private
+        guard let target = ctx.device.makeTexture(descriptor: texDesc) else { return }
+
+        // Placeholder WORLD texture at texture(13). 256² mid-gray is enough
+        // to exercise `worldTex.sample()` cost; the shader doesn't care about
+        // the WORLD content for kernel timing — only that the sample
+        // resolves to a real texture rather than an unbound default.
+        let worldDesc = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .rgba16Float, width: 256, height: 256, mipmapped: false)
+        worldDesc.usage = [.shaderRead]
+        worldDesc.storageMode = .shared
+        guard let worldTex = ctx.device.makeTexture(descriptor: worldDesc) else { return }
+        // Fill with mid-gray Float16 (0.5, 0.5, 0.5, 1.0 — bit-pattern not
+        // important for cost timing, only that texture memory is initialised).
+        let worldBytes = [UInt16](repeating: 0x3800, count: 256 * 256 * 4)  // 0.5 in f16
+        worldBytes.withUnsafeBufferPointer { buf in
+            worldTex.replace(region: MTLRegionMake2D(0, 0, 256, 256),
+                             mipmapLevel: 0,
+                             withBytes: buf.baseAddress!,
+                             bytesPerRow: 256 * 4 * 2)
+        }
+
+        // Standard buffer scaffolding shared with `ArachneSpiderRenderTests`.
+        let floatStride = MemoryLayout<Float>.stride
+        guard
+            let fftBuf  = ctx.makeSharedBuffer(length: 512 * floatStride),
+            let wavBuf  = ctx.makeSharedBuffer(length: 2048 * floatStride),
+            let stemBuf = ctx.makeSharedBuffer(length: MemoryLayout<StemFeatures>.size),
+            let histBuf = ctx.makeSharedBuffer(length: 4096 * floatStride)
+        else { return }
+        _ = stemBuf.contents().initializeMemory(as: UInt8.self, repeating: 0,
+                                                 count: MemoryLayout<StemFeatures>.size)
+        _ = histBuf.contents().initializeMemory(as: UInt8.self, repeating: 0,
+                                                 count: 4096 * floatStride)
+
+        let dt: Float = 1.0 / 60.0
+        let frameCount = 30 * 60
+        var kernelMs: [Double] = []
+        kernelMs.reserveCapacity(frameCount)
+
+        // Representative musical fixture — mid-energy continuous bands +
+        // periodic kick exercising vibration + drop accent.
+        var fv = FeatureVector(bass: 0.5, mid: 0.5, treble: 0.5,
+                                 time: 0.0, deltaTime: dt)
+        var stems = StemFeatures.zero
+        stems.drumsEnergy = 0.5
+        stems.bassEnergy = 0.5
+
+        for frame in 0..<frameCount {
+            fv.time = Float(frame) * dt
+            // 2 Hz square wave on bassAttRel exercises §8.2 vibration UV
+            // jitter (vibration amplitude scales with f.bass_att_rel).
+            let beatCycle = frame % 30
+            fv.bassAttRel = beatCycle < 15 ? 0.5 : 0.0
+            fv.beatBass   = beatCycle < 5  ? 0.7 : 0.0
+            stems.drumsBeat = beatCycle < 5 ? 0.7 : 0.0
+
+            guard let cmdBuf = ctx.commandQueue.makeCommandBuffer() else { continue }
+            let rpd = MTLRenderPassDescriptor()
+            rpd.colorAttachments[0].texture = target
+            rpd.colorAttachments[0].loadAction = .clear
+            rpd.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
+            rpd.colorAttachments[0].storeAction = .store
+            guard let encoder = cmdBuf.makeRenderCommandEncoder(descriptor: rpd) else { continue }
+
+            encoder.setRenderPipelineState(pipeline)
+            encoder.setFragmentBytes(&fv, length: MemoryLayout<FeatureVector>.size, index: 0)
+            encoder.setFragmentBuffer(fftBuf,  offset: 0, index: 1)
+            encoder.setFragmentBuffer(wavBuf,  offset: 0, index: 2)
+            encoder.setFragmentBuffer(stemBuf, offset: 0, index: 3)
+            // index 4 = SceneUniforms (ray-march only — Arachne is direct fragment).
+            encoder.setFragmentBuffer(histBuf, offset: 0, index: 5)
+            encoder.setFragmentBuffer(arachneState.webBuffer,    offset: 0, index: 6)
+            encoder.setFragmentBuffer(arachneState.spiderBuffer, offset: 0, index: 7)
+            encoder.setFragmentTexture(worldTex, index: 13)
+
+            encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+            encoder.endEncoding()
+            cmdBuf.commit()
+            await cmdBuf.completed()
+            let durationS = cmdBuf.gpuEndTime - cmdBuf.gpuStartTime
+            kernelMs.append(durationS * 1000.0)
+        }
+
+        kernelMs.sort()
+        let n = kernelMs.count
+        guard n > 0 else { return }
+        let p50 = kernelMs[n / 2]
+        let p95 = kernelMs[Int(Double(n) * 0.95)]
+        let p99 = kernelMs[Int(Double(n) * 0.99)]
+        let mean = kernelMs.reduce(0, +) / Double(n)
+        // "Overruns" = frames whose kernel time exceeded the 14 ms Tier 2
+        // FrameBudgetManager downshift threshold (the production gate, not
+        // the SOAK loose gate).
+        let kernelOverruns = kernelMs.filter { $0 > 14.0 }.count
+
+        print("""
+        ┌─ ArachneCompositeKernelCost [Tier 2, 1920×1080, spider forced ON] ─
+        │ frames=\(n)  mean=\(String(format: "%.3f", mean))ms
+        │ p50=\(String(format: "%.3f", p50))ms  \
+        p95=\(String(format: "%.3f", p95))ms  \
+        p99=\(String(format: "%.3f", p99))ms
+        │ kernel overruns (>14ms)=\(kernelOverruns) of \(n)
+        │ Tier 2 full-frame budget=14ms (FrameBudgetManager downshift threshold);
+        │ Arachne is fragment-only so kernel ≈ full-pipeline (NOT the Drift
+        │ Motes 1:3 kernel:full ratio). Spider forced ON every frame is
+        │ the worst case; production p95 will be lower because spider is
+        │ idle ~75% of the time.
+        │ Full-pipeline closure gate: real-music capture on M2 Pro per
+        │ docs/diagnostics/DM.3-perf-capture.md.
+        └────────────────────────────────────────────────
+        """)
+
+        // Loose gate: kernel p95 should sit under 16 ms after BUG-011 levers
+        // L1+L2+L3 on M2 Pro. A failure here is a shader-side regression —
+        // step count, coverage gate, or dispatch gate creep — that should
+        // be caught before reaching the full-pipeline capture. The 16 ms
+        // value is ~10 % above the post-BUG-011 measurement on M2 Pro
+        // (2026-05-10 capture: 14.6 ms with spider forced ON), and well
+        // below the pre-tuning ~26 ms baseline a lever-revert would
+        // restore.
+        #expect(p95 < 16.0,
+                """
+                Arachne COMPOSITE kernel p95 \(p95) ms exceeds 16 ms loose gate \
+                on M2 Pro — investigate arachne_composite_fragment for regression. \
+                BUG-011 levers (L1 spider steps 24, L2 drop coverage 0.5, L3 \
+                spider blend 0.05) should hold this gate; if any were reverted, \
+                p95 will jump back into the 22–26 ms range.
+                """)
     }
 
     // MARK: Helpers
