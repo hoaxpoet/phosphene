@@ -1454,7 +1454,17 @@ fragment float4 arachne_composite_fragment(
         // worldTex is the WORLD stage's offscreen output bound at [[texture(13)]];
         // sampling it (vs inline drawWorld()) preserves the staged-composition
         // contract V.ENGINE.1 / D-072 / D-092 established. D-093.
-        if (wr.dropCov > 0.01) {
+        // BUG-011 L2: coverage gate 0.01 → 0.5. The 0.01 floor admitted the
+        // entire anti-aliased rim band of every drop into the refraction
+        // path, paying for a `worldTex.sample(refractedUV)` plus the
+        // smoothstep+pow chain on pixels where the drop's visual presence
+        // is < 50 %. Raising to 0.5 keeps refraction on the visible drop
+        // core; rim pixels that lose refraction fall through to the
+        // silk-strand colour underneath, which is the same behaviour as
+        // pixels just outside the drop's silhouette — visual cliff at
+        // the threshold is small. If "missing drops" artifacts appear at
+        // larger foreground drop sizes in M7 review, back off to 0.3 or 0.2.
+        if (wr.dropCov > 0.5) {
             float2 d2     = wr.dropVec;
             float  rDrop  = wr.dropRadius;
             float  rNorm  = length(d2) / max(rDrop, 1e-5);
@@ -1567,7 +1577,12 @@ fragment float4 arachne_composite_fragment(
         // V.7.7C §5.8: photographic dewdrop — same Snell's-law recipe as anchor block.
         // scaledDrop = wr.dropCov × w.opacity preserves V.7.5 fade semantics; older /
         // fading webs contribute proportionally less. D-093.
-        if (scaledDrop > 0.01) {
+        // BUG-011 L2: coverage gate 0.01 → 0.5 to match the anchor-block hot
+        // path above. This loop body is currently dead (`for wi=1; wi<1`
+        // after V.7.7C.3 retired pool rendering — D-095) but the gate is
+        // updated in lockstep so any future revival starts from the
+        // BUG-011 cost envelope, not the V.7.5 envelope.
+        if (scaledDrop > 0.5) {
             float2 d2     = wr.dropVec;
             float  rDrop  = wr.dropRadius;
             float  rNorm  = length(d2) / max(rDrop, 1e-5);
