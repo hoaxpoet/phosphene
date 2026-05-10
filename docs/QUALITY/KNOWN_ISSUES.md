@@ -103,7 +103,7 @@ If this ever needs fixing:
 
 **Severity:** P2 (visible degradation under specific conditions: Arachne active on Tier 2 hardware. Median frame already at the FrameBudgetManager downshift threshold; 53% of frames over budget. Not a session-blocker — drop rate at the 32 ms threshold is 1.46%, so most frames complete inside one refresh — but the visual will feel laggy when Arachne is selected, and the governor will downshift quality more aggressively than intended.)
 **Domain tag:** perf
-**Status:** Open
+**Status:** **Open — tuning levers L1+L2+L3 landed 2026-05-10; pending Matt's M2 Pro real-music perf capture for closure.** The in-tree SOAK measurement on M2 Pro (kernel-only, spider forced ON, 1920×1080) shows post-tuning kernel p95 = 14.5 ms, mean = 12.9 ms across 1800 frames — a substantial reduction from the pre-tuning ~26 ms full-pipeline baseline. Arachne is fragment-only so kernel ≈ full-pipeline; the production p95 will land below this SOAK number because spider is idle ~75 % of the time per the V.7.7C.2 per-segment cooldown. **Production validation required before flipping to Resolved** — see Verification criteria below.
 **Introduced:** Surfaced 2026-05-08 by DM.3a per-frame perf capture in session `2026-05-08T22-01-07Z`. Likely accumulated across the V.7.7B → V.7.7C → V.7.7D → V.7.7C.5 sequence of staged-composition + 3D-spider + atmospheric-reframe additions. No single increment "introduced" it; the cost grew incrementally and was never measured against the full-pipeline budget until now.
 **Resolved:**
 
@@ -190,18 +190,50 @@ Likely candidates for the first tuning lever:
 
 ---
 
+### 2026-05-10 tuning pass (L1 + L2 + L3 landed)
+
+Three shader-side levers pulled in three separate commits, each with golden-hash + visual + test verification at each step. SOAK kernel-cost benchmark added in the fourth commit as the in-tree regression gate.
+
+| commit | lever | change | rationale |
+|---|---|---|---|
+| `082164c7` | **L1** spider ray-march steps | `maxSteps = 32 → 24` (Arachne.metal:~1640) | Worst-case loop reduction for miss-rays inside the 0.15 UV spider patch (~226×226 px @ 1080p ≈ 51k pixels). On-hit rays unaffected (sphere trace early-exits at hitEps). |
+| `1643ee24` | **L2** drop refraction coverage gate | `wr.dropCov > 0.01 → > 0.5` (both anchor + dead-pool sites) | Skips the per-pixel `worldTex.sample(refractedUV)` + smoothstep+pow chain on the anti-aliased rim band of every drop. Drops render with a clean visible core; rim pixels fall through to the silk-strand colour underneath. |
+| `96b2c288` | **L3** spider dispatch gate | `spider.blend > 0.01 → > 0.05` (dispatch site only, not overlay mix) | Skips the patch ray-march during the spider's fade-in/fade-out tail (blend ramping below 5 % opacity is below perceptual threshold). `listenLiftEMA` not plumbed to GPU per D-094, so gate uses `spider.blend` alone — listening pose triggers via the existing path with at most a 1-frame lag. |
+| `bd213856` | **SOAK gate** | `shortRunArachneComposite` benchmark added | Mirrors `shortRunDriftMotes` pattern. Renders COMPOSITE fragment to 1920×1080 offscreen with spider forced ON (worst case). p95 ≤ 16 ms loose gate. |
+
+**SOAK measurement on M2 Pro (this session, post-L1+L2+L3, spider forced ON every frame):**
+
+```
+┌─ ArachneCompositeKernelCost [Tier 2, 1920×1080, spider forced ON] ─
+│ frames=1800  mean=12.903ms
+│ p50=12.724ms  p95=14.458ms  p99=15.169ms
+│ kernel overruns (>14ms)=172 of 1800
+└────────────────────────────────────────────────
+```
+
+Run-to-run variance ≈ 0.1 ms (two runs: p95 = 14.578 / 14.458). The 16 ms SOAK gate sits ~10 % above the worst-case fixture and well below the pre-tuning ~26 ms baseline a lever-revert would restore.
+
+**Calibration finding worth preserving:** the Drift Motes kernel:full-pipeline ratio of ~1:3 does NOT apply to Arachne. Arachne is fragment-only (no compute pre-pass to add on top), so kernel ≈ full-pipeline — there's a small (~0.5–1 ms) overhead from the WORLD pass + drawable presentation + triple-buffering coordination, but the dominant cost is the fragment shader. The initial 5 ms SOAK gate suggested by the BUG-011 prompt was anchored on the wrong ratio and was rebased to 16 ms based on the in-session measurement.
+
+**Why "Open" not "Resolved":** the SOAK forces spider ON every frame (worst case); production has spider idle ~75 % of the time, so real-music p95 will land lower. But the SOAK kernel measurement also doesn't include WORLD pass + drawable cost. Net production p95 is *probably* below 14 ms on M2 Pro but the closure gate is the actual production capture per Verification criteria below — see the DM.3 perf-capture procedure.
+
+L4 (DeviceTier-aware fallback) explicitly NOT pulled — the prompt requires Matt's call before introducing a Tier-1 silhouette fallback. If Matt's real-music capture shows post-L1+L2+L3 p95 still > 14 ms on M2 Pro, L4 is the next escalation; otherwise L4 is unnecessary and the current state closes BUG-011.
+
+---
+
 ### Verification criteria
 
-- [ ] Automated: extend `SoakTestHarnessTests` with a per-stage Arachne kernel-cost benchmark (currently only Drift Motes has one). Need to land alongside any tuning attempt.
-- [ ] Manual: re-run the perf capture procedure on M2 Pro; Arachne window p95 ≤ 14 ms, p50 ≤ 8 ms, drops ≤ 8%.
+- [x] Automated: `shortRunArachneComposite` SOAK benchmark added to `SoakTestHarnessTests` (commit `bd213856`). Mirrors `shortRunDriftMotes` pattern. SOAK_TESTS=1 gated; loose 16 ms p95 kernel-only gate on M2 Pro at 1920×1080 with spider forced ON.
+- [ ] Manual: re-run the perf capture procedure on M2 Pro per `docs/diagnostics/DM.3-perf-capture.md`; Arachne window p95 ≤ 14 ms, p50 ≤ 8 ms, drops ≤ 8% over a 60 s representative window. **This is the closure gate** — flip Status to Resolved with the post-tuning numbers when this passes.
 - [ ] Manual: re-run on M3+ to confirm budget holds at full feature set on actual Tier 2 silicon (M2 Pro is borderline Tier 2; the architecture contract specifies M3+).
-- [ ] Manual: run Arachne against the V.7.7C.5 visual reference (`docs/VISUAL_REFERENCES/arachne/`) after any tuning to confirm fidelity didn't regress alongside cost.
+- [ ] Manual: run Arachne against the V.7.7C.5 visual reference (`docs/VISUAL_REFERENCES/arachne/`) after any tuning to confirm fidelity didn't regress alongside cost. The L1/L2/L3 changes are individually low-risk per the source-side comment rationale, but the cumulative visual is best assessed at real-music scale rather than the 64×64 dHash + RENDER_VISUAL contact-sheet harness used in this session.
 
 ### Related
 
 - V.7.10 cert review — explicitly gated on this. Cert can't sign off on a preset over budget on its target hardware tier.
 - V.7.7C.5 (D-100) — atmospheric reframe just landed; cost growth from V.7.7C.4 baseline likely contributes here, but the bulk of the 14-ms p50 is the V.7.7D spider + V.7.7C drops, both of which predate V.7.7C.5.
 - DM.3a (this session's measurement infrastructure made the breach visible).
+- L4 escalation path (DeviceTier-aware fallback to V.7.5 2D silhouette spider on Tier 1) — would need a new D-XXX entry in `docs/DECISIONS.md` before implementation. Documented but not landed.
 
 ---
 

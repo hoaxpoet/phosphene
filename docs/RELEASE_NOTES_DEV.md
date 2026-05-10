@@ -6,6 +6,69 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-10-a] BUG-011 — Arachne over Tier 2 frame budget: tuning levers L1+L2+L3 + SOAK kernel-cost benchmark
+
+**Increment:** BUG-011. **Domain:** perf. **Status:** Open — tuning levers landed; closure pending Matt's M2 Pro real-music perf capture per `docs/diagnostics/DM.3-perf-capture.md`. Four commits.
+
+Pre-tuning baseline measured 2026-05-08 in session `2026-05-08T22-01-07Z` (Arachne window of 4,579 frames over Love Rehab + So What + Limit To Your Love on M2 Pro):
+
+```
+p50 = 14.120 ms   ← already AT FrameBudgetManager downshift threshold
+p95 = 26.607 ms
+p99 = 32.743 ms   ← right at the drop threshold
+max = 36.072 ms
+>14 ms = 52.98%
+drops (>32 ms) = 1.46%
+```
+
+Drift Motes in the same session sat at p50 = 1.225 / p95 = 1.321 — proves measurement infrastructure healthy; cost is concentrated in Arachne specifically, accumulated incrementally across the V.7.7B → V.7.7C → V.7.7D → V.7.7C.5 sequence of staged-composition + 3D-spider + atmospheric-reframe additions.
+
+**Three shader-side levers pulled, each in its own commit with golden-hash + visual + test verification at each step.**
+
+| commit | lever | change | rationale |
+|---|---|---|---|
+| `082164c7` | **L1** spider ray-march steps | `maxSteps = 32 → 24` (Arachne.metal:~1640) | The 0.15 UV spider patch (~226×226 px @ 1080p ≈ 51k pixels) ran the full 32-step worst case for every miss-ray. Cutting to 24 reduces per-pixel max work by 25 %; on-hit rays are unaffected (sphere trace early-exits at hitEps). Visual risk minimal — chitin rim term is thick enough that ~1-pixel silhouette movement at grazing angles reads inside the rim. |
+| `1643ee24` | **L2** drop refraction coverage gate | `wr.dropCov > 0.01 → > 0.5` (both anchor + dead-pool sites) | The 0.01 floor admitted the entire anti-aliased rim band of every drop into the refraction path, paying for `worldTex.sample(refractedUV)` + smoothstep+pow chain on pixels where the drop's visual presence was < 50 %. Drops now render with a clean visible core; rim pixels fall through to the silk-strand colour underneath. |
+| `96b2c288` | **L3** spider dispatch gate | `spider.blend > 0.01 → > 0.05` (dispatch site only, not overlay mix) | Skips the patch ray-march during the spider's fade-in/fade-out tail (blend ramping below 5 % opacity is below perceptual threshold). `listenLiftEMA` not plumbed to GPU per D-094, so gate uses `spider.blend` alone — listening pose triggers via the existing path with at most a 1-frame lag. |
+
+**SOAK kernel-cost benchmark added (`bd213856`):** new `shortRunArachneComposite` test in `SoakTestHarnessTests` mirrors the existing `shortRunDriftMotes` pattern but renders Arachne's COMPOSITE fragment to a 1920×1080 offscreen texture with the spider forced active (worst case — patch ray-march fires every frame). SOAK_TESTS=1 gated; loose 16 ms p95 kernel-only gate on M2 Pro. Catches future shader-side regressions (step count creep, coverage gate revert, dispatch gate revert) before they reach the full-pipeline production capture.
+
+**M2 Pro measurement (this session, post-L1+L2+L3):**
+
+```
+┌─ ArachneCompositeKernelCost [Tier 2, 1920×1080, spider forced ON] ─
+│ frames=1800  mean=12.903ms
+│ p50=12.724ms  p95=14.458ms  p99=15.169ms
+│ kernel overruns (>14ms)=172 of 1800
+└────────────────────────────────────────────────
+```
+
+Run-to-run variance ≈ 0.1 ms (two runs: p95 = 14.578 / 14.458). The 16 ms gate sits ~10 % above the worst-case fixture and well below the pre-tuning ~26 ms baseline a lever-revert would restore.
+
+**Calibration finding worth preserving:** the Drift Motes kernel:full-pipeline ratio of ~1:3 does NOT apply to Arachne. Arachne is fragment-only (no compute pre-pass to add on top), so kernel ≈ full-pipeline. Initial 5 ms SOAK gate suggested by the BUG-011 prompt was anchored on the wrong ratio and rebased to 16 ms based on the in-session measurement.
+
+**Why "Open" not "Resolved":** the SOAK forces spider ON every frame (worst case); production has spider idle ~75 % of the time per the V.7.7C.2 per-segment cooldown, so real-music p95 will land lower. But the SOAK kernel measurement also doesn't include WORLD pass + drawable presentation overhead (~0.5–1 ms). Net production p95 is *probably* below 14 ms on M2 Pro but the closure gate is the actual production capture. **L4 (DeviceTier-aware fallback to V.7.5 2D silhouette spider on Tier 1) was explicitly NOT pulled** — the prompt requires Matt's call before introducing the Tier-1 fallback. If Matt's real-music capture shows post-L1+L2+L3 p95 still > 14 ms, L4 is the next escalation.
+
+**Tests + verification.**
+
+- **45 targeted Arachne tests / 9 suites green** at every lever step (`ArachneSpiderRender`, `ArachneState`, `ArachneStateBuild`, `ArachneListeningPose`, `ArachneBranchAnchors`, `PresetAcceptance`, `PresetRegression`, `PresetLoaderCompileFailure`, `StagedComposition`).
+- **`ArachneSpiderRender` golden hash unchanged at `0x000080C004000000`** — spider silhouette dHash within 8-bit hamming tolerance after L1 (silhouette equivalent to within the 9×8 luma quantization at 64×64).
+- **`PresetRegression` Arachne hashes unchanged** — the regression render path leaves `worldTex` unbound and slot-6/7 zeroed, so the lever changes don't surface here. Real visual divergence is observed in `PresetVisualReviewTests` (RENDER_VISUAL=1 contact sheets generated at every step; no obvious silhouette/drop degradation at the harness scale).
+- **PresetAcceptance D-037 invariants pass** — non-black, no white clip, beat response bounded, form complexity ≥ 2.
+- **Engine 1220 tests / 150 suites** with three documented pre-existing failures unrelated to BUG-011: `MatIDDispatch.matID==1 emission path` (LM.3.2 round-4 documentation drift — test expects pre-LM.3.2 `kLumenEmissionGain = 4.0`; spawned as separate task), `SoakTestHarness.cancel` and `MetadataPreFetcher.fetch_networkTimeout` (documented parallel-load timing flakes, present pre-BUG-011).
+- **App build clean** (not re-verified post-test-only-edit, but no app-target source files were touched in any of the four commits).
+- **SwiftLint 0 violations on touched files** (Arachne.metal not lintable; SoakTestHarnessTests.swift clean).
+
+**Carry-forward.**
+
+- **Matt's M2 Pro real-music perf capture per the DM.3 procedure** — the BUG-011 closure gate. If Arachne window p95 ≤ 14 ms / drops ≤ 8 % on a 60 s representative window: flip BUG-011 Status to Resolved with the measured-after numbers.
+- **M3+ measurement** — confirm budget holds at full feature set on actual Tier 2 silicon (M2 Pro is borderline; the architecture contract specifies M3+).
+- **L4 escalation** — only if M2 Pro real-music p95 still > 14 ms post-tuning. Would need a new D-XXX entry in `docs/DECISIONS.md` ("Arachne is M3+-only with V.7.5 2D silhouette spider fallback on Tier 1") before implementation.
+- **V.7.10 cert review** — gated on this. Cert sign-off can't proceed on a preset over budget on its target hardware tier.
+- **MatIDDispatch test fix** — pre-existing LM.3.2 documentation drift, spawned as separate task during this session.
+
+---
+
 ## [dev-2026-05-08-e] V.7.7C.5.2 — Arachne second cosmetic + spider-trigger pass (drops + silk re-brightening + hue cycle widening + spider sustain)
 
 **Increment:** V.7.7C.5.2. **Decision:** D-100 follow-up #2. Single commit.
