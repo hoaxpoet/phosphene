@@ -368,7 +368,7 @@ Anti-patterns to avoid:
 
 ## LM.3.2 — Band-routed beat-driven dance (Decision D.5)
 
-> **Status: ⏳ EXECUTED 2026-05-09 (commit pending); awaiting M7 review on real session.** Replaces both LM.3 and LM.3.1.
+> **Status: ✅ M7 PASS 2026-05-10** (session `2026-05-10T15-44-27Z`). After eight calibration rounds, Matt 2026-05-10: "Awesome. Finally. The movement of the color in the cells is looking good. I'd consider this a 'pass.'" Final architecture summary below; round-by-round narrative in `docs/VISUAL_REFERENCES/lumen_mosaic/contact_sheets/LM.3.2/README.md`. Carry-forward: track-to-track colour variation could be wider (defer to LM.6 polish) — see ENGINEERING_PLAN.md LM.3.2 Carry-forward section. Replaces both LM.3 and LM.3.1.
 >
 > - **Cells dance synchronised to FFT-band beats.** Each cell hashes (`cell_id ^ lm_track_seed_hash(lumen)`) and lands in one of four teams (30 % bass / 35 % mid / 25 % treble / 10 % static). The cell's palette index advances *discretely on rising-edge of its team's `f.beatBass / beatMid / beatTreble`*, debounced 80 ms, scaled by `beatStrength = clamp(0.3 + 1.4 × max(f.bass, f.mid, f.treble), 0.3, 1.0)`. Energy metric uses `max()` not avg — Spotify-normalised tracks under-read mid + treble (BUG-012) and a max keeps quiet sections animated as long as bass is firing.
 > - **Per-cell `period ∈ {1, 2, 4, 8}` from another hash bucket.** Pareto-distributed (≈37.5 % / 25 % / 25 % / 12.5 %). Fast cells advance every team beat; slow cells hold their step for many beats. Aggregate target ~50–60 % cells changing per second of energetic music ("bubbling cauldron" register, Matt 2026-05-09).
