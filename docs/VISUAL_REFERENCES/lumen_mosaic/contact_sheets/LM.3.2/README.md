@@ -1,6 +1,8 @@
 # Lumen Mosaic — LM.3.2 Contact Sheet
 
-Captured 2026-05-10 (LM.3.2 calibration round 7 — frost diffusion baked into albedo) via `RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter "PresetVisualReviewTests/renderPresetVisualReview"`.
+Captured 2026-05-10 (LM.3.2 calibration round 8 — beat envelope removed) via `RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter "PresetVisualReviewTests/renderPresetVisualReview"`.
+
+**Round 8 (2026-05-10) — beat envelope removed.** Real-music session review (Matt 2026-05-10, session `2026-05-10T14-48-52Z`): "the 'pulse off' state... happens more frequently than I would expect, in the spaces between beats. I think this state is unnecessary. I would rather the 'pulse off' state be the previous state before the next beat." Round 6 dimmed cells between beats to produce a "fade in / fade out like a light turning on/off" cycle; in production the dark gap between beats was visually dominant rather than rhythmic. Round 8 removes the envelope entirely — cells hold their previous state until the next beat advances the palette step. The per-beat colour change is the only rhythm-coupled visual signal, plus the bar-pulse +30 % brightness flash on each downbeat (preserved). The `lm_cell_envelope` helper and `kBeatDecayEnd / kBeatAttackStart` constants are deleted; the `pulse_off` / `pulse_anticipate` demo fixtures are retired.
 
 **Round 7 (2026-05-10) — frost diffusion in sceneMaterial.** Matt's review of round 6: "Why is there a dot in every colored cell? This looks odd. Also the colors in v2 and v3 look particularly washed out — too much frosting?" Two diagnoses:
 
