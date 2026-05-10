@@ -50,12 +50,24 @@ using namespace metal;
 /// matID 1 (emission-dominated); future presets may extend up to 2048.
 
 /// Emission gain for matID == 1 (emission-dominated dielectric).
-/// The G-buffer's albedo channel carries backlight intensity scaled to [0, 1];
-/// multiplying by 4.0 lifts saturated cells (albedo == 1.0) to HDR ≈ 4.0,
-/// which crosses the PostProcessChain bloom bright-pass threshold so backlight
-/// bleeds across cell ridges.  Tunable in 0.5 increments based on Matt's M7
-/// review of LM.1 contact sheets.
-constexpr constant float kLumenEmissionGain = 4.0;
+/// The G-buffer's albedo channel carries backlight intensity scaled to [0, 1].
+///
+/// **LM.3.2 calibration round 4 (2026-05-10): 4.0 → 1.0.** The original 4×
+/// gain was sized for the LM.1–LM.2 cream-baseline palette where cells
+/// landed at low values (~0.4 max) and needed the boost to cross
+/// PostProcessChain bloom's bright-pass threshold. LM.3.2 round 4 switched
+/// `LumenMosaic.metal` to an HSV-driven palette where cells are saturated
+/// jewel tones with channel max already near 0.9, and the 4× boost was
+/// causing the harness's float→Unorm conversion to clip pure-channel cells
+/// to muted pastels (e.g. (0.9, 0.13, 0.13) × 0.85 × 4 = (3.06, 0.46, 0.46)
+/// → clips to (1.0, 0.46, 0.46) — pinkish-pastel instead of vivid red).
+/// Production with PostProcessChain ACES tonemap would handle this, but
+/// the M7-prep harness output (no tonemap) was misleading. Reducing to 1.0
+/// keeps cell colours under 1.0 in linear space and the harness now
+/// matches production. Bloom doesn't engage (cells stay below threshold)
+/// — that's correct for the stained-glass jewel-tone aesthetic where every
+/// cell is uniformly vivid rather than a few cells being "extra bright."
+constexpr constant float kLumenEmissionGain = 1.0;
 
 /// Low IBL ambient floor for matID == 1.  Without it, an unlit cell (one with
 /// no light agent contribution) would render as pure black, breaking D-019
