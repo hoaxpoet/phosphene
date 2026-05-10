@@ -1630,9 +1630,19 @@ fragment float4 arachne_composite_fragment(
 
             // Inlined adaptive sphere trace — `ray_march_adaptive` hardcodes
             // sd_sphere; we substitute `sd_spider_combined`.
+            // BUG-011 L1: maxSteps reduced 32 → 24. The 0.15 UV patch (~226×226
+            // pixels at 1080p ≈ 51k pixels) ran the full 32-step worst case
+            // for every miss-ray (rays that grazed without converging on the
+            // surface). Cutting to 24 reduces per-pixel max work by 25 %; on-
+            // hit rays are unaffected (sphere trace early-exits at hitEps).
+            // Visual risk is minimal — the spider's chitin rim term is thick
+            // (`pow(1 - NdotV, 3) × 0.55`), so ~1-pixel silhouette movement
+            // at grazing angles reads inside the rim. If silhouettes look
+            // jagged in M7 review, raise to 28; below 20 the spider visibly
+            // degrades.
             float t = 0.0;
             const float tMax = 8.0;
-            const int   maxSteps = 32;
+            const int   maxSteps = 24;
             const float hitEps = 0.0008;
             int   matID = -1;
             bool  hitFound = false;
