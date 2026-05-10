@@ -1,4 +1,10 @@
-# Lumen Mosaic — LM.3.2 Contact Sheet
+# Lumen Mosaic — LM.3.2 Contact Sheet ✅ M7 PASS
+
+**Status: ✅ M7 PASS 2026-05-10** — real-music session `2026-05-10T15-44-27Z`. Matt 2026-05-10: "Awesome. Finally. The movement of the color in the cells is looking good. I'd like to see more color variation track to track, but this can be adjusted later. I'd consider this a 'pass.'"
+
+**Carry-forward (2026-05-10)**: track-to-track colour variation could be wider. Tuning levers: `kSeedMagnitudeD` 0.50 → 0.65 (per-track phase-rotation magnitude); `kSeedMagnitudeA` 0.20 → 0.30 (per-track hue-shift magnitude); `moodHueSpread` 0.40 → 0.55 (cell-to-cell hue spread within a track). Scheduled for LM.6 fidelity polish or earlier as a tuning pass — see `docs/ENGINEERING_PLAN.md` LM.3.2 Carry-forward section.
+
+---
 
 Captured 2026-05-10 (LM.3.2 calibration round 8 — beat envelope removed) via `RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter "PresetVisualReviewTests/renderPresetVisualReview"`.
 
