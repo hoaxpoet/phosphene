@@ -95,7 +95,7 @@ The shader **also** must define an emission-output path. The deferred PBR pipeli
    Pareto distribution: ≈ 37.5 % period 1 / 25 % period 2 / 25 % period 4 / 12.5 % period 8.
 6. Compute `step = floor(team_counter / period)`. The cell advances exactly `step × kPaletteStepSize` worth of palette phase past its base.
 7. Compute palette phase: `phase = cell_t + step × kPaletteStepSize + lumen.smoothedValence × kPaletteMoodPhaseShift` where `cell_t = float(cellHash & 0xFFFF) / 65535`.
-8. Compute palette parameters by interpolating between `kPaletteACool` / `kPaletteAWarm` etc. via `lumen.smoothedValence` and `lumen.smoothedArousal`, perturbed by the four `lumen.trackPaletteSeed{A,B,C,D}` × `kSeedMagnitude{A,B,C,D}` (LM.3.2 magnitudes 0.20 / 0.20 / 0.30 / 0.50, bumped from LM.3's 0.05 / 0.05 / 0.10 / 0.20).
+8. Compute palette parameters by interpolating between `kPaletteACool` / `kPaletteAWarm` etc. via `lumen.smoothedValence` and `lumen.smoothedArousal`, perturbed by the four `lumen.trackPaletteSeed{A,B,C,D}` per `kSeedMagnitude{A,B,C,D}` magnitudes. **Calibration round 3 (2026-05-09): per-channel hue-shift perturbation** — `a` perturbation uses the basis `(sA, sB, -(sA+sB)/2) × kSeedMagnitudeA` so different tracks land on different hue dominances (not just brightness shifts of the same colour set); `d` perturbation uses the same basis on `(sC, sD)`. `b` (chroma) and `c` (rate) get small uniform perturbations from a mean-of-seeds (so seedB can never pull `b` into pastel territory). Magnitudes 0.20 / 0.05 / 0.20 / 0.50.
 9. Sample the palette: `cell_hue = palette(phase, a, b, c, d)` (V.3 `Sources/Presets/Shaders/Utilities/Color/Palettes.metal`).
 10. Compute cell intensity uniformly with hash jitter and bar pulse:
     ```
@@ -278,10 +278,10 @@ public struct LumenPatternState {
     public var smoothedValence: Float       // 4 B  (LM.3 — 5 s low-pass for palette `(a, d)` interpolation)
     public var smoothedArousal: Float       // 4 B  (LM.3 — 5 s low-pass for palette `(b, c)` interpolation)
     public var pad0: Float = 0              // 4 B
-    public var trackPaletteSeedA: Float     // 4 B  (LM.3 — per-track perturbation of palette `a`; magnitude ±0.20 at LM.3.2)
-    public var trackPaletteSeedB: Float     // 4 B  (LM.3 — per-track perturbation of palette `b`; magnitude ±0.20 at LM.3.2)
-    public var trackPaletteSeedC: Float     // 4 B  (LM.3 — per-track perturbation of palette `c`; magnitude ±0.30 at LM.3.2)
-    public var trackPaletteSeedD: Float     // 4 B  (LM.3 — per-track perturbation of palette `d`; magnitude ±0.50 at LM.3.2)
+    public var trackPaletteSeedA: Float     // 4 B  (LM.3 — per-track palette perturbation seed component A; LM.3.2 calibration round 3: drives X-channel of `a` perturbation, magnitude 0.20)
+    public var trackPaletteSeedB: Float     // 4 B  (LM.3 — per-track palette perturbation seed component B; LM.3.2 calibration round 3: drives Y-channel of `a` perturbation + uniform `b` shift; combined magnitudes 0.20 + 0.05)
+    public var trackPaletteSeedC: Float     // 4 B  (LM.3 — per-track palette perturbation seed component C; LM.3.2 calibration round 3: drives X-channel of `d` perturbation + uniform `c` shift; combined magnitudes 0.50 + 0.20)
+    public var trackPaletteSeedD: Float     // 4 B  (LM.3 — per-track palette perturbation seed component D; LM.3.2 calibration round 3: drives Y-channel of `d` perturbation, magnitude 0.50)
     public var bassCounter: Float           // 4 B  (LM.3.2 — rising-edge of f.beatBass, scaled by beatStrength, debounced 80 ms)
     public var midCounter: Float            // 4 B  (LM.3.2 — rising-edge of f.beatMid)
     public var trebleCounter: Float         // 4 B  (LM.3.2 — rising-edge of f.beatTreble)

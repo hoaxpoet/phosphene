@@ -224,17 +224,22 @@ constant float kPaletteMoodPhaseShift = 0.10f;
 
 /// Per-track seed perturbation magnitudes. Each seed component is in
 /// `[-1, +1]`; the magnitude here is what it scales to before being added
-/// to the palette parameter. Magnitudes bumped at LM.3.2 (the LM.3 values
-/// 0.05/0.05/0.10/0.20 produced perturbations too small to read as track-
-/// specific identity in production output). The new values still keep the
-/// palette inside the saturated regime — `b` is centred around ~0.5 with
-/// the bumped 0.20 perturbation landing inside [0.30, 0.70] which the IQ
-/// palette form `a + b*cos(...)` clamps gracefully via the lighting path's
-/// `kLumenEmissionGain (4.0)` × bloom + ACES tone-mapping.
-constant float kSeedMagnitudeA = 0.20f;   // baseline shift  (was 0.05)
-constant float kSeedMagnitudeB = 0.20f;   // chroma shift    (was 0.05)
-constant float kSeedMagnitudeC = 0.30f;   // rate shift      (was 0.10)
-constant float kSeedMagnitudeD = 0.50f;   // phase shift     (was 0.20 — strong colour family identity)
+/// to the palette parameter.
+///
+/// **LM.3.2 calibration follow-up #2 (2026-05-09)** — the previous magnitudes
+/// 0.20/0.20/0.30/0.50 had two failure modes observed in M7-prep: (a) seedB
+/// large enough to pull `b` (chroma amplitude) into pastel territory at
+/// negative seed values; (b) `a` and `d` perturbations applied *uniformly*
+/// across channels (single scalar × float3(s)), which only shifted overall
+/// brightness or rotated phase — same colour set, different cell-to-colour
+/// mapping. To produce *genuinely different palettes* per track, the
+/// shader now applies **sum-to-zero per-channel** perturbations to `a` and
+/// `d` (see `lm_apply_track_seed` below), keeping brightness preserved
+/// while shifting hue dominance. Magnitudes:
+constant float kSeedMagnitudeA = 0.20f;   // per-channel hue shift on a (offset) — keeps a + b ≤ 1.0 (prevents clipping)
+constant float kSeedMagnitudeB = 0.05f;   // uniform chroma shift on b — small, can't pull palette pastel
+constant float kSeedMagnitudeC = 0.20f;   // uniform rate shift on c — moderate
+constant float kSeedMagnitudeD = 0.50f;   // per-channel phase shift on d — large (phase rotation is the workhorse for per-track variety)
 
 /// Default attenuation coefficient for the slot-8 placeholder state
 /// (`LumenPatternState.activeLightCount == 0`). The fragment never
@@ -368,18 +373,45 @@ static inline float3 lm_cell_palette(uint cellHash,
     float arousal = clamp(lumen.smoothedArousal * 0.5f + 0.5f, 0.0f, 1.0f);
 
     // IQ palette parameters interpolated by mood, then perturbed by the
-    // per-track seed. Per-track seed components are in [-1, +1]; we
-    // multiply by `kSeedMagnitude*` (LM.3.2 magnitudes — bumped from
-    // LM.3 originals) to scale into the desired perturbation per
-    // parameter.
-    float3 a = mix(kPaletteACool, kPaletteAWarm, warm)
-             + float3(lumen.trackPaletteSeedA * kSeedMagnitudeA);
+    // per-track seed. Per-track seed components are in [-1, +1].
+    //
+    // **`a` (offset) and `d` (phase) get per-channel hue-shift
+    // perturbations** so different tracks land on genuinely different
+    // hue dominances (e.g. red-dominant vs green-dominant) rather than
+    // shifted-brightness or rotated-phase versions of the same colour
+    // set. The basis `(sA, sB, -(sA+sB)*0.5)` scaled by magnitude
+    // assigns the X channel to seedA, Y to seedB, and Z to a half-cost
+    // counterweight that keeps the perturbation roughly balanced across
+    // channels — at corner (1, 1, …) the Z-channel pull is ±0.5 instead
+    // of ±2, which avoided the v1 "(1,1,1,1) → bleached cream" failure
+    // we observed on the 2026-05-09 LM.3.2 calibration round 2 contact
+    // sheet. Each corner of the four-axis seed cube lands on a distinct
+    // dominant hue (yellow-orange / blue-violet / magenta-red /
+    // green-cyan at the four ±1 corners) — verified visually 2026-05-09.
+    //
+    // **`b` (chroma) and `c` (rate) get small uniform perturbations.**
+    // Uniform perturbation of `b` was the LM.3.2 v1 failure mode (seedB
+    // = -1 with magnitude 0.20 pulled chroma down to (0.20, 0.25, 0.35)
+    // → pastel). Magnitude reduced to 0.05 and applied uniformly to all
+    // three channels — saturation never goes pastel.
+    float aSeedX = lumen.trackPaletteSeedA;
+    float aSeedY = lumen.trackPaletteSeedB;
+    float aSeedZ = -(aSeedX + aSeedY) * 0.5f;
+    float3 aPerturb = float3(aSeedX, aSeedY, aSeedZ) * kSeedMagnitudeA;
+    float dSeedX = lumen.trackPaletteSeedC;
+    float dSeedY = lumen.trackPaletteSeedD;
+    float dSeedZ = -(dSeedX + dSeedY) * 0.5f;
+    float3 dPerturb = float3(dSeedX, dSeedY, dSeedZ) * kSeedMagnitudeD;
+    float bUniform = (lumen.trackPaletteSeedA + lumen.trackPaletteSeedB
+                    + lumen.trackPaletteSeedC + lumen.trackPaletteSeedD) * 0.25f;
+    float cUniform = lumen.trackPaletteSeedC;
+
+    float3 a = mix(kPaletteACool, kPaletteAWarm, warm) + aPerturb;
     float3 b = mix(kPaletteBSubdued, kPaletteBVivid, arousal)
-             + float3(lumen.trackPaletteSeedB * kSeedMagnitudeB);
+             + float3(bUniform * kSeedMagnitudeB);
     float3 c = mix(kPaletteCUnison, kPaletteCOffset, arousal)
-             + float3(lumen.trackPaletteSeedC * kSeedMagnitudeC);
-    float3 d = mix(kPaletteDComplementary, kPaletteDAnalogous, warm)
-             + float3(lumen.trackPaletteSeedD * kSeedMagnitudeD);
+             + float3(cUniform * kSeedMagnitudeC);
+    float3 d = mix(kPaletteDComplementary, kPaletteDAnalogous, warm) + dPerturb;
 
     // Phase: per-cell base + team-step ratchet + small whole-panel mood
     // drift (so the palette breathes very slowly with mood without

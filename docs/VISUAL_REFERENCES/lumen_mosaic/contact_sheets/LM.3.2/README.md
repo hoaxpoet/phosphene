@@ -41,13 +41,19 @@ Brightness is uniform with hash jitter: `intensity = 0.85 + 0.15 × (hash >> 16 
 
 ## Fixtures
 
-| File | FeatureVector / state | What it verifies |
+| File | FeatureVector / track seed | What it verifies |
 |---|---|---|
 | `Lumen_Mosaic_silence.png` | All-zero FV, all-zero stems, no track seed, no rising edges | Cells visibly distinct + vivid + uniform brightness — silence rests with each cell on its base palette colour. |
 | `Lumen_Mosaic_mid.png` | bands @ 0.50, neutral mood, no rising edges | Same neutral palette at moderate energy (no rising edges in steady FV → no step advance). |
 | `Lumen_Mosaic_beat.png` | bass=0.80, bassRel=0.60, bassDev=0.60, beatBass=1.0 | Bass-team cells (~30 % of panel) advance one palette step on the rising-edge of `f.beatBass`. Mid + treble teams hold. |
-| `Lumen_Mosaic_hv_ha_mood.png` | bands @ 0.55, valence=+0.6, arousal=+0.6 | Palette character shifts warm — more pinks / oranges / yellows; per-cell identities preserved. |
-| `Lumen_Mosaic_lv_la_mood.png` | bands @ 0.45, valence=−0.5, arousal=−0.4 | Palette character shifts cool — more cyans / teals / pale violets. |
+| `Lumen_Mosaic_hv_ha_mood.png` | bands @ 0.55, valence=+0.6, arousal=+0.6, no seed | Palette character shifts warm — more red / orange / yellow / magenta; per-cell identities preserved. |
+| `Lumen_Mosaic_lv_la_mood.png` | bands @ 0.45, valence=−0.5, arousal=−0.4, no seed | Palette character shifts cool — more cyan / teal / green / pink. |
+| `Lumen_Mosaic_track_v1.png` | mid energy, neutral mood, **track seed (+1, +1, +1, +1)** | Per-track variety @ extreme corner — yellow-dominant track palette. |
+| `Lumen_Mosaic_track_v2.png` | mid energy, neutral mood, **track seed (−1, −1, −1, −1)** | Per-track variety @ extreme corner — magenta + cyan + blue track palette. |
+| `Lumen_Mosaic_track_v3.png` | mid energy, neutral mood, **track seed (+1, −1, +1, −1)** | Per-track variety @ extreme corner — red + magenta + yellow track palette. |
+| `Lumen_Mosaic_track_v4.png` | mid energy, neutral mood, **track seed (−1, +1, −1, +1)** | Per-track variety @ extreme corner — green + cyan + yellow track palette. |
+
+**Per-track variety mechanism (new in LM.3.2 calibration round 3 — 2026-05-09).** Real-music sessions distribute FNV-1a 64-bit `title|artist` hashes uniformly across the 4D seed cube; `setTrackSeed(fromHash:)` maps each 16-bit half to `[-1, +1]`. Most real tracks land between corners, producing blends of the four `track_v*` characters above. The four extremal corners on this contact sheet bracket the visual range — a real session should never look further from neutral than these four reference points. The track variants share ONE neutral mood (no valence / arousal bias); two tracks at the same mood now produce visibly different palette character via the per-channel hue-shift `(sA, sB, −(sA+sB)/2)` perturbation on `a` (offset) and `(sC, sD, −(sC+sD)/2)` perturbation on `d` (phase). Earlier LM.3.2 implementations applied these as scalar shifts (uniform across all three channels) which only changed brightness or rotated phase — same colour set across all tracks.
 
 ## What the sheet now demonstrates
 
@@ -71,7 +77,7 @@ The dance is fundamentally a *time* phenomenon — the contact sheet can only co
 - **`kBarPulseShape` (LumenMosaic.metal:~156)** — bar-pulse curve sharpness. Default 8.0 — only the last ~8 % of the bar phase visibly flashes.
 - **`kBassTeamCutoff / kMidTeamCutoff / kTrebleTeamCutoff` (LumenMosaic.metal:~170)** — team distribution percentages. Default 30 / 65 / 90. Adjust to bias the dance toward a particular band (e.g. raise mid cutoff for melody-led tracks).
 - **`beatTriggerHigh` / `beatDebounceSeconds` (LumenPatternEngine.swift:~440)** — rising-edge threshold + debounce. Defaults 0.5 / 0.08 s.
-- **`kSeedMagnitudeA / B / C / D` (LumenMosaic.metal:~195)** — per-track palette perturbation magnitudes. LM.3.2 bumped these from LM.3 (was 0.05 / 0.05 / 0.10 / 0.20; now 0.20 / 0.20 / 0.30 / 0.50). If track-to-track variation is still subtle in real captures, push the `D` magnitude higher (0.50 → 0.65).
+- **`kSeedMagnitudeA / B / C / D` (LumenMosaic.metal)** — per-track palette perturbation magnitudes. **Calibration round 3 (2026-05-09): 0.20 / 0.05 / 0.20 / 0.50** with per-channel hue-shift on `a` and `d`, uniform shift on `b` and `c`. LM.3 round 1 (0.05 / 0.05 / 0.10 / 0.20) was too subtle. Round 2 (0.20 / 0.20 / 0.30 / 0.50) had two bugs: scalar perturbation only rotated palette without changing hue dominance, and `kSeedMagnitudeB = 0.20` could pull `b` (chroma) into pastel territory at negative seedB. Round 3 reduces `B` to 0.05 (saturation safety) and applies `A` and `D` as per-channel hue-shifts via the `(sA, sB, -(sA+sB)/2)` basis (preserves overall brightness while shifting hue). If real-music captures still feel too uniform, push `D` to 0.60.
 - **`kCellIntensityBase / Jitter` (LumenMosaic.metal:~145)** — uniform-brightness baseline + hash jitter. Default 0.85 / 0.15 → cells span [0.85, 1.00]. Reduce jitter to 0 for perfectly flat brightness; raise to spread further.
 
 ## Real session review checklist
