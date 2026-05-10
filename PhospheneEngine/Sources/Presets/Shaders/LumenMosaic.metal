@@ -166,6 +166,28 @@ constant float kBarPulseShape     = 8.0f;
 /// almost completed a full rotation.
 constant float kPaletteStepSize = 0.137f;
 
+/// LM.3.2 round 6 (2026-05-10) — beat envelope shape constants. Cells
+/// fade in toward the beat and fade out after, so colours read as
+/// "lights turning on and off in time with the music" rather than as
+/// static painted glass (Matt 2026-05-10).
+///
+/// The envelope is built from `f.beat_phase01` ∈ [0, 1) — a continuous
+/// BPM-tracked beat clock that ramps 0 → 1 over each beat, wrapping at
+/// the next beat. Envelope = max(post-beat decay, anticipation fade-in):
+///
+///   phase ∈ [0.0, kBeatDecayEnd]  → post-beat decay (1.0 → 0.0)
+///   phase ∈ (kBeatDecayEnd, kBeatAttackStart) → dark (0.0)
+///   phase ∈ [kBeatAttackStart, 1.0] → anticipation fade-in (0.0 → 1.0)
+///
+/// At phase wraps from ~1.0 → 0.0 (the beat moment), envelope is at
+/// peak (1.0). The anticipation window length is `1.0 - kBeatAttackStart`;
+/// at 120 BPM (500 ms per beat), `kBeatAttackStart = 0.85` gives a 75 ms
+/// anticipation lead-in — Matt 2026-05-10: "the 'on' must be triggered
+/// milliseconds before the beat in order for the color to land on the
+/// beat."
+constant float kBeatDecayEnd     = 0.20f;
+constant float kBeatAttackStart  = 0.85f;
+
 /// LM.3.2 — team assignment percentages. Buckets summed left-to-right so
 /// `bucket = h % 100`:
 ///   bucket  ∈ [0,  30) → bass team   (30%)
@@ -314,6 +336,36 @@ static inline float lm_cell_intensity(uint cellHash, float barPhase01) {
     float barShape = pow(saturate(barPhase01), kBarPulseShape);
     float barFactor = 1.0f + kBarPulseMagnitude * barShape;
     return baseIntensity * barFactor;
+}
+
+/// LM.3.2 round 6 (2026-05-10) — per-cell beat envelope. Cells fade in
+/// toward the beat (anticipation window) and fade out after, so colours
+/// read as "lights turning on and off in time with the music" rather
+/// than as static painted glass.
+///
+/// `cellHash` determines team membership (`% 100` bucket); active teams
+/// (bass / mid / treble) follow the beat envelope, static team cells
+/// (≥ 90 bucket) stay fully lit. `beatPhase01` is the FV's continuous
+/// BPM-tracked beat clock; `f.beat_phase01 = 0` (default at silence /
+/// no BeatGrid) yields envelope = 1.0 (cells fully lit) per the
+/// "silence rests" semantic.
+///
+/// Envelope = max(post-beat decay, anticipation fade-in):
+///   phase ∈ [0, 0.20] → fade out (1.0 → 0.0)
+///   phase ∈ (0.20, 0.85) → dark (0.0)
+///   phase ∈ [0.85, 1.0] → fade in (0.0 → 1.0)
+/// Peak (1.0) at phase wrap (the beat moment); 75 ms anticipation lead-in
+/// at 120 BPM. See `kBeatDecayEnd` / `kBeatAttackStart` for the shape
+/// constants. (Matt 2026-05-10 design.)
+static inline float lm_cell_envelope(uint cellHash, float beatPhase01) {
+    uint teamBucket = cellHash % 100u;
+    if (teamBucket >= kTrebleTeamCutoff) {
+        // Static team — never pulses; holds at peak brightness.
+        return 1.0f;
+    }
+    float decay  = smoothstep(kBeatDecayEnd, 0.0f, beatPhase01);
+    float attack = smoothstep(kBeatAttackStart, 1.0f, beatPhase01);
+    return max(decay, attack);
 }
 
 /// LM.3.2 — compute the cell's palette sample. Each cell is assigned to
@@ -592,12 +644,23 @@ void sceneMaterial(float3 p,
     // Per-cell scalar intensity (uniform jitter + bar pulse).
     float cell_intensity = lm_cell_intensity(cellHash, f.bar_phase01);
 
+    // Per-cell beat envelope (LM.3.2 round 6, 2026-05-10): cells fade in
+    // toward the beat and fade out after, so colours read as "lights
+    // turning on and off in time with the music" rather than as static
+    // painted glass. Static-team cells (≥ 90 hash bucket) skip the
+    // envelope and hold at peak brightness — they're the always-on
+    // visual anchor that keeps the panel from going fully dark between
+    // beats. At silence (no BeatGrid → `f.beat_phase01 = 0`) the
+    // envelope returns 1.0 and all cells stay lit.
+    float cell_envelope = lm_cell_envelope(cellHash, f.beat_phase01);
+
     // Albedo carries the per-cell colour signal (matID == 1 contract).
-    // Multiply palette × intensity; clamp to [0, 1] so the rgba8Unorm
-    // G-buffer encoding is loss-free; the lighting fragment multiplies
-    // by kLumenEmissionGain (4.0) to recover perceptual HDR before
-    // bloom + ACES.
-    albedo = clamp(cell_hue * cell_intensity, 0.0f, 1.0f);
+    // Multiply palette × intensity × envelope; clamp to [0, 1] so the
+    // rgba8Unorm G-buffer encoding is loss-free. The matID == 1
+    // lighting fragment then layers frosted-glass surface character
+    // (frost scatter + procedural sparkle + Fresnel edge sheen) on
+    // top of this envelope-modulated emission.
+    albedo = clamp(cell_hue * cell_intensity * cell_envelope, 0.0f, 1.0f);
 
     // Pattern-glass material aesthetic from SHADER_CRAFT.md §4.5b.
     roughness = 0.40f;

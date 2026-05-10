@@ -1,6 +1,15 @@
 # Lumen Mosaic — LM.3.2 Contact Sheet
 
-Captured 2026-05-10 (LM.3.2 calibration round 5 — frosted-glass surface character) via `RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter "PresetVisualReviewTests/renderPresetVisualReview"`.
+Captured 2026-05-10 (LM.3.2 calibration round 6 — beat envelope) via `RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter "PresetVisualReviewTests/renderPresetVisualReview"`.
+
+**Round 6 (2026-05-10) — beat envelope.** Matt's review of round 5: "the colors turn on and off, which means they quickly fade in and fade out, like a light being turned on and off. So the 'on' must be triggered milliseconds before the beat in order for the color to land on the beat." Round 5 was rendering cells at static brightness — the discrete palette-step advance was correct, but the colours snapped instantly rather than fading like a light bulb being switched on/off. Round 6 wires `f.beat_phase01` into a per-cell envelope that fades cells in toward the beat (anticipation window) and out after, with **75 ms anticipation lead-in at 120 BPM** so the colour visibly lands ON the beat rather than after.
+
+Envelope shape: `max(post-beat decay, anticipation fade-in)`:
+- phase ∈ `[0, 0.20]` → fade out (1.0 → 0.0)
+- phase ∈ `(0.20, 0.85)` → dark (0.0)
+- phase ∈ `[0.85, 1.0]` → fade in (0.0 → 1.0); peak at phase wrap = beat moment
+
+Static-team cells (10 % of panel) skip the envelope and hold at peak brightness — the always-on visual anchor that keeps the panel from going fully dark between beats. Frost sparkle stays constant across the cycle (correct — frost is the surface character of the glass itself, independent of the backlight). Two new fixtures `pulse_off` (phase = 0.5) and `pulse_anticipate` (phase = 0.92) demonstrate the cycle.
 
 **Round 5 (2026-05-10) — frosted-glass surface character.** Matt's review of round 4: "Remember that the glass itself is frosted, so any colors, even fully saturated ones, will appear 'frosted.' And I would ultimately like the surface of the glass to be more photorealistic." Round 4 was rendering cells as flat painted polygons — the matID == 1 path returned `albedo × emission_gain + ambient` with no surface lighting. Round 5 adds three surface terms on top of the saturated HSV emission so the panel reads as actual frosted stained glass:
 

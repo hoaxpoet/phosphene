@@ -235,16 +235,29 @@ struct PresetVisualReviewTests {
         // All other presets keep the existing 3-fixture set.
         let fixtures: [(name: String, fv: FeatureVector, trackSeed: SIMD4<Float>?)] = {
             if presetName == "Lumen Mosaic" {
+                // LM.3.2 round 6 (2026-05-10): pulse_off / pulse_anticipate
+                // fixtures show the beat envelope cycle. HV-HA mood + various
+                // beat_phase01 values demonstrate cells fading from peak
+                // (phase = 0, just-beat) → dark (phase = 0.5, between beats)
+                // → anticipating (phase = 0.92, ~ms before next beat).
+                var pulseOff = hvHaFixture
+                // Set beat_phase01 = 0.5 — active-team cells are dark; static
+                // team cells (10 %) remain lit.
+                pulseOff.beatPhase01 = 0.5
+                var pulseAnticipate = hvHaFixture
+                pulseAnticipate.beatPhase01 = 0.92
                 return [
-                    ("silence",    silenceFixture, nil),
-                    ("mid",        midFixture,     nil),
-                    ("beat",       beatFixture,    nil),
-                    ("hv_ha_mood", hvHaFixture,    nil),
-                    ("lv_la_mood", lvLaFixture,    nil),
-                    ("track_v1",   midFixture,     SIMD4<Float>( 1,  1,  1,  1)),
-                    ("track_v2",   midFixture,     SIMD4<Float>(-1, -1, -1, -1)),
-                    ("track_v3",   midFixture,     SIMD4<Float>( 1, -1,  1, -1)),
-                    ("track_v4",   midFixture,     SIMD4<Float>(-1,  1, -1,  1)),
+                    ("silence",          silenceFixture, nil),
+                    ("mid",              midFixture,     nil),
+                    ("beat",             beatFixture,    nil),
+                    ("hv_ha_mood",       hvHaFixture,    nil),
+                    ("lv_la_mood",       lvLaFixture,    nil),
+                    ("track_v1",         midFixture,     SIMD4<Float>( 1,  1,  1,  1)),
+                    ("track_v2",         midFixture,     SIMD4<Float>(-1, -1, -1, -1)),
+                    ("track_v3",         midFixture,     SIMD4<Float>( 1, -1,  1, -1)),
+                    ("track_v4",         midFixture,     SIMD4<Float>(-1,  1, -1,  1)),
+                    ("pulse_off",        pulseOff,         nil),
+                    ("pulse_anticipate", pulseAnticipate,  nil),
                 ]
             }
             return [
