@@ -96,11 +96,16 @@ constant float kPanelThickness = 0.02f;
 constant float kFocalDist = 3.0f;
 
 /// Voronoi cell density — passed directly as the inner scale argument
-/// to voronoi_f1f2(panel_uv, kCellDensity). 30 cells per uv unit gives
-/// ≈ 60 cells across the visible frame (uv ∈ [-1, +1]) at 16:9 — close
-/// to Decision C.2's "≈ 50 cells across" target. JSON-tunable later
-/// via `lumen_mosaic.cell_density`; constant here for LM.1.
-constant float kCellDensity = 30.0f;
+/// to voronoi_f1f2(panel_uv, kCellDensity). 15 cells per uv unit gives
+/// ≈ 30 cells across the visible frame (uv ∈ [-1, +1]) at 16:9 — fewer,
+/// larger cells per Matt 2026-05-09 LM.3.2 review ("the camera can zoom
+/// in a little, 50 → 30 cells across"). Cells are large enough that each
+/// cell's distinct palette colour reads as a stained-glass tile rather
+/// than as confetti. JSON-tunable later via `lumen_mosaic.cell_density`;
+/// constant here for LM.3.2. Lipschitz-safe relief + frost amplitudes
+/// are unchanged — halving density only halves the SDF gradient, which
+/// adds Lipschitz headroom.
+constant float kCellDensity = 15.0f;
 
 /// Lipschitz-safe SDF displacement amplitude for the Voronoi domed-cell
 /// relief. The relief field varies from 0 (cell edge) to ≈ 1 (cell
@@ -185,17 +190,31 @@ constant uint kTrebleTeamCutoff = 90u;
 /// Per-track seed (`lumen.trackPaletteSeedA/B/C/D`) perturbs the result so
 /// two tracks at the same mood produce visibly different palette character.
 ///
+/// **Endpoints widened at LM.3.2** so HV-HA and LV-LA produce visibly
+/// different palette character (not just permutations of the same colour
+/// wheel — the LM.3 narrow endpoints (`a` ∈ [(0.50,0.50,0.55), (0.55,0.45,0.45)])
+/// only rotated which cell got which colour, not which colours appeared).
+/// LM.3.2 widens the `a` (offset) endpoints so cool→blue-dominant base,
+/// warm→red/orange-dominant base. Combined with the `d` complementary→
+/// analogous shift, the two moods produce genuinely different colour
+/// regions of palette-space. Verified at M7-prep contact-sheet review:
+/// HV-HA shows red/yellow/orange dominant, LV-LA shows blue/teal/cyan
+/// dominant.
+///
 /// All endpoints chosen for vivid bold output. NO cream baseline. NO
 /// pastel pull. Subdued ≠ desaturated — it just means narrower hue range.
+/// Some channel saturation (palette output briefly clipping to 0 or 1)
+/// is acceptable and contributes to vividness via the bloom + ACES
+/// post-process; this is **not** the LM.2 cream-baseline failure mode.
 /// Per CLAUDE.md project rule: muted has no place in Phosphene.
-constant float3 kPaletteACool          = float3(0.50f, 0.50f, 0.55f);
-constant float3 kPaletteAWarm          = float3(0.55f, 0.45f, 0.45f);
-constant float3 kPaletteBSubdued       = float3(0.40f, 0.45f, 0.50f);
-constant float3 kPaletteBVivid         = float3(0.55f, 0.55f, 0.55f);
+constant float3 kPaletteACool          = float3(0.25f, 0.50f, 0.75f);   // strong blue base
+constant float3 kPaletteAWarm          = float3(0.75f, 0.50f, 0.25f);   // strong red base
+constant float3 kPaletteBSubdued       = float3(0.40f, 0.45f, 0.55f);   // saturated even at low arousal
+constant float3 kPaletteBVivid         = float3(0.65f, 0.65f, 0.65f);   // pushed past LM.3 to avoid pastel midpoints
 constant float3 kPaletteCUnison        = float3(1.00f, 1.00f, 1.00f);
-constant float3 kPaletteCOffset        = float3(1.00f, 1.30f, 1.70f);
-constant float3 kPaletteDComplementary = float3(0.00f, 0.33f, 0.67f);
-constant float3 kPaletteDAnalogous     = float3(0.00f, 0.10f, 0.20f);
+constant float3 kPaletteCOffset        = float3(1.00f, 1.20f, 1.50f);   // moderate channel-rate spread
+constant float3 kPaletteDComplementary = float3(0.00f, 0.50f, 1.00f);   // wide phase spread → complementary colours
+constant float3 kPaletteDAnalogous     = float3(0.00f, 0.05f, 0.15f);   // narrow → analogous
 
 /// Mood-driven palette phase drift — adds a slow whole-palette rotation as
 /// valence shifts, on top of the per-cell + audio-time phase. Small enough

@@ -1,6 +1,19 @@
 # Lumen Mosaic — LM.3.2 Contact Sheet
 
-Captured 2026-05-09 (LM.3.2 build) via `RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter "PresetVisualReviewTests/renderPresetVisualReview"`.
+Captured 2026-05-09 (LM.3.2 calibrated build) via `RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter "PresetVisualReviewTests/renderPresetVisualReview"`.
+
+**Calibration follow-up applied 2026-05-09 after Matt's first review of LM.3.2:** the original LM.3.2 contact sheet showed every fixture looking the same. Two fixes:
+
+1. **Cell density `kCellDensity` 30 → 15** (~60 cells across visible frame → ~30 cells across). Matt 2026-05-09: "the camera can zoom in a little, 50 → 30 cells across". Each cell now reads as a discrete stained-glass tile rather than confetti.
+2. **Palette endpoints widened so HV-HA and LV-LA produce genuinely different palettes**, not just permutations of the same colour wheel. The original LM.3 endpoints (`kPaletteACool = (0.50, 0.50, 0.55)`, `kPaletteAWarm = (0.55, 0.45, 0.45)` — diff ≤ 0.10 per channel) only rotated which cell got which colour, not which colours appeared. New endpoints:
+   - `kPaletteACool = (0.25, 0.50, 0.75)` — strong blue base
+   - `kPaletteAWarm = (0.75, 0.50, 0.25)` — strong red base
+   - `kPaletteBVivid = (0.65, 0.65, 0.65)` — pushed past LM.3's 0.55 to avoid pastel midpoints
+   - `kPaletteBSubdued = (0.40, 0.45, 0.55)` — saturated even at low arousal
+   - `kPaletteDComplementary = (0.00, 0.50, 1.00)` — wide phase spread
+   - `kPaletteDAnalogous = (0.00, 0.05, 0.15)` — narrow → analogous
+
+Net result on the contact sheet: HV-HA reads warm (yellow / orange / magenta / red dominant); LV-LA reads cool (cyan / teal / green / pink dominant); silence + mid + beat at neutral mood show the balanced rainbow palette.
 
 LM.3.2 supersedes LM.3 + LM.3.1. Both prior approaches were rejected after live-session capture against real audio:
 
