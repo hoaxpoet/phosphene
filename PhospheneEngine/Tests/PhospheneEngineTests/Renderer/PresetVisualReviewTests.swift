@@ -218,23 +218,39 @@ struct PresetVisualReviewTests {
             return LumenPatternEngine(device: ctx.device, seed: 42)
         }()
 
-        // 5-fixture set for Lumen Mosaic — adds HV-HA + LV-LA mood frames so
-        // the contact sheet visibly shows the mood-coupled palette shift
-        // (Decision E.1). All other presets keep the existing 3-fixture set.
-        let fixtures: [(name: String, fv: FeatureVector)] = {
+        // 9-fixture set for Lumen Mosaic — 5 mood / energy frames plus
+        // 4 per-track-seed variety frames at neutral mood (LM.3.2 calibration
+        // follow-up 2026-05-09: Matt's M7-prep review observed that the 5-mood
+        // contact sheet showed limited variety; the per-track seed is the
+        // mechanism for between-track palette variation but the harness wasn't
+        // exercising it).
+        //
+        // Track-seed variants pick four corners of the seed-tesseract:
+        // {(+,+,+,+), (-,-,-,-), (+,-,+,-), (-,+,-,+)}. Each component
+        // ∈ [-1, +1] perturbs one IQ palette parameter (a / b / c / d) by
+        // its `kSeedMagnitude*` magnitude. Choosing extremal corners
+        // maximises visible inter-track variety without leaving the
+        // saturated regime.
+        //
+        // All other presets keep the existing 3-fixture set.
+        let fixtures: [(name: String, fv: FeatureVector, trackSeed: SIMD4<Float>?)] = {
             if presetName == "Lumen Mosaic" {
                 return [
-                    ("silence",    silenceFixture),
-                    ("mid",        midFixture),
-                    ("beat",       beatFixture),
-                    ("hv_ha_mood", hvHaFixture),
-                    ("lv_la_mood", lvLaFixture),
+                    ("silence",    silenceFixture, nil),
+                    ("mid",        midFixture,     nil),
+                    ("beat",       beatFixture,    nil),
+                    ("hv_ha_mood", hvHaFixture,    nil),
+                    ("lv_la_mood", lvLaFixture,    nil),
+                    ("track_v1",   midFixture,     SIMD4<Float>( 1,  1,  1,  1)),
+                    ("track_v2",   midFixture,     SIMD4<Float>(-1, -1, -1, -1)),
+                    ("track_v3",   midFixture,     SIMD4<Float>( 1, -1,  1, -1)),
+                    ("track_v4",   midFixture,     SIMD4<Float>(-1,  1, -1,  1)),
                 ]
             }
             return [
-                ("silence", silenceFixture),
-                ("mid", midFixture),
-                ("beat", beatFixture),
+                ("silence", silenceFixture, nil),
+                ("mid",     midFixture,     nil),
+                ("beat",    beatFixture,    nil),
             ]
         }()
 
@@ -244,8 +260,13 @@ struct PresetVisualReviewTests {
             // Pre-warm Lumen Mosaic per fixture: one tick at dt=5.0 saturates
             // the 5 s low-pass on valence/arousal in a single step, then 30
             // ticks at dt=1/60 advance the drift Lissajous + dance to a
-            // representative phase before the GPU read.
+            // representative phase before the GPU read. Apply per-fixture
+            // track seed (or zero out for the unseeded variants — without
+            // the explicit zero, a previous track_v* fixture's seed would
+            // bleed into the next fixture rendered against the same engine
+            // instance).
             if let engine = lumenEngine {
+                engine.setTrackSeed(fixtures[index].trackSeed ?? .zero)
                 var primer = fv
                 primer.deltaTime = 5.0
                 engine.tick(features: primer, stems: .zero)
