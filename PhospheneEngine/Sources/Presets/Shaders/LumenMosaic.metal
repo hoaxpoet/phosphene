@@ -372,57 +372,70 @@ static inline float3 lm_cell_palette(uint cellHash,
     float warm    = clamp(lumen.smoothedValence * 0.5f + 0.5f, 0.0f, 1.0f);
     float arousal = clamp(lumen.smoothedArousal * 0.5f + 0.5f, 0.0f, 1.0f);
 
-    // IQ palette parameters interpolated by mood, then perturbed by the
-    // per-track seed. Per-track seed components are in [-1, +1].
+    // **HSV-driven palette (LM.3.2 calibration round 4 — 2026-05-10).**
+    // The IQ cosine form `palette(t, a, b, c, d) = a + b * cos(2π * (c*t + d))`
+    // used in rounds 1–3 was structurally pastel-prone: with `a ≈ 0.5` and
+    // per-channel `c` rates desynchronising the three cosines, most cells
+    // landed at mid-saturation mid-tones because pure jewel hues require
+    // all three channels to hit specific extremes simultaneously, which
+    // rarely happens. Switching to `hsv2rgb` gives every cell a saturated
+    // hue from the colour wheel by construction; pastel-haze cannot occur.
     //
-    // **`a` (offset) and `d` (phase) get per-channel hue-shift
-    // perturbations** so different tracks land on genuinely different
-    // hue dominances (e.g. red-dominant vs green-dominant) rather than
-    // shifted-brightness or rotated-phase versions of the same colour
-    // set. The basis `(sA, sB, -(sA+sB)*0.5)` scaled by magnitude
-    // assigns the X channel to seedA, Y to seedB, and Z to a half-cost
-    // counterweight that keeps the perturbation roughly balanced across
-    // channels — at corner (1, 1, …) the Z-channel pull is ±0.5 instead
-    // of ±2, which avoided the v1 "(1,1,1,1) → bleached cream" failure
-    // we observed on the 2026-05-09 LM.3.2 calibration round 2 contact
-    // sheet. Each corner of the four-axis seed cube lands on a distinct
-    // dominant hue (yellow-orange / blue-violet / magenta-red /
-    // green-cyan at the four ±1 corners) — verified visually 2026-05-09.
+    // Per-track variety lands as a hue rotation (large) plus a small
+    // saturation perturbation. Per-mood character lands as a hue range
+    // bias (cool → blue/teal/violet range, warm → red/orange/yellow range)
+    // and an arousal-driven saturation/value lift (calm → slightly
+    // dimmer, energetic → fully saturated, near-max value).
     //
-    // **`b` (chroma) and `c` (rate) get small uniform perturbations.**
-    // Uniform perturbation of `b` was the LM.3.2 v1 failure mode (seedB
-    // = -1 with magnitude 0.20 pulled chroma down to (0.20, 0.25, 0.35)
-    // → pastel). Magnitude reduced to 0.05 and applied uniformly to all
-    // three channels — saturation never goes pastel.
-    float aSeedX = lumen.trackPaletteSeedA;
-    float aSeedY = lumen.trackPaletteSeedB;
-    float aSeedZ = -(aSeedX + aSeedY) * 0.5f;
-    float3 aPerturb = float3(aSeedX, aSeedY, aSeedZ) * kSeedMagnitudeA;
-    float dSeedX = lumen.trackPaletteSeedC;
-    float dSeedY = lumen.trackPaletteSeedD;
-    float dSeedZ = -(dSeedX + dSeedY) * 0.5f;
-    float3 dPerturb = float3(dSeedX, dSeedY, dSeedZ) * kSeedMagnitudeD;
-    float bUniform = (lumen.trackPaletteSeedA + lumen.trackPaletteSeedB
-                    + lumen.trackPaletteSeedC + lumen.trackPaletteSeedD) * 0.25f;
-    float cUniform = lumen.trackPaletteSeedC;
+    // The four `kSeedMagnitude{A,B,C,D}` constants and the eight
+    // `kPalette[A,B,C,D][Cool/Warm/Subdued/Vivid/Unison/Offset/
+    // Complementary/Analogous]` constants are retained on the file but
+    // **unused at LM.3.2 round 4** (the IQ palette was the only
+    // consumer); kept for ABI continuity with future round-5+ work that
+    // may revisit them. The retired constants are documented in
+    // `LumenMosaic.metal` header.
 
-    float3 a = mix(kPaletteACool, kPaletteAWarm, warm) + aPerturb;
-    float3 b = mix(kPaletteBSubdued, kPaletteBVivid, arousal)
-             + float3(bUniform * kSeedMagnitudeB);
-    float3 c = mix(kPaletteCUnison, kPaletteCOffset, arousal)
-             + float3(cUniform * kSeedMagnitudeC);
-    float3 d = mix(kPaletteDComplementary, kPaletteDAnalogous, warm) + dPerturb;
+    // Hue: cell-specific base + step ratchet + per-track hue rotation
+    // + mood hue bias. Each component contributes additively in [0, 1)
+    // and the result is fract'd into a single hue.
+    float trackHueShift = lumen.trackPaletteSeedA * 0.30f
+                        + lumen.trackPaletteSeedD * 0.50f;
 
-    // Phase: per-cell base + team-step ratchet + small whole-panel mood
-    // drift (so the palette breathes very slowly with mood without
-    // breaking per-cell identity).
-    float phase = cell_t
-                + step * kPaletteStepSize
-                + lumen.smoothedValence * kPaletteMoodPhaseShift;
+    // Mood hue bias: cool mood pushes hue toward blue (~0.65 on the
+    // colour wheel), warm mood pushes toward red-orange (~0.05). This
+    // means HV-HA tracks cluster around oranges + yellows + reds, while
+    // LV-LA tracks cluster around blues + teals + violets. Spread per
+    // cell stays at ±0.20 around the mood centre so adjacent cells can
+    // differ noticeably while overall palette character stays mood-
+    // appropriate.
+    float moodHueCentre = mix(0.65f, 0.02f, warm);   // wraps 0/1 cleanly
+    float perCellHue    = (cell_t - 0.5f) * 0.40f;   // ±0.20 around centre
+    float hue = fract(moodHueCentre + perCellHue
+                    + step * kPaletteStepSize
+                    + trackHueShift);
 
-    // V.3 IQ cosine palette (Color/Palettes.metal). Saturated by
-    // construction; no cream pull.
-    return palette(phase, a, b, c, d);
+    // Saturation: arousal-driven, floored high so cells never go
+    // pastel. The mix range `[0.85, 0.98]` was widened upward at
+    // round 4 follow-up (2026-05-10) after track v3 with seed
+    // `(1, -1, 1, -1)` rendered pastel — seedB = -1 with magnitude
+    // 0.10 dropped sat to 0.75, which combined with high val (0.95)
+    // produces pastel character. Tightened sat range + reduced
+    // seedB perturbation magnitude to ±0.05 so the worst-case sat
+    // stays at `mix(0.85, 0.98, 0) - 0.05 = 0.80` — always vivid.
+    float sat = clamp(mix(0.85f, 0.98f, arousal)
+                    + lumen.trackPaletteSeedB * 0.05f,
+                    0.78f, 1.00f);
+
+    // Value: arousal-driven, floored high so the panel stays bright
+    // at calm moods (visual rest character is in the *hue* bias
+    // toward cool blues/teals, not in dimness). Per-track seedC
+    // modulates by ±0.03 — preserves overall brightness while
+    // adding fine-grained track identity.
+    float val = clamp(mix(0.85f, 1.00f, arousal)
+                    + lumen.trackPaletteSeedC * 0.03f,
+                    0.80f, 1.00f);
+
+    return hsv2rgb(float3(hue, sat, val));
 }
 
 /// Voronoi domed-cell relief field. Returns a per-pixel scalar in
