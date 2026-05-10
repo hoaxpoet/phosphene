@@ -326,53 +326,31 @@ fragment float4 raymarch_lighting_fragment(
     // the kLumenEmissionGain block at the top of this file.
     int matID = int(g0.g + 0.5);
     if (matID == 1) {
-        float3 V = normalize(scene.cameraOriginAndFov.xyz - worldPos);
-        float NdotV = clamp(dot(N, V), 0.0, 1.0);
-
-        // Frost scatter — at cell ridges where the SDF relief gradient
-        // is steep, the normal tilts strongly away from camera-flat.
-        // Mix the saturated cell colour with white proportional to how
-        // far the normal has deviated from facing the camera.  This is
-        // the "frosted glass softens saturation" cue; cell centres
-        // (flat normal) stay fully vivid, cell edges (steep normal)
-        // bleed toward white.
-        float frostiness = 1.0 - NdotV;            // 0 at flat centre, ~0.4 at ridge
-        float3 frostScatter = mix(albedo,
-                                  float3(1.0),
-                                  saturate(frostiness * 1.5));
-
-        // Backlit emission through the frosted glass.
-        float3 emission = frostScatter * kLumenEmissionGain;
-
-        // Procedural micro-frost sparkle — white pinpoints distributed
-        // by a deterministic hash field in panel-face coordinates.  Real
-        // frosted glass scatters AMBIENT light off thousands of fine
-        // surface irregularities rather than reflecting a point source
-        // directionally — so the sparkle is independent of light
-        // direction.  Two-octave threshold pattern produces a small
-        // distribution of "bright" pixels per cell (fine frost glint).
-        // Threshold 0.985 → ~1.5 % of pixels light up; magnitude 0.50 →
-        // visible glints without washing out the cell colour.
-        float sparkleHash = fract(sin(dot(worldPos.xy * 80.0,
-                                          float2(12.9898, 78.233)))
-                                  * 43758.5453);
-        float sparkle = step(0.985, sparkleHash) * 0.50;
-
-        // Fresnel edge sheen — Schlick rim, bright white.  Brightens
-        // cell-ridge silhouettes where the relief tilts the normal
-        // away from the camera.  Exponent 3 (instead of the usual 5)
-        // gives a softer, wider rim — frosted glass scatters at
-        // grazing angles rather than reflecting sharply.
-        float fresnel = pow(1.0 - NdotV, 3.0);
-        float3 edgeSheen = float3(0.85) * fresnel * 0.40;
-
-        // IBL ambient floor — D-019 silence fallback.  Keeps the panel
-        // coloured even with all emission contributions zero.
+        // **LM.3.2 round 7 (2026-05-10) — frost diffusion baked in
+        // sceneMaterial, lighting path simplified.** Earlier rounds
+        // tried to add frosted-glass surface character here (frost
+        // scatter from normal deviation + procedural sparkle + Fresnel
+        // edge sheen). Those approaches produced visible per-pixel
+        // dot artifacts inside cells: the SDF relief geometry produced
+        // sub-pixel normal noise that the normal-driven frost-scatter
+        // term amplified into single-pixel white spots, and the
+        // procedural sparkle hash period aliased with the cell scale
+        // to produce a "dot in every cell" pattern artifact (Matt
+        // 2026-05-10).
+        //
+        // Round 7 moves the frost diffusion to `LumenMosaic.metal`
+        // sceneMaterial, where it's driven by the Voronoi `f2 - f1`
+        // cell-edge distance directly — a large-scale, smooth signal
+        // that produces clean cell-boundary white-mixing without
+        // sub-pixel noise. The SDF relief amplitude is set to 0 (no
+        // normal variation), so the panel's geometric normal stays a
+        // clean flat (0, 0, -1) per pixel. Fresnel-driven edge sheen
+        // and normal-driven frost scatter both collapse to zero with
+        // a flat normal, so the lighting path returns to the round-4
+        // baseline: pure emission + IBL ambient floor.
         float3 irradiance   = ibl_sample_irradiance(N, iblIrradiance, iblSamp);
         float3 ambientFloor = irradiance * kLumenIBLFloor * ao;
-
-        // No tone-map here; ACES + bloom run downstream in PostProcessChain.
-        return float4(emission + float3(sparkle) + edgeSheen + ambientFloor, 1.0);
+        return float4(albedo * kLumenEmissionGain + ambientFloor, 1.0);
     }
 
     // ── Lighting ───────────────────────────────────────────────────
