@@ -612,16 +612,33 @@ out-param); read by `raymarch_lighting_fragment` and dispatched on:
   soft shadows + IBL ambient + IBL specular + atmospheric fog. Existing presets
   (Glass Brutalist, Kinetic Sculpture, Volumetric Lithograph) all stay on this
   path; their `sceneMaterial` bodies leave `outMatID` at the caller's default 0.
-- `matID == 1` — emission-dominated dielectric. Albedo carries backlight
-  intensity rather than surface diffuse colour. Lighting path returns
-  `albedo × kLumenEmissionGain (4.0) + irradiance × kLumenIBLFloor (0.05) × ao`,
-  skipping Cook-Torrance + screen-space shadow march entirely. Used by
-  Lumen Mosaic; reusable by any future preset whose visible colour is
-  dominated by emission. The 4× gain pulls saturated cells over
-  PostProcessChain bloom's bright-pass threshold so backlight visibly
-  bleeds across cell ridges; the 0.05 IBL ambient floor keeps the panel
-  coloured at silence (D-019). `kLumenEmissionGain` and `kLumenIBLFloor`
-  are file-scope `constexpr constant` in `Renderer/Shaders/RayMarch.metal`.
+- `matID == 1` — frosted backlit glass dielectric (Lumen Mosaic from
+  LM.3.2 round 5 onward). Albedo carries backlight intensity rather
+  than surface diffuse colour. Lighting path returns
+  `frostScatter × kLumenEmissionGain + sparkle + edgeSheen + irradiance × kLumenIBLFloor × ao`,
+  skipping Cook-Torrance + screen-space shadow march. **Frosted-glass
+  surface character** is layered on top of the pure emission via three
+  cheap terms in the lighting fragment: (a) `frostScatter = mix(albedo,
+  white, saturate((1 - NdotV) × 1.5))` softens saturated colour toward
+  white at cell ridges where the SDF relief tilts the normal away from
+  camera-flat — the "fully saturated colours appear frosted" cue;
+  (b) procedural hash-field sparkle distributed uniformly across panel
+  surface (NOT directional Cook-Torrance — round-5 v1 had a bright
+  central hotspot from the camera-light reflection because GGX `D` at
+  `NdotH = 1` with frost roughness 0.30 hits ≈ 39 → saturates; real
+  frosted glass scatters ambient light off fine surface irregularities,
+  not from one point source); (c) `edgeSheen = white × pow(1 - NdotV, 3) × 0.40`
+  — soft Fresnel rim at cell-ridge silhouettes. **`kLumenEmissionGain`
+  reduced 4.0 → 1.0 at LM.3.2 round 4** because the HSV palette is
+  vivid without HDR boost and the prior 4× was clipping saturated
+  channels in the harness's float→Unorm conversion (production with
+  ACES tonemap would handle, harness without tonemap did not). Bloom
+  no longer engages on individual cells — correct for the uniformly-
+  vivid stained-glass aesthetic where every cell is equally vivid
+  rather than a few being "extra bright." The 0.05 IBL ambient floor
+  keeps the panel coloured at silence (D-019). `kLumenEmissionGain`
+  and `kLumenIBLFloor` are file-scope `constexpr constant` in
+  `Renderer/Shaders/RayMarch.metal`.
 
 The `sceneMaterial` D-021 signature was extended in two steps:
 

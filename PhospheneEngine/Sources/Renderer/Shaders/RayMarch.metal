@@ -306,13 +306,18 @@ fragment float4 raymarch_lighting_fragment(
     float  roughness, metallic;
     rm_unpackMaterial(g2.a, roughness, metallic);
 
-    // ── matID == 1 — emission-dominated dielectric (LM.1 / D-LM-matid) ──
+    // ── matID == 1 — frosted backlit glass (LM.1 / D-LM-matid) ─────
     // Lumen Mosaic and similar emission-dominated presets store their
     // backlight intensity in `albedo` rather than a surface diffuse colour.
-    // Skip Cook-Torrance + screen-space shadow march entirely; gain the
-    // emission and add a small IBL ambient floor so the panel stays
-    // coloured under D-019 silence fallback.  Existing matID == 0 presets
-    // continue down the standard path below.
+    // Skip Cook-Torrance + screen-space shadow march for the dominant
+    // emission term, but layer **photorealistic frosted-glass surface
+    // character** on top of the backlight (LM.3.2 calibration round 5,
+    // 2026-05-10): saturated cell colour softens toward white at cell
+    // ridges (frost diffusion), specular sparkle catches the fbm8 frost
+    // normal, and Fresnel edge sheen brightens cell-ridge silhouettes.
+    // Without this, the panel renders as flat-painted Voronoi cells —
+    // technically correct backlight but visually clipart-y. With it,
+    // the panel reads as actual stained glass behind a frosted pane.
     //
     // Sky path (depth ≥ 0.999) returned at the gbuf-sample block above
     // before this dispatch is reached — sky pixels never observe matID
@@ -321,10 +326,53 @@ fragment float4 raymarch_lighting_fragment(
     // the kLumenEmissionGain block at the top of this file.
     int matID = int(g0.g + 0.5);
     if (matID == 1) {
-        float3 irradiance = ibl_sample_irradiance(N, iblIrradiance, iblSamp);
+        float3 V = normalize(scene.cameraOriginAndFov.xyz - worldPos);
+        float NdotV = clamp(dot(N, V), 0.0, 1.0);
+
+        // Frost scatter — at cell ridges where the SDF relief gradient
+        // is steep, the normal tilts strongly away from camera-flat.
+        // Mix the saturated cell colour with white proportional to how
+        // far the normal has deviated from facing the camera.  This is
+        // the "frosted glass softens saturation" cue; cell centres
+        // (flat normal) stay fully vivid, cell edges (steep normal)
+        // bleed toward white.
+        float frostiness = 1.0 - NdotV;            // 0 at flat centre, ~0.4 at ridge
+        float3 frostScatter = mix(albedo,
+                                  float3(1.0),
+                                  saturate(frostiness * 1.5));
+
+        // Backlit emission through the frosted glass.
+        float3 emission = frostScatter * kLumenEmissionGain;
+
+        // Procedural micro-frost sparkle — white pinpoints distributed
+        // by a deterministic hash field in panel-face coordinates.  Real
+        // frosted glass scatters AMBIENT light off thousands of fine
+        // surface irregularities rather than reflecting a point source
+        // directionally — so the sparkle is independent of light
+        // direction.  Two-octave threshold pattern produces a small
+        // distribution of "bright" pixels per cell (fine frost glint).
+        // Threshold 0.985 → ~1.5 % of pixels light up; magnitude 0.50 →
+        // visible glints without washing out the cell colour.
+        float sparkleHash = fract(sin(dot(worldPos.xy * 80.0,
+                                          float2(12.9898, 78.233)))
+                                  * 43758.5453);
+        float sparkle = step(0.985, sparkleHash) * 0.50;
+
+        // Fresnel edge sheen — Schlick rim, bright white.  Brightens
+        // cell-ridge silhouettes where the relief tilts the normal
+        // away from the camera.  Exponent 3 (instead of the usual 5)
+        // gives a softer, wider rim — frosted glass scatters at
+        // grazing angles rather than reflecting sharply.
+        float fresnel = pow(1.0 - NdotV, 3.0);
+        float3 edgeSheen = float3(0.85) * fresnel * 0.40;
+
+        // IBL ambient floor — D-019 silence fallback.  Keeps the panel
+        // coloured even with all emission contributions zero.
+        float3 irradiance   = ibl_sample_irradiance(N, iblIrradiance, iblSamp);
         float3 ambientFloor = irradiance * kLumenIBLFloor * ao;
+
         // No tone-map here; ACES + bloom run downstream in PostProcessChain.
-        return float4(albedo * kLumenEmissionGain + ambientFloor, 1.0);
+        return float4(emission + float3(sparkle) + edgeSheen + ambientFloor, 1.0);
     }
 
     // ── Lighting ───────────────────────────────────────────────────
