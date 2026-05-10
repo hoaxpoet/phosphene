@@ -2,12 +2,25 @@
 //
 // The energetic-dance-partner preset: a single planar glass panel fills the
 // camera frame and bleeds 50% past it on every side, so the viewer sees
-// only a field of vivid stained-glass cells dancing to the music. Each
-// cell has its own deterministic colour identity from a procedural IQ
-// palette keyed on cell hash + audio time + mood (Decision D.4); the four
-// per-stem light agents (slot 8 fragment buffer, LM.2 contract §P.4) drive
-// per-cell INTENSITY, not colour. LM.4 will add pattern-engine bursts
-// (radial ripples, sweeps) on top.
+// only a field of vivid stained-glass cells dancing to the music.
+//
+// LM.3.2 — Band-routed beat-driven dance model. Each cell is assigned to one
+// of four "teams" by `hash(cell_id ^ trackSeedHash) % 100`:
+//
+//   - 30% bass team    — advances palette step on each bass beat
+//   - 35% mid team     — advances palette step on each mid beat (the typical
+//                        carrier of melody on real-music playback)
+//   - 25% treble team  — advances palette step on each treble beat
+//   - 10% static team  — never advances; holds its base palette colour
+//                        (cells in the static team are different on each
+//                        track because the team hash is XOR'd with the
+//                        per-track seed)
+//
+// Each cell's `period ∈ {1, 2, 4, 8}` is also hashed — fast cells advance
+// every team beat, slow cells hold their step for many beats. Pareto-shaped
+// distribution (~37.5% period=1, 25% period=2, 25% period=4, 12.5% period=8)
+// targets ~50–60% of cells visibly stepping in any given second of energetic
+// music — Matt's "bubbling cauldron" register.
 //
 // Materials:
 //   matID 1 — Pattern glass (single material, panel-wide). Albedo carries
@@ -27,21 +40,23 @@
 //                entirely; specular sparkle from the frost normal lands at
 //                LM.6 polish.
 //
-// Audio routing (LM.3 / D-LM-d4 / D-LM-e3):
-//   - Per-cell COLOUR comes from a procedural IQ palette keyed on the cell
-//     hash + accumulated_audio_time + 5 s smoothed mood + per-track seed.
-//     Cells visibly cycle through the palette during energetic music; cells
-//     rest (hold their hue) at silence. The panel is always vivid — the
-//     LM.1/LM.2 cream baseline was retired (see LUMEN_MOSAIC_DESIGN.md §11).
-//   - Per-cell INTENSITY comes from the analytical sum over the four light
-//     agents at the cell-centre uv (LM.2 contract §P.3 formula). Each agent's
-//     intensity is driven by its stem's deviation primitive (D-026) with FV
-//     fallback (D-019). Stems brighten cells in their lobe; cell colour is
-//     unchanged.
-//   - LM.4 will add pattern-engine bursts (radial ripples on drum onsets,
-//     sweeps on bar boundaries) that inject extra per-cell brightness without
-//     overriding the cell's palette colour (so a ripple takes the colour of
-//     the cells it crosses).
+// Audio routing (LM.3.2):
+//   - Per-cell PALETTE STEP advances on rising-edge of the cell's team's
+//     beat counter (`lumen.bassCounter` / `midCounter` / `trebleCounter`).
+//     Each counter is incremented by the engine on rising-edges of
+//     `f.beatBass` / `f.beatMid` / `f.beatTreble`, scaled by `beatStrength`
+//     (energy modulation). The shader does `step = floor(counter / period)`
+//     to pin each cell to a discrete palette index that ratchets forward.
+//   - Per-cell INTENSITY is uniform with a small hash-driven jitter
+//     `[0.85, 1.0]` so the panel reads as vivid throughout (no dim
+//     backlight gradient). A bar pulse (`f.barPhase01 ^ 8`) adds a brief
+//     +30% brightness flash at each downbeat; falls back to no-pulse
+//     gracefully when no BeatGrid is installed (`barPhase01` stays at 0).
+//   - The four light agents (slot 8 buffer, LM.2 contract §P.4) are still
+//     ticked CPU-side for ABI continuity but the `lights[i].intensity` /
+//     `lights[i].colorR/G/B` fields are unused by the LM.3.2 shader. The
+//     agent loop is retained as zeroed scaffolding; LM.4 may revisit
+//     pattern-engine bursts on top of the LM.3.2 cell field.
 //
 // References:
 //   docs/presets/LUMEN_MOSAIC_DESIGN.md          — design intent + open decisions.
@@ -120,39 +135,41 @@ constant float kReliefBandRadius = 0.02f;
 /// sub-cell micro-texture, not as a competing macro pattern.
 constant float kFrostScale = 80.0f;
 
-/// Static-light-field magnitude (LM.3.1). Each agent's POSITION (not its
-/// audio-driven intensity) creates a permanent light pool around it via
-/// `falloff = 1 / (1 + r² × attenuationRadius)`. Cells under an agent see
-/// a strong static field; cells in the gaps between agents see a weak one.
-/// This is the **backlight character** — cells aren't uniformly painted;
-/// the panel reads as "lit from behind by 4 point sources." 0.50 puts
-/// near-agent cells at half brightness from position alone (audio adds on
-/// top); corners can drop to ~0.05 even before the safety floor kicks in.
-constant float kAgentStaticIntensity = 0.50f;
+/// LM.3.2 — uniform-cell-intensity baseline. Replaces LM.3.1's agent-static-
+/// field model after Matt's 2026-05-09 rejection ("fixed-color cells with
+/// brightness modulation; the bright pools dominated the visual story").
+/// Cells are uniformly bright with a small per-cell hash jitter so the panel
+/// reads as a flat field of vivid colours rather than a backlit gradient.
+/// The dance signal lives in *colour change*, not in *brightness change*.
+constant float kCellIntensityBase   = 0.85f;
+constant float kCellIntensityJitter = 0.15f;   // adds [0, 0.15] from hash
 
-/// Absolute minimum cell intensity. Catches cells in dead zones (far from
-/// every agent) so they don't render as black; well below
-/// `kAgentStaticIntensity` so the position-driven light field is the
-/// dominant variation source. Per Matt 2026-05-09: silence rests — cells
-/// hold their colours, but the panel can dim into dead zones (this is
-/// part of the backlight character — it's not supposed to be uniformly
-/// lit).
-constant float kCellMinIntensity = 0.05f;
+/// LM.3.2 — bar-pulse magnitude. A brief +30% panel-wide brightness flash
+/// at each downbeat (driven by `f.barPhase01 ^ 8`) gives the dance a
+/// structural pulse on top of the per-cell team-counter advance. When no
+/// BeatGrid is installed (`f.barPhase01` stays at 0) the term collapses
+/// to 1.0 and there is no pulse — the team-counter dance still fires
+/// because the engine increments `barCounter` every 4 bass beats as a
+/// fallback (see LumenPatternEngine `_tick` bar-fallback path).
+constant float kBarPulseMagnitude = 0.30f;
+constant float kBarPulseShape     = 8.0f;
 
-/// Per-cell hue cycle rate (LM.3 / Decision D.4). Cells cycle through the
-/// procedural palette as `accumulated_audio_time` advances. Larger values
-/// = faster cycling = busier visual register.
-///
-///   0.05  — full hue cycle every ~20 s of energetic music. Calm but visible.
-///   0.15  — full cycle every ~7 s. Energetic, dance-floor pace.       ← LM.3 default
-///   0.30  — full cycle every ~3 s. Restless, may strobe on quiet tracks.
-///   0.50  — full cycle per beat at 120 BPM. Discotheque.
-///
-/// The accumulated_audio_time accumulator advances faster during loud
-/// passages and stops at silence by construction (see CLAUDE.md §AccumulatedAudioTime),
-/// so silence freezes the cycle naturally — no separate freeze logic needed.
-/// M7-tunable in LM.3 review against a known-BPM track.
-constant float kCellHueRate = 0.15f;
+/// LM.3.2 — palette-step size. Each beat-counter step advances the cell's
+/// palette phase by this much. 0.137 (≈ 1/φ²) ensures adjacent steps land
+/// far apart on the palette wheel — a single bass-team beat moves a fast
+/// cell roughly 50° around the hue circle. After ≈ 7 steps the cell has
+/// almost completed a full rotation.
+constant float kPaletteStepSize = 0.137f;
+
+/// LM.3.2 — team assignment percentages. Buckets summed left-to-right so
+/// `bucket = h % 100`:
+///   bucket  ∈ [0,  30) → bass team   (30%)
+///   bucket  ∈ [30, 65) → mid team    (35%)
+///   bucket  ∈ [65, 90) → treble team (25%)
+///   bucket  ∈ [90,100) → static team (10%)
+constant uint kBassTeamCutoff   = 30u;
+constant uint kMidTeamCutoff    = 65u;
+constant uint kTrebleTeamCutoff = 90u;
 
 /// IQ palette parameters — endpoints interpolated by mood (LM.3 / E.3).
 ///
@@ -188,13 +205,17 @@ constant float kPaletteMoodPhaseShift = 0.10f;
 
 /// Per-track seed perturbation magnitudes. Each seed component is in
 /// `[-1, +1]`; the magnitude here is what it scales to before being added
-/// to the palette parameter. Magnitudes deliberately chosen so the
-/// perturbation is visible (different tracks look different) without
-/// pushing the palette outside the saturated regime.
-constant float kSeedMagnitudeA = 0.05f;   // baseline shift  (small)
-constant float kSeedMagnitudeB = 0.05f;   // chroma shift    (small)
-constant float kSeedMagnitudeC = 0.10f;   // rate shift      (medium)
-constant float kSeedMagnitudeD = 0.20f;   // phase shift     (large — colour family character)
+/// to the palette parameter. Magnitudes bumped at LM.3.2 (the LM.3 values
+/// 0.05/0.05/0.10/0.20 produced perturbations too small to read as track-
+/// specific identity in production output). The new values still keep the
+/// palette inside the saturated regime — `b` is centred around ~0.5 with
+/// the bumped 0.20 perturbation landing inside [0.30, 0.70] which the IQ
+/// palette form `a + b*cos(...)` clamps gracefully via the lighting path's
+/// `kLumenEmissionGain (4.0)` × bloom + ACES tone-mapping.
+constant float kSeedMagnitudeA = 0.20f;   // baseline shift  (was 0.05)
+constant float kSeedMagnitudeB = 0.20f;   // chroma shift    (was 0.05)
+constant float kSeedMagnitudeC = 0.30f;   // rate shift      (was 0.10)
+constant float kSeedMagnitudeD = 0.50f;   // phase shift     (was 0.20 — strong colour family identity)
 
 /// Default attenuation coefficient for the slot-8 placeholder state
 /// (`LumenPatternState.activeLightCount == 0`). The fragment never
@@ -215,63 +236,113 @@ static inline float2 lm_camera_tangents(constant SceneUniforms& s) {
     return float2(yFovTan * aspect, yFovTan) * kFocalDist;
 }
 
-/// Compute the cell's scalar brightness — the backlight character (LM.3.1).
-///
-/// Two contributions:
-///
-/// 1. **Static field** (`static_max × kAgentStaticIntensity`) — driven by
-///    agent POSITIONS only, not intensities. The maximum-falloff agent
-///    determines the brightness; this gives spotlit character (cells under
-///    an agent are brighter than cells equidistant from all agents). At
-///    silence this creates the always-on backlight — cells under an agent
-///    are clearly brighter than cells in the gaps between agents.
-///
-/// 2. **Audio field** (`audio_acc`) — sum over agents of `intensity ×
-///    falloff`. Music-driven brightness adds on top of the static field.
-///    Multiple stems can each contribute additively to the same cell.
-///
-/// Floored at `kCellMinIntensity` to catch the deepest dead-zone cells.
-///
-/// Why max-of-falloffs for the static field, not sum: with 4 agents
-/// spread across the panel, summing falloffs gives the geometric centre
-/// (all agents at medium distance) higher static brightness than cells
-/// under a single agent — backwards. Max-of-falloffs gives the cleaner
-/// "this cell is in this agent's lobe" character.
-static inline float lm_cell_intensity(float2 cell_center_uv,
-                                      constant LumenPatternState& lumen) {
-    float static_max = 0.0f;
-    float audio_acc  = 0.0f;
-    int agentCount = min(lumen.activeLightCount, 4);
-    for (int i = 0; i < agentCount; ++i) {
-        LumenLightAgent a = lumen.lights[i];
-        float2 d = cell_center_uv - float2(a.positionX, a.positionY);
-        float r2 = dot(d, d) + a.positionZ * a.positionZ + 1.0e-4f;
-        float falloff = 1.0f / (1.0f + r2 * a.attenuationRadius);
-        static_max = max(static_max, falloff);
-        audio_acc  += a.intensity * falloff;
-    }
-    float total = static_max * kAgentStaticIntensity + audio_acc;
-    return max(total, kCellMinIntensity);
+/// LM.3.2 — integer hash. Mixes a single uint into a uint with good
+/// avalanche so adjacent cell ids produce well-separated team and period
+/// assignments. (Murmur-style xor-shift mixer; same scheme as Arachne's
+/// `arachHashU32`, kept lexically distinct so future shader-utility work
+/// can promote one of them into a shared helper without import order
+/// drift.)
+static inline uint lm_hash_u32(uint x) {
+    x ^= 61u;
+    x ^= (x >> 16);
+    x *= 0x7feb352du;
+    x ^= (x >> 15);
+    x *= 0x846ca68bu;
+    x ^= (x >> 16);
+    return x;
 }
 
-/// Compute the cell's palette sample (Decision D.4 / E.3). Per-cell hash
-/// drives the basic phase; accumulated_audio_time × kCellHueRate adds
-/// time evolution (cells visibly cycle during energetic playback);
-/// smoothed valence + arousal interpolate the IQ palette parameters
-/// between cool/warm and subdued/vivid endpoints; the per-track seed
-/// perturbs the parameters so different tracks produce different palette
-/// character even at the same mood.
+/// LM.3.2 — derive a single 32-bit hash from the four `trackPaletteSeed`
+/// components on `LumenPatternState`. Each seed component is in `[-1, +1]`;
+/// we map to a 16-bit integer and concatenate. This is the value XOR'd
+/// with `cell_id` to scramble the per-cell team / period assignment per
+/// track (different tracks → different cells in the static team, different
+/// cells on each band team).
+static inline uint lm_track_seed_hash(constant LumenPatternState& lumen) {
+    uint a = uint((lumen.trackPaletteSeedA * 0.5f + 0.5f) * 65535.0f);
+    uint b = uint((lumen.trackPaletteSeedB * 0.5f + 0.5f) * 65535.0f);
+    uint c = uint((lumen.trackPaletteSeedC * 0.5f + 0.5f) * 65535.0f);
+    uint d = uint((lumen.trackPaletteSeedD * 0.5f + 0.5f) * 65535.0f);
+    return lm_hash_u32((a & 0xFFu)
+                     | ((b & 0xFFu) << 8u)
+                     | ((c & 0xFFu) << 16u)
+                     | ((d & 0xFFu) << 24u));
+}
+
+/// LM.3.2 — uniform cell intensity with hash-driven jitter and a global
+/// bar pulse. Replaces the LM.3.1 agent-driven static field after Matt's
+/// 2026-05-09 rejection ("the bright pools dominated the visual story").
+///
+/// `cellHash` is the same hash used for team / period assignment in
+/// `sceneMaterial` (so the jitter pattern is stable per-track).
+/// `barPhase01 ∈ [0, 1)` is `f.barPhase01` from the FeatureVector; when
+/// no BeatGrid is installed it stays at 0 and the bar pulse term collapses
+/// to 1.0. The team-counter dance still fires because the engine maintains
+/// `barCounter` via the "every 4 bass beats" fallback.
+///
+/// The four light agents on `LumenPatternState` are still ticked CPU-side
+/// for ABI continuity but their `intensity` / `colorR/G/B` fields are
+/// unused here. `LM.4` may revisit per-cell pattern bursts that read the
+/// agent positions.
+static inline float lm_cell_intensity(uint cellHash, float barPhase01) {
+    float jitterNorm = float((cellHash >> 16u) & 0xFFu) * (1.0f / 255.0f);
+    float baseIntensity = kCellIntensityBase + kCellIntensityJitter * jitterNorm;
+    float barShape = pow(saturate(barPhase01), kBarPulseShape);
+    float barFactor = 1.0f + kBarPulseMagnitude * barShape;
+    return baseIntensity * barFactor;
+}
+
+/// LM.3.2 — compute the cell's palette sample. Each cell is assigned to
+/// one of four teams (bass / mid / treble / static) by `cellHash % 100`
+/// and to one of four periods (1, 2, 4, 8) by another hash bucket. The
+/// cell's palette phase is its base offset plus `step * kPaletteStepSize`,
+/// where `step = floor(team_counter / period)`. Team counters increment
+/// once per band-beat in `LumenPatternEngine._tick`, so the cell advances
+/// its palette index discretely on each beat — not continuously over
+/// time. Static cells (team bucket ≥ 90) hold their base phase forever;
+/// they're rotated per track because the team hash is XOR'd with the
+/// per-track seed.
 ///
 /// Returns a linear RGB value with each channel in roughly `[0, 1]`. The
 /// lighting fragment multiplies by `kLumenEmissionGain (4.0)` then runs
 /// through PostProcessChain bloom + ACES, so saturated palette outputs
 /// (`b ≈ 0.55` per channel → channel range ≈ `[0, 1.1]`) get tone-mapped
 /// gracefully into HDR.
-static inline float3 lm_cell_palette(uint cell_id,
-                                     float accumulated_audio_time,
+static inline float3 lm_cell_palette(uint cellHash,
                                      constant LumenPatternState& lumen) {
-    // Per-cell deterministic phase, in [0, 1).
-    float cell_t = float(cell_id & 0xFFFFu) * (1.0f / 65535.0f);
+    // Per-cell deterministic base phase, in [0, 1). Pulled from the low
+    // 16 bits of the same hash that drives team/period assignment.
+    float cell_t = float(cellHash & 0xFFFFu) * (1.0f / 65535.0f);
+
+    // Team selection. Buckets are non-overlapping percentages of [0, 100):
+    // 30% bass / 35% mid / 25% treble / 10% static.
+    uint teamBucket = cellHash % 100u;
+    float teamCounter = 0.0f;
+    if (teamBucket < kBassTeamCutoff) {
+        teamCounter = lumen.bassCounter;
+    } else if (teamBucket < kMidTeamCutoff) {
+        teamCounter = lumen.midCounter;
+    } else if (teamBucket < kTrebleTeamCutoff) {
+        teamCounter = lumen.trebleCounter;
+    }
+    // else: static team — teamCounter stays 0, step stays 0 forever.
+
+    // Period selection. Pareto-shaped distribution from a 3-bit bucket
+    // ∈ [0, 7]: ≈37.5% period=1, 25% period=2, 25% period=4, 12.5%
+    // period=8. Many fast cells (visibly stepping every beat) + a long
+    // tail of slow cells (stepping only every few bars). Computed in
+    // `floor(counter / period)` form so the cell's palette index ratchets
+    // forward integer-step rather than drifting smoothly.
+    uint periodBucket = (cellHash >> 8u) & 0x7u;
+    float period = 1.0f;
+    if (periodBucket >= 7u) {
+        period = 8.0f;
+    } else if (periodBucket >= 5u) {
+        period = 4.0f;
+    } else if (periodBucket >= 3u) {
+        period = 2.0f;
+    }
+    float step = floor(teamCounter / period);
 
     // Mood interpolation axes ∈ [0, 1].
     float warm    = clamp(lumen.smoothedValence * 0.5f + 0.5f, 0.0f, 1.0f);
@@ -279,8 +350,9 @@ static inline float3 lm_cell_palette(uint cell_id,
 
     // IQ palette parameters interpolated by mood, then perturbed by the
     // per-track seed. Per-track seed components are in [-1, +1]; we
-    // multiply by `kSeedMagnitude*` to scale into the desired
-    // perturbation magnitude per parameter.
+    // multiply by `kSeedMagnitude*` (LM.3.2 magnitudes — bumped from
+    // LM.3 originals) to scale into the desired perturbation per
+    // parameter.
     float3 a = mix(kPaletteACool, kPaletteAWarm, warm)
              + float3(lumen.trackPaletteSeedA * kSeedMagnitudeA);
     float3 b = mix(kPaletteBSubdued, kPaletteBVivid, arousal)
@@ -290,11 +362,11 @@ static inline float3 lm_cell_palette(uint cell_id,
     float3 d = mix(kPaletteDComplementary, kPaletteDAnalogous, warm)
              + float3(lumen.trackPaletteSeedD * kSeedMagnitudeD);
 
-    // Phase: per-cell hash + time-driven cycling + small mood-driven shift.
-    // accumulated_audio_time naturally stops at silence (energy = 0 →
-    // no advance), so silence freezes the cycle without explicit logic.
+    // Phase: per-cell base + team-step ratchet + small whole-panel mood
+    // drift (so the palette breathes very slowly with mood without
+    // breaking per-cell identity).
     float phase = cell_t
-                + accumulated_audio_time * kCellHueRate
+                + step * kPaletteStepSize
                 + lumen.smoothedValence * kPaletteMoodPhaseShift;
 
     // V.3 IQ cosine palette (Color/Palettes.metal). Saturated by
@@ -385,18 +457,25 @@ float sceneSDF(float3 p,
 
 // ── Scene Material ─────────────────────────────────────────────────────────
 
-/// LM.3 sceneMaterial — per-cell colour identity from the procedural IQ
-/// palette (Decision D.4 / E.3). Each cell's albedo is the product of:
+/// LM.3.2 sceneMaterial — band-routed beat-driven dance.
 ///
-///   1. Its palette colour (per-cell hash + accumulated_audio_time +
-///      smoothed mood + per-track seed) — `lm_cell_palette()`.
-///   2. Its scalar intensity (sum of the four light agents at the
-///      cell's centre uv, floored at `kSilenceIntensity` so cells stay
-///      vivid at silence) — `lm_cell_intensity()`.
+/// Each cell is hashed (with the per-track seed mixed in) and assigned to
+/// one of four teams (bass / mid / treble / static). The cell's palette
+/// phase is its hash-derived base offset plus `floor(team_counter /
+/// period) * kPaletteStepSize` — the cell ratchets one palette step
+/// forward each time its team's beat counter crosses a period boundary.
+/// Static cells never advance; they're rotated per track because the
+/// team hash is XOR'd with the per-track seed.
 ///
-/// All pixels within a Voronoi cell sample the same `cell_center_uv` →
-/// the same palette + the same intensity → exactly one colour per cell.
-/// That's the stained-glass quantization. Adjacent cells get adjacent
+/// Per-cell intensity is uniform with a small hash-driven jitter
+/// (`[0.85, 1.0]`) plus a global bar-pulse `1.0 + 0.30 × barPhase01^8`.
+/// Replaces the LM.3.1 agent-driven static-light field after Matt's
+/// 2026-05-09 rejection — brightness modulation is no longer the visual
+/// story; *colour change synchronised to the beat* is.
+///
+/// All pixels within a Voronoi cell sample the same `cell_id` → the same
+/// palette + the same intensity → exactly one colour per cell. That's
+/// the stained-glass quantization. Adjacent cells get well-separated
 /// palette samples (cell hashes differ → palette phases differ → cells
 /// can be on opposite sides of the hue wheel).
 ///
@@ -430,18 +509,24 @@ void sceneMaterial(float3 p,
     float2 panel_uv = p.xy / cam_t;
 
     // Voronoi cell membership. `v.id` is the deterministic per-cell hash
-    // (drives palette phase); `v.pos` is the cell-centre uv (drives
-    // intensity sampling). `voronoi_f1f2.pos` is in panel-uv units —
-    // the utility divides by scale internally (Voronoi.metal:71).
+    // (`voronoi_f1f2.id` is `int`; we cast to uint for the bit-mixing
+    // pipeline below). `v.pos` is the cell-centre uv but unused at LM.3.2
+    // — the new uniform-with-jitter intensity model doesn't need a per-
+    // cell spatial coordinate.
     VoronoiResult cellV = voronoi_f1f2(panel_uv, kCellDensity);
-    uint   cell_id        = uint(cellV.id);
-    float2 cell_center_uv = cellV.pos;
+    uint cell_id = uint(cellV.id);
 
-    // Per-cell colour from the procedural palette (D.4 / E.3).
-    float3 cell_hue = lm_cell_palette(cell_id, f.accumulated_audio_time, lumen);
+    // Mix the Voronoi cell id with the per-track seed and run a cheap
+    // avalanche hash. The output drives team / period / base-phase /
+    // jitter assignments — same hash for all four so the cell's identity
+    // is one stable bit-pattern.
+    uint cellHash = lm_hash_u32(cell_id ^ lm_track_seed_hash(lumen));
 
-    // Per-cell scalar intensity from the four light agents.
-    float cell_intensity = lm_cell_intensity(cell_center_uv, lumen);
+    // Per-cell colour from the procedural palette + team-counter step.
+    float3 cell_hue = lm_cell_palette(cellHash, lumen);
+
+    // Per-cell scalar intensity (uniform jitter + bar pulse).
+    float cell_intensity = lm_cell_intensity(cellHash, f.bar_phase01);
 
     // Albedo carries the per-cell colour signal (matID == 1 contract).
     // Multiply palette × intensity; clamp to [0, 1] so the rgba8Unorm

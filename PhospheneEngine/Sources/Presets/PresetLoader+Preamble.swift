@@ -315,6 +315,10 @@ extension PresetLoader {
             float trackPaletteSeedB;            // LM.3 — per-track perturbation of palette `b` (chroma amplitude)
             float trackPaletteSeedC;            // LM.3 — per-track perturbation of palette `c` (channel rate)
             float trackPaletteSeedD;            // LM.3 — per-track perturbation of palette `d` (phase / hue family)
+            float bassCounter;                  // LM.3.2 — increments on f.beatBass rising-edge × beatStrength
+            float midCounter;                   // LM.3.2 — increments on f.beatMid rising-edge × beatStrength
+            float trebleCounter;                // LM.3.2 — increments on f.beatTreble rising-edge × beatStrength
+            float barCounter;                   // LM.3.2 — increments on f.barPhase01 wrap (or every 4 bass beats)
         };
 
         // ── Per-preset forward declarations ──────────────────────────────────

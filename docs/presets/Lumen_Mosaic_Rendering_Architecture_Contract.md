@@ -1,6 +1,6 @@
 # Lumen Mosaic Rendering Architecture Contract
 
-**Status:** Active. Revised 2026-05-09 alongside the LM.3 design pivot. This revision updates Decisions D and E (per-cell colour identity + procedural palette), the `sceneMaterial` D-021 signature usage, the `LumenPatternState` layout (adds smoothed mood scalars used by `palette()` parameter interpolation), and the certification fixtures (vivid-not-muted explicit). All other contract sections (panel sizing §P.1, agent bounds §P.2, agent sampling §P.3 reframed, the dance §P.4, slot 8 binding) carry forward unchanged. See §Revision History.
+**Status:** Active. Revised 2026-05-09 alongside the LM.3.2 design pivot — the second pivot in 24 hours. The LM.3 continuous-cycling form of D.4 was rejected in production (cells did not visibly cycle on real Spotify-normalised audio because mid + treble bands under-read; `accumulated_audio_time` advanced ~10× too slowly to register as motion — BUG-012). The LM.3.1 agent-position-driven backlight character was rejected by Matt 2026-05-09 ("the bright pools dominated the visual story"). LM.3.2 adopts Decision D.5 — band-routed beat-driven dance — instead: cells advance their palette index *discretely on each FFT-band beat*, with a per-cell team assignment + period sampled from `hash(cell_id ^ track_seed)`. Brightness is uniform with hash jitter; the visual story is colour change synced to the beat, not brightness modulation. This revision updates the `sceneMaterial` pseudocode (band-routed step + uniform-brightness intensity), the `LumenPatternState` layout (adds four band counters: bassCounter / midCounter / trebleCounter / barCounter, growing the struct 360 → 376 B), and the certification fixtures (per-track-seed-driven palette identity + bass-team step on rising-edge of `f.beatBass` are observable). All other contract sections (panel sizing §P.1, agent bounds §P.2, the dance §P.4, slot 8 binding) carry forward unchanged. See §Revision History.
 
 ## Purpose
 
@@ -8,7 +8,7 @@ This contract defines the required rendering architecture for Lumen Mosaic. It t
 
 This file is authoritative for implementation. `LUMEN_MOSAIC_DESIGN.md` remains authoritative for visual intent and creative decisions.
 
-**Decisions in force (LM.3+):** A.1 (Lumen Mosaic), B.1 (analytical agent contributions), C.2 (~50 cells across), **D.4 (per-cell colour identity from `palette()` keyed on cell hash + audio time + mood)**, **E.3 (procedural palette via V.3 IQ cosine `palette()`; mood shifts `(a, b, c, d)` continuously; no authored palette banks)**, F.1 (slot 8 fragment buffer), G.1 (fixed camera, panel oversize 1.50×), H.1 (standalone preset). LM.0 / LM.1 / LM.2 shipped under D.1 / E.1; that scaffolding is replaced at LM.3 by D.4 / E.3.
+**Decisions in force (LM.3.2+):** A.1 (Lumen Mosaic), B.1 (analytical agent contributions), C.2 (~50 cells across), **D.5 (band-routed beat-driven dance — cells hashed into bass / mid / treble / static teams, advance palette index on rising-edge of their team's FFT-band beat; periods Pareto-shaped from hash)**, **E.3 (procedural palette via V.3 IQ cosine `palette()`; mood shifts `(a, b, c, d)` continuously; per-track seed perturbations bumped to ±0.20 / 0.20 / 0.30 / 0.50; no authored palette banks)**, F.1 (slot 8 fragment buffer), G.1 (fixed camera, panel oversize 1.50×), H.1 (standalone preset). LM.0 / LM.1 / LM.2 shipped under D.1 / E.1; LM.3 / LM.3.1 shipped under D.4 (continuous palette cycling on `accumulated_audio_time`) / D.4 + agent-position backlight; both replaced at LM.3.2 by D.5.
 
 ## Required passes
 
@@ -72,19 +72,41 @@ The shader **also** must define an emission-output path. The deferred PBR pipeli
 
 - **matID == 1 (chosen at LM.1, kept at LM.3)** — write the backlight value to the G-buffer's albedo channel; the lighting pass multiplies by `kLumenEmissionGain (4.0)` and skips Cook-Torrance + screen-space shadows (`raymarch_lighting_fragment` matID == 1 branch). LM.3 keeps the same dispatch — what changes is *what value is written to albedo*.
 
-**LM.3 sceneMaterial responsibilities (D.4):**
+**LM.3.2 sceneMaterial responsibilities (D.5):**
 
 1. Compute `panel_uv = p.xy / s.cameraTangents.xy` (panel-face normalised coordinate).
-2. Run `voronoi_f1f2(panel_uv, kCellDensity)` to obtain the cell's `id` (deterministic hash) and `pos` (cell-centre uv).
-3. Derive per-cell phase: `cell_t = float(v.id & 0xFFFF) / 65535.0`.
-4. Compute palette phase: `phase = cell_t + f.accumulated_audio_time × kCellHueRate + lumen.smoothedValence × 0.10`.
-5. Compute palette parameters by interpolating between `kPaletteACool` / `kPaletteAWarm` etc. via `lumen.smoothedValence` and `lumen.smoothedArousal`.
-6. Sample the palette: `cell_hue = palette(phase, a, b, c, d)` (V.3 `Sources/Presets/Shaders/Utilities/Color/Palettes.metal`).
-7. Compute cell intensity by analytical sum over the four agents at `pos` (LM.2 §P.3 formula, unchanged).
-8. Floor intensity at `kSilenceIntensity` (D-019 silence fallback — cells stay coloured at silence).
-9. Write `albedo = clamp(cell_hue × cell_intensity, 0.0, 1.0)`, `outMatID = 1`.
+2. Run `voronoi_f1f2(panel_uv, kCellDensity)` to obtain the cell's `id` (deterministic hash). The cell-centre `pos` is *not* used at LM.3.2 — the new uniform-with-jitter intensity model has no per-cell spatial dependency.
+3. Derive a single 32-bit hash from the cell + per-track seed:
+   ```
+   trackHash = lm_track_seed_hash(lumen)         // mixes the four trackPaletteSeed{A,B,C,D} ∈ [-1, +1]
+   cellHash  = lm_hash_u32(uint(v.id) ^ trackHash)
+   ```
+4. Assign the cell to a team (bucket = `cellHash % 100`):
+   - `[0, 30)`  → bass team   (counter = `lumen.bassCounter`)
+   - `[30, 65)` → mid team    (counter = `lumen.midCounter`)
+   - `[65, 90)` → treble team (counter = `lumen.trebleCounter`)
+   - `[90, 100)` → static team (counter = 0; cell never advances)
+5. Pick a period from another hash bucket (`(cellHash >> 8) & 0x7`):
+   - `< 3` → period = 1
+   - `[3, 5)` → period = 2
+   - `[5, 7)` → period = 4
+   - `≥ 7` → period = 8
 
-The `lumen.smoothedValence` / `lumen.smoothedArousal` fields are **new in LM.3** (see §Required uniforms); the engine already maintains 5 s smoothed mood values, the contract just exposes them on the GPU struct. The agent `colorR/G/B` fields stay on the GPU struct for ABI continuity but are **unused by LM.3 sceneMaterial** (reserved for LM.5+ per-stem hue affinity if adopted).
+   Pareto distribution: ≈ 37.5 % period 1 / 25 % period 2 / 25 % period 4 / 12.5 % period 8.
+6. Compute `step = floor(team_counter / period)`. The cell advances exactly `step × kPaletteStepSize` worth of palette phase past its base.
+7. Compute palette phase: `phase = cell_t + step × kPaletteStepSize + lumen.smoothedValence × kPaletteMoodPhaseShift` where `cell_t = float(cellHash & 0xFFFF) / 65535`.
+8. Compute palette parameters by interpolating between `kPaletteACool` / `kPaletteAWarm` etc. via `lumen.smoothedValence` and `lumen.smoothedArousal`, perturbed by the four `lumen.trackPaletteSeed{A,B,C,D}` × `kSeedMagnitude{A,B,C,D}` (LM.3.2 magnitudes 0.20 / 0.20 / 0.30 / 0.50, bumped from LM.3's 0.05 / 0.05 / 0.10 / 0.20).
+9. Sample the palette: `cell_hue = palette(phase, a, b, c, d)` (V.3 `Sources/Presets/Shaders/Utilities/Color/Palettes.metal`).
+10. Compute cell intensity uniformly with hash jitter and bar pulse:
+    ```
+    jitter      = float((cellHash >> 16) & 0xFF) / 255         // [0, 1]
+    base        = kCellIntensityBase + kCellIntensityJitter × jitter   // [0.85, 1.0]
+    barShape    = pow(saturate(f.bar_phase01), kBarPulseShape)         // 8.0 → only end-of-bar lights up
+    intensity   = base × (1 + kBarPulseMagnitude × barShape)           // [0.85, 1.30]
+    ```
+11. Write `albedo = clamp(cell_hue × intensity, 0.0, 1.0)`, `outMatID = 1`.
+
+The `lumen.bassCounter / midCounter / trebleCounter / barCounter` fields are **new in LM.3.2** (see §Required uniforms); the engine maintains them via rising-edge detection on `f.beatBass / beatMid / beatTreble / barPhase01-wrap`, debounced 80 ms, scaled by `beatStrength`. The agent `intensity` and `colorR/G/B` fields stay on the GPU struct for ABI continuity but are **unused by LM.3.2 sceneMaterial** (LM.4 may revisit pattern bursts that read agent positions). The cell-centre uv is unused at LM.3.2 (intensity is now per-cell, derived from the hash, not from the agent loop).
 
 ## Panel sizing, light agent bounds, and the dance
 
@@ -252,24 +274,29 @@ public struct LumenPatternState {
     public var patterns: (LumenPattern, LumenPattern, LumenPattern, LumenPattern)            // 4 × 48 = 192 B
     public var activeLightCount: Int32      // 4 B
     public var activePatternCount: Int32    // 4 B
-    public var ambientFloorIntensity: Float // 4 B  (LM.2 D-019 floor; superseded by kSilenceIntensity at LM.3)
+    public var ambientFloorIntensity: Float // 4 B  (LM.2 D-019 floor; unused at LM.3+ — silence handled by uniform-cell-intensity baseline)
     public var smoothedValence: Float       // 4 B  (LM.3 — 5 s low-pass for palette `(a, d)` interpolation)
     public var smoothedArousal: Float       // 4 B  (LM.3 — 5 s low-pass for palette `(b, c)` interpolation)
     public var pad0: Float = 0              // 4 B
-    public var trackPaletteSeedA: Float     // 4 B  (LM.3 — per-track perturbation of palette `a`, ±0.05)
-    public var trackPaletteSeedB: Float     // 4 B  (LM.3 — per-track perturbation of palette `b`, ±0.05)
-    public var trackPaletteSeedC: Float     // 4 B  (LM.3 — per-track perturbation of palette `c`, ±0.10)
-    public var trackPaletteSeedD: Float     // 4 B  (LM.3 — per-track perturbation of palette `d`, ±0.20)
-    // Total: 360 B.  (LM.3 grew by 24 B: smoothedValence + smoothedArousal + 4 × trackPaletteSeed.)
+    public var trackPaletteSeedA: Float     // 4 B  (LM.3 — per-track perturbation of palette `a`; magnitude ±0.20 at LM.3.2)
+    public var trackPaletteSeedB: Float     // 4 B  (LM.3 — per-track perturbation of palette `b`; magnitude ±0.20 at LM.3.2)
+    public var trackPaletteSeedC: Float     // 4 B  (LM.3 — per-track perturbation of palette `c`; magnitude ±0.30 at LM.3.2)
+    public var trackPaletteSeedD: Float     // 4 B  (LM.3 — per-track perturbation of palette `d`; magnitude ±0.50 at LM.3.2)
+    public var bassCounter: Float           // 4 B  (LM.3.2 — rising-edge of f.beatBass, scaled by beatStrength, debounced 80 ms)
+    public var midCounter: Float            // 4 B  (LM.3.2 — rising-edge of f.beatMid)
+    public var trebleCounter: Float         // 4 B  (LM.3.2 — rising-edge of f.beatTreble)
+    public var barCounter: Float            // 4 B  (LM.3.2 — f.barPhase01 wrap; fallback every 4 bass beats)
+    // Total: 376 B.  (LM.3.2 grew by 16 B: four band counters. LM.3 had grown by 24 B from LM.2's 336 B.)
 }
 ```
 
-Total buffer size: **360 B** at LM.3 (was 336 B at LM.2). Use `.storageModeShared` per UMA convention (D-006). The struct stride is asserted to match the matching MSL struct (`PresetLoader+Preamble.swift`) byte-for-byte — the LM.2 `LumenPatternState_strideIs336` test became `LumenPatternState_strideIs360` at LM.3 and the placeholder buffer in `RayMarchPipeline.lumenPlaceholderBuffer` resized to match.
+Total buffer size: **376 B** at LM.3.2 (was 360 B at LM.3, 336 B at LM.2). Use `.storageModeShared` per UMA convention (D-006). The struct stride is asserted to match the matching MSL struct (`PresetLoader+Preamble.swift`) byte-for-byte — `LumenPatternStateLayoutTests.test_lumenPatternState_strideIs376` is the regression-lock; the placeholder buffer in `RayMarchPipeline.lumenPlaceholderBuffer` resized to 376 B at LM.3.2 to match.
 
 **Migration notes.**
 
-- The `ambientFloorIntensity` field stays on the struct for ABI continuity but is unused by LM.3+ sceneMaterial (the silence floor moved to a file-scope `kSilenceIntensity` constant inside LumenMosaic.metal). Future increments may reuse the field for a different purpose; the engine keeps it zero-initialised.
-- The four `trackPaletteSeed{A,B,C,D}` fields are written by `LumenPatternEngine.setTrackSeed(_:)` or `setTrackSeed(fromHash:)` once per track change. `_tick(...)` does **not** clear them. App-layer wiring lives in `VisualizerEngine+Stems.resetStemPipeline(for:)`, which derives an FNV-1a 64-bit hash from `title + artist` and forwards it to the engine.
+- The `ambientFloorIntensity` field stays on the struct for ABI continuity but is unused by LM.3.2 sceneMaterial. The silence-rest behaviour is now structural: counters stay at 0 → step stays at 0 → cells display their base palette colour at uniform 0.85–1.00 brightness with no bar pulse. Future increments may reuse the field for a different purpose; the engine keeps it zero-initialised.
+- The four `trackPaletteSeed{A,B,C,D}` fields are written by `LumenPatternEngine.setTrackSeed(_:)` or `setTrackSeed(fromHash:)` once per track change. **At LM.3.2, `setTrackSeed(_:)` also zeroes the four band counters** — without this, an old track's accumulated counter values would carry into the new track's first beat and the new track's cells would jump straight to a far-off palette index. `_tick(...)` does **not** clear seeds or counters. App-layer wiring lives in `VisualizerEngine+Stems.resetStemPipeline(for:)`, which derives an FNV-1a 64-bit hash from `title + artist` and forwards it to the engine.
+- The four band counters are floats (not ints) so the `beatStrength` scaling factor `clamp(0.3 + 1.4 × max(f.bass, f.mid, f.treble), 0.3, 1.0)` flows directly into the increment. The shader does `floor(counter / period)` to recover the integer step; counters can grow indefinitely over a session (a fresh-cache 4-minute track at 120 BPM with all-bass kicks accumulates ≤ 480 ticks × 1.0 ≈ 480 — well within Float32's exact-integer range up to 16,777,216).
 
 ### `RenderPipeline` extension
 
@@ -442,7 +469,9 @@ Target file length: 600–900 lines. Within SHADER_CRAFT.md §11.1's relaxed fil
 | LM.0 | `directPresetFragmentBuffer3` slot 8 wired in `RenderPipeline`. CLAUDE.md GPU Contract section updated. DECISIONS.md D-LM-buffer-slot-8 entry. New build green; existing tests untouched. ✅ |
 | LM.1 | Static-backlight glass panel renders. Contact sheet present. PresetAcceptanceTests passes. p95 ≤ 2.0 ms. ✅ |
 | LM.2 | Mood-coupled 4-light backlight. Continuous-energy primary drivers. D-019 silence fallback verified. Slot-8 binding wired. p95 ≤ 2.5 ms. ⚠ Engine + GPU contract verified; visual rejected at production review (output muted, cells invisible). LM.3 ships the substantive look. |
-| LM.3 | **Per-cell colour identity from `palette()` keyed on cell hash + audio time + mood** (D.4). **Procedural palette via V.3 IQ cosine** (E.3). `LumenPatternState` extended with `smoothedValence` / `smoothedArousal` + 4 × per-track palette seed fields (struct grows to 360 B). LM.3.1 added position-based static light field (`kAgentStaticIntensity = 0.50`, `kCellMinIntensity = 0.05`, sharper `attenuationRadius = 12`) for backlight character. M7-tunable surface: `kCellHueRate` (default 0.15), `kAgentStaticIntensity`, `kCellMinIntensity`, `defaultAttenuationRadius`, palette endpoints, seed magnitudes. Vividness gate met across all five contact-sheet fixtures (no pastel, no cream-haze). Cells visibly distinct (per-cell palette identity). Visible backlight gradient (bright pools at agent positions, dim corners). Cells held at silence (no fade to grey). Per-track seed wired in `VisualizerEngine+Stems.resetStemPipeline(for:)` via FNV-1a hash of `title + artist`. p95 ≤ 2.8 ms. **⏳ awaiting M7 review on real session** (commits `d17dcf4f` + `d8a31aee` 2026-05-09). |
+| LM.3 | **Per-cell colour identity from `palette()` keyed on cell hash + `accumulated_audio_time × kCellHueRate` + mood** (D.4). Procedural palette via V.3 IQ cosine (E.3). `LumenPatternState` extended +24 B with `smoothedValence` / `smoothedArousal` + 4 × per-track palette seed fields (struct grew to 360 B). **⚠ Result rejected in production**: cells did not visibly cycle on real Spotify-normalised audio. BUG-012 — Spotify volume normalisation pulls mid + treble bands toward zero; `accumulated_audio_time` advanced ~0.045 / sec instead of ~0.5 / sec, so the time-driven cycle was effectively static for entire songs. Procedural-palette + per-cell-hash + mood-coupled-parameters infrastructure proven correct; the *time-driven cycling* mechanism is what failed. |
+| LM.3.1 | Agent-position-driven static-light field as backlight character on top of LM.3 (`kAgentStaticIntensity = 0.50`, `kCellMinIntensity = 0.05`, sharper `attenuationRadius = 12`). **⚠ Result rejected by Matt 2026-05-09**: "fixed-color cells with brightness modulation; the bright pools dominated the visual story." The four agent positions painted four bright lobes that read as the visual subject; cells underneath felt static. |
+| LM.3.2 | **Substantive look ships here.** Decision D.5 — band-routed beat-driven dance: cells hashed (`cell_id ^ trackSeedHash`) into bass / mid / treble / static teams (30 / 35 / 25 / 10 percent), advance palette index discretely on rising-edge of `f.beatBass / beatMid / beatTreble` (debounced 80 ms, scaled by `beatStrength`). Per-cell `period ∈ {1, 2, 4, 8}` Pareto-distributed from hash. Brightness uniform with hash jitter `[0.85, 1.0]`; bar pulse `+30 % × bar_phase01^8`. `LumenPatternState` extended +16 B with four band counters (`bassCounter / midCounter / trebleCounter / barCounter`; struct grows to 376 B). Per-track palette seed magnitudes bumped (was 0.05/0.05/0.10/0.20 → 0.20/0.20/0.30/0.50). LM.3.1 agent-position static field retired; agent `intensity / colorR/G/B` fields kept on struct for ABI but unused by shader. M7-tunable surface: `kPaletteStepSize` (0.137), `kBarPulseMagnitude` (0.30), `kBarPulseShape` (8.0), `kBassTeamCutoff` / `kMidTeamCutoff` / `kTrebleTeamCutoff` (30 / 65 / 90), `beatTriggerHigh` / `beatDebounceSeconds` (0.5 / 0.08 s), `kSeedMagnitude{A,B,C,D}` (0.20 / 0.20 / 0.30 / 0.50), `kCellIntensityBase / Jitter` (0.85 / 0.15). Vividness gate met across all five contact-sheet fixtures. p95 ≤ 2.8 ms. **⏳ awaiting M7 review on real session** (commits TBD 2026-05-09). |
 | LM.4 | Pattern engine v1 active (idle / radial_ripple / sweep). Bar-boundary triggers. Drum-onset ripples take per-cell palette colour (don't override with their own). p95 ≤ 3.0 ms. |
 | LM.5 | Pattern engine v2 (cluster_burst / breathing / noise_drift). **Optional**: per-stem hue affinity (Decision E.b) if LM.3 / LM.4 review judges unified-palette feel undifferentiated stem-wise. p95 ≤ 3.5 ms. |
 | LM.6 | Fidelity polish: micro-frost + specular tuning + cell density A/B vs ref `04`, palette parameter A/B vs ref `05`. p95 ≤ 3.5 ms. |
@@ -454,5 +483,6 @@ Target file length: 600–900 lines. Within SHADER_CRAFT.md §11.1's relaxed fil
 
 ## Revision history
 
-- **2026-05-09 (this revision)** — major pivot after LM.2 production review. Aesthetic role flipped from meditative to energetic (Matt 2026-05-09). **Decision D.1 (cell-quantized agent sample) retired**: produced gradient blob in production, no visible cells; D.4 (per-cell colour identity from `palette()` keyed on cell hash) adopted. **Decision E.1 (cream-baseline mood tint) and E.2 (4 authored palette banks) retired**: muted output and monotony respectively; E.3 (procedural V.3 IQ cosine palette, mood shifts `(a, b, c, d)` continuously) adopted. `LumenPatternState` extended +8 B (smoothedValence + smoothedArousal scalars; struct now 344 B). LM.8 retired; substantive look ships at LM.3. New "vividness gate" added to certification fixtures. New `kCellHueRate` constant introduced as the master tuning knob for per-cell hue cycling speed. `mat_pattern_glass` material recipe and `sceneSDF` glass panel layout (panel oversize 1.50×, Voronoi relief, fbm8 frost) all unchanged. Slot-8 binding contract widened in LM.2 (G-buffer + lighting both bind) is retained.
+- **2026-05-09 (LM.3.2)** — second pivot in 24 hours. **Decision D.4 (continuous palette cycling on `accumulated_audio_time × kCellHueRate`) retired**: cells did not visibly cycle on Spotify-normalised audio (BUG-012). **Decision D.4 + LM.3.1 (agent-position static-light field as backlight) retired** by Matt 2026-05-09 ("the bright pools dominated the visual story"). Decision D.5 — band-routed beat-driven dance — adopted: cells advance palette index discretely on rising-edge of their team's FFT-band beat; team + period sampled per-cell from `hash(cell_id ^ track_seed)`. `LumenPatternState` extended +16 B with four band counters (struct now 376 B). Per-track palette seed magnitudes bumped (was 0.05/0.05/0.10/0.20 → 0.20/0.20/0.30/0.50). `kCellHueRate` retired (no continuous cycle). `kAgentStaticIntensity` / `kCellMinIntensity` retired (uniform brightness with hash jitter). Agent `intensity / colorR/G/B` fields kept on struct for ABI continuity but unused by sceneMaterial. New shader constants: `kPaletteStepSize`, `kBarPulseMagnitude`, `kBarPulseShape`, `kBassTeamCutoff` / `kMidTeamCutoff` / `kTrebleTeamCutoff`, `kCellIntensityBase` / `Jitter`. Engine: `LumenPatternEngine.tick(...)` now extracts an `updateBandCounters(features:)` helper for SwiftLint compliance; `setTrackSeed(_:)` zeroes the four band counters in addition to writing the seed (so the new track's first beat starts cells at step 0, not at the previous track's accumulated count).
+- **2026-05-09 (LM.3 / first pivot)** — major pivot after LM.2 production review. Aesthetic role flipped from meditative to energetic (Matt 2026-05-09). **Decision D.1 (cell-quantized agent sample) retired**: produced gradient blob in production, no visible cells; D.4 (per-cell colour identity from `palette()` keyed on cell hash) adopted. **Decision E.1 (cream-baseline mood tint) and E.2 (4 authored palette banks) retired**: muted output and monotony respectively; E.3 (procedural V.3 IQ cosine palette, mood shifts `(a, b, c, d)` continuously) adopted. `LumenPatternState` extended +24 B (smoothedValence + smoothedArousal + 4 × per-track palette seed scalars; struct grew to 360 B). LM.8 retired; substantive look ships at LM.3. New "vividness gate" added to certification fixtures. New `kCellHueRate` constant introduced as the master tuning knob for per-cell hue cycling speed. `mat_pattern_glass` material recipe and `sceneSDF` glass panel layout (panel oversize 1.50×, Voronoi relief, fbm8 frost) all unchanged. Slot-8 binding contract widened in LM.2 (G-buffer + lighting both bind) is retained.
 - **2026-05-08 (LM.0 era)** — original document, supporting Decisions A.1 / B.1 / C.2 / D.1 / E.1 / F.1 / G.1 / H.1. LM.0–LM.2 implemented under this version.
