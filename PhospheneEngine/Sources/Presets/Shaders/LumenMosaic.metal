@@ -108,17 +108,34 @@ constant float kFocalDist = 3.0f;
 constant float kCellDensity = 15.0f;
 
 /// Lipschitz-safe SDF displacement amplitude for the Voronoi domed-cell
-/// relief. The relief field varies from 0 (cell edge) to ≈ 1 (cell
-/// centre) over ≈ 0.025 world units, so its gradient magnitude reaches
-/// ≈ 40. Multiplying by 0.004 keeps the additional Lipschitz contribution
-/// below 0.16, well within the ray march's `t += max(d, 0.002)` step
-/// floor. Larger amplitudes overshoot the panel surface.
-constant float kReliefAmplitude = 0.004f;
+/// relief. **Round 7 (2026-05-10): set to 0.** The relief geometry
+/// produced sub-pixel normal noise that the frost-scatter lighting
+/// path amplified into per-pixel white dots inside cells (Matt
+/// 2026-05-10: "Why is there a dot in every colored cell?"). Frost
+/// character now comes from cell-edge white-whitening baked into
+/// albedo by `sceneMaterial` directly (using the Voronoi `f2 - f1`
+/// distance, not a normal-driven path) — see `kFrostBlendWidth` and
+/// `kFrostStrength` below. The panel's geometric normal stays a clean
+/// flat (0, 0, -1) per pixel; no more per-pixel relief noise.
+constant float kReliefAmplitude = 0.0f;
 
 /// Lipschitz-safe SDF displacement amplitude for the in-cell frost.
 /// fbm8 at scale 80 reaches gradient ≈ 80; 0.0008 keeps Lipschitz
 /// contribution below 0.07.
-constant float kFrostAmplitude = 0.0008f;
+///
+/// **Round 7 (2026-05-10): set to 0.** The fbm8 frost displacement
+/// was producing per-pixel central-difference normal deviations that
+/// the round-7 frost-scatter lighting path amplified into visible
+/// white pixel artifacts ("dots in every cell"). The frost was
+/// originally decorative — intended for specular sparkle that the
+/// matID == 1 path does not use. Disabling it cleans up the
+/// per-pixel dots while preserving the Voronoi cell-relief edge
+/// gradient, which remains the only normal feature driving frost
+/// scatter at cell ridges. A future round can re-introduce a
+/// different frost mechanism (e.g. a procedural noise tile applied
+/// in the lighting frag rather than as an SDF displacement) if
+/// micro-glints are needed for cert.
+constant float kFrostAmplitude = 0.0f;
 
 /// Distance from the panel face inside which `sceneSDF` evaluates the
 /// relief + frost displacement; outside this band the SDF returns the
@@ -187,6 +204,24 @@ constant float kPaletteStepSize = 0.137f;
 /// beat."
 constant float kBeatDecayEnd     = 0.20f;
 constant float kBeatAttackStart  = 0.85f;
+
+/// LM.3.2 round 7 (2026-05-10) — frosted-glass diffusion at cell
+/// boundaries. The previous round drove frost via an SDF relief
+/// displacement + central-differences normal in the lighting frag,
+/// which produced sub-pixel normal noise → per-pixel white dot
+/// artifacts inside cells. Round 7 abandons normal-driven frost; the
+/// diffusion is now applied directly in `sceneMaterial` using the
+/// Voronoi `f2 - f1` cell-edge distance — a large-scale, smooth
+/// signal that produces clean cell-boundary white-mixing without
+/// per-pixel noise.
+///
+/// `frostiness = 1 - smoothstep(0, kFrostBlendWidth, f2 - f1)`:
+///   0 deep inside cell (vivid colour)
+///   1 at cell boundary (full white-mix)
+/// `kFrostStrength` caps how much white can mix in even at the very
+/// boundary — 0.6 gives a soft frost halo without bleaching the cell.
+constant float kFrostBlendWidth = 0.04f;
+constant float kFrostStrength   = 0.60f;
 
 /// LM.3.2 — team assignment percentages. Buckets summed left-to-right so
 /// `bucket = h % 100`:
@@ -645,22 +680,35 @@ void sceneMaterial(float3 p,
     float cell_intensity = lm_cell_intensity(cellHash, f.bar_phase01);
 
     // Per-cell beat envelope (LM.3.2 round 6, 2026-05-10): cells fade in
-    // toward the beat and fade out after, so colours read as "lights
-    // turning on and off in time with the music" rather than as static
-    // painted glass. Static-team cells (≥ 90 hash bucket) skip the
-    // envelope and hold at peak brightness — they're the always-on
-    // visual anchor that keeps the panel from going fully dark between
-    // beats. At silence (no BeatGrid → `f.beat_phase01 = 0`) the
-    // envelope returns 1.0 and all cells stay lit.
+    // toward the beat and fade out after. Static-team cells (≥ 90
+    // hash bucket) skip the envelope and hold at peak brightness — the
+    // always-on visual anchor that prevents the panel from going fully
+    // dark between beats. At silence (`f.beat_phase01 = 0`) envelope
+    // returns 1.0 and all cells stay lit.
     float cell_envelope = lm_cell_envelope(cellHash, f.beat_phase01);
 
+    // Frosted-glass diffusion at cell boundaries (LM.3.2 round 7,
+    // 2026-05-10). The Voronoi `f2 - f1` distance is the natural
+    // "distance to nearest cell boundary" signal — large inside the
+    // cell, drops to 0 at the boundary. Mixing toward white at small
+    // `f2 - f1` values produces a clean frost halo where neighbouring
+    // cells meet, without the sub-pixel normal noise that the
+    // round-5/6 SDF-relief-driven approach introduced. Driven entirely
+    // from the Voronoi field at the per-pixel rate that the f1/f2
+    // computation already runs at, so no extra cost.
+    float frostiness = 1.0f
+                     - smoothstep(0.0f, kFrostBlendWidth, cellV.f2 - cellV.f1);
+    float3 frosted_hue = mix(cell_hue,
+                             float3(1.0f),
+                             saturate(frostiness * kFrostStrength));
+
     // Albedo carries the per-cell colour signal (matID == 1 contract).
-    // Multiply palette × intensity × envelope; clamp to [0, 1] so the
-    // rgba8Unorm G-buffer encoding is loss-free. The matID == 1
-    // lighting fragment then layers frosted-glass surface character
-    // (frost scatter + procedural sparkle + Fresnel edge sheen) on
-    // top of this envelope-modulated emission.
-    albedo = clamp(cell_hue * cell_intensity * cell_envelope, 0.0f, 1.0f);
+    // Multiply frosted palette × intensity × envelope; clamp to [0, 1]
+    // so the rgba8Unorm G-buffer encoding is loss-free. The matID == 1
+    // lighting fragment skips Cook-Torrance and emits this directly
+    // (the "frosted glass surface character" is now fully baked here
+    // in sceneMaterial, not added by the lighting path).
+    albedo = clamp(frosted_hue * cell_intensity * cell_envelope, 0.0f, 1.0f);
 
     // Pattern-glass material aesthetic from SHADER_CRAFT.md §4.5b.
     roughness = 0.40f;

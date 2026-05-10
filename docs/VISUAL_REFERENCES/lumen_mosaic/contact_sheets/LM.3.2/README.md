@@ -1,6 +1,17 @@
 # Lumen Mosaic — LM.3.2 Contact Sheet
 
-Captured 2026-05-10 (LM.3.2 calibration round 6 — beat envelope) via `RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter "PresetVisualReviewTests/renderPresetVisualReview"`.
+Captured 2026-05-10 (LM.3.2 calibration round 7 — frost diffusion baked into albedo) via `RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter "PresetVisualReviewTests/renderPresetVisualReview"`.
+
+**Round 7 (2026-05-10) — frost diffusion in sceneMaterial.** Matt's review of round 6: "Why is there a dot in every colored cell? This looks odd. Also the colors in v2 and v3 look particularly washed out — too much frosting?" Two diagnoses:
+
+1. **Dots in every cell**: round 5/6 drove frost scatter from the SDF relief geometry's central-differences normal. The relief produced sub-pixel normal noise (Voronoi f1/f2 transitions, fbm8 frost peaks, rgba8Snorm normal quantization) that the normal-driven frost-scatter term amplified into per-pixel white spots. The procedural sparkle hash at scale 80 also aliased with the cell scale (cells ~36 px wide at 1080p, hash period ~13 px → ~3 sparkles per cell at fixed offsets).
+2. **v2 / v3 washed**: the round-5 `frostiness × 1.5` saturated quickly so any normal deviation pulled cells toward white, and the `edgeSheen × 0.40` rim added more white at cell edges. Combined, the average panel saturation dropped — most visible at v2 / v3.
+
+Round 7 fixes:
+
+- **`kReliefAmplitude = 0` and `kFrostAmplitude = 0`** in LumenMosaic.metal sceneSDF — the panel's geometric normal is now a clean flat `(0, 0, -1)` per pixel; no more sub-pixel relief noise.
+- **Frost diffusion moved to sceneMaterial**, driven by the Voronoi `f2 - f1` cell-edge distance (a large-scale, smooth signal) rather than by the normal. `frostiness = 1 - smoothstep(0, kFrostBlendWidth = 0.04, f2 - f1)`. Mixed into albedo via `mix(cell_hue, white, frostiness × kFrostStrength = 0.60)`. Cell centres stay fully vivid, cell boundaries get a clean white halo. **No per-pixel dots**.
+- **matID == 1 lighting path simplified back to round-4 baseline**: `albedo × kLumenEmissionGain + ambient`. Frost scatter, procedural sparkle, and Fresnel edge sheen are removed (they were the dot sources, and with a flat normal the Fresnel/normal-driven terms collapse to zero anyway). The frosted-glass character is fully baked into albedo by sceneMaterial.
 
 **Round 6 (2026-05-10) — beat envelope.** Matt's review of round 5: "the colors turn on and off, which means they quickly fade in and fade out, like a light being turned on and off. So the 'on' must be triggered milliseconds before the beat in order for the color to land on the beat." Round 5 was rendering cells at static brightness — the discrete palette-step advance was correct, but the colours snapped instantly rather than fading like a light bulb being switched on/off. Round 6 wires `f.beat_phase01` into a per-cell envelope that fades cells in toward the beat (anticipation window) and out after, with **75 ms anticipation lead-in at 120 BPM** so the colour visibly lands ON the beat rather than after.
 
