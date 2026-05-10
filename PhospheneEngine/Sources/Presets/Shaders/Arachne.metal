@@ -1628,9 +1628,25 @@ fragment float4 arachne_composite_fragment(
     // amber base + thin-film iridescence at biological strength + Oren-Nayar
     // hair fuzz + per-eye specular). Spider rides the vibrating web — its
     // anchor UV translates by `(vibUV - uv)` so silk + body shake together.
+    // BUG-011 L3: dispatch gate 0.01 → 0.05. The 0.01 floor kept the patch
+    // ray-march alive during the spider's full fade-in / fade-out tail
+    // (blend ramps 0↔1 over a few seconds when activating/deactivating).
+    // Pixels in the [0.01, 0.05] blend band see a ≤ 5 % opacity blend that
+    // sits below the perceptual threshold; cutting the dispatch on those
+    // frames saves ~200 µs of per-frame ray-march cost during transitions
+    // without visible regression. The overlay mix at the bottom of this
+    // fragment (also gated on `spider.blend > 0.01`) is left untouched —
+    // when dispatch skips, `spiderContrib` stays zero and the mix
+    // collapses to `webColor` regardless of the overlay gate's threshold,
+    // and a unified gate would unnecessarily change the late-fade-out
+    // tail's terminal frame. listenLiftEMA is *not* plumbed to the GPU
+    // (D-094: ArachneSpiderGPU stays at 80 bytes; listening pose is
+    // realised CPU-side via tip[0]/tip[1] lift in `writeSpiderToGPU`),
+    // so this gate uses spider.blend alone — listening pose still
+    // triggers via the existing path with at most a 1-frame lag.
     float3 spiderContrib = float3(0.0);
     float  spiderMaskOut = 0.0;
-    if (spider.blend > 0.01) {
+    if (spider.blend > 0.05) {
         float2 spUVStatic = float2((spider.posX + 1.0) * 0.5,
                                     (1.0 - spider.posY) * 0.5);
         float2 spUV       = spUVStatic + vibOffset;
