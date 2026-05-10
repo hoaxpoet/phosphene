@@ -164,9 +164,10 @@ public final class RayMarchPipeline: @unchecked Sendable {
     /// Zero-filled placeholder buffer for fragment slot 8 — bound for ray-march
     /// presets that do not own a per-preset slot-8 buffer (i.e. all presets
     /// other than Lumen Mosaic at LM.2). Sized to `LumenPatternState`
-    /// (336 bytes); the preamble's `raymarch_gbuffer_fragment` declares the
-    /// slot via `constant LumenPatternState&` and Metal validation requires
-    /// every declared buffer to be bound at draw time.
+    /// (LM.3.2: 376 bytes after adding the four band counters); the preamble's
+    /// `raymarch_gbuffer_fragment` declares the slot via
+    /// `constant LumenPatternState&` and Metal validation requires every
+    /// declared buffer to be bound at draw time.
     ///
     /// `sceneMaterial` for non-Lumen presets receives the placeholder via the
     /// trailing `lumen` parameter and silences it via `(void)lumen;` — the
@@ -252,18 +253,20 @@ public final class RayMarchPipeline: @unchecked Sendable {
         self.sampler = bundle.sampler
 
         // Allocate the slot-8 zero placeholder once. Sized to match Swift
-        // `LumenPatternState.stride` (LM.3: 360 bytes after adding
-        // smoothedValence/Arousal + trackPaletteSeed{A,B,C,D}); a static
-        // literal keeps the engine free of a Presets-module dependency. If
-        // the value drifts the `LumenPatternState_strideIs360` test traps
-        // before this binding can misalign the shader struct.
+        // `LumenPatternState.stride` (LM.3.2: 376 bytes after adding the
+        // four band counters bassCounter/midCounter/trebleCounter/barCounter
+        // on top of the LM.3 smoothedValence/Arousal + trackPaletteSeed{A,B,C,D}
+        // layout); a static literal keeps the engine free of a Presets-module
+        // dependency. If the value drifts the
+        // `LumenPatternState_strideIs376` test traps before this binding can
+        // misalign the shader struct.
         guard let placeholder = context.device.makeBuffer(
-            length: 360,
+            length: 376,
             options: .storageModeShared
         ) else {
             throw RayMarchPipelineError.bufferAllocationFailed
         }
-        memset(placeholder.contents(), 0, 360)
+        memset(placeholder.contents(), 0, 376)
         self.lumenPlaceholderBuffer = placeholder
         logger.info("RayMarchPipeline initialized")
     }

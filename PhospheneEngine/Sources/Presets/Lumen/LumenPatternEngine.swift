@@ -5,7 +5,7 @@
 // (`LumenLightAgent`, `LumenPattern`, `LumenPatternState`), the engine class,
 // and the mood-tint / smoothstep math helpers all need to live in the same
 // translation unit so the in-place `MemoryLayout<LumenPatternState>.stride
-// == 336` assertion in `init?(device:seed:)` and the matching MSL preamble
+// == 376` assertion in `init?(device:seed:)` and the matching MSL preamble
 // stay tightly coupled. Splitting any of them out would increase risk of
 // the Swift / MSL byte layouts diverging silently. Same disposition as
 // `ArachneState.swift`.
@@ -21,7 +21,7 @@
 //
 //   1. Each frame the engine consumes one (FeatureVector, StemFeatures) tick
 //      and updates four `LumenLightAgent` slots.
-//   2. The state is flushed to a 336-byte UMA `MTLBuffer` (`patternBuffer`).
+//   2. The state is flushed to a 376-byte UMA `MTLBuffer` (`patternBuffer`).
 //   3. RenderPipeline binds the buffer at fragment slot 8 of the ray-march
 //      lighting pass; the LumenMosaic shader reads it and computes the
 //      cell-quantized backlight per the contract §P.3 / §P.4 recipes.
@@ -167,7 +167,7 @@ public struct LumenPattern: Sendable, Equatable {
     public static let idle = LumenPattern()
 }
 
-// MARK: - LumenPatternState (336 bytes)
+// MARK: - LumenPatternState (376 bytes — LM.3.2)
 
 // swiftlint:disable large_tuple
 
@@ -175,9 +175,12 @@ public struct LumenPattern: Sendable, Equatable {
 /// matching MSL struct in `LumenMosaic.metal`. Bound at fragment slot 8 of
 /// the ray-march lighting pass.
 ///
-/// Layout: 4 × LumenLightAgent (128 B) + 4 × LumenPattern (192 B) + 4 × Float32
-/// (16 B) = 336 B. The Swift `MemoryLayout<LumenPatternState>.stride` is asserted
-/// to be 336 in `LumenPatternEngineTests.test_lumenPatternState_strideIs336`.
+/// Layout (LM.3.2): 4 × LumenLightAgent (128 B) + 4 × LumenPattern (192 B)
+/// + 6 × Float32 scalars (counts + ambient + valence + arousal + pad0 = 24 B)
+/// + 4 × Float32 trackPaletteSeed{A,B,C,D} (16 B)
+/// + 4 × Float32 band counters (bass/mid/treble/bar = 16 B)
+/// = 376 B. The Swift `MemoryLayout<LumenPatternState>.stride` is asserted
+/// to be 376 in `LumenPatternEngineTests.test_lumenPatternState_strideIs376`.
 public struct LumenPatternState: Sendable {
     public var lights: (LumenLightAgent, LumenLightAgent, LumenLightAgent, LumenLightAgent)
     public var patterns: (LumenPattern, LumenPattern, LumenPattern, LumenPattern)
@@ -200,14 +203,28 @@ public struct LumenPatternState: Sendable {
     public var pad0: Float
     /// Per-track palette perturbation, derived from a hash of the active
     /// track identity (LM.3 / D-LM-e3). Each component shifts a different
-    /// IQ palette parameter by a small amount (`±0.05 a`, `±0.05 b`,
-    /// `±0.10 c`, `±0.20 d`) so that two tracks at the same mood produce
-    /// visibly different palette character. Same track always reproduces
-    /// the same seed (deterministic from `track.identity`).
+    /// IQ palette parameter by a small amount so that two tracks at the
+    /// same mood produce visibly different palette character. Magnitudes
+    /// bumped at LM.3.2 (the LM.3 values were too small to produce
+    /// visible track-to-track variation).
     public var trackPaletteSeedA: Float
     public var trackPaletteSeedB: Float
     public var trackPaletteSeedC: Float
     public var trackPaletteSeedD: Float
+    /// LM.3.2 — band-routed beat counters. Each one increments on
+    /// rising-edge of its band's beat onset, scaled by `beatStrength`
+    /// (energy modulation). `bassCounter` advances on `f.beatBass`,
+    /// `midCounter` on `f.beatMid`, `trebleCounter` on `f.beatTreble`.
+    /// `barCounter` advances on `f.barPhase01` wrap (every downbeat in
+    /// 4/4) with a fall-back to "every 4 bass beats" when no BeatGrid is
+    /// installed and `barPhase01` stays at 0. The shader uses these to
+    /// drive team-synchronized cell-colour advances: each cell belongs to
+    /// one band team (assigned by hash + per-track seed) and advances
+    /// when its team's counter ticks past the team's period boundary.
+    public var bassCounter: Float
+    public var midCounter: Float
+    public var trebleCounter: Float
+    public var barCounter: Float
 
     public init(
         lights: (LumenLightAgent, LumenLightAgent, LumenLightAgent, LumenLightAgent) =
@@ -223,7 +240,11 @@ public struct LumenPatternState: Sendable {
         trackPaletteSeedA: Float = 0,
         trackPaletteSeedB: Float = 0,
         trackPaletteSeedC: Float = 0,
-        trackPaletteSeedD: Float = 0
+        trackPaletteSeedD: Float = 0,
+        bassCounter: Float = 0,
+        midCounter: Float = 0,
+        trebleCounter: Float = 0,
+        barCounter: Float = 0
     ) {
         self.lights = lights
         self.patterns = patterns
@@ -237,6 +258,10 @@ public struct LumenPatternState: Sendable {
         self.trackPaletteSeedB = trackPaletteSeedB
         self.trackPaletteSeedC = trackPaletteSeedC
         self.trackPaletteSeedD = trackPaletteSeedD
+        self.bassCounter = bassCounter
+        self.midCounter = midCounter
+        self.trebleCounter = trebleCounter
+        self.barCounter = barCounter
     }
 
     /// Indexed light access (read-only). LM.2 has exactly 4 lights.
@@ -393,6 +418,46 @@ public final class LumenPatternEngine: @unchecked Sendable {
     /// inset clamp by pushing a base position outside the visible-area inset.
     private var basePositions: [SIMD2<Float>]
 
+    // MARK: - LM.3.2 — Beat rising-edge detection state
+    //
+    // Each of the three FFT-band beat onsets (`f.beatBass`, `f.beatMid`,
+    // `f.beatTreble`) decays over ~200 ms after a transient. We want to
+    // increment the band counter exactly once per onset, not once per frame
+    // the onset is above the threshold. The "rising-edge" pattern works the
+    // same as Arachne's per-spoke beat tracker (see `ArachneState+Spider.swift`):
+    //   - keep last frame's value for each band
+    //   - fire when prev < beatHigh AND now ≥ beatHigh
+    //   - debounce 80 ms to reject a single onset that briefly dips and
+    //     re-crosses the threshold from FFT-bin shimmer
+    //
+    // For `barCounter`, the canonical signal is `f.barPhase01` wrapping from
+    // ~1.0 back to ~0.0 on each downbeat (DSP.2 S9). When BeatGrid is
+    // installed, that's a clean one-tick-per-bar increment. When it isn't
+    // (live ad-hoc / reactive sessions before the 10-second live BeatGrid
+    // inference fires, or tracks that fail offline analysis), `barPhase01`
+    // stays at 0.0 forever — the fallback is "every 4 bass beats, increment
+    // barCounter" so the bar pulse keeps a steady rhythm even without grid
+    // signal.
+    private static let beatTriggerHigh: Float = 0.5
+    private static let beatDebounceSeconds: Float = 0.08
+    private static let barFallbackBassBeats: Int = 4
+
+    private var prevBeatBass: Float = 0
+    private var prevBeatMid: Float = 0
+    private var prevBeatTreble: Float = 0
+    private var prevBarPhase01: Float = 0
+
+    /// Last `elapsedTime` at which each band counter incremented. Used for
+    /// the 80 ms debounce.
+    private var lastBassBeatTime: Float = -1   // -1 = "never fired"
+    private var lastMidBeatTime: Float = -1
+    private var lastTrebleBeatTime: Float = -1
+
+    /// Bass-beat counter for the bar fallback. When `barPhase01` stays at 0
+    /// for the entire track (no BeatGrid), every Nth bass beat ticks the
+    /// bar counter so the bar pulse remains coherent.
+    private var bassBeatsSinceBarFallback: Int = 0
+
     // MARK: - Init
 
     public init?(device: MTLDevice, seed: UInt64 = 0) {
@@ -455,8 +520,29 @@ public final class LumenPatternEngine: @unchecked Sendable {
             // Per-track palette seed is not cleared on reset() — it persists
             // until `setTrackSeed(_:)` is called with a new track. (Reset is
             // called on preset re-apply, not on track change.)
+            resetBeatTrackingState()
         }
         writeToGPU()
+    }
+
+    /// Internal: zero the band counters + rising-edge / debounce state.
+    /// Called from `reset()` (preset re-apply) AND from `setTrackSeed(_:)`
+    /// (track change). The counters must restart from 0 on each track so
+    /// the shader's `floor(counter / period)` cell-step doesn't carry over.
+    /// Caller must hold `lock`.
+    private func resetBeatTrackingState() {
+        state.bassCounter = 0
+        state.midCounter = 0
+        state.trebleCounter = 0
+        state.barCounter = 0
+        prevBeatBass = 0
+        prevBeatMid = 0
+        prevBeatTreble = 0
+        prevBarPhase01 = 0
+        lastBassBeatTime = -1
+        lastMidBeatTime = -1
+        lastTrebleBeatTime = -1
+        bassBeatsSinceBarFallback = 0
     }
 
     // MARK: - Track palette seed (LM.3 / D-LM-e3)
@@ -485,6 +571,11 @@ public final class LumenPatternEngine: @unchecked Sendable {
             state.trackPaletteSeedB = max(-1, min(1, seed.y))
             state.trackPaletteSeedC = max(-1, min(1, seed.z))
             state.trackPaletteSeedD = max(-1, min(1, seed.w))
+            // LM.3.2 — track change zeros the band counters so the new
+            // track's cell-step starts at 0 (otherwise old counter values
+            // would carry over and a cell would jump to a far-off palette
+            // index on the very first beat of the new track).
+            resetBeatTrackingState()
         }
         writeToGPU()
     }
@@ -613,7 +704,73 @@ public final class LumenPatternEngine: @unchecked Sendable {
         state.smoothedArousal = smoothedArousal
         // trackPaletteSeedA/B/C/D are written by setTrackSeed(_:) on track
         // change — _tick must NOT clear them.
-        // Patterns stay `.idle` (initial-zero) for LM.3.
+
+        // LM.3.2 — band-routed beat counters update (extracted for
+        // SwiftLint function_body_length compliance).
+        updateBandCounters(features: features)
+
+        // Patterns stay `.idle` (initial-zero) for LM.3.2.
+    }
+
+    /// LM.3.2 — advance the four band counters on rising-edge of their
+    /// FFT-band beat onset (debounced 80 ms), scaled by `beatStrength`
+    /// from the energy metric. Caller must hold `lock`. Reads the
+    /// `prev*` rising-edge state, the `last*BeatTime` debounce
+    /// timestamps, and `bassBeatsSinceBarFallback` from `self`; writes
+    /// into `state.bassCounter / midCounter / trebleCounter / barCounter`.
+    private func updateBandCounters(features: FeatureVector) {
+        // `beatStrength` scales each counter increment so loud beats
+        // advance the cell-team palette farther than soft taps.
+        // `energy_metric = max(f.bass, f.mid, f.treble)` (not avg)
+        // intentionally — Spotify-normalized audio under-reads mid/treble
+        // (BUG-012) and a max keeps quiet sections still animated as long
+        // as bass is firing.
+        let energyMetric = max(features.bass, max(features.mid, features.treble))
+        let beatStrength = max(0.3, min(1.0, 0.3 + 1.4 * energyMetric))
+
+        let bassEdge = (prevBeatBass < Self.beatTriggerHigh)
+            && (features.beatBass >= Self.beatTriggerHigh)
+        let midEdge = (prevBeatMid < Self.beatTriggerHigh)
+            && (features.beatMid >= Self.beatTriggerHigh)
+        let trebleEdge = (prevBeatTreble < Self.beatTriggerHigh)
+            && (features.beatTreble >= Self.beatTriggerHigh)
+
+        if bassEdge && (lastBassBeatTime < 0 ||
+            elapsedTime - lastBassBeatTime >= Self.beatDebounceSeconds) {
+            state.bassCounter += beatStrength
+            lastBassBeatTime = elapsedTime
+            bassBeatsSinceBarFallback += 1
+        }
+        if midEdge && (lastMidBeatTime < 0 ||
+            elapsedTime - lastMidBeatTime >= Self.beatDebounceSeconds) {
+            state.midCounter += beatStrength
+            lastMidBeatTime = elapsedTime
+        }
+        if trebleEdge && (lastTrebleBeatTime < 0 ||
+            elapsedTime - lastTrebleBeatTime >= Self.beatDebounceSeconds) {
+            state.trebleCounter += beatStrength
+            lastTrebleBeatTime = elapsedTime
+        }
+
+        // Bar counter — primary path: rising-edge detection on `barPhase01`
+        // wrap (typical wrap goes from ~1.0 to ~0.0 in one frame on each
+        // downbeat). Fallback: when `barPhase01` stays at 0 (no BeatGrid),
+        // every Nth bass-beat ticks the bar counter.
+        let barWrapped =
+            (prevBarPhase01 > 0.9) && (features.barPhase01 < 0.1)
+        if barWrapped {
+            state.barCounter += 1
+            bassBeatsSinceBarFallback = 0
+        } else if features.barPhase01 == 0 &&
+                  bassBeatsSinceBarFallback >= Self.barFallbackBassBeats {
+            state.barCounter += 1
+            bassBeatsSinceBarFallback = 0
+        }
+
+        prevBeatBass = features.beatBass
+        prevBeatMid = features.beatMid
+        prevBeatTreble = features.beatTreble
+        prevBarPhase01 = features.barPhase01
     }
 
     /// Per-agent intensity using deviation primitives, with D-019 FV fallback
