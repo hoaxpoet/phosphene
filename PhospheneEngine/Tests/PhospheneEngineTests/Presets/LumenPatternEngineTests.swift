@@ -505,168 +505,120 @@ struct LumenLM3StateTests {
     }
 }
 
-// MARK: - Suite 9: LM.3.2 — Band-routed beat counters
+// MARK: - Suite 9: LM.4.3 — BeatGrid-driven band counters
 
-@Suite("LM.3.2 band counters — rising-edge increment + debounce + reset")
-struct LumenLM32CounterTests {
+/// **LM.4.3 supersedes LM.3.2's FFT-band counter triggers.** The band
+/// counters now advance on `f.beatPhase01` wrap (each grid beat) and
+/// `f.barPhase01` wrap (each grid downbeat). The three rates are:
+/// `bassCounter` every grid beat, `midCounter` every 2 grid beats,
+/// `trebleCounter` every 4 grid beats. Each advance is uniform +1.0
+/// (no energy modulation — the LM.3.2 `beatStrength` scaling is
+/// retired). FFT-band rising edges (`f.beatBass / beatMid / beatTreble`)
+/// no longer participate.
+@Suite("LM.4.3 band counters — beatPhase01 wrap drives all four")
+struct LumenLM43CounterTests {
 
-    /// One rising-edge of `f.beatBass` increments `bassCounter` exactly once
-    /// (not once per frame the onset is above threshold). The increment is
-    /// scaled by `beatStrength` ∈ [0.3, 1.0] from the energy metric.
-    @Test func test_bassRisingEdge_incrementsOnce() throws {
-        let engine = try makeEngine()
-        // Frame 1: above-threshold onset (rising edge). bass = 0 → energyMetric=0,
-        // beatStrength = clamp(0.3 + 1.4×0, 0.3, 1.0) = 0.3.
-        engine.tick(features: fv(beatBass: 1.0), stems: StemFeatures.zero)
-        let afterFirstEdge = engine.snapshot().bassCounter
-        #expect(afterFirstEdge > 0, "bassCounter did not advance on first rising edge")
-        #expect(afterFirstEdge < 0.31, "bassCounter advanced more than beatStrength=0.3 on first edge")
-
-        // Frame 2: still above threshold (NOT a rising edge — held). Same
-        // beatStrength input. Counter must NOT advance.
-        engine.tick(features: fv(beatBass: 1.0), stems: StemFeatures.zero)
-        let afterHold = engine.snapshot().bassCounter
-        #expect(afterHold == afterFirstEdge, "bassCounter advanced while signal was held above threshold")
+    /// Helper: drive one `f.beatPhase01` wrap (high → low).
+    private func driveBeatWrap(_ engine: LumenPatternEngine, dt: Float = 1.0 / 60.0) {
+        engine.tick(features: fv(beatPhase01: 0.95, deltaTime: dt), stems: StemFeatures.zero)
+        engine.tick(features: fv(beatPhase01: 0.05, deltaTime: dt), stems: StemFeatures.zero)
     }
 
-    /// Falling edge is not a beat — counter must not advance.
-    @Test func test_fallingEdge_doesNotIncrement() throws {
-        let engine = try makeEngine()
-        // Establish a held high signal (frame 1 rises, increments once).
-        engine.tick(features: fv(beatBass: 1.0), stems: StemFeatures.zero)
-        let afterRise = engine.snapshot().bassCounter
-        // Frame 2: drop below threshold (falling edge).
-        engine.tick(features: fv(beatBass: 0.0), stems: StemFeatures.zero)
-        // Frame 3: still below — confirm we didn't tick on the way down.
-        engine.tick(features: fv(beatBass: 0.0), stems: StemFeatures.zero)
-        let afterFall = engine.snapshot().bassCounter
-        #expect(afterFall == afterRise, "bassCounter advanced on falling edge or sub-threshold frames")
+    /// Helper: drive one `f.barPhase01` wrap (high → low).
+    private func driveBarWrap(_ engine: LumenPatternEngine, dt: Float = 1.0 / 60.0) {
+        engine.tick(features: fv(barPhase01: 0.95, deltaTime: dt), stems: StemFeatures.zero)
+        engine.tick(features: fv(barPhase01: 0.05, deltaTime: dt), stems: StemFeatures.zero)
     }
 
-    /// Two close rising edges within 80 ms must be debounced — only the first counts.
-    @Test func test_debounce_swallowsSubsequentEdgeWithin80ms() throws {
+    /// A single `f.beatPhase01` wrap increments `bassCounter` by exactly 1.0.
+    @Test func test_beatPhase01Wrap_incrementsBassCounterByOne() throws {
         let engine = try makeEngine()
-        let dt: Float = 1.0 / 120.0   // 8.33 ms — five frames = 41.7 ms < 80 ms debounce
-
-        // Frame 1: first rising edge.
-        engine.tick(features: fv(beatBass: 1.0, deltaTime: dt), stems: StemFeatures.zero)
-        let afterFirst = engine.snapshot().bassCounter
-
-        // Frame 2: drop below (resets prevBeatBass to < threshold).
-        engine.tick(features: fv(beatBass: 0.0, deltaTime: dt), stems: StemFeatures.zero)
-
-        // Frame 3: rise again — still inside the 80 ms window from frame 1.
-        engine.tick(features: fv(beatBass: 1.0, deltaTime: dt), stems: StemFeatures.zero)
-        let afterDebounced = engine.snapshot().bassCounter
-        #expect(afterDebounced == afterFirst,
-                "bassCounter \(afterDebounced) advanced inside debounce window (expected to match \(afterFirst))")
+        let before = engine.snapshot().bassCounter
+        driveBeatWrap(engine)
+        let after = engine.snapshot().bassCounter
+        #expect(after == before + 1.0,
+                "bassCounter \(after) ≠ \(before) + 1.0 on beatPhase01 wrap")
     }
 
-    /// After 80 ms a second rising edge does count.
-    @Test func test_debounce_releasesAfter80ms() throws {
+    /// `f.beatPhase01` held high (no wrap) does NOT advance any counter.
+    @Test func test_beatPhase01HeldHigh_doesNotIncrement() throws {
         let engine = try makeEngine()
-        // Drive at 60 Hz; 6 frames = 100 ms > 80 ms.
-        let dt: Float = 1.0 / 60.0
-        engine.tick(features: fv(beatBass: 1.0, deltaTime: dt), stems: StemFeatures.zero)
-        let afterFirst = engine.snapshot().bassCounter
-
-        // Drop for 6 frames so the debounce window closes; prevBeatBass also drops.
-        for _ in 0..<6 {
-            engine.tick(features: fv(beatBass: 0.0, deltaTime: dt), stems: StemFeatures.zero)
-        }
-        engine.tick(features: fv(beatBass: 1.0, deltaTime: dt), stems: StemFeatures.zero)
-        let afterSecond = engine.snapshot().bassCounter
-        #expect(afterSecond > afterFirst + 0.05,
-                "bassCounter \(afterSecond) did not advance on second rising edge after debounce")
+        engine.tick(features: fv(beatPhase01: 0.95), stems: StemFeatures.zero)
+        engine.tick(features: fv(beatPhase01: 0.95), stems: StemFeatures.zero)
+        engine.tick(features: fv(beatPhase01: 0.95), stems: StemFeatures.zero)
+        let snap = engine.snapshot()
+        #expect(snap.bassCounter == 0,
+                "bassCounter advanced while signal was held above threshold")
     }
 
-    /// `beatStrength = clamp(0.3 + 1.4 × max(bass, mid, treble), 0.3, 1.0)`.
-    /// At bass = 0.5 (and mid/treble = 0), beatStrength = 1.0. A single rising
-    /// edge must add exactly that to the counter.
-    @Test func test_beatStrength_scalesWithEnergy() throws {
+    /// `midCounter` advances every 2 grid beats; `trebleCounter` every 4.
+    @Test func test_midAndTrebleTickAtSubdividedRates() throws {
         let engine = try makeEngine()
-        // bass=0.5 → energyMetric=0.5 → beatStrength=1.0 (clamped at upper).
-        engine.tick(
-            features: fv(bass: 0.5, beatBass: 1.0),
-            stems: StemFeatures.zero
-        )
-        let strong = engine.snapshot().bassCounter
-        #expect(abs(strong - 1.0) < 0.01,
-                "bassCounter \(strong) ≠ 1.0 at energyMetric=0.5 (expected beatStrength=1.0)")
-
-        // Reset for the next test (also resets counters per LM.3.2 contract).
-        engine.reset()
-
-        // bass=0 → beatStrength=0.3.
-        engine.tick(features: fv(beatBass: 1.0), stems: StemFeatures.zero)
-        let weak = engine.snapshot().bassCounter
-        #expect(abs(weak - 0.3) < 0.01,
-                "bassCounter \(weak) ≠ 0.3 at zero energy (expected beatStrength=0.3)")
-    }
-
-    /// `f.barPhase01` wrapping from > 0.9 to < 0.1 in successive frames
-    /// increments `barCounter` by 1.0.
-    @Test func test_barPhase01_wrap_incrementsBarCounter() throws {
-        let engine = try makeEngine()
-        // Frame 1: barPhase01 = 0.95 (high, but no prevBarPhase01 = 0 < 0.9
-        // so wrap detector is unarmed).
-        engine.tick(features: fv(barPhase01: 0.95), stems: StemFeatures.zero)
-        let beforeWrap = engine.snapshot().barCounter
-
-        // Frame 2: barPhase01 = 0.05 (low). prev=0.95 > 0.9 + now=0.05 < 0.1
-        // → wrap fires, barCounter += 1.
-        engine.tick(features: fv(barPhase01: 0.05), stems: StemFeatures.zero)
-        let afterWrap = engine.snapshot().barCounter
-        #expect(afterWrap == beforeWrap + 1.0,
-                "barCounter \(afterWrap) ≠ \(beforeWrap) + 1.0 on wrap")
-    }
-
-    /// Without a BeatGrid (`f.barPhase01` stays at 0), every 4 bass-beat
-    /// rising-edges still ticks the bar counter.
-    @Test func test_barCounter_fallback_every4BassBeats() throws {
-        let engine = try makeEngine()
-        let dt: Float = 1.0 / 60.0
-        // Fire 4 bass beats spaced > 80 ms apart so all four register.
+        // 4 beat wraps in a row.
         for _ in 0..<4 {
-            engine.tick(features: fv(beatBass: 1.0, deltaTime: dt), stems: StemFeatures.zero)
-            for _ in 0..<6 {
-                engine.tick(features: fv(beatBass: 0.0, deltaTime: dt), stems: StemFeatures.zero)
-            }
+            driveBeatWrap(engine)
         }
         let snap = engine.snapshot()
-        #expect(snap.bassCounter > 1.0, "bassCounter \(snap.bassCounter) — expected 4 increments")
-        #expect(snap.barCounter == 1.0,
-                "barCounter \(snap.barCounter) ≠ 1.0 — fallback every-4-bass-beats path didn't fire")
+        #expect(snap.bassCounter == 4.0,
+                "bassCounter \(snap.bassCounter) ≠ 4 after 4 beat wraps")
+        #expect(snap.midCounter == 2.0,
+                "midCounter \(snap.midCounter) ≠ 2 after 4 beat wraps (expected every-2 cadence)")
+        #expect(snap.trebleCounter == 1.0,
+                "trebleCounter \(snap.trebleCounter) ≠ 1 after 4 beat wraps (expected every-4 cadence)")
     }
 
-    /// Mid and treble counters work the same way as bass.
-    @Test func test_midAndTreble_bandsTrackIndependently() throws {
+    /// `f.barPhase01` wrap increments `barCounter` by 1.0.
+    @Test func test_barPhase01Wrap_incrementsBarCounter() throws {
         let engine = try makeEngine()
-        // Mid rising edge with mid energy = 0.5 → beatStrength = 1.0.
-        engine.tick(features: fv(mid: 0.5, beatMid: 1.0), stems: StemFeatures.zero)
-        let snapMid = engine.snapshot()
-        #expect(abs(snapMid.midCounter - 1.0) < 0.01)
-        #expect(snapMid.bassCounter == 0)
-        #expect(snapMid.trebleCounter == 0)
-
-        // Reset and verify treble path independently.
-        engine.reset()
-        engine.tick(features: fv(treble: 0.5, beatTreble: 1.0), stems: StemFeatures.zero)
-        let snapTreble = engine.snapshot()
-        #expect(abs(snapTreble.trebleCounter - 1.0) < 0.01)
-        #expect(snapTreble.bassCounter == 0)
-        #expect(snapTreble.midCounter == 0)
+        let before = engine.snapshot().barCounter
+        driveBarWrap(engine)
+        let after = engine.snapshot().barCounter
+        #expect(after == before + 1.0,
+                "barCounter \(after) ≠ \(before) + 1.0 on barPhase01 wrap")
     }
 
-    /// `reset()` zeroes all four band counters.
+    /// LM.4.3: no FFT fallback. `barPhase01` held at 0 forever (no grid)
+    /// must NOT advance `barCounter` from any combination of FFT inputs.
+    /// The LM.3.2 "every 4 bass beats" fallback was retired with the
+    /// rest of the FFT trigger path.
+    @Test func test_noGridSignal_noBarCounterAdvance() throws {
+        let engine = try makeEngine()
+        let dt: Float = 1.0 / 60.0
+        // Drive 8 grid beats but no bar wrap.
+        for _ in 0..<8 {
+            driveBeatWrap(engine, dt: dt)
+        }
+        let snap = engine.snapshot()
+        #expect(snap.bassCounter == 8.0,
+                "bassCounter should have advanced 8 times")
+        #expect(snap.barCounter == 0,
+                "barCounter \(snap.barCounter) ≠ 0 — LM.4.3 should have NO bar fallback")
+    }
+
+    /// `f.beatBass` (FFT) no longer participates in any counter. Drive a
+    /// classic LM.3.2 rising edge with no grid signal — nothing must advance.
+    @Test func test_fftBeatBass_aloneDoesNotAdvanceAnyCounter() throws {
+        let engine = try makeEngine()
+        var f = FeatureVector.zero
+        f.beatBass = 1.0   // FFT rising edge
+        f.deltaTime = 1.0 / 60.0
+        engine.tick(features: f, stems: StemFeatures.zero)
+        let snap = engine.snapshot()
+        #expect(snap.bassCounter == 0,
+                "LM.4.3: FFT beatBass must not advance bassCounter")
+        #expect(snap.midCounter == 0)
+        #expect(snap.trebleCounter == 0)
+        #expect(snap.barCounter == 0)
+    }
+
+    /// `reset()` zeroes all four band counters and the phase-subdivision state.
     @Test func test_reset_zerosBandCounters() throws {
         let engine = try makeEngine()
-        engine.tick(features: fv(beatBass: 1.0), stems: StemFeatures.zero)
-        engine.tick(features: fv(beatBass: 0.0), stems: StemFeatures.zero)
-        engine.tick(features: fv(beatMid: 1.0), stems: StemFeatures.zero)
-        engine.tick(features: fv(beatTreble: 1.0), stems: StemFeatures.zero)
+        for _ in 0..<3 { driveBeatWrap(engine) }
+        driveBarWrap(engine)
         let beforeReset = engine.snapshot()
         #expect(beforeReset.bassCounter > 0)
+        #expect(beforeReset.barCounter > 0)
 
         engine.reset()
         let afterReset = engine.snapshot()
@@ -682,11 +634,9 @@ struct LumenLM32CounterTests {
     /// straight to a far-off palette index.
     @Test func test_setTrackSeed_zerosBandCounters() throws {
         let engine = try makeEngine()
-        engine.tick(features: fv(beatBass: 1.0), stems: StemFeatures.zero)
-        engine.tick(features: fv(beatBass: 0.0), stems: StemFeatures.zero)
-        engine.tick(features: fv(beatBass: 1.0, deltaTime: 1.0), stems: StemFeatures.zero)
+        for _ in 0..<3 { driveBeatWrap(engine) }
         let before = engine.snapshot()
-        #expect(before.bassCounter > 0.5,
+        #expect(before.bassCounter > 0,
                 "bass counter \(before.bassCounter) did not advance — test setup invalid")
 
         engine.setTrackSeed(SIMD4<Float>(0.5, 0.5, 0.5, 0.5))

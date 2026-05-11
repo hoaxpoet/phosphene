@@ -3491,6 +3491,35 @@ The preset is sequenced as 10 increments LM.0 → LM.9 with cert sign-off at LM.
 
 **Carry-forward.** LM.4.1 only addresses ripple density + bleach-out. The deeper palette-scope limitation Matt called out in the same review — "literally any HEX code or Pantone shade" missing, including dark hues, regal purples, browns, grays — is the LM.4.2 scope (palette architecture redesign).
 
+### Increment LM.4.3 — BeatGrid-driven triggers + ripples-as-accent
+
+**Scope.** Replace the LM.3.2 FFT-band rising-edge triggers with `f.beatPhase01` / `f.barPhase01` grid wraps; demote ripples from per-kick to per-bar; preserve LM.3.2's team / period architecture but reinterpret bass/mid/treble as rate buckets (every beat / every 2 beats / every 4 beats) rather than FFT bands.
+
+**Why.** Second M7 review (Matt 2026-05-11, session `2026-05-11T15-56-41Z`) made the LM.4 trigger failure conclusive. Diagnostic: all four tracks fired ripples at ~2.41/sec regardless of tempo. The trigger was `f.beatBass`, an FFT bass-band detector that fires on ~any sub-bass transient (kicks, bass-line notes, low harmonics) — completely decoupled from the song's actual beat. Same root cause affected the LM.3.2 cell-dance counters: cells stepped ~2.4× faster than the song's beat, hence "color does not really follow the music." Matt also reframed the deeper issue: per-kick ripples treat onset events as primary motion, inverting the CLAUDE.md Audio Data Hierarchy rule ("ACCENT ONLY — NEVER PRIMARY"). LM.4.3 fixes both — tempo-correct trigger source AND demote ripples to once-per-measure accent.
+
+**Done when.**
+
+- `Sources/Presets/Lumen/LumenPatternEngine.swift` — new private state (`prevBeatPhase01 / prevBarPhase01` wrap-edge detection + `gridBeatsSinceMidStep / gridBeatsSinceTrebleStep` subdivision counters); `updateBandCounters(features:)` rewritten to detect grid wraps (`prev > 0.85 && now < 0.15`) and advance counters uniformly +1.0 each on beat/bar wraps with mid every 2 / treble every 4; `updatePatterns(dt:barFired:)` simplified — no `bassFired` path; `advancePatternEngine` derives only `barFired`; `radialRippleOriginFromOnset()` and `drumOnsetCounter` deleted; `resetBeatTrackingState()` updated.
+- `Sources/Presets/Lumen/LumenPatterns.swift` — `radialRippleDuration` restored 0.3 → 0.6 s (the LM.4.1 halving was necessary for the per-kick world; LM.4.3 per-bar spawning gives the longer lifetime plenty of headroom — ~1.4 s rest between accents on typical 4/4 at 120 BPM).
+- `Tests/.../Presets/LumenPatternsTests.swift` — `fv()` helper `beatBass:` → `beatPhase01:`; new `spawnOnePatternViaBarWrap` helper; test_bassRisingEdge_spawnsRipple → test_barWrap_spawnsBarRotationPattern + new test_beatPhase01Wrap_doesNotSpawnPattern; lifecycle/expansion/sweep tests rewired through bar wraps.
+- `Tests/.../Presets/LumenPatternEngineTests.swift` Suite 9 fully rewritten as LM.4.3 band-counter tests: `test_beatPhase01Wrap_incrementsBassCounterByOne`, `test_beatPhase01HeldHigh_doesNotIncrement`, `test_midAndTrebleTickAtSubdividedRates`, `test_barPhase01Wrap_incrementsBarCounter`, `test_noGridSignal_noBarCounterAdvance` (asserts the bar-fallback was retired), `test_fftBeatBass_aloneDoesNotAdvanceAnyCounter` (regression-locks the FFT-trigger retirement), `test_reset_zerosBandCounters`, `test_setTrackSeed_zerosBandCounters`.
+- `PresetAcceptance` + `PresetRegression` + `PresetLoaderCompileFailure` + `LumenPatternEngine` + `LumenPatterns` all green. App build clean. SwiftLint 0 violations on touched files.
+- `CLAUDE.md` updated: LumenPatternEngine entry rewritten for LM.4.3 semantics; LumenMosaic.metal tuning surface line reflects new defaults; LM.4.3 landed-work entry added above the LM.4.1 entry.
+
+**Verify.**
+
+- `swift test --package-path PhospheneEngine --filter "LumenPatterns|LumenPatternEngine|PresetAcceptance|PresetRegression|PresetLoaderCompileFailure"`
+- `swift test --package-path PhospheneEngine` (full sweep; expect only the 3 documented pre-existing failures)
+- `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build`
+- `swiftlint lint --strict --config .swiftlint.yml` (touched files clean; baseline preserved)
+- Matt re-review on a real-music session: (a) ripples now fire once per musical bar (~0.5/sec on 4/4 at 120 BPM, ~0.07/sec on Pyramid Song's 16/8 at 70 BPM — both feel tempo-correct); (b) LM.3.2 color dance steps land on actual grid beats (cell color shifts visibly correlate to the song's pulse); (c) ripple-vs-pulse interaction is coherent emphasis, not fighting; (d) D-037 beat response invariant holds.
+
+**Status:** ⏳ tests + docs landed 2026-05-11. Awaiting Matt re-review.
+
+**Known limitation:** no FFT fallback — if `f.beatPhase01` never wraps (pure silence; pre-grid first ~10 s of live ad-hoc sessions), counters and patterns are static. Acceptable for prepared sessions (grid is at session start); LM.4.4 may add a fallback if reactive ad-hoc sessions surface the gap.
+
+**Carry-forward.** LM.4.2 (full-spectrum per-track palette redesign) is still the next planned increment. Palette breadth + LM.4.3 beat-sync foundation together should answer both of Matt's open feedback threads: "movement of color follows the music" (LM.4.3) and "variety within a narrow scope" (LM.4.2).
+
 ### Increment LM.4.2 — Full-spectrum palette redesign (per-track custom palette cards)
 
 **Scope.** Replace the LM.3.2 mood-centred-narrow-jewel-tone palette with per-track custom palette cards drawn from the **full** HSV cube. Each track gets ~50 specific colours, picked procedurally from the entire colour space (full hue wheel, full saturation range, full brightness range). Cells pick one colour from the card. Mood biases the distribution (calm tracks tilt toward deeper/cooler regions; energetic tracks toward brighter/saturated) but does not restrict — every track can paint cells from anywhere in the cube. Result: cobalt next to oxblood next to charcoal with a violet edge next to amber next to bright crimson — the stained-glass-cathedral aesthetic, not the LM.3.2 jewel-tone-only register.

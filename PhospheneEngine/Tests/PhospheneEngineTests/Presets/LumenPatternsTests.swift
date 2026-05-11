@@ -10,9 +10,13 @@
 //      - `sweep(...)` normalises the direction vector to unit length;
 //        a zero-length direction falls back to `(0, 1)`.
 //
-//   2. Lifecycle (driven through LumenPatternEngine)
-//      - Spawn fires on rising-edge of `f.beatBass`; the resulting pattern
-//        is `.radialRipple`, phase = 0, and `activePatternCount == 1`.
+//   2. Lifecycle (driven through LumenPatternEngine — LM.4.3 spawn path)
+//      - Spawn fires on rising-edge of `f.barPhase01` wrap (the ONLY
+//        spawn trigger at LM.4.3 — the LM.4 per-kick `f.beatBass`
+//        spawn was retired); resulting pattern is `.radialRipple` or
+//        `.sweep` (mood-weighted), phase = 0, `activePatternCount == 1`.
+//      - `f.beatPhase01` wraps DO NOT spawn patterns; they only advance
+//        the LM.3.2 cell-dance band counters.
 //      - Phase advances by `dt / duration` per tick.
 //      - Pattern auto-retires when `phase >= 1.0`: slot becomes `.idle`,
 //        `activePatternCount` drops to 0.
@@ -60,15 +64,27 @@ private func makeEngine(seed: UInt64 = 0) throws -> LumenPatternEngine {
 }
 
 private func fv(
-    beatBass: Float = 0,
+    beatPhase01: Float = 0,
     barPhase01: Float = 0,
     deltaTime: Float = 1.0 / 60.0
 ) -> FeatureVector {
     var f = FeatureVector.zero
-    f.beatBass = beatBass
+    f.beatPhase01 = beatPhase01
     f.barPhase01 = barPhase01
     f.deltaTime = deltaTime
     return f
+}
+
+/// Spawn a single bar-rotation pattern via a `barPhase01` wrap. Two ticks:
+/// first arms the wrap detector (`barPhase01 = 0.95`), second triggers the
+/// wrap (`barPhase01 = 0.05`). This is the LM.4.3 spawn entry point — no
+/// per-kick spawn exists anymore.
+private func spawnOnePatternViaBarWrap(
+    _ engine: LumenPatternEngine,
+    dt: Float = 1.0 / 60.0
+) {
+    engine.tick(features: fv(barPhase01: 0.95, deltaTime: dt), stems: StemFeatures.zero)
+    engine.tick(features: fv(barPhase01: 0.05, deltaTime: dt), stems: StemFeatures.zero)
 }
 
 // MARK: - Suite 1: Factories
@@ -149,49 +165,68 @@ struct LumenPatternFactoryTests {
 @Suite("Pattern lifecycle — spawn / advance / retire")
 struct LumenPatternLifecycleTests {
 
-    @Test func test_bassRisingEdge_spawnsRipple() throws {
+    /// LM.4.3: bar wraps are the ONLY pattern-spawn trigger. Per-kick
+    /// `beatPhase01` wraps do not spawn anything (they only advance
+    /// the band counter for the LM.3.2 cell dance).
+    @Test func test_barWrap_spawnsBarRotationPattern() throws {
         let engine = try makeEngine()
-        let dt: Float = 1.0 / 60.0
-        engine.tick(features: fv(beatBass: 1.0, deltaTime: dt), stems: StemFeatures.zero)
+        spawnOnePatternViaBarWrap(engine)
         let snap = engine.snapshot()
         #expect(snap.activePatternCount == 1,
-                "bass rising-edge did not spawn a pattern")
+                "bar wrap did not spawn a pattern")
         let p = snap.pattern(at: 0)
-        #expect(p.kind == .radialRipple, "spawned pattern is not a radial ripple")
-        // Freshly spawned: phase = 0 (advance happens BEFORE spawn each tick,
-        // so the new pattern's first phase advance lands on the *next* tick).
+        // Mood is neutral (smoothedArousal ≈ 0), so the choice is 50/50
+        // between ripple and sweep — accept either.
+        #expect(p.kind == .radialRipple || p.kind == .sweep,
+                "bar-rotation pattern kind \(p.kindRaw) is not ripple or sweep")
+        // Freshly spawned: phase = 0.
         #expect(p.phase == 0, "freshly-spawned pattern phase \(p.phase) ≠ 0")
+    }
+
+    /// LM.4.3: `beatPhase01` wraps DO NOT spawn patterns — they only
+    /// advance the LM.3.2 cell-dance counters. Patterns spawn on bar
+    /// wraps only.
+    @Test func test_beatPhase01Wrap_doesNotSpawnPattern() throws {
+        let engine = try makeEngine()
+        let dt: Float = 1.0 / 60.0
+        engine.tick(features: fv(beatPhase01: 0.95, deltaTime: dt), stems: StemFeatures.zero)
+        engine.tick(features: fv(beatPhase01: 0.05, deltaTime: dt), stems: StemFeatures.zero)
+        let snap = engine.snapshot()
+        #expect(snap.activePatternCount == 0,
+                "beat wrap (without bar wrap) spawned a pattern; only bar wraps should spawn at LM.4.3")
+        #expect(snap.bassCounter > 0,
+                "beat wrap did not advance bassCounter (LM.3.2 dance broken)")
     }
 
     @Test func test_phase_advancesByDtOverDuration() throws {
         let engine = try makeEngine()
         let dt: Float = 1.0 / 60.0
-        // Spawn.
-        engine.tick(features: fv(beatBass: 1.0, deltaTime: dt), stems: StemFeatures.zero)
-        // Advance one tick without re-spawning (drop signal to break rising edge).
-        engine.tick(features: fv(beatBass: 0.0, deltaTime: dt), stems: StemFeatures.zero)
-        let snap = engine.snapshot()
-        let phase = snap.pattern(at: 0).phase
-        let expected = dt / LumenPatternFactory.radialRippleDuration
-        #expect(abs(phase - expected) < 1e-4,
-                "phase \(phase) did not advance by dt/duration = \(expected)")
+        spawnOnePatternViaBarWrap(engine, dt: dt)
+        // Spawn is a two-tick sequence; the second spawn-tick already
+        // advanced any previously-active pattern by dt before spawning the
+        // new one. The new pattern's phase is therefore 0 right after
+        // spawn; advance one more tick to get the dt/duration delta.
+        let phase0 = engine.snapshot().pattern(at: 0).phase
+        let duration0 = engine.snapshot().pattern(at: 0).duration
+        engine.tick(features: fv(barPhase01: 0.0, deltaTime: dt), stems: StemFeatures.zero)
+        let phase1 = engine.snapshot().pattern(at: 0).phase
+        let expected = dt / duration0
+        let delta = phase1 - phase0
+        #expect(abs(delta - expected) < 1e-4,
+                "phase delta \(delta) did not advance by dt/duration = \(expected)")
     }
 
     @Test func test_pattern_retiresAfterDuration() throws {
         let engine = try makeEngine()
         let dt: Float = 1.0 / 60.0
-        // Spawn one ripple.
-        engine.tick(features: fv(beatBass: 1.0, deltaTime: dt), stems: StemFeatures.zero)
+        spawnOnePatternViaBarWrap(engine, dt: dt)
         #expect(engine.snapshot().activePatternCount == 1)
-
-        // Drop signal and advance for slightly longer than the ripple's lifetime.
-        let framesToRetire = Int(
-            ((LumenPatternFactory.radialRippleDuration + 0.10) / dt).rounded()
-        )
+        // Wait for the longer of the two kinds (sweep is 0.8 s; ripple is 0.6 s).
+        let durationToWait = LumenPatternFactory.sweepDuration + 0.10
+        let framesToRetire = Int((durationToWait / dt).rounded())
         for _ in 0..<framesToRetire {
-            engine.tick(features: fv(beatBass: 0.0, deltaTime: dt), stems: StemFeatures.zero)
+            engine.tick(features: fv(barPhase01: 0.0, deltaTime: dt), stems: StemFeatures.zero)
         }
-
         let final = engine.snapshot()
         #expect(final.activePatternCount == 0,
                 "pattern not retired after duration — pool count \(final.activePatternCount)")
@@ -201,12 +236,8 @@ struct LumenPatternLifecycleTests {
 
     @Test func test_resetBeatTrackingState_clearsPatternPool() throws {
         let engine = try makeEngine()
-        let dt: Float = 1.0 / 60.0
-        // Spawn a ripple.
-        engine.tick(features: fv(beatBass: 1.0, deltaTime: dt), stems: StemFeatures.zero)
+        spawnOnePatternViaBarWrap(engine)
         #expect(engine.snapshot().activePatternCount == 1)
-
-        // reset() routes through resetBeatTrackingState().
         engine.reset()
         let snap = engine.snapshot()
         #expect(snap.activePatternCount == 0, "reset() did not clear the pattern pool")
@@ -215,11 +246,8 @@ struct LumenPatternLifecycleTests {
 
     @Test func test_setTrackSeed_clearsPatternPool() throws {
         let engine = try makeEngine()
-        let dt: Float = 1.0 / 60.0
-        // Spawn a ripple.
-        engine.tick(features: fv(beatBass: 1.0, deltaTime: dt), stems: StemFeatures.zero)
+        spawnOnePatternViaBarWrap(engine)
         #expect(engine.snapshot().activePatternCount == 1)
-
         // Track change must zero the pool so the new track's pattern
         // choreography starts fresh.
         engine.setTrackSeed(SIMD4<Float>(0.5, 0.5, 0.5, 0.5))
@@ -243,62 +271,51 @@ struct LumenRadialRippleExpansionTests {
         #expect(p.phase == 0)
     }
 
-    @Test func test_engineAdvances_phaseReachesOneAtDuration() throws {
+    @Test func test_engineAdvances_phaseReachesNearOneAtDuration() throws {
         let engine = try makeEngine()
         let dt: Float = 1.0 / 60.0
-        engine.tick(features: fv(beatBass: 1.0, deltaTime: dt), stems: StemFeatures.zero)
-
+        spawnOnePatternViaBarWrap(engine, dt: dt)
+        let duration = engine.snapshot().pattern(at: 0).duration
         // Tick for slightly less than `duration` so we don't trip retirement
         // and still observe a non-retired pattern with phase near 1.
-        let framesToNearEnd = Int(
-            ((LumenPatternFactory.radialRippleDuration - 0.02) / dt).rounded()
-        )
+        let framesToNearEnd = Int(((duration - 0.04) / dt).rounded())
         for _ in 0..<framesToNearEnd {
-            engine.tick(features: fv(beatBass: 0.0, deltaTime: dt), stems: StemFeatures.zero)
+            engine.tick(features: fv(barPhase01: 0.0, deltaTime: dt), stems: StemFeatures.zero)
         }
         let snap = engine.snapshot()
         #expect(snap.activePatternCount == 1)
         let phase = snap.pattern(at: 0).phase
-        #expect(phase > 0.9,
-                "phase \(phase) below 0.9 after \(framesToNearEnd) ticks of advancement")
+        #expect(phase > 0.9, "phase \(phase) below 0.9 after \(framesToNearEnd) ticks")
         #expect(phase < 1.0, "phase \(phase) at/above 1.0 — should not yet be retired")
     }
 
     /// kRippleMaxRadius = √2 ≈ 1.414 is large enough to reach the panel edge
-    /// from any hash-derived origin in `[0.05, 0.95]²` (max corner distance
-    /// is ≈ √(0.95² + 0.95²) ≈ 1.343 < √2). This invariant is verified by
-    /// construction here on the LumenPattern (origin clamp) — the shader
-    /// math `radius = phase × √2` is in `LumenMosaic.metal`.
+    /// from any hash-derived ripple origin in `[0.05, 0.95]²` (max corner
+    /// distance ≈ √(0.95² + 0.95²) ≈ 1.343 < √2). For sweeps, origins are
+    /// edge midpoints — also inside [0, 1]². This test verifies origin
+    /// values fall in the [0, 1]² envelope (where pattern math is defined).
     @Test func test_hashDerivedOrigins_stayInsideExpansionEnvelope() throws {
-        // Drive 8 separated onsets so the engine produces 8 different
-        // hash-derived origins. Each origin must lie inside [0.05, 0.95]².
         let engine = try makeEngine()
-        let dt: Float = 0.05   // 50 ms per frame
+        let dt: Float = 1.0 / 60.0
         var observed: [SIMD2<Float>] = []
         for _ in 0..<8 {
-            engine.tick(features: fv(beatBass: 1.0, deltaTime: dt), stems: StemFeatures.zero)
+            spawnOnePatternViaBarWrap(engine, dt: dt)
             let snap = engine.snapshot()
-            // Find the most recently appended pattern (largest phase index? no — just any).
-            // Eight separated rising edges each spawn a fresh pattern.
             for i in 0..<Int(snap.activePatternCount) {
                 let p = snap.pattern(at: i)
-                if p.kind == .radialRipple {
+                if p.kind == .radialRipple || p.kind == .sweep {
                     observed.append(SIMD2(p.originX, p.originY))
                 }
             }
-            // Drop signal long enough to break the rising-edge debounce.
-            engine.tick(features: fv(beatBass: 0.0, deltaTime: dt), stems: StemFeatures.zero)
         }
-        // We expect to have seen at least 4 distinct origins (the pool caps
-        // at 4 so the visible snapshot only contains the four most recent;
-        // we accept that the test will only see 4 even though 8 spawn
-        // attempts happened).
+        // We expect to have seen at least 4 patterns in the snapshot (pool
+        // caps at 4 — only the four most recent are visible).
         #expect(observed.count >= 4, "no origins captured — engine spawn path didn't fire")
         for origin in observed {
-            #expect(origin.x >= 0.05 && origin.x <= 0.95,
-                    "origin.x \(origin.x) out of expected [0.05, 0.95] envelope")
-            #expect(origin.y >= 0.05 && origin.y <= 0.95,
-                    "origin.y \(origin.y) out of expected [0.05, 0.95] envelope")
+            #expect(origin.x >= 0.0 && origin.x <= 1.0,
+                    "origin.x \(origin.x) out of [0, 1] uv envelope")
+            #expect(origin.y >= 0.0 && origin.y <= 1.0,
+                    "origin.y \(origin.y) out of [0, 1] uv envelope")
         }
     }
 }
@@ -367,12 +384,11 @@ struct LumenSweepDirectionTests {
     @Test func test_phase_monotonicallyAdvances() throws {
         let engine = try makeEngine()
         let dt: Float = 1.0 / 60.0
-        // Spawn one pattern via bass onset.
-        engine.tick(features: fv(beatBass: 1.0, deltaTime: dt), stems: StemFeatures.zero)
+        spawnOnePatternViaBarWrap(engine, dt: dt)
         var previousPhase: Float = -1
         for _ in 0..<20 {
             engine.tick(
-                features: fv(beatBass: 0.0, deltaTime: dt),
+                features: fv(barPhase01: 0.0, deltaTime: dt),
                 stems: StemFeatures.zero
             )
             let p = engine.snapshot().pattern(at: 0)
