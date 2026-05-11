@@ -198,13 +198,15 @@ public struct ArachneBuildState: Sendable {
 
     // MARK: - Spiral phase
 
-    /// Total revolutions for the capture spiral, chosen at segment start ∈ [14, 18].
-    /// BUG-011 follow-up — bumped from [7, 9] to [14, 18] (median 8 → 16) per
-    /// Matt's 2026-05-11 "more intricate webs" product call. ~2× the rings
-    /// roughly doubles the spiral phase duration (8 × 8 = 64 beats → 16 × 8 =
-    /// 128 beats, see `spiralDuration`) — the build now takes ~87s at 120 BPM
-    /// instead of ~55s, but Love-Rehab-scale segments accommodate it.
-    public var spiralRevolutions: Float = 16.0
+    /// Total revolutions for the capture spiral, chosen at segment start ∈ [18, 24].
+    /// BUG-011 follow-up (round 2) — bumped from [14, 18] to [18, 24] (median
+    /// 16 → 21) per Matt's 2026-05-11 product call: the previous bump didn't
+    /// land as "intricate" because the chord laydown was time-driven (smoothly
+    /// continuous) rather than beat-locked, AND the spiral spacing was
+    /// exponential. This round adds a power-curve spacing (p=0.85, tight inner
+    /// / loose outer per real orb-weaver biology) plus a pure beat-driven
+    /// chord advance (3 chords per beat rising-edge — see advanceSpiralPhase).
+    public var spiralRevolutions: Float = 21.0
     /// `revolutions × radialCount`; pre-computed at spiral-phase entry.
     public var spiralChordsTotal: Int = 0
     /// Current chord being laid (0..spiralChordsTotal-1).
@@ -887,29 +889,37 @@ public final class ArachneState: @unchecked Sendable {
             return
         }
         buildState.stageElapsed += effectiveDt
-        let perChord = ArachneBuildState.spiralChordDurationSeconds
-        buildState.spiralChordProgress += effectiveDt / perChord
-        // Lay each chord on the boundary so birth times reflect lay order.
-        while buildState.spiralChordProgress >= 1.0 && buildState.spiralChordIndex < total {
-            buildState.spiralChordIndex += 1
-            buildState.spiralChordBirthTimes.append(buildState.stageElapsed)
-            buildState.spiralChordProgress -= 1.0
-        }
 
-        // V.7.7C.4 / D-095 follow-up — hybrid audio coupling. On rising-edge
-        // beats (`beat_bass` or `beat_composite` crossing 0.5), advance
-        // `spiralChordIndex` by 1 on top of the time-based pace. Keeps the
-        // build clock TIME-driven (D-095 Decision 2 preserved — sparse-beat
-        // tracks still complete in `naturalCycleSeconds`) while making the
-        // chord laydown perceptibly couple to the music. Pause-guard
-        // semantics preserved: `effectiveDt = 0` while spider is visible
-        // means `prevBeatForSpiral` is still tracked but no chord advance
-        // fires (the rising-edge check is gated on `effectiveDt > 0`).
+        // BUG-011 follow-up (round 2) — PURE BEAT-DRIVEN chord advance,
+        // 3 chords per beat rising-edge. The prior hybrid (time-driven
+        // + beat-bonus-of-1) advanced chords continuously, which read as
+        // a smooth smear rather than a rhythmic construction. Matt's
+        // 2026-05-11 product call: "build should be tied to the beat,
+        // half-time or quarter-time." 3 chords / beat at median 21 × 21 =
+        // 441 chords gives ~73 s spiral phase at 120 BPM, plus frame
+        // (3 s) + radial (~20 s) = ~96 s total build — right inside the
+        // 90-110 s target.
+        //
+        // Rising-edge gated on `effectiveDt > 0` to preserve spider-
+        // pause semantics: while the spider is visible the build halts,
+        // and the rising-edge check still tracks `prevBeatForSpiral` so
+        // the first post-pause beat fires cleanly.
+        //
+        // Note: D-095 Decision 2 (TIME-driven build clock) is RELAXED
+        // here. Tracks with sparse onset detection (no rising-edge
+        // events for >2 s) will visibly stall on the spiral phase.
+        // Acceptable for the Arachne use case — bass-forward music
+        // produces rising-edge beats reliably. If a future "ambient
+        // tracks" use case surfaces, restore the time-driven fallback
+        // as a slow safety baseline.
         let beatNow = max(features.beatBass, features.beatComposite)
         let risingEdge = beatNow > 0.5 && prevBeatForSpiral <= 0.5
         if risingEdge && effectiveDt > 0 && buildState.spiralChordIndex < total {
-            buildState.spiralChordIndex += 1
-            buildState.spiralChordBirthTimes.append(buildState.stageElapsed)
+            let advance = min(3, total - buildState.spiralChordIndex)
+            for _ in 0..<advance {
+                buildState.spiralChordIndex += 1
+                buildState.spiralChordBirthTimes.append(buildState.stageElapsed)
+            }
         }
         prevBeatForSpiral = beatNow
 
@@ -1029,12 +1039,15 @@ public final class ArachneState: @unchecked Sendable {
         // Fresh BuildState defaults.
         var bs = ArachneBuildState.zero()
 
-        // BUG-011 follow-up — bumped per Matt's 2026-05-11 "more intricate webs"
-        // call: radialCount ∈ [12, 17] → [18, 24]; spiralRevolutions ∈ [7, 9] →
-        // [14, 18]. Median cell count goes from ~104 to ~336 per completed web.
-        // Derived from rng so reset() is deterministic against `seed`.
+        // BUG-011 follow-up (round 2) — radialCount stays [18, 24]; spiral
+        // revolutions bumped further [14, 18] → [18, 24]. Median cell count
+        // 21 × 21 = 441 per completed web (was 336 at the prior bump, 104 in
+        // original). Combined with the shader's new power-curve ring spacing
+        // (p = 0.85) and pure beat-driven chord advance (3 chords / beat),
+        // gives a build cycle ~96 s at 120 BPM that visibly couples to the
+        // music. Derived from rng so reset() is deterministic against `seed`.
         let radialCount = 18 + Int(lcg(&rng) * 6.99)        // 18..24
-        let revolutions: Float = 14.0 + lcg(&rng) * 4.0    // 14..18
+        let revolutions: Float = 18.0 + lcg(&rng) * 6.99   // 18..24
         bs.radialCount = radialCount
         bs.spiralRevolutions = revolutions
         bs.radialDrawOrder = Self.computeAlternatingPairOrder(radialCount: radialCount)
