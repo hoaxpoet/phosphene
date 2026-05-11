@@ -45,6 +45,29 @@ This is the quality bar. Not "better than Milkdrop 1999" (a low bar). Not "good 
 
 ## 2. Authoring Workflow
 
+### 2.0 Concept-viability gate
+
+Before authoring discipline (§2.1–§2.4) is worth running, the preset *concept* has to clear three gates. Skipping this section is the failure mode that produced the Drift Motes retirement (D-102 / Failed Approach #58, 2026-05-11): five remediation increments shipped tuning changes on a preset whose concept did not have a viable musical role, and none of them converged.
+
+**Gate 1 — One-sentence musical role.** Write the answer to: *"How is this preset's primary visual subject another instrument in the band?"* The sentence must name (a) a specific musical feature — a beat, a downbeat, a sustained bass envelope, a vocal pitch contour, a structural boundary, a build-up — and (b) a specific visual behaviour the listener will pair with it. Examples that pass:
+
+- *Murmuration:* "The flock's coherence collapses on drum onsets and reforms on the next downbeat — the listener sees the kick as a momentary scatter and the bar boundary as the reformation."
+- *Arachne:* "The web's build progression (frame → radials → spiral) is the structural arc of the segment, with the spider's appearance triggered by sustained sub-bass — the listener pairs the sub-bass drop with the spider revealing itself."
+- *Lumen Mosaic (LM.3.2):* "Each Voronoi cell is assigned to one FFT band team; its palette advances discretely on rising-edge of its team's beat — the listener sees the music as a coordinated ensemble of cells dancing on the bands they belong to."
+
+Examples that fail:
+
+- "Drifting particles in a god-ray light shaft reactive to mid-band energy." (Drift Motes DM.0 — no specific musical feature, no specific behaviour the listener can pair.)
+- "Vibe with the music." / "Feels like the song." / "Reactive to energy." (These are absent answers wearing a costume.)
+
+If you cannot write the sentence cleanly, *stop and bring the gap to Matt before scoping the increment*. Do not start DM.0 / LM.0 / X.0 on a concept whose musical role you cannot articulate. The cost of pausing to align is small; the cost of four days of iteration that does not converge is what produced D-102.
+
+**Gate 2 — Iconic visual subject deliverable at fidelity.** From a comparable past preset, demonstrate that the visual style is reachable. Honest self-assessment: if Matt has flagged a fidelity gap on a similar preset before, default to "I cannot deliver this" until proven otherwise. *"B or C will be botched by you because you won't be able to achieve the level of visual fidelity needed. I have literally watched this happen for the last several preset designs"* (Matt 2026-05-11) is a binding constraint, not a debate prompt.
+
+**Gate 3 — Infrastructure-feasible.** Does not require render passes / engine surfaces / GPU contracts Phosphene lacks. If the answer is "we can add the infrastructure," check whether Matt agrees the infrastructure-adding increment is worth doing as a precondition.
+
+Pitches that pass two of three gates and require Matt to spot the missing third are not acceptable. Surface concerns *before* the pitch, not when cornered. The pattern of pitching a concept whose problems you can see but haven't surfaced is what produced *"This is exactly what I'm fearing... If you have concerns, I will most likely have greater concerns"* (2026-05-11).
+
 ### 2.1 Never author blind
 
 Before a single line of MSL is written:
@@ -1920,6 +1943,12 @@ Consolidated from observed preset iterations. Additive to `CLAUDE.md §Failed Ap
 
 **47. Skipping mood-palette application at the IBL ambient level.** Per D-022, mood shifts must tint IBL ambient, not just direct light. Presets that tint only `lightColor.rgb` show mood changes only on direct-lit surfaces. Multiply IBL by `lightColor.rgb` so the shift propagates.
 
+**48. Shipping a preset whose primary visual subject has no musical role.** Drift Motes (DM.0 → DM.3.3.1, retired in D-102) had a clear visual concept (drifting particles + god-ray light shaft) and three audio coupling points (`f.mid_att_rel` shaft breathing + emission-rate scaling + drum dispersion shock). None of those couplings produced a moment a listener would point at and say "that's the song." Five remediation increments shipped tuning changes (palette, distribution, shaft brightness, atmospheric character, spawn-Y geometry) — each landed mechanically green, none changed the fact that the visual subject had no load-bearing musical role. Failed Approach #49 (tuning constants on a structurally broken renderer) replayed at the *concept* level. The §2.0 concept-viability gate exists to catch this before authoring starts.
+
+**49. Iterating on tuning constants when the concept is broken.** Sibling of #48 and direct extension of CLAUDE.md Failed Approach #49 (constant-tuning on a renderer structurally missing layers). If the one-sentence musical role (§2.0 Gate 1) is absent, no calibration pass converges. After every M7 round, write one sentence describing *what you now believe about why this preset is failing*; if that sentence doesn't change between rounds, the iteration is mechanical and you have re-played #48. Stop and re-scope; do not start the next remediation increment.
+
+**50. "Reusable infrastructure" as a defense for retaining failed-concept code.** When a preset's concept doesn't work, the implementation does not earn preservation as "kernel waiting for the right concept." Per D-097 (siblings, not subclasses), future particle / mesh / ray-march presets ship their own conformer + shader file; they do not branch from a deleted preset's code. The Drift Motes `motes_update` kernel was specific (force-field motion + age recycle + per-particle hue bake) — it could not host an unrelated successor concept without rewrite. If "infrastructure" appears in a defense of keeping code whose concept was rejected, the defense is wrong.
+
 ---
 
 ## 14. Authoring Cheat Sheet (for Session Prompts)
@@ -1927,6 +1956,20 @@ Consolidated from observed preset iterations. Additive to `CLAUDE.md §Failed Ap
 Condensed checklist for Claude Code sessions writing a new preset. Paste into session prompts.
 
 ```
+PRE-AUTHORING GATE — before opening a .metal file (§2.0):
+
+[ ] One-sentence musical role written, naming a specific musical feature
+    AND a specific visual behaviour paired with it. ("Reactive to energy"
+    / "vibe with the music" do not count.)
+[ ] Iconic visual subject deliverable at fidelity — comparable past
+    preset cited. If Matt has flagged a fidelity gap on a similar
+    preset, default to "I cannot deliver this" until proven otherwise.
+[ ] Infrastructure-feasible — does not require render passes / GPU
+    contracts Phosphene lacks (or Matt has approved adding them).
+
+If any pre-authoring gate fails, STOP. Bring the gap to Matt before
+scoping the increment. See §2.0 and Failed Approaches #48–#50.
+
 SESSION CHECKLIST — before declaring complete:
 
 [ ] Read docs/VISUAL_REFERENCES/<preset>/README.md and all reference images.
@@ -1943,6 +1986,14 @@ SESSION CHECKLIST — before declaring complete:
 [ ] Performance measured against tier budget.
 [ ] Hashed reference frame comparison passed.
 [ ] Matt review requested.
+
+POST-M7 INTEGRATION (after every M7 review round):
+
+[ ] Wrote one sentence describing what I now believe about why this
+    preset is failing. If the sentence didn't change between the
+    previous round and this one, the iteration is mechanical (Failed
+    Approach #49). STOP, re-scope, do not start the next remediation
+    increment.
 ```
 
 ---
@@ -1952,7 +2003,7 @@ SESSION CHECKLIST — before declaring complete:
 - `CLAUDE.md §Audio Data Hierarchy` — the audio contract these shaders read
 - `CLAUDE.md §GPU Contract Details` — buffer / texture binding layout (buffer 0 = FeatureVector, etc.)
 - `CLAUDE.md §Preset Metadata Format` — JSON sidecar fields referenced here
-- `CLAUDE.md §Failed Approaches` — shader failures 1–34; this doc extends with 35–47
+- `CLAUDE.md §Failed Approaches` — shader failures 1–34; this doc extends with 35–50
 - `MILKDROP_ARCHITECTURE.md §3d` — why `mv_warp` is critical for direct-fragment presets
 - `DECISIONS.md D-019/D-020/D-022/D-026/D-027/D-029` — the accumulated wisdom that gates preset authoring
 - `ENGINEERING_PLAN.md §Phase V` — the increments that implement this handbook
