@@ -292,8 +292,16 @@ public struct LumenPatternState: Sendable {
 
 // MARK: - LumenPatternEngine
 
-/// Owns the four light agents + four (LM.4-future) pattern slots and flushes
-/// them to a slot-8 fragment buffer once per frame.
+// swiftlint:disable type_body_length
+// `type_body_length` is disabled below because the engine state + agent
+// update + LM.3.2 band counters + LM.4 pattern pool all live in the same
+// class to keep the per-tick code path co-located (the engine is one
+// tightly-coupled state machine; splitting it into extensions would
+// scatter the locking and snapshot semantics across files). Same
+// disposition as `ArachneState`.
+
+/// Owns the four light agents + the four-slot LM.4 pattern pool and
+/// flushes them to a slot-8 fragment buffer once per frame.
 ///
 /// Thread-safe: `tick(features:stems:)` and `snapshot()` may be called from any
 /// queue. `patternBuffer.contents()` is read by the GPU; tick + writeToGPU run
@@ -458,6 +466,34 @@ public final class LumenPatternEngine: @unchecked Sendable {
     /// bar counter so the bar pulse remains coherent.
     private var bassBeatsSinceBarFallback: Int = 0
 
+    // MARK: - LM.4 — Pattern pool state
+    //
+    // The four-slot pattern pool is owned CPU-side and snapshotted into
+    // `state.patterns` every frame. Per-pattern `phase` advances by
+    // `dt / duration` per tick; once `phase >= 1.0` the slot is retired and
+    // becomes available for the next spawn. If a spawn arrives while the
+    // pool is full (4/4 active, none yet retired), the oldest pattern
+    // (largest `phase`) is evicted to make room.
+    //
+    // Drum-onset trigger: fires a `radialRipple` on rising-edge of
+    // `f.beatBass` (reuses the LM.3.2 80 ms debounce in `updateBandCounters`).
+    // Origins are hash-derived per-onset so the same track produces the
+    // same ripple choreography on replay — no live-stem path required;
+    // works in both reactive and Spotify-prepared sessions.
+    //
+    // Bar-rotation trigger: fires a `radialRipple` OR `sweep` (mood-weighted
+    // hash) on rising-edge of `state.barCounter`. The LM.3.2 `barCounter`
+    // already handles both the `barPhase01` wrap path AND the every-4-bass-
+    // beats fallback for reactive mode — LM.4 hooks the existing increment,
+    // adding no new bar-detection logic.
+    //
+    // Onset-hash and bar-hash use separated seed families
+    // (`barRotationCounter ^ (trackSeed ^ 0xA5A5A5A5)`) so bar-spawned
+    // origins don't collide with onset-spawned ones on the same track.
+    private var activePatterns: [LumenPattern] = []
+    private var drumOnsetCounter: UInt32 = 0
+    private var barRotationCounter: UInt32 = 0
+
     // MARK: - Init
 
     public init?(device: MTLDevice, seed: UInt64 = 0) {
@@ -525,10 +561,16 @@ public final class LumenPatternEngine: @unchecked Sendable {
         writeToGPU()
     }
 
-    /// Internal: zero the band counters + rising-edge / debounce state.
+    /// Internal: zero the band counters + rising-edge / debounce state +
+    /// (LM.4) the active pattern pool and per-track spawn counters.
     /// Called from `reset()` (preset re-apply) AND from `setTrackSeed(_:)`
     /// (track change). The counters must restart from 0 on each track so
     /// the shader's `floor(counter / period)` cell-step doesn't carry over.
+    /// Likewise the pattern pool and `drumOnsetCounter / barRotationCounter`
+    /// must reset on each track so the new track paints its own pattern
+    /// choreography from beat 1 — without this, an old track's pool would
+    /// carry over and the new track's first beats would land on a non-
+    /// empty pool.
     /// Caller must hold `lock`.
     private func resetBeatTrackingState() {
         state.bassCounter = 0
@@ -543,6 +585,13 @@ public final class LumenPatternEngine: @unchecked Sendable {
         lastMidBeatTime = -1
         lastTrebleBeatTime = -1
         bassBeatsSinceBarFallback = 0
+        activePatterns.removeAll(keepingCapacity: true)
+        drumOnsetCounter = 0
+        barRotationCounter = 0
+        // Zero the four-slot pattern snapshot too, so a stale post-reset
+        // GPU read can't see the pre-reset patterns.
+        state.patterns = (.idle, .idle, .idle, .idle)
+        state.activePatternCount = 0
     }
 
     // MARK: - Track palette seed (LM.3 / D-LM-e3)
@@ -698,18 +747,33 @@ public final class LumenPatternEngine: @unchecked Sendable {
 
         state.lights = (agents[0], agents[1], agents[2], agents[3])
         state.activeLightCount = Int32(Self.agentCount)
-        state.activePatternCount = 0   // LM.4 promotes to ≥ 0 active patterns.
         state.ambientFloorIntensity = 0   // LM.3: silence floor lives in the shader.
         state.smoothedValence = smoothedValence
         state.smoothedArousal = smoothedArousal
         // trackPaletteSeedA/B/C/D are written by setTrackSeed(_:) on track
         // change — _tick must NOT clear them.
 
-        // LM.3.2 — band-routed beat counters update (extracted for
-        // SwiftLint function_body_length compliance).
-        updateBandCounters(features: features)
+        // LM.3.2 band counters + LM.4 pattern pool advancement extracted
+        // for SwiftLint function_body_length compliance. Inside, the
+        // helper captures the pre-call counter values to detect rising
+        // edges, runs `updateBandCounters`, then forwards the edges to
+        // `updatePatterns`.
+        advancePatternEngine(features: features, dt: dt)
+    }
 
-        // Patterns stay `.idle` (initial-zero) for LM.3.2.
+    /// LM.4 — single entry point chaining the LM.3.2 band-counter update
+    /// to the LM.4 pattern-pool advance. Captures pre-call `bassCounter`
+    /// and `barCounter` to derive the `bassFired` / `barFired` rising-edge
+    /// signals the pattern engine consumes (the existing 80 ms debounce
+    /// inside `updateBandCounters` means the edge is "did the counter
+    /// advance this tick", not raw `f.beatBass`).
+    private func advancePatternEngine(features: FeatureVector, dt: Float) {
+        let prevBassCounter = state.bassCounter
+        let prevBarCounter = state.barCounter
+        updateBandCounters(features: features)
+        let bassFired = state.bassCounter > prevBassCounter
+        let barFired = state.barCounter > prevBarCounter
+        updatePatterns(dt: dt, bassFired: bassFired, barFired: barFired)
     }
 
     /// LM.3.2 — advance the four band counters on rising-edge of their
@@ -771,6 +835,202 @@ public final class LumenPatternEngine: @unchecked Sendable {
         prevBeatMid = features.beatMid
         prevBeatTreble = features.beatTreble
         prevBarPhase01 = features.barPhase01
+    }
+
+    // MARK: - LM.4 — Pattern engine
+
+    /// Advance, retire, and spawn patterns for this tick. Writes the four-
+    /// slot snapshot into `state.patterns` + `state.activePatternCount`.
+    /// Caller must hold `lock`.
+    ///
+    /// Order matters:
+    ///   1. Advance phases (so freshly-spawned patterns from the previous
+    ///      tick get one frame of advancement before being culled).
+    ///   2. Cull retired (`phase >= 1.0`) — frees slots before this tick's
+    ///      spawns try to find room.
+    ///   3. Drum-onset trigger (rising-edge of `f.beatBass` via
+    ///      `bassFired`) spawns a radial ripple at a hash-derived origin.
+    ///   4. Bar-rotation trigger (rising-edge of `state.barCounter` via
+    ///      `barFired`) spawns either a radial ripple or sweep — selected
+    ///      by a mood-weighted hash (high arousal biases toward sweep,
+    ///      low arousal toward ripple, 50/50 at mid-arousal).
+    ///   5. Spawn dispatch evicts the oldest pattern (largest phase) if
+    ///      the pool is at capacity (4/4).
+    ///   6. Snapshot the four-slot pool to GPU state.
+    private func updatePatterns(dt: Float, bassFired: Bool, barFired: Bool) {
+        // 1. Advance phases.
+        for i in activePatterns.indices {
+            let duration = max(activePatterns[i].duration, 1e-6)
+            activePatterns[i].phase += dt / duration
+        }
+        // 2. Cull retired.
+        activePatterns.removeAll { $0.phase >= 1.0 }
+
+        // 3. Drum-onset trigger.
+        if bassFired {
+            drumOnsetCounter &+= 1
+            let origin = radialRippleOriginFromOnset()
+            let pattern = LumenPatternFactory.radialRipple(
+                origin: origin,
+                birthTime: elapsedTime
+            )
+            spawnPattern(pattern)
+        }
+
+        // 4. Bar-rotation trigger.
+        if barFired {
+            barRotationCounter &+= 1
+            spawnBarRotationPattern()
+        }
+
+        // 6. Snapshot to GPU state.
+        writePatternsToState()
+    }
+
+    /// Insert a pattern into the pool. If the pool is at capacity, evict
+    /// the oldest (largest `phase`, closest to retirement) to make room.
+    /// Caller must hold `lock`.
+    private func spawnPattern(_ pattern: LumenPattern) {
+        if activePatterns.count >= Self.patternCount {
+            if let evictIndex = activePatterns.indices.max(
+                by: { activePatterns[$0].phase < activePatterns[$1].phase }
+            ) {
+                activePatterns.remove(at: evictIndex)
+            }
+        }
+        activePatterns.append(pattern)
+    }
+
+    /// Spawn the bar-rotation pattern for the current `barRotationCounter`.
+    /// Selects ripple vs sweep via a mood-weighted hash; both kinds use
+    /// the same bar-hash family so the choice is reproducible per-bar
+    /// per-track. Caller must hold `lock`.
+    private func spawnBarRotationPattern() {
+        let kind = chooseBarPatternKind()
+        switch kind {
+        case .radialRipple:
+            let origin = radialRippleOriginFromBar()
+            let pattern = LumenPatternFactory.radialRipple(
+                origin: origin,
+                birthTime: elapsedTime
+            )
+            spawnPattern(pattern)
+        case .sweep:
+            let (origin, direction) = sweepEntryFromBar()
+            let pattern = LumenPatternFactory.sweep(
+                origin: origin,
+                direction: direction,
+                birthTime: elapsedTime
+            )
+            spawnPattern(pattern)
+        default:
+            // Other kinds land in LM.5; ignore here.
+            break
+        }
+    }
+
+    /// Copy `activePatterns` into the GPU four-slot snapshot, padding
+    /// unused slots with `.idle`. Caller must hold `lock`.
+    private func writePatternsToState() {
+        let p0 = activePatterns.indices.contains(0) ? activePatterns[0] : .idle
+        let p1 = activePatterns.indices.contains(1) ? activePatterns[1] : .idle
+        let p2 = activePatterns.indices.contains(2) ? activePatterns[2] : .idle
+        let p3 = activePatterns.indices.contains(3) ? activePatterns[3] : .idle
+        state.patterns = (p0, p1, p2, p3)
+        state.activePatternCount = Int32(min(Self.patternCount, activePatterns.count))
+    }
+
+    // MARK: - LM.4 — Hash-derived spawn parameters
+
+    /// Murmur-style avalanche on a single `UInt32`. Matches the shader's
+    /// `lm_hash_u32` byte-for-byte so any future code that needs to
+    /// reproduce a shader-side hash on the CPU has one canonical helper.
+    private static func lmHashU32(_ input: UInt32) -> UInt32 {
+        var bits = input
+        bits ^= 61
+        bits ^= (bits >> 16)
+        bits = bits &* 0x7feb_352d
+        bits ^= (bits >> 15)
+        bits = bits &* 0x846c_a68b
+        bits ^= (bits >> 16)
+        return bits
+    }
+
+    /// 32-bit hash of the four `trackPaletteSeed` components. Byte-for-byte
+    /// equivalent to the shader's `lm_track_seed_hash` so pattern origins
+    /// derived on the CPU and any future shader-side reads (if needed)
+    /// would agree.
+    private func trackSeedHash32() -> UInt32 {
+        let seedA = UInt32((state.trackPaletteSeedA * 0.5 + 0.5) * 65535.0)
+        let seedB = UInt32((state.trackPaletteSeedB * 0.5 + 0.5) * 65535.0)
+        let seedC = UInt32((state.trackPaletteSeedC * 0.5 + 0.5) * 65535.0)
+        let seedD = UInt32((state.trackPaletteSeedD * 0.5 + 0.5) * 65535.0)
+        let packed = (seedA & 0xFF)
+                   | ((seedB & 0xFF) << 8)
+                   | ((seedC & 0xFF) << 16)
+                   | ((seedD & 0xFF) << 24)
+        return Self.lmHashU32(packed)
+    }
+
+    /// Onset-spawned ripple origin. Derived from `drumOnsetCounter` mixed
+    /// with the per-track seed so the same track produces the same ripple
+    /// choreography on replay. Two 16-bit halves of the hash map to
+    /// `[0.05, 0.95]²` UV — origins stay inside the panel, away from edges
+    /// where the wavefront would clip almost immediately.
+    private func radialRippleOriginFromOnset() -> SIMD2<Float> {
+        let seed = drumOnsetCounter ^ trackSeedHash32()
+        let hash = Self.lmHashU32(seed)
+        let xNorm = Float(hash & 0xFFFF) / 65535.0
+        let yNorm = Float((hash >> 16) & 0xFFFF) / 65535.0
+        return SIMD2<Float>(0.05 + xNorm * 0.90, 0.05 + yNorm * 0.90)
+    }
+
+    /// Bar-spawned ripple origin. Separate hash family from onset origins
+    /// (`trackSeed ^ 0xA5A5A5A5`) so bar-spawned ripples don't collide
+    /// with onset-spawned ones on the same track.
+    private func radialRippleOriginFromBar() -> SIMD2<Float> {
+        let seed = barRotationCounter ^ (trackSeedHash32() ^ 0xA5A5_A5A5)
+        let hash = Self.lmHashU32(seed)
+        let xNorm = Float(hash & 0xFFFF) / 65535.0
+        let yNorm = Float((hash >> 16) & 0xFFFF) / 65535.0
+        return SIMD2<Float>(0.05 + xNorm * 0.90, 0.05 + yNorm * 0.90)
+    }
+
+    /// Bar-spawned sweep entry edge + direction. Two bits of the bar hash
+    /// pick one of the four panel-edge midpoints; the matching direction
+    /// is the unit vector pointing toward the opposite edge.
+    private func sweepEntryFromBar() -> (origin: SIMD2<Float>, direction: SIMD2<Float>) {
+        let seed = barRotationCounter ^ (trackSeedHash32() ^ 0xA5A5_A5A5)
+        let hash = Self.lmHashU32(seed)
+        let edge = hash & 0b11
+        switch edge {
+        case 0: return (SIMD2(0.5, 0.0), SIMD2(0.0, 1.0))    // bottom → up
+        case 1: return (SIMD2(0.5, 1.0), SIMD2(0.0, -1.0))   // top → down
+        case 2: return (SIMD2(0.0, 0.5), SIMD2(1.0, 0.0))    // left → right
+        default: return (SIMD2(1.0, 0.5), SIMD2(-1.0, 0.0))  // right → left
+        }
+    }
+
+    /// Bar-rotation pattern selection. Mood-weighted: high arousal biases
+    /// 60/40 toward sweep (broader, more aggressive); low arousal biases
+    /// 60/40 toward radial ripple (centred, more contained); mid-arousal
+    /// is 50/50. The roll uses a third hash family
+    /// (`barRotationCounter ^ trackSeed`) so it's reproducible per-bar
+    /// per-track but decoupled from origin selection.
+    private func chooseBarPatternKind() -> LumenPatternKind {
+        let seed = barRotationCounter ^ trackSeedHash32()
+        let hash = Self.lmHashU32(seed)
+        // Top 24 bits of the hash → [0, 1) without Float-precision loss.
+        let roll = Float(hash & 0x00FF_FFFF) / Float(0x0100_0000)
+        let probSweep: Float
+        if smoothedArousal > 0.3 {
+            probSweep = 0.6
+        } else if smoothedArousal < -0.3 {
+            probSweep = 0.4
+        } else {
+            probSweep = 0.5
+        }
+        return roll < probSweep ? .sweep : .radialRipple
     }
 
     /// Per-agent intensity using deviation primitives, with D-019 FV fallback
@@ -845,6 +1105,7 @@ public final class LumenPatternEngine: @unchecked Sendable {
         )
     }
 }
+// swiftlint:enable type_body_length
 
 // MARK: - Math helpers (file-private)
 
