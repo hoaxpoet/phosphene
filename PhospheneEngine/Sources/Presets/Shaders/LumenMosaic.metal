@@ -183,7 +183,16 @@ constant float kCellIntensityJitter = 0.15f;   // adds [0, 0.15] from hash
 /// to 1.0 and there is no pulse — the team-counter dance still fires
 /// because the engine increments `barCounter` every 4 bass beats as a
 /// fallback (see LumenPatternEngine `_tick` bar-fallback path).
-constant float kBarPulseMagnitude = 0.30f;
+/// **LM.4.1 (2026-05-11):** lowered from 0.30 → 0.20 as part of the
+/// bleach-out fix. The bar pulse and LM.4 pattern boost stack on the
+/// same downbeat frame; cutting both halves the combined peak
+/// `cell_intensity` from 1.70 → ~1.20 (cell baseline × 1.20 bar pulse +
+/// 1.0 × 0.20 pattern). Still touches the rgba8Unorm 1.0 ceiling on the
+/// brightest channel of saturated cells, but stops short of the
+/// every-channel-near-white bleach that destroyed cell colour identity
+/// at LM.4. Bar pulse remains visible as a panel-wide brightness
+/// flash on each downbeat; just less aggressive.
+constant float kBarPulseMagnitude = 0.20f;
 constant float kBarPulseShape     = 8.0f;
 
 /// LM.3.2 — palette-step size. Each beat-counter step advances the cell's
@@ -309,7 +318,19 @@ constant float kLumenDefaultFalloffK = 6.0f;
 
 /// Pattern contribution scaling. `cell_intensity += clamp(sum, 0, kPatternMaxSum) × kPatternBoost`.
 /// Peak per-cell contribution at a wavefront is therefore ≤ kPatternMaxSum × kPatternBoost.
-constant float kPatternBoost = 0.40f;
+///
+/// **LM.4.1 (2026-05-11):** halved from 0.40 → 0.20 after Matt's first M7
+/// review on session `2026-05-11T15-15-46Z`. Pre-tuning math: cell
+/// baseline `[0.85, 1.0]` + bar pulse (peak +0.30) + pattern boost
+/// (peak +0.40) = combined peak intensity 1.70 — well past the 1.0
+/// rgba8Unorm albedo clamp ceiling. Saturated HSV cells like (0.10,
+/// 0.95, 0.95) had their bright channels slammed to 1.0 while only the
+/// dimmest channel retained colour information → near-white bleach
+/// destroyed the per-cell colour identity on every downbeat-with-ripple
+/// frame. The eye sampled mostly bleached frames at 118 BPM, hence "the
+/// palette looks the same across tracks." Halving brings peak to ~1.50,
+/// preserves cell colour identity through the bar pulse + pattern stack.
+constant float kPatternBoost = 0.20f;
 
 /// Upper-bound on the summed pattern contribution before scaling by
 /// `kPatternBoost`. Overlapping patterns can't unboundedly stack —

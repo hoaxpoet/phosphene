@@ -389,18 +389,20 @@ struct LumenSweepDirectionTests {
 @Suite("Pool eviction — full pool retires the oldest pattern")
 struct LumenPoolEvictionTests {
 
-    /// Drive 5 well-separated rising edges; the pool caps at 4, so the 5th
-    /// spawn must evict one. Since none of the 5 patterns has reached
-    /// `phase >= 1.0` yet (`5 × 90 ms = 450 ms` < `600 ms` ripple lifetime),
-    /// natural retirement is not in play — the cap is enforced by explicit
-    /// eviction.
+    /// Drive 5 spawns rapidly via `barPhase01` wraps (no debounce on bar
+    /// wraps — unlike bass rising edges which carry the 80 ms debounce).
+    /// The 5 spawns happen within ~167 ms of elapsed time, well under the
+    /// 300 ms ripple lifetime (LM.4.1) and 800 ms sweep lifetime, so none
+    /// of the 5 patterns has reached `phase >= 1.0` yet. The cap of 4 is
+    /// therefore enforced by explicit eviction, not by natural retirement.
     @Test func test_fivthSpawnEvictsOldest() throws {
         let engine = try makeEngine()
-        let dt: Float = 0.05   // 50 ms per phase
-        // 5 onsets, each separated by 50ms (above + 80ms debounce wait).
+        let dt: Float = 1.0 / 60.0   // 16.7 ms — bar-wrap fires every 2 ticks (~33 ms)
         for _ in 0..<5 {
-            engine.tick(features: fv(beatBass: 1.0, deltaTime: dt), stems: StemFeatures.zero)
-            engine.tick(features: fv(beatBass: 0.0, deltaTime: dt), stems: StemFeatures.zero)
+            // High phase first (arms the wrap detector), then low phase
+            // (triggers wrap → bar-rotation spawn).
+            engine.tick(features: fv(barPhase01: 0.95, deltaTime: dt), stems: StemFeatures.zero)
+            engine.tick(features: fv(barPhase01: 0.05, deltaTime: dt), stems: StemFeatures.zero)
         }
         let snap = engine.snapshot()
         // 5 spawn attempts → 4 in pool (one evicted).
@@ -409,15 +411,19 @@ struct LumenPoolEvictionTests {
                 "pool count \(snap.activePatternCount) ≠ \(cap) after 5 spawns — eviction did not enforce cap")
     }
 
-    /// The pool cap is exactly 4 — never more than `patternCount`.
+    /// The pool cap is exactly 4 — never more than `patternCount`. Drives
+    /// via bar wraps so 10 spawn attempts land inside the pattern
+    /// lifetime window and actually challenge the cap (bass rising edges
+    /// would be 80 ms-debounced — too slow to fill the pool against the
+    /// LM.4.1 300 ms ripple lifetime).
     @Test func test_pool_neverExceedsPatternCount() throws {
         let engine = try makeEngine()
-        let dt: Float = 0.05
+        let dt: Float = 1.0 / 60.0
         let cap = Int32(LumenPatternEngine.patternCount)
-        // 10 rapid-fire onsets.
+        // 10 rapid-fire bar wraps.
         for _ in 0..<10 {
-            engine.tick(features: fv(beatBass: 1.0, deltaTime: dt), stems: StemFeatures.zero)
-            engine.tick(features: fv(beatBass: 0.0, deltaTime: dt), stems: StemFeatures.zero)
+            engine.tick(features: fv(barPhase01: 0.95, deltaTime: dt), stems: StemFeatures.zero)
+            engine.tick(features: fv(barPhase01: 0.05, deltaTime: dt), stems: StemFeatures.zero)
             #expect(engine.snapshot().activePatternCount <= cap,
                     "pool count exceeded cap")
         }
