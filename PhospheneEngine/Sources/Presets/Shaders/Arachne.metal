@@ -996,7 +996,15 @@ static float3 drawBackgroundWeb(
 // around the spider's UV position so miss rays do not fire on every pixel.
 
 constant float kSpiderScale  = 0.018;  // body-local unit → UV scale
-constant float kSpiderPatchUV = 0.15;  // patch radius around spider UV anchor
+// BUG-011 L5: patch radius 0.15 → 0.12. The actual spider footprint
+// (body + 8 IK legs at kSpiderScale 0.018) extends roughly ±0.09 UV
+// from the anchor. The 0.15 radius reserved ~67 % of patch area outside
+// the spider silhouette — those pixels ran the full 24-step ray-march
+// and exited at tMax having hit nothing. 0.12 keeps a small safety
+// margin around the legs while cutting patch area by ~36 %. Zero
+// visual change: the spider does not extend past 0.12 UV from its
+// anchor at the current scale.
+constant float kSpiderPatchUV = 0.12;  // patch radius around spider UV anchor
 
 // Cephalothorax + abdomen + petiole — returns (distance, materialID 0).
 static float2 sd_spider_body(float3 p) {
