@@ -158,7 +158,11 @@ static float  arachAspect(uint seed)      { return 0.85 + arachHash(seed + 0xB2u
 static float  arachAspectAngle(uint seed) { return arachHash(seed + 0xC3u) * 2.0 * M_PI_F; }
 // V.7.5 §10.1.2: range widened [0.04, 0.10] → [0.06, 0.14] so longer radials
 // visibly droop. Gravity-direction weighting applied per-spoke at the call site.
-static float  arachKSag(uint seed)        { return 0.06 + arachHash(seed + 0xD4u) * 0.08; }
+// BUG-011 follow-up (round 2) — sag range 0.06..0.14 → 0.10..0.18 per Matt's
+// 2026-05-11 product call. Combined with the new curved-chord SDF (sag is
+// now applied to the chord's parabolic curve, not just endpoint offset),
+// chord midpoints visibly droop ~10-18% of chord length under gravity.
+static float  arachKSag(uint seed)        { return 0.10 + arachHash(seed + 0xD4u) * 0.08; }
 
 // ±5% UV hub jitter applied at the fragment call site (keeps WebGPU layout stable).
 static float2 arachHubJitter(uint seed) {
@@ -564,7 +568,9 @@ static ArachneWebResult arachneEvalWeb(
     float  rT   = r;
     float  taper = saturate(rT / webR);
     float  aaW   = 0.0006;
-    float  hubR  = webR * 0.10;
+    // BUG-011 follow-up (round 2) — hub radius shrunk 15 % per Matt's 2026-05-11
+    // "make the central orb smaller" call (0.10 → 0.085).
+    float  hubR  = webR * 0.085;
 
     // Hub: dense silk knot (§5.4) — overlapping strand noise, NOT concentric rings.
     // Two-scale fbm4 min gives tangled-thread look matching refs 01, 11, 12.
@@ -577,15 +583,12 @@ static ArachneWebResult arachneEvalWeb(
         float hB = fbm4(float3(hubN * 2.3 + float2(1.27, 0.74), seedF + 0.5)) * 0.5 + 0.5;
         float raw = min(hA, hB);
         // Threshold at 0.54→0.43: fbm4 remapped to [0,1], gives ~35% strand density.
-        // V.7.7C.5.1 (D-100 follow-up) — hub coverage 1.20 → 0.70 to match
-        // the dimmer silk luminescence (silkTint 0.85 → 0.55, halos halved).
-        // V.7.7C.4 had pumped hub to 1.20 + silkTint to 0.85 to compensate
-        // for V.7.5's deliberate dim silk; V.7.7C.5's canvas-filling foreground
-        // made that bright-pumped silk dominate as toddler-scribble heavy
-        // lines (Matt's 2026-05-08T22-01-07Z smoke). V.7.7C.5.1 returns the
-        // silk to fine-detail weight without re-creating the V.7.5 muteness
-        // problem — backdrop saturation gets the visual lift instead.
-        hubCov = smoothstep(0.54, 0.43, raw) * 0.70
+        // BUG-011 follow-up (round 2) — hub peak coverage 0.70 → 0.28 (60 %
+        // reduction) per Matt's 2026-05-11 "central orb glow reduced 50-75 %"
+        // call. Previous chain: V.7.7C.4 1.20 (pumped) → V.7.7C.5.1 0.70
+        // (canvas-filling normalisation) → now 0.28 (further dimmed for the
+        // intricate-web pass — the bright hub was masking the spiral density).
+        hubCov = smoothstep(0.54, 0.43, raw) * 0.28
                * smoothstep(hubR, hubR * 0.15, rT);  // fade at exact center
         hubCov = saturate(hubCov);
         // Hub tangent is degenerate — keep default (1,0)
@@ -664,11 +667,16 @@ static ArachneWebResult arachneEvalWeb(
     // "toddler scribble" reading Matt flagged on the 2026-05-08T22-01-07Z
     // smoke. Halving brings strand weight back into proportion with the
     // canvas-filling polygon — lets density read as elaborate detail.
-    float spokeW       = mix(0.0010, 0.0006, taper);
+    // BUG-011 follow-up (round 2) — uniform line width across spokes/frame/spirals
+    // (0.0010 UV ≈ 1 px @ 1080p), uniform halo magnitude 0.11. The previous
+    // taper from 0.0010 to 0.0006 toward the outer edge gave inconsistent
+    // line weight; Matt's 2026-05-11 call: "ALL lines should look like the
+    // scaffolding — clear, crisp, bright."
+    float spokeW       = 0.0010;
     float spokeHaloSig = max(webR * 0.008, 1e-4);
     float spokeCov     = smoothstep(spokeW + aaW, spokeW - aaW, minSpokeDist) * anchorFade;
     float spokeHalo    = exp(-minSpokeDist * minSpokeDist / (spokeHaloSig * spokeHaloSig))
-                        * 0.20 * anchorFade;
+                        * 0.11 * anchorFade;
 
     // ── Frame thread polygon — segment-by-segment reveal during stage 0 ──────
     //
@@ -726,8 +734,10 @@ static ArachneWebResult arachneEvalWeb(
             minFrameDist = min(minFrameDist, fd);
         }
     }
-    // V.7.7C.5.1 (D-100 follow-up) — frame thread width halved (matches spoke).
-    float frameW    = mix(0.0010, 0.0006, taper);
+    // BUG-011 follow-up (round 2) — frame width uniform 0.0010 (no taper),
+    // matching spokes + spirals. Halo magnitude stays at 0.11 (already the
+    // target value).
+    float frameW    = 0.0010;
     float frameFade = rT > webR ? exp(-(rT - webR) * 6.0) : 1.0;
     float frameCov  = smoothstep(frameW + aaW, frameW - aaW, minFrameDist) * frameFade;
     float frameHalo = exp(-minFrameDist * minFrameDist / (spokeHaloSig * spokeHaloSig))
@@ -760,10 +770,19 @@ static ArachneWebResult arachneEvalWeb(
     float r_outer = webR * 0.95;
     float r_inner = hubR * 1.8;  // free zone inner boundary
 
-    // logAlpha: r_k = r_outer × exp(k × logAlpha). alpha < 1 so radii decrease inward.
-    float logAlpha = (N_RINGS > 1)
-                   ? log(r_inner / max(r_outer, 1e-5)) / float(N_RINGS - 1)
-                   : 0.0;
+    // BUG-011 follow-up (round 2) — ring spacing switched from exponential
+    // (`r_k = r_outer × exp(k × logAlpha)`) to a power curve. The exponential
+    // clustered rings densely near the hub and spread them wide near the
+    // outer edge — most visible rings were the few wide-spaced outer ones.
+    // Power curve with p = 0.85 gives "tight inner / loose outer" per Matt's
+    // 2026-05-11 described visual (tighter near center, looser at outer
+    // edge), matching real orb-weaver biology (refs 01, 03, 11, 12).
+    //
+    // Formula: r_k = r_outer − (r_outer − r_inner) × (k / (N-1))^p
+    //   p < 1.0 → tight inner / loose outer (Matt's described visual ✓)
+    //   p = 1.0 → perfectly linear (every ring at uniform distance)
+    //   p > 1.0 → tight outer / loose inner (opposite of what Matt described)
+    constexpr float kSpacingPower = 0.85;
 
     // Precompute spoke directions, gravity weights, and (V.7.7C.3) polygon-
     // clipped spoke tip positions for all visible spokes — reused across all
@@ -784,8 +803,9 @@ static ArachneWebResult arachneEvalWeb(
                    : webR * sdDir[si];
     }
 
-    // V.7.7C.5.1 (D-100 follow-up) — spiral chord width halved.
-    float spirW   = 0.0007;
+    // BUG-011 follow-up (round 2) — spiral width 0.0007 → 0.0010 to match
+    // spokes + frame. All web lines now identical 1-px-at-1080p thickness.
+    float spirW   = 0.0010;
     float spirSig = max(webR * 0.005, 1e-4);
 
     // V.7.7C.3 / D-095 — per-chord visibility gate. Pre-V.7.7C.3 the gate was
@@ -806,7 +826,9 @@ static ArachneWebResult arachneEvalWeb(
         visibleChordCount > 0) {
         for (int k = 0; k < N_RINGS; k++) {
             // Outside-in: ring 0 is outermost (first placed by spider).
-            float ringR = r_outer * exp(logAlpha * float(k));
+            // Power-curve ring spacing — see kSpacingPower above.
+            float kNorm  = (N_RINGS > 1) ? float(k) / float(N_RINGS - 1) : 0.0;
+            float ringR  = r_outer - (r_outer - r_inner) * pow(kNorm, kSpacingPower);
 
             // Per-chord visibility (V.7.7C.3): if no chords of this ring are
             // yet visible, skip the entire ring; if all of this ring's chords
@@ -843,20 +865,42 @@ static ArachneWebResult arachneEvalWeb(
                 int sj = (si + 1) % spokeCount;
                 if (sj >= nSpk) continue;  // guard for partial-reveal stages
 
+                // BUG-011 follow-up (round 2) — curved chord SDF replaces the
+                // V.7.5 straight-chord-between-sagged-endpoints model. Real
+                // spider silk drapes in a parabolic curve between attachment
+                // points (visible droop at chord midpoint, zero offset at
+                // endpoints where silk anchors to the spoke). The prior model
+                // pulled endpoints down by `sagScale × gravity` and drew a
+                // straight line — which produces almost no visible droop.
+                //
+                // New model:
+                //   pI, pJ at unsagged ring positions (no endpoint offset).
+                //   Chord curve = straight segment + parabolic Y-offset:
+                //     curveY(t) = chordSagPeak × 4t(1-t)  ← max at midpoint
+                //   Per-pixel distance: project onto straight chord (gives t),
+                //   compute curve position at t, take distance.
+                //   chordSagPeak averages the two endpoints' gravity weights
+                //   so under-side chords (where sin(angle) > 0) droop more
+                //   than top-side chords — natural gravity asymmetry.
                 float2 pI, pJ;
                 if (polyCount >= 3) {
-                    pI = sdTip[si] * fracR + float2(0.0, sagScale * sdGrav[si]);
-                    pJ = sdTip[sj] * fracR + float2(0.0, sagScale * sdGrav[sj]);
+                    pI = sdTip[si] * fracR;
+                    pJ = sdTip[sj] * fracR;
                 } else {
-                    pI = ringR * sdDir[si] + float2(0.0, sagScale * sdGrav[si]);
-                    pJ = ringR * sdDir[sj] + float2(0.0, sagScale * sdGrav[sj]);
+                    pI = ringR * sdDir[si];
+                    pJ = ringR * sdDir[sj];
                 }
+
+                float chordSagPeak = sagScale * (sdGrav[si] + sdGrav[sj]);  // = base × avgGravity × 2
 
                 float2 seg  = pJ - pI;
                 float  segL = length(seg);
                 float2 ptV  = tRel - pI;
                 float  ht   = saturate(dot(ptV, seg) / max(dot(seg, seg), 1e-8));
-                float  cd   = length(tRel - (pI + seg * ht));
+                // Curved-chord position: straight projection + parabolic Y-droop.
+                float  sagAtT  = chordSagPeak * 4.0 * ht * (1.0 - ht);
+                float2 chordPt = pI + seg * ht + float2(0.0, sagAtT);
+                float  cd      = length(tRel - chordPt);
 
                 if (cd < minChordDist) {
                     minChordDist = cd;
@@ -874,8 +918,9 @@ static ArachneWebResult arachneEvalWeb(
 
     float inZone = (rT >= r_inner && rT <= r_outer + spirW * 2.0) ? 1.0 : 0.0;
     spirCov  = smoothstep(spirW + aaW, spirW - aaW, minChordDist) * inZone;
-    // V.7.7C.5.1 (D-100 follow-up) — spiral halo magnitude halved.
-    spirHalo = exp(-minChordDist * minChordDist / (spirSig * spirSig)) * 0.13 * inZone;
+    // BUG-011 follow-up (round 2) — spiral halo magnitude 0.13 → 0.11 to
+    // match the uniform halo across all line types.
+    spirHalo = exp(-minChordDist * minChordDist / (spirSig * spirSig)) * 0.11 * inZone;
 
     // ── §4.4 Dominant strand tangent (spoke or chord) ─────────────────────────
     if (rT >= hubR * 1.5) {
@@ -1249,13 +1294,13 @@ fragment float4 arachne_composite_fragment(
         float2 ancHub  = float2(0.5, 0.5) + arachHubJitter(ancSeed);
 
         // V.7.7C.2 / D-095 — derive (stage, progress) from webs[0] Row 5.
-        // BUG-011 follow-up — defaults bumped to match new CPU medians:
-        // radialCount 13 → 21, spiralChordsTotal 104 → 336 (= 21 × 16).
-        // ±25 % progress-mapping drift envelope at the range edges is the
-        // same compromise D-095 already accepts (now centred on the new
-        // medians). Wider fix is in the V.7.10 carry-forward.
+        // BUG-011 follow-up (round 2) — spiralRevolutions bumped 16 → 21 so
+        // spiralChordsTotal default 336 → 441 (= 21 × 21). radialCount
+        // default unchanged at 21. ±25 % progress-mapping drift envelope
+        // at the range edges is the same compromise D-095 already accepts
+        // (now centred on the new medians).
         constexpr float kRadialCountCPUDefault = 21.0;
-        constexpr float kSpiralChordsTotalCPUDefault = 336.0;
+        constexpr float kSpiralChordsTotalCPUDefault = 441.0;
         float buildStageF = clamp(webs[0].build_stage, 0.0, 4.0);
         uint  fgStage;
         float fgProgress;
@@ -1282,13 +1327,12 @@ fragment float4 arachne_composite_fragment(
         int    fgPolyCount = decodePolygonAnchors(webs[0].rng_seed, fgPoly);
 
         // V.7.7C.5 / D-100 (Q15): webR bumped 0.22 → 0.55 so the foreground
-        // hero polygon fills the canvas. With `webR × 1.20 = 0.66`, the
-        // per-pixel early-exit envelope around the hub at (0.5, 0.5) covers
-        // most of the visible UV (only the ~5% corner regions outside the
-        // off-frame polygon are excluded — and those are where the polygon
-        // doesn't reach anyway).
+        // hero polygon fills the canvas. BUG-011 follow-up (round 2) — Matt's
+        // 2026-05-11 call to "fill the canvas" pushed webR 0.55 → 0.70
+        // (~95 % canvas fill). With `webR × 1.20 = 0.84`, per-pixel early-
+        // exit envelope around the hub covers virtually the entire frame.
         ArachneWebResult wr = arachneEvalWeb(
-            vibUV, ancHub, 0.55, 0.30, 6.0, ancSeed,
+            vibUV, ancHub, 0.70, 0.30, 6.0, ancSeed,
             fgStage, fgProgress,
             arachSpokeCount(ancSeed), arachAspect(ancSeed),
             arachAspectAngle(ancSeed), arachKSag(ancSeed),
