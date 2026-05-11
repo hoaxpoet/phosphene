@@ -158,13 +158,11 @@ static float  arachAspect(uint seed)      { return 0.85 + arachHash(seed + 0xB2u
 static float  arachAspectAngle(uint seed) { return arachHash(seed + 0xC3u) * 2.0 * M_PI_F; }
 // V.7.5 §10.1.2: range widened [0.04, 0.10] → [0.06, 0.14] so longer radials
 // visibly droop. Gravity-direction weighting applied per-spoke at the call site.
-// BUG-011 follow-up (round 3) — sag range backed off from 0.10..0.18 to
-// 0.04..0.08. The round-2 bump combined with my sum-not-average bug in the
-// curved-chord SDF produced ~3× too much visible droop (Matt's 2026-05-11
-// screenshot). With the math fix landed, this lower range produces the
-// "subtle but visible" sag Matt asked for: midpoint droop ~10-15% of chord
-// length, scaled by ring depth (outermost ring = 0, innermost = full).
-static float  arachKSag(uint seed)        { return 0.04 + arachHash(seed + 0xD4u) * 0.04; }
+// BUG-011 follow-up (round 6) — sag range halved 0.04..0.08 → 0.02..0.04
+// per Matt's 2026-05-11 directive "reduce sag" combined with per-chord
+// variability (random ~33% of chords get zero sag — see chordSagPeak
+// derivation in the spiral loop).
+static float  arachKSag(uint seed)        { return 0.02 + arachHash(seed + 0xD4u) * 0.02; }
 
 // ±5% UV hub jitter applied at the fragment call site (keeps WebGPU layout stable).
 static float2 arachHubJitter(uint seed) {
@@ -785,10 +783,12 @@ static ArachneWebResult arachneEvalWeb(
     // edge), matching real orb-weaver biology (refs 01, 03, 11, 12).
     //
     // Formula: r_k = r_outer − (r_outer − r_inner) × (k / (N-1))^p
-    //   p < 1.0 → tight inner / loose outer (Matt's described visual ✓)
+    //   p < 1.0 → tight inner / loose outer
     //   p = 1.0 → perfectly linear (every ring at uniform distance)
-    //   p > 1.0 → tight outer / loose inner (opposite of what Matt described)
-    constexpr float kSpacingPower = 0.85;
+    //   p > 1.0 → tight outer / loose inner
+    // BUG-011 round 6: p 0.85 → 1.0 to match the evenly-spaced spiral
+    // rings in Matt's 2026-05-11 reference photo.
+    constexpr float kSpacingPower = 1.0;
 
     // Precompute spoke directions, gravity weights, and (V.7.7C.3) polygon-
     // clipped spoke tip positions for all visible spokes — reused across all
@@ -897,25 +897,30 @@ static ArachneWebResult arachneEvalWeb(
                     pJ = ringR * sdDir[sj];
                 }
 
-                // BUG-011 follow-up (round 3) — bug fix. The prior round used
-                // `sagScale * (sdGrav[si] + sdGrav[sj])` which is SUM of both
-                // gravity weights = 2× the equivalent average, producing
-                // dramatic visible droop (Matt's 2026-05-11 screenshot showed
-                // the outer ring bowing ~90% of chord length). Correct form
-                // uses the AVERAGE of both endpoints' gravities — the chord
-                // midpoint hangs by the avg-gravity-weighted sag amount, which
-                // matches the physical intuition of a clothesline anchored
-                // at two points of equal-ish height.
+                // BUG-011 round 3 / round 6 — curved-chord parabolic SDF.
+                // chordSagPeak = sagScale × avg gravity × ring-depth × per-chord-random.
+                //
+                // Average of endpoint gravities (NOT sum) — matches the
+                // clothesline-physics intuition where a chord midpoint hangs
+                // by the avg-gravity-weighted sag amount.
                 //
                 // Ring-depth ramp: outermost ring (k=0) gets ZERO sag because
                 // it sits at the polygon perimeter and shouldn't visibly droop
-                // (real spider webs anchor the outer rings tight to the frame).
-                // Inner rings get progressively more sag, peaking at the
-                // innermost ring near the hub. This matches biology — silk
-                // closer to the hub is freshest and least taut.
+                // (real spider webs anchor outer rings tight to the frame).
+                // Inner rings sag more, peaking at the innermost ring near
+                // the hub — silk closer to the hub is freshest and least taut.
+                //
+                // BUG-011 round 6: per-chord random factor. ~33 % of chords
+                // get a deterministic-but-random ZERO sag (look completely
+                // taut), ~67 % get full sag. Per Matt's 2026-05-11 directive
+                // "not all chords should sag." Random key uses seed + (k, si)
+                // so the same chord on the same web always has the same
+                // sag/no-sag decision — stable across frames.
                 float chordAvgGravity = 0.5 * (sdGrav[si] + sdGrav[sj]);
                 float sagDepth     = (N_RINGS > 1) ? float(k) / float(N_RINGS - 1) : 0.0;
-                float chordSagPeak = sagScale * chordAvgGravity * sagDepth;
+                float chordRand    = arachHash(seed * 53u + uint(k * 31 + si * 13));
+                float chordVariability = chordRand > 0.33 ? 1.0 : 0.0;
+                float chordSagPeak = sagScale * chordAvgGravity * sagDepth * chordVariability;
 
                 float2 seg  = pJ - pI;
                 float  segL = length(seg);
@@ -1351,12 +1356,16 @@ fragment float4 arachne_composite_fragment(
         int    fgPolyCount = decodePolygonAnchors(webs[0].rng_seed, fgPoly);
 
         // V.7.7C.5 / D-100 (Q15): webR bumped 0.22 → 0.55 so the foreground
-        // hero polygon fills the canvas. BUG-011 follow-up (round 2) — Matt's
-        // 2026-05-11 call to "fill the canvas" pushed webR 0.55 → 0.70
-        // (~95 % canvas fill). With `webR × 1.20 = 0.84`, per-pixel early-
-        // exit envelope around the hub covers virtually the entire frame.
+        // hero polygon fills the canvas. BUG-011 follow-up (round 2) bumped
+        // it further 0.55 → 0.70. BUG-011 round 6 — Matt's 2026-05-11
+        // reference photo shows the captured spiral filling ~70-75 % of the
+        // image centered, with frame attachment points off-image (true to
+        // real orb-weaver biology). webR 0.70 → 0.40 shrinks the captured
+        // spiral to match. Frame polygon anchors stay at off-canvas positions
+        // [-0.06, 1.06]² so frame threads still extend off-frame — they just
+        // contribute less visual weight inside the canvas.
         ArachneWebResult wr = arachneEvalWeb(
-            vibUV, ancHub, 0.70, 0.30, 6.0, ancSeed,
+            vibUV, ancHub, 0.40, 0.30, 6.0, ancSeed,
             fgStage, fgProgress,
             arachSpokeCount(ancSeed), arachAspect(ancSeed),
             arachAspectAngle(ancSeed), arachKSag(ancSeed),
