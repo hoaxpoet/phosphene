@@ -4,7 +4,46 @@
 // camera frame and bleeds 50% past it on every side, so the viewer sees
 // only a field of vivid stained-glass cells dancing to the music.
 //
-// LM.4.5.2 — Full-cube palette card model with val/sat coupling. Each
+// LM.4.6 — Pure uniform random RGB per cell. Each cell INDEPENDENTLY
+// picks one of 16M possible colours. No rules, no anchors, no zones,
+// no clusters. The hash combines (cellHash, beat step, trackSeed,
+// sectionSalt) so the random choice differs per cell, per beat, per
+// track, per section. Section salt now reads `lumen.bassCounter / 64`
+// (every ~32 s at 120 BPM, resets on track change) — fixed from the
+// LM.4.5.3 broken accumulatedAudioTime proxy.
+//
+// Per Matt 2026-05-11: "EVERY CELL CAN BE INDEPENDENT OF ITS
+// NEIGHBORS... I literally want ANY possible color to be possible
+// within ANY cell." Anchor distributions and spatial zones explicitly
+// rejected. Pure independence is the contract.
+//
+// Caveat documented for the next reviewer: uniform random sampling
+// produces statistically-similar looking panels across tracks (law
+// of large numbers — different specific colours per cell, same
+// distribution shape). If panel-aggregate visual distinction across
+// tracks is desired, that requires biasing the per-cell distribution
+// somehow (which is rejected). The contract here is per-cell freedom.
+// Earlier LM.4.5.4 — Pure uniform random RGB. No rules. Each cell picks a
+// colour at random from the full 16M-colour RGB cube. The hash
+// combines (cellHash, beat step, trackSeed, sectionSalt) so the
+// random choice differs per cell, per beat, per track, per section.
+// No HSV indirection, no coupling rule, no mood gamma, no per-track
+// hue bias — pure random sampling. All previous LM.4.5.x rules
+// retired per Matt's 2026-05-11 ask: "All I am asking you to do
+// now is choose at random a color from the 4-billion-color bag."
+//
+// Per-cell brightness variation lives separately in `lm_cell_intensity`
+// (multiplies the colour by [0.3, 1.6] × bar pulse) — gives stained-
+// glass brightness diversity without restricting which colours appear.
+//
+// Section salt: bassCounter / 64 (every ~32 s at 120 BPM). Resets on
+// track change. Replaces the broken LM.4.5.3 accumulatedAudioTime
+// proxy that never advanced past bucket 0 in production playback.
+//
+// Caveat: pure random includes pales, grays, and washed cells. If
+// the visual is too noisy / too gray-tan-dominant, the next iteration
+// can re-introduce constraints (coupling, sat floor, hue region).
+// Earlier LM.4.5.2 — Full-cube palette card model with val/sat coupling. Each
 // track gets a procedurally-generated "card" of `kCardSize` (48) colours;
 // cells pick slots deterministically (cellHash + beat-step ratchet) and
 // the colour at each slot is `lm_hash_u32(cardIndex ^ trackSeed)` decoded
@@ -282,15 +321,28 @@ constant float kValSatCouplingMargin    = 0.05f;
 /// values > 1.0 in linear space being tonemapped through ACES).
 /// 0.30 → 1.60 gives ~5× brightness ratio, the kind of dramatic
 /// variation real backlit stained glass exhibits.
-constant float kCellBrightnessMin       = 0.30f;
-constant float kCellBrightnessMax       = 1.60f;
-/// Section bucket period in seconds. `accumulated_audio_time`
-/// quantized into integer buckets of this duration drives the
-/// section salt — palette resets on each bucket boundary. 25 s is
-/// roughly verse/chorus duration in pop music; follow-up may plumb
-/// real `StructuralPrediction.sectionIndex` for music-accurate
-/// section boundaries.
-constant float kSectionPeriodSeconds    = 25.0f;
+/// LM.4.6: tightened from [0.30, 1.60] to [0.85, 1.15]. The wide
+/// [0.30, 1.60] range produced ~30% dim/gray cells (intensity 0.3 ×
+/// any anchor colour = dark grayish). Within-anchor variety now
+/// comes from the kAnchorJitterMagnitude per-RGB jitter (gives
+/// hue/sat/val variation around the anchor, not just brightness).
+/// The intensity multiplier stays narrow so every cell reads as
+/// "lit" rather than "in shadow."
+constant float kCellBrightnessMin       = 0.85f;
+constant float kCellBrightnessMax       = 1.15f;
+/// Section bucket size in beats. `lumen.bassCounter` quantised into
+/// integer buckets of this length drives the section salt — palette
+/// resets on each bucket boundary. 64 beats ≈ 32 s at 120 BPM, ≈ 38 s
+/// at 100 BPM — roughly verse/chorus duration in pop music. The
+/// bassCounter resets on track change, so each new track starts at
+/// section 0. Replaces the LM.4.5.3 `accumulatedAudioTime / 25`
+/// proxy which never advanced (audio-energy accumulator, not time).
+/// Follow-up: plumb real `StructuralPrediction.sectionIndex` for
+/// music-accurate section boundaries (verse/chorus/bridge alignment).
+constant float kSectionBeatLength       = 64.0f;
+// LM.4.6: anchor-distribution model retired — the kAnchorJitterMagnitude
+// constant lived here. Per Matt 2026-05-11 it added unwanted structure;
+// the palette is back to pure uniform random RGB per cell.
 /// Gamma endpoints for arousal-driven VALUE-only distribution bias.
 /// arousal = -1 → gamma 1.8 (concave: biases toward darker cells —
 /// deep cobalts, deep wines, ruby shadows); arousal = +1 → gamma 0.55
@@ -447,29 +499,28 @@ static inline float lm_cell_intensity(uint cellHash, float barPhase01) {
     return baseIntensity * barFactor;
 }
 
-/// LM.4.5.3 — uncapped per-cell palette with per-track hue rotation
-/// and section-driven mutation.
+/// LM.4.5.4 — pure uniform random RGB. No rules.
 ///
-/// No card cap. Each (cell, beat, track, section) tuple gets a unique
-/// colour from the 32-bit hash space. Per-track variety arrives via
-/// `trackSeed` XOR (different region of hash space); per-section
-/// variety arrives via `sectionSalt` XOR (palette resets on each
-/// `kSectionPeriodSeconds` bucket boundary); per-beat variety arrives
-/// via the team-counter `step` XOR (cell ratchets to a new colour
-/// each beat).
+/// Each cell picks a colour at random from the full 16-million-color
+/// RGB cube (3 × 8-bit channels). The hash combines (cellHash, beat
+/// step, trackSeed, sectionSalt) so the random choice differs per
+/// cell, per beat, per track, per section. No HSV indirection, no
+/// coupling rule, no mood gamma, no per-track hue rotation. Pure
+/// random sampling.
 ///
-/// Hue, sat, val all decoded from three bytes of the colour hash;
-/// hue then rotated by a per-track offset so the same cellHash on
-/// different tracks lands at completely different hues. Coupling
-/// rule (`val ≤ sat + 0.05`) forces weak cells to also be dark
-/// (no pale family). Arousal-driven value gamma shifts the
-/// distribution mode (calm darker, energetic brighter) without
-/// restricting the envelope.
+/// Per-cell brightness variation lives separately in `lm_cell_intensity`
+/// (multiplies the colour by [0.3, 1.6] × bar pulse). That gives
+/// stained-glass brightness diversity without restricting which
+/// colours appear.
+///
+/// Section salt: derived from `lumen.bassCounter / 64` — every 64
+/// grid beats (≈ 32 s at 120 BPM) the palette resets. bassCounter
+/// resets on track change, so each track starts fresh from section 0.
+/// Time-quantised proxy for true `StructuralPrediction.sectionIndex`.
 static inline float3 lm_cell_palette(uint cellHash,
-                                     constant LumenPatternState& lumen,
-                                     float accumulatedAudioTime) {
-    // Team selection. Buckets are non-overlapping percentages of [0, 100):
-    // 30% bass / 35% mid / 25% treble / 10% static.
+                                     constant LumenPatternState& lumen) {
+    // Team selection — drives the beat-step ratchet (per-cell colour
+    // changes on each team's beat).
     uint teamBucket = cellHash % 100u;
     float teamCounter = 0.0f;
     if (teamBucket < kBassTeamCutoff) {
@@ -479,75 +530,31 @@ static inline float3 lm_cell_palette(uint cellHash,
     } else if (teamBucket < kTrebleTeamCutoff) {
         teamCounter = lumen.trebleCounter;
     }
-    // else: static team — teamCounter stays 0, step stays 0 forever.
 
-    // Period selection. Pareto-shaped distribution from a 3-bit bucket
-    // ∈ [0, 7]: ≈37.5% period=1, 25% period=2, 25% period=4, 12.5%
-    // period=8.
     uint periodBucket = (cellHash >> 8u) & 0x7u;
     float period = 1.0f;
-    if (periodBucket >= 7u) {
-        period = 8.0f;
-    } else if (periodBucket >= 5u) {
-        period = 4.0f;
-    } else if (periodBucket >= 3u) {
-        period = 2.0f;
-    }
+    if (periodBucket >= 7u) { period = 8.0f; }
+    else if (periodBucket >= 5u) { period = 4.0f; }
+    else if (periodBucket >= 3u) { period = 2.0f; }
     float step = floor(teamCounter / period);
 
-    // Section salt — quantise accumulated audio time into integer
-    // buckets of `kSectionPeriodSeconds`. Each bucket boundary
-    // changes the salt, which causes the palette to visibly shift
-    // (every cell gets a completely different colour at the
-    // boundary). Proxy for `StructuralPrediction.sectionIndex`
-    // until real section indexing is plumbed through
-    // `LumenPatternState`.
-    uint sectionSalt = uint(floor(accumulatedAudioTime / kSectionPeriodSeconds));
+    // Section salt — bassCounter quantised into 64-beat buckets.
+    // Resets on track change (bassCounter is reset by setTrackSeed).
+    uint sectionSalt = uint(floor(lumen.bassCounter / kSectionBeatLength));
+    uint trackSeed   = lm_track_seed_hash(lumen);
 
-    // Track seed XOR — different tracks get different regions of the
-    // hash space.
-    uint trackSeed = lm_track_seed_hash(lumen);
-
-    // Per-cell colour hash. Every (cell, beat, track, section) tuple
-    // produces a unique 32-bit hash → unique HSV. No modulo, no card.
-    // Mixing constants (0x9E3779B9 = golden ratio fraction; 0xCC9E2D51
-    // = MurmurHash constant) prevent same-bit-position XOR
-    // cancellations between the inputs (e.g. step bit 8 cancelling
-    // cellHash bit 8 when they happen to match).
+    // Pure uniform random RGB per cell. Any of 16M colours equally
+    // likely. Cell × beat × track × section all XOR'd into one hash so
+    // every (cell, beat, track, section) tuple gets its own colour.
     uint colourHash = lm_hash_u32(cellHash
-                                ^ (uint(step) * 0x9E3779B9u)
-                                ^ trackSeed
-                                ^ (sectionSalt * 0xCC9E2D51u));
+                               ^ (uint(step) * 0x9E37_79B9u)
+                               ^ trackSeed
+                               ^ (sectionSalt * 0xCC9E_2D51u));
 
-    // Three uniform [0, 1] samples from the 32-bit hash.
-    float h_u = float((colourHash >>  0u) & 0xFFu) * (1.0f / 255.0f);
-    float s_u = float((colourHash >>  8u) & 0xFFu) * (1.0f / 255.0f);
-    float v_u = float((colourHash >> 16u) & 0xFFu) * (1.0f / 255.0f);
-
-    // Per-track hue rotation: rotate the whole wheel by a per-track
-    // offset so the same cellHash on different tracks lands at
-    // completely different hues. Pure rotation — preserves full hue
-    // variety per track, no region restriction.
-    float trackHueOffset = float(trackSeed & 0xFFu) * (1.0f / 255.0f);
-    float h = fract(h_u + trackHueOffset);
-
-    // Saturation: full range [0, 1], uniform.
-    float s = s_u;
-
-    // Mood biasing — VALUE only. Gamma curve preserves the [0, 1]
-    // envelope but shifts the distribution mode (calm darker,
-    // energetic brighter).
-    float arousalNorm = clamp(lumen.smoothedArousal * 0.5f + 0.5f, 0.0f, 1.0f);
-    float gamma = mix(kMoodGammaLowArousal, kMoodGammaHighArousal, arousalNorm);
-    float v_biased = pow(v_u, gamma);
-    float v = mix(kCardValMin, kCardValMax, v_biased);
-
-    // Val/sat coupling — `val ≤ sat + kValSatCouplingMargin (0.05)`.
-    // Forces weak cells to also be dark → charcoals / browns / slates /
-    // muted earth tones instead of pale washed cream.
-    v = min(v, s + kValSatCouplingMargin);
-
-    return hsv2rgb(float3(h, s, v));
+    float r = float((colourHash >>  0u) & 0xFFu) * (1.0f / 255.0f);
+    float g = float((colourHash >>  8u) & 0xFFu) * (1.0f / 255.0f);
+    float b = float((colourHash >> 16u) & 0xFFu) * (1.0f / 255.0f);
+    return float3(r, g, b);
 }
 
 /// Voronoi domed-cell relief field. Returns a per-pixel scalar in
@@ -699,7 +706,7 @@ void sceneMaterial(float3 p,
     uint cellHash = lm_hash_u32(cell_id ^ lm_track_seed_hash(lumen));
 
     // Per-cell colour from the procedural palette + team-counter step.
-    float3 cell_hue = lm_cell_palette(cellHash, lumen, f.accumulated_audio_time);
+    float3 cell_hue = lm_cell_palette(cellHash, lumen);
 
     // Per-cell scalar intensity (uniform jitter + bar pulse).
     // **LM.4.4 retired the LM.4 pattern-engine boost** that previously
