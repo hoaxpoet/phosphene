@@ -44,7 +44,7 @@ extension VisualizerEngine {
                 recorder?.recordFrame(features: features, stems: stems, beatSync: beatSync)
             }
         }
-        // DM.3a — feed full-pipeline timing into features.csv frame_cpu_ms /
+        // Feed full-pipeline timing into features.csv frame_cpu_ms /
         // frame_gpu_ms columns. Lag: 1–3 frames behind the row's features
         // (RenderPipeline triple-buffers; documented in SessionRecorder).
         pipe.onFrameTimingObserved = { [weak recorder] cpuMs, gpuMs in

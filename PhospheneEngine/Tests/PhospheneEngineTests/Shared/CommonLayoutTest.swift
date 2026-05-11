@@ -1,11 +1,11 @@
-// CommonLayoutTest — D-099 layout invariant for buffer(2) / buffer(3) bindings.
+// CommonLayoutTest — D-099 layout invariant for buffer(0) / buffer(3) bindings.
 //
-// Engine library MSL `FeatureVector` and `StemFeatures` (Common.metal) were
-// extended in DM.2 to match the Swift sources of truth (192 / 256 bytes).
-// If either Swift struct ever shrinks back, every engine kernel that reads
-// `f.*` or `stems.*` past the smaller boundary (motes_update's hue baking,
-// any future Particles* kernel) over-reads its bound buffer — silently on
-// release builds, with undefined values feeding the rendered frame.
+// Swift `FeatureVector` (192 bytes / 48 floats) and `StemFeatures`
+// (256 bytes / 64 floats) are bound directly to MSL preset preambles
+// (PresetLoader+Preamble.swift) and to the engine library Common.metal.
+// If either Swift struct ever shrinks, every shader that reads past the
+// smaller boundary over-reads its bound buffer — silently on release
+// builds, with undefined values feeding the rendered frame.
 //
 // This test fails fast at CI time before MSL ever sees the regression. It
 // is the Swift-side companion to D-099; locking on the engine MSL side is

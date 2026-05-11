@@ -24,11 +24,9 @@ import Foundation
 public enum ParticleGeometryRegistry {
 
     /// All preset names with a registered `ParticleGeometry` conformer.
-    /// `DriftMotesGeometry.presetName` provides the Drift Motes string;
     /// "Murmuration" is a literal because `ProceduralGeometry` is part of
     /// DM.0's frozen surface (D-097) and cannot host a static identifier.
     public static let knownPresetNames: Set<String> = [
-        "Murmuration",
-        DriftMotesGeometry.presetName
+        "Murmuration"
     ]
 }

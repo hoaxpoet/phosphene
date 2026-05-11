@@ -101,7 +101,7 @@ final class SessionRecorderTests: XCTestCase {
         XCTAssertEqual(Float(row2[4]) ?? -1, 0.9, accuracy: 0.0001)
     }
 
-    // MARK: - DM.3a frame_cpu_ms / frame_gpu_ms columns
+    // MARK: - frame_cpu_ms / frame_gpu_ms columns
 
     func test_featuresHeader_includesFrameTimingColumns() throws {
         let recorder = try XCTUnwrap(SessionRecorder(baseDir: tempDir))
@@ -112,7 +112,7 @@ final class SessionRecorderTests: XCTestCase {
             encoding: .utf8)
         let header = csv.split(separator: "\n").first ?? ""
         XCTAssertTrue(header.hasSuffix("frame_cpu_ms,frame_gpu_ms"),
-                      "DM.3a appends frame_cpu_ms,frame_gpu_ms at end of features.csv header (append-only invariant), got: \(header)")
+                      "features.csv header must end with frame_cpu_ms,frame_gpu_ms (append-only invariant), got: \(header)")
     }
 
     func test_recordFrameTiming_thenRecordFrame_writesTimingValues() throws {

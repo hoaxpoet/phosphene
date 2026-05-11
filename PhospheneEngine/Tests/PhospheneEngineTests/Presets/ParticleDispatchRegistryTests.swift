@@ -1,5 +1,5 @@
 // ParticleDispatchRegistryTests — Lock the catalog↔registry consistency
-// for `.particles`-pass presets (DM.1).
+// for `.particles`-pass presets.
 //
 // Closes the silent-fall-through hole: `applyPreset .particles:` resolves
 // the conformer by preset name. A typo in a JSON sidecar (or a new
@@ -27,9 +27,9 @@ struct ParticleDispatchRegistryTests {
         let loader = PresetLoader(device: device, pixelFormat: .bgra8Unorm_srgb)
         let particlePresets = loader.presets.filter { $0.descriptor.passes.contains(.particles) }
 
-        // The catalog must declare at least the two known particle presets;
+        // The catalog must declare at least one known particle preset;
         // an empty result here means the catalog regressed (e.g. silent
-        // shader-compile drop hit Murmuration or Drift Motes).
+        // shader-compile drop hit Murmuration).
         #expect(!particlePresets.isEmpty,
                 "No presets with .particles pass were loaded — catalog regressed")
 
@@ -45,11 +45,6 @@ struct ParticleDispatchRegistryTests {
                 render its backdrop with no particles.
                 """)
         }
-    }
-
-    @Test("DriftMotesGeometry.presetName is registered")
-    func test_driftMotesPresetNameRegistered() {
-        #expect(ParticleGeometryRegistry.knownPresetNames.contains(DriftMotesGeometry.presetName))
     }
 
     @Test("Murmuration is registered")

@@ -6,9 +6,25 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-11-a] Drift Motes preset retired (D-102)
+
+**Increment:** removal. **Decision:** D-102. One commit.
+
+Drift Motes (DM.0 through DM.3 plus DM.3.1 / DM.3.2 / DM.3.2.1 / DM.3.3 / DM.3.3.1 manual-smoke remediation increments) is retired in its entirety. All preset code (`DriftMotes.metal`, `DriftMotes.json`, `ParticlesDriftMotes.metal`, `DriftMotesGeometry.swift`), tests (`DriftMotesAudioCouplingTest`, `DriftMotesRespawnDeterminismTest`, `DriftMotesTests`, `DriftMotesVisibilityTest`), design / palette / architecture-contract docs, the visual reference set under `docs/VISUAL_REFERENCES/drift_motes/`, and the DM.3 perf-capture procedure docs are deleted from the tree. Recover from git history if a future iteration is contemplated.
+
+`PresetLoaderCompileFailureTest.expectedProductionPresetCount` drops 16 → 15. `ParticleGeometryRegistry.knownPresetNames` drops `DriftMotesGeometry.presetName`. `VisualizerEngine.resolveParticleGeometry` keeps only the `Murmuration` case. `SoakTestHarnessTests.shortRunDriftMotes` removed. `PresetVisualReviewTests` arguments and `buildDriftMotesContactSheet` helper removed. `PresetRegressionTests` Drift Motes hash entry removed.
+
+**What survives.** D-097 (particle preset architecture: siblings, not subclasses) — Murmuration is byte-identical to its post-DM.0 baseline; the protocol surface (`ParticleGeometry` / `ParticleGeometryRegistry`) stays for future particle presets. D-099 (Swift `FeatureVector` / `StemFeatures` at 192 / 256 bytes) — locked by `CommonLayoutTest`. D-101 (`stems.drums_beat` as canonical particles-family beat-reactivity field). `SessionRecorder.frame_cpu_ms` / `frame_gpu_ms` columns and `RenderPipeline.onFrameTimingObserved` (originally DM.3a) stay — generic per-frame timing instrumentation useful for any preset's perf capture. BUG-012 (Drift Motes p99 frame-time tail) closed as obsolete in `KNOWN_ISSUES.md`.
+
+**Rationale.** After four sessions of iteration (DM.1 → DM.3.3.1) the preset never achieved a clear musical anchor or sustained visual interest. The fundamental problem was not tuneable: drifting particles + light shaft lack a load-bearing musical role that distinguishes them from a generic ambient backdrop. Every successor concept pitched during remediation failed the three-part bar (iconic visual subject deliverable at fidelity + clear musical role + infrastructure-feasible). Decision to remove was made after Matt rejected every concept and lost confidence further iteration would converge.
+
+See `docs/DECISIONS.md` D-102 for the full rationale, what was rejected (`@StateObject`-style retention as "infrastructure for a future preset", a user-side "rest period" affordance, keeping the shader as a SHADER_CRAFT reference), and the rule for any future revival (start from a new preset spec authored against the three-part bar; do not undo this deletion).
+
+---
+
 ## [dev-2026-05-10-a] BUG-011 — Arachne over Tier 2 frame budget: tuning levers L1+L2+L3 + SOAK kernel-cost benchmark
 
-**Increment:** BUG-011. **Domain:** perf. **Status:** Open — tuning levers landed; closure pending Matt's M2 Pro real-music perf capture per `docs/diagnostics/DM.3-perf-capture.md`. Four commits.
+**Increment:** BUG-011. **Domain:** perf. **Status:** Open — tuning levers landed; closure pending Matt's M2 Pro real-music perf capture (procedure documented in BUG-011 entry of `docs/QUALITY/KNOWN_ISSUES.md`). Four commits.
 
 Pre-tuning baseline measured 2026-05-08 in session `2026-05-08T22-01-07Z` (Arachne window of 4,579 frames over Love Rehab + So What + Limit To Your Love on M2 Pro):
 
