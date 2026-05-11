@@ -183,8 +183,12 @@ public struct ArachneBuildState: Sendable {
 
     // MARK: - Radial phase
 
-    /// Total radial spokes, chosen at segment start ∈ [12, 17].
-    public var radialCount: Int = 13
+    /// Total radial spokes, chosen at segment start ∈ [18, 24].
+    /// BUG-011 follow-up — bumped from [12, 17] to [18, 24] (median 13 → 21)
+    /// per Matt's 2026-05-11 "more intricate webs" product call. Combined
+    /// with the spiralRevolutions bump (8 → 16) this brings median cell
+    /// count from ~104 to ~336 per completed web.
+    public var radialCount: Int = 21
     /// Current radial being drawn (0..radialCount-1).
     public var radialIndex: Int = 0
     /// 0..1 within the current radial.
@@ -194,8 +198,13 @@ public struct ArachneBuildState: Sendable {
 
     // MARK: - Spiral phase
 
-    /// Total revolutions for the capture spiral, chosen at segment start ∈ [7, 9].
-    public var spiralRevolutions: Float = 8.0
+    /// Total revolutions for the capture spiral, chosen at segment start ∈ [14, 18].
+    /// BUG-011 follow-up — bumped from [7, 9] to [14, 18] (median 8 → 16) per
+    /// Matt's 2026-05-11 "more intricate webs" product call. ~2× the rings
+    /// roughly doubles the spiral phase duration (8 × 8 = 64 beats → 16 × 8 =
+    /// 128 beats, see `spiralDuration`) — the build now takes ~87s at 120 BPM
+    /// instead of ~55s, but Love-Rehab-scale segments accommodate it.
+    public var spiralRevolutions: Float = 16.0
     /// `revolutions × radialCount`; pre-computed at spiral-phase entry.
     public var spiralChordsTotal: Int = 0
     /// Current chord being laid (0..spiralChordsTotal-1).
@@ -1020,11 +1029,12 @@ public final class ArachneState: @unchecked Sendable {
         // Fresh BuildState defaults.
         var bs = ArachneBuildState.zero()
 
-        // radialCount ∈ [12, 17]; spiralRevolutions ∈ [7, 9]. Derived from rng
-        // so reset() is deterministic against `seed` until the rng has been
-        // advanced by spawn / spider activity.
-        let radialCount = 12 + Int(lcg(&rng) * 5.99)        // 12..17
-        let revolutions: Float = 7.0 + lcg(&rng) * 2.0     // 7..9
+        // BUG-011 follow-up — bumped per Matt's 2026-05-11 "more intricate webs"
+        // call: radialCount ∈ [12, 17] → [18, 24]; spiralRevolutions ∈ [7, 9] →
+        // [14, 18]. Median cell count goes from ~104 to ~336 per completed web.
+        // Derived from rng so reset() is deterministic against `seed`.
+        let radialCount = 18 + Int(lcg(&rng) * 6.99)        // 18..24
+        let revolutions: Float = 14.0 + lcg(&rng) * 4.0    // 14..18
         bs.radialCount = radialCount
         bs.spiralRevolutions = revolutions
         bs.radialDrawOrder = Self.computeAlternatingPairOrder(radialCount: radialCount)
