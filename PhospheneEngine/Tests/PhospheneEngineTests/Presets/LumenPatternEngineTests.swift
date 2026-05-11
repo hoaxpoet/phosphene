@@ -505,29 +505,23 @@ struct LumenLM3StateTests {
     }
 }
 
-// MARK: - Suite 9: LM.4.3 — BeatGrid-driven band counters
+// MARK: - Suite 9: LM.4.4 — BeatGrid-driven cell-dance counters
 
-/// **LM.4.3 supersedes LM.3.2's FFT-band counter triggers.** The band
-/// counters now advance on `f.beatPhase01` wrap (each grid beat) and
-/// `f.barPhase01` wrap (each grid downbeat). The three rates are:
-/// `bassCounter` every grid beat, `midCounter` every 2 grid beats,
-/// `trebleCounter` every 4 grid beats. Each advance is uniform +1.0
-/// (no energy modulation — the LM.3.2 `beatStrength` scaling is
-/// retired). FFT-band rising edges (`f.beatBass / beatMid / beatTreble`)
-/// no longer participate.
-@Suite("LM.4.3 band counters — beatPhase01 wrap drives all four")
-struct LumenLM43CounterTests {
+/// **LM.4.3 superseded LM.3.2's FFT-band counter triggers; LM.4.4 then
+/// deleted the pattern engine entirely.** The remaining counters
+/// (`bassCounter / midCounter / trebleCounter`) advance on `f.beatPhase01`
+/// wraps at uniform `+1.0`. `bassCounter` ticks every grid beat,
+/// `midCounter` every 2, `trebleCounter` every 4. `barCounter` no longer
+/// advances (its only consumer was the deleted pattern-spawn engine).
+/// FFT-band rising edges (`f.beatBass / beatMid / beatTreble`) do not
+/// participate at all.
+@Suite("LM.4.4 cell-dance counters — beatPhase01 wrap drives bass/mid/treble")
+struct LumenLM44CounterTests {
 
     /// Helper: drive one `f.beatPhase01` wrap (high → low).
     private func driveBeatWrap(_ engine: LumenPatternEngine, dt: Float = 1.0 / 60.0) {
         engine.tick(features: fv(beatPhase01: 0.95, deltaTime: dt), stems: StemFeatures.zero)
         engine.tick(features: fv(beatPhase01: 0.05, deltaTime: dt), stems: StemFeatures.zero)
-    }
-
-    /// Helper: drive one `f.barPhase01` wrap (high → low).
-    private func driveBarWrap(_ engine: LumenPatternEngine, dt: Float = 1.0 / 60.0) {
-        engine.tick(features: fv(barPhase01: 0.95, deltaTime: dt), stems: StemFeatures.zero)
-        engine.tick(features: fv(barPhase01: 0.05, deltaTime: dt), stems: StemFeatures.zero)
     }
 
     /// A single `f.beatPhase01` wrap increments `bassCounter` by exactly 1.0.
@@ -567,32 +561,24 @@ struct LumenLM43CounterTests {
                 "trebleCounter \(snap.trebleCounter) ≠ 1 after 4 beat wraps (expected every-4 cadence)")
     }
 
-    /// `f.barPhase01` wrap increments `barCounter` by 1.0.
-    @Test func test_barPhase01Wrap_incrementsBarCounter() throws {
-        let engine = try makeEngine()
-        let before = engine.snapshot().barCounter
-        driveBarWrap(engine)
-        let after = engine.snapshot().barCounter
-        #expect(after == before + 1.0,
-                "barCounter \(after) ≠ \(before) + 1.0 on barPhase01 wrap")
-    }
-
-    /// LM.4.3: no FFT fallback. `barPhase01` held at 0 forever (no grid)
-    /// must NOT advance `barCounter` from any combination of FFT inputs.
-    /// The LM.3.2 "every 4 bass beats" fallback was retired with the
-    /// rest of the FFT trigger path.
-    @Test func test_noGridSignal_noBarCounterAdvance() throws {
+    /// LM.4.4: `barCounter` no longer advances under any input — its only
+    /// consumer (the LM.4 pattern-spawn trigger) was deleted. The field
+    /// stays in `LumenPatternState` for GPU ABI continuity. This test
+    /// regression-locks the dead-counter contract: even with both a beat
+    /// wrap AND a bar wrap fired, `barCounter` must stay at 0.
+    @Test func test_barCounter_neverAdvances_afterLM44() throws {
         let engine = try makeEngine()
         let dt: Float = 1.0 / 60.0
-        // Drive 8 grid beats but no bar wrap.
-        for _ in 0..<8 {
-            driveBeatWrap(engine, dt: dt)
-        }
+        // Fire a bar wrap (would have advanced barCounter at LM.4.3).
+        engine.tick(features: fv(barPhase01: 0.95, deltaTime: dt), stems: StemFeatures.zero)
+        engine.tick(features: fv(barPhase01: 0.05, deltaTime: dt), stems: StemFeatures.zero)
+        // Fire several beat wraps (would have advanced bassCounter — that's fine).
+        for _ in 0..<4 { driveBeatWrap(engine, dt: dt) }
         let snap = engine.snapshot()
-        #expect(snap.bassCounter == 8.0,
-                "bassCounter should have advanced 8 times")
         #expect(snap.barCounter == 0,
-                "barCounter \(snap.barCounter) ≠ 0 — LM.4.3 should have NO bar fallback")
+                "barCounter \(snap.barCounter) ≠ 0 — LM.4.4 retired the bar-counter advancement entirely")
+        #expect(snap.bassCounter > 0,
+                "bassCounter \(snap.bassCounter) — the LM.3.2 cell dance must still advance on beat wraps")
     }
 
     /// `f.beatBass` (FFT) no longer participates in any counter. Drive a
@@ -611,14 +597,15 @@ struct LumenLM43CounterTests {
         #expect(snap.barCounter == 0)
     }
 
-    /// `reset()` zeroes all four band counters and the phase-subdivision state.
+    /// `reset()` zeroes the cell-dance band counters and the phase-
+    /// subdivision state. `barCounter` is also zeroed defensively (no
+    /// live consumer at LM.4.4 but the ABI field is still in the GPU
+    /// state).
     @Test func test_reset_zerosBandCounters() throws {
         let engine = try makeEngine()
         for _ in 0..<3 { driveBeatWrap(engine) }
-        driveBarWrap(engine)
         let beforeReset = engine.snapshot()
         #expect(beforeReset.bassCounter > 0)
-        #expect(beforeReset.barCounter > 0)
 
         engine.reset()
         let afterReset = engine.snapshot()

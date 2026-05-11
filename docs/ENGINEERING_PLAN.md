@@ -3518,7 +3518,35 @@ The preset is sequenced as 10 increments LM.0 → LM.9 with cert sign-off at LM.
 
 **Known limitation:** no FFT fallback — if `f.beatPhase01` never wraps (pure silence; pre-grid first ~10 s of live ad-hoc sessions), counters and patterns are static. Acceptable for prepared sessions (grid is at session start); LM.4.4 may add a fallback if reactive ad-hoc sessions surface the gap.
 
-**Carry-forward.** LM.4.2 (full-spectrum per-track palette redesign) is still the next planned increment. Palette breadth + LM.4.3 beat-sync foundation together should answer both of Matt's open feedback threads: "movement of color follows the music" (LM.4.3) and "variety within a narrow scope" (LM.4.2).
+**Carry-forward.** LM.4.4 retired the pattern engine entirely after the third M7 review (the LM.4.3 trigger fix was confirmed but the ripple/sweep accent layer was rejected as "barely noticeable"). LM.4.2 (full-spectrum per-track palette redesign) is now the next planned increment.
+
+### Increment LM.4.4 — Pattern engine retired
+
+**Scope.** Delete the entire LM.4 pattern-spawn engine — Swift factory + engine pool state + spawn helpers + shader evaluator helpers + integration site. Keep the LM.3.2 cell-color dance (now driven by LM.4.3 grid-wrap counters) + the bar pulse as the entire visual story. GPU ABI (`LumenPatternState`, 376 B; `LumenPattern[4]` tuple; `LumenPatternKind` enum) preserved for future LM.5+ work that may rebind the slots to continuous fields (breathing / noiseDrift) rather than transient bursts.
+
+**Why.** Third M7 review (Matt 2026-05-11, session `2026-05-11T17-02-17Z`): "The ripple sweep is not really doing much — it's barely noticeable. What value is it really adding?" Honest diagnosis: at execution-time-feasible boost levels the Gaussian wavefronts were invisible against the simultaneous bar pulse (both events fired on the downbeat; panel-wide pulse dominated the local +20% band by area). Pushing the wavefront brighter would have re-introduced the LM.4.1-resolved bleach-out. The CLAUDE.md Audio Data Hierarchy rule frames the structural redundancy: per-bar pattern events and the bar pulse were occupying the same downbeat moment, so they couldn't help but compete.
+
+**Done when.**
+
+- `Sources/Presets/Lumen/LumenPatterns.swift` deleted.
+- `Tests/.../Presets/LumenPatternsTests.swift` deleted.
+- `Sources/Presets/Lumen/LumenPatternEngine.swift` — pattern-pool state (`activePatterns`, `barRotationCounter`, `prevBarPhase01`) deleted; `updatePatterns`, `spawnPattern`, `spawnBarRotationPattern`, `writePatternsToState`, `radialRippleOriginFromBar`, `sweepEntryFromBar`, `chooseBarPatternKind`, `lmHashU32`, `trackSeedHash32` all deleted; `updateBandCounters` simplified to beat-wrap-only (no bar wrap); `advancePatternEngine` simplified to just call the band-counter update; `resetBeatTrackingState` updated; LM.4-era `swiftlint:disable type_body_length` removed (class shrank under the threshold).
+- `Sources/Presets/Shaders/LumenMosaic.metal` — `lm_pattern_radial_ripple` / `lm_pattern_sweep` / `lm_evaluate_active_patterns` evaluator functions deleted; `kPatternBoost` / `kPatternMaxSum` / `kRippleMaxRadius` / `kRippleSigmaBase` / `kSweepSigma` constants deleted; `sceneMaterial` integration site (`cell_intensity += pattern_contribution * kPatternBoost`) deleted.
+- `Tests/.../Presets/LumenPatternEngineTests.swift` Suite 9 — renamed `LumenLM43CounterTests` → `LumenLM44CounterTests`; `test_barPhase01Wrap_incrementsBarCounter` + `test_noGridSignal_noBarCounterAdvance` retired; replaced with `test_barCounter_neverAdvances_afterLM44` which regression-locks the dead-counter contract. `driveBarWrap` helper removed.
+- `PresetAcceptance` + `PresetRegression` + `PresetLoaderCompileFailure` + `LumenPatternEngine` all green. App build clean. SwiftLint 0 violations on touched files; project baseline preserved (the +1 violation in `DriftMotesGeometry.swift` is pre-existing from the unrelated DM.3.3.1 commit).
+- `CLAUDE.md` updated: `LumenPatterns.swift` module-map entry marked deleted; `LumenPatternEngine.swift` entry rewritten for LM.4.4 semantics; `LumenMosaic.metal` entry updated to reflect pattern engine retirement; tuning-surface line trimmed; LM.4.4 landed-work entry added above LM.4.3.
+
+**Verify.**
+
+- `swift test --package-path PhospheneEngine --filter "LumenPatternEngine|PresetAcceptance|PresetRegression|PresetLoaderCompileFailure"`
+- `swift test --package-path PhospheneEngine` (full sweep; expect only the 3 documented pre-existing failures)
+- `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build`
+- `swiftlint lint --strict --config .swiftlint.yml` (touched files clean)
+- Matt re-review on a real-music session: panel shows LM.3.2 cell-color dance on every beat + bar pulse on downbeats only; no ripple/sweep wavefronts; cell colour identity preserved through the bar pulse (no bleach-out).
+
+**Status:** ⏳ tests + docs landed 2026-05-11. Awaiting Matt re-review.
+
+**Carry-forward.** LM.4.2 (full-spectrum per-track palette redesign) is the next planned increment. With the pattern engine gone, the palette redesign focuses cleanly on what actually matters: colour variety across the spectrum. LM.5 (clusterBurst / breathing / noiseDrift) becomes "continuous fields rebinding to the slot-8 buffer" if it ever lands — the GPU ABI is preserved exactly for that possibility, but it's no longer scheduled.
 
 ### Increment LM.4.2 — Full-spectrum palette redesign (per-track custom palette cards)
 
