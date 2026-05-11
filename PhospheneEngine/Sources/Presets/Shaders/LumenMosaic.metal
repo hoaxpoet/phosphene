@@ -55,8 +55,18 @@
 //   - The four light agents (slot 8 buffer, LM.2 contract §P.4) are still
 //     ticked CPU-side for ABI continuity but the `lights[i].intensity` /
 //     `lights[i].colorR/G/B` fields are unused by the LM.3.2 shader. The
-//     agent loop is retained as zeroed scaffolding; LM.4 may revisit
-//     pattern-engine bursts on top of the LM.3.2 cell field.
+//     agent loop is retained as zeroed scaffolding.
+//   - **LM.4 pattern engine** layers transient brightness spikes on top of
+//     the cell field: `radialRipple` (Gaussian-band ring expanding from a
+//     hash-derived origin, spawned on rising-edge of `f.beatBass`) +
+//     `sweep` (Gaussian-band wavefront crossing the panel from an edge
+//     midpoint, spawned on bar-counter rising edges, mood-weighted vs
+//     ripple). Patterns INJECT INTENSITY only — the contribution is added
+//     to `cell_intensity` AFTER `lm_cell_intensity` is computed, so the
+//     wavefront paints the cells' own palette colours brighter (a ripple
+//     on a warm-red cell flashes warm-red; on a cool-cyan cell, cool-cyan).
+//     Pool capacity 4; overflowing spawns evict the oldest. See
+//     `LumenPatternEngine` (CPU) + `lm_evaluate_active_patterns` (this file).
 //
 // References:
 //   docs/presets/LUMEN_MOSAIC_DESIGN.md          — design intent + open decisions.
@@ -282,6 +292,46 @@ constant float kSeedMagnitudeD = 0.50f;   // per-channel phase shift on d — la
 /// changes have the centroid's expected falloff value to compare against.
 constant float kLumenDefaultFalloffK = 6.0f;
 
+// ── LM.4 pattern engine tuning constants ───────────────────────────────────
+//
+// Patterns inject INTENSITY, not COLOUR. Per-cell colour comes from
+// `lm_cell_palette`; pattern contributions brighten cells they cross,
+// preserving the unified-panel aesthetic (a ripple firing on a warm-red
+// cell flashes warm-red brighter; on a cool-cyan cell, cool-cyan brighter).
+// The frost halo at cell boundaries (round 7 frost) brightens too —
+// intentional and visually correct.
+//
+// `kPatternBoost` scales the summed pattern contribution before adding
+// to `cell_intensity` in `sceneMaterial`. Sized so that the peak combined
+// response (silence baseline `[0.85, 1.0]` × bar pulse 1.30 + peak
+// pattern 1.0 × kPatternBoost) stays under the D-037 "beat response ≤
+// 2× continuous + 1.0" ceiling. Tune in M7 review.
+
+/// Pattern contribution scaling. `cell_intensity += clamp(sum, 0, kPatternMaxSum) × kPatternBoost`.
+/// Peak per-cell contribution at a wavefront is therefore ≤ kPatternMaxSum × kPatternBoost.
+constant float kPatternBoost = 0.40f;
+
+/// Upper-bound on the summed pattern contribution before scaling by
+/// `kPatternBoost`. Overlapping patterns can't unboundedly stack —
+/// the cap of 1.0 means any number of simultaneously-active patterns
+/// can contribute no more than 1.0 × kPatternBoost = 0.40.
+constant float kPatternMaxSum = 1.0f;
+
+/// Radial-ripple maximum radius (cell-uv units, [0, 1] space). At
+/// `phase = 1`, the ring centred on `p.origin` has radius √2 ≈ 1.414 —
+/// large enough to reach any panel-edge corner from any origin in
+/// `[0.05, 0.95]²` (max corner distance ≈ √(0.95² + 0.95²) ≈ 1.343).
+constant float kRippleMaxRadius = 1.4142136f;   // √2
+
+/// Radial-ripple Gaussian band width at phase = 0. The shader narrows
+/// this as the ring grows so the wavefront sharpens as it expands —
+/// near the panel edge the band is `kRippleSigmaBase × 0.3`.
+constant float kRippleSigmaBase = 0.10f;
+
+/// Sweep Gaussian band width. Constant across the wavefront's lifetime;
+/// the wavefront's *position* sweeps, not its *width*.
+constant float kSweepSigma = 0.10f;
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 /// Visible-frame half-extents at the panel z-plane, derived from the
@@ -473,6 +523,89 @@ static inline float3 lm_cell_palette(uint cellHash,
     return hsv2rgb(float3(hue, sat, val));
 }
 
+// ── LM.4 pattern evaluators ────────────────────────────────────────────────
+//
+// Per-pattern intensity evaluators. Each returns a scalar in [0, 1] for
+// a cell centred at `cell_uv` (in the [0, 1]² panel-face UV space; the
+// integration site in `sceneMaterial` remaps `cellV.pos` from
+// `panel_uv ∈ [-1, +1]` to `[0, 1]` before calling). The sum is clamped
+// in `lm_evaluate_active_patterns` and scaled by `kPatternBoost` before
+// being added to `cell_intensity`.
+
+/// Radial ripple intensity at `cell_uv`. The wavefront is a Gaussian band
+/// centred on the expanding radius `phase × kRippleMaxRadius`; the band
+/// narrows as the ring grows so the edge sharpens at the panel boundary.
+/// `p.intensity` scales the peak; the engine sets it to
+/// `LumenPatternFactory.defaultPeakIntensity = 1.0`.
+///
+/// `p` is passed by value (small 48-byte struct; MSL allows freely passing
+/// `LumenPattern` between address spaces this way, avoiding the
+/// thread/constant reference mismatch when the caller has already copied
+/// a slot out of `lumen.patterns[]`).
+static inline float lm_pattern_radial_ripple(float2 cell_uv, LumenPattern p) {
+    float radius = p.phase * kRippleMaxRadius;
+    float sigma  = kRippleSigmaBase * (1.0f - 0.7f * p.phase);
+    sigma = max(sigma, 1e-3f);                          // floor — never collapses
+    float2 origin = float2(p.originX, p.originY);
+    float dist = distance(cell_uv, origin);
+    float delta = dist - radius;
+    float gauss = exp(-(delta * delta) / (2.0f * sigma * sigma));
+    return p.intensity * gauss;
+}
+
+/// Sweep intensity at `cell_uv`. The wavefront is a Gaussian band whose
+/// centre's projection onto `p.direction` is
+/// `sweep_position = phase × 2 − 1`. As `phase ∈ [0, 1]`, the band
+/// traverses [-1, +1] along the direction axis, entering the panel from
+/// outside and exiting on the opposite side.
+static inline float lm_pattern_sweep(float2 cell_uv, LumenPattern p) {
+    float2 origin = float2(p.originX, p.originY);
+    float2 direction = float2(p.directionX, p.directionY);
+    float sweep_position = p.phase * 2.0f - 1.0f;
+    float projected = dot(cell_uv - origin, direction);
+    float delta = projected - sweep_position;
+    float gauss = exp(-(delta * delta) / (2.0f * kSweepSigma * kSweepSigma));
+    return p.intensity * gauss;
+}
+
+/// Sum the per-pattern intensity contributions at `cell_uv` over the
+/// `lumen.activePatternCount` active slots, clamp the sum to
+/// `kPatternMaxSum`, and return. Caller multiplies by `kPatternBoost`
+/// before adding to `cell_intensity`.
+///
+/// `cell_uv` is the per-fragment uv remapped from `panel_uv ∈ [-1, +1]`
+/// to `[0, 1]` — see the integration site in `sceneMaterial` for the
+/// remap rationale (within-cell variation is below visual perception and
+/// reads as a smooth wavefront).
+static inline float lm_evaluate_active_patterns(float2 cell_uv,
+                                                constant LumenPatternState& lumen) {
+    int count = min(lumen.activePatternCount, 4);
+    if (count <= 0) {
+        return 0.0f;
+    }
+    float sum = 0.0f;
+    for (int i = 0; i < count; i++) {
+        // MSL doesn't permit a runtime-indexed reference into a fixed-
+        // size constant array — pull the slot through a switch on `i`.
+        // The compiler unrolls this cleanly at the count = 4 ceiling.
+        // The copied slot is `thread`-space, which is why the per-pattern
+        // helpers accept `LumenPattern` by value (not `constant LumenPattern&`).
+        LumenPattern p;
+        if (i == 0)      p = lumen.patterns[0];
+        else if (i == 1) p = lumen.patterns[1];
+        else if (i == 2) p = lumen.patterns[2];
+        else             p = lumen.patterns[3];
+
+        if (p.kindRaw == 1) {           // .radialRipple
+            sum += lm_pattern_radial_ripple(cell_uv, p);
+        } else if (p.kindRaw == 2) {    // .sweep
+            sum += lm_pattern_sweep(cell_uv, p);
+        }
+        // .idle (0) and future kinds contribute 0.
+    }
+    return clamp(sum, 0.0f, kPatternMaxSum);
+}
+
 /// Voronoi domed-cell relief field. Returns a per-pixel scalar in
 /// [0, ≈ 1]: 1 at cell centres (where v.f1 → 0), 0 at cell edges (where
 /// v.f1 → cell_radius). The smoothstep on (f2 - f1) sharpens the falloff
@@ -626,6 +759,28 @@ void sceneMaterial(float3 p,
 
     // Per-cell scalar intensity (uniform jitter + bar pulse).
     float cell_intensity = lm_cell_intensity(cellHash, f.bar_phase01);
+
+    // LM.4 — pattern engine contribution. Evaluate the active pattern pool
+    // (≤ 4 slots) at the fragment's uv, remapped from `panel_uv ∈ [-1, +1]`
+    // into the patterns' `[0, 1]²` UV space (where engine-side origins are
+    // hash-derived in `[0.05, 0.95]²` and sweep entries sit on the four
+    // edge midpoints). Patterns inject intensity, not colour — the
+    // contribution brightens whatever palette colour the cell already
+    // carries (the wavefront keeps the cell's identity). The frost halo
+    // at cell boundaries (round 7) also brightens, since
+    // `albedo = clamp(frosted_hue × cell_intensity, …)` multiplies the
+    // boosted intensity through the entire albedo chain.
+    //
+    // We use the fragment's panel_uv (not a per-cell-quantized centre) so
+    // the wavefront reads as a smooth Gaussian band crossing the panel —
+    // the per-fragment variation within a cell is below visual perception
+    // (cell radius ≈ 0.07 in [0, 1] uv, ripple σ ≈ 0.10 — within-cell
+    // intensity variation is sub-pixel-rate smooth). Per-cell colour
+    // identity is preserved because `cell_hue` still derives from
+    // `cellHash`.
+    float2 cell_center_uv = panel_uv * 0.5f + 0.5f;
+    float pattern_contribution = lm_evaluate_active_patterns(cell_center_uv, lumen);
+    cell_intensity += pattern_contribution * kPatternBoost;
 
     // Frosted-glass diffusion at cell boundaries (LM.3.2 round 7,
     // 2026-05-10). The Voronoi `f2 - f1` distance is the natural
