@@ -226,61 +226,71 @@ constant float kCellIntensityJitter = 0.15f;   // adds [0, 0.15] from hash
 constant float kBarPulseMagnitude = 0.20f;
 constant float kBarPulseShape     = 8.0f;
 
-/// LM.4.5.2 — full-cube palette card with val/sat coupling.
+/// LM.4.5.3 — uncapped per-cell palette + per-track hue bias +
+/// per-cell brightness variation + section-driven mutation.
 ///
-/// Each track gets a procedurally-generated "card" of `kCardSize`
-/// colours. Cells pick slots deterministically (cellHash + beat-step
-/// ratchet), then the colour for that slot comes from
-/// `lm_hash_u32(cardIndex ^ trackSeed)` decoded as three uniform
-/// [0, 1] samples mapped to HSV via:
+/// **No card cap.** Each cell on each beat on each track on each
+/// section gets a unique colour from the full 32-bit hash space
+/// (~4 billion possibilities, ~16 M distinct after display
+/// quantization). 1500 cells × ~480 beats per song × N sections
+/// = potentially millions of distinct cell-colour events per song.
 ///
-///   - **Hue**: full wheel (uniform [0, 1] → 0–360°). The per-track
-///     seed picks WHICH hues populate the card.
-///   - **Saturation**: full range [0, 1] (uniform). Every kind of
-///     colour is allowed — pure jewel tones (sat 1.0), muted earth
-///     tones (sat 0.4), near-greys (sat 0.05).
-///   - **Value**: full range mapped to [`kCardValMin (0.08)`,
-///     `kCardValMax (0.95)`] via an arousal-driven gamma bias
-///     (calm → gamma 1.8 biases darker, energetic → gamma 0.55
-///     biases brighter). Envelope preserved — every card contains
-///     darks AND brights regardless of mood.
-///   - **Coupling rule (mandatory)**: a cell's value cannot exceed
-///     its saturation by more than `kValSatCouplingMargin (0.20)`.
-///     A weak (low-sat) cell is forced to also be dark; a strong
-///     (high-sat) cell can be any value. This eliminates the pale /
-///     washed / cream-tinted cells (high val + low sat) without
-///     restricting saturation.
+/// Colour hash:
+///   `lm_hash_u32(cellHash ^ uint(step) ^ trackSeed ^ sectionSalt)`
 ///
-/// Why coupling, not a saturation floor: pale colours and muted
-/// colours look almost the same on a screen, but they're produced
-/// differently. Pale = light + weak (washed-out, the rejected v1
-/// failure mode). Muted = dark + weak (dusty rose, espresso, sage
-/// — real colours). The difference is value, not saturation. The
-/// coupling rule keeps the muted family and bans the pale family
-/// without flooring sat — every kind of colour is allowed,
-/// including charcoals, browns, slates, dusty earth tones, and
-/// near-greys. v1 (no guardrail above mid-sat) and v2 (sat floor
-/// at 0.70) were both wrong abstractions.
+/// Decoded as three uniform [0, 1] HSV samples mapped to HSV via:
+///   - **Hue**: full wheel uniform, then per-track hue rotation
+///     (a track-derived offset shifts the whole wheel) so the same
+///     cellHash on different tracks lands at completely different
+///     hues. Distribution stays full-range.
+///   - **Saturation**: full range [0, 1] uniform.
+///   - **Value**: full range mapped to [`kCardValMin`, `kCardValMax`]
+///     with arousal-driven gamma bias (calm darker, energetic brighter).
+///   - **Coupling rule**: `val ≤ sat + kValSatCouplingMargin (0.05)`.
+///     Tightened at LM.4.5.3 from 0.20 — the previous margin admitted
+///     borderline pale cells (sat=0.4 + val=0.6). At 0.05 every weak
+///     cell is also dark; pale family unreachable by construction.
 ///
-/// Per-track distinctiveness: the `trackSeed` XOR means track A's
-/// card[5] and track B's card[5] are completely different (h, s, v)
-/// triples by construction. Same trackSeed + same cardIndex → same
-/// colour (determinism). Regression-locked by
-/// `LumenPaletteSpectrumTests`.
-constant uint  kCardSize                = 48u;
+/// **Per-cell brightness variation.** A separate hash byte drives a
+/// wide brightness multiplier (`kCellBrightnessMin` to
+/// `kCellBrightnessMax` = 0.30 to 1.60), so some cells are dim
+/// shadows and some are HDR-bright (over-exposing into bloom via
+/// `kLumenEmissionGain = 1.5`). Real stained-glass character —
+/// dramatic brightness diversity within a single panel.
+///
+/// **Section-driven mutation.** `sectionSalt` is derived from
+/// `f.accumulated_audio_time` quantized into ~`kSectionPeriodSeconds`
+/// (25 s) buckets, hashed with a constant. Each section bucket gives
+/// every cell a completely different colour assignment — the
+/// palette visibly shifts on each section boundary. (This is a time-
+/// quantized proxy for true `StructuralPrediction.sectionIndex`;
+/// follow-up may plumb the real section index through `LumenPatternState`.)
 constant float kCardValMin              = 0.08f;
 constant float kCardValMax              = 0.95f;
 /// Coupling margin: maximum amount that value may exceed saturation.
-/// 0.20 means a cell at sat=0.0 caps val at 0.20 (near-black
-/// charcoals); a cell at sat=0.5 caps val at 0.70 (dusty rose,
-/// muted teal, sage); a cell at sat=0.8+ has no effective cap
-/// (full bright jewel allowed). Tuning lever:
-///   - smaller (0.10) → tighter coupling, fewer mid-bright cells,
-///     stronger "deep / dark" character
-///   - larger (0.30) → looser coupling, admits some pale cells
-///   - 0 → val ≤ sat (everything on or below the diagonal,
-///     extreme aesthetic)
-constant float kValSatCouplingMargin    = 0.20f;
+/// 0.05 (LM.4.5.3, tightened from 0.20 at LM.4.5.2) gives effectively
+/// `val ≲ sat` — every weak cell is also dark. At sat=0.3, val caps
+/// at 0.35 (deep charcoal-pink). At sat=0.5, val caps at 0.55 (mid
+/// muted). At sat=0.9, val caps at 0.95 (full bright jewel). The
+/// "pale family" (sat=0.3 + val=0.6 cells) is unreachable by
+/// construction.
+constant float kValSatCouplingMargin    = 0.05f;
+/// Per-cell brightness multiplier range. A separate hash byte gives
+/// each cell a brightness multiplier in [`kCellBrightnessMin`,
+/// `kCellBrightnessMax`]. Cells below 1.0 are dim shadows; cells
+/// above 1.0 are over-exposed bright (the bloom kick comes from
+/// values > 1.0 in linear space being tonemapped through ACES).
+/// 0.30 → 1.60 gives ~5× brightness ratio, the kind of dramatic
+/// variation real backlit stained glass exhibits.
+constant float kCellBrightnessMin       = 0.30f;
+constant float kCellBrightnessMax       = 1.60f;
+/// Section bucket period in seconds. `accumulated_audio_time`
+/// quantized into integer buckets of this duration drives the
+/// section salt — palette resets on each bucket boundary. 25 s is
+/// roughly verse/chorus duration in pop music; follow-up may plumb
+/// real `StructuralPrediction.sectionIndex` for music-accurate
+/// section boundaries.
+constant float kSectionPeriodSeconds    = 25.0f;
 /// Gamma endpoints for arousal-driven VALUE-only distribution bias.
 /// arousal = -1 → gamma 1.8 (concave: biases toward darker cells —
 /// deep cobalts, deep wines, ruby shadows); arousal = +1 → gamma 0.55
@@ -422,45 +432,42 @@ static inline uint lm_track_seed_hash(constant LumenPatternState& lumen) {
 /// unused here. `LM.4` may revisit per-cell pattern bursts that read the
 /// agent positions.
 static inline float lm_cell_intensity(uint cellHash, float barPhase01) {
-    float jitterNorm = float((cellHash >> 16u) & 0xFFu) * (1.0f / 255.0f);
-    float baseIntensity = kCellIntensityBase + kCellIntensityJitter * jitterNorm;
+    // LM.4.5.3: per-cell brightness varies WIDELY (0.30 to 1.60) so
+    // some cells are dim shadows and some over-expose into bloom —
+    // dramatic stained-glass brightness diversity. Replaces the
+    // narrow [0.85, 1.15] LM.3.2 jitter range. The brightness byte
+    // is hashed separately from the colour-hash bytes (uses cellHash
+    // bits 24..31 + a mixing constant) so brightness and colour
+    // vary independently per cell.
+    uint brightnessHash = lm_hash_u32(cellHash ^ 0xB7E15163u);
+    float jitterNorm = float((brightnessHash >> 24u) & 0xFFu) * (1.0f / 255.0f);
+    float baseIntensity = mix(kCellBrightnessMin, kCellBrightnessMax, jitterNorm);
     float barShape = pow(saturate(barPhase01), kBarPulseShape);
     float barFactor = 1.0f + kBarPulseMagnitude * barShape;
     return baseIntensity * barFactor;
 }
 
-/// LM.4.5 — full-spectrum palette card model.
+/// LM.4.5.3 — uncapped per-cell palette with per-track hue rotation
+/// and section-driven mutation.
 ///
-/// Each cell picks a slot from a per-track procedural card of `kCardSize`
-/// colours. The cell's slot is `(cellHash + step) % kCardSize`, where
-/// `step = floor(teamCounter / period)` so the slot ratchets forward
-/// integer-step on each team beat (same beat-step semantics as LM.3.2 —
-/// only the palette lookup changes). The colour at that slot is
-/// `lm_hash_u32(cardIndex ^ trackSeed)` decoded as three uniform [0, 1]
-/// samples mapped to HSV via:
+/// No card cap. Each (cell, beat, track, section) tuple gets a unique
+/// colour from the 32-bit hash space. Per-track variety arrives via
+/// `trackSeed` XOR (different region of hash space); per-section
+/// variety arrives via `sectionSalt` XOR (palette resets on each
+/// `kSectionPeriodSeconds` bucket boundary); per-beat variety arrives
+/// via the team-counter `step` XOR (cell ratchets to a new colour
+/// each beat).
 ///
-///   - hue: full wheel, uniform
-///   - sat / val: gamma-biased by arousal (calm → darker / less-saturated
-///     bias; energetic → brighter / more-saturated bias), then val mapped
-///     to [`kCardValMin`, `kCardValMax`]
-///   - pastel guardrail: if sat < `kPastelSatCutoff`, val capped at
-///     `kPastelValCap` (gives charcoals / browns / slates instead of
-///     pastels — CLAUDE.md "no muted palettes" rule)
-///
-/// Per-track variety lands via `trackSeed` XOR: track A's card[5] and
-/// track B's card[5] are completely different (h, s, v) triples by
-/// construction. Same track + same cardIndex → same colour (determinism).
-///
-/// Mood biases the distribution within the card without restricting the
-/// envelope: every card contains samples spanning darks / mid-tones /
-/// brights regardless of mood, but the average register shifts. Verified
-/// by `LumenPaletteSpectrumTests`.
-///
-/// Returns a linear RGB value with each channel in [0, 1]. The lighting
-/// fragment multiplies by `kLumenEmissionGain (1.0)` and runs through
-/// PostProcessChain ACES tone-mapping.
+/// Hue, sat, val all decoded from three bytes of the colour hash;
+/// hue then rotated by a per-track offset so the same cellHash on
+/// different tracks lands at completely different hues. Coupling
+/// rule (`val ≤ sat + 0.05`) forces weak cells to also be dark
+/// (no pale family). Arousal-driven value gamma shifts the
+/// distribution mode (calm darker, energetic brighter) without
+/// restricting the envelope.
 static inline float3 lm_cell_palette(uint cellHash,
-                                     constant LumenPatternState& lumen) {
+                                     constant LumenPatternState& lumen,
+                                     float accumulatedAudioTime) {
     // Team selection. Buckets are non-overlapping percentages of [0, 100):
     // 30% bass / 35% mid / 25% treble / 10% static.
     uint teamBucket = cellHash % 100u;
@@ -476,8 +483,7 @@ static inline float3 lm_cell_palette(uint cellHash,
 
     // Period selection. Pareto-shaped distribution from a 3-bit bucket
     // ∈ [0, 7]: ≈37.5% period=1, 25% period=2, 25% period=4, 12.5%
-    // period=8. Many fast cells (visibly stepping every beat) + a long
-    // tail of slow cells (stepping only every few bars).
+    // period=8.
     uint periodBucket = (cellHash >> 8u) & 0x7u;
     float period = 1.0f;
     if (periodBucket >= 7u) {
@@ -489,60 +495,56 @@ static inline float3 lm_cell_palette(uint cellHash,
     }
     float step = floor(teamCounter / period);
 
-    // Card slot — cellHash provides the base offset, step ratchets
-    // forward by 1 each team-period boundary. Two cells with adjacent
-    // cellHash values can land on completely different colours because
-    // the slot-to-colour map (below) is a hash, not a continuous
-    // function.
-    uint cardIndex = (cellHash + uint(step)) % kCardSize;
+    // Section salt — quantise accumulated audio time into integer
+    // buckets of `kSectionPeriodSeconds`. Each bucket boundary
+    // changes the salt, which causes the palette to visibly shift
+    // (every cell gets a completely different colour at the
+    // boundary). Proxy for `StructuralPrediction.sectionIndex`
+    // until real section indexing is plumbed through
+    // `LumenPatternState`.
+    uint sectionSalt = uint(floor(accumulatedAudioTime / kSectionPeriodSeconds));
 
-    // Per-track colour hash for this card slot. Same track + same
-    // cardIndex → identical RGB by construction. Different tracks →
-    // different RGB at the same cardIndex → distinct cards.
+    // Track seed XOR — different tracks get different regions of the
+    // hash space.
     uint trackSeed = lm_track_seed_hash(lumen);
-    uint colourHash = lm_hash_u32(cardIndex ^ trackSeed);
+
+    // Per-cell colour hash. Every (cell, beat, track, section) tuple
+    // produces a unique 32-bit hash → unique HSV. No modulo, no card.
+    // Mixing constants (0x9E3779B9 = golden ratio fraction; 0xCC9E2D51
+    // = MurmurHash constant) prevent same-bit-position XOR
+    // cancellations between the inputs (e.g. step bit 8 cancelling
+    // cellHash bit 8 when they happen to match).
+    uint colourHash = lm_hash_u32(cellHash
+                                ^ (uint(step) * 0x9E3779B9u)
+                                ^ trackSeed
+                                ^ (sectionSalt * 0xCC9E2D51u));
 
     // Three uniform [0, 1] samples from the 32-bit hash.
     float h_u = float((colourHash >>  0u) & 0xFFu) * (1.0f / 255.0f);
     float s_u = float((colourHash >>  8u) & 0xFFu) * (1.0f / 255.0f);
     float v_u = float((colourHash >> 16u) & 0xFFu) * (1.0f / 255.0f);
 
-    // Mood biasing — VALUE only (LM.4.5.1). Gamma curve preserves the
-    // [0, 1] envelope but shifts the distribution mode. arousal = -1
-    // → gamma 1.8 (biases darker, deep jewel shadows); arousal = +1
-    // → gamma 0.55 (biases brighter, vivid jewel tones); neutral →
-    // gamma 1.0 (uniform). Saturation is uniform within [`kSatFloor`,
-    // 1.0] regardless of mood — sat-gamma was retired at LM.4.5.1
-    // because the [0.7, 1.0] band is too narrow for gamma bias to
-    // read perceptually, and saturation should always look "stained
-    // glass" not "moody".
+    // Per-track hue rotation: rotate the whole wheel by a per-track
+    // offset so the same cellHash on different tracks lands at
+    // completely different hues. Pure rotation — preserves full hue
+    // variety per track, no region restriction.
+    float trackHueOffset = float(trackSeed & 0xFFu) * (1.0f / 255.0f);
+    float h = fract(h_u + trackHueOffset);
+
+    // Saturation: full range [0, 1], uniform.
+    float s = s_u;
+
+    // Mood biasing — VALUE only. Gamma curve preserves the [0, 1]
+    // envelope but shifts the distribution mode (calm darker,
+    // energetic brighter).
     float arousalNorm = clamp(lumen.smoothedArousal * 0.5f + 0.5f, 0.0f, 1.0f);
     float gamma = mix(kMoodGammaLowArousal, kMoodGammaHighArousal, arousalNorm);
     float v_biased = pow(v_u, gamma);
-
-    // Hue: full wheel, uniform.
-    float h = h_u;
-
-    // Saturation: full range [0, 1], uniform. Every kind of colour
-    // is allowed by the sat axis; the coupling rule below prevents
-    // weak-and-bright (pale/washed) outputs.
-    float s = s_u;
-
-    // Value: mapped to [kCardValMin (0.08), kCardValMax (0.95)] so
-    // cells span deep shadow tones to bright jewel tones but never
-    // pure black or white. Floor above 0 keeps cells visibly lit
-    // against the deferred path's IBL ambient floor; cap below 1.0
-    // leaves headroom for the bar pulse +30 % flash without clipping.
     float v = mix(kCardValMin, kCardValMax, v_biased);
 
-    // Val/sat coupling — a cell's value cannot exceed its saturation
-    // by more than `kValSatCouplingMargin`. This forces weak
-    // (low-sat) cells to also be dark (low val) → they read as
-    // charcoals / slates / espressos / muted earth tones, not as
-    // pale washed cream. Strong (high-sat) cells are unaffected:
-    // sat 0.8 + margin 0.2 = cap 1.0, full range allowed. The
-    // forbidden zone (high val + low sat) is unreachable by
-    // construction.
+    // Val/sat coupling — `val ≤ sat + kValSatCouplingMargin (0.05)`.
+    // Forces weak cells to also be dark → charcoals / browns / slates /
+    // muted earth tones instead of pale washed cream.
     v = min(v, s + kValSatCouplingMargin);
 
     return hsv2rgb(float3(h, s, v));
@@ -697,7 +699,7 @@ void sceneMaterial(float3 p,
     uint cellHash = lm_hash_u32(cell_id ^ lm_track_seed_hash(lumen));
 
     // Per-cell colour from the procedural palette + team-counter step.
-    float3 cell_hue = lm_cell_palette(cellHash, lumen);
+    float3 cell_hue = lm_cell_palette(cellHash, lumen, f.accumulated_audio_time);
 
     // Per-cell scalar intensity (uniform jitter + bar pulse).
     // **LM.4.4 retired the LM.4 pattern-engine boost** that previously

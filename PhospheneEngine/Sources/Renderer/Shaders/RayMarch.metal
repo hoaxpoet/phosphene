@@ -65,9 +65,13 @@ using namespace metal;
 /// the M7-prep harness output (no tonemap) was misleading. Reducing to 1.0
 /// keeps cell colours under 1.0 in linear space and the harness now
 /// matches production. Bloom doesn't engage (cells stay below threshold)
-/// — that's correct for the stained-glass jewel-tone aesthetic where every
-/// cell is uniformly vivid rather than a few cells being "extra bright."
-constexpr constant float kLumenEmissionGain = 1.0;
+/// **LM.4.5.3 (2026-05-11): bumped 1.0 → 1.5** so the brightest cells
+/// over-expose into bloom. Combined with the LM.4.5.3 per-cell brightness
+/// variation (`kCellBrightness{Min,Max}` 0.30..1.60 in `LumenMosaic.metal`),
+/// this gives the dramatic per-cell brightness diversity real backlit
+/// stained glass exhibits: dim shadow cells, mid-lit cells, and bloom-
+/// kicking bright cells in the same panel.
+constexpr constant float kLumenEmissionGain = 1.5;
 
 /// Low IBL ambient floor for matID == 1.  Without it, an unlit cell (one with
 /// no light agent contribution) would render as pure black, breaking D-019
