@@ -42,15 +42,15 @@ import Shared
 // MARK: - Constants mirrored from LumenMosaic.metal
 
 private enum LMPalette {
-    static let cardSize: UInt32              = 48
     static let cardValMin: Float             = 0.08
     static let cardValMax: Float             = 0.95
-    static let valSatCouplingMargin: Float   = 0.20
+    static let valSatCouplingMargin: Float   = 0.05
     static let moodGammaLowArousal: Float    = 1.80
     static let moodGammaHighArousal: Float   = 0.55
     static let bassTeamCutoff: UInt32        = 30
     static let midTeamCutoff: UInt32         = 65
     static let trebleTeamCutoff: UInt32      = 90
+    static let sectionPeriodSeconds: Float   = 25.0
 }
 
 // MARK: - Shader algorithm mirrored in Swift
@@ -119,25 +119,31 @@ private func lmHsv2Rgb(_ hsv: SIMD3<Float>) -> SIMD3<Float> {
     return mixed * SIMD3<Float>(hsv.z, hsv.z, hsv.z)
 }
 
-/// Mirror of `lm_cell_palette` in `LumenMosaic.metal`. Returns the cell's
-/// HSV sample post-mood-bias / post-pastel-guardrail BEFORE the hsv2rgb
-/// conversion — the test invariants are easier to reason about in HSV
-/// space.
+/// Mirror of `lm_cell_palette` in `LumenMosaic.metal` (LM.4.5.3). Returns
+/// the cell's HSV sample post-mood-bias / post-coupling BEFORE the
+/// hsv2rgb conversion — the test invariants are easier to reason about
+/// in HSV space.
 private func lmCellPaletteHSV(
     cellHash: UInt32,
     smoothedValence: Float,
     smoothedArousal: Float,
     seedA: Float, seedB: Float, seedC: Float, seedD: Float,
-    bassCounter: Float, midCounter: Float, trebleCounter: Float
+    bassCounter: Float, midCounter: Float, trebleCounter: Float,
+    accumulatedAudioTime: Float = 0
 ) -> SIMD3<Float> {
     let teamCounter = lmTeamCounter(cellHash: cellHash,
                                     bass: bassCounter, mid: midCounter, treble: trebleCounter)
     let period = lmPeriod(cellHash: cellHash)
     let step = floor(teamCounter / period)
-    let cardIndex = (cellHash &+ UInt32(step)) % LMPalette.cardSize
 
+    let sectionSalt = UInt32(floor(accumulatedAudioTime / LMPalette.sectionPeriodSeconds))
     let trackSeed = lmTrackSeedHash(seedA: seedA, seedB: seedB, seedC: seedC, seedD: seedD)
-    let colourHash = lmHashU32(cardIndex ^ trackSeed)
+
+    // LM.4.5.3: no card. Each (cell, beat, track, section) tuple gets a
+    // unique 32-bit colour hash.
+    let stepMix: UInt32     = UInt32(step) &* 0x9E37_79B9
+    let sectionMix: UInt32  = sectionSalt &* 0xCC9E_2D51
+    let colourHash = lmHashU32(cellHash ^ stepMix ^ trackSeed ^ sectionMix)
 
     let hU = Float((colourHash >> 0)  & 0xFF) * (1.0 / 255.0)
     let sU = Float((colourHash >> 8)  & 0xFF) * (1.0 / 255.0)
@@ -148,15 +154,18 @@ private func lmCellPaletteHSV(
               + (LMPalette.moodGammaHighArousal - LMPalette.moodGammaLowArousal) * arousalNorm
     let vBiased = pow(vU, gamma)
 
-    let h = hU
+    // Per-track hue rotation — full wheel preserved per track, but each
+    // track shifts the wheel by a per-track offset.
+    let trackHueOffset = Float(trackSeed & 0xFF) * (1.0 / 255.0)
+    let h = (hU + trackHueOffset).truncatingRemainder(dividingBy: 1.0)
     let s = sU
     var v = LMPalette.cardValMin + (LMPalette.cardValMax - LMPalette.cardValMin) * vBiased
     v = min(v, s + LMPalette.valSatCouplingMargin)
 
-    // smoothedValence is intentionally unused at LM.4.5.2 — valence influences
-    // mood ONLY through the per-track seed and the eventual orchestration
-    // layer; arousal is the only direct driver of the value gamma bias.
-    // Saturation is uniform [0, 1] (no mood bias, no floor).
+    // smoothedValence is intentionally unused at LM.4.5.3 — valence
+    // influences mood ONLY through the per-track seed and the eventual
+    // orchestration layer; arousal is the only direct driver of the
+    // value gamma bias.
     _ = smoothedValence
 
     return SIMD3<Float>(h, s, v)
@@ -372,9 +381,9 @@ struct LumenPaletteDistinctivenessTests {
     }
 
     @Test func test_twoSeeds_jaccardBelow05() {
-        // Sweep cell IDs 0..<50 — each maps to a card slot via
-        // `cellHash % kCardSize`. With kCardSize = 48 and 50 inputs,
-        // we'll hit at least 48 distinct slots (slots 0+1 land twice).
+        // Sample 50 cellHash values. Each gets a unique colour per
+        // track (LM.4.5.3: no card cap, full hash space). Different
+        // trackSeeds → different colours for the same cellHash.
         let cellHashes = Array<UInt32>(0..<50)
         let trackA = firstCardColours(cellHashes: cellHashes,
                                       seedA: +1, seedB: +1, seedC: +1, seedD: +1)
@@ -426,22 +435,16 @@ struct LumenPaletteBeatStepTests {
         return 0x0000_0014
     }
 
-    @Test func test_period1BassCell_singleBeatAdvancesCardIndexBy1() {
+    @Test func test_period1BassCell_singleBeatChangesColour() {
         let cellHash = makePeriod1BassTeamCellHash()
         // Sanity: verify the cell is on the bass team with period 1.
         #expect(cellHash % 100 < LMPalette.bassTeamCutoff)
         #expect(lmPeriod(cellHash: cellHash) == 1)
 
-        // bassCounter = 0 → step = 0 → cardIndex = cellHash % kCardSize.
-        // bassCounter = 1 → step = 1 → cardIndex = (cellHash + 1) % kCardSize.
-        let cardIndex0 = (cellHash &+ 0) % LMPalette.cardSize
-        let cardIndex1 = (cellHash &+ 1) % LMPalette.cardSize
-        #expect(cardIndex1 == (cardIndex0 &+ 1) % LMPalette.cardSize)
-
-        // And the colour at step 0 should differ from the colour at step 1
-        // (cards are independent hashes per slot, so adjacent slots are
-        // uncorrelated). Sample HSV at each step and confirm the quantised
-        // 5-bit buckets differ.
+        // LM.4.5.3: no card. The cell's colour at step N is
+        // `lm_hash_u32(cellHash ^ (N × mixingConstant) ^ trackSeed ^ ...)`.
+        // A single beat step → step changes by 1 → completely different
+        // hash output → completely different HSV.
         let hsv0 = lmCellPaletteHSV(cellHash: cellHash,
                                     smoothedValence: 0, smoothedArousal: 0,
                                     seedA: 0.5, seedB: -0.2, seedC: 0.7, seedD: -0.4,
@@ -450,7 +453,78 @@ struct LumenPaletteBeatStepTests {
                                     smoothedValence: 0, smoothedArousal: 0,
                                     seedA: 0.5, seedB: -0.2, seedC: 0.7, seedD: -0.4,
                                     bassCounter: 1, midCounter: 0, trebleCounter: 0)
-        #expect(hsv0 != hsv1, "single beat step produced identical colour — card slots not advancing")
+        #expect(hsv0 != hsv1, "single beat step produced identical colour — beat ratchet not engaged")
+    }
+}
+
+// MARK: - Suite 6: LM.4.5.3 — uncapped per-cell uniqueness
+
+@Suite("LM.4.5.3 — uncapped per-cell colour space")
+struct LumenPaletteUncappedTests {
+
+    /// LM.4.5.3 deleted the 48-slot card cap. Across 1500 random cells
+    /// (panel size at kCellDensity=15), we should observe ≫ 48 distinct
+    /// quantised colour buckets — the per-cell colour space is now
+    /// the full 32-bit hash.
+    @Test func test_1500cells_produceFarMoreThan48DistinctColours() {
+        var rng = Mulberry32(state: 0x1234_ABCD)
+        var samples: Set<UInt32> = []
+        for _ in 0..<1500 {
+            let cellHash = rng.nextUInt32()
+            let hsv = lmCellPaletteHSV(cellHash: cellHash,
+                                       smoothedValence: 0, smoothedArousal: 0,
+                                       seedA: 0.3, seedB: 0.1, seedC: -0.2, seedD: 0.5,
+                                       bassCounter: 0, midCounter: 0, trebleCounter: 0)
+            // Quantise to 6-bit-per-channel (64 buckets/channel) — gives
+            // ~262k distinct buckets. With uniform distribution, 1500
+            // samples should hit ~1400+ distinct buckets.
+            let h6 = UInt32(min(max(hsv.x, 0), 0.999) * 64)
+            let s6 = UInt32(min(max(hsv.y, 0), 0.999) * 64)
+            let v6 = UInt32(min(max(hsv.z, 0), 0.999) * 64)
+            samples.insert((h6 << 12) | (s6 << 6) | v6)
+        }
+        #expect(samples.count > 500,
+                "only \(samples.count) distinct colours from 1500 cells — card cap may have leaked back in")
+    }
+
+    /// Section salt mutation: same cell, same beat, different
+    /// `accumulatedAudioTime` bucket → completely different colour.
+    /// Regression-locks the LM.4.5.3 section-driven palette mutation.
+    @Test func test_sectionBoundary_changesColour() {
+        let cellHash: UInt32 = 0x0000_0014  // bass team, period 1
+        let secs0: Float = 5.0   // before first section boundary (bucket 0)
+        let secs1: Float = 30.0  // after kSectionPeriodSeconds=25 (bucket 1)
+        let hsv0 = lmCellPaletteHSV(cellHash: cellHash,
+                                    smoothedValence: 0, smoothedArousal: 0,
+                                    seedA: 0.5, seedB: -0.2, seedC: 0.7, seedD: -0.4,
+                                    bassCounter: 0, midCounter: 0, trebleCounter: 0,
+                                    accumulatedAudioTime: secs0)
+        let hsv1 = lmCellPaletteHSV(cellHash: cellHash,
+                                    smoothedValence: 0, smoothedArousal: 0,
+                                    seedA: 0.5, seedB: -0.2, seedC: 0.7, seedD: -0.4,
+                                    bassCounter: 0, midCounter: 0, trebleCounter: 0,
+                                    accumulatedAudioTime: secs1)
+        #expect(hsv0 != hsv1,
+                "section boundary did not change colour for cellHash 0x14 — section salt not engaged")
+    }
+
+    /// Within the same section bucket (no boundary crossed), the colour
+    /// stays identical at fixed beat. Determinism within a section.
+    @Test func test_withinSection_colourStable() {
+        let cellHash: UInt32 = 0x0000_0014
+        let secsA: Float = 3.0   // bucket 0
+        let secsB: Float = 10.0  // bucket 0 (still < 25)
+        let hsvA = lmCellPaletteHSV(cellHash: cellHash,
+                                    smoothedValence: 0, smoothedArousal: 0,
+                                    seedA: 0.1, seedB: 0.2, seedC: 0.3, seedD: 0.4,
+                                    bassCounter: 0, midCounter: 0, trebleCounter: 0,
+                                    accumulatedAudioTime: secsA)
+        let hsvB = lmCellPaletteHSV(cellHash: cellHash,
+                                    smoothedValence: 0, smoothedArousal: 0,
+                                    seedA: 0.1, seedB: 0.2, seedC: 0.3, seedD: 0.4,
+                                    bassCounter: 0, midCounter: 0, trebleCounter: 0,
+                                    accumulatedAudioTime: secsB)
+        #expect(hsvA == hsvB, "colour drifted within section bucket — section quantisation broken")
     }
 }
 
