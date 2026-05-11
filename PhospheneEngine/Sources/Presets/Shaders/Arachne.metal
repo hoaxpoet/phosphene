@@ -158,11 +158,13 @@ static float  arachAspect(uint seed)      { return 0.85 + arachHash(seed + 0xB2u
 static float  arachAspectAngle(uint seed) { return arachHash(seed + 0xC3u) * 2.0 * M_PI_F; }
 // V.7.5 §10.1.2: range widened [0.04, 0.10] → [0.06, 0.14] so longer radials
 // visibly droop. Gravity-direction weighting applied per-spoke at the call site.
-// BUG-011 follow-up (round 2) — sag range 0.06..0.14 → 0.10..0.18 per Matt's
-// 2026-05-11 product call. Combined with the new curved-chord SDF (sag is
-// now applied to the chord's parabolic curve, not just endpoint offset),
-// chord midpoints visibly droop ~10-18% of chord length under gravity.
-static float  arachKSag(uint seed)        { return 0.10 + arachHash(seed + 0xD4u) * 0.08; }
+// BUG-011 follow-up (round 3) — sag range backed off from 0.10..0.18 to
+// 0.04..0.08. The round-2 bump combined with my sum-not-average bug in the
+// curved-chord SDF produced ~3× too much visible droop (Matt's 2026-05-11
+// screenshot). With the math fix landed, this lower range produces the
+// "subtle but visible" sag Matt asked for: midpoint droop ~10-15% of chord
+// length, scaled by ring depth (outermost ring = 0, innermost = full).
+static float  arachKSag(uint seed)        { return 0.04 + arachHash(seed + 0xD4u) * 0.04; }
 
 // ±5% UV hub jitter applied at the fragment call site (keeps WebGPU layout stable).
 static float2 arachHubJitter(uint seed) {
@@ -667,16 +669,15 @@ static ArachneWebResult arachneEvalWeb(
     // "toddler scribble" reading Matt flagged on the 2026-05-08T22-01-07Z
     // smoke. Halving brings strand weight back into proportion with the
     // canvas-filling polygon — lets density read as elaborate detail.
-    // BUG-011 follow-up (round 2) — uniform line width across spokes/frame/spirals
-    // (0.0010 UV ≈ 1 px @ 1080p), uniform halo magnitude 0.11. The previous
-    // taper from 0.0010 to 0.0006 toward the outer edge gave inconsistent
-    // line weight; Matt's 2026-05-11 call: "ALL lines should look like the
-    // scaffolding — clear, crisp, bright."
+    // BUG-011 follow-up (round 2 / round 3) — uniform 0.0010 UV line width
+    // across spokes/frame/spirals. Round 3 (Matt's 2026-05-11 follow-up call
+    // "Remove all Gaussian glow"): halo magnitudes ALL → 0.0. Lines now
+    // render as the smoothstep silhouette only, no soft Gaussian envelope
+    // around them. Crisp aliased-edge appearance.
     float spokeW       = 0.0010;
-    float spokeHaloSig = max(webR * 0.008, 1e-4);
+    float spokeHaloSig = max(webR * 0.008, 1e-4);  // still used by frameHalo
     float spokeCov     = smoothstep(spokeW + aaW, spokeW - aaW, minSpokeDist) * anchorFade;
-    float spokeHalo    = exp(-minSpokeDist * minSpokeDist / (spokeHaloSig * spokeHaloSig))
-                        * 0.11 * anchorFade;
+    float spokeHalo    = 0.0;  // BUG-011 round 3 — glow removed
 
     // ── Frame thread polygon — segment-by-segment reveal during stage 0 ──────
     //
@@ -734,14 +735,13 @@ static ArachneWebResult arachneEvalWeb(
             minFrameDist = min(minFrameDist, fd);
         }
     }
-    // BUG-011 follow-up (round 2) — frame width uniform 0.0010 (no taper),
-    // matching spokes + spirals. Halo magnitude stays at 0.11 (already the
-    // target value).
+    // BUG-011 follow-up (round 2 / round 3) — frame width uniform 0.0010,
+    // matching spokes + spirals. Round 3: halo → 0 per Matt's
+    // 2026-05-11 "Remove all Gaussian glow" call.
     float frameW    = 0.0010;
     float frameFade = rT > webR ? exp(-(rT - webR) * 6.0) : 1.0;
     float frameCov  = smoothstep(frameW + aaW, frameW - aaW, minFrameDist) * frameFade;
-    float frameHalo = exp(-minFrameDist * minFrameDist / (spokeHaloSig * spokeHaloSig))
-                    * 0.11 * frameFade;
+    float frameHalo = 0.0;  // BUG-011 round 3 — glow removed
 
     // ── Chord-segment capture spiral — outside-in construction (V.7.8) ──────────
     // Replaces Archimedean SDF. Each "ring" k is a polygon of N chord segments
@@ -805,8 +805,8 @@ static ArachneWebResult arachneEvalWeb(
 
     // BUG-011 follow-up (round 2) — spiral width 0.0007 → 0.0010 to match
     // spokes + frame. All web lines now identical 1-px-at-1080p thickness.
+    // Round 3: spirSig (halo sigma) deleted along with spirHalo.
     float spirW   = 0.0010;
-    float spirSig = max(webR * 0.005, 1e-4);
 
     // V.7.7C.3 / D-095 — per-chord visibility gate. Pre-V.7.7C.3 the gate was
     // per-ring (`k / N_RINGS <= progress`) so an entire ring's chord segments
@@ -891,7 +891,25 @@ static ArachneWebResult arachneEvalWeb(
                     pJ = ringR * sdDir[sj];
                 }
 
-                float chordSagPeak = sagScale * (sdGrav[si] + sdGrav[sj]);  // = base × avgGravity × 2
+                // BUG-011 follow-up (round 3) — bug fix. The prior round used
+                // `sagScale * (sdGrav[si] + sdGrav[sj])` which is SUM of both
+                // gravity weights = 2× the equivalent average, producing
+                // dramatic visible droop (Matt's 2026-05-11 screenshot showed
+                // the outer ring bowing ~90% of chord length). Correct form
+                // uses the AVERAGE of both endpoints' gravities — the chord
+                // midpoint hangs by the avg-gravity-weighted sag amount, which
+                // matches the physical intuition of a clothesline anchored
+                // at two points of equal-ish height.
+                //
+                // Ring-depth ramp: outermost ring (k=0) gets ZERO sag because
+                // it sits at the polygon perimeter and shouldn't visibly droop
+                // (real spider webs anchor the outer rings tight to the frame).
+                // Inner rings get progressively more sag, peaking at the
+                // innermost ring near the hub. This matches biology — silk
+                // closer to the hub is freshest and least taut.
+                float chordAvgGravity = 0.5 * (sdGrav[si] + sdGrav[sj]);
+                float sagDepth     = (N_RINGS > 1) ? float(k) / float(N_RINGS - 1) : 0.0;
+                float chordSagPeak = sagScale * chordAvgGravity * sagDepth;
 
                 float2 seg  = pJ - pI;
                 float  segL = length(seg);
@@ -918,9 +936,9 @@ static ArachneWebResult arachneEvalWeb(
 
     float inZone = (rT >= r_inner && rT <= r_outer + spirW * 2.0) ? 1.0 : 0.0;
     spirCov  = smoothstep(spirW + aaW, spirW - aaW, minChordDist) * inZone;
-    // BUG-011 follow-up (round 2) — spiral halo magnitude 0.13 → 0.11 to
-    // match the uniform halo across all line types.
-    spirHalo = exp(-minChordDist * minChordDist / (spirSig * spirSig)) * 0.11 * inZone;
+    // BUG-011 follow-up (round 2 / round 3) — spiral halo zeroed in round 3
+    // per Matt's 2026-05-11 "Remove all Gaussian glow" call.
+    spirHalo = 0.0;
 
     // ── §4.4 Dominant strand tangent (spoke or chord) ─────────────────────────
     if (rT >= hubR * 1.5) {

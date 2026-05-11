@@ -133,9 +133,14 @@ struct PresetAcceptanceTests {
     // Catches presets that produce a single flat luma value — visually dead even when
     // audio is playing. A minimal gradient or SDF outline scores 2+ bins.
     // Mesh-shader presets are skipped for the same reason as invariant 1.
+    // Staged-composition presets (Arachne, etc.) are skipped because their
+    // visual signature requires per-preset slot-6/7 buffer bindings + a sampled
+    // WORLD texture at [[texture(13)]] which the regression harness doesn't
+    // provide — they have full coverage via PresetVisualReviewTests instead.
     @Test("Preset has readable form with normal energy input", arguments: _acceptanceFixture.presets)
     func test_readableForm_atSteadyEnergy(_ preset: PresetLoader.LoadedPreset) throws {
         guard !preset.descriptor.passes.contains(.meshShader) else { return }
+        guard !preset.descriptor.passes.contains(.staged) else { return }
         let ctx = try MetalContext()
         var fixture = steadyFixture
         let pixels = try renderFrame(preset: preset, features: &fixture, context: ctx)
