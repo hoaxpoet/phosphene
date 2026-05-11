@@ -4,27 +4,36 @@
 // camera frame and bleeds 50% past it on every side, so the viewer sees
 // only a field of vivid stained-glass cells dancing to the music.
 //
-// LM.4.5 — Full-spectrum palette card model. Each track gets a procedurally-
-// generated "card" of `kCardSize` (48) colours drawn from the FULL HSV cube
-// (hue 0–360°, sat 0–1, val [0.08, 0.95]). Each cell on the panel picks a
-// slot from that card deterministically; the colour at that slot is
-// `lm_hash_u32(cardIndex ^ trackSeed)` decoded as three uniform HSV samples.
-// Two tracks at the same mood produce visibly different cards by
-// construction (the trackSeed XOR). Mood biases the distribution within
-// the card via a gamma curve on sat / val — calm tracks tilt deeper /
-// less-saturated, energetic tilt brighter / more-saturated — but the
-// [0, 1] envelope is never restricted, so every card contains darks,
-// mid-tones, and brights. Pastel guardrail (mandatory): when sat < 0.3,
-// val is pulled down to ≤ 0.5 — that gives charcoals / browns / slates
-// instead of cream-haze pastels (CLAUDE.md "no muted palettes" rule).
+// LM.4.5.1 — Saturated stained-glass palette card model. Each track gets a
+// procedurally-generated "card" of `kCardSize` (48) colours; cells pick
+// slots deterministically (cellHash + beat-step ratchet) and the colour
+// at each slot is `lm_hash_u32(cardIndex ^ trackSeed)` decoded as three
+// uniform HSV samples. Hue spans the full wheel (uniform); saturation
+// is FLOORED at `kSatFloor (0.70)` and uniform within [0.70, 1.00];
+// value spans [0.08, 0.95] with arousal-driven gamma bias (calm darker,
+// energetic brighter). The trackSeed XOR makes two tracks at the same
+// mood produce completely different cards by construction.
 //
-// LM.4.5 supersedes LM.3.2's IQ-cosine palette, which floored sat at
-// 0.78 and val at 0.80 and centred hue ±0.20 around a mood axis —
-// every cell sat inside ~5 % of the HSV cube, with no darks, no
-// browns, no muted shades. Matt 2026-05-11: "I am asking you for
-// VARIETY... Where are the dark hues? Where are the regal purples?
-// What about browns and grays?" — the constraint that drove the
-// architecture change. See `kCardSize` constants block + `lm_cell_palette`.
+// Real stained glass is saturated by physics — coloured glass +
+// backlight, no near-gray panels in any cathedral window. Diversity
+// comes from hue + value, not from sat. Browns are SATURATED dark
+// orange (sat 0.85, val 0.30); charcoals are saturated near-black
+// (sat doesn't matter at val < 0.15); regal purples are saturated
+// deep violet (sat 0.9, val 0.4); slates are saturated dark blue.
+// Mid-sat cells (sat 0.3–0.7) produce washed pale cream that reads
+// as gray-tinted regardless of value — that's the aesthetic
+// failure mode the LM.4.5 v1 implementation produced and Matt
+// rejected on real-music re-review (2026-05-11).
+//
+// LM.4.5.1 supersedes LM.4.5 v1's full-HSV-cube model. The "full
+// range [0, 1] saturation" framing in the LM.4.5 prompt was the
+// wrong abstraction for stained glass; flooring sat high gives
+// every cell identifiable hue identity while preserving the full
+// hue × full value × per-track variety the prompt actually wanted.
+// LM.4.5 supersedes LM.3.2's IQ-cosine palette, which floored sat
+// at 0.78 and val at 0.80 and centred hue ±0.20 around a mood axis —
+// every cell sat inside ~5 % of the HSV cube, with no darks and no
+// hue variety. See `kCardSize` constants block + `lm_cell_palette`.
 //
 // Band-routed beat-driven dance (LM.3.2, preserved verbatim). Each cell is
 // assigned to one of four "teams" by `hash(cell_id ^ trackSeedHash) % 100`:
@@ -217,49 +226,61 @@ constant float kCellIntensityJitter = 0.15f;   // adds [0, 0.15] from hash
 constant float kBarPulseMagnitude = 0.20f;
 constant float kBarPulseShape     = 8.0f;
 
-/// LM.4.5 — full-spectrum palette card model.
+/// LM.4.5.1 — saturated stained-glass palette card model.
 ///
 /// Each track gets a procedurally-generated "card" of `kCardSize`
-/// colours drawn from the full HSV cube (hue 0–360°, sat 0–1, val
-/// [`kCardValMin`, `kCardValMax`]). Each cell on the panel picks a slot
-/// from that card deterministically (cellHash + beat-step ratchet), then
-/// the colour for that slot comes from `lm_hash_u32(cardIndex ^ trackSeed)`
-/// decoded as three uniform [0, 1] HSV samples.
+/// colours. Cells pick slots deterministically (cellHash + beat-step
+/// ratchet), then the colour for that slot comes from
+/// `lm_hash_u32(cardIndex ^ trackSeed)` decoded as three uniform
+/// [0, 1] samples mapped to HSV via:
+///
+///   - **Hue**: full wheel (uniform [0, 1] → 0–360°). The per-track
+///     seed picks WHICH hues populate the card; each cell takes one.
+///   - **Saturation**: floored at `kSatFloor (0.70)` and uniform within
+///     [0.70, 1.00]. Real stained glass is saturated by physics —
+///     coloured glass + backlight, no near-gray panels in any cathedral
+///     window. The diversity comes from hue + value, not from sat. A
+///     mid-sat range produces washed pale cells that read as gray-tinted
+///     cream — the LM.4.5 v1 failure mode Matt rejected (2026-05-11
+///     real-music re-review). Browns / regal purples / charcoals /
+///     slates are all SATURATED at low value (brown is dark orange,
+///     charcoal is near-black at any sat, regal purple is deep
+///     saturated violet). Floor at 0.70 produces them; floor below
+///     produces washed cells.
+///   - **Value**: full range mapped to [`kCardValMin (0.08)`,
+///     `kCardValMax (0.95)`] via an arousal-driven gamma bias (calm →
+///     gamma 1.8 biases darker, energetic → gamma 0.55 biases brighter).
+///     The [0, 1] envelope is preserved — every card contains darks AND
+///     brights regardless of mood; only the distribution mode shifts.
 ///
 /// Per-track distinctiveness: the `trackSeed` XOR means track A's
-/// card[5] and track B's card[5] are completely different colours by
-/// construction. The Jaccard similarity test in
-/// `LumenPaletteSpectrumTests` regression-locks inter-track variety.
+/// card[5] and track B's card[5] are completely different (h, s, v)
+/// triples by construction. Same trackSeed + same cardIndex → same
+/// colour (determinism). Regression-locked by
+/// `LumenPaletteSpectrumTests`.
 ///
-/// Mood biasing: a gamma curve on the procedural `s_uniform`/`v_uniform`
-/// samples shifts the distribution mode (calm → biased toward darker /
-/// less-saturated; energetic → biased toward brighter / more-saturated)
-/// WITHOUT restricting the [0, 1] envelope. The tails are always
-/// present — every card contains some bright accents on calm tracks
-/// and some deep notes on energetic tracks. Hue stays uniform across
-/// the full wheel; the per-track seed picks which hues populate the
-/// card.
-///
-/// Pastel guardrail (mandatory — CLAUDE.md "no muted palettes" rule):
-/// when a sample lands in `sat < kPastelSatCutoff`, val is pulled down
-/// to ≤ `kPastelValCap` so the cell reads as a charcoal / brown /
-/// slate instead of a pastel. This is the only hard restriction on
-/// the card's envelope.
+/// **Pastel guardrail retired at LM.4.5.1.** The LM.4.5 v1 guardrail
+/// (`sat < 0.3 → val ≤ 0.5`) was downstream of the wrong abstraction;
+/// flooring sat at 0.70 makes the forbidden zone unreachable by
+/// construction. The CLAUDE.md "no muted palettes" rule is satisfied
+/// at the design level — saturated cells cannot be pale.
 constant uint  kCardSize             = 48u;
 constant float kCardValMin           = 0.08f;
 constant float kCardValMax           = 0.95f;
-constant float kPastelSatCutoff      = 0.30f;
-constant float kPastelValCap         = 0.50f;
-/// Gamma endpoints for arousal-driven distribution bias. arousal = -1
-/// → gamma 1.8 (concave: x → x^1.8 biases toward 0 — darker / less-
-/// saturated cells more common); arousal = +1 → gamma 0.55 (convex:
-/// biases toward 1 — brighter / more-saturated cells more common);
-/// arousal = 0 → gamma 1.0 (uniform, no bias). Picked so the expected-
-/// value gap between calm and energetic moods is large enough to read
-/// (≈ ±0.13 on the [`kCardValMin`, `kCardValMax`] range) while both
-/// extremes still have ~28 % of samples in the opposite half — neither
-/// extreme empties the bright nor dim tail. Verified by
-/// `LumenPaletteSpectrumTests`.
+constant float kSatFloor             = 0.70f;
+/// Gamma endpoints for arousal-driven VALUE-only distribution bias.
+/// arousal = -1 → gamma 1.8 (concave: biases toward darker cells —
+/// deep cobalts, deep wines, ruby shadows); arousal = +1 → gamma 0.55
+/// (convex: biases toward brighter cells — emeralds, citrines, bright
+/// sapphires); arousal = 0 → gamma 1.0 (uniform). Picked so the
+/// expected-value gap between calm and energetic moods is large enough
+/// to read (≈ ±0.13 on the [`kCardValMin`, `kCardValMax`] range) while
+/// both extremes still have ~28 % of samples in the opposite half —
+/// neither extreme empties the bright nor dim tail. Saturation is
+/// NOT gamma-biased at LM.4.5.1; it's uniform within [`kSatFloor`,
+/// 1.00] regardless of mood (saturation should always read as
+/// "stained glass", and gamma bias on a [0.7, 1.0] band is
+/// imperceptible). Verified by `LumenPaletteSpectrumTests`.
 constant float kMoodGammaLowArousal  = 1.80f;
 constant float kMoodGammaHighArousal = 0.55f;
 
@@ -473,40 +494,36 @@ static inline float3 lm_cell_palette(uint cellHash,
     float s_u = float((colourHash >>  8u) & 0xFFu) * (1.0f / 255.0f);
     float v_u = float((colourHash >> 16u) & 0xFFu) * (1.0f / 255.0f);
 
-    // Mood biasing — gamma curve preserves the [0, 1] envelope but
-    // shifts the distribution mode. Symmetric across the (-1, +1)
-    // arousal range; gamma = 1.0 at neutral (uniform). Applied to
-    // both sat and val so calm tracks feel moodier overall and
-    // energetic tracks feel brighter overall — the tails are always
-    // there.
+    // Mood biasing — VALUE only (LM.4.5.1). Gamma curve preserves the
+    // [0, 1] envelope but shifts the distribution mode. arousal = -1
+    // → gamma 1.8 (biases darker, deep jewel shadows); arousal = +1
+    // → gamma 0.55 (biases brighter, vivid jewel tones); neutral →
+    // gamma 1.0 (uniform). Saturation is uniform within [`kSatFloor`,
+    // 1.0] regardless of mood — sat-gamma was retired at LM.4.5.1
+    // because the [0.7, 1.0] band is too narrow for gamma bias to
+    // read perceptually, and saturation should always look "stained
+    // glass" not "moody".
     float arousalNorm = clamp(lumen.smoothedArousal * 0.5f + 0.5f, 0.0f, 1.0f);
     float gamma = mix(kMoodGammaLowArousal, kMoodGammaHighArousal, arousalNorm);
-    float s_biased = pow(s_u, gamma);
     float v_biased = pow(v_u, gamma);
 
-    // Map value into [kCardValMin, kCardValMax]. Floor above 0 keeps
-    // the panel from ever going pitch-black (a near-zero value still
-    // reads as "lit" against the deferred lighting path's IBL ambient
-    // floor); cap below 1.0 leaves headroom for the bar pulse +30 %
-    // flash without clipping to white.
-    float v = mix(kCardValMin, kCardValMax, v_biased);
-
-    // Saturation full range [0, 1] — pure grays allowed (rare,
-    // distinctive). Hue full wheel, uniform across the card slot
-    // distribution; the per-track seed picks WHICH hues appear in
-    // this card.
-    float s = s_biased;
+    // Hue: full wheel, uniform.
     float h = h_u;
 
-    // Pastel guardrail — when the procedural sample lands in
-    // (sat < kPastelSatCutoff), pull val down to ≤ kPastelValCap.
-    // Couples low sat with low val so we get charcoals / browns /
-    // slates instead of cream-haze pastels. The forbidden zone
-    // (sat < 0.3 AND val > 0.6) is the LM.2 failure mode the
-    // CLAUDE.md "no muted palettes" rule was written to prevent.
-    if (s < kPastelSatCutoff) {
-        v = min(v, kPastelValCap);
-    }
+    // Saturation: floored at kSatFloor (0.70), uniform within
+    // [kSatFloor, 1.0]. Real stained glass is always saturated —
+    // browns / regal purples / charcoals / slates are SATURATED at
+    // low value, not desaturated at high value. Mid-sat cells
+    // (sat 0.3–0.7) read as washed pale cream regardless of value;
+    // they have no place in this aesthetic.
+    float s = mix(kSatFloor, 1.0f, s_u);
+
+    // Value: mapped to [kCardValMin (0.08), kCardValMax (0.95)] so
+    // cells span deep shadow tones to bright jewel tones but never
+    // pure black or white. Floor above 0 keeps cells visibly lit
+    // against the deferred path's IBL ambient floor; cap below 1.0
+    // leaves headroom for the bar pulse +30 % flash without clipping.
+    float v = mix(kCardValMin, kCardValMax, v_biased);
 
     return hsv2rgb(float3(h, s, v));
 }
