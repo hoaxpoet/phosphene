@@ -4,8 +4,30 @@
 // camera frame and bleeds 50% past it on every side, so the viewer sees
 // only a field of vivid stained-glass cells dancing to the music.
 //
-// LM.3.2 — Band-routed beat-driven dance model. Each cell is assigned to one
-// of four "teams" by `hash(cell_id ^ trackSeedHash) % 100`:
+// LM.4.5 — Full-spectrum palette card model. Each track gets a procedurally-
+// generated "card" of `kCardSize` (48) colours drawn from the FULL HSV cube
+// (hue 0–360°, sat 0–1, val [0.08, 0.95]). Each cell on the panel picks a
+// slot from that card deterministically; the colour at that slot is
+// `lm_hash_u32(cardIndex ^ trackSeed)` decoded as three uniform HSV samples.
+// Two tracks at the same mood produce visibly different cards by
+// construction (the trackSeed XOR). Mood biases the distribution within
+// the card via a gamma curve on sat / val — calm tracks tilt deeper /
+// less-saturated, energetic tilt brighter / more-saturated — but the
+// [0, 1] envelope is never restricted, so every card contains darks,
+// mid-tones, and brights. Pastel guardrail (mandatory): when sat < 0.3,
+// val is pulled down to ≤ 0.5 — that gives charcoals / browns / slates
+// instead of cream-haze pastels (CLAUDE.md "no muted palettes" rule).
+//
+// LM.4.5 supersedes LM.3.2's IQ-cosine palette, which floored sat at
+// 0.78 and val at 0.80 and centred hue ±0.20 around a mood axis —
+// every cell sat inside ~5 % of the HSV cube, with no darks, no
+// browns, no muted shades. Matt 2026-05-11: "I am asking you for
+// VARIETY... Where are the dark hues? Where are the regal purples?
+// What about browns and grays?" — the constraint that drove the
+// architecture change. See `kCardSize` constants block + `lm_cell_palette`.
+//
+// Band-routed beat-driven dance (LM.3.2, preserved verbatim). Each cell is
+// assigned to one of four "teams" by `hash(cell_id ^ trackSeedHash) % 100`:
 //
 //   - 30% bass team    — advances palette step on each bass beat
 //   - 35% mid team     — advances palette step on each mid beat (the typical
@@ -195,12 +217,51 @@ constant float kCellIntensityJitter = 0.15f;   // adds [0, 0.15] from hash
 constant float kBarPulseMagnitude = 0.20f;
 constant float kBarPulseShape     = 8.0f;
 
-/// LM.3.2 — palette-step size. Each beat-counter step advances the cell's
-/// palette phase by this much. 0.137 (≈ 1/φ²) ensures adjacent steps land
-/// far apart on the palette wheel — a single bass-team beat moves a fast
-/// cell roughly 50° around the hue circle. After ≈ 7 steps the cell has
-/// almost completed a full rotation.
-constant float kPaletteStepSize = 0.137f;
+/// LM.4.5 — full-spectrum palette card model.
+///
+/// Each track gets a procedurally-generated "card" of `kCardSize`
+/// colours drawn from the full HSV cube (hue 0–360°, sat 0–1, val
+/// [`kCardValMin`, `kCardValMax`]). Each cell on the panel picks a slot
+/// from that card deterministically (cellHash + beat-step ratchet), then
+/// the colour for that slot comes from `lm_hash_u32(cardIndex ^ trackSeed)`
+/// decoded as three uniform [0, 1] HSV samples.
+///
+/// Per-track distinctiveness: the `trackSeed` XOR means track A's
+/// card[5] and track B's card[5] are completely different colours by
+/// construction. The Jaccard similarity test in
+/// `LumenPaletteSpectrumTests` regression-locks inter-track variety.
+///
+/// Mood biasing: a gamma curve on the procedural `s_uniform`/`v_uniform`
+/// samples shifts the distribution mode (calm → biased toward darker /
+/// less-saturated; energetic → biased toward brighter / more-saturated)
+/// WITHOUT restricting the [0, 1] envelope. The tails are always
+/// present — every card contains some bright accents on calm tracks
+/// and some deep notes on energetic tracks. Hue stays uniform across
+/// the full wheel; the per-track seed picks which hues populate the
+/// card.
+///
+/// Pastel guardrail (mandatory — CLAUDE.md "no muted palettes" rule):
+/// when a sample lands in `sat < kPastelSatCutoff`, val is pulled down
+/// to ≤ `kPastelValCap` so the cell reads as a charcoal / brown /
+/// slate instead of a pastel. This is the only hard restriction on
+/// the card's envelope.
+constant uint  kCardSize             = 48u;
+constant float kCardValMin           = 0.08f;
+constant float kCardValMax           = 0.95f;
+constant float kPastelSatCutoff      = 0.30f;
+constant float kPastelValCap         = 0.50f;
+/// Gamma endpoints for arousal-driven distribution bias. arousal = -1
+/// → gamma 1.8 (concave: x → x^1.8 biases toward 0 — darker / less-
+/// saturated cells more common); arousal = +1 → gamma 0.55 (convex:
+/// biases toward 1 — brighter / more-saturated cells more common);
+/// arousal = 0 → gamma 1.0 (uniform, no bias). Picked so the expected-
+/// value gap between calm and energetic moods is large enough to read
+/// (≈ ±0.13 on the [`kCardValMin`, `kCardValMax`] range) while both
+/// extremes still have ~28 % of samples in the opposite half — neither
+/// extreme empties the bright nor dim tail. Verified by
+/// `LumenPaletteSpectrumTests`.
+constant float kMoodGammaLowArousal  = 1.80f;
+constant float kMoodGammaHighArousal = 0.55f;
 
 /// LM.3.2 round 7 (2026-05-10) — frosted-glass diffusion at cell
 /// boundaries. The previous round drove frost via an SDF relief
@@ -230,70 +291,23 @@ constant uint kBassTeamCutoff   = 30u;
 constant uint kMidTeamCutoff    = 65u;
 constant uint kTrebleTeamCutoff = 90u;
 
-/// IQ palette parameters — endpoints interpolated by mood (LM.3 / E.3).
-///
-/// IQ form: `palette(t, a, b, c, d) = a + b * cos(2π * (c*t + d))`. Each of
-/// `a, b, c, d` is a float3 (per-channel control). `t` is the per-cell phase.
-///
-/// Mood interpolation:
-/// - `a` = mix(kPaletteACool, kPaletteAWarm, warmAxis)        ← valence
-/// - `b` = mix(kPaletteBSubdued, kPaletteBVivid, arousalAxis) ← arousal
-/// - `c` = mix(kPaletteCUnison, kPaletteCOffset, arousalAxis) ← arousal
-/// - `d` = mix(kPaletteDComplementary, kPaletteDAnalogous, warmAxis) ← valence
-///
-/// Per-track seed (`lumen.trackPaletteSeedA/B/C/D`) perturbs the result so
-/// two tracks at the same mood produce visibly different palette character.
-///
-/// **Endpoints widened at LM.3.2** so HV-HA and LV-LA produce visibly
-/// different palette character (not just permutations of the same colour
-/// wheel — the LM.3 narrow endpoints (`a` ∈ [(0.50,0.50,0.55), (0.55,0.45,0.45)])
-/// only rotated which cell got which colour, not which colours appeared).
-/// LM.3.2 widens the `a` (offset) endpoints so cool→blue-dominant base,
-/// warm→red/orange-dominant base. Combined with the `d` complementary→
-/// analogous shift, the two moods produce genuinely different colour
-/// regions of palette-space. Verified at M7-prep contact-sheet review:
-/// HV-HA shows red/yellow/orange dominant, LV-LA shows blue/teal/cyan
-/// dominant.
-///
-/// All endpoints chosen for vivid bold output. NO cream baseline. NO
-/// pastel pull. Subdued ≠ desaturated — it just means narrower hue range.
-/// Some channel saturation (palette output briefly clipping to 0 or 1)
-/// is acceptable and contributes to vividness via the bloom + ACES
-/// post-process; this is **not** the LM.2 cream-baseline failure mode.
-/// Per CLAUDE.md project rule: muted has no place in Phosphene.
-constant float3 kPaletteACool          = float3(0.25f, 0.50f, 0.75f);   // strong blue base
-constant float3 kPaletteAWarm          = float3(0.75f, 0.50f, 0.25f);   // strong red base
-constant float3 kPaletteBSubdued       = float3(0.40f, 0.45f, 0.55f);   // saturated even at low arousal
-constant float3 kPaletteBVivid         = float3(0.65f, 0.65f, 0.65f);   // pushed past LM.3 to avoid pastel midpoints
-constant float3 kPaletteCUnison        = float3(1.00f, 1.00f, 1.00f);
-constant float3 kPaletteCOffset        = float3(1.00f, 1.20f, 1.50f);   // moderate channel-rate spread
-constant float3 kPaletteDComplementary = float3(0.00f, 0.50f, 1.00f);   // wide phase spread → complementary colours
-constant float3 kPaletteDAnalogous     = float3(0.00f, 0.05f, 0.15f);   // narrow → analogous
-
-/// Mood-driven palette phase drift — adds a slow whole-palette rotation as
-/// valence shifts, on top of the per-cell + audio-time phase. Small enough
-/// that it doesn't fight the per-cell hash for hue identity. 0.10 ≈ ⅓ of a
-/// palette cycle across the full valence range.
-constant float kPaletteMoodPhaseShift = 0.10f;
-
-/// Per-track seed perturbation magnitudes. Each seed component is in
-/// `[-1, +1]`; the magnitude here is what it scales to before being added
-/// to the palette parameter.
-///
-/// **LM.3.2 calibration follow-up #2 (2026-05-09)** — the previous magnitudes
-/// 0.20/0.20/0.30/0.50 had two failure modes observed in M7-prep: (a) seedB
-/// large enough to pull `b` (chroma amplitude) into pastel territory at
-/// negative seed values; (b) `a` and `d` perturbations applied *uniformly*
-/// across channels (single scalar × float3(s)), which only shifted overall
-/// brightness or rotated phase — same colour set, different cell-to-colour
-/// mapping. To produce *genuinely different palettes* per track, the
-/// shader now applies **sum-to-zero per-channel** perturbations to `a` and
-/// `d` (see `lm_apply_track_seed` below), keeping brightness preserved
-/// while shifting hue dominance. Magnitudes:
-constant float kSeedMagnitudeA = 0.20f;   // per-channel hue shift on a (offset) — keeps a + b ≤ 1.0 (prevents clipping)
-constant float kSeedMagnitudeB = 0.05f;   // uniform chroma shift on b — small, can't pull palette pastel
-constant float kSeedMagnitudeC = 0.20f;   // uniform rate shift on c — moderate
-constant float kSeedMagnitudeD = 0.50f;   // per-channel phase shift on d — large (phase rotation is the workhorse for per-track variety)
+// ── LM.4.5 — IQ palette constants retired ─────────────────────────────────
+//
+// The eight IQ palette endpoints (`kPalette[A,B,C,D][Cool/Warm/Subdued/
+// Vivid/Unison/Offset/Complementary/Analogous]`), the
+// `kPaletteMoodPhaseShift` rotation magnitude, and the four
+// `kSeedMagnitude{A,B,C,D}` per-track perturbation magnitudes were all
+// deleted at LM.4.5. The IQ cosine palette form `a + b * cos(2π * (c*t +
+// d))` was structurally narrow-scope — every cell on a given track sat
+// inside a ~5 % slice of the HSV cube, with hue floored ±0.20 around a
+// mood-driven centre and saturation/value floored at 0.78 / 0.80. Matt's
+// 2026-05-11 review ("I am asking you for VARIETY... Where are the dark
+// hues? Where are the regal purples? What about browns and grays?") made
+// the breadth limit conclusive. LM.4.5 replaces the entire `lm_cell_palette`
+// body with the full-spectrum card model (see `kCardSize` block above).
+// Constants gone; the per-track seed plumbing on `LumenPatternState`
+// (`trackPaletteSeed{A,B,C,D}`) is preserved — it now flows through
+// `lm_track_seed_hash` into the card-slot colour hash unchanged.
 
 /// Default attenuation coefficient for the slot-8 placeholder state
 /// (`LumenPatternState.activeLightCount == 0`). The fragment never
@@ -381,28 +395,38 @@ static inline float lm_cell_intensity(uint cellHash, float barPhase01) {
     return baseIntensity * barFactor;
 }
 
-/// LM.3.2 — compute the cell's palette sample. Each cell is assigned to
-/// one of four teams (bass / mid / treble / static) by `cellHash % 100`
-/// and to one of four periods (1, 2, 4, 8) by another hash bucket. The
-/// cell's palette phase is its base offset plus `step * kPaletteStepSize`,
-/// where `step = floor(team_counter / period)`. Team counters increment
-/// once per band-beat in `LumenPatternEngine._tick`, so the cell advances
-/// its palette index discretely on each beat — not continuously over
-/// time. Static cells (team bucket ≥ 90) hold their base phase forever;
-/// they're rotated per track because the team hash is XOR'd with the
-/// per-track seed.
+/// LM.4.5 — full-spectrum palette card model.
 ///
-/// Returns a linear RGB value with each channel in roughly `[0, 1]`. The
-/// lighting fragment multiplies by `kLumenEmissionGain (4.0)` then runs
-/// through PostProcessChain bloom + ACES, so saturated palette outputs
-/// (`b ≈ 0.55` per channel → channel range ≈ `[0, 1.1]`) get tone-mapped
-/// gracefully into HDR.
+/// Each cell picks a slot from a per-track procedural card of `kCardSize`
+/// colours. The cell's slot is `(cellHash + step) % kCardSize`, where
+/// `step = floor(teamCounter / period)` so the slot ratchets forward
+/// integer-step on each team beat (same beat-step semantics as LM.3.2 —
+/// only the palette lookup changes). The colour at that slot is
+/// `lm_hash_u32(cardIndex ^ trackSeed)` decoded as three uniform [0, 1]
+/// samples mapped to HSV via:
+///
+///   - hue: full wheel, uniform
+///   - sat / val: gamma-biased by arousal (calm → darker / less-saturated
+///     bias; energetic → brighter / more-saturated bias), then val mapped
+///     to [`kCardValMin`, `kCardValMax`]
+///   - pastel guardrail: if sat < `kPastelSatCutoff`, val capped at
+///     `kPastelValCap` (gives charcoals / browns / slates instead of
+///     pastels — CLAUDE.md "no muted palettes" rule)
+///
+/// Per-track variety lands via `trackSeed` XOR: track A's card[5] and
+/// track B's card[5] are completely different (h, s, v) triples by
+/// construction. Same track + same cardIndex → same colour (determinism).
+///
+/// Mood biases the distribution within the card without restricting the
+/// envelope: every card contains samples spanning darks / mid-tones /
+/// brights regardless of mood, but the average register shifts. Verified
+/// by `LumenPaletteSpectrumTests`.
+///
+/// Returns a linear RGB value with each channel in [0, 1]. The lighting
+/// fragment multiplies by `kLumenEmissionGain (1.0)` and runs through
+/// PostProcessChain ACES tone-mapping.
 static inline float3 lm_cell_palette(uint cellHash,
                                      constant LumenPatternState& lumen) {
-    // Per-cell deterministic base phase, in [0, 1). Pulled from the low
-    // 16 bits of the same hash that drives team/period assignment.
-    float cell_t = float(cellHash & 0xFFFFu) * (1.0f / 65535.0f);
-
     // Team selection. Buckets are non-overlapping percentages of [0, 100):
     // 30% bass / 35% mid / 25% treble / 10% static.
     uint teamBucket = cellHash % 100u;
@@ -419,9 +443,7 @@ static inline float3 lm_cell_palette(uint cellHash,
     // Period selection. Pareto-shaped distribution from a 3-bit bucket
     // ∈ [0, 7]: ≈37.5% period=1, 25% period=2, 25% period=4, 12.5%
     // period=8. Many fast cells (visibly stepping every beat) + a long
-    // tail of slow cells (stepping only every few bars). Computed in
-    // `floor(counter / period)` form so the cell's palette index ratchets
-    // forward integer-step rather than drifting smoothly.
+    // tail of slow cells (stepping only every few bars).
     uint periodBucket = (cellHash >> 8u) & 0x7u;
     float period = 1.0f;
     if (periodBucket >= 7u) {
@@ -433,74 +455,60 @@ static inline float3 lm_cell_palette(uint cellHash,
     }
     float step = floor(teamCounter / period);
 
-    // Mood interpolation axes ∈ [0, 1].
-    float warm    = clamp(lumen.smoothedValence * 0.5f + 0.5f, 0.0f, 1.0f);
-    float arousal = clamp(lumen.smoothedArousal * 0.5f + 0.5f, 0.0f, 1.0f);
+    // Card slot — cellHash provides the base offset, step ratchets
+    // forward by 1 each team-period boundary. Two cells with adjacent
+    // cellHash values can land on completely different colours because
+    // the slot-to-colour map (below) is a hash, not a continuous
+    // function.
+    uint cardIndex = (cellHash + uint(step)) % kCardSize;
 
-    // **HSV-driven palette (LM.3.2 calibration round 4 — 2026-05-10).**
-    // The IQ cosine form `palette(t, a, b, c, d) = a + b * cos(2π * (c*t + d))`
-    // used in rounds 1–3 was structurally pastel-prone: with `a ≈ 0.5` and
-    // per-channel `c` rates desynchronising the three cosines, most cells
-    // landed at mid-saturation mid-tones because pure jewel hues require
-    // all three channels to hit specific extremes simultaneously, which
-    // rarely happens. Switching to `hsv2rgb` gives every cell a saturated
-    // hue from the colour wheel by construction; pastel-haze cannot occur.
-    //
-    // Per-track variety lands as a hue rotation (large) plus a small
-    // saturation perturbation. Per-mood character lands as a hue range
-    // bias (cool → blue/teal/violet range, warm → red/orange/yellow range)
-    // and an arousal-driven saturation/value lift (calm → slightly
-    // dimmer, energetic → fully saturated, near-max value).
-    //
-    // The four `kSeedMagnitude{A,B,C,D}` constants and the eight
-    // `kPalette[A,B,C,D][Cool/Warm/Subdued/Vivid/Unison/Offset/
-    // Complementary/Analogous]` constants are retained on the file but
-    // **unused at LM.3.2 round 4** (the IQ palette was the only
-    // consumer); kept for ABI continuity with future round-5+ work that
-    // may revisit them. The retired constants are documented in
-    // `LumenMosaic.metal` header.
+    // Per-track colour hash for this card slot. Same track + same
+    // cardIndex → identical RGB by construction. Different tracks →
+    // different RGB at the same cardIndex → distinct cards.
+    uint trackSeed = lm_track_seed_hash(lumen);
+    uint colourHash = lm_hash_u32(cardIndex ^ trackSeed);
 
-    // Hue: cell-specific base + step ratchet + per-track hue rotation
-    // + mood hue bias. Each component contributes additively in [0, 1)
-    // and the result is fract'd into a single hue.
-    float trackHueShift = lumen.trackPaletteSeedA * 0.30f
-                        + lumen.trackPaletteSeedD * 0.50f;
+    // Three uniform [0, 1] samples from the 32-bit hash.
+    float h_u = float((colourHash >>  0u) & 0xFFu) * (1.0f / 255.0f);
+    float s_u = float((colourHash >>  8u) & 0xFFu) * (1.0f / 255.0f);
+    float v_u = float((colourHash >> 16u) & 0xFFu) * (1.0f / 255.0f);
 
-    // Mood hue bias: cool mood pushes hue toward blue (~0.65 on the
-    // colour wheel), warm mood pushes toward red-orange (~0.05). This
-    // means HV-HA tracks cluster around oranges + yellows + reds, while
-    // LV-LA tracks cluster around blues + teals + violets. Spread per
-    // cell stays at ±0.20 around the mood centre so adjacent cells can
-    // differ noticeably while overall palette character stays mood-
-    // appropriate.
-    float moodHueCentre = mix(0.65f, 0.02f, warm);   // wraps 0/1 cleanly
-    float perCellHue    = (cell_t - 0.5f) * 0.40f;   // ±0.20 around centre
-    float hue = fract(moodHueCentre + perCellHue
-                    + step * kPaletteStepSize
-                    + trackHueShift);
+    // Mood biasing — gamma curve preserves the [0, 1] envelope but
+    // shifts the distribution mode. Symmetric across the (-1, +1)
+    // arousal range; gamma = 1.0 at neutral (uniform). Applied to
+    // both sat and val so calm tracks feel moodier overall and
+    // energetic tracks feel brighter overall — the tails are always
+    // there.
+    float arousalNorm = clamp(lumen.smoothedArousal * 0.5f + 0.5f, 0.0f, 1.0f);
+    float gamma = mix(kMoodGammaLowArousal, kMoodGammaHighArousal, arousalNorm);
+    float s_biased = pow(s_u, gamma);
+    float v_biased = pow(v_u, gamma);
 
-    // Saturation: arousal-driven, floored high so cells never go
-    // pastel. The mix range `[0.85, 0.98]` was widened upward at
-    // round 4 follow-up (2026-05-10) after track v3 with seed
-    // `(1, -1, 1, -1)` rendered pastel — seedB = -1 with magnitude
-    // 0.10 dropped sat to 0.75, which combined with high val (0.95)
-    // produces pastel character. Tightened sat range + reduced
-    // seedB perturbation magnitude to ±0.05 so the worst-case sat
-    // stays at `mix(0.85, 0.98, 0) - 0.05 = 0.80` — always vivid.
-    float sat = clamp(mix(0.85f, 0.98f, arousal)
-                    + lumen.trackPaletteSeedB * 0.05f,
-                    0.78f, 1.00f);
+    // Map value into [kCardValMin, kCardValMax]. Floor above 0 keeps
+    // the panel from ever going pitch-black (a near-zero value still
+    // reads as "lit" against the deferred lighting path's IBL ambient
+    // floor); cap below 1.0 leaves headroom for the bar pulse +30 %
+    // flash without clipping to white.
+    float v = mix(kCardValMin, kCardValMax, v_biased);
 
-    // Value: arousal-driven, floored high so the panel stays bright
-    // at calm moods (visual rest character is in the *hue* bias
-    // toward cool blues/teals, not in dimness). Per-track seedC
-    // modulates by ±0.03 — preserves overall brightness while
-    // adding fine-grained track identity.
-    float val = clamp(mix(0.85f, 1.00f, arousal)
-                    + lumen.trackPaletteSeedC * 0.03f,
-                    0.80f, 1.00f);
+    // Saturation full range [0, 1] — pure grays allowed (rare,
+    // distinctive). Hue full wheel, uniform across the card slot
+    // distribution; the per-track seed picks WHICH hues appear in
+    // this card.
+    float s = s_biased;
+    float h = h_u;
 
-    return hsv2rgb(float3(hue, sat, val));
+    // Pastel guardrail — when the procedural sample lands in
+    // (sat < kPastelSatCutoff), pull val down to ≤ kPastelValCap.
+    // Couples low sat with low val so we get charcoals / browns /
+    // slates instead of cream-haze pastels. The forbidden zone
+    // (sat < 0.3 AND val > 0.6) is the LM.2 failure mode the
+    // CLAUDE.md "no muted palettes" rule was written to prevent.
+    if (s < kPastelSatCutoff) {
+        v = min(v, kPastelValCap);
+    }
+
+    return hsv2rgb(float3(h, s, v));
 }
 
 /// Voronoi domed-cell relief field. Returns a per-pixel scalar in
