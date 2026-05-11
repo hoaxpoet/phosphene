@@ -426,45 +426,58 @@ public final class LumenPatternEngine: @unchecked Sendable {
     /// inset clamp by pushing a base position outside the visible-area inset.
     private var basePositions: [SIMD2<Float>]
 
-    // MARK: - LM.3.2 — Beat rising-edge detection state
+    // MARK: - LM.4.3 — BeatGrid-driven trigger state
     //
-    // Each of the three FFT-band beat onsets (`f.beatBass`, `f.beatMid`,
-    // `f.beatTreble`) decays over ~200 ms after a transient. We want to
-    // increment the band counter exactly once per onset, not once per frame
-    // the onset is above the threshold. The "rising-edge" pattern works the
-    // same as Arachne's per-spoke beat tracker (see `ArachneState+Spider.swift`):
-    //   - keep last frame's value for each band
-    //   - fire when prev < beatHigh AND now ≥ beatHigh
-    //   - debounce 80 ms to reject a single onset that briefly dips and
-    //     re-crosses the threshold from FFT-bin shimmer
+    // **LM.4.3 supersedes the LM.3.2 FFT-band-driven triggers.** The
+    // first two M7 reviews on real-music sessions (Matt 2026-05-11,
+    // sessions `2026-05-11T15-15-46Z` + `2026-05-11T15-56-41Z`) made
+    // the failure mode conclusive: `f.beatBass / beatMid / beatTreble`
+    // are FFT bass/mid/treble onset detectors that fire on ~any
+    // spectral transient, not on actual kick / snare / hi-hat events.
+    // Real-music measurement showed each detector firing at ~2.4
+    // events/sec independent of tempo — Pyramid Song (70 BPM, ~1.17
+    // kicks/sec) and Love Rehab (118 BPM, ~1.97 kicks/sec) both
+    // produced 2.42 bass-band rising edges/sec. The LM.3.2 dance was
+    // therefore stepping ~2.4× faster than the song's actual beat
+    // regardless of tempo, and the LM.4 onset-spawned ripples were
+    // firing at the same rate — Matt's "this still seems like a LOT
+    // of ripples" + "color does not really follow the music" feedback.
     //
-    // For `barCounter`, the canonical signal is `f.barPhase01` wrapping from
-    // ~1.0 back to ~0.0 on each downbeat (DSP.2 S9). When BeatGrid is
-    // installed, that's a clean one-tick-per-bar increment. When it isn't
-    // (live ad-hoc / reactive sessions before the 10-second live BeatGrid
-    // inference fires, or tracks that fail offline analysis), `barPhase01`
-    // stays at 0.0 forever — the fallback is "every 4 bass beats, increment
-    // barCounter" so the bar pulse keeps a steady rhythm even without grid
-    // signal.
-    private static let beatTriggerHigh: Float = 0.5
-    private static let beatDebounceSeconds: Float = 0.08
-    private static let barFallbackBassBeats: Int = 4
+    // LM.4.3 replaces the FFT triggers with **BeatGrid-derived beat
+    // crossings**: `f.beatPhase01` wraps from near-1.0 to near-0.0 on
+    // each grid beat (DSP.2 S7 LiveBeatDriftTracker when the grid is
+    // locked; MV-3b BeatPredictor in reactive mode pre-grid). The
+    // three team counters (`bassCounter / midCounter / trebleCounter`)
+    // tick at grid-aligned multiples — every beat, every 2 beats,
+    // every 4 beats — giving a clean rhythmic hierarchy correlated to
+    // the song's actual tempo. `barCounter` ticks on `f.barPhase01`
+    // wraps (downbeats, also from the grid). The every-4-bass-beats
+    // fallback is retired (it was driven by the FFT noise we just
+    // removed).
+    //
+    // The LM.3.2 "team" semantics (bass/mid/treble corresponding to
+    // FFT bands) is reinterpreted as "team" = "rate of palette
+    // advancement": bass-team cells step on every beat (fastest), mid-
+    // team cells step on every 2 beats, treble-team cells step on
+    // every 4 beats. Cell-team assignment is unchanged shader-side
+    // (hash-derived 30/35/25/10 split with the static team).
+    //
+    // Beat wrap detection thresholds: `prev > beatWrapHigh && now < beatWrapLow`.
+    // Wider band than 0.5/0.5 to handle drift-tracker jitter at lock
+    // boundaries without spurious double-fires; the band must be at
+    // least ~10% wide on each side or fast-rendering tracks can clip a
+    // wrap on a single ~16 ms tick.
+    private static let beatWrapHigh: Float = 0.85
+    private static let beatWrapLow: Float  = 0.15
 
-    private var prevBeatBass: Float = 0
-    private var prevBeatMid: Float = 0
-    private var prevBeatTreble: Float = 0
+    private var prevBeatPhase01: Float = 0
     private var prevBarPhase01: Float = 0
 
-    /// Last `elapsedTime` at which each band counter incremented. Used for
-    /// the 80 ms debounce.
-    private var lastBassBeatTime: Float = -1   // -1 = "never fired"
-    private var lastMidBeatTime: Float = -1
-    private var lastTrebleBeatTime: Float = -1
-
-    /// Bass-beat counter for the bar fallback. When `barPhase01` stays at 0
-    /// for the entire track (no BeatGrid), every Nth bass beat ticks the
-    /// bar counter so the bar pulse remains coherent.
-    private var bassBeatsSinceBarFallback: Int = 0
+    /// Counts grid beats since `midCounter` last advanced. When it
+    /// reaches 2, advance `midCounter` and reset. Similarly for treble
+    /// at 4.
+    private var gridBeatsSinceMidStep: Int = 0
+    private var gridBeatsSinceTrebleStep: Int = 0
 
     // MARK: - LM.4 — Pattern pool state
     //
@@ -475,23 +488,25 @@ public final class LumenPatternEngine: @unchecked Sendable {
     // pool is full (4/4 active, none yet retired), the oldest pattern
     // (largest `phase`) is evicted to make room.
     //
-    // Drum-onset trigger: fires a `radialRipple` on rising-edge of
-    // `f.beatBass` (reuses the LM.3.2 80 ms debounce in `updateBandCounters`).
-    // Origins are hash-derived per-onset so the same track produces the
-    // same ripple choreography on replay — no live-stem path required;
-    // works in both reactive and Spotify-prepared sessions.
+    // **LM.4.3 retired the drum-onset (per-kick) ripple spawn entirely.**
+    // Per CLAUDE.md Audio Data Hierarchy, beat-onset events are "ACCENT
+    // ONLY — NEVER PRIMARY". LM.4 fired a ripple on every kick, which
+    // made onset events the most frequent visual on the panel — exact
+    // inversion of the rule. LM.4.3 keeps bar-rotation patterns
+    // (`radialRipple` OR `sweep`, mood-weighted) as the only pattern
+    // trigger: one accent per measure, on the downbeat. Rate on typical
+    // 4/4 tracks at 120 BPM is ~0.5 spawns/sec; on Pyramid Song's
+    // engine-detected 2/X meter at 70 BPM it's ~0.59/sec. With the
+    // 0.6 s ripple lifetime restored in LM.4.3, ripples complete cleanly
+    // between bars and the panel rests visually between accents.
     //
-    // Bar-rotation trigger: fires a `radialRipple` OR `sweep` (mood-weighted
-    // hash) on rising-edge of `state.barCounter`. The LM.3.2 `barCounter`
-    // already handles both the `barPhase01` wrap path AND the every-4-bass-
-    // beats fallback for reactive mode — LM.4 hooks the existing increment,
-    // adding no new bar-detection logic.
-    //
-    // Onset-hash and bar-hash use separated seed families
-    // (`barRotationCounter ^ (trackSeed ^ 0xA5A5A5A5)`) so bar-spawned
-    // origins don't collide with onset-spawned ones on the same track.
+    // The LM.3.2 per-cell beat-step palette dance carries the primary
+    // motion now — cells advance their palette index on every grid beat
+    // (via `bassCounter`), every 2 beats (via `midCounter`), or every 4
+    // beats (via `trebleCounter`), with hash-assigned period multipliers
+    // on top. Per-beat cell colour change is the dominant signal; per-
+    // bar pattern bursts are the accent.
     private var activePatterns: [LumenPattern] = []
-    private var drumOnsetCounter: UInt32 = 0
     private var barRotationCounter: UInt32 = 0
 
     // MARK: - Init
@@ -561,32 +576,26 @@ public final class LumenPatternEngine: @unchecked Sendable {
         writeToGPU()
     }
 
-    /// Internal: zero the band counters + rising-edge / debounce state +
-    /// (LM.4) the active pattern pool and per-track spawn counters.
+    /// Internal: zero the band counters + LM.4.3 grid wrap-edge state +
+    /// pattern pool + per-track spawn counter.
     /// Called from `reset()` (preset re-apply) AND from `setTrackSeed(_:)`
     /// (track change). The counters must restart from 0 on each track so
     /// the shader's `floor(counter / period)` cell-step doesn't carry over.
-    /// Likewise the pattern pool and `drumOnsetCounter / barRotationCounter`
-    /// must reset on each track so the new track paints its own pattern
-    /// choreography from beat 1 — without this, an old track's pool would
-    /// carry over and the new track's first beats would land on a non-
-    /// empty pool.
+    /// Likewise the pattern pool and `barRotationCounter` must reset on
+    /// each track so the new track paints its own pattern choreography
+    /// from bar 1 — without this, an old track's pool would carry over
+    /// and the new track's first bars would land on a non-empty pool.
     /// Caller must hold `lock`.
     private func resetBeatTrackingState() {
         state.bassCounter = 0
         state.midCounter = 0
         state.trebleCounter = 0
         state.barCounter = 0
-        prevBeatBass = 0
-        prevBeatMid = 0
-        prevBeatTreble = 0
+        prevBeatPhase01 = 0
         prevBarPhase01 = 0
-        lastBassBeatTime = -1
-        lastMidBeatTime = -1
-        lastTrebleBeatTime = -1
-        bassBeatsSinceBarFallback = 0
+        gridBeatsSinceMidStep = 0
+        gridBeatsSinceTrebleStep = 0
         activePatterns.removeAll(keepingCapacity: true)
-        drumOnsetCounter = 0
         barRotationCounter = 0
         // Zero the four-slot pattern snapshot too, so a stale post-reset
         // GPU read can't see the pre-reset patterns.
@@ -761,103 +770,96 @@ public final class LumenPatternEngine: @unchecked Sendable {
         advancePatternEngine(features: features, dt: dt)
     }
 
-    /// LM.4 — single entry point chaining the LM.3.2 band-counter update
-    /// to the LM.4 pattern-pool advance. Captures pre-call `bassCounter`
-    /// and `barCounter` to derive the `bassFired` / `barFired` rising-edge
-    /// signals the pattern engine consumes (the existing 80 ms debounce
-    /// inside `updateBandCounters` means the edge is "did the counter
-    /// advance this tick", not raw `f.beatBass`).
+    /// LM.4.3 — single entry point chaining the band-counter update to
+    /// the pattern-pool advance. Captures the pre-call `barCounter` and
+    /// derives `barFired` (the only signal the LM.4.3 pattern engine
+    /// consumes — the LM.4 per-kick `bassFired` path is retired).
     private func advancePatternEngine(features: FeatureVector, dt: Float) {
-        let prevBassCounter = state.bassCounter
         let prevBarCounter = state.barCounter
         updateBandCounters(features: features)
-        let bassFired = state.bassCounter > prevBassCounter
         let barFired = state.barCounter > prevBarCounter
-        updatePatterns(dt: dt, bassFired: bassFired, barFired: barFired)
+        updatePatterns(dt: dt, barFired: barFired)
     }
 
-    /// LM.3.2 — advance the four band counters on rising-edge of their
-    /// FFT-band beat onset (debounced 80 ms), scaled by `beatStrength`
-    /// from the energy metric. Caller must hold `lock`. Reads the
-    /// `prev*` rising-edge state, the `last*BeatTime` debounce
-    /// timestamps, and `bassBeatsSinceBarFallback` from `self`; writes
-    /// into `state.bassCounter / midCounter / trebleCounter / barCounter`.
+    /// LM.4.3 — advance the four band counters on BeatGrid-derived beat
+    /// crossings. Caller must hold `lock`. Reads the `prev*` wrap-edge
+    /// state from `self`; writes into `state.bassCounter /
+    /// midCounter / trebleCounter / barCounter` and updates the
+    /// `gridBeatsSince*Step` phase counters used for mid / treble
+    /// subdivision.
+    ///
+    /// Trigger source: `f.beatPhase01` wraps from `> beatWrapHigh` to
+    /// `< beatWrapLow` (each grid beat); `f.barPhase01` wraps the same
+    /// way (each grid downbeat). Both phases come from the
+    /// `LiveBeatDriftTracker` when the grid is locked, or the
+    /// `BeatPredictor` fallback in reactive mode pre-grid. They stay
+    /// at 0 in pure silence / before any beat detection has converged
+    /// — in that case no counters tick, the panel is visually static
+    /// (no FFT fallback path at LM.4.3; documented in the LM.4.3
+    /// engineering-plan entry as a known limitation).
+    ///
+    /// Counter rates (all advances are uniform `+1.0`, no energy
+    /// modulation — the rhythmic regularity carries the music sync, not
+    /// loudness variation):
+    ///   - `bassCounter`:    every grid beat (every wrap)
+    ///   - `midCounter`:     every 2 grid beats
+    ///   - `trebleCounter`:  every 4 grid beats
+    ///   - `barCounter`:     every grid bar (every barPhase01 wrap)
+    ///
+    /// Note: the "bass / mid / treble" labels are now a rate semantic,
+    /// not an FFT-band semantic. Cells assigned to the bass team step
+    /// fastest, treble team steps slowest. The LM.3.2 team-percentage
+    /// split (30/35/25/10) is preserved on the shader side.
     private func updateBandCounters(features: FeatureVector) {
-        // `beatStrength` scales each counter increment so loud beats
-        // advance the cell-team palette farther than soft taps.
-        // `energy_metric = max(f.bass, f.mid, f.treble)` (not avg)
-        // intentionally — Spotify-normalized audio under-reads mid/treble
-        // (BUG-012) and a max keeps quiet sections still animated as long
-        // as bass is firing.
-        let energyMetric = max(features.bass, max(features.mid, features.treble))
-        let beatStrength = max(0.3, min(1.0, 0.3 + 1.4 * energyMetric))
+        let beatWrapped = (prevBeatPhase01 > Self.beatWrapHigh)
+            && (features.beatPhase01 < Self.beatWrapLow)
+        let barWrapped = (prevBarPhase01 > Self.beatWrapHigh)
+            && (features.barPhase01 < Self.beatWrapLow)
 
-        let bassEdge = (prevBeatBass < Self.beatTriggerHigh)
-            && (features.beatBass >= Self.beatTriggerHigh)
-        let midEdge = (prevBeatMid < Self.beatTriggerHigh)
-            && (features.beatMid >= Self.beatTriggerHigh)
-        let trebleEdge = (prevBeatTreble < Self.beatTriggerHigh)
-            && (features.beatTreble >= Self.beatTriggerHigh)
-
-        if bassEdge && (lastBassBeatTime < 0 ||
-            elapsedTime - lastBassBeatTime >= Self.beatDebounceSeconds) {
-            state.bassCounter += beatStrength
-            lastBassBeatTime = elapsedTime
-            bassBeatsSinceBarFallback += 1
-        }
-        if midEdge && (lastMidBeatTime < 0 ||
-            elapsedTime - lastMidBeatTime >= Self.beatDebounceSeconds) {
-            state.midCounter += beatStrength
-            lastMidBeatTime = elapsedTime
-        }
-        if trebleEdge && (lastTrebleBeatTime < 0 ||
-            elapsedTime - lastTrebleBeatTime >= Self.beatDebounceSeconds) {
-            state.trebleCounter += beatStrength
-            lastTrebleBeatTime = elapsedTime
+        if beatWrapped {
+            state.bassCounter += 1
+            gridBeatsSinceMidStep += 1
+            gridBeatsSinceTrebleStep += 1
+            if gridBeatsSinceMidStep >= 2 {
+                state.midCounter += 1
+                gridBeatsSinceMidStep = 0
+            }
+            if gridBeatsSinceTrebleStep >= 4 {
+                state.trebleCounter += 1
+                gridBeatsSinceTrebleStep = 0
+            }
         }
 
-        // Bar counter — primary path: rising-edge detection on `barPhase01`
-        // wrap (typical wrap goes from ~1.0 to ~0.0 in one frame on each
-        // downbeat). Fallback: when `barPhase01` stays at 0 (no BeatGrid),
-        // every Nth bass-beat ticks the bar counter.
-        let barWrapped =
-            (prevBarPhase01 > 0.9) && (features.barPhase01 < 0.1)
         if barWrapped {
             state.barCounter += 1
-            bassBeatsSinceBarFallback = 0
-        } else if features.barPhase01 == 0 &&
-                  bassBeatsSinceBarFallback >= Self.barFallbackBassBeats {
-            state.barCounter += 1
-            bassBeatsSinceBarFallback = 0
         }
 
-        prevBeatBass = features.beatBass
-        prevBeatMid = features.beatMid
-        prevBeatTreble = features.beatTreble
+        prevBeatPhase01 = features.beatPhase01
         prevBarPhase01 = features.barPhase01
     }
 
     // MARK: - LM.4 — Pattern engine
 
-    /// Advance, retire, and spawn patterns for this tick. Writes the four-
-    /// slot snapshot into `state.patterns` + `state.activePatternCount`.
-    /// Caller must hold `lock`.
+    /// LM.4.3 — advance, retire, and spawn patterns for this tick.
+    /// Writes the four-slot snapshot into `state.patterns` +
+    /// `state.activePatternCount`. Caller must hold `lock`.
     ///
     /// Order matters:
     ///   1. Advance phases (so freshly-spawned patterns from the previous
     ///      tick get one frame of advancement before being culled).
     ///   2. Cull retired (`phase >= 1.0`) — frees slots before this tick's
-    ///      spawns try to find room.
-    ///   3. Drum-onset trigger (rising-edge of `f.beatBass` via
-    ///      `bassFired`) spawns a radial ripple at a hash-derived origin.
-    ///   4. Bar-rotation trigger (rising-edge of `state.barCounter` via
+    ///      spawn tries to find room.
+    ///   3. Bar-rotation trigger (rising-edge of `state.barCounter` via
     ///      `barFired`) spawns either a radial ripple or sweep — selected
     ///      by a mood-weighted hash (high arousal biases toward sweep,
-    ///      low arousal toward ripple, 50/50 at mid-arousal).
-    ///   5. Spawn dispatch evicts the oldest pattern (largest phase) if
+    ///      low arousal toward ripple, 50/50 at mid-arousal). **This is
+    ///      the only pattern-spawn trigger at LM.4.3** — the LM.4 per-
+    ///      kick onset spawn is retired (see Pattern pool state comment
+    ///      block for rationale).
+    ///   4. Spawn dispatch evicts the oldest pattern (largest phase) if
     ///      the pool is at capacity (4/4).
-    ///   6. Snapshot the four-slot pool to GPU state.
-    private func updatePatterns(dt: Float, bassFired: Bool, barFired: Bool) {
+    ///   5. Snapshot the four-slot pool to GPU state.
+    private func updatePatterns(dt: Float, barFired: Bool) {
         // 1. Advance phases.
         for i in activePatterns.indices {
             let duration = max(activePatterns[i].duration, 1e-6)
@@ -866,24 +868,13 @@ public final class LumenPatternEngine: @unchecked Sendable {
         // 2. Cull retired.
         activePatterns.removeAll { $0.phase >= 1.0 }
 
-        // 3. Drum-onset trigger.
-        if bassFired {
-            drumOnsetCounter &+= 1
-            let origin = radialRippleOriginFromOnset()
-            let pattern = LumenPatternFactory.radialRipple(
-                origin: origin,
-                birthTime: elapsedTime
-            )
-            spawnPattern(pattern)
-        }
-
-        // 4. Bar-rotation trigger.
+        // 3. Bar-rotation trigger — the only spawn path at LM.4.3.
         if barFired {
             barRotationCounter &+= 1
             spawnBarRotationPattern()
         }
 
-        // 6. Snapshot to GPU state.
+        // 5. Snapshot to GPU state.
         writePatternsToState()
     }
 
@@ -972,22 +963,15 @@ public final class LumenPatternEngine: @unchecked Sendable {
         return Self.lmHashU32(packed)
     }
 
-    /// Onset-spawned ripple origin. Derived from `drumOnsetCounter` mixed
-    /// with the per-track seed so the same track produces the same ripple
-    /// choreography on replay. Two 16-bit halves of the hash map to
-    /// `[0.05, 0.95]²` UV — origins stay inside the panel, away from edges
-    /// where the wavefront would clip almost immediately.
-    private func radialRippleOriginFromOnset() -> SIMD2<Float> {
-        let seed = drumOnsetCounter ^ trackSeedHash32()
-        let hash = Self.lmHashU32(seed)
-        let xNorm = Float(hash & 0xFFFF) / 65535.0
-        let yNorm = Float((hash >> 16) & 0xFFFF) / 65535.0
-        return SIMD2<Float>(0.05 + xNorm * 0.90, 0.05 + yNorm * 0.90)
-    }
-
-    /// Bar-spawned ripple origin. Separate hash family from onset origins
-    /// (`trackSeed ^ 0xA5A5A5A5`) so bar-spawned ripples don't collide
-    /// with onset-spawned ones on the same track.
+    /// Bar-spawned ripple origin. Hash family
+    /// `barRotationCounter ^ (trackSeed ^ 0xA5A5A5A5)`. The XOR with
+    /// `0xA5A5_A5A5` is a holdover from LM.4 when there were two spawn
+    /// paths (onset and bar) sharing the same `trackSeed` — the offset
+    /// kept their origin distributions independent. The onset path
+    /// retired at LM.4.3, so the XOR is now cosmetic, but removing it
+    /// would shift every existing track's per-track ripple choreography.
+    /// Keep the existing seed to preserve determinism across the LM.4 →
+    /// LM.4.3 transition.
     private func radialRippleOriginFromBar() -> SIMD2<Float> {
         let seed = barRotationCounter ^ (trackSeedHash32() ^ 0xA5A5_A5A5)
         let hash = Self.lmHashU32(seed)
