@@ -3268,11 +3268,11 @@ git diff <pre-DM.0> HEAD -- PhospheneEngine/Sources/Renderer/Shaders/Particles.m
 
 ### Increment DM.4 — Drift Motes Session 4 (world-feel pass) — planned
 
-**Scope:** Three reactivities deferred from DM.3 that cohere as a "world-feel" grouping rather than discrete events:
+**Scope:** Reactivities that cohere as a "world-feel" grouping. Scope shrunk twice from the original DM.3 carry-forward:
 
 - **Wind force × `f.bass_att_rel`** — low-band continuous: bass shapes the motion-field intensity. Multiplier on the existing wind vector in `motes_update` (the kernel already reads the wind direction + magnitude from buffer(4); adding a bass scalar is a one-line product on the Swift side at frame-bind time, or directly in MSL).
-- **Backdrop palette tint by `f.valence`** — slow-moving emotional read of the world. Tints the warm-amber sky gradient toward warmer / cooler hues at positive / negative valence. Lands in `DriftMotes.metal`'s sky fragment.
-- **Anticipatory shaft pulse on `f.beat_phase01`** — pre-beat shimmer. The shaft intensity gets a `smoothstep(0.75, 1.0, f.beat_phase01)` boost in the last quarter of each beat, anticipating the drum hit.
+- **~~Backdrop palette tint by `f.valence`~~** — **subsumed by DM.3.2's paletteCycle + mood bias** (sky gradient is already valence-tinted via the cycle base hue).
+- **~~Anticipatory shaft pulse on `f.beat_phase01`~~** — **retired in DM.3.3.1 per Matt's design call: the shaft is the world's lighting, not a music-readable element.** Pre-kick shaft brightness ramps are the same design family as the per-kick brightness lift DM.3.3.1 removed; all beat reactivity lives on the particles only.
 
 **Plus** the **structural-flag scatter** punted from DM.3 Task 3 — needs a small piece of design work first: either thread `StructuralPrediction.confidence` through the GPU `FeatureVector` (adds a float; touches D-099-locked layout — careful) or read it CPU-side and bake into a non-FeatureVector-bound config buffer. The Murmuration precedent (per-frame `ParticleConfig`) is the cheaper path.
 

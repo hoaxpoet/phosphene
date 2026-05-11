@@ -135,19 +135,43 @@ fragment float4 drift_motes_sky_fragment(
     float3 fogColor    = hsv2rgb(float3(fogHue, 0.50, 0.32));
     col = mix(col, col * fogColor * kFogTintAmplifier, fogMask);
 
-    // ── 3. Cycle + pitch + beat reactive shaft (DM.3.2) ─────────────────
-    // Shaft hue: paletteCycle base + small forward offset + vocal pitch
-    // drift + drum-beat hue rotation. The `+0.08` offset places the shaft
-    // hue in the "next-step" region — slightly ahead of the sky's region
-    // so the beam reads as distinct from the backdrop, not blending into
-    // it. Pitch shift uses the same dm_pitch_hue_offset as the kernel
+    // ── 3. Shaft — atmospheric, continuous-only (DM.3.3.1) ──────────────
+    //
+    // The shaft is the WORLD'S LIGHT, not a music-readable element. A
+    // real shaft of light through a window has constant intensity from
+    // actual sunlight; per-kick brightness flashes or hue rotations
+    // read as "stage light controlled by a DJ" — algorithmic, not
+    // atmospheric. Music animates the PARTICLES drifting through the
+    // light, not the light itself.
+    //
+    // DM.3.3.1 retires both per-beat shaft modulations introduced in
+    // DM.3.2 / DM.3.3:
+    //   - `+0.50 × stems.drums_beat` brightness lift  → REMOVED
+    //   - `+0.05 × stems.drums_beat` hue rotation     → REMOVED
+    //
+    // What remains is purely continuous / atmospheric:
+    //   - paletteCycle base hue (60 s cycle through 6 regions, slow)
+    //   - vocal-pitch hue drift (continuous, gentle, ±0.05 at half-
+    //     strength of the kernel's per-particle shift)
+    //   - `f.mid_att_rel` continuous brightness "breath" (keeps the
+    //     shaft loosely tied to music's continuous energy without
+    //     claiming the beam is a percussion instrument)
+    //
+    // Per-beat reactivity now lives entirely on the particles:
+    //   - DM.3's dispersion shock pushes motes radially on each kick
+    //     (kernel-side, kxz-plane impulse with small +y lift)
+    //   - DM.3.3's abundant in-beam motes brighten via the sprite
+    //     fragment's `shaftLit` modulation, so the existing continuous
+    //     shaft brightness propagates to per-mote brightness changes —
+    //     music-sync stays readable through the particle field.
+    //
+    // Pitch shift uses the same dm_pitch_hue_offset as the kernel
     // (1-octave wrap, ±0.10 max), but applied at half-strength so the
-    // shaft drifts gently rather than strobing on every semitone.
+    // shaft hue drifts gently rather than strobing on every semitone.
     float shaftBaseHue     = fract(baseHue + 0.08);
     float shaftPitchShift  = 0.5 * dm_pitch_hue_offset(stems.vocals_pitch_hz,
                                                         stems.vocals_pitch_confidence);
-    float shaftBeatHueShift = 0.05 * stems.drums_beat;
-    float shaftHue         = fract(shaftBaseHue + shaftPitchShift + shaftBeatHueShift);
+    float shaftHue         = fract(shaftBaseHue + shaftPitchShift);
 
     // DM.3.2.1: shaft sat 0.60 → 0.85, value 0.85 → 0.95. The beam now
     // reads as a fully-saturated lit column of colour, not a desaturated
@@ -179,18 +203,16 @@ fragment float4 drift_motes_sky_fragment(
         float  occlusion     = 1.0 - smoothstep(0.0, coneHalfWidth, perpFromAxis);
         shaftAccum += ls_radial_accumulate_step(occlusion, 0.95, 0.04, i);
     }
-    // Continuous melody-driven brightness (D-026 deviation form, DM.2)
-    // PLUS drum-beat brightness lift (DM.3.2) so kicks register photometrically
-    // alongside the hue rotation.
+    // Continuous melody-driven brightness only (D-026 deviation form, DM.2).
     //
-    // DM.3.3 retune (Matt 2026-05-11 M7 review): beat impulse 0.30 → 0.50.
-    // Pre-DM.3.3 the beat-driven flash was too subtle to read as music-
-    // synced; bumping to 0.50 makes each kick produce a ~50 % brightness
-    // lift on the beam, which propagates to every mote currently in-beam
-    // via the sprite fragment's shaft-proximity brightness modulation.
-    // With DM.3.3's abundant particle distribution, the mote-mediated
-    // beat reading is the dominant visual cue for music-sync.
-    float shaftIntensity = 0.65 + 0.25 * f.mid_att_rel + 0.50 * stems.drums_beat;
+    // DM.3.3.1 retired the per-kick brightness lift (`+0.50 × drums_beat`)
+    // along with the per-kick hue rotation — see the §3 header comment.
+    // The shaft is atmospheric; beats animate the particles, not the
+    // light. The continuous `f.mid_att_rel` term is the only audio
+    // reactivity remaining on shaft brightness — it reads as the beam
+    // gently brightening with vocal energy ("a cloud passing"), not as
+    // a percussion instrument.
+    float shaftIntensity = 0.65 + 0.25 * f.mid_att_rel;
     col += shaftColor * shaftIntensity * shaftAccum;
 
     return float4(col, 1.0);

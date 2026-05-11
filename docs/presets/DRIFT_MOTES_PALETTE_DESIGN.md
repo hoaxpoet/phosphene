@@ -1,4 +1,59 @@
-# Drift Motes — Palette + distribution design (DM.3.2 / DM.3.2.1 / DM.3.3)
+# Drift Motes — Palette + distribution design (DM.3.2 / DM.3.2.1 / DM.3.3 / DM.3.3.1)
+
+## DM.3.3.1 — shaft is atmospheric, not percussive (2026-05-11)
+
+DM.3.3 bumped the shaft's drum-beat brightness impulse `+0.30 → +0.50`
+on the premise that "make the kick flash more visible." Matt corrected
+that reading: the question isn't "make pulsing more visible" but
+"justify the existence of pulsing at all."
+
+**Design call (Matt 2026-05-11):** the shaft is the world's lighting,
+not a music-readable element. A real shaft of light through a window
+has constant intensity from actual sunlight. Per-kick brightness
+flashes or hue rotations read as algorithmic ("DJ-controlled stage
+light"), not atmospheric. Music animates the particles drifting
+through the light; the light itself is stable.
+
+**DM.3.3.1 retires both per-beat shaft modulations:**
+
+| modulation | introduced | removed | effect |
+|---|---|---|---|
+| `+0.50 × stems.drums_beat` brightness lift | DM.3.2 (`+0.30`), retuned DM.3.3 (`+0.50`) | DM.3.3.1 | per-kick brightness flash |
+| `+0.05 × stems.drums_beat` hue rotation | DM.3.2 | DM.3.3.1 | per-kick hue rotation |
+
+**What remains on the shaft (all continuous / atmospheric):**
+- `paletteCycle`-driven base hue (60 s cycle through 6 regions, slow)
+- Vocal-pitch hue drift (continuous, gentle, ±0.05 at half-strength of
+  the kernel's per-particle shift)
+- `f.mid_att_rel` continuous brightness "breath" — reads as "the beam
+  gently brightens with vocal energy" / "a cloud passing," not as a
+  percussion instrument
+
+**Per-beat reactivity now lives entirely on the particles:**
+- DM.3's dispersion shock pushes motes radially on each kick (xz-plane
+  impulse with small +y lift; kernel-side).
+- DM.3.3's abundant in-beam motes brighten via the sprite fragment's
+  `shaftLit` modulation, so the existing continuous shaft brightness
+  propagates to per-mote brightness changes — music-sync stays
+  readable through the particle field without the light itself
+  pulsing.
+
+### DM.4 scope revision (carry-forward)
+
+DM.4 originally specced three world-feel reactivities (wind ×
+`f.bass_att_rel`, valence-tinted backdrop, anticipatory shaft pulse
+on `f.beat_phase01`) + structural-flag scatter. The valence backdrop
+was already subsumed by DM.3.2's paletteCycle. **DM.3.3.1 retires the
+anticipatory shaft pulse** by the same design call — pre-kick shaft
+brightness ramp is the same design family as per-kick brightness lift,
+and falls under the same "shaft is atmospheric, not percussive" rule.
+
+DM.4 scope now: wind × `f.bass_att_rel` (kernel-side, particles) +
+structural-flag scatter (kernel-side, particles). Both touch the
+particles, not the shaft. Consistent with the design call.
+
+---
+
 
 ## DM.3.3 distribution fix (2026-05-11)
 
