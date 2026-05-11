@@ -547,9 +547,9 @@ static inline float3 lm_cell_palette(uint cellHash,
     // likely. Cell × beat × track × section all XOR'd into one hash so
     // every (cell, beat, track, section) tuple gets its own colour.
     uint colourHash = lm_hash_u32(cellHash
-                               ^ (uint(step) * 0x9E37_79B9u)
+                               ^ (uint(step) * 0x9E3779B9u)
                                ^ trackSeed
-                               ^ (sectionSalt * 0xCC9E_2D51u));
+                               ^ (sectionSalt * 0xCC9E2D51u));
 
     float r = float((colourHash >>  0u) & 0xFFu) * (1.0f / 255.0f);
     float g = float((colourHash >>  8u) & 0xFFu) * (1.0f / 255.0f);
