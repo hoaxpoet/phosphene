@@ -102,12 +102,13 @@ private func runFrames(
     let ctx = try MetalContext()
     let lib = try ShaderLibrary(context: ctx)
 
-    // 600 frames (10 s simulated) — long enough for the population to
-    // relax close to the new steady state under the shortened lifetimes
-    // (lifeMin = 5 s; one full lifetime turn-over). The prompt's nominal
-    // 200-frame window measures only the first ~half-lifetime of relaxation,
-    // which is dominated by the init age distribution and produces a
-    // ~5 % age delta — invisible against natural variance.
+    // 3000 frames (50 s simulated). DM.3.3 retune: lifetime baseline
+    // 5–9 s → 20–30 s, so a 600-frame (10 s) window is now sub-half-
+    // lifetime — not enough for the population to relax to the new
+    // steady state under the compressed-by-high-mid lifetime. 50 s is
+    // ~2 lifetimes at silence and ~4.7 at peak melody — far enough into
+    // the asymptotic regime that the steady-state ratio converges to
+    // the emissionFactor (~0.43 at mid_att_rel = 0.9).
     func averageAgeAt(midAttRel: Float) throws -> Float {
         let geometry = try DriftMotesGeometry(
             device: ctx.device,
@@ -118,7 +119,7 @@ private func runFrames(
         let snap = try runFrames(
             geometry: geometry,
             queue: ctx.commandQueue,
-            frameCount: 600,
+            frameCount: 3000,
             midAttRel: midAttRel,
             stemsProvider: { _ in .zero }
         )
@@ -145,6 +146,17 @@ private func runFrames(
     let ctx = try MetalContext()
     let lib = try ShaderLibrary(context: ctx)
 
+    // DM.3.3 retune: measure `velocityX` variance instead of |v| variance.
+    // Pre-DM.3.3 the wind was dominantly leftward, so dispersion shock
+    // (which pushes radially outward in the xz plane) opposed/reinforced
+    // the wind asymmetrically and produced clear |v| variance jumps.
+    // Post-DM.3.3 the wind is dominantly downward; dispersion shock is
+    // perpendicular to the wind direction so |v| changes are small and
+    // symmetric across particles. But `velocityX` (the horizontal
+    // component) DOES vary across the field on beats — particles at +x
+    // get pushed further +x, particles at -x get pushed further -x.
+    // velocityX-variance is the direct discriminator for "dispersion
+    // shock is firing radially."
     func varianceAfter240Frames(stemsProvider: (Int) -> StemFeatures) throws -> Float {
         let geometry = try DriftMotesGeometry(
             device: ctx.device,
@@ -159,7 +171,7 @@ private func runFrames(
             midAttRel: 0,
             stemsProvider: stemsProvider
         )
-        return variance(velocityMagnitudes(snap))
+        return variance(snap.map { $0.velocityX })
     }
 
     // Silence baseline — the field velocity variance comes from the
@@ -206,7 +218,8 @@ private func runFrames(
         midAttRel: 0,
         stemsProvider: { _ in .zero }
     )
-    let silenceVar = variance(velocityMagnitudes(silenceSnap))
+    // DM.3.3: use velocityX-variance (matches the test-2 metric change).
+    let silenceVar = variance(silenceSnap.map { $0.velocityX })
 
     // Single impulse at frame 0, then 60 frames of silence. Damping 0.97/frame
     // brings the dispersion contribution down to 0.97^60 ≈ 0.16 of its
@@ -230,7 +243,7 @@ private func runFrames(
             return stems
         }
     )
-    let postImpulseVar = variance(velocityMagnitudes(impulseSnap))
+    let postImpulseVar = variance(impulseSnap.map { $0.velocityX })
 
     let ratio = postImpulseVar / max(silenceVar, 1e-6)
     let diagnostic = "silenceVar=\(silenceVar), postImpulseVar=\(postImpulseVar), ratio=\(ratio)"

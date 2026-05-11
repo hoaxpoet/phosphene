@@ -105,12 +105,15 @@ private func countVisible(buffer: MTLBuffer, count: Int) -> Int {
     // constants or adjusting the kEmissionRateGain coefficient.
     print("[DriftMotesVisibility] \(diagnostic)")
 
-    // Floor: ≥ 50 visible particles at every sample point. Below this
-    // the field reads as empty (M7 confirmed zero visible by t=15s in
-    // the broken state). The steady-state target with the fix is
-    // ~450 visible (kernel respawn rate × visible-fraction-of-life),
-    // so 50 leaves ample margin for tuning while still catching
-    // depletion regressions.
-    #expect(minVisible >= 50,
-            "Drift Motes field depleting — visible particle count below 50-floor. \(diagnostic)")
+    // Floor: ≥ 300 visible particles at every sample point. DM.3.3
+    // retune: with the new full-width spawn + downward wind + 20–30 s
+    // lifetime, steady state should be ~600–700 visible (out of 800
+    // total — most of each particle's life is spent in view). The
+    // 300 floor catches a regression where the field collapses back
+    // to a corner cluster (DM.3.1's failure mode that M7 surfaced on
+    // 2026-05-11) or where the spawn distribution gets too tight.
+    // Pre-DM.3.3 floor was 50; bumped because the field is genuinely
+    // more abundant now and 50 wouldn't catch a partial-regression.
+    #expect(minVisible >= 300,
+            "Drift Motes field depleting — visible particle count below 300-floor. \(diagnostic)")
 }
