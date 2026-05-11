@@ -3413,6 +3413,115 @@ The preset is sequenced as 10 increments LM.0 → LM.9 with cert sign-off at LM.
 
 ---
 
+## Phase AV — Aurora Veil (direct-fragment + mv_warp preset)
+
+A lightweight ambient ribbon preset for quiet listening, low-energy passages, and comedown sections. Direct-fragment + mv_warp pattern — the canonical Milkdrop shape with no current consumer in the catalog. Aurora curtains over a faintly-starred night sky, with vocals-pitch hue stratification, bass-driven brightness breathing, and drums-coupled curtain kink. Authoritative design at [docs/presets/AURORA_VEIL_DESIGN.md](presets/AURORA_VEIL_DESIGN.md); reference set curated at [docs/VISUAL_REFERENCES/aurora_veil/](VISUAL_REFERENCES/aurora_veil/) (5 references + anti-reference, plus architecture contract).
+
+**Concept-viability gate (SHADER_CRAFT §2.0).** All three gates clear before AV.1 starts:
+
+1. **Musical role (one sentence).** *"The aurora curtain's hue stratifies along its vertical extent from the live vocals-pitch trail (low-y green → high-y magenta), so the listener sees the melody as the curtain's colour gradient; brightness breathes with sustained bass; drums onsets kink the curtain laterally."* Names specific musical features (vocals pitch, sustained bass, drum onsets) paired with specific visual behaviours (vertical hue gradient, all-ribbon brightness scale, lateral curtain kink) per CLAUDE.md FA #58 / D-102.
+2. **Iconic visual subject deliverable at fidelity.** Lightweight rubric profile (D-067(b)) — emission-only direct fragment, exempt from M1 detail cascade and M3 material count. Comparable pattern: Gossamer's direct-fragment + mv_warp recipe is the closest neighbour. Fidelity bar is reachable.
+3. **Infrastructure-feasible.** Uses only existing utilities (`warped_fbm` / `curl_noise` / `palette_cool` / `SpectralHistoryBuffer` / `blue_noise_sample` / hash-based starfield). No engine work.
+
+**Status.** Planned. Behind active LM and Arachne work. Three-session estimate per AV_DESIGN §9. **Schedule:** waits on LM (LM.4.5.1 M7 re-review / LM.5 / LM.6) and Arachne (V.7.7C.6 / V.7.10 cert review) reaching a natural pause. Aurora Veil is the lowest-fidelity-bar new preset on the bench, so it's the right choice the next time Matt wants a *new* preset rather than continuing an in-flight uplift.
+
+### Increment AV.1 — Single-ribbon foundation
+
+**Scope.** Sky + sparse stars + one ribbon with `warped_fbm`-driven center-line + vertical ray detail + IQ cosine palette stratification + mv_warp wired at conservative parameters. No audio reactivity beyond silence-stable rendering. `AuroraVeilSilenceTest` passes.
+
+**Deliverables.** `PhospheneEngine/Sources/Presets/Shaders/AuroraVeil.metal` (`aurora_fragment` + mv_warp helpers if any per-preset overrides needed). `PhospheneEngine/Sources/Presets/Shaders/AuroraVeil.json` (lightweight rubric profile, certified: false). `PhospheneEngine/Tests/PhospheneEngineTests/Presets/AuroraVeilSilenceTest.swift`. `PresetLoaderCompileFailureTest.expectedProductionPresetCount` 15 → 16. `PresetRegressionTests` Aurora Veil hash entry.
+
+**Done-when.** Engine + app builds clean. Silence test passes (non-black; ≥ 1 distinct ribbon by horizontal slice luma analysis). Family enum (`fluid` per design, or `atmospheric` if a new category is added — Matt approves the choice during this increment). Visual harness emits silence-fixture PNG.
+
+### Increment AV.2 — Multi-ribbon parallax + audio routing
+
+**Scope.** Ribbons 2 and 3 added with depth scaling. All six audio routes from AV_DESIGN §5.6 wired (vocals-pitch hue / bass brightness breath / mid fold density / bass vertical-ray phase / drums curtain kink / valence palette warm-cool / beat-phase star twinkle). `AuroraVeilContinuousDominanceTest` passes (continuous primary drivers dominate accents by ≥ 10×). `AuroraVeilPitchHueTest` passes (ribbon hue shifts continuously with `vocalsPitchNorm` sweep).
+
+**Deliverables.** Updated `AuroraVeil.metal`. Two new test files (`AuroraVeilContinuousDominanceTest`, `AuroraVeilPitchHueTest`). Regenerated golden hash. Visual harness contact sheet for 3-fixture set (silence / mid / beat-heavy).
+
+**Done-when.** All three preset-specific tests green. D-026 grep returns zero absolute-threshold patterns. D-019 stem-warmup blend grep returns one hit at the pitch read. Tier 2 kernel cost ≤ 1.7 ms (per AV_DESIGN §7 budget).
+
+### Increment AV.3 — Refine + cert
+
+**Scope.** Tune palette constants, mv_warp amplitudes, fold-density coefficients against curated references. Matt M7 review against `01_macro_curtain_hero_purple_green.jpg` + `02_palette_green_to_magenta_stratification.jpg` + `03_meso_curtain_fold_drape.jpg` + `04_atmosphere_multi_curtain_parallax.jpg`. Anti-reference check against `09_anti_neon_festival_aurora.jpg`. On green: flip `certified: true`.
+
+**Done-when.** M7 sign-off. `Aurora_Veil.json` schema validated against an actual existing preset sidecar (`Gossamer.json` is the closest match per AV_README open question) — required fields (`name` not `id`, `description`, `author`, `duration`, `fragment_function`, `vertex_function`, `beat_source`) confirmed; the `feedback` wrapper around `decay` resolved against the real schema.
+
+**Estimated total: 3 sessions.**
+
+---
+
+## Phase CC — Crystalline Cavern (ray-march flagship preset)
+
+A static-camera ray-march scene of a glowing geode interior — crystalline materials, screen-space caustics, light shafts, mv_warp shimmer over the lit frame. Demonstrates the D-029-preserved combination of `ray_march` + `mv_warp` (no current preset uses this) and exercises the entire V.1–V.4 utility library in a single shader. **Flagship piece.** Tier-2 primary. Authoritative design at [docs/presets/CRYSTALLINE_CAVERN_DESIGN.md](presets/CRYSTALLINE_CAVERN_DESIGN.md); reference set **not yet curated** (CC.0 prerequisite).
+
+**Concept-viability gate (SHADER_CRAFT §2.0).** All three gates clear before CC.1 starts:
+
+1. **Musical role (one sentence).** *"The crystal cavern's caustics flash on drum onsets (`stems.drums_energy_dev` — beat-coupled accent), the IBL ambient breathes with sustained bass (`f.bass_att_rel` — continuous primary), and the caustic refraction angle drifts continuously with vocals pitch — so the listener pairs kicks with caustic flashes, sustained bass with the scene brightening, and the melody with the way light bends through the crystal cluster."* Names three specific musical features paired with three specific visual behaviours per CLAUDE.md FA #58 / D-102.
+2. **Iconic visual subject deliverable at fidelity.** Full rubric profile. This is the flagship — the fidelity bar is the *highest* in the catalog. Tier 2 6.5 ms budget; comparable past preset Glass Brutalist uses the same stack (ray-march + post-process + SSGI) and demonstrates the fidelity is achievable. **Risk acknowledged**: per CLAUDE.md Authoring Discipline ("treat Matt's fidelity warnings as constraints"), the flagship target is ambitious; if any session produces output that does not read against the curated references, the right action is to escalate to "this preset doesn't have a viable design at this fidelity target" rather than continue tuning (FA #58 lesson).
+3. **Infrastructure-feasible.** Uses existing V.1–V.4 utilities. One amber: screen-space caustics utility (`Volume/Caustics.metal`) has no production consumer and may have rough edges (CC_DESIGN §4). CC.3 has a documented fallback (`fbm8` overlay) if the utility output is unworkable.
+
+**Status.** Planned. **Schedule:** waits on LM, Arachne V.7.10 cert review, and Aurora Veil cert. Crystalline Cavern is positioned as the demonstration-of-ceiling piece for collaborators / external review — landing it after at least one other M7-certified non-Arachne preset (e.g. Aurora Veil) reduces the risk that it ships with rough edges that pull down the catalog's perceived quality.
+
+### Increment CC.0 — Reference curation
+
+**Scope.** Curate the reference set per CC_DESIGN §2 — geode interior cathedral, crystal termination close-up, cave caustics, wet limestone wall, bioluminescent cave, pattern glass close-up, anti-reference video-game crystal cave, anti-reference Tron neon. Author `docs/VISUAL_REFERENCES/crystalline_cavern/README.md` with per-image annotations matching the Aurora Veil README format. Confirm against `CheckVisualReferences --strict` (V.5).
+
+**Done-when.** Reference set complete; README annotations include mandatory / decorative / actively-disregarded traits per D-065; anti-references named explicitly.
+
+### Increment CC.1 — Scene structure (no materials)
+
+**Scope.** Cavern walls (4-plane intersection with `worley_fbm` displacement), central crystal cluster (5 hex-prism SDFs with hash-driven per-instance jitter), floor crystals, hanging tips. Default white-on-grey rendering. Static camera composition framing. No materials, no audio coupling.
+
+**Deliverables.** `PhospheneEngine/Sources/Presets/Shaders/CrystallineCavern.metal` (sceneSDF, sceneMaterial stubs returning matID only). `CrystallineCavern.json` (full rubric profile, certified: false). `PresetLoaderCompileFailureTest.expectedProductionPresetCount` bumped.
+
+**Done-when.** Composition reads correctly against geode reference photography (Matt eyeball, not a formal M7 yet). Engine + app builds clean. Visual harness emits a default-fixture PNG.
+
+### Increment CC.2 — Materials pass
+
+**Scope.** Wire `mat_pattern_glass`, `mat_polished_chrome`, `mat_wet_stone`, `mat_frosted_glass` via `sceneMaterial`. Triplanar detail normals on cavern walls. Per-instance hash-jitter on crystal cluster (CLAUDE.md FA #44 lesson). `CrystallineCavernMaterialBoundaryTest` passes.
+
+**Done-when.** Four materials visibly present and stable across material boundaries. PresetAcceptance D-037 invariants pass. SwiftLint clean.
+
+### Increment CC.3 — Lighting + atmosphere + caustics
+
+**Scope.** Bioluminescent §5.3 lighting recipe (warm key, blue-purple IBL, emission on pattern-glass + frosted-glass crystals). IBL palette × `lightColor.rgb` for valence tint (D-022 path). Volumetric ground fog via `vol_density_height_fog`. Light shafts via `ls_radial_step_uv`. Screen-space caustic projection.
+
+**Validation gate.** Verify `Volume/Caustics.metal` produces workable output at CC's geometry scale. **If unworkable**, fall back to procedurally-animated `fbm8` overlay sampled at the floor projection (documented in CC_DESIGN §4 / §5.4). The fallback is a one-session detour; the cert-quality target is still the real caustic utility if it works.
+
+**Done-when.** Lighting + atmosphere + caustics rendering coherently. Tier 2 kernel cost ≤ 6.5 ms; Tier 1 ≤ 5.0 ms (with the degradation path: SSGI off, caustic samples halved, ray-march steps 64 → 48).
+
+### Increment CC.4 — Audio routing + mv_warp + cert
+
+**Scope.** All eight audio routes from CC_DESIGN §5.6 wired (IBL bass breath / key bass breath / caustic flash drums-dev / caustic refraction vocals-pitch / IBL valence tint / shimmer mid-rel / mid-pulse caustic offset beat-phase / crystal emission bass+valence). mv_warp at conservative shimmer amplitude (≤ 0.003 UV, per CC_DESIGN §5.5 / D-029 lesson). All four preset-specific tests green (`CrystallineCavernSilenceTest`, `CrystallineCavernCausticBeatRatioTest`, `CrystallineCavernMaterialBoundaryTest`, `CrystallineCavernMvWarpStaticityTest`). Matt M7 review against curated references. On green: flip `certified: true`.
+
+**Done-when.** M7 sign-off. Rubric score ≥ 14/15 (potential 15/15 with thin-film inclusion per CC_DESIGN §5.5).
+
+**Estimated total: 4 sessions** (this is the flagship; complexity is justified by the demonstration value).
+
+**Open questions per CC_DESIGN §11.** (1) `architectural` family enum value vs. existing categories; (2) caustic utility production-readiness — validated in CC.3; (3) POM on cavern walls — deferred until after first Matt review; (4) Tier 1 acceptable-degradation tradeoff vs. tier-2-only gating; (5) thin-film inclusion in CC.5 polish if rubric score 14 → 15 is wanted.
+
+---
+
+## Phase G-uplift — Gossamer + remaining preset fidelity uplifts
+
+The Phase V uplift trajectory left several presets at the post-V.6 cert baseline without per-preset fidelity work tailored to their visual contracts. The shipped catalog has 15 presets (post-D-102); the Phase V plan called for 12 fidelity-uplifted presets. Several catalog members are *certifiable* but have *not* been through a per-preset uplift session against curated references — Gossamer is the named example, but Membrane / Starburst (post-SB) / Nebula / Plasma / Waveform / Fractal Tree / TestSphere / Glass Brutalist / Kinetic Sculpture / Volumetric Lithograph / Spectral Cartograph are all worth review (some are lightweight rubric and need only validation, others are full rubric and may need work).
+
+**Status.** Planned, behind LM / Arachne / AV / CC. Per-preset scoping happens at session start — each preset gets its own concept-viability gate review against SHADER_CRAFT §2.0 before scoping the uplift; if the gate finds the preset's musical role is unarticulated or ambiguous, the uplift is rescoped (or, per D-102 / FA #58, retired rather than tuned).
+
+**Suggested order** (subject to Matt prioritisation):
+
+1. **Gossamer uplift** — the highest-priority named uplift target. Bioluminescent silk web preset; ambient family. Likely benefits from a palette / motion / silence-fallback pass against curated references. Per-preset increment estimate: 1–2 sessions.
+2. **Membrane uplift** — fluid-family direct-fragment preset; Matt has flagged the silence behaviour as historically thin. 1–2 sessions.
+3. **Starburst** — post-SB.1 / SB.2 stability + any remaining fidelity gaps surfaced by review. 1 session.
+4. **Plasma / Nebula / Waveform / Spectral Cartograph** — lightweight rubric profile; primarily validation rather than rework. ½–1 session each.
+5. **Glass Brutalist / Kinetic Sculpture / Volumetric Lithograph** — full rubric profile; cert-quality validation + any preserved tuning gaps. 1 session each.
+6. **TestSphere / Fractal Tree** — final cleanup pass; TestSphere may be retired as a production preset if its diagnostic role is no longer load-bearing.
+
+**Done-when (phase-level).** Every catalog member has either (a) been M7-certified by Matt, or (b) been explicitly retired with a D-XXX entry (the D-102 / Drift Motes precedent applies — retirement is acceptable when the concept-viability gate fails).
+
+---
+
 These milestones map to product-level outcomes, not implementation phases.
 
 **Milestone A — Trustworthy Playback Session.** ✅ **MET (2026-04-25).** A user can connect a playlist, obtain a usable prepared session, and complete a full listening session without instability. *Requires: ~~2.5.4~~ ✅, ~~Phase U increments U.1–U.7~~ ✅, ~~progressive readiness basics (6.1)~~ ✅.*
@@ -3421,6 +3530,6 @@ These milestones map to product-level outcomes, not implementation phases.
 
 **Milestone C — Device-Aware Show Quality.** ✅ **MET (2026-04-25).** The same playlist produces an excellent show on M1 and a richer one on M4 without jank. *Requires: ~~Phase 6 complete~~ ✅.*
 
-**Milestone D — Library Depth.** The preset catalog is large enough, varied enough, and well-tagged enough for Phosphene to feel like a product rather than a tech demo. *Requires: Phase 5 complete, Phase V complete (12 fidelity-uplifted presets), Phase MD through MD.5 minimum (10 Milkdrop presets), 22+ certified presets total.*
+**Milestone D — Library Depth.** The preset catalog is large enough, varied enough, and well-tagged enough for Phosphene to feel like a product rather than a tech demo. *Requires: Phase 5 complete, Phase V complete (12 fidelity-uplifted presets), Phase AV + Phase CC complete (Aurora Veil + Crystalline Cavern shipped certified), Phase G-uplift complete (Gossamer + remaining catalog members M7-certified or explicitly retired), Phase MD through MD.5 minimum (10 Milkdrop presets), 22+ certified presets total.*
 
-**Milestone E — Visual Identity.** Phosphene's preset catalog has a recognizable aesthetic ceiling that reads as 2026-quality — comparable to indie-game-released visuals, not 2006-era ShaderToy. *Requires: Phase V complete, Phase V.7–V.11 uplifts all Matt-approved, accessibility pass (U.9).*
+**Milestone E — Visual Identity.** Phosphene's preset catalog has a recognizable aesthetic ceiling that reads as 2026-quality — comparable to indie-game-released visuals, not 2006-era ShaderToy. *Requires: Phase V complete, Phase V.7–V.11 uplifts all Matt-approved, Phase CC certified (the flagship demonstration piece), accessibility pass (U.9).*
