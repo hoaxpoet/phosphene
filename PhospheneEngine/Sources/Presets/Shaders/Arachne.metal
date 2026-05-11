@@ -1399,12 +1399,22 @@ fragment float4 arachne_composite_fragment(
             float3 silkBase = hsv2rgb(float3(fract(hueBase + hueDrift * 0.20),
                                               0.55, 0.85));
 
-            // Axial highlight fires when kL grazes strand at shallow angle.
-            // V.7.7C.5.1 (D-100 follow-up) — coefficient 0.6 → 0.3 to match
-            // the lighter overall silk weight (line widths halved, silkTint
-            // 0.85 → 0.55). The grazing-angle accent stays present but
-            // doesn't dominate the strand colour.
-            float axial = 1.0 + 0.3 * smoothstep(0.35, 0.05, abs(dot(tang2D, kL.xy)));
+            // BUG-011 round 5 — axial highlight retired.
+            // The angle-dependent multiplier `1.0 + 0.3 × smoothstep(...)` was a
+            // V.7.9 silk-fibre lighting effect (Marschner-lite proxy) that boosted
+            // strands perpendicular to the screen-space key light by up to 30 %.
+            // The side-effect: at any angular position around the web, spokes and
+            // spirals have perpendicular tangents → opposite axial values → one
+            // is bright while the other is dim. Matt's 2026-05-11 observation:
+            // "spirals show clearly bright while spokes in the same region do not."
+            // Fixed at 1.3 (the peak value) so every strand renders at the
+            // perpendicular-bright level regardless of direction. All silk lines
+            // (spokes, frame, spirals) now visually uniform.
+            const float axial = 1.3;
+            // Suppress unused-variable warning when tang2D / kL aren't referenced
+            // elsewhere in the silk path. Both are still consumed by other code
+            // (drop refraction in V.7.7C, etc.) so they stay in scope.
+            (void)tang2D;
 
             // Per-beat global emission pulse (V.7.7C.4 Fix C). Visual
             // beat coupling without driving the build clock from beats —
@@ -1512,10 +1522,14 @@ fragment float4 arachne_composite_fragment(
 
         if (delta > 0.001) {
             // §5.10 (V.7.9): silk as thin lines + axial highlight (Marschner-lite removed)
+            // BUG-011 round 5 — axial fixed at 1.6 (the V.7.5 peak) for uniform
+            // line brightness. This block is dead (loop is `wi < 1`) but the
+            // change tracks the active-block fix for consistency if revived.
             float2 tang2D   = wr.strandTangent;
+            (void)tang2D;
             float  finalHue = fract(w.birth_hue + hueDrift * 0.12);
             float3 silkBase = hsv2rgb(float3(finalHue, 0.45, 0.80));
-            float axial  = 1.0 + 0.6 * smoothstep(0.35, 0.05, abs(dot(tang2D, kL.xy)));
+            const float axial = 1.6;
             float emGain = baseEmissionGain + beatAccent;
             float3 silk_col = silkBase * 0.60 * w.opacity * axial * emGain;
             silk_col *= kLightCol;
