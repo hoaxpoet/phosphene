@@ -43,11 +43,17 @@ import simd
 /// LM.5 will extend this with `clusterBurst`, `breathing`, and `noiseDrift`.
 public enum LumenPatternFactory {
 
-    /// Default lifetime for a radial ripple. Calibrated against ~120 BPM
-    /// (one beat ≈ 0.5 s) — a kick fires a ripple that lasts just over one
-    /// beat, long enough to read, short enough that successive kicks layer
-    /// rather than smear.
-    public static let radialRippleDuration: Float = 0.6
+    /// Default lifetime for a radial ripple. **LM.4.1 (2026-05-11):**
+    /// halved from 0.6 → 0.3 s after Matt's first M7 review on session
+    /// `2026-05-11T15-15-46Z` (Love Rehab + So What playlist). At 118 BPM
+    /// the kick fires every ~0.5 s, so 0.6 s duration made every ripple
+    /// overlap with the next by ~0.2 s — the panel was never free of
+    /// active ripples and individual pulses never registered. 0.3 s lets
+    /// each ripple complete cleanly before the next kick spawns, so
+    /// pulses read as discrete events instead of a continuous smear.
+    /// On slower music (Pyramid Song ~70 BPM, ~0.86 s between kicks) the
+    /// gap is even wider — works equally well across tempo.
+    public static let radialRippleDuration: Float = 0.3
 
     /// Default lifetime for a sweep. Sweep position traverses [-1, +1]
     /// along the direction axis over `phase ∈ [0, 1]`; at 0.8 s the

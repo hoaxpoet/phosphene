@@ -3467,7 +3467,56 @@ The preset is sequenced as 10 increments LM.0 → LM.9 with cert sign-off at LM.
 
 **Status:** ⏳ tests + docs landed 2026-05-10. Awaiting Matt review on a real-music session. Same discipline as LM.3.2 — tests passing + harness frames rendering ≠ done; the contact-sheet observation is the load-bearing acceptance gate.
 
-**Carry-forward.** LM.5 adds the remaining pattern kinds: `clusterBurst` (multiple short-lived ripples co-located), `breathing` (slow rhythmic intensity wash across the panel), `noiseDrift` (low-frequency stochastic modulation). LM.6 closes the fidelity polish (specular sparkle on the Voronoi ridges from the frost normal — currently the matID == 1 emission path skips Cook-Torrance). Per-stem hue affinity stays an LM.5 sub-decision; gated on LM.4 review.
+**Carry-forward.** LM.4.1 follows up on first M7 review (ripple density + bleach-out). LM.4.2 follows on full-spectrum palette redesign. LM.5 adds the remaining pattern kinds: `clusterBurst`, `breathing`, `noiseDrift`. LM.6 closes the fidelity polish (specular sparkle on the Voronoi ridges from the frost normal — currently the matID == 1 emission path skips Cook-Torrance).
+
+### Increment LM.4.1 — Ripple density + bleach-out fix
+
+**Scope.** Three-line calibration change after first M7 review on session `2026-05-11T15-15-46Z`. (a) `radialRippleDuration` 0.6 → 0.3 s — at 118 BPM the kick fires every ~0.5 s; 0.6 s lifetime made every ripple overlap with the next by ~0.2 s and individual pulses never registered. (b) `kPatternBoost` 0.40 → 0.20 — combined peak `cell_intensity` (cell baseline × bar pulse + pattern boost) was hitting 1.70 against the `rgba8Unorm` 1.0 albedo clamp, slamming the bright channels of saturated HSV cells to white and destroying per-cell colour identity. (c) `kBarPulseMagnitude` 0.30 → 0.20 — LM.3.2 carry-forward; the bar pulse stacks on the pattern boost so cutting both was required to bring combined peak back to ~1.20.
+
+**Done when.**
+
+- `Sources/Presets/Lumen/LumenPatterns.swift` ships `radialRippleDuration = 0.3 s` with the LM.4.1 comment block explaining the tempo math.
+- `Sources/Presets/Shaders/LumenMosaic.metal` ships `kPatternBoost = 0.20f` and `kBarPulseMagnitude = 0.20f` with LM.4.1 comment blocks explaining the bleach-out math.
+- `Tests/.../Presets/LumenPatternsTests.swift` — `test_fivthSpawnEvictsOldest` and `test_pool_neverExceedsPatternCount` use `barPhase01` wraps (no debounce) instead of `beatBass` rising edges; at the new 0.3 s ripple lifetime, 80 ms-debounced bass spawns can't fill the pool before natural retirement, so the eviction code path was never exercised under the old test driver.
+- All 18 LumenPatterns tests + PresetAcceptance + PresetRegression + PresetLoaderCompileFailure green. SwiftLint 0 violations on touched files.
+- CLAUDE.md updated: LumenMosaic.metal tuning surface line reflects new values + LM.4.1 landed-work entry above the LM.4 entry, calling out the LM.4.2 carry-forward.
+
+**Verify.**
+
+- `swift test --package-path PhospheneEngine --filter "LumenPatterns|LumenPatternEngine|PresetAcceptance|PresetRegression|PresetLoaderCompileFailure"`
+- `swiftlint lint --strict --config .swiftlint.yml` (touched files clean; baseline preserved)
+- Matt re-review on a real-music session: (a) individual ripples now read as discrete pulses, not a smear; (b) cells under ripples + bar pulse retain their colour identity (no near-white wash); (c) the LM.3.2 per-cell palette dance reads clearly through the patterns instead of being shouted over.
+
+**Status:** ⏳ tests + docs landed 2026-05-11. Awaiting Matt re-review on a real-session capture.
+
+**Carry-forward.** LM.4.1 only addresses ripple density + bleach-out. The deeper palette-scope limitation Matt called out in the same review — "literally any HEX code or Pantone shade" missing, including dark hues, regal purples, browns, grays — is the LM.4.2 scope (palette architecture redesign).
+
+### Increment LM.4.2 — Full-spectrum palette redesign (per-track custom palette cards)
+
+**Scope.** Replace the LM.3.2 mood-centred-narrow-jewel-tone palette with per-track custom palette cards drawn from the **full** HSV cube. Each track gets ~50 specific colours, picked procedurally from the entire colour space (full hue wheel, full saturation range, full brightness range). Cells pick one colour from the card. Mood biases the distribution (calm tracks tilt toward deeper/cooler regions; energetic tracks toward brighter/saturated) but does not restrict — every track can paint cells from anywhere in the cube. Result: cobalt next to oxblood next to charcoal with a violet edge next to amber next to bright crimson — the stained-glass-cathedral aesthetic, not the LM.3.2 jewel-tone-only register.
+
+**Why.** Matt's first M7 review made the brief explicit: "I am asking you for VARIETY and the variety you are giving me is variety within a narrow scope. ... I want 90-95% more." The LM.3.2 palette structurally restricts to ~5% of the HSV cube (saturation floored at 0.78, brightness floored at 0.80, hue centred ±0.20 around mood). No tuning of those floors will deliver the 90-95% expansion he asked for; the palette model itself has to change.
+
+**Guardrail.** The "no pastel" project rule (`CLAUDE.md` Visual Quality Floor) stays in force. Forbidden zone: saturation < 0.3 AND brightness > 0.6 — that's the cream-haze failure mode LM.2 fell into and we've forbidden since. The redesign achieves the full spectrum by **coupling** desaturation with darkness: low-saturation cells get pulled toward low brightness (charcoal, brown, slate), not high brightness (pastel). Everything else (full saturation × full brightness, mid-saturation × any brightness, high-saturation × low brightness for regal purples / deep ambers) is allowed.
+
+**Done when.**
+
+- `Sources/Presets/Shaders/LumenMosaic.metal` ships a new `lm_cell_palette_card(cellHash, lumen)` that procedurally generates an HSV triple from a hash seeded by (`trackPaletteSeed*`, `cellHash`). Hue spans the full wheel; saturation spans `[0.05, 1.0]`; brightness spans `[0.10, 0.95]`; pastel zone (sat < 0.3 AND val > 0.6) is collapsed by pulling val down. Mood biases the distribution (per-arousal brightness skew, per-valence hue-region skew) but does not restrict the envelope.
+- Per-track distinctiveness: the same cell hash on two different tracks produces visibly different colours (full hash-space rotation per track, not just a narrow centre shift).
+- Beat-step ratcheting (LM.3.2 team-counter dance) still works — `step = floor(team_counter / period)` advances each cell through its assigned palette path on team beats. Each step lands in a different region of the full cube, not in a neighbouring jewel tone.
+- `PresetAcceptance` D-037 invariants pass with the wider palette (silence baseline, no white clip, beat response bounded, form complexity ≥ 2).
+- New regression test: random-fixture sweep confirms the full HSV cube is sampled — the distribution of cell colours across 200 cells should span a wide hue range (≥ 270° of hue covered), wide saturation range (≥ 0.6 spread), and wide brightness range (≥ 0.5 spread). Cells satisfying the pastel forbidden zone count = 0.
+- Contact sheet renders across 4 tracks (Love Rehab / So What / There There / Pyramid Song) show genuinely different palette cards — visibly different colour mixes, not rotated permutations of the same jewel tones.
+
+**Verify.**
+
+- `swift test --package-path PhospheneEngine --filter "LumenMosaic|PresetAcceptance|PresetRegression|LumenPatterns|LumenPatternEngine|PresetLoaderCompileFailure"`
+- `RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter "PresetVisualReviewTests/renderPresetVisualReview"` (LM.4.2 contact sheet)
+- Matt M7 review: every track's palette feels meaningfully distinct from every other track's, AND each track's palette spans the full spectrum (darks, regals, browns/slates, jewel tones, all visible in the same panel).
+
+**Status:** ⏳ scheduled. Estimated 1–2 sessions. Departs from LM.3.2 jewel-tone aesthetic by design.
+
+**Carry-forward.** LM.5 (clusterBurst + breathing + noiseDrift pattern kinds) waits on LM.4.2 sign-off — the new pattern kinds will need to be validated against the wider palette before they land.
 
 ---
 
