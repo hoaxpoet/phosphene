@@ -313,13 +313,13 @@ Reports are written to `$TMPDIR/phosphene_soak_smoke_<timestamp>/`.
 SOAK_TESTS=1 swift test --package-path PhospheneEngine --filter "SoakTestHarnessTests/fiveMinuteMemoryCheck"
 ```
 
-### 30-second Drift Motes kernel cost benchmark (DM.2)
+### 30-second Arachne COMPOSITE kernel cost benchmark (BUG-011 regression gate)
 
 ```bash
-SOAK_TESTS=1 swift test --package-path PhospheneEngine --filter shortRunDriftMotes
+SOAK_TESTS=1 swift test --package-path PhospheneEngine --filter shortRunArachneComposite
 ```
 
-Drives `motes_update` directly for 30 simulated seconds at 60 Hz against an 800-particle Tier 2 buffer; reports p50 / p95 / p99 / kernel-overrun count from `MTLCommandBuffer.gpuStartTime/gpuEndTime`. Loose gate: kernel p95 < 5 ms. Failures here would indicate a kernel regression (e.g. a curl-noise octave bump or accidental neighbour query) rather than a full-pipeline budget breach. Tier 2 full-pipeline timing (sky fragment + sprite render + feedback decay) and Tier 1 hardware timing are deferred to a runtime app session — `SoakTestHarness` has no preset-pinned full-pipeline path within `swift test`.
+Renders Arachne's COMPOSITE fragment to a 1920×1080 offscreen target for 30 simulated seconds at 60 Hz with the spider forced active and a placeholder WORLD texture bound; reports p50 / p95 / p99 / kernel-overrun count from `MTLCommandBuffer.gpuStartTime/gpuEndTime`. Loose gate: kernel p95 < 16 ms on M2 Pro. Arachne is fragment-only so kernel ≈ full-pipeline; spider-forced is the worst case. Failures indicate a shader-side regression (step count, coverage gate, or dispatch gate creep) before the full-pipeline real-music capture catches it.
 
 ### Full 2-hour production run (CLI, with App Nap prevention)
 

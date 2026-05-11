@@ -8,97 +8,6 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 ---
 
-### BUG-012 — Drift Motes p99 frame-time tail correlates with stem-separation events
-
-**Severity:** P3 (low, cosmetic). Drop rate 0.39% under representative playback — well under the 8% gate. p99 is 23.9 ms, just over the 25 ms target but inside the 32 ms drop threshold. Not user-visible at this rate; documented for future reference if drop rates increase or new presets push closer to budget.
-**Domain tag:** perf
-**Status:** Diagnosed (cause identified; no fix scheduled — the symptom is below any concerning threshold)
-**Introduced:** Pre-existing. Surfaced 2026-05-08 by DM.3a per-frame perf capture in session `2026-05-08T22-01-07Z`. The behaviour predates DM.3; the new measurement infrastructure made it visible. Likely present since stem separation became per-track (~Increment 6.3).
-**Resolved:**
-
----
-
-### Expected behavior
-
-Drift Motes Tier 2 frame_gpu_ms p99 should be close to p95 (under 5–10 ms range) — Drift Motes' compute kernel + sky fragment + sprite render is genuinely cheap (p50 = 1.225 ms in the same session). A clean tail.
-
-### Actual behavior
-
-Drift Motes p95 is 1.321 ms but p99 jumps to 23.894 ms — a 1.5–2 OOM tail. 1.45% of frames over 14 ms; 0.39% over 32 ms (drop threshold). The jump from p95 to p99 is not random noise — it's structurally correlated with stem-separation dispatches.
-
-### Reproduction steps
-
-Identical to BUG-011 reproduction (same session). Pin Drift Motes during real playback that triggers stem-separation cycles (~5 s cadence per `MLDispatchScheduler` Tier 2 default).
-
----
-
-### Session artifacts
-
-**Session directory:** `~/Documents/phosphene_sessions/2026-05-08T22-01-07Z/`
-
-**Cross-correlation diagnostic.** Tail frames (frame_gpu_ms > 14 ms) within Drift Motes windows compared to OK frames (≤ 14 ms), bucketed by distance to nearest stem-separation event in `session.log`:
-
-| frames | n | within 0.1 s | 0.1–0.3 s | 0.3–1.0 s | > 1 s |
-|---|---|---|---|---|---|
-| Tail (>14 ms) | 118 | **9.3%** | **15.3%** | **66.9%** | 8.5% |
-| OK (≤14 ms) | 8,014 | 3.6% | 7.2% | 25.1% | 64.2% |
-
-Enrichment ratios (tail vs OK):
-- 0–0.1 s: 2.6× (statistically significant — tail frames cluster near stem-sep dispatch)
-- 0.3–1.0 s: 2.7× (the dominant peak — consistent with stem-sep's MPSGraph buffer overlapping subsequent render frames as the GPU drains the queue)
-- 0–1.0 s combined: 91.5% of tail frames vs 35.9% of OK frames (2.5×)
-- > 1 s: 8.5% of tail frames vs 64.2% of OK frames (0.13× — depleted)
-
-The 0.3–1.0 s peak is the giveaway: stem separation takes ~142 ms on Tier 2 hardware, but the contention with the render queue persists for roughly the first second after dispatch as the GPU works through both buffers. Render command buffer's `gpuStartTime` is delayed because the stem-sep buffer is ahead of it in the queue.
-
-```log
-[2026-05-08T22:02:45Z] stem separation 0 (440320 samples) track=Love Rehab → 0000_Love Rehab
-[2026-05-08T22:02:50Z] stem separation 1 (440320 samples) track=Love Rehab → 0001_Love Rehab
-[2026-05-08T22:02:54Z] stem separation 2 (440320 samples) track=Love Rehab → 0002_Love Rehab
-...
-```
-
-(39 stem-separation events across the 215 s session.)
-
----
-
-### Suspected failure class
-
-`concurrency` (GPU command queue contention between stem-separation MPSGraph dispatches and the render command buffer; not a Drift Motes preset issue per se).
-
-**Evidence for this class:** 2.5× enrichment of tail frames within 1 s of stem-sep events; cause is queue scheduling, not Drift Motes' shader cost (which p95 of 1.32 ms confirms is healthy).
-
----
-
-### Diagnosis notes
-
-The `MLDispatchScheduler` (Increment 6.3, D-059) is supposed to gate stem-separation dispatches onto frame-timing-clean moments — when recent frames are within budget, dispatch; otherwise defer up to 2 s. The scheduler is firing as designed for the "frames already over budget" case, but it does not anticipate the contention itself: a healthy frame N triggers dispatch, then frames N+1 through N+60 (~1 s) absorb the queue stall.
-
-Two paths to address if the rate ever rises to user-visible:
-
-1. **Schedule stem-sep on a different command queue.** `MetalContext` exposes one command queue; both render and stem-sep submit to it. Adding a dedicated low-priority queue for stem sep, or running stem sep on a serial queue with a different priority, would let the GPU scheduler interleave more cleanly. Cost: structural change to `MetalContext`, ML dispatcher, RenderPipeline. Not justified by current 0.4% drop rate.
-
-2. **Tighter dispatch gating.** Add a "frames recently dropped > X" gate in `MLDispatchScheduler.decide` so a single drop pushes the next dispatch forward by 1–2 frames. Doesn't fix queue contention but spreads it. Easier change but the data shows queue contention is the cause; gating only delays it.
-
-3. **Accept and document.** Current default. P99 is 23.9 ms — within Drift Motes' Tier 2 envelope (the 25 ms target was set with stem-sep contention already factored in implicitly; nobody re-derived it for V.7.7C.5+). 0.4% drop rate is invisible to users at 60 fps (one drop every 4 minutes of playback).
-
----
-
-### Verification criteria
-
-If this ever needs fixing:
-
-- [ ] Automated: extend `SoakTestHarnessTests.shortRunDriftMotes` to drive synthetic stem-sep dispatches at the 5 s cadence and assert tail percentile stays under threshold.
-- [ ] Manual: re-run the perf capture procedure with stem separation forced off (debug toggle) and confirm Drift Motes p99 drops from 23.9 to ≤ 5 ms (would prove the diagnosis end-to-end).
-
-### Related
-
-- DM.3a (this session's measurement infrastructure surfaced the tail).
-- Increment 6.3 / D-059 (MLDispatchScheduler — does not currently anticipate queue-contention overhang).
-- BUG-011 (Arachne over Tier 2 budget — separate; Arachne's median is shader cost, not queue contention).
-
----
-
 ### BUG-011 — Arachne over Tier 2 frame budget at the median
 
 **Severity:** P2 (visible degradation under specific conditions: Arachne active on Tier 2 hardware. Median frame already at the FrameBudgetManager downshift threshold; 53% of frames over budget. Not a session-blocker — drop rate at the 32 ms threshold is 1.46%, so most frames complete inside one refresh — but the visual will feel laggy when Arachne is selected, and the governor will downshift quality more aggressively than intended.)
@@ -129,11 +38,11 @@ Drift Motes in the same session sat at p50 = 1.225 / p95 = 1.321 / drops = 0.39%
 ### Reproduction steps
 
 1. Build the app: `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build`
-2. Start an ad-hoc session with a real playlist (Spotify-prepared works; the procedure was followed for both Love Rehab and So What as reference fixtures per `DM.3-perf-capture.md`).
+2. Start an ad-hoc session with a real playlist (Spotify-prepared works; reference fixtures: Love Rehab and So What).
 3. Pin Arachne via `⌘[`/`⌘]` and hold `L` (diagnostic-preset-locked).
 4. Run for ≥ 60 s.
 5. End the session.
-6. Parse `~/Documents/phosphene_sessions/<timestamp>/features.csv` for `frame_gpu_ms` percentiles using the procedure in `docs/diagnostics/DM.3-perf-capture.md`.
+6. Parse `~/Documents/phosphene_sessions/<timestamp>/features.csv` — `frame_gpu_ms` column gives per-frame GPU timing; compute p50 / p95 / p99 and drop count (`frame_gpu_ms > 32`).
 
 **Minimum reproducer:** any track with non-trivial bass + mid energy on Tier 2 hardware. The cost is composition-driven (canvas-filling silk + 3D SDF spider + Snell's-law refraction + 12 Hz vibration UV jitter), not audio-content-driven, so any moderately energetic track should reproduce.
 
@@ -199,7 +108,7 @@ Three shader-side levers pulled in three separate commits, each with golden-hash
 | `082164c7` | **L1** spider ray-march steps | `maxSteps = 32 → 24` (Arachne.metal:~1640) | Worst-case loop reduction for miss-rays inside the 0.15 UV spider patch (~226×226 px @ 1080p ≈ 51k pixels). On-hit rays unaffected (sphere trace early-exits at hitEps). |
 | `1643ee24` | **L2** drop refraction coverage gate | `wr.dropCov > 0.01 → > 0.5` (both anchor + dead-pool sites) | Skips the per-pixel `worldTex.sample(refractedUV)` + smoothstep+pow chain on the anti-aliased rim band of every drop. Drops render with a clean visible core; rim pixels fall through to the silk-strand colour underneath. |
 | `96b2c288` | **L3** spider dispatch gate | `spider.blend > 0.01 → > 0.05` (dispatch site only, not overlay mix) | Skips the patch ray-march during the spider's fade-in/fade-out tail (blend ramping below 5 % opacity is below perceptual threshold). `listenLiftEMA` not plumbed to GPU per D-094, so gate uses `spider.blend` alone — listening pose triggers via the existing path with at most a 1-frame lag. |
-| `bd213856` | **SOAK gate** | `shortRunArachneComposite` benchmark added | Mirrors `shortRunDriftMotes` pattern. Renders COMPOSITE fragment to 1920×1080 offscreen with spider forced ON (worst case). p95 ≤ 16 ms loose gate. |
+| `bd213856` | **SOAK gate** | `shortRunArachneComposite` benchmark added | Kernel-only SOAK_TESTS=1 benchmark. Renders COMPOSITE fragment to 1920×1080 offscreen with spider forced ON (worst case). p95 ≤ 16 ms loose gate. |
 
 **SOAK measurement on M2 Pro (this session, post-L1+L2+L3, spider forced ON every frame):**
 
@@ -213,7 +122,7 @@ Three shader-side levers pulled in three separate commits, each with golden-hash
 
 Run-to-run variance ≈ 0.1 ms (two runs: p95 = 14.578 / 14.458). The 16 ms SOAK gate sits ~10 % above the worst-case fixture and well below the pre-tuning ~26 ms baseline a lever-revert would restore.
 
-**Calibration finding worth preserving:** the Drift Motes kernel:full-pipeline ratio of ~1:3 does NOT apply to Arachne. Arachne is fragment-only (no compute pre-pass to add on top), so kernel ≈ full-pipeline — there's a small (~0.5–1 ms) overhead from the WORLD pass + drawable presentation + triple-buffering coordination, but the dominant cost is the fragment shader. The initial 5 ms SOAK gate suggested by the BUG-011 prompt was anchored on the wrong ratio and was rebased to 16 ms based on the in-session measurement.
+**Calibration finding worth preserving:** Arachne is fragment-only (no compute pre-pass), so kernel ≈ full-pipeline — there's a small (~0.5–1 ms) overhead from the WORLD pass + drawable presentation + triple-buffering coordination, but the dominant cost is the fragment shader. The initial 5 ms SOAK gate suggested by the BUG-011 prompt was anchored on a kernel:full-pipeline ratio borrowed from a compute-heavy preset (since retired — D-102) and was rebased to 16 ms based on the in-session measurement.
 
 **Why "Open" not "Resolved":** the SOAK forces spider ON every frame (worst case); production has spider idle ~75 % of the time, so real-music p95 will land lower. But the SOAK kernel measurement also doesn't include WORLD pass + drawable cost. Net production p95 is *probably* below 14 ms on M2 Pro but the closure gate is the actual production capture per Verification criteria below — see the DM.3 perf-capture procedure.
 
@@ -223,8 +132,8 @@ L4 (DeviceTier-aware fallback) explicitly NOT pulled — the prompt requires Mat
 
 ### Verification criteria
 
-- [x] Automated: `shortRunArachneComposite` SOAK benchmark added to `SoakTestHarnessTests` (commit `bd213856`). Mirrors `shortRunDriftMotes` pattern. SOAK_TESTS=1 gated; loose 16 ms p95 kernel-only gate on M2 Pro at 1920×1080 with spider forced ON.
-- [ ] Manual: re-run the perf capture procedure on M2 Pro per `docs/diagnostics/DM.3-perf-capture.md`; Arachne window p95 ≤ 14 ms, p50 ≤ 8 ms, drops ≤ 8% over a 60 s representative window. **This is the closure gate** — flip Status to Resolved with the post-tuning numbers when this passes.
+- [x] Automated: `shortRunArachneComposite` SOAK benchmark added to `SoakTestHarnessTests` (commit `bd213856`). Kernel-only SOAK_TESTS=1 benchmark. SOAK_TESTS=1 gated; loose 16 ms p95 kernel-only gate on M2 Pro at 1920×1080 with spider forced ON.
+- [ ] Manual: re-run the perf capture procedure on M2 Pro (see Reproduction steps above); Arachne window p95 ≤ 14 ms, p50 ≤ 8 ms, drops ≤ 8% over a 60 s representative window. **This is the closure gate** — flip Status to Resolved with the post-tuning numbers when this passes.
 - [ ] Manual: re-run on M3+ to confirm budget holds at full feature set on actual Tier 2 silicon (M2 Pro is borderline Tier 2; the architecture contract specifies M3+).
 - [ ] Manual: run Arachne against the V.7.7C.5 visual reference (`docs/VISUAL_REFERENCES/arachne/`) after any tuning to confirm fidelity didn't regress alongside cost. The L1/L2/L3 changes are individually low-risk per the source-side comment rationale, but the cumulative visual is best assessed at real-music scale rather than the 64×64 dHash + RENDER_VISUAL contact-sheet harness used in this session.
 

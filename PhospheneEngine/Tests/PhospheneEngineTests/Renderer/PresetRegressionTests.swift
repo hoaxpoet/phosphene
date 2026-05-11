@@ -142,17 +142,6 @@ private let goldenPresetHashes: [String: PresetHashes] = [
     "Arachne": (steady: 0x0000000000000000, beatHeavy: 0x66929B65E4D94849, quiet: 0x0000000000000000),
     "Ferrofluid Ocean": (steady: 0x56AB1C4A28B32727, beatHeavy: 0x5CB393AAAFA84840, quiet: 0xA64C51A62FD35356),
     "Glass Brutalist": (steady: 0x336954B4B4544D33, beatHeavy: 0x336954B4B4544D33, quiet: 0x336954B4B4544D33),
-    // DM.2: Drift Motes regression fixtures capture the warm-amber sky +
-    // light shaft + floor fog backdrop. The harness renders the sky
-    // fragment (`drift_motes_sky_fragment`) only; it does not dispatch
-    // the `motes_update` particle kernel, so per-mote hue (D-019 blend
-    // baking) is regression-locked separately by
-    // `DriftMotesRespawnDeterminismTest`. The shaft intensity reads
-    // `f.mid_att_rel`, which is zero across all three regression
-    // fixtures, so steady / beatHeavy / quiet converge to the same hash.
-    // Murmuration's path stays byte-identical to the post-DM.0 baseline
-    // (D-097, DM.1).
-    "Drift Motes": (steady: 0x0001070F1F3F7FFF, beatHeavy: 0x0001070F1F3F7FFF, quiet: 0x0001070F1F3F7FFF),
     "Gossamer": (steady: 0x5756A72F070F0F0D, beatHeavy: 0x5756A72F070F0F0D, quiet: 0x5756872D0F0F0F0D),
     // QR.1 (D-079): sminK now mixes continuous bass (Layer 1) + bass_dev
     // accent. steady/quiet hashes regenerated to original V.7 values within

@@ -217,130 +217,13 @@ struct SoakTestHarnessSoakTests {
         printSmokeSummary(report, label: "5min memory")
     }
 
-    // MARK: 30-second Drift Motes Kernel Cost (DM.2 Task 8 → DM.3 Task 4)
-    //
-    // Direct kernel-cost benchmark for `motes_update` at the Tier 2 particle
-    // count (800). Dispatches one compute frame per simulated 60 Hz tick for
-    // 30 seconds, captures `MTLCommandBuffer.gpuStartTime/gpuEndTime` per
-    // frame, and reports p50 / p95 / p99 / drop-count of the kernel cost.
-    //
-    // The 1.6 ms Tier 2 / 2.1 ms Tier 1 targets in the Drift Motes
-    // architecture contract describe the FULL preset frame budget (sky
-    // fragment + curl-noise compute + sprite render + feedback decay). This
-    // test isolates the compute kernel only.
-    //
-    // DM.3 (this update) extends the synthesised audio fixture to drive the
-    // dispersion-shock branch every ~30 frames (a 2 Hz square wave on
-    // `stems.drumsBeat`) and to vary `features.midAttRel` so the
-    // emission-rate divisor exercises both branches each cycle. The kernel's
-    // per-frame work in DM.3 includes a smoothstep + length + branch around
-    // a small SIMD radial impulse — measurable but bounded.
-    //
-    // Full-pipeline timing requires a runtime app session because the
-    // sprite pass needs a CAMetalDrawable. See
-    // `Scripts/dm3_perf_capture.md` for the procedure that pins Drift Motes,
-    // runs 30 s of representative audio, and emits per-frame timings to
-    // a JSON log.
-    //
-    // Tier 1 numbers require Tier 1 hardware (M1/M2). The procedure is
-    // documented in `docs/runbook/DM.3-tier1-measurement.md`.
-
-    @Test("30-second Drift Motes kernel cost benchmark (Tier 2)")
-    @MainActor
-    func shortRunDriftMotes() async throws {
-        guard ProcessInfo.processInfo.environment["SOAK_TESTS"] == "1" else { return }
-
-        let ctx = try MetalContext()
-        let lib = try ShaderLibrary(context: ctx)
-        let geometry = try DriftMotesGeometry(
-            device: ctx.device,
-            library: lib.library,
-            particleCount: DriftMotesGeometry.tier2ParticleCount,
-            pixelFormat: nil
-        )
-
-        let dt: Float = 1.0 / 60.0
-        let frameCount = 30 * 60   // 30 seconds at simulated 60 Hz.
-        var features = FeatureVector.zero
-        features.deltaTime = dt
-        // Realistic-ish coupling so the D-019 blend selects the warm hue
-        // path on most respawns and exercises the pitch helper too.
-        var stems = StemFeatures.zero
-        stems.vocalsEnergy = 0.4
-        stems.drumsEnergy = 0.5
-        stems.bassEnergy = 0.4
-        stems.otherEnergy = 0.4
-        stems.vocalsPitchHz = 220.0
-        stems.vocalsPitchConfidence = 0.85
-
-        var kernelMs: [Double] = []
-        kernelMs.reserveCapacity(frameCount)
-
-        for frame in 0..<frameCount {
-            features.time = Float(frame) * dt
-            // Sweep pitch so the warm-hue path produces varied output.
-            stems.vocalsPitchHz = 110.0 * powf(16.0, Float(frame % 240) / 239.0)
-            features.midAttRel = 0.2 + 0.3 * sinf(features.time * 0.5)
-            // DM.3: 2 Hz square wave on drumsBeat exercises the dispersion
-            // shock branch and the smoothstep evaluation roughly every other
-            // frame. Triangle envelope (0 → 1 → 0) over 30 frames more
-            // realistically emulates the BeatDetector envelope shape than a
-            // pure square wave but the cost difference per frame is
-            // negligible — we just need the branch to trigger.
-            let beatCycle = frame % 30
-            stems.drumsBeat = beatCycle < 15 ? 1.0 : 0.0
-
-            guard let cmdBuf = ctx.commandQueue.makeCommandBuffer() else {
-                continue
-            }
-            geometry.update(features: features, stemFeatures: stems,
-                            commandBuffer: cmdBuf)
-            cmdBuf.commit()
-            await cmdBuf.completed()
-            let durationS = cmdBuf.gpuEndTime - cmdBuf.gpuStartTime
-            kernelMs.append(durationS * 1000.0)
-        }
-
-        // Sort once for percentiles + drop count.
-        kernelMs.sort()
-        let n = kernelMs.count
-        let p50 = kernelMs[n / 2]
-        let p95 = kernelMs[Int(Double(n) * 0.95)]
-        let p99 = kernelMs[Int(Double(n) * 0.99)]
-        let mean = kernelMs.reduce(0, +) / Double(n)
-        // "Drops" here = frames whose kernel time exceeded 14 ms (the Tier 2
-        // governor's downshift threshold). These are not full-pipeline
-        // drops, but they're the kernel-cost equivalent.
-        let kernelOverruns = kernelMs.filter { $0 > 14.0 }.count
-
-        print("""
-        ┌─ DriftMotesKernelCost [Tier 2, 800 particles] ─
-        │ frames=\(n)  mean=\(String(format: "%.3f", mean))ms
-        │ p50=\(String(format: "%.3f", p50))ms  \
-        p95=\(String(format: "%.3f", p95))ms  \
-        p99=\(String(format: "%.3f", p99))ms
-        │ kernel overruns (>14ms)=\(kernelOverruns)
-        │ Tier 2 full-frame budget=1.6ms (preset contract); kernel-only is
-        │ a bounded subset. Full-pipeline measurement deferred to a runtime
-        │ session per DM.2 Task 8.
-        └────────────────────────────────────────────────
-        """)
-
-        // Loose gate: kernel p95 should sit well under the full-pipeline
-        // Tier 2 budget. Failures here would indicate a kernel regression
-        // (e.g., a curl-noise octave bump or accidental neighbour query)
-        // rather than a full-pipeline budget breach.
-        #expect(p95 < 5.0,
-                "Kernel p95 \(p95) ms exceeds 5ms loose gate — investigate motes_update for regression.")
-    }
-
     // MARK: SOAK_TESTS=1 — Arachne composite-fragment kernel cost
     //
     // BUG-011 in-tree regression gate. The full-pipeline perf capture for
-    // Arachne (real-music + production app) is documented in
-    // `docs/diagnostics/DM.3-perf-capture.md` and is the closure gate for
-    // BUG-011; this SOAK test is the kernel-only equivalent that catches
-    // shader-side regressions before they reach the full-pipeline capture.
+    // Arachne (real-music + production app) is the closure gate for
+    // BUG-011 (see `docs/QUALITY/KNOWN_ISSUES.md`); this SOAK test is the
+    // kernel-only equivalent that catches shader-side regressions before
+    // they reach the full-pipeline capture.
     //
     // Renders Arachne's COMPOSITE fragment to a 1920×1080 offscreen texture
     // with the spider forced active and a placeholder WORLD texture bound at
@@ -354,9 +237,8 @@ struct SoakTestHarnessSoakTests {
     //   • final WORLD `worldTex.sample(uv)` + ambient + rim,
     //   • mist + dust mote post-process.
     //
-    // Loose gate p95 ≤ 16 ms kernel-only. The Drift Motes 1:3 kernel:full-
-    // pipeline ratio does NOT apply to Arachne — Arachne is fragment-only
-    // (no compute pre-pass to add on top), so kernel ≈ full-pipeline. The
+    // Loose gate p95 ≤ 16 ms kernel-only. Arachne is fragment-only (no
+    // compute pre-pass to add on top), so kernel ≈ full-pipeline. The
     // 16 ms gate sits ~10 % above the post-BUG-011 measurement on M2 Pro
     // (this hardware's 2026-05-10 capture: kernel p95 = 14.6 ms with
     // spider forced ON), giving margin for run-to-run variance + thermal
@@ -369,8 +251,8 @@ struct SoakTestHarnessSoakTests {
     // patch ray-march fires every frame. This is the WORST-case path; in
     // production the spider is idle ~75 % of the time, so real-music
     // p95 will land below this number. The full-pipeline closure gate
-    // for BUG-011 is the M2 Pro real-music capture per
-    // docs/diagnostics/DM.3-perf-capture.md.
+    // for BUG-011 is the M2 Pro real-music capture (see
+    // `docs/QUALITY/KNOWN_ISSUES.md`).
 
     @Test("30-second Arachne COMPOSITE fragment kernel cost benchmark (Tier 2)")
     @MainActor
@@ -519,12 +401,11 @@ struct SoakTestHarnessSoakTests {
         p99=\(String(format: "%.3f", p99))ms
         │ kernel overruns (>14ms)=\(kernelOverruns) of \(n)
         │ Tier 2 full-frame budget=14ms (FrameBudgetManager downshift threshold);
-        │ Arachne is fragment-only so kernel ≈ full-pipeline (NOT the Drift
-        │ Motes 1:3 kernel:full ratio). Spider forced ON every frame is
-        │ the worst case; production p95 will be lower because spider is
-        │ idle ~75% of the time.
-        │ Full-pipeline closure gate: real-music capture on M2 Pro per
-        │ docs/diagnostics/DM.3-perf-capture.md.
+        │ Arachne is fragment-only so kernel ≈ full-pipeline. Spider forced
+        │ ON every frame is the worst case; production p95 will be lower
+        │ because spider is idle ~75% of the time.
+        │ Full-pipeline closure gate: real-music capture on M2 Pro (see
+        │ docs/QUALITY/KNOWN_ISSUES.md, BUG-011).
         └────────────────────────────────────────────────
         """)
 

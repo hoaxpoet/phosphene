@@ -3107,182 +3107,16 @@ Engine snapshot path: `VisualizerEngine.@Published var dashboardSnapshot: Dashbo
 
 ---
 
-## Phase DM — Drift Motes (particles preset)
+## Phase DM — Drift Motes (particles preset) — REMOVED 2026-05-11
 
-A second particles-family preset (sibling to Murmuration). Particles drift in a directional force field through a single dramatic god-ray light shaft — **not** a flock. See `docs/presets/DRIFT_MOTES_DESIGN.md` and `docs/VISUAL_REFERENCES/drift_motes/Drift_Motes_Rendering_Architecture_Contract.md`.
+Drift Motes (DM.0 through DM.3 plus four manual-smoke remediation increments DM.3.1 / DM.3.2 / DM.3.2.1 / DM.3.3 / DM.3.3.1) was retired in its entirety on 2026-05-11. Preset code, tests, design / palette / architecture-contract docs, visual references, and perf-capture procedure docs are deleted from the tree. Recover from git history if needed.
 
-DM.1 was paused at an architectural blocker: the existing `["feedback", "particles"]` pass dispatch is hardwired to Murmuration's `ProceduralGeometry` (single `particle_update` MSL function looked up by name, single Murmuration-tuned configuration). Plugging Drift Motes into that path would render Murmuration's flocking starlings over Drift Motes' sky backdrop. **DM.0** introduces a `ParticleGeometry` protocol so each particle preset can ship its own conformer; **DM.1** then implements Drift Motes' conformer.
+**See `docs/DECISIONS.md` D-102** for the removal rationale, the three-part bar (iconic visual subject + clear musical role + infrastructure-feasible) that every pitched concept failed, and the rule that future particle presets ship their own `ParticleGeometry` conformer rather than branching from the deleted Drift Motes code.
 
-### Increment DM.0 — `ParticleGeometry` protocol introduction ✅ 2026-05-08
+**What survives.** D-097 (particle preset architecture: siblings, not subclasses) — Murmuration is byte-identical to its post-DM.0 baseline; the protocol surface (`ParticleGeometry` / `ParticleGeometryRegistry`) stays. D-099 (Swift `FeatureVector` / `StemFeatures` at 192 / 256 bytes). D-101 (`stems.drums_beat` as canonical particles-family beat-reactivity field) for any future particle preset. `SessionRecorder.frame_cpu_ms` / `frame_gpu_ms` columns and `RenderPipeline.onFrameTimingObserved` (originally DM.3a) stay — generic per-frame timing instrumentation.
 
-**Scope:** Pure refactor. Introduce `ParticleGeometry` protocol; make `ProceduralGeometry` conform without behavior change; route `RenderPipeline` and `VisualizerEngine` through the protocol. Murmuration is the only conformer at end of DM.0.
+**Status:** closed. The next preset increment is the parallel Lumen Mosaic stream (Phase LM) or whatever Matt prioritises.
 
-**Delivered:**
-- New `PhospheneEngine/Sources/Renderer/Geometry/ParticleGeometry.swift` — `AnyObject, Sendable` protocol with three members: `update(features:stemFeatures:commandBuffer:)`, `render(encoder:features:)`, `activeParticleFraction: Float { get set }`. Doc-commented per member; `// MARK: - ParticleGeometry` not added to `ProceduralGeometry.swift` (existing lifecycle MARKs are clearer than collapsing into one section — diff stays minimal).
-- `ProceduralGeometry` declares `: ParticleGeometry` conformance. Method signatures already matched the protocol — zero body changes; +8/−1 lines, all in the class doc-comment block.
-- `RenderPipeline.particleGeometry` storage and `setParticleGeometry(_:)` API typed `(any ParticleGeometry)?`. `FeedbackDrawContext.particles`, `drawDirect(...)` and `drawParticleMode(...)` parameter types widened to match. Dispatch logic byte-identical.
-- `VisualizerEngine.makeParticleGeometry` factory return type widened to `(any ParticleGeometry)?`. Construction logic unchanged — the Murmuration branch is the only branch.
-- `CLAUDE.md` Module Map gains `Geometry/ParticleGeometry` row; `What NOT To Do` gains a "do not parameterize ProceduralGeometry to host non-Murmuration behavior" rule.
-- `docs/DECISIONS.md` D-097 — "Particle preset architecture: siblings, not subclasses." Rejects parameterized common pipeline; documents the protocol surface and engine wiring.
-
-**Done when:**
-- [x] `ParticleGeometry` protocol exists with a minimal, documented surface.
-- [x] `ProceduralGeometry` conforms to `ParticleGeometry` with a near-zero-change diff.
-- [x] `VisualizerEngine` and `RenderPipeline` route through the protocol; no concrete `ProceduralGeometry` references outside the type's own file (verified via `grep -rn "ProceduralGeometry" PhospheneEngine/Sources/`).
-- [x] `PresetRegressionTests` passes with all 14 presets × 3 fixtures green — Murmuration's dHash is bit-identical.
-- [x] All other tests pass (1169/1171; the two failures are pre-existing parallel-load timing flakes — `MetadataPreFetcher.fetch_networkTimeout` and `SoakTestHarness.cancel()` — both pass when re-run in isolation).
-- [x] `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build` succeeds.
-- [x] `Particles.metal` and the `Particle` struct memory layout are byte-identical across the increment.
-- [x] CLAUDE.md / DECISIONS.md / ENGINEERING_PLAN.md updated.
-- [x] All commits use `[DM.0]` prefix.
-
-**Verify:**
-
-```bash
-xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build
-swift test --package-path PhospheneEngine --filter PresetRegressionTests
-swift test --package-path PhospheneEngine
-grep -rn "ProceduralGeometry" PhospheneEngine/Sources/   # only matches inside Geometry/ProceduralGeometry.swift + doc-comments
-ls PhospheneEngine/Sources/Presets/Shaders/ | grep -i drift   # zero matches (DM.0 ships no preset)
-git diff <pre-DM.0> HEAD -- PhospheneEngine/Sources/Renderer/Shaders/Particles.metal   # zero output
-```
-
-**Estimated sessions:** 1.0 (this session itself).
-
-**Status:** ✅ landed 2026-05-08.
-
-**Carry-forward:** DM.1 resumes with one revision to its Task 6 (pass wiring) — Drift Motes ships its own `DriftMotesGeometry: ParticleGeometry` conformer rather than treating Murmuration's path as inherited infrastructure. `VisualizerEngine.makeParticleGeometry` gains a Drift Motes branch.
-
-### Increment DM.1 — Drift Motes Session 1 (foundation) ✅ landed 2026-05-08
-
-**Scope (resumed post-DM.0):** Compute kernel + sprite render + sky backdrop. Force-field motion (wind + curl_noise + lifecycle recycle), no flocking, no audio coupling beyond the D-019 stem-warmup blend (touched but not consumed in DM.1 — wired for DM.2). `DriftMotesNonFlockTest` is the acceptance gate. See `prompts/DM_1_PROMPT.md`.
-
-**Files created:**
-
-- `PhospheneEngine/Sources/Presets/Shaders/DriftMotes.json` — preset sidecar matching `Gossamer.json` schema. `passes: ["feedback", "particles"]`, `fragment_function: "drift_motes_sky_fragment"`, `family: particles`, `rubric_profile: lightweight`, `certified: false`.
-- `PhospheneEngine/Sources/Presets/Shaders/DriftMotes.metal` — sky-backdrop fragment shader. Static warm-amber vertical gradient (no audio reactivity in Session 1).
-- `PhospheneEngine/Sources/Renderer/Shaders/ParticlesDriftMotes.metal` — engine-library compute + sprite shaders (`motes_update` / `motes_vertex` / `motes_fragment`). Force-field motion: wind `normalize((-1, -0.2, 0)) * 0.3` + 4-octave curl-of-fBM turbulence × 0.15, recycle on bounds-exit or age expiry, default warm-amber emission. Filename uses `Particles*` prefix because `ShaderLibrary` concatenates files in lexicographic order — a `D`-prefixed name would precede `Particles.metal` and the shared `Particle` struct would not yet be in scope. Documented in the file header and in `CLAUDE.md`.
-- `PhospheneEngine/Sources/Renderer/Geometry/DriftMotesGeometry.swift` — `ParticleGeometry` conformer. 800 particles (Tier 2 target from `DRIFT_MOTES_DESIGN.md §5.7`), additive blend (`.one + .one`), uniform-cube init with steady-state wind velocity + age-randomised lifecycle so the field is in equilibrium from frame 0.
-- `PhospheneEngine/Tests/PhospheneEngineTests/Presets/DriftMotesTests.swift` — `DriftMotesNonFlockTest` running 200 frames of silence-fixture compute. Two metrics: pairwise distance distribution (50 deterministic random pairs; ≥ 80% of frame-50 value, looser to accommodate the natural cube → top-slab transient) and centroid-relative spread RMS (translation-invariant; ≥ 85%, the load-bearing flock discriminator — flocking would shrink this by 50%+).
-
-**Files modified:**
-
-- `PhospheneApp/VisualizerEngine.swift` — `particleGeometry: (any ParticleGeometry)?` split into two named properties (`murmurationGeometry`, `driftMotesGeometry`); `makeParticleGeometry` factory split into `makeMurmurationGeometry` + `makeDriftMotesGeometry`. Both built once at engine init.
-- `PhospheneApp/VisualizerEngine+Presets.swift` — `applyPreset .particles:` switches on `desc.name` to attach the right conformer.
-- `PhospheneEngine/Tests/PhospheneEngineTests/Presets/PresetLoaderCompileFailureTest.swift` — `expectedProductionPresetCount` 14 → 15 (Failed Approach #44 silent-drop gate).
-- `PhospheneEngine/Tests/PhospheneEngineTests/Renderer/PresetRegressionTests.swift` — added Drift Motes golden hash entry (`0x8000000000008000` for all three fixtures — the regression harness renders only the sky fragment, which is audio-independent in Session 1).
-
-**Audit results:** Murmuration's `ProceduralGeometry`, `Particles.metal`, the `ParticleGeometry` protocol surface, and `RenderPipeline*.swift` are byte-identical to the post-DM.0 baseline (`git diff` returns zero output). PresetRegressionTests' Murmuration golden hash unchanged at the post-DM.0 values. `swift test --package-path PhospheneEngine`: 1172 tests, 3 documented pre-existing flakes (`MetadataPreFetcher.fetch_networkTimeout`, `SessionManager.cancel_fromReady`, `SoakTestHarness.cancel`) — none related to DM.1. `xcodebuild` app build succeeds. SwiftLint: 0 violations on touched files. D-026 / D-019 / D-029 grep checks all return zero violations.
-
-**Estimated sessions:** 1.0 (this session itself, post-DM.0).
-
-**Status:** ✅ landed 2026-05-08.
-
-**Carry-forward:** DM.2 wires the light shaft (`ls_shadow_march` or `ls_radial_step_uv`), floor fog (`vol_density_height_fog`), and per-particle hue baking from `vocalsPitchNorm` into the existing `Particle.color` lanes (no struct extension needed — DM.1 confirmed the four `packed_float4` lanes are sufficient). DM.3 wires the full audio routing (wind force ×= `f.bass_att_rel`, emission rate × `f.mid_att_rel`, backdrop palette tinted by `f.valence`, drum dispersion shock from `stems.drums_energy_dev`, anticipatory shaft pulse on `f.beat_phase01`) and the M7 frame-match review against `01_atmosphere_dust_motes_light_shaft.jpg`.
-
-### Increment DM.2 — Drift Motes Session 2 (audio coupling) ✅ landed 2026-05-08
-
-**Scope:** Three coupled audio reactivities arrive together because they share one coherent visual story — the field is musical, with a god-ray cutting through floor fog and per-mote hue carrying the recent vocal melody. Specifically: light shaft via `ls_radial_step_uv` in the sky fragment, floor fog via `vol_density_height_fog` in the same fragment, and per-particle hue baked at emission time in `motes_update` under a D-019 warmup-blended source. Sprite fragment additionally modulates per-mote brightness from shaft proximity. See `prompts/DM_2_PROMPT.md`.
-
-**Files created:**
-
-- `PhospheneEngine/Tests/PhospheneEngineTests/Presets/DriftMotesRespawnDeterminismTest.swift` — three tests covering the DM.2 hue-baking contract:
-  - **Within-life invariance:** color is bit-identical across 30 frames for every slot that did not respawn (gate: ≥ 100 stable slots).
-  - **Respawn changes hue across the field:** under warm stems with a 4-octave pitch sweep, after 240 frames the per-particle colour distribution shows variance > 1e-3 (vs. ≈ 0 for a uniform-amber field).
-  - **Warm-stems variance > 2× cold-stems:** 60-frame runs with `StemFeatures.zero` vs. realistic stems with sweeping vocal pitch produce a variance ratio that proves D-019 contributes real signal at warm stems (not a numeric no-op).
-  Total runtime: ~0.35 s for all three.
-
-**Files modified:**
-
-- `PhospheneEngine/Sources/Renderer/Shaders/ParticlesDriftMotes.metal` — added `dm_pitch_hue(pitchHz, confidence)` static helper (canonical pitch→hue replacement for the retired `vl_pitchHueShift`, octave-wrap log map: A2→0.0, A6→1.0); replaced the literal warm-amber emission color with the D-019-blended baked hue (`smoothstep(0.02, 0.06, totalStemEnergy)` between the cold-stems hash-jitter+`f.mid_att_rel`-shift fallback and the warm-stems pitch hue); removed the `(void)stems;` placeholder; vertex shader now passes per-particle UV; fragment modulates brightness by Gaussian falloff from the shaft axis (sun anchor `(-0.15, 1.20)`, axis through frame centre, cone width 16); header comment updated to reflect the post-DM.2 reality.
-- `PhospheneEngine/Sources/Presets/Shaders/DriftMotes.metal` — sky fragment now layers warm-amber gradient (DM.1 baseline) + multiplicative cool blue-gray floor fog via `vol_density_height_fog(scale=12.0, falloff=0.85)` + additive warm-gold light shaft via 32-step `ls_radial_step_uv` accumulation with `0.65 + 0.25 × f.mid_att_rel` continuous intensity. Same sun anchor as the sprite fragment so the highlight stays congruent.
-- `PhospheneEngine/Sources/Renderer/Shaders/Common.metal` — extended `FeatureVector` to 192 bytes / 48 floats (MV-1 deviation primitives + MV-3b beat phase + bar phase + pad) and `StemFeatures` to 256 bytes / 64 floats (MV-1 deviation primitives + MV-3a per-stem rich metadata + MV-3c vocals pitch + pad). Field order is byte-identical to `PresetLoader+Preamble.swift`'s preset preamble; the first 32 / 16 floats match the pre-MV-1 layout exactly so existing engine readers (Murmuration's `particle_update`, MVWarp shaders, feedback shaders) are byte-identical. Pre-DM.2 the engine MSL structs were stuck at the pre-MV-1/MV-3 sizes, so engine-library shaders could not read `f.mid_att_rel` / `stems.vocals_pitch_hz` — the kernel hue baking required this correction.
-- `PhospheneEngine/Tests/PhospheneEngineTests/Renderer/PresetRegressionTests.swift` — Drift Motes golden hash regenerated to `0x0001070F1F3F7FFF` for all three fixtures (the harness renders the sky fragment only and `f.mid_att_rel` is zero across all three regression fixtures, so steady/beatHeavy/quiet converge to the same hash); doc comment rewritten to describe what's actually under test (sky + shaft + fog) and to point at `DriftMotesRespawnDeterminismTest` as the regression-lock for per-particle hue. Murmuration's three hashes regenerated identically to the post-DM.1 baseline (byte-identical reads through extended struct, no shader logic change) — Murmuration invariant preserved.
-- `PhospheneEngine/Tests/PhospheneEngineTests/Diagnostics/SoakTestHarnessTests.swift` — added `shortRunDriftMotes` SOAK-gated kernel-cost benchmark (30 s simulated 60 Hz, 800 Tier 2 particles, GPU command-buffer timing). Tier 2 results below.
-
-**Performance (DM.2 Task 8, kernel-only Tier 2 measurement, this session):**
-
-- p50 = 0.107 ms, p95 = 0.158 ms, p99 = 0.763 ms, kernel overruns (>14 ms) = 0
-- Well under the 1.6 ms full-frame Tier 2 budget. The post-DM.2 audio coupling adds near-zero kernel cost on top of DM.1 (the work is at emission time only — one branch per respawn, ~tens of frames per particle lifetime).
-- **Tier 2 full-frame timing** (sky fragment + sprite render + feedback decay) is deferred to a runtime app session — `SoakTestHarness` has no preset-pinned full-pipeline path within `swift test`. The kernel-only benchmark is the right gate for this increment because the audio coupling is the only thing that grew between DM.1 and DM.2.
-- **Tier 1 timing deferred** to a hardware run (Mac M1/M2). Kernel cost on Tier 1 is bounded by the same fact: the work landed only on emission, and the curl-noise cost dominates per-frame.
-
-**Audit:**
-
-- D-026 deviation-primitives grep on `ParticlesDriftMotes.metal` returns zero hits for absolute-threshold patterns (`smoothstep` against `f.bass`/`f.mid`/`f.treb` direct values).
-- D-019 blend grep returns one hit at the emission branch in `motes_update`, exactly where the prompt specifies.
-- D-029 pass set: `DriftMotes.json` still declares `["feedback", "particles"]` — no new render pass.
-- D-097 / DM.0 / DM.1 invariants: `Particles.metal`, `ProceduralGeometry.swift`, `ParticleGeometry.swift`, and `RenderPipeline*.swift` are byte-identical to their post-DM.1 state. Murmuration's three regression hashes match the DM.1 baseline.
-- `swiftlint lint --strict` 0 violations on touched files.
-- Engine + app builds clean; full regression suite (15 presets × 3 fixtures = 45 cases) green.
-
-**Estimated sessions:** 1.0 (this session itself).
-
-**Status:** ✅ landed 2026-05-08.
-
-**Carry-forward:** DM.3 adds emission-rate scaling from `f.mid_att_rel`, drum dispersion shock from `stems.drums_beat`, optional structural-flag scatter, the M7 frame-match review against `01_atmosphere_dust_motes_light_shaft.jpg`, and the deferred Tier 1 hardware perf measurement. `dm_pitch_hue` is the canonical pitch→hue helper for the project; future presets can adopt it by name.
-
-### Increment DM.3 — Drift Motes Session 3 (event-driven audio routing) ✅ landed 2026-05-08
-
-**Scope:** The two event-driven audio reactivities from DM.1's carry-forward arrive together: emission-rate scaling from `f.mid_att_rel` (lifetime divisor at respawn time) and drum dispersion shock from `stems.drums_beat` (radial outward velocity impulse gated by the BeatDetector envelope). The optional structural-flag scatter (Task 3) deferred to DM.4 — `StructuralPrediction` is CPU-only and not wired through the GPU `FeatureVector`; landing it would require a struct-extension violating D-099's just-locked layout. M7 contact-sheet harness extended to `Drift Motes`; full-pipeline + Tier 1 measurement procedures documented for the next hardware run. See `prompts/DM.3-prompt.md`.
-
-**Files created:**
-
-- `PhospheneEngine/Tests/PhospheneEngineTests/Presets/DriftMotesAudioCouplingTest.swift` — three tests covering the DM.3 audio reactivities:
-  - **Emission rate scaling:** 600 frames at `f.mid_att_rel = 0.1` vs. `0.9` (one full lifetime turn-over so the population converges near steady state); average particle age under high mid `< 0.7×` low baseline. Catches a no-op (ratio ≈ 1.0).
-  - **Dispersion shock raises velocity variance:** 240 frames under a 2 Hz square wave on `drumsBeat` (15 frames on, 15 off) raises per-particle velocity-magnitude variance ≥ 1.5× the silence baseline.
-  - **Dispersion shock decays between beats:** single beat impulse + 60 frames of silence settles velocity-magnitude variance back inside 1.2× the silence baseline. Proves the field doesn't accumulate runaway dispersion.
-  Total runtime: ~0.35 s for all three.
-- `docs/diagnostics/DM.3-perf-capture.md` — runtime app procedure for full-pipeline Tier 2 capture (pin Drift Motes, run 60 s of representative audio, parse `features.csv` `frame_ms` column for percentiles). Pass criteria: p50 ≤ 8 ms / p95 ≤ 14 ms / p99 ≤ 25 ms / drops ≤ 8 %.
-- `docs/diagnostics/DM.3-tier1-measurement.md` — Tier 1 (M1/M2) hardware procedure with kernel + full-pipeline gates (kernel p95 ≤ 1.5 ms; full-pipeline p50 ≤ 11 ms / p95 ≤ 19 ms / p99 ≤ 30 ms). Documents when to run, when to defer, and the first tuning lever (`kEmissionRateGain` 1.5 → 1.0).
-
-**Files modified:**
-
-- `PhospheneEngine/Sources/Renderer/Shaders/ParticlesDriftMotes.metal` — added two file-scope `constexpr constant` tuning constants (`kEmissionRateGain = 1.5f`, `kDispersionShockGain = 0.4f`) alongside the DM.2.closeout fog constants in `DriftMotes.metal`. Both `p.life` assignment sites in `motes_update` (the respawn branch and the safety-net `p.life <= 0.001` recovery) now multiply the random lifetime by `1 / (1 + kEmissionRateGain * max(0, f.mid_att_rel))` — the `max(0, ...)` clamp prevents quiet sections from extending lifetime (the deviation primitive is signed in [-0.5, 0.5]; we use only the positive 'melody peaks' half). Linear in `mid_att_rel`, D-026-compliant by construction (no smoothstep, no absolute threshold). After the wind+turb integration and before the position update, a new dispersion-shock branch fires when `smoothstep(0.30, 0.70, stems.drums_beat) > 0.0`: a radial outward impulse in the horizontal `(x, z)` plane with a small +y lift (0.2 of horizontal magnitude) — the BeatDetector envelope shape provides natural decay between beats; damping (0.97/frame) settles the field. The smoothstep absolute threshold is D-026-allowed because D-026 targets FV raw bands, not stem onset envelopes (VolumetricLithograph uses the same `smoothstep(0.30, 0.70, stems.drums_beat)` gate). Header comment rewritten to document the post-DM.3 reality: kernel reads stems and FeatureVector both at emission time AND at integration time. The DM.4 stub block is referenced explicitly in the header.
-- `PhospheneEngine/Tests/PhospheneEngineTests/Diagnostics/SoakTestHarnessTests.swift` — `shortRunDriftMotes` SOAK benchmark extended to drive `stems.drumsBeat` as a 2 Hz square wave (15 frames on / 15 off) so the dispersion-shock branch and its smoothstep evaluation are exercised every frame. Existing `f.midAttRel` modulation already exercised emission-rate scaling. Mark and header rewritten for DM.3: the kernel benchmark is now the regression gate for both DM.2 hue baking AND DM.3 audio routing. Full-pipeline measurement and Tier 1 numbers documented as runtime / hardware deferrals (per the new `DM.3-perf-capture.md` and `DM.3-tier1-measurement.md` procedure docs).
-- `PhospheneEngine/Tests/PhospheneEngineTests/Renderer/PresetVisualReviewTests.swift` — `renderPresetVisualReview` arguments extended from `["Arachne", "Gossamer", "Volumetric Lithograph"]` to include `"Drift Motes"`; new `driftMotesReferenceRelPath` constant; new `buildDriftMotesContactSheet(renderedMidPNG:to:)` helper produces a stacked layout (top half = rendered output at the steady-mid fixture, bottom half = `01_atmosphere_dust_motes_light_shaft.jpg`). Single-reference layout matches Drift Motes' DM.0-spec'd reference set of one image. The contact sheet is the M7 deliverable for Matt's review; this commit lands `certified: false` and Matt's eyeball + iteration close out the cert flip in a separate commit per the prompt's directive.
-
-**Performance (DM.3 Task 4, kernel-only Tier 2 measurement, this session):**
-
-- p50 = 0.115 ms, p95 = 0.162 ms, p99 = 0.781 ms, mean = 0.135 ms, kernel overruns (>14 ms) = 0 across 1800 frames.
-- Compared to DM.2 baseline (p50 = 0.107 / p95 = 0.158 / p99 = 0.763): the new per-frame work (smoothstep + length + branch + small SIMD impulse) costs ≤ 0.01 ms on top of DM.2. Well under the 1.6 ms full-frame Tier 2 budget.
-- **Tier 2 full-pipeline timing** still requires a runtime app session — the sprite pass needs a `CAMetalDrawable`, which `swift test` cannot produce. Procedure documented in `docs/diagnostics/DM.3-perf-capture.md`.
-- **Tier 1 timing** requires Tier 1 hardware (M1/M2). Procedure documented in `docs/diagnostics/DM.3-tier1-measurement.md`. This dev machine is M3+ (Tier 2); flag for Matt to run.
-
-**Audit:**
-
-- D-026 grep on `ParticlesDriftMotes.metal` returns zero hits for the canonical anti-pattern (`grep -nE 'mid_att_rel\s*>|drums_beat\s*>|treb\s*>|bass\s*>'`); the `smoothstep(0.30, 0.70, stems.drums_beat)` is a deliberate gate on a stem onset envelope (D-026 explicitly targets FV raw bands, not stem onset signals — VolumetricLithograph precedent).
-- D-019 grep returns the existing emission-time blend at the respawn branch — unchanged from DM.2.
-- D-029 pass set unchanged: `DriftMotes.json` still declares `["feedback", "particles"]`.
-- D-097 / DM.0 / DM.1 / DM.2 invariants: `Particles.metal`, `ProceduralGeometry.swift`, `ParticleGeometry.swift`, `RenderPipeline*.swift` are byte-identical to post-DM.2 (`git diff --stat` returns zero output for those paths). Murmuration's three regression hashes unchanged from DM.2 baseline.
-- D-099 invariant: `FeatureVector` / `StemFeatures` MSL struct sizes unchanged from DM.2 (192 / 256 bytes). DM.3 reads existing fields only.
-- Drift Motes regression hash unchanged (`0x0001070F1F3F7FFF` across all three fixtures) — the regression harness renders only the sky fragment, which doesn't see compute-kernel output. New `DriftMotesAudioCouplingTest` is the regression-lock for kernel audio routing.
-- `swiftlint lint --strict` reports 0 violations on touched files (test files excluded from lint by config; the Metal source isn't lintable).
-- Engine + app builds clean; targeted test surfaces (`DriftMotes`, `PresetRegression`, `PresetAcceptance` ex Arachne) green. A PresetAcceptance Arachne failure (`beatMotion 1.78 > 1.0`) surfaced during DM.3 verification. Root cause: uncommitted V.7.7C.5 work-in-progress in the working tree (canvas-filling silk increases the screen-integrated beat-pulse MSE; V.7.7C.5 itself recalibrates the beat-pulse coefficient `0.06 → 0.025` to compensate). Not a DM.3 regression — Arachne files are outside this commit's scope and tracked under V.7.7C.5; landing that increment closes the failure. (My initial DM.3 closeout misattributed this to V.7.7C.4 — V.7.7C.4 is committed at `3feb6330` and was green; the working-tree changes are V.7.7C.5.)
-
-**Estimated sessions:** 1.0 (this session itself).
-
-**Status:** ✅ landed 2026-05-08; preset stays `certified: false` pending M7 sign-off. Full-pipeline Tier 2 capture + Tier 1 hardware measurement deferred to runtime / hardware runs per the new procedure docs.
-
-**Carry-forward:** DM.4 — three world-feel reactivities deferred from DM.3 (wind force × `f.bass_att_rel`; backdrop palette tinted by `f.valence`; anticipatory shaft pulse on `f.beat_phase01`) plus the structural-flag scatter punted from this increment because `StructuralPrediction` is CPU-only.
-
-### Increment DM.4 — Drift Motes Session 4 (world-feel pass) — planned
-
-**Scope:** Reactivities that cohere as a "world-feel" grouping. Scope shrunk twice from the original DM.3 carry-forward:
-
-- **Wind force × `f.bass_att_rel`** — low-band continuous: bass shapes the motion-field intensity. Multiplier on the existing wind vector in `motes_update` (the kernel already reads the wind direction + magnitude from buffer(4); adding a bass scalar is a one-line product on the Swift side at frame-bind time, or directly in MSL).
-- **~~Backdrop palette tint by `f.valence`~~** — **subsumed by DM.3.2's paletteCycle + mood bias** (sky gradient is already valence-tinted via the cycle base hue).
-- **~~Anticipatory shaft pulse on `f.beat_phase01`~~** — **retired in DM.3.3.1 per Matt's design call: the shaft is the world's lighting, not a music-readable element.** Pre-kick shaft brightness ramps are the same design family as the per-kick brightness lift DM.3.3.1 removed; all beat reactivity lives on the particles only.
-
-**Plus** the **structural-flag scatter** punted from DM.3 Task 3 — needs a small piece of design work first: either thread `StructuralPrediction.confidence` through the GPU `FeatureVector` (adds a float; touches D-099-locked layout — careful) or read it CPU-side and bake into a non-FeatureVector-bound config buffer. The Murmuration precedent (per-frame `ParticleConfig`) is the cheaper path.
-
-**Estimated sessions:** 1.0.
-
-**Status:** planned post-DM.3.
-
-**Carry-forward:** DM.5 (cert + polish) — Matt M7 sign-off for `certified: true`, any tuning iterations surfaced by review, hand-off to the catalog so Drift Motes counts toward Milestone D.
-
----
 
 ## Phase LM — Lumen Mosaic (glass-family ray-march preset)
 
@@ -3533,7 +3367,7 @@ The preset is sequenced as 10 increments LM.0 → LM.9 with cert sign-off at LM.
 - `Sources/Presets/Lumen/LumenPatternEngine.swift` — pattern-pool state (`activePatterns`, `barRotationCounter`, `prevBarPhase01`) deleted; `updatePatterns`, `spawnPattern`, `spawnBarRotationPattern`, `writePatternsToState`, `radialRippleOriginFromBar`, `sweepEntryFromBar`, `chooseBarPatternKind`, `lmHashU32`, `trackSeedHash32` all deleted; `updateBandCounters` simplified to beat-wrap-only (no bar wrap); `advancePatternEngine` simplified to just call the band-counter update; `resetBeatTrackingState` updated; LM.4-era `swiftlint:disable type_body_length` removed (class shrank under the threshold).
 - `Sources/Presets/Shaders/LumenMosaic.metal` — `lm_pattern_radial_ripple` / `lm_pattern_sweep` / `lm_evaluate_active_patterns` evaluator functions deleted; `kPatternBoost` / `kPatternMaxSum` / `kRippleMaxRadius` / `kRippleSigmaBase` / `kSweepSigma` constants deleted; `sceneMaterial` integration site (`cell_intensity += pattern_contribution * kPatternBoost`) deleted.
 - `Tests/.../Presets/LumenPatternEngineTests.swift` Suite 9 — renamed `LumenLM43CounterTests` → `LumenLM44CounterTests`; `test_barPhase01Wrap_incrementsBarCounter` + `test_noGridSignal_noBarCounterAdvance` retired; replaced with `test_barCounter_neverAdvances_afterLM44` which regression-locks the dead-counter contract. `driveBarWrap` helper removed.
-- `PresetAcceptance` + `PresetRegression` + `PresetLoaderCompileFailure` + `LumenPatternEngine` all green. App build clean. SwiftLint 0 violations on touched files; project baseline preserved (the +1 violation in `DriftMotesGeometry.swift` is pre-existing from the unrelated DM.3.3.1 commit).
+- `PresetAcceptance` + `PresetRegression` + `PresetLoaderCompileFailure` + `LumenPatternEngine` all green. App build clean. SwiftLint 0 violations on touched files; project baseline preserved.
 - `CLAUDE.md` updated: `LumenPatterns.swift` module-map entry marked deleted; `LumenPatternEngine.swift` entry rewritten for LM.4.4 semantics; `LumenMosaic.metal` entry updated to reflect pattern engine retirement; tuning-surface line trimmed; LM.4.4 landed-work entry added above LM.4.3.
 
 **Verify.**
@@ -3573,9 +3407,9 @@ The preset is sequenced as 10 increments LM.0 → LM.9 with cert sign-off at LM.
 - `RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter "PresetVisualReviewTests/renderPresetVisualReview"` (LM.4.5 contact sheet)
 - Matt M7 review: every track's palette feels meaningfully distinct from every other track's, AND each track's palette spans the full spectrum (darks, regals, browns/slates, jewel tones, all visible in the same panel).
 
-**Status:** ⏳ landed 2026-05-11; awaiting Matt re-review on a real-music session. Single commit. Shader-side rewrite of `lm_cell_palette` with the procedural per-track card model; eight IQ palette endpoints + `kPaletteMoodPhaseShift` + `kSeedMagnitude{A,B,C,D}` retired; `kCardSize=48`, `kCardValMin=0.08`, `kCardValMax=0.95`, `kPastelSatCutoff=0.3`, `kPastelValCap=0.5`, `kMoodGammaLowArousal=1.8`, `kMoodGammaHighArousal=0.55` added. New `LumenPaletteSpectrumTests.swift` (8 tests across 6 suites — spectrum coverage / pastel guardrail / per-track distinctiveness × 2 / beat-step ratchet / mood bias × 2 / hsv2rgb sanity) regression-locks the algorithm via Swift mirror. Slot-8 GPU ABI unchanged (`LumenPatternState` stride still 376 bytes); the per-track seed plumbing flows through `lm_track_seed_hash` into the new card-slot colour hash unchanged. PresetRegression Lumen Mosaic golden hash unchanged at `0xF0F0C8CCCCC8F0F0` (the regression harness leaves slot 8 zero-bound and the dHash 9×8 luma quantization at 64×64 is dominated by Voronoi cell structure, not palette algorithm — real visual divergence is observed via `RENDER_VISUAL=1 PresetVisualReviewTests` 9-fixture set). Engine + app build clean; SwiftLint touched files 0 violations; baseline 56 violations preserved. Same 4 documented pre-existing failures (MatIDDispatch matID==1 LM.3.2 calibration drift, plus 3 documented parallel-load timing flakes — `MetadataPreFetcher.fetch_networkTimeout`, `SoakTestHarness.cancel`, `ProgressiveReadiness.startNow_*`).
+**Status:** ⏳ LM.4.5 v1 landed 2026-05-11 (commit `a51a3b15`); **superseded by LM.4.5.1** same day after Matt's first-pass contact-sheet review flagged ~23 % of cells as pale washed cream (mid-sat + high-val cells the LM.4.5 v1 mandatory `sat < 0.3 → val ≤ 0.5` pastel guardrail did not catch). The "saturation full range [0, 1]" framing in the prompt above was the wrong abstraction for stained glass — real cathedral windows are saturated by physics; diversity comes from hue × value × per-track variety, not from saturation. **LM.4.5.1 amendments**: (a) saturation floored at `kSatFloor = 0.70` and uniform within [0.70, 1.00]; (b) sat NOT mood-biased (only val carries the arousal gamma); (c) pastel guardrail retired (unreachable by construction at sat ≥ 0.7); (d) `kPastelSatCutoff` + `kPastelValCap` deleted. See CLAUDE.md "Recent landed work" LM.4.5.1 entry for full file-by-file diff. The LM.4.5 v1 closeout below remains for chronological context but the constants list is partially superseded. **Originally landed (LM.4.5 v1)**: shader-side rewrite of `lm_cell_palette` with the procedural per-track card model; eight IQ palette endpoints + `kPaletteMoodPhaseShift` + `kSeedMagnitude{A,B,C,D}` retired; `kCardSize=48`, `kCardValMin=0.08`, `kCardValMax=0.95`, `kPastelSatCutoff=0.3`, `kPastelValCap=0.5`, `kMoodGammaLowArousal=1.8`, `kMoodGammaHighArousal=0.55` added. New `LumenPaletteSpectrumTests.swift` (8 tests across 6 suites — spectrum coverage / pastel guardrail / per-track distinctiveness × 2 / beat-step ratchet / mood bias × 2 / hsv2rgb sanity) regression-locks the algorithm via Swift mirror. Slot-8 GPU ABI unchanged (`LumenPatternState` stride still 376 bytes); the per-track seed plumbing flows through `lm_track_seed_hash` into the new card-slot colour hash unchanged. PresetRegression Lumen Mosaic golden hash unchanged at `0xF0F0C8CCCCC8F0F0` (the regression harness leaves slot 8 zero-bound and the dHash 9×8 luma quantization at 64×64 is dominated by Voronoi cell structure, not palette algorithm — real visual divergence is observed via `RENDER_VISUAL=1 PresetVisualReviewTests` 9-fixture set). Engine + app build clean; SwiftLint touched files 0 violations; baseline 56 violations preserved. Same 4 documented pre-existing failures (MatIDDispatch matID==1 LM.3.2 calibration drift, plus 3 documented parallel-load timing flakes — `MetadataPreFetcher.fetch_networkTimeout`, `SoakTestHarness.cancel`, `ProgressiveReadiness.startNow_*`).
 
-**Carry-forward.** Matt M7 re-review on a real-music session. The contact sheet at `/tmp/phosphene_visual/<timestamp>/Lumen_Mosaic_track_v{1..4}.png` shows four visibly distinct palette cards — track_v1 emphasises pinks + dark browns, track_v2 cyans + light pinks, track_v3 deep reds + blues, track_v4 blue/teal + magentas. Each card spans darks / mid-tones / brights (no all-jewel-tone outputs). LV-LA mood biases toward darker register relative to HV-HA. If Matt sign-off green, Lumen Mosaic eligible for `certified: true` (or LM.6 specular-sparkle polish first). LM.5 (clusterBurst + breathing + noiseDrift pattern kinds) waits on LM.4.5 sign-off — the new pattern kinds will need to be validated against the wider palette before they land.
+**Carry-forward.** Matt M7 re-review on a real-music session against the LM.4.5.1 contact sheet — every cell now reads as a saturated stained-glass jewel tone (gray cells eliminated). Per-track variety preserved across the 4 corner-fixture cards; LV-LA tilts darker than HV-HA via val gamma. **Tuning levers if M7 wants adjustments**: lower `kSatFloor` toward 0.55 to admit muted earth tones (only if Matt explicitly wants that register; default LM.4.5.1 intent is pure stained-glass character); raise `kMoodGammaLowArousal` toward 2.5 OR lower `kMoodGammaHighArousal` toward 0.40 for stronger mood biasing if calm tracks aren't moody enough. If Matt sign-off green, Lumen Mosaic eligible for `certified: true` (or LM.6 specular-sparkle polish first). LM.5 (clusterBurst + breathing + noiseDrift pattern kinds) waits on LM.4.5/LM.4.5.1 sign-off.
 
 ---
 
