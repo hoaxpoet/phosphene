@@ -149,7 +149,11 @@ static float arachSegDist(float2 p, float2 a, float2 b) {
 // All functions are pure/deterministic from rng_seed so shader and Swift diagnostics
 // produce identical values (Swift mirrors in ArachneState diagHash/diagSpokeCount/...).
 
-static int    arachSpokeCount(uint seed)  { return 11 + int(arachHash(seed + 0xA1u) * 6.99); }
+// BUG-011 follow-up — spoke range bumped from [11, 17] → [17, 23] to match
+// the CPU's new radialCount range [18, 24] (still ±1-2 drift per D-095). All
+// downstream `[17]`-sized arrays (sdDir, sdGrav, sdTip) and the `nSpk` cap
+// updated in lockstep.
+static int    arachSpokeCount(uint seed)  { return 17 + int(arachHash(seed + 0xA1u) * 6.99); }
 static float  arachAspect(uint seed)      { return 0.85 + arachHash(seed + 0xB2u) * 0.30; }
 static float  arachAspectAngle(uint seed) { return arachHash(seed + 0xC3u) * 2.0 * M_PI_F; }
 // V.7.5 §10.1.2: range widened [0.04, 0.10] → [0.06, 0.14] so longer radials
@@ -764,10 +768,12 @@ static ArachneWebResult arachneEvalWeb(
     // Precompute spoke directions, gravity weights, and (V.7.7C.3) polygon-
     // clipped spoke tip positions for all visible spokes — reused across all
     // N_RINGS ring iterations to avoid redundant trig + ray-polygon casts.
-    int   nSpk = min(nVisible, 17);
-    float2 sdDir[17];
-    float  sdGrav[17];
-    float2 sdTip[17];   // V.7.7C.3 — polygon-clipped tip (or webR × sdDir fallback)
+    // BUG-011 follow-up — cap bumped 17 → 23 to accommodate the new
+    // `arachSpokeCount` range [17, 23] (was [11, 17]).
+    int   nSpk = min(nVisible, 23);
+    float2 sdDir[23];
+    float  sdGrav[23];
+    float2 sdTip[23];   // V.7.7C.3 — polygon-clipped tip (or webR × sdDir fallback)
     for (int si = 0; si < nSpk; si++) {
         float jitS = (arachHash(seed + uint(si) * 7u) - 0.5) * baseStep * 0.44;
         float angS = rotAngle + float(si) * baseStep + jitS;
@@ -1192,11 +1198,12 @@ fragment float4 arachne_composite_fragment(
     //   .spiral   (2) → stage=2u, progress=spiral_packed / spiralChordsTotal_cpu
     //   ≥ .stable (3) → stage=3u, progress=1.0  (.evicting clamped to .stable)
     //
-    // Normalisation constants below mirror CPU defaults (`radialCount = 13`,
-    // `spiralRevolutions × radialCount = 8 × 13 = 104`); shader-side
-    // `arachSpokeCount(ancSeed)` may differ from CPU's `radialCount` by ±2,
-    // which produces a visually negligible ±2-spoke lead/lag at the radial
-    // boundary. Acceptable for V.7.7C.2 — see D-095 carry-forward.
+    // Normalisation constants below mirror CPU defaults (`radialCount = 21`,
+    // `spiralRevolutions × radialCount = 16 × 21 = 336`, post-BUG-011-follow-up);
+    // shader-side `arachSpokeCount(ancSeed)` may differ from CPU's
+    // `radialCount` by ±1-2, which produces a visually negligible ±2-spoke
+    // lead/lag at the radial boundary. Acceptable for V.7.7C.2 — see D-095
+    // carry-forward.
     //
     // V.7.7C.5 (D-100, Q15): hub UV moved from the V.7.5/V.7.7C.4 anchor
     // (0.42, 0.40) to canvas centre (0.5, 0.5) and webR bumped from 0.22 to
@@ -1242,8 +1249,13 @@ fragment float4 arachne_composite_fragment(
         float2 ancHub  = float2(0.5, 0.5) + arachHubJitter(ancSeed);
 
         // V.7.7C.2 / D-095 — derive (stage, progress) from webs[0] Row 5.
-        constexpr float kRadialCountCPUDefault = 13.0;
-        constexpr float kSpiralChordsTotalCPUDefault = 104.0;
+        // BUG-011 follow-up — defaults bumped to match new CPU medians:
+        // radialCount 13 → 21, spiralChordsTotal 104 → 336 (= 21 × 16).
+        // ±25 % progress-mapping drift envelope at the range edges is the
+        // same compromise D-095 already accepts (now centred on the new
+        // medians). Wider fix is in the V.7.10 carry-forward.
+        constexpr float kRadialCountCPUDefault = 21.0;
+        constexpr float kSpiralChordsTotalCPUDefault = 336.0;
         float buildStageF = clamp(webs[0].build_stage, 0.0, 4.0);
         uint  fgStage;
         float fgProgress;
