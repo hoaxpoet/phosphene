@@ -3467,7 +3467,7 @@ The preset is sequenced as 10 increments LM.0 → LM.9 with cert sign-off at LM.
 
 **Status:** ⏳ tests + docs landed 2026-05-10. Awaiting Matt review on a real-music session. Same discipline as LM.3.2 — tests passing + harness frames rendering ≠ done; the contact-sheet observation is the load-bearing acceptance gate.
 
-**Carry-forward.** LM.4.1 follows up on first M7 review (ripple density + bleach-out). LM.4.2 follows on full-spectrum palette redesign. LM.5 adds the remaining pattern kinds: `clusterBurst`, `breathing`, `noiseDrift`. LM.6 closes the fidelity polish (specular sparkle on the Voronoi ridges from the frost normal — currently the matID == 1 emission path skips Cook-Torrance).
+**Carry-forward.** LM.4.1 follows up on first M7 review (ripple density + bleach-out). LM.4.5 follows on full-spectrum palette redesign. LM.5 adds the remaining pattern kinds: `clusterBurst`, `breathing`, `noiseDrift`. LM.6 closes the fidelity polish (specular sparkle on the Voronoi ridges from the frost normal — currently the matID == 1 emission path skips Cook-Torrance).
 
 ### Increment LM.4.1 — Ripple density + bleach-out fix
 
@@ -3479,7 +3479,7 @@ The preset is sequenced as 10 increments LM.0 → LM.9 with cert sign-off at LM.
 - `Sources/Presets/Shaders/LumenMosaic.metal` ships `kPatternBoost = 0.20f` and `kBarPulseMagnitude = 0.20f` with LM.4.1 comment blocks explaining the bleach-out math.
 - `Tests/.../Presets/LumenPatternsTests.swift` — `test_fivthSpawnEvictsOldest` and `test_pool_neverExceedsPatternCount` use `barPhase01` wraps (no debounce) instead of `beatBass` rising edges; at the new 0.3 s ripple lifetime, 80 ms-debounced bass spawns can't fill the pool before natural retirement, so the eviction code path was never exercised under the old test driver.
 - All 18 LumenPatterns tests + PresetAcceptance + PresetRegression + PresetLoaderCompileFailure green. SwiftLint 0 violations on touched files.
-- CLAUDE.md updated: LumenMosaic.metal tuning surface line reflects new values + LM.4.1 landed-work entry above the LM.4 entry, calling out the LM.4.2 carry-forward.
+- CLAUDE.md updated: LumenMosaic.metal tuning surface line reflects new values + LM.4.1 landed-work entry above the LM.4 entry, calling out the LM.4.5 carry-forward.
 
 **Verify.**
 
@@ -3489,7 +3489,7 @@ The preset is sequenced as 10 increments LM.0 → LM.9 with cert sign-off at LM.
 
 **Status:** ⏳ tests + docs landed 2026-05-11. Awaiting Matt re-review on a real-session capture.
 
-**Carry-forward.** LM.4.1 only addresses ripple density + bleach-out. The deeper palette-scope limitation Matt called out in the same review — "literally any HEX code or Pantone shade" missing, including dark hues, regal purples, browns, grays — is the LM.4.2 scope (palette architecture redesign).
+**Carry-forward.** LM.4.1 only addresses ripple density + bleach-out. The deeper palette-scope limitation Matt called out in the same review — "literally any HEX code or Pantone shade" missing, including dark hues, regal purples, browns, grays — is the LM.4.5 scope (palette architecture redesign).
 
 ### Increment LM.4.3 — BeatGrid-driven triggers + ripples-as-accent
 
@@ -3518,7 +3518,7 @@ The preset is sequenced as 10 increments LM.0 → LM.9 with cert sign-off at LM.
 
 **Known limitation:** no FFT fallback — if `f.beatPhase01` never wraps (pure silence; pre-grid first ~10 s of live ad-hoc sessions), counters and patterns are static. Acceptable for prepared sessions (grid is at session start); LM.4.4 may add a fallback if reactive ad-hoc sessions surface the gap.
 
-**Carry-forward.** LM.4.4 retired the pattern engine entirely after the third M7 review (the LM.4.3 trigger fix was confirmed but the ripple/sweep accent layer was rejected as "barely noticeable"). LM.4.2 (full-spectrum per-track palette redesign) is now the next planned increment.
+**Carry-forward.** LM.4.4 retired the pattern engine entirely after the third M7 review (the LM.4.3 trigger fix was confirmed but the ripple/sweep accent layer was rejected as "barely noticeable"). LM.4.5 (full-spectrum per-track palette redesign) is now the next planned increment.
 
 ### Increment LM.4.4 — Pattern engine retired
 
@@ -3546,9 +3546,11 @@ The preset is sequenced as 10 increments LM.0 → LM.9 with cert sign-off at LM.
 
 **Status:** ⏳ tests + docs landed 2026-05-11. Awaiting Matt re-review.
 
-**Carry-forward.** LM.4.2 (full-spectrum per-track palette redesign) is the next planned increment. With the pattern engine gone, the palette redesign focuses cleanly on what actually matters: colour variety across the spectrum. LM.5 (clusterBurst / breathing / noiseDrift) becomes "continuous fields rebinding to the slot-8 buffer" if it ever lands — the GPU ABI is preserved exactly for that possibility, but it's no longer scheduled.
+**Carry-forward.** LM.4.5 (full-spectrum per-track palette redesign) is the next planned increment. With the pattern engine gone, the palette redesign focuses cleanly on what actually matters: colour variety across the spectrum. LM.5 (clusterBurst / breathing / noiseDrift) becomes "continuous fields rebinding to the slot-8 buffer" if it ever lands — the GPU ABI is preserved exactly for that possibility, but it's no longer scheduled.
 
-### Increment LM.4.2 — Full-spectrum palette redesign (per-track custom palette cards)
+### Increment LM.4.5 — Full-spectrum palette redesign (per-track custom palette cards)
+
+> **Renumbering note (2026-05-11).** This increment was originally numbered LM.4.2 when it was first scoped (during the LM.4.1 carry-forward planning). It stayed as a reserved name through LM.4.3 and LM.4.4 — both of those increments overtook it because urgent M7 feedback redirected the work to trigger-source fixes and pattern-engine retirement. The "LM.4.2" label was misleading because the number implied chronological precedence that never existed (LM.4.2 was never started). Renamed to LM.4.5 so the numbering reflects actual sequence: LM.4 → LM.4.1 → LM.4.3 → LM.4.4 → LM.4.5.
 
 **Scope.** Replace the LM.3.2 mood-centred-narrow-jewel-tone palette with per-track custom palette cards drawn from the **full** HSV cube. Each track gets ~50 specific colours, picked procedurally from the entire colour space (full hue wheel, full saturation range, full brightness range). Cells pick one colour from the card. Mood biases the distribution (calm tracks tilt toward deeper/cooler regions; energetic tracks toward brighter/saturated) but does not restrict — every track can paint cells from anywhere in the cube. Result: cobalt next to oxblood next to charcoal with a violet edge next to amber next to bright crimson — the stained-glass-cathedral aesthetic, not the LM.3.2 jewel-tone-only register.
 
@@ -3568,12 +3570,12 @@ The preset is sequenced as 10 increments LM.0 → LM.9 with cert sign-off at LM.
 **Verify.**
 
 - `swift test --package-path PhospheneEngine --filter "LumenMosaic|PresetAcceptance|PresetRegression|LumenPatterns|LumenPatternEngine|PresetLoaderCompileFailure"`
-- `RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter "PresetVisualReviewTests/renderPresetVisualReview"` (LM.4.2 contact sheet)
+- `RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter "PresetVisualReviewTests/renderPresetVisualReview"` (LM.4.5 contact sheet)
 - Matt M7 review: every track's palette feels meaningfully distinct from every other track's, AND each track's palette spans the full spectrum (darks, regals, browns/slates, jewel tones, all visible in the same panel).
 
 **Status:** ⏳ scheduled. Estimated 1–2 sessions. Departs from LM.3.2 jewel-tone aesthetic by design.
 
-**Carry-forward.** LM.5 (clusterBurst + breathing + noiseDrift pattern kinds) waits on LM.4.2 sign-off — the new pattern kinds will need to be validated against the wider palette before they land.
+**Carry-forward.** LM.5 (clusterBurst + breathing + noiseDrift pattern kinds) waits on LM.4.5 sign-off — the new pattern kinds will need to be validated against the wider palette before they land.
 
 ---
 
