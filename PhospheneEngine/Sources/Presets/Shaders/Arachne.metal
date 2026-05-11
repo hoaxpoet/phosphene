@@ -98,10 +98,18 @@ constant int kArachWebs = 4;  // V.7.5 §10.1.1: pool capped 12→4 (single hero
 
 struct ArachneWebResult {
     float strandCov;      // spokes + spiral halo + hub coverage [0,1]
-    float dropCov;        // adhesive droplets on spiral only [0,1]
     float2 strandTangent; // tangent of the dominant (closest) strand in UV plane
-    float2 dropVec;       // vector from closest drop center to pixel (tRel space ≈ UV)
-    float dropRadius;     // radius of the closest droplet
+    // Drop fields (dropCov, dropVec, dropRadius) removed in the BUG-011
+    // follow-up that retired dewdrops during web construction. Matt's
+    // 2026-05-11 product call: drops shouldn't appear during the
+    // .frame/.radial/.spiral build stages; they may return as a feature
+    // of completed (.stable) webs in a future increment. Removing the
+    // drop computation saves the per-pixel adhesive-droplet hash-lattice
+    // pass inside arachneEvalWeb and the per-pixel Snell's-law refraction
+    // sample in arachne_composite_fragment. As a side benefit the spiral
+    // chord SDF (already 0.0007 UV) now reads crisply at its intended
+    // thinness — drops had been piling up along chords and masking the
+    // actual line width (the "crayon" effect noted post-V.7.7C.5.2).
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -521,10 +529,7 @@ static ArachneWebResult arachneEvalWeb(
 ) {
     ArachneWebResult result;
     result.strandCov    = 0.0;
-    result.dropCov      = 0.0;
     result.strandTangent = float2(1.0, 0.0); // default: horizontal (hub fallback)
-    result.dropVec      = float2(0.0, 0.0);
-    result.dropRadius   = 0.0035;
 
     // ── §4.1 macro: web silhouette + elliptical per-web variation ─────────────
     // Transforms pRel into a squashed frame; rest of evaluation uses squashed coords.
@@ -738,20 +743,14 @@ static ArachneWebResult arachneEvalWeb(
     // References: ARACHNE_V8_DESIGN.md §5.5; biology refs 01, 03, 12.
     float spirCov      = 0.0;
     float spirHalo     = 0.0;
-    float dropCovLocal = 0.0;
     float2 spirTangent2D = float2(1.0, 0.0);
-    float bestDropDist = 1e6;
-    float2 bestDropVec = float2(0.0, 0.0);
     float minChordDist = 1e6;
-    // V.7.7C.5.2 (D-100 follow-up #2) — drop radius 0.008 → 0.004 (~4 px at
-    // 1080p). V.7.5 §10.1.3 had bumped drops to 0.008 to make them the visual
-    // hero, but at V.7.7C.5's canvas-filling polygon scale the drops piled up
-    // along chord segments at 4–5 drop-diameter spacing and read as a
-    // continuous "fat crayon" yellow band — the spiral SDF (0.0007 UV) was
-    // invisible underneath. Halving the radius lets pearls read as discrete
-    // dewdrops along thin chords (Matt's 2026-05-08T22-58-49Z smoke).
-    float dropRadius   = 0.004;
-    result.dropRadius  = dropRadius;
+    // BUG-011 follow-up — dewdrop computation retired. The per-pixel
+    // adhesive-droplet hash-lattice pass (V.7.5 §10.1.3) and the
+    // dropRadius/dropCovLocal/bestDropDist/bestDropVec locals that
+    // tracked drop coverage and centre offsets are removed. With drops
+    // gone the spiral chord SDF (0.0007 UV per V.7.7C.5.1) reads at its
+    // intended thinness instead of being masked by piled-up drop pearls.
 
     int   N_RINGS = max(2, int(spirRevs + 0.5));
     float r_outer = webR * 0.95;
@@ -822,9 +821,6 @@ static ArachneWebResult arachneEvalWeb(
             float tProjR  = ringR / webR;
             float sagScale = sagAmount * 4.0 * tProjR * (1.0 - tProjR);
 
-            // Per-ring drop spacing (slight per-ring variation for organic feel).
-            float spacingUV = 0.0037 + arachHash(seed + 0x1337u + uint(k) * 31u) * 0.0019;
-
             // V.7.7C.3 / D-095 follow-up: in polygon mode each chord endpoint
             // is `spokeTip × fracR` (along the polygon-clipped spoke at the
             // current ring fraction). Inner rings naturally inherit the
@@ -861,29 +857,11 @@ static ArachneWebResult arachneEvalWeb(
                     spirTangent2D = (segL > 1e-6) ? normalize(seg) : float2(1.0, 0.0);
                 }
 
-                // Adhesive droplets: 5 candidates near the closest point on chord.
-                // Parametric placement avoids O(numDrops) iteration (O(5) instead).
-                if (cd < dropRadius + 0.0008) {
-                    float spacingT = spacingUV / max(segL, 1e-5);
-                    float dropBase = round(ht / max(spacingT, 1e-5)) * spacingT;
-                    for (int di = -2; di <= 2; di++) {
-                        float dt = dropBase + float(di) * spacingT;
-                        int   dIdx = int(dt / max(spacingT, 1e-5) + 0.5) + 4096;
-                        uint  dKey = seed * 2048u + uint(k * 200 + si * 17 + (dIdx & 0xFF));
-                        dt += (arachHash(dKey) - 0.5) * spacingT * 0.5;
-                        dt = saturate(dt);
-                        float2 dropPos = pI + seg * dt;
-                        float  dist    = length(tRel - dropPos);
-                        if (dist < dropRadius + 0.0005) {
-                            dropCovLocal = max(dropCovLocal,
-                                smoothstep(dropRadius + 0.0003, dropRadius - 0.0003, dist));
-                            if (dist < bestDropDist) {
-                                bestDropDist = dist;
-                                bestDropVec  = tRel - dropPos;
-                            }
-                        }
-                    }
-                }
+                // Adhesive droplets retired (BUG-011 follow-up — see ArachneWebResult
+                // struct comment). The 5-candidate parametric drop placement loop
+                // that previously sat here is gone; `ht` is retained for the
+                // chord-distance computation above (would also be needed if a
+                // future increment revives drops-on-completed-webs).
             }
         }
     }
@@ -899,83 +877,22 @@ static ArachneWebResult arachneEvalWeb(
                                 ? bestSpokeTangent2D
                                 : spirTangent2D;
     }
-    result.dropVec = bestDropVec;
 
     result.strandCov = max(max(max(spokeCov, spirCov), max(spokeHalo, spirHalo)),
                           max(hubCov, max(frameCov, frameHalo)));
-    result.dropCov   = dropCovLocal;
     return result;
 }
 
-// ── V.7.7: Background dewy web ────────────────────────────────────────────────
-// Fully-stable web placed in the forest mid-ground; threads render at 0.12× silk
-// brightness so they recede behind the foreground pool webs; drops act as lenses
-// onto the WORLD scene via Snell's-law refraction (ARACHNE_V8_DESIGN.md §5.12).
-// References: 01_macro_dewy_web_on_dark.jpg, 03_micro_adhesive_droplet.jpg.
-//
-// NOTE: drawWorld() must be defined above this function in the compilation unit.
-
-static float3 drawBackgroundWeb(
-    float2 uv, float2 hubUV, float webRBg,
-    uint   seed, float4 moodRow, float accTime
-) {
-    float kSagBg = 0.14 + arachHash(seed + 0x77u) * 0.04;  // [0.14, 0.18]
-    float rotBg  = arachHash(seed + 0x55u) * 2.0 * M_PI_F;
-
-    // V.7.7C.3 / D-095 follow-up: drawBackgroundWeb is dead-reference code
-    // (not dispatched); pass polyCount=0 so it falls back to the V.7.5
-    // circular-spoke-tip path if anyone ever revives it.
-    float2 bgPoly[6] = { float2(0.0), float2(0.0), float2(0.0),
-                          float2(0.0), float2(0.0), float2(0.0) };
-    ArachneWebResult wr = arachneEvalWeb(
-        uv, hubUV, webRBg, rotBg, 5.5, seed,
-        3u, 1.0,
-        arachSpokeCount(seed), arachAspect(seed),
-        arachAspectAngle(seed), kSagBg,
-        0, bgPoly
-    );
-
-    float3 result = float3(0.0);
-
-    // Dim threads — cool bioluminescent tint; 0.12 factor keeps them behind foreground.
-    if (wr.strandCov > 0.005) {
-        float3 bgSilk = hsv2rgb(float3(0.55, 0.55, 0.75));
-        result += bgSilk * 0.12 * wr.strandCov;
-    }
-
-    // Refractive drops — Snell's law, air (n=1.0) → water (n=1.33), eta = 0.752.
-    if (wr.dropCov > 0.01) {
-        float  dropR = wr.dropRadius;
-        float2 d2    = wr.dropVec / max(dropR, 1e-5);
-        float  hh    = sqrt(max(0.0, 1.0 - dot(d2, d2)));
-        float3 sphN  = normalize(float3(d2, hh));
-        const float3 kViewRay = float3(0.0, 0.0, 1.0);
-
-        // Incident ray is -kViewRay (pointing into screen); dot(sphN, I) = -hh < 0 ✓
-        float3 refr        = refract(-kViewRay, sphN, 0.752);
-        float2 refractedUV = uv + refr.xy * dropR * 8.0;
-        // V.7.7C.5 (D-100): drawWorld signature gained a `midAttRel` parameter
-        // for the §4.2.2 shaft engagement gate / fog density modulation.
-        // drawBackgroundWeb is dead-reference code (not dispatched); pass 0.0
-        // so a future revival doesn't drive shafts off synthetic refracted UVs.
-        float3 bgSeen      = drawWorld(refractedUV, moodRow, accTime, 0.0);
-
-        // Fresnel blend: grazing angle → white rim; centre → refracted world image.
-        float  cosTheta = abs(dot(sphN, kViewRay));
-        float  fresnel  = pow(1.0 - cosTheta, 3.0);
-        float3 dropCol  = mix(bgSeen, float3(1.0), fresnel * 0.30);
-
-        // Pinpoint specular glint (ref 03_micro_adhesive_droplet.jpg).
-        const float3 kLbg = normalize(float3(0.45, 0.65, 0.30));
-        float3 Rdrop = reflect(-kLbg, sphN);
-        float  spec  = pow(saturate(dot(Rdrop, kViewRay)), 64.0);
-        dropCol += float3(1.0, 0.97, 0.93) * spec * 1.0;
-
-        result += dropCol * wr.dropCov;
-    }
-
-    return result;
-}
+// ── V.7.7: Background dewy web — REMOVED ─────────────────────────────────────
+// The `drawBackgroundWeb` helper (dead-reference since V.7.7C.3 / D-095)
+// existed to render dim background webs with Snell's-law refractive drops as
+// lenses onto the WORLD scene (ARACHNE_V8_DESIGN.md §5.12, refs 01 + 03).
+// With dewdrops retired in the BUG-011 follow-up, the function's entire
+// reason for existing is gone — without drops it would just render dim
+// strand silhouettes, which V.7.7C.3's pool retirement already covers.
+// Deleted to keep the active shader closer to what's actually dispatched;
+// if §5.12 background webs ever return in a future increment, build them
+// fresh against whatever drop semantics (if any) that increment defines.
 
 // ── V.7.7D: 3D SDF spider anatomy + chitin material (D-094) ──────────────────
 //
@@ -1253,7 +1170,9 @@ fragment float4 arachne_composite_fragment(
     float strandPseudo  = 1.0;
     float prevStrandCov = 0.0;
     float3 strandColor  = float3(0.0);
-    float3 dropColorAccum = float3(0.0); // per-web drop material accumulator (replaces dropPseudo)
+    // dropColorAccum retired (BUG-011 follow-up — dewdrops removed). Final
+    // composite below is now just strandColor (silk) over the WORLD backdrop,
+    // with the 3D SDF spider overlay on top.
 
     // ── Foreground hero web (V.7.7C.2 / D-095): build-aware via webs[0] Row 5 ──
     //
@@ -1456,65 +1375,13 @@ fragment float4 arachne_composite_fragment(
             prevStrandCov = 1.0 - strandPseudo;
         }
 
-        // V.7.7C §5.8: photographic dewdrop — Snell's-law refraction sampling
-        // the WORLD stage texture, fresnel rim, pinpoint specular, dark edge ring.
-        // Replaces the V.7.5 mat_frosted_glass + warm-amber emissive recipe.
-        // worldTex is the WORLD stage's offscreen output bound at [[texture(13)]];
-        // sampling it (vs inline drawWorld()) preserves the staged-composition
-        // contract V.ENGINE.1 / D-072 / D-092 established. D-093.
-        // BUG-011 L2: coverage gate 0.01 → 0.5. The 0.01 floor admitted the
-        // entire anti-aliased rim band of every drop into the refraction
-        // path, paying for a `worldTex.sample(refractedUV)` plus the
-        // smoothstep+pow chain on pixels where the drop's visual presence
-        // is < 50 %. Raising to 0.5 keeps refraction on the visible drop
-        // core; rim pixels that lose refraction fall through to the
-        // silk-strand colour underneath, which is the same behaviour as
-        // pixels just outside the drop's silhouette — visual cliff at
-        // the threshold is small. If "missing drops" artifacts appear at
-        // larger foreground drop sizes in M7 review, back off to 0.3 or 0.2.
-        if (wr.dropCov > 0.5) {
-            float2 d2     = wr.dropVec;
-            float  rDrop  = wr.dropRadius;
-            float  rNorm  = length(d2) / max(rDrop, 1e-5);
-
-            // Spherical-cap normal at the sample point inside the drop.
-            float  h      = sqrt(max(0.0, 1.0 - rNorm * rNorm));
-            float3 sphN   = normalize(float3(d2 / max(rDrop, 1e-5), h));
-            const float3 kViewRay = float3(0.0, 0.0, 1.0);
-
-            // Snell's-law refraction (air n=1.0 → water n=1.33; eta = 0.752).
-            // worldSampleScale = 2.5 × rDrop per §5.8 (foreground dewdrop tuning;
-            // drawBackgroundWeb's 8× value is for background webs at depth, §5.12).
-            float3 refr        = refract(-kViewRay, sphN, 0.752);
-            float2 refractedUV = uv + refr.xy * (rDrop * 2.5);
-            float3 bgSeen      = worldTex.sample(arachne_world_sampler, refractedUV).rgb;
-
-            // Fresnel rim (Schlick power 5; warm-tint at edge).
-            float  fresnel  = pow(1.0 - saturate(sphN.z), 5.0);
-            float3 rimTint  = kLightCol * 0.85;
-            float3 dropCol  = mix(bgSeen, rimTint, saturate(fresnel * 0.40));
-
-            // Pinpoint specular at the half-vector position on the cap.
-            // 2D half-vector projection on the cap. kViewRay.xy = (0, 0) so this
-            // collapses to normalize(kL.xy) — the screen-space direction of the key
-            // light. specPos sits at 60% of the drop radius along that direction.
-            float2 halfDir  = normalize(kL.xy + kViewRay.xy);
-            float2 specPos  = halfDir * rDrop * 0.6;
-            float  specD    = length(d2 - specPos) / max(rDrop, 1e-5);
-            float  specMask = 1.0 - smoothstep(0.0, 0.20, specD);
-            dropCol += rimTint * specMask * 1.0;
-
-            // Dark edge ring inside the silhouette (refraction breakdown at grazing angles).
-            float  ring1    = smoothstep(0.85, 0.95, rNorm);
-            float  ring2    = 1.0 - smoothstep(0.95, 1.0, rNorm);
-            float  darkRing = ring1 * ring2;
-            dropCol *= (1.0 - darkRing * 0.50);
-
-            // Audio-reactive emission gain — preserves the V.7.5 D-026 modulation shape.
-            dropCol *= (baseEmissionGain + beatAccent);
-
-            dropColorAccum += dropCol * wr.dropCov;
-        }
+        // V.7.7C §5.8 photographic dewdrop block REMOVED (BUG-011 follow-up).
+        // The Snell's-law refraction sample of worldTex + fresnel rim +
+        // pinpoint specular + dark edge ring was the per-pixel cost driver
+        // for every drop-positive fragment, and at V.7.7C.5's canvas-filling
+        // polygon scale the drops piled up along chord segments and masked
+        // the spiral SDF (V.7.7C.5.2's "fat crayon" effect). With drops
+        // removed, the chord SDF (0.0007 UV) reads at its intended thinness.
     }
 
     // ── V.7.5 pool webs RETIRED (V.7.7C.3 / D-095 follow-up) ─────────────────
@@ -1557,8 +1424,7 @@ fragment float4 arachne_composite_fragment(
         );
 
         float scaledStrand = wr.strandCov * w.opacity;
-        float scaledDrop   = wr.dropCov   * w.opacity;
-        if (scaledStrand < 0.003 && scaledDrop < 0.003) continue;
+        if (scaledStrand < 0.003) continue;
 
         float newStrandD   = op_blend(strandPseudo, 1.0 - scaledStrand, 0.012);
         float newStrandCov = 1.0 - newStrandD;
@@ -1582,49 +1448,10 @@ fragment float4 arachne_composite_fragment(
             prevStrandCov = 1.0 - strandPseudo;
         }
 
-        // V.7.7C §5.8: photographic dewdrop — same Snell's-law recipe as anchor block.
-        // scaledDrop = wr.dropCov × w.opacity preserves V.7.5 fade semantics; older /
-        // fading webs contribute proportionally less. D-093.
-        // BUG-011 L2: coverage gate 0.01 → 0.5 to match the anchor-block hot
-        // path above. This loop body is currently dead (`for wi=1; wi<1`
-        // after V.7.7C.3 retired pool rendering — D-095) but the gate is
-        // updated in lockstep so any future revival starts from the
-        // BUG-011 cost envelope, not the V.7.5 envelope.
-        if (scaledDrop > 0.5) {
-            float2 d2     = wr.dropVec;
-            float  rDrop  = wr.dropRadius;
-            float  rNorm  = length(d2) / max(rDrop, 1e-5);
-
-            float  h      = sqrt(max(0.0, 1.0 - rNorm * rNorm));
-            float3 sphN   = normalize(float3(d2 / max(rDrop, 1e-5), h));
-            const float3 kViewRay = float3(0.0, 0.0, 1.0);
-
-            float3 refr        = refract(-kViewRay, sphN, 0.752);
-            float2 refractedUV = uv + refr.xy * (rDrop * 2.5);
-            float3 bgSeen      = worldTex.sample(arachne_world_sampler, refractedUV).rgb;
-
-            float  fresnel  = pow(1.0 - saturate(sphN.z), 5.0);
-            float3 rimTint  = kLightCol * 0.85;
-            float3 dropCol  = mix(bgSeen, rimTint, saturate(fresnel * 0.40));
-
-            // 2D half-vector projection on the cap. kViewRay.xy = (0, 0) so this
-            // collapses to normalize(kL.xy) — the screen-space direction of the key
-            // light. specPos sits at 60% of the drop radius along that direction.
-            float2 halfDir  = normalize(kL.xy + kViewRay.xy);
-            float2 specPos  = halfDir * rDrop * 0.6;
-            float  specD    = length(d2 - specPos) / max(rDrop, 1e-5);
-            float  specMask = 1.0 - smoothstep(0.0, 0.20, specD);
-            dropCol += rimTint * specMask * 1.0;
-
-            float  ring1    = smoothstep(0.85, 0.95, rNorm);
-            float  ring2    = 1.0 - smoothstep(0.95, 1.0, rNorm);
-            float  darkRing = ring1 * ring2;
-            dropCol *= (1.0 - darkRing * 0.50);
-
-            dropCol *= (baseEmissionGain + beatAccent);
-
-            dropColorAccum += dropCol * scaledDrop;
-        }
+        // V.7.7C §5.8 dewdrop block (pool variant) REMOVED (BUG-011 follow-up).
+        // This loop body was already dead (`for wi=1; wi<1` after V.7.7C.3
+        // retired pool rendering — D-095), but the drop math is gone now
+        // too so any future revival starts from a clean baseline.
     }
 
     // ── V.7.7D Spider — 3D SDF anatomy + chitin material (D-094) ─────────────
@@ -1761,7 +1588,8 @@ fragment float4 arachne_composite_fragment(
     float3 bgColor = worldTex.sample(arachne_world_sampler, uv).rgb;
 
     // ── Combine strands ────────────────────────────────────────────────────────
-    float3 webColor = strandColor + dropColorAccum;
+    // BUG-011 follow-up: dropColorAccum removed; webColor is now silk only.
+    float3 webColor = strandColor;
 
     // Spider overlay
     if (spider.blend > 0.01) {
