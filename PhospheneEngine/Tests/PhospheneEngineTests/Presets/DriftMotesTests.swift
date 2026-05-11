@@ -159,19 +159,23 @@ private struct LCG {
     var features = FeatureVector.zero
     features.deltaTime = fixedDt
 
-    // Compare two STEADY-STATE samples to catch flocking. Pre-DM.3.1 this
-    // test compared frame 50 (early) to frame 200 (still early) — both
-    // partway through the init-to-steady-state transition. With the
-    // DM.3.1 spawn-Y geometry fix, steady-state spawn is concentrated
-    // in a tight upper-right band (world ±3.64+pad, not ±8 uniform), so
-    // 50 vs 200 produces a transient spread ratio reflecting the init
-    // clearing out — not flocking. After DM.3.1, sample two frames
-    // both in the steady state (mean lifetime 7 s ≈ 420 frames; init
-    // has fully cycled out by frame 600). Flocking would still
-    // contract the ratio toward < 0.5 between any two steady-state
-    // samples; non-flocking force-field motion holds it near 1.0.
-    let warmupFrames = 600         // 10 s — past mean-lifetime turn-over
-    let secondSampleAt = 1500       // 25 s — well into steady state
+    // Compare two STEADY-STATE samples to catch flocking. The test
+    // methodology pivoted in DM.3.1 (DriftMotes spawn fix) — pre-DM.3.1
+    // compared frame 50 vs 200 (both in init transient), which produced
+    // false-positive flock signals from the legitimate spawn-band
+    // concentration. DM.3.1 pivoted to comparing two STEADY-STATE
+    // frames (warmup 600 = 10 s, sample 1500 = 25 s) — adequate when
+    // mean lifetime was 7 s ≈ 420 frames.
+    //
+    // DM.3.3 retune: mean lifetime is now 25 s ≈ 1500 frames. The
+    // DM.3.1 warmup constant (600) is sub-half-lifetime; both samples
+    // (600 and 1500) catch the field mid-init-transition, producing
+    // ratio collapse from genuine population turnover. Extend warmup
+    // to 2 lifetimes (3000 frames = 50 s) and second sample to 3
+    // lifetimes (6000 frames = 100 s) so both are deep in steady state.
+    // Test runtime adds ~5 s of dispatch but stays under 10 s total.
+    let warmupFrames = 3000        // 50 s — 2 lifetimes; full turnover
+    let secondSampleAt = 6000      // 100 s — 3 lifetimes; steady state
 
     for frame in 0..<warmupFrames {
         features.time = Float(frame) * fixedDt

@@ -42,13 +42,27 @@ private let logger = Logger(subsystem: "com.phosphene.renderer", category: "Drif
 /// magnitude in DM.3 happens here once.
 public enum DriftMotesKernelConstants {
 
-    /// Direction the wind blows the dust through the volume — leftward and
-    /// gently downward, matching a low-angle ray of late-afternoon light.
+    /// Direction the wind blows the dust through the volume.
+    ///
+    /// DM.3.3 retune (Matt 2026-05-11 M7 review): primarily DOWNWARD,
+    /// slight leftward drift. Pre-DM.3.3 wind was (-1, -0.2, 0) —
+    /// strongly leftward, weak downward — which combined with DM.3.1's
+    /// tight upper-right spawn band produced the M7 failure mode:
+    /// particles cluster only in the top-right corner because they
+    /// drift out the left edge in ~25 s but never traverse the vertical
+    /// extent (y-wind 0.059 m/s × max life 9 s = 0.53 visible units —
+    /// they can't cross the frame top-to-bottom).
+    ///
+    /// New wind aligns with the user's "drift down the screen" mental
+    /// model: y-velocity 0.287 m/s × 25 s mean lifetime ≈ 7.2 visible
+    /// units = the visible vertical extent. Particles complete a full
+    /// top-to-bottom traversal during their life.
+    ///
     /// NOT a unit vector; the kernel normalises it.
-    public static let windDirection = SIMD3<Float>(-1.0, -0.2, 0.0)
+    public static let windDirection = SIMD3<Float>(-0.3, -1.0, 0.0)
 
-    /// Wind force magnitude (world units per second). DM.3 will scale this
-    /// by `f.bass_att_rel`; in DM.1 the magnitude is fixed.
+    /// Wind force magnitude (world units per second). DM.4 will scale this
+    /// by `f.bass_att_rel`; in DM.3.x the magnitude is fixed.
     public static let windMagnitude: Float = 0.3
 
     /// Velocity damping coefficient applied per integration step. Smaller
@@ -80,10 +94,19 @@ public enum DriftMotesKernelConstants {
     public static let bounds = SIMD3<Float>(8.0, 8.0, 4.0)
 
     /// Particle life in seconds: uniform random in `[lifeMin, lifeMin + lifeRange]`.
-    public static let lifeMin: Float = 5.0
+    ///
+    /// DM.3.3 retune: 5–9 s → 20–30 s. The pre-DM.3.3 lifetime was tuned
+    /// against a leftward-dominant wind (visible-region traversal time
+    /// ~25 s in x); with the new DM.3.3 downward wind (visible vertical
+    /// traversal ~25 s in y), a 20–30 s baseline lets particles complete
+    /// the full top-to-bottom drift before dying. At peak music
+    /// compression (DM.3 emission-rate scaling, divisor up to 2.35×),
+    /// lifetime compresses to 8.5–12.8 s — particles still complete
+    /// ~30 % of vertical traversal, faster turnover during loud passages.
+    public static let lifeMin: Float = 20.0
 
     /// See `lifeMin`.
-    public static let lifeRange: Float = 4.0
+    public static let lifeRange: Float = 10.0
 
     /// Default warm-amber emission colour. Session 2 replaces this per
     /// particle with a hue baked from `vocalsPitchHz` at emission time.
@@ -237,16 +260,32 @@ public final class DriftMotesGeometry: ParticleGeometry, @unchecked Sendable {
         logger.info("DriftMotesGeometry initialized: \(particleCount) particles, \(byteLength) bytes")
     }
 
-    /// Seed the particle buffer with the steady-state cloud distribution
-    /// described in `DRIFT_MOTES_DESIGN.md §5.2` and the test-stability
-    /// notes in D-098. Extracted from `init` to keep the initializer
-    /// under SwiftLint's 60-line function-body cap.
+    /// Seed the particle buffer with the steady-state cloud distribution.
+    ///
+    /// DM.3.3 retune: seed uniformly across the VISIBLE region (clip
+    /// space ±1, world ±3.64 in x/y) instead of the full ±8 box. Pre-
+    /// DM.3.3 init seeded across the entire box, of which only ~20 %
+    /// landed inside the visible region at frame 0; combined with the
+    /// upper-right-corner steady-state spawn band (DM.3.1's tight band)
+    /// the visible field collapsed to a corner cluster within ~25 s.
+    /// New seed: ~700 particles visible at frame 0, distributed across
+    /// the full visible frame. The init transient is shorter and the
+    /// field reads as populated from the first user-visible frame.
+    ///
+    /// Z range is unchanged (full ±bounds.z) because z is not mapped to
+    /// clip space — it affects only sprite UV / shaft math.
+    ///
+    /// Extracted from `init` to keep the initializer under SwiftLint's
+    /// 60-line function-body cap.
     private static func seedParticles(buffer: MTLBuffer, count: Int) {
         let ptr = buffer.contents().bindMemory(to: Particle.self, capacity: count)
         let kc = DriftMotesKernelConstants.self
         let bounds = kc.bounds
         let velSS = kc.steadyStateWindVelocity
         let warm = kc.defaultWarmHue
+        // Visible region half-extent in world space (matches vertex shader
+        // scale = 2.2 / 8.0 → visibleEdge = 1.0 / scale = 3.636…).
+        let visibleEdge: Float = 3.64
         for i in 0..<count {
             let seed = Float(i)
             let s1 = hash01(seed * 0.1234567)
@@ -256,8 +295,8 @@ public final class DriftMotesGeometry: ParticleGeometry, @unchecked Sendable {
             let s5 = hash01(seed * 2.7182818)
             let life = kc.lifeMin + kc.lifeRange * s4
             var particle = Particle(
-                positionX: (s1 * 2.0 - 1.0) * bounds.x,
-                positionY: (s2 * 2.0 - 1.0) * bounds.y,
+                positionX: (s1 * 2.0 - 1.0) * visibleEdge,
+                positionY: (s2 * 2.0 - 1.0) * visibleEdge,
                 positionZ: (s3 * 2.0 - 1.0) * bounds.z,
                 life: life,
                 size: 6.0,

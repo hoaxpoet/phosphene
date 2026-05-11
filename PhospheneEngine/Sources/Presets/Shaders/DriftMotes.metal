@@ -182,7 +182,15 @@ fragment float4 drift_motes_sky_fragment(
     // Continuous melody-driven brightness (D-026 deviation form, DM.2)
     // PLUS drum-beat brightness lift (DM.3.2) so kicks register photometrically
     // alongside the hue rotation.
-    float shaftIntensity = 0.65 + 0.25 * f.mid_att_rel + 0.30 * stems.drums_beat;
+    //
+    // DM.3.3 retune (Matt 2026-05-11 M7 review): beat impulse 0.30 → 0.50.
+    // Pre-DM.3.3 the beat-driven flash was too subtle to read as music-
+    // synced; bumping to 0.50 makes each kick produce a ~50 % brightness
+    // lift on the beam, which propagates to every mote currently in-beam
+    // via the sprite fragment's shaft-proximity brightness modulation.
+    // With DM.3.3's abundant particle distribution, the mote-mediated
+    // beat reading is the dominant visual cue for music-sync.
+    float shaftIntensity = 0.65 + 0.25 * f.mid_att_rel + 0.50 * stems.drums_beat;
     col += shaftColor * shaftIntensity * shaftAccum;
 
     return float4(col, 1.0);

@@ -254,43 +254,48 @@ inline float dm_palette_region_hue(float cycle) {
     return fract(h0 + dh * blend);
 }
 
-// Deterministic per-particle respawn position. DM.3.1 spawn-Y geometry fix.
+// Deterministic per-particle respawn position. DM.3.3 distribution fix.
 //
 // The vertex shader maps world (x, y) → clip (x, y) via scale = 2.2 / 8.0,
-// so visible region is world ±3.64 in both axes. Wind direction is
-// (-1, -0.2, 0) normalised × 0.3, giving steady-state velocity of
-// (-0.294, -0.059, 0) m/s — particles drift LEFTWARD and slightly DOWNWARD
-// across the frame. Steady-state lifetime is 5–9 s.
+// so visible region is world ±3.64 in both axes. Wind direction is now
+// (-0.3, -1.0, 0) normalised × 0.3 (DM.3.3), giving steady-state velocity
+// of (-0.086, -0.287, 0) m/s — particles drift DOWNWARD with slight
+// leftward bias. Steady-state lifetime is 20–30 s (DM.3.3).
 //
-// Pre-DM.3.1 spawn was world-Y in [5.6, 8.0] — 1.96 to 4.36 world-units
-// ABOVE visible top. With y-wind 0.059 m/s, time-to-enter-view was
-// 33–74 s, far exceeding the 5–9 s lifetime. Particles died before ever
-// becoming visible. M7 review of session 2026-05-08T22-01-07Z (Love
-// Rehab + So What) showed full depletion to zero visible particles by
-// t = 15 s into Drift Motes; DriftMotesVisibilityTest reproduced
-// the same in pure-silence simulation (samples at t = 10..29 s all zero).
+// History of this function (chronological):
+//   - DM.1: spawned in [5.6, 8.0] in y. Particles died before ever
+//     entering view because y-wind was only 0.059 m/s and lifetime
+//     was 5–9 s. M7 (2026-05-08): zero visible particles after t=15s.
+//   - DM.3.1 fix: spawn in tight upper-right band (x ∈ [3.64, 5.04],
+//     y ∈ [3.64, 3.94]) so particles enter view in 0–5s. Worked, but
+//     produced a NEW M7 failure mode: particles cluster in the
+//     upper-right corner because the spawn band was too tight in x.
+//     With leftward-dominant wind, particles drifted left and died
+//     before crossing the frame center.
+//   - DM.3.3 fix (this version): full-width top-edge spawn, paired
+//     with the DM.3.3 wind direction change (downward-dominant) and
+//     lifetime bump (20–30 s). Particles enter from anywhere along
+//     the top edge, drift downward across the entire frame, and
+//     complete a top-to-bottom traversal during their life.
 //
-// Fix: spawn in a tight band JUST OUTSIDE the upper-right of the visible
-// region. Wind drift carries particles diagonally into view within
-// 0–5 s, well inside the 5–9 s lifetime window. Most of each particle's
-// life is now spent IN view, drifting from upper-right to lower-left.
-//   x ∈ [3.64, 5.04] — wind brings into view in 0–4.8 s at 0.294 m/s
-//   y ∈ [3.64, 3.94] — wind brings into view in 0–5.1 s at 0.059 m/s
-//   z ∈ ±2 (visible depth, unchanged from pre-DM.3.1 — z is not
-//          mapped to clip space; affects only sprite UV / shaft-axis math)
+//   x ∈ [-3.64, +3.64] — full visible width (uniform across top edge)
+//   y ∈ [3.64, 3.94] — just above visible top (entry time 0–1 s at
+//                       y-wind 0.287 m/s, well inside 20–30 s lifetime)
+//   z ∈ ±2 (visible depth, unchanged — z is not mapped to clip space;
+//          affects only sprite UV / shaft-axis math)
 //
-// Steady-state visible-count target: kernel respawns at ~114 particles/s
-// (800 / 7 s mean lifetime) × ~6 s visible per life × particles in flight
-// ≈ 450 visible. Test floor is 50.
+// Steady-state visible-count target: ~700 visible at any time (kernel
+// respawn rate 800/25 ≈ 32 particles/s × ~25 s visible per life ≈ 800
+// theoretical; in practice slightly lower due to occasional left-edge
+// exits before death). Test floor is 300.
 inline float3 dm_sample_emission_position(uint id, float t, float3 bounds) {
     float seedA = dm_hash_f01(float(id) * 0.1234567);
     float seedB = dm_hash_f01(float(id) * 0.7654321 + t * 0.013);
     float seedC = dm_hash_f01(float(id) * 1.4142136 + t * 0.027);
     const float visibleEdge = 3.64;  // = 1.0 / (2.2 / 8.0); matches vertex scale.
-    const float xPad        = 1.40;  // x-wind 0.294 m/s × ~5 s entry budget.
-    const float yPad        = 0.30;  // y-wind 0.059 m/s × ~5 s entry budget.
-    float x = visibleEdge + seedA * xPad;
-    float y = visibleEdge + seedB * yPad;
+    const float yPad        = 0.30;  // y-wind 0.287 m/s × ~1 s entry budget.
+    float x = (seedA * 2.0 - 1.0) * visibleEdge;  // full visible width
+    float y = visibleEdge + seedB * yPad;          // top-edge band
     float z = (seedC * 2.0 - 1.0) * bounds.z * 0.5;
     return float3(x, y, z);
 }
