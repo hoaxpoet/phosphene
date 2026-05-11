@@ -630,7 +630,13 @@ static ArachneWebResult arachneEvalWeb(
 
     float minSpokeDist = 1e6;
     float2 bestSpokeTangent2D = float2(1.0, 0.0); // tangent of closest spoke
-    if (rT > hubR && rT < webR * 1.18) {
+    // BUG-011 round 4 — removed `rT > hubR` from the guard. The legacy
+    // gate masked spokes inside the hub radius, making them appear to
+    // disappear as they approached the center (Matt's 2026-05-11
+    // observation). Real orb-weaver radials converge at a single
+    // center point. Spokes now render through the hub region; hub
+    // knot overlays them at center via max(spokeCov, hubCov).
+    if (rT < webR * 1.18) {
         for (int ri = 0; ri < nVisible; ri++) {
             // Alternating-pair reveal: maximises angular coverage per reveal step.
             int halfN = spokeCount / 2;
