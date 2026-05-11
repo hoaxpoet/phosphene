@@ -1679,6 +1679,13 @@ fragment float4 arachne_composite_fragment(
             // at grazing angles reads inside the rim. If silhouettes look
             // jagged in M7 review, raise to 28; below 20 the spider visibly
             // degrades.
+            //
+            // BUG-011 L6 attempted (then reverted): adaptive step count
+            // by patch coverage (16 at edge → 24 at centre) was measured
+            // to be neutral-to-slightly-worse than the fixed 24 after
+            // L5 shrank the patch to 0.12 UV. The smoothstep overhead
+            // offset the step-count savings on the small remaining
+            // edge band. Keeping the fixed-24 form.
             float t = 0.0;
             const float tMax = 8.0;
             const int   maxSteps = 24;
