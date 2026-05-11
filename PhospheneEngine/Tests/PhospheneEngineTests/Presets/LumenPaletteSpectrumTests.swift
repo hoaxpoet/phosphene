@@ -1,35 +1,38 @@
-// LumenPaletteSpectrumTests — Regression-lock for the LM.4.5.1 saturated
-// stained-glass palette card model.
+// LumenPaletteSpectrumTests — Regression-lock for the LM.4.5.2 full-cube
+// palette card model with val/sat coupling.
 //
 // Lumen Mosaic's palette is procedural and shader-side; there's no GPU
 // readback in the test harness. The contract is byte-identical math, so
 // this file mirrors `lm_cell_palette` from `LumenMosaic.metal` in Swift
-// and asserts the LM.4.5.1 invariants against the mirror. If a future
+// and asserts the LM.4.5.2 invariants against the mirror. If a future
 // shader edit drifts the algorithm without updating this mirror, the
 // invariants fail and surface the drift before it reaches a contact
 // sheet.
 //
-// Invariants verified (LM.4.5.1):
+// Invariants verified (LM.4.5.2):
 //   1. Spectrum coverage  — 200 random (cellHash, trackSeed) pairs at
-//      neutral mood produce hue samples spanning ≥ 270° and value
-//      samples spread ≥ 0.5. Saturation spread is ~0.30 by design
-//      (band [kSatFloor, 1.0]).
-//   2. Saturation floor   — 1000 random samples, ALL have sat ≥
-//      kSatFloor (0.70). LM.4.5.1 retired the "full range [0, 1]"
-//      sat envelope after Matt's 2026-05-11 LM.4.5 v1 review flagged
-//      pale washed cells as the aesthetic failure mode (mid-sat
-//      cells read as gray-tinted regardless of value). Saturated-only
-//      satisfies the CLAUDE.md "no muted palettes" rule by
-//      construction; pastel forbidden zone is unreachable.
+//      neutral mood produce hue samples spanning ≥ 270°, saturation
+//      spread ≥ 0.6 (full range [0, 1]), and value samples spanning
+//      both halves of the val range.
+//   2. Coupling rule      — 1000 random samples, ALL have val ≤
+//      sat + kValSatCouplingMargin (0.20). LM.4.5.2 retired the
+//      LM.4.5.1 saturation floor (anchored to jewel tones, no muted
+//      earth tones) and replaced it with a coupling rule that keeps
+//      the full HSV cube available except the pale corner (high val
+//      + low sat). Weak colours allowed; weak-AND-bright is not.
 //   3. Per-track distinct — two different trackSeeds produce Jaccard
 //      similarity < 0.5 over their first 50 card slots (rounded to
 //      5-bit HSV). Same trackSeed produces identical samples (determinism).
 //   4. Beat-step ratchet  — a single team-counter step (for a period=1
 //      cell) advances the cell's `cardIndex` by exactly 1 mod kCardSize.
 //   5. Mood bias preserved envelope — at arousal = -1, average value <
-//      arousal = +1 average (gap > 0.1); both distributions still
-//      contain samples in BOTH the bright (v > 0.5) and dim (v < 0.5)
-//      halves. Saturation is NOT mood-biased at LM.4.5.1.
+//      arousal = +1 average (gap > 0.05); both distributions still
+//      contain samples in both halves of the val range. Saturation is
+//      NOT mood-biased at LM.4.5.2.
+//   6. Sat covers full range — across 1000 random samples, the
+//      saturation distribution contains both low-sat (sat < 0.3) and
+//      high-sat (sat > 0.7) cells. Locks against accidentally
+//      reintroducing a sat floor.
 
 import Testing
 import simd
@@ -39,15 +42,15 @@ import Shared
 // MARK: - Constants mirrored from LumenMosaic.metal
 
 private enum LMPalette {
-    static let cardSize: UInt32            = 48
-    static let cardValMin: Float           = 0.08
-    static let cardValMax: Float           = 0.95
-    static let satFloor: Float             = 0.70
-    static let moodGammaLowArousal: Float  = 1.80
-    static let moodGammaHighArousal: Float = 0.55
-    static let bassTeamCutoff: UInt32      = 30
-    static let midTeamCutoff: UInt32       = 65
-    static let trebleTeamCutoff: UInt32    = 90
+    static let cardSize: UInt32              = 48
+    static let cardValMin: Float             = 0.08
+    static let cardValMax: Float             = 0.95
+    static let valSatCouplingMargin: Float   = 0.20
+    static let moodGammaLowArousal: Float    = 1.80
+    static let moodGammaHighArousal: Float   = 0.55
+    static let bassTeamCutoff: UInt32        = 30
+    static let midTeamCutoff: UInt32         = 65
+    static let trebleTeamCutoff: UInt32      = 90
 }
 
 // MARK: - Shader algorithm mirrored in Swift
@@ -146,13 +149,14 @@ private func lmCellPaletteHSV(
     let vBiased = pow(vU, gamma)
 
     let h = hU
-    let s = LMPalette.satFloor + (1.0 - LMPalette.satFloor) * sU
-    let v = LMPalette.cardValMin + (LMPalette.cardValMax - LMPalette.cardValMin) * vBiased
+    let s = sU
+    var v = LMPalette.cardValMin + (LMPalette.cardValMax - LMPalette.cardValMin) * vBiased
+    v = min(v, s + LMPalette.valSatCouplingMargin)
 
-    // smoothedValence is intentionally unused at LM.4.5.1 — valence influences
+    // smoothedValence is intentionally unused at LM.4.5.2 — valence influences
     // mood ONLY through the per-track seed and the eventual orchestration
     // layer; arousal is the only direct driver of the value gamma bias.
-    // Saturation is NOT mood-biased (always uniform within [satFloor, 1.0]).
+    // Saturation is uniform [0, 1] (no mood bias, no floor).
     _ = smoothedValence
 
     return SIMD3<Float>(h, s, v)
@@ -206,7 +210,7 @@ private struct Mulberry32 {
 @Suite("Full-spectrum palette card — spectrum coverage")
 struct LumenPaletteSpectrumCoverageTests {
 
-    @Test func test_neutralMood_200samples_huesSpan270Degrees_valSpread05_satWithinBand() {
+    @Test func test_neutralMood_200samples_huesSpan270Degrees_satSpread06_valSpread05() {
         var rng = Mulberry32(state: 0xCAFE_BABE)
         var hues: [Float] = []
         var sats: [Float] = []
@@ -227,45 +231,38 @@ struct LumenPaletteSpectrumCoverageTests {
             vals.append(hsv.z)
         }
 
-        // Hue span: at minimum 270° (≥ 0.75 of the unit wheel). Diversity
-        // of palette character lives entirely in hue × value at LM.4.5.1.
+        // Hue span: at minimum 270° (≥ 0.75 of the unit wheel).
         let hueSpan = (hues.max() ?? 0) - (hues.min() ?? 0)
         #expect(hueSpan >= 0.75, "hue span \(hueSpan) < 0.75 (270°)")
 
-        // Value spread: nearly the full mapped range [kCardValMin,
-        // kCardValMax]. ≥ 0.5 leaves margin for tail-of-distribution
-        // misses across small sample sizes.
+        // Saturation: full range [0, 1] at LM.4.5.2. ≥ 0.6 spread
+        // catches accidental floors / restrictions.
+        let satSpread = (sats.max() ?? 0) - (sats.min() ?? 0)
+        #expect(satSpread >= 0.6, "sat spread \(satSpread) < 0.6")
+
+        // Value spread: ≥ 0.5 so the val range is genuinely sampled.
+        // Coupling rule pulls some high-val cells down so spread is a
+        // bit narrower than v1's [0.08, 0.95] but still substantial.
         let valSpread = (vals.max() ?? 0) - (vals.min() ?? 0)
         #expect(valSpread >= 0.5, "val spread \(valSpread) < 0.5")
-
-        // Saturation: every sample lives in [kSatFloor, 1.0].
-        // Spread is bounded above by (1.0 - kSatFloor) = 0.30; we
-        // require ≥ 0.20 so the sat band is genuinely sampled, not
-        // collapsed to a single value by a future bug.
-        let satMin = sats.min() ?? 0
-        let satMax = sats.max() ?? 0
-        #expect(satMin >= LMPalette.satFloor,
-                "sat min \(satMin) < satFloor \(LMPalette.satFloor)")
-        #expect(satMax <= 1.0, "sat max \(satMax) > 1.0")
-        #expect(satMax - satMin >= 0.20,
-                "sat spread \(satMax - satMin) < 0.20 (band collapsed?)")
     }
 }
 
-// MARK: - Suite 2: Saturation floor (pastel forbidden zone unreachable)
+// MARK: - Suite 2: Val/sat coupling rule
 
-@Suite("Saturated stained-glass — saturation floor")
-struct LumenPaletteSaturationFloorTests {
+@Suite("Full-cube palette — val/sat coupling rule")
+struct LumenPaletteCouplingTests {
 
-    /// LM.4.5.1 — every sample has sat ≥ kSatFloor. This is the regression-
-    /// lock that makes the CLAUDE.md "no muted palettes" rule a structural
-    /// guarantee rather than a runtime guardrail. Pale washed cells (mid-sat
-    /// at high val) cannot be produced, so the LM.2 cream-haze failure mode
-    /// is unreachable.
-    @Test func test_1000samples_allSatAboveFloor() {
+    /// LM.4.5.2 — every sample has val ≤ sat + kValSatCouplingMargin.
+    /// This is the regression-lock that bans the pale/washed/cream
+    /// family (high val + low sat) without flooring saturation. Weak
+    /// colours are allowed but only if they're also dark; the muted
+    /// earth-tone family (dusty rose, espresso, sage, slate) lands
+    /// here, the pale family does not.
+    @Test func test_1000samples_allRespectCouplingRule() {
         var rng = Mulberry32(state: 0xDEAD_BEEF)
         var violations = 0
-        var minObserved: Float = 1.0
+        var maxObservedDelta: Float = -1.0
         for _ in 0..<1000 {
             let cellHash = rng.nextUInt32()
             let seedA = rng.nextSigned()
@@ -279,18 +276,19 @@ struct LumenPaletteSaturationFloorTests {
                                        smoothedArousal: arousal,
                                        seedA: seedA, seedB: seedB, seedC: seedC, seedD: seedD,
                                        bassCounter: 0, midCounter: 0, trebleCounter: 0)
-            if hsv.y < LMPalette.satFloor { violations += 1 }
-            minObserved = min(minObserved, hsv.y)
+            let delta = hsv.z - hsv.y
+            if delta > LMPalette.valSatCouplingMargin + 1e-5 { violations += 1 }
+            maxObservedDelta = max(maxObservedDelta, delta)
         }
         #expect(violations == 0,
-                "\(violations)/1000 samples below kSatFloor (\(LMPalette.satFloor)); minObserved=\(minObserved)")
+                "\(violations)/1000 samples violate coupling rule; maxDelta=\(maxObservedDelta) > margin=\(LMPalette.valSatCouplingMargin)")
     }
 
-    /// Pastel forbidden zone (CLAUDE.md "no muted palettes" rule) is
-    /// unreachable by construction at LM.4.5.1 — sat ≥ 0.70 means the
-    /// `sat < 0.3` half of the forbidden conjunction is always false.
-    /// Test 1000 random samples to lock that property.
-    @Test func test_1000samples_pastelForbiddenZoneUnreachable() {
+    /// LM.4.5 v1 pastel forbidden zone (`sat < 0.3 AND val > 0.6`)
+    /// stays unreachable at LM.4.5.2 — for those values, val - sat
+    /// > 0.3 which exceeds the 0.20 coupling margin. The coupling
+    /// rule subsumes the original guardrail and forbids more besides.
+    @Test func test_1000samples_pastelZoneStillUnreachable() {
         var rng = Mulberry32(state: 0xC0DE_F00D)
         for _ in 0..<1000 {
             let cellHash = rng.nextUInt32()
@@ -308,6 +306,37 @@ struct LumenPaletteSaturationFloorTests {
             #expect(!(hsv.y < 0.3 && hsv.z > 0.6),
                     "pastel forbidden zone reached at hsv=\(hsv)")
         }
+    }
+
+    /// LM.4.5.2 — saturation spans the full [0, 1] range. Locks
+    /// against accidentally re-introducing a sat floor. Across 1000
+    /// random samples the distribution must contain BOTH low-sat
+    /// (sat < 0.3) and high-sat (sat > 0.7) cells.
+    @Test func test_1000samples_satCoversFullRange() {
+        var rng = Mulberry32(state: 0xBEEF_CAFE)
+        var lowSat = 0
+        var highSat = 0
+        for _ in 0..<1000 {
+            let cellHash = rng.nextUInt32()
+            let seedA = rng.nextSigned()
+            let seedB = rng.nextSigned()
+            let seedC = rng.nextSigned()
+            let seedD = rng.nextSigned()
+            let arousal = rng.nextSigned()
+            let hsv = lmCellPaletteHSV(cellHash: cellHash,
+                                       smoothedValence: 0,
+                                       smoothedArousal: arousal,
+                                       seedA: seedA, seedB: seedB, seedC: seedC, seedD: seedD,
+                                       bassCounter: 0, midCounter: 0, trebleCounter: 0)
+            if hsv.y < 0.3 { lowSat += 1 }
+            if hsv.y > 0.7 { highSat += 1 }
+        }
+        // Uniform sat distribution → expect ~30% in each band.
+        // Require ≥ 50/1000 to give safe margin.
+        #expect(lowSat >= 50,
+                "only \(lowSat)/1000 low-sat samples — sat range collapsed to high?")
+        #expect(highSat >= 50,
+                "only \(highSat)/1000 high-sat samples — sat range collapsed to low?")
     }
 }
 
