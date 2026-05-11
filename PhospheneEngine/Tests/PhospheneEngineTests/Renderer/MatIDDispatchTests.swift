@@ -19,11 +19,12 @@
 //      Asserted as albedo × kLumenEmissionGain + irradiance ×
 //      kLumenIBLFloor × ao. With `iblManager: nil` the IBL textures
 //      return zero (documented unbound behaviour), so the expected
-//      value is exactly albedo × 4.0.
+//      value is exactly albedo × kLumenEmissionGain (1.0 post-LM.3.2
+//      round 4 — see RayMarch.metal).
 //   3. matID == 1, depth = 1.0: sky early-return.
-//      Asserted as the procedural sky output (NOT albedo × 4), which
-//      regression-locks the documented "Sky path returns before this"
-//      invariant inside the matID dispatch.
+//      Asserted as the procedural sky output (NOT albedo × gain),
+//      which regression-locks the documented "Sky path returns
+//      before this" invariant inside the matID dispatch.
 //
 // `runLightingPass` is internal in the Renderer module; reachable here
 // via `@testable import Renderer`. If a future visibility narrowing
@@ -48,10 +49,14 @@ struct MatIDDispatchTests {
     private static let width  = 32
     private static let height = 32
 
-    // Tone-map gate: `kLumenEmissionGain = 4.0` from RayMarch.metal.
+    // Tone-map gate: `kLumenEmissionGain` from
+    // `PhospheneEngine/Sources/Renderer/Shaders/RayMarch.metal`.
     // Duplicated as a Swift constant because the .metal scope isn't
     // visible from Swift; keep the two in sync if either changes.
-    private static let kLumenEmissionGain: Float = 4.0
+    // LM.3.2 round 4 (commit 6ab08c12) reduced this 4.0 → 1.0 because
+    // the HSV palette is vivid without HDR boost and the prior 4× was
+    // clipping saturated channels in the harness's float→Unorm path.
+    private static let kLumenEmissionGain: Float = 1.0
 
     // MARK: - Test 1 — matID == 0 standard dielectric
 
@@ -91,12 +96,15 @@ struct MatIDDispatchTests {
         #expect(lit.z >= minimumAmbient,
                 "matID 0 ambient floor: b=\(lit.z) below \(minimumAmbient)")
 
-        // matID 0 must NOT equal albedo × 4.0 (the matID 1 emission path).
-        // Distance from (2, 2, 2) of at least 1.0 confirms a different
-        // branch was taken.
+        // matID 0 must NOT equal albedo × kLumenEmissionGain (the matID 1
+        // emission path). If the dispatch accidentally fell through to the
+        // emission branch, distance would be ~0; any threshold above the
+        // numerical noise floor catches that. Threshold sized at 0.2: well
+        // above noise, well below the observed Cook-Torrance distance
+        // (~0.67 with kLumenEmissionGain = 1.0; was ~3.0 when gain = 4.0).
         let matID1Expected = SIMD3<Float>(0.5, 0.5, 0.5) * Self.kLumenEmissionGain
         let distance = simd_length(lit - matID1Expected)
-        #expect(distance > 1.0,
+        #expect(distance > 0.2,
                 "matID 0 lit RGB \(lit) too close to matID 1 expected \(matID1Expected) — dispatch may not have branched correctly (distance \(distance))")
     }
 
@@ -127,9 +135,10 @@ struct MatIDDispatchTests {
                                                      features: &features)
 
         // With iblManager nil → irradiance = 0 → ambientFloor = 0.
-        // Expected: albedo × kLumenEmissionGain = (2.0, 2.0, 2.0).
-        // Tolerance 1e-2 covers fp16 round-trip + rgba8Unorm albedo
-        // 8-bit quantization (1/255 ≈ 0.004 per channel × 4× gain ≈ 0.016).
+        // Expected: albedo × kLumenEmissionGain = (0.5, 0.5, 0.5)
+        // (post-LM.3.2 round 4; was (2.0, 2.0, 2.0) when gain = 4.0).
+        // Tolerance 0.02 covers fp16 round-trip + rgba8Unorm albedo
+        // 8-bit quantization (1/255 ≈ 0.004 per channel × 1× gain).
         let expected = albedo * Self.kLumenEmissionGain
         let tolerance: Float = 0.02
         #expect(abs(lit.x - expected.x) < tolerance,
@@ -189,9 +198,11 @@ struct MatIDDispatchTests {
 
         // Negative assertion: if the sky short-circuit accidentally
         // breaks and the emission path runs instead, lit.x would be
-        // 1.0 × 4.0 = 4.0 (red-channel-only). Catch that explicitly.
-        #expect(lit.x < 1.0,
-                "sky r=\(lit.x) ≥ 1.0 — emission path may have run instead of sky short-circuit")
+        // 1.0 × kLumenEmissionGain = 1.0 (red-channel-only). The
+        // sky path produces lit.x = 0.475 (above), so a ≥ 0.95
+        // threshold catches the regression without false-positives.
+        #expect(lit.x < 0.95,
+                "sky r=\(lit.x) ≥ 0.95 — emission path may have run instead of sky short-circuit")
     }
 
     // MARK: - Test infrastructure
