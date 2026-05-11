@@ -4,36 +4,36 @@
 // camera frame and bleeds 50% past it on every side, so the viewer sees
 // only a field of vivid stained-glass cells dancing to the music.
 //
-// LM.4.5.1 — Saturated stained-glass palette card model. Each track gets a
-// procedurally-generated "card" of `kCardSize` (48) colours; cells pick
-// slots deterministically (cellHash + beat-step ratchet) and the colour
-// at each slot is `lm_hash_u32(cardIndex ^ trackSeed)` decoded as three
-// uniform HSV samples. Hue spans the full wheel (uniform); saturation
-// is FLOORED at `kSatFloor (0.70)` and uniform within [0.70, 1.00];
-// value spans [0.08, 0.95] with arousal-driven gamma bias (calm darker,
-// energetic brighter). The trackSeed XOR makes two tracks at the same
-// mood produce completely different cards by construction.
+// LM.4.5.2 — Full-cube palette card model with val/sat coupling. Each
+// track gets a procedurally-generated "card" of `kCardSize` (48) colours;
+// cells pick slots deterministically (cellHash + beat-step ratchet) and
+// the colour at each slot is `lm_hash_u32(cardIndex ^ trackSeed)` decoded
+// as three uniform HSV samples. Hue spans the full wheel (uniform);
+// SATURATION spans the full range [0, 1] (uniform); value spans
+// [0.08, 0.95] with arousal-driven gamma bias. **Coupling rule
+// (mandatory)**: `val ≤ sat + kValSatCouplingMargin (0.20)` —
+// a weak (low-sat) cell is forced to also be dark, so the
+// pale/washed/cream-tinted family is unreachable by construction.
+// The trackSeed XOR makes two tracks at the same mood produce
+// completely different cards.
 //
-// Real stained glass is saturated by physics — coloured glass +
-// backlight, no near-gray panels in any cathedral window. Diversity
-// comes from hue + value, not from sat. Browns are SATURATED dark
-// orange (sat 0.85, val 0.30); charcoals are saturated near-black
-// (sat doesn't matter at val < 0.15); regal purples are saturated
-// deep violet (sat 0.9, val 0.4); slates are saturated dark blue.
-// Mid-sat cells (sat 0.3–0.7) produce washed pale cream that reads
-// as gray-tinted regardless of value — that's the aesthetic
-// failure mode the LM.4.5 v1 implementation produced and Matt
-// rejected on real-music re-review (2026-05-11).
+// Why coupling, not a saturation floor (the LM.4.5.1 mistake): pale
+// colours and muted colours look almost the same on screen but are
+// produced differently. Pale = light + weak (washed-out — the
+// rejected v1 failure mode). Muted = dark + weak (dusty rose,
+// espresso, sage — real colours). The difference is value, not
+// saturation. The coupling rule keeps the muted family and bans
+// the pale family without flooring sat — every kind of colour is
+// allowed, including charcoals, browns, slates, dusty earth tones,
+// and near-greys.
 //
-// LM.4.5.1 supersedes LM.4.5 v1's full-HSV-cube model. The "full
-// range [0, 1] saturation" framing in the LM.4.5 prompt was the
-// wrong abstraction for stained glass; flooring sat high gives
-// every cell identifiable hue identity while preserving the full
-// hue × full value × per-track variety the prompt actually wanted.
-// LM.4.5 supersedes LM.3.2's IQ-cosine palette, which floored sat
-// at 0.78 and val at 0.80 and centred hue ±0.20 around a mood axis —
-// every cell sat inside ~5 % of the HSV cube, with no darks and no
-// hue variety. See `kCardSize` constants block + `lm_cell_palette`.
+// LM.4.5.2 supersedes LM.4.5.1 (sat floor at 0.70 — too restrictive,
+// produced jewel-tone-only output) and LM.4.5 v1 (no coupling —
+// produced pale washed cells across ~23 % of the panel). LM.4.5
+// supersedes LM.3.2's IQ-cosine palette, which floored sat at 0.78
+// and val at 0.80 and centred hue ±0.20 around a mood axis —
+// every cell sat inside ~5 % of the HSV cube. See `kCardSize` /
+// `kValSatCouplingMargin` constants block + `lm_cell_palette`.
 //
 // Band-routed beat-driven dance (LM.3.2, preserved verbatim). Each cell is
 // assigned to one of four "teams" by `hash(cell_id ^ trackSeedHash) % 100`:
@@ -226,7 +226,7 @@ constant float kCellIntensityJitter = 0.15f;   // adds [0, 0.15] from hash
 constant float kBarPulseMagnitude = 0.20f;
 constant float kBarPulseShape     = 8.0f;
 
-/// LM.4.5.1 — saturated stained-glass palette card model.
+/// LM.4.5.2 — full-cube palette card with val/sat coupling.
 ///
 /// Each track gets a procedurally-generated "card" of `kCardSize`
 /// colours. Cells pick slots deterministically (cellHash + beat-step
@@ -235,39 +235,52 @@ constant float kBarPulseShape     = 8.0f;
 /// [0, 1] samples mapped to HSV via:
 ///
 ///   - **Hue**: full wheel (uniform [0, 1] → 0–360°). The per-track
-///     seed picks WHICH hues populate the card; each cell takes one.
-///   - **Saturation**: floored at `kSatFloor (0.70)` and uniform within
-///     [0.70, 1.00]. Real stained glass is saturated by physics —
-///     coloured glass + backlight, no near-gray panels in any cathedral
-///     window. The diversity comes from hue + value, not from sat. A
-///     mid-sat range produces washed pale cells that read as gray-tinted
-///     cream — the LM.4.5 v1 failure mode Matt rejected (2026-05-11
-///     real-music re-review). Browns / regal purples / charcoals /
-///     slates are all SATURATED at low value (brown is dark orange,
-///     charcoal is near-black at any sat, regal purple is deep
-///     saturated violet). Floor at 0.70 produces them; floor below
-///     produces washed cells.
+///     seed picks WHICH hues populate the card.
+///   - **Saturation**: full range [0, 1] (uniform). Every kind of
+///     colour is allowed — pure jewel tones (sat 1.0), muted earth
+///     tones (sat 0.4), near-greys (sat 0.05).
 ///   - **Value**: full range mapped to [`kCardValMin (0.08)`,
-///     `kCardValMax (0.95)`] via an arousal-driven gamma bias (calm →
-///     gamma 1.8 biases darker, energetic → gamma 0.55 biases brighter).
-///     The [0, 1] envelope is preserved — every card contains darks AND
-///     brights regardless of mood; only the distribution mode shifts.
+///     `kCardValMax (0.95)`] via an arousal-driven gamma bias
+///     (calm → gamma 1.8 biases darker, energetic → gamma 0.55
+///     biases brighter). Envelope preserved — every card contains
+///     darks AND brights regardless of mood.
+///   - **Coupling rule (mandatory)**: a cell's value cannot exceed
+///     its saturation by more than `kValSatCouplingMargin (0.20)`.
+///     A weak (low-sat) cell is forced to also be dark; a strong
+///     (high-sat) cell can be any value. This eliminates the pale /
+///     washed / cream-tinted cells (high val + low sat) without
+///     restricting saturation.
+///
+/// Why coupling, not a saturation floor: pale colours and muted
+/// colours look almost the same on a screen, but they're produced
+/// differently. Pale = light + weak (washed-out, the rejected v1
+/// failure mode). Muted = dark + weak (dusty rose, espresso, sage
+/// — real colours). The difference is value, not saturation. The
+/// coupling rule keeps the muted family and bans the pale family
+/// without flooring sat — every kind of colour is allowed,
+/// including charcoals, browns, slates, dusty earth tones, and
+/// near-greys. v1 (no guardrail above mid-sat) and v2 (sat floor
+/// at 0.70) were both wrong abstractions.
 ///
 /// Per-track distinctiveness: the `trackSeed` XOR means track A's
 /// card[5] and track B's card[5] are completely different (h, s, v)
 /// triples by construction. Same trackSeed + same cardIndex → same
 /// colour (determinism). Regression-locked by
 /// `LumenPaletteSpectrumTests`.
-///
-/// **Pastel guardrail retired at LM.4.5.1.** The LM.4.5 v1 guardrail
-/// (`sat < 0.3 → val ≤ 0.5`) was downstream of the wrong abstraction;
-/// flooring sat at 0.70 makes the forbidden zone unreachable by
-/// construction. The CLAUDE.md "no muted palettes" rule is satisfied
-/// at the design level — saturated cells cannot be pale.
-constant uint  kCardSize             = 48u;
-constant float kCardValMin           = 0.08f;
-constant float kCardValMax           = 0.95f;
-constant float kSatFloor             = 0.70f;
+constant uint  kCardSize                = 48u;
+constant float kCardValMin              = 0.08f;
+constant float kCardValMax              = 0.95f;
+/// Coupling margin: maximum amount that value may exceed saturation.
+/// 0.20 means a cell at sat=0.0 caps val at 0.20 (near-black
+/// charcoals); a cell at sat=0.5 caps val at 0.70 (dusty rose,
+/// muted teal, sage); a cell at sat=0.8+ has no effective cap
+/// (full bright jewel allowed). Tuning lever:
+///   - smaller (0.10) → tighter coupling, fewer mid-bright cells,
+///     stronger "deep / dark" character
+///   - larger (0.30) → looser coupling, admits some pale cells
+///   - 0 → val ≤ sat (everything on or below the diagonal,
+///     extreme aesthetic)
+constant float kValSatCouplingMargin    = 0.20f;
 /// Gamma endpoints for arousal-driven VALUE-only distribution bias.
 /// arousal = -1 → gamma 1.8 (concave: biases toward darker cells —
 /// deep cobalts, deep wines, ruby shadows); arousal = +1 → gamma 0.55
@@ -510,13 +523,10 @@ static inline float3 lm_cell_palette(uint cellHash,
     // Hue: full wheel, uniform.
     float h = h_u;
 
-    // Saturation: floored at kSatFloor (0.70), uniform within
-    // [kSatFloor, 1.0]. Real stained glass is always saturated —
-    // browns / regal purples / charcoals / slates are SATURATED at
-    // low value, not desaturated at high value. Mid-sat cells
-    // (sat 0.3–0.7) read as washed pale cream regardless of value;
-    // they have no place in this aesthetic.
-    float s = mix(kSatFloor, 1.0f, s_u);
+    // Saturation: full range [0, 1], uniform. Every kind of colour
+    // is allowed by the sat axis; the coupling rule below prevents
+    // weak-and-bright (pale/washed) outputs.
+    float s = s_u;
 
     // Value: mapped to [kCardValMin (0.08), kCardValMax (0.95)] so
     // cells span deep shadow tones to bright jewel tones but never
@@ -524,6 +534,16 @@ static inline float3 lm_cell_palette(uint cellHash,
     // against the deferred path's IBL ambient floor; cap below 1.0
     // leaves headroom for the bar pulse +30 % flash without clipping.
     float v = mix(kCardValMin, kCardValMax, v_biased);
+
+    // Val/sat coupling — a cell's value cannot exceed its saturation
+    // by more than `kValSatCouplingMargin`. This forces weak
+    // (low-sat) cells to also be dark (low val) → they read as
+    // charcoals / slates / espressos / muted earth tones, not as
+    // pale washed cream. Strong (high-sat) cells are unaffected:
+    // sat 0.8 + margin 0.2 = cap 1.0, full range allowed. The
+    // forbidden zone (high val + low sat) is unreachable by
+    // construction.
+    v = min(v, s + kValSatCouplingMargin);
 
     return hsv2rgb(float3(h, s, v));
 }
