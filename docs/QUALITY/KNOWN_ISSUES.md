@@ -12,9 +12,9 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 **Severity:** P2 (visible degradation under specific conditions: Arachne active on Tier 2 hardware. Median frame already at the FrameBudgetManager downshift threshold; 53% of frames over budget. Not a session-blocker — drop rate at the 32 ms threshold is 1.46%, so most frames complete inside one refresh — but the visual will feel laggy when Arachne is selected, and the governor will downshift quality more aggressively than intended.)
 **Domain tag:** perf
-**Status:** **Open — L5 cheap-cleanup tranche landed 2026-05-12 (SOAK kernel p95 14.458 → 12.557 ms, overruns 172 → 1 of 1800 frames); awaiting Matt's M2 Pro real-music perf re-capture to confirm production p95 ≤ 14 ms and close.** First production capture (2026-05-12T18-19-31Z) measured p95 = 16.068 ms — 2 ms over the 14 ms target. Diagnosis showed always-on per-frame cost was the bottleneck (median essentially unchanged across L1+L2+L3). The L5 cheap-cleanup tranche retired three categories of dead per-pixel work (drop-accretion `spiralChordBirthTimes` array, `ArachneWebResult.strandTangent` + tangent-decision logic, dust-mote `fbm4` early-out gate); SOAK kernel measurement post-cleanup is ~2 ms better across all percentiles, projecting production p95 to drop from 16.068 → ~14.1 ms. See "2026-05-12 production capture" and "2026-05-12 L5 cheap-cleanup tranche" sections below.
+**Status:** **Resolved 2026-05-12 (closure commit pending) — closed against relaxed drops-only criteria after the 37,821-frame production re-capture confirmed p95 = 15.303 ms (1.3 ms over the 14 ms gate, definitively not noise) but drops at 0.02 % (400× under the 8 % target).** The L1+L2+L3 worst-case-spike tuning (2026-05-10) plus the L5 cheap-cleanup tranche (2026-05-12) reduced p95 from 26.607 → 15.303 ms (−11 ms) and drops from 1.46 % → 0.02 % (73× reduction). The remaining 1.3 ms p95 gap is structural always-on cost on M2 Pro; closing it would require L5.1 WORLD half-rate refresh (1-2 sessions of engineering for ~1.5-2 ms savings that the drops data says aren't user-perceptible). Matt's 2026-05-12 closure decision: accept p95 = 15.3 ms on M2 Pro as a known limitation of borderline Tier 2 hardware, close on the drops result. See "2026-05-12 closure rationale" section below.
 **Introduced:** Surfaced 2026-05-08 by DM.3a per-frame perf capture in session `2026-05-08T22-01-07Z`. Likely accumulated across the V.7.7B → V.7.7C → V.7.7D → V.7.7C.5 sequence of staged-composition + 3D-spider + atmospheric-reframe additions. No single increment "introduced" it; the cost grew incrementally and was never measured against the full-pipeline budget until now.
-**Resolved:**
+**Resolved:** 2026-05-12 against relaxed drops-only criteria. Closure commit follows this doc edit.
 
 ---
 
@@ -200,7 +200,49 @@ Run-to-run variance ≈ 0.1 ms (the SOAK gate is 16 ms p95; post-cleanup p95 sit
 
 ---
 
-### Escalation options (Matt to decide)
+### 2026-05-12 production re-capture (post-cheap-cleanup)
+
+**Session:** `~/Documents/phosphene_sessions/2026-05-12T20-30-28Z`
+**Hardware:** Apple M2 Pro (Mac mini), macOS 26.4.1.
+**Build:** `ef74ce69` (L5 cheap-cleanup tranche).
+**Procedure:** Same as the prior production capture, but 21 minutes of pinned Arachne (`L` + `⌘[`/`⌘]`, single Waveform → Arachne transition at 4 s, 37,821 frames). Sample size is 2.7× the prior capture — variance hypothesis can be definitively ruled out.
+
+| metric | re-capture (37,821 frames) | prior production (14,152 frames) | SOAK projection | gap from target |
+|---|---|---|---|---|
+| p50 | 13.708 ms | 13.649 ms | — | structurally above 8 ms target |
+| **p95** | **15.303 ms** | 16.068 ms | ~14.1 ms | 1.3 ms over 14 ms gate |
+| p99 | 17.462 ms | 29.602 ms | — | dramatic tail improvement |
+| max | 34.457 ms | 57.106 ms | — | dramatic tail improvement |
+| > 14 ms | 40.8 % | 40.8 % | — | unchanged |
+| **drops (>32 ms)** | **0.02 % (8 / 37,821)** | 0.7 % | — | **400× under 8 % target** |
+
+**SOAK over-projected by ~1.2 ms.** Projected production p95 was ~14.1 ms; measured 15.303 ms. Reasons: (a) the dust-mote `fbm4` early-out lives in `drawWorld()` (WORLD pass) but the SOAK harness `shortRunArachneComposite` runs the COMPOSITE fragment only, so item 3's saving was never reflected in SOAK; (b) SOAK runs spider-forced-ON every frame which over-represents the strand-tangent retirement's win (production has spider idle ~75 % of the time); (c) production has WORLD pass + drawable presentation + OS-scheduler overhead (~+1.6-2.8 ms SOAK ↔ production gap depending on the run). The cleanup tranche helped production by ~0.8 ms (16.068 → 15.303 ms) — real but smaller than SOAK's −1.9 ms suggested.
+
+**Tail spikes essentially eliminated.** p99 dropped 29.602 → 17.462 ms (−12 ms); max dropped 57.106 → 34.457 ms (−23 ms); drops fell 73× (1.46 % → 0.02 %). The L1+L2+L3 worst-case-spike levers compounded with the L5 cheap-cleanup to produce a much smoother frame-time distribution.
+
+**21-minute Arachne window incidentally validated round-8 work.** Orchestrator transitioned Waveform → Arachne at 4 s and never left Arachne for the rest of the session. `wait_for_completion_event: true` + `L`-locked behaving exactly as designed across 21 minutes of continuous playback. No spurious mood-overrides, no spurious section-boundary transitions.
+
+---
+
+### 2026-05-12 closure rationale (Matt's decision: Option 2 — Accept with drops-only criteria)
+
+**Closure path chosen.** Matt 2026-05-12: "path 2" (Accept). BUG-011 closes against relaxed drops-only criteria; the p95 ≤ 14 ms and p50 ≤ 8 ms gates are NOT met but the drops gate (≤ 8 %) is met overwhelmingly (0.02 %, 400× under target).
+
+**Rationale.** The drops result is the user-perceptible metric — a frame > 32 ms is dropped by the compositor and visible as judder. p95 = 15.303 ms means 5 % of frames sit ~1-2 ms above the design budget, but they still complete within ~16-17 ms (at or within one refresh window). The `FrameBudgetManager`'s 14 ms downshift threshold was originally calibrated against the 60 fps refresh budget assuming downshift would prevent visible drops; in practice we're hitting essentially zero drops at p95 = 15.3 ms on M2 Pro. The 14 ms threshold is more aggressive than the actual visual impact requires for this preset/hardware combination.
+
+**Architecture-contract context.** The architecture contract specifies M3+ as Tier 2; M2 Pro is borderline (M2 Pro is "Tier 1.5" in practice — Apple Silicon M2-family with Pro / Max variants that have more cores but the same per-core compute envelope as base M2). Accepting "p95 = 15.3 ms on borderline silicon" is consistent with the contract's spirit. The p95 ≤ 14 ms target stays as the design goal for actual Tier 2 (M3+) hardware; M2 Pro is documented as a known limitation.
+
+**Known limitation to track going forward:** Arachne running on M2 Pro will trip the `FrameBudgetManager` p95 > 14 ms threshold ~5 % of the time, which means the governor may downshift quality more aggressively than designed (potentially toggling off SSGI etc. mid-segment when other presets are active near Arachne windows). This is acceptable on borderline hardware; M3+ silicon should not see this behaviour. **If a future preset addition or shader change eats into the headroom and produces visible drops on M3+ too, L5.1 (WORLD half-rate refresh) is the next escalation** — the cheap-cleanup tranche already retired the structural redundancies the L5 framing was scoped to address, so L5.1 (half-rate WORLD cache) is the only remaining un-pulled lever.
+
+**What's NOT in scope for closure.** L5.1, L4 (M2 Pro → Tier 1 for Arachne), and M3+ measurement are all deferred. They become candidates for a new BUG-XXX entry if Arachne perf regresses on actual Tier 2 silicon in the future, or if a future preset increment eats meaningfully into Arachne's M2 Pro headroom.
+
+**V.7.10 Arachne cert review unblocked.** The cert-review increment had been gated on BUG-011 closure; closure removes the gate. V.7.10 is now eligible to run when Matt schedules it.
+
+---
+
+### ~~Escalation options (Matt to decide)~~ — settled 2026-05-12
+
+**Closure decision: Option 2 (Accept).** Sections below kept for historical reference; the three paths were live until Matt's 2026-05-12 closure decision. If a future regression reopens the perf gap and the cheap-cleanup tranche isn't enough on its own, L5.1 (WORLD half-rate refresh) is the recommended next move.
 
 #### Option A — L5: attack always-on cost (cheap-cleanup tranche LANDED 2026-05-12; LIKELY ALREADY CLOSED)
 
@@ -247,10 +289,10 @@ Scope: 1 commit (criteria update + KNOWN_ISSUES status flip + release note). Clo
 
 ### Verification criteria
 
-- [x] Automated: `shortRunArachneComposite` SOAK benchmark added to `SoakTestHarnessTests` (commit `bd213856`). Kernel-only SOAK_TESTS=1 benchmark. SOAK_TESTS=1 gated; loose 16 ms p95 kernel-only gate on M2 Pro at 1920×1080 with spider forced ON.
-- [~] **Partial**: M2 Pro real-music perf capture executed 2026-05-12 in session `2026-05-12T18-19-31Z`. drops (>32 ms) = 0.7 % passes the 8 % gate; p95 = 16.068 ms misses the 14 ms gate by 2 ms; p50 = 13.649 ms misses the 8 ms gate. See "2026-05-12 production capture" section above. **L5 cheap-cleanup tranche landed 2026-05-12** (SOAK kernel p95 14.458 → 12.557 ms; production p95 projects to ~14.1 ms). **Re-capture pending Matt** to confirm production closure ≤ 14 ms — that's the load-bearing close action.
-- [ ] Manual: re-run on M3+ to confirm budget holds at full feature set on actual Tier 2 silicon (M2 Pro is borderline Tier 2; the architecture contract specifies M3+). Still pending; would clarify whether the current p95 = 16.068 ms is "M2 Pro is below spec" or "Tier 2 budget needs revision."
-- [ ] Manual: run Arachne against the V.7.7C.5 visual reference (`docs/VISUAL_REFERENCES/arachne/`) after any tuning to confirm fidelity didn't regress alongside cost. The L1/L2/L3 changes are individually low-risk per the source-side comment rationale, but the cumulative visual is best assessed at real-music scale rather than the 64×64 dHash + RENDER_VISUAL contact-sheet harness used in this session.
+- [x] Automated: `shortRunArachneComposite` SOAK benchmark added to `SoakTestHarnessTests` (commit `bd213856`). Kernel-only SOAK_TESTS=1 benchmark. SOAK_TESTS=1 gated; loose 16 ms p95 kernel-only gate on M2 Pro at 1920×1080 with spider forced ON. Post-cheap-cleanup p95 sits at 12.557 ms (3.4 ms inside gate).
+- [x] **Closed against relaxed drops-only criteria 2026-05-12.** M2 Pro real-music re-capture in session `2026-05-12T20-30-28Z` (37,821 frames, ~21 min of pinned Arachne): drops (>32 ms) = **0.02 %** passes the 8 % gate by 400× margin. p95 = 15.303 ms and p50 = 13.708 ms remain above their respective design targets (14 ms / 8 ms) — documented as known limitations of borderline Tier 2 hardware (M2 Pro is below the architecture contract's M3+ Tier 2 spec). See "2026-05-12 closure rationale" section above.
+- [ ] Manual (deferred, not closure-blocking): re-run on M3+ to confirm budget holds at full feature set on actual Tier 2 silicon. Would clarify whether M2 Pro's 15.3 ms p95 is "M2 Pro below spec" (expected — M3+ comfortably under 14 ms) or "Tier 2 budget needs revision" (M3+ also above). If a future M3+ measurement shows p95 > 14 ms there, reopen with a new BUG-XXX entry.
+- [x] Manual: Matt confirmed Arachne fidelity unchanged via the 21-minute pinned re-capture session (`2026-05-12T20-30-28Z`). The L1/L2/L3 + L5 cheap-cleanup changes are individually low-risk by construction; the cumulative visual at real-music scale matches the V.7.7C.5 reference set without observed regression.
 
 ### Related
 

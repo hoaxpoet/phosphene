@@ -32,6 +32,26 @@ Test infrastructure: swift-testing + XCTest across unit, integration, regression
 
 ## Recently Completed
 
+### Increment BUG-011 CLOSED — Arachne over Tier 2 frame budget resolved against relaxed drops-only criteria ✅ (2026-05-12)
+
+Matt's 2026-05-12 closure decision after the 37,821-frame production re-capture (session `2026-05-12T20-30-28Z`, ~21 min of pinned Arachne on M2 Pro): drops (>32 ms) = 0.02 % passes the 8 % gate by 400× margin; p95 = 15.303 ms remains 1.3 ms above the 14 ms design target and p50 = 13.708 ms remains above the 8 ms target, but the drops result is the user-perceptible metric and the over-budget frames still complete within one refresh window (~16-17 ms). The architecture contract specifies M3+ as Tier 2; M2 Pro is borderline. Accepting "p95 = 15.3 ms on borderline silicon" is consistent with the contract's spirit.
+
+Total perf delta from pre-tuning baseline (2026-05-08 → 2026-05-12): p95 26.607 → 15.303 ms (−11.3 ms, −42 %); drops 1.46 % → 0.02 % (73× reduction). Achieved via the L1+L2+L3 worst-case-spike tuning (2026-05-10) and the L5 cheap-cleanup tranche (2026-05-12 — `spiralChordBirthTimes` retirement, `strandTangent` retirement, dust-mote `fbm4` early-out).
+
+Known limitation going forward: Arachne on M2 Pro trips the `FrameBudgetManager` p95 > 14 ms threshold ~5 % of the time; governor may downshift quality more aggressively than designed when Arachne is active. M3+ should not see this behaviour. If a future preset addition or shader change eats into the M2 Pro headroom and produces drops, L5.1 (WORLD half-rate refresh) is the next escalation — see `docs/QUALITY/KNOWN_ISSUES.md` BUG-011 historical "Escalation options" section. M3+ measurement deferred (not closure-blocking).
+
+**V.7.10 Arachne cert review unblocked.** The cert-review increment had been gated on BUG-011 closure; closure removes the gate. V.7.10 is now eligible to run when Matt schedules it.
+
+Full narrative: `docs/RELEASE_NOTES_DEV.md` `[dev-2026-05-12-g]`; closure rationale + 21-min re-capture data: `docs/QUALITY/KNOWN_ISSUES.md` BUG-011 § "2026-05-12 closure rationale" and § "2026-05-12 production re-capture (post-cheap-cleanup)".
+
+### Increment BUG-011 L5 cheap-cleanup tranche — three dead-code retirements ✅ (2026-05-12)
+
+Three categories of dead per-pixel work retired on top of the 2026-05-10 L1+L2+L3 worst-case-spike tuning: (1) `ArachneBuildState.spiralChordBirthTimes` CPU-side array — tracked per-chord ages for drop-accretion timing, never read in production after dewdrops were removed in `3f6126e0`; (2) `ArachneWebResult.strandTangent` field + tangent-decision logic in `arachneEvalWeb` — Marschner BRDF input demoted in V.7.9, both consumer sites already `(void)tang2D;`-cast it; (3) dust-mote `fbm4` early-out gate `if (beamMax > 0.01)` in `drawWorld()` — masked contribution was already ~0 outside shaft cones.
+
+SOAK kernel benchmark: p50 12.724 → 11.313 ms (−1.4); p95 14.458 → 12.557 ms (−1.9); overruns >14ms 172 → 1 of 1800 (essentially zero). Projected production p95 16.068 → ~14.1 ms; measured production p95 (37,821-frame re-capture) = 15.303 ms — improvement smaller than SOAK projected because the dust-mote early-out lives in WORLD pass (not exercised by the SOAK harness, which renders COMPOSITE only) and because SOAK runs spider-forced-ON every frame which over-represents the strand-tangent retirement's win.
+
+Verification: 43/43 targeted Arachne tests green; Arachne + spider golden hashes unchanged; app build clean; SwiftLint 0 violations on touched files. Full narrative in `docs/RELEASE_NOTES_DEV.md` `[dev-2026-05-12-f]`.
+
 ### Increment BUG-011 round 8 — Arachne build speedup + silent-state pause + completion-gated transitions ✅ (2026-05-12)
 
 Behavioural follow-ups to Matt's session `2026-05-11T23-18-42Z` directive. **NOT a perf increment** — the underlying BUG-011 perf entry in `docs/QUALITY/KNOWN_ISSUES.md` stays Open pending Matt's M2 Pro real-music perf capture; this round-8 work addresses user-facing problems separate from the Tier 2 frame budget.

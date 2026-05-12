@@ -6,6 +6,48 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-12-g] BUG-011 CLOSED — Arachne over Tier 2 frame budget, closed against relaxed drops-only criteria
+
+**Increment:** BUG-011 closure. **Status:** Resolved. One commit (this commit, doc-only).
+
+The 37,821-frame production re-capture (session `2026-05-12T20-30-28Z`, ~21 min of pinned Arachne on M2 Pro) showed:
+
+| metric | result | design target | verdict |
+|---|---|---|---|
+| **drops (>32 ms)** | **0.02 %** (8 of 37,821) | ≤ 8 % | **passes by 400× margin** |
+| p95 frame_gpu_ms | 15.303 ms | ≤ 14 ms | 1.3 ms over (not noise — confirmed against the prior 14,152-frame and 8,430-frame captures) |
+| p50 frame_gpu_ms | 13.708 ms | ≤ 8 ms | structurally above |
+| p99 | 17.462 ms | — | down from 29.602 ms at pre-cheap-cleanup |
+| max | 34.457 ms | — | down from 57.106 ms at pre-cheap-cleanup |
+
+**Matt's closure decision (2026-05-12): Option 2 — Accept with drops-only criteria.** Drops are the user-perceptible metric (frame > 32 ms is dropped by the compositor and visible as judder). p95 = 15.303 ms means 5 % of frames sit ~1-2 ms above the design budget, but they still complete within ~16-17 ms (at or within one refresh window). The `FrameBudgetManager`'s 14 ms downshift threshold was originally calibrated against the 60 fps refresh budget assuming downshift would prevent visible drops; in practice we hit essentially zero drops at p95 = 15.3 ms on M2 Pro. The 14 ms threshold is more aggressive than the actual visual impact requires for this preset/hardware combination.
+
+**Architecture-contract context.** The contract specifies M3+ as Tier 2; M2 Pro is borderline (Apple Silicon M2-family with more cores but the same per-core compute envelope as base M2). Accepting "p95 = 15.3 ms on borderline silicon" is consistent with the contract's spirit. The p95 ≤ 14 ms target stays as the design goal for actual Tier 2 (M3+) hardware; M2 Pro is documented as a known limitation.
+
+**Total perf delta from pre-tuning baseline (2026-05-08):**
+
+| metric | pre-tuning (2026-05-08) | post-closure (2026-05-12) | Δ |
+|---|---|---|---|
+| p50 | 14.120 ms | 13.708 ms | −0.4 ms |
+| **p95** | 26.607 ms | 15.303 ms | **−11.3 ms (−42 %)** |
+| p99 | 32.743 ms | 17.462 ms | −15.3 ms |
+| **drops (>32 ms)** | 1.46 % | **0.02 %** | **73× reduction** |
+
+The two perf-tuning waves that produced this:
+
+1. **2026-05-10 L1+L2+L3 worst-case-spike tuning** ([dev-2026-05-10-a]) — spider ray-march max-steps 32 → 24; drop refraction coverage gate 0.01 → 0.5; spider dispatch blend threshold 0.01 → 0.05.
+2. **2026-05-12 L5 cheap-cleanup tranche** ([dev-2026-05-12-f]) — retired `ArachneBuildState.spiralChordBirthTimes` (CPU dead append per beat); retired `ArachneWebResult.strandTangent` field + tangent-decision logic (per-pixel Marschner BRDF input demoted in V.7.9, both consumer sites already `(void)`-cast); dust-mote `fbm4` early-out gate on `beamMax > 0.01`.
+
+**Known limitation going forward.** Arachne on M2 Pro trips the `FrameBudgetManager` p95 > 14 ms threshold ~5 % of the time. The governor may downshift quality more aggressively than designed (potentially toggling off SSGI etc. mid-segment when other presets are active near Arachne windows). Acceptable on borderline hardware; M3+ silicon should not see this behaviour. If a future preset addition or shader change eats meaningfully into Arachne's M2 Pro headroom and produces visible drops there, L5.1 (WORLD half-rate refresh) is the next escalation — see `docs/QUALITY/KNOWN_ISSUES.md` BUG-011 "Escalation options" historical section.
+
+**Deferred (not closure-blocking).** M3+ measurement would clarify whether the current p95 = 15.3 ms is "M2 Pro below spec" (expected) or "Tier 2 budget itself needs revision." Cheap to acquire whenever dev environment allows. If a future M3+ measurement shows p95 > 14 ms there, reopen with a new BUG-XXX entry — but BUG-011 closes today.
+
+**V.7.10 Arachne cert review unblocked.** The cert-review increment had been gated on BUG-011 closure; closure removes the gate. V.7.10 is now eligible to run.
+
+**Files updated:** `docs/QUALITY/KNOWN_ISSUES.md` Status field flipped to Resolved + Verification criteria checkboxes flipped + closure-rationale section added; `docs/RELEASE_NOTES_DEV.md` this entry; `docs/ENGINEERING_PLAN.md` Recently Completed entry; `CLAUDE.md` Current Status / Recent landed work entry.
+
+---
+
 ## [dev-2026-05-12-f] BUG-011 L5 cheap-cleanup tranche — three dead-code retirements, SOAK kernel p95 14.458 → 12.557 ms
 
 **Increment:** BUG-011 L5 (cheap-cleanup tranche). **Status:** Three code changes + doc updates. BUG-011 likely closes once Matt re-captures M2 Pro real-music perf; the projected production p95 ≈ 14.1 ms (at the 14 ms gate, within run-to-run noise). If the re-capture closes ≤ 14 ms, BUG-011 closes; if it sits at 14.5+ ms, the L5.1 WORLD-half-rate sub-lever is the next escalation.
