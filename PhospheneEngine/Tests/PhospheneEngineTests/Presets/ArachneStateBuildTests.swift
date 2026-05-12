@@ -55,6 +55,20 @@ private func bassTriggerStems(totalEnergy: Float = 0.20) -> StemFeatures {
     return s
 }
 
+/// BUG-011 round 8 — fixture for tests that need to advance the build past
+/// the new silent-state pause (`stemEnergySilenceThreshold = 0.02`). Sum
+/// matches normal-playback AGC output (~2.0) without touching the *_Dev
+/// fields, so the audio-modulated pace stays at its baseline (`pace = 1 +
+/// 0.18 × midAttRel`).
+private func audibleStems() -> StemFeatures {
+    var s = StemFeatures.zero
+    s.drumsEnergy = 0.5
+    s.bassEnergy = 0.5
+    s.otherEnergy = 0.5
+    s.vocalsEnergy = 0.5
+    return s
+}
+
 @Suite("ArachneStateBuild") struct ArachneStateBuildTests {
 
     // MARK: - Test 1: WebGPU stride is 96 bytes (V.7.7C.2 Sub-item 2 OPTION A)
@@ -97,11 +111,13 @@ private func bassTriggerStems(totalEnergy: Float = 0.20) -> StemFeatures {
         state.reset()
 
         // Drive 6 s wall-clock of mid_att_rel = 1 to overshoot the frame
-        // phase (frameDuration = 3 s; pace = 1 + 0.18 ≈ 1.18 → effective 7 s).
+        // phase (frameDurationSeconds = 2.775 post-BUG-011 round 8; pace =
+        // 1 + 0.18 ≈ 1.18 → effective 7 s of build advance). Audible stems
+        // are required since round 8 added the silent-state pause gate.
         let dt: Float = 1.0 / 60.0
         for _ in 0..<360 {
             state.tick(features: midEnergyFV(deltaTime: dt, midAttRel: 1.0),
-                       stems: .zero)
+                       stems: audibleStems())
         }
 
         // Frame phase must have ended; transition stamp must fall in the
@@ -322,7 +338,10 @@ private func bassTriggerStems(totalEnergy: Float = 0.20) -> StemFeatures {
             var fv = midEnergyFV(deltaTime: dt, midAttRel: 0)
             let beatPhase = frame % 30
             fv.beatBass = beatPhase < 15 ? 1.0 : 0.0
-            state.tick(features: fv, stems: .zero)
+            // Audible stems required — round 8 silent-state pause would
+            // otherwise gate effectiveDt to 0 and skip the rising-edge
+            // chord advance (which requires effectiveDt > 0).
+            state.tick(features: fv, stems: audibleStems())
             // Snapshot births once spiral has completed (stage transitions
             // to .stable on the frame the final chord is laid).
             if state.buildState.stage == .stable && capturedBirths.isEmpty {
@@ -339,5 +358,67 @@ private func bassTriggerStems(totalEnergy: Float = 0.20) -> StemFeatures {
             #expect(births[i] >= births[i - 1],
                     "birthTime[\(i)] (\(births[i])) must be ≥ birthTime[\(i - 1)] (\(births[i - 1]))")
         }
+    }
+
+    // MARK: - Test 11: Silent-state pause halts build (BUG-011 round 8)
+
+    @Test("zero-stem audio gates effectiveDt → frame phase does not advance")
+    func silentStateHaltsBuildAdvance() throws {
+        guard let device = MTLCreateSystemDefaultDevice() else {
+            throw ArachneBuildTestError.noMetalDevice
+        }
+        let state = try #require(ArachneState(device: device, seed: 42))
+        state.reset()
+
+        // Drive 6 s of wall-clock with audibly-active features but zero
+        // stems. Without the round-8 silent gate the frame phase would
+        // exit (effective 7 s ≥ frameDurationSeconds 2.775); with the
+        // gate, effectiveDt = 0 every tick and the stage stays at .frame
+        // with frameProgress = 0.
+        let dt: Float = 1.0 / 60.0
+        for _ in 0..<360 {
+            state.tick(features: midEnergyFV(deltaTime: dt, midAttRel: 1.0),
+                       stems: .zero)
+        }
+
+        #expect(state.buildState.stage == .frame)
+        #expect(state.buildState.frameProgress == 0)
+        #expect(state.buildState.frameToRadialAtElapsed == nil)
+        #expect(state.buildState.segmentElapsed == 0)
+    }
+
+    // MARK: - Test 12: Below-threshold stems still pause; above-threshold advances
+
+    @Test("stem-energy sum threshold is at 0.02 boundary")
+    func silentGateBoundaryIsTwoPercent() throws {
+        guard let device = MTLCreateSystemDefaultDevice() else {
+            throw ArachneBuildTestError.noMetalDevice
+        }
+        let state = try #require(ArachneState(device: device, seed: 42))
+
+        // Below threshold (sum = 0.016) → paused
+        state.reset()
+        var quiet = StemFeatures.zero
+        quiet.drumsEnergy = 0.004; quiet.bassEnergy = 0.004
+        quiet.otherEnergy = 0.004; quiet.vocalsEnergy = 0.004
+        let dt: Float = 1.0 / 60.0
+        for _ in 0..<60 {
+            state.tick(features: midEnergyFV(deltaTime: dt, midAttRel: 1.0),
+                       stems: quiet)
+        }
+        #expect(state.buildState.segmentElapsed == 0,
+                "sum=0.016 should be below the 0.02 silent-gate threshold")
+
+        // Above threshold (sum = 0.04) → advances
+        state.reset()
+        var faint = StemFeatures.zero
+        faint.drumsEnergy = 0.01; faint.bassEnergy = 0.01
+        faint.otherEnergy = 0.01; faint.vocalsEnergy = 0.01
+        for _ in 0..<60 {
+            state.tick(features: midEnergyFV(deltaTime: dt, midAttRel: 1.0),
+                       stems: faint)
+        }
+        #expect(state.buildState.segmentElapsed > 0,
+                "sum=0.04 should be above the 0.02 silent-gate threshold")
     }
 }
