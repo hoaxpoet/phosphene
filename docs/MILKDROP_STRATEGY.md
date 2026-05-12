@@ -702,19 +702,18 @@ After sign-off:
 Walk each decision and record the pick. Each pick becomes a D-###
 entry after this section is filled in.
 
-* Decision A — Tier structure: _\<pick\>_ (Matt YYYY-MM-DD)
-* Decision B — Mandatory vs opt-in capabilities matrix: _\<accept matrix as recommended? amendments?\>_ (Matt YYYY-MM-DD)
-* Decision C — Catalog presentation / naming: _\<pick\>_ (Matt YYYY-MM-DD)
-* Decision D — Settings toggle exposure: _\<pick\>_ (Matt YYYY-MM-DD)
-* Decision E — Ray-march hybrid candidate criteria: _\<pick + concrete candidate list confirmation\>_ (Matt YYYY-MM-DD)
-* Decision F — Per-stem hue affinity for Evolved: _\<pick\>_ (Matt YYYY-MM-DD)
-* Decision G — Section-awareness for Evolved/Hybrid: _\<pick\>_ (Matt YYYY-MM-DD)
-* Decision H — Transpiler scope: _\<pick\>_ (Matt YYYY-MM-DD)
-* Decision I — Licensing posture: _\<pick + counsel-review schedule note\>_ (Matt YYYY-MM-DD)
-* Decision J — MD.5 candidate list: _\<accept 9 + pick 10th Geometric\>_ (Matt YYYY-MM-DD)
+* Decision A — Tier structure: **A.1 — Three tiers (Classic Port / Evolved / Hybrid)** (Matt 2026-05-12). Filed as D-103.
+* Decision B — Mandatory vs opt-in capabilities matrix: **Accept matrix as recommended.** (Matt 2026-05-12). Filed as D-104.
+* Decision C — Catalog presentation / naming: **C.2 — Three separate `family` values** (`milkdrop_classic` / `milkdrop_evolved` / `milkdrop_hybrid`). (Matt 2026-05-12). Filed as D-105.
+* Decision D — Settings toggle exposure: **D.2 — Per-tier toggles with disclosure-row UX.** (Matt 2026-05-12). Filed as D-106.
+* Decision E — Ray-march hybrid candidate criteria: **E.3 — Architectural + thematic + brand fit.** Accept three starters (Geiss *3D-Luz*, Rovastar *Northern Lights*, EvilJim *Travelling backwards in a Tunnel of Light*). (Matt 2026-05-12). Filed as D-107.
+* Decision F — Per-stem hue affinity for Evolved: **F.2 — Opt-in per preset.** (Matt 2026-05-12). Filed as D-108.
+* Decision G — Section-awareness for Evolved/Hybrid: **G.2 — Opt-in per preset.** (Matt 2026-05-12 — diverged from strategy recommendation G.3; `StructuralAnalyzer` becomes a usable surface during MD.6+ rather than waiting for separate validation. See D-109 for divergence note.). Filed as D-109.
+* Decision H — Transpiler scope: **H.1 for MD.5; revisit for MD.6 / MD.7.** Expression sub-languages only; HLSL-bearing source presets excluded from MD.5; escalation path for MD.6 / MD.7 is H.3 (hand-port) not H.2 (cross-compiler dependency). (Matt 2026-05-12). Filed as D-110.
+* Decision I — Licensing posture: **I.1 with explicit counsel-review checkpoint.** MIT-derivative with `milkdrop_source` provenance metadata + CREDITS.md attribution; counsel review concurrent with MD.1; MD.2 onwards gated on counsel sign-off. (Matt 2026-05-12). Filed as D-111.
+* Decision J — MD.5 candidate list: **9 named presets + 1 TBD Geometric slot.** Hybrid J.3 (simplicity) selection + J.1 (theme coverage) check + J.2 (catalog gap) tiebreaker. Tenth Geometric slot picked at MD.5 authoring. (Matt 2026-05-12). Filed as D-112.
 
-After sign-off, file D-103 through D-112 in `docs/DECISIONS.md`,
-revise `ENGINEERING_PLAN.md` Phase MD per §6, and start MD.1.
+**Sign-off complete 2026-05-12.** D-103 through D-112 filed in `docs/DECISIONS.md`. Next runnable increment is MD.1 (`.milk` grammar audit), with the scope tightened per D-110 to focus on the expression sub-languages and a thin HLSL appendix. Counsel review for D-111 runs concurrently. `CREDITS.md` placeholder section pending. `ENGINEERING_PLAN.md` per-increment scope revisions per §6 pending.
 
 ---
 
@@ -722,3 +721,7 @@ revise `ENGINEERING_PLAN.md` Phase MD per §6, and start MD.1.
 
 * 2026-05-12 — Initial draft authored by Claude Code session.
   Awaiting Matt sign-off in §10.
+* 2026-05-12 — Matt sign-off in §10. All ten decisions (A through J)
+  picked; eight match strategy recommendation; one (G) diverges
+  (G.2 picked, G.3 recommended — see D-109 divergence note). D-103
+  through D-112 filed in `docs/DECISIONS.md`.

@@ -2946,3 +2946,188 @@ Each track gets a deterministic chromatic tint vector that shifts the aggregate 
 **Rule.** Per-track tint stays additive + chromatic-projected. Future LM iterations should not regress the chromatic projection (would reintroduce wash/mud on achromatic-aligned tracks) or raise `kTintMagnitude` above 0.30 (excessive cube-face squashing). The LM.4.6 contract is preserved *in spirit* — per-cell freedom is per-cell sampling from the full uniform-random RGB cube on every track; the per-track window shifts but every track still samples a 3D region with mass at every interior point.
 
 **Carry-forward.** Phase LM CLOSED. `docs/ENGINEERING_PLAN.md` Phase LM section marked closed with full LM.6 + LM.7 entries. Lumen Mosaic is the first preset in the catalog with `certified: true` in its JSON sidecar (SpectralCartograph passes the lightweight automated rubric gate but is `certified: false` — diagnostic preset, no M7 sign-off). Next preset eligible for cert is whoever Matt prioritises (see `docs/ENGINEERING_PLAN.md` Phase G-uplift and adjacent stream notes in CLAUDE.md).
+
+---
+
+## D-103 — Phase MD tier structure: Classic Port / Evolved / Hybrid (Strategy Decision A, filed 2026-05-12)
+
+**Rule.** Phase MD ships three distinct tiers of Milkdrop-origin presets:
+
+- **Classic Port** (MD.5) — faithful transpilation. Lightweight V.6 rubric. Source preset's audio coupling preserved (no stem routing unless source had effective equivalent).
+- **Evolved** (MD.6) — Classic Port + Phosphene MV-3 capability uplift. Full V.6 rubric. Mandatory: at least one stem routed to a visual parameter.
+- **Hybrid** (MD.7) — Evolved + ray-march backdrop. Full V.6 rubric. Mandatory: at least two stems routed, ray-march backdrop, static camera per D-029.
+
+**Why.** Three tiers map cleanly onto the existing MD.5 / MD.6 / MD.7 plan structure and produce three distinct catalog experiences (faithful Milkdrop / Milkdrop-with-Phosphene-music-data / Milkdrop-warp-plus-3D). Collapsing to two tiers (drop MD.7) forfeits the architectural distinctiveness of `mv_warp` + `ray_march` composition. Four tiers (split Evolved into light/heavy) adds fractal sub-categories without adding catalog clarity.
+
+**Carry-forward.** Drives Decisions B (capability matrix per tier), C (three separate `family` values), D (three settings toggles). See `docs/MILKDROP_STRATEGY.md` §3 Decision A.
+
+---
+
+## D-104 — Phase MD capability matrix per tier (Strategy Decision B, filed 2026-05-12)
+
+**Rule.** The mandatory / opt-in / N-A capability assignment per tier is:
+
+| Capability | Classic Port | Evolved | Hybrid |
+|---|---|---|---|
+| Deviation primitives (D-026) | mandatory | mandatory | mandatory |
+| `mv_warp` pass | mandatory if source had per-pixel warp | mandatory | mandatory |
+| Stem-driven routing | opt-in | mandatory ≥ 1 stem | mandatory ≥ 2 stems |
+| `beatPhase01` anticipation | opt-in | opt-in | mandatory if motion-dominated |
+| Vocal pitch → hue / parameter | opt-in | opt-in | opt-in |
+| Per-stem rich metadata (MV-3a) | opt-in | opt-in | mandatory if perceptually relevant |
+| Mood (valence / arousal) | not used | opt-in | opt-in |
+| Section / structural prediction | not used | opt-in (per D-109) | opt-in (per D-109) |
+| Ray-march backdrop | N/A | N/A | mandatory |
+| SSGI | N/A | N/A | opt-in (perf-gated) |
+| PBR materials | N/A | N/A | opt-in |
+| V.6 rubric profile | lightweight (D-067(b)) | full | full |
+
+**Why.** Deviation primitives + `mv_warp` are non-negotiable across tiers (project-level invariants). Stem routing is the single biggest perceptual differentiator between a port and an evolved preset; mandatory ≥ 1 / ≥ 2 makes the tier difference *audible* and *visible*. MV-3a rich metadata mandatory in Hybrid only "if perceptually relevant" — a Hybrid that doesn't read fine-grained per-stem data is still allowed but at least one MV-3a channel should drive something the listener can hear-vs-see. Lightweight rubric for Classic Ports because their visual identity is the Milkdrop warp, not Phosphene's detail cascade; full rubric for Evolved + Hybrid because they have Phosphene-specific surface to evaluate.
+
+**Carry-forward.** Each ported preset's JSON sidecar declares which optional capabilities it uses in an `mv3_features_used` array (per MD.6 spec). V.6 rubric profile per row is the rubric assignment in the JSON `rubric_profile` field.
+
+---
+
+## D-105 — Phase MD catalog presentation: three separate `family` values (Strategy Decision C, filed 2026-05-12)
+
+**Rule.** Milkdrop-origin presets ship as three top-level `family` values in their JSON sidecars:
+
+- `milkdrop_classic` — MD.5 outputs.
+- `milkdrop_evolved` — MD.6 outputs.
+- `milkdrop_hybrid` — MD.7 outputs.
+
+Filesystem layout: `PhospheneEngine/Sources/Presets/Shaders/Milkdrop/<theme>_<source_name>.{metal,json}`. Theme prefix avoids filename collisions across the 9,795-preset namespace.
+
+**Why.** Three separate families let Settings UI present three sub-toggles cleanly (D-106), let the orchestrator's family-repeat penalty avoid Classic-Port-after-Classic-Port without grouping ports against evolved or hybrids, and let M7 reviews evaluate per-tier rather than head-to-head across tiers. A single `family: "milkdrop"` with a subtype field would force the orchestrator and Settings to do subtype-aware filtering as an additional dimension; three families flatten that into existing infrastructure (`PresetScoringContext.excludedFamilies` from D-053 already supports per-family exclusion).
+
+**Carry-forward.** Each ported preset's JSON sidecar uses one of the three family strings. `PresetCategory` Swift enum gains the three cases when MD.5 lands (matching the existing pattern from `PresetCategory.instrument` for SpectralCartograph).
+
+---
+
+## D-106 — Phase MD Settings exposure: three per-tier toggles in disclosure row (Strategy Decision D, filed 2026-05-12)
+
+**Rule.** Settings panel's "Visuals" section gains three persisted toggles under a single "Milkdrop-style presets" disclosure row:
+
+- `phosphene.settings.visuals.milkdrop.classic` — include Classic Port (MD.5) presets in orchestrator scoring.
+- `phosphene.settings.visuals.milkdrop.evolved` — include Evolved (MD.6) presets.
+- `phosphene.settings.visuals.milkdrop.hybrid` — include Hybrid (MD.7) presets.
+
+All three default to `true` once the corresponding tier has presets in the catalog; remain `false` (or absent) before that point. Wiring uses the existing `PresetScoringContext.excludedFamilies` infrastructure (D-053) — each disabled toggle adds its family to the excluded set.
+
+**Why.** Per-tier toggles let users with strong tier preferences (warm-nostalgia-only classic, or modern-only evolved/hybrid) tailor the catalog without losing the rest. A single "Include Milkdrop-style presets" toggle is acceptable as a fallback if Settings UI real-estate is tight, but the tiers are different enough perceptually that uniform treatment under-serves users with clear preferences.
+
+**Carry-forward.** `SettingsStore` gains three `@Published` properties + persistence keys; `VisualsSettingsSection` view gains the disclosure row. Wiring lands when MD.5 ships its first preset (i.e. when there's something for the toggle to affect).
+
+---
+
+## D-107 — Phase MD hybrid candidate criteria: architectural + thematic + brand fit (Strategy Decision E, filed 2026-05-12)
+
+**Rule.** A Milkdrop preset is a viable MD.7 hybrid candidate only if it clears all three criteria:
+
+1. **Architectural fit (D-029 floor).** Source preset is static-framed — no `zoom`, `rot`, `cx`, `cy`, `dx`, `dy` per-frame equations modulating the warp grid in a way that simulates camera motion.
+2. **Thematic fit.** The ray-march backdrop pass adds something specific (atmospheric haze, depth-of-field, volumetric god-rays, abstract terrain horizon) that the source preset cannot produce on its own. Each candidate carries a one-sentence answer to "what does the ray-march backdrop *do*?"
+3. **Brand fit.** The resulting hybrid sits at an aesthetic register Phosphene's catalog actively wants (not duplicating Glass Brutalist / Kinetic Sculpture / VL / Aurora Veil / Crystalline Cavern coverage).
+
+**Pre-approved starters** (Matt 2026-05-12):
+
+- **Geiss — *3D - Luz*** (Supernova / Radiate). Particle-nova register; ray-march sky volume backdrop adds horizon and depth-fog.
+- **Rovastar — *Northern Lights*** (Supernova / Radiate). Aurora register; ray-march sky volume could carry sustained-bass IBL breath. Subject to overlap check vs Aurora Veil (Phase AV).
+- **EvilJim — *Travelling backwards in a Tunnel of Light*** (Fractal / Nested Square). Tunnel register naturally maps to a static-camera ray-march receding-tunnel SDF.
+
+**Why.** D-029 is non-negotiable, so architectural fit is a floor. Thematic fit prevents ray-march cost being paid for visual gilding rather than meaningful depth. Brand fit prevents internal competition between hybrids and existing Phosphene catalog members.
+
+**Carry-forward.** MD.7's full 5-preset candidate list draws from these 3 starters + 2 more (TBD per MD.6 + MD.7 authoring sessions, selected via the same three criteria). MD.7.0 spike (1 preset proof of composition) precedes the batch.
+
+---
+
+## D-108 — Phase MD per-stem hue affinity: opt-in per preset (Strategy Decision F, filed 2026-05-12)
+
+**Rule.** Evolved-tier (and Hybrid-tier) Milkdrop presets *may* route a stem to hue (e.g. drums.onsetRate → cell hue shift), but are not required to. The decision is per preset, made during authoring on the basis of the source preset's palette intent.
+
+**Why.** Hue affinity is a strong perceptual tool but can clash with source presets whose palette identity is part of what makes them recognizable as themselves. A Reaction-theme preset whose original palette is a tight pink-magenta gradient should not have its hue derailed by drum onsets. Lumen Mosaic LM.5 attempted hue-affinity work and retired it on similar grounds. Opt-in lets authors preserve palette where it matters and add stem-hue where it doesn't.
+
+**Carry-forward.** Authors capture the decision per preset; no Settings-level toggle. Stem routing to *intensity* / *motion* / *threshold* remains mandatory per D-104 — only stem→hue is opt-in.
+
+---
+
+## D-109 — Phase MD section-awareness: opt-in per preset (Strategy Decision G, filed 2026-05-12)
+
+**Rule.** Evolved-tier (and Hybrid-tier) Milkdrop presets *may* respond to section boundaries from `StructuralAnalyzer` (palette shift at the drop, motion change at the bridge), but are not required to. The decision is per preset.
+
+**Divergence from strategy recommendation.** The strategy doc recommended G.3 (skip until `StructuralAnalyzer` is validated as a preset-driving signal in production). Matt picked G.2 instead. Implication: `StructuralAnalyzer` becomes a *usable* surface during MD.6 onwards — preset authors can wire to it where appropriate, and the resulting visual response serves as the *de facto* validation track. This couples Phase MD's MD.6+ authoring to `StructuralAnalyzer`'s correctness in a way the G.3 recommendation would have avoided, but it also unblocks section-aware preset behaviour earlier than separate validation would have.
+
+**Why.** Matt's call. Risk-acceptance: section-awareness is high-value perceptually (preset responding to the song's structure, not just its energy), and waiting for separate validation deferred a useful surface for unclear gain.
+
+**Carry-forward.** Authors capture the decision per preset. If `StructuralAnalyzer` predictions prove unreliable in real-music sessions, presets using them will surface the problem first; the fix may be either improving the analyzer or backing off section-awareness in affected presets.
+
+---
+
+## D-110 — Phase MD transpiler scope: expression language only for MD.5 (Strategy Decision H, filed 2026-05-12)
+
+**Rule.** The MD.2 transpiler covers the `.milk` expression sub-languages only:
+
+1. `per_frame_init_NN` / `per_frame_NN` expressions (numeric, C-like statements).
+2. `per_pixel_NN` warp-grid expressions (same syntax, per-grid-vertex scope).
+3. `wave_NN_per_frame` / `wave_NN_per_frame_init` / `shapecode_NN_per_frame` / `shapecode_NN_per_frame_init` expressions (same syntax, per-shape / per-wave scope).
+
+The transpiler does **not** translate the embedded HLSL pixel-shader source found in `warp_1=…warp_NN=` / `comp_1=…comp_NN=` line groups (present in ~81 % of the cream-of-crop pack per the strategy audit). MD.5 candidate filter excludes any preset with non-empty `warp_1=` or `comp_1=` blocks; this restricts MD.5 to the 1,559 HLSL-free presets in the pack — sufficient for the 10-port budget with substantial diversity and headroom.
+
+**MD.6 / MD.7 escalation.** Re-evaluated after MD.5 lands. If MD.6 / MD.7 candidates can be found within the HLSL-free subset, keep this rule indefinitely. If a candidate worth porting *requires* HLSL, the escalation path is **H.3 (hand-port HLSL preset-by-preset)** — *not* H.2 (bring in an HLSL → MSL cross-compiler). H.2 was rejected for adding a non-Phosphene build dependency with real surface for breakage.
+
+**Why.** Restricting scope to the expression sub-languages is the cheap, fully-testable, transpiler-proof path. The 1,559 HLSL-free presets span all 11 themes with significant counts in 7 (Fractal 492, Geometric 265, Dancer 262, Waveform 180, Reaction 133, Supernova 120, Particles 64). Two of the strategy's three pre-approved hybrid starters (D-107) are HLSL-free.
+
+**Carry-forward.** MD.1 grammar audit doc focuses on the expression sub-languages; HLSL surface gets a thin appendix cataloguing features used (deferred for hand-port). MD.2 transpiler implementation rejects HLSL-bearing source files with a clear diagnostic. MD.5 candidate-selection harness filters by `! grep -q '^warp_1=' AND ! grep -q '^comp_1='`.
+
+---
+
+## D-111 — Phase MD license posture: MIT-derivative with counsel-review checkpoint (Strategy Decision I, filed 2026-05-12)
+
+**Rule.** Transpiled Milkdrop-origin presets ship under Phosphene's MIT licence, with provenance metadata + attribution per the following protocol:
+
+1. Each transpiled preset's JSON sidecar carries a `milkdrop_source` block:
+   ```json
+   "milkdrop_source": {
+     "filename": "<original .milk filename>",
+     "author": "<author from filename pattern, best-effort>",
+     "theme": "<cream-of-crop theme directory>",
+     "sha256": "<SHA256 of source .milk file>",
+     "pack": "projectM-visualizer/presets-cream-of-the-crop"
+   }
+   ```
+2. `docs/CREDITS.md` gains a "Milkdrop preset attribution" section enumerating every shipped preset's source. Pattern mirrors the existing Open-Unmix HQ and Beat This! ML weight attributions.
+3. Phosphene commits to honoring takedown requests routed through the projectM team (per the pack's stated takedown path).
+
+**Counsel-review checkpoint.** MD.1 (grammar audit, no licensed content committed) can run during counsel review. MD.2 onwards is **gated** on counsel sign-off that the "MIT-derivative with attribution + takedown" posture is acceptable. If counsel review concludes the posture is insufficient and a stricter approach is required (Decision I.2 dual-license, or I.3 defer entirely), Phase MD pauses after MD.1 and resumes with the revised posture.
+
+**Why.** The cream-of-crop pack's curator (ISOSCELES) asserts public-domain-by-convention with a projectM-managed takedown path. The pack has been the default for projectM releases since 2022 with no significant copyright dispute on record. Counsel review is appropriate due-diligence but the operative legal posture is well-established. The CREDITS.md attribution pattern is the natural template (Open-Unmix HQ, Beat This! ML weights already follow it).
+
+**Carry-forward.** Matt schedules counsel review concurrently with MD.1 authoring. MD.1 produces no committed Milkdrop-derived artifacts (the grammar audit doc cites the pack as a corpus, not as committed content). `CREDITS.md` gains an empty "Milkdrop preset attribution" section as a placeholder once the counsel review schedule is set.
+
+---
+
+## D-112 — Phase MD MD.5 candidate list: 9 named presets + 1 TBD Geometric (Strategy Decision J, filed 2026-05-12)
+
+**Rule.** MD.5 ships 10 Milkdrop Classic Port presets selected via hybrid criteria: J.3 (transpiler-proof simplicity) as the *selection* criterion, J.1 (theme coverage) as the *coverage* check, J.2 (Phosphene catalog gap) as the tiebreaker.
+
+**Pre-approved candidates** (9 of 10, Matt 2026-05-12):
+
+| Theme | Preset | Size | Role |
+|---|---|---:|---|
+| Supernova | Geiss — *3D - Luz* | 949 B | Smallest preset in pack; canonical Geiss-3D register. Also pre-approved MD.7.0 hybrid spike candidate (D-107). |
+| Waveform | Rovastar — *Voyage* | 959 B | Wire-tangle motion; canonical wire-3D primitive. |
+| Reaction | Sjadoh — *Fortune Teller* | 969 B | Reaction-diffusion blob register Phosphene lacks. |
+| Waveform | Geiss — *3D Shockwaves* | 1.0 KB | Pulsing wireframe sphere; wave-shockwave register. |
+| Fractal | EvilJim — *Travelling backwards in a Tunnel of Light* | 1.0 KB | Tunnel-of-nested-squares. Also pre-approved MD.7.0 hybrid spike candidate (D-107). |
+| Supernova | Pithlit — *Nova* | 1.0 KB | Gaseous-nova register. |
+| Fractal | EvilJim — *Ice Drops* | 1.0 KB | Falling-fractal register. |
+| Waveform | Geiss — *Bipolar X* | 1.0 KB | Circular-wire variation. |
+| Supernova | Northern Lights | 1.2 KB | Aurora register. Pre-emption check vs Aurora Veil (Phase AV) at MD.5 authoring — if AV ships first, swap for `Rovastar — Trippy S` or similar. |
+
+**Tenth slot — TBD Geometric** (Matt picks at MD.5 authoring from the HLSL-free Geometric subset, 265 presets, ≤ 5 KB).
+
+**Substitutions.** Permitted if a better candidate surfaces during authoring; the goal is 10 ports spanning ≥ 6 themes with the transpiler proven. Substitutions get noted in the MD.5 closeout report.
+
+**Why.** J.3 (simplicity) restricts candidates to HLSL-free presets ≤ 1.2 KB — the simplest end of the 1,559-preset HLSL-free subset — which is what proves the transpiler. J.1 (theme coverage) ensures the 10 ports span at least Supernova / Waveform / Reaction / Fractal / Geometric (5 themes via these 9 + 1 TBD); MD.5 doesn't ship as "10 Fractal presets." J.2 (catalog gap) drives the slot allocation toward unserved registers (Reaction, Aurora) where Phosphene currently has nothing.
+
+**Carry-forward.** MD.5 increment ships exactly these 10 presets (or documented substitutions). Each ships with `milkdrop_source` provenance metadata per D-111.
+
