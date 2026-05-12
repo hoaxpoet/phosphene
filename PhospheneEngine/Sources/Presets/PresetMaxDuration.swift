@@ -81,9 +81,14 @@ public extension PresetDescriptor {
     /// Diagnostic presets (`isDiagnostic == true`) are exempt from the framework and
     /// return `.infinity` — they remain in place until manually switched.
     ///
+    /// Completion-gated presets (`waitForCompletionEvent == true`, BUG-011 round 8)
+    /// likewise return `.infinity`. They run until their `PresetSignaling.presetCompletionEvent`
+    /// fires, or until the section ends — whichever comes first. The formula's
+    /// motion-intensity / fatigue / linger penalties do not apply.
+    ///
     /// Formula (§5.2, V.7.6.C calibrated):
     /// ```
-    /// if isDiagnostic: return .infinity
+    /// if isDiagnostic || waitForCompletionEvent: return .infinity
     /// baseMax = 90 + (-50) * (motionIntensity - 0.5)
     ///             + (-30) * fatigueRisk.score
     ///             + (-15) * (visualDensity - 0.5)
@@ -93,7 +98,7 @@ public extension PresetDescriptor {
     ///
     /// Returns seconds; never negative (clamped at 0).
     func maxDuration(forSection section: SongSection?) -> TimeInterval {
-        if isDiagnostic { return .infinity }
+        if isDiagnostic || waitForCompletionEvent { return .infinity }
 
         let baseMax = Self.baseDurationSeconds
             + Self.motionPenalty * (Double(motionIntensity) - 0.5)

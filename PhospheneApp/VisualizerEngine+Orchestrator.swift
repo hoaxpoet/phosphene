@@ -197,16 +197,44 @@ extension VisualizerEngine {
 
         // Suppress mood-derived preset overrides during: (a) capture-mode switch grace window
         // (silence may produce spurious Δmood), (b) diagnostic hold (user explicitly pinned a
-        // diagnostic preset). Boundary rescheduling (updatedTransition) is always allowed. D-061(b,c), DSP.3.1.
+        // diagnostic preset), (c) the currently-active preset's descriptor sets
+        // `wait_for_completion_event: true` (BUG-011 round 8 — the preset's contract is to
+        // run until it emits `PresetSignaling.presetCompletionEvent`; mood-override would
+        // swap it out mid-build cycle, which is exactly what the flag exists to prevent).
+        // Boundary rescheduling (updatedTransition) is always allowed. D-061(b,c), DSP.3.1.
+        // Segment times are session-relative (`PlannedPresetSegment.plannedStartTime`
+        // / `plannedEndTime` are cumulative across the playlist). Convert to
+        // track-relative via the parent track's `plannedStartTime` before
+        // comparing against `elapsedTrackTime`.
+        let activeSegment: PlannedPresetSegment? = {
+            guard plan.tracks.indices.contains(trackIndex) else { return nil }
+            let track = plan.tracks[trackIndex]
+            return track.segments.first(where: { segment in
+                let segStart = segment.plannedStartTime - track.plannedStartTime
+                let segEnd = segment.plannedEndTime - track.plannedStartTime
+                return elapsedTrackTime >= segStart && elapsedTrackTime < segEnd
+            }) ?? track.segments.first
+        }()
+        let activePresetWaitsForCompletion = activeSegment?.preset.waitForCompletionEvent ?? false
+
         let effectiveAdaptation: LiveAdaptation
-        let suppressOverride = isCaptureModeSwitchGraceActive || diagnosticPresetLocked
+        let suppressOverride = isCaptureModeSwitchGraceActive
+            || diagnosticPresetLocked
+            || activePresetWaitsForCompletion
         if suppressOverride, adaptation.presetOverride != nil {
             effectiveAdaptation = LiveAdaptation(
                 updatedTransition: adaptation.updatedTransition,
                 presetOverride: nil,
                 events: adaptation.events.filter { $0.kind != .presetOverrideTriggered }
             )
-            let reason = isCaptureModeSwitchGraceActive ? "grace window" : "diagnostic hold"
+            let reason: String
+            if isCaptureModeSwitchGraceActive {
+                reason = "grace window"
+            } else if diagnosticPresetLocked {
+                reason = "diagnostic hold"
+            } else {
+                reason = "wait_for_completion_event"
+            }
             logger.info("Orchestrator: \(reason) active — preset override suppressed")
         } else {
             effectiveAdaptation = adaptation

@@ -41,5 +41,6 @@
   "complexity_cost": { "tier1": 5.5, "tier2": 5.5 },
   "scene_fog": 0.01,
   "certified": false,
-  "rubric_hints": { "hero_specular": true, "dust_motes": true }
+  "rubric_hints": { "hero_specular": true, "dust_motes": true },
+  "wait_for_completion_event": true
 }

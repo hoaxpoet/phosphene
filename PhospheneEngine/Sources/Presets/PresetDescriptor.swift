@@ -257,6 +257,20 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
     /// Defaults to `false`.
     public let isDiagnostic: Bool
 
+    // MARK: - BUG-011 round 8: Completion-Gated Transitions
+
+    /// When `true`, the preset is allowed to run until it emits a
+    /// `PresetSignaling.presetCompletionEvent` rather than being timed out by the
+    /// orchestrator. `maxDuration(forSection:)` returns `.infinity` so SessionPlanner's
+    /// motion-intensity / fatigue / linger formula doesn't cap the segment, and
+    /// `applyLiveUpdate` suppresses mood-derived preset overrides while the preset
+    /// is active. Section boundaries still terminate segments (the planner's
+    /// `remainingInSection` cap is unchanged) and the runtime completion event
+    /// continues to trigger `nextPreset()` via the existing `wirePresetCompletionSubscription`
+    /// wiring. Reserved for presets whose visual contract has a definite end state
+    /// (Arachne's build cycle is the canonical case). Defaults to `false`.
+    public let waitForCompletionEvent: Bool
+
     // MARK: - Text Overlay
 
     /// When `true`, the engine creates a `DynamicTextOverlay` for this preset and binds
@@ -313,6 +327,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         case rubricProfile = "rubric_profile"
         case rubricHints = "rubric_hints"
         case isDiagnostic = "is_diagnostic"
+        case waitForCompletionEvent = "wait_for_completion_event"
         case textOverlay  = "text_overlay"
         case stages
     }
@@ -413,6 +428,10 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
 
         // MARK: V.7.6.C Diagnostic Class
         isDiagnostic = try container.decodeIfPresent(Bool.self, forKey: .isDiagnostic) ?? false
+
+        // MARK: BUG-011 round 8 — Completion-gated transitions
+        waitForCompletionEvent = try container.decodeIfPresent(
+            Bool.self, forKey: .waitForCompletionEvent) ?? false
 
         // MARK: Text Overlay
         textOverlay = try container.decodeIfPresent(Bool.self, forKey: .textOverlay) ?? false
