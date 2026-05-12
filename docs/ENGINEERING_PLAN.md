@@ -32,6 +32,16 @@ Test infrastructure: swift-testing + XCTest across unit, integration, regression
 
 ## Recently Completed
 
+### Increment BUG-011 round 8 — Arachne build speedup + silent-state pause + completion-gated transitions ✅ (2026-05-12)
+
+Behavioural follow-ups to Matt's session `2026-05-11T23-18-42Z` directive. **NOT a perf increment** — the underlying BUG-011 perf entry in `docs/QUALITY/KNOWN_ISSUES.md` stays Open pending Matt's M2 Pro real-music perf capture; this round-8 work addresses user-facing problems separate from the Tier 2 frame budget.
+
+Three commits on `main`, pushed: `ceb35340` (item 4 — 8 % build speedup via `frameDurationSeconds 3.0 → 2.775`, `radialDurationSeconds 1.5 → 1.389`, `spiralChordsPerBeat = 3.24` with `spiralChordAccumulator: Float` carrying fractional residual; median build cycle ~100 s → ~92 s); `0756a9ef` (item 1 — silent-state pause via new `stemEnergySilenceThreshold = 0.02` on `ArachneBuildState`; build no longer advances when source audio is silent / prep / paused); `04855e26` (item 3 — new `PresetDescriptor.waitForCompletionEvent: Bool` flag; `Arachne.json` sets it on, `maxDuration(forSection:)` returns `.infinity` for flagged presets, `applyLiveUpdate` strips mood-overrides for the active segment; the existing `wirePresetCompletionSubscription` path delivers the transition trigger when the build reaches `.stable`). Item 2 (spokes-below-orb investigation) was a diagnostic step, not a code change — every Arachne window in session `T23-18-42Z` was 47-64 s and caught the build mid-radial-phase; round 7's geometry is correct, and item 3 structurally fixes the cause.
+
+Known limitation: section boundaries still hard-stop completion-gated segments (`planOneSegment` `remainingInSection` cap unchanged) — acceptable because typical sections are ≥ 60 s and Arachne's round-8 build cycle is ~92 s. Revisit if Matt observes the symptom on tracks with shorter sections.
+
+Verification: 36 targeted Arachne tests green; engine 1222 tests / 156 suites with 13 failing assertions all tracing to documented pre-existing flakes per CLAUDE.md baseline (`MatIDDispatch.matID==1`, `MetadataPreFetcher.fetch_networkTimeout`, several `SessionManager.*` parallel-load timing tests); 4 new gate-regression tests added (`silentStateHaltsBuildAdvance`, `silentGateBoundaryIsTwoPercent`, `waitForCompletionEventReturnsInfinity`, `waitForCompletionEventDefaultsFalse`, `arachneIsCompletionGated`, `arachneMaxDurationIsInfinity`); 1 stale test retired (`Arachne is capped by naturalCycleSeconds (60 s)` replaced with `Arachne returns .infinity`); app build clean; SwiftLint 0 violations on touched files. Full narrative in `docs/RELEASE_NOTES_DEV.md` `[dev-2026-05-12-c]` and `docs/QUALITY/KNOWN_ISSUES.md` BUG-011 § "2026-05-12 round-8 follow-up".
+
 ### Increment 2.5.4 — Session State Machine & Track Change Behavior ✅
 
 `SessionManager` (`@MainActor ObservableObject`, `Session` module) owns the lifecycle. `startSession(source:)` drives `idle → connecting → preparing → ready`. Graceful degradation: connector failure → `ready` with empty plan; partial preparation failure → `ready` with partial plan. `startAdHocSession()` → `playing` directly (reactive mode). `beginPlayback()` advances `ready → playing`. `endSession()` from any state → `ended`.

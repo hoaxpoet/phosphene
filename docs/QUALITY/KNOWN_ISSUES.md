@@ -130,6 +130,21 @@ L4 (DeviceTier-aware fallback) explicitly NOT pulled — the prompt requires Mat
 
 ---
 
+### 2026-05-12 round-8 follow-up (BEHAVIOURAL, not perf)
+
+The four items from Matt's session `2026-05-11T23-18-42Z` directive landed in three commits on `main` 2026-05-12 (`ceb35340`, `0756a9ef`, `04855e26`; pushed). They share the BUG-011 ID for convenience because the source prompt was titled BUG-011, but they are **operationally distinct from the perf tuning above**: none of them touches frame-budget headroom. The original perf closure gate (Matt's M2 Pro real-music perf capture) is unchanged. See `docs/RELEASE_NOTES_DEV.md` `[dev-2026-05-12-c]` for the full landed-work narrative; the summary lives here so a future session inspecting this entry sees the complete picture.
+
+| Item | Description | Commit |
+|---|---|---|
+| **4** | 8 % build speedup. `ArachneBuildState.frameDurationSeconds 3.0 → 2.775`; `radialDurationSeconds 1.5 → 1.389`; new `spiralChordsPerBeat = 3.24` advance rate via `spiralChordAccumulator: Float` (fractional residual). Median build cycle ~100 s → ~92 s. | `ceb35340` |
+| **1** | Silent-state build pause. New `stemEnergySilenceThreshold = 0.02`; `advanceBuildState` zeros `effectiveDt` when sum of four AGC-normalised stem energies < 0.02. Arachne no longer constructs during prep / silence / source-app paused. Two new gate-regression tests. | `0756a9ef` |
+| **3** | Completion-gated transitions. New `PresetDescriptor.waitForCompletionEvent: Bool` (JSON `wait_for_completion_event`, default false). When true, `maxDuration(forSection:)` returns `.infinity` and `applyLiveUpdate` strips mood-derived overrides. Arachne JSON flips on. Existing `wirePresetCompletionSubscription` path delivers the transition trigger. Section-boundary cap unchanged (known limitation). | `04855e26` |
+| **2** | "Spokes-below-orb" diagnosis (no code). Frame-extraction from session `T23-18-42Z` `video.mp4` showed every Arachne window in that session caught the build mid-radial-phase. Round-7's geometry was fine; the windows were too short for the build to reach `.stable`. Item 3 structurally resolves this. | (no commit) |
+
+**Why this is "follow-up" not "closure":** the round-8 commits address user-facing problems Matt observed in production (web building during silence; orchestrator transitioning Arachne at ~50 s ignoring the round-7 `duration: 150` bump; build too slow; partial-radial frames misread as a geometry bug). They do not touch the Tier 2 frame-budget headroom that defines BUG-011 the **perf** issue. The perf closure gate documented in Verification criteria below — Matt's M2 Pro real-music perf capture — is still the load-bearing close condition. Round-8 does have one upstream effect on perf measurement: with `wait_for_completion_event: true`, Arachne windows are now ≥ 92 s instead of 47-64 s. When Matt runs the perf capture, that means each Arachne window will contain more frames and produce more statistically stable p50/p95 numbers (the previous numbers from 4,579-frame windows were already statistically reasonable; the new windows will be cleaner).
+
+---
+
 ### Verification criteria
 
 - [x] Automated: `shortRunArachneComposite` SOAK benchmark added to `SoakTestHarnessTests` (commit `bd213856`). Kernel-only SOAK_TESTS=1 benchmark. SOAK_TESTS=1 gated; loose 16 ms p95 kernel-only gate on M2 Pro at 1920×1080 with spider forced ON.
@@ -587,33 +602,6 @@ If the wider window also produces an out-of-band BPM estimate (slope still > 5 m
 
 ---
 
-### BUG-004 — All production presets have `certified: false`
-
-**Severity:** P3
-**Domain tag:** preset.fidelity
-**Status:** Open
-**Introduced:** V.6 (certification pipeline introduced; no presets have passed M7 yet)
-**Resolved:** —
-
-**Expected behavior:** At least one production preset has `certified: true` in its JSON sidecar following Matt's M7 visual review.
-
-**Actual behavior:** All 13 production presets have `certified: false`. The Orchestrator excludes uncertified presets by default; users must enable "Show uncertified presets" in Settings to see any auto-selection behavior.
-
-**Minimum reproducer:** `grep -r '"certified"' PhospheneEngine/Sources/Presets/Shaders/*.json`
-
-**Session artifacts:** n/a
-
-**Suspected failure class:** calibration (quality bar not yet met, not a code bug)
-
-**Verification criteria:**
-- [ ] Manual: Matt performs M7 review on at least one preset and approves `certified: true`.
-- [ ] Automated: `GoldenSessionTests` passes with at least one certified preset producing non-zero orchestrator selections.
-
-**Fix scope:** Preset authoring work (V.7.7B+, V.7.10). Not a code defect.
-
-**Related:** V.6, V.7.10, D-071
-
----
 
 ### BUG-005 — Spotify `preview_url` returns null for some tracks
 
