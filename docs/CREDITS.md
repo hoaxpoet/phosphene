@@ -113,6 +113,68 @@ retraining or fine-tuning.
 
 ---
 
+## Milkdrop preset attribution
+
+**Status:** **Placeholder — no Milkdrop-derived content shipped yet.**
+This section is created per D-111 (Phase MD license posture). Content
+lands when the first Milkdrop port commits in Increment MD.5; counsel
+review for D-111 must conclude before public-branch commits.
+
+**Used in:** `PhospheneEngine/Sources/Presets/Shaders/Milkdrop/`
+(Milkdrop-derived presets across the Classic Port / Evolved / Hybrid
+tiers — see `docs/MILKDROP_STRATEGY.md`).
+
+**Source pack:**
+[`projectM-visualizer/presets-cream-of-the-crop`](https://github.com/projectM-visualizer/presets-cream-of-the-crop)
+— a curated collection of 9,795 Milkdrop presets compiled by ISOSCELES
+and adopted as the default preset pack for projectM releases since
+2022. Original pack release:
+[https://www.patreon.com/posts/pack-nestdrop-91682111](https://www.patreon.com/posts/pack-nestdrop-91682111).
+
+**License posture:** Per the pack's `LICENSE.md`, Milkdrop presets
+were "in almost all cases, not released under any specific license";
+preset authors retain individual copyright, but the pack curator
+asserts public-domain-by-convention based on two decades of free
+release and ubiquitous reuse across projectM-derived applications.
+The pack supports a takedown path: preset authors can contact the
+projectM team to have their preset removed from future releases.
+Phosphene commits to honoring takedown requests routed via that path.
+
+**Per-preset attribution (placeholder schema — populated by MD.5):**
+
+For each Milkdrop-derived preset shipped in Phosphene, the JSON
+sidecar declares its source in a `milkdrop_source` block:
+
+```json
+"milkdrop_source": {
+  "filename": "<original .milk filename>",
+  "author": "<author from filename pattern, best-effort>",
+  "theme": "<cream-of-crop theme directory>",
+  "sha256": "<SHA256 of source .milk file>",
+  "pack": "projectM-visualizer/presets-cream-of-the-crop"
+}
+```
+
+This file enumerates the shipped presets once MD.5 lands. Until then,
+the table below is intentionally empty.
+
+| Phosphene preset (`.metal` / `.json` filename) | Source `.milk` filename | Original author | Pack theme |
+|---|---|---|---|
+| _(populated by MD.5)_ | | | |
+
+**Modifications:** Milkdrop presets shipped in Phosphene are *not*
+runtime-interpreted `.milk` files. They are transpiled offline (per
+D-110 / D-043; see `docs/MILKDROP_STRATEGY.md` and the MD.2 / MD.3 /
+MD.4 increments in `docs/ENGINEERING_PLAN.md`) into Metal `.metal`
+shader source + JSON sidecars. Each Phosphene-side preset typically
+adds Phosphene's deviation primitives (D-026), stem-driven routing
+(D-104), and other MV-3 capabilities (D-028) on top of the source
+preset's visual identity. Evolved (MD.6) and Hybrid (MD.7) tier
+presets diverge further from the source per the per-tier capability
+contract in D-104.
+
+---
+
 ## Open-Unmix HQ — stem separation weights
 
 **Used in:** `PhospheneEngine/Sources/ML/Weights/` (vendored weights
