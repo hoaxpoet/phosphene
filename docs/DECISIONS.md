@@ -2849,3 +2849,100 @@ D.5 (band-routed beat-driven dance) replaces both. Each cell now responds to a *
 **Rule.** Drift Motes is gone. Any future revival starts from a new preset spec authored against the three-part bar (iconic visual subject + clear musical role + infrastructure-feasible) — not from undoing this deletion. Future particle presets ship their own `ParticleGeometry` conformer and `Particles*.metal` engine-library shader pair per D-097; they do not import or branch from the deleted Drift Motes code (recoverable from git history but not the starting point).
 
 **Carry-forward.** Phase DM is closed. `docs/ENGINEERING_PLAN.md`'s Phase DM block is marked REMOVED with a back-reference to this decision. BUG-012 (Drift Motes p99 tail) is closed as obsolete in `docs/QUALITY/KNOWN_ISSUES.md`. The `SHADER_CRAFT.md` sky-only-fragment reference and the `RUNBOOK.md` kernel-cost benchmark section are rewritten generically. The next preset increment after this removal is the parallel Lumen Mosaic stream (LM.4+) or whatever Matt prioritises in `docs/ENGINEERING_PLAN.md`.
+
+---
+
+## D-LM-6 — Cell-depth gradient + optional hot-spot for Lumen Mosaic (Increment LM.6, filed 2026-05-12)
+
+**Status.** Accepted.
+
+**Decision.** Lumen Mosaic's per-cell hue gets two small albedo modulations in `sceneMaterial` between the LM.4.6 palette lookup and the frost diffusion: (1) a cell-depth gradient — `cell_hue *= mix(kCellEdgeDarkness (0.55), 1.0, 1 - smoothstep(0, cellV.f2 × kDepthGradientFalloff (1.0), cellV.f1))` — gives each cell a "domed glass" read (full brightness at centre, 0.55 × hue at boundary); and (2) an optional hot-spot — `cell_hue += pow(1 - smoothstep(0, kHotSpotRadius (0.15) × cellV.f2, cellV.f1), kHotSpotShape (4.0)) × kHotSpotIntensity (0.30) × cell_hue` — additive 30 % brightness boost on the cell's own hue at the inner 15 % of each cell, sharp pow^4 falloff. Both modulations are driven entirely by the Voronoi `f1/f2` field already computed for cell ID + frost; zero extra render cost.
+
+**Context.** LM.4.6 closed the palette work but the panel still read as flat-painted Voronoi tiles rather than physical backlit glass. Matt's M7 contact-sheet review surfaced the missing physical-glass character. The LM.6 prompt (`prompts/LM.6-prompt.md`) explicitly framed the increment as "depth gradient + hot-spot in `sceneMaterial`, not specular sparkle in the lighting fragment" — the round-5/6 attempt at normal-driven specular was rejected as Failed Approach (per-pixel dot artifacts from central-differences normal sampling sub-pixel SDF noise; see LM.3.2 round-7 notes). Earlier LM design docs spoke aspirationally about "LM.6 = specular sparkle via Cook-Torrance pass" — that path was abandoned and the design docs were corrected as part of the cert sweep.
+
+**Implementation.**
+
+- 5 new file-scope `constant float` knobs in `LumenMosaic.metal`: `kCellEdgeDarkness = 0.55f`, `kDepthGradientFalloff = 1.0f`, `kHotSpotRadius = 0.15f`, `kHotSpotShape = 4.0f`, `kHotSpotIntensity = 0.30f`.
+- ~25 LOC modulation block in `sceneMaterial` between `lm_cell_palette` and the frost diffusion.
+- 3 new tests in `LumenPaletteSpectrumTests` Suite 6 (`test_cellCentre_isBrighterThanEdge`, `test_hotSpot_brightensCellCentre`, `test_depthGradient_smoothAcrossRadius`) mirror the shader math in Swift.
+- `kReliefAmplitude = 0` and `kFrostAmplitude = 0` stay zero — SDF normal is flat per the round-7 lock. The matID==1 lighting path still skips Cook-Torrance entirely; the modulation is on albedo, not on the normal.
+
+**Why this approach.**
+
+- **Driven by Voronoi `f1/f2`, not SDF normal.** The round-5/6 attempt drove specular off the SDF-perturbed normal and produced per-pixel dot artifacts because the central-differences normal sampling picked up sub-pixel relief noise. LM.6's `cellV.f1/f2` is a per-pixel scalar field (smooth at the cell scale, deterministic), so there's no normal jitter to amplify.
+- **Albedo-only, no Cook-Torrance.** The matID==1 emission contract is `albedo × kLumenEmissionGain + IBL ambient × floor`. Adding Cook-Torrance back would require re-enabling the standard PBR path for matID==1 and would multiply per-pixel cost. The "domed cell" read is achieved entirely by per-cell albedo shading without invoking the lighting pipeline.
+- **Hot-spot is additive on cell hue, not toward white.** `cell_hue += hotSpot × intensity × cell_hue` (algebraically `cell_hue *= (1 + hotSpot × intensity)`) brightens the cell's own colour without bleaching toward white. This preserves the LM.4.6 palette character at the hot-spot location — a red cell stays red and gets brighter; doesn't turn pink or white.
+
+**What was rejected.**
+
+- **Cook-Torrance specular pass on the matID==1 path** — abandoned per Failed Approach lock; would have required undoing the round-7 round-5/6 dot-artifact fix.
+- **SDF relief amplitude > 0 to drive specular off the normal** — abandoned per the same Failed Approach lock.
+- **Multiplying the hot-spot toward white** (`cell_hue = mix(cell_hue, white, hotSpot × intensity)`) — rejected because it bleaches palette character at the hot-spot location.
+
+**Verification.**
+
+- 10/10 LumenPaletteSpectrum tests pass (7 LM.4.6 + 3 LM.6).
+- `PresetRegression` Lumen Mosaic golden hash UNCHANGED at `0xF0F0C8CCCCC8F0F0` across all three fixtures. Reason: the regression render path leaves slot-8 zero-bound, but the LM.6 modulation is per-pixel Voronoi-driven (independent of slot-8 contents), so the depth-gradient + hot-spot contribution lands identically per (`cellV.f1`, `cellV.f2`) ratio. The dHash 9×8 luma quantization at 64×64 is dominated by Voronoi cell boundary positions (large-scale signal), not per-cell intensity gradients (small-scale signal).
+- App + engine build clean. SwiftLint 0 violations on touched files.
+- Matt M7 sign-off on real-music session `2026-05-12T17-15-14Z` (jointly with LM.7).
+
+**Rule.** LM.6 modulations happen in `sceneMaterial` between the LM.4.6 palette lookup and the frost diffusion. SDF normal stays flat. Do not re-introduce normal-driven specular for matID==1 — same Failed Approach lock that retired the LM.3.2 round-5/6 frost-scatter path. Tuning surface (M7 review): `kCellEdgeDarkness` (0.30 strong dome / 0.75 subtle), `kHotSpotIntensity` (0 disabled / 0.5+ aggressive "wet glass" sheen).
+
+**Carry-forward.** LM.7 (per-track aggregate-mean tint — see D-LM-7) is the immediate next increment. Both ship together in the Phase LM closure commit.
+
+---
+
+## D-LM-7 — Per-track aggregate-mean RGB tint with chromatic projection (Increment LM.7, filed 2026-05-12)
+
+**Status.** Accepted. **Phase LM CLOSED**; Lumen Mosaic certified jointly with LM.6.
+
+**Decision.** Lumen Mosaic's per-cell uniform random RGB sampler (LM.4.6) is amended with a small per-track RGB tint vector applied before the saturate-clamp inside `lm_cell_palette`. The tint is derived from existing `lumen.trackPaletteSeed{A,B,C}` fields (each ∈ [−1, +1] from FNV-1a hash of "title | artist"), projected onto the chromatic plane via mean subtraction, and scaled by `kTintMagnitude = 0.25`:
+
+```
+rawTint    = float3(trackPaletteSeedA, trackPaletteSeedB, trackPaletteSeedC)
+meanShift  = (rawTint.r + rawTint.g + rawTint.b) / 3.0
+trackTint  = (rawTint - meanShift) × kTintMagnitude
+cell_rgb   = saturate(uniformRandomRGB(cellHash, step, trackSeed, sectionSalt) + trackTint)
+```
+
+Each track gets a deterministic chromatic tint vector that shifts the aggregate panel mean by up to ±0.20 per channel (the linear ±0.25 loses ~0.05 to clamp pile-up at 0/1). Cells still independently sample the full uniform RGB cube; only the *sampling window* slides per track. Achromatic-aligned seed configurations (all-positive → toward-white wash; all-negative → toward-black mud) collapse to zero tint via the mean-subtraction projection, so no track produces a washed or muddy panel.
+
+**Context.** LM.4.6 closed the palette work with the contract "every cell can be any colour, every track is independent." Matt's M7 contact-sheet review on the LM.6 build (2026-05-12) surfaced the LM.4.6 trade-off concretely: *"mean should NOT be middle-gray; the mean should be different for each track played."* Root cause: uniform random sampling of ~30 visible cells from the full RGB cube produces a panel whose *aggregate* (mean ≈ 0.5, hue histogram ≈ flat, saturation skewed low) is statistically identical across tracks by law of large numbers. Individual cells differ, but the panel-level *feel* was track-invariant. This was documented as a caveat in the LM.4.6 shader file header at the time the contract was accepted; the visual harness made the cost of the trade-off concrete enough that Matt explicitly chose to revise it.
+
+**The relaxation.** LM.4.6's strict "any colour reachable on every track" framing is replaced with "any colour reachable in spirit on every track." Most colours remain reachable; the most-extreme cube corners are forfeit at the seedA/B/C = ±1 limit where clamp pile-up at the cube faces excludes the opposite corner. Matt 2026-05-12 explicitly accepted this trade-off ("favoring the per-track bias without per-cell restriction") after extended iteration through five LM.4.5.x palette restrictions that were all rejected on the strict "any colour everywhere" reading.
+
+**The chromatic projection (same-day follow-up).** First visual review showed `track_v1` fixture (seed (+1, +1, +1, +1)) washed toward white; `track_v2` (seed (−1, −1, −1, −1)) would have correspondingly washed toward black. Root cause: a raw tint vector with non-zero mean component shifts the achromatic axis (brightness) instead of the chromatic plane (hue). Fix: subtract the mean component before scaling. Projects every tint onto the plane perpendicular to the achromatic axis (1, 1, 1)/√3. Achromatic-aligned seeds collapse to LM.4.6-neutral instead of washing. New `test_achromaticAlignedSeed_doesNotWash` regression-locks the fix.
+
+**Implementation.**
+
+- 1 new file-scope constant in `LumenMosaic.metal`: `kTintMagnitude = 0.25f`.
+- 6 LOC in `lm_cell_palette` adding the chromatic-projected tint before `saturate(...)`.
+- Swift mirror constant `LMPalette.tintMagnitude = 0.25` + tint application in `lmCellPaletteRGB`.
+- New Suite 7 `LM.7 — per-track aggregate-mean tint` with 5 tests (warm/cool aggregate direction, distinct-tracks-distinct-means via RGB Euclidean distance ≥ 0.20, neutral-track-near-middle-gray, achromatic-aligned-seed-does-not-wash).
+- File-header LM.7 paragraph in `LumenMosaic.metal` + amendment to the LM.4.6 docstring noting the relaxation.
+
+**Why this approach.**
+
+- **Tint is additive, not multiplicative.** A multiplicative scale would also restrict the reachable set (cell could never reach black on a high-multiplier track). Additive + saturate-clamp preserves reachability for the majority of the cube and only forfeits the corner opposite the tint direction.
+- **kTintMagnitude = 0.25 is the calibration sweet-spot.** 0.15 gave insufficient track distinction; 0.35 produced visible cube-corner squashing on most tracks. 0.25 yields ±0.20 mean shifts (~visible variety per track) with ~10 % cube-face clamp pile-up at extreme tints (acceptable trade-off).
+- **Chromatic projection over pure additive.** Tracks whose seeds happen to land near the achromatic axis would otherwise produce washed/muddy panels — exactly the LM.2 "muted output" failure mode that LM.4.5+ explicitly fought. The mean-subtraction projection is the smallest deviation from "add a tint" that guarantees no track lands on the achromatic axis. Side-effect: achromatic-aligned tracks lose their tint entirely and read as LM.4.6-neutral. FNV-1a hash of "title | artist" distributes seeds roughly uniformly in [−1, +1]³; achromatic-aligned tracks occur in a small minority of cases.
+
+**What was rejected.**
+
+- **Larger tint magnitude (0.35–0.50).** Tested; produces obvious cube-face squashing and reduces palette breadth visibly. Sacrifices per-cell freedom further than necessary.
+- **Per-track HSV rotation (hue-only bias).** Considered; would preserve full saturation range per track but requires HSV indirection back into the palette, which Matt explicitly rejected in the LM.4.5.x exploration. The RGB-additive form keeps the LM.4.6 hash-only architecture intact.
+- **Per-cell biased sampling (some cells uniform-random, some pulled toward track colour).** Considered; reintroduces the "anchor" pattern Matt rejected. Worse: changes per-cell distribution unequally, complicating the LM.4.6 "every cell independent" framing.
+- **Pure additive tint without chromatic projection.** Implemented first and reviewed; produced the track_v1 wash failure. The projection is mandatory.
+- **Removing kTintMagnitude entirely (track tint = rawTint, ±1.0 magnitude).** Forfeits too much of the cube — every cell on a maximally-warm track would clamp to (1, *, *), losing the entire low-R half of the cube. 0.25 is the largest value where palette breadth stays acceptable.
+
+**Verification.**
+
+- 15/15 LumenPaletteSpectrum tests pass (7 LM.4.6 + 3 LM.6 + 5 LM.7) — all previous invariants preserved (per-cell uniqueness, channel coverage, per-track cell-distinctness, determinism, beat-step change, section boundary, within-section stability).
+- `PresetRegression` Lumen Mosaic golden hash UNCHANGED at `0xF0F0C8CCCCC8F0F0` (regression harness leaves slot-8 zero-bound → trackPaletteSeed = 0 → tint = 0 → behaviour identical to LM.4.6 path).
+- App + engine build clean. SwiftLint 0 violations on touched files.
+- Matt M7 sign-off on real-music session `~/Documents/phosphene_sessions/2026-05-12T17-15-14Z` (Love Rehab / So What / There There / Pyramid Song / Money). Four screenshots show clearly distinct aggregate palettes. *"Fix has achieved the desired effect — each track now has a visually distinct color palette, though there is a fair amount of hue recycling across the four. ... I think we can move to certify this preset."*
+- Cert flip: `LumenMosaic.json` `certified: true`; `"Lumen Mosaic"` added to `FidelityRubricTests.certifiedPresets`. `automatedGate_uncertifiedPresetsAreUncertified` test relaxed to assert `result.certified` for certified presets (the strict `isCertified` AND with `meetsAutomatedGate` is preserved for uncertified-preset gating; Lumen Mosaic fails heuristic M3 by design — emission-only matID==1 path uses `voronoi_f1f2` + frost diffusion instead of V.3 cookbook materials — and per SHADER_CRAFT.md §12.1 M7 the load-bearing gate is Matt's reference-frame review).
+
+**Rule.** Per-track tint stays additive + chromatic-projected. Future LM iterations should not regress the chromatic projection (would reintroduce wash/mud on achromatic-aligned tracks) or raise `kTintMagnitude` above 0.30 (excessive cube-face squashing). The LM.4.6 contract is preserved *in spirit* — per-cell freedom is per-cell sampling from the full uniform-random RGB cube on every track; the per-track window shifts but every track still samples a 3D region with mass at every interior point.
+
+**Carry-forward.** Phase LM CLOSED. `docs/ENGINEERING_PLAN.md` Phase LM section marked closed with full LM.6 + LM.7 entries. Lumen Mosaic is the first preset in the catalog with `certified: true` in its JSON sidecar (SpectralCartograph passes the lightweight automated rubric gate but is `certified: false` — diagnostic preset, no M7 sign-off). Next preset eligible for cert is whoever Matt prioritises (see `docs/ENGINEERING_PLAN.md` Phase G-uplift and adjacent stream notes in CLAUDE.md).

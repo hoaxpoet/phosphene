@@ -6,6 +6,40 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-12-b] Lumen Mosaic certified — LM.6 cell-depth gradient + LM.7 per-track tint (D-LM-6 + D-LM-7)
+
+**Increments:** LM.6 + LM.7. **Decisions:** D-LM-6, D-LM-7. **Status:** Phase LM CLOSED. **Two commits suggested** (LM.6 then LM.7; both clean local working tree before push).
+
+Lumen Mosaic is the first catalog preset to land `certified: true` after Matt's M7 sign-off on real-music session `~/Documents/phosphene_sessions/2026-05-12T17-15-14Z` (Love Rehab / So What / There There / Pyramid Song / Money). Two landed layers stack on top of the LM.4.6 palette contract:
+
+**LM.6 — Cell-depth gradient + optional hot-spot.** Two albedo-only modulations in `LumenMosaic.metal` `sceneMaterial`, between palette lookup and frost diffusion. (1) Depth gradient — `cell_hue *= mix(kCellEdgeDarkness (0.55), 1.0, 1 - smoothstep(0, cellV.f2, cellV.f1))` — full brightness at cell centre, 0.55 × hue at boundary; gives cells a "domed 3D-glass" read instead of flat-painted tiles. (2) Optional hot-spot — `cell_hue += pow(1 - smoothstep(0, kHotSpotRadius (0.15) × cellV.f2, cellV.f1), kHotSpotShape (4.0)) × kHotSpotIntensity (0.30) × cell_hue` — 30 % brightness boost at inner 15 % of each cell, additive on the cell's own hue (not toward white — palette character preserved). Driven entirely by Voronoi `f1/f2` field already computed for cell ID + frost; zero extra render cost. **The SDF normal stays flat** (`kReliefAmplitude = 0` / `kFrostAmplitude = 0`) — LM.6 is albedo modulation, not normal-driven specular; the matID==1 lighting path still skips Cook-Torrance per the LM.3.2 round-7 / Failed Approach lock. Earlier LM design docs spoke aspirationally about "LM.6 = Cook-Torrance specular sparkle" — that path was abandoned and the docs were corrected as part of this cert sweep. 5 new file-scope constants. 3 new tests in `LumenPaletteSpectrumTests` Suite 6.
+
+**LM.7 — Per-track aggregate-mean RGB tint with chromatic projection.** Closes the LM.4.6 panel-aggregate complaint Matt voiced after seeing the LM.6 contact sheet: *"mean should NOT be middle-gray; the mean should be different for each track played."* Inside `lm_cell_palette`, a per-track tint vector `trackTint = (rawTint - meanShift) × kTintMagnitude (0.25)` derived from `lumen.trackPaletteSeed{A,B,C}` (FNV-1a hash of "title | artist") is added to every cell's uniform random RGB before the saturate-clamp. **The mean-subtraction projection** (subtract `(rawTint.r + rawTint.g + rawTint.b) / 3` before scaling) projects every tint onto the chromatic plane perpendicular to (1,1,1)/√3, so achromatic-aligned seed configurations (all-positive → toward-white wash; all-negative → toward-black mud) collapse to zero tint instead of washing the panel — the side-effect is that diagonal-aligned tracks read as LM.4.6-neutral, preferred over washed. Implemented in two passes: pure additive tint first, then the chromatic-projection fix after Matt observed the `track_v1 (+1,+1,+1,+1)` wash. Per-cell freedom preserved *in spirit* — every cell still rolls a colour from the full uniform-random RGB cube; only the sampling window slides per track. Most colours remain reachable on every track; the cube corner opposite the tint direction is forfeit at the seedA/B/C = ±1 limit (Matt explicitly accepted this trade-off). 1 new file-scope constant + 5 new tests in Suite 7 (warm/cool aggregate direction, distinct-tracks-distinct-means, neutral-track-near-middle-gray, achromatic-aligned-seed-does-not-wash).
+
+**Certification.**
+
+- `LumenMosaic.json` → `"certified": true`. First catalog preset with this flag.
+- `FidelityRubricTests.certifiedPresets` → `["Lumen Mosaic"]` (was `[]`).
+- `automatedGate_uncertifiedPresetsAreUncertified` test relaxed: certified presets only need `result.certified == true` (the JSON flag); uncertified presets retain the strict `!isCertified` AND of `meetsAutomatedGate && certified`. Reason: Lumen Mosaic fails heuristic M3 by design (emission-only matID==1 path uses `voronoi_f1f2` + frost diffusion instead of V.3 cookbook materials); per `SHADER_CRAFT.md §12.1` M7 the load-bearing gate is Matt's reference-frame review.
+- `docs/ENGINEERING_PLAN.md` Phase LM marked closed with full LM.6 + LM.7 increment entries.
+- `docs/DECISIONS.md` adds D-LM-6 + D-LM-7.
+
+**Verification.**
+
+- 15/15 LumenPaletteSpectrum tests pass (7 LM.4.6 + 3 LM.6 + 5 LM.7).
+- 51/51 cert-related tests pass (LumenPalette / FidelityRubric / PresetRegression / PresetAcceptance / PresetLoaderCompileFailure / PresetDescriptorRubricFields).
+- Engine 1223/1227 with two documented pre-existing failures unchanged: `MatIDDispatch.matID==1 emission path` (LM.3.2 round-4 calibration drift in test fixture, present pre-LM.6) and `MetadataPreFetcher.fetch_networkTimeout` (parallel-load timing flake).
+- **Lumen Mosaic golden hash unchanged at `0xF0F0C8CCCCC8F0F0`** across all three fixtures; every other preset's hash byte-identical (no cross-preset drift). The regression harness leaves slot-8 zero-bound → trackPaletteSeed = 0 → LM.7 tint = 0; LM.6's Voronoi-driven modulation contributes per-pixel but lands below the dHash 9×8 luma quantization at 64×64 (dominated by Voronoi cell boundary positions, not per-cell intensity gradients).
+- SwiftLint 0 violations on touched files.
+
+**Session telemetry (M7 manual validation).** `frame_gpu_ms`: mean 1.37 ms, max 32.9 ms, only 3/14622 frames > 16 ms on M2 Pro. `frame_cpu_ms` spikes (mean 10.1 ms, max 314 ms, 589 > 16 ms) are stem-separation thread hops, not render path. BeatGrid lock-state distribution: 37 % LOCKED / 21 % LOCKING / 42 % UNLOCKED (pre-existing BUG-007 oscillation, unrelated to LM). Only pre-existing DSP.4 `BPM 3-way` warnings logged. Four track screenshots show visibly distinct aggregate palettes per the LM.7 design intent.
+
+**Docs corrected in the cert sweep.** Multiple LM-related docs spoke aspirationally about "LM.6 = Cook-Torrance specular sparkle" before the LM.6 prompt was finalized; the actual landed shape is albedo-only modulation with the SDF normal still flat. `docs/presets/LUMEN_MOSAIC_DESIGN.md`, `docs/presets/Lumen_Mosaic_Rendering_Architecture_Contract.md`, and `docs/VISUAL_REFERENCES/lumen_mosaic/README.md` are all corrected in this commit sweep to reflect the actual landed implementation. The CLAUDE.md inline module-map entry has been updated with the full LM.6 + LM.7 active-constants list and the cert status.
+
+See `docs/DECISIONS.md` D-LM-6 + D-LM-7 for the full rationale, what was rejected (multiple LM.4.5.x palette restrictions, larger tint magnitudes, per-track HSV rotation, per-cell biased sampling, pure additive tint without chromatic projection), and the rules for future LM iterations (don't regress the chromatic projection; don't raise `kTintMagnitude` above 0.30; don't re-introduce normal-driven specular for matID==1).
+
+---
+
 ## [dev-2026-05-11-a] Drift Motes preset retired (D-102)
 
 **Increment:** removal. **Decision:** D-102. One commit.

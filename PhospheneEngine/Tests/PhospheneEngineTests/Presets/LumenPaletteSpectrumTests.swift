@@ -1,7 +1,9 @@
-// LumenPaletteSpectrumTests — Regression-lock for LM.4.6 (pure uniform
-// random RGB per cell).
+// LumenPaletteSpectrumTests — Regression-lock for LM.4.6 (uniform random
+// RGB per cell) + LM.6 (cell-depth gradient + hot-spot) + LM.7
+// (per-track RGB tint vector for aggregate-mean distinction).
 //
-// Mirror of `lm_cell_palette` in `LumenMosaic.metal`. Asserts:
+// Mirror of `lm_cell_palette` + the LM.6 depth-gradient / hot-spot block
+// in `LumenMosaic.metal`. Asserts:
 //   1. Per-cell uniqueness — 1500 cells produce ≥ 500 distinct colours.
 //   2. R/G/B coverage — each channel spans both halves of [0, 1].
 //   3. Per-track distinctness — same cell on different trackSeeds → different RGB.
@@ -9,6 +11,13 @@
 //   5. Beat-step change — single team-counter step on a period=1 cell changes RGB.
 //   6. Section boundary — bassCounter crossing kSectionBeatLength changes RGB.
 //   7. Within-section stable — within the same section bucket + step, RGB is constant.
+//   8. LM.6 cell-depth gradient — centre brighter than edge.
+//   9. LM.6 hot-spot — multiplier peaks at f1=0, decays to 1.0 past kHotSpotRadius × f2.
+//  10. LM.6 depth gradient — monotonic decreasing across the cell radius.
+//  11. LM.7 warm track — aggregate mean R high, B low.
+//  12. LM.7 cool track — aggregate mean R low, B high.
+//  13. LM.7 distinct tracks — different trackSeeds produce visibly different aggregate means.
+//  14. LM.7 neutral track — zero trackSeeds produce mean near middle-gray.
 
 import Testing
 import simd
@@ -22,6 +31,16 @@ private enum LMPalette {
     static let midTeamCutoff: UInt32         = 65
     static let trebleTeamCutoff: UInt32      = 90
     static let sectionBeatLength: Float      = 64.0
+
+    // LM.6 — cell-depth gradient + hot-spot. Mirror the .metal constants.
+    static let cellEdgeDarkness: Float       = 0.55
+    static let depthGradientFalloff: Float   = 1.0
+    static let hotSpotRadius: Float          = 0.15
+    static let hotSpotShape: Float           = 4.0
+    static let hotSpotIntensity: Float       = 0.30
+
+    // LM.7 — per-track RGB tint magnitude. Mirror the .metal constant.
+    static let tintMagnitude: Float          = 0.25
 }
 
 // MARK: - Shader algorithm mirrored in Swift
@@ -84,7 +103,19 @@ private func lmCellPaletteRGB(
     let r = Float((colourHash >>  0) & 0xFF) * (1.0 / 255.0)
     let g = Float((colourHash >>  8) & 0xFF) * (1.0 / 255.0)
     let b = Float((colourHash >> 16) & 0xFF) * (1.0 / 255.0)
-    return SIMD3<Float>(r, g, b)
+
+    // LM.7 — per-track RGB tint, projected onto the chromatic plane
+    // (mean subtracted) so achromatic-aligned seeds don't produce
+    // toward-white / toward-black wash. saturate-clamped.
+    let rawTint = SIMD3<Float>(seedA, seedB, seedC)
+    let meanShift = (rawTint.x + rawTint.y + rawTint.z) / 3.0
+    let trackTint = (rawTint - SIMD3<Float>(repeating: meanShift)) * LMPalette.tintMagnitude
+    let tinted = SIMD3<Float>(r, g, b) + trackTint
+    return SIMD3<Float>(
+        max(0, min(1, tinted.x)),
+        max(0, min(1, tinted.y)),
+        max(0, min(1, tinted.z))
+    )
 }
 
 // MARK: - Random sampler
@@ -239,5 +270,177 @@ struct LumenPaletteSectionTests {
                                     seedA: 0.1, seedB: 0.2, seedC: 0.3, seedD: 0.4,
                                     bassCounter: 50, midCounter: 0, trebleCounter: 0)
         #expect(rgbA == rgbB, "colour drifted within section bucket")
+    }
+}
+
+// MARK: - LM.6 helpers — mirror of the depth-gradient + hot-spot block in
+// `sceneMaterial`. Pure scalar arithmetic; same math the shader applies
+// per-pixel to `cell_hue` between palette lookup and frost diffusion.
+
+private func lmSmoothstep(_ edge0: Float, _ edge1: Float, _ x: Float) -> Float {
+    if edge0 >= edge1 { return x < edge0 ? 0 : 1 }
+    let t = max(0, min(1, (x - edge0) / (edge1 - edge0)))
+    return t * t * (3 - 2 * t)
+}
+
+private func lmMix(_ a: Float, _ b: Float, _ t: Float) -> Float { a + (b - a) * t }
+
+/// Per-pixel multiplier the LM.6 depth gradient applies to `cell_hue`.
+/// 1.0 at centre (`f1 = 0`); `kCellEdgeDarkness` at edge (`f1 = f2`).
+private func lmCellDepthFactor(f1: Float, f2: Float) -> Float {
+    let cellRadius = f2 * LMPalette.depthGradientFalloff
+    let depth01 = 1.0 - lmSmoothstep(0, cellRadius, f1)
+    return lmMix(LMPalette.cellEdgeDarkness, 1.0, depth01)
+}
+
+/// Per-pixel multiplier the LM.6 hot-spot applies to `cell_hue`. The
+/// shader form `cell_hue += hotSpot × intensity × cell_hue` is
+/// equivalent to `cell_hue *= (1 + hotSpot × intensity)`; we return
+/// that scalar so the test can compare directly.
+private func lmHotSpotMultiplier(f1: Float, f2: Float) -> Float {
+    let edge = LMPalette.hotSpotRadius * f2
+    let raw = 1.0 - lmSmoothstep(0, edge, f1)
+    let shaped = pow(raw, LMPalette.hotSpotShape)
+    return 1.0 + shaped * LMPalette.hotSpotIntensity
+}
+
+// MARK: - Suite 6: LM.6 — Cell-depth gradient
+
+@Suite("LM.6 — cell-depth gradient")
+struct LumenCellDepthGradientTests {
+
+    @Test func test_cellCentre_isBrighterThanEdge() {
+        let f2: Float = 0.1
+        let centre = lmCellDepthFactor(f1: 0,  f2: f2)
+        let edge   = lmCellDepthFactor(f1: f2, f2: f2)
+        #expect(centre > edge, "centre factor \(centre) not > edge factor \(edge)")
+        #expect(abs(centre - 1.0) < 1e-5, "centre depth factor should be 1.0, got \(centre)")
+        #expect(abs(edge - LMPalette.cellEdgeDarkness) < 1e-5,
+                "edge factor should be kCellEdgeDarkness (\(LMPalette.cellEdgeDarkness)), got \(edge)")
+    }
+
+    @Test func test_hotSpot_brightensCellCentre() {
+        let f2: Float = 0.1
+        // At f1=0 the hot-spot is at peak: multiplier = 1 + 1×kHotSpotIntensity.
+        let peakMul = lmHotSpotMultiplier(f1: 0, f2: f2)
+        let expectedPeak: Float = 1.0 + LMPalette.hotSpotIntensity
+        #expect(abs(peakMul - expectedPeak) < 1e-5,
+                "hot-spot peak multiplier should be \(expectedPeak), got \(peakMul)")
+
+        // At f1 > kHotSpotRadius × f2 the hot-spot has fully decayed.
+        let outsideMul = lmHotSpotMultiplier(f1: LMPalette.hotSpotRadius * f2 + 1e-3, f2: f2)
+        #expect(abs(outsideMul - 1.0) < 1e-5,
+                "hot-spot multiplier outside kHotSpotRadius × f2 should be 1.0, got \(outsideMul)")
+    }
+
+    @Test func test_depthGradient_smoothAcrossRadius() {
+        let f2: Float = 0.1
+        let samples: [Float] = [0, 0.25 * f2, 0.5 * f2, 0.75 * f2, f2]
+        let factors = samples.map { lmCellDepthFactor(f1: $0, f2: f2) }
+        for i in 1..<factors.count {
+            let prev = factors[i - 1]
+            let curr = factors[i]
+            #expect(curr < prev - 1e-6,
+                    "depth gradient not monotonic at sample \(i): \(prev) → \(curr)")
+        }
+        // Endpoint sanity (re-validate Suite 6.1 invariants on this sample grid).
+        #expect(abs(factors.first! - 1.0) < 1e-5)
+        #expect(abs(factors.last!  - LMPalette.cellEdgeDarkness) < 1e-5)
+    }
+}
+
+// MARK: - Suite 7: LM.7 — Per-track aggregate-mean tint
+
+/// Aggregate the mean RGB over many independent cells on a single track.
+/// Mirrors what an observer perceives looking at a panel of ~30 visible
+/// cells but uses 2000 samples for a stable statistic.
+private func aggregateMean(
+    seedA: Float, seedB: Float, seedC: Float, seedD: Float,
+    sampleCount: Int = 2000,
+    rngState: UInt32 = 0xABCD_1234
+) -> SIMD3<Float> {
+    var rng = Mulberry32(state: rngState)
+    var sum = SIMD3<Float>(0, 0, 0)
+    for _ in 0..<sampleCount {
+        let cellHash = rng.nextUInt32()
+        let rgb = lmCellPaletteRGB(
+            cellHash: cellHash,
+            seedA: seedA, seedB: seedB, seedC: seedC, seedD: seedD,
+            bassCounter: 0, midCounter: 0, trebleCounter: 0
+        )
+        sum += rgb
+    }
+    return sum / Float(sampleCount)
+}
+
+@Suite("LM.7 — per-track aggregate-mean tint")
+struct LumenTrackTintTests {
+
+    @Test func test_warmTrack_aggregateMeanLeansWarm() {
+        // seedA = +1, seedC = -1 → tint ≈ (+0.25, 0, -0.25) → warm
+        let mean = aggregateMean(seedA: +1, seedB: 0, seedC: -1, seedD: 0)
+        #expect(mean.x > 0.60, "warm track mean R should lean high, got \(mean.x)")
+        #expect(mean.z < 0.40, "warm track mean B should lean low, got \(mean.z)")
+        #expect(mean.x > mean.z + 0.15,
+                "warm track should have R−B gap > 0.15, got R=\(mean.x) B=\(mean.z)")
+    }
+
+    @Test func test_coolTrack_aggregateMeanLeansCool() {
+        // seedA = -1, seedC = +1 → tint ≈ (-0.25, 0, +0.25) → cool
+        let mean = aggregateMean(seedA: -1, seedB: 0, seedC: +1, seedD: 0)
+        #expect(mean.x < 0.40, "cool track mean R should lean low, got \(mean.x)")
+        #expect(mean.z > 0.60, "cool track mean B should lean high, got \(mean.z)")
+        #expect(mean.z > mean.x + 0.15,
+                "cool track should have B−R gap > 0.15, got R=\(mean.x) B=\(mean.z)")
+    }
+
+    @Test func test_distinctTracks_haveDistinctAggregateMeans() {
+        let trackA = aggregateMean(seedA: +0.8, seedB: -0.3, seedC: +0.1, seedD: 0)
+        let trackB = aggregateMean(seedA: -0.5, seedB: +0.7, seedC: -0.6, seedD: 0)
+        let trackC = aggregateMean(seedA: -0.2, seedB: -0.6, seedC: +0.9, seedD: 0)
+        let distAB = simd_distance(trackA, trackB)
+        let distAC = simd_distance(trackA, trackC)
+        let distBC = simd_distance(trackB, trackC)
+        #expect(distAB > 0.20, "tracks A,B aggregate-mean distance \(distAB) too small")
+        #expect(distAC > 0.20, "tracks A,C aggregate-mean distance \(distAC) too small")
+        #expect(distBC > 0.20, "tracks B,C aggregate-mean distance \(distBC) too small")
+    }
+
+    @Test func test_neutralTrack_aggregateMeanNearMiddleGray() {
+        // All seeds zero → tint = (0,0,0) → behaviour identical to LM.4.6.
+        // Aggregate mean should land near (0.5, 0.5, 0.5).
+        let mean = aggregateMean(seedA: 0, seedB: 0, seedC: 0, seedD: 0)
+        let dist = simd_distance(mean, SIMD3<Float>(0.5, 0.5, 0.5))
+        #expect(dist < 0.05,
+                "neutral track mean should be near middle gray, got \(mean) dist=\(dist)")
+    }
+
+    /// Regression-lock the chromatic-projection fix (Matt 2026-05-12).
+    /// Seeds aligned along the achromatic axis (all-positive or
+    /// all-negative) would, without the mean-subtraction projection,
+    /// shift the panel toward white (washed) or black (muddy). With
+    /// the projection in place, achromatic-aligned seeds collapse to
+    /// the chromatic plane — the panel reads as neutral-middle-gray
+    /// rather than washed/muddy.
+    @Test func test_achromaticAlignedSeed_doesNotWash() {
+        // All-positive seeds — what produced the track_v1 wash before
+        // the fix.
+        let allPos = aggregateMean(seedA: +1, seedB: +1, seedC: +1, seedD: 0)
+        #expect(allPos.x < 0.60,
+                "achromatic-+ track must not wash toward white (got R=\(allPos.x))")
+        #expect(allPos.y < 0.60,
+                "achromatic-+ track must not wash toward white (got G=\(allPos.y))")
+        #expect(allPos.z < 0.60,
+                "achromatic-+ track must not wash toward white (got B=\(allPos.z))")
+
+        // All-negative seeds — would push toward black under the
+        // unprojected tint.
+        let allNeg = aggregateMean(seedA: -1, seedB: -1, seedC: -1, seedD: 0)
+        #expect(allNeg.x > 0.40,
+                "achromatic-− track must not collapse toward black (got R=\(allNeg.x))")
+        #expect(allNeg.y > 0.40,
+                "achromatic-− track must not collapse toward black (got G=\(allNeg.y))")
+        #expect(allNeg.z > 0.40,
+                "achromatic-− track must not collapse toward black (got B=\(allNeg.z))")
     }
 }

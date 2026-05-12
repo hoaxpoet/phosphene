@@ -1,10 +1,13 @@
 # Lumen Mosaic — Visual References
 
-**Family**: `glass` (contemplative sub-class)
-**Role**: meditative co-performer for slow ambient / downtempo / dub. The still-and-shift register.
-**Authoring docs**: `LUMEN_MOSAIC_DESIGN.md` (design intent), `Lumen_Mosaic_Rendering_Architecture_Contract.md` (implementation contract), `LUMEN_MOSAIC_CLAUDE_CODE_PROMPTS.md` (phased increments). All three live at `docs/presets/`, not in this folder.
+**Family**: `geometric` (pattern-glass sub-class; the `glass` framing in the original reference set drifted toward the final `geometric` classification in `LumenMosaic.json`).
+**Role**: energetic dance partner — vibrant per-cell colour field synced to the beat. The original "meditative co-performer / still-and-shift" framing in this README was aspirational; the preset as it certified at LM.7 (2026-05-12) reads as a kinetic dance register (see Decision A.1 / aesthetic role section of `LUMEN_MOSAIC_DESIGN.md` §1). Quiet moments preserve the still-and-shift character (silence fallback holds the static `(cellHash, 0, trackSeed, 0)` colour).
+**Status**: **CERTIFIED 2026-05-12** at LM.7. `LumenMosaic.json` `certified: true`. First catalog preset to land cert.
+**Authoring docs**: `LUMEN_MOSAIC_DESIGN.md` (design intent + current implementation), `Lumen_Mosaic_Rendering_Architecture_Contract.md` (current-implementation summary + historical LM.3.2 prose), `LUMEN_MOSAIC_CLAUDE_CODE_PROMPTS.md` (phased increments). All three live at `docs/presets/`, not in this folder.
 
 This README is the visual contract Claude Code sessions read before authoring the preset. It is rubric-bearing per D-064 (full-rubric variant). The design doc and contract are the authoritative source for everything beyond visual fidelity.
+
+**Drift correction note (2026-05-12).** Several anti-reference notes below describe stale architecture (LM.2-era "4-light agent system"; LM.3-era "stem-driven colours from 4 light agent positions"). The actual landed architecture at cert (LM.7) is per-cell uniform random RGB (LM.4.6) + LM.6 cell-depth gradient and hot-spot (albedo modulations driven by Voronoi `f1/f2`) + LM.7 per-track chromatic-projected tint vector (`trackPaletteSeed{A,B,C}`-derived). The 4-light agent struct stays on the GPU buffer for ABI continuity but the shader does not read it. Per-track palette identity comes from the `trackPaletteSeed` plumbing, not stem energies. The trait matrix and anti-reference text below should be read with this context in mind.
 
 ---
 
@@ -30,8 +33,8 @@ The user-supplied photograph of hammered pattern glass with multi-color backligh
 **Mandatory** (the preset must reproduce these properties — every contact sheet must read as the same kind of surface):
 - Hex-biased Voronoi cell pattern filling the entire visible frame, ≈50 cells across at the authoring aspect ratio.
 - Sharp inter-cell ridges with thin dark seams between cell faces; ridges read as creases, not soft transitions.
-- Each cell appears as a raised dimple (per-cell shading relief via normal perturbation; the `mat_pattern_glass` V.3 height-gradient recipe). The PANEL itself is flat (`sd_box`); the cell relief is shading-only and is what distinguishes pattern glass from flat-tinted stained glass.
-- In-cell frosted micro-texture producing visible specular sparkle under any lighting condition.
+- Each cell appears as a raised dimple. **Implementation note (LM.6 / D-LM-6):** the reference image's per-cell normal perturbation is approximated in Lumen Mosaic by albedo-only modulation — the LM.6 cell-depth gradient `cell_hue *= mix(0.55, 1.0, depth01(f1, f2))` produces a centre-bright / edge-dark gradient that reads as a domed cell without normal-driven shading. The SDF normal stays flat (`kReliefAmplitude = 0`) per the LM.3.2 round-7 / Failed Approach lock that retired normal-driven specular paths after per-pixel dot artifacts. The PANEL itself is flat (`sd_box`); the cell relief is albedo-shading-only.
+- In-cell frosted micro-texture producing visible centre-brightness ("specular-like") sparkle. **Implementation note (LM.6 / D-LM-6):** the reference image's specular sparkle is approximated by the LM.6 optional hot-spot — a per-pixel `pow^4` brightness boost (`cell_hue += pow(1-smoothstep(0, 0.15×f2, f1), 4.0) × 0.30 × cell_hue`) additive on the cell's own hue (not toward white). The matID==1 lighting path does NOT invoke Cook-Torrance; LM.6 is per-pixel albedo shading, not a normal-driven specular pass.
 - Multiple distinct backlit color zones simultaneously visible across the panel face.
 - Glass reads as **emission-dominated** when backlit — bright cells "glow" rather than merely reflect (matID == 1 emission-dominated path; contract §sceneSDF/sceneMaterial).
 
@@ -149,9 +152,9 @@ Additional antis welcome if a different failure mode benefits from visual repres
 
 Refer to `SHADER_CRAFT.md §12` for the global rubric definition. The items below are the Lumen-Mosaic-specific instantiation. Numbers in parentheses cross-reference design doc §6 acceptance criteria.
 
-### Mandatory (7/7 required for certification at LM.9)
+### Mandatory (7/7 — Lumen Mosaic certified 2026-05-12 at LM.7; criteria met)
 
-1. **Detail cascade present.** All four detail scales visible in the steady-fixture contact sheet: macro Voronoi composition + meso dome/ridge + micro frost + specular sparkle. Reference anchors: `04_*` (composite); `02_*` (dome/ridge under raking light).
+1. **Detail cascade present.** All four detail scales visible in the steady-fixture contact sheet: macro Voronoi composition + meso LM.6 cell-depth gradient (centre→edge brightness from `mix(0.55, 1.0, depth01(f1, f2))`) + micro frost (Voronoi-distance diffusion) + LM.6 hot-spot (centre 30 % brightness pinpoint additive on cell's own hue). Reference anchors: `04_*` (composite); `02_*` (dome/ridge under raking light). Implementation cascade is albedo-only — no normal-driven specular pass invoked on matID==1.
 2. **≥4 octaves of noise in hero surface.** `fbm8(p * 80)` for in-cell frost provides 8 octaves; documented in `LumenMosaic.metal` `sceneMaterial`.
 3. **Audio reactivity via deviation primitives only.** `f.*_att_rel`, `f.*_dev`, `stems.*_rel`, `stems.*_dev`. **Zero raw `f.bass` / `f.mid` / `f.treble` reads** (D-026). Verified by `grep -n 'f\.bass[^_]\|f\.mid[^_]\|f\.treble[^_]' LumenMosaic.metal LumenPatternEngine.swift` returning empty.
 4. **D-019 silence fallback present and tested.** At silence, the panel reads as a quiet mood-tinted ambient (non-black, visually coherent). Verified in silence-fixture contact sheet and `LumenPatternEngineTests` warmup test.
@@ -159,26 +162,30 @@ Refer to `SHADER_CRAFT.md §12` for the global rubric definition. The items belo
 6. **Panel-edge invariant.** No panel boundary visible in any frame at any aspect ratio (16:9, 4:3, 21:9). matID == 0 channel empty across full frame. Per Decision G.1 and contract §P.1. **Anti-anchor: `05_*` shows exactly the failure of this invariant (visible window frame at bottom).**
 7. **Performance budget met.** p95 ≤ 3.7 ms at Tier 2 over a 30 s capture against a beat-heavy fixture. Target: cheapest ray-march preset in the catalog.
 
-### Expected (≥ 2 / 4 for certification at LM.9)
+### Expected (≥ 2 / 4 — Lumen Mosaic certified at LM.7; criteria met as actually landed)
 
-1. **Beat-locked dance verifiable by eye.** At a known-BPM track, the four light agents' position oscillation peaks visibly land on the beat (contract §P.4 figure-8 Lissajous). Verified by Matt at LM.2 review and again at LM.9.
-2. **Mood-quadrant palette differentiation.** HV-HA vs LV-LA contact sheet pair shows clearly distinct palettes. Reference anchor for color-zone variety: `05_*`.
-3. **Pattern variety over time.** A 60 s capture against a beat-heavy fixture produces ≥ 3 distinct pattern types emerging and decaying.
-4. **Cross-genre legibility.** Tested against ≥ 3 Matt-nominated tracks spanning ambient, downtempo, beat-heavy. Each reads coherently with its music — no pathological behaviour on any.
+The original Expected items below were authored against the LM.2-era 4-agent-system architecture (since retired); they are preserved for the increment history with corrected actual-landed-shape notes.
 
-### Strongly preferred (≥ 1 / 4 for certification at LM.9)
+1. **Beat-locked dance verifiable by eye.** ✅ **As shipped (LM.3.2+):** per-cell *colour change* (not agent position) advances on each band-team's beat counter. Bass-team cells step on kicks; mid-team on melody; treble-team on hats. Verified by Matt at LM.3.2 sign-off (2026-05-10) and re-verified at LM.7 cert sign-off (2026-05-12).
+2. **Mood-quadrant palette differentiation.** ⚠ **Retired by LM.4.6 / LM.7.** Mood-coupled palette parameters were retired in LM.4.6 (`f.valence` / `f.arousal` are unused). LM.7 added per-*track* palette differentiation via the chromatic-projected RGB tint vector — different tracks have visibly different aggregate panel means. Cross-mood differentiation within a single track is no longer a gate.
+3. **Pattern variety over time.** ⚠ **Retired by LM.4.4.** The pattern engine (ripples, sweeps, etc.) was retired entirely after Matt's third M7 review found the wavefronts invisible against the simultaneous bar pulse. Time-evolution variety comes from the LM.3.2 team-counter dance + the LM.4.6 section-salt mutation (`bassCounter / 64`) + the LM.7 per-track tint vector.
+4. **Cross-genre legibility.** ✅ Verified at LM.7 cert against the canonical 5-track playlist (Love Rehab / So What / There There / Pyramid Song / Money — electronic / jazz / rock / experimental 16/8 / progressive rock).
 
-1. **Per-stem hue separability.** Four light agents are visibly distinct in color even when active simultaneously, via ±15° HSV offset per stem (drums / bass / vocals / other).
-2. **Chromatic aberration on cell-edge ridges.** Subtle CA on inter-cell seams reinforces the glass character (LM.6 fidelity polish, optional).
-3. **Aspect-ratio robustness verified.** Panel-edge invariant explicitly verified at 16:9, 4:3, and 21:9 in LM.6 contact sheets.
-4. **Silhouette occluder depth.** If Decision B.2 is promoted in LM.5, behind-glass silhouettes provide perceived depth that reads as clearly stronger than the LM.4 analytical-only baseline.
+### Strongly preferred (≥ 1 / 4 — Lumen Mosaic certified at LM.7)
+
+The original Strongly Preferred items below were authored against the LM.2-era architecture; preserved for history with actual-landed-shape notes.
+
+1. **Per-stem hue separability.** ⚠ **Retired by LM.3.2+.** Stem-driven per-cell hues were retired with the agent-driven backlight character. Stem coupling now routes via the LM.3.2 band-counter mechanism (each cell belongs to a bass / mid / treble / static team and advances on its team's beat) and the LM.7 per-track tint (FNV-1a hash of "title | artist" drives the chromatic shift, not stem energies).
+2. **Chromatic aberration on cell-edge ridges.** ⊘ Not in current implementation. LM.6 hot-spot covers the centre-highlight character; cell-edge ridges are styled via frost diffusion (white-mixing at small `f2-f1` distances), not CA.
+3. **Aspect-ratio robustness verified.** ✅ Panel-edge invariant verified at LM.7 cert. The panel `sd_box` half-extents stay at `cameraTangents.xy × kPanelOversize (1.50)` — bleeds 50 % past visible frame on every side per Decision G.1.
+4. **Silhouette occluder depth.** ⊘ Decision B.2 retired with the rest of the 4-agent / behind-glass architecture. The panel is fully emission-dominated everywhere; no behind-glass scene was added.
 
 ---
 
 ## Notes for Claude Code sessions
 
 1. **The panel itself is flat geometry** (`sd_box` per `sceneSDF`, no curvature, no audio-driven deformation). All raised-cell character comes from per-cell normal perturbation in `sceneMaterial`. References in this folder show pattern glass surfaces; "raised dimple" terminology refers to per-cell shading relief, NOT panel-level curvature.
-2. **Mandatory traits are non-negotiable.** The rubric Mandatory items derive from them. Failing any mandatory trait blocks LM.9 certification.
+2. **Mandatory traits are non-negotiable.** The rubric Mandatory items derive from them. Failing any mandatory trait blocked certification at LM.7 sign-off (the preset has since certified — see Status header).
 3. **"Actively disregard" is not interpretive.** Each item is a property of the reference photograph that must NOT be ported to the preset. If Claude Code finds itself reasoning "but the reference clearly shows X, so the preset should also have X," and X is in the Disregard list, the right action is to not implement X and document the disregard in the increment commit message.
 4. **When the README and the design doc / contract conflict, the design doc / contract win.** This README is a visual quick-reference; `LUMEN_MOSAIC_DESIGN.md` and `Lumen_Mosaic_Rendering_Architecture_Contract.md` are the authoritative source. Conflicts indicate this README needs a corrective edit.
 5. **Contact sheets land here.** Per-increment review evidence at `contact_sheets/LM.X/`. Do not delete prior LM folders — they form the visual changelog and are referenced by Matt's review at later increments.

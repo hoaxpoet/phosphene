@@ -1,6 +1,43 @@
 # Lumen Mosaic Rendering Architecture Contract
 
-**Status:** Active. Revised 2026-05-09 alongside the LM.3.2 design pivot — the second pivot in 24 hours. The LM.3 continuous-cycling form of D.4 was rejected in production (cells did not visibly cycle on real Spotify-normalised audio because mid + treble bands under-read; `accumulated_audio_time` advanced ~10× too slowly to register as motion — BUG-012). The LM.3.1 agent-position-driven backlight character was rejected by Matt 2026-05-09 ("the bright pools dominated the visual story"). LM.3.2 adopts Decision D.5 — band-routed beat-driven dance — instead: cells advance their palette index *discretely on each FFT-band beat*, with a per-cell team assignment + period sampled from `hash(cell_id ^ track_seed)`. Brightness is uniform with hash jitter; the visual story is colour change synced to the beat, not brightness modulation. This revision updates the `sceneMaterial` pseudocode (band-routed step + uniform-brightness intensity), the `LumenPatternState` layout (adds four band counters: bassCounter / midCounter / trebleCounter / barCounter, growing the struct 360 → 376 B), and the certification fixtures (per-track-seed-driven palette identity + bass-team step on rising-edge of `f.beatBass` are observable). All other contract sections (panel sizing §P.1, agent bounds §P.2, the dance §P.4, slot 8 binding) carry forward unchanged. See §Revision History.
+**Status:** **CERTIFIED 2026-05-12 at LM.7.** Phase LM CLOSED. `LumenMosaic.json` `certified: true`. First catalog preset with the cert flag. This contract was last revised in its prose form on 2026-05-09 alongside LM.3.2; the prose body below describes the LM.3.2 architecture and **does not reflect** the subsequent LM.4 pattern-engine retirement (LM.4.4), the LM.4.5.x palette-card iterations, the LM.4.6 pure uniform random RGB shape, the LM.6 cell-depth gradient + hot-spot, or the LM.7 per-track tint. The current-implementation summary immediately below is authoritative; the historical prose is preserved for context. The canonical sources of truth are now `CLAUDE.md` (module-map entry), `docs/DECISIONS.md` (D-LM-6, D-LM-7, D-LM-d5, D-LM-buffer-slot-8, D-LM-matid), `docs/ENGINEERING_PLAN.md` Phase LM, and `LumenMosaic.metal` (file header).
+
+## Current-implementation summary (as of LM.7 cert, 2026-05-12)
+
+**Decisions in force.** A.1 (Lumen Mosaic), C.1/2 (~30 cells across — LM.3.2 round 2 reduced `kCellDensity` from 30 → 15, giving ~30 cells across the visible frame), **D.6 (pure uniform random RGB per cell — LM.4.6, supersedes D.5)**, **E.4 (direct hash → RGB; section salt via `bassCounter / 64`; LM.4.6 retires the IQ cosine palette / E.3 and the mood-coupled `(a, b, c, d)` parameters)**, **F.1 (slot 8 fragment buffer)**, **F.2 (LM.6 cell-depth gradient + optional hot-spot — D-LM-6)**, **F.3 (LM.7 per-track aggregate-mean RGB tint with chromatic projection — D-LM-7)**, G.1 (fixed camera, panel oversize 1.50×), H.1 (standalone preset).
+
+**Retired decisions.** B.1 (analytical agent contributions — LM.3.2 retired agent-driven backlight character; `LumenLightAgent` slots stay on the GPU buffer for ABI continuity but are unused), D.1 / D.4 / D.5 (replaced by D.6), E.1 / E.2 / E.3 (replaced by E.4). The pattern engine introduced in LM.2/LM.4 was retired in LM.4.4 (`state.patterns[4]` tuple stays zeroed for ABI continuity).
+
+**Active passes.** `["ray_march", "post_process"]`. The matID==1 lighting fragment (`raymarch_lighting_fragment` matID==1 branch in `RayMarch.metal`) writes `albedo × kLumenEmissionGain (1.0) + IBL ambient × kLumenIBLFloor (0.05) × ao` and skips Cook-Torrance + screen-space shadows entirely. SSGI intentionally disabled (emission dominates).
+
+**Active sceneMaterial layer stack (in evaluation order):**
+
+1. `voronoi_f1f2(panel_uv, kCellDensity)` → `cellV.f1`, `cellV.f2`, `cellV.id`.
+2. Per-cell hash + team / period / step counter math (D.5 mechanism, preserved).
+3. Section salt = `lumen.bassCounter / kSectionBeatLength (64)` (LM.4.6).
+4. `lm_cell_palette` → uniform random RGB per (cellHash, step, trackSeed, sectionSalt) tuple (D.6 / LM.4.6).
+5. **LM.7 per-track tint** inside `lm_cell_palette`: `trackTint = (rawTint - mean(rawTint)) × kTintMagnitude (0.25)` from `lumen.trackPaletteSeed{A,B,C}`. Chromatic projection (mean subtraction) ensures achromatic-aligned seeds collapse to neutral instead of washing. `cell_rgb = saturate(uniform_rgb + trackTint)`.
+6. **LM.6 cell-depth gradient**: `cell_hue *= mix(kCellEdgeDarkness (0.55), 1.0, 1 - smoothstep(0, cellV.f2 × kDepthGradientFalloff (1.0), cellV.f1))`. Full brightness at centre, 0.55 × hue at boundary.
+7. **LM.6 hot-spot (optional)**: `cell_hue += pow(1 - smoothstep(0, kHotSpotRadius (0.15) × cellV.f2, cellV.f1), kHotSpotShape (4.0)) × kHotSpotIntensity (0.30) × cell_hue`. Additive on cell's own hue.
+8. Per-cell brightness: `intensity = hashJitter × barPulse` where `hashJitter ∈ [0.85, 1.15]` and `barPulse = 1.0 + kBarPulseMagnitude (0.20) × pow(f.bar_phase01, kBarPulseShape (8.0))`.
+9. Frost diffusion (LM.3.2 round 7): `frosted_hue = mix(cell_hue, white, saturate(frostiness × kFrostStrength (0.60)))` where `frostiness = 1 - smoothstep(0, kFrostBlendWidth (0.04), cellV.f2 - cellV.f1)`.
+10. `albedo = clamp(frosted_hue × intensity, 0, 1)` + `outMatID = 1`.
+
+**SDF normal stays flat.** `kReliefAmplitude = 0`, `kFrostAmplitude = 0` per the LM.3.2 round-7 / Failed Approach lock. Earlier rounds (5/6) attempted normal-driven specular and produced per-pixel dot artifacts from central-differences sampling of sub-pixel relief noise; LM.6 deliberately works in `sceneMaterial` (albedo modulation) rather than on the surface normal.
+
+**No Cook-Torrance pass for matID==1.** The lighting fragment's matID==1 branch returns `albedo × kLumenEmissionGain + IBL ambient floor` and skips the full PBR composite. Any future iteration that wants normal-driven specular for matID==1 must first re-introduce SDF relief (which is currently locked at 0 by Failed Approach precedent) — not authorized without a new decision entry.
+
+**LumenPatternState slot-8 layout.** Still 376 bytes (LM.3.2 + four band counters). `trackPaletteSeed{A,B,C,D}` plumbing unchanged; LM.7 reads A/B/C for the tint vector; D is unused by the shader but kept for ABI continuity. The four `LumenLightAgent` slots + the four `LumenPattern` slots are zeroed scaffolding (no consumer in the current shader).
+
+**Performance.** Measured on M2 Pro in session `2026-05-12T17-15-14Z`: `frame_gpu_ms` mean 1.37 ms / max 32.9 ms / 3 of 14622 frames > 16 ms (0.02 %). Well below the Tier 2 ≤ 16 ms budget.
+
+**Acceptance gates met.** Detail cascade (Voronoi macro + LM.6 meso/specular + frost micro). ≥ 4 noise octaves (fbm8 frost). D-026 deviation discipline via event-shaped beat counters + slot-8 routing (not direct FeatureVector reads). D-019 silence fallback (counters stop advancing → cells hold their `(cellHash, 0, trackSeed, 0)` colour, non-black). p95 frame time ≤ Tier 2 budget. M7 sign-off 2026-05-12. The automated `M3_material_count` and `M4_deviation_primitives` heuristics fail by design (emission-only matID==1 path has no V.3 cookbook callsites; rhythm coupling routes via slot-8 counters not FV `_rel`/`_dev` field reads) — per SHADER_CRAFT.md §12.1 M7 is the load-bearing gate.
+
+---
+
+**Historical context (LM.3.2 era).** The prose below was written 2026-05-09 to describe the LM.3.2 architecture (band-routed beat-driven dance with HSV palette, agent-driven backlight scaffolding for ABI continuity). It does not reflect the subsequent LM.4 → LM.7 evolution. Preserved for the increment history; the current-implementation summary above is authoritative.
+
+**Decisions in force (LM.3.2+):** A.1 (Lumen Mosaic), B.1 (analytical agent contributions), C.2 (~50 cells across), **D.5 (band-routed beat-driven dance — cells hashed into bass / mid / treble / static teams, advance palette index on rising-edge of their team's FFT-band beat; periods Pareto-shaped from hash)**, **E.3 (procedural palette via V.3 IQ cosine `palette()`; mood shifts `(a, b, c, d)` continuously; per-track seed perturbations bumped to ±0.20 / 0.20 / 0.30 / 0.50; no authored palette banks)**, F.1 (slot 8 fragment buffer), G.1 (fixed camera, panel oversize 1.50×), H.1 (standalone preset). LM.0 / LM.1 / LM.2 shipped under D.1 / E.1; LM.3 / LM.3.1 shipped under D.4 (continuous palette cycling on `accumulated_audio_time`) / D.4 + agent-position backlight; both replaced at LM.3.2 by D.5.
 
 ## Purpose
 
