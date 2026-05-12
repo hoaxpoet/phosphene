@@ -159,6 +159,18 @@ private let goldenPresetHashes: [String: PresetHashes] = [
     // `RENDER_VISUAL=1 PresetVisualReviewTests` with the 9-fixture set
     // (the 4 per-track-seed corner fixtures exercise the card variety
     // that the regression harness can't reach with zero seeds).
+    //
+    // LM.6 (cell-depth gradient + hot-spot): hash UNCHANGED. The depth
+    // gradient and hot-spot modulate `cell_hue` based on the Voronoi
+    // `f1/f2` field — the same field that already drives cell quantization
+    // and frost mixing — so the per-cell luma envelope shifts smoothly
+    // toward darker at edges + brighter at centres, but the 9×8 dHash
+    // grid's 64×64 luma quantization is dominated by the Voronoi cell
+    // boundary positions (large-scale signal) rather than per-cell
+    // intensity gradients (small-scale signal). Real visual divergence
+    // — domed cells reading as backlit glass instead of flat tiles, plus
+    // optional centre hot-spots — is observed via `RENDER_VISUAL=1
+    // PresetVisualReviewTests` 9-fixture set.
     "Lumen Mosaic": (steady: 0xF0F0C8CCCCC8F0F0, beatHeavy: 0xF0F0C8CCCCC8F0F0, quiet: 0xF0F0C8CCCCC8F0F0),
     "Membrane": (steady: 0x33E3A919C9627939, beatHeavy: 0x12A3A998C9646139, quiet: 0x47E3C919CD627959),
     "Murmuration": (steady: 0x07449B6727773FF8, beatHeavy: 0x0B449A4727373FF8, quiet: 0x0744936727773FF8),

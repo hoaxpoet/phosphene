@@ -4,6 +4,29 @@
 // camera frame and bleeds 50% past it on every side, so the viewer sees
 // only a field of vivid stained-glass cells dancing to the music.
 //
+// LM.7 — Per-track RGB tint vector. Adds a small per-track tint
+// (derived from `lumen.trackPaletteSeed{A,B,C}`) to every cell's
+// uniform random RGB, saturate-clamped. Result: each track plays at a
+// visibly distinct aggregate mean (warm vs cool vs amber vs teal etc.)
+// without restricting per-cell freedom — every cell still independently
+// rolls a colour from the full RGB cube, just from a slightly shifted
+// sampling window. Per Matt 2026-05-12: *"mean should NOT be
+// middle-gray; the mean should be different for each track played."*
+// Closes the LM.4.6 "panel-aggregate uniform across tracks" complaint
+// while preserving the LM.4.6 per-cell independence contract in spirit.
+//
+// LM.6 — Cell-depth gradient + optional hot-spot specular. Each cell
+// reads as a 3D-ish dome: brightest at the centre (where the backlit
+// glass is "thinnest" and most light gets through), darker toward the
+// edge (where the lead came / cell boundary casts a shadow band). An
+// optional pinpoint specular at the very centre simulates a viewer-
+// aligned highlight ("wet glass" sheen). Modulation is on the per-cell
+// palette colour *before* the frost diffusion in `sceneMaterial`; the
+// SDF relief stays flat (`kReliefAmplitude = 0`, `kFrostAmplitude = 0`)
+// per LM.3.2 round 7 / Failed Approach lock — no normal-driven specular
+// in the lighting path, no per-pixel dot artifacts. The lighting
+// fragment's matID == 1 emission contract is unchanged.
+//
 // LM.4.6 — Pure uniform random RGB per cell. Each cell INDEPENDENTLY
 // picks one of 16M possible colours. No rules, no anchors, no zones,
 // no clusters. The hash combines (cellHash, beat step, trackSeed,
@@ -15,14 +38,13 @@
 // Per Matt 2026-05-11: "EVERY CELL CAN BE INDEPENDENT OF ITS
 // NEIGHBORS... I literally want ANY possible color to be possible
 // within ANY cell." Anchor distributions and spatial zones explicitly
-// rejected. Pure independence is the contract.
-//
-// Caveat documented for the next reviewer: uniform random sampling
-// produces statistically-similar looking panels across tracks (law
-// of large numbers — different specific colours per cell, same
-// distribution shape). If panel-aggregate visual distinction across
-// tracks is desired, that requires biasing the per-cell distribution
-// somehow (which is rejected). The contract here is per-cell freedom.
+// rejected. Pure independence is the contract. LM.7 (above) refines
+// this: per-cell independence still holds, but the per-track tint
+// vector means the *distribution* the cells sample from is shifted
+// per track. The reachable colour set shrinks slightly at extreme
+// tints (cells whose uniform RGB + tint would land outside [0, 1]
+// clamp to the cube face), but every track still samples a
+// 3-dimensional region of the cube with mass at every interior point.
 // Earlier LM.4.5.4 — Pure uniform random RGB. No rules. Each cell picks a
 // colour at random from the full 16M-colour RGB cube. The hash
 // combines (cellHash, beat step, trackSeed, sectionSalt) so the
@@ -343,6 +365,31 @@ constant float kSectionBeatLength       = 64.0f;
 // LM.4.6: anchor-distribution model retired — the kAnchorJitterMagnitude
 // constant lived here. Per Matt 2026-05-11 it added unwanted structure;
 // the palette is back to pure uniform random RGB per cell.
+
+/// LM.7 — Per-track RGB tint magnitude. Each cell still samples uniform
+/// random RGB independently (LM.4.6 contract preserved). A small
+/// per-track tint vector derived from `lumen.trackPaletteSeed{A,B,C}`
+/// (each ∈ [-1, +1] from FNV-1a hash of "title | artist") is added to
+/// every cell's RGB before saturate-clamp. Result: every track has a
+/// visibly different aggregate mean (warm tracks lean orange/amber;
+/// cool tracks lean teal/cyan; etc.) while per-cell freedom is
+/// preserved — every cell still independently rolls a colour from the
+/// full RGB cube, just from a slightly shifted sampling window.
+///
+/// At kTintMagnitude = 0.25, the per-channel mean shifts up to ±0.20
+/// after the saturate clamp (the linear ±0.25 loses ~0.05 to clamp
+/// pile-up at 0/1). Some extreme corners (e.g. pure cyan on a maximally
+/// warm track where seedA = +1) become unreachable; near-corner is
+/// still reachable. This is the agreed-on relaxation of the LM.4.6
+/// "every colour reachable in every track" framing — Matt 2026-05-12:
+/// *"mean should NOT be middle-gray; the mean should be different for
+/// each track played."*
+///
+/// **Tuning surface (M7 review):** lower (0.15) for subtler per-track
+/// distinction with less clamp loss at extremes; raise (0.35) for
+/// stronger panel-aggregate variety at the cost of more colour
+/// squashing near the cube corners.
+constant float kTintMagnitude = 0.25f;
 /// Gamma endpoints for arousal-driven VALUE-only distribution bias.
 /// arousal = -1 → gamma 1.8 (concave: biases toward darker cells —
 /// deep cobalts, deep wines, ruby shadows); arousal = +1 → gamma 0.55
@@ -376,6 +423,40 @@ constant float kMoodGammaHighArousal = 0.55f;
 /// boundary — 0.6 gives a soft frost halo without bleaching the cell.
 constant float kFrostBlendWidth = 0.04f;
 constant float kFrostStrength   = 0.60f;
+
+/// LM.6 — Cell-depth gradient: cells appear "thicker" at the edges and
+/// "thinner" at the centre, mimicking real backlit stained glass where
+/// the centre transmits the most light. `kCellEdgeDarkness` is the
+/// per-cell multiplier applied at the cell boundary (`v.f1 → v.f2`);
+/// the centre stays at 1.0 (full brightness). `kDepthGradientFalloff`
+/// controls the effective cell radius — 1.0 = gradient falls off across
+/// the full Voronoi cell radius; lower values compress the gradient
+/// toward the centre (sharper edge falloff, brighter centre core).
+///
+/// **Tuning surface (M7 review):** lower `kCellEdgeDarkness` (e.g. 0.30)
+/// for a stronger 3D dome effect; raise (0.75) for subtler depth.
+/// `kDepthGradientFalloff = 0.7` compresses the bright core; 1.0 spreads
+/// it across the full cell.
+constant float kCellEdgeDarkness        = 0.55f;
+constant float kDepthGradientFalloff    = 1.0f;
+
+/// LM.6 — Hot-spot specular at cell centre. A small, sharp pinpoint at
+/// the very centre of each cell brightens that cell's own colour
+/// (additive: `colour += hotSpot × kHotSpotIntensity × colour`), so
+/// the palette character is preserved — we don't mix toward white, we
+/// just over-expose the cell's own hue at the centre point. `kHotSpotRadius`
+/// is the fraction of the cell's Voronoi radius where the hot-spot lives
+/// (0.15 = inner 15% of cell). `kHotSpotShape` is the pow() exponent for
+/// the falloff — higher = sharper pinpoint; lower = softer dome.
+/// `kHotSpotIntensity` is the peak brightness boost at the centre point.
+///
+/// **Tuning surface (M7 review):** set `kHotSpotIntensity = 0` to disable
+/// the hot-spot entirely; raise to 0.5+ for an aggressive "wet glass" look.
+/// `kHotSpotShape = 8.0` gives a sharper pinpoint; 2.0 gives a softer
+/// dome of brightness.
+constant float kHotSpotRadius           = 0.15f;
+constant float kHotSpotShape            = 4.0f;
+constant float kHotSpotIntensity        = 0.30f;
 
 /// LM.3.2 — team assignment percentages. Buckets summed left-to-right so
 /// `bucket = h % 100`:
@@ -554,7 +635,33 @@ static inline float3 lm_cell_palette(uint cellHash,
     float r = float((colourHash >>  0u) & 0xFFu) * (1.0f / 255.0f);
     float g = float((colourHash >>  8u) & 0xFFu) * (1.0f / 255.0f);
     float b = float((colourHash >> 16u) & 0xFFu) * (1.0f / 255.0f);
-    return float3(r, g, b);
+
+    // LM.7 — per-track RGB tint vector. Shifts the aggregate panel mean
+    // per track without restricting per-cell freedom (cells still
+    // independently sample the full uniform random RGB cube). The
+    // saturate-clamp keeps values in rgba8Unorm storage range; the
+    // small clamp pile-up at cube faces is the documented trade-off for
+    // visible track-to-track aggregate distinction. When all three
+    // trackPaletteSeed components are 0 (e.g. regression-harness path
+    // where slot-8 is zero-bound), tint is (0,0,0) and behaviour is
+    // identical to LM.4.6.
+    //
+    // **Chromatic projection (Matt 2026-05-12 fix):** the raw tint is
+    // projected onto the chromatic plane (perpendicular to the
+    // achromatic axis (1,1,1)/√3) by subtracting its mean component.
+    // Without this, seed configurations near the achromatic diagonal
+    // (e.g. all-positive → +0.25 on all channels) shift the whole
+    // panel toward white or black, producing washed/muddy aggregates
+    // instead of chromatic ones. Mean-subtraction guarantees a *hue*
+    // shift on every track. Side-effect: tracks whose seeds happen to
+    // be roughly equal (achromatic-aligned) lose tint strength
+    // proportionally and read as neutral — preferred over washed.
+    float3 rawTint = float3(lumen.trackPaletteSeedA,
+                            lumen.trackPaletteSeedB,
+                            lumen.trackPaletteSeedC);
+    float meanShift = (rawTint.r + rawTint.g + rawTint.b) * (1.0f / 3.0f);
+    float3 trackTint = (rawTint - float3(meanShift)) * kTintMagnitude;
+    return saturate(float3(r, g, b) + trackTint);
 }
 
 /// Voronoi domed-cell relief field. Returns a per-pixel scalar in
@@ -707,6 +814,29 @@ void sceneMaterial(float3 p,
 
     // Per-cell colour from the procedural palette + team-counter step.
     float3 cell_hue = lm_cell_palette(cellHash, lumen);
+
+    // ── LM.6 — Cell-depth gradient ──────────────────────────────────────────
+    //
+    // Each cell reads as a 3D-ish dome rather than a flat tile: brightest
+    // in the middle (where backlit-glass transmission is greatest), darker
+    // at the edge. Driven entirely by the Voronoi field at the per-pixel
+    // rate `voronoi_f1f2` already runs at — no extra cost. The SDF normal
+    // stays flat (`kReliefAmplitude = 0`); this is an albedo modulation,
+    // not a geometric perturbation. Same anti-pattern lock as the round-7
+    // frost: no SDF relief, no per-pixel normal noise, no dot artifacts.
+    float cellRadius = cellV.f2 * kDepthGradientFalloff;
+    float depth01 = 1.0f - smoothstep(0.0f, cellRadius, cellV.f1);
+    cell_hue *= mix(kCellEdgeDarkness, 1.0f, depth01);
+
+    // ── LM.6 — Hot-spot specular at cell centre ─────────────────────────────
+    //
+    // Optional small, sharp pinpoint at the very centre of each cell:
+    // brightens the cell's own colour rather than mixing toward white, so
+    // palette character is preserved. Simulates a viewer-aligned specular
+    // highlight on a domed cell. Set `kHotSpotIntensity = 0` to disable.
+    float hotSpot = 1.0f - smoothstep(0.0f, kHotSpotRadius * cellV.f2, cellV.f1);
+    hotSpot = pow(hotSpot, kHotSpotShape);
+    cell_hue += hotSpot * kHotSpotIntensity * cell_hue;
 
     // Per-cell scalar intensity (uniform jitter + bar pulse).
     // **LM.4.4 retired the LM.4 pattern-engine boost** that previously

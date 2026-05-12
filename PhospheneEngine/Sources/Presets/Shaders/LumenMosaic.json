@@ -32,7 +32,7 @@
     "mood_smoothing_seconds": 5.0,
     "back_plane_depth": 1.5
   },
-  "certified": false,
+  "certified": true,
   "rubric_profile": "full",
   "rubric_hints": { "hero_specular": false, "dust_motes": false }
 }
