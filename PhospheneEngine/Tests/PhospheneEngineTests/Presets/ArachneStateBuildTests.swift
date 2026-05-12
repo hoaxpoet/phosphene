@@ -298,67 +298,12 @@ private func audibleStems() -> StemFeatures {
         }
     }
 
-    // MARK: - Test 10: Drop accretion ages chords by laydown order
-
-    @Test("spiralChordBirthTimes preserve laydown order across the spiral phase")
-    func dropAccretionAgesChordsCorrectly() throws {
-        guard let device = MTLCreateSystemDefaultDevice() else {
-            throw ArachneBuildTestError.noMetalDevice
-        }
-        let state = try #require(ArachneState(device: device, seed: 9))
-        state.reset()
-
-        // Force the build directly into the spiral phase with 5 chords total
-        // so the test runs in O(seconds) rather than the full 30 s cycle.
-        state.buildState.spiralRevolutions = 1
-        state.buildState.radialCount = 5
-        state.buildState.spiralChordsTotal = 5
-        state.buildState.spiralChordRadii = (0..<5).map { 0.45 - Float($0) * 0.05 }
-        state.buildState.spiralChordIndex = 0
-        state.buildState.spiralChordProgress = 0
-        state.buildState.spiralChordBirthTimes.removeAll()
-        state.buildState.stage = .spiral
-        state.buildState.stageElapsed = 0
-
-        // BUG-011 follow-up (round 2) — spiral advancement is now pure beat-
-        // driven (3 chords per `beat_bass` or `beat_composite` rising-edge).
-        // Drive a 2 Hz square wave on beatBass (alternating 0→1 every 15
-        // frames) so we get a rising-edge every ~0.5 s. For 5 chords at 3
-        // per edge, exactly 2 rising edges are needed: edge #1 (frame 0)
-        // lays 3 chords, edge #2 (frame 30) lays the remaining 2 then
-        // transitions to .stable.
-        //
-        // CAPTURE births BEFORE the migration crossfade rolls the build
-        // over to a fresh cycle (which resets births to []). Crossfade
-        // duration is ~1 s; capturing right at frame 35 (just past 2nd
-        // rising edge) is well inside that window.
-        let dt: Float = 1.0 / 60.0
-        var capturedBirths: [Float] = []
-        for frame in 0..<35 {
-            var fv = midEnergyFV(deltaTime: dt, midAttRel: 0)
-            let beatPhase = frame % 30
-            fv.beatBass = beatPhase < 15 ? 1.0 : 0.0
-            // Audible stems required — round 8 silent-state pause would
-            // otherwise gate effectiveDt to 0 and skip the rising-edge
-            // chord advance (which requires effectiveDt > 0).
-            state.tick(features: fv, stems: audibleStems())
-            // Snapshot births once spiral has completed (stage transitions
-            // to .stable on the frame the final chord is laid).
-            if state.buildState.stage == .stable && capturedBirths.isEmpty {
-                capturedBirths = state.buildState.spiralChordBirthTimes
-            }
-        }
-
-        // All chords should be laid; birth times must be non-decreasing
-        // (within a single rising-edge advance multiple chords share the
-        // same stageElapsed timestamp; across edges they strictly increase).
-        let births = capturedBirths
-        #expect(births.count == 5)
-        for i in 1..<births.count {
-            #expect(births[i] >= births[i - 1],
-                    "birthTime[\(i)] (\(births[i])) must be ≥ birthTime[\(i - 1)] (\(births[i - 1]))")
-        }
-    }
+    // MARK: - Test 10 RETIRED — drop-accretion test removed alongside
+    // `spiralChordBirthTimes` in the BUG-011 L5 cheap-cleanup tranche.
+    // The field tracked per-chord ages for drop-accretion timing; drops
+    // themselves were retired in commit `3f6126e0` and the field was
+    // never consumed by production code afterwards. The test was
+    // validating ordering of an unread accumulator — pure dead weight.
 
     // MARK: - Test 11: Silent-state pause halts build (BUG-011 round 8)
 

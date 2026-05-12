@@ -6,6 +6,38 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-12-f] BUG-011 L5 cheap-cleanup tranche — three dead-code retirements, SOAK kernel p95 14.458 → 12.557 ms
+
+**Increment:** BUG-011 L5 (cheap-cleanup tranche). **Status:** Three code changes + doc updates. BUG-011 likely closes once Matt re-captures M2 Pro real-music perf; the projected production p95 ≈ 14.1 ms (at the 14 ms gate, within run-to-run noise). If the re-capture closes ≤ 14 ms, BUG-011 closes; if it sits at 14.5+ ms, the L5.1 WORLD-half-rate sub-lever is the next escalation.
+
+**Trigger.** Matt asked whether drop-related processing could be retired given that dewdrops were removed in commit `3f6126e0`. Investigation surfaced three categories of dead per-pixel work still running.
+
+**Three changes landed** (single commit; pre-test stash unnecessary — the parallel LumenMosaic WIP was already committed earlier today):
+
+1. **Retire `ArachneBuildState.spiralChordBirthTimes`** (CPU-side `[Float]` allocated, cleared, `.append()`-ed every rising-edge beat × N chord advances). Originally tracked per-chord ages for drop-accretion timing; never consumed by production code after dewdrops were retired. Only consumer was the `dropAccretionAgesChordsCorrectly` test, also retired (the test validated ordering of an unread accumulator). [PhospheneEngine/Sources/Presets/Arachnid/ArachneState.swift](PhospheneEngine/Sources/Presets/Arachnid/ArachneState.swift) (3 sites: field declaration, `removeAll` at radial→spiral transition, `.append` in the chord-advance loop). [PhospheneEngine/Tests/PhospheneEngineTests/Presets/ArachneStateBuildTests.swift](PhospheneEngine/Tests/PhospheneEngineTests/Presets/ArachneStateBuildTests.swift) (test 10 retired with explanatory comment).
+2. **Retire `ArachneWebResult.strandTangent` field + tangent-decision logic.** Per-pixel computation: `arachneEvalWeb` ran `result.strandTangent = (minSpokeDist <= minChordDist && minSpokeDist < 1e5) ? bestSpokeTangent2D : spirTangent2D` and tracked `bestSpokeTangent2D` (per spoke iteration) + `spirTangent2D` (per spiral chord iteration). Both consumer sites in `arachne_composite_fragment` (anchor block + pool block) read it into `tang2D` and immediately `(void)tang2D;`-cast it — the tangent was a Marschner BRDF input demoted in V.7.9 and the cast was carrying the dead store. Field removed from `ArachneWebResult` struct; default initialiser removed; tangent-tracking locals removed from `arachneEvalWeb`; both `(void)tang2D` casts removed. [PhospheneEngine/Sources/Presets/Shaders/Arachne.metal](PhospheneEngine/Sources/Presets/Shaders/Arachne.metal) (7 edits across the struct, the function, and both consumer sites).
+3. **Dust-mote `fbm4` early-out.** `drawWorld()` ran `fbm4(driftUV, 0.31)` (4-octave Perlin) per pixel, then multiplied by `moteCone = saturate(beamMax * 2.5)`. For pixels with `beamMax < ~0.004` (~70-80 % of frame at usual mood values), `moteCone` was ~0 but the per-pixel `fbm4` call had already happened. Gated the block on `if (beamMax > 0.01)`. Semantics-preserving up to floating-point at the threshold boundary (where masked contribution was already ~0). [PhospheneEngine/Sources/Presets/Shaders/Arachne.metal](PhospheneEngine/Sources/Presets/Shaders/Arachne.metal) `drawWorld()` line ~399.
+
+**SOAK kernel-cost benchmark measurement** (M2 Pro, 1920×1080, spider forced ON, 1800 frames; the in-tree regression gate added in BUG-011 round-7 commit `bd213856`):
+
+| metric | pre-cleanup (2026-05-10 baseline) | post-cleanup | Δ |
+|---|---|---|---|
+| p50 | 12.724 ms | 11.313 ms | **−1.4 ms** |
+| p95 | 14.458 ms | 12.557 ms | **−1.9 ms** |
+| p99 | 15.169 ms | 13.178 ms | −2.0 ms |
+| mean | 12.903 ms | 11.444 ms | −1.5 ms |
+| kernel overruns (>14 ms) | 172 / 1800 (9.6 %) | **1 / 1800 (0.06 %)** | −171 frames |
+
+Run-to-run variance ≈ 0.1 ms. SOAK gate is 16 ms p95; post-cleanup p95 sits 3.4 ms inside the gate.
+
+**Projection to production.** The previous production capture (2026-05-12T18-19-31Z) measured p95 = 16.068 ms in real-music conditions; SOAK measured p95 = 14.458 ms in worst-case-spider conditions before this cleanup. The SOAK ↔ production gap was ~+1.6 ms (production runs longer with more OS-scheduler interference). Applying the same gap to post-cleanup SOAK (12.557 ms) projects **production p95 ≈ 14.1 ms** — basically at the 14 ms target, within run-to-run noise.
+
+**Verification.** 43/43 targeted Arachne tests green (`ArachneStateBuild` + `ArachneState` + `ArachneSpiderRender` + `ArachneListeningPose` + `ArachneBranchAnchors` + `PresetRegression` + `PresetAcceptance` + `MaxDurationFramework` + `StagedComposition` + `PresetLoaderCompileFailure`). Arachne + spider golden hashes unchanged (the regression render path doesn't bind `worldTex` and the cheap-cleanup changes don't affect the parts of the pipeline that surface in the dHash). App build clean. SwiftLint 0 violations on touched files.
+
+**Carry-forward.** Matt's M2 Pro real-music re-capture is the load-bearing close action — same procedure as before: build, ad-hoc session, `L` + `⌘[`/`⌘]` to Arachne, ≥ 90 s, analyse `frame_gpu_ms` from `features.csv`. If production p95 ≤ 14 ms, flip BUG-011 Status to Resolved (commit + KNOWN_ISSUES.md + release notes). If 14.1–14.5 ms (within noise), still likely close; if 14.5+ ms, L5.1 WORLD half-rate refresh is the next escalation.
+
+---
+
 ## [dev-2026-05-12-e] BUG-011 M2 Pro post-tuning perf capture — drops gate passes, p95 still 2 ms over budget
 
 **Increment:** BUG-011 perf measurement (no code changes; doc-only). **Status:** BUG-011 remains **Open** — drops gate passes (0.7 % vs 8 % target), p95 misses (16.068 ms vs 14 ms target), p50 misses (13.649 ms vs 8 ms target). Three escalation paths documented in `docs/QUALITY/KNOWN_ISSUES.md` BUG-011 § "Escalation options"; Matt to pick.

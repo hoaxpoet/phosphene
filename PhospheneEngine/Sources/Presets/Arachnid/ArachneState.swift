@@ -242,9 +242,6 @@ public struct ArachneBuildState: Sendable {
     /// edge; the integer part feeds the chord advance, the fractional part
     /// carries to the next edge. Reset by `_reset()` and on spiral-phase entry.
     public var spiralChordAccumulator: Float = 0
-    /// `stageElapsed` at the moment chord k is laid; `count == spiralChordIndex`.
-    /// Used by the shader's §5.8 drop accretion in Commit 3.
-    public var spiralChordBirthTimes: [Float] = []
     /// Per-chord precomputed radius (UV); strictly decreasing (INWARD).
     public var spiralChordRadii: [Float] = []
 
@@ -916,7 +913,6 @@ public final class ArachneState: @unchecked Sendable {
             buildState.spiralChordIndex = 0
             buildState.spiralChordProgress = 0
             buildState.spiralChordAccumulator = 0
-            buildState.spiralChordBirthTimes.removeAll(keepingCapacity: true)
         }
     }
 
@@ -960,10 +956,7 @@ public final class ArachneState: @unchecked Sendable {
             let whole = Int(buildState.spiralChordAccumulator)
             buildState.spiralChordAccumulator -= Float(whole)
             let advance = min(whole, total - buildState.spiralChordIndex)
-            for _ in 0..<advance {
-                buildState.spiralChordIndex += 1
-                buildState.spiralChordBirthTimes.append(buildState.stageElapsed)
-            }
+            buildState.spiralChordIndex += advance
         }
         prevBeatForSpiral = beatNow
 

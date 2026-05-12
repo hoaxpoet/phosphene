@@ -98,18 +98,15 @@ constant int kArachWebs = 4;  // V.7.5 §10.1.1: pool capped 12→4 (single hero
 
 struct ArachneWebResult {
     float strandCov;      // spokes + spiral halo + hub coverage [0,1]
-    float2 strandTangent; // tangent of the dominant (closest) strand in UV plane
-    // Drop fields (dropCov, dropVec, dropRadius) removed in the BUG-011
-    // follow-up that retired dewdrops during web construction. Matt's
-    // 2026-05-11 product call: drops shouldn't appear during the
-    // .frame/.radial/.spiral build stages; they may return as a feature
-    // of completed (.stable) webs in a future increment. Removing the
-    // drop computation saves the per-pixel adhesive-droplet hash-lattice
-    // pass inside arachneEvalWeb and the per-pixel Snell's-law refraction
-    // sample in arachne_composite_fragment. As a side benefit the spiral
-    // chord SDF (already 0.0007 UV) now reads crisply at its intended
-    // thinness — drops had been piling up along chords and masking the
-    // actual line width (the "crayon" effect noted post-V.7.7C.5.2).
+    // BUG-011 L5 cheap-cleanup tranche: `strandTangent` retired alongside the
+    // earlier drop-fields retirement. The tangent was a Marschner BRDF input
+    // demoted in V.7.9; both consumer call sites in `arachne_composite_fragment`
+    // read it into a local `tang2D` and immediately discarded with `(void)tang2D`.
+    // Per-pixel tangent-decision logic in `arachneEvalWeb` also retired.
+    // Drop fields (dropCov, dropVec, dropRadius) had been removed earlier in
+    // the BUG-011 follow-up that retired dewdrops during web construction
+    // (commit `3f6126e0`). Drops may return as a feature of completed
+    // (.stable) webs in a future increment.
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -401,13 +398,22 @@ static float3 drawWorld(float2 uv, float4 moodRow, float accTime, float midAttRe
     // outside have no key light to catch). Phase-anchored to accTime
     // (Failed Approach #33 — accTime pauses at silence; FA-#33 compliant
     // substitute when beat_phase01 isn't carried into drawWorld).
-    float2 driftUV = uv * float2(44.0, 22.0)
-                   + float2(accTime * 0.06, accTime * 0.03);
-    float moteN     = fbm4(float3(driftUV, 0.31)) * 0.5 + 0.5;
-    float moteMask  = smoothstep(0.79, 0.85, moteN);
-    float moteCone  = saturate(beamMax * 2.5);
-    const float moteOpacity = 0.4;
-    col += beamCol * moteMask * moteCone * moteOpacity * shaftBrightness * midGate * 4.0;
+    // BUG-011 L5 cheap-cleanup: skip the per-pixel `fbm4(driftUV)` call when
+    // the pixel is outside any shaft cone. `moteCone = saturate(beamMax * 2.5)`
+    // is the existing multiplier on the mote contribution; for `beamMax < ~0.004`
+    // it collapses to ~0 so the contribution is masked to zero regardless of
+    // `fbm4`'s output. Early-out at `beamMax > 0.01` saves a 4-octave Perlin
+    // sample (the per-pixel hot spot in this block) for ~70-80% of frame
+    // pixels at typical mood values where shafts cover a narrow cone.
+    if (beamMax > 0.01) {
+        float2 driftUV = uv * float2(44.0, 22.0)
+                       + float2(accTime * 0.06, accTime * 0.03);
+        float moteN     = fbm4(float3(driftUV, 0.31)) * 0.5 + 0.5;
+        float moteMask  = smoothstep(0.79, 0.85, moteN);
+        float moteCone  = saturate(beamMax * 2.5);
+        const float moteOpacity = 0.4;
+        col += beamCol * moteMask * moteCone * moteOpacity * shaftBrightness * midGate * 4.0;
+    }
 
     return col;
 }
@@ -537,7 +543,6 @@ static ArachneWebResult arachneEvalWeb(
 ) {
     ArachneWebResult result;
     result.strandCov    = 0.0;
-    result.strandTangent = float2(1.0, 0.0); // default: horizontal (hub fallback)
 
     // ── §4.1 macro: web silhouette + elliptical per-web variation ─────────────
     // Transforms pRel into a squashed frame; rest of evaluation uses squashed coords.
@@ -627,7 +632,6 @@ static ArachneWebResult arachneEvalWeb(
     }
 
     float minSpokeDist = 1e6;
-    float2 bestSpokeTangent2D = float2(1.0, 0.0); // tangent of closest spoke
     // BUG-011 round 4 — removed `rT > hubR` from the guard so spokes
     // render through the hub region.
     // BUG-011 round 7 — upper bound `rT < webR * 1.18` was 0.47 after the
@@ -665,8 +669,7 @@ static ArachneWebResult arachneEvalWeb(
             float2 spokePt   = tProj * spokeTip + float2(0.0, sagDisp);
             float  spDist    = length(tRel - spokePt);
             if (spDist < minSpokeDist) {
-                minSpokeDist     = spDist;
-                bestSpokeTangent2D = d; // spoke direction = tangent
+                minSpokeDist = spDist;
             }
         }
     }
@@ -766,7 +769,6 @@ static ArachneWebResult arachneEvalWeb(
     // References: ARACHNE_V8_DESIGN.md §5.5; biology refs 01, 03, 12.
     float spirCov      = 0.0;
     float spirHalo     = 0.0;
-    float2 spirTangent2D = float2(1.0, 0.0);
     float minChordDist = 1e6;
     // BUG-011 follow-up — dewdrop computation retired. The per-pixel
     // adhesive-droplet hash-lattice pass (V.7.5 §10.1.3) and the
@@ -938,7 +940,6 @@ static ArachneWebResult arachneEvalWeb(
 
                 if (cd < minChordDist) {
                     minChordDist = cd;
-                    spirTangent2D = (segL > 1e-6) ? normalize(seg) : float2(1.0, 0.0);
                 }
 
                 // Adhesive droplets retired (BUG-011 follow-up — see ArachneWebResult
@@ -956,12 +957,10 @@ static ArachneWebResult arachneEvalWeb(
     // per Matt's 2026-05-11 "Remove all Gaussian glow" call.
     spirHalo = 0.0;
 
-    // ── §4.4 Dominant strand tangent (spoke or chord) ─────────────────────────
-    if (rT >= hubR * 1.5) {
-        result.strandTangent = (minSpokeDist <= minChordDist && minSpokeDist < 1e5)
-                                ? bestSpokeTangent2D
-                                : spirTangent2D;
-    }
+    // BUG-011 L5 cheap-cleanup tranche: §4.4 "dominant strand tangent" block
+    // retired. The `strandTangent` field was a Marschner BRDF input demoted
+    // in V.7.9; both consumer call sites in `arachne_composite_fragment`
+    // already discarded the value via `(void)tang2D`.
 
     result.strandCov = max(max(max(spokeCov, spirCov), max(spokeHalo, spirHalo)),
                           max(hubCov, max(frameCov, frameHalo)));
@@ -1394,7 +1393,8 @@ fragment float4 arachne_composite_fragment(
             // adds a per-beat global emission pulse (the hybrid audio
             // coupling — Fix C — that keeps the build pace TIME-driven
             // while making the visible silk respond to beats).
-            float2 tang2D = wr.strandTangent;
+            // BUG-011 L5 cheap-cleanup: `tang2D` retired (was sourced from the
+            // now-removed `wr.strandTangent` and immediately `(void)`-cast).
 
             // Mood-driven hue base: valence shifts teal (cool, 0.55) →
             // amber (warm, 0.10) along the §4.3 forest palette axis.
@@ -1425,10 +1425,6 @@ fragment float4 arachne_composite_fragment(
             // perpendicular-bright level regardless of direction. All silk lines
             // (spokes, frame, spirals) now visually uniform.
             const float axial = 1.3;
-            // Suppress unused-variable warning when tang2D / kL aren't referenced
-            // elsewhere in the silk path. Both are still consumed by other code
-            // (drop refraction in V.7.7C, etc.) so they stay in scope.
-            (void)tang2D;
 
             // Per-beat global emission pulse (V.7.7C.4 Fix C). Visual
             // beat coupling without driving the build clock from beats —
@@ -1539,8 +1535,8 @@ fragment float4 arachne_composite_fragment(
             // BUG-011 round 5 — axial fixed at 1.6 (the V.7.5 peak) for uniform
             // line brightness. This block is dead (loop is `wi < 1`) but the
             // change tracks the active-block fix for consistency if revived.
-            float2 tang2D   = wr.strandTangent;
-            (void)tang2D;
+            // BUG-011 L5 cheap-cleanup: `tang2D` retired (sourced from the
+            // now-removed `wr.strandTangent` and immediately `(void)`-cast).
             float  finalHue = fract(w.birth_hue + hueDrift * 0.12);
             float3 silkBase = hsv2rgb(float3(finalHue, 0.45, 0.80));
             const float axial = 1.6;

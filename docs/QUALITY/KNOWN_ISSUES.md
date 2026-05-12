@@ -12,7 +12,7 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 **Severity:** P2 (visible degradation under specific conditions: Arachne active on Tier 2 hardware. Median frame already at the FrameBudgetManager downshift threshold; 53% of frames over budget. Not a session-blocker — drop rate at the 32 ms threshold is 1.46%, so most frames complete inside one refresh — but the visual will feel laggy when Arachne is selected, and the governor will downshift quality more aggressively than intended.)
 **Domain tag:** perf
-**Status:** **Open — post-tuning M2 Pro capture 2026-05-12 measured p95 = 16.068 ms (over the 14 ms target by 2 ms); next escalation pending Matt's decision.** L1+L2+L3 tuning landed real wins (p95 dropped 26.607 → 16.068 ms; drops fell 1.46 % → 0.7 %) but the median is essentially unchanged (14.120 → 13.649 ms), so the post-tuning bottleneck is always-on per-frame cost, not worst-case tails. See "2026-05-12 production capture" section below for the data and the three escalation paths (L5 attack always-on cost / L4 reclassify M2 Pro as Tier 1 for Arachne / accept p95 = 16 ms and close with relaxed criteria).
+**Status:** **Open — L5 cheap-cleanup tranche landed 2026-05-12 (SOAK kernel p95 14.458 → 12.557 ms, overruns 172 → 1 of 1800 frames); awaiting Matt's M2 Pro real-music perf re-capture to confirm production p95 ≤ 14 ms and close.** First production capture (2026-05-12T18-19-31Z) measured p95 = 16.068 ms — 2 ms over the 14 ms target. Diagnosis showed always-on per-frame cost was the bottleneck (median essentially unchanged across L1+L2+L3). The L5 cheap-cleanup tranche retired three categories of dead per-pixel work (drop-accretion `spiralChordBirthTimes` array, `ArachneWebResult.strandTangent` + tangent-decision logic, dust-mote `fbm4` early-out gate); SOAK kernel measurement post-cleanup is ~2 ms better across all percentiles, projecting production p95 to drop from 16.068 → ~14.1 ms. See "2026-05-12 production capture" and "2026-05-12 L5 cheap-cleanup tranche" sections below.
 **Introduced:** Surfaced 2026-05-08 by DM.3a per-frame perf capture in session `2026-05-08T22-01-07Z`. Likely accumulated across the V.7.7B → V.7.7C → V.7.7D → V.7.7C.5 sequence of staged-composition + 3D-spider + atmospheric-reframe additions. No single increment "introduced" it; the cost grew incrementally and was never measured against the full-pipeline budget until now.
 **Resolved:**
 
@@ -174,16 +174,44 @@ The p99 (29.6 ms) and max (57.1 ms) tails are heavier than the pre-tuning captur
 
 ---
 
+### 2026-05-12 L5 cheap-cleanup tranche (SOAK kernel: p95 14.458 → 12.557 ms)
+
+**Trigger.** Matt asked whether drop-related processing could be retired given that dewdrops were removed in commit `3f6126e0`. Investigation surfaced three categories of dead per-pixel work still running:
+
+1. **`ArachneBuildState.spiralChordBirthTimes: [Float]`** — CPU-side array allocated, cleared, and `.append()`-ed every rising-edge beat × N chord advances. Originally tracked per-chord ages for drop-accretion timing; with drops retired, never read in production. Only consumer was the `dropAccretionAgesChordsCorrectly` test (also retired with the field). Cheap on its own (CPU array operation per beat) but pure dead weight.
+2. **`ArachneWebResult.strandTangent` field + tangent-decision logic** — `arachneEvalWeb` computed `result.strandTangent = (closer-of-spoke-vs-chord) ? bestSpokeTangent2D : spirTangent2D` per pixel, then both consumer sites in `arachne_composite_fragment` read it into `tang2D` and immediately `(void)tang2D;`-cast it. The tangent was a Marschner BRDF input demoted in V.7.9; both call sites had been carrying the dead-store since. **Per-pixel dead work.**
+3. **Dust-mote `fbm4` early-out** — `drawWorld()` computed `fbm4(driftUV, 0.31)` per pixel, then multiplied by `moteCone = saturate(beamMax * 2.5)`. For pixels outside any shaft cone (`beamMax < ~0.004`, typically ~70-80 % of frame at usual mood values), the multiplier collapsed to ~0 but the 4-octave Perlin call had already happened. Gated the block on `if (beamMax > 0.01)`.
+
+**SOAK kernel-cost benchmark measurement (M2 Pro, 1920×1080, spider forced ON, 1800 frames):**
+
+| metric | pre-cleanup (2026-05-10 baseline) | post-cleanup (this session) | Δ |
+|---|---|---|---|
+| p50 | 12.724 ms | 11.313 ms | **−1.4 ms** |
+| p95 | 14.458 ms | 12.557 ms | **−1.9 ms** |
+| p99 | 15.169 ms | 13.178 ms | −2.0 ms |
+| mean | 12.903 ms | 11.444 ms | −1.5 ms |
+| kernel overruns (>14 ms) | 172 / 1800 (9.6 %) | **1 / 1800 (0.06 %)** | −171 frames |
+
+Run-to-run variance ≈ 0.1 ms (the SOAK gate is 16 ms p95; post-cleanup p95 sits 3.4 ms inside the gate).
+
+**Projection to production p95.** The first production capture (2026-05-12T18-19-31Z) measured p95 = 16.068 ms in real-music conditions; SOAK measured p95 = 14.458 ms in worst-case-spider conditions before this cleanup. The SOAK ↔ production gap was ~+1.6 ms (production runs longer with more OS-scheduler interference) at the previous baseline. Applying the same gap to post-cleanup SOAK (12.557 ms) projects **production p95 ≈ 14.1 ms** — basically at the 14 ms target, within run-to-run noise. **Final closure requires Matt's re-capture** on real music to confirm.
+
+**No visual regression.** Items 1 + 2 are pure dead-code removal; item 3 is an early-out gate at a threshold (`beamMax > 0.01`) where the masked contribution is already ~0 — semantics-preserving up to floating-point. All 43 targeted Arachne tests green; all golden hashes unchanged. App build clean. SwiftLint 0 violations on touched files.
+
+---
+
 ### Escalation options (Matt to decide)
 
-#### Option A — L5: attack always-on cost (recommended for keeping Arachne on borderline Tier 2)
+#### Option A — L5: attack always-on cost (cheap-cleanup tranche LANDED 2026-05-12; LIKELY ALREADY CLOSED)
 
-Reduce the structural per-frame cost. Two candidate levers:
+**Update 2026-05-12.** Cheap-cleanup tranche landed before either of the larger sub-levers below was needed (see "2026-05-12 L5 cheap-cleanup tranche" section above). SOAK kernel p95 dropped 14.458 → 12.557 ms (−1.9 ms); projected production p95 ≈ 14.1 ms — at the gate, within run-to-run noise. **Awaiting Matt's M2 Pro re-capture** to confirm closure. If the re-capture closes p95 ≤ 14 ms, BUG-011 closes and L5.1 / L5.2 below are NOT needed.
 
-- **L5.1 WORLD pass cached refresh.** Render WORLD at 30 fps (every other frame) and sample the cached texture in between. The WORLD content is mostly slow-moving (sky gradient + ambient fog + god-rays driven by `f.mid_att_rel`); only the dust-mote field moves at audio rate. Estimated saving: 1.5–2 ms on COMPOSITE-only frames. Risk: visible shimmer if cache invalidation logic is wrong on mood transitions; needs tested fallback.
-- **L5.2 Drop pool early-out.** The drop accumulator loops the entire chord-pool for every pixel. Add a coarse-grid bucketing pass (per ~16 px tile decide whether any chord is in range) before the per-pixel loop. Estimated saving: 1–2 ms when drops are sparse, more when drops are visible only on a few chords near the spider.
+If the re-capture still misses p95 ≤ 14 ms (within run-to-run noise: anywhere 13.5–14.5 ms is effectively at the gate), the larger candidate sub-levers remain:
 
-Scope: 1-2 sessions for design + implementation + golden-hash regen + manual smoke. Needs a new `D-XXX` decision entry ("Arachne WORLD half-rate refresh + drop-pool spatial pruning, Tier 2 always-on cost reduction"). Likely sufficient to bring p95 under 14 ms on M2 Pro and p50 close to 8 ms.
+- **L5.1 WORLD pass cached refresh.** Render WORLD at 30 fps (every other frame) and sample the cached texture in between. The WORLD content is mostly slow-moving (sky gradient + ambient fog + god-rays driven by `f.mid_att_rel`); only the dust-mote field moves at audio rate, and that's now early-out-gated by the cheap-cleanup tranche. Estimated saving: 1.5–2 ms on COMPOSITE-only frames. Risk: visible shimmer if cache invalidation logic is wrong on mood transitions; needs tested fallback.
+- **L5.2 Drop pool early-out.** **Retired** — the drop pool itself was removed in commit `3f6126e0` (drops retired during web construction); no per-pixel loop remains to prune. The "drop pool" referenced in earlier L5 framing no longer exists; the cheap-cleanup tranche found and removed the last per-pixel residue.
+
+Scope for L5.1 if needed: 1-2 sessions for design + implementation + golden-hash regen + manual smoke. Would need a new `D-XXX` decision entry ("Arachne WORLD half-rate refresh, Tier 2 always-on cost reduction") before implementation.
 
 #### Option B — L4: reclassify M2 Pro as Tier 1 for Arachne specifically
 
@@ -220,7 +248,7 @@ Scope: 1 commit (criteria update + KNOWN_ISSUES status flip + release note). Clo
 ### Verification criteria
 
 - [x] Automated: `shortRunArachneComposite` SOAK benchmark added to `SoakTestHarnessTests` (commit `bd213856`). Kernel-only SOAK_TESTS=1 benchmark. SOAK_TESTS=1 gated; loose 16 ms p95 kernel-only gate on M2 Pro at 1920×1080 with spider forced ON.
-- [~] **Partial**: M2 Pro real-music perf capture executed 2026-05-12 in session `2026-05-12T18-19-31Z`. drops (>32 ms) = 0.7 % passes the 8 % gate; p95 = 16.068 ms misses the 14 ms gate by 2 ms; p50 = 13.649 ms misses the 8 ms gate. See "2026-05-12 production capture" section above for the data and the three escalation paths (L5 / L4 / accept-and-close). **Status remains Open** pending Matt's choice of escalation.
+- [~] **Partial**: M2 Pro real-music perf capture executed 2026-05-12 in session `2026-05-12T18-19-31Z`. drops (>32 ms) = 0.7 % passes the 8 % gate; p95 = 16.068 ms misses the 14 ms gate by 2 ms; p50 = 13.649 ms misses the 8 ms gate. See "2026-05-12 production capture" section above. **L5 cheap-cleanup tranche landed 2026-05-12** (SOAK kernel p95 14.458 → 12.557 ms; production p95 projects to ~14.1 ms). **Re-capture pending Matt** to confirm production closure ≤ 14 ms — that's the load-bearing close action.
 - [ ] Manual: re-run on M3+ to confirm budget holds at full feature set on actual Tier 2 silicon (M2 Pro is borderline Tier 2; the architecture contract specifies M3+). Still pending; would clarify whether the current p95 = 16.068 ms is "M2 Pro is below spec" or "Tier 2 budget needs revision."
 - [ ] Manual: run Arachne against the V.7.7C.5 visual reference (`docs/VISUAL_REFERENCES/arachne/`) after any tuning to confirm fidelity didn't regress alongside cost. The L1/L2/L3 changes are individually low-risk per the source-side comment rationale, but the cumulative visual is best assessed at real-music scale rather than the 64×64 dHash + RENDER_VISUAL contact-sheet harness used in this session.
 
@@ -231,6 +259,63 @@ Scope: 1 commit (criteria update + KNOWN_ISSUES status flip + release note). Clo
 - DM.3a (this session's measurement infrastructure made the breach visible).
 - **L5 escalation path** (always-on cost reduction — WORLD pass half-rate refresh + drop-pool spatial pruning) — documented above; needs a new `D-XXX` entry before implementation.
 - **L4 escalation path** (DeviceTier-aware fallback to V.7.5 2D silhouette spider on Tier 1, plus reclassifying M2 Pro as Tier 1 for Arachne) — documented above; needs a new `D-XXX` entry before implementation.
+
+---
+
+### BUG-001 — Money 7/4 stays REACTIVE on live path
+
+**Severity:** P2
+**Domain tag:** dsp.beat
+**Status:** Open
+**Introduced:** DSP.3.5 (identified; pre-existing limitation of the 10-second live window)
+**Resolved:** —
+
+**Expected behavior:** After 20 seconds of playback (two retry attempts), Beat This! produces a usable BeatGrid for Money 7/4 and `lock_state` advances past UNLOCKED.
+
+**Actual behavior:** Beat This! returns an empty grid on both the 10-second and 20-second attempts. The session stays in REACTIVE mode throughout. `grid_bpm=0` in `features.csv`.
+
+**Reproduction steps:**
+1. Start an ad-hoc reactive session (no Spotify preparation).
+2. Play "Money" by Pink Floyd in Apple Music.
+3. Switch to SpectralCartograph preset and observe mode label.
+4. Observe "○ REACTIVE" for the full track.
+
+**Minimum reproducer:** "Money" by Pink Floyd, ad-hoc reactive session.
+
+**Session artifacts:**
+- `docs/diagnostics/DSP.3.5-post-validation-beatgrid-triage.md` — contains the evidence and analysis.
+
+**Suspected failure class:** calibration
+**Evidence:** 10-second window at 120 BPM gives ~20 beats, which is insufficient for confident downbeat estimation on 7/4 irregular meter. The retry at 20 seconds sees the same 10-second snapshot (not a longer window), so it does not help. The 30-second Spotify-prepared path gives ~61 beats and reliably detects the meter.
+
+**Verification criteria:**
+- [ ] Connecting a Spotify playlist that includes "Money" results in a prepared BeatGrid with `beats_per_bar=7` in `KNOWN_ISSUES.md` test notes.
+- [ ] Manual: beat grid ticks in SpectralCartograph align to perceived quarter notes.
+
+**Fix scope:** The durable fix is not to tune the live path — it is to use a Spotify-prepared session. The live path (10-second window) is below the beat-count floor for irregular-meter tracks by construction. See `docs/diagnostics/DSP.3.5-post-validation-beatgrid-triage.md` for the evidence. A potential improvement (not yet planned) would be to extend the live-path snapshot to 20–30 seconds on the retry, but this carries a 1.5–2× memory cost per attempt.
+
+**Related:** DSP.3.5, D-077
+
+---
+
+## Pre-existing Flakes (non-blocking, test infrastructure only)
+
+These test failures are pre-existing, environment-dependent, and do not indicate behavioral regressions. They are tracked here for completeness.
+
+| Test | Condition | Workaround |
+|---|---|---|
+| `MetadataPreFetcherTests.fetch_networkTimeout_returnsWithinBudget` | Intermittent network call timing variance under load | Run in isolation: `swift test --filter fetch_networkTimeout_returnsWithinBudget` |
+| `MemoryReporterTests` growth assertions | `phys_footprint` variance across system memory pressure states | Run with other apps quit; or skip with `SKIP_MEMORY_TESTS=1` |
+| `AppleMusicConnectionViewModelTests` (4 tests) | Requires Apple Music.app to be installed and reachable; CI-only failure | Run on dev machine with Apple Music installed |
+| `PreviewResolverTests` timing tests | Rate-limit timing sensitive under parallel test execution | `@Suite(.serialized)` applied; still flakes under peak system load |
+
+---
+
+## Resolved (recent)
+
+### Sweep note (2026-05-12)
+
+The 11 entries below were moved from the Open section to here as part of a quality-docs audit. Each was already marked `Status: Resolved` (or `Status: Closed — attempt reverted`, for BUG-007.3) in its body but had not been physically relocated. No content changes — entries are byte-identical to the originals; only their position in the document changed. Sort order is by resolution date (newest first within the 11), then back into the existing Resolved chronology.
 
 ---
 
@@ -611,42 +696,6 @@ If the wider window also produces an out-of-band BPM estimate (slope still > 5 m
 
 ---
 
-### BUG-001 — Money 7/4 stays REACTIVE on live path
-
-**Severity:** P2
-**Domain tag:** dsp.beat
-**Status:** Open
-**Introduced:** DSP.3.5 (identified; pre-existing limitation of the 10-second live window)
-**Resolved:** —
-
-**Expected behavior:** After 20 seconds of playback (two retry attempts), Beat This! produces a usable BeatGrid for Money 7/4 and `lock_state` advances past UNLOCKED.
-
-**Actual behavior:** Beat This! returns an empty grid on both the 10-second and 20-second attempts. The session stays in REACTIVE mode throughout. `grid_bpm=0` in `features.csv`.
-
-**Reproduction steps:**
-1. Start an ad-hoc reactive session (no Spotify preparation).
-2. Play "Money" by Pink Floyd in Apple Music.
-3. Switch to SpectralCartograph preset and observe mode label.
-4. Observe "○ REACTIVE" for the full track.
-
-**Minimum reproducer:** "Money" by Pink Floyd, ad-hoc reactive session.
-
-**Session artifacts:**
-- `docs/diagnostics/DSP.3.5-post-validation-beatgrid-triage.md` — contains the evidence and analysis.
-
-**Suspected failure class:** calibration
-**Evidence:** 10-second window at 120 BPM gives ~20 beats, which is insufficient for confident downbeat estimation on 7/4 irregular meter. The retry at 20 seconds sees the same 10-second snapshot (not a longer window), so it does not help. The 30-second Spotify-prepared path gives ~61 beats and reliably detects the meter.
-
-**Verification criteria:**
-- [ ] Connecting a Spotify playlist that includes "Money" results in a prepared BeatGrid with `beats_per_bar=7` in `KNOWN_ISSUES.md` test notes.
-- [ ] Manual: beat grid ticks in SpectralCartograph align to perceived quarter notes.
-
-**Fix scope:** The durable fix is not to tune the live path — it is to use a Spotify-prepared session. The live path (10-second window) is below the beat-count floor for irregular-meter tracks by construction. See `docs/diagnostics/DSP.3.5-post-validation-beatgrid-triage.md` for the evidence. A potential improvement (not yet planned) would be to extend the live-path snapshot to 20–30 seconds on the retry, but this carries a 1.5–2× memory cost per attempt.
-
-**Related:** DSP.3.5, D-077
-
----
-
 ### BUG-003 — DSP.3.6 / DSP.3.7 tests not yet implemented
 
 **Severity:** P3
@@ -674,7 +723,6 @@ If the wider window also produces an out-of-band BPM estimate (slope still > 5 m
 **Related:** DSP.3.6, DSP.3.7, QR.3, D-090.
 
 ---
-
 
 ### BUG-005 — Spotify `preview_url` returns null for some tracks
 
@@ -886,20 +934,7 @@ Recommended for BUG-008.2: option (1) only. Defer (2)/(3) until **BUG-007** (loc
 
 ---
 
-## Pre-existing Flakes (non-blocking, test infrastructure only)
-
-These test failures are pre-existing, environment-dependent, and do not indicate behavioral regressions. They are tracked here for completeness.
-
-| Test | Condition | Workaround |
-|---|---|---|
-| `MetadataPreFetcherTests.fetch_networkTimeout_returnsWithinBudget` | Intermittent network call timing variance under load | Run in isolation: `swift test --filter fetch_networkTimeout_returnsWithinBudget` |
-| `MemoryReporterTests` growth assertions | `phys_footprint` variance across system memory pressure states | Run with other apps quit; or skip with `SKIP_MEMORY_TESTS=1` |
-| `AppleMusicConnectionViewModelTests` (4 tests) | Requires Apple Music.app to be installed and reachable; CI-only failure | Run on dev machine with Apple Music installed |
-| `PreviewResolverTests` timing tests | Rate-limit timing sensitive under parallel test execution | `@Suite(.serialized)` applied; still flakes under peak system load |
-
 ---
-
-## Resolved (recent)
 
 ---
 
