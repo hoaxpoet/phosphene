@@ -3194,7 +3194,7 @@ The reframe is operative on three axes:
 
 ---
 
-## D-115 — Phase MD release-bundle composition: framed; Matt's call (Strategy Addendum, filed 2026-05-12; proposal pending sign-off)
+## D-115 — Phase MD release-bundle composition: framed; Matt's call (Strategy Addendum, filed 2026-05-12; proposal pending sign-off; amended 2026-05-12 — default shifts to 7+13 under D-119 brand commitment)
 
 **Status.** The question is framed; Matt's pick is pending. Three proposals on the table for the composition of the 20-preset first-release bundle (D-114):
 
@@ -3206,9 +3206,17 @@ The reframe is operative on three axes:
 
 **Carry-forward.** Matt's pick lands as the operative form of D-115 in a follow-up amendment. The pick drives Phase G-uplift scope (which presets to prioritize for cert review) and the inspired-by batch size for the first release. Until the pick lands, the working assumption is Proposal A. See `docs/MILKDROP_STRATEGY.md` §12.4.1.
 
+**Amendment 2026-05-12 (default shifts to 7+13 under D-119 brand commitment).** With D-119 committing Phosphene's brand identity as "Milkdrop-influenced modern platform" (majority-inspired-by catalog at steady state), the balanced 10+10 default no longer fits the brand framing — the first release should signal the inspired-by-forward character. Revised proposal set:
+
+- **A' — 7+13.** Seven Phosphene-native + thirteen Milkdrop-inspired. **New default.** Phosphene-native side draws from the ~14 already-authored production presets (cert-review window is bounded; Phase G-uplift work continues but only ~7 of ~14 need to cert before first release); Milkdrop-inspired side lands the first-release batch at majority share, matching D-119.
+- **B' — 5+15.** Bolder inspired-by-forward; further commits the catalog character at first-release.
+- **C' — 10+10.** Original recommendation; falls back to balanced if the inspired-by authoring window proves tighter than expected.
+
+A' (7+13) is the new default working assumption. Matt's final pick lands as the operative form of D-115 in a follow-up amendment block. See `docs/MILKDROP_STRATEGY.md` §12.10.
+
 ---
 
-## D-116 — Phase MD substantial-similarity discipline rule (Strategy Addendum, filed 2026-05-12)
+## D-116 — Phase MD substantial-similarity discipline rule (Strategy Addendum, filed 2026-05-12; amended 2026-05-12 — bullet 3 strengthened by D-121 to require measurable visual divergence)
 
 **Rule.** A Milkdrop-inspired Phosphene preset must be a **new creation**, not a reproduction. The discipline rule applies to every preset that carries an `inspired_by` provenance block (per D-111 amendment); other Phosphene presets (Aurora Veil, Crystalline Cavern, Phase G-uplift catalog members) are unaffected.
 
@@ -3229,9 +3237,11 @@ Specifically:
 
 **Carry-forward.** M7 review of any Milkdrop-inspired preset must explicitly check the four bullets above against the source `.milk` reference. A preset that fails any bullet does not certify; the fix is to rewrite from scratch under closer discipline, not to tune.
 
+**Amendment 2026-05-12 (bullet 3 strengthened by D-121).** The original bullet 3 ("the visual structure may differ from the source") was permissive — it allowed but did not require visual divergence. Adversarial review surfaced that this left the rendered-output substantive-similarity axis unprotected (code-side bullets 1 / 2 / 4 don't prevent producing visually-identical output from differently-written code). D-121 rewrites bullet 3 as load-bearing: the Phosphene preset's rendered output **must** differ measurably from the source on at least one of {dominant motion model, palette character, primary feature stack, compositional structure}. M7 review adds a mandatory side-by-side render comparison + Matt-authored divergence rationale. See D-121 + `SHADER_CRAFT.md §12.6` for the operative text.
+
 ---
 
-## D-117 — Phase MD catalog-ratio framing: deferred (Strategy Addendum, filed 2026-05-12)
+## D-117 — Phase MD catalog-ratio framing: deferred (Strategy Addendum, filed 2026-05-12; amended 2026-05-12 — target set by D-119 brand commitment; no longer deferred)
 
 **Status.** Question framed; explicit decision deferred until the 20-preset first-release bundle (D-114) ships and steady-state catalog growth becomes observable.
 
@@ -3247,6 +3257,14 @@ Specifically:
 
 **Trigger to decide.** When the catalog reaches ~40 presets total (20-bundle release + ~20 more uplifts), revisit. Filed here as a deferred decision; D-117 stays open until the trigger fires. See `docs/MILKDROP_STRATEGY.md` §12.6.
 
+**Amendment 2026-05-12 (target set; no longer deferred).** D-119 committed Phosphene's brand identity as "Milkdrop-influenced modern platform." Under that commitment the catalog-ratio question has an explicit target rather than a deferred review:
+
+- **Target: ≥ 50% inspired-by at steady state**, with ~60–70% expected.
+- **Upper bound: ~80%** to preserve Phosphene-native distinctiveness (Aurora Veil, Crystalline Cavern, Phase G-uplift members carry the "modern platform" half of the brand framing).
+- **Mechanism if the ratio drifts outside the band:** Phase 4 orchestrator family / concept / paradigm-repeat penalties (D-053 + D-120) plus the D-122 catalog-ratio kill-switch trigger (re-evaluation if ratio < 50% or > 80% before the second release bundle).
+
+The provisional "50/50 ± 20%" working assumption in the original carry-forward is superseded. The "trigger to decide at ~40 presets" framing is also superseded — D-122 milestone triggers replace it.
+
 ---
 
 ## D-118 — Phase MD read-only analysis tool: skip (Strategy Addendum, filed 2026-05-12)
@@ -3261,4 +3279,118 @@ Specifically:
 D-118.2 wins because: (a) authors already read every source material end-to-end before authoring (mandatory per `CLAUDE.md` Authoring Discipline — "Articulate the musical role before authoring anything" + Failed Approach #39 "authoring without reference images"); a read-only tool duplicates that work without adding signal; (b) MD.1's grammar audit already catalogs the variable / function / operator surface across the full pack — a second tool is unnecessary infrastructure; (c) the authoring sessions that produce inspired-by Phosphene presets are the Phase MD work; spending one of those sessions on tool-building is opportunity cost against actual catalog growth.
 
 **Carry-forward.** MD.2 (transpiler CLI), MD.3 (HLSL hand-port playbook), MD.4 (per-vertex Metal emission) are all retired entirely per D-110 amendment. MD.1 (grammar audit doc) is retained and reframed as a read-only author's reference. See `docs/MILKDROP_STRATEGY.md` §12.7.
+
+---
+
+## D-119 — Phosphene product brand identity: Milkdrop-influenced modern platform (Strategy Addendum follow-up, filed 2026-05-12)
+
+**Rule.** Phosphene's product identity is **"Milkdrop-influenced modern platform"** — a music-visualization product whose catalog is intentionally majority-Milkdrop-inspired, drawing on the 25-year Milkdrop preset tradition as Phosphene's primary aesthetic well, layered with Phosphene's modern capabilities (stems via Open-Unmix HQ, beat phase via Beat This!, ray-march scenes, `mv_warp` per-vertex feedback, PBR materials, MV-3 audio analysis surface). This is the committed product identity going forward.
+
+**Implications.**
+
+1. **Catalog ratio target (D-117 amendment).** Steady-state catalog ratio is **≥ 50% inspired-by, ~60–70% expected, upper bound ~80%** to preserve Phosphene-native distinctiveness. The "deferred until ~40 presets" framing of the original D-117 retires.
+2. **First-release bundle composition (D-115 amendment).** Default recommendation shifts from balanced 10+10 to inspired-by-forward — new default **7+13** (Phosphene-native + Milkdrop-inspired); alternatives 5+15 (bolder) or 10+10 (fallback).
+3. **External communication.** When Phosphene marketing copy / repo description / about-screen text gets authored, it names Milkdrop influence explicitly — not as background acknowledgement but as the defining aesthetic choice. The CREDITS.md "Milkdrop-inspired preset attribution" section becomes load-bearing user-facing content, not just a legal footnote.
+4. **D-107 brand-fit criterion narrows.** "Brand fit" for ray-march-composing inspired-by uplifts (formerly D-107 Hybrid candidate criteria) is no longer about avoiding overlap with Phosphene-native catalog members — the catalog is meant to be Milkdrop-forward. Brand fit reduces to "does this register expand the Milkdrop-influenced character of the catalog?" with internal-competition concerns retired.
+
+**Why.** Two alternatives were on the table:
+
+- **"Phosphene-native with Milkdrop accents."** Would have required a hard ceiling on inspired-by share (~25%) and aggressive Phase G-uplift / Phase AV / Phase CC throughput to keep parity. Matches the original §3 strategy's implicit framing.
+- **"Milkdrop-influenced modern platform."** Committed brand identity. Matches the actual work distribution — Phase MD is the long-tail catalog-growth engine; Phosphene-native phases are the differentiating but slower work stream.
+
+Matt picked the second 2026-05-12 in response to the adversarial review's call for an explicit brand commitment. The pick acknowledges the empirical work distribution and avoids the "catalog accidentally drifts Milkdrop-forward without a brand framing to support it" failure mode the adversarial review flagged.
+
+**Carry-forward.**
+
+- D-115 composition recommendation amended (7+13 default; see D-115 amendment block).
+- D-117 catalog-ratio framing amended (target ≥ 50% inspired-by, no longer deferred; see D-117 amendment block).
+- Phosphene marketing / About / repo-description copy reflects the framing when authored. None of this exists in the repo yet; flagged for the eventual marketing-copy authoring session.
+- D-107 brand-fit criterion narrows per the implication above (no separate amendment block — the criterion was authored under the unstated "Phosphene-native default" assumption; D-119 surfaces the assumption and inverts it).
+
+---
+
+## D-120 — Phase MD property taxonomy: concept_tags + motion_paradigm (Strategy Addendum follow-up, filed 2026-05-12)
+
+**Rule.** Every Phosphene preset's JSON sidecar declares two metadata fields beyond `family`:
+
+1. **`concept_tags: [String]`** — array of visual-concept tags drawn from a controlled vocabulary mirroring the cream-of-crop pack's themes (per `docs/diagnostics/MD-strategy-pre-audit-2026-05-12.md` §0.5) extended with Phosphene-native registers. Vocabulary (extends as needed; reuse over invention):
+
+   `fractal`, `geometric`, `waveform`, `reaction_diffusion`, `dancer`, `drawing`, `sparkle`, `particles`, `supernova`, `hypnotic`, `kaleidoscope`, `aurora`, `cavern`, `web`, `terrain`, `nebula`, `plasma`, `glass`, `mosaic`, …
+
+   A preset may declare multiple tags where its visual register sits at an intersection (e.g. `["supernova", "particles"]` for a particle-nova). Empty array is allowed for genuinely uncategorisable diagnostic presets.
+
+2. **`motion_paradigm: String`** — one of the D-029 motion-source paradigms enumerated in [`docs/MILKDROP_ARCHITECTURE.md`](MILKDROP_ARCHITECTURE.md) §4:
+
+   `feedback_warp` | `particles` | `camera_flight` | `mesh_animation` | `direct_time_modulation` | `mv_warp` | `ray_march_static` | `staged_composition`
+
+   Single value (D-029 says paradigms are alternatives, not composable; tier-collapse semantics from D-103 amendment do not change this — a preset that combines `ray_march_static` + `mv_warp` on top is still a single composed paradigm at the orchestrator-scheduling level, recorded as `staged_composition` or `ray_march_static` per the dominant motion source).
+
+**Applies to all Phosphene presets**, not just Milkdrop-inspired. Existing catalog members get retroactively tagged in a one-time pass (documented per-preset rationale; small task — 15 presets × 2 fields × 30 sec lookup ≈ 15 min).
+
+**Why.** Three things at once:
+
+1. **Restores orchestrator scheduling information lost by D-103 tier collapse.** All 200 future inspired-by uplifts ship as `family: "milkdrop_inspired"`; the family-repeat penalty (Phase 4) treats them as a single bucket. Concept-repeat and paradigm-repeat penalties give the orchestrator multi-axis diversity scheduling (a session selecting two `concept_tags: ["fractal"]` presets in a row gets the same cool-down regardless of family).
+2. **Generalises to non-Milkdrop presets.** The taxonomy applies to Aurora Veil / Crystalline Cavern / the Phase G-uplift catalog members too — orchestrator gains diversity scheduling across the whole catalog, not just Milkdrop-inspired subset.
+3. **Mirrors the cream-of-crop pack's existing taxonomy.** Inspired-by authors opening a source `.milk` already know what theme it sits in; the same taxonomy carries through to the Phosphene preset's tags. Removes a translation step.
+
+Matt's framing per 2026-05-12: *"tag or categorize them according to the Milkdrop Architecture document — by what the preset does or its underlying concept / technology. This is a property taxonomy."* `concept_tags` captures "what the preset does"; `motion_paradigm` captures "underlying concept / technology" per `MILKDROP_ARCHITECTURE.md` §3 / §4.
+
+**Why NOT a `fidelity: close/loose/divergent` field** (rejected from the adversarial review): (a) speculative axis with no empirical grounding; (b) doesn't generalise outside Milkdrop-inspired subset; (c) the substantial-similarity discipline rule (D-116 / D-121) already governs the fidelity question at authoring time, so a per-preset fidelity tag is descriptive metadata at best — not useful for orchestrator scheduling. The property taxonomy in D-120 is a better axis on all three counts.
+
+**Carry-forward.**
+
+- **JSON schema.** `PresetDescriptor` Codable extension to read the two new fields, both with sensible defaults (empty array for `concept_tags`; `motion_paradigm` inferred from existing render-pass declaration if absent, with explicit override available).
+- **Existing-preset retroactive tagging pass.** One-time increment, documented per-preset; lands alongside the first inspired-by uplift or earlier as a standalone tagging session.
+- **Phase 4 orchestrator wiring.** `PresetScoringContext` extended with concept-repeat + paradigm-repeat history; scoring weights TBD when wiring lands. Naturally additive to existing family-repeat infrastructure.
+- **No new `PresetCategory` Swift enum cases.** `family` stays as-is (the original 14 cases + the future `.milkdropInspired`); `concept_tags` + `motion_paradigm` are JSON-side metadata, not Swift enum.
+
+---
+
+## D-121 — Phase MD visual-divergence rule (Strategy Addendum follow-up, filed 2026-05-12; amends D-116 + SHADER_CRAFT.md §12.6 bullet 3)
+
+**Rule.** D-116 bullet 3 of the substantial-similarity discipline rule (lives in `SHADER_CRAFT.md §12.6`) is rewritten from permissive ("the visual structure may differ from the source") to load-bearing:
+
+> **"3. The Phosphene preset's rendered output MUST differ measurably from the source on at least one of: dominant motion model, palette character, primary feature stack, or compositional structure."**
+
+**M7 review test (mandatory for Milkdrop-inspired presets).** Render the Phosphene preset on a shared test track; render the source `.milk` on the same track in projectM (or comparable Milkdrop-compatible renderer); place renders side-by-side. The M7 reviewer (Matt) writes a one-paragraph divergence rationale in the closeout naming **which axis diverges and how**. A preset that cannot articulate a divergence on at least one of the four axes does **not** certify; the remediation is to rewrite under closer discipline, not to tune (Failed Approach #49 precedent — tuning constants on a structurally broken renderer).
+
+**Why.** The original D-116 bullet 3 was permissive ("may differ"), leaving the rendered-output axis unprotected. Bullets 1 / 2 / 4 enforce code-side similarity (no equations copy-pasted, no shader logic ported line-for-line, no `.milk` redistribution); the rendered-output axis is the more legally significant for copyright in software UI and visual works, but had no enforcing rule. The `inspired_by` provenance block + CREDITS.md attribution establish **knowledge of** and **access to** the source preset — both elements of a substantial-similarity case. Without enforced visual divergence, that documentation increases legal exposure relative to silently shipping aesthetically-similar output. The strengthened bullet 3 + the side-by-side M7 test operationalise the visual axis.
+
+Failed Approach #48 is the precedent at the per-preset level (Arachne V.7 rendered output landed at the named anti-reference `10_anti_neon_stylized_glow.jpg` despite passing the §10.1-faithful authoring path; substantive similarity to the anti-reference was caught at M7 review, not at authoring). D-121's enforcement applies the same lesson at the cross-product level: catch the source-similarity case at M7 review by mandatory side-by-side comparison, not by trusting the code-side discipline to produce visual divergence automatically.
+
+**Carry-forward.**
+
+- `SHADER_CRAFT.md §12.6` bullet 3 + M7 checklist rewritten in the same commit as this decision.
+- Phase MD per-preset closeout reports for Milkdrop-inspired uplifts include a divergence rationale citing one of the four axes.
+- The rule is reusable for any future reference-anchored authoring outside Phase MD where the same anti-reference convergence risk applies (Failed Approach #48 generalisation). For Phase MD specifically the M7 test is mandatory; for other phases it remains author + reviewer discretion.
+
+---
+
+## D-122 — Phase MD kill-switch / re-evaluation triggers (Strategy Addendum follow-up, filed 2026-05-12)
+
+**Rule.** Phase MD halts and re-evaluates on any of four explicit triggers:
+
+1. **Milestone trigger (heartbeat).** After the **10th inspired-by preset** ships (i.e., immediately after the first-release bundle if 10+ inspired-by are in it), conduct an explicit "Phase MD health check" review covering:
+   - Discipline-rule application across the 10 presets (D-116 / D-121).
+   - Catalog character against brand commitment (D-119).
+   - Orchestrator scheduling on the D-120 property taxonomy — is the family / concept / paradigm-repeat surface producing varied sessions?
+   - Any community signal received (takedown, comment, request).
+
+2. **Takedown signal.** First takedown notice or substantive copyright complaint routed through the projectM team or directly to Phosphene. Halt new inspired-by authoring; investigate; respond per D-111 amendment takedown protocol; reopen the legal posture analysis.
+
+3. **Discipline-rule failure.** First M7 review that rejects an inspired-by preset for substantive-similarity reasons (D-116 / D-121 violation). Halt and review whether the discipline rule needs to tighten further (additional bullets, stricter visual-divergence axes, tighter M7 procedure).
+
+4. **Catalog-ratio drift.** Inspired-by share of the production catalog falls below ~50% or rises above ~80% before the second release bundle (or comparable explicit milestone). Review whether the work-distribution model is healthy (Phosphene-native authoring keeping pace; inspired-by authoring not over-running).
+
+**Each trigger produces an explicit review session with documented outcome:** *proceed* (continue Phase MD as-is), *adjust* (revise specific decisions; file amendments), *halt* (suspend Phase MD pending resolution). The outcome lands as a follow-up decision (or amendment to D-119 / D-122) in `docs/DECISIONS.md`.
+
+**Why.** The base strategy had counsel review as a checkpoint at the start of Phase MD (D-111 original I.1 posture). The 2026-05-12 amendment retired the gate (counsel review remained optional async due diligence; not a precondition). D-122 fills the resulting gap — a 200-preset commitment without checkpoints is a multi-year branch with no integration. The four triggers cover the three substantive risk axes (legal, discipline, scale) plus a milestone heartbeat.
+
+The adversarial review's specific framing was: *"What's the trigger to abandon Phase MD entirely?"* D-122 answers that question without requiring Phase MD to fail catastrophically before re-evaluation — the milestone trigger fires whether or not anything is wrong, on the principle that ten presets is the right unit to look back from.
+
+**Carry-forward.**
+
+- ENGINEERING_PLAN.md Phase MD section gets the four triggers documented as gates.
+- The MD.6 "long-tail work stream" increment gets the milestone-10 trigger as its first checkpoint.
+- D-119 / D-117 / D-116 / D-121 each name D-122 as their explicit re-evaluation surface — a follow-up that violates the rule in any of those decisions fires the discipline-rule-failure trigger.
 

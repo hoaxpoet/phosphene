@@ -740,6 +740,17 @@ entry after this section is filled in.
   similarity discipline rule; D-117 — catalog-ratio framing;
   D-118 — read-only analysis tool scope). §§1–11 above stand as
   historical record of the derivative-posture framing.
+* 2026-05-12 — §12.10 post-adversarial-review revisions landed.
+  Four new decisions filed (D-119 — Milkdrop-influenced modern
+  platform as committed brand identity; D-120 — concept-tags +
+  motion-paradigm property taxonomy from `MILKDROP_ARCHITECTURE.md`;
+  D-121 — visual-divergence rule strengthening §12.5 / D-116
+  bullet 3 and SHADER\_CRAFT.md §12.6; D-122 — kill-switch /
+  re-evaluation triggers). D-115 + D-117 amended to align with
+  the brand commitment (composition default shifts to 7+13;
+  catalog ratio target ≥ 50% inspired-by, upper bound ~80%). The
+  review's `fidelity` field proposal was rejected by Matt in
+  favour of the property taxonomy that landed as D-120.
 
 ---
 
@@ -1058,5 +1069,145 @@ inspired-by reframe restructures the increment scopes:
 | **MD.7 Hybrid ray-march + warp** | 5 Hybrid-tier presets with ray-march backdrop. | **Reframed as "inspired-by uplifts that compose mv_warp + ray_march."** Architectural composition is per-preset authoring choice. The MD.7.0 spike (Geiss *3D-Luz* recommended) is still a valuable proof-of-composition increment under inspired-by — but the deliverable is one Phosphene-native preset that takes Geiss *3D-Luz* as inspiration, not a port. |
 
 ENGINEERING_PLAN.md is revised in §6 of this session (separate commit).
+
+---
+
+### §12.10 Post-adversarial-review revisions (2026-05-12)
+
+After the initial §12 landing, Matt requested an adversarial review of
+the addendum. Four substantive corrections lifted out of that review
+land here as a second-pass set: (a) the §12.5 / D-116 discipline rule's
+bullet 3 was permissive and missed the rendered-output axis where
+substantive-similarity actually lives; (b) the D-103 tier collapse lost
+orchestrator scheduling information, but the right fix is a property
+taxonomy from `MILKDROP_ARCHITECTURE.md` §3 / §4 (concept + motion-
+source paradigm), not the speculative `fidelity` field the review
+proposed; (c) the §12.6 / D-117 catalog-ratio question was deferred
+without an underlying brand commitment, so the catalog character was
+left to drift; (d) the D-111 amendment retired the counsel-review gate
+without a replacement checkpoint. Four new decisions land:
+
+* **D-119 — Brand identity: Milkdrop-influenced modern platform.**
+  Phosphene is a music-visualization product whose catalog is
+  intentionally majority-Milkdrop-inspired, drawing on the 25-year
+  Milkdrop preset tradition as Phosphene's primary aesthetic well,
+  layered with Phosphene's modern capabilities (stems, beat phase,
+  ray-march, mv\_warp, PBR, MV-3 audio analysis). This is the
+  committed product identity going forward — replaces the §12.6
+  / D-117 "defer until ~40 presets" framing. Implications:
+  steady-state catalog ratio ≥ 50% inspired-by (target ~60–70%,
+  upper bound ~80% to preserve Phosphene-native distinctiveness);
+  the 20-preset first-release bundle composition (D-115) reweights
+  toward inspired-by-forward; Phosphene marketing copy names
+  Milkdrop influence explicitly.
+
+* **D-120 — Property taxonomy (concept tags + motion paradigm).**
+  Every Phosphene preset's JSON sidecar gains two metadata fields
+  beyond `family`: (1) `concept_tags: [String]` — controlled-vocab
+  array drawn from the cream-of-crop pack themes + Phosphene-native
+  extensions (`fractal`, `geometric`, `waveform`, `reaction_diffusion`,
+  `dancer`, `drawing`, `sparkle`, `particles`, `supernova`,
+  `hypnotic`, `kaleidoscope`, `aurora`, `cavern`, `web`, etc. —
+  list extends as needed, reuse over invention); (2)
+  `motion_paradigm: String` — one of the D-029 motion-source
+  paradigms enumerated in `MILKDROP_ARCHITECTURE.md` §4
+  (`feedback_warp` | `particles` | `camera_flight` |
+  `mesh_animation` | `direct_time_modulation` | `mv_warp` |
+  `ray_march_static` | `staged_composition`). Applies to all
+  Phosphene presets, not just Milkdrop-inspired — existing
+  catalog members get retroactively tagged. Replaces the
+  adversarial-review's `fidelity` field proposal. Restores
+  orchestrator scheduling information lost by the D-103 tier
+  collapse (Phase 4 gains concept-repeat + paradigm-repeat
+  penalties alongside the existing family-repeat). Per Matt
+  2026-05-12: "tag or categorize them according to the Milkdrop
+  Architecture document — by what the preset does or its
+  underlying concept / technology. This is a property taxonomy."
+
+* **D-121 — Visual-divergence rule (strengthens §12.5 / D-116
+  bullet 3; lives in SHADER\_CRAFT.md §12.6).** Bullet 3 of the
+  substantial-similarity discipline rule is rewritten from
+  permissive ("visual structure may differ") to load-bearing: the
+  Phosphene preset's rendered output **must** differ measurably
+  from the source on at least one of: dominant motion model,
+  palette character, primary feature stack, or compositional
+  structure. M7 review adds a side-by-side render comparison —
+  the Phosphene preset rendered on a shared test track next to
+  the source `.milk` rendered in projectM (or comparable); Matt
+  writes a one-paragraph divergence rationale in the closeout
+  naming which axis diverges and how. A preset that cannot
+  articulate a divergence does not certify. Closes the rendered-
+  output substantive-similarity gap the original §12.5 left open
+  — code-side discipline (bullets 1 / 2 / 4) without visual-side
+  enforcement could ship aesthetically-faithful output despite
+  zero code overlap (Failed Approach #48 precedent at the
+  cross-product level).
+
+* **D-122 — Kill-switch / re-evaluation triggers.** Phase MD halts
+  and re-evaluates on any of four explicit triggers: (1) milestone
+  — after the 10th inspired-by preset ships, conduct a Phase MD
+  health check covering discipline-rule application, catalog
+  character against brand commitment, orchestrator scheduling on
+  D-120 taxonomy, and any community signal; (2) takedown signal
+  — first takedown notice or substantive copyright complaint
+  routed through projectM or directly to Phosphene; (3)
+  discipline-rule failure — first M7 review that rejects an
+  inspired-by preset for substantive-similarity reasons; (4)
+  catalog-ratio drift — inspired-by share falls below ~50% or
+  rises above ~80% of catalog before the second release bundle.
+  Each trigger produces an explicit review session with documented
+  outcome (proceed / adjust / halt). Replaces the counsel-review
+  gate that D-111 amendment retired without a replacement.
+
+**D-115 amendment under D-119 brand commitment.** The §12.4.1
+recommendation of 10+10 (Phosphene-native + Milkdrop-inspired) is
+revised toward inspired-by-forward to match the brand commitment.
+Updated proposal table:
+
+* **A' — 7+13.** Seven Phosphene-native + thirteen
+  Milkdrop-inspired. New default recommendation. Phosphene-native
+  side draws from the ~14 already-authored production presets;
+  cert-review window is bounded. Milkdrop-inspired side lands the
+  first-release inspired-by batch (the D-112 amended candidate
+  list + substitutions) at majority share, matching D-119 brand
+  identity.
+* **B' — 5+15.** Bolder inspired-by-forward; further commits the
+  catalog character at first-release.
+* **C' — 10+10.** Original recommendation; falls back to balanced
+  if the inspired-by authoring window proves tighter than expected.
+
+A' (7+13) is the new default. Matt's final pick lands as the
+operative form of D-115 in a follow-up amendment block.
+
+**D-117 amendment under D-119 brand commitment.** The catalog-ratio
+question is no longer deferred. The target is **≥ 50% inspired-by
+at steady state, ~60–70% expected**, upper bound ~80% to preserve
+Phosphene-native distinctiveness. Phase 4 orchestrator weighting
+remains the mechanism if the ratio drifts outside the band (D-053
+`excludedFamilies` floor + family / concept / paradigm-repeat
+penalties from D-120).
+
+### §12.11 Items raised in adversarial review but not landing here
+
+Three items the adversarial review surfaced as worth considering
+that are NOT landing as decisions in this revision pass — each is
+worth surfacing for Matt's call before being filed.
+
+* **Single-preset analyzer reconsideration (D-118 revisit).** The
+  review argued that a per-`.milk`-file structured summary tool
+  (~100 LOC bash + awk) would meaningfully accelerate authoring
+  for 200 uplifts. D-118 ("skip") was deliberate; reconsideration
+  is Matt's call. No amendment filed here.
+* **"Good neighbors" outreach to top-3 named authors before first
+  release.** Cheaper than the full notification protocol D-113
+  deferred; significantly reduces takedown risk for the named
+  starters (Geiss, Rovastar, EvilJim). Matt's call. No amendment
+  filed here.
+* **Hard substitution of Northern Lights ↔ Rovastar — Trippy S
+  in D-112.** Aurora Veil (Phase AV) is currently sequenced
+  ahead of the first inspired-by batch; the D-112 amendment text
+  already says "swap for Rovastar Trippy S or similar at MD.5
+  authoring," but the substitution could be made explicit now
+  rather than at authoring. Matt's call. No amendment filed here.
 
 ---
