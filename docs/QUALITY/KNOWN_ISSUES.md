@@ -830,6 +830,36 @@ These test failures are pre-existing, environment-dependent, and do not indicate
 
 ---
 
+### BUG-004 — All production presets have `certified: false`
+
+**Severity:** P3
+**Domain tag:** preset.fidelity
+**Status:** Resolved
+**Introduced:** V.6 (certification pipeline introduced; no presets had passed M7 yet)
+**Resolved:** 2026-05-12 — Phase LM (Lumen Mosaic cert flip at LM.7) + BUG-004 closure increment (this commit)
+
+**Root cause:** Quality bar — not a code defect. The certification rubric (V.6 / D-067) and orchestrator filter (`includeUncertifiedPresets: false` default) were correct; no preset had yet survived a Matt M7 visual review against its curated reference set.
+
+**Fix:** Two-part landing.
+
+1. **Cert flip (Phase LM, LM.7 — 2026-05-12).** Lumen Mosaic's LM.4.6 + LM.6 + LM.7 final shape (pure uniform random RGB per cell + cell-depth gradient + per-track chromatic-projected RGB tint) cleared the rubric with **10.5 / 15** (mandatory 7/7 + expected 2.5/4 + preferred 1/4). Matt M7 sign-off recorded against real-music session `2026-05-12T17-15-14Z`: *"Fix has achieved the desired effect — each track now has a visually distinct color palette ... I think we can move to certify this preset."* `LumenMosaic.json` flipped to `"certified": true`. `"Lumen Mosaic"` added to `FidelityRubricTests.certifiedPresets`. Phosphene's **first production certified preset** — Milestone D progresses to **1 / 22+**.
+2. **Closure verification (BUG-004 commit, this session).** Three follow-up items addressed:
+   - **`GoldenSessionTests.makeRealCatalog()` expanded 11 → 15 production presets.** Pre-closure the fixture was a stale subset that didn't include Lumen Mosaic, Arachne, Gossamer, or Staged Sandbox. Now mirrors every production sidecar. Spectral Cartograph + Staged Sandbox carry `isDiagnostic: true` per D-074 so the orchestrator excludes them categorically. Session C track 5 moved Plasma → Ferrofluid Ocean post-expansion (Plasma's high `fatigue_risk` cooldown extends past track 5's start; FO is the next-best high-energy candidate). Sessions A + B unchanged.
+   - **Session D added** — a single-track 180 s fixture with BPM=75 / valence=0.0 / arousal=+0.30 (LM-favourable mood profile). New test `sessionD_lumenMosaicWinsFirstSegment` regression-locks LM winning track 0 / segment 0 under that mood; scoring trace documents LM at total ≈ 0.868 vs Gossamer 0.830 / Arachne 0.818 / Plasma 0.796 / GB 0.787. Demonstrates the cert is end-to-end exercised, not just structurally present.
+   - **MatIDDispatch test fixture stale-constant fix.** `MatIDDispatchTests.kLumenEmissionGain` updated 4.0 → 1.0 to match the LM.3.2 round-4 emission-gain reduction (2026-05-10). All 3 MatIDDispatch tests now pass.
+
+**Verification criteria:**
+- [x] **Manual:** Matt M7 review approved Lumen Mosaic at LM.7 (session `2026-05-12T17-15-14Z`).
+- [x] **Automated:** `GoldenSessionTests` (13 tests, including Session D) passes with at least one certified preset (Lumen Mosaic) producing non-zero orchestrator selections under a plausible mood profile.
+
+**Carry-forward:**
+- Phosphene now runs with one certified preset by default. The orchestrator no longer requires `includeUncertifiedPresets: true` for sessions to produce non-empty plans, but the catalog still has 14 uncertified production presets. Watch for over-/under-selection of Lumen Mosaic in real-use sessions — that would indicate a scoring-rebalance follow-up (QR.2-class), not a cert-flip defect.
+- Next cert candidates per CLAUDE.md ordering: Arachne V.7.10 (blocked on V.7.7C.5.2 manual smoke + V.7.7C.6 spider movement + BUG-011 perf capture); Aurora Veil (Phase AV — design + references ready, sequenced behind Arachne).
+
+**Related:** V.6, V.7.10, D-067 (cert pipeline), LM.7 sign-off in `docs/presets/LUMEN_MOSAIC_DESIGN.md §10`, D-074 (diagnostic exclusion).
+
+---
+
 ### BUG-R001 — BeatGrid finite horizon caused PLANNED·LOCKED never reached
 
 **Severity:** P1

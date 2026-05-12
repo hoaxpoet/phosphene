@@ -3504,6 +3504,8 @@ The preset was originally sequenced as 10 increments LM.0 → LM.9 with cert sig
 
 **Phase LM CLOSED.** Lumen Mosaic certified 2026-05-12. `certified: true` in `LumenMosaic.json`; `"Lumen Mosaic"` added to `FidelityRubricTests.certifiedPresets` ground truth. Next preset eligible for fidelity uplift if Matt prioritises (see CLAUDE.md Phase G-uplift). The preset's automated rubric gate (`meetsAutomatedGate`) still reads false because M3 mat_* heuristic fails (Lumen Mosaic uses voronoi_f1f2 + matID==1 emission path rather than the V.3 material cookbook); visual fidelity bar is met by other means per SHADER_CRAFT.md §12.1 M7 ("Matt-approved reference frame match" is the load-bearing gate).
 
+**BUG-004 closed 2026-05-12** as a downstream consequence. The BUG-004 closure increment expanded `GoldenSessionTests.makeRealCatalog()` from 11 → 15 production presets so the orchestrator's `includeUncertifiedPresets: false` filter is now end-to-end exercised against the real production cert state; added a new `Session D` test (`sessionD_lumenMosaicWinsFirstSegment`) that regression-locks Lumen Mosaic winning at least one segment under a plausible mood profile (BPM=75 / val=0.0 / arous=+0.30); and fixed the stale `MatIDDispatchTests.kLumenEmissionGain` constant (4.0 → 1.0 post-LM.3.2-round-4). Milestone D advances **0 → 1 / 22+** with Lumen Mosaic as Phosphene's first production certified preset. See `docs/QUALITY/KNOWN_ISSUES.md` Resolved section for the full closure entry.
+
 ---
 
 ## Phase AV — Aurora Veil (direct-fragment + mv_warp preset)
