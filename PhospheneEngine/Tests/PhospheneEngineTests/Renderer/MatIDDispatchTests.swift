@@ -19,9 +19,10 @@
 //      Asserted as albedo × kLumenEmissionGain + irradiance ×
 //      kLumenIBLFloor × ao. With `iblManager: nil` the IBL textures
 //      return zero (documented unbound behaviour), so the expected
-//      value is exactly albedo × 4.0.
+//      value is exactly albedo × kLumenEmissionGain (1.0 post-LM.3.2
+//      round 4; was 4.0 pre-LM.3.2 round 4 / 2026-05-10).
 //   3. matID == 1, depth = 1.0: sky early-return.
-//      Asserted as the procedural sky output (NOT albedo × 4), which
+//      Asserted as the procedural sky output (NOT albedo × gain), which
 //      regression-locks the documented "Sky path returns before this"
 //      invariant inside the matID dispatch.
 //
@@ -48,10 +49,17 @@ struct MatIDDispatchTests {
     private static let width  = 32
     private static let height = 32
 
-    // Tone-map gate: `kLumenEmissionGain = 4.0` from RayMarch.metal.
-    // Duplicated as a Swift constant because the .metal scope isn't
-    // visible from Swift; keep the two in sync if either changes.
-    private static let kLumenEmissionGain: Float = 4.0
+    // Tone-map gate: `kLumenEmissionGain` from RayMarch.metal. Reduced
+    // 4.0 → 1.0 at LM.3.2 round 4 (2026-05-10) because the HSV palette
+    // is vivid without HDR boost and the prior 4× clipped saturated
+    // channels in the harness float→Unorm conversion. Duplicated here
+    // because the .metal scope isn't visible from Swift; keep the two
+    // in sync if either changes.
+    private static let kLumenEmissionGain: Float = 1.0
+    // `kLumenIBLFloor` from RayMarch.metal. With `iblManager: nil` the
+    // ambient floor is zero, so this value doesn't affect the matID==1
+    // assertion below — it's recorded only for documentation parity.
+    private static let kLumenIBLFloor: Float = 0.05
 
     // MARK: - Test 1 — matID == 0 standard dielectric
 
@@ -91,12 +99,16 @@ struct MatIDDispatchTests {
         #expect(lit.z >= minimumAmbient,
                 "matID 0 ambient floor: b=\(lit.z) below \(minimumAmbient)")
 
-        // matID 0 must NOT equal albedo × 4.0 (the matID 1 emission path).
-        // Distance from (2, 2, 2) of at least 1.0 confirms a different
-        // branch was taken.
+        // matID 0 must NOT equal albedo × kLumenEmissionGain (the matID 1
+        // emission path). Distance of at least 0.1 confirms a different branch
+        // was taken. (Pre-LM.3.2 round 4 this gap was much larger when
+        // kLumenEmissionGain was 4.0; with the round-4 reduction to 1.0 the
+        // matID 1 reference now lands at albedo itself, and the Cook-Torrance
+        // path's added direct lighting / fog contribution is what separates
+        // it visibly from a pure albedo passthrough.)
         let matID1Expected = SIMD3<Float>(0.5, 0.5, 0.5) * Self.kLumenEmissionGain
         let distance = simd_length(lit - matID1Expected)
-        #expect(distance > 1.0,
+        #expect(distance > 0.1,
                 "matID 0 lit RGB \(lit) too close to matID 1 expected \(matID1Expected) — dispatch may not have branched correctly (distance \(distance))")
     }
 
@@ -127,9 +139,11 @@ struct MatIDDispatchTests {
                                                      features: &features)
 
         // With iblManager nil → irradiance = 0 → ambientFloor = 0.
-        // Expected: albedo × kLumenEmissionGain = (2.0, 2.0, 2.0).
-        // Tolerance 1e-2 covers fp16 round-trip + rgba8Unorm albedo
-        // 8-bit quantization (1/255 ≈ 0.004 per channel × 4× gain ≈ 0.016).
+        // Expected: albedo × kLumenEmissionGain = (0.5, 0.5, 0.5) post-LM.3.2
+        // round 4 (gain reduced 4.0 → 1.0). Tolerance 1e-2 covers fp16
+        // round-trip + rgba8Unorm albedo 8-bit quantization (1/255 ≈ 0.004
+        // per channel × 1× gain ≈ 0.004; pre-round-4 4× gain inflated this
+        // to 0.016, hence the original 0.02 margin which is preserved).
         let expected = albedo * Self.kLumenEmissionGain
         let tolerance: Float = 0.02
         #expect(abs(lit.x - expected.x) < tolerance,
