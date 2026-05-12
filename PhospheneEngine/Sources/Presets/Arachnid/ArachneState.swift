@@ -148,13 +148,30 @@ public struct WebGPU: Sendable {
 public struct ArachneBuildState: Sendable {
 
     // MARK: - Phase constants (V.7.7C.2 §5.2; tuned for ~50–55 s at average music)
+    //
+    // BUG-011 round 8 (2026-05-12) — 8 % across-the-board build speedup per Matt's
+    // session `2026-05-11T23-18-42Z` directive. Every phase duration multiplied by
+    // 0.925; spiral chords-per-beat raised 3 → 3.24 (see `advanceSpiralPhase`).
+    // At 120 BPM, equivalent beat counts go 6 → 5.55 (frame) and 6.5 → 6.02 (per
+    // radial). On a median 21-spoke / 21-revolution segment, total build time
+    // drops from ~100 s to ~92 s while preserving the §5.2 phase proportions.
 
     /// Total seconds of effective time the frame phase consumes.
-    public static let frameDurationSeconds: Float = 3.0
+    public static let frameDurationSeconds: Float = 2.775
     /// Seconds of effective time per radial during the radial phase.
-    public static let radialDurationSeconds: Float = 1.5
+    public static let radialDurationSeconds: Float = 1.389
     /// Seconds of effective time per chord during the spiral phase.
+    /// V.7.7C.4 / BUG-011 round 2 onward: the spiral phase is BEAT-DRIVEN, not
+    /// time-driven — this constant is retained for ABI continuity but the
+    /// active per-frame integrator is `spiralChordsPerBeat` below.
     public static let spiralChordDurationSeconds: Float = 0.3
+    /// Fractional spiral chords laid per rising-edge beat (BUG-011 round 8).
+    /// 3.24 lays the same median 441-chord spiral in ~136 beats (≈ 68 s at
+    /// 120 BPM) instead of the round-2 baseline of 147 beats (≈ 73.5 s).
+    /// `advanceSpiralPhase` carries the fractional residual across edges in
+    /// `ArachneBuildState.spiralChordAccumulator` so the per-edge advance
+    /// integer averages to this rate over a full segment.
+    public static let spiralChordsPerBeat: Float = 3.24
     /// Seconds of effective time the evicting phase takes to fade out.
     public static let evictingDurationSeconds: Float = 1.0
     /// Pace coefficient on `mid_att_rel` (continuous, primary driver).
@@ -213,6 +230,11 @@ public struct ArachneBuildState: Sendable {
     public var spiralChordIndex: Int = 0
     /// 0..1 within the current chord.
     public var spiralChordProgress: Float = 0
+    /// Fractional residual of the per-beat chord advance (BUG-011 round 8).
+    /// `advanceSpiralPhase` adds `spiralChordsPerBeat` (3.24) on each rising
+    /// edge; the integer part feeds the chord advance, the fractional part
+    /// carries to the next edge. Reset by `_reset()` and on spiral-phase entry.
+    public var spiralChordAccumulator: Float = 0
     /// `stageElapsed` at the moment chord k is laid; `count == spiralChordIndex`.
     /// Used by the shader's §5.8 drop accretion in Commit 3.
     public var spiralChordBirthTimes: [Float] = []
@@ -877,6 +899,7 @@ public final class ArachneState: @unchecked Sendable {
             buildState.radialProgress = 1.0
             buildState.spiralChordIndex = 0
             buildState.spiralChordProgress = 0
+            buildState.spiralChordAccumulator = 0
             buildState.spiralChordBirthTimes.removeAll(keepingCapacity: true)
         }
     }
@@ -915,7 +938,12 @@ public final class ArachneState: @unchecked Sendable {
         let beatNow = max(features.beatBass, features.beatComposite)
         let risingEdge = beatNow > 0.5 && prevBeatForSpiral <= 0.5
         if risingEdge && effectiveDt > 0 && buildState.spiralChordIndex < total {
-            let advance = min(3, total - buildState.spiralChordIndex)
+            // BUG-011 round 8: fractional 3.24-per-beat advance. Add the full
+            // rate, take the integer part for this edge, carry the residual.
+            buildState.spiralChordAccumulator += ArachneBuildState.spiralChordsPerBeat
+            let whole = Int(buildState.spiralChordAccumulator)
+            buildState.spiralChordAccumulator -= Float(whole)
+            let advance = min(whole, total - buildState.spiralChordIndex)
             for _ in 0..<advance {
                 buildState.spiralChordIndex += 1
                 buildState.spiralChordBirthTimes.append(buildState.stageElapsed)
