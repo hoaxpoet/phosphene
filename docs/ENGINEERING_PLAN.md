@@ -1838,38 +1838,43 @@ Runs in parallel with Phase V.7+ once Phase V.1–V.3 utilities are available.
 
 ### Increment MD.1 — `.milk` grammar audit
 
-**Scope:** New doc `docs/MILKDROP_GRAMMAR.md` cataloguing every per-frame / per-vertex variable, every equation operator, and every function used across the `presets-cream-of-the-crop` pack. Frequency counts so we know which 80% of the language to support first. Milkdrop 2 pixel shaders (warp + composite) analyzed separately — these emit directly as Metal rather than being transpiled from a DSL.
+**Scope (revised per D-110):** New doc `docs/MILKDROP_GRAMMAR.md` cataloguing the `.milk` **expression sub-languages** used across the `presets-cream-of-the-crop` pack. Per-frame, per-pixel-grid, and per-shape / per-wave expression-language coverage is the load-bearing surface; HLSL `warp_1=` / `comp_1=` source gets a thin appendix only ("HLSL features used in the pack, deferred to manual hand-port per D-110"). The audit may run during the D-111 counsel-review checkpoint since it commits no licensed content.
 
 **Done when:**
-- Doc enumerates all variables (bass/mid/treb/time/q1–q32/wave_* / mv_* / ob_* / ib_* etc.) observed.
+- Doc enumerates all variables (bass/mid/treb/time/q1–q32/wave_* / mv_* / ob_* / ib_* etc.) used in the expression sub-languages, with frequency counts.
 - Top-20 built-in functions (sigmoid, clamp, above, below, if_then_else etc.) have Metal-equivalent code notes.
-- Pixel-shader conventions (sampler_main, GetPixel, GetBlur1, GetBlur2, ret, rad, ang, uv, uv_orig, tex2D) documented with Metal mappings.
+- HLSL appendix catalogs the `sampler_*`, `GetPixel`, `GetBlur1/2`, `tex2D` etc. surface present in the 81% of pack presets that ship HLSL, but does **not** propose automated translation (those presets are excluded from MD.5 per D-110; hand-port is the MD.6 / MD.7 escalation path).
+- Grammar coverage reported separately for **the full pack** and **the 1,559 HLSL-free subset** (the MD.5 candidate pool per D-110 / D-112).
 
-**Verify:** Manual review against 5 randomly-sampled preset files from the pack.
+**Verify:** Manual review against 5 randomly-sampled preset files from the HLSL-free subset + 5 from the HLSL-bearing majority.
 
 ---
 
 ### Increment MD.2 — Transpiler CLI skeleton
 
-**Scope:** New SPM executable target `PhospheneTools/MilkdropTranspiler`. Lexes `.milk` files; emits a Swift AST. No code generation yet — this increment proves the parser covers the grammar surface. Ships as a standalone tool so transpiler bugs never affect the Phosphene runtime (Option B from the improvement plan).
+**Scope (revised per D-110, gated on D-111 counsel sign-off):** New SPM executable target `PhospheneTools/MilkdropTranspiler`. Lexes `.milk` files; emits a Swift AST for the **expression sub-languages only** (per_frame / per_frame_init / per_pixel / wave_per_frame / shapecode_per_frame and their `_init` variants). Presets with non-empty `warp_1=` or `comp_1=` HLSL blocks are rejected by the transpiler with a clear diagnostic — they fall to the hand-port path per D-110. Ships as a standalone tool so transpiler bugs never affect the Phosphene runtime.
 
 **Done when:**
-- Can parse 100% of the cream-of-the-crop pack without lexer / parser errors.
+- Can parse 100% of the **1,559-preset HLSL-free subset** of the cream-of-the-crop pack without lexer / parser errors.
+- HLSL-bearing presets are rejected with diagnostic `"HLSL warp/composite source present; preset is excluded per D-110. Hand-port required for MD.6 / MD.7."`
 - Round-trips AST to readable pretty-print; diffing the pretty-print against the original is semantically equivalent (modulo whitespace).
-- Test suite: 10+ fixture presets covering grammar edge cases.
+- Candidate-selection harness (CLI flag `--filter hlsl-free`) emits the list of presets eligible for MD.5 / MD.6 / MD.7 transpilation. Filter is by file content (`! grep -q '^warp_1=' AND ! grep -q '^comp_1='`).
+- Test suite: 10+ fixture presets covering expression-language edge cases drawn from the HLSL-free subset.
 
 **Verify:** `swift test --package-path PhospheneTools --filter MilkdropTranspilerParserTests`
 
 ---
 
-### Increment MD.3 — Per-frame → JSON emission
+### Increment MD.3 — Per-frame → JSON emission + HLSL hand-port playbook
 
-**Scope:** Transpiler extends AST → JSON emission. Per-frame equations that map to `PresetDescriptor` parameters (`base_zoom`, `base_rot`, `decay`, etc.) emit as JSON sidecar. Per-frame `q1`–`q32` user variables emit as a fixed-size uniform buffer alongside `FeatureVector`.
+**Scope (revised per D-110):** Two deliverables. (a) Transpiler extends AST → JSON emission. Per-frame equations that map to `PresetDescriptor` parameters (`base_zoom`, `base_rot`, `decay`, etc.) emit as JSON sidecar. Per-frame `q1`–`q32` user variables emit as a fixed-size uniform buffer alongside `FeatureVector`. Each emitted sidecar carries the `milkdrop_source` provenance block per D-111. (b) New doc `docs/MILKDROP_HLSL_HANDPORT.md` — the hand-port playbook. Describes the manual workflow for converting `warp_1=…warp_NN=` HLSL into a Metal `mvWarpPerVertex` body, citing Phosphene-side conventions for sampler / texture / coord-space mapping. Targets MD.6 / MD.7 escalation use; not exercised by MD.5.
 
 **Done when:**
-- Transpiler generates valid `.json` sidecars for 20 test presets.
+- Transpiler generates valid `.json` sidecars for 20 test presets drawn from the HLSL-free subset.
+- Each sidecar carries `milkdrop_source: { filename, author, theme, sha256, pack }` per D-111.
 - Round-trip test verifies semantic equivalence for the supported per-frame operator subset.
-- Unsupported operators (rare cases) emit a clear diagnostic with the offending line; doesn't crash.
+- Unsupported operators emit a clear diagnostic with the offending line; transpiler doesn't crash.
+- `MILKDROP_HLSL_HANDPORT.md` documents the hand-port workflow with one worked example (an HLSL-bearing preset hand-converted end-to-end) — separate from MD.5 deliverables but blocks MD.6's first HLSL-bearing candidate.
 
 **Verify:** `swift test --package-path PhospheneTools --filter PerFrameEmissionTests`
 
@@ -1877,11 +1882,11 @@ Runs in parallel with Phase V.7+ once Phase V.1–V.3 utilities are available.
 
 ### Increment MD.4 — Per-vertex → Metal emission
 
-**Scope:** Transpiler extends to per-vertex emission: Milkdrop per-vertex equations compile to `mvWarpPerVertex` Metal function bodies. Per-frame state threaded through the `q1`–`q32` uniform buffer. Milkdrop 2 warp / composite pixel shaders compile directly to their Metal equivalents using the `sampler_main` → `warpTexture` mapping.
+**Scope (revised per D-110):** Transpiler extends to per-vertex emission: Milkdrop per-pixel-grid equations compile to `mvWarpPerVertex` Metal function bodies. Per-frame state threaded through the `q1`–`q32` uniform buffer. **HLSL warp / composite source is NOT in scope** — transpiler still rejects HLSL-bearing presets per MD.2 (those go through the MD.3 hand-port playbook when needed for MD.6 / MD.7).
 
 **Done when:**
-- 5 hand-selected reference presets (including at least one Milkdrop 1 and one Milkdrop 2 preset) compile via transpiler and render in Phosphene.
-- Transpiled presets bind to the existing `mv_warp` render pass.
+- 5 hand-selected reference presets from the HLSL-free subset compile via transpiler and render in Phosphene.
+- Transpiled presets bind to the existing `mv_warp` render pass (the pass `mv_warp` is already shipped and has two production consumers — Gossamer, Volumetric Lithograph).
 - Golden hash regression added per transpiled preset.
 - Visual sanity check: transpiled preset output resembles projectM's render of the same preset.
 
@@ -1891,14 +1896,18 @@ Runs in parallel with Phase V.7+ once Phase V.1–V.3 utilities are available.
 
 ### Increment MD.5 — Ingestion harness + first 10 cream-of-the-crop presets
 
-**Scope:** Pick 10 Jason Fletcher presets spanning families (geometric, fractal, organic, kaleidoscopic, abstract). Run transpiler, inspect output, polish each until visual match against projectM render is acceptable. These presets are marked `family: "milkdrop_classic"` and tagged for the "Include Milkdrop-style presets" user toggle in Settings.
+**Scope (revised per D-105, D-106, D-110, D-111, D-112):** Port the 10 cream-of-the-crop presets named in D-112 (9 named + 1 TBD Geometric slot picked at authoring) onto Phosphene as Classic Port tier. Each preset ships as `family: "milkdrop_classic"` per D-105. Lightweight V.6 rubric profile per D-104. Deviation primitives (D-026) and the `mv_warp` pass (D-027) apply per D-104. Settings toggle is `phosphene.settings.visuals.milkdrop.classic` per D-106. Each `.metal` / `.json` carries the `milkdrop_source` provenance block per D-111.
 
 **Done when:**
-- 10 new presets in `PhospheneEngine/Sources/Presets/Shaders/Milkdrop/` with JSON sidecars.
+- 10 new presets in `PhospheneEngine/Sources/Presets/Shaders/Milkdrop/` with JSON sidecars. Naming: `<theme>_<source_name>.{metal,json}` per D-105.
+- Each preset's JSON sidecar declares `family: "milkdrop_classic"`, `rubric_profile: "lightweight"`, and `milkdrop_source: { filename, author, theme, sha256, pack }`.
 - Each has a golden-session regression entry and Increment 5.2 acceptance test.
 - Orchestrator metadata (`visual_density`, `motion_intensity`, `fatigue_risk`, etc.) hand-authored per preset for planning integration.
-- User-settings toggle "Include Milkdrop-style presets" honored (Increment U.8).
-- **D-043 added to DECISIONS.md**: "Milkdrop presets ingested via offline transpiler + manual uplift; no runtime .milk parser."
+- `SettingsStore` + `VisualsSettingsSection` gain the three Milkdrop disclosure-row toggles per D-106; Classic Port toggle defaults to `true` once MD.5 ships.
+- `docs/CREDITS.md` "Milkdrop preset attribution" section enumerates all 10 source presets per D-111.
+- 10th Geometric candidate picked from HLSL-free Geometric subset (265 presets); pick noted in MD.5 closeout.
+
+**Gating:** Counsel sign-off on D-111 must land before this increment ships public-branch commits. MD.1 / MD.2 / MD.3 / MD.4 may run concurrently with counsel review.
 
 **Verify:** `swift test --filter PresetAcceptanceTests` (auto-covers new presets via existing regression gate).
 
@@ -1906,13 +1915,19 @@ Runs in parallel with Phase V.7+ once Phase V.1–V.3 utilities are available.
 
 ### Increment MD.6 — Next 20 presets + stem-aware upgrade
 
-**Scope:** Next 20 cream-of-the-crop presets. Each manually upgraded with **at least two** of: stem-driven parameter routing (replacing `bass`/`mid`/`treb` with per-stem equivalents), beat-phase anticipation via MV-3b `beat_phase01`, pitch-hue mapping via MV-3c `vocalsPitchHz`, MV-3a rich stem metadata. These are the "evolved Milkdrop" presets — keep the visual DNA but exploit Phosphene's audio pipeline.
+**Scope (revised per D-104, D-105, D-108, D-109, D-110):** Next 20 cream-of-the-crop presets, ported as Evolved tier. Each preset ships as `family: "milkdrop_evolved"` per D-105. **Full** V.6 rubric profile per D-104. Mandatory per D-104: deviation primitives (D-026), `mv_warp` pass (D-027), **at least one stem routed** to a visual parameter. Opt-in per preset (per D-108, D-109): stem-hue affinity, section-awareness via `StructuralAnalyzer`. Other MV-3 capabilities — `beatPhase01` anticipation, vocal-pitch coupling, MV-3a rich stem metadata, mood — opt-in. Candidate selection drawn primarily from the HLSL-free subset per D-110; if a candidate worth porting requires HLSL, escalate via the MD.3 hand-port playbook (do **not** bring in an HLSL → MSL cross-compiler).
 
 **Done when:**
-- 20 more presets in the library.
-- Each preset's JSON documents which MV-3 capabilities it uses (new `mv3_features_used: [...]` array field).
-- No original preset is regressed — the unmodified version from MD.5 stays available under a separate ID for A/B comparison.
-- All 30 Milkdrop presets pass Increment 5.2 acceptance.
+- 20 more presets in the library, each `family: "milkdrop_evolved"`, `rubric_profile: "full"`.
+- Each preset's JSON documents which MV-3 capabilities it uses (`mv3_features_used: [...]`) and which opt-in features are wired (`stem_hue_affinity: bool`, `section_aware: bool`).
+- Stem routing is mandatory and visible: each preset's JSON declares at least one stem-to-parameter mapping.
+- Hand-ported HLSL presets (if any) include a `handported: true` flag and reference the source `MILKDROP_HLSL_HANDPORT.md` worked example.
+- No Classic Port from MD.5 is regressed — Evolved variants ship under separate IDs for A/B comparison.
+- All 30 Milkdrop presets (10 Classic + 20 Evolved) pass Increment 5.2 acceptance.
+- `docs/CREDITS.md` Milkdrop attribution extended with the 20 new source presets per D-111.
+- Evolved toggle (`phosphene.settings.visuals.milkdrop.evolved`) defaults to `true` once first Evolved preset ships.
+
+**Carry-forward to MD.7:** First Evolved preset to wire `section_aware: true` provides the de facto validation track for `StructuralAnalyzer` as a preset-driving signal (D-109 divergence note). If section response feels wrong on real-music sessions, fix the analyzer or back the flag off in affected presets.
 
 **Verify:** `swift test --filter PresetAcceptanceTests`
 
@@ -1938,13 +1953,17 @@ Candidate for the spike: one of the three §3 Decision E starters in `MILKDROP_S
 
 ### Increment MD.7 — Ray-march hybrids (evolved Milkdrop)
 
-**Scope:** For the best 5 Milkdrop presets from MD.5–MD.6, author a companion ray-march layer that renders 3D depth behind the 2D warp plane. Static-camera only, per D-029 — no moving-camera hybrids. Kept as separate presets prefixed `evolved/`. Uses the full utility library from Phase V. **Prerequisite: MD.7.0 spike confirms the composition works.**
+**Scope (revised per D-104, D-105, D-107):** Author the remaining 4 hybrid presets (the MD.7.0 spike preset is the 5th). Each preset ships as `family: "milkdrop_hybrid"` per D-105. **Full** V.6 rubric profile per D-104. Mandatory per D-104: deviation primitives (D-026), `mv_warp` pass (D-027), **ray-march backdrop**, **at least two stems routed**, `beatPhase01` anticipation if motion-dominated, MV-3a rich stem metadata if perceptually relevant. Static-camera only per D-029. Candidate selection per D-107 (architectural + thematic + brand fit); 3 of 5 pre-approved (Geiss *3D-Luz*, Rovastar *Northern Lights*, EvilJim *Tunnel of Light*); 2 TBD picked from MD.6 outputs that re-qualify via D-107 criteria. **Prerequisite: MD.7.0 spike confirms the composition works.**
 
 **Done when:**
-- 5 hybrid presets composed of `["ray_march", "mv_warp", "post_process"]` (4 new + the MD.7.0 spike preset).
+- 5 hybrid presets total in the library (4 new + MD.7.0 spike), each `family: "milkdrop_hybrid"`, `rubric_profile: "full"`, composed of `["ray_march", "mv_warp", "post_process"]`.
 - Each passes the V.6 fidelity rubric (10/15 including mandatory).
-- Performance verified on Tier 1 and Tier 2 — hybrids are more expensive and may be Tier-2-only.
+- Each declares two-stem routing in JSON; if `beatPhase01` is used, it's noted in `mv3_features_used`.
+- Performance verified on Tier 1 and Tier 2 — hybrids are more expensive and may be Tier-2-only. JSON `complexity_cost` records measured ms / 1080p per tier.
 - Matt approves reference frame match for each.
+- MD.7.0's "what we learned" note (per its done-when) is referenced from each of the 4 batch hybrids' authoring sessions.
+- Hybrid toggle (`phosphene.settings.visuals.milkdrop.hybrid`) defaults to `true` once first Hybrid preset ships.
+- `docs/CREDITS.md` Milkdrop attribution extended with the 5 source presets per D-111.
 
 **Verify:** `swift test --filter PresetAcceptanceTests && swift test --filter FidelityRubricTests`
 
