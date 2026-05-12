@@ -435,6 +435,8 @@ Also: `MusicKitBridge` unused `artistLower` removed; `SessionRecorder` `_ = try?
 
 These are ordered by dependency. Each has done-when criteria and verification commands.
 
+> **Capability Gap Audit (2026-05-12).** [`docs/CAPABILITY_GAP_AUDIT.md`](CAPABILITY_GAP_AUDIT.md) inventories built-but-underused capabilities, backlog-implied gaps, and proposed new capability. RETIRE / PROPOSED verdicts produce follow-up increments once Matt confirms; no scope changes pending until then. Preliminary inventory data at [`docs/diagnostics/capability-audit-pre-2026-05-12.md`](diagnostics/capability-audit-pre-2026-05-12.md).
+
 **Current priority ordering (post-2026-05-06 multi-agent codebase review):**
 
 1. **Phase QR — Quality Review Remediation** (QR.1 → QR.6). New top priority. QR.1 → QR.4 are sequenced; QR.5 + QR.6 run after QR.1–QR.4 land. See "Phase QR" section below.
