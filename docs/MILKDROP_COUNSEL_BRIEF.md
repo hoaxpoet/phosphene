@@ -209,12 +209,17 @@ All in the Phosphene repository (`github.com/hoaxpoet/phosphene`):
 ## 9. Project state at time of writing
 
 * Strategy and decisions for Phase MD are signed off and committed.
-* Pre-counsel-review increments (MD.1 grammar audit) can run and
-  commit no licensed content; the audit cites the pack as a corpus,
-  not as committed content.
-* Post-counsel-review increments (MD.2 transpiler, MD.5 first
-  ports, MD.6 / MD.7 follow-ons) are **gated** on counsel sign-off
-  per D-111.
+* **Counsel review is not a precondition for any Phase MD
+  increment.** D-111 was amended on 2026-05-12 to remove the
+  counsel-sign-off gate; the project lead has accepted the residual
+  legal risk on the basis of the bounded downside and the
+  good-faith provenance + attribution + takedown protocol described
+  in §5 above. This brief is retained as a working summary should
+  the project lead later seek counsel input as optional asynchronous
+  due-diligence.
+* MD.1 (grammar audit) commits no licensed content (cites the pack
+  as a corpus only). MD.2 onwards commits transpiled derivatives
+  per §5.
 
 ## 10. Authoring note
 

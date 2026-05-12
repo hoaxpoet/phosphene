@@ -117,8 +117,7 @@ retraining or fine-tuning.
 
 **Status:** **Placeholder — no Milkdrop-derived content shipped yet.**
 This section is created per D-111 (Phase MD license posture). Content
-lands when the first Milkdrop port commits in Increment MD.5; counsel
-review for D-111 must conclude before public-branch commits.
+lands when the first Milkdrop port commits in Increment MD.5.
 
 **Used in:** `PhospheneEngine/Sources/Presets/Shaders/Milkdrop/`
 (Milkdrop-derived presets across the Classic Port / Evolved / Hybrid
