@@ -20,7 +20,10 @@ private struct ReferenceRow {
 }
 
 private let referenceTable: [ReferenceRow] = [
-    ReferenceRow(presetName: "Arachne",                expectedSeconds: 60),
+    // BUG-011 round 8: Arachne is now `wait_for_completion_event:true`, so
+    // `maxDuration` returns `.infinity`. The pre-round-8 60 s
+    // `natural_cycle_seconds` cap is bypassed by the new early-return.
+    ReferenceRow(presetName: "Arachne",                expectedSeconds: nil),
     ReferenceRow(presetName: "Ferrofluid Ocean",       expectedSeconds: 49),
     ReferenceRow(presetName: "Fractal Tree",           expectedSeconds: 55),
     ReferenceRow(presetName: "Glass Brutalist",        expectedSeconds: 67),
@@ -60,14 +63,18 @@ private func loadProductionDescriptors() throws -> [String: PresetDescriptor] {
 @Suite("MaxDurationFramework")
 struct MaxDurationFrameworkTests {
 
-    @Test("Arachne is capped by naturalCycleSeconds (60 s)")
-    func arachneCappedByNaturalCycle() throws {
+    @Test("Arachne returns .infinity (wait_for_completion_event, BUG-011 round 8)")
+    func arachneMaxDurationIsInfinity() throws {
         let descriptors = try loadProductionDescriptors()
         guard let arachne = descriptors["Arachne"] else { return }
 
         let computed = arachne.maxDuration(forSection: nil)
-        #expect(computed == 60, "Arachne should cap at 60 s (naturalCycleSeconds)")
-        #expect(arachne.naturalCycleSeconds == 60)
+        #expect(computed == .infinity, """
+            Arachne must return .infinity because wait_for_completion_event=true \
+            short-circuits the naturalCycleSeconds cap. The completion-event \
+            subscription wires the actual transition trigger.
+            """)
+        #expect(arachne.waitForCompletionEvent == true)
     }
 
     @Test("Computed maxDurations match §5.3 reference table within ±2 s")
@@ -89,8 +96,9 @@ struct MaxDurationFrameworkTests {
                     Adjust §5.3 reference table or coefficients in PresetMaxDuration.swift.
                     """)
             } else {
+                // nil expected = either isDiagnostic or waitForCompletionEvent.
                 #expect(computed == .infinity, """
-                    \(ref.presetName) is flagged diagnostic — expected .infinity, got \(computed).
+                    \(ref.presetName) should return .infinity (diagnostic or completion-gated). Got \(computed).
                     """)
             }
         }
@@ -137,6 +145,55 @@ struct MaxDurationFrameworkTests {
         let descriptor = try JSONDecoder().decode(PresetDescriptor.self, from: Data(json.utf8))
         #expect(descriptor.isDiagnostic == false)
         #expect(descriptor.maxDuration(forSection: nil) != .infinity)
+    }
+
+    // MARK: - BUG-011 round 8: wait_for_completion_event
+
+    @Test("wait_for_completion_event=true forces maxDuration to .infinity")
+    func waitForCompletionEventReturnsInfinity() throws {
+        let json = """
+        {
+          "name": "CompletionGated",
+          "family": "organic",
+          "wait_for_completion_event": true
+        }
+        """
+        let descriptor = try JSONDecoder().decode(PresetDescriptor.self, from: Data(json.utf8))
+        #expect(descriptor.waitForCompletionEvent == true)
+        #expect(descriptor.maxDuration(forSection: nil) == .infinity)
+        for section in SongSection.allCases {
+            #expect(descriptor.maxDuration(forSection: section) == .infinity)
+        }
+    }
+
+    @Test("waitForCompletionEvent defaults to false when JSON omits the field")
+    func waitForCompletionEventDefaultsFalse() throws {
+        let json = """
+        {
+          "name": "PlainPreset",
+          "family": "geometric"
+        }
+        """
+        let descriptor = try JSONDecoder().decode(PresetDescriptor.self, from: Data(json.utf8))
+        #expect(descriptor.waitForCompletionEvent == false)
+        #expect(descriptor.maxDuration(forSection: nil) != .infinity)
+    }
+
+    @Test("Arachne ships with wait_for_completion_event=true (BUG-011 round 8)")
+    func arachneIsCompletionGated() throws {
+        let descriptors = try loadProductionDescriptors()
+        // Bundle resources unreachable from the test target — silently skip,
+        // matching the surrounding tests' pattern.
+        guard !descriptors.isEmpty else { return }
+        guard let arachne = descriptors["Arachne"] else {
+            Issue.record("Arachne descriptor not found in production catalog")
+            return
+        }
+        #expect(arachne.waitForCompletionEvent == true, """
+            Arachne JSON must set wait_for_completion_event:true so the build cycle \
+            is allowed to complete before the orchestrator schedules a transition.
+            """)
+        #expect(arachne.maxDuration(forSection: nil) == .infinity)
     }
 
     @Test("naturalCycleSeconds caps even when formula would be longer")
