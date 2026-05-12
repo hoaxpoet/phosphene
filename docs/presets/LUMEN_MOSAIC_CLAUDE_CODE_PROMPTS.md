@@ -54,6 +54,8 @@ For each landed or retired increment, retrieve the original session prompt from 
 
 Cert landed jointly with LM.7 in the LM.7 session prompt itself (no standalone BUG-004 prompt was needed — the cert flip was small enough to be folded into LM.7's increment scope). The earlier plan for a `BUG-004_LM_certification_session_prompt.md` artifact was retired: it would have been a separate Claude Code session, but the LM.7 prompt naturally absorbed the cert verification step. Future cert sessions for AV / CC / Phase G-uplift presets can follow the same pattern (fold the cert flip into the final increment of the preset's phase rather than building a standalone cert session).
 
+A separate **BUG-004 closure session** did run 2026-05-12 after LM.7 to formally retire the bug ticket: it expanded `GoldenSessionTests.makeRealCatalog()` 11 → 15 production presets, added a `Session D` regression test (`sessionD_lumenMosaicWinsFirstSegment`) that locks Lumen Mosaic winning at least one orchestrator slot under a plausible mood profile, fixed the stale `MatIDDispatchTests.kLumenEmissionGain` constant (4.0 → 1.0 post-LM.3.2-round-4), and filed the closure across `docs/QUALITY/KNOWN_ISSUES.md` + `docs/RELEASE_NOTES_DEV.md` + `docs/ENGINEERING_PLAN.md` + `CLAUDE.md`. That session's commit is `81d6b8f3 [BUG-004] Tests + docs: closure — Lumen Mosaic is first certified preset; orchestrator now exercises real cert state`. Lesson: bug-ticket closure can be a useful separate session even when the underlying fix shipped earlier — it's where the verification-surface gap (synthetic-cert fixture in `GoldenSessionTests`) gets caught.
+
 ---
 
 ## Cross-increment notes

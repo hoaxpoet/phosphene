@@ -575,7 +575,7 @@ swift test --package-path PhospheneEngine
 
 ### Increment 4.4 — Golden Session Test Fixtures ✅
 
-**Landed:** 2026-04-20.
+**Landed:** 2026-04-20. *(Current state: regenerated multiple times since landing — QR.2 stem-affinity rescaling, V.7.6.2 multi-segment, BUG-004 closure 2026-05-12 expanding catalog 11 → 15 presets and adding Session D for Lumen Mosaic eligibility coverage. The current test file in `PhospheneEngine/Tests/.../Orchestrator/GoldenSessionTests.swift` is authoritative; the original-landing description below is preserved as a historical record.)*
 
 `GoldenSessionTests.swift` — 12 regression tests across three curated playlists that lock in the expected Orchestrator output for any given set of track profiles and the full 11-preset production catalog. Any future change to `DefaultPresetScorer`, `DefaultTransitionPolicy`, `DefaultSessionPlanner`, or a preset JSON sidecar that breaks a golden test is a regression; the test file must be updated with a scoring trace comment that proves the new expected values are correct.
 
@@ -3625,6 +3625,6 @@ These milestones map to product-level outcomes, not implementation phases.
 
 **Milestone C — Device-Aware Show Quality.** ✅ **MET (2026-04-25).** The same playlist produces an excellent show on M1 and a richer one on M4 without jank. *Requires: ~~Phase 6 complete~~ ✅.*
 
-**Milestone D — Library Depth.** The preset catalog is large enough, varied enough, and well-tagged enough for Phosphene to feel like a product rather than a tech demo. *Requires: Phase 5 complete, Phase V complete (12 fidelity-uplifted presets), Phase AV + Phase CC complete (Aurora Veil + Crystalline Cavern shipped certified), Phase G-uplift complete (Gossamer + remaining catalog members M7-certified or explicitly retired), Phase MD through MD.5 minimum (10 Milkdrop presets), 22+ certified presets total.*
+**Milestone D — Library Depth.** ⏳ **IN PROGRESS — 1 / 22+ certified (2026-05-12).** The preset catalog is large enough, varied enough, and well-tagged enough for Phosphene to feel like a product rather than a tech demo. *Requires: Phase 5 complete, Phase V complete (12 fidelity-uplifted presets), Phase AV + Phase CC complete (Aurora Veil + Crystalline Cavern shipped certified), Phase G-uplift complete (Gossamer + remaining catalog members M7-certified or explicitly retired), Phase MD through MD.5 minimum (10 Milkdrop presets), 22+ certified presets total.* **First certified preset: Lumen Mosaic** (Phase LM closed 2026-05-12; BUG-004 resolved). Next cert candidates per current sequencing: Arachne V.7.10, Aurora Veil (Phase AV), Phase G-uplift members.
 
 **Milestone E — Visual Identity.** Phosphene's preset catalog has a recognizable aesthetic ceiling that reads as 2026-quality — comparable to indie-game-released visuals, not 2006-era ShaderToy. *Requires: Phase V complete, Phase V.7–V.11 uplifts all Matt-approved, Phase CC certified (the flagship demonstration piece), accessibility pass (U.9).*

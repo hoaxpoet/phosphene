@@ -40,7 +40,7 @@ User-visible release notes are not yet in scope (no public build).
 
 ## [dev-2026-05-12-d] BUG-004 resolved — Lumen Mosaic is Phosphene's first certified preset
 
-**Increment:** BUG-004 closure. **Status:** One commit on `main`, local only.
+**Increment:** BUG-004 closure. **Status:** One commit on `main` (`81d6b8f3`), pushed to `origin/main` 2026-05-12.
 
 **Context.** BUG-004 was opened against V.6 when the certification pipeline shipped with zero `certified: true` presets — the orchestrator's `includeUncertifiedPresets: false` default made the catalog effectively empty, so `GoldenSessionTests` and any session run under the production toggle had to either flip the toggle or fall back to the cheapest-fallback `noEligiblePresets` warning path. Lumen Mosaic's cert flip landed at LM.7 (2026-05-12) on top of LM.4.6 + LM.6 (the pure-uniform-random-RGB-per-cell palette + cell-depth gradient + per-track chromatic-projected RGB tint shape). This commit is the closure-and-verification commit: it expands the test surface so the cert is end-to-end exercised, fixes one stale test fixture, and files the resolution.
 
@@ -1689,7 +1689,7 @@ Source-tagged `WIRING:` log entries added across the prepared-BeatGrid path so a
 - `DefaultReactiveOrchestrator` skips diagnostic presets in ranking.
 
 **Known issues introduced:**
-- BUG-004 (all presets `certified: false`) — documented; V.7.10 is the planned resolution path.
+- BUG-004 (all presets `certified: false`) — documented; V.7.10 is the planned resolution path. *(Update: BUG-004 was actually resolved 2026-05-12 by Lumen Mosaic certification at LM.7, ahead of V.7.10. See `[dev-2026-05-12-d]`.)*
 
 ---
 
@@ -1712,6 +1712,6 @@ Milestones A (Trustworthy Playback), B (Tasteful Orchestration), and C (Device-A
 - Beat This! architecture committed (DSP.2 scope).
 
 **Known issues at milestone:**
-- All presets uncertified (BUG-004).
+- All presets uncertified (BUG-004). *(Resolved 2026-05-12 — Lumen Mosaic certified at LM.7; see `[dev-2026-05-12-d]`.)*
 - Spotify preview_url null for some tracks (BUG-005).
 - Test suite: 4 pre-existing Apple Music environment failures (unchanged).
