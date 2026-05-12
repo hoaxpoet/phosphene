@@ -1840,7 +1840,7 @@ Runs in parallel with Phase V.7+ once Phase V.1–V.3 utilities are available.
 
 ### Increment MD.1 — `.milk` grammar audit
 
-**Scope (revised per D-110):** New doc `docs/MILKDROP_GRAMMAR.md` cataloguing the `.milk` **expression sub-languages** used across the `presets-cream-of-the-crop` pack. Per-frame, per-pixel-grid, and per-shape / per-wave expression-language coverage is the load-bearing surface; HLSL `warp_1=` / `comp_1=` source gets a thin appendix only ("HLSL features used in the pack, deferred to manual hand-port per D-110"). The audit may run during the D-111 counsel-review checkpoint since it commits no licensed content.
+**Scope (revised per D-110):** New doc `docs/MILKDROP_GRAMMAR.md` cataloguing the `.milk` **expression sub-languages** used across the `presets-cream-of-the-crop` pack. Per-frame, per-pixel-grid, and per-shape / per-wave expression-language coverage is the load-bearing surface; HLSL `warp_1=` / `comp_1=` source gets a thin appendix only ("HLSL features used in the pack, deferred to manual hand-port per D-110"). The audit commits no licensed content (cites the pack as a corpus only).
 
 **Done when:**
 - Doc enumerates all variables (bass/mid/treb/time/q1–q32/wave_* / mv_* / ob_* / ib_* etc.) used in the expression sub-languages, with frequency counts.
@@ -1854,7 +1854,7 @@ Runs in parallel with Phase V.7+ once Phase V.1–V.3 utilities are available.
 
 ### Increment MD.2 — Transpiler CLI skeleton
 
-**Scope (revised per D-110, gated on D-111 counsel sign-off):** New SPM executable target `PhospheneTools/MilkdropTranspiler`. Lexes `.milk` files; emits a Swift AST for the **expression sub-languages only** (per_frame / per_frame_init / per_pixel / wave_per_frame / shapecode_per_frame and their `_init` variants). Presets with non-empty `warp_1=` or `comp_1=` HLSL blocks are rejected by the transpiler with a clear diagnostic — they fall to the hand-port path per D-110. Ships as a standalone tool so transpiler bugs never affect the Phosphene runtime.
+**Scope (revised per D-110):** New SPM executable target `PhospheneTools/MilkdropTranspiler`. Lexes `.milk` files; emits a Swift AST for the **expression sub-languages only** (per_frame / per_frame_init / per_pixel / wave_per_frame / shapecode_per_frame and their `_init` variants). Presets with non-empty `warp_1=` or `comp_1=` HLSL blocks are rejected by the transpiler with a clear diagnostic — they fall to the hand-port path per D-110. Ships as a standalone tool so transpiler bugs never affect the Phosphene runtime. **Note: MD.2's scope may shift further or be retired entirely by the inspired-by reframe addendum (see `prompts/MD-strategy-addendum-prompt.md`); under the inspired-by framing a mechanical transpiler may be unnecessary.**
 
 **Done when:**
 - Can parse 100% of the **1,559-preset HLSL-free subset** of the cream-of-the-crop pack without lexer / parser errors.
@@ -1908,8 +1908,6 @@ Runs in parallel with Phase V.7+ once Phase V.1–V.3 utilities are available.
 - `SettingsStore` + `VisualsSettingsSection` gain the three Milkdrop disclosure-row toggles per D-106; Classic Port toggle defaults to `true` once MD.5 ships.
 - `docs/CREDITS.md` "Milkdrop preset attribution" section enumerates all 10 source presets per D-111.
 - 10th Geometric candidate picked from HLSL-free Geometric subset (265 presets); pick noted in MD.5 closeout.
-
-**Gating:** Counsel sign-off on D-111 must land before this increment ships public-branch commits. MD.1 / MD.2 / MD.3 / MD.4 may run concurrently with counsel review.
 
 **Verify:** `swift test --filter PresetAcceptanceTests` (auto-covers new presets via existing regression gate).
 

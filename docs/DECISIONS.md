@@ -3080,7 +3080,7 @@ The transpiler does **not** translate the embedded HLSL pixel-shader source foun
 
 ---
 
-## D-111 — Phase MD license posture: MIT-derivative with counsel-review checkpoint (Strategy Decision I, filed 2026-05-12)
+## D-111 — Phase MD license posture: MIT-derivative with provenance + attribution + takedown (Strategy Decision I, filed 2026-05-12; amended 2026-05-12 to remove counsel-review gating)
 
 **Rule.** Transpiled Milkdrop-origin presets ship under Phosphene's MIT licence, with provenance metadata + attribution per the following protocol:
 
@@ -3094,14 +3094,14 @@ The transpiler does **not** translate the embedded HLSL pixel-shader source foun
      "pack": "projectM-visualizer/presets-cream-of-the-crop"
    }
    ```
-2. `docs/CREDITS.md` gains a "Milkdrop preset attribution" section enumerating every shipped preset's source. Pattern mirrors the existing Open-Unmix HQ and Beat This! ML weight attributions.
+2. `docs/CREDITS.md` carries a "Milkdrop preset attribution" section enumerating every shipped preset's source. Pattern mirrors the existing Open-Unmix HQ and Beat This! ML weight attributions.
 3. Phosphene commits to honoring takedown requests routed through the projectM team (per the pack's stated takedown path).
 
-**Counsel-review checkpoint.** MD.1 (grammar audit, no licensed content committed) can run during counsel review. MD.2 onwards is **gated** on counsel sign-off that the "MIT-derivative with attribution + takedown" posture is acceptable. If counsel review concludes the posture is insufficient and a stricter approach is required (Decision I.2 dual-license, or I.3 defer entirely), Phase MD pauses after MD.1 and resumes with the revised posture.
+**Risk-acceptance (amendment 2026-05-12).** Matt as project lead accepts residual legal risk on the basis of (a) the pack's two-decade public posture and four years as projectM's default with no significant copyright dispute on record, (b) the bounded downside (worst plausible outcome is takedown → preset removed from next release), and (c) Phosphene's good-faith provenance + attribution + takedown protocol. **Phase MD work is NOT gated on counsel review.** Counsel review remains available as optional asynchronous due-diligence — the `docs/MILKDROP_COUNSEL_BRIEF.md` artifact stays in tree as the outgoing-communication brief — but is not a precondition for any Phase MD increment. The risk-acceptance is contingent on the scope conditions documented in the brief (no `.milk` file redistribution, no commercialization, no claim of original authorship); a material scope change reopens the question.
 
-**Why.** The cream-of-crop pack's curator (ISOSCELES) asserts public-domain-by-convention with a projectM-managed takedown path. The pack has been the default for projectM releases since 2022 with no significant copyright dispute on record. Counsel review is appropriate due-diligence but the operative legal posture is well-established. The CREDITS.md attribution pattern is the natural template (Open-Unmix HQ, Beat This! ML weights already follow it).
+**Why.** The cream-of-crop pack's curator (ISOSCELES) asserts public-domain-by-convention with a projectM-managed takedown path. The pack has been the default for projectM releases since 2022 with no significant copyright dispute on record. The CREDITS.md attribution pattern is the natural template (Open-Unmix HQ, Beat This! ML weights already follow it). Counsel review as a *gating* mechanism trades a small additional reduction in residual risk for an unbounded delay to development; the project's posture (per Matt 2026-05-12) is that the residual risk does not warrant the gate.
 
-**Carry-forward.** Matt schedules counsel review concurrently with MD.1 authoring. MD.1 produces no committed Milkdrop-derived artifacts (the grammar audit doc cites the pack as a corpus, not as committed content). `CREDITS.md` gains an empty "Milkdrop preset attribution" section as a placeholder once the counsel review schedule is set.
+**Carry-forward.** `docs/CREDITS.md` "Milkdrop preset attribution" section exists as a placeholder; populated when MD.5 ships its first port. Counsel review remains available at Matt's discretion; the brief stays in tree as historical context. **Note: D-111 is one of the decisions slated for substantive revision in the upcoming inspired-by reframe addendum (see `prompts/MD-strategy-addendum-prompt.md`); the addendum may further refine the attribution + provenance schema under the inspired-by framing.**
 
 ---
 
