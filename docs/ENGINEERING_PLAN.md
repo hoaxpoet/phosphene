@@ -1830,7 +1830,9 @@ Out of scope for V.8.1: drops (V.8.2), refraction (V.8.2), chromatic dispersion 
 
 ## Phase MD — Milkdrop Ingestion
 
-**Why this phase exists:** `docs/MILKDROP_ARCHITECTURE.md` informed Phosphene's own authoring patterns (MV-0 through MV-3), but the "port the cream of the crop" work track disappeared from the plan. The vehicle for that work — the `mv_warp` render pass (D-027) — is built and sitting largely unused since D-029 pulled it from Starburst and VolumetricLithograph. This phase ingests Jason Fletcher's curated `presets-cream-of-the-crop` pack as Phosphene presets, then upgrades the best with Phosphene's superior capabilities (SSGI, PBR, stems, pitch, beat anticipation) — producing "evolved Milkdrop" presets, not mere clones.
+**Strategic direction for this phase lives in [`docs/MILKDROP_STRATEGY.md`](MILKDROP_STRATEGY.md) (authored 2026-05-12). MD.1 onwards is gated on Matt's sign-off on the open decisions in §3 of that doc.** Empirical basis for the strategy: [`docs/diagnostics/MD-strategy-pre-audit-2026-05-12.md`](diagnostics/MD-strategy-pre-audit-2026-05-12.md). MD.1 through MD.7 increment scopes below remain the starting framework; per-increment revisions conditional on the strategy picks are listed in `MILKDROP_STRATEGY.md` §6.
+
+**Why this phase exists:** `docs/MILKDROP_ARCHITECTURE.md` informed Phosphene's own authoring patterns (MV-0 through MV-3), but the "port the cream of the crop" work track disappeared from the plan. The vehicle for that work — the `mv_warp` render pass (D-027) — is wired and has two production consumers (Gossamer, Volumetric Lithograph); Phase MD adds Milkdrop-origin presets as additional consumers. This phase ingests ISOSCELES's curated `presets-cream-of-the-crop` pack (9,795 presets across 11 themes; see audit §0.1) as Phosphene presets, then upgrades the best with Phosphene's superior capabilities (SSGI, PBR, stems, pitch, beat anticipation) — producing "evolved Milkdrop" presets, not mere clones.
 
 Runs in parallel with Phase V.7+ once Phase V.1–V.3 utilities are available.
 
