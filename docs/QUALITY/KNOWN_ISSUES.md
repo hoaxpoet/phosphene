@@ -298,6 +298,34 @@ Scope: 1 commit (criteria update + KNOWN_ISSUES status flip + release note). Clo
 
 ---
 
+### BUG-005 — Spotify `preview_url` returns null for some tracks
+
+**Severity:** P3
+**Domain tag:** session.ux
+**Status:** Open
+**Introduced:** U.11 (discovered during integration testing)
+**Resolved:** —
+
+**Expected behavior:** `PreviewResolver` finds a 30-second preview for every track in a Spotify playlist and preparation completes for all tracks.
+
+**Actual behavior:** Rights-restricted or region-locked tracks return `null` for `preview_url` from Spotify's `/items` endpoint. These tracks fall through to iTunes Search API, which also returns no preview for some of them. Affected tracks show `TrackPreparationStatus.noPreviewURL` in `PreparationProgressView`.
+
+**Minimum reproducer:** Any playlist containing tracks by Mclusky, or region-restricted regional-exclusives.
+
+**Session artifacts:** `session.log` `noPreviewURL` entries.
+
+**Suspected failure class:** api-contract (external API limitation, not a Phosphene bug)
+
+**Verification criteria:**
+- [ ] `PreparationProgressView` shows a clear "No preview available" status for affected tracks rather than a spinner or error.
+- [ ] Session proceeds to `.ready` state even when some tracks have no preview.
+
+**Fix scope:** UX copy improvement only. The underlying limitation (no preview URL from either Spotify or iTunes) is not fixable by Phosphene. See Failed Approach #47.
+
+**Related:** U.11, D-070, Failed Approach #47
+
+---
+
 ## Pre-existing Flakes (non-blocking, test infrastructure only)
 
 These test failures are pre-existing, environment-dependent, and do not indicate behavioral regressions. They are tracked here for completeness.
@@ -721,36 +749,6 @@ If the wider window also produces an out-of-band BPM estimate (slope still > 5 m
 **Fix scope:** Two new test files in `Tests/Integration/`. No production code changes anticipated. Both landed.
 
 **Related:** DSP.3.6, DSP.3.7, QR.3, D-090.
-
----
-
-### BUG-005 — Spotify `preview_url` returns null for some tracks
-
-**Severity:** P3
-**Domain tag:** session.ux
-**Status:** Open
-**Introduced:** U.11 (discovered during integration testing)
-**Resolved:** —
-
-**Expected behavior:** `PreviewResolver` finds a 30-second preview for every track in a Spotify playlist and preparation completes for all tracks.
-
-**Actual behavior:** Rights-restricted or region-locked tracks return `null` for `preview_url` from Spotify's `/items` endpoint. These tracks fall through to iTunes Search API, which also returns no preview for some of them. Affected tracks show `TrackPreparationStatus.noPreviewURL` in `PreparationProgressView`.
-
-**Minimum reproducer:** Any playlist containing tracks by Mclusky, or region-restricted regional-exclusives.
-
-**Session artifacts:** `session.log` `noPreviewURL` entries.
-
-**Suspected failure class:** api-contract (external API limitation, not a Phosphene bug)
-
-**Verification criteria:**
-- [ ] `PreparationProgressView` shows a clear "No preview available" status for affected tracks rather than a spinner or error.
-- [ ] Session proceeds to `.ready` state even when some tracks have no preview.
-
-**Fix scope:** UX copy improvement only. The underlying limitation (no preview URL from either Spotify or iTunes) is not fixable by Phosphene. See Failed Approach #47.
-
-**Related:** U.11, D-070, Failed Approach #47
-
----
 
 ### BUG-006 — Spotify-prepared session does not install prepared BeatGrid (falls through to liveAnalysis)
 
