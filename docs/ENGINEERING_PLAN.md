@@ -1918,12 +1918,30 @@ Runs in parallel with Phase V.7+ once Phase V.1–V.3 utilities are available.
 
 ---
 
-### Increment MD.7 — Ray-march hybrids (evolved Milkdrop)
+### Increment MD.7.0 — Hybrid composition spike (single preset proof)
 
-**Scope:** For the best 5 Milkdrop presets from MD.5–MD.6, author a companion ray-march layer that renders 3D depth behind the 2D warp plane. Static-camera only, per D-029 — no moving-camera hybrids. Kept as separate presets prefixed `evolved/`. Uses the full utility library from Phase V.
+**Scope:** Land one MD.7 hybrid as a standalone increment before batch-authoring the remaining 4. The `mv_warp` + `ray_march` composition is documented in D-029 as supported but has thin production proof — Volumetric Lithograph is the only existing consumer, and its `mv_warp` pass plays against a ray-march scene that is *not* itself feedback-warped. MD.7 hybrids stack feedback warp visibly on top of a ray-march backdrop, which is unprecedented. A 1-preset spike surfaces every composition issue (texture binding order, pass scheduling, perf interaction between feedback decay and ray-march cost, visual layering — does the warp obscure the backdrop, does the backdrop fight the warp accumulation) at the cost of one preset rather than five.
+
+Candidate for the spike: one of the three §3 Decision E starters in `MILKDROP_STRATEGY.md` — Matt picks at MD.7.0 entry. Geiss *3D-Luz* is the recommended default (smallest source preset in the pack at 949 B, canonical particle-nova register, clear "atmosphere + horizon" ray-march addition).
 
 **Done when:**
-- 5 hybrid presets composed of `["ray_march", "mv_warp", "post_process"]`.
+- 1 hybrid preset composed of `["ray_march", "mv_warp", "post_process"]` renders correctly without obscuring either layer.
+- Frame budget verified on Tier 1 and Tier 2; results recorded.
+- Matt confirms the layering reads as designed (feedback warp visible on top, ray-march backdrop visible behind, no compositional confusion).
+- One-paragraph "what we learned" note added to `MILKDROP_STRATEGY.md` §7 risks section, feeding back into MD.7's batch authoring.
+
+**Verify:** `RENDER_VISUAL=1 swift test --filter PresetVisualReview` + Matt M7 review.
+
+**Sequencing:** Runs *after* MD.7's 5-preset candidate list is locked but *before* the 4 remaining hybrids are authored. Independent of Decisions A–J other than confirming Decision E candidates exist.
+
+---
+
+### Increment MD.7 — Ray-march hybrids (evolved Milkdrop)
+
+**Scope:** For the best 5 Milkdrop presets from MD.5–MD.6, author a companion ray-march layer that renders 3D depth behind the 2D warp plane. Static-camera only, per D-029 — no moving-camera hybrids. Kept as separate presets prefixed `evolved/`. Uses the full utility library from Phase V. **Prerequisite: MD.7.0 spike confirms the composition works.**
+
+**Done when:**
+- 5 hybrid presets composed of `["ray_march", "mv_warp", "post_process"]` (4 new + the MD.7.0 spike preset).
 - Each passes the V.6 fidelity rubric (10/15 including mandatory).
 - Performance verified on Tier 1 and Tier 2 — hybrids are more expensive and may be Tier-2-only.
 - Matt approves reference frame match for each.
