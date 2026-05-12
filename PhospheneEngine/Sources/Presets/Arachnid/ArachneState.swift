@@ -180,6 +180,13 @@ public struct ArachneBuildState: Sendable {
     public static let paceDrumCoefficient: Float = 0.5
     /// Spider-blend threshold above which build advance pauses.
     public static let spiderPauseThreshold: Float = 0.01
+    /// Sum-of-stem-energy threshold below which build advance pauses
+    /// (BUG-011 round 8 — Matt 2026-05-11T23-18-42Z directive item 1).
+    /// At normal playback the four AGC-normalised stem energies sum to ~2.0
+    /// (each centred at 0.5); during prep / silence / source-app paused they
+    /// drop to ~0. 0.02 is ~1 % of normal playback total — well clear of
+    /// AGC residual jitter while gating cleanly when audio is truly absent.
+    public static let stemEnergySilenceThreshold: Float = 0.02
 
     // MARK: - Frame phase
 
@@ -822,6 +829,15 @@ public final class ArachneState: @unchecked Sendable {
         let spiderPaused = spiderBlend > ArachneBuildState.spiderPauseThreshold
         buildState.pausedBySpider = spiderPaused
 
+        // 1b. Silent-state pause (BUG-011 round 8). Matt's directive item 1:
+        // Arachne must not construct during prep / silence / source-app
+        // paused. The four AGC-normalised stem energies sum to ~2.0 at
+        // normal playback and drop to ~0 when input audio is absent;
+        // 0.02 gates cleanly without false-firing on AGC residual jitter.
+        let stemEnergySum = stems.vocalsEnergy + stems.drumsEnergy
+            + stems.bassEnergy + stems.otherEnergy
+        let audioSilent = stemEnergySum < ArachneBuildState.stemEnergySilenceThreshold
+
         // 2. Audio-modulated pace per §7. D-026: continuous coefficient
         // 0.18 × mid_att_rel dominates per-frame accent 0.5 × drums_energy_dev
         // (typical peaks 0.05–0.07) by ~3.6×, well above the 2× rule.
@@ -829,7 +845,7 @@ public final class ArachneState: @unchecked Sendable {
         let drumAccent = ArachneBuildState.paceDrumCoefficient * stems.drumsEnergyDev
         let pace: Float = 1.0 + midBoost + max(0, drumAccent)
 
-        let effectiveDt: Float = spiderPaused ? 0 : dt * pace
+        let effectiveDt: Float = (spiderPaused || audioSilent) ? 0 : dt * pace
         buildState.segmentElapsed += effectiveDt
         segmentClock += dt
 
