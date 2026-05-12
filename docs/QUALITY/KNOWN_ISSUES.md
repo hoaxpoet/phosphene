@@ -12,7 +12,7 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 **Severity:** P2 (visible degradation under specific conditions: Arachne active on Tier 2 hardware. Median frame already at the FrameBudgetManager downshift threshold; 53% of frames over budget. Not a session-blocker — drop rate at the 32 ms threshold is 1.46%, so most frames complete inside one refresh — but the visual will feel laggy when Arachne is selected, and the governor will downshift quality more aggressively than intended.)
 **Domain tag:** perf
-**Status:** **Open — tuning levers L1+L2+L3 landed 2026-05-10; pending Matt's M2 Pro real-music perf capture for closure.** The in-tree SOAK measurement on M2 Pro (kernel-only, spider forced ON, 1920×1080) shows post-tuning kernel p95 = 14.5 ms, mean = 12.9 ms across 1800 frames — a substantial reduction from the pre-tuning ~26 ms full-pipeline baseline. Arachne is fragment-only so kernel ≈ full-pipeline; the production p95 will land below this SOAK number because spider is idle ~75 % of the time per the V.7.7C.2 per-segment cooldown. **Production validation required before flipping to Resolved** — see Verification criteria below.
+**Status:** **Open — post-tuning M2 Pro capture 2026-05-12 measured p95 = 16.068 ms (over the 14 ms target by 2 ms); next escalation pending Matt's decision.** L1+L2+L3 tuning landed real wins (p95 dropped 26.607 → 16.068 ms; drops fell 1.46 % → 0.7 %) but the median is essentially unchanged (14.120 → 13.649 ms), so the post-tuning bottleneck is always-on per-frame cost, not worst-case tails. See "2026-05-12 production capture" section below for the data and the three escalation paths (L5 attack always-on cost / L4 reclassify M2 Pro as Tier 1 for Arachne / accept p95 = 16 ms and close with relaxed criteria).
 **Introduced:** Surfaced 2026-05-08 by DM.3a per-frame perf capture in session `2026-05-08T22-01-07Z`. Likely accumulated across the V.7.7B → V.7.7C → V.7.7D → V.7.7C.5 sequence of staged-composition + 3D-spider + atmospheric-reframe additions. No single increment "introduced" it; the cost grew incrementally and was never measured against the full-pipeline budget until now.
 **Resolved:**
 
@@ -145,11 +145,83 @@ The four items from Matt's session `2026-05-11T23-18-42Z` directive landed in th
 
 ---
 
+### 2026-05-12 production capture (post-round-8, post-L1+L2+L3)
+
+**Session:** `~/Documents/phosphene_sessions/2026-05-12T18-19-31Z`
+**Hardware:** Apple M2 Pro (Mac mini), macOS 26.4.1.
+**Build:** post-round-8 `7b5b1f43` (CLAUDE.md doc commit; all three round-8 code commits in tree).
+**Procedure:** Followed BUG-011 Reproduction steps. Spotify-prepared playlist; `L` engaged at session start; `⌘[`/`⌘]` cycled to Arachne; `wait_for_completion_event: true` + `diagnosticPresetLocked` kept Arachne pinned for the full session window after the initial Waveform → Arachne transition at engine time 3 s. No mid-session preset changes.
+
+| metric | this capture | post-tuning target | pre-tuning baseline (2026-05-08) | Δ from baseline |
+|---|---|---|---|---|
+| Frames | 14,152 (≈ 7.9 min) | ≥ 60 s | 4,579 (≈ 77 s) | 3.1× sample |
+| **p50** | 13.649 ms | ≤ 8 ms | 14.120 ms | −0.5 ms (essentially unchanged) |
+| **p95** | **16.068 ms** ← over budget by 2 ms | **≤ 14 ms** | 26.607 ms | **−10.5 ms** |
+| p99 | 29.602 ms | — | 32.743 ms | −3.1 ms |
+| max | 57.106 ms | — | 36.072 ms | +21 ms (long tail; see note below) |
+| > 14 ms | 5,775 / 14,152 (40.8 %) | — | 52.98 % | −12 pp |
+| drops (> 32 ms) | 94 / 14,152 (**0.7 %**) | ≤ 8 % | 1.46 % | comfortably under target |
+
+**Diagnosis:** L1+L2+L3 worked where they were aimed — p95 dropped 10.5 ms, drops halved. Each lever attacked a worst-case spike (spider ray-march max-steps; drop refraction coverage gate; spider dispatch blend threshold). What didn't move is the **median** — 14.120 → 13.649 ms is within run-to-run variance. The post-tuning bottleneck is therefore **always-on per-frame cost**, not worst-case tails. p50 = 13.6 ms means most frames pay ≈ 14 ms of GPU time *before* any conditional work fires:
+
+- WORLD pass (sky gradient + ambient fog + 1-2 god-rays + dust motes — always rendered into the offscreen WORLD texture every frame)
+- COMPOSITE always-on work — silk strand SDF evaluation per pixel, chord segment evaluation, polygon ray-clip, mood palette lookup, 12 Hz vibration UV jitter applied to every pixel of the frame
+- Drop accumulator pool loop fires per pixel even when the per-pixel drop coverage is below threshold
+
+The p99 (29.6 ms) and max (57.1 ms) tails are heavier than the pre-tuning capture because the new capture is 3× longer (more chance to hit GC / scheduler / OS background spikes) and because the post-round-8 build cycle is ~92 s — long enough that the COMPOSITE pass evaluates the full ~441-chord spiral at peak, where pre-round-8 windows truncated before the spiral phase peaked. Neither tail crosses the 8 % drop threshold — drops are at 0.7 %, well under.
+
+**This is not a closure under the existing criteria** (p95 ≤ 14 ms, p50 ≤ 8 ms both fail). Drops alone (0.7 % ≤ 8 %) would pass.
+
+---
+
+### Escalation options (Matt to decide)
+
+#### Option A — L5: attack always-on cost (recommended for keeping Arachne on borderline Tier 2)
+
+Reduce the structural per-frame cost. Two candidate levers:
+
+- **L5.1 WORLD pass cached refresh.** Render WORLD at 30 fps (every other frame) and sample the cached texture in between. The WORLD content is mostly slow-moving (sky gradient + ambient fog + god-rays driven by `f.mid_att_rel`); only the dust-mote field moves at audio rate. Estimated saving: 1.5–2 ms on COMPOSITE-only frames. Risk: visible shimmer if cache invalidation logic is wrong on mood transitions; needs tested fallback.
+- **L5.2 Drop pool early-out.** The drop accumulator loops the entire chord-pool for every pixel. Add a coarse-grid bucketing pass (per ~16 px tile decide whether any chord is in range) before the per-pixel loop. Estimated saving: 1–2 ms when drops are sparse, more when drops are visible only on a few chords near the spider.
+
+Scope: 1-2 sessions for design + implementation + golden-hash regen + manual smoke. Needs a new `D-XXX` decision entry ("Arachne WORLD half-rate refresh + drop-pool spatial pruning, Tier 2 always-on cost reduction"). Likely sufficient to bring p95 under 14 ms on M2 Pro and p50 close to 8 ms.
+
+#### Option B — L4: reclassify M2 Pro as Tier 1 for Arachne specifically
+
+The architecture contract specifies M3+ as Tier 2; M2 Pro is borderline. L4 as originally scoped is "Tier 1 gets the V.7.5 silhouette spider." Re-classifying M2 Pro as Tier 1 for Arachne would:
+
+- Restore V.7.5's 2D silhouette spider on M2 Pro (V.7.7D's 3D SDF spider only on M3+).
+- Probably bring M2 Pro p95 well under 14 ms (the spider ray-march is the biggest worst-case cost, even after L1's max-steps reduction).
+- Cost: Matt loses V.7.7D on dev hardware permanently; other M2 Pro users likewise.
+- Doesn't help users on M3+ silicon (they're already over the bar).
+- Needs a new `D-XXX` ("Arachne SPIDER tier-gating: M2 Pro on V.7.5 silhouette; M3+ on V.7.7D 3D SDF").
+
+Scope: 0.5 session. Cheap, but accepts the limitation rather than fixing it.
+
+#### Option C — accept p95 = 16 ms and close with relaxed criteria
+
+Revise the closure criteria to drops-only:
+
+- drops (> 32 ms) ≤ 8 % — **currently 0.7 %, passes**.
+- Drop p95 ≤ 14 ms and p50 ≤ 8 ms from the criteria list (or document them as "Tier 2 aspirational targets, M2 Pro is borderline").
+
+Justification: drops are the user-perceptible metric (frame skipped, judder visible). 16 ms p95 means most "over budget" frames still complete within ~16-17 ms — at the edge of one refresh window but rarely dropped by the compositor.
+
+Risk: `FrameBudgetManager` will still downshift quality more aggressively than designed when Arachne is active on M2 Pro (the downshift threshold is 14 ms in the manager's hysteresis logic, not 32 ms). Visible side-effect: SSGI may toggle off mid-segment, etc. Acceptable on borderline silicon; not great on actual Tier 2.
+
+Scope: 1 commit (criteria update + KNOWN_ISSUES status flip + release note). Closes BUG-011 today.
+
+#### Carry-forward (whichever option Matt picks)
+
+- V.7.10 Arachne cert review is unblocked once BUG-011 closes, regardless of which path closes it.
+- An M3+ measurement is still a valuable data point under any option — would confirm whether the current state is "M2 Pro is below spec" (M3+ comfortably under p95 = 14 ms) or "Tier 2 budget itself needs revision" (M3+ also over). Cheap to acquire next time the dev environment lines up.
+
+---
+
 ### Verification criteria
 
 - [x] Automated: `shortRunArachneComposite` SOAK benchmark added to `SoakTestHarnessTests` (commit `bd213856`). Kernel-only SOAK_TESTS=1 benchmark. SOAK_TESTS=1 gated; loose 16 ms p95 kernel-only gate on M2 Pro at 1920×1080 with spider forced ON.
-- [ ] Manual: re-run the perf capture procedure on M2 Pro (see Reproduction steps above); Arachne window p95 ≤ 14 ms, p50 ≤ 8 ms, drops ≤ 8% over a 60 s representative window. **This is the closure gate** — flip Status to Resolved with the post-tuning numbers when this passes.
-- [ ] Manual: re-run on M3+ to confirm budget holds at full feature set on actual Tier 2 silicon (M2 Pro is borderline Tier 2; the architecture contract specifies M3+).
+- [~] **Partial**: M2 Pro real-music perf capture executed 2026-05-12 in session `2026-05-12T18-19-31Z`. drops (>32 ms) = 0.7 % passes the 8 % gate; p95 = 16.068 ms misses the 14 ms gate by 2 ms; p50 = 13.649 ms misses the 8 ms gate. See "2026-05-12 production capture" section above for the data and the three escalation paths (L5 / L4 / accept-and-close). **Status remains Open** pending Matt's choice of escalation.
+- [ ] Manual: re-run on M3+ to confirm budget holds at full feature set on actual Tier 2 silicon (M2 Pro is borderline Tier 2; the architecture contract specifies M3+). Still pending; would clarify whether the current p95 = 16.068 ms is "M2 Pro is below spec" or "Tier 2 budget needs revision."
 - [ ] Manual: run Arachne against the V.7.7C.5 visual reference (`docs/VISUAL_REFERENCES/arachne/`) after any tuning to confirm fidelity didn't regress alongside cost. The L1/L2/L3 changes are individually low-risk per the source-side comment rationale, but the cumulative visual is best assessed at real-music scale rather than the 64×64 dHash + RENDER_VISUAL contact-sheet harness used in this session.
 
 ### Related
@@ -157,7 +229,8 @@ The four items from Matt's session `2026-05-11T23-18-42Z` directive landed in th
 - V.7.10 cert review — explicitly gated on this. Cert can't sign off on a preset over budget on its target hardware tier.
 - V.7.7C.5 (D-100) — atmospheric reframe just landed; cost growth from V.7.7C.4 baseline likely contributes here, but the bulk of the 14-ms p50 is the V.7.7D spider + V.7.7C drops, both of which predate V.7.7C.5.
 - DM.3a (this session's measurement infrastructure made the breach visible).
-- L4 escalation path (DeviceTier-aware fallback to V.7.5 2D silhouette spider on Tier 1) — would need a new D-XXX entry in `docs/DECISIONS.md` before implementation. Documented but not landed.
+- **L5 escalation path** (always-on cost reduction — WORLD pass half-rate refresh + drop-pool spatial pruning) — documented above; needs a new `D-XXX` entry before implementation.
+- **L4 escalation path** (DeviceTier-aware fallback to V.7.5 2D silhouette spider on Tier 1, plus reclassifying M2 Pro as Tier 1 for Arachne) — documented above; needs a new `D-XXX` entry before implementation.
 
 ---
 

@@ -6,6 +6,38 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-12-e] BUG-011 M2 Pro post-tuning perf capture — drops gate passes, p95 still 2 ms over budget
+
+**Increment:** BUG-011 perf measurement (no code changes; doc-only). **Status:** BUG-011 remains **Open** — drops gate passes (0.7 % vs 8 % target), p95 misses (16.068 ms vs 14 ms target), p50 misses (13.649 ms vs 8 ms target). Three escalation paths documented in `docs/QUALITY/KNOWN_ISSUES.md` BUG-011 § "Escalation options"; Matt to pick.
+
+**Capture.** Session `~/Documents/phosphene_sessions/2026-05-12T18-19-31Z`. Mac mini M2 Pro, macOS 26.4.1. Post-round-8 build (all three round-8 code commits + the docs commit in tree). Procedure: Spotify-prepared playlist, `L` engaged at session start, `⌘[`/`⌘]` cycled to Arachne. `wait_for_completion_event: true` + `diagnosticPresetLocked` kept Arachne pinned for the entire ~8-minute session after the initial Waveform → Arachne transition at engine time 3 s. 14,152 Arachne frames captured.
+
+| metric | this capture | post-tuning target | pre-tuning baseline (2026-05-08) |
+|---|---|---|---|
+| Frames | 14,152 (≈ 7.9 min) | ≥ 60 s | 4,579 (≈ 77 s) |
+| p50 | 13.649 ms | ≤ 8 ms | 14.120 ms |
+| **p95** | **16.068 ms** | **≤ 14 ms** | 26.607 ms |
+| p99 | 29.602 ms | — | 32.743 ms |
+| max | 57.106 ms | — | 36.072 ms |
+| > 14 ms | 5,775 / 14,152 (40.8 %) | — | 52.98 % |
+| drops (> 32 ms) | 94 / 14,152 (**0.7 %**) | ≤ 8 % | 1.46 % |
+
+**Diagnosis.** L1+L2+L3 tuning landed real wins where aimed — p95 dropped 10.5 ms (26.607 → 16.068), drops halved (1.46 % → 0.7 %). Each lever attacked a worst-case spike. **What didn't move is the median** — 14.120 → 13.649 ms is essentially within run-to-run variance. The post-tuning bottleneck is therefore **always-on per-frame cost**, not worst-case tails: WORLD pass (sky gradient + ambient fog + god-rays + dust motes, always rendered into the offscreen WORLD texture every frame); COMPOSITE always-on work (silk strand SDF, chord segment evaluation, polygon ray-clip, mood palette, 12 Hz vibration UV jitter); drop accumulator pool loop fires per pixel even when per-pixel drop coverage is below threshold.
+
+**Tail spikes** (p99 = 29.6 ms, max = 57.1 ms) are heavier than the pre-tuning capture because the new capture is 3× longer (more opportunity to hit OS scheduler / GC / background process spikes) and because the round-8 build cycle is ~92 s — long enough that the COMPOSITE pass evaluates the full ~441-chord spiral at peak, where pre-round-8 windows truncated before the spiral phase peaked. Neither tail crosses the 8 % drop threshold.
+
+**Side-validation of round-8 work.** The session also incidentally validated the round-8 completion-gated-transitions work — orchestrator transitioned Waveform → Arachne at 3 s and never left Arachne for the rest of the 8-minute session. That's `wait_for_completion_event: true` + `L`-locked behaving exactly as designed. No spurious orchestrator transitions.
+
+**Escalation options (Matt to decide).** Documented in detail in `docs/QUALITY/KNOWN_ISSUES.md` BUG-011 § "Escalation options". Summary:
+
+- **L5 (recommended)** — attack always-on cost. Two candidate sub-levers: WORLD pass cached-refresh (half-rate, sample cached texture on intermediate frames) + drop-pool spatial pruning (per-tile bucketing before per-pixel loop). Scope: 1-2 sessions. Likely brings p95 < 14 ms and p50 close to 8 ms on M2 Pro. Needs a new `D-XXX` decision entry before implementation.
+- **L4** — reclassify M2 Pro as Tier 1 for Arachne. V.7.5 silhouette spider on M2 Pro / V.7.7D 3D SDF spider only on M3+. Cheap (0.5 session) but accepts the limitation rather than fixing it; permanent loss of V.7.7D on M2 Pro. Needs a new `D-XXX`.
+- **Accept** — revise closure criteria to drops-only (0.7 % currently passes), document p95 = 16 ms as a known limitation on borderline Tier 2. Closes BUG-011 today. Risk: `FrameBudgetManager` still downshifts on p95 > 14 ms; SSGI may toggle off mid-segment on M2 Pro.
+
+**Carry-forward.** Decision pending. V.7.10 Arachne cert review remains gated on BUG-011 closure regardless of which path closes it. M3+ measurement still a useful data point to acquire whenever dev environment allows — would clarify whether the current state is "M2 Pro below spec" or "Tier 2 budget needs revision."
+
+---
+
 ## [dev-2026-05-12-d] BUG-004 resolved — Lumen Mosaic is Phosphene's first certified preset
 
 **Increment:** BUG-004 closure. **Status:** One commit on `main`, local only.
