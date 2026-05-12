@@ -2949,7 +2949,7 @@ Each track gets a deterministic chromatic tint vector that shifts the aggregate 
 
 ---
 
-## D-103 — Phase MD tier structure: Classic Port / Evolved / Hybrid (Strategy Decision A, filed 2026-05-12)
+## D-103 — Phase MD tier structure: Classic Port / Evolved / Hybrid (Strategy Decision A, filed 2026-05-12; amended 2026-05-12 — tiers collapsed under inspired-by reframe)
 
 **Rule.** Phase MD ships three distinct tiers of Milkdrop-origin presets:
 
@@ -2960,6 +2960,8 @@ Each track gets a deterministic chromatic tint vector that shifts the aggregate 
 **Why.** Three tiers map cleanly onto the existing MD.5 / MD.6 / MD.7 plan structure and produce three distinct catalog experiences (faithful Milkdrop / Milkdrop-with-Phosphene-music-data / Milkdrop-warp-plus-3D). Collapsing to two tiers (drop MD.7) forfeits the architectural distinctiveness of `mv_warp` + `ray_march` composition. Four tiers (split Evolved into light/heavy) adds fractal sub-categories without adding catalog clarity.
 
 **Carry-forward.** Drives Decisions B (capability matrix per tier), C (three separate `family` values), D (three settings toggles). See `docs/MILKDROP_STRATEGY.md` §3 Decision A.
+
+**Amendment 2026-05-12 (inspired-by reframe — tiers collapsed).** The three-tier structure is **retired**. Under the inspired-by reframe (D-113 / `docs/MILKDROP_STRATEGY.md` §12), every Milkdrop-influenced Phosphene preset is a new creation that takes inspiration from a source preset's concept and aesthetic. Tiering on fidelity-to-source (close-homage / loose-homage / hybrid) re-introduces the "derivative" connotation the reframe retires; tiering on capability set (port / evolved / hybrid) is incoherent when every preset is hand-authored from scratch against Phosphene's primitives. The replacement is **a single tier**, `milkdrop_inspired`, with fidelity governed by the substantial-similarity discipline rule (D-116, `SHADER_CRAFT.md §12.6`) at authoring time, not by tier assignment. Drives the amendments on D-105 (single `family` value), D-106 (single Settings toggle), and the obsoletion of the §3 Decision B capability matrix (D-104 itself stays standing — its mandatory items are now uniform across all `milkdrop_inspired` presets rather than tier-stratified; in practice, deviation primitives + `mv_warp` remain mandatory and stem routing + section awareness + ray-march backdrop become per-preset authoring choices). See `MILKDROP_STRATEGY.md` §12.2 for the reframe table.
 
 ---
 
@@ -2988,7 +2990,7 @@ Each track gets a deterministic chromatic tint vector that shifts the aggregate 
 
 ---
 
-## D-105 — Phase MD catalog presentation: three separate `family` values (Strategy Decision C, filed 2026-05-12)
+## D-105 — Phase MD catalog presentation: three separate `family` values (Strategy Decision C, filed 2026-05-12; amended 2026-05-12 — collapsed to one `family` under inspired-by reframe)
 
 **Rule.** Milkdrop-origin presets ship as three top-level `family` values in their JSON sidecars:
 
@@ -3002,9 +3004,11 @@ Filesystem layout: `PhospheneEngine/Sources/Presets/Shaders/Milkdrop/<theme>_<so
 
 **Carry-forward.** Each ported preset's JSON sidecar uses one of the three family strings. `PresetCategory` Swift enum gains the three cases when MD.5 lands (matching the existing pattern from `PresetCategory.instrument` for SpectralCartograph).
 
+**Amendment 2026-05-12 (inspired-by reframe — single `family` value).** Per D-103's amendment and the inspired-by reframe (D-113 / `MILKDROP_STRATEGY.md` §12), the three `family` values collapse to **one**: `milkdrop_inspired`. Filesystem layout is unchanged (`PhospheneEngine/Sources/Presets/Shaders/Milkdrop/<theme>_<source_name>.{metal,json}`). `PresetCategory` Swift enum gains one case (`.milkdropInspired`) when the first Milkdrop-inspired preset ships, not three. Existing reasoning for separate-families (Settings sub-toggles, family-repeat penalty discrimination, M7-review tier separation) dissolves under the single-tier model: one Settings toggle (D-106 amendment); family-repeat penalty applies uniformly within `milkdrop_inspired`; M7 review evaluates every inspired-by preset at the same rubric profile (per D-104's residual mandatory items applied uniformly). See `MILKDROP_STRATEGY.md` §12.2.
+
 ---
 
-## D-106 — Phase MD Settings exposure: three per-tier toggles in disclosure row (Strategy Decision D, filed 2026-05-12)
+## D-106 — Phase MD Settings exposure: three per-tier toggles in disclosure row (Strategy Decision D, filed 2026-05-12; amended 2026-05-12 — collapsed to one toggle under inspired-by reframe)
 
 **Rule.** Settings panel's "Visuals" section gains three persisted toggles under a single "Milkdrop-style presets" disclosure row:
 
@@ -3017,6 +3021,8 @@ All three default to `true` once the corresponding tier has presets in the catal
 **Why.** Per-tier toggles let users with strong tier preferences (warm-nostalgia-only classic, or modern-only evolved/hybrid) tailor the catalog without losing the rest. A single "Include Milkdrop-style presets" toggle is acceptable as a fallback if Settings UI real-estate is tight, but the tiers are different enough perceptually that uniform treatment under-serves users with clear preferences.
 
 **Carry-forward.** `SettingsStore` gains three `@Published` properties + persistence keys; `VisualsSettingsSection` view gains the disclosure row. Wiring lands when MD.5 ships its first preset (i.e. when there's something for the toggle to affect).
+
+**Amendment 2026-05-12 (inspired-by reframe — single toggle).** The three per-tier toggles collapse to **one**: `phosphene.settings.visuals.milkdrop.inspired`. Defaults to `true` once the first Milkdrop-inspired preset ships. Wiring uses the existing `PresetScoringContext.excludedFamilies` infrastructure (D-053); disabling the toggle adds `milkdropInspired` to the excluded set. The disclosure-row UX is retired (single toggle does not need disclosure grouping). See `MILKDROP_STRATEGY.md` §12.2.
 
 ---
 
@@ -3062,7 +3068,7 @@ All three default to `true` once the corresponding tier has presets in the catal
 
 ---
 
-## D-110 — Phase MD transpiler scope: expression language only for MD.5 (Strategy Decision H, filed 2026-05-12)
+## D-110 — Phase MD transpiler scope: expression language only for MD.5 (Strategy Decision H, filed 2026-05-12; amended 2026-05-12 — transpiler retired entirely under inspired-by reframe)
 
 **Rule.** The MD.2 transpiler covers the `.milk` expression sub-languages only:
 
@@ -3078,9 +3084,11 @@ The transpiler does **not** translate the embedded HLSL pixel-shader source foun
 
 **Carry-forward.** MD.1 grammar audit doc focuses on the expression sub-languages; HLSL surface gets a thin appendix cataloguing features used (deferred for hand-port). MD.2 transpiler implementation rejects HLSL-bearing source files with a clear diagnostic. MD.5 candidate-selection harness filters by `! grep -q '^warp_1=' AND ! grep -q '^comp_1='`.
 
+**Amendment 2026-05-12 (inspired-by reframe — transpiler retired entirely).** Under the inspired-by reframe (D-113 / `MILKDROP_STRATEGY.md` §12), source `.milk` files become **reference material** read by authors, not transpiler input. The MD.2 transpiler CLI is **retired entirely**; no `PhospheneTools/MilkdropTranspiler` SPM target ships. MD.3's HLSL hand-port playbook is also retired (no automated translation, no mechanical hand-port — inspired-by authoring replaces both modes). The HLSL-free / HLSL-bearing corpus split dissolves: every preset in the 9,795-pack is a viable inspiration source, regardless of whether the source contains HLSL pixel-shader blocks. The MD.1 grammar audit is **retained but reframed** as a read-only author's reference (see D-118 for the read-only analysis tool scope decision). See `MILKDROP_STRATEGY.md` §12.7 / §12.9.
+
 ---
 
-## D-111 — Phase MD license posture: MIT-derivative with provenance + attribution + takedown (Strategy Decision I, filed 2026-05-12; amended 2026-05-12 to remove counsel-review gating)
+## D-111 — Phase MD license posture: MIT-derivative with provenance + attribution + takedown (Strategy Decision I, filed 2026-05-12; amended 2026-05-12 to remove counsel-review gating; amended 2026-05-12 — inspired-by reframe revises attribution schema, retires notification protocol)
 
 **Rule.** Transpiled Milkdrop-origin presets ship under Phosphene's MIT licence, with provenance metadata + attribution per the following protocol:
 
@@ -3103,9 +3111,22 @@ The transpiler does **not** translate the embedded HLSL pixel-shader source foun
 
 **Carry-forward.** `docs/CREDITS.md` "Milkdrop preset attribution" section exists as a placeholder; populated when MD.5 ships its first port. Counsel review remains available at Matt's discretion; the brief stays in tree as historical context. **Note: D-111 is one of the decisions slated for substantive revision in the upcoming inspired-by reframe addendum (see `prompts/MD-strategy-addendum-prompt.md`); the addendum may further refine the attribution + provenance schema under the inspired-by framing.**
 
+**Amendment 2026-05-12 (inspired-by reframe — attribution schema renamed; notification protocol retired).** Under the inspired-by reframe (D-113 / `MILKDROP_STRATEGY.md` §12), the operative legal framing is "inspired by," not "derivative of." Each Milkdrop-inspired Phosphene preset's JSON sidecar carries an `inspired_by` block in place of `milkdrop_source`:
+
+```json
+"inspired_by": {
+  "milkdrop_filename": "<original .milk filename>",
+  "original_artist": "<author from filename pattern, best-effort>",
+  "pack": "projectM-visualizer/presets-cream-of-the-crop",
+  "sha256": "<SHA256 of source .milk file>"
+}
+```
+
+The `theme` field is dropped (no longer load-bearing once tier assignment retires per D-103 amendment). `CREDITS.md` section is renamed to "Milkdrop-inspired preset attribution" and populated as inspired-by uplifts ship. The provenance + attribution + takedown protocol (CREDITS.md enumeration + projectM-routed takedown) stays in force as the MIT licence's responsibility-of-the-redistributor posture, contingent on the scope conditions in the brief (no `.milk` redistribution, no commercialization, no claim of original authorship). The **pre-release notification protocol** (notifying original Milkdrop preset authors of each Phosphene port before public release) is **retired for the pre-community phase** per D-113 / `MILKDROP_STRATEGY.md` §12.8 — rationale: until preset development opens to community contributors, all uplifts are authored by Matt + Claude Code, and notification before community-authoring infrastructure exists is a checkbox exercise. Trigger to reopen: when Phosphene opens preset development to community contributors. The inspired-by framing materially reduces the substantive-similarity surface compared to a port, but the discipline rule (D-116 / `SHADER_CRAFT.md §12.6`) is the load-bearing authoring-time constraint that operationalizes the framing.
+
 ---
 
-## D-112 — Phase MD MD.5 candidate list: 9 named presets + 1 TBD Geometric (Strategy Decision J, filed 2026-05-12)
+## D-112 — Phase MD MD.5 candidate list: 9 named presets + 1 TBD Geometric (Strategy Decision J, filed 2026-05-12; amended 2026-05-12 — HLSL-free constraint dissolves; list reframes as initial inspired-by batch)
 
 **Rule.** MD.5 ships 10 Milkdrop Classic Port presets selected via hybrid criteria: J.3 (transpiler-proof simplicity) as the *selection* criterion, J.1 (theme coverage) as the *coverage* check, J.2 (Phosphene catalog gap) as the tiebreaker.
 
@@ -3130,4 +3151,114 @@ The transpiler does **not** translate the embedded HLSL pixel-shader source foun
 **Why.** J.3 (simplicity) restricts candidates to HLSL-free presets ≤ 1.2 KB — the simplest end of the 1,559-preset HLSL-free subset — which is what proves the transpiler. J.1 (theme coverage) ensures the 10 ports span at least Supernova / Waveform / Reaction / Fractal / Geometric (5 themes via these 9 + 1 TBD); MD.5 doesn't ship as "10 Fractal presets." J.2 (catalog gap) drives the slot allocation toward unserved registers (Reaction, Aurora) where Phosphene currently has nothing.
 
 **Carry-forward.** MD.5 increment ships exactly these 10 presets (or documented substitutions). Each ships with `milkdrop_source` provenance metadata per D-111.
+
+**Amendment 2026-05-12 (inspired-by reframe — HLSL-free constraint dissolves; list reframes as initial inspired-by batch).** Under the inspired-by reframe (D-113 / `MILKDROP_STRATEGY.md` §12), source `.milk` files become reference material rather than transpiler input. The HLSL-free / HLSL-bearing corpus split (load-bearing under D-110's transpiler scope) **dissolves entirely** — every preset in the 9,795-pack is a viable inspiration source. The 10-preset list above stays operative as the **initial inspired-by batch** for the 20-preset first-release bundle (D-114 / `MILKDROP_STRATEGY.md` §12.4). Substitutions are encouraged where a better inspiration source surfaces at authoring — the simplicity / theme-coverage / catalog-gap selection criteria stay in spirit, but no longer with the HLSL-free filter. The Northern Lights pre-emption check vs Aurora Veil stays load-bearing; AV ships before MD's first inspired-by batch under current sequencing, so the Northern Lights slot is likely swapped for an alternative (Rovastar — *Trippy S* or comparable). Each shipped Milkdrop-inspired preset carries an `inspired_by` provenance block (per D-111 amendment) rather than `milkdrop_source`. The full ~200 inspired-by uplift target (`MILKDROP_STRATEGY.md` §12.1) extends well beyond this list; the 10 here are the *seed* for the first-release bundle, not the whole work stream.
+
+---
+
+## D-113 — Phase MD posture reframe: inspired-by, not derivative-of (Strategy Addendum, filed 2026-05-12)
+
+**Rule.** The operative legal and creative framing for Phase MD is **"inspired by,"** not "derivative of." Every Milkdrop-influenced Phosphene preset is a **new creation** that takes inspiration from a source preset's concept and aesthetic, implemented from scratch on Phosphene's primitives. The transpiler / mechanical-port framing committed to under the base strategy (`docs/MILKDROP_STRATEGY.md` §§1–11) is retired.
+
+The reframe is operative on three axes:
+
+1. **Legal posture.** Phosphene asserts externally that its Milkdrop-influenced presets are inspired-by works, not derivatives. The CREDITS.md attribution stays (renamed to "Milkdrop-inspired preset attribution"); the substantial-similarity discipline rule (D-116 / `SHADER_CRAFT.md §12.6`) becomes the load-bearing authoring-time constraint.
+2. **Scale.** Initial planning target widens from ~35 presets (base strategy §5) to **~200 inspired-by uplifts**. At ~2–3 days per preset to certification, this is a multi-year work stream, not a finite phase.
+3. **Release model.** Phosphene's first release ships at **20 presets** total (D-114).
+
+**Why.** Matt's 2026-05-12 post-sign-off review of the base strategy reframed the work after recognizing that the derivative-port model (a) over-stated Phosphene's substantive overlap with source presets (Phosphene presets are authored on different primitives — mv_warp + ray_march + V.1–V.4 utilities + MV-3 capabilities — and read as Phosphene works that *honor* source concepts, not as Milkdrop ports with a Phosphene frontend), (b) created an authoring tax (transpiler authoring + per-preset D-026 audit + tier-stratified rubric application) that did not match the actual per-preset session shape, and (c) limited the catalog ceiling artificially (35 presets cap was a transpiler-budgeting artifact; the inspired-by framing has no such cap).
+
+**Notification protocol — retired for pre-community phase.** The base strategy's I.1 license posture committed to projectM-routed takedown but did not commit to a pre-release notification protocol; iterative discussion had suggested one. Under the inspired-by reframe, **notification protocol is retired** until Phosphene opens preset development to community contributors. Rationale: until then, all uplifts are authored by Matt + Claude Code, and notification before community-authoring infrastructure exists is a checkbox exercise. Trigger to reopen: community-contribution rollout (separate phase, separate prompt). See `MILKDROP_STRATEGY.md` §12.8.
+
+**Carry-forward.** Drives the amendments on D-103 (single tier), D-105 (single `family` value), D-106 (single Settings toggle), D-110 (transpiler retired), D-111 (`inspired_by` schema + notification deferral), D-112 (HLSL-free constraint dissolves). Drives the new decisions D-114 (release model), D-115 (release-bundle composition), D-116 (discipline rule), D-117 (catalog-ratio framing), D-118 (read-only analysis tool scope). See `docs/MILKDROP_STRATEGY.md` §12 for the full addendum.
+
+---
+
+## D-114 — Phase MD release model: 20-preset first-release bundle (Strategy Addendum, filed 2026-05-12)
+
+**Rule.** Phosphene's first public release ships when the production catalog reaches **20 M7-certified presets** (full V.6 rubric, `rubric_profile` matched per preset). The 20 are a mix of Phosphene-native + Milkdrop-inspired (composition per D-115). After first release, ongoing uplift batches ship at a cadence to be set by release planning (weekly / monthly / quarterly — separate decision, not in this addendum).
+
+**Why.** 20 is the minimum bundle size at which:
+
+1. A 60–90 minute listening session can rotate presets without repetition fatigue (the Phase 4 family-repeat penalty + 50-preset history window already handle within-bundle rotation, but 20 is the floor that makes the rotation feel varied).
+2. Every preset in the bundle can clear M7 review in a feasible work window (with ~14 Phosphene-native presets already authored and ~10 inspired-by uplifts targeted, the gap to 20 is bounded).
+3. The catalog presents a coherent product, not a tech demo (1 certified preset, Lumen Mosaic alone, is below the product threshold).
+
+**Current state vs threshold (2026-05-12):**
+
+- **Certified (1):** Lumen Mosaic (cert flipped at LM.7, 2026-05-12).
+- **Production-but-not-all-certified (~14):** Arachne, Aurora Veil (pending Phase AV), Fractal Tree, Gossamer, Glass Brutalist, Kinetic Sculpture, Murmuration, Nebula, Plasma, Spectral Cartograph (diagnostic — excluded from auto-selection per D-074), Stalker, Starburst, Volumetric Lithograph, Waveform. Each is one M7 + cert review away from the bundle.
+- **Gap to 20:** 6+ presets, source TBD per D-115.
+
+**Carry-forward.** Drives the work-prioritization shape over the next several months: Phase G-uplift (cert reviews on the ~14 production-but-not-certified members) + Phase AV / Phase CC + the first inspired-by uplift batch (initial seed list per D-112 amendment). Post-release cadence decision lives in a future release-planning prompt; D-114 covers only the bundle threshold, not the rhythm after.
+
+---
+
+## D-115 — Phase MD release-bundle composition: framed; Matt's call (Strategy Addendum, filed 2026-05-12; proposal pending sign-off)
+
+**Status.** The question is framed; Matt's pick is pending. Three proposals on the table for the composition of the 20-preset first-release bundle (D-114):
+
+- **A — 10 + 10.** Ten Phosphene-native + ten Milkdrop-inspired. Balanced register; "Phosphene's own work" and "Phosphene honoring the Milkdrop tradition" read at equal weight.
+- **B — 5 + 15.** Five Phosphene-native + fifteen Milkdrop-inspired. Honoring-the-tradition reads louder; sets a clear expectation that the catalog is Milkdrop-inspired in character.
+- **C — 15 + 5.** Fifteen Phosphene-native + five Milkdrop-inspired. Phosphene's own identity reads louder; Milkdrop-inspired register is a clear minority at first.
+
+**Strategy-session recommendation (Claude Code, not Matt's call):** **Proposal A (10 + 10).** Reasons: (a) ~14 production Phosphene-native presets are already authored — getting 10 of them through M7 + cert in the release-bundle work window is feasible without re-scoping Phase G-uplift; (b) 10 Milkdrop-inspired uplifts at 2–3 days each is ~3–4 weeks of sustained authoring — large but bounded; (c) the 50/50 balance matches the inspired-by framing — the catalog reads as *new Phosphene creations* that *honor* Milkdrop rather than as Milkdrop ports with a Phosphene minority or a Phosphene catalog with a Milkdrop garnish.
+
+**Carry-forward.** Matt's pick lands as the operative form of D-115 in a follow-up amendment. The pick drives Phase G-uplift scope (which presets to prioritize for cert review) and the inspired-by batch size for the first release. Until the pick lands, the working assumption is Proposal A. See `docs/MILKDROP_STRATEGY.md` §12.4.1.
+
+---
+
+## D-116 — Phase MD substantial-similarity discipline rule (Strategy Addendum, filed 2026-05-12)
+
+**Rule.** A Milkdrop-inspired Phosphene preset must be a **new creation**, not a reproduction. The discipline rule applies to every preset that carries an `inspired_by` provenance block (per D-111 amendment); other Phosphene presets (Aurora Veil, Crystalline Cavern, Phase G-uplift catalog members) are unaffected.
+
+Specifically:
+
+1. **No source equations copy-pasted into Phosphene shader code.** The author reads the `.milk` file to understand the aesthetic intent; the Phosphene `.metal` is written from scratch against Phosphene's primitives.
+2. **No source shader logic ported line-for-line.** Where the source `.milk` carries HLSL `warp_1=…warp_NN=` blocks, the Phosphene equivalent is authored against Phosphene's `mv_warp` / `mvWarpPerVertex` primitives, not by mechanically translating the HLSL surface. The shape of the motion may resemble the source's; the implementation is Phosphene-native.
+3. **The visual structure may differ from the source.** A Milkdrop-inspired Phosphene preset can honor a source's concept (e.g. "kaleidoscope of tessellating triangles") while substituting a different visual structure (e.g. SDF-based tessellation rather than per-pixel-grid feedback warp) if that produces a stronger Phosphene-native result.
+4. **Source `.milk` files are not redistributed.** They are read from a developer-local checkout of the cream-of-crop pack; the pack stays at its source URL. Phosphene ships only the new Phosphene-native creations (`.metal` + `.json`) that took the `.milk` files as inspiration.
+
+**Why.** "Inspired by" does not save Phosphene if the resulting presets reproduce a source's specific protectable expression too closely — substantial similarity is a content-level test, not a labeling test. Each uplift must be a genuine new creation: new code, new audio coupling, possibly different visual structure that honors the source concept rather than reproducing source implementation. The rule operationalizes the reframe (D-113) as an authoring-time constraint, parallel to the Failed Approach #48 precedent ("§10.1-faithful but reference-divergent visual outputs" caught after-the-fact at M7; this rule catches it during authoring instead).
+
+**Cross-references.**
+
+- `docs/SHADER_CRAFT.md §12.6` — the rule's authoring-handbook home, with worked examples + M7-review checklist items.
+- `CLAUDE.md` Failed Approach #48 — the precedent for substantive-similarity-against-anti-reference failures.
+- D-113 — the posture reframe this rule operationalizes.
+
+**Carry-forward.** M7 review of any Milkdrop-inspired preset must explicitly check the four bullets above against the source `.milk` reference. A preset that fails any bullet does not certify; the fix is to rewrite from scratch under closer discipline, not to tune.
+
+---
+
+## D-117 — Phase MD catalog-ratio framing: deferred (Strategy Addendum, filed 2026-05-12)
+
+**Status.** Question framed; explicit decision deferred until the 20-preset first-release bundle (D-114) ships and steady-state catalog growth becomes observable.
+
+**Question.** At steady state — call it ~200 inspired-by uplifts plus the ongoing Phase G-uplift / Phase AV / Phase CC / Phase MV work — what fraction of the catalog is Phosphene-native vs Milkdrop-inspired?
+
+**Forces in tension:**
+
+1. **Authoring economics.** Milkdrop-inspired uplifts are typically faster than from-scratch Phosphene-native presets (the source `.milk` provides aesthetic anchor + audio-coupling skeleton, reducing the design surface). Default gravity pulls toward higher Milkdrop-inspired share.
+2. **Brand identity.** If steady-state catalog is 80 % Milkdrop-inspired, Phosphene's brand identity becomes "the Milkdrop renderer with modern fidelity" rather than "a new music-visualization product that takes inspiration from Milkdrop." Pulls toward lower share.
+3. **Community ratio (future).** When preset development opens to community contributors (notification-protocol phase, D-113 / `MILKDROP_STRATEGY.md` §12.8), community submissions will likely skew toward Milkdrop-inspired uplifts. Without a ceiling, community contributions could shift the ratio sharply within months.
+
+**Provisional working assumption (not a decision).** Aim for rough parity (50 / 50 ± 20 %) at steady state. Milkdrop-inspired ceiling, if needed, gets enforced via Phase 4 orchestrator-side family weighting (mechanism exists; the Phase 4 surface — `excludedFamilies` (D-053) + family-repeat penalty + complementary weighting — is sufficient).
+
+**Trigger to decide.** When the catalog reaches ~40 presets total (20-bundle release + ~20 more uplifts), revisit. Filed here as a deferred decision; D-117 stays open until the trigger fires. See `docs/MILKDROP_STRATEGY.md` §12.6.
+
+---
+
+## D-118 — Phase MD read-only analysis tool: skip (Strategy Addendum, filed 2026-05-12)
+
+**Rule.** Phosphene does **not** ship a standalone read-only `.milk` analysis tool. The MD.1 grammar audit doc (retained per D-110 amendment) serves as the variable / function / operator reference; authors read source `.milk` files manually as part of the per-preset session.
+
+**Why.** Two options were considered:
+
+- **D-118.1 — Ship a read-only tool.** `.milk` parser + AST + pretty-print, optional per-file frequency analysis to help authors understand source audio-coupling fingerprint before drafting the Phosphene-native uplift.
+- **D-118.2 — Skip; rely on MD.1 grammar audit + author manual reading.**
+
+D-118.2 wins because: (a) authors already read every source material end-to-end before authoring (mandatory per `CLAUDE.md` Authoring Discipline — "Articulate the musical role before authoring anything" + Failed Approach #39 "authoring without reference images"); a read-only tool duplicates that work without adding signal; (b) MD.1's grammar audit already catalogs the variable / function / operator surface across the full pack — a second tool is unnecessary infrastructure; (c) the authoring sessions that produce inspired-by Phosphene presets are the Phase MD work; spending one of those sessions on tool-building is opportunity cost against actual catalog growth.
+
+**Carry-forward.** MD.2 (transpiler CLI), MD.3 (HLSL hand-port playbook), MD.4 (per-vertex Metal emission) are all retired entirely per D-110 amendment. MD.1 (grammar audit doc) is retained and reframed as a read-only author's reference. See `docs/MILKDROP_STRATEGY.md` §12.7.
 
