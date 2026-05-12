@@ -1911,6 +1911,111 @@ swift test --package-path PhospheneEngine --filter "FidelityRubricReportTests/ru
 
 **`rubric_hints`** allows authors to assert P1 (hero specular) and P3 (dust motes) when the static analyzer cannot detect them from function names alone. Add `"rubric_hints": {"hero_specular": true, "dust_motes": false}` to the sidecar. The hints do not affect M1–M6 or the mandatory gate.
 
+### 12.6 Substantial-similarity discipline rule (Milkdrop-inspired presets only)
+
+**Applies to:** any Phosphene preset that carries an `inspired_by`
+provenance block in its JSON sidecar (per D-111 amendment). Filed as
+D-116 and operative under the inspired-by reframe (D-113 /
+`docs/MILKDROP_STRATEGY.md` §12.5). Does **not** apply to
+Phosphene-native presets (Aurora Veil, Crystalline Cavern, the Phase
+G-uplift catalog members) — those are unaffected.
+
+**Why it exists.** "Inspired by" is a framing label, not a legal
+shield. Substantive similarity is a content test, not a metadata
+test. A Phosphene preset that names a Milkdrop source as inspiration
+in its JSON sidecar but reproduces the source's specific protectable
+expression — its shader logic, its per-frame equation surface, its
+visual structure — does not become a new work by virtue of the
+`inspired_by` block. The discipline rule operationalizes the
+inspired-by framing **as an authoring-time constraint**, parallel to
+Failed Approach #48 ("§10.1-faithful but reference-divergent visual
+outputs") which surfaced the parallel failure mode at M7 review
+time.
+
+**The rule.**
+
+1. **No source equations copy-pasted into Phosphene shader code.**
+   The author reads the `.milk` file end-to-end to understand the
+   aesthetic intent and the audio-coupling fingerprint; the
+   Phosphene `.metal` is written from scratch against Phosphene's
+   primitives (V.1–V.4 utilities, mv\_warp, ray\_march, MV-3
+   capabilities). Re-expressing the source's idea in Phosphene-
+   native code is the work; mechanically transposing the source's
+   code into Metal syntax is not.
+
+2. **No source shader logic ported line-for-line.** Where the source
+   `.milk` carries HLSL `warp_1=…warp_NN=` blocks, the Phosphene
+   equivalent is authored against `mv_warp` / `mvWarpPerVertex`,
+   not by mechanically translating the HLSL surface. The *shape* of
+   the motion may resemble the source's; the *implementation* is
+   Phosphene-native. The same applies to per-pixel-grid expressions
+   in the source's `per_pixel_NN` blocks — those are aesthetic
+   reference, not transpiler input.
+
+3. **The visual structure may differ from the source.** A
+   Milkdrop-inspired Phosphene preset can honor a source's *concept*
+   (e.g. "kaleidoscope of tessellating triangles") while substituting
+   a different *visual structure* (e.g. SDF-based tessellation
+   rather than per-pixel-grid feedback warp) if that produces a
+   stronger Phosphene-native result. Faithful structural
+   reproduction is not a virtue under inspired-by; honoring the
+   source's *intent* in Phosphene's voice is.
+
+4. **Source `.milk` files are not redistributed.** They are read
+   from a developer-local checkout of the cream-of-crop pack; the
+   pack stays at its source URL. Phosphene ships only the new
+   Phosphene-native creations (`.metal` + `.json`) that took the
+   `.milk` files as inspiration. No `.milk` content goes into the
+   Phosphene repository, the Phosphene binary, or any redistributed
+   artifact.
+
+**M7 review checklist (Milkdrop-inspired presets only).** Each
+inspired-by preset's M7 review explicitly checks each of the four
+bullets above against the source `.milk`. A preset that fails any
+bullet does **not** certify. The remediation is to rewrite from
+scratch under closer discipline — not to tune the existing output
+toward divergence from the source. Failed Approach #49 ("tuning
+constants on a structurally broken renderer") is the precedent: at
+this scale the failure is structural, not parametric.
+
+**Worked examples (illustrative, not normative).**
+
+* *OK*: Reading Geiss — *3D - Luz* end-to-end to understand its
+  particle-nova aesthetic + audio coupling fingerprint, then
+  authoring a new Phosphene preset using `mv_warp` + a Phosphene-
+  native particle-render path + V.3 palette utilities. The
+  Phosphene preset's particle count, dispersion model, palette
+  generation, and audio routing are all Phosphene-native; the
+  *concept* (a radiating particle nova that breathes with bass) is
+  the inspiration. The `inspired_by` block names Geiss *3D - Luz*;
+  the M7 review checks that the Phosphene preset's shader contains
+  no recognizable Geiss equations or structural patterns.
+* *Not OK*: Reading the same Geiss source, hand-transposing each
+  of its `per_pixel_NN` equations into Metal syntax, wrapping the
+  resulting per-vertex math in an `mvWarpPerVertex` body, and
+  labeling the result as `inspired_by`. The labeling is wrong; the
+  preset is a manual port. Substantial similarity is high; the
+  inspired-by framing fails.
+* *Edge case*: A source preset's audio coupling — say, "bass
+  squared drives radial expansion exponent" — is a small,
+  general-purpose mathematical relationship reasonably found in
+  any radial-expansion shader. Re-using *the same relationship*
+  in a Phosphene-native uplift is OK; substantial similarity is
+  about specific protectable expression, not about general
+  mathematical patterns. The M7 review applies common sense here;
+  document the call in the preset closeout if it's marginal.
+
+**Cross-references.**
+
+* `CLAUDE.md` Failed Approach #48 — the precedent failure mode
+  (anti-reference convergence) this rule is designed to prevent
+  at authoring time rather than catch at M7.
+* `docs/DECISIONS.md` D-113 — the inspired-by posture reframe this
+  rule operationalizes.
+* `docs/DECISIONS.md` D-116 — this rule's filing.
+* `docs/MILKDROP_STRATEGY.md` §12.5 — the strategy-level summary
+  of the rule.
+
 ---
 
 ## 13. Failed Approaches (Shader-Specific)
