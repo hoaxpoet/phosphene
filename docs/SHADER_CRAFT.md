@@ -1952,14 +1952,38 @@ time.
    in the source's `per_pixel_NN` blocks — those are aesthetic
    reference, not transpiler input.
 
-3. **The visual structure may differ from the source.** A
-   Milkdrop-inspired Phosphene preset can honor a source's *concept*
-   (e.g. "kaleidoscope of tessellating triangles") while substituting
-   a different *visual structure* (e.g. SDF-based tessellation
-   rather than per-pixel-grid feedback warp) if that produces a
-   stronger Phosphene-native result. Faithful structural
-   reproduction is not a virtue under inspired-by; honoring the
-   source's *intent* in Phosphene's voice is.
+3. **The Phosphene preset's rendered output must differ measurably
+   from the source on at least one of: dominant motion model,
+   palette character, primary feature stack, or compositional
+   structure.** *(Strengthened by D-121; originally permissive.)*
+   "May differ" was the original framing and proved too weak — code-
+   side discipline (bullets 1 / 2 / 4) doesn't prevent producing
+   visually-identical output from differently-written code. Bullet 3
+   closes the rendered-output substantive-similarity axis where
+   copyright in visual works actually lives.
+
+   - **Dominant motion model** — the source's primary motion source
+     (per-vertex feedback warp / particle swarm / camera flight /
+     SDF march / time-modulation) maps onto a different motion source
+     in the Phosphene preset. Honoring concept while changing the
+     mechanism is the canonical example.
+   - **Palette character** — the source's hue / saturation / value
+     distribution diverges meaningfully from the Phosphene preset's.
+     "Same colours, different motion" doesn't pass on this axis;
+     "Different colours, same motion" does.
+   - **Primary feature stack** — the load-bearing visual features
+     differ (the source's hero element is a kaleidoscope mirror
+     plane; the Phosphene preset's hero element is something else
+     reachable from the same concept).
+   - **Compositional structure** — frame composition (radial vs grid
+     vs free-flow), foreground / background relationship, viewport
+     framing.
+
+   Faithful structural reproduction is not a virtue under inspired-by;
+   honoring the source's *intent* in Phosphene's voice is. A preset
+   that cannot articulate divergence on at least one axis is by
+   definition reproducing the source's expression, even if its code
+   shares zero lines with the source.
 
 4. **Source `.milk` files are not redistributed.** They are read
    from a developer-local checkout of the cream-of-crop pack; the
@@ -1977,6 +2001,26 @@ scratch under closer discipline — not to tune the existing output
 toward divergence from the source. Failed Approach #49 ("tuning
 constants on a structurally broken renderer") is the precedent: at
 this scale the failure is structural, not parametric.
+
+**Mandatory side-by-side render test (D-121).** As part of M7 review:
+
+1. Render the Phosphene preset on a chosen test track at 1920×1080
+   (use the standard `RENDER_VISUAL=1 swift test --filter
+   PresetVisualReview` harness or a representative live-music
+   capture from `~/Documents/phosphene_sessions/<timestamp>/`).
+2. Render the source `.milk` on the same test track in projectM
+   (or a comparable Milkdrop-compatible renderer) at the same
+   resolution.
+3. Place the two renders side-by-side in the M7 review artefact.
+4. M7 reviewer (Matt) writes a **one-paragraph divergence
+   rationale** in the preset's closeout, naming **which of the
+   four bullet-3 axes diverges and how**.
+
+If the reviewer cannot articulate a divergence on at least one
+axis, the preset does not certify. The remediation is **rewrite
+under closer discipline**, not "tune until visually distinct enough"
+— the latter is the Failed Approach #49 pattern at the
+substantive-similarity level.
 
 **Worked examples (illustrative, not normative).**
 
@@ -2013,8 +2057,16 @@ this scale the failure is structural, not parametric.
 * `docs/DECISIONS.md` D-113 — the inspired-by posture reframe this
   rule operationalizes.
 * `docs/DECISIONS.md` D-116 — this rule's filing.
-* `docs/MILKDROP_STRATEGY.md` §12.5 — the strategy-level summary
-  of the rule.
+* `docs/DECISIONS.md` D-121 — bullet 3 strengthening + mandatory
+  side-by-side M7 test.
+* `docs/DECISIONS.md` D-122 — discipline-rule-failure kill-switch
+  trigger (any M7 rejection on bullet-3 grounds fires the
+  trigger).
+* `docs/MILKDROP_STRATEGY.md` §12.5 — strategy-level summary of
+  the original rule.
+* `docs/MILKDROP_STRATEGY.md` §12.10 — strategy-level summary of
+  the post-adversarial-review revisions including bullet 3
+  strengthening.
 
 ---
 
