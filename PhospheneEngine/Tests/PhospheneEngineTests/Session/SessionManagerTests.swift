@@ -110,7 +110,7 @@ private func makeManager(
     downloader: any PreviewDownloading = InstantDownloader(),
     separator: any StemSeparating,
     analyzer: any StemAnalyzing = InstantStemAnalyzer(),
-    classifier: any MoodClassifying = StubMoodClassifier()
+    classifier: any MoodClassifying = MockMoodClassifier()
 ) -> SessionManager {
     let preparer = SessionPreparer(
         resolver: resolver,
