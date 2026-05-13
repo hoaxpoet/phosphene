@@ -1,7 +1,6 @@
-// FerrofluidOceanVisualTests — V.9 Session 1 minimal harness.
+// FerrofluidOceanVisualTests — V.9 Session 1+2 visual harness.
 //
-// Two gates only at Session 1 (per FERROFLUID_OCEAN_CLAUDE_CODE_PROMPTS.md
-// acceptance gates §1, §2, §3):
+// Session 1 gates (per FERROFLUID_OCEAN_CLAUDE_CODE_PROMPTS.md §1–§3):
 //
 //   1. testFerrofluidOceanShaderCompiles — preset loads and the ray-march
 //      G-buffer pipeline state is non-nil. Failed Approach #44 (silent Metal
@@ -18,7 +17,14 @@
 //      agitated-body-without-spikes (high arousal + low bass_dev) produce
 //      visibly distinct frames. Pixel diff > threshold, no golden hash lock.
 //
-// All three tests share the deferred-ray-march render path (`RayMarchPipeline`
+// Session 2 gate (per FERROFLUID_OCEAN_CLAUDE_CODE_PROMPTS.md §4):
+//
+//   4. testFerrofluidOceanMoodTintAtmosphereShifts — silence fixture rendered
+//      twice (valence -0.9 → cool fog; valence +0.9 → warm fog) produces a
+//      visible palette shift through the D-022 mood-tinted IBL ambient + fog
+//      colour path. Asserts average channel difference > 1.0.
+//
+// All four tests share the deferred-ray-march render path (`RayMarchPipeline`
 // driven directly), the same path used by PresetVisualReviewTests for pure
 // ray-march presets.
 
@@ -158,12 +164,71 @@ final class FerrofluidOceanVisualTests: XCTestCase {
         print("[FerrofluidOcean V.9 Session 1] independence frames written to: \(outDir.path) (avg diff = \(avg))")
     }
 
+    // MARK: - Gate 4 (V.9 Session 2): mood-tint atmosphere shift (D-022)
+
+    func testFerrofluidOceanMoodTintAtmosphereShifts() throws {
+        let outDir = try makeOutputDirectory(suffix: "mood_tint")
+        let preset = try requirePreset()
+
+        // The production render loop calls RenderPipeline.applyAudioModulation
+        // each frame, which derives `scene.lightColor` from valence (warm/cool
+        // tint multiplier on base.lightColor). The test harness drives
+        // RayMarchPipeline directly and bypasses that path — so we replicate
+        // the tint formula manually in `renderDeferredRayMarch` when
+        // `applyValenceTint: true`. Keeping the formula colocated with the
+        // production formula in RenderPipeline+RayMarch.swift:185–193.
+        var coolFeatures = fixtureSilence()
+        coolFeatures.valence = -0.9
+        var warmFeatures = fixtureSilence()
+        warmFeatures.valence = 0.9
+        let stems = stemsZero()
+
+        let pixelsCool = try renderDeferredRayMarch(preset: preset,
+                                                   features: &coolFeatures,
+                                                   stems: stems,
+                                                   applyValenceTint: true)
+        let pixelsWarm = try renderDeferredRayMarch(preset: preset,
+                                                   features: &warmFeatures,
+                                                   stems: stems,
+                                                   applyValenceTint: true)
+
+        try writePNG(bgraPixels: pixelsCool,
+                     width: Self.renderWidth, height: Self.renderHeight,
+                     to: outDir.appendingPathComponent("a_valence_negative_cool.png"))
+        try writePNG(bgraPixels: pixelsWarm,
+                     width: Self.renderWidth, height: Self.renderHeight,
+                     to: outDir.appendingPathComponent("b_valence_positive_warm.png"))
+
+        precondition(pixelsCool.count == pixelsWarm.count)
+        var diff: UInt64 = 0
+        for i in 0 ..< pixelsCool.count where i % 4 != 3 {
+            diff &+= UInt64(abs(Int(pixelsCool[i]) - Int(pixelsWarm[i])))
+        }
+        let pixelChannels = UInt64(pixelsCool.count / 4 * 3)
+        let avg = Double(diff) / Double(pixelChannels)
+
+        // Cool→warm tint at valence ±0.9 lands at roughly (0.70, 0.86, 1.36)
+        // vs (1.22, 1.08, 0.73) — multiplied through the D-022 mood-tinted
+        // fogColor in the matID == 3 branch, the cool-purple-blue vs
+        // warm-amber shift produces an avg channel diff well above 1.0 (the
+        // observed value at Session 2 close-out is ~31 with the fixture-side
+        // fogNear=0 override). The 1.0 threshold leaves ~30× headroom; if a
+        // future refactor of the matID == 3 branch drops the lightColor.rgb
+        // multiply on fogColor, this gate trips long before silent regression.
+        XCTAssertGreaterThan(
+            avg, 1.0,
+            "Mood-tint atmosphere shift collapsed (avg channel diff = \(avg)) — D-022 IBL/fog tint not propagating through matID == 3 branch")
+
+        print("[FerrofluidOcean V.9 Session 2] mood-tint frames written to: \(outDir.path) (avg diff = \(avg))")
+    }
+
     // MARK: - Render
 
     private func renderDeferredRayMarch(
         preset: PresetLoader.LoadedPreset,
         features: inout FeatureVector,
-        stems: StemFeatures
+        stems: StemFeatures,
+        applyValenceTint: Bool = false
     ) throws -> [UInt8] {
         let context       = try MetalContext()
         let shaderLibrary = try ShaderLibrary(context: context)
@@ -173,6 +238,41 @@ final class FerrofluidOceanVisualTests: XCTestCase {
 
         var sceneUniforms = preset.descriptor.makeSceneUniforms()
         sceneUniforms.sceneParamsA.y = Float(Self.renderWidth) / Float(Self.renderHeight)
+
+        if applyValenceTint {
+            // Mirrors RenderPipeline.applyAudioModulation (RenderPipeline+RayMarch.swift:185–193).
+            // Test harness bypasses the production frame loop, so we apply the
+            // same tint formula directly to sceneUniforms.lightColor.
+            let valence = max(-1, min(1, features.valence))
+            let warm = max(Float(0), valence)
+            let cool = max(Float(0), -valence)
+            let tint = SIMD3<Float>(
+                1.0 + warm * 0.40 - cool * 0.25,
+                1.0 + warm * 0.15 - cool * 0.10,
+                1.0 + cool * 0.40 - warm * 0.30
+            )
+            let baseColor = SIMD3<Float>(
+                sceneUniforms.lightColor.x,
+                sceneUniforms.lightColor.y,
+                sceneUniforms.lightColor.z
+            )
+            let tinted = baseColor * tint
+            sceneUniforms.lightColor = SIMD4(tinted.x, tinted.y, tinted.z, 0)
+
+            // The default `SceneUniforms()` initializer sets `fogNear = 20.0`
+            // (sceneParamsB.x). The Ferrofluid Ocean camera at (0, 4, -2.5)
+            // looking at a near-horizontal surface puts the visible surface in
+            // the 4–14 m depth range — entirely BEFORE the default fog band
+            // [20, 25]. With fogFactor clamped to 0 across the whole surface,
+            // the D-022 mood-tinted `fogColor = sky * lightColor.rgb` path
+            // contributes nothing and the test can't observe tint propagation
+            // through the fog path. Override fogNear to 0 in the test so the
+            // fog band covers the visible surface; this isolates the matID == 3
+            // branch's D-022 propagation contract from the engine-wide
+            // fog-near default (an orthogonal concern out of Session 2 scope).
+            sceneUniforms.sceneParamsB.x = 0
+        }
+
         pipeline.sceneUniforms = sceneUniforms
 
         let floatStride = MemoryLayout<Float>.stride
