@@ -250,18 +250,21 @@ public final class FerrofluidStageRig: @unchecked Sendable {
     /// the GPU side could in principle compute the same palette at
     /// per-pixel cost, but baking the palette evaluation CPU-side lets a
     /// single buffer write carry the result to all surface pixels.
-    private static func paletteIQ(_ t: Float) -> SIMD3<Float> {
+    private static func paletteIQ(_ phase: Float) -> SIMD3<Float> {
         // Match `palette_neon`: a = 0.5, b = 0.5, c = 1.0, d = (0.0, 0.33, 0.67).
-        let a = SIMD3<Float>(0.5, 0.5, 0.5)
-        let b = SIMD3<Float>(0.5, 0.5, 0.5)
-        let c = SIMD3<Float>(1.0, 1.0, 1.0)
-        let d = SIMD3<Float>(0.0, 0.33, 0.67)
+        // Single-letter coefficients are the IQ palette convention; the
+        // longer names below preserve the Metal/MSL helper's name parity at
+        // the cost of a small readability shift.
+        let bias = SIMD3<Float>(0.5, 0.5, 0.5)
+        let amplitude = SIMD3<Float>(0.5, 0.5, 0.5)
+        let frequency = SIMD3<Float>(1.0, 1.0, 1.0)
+        let phaseOffset = SIMD3<Float>(0.0, 0.33, 0.67)
         let twoPi: Float = 6.28318530718
-        let arg = c * t + d
+        let arg = frequency * phase + phaseOffset
         return SIMD3<Float>(
-            a.x + b.x * cos(twoPi * arg.x),
-            a.y + b.y * cos(twoPi * arg.y),
-            a.z + b.z * cos(twoPi * arg.z)
+            bias.x + amplitude.x * cos(twoPi * arg.x),
+            bias.y + amplitude.y * cos(twoPi * arg.y),
+            bias.z + amplitude.z * cos(twoPi * arg.z)
         )
     }
 
