@@ -274,6 +274,15 @@ final class FerrofluidLiveAudioTests: XCTestCase {
             device: device, pixelFormat: .bgra8Unorm_srgb)
         let preset = try XCTUnwrap(
             loader.presets.first { $0.descriptor.name == "Ferrofluid Ocean" })
+        // V.9 Session 1 (D-124): Ferrofluid Ocean now declares
+        // passes: ["ray_march", "post_process"]; PostProcessChain.render below
+        // would bind a 3-attachment G-buffer state to a single-attachment
+        // encoder and produce all-black output. Currently masked in CI by the
+        // no-audio-capture XCTSkip, but the skip would not save it under live
+        // audio playback. Session 5 rewrites against RayMarchPipeline.
+        try XCTSkipIf(preset.descriptor.useRayMarch,
+            "Skipped under V.9 redirect: PostProcessChain path incompatible with "
+            + "ray_march preset; rewrite scheduled for Session 5.")
         let context = try MetalContext()
         let shaderLib = try ShaderLibrary(context: context)
         let chain = try PostProcessChain(
