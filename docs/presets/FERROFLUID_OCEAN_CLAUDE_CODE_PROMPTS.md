@@ -2,7 +2,7 @@
 
 Session prompts for Phase V.9 (Ferrofluid Ocean redirect, per D-124 / 2026-05-13). Each session lands as its own commit on local `main`; the prompts here are versioned alongside the implementation so future Claude sessions can read the exact contract under which each session was authored.
 
-**Status:** Phase V.9 Session 1 ✅ (2026-05-13). Macro layer landed (Gerstner swell + Rosensweig spike-field SDF). Sessions 2–5 remain unimplemented.
+**Status:** Phase V.9 Sessions 1–2 ✅ (2026-05-13). Macro layer + material/atmosphere layer landed. Sessions 3–5 remain unimplemented.
 
 ---
 
@@ -26,7 +26,7 @@ Per [`SHADER_CRAFT.md §10.3`](../SHADER_CRAFT.md) (V.9 redirect) and the README
 | Increment | Scope | Status |
 |---|---|---|
 | V.9 Session 1 | Gerstner-wave macro displacement + Rosensweig spike-field SDF + JSON sidecar v2 + clean-slate test retirement | ✅ 2026-05-13 |
-| V.9 Session 2 | Material recipe: §4.6 base + thin-film interference (`thinfilm_rgb` from `Utilities/PBR/Thin.metal`) + atmosphere fog tinted by D-022 | ⏳ Not started |
+| V.9 Session 2 | Material recipe: §4.6 base + thin-film interference (`thinfilm_rgb` from `Utilities/PBR/Thin.metal`) + atmosphere fog tinted by D-022 | ✅ 2026-05-13 |
 | V.9 Session 3 | §5.8 stage-rig lighting recipe (implements D-125: slot-9 buffer + `matID == 2` dispatch + FerrofluidStageRig Swift class) | ⏳ Not started |
 | V.9 Session 4 | Audio routing (meso domain warp + micro detail noise + droplet beading + all D-026 deviation routing finalized) | ⏳ Not started |
 | V.9 Session 5 | Cert review + perf capture + golden hash regeneration + Matt M7 sign-off | ⏳ Not started |
@@ -490,6 +490,16 @@ Per CLAUDE.md Increment Completion Protocol:
 3. Update this prompt doc (`docs/presets/FERROFLUID_OCEAN_CLAUDE_CODE_PROMPTS.md`) — flip Session 2 row to ✅ in the ledger; add a brief landed-work summary paragraph below this prompt.
 4. Commit on local `main` with separate commits for (a) engine change to `RayMarch.metal`, (b) preset change to `FerrofluidOcean.{metal,json}`, (c) test additions, (d) docs. Message prefix `[V.9-session-2]`.
 5. Do **not** push without Matt's explicit go-ahead.
+
+### Session 2 landed (2026-05-13)
+
+- `PhospheneEngine/Sources/Renderer/Shaders/RayMarch.metal` — added renderer-private `rm_fresnel_dielectric` + `rm_thinfilm_rgb` helpers (ports of `Utilities/PBR/{Fresnel,Thin}.metal`; the preset utility tree is concatenated only into per-preset preambles, so RayMarch.metal cannot call them directly). Added `rm_brdf_with_F0` helper next to existing `rm_brdf` so the matID==3 branch can supply a thin-film-derived F0 while keeping the matID==0 path byte-identical. New `if (matID == 3) { ... }` block between the Lumen `matID == 1` branch and the default Cook-Torrance path — thin-film F0 at 220 nm / IOR 1.45 over IOR-1.0 substrate; direct light, IBL ambient, and fog all multiplied by `scene.lightColor.rgb` for D-022 propagation; same screen-space soft-shadow + IBL prefiltered / BRDF-LUT path as matID==0.
+- `PhospheneEngine/Sources/Presets/Shaders/FerrofluidOcean.metal` — `sceneMaterial` now emits `outMatID = 3`; Session 1 TODO retired; Session 3 stage-rig TODO and Session 4 detail-layer TODO added in its place.
+- `PhospheneEngine/Sources/Presets/Shaders/FerrofluidOcean.json` — `scene_fog` widened 0.02 → 0.04 (fogFar 50 → 25 m fits the ocean-portion expanse); `scene_far_plane: 40.0` added so the camera's far frustum extends past the visible surface without saturating depth.
+- `PhospheneEngine/Tests/PhospheneEngineTests/Visual/FerrofluidOceanVisualTests.swift` — added `testFerrofluidOceanMoodTintAtmosphereShifts` gate. Production `applyAudioModulation` mood-tint formula (warm/cool tint multiplier on base.lightColor) is mirrored inline in the test render helper since the harness drives `RayMarchPipeline.render` directly and bypasses the production frame loop. **Important note for future sessions:** the test also overrides `sceneUniforms.sceneParamsB.x = 0` (fogNear) when applying the valence tint — the `SceneUniforms()` initializer defaults `fogNear = 20.0` and there is no JSON-level override, so the Ferrofluid Ocean camera's 4–14 m surface depth would have `fogFactor = 0` across the whole frame and the fog-tinted path could not be verified. In production this preset will rely primarily on IBL ambient (also tinted via `scene.lightColor.rgb`) to carry mood for surface pixels < 20 m; the test override isolates the matID==3 branch's D-022 propagation contract from the engine-wide fog-near default.
+- Engine suite: 1226 pass / 1 known pre-existing flake (`MemoryReporter.residentBytes`, environment-dependent — already on the project memory list). All four `FerrofluidOceanVisualTests` gates pass: shader compile, four-fixture render, independence states (avg diff 0.98), mood-tint atmosphere shift (avg diff 31.8 — well above the 1.0 threshold).
+- Visual harness output: 4-fixture PNGs at `$TMPDIR/PhospheneFerrofluidOceanV9Session1/fixtures/`, mood-tint PNGs at `$TMPDIR/PhospheneFerrofluidOceanV9Session1/mood_tint/` (cool valence: clear blue-purple cast over the gentle Gerstner surface; warm valence: amber/beige cast — both clearly distinguishable). Independence frames at `$TMPDIR/PhospheneFerrofluidOceanV9Session1/independence/`.
+- Carry-forward to Sessions 3–5 unchanged. The Session 1 skip-guards on `FerrofluidBeatSyncTests` / `FerrofluidLiveAudioTests` / `PresetAcceptanceTests` and the commented-out golden hash in `PresetRegressionTests` remain in place — Session 5 still owns those rewrites.
 
 ---
 
