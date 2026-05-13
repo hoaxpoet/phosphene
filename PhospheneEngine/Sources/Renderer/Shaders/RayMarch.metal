@@ -124,6 +124,49 @@ static float3 rm_fresnel(float cosTheta, float3 F0) {
     return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
 
+/// Exact Fresnel reflectance for a dielectric (non-conducting) interface.
+/// Renderer-local port of `Utilities/PBR/Fresnel.metal :: fresnel_dielectric`
+/// — the preset utility tree is only concatenated into the per-preset preamble
+/// (PresetLoader+Utilities.swift), so RayMarch.metal (engine renderer library)
+/// keeps its own copy. Keep in sync with the preset version if either changes.
+static float rm_fresnel_dielectric(float cosI, float ior) {
+    float cos_i = clamp(cosI, 0.0, 1.0);
+    float sin2_t = (1.0 - cos_i * cos_i) / (ior * ior);
+    if (sin2_t >= 1.0) return 1.0;  // total internal reflection
+    float cos_t = sqrt(max(0.0, 1.0 - sin2_t));
+    float rs = (cos_i - ior * cos_t) / (cos_i + ior * cos_t);
+    float rp = (ior * cos_i - cos_t) / (ior * cos_i + cos_t);
+    return (rs * rs + rp * rp) * 0.5;
+}
+
+/// Thin-film interference reflectance as wavelength-sampled RGB approximation.
+/// Renderer-local port of `Utilities/PBR/Thin.metal :: thinfilm_rgb`. Used by
+/// the matID == 3 branch (V.9 Session 2 / Ferrofluid Ocean) to compute the
+/// view-dependent F0 of a thin oil-like film over a metallic substrate.
+///
+/// Keep in sync with the preset version if either changes.
+static float3 rm_thinfilm_rgb(float VdotH, float thicknessNm,
+                               float iorThin, float iorBase) {
+    if (thicknessNm < 0.5) {
+        float F0 = rm_fresnel_dielectric(1.0, iorBase);
+        return float3(F0);
+    }
+    float cos_i  = clamp(VdotH, 0.0, 1.0);
+    float sin2_t = (1.0 - cos_i * cos_i) / (iorThin * iorThin);
+    float cos_t  = sqrt(max(0.0, 1.0 - sin2_t));
+
+    const float3 lambda = float3(680.0, 550.0, 450.0);   // R G B peak wavelengths
+    float  OPD    = 2.0 * iorThin * thicknessNm * cos_t;
+    float3 phase  = (2.0 * M_PI_F * OPD) / lambda;
+
+    float  F_in   = rm_fresnel_dielectric(cos_i, iorThin);
+    float  F_out  = rm_fresnel_dielectric(cos_t, iorBase);
+    float  F12    = F_out;
+    float3 F01    = float3(F_in);
+    float3 interference = F01 + F12 + 2.0 * sqrt(F_in * F12) * cos(phase);
+    return clamp(interference * 0.5, 0.0, 1.0);
+}
+
 /// Cook-Torrance BRDF contribution for one light.
 static float3 rm_brdf(float3 N, float3 V, float3 L,
                        float3 albedo, float roughness, float metallic) {
@@ -134,6 +177,31 @@ static float3 rm_brdf(float3 N, float3 V, float3 L,
     float  VdotH  = max(dot(V, H), 0.0);
 
     float3 F0     = mix(float3(0.04), albedo, metallic);
+    float3 F      = rm_fresnel(VdotH, F0);
+    float  D      = rm_ggxD(NdotH, roughness);
+    float  G      = rm_smith(NdotV, NdotL, roughness);
+
+    float3 specular = (D * G * F) / max(4.0 * NdotV * NdotL, 1e-6);
+    float3 kd       = (1.0 - F) * (1.0 - metallic);
+    float3 diffuse  = kd * albedo / M_PI_F;
+
+    return (diffuse + specular) * NdotL;
+}
+
+/// Cook-Torrance with caller-supplied F0 (matID == 3 thin-film path).
+/// Body mirrors `rm_brdf` with the F0-from-metallic line removed; callers
+/// (e.g. the matID == 3 branch in raymarch_lighting_fragment) compute F0
+/// via `rm_thinfilm_rgb(...)` at the view half-vector and pass it through.
+/// `metallic` still parameterises the diffuse-vs-specular split via `kd`.
+static float3 rm_brdf_with_F0(float3 N, float3 V, float3 L,
+                               float3 albedo, float3 F0,
+                               float roughness, float metallic) {
+    float3 H      = normalize(V + L);
+    float  NdotV  = max(dot(N, V), 0.0);
+    float  NdotL  = max(dot(N, L), 0.0);
+    float  NdotH  = max(dot(N, H), 0.0);
+    float  VdotH  = max(dot(V, H), 0.0);
+
     float3 F      = rm_fresnel(VdotH, F0);
     float  D      = rm_ggxD(NdotH, roughness);
     float  G      = rm_smith(NdotV, NdotL, roughness);
@@ -355,6 +423,88 @@ fragment float4 raymarch_lighting_fragment(
         float3 irradiance   = ibl_sample_irradiance(N, iblIrradiance, iblSamp);
         float3 ambientFloor = irradiance * kLumenIBLFloor * ao;
         return float4(albedo * kLumenEmissionGain + ambientFloor, 1.0);
+    }
+
+    // ── matID == 3 — metallic thin-film Cook-Torrance (V.9 Session 2) ──
+    // Ferrofluid Ocean's spike material: pitch-black metallic substrate
+    // with a thin-film interference layer producing a subtle blue-to-cyan
+    // iridescent shift in highlights. F0 comes from rm_thinfilm_rgb at the
+    // half-vector angle; everything else mirrors the default Cook-Torrance
+    // path so D-022 mood-tinted IBL ambient and arousal-driven fog continue
+    // to apply unchanged.
+    //
+    // Thickness 220 nm sits inside the "blue-to-cyan" interference band —
+    // a subtle iridescent shift in spike highlights, not a rainbow oil-slick.
+    // ior_thin 1.45 = silicone-oil-like (real ferrofluids are oil-based
+    // suspensions). ior_base 1.0 = treat the metallic substrate as opaque;
+    // the bottom-interface Fresnel is degenerate but rm_thinfilm_rgb's
+    // approximation reads correctly at this setting.
+    //
+    // matID == 2 is reserved for Session 3 (D-125 stage-rig dispatch); the
+    // thin-film F0 helper above is reusable inside that branch when it lands.
+    if (matID == 3) {
+        constexpr float kFerrofluidFilmThicknessNm = 220.0;
+        constexpr float kFerrofluidFilmIORThin     = 1.45;
+        constexpr float kFerrofluidFilmIORBase     = 1.0;
+
+        // TODO(V.9 Session 4): modulate kFerrofluidFilmThicknessNm from audio
+        // (deviation primitives per D-026) so the iridescent shift breathes
+        // with the music. Hold at a fixed 220 nm in Session 2.
+
+        float3 V         = normalize(scene.cameraOriginAndFov.xyz - worldPos);
+        float3 lightPos  = scene.lightPositionAndIntensity.xyz;
+        float  intensity = scene.lightPositionAndIntensity.w;
+        float3 lColor    = scene.lightColor.xyz;
+
+        float3 L         = lightPos - worldPos;
+        float  lightDist = length(L);
+        L                = normalize(L);
+        float3 H         = normalize(L + V);
+        float  VdotH     = max(dot(V, H), 0.0);
+        float  attenuation = 1.0 / (1.0 + lightDist * lightDist);
+
+        // Thin-film F0 replaces the standard mix(0.04, albedo, metallic).
+        // Metallic = 1 → the diffuse term vanishes (kd = 0); we keep the
+        // metallic parameter wired through for helper generality.
+        float3 F0_thin = rm_thinfilm_rgb(VdotH,
+                                         kFerrofluidFilmThicknessNm,
+                                         kFerrofluidFilmIORThin,
+                                         kFerrofluidFilmIORBase);
+
+        float3 litColor = rm_brdf_with_F0(N, V, L, albedo, F0_thin, roughness, metallic)
+                        * lColor * intensity * attenuation;
+
+        float shadow = rm_screenSpaceShadow(uv, worldPos, L, lightDist, gbuf0, samp, scene);
+        litColor *= shadow;
+
+        // IBL ambient stays on the standard F0 path (mix(0.04, albedo,
+        // metallic)) so D-022 mood tinting propagates scene-wide. Tinting
+        // IBL via the thin-film F0 would saturate the entire surface;
+        // the iridescent shift is most legible on direct specular only.
+        float  NdotV       = max(dot(N, V), 0.0);
+        float3 R           = reflect(-V, N);
+        float3 F0_ibl      = mix(float3(0.04), albedo, metallic);
+        float3 F_ibl       = rm_fresnel(NdotV, F0_ibl);
+        float3 kd_ibl      = (1.0 - F_ibl) * (1.0 - metallic);
+        float3 irradiance  = ibl_sample_irradiance(N, iblIrradiance, iblSamp);
+        float3 prefColor   = ibl_sample_prefiltered(R, roughness, iblPrefiltered, iblSamp, 4);
+        float2 brdfFactors = ibl_sample_brdf_lut(NdotV, roughness, iblBRDFLUT, iblSamp);
+        float3 iblDiffuse  = kd_ibl * albedo * irradiance;
+        float3 iblSpecular = prefColor * (F_ibl * brdfFactors.x + brdfFactors.y);
+        float3 iblAmbient  = (iblDiffuse + iblSpecular) * ao;
+        float3 ambient     = max(iblAmbient, albedo * 0.04 * ao);
+        ambient           *= scene.lightColor.rgb;  // D-022: mood-tinted IBL ambient
+        litColor          += ambient;
+
+        // Fog (same path as the default matID == 0 branch below).
+        float fogNear   = scene.sceneParamsB.x;
+        float fogFar    = scene.sceneParamsB.y;
+        float t_fog     = depthNorm * farPlane;
+        float fogFactor = clamp((t_fog - fogNear) / max(fogFar - fogNear, 0.001), 0.0, 1.0);
+        float3 fogColor = rm_skyColor(rayDir) * scene.lightColor.rgb;
+        litColor        = mix(litColor, fogColor, fogFactor);
+
+        return float4(litColor, 1.0);
     }
 
     // ── Lighting ───────────────────────────────────────────────────
