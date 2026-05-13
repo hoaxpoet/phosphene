@@ -1,6 +1,8 @@
 {
   "name": "Glass Brutalist",
   "family": "geometric",
+  "concept_tags": ["geometric", "glass"],
+  "motion_paradigm": "camera_flight",
   "duration": 30,
   "passes": ["ray_march", "ssgi", "post_process"],
   "scene_camera": { "position": [0.0, 1.8, 0.5], "target": [0.0, 1.5, 18.0], "fov": 65 },
