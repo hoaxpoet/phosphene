@@ -34,6 +34,139 @@ public struct SceneCamera: Sendable, Codable, Equatable {
     }
 }
 
+/// `SHADER_CRAFT.md §5.8` stage-rig configuration block declared in a ray-march
+/// preset's JSON sidecar. Implementation contract authoritative in D-125(e);
+/// the §5.8 spec text is illustrative.
+///
+/// Presence of this block in the JSON sidecar signals that the preset adopts
+/// the §5.8 lighting recipe — `sceneMaterial` is expected to emit `matID == 2`
+/// from `outMatID` so the `raymarch_lighting_fragment` dispatches through the
+/// stage-rig path (slot-9 buffer + per-light Cook-Torrance loop). The CPU side
+/// instantiates a per-preset stage-rig class (e.g. `FerrofluidStageRig`) that
+/// owns the slot-9 UMA buffer carrying `StageRigState`.
+///
+/// All fields decode with sensible defaults so a partial JSON block still
+/// produces a valid `StageRig` value — a deliberate choice so future presets
+/// can override only the parameters that differ from the §5.8 baseline.
+public struct StageRig: Sendable, Codable, Equatable {
+    /// Number of active lights. Clamped to `[3, 6]` at decode time; out-of-range
+    /// values log a warning and fall back to 4 per D-125(e).
+    public var lightCount: Int
+    /// World-space Y of the orbital plane (above the scene's center).
+    public var orbitAltitude: Float
+    /// World-space radius of the orbital circle (around the scene's forward focus).
+    public var orbitRadius: Float
+    /// Baseline angular velocity at neutral arousal (rad/sec). §5.8 spec value: 0.05.
+    public var orbitSpeedBaseline: Float
+    /// Per-`arousal` coefficient on top of the baseline (rad/sec at `arousal = +1`).
+    /// §5.8 spec value: 0.15. Combined formula: `baseline + smoothstep(-0.5, 0.5, arousal) * coef`.
+    public var orbitSpeedArousalCoef: Float
+    /// Per-light palette phase offset (normalised `[0, 1]` cycle position). Length
+    /// must equal `lightCount`; mismatches are truncated/padded with a warning.
+    public var palettePhaseOffsets: [Float]
+    /// Baseline intensity scalar (linear). §5.8 spec value: 5.0. Per-frame intensity
+    /// is `baseline * (floor_coef + swing_coef * drums_energy_dev_smoothed)`.
+    public var intensityBaseline: Float
+    /// Floor coefficient — preserves visible beam presence at silence per D-019.
+    /// §5.8 spec value: 0.4. Combined with the baseline gives `2.0` at zero-drum.
+    public var intensityFloorCoef: Float
+    /// Swing coefficient on top of the floor. §5.8 spec value: 0.6 → `intensity` rises
+    /// to `baseline * (floor + swing) = 5.0 * 1.0 = 5.0` at `drums_energy_dev = 1.0`.
+    public var intensitySwingCoef: Float
+    /// Time constant for the `drums_energy_dev` envelope (milliseconds). §5.8 spec
+    /// value: 150 ms. Prevents per-frame jitter on onset variation while preserving
+    /// continuous response to envelope changes.
+    public var intensitySmoothingTauMs: Float
+
+    public init(
+        lightCount: Int = 4,
+        orbitAltitude: Float = 6.0,
+        orbitRadius: Float = 4.0,
+        orbitSpeedBaseline: Float = 0.05,
+        orbitSpeedArousalCoef: Float = 0.15,
+        palettePhaseOffsets: [Float] = [0.0, 0.33, 0.67, 0.17],
+        intensityBaseline: Float = 5.0,
+        intensityFloorCoef: Float = 0.4,
+        intensitySwingCoef: Float = 0.6,
+        intensitySmoothingTauMs: Float = 150
+    ) {
+        self.lightCount = lightCount
+        self.orbitAltitude = orbitAltitude
+        self.orbitRadius = orbitRadius
+        self.orbitSpeedBaseline = orbitSpeedBaseline
+        self.orbitSpeedArousalCoef = orbitSpeedArousalCoef
+        self.palettePhaseOffsets = palettePhaseOffsets
+        self.intensityBaseline = intensityBaseline
+        self.intensityFloorCoef = intensityFloorCoef
+        self.intensitySwingCoef = intensitySwingCoef
+        self.intensitySmoothingTauMs = intensitySmoothingTauMs
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case lightCount = "light_count"
+        case orbitAltitude = "orbit_altitude"
+        case orbitRadius = "orbit_radius"
+        case orbitSpeedBaseline = "orbit_speed_baseline"
+        case orbitSpeedArousalCoef = "orbit_speed_arousal_coef"
+        case palettePhaseOffsets = "palette_phase_offsets"
+        case intensityBaseline = "intensity_baseline"
+        case intensityFloorCoef = "intensity_floor_coef"
+        case intensitySwingCoef = "intensity_swing_coef"
+        case intensitySmoothingTauMs = "intensity_smoothing_tau_ms"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let rawCount = try container.decodeIfPresent(Int.self, forKey: .lightCount) ?? 4
+        // Clamp `light_count` to [3, 6] per D-125(e) with a warning + fallback.
+        let count: Int
+        if rawCount < 3 || rawCount > 6 {
+            Logging.renderer.warning(
+                "PresetDescriptor.StageRig: light_count \(rawCount) out of range [3, 6] — using 4")
+            count = 4
+        } else {
+            count = rawCount
+        }
+        self.lightCount = count
+        self.orbitAltitude = try container.decodeIfPresent(Float.self, forKey: .orbitAltitude) ?? 6.0
+        self.orbitRadius = try container.decodeIfPresent(Float.self, forKey: .orbitRadius) ?? 4.0
+        self.orbitSpeedBaseline = try container.decodeIfPresent(
+            Float.self, forKey: .orbitSpeedBaseline) ?? 0.05
+        self.orbitSpeedArousalCoef = try container.decodeIfPresent(
+            Float.self, forKey: .orbitSpeedArousalCoef) ?? 0.15
+
+        // palette_phase_offsets length must equal light_count. Truncate / pad with
+        // a warning per D-125(e). Padding uses evenly-spaced offsets (0, 1/n, 2/n,
+        // …) so the visual character is at least chromatically varied rather than
+        // collapsing to all-lights-at-phase-0.
+        var offsets = try container.decodeIfPresent(
+            [Float].self, forKey: .palettePhaseOffsets) ?? []
+        if offsets.count != count {
+            let actual = offsets.count
+            Logging.renderer.warning(
+                "PresetDescriptor.StageRig: palette_phase_offsets count \(actual) != light_count \(count) — adjusting")
+            if offsets.count > count {
+                offsets = Array(offsets.prefix(count))
+            } else {
+                let missing = count - offsets.count
+                for i in 0 ..< missing {
+                    offsets.append(Float(offsets.count + i) / Float(count))
+                }
+            }
+        }
+        self.palettePhaseOffsets = offsets
+
+        self.intensityBaseline = try container.decodeIfPresent(
+            Float.self, forKey: .intensityBaseline) ?? 5.0
+        self.intensityFloorCoef = try container.decodeIfPresent(
+            Float.self, forKey: .intensityFloorCoef) ?? 0.4
+        self.intensitySwingCoef = try container.decodeIfPresent(
+            Float.self, forKey: .intensitySwingCoef) ?? 0.6
+        self.intensitySmoothingTauMs = try container.decodeIfPresent(
+            Float.self, forKey: .intensitySmoothingTauMs) ?? 150
+    }
+}
+
 /// A single scene light declared in a ray march preset's JSON sidecar.
 public struct SceneLight: Sendable, Codable, Equatable {
     /// World-space light position.
@@ -164,6 +297,16 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
     /// `SceneUniforms` light; additional lights are ignored until the lighting pass
     /// supports multiple lights. Empty uses `SceneUniforms` defaults.
     public let sceneLights: [SceneLight]
+
+    /// `SHADER_CRAFT.md §5.8` stage-rig configuration (V.9 Session 3 / D-125).
+    ///
+    /// When non-nil, the preset adopts the §5.8 multi-light orbital recipe:
+    /// `sceneMaterial` emits `matID == 2` and the engine instantiates a
+    /// per-preset stage-rig class whose CPU-driven `StageRigState` is bound at
+    /// fragment slot 9 of the ray-march pipeline. Nil for presets that retain
+    /// the single-light `SceneUniforms` path (matID == 0 / matID == 3). See
+    /// D-125(e) for the canonical JSON schema. First consumer: Ferrofluid Ocean.
+    public let stageRig: StageRig?
 
     /// Fog density for ray march presets (0 = no fog; 0.05 ≈ heavy fog).
     /// Maps `fogFar = max(1, 1/sceneFog)` and is stored in `sceneParamsB.y`.
@@ -321,6 +464,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         case meshAdditiveBlend = "additive_blend"
         case sceneCamera = "scene_camera"
         case sceneLights = "scene_lights"
+        case stageRig = "stage_rig"
         case sceneFog = "scene_fog"
         case sceneFogNear = "scene_fog_near"
         case sceneAmbient = "scene_ambient"
@@ -376,6 +520,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         meshAdditiveBlend = try container.decodeIfPresent(Bool.self, forKey: .meshAdditiveBlend) ?? false
         sceneCamera      = try container.decodeIfPresent(SceneCamera.self, forKey: .sceneCamera)
         sceneLights      = try container.decodeIfPresent([SceneLight].self, forKey: .sceneLights) ?? []
+        stageRig         = try container.decodeIfPresent(StageRig.self, forKey: .stageRig)
         sceneFog         = try container.decodeIfPresent(Float.self, forKey: .sceneFog) ?? 0
         sceneFogNear     = try container.decodeIfPresent(Float.self, forKey: .sceneFogNear) ?? 20.0
         sceneAmbient     = try container.decodeIfPresent(Float.self, forKey: .sceneAmbient) ?? 0.1

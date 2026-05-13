@@ -2,7 +2,7 @@
   "name": "Ferrofluid Ocean",
   "family": "geometric",
   "duration": 60,
-  "description": "Ocean-portion-scale ferrofluid surface with Gerstner swell + Rosensweig spike lattice; V.9 redirect per D-124",
+  "description": "Ocean-portion-scale ferrofluid surface with Gerstner swell + Rosensweig spike lattice + §5.8 stage-rig lighting; V.9 redirect per D-124 + D-125",
   "author": "Matt",
   "passes": ["ray_march", "post_process"],
   "beat_source": "bass",
@@ -13,11 +13,23 @@
   "fatigue_risk": "medium",
   "transition_affordances": ["crossfade"],
   "section_suitability": ["buildup", "peak", "bridge"],
-  "complexity_cost": { "tier1": 4.0, "tier2": 7.0 },
+  "complexity_cost": { "tier1": 4.0, "tier2": 5.5 },
   "scene_camera": { "position": [0, 4.0, -2.5], "target": [0, 0, 2.0], "fov": 50 },
   "scene_lights": [
-    { "position": [0, 6.0, 2.0], "color": [0.9, 0.95, 1.0], "intensity": 3.0 }
+    { "position": [0, 6.0, 2.0], "color": [0.9, 0.95, 1.0], "intensity": 0.0 }
   ],
+  "stage_rig": {
+    "light_count": 4,
+    "orbit_altitude": 6.0,
+    "orbit_radius": 4.0,
+    "orbit_speed_baseline": 0.05,
+    "orbit_speed_arousal_coef": 0.15,
+    "palette_phase_offsets": [0.0, 0.33, 0.67, 0.17],
+    "intensity_baseline": 5.0,
+    "intensity_floor_coef": 0.4,
+    "intensity_swing_coef": 0.6,
+    "intensity_smoothing_tau_ms": 150
+  },
   "scene_fog": 0.04,
   "scene_fog_near": 0.0,
   "scene_far_plane": 40.0,
