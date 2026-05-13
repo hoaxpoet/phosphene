@@ -2,7 +2,7 @@
 
 Session prompts for Phase V.9 (Ferrofluid Ocean redirect, per D-124 / 2026-05-13). Each session lands as its own commit on local `main`; the prompts here are versioned alongside the implementation so future Claude sessions can read the exact contract under which each session was authored.
 
-**Status:** Phase V.9 not started. Spec amendments (D-124) and stage-rig contract (D-125) landed 2026-05-13. Session 1 prompt below; Sessions 2–5 carry-forward summaries follow.
+**Status:** Phase V.9 Session 1 ✅ (2026-05-13). Macro layer landed (Gerstner swell + Rosensweig spike-field SDF). Sessions 2–5 remain unimplemented.
 
 ---
 
@@ -25,7 +25,7 @@ Per [`SHADER_CRAFT.md §10.3`](../SHADER_CRAFT.md) (V.9 redirect) and the README
 
 | Increment | Scope | Status |
 |---|---|---|
-| V.9 Session 1 | Gerstner-wave macro displacement + Rosensweig spike-field SDF + JSON sidecar v2 + clean-slate test retirement | ⏳ Not started |
+| V.9 Session 1 | Gerstner-wave macro displacement + Rosensweig spike-field SDF + JSON sidecar v2 + clean-slate test retirement | ✅ 2026-05-13 |
 | V.9 Session 2 | Material recipe: §4.6 base + thin-film interference (`thinfilm_rgb` from `Utilities/PBR/Thin.metal`) + atmosphere fog tinted by D-022 | ⏳ Not started |
 | V.9 Session 3 | §5.8 stage-rig lighting recipe (implements D-125: slot-9 buffer + `matID == 2` dispatch + FerrofluidStageRig Swift class) | ⏳ Not started |
 | V.9 Session 4 | Audio routing (meso domain warp + micro detail noise + droplet beading + all D-026 deviation routing finalized) | ⏳ Not started |
@@ -257,6 +257,18 @@ Per CLAUDE.md Increment Completion Protocol:
 3. Update this prompt doc (`docs/presets/FERROFLUID_OCEAN_CLAUDE_CODE_PROMPTS.md`) — flip Session 1 row to ✅ in the ledger; add a brief landed-work summary paragraph below this prompt.
 4. Commit on local `main` with message `[V.9-session-1] Ferrofluid Ocean: Gerstner-wave macro + Rosensweig spike-field SDF (D-124)`.
 5. Do **not** push without Matt's explicit go-ahead.
+
+### Session 1 landed (2026-05-13)
+
+- `FerrofluidOcean.metal` — full rewrite; 4-wave Gerstner swell (`fo_gerstner_swell`) + §4.6 Rosensweig spike field (`fo_ferrofluid_field` via `voronoi_f1f2` + `fbm8` jitter) composed in `sceneSDF`. Placeholder `sceneMaterial` per §4.6 baseline (`albedo (0.02, 0.03, 0.05)`, `roughness 0.08`, `metallic 1.0`, `outMatID = 0`). Spike strength routed through `fo_spike_strength` (D-019 crossfade: `f.bass_att_rel` proxy → `stems.bass_energy_dev`). Swell scale `0.4 + 0.6 · arousal-smoothstep + 0.3 · drums-blend` per D-124(d).
+- `FerrofluidOcean.json` — replaced; `passes: ["ray_march", "post_process"]`, `scene_camera (0, 4.0, -2.5) → (0, 0, 2.0) @ 50°`, single placeholder `scene_lights` entry (Session 3 implements D-125 stage-rig), `complexity_cost.tier1=4.0/tier2=7.0`, `motion_intensity=0.55`, `visual_density=0.65`.
+- `FerrofluidOceanDiagnosticTests.swift` — **deleted** (642 LOC; tied to glass-dish baseline).
+- `FerrofluidOceanVisualTests.swift` — rewritten minimal: shader-compile, 4-fixture render, independence demo. Renders via `RayMarchPipeline` deferred path (mirrors `PresetVisualReviewTests.renderDeferredRayMarchFrame`).
+- `PresetRegressionTests.swift` — Ferrofluid golden hash commented out; Session 5 regenerates.
+- `MaxDurationFrameworkTests.swift` — Ferrofluid `expectedSeconds: 49 → 55` (matches new formula output: 90 − 50·0.05 − 30·1 − 15·0.15 = 55.25).
+- `FerrofluidBeatSyncTests.swift`, `FerrofluidLiveAudioTests.swift`, `PresetAcceptanceTests.swift` — each received a small Ferrofluid-scoped skip-guard with a Session 5 carry-forward note. These three tests' assumptions about `preset.pipelineState` being a single-attachment scene fragment (BeatSync / LiveAudio) or about silence-vs-steady producing measurably different output (Acceptance "beat-bounded" invariant) no longer hold for the ray-march redirect; Session 5 either rewrites them against the deferred path or adjusts the invariant.
+
+Visual harness output for the closeout: 4-fixture PNGs at `$TMPDIR/PhospheneFerrofluidOceanV9Session1/fixtures/`, independence demo at `$TMPDIR/PhospheneFerrofluidOceanV9Session1/independence/`. Visual quality is **not** a Session 1 gate — fixtures verify the pipeline completes and shows distinguishable output. Final visual review lives at Session 5.
 
 ---
 
