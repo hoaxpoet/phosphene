@@ -204,14 +204,19 @@ float sceneSDF(float3 p,
     return p.y - fo_surface_height(p, f, stems);
 }
 
-// MARK: - sceneMaterial (Session 1 placeholder)
+// MARK: - sceneMaterial (Session 2: thin-film Cook-Torrance dispatch)
 //
-// Pitch-black near-mirror surface per §4.6 baseline. Session 2 replaces with
-// the full mat_ferrofluid recipe + thinfilm_rgb angular shift. Session 3 sets
-// outMatID = 2 to route through the §5.8 stage-rig lighting path (D-125).
+// Pitch-black near-mirror substrate per §4.6 ferrofluid baseline. The
+// wavelength-dependent thin-film F0 is computed in the matID == 3 branch of
+// `raymarch_lighting_fragment` (RayMarch.metal) — that branch has access to
+// the view vector and surface normal sceneMaterial does not. The role of this
+// function is to declare the material *kind* (albedo, roughness, metallic +
+// matID dispatch) so the lighting pass can apply the right BRDF.
 //
-// outMatID stays at 0 → default Cook-Torrance path with the single
-// scene_lights entry in the JSON sidecar.
+// Session 3 will switch outMatID from 3 to 2 to route through the §5.8
+// stage-rig lighting path (D-125: slot-9 fragment buffer, multi-light
+// orbital rig). The thin-film F0 helper (`rm_thinfilm_rgb` in RayMarch.metal)
+// is shared between the matID == 2 and matID == 3 branches.
 
 void sceneMaterial(float3 p,
                    int matID,
@@ -224,12 +229,13 @@ void sceneMaterial(float3 p,
                    thread int& outMatID,
                    constant LumenPatternState& lumen) {
     (void)p; (void)matID; (void)f; (void)s; (void)stems; (void)lumen;
-    // TODO(V.9 Session 2): replace with mat_ferrofluid (§4.6) + thinfilm_rgb
-    // composition; tint IBL ambient by D-022 mood for the fog gradient.
     // TODO(V.9 Session 3): emit outMatID = 2 to dispatch through the §5.8
     // stage-rig lighting path per D-125 (slot-9 fragment buffer).
+    // TODO(V.9 Session 4): domain-warped meso detail + micro normal
+    // perturbation + Cassie-Baxter spike-tip droplets. All routed through
+    // D-026 deviation primitives; no absolute-threshold patterns.
     albedo    = float3(0.02, 0.03, 0.05);  // §4.6 ferrofluid base
     roughness = 0.08;                       // near-mirror
     metallic  = 1.0;
-    outMatID  = 0;                          // Cook-Torrance default
+    outMatID  = 3;                          // thin-film Cook-Torrance (RayMarch.metal)
 }
