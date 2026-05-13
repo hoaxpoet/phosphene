@@ -535,6 +535,8 @@ toward fbm-frost in appearance.
 
 Ferrofluid surfaces under magnetic field form a lattice of conical spikes (Rosensweig instability). The spike array is not perfectly regular — it has hexagonal tendencies with domain defects. Between the spikes the surface is nearly mirror-metal.
 
+Under the V.9 Ferrofluid Ocean redirect (D-124), the material is composed with a thin-film interference layer via `thinfilm_rgb` from `Utilities/PBR/Thin.metal` (tuned for cool tones — blue-to-cyan iridescent shift across viewing angle). The §4.6 recipe below provides the base albedo, roughness, metallic, and normal; the thin-film contribution is added in the lighting pass and modulates the specular phase across viewing angle. The "hint of blue in highlights" note in the recipe comment was the original placeholder for what thin-film now implements concretely. (For a reference call-site pattern, see §4.18 `mat_chitin` — V.9 uses the same `thinfilm_rgb` utility with a different parameter set.)
+
 **Recipe for the SDF:**
 
 ```metal
@@ -1033,6 +1035,54 @@ Modulate light properties per music rather than geometry per music (D-020 princi
 | `f.valence` | Key light color temperature | Warm on major key, cool on minor |
 | `f.arousal` | IBL ambient strength | High energy = brighter ambient |
 | `stems.vocals_energy_dev` | Fill light pulse | Vocal presence brightens fill |
+
+### 5.8 Stage lighting rig
+
+**Use for:** Ferrofluid Ocean (V.9). Any future preset where moving colored beams over a dark reflective surface is the central chromatic story — that is, presets where chromatic content lives in reflections of moving scene lights rather than in surface albedo or IBL alone.
+
+The stage rig is not the §5.5 night-city ambient recipe at higher intensity. Night-city is "many low-intensity colored point lights distributed through a scene"; the stage rig is "a small number of high-intensity colored beams in continuous orbital motion across a reflective surface." Night-city scatters illumination diffusely; the stage rig produces directional sweeps with specular pickup. The stage rig is also distinct from §5.7 (Lighting as audio reactive), which is a per-property modulation table on an otherwise-static three-point rig; §5.8 *replaces* the three-point rig with continuous orbital motion as the lighting paradigm.
+
+**Light configuration:**
+
+```json
+{
+  "scene_lights": [
+    { "position_path": "orbit_above", "color": "palette_phase_0",   "intensity": "drums_dev_envelope" },
+    { "position_path": "orbit_above", "color": "palette_phase_120", "intensity": "drums_dev_envelope" },
+    { "position_path": "orbit_above", "color": "palette_phase_240", "intensity": "drums_dev_envelope" },
+    { "position_path": "orbit_above", "color": "palette_phase_60",  "intensity": "drums_dev_envelope" }
+  ]
+}
+```
+
+Tier 1 uses 3 lights; Tier 2 uses 4–6. Light positions follow parametric orbital paths above the scene (`y > 0`, sweeping in azimuth around a center point that is the camera's forward focus); orbit angular velocity is `0.05 + arousal_smooth * 0.15` rad/sec (very slow at silence, moderately animated at peak energy). Lights are point-light type with high intensity (4.0–6.0 nominal) so that specular reflections on near-mirror surfaces (`roughness ≤ 0.10`) produce sharp visible highlights from the camera angle.
+
+**Color rotation:**
+
+Each light's color is `palette(audio_time * 0.05 + per_light_phase_offset + pitch_shift, palette_params)`. The `pitch_shift` term is computed inline in the shader from `stems.vocals_pitch_hz` — there is no precomputed `*_norm` field (it was retired in DSP.2 S9 along with `normalizePitch`). Recommended normalization: `pitch_shift = (log2(max(stems.vocals_pitch_hz, 80.0) / 80.0) / log2(1000.0 / 80.0)) * 0.2` (perceptual mapping over the 80 Hz–1 kHz vocal range, scaled to ±0.2 of palette phase). Confidence-gate at `stems.vocals_pitch_confidence >= 0.6`; below that, substitute `pitch_shift = stems.other_energy_dev * 0.15` (chromatic rotation from harmonic-content density). The slow base rotation (`audio_time * 0.05`) gives continuous chromatic motion independent of audio, so beams visibly evolve in color even during instrumental passages with stable centroid. Per-light phase offsets (120° / 240° / etc. in palette phase) ensure adjacent beams are in different chromatic regions of the palette at any instant, producing visible chromatic variety across the reflection field.
+
+**Intensity envelope:**
+
+Each light's intensity is `base_intensity * (0.4 + 0.6 * drums_energy_dev_smoothed)` where `drums_energy_dev_smoothed` is the deviation primitive smoothed with 150ms τ to prevent jitter on per-frame onset variation. The 0.4 floor preserves visible beam presence at silence (per D-019); the 0.6 swing on top responds to drum energy continuously. Never edge-trigger on `drums_beat` for intensity — that produces club-strobe behavior, which is anti per the Ferrofluid Ocean anti-references list.
+
+**Silence state:**
+
+At `totalStemEnergy == 0`: beams continue orbiting at minimum angular velocity (`0.05 rad/sec`); each beam intensity sits at the 0.4 floor; colors are at the default palette phase with no pitch-shift contribution; chromatic motion still visible via the slow base rotation (`audio_time * 0.05`). The visual destination at silence is "a quiet stage with the rig idling," not "stage rig off." This preserves the calm-but-alive silence aesthetic per `10_silence_calm_body.jpg` for Ferrofluid Ocean and is the recommended default for any future preset adopting this recipe.
+
+**IBL coordination:**
+
+The stage rig is additive to IBL ambient, not a replacement. IBL is still tinted by D-022 mood valence and provides scene-wide soft ambient illumination; the stage rig provides directional specular sweeps over that base. `scene_ambient ~ 0.06` is preserved so that beam highlights have visible shadow contrast against the unlit substrate.
+
+**Cost:**
+
+Per-light evaluation is ~0.10–0.15 ms at the lighting pass on Tier 2; 4–6 lights total ~0.5–0.9 ms. The orbital-path math is per-light per-frame on CPU (negligible). The pitch-confidence gating and palette lookups are per-light per-pixel in the lighting pass.
+
+**Failure modes (anti-pattern):**
+
+- **Beat-strobed intensity.** Beam intensity edge-triggered on `drums_beat` rather than enveloped on `drums_energy_dev`. Produces club lighting.
+- **Saturated party palette without mood coordination.** Beam colors hardcoded to primary RGB or cycled through high-saturation hues without going through `palette()` and the D-022 mood path. Produces birthday-disco aesthetic.
+- **Beam motion edge-triggered on beat.** Orbit speed or direction changing on `*_beat` events rather than smoothly varying with arousal. Produces jittery, untrustworthy motion.
+- **Pillar reflections.** Reading the stage rig as point sources rather than as beam sweeps — i.e. each light's reflection collapsing to a sharp vertical pillar on the surface (moon-on-lake aesthetic) rather than a diffuse gradient. The cure: high light intensity + surface roughness ≥ 0.05 to spread the specular lobe, and sufficient angular distance between lights so beam reflections do not constructively pillar at the same vertical.
 
 ---
 
@@ -1697,21 +1747,23 @@ Dark silhouette `(0.04, 0.03, 0.02)` with thin warm-amber rim catching backlit `
 
 **Current state:** HDR post-process chain over simple surface. Not iconic.
 
-**Target:** living magnetic-fluid surface under audio-driven magnetic field. Rosensweig spike lattice. Pitch-black with razor-sharp reflective highlights. Background sky entirely mirrored in fluid surface.
+**Target:** a fixed-camera, ocean-portion-scale view of a body of liquid where the water has been replaced by ferrofluid material. Underlying Gerstner swell motion moves the body up and down and back and forth with the music; the Rosensweig spike lattice emerges from the swell when bass energy is high, collapses entirely at silence. A stage rig of 4–6 animated colored lights in slow orbital motion sweeps over the surface, creating diffuse colored beam reflections that wrap across the spike geometry. Material is pitch-black with thin-film interference (`thinfilm_rgb` from `Utilities/PBR/Thin.metal`) giving highlights a subtle iridescent angular shift. Background is a sky-dome IBL cubemap tinted by D-022 mood valence; distant fog cools to dark purple per `07_*`.
+
+**Visual references:** see `docs/VISUAL_REFERENCES/ferrofluid_ocean/`. Dual hero references: `04_specular_razor_highlights.jpg` (specular character + stage-rig lighting); `01_macro_ferrofluid_at_swell_scale.jpg` (macro scale framing).
 
 **Uplift plan:**
 
-1. **Macro:** replace current surface with ferrofluid field per §4.6. Hex-tile spike lattice, spike height driven by `stems.bass_energy_dev`.
-2. **Meso:** domain-warp the spike-center positions per §3.4 so hexagonal symmetry is broken by organic flow. Flow velocity driven by `stems.drums_beat` rising edges.
-3. **Micro:** surface-scale detail noise on each spike (fbm8 at 15× scale, normal perturbation amplitude 0.02). Micro-droplets at spike tips on high amplitude — hash-lattice distributed.
-4. **Specular:** ferrofluid material per §4.6. Anisotropic reflection aligned with spike axes.
-5. **Atmosphere:** distant fog cools to dark purple. Sky dome above (IBL cubemap) is the primary indirect light — every polished spike reflects a tiny piece of the sky.
-6. **Lighting:** minimal direct lighting. Strong IBL cubemap. One warm key light far off to give spike-tip highlights a direction. Caustic underlighting from below surface (faint cyan) suggests depth.
-7. **Audio reactivity:** bass drives spike height (Rosensweig field strength). Drums drive beat-surface ripple. Vocals drive surface tension (spike sharpness — lower tension = blunter spikes). "Other" drives rotational flow direction.
+1. **Macro:** replace current surface with ferrofluid field per §4.6, composed on top of a Gerstner-wave macro displacement field. Base height is a sum of 4–6 superposed Gerstner waves with audio-driven amplitude (see §10.3.7); the Rosensweig spike field rides on top of that base. Gerstner is implemented preset-level per the §4.14 `mat_ocean` convention (no Gerstner utility exists in the V.1 noise tree). Hex-tile spike lattice per §4.6; spike height driven by `stems.bass_energy_dev`. The independence of swell amplitude and spike height is load-bearing per D-124(d) — both states (calm-body-with-spikes, agitated-body-without-spikes) must be reachable in the routing domain. See `01_*` for macro scale framing, `02b_*` for the swell motion geometry. Disregard `01_*`'s apparent grid regularity — see annotation.
+2. **Meso:** domain-warp the spike-center positions per §3.4 so hexagonal symmetry is broken by organic flow. Flow velocity driven by `stems.drums_beat` rising edges. Excited-state ripple density per `02c_*` should read across the surface at peak energy. See `02_meso_lattice_defects.jpg` for the defect distribution.
+3. **Micro:** surface-scale detail noise on each spike (fbm8 at 15× scale, normal perturbation amplitude 0.02). Micro-droplets at spike tips on high amplitude — hash-lattice distributed. See `03_*` for surface grain, `03b_*` for tip droplet behavior (Cassie-Baxter beading). `03b_*`'s lotus-leaf radial vein pattern is anti-directive per annotation.
+4. **Specular:** ferrofluid material per §4.6 with anisotropic reflection aligned along spike axes; thin-film interference layer composed on top via `thinfilm_rgb` from `Utilities/PBR/Thin.metal` (tuned for cool tones — blue-to-cyan iridescent shift across viewing angle, giving highlights the "hint of blue" called out in §4.6's material comment). See `04_*` for the hero specular character. Thin-film is mandatory under the V.9 redirect per D-124(a); it fills the third-material slot vacated by caustic underlighting's removal. The §4.18 `mat_chitin` recipe is a *reference example* of `thinfilm_rgb` usage (call-site pattern at biological-strength `× 0.15`); V.9 calls `thinfilm_rgb` directly with its own parameter set.
+5. **Atmosphere:** distant fog cools to dark purple per `07_atmosphere_dark_purple_fog.jpg`. Sky-dome IBL cubemap is the primary indirect light — every polished spike reflects a tiny piece of the sky. Fog tint multiplies IBL ambient per `RayMarch.metal` `iblAmbient *= scene.lightColor.rgb` so D-022 mood valence shifts visible scene-wide. Caustic underlighting is removed under the V.9 redirect per D-124(a); the `09_lighting_caustic_underglow_cyan.jpg` reference is retired.
+6. **Lighting:** §5.8 stage-rig recipe (NEW under redirect, replacing §5.2 for this preset). 4–6 colored point lights orbiting slowly above the scene at moderate altitude; orbit speed routed from arousal; beam color rotation routed from `stems.vocals_pitch_hz` normalized inline and confidence-gated at ≥ 0.6 (with `stems.other_energy_dev` fallback); beam intensity routed from `stems.drums_energy_dev` envelope (not onset). At silence, lights continue orbiting at minimum intensity in a default cool palette. See `04_*` for the beam-on-ferrofluid quality (one frozen instant of the rig); see `08_lighting_aurora_over_dark_water.jpg` for the diffuse-gradient character of colored light moving over a dark reflective body at landscape scale. Anti-reference: stage rig reads as club lighting (beat-strobed beams, oversaturated party palette) — see anti-references list in the README.
+7. **Audio reactivity:** see `docs/VISUAL_REFERENCES/ferrofluid_ocean/README.md` "Audio routing notes" for the full nine-route mapping (spike height, ripple, sharpness, rotational flow, swell amplitude, beam orbit speed, beam color, beam intensity, fog hue). All routes are D-026 deviation primitives or D-022 mood-valence; no absolute-threshold patterns; no `*_beat` rising edges except where explicitly accent-only.
 
-**Budget:** ~6.0 ms on Tier 2.
+**Budget:** ~7.0 ms on Tier 2 (raised from 6.0 ms under the redirect to absorb the §5.8 stage-rig multi-light evaluations and Gerstner swell additions; corresponding `complexity_cost.tier2 = 7.0` in JSON sidecar). Tier 1 may require half-res reflection + reduced beam count (3 lights at Tier 1 vs. 4–6 at Tier 2) and is profiled at implementation time.
 
-**Sessions estimated:** 4 (field formulation / material / lighting + IBL / audio routing).
+**Sessions estimated:** 5 (Gerstner + spike field formulation / material + thin-film / stage-rig lighting recipe / audio routing / cert review).
 
 ### 10.4 Fractal Tree (V.10)
 
@@ -2180,3 +2232,59 @@ Items to resolve during Phase V execution:
 5. **Matt-review cadence.** The rubric says "Matt signs off on reference frame match." For 7 uplift increments (V.7–V.13) that's 7+ review gates. Compress via batched review sessions, or distributed throughout?
 
 These do not block Phase V from starting. V.1 (noise + PBR utility library expansion) can begin today.
+
+---
+
+## 17. Preset Metadata Format (JSON sidecar)
+
+Every preset ships a `<PresetName>.json` sidecar alongside its `.metal` file. The sidecar drives Orchestrator scoring, the V.6 fidelity rubric, render-pass dispatch, and scene-uniform construction for ray-march presets. The schema below was originally documented in `CLAUDE.md §Preset Metadata Format`; moved here as part of the 2026-05-13 doc refactor.
+
+
+```json
+{
+  "name": "Glass Brutalist",
+  "family": "geometric",
+  "duration": 30,
+  "passes": ["ray_march", "ssgi", "post_process"],
+  "scene_camera": { "position": [0, 2, -3], "target": [0, 2, 4], "fov": 65 },
+  "scene_lights": [{ "position": [0, 4.5, 2], "color": [1, 0.95, 0.9], "intensity": 3.0 }],
+  "scene_fog": 0.015,
+  "scene_ambient": 0.08,
+  "stem_affinity": {
+    "drums": "pillar_squeeze",
+    "bass": "pillar_scale",
+    "other": "glass_scale",
+    "vocals": "color_warmth"
+  }
+}
+```
+
+| Field | Default | Notes |
+|-------|---------|-------|
+| `name` | required | Display name |
+| `family` | required | Aesthetic family: `fluid`, `geometric`, `abstract`, `fractal`, `instrument`, etc. |
+| `duration` | 30 | Preferred scene duration (seconds). Orchestrator can override. |
+| `passes` | `["direct"]` | Required render passes. Backward-compatible: falls back to `synthesizePasses(from:)` reading legacy booleans. |
+| `beat_source` | `"bass"` | Which onset drives beat uniform: `bass`, `mid`, `treble`, `composite` |
+| `beat_zoom` | 0.03 | Beat accent zoom (keep < base_zoom) |
+| `beat_rot` | 0.01 | Beat accent rotation |
+| `base_zoom` | 0.12 | Continuous energy zoom (primary driver) |
+| `base_rot` | 0.03 | Continuous energy rotation (primary driver) |
+| `decay` | 0.955 | Feedback decay. 0.85 = short trails, 0.95 = long. |
+| `beat_sensitivity` | 1.0 | Beat pulse multiplier. Range 0–3.0. |
+| `stem_affinity` | optional | Maps stems to visual parameters for Orchestrator pairing. |
+| `mesh_thread_count` | 64 | Thread count for mesh shader dispatch. |
+| `visual_density` | 0.5 | 0 = sparse/minimal, 1 = packed/busy. Low-arousal tracks prefer low density. (Increment 4.0) |
+| `motion_intensity` | 0.5 | 0 = static/slow, 1 = fast/kinetic. Informs tempo match during scoring. (Increment 4.0) |
+| `color_temperature_range` | `[0.3, 0.7]` | `[cool, warm]` each 0–1. 0 = cold blue, 1 = hot orange. Intersected with mood-derived target range. (Increment 4.0) |
+| `fatigue_risk` | `"medium"` | `"low"`, `"medium"`, or `"high"`. Controls cooldown penalty between reuses. Unknown values log a warning and fall back to medium. (Increment 4.0) |
+| `transition_affordances` | `["crossfade"]` | Array of `"crossfade"`, `"cut"`, `"morph"`. Styles this preset tolerates as incoming/outgoing transition. (Increment 4.0) |
+| `section_suitability` | all sections | Array of `"ambient"`, `"buildup"`, `"peak"`, `"bridge"`, `"comedown"`. Sections this preset suits. Default = all (no penalty). (Increment 4.0) |
+| `complexity_cost` | `{"tier1":1.0,"tier2":1.0}` | Estimated ms at 1080p per device tier (M1/M2 = tier1, M3+ = tier2). Accepts scalar or `{"tier1":x,"tier2":y}`. (Increment 4.0) |
+| `certified` | `false` | Matt-approved reference-frame match. Only flipped to `true` after reviewing against `docs/VISUAL_REFERENCES/<preset>/` references. Orchestrator excludes uncertified presets by default. (Increment V.6) |
+| `rubric_profile` | `"full"` | Which rubric ladder to apply. `"full"` = 7 mandatory + 4 expected + 4 preferred. `"lightweight"` = 4 items for stylized 2D / diagnostic presets (Plasma, Waveform, Nebula, SpectralCartograph). Unknown strings fall back to `"full"` with a warning. (Increment V.6) |
+| `rubric_hints` | `{}` | Author-asserted flags for rubric items the analyzer cannot auto-detect. `"hero_specular": true` satisfies P1; `"dust_motes": true` satisfies P3. Missing keys default to `false`. (Increment V.6) |
+
+---
+
+
