@@ -13,7 +13,7 @@ import Metal
 @Test func test_preambleIncludesShaderUtilities() throws {
     let preamble = PresetLoader.shaderPreamble
     // Verify the preamble contains ShaderUtilities content (not just structs).
-    #expect(preamble.contains("sdSphere"), "Preamble should include SDF primitives from ShaderUtilities")
+    #expect(preamble.contains("sd_sphere"), "Preamble should include V.1+V.2 SDF primitives")
     #expect(preamble.contains("perlin2D"), "Preamble should include noise functions from ShaderUtilities")
     #expect(preamble.contains("cookTorranceBRDF"), "Preamble should include PBR functions from ShaderUtilities")
     #expect(preamble.contains("uvKaleidoscope"), "Preamble should include UV transforms from ShaderUtilities")
@@ -56,7 +56,7 @@ import Metal
     // A test preset that calls at least one function from each utility domain.
     let presetSource = """
     // Define map() for ray marching utilities.
-    float map(float3 p) { return sdSphere(p, 1.0); }
+    float map(float3 p) { return sd_sphere(p, 1.0); }
 
     fragment float4 preset_fragment(VertexOut in [[stage_in]],
                                     constant FeatureVector& features [[buffer(0)]],
@@ -70,7 +70,7 @@ import Metal
 
         // SDF + operations domain
         float3 p = float3(uv * 2.0 - 1.0, 0.0);
-        float d = opSmoothUnion(sdSphere(p, 0.5), sdBox(p, float3(0.3)), 0.1);
+        float d = op_smooth_union(sd_sphere(p, 0.5), sd_box(p, float3(0.3)), 0.1);
 
         // Ray marching domain
         float3 ro = float3(0, 0, -3);
@@ -142,29 +142,30 @@ import Metal
         kernel void testKernel(device float* output [[buffer(0)]],
                                uint tid [[thread_position_in_grid]]) {
             // Point at (1, 0, 0), sphere radius 0.5 → distance should be 0.5
-            output[0] = sdSphere(float3(1.0, 0.0, 0.0), 0.5);
+            output[0] = sd_sphere(float3(1.0, 0.0, 0.0), 0.5);
             // Point at origin → distance should be -0.5 (inside)
-            output[1] = sdSphere(float3(0.0, 0.0, 0.0), 0.5);
+            output[1] = sd_sphere(float3(0.0, 0.0, 0.0), 0.5);
             // Point on surface → distance should be 0.0
-            output[2] = sdSphere(float3(0.5, 0.0, 0.0), 0.5);
-            // sdBox at (2, 0, 0) with half-extents (1, 1, 1) → distance 1.0
-            output[3] = sdBox(float3(2.0, 0.0, 0.0), float3(1.0));
+            output[2] = sd_sphere(float3(0.5, 0.0, 0.0), 0.5);
+            // sd_box at (2, 0, 0) with half-extents (1, 1, 1) → distance 1.0
+            output[3] = sd_box(float3(2.0, 0.0, 0.0), float3(1.0));
         }
         """,
         outputCount: 4
     )
 
-    #expect(abs(result[0] - 0.5) < 0.001, "sdSphere(1,0,0, r=0.5) should be 0.5, got \(result[0])")
-    #expect(abs(result[1] - (-0.5)) < 0.001, "sdSphere(0,0,0, r=0.5) should be -0.5, got \(result[1])")
-    #expect(abs(result[2]) < 0.001, "sdSphere on surface should be ~0.0, got \(result[2])")
-    #expect(abs(result[3] - 1.0) < 0.001, "sdBox(2,0,0, b=1) should be 1.0, got \(result[3])")
+    #expect(abs(result[0] - 0.5) < 0.001, "sd_sphere(1,0,0, r=0.5) should be 0.5, got \(result[0])")
+    #expect(abs(result[1] - (-0.5)) < 0.001, "sd_sphere(0,0,0, r=0.5) should be -0.5, got \(result[1])")
+
+    #expect(abs(result[2]) < 0.001, "sd_sphere on surface should be ~0.0, got \(result[2])")
+    #expect(abs(result[3] - 1.0) < 0.001, "sd_box(2,0,0, b=1) should be 1.0, got \(result[3])")
 }
 
 @Test func test_rayMarch_sphereScene_hitsAtExpectedDistance() throws {
     let (device, result) = try runComputeKernel(
         source: """
         // Scene: unit sphere at origin.
-        float map(float3 p) { return sdSphere(p, 1.0); }
+        float map(float3 p) { return sd_sphere(p, 1.0); }
 
         kernel void testKernel(device float* output [[buffer(0)]],
                                uint tid [[thread_position_in_grid]]) {

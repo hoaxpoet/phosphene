@@ -265,86 +265,27 @@ static inline float3 curl3D(float3 p) {
 }
 
 // ======================================================================
-// MARK: - SDF Primitives
+// MARK: - SDF Primitives (legacy keeper)
 // ======================================================================
-
-/// Signed distance to a sphere centered at origin.
-static inline float sdSphere(float3 p, float r) {
-    return length(p) - r;
-}
-
-/// Signed distance to an axis-aligned box centered at origin.
-static inline float sdBox(float3 p, float3 b) {
-    float3 q = abs(p) - b;
-    return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
-}
+//
+// The camelCase SDF primitives + boolean operations previously hosted
+// here were superseded by the V.1+V.2 snake_case tree under
+// Utilities/Geometry/ (D-045). Production consumers were migrated in
+// [QR.5]. The single keeper below differs in convention from the
+// V.1+V.2 form (see body comment) and so retains its legacy spelling
+// pending a separate caller-adjusting migration pass.
 
 /// Signed distance to a rounded box.
+///
+/// **Note (D-045 keeper).** This legacy form treats `b` as the OUTER
+/// half-extents (rounded corners inset from `b`). The V.1+V.2 form
+/// `sd_round_box(p, b, r)` (Utilities/Geometry/SDFPrimitives.metal:48)
+/// treats `b` as the INNER half-extents (rounded corners protrude
+/// outward from `b`). Migrating callers requires shifting `b` by `r`,
+/// not a pure rename.
 static inline float sdRoundBox(float3 p, float3 b, float r) {
     float3 q = abs(p) - b + r;
     return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0) - r;
-}
-
-/// Signed distance to a torus in the XZ plane.
-static inline float sdTorus(float3 p, float2 t) {
-    float2 q = float2(length(p.xz) - t.x, p.y);
-    return length(q) - t.y;
-}
-
-/// Signed distance to a vertical cylinder (Y-axis).
-static inline float sdCylinder(float3 p, float h, float r) {
-    float2 d = abs(float2(length(p.xz), p.y)) - float2(r, h);
-    return min(max(d.x, d.y), 0.0) + length(max(d, 0.0));
-}
-
-/// Signed distance to a capsule between two endpoints.
-static inline float sdCapsule(float3 p, float3 a, float3 b, float r) {
-    float3 pa = p - a, ba = b - a;
-    float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
-    return length(pa - ba * h) - r;
-}
-
-/// Signed distance to a cone with tip at origin, axis along Y.
-static inline float sdCone(float3 p, float2 c, float h) {
-    // c is (sin, cos) of the cone half-angle.
-    float q = length(p.xz);
-    return max(dot(c.xy, float2(q, p.y)), -h - p.y);
-}
-
-/// Signed distance to an infinite plane with normal n (must be normalized) at height h.
-static inline float sdPlane(float3 p, float3 n, float h) {
-    return dot(p, n) + h;
-}
-
-// ======================================================================
-// MARK: - SDF Operations
-// ======================================================================
-
-/// Boolean union (min).
-static inline float opUnion(float d1, float d2) {
-    return min(d1, d2);
-}
-
-/// Boolean subtraction.
-static inline float opSubtract(float d1, float d2) {
-    return max(-d1, d2);
-}
-
-/// Boolean intersection.
-static inline float opIntersect(float d1, float d2) {
-    return max(d1, d2);
-}
-
-/// Smooth union with blending factor k.
-static inline float opSmoothUnion(float d1, float d2, float k) {
-    float h = clamp(0.5 + 0.5 * (d2 - d1) / k, 0.0, 1.0);
-    return mix(d2, d1, h) - k * h * (1.0 - h);
-}
-
-/// Smooth subtraction with blending factor k.
-static inline float opSmoothSubtract(float d1, float d2, float k) {
-    float h = clamp(0.5 - 0.5 * (d2 + d1) / k, 0.0, 1.0);
-    return mix(d2, -d1, h) + k * h * (1.0 - h);
 }
 
 /// Infinite domain repetition with spacing c.
