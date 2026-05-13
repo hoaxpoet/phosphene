@@ -68,7 +68,7 @@ public struct FFTResult: Sendable {
 
 // MARK: - StemData
 
-/// Headers for the four CoreML-separated audio stems.
+/// Headers for the four MPSGraph-separated audio stems.
 /// Each stem's PCM data lives in its own UMABuffer; this struct
 /// bundles the metadata so the Orchestrator can route per-stem
 /// analysis to the correct shader inputs.

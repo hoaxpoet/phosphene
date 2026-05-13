@@ -158,7 +158,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// MIR feature extraction pipeline (spectral, energy, chroma, beat).
     let mirPipeline: MIRPipeline
 
-    /// CoreML mood classifier (valence/arousal on ANE).
+    /// Mood classifier (valence/arousal — MPSGraph + hardcoded MLP weights).
     let moodClassifier: MoodClassifier?
 
     /// GPU compute particle system for Murmuration — attached to feedback
@@ -197,7 +197,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// (BUG-006.2 fix for cause 1 — was declared but never assigned.)
     var stemCache: StemCache?
 
-    /// Stem separator (CoreML on ANE).
+    /// Stem separator (MPSGraph on GPU).
     let stemSeparator: StemSeparator?
 
     /// Ring buffer accumulating interleaved stereo PCM for stem separation.

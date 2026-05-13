@@ -50,7 +50,7 @@ public protocol StemSampleBuffering: AnyObject, Sendable {
 /// Default capacity is 15 seconds at 44.1 kHz stereo (~1.32 M floats ≈ 5 MB).
 /// When full, new samples overwrite the oldest. Storage is a plain `[Float]`
 /// (CPU-only — no Metal dependency since stem separation reads on CPU before
-/// sending to CoreML on ANE).
+/// dispatching to MPSGraph on GPU).
 public final class StemSampleBuffer: StemSampleBuffering, @unchecked Sendable {
 
     // MARK: - Properties

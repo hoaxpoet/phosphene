@@ -19,7 +19,7 @@ public enum Logging {
     /// AI VJ: anticipation engine, transitions, preset selection.
     public static let orchestrator = Logger(subsystem: subsystem, category: "orchestrator")
 
-    /// CoreML: stem separation, mood classification.
+    /// MPSGraph: stem separation, mood classification.
     public static let ml = Logger(subsystem: subsystem, category: "ml")
 
     /// Metadata: track change detection, pre-fetching, MusicKit bridge.
