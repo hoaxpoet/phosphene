@@ -65,7 +65,7 @@ static inline float ks_sdAluminumBars(float3 p) {
 /// Frosted Glass sphere at the cell-centre intersection node.
 /// pulseMag adds a transient size offset driven by beat_bass (0 at rest).
 static inline float ks_sdGlassNode(float3 p, float pulseMag) {
-    return sdSphere(p, 0.17f + pulseMag);
+    return sd_sphere(p, 0.17f + pulseMag);
 }
 
 /// Liquid Mercury connectors: three fat bars smoothly unioned into a central
@@ -75,8 +75,8 @@ static inline float ks_sdMercury(float3 p, float sminK) {
     float dY    = sdRoundBox(p, float3(0.09f, 0.70f, 0.09f), 0.018f);
     float dZ    = sdRoundBox(p, float3(0.09f, 0.09f, 0.70f), 0.018f);
     float dBars = min(min(dX, dY), dZ);
-    float dPool = sdSphere(p, 0.22f);
-    return opSmoothUnion(dBars, dPool, sminK);
+    float dPool = sd_sphere(p, 0.22f);
+    return op_smooth_union(dBars, dPool, sminK);
 }
 
 // ── Scene SDF ────────────────────────────────────────────────────────────────
@@ -117,9 +117,9 @@ float sceneSDF(float3 p,
     float dMerc  = ks_sdMercury(pr, sminK);
 
     // 6. Liquid metal merges into glass node; aluminum cage stays structural.
-    float dLiquid = opSmoothUnion(dMerc, dGlass, sminK * 0.5f);
+    float dLiquid = op_smooth_union(dMerc, dGlass, sminK * 0.5f);
 
-    return opUnion(dAlum, dLiquid);
+    return op_union(dAlum, dLiquid);
 }
 
 // ── Scene Material ───────────────────────────────────────────────────────────
