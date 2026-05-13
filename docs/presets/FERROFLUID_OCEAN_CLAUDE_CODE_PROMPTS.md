@@ -503,20 +503,108 @@ Per CLAUDE.md Increment Completion Protocol:
 
 ---
 
-## V.9 Session 3 — §5.8 stage-rig lighting recipe (placeholder)
+## V.9 Session 3 — §5.8 stage-rig lighting (D-125 end to end)
 
-Implements D-125 end to end:
+### Musical role (Authoring Discipline — articulate before authoring anything)
 
-- Preamble: `StageRigState` MSL struct (208 bytes, 16-aligned, 6 lights max).
-- `RayMarchPipeline.stageRigPlaceholderBuffer` (zero-filled UMA, bound at slot 9 when no §5.8 preset is active).
-- `raymarch_lighting_fragment` `matID == 2` branch — loop over `stageRig.activeLightCount`, accumulate Cook-Torrance per light, IBL ambient unchanged.
-- `FerrofluidStageRig` Swift class (per-frame `tick(features:stems:dt:)` computes orbital positions / palette-driven colors / drums envelope; flushes to slot-9 UMA buffer).
-- `PresetDescriptor.stageRig` decoded field (new optional `stage_rig` JSON block per D-125(e)).
-- `applyPreset` wiring for Ferrofluid Ocean — instantiate `FerrofluidStageRig`, tick per frame, bind slot 9.
-- `sceneMaterial` switches from `outMatID = 0` (Session 1) to `outMatID = 2`.
-- `CommonLayoutTest`-style stride regression test for `StageRigState`.
+The stage rig's load-bearing musical role: **the moving colored beams reflected on the ferrofluid surface are the visual register of the vocalist and the drummer.** Each beam's *color* rotates from `stems.vocals_pitch_hz` (palette phase pitch-shifted by ±0.2 over the 80 Hz–1 kHz vocal range, confidence-gated, with `other_energy_dev` fallback for instrumental passages). Each beam's *intensity* envelopes from `drums_energy_dev` (smoothed at 150 ms τ, 0.4 floor + 0.6 swing). As the singer's phrase rises, beam palette shifts; as the drummer hits harder, beams brighten. Both signals are carried as **envelopes**, not onsets — never edge-trigger intensity on `drums_beat` (CLAUDE.md anti-pattern; see `SHADER_CRAFT.md §5.8` "Failure modes").
 
-Full prompt authored at Session 3 start.
+This is also the bar Sessions 4 and 5 will be evaluated against at M7 review against `04_specular_razor_highlights.jpg` and `08_aurora_quality_light_over_dark_surface.jpg`: the beam motion must look like singer + drummer driving the rig, not like a club lighting controller.
+
+### Scope (strict)
+
+Implement [`docs/DECISIONS.md` D-125](../DECISIONS.md) end to end. Twelve concrete steps in dependency order:
+
+1. **Add slot-9 binding API to `RenderPipeline`** — `var directPresetFragmentBuffer4: MTLBuffer?` + lock + `setDirectPresetFragmentBuffer4(_:)` setter, mirroring the existing slot-8 (`directPresetFragmentBuffer3`) pattern. Thread through every render-path file (`+Draw.swift`, `+RayMarch.swift`, `+Staged.swift`, `+MVWarp.swift`, `+PresetSwitching.swift`).
+2. **MSL struct `StageRigState` in the ray-march preamble** (`PresetLoader+Preamble.swift`). Exact layout per D-125(c): 4-byte `activeLightCount` + 12 bytes padding + 6 × 32-byte `StageRigLight` records (`positionAndIntensity: float4` + `color: float4`). Total stride 208 bytes, 16-byte aligned.
+3. **Swift `StageRigState` mirror** (new file `PhospheneEngine/Sources/Shared/StageRigState.swift`). Byte-identical to the MSL struct. `@frozen` struct, `Sendable`. Same pattern as `LumenPatternState` (see `PhospheneEngine/Sources/Presets/Lumen/LumenPatternEngine.swift`). Include a `MemoryLayout<StageRigState>.stride == 208` assertion at init.
+4. **`stageRigPlaceholderBuffer` on `RayMarchPipeline`** — zero-filled UMA buffer sized to 208 bytes, allocated in `RayMarchPipeline.init`. Bound at slot 9 by both `runGBufferPass` and `runLightingPass` whenever the active preset's `directPresetFragmentBuffer4` is nil (same dispatch pattern as the existing `lumenPlaceholderBuffer` at slot 8). Both passes declare `[[buffer(9)]] constant StageRigState&` per D-125(b) — Metal validation requires every ray-march preset to receive a bound slot 9.
+5. **`PresetDescriptor.stageRig` field** — new optional `StageRig` struct per D-125(e). Decode `light_count` (clamp to [3, 6], log warning + fallback to 4 on out-of-range), `orbit_altitude`, `orbit_radius`, `orbit_speed_baseline`, `orbit_speed_arousal_coef`, `palette_phase_offsets: [Float]` (must equal `light_count` length; warn + truncate/pad otherwise), `intensity_baseline`, `intensity_floor_coef`, `intensity_swing_coef`, `intensity_smoothing_tau_ms`. Add a memberwise default for back-compat (existing presets with no `stage_rig` block decode to `stageRig: nil`).
+6. **Ferrofluid Ocean JSON `stage_rig` block** — exact values per D-125(e) sample plus the four `palette_phase_offsets: [0.0, 0.33, 0.67, 0.17]`. `scene_lights` array drops to a single zero-intensity placeholder (the matID==2 path ignores it). Bump `complexity_cost.tier2` to ~5.5 (Session 5 perf capture will validate).
+7. **`matID == 2` branch in `raymarch_lighting_fragment`** (RayMarch.metal). Sits between matID==1 (Lumen) and the matID==3 (thin-film, Session 2) branches. Loop `for (uint i = 0; i < stageRig.activeLightCount; i++)`: compute per-light L/H/VdotH/attenuation, accumulate `rm_brdf_with_F0(...) * lightColor[i] * intensity[i] * attenuation` using `rm_thinfilm_rgb(VdotH, 220, 1.45, 1.0)` for F0 (same thin-film constants as matID==3 — the ferrofluid substrate is the same; only the light count differs). Sum per-light direct contributions, then call **`rm_finishLightingPass(...)`** (the helper extracted in P3-A) to add IBL ambient + fog. Skip screen-space shadow march entirely per D-125(d). Return `float4(finalColor, 1.0)`.
+8. **`FerrofluidStageRig` Swift class** at `PhospheneEngine/Sources/Presets/FerrofluidOcean/FerrofluidStageRig.swift`. Owns its slot-9 `MTLBuffer` (208 bytes, `storageModeShared`). Public API:
+   - `init?(device: MTLDevice, descriptor: PresetDescriptor.StageRig)`
+   - `func tick(features: FeatureVector, stems: StemFeatures, dt: TimeInterval)` — recompute orbital positions, per-light colors, per-light intensities; memcpy into `buffer.contents()`.
+   - `public var buffer: MTLBuffer { get }` — for binding to slot 9.
+   - Per-frame math: orbital angular velocity = `descriptor.orbit_speed_baseline + smoothstep(-0.5, 0.5, features.arousal) * descriptor.orbit_speed_arousal_coef` rad/sec; orbit phase advances by `velocity * dt` per frame; per-light azimuth = `phase + i * (2π / light_count)`. Position = `(orbit_radius * cos(az), orbit_altitude, orbit_radius * sin(az))` in world space, offset by camera target.
+   - Color: compute `pitch_shift = (log2(max(stems.vocals_pitch_hz, 80.0) / 80.0) / log2(1000.0/80.0)) * 0.2` when `stems.vocals_pitch_confidence >= 0.6`, else `stems.other_energy_dev * 0.15`. Per-light hue = `palette(features.accumulated_audio_time * 0.05 + descriptor.palette_phase_offsets[i] + pitch_shift)` — use the same `palette()` helper Ferrofluid Ocean's shader uses (or port it to Swift; trivial 6-line function).
+   - Intensity: smoothed envelope `intensity_smooth_t = mix(intensity_smooth_{t-1}, max(0, stems.drums_energy_dev), dt / tau_smooth)` with `tau_smooth = descriptor.intensity_smoothing_tau_ms * 0.001`. Per-light intensity = `descriptor.intensity_baseline * (descriptor.intensity_floor_coef + descriptor.intensity_swing_coef * intensity_smooth_t)`.
+   - Silence state per D-019: at `totalStemEnergy == 0`, `drums_energy_dev = 0` and the smoothing decays to 0, so intensity → `baseline * floor_coef` (0.4 * 5.0 = 2.0 nominal — visible idling rig per `10_silence_calm_body.jpg`).
+9. **`applyPreset` wiring** — when the active preset's descriptor has a non-nil `stageRig`, instantiate `FerrofluidStageRig` (preset-specific, hard-wired by name for the V.9 first consumer per D-125(f); generic `StageRigEngine` extraction deferred to second consumer), tick it per frame from the existing per-preset tick path (analogous to `LumenPatternEngine.tick`), and call `pipeline.setDirectPresetFragmentBuffer4(stageRig.buffer)` on preset apply. On preset switch to a non-stage-rig preset, clear the binding (returns to the placeholder buffer).
+10. **`sceneMaterial` in `FerrofluidOcean.metal`** — change `outMatID = 3` (Session 2) to `outMatID = 2`. The matID==3 thin-film branch in RayMarch.metal is retained for future single-light thin-film presets but is no longer the Ferrofluid Ocean dispatch target. Update both `TODO(V.9 Session 3)` comments to retire / point at Session 4.
+11. **Stride regression test** at `PhospheneEngine/Tests/PhospheneEngineTests/Shared/CommonLayoutTests.swift` (or wherever the existing `LumenPatternState_strideIs376` test lives — colocate). Asserts `MemoryLayout<StageRigState>.stride == 208` and `MemoryLayout<StageRigLight>.stride == 32`. Same shape as the existing Lumen stride test.
+12. **§5.8 clarifying note in `SHADER_CRAFT.md`** — one-line pointer at the §5.8 heading: "Implementation contract: see D-125. JSON schema in D-125(e) is authoritative; the §5.8 example below is illustrative."
+
+### DO NOT author in this session
+
+- Domain-warped meso detail / micro normal perturbation / Cassie-Baxter droplets (Session 4).
+- Audio-modulated thin-film thickness (Session 4).
+- Anisotropic specular along spike axes (Session 4).
+- Screen-space shadow march for matID==2 — explicitly excluded by D-125(d). If a future fidelity gap demands it, revisit at Session 5 cert review and consider the "single-shadow-light hack" fallback (cast shadow from the brightest active beam only).
+- Sky-tint tuning for the "distant fog cools to dark purple" target (Session 5 cert review per the §10.3.5 anti-tuning rule).
+- Generic `StageRigEngine` extraction. V.9 ships `FerrofluidStageRig` concrete. Second consumer is the trigger to extract.
+- Re-wiring the matID==3 branch. It stays in place as the single-light thin-film fallback — useful for future presets that want the iridescent material without the multi-light rig.
+- Re-running PresetRegressionTests' Ferrofluid Ocean golden hash regen. The hash stays commented-out until Session 5 cert review (matID==2 substantially changes the output; locking a hash before cert is wasted churn).
+
+Defer all of the above with `// TODO(V.9 Session N):` markers in code where you'd otherwise be tempted to start them.
+
+### Prerequisites — read in order
+
+1. [`docs/presets/FERROFLUID_OCEAN_CLAUDE_CODE_PROMPTS.md`](FERROFLUID_OCEAN_CLAUDE_CODE_PROMPTS.md) — the Session 1 + Session 2 "landed" blocks above this prompt.
+2. [`docs/DECISIONS.md` D-125](../DECISIONS.md) — the implementation contract. Read every clause; this prompt assumes you know D-125(a)–(g).
+3. [`docs/SHADER_CRAFT.md §5.8`](../SHADER_CRAFT.md) — the §5.8 spec (light configuration, color rotation, intensity envelope, silence state, IBL coordination, failure modes).
+4. [`PhospheneEngine/Sources/Renderer/Shaders/RayMarch.metal`](../../PhospheneEngine/Sources/Renderer/Shaders/RayMarch.metal) — current state after Session 2 + P3-A. The `rm_finishLightingPass` helper is the thing matID==2 calls after its per-light direct accumulation. matID==3 is the structural reference for "how a non-default lighting branch is laid out."
+5. [`PhospheneEngine/Sources/Presets/Lumen/LumenPatternEngine.swift`](../../PhospheneEngine/Sources/Presets/Lumen/LumenPatternEngine.swift) — the per-preset Swift state class pattern. Mirror its shape for `FerrofluidStageRig`.
+6. [`PhospheneEngine/Sources/Renderer/RayMarchPipeline.swift`](../../PhospheneEngine/Sources/Renderer/RayMarchPipeline.swift) `lumenPlaceholderBuffer` allocation (lines ~255–270) — the structural reference for `stageRigPlaceholderBuffer`.
+7. [`PhospheneEngine/Sources/Renderer/RayMarchPipeline+Passes.swift`](../../PhospheneEngine/Sources/Renderer/RayMarchPipeline+Passes.swift) `runGBufferPass` + `runLightingPass` — the slot-8 binding sites you'll add slot-9 binding next to.
+8. [`PhospheneEngine/Sources/Renderer/RenderPipeline+PresetSwitching.swift`](../../PhospheneEngine/Sources/Renderer/RenderPipeline+PresetSwitching.swift) — the existing `setDirectPresetFragmentBuffer3` API. Mirror its shape for the new `Buffer4` API.
+9. [`PhospheneEngine/Sources/Shared/Common.metal`](../../PhospheneEngine/Sources/Renderer/Shaders/Common.metal) `LumenPatternState` Swift mirror — the byte-identical Swift struct pattern.
+10. [`docs/VISUAL_REFERENCES/ferrofluid_ocean/README.md`](../VISUAL_REFERENCES/ferrofluid_ocean/README.md) — re-read the `04_*` and `08_*` annotations. Session 3 closes one half of `04`'s dual-anchor (the lighting half); Session 4 closes `08`'s aurora-quality light over dark surface.
+11. CLAUDE.md Failed Approaches §24 (light-only mood tint insufficient; now mitigated by `rm_finishLightingPass`), §4 (beat-onset as primary motion driver banned — applies to beam intensity), §58 (Drift Motes — musical role must be load-bearing).
+
+### Failed-approach guards (must satisfy)
+
+- **§5.8 anti-patterns.** No beat-strobed intensity. No saturated party palette without going through `palette()`. No beam motion edge-triggered on beat. No pillar reflections — high light intensity + roughness ≥ 0.05 should prevent constructive pillaring at the same vertical. If renders show vertical pillars after Session 3, that's a structural concern, not a tuning one — surface to Matt.
+- **§4 + §32 reminder.** Beam intensity envelope is `0.4 + 0.6 * drums_energy_dev_smoothed`, not `drums_beat`. Beam motion is `arousal-smooth` × angular velocity, not `*_beat` rising edges.
+- **§24 (mitigated, not retired).** `rm_finishLightingPass` is the only D-022-compliant lighting tail. The matID==2 branch MUST call it after summing direct contributions; do NOT re-author the IBL ambient + fog block inline. If you find yourself copying the matID==3 IBL block into matID==2, stop — call the helper.
+- **§42 fbm8 thresholds.** Doesn't apply to Session 3 directly. But if you add palette noise / palette dithering, threshold values must be centred near 0.
+- **§44 Metal type-name shadowing.** No `half`, `ushort`, `uchar`, `packed_float3` as variable names in the new MSL struct or the matID==2 branch.
+- **D-026 deviation primitives.** Intensity envelope is `drums_energy_dev` (already a deviation primitive — ✓). Palette pitch-shift is `vocals_pitch_hz` (raw Hz, *not* AGC-normalized energy — exempt from D-026 because pitch isn't an energy quantity). Other_energy fallback is `other_energy_dev` (deviation — ✓).
+- **D-021 sceneMaterial signature contract.** sceneMaterial emits `outMatID = 2`. The lighting dispatch lives in the lighting fragment, not in sceneMaterial. Do not put light-summation logic in sceneMaterial.
+
+### Acceptance gates for Session 3
+
+1. **Compiles.** `PresetLoaderCompileFailureTest` passes; preset count remains 15. `testFerrofluidOceanShaderCompiles` still passes (now exercising matID==2 via `outMatID = 2`).
+2. **Stride regression.** `StageRigState_strideIs208` (new) and `StageRigLight_strideIs32` (new) tests pass. Lock against accidental shrinkage.
+3. **PBR port sync still passes.** `RendererPBRPortSyncTests` (the P1 follow-up) green — matID==2 uses `rm_thinfilm_rgb` so the drift gate stays load-bearing.
+4. **matID==0 unchanged.** `PresetRegressionTests` passes for Glass Brutalist + Kinetic Sculpture (matID==0 presets with golden hashes locked) — Session 3 adds a new dispatch branch but does NOT change the default path. Adding the slot-9 binding to `runGBufferPass`/`runLightingPass` is the only change matID==0 presets observe; the zero-filled placeholder buffer must not alter their output.
+5. **Mood-tint atmosphere gate carries forward.** `testFerrofluidOceanMoodTintAtmosphereShifts` and `testFerrofluidOceanMoodTintIBLPropagation` continue to pass with matID==2. (Both gates verify `rm_finishLightingPass` propagates `scene.lightColor.rgb`; the helper hasn't changed, so both should pass without test edits. If they fail, the matID==2 branch is bypassing the helper.)
+6. **New gate — multi-light dispatch.** Add `testFerrofluidOceanStageRigDispatchActive` to `FerrofluidOceanVisualTests`. Renders the steady-mid fixture with a `FerrofluidStageRig` whose `activeLightCount = 4` and a *placeholder-only* version (matID==2 dispatched but slot-9 buffer empty), asserts the two frames are measurably distinct (avg channel diff > 5.0) — proves the slot-9 buffer is reaching the shader and the loop is running.
+7. **Silence state preserved.** Render the silence fixture with `FerrofluidStageRig`; manual eyeball check via `RENDER_VISUAL=1`: beams visibly idle at low intensity, palette evolves slowly via the `audio_time * 0.05` base rotation, no spike lattice (matches `10_silence_calm_body.jpg`).
+8. **Engine suite green.** Full `swift test --package-path PhospheneEngine` passes except the same three pre-existing flakes (`MemoryReporter.residentBytes`, `MetadataPreFetcher.fetch_networkTimeout`, `SoakTestHarness.cancel`).
+9. **No anti-pattern grep regressions.** Grep new code for `drums_beat` (anti for intensity envelope), `f.bass [<>]`, `stems.bass_energy [<>]`, literal `44100`. None should appear.
+10. **SwiftLint clean** on every touched file.
+
+### Mid-session sanity check (against Failed Approach #48)
+
+After step 7 lands (matID==2 branch compiles and runs against the zero-filled placeholder), render a contact sheet of the four standard fixtures **before** authoring the `FerrofluidStageRig` Swift class (step 8). If the placeholder render is structurally different from the matID==3 baseline (e.g. completely black because the per-light loop with `activeLightCount = 0` writes nothing), something's wrong with the dispatch wiring — fix before proceeding to Swift class. Cheap check, catches a class of "shader works in isolation but doesn't reach the screen" bugs.
+
+After step 9 lands (full pipeline running with `FerrofluidStageRig` ticking), render a second contact sheet at the four fixtures + the cool/warm valence pair. Compare against `04_specular_razor_highlights.jpg` and `08_aurora_quality_light_over_dark_surface.jpg` informally — is the **direction** right? Beam reflections sweeping diagonally across the surface, palette evolving, no pillars? Don't tune yet — Session 5 owns tuning. The mid-session check is "is this in the neighbourhood of the references, or is it structurally elsewhere?" If structurally elsewhere, stop and surface to Matt rather than starting Session 4.
+
+### Out of scope for this session
+
+Same restatement as Sessions 1 and 2. End after the 10 acceptance gates pass. If a gate cannot be reached without authoring downstream layers (meso detail, droplets, sky tuning), **STOP and report** rather than silently expanding scope. The "tune until it looks right" temptation lives in Failed Approach #49 — and the V.9 plan's whole structure is sequencing infrastructure before tuning to avoid exactly that pattern.
+
+### Closeout
+
+Per CLAUDE.md Increment Completion Protocol:
+
+1. Closeout report covering: files changed (new vs edited), tests run (pass / fail counts), visual harness output paths (the two mid-session contact sheets plus the new multi-light dispatch gate's PNGs), doc updates, capability registry, engineering plan, known risks, git status.
+2. Update [`docs/ENGINEERING_PLAN.md`](../ENGINEERING_PLAN.md) Increment V.9 with Session 3 ✅ block. Carry forward to Sessions 4–5.
+3. Update [`docs/ENGINE/RENDER_CAPABILITY_REGISTRY.md`](../ENGINE/RENDER_CAPABILITY_REGISTRY.md) — D-125 is a new catalog-wide lighting capability (slot-9 fragment buffer + matID==2 dispatch). New row, status promoted from Missing → Supported.
+4. Update this prompt doc (`docs/presets/FERROFLUID_OCEAN_CLAUDE_CODE_PROMPTS.md`) — flip Session 3 row to ✅ in the ledger; add a brief landed-work summary paragraph below this prompt.
+5. Commit on local `main` with separate commits for (a) slot-9 plumbing in RenderPipeline / RayMarchPipeline / preamble, (b) `PresetDescriptor.StageRig` + Ferrofluid Ocean JSON, (c) matID==2 branch in RayMarch.metal, (d) `FerrofluidStageRig` Swift class + applyPreset wiring + sceneMaterial outMatID change, (e) tests (stride + dispatch-active), (f) docs. Message prefix `[V.9-session-3]`. Six commits is a reasonable split; collapse to four if any two are mechanically trivial.
+6. Do **not** push without Matt's explicit go-ahead.
 
 ---
 
