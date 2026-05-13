@@ -57,12 +57,14 @@ extension VisualizerEngine {
         arachneState = nil
         gossamerState = nil
         lumenPatternEngine = nil
+        ferrofluidStageRig = nil
         spectralCartographOverlay = nil
         pipeline.setDynamicTextOverlay(nil)
         pipeline.setTextOverlayCallback(nil)
         pipeline.setDirectPresetFragmentBuffer(nil)
         pipeline.setDirectPresetFragmentBuffer2(nil)
         pipeline.setDirectPresetFragmentBuffer3(nil)
+        pipeline.setDirectPresetFragmentBuffer4(nil)
         pipeline.setPostProcessChain(nil)
         pipeline.setRayMarchPipeline(nil)
         pipeline.setFeedbackParams(nil)
@@ -166,6 +168,32 @@ extension VisualizerEngine {
                         } else {
                             logger.error(
                                 "LumenPatternEngine: failed to allocate slot-8 buffer for preset '\(desc.name)'"
+                            )
+                        }
+                    }
+
+                    // Ferrofluid Ocean (V.9): allocate the §5.8 stage-rig and
+                    // wire its 208-byte slot-9 buffer + per-frame tick. The
+                    // tick reads (FeatureVector, StemFeatures, dt), advances
+                    // the orbital phase + drums-envelope intensity + per-light
+                    // palette phase (with vocals_pitch_hz / other_energy_dev
+                    // pitch-shift), and flushes the result for the next
+                    // G-buffer + lighting pass to read at fragment slot 9.
+                    // matID == 2 dispatch in raymarch_lighting_fragment loops
+                    // over the per-frame light state. (D-125 first consumer;
+                    // generic StageRigEngine extraction deferred to second.)
+                    if desc.name == "Ferrofluid Ocean", let stageRigDesc = desc.stageRig {
+                        if let rig = FerrofluidStageRig(device: context.device, descriptor: stageRigDesc) {
+                            ferrofluidStageRig = rig
+                            pipeline.setDirectPresetFragmentBuffer4(rig.buffer)
+                            pipeline.setMeshPresetTick { [weak rig] features, stems in
+                                rig?.tick(features: features,
+                                          stems: stems,
+                                          dt: TimeInterval(features.deltaTime))
+                            }
+                        } else {
+                            logger.error(
+                                "FerrofluidStageRig: failed to allocate slot-9 buffer for preset '\(desc.name)'"
                             )
                         }
                     }
