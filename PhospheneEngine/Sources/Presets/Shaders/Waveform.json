@@ -1,6 +1,8 @@
 {
   "name": "Waveform",
   "family": "waveform",
+  "concept_tags": ["waveform"],
+  "motion_paradigm": "direct_time_modulation",
   "duration": 30,
   "description": "64-bar FFT spectrum analyzer with stereo oscilloscope waveform overlay",
   "author": "Matt",
