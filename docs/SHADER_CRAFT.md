@@ -2160,6 +2160,17 @@ Consolidated from observed preset iterations. Additive to `CLAUDE.md §Failed Ap
 
 ---
 
+
+### Relocated from CLAUDE.md §Failed Approaches (DOC.3b, 2026-05-13)
+
+These three entries are calibration / language gotchas relocated from CLAUDE.md so the shader-specific lessons live with the rest of the shader handbook. Original CLAUDE.md numbering preserved for cross-reference; the §13 #42–#50 numbering above is an independent stream.
+
+**CLAUDE.md #42 — Using `[0, 1]` smoothstep thresholds against raw `fbm8` output.** `fbm8` (and `fbm4`, `fbm12`) in the V.1 Noise tree returns values centered near 0, not 0.5. Practical range on unit-sphere positions at frequency scale ≥ 3 is approximately `[-0.7, 0.7]`. Smoothstep windows like `smoothstep(0.48, 0.52, fbm8(...))` almost always return 0 because the noise centroid is 0, not 0.48. Observed in V.3 marble, copper, and granite recipes during initial calibration. Fix: centre thresholds at 0 (`smoothstep(-0.05, 0.05, v)`) or remap first (`v * 0.5 + 0.5`). `worley_fbm` mixes `fbm8` (~`[-0.7, 0.7]`) with Worley F1 (~`[0, 0.4]`), giving effective range `[-0.65, 0.79]` centred near 0.07 — calibrate thresholds accordingly.
+
+**CLAUDE.md #43 — Sampling `fbm8` at scale 1 on unit-sphere positions.** Fibonacci-lattice sphere positions at radius 1 land near integer Perlin lattice points (where all gradient dot-products approach 0). `fbm8(wp)` for points on the unit sphere has std dev ≈ 0.05 — far below the `[-0.7, 0.7]` theoretical range. Use scale ≥ 3 (preferably 5–10) to resolve sphere positions into regions with meaningful noise variation. Observed in V.3 granite roughness test where `fbm8(wp)` gave variance ≈ 0 for all 32 Fibonacci sphere positions.
+
+**CLAUDE.md #44 — Using `half` as a Metal variable name.** `half` is a reserved built-in float type in Metal C++. `int half = spokeCount / 2;` silently shadows the type and causes a compilation error. The shader fails to compile with no stderr output visible during Swift test runs — the preset is simply dropped from `PresetLoader`'s fixture and the regression tests pass trivially (reporting 0 failures because the golden hash entry is never reached). Rename any variable that collides with Metal built-in types: `half`, `ushort`, `uchar`, `packed_float3`, etc. Discovered in V.7 Session 1 Arachne rewrite; fixed by renaming to `halfN`. **Note (QR.3, 2026-05-07):** `PresetLoaderCompileFailureTest` now catches this category at test time by asserting `loader.presets.count == expectedProductionPresetCount` (15). A drop without a corresponding `expectedProductionPresetCount` bump + `docs/DECISIONS.md` entry trips the test. The Failed Approach entry stays as a cautionary note for the future, but the silent-drop behaviour is no longer invisible.
+
 ## 14. Authoring Cheat Sheet (for Session Prompts)
 
 Condensed checklist for Claude Code sessions writing a new preset. Paste into session prompts.
