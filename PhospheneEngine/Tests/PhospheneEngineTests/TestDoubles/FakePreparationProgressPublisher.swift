@@ -1,18 +1,18 @@
-// MockPreparationProgressPublisher — Test double for PreparationProgressPublishing.
+// FakePreparationProgressPublisher — Test double for PreparationProgressPublishing.
 // Allows tests to fire status transitions programmatically.
 
 import Combine
 import Foundation
 @testable import Session
 
-// MARK: - MockPreparationProgressPublisher
+// MARK: - FakePreparationProgressPublisher
 
 /// Conforms to `PreparationProgressPublishing` for use in ViewModel and integration tests.
 ///
 /// Call `fire(_:for:)` to inject a status transition, then observe `trackStatuses`
 /// or subscribe to `trackStatusesPublisher` to verify reactions.
 @MainActor
-final class MockPreparationProgressPublisher: PreparationProgressPublishing {
+final class FakePreparationProgressPublisher: PreparationProgressPublishing {
 
     // MARK: - State
 

@@ -145,7 +145,7 @@ extension SessionManager {
                 downloader: StubPreviewDownloader(),
                 stemSeparator: StubStemSeparator(),
                 stemAnalyzer: StubStemAnalyzer(),
-                moodClassifier: StubMoodClassifier()
+                moodClassifier: MockMoodClassifier()
             )
         )
     }
@@ -179,7 +179,7 @@ private final class StubStemAnalyzer: StemAnalyzing, @unchecked Sendable {
     func reset() {}
 }
 
-private final class StubMoodClassifier: MoodClassifying, @unchecked Sendable {
+private final class MockMoodClassifier: MoodClassifying, @unchecked Sendable {
     var currentState: EmotionalState = .neutral
     func classify(features: [Float]) throws -> EmotionalState { .neutral }
 }

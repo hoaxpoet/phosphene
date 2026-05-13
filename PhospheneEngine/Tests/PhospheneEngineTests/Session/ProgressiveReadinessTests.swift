@@ -101,7 +101,7 @@ private func makeSessionManager(
         downloader: PRDownloader(),
         stemSeparator: sep,
         stemAnalyzer: PRStemAnalyzer(),
-        moodClassifier: StubMoodClassifier()
+        moodClassifier: MockMoodClassifier()
     )
     return SessionManager(connector: connector, preparer: preparer)
 }

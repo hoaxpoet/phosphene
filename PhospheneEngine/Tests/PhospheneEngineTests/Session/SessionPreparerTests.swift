@@ -136,7 +136,7 @@ private func makePreparer(
     downloader: StubPreviewDownloader = StubPreviewDownloader(),
     separator: StubStemSeparator,
     analyzer: StubStemAnalyzer = StubStemAnalyzer(),
-    classifier: StubMoodClassifier = StubMoodClassifier()
+    classifier: MockMoodClassifier = MockMoodClassifier()
 ) -> SessionPreparer {
     SessionPreparer(
         resolver: resolver,

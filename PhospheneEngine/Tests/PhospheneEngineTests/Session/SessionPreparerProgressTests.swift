@@ -116,7 +116,7 @@ struct SessionPreparerProgressTests {
             downloader: SuccessDownloader(),
             stemSeparator: sep,
             stemAnalyzer: FastAnalyzer(),
-            moodClassifier: StubMoodClassifier()
+            moodClassifier: MockMoodClassifier()
         )
 
         // Collect all snapshots; find the first one where all three tracks are .queued.
@@ -146,7 +146,7 @@ struct SessionPreparerProgressTests {
             downloader: SuccessDownloader(),
             stemSeparator: sep,
             stemAnalyzer: FastAnalyzer(),
-            moodClassifier: StubMoodClassifier()
+            moodClassifier: MockMoodClassifier()
         )
 
         var snapshots: [[TrackIdentity: TrackPreparationStatus]] = []
@@ -179,7 +179,7 @@ struct SessionPreparerProgressTests {
             downloader: SuccessDownloader(),
             stemSeparator: sep,
             stemAnalyzer: FastAnalyzer(),
-            moodClassifier: StubMoodClassifier()
+            moodClassifier: MockMoodClassifier()
         )
 
         _ = await preparer.prepare(tracks: [track])
@@ -201,7 +201,7 @@ struct SessionPreparerProgressTests {
             downloader: FailingDownloader(),
             stemSeparator: sep,
             stemAnalyzer: FastAnalyzer(),
-            moodClassifier: StubMoodClassifier()
+            moodClassifier: MockMoodClassifier()
         )
 
         _ = await preparer.prepare(tracks: [track])
@@ -223,7 +223,7 @@ struct SessionPreparerProgressTests {
             downloader: SuccessDownloader(),
             stemSeparator: throwingSep,
             stemAnalyzer: FastAnalyzer(),
-            moodClassifier: StubMoodClassifier()
+            moodClassifier: MockMoodClassifier()
         )
 
         _ = await preparer.prepare(tracks: [track])
@@ -249,7 +249,7 @@ struct SessionPreparerProgressTests {
             downloader: SuccessDownloader(),
             stemSeparator: sep,
             stemAnalyzer: FastAnalyzer(),
-            moodClassifier: StubMoodClassifier()
+            moodClassifier: MockMoodClassifier()
         )
 
         let prepTask = Task { @MainActor in
@@ -278,7 +278,7 @@ struct SessionPreparerProgressTests {
             downloader: SuccessDownloader(),
             stemSeparator: sep,
             stemAnalyzer: FastAnalyzer(),
-            moodClassifier: StubMoodClassifier()
+            moodClassifier: MockMoodClassifier()
         )
 
         let prepTask = Task { @MainActor in

@@ -1,5 +1,5 @@
 // PreparationProgressViewModelTests — Unit tests for PreparationProgressViewModel.
-// Uses a local MockPreparationProgressPublisher to drive status transitions.
+// Uses a local FakePreparationProgressPublisher to drive status transitions.
 
 import Combine
 import Session

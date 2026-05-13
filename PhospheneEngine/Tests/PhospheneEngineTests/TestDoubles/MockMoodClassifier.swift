@@ -1,11 +1,11 @@
-// StubMoodClassifier — Test double for MoodClassifying protocol.
+// MockMoodClassifier — Test double for MoodClassifying protocol.
 // Returns a configurable canned EmotionalState for orchestrator testing.
 
 import Foundation
 @testable import Audio
 @testable import Shared
 
-final class StubMoodClassifier: MoodClassifying, @unchecked Sendable {
+final class MockMoodClassifier: MoodClassifying, @unchecked Sendable {
 
     // MARK: - Tracking
 

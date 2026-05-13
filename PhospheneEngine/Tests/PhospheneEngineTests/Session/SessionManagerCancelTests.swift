@@ -77,7 +77,7 @@ private func makeManager(
         downloader: InstantDownloader(),
         stemSeparator: separator,
         stemAnalyzer: InstantAnalyzer(),
-        moodClassifier: StubMoodClassifier()
+        moodClassifier: MockMoodClassifier()
     )
     return SessionManager(connector: connector, preparer: preparer)
 }
