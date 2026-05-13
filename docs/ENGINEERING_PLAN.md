@@ -2819,7 +2819,7 @@ Add a SwiftLint custom rule that flags `f\.(bass|mid|treb|sub_bass|low_bass|low_
 
 ---
 
-### Increment QR.5 (CLEAN.1) — Mechanical cleanup pass
+### Increment QR.5 (CLEAN.1) — Mechanical cleanup pass ✅ 2026-05-13
 
 **Goal.** Pure deletion of dead code + dead binaries + stale doc comments. No behavior change.
 
@@ -2876,14 +2876,45 @@ Add a SwiftLint custom rule that flags `f\.(bass|mid|treb|sub_bass|low_bass|low_
 **Done when:**
 
 - [x] Session A landed (5 commits + 1 pre-work doc-archive commit).
-- [ ] Session B landed (B.1 + B.2 + B.5 — B.3/B.4 held for separate scope decisions).
-- [ ] Session C landed (C.1 + C.2 + C.3 + C.4).
-- [ ] CLAUDE.md Module Map updated for deleted/added files.
-- [ ] DECISIONS.md not touched (this increment is mechanical, no design decisions).
+- [x] Session B landed (B.1 + B.2 + B.5 — B.3/B.4 deferred to QR.7).
+- [x] Session C landed (C.1 + C.2 + C.3 + C.4).
+- [x] CLAUDE.md Module Map updated for deleted/added files.
+- [x] DECISIONS.md not touched (this increment is mechanical, no design decisions).
 
 **Verify:** `swift test --package-path PhospheneEngine && xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build`.
 
-**Estimated sessions:** 2 remaining (Session B = preset migrations + dedup; Session C = EMA + tests + alloc fix).
+**Landed commits (in order):**
+- `27ac6bea` `[DOC.5]` archive V4-era audit docs (pre-work)
+- `f1788401` `[QR.5] ML:` delete BeatNet weights (A.1)
+- `2f437560` `[QR.5] Orchestrator:` delete Orchestrator.swift placeholder (A.6)
+- `c1f37992` `[QR.5] Views/Ready:` inline ReadyBackgroundPresetView (A.9)
+- `6470113f` `[QR.5] Services:` delete PresetPreviewController stub (A.10)
+- `e48d15f9` `[QR.5] docs:` replace stale CoreML doc comments (A.11)
+- `bb909f47` `[QR.5] plan:` revise CLEAN.1 catalog after re-audit
+- `2129055b` `[QR.5] preset GlassBrutalist:` sdBox/sdPlane → sd_box/sd_plane (B.1)
+- `1754170f` `[QR.5] preset KineticSculpture:` literal-equivalent legacy SDF migrations (B.2)
+- `60fc677e` `[QR.5] Shaders/ShaderUtilities:` dedup 12 legacy SDF + boolean ops (B.5)
+- `1f08b8e8` `[QR.5] plan:` file QR.7 (CLEAN.2) for deferred B.3 + B.4
+- `1db36839` `[QR.5] Shaders/ShaderUtilities:` document permanent-keepers vs V.1+V.2 tree
+- `0bdd85bf` `[QR.5] AudioInputRouter:` pre-allocate file-playback buffer (C.4)
+- `c6c272e4` `[QR.5] TestDoubles:` rename per Mock/Stub/Fake taxonomy (C.2)
+- `530317a3` `[QR.5] Tests/Orchestrator:` consolidate SessionPlanner test files 3→1 (C.3)
+- `1c0a6d9d` `[QR.5] Shared:` centralize FPS-independent EMA in Smoother value type (C.1)
+
+**Retired-stale catalog items** (no code change; catalog premise no longer held):
+- #2 `Scripts/convert_beatnet_weights.py` — already removed in commit `7d64ad6f` (DSP.2 pivot)
+- #3 IOI histogram + `dumpHistogram` — documented DSP.1 baseline-capture instrumentation
+- #7 `Session.swift` — load-bearing `@_exported import Shared` re-export since 2.5.1
+- #8 `PresetSignaling.swift` — load-bearing post-D-095 (ArachneState emits `presetCompletionEvent`)
+- #13 `BeatPredictor.swift` — load-bearing reactive-mode fallback (MV-3b, D-028)
+- #17 `AudioBuffer.unsafeReadInto` overload — re-audit assessed ~94 Hz alloc rate as acceptable
+
+**Items deferred to QR.7 (CLEAN.2):**
+- B.3 `perlin2D` → `perlin2d` migration (different algorithm — value noise vs gradient noise)
+- B.4 `fbm3D` migration (different algorithm — simple-halving vs rotation-matrix fbm)
+- KineticSculpture `sdRoundBox` → `sd_round_box` migration (different parameter convention, 6 call sites)
+
+**Sessions used:** 1 (split across continuous chat — sessions A / B / C completed in single run after re-audit revised scope).
 
 ---
 
