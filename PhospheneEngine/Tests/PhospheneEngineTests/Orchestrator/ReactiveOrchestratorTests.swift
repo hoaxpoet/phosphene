@@ -237,7 +237,7 @@ private func strongBoundary(predictedNextBoundary: Float = 10.0) -> StructuralPr
 ///   gap = 0.204 > 0.20 ✓
 private func largeGapCatalog() -> [PresetDescriptor] {
     [
-        makePreset(name: "CurrentPreset", family: .fluid,
+        makePreset(name: "CurrentPreset", family: .reaction,
                    colorTempRange: SIMD2(0.05, 0.15),   // center = 0.10
                    visualDensity: 0.10),
         makePreset(name: "AltPreset", family: .geometric,
@@ -256,7 +256,7 @@ private func largeGapCatalog() -> [PresetDescriptor] {
 ///   → score gate fails; boundary gate fires.
 private func mediumGapCatalog() -> [PresetDescriptor] {
     [
-        makePreset(name: "CurrentPreset", family: .fluid,
+        makePreset(name: "CurrentPreset", family: .reaction,
                    colorTempRange: SIMD2(0.53, 0.63),   // center = 0.58
                    visualDensity: 0.58),
         makePreset(name: "AltPreset", family: .geometric,
@@ -273,7 +273,7 @@ private func mediumGapCatalog() -> [PresetDescriptor] {
 ///   gap = 0.030 < minBoundaryScoreGap (0.05) — both score and boundary gates fail.
 private func smallGapCatalog() -> [PresetDescriptor] {
     [
-        makePreset(name: "CurrentPreset", family: .fluid,
+        makePreset(name: "CurrentPreset", family: .reaction,
                    colorTempRange: SIMD2(0.63, 0.73),   // center = 0.68
                    visualDensity: 0.68),
         makePreset(name: "AltPreset", family: .geometric,
@@ -286,7 +286,7 @@ private func smallGapCatalog() -> [PresetDescriptor] {
 
 private func makePreset(
     name: String = "TestPreset",
-    family: PresetCategory = .abstract,
+    family: PresetCategory = .geometric,
     motionIntensity: Float = 0.5,
     colorTempRange: SIMD2<Float> = SIMD2(0.3, 0.7),
     visualDensity: Float = 0.5

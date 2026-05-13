@@ -265,7 +265,7 @@ private func makePreset(
     let json = """
     {
         "name": "\(name)",
-        "family": "abstract",
+        "family":"geometric",
         "duration": \(duration),
         "transition_affordances": [\(affordancesJSON)],
         "certified": true

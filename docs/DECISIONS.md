@@ -3394,3 +3394,61 @@ The adversarial review's specific framing was: *"What's the trigger to abandon P
 - The MD.6 "long-tail work stream" increment gets the milestone-10 trigger as its first checkpoint.
 - D-119 / D-117 / D-116 / D-121 each name D-122 as their explicit re-evaluation surface — a follow-up that violates the rule in any of those decisions fires the discipline-rule-failure trigger.
 
+
+
+---
+
+## D-123 — `family` taxonomy aligned to cream-of-crop themes; D-120 metadata superseded (filed 2026-05-13)
+
+**Rule.** Phosphene's `PresetCategory` enum mirrors the cream-of-crop Milkdrop pack's 10 aesthetic theme directories + 1 `transition` slot. Diagnostic presets (`is_diagnostic: true`) carry no `family`; the field is optional on `PresetDescriptor`.
+
+**Final enum (11 cases):**
+
+> `waveform`, `fractal`, `geometric`, `particles`, `hypnotic`, `supernova`, `reaction`, `drawing`, `dancer`, `sparkle`, `transition`
+
+**What changed and why.**
+
+Pre-D-123: `PresetCategory` had 14 cases — 9 cream-of-crop themes + 4 Phosphene-specific additions (`abstract`, `fluid`, `organic`, `instrument`) + 1 unused `transition`. The 5 unused cream-of-crop slots (`supernova`, `reaction`, `drawing`, `dancer`, `transition`) were aspirational for Phase MD.
+
+The 4 Phosphene-specific additions were doing catch-all work:
+- `abstract` — 3 presets (Murmuration, Ferrofluid Ocean, Kinetic Sculpture) with nothing visually in common. Classic "didn't know where else to put it" bucket.
+- `instrument` — 2 diagnostic presets (Spectral Cartograph, Staged Sandbox). Category error: developer tools shouldn't share an enum with aesthetic content.
+- `fluid` — 2 presets (Membrane, Volumetric Lithograph) with limited visual overlap; same-register Milkdrop presets would file under `hypnotic` or `geometric` per cream-of-crop convention, creating permanent label-source inconsistency once Phase MD ingests inspired-by uplifts.
+- `organic` — 2 presets (Arachne, Gossamer) with shared concept (web) more than shared visual style.
+
+With Phase MD planning to ingest a large body of inspired-by presets from a pack already organized by cream-of-crop conventions, custom Phosphene categories create permanent label-source inconsistency: identical visual registers get different labels depending on origin. The cream-of-crop taxonomy is battle-tested against ~9,800 presets over 20+ years; the right move is to mirror it exactly and reassign Phosphene-originals into its themes.
+
+**Reassignment of the 15 production presets:**
+
+| Preset | Pre-D-123 | D-123 |
+|---|---|---|
+| Waveform | waveform | waveform |
+| Plasma | hypnotic | hypnotic |
+| Nebula | particles | particles |
+| Glass Brutalist | geometric | geometric |
+| Lumen Mosaic | geometric | geometric |
+| Fractal Tree | fractal | fractal |
+| Kinetic Sculpture | abstract | **geometric** |
+| Murmuration | abstract | **particles** |
+| Ferrofluid Ocean | abstract | **geometric** |
+| Volumetric Lithograph | fluid | **geometric** |
+| Membrane | fluid | **reaction** |
+| Arachne | organic | **drawing** |
+| Gossamer | organic | **sparkle** |
+| Spectral Cartograph | instrument | **(none — diagnostic)** |
+| Staged Sandbox | instrument | **(none — diagnostic)** |
+
+The 4 subjective reassignments (Membrane / VL / Ferrofluid Ocean / Gossamer) were Matt's call 2026-05-13. Each had ≥ 2 plausible homes; whichever was picked defines the boundary of that category for future presets.
+
+**Schema change.** `PresetDescriptor.family` becomes `PresetCategory?` (was non-optional with `.waveform` fallback). Missing `family` in JSON now decodes as nil, which is also the correct value for diagnostics. The scorer treats `nil` family as: no family boost, no family-repeat penalty, no fatigue history match — diagnostics are gated upstream by `is_diagnostic` anyway, but the defensive logic is in place for any non-diagnostic preset that ships without a declared family.
+
+**D-120 superseded.** D-120 added `concept_tags` and `motion_paradigm` to enable diversity-scheduling penalties at the orchestrator. The wiring was rejected on the basis that Phosphene's planner is multi-preset-per-song and should pick the best SET of presets per song without "avoid back-to-back same X" penalties (memory: `feedback_multi_preset_per_song.md`). Without the wiring, the labels served only descriptive purposes that overlap with `family` — a single well-chosen label is preferable to three. The 5 D-120 commits (`a2e8a6aa..5f29aefe`) were reverted in `0981ca4f` on the same day they landed.
+
+**Catalog clustering observation.** Post-D-123, **5 of 13 aesthetic presets are in `geometric`** (Glass Brutalist, Kinetic Sculpture, Lumen Mosaic, Volumetric Lithograph, Ferrofluid Ocean). The `GoldenSessionTests` regenerated sequences now show the planner producing same-preset repeats (`Membrane × 3` in Session A) and family-repeat-penalty cascades because the catalog is small relative to the family clustering. This is not a planner bug — it's a real symptom of "we don't have enough viable presets yet" surfaced by the taxonomy cleanup. The fix is more presets, not orchestrator changes (Matt 2026-05-13).
+
+**Carry-forward.**
+
+- No further taxonomy work until the catalog grows substantially (next ~20–30 presets from Phase MD inspired-by + new originals).
+- The unused cream-of-crop categories (`supernova`, `dancer`, `transition`) remain reserved for Phase MD uplifts and new originals.
+- Phase MD inspired-by uplifts ingest into the matching cream-of-crop category on a 1:1 basis — no translation layer needed.
+- `GoldenSessionTests` Session A and Session C expected sequences are now anchored to the D-123 catalog state; future taxonomy changes will require regeneration.

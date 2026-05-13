@@ -21,7 +21,7 @@ struct PresetScorerTests {
 
     @Test("Same inputs produce identical scores")
     func determinism() {
-        let preset  = makePreset(name: "A", family: .fluid)
+        let preset  = makePreset(name: "A", family: .reaction)
         let track   = makeTrack(bpm: 120, valence: 0.3, arousal: 0.4)
         let context = makeContext()
 
@@ -36,7 +36,7 @@ struct PresetScorerTests {
     @Test("140 BPM high-arousal track ranks high-motion preset above low-motion")
     func highEnergyTrackRanksHighMotionFirst() {
         let highMotion = makePreset(name: "Fast", family: .geometric, motionIntensity: 0.85)
-        let lowMotion  = makePreset(name: "Slow", family: .abstract,  motionIntensity: 0.3)
+        let lowMotion  = makePreset(name: "Slow", family: .geometric,  motionIntensity: 0.3)
         let track      = makeTrack(bpm: 140, valence: 0.5, arousal: 0.9)
         let context    = makeContext()
 
@@ -52,7 +52,7 @@ struct PresetScorerTests {
     @Test("Sad track (valence -0.8) scores higher against cool-palette preset")
     func moodMismatchPenalized() {
         // target_temp = 0.5 + 0.4 * (-0.8) = 0.18 (cool)
-        let warmPreset = makePreset(name: "Warm", family: .fluid,
+        let warmPreset = makePreset(name: "Warm", family: .reaction,
                                     colorTemperatureRange: SIMD2(0.7, 0.95))
         let coolPreset = makePreset(name: "Cool", family: .fractal,
                                     colorTemperatureRange: SIMD2(0.1, 0.3))
@@ -69,11 +69,11 @@ struct PresetScorerTests {
 
     @Test("Same-family consecutive repeat penalized; different family wins by ≥ 3×")
     func sameFamilyRepeatPenalized() {
-        let fluidA    = makePreset(name: "FluidA", family: .fluid)
+        let fluidA    = makePreset(name: "FluidA", family: .reaction)
         let geometric = makePreset(name: "GeoB",  family: .geometric)
         let track     = makeTrack(bpm: 120, valence: 0.0, arousal: 0.0)
         // Current preset is fluid — fluidA will be penalized 0.2×
-        let currentFluid = makePreset(name: "FluidCurrent", family: .fluid)
+        let currentFluid = makePreset(name: "FluidCurrent", family: .reaction)
         let context = makeContext(currentPreset: currentFluid)
 
         let fluidScore = scorer.score(preset: fluidA,    track: track, context: context)
@@ -156,12 +156,12 @@ struct PresetScorerTests {
 
     @Test("Fatigue multiplier near 0 when family used 10s ago (.low cooldown), near 1.0 when 120s ago")
     func fatigueCooldown() {
-        let preset  = makePreset(name: "Fluid", family: .fluid, fatigueRisk: .low)
+        let preset  = makePreset(name: "Fluid", family: .reaction, fatigueRisk: .low)
         let track   = makeTrack()
 
         // Used 10 seconds ago — cooldown window is 60s → smoothstep(0, 60, 10) ≈ 0.074
         let recentEntry = PresetHistoryEntry(
-            presetID: "Fluid", family: .fluid,
+            presetID: "Fluid", family: .reaction,
             startTime: 0, endTime: 90   // endTime=90, elapsed=100 → gap=10
         )
         let recentContext = makeContext(
@@ -174,7 +174,7 @@ struct PresetScorerTests {
 
         // Used 120 seconds ago — fully past the 60s window → smoothstep(0, 60, 120) = 1.0
         let oldEntry = PresetHistoryEntry(
-            presetID: "Fluid", family: .fluid,
+            presetID: "Fluid", family: .reaction,
             startTime: 0, endTime: 80   // endTime=80, elapsed=200 → gap=120
         )
         let oldContext = makeContext(
@@ -220,7 +220,7 @@ struct PresetScorerTests {
 
     @Test("Scoring a preset against itself (as currentPreset) returns excluded=true")
     func identityExclusion() {
-        let preset  = makePreset(name: "MyPreset", family: .fluid)
+        let preset  = makePreset(name: "MyPreset", family: .reaction)
         let context = makeContext(currentPreset: preset)
         let track   = makeTrack()
 
@@ -235,10 +235,10 @@ struct PresetScorerTests {
 
     @Test("Only perf-excluded presets change rank at the tier boundary")
     func rankStabilityAcrossTiers() {
-        let affordable  = makePreset(name: "A", family: .fluid,    complexityCost: ComplexityCost(tier1: 5, tier2: 3))
+        let affordable  = makePreset(name: "A", family: .reaction,    complexityCost: ComplexityCost(tier1: 5, tier2: 3))
         let affordable2 = makePreset(name: "B", family: .geometric, complexityCost: ComplexityCost(tier1: 6, tier2: 4))
         let affordable3 = makePreset(name: "C", family: .fractal,   complexityCost: ComplexityCost(tier1: 8, tier2: 5))
-        let affordable4 = makePreset(name: "D", family: .abstract,  complexityCost: ComplexityCost(tier1: 9, tier2: 6))
+        let affordable4 = makePreset(name: "D", family: .geometric,  complexityCost: ComplexityCost(tier1: 9, tier2: 6))
         let tooHeavy    = makePreset(name: "E", family: .hypnotic,  complexityCost: ComplexityCost(tier1: 20, tier2: 8))
         let catalog = [affordable, affordable2, affordable3, affordable4, tooHeavy]
         let track = makeTrack()
@@ -264,7 +264,7 @@ struct PresetScorerTests {
 
 private func makePreset(
     name: String = "TestPreset",
-    family: PresetCategory = .abstract,
+    family: PresetCategory = .geometric,
     visualDensity: Float = 0.5,
     motionIntensity: Float = 0.5,
     colorTemperatureRange: SIMD2<Float> = SIMD2(0.3, 0.7),

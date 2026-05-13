@@ -23,7 +23,7 @@ struct DiagnosticHoldTests {
         let json = """
         {
             "name": "\(name)",
-            "family": "abstract",
+            "family":"geometric",
             "certified": true,
             "complexity_cost": {"tier1": 1.0, "tier2": 1.0}
         }

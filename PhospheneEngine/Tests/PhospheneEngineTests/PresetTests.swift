@@ -10,7 +10,7 @@ import Metal
 // MARK: - PresetCategory Tests
 
 @Test func presetCategoryAllCases() {
-    #expect(PresetCategory.allCases.count == 14)
+    #expect(PresetCategory.allCases.count == 11)
     #expect(PresetCategory.allCases.contains(.waveform))
     #expect(PresetCategory.allCases.contains(.fractal))
     #expect(PresetCategory.allCases.contains(.geometric))
@@ -80,7 +80,7 @@ import Metal
 
     // All fields should have sensible defaults.
     #expect(descriptor.name == "Simple")
-    #expect(descriptor.family == .waveform, "Default family should be waveform")
+    #expect(descriptor.family == nil, "Default family is nil (D-123 — only diagnostics have nil; missing-from-JSON also nil)")
     #expect(descriptor.duration == 30, "Default duration should be 30")
     #expect(descriptor.description == "")
     #expect(descriptor.author == "")

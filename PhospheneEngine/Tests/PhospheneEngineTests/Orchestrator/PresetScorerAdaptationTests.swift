@@ -21,10 +21,10 @@ struct PresetScorerAdaptationTests {
 
     @Test("familyBoosts adds +0.3 to family's final score, clamped at 1.0")
     func familyBoostRaisesScore() {
-        let preset  = makePreset(name: "Fluid1", family: .fluid)
+        let preset  = makePreset(name: "Fluid1", family: .reaction)
         let track   = makeTrack()
         let baseCtx = makeContext()
-        let boostCtx = makeContext(familyBoosts: [.fluid: 0.3])
+        let boostCtx = makeContext(familyBoosts: [.reaction: 0.3])
 
         let baseScore  = scorer.score(preset: preset, track: track, context: baseCtx)
         let boostScore = scorer.score(preset: preset, track: track, context: boostCtx)
@@ -37,18 +37,18 @@ struct PresetScorerAdaptationTests {
 
     // MARK: 2 — Family boost does not affect other families
 
-    @Test("familyBoost for .fluid does not change score for .geometric preset")
+    @Test("familyBoost for .reaction does not change score for .geometric preset")
     func familyBoostDoesNotCrossContaminate() {
         let geometric = makePreset(name: "Geo1", family: .geometric)
         let track     = makeTrack()
         let baseCtx  = makeContext()
-        let boostCtx = makeContext(familyBoosts: [.fluid: 0.3])
+        let boostCtx = makeContext(familyBoosts: [.reaction: 0.3])
 
         let baseScore  = scorer.score(preset: geometric, track: track, context: baseCtx)
         let boostScore = scorer.score(preset: geometric, track: track, context: boostCtx)
 
         #expect(baseScore == boostScore,
-                "boost for .fluid must not affect .geometric score (\(baseScore) vs \(boostScore))")
+                "boost for .reaction must not affect .geometric score (\(baseScore) vs \(boostScore))")
     }
 
     // MARK: 3 — Temporarily excluded family is hard-excluded
@@ -85,10 +85,10 @@ struct PresetScorerAdaptationTests {
 
     @Test("sessionExcluded preset stays excluded even when its family has a boost")
     func exclusionBeatsBoost() {
-        let preset  = makePreset(name: "Fluid2", family: .fluid)
+        let preset  = makePreset(name: "Fluid2", family: .reaction)
         let track   = makeTrack()
         let ctx = makeContext(
-            familyBoosts: [.fluid: 0.3],
+            familyBoosts: [.reaction: 0.3],
             sessionExcludedPresets: ["Fluid2"]
         )
 
@@ -101,7 +101,7 @@ struct PresetScorerAdaptationTests {
 
     @Test("Empty adaptation fields produce byte-identical scores to baseline context")
     func emptyAdaptationFieldsMatchBaseline() {
-        let preset  = makePreset(name: "Abstract1", family: .abstract)
+        let preset  = makePreset(name: "Abstract1", family: .geometric)
         let track   = makeTrack(bpm: 120, valence: 0.3, arousal: 0.4)
 
         let baseline = makeContext()
@@ -122,7 +122,7 @@ struct PresetScorerAdaptationTests {
 
 private func makePreset(
     name: String = "TestPreset",
-    family: PresetCategory = .abstract,
+    family: PresetCategory = .geometric,
     motionIntensity: Float = 0.5,
     colorTemperatureRange: SIMD2<Float> = SIMD2(0.3, 0.7)
 ) -> PresetDescriptor {

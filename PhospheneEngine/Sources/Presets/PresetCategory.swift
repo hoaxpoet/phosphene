@@ -1,5 +1,6 @@
 // PresetCategory — Visual aesthetic families for preset classification.
-// Used by the Orchestrator to avoid repeating the same category in succession.
+// Mirrors the cream-of-crop Milkdrop pack's 10 theme directories + 1 transition slot.
+// See docs/DECISIONS.md D-123 for the cream-of-crop alignment rationale.
 
 import Foundation
 
@@ -7,8 +8,16 @@ import Foundation
 
 /// Visual aesthetic family for classifying presets.
 ///
-/// The Orchestrator uses categories to ensure visual variety — it avoids
-/// selecting presets from the same category in consecutive transitions.
+/// The 10 aesthetic values mirror the cream-of-crop Milkdrop pack's theme
+/// directories — a 20+ year curated taxonomy battle-tested against ~9,800
+/// presets. Phase MD inspired-by uplifts ingest cleanly into this set;
+/// Phosphene-originals are filed to whichever theme their visual register
+/// best matches. The `transition` slot is reserved for the small set of
+/// transition-style presets cream-of-crop also keeps separate.
+///
+/// Diagnostic presets (Spectral Cartograph, Staged Sandbox) carry no
+/// `family` — they are identified by `is_diagnostic: true` and are not
+/// aesthetic content (D-123).
 public enum PresetCategory: String, Sendable, CaseIterable, Codable {
     case waveform
     case fractal
@@ -19,13 +28,8 @@ public enum PresetCategory: String, Sendable, CaseIterable, Codable {
     case reaction
     case drawing
     case dancer
+    case sparkle
     case transition
-    case abstract
-    case fluid
-    /// Real-time diagnostic instrument for MIR pipeline observability.
-    case instrument
-    /// Organic, natural-world motion: bioluminescent strands, mycelium, arachnid geometry.
-    case organic
 }
 
 // MARK: - Display
@@ -43,11 +47,8 @@ public extension PresetCategory {
         case .reaction:    return "Reaction"
         case .drawing:     return "Drawing"
         case .dancer:      return "Dancer"
+        case .sparkle:     return "Sparkle"
         case .transition:  return "Transition"
-        case .abstract:    return "Abstract"
-        case .fluid:       return "Fluid"
-        case .instrument:  return "Instrument"
-        case .organic:     return "Organic"
         }
     }
 }

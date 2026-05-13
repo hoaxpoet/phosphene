@@ -15,8 +15,8 @@ import Presets
 public struct PresetHistoryEntry: Sendable, Hashable {
     /// Stable preset identifier — matches `PresetDescriptor.id`.
     public let presetID: String
-    /// Aesthetic family of the preset that appeared.
-    public let family: PresetCategory
+    /// Aesthetic family of the preset that appeared. Nil for diagnostics (D-123).
+    public let family: PresetCategory?
     /// Session-relative time when the preset became active.
     public let startTime: TimeInterval
     /// Session-relative time when the preset was dismissed.
@@ -24,7 +24,7 @@ public struct PresetHistoryEntry: Sendable, Hashable {
 
     public init(
         presetID: String,
-        family: PresetCategory,
+        family: PresetCategory?,
         startTime: TimeInterval,
         endTime: TimeInterval
     ) {

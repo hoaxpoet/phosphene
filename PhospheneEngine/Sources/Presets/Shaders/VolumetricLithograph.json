@@ -1,6 +1,6 @@
 {
   "name": "Volumetric Lithograph",
-  "family": "fluid",
+  "family": "geometric",
   "duration": 35,
   "description": "Psychedelic linocut terrain — forward-dollying flight over an infinite audio-reactive landscape. v6 density/rate/attack drivers: terrain amp = 0.30·coactivation + 0.50·onset_density + 0.25·(attack−1), three AGC-surviving primitives that track structural intensity rather than normalised amplitude. Accent fires on drum onsets or any stem's sharp transients; palette hue tracks energy-weighted stem composition. No atmospheric fog (printmaking has no aerial perspective).",
   "author": "Matt",

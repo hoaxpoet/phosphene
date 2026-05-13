@@ -80,7 +80,7 @@ import Metal
 
     #expect(loader.presets.count == 1)
     #expect(loader.presets[0].descriptor.name == "NoSidecar", "Should derive name from filename")
-    #expect(loader.presets[0].descriptor.family == .waveform, "Default family should be waveform")
+    #expect(loader.presets[0].descriptor.family == nil, "Default family is nil (D-123)")
 }
 
 @Test func presetLoaderHandlesEmptyDirectory() throws {

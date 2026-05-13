@@ -64,11 +64,19 @@ struct GoldenSessionTests {
         // QR.2 update: dev fields = 0 → stemAffinity neutral 0.5 for all presets →
         // Plasma (moodScore=0.85) beats VL (no stem bonus) at track 0. Subsequent
         // track-firsts driven by family-repeat penalty cascade.
+        // D-123 (2026-05-13) — Ferrofluid Ocean moved abstract → geometric and now
+        // family-clusters with Glass Brutalist / Kinetic Sculpture / Volumetric
+        // Lithograph / Lumen Mosaic; the previous sequence had FO winning a slot
+        // that's now under more family-repeat pressure. Membrane is the only
+        // `reaction` preset in the catalog, so once selected it has no family-
+        // repeat competitor and gets picked across remaining slots. This reveals
+        // a real catalog clustering symptom (5 of 13 aesthetic presets share
+        // `geometric`); the orchestrator's behavior is correct given the inputs.
         #expect(ids == [
             "Plasma",
             "Murmuration",
-            "Ferrofluid Ocean",
-            "Waveform",
+            "Membrane",
+            "Membrane",
             "Membrane",
         ])
     }
@@ -126,7 +134,7 @@ struct GoldenSessionTests {
             "Glass Brutalist", "Glass Brutalist",
             "Nebula", "Plasma", "Nebula",
         ])
-        #expect(session.tracks.map { $0.preset.family.rawValue } == [
+        #expect(session.tracks.map { $0.preset.family?.rawValue } == [
             "geometric", "geometric", "particles", "hypnotic", "particles",
         ])
     }
@@ -188,13 +196,18 @@ struct GoldenSessionTests {
         let session = try planner.plan(
             tracks: makeSessionC(), catalog: makeRealCatalog(), deviceTier: .tier2)
         // BUG-004 closure: track 5 changed Plasma → Ferrofluid Ocean post-catalog-expansion.
+        // D-123 (2026-05-13) — family reassignment shifted track 3 + 5:
+        //   track 3: Membrane → Plasma (Plasma's 300 s fatigue cooldown has elapsed
+        //            by ~540 s into the session; Membrane (.reaction) wins later).
+        //   track 5: Ferrofluid Ocean → Membrane (FO now .geometric, hit by
+        //            family-repeat from Glass Brutalist at track 4).
         #expect(session.tracks.map { $0.preset.id } == [
             "Plasma",
             "Glass Brutalist",
             "Fractal Tree",
-            "Membrane",
+            "Plasma",
             "Glass Brutalist",
-            "Ferrofluid Ocean",
+            "Membrane",
         ])
     }
 
@@ -304,7 +317,7 @@ private func makeProfile(
 /// JSON-decoded PresetDescriptor. visual_density is explicit so moodSubScore is correct.
 private func makePreset(
     name: String,
-    family: PresetCategory,
+    family: PresetCategory?,
     motionIntensity: Float,
     visualDensity: Float,
     colorTempRange: SIMD2<Float>,
@@ -318,8 +331,10 @@ private func makePreset(
     let secs = sectionSuitability.map { "\"\($0.rawValue)\"" }.joined(separator: ",")
     let stms = stemAffinity.map { "\"\($0.key)\":\"\($0.value)\"" }.joined(separator: ",")
     let affs = transitionAffordances.map { "\"\($0.rawValue)\"" }.joined(separator: ",")
+    // D-123: diagnostic presets pass family: nil; JSON omits the field entirely.
+    let familyLine = family.map { "\"family\":\"\($0.rawValue)\"," } ?? ""
     let json = """
-    {"name":"\(name)","family":"\(family.rawValue)",
+    {"name":"\(name)",\(familyLine)
      "visual_density":\(visualDensity),"motion_intensity":\(motionIntensity),
      "color_temperature_range":[\(colorTempRange.x),\(colorTempRange.y)],
      "fatigue_risk":"\(fatigueRisk.rawValue)","section_suitability":[\(secs)],
@@ -366,7 +381,7 @@ private func makeRealCatalog() -> [PresetDescriptor] {
             sectionSuitability: [.ambient, .comedown],
             complexityCost: ComplexityCost(tier1: 0.6, tier2: 0.3)),
         makePreset(
-            name: "Murmuration", family: .abstract,
+            name: "Murmuration", family: .particles,
             motionIntensity: 0.85, visualDensity: 0.9,
             colorTempRange: SIMD2(0.2, 0.7), fatigueRisk: .low,
             sectionSuitability: [.buildup, .peak],
@@ -379,13 +394,13 @@ private func makeRealCatalog() -> [PresetDescriptor] {
             complexityCost: ComplexityCost(tier1: 3.2, tier2: 1.8),
             transitionAffordances: [.crossfade, .cut]),
         makePreset(
-            name: "Kinetic Sculpture", family: .abstract,
+            name: "Kinetic Sculpture", family: .geometric,
             motionIntensity: 0.7, visualDensity: 0.6,
             colorTempRange: SIMD2(0.3, 0.65), fatigueRisk: .medium,
             sectionSuitability: [.buildup, .peak, .bridge],
             complexityCost: ComplexityCost(tier1: 4.1, tier2: 2.2)),
         makePreset(
-            name: "Volumetric Lithograph", family: .fluid,
+            name: "Volumetric Lithograph", family: .geometric,
             motionIntensity: 0.6, visualDensity: 0.7,
             colorTempRange: SIMD2(0.2, 0.95), fatigueRisk: .low,
             sectionSuitability: [.buildup, .peak, .bridge],
@@ -393,14 +408,14 @@ private func makeRealCatalog() -> [PresetDescriptor] {
             complexityCost: ComplexityCost(tier1: 3.8, tier2: 2.0),
             transitionAffordances: [.crossfade, .cut]),
         makePreset(
-            name: "Spectral Cartograph", family: .instrument,
+            name: "Spectral Cartograph", family: nil,
             motionIntensity: 0.0, visualDensity: 0.1,
             colorTempRange: SIMD2(0.3, 0.6), fatigueRisk: .low,
             sectionSuitability: [.ambient],
             complexityCost: ComplexityCost(tier1: 0.3, tier2: 0.15),
             isDiagnostic: true),
         makePreset(
-            name: "Membrane", family: .fluid,
+            name: "Membrane", family: .reaction,
             motionIntensity: 0.7, visualDensity: 0.55,
             colorTempRange: SIMD2(0.25, 0.8), fatigueRisk: .medium,
             sectionSuitability: [.buildup, .peak],
@@ -412,13 +427,13 @@ private func makeRealCatalog() -> [PresetDescriptor] {
             sectionSuitability: [.ambient, .buildup, .bridge],
             complexityCost: ComplexityCost(tier1: 1.2, tier2: 0.7)),
         makePreset(
-            name: "Ferrofluid Ocean", family: .abstract,
+            name: "Ferrofluid Ocean", family: .geometric,
             motionIntensity: 0.65, visualDensity: 0.75,
             colorTempRange: SIMD2(0.1, 0.55), fatigueRisk: .medium,
             sectionSuitability: [.buildup, .peak, .bridge],
             complexityCost: ComplexityCost(tier1: 1.5, tier2: 0.8)),
         makePreset(
-            name: "Arachne", family: .organic,
+            name: "Arachne", family: .drawing,
             motionIntensity: 0.5, visualDensity: 0.65,
             colorTempRange: SIMD2(0.25, 0.75), fatigueRisk: .low,
             sectionSuitability: [.ambient, .buildup, .bridge, .comedown],
@@ -431,7 +446,7 @@ private func makeRealCatalog() -> [PresetDescriptor] {
             complexityCost: ComplexityCost(tier1: 5.5, tier2: 5.5),
             transitionAffordances: [.crossfade, .cut]),
         makePreset(
-            name: "Gossamer", family: .organic,
+            name: "Gossamer", family: .sparkle,
             motionIntensity: 0.3, visualDensity: 0.4,
             colorTempRange: SIMD2(0.15, 0.85), fatigueRisk: .low,
             sectionSuitability: [.ambient, .bridge, .comedown],
@@ -456,7 +471,7 @@ private func makeRealCatalog() -> [PresetDescriptor] {
             ],
             complexityCost: ComplexityCost(tier1: 4.5, tier2: 3.7)),
         makePreset(
-            name: "Staged Sandbox", family: .instrument,
+            name: "Staged Sandbox", family: nil,
             motionIntensity: 0.1, visualDensity: 0.3,
             colorTempRange: SIMD2(0.3, 0.55), fatigueRisk: .high,
             sectionSuitability: [.ambient],

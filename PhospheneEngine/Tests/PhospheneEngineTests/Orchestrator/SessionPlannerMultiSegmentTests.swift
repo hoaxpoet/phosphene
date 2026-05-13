@@ -28,12 +28,12 @@ private func makeProfile(sectionCount: Int = 1) -> TrackProfile {
 /// ShortPreset uses motion=0.5, density=0.5, fatigue=high → baseMax=30 → maxDuration=30 s.
 private func makeSyntheticCatalog() throws -> [PresetDescriptor] {
     let long = """
-    {"name":"LongPreset","family":"organic",
+    {"name":"LongPreset","family":"sparkle",
      "motion_intensity":0.5,"visual_density":0.5,"fatigue_risk":"low",
      "transition_affordances":["crossfade"]}
     """
     let short = """
-    {"name":"ShortPreset","family":"fluid",
+    {"name":"ShortPreset","family":"reaction",
      "motion_intensity":0.5,"visual_density":0.5,"fatigue_risk":"high",
      "transition_affordances":["crossfade"]}
     """

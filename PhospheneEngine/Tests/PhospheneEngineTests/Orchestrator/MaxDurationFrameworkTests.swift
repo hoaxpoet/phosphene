@@ -154,7 +154,7 @@ struct MaxDurationFrameworkTests {
         let json = """
         {
           "name": "CompletionGated",
-          "family": "organic",
+          "family":"sparkle",
           "wait_for_completion_event": true
         }
         """
@@ -204,7 +204,7 @@ struct MaxDurationFrameworkTests {
         let json = """
         {
           "name": "TestCap",
-          "family": "organic",
+          "family":"sparkle",
           "natural_cycle_seconds": 30,
           "motion_intensity": 0.0,
           "visual_density": 0.0,

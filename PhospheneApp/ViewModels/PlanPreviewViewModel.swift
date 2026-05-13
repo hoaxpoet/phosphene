@@ -117,7 +117,7 @@ final class PlanPreviewViewModel: ObservableObject {
                 trackTitle: row.trackTitle,
                 trackArtist: row.trackArtist,
                 presetName: preset.name,
-                presetFamily: preset.family.rawValue,
+                presetFamily: preset.family?.rawValue ?? "diagnostic",
                 duration: row.duration,
                 incomingTransition: row.incomingTransition,
                 isLocked: true,
@@ -183,7 +183,9 @@ final class PlanPreviewViewModel: ObservableObject {
                 trackTitle: track.track.title,
                 trackArtist: track.track.artist,
                 presetName: lockedPresets[track.track]?.name ?? track.preset.name,
-                presetFamily: lockedPresets[track.track]?.family.rawValue ?? track.preset.family.rawValue,
+                presetFamily: lockedPresets[track.track]?.family?.rawValue
+                    ?? track.preset.family?.rawValue
+                    ?? "diagnostic",
                 duration: track.plannedEndTime - track.plannedStartTime,
                 incomingTransition: transition,
                 isLocked: locked.contains(track.track),
