@@ -15,6 +15,39 @@
 //   PBR:    LearnOpenGL.com Cook-Torrance, Epic Games UE4 PBR notes
 //   UV:     Flexi "Box of Tricks" (Milkdrop), standard complex analysis
 //   ACES:   Stephen Hill's fitted curve (Unreal Engine)
+//
+// ──────────────────────────────────────────────────────────────────────────
+// Coexistence with V.1+V.2 Utilities tree (`Sources/Presets/Shaders/Utilities/`)
+// ──────────────────────────────────────────────────────────────────────────
+//
+// QR.5 (D-045) deduplicated 12 legacy camelCase SDF + boolean-op bodies that
+// were literal-equivalent to V.1+V.2 snake_case forms. The remaining
+// camelCase entries below are PERMANENT KEEPERS — superficially they look
+// like duplicates of the V.1+V.2 tree, but they are different algorithms
+// and serve different purposes:
+//
+//   perlin2D / perlin3D       — VALUE noise; output [0, 1]; cubic fade.
+//   perlin2d / perlin3d (V.1) — GRADIENT noise; output [-1, 1]; C² quintic.
+//                               (Utilities/Noise/Perlin.metal)
+//
+//   fbm2D / fbm3D             — Variable octave count, simple amplitude
+//                               halving, no rotation. Built on perlin2D /
+//                               perlin3D (value noise). Output [0, 1].
+//   fbm4 / fbm8 / fbm12 (V.1) — Fixed octave count, per-octave rotation
+//                               matrix, Hurst-exponent decay. Built on
+//                               perlin*d (gradient noise). Output [~-0.7, ~0.7].
+//                               (Utilities/Noise/FBM.metal)
+//
+//   sdRoundBox(p, b, r)       — `b` = OUTER half-extents (rounded corners
+//                               inset into `b`).
+//   sd_round_box (V.1)        — `b` = INNER half-extents (rounded corners
+//                               protrude outward from `b`).
+//                               (Utilities/Geometry/SDFPrimitives.metal:48)
+//
+// Migrating consumers across the two trees is NOT a rename — it changes
+// algorithm + output range + spatial character. See ENGINEERING_PLAN.md
+// §Phase QR §Increment QR.7 (CLEAN.2) for the strategy options if a future
+// consolidation is wanted. Until then, both trees are first-class.
 
 // ======================================================================
 // MARK: - Hash Functions
