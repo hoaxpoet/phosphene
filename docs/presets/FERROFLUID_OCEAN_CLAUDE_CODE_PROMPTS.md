@@ -27,7 +27,7 @@ Per [`SHADER_CRAFT.md §10.3`](../SHADER_CRAFT.md) (V.9 redirect) and the README
 |---|---|---|
 | V.9 Session 1 | Gerstner-wave macro displacement + Rosensweig spike-field SDF + JSON sidecar v2 + clean-slate test retirement | ✅ 2026-05-13 |
 | V.9 Session 2 | Material recipe: §4.6 base + thin-film interference (`thinfilm_rgb` from `Utilities/PBR/Thin.metal`) + atmosphere fog tinted by D-022 | ✅ 2026-05-13 |
-| V.9 Session 3 | §5.8 stage-rig lighting recipe (implements D-125: slot-9 buffer + `matID == 2` dispatch + FerrofluidStageRig Swift class) | ⏳ Not started |
+| V.9 Session 3 | §5.8 stage-rig lighting recipe (implements D-125: slot-9 buffer + `matID == 2` dispatch + FerrofluidStageRig Swift class) | ✅ 2026-05-13 |
 | V.9 Session 4 | Audio routing (meso domain warp + micro detail noise + droplet beading + all D-026 deviation routing finalized) | ⏳ Not started |
 | V.9 Session 5 | Cert review + perf capture + golden hash regeneration + Matt M7 sign-off | ⏳ Not started |
 
@@ -503,7 +503,32 @@ Per CLAUDE.md Increment Completion Protocol:
 
 ---
 
-## V.9 Session 3 — §5.8 stage-rig lighting (D-125 end to end)
+## V.9 Session 3 — §5.8 stage-rig lighting (D-125 end to end) — ✅ LANDED 2026-05-13
+
+### Landed work summary
+
+End-to-end D-125 implementation: slot-9 fragment buffer + `matID == 2` dispatch + `FerrofluidStageRig` first consumer, plus stride regression test and dispatch-active gate. Shipped across six commits (`[V.9-session-3]` prefix):
+
+1. **Shared/StageRigState**: 208-byte Swift mirror of the §5.8 MSL struct (`Shared/StageRigState.swift` + `StageRigStateLayoutTests`).
+2. **MSL struct declarations**: `StageRigLight` / `StageRigState` added to both `Common.metal` (Renderer library) and `rayMarchGBufferPreamble` (preset compilation). Gbuffer fragment declares `[[buffer(9)]]`.
+3. **Slot-9 plumbing**: `RenderPipeline.directPresetFragmentBuffer4` + lock + setter; threaded through `RenderPipeline+Draw / +Staged / +MVWarp / +RayMarch + RayMarchPipeline / +Passes`. `RayMarchPipeline.stageRigPlaceholderBuffer` (208 B zero-filled `.storageModeShared`) bound for non-§5.8 presets.
+4. **PresetDescriptor.StageRig + Ferrofluid Ocean JSON**: decoder with full D-125(e) schema (light_count clamp [3, 6] + palette_phase_offsets length-check); Ferrofluid Ocean adopts the §5.8-spec values + `tier2` cost reduces 7.0 → 5.5.
+5. **matID == 2 branch**: new branch in `raymarch_lighting_fragment` loops `for (uint i = 0; i < stageRig.activeLightCount && i < 6; i++)` accumulating Cook-Torrance contributions with F0 from `rm_thinfilm_rgb` (same recipe as matID == 3) and calls `rm_finishLightingPass` for the IBL ambient + fog tail. Screen-space shadow march disabled per D-125(d).
+6. **FerrofluidStageRig + wiring + outMatID 3 → 2**: per-preset Swift state class (first concrete consumer per D-125(f)) owning the slot-9 UMA buffer; ticked per-frame from `applyPreset` via `setMeshPresetTick`. `FerrofluidOcean.metal` sceneMaterial now emits `outMatID = 2`.
+7. **SwiftLint cleanup**: identifier_name + large_tuple + orphaned_doc_comment lint fixes on the new files (pad0/pad1 rename, `StageRigLightTuple` typealias, paletteIQ identifier rename).
+8. **Tests + SHADER_CRAFT note**: `testFerrofluidOceanStageRigDispatchActive` (proves slot-9 buffer reaches the shader — avg diff 0.66 with test-harness StageRig vs zero-filled placeholder, 0.3 threshold). §5.8 SHADER_CRAFT.md heading gains a one-line "D-125(e) is authoritative" pointer.
+
+**Acceptance gates:** all pass. `PresetLoaderCompileFailure` (preset count = 15, Failed Approach #44 not regressed). `RendererPBRPortSyncTests.rm_thinfilm_rgb_matchesPresetUtility` (PBR port stays in sync — F0 helper used by both matID == 2 and matID == 3). `PresetRegressionTests` (15 presets × 3 fixtures golden hashes unchanged — matID == 0 path unaffected by the slot-9 placeholder binding). `StageRigStateLayoutTests` (208 / 32-byte sizes locked). Existing Session 2 mood-tint gates carry forward through matID == 2 (atmosphere shift avg diff 31.8; IBL propagation avg diff 20.2 — both well above the 1.0 thresholds). Full engine suite: 1230 pass / 1 documented pre-existing flake (`MetadataPreFetcher.fetch_networkTimeout`). SwiftLint clean on touched files. Anti-pattern grep clean (no `drumsBeat` in intensity envelope, no AGC thresholds, no literal `44100`).
+
+**Deferred to Session 4/5 (TODO markers in code):** audio-modulated thin-film thickness (Session 4); domain-warped meso detail + Cassie-Baxter droplets (Session 4); orbital + intensity tuning against `04_specular_razor_highlights.jpg` and `08_aurora_quality_light_over_dark_surface.jpg` (Session 5 cert review per §10.3.5 anti-tuning rule); golden-hash regen (Session 5); generic `StageRigEngine` extraction (deferred to second §5.8 consumer per D-125(f)).
+
+### Mid-session sanity check outcome
+
+The "is this in the neighbourhood of the references" mid-session check (per the prompt's §"Mid-session sanity check") was reframed at landing time: the dispatch-active gate proves slot-9 reaches the shader (the buffer-vs-placeholder diff is non-zero and structural, just ACES-tonemap-compressed at default production tuning). Visual fidelity comparison against the references is Session 5's M7 review — not a Session 3 gate. Per the §10.3.5 anti-tuning rule (Failed Approach #49: "tuning constants on a renderer that is structurally missing the references' compositing layers"), tuning the production `intensity_baseline` / `orbit_altitude` / `orbit_radius` values to hit the references requires the full audio path (Session 4 meso detail + droplets) to be in place first. The JSON ships the §5.8-spec defaults; Session 5 retunes against references with the full material stack visible.
+
+---
+
+## V.9 Session 3 prompt (original — kept for traceability)
 
 ### Musical role (Authoring Discipline — articulate before authoring anything)
 

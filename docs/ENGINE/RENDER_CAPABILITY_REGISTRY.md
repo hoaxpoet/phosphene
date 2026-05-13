@@ -71,6 +71,7 @@ Entries should cite source files. When adding a capability, link to the files th
 | Hero specular highlight | Supported | Cook-Torrance / GGX in PBR utilities; pinpoint specular trivially expressible | Used everywhere. |
 | Backlit silk / fiber rim emission | Supported | `sss_backlit`, `wrap_lighting` (V.1 PBR/SSS) | Used by Gossamer, Arachne. |
 | Per-pass lighting composite (e.g. apply shafts after WEB) | Missing | — | Currently lighting is per-fragment per-preset. No "compositing pass" abstraction. Arachne Pass 5. |
+| Multi-light stage rig (3–6 animated orbital beams, slot-9 fragment buffer + matID == 2 dispatch) | Supported | V.9 Session 3 / D-125: `Shared/StageRigState.swift` (208 B mirror); `Common.metal` + `PresetLoader+Preamble.swift` (MSL struct); `RayMarchPipeline.stageRigPlaceholderBuffer` + slot-9 binding in `RayMarchPipeline+Passes.swift`; matID == 2 branch in `Shaders/RayMarch.metal` `raymarch_lighting_fragment`; `PresetDescriptor.StageRig` decoder; `FerrofluidStageRig` (first consumer). Test gates: `StageRigStateLayoutTests.test_stageRigState_strideIs208` + `testFerrofluidOceanStageRigDispatchActive`. | Bound at fragment slot 9 of both gbuffer + lighting passes; non-§5.8 presets receive the zero-filled placeholder. Per D-125(d), screen-space shadow march is disabled on this branch (cost-prohibitive at 4–6 lights). Reusable for any future preset adopting `SHADER_CRAFT.md §5.8`; per D-125(f) the generic `StageRigEngine` extraction is deferred to the second consumer. |
 
 ## 5. Atmosphere capabilities
 
