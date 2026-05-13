@@ -803,6 +803,11 @@ Every new view gets a snapshot test using swift-testing `@Test` + `@MainActor`, 
 
 ---
 
+
+### Relocated from CLAUDE.md §Failed Approaches (DOC.3b, 2026-05-13)
+
+**CLAUDE.md #41 — SwiftUI accessibility tree traversal in unit tests.** On macOS, SwiftUI only materialises the `accessibilityChildren()` tree when an active accessibility client (VoiceOver, Accessibility Inspector, XCUITest) queries it. In unit tests running via `xcodebuild test`, no client exists — `accessibilityChildren()` returns empty even after rendering into an NSWindow with a RunLoop cycle. ObjC dynamic dispatch (`NSSelectorFromString("accessibilityChildren")`) has the same limitation. Fix: expose `static let accessibilityID: String` on each view and bind it via `.accessibilityIdentifier(Self.accessibilityID)`. Tests check the static constant; the binding is enforced by construction. See D-044.
+
 ## 16. Decisions Locked Here
 
 These are UX-level decisions that are non-obvious; append them to `DECISIONS.md` as they are implemented.

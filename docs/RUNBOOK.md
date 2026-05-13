@@ -36,6 +36,17 @@ The app reads `SpotifyClientID` at runtime via `Bundle.main.infoDictionary`. An 
 
 **Logout:** Not yet exposed in the Settings UI. Developer workaround: delete the Keychain item via Keychain Access.app → search "com.phosphene.spotify".
 
+
+### Spotify connector gotchas — relocated from CLAUDE.md §Failed Approaches (DOC.3b, 2026-05-13)
+
+Three connector-implementation lessons relocated to live next to the Spotify setup instructions. Original CLAUDE.md numbering preserved for cross-reference.
+
+**CLAUDE.md #45 — Assuming the Spotify `/items` response JSON schema is unchanged from `/tracks`.** The Spotify Web API documentation is authoritative. When `/tracks` was deprecated and replaced by `/items`, the response schema changed: each `PlaylistTrackObject` now uses `"item"` as the key for the track/episode object. The old `"track"` key is deprecated. Code that reads `item["track"]` from `/items` responses returns `nil` for every item and silently produces an empty track list. Always check current Spotify Web API reference docs before implementing or modifying connector parsing logic. Confirmed by console log: `hasItem=true hasTrack=false`. **Note (QR.3, 2026-05-07):** `SpotifyItemsSchemaTests` regression-locks this against an on-disk fixture (`Fixtures/spotify_items_response.json`) — if the parser ever falls back to reading only `"track"`, the test fails with `Track A`/`B`/`C` count = 0.
+
+**CLAUDE.md #46 — Using the `fields` query parameter on Spotify's `/items` endpoint.** Field filtering (`fields=items(track(name,artists,...))`) causes the `/items` endpoint to silently return empty dictionaries `{}` for any item whose track data does not exactly match the filter. The result: `items` is a non-empty array of `{}` objects, `compactMap` returns zero tracks, and the session falls back to reactive mode with no error. The root cause is invisible — the API responds 200 with correct `total` and item count but empty item bodies. Fix: omit the `fields` parameter entirely. Use `market=from_token` instead to handle region-restricted tracks, which can otherwise return null track objects.
+
+**CLAUDE.md #47 — Discarding the Spotify `preview_url` field and then calling iTunes Search API to find it.** Spotify's `/items` response includes `preview_url` directly in each `TrackObject` — a CDN URL for the 30-second MP3 preview. Throwing this away and then querying iTunes Search API to find the same URL (at 20 req/min, with fuzzy text matching that can miss tracks) wastes a round-trip and causes false "Preview not available" results. Store `preview_url` on `TrackIdentity` as a hint field excluded from `Equatable`/`Hashable`/`Codable`, and short-circuit `PreviewResolver` when it is present. Tracks where Spotify returns `null` for `preview_url` (rights-restricted, like some Mclusky tracks) genuinely have no preview — fall through to iTunes for those.
+
 ## Build and Test
 
 ```bash
