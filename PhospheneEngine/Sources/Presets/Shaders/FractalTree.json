@@ -1,6 +1,8 @@
 {
   "name": "Fractal Tree",
   "family": "fractal",
+  "concept_tags": ["fractal"],
+  "motion_paradigm": "mesh_animation",
   "duration": 30,
   "description": "Recursive binary tree — trunk grows with bass, canopy spreads with mid, leaf tips shift colour with spectral centroid",
   "author": "Matt",
