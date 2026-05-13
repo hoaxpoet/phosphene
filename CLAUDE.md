@@ -161,85 +161,13 @@ See [docs/ARCHITECTURE.md §GPU Contract Details](docs/ARCHITECTURE.md#gpu-contr
 
 ## Preset Metadata Format
 
-```json
-{
-  "name": "Glass Brutalist",
-  "family": "geometric",
-  "duration": 30,
-  "passes": ["ray_march", "ssgi", "post_process"],
-  "scene_camera": { "position": [0, 2, -3], "target": [0, 2, 4], "fov": 65 },
-  "scene_lights": [{ "position": [0, 4.5, 2], "color": [1, 0.95, 0.9], "intensity": 3.0 }],
-  "scene_fog": 0.015,
-  "scene_ambient": 0.08,
-  "stem_affinity": {
-    "drums": "pillar_squeeze",
-    "bass": "pillar_scale",
-    "other": "glass_scale",
-    "vocals": "color_warmth"
-  }
-}
-```
-
-| Field | Default | Notes |
-|-------|---------|-------|
-| `name` | required | Display name |
-| `family` | required | Aesthetic family: `fluid`, `geometric`, `abstract`, `fractal`, `instrument`, etc. |
-| `duration` | 30 | Preferred scene duration (seconds). Orchestrator can override. |
-| `passes` | `["direct"]` | Required render passes. Backward-compatible: falls back to `synthesizePasses(from:)` reading legacy booleans. |
-| `beat_source` | `"bass"` | Which onset drives beat uniform: `bass`, `mid`, `treble`, `composite` |
-| `beat_zoom` | 0.03 | Beat accent zoom (keep < base_zoom) |
-| `beat_rot` | 0.01 | Beat accent rotation |
-| `base_zoom` | 0.12 | Continuous energy zoom (primary driver) |
-| `base_rot` | 0.03 | Continuous energy rotation (primary driver) |
-| `decay` | 0.955 | Feedback decay. 0.85 = short trails, 0.95 = long. |
-| `beat_sensitivity` | 1.0 | Beat pulse multiplier. Range 0–3.0. |
-| `stem_affinity` | optional | Maps stems to visual parameters for Orchestrator pairing. |
-| `mesh_thread_count` | 64 | Thread count for mesh shader dispatch. |
-| `visual_density` | 0.5 | 0 = sparse/minimal, 1 = packed/busy. Low-arousal tracks prefer low density. (Increment 4.0) |
-| `motion_intensity` | 0.5 | 0 = static/slow, 1 = fast/kinetic. Informs tempo match during scoring. (Increment 4.0) |
-| `color_temperature_range` | `[0.3, 0.7]` | `[cool, warm]` each 0–1. 0 = cold blue, 1 = hot orange. Intersected with mood-derived target range. (Increment 4.0) |
-| `fatigue_risk` | `"medium"` | `"low"`, `"medium"`, or `"high"`. Controls cooldown penalty between reuses. Unknown values log a warning and fall back to medium. (Increment 4.0) |
-| `transition_affordances` | `["crossfade"]` | Array of `"crossfade"`, `"cut"`, `"morph"`. Styles this preset tolerates as incoming/outgoing transition. (Increment 4.0) |
-| `section_suitability` | all sections | Array of `"ambient"`, `"buildup"`, `"peak"`, `"bridge"`, `"comedown"`. Sections this preset suits. Default = all (no penalty). (Increment 4.0) |
-| `complexity_cost` | `{"tier1":1.0,"tier2":1.0}` | Estimated ms at 1080p per device tier (M1/M2 = tier1, M3+ = tier2). Accepts scalar or `{"tier1":x,"tier2":y}`. (Increment 4.0) |
-| `certified` | `false` | Matt-approved reference-frame match. Only flipped to `true` after reviewing against `docs/VISUAL_REFERENCES/<preset>/` references. Orchestrator excludes uncertified presets by default. (Increment V.6) |
-| `rubric_profile` | `"full"` | Which rubric ladder to apply. `"full"` = 7 mandatory + 4 expected + 4 preferred. `"lightweight"` = 4 items for stylized 2D / diagnostic presets (Plasma, Waveform, Nebula, SpectralCartograph). Unknown strings fall back to `"full"` with a warning. (Increment V.6) |
-| `rubric_hints` | `{}` | Author-asserted flags for rubric items the analyzer cannot auto-detect. `"hero_specular": true` satisfies P1; `"dust_motes": true` satisfies P3. Missing keys default to `false`. (Increment V.6) |
+See [docs/SHADER_CRAFT.md §17. Preset Metadata Format (JSON sidecar)](docs/SHADER_CRAFT.md#17-preset-metadata-format-json-sidecar) for the JSON sidecar schema — `name`, `family`, `passes`, scene camera/lights, stem affinity, `complexity_cost`, `certified`, `rubric_profile`, and the rest. Every new preset ships a `<PresetName>.json` next to its `.metal` file.
 
 ---
 
 ## Visual Quality Floor
 
-See `docs/SHADER_CRAFT.md` for the authoring handbook. This section is the short contract every preset shader session must satisfy.
-
-**The detail cascade (mandatory).** Every primary surface has four distinct detail scales layered:
-
-1. **Macro** — SDF geometry or mesh silhouette (unit scale).
-2. **Meso** — variation ridges, dents, per-instance jitter (∼0.1–0.3 unit scale).
-3. **Micro** — surface-scale normal / texture detail (∼0.01–0.03 unit scale).
-4. **Specular breakup** — roughness variation, glints, grunge (pixel to sub-pixel scale).
-
-A preset that skips any cascade layer reads as primitive, regardless of clever audio routing. This is enforced by the rubric below.
-
-**Noise floor (mandatory).** Minimum **4 octaves** of noise on any hero surface. The `fbm8` and `warped_fbm` utilities in `Shaders/Utilities/Noise/` (Phase V.1–V.3) are the default. Single-octave-fBM presets fail certification.
-
-**Material count (mandatory).** Minimum **3 distinct materials** per preset, drawn from the cookbook in `SHADER_CRAFT.md §4` (20 recipes: polished chrome, brushed aluminum, silk thread, wet stone, frosted glass, ferrofluid, bark, leaf, etc.). Plasma-family stylized presets are exempt.
-
-**No muted palettes (mandatory).** Phosphene's catalog ships vivid, saturated colour. Pastels, cream-tinted output, and washed-out gradients are anti-patterns at the project level — Matt 2026-05-09 LM.2 production review: "*A muted color palette has no place in Phosphene — that's boring. This preset should make people want to get up and dance.*" Quiet *moments* exist (silence frames, bridge sections, intros) but the active visual register is always vivid. **Failure mode to detect**: a preset whose dominant pixel ratio sits within ε of `(0.95, 0.85, 0.75)` (cream) or `(0.92, 0.85, 0.80)` (peach-haze) regardless of mood/energy input. Mood-tint formulas that pull toward a desaturated baseline (the retired Lumen Mosaic LM.2 `mix(cream, hue, sat)` pattern) are the typical cause; use procedural palettes (V.3 `palette()`) or per-stem saturated colour constants instead. Vividness gates in per-preset certification fixtures are the enforcement mechanism. **Saturated-floor pattern (LM.4.5.1 reference; retired at LM.4.6)**: flooring saturation at the design level (`sat = mix(0.70, 1.0, hash_byte)`) is the strongest mechanical enforcement of the "no muted palettes" rule. Lumen Mosaic shipped this at LM.4.5.1 then RETIRED it at LM.4.6 when Matt explicitly asked for "ANY possible color to be possible within ANY cell" (per-cell freedom over palette discipline). The retirement is preset-specific, not project-wide — for any future preset where the aesthetic permits, the saturated-floor pattern is still the cleanest implementation: every cell is saturated by construction, browns / charcoals / slates / regal purples come from VARYING VALUE on saturated cells (brown = sat 0.85 + val 0.30 + orange hue) rather than desaturation. Mid-sat cells (sat 0.3–0.7) at high val read as washed pale cream regardless of hue — that's the LM.2 / LM.4.5 v1 failure mode. Lumen Mosaic chose per-cell freedom and accepts the trade-off (some pale cells in the mix); other presets are encouraged to use the saturated floor.
-
-**Authoring workflow (mandatory).** Coarse-to-fine, 9 passes: macro geometry → materials → meso variation → micro detail → specular breakup → atmosphere → lighting polish → audio reactivity → review. See `SHADER_CRAFT.md §2.2`. Writing a finished-looking shader in a single pass is the observed cause of every primitive output.
-
-**Reference-image-first (mandatory).** Before writing MSL, read `docs/VISUAL_REFERENCES/<preset>/README.md` and the curated images. Authoring from prose description alone is observed Failed Approach #40. Session prompts must cite specific reference image filenames for the traits being implemented. Completeness and naming are enforced by `swift run --package-path PhospheneTools CheckVisualReferences` (Increment V.5, D-064).
-
-**Rubric (enforced at certification — Increment V.6).**
-
-- Mandatory 7/7: detail cascade, ≥4 noise octaves, ≥3 materials, deviation-primitive audio (D-026), graceful silence fallback, p95 frame time ≤ tier budget, Matt-approved reference frame match.
-- Expected ≥2/4: triplanar texturing, detail normals, volumetric fog / aerial perspective, SSS / fiber BRDF / anisotropic specular.
-- Strongly preferred ≥1/4: hero specular highlight in ≥60% of frames, POM on at least one surface, volumetric light shafts or dust motes, chromatic aberration / thin-film interference.
-
-Minimum score: **10/15** with all mandatory passing. Uncertified presets stay in the catalog but Orchestrator excludes them by default.
-
-**Shader file length.** SwiftLint `file_length: 400` is relaxed for `.metal` files (see `SHADER_CRAFT.md §11.1`). Good ray-march shaders run 800–2000 lines; do not truncate or split for lint conformance.
+See [docs/SHADER_CRAFT.md](docs/SHADER_CRAFT.md) — the full authoring handbook — for the detail cascade (4 mandatory scales), noise floor (≥4 octaves), material count (≥3 distinct), no-muted-palettes rule, coarse-to-fine 9-pass workflow, reference-image-first requirement, and the fidelity rubric (`§12`). SwiftLint `file_length: 400` is relaxed for `.metal` files (see `SHADER_CRAFT.md §11.1`). Good ray-march shaders run 800–2000 lines; do not truncate or split for lint conformance.
 
 ---
 
@@ -251,45 +179,13 @@ See [docs/ARCHITECTURE.md §Session Preparation](docs/ARCHITECTURE.md#session-pr
 
 ## UX Contract
 
-See `docs/UX_SPEC.md` for the full product UX specification (personas, onboarding, preparation UI, error taxonomy, copy guide, settings surface, accessibility). This section is the short contract every UI session must satisfy.
+See [docs/UX_SPEC.md](docs/UX_SPEC.md) for the canonical product-UX contract — state-to-view mapping (six top-level views, one per `SessionState`), copy principles (§8.5), the error taxonomy (§8), accessibility requirements, progressive readiness, and the operating rules around playback chrome.
 
-**State-to-view mapping (mandatory).** `ContentView` is a pure switch on `SessionManager.state`. Six top-level views, one per state — no orphans, no overloaded views:
+Three project-level invariants worth surfacing here so they catch session-start review:
 
-| State | View | Purpose |
-|---|---|---|
-| `.idle` | `IdleView` | Connect a playlist or start ad-hoc |
-| `.connecting` | `ConnectingView` | Per-connector spinner + cancel |
-| `.preparing` | `PreparationProgressView` | Per-track status + partial-ready CTA |
-| `.ready` | `ReadyView` | "Press play in your music app" + first-audio autodetect |
-| `.playing` | `PlaybackView` | Full-bleed visuals + auto-hiding overlay chrome |
-| `.ended` | `EndedView` | Session summary + new session affordance |
-
-`ContentView` owns no logic beyond routing. View logic lives in per-view ViewModels (`@MainActor ObservableObject`).
-
-**Copy principles (mandatory).** User-facing strings follow `UX_SPEC.md §8.5`:
-- Describe the situation, not the exception. Not "NSURLError -1009" but "You're offline."
-- Every error message has a CTA or a clear "auto-retrying" status.
-- No jargon: never "MPSGraph," "FFT," "tap," "DRM," or "sandbox" in user copy. Internal logs use jargon freely.
-- Never apologize. Either describe what happened or offer a fix.
-- Never show a full-screen error during `.playing`. Bottom-right toast only. The visuals are the point.
-
-**Product truths (never violate).**
-- Phosphene does not control playback. No pause/play/skip buttons on `PlaybackView` — they'd lie.
-- First-audio autodetect advances `.ready → .playing`. No user click required.
-- Every user-facing string is externalized in `Localizable.strings`, even in English-only v1.
-- Debug overlay (`D` key) is separate from user overlay chrome (`Space` key). Hidden by default for users.
-- Overlay text has ≥4.5:1 contrast against worst-case preset frame via blurred dark backdrop.
-- Reduced-motion mode disables `mv_warp` feedback and caps beat-pulse amplitude.
-
-**Error taxonomy authority.** `UX_SPEC.md §8` is the canonical mapping from internal error state to user-facing language. Any new `UserFacingError` case must add a row to that table before shipping. `RUNBOOK.md §Common Failure Modes` stays developer-facing and should cross-reference UX_SPEC copy to prevent drift.
-
-**Progressive readiness.** `PreparationProgressView` shows a **"Start now"** CTA at the `ready_for_first_tracks` threshold (Increment 6.1). Users are not forced to wait for full playlist preparation. `SessionManager` exposes `progressiveReadinessLevel` so playback can show a subtle indicator while trailing tracks continue preparing.
-
-**One `SettingsStore`, app-wide (QR.4 / D-091).** There is exactly one `SettingsStore` instance in the app — constructed in `PhospheneApp.swift:25` and injected via `@EnvironmentObject` everywhere else. Consumers MUST use `@EnvironmentObject var settingsStore: SettingsStore`; never re-instantiate via `@StateObject SettingsStore()` inside a view. A duplicate `@StateObject` creates a parallel state world that user toggles never reach (the bug shape that QR.4 closed in `PlaybackView`). `SettingsStoreEnvironmentRegressionTests` enforces this — the third test reads `PlaybackView.swift` source and asserts the binding form, so anyone who flips it back will trip the test at compile time.
-
-**User-facing strings externalised (QR.4 / D-091).** Every `Text(...)`, `.help(...)`, and `.accessibilityLabel(...)` argument under `PhospheneApp/Views/` MUST resolve through `Localizable.strings` via `String(localized: "key")`, `NSLocalizedString("key", comment: "")`, or `Text(verbatim: nonLocalizedString)` for genuinely non-translatable dynamic values. `Scripts/check_user_strings.sh` enforces this — exit non-zero on any literal-string hit outside the `DebugOverlayView.swift` allowlist. Run before every UX-touching commit.
-
-**Tooltip lies are bugs (QR.4 / D-091).** Tooltips MUST describe what the control does *now*, not what it *will* do. Phrasing like "(coming soon)" or "(disabled)" on a wired control is forbidden. If a control is genuinely not yet wired, hide it via build flag (e.g. `#if ENABLE_PLAN_MODIFICATION` for the Plan Preview "Modify" button) until the implementation lands.
+- **One `SettingsStore` app-wide.** Constructed in `PhospheneApp.swift`; injected as `@EnvironmentObject` everywhere. Never `@StateObject SettingsStore()` inside a view — that's Failed Approach #55 (regression-locked by `SettingsStoreEnvironmentRegressionTests`).
+- **All user-facing strings externalised.** Every `Text(...)` / `.help(...)` / `.accessibilityLabel(...)` under `PhospheneApp/Views/` resolves through `Localizable.strings` via `String(localized:)`. `Scripts/check_user_strings.sh` enforces.
+- **Tooltips do not lie.** Tooltip text describes what the control does *now*, not what it *will* do. If a control is genuinely not yet wired, hide it behind a build flag.
 
 ---
 
