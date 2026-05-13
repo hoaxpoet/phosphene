@@ -21,15 +21,18 @@ private let passLogger = Logger(subsystem: "com.phosphene.renderer", category: "
 extension RayMarchPipeline {
 
     // swiftlint:disable function_parameter_count
-    // `runGBufferPass` takes 8 parameters — the minimal set for encoding a preset draw call.
+    // `runGBufferPass` takes 9 parameters — the minimal set for encoding a preset draw call.
 
     /// Pass 1: Render the preset's SDF scene into the three G-buffer targets.
     ///
-    /// Slot 8 is bound for every ray-march preset (LM.2 / D-LM-buffer-slot-8). When
-    /// `presetFragmentBuffer3` is nil (any preset other than Lumen Mosaic at the time
-    /// of writing) the zero-filled `lumenPlaceholderBuffer` is bound instead — the
-    /// preamble's `raymarch_gbuffer_fragment` declares `[[buffer(8)]]` and Metal
-    /// validation requires every declared buffer to be bound at draw time.
+    /// Slot 8 (LM.2 / D-LM-buffer-slot-8) and slot 9 (V.9 Session 3 / D-125) are
+    /// both bound for every ray-march preset. When `presetFragmentBuffer3` /
+    /// `presetFragmentBuffer4` is nil (every preset other than Lumen Mosaic /
+    /// Ferrofluid Ocean at the time of writing) the corresponding zero-filled
+    /// placeholder (`lumenPlaceholderBuffer` / `stageRigPlaceholderBuffer`) is
+    /// bound instead — the preamble's `raymarch_gbuffer_fragment` declares
+    /// `[[buffer(8)]]` and `[[buffer(9)]]` and Metal validation requires every
+    /// declared buffer to be bound at draw time.
     func runGBufferPass(
         commandBuffer: MTLCommandBuffer,
         gbufferPipelineState: MTLRenderPipelineState,
@@ -38,7 +41,8 @@ extension RayMarchPipeline {
         waveformBuffer: MTLBuffer,
         stemFeatures: StemFeatures,
         noiseTextures: TextureManager?,
-        presetFragmentBuffer3: MTLBuffer? = nil
+        presetFragmentBuffer3: MTLBuffer? = nil,
+        presetFragmentBuffer4: MTLBuffer? = nil
     ) {
         guard let g0 = gbuffer0, let g1 = gbuffer1, let g2 = gbuffer2 else {
             passLogger.error("runGBufferPass: G-buffer textures nil — skipping")
@@ -79,6 +83,11 @@ extension RayMarchPipeline {
         // `[[buffer(8)]]` parameter is defined.
         let slot8Buffer = presetFragmentBuffer3 ?? lumenPlaceholderBuffer
         encoder.setFragmentBuffer(slot8Buffer, offset: 0, index: 8)
+        // Slot 9: §5.8 stage-rig state (V.9 Session 3 / D-125), or the
+        // zero-filled placeholder for non-stage-rig presets. Always non-nil
+        // so the preamble's `[[buffer(9)]]` parameter is defined.
+        let slot9Buffer = presetFragmentBuffer4 ?? stageRigPlaceholderBuffer
+        encoder.setFragmentBuffer(slot9Buffer, offset: 0, index: 9)
         noiseTextures?.bindTextures(to: encoder)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         encoder.endEncoding()
@@ -96,12 +105,21 @@ extension RayMarchPipeline {
     /// `presetFragmentBuffer3` (when non-nil) is bound at fragment slot 8 for presets that
     /// declare per-frame CPU-driven state needed in the lighting fragment (D-LM-buffer-slot-8).
     /// G-buffer pass intentionally does NOT bind slot 8 — only lighting consumes it today.
+    ///
+    /// Slot 9 (`presetFragmentBuffer4`) is bound on the lighting pass for the §5.8
+    /// stage-rig dispatch (V.9 Session 3 / D-125): `raymarch_lighting_fragment`
+    /// declares `[[buffer(9)]] constant StageRigState&` and the `matID == 2`
+    /// branch loops `for (uint i = 0; i < stageRig.activeLightCount; i++)` to
+    /// accumulate Cook-Torrance contributions per active beam. Non-stage-rig
+    /// presets pass `nil` and the zero-filled `stageRigPlaceholderBuffer` is
+    /// bound (`activeLightCount == 0` ⇒ matID == 2 loop body never executes).
     func runLightingPass(
         commandBuffer: MTLCommandBuffer,
         features: inout FeatureVector,
         noiseTextures: TextureManager?,
         iblManager: IBLManager? = nil,
-        presetFragmentBuffer3: MTLBuffer? = nil
+        presetFragmentBuffer3: MTLBuffer? = nil,
+        presetFragmentBuffer4: MTLBuffer? = nil
     ) {
         guard let g0 = gbuffer0, let g1 = gbuffer1, let g2 = gbuffer2,
               let lit = litTexture else { return }
@@ -124,6 +142,10 @@ extension RayMarchPipeline {
         // a future LM increment without adding pass-specific binding logic).
         let slot8Buffer = presetFragmentBuffer3 ?? lumenPlaceholderBuffer
         encoder.setFragmentBuffer(slot8Buffer, offset: 0, index: 8)
+        // Slot 9: §5.8 stage-rig state (V.9 Session 3 / D-125). Always non-nil
+        // because `raymarch_lighting_fragment` declares `[[buffer(9)]]`.
+        let slot9Buffer = presetFragmentBuffer4 ?? stageRigPlaceholderBuffer
+        encoder.setFragmentBuffer(slot9Buffer, offset: 0, index: 9)
         encoder.setFragmentTexture(g0, index: 0)
         encoder.setFragmentTexture(g1, index: 1)
         encoder.setFragmentTexture(g2, index: 2)

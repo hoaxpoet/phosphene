@@ -164,6 +164,18 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     var directPresetFragmentBuffer3: MTLBuffer?
     let directPresetFragmentBuffer3Lock = NSLock()
 
+    // MARK: - Direct Preset Fragment Buffer 4 (buffer(9))
+
+    /// Quaternary per-preset fragment buffer at index 9. Reserved for the
+    /// `SHADER_CRAFT.md §5.8` stage-rig recipe (V.9 Session 3 / D-125). Bound at
+    /// fragment slot 9 of BOTH the ray-march G-buffer pass AND the ray-march
+    /// lighting pass — non-stage-rig presets receive the zero-filled
+    /// `RayMarchPipeline.stageRigPlaceholderBuffer` so the slot 9 declaration
+    /// is always satisfied. First consumer: Ferrofluid Ocean V.9 (carrier
+    /// struct: `StageRigState` in `Shared/StageRigState.swift`). (D-125)
+    var directPresetFragmentBuffer4: MTLBuffer?
+    let directPresetFragmentBuffer4Lock = NSLock()
+
     // MARK: - Dynamic Text Overlay (texture 12)
 
     /// Per-frame CPU text rasterization for text-overlay presets (e.g. SpectralCartograph).
