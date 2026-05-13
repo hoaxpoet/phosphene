@@ -1,5 +1,12 @@
 // StageRigState — Shared Swift mirror of the MSL `StageRigState` struct.
 //
+// The 6-element `lights` tuple is intentional — Swift arrays are reference-
+// typed and would put a heap allocation in the GPU-buffer mapped path. Same
+// disposition as `LumenPatternState` (Lumen Phase LM.2). Padding fields are
+// renamed `pad0` / `pad1` (vs. MSL's `_pad0` / `_pad1`) because Swift's
+// identifier_name lint forbids leading underscores; the rename is name-only
+// and does not affect ABI (byte offsets identical).
+//
 // Byte-identical to the matching MSL struct declared in:
 //   - `PhospheneEngine/Sources/Renderer/Shaders/Common.metal` (Renderer library)
 //   - `PhospheneEngine/Sources/Presets/PresetLoader+Preamble.swift`
@@ -64,6 +71,21 @@ public struct StageRigLight: Sendable, Equatable {
     public static let zero = StageRigLight()
 }
 
+// MARK: - StageRigLightTuple
+
+// Type alias for the 6-light tuple. Wraps the large-tuple lint suppression
+// once at the type level rather than at every property / parameter site —
+// the GPU contract requires inline storage (6 × 32 B), and Swift arrays
+// would put a heap allocation in the GPU-buffer mapped path. Plain `//`
+// comments here (not doc comments) avoid the "orphaned doc comment"
+// false-positive that triggers when a lint directive intervenes between
+// a doc comment and its declaration.
+// swiftlint:disable:next large_tuple
+public typealias StageRigLightTuple = (
+    StageRigLight, StageRigLight, StageRigLight,
+    StageRigLight, StageRigLight, StageRigLight
+)
+
 // MARK: - StageRigState (208 bytes)
 
 /// Per-frame snapshot of the §5.8 stage-rig.
@@ -104,28 +126,22 @@ public struct StageRigState: Sendable {
     /// Number of active lights in `lights`. Clamped `[0, 6]`.
     public var activeLightCount: UInt32
     /// Padding to satisfy 16-byte alignment before `lights[0]`.
-    public var _pad0: UInt32
+    public var pad0: UInt32
     /// Padding to satisfy 16-byte alignment before `lights[0]`.
-    public var _pad1: SIMD2<Float>
+    public var pad1: SIMD2<Float>
     /// Up to 6 animated stage-rig lights. Entries past `activeLightCount`
     /// must be ignored by the shader. Stored as a fixed-size tuple rather
     /// than a Swift array so the layout is inline (no heap indirection),
     /// matching the MSL `lights[6]` declaration byte-for-byte.
-    public var lights: (
-        StageRigLight, StageRigLight, StageRigLight,
-        StageRigLight, StageRigLight, StageRigLight
-    )
+    public var lights: StageRigLightTuple
 
     public init(
         activeLightCount: UInt32 = 0,
-        lights: (
-            StageRigLight, StageRigLight, StageRigLight,
-            StageRigLight, StageRigLight, StageRigLight
-        ) = (.zero, .zero, .zero, .zero, .zero, .zero)
+        lights: StageRigLightTuple = (.zero, .zero, .zero, .zero, .zero, .zero)
     ) {
         self.activeLightCount = min(activeLightCount, 6)
-        self._pad0 = 0
-        self._pad1 = .zero
+        self.pad0 = 0
+        self.pad1 = .zero
         self.lights = lights
     }
 
@@ -165,4 +181,3 @@ public struct StageRigState: Sendable {
         [lights.0, lights.1, lights.2, lights.3, lights.4, lights.5]
     }
 }
-
