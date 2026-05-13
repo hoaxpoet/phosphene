@@ -5,6 +5,7 @@
 
 import Foundation
 import Accelerate
+import Shared
 import os.log
 
 private let logger = Logger(subsystem: "com.phosphene.dsp", category: "BandEnergyProcessor")
@@ -87,11 +88,23 @@ public final class BandEnergyProcessor: @unchecked Sendable {
         BandRange(name: "high", low: 8000, high: 24000),
     ]
 
-    /// Instant smoothing rates per 3-band (FPS-independent base rates at 30 fps).
-    private static let instantRates: [Float] = [0.65, 0.75, 0.75]
+    /// Instant smoothing rates per 3-band (FPS-independent, 30 fps reference).
+    private static let instantSmoothers: [Smoother] = [
+        Smoother(rate30: 0.65),
+        Smoother(rate30: 0.75),
+        Smoother(rate30: 0.75)
+    ]
 
-    /// Attenuated smoothing rate (heavy smoothing).
-    private static let attenuatedRate: Float = 0.95
+    /// Attenuated smoothing rate (heavy smoothing, FPS-independent).
+    private static let attenuatedSmoother = Smoother(rate30: 0.95)
+
+    /// 6-band rates share their parent 3-band's smoother.
+    /// Order: sub_bass, low_bass, low_mid, mid_high, high_mid, high.
+    private static let sixBandSmoothers: [Smoother] = [
+        instantSmoothers[0], instantSmoothers[0],   // sub_bass, low_bass → bass rate
+        instantSmoothers[1], instantSmoothers[1],   // low_mid, mid_high → mid rate
+        instantSmoothers[2], instantSmoothers[2],   // high_mid, high → treble rate
+    ]
 
     // MARK: - Configuration
 
@@ -203,26 +216,16 @@ public final class BandEnergyProcessor: @unchecked Sendable {
         let agc3 = raw3.map { $0 * agcScale }
         let agc6 = raw6.map { $0 * agcScale }
 
-        // FPS-independent smoothing.
-        let fpsRatio = 30.0 / fps
-
+        // FPS-independent smoothing via Shared/Smoother.
+        let attRate = Self.attenuatedSmoother.factor(at: fps)
         for i in 0..<3 {
-            let instantRate = powf(Self.instantRates[i], fpsRatio)
+            let instantRate = Self.instantSmoothers[i].factor(at: fps)
             smoothedInstant[i] = instantRate * smoothedInstant[i] + (1 - instantRate) * agc3[i]
-
-            let attRate = powf(Self.attenuatedRate, fpsRatio)
             smoothedAttenuated[i] = attRate * smoothedAttenuated[i] + (1 - attRate) * agc3[i]
         }
 
-        // 6-band uses parent 3-band instant rates mapped to sub-bands.
-        let sixBandRates: [Float] = [
-            Self.instantRates[0], Self.instantRates[0],  // sub_bass, low_bass → bass rate
-            Self.instantRates[1], Self.instantRates[1],  // low_mid, mid_high → mid rate
-            Self.instantRates[2], Self.instantRates[2],  // high_mid, high → treble rate
-        ]
-
         for i in 0..<6 {
-            let rate = powf(sixBandRates[i], fpsRatio)
+            let rate = Self.sixBandSmoothers[i].factor(at: fps)
             smoothed6Band[i] = rate * smoothed6Band[i] + (1 - rate) * agc6[i]
         }
 

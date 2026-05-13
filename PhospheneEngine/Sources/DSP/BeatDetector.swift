@@ -4,6 +4,7 @@
 
 import Foundation
 import Accelerate
+import Shared
 import os.log
 
 private let logger = Logger(subsystem: "com.phosphene.dsp", category: "BeatDetector")
@@ -63,8 +64,8 @@ public final class BeatDetector: @unchecked Sendable {
     /// Group cooldown durations in seconds.
     private static let groupCooldowns: [Float] = [0.400, 0.200, 0.150]
 
-    /// Pulse decay rate: pow(0.6813, 30/fps) per frame.
-    private static let decayBase: Float = 0.6813
+    /// Pulse decay (FPS-independent): factor 0.6813 at 30 fps.
+    private static let pulseSmoother = Smoother(rate30: 0.6813)
 
     /// Flux buffer size (50 frames ≈ 0.8s at 60fps).
     private static let fluxBufferSize = 50
@@ -333,7 +334,7 @@ public final class BeatDetector: @unchecked Sendable {
     private func updateGroupPulses(
         onsets: [Bool], fps: Float, deltaTime: Float
     ) -> Float {
-        let decay = powf(Self.decayBase, 30.0 / fps)
+        let decay = Self.pulseSmoother.factor(at: fps)
         for i in 0..<3 {
             groupPulses[i] *= decay
             groupCooldownTimers[i] = max(0, groupCooldownTimers[i] - deltaTime)
