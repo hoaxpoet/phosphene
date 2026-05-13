@@ -7,8 +7,8 @@
 // preserving manually locked track picks. manuallyLockedTracks persists through
 // regeneration cycles; it is in-memory only (not persisted across sessions).
 //
-// Part C: Row-tap preview loop deferred to U.5b — see PresetPreviewController.swift.
-// TODO(U.5.C): Wire PresetPreviewController into previewRow(_:) when U.5b lands.
+// Part C: Row-tap preview loop deferred to U.5b — see DECISIONS.md D-048.
+// TODO(U.5.C): Wire row-tap into the engine preview render path when U.5b lands.
 
 import Combine
 import Foundation
@@ -159,9 +159,9 @@ final class PlanPreviewViewModel: ObservableObject {
         onRegenerate(manuallyLockedTracks, lockedPresets)
     }
 
-    /// Preview the preset for a row (stub — see PresetPreviewController.swift).
+    /// Preview the preset for a row (stub — deferred to Increment U.5b).
     ///
-    /// TODO(U.5.C): Replace stub with PresetPreviewController.startPreview(...).
+    /// TODO(U.5.C): Replace stub with the engine preview render path.
     func previewRow(_ row: PlanPreviewRow) {
         logger.info("PlanPreview: row-tap preview not yet implemented (U.5b)")
     }
