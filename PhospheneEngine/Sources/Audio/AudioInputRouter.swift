@@ -238,6 +238,14 @@ public final class AudioInputRouter: @unchecked Sendable {
                 guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: chunkSize) else { return }
                 let frameDuration = Double(chunkSize) / Double(sampleRate)
 
+                // Pre-allocate the interleaved buffer once and reuse it across
+                // chunks. `chunkSize` and `channelCount` are loop invariants, so
+                // we size to the maximum-possible frame; short final reads simply
+                // leave a stale tail past `totalSamples` that the callback never
+                // sees.
+                let maxSamples = Int(chunkSize) * Int(channelCount)
+                var interleaved = [Float](repeating: 0, count: maxSamples)
+
                 while !Task.isCancelled {
                     try file.read(into: buffer, frameCount: chunkSize)
                     if buffer.frameLength == 0 {
@@ -249,7 +257,6 @@ public final class AudioInputRouter: @unchecked Sendable {
 
                     let frames = Int(buffer.frameLength)
                     let totalSamples = frames * Int(channelCount)
-                    var interleaved = [Float](repeating: 0, count: totalSamples)
 
                     if channelCount == 2 {
                         let left = floatData[0]
@@ -259,8 +266,10 @@ public final class AudioInputRouter: @unchecked Sendable {
                             interleaved[i * 2 + 1] = right[i]
                         }
                     } else {
-                        let src = UnsafeBufferPointer(start: floatData[0], count: totalSamples)
-                        interleaved = Array(src)
+                        let src = floatData[0]
+                        for i in 0..<totalSamples {
+                            interleaved[i] = src[i]
+                        }
                     }
 
                     interleaved.withUnsafeBufferPointer { ptr in
