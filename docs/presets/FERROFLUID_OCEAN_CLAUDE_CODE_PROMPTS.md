@@ -272,11 +272,224 @@ Visual harness output for the closeout: 4-fixture PNGs at `$TMPDIR/PhospheneFerr
 
 ---
 
-## V.9 Session 2 — Material recipe + atmosphere (placeholder)
+## V.9 Session 2 — Ferrofluid Ocean: Material recipe (§4.6 base + thin-film interference) + atmosphere
 
-Implements: `mat_ferrofluid` (§4.6 base) + thin-film interference layer via `thinfilm_rgb` from `Utilities/PBR/Thin.metal` (tuned for cool tones — blue-to-cyan iridescent shift). Atmosphere fog tinted by D-022 mood valence per `iblAmbient *= scene.lightColor.rgb`. Reference image: `07_atmosphere_dark_purple_fog.jpg`.
+### Scope (strict)
 
-Full prompt authored at Session 2 start, referencing this prompt structure.
+This session implements ONLY the material and atmosphere layers of the V.9 redirect:
+
+1. **A new lighting matID** (`matID == 3` — "metallic thin-film Cook-Torrance") in `PhospheneEngine/Sources/Renderer/Shaders/RayMarch.metal`'s `raymarch_lighting_fragment`. Wraps the existing single-light Cook-Torrance path but replaces the standard F0 (`mix(0.04, albedo, metallic)`) with `thinfilm_rgb(VdotH, thickness_nm, ior_thin, ior_base)` from [`PhospheneEngine/Sources/Presets/Shaders/Utilities/PBR/Thin.metal`](../../PhospheneEngine/Sources/Presets/Shaders/Utilities/PBR/Thin.metal). Thin-film thickness encoded as a fixed constant in the branch (Session 4 may modulate it from audio later). matID == 2 is reserved for Session 3 (stage-rig per D-125); matID == 3 is the next free slot.
+
+2. **`FerrofluidOcean.metal` material update**: `sceneMaterial` emits `outMatID = 3`. Albedo / roughness / metallic stay at §4.6 baseline (`albedo = (0.02, 0.03, 0.05)`, `roughness = 0.08`, `metallic = 1.0`); the thin-film color modulation happens in the lighting branch with the V / N data sceneMaterial doesn't have access to.
+
+3. **Atmosphere fog**: set `scene_far_plane` in `FerrofluidOcean.json` so fog reads across the ocean-portion expanse (the current default of 30 m is too tight for the new camera framing); confirm the existing per-frame `lightColor` mood-tint path ([RenderPipeline+RayMarch.swift:185–193](../../PhospheneEngine/Sources/Renderer/RenderPipeline+RayMarch.swift:185)) feeds through `scene.lightColor.rgb` multiplication on both `iblAmbient` and `fogColor` in RayMarch.metal — both lines already exist (lines 406 and 417), so verification is "render two fixtures at valence -1 and +1 and confirm fog tint visibly differs."
+
+4. **Visual harness update**: extend `FerrofluidOceanVisualTests.swift` with a third gate — `testFerrofluidOceanMoodTintAtmosphereShifts` — that renders the silence fixture twice (valence -0.9 → cool fog; valence +0.9 → warm fog) and asserts the average channel difference is large enough to read as a palette shift.
+
+5. **Run the full engine suite**; nothing in Sessions 1's skip-guard list should change behavior (Session 5 still owns those rewrites).
+
+### DO NOT author in this session
+
+- §5.8 stage-rig lighting (Session 3 — D-125 slot-9 buffer + matID == 2). DO NOT preemptively reshape matID == 3 to "look like what Session 3 will need." Session 3 will reuse the thin-film F0 helper inside its own matID == 2 branch; the two branches share code at the helper level, not at the matID level.
+- Domain-warped meso / micro detail / droplets / triplanar / detail normals (Session 4).
+- Audio-modulated thin-film thickness (Session 4 audio routing finalization).
+- Anisotropic specular along spike axes (Session 4 — needs the per-spike tangent which Session 1 doesn't compute).
+- Cert review / perf capture / golden hash regeneration / Matt M7 sign-off (Session 5).
+- Rewriting the three Session-1-skipped tests (`testVisualBeatCorrelation`, `testLiveVisualResponse`, `test_beatResponse_bounded` — all Session 5).
+- Modifying `rm_skyColor` to produce a hard-baked purple. The "distant fog cools to dark purple" target in `07_atmosphere_dark_purple_fog.jpg` is achieved through D-022 mood-tinted lightColor multiplied against the existing sky gradient. If the visual reads as not-quite-purple-enough at the four standard fixtures, **defer the sky tint tuning to Session 5 cert review** rather than introducing a per-preset sky override here.
+
+Defer all of the above with `// TODO(V.9 Session N):` markers in the code where you'd otherwise be tempted to start them.
+
+### Prerequisites — read in order
+
+1. [`docs/presets/FERROFLUID_OCEAN_CLAUDE_CODE_PROMPTS.md`](FERROFLUID_OCEAN_CLAUDE_CODE_PROMPTS.md) — the "Session 1 landed (2026-05-13)" block above this prompt, so you know exactly what Session 1 shipped.
+2. [`PhospheneEngine/Sources/Presets/Shaders/FerrofluidOcean.metal`](../../PhospheneEngine/Sources/Presets/Shaders/FerrofluidOcean.metal) — current shader (Session 1 macro layer; `sceneMaterial` is the placeholder you'll replace).
+3. [`docs/SHADER_CRAFT.md §4.6`](../SHADER_CRAFT.md) — Ferrofluid (Rosensweig spikes) recipe + the thin-film promotion paragraph immediately below the §4.6 heading.
+4. [`docs/SHADER_CRAFT.md §10.3`](../SHADER_CRAFT.md) — V.9 redirect spec, specifically §10.3.4 (specular character) and §10.3.5 (atmosphere).
+5. [`PhospheneEngine/Sources/Presets/Shaders/Utilities/PBR/Thin.metal`](../../PhospheneEngine/Sources/Presets/Shaders/Utilities/PBR/Thin.metal) — both `thinfilm_rgb` and `thinfilm_hue_rotate` are available. Use `thinfilm_rgb` per spec — moderate cost is acceptable for the ferrofluid hero specular.
+6. [`PhospheneEngine/Sources/Renderer/Shaders/RayMarch.metal`](../../PhospheneEngine/Sources/Renderer/Shaders/RayMarch.metal) — read `raymarch_lighting_fragment` end-to-end (the `matID == 1` Lumen branch at line 332 is your structural reference) and `rm_skyColor` (line 149).
+7. [`PhospheneEngine/Sources/Renderer/RenderPipeline+RayMarch.swift`](../../PhospheneEngine/Sources/Renderer/RenderPipeline+RayMarch.swift) — `applyAudioModulation` at line 170, specifically the valence → lightColor tint at lines 185–193 and the arousal → fogFar scaling at lines 194–198.
+8. [`docs/DECISIONS.md D-022`](../DECISIONS.md) — IBL ambient tinted by `scene.lightColor.rgb` so mood valence shifts visible scene-wide.
+9. [`docs/DECISIONS.md D-124`](../DECISIONS.md) — V.9 redirect framing.
+10. CLAUDE.md Failed Approaches §24 (light-only mood modulation insufficient on indoor scenes — fixed in D-022; the matID == 3 branch must honor this by tinting IBL ambient via the existing `scene.lightColor.rgb` multiply, not by tinting only the direct light), §44 (Metal type-name shadowing — watch for any new helper functions).
+
+### Material implementation (load-bearing)
+
+**Where the work lands.** Two files:
+
+- `PhospheneEngine/Sources/Renderer/Shaders/RayMarch.metal` — add the new matID branch.
+- `PhospheneEngine/Sources/Presets/Shaders/FerrofluidOcean.metal` — switch `sceneMaterial`'s `outMatID` from 0 to 3.
+
+**The matID == 3 branch** sits between the `matID == 1` Lumen block (RayMarch.metal:332) and the existing default Cook-Torrance lighting (RayMarch.metal:360 onward). Recipe:
+
+
+```metal
+// ── matID == 3 — metallic thin-film Cook-Torrance (V.9 Session 2) ──
+// Ferrofluid Ocean's spike material: pitch-black metallic substrate
+// with a thin-film interference layer producing a subtle blue-to-cyan
+// iridescent shift in highlights. F0 comes from thinfilm_rgb at the
+// half-vector angle; everything else mirrors the matID == 0 single-
+// light Cook-Torrance path so D-022 mood-tinted IBL ambient and
+// arousal-driven fog continue to apply unchanged.
+//
+// Thickness 220 nm sits inside the "blue-to-cyan" interference band
+// (the second-order interference minimum for the green wavelength).
+// ior_thin 1.45 = silicone-oil-like (real ferrofluids are oil-based
+// suspensions). ior_base 1.0 = treat the metallic substrate as opaque;
+// the bottom-interface Fresnel is degenerate but thinfilm_rgb's
+// approximation reads correctly at this setting.
+if (matID == 3) {
+    constexpr float kFerrofluidFilmThicknessNm = 220.0;
+    constexpr float kFerrofluidFilmIORThin     = 1.45;
+    constexpr float kFerrofluidFilmIORBase     = 1.0;
+
+    float3 V         = normalize(scene.cameraOriginAndFov.xyz - worldPos);
+    float3 lightPos  = scene.lightPositionAndIntensity.xyz;
+    float  intensity = scene.lightPositionAndIntensity.w;
+    float3 lColor    = scene.lightColor.xyz;
+
+    float3 L         = lightPos - worldPos;
+    float  lightDist = length(L);
+    L                = normalize(L);
+    float3 H         = normalize(L + V);
+    float  VdotH     = max(dot(V, H), 0.0);
+    float  attenuation = 1.0 / (1.0 + lightDist * lightDist);
+
+    // Thin-film F0 replaces the standard mix(0.04, albedo, metallic).
+    // Metallic = 1 → standard path would set F0 = albedo, which is
+    // ~(0.02, 0.03, 0.05). Thin-film returns a wavelength-dependent
+    // angular-shifting reflectance — the iridescent "hint of blue."
+    float3 F0 = thinfilm_rgb(VdotH,
+                             kFerrofluidFilmThicknessNm,
+                             kFerrofluidFilmIORThin,
+                             kFerrofluidFilmIORBase);
+
+    // Cook-Torrance with thin-film F0. (Existing rm_brdf hardcodes
+    // F0 = mix(0.04, albedo, metallic); we inline a copy here that
+    // takes F0 as a parameter. If you find yourself duplicating more
+    // than the F0 path, factor a helper into RayMarch.metal first.)
+    float3 litColor = rm_brdf_with_F0(N, V, L, albedo, F0, roughness)
+                    * lColor * intensity * attenuation;
+
+    float shadow = rm_screenSpaceShadow(uv, worldPos, L, lightDist,
+                                        gbuf0, samp, scene);
+    litColor *= shadow;
+
+    // IBL ambient stays on the existing path so D-022 mood tinting
+    // still propagates scene-wide. Use the standard F0 for IBL
+    // (the iridescent shift is most visible on direct specular;
+    // tinting IBL by thin-film would saturate the whole surface).
+    float  NdotV       = max(dot(N, V), 0.0);
+    float3 R           = reflect(-V, N);
+    float3 F_ibl       = rm_fresnel(NdotV, mix(float3(0.04), albedo, metallic));
+    float3 kd          = (1.0 - F_ibl) * (1.0 - metallic);
+    float3 irradiance  = ibl_sample_irradiance(N, iblIrradiance, iblSamp);
+    float3 prefColor   = ibl_sample_prefiltered(R, roughness, iblPrefiltered, iblSamp, 4);
+    float2 brdfFactors = ibl_sample_brdf_lut(NdotV, roughness, iblBRDFLUT, iblSamp);
+    float3 iblDiffuse  = kd * albedo * irradiance;
+    float3 iblSpecular = prefColor * (F_ibl * brdfFactors.x + brdfFactors.y);
+    float3 iblAmbient  = (iblDiffuse + iblSpecular) * ao;
+    float3 ambient     = max(iblAmbient, albedo * 0.04 * ao);
+    ambient           *= scene.lightColor.rgb;  // D-022
+    litColor          += ambient;
+
+    // Fog (same path as matID == 0).
+    float fogNear   = scene.sceneParamsB.x;
+    float fogFar    = scene.sceneParamsB.y;
+    float t         = depthNorm * farPlane;
+    float fogFactor = clamp((t - fogNear) / max(fogFar - fogNear, 0.001), 0.0, 1.0);
+    float3 fogColor = rm_skyColor(rayDir) * scene.lightColor.rgb;
+    litColor        = mix(litColor, fogColor, fogFactor);
+
+    return float4(litColor, 1.0);
+}
+```
+
+
+**`rm_brdf_with_F0`** is a new helper — add it adjacent to `rm_brdf` in RayMarch.metal. The body is rm_brdf's body with the F0 line removed (F0 becomes a parameter). Keep rm_brdf as-is so existing presets (matID == 0) don't change.
+
+**Hidden coupling to confirm.** The thin-film thickness constant is fixed at 220 nm. The visual should read as a subtle iridescent shift in the spike-tip highlights — not a rainbow oil-slick. If the shift is too pronounced (rainbow), reduce thickness toward 150 nm; if invisible, push to 280 nm. Tune during the session with the harness PNGs; final tuning is at Session 5.
+
+### sceneMaterial update (in FerrofluidOcean.metal)
+
+Two changes:
+
+
+```metal
+// TODO(V.9 Session 3): emit outMatID = 2 to dispatch through the §5.8
+// stage-rig lighting path per D-125 (slot-9 fragment buffer).
+albedo    = float3(0.02, 0.03, 0.05);  // §4.6 ferrofluid base
+roughness = 0.08;                       // near-mirror
+metallic  = 1.0;
+outMatID  = 3;                          // Session 2: thin-film Cook-Torrance
+```
+
+
+Delete the `TODO(V.9 Session 2)` line from Session 1. Update the comment that explained Session 1's placeholder.
+
+### JSON sidecar update (V.9 Session 2)
+
+Add `scene_far_plane` so fog reads across the new ocean-portion camera framing. Current default (30 m) is fine for indoor scenes (Glass Brutalist) but the V.9 camera at `(0, 4.0, -2.5)` looking at `(0, 0, 2.0)` covers a ~20 m strip — 30 m far plane works, but the visual will benefit from explicitly setting fogFar to give "distant fog cools to dark purple" room to read. Recommend `scene_far_plane: 40.0` and `scene_fog: 0.04` (a wider fog band starts the tint earlier without overwhelming the foreground spike detail).
+
+Diff against the Session 1 sidecar:
+
+```json
+  "scene_camera": { "position": [0, 4.0, -2.5], "target": [0, 0, 2.0], "fov": 50 },
+  "scene_lights": [
+    { "position": [0, 6.0, 2.0], "color": [0.9, 0.95, 1.0], "intensity": 3.0 }
+  ],
+- "scene_fog": 0.02,
++ "scene_fog": 0.04,
++ "scene_far_plane": 40.0,
+  "scene_ambient": 0.06,
+```
+
+The `scene_lights` entry stays — Session 3 replaces it when the §5.8 stage-rig lands.
+
+### Atmosphere verification (gate 3)
+
+The existing per-frame `applyAudioModulation` path tints `scene.lightColor` from valence:
+- `warm = max(0, valence)`, `cool = max(0, -valence)`
+- `tint = (1.0 + warm*0.40 − cool*0.25, 1.0 + warm*0.15 − cool*0.10, 1.0 + cool*0.40 − warm*0.30)`
+- `lightColor = base.lightColor * tint`
+
+At valence -1 (deep negative), tint is `(0.75, 0.90, 1.40)` → cool-blue cast; at +1, `(1.40, 1.15, 0.70)` → warm-amber cast. With `base.lightColor = (0.9, 0.95, 1.0)` from the JSON, the effective lightColor at valence -1 is `(0.675, 0.855, 1.40)` — markedly cool/purple. Multiplied through fog and IBL ambient, the rendered scene should visibly shift between the two extremes.
+
+**Gate 3 test** renders the silence fixture (where Gerstner motion is gentle and content is dominated by IBL/fog) twice — once with `features.valence = -0.9`, once with `features.valence = +0.9` — and asserts the average channel difference exceeds the noise floor. Threshold: 1.0 (out of 255) average channel diff is plenty; the cool→warm shift is large enough to register at ~3-5.
+
+If the gate fails (i.e. tint doesn't propagate), the likely cause is that `applyAudioModulation` only runs in the production render loop, not in the test harness. The test harness will need to call `RenderPipeline.applyAudioModulation` manually OR construct `SceneUniforms` with the tinted `lightColor` directly. Look at how `PresetVisualReviewTests` handles this and mirror.
+
+### Failed-approach guards (must satisfy)
+
+- **§24 light-only mood tint insufficient.** The matID == 3 branch tints both direct light (via `lColor`) AND IBL ambient (via `ambient *= scene.lightColor.rgb`). Don't accidentally skip the IBL multiply when copy-pasting from the matID == 0 path.
+- **§44 Metal type-name shadowing.** No `half`, `ushort`, `uchar` as variable names in any new helper. Run a grep before commit.
+- **§42 fbm8 threshold calibration.** No new noise in this session, but if you add any modulated thickness noise, threshold values must be centred near 0 (not 0.5).
+- **D-026 deviation primitives.** No new audio routing in Session 2. If you find yourself touching thickness or any other material parameter with an audio source, defer to Session 4 with a TODO.
+
+### Acceptance gates for Session 2
+
+1. **Compiles.** `PresetLoaderCompileFailureTest` passes; preset count remains 15. Session 1's `testFerrofluidOceanShaderCompiles` still passes (now also exercises matID == 3 — no schema change so should be transparent).
+2. **Four-fixture render still completes.** Session 1's `testFerrofluidOceanRendersFourFixtures` produces non-black non-clipped output at all four fixtures. The thin-film shift should be subtly visible at the spike-tip highlights in the beat-heavy fixture (manual eyeball; not a programmatic gate).
+3. **Independence still holds.** Session 1's `testFerrofluidOceanIndependenceStatesReachable` still differentiates calm-with-spikes vs agitated-without-spikes (avg diff > 0.5).
+4. **NEW: Mood-tint atmosphere shift.** `testFerrofluidOceanMoodTintAtmosphereShifts` — silence fixture at valence -0.9 vs +0.9 produces an avg channel diff > 1.0 (cool fog vs warm fog).
+5. **Engine suite green.** Full `swift test --package-path PhospheneEngine` passes except for the same two pre-existing flakes called out in Session 1 closeout (`SoakTestHarness.cancel`, `MetadataPreFetcher.fetch_networkTimeout`). The three Session-1 skip-guards stay in place — Session 5 still owns those rewrites.
+6. **No anti-pattern grep regressions.** Grep new code for `f.bass [<>]`, `stems.bass_energy [<>]` — none. Grep for the literal `44100` — none (Session 2 shouldn't touch sample-rate paths but the grep is cheap).
+7. **`thinfilm_rgb` is the call.** Don't substitute `thinfilm_hue_rotate` "because it's cheaper" — the spec calls for the wavelength-sampled approximation. Hue-rotate is reserved for inner-loop use; the matID == 3 branch is once per hit pixel, not per-step, so the moderate cost is fine.
+8. **SwiftLint clean** on touched files.
+
+### Out of scope for this session
+
+Restated: this session ends after Session 2's eight gates pass. Do NOT extend to §5.8 stage-rig (Session 3), audio-modulated thickness (Session 4), domain warp (Session 4), or any cert / perf work (Session 5) — even if the visual result feels "almost done." If during the session you find that a Session 2 gate cannot be reached without authoring downstream layers, **STOP and report** (don't silently expand scope).
+
+### Closeout
+
+Per CLAUDE.md Increment Completion Protocol:
+
+1. Closeout report covering: files changed (new vs edited), tests run (pass / fail counts), visual harness output paths (4-fixture PNGs from gate 2 + new 2-fixture mood-tint PNGs from gate 4), doc updates, capability registry, engineering plan, known risks, git status.
+2. Update [`docs/ENGINEERING_PLAN.md`](../ENGINEERING_PLAN.md) Increment V.9 with Session 2 ✅ + carry-forward notes for Sessions 3–5.
+3. Update this prompt doc (`docs/presets/FERROFLUID_OCEAN_CLAUDE_CODE_PROMPTS.md`) — flip Session 2 row to ✅ in the ledger; add a brief landed-work summary paragraph below this prompt.
+4. Commit on local `main` with separate commits for (a) engine change to `RayMarch.metal`, (b) preset change to `FerrofluidOcean.{metal,json}`, (c) test additions, (d) docs. Message prefix `[V.9-session-2]`.
+5. Do **not** push without Matt's explicit go-ahead.
 
 ---
 
