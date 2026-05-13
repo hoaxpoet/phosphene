@@ -337,6 +337,8 @@ Order matters because the visual checkpoints after MV-1 and MV-2 distinguish roo
 
 ## D-029: Preset motion sources are alternative paradigms, not composable layers
 
+> **⚠ RE-EVALUATE (audit 2026-05-13).** Recent staged-composition work (Arachne V.7.7B — WORLD + COMPOSITE stages) and the open multi-preset-per-song planner direction may strain the "paradigms are alternatives, not composable layers" framing. Staged composition explicitly composes ray-march WORLD + COMPOSITE fragment overlay; multi-preset-per-song planning is the bigger unfinished product axis (per memory note `feedback_multi_preset_per_song.md`). Schedule a re-evaluation session when the multi-preset planner spec lands.
+
 **Status:** Accepted (2026-04-17)
 
 Each preset picks exactly one motion-source paradigm from the following catalogue. The engine supports all of them via the `passes` array, but mixing them within a single preset is either incoherent or actively broken.
@@ -578,6 +580,8 @@ Arachne is the first preset in a planned family of organic / nature-derived visu
 ---
 
 ## D-039 — dHash visual regression gate for preset shaders (Increment 5.3)
+
+> **⚠ RE-EVALUATE (audit 2026-05-13).** The dHash regression gate is weakening as a signal — the regression harness leaves the per-preset slot-8 buffer zero-bound, so presets with per-frame world state (Lumen Mosaic, Arachne) frequently show "hash unchanged" while real visual changes occur (verified via `PresetVisualReviewTests`). Either fix the harness to bind realistic per-preset state in the regression render path, or document the gate's limited domain explicitly so authors don't over-trust it. The 8-bit Hamming tolerance was calibrated against the pre-slot-8 architecture.
 
 **Status:** Accepted (2026-04-21)
 
@@ -929,7 +933,7 @@ Increment U.6b wires the seven `PlaybackActionRouter` keyboard actions stubbed i
 
 `context.familyBoosts[family] ?? 0` is added to `raw * familyMult * fatigueMult` before clamping, keeping it fully independent of the four-weight structure established in D-032. A multiplicative approach would compound with the fatigue and repeat penalties in non-obvious ways; an additive approach on the final score is transparent ("always +0.3 for this family, regardless of other factors"). Boost is capped at 0.3 and idempotent (pressing `+` twice gives 0.3, not 0.6).
 
-**(b) `undoLastAdaptation()` restores `livePlan` only, NOT the boost/exclusion state.**
+**(b) `undoLastAdaptation()` restores `livePlan` only, NOT the boost/exclusion state.** **⚠ RE-EVALUATE (audit 2026-05-13):** flagged as deliberate-but-surprising — a user who pressed `-` to dislike a family and then `⌘Z` to undo may expect both the swap AND the preference to revert. Current rationale (rationale paragraph below) is sound but worth a UX check the next time live adaptation is exercised on a real session.
 
 `adaptationHistory` stores `PlannedSession` snapshots, which are the plan. Preference state (`familyBoosts`, `temporaryFamilyExclusions`, `sessionExcludedPresets`) is intentionally NOT reverted by undo. Rationale: a user who pressed `-` to dislike a family and then `⌘Z` to undo the preset swap did not express a desire to re-include that family — they may just want to go back to the previous visual. Clearing preference state on undo would be surprising. Users who want to fully reverse a `-` can wait 10 minutes for the exclusion to expire.
 
@@ -1474,6 +1478,8 @@ The V.7.5 implementation was technically faithful to §10.1 items 1–4, 6, 9 as
 
 ## D-074 — Diagnostic preset orchestrator semantics (V.7.6.D)
 
+> **⚠ RE-EVALUATE (audit 2026-05-13).** Categorical exclusion of diagnostic presets from scoring + live adaptation + reactive mode. Currently the only diagnostic preset is Spectral Cartograph, and there is no realistic scenario where it would be auto-selected — so the rule is over-general for the one consumer it has. Worth a revisit when a second diagnostic preset ships, or when the manual-switch path is exercised in a way that surfaces friction.
+
 **Date:** 2026-05-03
 
 **Context:** V.7.6.C (D-073) added the `is_diagnostic` flag with one effect — `maxDuration(forSection:)` returns `.infinity` so `SessionPlanner` never inserts a segment boundary mid-diagnostic. The broader semantic — diagnostics are operational tools, not aesthetic content, so they must never be auto-selected, never receive a mid-track override, and only render via manual switch — was scoped as a V.7.6.D follow-up.
@@ -1956,45 +1962,9 @@ New: `PhospheneEngine/Sources/Renderer/Dashboard/PerfSnapshot.swift`, `Phosphene
 
 No existing files edited (the builder reuses `.progressBar` and `.singleValue` row variants from DASH.2.1 / DASH.3; no new row variant means no renderer change in this increment).
 
-## D-086 — Dashboard composer + single-`D` toggle + per-path composite call sites (Phase DASH.6)
+## D-086 — Dashboard composer + single-`D` toggle + per-path composite call sites (Phase DASH.6) — SUPERSEDED
 
-DASH.3 + DASH.4 + DASH.5 produced three pure builders + a snapshot type. DASH.6 wires them live: a `DashboardComposer` owns layer + builders + composite pipeline state, the existing `D` shortcut drives both the SwiftUI debug overlay and the new Metal cards, and the composite is encoded at the tail of every render path immediately before `commandBuffer.present(drawable)`.
-
-### Decision 1 — `DashboardComposer` class, not free functions on `RenderPipeline`
-
-The composer's lifecycle is cohesive: it owns one `DashboardTextLayer` (the shared MTLBuffer-backed bgra8 canvas), three builder structs, one `MTLRenderPipelineState` (alpha-blended), an `enabled: Bool`, drawable-size state for placement, and the bytewise snapshot-equality cache. Spreading those across free functions on `RenderPipeline` would require multiple parallel `NSLock`s and seven new public-ish entry points; encapsulating in one class makes the `D` toggle a single property change with no fan-out. `RenderPipeline` holds only a weak read via the `setDashboardComposer(_:)` setter; strong ownership lives on `VisualizerEngine`. Pattern mirrors `DynamicTextOverlay` / `RayMarchPipeline`.
-
-### Decision 2 — Decision B (per-path composite call sites) over Decision A (render-loop refactor)
-
-The DASH.6 spec offered two structural choices: (A) centralize commit at the end of `renderFrame` so the dashboard composite always lands on the same command buffer as the preset draw — and (B) add the composite call at the tail of each draw path that currently calls `commandBuffer.present(drawable)` individually. Audit showed `commit()` is already centralized in `draw(in:)`; what is per-path is `present(drawable)`. Centralizing `present` would require moving 10 `commandBuffer.present(drawable)` lines out of 8 draw paths and threading the drawable back to `draw(in:)` (or capturing it once at the top and threading down) — well beyond the spec's ~30-line ceiling for Decision A. Decision B chosen: a single helper `RenderPipeline.compositeDashboard(commandBuffer:view:)` is added (snapshots the composer under lock, calls `composite` if non-nil) and 10 sites × 1 line of insertion immediately before each `present`. Total impact: ~30 lines including the helper, well under the ceiling. Render-loop refactor (Decision A flavour) deferred to a future increment if multiple consumers want a shared `pre-present` hook.
-
-### Decision 3 — Single `D` shortcut drives BOTH the SwiftUI overlay and the dashboard composer
-
-One cognitive model, no per-surface UX. Cards (top-right Metal, "instruments") and `DebugOverlayView` (bottom-leading SwiftUI, "raw diagnostics") are complementary surfaces, not alternatives. The user reaching for `D` wants either both or neither — splitting the toggle would force them to learn which surface answers which question. `PlaybackView`'s existing `onToggleDebug` closure flips `showDebug` (SwiftUI overlay visibility) and now also writes `engine.dashboardEnabled = showDebug` (Metal cards). `DebugOverlayView` is deduplicated of metrics that the cards now show (Tempo, standalone QUALITY, standalone ML); the rest (MOOD V/A, Key, SIGNAL block, MIR diag, SPIDER, G-buffer, REC) remain because the cards do not show them.
-
-### Decision 4 — No `Equatable` on `StemFeatures` or `BeatSyncSnapshot`
-
-The composer's rebuild-skip path needs to check whether the previous frame's snapshots match the current frame's — but `StemFeatures` is a `@frozen` GPU-shared SIMD-aligned struct (broadening conformance is a separate decision per D-085) and `BeatSyncSnapshot` is a Sendable instrumentation value type (doesn't otherwise warrant an Equatable conformance for engine code). Adding Equatable to either would broaden public API beyond what one internal cache needs. The composer instead implements a private generic `bytewiseEqual<T>` using `withUnsafeBytes` + `memcmp`. `PerfSnapshot` already conforms to `Equatable` (D-085) and uses the synthesized `==`. Test (b) regression-locks the rebuild-skip behaviour against equal snapshots.
-
-### Decision 5 — Premultiplied alpha discipline in the composite pipeline
-
-The layer's CGContext is configured with `kCGBitmapByteOrder32Little | premultipliedFirst`, so glyph + chrome pixels arrive in the texture as premultiplied sRGB. The composite pipeline state therefore configures blending as `src = .one`, `dst = .oneMinusSourceAlpha` (rather than `.sourceAlpha` / `.oneMinusSourceAlpha`). Using `.sourceAlpha` would double-multiply the source RGB by its own alpha and produce a visible black halo at card edges where chrome alpha drops. Verified by reading `DashboardTextLayer.makeResources` before finalizing the descriptor.
-
-### Decision 6 — Per-frame snapshot rebuild cost is acceptable (CGContext text drawing on M-series is sub-millisecond)
-
-The DASH.5 prompt allowed builder-level computation per frame because the alternative (caching layouts at preset-switch time and patching individual rows on update) is much more code for a sub-1% perf win. DASH.6 keeps the same model: `update()` rebuilds all three layouts and repaints the entire layer when any snapshot differs from the previous frame. Steady-state BAR sustain (no snapshot change) hits the bytewise-equality fast path and skips repaint entirely. Engine soak data + on-device measurement remain follow-ups, but the test suite (1130 engine tests, 130 suites) showed no measurable build-time regression from the per-frame rebuild path.
-
-### Decision 7 — DASH.6.1 amendment slot for any per-card position / margin / order / colour tuning
-
-Live D-toggle review on real music is the acceptance artifact (no static PNG). If Matt's eyeball flags any per-card visual issue (chrome misplaced, cards stacked outside the drawable, spacing wrong, top-right margin off, font fallback ugly), DASH.6.1 is the amendment slot. The DASH.6 closeout is the structural delivery (composer + wiring + dedup + tests + docs); v1 visual tuning lives in 6.1. Same pattern as DASH.4.1 / DASH.5.1.
-
-### Tests
-
-After DASH.6: **45 dashboard tests pass** (12 DASH.1 + 6 DASH.2.1 + 6 BeatCardBuilder + 3 progress-bar + 6 StemsCardBuilder + 6 PerfCardBuilder + 6 DashboardComposer). Full engine suite green: 1130 tests / 130 suites. 0 SwiftLint violations on touched files; xcodebuild app build clean.
-
-### Files changed
-
-New: `PhospheneEngine/Sources/Renderer/Dashboard/DashboardComposer.swift`, `PhospheneEngine/Sources/Renderer/Shaders/Dashboard.metal`, `PhospheneEngine/Tests/PhospheneEngineTests/Renderer/DashboardComposerTests.swift`. Edited: `PhospheneEngine/Sources/Shared/Dashboard/DashboardTokens.swift` (`Spacing.cardGap`), `PhospheneEngine/Sources/Renderer/RenderPipeline.swift` (composer setter + `hasDashboardComposer` + `compositeDashboard` helper + resize forward), every `RenderPipeline+*.swift` draw-path file (composite call before each `present`), `PhospheneApp/VisualizerEngine.swift` (composer property + `dashboardEnabled`), `PhospheneApp/VisualizerEngine+InitHelpers.swift` (composer alloc + `assemblePerfSnapshot` + per-frame snapshot push wired onto `onFrameRendered`), `PhospheneApp/Views/Playback/PlaybackView.swift` (`D` toggle writes `engine.dashboardEnabled`), `PhospheneApp/Views/DebugOverlayView.swift` (Tempo / QUALITY / ML rows removed).
+> **Moved to `docs/DECISIONS_HISTORY.md` 2026-05-13 (DOC.4).** Superseded by D-087 (DASH.7 SwiftUI dashboard port) — the composer-and-Metal-cards architecture this decision documented was retired when D-087 ported the dashboard to SwiftUI. See `docs/DECISIONS_HISTORY.md` for the original decision text and rationale.
 
 ## D-087 — DASH.7 SwiftUI dashboard port supersedes D-086
 
@@ -2951,6 +2921,8 @@ Each track gets a deterministic chromatic tint vector that shifts the aggregate 
 
 ## D-103 — Phase MD tier structure: Classic Port / Evolved / Hybrid (Strategy Decision A, filed 2026-05-12; amended 2026-05-12 — tiers collapsed under inspired-by reframe)
 
+> **⚠ REVISIT — entire Phase MD bloc (D-103 through D-122).** Per the 2026-05-13 doc-refactor audit and Failed Approach #60 (`CLAUDE.md`): all twenty Phase MD decisions were filed on 2026-05-12; ten received same-day amendments; D-120 was reverted within 24 hours. Zero Milkdrop-inspired presets had shipped at the time of this annotation, so every commitment downstream of D-113 (the inspired-by reframe) rests on unvalidated forecasts. Recommendation: ship 1–2 inspired-by Phosphene presets end-to-end (MD.5 candidates per D-112's amended list) before authoring any more Phase MD strategy decisions. The bloc stays in place pending that empirical input; do not act on D-114 / D-115 / D-117 / D-119 commitments as load-bearing until validated. See `docs/diagnostics/DOC-REFACTOR-PLAN-2026-05-13.md`. This banner applies to every Phase MD entry below.
+
 **Rule.** Phase MD ships three distinct tiers of Milkdrop-origin presets:
 
 - **Classic Port** (MD.5) — faithful transpilation. Lightweight V.6 rubric. Source preset's audio coupling preserved (no stem routing unless source had effective equivalent).
@@ -3310,6 +3282,8 @@ Matt picked the second 2026-05-12 in response to the adversarial review's call f
 ---
 
 ## D-120 — Phase MD property taxonomy: concept_tags + motion_paradigm (Strategy Addendum follow-up, filed 2026-05-12)
+
+> **⚠ STATUS: REVERTED 2026-05-13** (commit `0981ca4f`). The schema addition (`concept_tags` + `motion_paradigm` fields on `PresetDescriptor`) + retroactive tagging pass across all 15 production presets landed across six commits before Matt's product framing rejected the premise — penalty-based diversity at additional axes pushes the planner toward worse-fitting picks. See Failed Approach #59 in `CLAUDE.md` for the post-mortem and memory note `feedback_multi_preset_per_song.md` for Matt's product framing. The text below is preserved for the historical record; the decision is no longer in force.
 
 **Rule.** Every Phosphene preset's JSON sidecar declares two metadata fields beyond `family`:
 
