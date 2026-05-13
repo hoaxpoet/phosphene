@@ -428,3 +428,238 @@ private func makeCatalog() -> [PresetDescriptor] {
                    colorTempRange: SIMD2(0.75, 0.95), complexityCost: ComplexityCost(tier1: 6.0, tier2: 3.5)),
     ]
 }
+
+// =====================================================================
+// MARK: - SessionPlannerMultiSegmentTests (V.7.6.2 §3.3)
+//
+// Consolidated from SessionPlannerMultiSegmentTests.swift in [QR.5]
+// (C.3 test-file consolidation). Suite is unchanged; helpers live
+// under `MultiSegFixtures` to avoid naming collisions with the
+// SessionPlannerTests helpers above.
+// =====================================================================
+
+private enum MultiSegFixtures {
+
+    static func makeIdentity(title: String, duration: TimeInterval) -> TrackIdentity {
+        TrackIdentity(title: title, artist: "MultiSegArtist", duration: duration)
+    }
+
+    static func makeProfile(sectionCount: Int = 1) -> TrackProfile {
+        TrackProfile(estimatedSectionCount: sectionCount)
+    }
+
+    /// Build a small synthetic catalog of two distinct presets with controlled maxDurations.
+    /// LongPreset uses motion=0.5, density=0.5, fatigue=low → baseMax=90 → maxDuration=90 s.
+    /// ShortPreset uses motion=0.5, density=0.5, fatigue=high → baseMax=30 → maxDuration=30 s.
+    static func makeSyntheticCatalog() throws -> [PresetDescriptor] {
+        let long = """
+        {"name":"LongPreset","family":"sparkle",
+         "motion_intensity":0.5,"visual_density":0.5,"fatigue_risk":"low",
+         "transition_affordances":["crossfade"]}
+        """
+        let short = """
+        {"name":"ShortPreset","family":"reaction",
+         "motion_intensity":0.5,"visual_density":0.5,"fatigue_risk":"high",
+         "transition_affordances":["crossfade"]}
+        """
+        let decoder = JSONDecoder()
+        return [
+            try decoder.decode(PresetDescriptor.self, from: Data(long.utf8)),
+            try decoder.decode(PresetDescriptor.self, from: Data(short.utf8))
+        ]
+    }
+}
+
+@Suite("SessionPlannerMultiSegment")
+struct SessionPlannerMultiSegmentTests {
+
+    @Test("Short track (20 s) emits one segment, terminationReason=trackEnded")
+    func shortTrackSingleSegment() throws {
+        let planner = DefaultSessionPlanner()
+        let catalog = try MultiSegFixtures.makeSyntheticCatalog()
+        let tracks: [(TrackIdentity, TrackProfile)] = [
+            (MultiSegFixtures.makeIdentity(title: "ShortTrack", duration: 20), MultiSegFixtures.makeProfile())
+        ]
+        let plan = try planner.plan(tracks: tracks, catalog: catalog, deviceTier: .tier2)
+        #expect(plan.tracks.count == 1)
+        #expect(plan.tracks[0].segments.count == 1)
+        #expect(plan.tracks[0].segments[0].terminationReason == .trackEnded)
+        #expect(plan.tracks[0].segments[0].plannedStartTime == 0)
+        #expect(plan.tracks[0].segments[0].plannedEndTime == 20)
+    }
+
+    @Test("Long track (300 s, 1 section) emits ≥ 2 segments, mid-segment termination=maxDurationReached")
+    func longTrackMultiSegment() throws {
+        let planner = DefaultSessionPlanner()
+        let catalog = try MultiSegFixtures.makeSyntheticCatalog()
+        let tracks: [(TrackIdentity, TrackProfile)] = [
+            (MultiSegFixtures.makeIdentity(title: "LongTrack", duration: 300), MultiSegFixtures.makeProfile(sectionCount: 1))
+        ]
+        let plan = try planner.plan(tracks: tracks, catalog: catalog, deviceTier: .tier2)
+        let segments = plan.tracks[0].segments
+        #expect(segments.count >= 2, "300 s track should split into ≥ 2 segments")
+        for seg in segments.dropLast() {
+            #expect(seg.terminationReason == .maxDurationReached,
+                "Mid-segment of single-section track should terminate by maxDurationReached")
+        }
+        #expect(segments.last?.terminationReason == .trackEnded)
+        for i in 1..<segments.count {
+            #expect(abs(segments[i].plannedStartTime - segments[i - 1].plannedEndTime) < 0.001)
+        }
+        #expect(abs(segments.last!.plannedEndTime - 300) < 0.001) // swiftlint:disable:this force_unwrapping
+    }
+
+    @Test("Section boundaries land within ±1 s of even split for multi-section track")
+    func sectionBoundariesRespected() throws {
+        let planner = DefaultSessionPlanner()
+        let catalog = try MultiSegFixtures.makeSyntheticCatalog()
+        let tracks: [(TrackIdentity, TrackProfile)] = [
+            (MultiSegFixtures.makeIdentity(title: "ThreeSection", duration: 90), MultiSegFixtures.makeProfile(sectionCount: 3))
+        ]
+        let plan = try planner.plan(tracks: tracks, catalog: catalog, deviceTier: .tier2)
+        let segments = plan.tracks[0].segments
+        #expect(segments.count == 3)
+        let expectedBoundaries: [Double] = [30, 60, 90]
+        for (idx, seg) in segments.enumerated() {
+            #expect(abs(seg.plannedEndTime - expectedBoundaries[idx]) < 0.001)
+        }
+    }
+
+    @Test("Determinism: same inputs + same seed → identical segment sequence")
+    func multiSegmentDeterminism() throws {
+        let planner = DefaultSessionPlanner()
+        let catalog = try MultiSegFixtures.makeSyntheticCatalog()
+        let tracks: [(TrackIdentity, TrackProfile)] = [
+            (MultiSegFixtures.makeIdentity(title: "T1", duration: 300), MultiSegFixtures.makeProfile(sectionCount: 1)),
+            (MultiSegFixtures.makeIdentity(title: "T2", duration: 240), MultiSegFixtures.makeProfile(sectionCount: 2))
+        ]
+        let p1 = try planner.plan(tracks: tracks, catalog: catalog, deviceTier: .tier2)
+        let p2 = try planner.plan(tracks: tracks, catalog: catalog, deviceTier: .tier2)
+
+        for (track1, track2) in zip(p1.tracks, p2.tracks) {
+            #expect(track1.segments.count == track2.segments.count)
+            for (s1, s2) in zip(track1.segments, track2.segments) {
+                #expect(s1.preset.id == s2.preset.id)
+                #expect(s1.plannedStartTime == s2.plannedStartTime)
+                #expect(s1.plannedEndTime == s2.plannedEndTime)
+                #expect(s1.terminationReason == s2.terminationReason)
+            }
+        }
+    }
+
+    @Test("PlannedSession.segment(at:) returns the segment covering that session time")
+    func segmentAtAccessor() throws {
+        let planner = DefaultSessionPlanner()
+        let catalog = try MultiSegFixtures.makeSyntheticCatalog()
+        let tracks: [(TrackIdentity, TrackProfile)] = [
+            (MultiSegFixtures.makeIdentity(title: "T1", duration: 300), MultiSegFixtures.makeProfile(sectionCount: 1))
+        ]
+        let plan = try planner.plan(tracks: tracks, catalog: catalog, deviceTier: .tier2)
+
+        for t in [10.0, 50.0, 100.0, 200.0, 290.0] {
+            let seg = plan.segment(at: t)
+            #expect(seg != nil, "Expected segment at t=\(t)")
+            if let seg = seg {
+                #expect(t >= seg.plannedStartTime && t < seg.plannedEndTime)
+            }
+        }
+    }
+}
+
+// =====================================================================
+// MARK: - SessionPlannerSeedTests (U.5 Part D, D-047)
+//
+// Consolidated from SessionPlannerSeedTests.swift in [QR.5]
+// (C.3 test-file consolidation). Helpers under `SeedFixtures`.
+// =====================================================================
+
+private enum SeedFixtures {
+
+    static func makeIdentity(title: String = "T", duration: TimeInterval = 180) -> TrackIdentity {
+        TrackIdentity(title: title, artist: "A", duration: duration)
+    }
+
+    static func makeProfile() -> TrackProfile { TrackProfile.empty }
+
+    static func makePreset(name: String) throws -> PresetDescriptor {
+        let json = """
+        {"name":"\(name)","family":"geometric","motion_intensity":0.5,
+         "color_temperature_range":[0.3,0.7],"fatigue_risk":"medium",
+         "complexity_cost":{"tier1":1.0,"tier2":1.0},
+         "transition_affordances":["crossfade"],"certified":true}
+        """
+        return try JSONDecoder().decode(PresetDescriptor.self, from: Data(json.utf8))
+    }
+}
+
+@Suite("DefaultSessionPlanner seed")
+struct SessionPlannerSeedTests {
+
+    private let planner = DefaultSessionPlanner()
+
+    @Test("zero seed: plan is byte-identical across two calls (D-034 preserved)")
+    func zeroSeed_isDeterministic() throws {
+        let tracks = [(SeedFixtures.makeIdentity(title: "A"), SeedFixtures.makeProfile()),
+                      (SeedFixtures.makeIdentity(title: "B"), SeedFixtures.makeProfile())]
+        let catalog = [try SeedFixtures.makePreset(name: "P1"), try SeedFixtures.makePreset(name: "P2")]
+
+        let s1 = try planner.plan(tracks: tracks, catalog: catalog, deviceTier: .tier1, seed: 0)
+        let s2 = try planner.plan(tracks: tracks, catalog: catalog, deviceTier: .tier1, seed: 0)
+
+        let ids1 = s1.tracks.map { $0.preset.id }
+        let ids2 = s2.tracks.map { $0.preset.id }
+        #expect(ids1 == ids2)
+    }
+
+    @Test("same nonzero seed twice: output is identical (reproducible randomisation)")
+    func sameSeedTwice_isDeterministic() throws {
+        let tracks = (0..<5).map { i in (SeedFixtures.makeIdentity(title: "Track\(i)"), SeedFixtures.makeProfile()) }
+        let catalog = try (0..<4).map { i in try SeedFixtures.makePreset(name: "P\(i)") }
+
+        let seed: UInt64 = 42_000_000_000
+        let s1 = try planner.plan(tracks: tracks, catalog: catalog, deviceTier: .tier1, seed: seed)
+        let s2 = try planner.plan(tracks: tracks, catalog: catalog, deviceTier: .tier1, seed: seed)
+
+        let ids1 = s1.tracks.map { $0.preset.id }
+        let ids2 = s2.tracks.map { $0.preset.id }
+        #expect(ids1 == ids2)
+    }
+
+    @Test("nonzero seed no-op when catalog has only one eligible preset")
+    func nonzeroSeed_singlePreset_noChange() throws {
+        let tracks = [(SeedFixtures.makeIdentity(title: "Only"), SeedFixtures.makeProfile())]
+        let catalog = [try SeedFixtures.makePreset(name: "Solo")]
+
+        let s0 = try planner.plan(tracks: tracks, catalog: catalog, deviceTier: .tier1, seed: 0)
+        let s1 = try planner.plan(tracks: tracks, catalog: catalog, deviceTier: .tier1, seed: 99)
+
+        #expect(s0.tracks.first?.preset.id == s1.tracks.first?.preset.id)
+    }
+
+    @Test("applying(overrides:) preserves locked track picks")
+    func applyingOverrides_preservesLocks() throws {
+        let tracks = [(SeedFixtures.makeIdentity(title: "A"), SeedFixtures.makeProfile()),
+                      (SeedFixtures.makeIdentity(title: "B"), SeedFixtures.makeProfile())]
+        let p1 = try SeedFixtures.makePreset(name: "P1")
+        let p2 = try SeedFixtures.makePreset(name: "P2")
+        let locked = try SeedFixtures.makePreset(name: "LockedPreset")
+
+        let plan = try planner.plan(tracks: tracks, catalog: [p1, p2], deviceTier: .tier1)
+        let firstTrackID = plan.tracks[0].track
+        let patched = plan.applying(overrides: [firstTrackID: locked])
+
+        #expect(patched.tracks[0].preset.id == locked.id)
+        #expect(patched.tracks[1].preset.id == plan.tracks[1].preset.id)
+    }
+
+    @Test("applying(overrides:) with empty dict returns self-equivalent plan")
+    func applyingOverrides_empty_unchanged() throws {
+        let tracks = [(SeedFixtures.makeIdentity(), SeedFixtures.makeProfile())]
+        let catalog = [try SeedFixtures.makePreset(name: "P1")]
+        let plan = try planner.plan(tracks: tracks, catalog: catalog, deviceTier: .tier1)
+        let patched = plan.applying(overrides: [:])
+
+        #expect(patched.tracks[0].preset.id == plan.tracks[0].preset.id)
+        #expect(patched.tracks.count == plan.tracks.count)
+    }
+}
