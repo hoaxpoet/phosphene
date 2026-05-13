@@ -221,6 +221,70 @@ static float3 rm_skyColor(float3 rayDir) {
     return mix(horizon, zenith, t);
 }
 
+/// Shared "lighting tail" for matID == 0 (default Cook-Torrance) and matID == 3
+/// (thin-film Cook-Torrance) — adds D-022 mood-tinted IBL ambient and applies
+/// atmospheric fog to the caller's `directLit` contribution.
+///
+/// Extracting this tail eliminates the ~60-line copy-paste between the matID
+/// branches and removes a class of Failed Approach #24 bug: the
+/// `ambient *= scene.lightColor.rgb` line that propagates mood-valence
+/// scene-wide is now in one place rather than one-per-matID. Future matID
+/// branches (e.g. matID == 2 for the §5.8 stage-rig in V.9 Session 3) call
+/// this helper after computing their own direct-light contribution.
+///
+/// Returns the final linear-HDR colour ready for ACES tone-mapping in the
+/// composite pass. The caller wraps the result in `float4(..., 1.0)`.
+static float3 rm_finishLightingPass(
+    float3 directLit,
+    float3 N, float3 V,
+    float3 albedo, float roughness, float metallic, float ao,
+    float depthNorm, float farPlane,
+    float3 rayDir,
+    constant SceneUniforms& scene,
+    texturecube<float> iblIrradiance,
+    texturecube<float> iblPrefiltered,
+    texture2d<float>   iblBRDFLUT,
+    sampler            iblSamp
+) {
+    // IBL ambient (diffuse + specular) — split-sum approximation.
+    // Standard F0 path (not thin-film) so the iridescent shift stays
+    // localised to direct specular highlights and doesn't saturate the
+    // whole surface via the environment integral.
+    float  NdotV       = max(dot(N, V), 0.0);
+    float3 R           = reflect(-V, N);
+    float3 F0          = mix(float3(0.04), albedo, metallic);
+    float3 F_ibl       = rm_fresnel(NdotV, F0);
+    float3 kd          = (1.0 - F_ibl) * (1.0 - metallic);
+
+    float3 irradiance  = ibl_sample_irradiance(N, iblIrradiance, iblSamp);
+    float3 prefColor   = ibl_sample_prefiltered(R, roughness, iblPrefiltered, iblSamp, 4);
+    float2 brdfFactors = ibl_sample_brdf_lut(NdotV, roughness, iblBRDFLUT, iblSamp);
+    float3 iblDiffuse  = kd * albedo * irradiance;
+    float3 iblSpecular = prefColor * (F_ibl * brdfFactors.x + brdfFactors.y);
+    float3 iblAmbient  = (iblDiffuse + iblSpecular) * ao;
+
+    // Minimum ambient prevents fully black surfaces when IBL textures are
+    // unbound (Apple Silicon Metal returns zero for unbound textures).
+    float3 ambient = max(iblAmbient, albedo * 0.04 * ao);
+
+    // D-022: tint the ambient by the scene light colour so valence shifts
+    // propagate scene-wide. Indoor ray-march scenes are dominated by IBL
+    // ambient and the direct light only catches surfaces facing it; without
+    // this multiply, mood valence affects only the direct-lit pixels.
+    ambient *= scene.lightColor.rgb;
+
+    float3 litColor = directLit + ambient;
+
+    // Atmospheric fog. fogColor takes the same lightColor tint so the
+    // distance falloff stays palette-consistent.
+    float  fogNear   = scene.sceneParamsB.x;
+    float  fogFar    = scene.sceneParamsB.y;
+    float  t         = depthNorm * farPlane;
+    float  fogFactor = clamp((t - fogNear) / max(fogFar - fogNear, 0.001), 0.0, 1.0);
+    float3 fogColor  = rm_skyColor(rayDir) * scene.lightColor.rgb;
+    return mix(litColor, fogColor, fogFactor);
+}
+
 /// Screen-space soft shadow: march from surface toward the light along the G-buffer.
 /// Returns a shadow factor in [0,1] where 0 = fully shadowed, 1 = fully lit.
 static float rm_screenSpaceShadow(
@@ -471,40 +535,17 @@ fragment float4 raymarch_lighting_fragment(
                                          kFerrofluidFilmIORThin,
                                          kFerrofluidFilmIORBase);
 
-        float3 litColor = rm_brdf_with_F0(N, V, L, albedo, F0_thin, roughness, metallic)
-                        * lColor * intensity * attenuation;
+        float3 directLit = rm_brdf_with_F0(N, V, L, albedo, F0_thin, roughness, metallic)
+                         * lColor * intensity * attenuation;
 
         float shadow = rm_screenSpaceShadow(uv, worldPos, L, lightDist, gbuf0, samp, scene);
-        litColor *= shadow;
+        directLit *= shadow;
 
-        // IBL ambient stays on the standard F0 path (mix(0.04, albedo,
-        // metallic)) so D-022 mood tinting propagates scene-wide. Tinting
-        // IBL via the thin-film F0 would saturate the entire surface;
-        // the iridescent shift is most legible on direct specular only.
-        float  NdotV       = max(dot(N, V), 0.0);
-        float3 R           = reflect(-V, N);
-        float3 F0_ibl      = mix(float3(0.04), albedo, metallic);
-        float3 F_ibl       = rm_fresnel(NdotV, F0_ibl);
-        float3 kd_ibl      = (1.0 - F_ibl) * (1.0 - metallic);
-        float3 irradiance  = ibl_sample_irradiance(N, iblIrradiance, iblSamp);
-        float3 prefColor   = ibl_sample_prefiltered(R, roughness, iblPrefiltered, iblSamp, 4);
-        float2 brdfFactors = ibl_sample_brdf_lut(NdotV, roughness, iblBRDFLUT, iblSamp);
-        float3 iblDiffuse  = kd_ibl * albedo * irradiance;
-        float3 iblSpecular = prefColor * (F_ibl * brdfFactors.x + brdfFactors.y);
-        float3 iblAmbient  = (iblDiffuse + iblSpecular) * ao;
-        float3 ambient     = max(iblAmbient, albedo * 0.04 * ao);
-        ambient           *= scene.lightColor.rgb;  // D-022: mood-tinted IBL ambient
-        litColor          += ambient;
-
-        // Fog (same path as the default matID == 0 branch below).
-        float fogNear   = scene.sceneParamsB.x;
-        float fogFar    = scene.sceneParamsB.y;
-        float t_fog     = depthNorm * farPlane;
-        float fogFactor = clamp((t_fog - fogNear) / max(fogFar - fogNear, 0.001), 0.0, 1.0);
-        float3 fogColor = rm_skyColor(rayDir) * scene.lightColor.rgb;
-        litColor        = mix(litColor, fogColor, fogFactor);
-
-        return float4(litColor, 1.0);
+        return float4(rm_finishLightingPass(
+            directLit, N, V, albedo, roughness, metallic, ao,
+            depthNorm, farPlane, rayDir, scene,
+            iblIrradiance, iblPrefiltered, iblBRDFLUT, iblSamp
+        ), 1.0);
     }
 
     // ── Lighting ───────────────────────────────────────────────────
@@ -521,53 +562,21 @@ fragment float4 raymarch_lighting_fragment(
     // tiled corridors) from accumulating extreme HDR values. The `+ 1.0` prevents a
     // singularity when the surface is at the light position.
     float  attenuation = 1.0 / (1.0 + lightDist * lightDist);
-    float3 litColor    = rm_brdf(N, V, L, albedo, roughness, metallic) * lColor * intensity * attenuation;
+    float3 directLit   = rm_brdf(N, V, L, albedo, roughness, metallic) * lColor * intensity * attenuation;
 
     // ── Screen-space soft shadow ───────────────────────────────────
     float shadow = rm_screenSpaceShadow(uv, worldPos, L, lightDist, gbuf0, samp, scene);
-    litColor *= shadow;
+    directLit *= shadow;
 
-    // ── IBL ambient (diffuse + specular) ─────────────────────────
-    // Diffuse: cosine-weighted irradiance from environment.
-    // Specular: prefiltered env + split-sum BRDF LUT (Epic split-sum).
-    float  NdotV   = max(dot(N, V), 0.0);
-    float3 R       = reflect(-V, N);
-    float3 F0      = mix(float3(0.04), albedo, metallic);
-    float3 F_ibl   = rm_fresnel(NdotV, F0);
-    float3 kd      = (1.0 - F_ibl) * (1.0 - metallic);
-
-    float3 irradiance   = ibl_sample_irradiance(N, iblIrradiance, iblSamp);
-    float3 prefColor    = ibl_sample_prefiltered(R, roughness, iblPrefiltered, iblSamp, 4);
-    float2 brdfFactors  = ibl_sample_brdf_lut(NdotV, roughness, iblBRDFLUT, iblSamp);
-    float3 iblDiffuse   = kd * albedo * irradiance;
-    float3 iblSpecular  = prefColor * (F_ibl * brdfFactors.x + brdfFactors.y);
-    float3 iblAmbient   = (iblDiffuse + iblSpecular) * ao;
-
-    // Minimum ambient prevents fully black surfaces when IBL textures are not yet bound
-    // (unbound textures return zero on Apple Silicon Metal).
-    float3 ambient = max(iblAmbient, albedo * 0.04 * ao);
-
-    // Tint the ambient by the scene light colour. Indoor ray-march scenes
-    // are dominated by IBL ambient (the direct light only catches surfaces
-    // facing it) so any audio-driven `lightColor` change had to filter
-    // through here to be visible. At rest `lightColor ≈ (1, 0.95, 0.88)`
-    // so the multiply is near-identity; under audio modulation the ambient
-    // takes the warm/cool tint and the whole corridor visibly shifts colour.
-    ambient *= scene.lightColor.rgb;
-
-    litColor += ambient;
-
-    // ── Atmospheric fog ────────────────────────────────────────────
-    float  fogNear   = scene.sceneParamsB.x;
-    float  fogFar    = scene.sceneParamsB.y;
-    float  t         = depthNorm * farPlane;
-    float  fogFactor = clamp((t - fogNear) / max(fogFar - fogNear, 0.001), 0.0, 1.0);
-    // Fog colour also takes the scene tint so warm/cool palette stays
-    // consistent in the distance.
-    float3 fogColor  = rm_skyColor(rayDir) * scene.lightColor.rgb;
-    litColor         = mix(litColor, fogColor, fogFactor);
-
-    return float4(litColor, 1.0);
+    // ── IBL ambient (D-022 mood-tinted) + fog ──────────────────────
+    // Shared with matID == 3 via rm_finishLightingPass. Future matID
+    // branches (e.g. matID == 2 for the §5.8 stage-rig in V.9 Session 3)
+    // compute their own direct-light contribution and call the same helper.
+    return float4(rm_finishLightingPass(
+        directLit, N, V, albedo, roughness, metallic, ao,
+        depthNorm, farPlane, rayDir, scene,
+        iblIrradiance, iblPrefiltered, iblBRDFLUT, iblSamp
+    ), 1.0);
 }
 
 // MARK: - Depth Debug Pass
