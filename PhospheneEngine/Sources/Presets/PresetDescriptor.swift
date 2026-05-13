@@ -78,8 +78,10 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
 
     /// Display name.
     public let name: String
-    /// Aesthetic family: "waveform", "geometric", "fractal", etc.
-    public let family: PresetCategory
+    /// Aesthetic family from cream-of-crop's 10-theme taxonomy + transition (D-123).
+    /// Nil for diagnostic presets (`is_diagnostic: true`) — those are tools, not
+    /// aesthetic content, so they don't belong in any aesthetic family.
+    public let family: PresetCategory?
     /// Preferred segment-length **hint** in seconds (V.7.6.2: was "preferred duration").
     ///
     /// Informs the orchestrator's scoring heuristics. The hard ceiling on segment
@@ -347,7 +349,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
     public init(from decoder: Decoder) throws { // swiftlint:disable:this function_body_length
         let container = try decoder.container(keyedBy: CodingKeys.self)
         name             = try container.decode(String.self, forKey: .name)
-        family           = try container.decodeIfPresent(PresetCategory.self, forKey: .family) ?? .waveform
+        family           = try container.decodeIfPresent(PresetCategory.self, forKey: .family)
         duration         = try container.decodeIfPresent(Int.self, forKey: .duration) ?? 30
         naturalCycleSeconds = try container.decodeIfPresent(Float.self, forKey: .naturalCycleSeconds)
         description      = try container.decodeIfPresent(String.self, forKey: .description) ?? ""

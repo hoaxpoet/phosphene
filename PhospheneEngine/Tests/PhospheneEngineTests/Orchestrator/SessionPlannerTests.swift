@@ -75,12 +75,12 @@ struct SessionPlannerTests {
         ]
         // 3 families, 2 presets each — gives the scorer options
         let catalog = [
-            makePreset(name: "F1a", family: .fluid,    motionIntensity: 0.4, colorTempRange: SIMD2(0.1, 0.35)),
-            makePreset(name: "F1b", family: .fluid,    motionIntensity: 0.6, colorTempRange: SIMD2(0.15, 0.40)),
+            makePreset(name: "F1a", family: .reaction,    motionIntensity: 0.4, colorTempRange: SIMD2(0.1, 0.35)),
+            makePreset(name: "F1b", family: .reaction,    motionIntensity: 0.6, colorTempRange: SIMD2(0.15, 0.40)),
             makePreset(name: "G1a", family: .geometric, motionIntensity: 0.7, colorTempRange: SIMD2(0.4, 0.65)),
             makePreset(name: "G1b", family: .geometric, motionIntensity: 0.5, colorTempRange: SIMD2(0.35, 0.60)),
-            makePreset(name: "A1a", family: .abstract,  motionIntensity: 0.8, colorTempRange: SIMD2(0.65, 0.90)),
-            makePreset(name: "A1b", family: .abstract,  motionIntensity: 0.9, colorTempRange: SIMD2(0.70, 0.95)),
+            makePreset(name: "A1a", family: .particles,  motionIntensity: 0.8, colorTempRange: SIMD2(0.65, 0.90)),
+            makePreset(name: "A1b", family: .particles,  motionIntensity: 0.9, colorTempRange: SIMD2(0.70, 0.95)),
         ]
 
         let session = try planner.plan(tracks: tracks, catalog: catalog, deviceTier: .tier1)
@@ -96,7 +96,7 @@ struct SessionPlannerTests {
                     $0.kind == .forcedFamilyRepeat && $0.trackIndex == i
                 }
                 #expect(hasWarning,
-                        "Track \(i) shares family '\(curr.preset.family)' with previous but no warning found")
+                        "Track \(i) shares family '\(curr.preset.family?.rawValue ?? "(none)")' with previous but no warning found")
             }
         }
     }
@@ -112,9 +112,9 @@ struct SessionPlannerTests {
             complexityCost: ComplexityCost(tier1: 20.0, tier2: 8.0)
         )
         let affordable = [
-            makePreset(name: "Cheap1", family: .fluid,    complexityCost: ComplexityCost(tier1: 2.0, tier2: 1.5)),
+            makePreset(name: "Cheap1", family: .reaction,    complexityCost: ComplexityCost(tier1: 2.0, tier2: 1.5)),
             makePreset(name: "Cheap2", family: .geometric, complexityCost: ComplexityCost(tier1: 3.0, tier2: 2.0)),
-            makePreset(name: "Cheap3", family: .abstract,  complexityCost: ComplexityCost(tier1: 4.0, tier2: 2.5)),
+            makePreset(name: "Cheap3", family: .geometric,  complexityCost: ComplexityCost(tier1: 4.0, tier2: 2.5)),
         ]
         let catalog = affordable + [expensive]
         let tracks = (1...3).map { i -> (TrackIdentity, TrackProfile) in
@@ -145,11 +145,11 @@ struct SessionPlannerTests {
         let neutralTrack = makeProfile(bpm: 95, valence:  0.0, arousal:  0.0)
 
         // Presets differ ONLY in color temperature — isolates the mood signal.
-        let coolPreset  = makePreset(name: "Cool",  family: .fluid,    motionIntensity: 0.5,
+        let coolPreset  = makePreset(name: "Cool",  family: .reaction,    motionIntensity: 0.5,
                                      colorTempRange: SIMD2(0.0, 0.2))
         let midPreset   = makePreset(name: "Mid",   family: .geometric, motionIntensity: 0.5,
                                      colorTempRange: SIMD2(0.4, 0.6))
-        let warmPreset  = makePreset(name: "Warm",  family: .abstract,  motionIntensity: 0.5,
+        let warmPreset  = makePreset(name: "Warm",  family: .geometric,  motionIntensity: 0.5,
                                      colorTempRange: SIMD2(0.8, 1.0))
         let catalog = [coolPreset, midPreset, warmPreset]
 
@@ -176,8 +176,8 @@ struct SessionPlannerTests {
     @Test("Five tracks, catalog of 2 presets same family: plan succeeds, warnings present")
     func fatigueCooldown_smallCatalog_nocrash() throws {
         let catalog = [
-            makePreset(name: "P1", family: .fluid, fatigueRisk: .high),
-            makePreset(name: "P2", family: .fluid, fatigueRisk: .high),
+            makePreset(name: "P1", family: .reaction, fatigueRisk: .high),
+            makePreset(name: "P2", family: .reaction, fatigueRisk: .high),
         ]
         let tracks = (1...5).map { i -> (TrackIdentity, TrackProfile) in
             (makeIdentity(title: "T\(i)"), makeProfile())
@@ -196,7 +196,7 @@ struct SessionPlannerTests {
     @Test("All presets over budget: plan succeeds, noEligiblePresets + budgetExceeded warnings")
     func allExcluded_fallback_warns() throws {
         // Tier1 budget = 16.6 ms; both presets cost 100 ms on tier1.
-        let tooBig1 = makePreset(name: "Big1", family: .fluid,
+        let tooBig1 = makePreset(name: "Big1", family: .reaction,
                                   complexityCost: ComplexityCost(tier1: 100.0, tier2: 5.0))
         let tooBig2 = makePreset(name: "Big2", family: .geometric,
                                   complexityCost: ComplexityCost(tier1: 100.0, tier2: 5.0))
@@ -281,7 +281,7 @@ struct SessionPlannerTests {
         // Use a 2-preset catalog and 3 tracks — with alternating moods,
         // the scorer may reuse one preset for tracks 0 and 2.
         let catalog = [
-            makePreset(name: "Only1", family: .fluid),
+            makePreset(name: "Only1", family: .reaction),
             makePreset(name: "Only2", family: .geometric),
         ]
         let tracks: [(TrackIdentity, TrackProfile)] = [
@@ -318,7 +318,7 @@ struct SessionPlannerTests {
     func planAsync_precompileFailure_surfacesError() async throws {
         let targetPresetName = "FailPreset"
         let catalog = [
-            makePreset(name: targetPresetName, family: .fluid,
+            makePreset(name: targetPresetName, family: .reaction,
                        complexityCost: ComplexityCost(tier1: 2.0, tier2: 1.5)),
             makePreset(name: "GoodPreset", family: .geometric,
                        complexityCost: ComplexityCost(tier1: 2.0, tier2: 1.5)),
@@ -381,7 +381,7 @@ private func makeProfile(
 /// Minimal JSON-decoded PresetDescriptor with sensible defaults.
 private func makePreset(
     name: String = "TestPreset",
-    family: PresetCategory = .abstract,
+    family: PresetCategory = .geometric,
     motionIntensity: Float = 0.5,
     colorTempRange: SIMD2<Float> = SIMD2(0.3, 0.7),
     fatigueRisk: FatigueRisk = .medium,
@@ -414,17 +414,17 @@ private func makePreset(
 /// A small diverse catalog: 3 families, distinct costs, varied motion and temperature.
 private func makeCatalog() -> [PresetDescriptor] {
     [
-        makePreset(name: "FluidA",    family: .fluid,    motionIntensity: 0.3,
+        makePreset(name: "FluidA",    family: .reaction,    motionIntensity: 0.3,
                    colorTempRange: SIMD2(0.1, 0.35), complexityCost: ComplexityCost(tier1: 2.0, tier2: 1.5)),
-        makePreset(name: "FluidB",    family: .fluid,    motionIntensity: 0.5,
+        makePreset(name: "FluidB",    family: .reaction,    motionIntensity: 0.5,
                    colorTempRange: SIMD2(0.2, 0.45), complexityCost: ComplexityCost(tier1: 2.5, tier2: 1.5)),
         makePreset(name: "GeoA",      family: .geometric, motionIntensity: 0.6,
                    colorTempRange: SIMD2(0.4, 0.65), complexityCost: ComplexityCost(tier1: 3.0, tier2: 2.0)),
         makePreset(name: "GeoB",      family: .geometric, motionIntensity: 0.75,
                    colorTempRange: SIMD2(0.45, 0.70), complexityCost: ComplexityCost(tier1: 4.0, tier2: 2.5)),
-        makePreset(name: "AbstractA", family: .abstract,  motionIntensity: 0.85,
+        makePreset(name: "AbstractA", family: .geometric,  motionIntensity: 0.85,
                    colorTempRange: SIMD2(0.65, 0.90), complexityCost: ComplexityCost(tier1: 5.0, tier2: 3.0)),
-        makePreset(name: "AbstractB", family: .abstract,  motionIntensity: 0.95,
+        makePreset(name: "AbstractB", family: .geometric,  motionIntensity: 0.95,
                    colorTempRange: SIMD2(0.75, 0.95), complexityCost: ComplexityCost(tier1: 6.0, tier2: 3.5)),
     ]
 }

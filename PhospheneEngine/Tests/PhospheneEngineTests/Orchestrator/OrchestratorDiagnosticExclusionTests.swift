@@ -101,10 +101,10 @@ struct OrchestratorDiagnosticExclusionTests {
 
     @Test("Family boost on a diagnostic still yields excluded == true and total 0")
     func scorer_diagnosticBeatsFamilyBoost() {
-        let preset = makePreset(name: "Diag", family: .instrument, isDiagnostic: true)
+        let preset = makePreset(name: "Diag", family: .waveform, isDiagnostic: true)
         let context = PresetScoringContext(
             deviceTier: .tier2,
-            familyBoosts: [PresetCategory.instrument: 1.0]
+            familyBoosts: [PresetCategory.waveform: 1.0]
         )
         let bd = scorer.breakdown(preset: preset, track: makeProfile(), context: context)
 
@@ -118,9 +118,9 @@ struct OrchestratorDiagnosticExclusionTests {
     func liveAdapter_neverOverridesIntoDiagnostic() throws {
         // Catalog: a "current" cool preset, a diagnostic that would otherwise be the
         // perfect mood match for the live state, plus a non-diagnostic alternative.
-        let current = makePreset(name: "Cool", family: .fluid,
+        let current = makePreset(name: "Cool", family: .reaction,
                                  colorTempRange: SIMD2(0.20, 0.30), visualDensity: 0.25)
-        let diag = makePreset(name: "DiagWarm", family: .instrument,
+        let diag = makePreset(name: "DiagWarm", family: .waveform,
                               isDiagnostic: true,
                               colorTempRange: SIMD2(0.73, 0.83), visualDensity: 0.78)
         let alt = makePreset(name: "AltCool", family: .geometric,
@@ -166,8 +166,8 @@ struct OrchestratorDiagnosticExclusionTests {
 
     @Test("SessionPlanner never selects a diagnostic preset for any track")
     func sessionPlanner_excludesDiagnosticFromAllTracks() throws {
-        let diag = makePreset(name: "Diag", family: .instrument, isDiagnostic: true)
-        let goodA = makePreset(name: "GoodA", family: .fluid)
+        let diag = makePreset(name: "Diag", family: .waveform, isDiagnostic: true)
+        let goodA = makePreset(name: "GoodA", family: .reaction)
         let goodB = makePreset(name: "GoodB", family: .geometric)
         let catalog = [diag, goodA, goodB]
 
@@ -194,10 +194,10 @@ struct OrchestratorDiagnosticExclusionTests {
     @Test("ReactiveOrchestrator never suggests a diagnostic preset")
     func reactiveOrchestrator_neverSelectsDiagnostic() {
         // Catalog with a "would otherwise win" diagnostic plus two fallback options.
-        let diag = makePreset(name: "DiagPerfect", family: .instrument,
+        let diag = makePreset(name: "DiagPerfect", family: .waveform,
                               isDiagnostic: true,
                               colorTempRange: SIMD2(0.73, 0.83), visualDensity: 0.78)
-        let altA = makePreset(name: "AltA", family: .fluid,
+        let altA = makePreset(name: "AltA", family: .reaction,
                               colorTempRange: SIMD2(0.20, 0.30), visualDensity: 0.25)
         let altB = makePreset(name: "AltB", family: .geometric,
                               colorTempRange: SIMD2(0.40, 0.50), visualDensity: 0.50)

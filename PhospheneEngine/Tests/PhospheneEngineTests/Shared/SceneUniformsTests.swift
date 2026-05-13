@@ -180,7 +180,7 @@ final class SceneUniformsTests: XCTestCase {
         let json = """
         {
             "name": "TestScene",
-            "family": "abstract",
+            "family":"geometric",
             "use_ray_march": true,
             "scene_camera": {
                 "position": [0.0, 2.0, -5.0],

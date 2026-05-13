@@ -31,7 +31,7 @@ struct PresetScoringContextExtensionTests {
 
     @Test func excludedFamilies_nonBlockedPreset_isNotExcluded() {
         let ctx = makeContext(excludedFamilies: [.geometric])
-        let preset = makePreset(family: .fluid)
+        let preset = makePreset(family: .reaction)
         let breakdown = scorer.breakdown(preset: preset, track: makeTrack(), context: ctx)
         #expect(!breakdown.excluded)
     }
@@ -93,7 +93,7 @@ struct PresetScoringContextExtensionTests {
     // MARK: - Helpers
 
     private func makePreset(
-        family: PresetCategory = .fluid,
+        family: PresetCategory = .reaction,
         complexityCostMs: Float = 1.0
     ) -> PresetDescriptor {
         let json = """

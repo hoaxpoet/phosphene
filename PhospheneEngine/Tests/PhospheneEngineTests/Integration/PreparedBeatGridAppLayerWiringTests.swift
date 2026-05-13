@@ -78,7 +78,7 @@ private func makePresetDescriptor() -> PresetDescriptor {
     let json = """
     {
         "name": "Test Preset",
-        "family": "organic",
+        "family":"sparkle",
         "certified": true,
         "complexity_cost": {"tier1": 1.0, "tier2": 1.0}
     }

@@ -26,7 +26,7 @@ struct StemAffinityScoringTests {
     private func makePreset(affinities: [String: String]) -> PresetDescriptor {
         let stms = affinities.map { "\"\($0.key)\":\"\($0.value)\"" }.joined(separator: ",")
         let json = """
-        {"name":"Test","family":"abstract","visual_density":0.5,"motion_intensity":0.5,
+        {"name":"Test","family":"geometric","visual_density":0.5,"motion_intensity":0.5,
          "color_temperature_range":[0.3,0.7],"fatigue_risk":"medium",
          "stem_affinity":{\(stms)},"certified":true}
         """

@@ -124,7 +124,7 @@ struct LiveAdapterTests {
         //   AltPreset:     moodScore=0.5 → altScore ≈ 0.725
         //   gap = 0.725 - 0.875 = -0.15 → no override (gap < 0.15)
         let catalog = [
-            makePreset(name: "CurrentPreset", family: .fluid,
+            makePreset(name: "CurrentPreset", family: .reaction,
                        motionIntensity: 0.5, colorTempRange: SIMD2(0.45, 0.55),
                        visualDensity: 0.70),
             makePreset(name: "AltPreset", family: .geometric,
@@ -383,7 +383,7 @@ private func noBoundarySignal() -> StructuralPrediction {
 
 private func simpleCatalog() -> [PresetDescriptor] {
     [
-        makePreset(name: "SimpleA", family: .fluid),
+        makePreset(name: "SimpleA", family: .reaction),
         makePreset(name: "SimpleB", family: .geometric),
     ]
 }
@@ -399,7 +399,7 @@ private func simpleCatalog() -> [PresetDescriptor] {
 ///   gap = 0.159 > 0.15 ✓
 private func overrideCatalog() -> [PresetDescriptor] {
     [
-        makePreset(name: "CurrentPreset", family: .fluid,
+        makePreset(name: "CurrentPreset", family: .reaction,
                    motionIntensity: 0.5,
                    colorTempRange: SIMD2(0.2, 0.3),   // center = 0.25
                    visualDensity: 0.25),
@@ -428,7 +428,7 @@ private func makeProfile(
 
 private func makePreset(
     name: String = "TestPreset",
-    family: PresetCategory = .abstract,
+    family: PresetCategory = .geometric,
     motionIntensity: Float = 0.5,
     colorTempRange: SIMD2<Float> = SIMD2(0.3, 0.7),
     visualDensity: Float = 0.5,

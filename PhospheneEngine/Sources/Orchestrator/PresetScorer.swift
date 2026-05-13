@@ -165,7 +165,8 @@ public struct DefaultPresetScorer: PresetScoring {
             + Self.weightSectionSuitability * sectionScore
 
         // -- U.6b additive family boost (independent of the four-weight structure) --
-        let boost = context.familyBoosts[preset.family] ?? 0
+        // Diagnostic presets (family == nil) receive no family boost.
+        let boost = preset.family.flatMap { context.familyBoosts[$0] } ?? 0
 
         let total = min(1, max(0, raw * familyMult * fatigueMult + boost))
 
@@ -211,15 +212,17 @@ public struct DefaultPresetScorer: PresetScoring {
         if context.sessionExcludedPresets.contains(preset.id) {
             return ("preset '\(preset.id)' excluded by user this session", "session_excluded")
         }
-        if context.temporarilyExcludedFamilies.contains(preset.family) {
+        // Diagnostic presets (family == nil) bypass user family-blocklist gates;
+        // they are already gated by the diagnostic check above.
+        if let family = preset.family, context.temporarilyExcludedFamilies.contains(family) {
             return (
-                "preset '\(preset.id)' family '\(preset.family)' temporarily excluded by user",
+                "preset '\(preset.id)' family '\(family)' temporarily excluded by user",
                 "family_temp_excluded"
             )
         }
-        if context.excludedFamilies.contains(preset.family) {
+        if let family = preset.family, context.excludedFamilies.contains(family) {
             return (
-                "preset '\(preset.id)' family '\(preset.family)' is in user blocklist",
+                "preset '\(preset.id)' family '\(family)' is in user blocklist",
                 "family_blocklisted"
             )
         }
@@ -315,16 +318,22 @@ public struct DefaultPresetScorer: PresetScoring {
     // MARK: - Multiplicative Penalties
 
     /// Strong penalty (0.2×) for consecutive same-family selection; 1.0 otherwise.
+    /// Presets without a family (diagnostics) never trigger the penalty.
     private func familyRepeatMultiplier(preset: PresetDescriptor, context: PresetScoringContext) -> Float {
-        guard context.currentPreset?.family == preset.family else { return 1.0 }
+        guard let family = preset.family,
+              let currentFamily = context.currentPreset?.family,
+              family == currentFamily
+        else { return 1.0 }
         return Self.familyRepeatPenalty
     }
 
     /// Smoothstep cooldown based on how recently this preset's family was last used.
+    /// Presets without a family (diagnostics) are never cooled down by history.
     private func fatigueMultiplier(preset: PresetDescriptor, context: PresetScoringContext) -> Float {
         let cooldown = Self.fatigueCooldown[preset.fatigueRisk] ?? 120
+        guard let family = preset.family else { return 1.0 }
         // Find the most recent history entry from the same family.
-        guard let entry = context.recentHistory.last(where: { $0.family == preset.family }) else {
+        guard let entry = context.recentHistory.last(where: { $0.family == family }) else {
             return 1.0
         }
         let gap = Float(context.elapsedSessionTime - entry.endTime)

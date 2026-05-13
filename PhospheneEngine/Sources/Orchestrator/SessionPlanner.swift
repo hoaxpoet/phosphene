@@ -142,9 +142,12 @@ public struct DefaultSessionPlanner: SessionPlanning {
             )
 
             // Family-repeat warning relative to the *previous track's last preset*.
+            // Diagnostic presets (family == nil) never trigger the warning.
             if let firstSeg = segments.first,
                let prior = priorTrackLastPreset,
-               prior.family == firstSeg.preset.family {
+               let priorFamily = prior.family,
+               let segFamily = firstSeg.preset.family,
+               priorFamily == segFamily {
                 warnings.append(
                     familyRepeatWarning(index: index, title: identity.title, chosen: firstSeg.preset)
                 )
@@ -350,7 +353,7 @@ public struct DefaultSessionPlanner: SessionPlanning {
         PlanningWarning(
             kind: .forcedFamilyRepeat,
             trackIndex: index,
-            message: "\(title): '\(chosen.name)' shares family '\(chosen.family)' with previous."
+            message: "\(title): '\(chosen.name)' shares family '\(chosen.family?.rawValue ?? "(none)")' with previous."
         )
     }
 }

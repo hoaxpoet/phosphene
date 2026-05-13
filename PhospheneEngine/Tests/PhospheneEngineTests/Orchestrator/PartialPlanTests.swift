@@ -27,7 +27,7 @@ private func makeProfile(valence: Float = 0, arousal: Float = 0) -> TrackProfile
 }
 
 private func makeCatalog() -> [PresetDescriptor] {
-    let families: [PresetCategory] = [.fluid, .geometric, .abstract, .organic, .fractal, .hypnotic]
+    let families: [PresetCategory] = [.reaction, .geometric, .geometric, .sparkle, .fractal, .hypnotic]
     return families.enumerated().map { i, family in
         let json = """
         {
