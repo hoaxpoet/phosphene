@@ -1,8 +1,6 @@
 {
   "name": "Ferrofluid Ocean",
   "family": "abstract",
-  "concept_tags": ["fluid", "glass"],
-  "motion_paradigm": "ray_march_static",
   "duration": 60,
   "description": "Metallic ocean with stem-driven swells, cymatic patterns, and drum pulse emission",
   "author": "Matt",

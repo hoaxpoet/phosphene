@@ -1,8 +1,6 @@
 {
   "name": "Lumen Mosaic",
   "family": "geometric",
-  "concept_tags": ["mosaic", "glass"],
-  "motion_paradigm": "ray_march_static",
   "duration": 60,
   "passes": ["ray_march", "post_process"],
   "scene_camera": { "position": [0.0, 0.0, -3.0], "target": [0.0, 0.0, 0.0], "fov": 30 },

@@ -1,8 +1,6 @@
 {
   "name": "Spectral Cartograph",
   "family": "instrument",
-  "concept_tags": [],
-  "motion_paradigm": "direct_time_modulation",
   "duration": 45,
   "passes": ["direct"],
   "fragment_function": "spectral_cartograph_fragment",

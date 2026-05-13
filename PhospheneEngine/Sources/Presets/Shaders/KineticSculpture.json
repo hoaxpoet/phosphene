@@ -1,8 +1,6 @@
 {
   "name": "Kinetic Sculpture",
   "family": "abstract",
-  "concept_tags": ["geometric", "glass"],
-  "motion_paradigm": "ray_march_static",
   "duration": 40,
   "description": "Interlocking lattice of Brushed Aluminum, Frosted Glass, and Liquid Mercury that breathes with audio stems",
   "author": "Matt",

@@ -1,8 +1,6 @@
 {
   "name": "Plasma",
   "family": "hypnotic",
-  "concept_tags": ["plasma", "hypnotic"],
-  "motion_paradigm": "direct_time_modulation",
   "duration": 25,
   "description": "Classic demoscene plasma with sine interference patterns driven by FFT energy bands",
   "author": "Matt",

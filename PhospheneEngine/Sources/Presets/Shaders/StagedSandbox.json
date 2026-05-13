@@ -1,8 +1,6 @@
 {
   "name": "Staged Sandbox",
   "family": "instrument",
-  "concept_tags": [],
-  "motion_paradigm": "staged_composition",
   "description": "Two-stage diagnostic preset proving the V.ENGINE.1 staged-composition scaffold: pass A renders a sky+silhouette WORLD into an offscreen texture, pass B samples it and overlays a placeholder web. Used by the visual review harness for pass-separated capture.",
   "author": "Phosphene engine",
   "passes": ["staged"],
