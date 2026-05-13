@@ -1782,15 +1782,17 @@ Out of scope for V.8.1: drops (V.8.2), refraction (V.8.2), chromatic dispersion 
 
 ---
 
-### Increment V.9 — Ferrofluid Ocean v2
+### Increment V.9 — Ferrofluid Ocean v2 (redirect)
 
-**Scope:** Full rebuild per `SHADER_CRAFT.md §10.3`. Hex-tile Rosensweig spike lattice (`stems.bass_energy_dev` drives field strength); domain-warped spike positions for organic flow; ferrofluid material with anisotropic reflection along spike axes; distant fog cooling to dark purple; IBL cubemap as primary indirect light; caustic underlighting.
+**Scope:** Full rebuild per `SHADER_CRAFT.md §10.3` as rewritten under D-124 (2026-05-13 redirect). Hex-tile Rosensweig spike lattice (`stems.bass_energy_dev` drives field strength) composed on top of a Gerstner-wave macro displacement field (arousal + `drums_energy_dev` accent drives swell amplitude); domain-warped spike positions for organic flow; ferrofluid material with anisotropic reflection along spike axes plus thin-film interference layer via `thinfilm_rgb` from `Utilities/PBR/Thin.metal` (promoted to per-preset mandatory under redirect); distant fog cooling to dark purple; sky-dome IBL cubemap as primary indirect light; stage-rig lighting per §5.8 (NEW recipe under redirect) — 4–6 animated colored point lights in slow orbital motion, beam color rotation routed from `vocals_pitch_hz` (normalized inline, confidence-gated) with `other_energy_dev` fallback, beam intensity routed from `drums_energy_dev` envelope (not onset). Caustic underlighting is removed per redirect.
 
-**Done when:** same rubric gates; `certified: true`.
+**Reference set:** see `docs/VISUAL_REFERENCES/ferrofluid_ocean/` as amended 2026-05-13 (12 images: 7 retained, 5 added, 4 retired per D-124(b)). Dual hero references: `04_specular_razor_highlights.jpg` (specular + lighting) and `01_macro_ferrofluid_at_swell_scale.jpg` (macro framing).
 
-**Verify:** same as V.7.
+**Done when:** same rubric gates; `certified: true`. Anti-reference check: rendered frame does not match the "smooth chrome blob" (`05_anti_chrome_blob_AIGEN.jpg`) nor the "club lighting rig" failure mode named in the anti-references list.
 
-**Estimated sessions:** 4 (field formulation / material / lighting + IBL / audio routing).
+**Verify:** same as V.7. Additional gates: stage-rig beam motion is continuous and arousal-coupled (not beat-strobed); swell amplitude is arousal-baseline + drums-accent (not pure drums); calm state at silence shows no spike lattice (the lattice fully collapses, per `10_silence_calm_body.jpg`).
+
+**Estimated sessions:** 5 (Gerstner + spike field formulation / material + thin-film / stage-rig lighting recipe / audio routing / cert review). One session more than the pre-redirect estimate to absorb the §5.8 stage-rig recipe being newly authored.
 
 ---
 
