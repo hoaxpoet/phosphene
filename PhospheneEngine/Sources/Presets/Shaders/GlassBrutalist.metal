@@ -87,22 +87,22 @@ static inline float gb_repZ(float z, float c) {
 /// deforming geometry.
 static inline float gb_sdConcrete(float3 p) {
     // Floor slab: normal = +Y, plane equation dot(p,(0,1,0)) + 1.0 = 0 → Y = -1.0.
-    float dFloor   = sdPlane(p, float3(0.0f, 1.0f, 0.0f), 1.0f);
+    float dFloor   = sd_plane(p, float3(0.0f, 1.0f, 0.0f), 1.0f);
 
     // Ceiling slab: normal = -Y, plane equation dot(p,(0,-1,0)) + 5.2 = 0 → Y = 5.2.
-    float dCeiling = sdPlane(p, float3(0.0f, -1.0f, 0.0f), 5.2f);
+    float dCeiling = sd_plane(p, float3(0.0f, -1.0f, 0.0f), 5.2f);
 
     // Side walls: continuous concrete planes at x = ±GB_CORRIDOR_X.
     float dSideWalls = GB_CORRIDOR_X - abs(p.x);
 
-    // Pillar rows: abs-fold in X collapses both columns into one sdBox evaluation.
+    // Pillar rows: abs-fold in X collapses both columns into one sd_box evaluation.
     float zR   = gb_repZ(p.z, GB_CELL_Z);
     float3 pP  = float3(abs(p.x) - GB_CORRIDOR_X, p.y, zR);
-    float dPillar = sdBox(pP, float3(GB_PILLAR_HW, GB_PILLAR_HH, GB_PILLAR_HW));
+    float dPillar = sd_box(pP, float3(GB_PILLAR_HW, GB_PILLAR_HH, GB_PILLAR_HW));
 
     // Horizontal cross-beam spanning the full corridor width at pillar tops.
     float3 bP   = float3(p.x, p.y - GB_BEAM_Y, zR);
-    float dBeam = sdBox(bP, float3(GB_CORRIDOR_X + GB_PILLAR_HW, 0.35f, GB_PILLAR_HW));
+    float dBeam = sd_box(bP, float3(GB_CORRIDOR_X + GB_PILLAR_HW, 0.35f, GB_PILLAR_HW));
 
     return min(min(min(dFloor, dCeiling), dSideWalls), min(dPillar, dBeam));
 }
@@ -122,11 +122,11 @@ static inline float gb_sdGlass(float3 p, float finCX) {
     // Offset by half a cell so fins land between pillar rows, then repeat.
     float zG   = gb_repZ(p.z - GB_CELL_Z * 0.5f, GB_CELL_Z);
 
-    // abs-fold in X collapses both fins into one sdBox evaluation.
+    // abs-fold in X collapses both fins into one sd_box evaluation.
     float3 gP  = float3(abs(p.x) - finCX,
                         p.y - GB_GLASS_CY,
                         zG);
-    return sdBox(gP, float3(GB_GLASS_HW, GB_GLASS_HH, GB_GLASS_HD));
+    return sd_box(gP, float3(GB_GLASS_HW, GB_GLASS_HH, GB_GLASS_HD));
 }
 
 // ── Scene SDF ────────────────────────────────────────────────────────────────
