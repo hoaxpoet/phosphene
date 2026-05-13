@@ -166,8 +166,18 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
     public let sceneLights: [SceneLight]
 
     /// Fog density for ray march presets (0 = no fog; 0.05 ≈ heavy fog).
-    /// Stored in `sceneParamsB.x`; far-plane fog maps `fogFar = max(1, 1/sceneFog)`.
+    /// Maps `fogFar = max(1, 1/sceneFog)` and is stored in `sceneParamsB.y`.
     public let sceneFog: Float
+
+    /// Fog start distance in world units. Stored in `sceneParamsB.x`. Default 20.0
+    /// matches the historical `SceneUniforms()` initializer hard-coded value, so
+    /// presets that omit `scene_fog_near` keep their previous fog behaviour. Set
+    /// to a smaller value for close-framed scenes (e.g. Ferrofluid Ocean's ocean
+    /// camera at ~4–14 m surface depth uses 0 so the fog band covers the visible
+    /// surface). Failed Approach #-related: see V.9 Session 2 carry-forward note
+    /// — the previous hard-coded default put the fog band entirely behind the
+    /// visible surface for any close-framed preset.
+    public let sceneFogNear: Float
 
     /// Ambient light intensity multiplier for ray march presets (0–1).
     /// Stored in `sceneParamsB.z`.
@@ -312,6 +322,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         case sceneCamera = "scene_camera"
         case sceneLights = "scene_lights"
         case sceneFog = "scene_fog"
+        case sceneFogNear = "scene_fog_near"
         case sceneAmbient = "scene_ambient"
         case sceneFarPlane = "scene_far_plane"
         case fragmentFunction = "fragment_function"
@@ -366,6 +377,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         sceneCamera      = try container.decodeIfPresent(SceneCamera.self, forKey: .sceneCamera)
         sceneLights      = try container.decodeIfPresent([SceneLight].self, forKey: .sceneLights) ?? []
         sceneFog         = try container.decodeIfPresent(Float.self, forKey: .sceneFog) ?? 0
+        sceneFogNear     = try container.decodeIfPresent(Float.self, forKey: .sceneFogNear) ?? 20.0
         sceneAmbient     = try container.decodeIfPresent(Float.self, forKey: .sceneAmbient) ?? 0.1
         sceneFarPlane    = try container.decodeIfPresent(Float.self, forKey: .sceneFarPlane) ?? 30.0
         fragmentFunction = try container.decodeIfPresent(String.self, forKey: .fragmentFunction) ?? "preset_fragment"
