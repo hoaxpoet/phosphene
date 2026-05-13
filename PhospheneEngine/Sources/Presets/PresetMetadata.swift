@@ -51,6 +51,33 @@ public struct RubricHints: Sendable, Codable, Equatable {
     }
 }
 
+// MARK: - MotionParadigm
+
+/// Motion-source paradigm per D-120 / D-029.
+///
+/// A preset's dominant motion source. Paradigms are alternatives, not composable
+/// (D-029) — a preset that combines layers picks the single value matching its
+/// dominant motion source. The orchestrator uses this for diversity scheduling
+/// alongside `family` and `concept_tags` (D-120).
+public enum MotionParadigm: String, Sendable, Codable, Hashable, CaseIterable {
+    /// Per-vertex UV feedback accumulator — Milkdrop's "warp mesh is the camera".
+    case mvWarp                 = "mv_warp"
+    /// Compute-kernel sprite integration in world space (Murmuration / starbursts).
+    case particles              = "particles"
+    /// Single global zoom/rotation per frame with persistent texture (Membrane).
+    case feedbackWarp           = "feedback_warp"
+    /// Translating/rotating a 3D camera through an SDF scene (VolumetricLithograph).
+    case cameraFlight           = "camera_flight"
+    /// GPU-authored procedural geometry evolution (FractalTree, Stalker).
+    case meshAnimation          = "mesh_animation"
+    /// Time + audio into a single fragment shader; no persistence (Waveform, Plasma).
+    case directTimeModulation   = "direct_time_modulation"
+    /// Ray-march with a static camera; motion lives in the scene/material (Glass Brutalist, Lumen Mosaic).
+    case rayMarchStatic         = "ray_march_static"
+    /// Named offscreen-texture pipeline composing multiple stages (Arachne, StagedSandbox).
+    case stagedComposition      = "staged_composition"
+}
+
 // MARK: - FatigueRisk
 
 /// How visually fatiguing this preset is over extended viewing.
