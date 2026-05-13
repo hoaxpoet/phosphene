@@ -19,6 +19,7 @@
     { "position": [0, 6.0, 2.0], "color": [0.9, 0.95, 1.0], "intensity": 3.0 }
   ],
   "scene_fog": 0.04,
+  "scene_fog_near": 0.0,
   "scene_far_plane": 40.0,
   "scene_ambient": 0.06,
   "certified": false,

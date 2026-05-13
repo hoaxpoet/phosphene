@@ -88,8 +88,15 @@ extension PresetDescriptor {
         // with a zero fogFar saturates to 1.0 for any t > 0.001 — i.e. max fog,
         // the exact opposite of the intent. Using a very large fallback pushes
         // fogFactor well below the visible threshold at any realistic far-plane.
+        //
+        // sceneFogNear (default 20.0) was previously the hard-coded value in
+        // `SceneUniforms()` — preserving it as the descriptor default keeps
+        // existing presets (Glass Brutalist, Kinetic Sculpture) byte-identical.
+        // Close-framed presets (Ferrofluid Ocean) set `scene_fog_near: 0` in
+        // JSON so the fog band starts at the camera and covers the visible
+        // surface. See V.9 Session 2 carry-forward note.
         let fogFar: Float = sceneFog > 0 ? max(1.0, 1.0 / sceneFog) : 1_000_000
-        uniforms.sceneParamsB = SIMD4(uniforms.sceneParamsB.x, fogFar, sceneAmbient, 0)
+        uniforms.sceneParamsB = SIMD4(sceneFogNear, fogFar, sceneAmbient, 0)
 
         return uniforms
     }
