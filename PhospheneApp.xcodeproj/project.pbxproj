@@ -85,7 +85,6 @@
 		G10003 /* FirstAudioDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20003; };
 		G10004 /* PresetPreviewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20004; };
 		G10005 /* ReadyPulsingBorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20005; };
-		G10006 /* ReadyBackgroundPresetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20006; };
 		G10007 /* PlanPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20007; };
 		G10008 /* PlanPreviewRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20008; };
 		G10009 /* PlanPreviewTransitionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20009; };
@@ -266,7 +265,6 @@
 		G20003 /* FirstAudioDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstAudioDetector.swift; sourceTree = "<group>"; };
 		G20004 /* PresetPreviewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetPreviewController.swift; sourceTree = "<group>"; };
 		G20005 /* ReadyPulsingBorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadyPulsingBorder.swift; sourceTree = "<group>"; };
-		G20006 /* ReadyBackgroundPresetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadyBackgroundPresetView.swift; sourceTree = "<group>"; };
 		G20007 /* PlanPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanPreviewView.swift; sourceTree = "<group>"; };
 		G20008 /* PlanPreviewRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanPreviewRowView.swift; sourceTree = "<group>"; };
 		G20009 /* PlanPreviewTransitionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanPreviewTransitionView.swift; sourceTree = "<group>"; };
@@ -574,7 +572,6 @@
 			children = (
 				C20005 /* ReadyView.swift */,
 				G20005 /* ReadyPulsingBorder.swift */,
-				G20006 /* ReadyBackgroundPresetView.swift */,
 				G20007 /* PlanPreviewView.swift */,
 				G20008 /* PlanPreviewRowView.swift */,
 				G20009 /* PlanPreviewTransitionView.swift */,
@@ -881,7 +878,6 @@
 				H10020 /* ToastContainerView.swift in Sources */,
 				H10021 /* TrackChangeAnimationView.swift in Sources */,
 				G10005 /* ReadyPulsingBorder.swift in Sources */,
-				G10006 /* ReadyBackgroundPresetView.swift in Sources */,
 				G10007 /* PlanPreviewView.swift in Sources */,
 				G10008 /* PlanPreviewRowView.swift in Sources */,
 				G10009 /* PlanPreviewTransitionView.swift in Sources */,
