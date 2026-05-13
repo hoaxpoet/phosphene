@@ -1,6 +1,8 @@
 {
   "name": "Arachne",
   "family": "organic",
+  "concept_tags": ["web"],
+  "motion_paradigm": "staged_composition",
   "duration": 150,
   "natural_cycle_seconds": 150,
   "description": "V.7.7A staged-composition scaffold: WORLD pass renders a primitive forest backdrop into an offscreen texture; COMPOSITE pass samples it and overlays a placeholder hub-and-spokes web. Real WORLD detail, refractive droplets, full silk geometry, and the spider arrive in V.7.7B+.",

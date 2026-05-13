@@ -1,6 +1,8 @@
 {
   "name": "Gossamer",
   "family": "organic",
+  "concept_tags": ["web"],
+  "motion_paradigm": "mv_warp",
   "duration": 60,
   "description": "A bioluminescent hero web vibrates as a sonic resonator — vocal pitch colors the traveling waves, bass controls strand tautness",
   "author": "Matt",
