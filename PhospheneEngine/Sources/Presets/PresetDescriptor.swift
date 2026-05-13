@@ -226,22 +226,6 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
     /// visual-wiring layer; the scorer only checks key membership.
     public let stemAffinity: [String: String]
 
-    // MARK: - D-120 Property Taxonomy
-
-    /// Visual-concept vocabulary (D-120). Open string set drawn from the cream-of-crop
-    /// pack's themes extended with Phosphene-native registers (`fractal`, `geometric`,
-    /// `waveform`, `web`, `terrain`, `mosaic`, `glass`, `fluid`, `nebula`, `plasma`,
-    /// `hypnotic`, `supernova`, `particles`, …). A preset may declare multiple tags
-    /// where its register sits at an intersection. Empty array is permitted for
-    /// diagnostic presets; gated against future production presets by the
-    /// `PresetTaxonomyCoverageTests` integration suite. Defaults to `[]`.
-    public let conceptTags: [String]
-
-    /// Motion-source paradigm (D-120 / D-029). Single value from the closed
-    /// `MotionParadigm` enum; nil only on legacy or test JSON. All production
-    /// sidecars declare this field — enforced by `PresetTaxonomyCoverageTests`.
-    public let motionParadigm: MotionParadigm?
-
     // MARK: - V.6 Certification Metadata
 
     /// V.6 certification flag. Set to `true` only after Matt has performed a visual
@@ -339,8 +323,6 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         case sectionSuitability = "section_suitability"
         case complexityCost = "complexity_cost"
         case stemAffinity = "stem_affinity"
-        case conceptTags = "concept_tags"
-        case motionParadigm = "motion_paradigm"
         case certified
         case rubricProfile = "rubric_profile"
         case rubricHints = "rubric_hints"
@@ -425,17 +407,6 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
             ComplexityCost.self, forKey: .complexityCost) ?? ComplexityCost()
         stemAffinity = try container.decodeIfPresent(
             [String: String].self, forKey: .stemAffinity) ?? [:]
-
-        // MARK: D-120 Property Taxonomy
-        // `concept_tags` is an open string set — missing decodes as []; out-of-vocab tags
-        // are not validated at decode time (vocabulary is open per D-120; orchestrator-side
-        // validation, if added later, lives at scoring time).
-        conceptTags = try container.decodeIfPresent([String].self, forKey: .conceptTags) ?? []
-        // `motion_paradigm` is a closed enum — unknown values throw DecodingError. The
-        // closed set is the point: adding a value requires a D-120 amendment, not a typo.
-        // Missing decodes to nil for legacy/test JSON; all production sidecars must declare
-        // it (enforced by PresetTaxonomyCoverageTests).
-        motionParadigm = try container.decodeIfPresent(MotionParadigm.self, forKey: .motionParadigm)
 
         // MARK: V.6 Certification Fields
         certified = try container.decodeIfPresent(Bool.self, forKey: .certified) ?? false

@@ -1,8 +1,6 @@
 {
   "name": "Nebula",
   "family": "particles",
-  "concept_tags": ["nebula", "particles"],
-  "motion_paradigm": "direct_time_modulation",
   "duration": 30,
   "description": "Radial frequency visualization with particle sparkles and nebula haze",
   "author": "Matt",

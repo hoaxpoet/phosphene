@@ -1,8 +1,6 @@
 {
   "name": "Membrane",
   "family": "fluid",
-  "concept_tags": ["fluid"],
-  "motion_paradigm": "feedback_warp",
   "duration": 35,
   "description": "A luminous drumskin stretched across the screen — bass displaces the surface, spectrum sculpts topology, beats strike it with shockwaves, feedback loop is its memory",
   "author": "Matt",
