@@ -125,6 +125,34 @@ struct SceneUniforms {
     float4 sceneParamsB;
 };
 
+// MARK: - StageRigState (V.9 Session 3 / D-125)
+
+/// One animated coloured beam in the §5.8 stage-rig. 32 bytes; byte-identical
+/// to the Swift `StageRigLight` value type in `Shared/StageRigState.swift`.
+struct StageRigLight {
+    /// xyz = world-space position, w = linear intensity scalar.
+    float4 positionAndIntensity;
+    /// xyz = linear RGB, w = 0 (reserved).
+    float4 color;
+};
+
+/// Per-frame snapshot of the §5.8 stage-rig. 208 bytes; bound at fragment
+/// slot 9 of the ray-march pipeline. Read by the `matID == 2` branch in
+/// `raymarch_lighting_fragment` (RayMarch.metal). Byte-identical to the
+/// Swift `StageRigState` value type in `Shared/StageRigState.swift`.
+///
+/// Presets that adopt §5.8 (currently Ferrofluid Ocean) instantiate a
+/// per-preset Swift state class (`FerrofluidStageRig`) that owns a 208-byte
+/// UMA buffer carrying this struct. All other ray-march presets receive
+/// `RayMarchPipeline.stageRigPlaceholderBuffer` (zero-filled) so the slot 9
+/// declaration is always satisfied. (D-125, same pattern as LumenPatternState.)
+struct StageRigState {
+    uint   activeLightCount;          // 0..6
+    uint   _pad0;
+    float2 _pad1;
+    StageRigLight lights[6];
+};
+
 // MARK: - Color Utilities
 
 float3 hsv2rgb(float3 c) {
