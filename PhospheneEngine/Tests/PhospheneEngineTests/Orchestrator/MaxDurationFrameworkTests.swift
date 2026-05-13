@@ -24,7 +24,9 @@ private let referenceTable: [ReferenceRow] = [
     // `maxDuration` returns `.infinity`. The pre-round-8 60 s
     // `natural_cycle_seconds` cap is bypassed by the new early-return.
     ReferenceRow(presetName: "Arachne",                expectedSeconds: nil),
-    ReferenceRow(presetName: "Ferrofluid Ocean",       expectedSeconds: 49),
+    // V.9 Session 1: motion_intensity 0.65→0.55, visual_density 0.75→0.65
+    // per D-124 redirect — 90 + (-50)(0.05) + (-30)(1) + (-15)(0.15) = 55.25.
+    ReferenceRow(presetName: "Ferrofluid Ocean",       expectedSeconds: 55),
     ReferenceRow(presetName: "Fractal Tree",           expectedSeconds: 55),
     ReferenceRow(presetName: "Glass Brutalist",        expectedSeconds: 67),
     ReferenceRow(presetName: "Gossamer",               expectedSeconds: 102),
