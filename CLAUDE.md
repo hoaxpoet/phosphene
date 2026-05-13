@@ -219,21 +219,12 @@ See [docs/ARCHITECTURE.md §ML Inference](docs/ARCHITECTURE.md#ml-inference) for
 2. **Rising-edge accumulation**: IIR filters oscillate, defeating the accumulator.
 3. **FFT-based per-bin spectral flux**: Threshold tuning intractable across genres.
 4. **Beat-dominant visual design** (beat_zoom >> base_zoom): ±80ms jitter amplified by feedback.
-5. **BlackHole virtual audio driver**: Broken on macOS Sequoia.
-6. **Web Audio API AnalyserNode**: Broken for virtual devices on macOS.
-7. **ScreenCaptureKit for audio-only capture**: Zero audio callbacks on macOS 15+/26.
-8. **AcousticBrainz**: Shut down 2022.
-9. **MPNowPlayingInfoCenter for reading other apps' metadata**: Only returns host app's own info.
-10. **Spotify Audio Features endpoint**: Deprecated Nov 2024, returns 403.
 11. **MediaRemote private framework** (macOS 15+): Operation not permitted from signed app bundles.
-12. **HTDemucs CoreML conversion**: Complex tensor ops block conversion.
-13. **End-to-end CoreML audio separation models**: No complex number support in CoreML.
 14. **Raw MLMultiArray.dataPointer with ANE Float16 outputs**: Padded strides cause SIGSEGV.
 15. **Chroma from low-frequency FFT bins (<500 Hz)**: Bin resolution too coarse for pitch accuracy.
 16. **Raw 12-bin chroma as mood input**: Tiny MLP can't learn Krumhansl-Schmuckler from raw bins.
 17. **~~Autocorrelation half-tempo: Known octave error. Metadata disambiguates.~~ AMENDED post-DSP.1 (2026-05-03):** The "autocorrelation half-tempo" framing was an inaccurate diagnosis. The real failures on real music had two distinct causes: (a) `recordOnsetTimestamps` fused `bandFlux[0]+bandFlux[1]` (sub_bass + low_bass), creating frame-aliased IOIs because per-band `detectOnsets` cooldowns are independent and FFT-hop quantization lands the two bands on different frames per kick; (b) histogram-mode BPM picking is biased toward faster BPMs because BPM bucket widths grow with BPM in period space (the 144 BPM bucket spans 414–420 ms; the 136 BPM bucket spans 437–443 ms — an evenly-quantized stream of 18-frame and 19-frame IOIs lands more events in the 144 bucket). DSP.1 fixes both: source IOI timestamps from `result.onsets[0]` only (sub_bass alone, never fused), and replace histogram-mode picking with trimmed-mean IOI in `computeRobustBPM`. Reference-track tempo error dropped from 10–20 % to <2 % on kick-on-the-beat tracks. The remaining failure mode — tracks where the kick is not on every beat (syncopated rock, swing, hip-hop) and tracks in irregular meters (Pyramid Song 16/8, Money 7/4) — is genuinely beyond the IOI-histogram method's ceiling and motivates DSP.2 (Beat This! transformer offline + live drift tracker, D-077; the BeatNet path D-076 was abandoned 2026-05-04). Metadata disambiguation is no longer needed for the kick-on-the-beat case but remains a useful prior for sparse-onset tracks.
 18. **Median-based tempo threshold**: Half-wave rectified flux is mostly zeros → median ≈ 0.
-19. **Unweighted chroma accumulation**: Bin-count bias across pitch classes.
 20. **CoreML ANE outputs with bindMemory(to: Float.self)**: Float16 misinterpreted as Float32.
 21. **CATapDescription(stereoMixdownOfProcesses: [])**: Empty array = silence. Use `stereoGlobalTapButExcludeProcesses: []`.
 22. **Screen capture permission assumption**: Tap creation succeeds without permission but delivers zeros. Must call `CGRequestScreenCaptureAccess()` first.
