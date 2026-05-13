@@ -3491,3 +3491,96 @@ The pre-redirect framing was internally coherent but produced a visual destinati
 - Promoting thin-film interference into the catalog-wide §12.1 mandatory list. Out of scope for a per-preset redirect; the rubric stays catalog-wide. Thin-film becomes mandatory for Ferrofluid Ocean specifically via the README's mandatory-traits section.
 - Citing `stems.vocals_pitch_norm` or `vocalsPitchNorm` as the beam-color route. That feature was retired in DSP.2 S9 (ring 4 repurposed for `bar_phase01`; `normalizePitch` deleted). The shader normalizes `vocals_pitch_hz` inline.
 - Using `stems.other_centroid_dev` as the vocals-pitch fallback. No such field exists — `StemFeatures` only has `*_energy_dev` deviation variants for the four stems; `*_centroid` fields are raw. `stems.other_energy_dev` is the available fallback (chromatic rotation from harmonic-density rather than harmonic-brightness; close enough for the palette-phase modulation purpose).
+
+---
+
+## D-125 — `SHADER_CRAFT.md §5.8` stage-rig implementation contract: slot-9 fragment buffer + matID == 2 dispatch
+
+**Status:** Accepted (2026-05-13)
+
+### Context
+
+D-124 introduced `SHADER_CRAFT.md §5.8` (Stage lighting rig) as a new catalog-wide lighting recipe with first consumer Ferrofluid Ocean (V.9). The recipe specifies 4–6 colored point lights in slow orbital motion above the scene, with per-light orbital position, palette-driven color (vocals_pitch_hz + other_energy_dev fallback), and drums_energy_dev intensity envelope — all computed per frame.
+
+The existing ray-march lighting infrastructure ([PresetLoader+Preamble.swift:249](PhospheneEngine/Sources/Presets/PresetLoader+Preamble.swift:249)) carries exactly one light: `SceneUniforms.lightPositionAndIntensity` + `SceneUniforms.lightColor`. The JSON `scene_lights` array reads `sceneLights.first` only ([PresetDescriptor+SceneUniforms.swift:78](PhospheneEngine/Sources/Presets/PresetDescriptor+SceneUniforms.swift:78)). `RayMarch.metal:362` consumes those single-light uniforms in `raymarch_lighting_fragment`. There is no multi-light path today, and §5.8's per-light per-frame computed positions / colors / intensities do not fit the static-JSON model regardless.
+
+Three implementation options were considered before V.9 Session 1 starts (because the multi-session plan needs the infrastructure approach locked in for Session 3 — the stage-rig session — and the JSON sidecar schema needs to be authoritative from Session 1 forward):
+
+- **(a) Hand-roll in `sceneMaterial`** — sceneMaterial computes effective light contribution; lighting pass dispatched on matID to skip Cook-Torrance. Breaks the D-021 sceneMaterial signature spirit (sceneMaterial writes material properties, not lit color); preset-specific only.
+- **(b) Extend `SceneUniforms` to N lights** — widen the struct to `lights[N]`; update JSON schema; update every ray-march preset's binding; update `raymarch_lighting_fragment` to loop over N. Touches every existing ray-march preset; broad blast radius for one §5.8 consumer.
+- **(c) Per-preset fragment buffer slot + matID dispatch** — slot 9 carries a `StageRigState` struct; `raymarch_lighting_fragment` dispatches on `gbuf0.g` matID, with `matID == 2` reading slot 9 and looping over N lights. Per-frame state lives in a Swift class (analogous to `LumenPatternEngine`). Reusable for any future §5.8-adopter.
+
+### Decisions
+
+**(a) Option (c) is the implementation contract.** Slot-9 per-preset fragment buffer + matID == 2 dispatch in `raymarch_lighting_fragment`. Reasons: (1) consistent with the established per-preset extension pattern (D-LM-buffer-slot-8, D-LM-matid); (2) avoids widening `SceneUniforms` (which would touch every ray-march preset and force regression-hash regen across the catalog); (3) the §5.8 recipe is reusable, so the slot 9 + matID == 2 contract is a catalog-wide reservation, not a Ferrofluid-Ocean-only carve-out.
+
+**(b) GPU buffer slot reservation.** Buffer slot 9 is reserved as **"per-preset fragment buffer #4"** in the GPU contract — alongside the existing slot 6 (#1, Arachne web pool), slot 7 (#2, Arachne spider), and slot 8 (#3, Lumen pattern state). The `RayMarchPipeline.stageRigPlaceholderBuffer` is a zero-filled UMA buffer bound at slot 9 whenever the active ray-march preset does not use §5.8. The preamble's `raymarch_gbuffer_fragment` and `raymarch_lighting_fragment` both declare `[[buffer(9)]] constant StageRigState&` so Metal validation requires every ray-march preset to receive a bound slot 9 — same pattern as D-LM-buffer-slot-8.
+
+**(c) `StageRigState` MSL + Swift struct.** Declared in the preamble once for every ray-march preset:
+
+```msl
+struct StageRigLight {
+    float4 positionAndIntensity;  // xyz = world position, w = intensity
+    float4 color;                 // xyz = linear RGB, w = 0
+};
+
+struct StageRigState {
+    uint   activeLightCount;      // 0..6
+    uint   _pad0;
+    float2 _pad1;
+    StageRigLight lights[6];      // up to 6 lights; lights[i].positionAndIntensity.w == 0 → inactive
+};
+```
+
+Stride: `16 (header) + 6 * 32 (lights) = 208 bytes`, 16-byte aligned. Swift `StageRigState` value type byte-identical to the MSL struct, mirrored byte-for-byte (same pattern as `LumenPatternState` — D-LM-buffer-slot-8). A future `CommonLayoutTest`-style regression test locks the stride against accidental shrinkage.
+
+**(d) `matID == 2` dispatch contract.** In `raymarch_lighting_fragment`:
+
+- `matID == 0` (default) — single-light Cook-Torrance from `scene.lightPositionAndIntensity` + `scene.lightColor`. Unchanged.
+- `matID == 1` — Lumen emission path (existing per D-LM-matid). Unchanged.
+- `matID == 2` (NEW) — **stage-rig path.** Skip the single-light Cook-Torrance entirely. Loop `for (uint i = 0; i < stageRig.activeLightCount; i++)` and accumulate `cookTorranceContribution(lights[i])` per light. IBL ambient still applied per the existing path (multiplied by `scene.lightColor.rgb` per D-022 mood-tint). Screen-space shadow march is **disabled** for matID == 2 in the V.9 first consumer (cost prohibitive at 4–6 lights × 32 steps each); revisit at Session 5 cert review if shadow lift is required for fidelity.
+
+A preset signals stage-rig consumption by emitting `matID = 2` from its `sceneMaterial` per-pixel. Ferrofluid Ocean V.9 emits `matID = 2` unconditionally for surface pixels.
+
+**(e) JSON sidecar schema.** New top-level `"stage_rig"` object in preset sidecars that adopt §5.8:
+
+```json
+"stage_rig": {
+    "light_count": 4,
+    "orbit_altitude": 6.0,
+    "orbit_radius": 4.0,
+    "orbit_speed_baseline": 0.05,
+    "orbit_speed_arousal_coef": 0.15,
+    "palette_phase_offsets": [0.0, 0.33, 0.67, 0.17],
+    "intensity_baseline": 5.0,
+    "intensity_floor_coef": 0.4,
+    "intensity_swing_coef": 0.6,
+    "intensity_smoothing_tau_ms": 150
+}
+```
+
+`light_count ∈ [3, 6]`. `palette_phase_offsets` length must equal `light_count`. The `scene_lights` array remains for back-compat single-light path (matID == 0); presets using stage_rig may set `scene_lights` to a single zero-intensity placeholder. `PresetDescriptor` decoder logs a warning if `light_count` is out of range and falls back to 4.
+
+**(f) Per-preset Swift state class.** `FerrofluidStageRig` (first consumer) is concrete. A generic `StageRigEngine` (Sendable, owns the slot-9 UMA buffer, exposes `tick(features:stems:dt:)`) is the recommended pattern for future adopters but is **not** mandated by D-125 — Ferrofluid Ocean V.9 may ship a preset-specific `FerrofluidStageRig`, and a second consumer adopting §5.8 is the trigger to extract the generic. Lazy abstraction — preserve the option for divergent stage-rig flavours per preset (e.g. one preset might want elliptical orbits rather than circular; let the second consumer surface that need).
+
+**(g) `applyPreset` wiring.** When the active preset's JSON sidecar contains a `stage_rig` block, the engine instantiates the preset-specific stage-rig class, ticks it per frame on `@MainActor` from the existing per-preset tick path (analogous to `LumenPatternEngine.tick`), and binds its UMA buffer to slot 9 via a new `setRayMarchPresetFragmentBuffer9(_:)` API on `RenderPipeline`. When no `stage_rig` block is present, `stageRigPlaceholderBuffer` is bound. Same per-frame uniform binding contract as slots 6/7/8.
+
+### Reason
+
+Option (c) consolidates the §5.8 implementation behind one ABI extension (slot 9 + new matID value) without rippling into every existing ray-march preset's binding contract. The pattern is already proven by Lumen Mosaic (slot 8 + matID == 1) and is the cheapest way to add a new lighting paradigm to the catalog. JSON sidecar additions are additive (new optional `stage_rig` block); existing preset sidecars are unaffected. The deferred-abstraction call on the Swift state class (per-preset concrete first, extract generic on second consumer) follows the project's standing "no premature abstraction" rule.
+
+### What was rejected
+
+- **Option (a) — fold lighting into sceneMaterial.** Breaks the D-021 contract spirit. sceneMaterial would need a special return path or out-param for "pre-shaded color" that the lighting pass would interpret based on matID. Less clean than the matID == 2 dispatch in the lighting pass itself.
+- **Option (b) — widen `SceneUniforms` to N lights.** Touches every ray-march preset's binding contract; every existing preset's `raymarch_lighting_fragment` invocation would receive the wider struct even though only Ferrofluid Ocean consumes lights beyond the first. Forces a golden-hash regeneration sweep across the catalog for an ABI change that benefits one preset.
+- **Sharing slot 8 between Lumen and stage rig** via a discriminated-union struct or `constant void*` cast. Metal/MSL type system makes this awkward; slot allocation is cheap; cleaner to use a dedicated slot.
+- **Slot 6 or 7 for stage rig.** Reserved per CLAUDE.md GPU contract for Arachne's per-preset state (web pool, spider). Ray-march presets that need slot 6/7 don't exist today, but reserving slot 9 keeps the per-pipeline conventions clear: slot 6/7 = mesh/staged-preset additions; slot 8 = Lumen; slot 9 = §5.8 stage rig.
+- **Mandating a generic `StageRigEngine` Swift class at first-consumer time.** Premature abstraction — V.9 is the only confirmed §5.8 consumer; second-consumer needs may diverge (elliptical orbits, non-uniform per-light parameters, different palette mapping). Extract on second consumer.
+- **Enabling screen-space shadow march in the matID == 2 path at first consumer.** Cost prohibitive (4–6 lights × 32 march steps each = 128–192 step contributions per pixel). Revisit at Session 5 perf capture if shadow lift is required for fidelity match. Anti-reference fallback: if shadows are deemed essential, switch to a single-shadow-light hack (cast shadow from the brightest active beam only).
+
+### Forward references
+
+- V.9 Session 1 prompt cites D-125 as a "deferred implementation; structure locked" note.
+- V.9 Session 3 (stage-rig lighting recipe) implements D-125 end to end. New code: preamble `StageRigState` struct, `RayMarchPipeline.stageRigPlaceholderBuffer`, `raymarch_lighting_fragment` matID == 2 branch, Swift `FerrofluidStageRig` class, `PresetDescriptor.stageRig` decoded field, `applyPreset` wiring.
+- A `CommonLayoutTest`-style stride regression test for `StageRigState` lands with Session 3.
+- The §5.8 reference call-site (the §5.8 JSON example) in [docs/SHADER_CRAFT.md](docs/SHADER_CRAFT.md) is illustrative — the actual JSON contract is documented here in D-125(e). A clarifying note in §5.8 pointing to D-125 lands with Session 3.
