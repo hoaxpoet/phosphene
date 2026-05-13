@@ -382,6 +382,7 @@ fragment float4 raymarch_lighting_fragment(
     VertexOut                   in        [[stage_in]],
     constant FeatureVector&     features  [[buffer(0)]],
     constant SceneUniforms&     scene     [[buffer(4)]],
+    constant StageRigState&     stageRig  [[buffer(9)]],
     texture2d<float>            gbuf0     [[texture(0)]],   // rg16Float: depth, unused
     texture2d<float>            gbuf1     [[texture(1)]],   // rgba8Snorm: normal xyz, AO
     texture2d<float>            gbuf2     [[texture(2)]],   // rgba8Unorm: albedo, packed material
@@ -487,6 +488,82 @@ fragment float4 raymarch_lighting_fragment(
         float3 irradiance   = ibl_sample_irradiance(N, iblIrradiance, iblSamp);
         float3 ambientFloor = irradiance * kLumenIBLFloor * ao;
         return float4(albedo * kLumenEmissionGain + ambientFloor, 1.0);
+    }
+
+    // ── matID == 2 — §5.8 stage-rig metallic thin-film (V.9 Session 3 / D-125) ──
+    //
+    // Ferrofluid Ocean's adopted lighting path: the same pitch-black metallic
+    // thin-film substrate as matID == 3, but lit by the multi-light orbital
+    // stage-rig (3–6 colored beams) bound at fragment slot 9. The single
+    // scene-uniform light is *ignored* on this path — beam reflections sweep
+    // diagonally across the ferrofluid surface, palette evolving from the
+    // `palette()` IQ cosine driven by `accumulated_audio_time + per-light
+    // phase + pitch_shift` (computed on the CPU in `FerrofluidStageRig`).
+    //
+    // Per D-125(d), screen-space shadow march is **disabled** for this branch
+    // — cost prohibitive at 4–6 lights × 12 march steps each. Revisit at
+    // Session 5 cert review if a fidelity gap demands shadow lift.
+    //
+    // Per D-125(c), `stageRig.activeLightCount` is in [0, 6]; the loop body
+    // is empty when 0 (zero-filled placeholder), preserving the silence
+    // fallback per §5.8 silence-state semantics. The CPU-side
+    // `FerrofluidStageRig` writes `activeLightCount` from the JSON-decoded
+    // `stage_rig.light_count` (clamped [3, 6] by `PresetDescriptor.StageRig`).
+    if (matID == 2) {
+        constexpr float kFerrofluidFilmThicknessNm = 220.0;
+        constexpr float kFerrofluidFilmIORThin     = 1.45;
+        constexpr float kFerrofluidFilmIORBase     = 1.0;
+
+        // TODO(V.9 Session 4): modulate kFerrofluidFilmThicknessNm from audio
+        // (deviation primitives per D-026) so the iridescent shift breathes
+        // with the music. Hold at a fixed 220 nm in Session 3.
+
+        float3 V         = normalize(scene.cameraOriginAndFov.xyz - worldPos);
+        float3 directLit = float3(0.0);
+
+        // Per-beam Cook-Torrance accumulation. The shader-side counter is
+        // 'uint' to match the MSL struct field; the CPU clamps it to [0, 6]
+        // at write time (StageRigState.activeLightCount) so the loop is
+        // bounded by the buffer's lights[6] tuple length.
+        for (uint i = 0; i < stageRig.activeLightCount && i < 6; i++) {
+            float3 lightPos    = stageRig.lights[i].positionAndIntensity.xyz;
+            float  beamIntens  = stageRig.lights[i].positionAndIntensity.w;
+            float3 beamColor   = stageRig.lights[i].color.xyz;
+
+            float3 L           = lightPos - worldPos;
+            float  beamDist    = length(L);
+            L                  = normalize(L);
+            float3 H           = normalize(L + V);
+            float  VdotH       = max(dot(V, H), 0.0);
+            // Inverse-square falloff with the same `+1` singularity guard the
+            // default matID == 0 path uses, so beam reflections at large
+            // surface distances decay smoothly rather than singularly.
+            float  attenuation = 1.0 / (1.0 + beamDist * beamDist);
+
+            // Thin-film F0 — same recipe as matID == 3 (silicone-oil-like
+            // 220 nm film over an opaque metallic substrate). This is what
+            // produces the iridescent shift in beam reflections that
+            // distinguishes Ferrofluid Ocean from a vanilla mirror surface.
+            float3 F0_thin     = rm_thinfilm_rgb(VdotH,
+                                                 kFerrofluidFilmThicknessNm,
+                                                 kFerrofluidFilmIORThin,
+                                                 kFerrofluidFilmIORBase);
+
+            float3 beamContrib = rm_brdf_with_F0(N, V, L, albedo, F0_thin, roughness, metallic)
+                               * beamColor * beamIntens * attenuation;
+            directLit += beamContrib;
+        }
+
+        // D-125(d): no screen-space shadow march. The high-intensity
+        // beams + roughness ≥ 0.05 already spread the specular lobe per
+        // §5.8 "pillar reflections" failure-mode mitigation; per-light
+        // shadow march would also be cost-prohibitive at 4–6 lights.
+
+        return float4(rm_finishLightingPass(
+            directLit, N, V, albedo, roughness, metallic, ao,
+            depthNorm, farPlane, rayDir, scene,
+            iblIrradiance, iblPrefiltered, iblBRDFLUT, iblSamp
+        ), 1.0);
     }
 
     // ── matID == 3 — metallic thin-film Cook-Torrance (V.9 Session 2) ──
