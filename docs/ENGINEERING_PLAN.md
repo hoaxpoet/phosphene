@@ -2475,6 +2475,7 @@ Continuous energy is the primary visual driver; beat onset pulses are accents on
 5. **QR.4 (U.12) — UX dead ends + duplicate `SettingsStore`.** Small, isolated, user-visible.
 6. **QR.5 (CLEAN.1) — Mechanical cleanup pass.** Pure deletion of dead code + dead comments. Schedule when the four above have landed; ride along with their cleanups.
 7. **QR.6 (ARCH.1) — `VisualizerEngine` decomposition.** Largest debt in the codebase. Defer until QR.1–QR.4 ship, then schedule with explicit risk acknowledgement.
+8. **QR.7 (CLEAN.2) — Shader noise algorithm consolidation.** Deferred B.3 + B.4 items from QR.5. Not mechanical — algorithm swap with visual impact (value-noise vs gradient-noise; simple fbm vs rotation-matrix fbm). Includes `sdRoundBox` convention migration. Scheduled separately so QR.5 can ship under its "no behaviour change" invariant.
 
 **Cross-cutting context (read before any QR increment):**
 
@@ -2981,6 +2982,79 @@ Pick one source of truth (recommended: `Presets/Shaders/`). Remove the duplicate
 - Decomposition surfaces hidden coupling. Each host migration may require refactors in unrelated files.
 - `RenderGraphState` atomic snapshot under load may regress per-frame timing if not benchmarked. Mitigation: gate the refactor behind a runtime flag and A/B against the legacy switchboard for one session.
 - `MIRPipeline` `@MainActor` conversion may cause unexpected `await` propagation. Mitigation: stage in a separate session with isolated test coverage.
+
+---
+
+### Increment QR.7 (CLEAN.2) — Shader noise algorithm consolidation
+
+**Goal.** Resolve the deferred B.3 + B.4 items from QR.5: migrate production presets calling legacy `perlin2D` / `perlin3D` / `fbm3D` / `fbm2D` (and `sdRoundBox`) to a single canonical noise / SDF algorithm, then delete the legacy bodies from `ShaderUtilities.metal`. **This increment is NOT mechanical — it accepts visual change at the affected call sites.**
+
+**Why a separate increment.** QR.5 discovered that the legacy `*D` (camelCase) noise/SDF functions in `ShaderUtilities.metal` and the V.1+V.2 (snake_case) tree under `Sources/Presets/Shaders/Utilities/` are not just naming differences — they are different *algorithms* with different output ranges, fade curves, and spatial character:
+
+| Legacy | V.1+V.2 | Difference |
+|---|---|---|
+| `perlin2D(p) → [0,1]` | `perlin2d(p) → [-1,1]` | **Value noise** (hash per corner) vs **gradient noise** (Perlin's classic gradient + dot product). Different fade (cubic vs C² quintic). Different hash table. |
+| `perlin3D(p) → [0,1]` | `perlin3d(p) → [-1,1]` | Same value-vs-gradient distinction as 2D. |
+| `fbm3D(p, n) → [0,1]` (variable octaves, simple halving, no rotation) | `fbm4`/`fbm8`/`fbm12` (fixed octaves, rotation matrix per octave, Hurst-exponent decay, built on `perlin3d`) | Different algorithm + different range + fixed octave count. |
+| `fbm2D(p, n)` | (no direct V.1+V.2 equivalent) | Build on `fbm` family or port as `fbm_octaves_2d`. |
+| `sdRoundBox(p, b, r)`: `b` = outer half-extents | `sd_round_box(p, b, r)`: `b` = inner half-extents | Same geometric shape, different parameter convention. Requires `b → b - r` at every call site. |
+
+QR.5's load-bearing invariant ("no behavior change, no golden-hash drift") forbids these migrations as mechanical cleanup. QR.7 accepts the visual change and runs the migration as a deliberate refactor.
+
+**Consumers to migrate** (verified during QR.5 audit; re-verify on session start in case of drift):
+
+- [GlassBrutalist.metal:205–206](PhospheneEngine/Sources/Presets/Shaders/GlassBrutalist.metal) — 2× `perlin2D` calls (`finGrain`, `macroVar`).
+- [VolumetricLithograph.metal:382](PhospheneEngine/Sources/Presets/Shaders/VolumetricLithograph.metal) — `fbm3D(noiseP, VL_FBM_OCTAVES)`. Plus 2 more sites in the volumetric march loop (`fbm3D(p * 0.5, 4)`, `fbm3D((p + lightDir * 0.3) * 0.5, 3)`).
+- [KineticSculpture.metal:59–61, 74–76](PhospheneEngine/Sources/Presets/Shaders/KineticSculpture.metal) — 6× `sdRoundBox` calls.
+
+**Two strategy decisions to make at increment start.**
+
+**Strategy A — Algorithm picker (for `perlin*` / `fbm*`):**
+- **A1. Adopt V.1+V.2 algorithm everywhere.** Migrate consumers; add range-remap (`* 0.5 + 0.5`) where they expected [0, 1]; re-tune visual constants. Highest cleanup payoff; biggest visual delta. **VolumetricLithograph requires M7 fidelity review** post-migration (cited in CLAUDE.md as the MV-2 reference implementation).
+- **A2. Add a new legacy-compatible helper to the V.1+V.2 tree.** Port `fbm3D`'s simple-halving / no-rotation / value-noise-base algorithm as `fbm_octaves(p, n)` (or similar) under `Utilities/Noise/`. Keep `perlin2D` / `perlin3D` in `ShaderUtilities.metal` since the gradient-vs-value distinction is genuine (they are different tools, not duplicates). Lower visual risk; modest cleanup payoff.
+- **A3. Declare the legacy forms permanent keepers** (status quo after QR.5). They serve a different purpose than the V.1+V.2 forms (value vs gradient noise are both useful primitives). Annotate `ShaderUtilities.metal` to make this explicit. No code change; QR.7 becomes a doc-only increment.
+
+**Strategy B — `sdRoundBox` migration (independent of A):**
+- **B1. Migrate all 6 KineticSculpture call sites with `b → b - r` adjustment.** Literal-equivalent visual output. Mechanical except for the per-call adjustment.
+- **B2. Keep `sdRoundBox` as permanent keeper.** Same as A3 reasoning.
+
+**Recommendation (start-of-increment):** A3 + B1. Reason: gradient vs value noise are genuinely different primitives and shipping both is fine; the V.1+V.2 form is the right default for new presets but the legacy form is the right tool for existing consumers that depend on [0, 1] output. `sdRoundBox` on the other hand IS strictly a convention mismatch — migrating costs nothing visually and removes a keeper.
+
+**Files to touch (Strategy A1, worst case):**
+- Migrate: `GlassBrutalist.metal`, `VolumetricLithograph.metal` (3 sites), possibly other consumers found at session start.
+- Migrate: `KineticSculpture.metal` (6 sites, Strategy B).
+- Delete from `ShaderUtilities.metal`: `perlin2D` / `perlin3D` / `fbm2D` / `fbm3D` / `sdRoundBox` (5 functions, ~80 LOC).
+- Update test source in `ShaderUtilityTests.swift` (preamble assertions for the deleted names).
+- Regen `PresetRegressionTests` golden hashes for Glass Brutalist + Volumetric Lithograph + Kinetic Sculpture.
+- M7 fidelity review for VolumetricLithograph.
+
+**Files to touch (Strategy A3 + B1, recommended):**
+- Migrate: `KineticSculpture.metal` (6 × `sdRoundBox` → `sd_round_box(p, b - r, r)`).
+- Delete from `ShaderUtilities.metal`: `sdRoundBox` only.
+- Annotate `ShaderUtilities.metal` "permanent keepers" section to make the gradient-vs-value-noise distinction explicit for future maintainers.
+- Regen Kinetic Sculpture golden hashes (should be byte-identical if the math is right; verify).
+- No M7 review required.
+
+**Tests (Strategy A1):**
+- Full engine suite green.
+- `PresetRegressionTests` regenerated (3 presets × 3 fixtures = 9 hashes minimum).
+- `ShaderUtilityTests` updated for deleted names.
+- Manual eyeball: GlassBrutalist glass-fin grain, VolumetricLithograph chamber walls + light shafts, KineticSculpture frosted glass.
+- M7 review for VolumetricLithograph (preset is cited in CLAUDE.md as the MV-2 reference).
+
+**Tests (Strategy A3 + B1):**
+- Full engine suite green.
+- `PresetRegressionTests` golden hashes for Kinetic Sculpture either unchanged (if `b - r` is the exact compensation) or surface drift for explicit re-bake.
+- No M7 review required.
+
+**Done when:**
+
+- [ ] Strategy A / B decision made and recorded as a DECISIONS.md entry.
+- [ ] Migrations land per the chosen strategy.
+- [ ] Hashes either preserved (A3 + B1) or explicitly regenerated (A1 / A2) with M7 review for VolumetricLithograph.
+- [ ] CLAUDE.md "Do not" list updated if any new mechanical-cleanup-looks-safe-but-isn't pattern surfaces (e.g. "Do not migrate `perlin2D` → `perlin2d` without a range-remap pass — they are different algorithms").
+
+**Estimated sessions:** 1 for Strategy A3 + B1 (recommended); 2–3 for Strategy A1 (includes M7).
 
 ---
 
