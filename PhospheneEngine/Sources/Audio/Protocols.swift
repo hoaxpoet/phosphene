@@ -98,7 +98,7 @@ public protocol FFTProcessing: AnyObject, Sendable {
 
 // MARK: - StemSeparating
 
-/// Abstraction over CoreML stem separation.
+/// Abstraction over MPSGraph stem separation.
 ///
 /// Concrete implementation: `StemSeparator` (ML module).
 /// Test double: `FakeStemSeparator`.
@@ -163,7 +163,7 @@ public struct TrackChangeEvent: Sendable {
 
 // MARK: - MoodClassifying
 
-/// Abstraction over CoreML mood classification.
+/// Abstraction over MPSGraph mood classification.
 ///
 /// Concrete implementation: `MoodClassifier` (ML module).
 /// Test double: `StubMoodClassifier`.
@@ -185,11 +185,11 @@ public protocol MoodClassifying: AnyObject, Sendable {
 
 /// Errors from the mood classification pipeline.
 public enum MoodClassificationError: Error, Sendable {
-    /// CoreML model bundle not found in the module resources.
+    /// Model bundle not found in the module resources.
     case modelNotFound
-    /// CoreML model failed to load.
+    /// Model failed to load.
     case modelLoadFailed(String)
-    /// CoreML prediction failed.
+    /// Inference failed.
     case predictionFailed(String)
     /// Wrong number of input features (expected 20).
     case invalidFeatureCount(Int)

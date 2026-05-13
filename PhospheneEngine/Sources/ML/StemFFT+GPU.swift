@@ -112,7 +112,7 @@ extension StemFFTEngine {
     /// vDSP's `fft_zrip` returns twice the standard DFT across all bins
     /// (including DC and Nyquist), so we multiply MPSGraph's output by 2
     /// before dividing by `nFFT`. This convention is internal to the
-    /// engine — downstream callers (StemSeparator, the CoreML model) are
+    /// engine — downstream callers (StemSeparator, the MPSGraph model) are
     /// insensitive to the absolute amplitude because the STFT/iSTFT pair
     /// round-trips with matching conventions on both ends.
     ///

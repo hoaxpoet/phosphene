@@ -59,7 +59,7 @@ extension VisualizerEngine {
         stemTimer = nil
     }
 
-    /// RMS silence floor — below this the stem pipeline skips CoreML inference.
+    /// RMS silence floor — below this the stem pipeline skips MPSGraph inference.
     private static let silenceRMSThreshold: Float = 1e-6
 
     // MARK: - Scheduler Gate (Increment 6.3)
@@ -139,7 +139,7 @@ extension VisualizerEngine {
             return
         }
 
-        // Idle suppression: skip CoreML inference when the buffer is silence.
+        // Idle suppression: skip MPSGraph inference when the buffer is silence.
         let rms = stemSampleBuffer.rms(seconds: 10, sampleRate: actualRate)
         guard rms > Self.silenceRMSThreshold else {
             logger.debug("Stem pipeline: skipping — silence (RMS=\(rms))")
