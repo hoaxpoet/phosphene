@@ -2808,62 +2808,69 @@ Add a SwiftLint custom rule that flags `f\.(bass|mid|treb|sub_bass|low_bass|low_
 
 ### Increment QR.5 (CLEAN.1) — Mechanical cleanup pass
 
-**Goal.** Pure deletion of dead code + dead binaries + stale doc comments. No behavior change. ~600 LOC and ~1.6 MB removed.
+**Goal.** Pure deletion of dead code + dead binaries + stale doc comments. No behavior change.
 
-**Why now.** Each individual cleanup is too small to justify its own increment, but together they reduce read-cost on every subsequent session. Schedule after QR.1–QR.4 land so their cleanups can ride along (QR.1 adds Failed Approaches, QR.2 deletes `BeatPredictor` once retired, etc.).
+**Why now.** Each individual cleanup is too small to justify its own increment, but together they reduce read-cost on every subsequent session. Schedule after QR.1–QR.4 land so their cleanups can ride along.
 
-**Cleanup catalog (cite each commit message with the agent finding):**
+**Catalog re-audited 2026-05-13.** The original 17-item catalog was authored ~10 days before execution; the re-audit (5 parallel Explore agents covering dead code, doc comments, shader utilities, DSP cleanup, test infrastructure) found significant drift — 5 items already-done or stale, 3 items reduced scope, 1 item bigger than catalog, 1 item deferred. The revised catalog below supersedes the original numbering but keeps the original IDs (#1–#17) for traceability with Session A commits.
 
-| # | Cleanup | Lines/size | Files |
+**Status legend:** ✅ landed · ↪ retired-stale (no code change; catalog premise no longer holds) · ⊘ no-op (already done before QR.5 began) · → actionable
+
+| # | Cleanup | Status | Notes |
 |---|---|---|---|
-| 1 | Delete `Sources/ML/Weights/beatnet/` (D-076 abandoned) | ~1.6 MB binaries + 14 .bin + manifest | `Sources/ML/Weights/beatnet/` directory |
-| 2 | Delete `Scripts/convert_beatnet_weights.py` | ~80 LOC | `Scripts/` |
-| 3 | Delete IOI histogram + `dumpHistogram` consumers (dead post-D-075) | ~50 LOC | `Sources/DSP/BeatDetector+Tempo.swift:144-177` |
-| 4 | Dedup `ShaderUtilities.metal` legacy bodies vs V.1+V.2 trees | 13 functions, ~400 LOC; ~30% off every preset preamble compile | `Sources/Presets/Shaders/ShaderUtilities.metal` |
-| 5 | Migrate production presets calling legacy `fbm3D`/`perlin2D`/`sdPlane`/`sdBox` to V.1+V.2 names (precondition for #4) | renames only | `VolumetricLithograph.metal`, `GlassBrutalist.metal`, others identified by grep |
-| 6 | Delete placeholder `Sources/Orchestrator/Orchestrator.swift` (5 LOC empty) | 5 LOC | `Sources/Orchestrator/Orchestrator.swift` |
-| 7 | Delete placeholder `Sources/Session/Session.swift` (5 LOC empty) | 5 LOC | `Sources/Session/Session.swift` |
-| 8 | Delete `Sources/Orchestrator/PresetSignaling.swift` (no preset emits) | 39 LOC | `Sources/Orchestrator/PresetSignaling.swift` |
-| 9 | Inline `Views/Ready/ReadyBackgroundPresetView.swift` into `ReadyView.swift` | 34 LOC moved | `Views/Ready/` |
-| 10 | Delete or wire `Services/PresetPreviewController.swift` (52 LOC stub, no caller) | 52 LOC | `Services/PresetPreviewController.swift` |
-| 11 | Stale CoreML doc comments in 7+ files | doc-only | `Sources/Audio/Protocols.swift:101,166,188,190,192`, `Sources/Shared/AudioFeatures+Frame.swift:71`, `Sources/Shared/StemSampleBuffer.swift:46`, `PhospheneApp/VisualizerEngine.swift:173`, `+Stems.swift:62,142` |
-| 12 | Centralize EMA / `pow(rate, 30/fps)` in `Shared/Smoother` value type | replaces 5 copy-pasted impls | new `Sources/Shared/Smoother.swift`; delete duplicate impls in `BeatDetector`, `LiveBeatDriftTracker`, `BandEnergyProcessor`, `MIRPipeline`, `StemAnalyzer` |
-| 13 | Delete `BeatPredictor.swift` (subordinate to `LiveBeatDriftTracker`; QR.1 retires reactive-only fallback per Architect simplification #3) | ~150 LOC + tests | `Sources/DSP/BeatPredictor.swift`, `Tests/.../DSP/BeatPredictorTests.swift` |
-| 14 | Audit `Tests/TestDoubles/` for stale doubles; standardize naming (Mock vs Stub vs Fake) | naming + delete stale | `Tests/TestDoubles/` |
-| 15 | Consolidate `Tests/.../Orchestrator/SessionPlanner*Tests.swift` (4 files → 2: unit + golden) | naming + reorg | `Tests/.../Orchestrator/` |
-| 16 | Pre-allocate buffer in `AudioInputRouter.swift:252-263` (file-playback path: 46 buffers/sec of fresh allocation) | ~10 LOC | `Sources/Audio/AudioInputRouter.swift` |
-| 17 | `AudioBuffer.latestSamples` `unsafeReadInto(_ ptr:count:)` overload to eliminate per-FFT-frame allocation | ~30 LOC | `Sources/Audio/AudioBuffer.swift` |
+| 1 | Delete `Sources/ML/Weights/beatnet/` | ✅ | Session A commit `f1788401`. |
+| 2 | Delete `Scripts/convert_beatnet_weights.py` | ⊘ | Removed earlier in commit `7d64ad6f` (DSP.2 pivot to Beat This!). |
+| 3 | Delete IOI histogram + `dumpHistogram` | ↪ | Histogram is documented DSP.1 baseline-capture instrumentation gated behind `BEATDETECTOR_DUMP_HIST=1` (per D-075 + CLAUDE.md). Diagnostic-only, intentionally kept. |
+| 4 | Dedup `ShaderUtilities.metal` legacy bodies | → | **Reduced scope:** 13 confirmed duplicates ≈ **200–250 LOC** (not 400). 5 ambiguous (need body-compare): `simplex2D`, `worley2D/3D`, `curl2D/3D`, `opRoundBox`, `opTwist/opBend`. 35 unique keepers (UV transforms, tone mapping, atmosphere, PBR wrappers). Track as **B.5**. |
+| 5 | Migrate presets to V.1+V.2 utility names | → | **Split.** **B.1 (HIGH conf, literal-equivalent):** GlassBrutalist `sdBox`→`sd_box` (3 calls) + `sdPlane`→`sd_plane` (2 calls). **B.2 (HIGH conf, new find):** KineticSculpture `sdSphere`→`sd_sphere`. **B.3 (held, visual change expected):** GlassBrutalist `perlin2D`→`perlin2d` — legacy uses cubic fade (3t² − 2t³); V.1+V.2 uses C² quintic (6t⁵ − 15t⁴ + 10t³). Not literal-equivalent. **B.4 (held, refactor needed):** VolumetricLithograph `fbm3D(p, octaves)` has no V.1+V.2 equivalent (variable octave count + different rotation-matrix algorithm). |
+| 6 | Delete placeholder `Orchestrator.swift` | ✅ | Session A commit `2f437560`. |
+| 7 | Delete placeholder `Session.swift` | ↪ | Not a placeholder — load-bearing `@_exported import Shared` re-export since Increment 2.5.1 (commit `9ad805a6`). Lone `@_exported` in the engine; ~12 app-layer files transitively depend on it. Catalog premise wrong. |
+| 8 | Delete `PresetSignaling.swift` (no preset emits) | ↪ | Premise was true when catalog was written (V.7.6.2 wired the protocol; emission deferred to V.7.8). D-095 then wired ArachneState's `_presetCompletionEvent.send()` (BUG-011 round 8). Now load-bearing in 8 files. |
+| 9 | Inline `ReadyBackgroundPresetView` into `ReadyView` | ✅ | Session A commit `c1f37992`. |
+| 10 | Delete `PresetPreviewController` stub | ✅ | Session A commit `6470113f`. |
+| 11 | Stale CoreML doc comments | ✅ | Session A commit `e48d15f9` — 7 files. Remaining "CoreML" mentions in `ML.swift`, `MoodClassifier.swift`, `StemSeparator.swift`, `StemModel.swift` are intentional historical-pivot context. |
+| 12 | Centralize EMA in `Shared/Smoother` | → | **Reduced scope:** only 2 sites actually use `pow(rate, 30/fps)` FPS-independent pattern — `BeatDetector` (3 per-frame calls, decay base 0.6813) and `BandEnergyProcessor` (6 per-frame calls). The other 3 expected sites use constant-α non-FPS-sensitive EMA (`LiveBeatDriftTracker` α=0.4 per-onset; `StemAnalyzer` α=0.9989 per-frame; `MIRPipeline` 0.999 running-max AGC) — different abstraction. |
+| 13 | Retire `BeatPredictor.swift` | ↪ | Still load-bearing as reactive-mode fallback. `MIRPipeline.buildFeatureVector` branches on `liveDriftTracker.hasGrid`: when false (no offline `BeatGrid`), `beatPredictor.update()` populates `beatPhase01` / `beatsUntilNext` (MV-3b, D-028). Without it, reactive mode loses anticipatory beat prediction. |
+| 14 | Audit `Tests/TestDoubles/` + standardize naming | → | **Reduced scope:** 6 of 8 doubles correctly named. **2 renames only:** `MockPreparationProgressPublisher` → `Fake…` (it's a working in-memory impl), `StubMoodClassifier` → `Mock…` (has call tracking + error injection). No deletions. |
+| 15 | Consolidate `SessionPlanner*Tests.swift` | → | Catalog said 4→2; actually **3 files** (`SessionPlannerTests.swift` 430 LOC / 13 tests, `SessionPlannerMultiSegmentTests.swift` 148 / 5, `SessionPlannerSeedTests.swift` 102 / 5). Consolidate to 1 file (unit-only) or 2 (unit + golden if seed tests use golden fixtures). |
+| 16 | Pre-allocate `AudioInputRouter` file-playback buffer | → | Confirmed at `AudioInputRouter.swift:252`. Chunk rate ~48/sec (not 46). ~10 LOC fix (one reusable `[Float]` buffer + `removeAll(keepingCapacity: true)`). |
+| 17 | `AudioBuffer.unsafeReadInto` overload | ↪ | Re-audit verdict: per-call allocation at ~94 Hz is "acceptable, not a regression." Optional optimization, not mechanical cleanup. Defer unless soak test surfaces a regression. |
 
-**Implementation order:**
+**Implementation order (revised):**
 
-1. Mechanical deletions first (#1, #2, #6, #7, #8, #9, #10) — no behavior risk, small commits.
-2. Stale comments (#11) — doc-only.
-3. Preset migrations (#5) before utility dedup (#4) — sequencing matters.
-4. EMA centralization (#12) — touches DSP hot paths; run full test suite after.
-5. `BeatPredictor` retirement (#13) — depends on QR.1 having landed (since QR.1 fixes the live Beat This! retry path that makes BeatPredictor truly dispensable).
-6. Test cleanups (#14, #15) — last; doesn't affect production.
-7. Allocation fixes (#16, #17) — micro-perf; verify no behavior change with full suite + soak test.
+1. ✅ **Session A** (deletions + doc comments). Landed `[QR.5] f1788401 → e48d15f9`.
+2. → **Session B** (preset migrations + ShaderUtilities dedup):
+   - **B.1** GlassBrutalist `sdBox` / `sdPlane` migrations (literal-equivalent).
+   - **B.2** KineticSculpture `sdSphere` migration (literal-equivalent).
+   - **B.5** ShaderUtilities.metal delete 13 confirmed duplicates (after B.1+B.2 land).
+   - **B.3** held — visual-change scope decision needed.
+   - **B.4** held — refactor scope decision needed.
+3. → **Session C** (much smaller than original):
+   - **C.1** EMA centralization (2 sites — `BeatDetector` + `BandEnergyProcessor`).
+   - **C.2** TestDoubles 2 renames.
+   - **C.3** SessionPlanner consolidation (3 → 1 or 2).
+   - **C.4** AudioInputRouter pre-allocation (~10 LOC).
 
-**Files to touch:** see catalog above.
+**Retired vs. original:** #2 (no-op), #3 (kept as diagnostic), #7 (load-bearing), #8 (load-bearing post-D-095), #13 (load-bearing reactive fallback), #17 (deferred — not a regression). With #13 + #17 retired, the 2-hour increment-level soak loses most of its original motivation; only B.5 + C.1 are DSP-hot-path or preset-fidelity sensitive.
 
 **Tests:**
 
-- Full engine suite passes after every catalog item.
-- `PresetRegressionTests` golden hashes unchanged after #4 + #5 (utility dedup is a name change only; if a hash drifts, the dedup was not literal-equivalent and needs investigation).
-- `MIRPipelineUnitTests`, `BeatDetectorTests` pass after #12 (EMA centralization — verify FPS-independent decay constants are byte-identical).
-- Soak test (2 hours) passes after #16 + #17 — confirm no allocation regression in `MemoryReporter` output.
+- Full engine suite passes after every commit.
+- `PresetRegressionTests` golden hashes unchanged after **B.1, B.2, B.5** (literal-equivalent migrations + dedup).
+- `BeatDetectorTests` + `BandEnergyProcessorTests` pass after **C.1** (EMA centralization — decay constants byte-identical).
+- 10-minute soak after **C.4** (`bash Scripts/run_soak_test.sh --duration 600`) — confirm no `residentBytes` regression.
 
 **Done when:**
 
-- [ ] All 17 catalog items landed in separate commits (one per item) with `[QR.5] <component>: <description>` messages.
-- [ ] Full engine suite + full app build green after each commit (`git bisect` retains value).
-- [ ] Preset regression hashes unchanged.
-- [ ] CLAUDE.md Module Map updated for any deleted/added files.
+- [x] Session A landed (5 commits + 1 pre-work doc-archive commit).
+- [ ] Session B landed (B.1 + B.2 + B.5 — B.3/B.4 held for separate scope decisions).
+- [ ] Session C landed (C.1 + C.2 + C.3 + C.4).
+- [ ] CLAUDE.md Module Map updated for deleted/added files.
 - [ ] DECISIONS.md not touched (this increment is mechanical, no design decisions).
 
-**Verify:** `swift test --package-path PhospheneEngine && xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build && bash Scripts/run_soak_test.sh --duration 600`.
+**Verify:** `swift test --package-path PhospheneEngine && xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build`.
 
-**Estimated sessions:** 3 (deletions + comments → preset migration + dedup → EMA centralization + tests + soak).
+**Estimated sessions:** 2 remaining (Session B = preset migrations + dedup; Session C = EMA + tests + alloc fix).
 
 ---
 
