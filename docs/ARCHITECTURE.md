@@ -547,6 +547,7 @@ PhospheneEngine/
     SessionRecorder         → Continuous diagnostic capture per app launch: video.mp4 (H.264, 30 fps) + features.csv + stems.csv + stems/<N>_<title>/{drums,bass,vocals,other}.wav + session.log. Writes to ~/Documents/phosphene_sessions/<timestamp>/. Writer locks after 30 stable drawable frames; if a different size arrives consistently for ≥90 frames after lock (bad initial lock from transient Retina→logical-point resize), tears down and relocks — logs "video writer relocking". Finalised on NSApplication.willTerminateNotification. Validated by SessionRecorderTests.
     SpectralHistoryBuffer   → Per-frame MIR history ring buffer. 5 rings × 480 samples (≈8s at 60fps) in a 16 KB UMA MTLBuffer bound at fragment index 5 in direct-pass encoders. Tracks valence, arousal, beat_phase01, bass_dev, bar_phase01 (phrase-level sawtooth; 0 = no BeatGrid). Updated once per frame in RenderPipeline.draw(in:); reset on track change.
     DeviceTier              → .tier1 (M1/M2) / .tier2 (M3/M4). frameBudgetMs getter. Used by PresetScoringContext for complexity-cost exclusion gate.
+    Smoother                → @frozen Sendable value type wrapping `pow(rate30, 30/fps)` for FPS-independent EMA / decay. Used by BeatDetector (pulse decay rate30=0.6813) and BandEnergyProcessor (per-band rates 0.65/0.75/0.95). Centralised in [QR.5] C.1 from previously-inlined `powf` calls.
 Tests/
   Audio/                    → AudioBufferTests, FFTProcessorTests, StreamingMetadataTests, MetadataPreFetcherTests, LookaheadBufferTests, SilenceDetectorTests
   DSP/                      → SpectralAnalyzerTests, BandEnergyProcessorTests, ChromaExtractorTests, BeatDetectorTests, MIRPipelineUnitTests, SelfSimilarityMatrixTests, NoveltyDetectorTests, StructuralAnalyzerTests, BeatPredictorTests, PitchTrackerTests, StemAnalyzerMV3Tests
@@ -560,7 +561,7 @@ Tests/
   Integration/              → AudioToFFTPipelineTests, AudioToRenderPipelineTests, MetadataToOrchestratorTests, AudioToStemPipelineTests, MIRPipelineIntegrationTests, LookaheadIntegrationTests, StemsToRenderPipelineTests, SessionPreparationIntegrationTests, BeatGridIntegrationTests, PreparedBeatGridAppLayerWiringTests, PreparedBeatGridWiringTests, LiveDriftValidationTests (QR.3 — closed-loop musical-sync test on love_rehab.m4a)
   Regression/               → FFTRegressionTests, MetadataParsingRegressionTests, ChromaRegressionTests, BeatDetectorRegressionTests, StructuralAnalysisRegressionTests + golden fixtures
   Performance/              → FFTPerformanceTests, RenderLoopPerformanceTests, StemSeparationPerformanceTests, DSPPerformanceTests
-  TestDoubles/              → MockAudioCapture, StubFFTProcessor, FakeStemSeparator, StubMoodClassifier, AudioFixtures, MockMetadataProvider, MockMetadataFetcher
+  TestDoubles/              → MockAudioCapture, StubFFTProcessor, FakeStemSeparator, MockMoodClassifier, FakePreparationProgressPublisher, AudioFixtures, MockMetadataProvider, MockMetadataFetcher (Mock/Stub/Fake taxonomy standardised [QR.5] C.2)
 ```
 
 
