@@ -1038,6 +1038,8 @@ Modulate light properties per music rather than geometry per music (D-020 princi
 
 ### 5.8 Stage lighting rig
 
+**Implementation contract:** see [`docs/DECISIONS.md` D-125](DECISIONS.md). The JSON sidecar schema in D-125(e) is authoritative; the §5.8 example below is illustrative. First implementation landed in V.9 Session 3 (Ferrofluid Ocean).
+
 **Use for:** Ferrofluid Ocean (V.9). Any future preset where moving colored beams over a dark reflective surface is the central chromatic story — that is, presets where chromatic content lives in reflections of moving scene lights rather than in surface albedo or IBL alone.
 
 The stage rig is not the §5.5 night-city ambient recipe at higher intensity. Night-city is "many low-intensity colored point lights distributed through a scene"; the stage rig is "a small number of high-intensity colored beams in continuous orbital motion across a reflective surface." Night-city scatters illumination diffusely; the stage rig produces directional sweeps with specular pickup. The stage rig is also distinct from §5.7 (Lighting as audio reactive), which is a per-property modulation table on an otherwise-static three-point rig; §5.8 *replaces* the three-point rig with continuous orbital motion as the lighting paradigm.
