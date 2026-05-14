@@ -67,6 +67,7 @@ extension VisualizerEngine {
         pipeline.setDirectPresetFragmentBuffer3(nil)
         pipeline.setDirectPresetFragmentBuffer4(nil)
         pipeline.setRayMarchPresetHeightTexture(nil)
+        pipeline.setRayMarchPresetComputeDispatch(nil)
         pipeline.setPostProcessChain(nil)
         pipeline.setRayMarchPipeline(nil)
         pipeline.setFeedbackParams(nil)
@@ -210,9 +211,21 @@ extension VisualizerEngine {
                         // frame SPH-lite compute pass driven by audio forces.
                         if let particles = FerrofluidParticles(device: context.device,
                                                                library: shaderLibrary.library) {
+                            // Phase 1 initial bake — first frame already has a
+                            // populated height texture before the per-frame
+                            // closure fires. Phase 2b kept this so preset-apply
+                            // doesn't show a blank frame waiting for the per-
+                            // frame compute dispatch.
                             particles.bakeHeightField(commandQueue: context.commandQueue)
                             ferrofluidParticles = particles
                             pipeline.setRayMarchPresetHeightTexture(particles.heightTexture)
+                            // Phase 2b per-frame compute dispatch: encode
+                            // particle update (pos += vel × dt) followed by
+                            // height-field re-bake on each frame's command
+                            // buffer before the G-buffer pass reads slot 10.
+                            pipeline.setRayMarchPresetComputeDispatch { [weak particles] cmdBuf, _, _, dt in
+                                particles?.encodePerFrameUpdate(into: cmdBuf, dt: dt)
+                            }
                         } else {
                             // swiftlint:disable:next line_length
                             logger.error("FerrofluidParticles: failed to allocate particle scaffolding for preset '\(desc.name)' — falling back to placeholder (no spikes)")

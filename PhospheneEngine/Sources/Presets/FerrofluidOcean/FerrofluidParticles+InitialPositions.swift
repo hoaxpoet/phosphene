@@ -54,13 +54,17 @@ extension FerrofluidParticles {
         GridLayout(columns: 80, rows: 75)
     }
 
-    /// Populate the particle buffer with the canonical Phase 1 positions.
-    /// Mirrors `canonicalInitialPosition(forIndex:)` for the actual write.
+    /// Populate the particle buffer with the canonical Phase 1 positions
+    /// and zero initial velocities. Phase 2b extended the per-particle
+    /// struct from `float2` (position) to a 16-byte `Particle` (position +
+    /// velocity); velocity defaults to zero so production renders with no
+    /// motion until Phase 2c wires audio forces or a test seeds velocity.
     func writeInitialParticlePositions() {
         let ptr = particleBuffer.contents().bindMemory(
-            to: SIMD2<Float>.self, capacity: Self.particleCount)
+            to: Particle.self, capacity: Self.particleCount)
         for i in 0 ..< Self.particleCount {
-            ptr[i] = Self.canonicalInitialPosition(forIndex: i)
+            let pos = Self.canonicalInitialPosition(forIndex: i)
+            ptr[i] = Particle(positionX: pos.x, positionZ: pos.y, velocityX: 0, velocityZ: 0)
         }
     }
 

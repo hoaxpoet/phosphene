@@ -187,6 +187,26 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     var rayMarchPresetHeightTexture: MTLTexture?
     let rayMarchPresetHeightTextureLock = NSLock()
 
+    // MARK: - Ray-March Preset Per-Frame Compute Dispatch (V.9 Session 4.5b Phase 2b)
+
+    /// Per-preset closure that encodes a compute pass into the current frame's
+    /// command buffer **before** `RayMarchPipeline.render(...)` runs. Used by
+    /// Ferrofluid Ocean V.9 to dispatch its particle update + height-field
+    /// bake every frame so the slot-10 height texture reflects moving
+    /// particles. The closure receives the command buffer, the current
+    /// frame's FeatureVector, and StemFeatures, plus a per-frame `dt` in
+    /// seconds. When nil (every other ray-march preset), no extra dispatch
+    /// is encoded.
+    public typealias RayMarchPresetComputeDispatch = @Sendable (
+        _ commandBuffer: MTLCommandBuffer,
+        _ features: FeatureVector,
+        _ stems: StemFeatures,
+        _ dt: Float
+    ) -> Void
+
+    var rayMarchPresetComputeDispatch: RayMarchPresetComputeDispatch?
+    let rayMarchPresetComputeDispatchLock = NSLock()
+
     // MARK: - Dynamic Text Overlay (texture 12)
 
     /// Per-frame CPU text rasterization for text-overlay presets (e.g. SpectralCartograph).

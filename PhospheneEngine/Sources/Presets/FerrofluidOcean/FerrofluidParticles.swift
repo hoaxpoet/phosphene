@@ -1,3 +1,4 @@
+// swiftlint:disable file_length
 // FerrofluidParticles — Phase 1 scaffolding for V.9 Session 4.5b particle motion.
 //
 // Owns the GPU-side resources that feed a baked height texture into the
@@ -134,11 +135,33 @@ public final class FerrofluidParticles: @unchecked Sendable {
     /// "no allocation in the IO callback" spirit applied to the GPU path.
     public static let cellSlotCapacity: Int = 16
 
+    // MARK: - Particle state (Phase 2b)
+
+    /// Per-particle state mirrored byte-for-byte on the GPU side. Position
+    /// is world-XZ; velocity is world-XZ per second. Padded to 16 bytes so
+    /// SIMD loads / `device float4` reads stay 16-byte aligned.
+    public struct Particle: Equatable {
+        public var positionX: Float
+        public var positionZ: Float
+        public var velocityX: Float
+        public var velocityZ: Float
+
+        public init(positionX: Float, positionZ: Float, velocityX: Float = 0, velocityZ: Float = 0) {
+            self.positionX = positionX
+            self.positionZ = positionZ
+            self.velocityX = velocityX
+            self.velocityZ = velocityZ
+        }
+
+        public var position: SIMD2<Float> { SIMD2(positionX, positionZ) }
+        public var velocity: SIMD2<Float> { SIMD2(velocityX, velocityZ) }
+    }
+
     // MARK: - GPU resources
 
-    /// UMA buffer of 6000 `SIMD2<Float>` particle positions in world XZ.
-    /// Phase 1: written once at init, read once at bake. Phase 2: written
-    /// per frame by the SPH-lite update pass.
+    /// UMA buffer of 6000 `Particle` structs (position + velocity in world
+    /// XZ). 16 bytes per particle × 6000 = 96 KiB. Phase 2b: written once
+    /// at init, then per frame by the SPH-lite update pass.
     public let particleBuffer: MTLBuffer
 
     /// UMA buffer of per-cell occupancy counts (`atomic_uint`, one per
@@ -163,6 +186,7 @@ public final class FerrofluidParticles: @unchecked Sendable {
     private let bakePipeline: MTLComputePipelineState
     private let resetCellsPipeline: MTLComputePipelineState
     private let binParticlesPipeline: MTLComputePipelineState
+    private let updateParticlesPipeline: MTLComputePipelineState
     private let device: MTLDevice
 
     /// Bake parameters mirrored on the GPU side via a 32-byte struct.
@@ -180,7 +204,23 @@ public final class FerrofluidParticles: @unchecked Sendable {
         var pad1: UInt32                    // 16-byte align
     }
 
+    /// Per-frame update uniforms for `ferrofluid_particle_update`. Phase 2b
+    /// only consumes `dt`; Phase 2c will extend this struct with audio
+    /// force inputs (bass / drums / other / arousal).
+    private struct UpdateUniforms {
+        var dt: Float                       // seconds since previous update
+        var particleCount: UInt32           // active particle count
+        var pad0: Float
+        var pad1: Float
+    }
+
     // MARK: - Init
+
+    // Sequential GPU resource allocation with consistent error-handling
+    // produces a body slightly over the 60-line cap — fragmenting into
+    // helpers would split the resource-acquire / pipeline-create flow
+    // without making either part more readable.
+    // swiftlint:disable function_body_length
 
     /// Construct the particles + height texture for Ferrofluid Ocean.
     ///
@@ -194,9 +234,9 @@ public final class FerrofluidParticles: @unchecked Sendable {
     public init?(device: MTLDevice, library: MTLLibrary) {
         self.device = device
 
-        // Particle buffer: 2048 × 8 bytes = 16 KiB. UMA shared storage so
+        // Particle buffer: 6000 × 16 bytes = 96 KiB. UMA shared storage so
         // the kernel reads from CPU-written memory without a blit.
-        let particleStride = MemoryLayout<SIMD2<Float>>.stride
+        let particleStride = MemoryLayout<Particle>.stride
         let bufferLength = Self.particleCount * particleStride
         guard let buf = device.makeBuffer(length: bufferLength,
                                           options: .storageModeShared) else {
@@ -256,10 +296,15 @@ public final class FerrofluidParticles: @unchecked Sendable {
             particleLogger.error("FerrofluidParticles: ferrofluid_bin_particles function not found")
             return nil
         }
+        guard let updateFn = library.makeFunction(name: "ferrofluid_particle_update") else {
+            particleLogger.error("FerrofluidParticles: ferrofluid_particle_update function not found")
+            return nil
+        }
         do {
             self.bakePipeline = try device.makeComputePipelineState(function: bakeFn)
             self.resetCellsPipeline = try device.makeComputePipelineState(function: resetFn)
             self.binParticlesPipeline = try device.makeComputePipelineState(function: binFn)
+            self.updateParticlesPipeline = try device.makeComputePipelineState(function: updateFn)
         } catch {
             particleLogger.error("FerrofluidParticles: pipeline creation failed: \(error)")
             return nil
@@ -268,6 +313,8 @@ public final class FerrofluidParticles: @unchecked Sendable {
         // Populate initial particle positions at voronoi-equivalent XZ.
         writeInitialParticlePositions()
     }
+
+    // swiftlint:enable function_body_length
 
     // MARK: - Public API
 
@@ -375,14 +422,70 @@ public final class FerrofluidParticles: @unchecked Sendable {
         encoder.endEncoding()
     }
 
+    /// Encode a single particle-update compute dispatch into the caller's
+    /// command buffer. Advances each particle's position by
+    /// `velocity × dt`. Phase 2b: no forces; velocity stays whatever was
+    /// last written. Phase 2c will extend this to apply audio forces +
+    /// SPH-lite pressure between bin and update.
+    public func encodeUpdate(into commandBuffer: MTLCommandBuffer, dt: Float) {
+        guard let encoder = commandBuffer.makeComputeCommandEncoder() else {
+            particleLogger.error("FerrofluidParticles.encodeUpdate: makeComputeCommandEncoder returned nil")
+            return
+        }
+        var uniforms = UpdateUniforms(
+            dt: dt,
+            particleCount: UInt32(Self.particleCount),
+            pad0: 0,
+            pad1: 0)
+        encoder.setComputePipelineState(updateParticlesPipeline)
+        encoder.setBuffer(particleBuffer, offset: 0, index: 0)
+        encoder.setBytes(&uniforms,
+                         length: MemoryLayout<UpdateUniforms>.stride,
+                         index: 1)
+        let tpg = MTLSize(width: 64, height: 1, depth: 1)
+        let groups = MTLSize(width: (Self.particleCount + 63) / 64, height: 1, depth: 1)
+        encoder.dispatchThreadgroups(groups, threadsPerThreadgroup: tpg)
+        encoder.endEncoding()
+    }
+
+    /// Per-frame closure entry point. Encodes update (position += velocity ×
+    /// dt) then bake (height field from updated positions) into the caller's
+    /// command buffer. Used by the production render path's per-frame
+    /// compute-dispatch hook.
+    public func encodePerFrameUpdate(into commandBuffer: MTLCommandBuffer, dt: Float) {
+        encodeUpdate(into: commandBuffer, dt: dt)
+        encodeBake(into: commandBuffer)
+    }
+
     // MARK: - Test seam
 
     /// Snapshot the particle positions. Public for unit tests; not part of
     /// the GPU contract.
     public func snapshotParticlePositions() -> [SIMD2<Float>] {
         let ptr = particleBuffer.contents().bindMemory(
-            to: SIMD2<Float>.self, capacity: Self.particleCount)
+            to: Particle.self, capacity: Self.particleCount)
+        return Array(UnsafeBufferPointer(start: ptr, count: Self.particleCount)).map { $0.position }
+    }
+
+    /// Snapshot full particle state (position + velocity). Public for tests.
+    public func snapshotParticles() -> [Particle] {
+        let ptr = particleBuffer.contents().bindMemory(
+            to: Particle.self, capacity: Self.particleCount)
         return Array(UnsafeBufferPointer(start: ptr, count: Self.particleCount))
+    }
+
+    /// Test-only: stamp a constant velocity onto every particle. Used by
+    /// Phase 2b verification (inject a known drift velocity, run N updates,
+    /// confirm positions advanced by `velocity × N × dt`). Phase 2c
+    /// replaces this with audio-force-driven velocity from the compute
+    /// kernel; production code paths never call this directly.
+    public func seedVelocityForTesting(_ velocity: SIMD2<Float>) {
+        let ptr = particleBuffer.contents().bindMemory(
+            to: Particle.self, capacity: Self.particleCount)
+        for i in 0 ..< Self.particleCount {
+            ptr[i].velocityX = velocity.x
+            ptr[i].velocityZ = velocity.y
+        }
     }
 
     // Note: `canonicalInitialPosition(forIndex:)`, the canonical grid

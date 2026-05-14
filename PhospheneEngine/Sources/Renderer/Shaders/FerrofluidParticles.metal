@@ -33,6 +33,16 @@
 #include <metal_stdlib>
 using namespace metal;
 
+// ─── Per-particle state (mirror of Swift `FerrofluidParticles.Particle`) ───
+
+/// 16-byte particle struct: position + velocity, both world-XZ. Phase 2b
+/// extended from a bare `float2` position. Velocity is in world units per
+/// second; Phase 2b's update kernel integrates `pos += vel × dt` per frame.
+struct FerrofluidParticle {
+    float2 position;
+    float2 velocity;
+};
+
 // ─── Uniform struct (mirror of Swift `FerrofluidParticles.BakeUniforms`) ───
 
 struct FerrofluidBakeUniforms {
@@ -46,6 +56,14 @@ struct FerrofluidBakeUniforms {
     uint   cellSlotCapacity;    // particles-per-cell upper bound (e.g. 16)
     uint   _pad0;
     uint   _pad1;
+};
+
+/// Per-frame update uniforms (mirror of Swift `UpdateUniforms`).
+struct FerrofluidUpdateUniforms {
+    float dt;                   // seconds since previous update
+    uint  particleCount;        // active particle count
+    float _pad0;
+    float _pad1;
 };
 
 // ─── Polynomial smooth-min (Inigo Quilez) ──────────────────────────────────
@@ -92,14 +110,14 @@ kernel void ferrofluid_reset_cell_counts(
 // ─── Bin kernel: each particle reserves a slot in its cell ─────────────────
 
 kernel void ferrofluid_bin_particles(
-    constant float2*                 particles  [[buffer(0)]],
+    constant FerrofluidParticle*     particles  [[buffer(0)]],
     constant FerrofluidBakeUniforms& u          [[buffer(1)]],
     device atomic_uint*              cellCounts [[buffer(2)]],
     device uint*                     cellSlots  [[buffer(3)]],
     uint                             gid        [[thread_position_in_grid]])
 {
     if (gid >= u.particleCount) { return; }
-    float2 pXZ = particles[gid];
+    float2 pXZ = particles[gid].position;
     uint2  cell = fo_cell_coord(pXZ, u);
     uint   flat = fo_cell_flat(cell, u.cellGridSide);
     // Reserve the next slot. Overflow (cell already at capacity) is
@@ -112,10 +130,24 @@ kernel void ferrofluid_bin_particles(
     }
 }
 
+// ─── Particle update kernel (Phase 2b: pos += vel × dt) ────────────────────
+
+kernel void ferrofluid_particle_update(
+    device FerrofluidParticle*           particles [[buffer(0)]],
+    constant FerrofluidUpdateUniforms& u           [[buffer(1)]],
+    uint                                gid        [[thread_position_in_grid]])
+{
+    if (gid >= u.particleCount) { return; }
+    // Semi-implicit Euler — Phase 2b has zero forces, so velocity is
+    // constant and this is just `pos += vel × dt`. Phase 2c will insert
+    // force computation (pressure + audio) between the read and write.
+    particles[gid].position += particles[gid].velocity * u.dt;
+}
+
 // ─── Bake kernel: per-texel 3×3 cell lookup + bounded-K soft-min ───────────
 
 kernel void ferrofluid_height_bake(
-    constant float2*                 particles  [[buffer(0)]],
+    constant FerrofluidParticle*     particles  [[buffer(0)]],
     constant FerrofluidBakeUniforms& u          [[buffer(1)]],
     constant uint*                   cellCounts [[buffer(2)]],
     constant uint*                   cellSlots  [[buffer(3)]],
@@ -149,7 +181,7 @@ kernel void ferrofluid_height_bake(
             uint count = min(cellCounts[flat], u.cellSlotCapacity);
             for (uint i = 0; i < count; i++) {
                 uint particleIdx = cellSlots[flat * u.cellSlotCapacity + i];
-                float d = length(pXZ - particles[particleIdx]);
+                float d = length(pXZ - particles[particleIdx].position);
                 res = poly_smin(res, d, u.smoothMinW);
             }
         }

@@ -217,6 +217,73 @@ final class FerrofluidParticlesTests: XCTestCase {
             "Bake produced only \(nonZero) / \(totalTexels) non-zero texels — expected the spike field to cover at least a quarter of the patch interior")
     }
 
+    // MARK: - Phase 2b: particle update advances positions by velocity
+
+    /// Inject a known velocity, run a particle update, confirm positions
+    /// advanced by `velocity × dt`. Tolerance is tight (1e-5) because the
+    /// update kernel is pure linear arithmetic; any deviation indicates a
+    /// real bug in the kernel binding or struct layout.
+    func test_particleUpdate_advancesPositionsByVelocity() throws {
+        let particles = try XCTUnwrap(
+            FerrofluidParticles(device: device, library: library),
+            "FerrofluidParticles allocation failed")
+        let seededVelocity = SIMD2<Float>(0.10, -0.05)  // world units per second
+        particles.seedVelocityForTesting(seededVelocity)
+        let canonicalPositions = particles.snapshotParticlePositions()
+
+        // Run one update at dt = 1/60 second.
+        let dt: Float = 1.0 / 60.0
+        let cmdBuf = try XCTUnwrap(commandQueue.makeCommandBuffer())
+        particles.encodeUpdate(into: cmdBuf, dt: dt)
+        cmdBuf.commit()
+        cmdBuf.waitUntilCompleted()
+        XCTAssertEqual(cmdBuf.status, .completed,
+                       "Update command buffer failed: \(String(describing: cmdBuf.error))")
+
+        let updatedPositions = particles.snapshotParticlePositions()
+        let expectedDelta = seededVelocity * dt
+        XCTAssertEqual(canonicalPositions.count, updatedPositions.count)
+        for i in 0 ..< canonicalPositions.count {
+            let delta = updatedPositions[i] - canonicalPositions[i]
+            XCTAssertEqual(delta.x, expectedDelta.x, accuracy: 1e-5,
+                "Particle \(i) X did not advance by velocity.x × dt — got \(delta.x), expected \(expectedDelta.x)")
+            XCTAssertEqual(delta.y, expectedDelta.y, accuracy: 1e-5,
+                "Particle \(i) Z did not advance by velocity.y × dt — got \(delta.y), expected \(expectedDelta.y)")
+        }
+    }
+
+    /// Run 60 updates (1 sec at 60 fps) and confirm positions advanced by
+    /// `velocity × 1.0`. Verifies the per-frame loop accumulates correctly,
+    /// not just the single-step case.
+    func test_particleUpdate_accumulatesOverManyFrames() throws {
+        let particles = try XCTUnwrap(
+            FerrofluidParticles(device: device, library: library),
+            "FerrofluidParticles allocation failed")
+        let seededVelocity = SIMD2<Float>(0.02, 0.03)
+        particles.seedVelocityForTesting(seededVelocity)
+        let canonicalPositions = particles.snapshotParticlePositions()
+
+        let dt: Float = 1.0 / 60.0
+        let frameCount = 60
+        for _ in 0 ..< frameCount {
+            let cmdBuf = try XCTUnwrap(commandQueue.makeCommandBuffer())
+            particles.encodeUpdate(into: cmdBuf, dt: dt)
+            cmdBuf.commit()
+            cmdBuf.waitUntilCompleted()
+        }
+
+        let updatedPositions = particles.snapshotParticlePositions()
+        let expectedDelta = seededVelocity * (dt * Float(frameCount))
+        // Larger tolerance: 60-frame accumulation accumulates rounding.
+        for i in 0 ..< canonicalPositions.count {
+            let delta = updatedPositions[i] - canonicalPositions[i]
+            XCTAssertEqual(delta.x, expectedDelta.x, accuracy: 1e-3,
+                "Particle \(i) X did not advance by velocity.x × 1.0 — got \(delta.x), expected \(expectedDelta.x)")
+            XCTAssertEqual(delta.y, expectedDelta.y, accuracy: 1e-3,
+                "Particle \(i) Z did not advance by velocity.y × 1.0 — got \(delta.y), expected \(expectedDelta.y)")
+        }
+    }
+
     // MARK: - Helpers
 
     private func readHeightTexture(_ texture: MTLTexture) -> [UInt8] {

@@ -143,6 +143,18 @@ extension RenderPipeline {
         let presetBuf3 = directPresetFragmentBuffer3Lock.withLock { directPresetFragmentBuffer3 }
         let presetBuf4 = directPresetFragmentBuffer4Lock.withLock { directPresetFragmentBuffer4 }
         let presetHeightTex = rayMarchPresetHeightTextureLock.withLock { rayMarchPresetHeightTexture }
+        let computeDispatch = rayMarchPresetComputeDispatchLock.withLock { rayMarchPresetComputeDispatch }
+
+        // Phase 2b: per-frame compute dispatch hook. Ferrofluid Ocean V.9
+        // uses this to run particle update + height-field bake into the
+        // slot-10 texture before the G-buffer pass reads it. Same command
+        // buffer → Metal command-encoder boundaries serialize compute
+        // completion before the subsequent render pass starts.
+        if let dispatch = computeDispatch {
+            let frameDt = features.deltaTime > 0 ? features.deltaTime : 1.0 / 60.0
+            dispatch(commandBuffer, features, stemFeatures, frameDt)
+        }
+
         rayMarchState.render(
             gbufferPipelineState: activePipeline,
             features: &features,
