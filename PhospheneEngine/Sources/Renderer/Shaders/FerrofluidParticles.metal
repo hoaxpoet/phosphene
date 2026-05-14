@@ -91,19 +91,30 @@ kernel void ferrofluid_height_bake(
     float2 uv = (float2(gid) + 0.5) / float2(w, h);
     float2 pXZ = u.worldOriginXZ + uv * u.worldSpan;
 
-    // Soft-min over all particles. Seed `res` with a large distance so the
-    // first particle initialises the field cleanly. The `poly_smin` blend
-    // pulls `res` toward `d` smoothly as particles approach.
+    // **Hard min over all particles (Phase 1 static-particle path).** Leitl's
+    // `poly_smin` iteratively combined over N particles accumulates smoothing
+    // as `O(w × log N)`; at w=0.02 / N=6000 the effective smoothing band is
+    // ~0.17 wu, larger than the 0.15 spike base radius — neighbour peaks
+    // bleed into each other and the valleys between them are lifted, so the
+    // visual reads as merged ridges instead of distinct peaks (Matt's
+    // 2026-05-14 beat-heavy review). Phase A's `voronoi_smooth` doesn't
+    // suffer this because it only blends over 9 neighbour cells — bounded
+    // smoothing band of ~0.017 wu, much smaller than the spike radius.
+    //
+    // For Phase 1's static particles, hard `min()` is the correct match to
+    // Phase A's discrete-peak character. Phase 2 will need soft-min to
+    // handle sub-frame motion discontinuities, but Leitl's actual recipe
+    // uses a spatial-hash + nearest-K soft-min (not naïve all-pairs); that
+    // bounded-K soft-min is the Phase 2 work. `smoothMinW` / `apexSmoothK`
+    // are no longer consumed by the kernel but are retained on the Swift
+    // side for Phase 2 reuse.
     float res = 1e6;
     for (uint i = 0; i < u.particleCount; i++) {
         float d = length(pXZ - particles[i]);
-        res = poly_smin(res, d, u.smoothMinW);
+        res = min(res, d);
     }
-
-    // Apex-smooth the soft-min result. `almostIdentity(res, 0.1, 0.04)`
-    // matches Leitl's default tuning — it rounds the very-near-zero band
-    // so tent apexes read as ferrofluid peaks, not perfectly sharp cones.
-    res = almostIdentity(res, u.apexSmoothK, u.apexSmoothK * 0.4);
+    (void)u.smoothMinW;
+    (void)u.apexSmoothK;
 
     // Tent-shaped height: 1 at the particle (res = 0), 0 at the spike base
     // radius. Negative output (when res > base) is clamped to 0 — gives

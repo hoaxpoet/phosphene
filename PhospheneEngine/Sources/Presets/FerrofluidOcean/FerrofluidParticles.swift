@@ -64,15 +64,22 @@ public final class FerrofluidParticles: @unchecked Sendable {
     /// × 1024² texels, well within the 60 fps frame budget.
     public static let particleCount: Int = 6000
 
-    /// Height texture is 1024×1024 r16Float. Original spec was 512² ("~1.5 cm
-    /// per pixel") but Matt's 2026-05-14 product review flagged that
-    /// resolution as a fullscreen / 4K stretch risk; bumped to 1024² (~7 mm
-    /// per pixel of the 20 m patch) so the spike field stays crisp at every
-    /// display size Phosphene users actually run (1080p / 4K / 5K). Texture
-    /// memory: 1024² × 2 B = 2 MB. Phase 1 bake cost (one-shot ~0.2 ms);
-    /// Phase 2 per-frame bake ~2 ms, well within 60 fps budget. (V.9 Session
-    /// 4.5b Phase 1 product addendum.)
-    public static let heightTextureSize: Int = 1024
+    /// Height texture: original spec 512² → 1024² (Matt 2026-05-14
+    /// fullscreen/4K product addendum) → 2048² (smoothness pass
+    /// 2026-05-14) → **4096² (texel-grid pass 2026-05-14)**. Matt's
+    /// zoomed-in beat-heavy screenshot confirmed visible texel-grid
+    /// staircasing in the bilinear-sampled height field. At 2048² the
+    /// ratio was 1.6 screen pixels per texel at 1080p — texel grid
+    /// dominated screen sampling. At 4096² the ratio drops to 0.78
+    /// screen pixels per texel; multiple texels are bilinear-averaged
+    /// per screen pixel and the staircase falls below the rendered-pixel
+    /// scale. Texture memory: 4096² × 2 B = 32 MB. Phase 1 bake cost
+    /// (one-shot) ~10 ms — still fine. Phase 2 per-frame bake would be
+    /// ~10 ms — significant fraction of the 16.67 ms 60 fps budget;
+    /// revisit at Phase 2 perf gate (likely needs spatial-hash binning
+    /// to keep per-frame cost bounded, which Leitl's actual recipe
+    /// already uses).
+    public static let heightTextureSize: Int = 4096
 
     /// World-XZ rectangle the texture covers. Generous around the camera's
     /// visible patch (camera at (0, 4, -2.5) looking at (0, 0, 2.0)) so the

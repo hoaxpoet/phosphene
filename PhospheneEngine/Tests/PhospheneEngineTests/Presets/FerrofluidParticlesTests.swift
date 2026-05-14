@@ -54,8 +54,8 @@ final class FerrofluidParticlesTests: XCTestCase {
     func test_lockedConstants_phase1Contract() {
         XCTAssertEqual(FerrofluidParticles.particleCount, 6000,
                        "Density pass 2026-05-14 bumped to 6000 to match Phase A voronoi_smooth(scale=4) density — original 2048 was sparser than the reference")
-        XCTAssertEqual(FerrofluidParticles.heightTextureSize, 1024,
-                       "V.9 Session 4.5b product addendum: bumped to 1024² for fullscreen / 4K sharpness")
+        XCTAssertEqual(FerrofluidParticles.heightTextureSize, 4096,
+                       "Texel-grid pass 2026-05-14: bumped to 4096² so the texture pixel scale (0.005 wu) sits below the 1080p screen-pixel scale (~0.006 wu) → texel-grid staircase falls below rendered-pixel size")
         XCTAssertEqual(FerrofluidParticles.worldSpan, 20.0,
                        "Patch size locked at 20 × 20 world units around the camera frustum")
         XCTAssertEqual(FerrofluidParticles.worldOriginX, -10.0,
