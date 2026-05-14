@@ -88,9 +88,30 @@ final class FerrofluidOceanVisualTests: XCTestCase {
         for fixture in fixtures {
             var features = fixture.features
             let stems    = fixture.stems
+            // Session 4 P0-3: the silence fixture must exercise the matID == 2
+            // stage-rig dispatch with a real rig bound — without it, the
+            // §5.8 silence-state semantics (floor_coef × baseline ≈ 2.0 idle
+            // intensity per active beam) collapse to placeholder zeros and
+            // the avg-channel assertion below cannot fire. The 3 non-silence
+            // fixtures still render via the placeholder path to preserve the
+            // Session 1 non-trivial-output gate.
+            let silenceRig: FerrofluidStageRig?
+            if fixture.name == "01_silence", let descriptor = preset.descriptor.stageRig {
+                silenceRig = FerrofluidStageRig(device: device, descriptor: descriptor)
+                if let rig = silenceRig {
+                    // 30 ticks at 60 fps so the smoothedDrumsDev envelope has
+                    // converged to 0 (silence-state semantics).
+                    for _ in 0..<30 {
+                        rig.tick(features: features, stems: stems, dt: 1.0 / 60.0)
+                    }
+                }
+            } else {
+                silenceRig = nil
+            }
             let pixels   = try renderDeferredRayMarch(preset: preset,
                                                      features: &features,
-                                                     stems: stems)
+                                                     stems: stems,
+                                                     stageRig: silenceRig)
             try writePNG(bgraPixels: pixels,
                          width: Self.renderWidth, height: Self.renderHeight,
                          to: outDir.appendingPathComponent("\(fixture.name).png"))
@@ -115,6 +136,31 @@ final class FerrofluidOceanVisualTests: XCTestCase {
             }
             XCTAssertTrue(anyUnderClipped,
                           "Fixture '\(fixture.name)' rendered fully clipped — unexpected")
+
+            // Session 4 P0-3: silence-state matID == 2 idle-beam presence.
+            // The §5.8 silence-state semantics specify that even with
+            // drumsEnergyDev = 0 the per-beam intensity collapses to
+            // floor_coef × baseline (≈ 2.0 at §5.8 defaults), so beam
+            // reflections still produce a visible ferrofluid surface — never
+            // fully black. The existing `lit > 100` gate accepts up to 99.97
+            // % black pixels; this stricter average-channel gate catches a
+            // regression where the matID == 2 branch returns vec3(0) at
+            // silence (e.g. an unintended `activeLightCount = 0` shortcut, a
+            // stale buffer binding, or a future refactor that drops the
+            // intensity floor multiplier). Threshold 8 ≈ 3 % linear average,
+            // well below the ~12–25 typical Session 3 silence render and
+            // far above the all-black floor.
+            if fixture.name == "01_silence" {
+                var channelSum: UInt64 = 0
+                for i in 0 ..< pixels.count where i % 4 != 3 {
+                    channelSum &+= UInt64(pixels[i])
+                }
+                let channelCount = UInt64(pixels.count / 4 * 3)
+                let avgChannel = Double(channelSum) / Double(channelCount)
+                XCTAssertGreaterThan(
+                    avgChannel, 8.0,
+                    "Silence fixture avg channel \(avgChannel) ≤ 8 — matID == 2 idle-beam presence likely collapsed (§5.8 silence-state)")
+            }
         }
 
         print("[FerrofluidOcean V.9 Session 1] fixtures written to: \(outDir.path)")
