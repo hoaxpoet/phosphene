@@ -102,9 +102,14 @@ public final class FerrofluidStageRig: @unchecked Sendable {
         memcpy(buf.contents(), &initial, stride)
     }
 
-    /// Reset per-frame state. Called on preset (re-)apply via VisualizerEngine
-    /// so re-entering Ferrofluid Ocean mid-session does not carry the prior
-    /// activation's orbital phase or smoothed drums envelope.
+    /// Reset per-frame state.
+    ///
+    /// **Currently test-only at V.9:** production always allocates a fresh
+    /// instance on preset apply via `VisualizerEngine+Presets.applyPreset`, so
+    /// `reset()` is never called from the engine. Kept for future use if a
+    /// session demands in-place state reset (e.g. on dolly camera change
+    /// where the rig must reset orbital phase without re-allocating the
+    /// slot-9 buffer).
     public func reset() {
         lock.withLock {
             orbitPhase = 0
