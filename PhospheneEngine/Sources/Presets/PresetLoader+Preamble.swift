@@ -341,20 +341,6 @@ extension PresetLoader {
             StageRigLight lights[6];
         };
 
-        // ── Ferrofluid Ocean V.9 Session 4.5b height-field sampler ───────────
-        // Bound at fragment texture slot 10 of `raymarch_gbuffer_fragment` for
-        // every ray-march preset. Ferrofluid Ocean's `sceneSDF` samples it
-        // through this `kFerrofluidHeightSampler`; non-Ferrofluid presets
-        // ignore the texture (declared in their `sceneSDF` signature for ABI
-        // uniformity and silenced via `(void)ferrofluidHeight;`). The address
-        // mode is `clamp_to_zero` so samples outside the texture's world-XZ
-        // patch return 0 — the spike lattice cleanly terminates at the patch
-        // edge instead of being smeared by clamp-to-edge.
-        constexpr sampler kFerrofluidHeightSampler(
-            coord::normalized,
-            filter::linear,
-            address::clamp_to_zero);
-
         // ── Per-preset forward declarations ──────────────────────────────────
         // Ray march presets must define both. `stems` is bound at buffer(3) —
         // apply the D-019 warmup fallback when reading. `outMatID` is the LM.1

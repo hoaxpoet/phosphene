@@ -74,10 +74,10 @@ struct SettingsStoreTests {
         defer { teardown(defaults) }
         let store = SettingsStore(defaults: defaults)
 
-        store.excludedPresetCategories = [.geometric, .fluid]
+        store.excludedPresetCategories = [.geometric, .particles]
 
         let store2 = SettingsStore(defaults: defaults)
-        #expect(store2.excludedPresetCategories == [.geometric, .fluid])
+        #expect(store2.excludedPresetCategories == [.geometric, .particles])
     }
 
     @Test func setSourceAppOverride_roundTrips() {

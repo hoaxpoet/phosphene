@@ -55,10 +55,13 @@ static inline float2 parallax_occlusion(
         curr_depth   += layer_depth;
     }
 
-    // Binary refinement between last two layers.
+    // Binary refinement between last two layers. The "prev" layer's height
+    // is never read inside the refinement loop (only its depth and UV are
+    // used; layer heights at the midpoint are sampled freshly), so we omit
+    // the sample. Xcode's Metal stage compiles with `-Werror` and trips on
+    // an unused `prev_height` declaration.
     float2 prev_uv   = curr_uv + delta_uv;
     float  prev_depth = curr_depth - layer_depth;
-    float  prev_height = 1.0 - height_tex.sample(samp, prev_uv).r;
 
     for (int i = 0; i < binary_steps; i++) {
         float2 mid_uv     = (curr_uv + prev_uv) * 0.5;
@@ -99,7 +102,9 @@ static inline POMResult parallax_occlusion_shadowed(
     float displaced_height = 1.0 - height_tex.sample(samp, result.uv).r;
 
     float2 shadow_delta = (light_ts.xy / max(light_ts.z, 0.01)) * depth_scale / float(shadow_steps);
-    float  shadow_layer = displaced_height;
+    // (The per-iteration `layer` value is computed fresh in the loop; an
+    // outer `shadow_layer` snapshot was unused. `-Werror` in Xcode's Metal
+    // stage trips on the declaration.)
 
     float shadow = 1.0;
     for (int i = 1; i <= shadow_steps; i++) {

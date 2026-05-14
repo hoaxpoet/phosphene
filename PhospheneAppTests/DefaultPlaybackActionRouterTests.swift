@@ -38,7 +38,7 @@ struct DefaultPlaybackActionRouterU6bTests {
 
     private static func makeRouter(
         currentPresetID: String? = "Fluid1",
-        currentPresetFamily: PresetCategory? = .fluid,
+        currentPresetFamily: PresetCategory? = .particles,
         sessionTime: TimeInterval = 0,
         livePlan: PlannedSession? = nil,
         catalog: [PresetDescriptor] = [],
@@ -80,7 +80,7 @@ struct DefaultPlaybackActionRouterU6bTests {
         let planner = DefaultSessionPlanner()
         let catalog = try (1...max(2, trackCount)).map { i -> PresetDescriptor in
             let json = """
-            {"name":"Preset\(i)","family":"\(i % 2 == 0 ? "fluid" : "abstract")",
+            {"name":"Preset\(i)","family":"\(i % 2 == 0 ? "particles" : "hypnotic")",
              "visual_density":0.5,"motion_intensity":0.5,
              "color_temperature_range":[0.3,0.7],"fatigue_risk":"medium",
              "complexity_cost":{"tier1":1.0,"tier2":1.0},
@@ -101,7 +101,7 @@ struct DefaultPlaybackActionRouterU6bTests {
         let tracker = CallTracker()
         let router = Self.makeRouter(tracker: tracker)
         router.moreLikeThis()
-        #expect(router.familyBoosts[.fluid] == 0.3, "boost should be 0.3")
+        #expect(router.familyBoosts[.particles] == 0.3, "boost should be 0.3")
         #expect(tracker.extendCalled, "onExtendCurrentPreset must be called")
     }
 
@@ -113,8 +113,8 @@ struct DefaultPlaybackActionRouterU6bTests {
         let router = Self.makeRouter(tracker: tracker)
         router.moreLikeThis()
         router.moreLikeThis()
-        #expect(router.familyBoosts[.fluid] == 0.3,
-                "pressing + twice must remain at 0.3 not 0.6 (got \(router.familyBoosts[.fluid] ?? -1))")
+        #expect(router.familyBoosts[.particles] == 0.3,
+                "pressing + twice must remain at 0.3 not 0.6 (got \(router.familyBoosts[.particles] ?? -1))")
     }
 
     // MARK: Test 3 — lessLikeThis excludes family for 10 min, expiry correct
@@ -136,7 +136,7 @@ struct DefaultPlaybackActionRouterU6bTests {
             toastBridge: toastBridge,
             getSessionTime: { sessionTime },
             getCurrentPresetID: { "Fluid1" },
-            getCurrentPresetFamily: { .fluid },
+            getCurrentPresetFamily: { .particles },
             onExtendCurrentPreset: { _ in extendCalled = true },
             onReshuffle: { locked, presets in reshuffleCalled = (Array(locked), presets) },
             onRePlanSession: { rePlanCalled = true },
@@ -147,14 +147,14 @@ struct DefaultPlaybackActionRouterU6bTests {
 
         router.lessLikeThis()
 
-        let expiry = router.temporaryFamilyExclusions[.fluid]
+        let expiry = router.temporaryFamilyExclusions[.particles]
         #expect(expiry != nil, "family exclusion should be set")
         #expect(expiry == refTime + 600, "expiry should be sessionTime + 600 (got \(expiry ?? -1))")
 
         // Verify that at sessionTime + 601 the entry is pruned.
         sessionTime = refTime + 601
         let fields = router.adaptationFields(at: sessionTime)
-        #expect(!fields.temporarilyExcludedFamilies.contains(.fluid),
+        #expect(!fields.temporarilyExcludedFamilies.contains(.particles),
                 "family should no longer be excluded at t+601")
     }
 
@@ -196,7 +196,7 @@ struct DefaultPlaybackActionRouterU6bTests {
             toastBridge: toastBridge,
             getSessionTime: { sessionTime },
             getCurrentPresetID: { "P1" },
-            getCurrentPresetFamily: { .fluid },
+            getCurrentPresetFamily: { .particles },
             onExtendCurrentPreset: { _ in extendCalled = true },
             onReshuffle: { locked, presets in reshuffleCalled = (Array(locked), presets) },
             onRePlanSession: { rePlanCalled = true },
@@ -288,7 +288,7 @@ struct DefaultPlaybackActionRouterU6bTests {
         let tracker = CallTracker()
         let router = Self.makeRouter(
             currentPresetID: "DifferentPreset",
-            currentPresetFamily: .abstract,
+            currentPresetFamily: .hypnotic,
             catalog: catalog,
             tracker: tracker
         )
@@ -334,7 +334,7 @@ struct DefaultPlaybackActionRouterU6bTests {
         let router = DefaultPlaybackActionRouter(
             getSessionTime: { 0 },
             getCurrentPresetID: { "Fluid1" },
-            getCurrentPresetFamily: { .fluid },
+            getCurrentPresetFamily: { .particles },
             getLivePlan: { plan },
             onExtendCurrentPreset: { _ in extendCalled = true },
             onReshuffle: { locked, presets in reshuffleCalled = (Array(locked), presets) },
@@ -352,7 +352,7 @@ struct DefaultPlaybackActionRouterU6bTests {
 
         #expect(restoredPlan != nil, "onRestorePlan must be called with a plan")
         // familyBoosts NOT cleared by undo (D-058b).
-        #expect(router.familyBoosts[.fluid] == 0.3,
+        #expect(router.familyBoosts[.particles] == 0.3,
                 "familyBoosts must survive undo (D-058b)")
         #expect(router.adaptationHistory.isEmpty, "history should be empty after undo")
     }
@@ -402,7 +402,7 @@ struct DefaultPlaybackActionRouterU6bTests {
         let router = DefaultPlaybackActionRouter(
             getSessionTime: { 0 },
             getCurrentPresetID: { "Fluid1" },
-            getCurrentPresetFamily: { .fluid },
+            getCurrentPresetFamily: { .particles },
             getLivePlan: { plan },
             onExtendCurrentPreset: { _ in extendCalled = true },
             onReshuffle: { locked, presets in reshuffleCalled = (Array(locked), presets) },
@@ -451,7 +451,7 @@ struct DefaultPlaybackActionRouterU6bTests {
         let router = DefaultPlaybackActionRouter(
             getSessionTime: { 0 },
             getCurrentPresetID: { "Fluid1" },
-            getCurrentPresetFamily: { .fluid },
+            getCurrentPresetFamily: { .particles },
             getLivePlan: { plan },
             onExtendCurrentPreset: { _ in extendCalled = true },
             onReshuffle: { locked, presets in reshuffleCalled = (Array(locked), presets) },

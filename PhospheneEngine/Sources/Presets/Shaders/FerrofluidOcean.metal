@@ -214,12 +214,18 @@ constant float FO_HEIGHT_WORLD_SPAN     =  20.0;
 
 static inline float fo_ferrofluid_field_sampled(float3 p,
                                                 float fieldStrength,
-                                                texture2d<float> heightTex,
-                                                sampler heightSamp) {
+                                                texture2d<float> heightTex) {
     if (fieldStrength <= 0.0) return 0.0;
+    // Function-scope `constexpr sampler` so the declaration is only emitted
+    // for presets that actually call this helper (Ferrofluid Ocean only).
+    // Declaring the sampler at file/preamble scope tripped `-Werror` on the
+    // other ray-march presets that include the preamble but never use it
+    // (`-Wunused-const-variable`).
+    constexpr sampler heightSamp(coord::normalized,
+                                 filter::linear,
+                                 address::clamp_to_zero);
     // World XZ → UV. Outside [0, 1] the sampler's clamp-to-zero address
-    // mode (declared in the preamble's `kFerrofluidHeightSampler`)
-    // returns 0 → spike lattice terminates cleanly at the patch edge.
+    // mode returns 0 → spike lattice terminates cleanly at the patch edge.
     float u = (p.x - FO_HEIGHT_WORLD_ORIGIN_X) / FO_HEIGHT_WORLD_SPAN;
     float v = (p.z - FO_HEIGHT_WORLD_ORIGIN_Z) / FO_HEIGHT_WORLD_SPAN;
     float spike = heightTex.sample(heightSamp, float2(u, v)).r;
@@ -262,8 +268,7 @@ float sceneSDF(float3 p,
     float swell    = fo_gerstner_swell(p.xz, t, fo_swell_scale(f, stems));
     float spikes   = fo_ferrofluid_field_sampled(p,
                                                  fo_spike_strength(f, stems),
-                                                 ferrofluidHeight,
-                                                 kFerrofluidHeightSampler);
+                                                 ferrofluidHeight);
     float surfaceY = swell + spikes;
     return p.y - surfaceY;
 }

@@ -40,10 +40,10 @@ struct PresetScoringContextProviderTests {
 
     @Test func excludedFamilies_propagatedToContext() {
         let (provider, store) = makeProvider()
-        store.excludedPresetCategories = [.geometric, .fluid]
+        store.excludedPresetCategories = [.geometric, .particles]
         let ctx = provider.build()
         #expect(ctx.excludedFamilies.contains(.geometric))
-        #expect(ctx.excludedFamilies.contains(.fluid))
+        #expect(ctx.excludedFamilies.contains(.particles))
     }
 
     @Test func qualityCeiling_propagatedToContext() {
