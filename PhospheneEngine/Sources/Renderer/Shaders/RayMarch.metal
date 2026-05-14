@@ -510,7 +510,19 @@ fragment float4 raymarch_lighting_fragment(
     // `FerrofluidStageRig` writes `activeLightCount` from the JSON-decoded
     // `stage_rig.light_count` (clamped [3, 6] by `PresetDescriptor.StageRig`).
     if (matID == 2) {
-        constexpr float kFerrofluidFilmThicknessNm = 220.0;
+        // V.9 Session 4 Phase B: thin-film thickness modulated by arousal.
+        // baseline 220 nm ± 40 nm range → effective [180 nm, 260 nm], which
+        // stays inside the "subtle blue-to-cyan" interference band per
+        // SHADER_CRAFT §10.3.x (rainbow oil-slick failure mode is > ~300 nm).
+        // Constants match FerrofluidOcean.json's `ferrofluid` block defaults
+        // (thin_film_thickness_baseline_nm = 220, thin_film_arousal_range_nm = 40)
+        // — the JSON values document intent; the MSL constants implement.
+        constexpr float kFerrofluidFilmThicknessBaselineNm = 220.0;
+        constexpr float kFerrofluidFilmThicknessRangeNm    = 40.0;
+        float arousalClamped = clamp(features.arousal, -1.0, 1.0);
+        float kFerrofluidFilmThicknessNm =
+            kFerrofluidFilmThicknessBaselineNm +
+            arousalClamped * kFerrofluidFilmThicknessRangeNm;
         constexpr float kFerrofluidFilmIORThin     = 1.45;
         constexpr float kFerrofluidFilmIORBase     = 1.0;
         // V.9 Session 4 Phase A: tactile micro-normal perturbation. Reads
@@ -546,11 +558,6 @@ fragment float4 raymarch_lighting_fragment(
         // film, not as a hammered-metal bump map.
         float3 microNormal = normalize(float3(h0 - hx, microEps * 4.0, h0 - hz));
         N = normalize(N + microNormal * kFerrofluidMicroNormalAmplitude);
-
-        // TODO(V.9 Session 4 Phase B): modulate kFerrofluidFilmThicknessNm
-        // from audio (`features.arousal` × range_nm) per the V.9 Session 4
-        // contract. Phase A holds at 220 nm; Phase B routes from arousal so
-        // the iridescent shift breathes with the music.
 
         float3 V         = normalize(scene.cameraOriginAndFov.xyz - worldPos);
         float3 directLit = float3(0.0);
@@ -618,13 +625,20 @@ fragment float4 raymarch_lighting_fragment(
     // matID == 2 is reserved for Session 3 (D-125 stage-rig dispatch); the
     // thin-film F0 helper above is reusable inside that branch when it lands.
     if (matID == 3) {
-        constexpr float kFerrofluidFilmThicknessNm = 220.0;
+        // V.9 Session 4 Phase B: thin-film thickness modulated by arousal —
+        // matches the matID == 2 branch so a future preset adopting the
+        // single-light fallback thin-film path inherits the same audio-
+        // driven iridescent shift. baseline 220 nm ± 40 nm range stays
+        // inside the subtle blue-to-cyan band; never crosses into the
+        // rainbow oil-slick failure mode (§10.3.x).
+        constexpr float kFerrofluidFilmThicknessBaselineNm = 220.0;
+        constexpr float kFerrofluidFilmThicknessRangeNm    = 40.0;
+        float arousalClamped3 = clamp(features.arousal, -1.0, 1.0);
+        float kFerrofluidFilmThicknessNm =
+            kFerrofluidFilmThicknessBaselineNm +
+            arousalClamped3 * kFerrofluidFilmThicknessRangeNm;
         constexpr float kFerrofluidFilmIORThin     = 1.45;
         constexpr float kFerrofluidFilmIORBase     = 1.0;
-
-        // TODO(V.9 Session 4): modulate kFerrofluidFilmThicknessNm from audio
-        // (deviation primitives per D-026) so the iridescent shift breathes
-        // with the music. Hold at a fixed 220 nm in Session 2.
 
         float3 V         = normalize(scene.cameraOriginAndFov.xyz - worldPos);
         float3 lightPos  = scene.lightPositionAndIntensity.xyz;
