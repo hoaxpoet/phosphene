@@ -316,12 +316,6 @@ extension RenderPipeline {
         if let presetBuf3 = directPresetFragmentBuffer3Lock.withLock({ directPresetFragmentBuffer3 }) {
             encoder.setFragmentBuffer(presetBuf3, offset: 0, index: 8)
         }
-        // Slot 9: §5.8 stage-rig (V.9 Session 3 / D-125). Direct-pass presets
-        // do not declare `[[buffer(9)]]` today; binding here mirrors the slot-8
-        // conditional pattern so a future direct-pass preset could opt in.
-        if let presetBuf4 = directPresetFragmentBuffer4Lock.withLock({ directPresetFragmentBuffer4 }) {
-            encoder.setFragmentBuffer(presetBuf4, offset: 0, index: 9)
-        }
         bindNoiseTextures(to: encoder)
         // Bind dynamic text overlay at texture(12) when active.
         if let overlay = textOverlay {

@@ -112,30 +112,13 @@ final class FerrofluidOceanVisualTests: XCTestCase {
             // reflection dispatch with a real rig bound. The Session 3 silence-
             // only rig allocation left steady-mid / beat-heavy / quiet
             // rendering with `activeLightCount = 0` — no aurora bands
-            // contributed, so the rendered output was indistinguishable from
-            // a placeholder render and the Phase A acceptance gate
-            // ("Steady-mid fixture: bands brighter") could not fire. Ticking
-            // a rig per fixture lets the per-fixture stems drive the rig's
-            // palette / intensity / orbit-speed state and produces a
-            // contact sheet that reflects the §5.8 musical contract end-to-end.
-            let fixtureRig: FerrofluidStageRig?
-            if let descriptor = preset.descriptor.stageRig {
-                fixtureRig = FerrofluidStageRig(device: device, descriptor: descriptor)
-                if let rig = fixtureRig {
-                    // 30 ticks at 60 fps so the smoothedDrumsDev envelope has
-                    // converged toward the fixture's stem values per the §5.8
-                    // 150 ms smoothing constant (~3 τ at 0.5 s of ticks).
-                    for _ in 0..<30 {
-                        rig.tick(features: features, stems: stems, dt: 1.0 / 60.0)
-                    }
-                }
-            } else {
-                fixtureRig = nil
-            }
-            let pixels   = try renderDeferredRayMarch(preset: preset,
-                                                     features: &features,
-                                                     stems: stems,
-                                                     stageRig: fixtureRig)
+            // V.9 Session 4.5c: stage rig retired; no rig instantiation
+            // here. Direct audio→sky-aurora routing returns in the next
+            // commit and the harness will then thread audio uniforms
+            // through to exercise the aurora path.
+            let pixels = try renderDeferredRayMarch(preset: preset,
+                                                    features: &features,
+                                                    stems: stems)
             try writePNG(bgraPixels: pixels,
                          width: Self.renderWidth, height: Self.renderHeight,
                          to: outDir.appendingPathComponent("\(fixture.name).png"))
@@ -374,114 +357,12 @@ final class FerrofluidOceanVisualTests: XCTestCase {
         print("[FerrofluidOcean V.9 Session 4.5 sky base] mood-tint frames written to: \(outDir.path) (avg diff = \(avg))")
     }
 
-    // MARK: - Gate 6 (V.9 Session 4.5): sky-reflection dispatch active (D-126)
-
-    /// Verifies that the matID == 2 dispatch branch in
-    /// `raymarch_lighting_fragment` actually reads the slot-9 stage-rig
-    /// buffer and consumes it through `rm_ferrofluidSky`. Two renders of the
-    /// steady-mid fixture:
-    ///   - "active rig"      — a FerrofluidStageRig with activeLightCount = 4
-    ///                         and non-zero intensities. Buffer bound at slot 9.
-    ///                         Aurora bands ride on top of the base purple sky.
-    ///   - "placeholder only" — nil rig, so the zero-filled
-    ///                         RayMarchPipeline.stageRigPlaceholderBuffer is
-    ///                         bound (activeLightCount = 0 ⇒ rm_ferrofluidSky's
-    ///                         aurora loop never executes). Surface reflects
-    ///                         only the dim base purple sky.
-    ///
-    /// The two frames must be measurably distinct (avg channel diff > 1.0).
-    /// If this collapses, either (a) the slot-9 buffer is not reaching the
-    /// shader, (b) the rm_ferrofluidSky aurora loop is unreachable, or (c)
-    /// the ferrofluid surface stopped emitting matID == 2 from sceneMaterial.
-    /// Renamed from `testFerrofluidOceanStageRigDispatchActive` at Session 4.5
-    /// because the dispatch path no longer accumulates Cook-Torrance per-beam
-    /// contributions — it samples a procedural sky at the reflection vector.
-    func testFerrofluidOceanSkyReflectionDispatchActive() throws {
-        let outDir = try makeOutputDirectory(suffix: "sky_reflection_dispatch")
-        let preset = try requirePreset()
-
-        // The dispatch gate uses a *test-harness-tuned* StageRig descriptor —
-        // boosted intensity_baseline — so the aurora-band contributions
-        // produce a clearly measurable diff against the placeholder render.
-        // The production Ferrofluid Ocean values (intensity_baseline 5) are
-        // tuned for the V.9 reference frames at Session 5 cert review; that
-        // tuning lives in JSON and is not the dispatch gate's concern. This
-        // gate verifies the slot-9 buffer reaches the shader — the
-        // production tuning is validated by Session 5 manual M7 review
-        // against `04_*` / `08_*`.
-        //
-        // Orbit altitude / radius stay at production values (6 / 4) so the
-        // bandDir = normalize(lightPos) computation in rm_ferrofluidSky
-        // produces the same upper-hemisphere band placement under test as
-        // under production. The Session 3 dispatch test used close-in 2/2
-        // orbit to amplify Cook-Torrance attenuation; under Session 4.5
-        // the relevant signal is bandDir direction, not surface distance,
-        // so production values give a more representative test.
-        let stageRigDesc = StageRig(
-            lightCount: 4,
-            orbitAltitude: 6.0,
-            orbitRadius: 4.0,
-            orbitSpeedBaseline: 0.05,
-            orbitSpeedArousalCoef: 0.15,
-            palettePhaseOffsets: [0.0, 0.33, 0.67, 0.17],
-            intensityBaseline: 200.0,
-            intensityFloorCoef: 0.4,
-            intensitySwingCoef: 0.6,
-            intensitySmoothingTauMs: 150
-        )
-        let rig = try XCTUnwrap(FerrofluidStageRig(device: device, descriptor: stageRigDesc),
-                                "FerrofluidStageRig allocation failed")
-        var rigFeatures = fixtureSteadyMid()
-        var rigStems = stemsMid()
-        rigStems.drumsEnergyDev = 0.6
-        rigStems.vocalsPitchHz = 220
-        rigStems.vocalsPitchConfidence = 0.8
-        rigFeatures.arousal = 0.3
-        // 30 frames at 60 fps so the 150 ms drums smoother + audio_time-driven
-        // palette have time to evolve past silence.
-        for _ in 0 ..< 30 {
-            rig.tick(features: rigFeatures, stems: rigStems, dt: 1.0 / 60.0)
-        }
-
-        var fActive = fixtureSteadyMid()
-        var fInactive = fixtureSteadyMid()
-        let stemsActive = rigStems
-        let stemsInactive = stemsMid()
-        let pixelsActive = try renderDeferredRayMarch(
-            preset: preset, features: &fActive, stems: stemsActive,
-            stageRig: rig)
-        let pixelsInactive = try renderDeferredRayMarch(
-            preset: preset, features: &fInactive, stems: stemsInactive,
-            stageRig: nil)
-
-        try writePNG(bgraPixels: pixelsActive,
-                     width: Self.renderWidth, height: Self.renderHeight,
-                     to: outDir.appendingPathComponent("a_sky_reflection_active.png"))
-        try writePNG(bgraPixels: pixelsInactive,
-                     width: Self.renderWidth, height: Self.renderHeight,
-                     to: outDir.appendingPathComponent("b_placeholder_only.png"))
-
-        precondition(pixelsActive.count == pixelsInactive.count)
-        var diff: UInt64 = 0
-        for i in 0 ..< pixelsActive.count where i % 4 != 3 {
-            diff &+= UInt64(abs(Int(pixelsActive[i]) - Int(pixelsInactive[i])))
-        }
-        let pixelChannels = UInt64(pixelsActive.count / 4 * 3)
-        let avg = Double(diff) / Double(pixelChannels)
-
-        // 1.0 threshold per the Session 4.5 prompt's Phase A acceptance
-        // gate. With the boosted intensity_baseline (200) and 4 active
-        // bands at non-zero intensities, the aurora contribution to the
-        // sky should be visibly bright at the band centers — placeholder
-        // gives only the dim base purple. ACES tone-mapping in the
-        // composite pass bounds the visible per-pixel delta, but the diff
-        // accumulates across the full frame.
-        XCTAssertGreaterThan(
-            avg, 1.0,
-            "Sky-reflection dispatch inactive (avg channel diff = \(avg)) — slot-9 buffer not reaching matID == 2 sky branch")
-
-        print("[FerrofluidOcean V.9 Session 4.5] sky-reflection dispatch frames written to: \(outDir.path) (avg diff = \(avg))")
-    }
+    // V.9 Session 4.5c retired Gate 6 (sky-reflection dispatch active).
+    // The test compared "rig-active vs placeholder" renders — meaningless
+    // with the rig removed. Direct audio→sky-aurora routing returns in
+    // the next commit; a new gate will then exercise "audio-loud vs
+    // audio-silent" aurora reflections without going through a slot-9
+    // buffer.
 
     // MARK: - Render
 
@@ -491,8 +372,7 @@ final class FerrofluidOceanVisualTests: XCTestCase {
         stems: StemFeatures,
         applyValenceTint: Bool = false,
         bindIBL: Bool = false,
-        disableFog: Bool = false,
-        stageRig: FerrofluidStageRig? = nil
+        disableFog: Bool = false
     ) throws -> [UInt8] {
         let context       = try MetalContext()
         let shaderLibrary = try ShaderLibrary(context: context)
@@ -584,7 +464,6 @@ final class FerrofluidOceanVisualTests: XCTestCase {
             iblManager: iblManager,
             postProcessChain: nil,
             presetFragmentBuffer3: nil,
-            presetFragmentBuffer4: stageRig?.buffer,
             presetHeightTexture: particles.heightTexture
         )
         cmdBuf.commit()

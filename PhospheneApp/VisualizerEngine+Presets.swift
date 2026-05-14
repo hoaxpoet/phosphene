@@ -57,7 +57,6 @@ extension VisualizerEngine {
         arachneState = nil
         gossamerState = nil
         lumenPatternEngine = nil
-        ferrofluidStageRig = nil
         ferrofluidParticles = nil
         spectralCartographOverlay = nil
         pipeline.setDynamicTextOverlay(nil)
@@ -65,7 +64,6 @@ extension VisualizerEngine {
         pipeline.setDirectPresetFragmentBuffer(nil)
         pipeline.setDirectPresetFragmentBuffer2(nil)
         pipeline.setDirectPresetFragmentBuffer3(nil)
-        pipeline.setDirectPresetFragmentBuffer4(nil)
         pipeline.setRayMarchPresetHeightTexture(nil)
         pipeline.setRayMarchPresetComputeDispatch(nil)
         pipeline.setPostProcessChain(nil)
@@ -175,31 +173,11 @@ extension VisualizerEngine {
                         }
                     }
 
-                    // Ferrofluid Ocean (V.9): allocate the §5.8 stage-rig and
-                    // wire its 208-byte slot-9 buffer + per-frame tick. The
-                    // tick reads (FeatureVector, StemFeatures, dt), advances
-                    // the orbital phase + drums-envelope intensity + per-light
-                    // palette phase (with vocals_pitch_hz / other_energy_dev
-                    // pitch-shift), and flushes the result for the next
-                    // G-buffer + lighting pass to read at fragment slot 9.
-                    // matID == 2 dispatch in raymarch_lighting_fragment loops
-                    // over the per-frame light state. (D-125 first consumer;
-                    // generic StageRigEngine extraction deferred to second.)
-                    if desc.name == "Ferrofluid Ocean", let stageRigDesc = desc.stageRig {
-                        if let rig = FerrofluidStageRig(device: context.device, descriptor: stageRigDesc) {
-                            ferrofluidStageRig = rig
-                            pipeline.setDirectPresetFragmentBuffer4(rig.buffer)
-                            pipeline.setMeshPresetTick { [weak rig] features, stems in
-                                rig?.tick(features: features,
-                                          stems: stems,
-                                          dt: TimeInterval(features.deltaTime))
-                            }
-                        } else {
-                            logger.error(
-                                "FerrofluidStageRig: failed to allocate slot-9 buffer for preset '\(desc.name)'"
-                            )
-                        }
-
+                    // Ferrofluid Ocean (V.9 Session 4.5c): the §5.8 stage-rig
+                    // wiring was removed; direct audio→sky-aurora routing
+                    // replaces it in the next commit. Phase 2b particle
+                    // scaffolding stays.
+                    if desc.name == "Ferrofluid Ocean" {
                         // V.9 Session 4.5b Phase 1: allocate the 2048-particle
                         // scaffolding + bake the 512×512 height field once.
                         // Particles are static in Phase 1; the bake produces a
