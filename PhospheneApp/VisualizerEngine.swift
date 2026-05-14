@@ -142,6 +142,15 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// and the drums-envelope intensity. (D-125 / D-125(f).)
     var ferrofluidStageRig: FerrofluidStageRig?
 
+    /// Ferrofluid Ocean particle scaffolding (V.9 Session 4.5b Phase 1) —
+    /// allocated when that preset is active, nil otherwise. Owns the 2048-
+    /// particle UMA buffer + 512×512 r16Float baked height texture bound at
+    /// fragment texture slot 10 of the ray-march G-buffer pass via
+    /// `setRayMarchPresetHeightTexture` in `applyPreset`. Phase 1 bakes the
+    /// height field once at preset apply (particles are static); Phase 2 will
+    /// add per-frame SPH-lite motion + audio forces.
+    var ferrofluidParticles: FerrofluidParticles?
+
     /// Dynamic text overlay for SpectralCartograph — allocated when that preset is
     /// active, nil otherwise. Freed and detached on every `applyPreset` call.
     var spectralCartographOverlay: DynamicTextOverlay?

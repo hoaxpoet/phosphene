@@ -58,6 +58,7 @@ extension VisualizerEngine {
         gossamerState = nil
         lumenPatternEngine = nil
         ferrofluidStageRig = nil
+        ferrofluidParticles = nil
         spectralCartographOverlay = nil
         pipeline.setDynamicTextOverlay(nil)
         pipeline.setTextOverlayCallback(nil)
@@ -65,6 +66,7 @@ extension VisualizerEngine {
         pipeline.setDirectPresetFragmentBuffer2(nil)
         pipeline.setDirectPresetFragmentBuffer3(nil)
         pipeline.setDirectPresetFragmentBuffer4(nil)
+        pipeline.setRayMarchPresetHeightTexture(nil)
         pipeline.setPostProcessChain(nil)
         pipeline.setRayMarchPipeline(nil)
         pipeline.setFeedbackParams(nil)
@@ -195,6 +197,25 @@ extension VisualizerEngine {
                             logger.error(
                                 "FerrofluidStageRig: failed to allocate slot-9 buffer for preset '\(desc.name)'"
                             )
+                        }
+
+                        // V.9 Session 4.5b Phase 1: allocate the 2048-particle
+                        // scaffolding + bake the 512×512 height field once.
+                        // Particles are static in Phase 1; the bake produces a
+                        // height texture structurally equivalent to the Phase A
+                        // `voronoi_smooth` path (particles sit at smooth-Voronoi
+                        // cell-center XZ; Quilez polynomial smooth-min + apex
+                        // smoothing matches Leitl's published technique).
+                        // Phase 2 will replace the one-shot bake with a per-
+                        // frame SPH-lite compute pass driven by audio forces.
+                        if let particles = FerrofluidParticles(device: context.device,
+                                                               library: shaderLibrary.library) {
+                            particles.bakeHeightField(commandQueue: context.commandQueue)
+                            ferrofluidParticles = particles
+                            pipeline.setRayMarchPresetHeightTexture(particles.heightTexture)
+                        } else {
+                            // swiftlint:disable:next line_length
+                            logger.error("FerrofluidParticles: failed to allocate particle scaffolding for preset '\(desc.name)' — falling back to placeholder (no spikes)")
                         }
                     }
                 } catch {
