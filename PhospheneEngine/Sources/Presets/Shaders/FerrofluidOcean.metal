@@ -292,23 +292,40 @@ static inline float fo_droplet_sdf(float3 p,
 // Surface is opaque; everything below is solid. No transmission, no walls,
 // no contained dish — the surface extends to the camera's far plane.
 
-// Phase A: hardcoded baseline strengths matching the FerrofluidOcean.json
-// `ferrofluid` block defaults. Phase B will replace these with audio-modulated
-// formulas (`mid_att_rel`-derived for meso; `bass_att_rel`-derived for droplet).
-// Keeping these as `static inline` lets the optimiser fold them into call sites
-// at Phase A cost; Phase B will swap them for parameterised inputs.
+// Phase B audio routing for the V.9 Session 4 detail layers.
+//
+// Both strengths route from D-026 deviation primitives (CLAUDE.md "Audio Data
+// Hierarchy" / Failed Approach #4): meso from `f.mid_att_rel` (smoothed mid
+// envelope), droplet from `f.bass_att_rel` (smoothed bass envelope). Never
+// `f.beat_*` (onset rising edge) and never absolute thresholds on raw AGC-
+// normalised bands (D-026, Failed Approaches #31/#57).
+//
+//   - Meso strength formula:    0.5 + 1.5 × max(0, mid_att_rel), clamped [0, 2]
+//                               At silence: 0.5 (subtle baseline turbulence,
+//                               §5.8 silence-state semantics: gentle film,
+//                               never zero). At peak mid-range music: 2.0.
+//   - Droplet strength formula: 0.0 + 2.0 × max(0, bass_att_rel), clamped [0, 2]
+//                               At silence: 0.0 (no beads on a calm body per
+//                               `10_silence_calm_body.jpg`). On a sharp bass
+//                               transient with bass_att_rel ≥ 1.0: 2.0.
 
-static inline float fo_meso_strength_phaseA() { return 1.0; }
-static inline float fo_droplet_strength_phaseA() { return 1.0; }
+static inline float fo_meso_strength(constant FeatureVector& f) {
+    return clamp(0.5 + 1.5 * max(0.0, f.mid_att_rel), 0.0, 2.0);
+}
+
+static inline float fo_droplet_strength(constant FeatureVector& f) {
+    return clamp(0.0 + 2.0 * max(0.0, f.bass_att_rel), 0.0, 2.0);
+}
 
 static inline float fo_surface_height(float3 p,
                                       constant FeatureVector& f,
                                       constant StemFeatures& stems,
+                                      float mesoStrength,
                                       thread float& outSwellOnly) {
     float t      = f.accumulated_audio_time;
     float swell  = fo_gerstner_swell(p.xz, t, fo_swell_scale(f, stems));
     float spikes = fo_ferrofluid_field(p, fo_spike_strength(f, stems), t,
-                                       fo_meso_strength_phaseA());
+                                       mesoStrength);
     outSwellOnly = swell;
     return swell + spikes;
 }
@@ -318,19 +335,24 @@ float sceneSDF(float3 p,
                constant SceneUniforms& s,
                constant StemFeatures& stems) {
     (void)s;
+    // Phase B audio-derived strengths (deviation primitives only).
+    float mesoStrength    = fo_meso_strength(f);
+    float dropletStrength = fo_droplet_strength(f);
+
     // Surface (swell + meso-warped spikes) as a height-field SDF.
     float swellOnly = 0.0;
-    float surfaceY  = fo_surface_height(p, f, stems, swellOnly);
+    float surfaceY  = fo_surface_height(p, f, stems, mesoStrength, swellOnly);
     float surfaceSdf = p.y - surfaceY;
 
     // Cassie-Baxter droplet 3D SDF blended via op_smooth_union. At silence
-    // (fieldStrength = 0) the droplet SDF returns 1e6 and the smooth_union
-    // collapses to the surface SDF (silence-state semantics: no beads on a
-    // calm body). Phase A holds the droplet strength at the JSON baseline.
+    // (fieldStrength = 0 AND dropletStrength = 0) the droplet SDF returns 1e6
+    // and smooth_union collapses to the surface SDF — silence-state semantics:
+    // no beads on a calm body. The droplet SDF reuses the same meso warp so
+    // beads co-locate with warped spikes when both are active.
     float dropletSdf = fo_droplet_sdf(p,
                                       fo_spike_strength(f, stems),
-                                      fo_droplet_strength_phaseA(),
-                                      fo_meso_strength_phaseA(),
+                                      dropletStrength,
+                                      mesoStrength,
                                       swellOnly);
     return op_smooth_union(surfaceSdf, dropletSdf, FO_SMOOTH_UNION_K);
 }
