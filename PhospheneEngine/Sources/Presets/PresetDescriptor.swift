@@ -148,9 +148,15 @@ public struct StageRig: Sendable, Codable, Equatable {
             if offsets.count > count {
                 offsets = Array(offsets.prefix(count))
             } else {
-                let missing = count - offsets.count
-                for i in 0 ..< missing {
-                    offsets.append(Float(offsets.count + i) / Float(count))
+                // Pad with evenly-spaced offsets: each padded slot j gets
+                // Float(j) / Float(count). Caching `originalCount` before the
+                // loop is load-bearing — reading `offsets.count` mid-loop
+                // would mutate the spacing because `append` grows the array
+                // each iteration (the original-J formula collapses to
+                // (originalCount + 2 × i)/count at iteration i).
+                let originalCount = offsets.count
+                for j in originalCount ..< count {
+                    offsets.append(Float(j) / Float(count))
                 }
             }
         }
@@ -162,8 +168,20 @@ public struct StageRig: Sendable, Codable, Equatable {
             Float.self, forKey: .intensityFloorCoef) ?? 0.4
         self.intensitySwingCoef = try container.decodeIfPresent(
             Float.self, forKey: .intensitySwingCoef) ?? 0.6
-        self.intensitySmoothingTauMs = try container.decodeIfPresent(
-            Float.self, forKey: .intensitySmoothingTauMs) ?? 150
+        // Validate intensity_smoothing_tau_ms — `FerrofluidStageRig.advance`
+        // applies `max(tau * 0.001, 0.001)` so a zero or negative value
+        // silently floors to 1 ms (effectively no smoothing). Warn at the
+        // decoder so a malformed JSON value is observable rather than
+        // producing a jittery render with no diagnostic trail. Floor to the
+        // §5.8 spec default (150 ms) so the visual behaviour stays in spec.
+        let rawTau = try container.decodeIfPresent(Float.self, forKey: .intensitySmoothingTauMs) ?? 150
+        if rawTau <= 0 {
+            Logging.renderer.warning(
+                "PresetDescriptor.StageRig: intensity_smoothing_tau_ms \(rawTau) ≤ 0 — using 150 ms default")
+            self.intensitySmoothingTauMs = 150
+        } else {
+            self.intensitySmoothingTauMs = rawTau
+        }
     }
 }
 
