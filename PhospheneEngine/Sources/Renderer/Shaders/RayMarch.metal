@@ -517,6 +517,12 @@ fragment float4 raymarch_lighting_fragment(
         // Constants match FerrofluidOcean.json's `ferrofluid` block defaults
         // (thin_film_thickness_baseline_nm = 220, thin_film_arousal_range_nm = 40)
         // — the JSON values document intent; the MSL constants implement.
+        //
+        // Session 4.5 rescue (Phase 0): micro-normal perturbation removed
+        // (Failed Approach #62 — destroyed the substrate's mirror identity
+        // by scattering thin-film specular into wet-concrete texture). The
+        // surface returns to the G-buffer normal, restoring razor-mirror
+        // specular character per `04_specular_razor_highlights.jpg`.
         constexpr float kFerrofluidFilmThicknessBaselineNm = 220.0;
         constexpr float kFerrofluidFilmThicknessRangeNm    = 40.0;
         float arousalClamped = clamp(features.arousal, -1.0, 1.0);
@@ -525,39 +531,6 @@ fragment float4 raymarch_lighting_fragment(
             arousalClamped * kFerrofluidFilmThicknessRangeNm;
         constexpr float kFerrofluidFilmIORThin     = 1.45;
         constexpr float kFerrofluidFilmIORBase     = 1.0;
-        // V.9 Session 4 Phase A: tactile micro-normal perturbation. Reads
-        // the noiseFBM texture (texture(7)) at three offset world.xz
-        // positions to derive a per-pixel tangent-space normal vector,
-        // applied with amplitude `kFerrofluidMicroNormalAmplitude` to the
-        // G-buffer normal before the BRDF consumes it. This is a
-        // *normal-domain* perturbation — the SDF marcher stays smooth,
-        // but lighting sees an oil-like high-frequency tactile character.
-        // NEVER audio-modulated: this is the substrate's intrinsic
-        // identity, distinguishing Ferrofluid Ocean from a vanilla
-        // mirror surface even at silence (§5.8 silence-state semantics).
-        //
-        // Failed Approach #42/#43 guard: noiseFBM is a pre-baked fBM
-        // texture; the linear repeat sampler at scale 15.0 keeps us in
-        // the multi-octave high-frequency regime where lattice
-        // degeneracy does not apply. The scale-multiplied UV (15 × xz)
-        // wraps repeatedly across the 256×256 texture so visual repetition
-        // is below ~7 cm world-space — well below the ferrofluid surface
-        // scale (4–14 m depth in the camera frame).
-        constexpr float kFerrofluidMicroNormalScale     = 15.0;
-        constexpr float kFerrofluidMicroNormalAmplitude = 0.02;
-        constexpr sampler microSamp(filter::linear, address::repeat);
-        constexpr float microEps = 0.005;
-        float2 mUV0 = worldPos.xz * kFerrofluidMicroNormalScale;
-        float2 mUVx = (worldPos.xz + float2(microEps, 0.0)) * kFerrofluidMicroNormalScale;
-        float2 mUVz = (worldPos.xz + float2(0.0, microEps)) * kFerrofluidMicroNormalScale;
-        float h0 = noiseFBM.sample(microSamp, mUV0).r;
-        float hx = noiseFBM.sample(microSamp, mUVx).r;
-        float hz = noiseFBM.sample(microSamp, mUVz).r;
-        // Tangent-space normal from gradient. Y-up + microEps × 4 keeps
-        // the magnitude conservative so the perturbation reads as oil
-        // film, not as a hammered-metal bump map.
-        float3 microNormal = normalize(float3(h0 - hx, microEps * 4.0, h0 - hz));
-        N = normalize(N + microNormal * kFerrofluidMicroNormalAmplitude);
 
         float3 V         = normalize(scene.cameraOriginAndFov.xyz - worldPos);
         float3 directLit = float3(0.0);
