@@ -57,16 +57,43 @@ static inline float fo_stem_warmup_blend(constant StemFeatures& stems) {
     return smoothstep(FO_STEM_WARMUP_LO, FO_STEM_WARMUP_HI, total);
 }
 
-// Spike-field strength: route from stems.bass_energy_dev (D-026); fall back to
-// f.bass_att_rel (smoothed bass deviation, FeatureVector field 32) during stem
-// warmup or true silence. At silence, both are ~0 → spike lattice collapses
-// per `10_silence_calm_body.jpg`.
+// Spike-field strength: baseline + modulation (V.9 Session 4.5c Phase 1 round 3).
+//
+// **Phase 1 round 3 (2026-05-14 post-second-Billie-Jean capture)** reworked
+// this from deviation-only (`max(0, bass_energy_dev)`) to
+// `liveGate × baseline + bass_energy_dev × modulation`. The deviation-only
+// shape collapsed the lattice in steady-state on real music — Billie Jean
+// `bass_energy_dev` mean=0.25 produced spike height 0.037 wu (visually rippled,
+// not ferrofluid); only deviation peaks (e.g. SNA's 3.29 → 0.49 wu) read as
+// proper ferrofluid texture. Matt's read: "going in and out of focus in time
+// with the music. sharper on drum hits." Cause: lattice height tracked
+// deviation, so most-of-the-time-music was visually flat. Baseline pattern
+// makes the spike lattice consistently present whenever music plays;
+// deviation peaks still rise sharper on top.
+//
+// Numbers:
+//   baseline   2.0 × liveGate → 0.30 wu spike height when music plays
+//   modulation 0.7 × bass_energy_dev → peak adds ~0.49 wu (SNA), ~0.18 wu (BJ mean)
+//   silence  → liveGate ≈ 0 → lattice fully collapses per `10_silence_calm_body.jpg`.
+//
+// `f` (FeatureVector) is unused after the rework. The previous fallback to
+// `f.bass_att_rel` is removed — that primitive is capped at 0 across real-music
+// captures (separate FeatureVector / MV-1 defect for later triage; latent
+// because real-music sessions are stem-ready and the proxy didn't fire). The
+// loss of the proxy means a very-cold-start window (~5 s before any stems
+// arrive) shows zero spikes; acceptable because the orchestrator only routes
+// to this preset after stem prep completes (stems cached or freshly
+// analysed) so the cold-start window is effectively never hit in normal
+// playback.
 static inline float fo_spike_strength(constant FeatureVector& f,
                                       constant StemFeatures& stems) {
-    float blend = fo_stem_warmup_blend(stems);
-    float proxy = max(0.0, f.bass_att_rel);
-    float stem  = max(0.0, stems.bass_energy_dev);
-    return mix(proxy, stem, blend);
+    (void)f;
+    float liveGate = fo_stem_warmup_blend(stems);
+    constexpr float kSpikeBaseline   = 2.0;
+    constexpr float kSpikeModulation = 0.7;
+    float baseline   = liveGate * kSpikeBaseline;
+    float modulation = max(0.0, stems.bass_energy_dev) * kSpikeModulation;
+    return baseline + modulation;
 }
 
 // Swell amplitude scale per D-124(d): arousal sets the sustained baseline at
