@@ -29,7 +29,11 @@ Per [`SHADER_CRAFT.md §10.3`](../SHADER_CRAFT.md) (V.9 redirect) and the README
 | V.9 Session 2 | Material recipe: §4.6 base + thin-film interference (`thinfilm_rgb` from `Utilities/PBR/Thin.metal`) + atmosphere fog tinted by D-022 | ✅ 2026-05-13 |
 | V.9 Session 3 | §5.8 stage-rig lighting recipe (implements D-125: slot-9 buffer + `matID == 2` dispatch + FerrofluidStageRig Swift class) | ✅ 2026-05-13 |
 | V.9 Session 4 | Audio routing (meso domain warp + micro detail noise + droplet beading + all D-026 deviation routing finalized) | ⚠ shipped 2026-05-13 — **M7 review FAILED**; structural rescue in Session 4.5 |
-| V.9 Session 4.5 | **Rescue (post-M7)**: revert decoration (droplets / micro-normal / meso warp); replace §5.8 point-light rig with aurora-sky reflection in mirror; reshape spike profile; retune Gerstner for deep-sea rolling | ⏳ Not started — authored 2026-05-13 |
+| V.9 Session 4.5 Phase 0 | **Rescue Phase 0**: revert Session 4 decoration layers (droplets / micro-normal / meso warp) | ✅ 2026-05-13 (commit `cda15d47`) |
+| V.9 Session 4.5 Phase A | **Rescue Phase A**: replace §5.8 point-light Cook-Torrance with mirror-reflects-procedural-sky + smooth Voronoi spike geometry (D-126) | ✅ 2026-05-14 |
+| V.9 Session 4.5b | **Particle motion** (NEW, sequenced before original Phase B per Matt 2026-05-14): replace static smooth-Voronoi grid with Leitl-style audio-reactive GPU particles + per-frame height-map bake | ⏳ Not started — prompt pending |
+| V.9 Session 4.5 Phase B | Spike profile reshape + Gerstner swell retune (sequenced after particle motion lands) | ⏳ Not started |
+| V.9 Session 4.5 Phase C | Verification against references + closeout | ⏳ Not started |
 | V.9 Session 5 | Cert review + perf capture + golden hash regeneration + Matt M7 sign-off | ⏳ Not started |
 
 ---
@@ -956,6 +960,41 @@ After Phase C: full reference contact sheet match. Anti-reference (`05_*`) not m
 ### Closeout
 
 Per CLAUDE.md Increment Completion Protocol.
+
+---
+
+## V.9 Session 4.5 — Landed-work record (Phase 0 + Phase A)
+
+**Phase 0 ✅ (2026-05-13, commit `cda15d47`).** Reverted the three Session 4 Phase A decoration layers that the M7 review rejected (Cassie-Baxter droplets, meso domain warp, matID == 2 micro-normal). `FerrofluidOcean.metal` height field returned to pure Gerstner + Rosensweig; `RayMarch.metal` matID == 2 dropped the micro-normal block; `PresetDescriptor.FerrofluidParams` trimmed 5 fields → 2 (thin-film thickness only); `FerrofluidOcean.json` ferrofluid block reduced to 2 fields; `FerrofluidParamsDecoderTests` rewritten to 2-field shape (7 tests). All Phase 0 acceptance gates met. 5 files / 286 deletions / 54 insertions.
+
+**Phase A ✅ (2026-05-14).** Rebuilt matID == 2 lighting paradigm from Cook-Torrance per-light loop to **mirror-reflects-procedural-sky** + replaced regular Voronoi with Quilez **smooth Voronoi** for spike geometry. Closeout report:
+
+*Files changed:*
+- `PhospheneEngine/Sources/Renderer/Shaders/RayMarch.metal` — new `rm_ferrofluidBaseSky(R, scene)` (three-stop dark-purple gradient × D-022 lightColor) + `rm_ferrofluidSky(R, rig, scene)` (anisotropic aurora-stripe bands via `vertFalloff × azim_falloff`); matID == 2 branch rewritten to sample sky at reflection vector, multiply by thin-film F0, mix toward fog at zenith; `rm_finishLightingPass` bypassed for matID == 2.
+- `PhospheneEngine/Sources/Presets/Shaders/Utilities/Texture/Voronoi.metal` — new `voronoi_smooth(p, scale, k)` utility (Quilez exp/log soft-min, k=32 default).
+- `PhospheneEngine/Sources/Presets/Shaders/FerrofluidOcean.metal` — `fo_ferrofluid_field` switched to `voronoi_smooth` + linear cone profile (kSpikeRadius = 0.6 in scaled-space units, > 0.577 hex circumradius → wall-to-wall pyramid coverage); cellHash variation dropped (smooth Voronoi doesn't expose discrete IDs); temporal sin oscillation dropped (Failed Approach #33 echo).
+- `PhospheneEngine/Sources/Presets/FerrofluidOcean/FerrofluidStageRig.swift` — doc-comment updated to reflect the buffer's new role as aurora-sky parameter source (the §5.8 musical contract preserved at the rig boundary; only GPU consumption changed).
+- `PhospheneEngine/Tests/PhospheneEngineTests/Visual/FerrofluidOceanVisualTests.swift` — renamed `testFerrofluidOceanStageRigDispatchActive` → `testFerrofluidOceanSkyReflectionDispatchActive`; renamed `testFerrofluidOceanMoodTintIBLPropagation` → `testFerrofluidOceanMoodTintSkyBaseShift` (matID == 2 no longer reads IBL textures); `testFerrofluidOceanMoodTintAtmosphereShifts` adapted; 4-fixture render ticks a per-fixture rig (not silence-only); test render resolution bumped 384×216 → 1920×1080 (production-target — low-res renders were hiding artifacts).
+
+*Test gates (all green):*
+- 6/6 `FerrofluidOceanVisualTests` pass
+- 7/7 `FerrofluidParamsDecoderTests` pass (Phase 0 carryover)
+- 15/15 `PresetRegressionTests` golden hashes match
+- `PresetLoaderCompileFailureTest` passes (preset count = 15)
+- Engine + app build clean
+- SwiftLint strict clean on touched Swift files
+- `check_drums_beat_intensity.sh` + `check_sample_rate_literals.sh` clean for touched files (pre-existing Gossamer warning unrelated)
+
+*Visual harness output:* `/var/folders/.../PhospheneFerrofluidOceanV9Session1/{fixtures, mood_tint, mood_tint_sky_base, sky_reflection_dispatch, independence}/`. At 1920×1080: silence reads as dark-purple ocean with subtle iridescent reflection (no spikes); steady-mid / beat-heavy / quiet show wall-to-wall hex-pack spike texture with aurora colors playing across the slope reflections; cool/warm valence pair shifts substrate cleanly (navy ↔ purple-magenta); dispatch test shows vivid aurora stripes across the substrate (200× test intensity confirms slot-9 buffer reaches the shader). The Phase 0 dot-pattern artifact is gone — replaced by a continuous spike texture per the smooth Voronoi insight from Robert Leitl's published WebGL ferrofluid project.
+
+*Documentation:* `docs/ENGINEERING_PLAN.md`, `docs/ENGINE/RENDER_CAPABILITY_REGISTRY.md`, `CLAUDE.md` (new Failed Approaches #64 + #65 capturing the discipline learnings from the iteration cycle), this prompt doc (above).
+
+*Carry-forward to Session 4.5b (particle motion):* Matt directed (2026-05-14) that the next increment introduces **Leitl-style audio-reactive moving peaks** — replace the static smooth-Voronoi grid with GPU particles + per-frame height-map bake pass + audio-driven forces. Decided as a dedicated increment (path β) rather than expanding Phase A. Original Phase B (spike profile reshape + Gerstner retune) is now sequenced after particle motion lands.
+
+*Discipline learnings captured (CLAUDE.md Failed Approaches #64 + #65):*
+1. **Verify against the artifact at production resolution.** Six iterations of dot-pattern fixes were made on 384×216 thumbnails; bumping to 1920×1080 immediately confirmed the dots were real (not a low-res artifact, as I'd been asserting).
+2. **When iterative first-principles fixes aren't converging on a problem with known prior art, escalate to desk research.** Six structural claims about cone profile / smoothing / aurora coverage failed to converge; one library function (`voronoi_smooth` from Quilez) from a 2014 article fixed the issue immediately.
+3. **Don't negotiate away components of a working reference implementation under unverified "redundancy" arguments.** Matt called this out directly after I started subtracting from Leitl's lighting model under hand-wave reasoning.
 
 ---
 
