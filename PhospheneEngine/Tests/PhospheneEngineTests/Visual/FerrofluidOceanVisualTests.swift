@@ -500,6 +500,17 @@ final class FerrofluidOceanVisualTests: XCTestCase {
                                                  shaderLibrary: shaderLibrary)
         pipeline.allocateTextures(width: Self.renderWidth, height: Self.renderHeight)
 
+        // V.9 Session 4.5b Phase 1: allocate FerrofluidParticles + bake the
+        // 1024×1024 height field once. The Ferrofluid Ocean sceneSDF samples
+        // this texture in place of the Phase A inline `voronoi_smooth` path;
+        // without a bound height texture, the bound placeholder (zero-filled
+        // 1×1) means the substrate renders without spikes. Every gate in
+        // this suite tests Ferrofluid Ocean, so always bake.
+        let particles = try XCTUnwrap(
+            FerrofluidParticles(device: device, library: shaderLibrary.library),
+            "FerrofluidParticles allocation failed — slot-10 height texture cannot be bound")
+        particles.bakeHeightField(commandQueue: context.commandQueue)
+
         var sceneUniforms = preset.descriptor.makeSceneUniforms()
         sceneUniforms.sceneParamsA.y = Float(Self.renderWidth) / Float(Self.renderHeight)
 
@@ -573,7 +584,8 @@ final class FerrofluidOceanVisualTests: XCTestCase {
             iblManager: iblManager,
             postProcessChain: nil,
             presetFragmentBuffer3: nil,
-            presetFragmentBuffer4: stageRig?.buffer
+            presetFragmentBuffer4: stageRig?.buffer,
+            presetHeightTexture: particles.heightTexture
         )
         cmdBuf.commit()
         cmdBuf.waitUntilCompleted()
