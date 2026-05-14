@@ -28,7 +28,8 @@ Per [`SHADER_CRAFT.md §10.3`](../SHADER_CRAFT.md) (V.9 redirect) and the README
 | V.9 Session 1 | Gerstner-wave macro displacement + Rosensweig spike-field SDF + JSON sidecar v2 + clean-slate test retirement | ✅ 2026-05-13 |
 | V.9 Session 2 | Material recipe: §4.6 base + thin-film interference (`thinfilm_rgb` from `Utilities/PBR/Thin.metal`) + atmosphere fog tinted by D-022 | ✅ 2026-05-13 |
 | V.9 Session 3 | §5.8 stage-rig lighting recipe (implements D-125: slot-9 buffer + `matID == 2` dispatch + FerrofluidStageRig Swift class) | ✅ 2026-05-13 |
-| V.9 Session 4 | Audio routing (meso domain warp + micro detail noise + droplet beading + all D-026 deviation routing finalized) | ✅ 2026-05-13 |
+| V.9 Session 4 | Audio routing (meso domain warp + micro detail noise + droplet beading + all D-026 deviation routing finalized) | ⚠ shipped 2026-05-13 — **M7 review FAILED**; structural rescue in Session 4.5 |
+| V.9 Session 4.5 | **Rescue (post-M7)**: revert decoration (droplets / micro-normal / meso warp); replace §5.8 point-light rig with aurora-sky reflection in mirror; reshape spike profile; retune Gerstner for deep-sea rolling | ⏳ Not started — authored 2026-05-13 |
 | V.9 Session 5 | Cert review + perf capture + golden hash regeneration + Matt M7 sign-off | ⏳ Not started |
 
 ---
@@ -633,7 +634,7 @@ Per CLAUDE.md Increment Completion Protocol:
 
 ---
 
-## V.9 Session 4 — Audio routing + meso/micro detail layers — ✅ LANDED 2026-05-13
+## V.9 Session 4 — Audio routing + meso/micro detail layers — ⚠ SHIPPED 2026-05-13 (M7 review FAILED — rescue in Session 4.5)
 
 ### Landed work summary
 
@@ -667,7 +668,294 @@ Three-phase landing across nine commits (`[V.9-session-4 P0]` / `[V.9-session-4 
 
 The Phase A mid-session contact sheet rendered the four standard fixtures + the silence fixture. The renders showed structural correctness: silence fixture has gentle macro swell + visible micro-detail in beam reflections (no spikes, no droplets); steady-mid fixture has visible meso turbulence + droplet beading; beat-heavy fixture has prominent spike-tip droplet activity. The Phase B contact sheet renders showed the audio routing engaged: meso turbulence amplitude scales with `mid_att_rel`, droplet strength scales with `bass_att_rel`, and the cool/warm thin-film thickness shift produced subtle iridescent breathing in beam reflections. No structural divergence from the references was observed (Failed Approach #49 trigger condition was not hit). Final pixel-match cert is Session 5's job.
 
+### M7 review outcome (2026-05-13, post-landing) — FAILED
+
+Live session capture (`/Users/braesidebandit/Documents/phosphene_sessions/2026-05-14T01-20-28Z/video.mp4`) showed four structural failures, summarized in Matt's words: "No reflective-black ferrofluid material visible. No idea what the droplets are and why they are here — no part of the original vision. The light source washes everything out and does not shine bright colorful neon light onto the surface of the ferrofluid material. It feels like effects are competing with one another rather than working in harmony in alignment with the music."
+
+Root cause diagnosis (Matt + Claude chat, 2026-05-13):
+
+1. **The §5.8 stage-rig as "4 point lights at altitude 6 / radius 4 with inverse-square falloff" is the wrong implementation paradigm.** The references' "moving colored beams reflected in dark water" mechanic is mirror-reflects-aurora-sky (see `08_lighting_aurora_over_dark_water.jpg` and its README annotation: "the preset's beams are *continuous diffuse gradients, not point sources with pillar reflections*"). Physical inverse-square at the §5.8 spec orbit distance gives ~0.02× attenuation; the beams have no visual presence against the IBL ambient that the mirror surface ALSO reflects. The fix is not to scale intensity 50× — it's to put the moving colors INTO the sky the mirror reflects.
+
+2. **The IBL cubemap (`rm_skyColor` — near-white horizon → blue zenith gradient) is what the mirror is reflecting.** That's the "gray wash," not "ambient drowning the beams." The fix is to give Ferrofluid Ocean its own dark-purple aurora-sky function for matID == 2 reflection.
+
+3. **The Phase A material detail layers (meso warp, droplets, micro-normal) are decoration competing with the hero signal.** Per CLAUDE.md Authoring Discipline ("Articulate the musical role before authoring anything"), each layer should have a one-sentence musical role a listener can pair with the visual. The droplets fail Matt's "no idea what they are" test — direct confirmation of Failed Approach #58 at the layer scope.
+
+4. **The micro-normal perturbation destroys the mirror identity.** Jittering the normal scatters the thin-film specular across pixels; the references' "razor highlights" require a smooth surface.
+
+5. **The Rosensweig spike profile is too soft / short.** References show tall narrow pyramidal spikes; current `exp(-d² × 40)` × 0.15 is a soft bell-curve.
+
+6. **The Gerstner swell is rippling, not rolling.** References want deep-sea churning per `02b_*`; current 4-wave sum with amplitudes [0.15, 0.10, 0.06, 0.03] is too small / too short-wavelength.
+
+The Session 4 mid-session sanity-check claim "no structural divergence from the references was observed" is retroactively wrong — the structural divergence was severe but the harness fixtures + automated gates couldn't see it. **Lesson: contact-sheet sanity checks must compare against the named reference images, not against a self-judgment of "looks reasonable." Phase 4.5 mandates explicit side-by-side comparison.**
+
+Session 4 commits (P0 + PA + PB) remain in git history; Phase 4.5 Phase 0 reverts the decoration layers but does not rewrite history.
+
 ### Session 4 prompt (original — kept for traceability below)
+
+---
+
+## V.9 Session 4.5 — Rescue: revert decoration + replace §5.8 lighting paradigm + spike/swell retune
+
+**Status:** ⏳ Not started. Authored 2026-05-13 post-Session-4 M7 review failure (see Session 4 M7 review outcome above).
+
+**Why a rescue session.** V.9 Session 4 shipped Phase 0 + Phase A + Phase B and passed every automated gate, but the M7 review of the live session capture flagged four structural failures (full root-cause diagnosis under the Session 4 "M7 review outcome" block above). The §5.8 stage-rig as "discrete point lights with inverse-square falloff" is the wrong implementation paradigm for a near-mirror substrate; the references' mechanic is **mirror-reflects-aurora-sky**, not point-lights-cast-onto-surface. The Phase A decoration layers (droplets, micro-normal, meso warp) are visible noise without load-bearing musical role. This session is the rescue.
+
+### Musical role (re-articulation post-M7 — read this before any code)
+
+The substrate is a **near-mirror black ferrofluid that reflects a moving colored sky.** The hero visual is **the reflection of a slow-moving colored aurora in the mirror surface.** The ferrofluid picks up the chromatic content without the substrate ever turning bright — color lives in the reflection, never in the surface tone itself. Per `04_*` README annotation: *"saturated rim highlights where the beam catches spike edges, near-black substrate even at the brightest beam location, chromatic content present only in the reflections (not in the underlying surface tone)."* Per `08_*` README annotation: *"the doubled-aurora-in-reflection composition showing what colored light over a reflective surface looks like at landscape scale."*
+
+Music drives:
+
+- **The aurora colors** (palette phase) ← `stems.vocals_pitch_hz` (perceptual log over 80 Hz–1 kHz, confidence-gated at 0.6, fallback `stems.other_energy_dev × 0.15`). Vocal pitch rising → palette phase shifts → bands change color.
+- **The aurora intensity** ← `stems.drums_energy_dev` (smoothed 150 ms τ — reuse the FerrofluidStageRig smoother). Drum energy envelope → bands brighten / dim continuously, never edge-strobed.
+- **The aurora orbit speed** ← arousal (smoothstep -0.5 to +0.5). High arousal → bands sweep faster; low arousal → bands drift slowly.
+- **The body** (Gerstner swell amplitude) ← arousal-baseline + `stems.drums_energy_dev` accent. Calm at silence, deep rolling at peak.
+- **The spikes** (Rosensweig field strength) ← `stems.bass_energy_dev`. Razor pyramids emerging when bass envelope is high; fully collapsed at silence.
+- **The thin-film thickness** ← arousal (kept from Session 4 Phase B). Subtle iridescent breathing in the mirror reflection.
+
+When a kick lands: spikes pop up, sky brightens slightly. When the vocal rises in pitch: aurora colors shift. When the music swells: surface rolls bigger; aurora orbits faster. At silence: smooth calm body of liquid reflecting a near-black sky with subtle purple gradient.
+
+**Acceptance test for the musical role:** a listener should be able to point at a moment in the music and identify the visual response. If "the aurora sweep across the surface when the vocal soared" is visible, ✓. If the viewer can only say "vibes" or "reactive to energy," ✗.
+
+### Scope (strict) — four phases, gated
+
+Phases must complete in order. Each phase has acceptance gates; do not start the next phase until the current phase's gates pass.
+
+---
+
+#### Phase 0 — Revert decoration layers
+
+1. **Revert the Cassie-Baxter droplet field entirely.**
+   - Drop `fo_droplet_sdf` + `FO_DROPLET_RADIUS` / `FO_DROPLET_APEX_FRACTION` / `FO_SMOOTH_UNION_K` constants from `FerrofluidOcean.metal`.
+   - Drop the `op_smooth_union(surfaceSdf, dropletSdf, ...)` composition in `sceneSDF`; restore pure height-field SDF (`return p.y - surfaceY;`).
+   - Drop `fo_droplet_strength` audio-routing function.
+   - Drop the `droplet_strength` JSON field from `PresetDescriptor.FerrofluidParams` and from `FerrofluidOcean.json`.
+   - Adjust `FerrofluidParamsDecoderTests` to the reduced field set (4 fields: `meso_strength` deprecated but kept for one revision, `micro_normal_amplitude` deprecated, `thin_film_thickness_baseline_nm`, `thin_film_arousal_range_nm`).
+
+2. **Revert the micro-normal perturbation in `RayMarch.metal` matID == 2 branch.**
+   - Drop `kFerrofluidMicroNormalScale` + `kFerrofluidMicroNormalAmplitude` + `microSamp` + the three `noiseFBM` samples + the `microNormal` gradient + the `N = normalize(N + microNormal * amp)` line.
+   - The surface normal returns to the G-buffer stored normal — smooth, low-roughness, mirror-like.
+   - Drop `micro_normal_amplitude` JSON field. Adjust tests.
+
+3. **Revert the meso domain warp.**
+   - Drop `fo_meso_warp` + `FO_MESO_WARP_SCALE` + `FO_MESO_WARP_AMPLITUDE` constants from `FerrofluidOcean.metal`.
+   - `fo_ferrofluid_field` no longer takes a `mesoStrength` parameter; samples Voronoi at raw `p.xz`.
+   - Drop `fo_meso_strength` audio-routing function.
+   - Drop the `meso_strength` JSON field.
+
+4. **Keep the thin-film thickness modulation** in matID == 2 / matID == 3 (kept from Session 4 Phase B). The arousal-driven thickness shift is subtle, in-vision, and was not flagged at M7.
+
+5. **Keep `FerrofluidStageRig.swift` (the Swift class) intact for now.** Its per-frame outputs (light positions / colors / intensities) will be repurposed in Phase A to drive aurora bands instead of point lights. Class API unchanged; consumption changes.
+
+6. **Test updates:**
+   - `FerrofluidParamsDecoderTests` — adjust to the 2-field shape (thin_film_thickness_baseline_nm + thin_film_arousal_range_nm). All other field-related tests deleted.
+   - `FerrofluidOceanVisualTests.testFerrofluidOceanRendersFourFixtures` — keep the silence-state avg-channel assertion (it will still hold after Phase A's aurora-sky lands; the dark-purple gradient at silence produces non-zero channel values).
+   - `testFerrofluidOceanStageRigDispatchActive` — keep passing. It will be rewritten in Phase A as the aurora-sky dispatch test.
+
+**Phase 0 acceptance gates:**
+
+1. Build clean (engine + app).
+2. Preset count remains 15 (Failed Approach #44 silent-drop gate).
+3. `FerrofluidParamsDecoderTests` passes with reduced field set.
+4. `FerrofluidOceanVisualTests` (all 6) pass.
+5. `Scripts/check_drums_beat_intensity.sh` + `Scripts/check_sample_rate_literals.sh` both clean.
+6. SwiftLint strict clean on touched files.
+7. Visual smoke: contact sheet at the 4 standard fixtures shows pure-mirror substrate reflecting the **current** IBL gradient. Surface reads as a gray-blue mirror — no stippling, no droplet bumps, no warp distortion. (We're undoing failure modes here, not solving them yet.)
+8. Commit as 1 commit. Prefix: `[V.9-session-4.5 P0]`.
+
+---
+
+#### Phase A — Replace §5.8 lighting paradigm with aurora-sky reflection
+
+Conceptual change: matID == 2 becomes a **mirror-reflects-procedural-sky** path. The §5.8 musical contract (vocals_pitch → palette, drums_energy_dev → intensity, arousal → orbit speed) is preserved; only the GPU consumption changes from "Cook-Torrance per-light loop" to "sample procedural sky at reflection vector."
+
+1. **Author a procedural aurora sky function `rm_ferrofluidSky` in `RayMarch.metal`** (file-private to that file, not in shared utilities — Ferrofluid Ocean-specific until a second consumer ships):
+   - Signature: `static float3 rm_ferrofluidSky(float3 R, constant FeatureVector& f, constant StemFeatures& stems, constant StageRigState& rig, constant SceneUniforms& scene)`.
+   - **Base sky:** dark purple-to-near-black gradient. Zenith (R.y → +1): near-black with subtle purple. Horizon (R.y → 0): slightly warmer purple, never bright. Below horizon (R.y → -1): even darker, fading to true black. Anchor: `07_atmosphere_dark_purple_fog.jpg` palette annotation. The base sky multiplied by `scene.lightColor.rgb` carries D-022 mood-tint through the reflection.
+   - **Aurora bands:** 2–4 overlapping curved colored bands. Each band's central direction comes from one of `rig.lights[i].positionAndIntensity.xyz` (normalize as sky direction). Each band's color comes from `rig.lights[i].color.xyz`. Each band's brightness multiplier comes from `rig.lights[i].positionAndIntensity.w` (the per-light intensity envelope; already includes the 150 ms drums smoothing from FerrofluidStageRig).
+   - **Spatial spread:** each band is a Gaussian or curved-cosine streak along R (NOT a hemisphere). Width parameter controls how concentrated each band is. Bands should read as "aurora veils" — narrow streaks at a particular sky direction with smooth falloff, not blob lights.
+   - **Composition:** `base + Σ (band_color × band_intensity × band_spread(R, band_dir))`. The base provides the silence-state minimum visible content; bands add the dynamic chromatic content. At silence (band intensities = floor × baseline ≈ small but non-zero per §5.8), bands are dim but visible — the sky has subtle color even at silence.
+
+2. **Replace the matID == 2 Cook-Torrance per-light loop** in `raymarch_lighting_fragment`:
+   - Drop the entire `for (uint i = 0; i < stageRig.activeLightCount && i < 6; i++)` loop body (lines ~528-555 of current RayMarch.metal).
+   - Compute the reflection vector once: `R = reflect(-V, N)`.
+   - Sample `rm_ferrofluidSky` at R.
+   - Multiply by thin-film Fresnel F0 (the `rm_thinfilm_rgb` recipe, already wired) — this gives the mirror's frequency-dependent reflectance, producing the subtle iridescent edge shift the references show.
+   - That is the **entire** direct contribution for matID == 2.
+   - **Bypass `rm_finishLightingPass` entirely for matID == 2.** The substrate is mirror-only — no diffuse IBL irradiance (kd = 0 for metallic=1), no separate fog tail (the base sky's dark purple IS the fog visual already, integrated into the sky function). Write a minimal matID == 2 tail: `return float4(skyReflection * F0_thin, 1.0);` plus an ACES tone-map if needed.
+   - For atmospheric depth: tint distant reflections (where the surface is far from the camera) toward the base sky color so the horizon edge fades into atmosphere. Single `mix(reflection, baseSkyAtZenithDirection, fogFactor)` where fogFactor comes from `depthNorm * farPlane` against the scene's `fogNear` / `fogFar`.
+
+3. **Verify FerrofluidStageRig outputs map cleanly to aurora bands:**
+   - `lights[i].positionAndIntensity.xyz` is currently a 3D world-space position on an orbital circle. The aurora band consuming it should treat the position vector as a **sky direction** (normalize to unit vector). The orbit-on-circle motion becomes "this band's central direction sweeps across the sky on a slow orbit" — exactly what we want.
+   - `lights[i].positionAndIntensity.w` is the per-light intensity (baseline × (floor + swing × smoothedDrumsDev)). Use directly as band brightness multiplier.
+   - `lights[i].color.xyz` is the per-light palette color. Use directly as band hue.
+   - **No changes needed to `FerrofluidStageRig.swift`** — the consumption side reinterprets the data. Document this in the class's doc-comment ("V.9 Session 4.5: outputs drive aurora bands in the procedural sky, not Cook-Torrance lights").
+
+4. **JSON schema:**
+   - Keep the `stage_rig` block name. The §5.8 musical contract is preserved; only the GPU paradigm changes. Renaming would invalidate `PresetDescriptor.StageRig` + every Swift / MSL reference; not worth the churn.
+   - Update CLAUDE.md "Failed Approaches" with the §5.8 reframing (see Phase C closeout).
+
+5. **D-022 mood-tint propagation through the new sky:**
+   - The base sky color multiplies by `scene.lightColor.rgb` once. This carries the cool-vs-warm valence shift through the entire matID == 2 reflection.
+   - Test gate: `testFerrofluidOceanMoodTintAtmosphereShifts` and `testFerrofluidOceanMoodTintIBLPropagation` — both need adapting. The new equivalent tests verify the sky function's base color shift across the cool/warm valence pair (avg channel diff > 1.0 expected).
+
+6. **Test updates:**
+   - **REWRITE** `testFerrofluidOceanStageRigDispatchActive` → `testFerrofluidOceanSkyReflectionDispatchActive`. New gate: render with active rig (FerrofluidStageRig producing non-trivial light positions/colors/intensities) vs with placeholder buffer (activeLightCount = 0). Diff threshold ≥ 1.0 expected (the active rig adds aurora bands that the placeholder doesn't).
+   - **REWRITE** `testFerrofluidOceanMoodTintAtmosphereShifts` — adapt to the new sky function. The cool-vs-warm valence shift should appear in the sky's base color and propagate through the mirror reflection.
+   - **REWRITE** `testFerrofluidOceanMoodTintIBLPropagation` — the IBL ambient path no longer applies for matID == 2. Either retire this test (sky function IS the new IBL for matID == 2) or rewrite to verify the sky function's `scene.lightColor.rgb` multiply.
+
+**Phase A acceptance gates:**
+
+1. All Phase 0 gates still pass.
+2. `testFerrofluidOceanShaderCompiles` passes; preset count remains 15.
+3. `testFerrofluidOceanRendersFourFixtures` passes. Visual smoke:
+   - **Silence fixture:** smooth mirror reflecting dark-purple sky with subtle baseline color bands at the silence-state intensity floor. NOT gray-blue (that was the failure). NOT pure black.
+   - **Steady-mid fixture:** bands brighter, palette warmer where vocals_pitch_hz would dictate.
+   - **Beat-heavy fixture:** brightest bands, biggest intensity envelope, palette at peak chromatic position.
+   - **Quiet fixture:** bands dim, mostly base sky.
+4. `testFerrofluidOceanSkyReflectionDispatchActive` (new) passes — active rig vs placeholder produces measurable diff.
+5. Rewritten mood-tint gates pass — cool-vs-warm valence produces avg diff > 1.0 in the new sky-reflection path.
+6. Engine suite: 0 new failures from the test rewrites.
+7. Grep gates + SwiftLint strict clean.
+8. **Mandatory side-by-side reference comparison** (mid-Phase, before next phase starts):
+   - Render at the steady-mid fixture vs `08_lighting_aurora_over_dark_water.jpg` — the rendered output should be in the **neighbourhood** of the aurora-over-water composition. Not pixel-match. The "diffuse colored gradient on dark reflective body" mechanic should read.
+   - Render at the beat-heavy fixture vs `04_specular_razor_highlights.jpg` — palette and substrate value range should approximate (spike shape is still wrong at this point; Phase B fixes that).
+   - **If structural divergence is visible** (e.g., bands look like blob lights instead of veils, surface doesn't read as a mirror, palette saturates the substrate), STOP and surface to Matt. Don't tune your way out of a structural gap (Failed Approach #49).
+9. Commit as 3–4 commits: (a) `rm_ferrofluidSky` procedural sky function, (b) matID == 2 branch replacement + minimal tail, (c) test rewrites, (d) doc-comment + CLAUDE.md updates if needed. Prefix: `[V.9-session-4.5 PA]`.
+
+---
+
+#### Phase B — Spike profile reshape + Gerstner swell retune
+
+This phase is **pure tuning against the references** — small parameter changes, side-by-side reference comparison after each change.
+
+1. **Spike profile** in `fo_ferrofluid_field`:
+   - **Current:** `exp(-d² × 40.0)` × `(0.5 + 0.5 × sin(t × 0.8 + cellPhase))` × `fieldStrength × 0.15`.
+   - **Target:** tall narrow pyramidal spikes per `01_macro_ferrofluid_at_swell_scale.jpg` and `04_specular_razor_highlights.jpg`. Sharper exp falloff, taller peak height, denser distribution.
+   - **Starting values to tune from** (NOT spec — tune by rendering against references):
+     - `exp(-d² × 80)` or `exp(-d² × 100)` for sharper conical falloff
+     - peak multiplier × 0.25 or × 0.30 instead of × 0.15
+     - Voronoi scale 5 or 6 instead of 4 for denser spike spacing
+   - Verify silence-state collapse: `fieldStrength = 0` → spikes go to zero (smooth body of liquid per `10_silence_calm_body.jpg`).
+   - Verify calm-body-with-spikes state (low arousal + high bass_energy_dev): spikes present + visible without overwhelming the macro surface.
+
+2. **Gerstner swell** in `fo_wave` and `fo_swell_scale`:
+   - **Current:** wavelengths [4, 2.5, 1.5, 0.8] and amplitudes [0.15, 0.10, 0.06, 0.03]. Too ripply / too small.
+   - **Target:** deep-sea rolling per `02b_meso_swell_motion_dark_water.jpg`. Longer wavelengths, larger amplitudes at peak energy. Calm at silence per `10_*`.
+   - **Starting values to tune from** (NOT spec):
+     - wavelengths [8, 5, 3, 1.8] and amplitudes [0.40, 0.25, 0.12, 0.05] at peak
+     - swell_scale formula: silence baseline 0.15 (10–20% of peak), full at peak `arousal=1 + drums_energy_dev=1`
+   - Verify silence: surface is gentle calm body — gentle low-amplitude ripple per `10_*`, no spikes.
+   - Verify peak: big rolling swells, motion audible up/down in the camera frame.
+
+3. **Tests:**
+   - `testFerrofluidOceanIndependenceStatesReachable` — verify the calm-body-with-spikes and agitated-body-without-spikes states still distinguish. Adjust the FV/Stems values if needed to match the new scale.
+   - Optional new test: `testFerrofluidOceanCalmStateSwellOnly` — render the silence fixture at t=0 and t=5s; verify visible swell motion (frame diff) without any spikes (no high-frequency features).
+
+**Phase B acceptance gates:**
+
+1. All Phase 0 + Phase A gates still pass.
+2. Side-by-side reference comparison:
+   - Beat-heavy fixture vs `04_*` — spike shape neighborhood match (tall, narrow, sharp).
+   - Active-motion fixture vs `02b_*` — swell motion neighborhood match (deep rolling, not ripply).
+   - Silence fixture vs `10_*` — calm body of liquid, no spikes.
+3. `testFerrofluidOceanIndependenceStatesReachable` still passes with adjusted values.
+4. Engine suite: 0 new failures.
+5. Grep gates + SwiftLint clean.
+6. Commit as 2 commits: (a) spike profile reshape, (b) Gerstner retune. Prefix: `[V.9-session-4.5 PB]`.
+
+---
+
+#### Phase C — Verification against references + closeout
+
+1. **Render full reference comparison contact sheet:**
+   - The 4 standard fixtures + the silence fixture + the cool/warm valence pair + a "live music" reconstruction (replay FV/Stems values from `2026-05-14T01-20-28Z/features.csv` + `stems.csv` at multiple time points).
+   - Save outputs to a documented path under `/var/folders/.../PhospheneFerrofluidOceanV9Session4.5/`.
+
+2. **Per-reference annotation match:** for each of the 12 images in `docs/VISUAL_REFERENCES/ferrofluid_ocean/`, document whether the rendered output matches the **trait the reference annotates** (per the README stylization caveat — not the literal photograph). Document matches / gaps in the closeout report. Anti-reference (`05_*`) must NOT match.
+
+3. **Update FERROFLUID_OCEAN_CLAUDE_CODE_PROMPTS.md:**
+   - Session 4.5 row → ✅
+   - Landed-work summary paragraph below this prompt
+   - Carry-forward note to Session 5 (cert)
+
+4. **Update `docs/ENGINEERING_PLAN.md`** Increment V.9 with Session 4.5 ✅ block.
+
+5. **Update `docs/ENGINE/RENDER_CAPABILITY_REGISTRY.md`:**
+   - **Drop** rows: "Cassie-Baxter spike-tip droplet SDF", "Meso domain-warp turbulence on Voronoi spike lattice", "Tactile micro-normal perturbation in matID == 2 lighting branch" (all reverted in Phase 0).
+   - **Rewrite** the "Multi-light stage rig" row to reflect the aurora-sky paradigm. New row title: "Mirror-reflects-procedural-sky for near-mirror substrates (matID == 2)." Cite the new `rm_ferrofluidSky` function + FerrofluidStageRig output reinterpretation.
+   - **Keep** the "Audio-modulated thin-film thickness" row (unchanged in this session).
+
+6. **Update CLAUDE.md "Failed Approaches" and "What NOT To Do"** with the lessons from this rescue:
+   - **New Failed Approach (next number):** "Implementing 'beams cast onto reflective surface' as point lights with physical falloff." The references' mechanic is mirror-reflects-sky; the lighting paradigm for reflective subjects is sky-pattern, not point-lights. Inverse-square attenuation at any reasonable physical orbit distance gives invisible beams against the IBL the mirror also reflects. Cite: V.9 Session 4 failure + Session 4.5 rescue.
+   - **New Failed Approach (next number):** "Authoring a preset session without reading `docs/VISUAL_REFERENCES/<preset>/README.md` first." Past Sessions did and shipped failures. Session 4 specifically shipped Phase A decoration layers (droplets, micro-normal, meso warp) without consulting the README's stylization caveat ("None of them is a faithful rendering of 'Ferrofluid Ocean as it should appear'. Read each image only for the trait its annotation calls out") — the result is decoration layers that competed with the hero signal the references actually wanted.
+   - **Promote Failed Approach #58** (visual subject without load-bearing musical role) to layer scope. The Drift Motes failure was at preset scope; Session 4's droplet field is the same failure at layer scope. Update the existing entry's scope clause.
+   - **What NOT To Do** new entry: "Do not skip side-by-side reference comparison in mid-session sanity checks. Self-judging 'looks reasonable' has shipped failures repeatedly (V.9 Session 4 most recently). Side-by-side with named reference images is the only sanity check that catches structural divergence before M7."
+
+7. **Commit closeout docs**: 1 commit. Prefix: `[V.9-session-4.5]`. Total session commit count: 6–8.
+
+**Phase C acceptance gates:**
+
+1. All prior phase gates pass.
+2. Contact sheet rendered, saved, path documented.
+3. Per-reference annotation match documented in closeout report. Anti-reference (`05_*`) explicitly verified as not-matched.
+4. CLAUDE.md + RENDER_CAPABILITY_REGISTRY.md + ENGINEERING_PLAN.md + this prompt doc all updated.
+5. Closeout commit landed.
+
+---
+
+### DO NOT author in this session
+
+- **M7 cert sign-off.** Session 5. This session's job is to fix the structural problems so Session 5 has a viable candidate.
+- **Golden hash regeneration.** Session 5.
+- **Performance capture.** Session 5 (Tier 2 p95 ≤ 7.0 ms target).
+- **New audio routing primitives.** The current routing (vocals_pitch → palette, drums_energy_dev → intensity, arousal → orbit speed + thin-film thickness, bass_energy_dev → spike height) is correct in concept. The Phase A rebuild changes GPU consumption, not the routing math.
+- **Rewriting `FerrofluidBeatSyncTests` / `FerrofluidLiveAudioTests` / `PresetAcceptanceTests`** — Session 5 (Session 1 skip-guards still in place).
+- **Generic engine extraction of an "aurora sky" abstraction.** Per D-125(f) the §5.8-style generic extraction is deferred to the second consumer. Phase A's `rm_ferrofluidSky` stays preset-private under this rescue.
+- **Adding new visual layers** (no new fbm noise, no new SDF terms, no new compositing passes). The Phase A rebuild simplifies the lighting path; do not re-add complexity in the name of "matching the references" — Phase B's reference-anchored tuning is enough.
+- **Stage rig promotion to non-Ferrofluid presets.** The §5.8 reframing under this rescue is scoped to Ferrofluid Ocean only.
+
+Defer with `// TODO(V.9 Session 5):` markers.
+
+### Prerequisites — read in order, do not skip
+
+1. **`docs/VISUAL_REFERENCES/ferrofluid_ocean/README.md`** — CRITICAL READING. Every reference image annotation. The stylization caveat in particular. The mandatory traits checklist. The anti-references list. **Session 4 skipped this and shipped failures; do not repeat.**
+2. **The 12 reference images themselves.** Read them. Form your own mental model. Cite specific image filenames in code comments where they motivate a design choice. The musical role re-articulation above is a paraphrase of the README annotations; the images are the ground truth.
+3. **`docs/presets/FERROFLUID_OCEAN_CLAUDE_CODE_PROMPTS.md`** — Sessions 1–3 landed-work blocks. Session 4 landed-work + M7 review outcome (above this prompt).
+4. **The live failure capture** at `/Users/braesidebandit/Documents/phosphene_sessions/2026-05-14T01-20-28Z/` — particularly `video.mp4` (what Session 4 shipped), `features.csv` and `stems.csv` (the audio inputs driving the failure).
+5. **CLAUDE.md "Authoring Discipline"** — the entire section. The next response to pushback must change the answer, not justify it. Three-part bar for any new concept. Treat fidelity warnings as constraints.
+6. **CLAUDE.md "Failed Approaches"** — especially #4 (beat-onset not primary), #24 (D-022 IBL ambient tint mechanic), #39 (read references before authoring), #44 (no Metal type-name shadow), #49 (tuning vs structural failure), #58 (visual subject without musical role), and the two new entries this session will add about §5.8 paradigm + README-reading discipline.
+7. **`docs/DECISIONS.md` D-124** (V.9 redirect) and **D-125** (stage-rig contract). Note: D-125's "4–6 point lights with inverse-square falloff" implementation framing is **amended by this rescue**. The §5.8 musical contract is preserved; the GPU consumption paradigm changes from Cook-Torrance per-light loop to procedural sky function sampled at reflection vector. Document this amendment in the Phase C closeout commit (CLAUDE.md or a new DECISIONS.md entry).
+8. **`PhospheneEngine/Sources/Renderer/Shaders/RayMarch.metal`** — current matID == 2 / matID == 3 lighting paths. Note `rm_skyColor` at line ~217 (current IBL sky source — near-white horizon → blue zenith).
+9. **`PhospheneEngine/Sources/Presets/FerrofluidOcean/FerrofluidStageRig.swift`** — current per-frame state class. Stays alive; consumption changes.
+10. **`PhospheneEngine/Sources/Presets/Shaders/FerrofluidOcean.metal`** — current sceneSDF + sceneMaterial.
+11. **`PhospheneEngine/Sources/Renderer/IBLManager.swift`** — the IBL cubemap source (currently rendered from `rm_skyColor`). Verify the matID == 2 branch's existing `iblPrefiltered` sample is what's producing the "gray wash" — it's the cubemap of the near-white horizon gradient.
+
+### Failed-approach guards (must satisfy)
+
+- **Do not add micro-normal perturbation to the mirror substrate.** The references show smooth specular ridges. Repeat of the original Phase A failure.
+- **Do not add visible droplets / beads / decoration to the surface.** Matt's "no idea what they are" test failed at Session 4. Don't try again with a different bead recipe.
+- **Do not use discrete point lights as the §5.8 implementation paradigm.** Use mirror-reflects-sky. Inverse-square falloff at any reasonable physical orbit distance gives invisible beams against the IBL the mirror also reflects.
+- **Do not tune coefficients to fix structural problems.** Failed Approach #49 trigger. If Phase A's lighting paradigm rebuild produces a render structurally different from the references, the answer is NOT to tune band amplitude / orbit speed / palette saturation — it's to re-examine whether the structural change matches.
+- **Do not skip the README + references step.** Past Sessions did and shipped failures.
+- **Do not write the literal `44100`** outside the allowlist. `Scripts/check_sample_rate_literals.sh` enforces.
+- **Do not use `drumsBeat` / `drums_beat` in stage-rig / sky-pattern intensity scope.** `Scripts/check_drums_beat_intensity.sh` enforces.
+- **Do not AND-combine `f.bass_*` and `f.bass_attack_ratio`.** Failed Approach #57 — acoustically impossible on real music.
+- **Do not add new visual layers** to fix the failure. Session 4's failure was adding decoration; the rescue is **subtraction** plus a paradigm change. If you find yourself adding a new fbm term, a new SDF composition, or a new compositing pass to "match the references," STOP. The references want simplicity.
+
+### Mid-session sanity checks (mandatory side-by-side, not self-judgment)
+
+After Phase 0: contact sheet shows pure-mirror substrate reflecting gray-blue (current IBL). No bumps, no stippling, no warp. We've undone the failures.
+
+After Phase A: contact sheet shows mirror reflecting **dark-purple sky with moving colored aurora bands**. Side-by-side with `08_lighting_aurora_over_dark_water.jpg` — neighborhood match on composition. If divergent, STOP.
+
+After Phase B: contact sheet shows tall narrow pyramidal spikes on deep-sea rolling swells. Side-by-side with `04_*` and `02b_*` — neighborhood match on spike shape and swell motion. If divergent, STOP.
+
+After Phase C: full reference contact sheet match. Anti-reference (`05_*`) not matched.
+
+### Closeout
+
+Per CLAUDE.md Increment Completion Protocol.
 
 ---
 
