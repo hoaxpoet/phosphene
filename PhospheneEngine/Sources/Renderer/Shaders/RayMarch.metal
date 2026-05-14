@@ -450,6 +450,133 @@ static float3 rm_ferrofluidSky(float3 R,
     return baseSky + aurora;
 }
 
+// MARK: - Leitl ferrofluid material (V.9 Session 4.5c Phase 1 round 6, 2026-05-14)
+//
+// Verbatim port of Robert Leitl's `fluid-shading.glsl` four-layer material model
+// from his audio-reactive WebGL ferrofluid project — the closest published
+// reference to Phosphene's use case.
+//
+// Source: https://github.com/robert-leitl/ferrofluid/blob/main/src/app/shader/fluid-shading.glsl
+// License: MIT (https://github.com/robert-leitl/ferrofluid/blob/main/LICENSE)
+//
+// Composition:
+//   color = ambient × 0.2 + fresnel × 0.3 + specularValue × 1.2 + iridescence
+//
+// Layer purposes (DO NOT argue any of them away — Failed Approach #65 confirms
+// every layer does separate work):
+//   - ambient        — env map (IBL prefiltered cubemap) sampled at the
+//                      reflection vector. The dominant scene-color contribution;
+//                      makes the substrate look like it's in a real environment.
+//   - specularValue  — Phong specular from a fixed key light at infinity
+//                      (`normalize(2, 1, 1)`, rear-upper-right). Shininess 50.
+//                      Bright white tip-highlights on each spike.
+//   - fresnel        — Cool white edge sheen masked by view-direction Z and
+//                      depth-from-camera. Brightens spike-ridge silhouettes.
+//   - iridescence    — Quilez palette over `N.z * 3`, faded by view angle and
+//                      patch-center distance. Subtle hue shift across the surface.
+//
+// Adaptations from verbatim (per Failed Approach #65 — adapt only what differs
+// in CONTEXT: scale, audio routing, scene type — never argue layers away):
+//
+//   1. `position.z` depth modulation in the fresnel term: Leitl's unit-radius
+//      geometry has position.z in roughly [-1, +1]; ours has the substrate at
+//      worldPos.z up to +12 with camera at z=-2.5. Replaced `position.z` with
+//      a normalized view-distance proxy mapped to Leitl's effective range.
+//   2. `position.xz` patch-center scaling in the iridescence edge mask:
+//      Leitl's `* 1.6` for unit-radius geometry; ours uses `* 0.16` for our
+//      ~12 wu patch radius. Same fade-out character, scaled to our geometry.
+//   3. `zoom` parameter (controls iridescence intensity in Leitl's demo):
+//      static `0.5` in our port — no audio reactivity in this Step 1 commit
+//      (Step 4 may re-introduce time- or audio-driven variation).
+//   4. Env map sampling: Leitl uses an equirectangular 2D texture; we sample
+//      our existing IBL prefiltered cubemap with `ibl_sample_prefiltered`.
+//      Same content (HDR environment lighting), different addressing.
+
+/// Power approximation `a^b` — Leitl's `powFast`. ~3× faster than `pow()`
+/// at the cost of ~1 % accuracy. Used for the Phong specular exponent.
+static inline float fluid_pow_fast(float a, float b) {
+    return a / ((1.0 - b) * a + b);
+}
+
+/// Quilez cosine palette. Same recipe as `rm_palette` above but with caller-
+/// supplied a/b/c/d coefficients per Leitl's `fluidShading` iridescence
+/// configuration.
+static inline float3 fluid_palette(float t,
+                                    float3 a, float3 b,
+                                    float3 c, float3 d) {
+    return a + b * cos(2.0 * M_PI_F * (c * t + d));
+}
+
+/// Four-layer ferrofluid shading. Verbatim port of Leitl's `fluidShading`
+/// function (see MARK block above).
+///
+/// `V`         — surface-to-camera direction (normalized).
+/// `N`         — surface normal (normalized).
+/// `worldPos`  — world-space position of the surface point.
+/// `cameraPos` — camera world-space position.
+/// `iblPref`   — prefiltered env cubemap (texture(10) in lighting pass).
+/// `iblSamp`   — IBL sampler.
+static float3 fluid_shading(float3 V, float3 N,
+                            float3 worldPos, float3 cameraPos,
+                            texturecube<float> iblPref,
+                            sampler iblSamp) {
+    // Fixed key light at infinity. Leitl uses normalize(2, 1, 1) — rear-
+    // upper-right. The single key light at infinity has no inverse-square
+    // attenuation, so Failed Approach #61 (invisible orbital lights at
+    // spec orbit distance) doesn't recur — distance to the light isn't a
+    // parameter at all for a directional source.
+    constexpr float3 keyLightDir = float3(2.0, 1.0, 1.0) * 0.5773502691896258; // = normalize(2,1,1)
+    float3 L = keyLightDir;
+    float3 R = reflect(L, N);
+
+    // ── Layer 1: specular (Phong, shininess 50) ────────────────────
+    // Leitl: `specularValue * 1.2` (raw scalar, not the colored variant
+    // he computes but never uses in the final composition).
+    constexpr float kFluidShininess = 50.0;
+    float specularValue = fluid_pow_fast(max(0.0, dot(R, -V)), kFluidShininess);
+
+    // ── Layer 2: ambient (env map sampled at reflection) ───────────
+    // Phosphene's existing IBL prefiltered cubemap. Sample at LOD 0
+    // (sharp / mirror-like) — substrate is roughness ~0.08.
+    float3 Rview = reflect(-V, N);
+    float3 ambient = ibl_sample_prefiltered(Rview, 0.0, iblPref, iblSamp, 4);
+
+    // ── Layer 3: fresnel (cool white edge sheen) ───────────────────
+    // `ft = N.z` per Leitl's `dot(N, normalize(vec3(0,0,1)))`.
+    float ft = N.z;
+    float fresnelValue = smoothstep(0.6, 1.0, min(1.0, pow(1.0 - ft, 2.0)));
+    // Depth modulation: near-camera surfaces get more fresnel, far less.
+    // Adapted from Leitl's `1.0 - position.z` — see MARK note (1).
+    float viewDist = length(worldPos - cameraPos);
+    float pseudoZ  = (viewDist - 5.0) * 0.2;
+    fresnelValue *= smoothstep(0.6, 2.0, 1.0 - pseudoZ) * 0.7 + 0.3;
+    float3 fresnel = fresnelValue * float3(0.9, 1.0, 1.0);
+
+    // ── Layer 4: iridescence (palette + edge mask) ─────────────────
+    constexpr float3 palA = float3(0.5, 0.5, 0.5);
+    constexpr float3 palB = float3(0.5, 0.5, 0.5);
+    constexpr float3 palC = float3(1.0, 1.0, 1.0);
+    constexpr float3 palD = float3(0.0, 0.33, 0.67);
+    float3 iridescence = fluid_palette(ft * 3.0, palA, palB, palC, palD) * (1.0 - ft);
+    // Edge mask centered on our patch (worldXZ ~ (0, 2)) at scale 0.16
+    // (10× smaller than Leitl's 1.6 to match our 10× larger geometry).
+    constexpr float2 patchCenter = float2(0.0, 2.0);
+    float2 center = (worldPos.xz - patchCenter) * 0.16;
+    float edgeMask = 1.0 - smoothstep(0.0, 0.8, dot(center, center));
+    constexpr float kFluidIridescenceWeight = 0.05;
+    constexpr float kFluidZoom = 0.5;
+    iridescence *= edgeMask * kFluidIridescenceWeight * (2.0 - kFluidZoom * 2.0);
+
+    // ── Composition (Leitl verbatim) ───────────────────────────────
+    constexpr float kFluidAmbientWeight   = 0.2;
+    constexpr float kFluidFresnelWeight   = 0.3;
+    constexpr float kFluidSpecularWeight  = 1.2;
+    return ambient * kFluidAmbientWeight
+         + fresnel * kFluidFresnelWeight
+         + specularValue * kFluidSpecularWeight
+         + iridescence;
+}
+
 /// Shared "lighting tail" for matID == 0 (default Cook-Torrance) and matID == 3
 /// (thin-film Cook-Torrance) — adds D-022 mood-tinted IBL ambient and applies
 /// atmospheric fog to the caller's `directLit` contribution.
@@ -719,91 +846,28 @@ fragment float4 raymarch_lighting_fragment(
         return float4(albedo * kLumenEmissionGain + ambientFloor, 1.0);
     }
 
-    // ── matID == 2 — Ferrofluid mirror-reflects-procedural-sky (V.9 Session 4.5 / D-126) ──
+    // ── matID == 2 — Ferrofluid (Leitl four-layer material, V.9 Session 4.5c Phase 1 round 6) ──
     //
-    // Session 3 (D-125) shipped the §5.8 stage-rig as a Cook-Torrance per-light
-    // loop. Session 4 live M7 review (2026-05-13) rejected that paradigm —
-    // inverse-square attenuation at the JSON orbit altitude/radius (6 / 4)
-    // gave invisible beams against the IBL the mirror also reflected
-    // (Failed Approach #61). The references' mechanic for a near-mirror
-    // substrate (low roughness + metallic=1) is **mirror-reflects-sky**:
-    // chromatic content lives in what the surface REFLECTS (procedural sky
-    // + aurora bands), not in direct lights cast onto the surface.
+    // Verbatim port of Leitl's `fluidShading` recipe. See `fluid_shading`
+    // helper above for the layer composition + adaptation notes. Replaces
+    // the D-126 mirror-reflects-procedural-sky paradigm which produced a
+    // uniform diffuse haze rather than the discrete-spike specular character
+    // the references show (Failed Approach #65 — argued every layer of
+    // Leitl's working reference away as "redundant" and got neither
+    // paradigm working).
     //
-    // Session 4.5 Phase A replaces the GPU consumption paradigm:
-    //   1. Compute the reflection vector R = reflect(-V, N).
-    //   2. Sample `rm_ferrofluidSky(R, stageRig, scene)` — base purple
-    //      gradient + aurora bands fed by the stage-rig outputs (the rig
-    //      itself still consumes vocals_pitch_hz / drums_energy_dev /
-    //      arousal per D-125; only the GPU side reinterprets the buffer).
-    //   3. Multiply by thin-film Fresnel F0 at NdotV — gives the mirror its
-    //      frequency-dependent reflectance + the subtle iridescent shift
-    //      at edges.
-    //   4. Mix toward the base sky at the zenith direction with `fogFactor`
-    //      so distant surface fades into atmospheric tint.
-    //
-    // `rm_finishLightingPass` is bypassed: the substrate is mirror-only
-    // (metallic=1 → kd = 0, no diffuse IBL irradiance contribution) and the
-    // base sky already plays the role of the atmospheric fog tail. The
-    // §5.8 musical contract is preserved at the rig boundary; D-125's
-    // "intensity buffer + palette per beam" contract still drives the
-    // visible scene through the aurora bands.
+    // Aurora overlay (`rm_ferrofluidSky` + audio uniforms) and thin-film F0
+    // helpers (`rm_thinfilm_rgb`) are preserved in the file for Step 4
+    // re-introduction as supplementary layers on top of Leitl's material —
+    // they do not participate in this Step 1 commit.
     if (matID == 2) {
-        // V.9 Session 4 Phase B: thin-film thickness modulated by arousal.
-        // baseline 220 nm ± 40 nm range → effective [180 nm, 260 nm], which
-        // stays inside the "subtle blue-to-cyan" interference band per
-        // SHADER_CRAFT §10.3.x (rainbow oil-slick failure mode is > ~300 nm).
-        // Constants match FerrofluidOcean.json's `ferrofluid` block defaults
-        // (thin_film_thickness_baseline_nm = 220, thin_film_arousal_range_nm = 40)
-        // — the JSON values document intent; the MSL constants implement.
-        constexpr float kFerrofluidFilmThicknessBaselineNm = 220.0;
-        constexpr float kFerrofluidFilmThicknessRangeNm    = 40.0;
-        float arousalClamped = clamp(features.arousal, -1.0, 1.0);
-        float kFerrofluidFilmThicknessNm =
-            kFerrofluidFilmThicknessBaselineNm +
-            arousalClamped * kFerrofluidFilmThicknessRangeNm;
-        constexpr float kFerrofluidFilmIORThin     = 1.45;
-        constexpr float kFerrofluidFilmIORBase     = 1.0;
-
-        // Reflection vector. For a smooth metallic mirror at low roughness,
-        // a single sky-sample at R is a reasonable approximation of the
-        // BRDF lobe integral (roughness=0.08 keeps the lobe narrow).
-        float3 V     = normalize(scene.cameraOriginAndFov.xyz - worldPos);
-        float3 R     = reflect(-V, N);
-        float  NdotV = max(dot(N, V), 0.0);
-
-        // Procedural sky — base purple gradient + audio-reactive aurora curtain
-        // (V.9 Session 4.5c / D-127). Pitch → hue, drums-smoothed → intensity,
-        // arousal → drift; silence collapses to base sky only.
-        float3 skyReflection = rm_ferrofluidSky(R, features, stems, scene);
-
-        // Thin-film Fresnel F0 at NdotV — the half-vector coincides with N
-        // for a perfect mirror reflection (V mirror-reflected about N).
-        // Frequency-dependent reflectance gives the subtle iridescent shift
-        // visible at grazing angles, distinguishing the substrate from a
-        // vanilla mirror.
-        float3 F0_thin = rm_thinfilm_rgb(NdotV,
-                                         kFerrofluidFilmThicknessNm,
-                                         kFerrofluidFilmIORThin,
-                                         kFerrofluidFilmIORBase);
-
-        float3 surfaceColor = skyReflection * F0_thin;
-
-        // Atmospheric depth: tint distant reflections toward the base sky
-        // at the zenith so the horizon edge fades into atmosphere. Fog
-        // color uses the base sky only (without aurora bands) because fog
-        // is a static atmospheric tint — auroras at the visible zenith
-        // would otherwise leak into the haze and over-brighten distant
-        // pixels. When fog is disabled (fogFar >= 1e5 sentinel), fogFactor
-        // ≈ 0 for all reasonable depths and the mix degenerates to
-        // surfaceColor.
-        float fogNear   = scene.sceneParamsB.x;
-        float fogFar    = scene.sceneParamsB.y;
-        float worldT    = depthNorm * farPlane;
-        float fogFactor = clamp((worldT - fogNear) / max(fogFar - fogNear, 0.001), 0.0, 1.0);
-        float3 fogColor = rm_ferrofluidBaseSky(float3(0.0, 1.0, 0.0), scene);
-
-        return float4(mix(surfaceColor, fogColor, fogFactor), 1.0);
+        float3 V = normalize(scene.cameraOriginAndFov.xyz - worldPos);
+        float3 color = fluid_shading(V, N,
+                                     worldPos,
+                                     scene.cameraOriginAndFov.xyz,
+                                     iblPrefiltered,
+                                     iblSamp);
+        return float4(color, 1.0);
     }
 
     // ── matID == 3 — metallic thin-film Cook-Torrance (V.9 Session 2) ──
