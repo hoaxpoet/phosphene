@@ -106,9 +106,15 @@ extension RayMarchPipeline {
     /// declare per-frame CPU-driven state needed in the lighting fragment (D-LM-buffer-slot-8).
     /// G-buffer pass intentionally does NOT bind slot 8 — only lighting consumes it today.
     /// (The slot-9 stage-rig binding was retired with the §5.8 rig removal.)
+    ///
+    /// `stemFeatures` is bound at fragment slot 3 — the matID == 2 Ferrofluid
+    /// Ocean branch reads pitch / drums-smoothed / total-stem-energy directly
+    /// from this buffer for the aurora curtain (V.9 Session 4.5c / D-127).
+    /// Other matID branches ignore slot 3.
     func runLightingPass(
         commandBuffer: MTLCommandBuffer,
         features: inout FeatureVector,
+        stemFeatures: StemFeatures,
         noiseTextures: TextureManager?,
         iblManager: IBLManager? = nil,
         presetFragmentBuffer3: MTLBuffer? = nil
@@ -125,6 +131,8 @@ extension RayMarchPipeline {
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: desc) else { return }
         encoder.setRenderPipelineState(lightingPipeline)
         encoder.setFragmentBytes(&features, length: MemoryLayout<FeatureVector>.stride, index: 0)
+        var stems = stemFeatures
+        encoder.setFragmentBytes(&stems, length: MemoryLayout<StemFeatures>.stride, index: 3)
         encoder.setFragmentBytes(&sceneUniforms, length: MemoryLayout<SceneUniforms>.stride, index: 4)
         // Slot 8: Lumen Mosaic preset state, or the zero-filled placeholder for
         // any non-Lumen ray-march preset. Always bound for symmetry with the

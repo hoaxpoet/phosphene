@@ -79,57 +79,21 @@ constexpr constant float kLumenEmissionGain = 1.0;
 /// a small fraction of the IBL irradiance to the emission output.
 constexpr constant float kLumenIBLFloor = 0.05;
 
-// MARK: - matID == 2 Ferrofluid sky tunables (V.9 Session 4.5 / D-126)
+// MARK: - matID == 2 Ferrofluid sky paradigm (V.9 Session 4.5 / D-126 / D-127)
 //
 // Session 4 shipped the §5.8 stage-rig as discrete point lights with
-// inverse-square falloff. Live M7 review (2026-05-13) rejected the
-// implementation: at the spec orbit altitude/radius the inverse-square
-// attenuation gave invisible beams against the IBL the mirror also reflected
-// (Failed Approach #61). Session 4.5 Phase A replaces the GPU consumption
-// paradigm with **mirror-reflects-procedural-sky** — the substrate is a
-// near-mirror metallic that reflects a procedurally-generated sky whose base
-// gradient carries D-022 mood-tint and whose aurora bands carry the §5.8
-// stage-rig audio routing (vocals_pitch → palette, drums_energy_dev →
-// intensity, arousal → orbit speed). The §5.8 musical contract is preserved
-// at the rig boundary; only the GPU consumption changes from Cook-Torrance
-// per-light loop to procedural sky sampled at the reflection vector.
-
-/// Aurora curtain stripe thickness in `R.y` units. The stripe sits at
-/// `bandDir.y` (≈ 0.83 with JSON orbit altitude 6 / radius 4) and fades to
-/// 0 when `|R.y - bandDir.y|` exceeds this value. 0.30 ≈ a 35° tall band in
-/// elevation (full extent), with a soft smoothstep top and bottom. The
-/// stripe-shape replaces the original `pow(R · bandDir, k)` falloff per the
-/// Phase A rework — circular cosine spotlights cannot produce the
-/// elongated curtain geometry the reference (`08_*`) shows, regardless of
-/// exponent tuning. Failed Approach #61 specifically warns against the
-/// "point-source / pillar reflection" reading; anisotropic falloff
-/// (`vertFalloff × azim_falloff`) avoids it structurally.
-constexpr constant float kFerrofluidSkyStripeThickness = 0.30;
-
-/// Azimuthal falloff edges. `smoothstep(floor, peak, R_az · band_az)` where
-/// the dots are normalized horizontal-projection unit vectors. Each band
-/// covers azim_dot ∈ [floor, peak] with smooth ramp; at full peak it's
-/// indistinguishable from being directly under the band's azimuth, and at
-/// floor it fades to zero contribution. With 4 bands at 90° spacing
-/// (JSON `light_count = 4`), `floor = -0.3` (≈ 107°) and `peak = 0.7` (≈
-/// 46°) give adjacent bands smooth overlap zones where colors blend,
-/// preventing both "hard band edges" and "muddy color summation across the
-/// whole sky".
-constexpr constant float kFerrofluidSkyBandAzimuthFloor = -0.3;
-constexpr constant float kFerrofluidSkyBandAzimuthPeak  =  0.7;
-
-/// Per-band intensity scale. The §5.8 rig outputs per-light intensities in
-/// the [2.0, 5.0] range at the JSON defaults (baseline 5.0 × (floor 0.4 +
-/// swing 0.6 × smoothedDrumsDev ∈ [0, 1])). The sky composition is
-/// `base + Σ (bandColor × bandIntensity × vertFalloff × azim_falloff × scale)`.
-/// 0.50 sizes per-band peak contribution at production intensity so aurora
-/// is the visible hero subject per `08_*`: peak per-channel band
-/// contribution ≈ `1 × 2.3 × 1 × 1 × 0.50 = 1.15` at production steady-mid,
-/// × thin-film F0 (~0.5 avg) = 0.575, ACES → sRGB → ~165/255 in 8-bit (very
-/// visible). The dispatch test (intensity_baseline 200) saturates as
-/// expected — the harness only checks that an active rig produces
-/// measurable diff vs placeholder.
-constexpr constant float kFerrofluidSkyBandIntensityScale = 0.50;
+// inverse-square falloff. Live M7 review (2026-05-13) rejected it: at any
+// reasonable orbit distance the inverse-square attenuation gave invisible
+// beams against the IBL the mirror also reflected (Failed Approach #61).
+// Session 4.5 Phase A replaced the GPU consumption with **mirror-reflects-
+// procedural-sky** (D-126); Session 4.5c retired the orbital-light state
+// machine itself in favour of direct audio uniforms read at sky-sample time
+// (D-127). The musical contract is preserved across both pivots — vocals
+// pitch → hue, drums energy → intensity, arousal → drift — only the
+// abstraction changes (Cook-Torrance per-light → slot-9 stage-rig buffer →
+// FeatureVector + StemFeatures bound at the lighting fragment). Aurora-
+// curtain tunables now live inline in `rm_ferrofluidSky` since there's only
+// one consumer.
 
 // MARK: - Helpers
 
@@ -302,72 +266,156 @@ static float3 rm_ferrofluidBaseSky(float3 R, constant SceneUniforms& scene) {
     return baseSky * scene.lightColor.rgb;
 }
 
-/// Ferrofluid procedural sky.
+/// IQ-style cosine palette (V.3 cookbook). Phase `t` ∈ [0, 1] cycles through
+/// the full color wheel; the `d = (0, 0.33, 0.67)` offset gives the warm-red
+/// → cool-blue → green rotation. Used by the Ferrofluid Ocean aurora curtain
+/// for hue selection.
+static float3 rm_palette(float t) {
+    constexpr float3 a = float3(0.5, 0.5, 0.5);
+    constexpr float3 b = float3(0.5, 0.5, 0.5);
+    constexpr float3 c = float3(1.0, 1.0, 1.0);
+    constexpr float3 d = float3(0.0, 0.33, 0.67);
+    return a + b * cos(2.0 * M_PI_F * (c * t + d));
+}
+
+/// Ferrofluid procedural sky — base purple gradient + audio-reactive aurora curtain.
 ///
-/// **V.9 Session 4.5c (post-rig-removal): aurora bands temporarily
-/// deferred.** The §5.8 stage-rig that previously drove the aurora-band
-/// hue / intensity / orbit has been removed; this function now returns
-/// only the base purple gradient × `scene.lightColor.rgb` mood tint.
-/// Direct audio→aurora routing lands in the next commit (Session 4.5c
-/// follow-up); after that, `R` will be tested against direct audio
-/// uniforms to produce the chromatic overlay the substrate reflects.
+/// **V.9 Session 4.5c / D-127** rebuilds the aurora content from direct audio
+/// uniforms after the §5.8 stage-rig retirement. The musical contract from
+/// D-125 / D-126 is preserved verbatim — vocals pitch drives hue, drums energy
+/// drives intensity, arousal drives orbital drift — only the implementation
+/// abstraction changes from "orbital point lights + slot-9 buffer ABI" to
+/// "lighting-fragment-bound FeatureVector + StemFeatures sampled inline at
+/// reflection-vector time."
 ///
-/// **Pre-rig-removal history.** Aurora curtain bands driven by the §5.8
-/// stage-rig. Per D-126 (V.9 Session 4.5 rescue), this replaced the
-/// Cook-Torrance per-light loop that matID == 2 shipped at Session 3
-/// (Failed Approach #61: inverse-square attenuation at any
-/// reasonable physical orbit distance gave invisible beams against the IBL
-/// the mirror also reflected).
+/// One continuous curtain at fixed elevation `R.y ≈ kCurtainElevation` (~33°
+/// from zenith — matches the retired rig orbit altitude 6 / radius 4 geometry
+/// that `04_specular_razor_highlights.jpg` and `08_lighting_aurora_over_dark_water.jpg`
+/// framings anchor on). The curtain wraps the sky azimuthally as a single
+/// soft-edged wedge; orbital drift advances the wedge's centre azimuth at a
+/// rate scaled by arousal, ticked against `features.accumulated_audio_time`
+/// (which pauses at silence per MIRPipeline contract).
 ///
-/// **Phase A rework (2026-05-13 follow-up to first side-by-side):** the
-/// initial Phase A implementation used `pow(R · bandDir, k)` for per-band
-/// falloff. That formulation is **rotationally symmetric** around `bandDir`
-/// — every band is necessarily a circular blob, regardless of exponent.
-/// The reference `08_lighting_aurora_over_dark_water.jpg` shows
-/// **elongated curtain shapes** (long-in-azimuth, narrow-in-elevation),
-/// which a single dot-product falloff cannot produce. The rework decomposes
-/// `R` against the band into two independent axes:
+/// Hue blends two phase sources to avoid hue popping at the confidence edge:
+///   1. **Pitch path** — `vocals_pitch_hz` normalized perceptually (log₂ over
+///      80 Hz – 1 kHz) → ±0.20 phase offset around `kCurtainBasePhase`.
+///      Confidence-gated at `vocals_pitch_confidence ≥ 0.6`.
+///   2. **Valence fallback** — `features.valence` ∈ [-1, +1] → ±0.20 phase
+///      offset. Used when pitch confidence is below threshold (instrumentals,
+///      effected vocals, intros). Crossfade window 0.5 → 0.7 keeps transitions
+///      smooth.
 ///
-///   1. Vertical (elevation): `vertFalloff = smoothstep(thickness, 0, |R.y - bandDir.y|)`
-///      — a stripe at the band's elevation with soft top and bottom edges.
-///      All 4 bands sit at the same elevation (bandDir.y ≈ 0.83 because all
-///      lights share the JSON orbit altitude / radius), so the rendered
-///      result is a ring of color at ~33° from zenith.
-///   2. Azimuthal: `azim_falloff = smoothstep(floor, peak, R_az · band_az)`
-///      where the dots are normalized horizontal-projection unit vectors.
-///      Localizes each band to its azimuth direction; as `orbitPhase`
-///      advances on the CPU side the bands sweep azimuthally around the
-///      sky while staying at the same elevation. Reference-like "moving
-///      colored curtains overhead."
+/// Intensity is `baseline + modulation × drums_energy_dev_smoothed`. The 150 ms
+/// τ EMA on `drums_energy_dev` lives on the CPU side (`RenderPipeline
+/// .auroraDrumsSmoothed`); the shader just reads the result. Baseline-while-
+/// music-plays + drums-modulated keeps the curtain present during sustained
+/// passages (Phase 1 acceptance — the V.9 Session 4.5b deviation-only routing
+/// produced "frozen during sustained music" failures on real captures).
 ///
-/// Multi-elevation bands (curtains at different latitudes per the
-/// reference's branching aurora) would require per-light orbit altitudes —
-/// out of scope for the rescue. Single-elevation ring is the "neighborhood"
-/// simplification.
+/// Silence gate: `smoothstep(0.02, 0.10, totalStemEnergy)` fades the curtain
+/// out at silence so the substrate reads as a calm purple mirror against
+/// `rm_ferrofluidBaseSky` only.
 ///
-/// Spec signature (per Session 4.5 prompt) includes `constant FeatureVector& f`
-/// and `constant StemFeatures& stems`. The current body consumes only the
-/// rig — the rig itself already encapsulates the audio→palette/intensity/
-/// orbit-speed contract per D-125 (FerrofluidStageRig advances every frame
-/// from features + stems and writes the slot-9 buffer). Future enhancements
-/// wanting direct stem/feature access at sky-sample time (e.g. time-driven
-/// base-sky modulation) will need to (a) bind stems to the lighting
-/// fragment and (b) extend this signature. Skipping the unused params keeps
-/// the engine wiring minimal under the rescue.
-///
-/// Aurora bands are additive on top of the base sky; the base-sky
-/// `scene.lightColor.rgb` multiply propagates D-022 mood tint. Aurora band
-/// colors are NOT re-multiplied by lightColor because they already carry
-/// the §5.8 palette() output (palette phase shifted by mood-independent
-/// vocals_pitch_hz), and a double-tint would over-saturate.
+/// The base sky's `scene.lightColor.rgb` multiply carries D-022 mood tint
+/// scene-wide. Aurora hue is NOT re-multiplied by `lightColor` — the palette
+/// phase already takes valence into account (in the fallback path), and a
+/// double-tint would over-saturate.
 static float3 rm_ferrofluidSky(float3 R,
+                                constant FeatureVector& features,
+                                constant StemFeatures& stems,
                                 constant SceneUniforms& scene) {
-    // Session 4.5c (post-rig-removal): aurora bands deferred to the next
-    // commit. For now, sky reflection = base purple gradient × mood tint
-    // only. The matID == 2 lighting branch still uses this as the
-    // substrate's reflection content; without aurora the substrate reads
-    // as a uniform dim purple mirror until direct audio routing lands.
-    return rm_ferrofluidBaseSky(R, scene);
+    float3 baseSky = rm_ferrofluidBaseSky(R, scene);
+
+    // ── Live-stems gate ────────────────────────────────────────────
+    // Silence collapses to base sky only; the safety net for prep states,
+    // intro-to-song boundaries, and source-app paused. On real-music captures
+    // the gate saturates to 1.0 the entire time music plays (Love Rehab
+    // totalStemEnergy: min 0.14 / mean 1.09 — well past the 0.10 upper edge).
+    float totalStem = stems.vocals_energy + stems.drums_energy
+                    + stems.bass_energy + stems.other_energy;
+    float liveGate = smoothstep(0.02, 0.10, totalStem);
+    if (liveGate <= 0.0) {
+        return baseSky;
+    }
+
+    // ── Curtain hue: pitch (confidence-gated) ↔ valence fallback ───
+    // Perceptual log-scale over 80 Hz – 1 kHz → centred phase shift in
+    // [-kPitchHueMaxShift, +kPitchHueMaxShift]. Same recipe the retired §5.8
+    // rig used CPU-side; ported inline here to keep CPU state minimal.
+    constexpr float kPitchRefLowHz    = 80.0;
+    constexpr float kPitchRefHighHz   = 1000.0;
+    constexpr float kPitchHueMaxShift = 0.20;
+    float pitchHz   = clamp(stems.vocals_pitch_hz, kPitchRefLowHz, kPitchRefHighHz);
+    float pitchNorm = log2(pitchHz / kPitchRefLowHz)
+                    / log2(kPitchRefHighHz / kPitchRefLowHz);
+    float pitchPhase = (pitchNorm - 0.5) * 2.0 * kPitchHueMaxShift;
+    float valencePhase = clamp(features.valence, -1.0, 1.0) * kPitchHueMaxShift;
+    float pitchGate = smoothstep(0.5, 0.7, stems.vocals_pitch_confidence);
+    float palettePhase = mix(valencePhase, pitchPhase, pitchGate);
+
+    // ── Curtain drift: orbital azimuth ticked by accumulated audio time ─
+    // arousal ∈ [-1, +1] mapped to speed factor [0.5, 1.0]: calm music orbits
+    // slow but never freezes mid-song, energetic music orbits at ~30 s per
+    // revolution (high-arousal cap). accumulated_audio_time pauses at silence
+    // per MIRPipeline — total silence freezes the orbit too.
+    constexpr float kCurtainBaseRevolutionSeconds = 30.0;
+    constexpr float kCurtainBaseAngularSpeed =
+        2.0 * M_PI_F / kCurtainBaseRevolutionSeconds;
+    float arousalSpeed = mix(0.5, 1.0, smoothstep(-1.0, 1.0, features.arousal));
+    float curtainAzimuth = features.accumulated_audio_time
+                         * arousalSpeed * kCurtainBaseAngularSpeed;
+
+    // ── Curtain shape: vertical stripe × azimuthal soft-edge wedge ──
+    // Elevation stripe sits at kCurtainElevation; thickness gives soft top
+    // and bottom edges. Azimuthal wedge covers ~120° (smoothstep edges from
+    // dot=0.0 to dot=0.5 — equivalent to ~60° each side of the wedge centre).
+    constexpr float kCurtainElevation       = 0.83;
+    constexpr float kCurtainStripeThickness = 0.55;
+    constexpr float kCurtainAzimuthFloor    = 0.0;
+    constexpr float kCurtainAzimuthPeak     = 0.5;
+    float vertFalloff = smoothstep(kCurtainStripeThickness, 0.0,
+                                   abs(R.y - kCurtainElevation));
+
+    float2 R_az       = R.xz;
+    float  R_az_len   = length(R_az);
+    bool   R_at_pole  = R_az_len < 1e-4;
+    float  azimuthAlign;
+    if (R_at_pole) {
+        // Near-zenith degeneracy: azimuth undefined. The pole reads as
+        // "fully aligned" with every direction; the vertical-stripe falloff
+        // already drives the contribution to 0 at R.y ≈ 1 well before this
+        // matters, so any constant 0–1 value is safe.
+        azimuthAlign = 1.0;
+    } else {
+        float2 R_az_norm  = R_az / R_az_len;
+        float2 curtainDir = float2(cos(curtainAzimuth), sin(curtainAzimuth));
+        float  dotAz      = dot(R_az_norm, curtainDir);
+        azimuthAlign = smoothstep(kCurtainAzimuthFloor,
+                                  kCurtainAzimuthPeak, dotAz);
+    }
+
+    // ── Curtain intensity: baseline-while-music-plays + drums modulation ─
+    // Baseline keeps the curtain visible during sustained-volume music; the
+    // 150 ms-smoothed drums_energy_dev rides on top. Both terms are gated by
+    // liveGate so silence collapses to base sky.
+    constexpr float kCurtainBaselineIntensity  = 0.30;
+    constexpr float kCurtainModulationIntensity = 0.50;
+    float drumsSmoothed = clamp(stems.drums_energy_dev_smoothed, 0.0, 1.5);
+    float curtainIntensity = kCurtainBaselineIntensity
+                           + kCurtainModulationIntensity * drumsSmoothed;
+
+    // ── Hue palette: base phase + pitch/valence offset + slow orbit drift ─
+    // The orbit-driven phase term gives the curtain a self-evolving hue so
+    // long sections of constant valence still show colour evolution (the
+    // curtain is *moving* in the sky, the references read as "moving colored
+    // light" not "static blob with audio-reactive brightness").
+    constexpr float kCurtainBasePhase = 0.82;  // deep magenta-violet starting hue
+    float t = kCurtainBasePhase + palettePhase + 0.10 * sin(curtainAzimuth * 0.5);
+    float3 curtainHue = rm_palette(t);
+
+    float3 aurora = curtainHue * curtainIntensity
+                  * vertFalloff * azimuthAlign * liveGate;
+    return baseSky + aurora;
 }
 
 /// Shared "lighting tail" for matID == 0 (default Cook-Torrance) and matID == 3
@@ -530,6 +578,7 @@ static float rm_screenSpaceShadow(
 fragment float4 raymarch_lighting_fragment(
     VertexOut                   in        [[stage_in]],
     constant FeatureVector&     features  [[buffer(0)]],
+    constant StemFeatures&      stems     [[buffer(3)]],
     constant SceneUniforms&     scene     [[buffer(4)]],
     texture2d<float>            gbuf0     [[texture(0)]],   // rg16Float: depth, unused
     texture2d<float>            gbuf1     [[texture(1)]],   // rgba8Snorm: normal xyz, AO
@@ -691,10 +740,10 @@ fragment float4 raymarch_lighting_fragment(
         float3 R     = reflect(-V, N);
         float  NdotV = max(dot(N, V), 0.0);
 
-        // Procedural sky (V.9 Session 4.5c: aurora-band overlay deferred
-        // to the direct-audio routing commit; for now this returns the
-        // base purple gradient × mood-tint only).
-        float3 skyReflection = rm_ferrofluidSky(R, scene);
+        // Procedural sky — base purple gradient + audio-reactive aurora curtain
+        // (V.9 Session 4.5c / D-127). Pitch → hue, drums-smoothed → intensity,
+        // arousal → drift; silence collapses to base sky only.
+        float3 skyReflection = rm_ferrofluidSky(R, features, stems, scene);
 
         // Thin-film Fresnel F0 at NdotV — the half-vector coincides with N
         // for a perfect mirror reflection (V mirror-reflected about N).

@@ -142,14 +142,33 @@ extension RenderPipeline {
         let presetHeightTex = rayMarchPresetHeightTextureLock.withLock { rayMarchPresetHeightTexture }
         let computeDispatch = rayMarchPresetComputeDispatchLock.withLock { rayMarchPresetComputeDispatch }
 
+        let frameDt = features.deltaTime > 0 ? features.deltaTime : 1.0 / 60.0
+
+        // V.9 Session 4.5c / D-127 — aurora-reflection drum-energy smoother.
+        // The Ferrofluid Ocean matID == 2 sky function (rm_ferrofluidSky) reads
+        // `stems.drums_energy_dev_smoothed` for the curtain intensity envelope.
+        // Smoothing runs unconditionally for every ray-march preset — cost is
+        // one float MAD and an EMA — so we keep the dispatch logic in one
+        // place rather than checking the active preset name here. Non-aurora
+        // presets simply don't read the smoothed slot.
+        //
+        // 150 ms τ exponential smoother on `drumsEnergyDev`. EMA blend coefficient
+        // `α = 1 − exp(−dt / τ)` gives frame-rate-independent smoothing. At 60 Hz
+        // and τ=0.15 s, α ≈ 0.105 → step response ~95% in ~430 ms (3τ).
+        let auroraSmootherTau: Float = 0.15
+        let auroraAlpha = 1.0 - exp(-frameDt / auroraSmootherTau)
+        let drumsDev = max(0, stemFeatures.drumsEnergyDev)
+        auroraDrumsSmoothed += auroraAlpha * (drumsDev - auroraDrumsSmoothed)
+        var lightingStems = stemFeatures
+        lightingStems.drumsEnergyDevSmoothed = auroraDrumsSmoothed
+
         // Phase 2b: per-frame compute dispatch hook. Ferrofluid Ocean V.9
         // uses this to run particle update + height-field bake into the
         // slot-10 texture before the G-buffer pass reads it. Same command
         // buffer → Metal command-encoder boundaries serialize compute
         // completion before the subsequent render pass starts.
         if let dispatch = computeDispatch {
-            let frameDt = features.deltaTime > 0 ? features.deltaTime : 1.0 / 60.0
-            dispatch(commandBuffer, features, stemFeatures, frameDt)
+            dispatch(commandBuffer, features, lightingStems, frameDt)
         }
 
         rayMarchState.render(
@@ -157,7 +176,7 @@ extension RenderPipeline {
             features: &features,
             fftBuffer: fftMagnitudeBuffer,
             waveformBuffer: waveformBuffer,
-            stemFeatures: stemFeatures,
+            stemFeatures: lightingStems,
             outputTexture: outputTex,
             commandBuffer: commandBuffer,
             noiseTextures: noiseTextures,

@@ -412,6 +412,7 @@ public final class RayMarchPipeline: @unchecked Sendable {
         runLightingPass(
             commandBuffer: commandBuffer,
             features: &features,
+            stemFeatures: stemFeatures,
             noiseTextures: noiseTextures,
             iblManager: iblManager,
             presetFragmentBuffer3: presetFragmentBuffer3

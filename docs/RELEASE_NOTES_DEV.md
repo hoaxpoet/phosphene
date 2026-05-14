@@ -6,6 +6,37 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-14-c] V.9 Session 4.5c Phase 1 — Direct audio → aurora routing (D-127)
+
+**Increment:** V.9 Session 4.5c Phase 1. **Status:** Code complete; engine + app builds clean; targeted tests pass. STOP gate pending Matt's eye on a real-music capture against a vocal-forward track (Billie Jean per his 2026-05-14 sign-off).
+
+Phase 1 of Session 4.5c rebuilds the aurora reflection from direct audio uniforms after the §5.8 stage-rig retirement (D-127). The musical contract (vocals pitch → hue, drums energy → intensity, arousal → drift) is preserved verbatim; the implementation abstraction changes from "orbital point lights + slot-9 buffer" to "lighting-fragment-bound `FeatureVector` + `StemFeatures` sampled inline at sky-sample time."
+
+**What's added.** A single continuous aurora curtain at fixed elevation in `rm_ferrofluidSky` (`R.y ≈ 0.83`, ~33° from zenith — matches the retired-rig orbit geometry the `04_*` / `08_*` reference framings anchor on). The curtain wraps the sky azimuthally as a soft-edged wedge; orbital drift advances the wedge's centre azimuth at `features.accumulated_audio_time × arousalSpeed × baseSpeed` (full revolution ~30 s at high arousal, ~60 s at low; pauses at silence via `accumulated_audio_time`'s energy-paused clock). Hue blends two phase sources: `vocals_pitch_hz` (perceptual log-scale over 80 Hz – 1 kHz, ±0.20 phase) when `vocals_pitch_confidence ≥ 0.6`, smoothly crossfading to `features.valence` mood fallback below the confidence threshold. Intensity is `baseline + modulation × drums_energy_dev_smoothed` where the 150 ms τ EMA on `drums_energy_dev` runs CPU-side in `RenderPipeline.drawWithRayMarch` and lands in the new `StemFeatures.drumsEnergyDevSmoothed` float (renamed from `_sfPad1` — byte offset 168, struct size unchanged at 256 bytes per `CommonLayoutTest`). Silence gate `smoothstep(0.02, 0.10, totalStemEnergy)` collapses the curtain to base sky at silence.
+
+**Files changed.**
+
+- `PhospheneEngine/Sources/Renderer/Shaders/Common.metal` — `StemFeatures._pad1` → `drums_energy_dev_smoothed`.
+- `PhospheneEngine/Sources/Presets/PresetLoader+Preamble.swift` — matching rename in the MSL preamble string.
+- `PhospheneEngine/Sources/Shared/StemFeatures.swift` — `_sfPad1` → `drumsEnergyDevSmoothed: Float` (public), header doc updated.
+- `PhospheneEngine/Sources/Renderer/RayMarchPipeline+Passes.swift` — `runLightingPass` gains `stemFeatures` parameter, binds at fragment slot 3.
+- `PhospheneEngine/Sources/Renderer/RayMarchPipeline.swift` — `render` threads `stemFeatures` through to `runLightingPass`.
+- `PhospheneEngine/Sources/Renderer/RenderPipeline.swift` — `auroraDrumsSmoothed: Float` property (MainActor-isolated access).
+- `PhospheneEngine/Sources/Renderer/RenderPipeline+RayMarch.swift` — `drawWithRayMarch` computes `frameDt` once, runs τ=0.15 s EMA smoother on `drumsEnergyDev`, patches the smoothed value into the stems snapshot before forwarding to `rayMarchState.render`.
+- `PhospheneEngine/Sources/Renderer/Shaders/RayMarch.metal` — adds `rm_palette(t)` helper (IQ V.3 cookbook cosine palette); `rm_ferrofluidSky` signature gains `FeatureVector` + `StemFeatures` and implements the curtain (live gate → hue → drift → shape → intensity → composition); `raymarch_lighting_fragment` declares `[[buffer(3)]] StemFeatures stems` and forwards to the sky function. Retires four file-level `kFerrofluidSky*` `constexpr constant` tunables that were rig-driven multi-band; aurora-curtain tunables now live inline.
+- `PhospheneEngine/Tests/PhospheneEngineTests/Renderer/MatIDDispatchTests.swift` — `runLightingAndReadCentre` passes `StemFeatures.zero` for the new parameter.
+- `docs/VISUAL_REFERENCES/ferrofluid_ocean/README.md` — Last-amended header; stylization caveat hue source; mandatory audio reactivity bullets; silence fallback; Audio routing notes section (D-127 routing replaces §5.8 rig routing; retired-in-Session-4.5c subsection added).
+
+**Verification.** Engine `swift build` clean (6 s). App `xcodebuild -scheme PhospheneApp build` clean. Targeted tests: `MatIDDispatchTests`, `CommonLayoutTest`, `StagedCompositionTests`, `PresetAcceptanceTests`, `PresetRegressionTests`, `PresetVisualReviewTests` all pass (16 tests / 6 suites, 0.103 s wall). Full engine suite: 1236 tests / 158 suites; two failures both pre-existing flakes unrelated to this work — `MetadataPreFetcher.fetch_networkTimeout_returnsWithinBudget` (documented in the test baseline memory) and `SoakTestHarness.cancel() causes run() to return before duration expires` (passes 0.719 s in isolation; failed in the full-suite run with 12.2 s under parallel contention — classic Swift Testing parallel-execution timing flake on a 5-second deadline test).
+
+**STOP gate pending.** Phase 1 acceptance is Matt's eye on a real-music capture. The Love Rehab capture used for Session 4.5b's deviation-only-failure diagnosis has zero high-confidence vocal pitch across all 7,493 frames (`vocalsPitchHz = 0`, `vocalsPitchConfidence = 0` everywhere), so the pitch-driven hue path never activates on that track — the mood-valence fallback runs 100% of the time. Matt's 2026-05-14 sign-off names **Billie Jean (Michael Jackson)** as a vocal-forward replacement test track. Visual gate: aurora visibly tracks music, never beat-strobed, settles to base sky at silence, hue evolves over time, drift completes ~30–60 s revolution depending on song energy. Phase 2 (baseline+modulation routing + warmup smoothness) is gated on Phase 1 sign-off.
+
+**Docs updated.** `docs/VISUAL_REFERENCES/ferrofluid_ocean/README.md` (see Files changed above). This release notes entry. `docs/ENGINEERING_PLAN.md` carries an in-flight row for Session 4.5c spanning all three phases; row is amended after each phase's STOP gate, not after each commit.
+
+**Git status.** Branch `main`, ahead of `origin/main` by 14 commits after this commit (Session 4.5b Phase 1 / 2a / 2b / 2c plus Session 4.5c stage-rig removal + docs + this Phase 1 commit). No push.
+
+---
+
 ## [dev-2026-05-14-b] V.9 Session 4.5c step 1 — Stage-rig retirement (D-127)
 
 **Increment:** V.9 Session 4.5c commit 1. **Status:** Stage rig removed; aurora reflection deferred to next commit; Ferrofluid Ocean substrate currently reflects base purple sky only.
