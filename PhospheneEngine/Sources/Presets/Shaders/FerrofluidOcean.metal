@@ -176,35 +176,65 @@ static inline float fo_gerstner_swell(float2 xz, float t, float swellScale) {
 // which was rooted in the hard `min()` discontinuity at every cell edge
 // in regular Voronoi.
 //
+// **Session 4.5b Phase 1 (V.9 particle-motion increment): texture-backed.**
+// The geometric source moved from inline `voronoi_smooth` to a sample of
+// the 512×512 r16Float height texture baked by `ferrofluid_height_bake`
+// (`Renderer/Shaders/FerrofluidParticles.metal`). Phase 1 places 2048
+// particles at the XZ coordinates a `voronoi_smooth` cell-center pass
+// would emit (rectangular int-cell grid + per-cell `voronoi_cell_offset`
+// hash; mirrored CPU-side in `FerrofluidParticles.swift`), so the baked
+// texture's spike topology is the structural equivalent of the Phase A
+// inline path. Phase 2 will add SPH-lite particle motion + audio forces
+// so the peaks drift, cluster, and scatter with the music; the sampling
+// path here is unchanged across both phases.
+//
 // References (full set):
 //   - Robert Leitl, Ferrofluid Web Experiment:
 //     https://robert-leitl.medium.com/ferrofluid-7fd5cb55bc8d
 //   - Inigo Quilez, Smooth Voronoi:
 //     https://iquilezles.org/articles/smoothvoronoi/
+//   - Inigo Quilez, polynomial smooth-min:
+//     https://iquilezles.org/articles/smin/
 //   - Rosensweig instability video (geometry reference):
 //     https://www.youtube.com/watch?v=39oyuJLQt_E
 //   - User-supplied still references (hex-pack pointed pyramids)
 //
-// **Unit note:** `voronoi_smooth` returns distance in scaled-space units
-// (same convention as `voronoi_f1f2.f1`). At scale 4.0, the hex cell
-// circumradius in scaled space is ≈ 0.577. `kSpikeRadius = 0.6` ensures
-// the linear cone extends past the circumradius so every cell's height
-// reaches the cell boundary with non-zero magnitude → wall-to-wall pyramid
-// coverage (no flat ground between spikes, matching the tightly-packed
-// hex tile in the references). This corrects an earlier bug where
-// `kSpikeRadius = 0.25` was assumed to be world-space metres but was
-// actually scaled-space units, giving only 25% cell coverage.
-//
-// Per-spike height variation: the previous `cellHash` trick required
-// `v.id` from regular Voronoi, which smooth Voronoi does not expose.
-// Phase B may add fbm-modulated radius for organic variation between
-// spikes if needed.
+// Texture mapping: the height texture covers the world-XZ rectangle
+// [worldOriginX, worldOriginX + worldSpan] × [worldOriginZ, worldOriginZ +
+// worldSpan] = [-10, 10] × [-8, 12]. The Phase A inline math is preserved
+// as `fo_ferrofluid_field_inline` (below) for diagnostic use; production
+// sceneSDF samples via `fo_ferrofluid_field_sampled`.
 
-static inline float fo_ferrofluid_field(float3 p, float fieldStrength) {
+// World-XZ patch constants — kept in sync with
+// `FerrofluidParticles.swift::worldOriginX/Z/Span` via
+// `FerrofluidParticlesTests.test_swiftMetalConstantsMatch`.
+constant float FO_HEIGHT_WORLD_ORIGIN_X = -10.0;
+constant float FO_HEIGHT_WORLD_ORIGIN_Z =  -8.0;
+constant float FO_HEIGHT_WORLD_SPAN     =  20.0;
+
+static inline float fo_ferrofluid_field_sampled(float3 p,
+                                                float fieldStrength,
+                                                texture2d<float> heightTex,
+                                                sampler heightSamp) {
+    if (fieldStrength <= 0.0) return 0.0;
+    // World XZ → UV. Outside [0, 1] the sampler's clamp-to-zero address
+    // mode (declared in the preamble's `kFerrofluidHeightSampler`)
+    // returns 0 → spike lattice terminates cleanly at the patch edge.
+    float u = (p.x - FO_HEIGHT_WORLD_ORIGIN_X) / FO_HEIGHT_WORLD_SPAN;
+    float v = (p.z - FO_HEIGHT_WORLD_ORIGIN_Z) / FO_HEIGHT_WORLD_SPAN;
+    float spike = heightTex.sample(heightSamp, float2(u, v)).r;
+    return spike * fieldStrength * 0.15;
+}
+
+// Phase A inline fallback. Retained for diagnostic comparison + the case
+// where no height texture is bound (`heightTex.get_width() == 1` ⇒ the
+// 1×1 placeholder, returns 0 ⇒ no spikes). Not called from sceneSDF
+// today; future increments may A/B between paths via a feature flag.
+static inline float fo_ferrofluid_field_inline(float3 p, float fieldStrength) {
     if (fieldStrength <= 0.0) return 0.0;
     constexpr float kVoronoiScale   = 4.0;
-    constexpr float kVoronoiSmoothK = 32.0;   // Quilez default — smooth but distinct
-    constexpr float kSpikeRadius    = 0.6;    // scaled-space units; > 0.577 circumradius
+    constexpr float kVoronoiSmoothK = 32.0;
+    constexpr float kSpikeRadius    = 0.6;
     float smoothD = voronoi_smooth(p.xz, kVoronoiScale, kVoronoiSmoothK);
     float spike   = max(0.0, 1.0 - smoothD / kSpikeRadius);
     return spike * fieldStrength * 0.15;
@@ -225,11 +255,15 @@ static inline float fo_ferrofluid_field(float3 p, float fieldStrength) {
 float sceneSDF(float3 p,
                constant FeatureVector& f,
                constant SceneUniforms& s,
-               constant StemFeatures& stems) {
+               constant StemFeatures& stems,
+               texture2d<float> ferrofluidHeight) {
     (void)s;
     float t        = f.accumulated_audio_time;
     float swell    = fo_gerstner_swell(p.xz, t, fo_swell_scale(f, stems));
-    float spikes   = fo_ferrofluid_field(p, fo_spike_strength(f, stems));
+    float spikes   = fo_ferrofluid_field_sampled(p,
+                                                 fo_spike_strength(f, stems),
+                                                 ferrofluidHeight,
+                                                 kFerrofluidHeightSampler);
     float surfaceY = swell + spikes;
     return p.y - surfaceY;
 }

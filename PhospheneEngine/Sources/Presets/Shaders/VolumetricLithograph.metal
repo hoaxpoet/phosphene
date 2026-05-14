@@ -415,7 +415,9 @@ static inline float3 vl_palette(float t) {
 float sceneSDF(float3 p,
                constant FeatureVector& f,
                constant SceneUniforms& s,
-               constant StemFeatures& stems) {
+               constant StemFeatures& stems,
+               texture2d<float> ferrofluidHeight) {
+    (void)ferrofluidHeight;  // V.9 Session 4.5b slot-10; Ferrofluid Ocean only.
     float audioPhase = s.sceneParamsA.x;                            // accumulated audio time
 
     // v9.3: section-intensity driver REMOVED from audioAmp path.

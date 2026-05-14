@@ -84,7 +84,9 @@ static inline float ks_sdMercury(float3 p, float sminK) {
 float sceneSDF(float3 p,
                constant FeatureVector& f,
                constant SceneUniforms& s,
-               constant StemFeatures& stems) {
+               constant StemFeatures& stems,
+               texture2d<float> ferrofluidHeight) {
+    (void)ferrofluidHeight;  // V.9 Session 4.5b slot-10; Ferrofluid Ocean only.
     // 1. Z-axis twist driven by accumulated audio time (breathes with energy).
     //    Rate 0.06 rad per unit keeps the deformation gentle but perceptible.
     float twistK = f.accumulated_audio_time * 0.06f;

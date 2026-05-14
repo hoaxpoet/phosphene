@@ -341,17 +341,35 @@ extension PresetLoader {
             StageRigLight lights[6];
         };
 
+        // ── Ferrofluid Ocean V.9 Session 4.5b height-field sampler ───────────
+        // Bound at fragment texture slot 10 of `raymarch_gbuffer_fragment` for
+        // every ray-march preset. Ferrofluid Ocean's `sceneSDF` samples it
+        // through this `kFerrofluidHeightSampler`; non-Ferrofluid presets
+        // ignore the texture (declared in their `sceneSDF` signature for ABI
+        // uniformity and silenced via `(void)ferrofluidHeight;`). The address
+        // mode is `clamp_to_zero` so samples outside the texture's world-XZ
+        // patch return 0 — the spike lattice cleanly terminates at the patch
+        // edge instead of being smeared by clamp-to-edge.
+        constexpr sampler kFerrofluidHeightSampler(
+            coord::normalized,
+            filter::linear,
+            address::clamp_to_zero);
+
         // ── Per-preset forward declarations ──────────────────────────────────
         // Ray march presets must define both. `stems` is bound at buffer(3) —
         // apply the D-019 warmup fallback when reading. `outMatID` is the LM.1
         // material-flag out-param (D-LM-matid); pre-zeroed by the caller.
         // `lumen` is the LM.2 trailing slot-8 buffer; non-Lumen presets ignore
         // it (declared in their `sceneMaterial` signature for ABI uniformity
-        // and silenced via `(void)lumen;`).
+        // and silenced via `(void)lumen;`). `ferrofluidHeight` is the V.9
+        // Session 4.5b slot-10 baked spike-field texture; only Ferrofluid
+        // Ocean samples it, every other ray-march preset silences via
+        // `(void)ferrofluidHeight;`.
         float sceneSDF(float3 p,
                        constant FeatureVector& f,
                        constant SceneUniforms& s,
-                       constant StemFeatures& stems);
+                       constant StemFeatures& stems,
+                       texture2d<float> ferrofluidHeight);
 
         void sceneMaterial(float3 p,
                            int matID,
@@ -381,11 +399,12 @@ extension PresetLoader {
             constant SceneUniforms& scene    [[buffer(4)]],
             constant LumenPatternState& lumen [[buffer(8)]],
             constant StageRigState& stageRig [[buffer(9)]],
-            texture2d<float> noiseLQ     [[texture(4)]],
-            texture2d<float> noiseHQ     [[texture(5)]],
-            texture3d<float> noiseVolume [[texture(6)]],
-            texture2d<float> noiseFBM    [[texture(7)]],
-            texture2d<float> blueNoise   [[texture(8)]]
+            texture2d<float> noiseLQ          [[texture(4)]],
+            texture2d<float> noiseHQ          [[texture(5)]],
+            texture3d<float> noiseVolume      [[texture(6)]],
+            texture2d<float> noiseFBM         [[texture(7)]],
+            texture2d<float> blueNoise        [[texture(8)]],
+            texture2d<float> ferrofluidHeight [[texture(10)]]
         ) {
             // Silence unused stage-rig binding warning when the G-buffer
             // fragment does not consume slot 9 (every current preset).
@@ -419,7 +438,7 @@ extension PresetLoader {
             int maxMarchSteps = int(128.0 * stepMult);
             for (int i = 0; i < maxMarchSteps && t < farPlane; i++) {
                 float3 p = camPos + rayDir * t;
-                float  d = sceneSDF(p, features, scene, stems);
+                float  d = sceneSDF(p, features, scene, stems, ferrofluidHeight);
                 if (d < 0.001 * t) {
                     hit = true;
                     break;
@@ -440,12 +459,12 @@ extension PresetLoader {
             // ── Central-differences normal ───────────────────────────────────
             const float eps = 0.001;
             float3 normal = normalize(float3(
-                sceneSDF(hitPos + float3(eps, 0, 0), features, scene, stems)
-              - sceneSDF(hitPos - float3(eps, 0, 0), features, scene, stems),
-                sceneSDF(hitPos + float3(0, eps, 0), features, scene, stems)
-              - sceneSDF(hitPos - float3(0, eps, 0), features, scene, stems),
-                sceneSDF(hitPos + float3(0, 0, eps), features, scene, stems)
-              - sceneSDF(hitPos - float3(0, 0, eps), features, scene, stems)
+                sceneSDF(hitPos + float3(eps, 0, 0), features, scene, stems, ferrofluidHeight)
+              - sceneSDF(hitPos - float3(eps, 0, 0), features, scene, stems, ferrofluidHeight),
+                sceneSDF(hitPos + float3(0, eps, 0), features, scene, stems, ferrofluidHeight)
+              - sceneSDF(hitPos - float3(0, eps, 0), features, scene, stems, ferrofluidHeight),
+                sceneSDF(hitPos + float3(0, 0, eps), features, scene, stems, ferrofluidHeight)
+              - sceneSDF(hitPos - float3(0, 0, eps), features, scene, stems, ferrofluidHeight)
             ));
 
             // ── Ambient occlusion (5-sample cone) ───────────────────────────
@@ -454,7 +473,7 @@ extension PresetLoader {
             for (int k = 1; k <= 5; k++) {
                 float aoT   = float(k) * aoStep;
                 float3 aoPos = hitPos + normal * aoT;
-                float aoD   = sceneSDF(aoPos, features, scene, stems);
+                float aoD   = sceneSDF(aoPos, features, scene, stems, ferrofluidHeight);
                 ao -= max(0.0, (aoT - aoD) / aoT) * 0.2;
             }
             ao = clamp(ao, 0.0, 1.0);

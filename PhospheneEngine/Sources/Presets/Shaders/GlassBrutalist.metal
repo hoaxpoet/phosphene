@@ -143,7 +143,9 @@ static inline float gb_sdGlass(float3 p, float finCX) {
 float sceneSDF(float3 p,
                constant FeatureVector& f,
                constant SceneUniforms& s,
-               constant StemFeatures& stems) {
+               constant StemFeatures& stems,
+               texture2d<float> ferrofluidHeight) {
+    (void)ferrofluidHeight;  // V.9 Session 4.5b slot-10; Ferrofluid Ocean only.
     float finCX = s.cameraForward.w > 0.0f ? s.cameraForward.w : GB_GLASS_CX;
     return min(gb_sdConcrete(p), gb_sdGlass(p, finCX));
 }

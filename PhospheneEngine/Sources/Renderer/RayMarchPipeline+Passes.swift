@@ -42,7 +42,8 @@ extension RayMarchPipeline {
         stemFeatures: StemFeatures,
         noiseTextures: TextureManager?,
         presetFragmentBuffer3: MTLBuffer? = nil,
-        presetFragmentBuffer4: MTLBuffer? = nil
+        presetFragmentBuffer4: MTLBuffer? = nil,
+        presetHeightTexture: MTLTexture? = nil
     ) {
         guard let g0 = gbuffer0, let g1 = gbuffer1, let g2 = gbuffer2 else {
             passLogger.error("runGBufferPass: G-buffer textures nil — skipping")
@@ -89,6 +90,12 @@ extension RayMarchPipeline {
         let slot9Buffer = presetFragmentBuffer4 ?? stageRigPlaceholderBuffer
         encoder.setFragmentBuffer(slot9Buffer, offset: 0, index: 9)
         noiseTextures?.bindTextures(to: encoder)
+        // Texture slot 10: Ferrofluid Ocean's V.9 Session 4.5b baked height
+        // field, or a 1×1 zero placeholder for every other ray-march preset.
+        // Always non-nil so the preamble's `[[texture(10)]]` declaration is
+        // satisfied at Metal validation time.
+        let slot10Texture = presetHeightTexture ?? ferrofluidHeightPlaceholderTexture
+        encoder.setFragmentTexture(slot10Texture, index: 10)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         encoder.endEncoding()
     }

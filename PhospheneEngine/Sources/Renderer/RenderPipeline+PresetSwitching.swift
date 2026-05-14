@@ -155,6 +155,18 @@ extension RenderPipeline {
         directPresetFragmentBuffer4Lock.withLock { directPresetFragmentBuffer4 = buffer }
     }
 
+    /// Attach a per-preset baked height field for ray-march presets (bound at fragment texture(10)).
+    ///
+    /// Bound at fragment texture slot 10 of the ray-march G-buffer pass.
+    /// Non-Ferrofluid presets pass `nil` so the zero-filled 1×1
+    /// `RayMarchPipeline.ferrofluidHeightPlaceholderTexture` is bound — Metal
+    /// validation requires every declared texture to be bound at draw time.
+    /// First consumer: Ferrofluid Ocean V.9's `FerrofluidParticles`
+    /// (V.9 Session 4.5b Phase 1). Thread-safe — can be called from any queue.
+    public func setRayMarchPresetHeightTexture(_ texture: MTLTexture?) {
+        rayMarchPresetHeightTextureLock.withLock { rayMarchPresetHeightTexture = texture }
+    }
+
     /// Attach a dynamic text overlay for presets that declare `text_overlay: true`.
     /// The overlay texture is bound at fragment texture(12) during direct-pass draws.
     /// Pass `nil` to detach (e.g. on preset switch away from a text-overlay preset).
