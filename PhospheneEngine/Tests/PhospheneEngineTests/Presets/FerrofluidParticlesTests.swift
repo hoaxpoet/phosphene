@@ -162,15 +162,34 @@ final class FerrofluidParticlesTests: XCTestCase {
 
         XCTAssertEqual(firstBake.count, secondBake.count,
             "Texture byte count must match between bakes")
-        // Compare every byte — Phase 1 particles never change, so bake
-        // output should be byte-identical.
-        var diff = 0
-        for i in 0 ..< firstBake.count where firstBake[i] != secondBake[i] {
-            diff += 1
-            if diff > 4 { break } // early exit
+        // Phase 2a's atomic-bin pass orders particles in each cell non-
+        // deterministically across runs — same-cell pairs can swap slots,
+        // and the subsequent `poly_smin` pairwise iteration is only
+        // approximately commutative (sub-bit rounding). Most texels are
+        // bit-identical; near 2+-particle cells, the trace value
+        // differences can cross r16Float quantization bin boundaries and
+        // flip the low byte (max 255) while the numerical value differs
+        // by <1 % of the [0, 1] height range. Compare float values, not
+        // bytes — gate the actual numerical drift, not the encoding noise.
+        let pixelCount = firstBake.count / 2
+        var maxValueDiff: Float = 0
+        var significantDiffs = 0
+        firstBake.withUnsafeBytes { firstRaw in
+            secondBake.withUnsafeBytes { secondRaw in
+                let first = firstRaw.bindMemory(to: Float16.self)
+                let second = secondRaw.bindMemory(to: Float16.self)
+                for i in 0 ..< pixelCount {
+                    let valueDiff = abs(Float(first[i]) - Float(second[i]))
+                    if valueDiff > maxValueDiff { maxValueDiff = valueDiff }
+                    if valueDiff > 0.001 { significantDiffs += 1 }
+                }
+            }
         }
-        XCTAssertEqual(diff, 0,
-            "Bake is not deterministic on identical inputs — re-bake produced \(diff) byte diff(s)")
+        let diffFraction = Double(significantDiffs) / Double(pixelCount)
+        XCTAssertLessThan(diffFraction, 0.001,
+            "Re-bake had \(significantDiffs) pixels with >0.001 value diff (\(diffFraction * 100)% of texture) — exceeds expected atomic-ordering noise floor")
+        XCTAssertLessThan(maxValueDiff, 0.01,
+            "Max per-pixel value diff is \(maxValueDiff) — larger than expected atomic-ordering rounding noise (poly_smin pairwise non-commutativity at sub-bit precision)")
     }
 
     // MARK: - Gate 6: bake produces non-zero output
