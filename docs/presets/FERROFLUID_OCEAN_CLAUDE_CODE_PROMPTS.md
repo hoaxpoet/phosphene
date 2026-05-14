@@ -829,82 +829,94 @@ Conceptual change: matID == 2 becomes a **mirror-reflects-procedural-sky** path.
 
 ---
 
-#### Phase B — Spike profile reshape + Gerstner swell retune
+#### Phase B — Gerstner swell retune (+ residual spike tuning if 4.5b didn't close the gap)
 
-This phase is **pure tuning against the references** — small parameter changes, side-by-side reference comparison after each change.
+**Status:** ⏳ Not started. Authored 2026-05-13 against the original rescue plan; rewritten 2026-05-14 post-Session-4.5b insertion. This prompt is provisional and will be re-scoped after Session 4.5b lands — what 4.5b delivers (particle-based spike geometry + height-map bake + Phase 3 tuning against references) determines how much of the original Phase B remains.
 
-1. **Spike profile** in `fo_ferrofluid_field`:
-   - **Current:** `exp(-d² × 40.0)` × `(0.5 + 0.5 × sin(t × 0.8 + cellPhase))` × `fieldStrength × 0.15`.
-   - **Target:** tall narrow pyramidal spikes per `01_macro_ferrofluid_at_swell_scale.jpg` and `04_specular_razor_highlights.jpg`. Sharper exp falloff, taller peak height, denser distribution.
-   - **Starting values to tune from** (NOT spec — tune by rendering against references):
-     - `exp(-d² × 80)` or `exp(-d² × 100)` for sharper conical falloff
-     - peak multiplier × 0.25 or × 0.30 instead of × 0.15
-     - Voronoi scale 5 or 6 instead of 4 for denser spike spacing
-   - Verify silence-state collapse: `fieldStrength = 0` → spikes go to zero (smooth body of liquid per `10_silence_calm_body.jpg`).
-   - Verify calm-body-with-spikes state (low arousal + high bass_energy_dev): spikes present + visible without overwhelming the macro surface.
+**Why the scope shrank.** The original Phase B was "spike profile reshape + Gerstner swell retune." Session 4.5b's Phase 3 step ("match peak count / density / speed to references") absorbs the spike-shape work — but in different code locations: spike shape is now driven by particle pressure forces + the height-map bake function (`u_spikeFactor`, `almostIdentity` smoothing) rather than by `fo_ferrofluid_field`'s `exp(-d² × N)` × `kSpikeRadius`. Whatever spike-shape tuning Phase 3 of 4.5b doesn't finish lands here in Phase B, but in the particle / bake parameters, not in `fo_ferrofluid_field` (which doesn't exist post-4.5b).
 
-2. **Gerstner swell** in `fo_wave` and `fo_swell_scale`:
-   - **Current:** wavelengths [4, 2.5, 1.5, 0.8] and amplitudes [0.15, 0.10, 0.06, 0.03]. Too ripply / too small.
+**Gerstner swell retune is independent of 4.5b and stays scoped to Phase B.**
+
+##### What Phase B does (current Gerstner retune)
+
+1. **Gerstner swell** in `fo_wave` and `fo_swell_scale`:
+   - **Current:** wavelengths [4, 2.5, 1.5, 0.8] and amplitudes [0.15, 0.10, 0.06, 0.03]. Too ripply / too small per the references.
    - **Target:** deep-sea rolling per `02b_meso_swell_motion_dark_water.jpg`. Longer wavelengths, larger amplitudes at peak energy. Calm at silence per `10_*`.
-   - **Starting values to tune from** (NOT spec):
+   - **Starting values to tune from** (NOT spec — tune by rendering against references):
      - wavelengths [8, 5, 3, 1.8] and amplitudes [0.40, 0.25, 0.12, 0.05] at peak
      - swell_scale formula: silence baseline 0.15 (10–20% of peak), full at peak `arousal=1 + drums_energy_dev=1`
    - Verify silence: surface is gentle calm body — gentle low-amplitude ripple per `10_*`, no spikes.
    - Verify peak: big rolling swells, motion audible up/down in the camera frame.
 
-3. **Tests:**
-   - `testFerrofluidOceanIndependenceStatesReachable` — verify the calm-body-with-spikes and agitated-body-without-spikes states still distinguish. Adjust the FV/Stems values if needed to match the new scale.
-   - Optional new test: `testFerrofluidOceanCalmStateSwellOnly` — render the silence fixture at t=0 and t=5s; verify visible swell motion (frame diff) without any spikes (no high-frequency features).
+2. **Residual spike tuning (only if 4.5b's Phase 3 didn't close the gap):**
+   - If the post-4.5b render shows spike-shape divergence from `04_specular_razor_highlights.jpg` (peaks too short, not narrow enough, density too low), tune the particle-pressure-force constants and the height-map bake's `u_spikeFactor` / `almostIdentity` parameters. The "starting values" the original Phase B prompt suggested (`exp(-d² × 80)`, peak × 0.30, Voronoi scale 5/6) no longer apply — those parameters don't exist post-4.5b.
+   - Re-scope this section concretely once Session 4.5b lands and Matt has reviewed its Phase 3 output.
 
-**Phase B acceptance gates:**
+##### Phase B tests
 
-1. All Phase 0 + Phase A gates still pass.
+- `testFerrofluidOceanIndependenceStatesReachable` — verify calm-body-with-spikes and agitated-body-without-spikes still distinguish under the retuned Gerstner. Adjust the FV/Stems thresholds if the new amplitude range demands it.
+- Optional new test: `testFerrofluidOceanCalmStateSwellOnly` — render the silence fixture at t=0 and t=5s; verify visible swell motion (frame diff) without any spikes.
+
+##### Phase B acceptance gates
+
+1. All Phase 0 + Phase A + Session 4.5b gates still pass.
 2. Side-by-side reference comparison:
-   - Beat-heavy fixture vs `04_*` — spike shape neighborhood match (tall, narrow, sharp).
+   - Beat-heavy fixture vs `04_*` — spike shape neighborhood match (if residual spike tuning was needed).
    - Active-motion fixture vs `02b_*` — swell motion neighborhood match (deep rolling, not ripply).
    - Silence fixture vs `10_*` — calm body of liquid, no spikes.
-3. `testFerrofluidOceanIndependenceStatesReachable` still passes with adjusted values.
+3. `testFerrofluidOceanIndependenceStatesReachable` still passes.
 4. Engine suite: 0 new failures.
-5. Grep gates + SwiftLint clean.
-6. Commit as 2 commits: (a) spike profile reshape, (b) Gerstner retune. Prefix: `[V.9-session-4.5 PB]`.
+5. Grep gates + SwiftLint clean on touched files.
+6. Commit as 1–2 commits (Gerstner retune + optional residual spike tuning). Prefix: `[V.9-session-4.5 PB]`.
 
 ---
 
-#### Phase C — Verification against references + closeout
+#### Phase C — Cert-prep verification + closeout to Session 5
 
-1. **Render full reference comparison contact sheet:**
-   - The 4 standard fixtures + the silence fixture + the cool/warm valence pair + a "live music" reconstruction (replay FV/Stems values from `2026-05-14T01-20-28Z/features.csv` + `stems.csv` at multiple time points).
-   - Save outputs to a documented path under `/var/folders/.../PhospheneFerrofluidOceanV9Session4.5/`.
+**Status:** ⏳ Not started. Authored 2026-05-13; rewritten 2026-05-14 post-Phase-A closeout. The original Phase C prompt included doc updates (capability-registry row drops, CLAUDE.md Failed Approach additions, ENGINEERING_PLAN block) that already happened in the Phase A closeout commits (`0bc85047` + related). Phase C is now narrowly scoped to **cert-prep verification** — the rendering + annotation-match work that prepares Session 5's M7 review.
 
-2. **Per-reference annotation match:** for each of the 12 images in `docs/VISUAL_REFERENCES/ferrofluid_ocean/`, document whether the rendered output matches the **trait the reference annotates** (per the README stylization caveat — not the literal photograph). Document matches / gaps in the closeout report. Anti-reference (`05_*`) must NOT match.
+##### What Phase C does
 
-3. **Update FERROFLUID_OCEAN_CLAUDE_CODE_PROMPTS.md:**
-   - Session 4.5 row → ✅
-   - Landed-work summary paragraph below this prompt
-   - Carry-forward note to Session 5 (cert)
+1. **Render the full reference contact sheet.**
+   - The 4 standard fixtures (silence / steady-mid / beat-heavy / quiet) at 1920×1080.
+   - The cool/warm valence pair (D-022 mood-tint propagation check).
+   - A "live music" reconstruction: replay FV / Stems values from a real session capture (current candidate: `/Users/braesidebandit/Documents/phosphene_sessions/2026-05-14T01-20-28Z/features.csv` + `stems.csv`) at multiple time points across the playthrough.
+   - Save outputs to a documented path under `/var/folders/.../PhospheneFerrofluidOceanV9Session4.5C/` and link the path in the closeout report.
 
-4. **Update `docs/ENGINEERING_PLAN.md`** Increment V.9 with Session 4.5 ✅ block.
+2. **Per-image annotation match.** For each of the 12 images in `docs/VISUAL_REFERENCES/ferrofluid_ocean/`, document whether the rendered output matches the **trait the README's annotation calls out** (per the stylization caveat — not the literal photograph). Document matches / gaps in the closeout report.
+   - Anti-reference (`05_*`) must NOT match — explicitly verify this.
+   - Deferred-image annotations (`03_*` and `03b_*`, currently marked "Status: feature reverted in Phase 0; image retained pending re-evaluation") are scored as **N/A** — no production rendering needs to match these until / unless a future increment re-introduces the features they anchored.
 
-5. **Update `docs/ENGINE/RENDER_CAPABILITY_REGISTRY.md`:**
-   - **Drop** rows: "Cassie-Baxter spike-tip droplet SDF", "Meso domain-warp turbulence on Voronoi spike lattice", "Tactile micro-normal perturbation in matID == 2 lighting branch" (all reverted in Phase 0).
-   - **Rewrite** the "Multi-light stage rig" row to reflect the aurora-sky paradigm. New row title: "Mirror-reflects-procedural-sky for near-mirror substrates (matID == 2)." Cite the new `rm_ferrofluidSky` function + FerrofluidStageRig output reinterpretation.
-   - **Keep** the "Audio-modulated thin-film thickness" row (unchanged in this session).
+3. **Update the increment ledger.** Phase B + Phase C rows → ✅. Update the Phase A landed-work record with a "post-Phase-B/C amendment" note. Add a brief Phase B/C landed-work summary below this prompt.
 
-6. **Update CLAUDE.md "Failed Approaches" and "What NOT To Do"** with the lessons from this rescue:
-   - **New Failed Approach (next number):** "Implementing 'beams cast onto reflective surface' as point lights with physical falloff." The references' mechanic is mirror-reflects-sky; the lighting paradigm for reflective subjects is sky-pattern, not point-lights. Inverse-square attenuation at any reasonable physical orbit distance gives invisible beams against the IBL the mirror also reflects. Cite: V.9 Session 4 failure + Session 4.5 rescue.
-   - **New Failed Approach (next number):** "Authoring a preset session without reading `docs/VISUAL_REFERENCES/<preset>/README.md` first." Past Sessions did and shipped failures. Session 4 specifically shipped Phase A decoration layers (droplets, micro-normal, meso warp) without consulting the README's stylization caveat ("None of them is a faithful rendering of 'Ferrofluid Ocean as it should appear'. Read each image only for the trait its annotation calls out") — the result is decoration layers that competed with the hero signal the references actually wanted.
-   - **Promote Failed Approach #58** (visual subject without load-bearing musical role) to layer scope. The Drift Motes failure was at preset scope; Session 4's droplet field is the same failure at layer scope. Update the existing entry's scope clause.
-   - **What NOT To Do** new entry: "Do not skip side-by-side reference comparison in mid-session sanity checks. Self-judging 'looks reasonable' has shipped failures repeatedly (V.9 Session 4 most recently). Side-by-side with named reference images is the only sanity check that catches structural divergence before M7."
+4. **Update `docs/ENGINEERING_PLAN.md`** Increment V.9 entry with Phase B/C closeout block citing the rendered contact sheet path and the annotation-match results.
 
-7. **Commit closeout docs**: 1 commit. Prefix: `[V.9-session-4.5]`. Total session commit count: 6–8.
+##### What Phase C does NOT do
 
-**Phase C acceptance gates:**
+- **Capability registry row drops** (droplet SDF, meso warp, micro-normal). Already done in Phase A closeout (commit `0bc85047`). Do not redo.
+- **Failed Approach additions** for §5.8 paradigm pivot or README-reading discipline. Already added (#61, #62, #63, #64, #65). Do not re-author.
+- **CLAUDE.md "What NOT To Do" additions** for side-by-side reference comparison. Already added in the Phase A closeout. Do not re-author.
+- **DECISIONS.md updates** for D-126. Already filed in the Phase A closeout. Do not re-author.
+
+##### Phase C acceptance gates
 
 1. All prior phase gates pass.
-2. Contact sheet rendered, saved, path documented.
-3. Per-reference annotation match documented in closeout report. Anti-reference (`05_*`) explicitly verified as not-matched.
-4. CLAUDE.md + RENDER_CAPABILITY_REGISTRY.md + ENGINEERING_PLAN.md + this prompt doc all updated.
-5. Closeout commit landed.
+2. Contact sheet rendered + saved + path documented in the closeout report.
+3. Per-image annotation match documented in the closeout report. Anti-reference (`05_*`) explicitly verified as not-matched.
+4. ENGINEERING_PLAN.md + this prompt doc updated.
+5. Closeout commit landed. Prefix: `[V.9-session-4.5 PC]`. 1 commit.
+
+##### What this hands off to Session 5
+
+Session 5 inherits a **cert-ready Ferrofluid Ocean** that:
+- Has structural correctness verified against the references (Phase C's per-image annotation match)
+- Has matID == 2 mirror-reflects-procedural-sky paradigm landed (Phase A, D-126)
+- Has Leitl-style particle motion landed (Session 4.5b)
+- Has Gerstner swell retuned for deep-sea rolling (Phase B)
+- Has the spike shape tuned to references (Session 4.5b Phase 3 + Phase B residual if needed)
+- Tests pass: visual harness (6 tests), decoder (7 tests), preset count, regression hashes, grep gates, lint
+
+Session 5 then does what only Matt can do (M7 sign-off) + the deterministic engineering work (perf capture, golden hash regen). If M7 fails, loop back to whichever phase the failure traces to.
 
 ---
 
