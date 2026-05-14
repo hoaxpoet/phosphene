@@ -327,6 +327,19 @@ Pitches that pass two of three and require the user to spot the missing third ar
 
 **Verify against the artifact before asserting facts about it.** Several smaller failures in the Drift Motes timeline came from confident-but-wrong assertions: a perf-capture procedure that cited a non-existent CSV column, a misattribution of a test failure to V.7.7C.4 when working-tree state showed V.7.7C.5, a "what's next" pitch for BUG-011 work that `git log` would have shown the parallel session was actively doing. The verification cost (one grep, one `git log`, one file read) is always less than the cost of being corrected. Default to verification when the claim is checkable.
 
+**Decisions presented to Matt must be framed in product-level language with explicit benefits and trade-offs.** Matt is product/design lead, not a peer engineer. Any decision presented to him for input must:
+
+1. **Be framed in user-visible terms, not engineering jargon.** Use "how dense are the spikes" not "particle count = 256 / 512 / 1024." Use "how responsive is the motion" not "update tick frequency." Use "how sharp are the peaks" not "smooth-min `w` parameter."
+2. **Call out benefits and trade-offs in plain English.** For each option, name what the user sees / feels — not what the code does. E.g. "Medium-dense (peaks touch base-to-base; surface reads as covered in ferrofluid)" vs "Densely-packed (individual peaks blur into continuous textured field; closest to references but more processing overhead)."
+3. **Include a recommendation with reasoning.** Default value Matt can accept if he has no strong preference; he should not have to do engineering math to ratify your default.
+4. **Limit the question to decisions that actually have product-level consequences** (visual character, motion feel, audible behaviour, UX flow). Engineering implementation choices (CPU vs GPU, buffer sizes, math precision, internal data structures) are Claude's responsibility — make them yourself, explain only the user-facing consequence if any.
+
+If a question requires Matt to already know implementation details to answer it, the question is wrong — reframe at the product level or make the decision yourself.
+
+**Tell-tale phrasing of the failure:** asking Matt "Option (a): 256×256, Option (b): 512×512, Option (c): 1024×1024" — three values that mean nothing without engineering context. Reframe as "How sharp should the peaks render? Adequate (1.5 cm per pixel) / sharp / very sharp" with what the user sees at each, recommendation, and a default.
+
+**Discovered:** V.9 Session 4.5b draft prompt (2026-05-14) asked Matt to choose particle count, height-map resolution, smooth-min parameter, and update location — four engineering values requiring implementation context to evaluate. Matt called it out: *"you keep insisting on communicating with me like I'm a peer engineer."* The rule above was promoted to CLAUDE.md immediately as a binding discipline rule.
+
 **Escalation thresholds.** Stop and bring the gap to Matt — do not start the next increment — when any of these fire:
 - Two consecutive M7 reviews return negative feedback whose root cause you cannot articulate.
 - A successor-concept pitch fails the three-part bar.

@@ -1011,6 +1011,109 @@ Full prompt authored at Session 5 start.
 
 ---
 
+## V.9 Session 4.5b — Ferrofluid particle motion (Leitl-style audio-reactive peaks)
+
+**Status:** ⏳ Not started. Authored 2026-05-14 post-Session-4.5-Phase-A closeout. Product decisions locked in 2026-05-14 (medium density, particle reset on track change). Engineering decisions made: GPU compute kernel for bake, 512×512 height texture, smooth-min `w = 0.1`.
+
+### Why this increment
+
+Phase A delivered the lighting paradigm (mirror-reflects-procedural-sky + smooth Voronoi spike geometry). At 1920×1080 the substrate now reads as a wall-to-wall hex-pack pyramid field with chromatic aurora reflections — structurally correct vs the user-supplied references. **But the peaks don't move.** They appear/disappear in place with bass; they don't drift, cluster, or scatter the way Leitl's audio-reactive WebGL ferrofluid does. Matt's direction (2026-05-14): *"We want looks AND moves like Leitl."* This increment introduces particle-based moving peaks per Leitl's published technique.
+
+### Goal
+
+Replace the static smooth-Voronoi grid with **audio-reactive GPU particles + per-frame height-map bake**. Particles drift organically driven by audio forces; peaks rise/fall and translate with the music; the visual reading matches the "alive ferrofluid" character of Leitl's demo. Density tuned for **medium coverage** of Phosphene's ocean-portion scene (~2000 spikes — peaks touch base-to-base, surface reads as covered in ferrofluid without blurring into a continuous textured field).
+
+### Reference implementation
+
+Robert Leitl's WebGL ferrofluid:
+- Demo: https://robert-leitl.github.io/ferrofluid/dist/?debug=true
+- Source: https://github.com/robert-leitl/ferrofluid
+- Medium writeup: https://robert-leitl.medium.com/ferrofluid-7fd5cb55bc8d
+- Key shader files (mirror these verbatim, adapt to ocean context only):
+  - `src/app/shader/height-map.frag.glsl` — iterative IQ smooth-min over all particles produces the height field. Includes `almostIdentity` apex smoothing.
+  - `src/app/shader/integrate.frag.glsl`, `force.frag.glsl`, `pressure.frag.glsl`, `sort.frag.glsl` — SPH-style 2D particle simulation chain.
+
+**Adopt the parts that produce his visual character verbatim** (Failed Approach #65); adapt only what differs in *context* (audio routing, ocean scale, integration with Phosphene's render pipeline).
+
+### Locked-in parameters
+
+| Parameter | Value | Rationale |
+|---|---|---|
+| Particle count | **N = 2048** | "Medium density" per Matt — peaks touch base-to-base; surface reads as covered in ferrofluid. Densely-packed (~4000) deemed too dense; sparse (~1000) deemed too sparse. |
+| Update location | **GPU compute kernel** | CPU can't keep up at N=2048 + 1920×1080 rendering at 60 fps. Wire through Phosphene's render-pipeline framework (same pattern as the slot-9 stage-rig buffer). |
+| Height-map texture | **512×512 r16Float** | Covers visible ocean area at ~1.5 cm per pixel — sharp enough for crisp spike tips, no overkill. |
+| Smooth-min `w` | **0.1** | Leitl's default. Produces distinct peaks with smooth gradients between them. Revisit only if rendering shows peaks merging or staying too discrete. |
+| Particle reset on track change | **Yes** | Reset to equilibrium positions on `applyPreset`. |
+
+### Scope (strict)
+
+**(1) Particle storage.** New UMA buffer of 2048 `float2` positions. Particles live in world-XZ coordinates spanning the visible surface. Owned by a new Swift class `FerrofluidParticles` alongside `FerrofluidStageRig`. Per CLAUDE.md "no premature abstraction" rule: keep preset-private; generic extraction comes with a second consumer.
+
+**(2) Particle update — GPU compute kernel.** Per-frame compute dispatch (alongside `FerrofluidStageRig.tick()`):
+- Apply pressure forces from neighbor particles (SPH-lite — repulsive at close range, no need for full incompressibility). Use a spatial-hash binning scheme like Leitl's `sort` + `offset` chain to avoid O(N²) per frame.
+- Apply audio forces:
+  - `bass_energy_dev` → uniform "rising" pressure that increases inter-particle repulsion (peaks pop up when bass hits)
+  - `drums_energy_dev` (smoothed envelope, not `drumsBeat`) → shock impulse on drum onsets
+  - `other_energy_dev` → slow rotational drift seed (do not use free-running sin — use `accumulated_audio_time` × audio coef per Failed Approach #33)
+  - `arousal` → overall force magnitude scale
+- Integrate with semi-implicit Euler at dt = 1/60.
+- At silence (all stems energy near 0): particles settle to low-energy equilibrium positions (gentle baseline drift, no peak formation).
+
+**(3) Height-map bake.** New compute / fragment render pass between particle update and the ray-march g-buffer. Bakes a 512×512 r16Float `MTLTexture` by iterating particles per texel using IQ's smooth-min (matching Leitl's `height-map.frag.glsl`):
+```msl
+float h = smoothstep(-1, 1, (res - d) / w);
+res = mix(res, d, h) - h * (1 - h) * (w / (1 + 3 * w));
+```
+Apply Leitl's `almostIdentity(res, 0.1, 0.04)` apex smoothing. Output = final spike-field height contribution at that XZ.
+
+**(4) `sceneSDF` consumes the height texture.** Replace the `voronoi_smooth`-based `fo_ferrofluid_field` call with a texture sample from the baked height map. The Gerstner swell underneath stays unchanged (swell + sampled spikes = total surface height).
+
+**(5) Render-pipeline wiring.** Bind the particle buffer + height texture through new `RenderPipeline` setter APIs (analogous to slot-9 `StageRig` buffer wiring). The height texture binds at a new fragment texture slot in the ray-march g-buffer pass.
+
+### What stays unchanged
+
+- Smooth Voronoi utility `voronoi_smooth` — retained in `Utilities/Texture/Voronoi.metal` for other potential consumers.
+- The mirror-reflects-procedural-sky lighting paradigm (matID == 2, `rm_ferrofluidSky` + `rm_ferrofluidBaseSky`).
+- `FerrofluidStageRig` audio routing (vocals_pitch → palette, drums → intensity, arousal → orbit speed).
+- Gerstner swell underneath (`fo_gerstner_swell`).
+- Test resolution (1920×1080).
+- All audio routing primitives (D-026 deviation primitives only; no raw AGC arithmetic; no `drumsBeat` in intensity scope).
+
+### Phase structure
+
+Three phases with explicit STOP gates between them, per the Authoring Discipline rule:
+
+**Phase 1 — Scaffolding (no audio yet).** Build the particle buffer + height-map bake compute kernel + sceneSDF read + render-pipeline wiring. Particles at FIXED positions (regular grid) for testing — no SPH physics yet. Acceptance: render produces a hex-pack pyramid field equivalent to the current Phase A output. Side-by-side with current main branch should show no regression. STOP and surface to Matt after Phase 1 — if scaffolding produces structurally different output than the smooth-Voronoi current, the integration has a problem before audio gets added.
+
+**Phase 2 — SPH-lite physics + audio forces.** Add the per-frame particle update compute pass with pressure forces + audio routing. Acceptance: particles drift organically; bass produces peak formation; drum hits scatter particles visibly; silence has gentle baseline drift only. Side-by-side with Leitl's demo running on whistled/sung input — neighborhood-match on motion character. STOP and surface to Matt before Phase 3. If divergent from Leitl's motion character, re-scope; do not iterate on guesses (Failed Approach #64).
+
+**Phase 3 — Tuning + verification against references.** Match peak count / density / speed to the user-supplied still references and to Leitl's live demo. M7-prep contact sheet across the four standard fixtures + a "live music" reconstruction from a real session capture. If references match, close the increment. If structural divergence remains, STOP — particle approach may need re-scoping.
+
+### Failed-approach guards (must satisfy)
+
+- Do not use `drumsBeat` in intensity scope (CLAUDE.md / `check_drums_beat_intensity.sh`).
+- Do not write the literal `44100` (`check_sample_rate_literals.sh`).
+- Do not use free-running `sin(time)` in motion (Failed Approach #33).
+- Do not threshold raw AGC arithmetic (D-026; deviation primitives only).
+- Do not assert "production won't show this" without rendering at 1920×1080 (Failed Approach #64).
+- Do not negotiate away components of Leitl's reference implementation under unverified "redundancy" arguments (Failed Approach #65) — adopt the canonical SPH-lite + iterative smooth-min approach verbatim unless rendering shows the same character is achieved differently.
+- Do not present engineering decisions (counts, sizes, parameters) to Matt without product-level framing and recommendations (CLAUDE.md Authoring Discipline — "Decisions presented to Matt must be framed in product-level language").
+
+### Prerequisites — read in order
+
+1. `docs/VISUAL_REFERENCES/ferrofluid_ocean/README.md` (Failed Approach #63).
+2. The user-supplied Rosensweig still references (4 photos shared 2026-05-14) and the YouTube Rosensweig video (https://www.youtube.com/watch?v=39oyuJLQt_E).
+3. Leitl's demo + source (URLs above).
+4. Phase A closeout record (above this entry in this prompt doc).
+5. CLAUDE.md Authoring Discipline section (especially the new "Decisions presented to Matt" rule).
+6. `docs/DECISIONS.md` D-125 + D-126.
+
+### Closeout
+
+Per CLAUDE.md Increment Completion Protocol. Multiple commits expected (one per phase; Phase 1 ~3 commits, Phase 2 ~4 commits, Phase 3 ~2 commits). None pushed without Matt's explicit approval.
+
+---
+
 ## Notes for future sessions
 
 - **§5.8 stage-rig recipe is reusable.** D-125 is a catalog-wide reservation; future presets adopting §5.8 follow the same slot-9 + `matID == 2` pattern. Second-consumer is the trigger to extract a generic `StageRigEngine` from `FerrofluidStageRig`.
