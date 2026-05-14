@@ -3558,3 +3558,51 @@ Option (c) consolidates the §5.8 implementation behind one ABI extension (slot 
 - V.9 Session 3 (stage-rig lighting recipe) implements D-125 end to end. New code: preamble `StageRigState` struct, `RayMarchPipeline.stageRigPlaceholderBuffer`, `raymarch_lighting_fragment` matID == 2 branch, Swift `FerrofluidStageRig` class, `PresetDescriptor.stageRig` decoded field, `applyPreset` wiring.
 - A `CommonLayoutTest`-style stride regression test for `StageRigState` lands with Session 3.
 - The §5.8 reference call-site (the §5.8 JSON example) in [docs/SHADER_CRAFT.md](docs/SHADER_CRAFT.md) is illustrative — the actual JSON contract is documented here in D-125(e). A clarifying note in §5.8 pointing to D-125 lands with Session 3.
+
+## D-126 — matID == 2 GPU consumption paradigm: mirror-reflects-procedural-sky (amends D-125(d))
+
+**Status:** Accepted (2026-05-14)
+
+### Context
+
+D-125(d) specified the matID == 2 dispatch as a **Cook-Torrance per-light loop** over the slot-9 stage-rig buffer's `lights[i]` — each light treated as a discrete world-space point source with inverse-square attenuation. V.9 Session 3 shipped this end-to-end. V.9 Session 4 M7 review (2026-05-13) rejected the rendered output: at the JSON-spec orbit altitude / radius (6 m / 4 m, surface-to-light distance ~7 m), inverse-square attenuation gives ~0.02× per beam, producing invisible direct-light contribution against the IBL the same near-mirror surface also reflects. Beams have **no visual presence**. Root cause was misidentified during Session 3 design (rejected option list anticipated the cost issue but only via "shadow march disabled to amortize" — the underlying inverse-square issue went unanalyzed).
+
+The references' lighting mechanic for a near-mirror substrate (`08_lighting_aurora_over_dark_water.jpg` annotation: *"the preset's beams are continuous diffuse gradients, not point sources with pillar reflections"*; mandatory traits: *"chromatic content present only in the reflections (not in the underlying surface tone)"*) is **mirror-reflects-sky**: the chromatic content lives in what the surface reflects, not in direct lights striking the surface. Desk research into published audio-reactive ferrofluid implementations (Robert Leitl's WebGL project) confirmed this is the canonical approach for the visual character we want.
+
+### Decisions
+
+**(a) matID == 2 dispatch is rewritten as mirror-reflects-procedural-sky.** The slot-9 `StageRigState` buffer is unchanged (208 B, same fields), but the GPU consumption of its contents changes:
+
+- The branch computes `R = reflect(-V, N)`.
+- A new `rm_ferrofluidSky(R, stageRig, scene)` function samples a procedural sky containing (i) a base dark-purple atmospheric gradient × `scene.lightColor.rgb` (D-022 mood propagation) and (ii) aurora-stripe bands at the elevation of each rig light's normalized position vector. Per-band coverage is anisotropic: `vertFalloff = smoothstep(thickness, 0, |R.y - bandDir.y|)` × `azim_falloff = smoothstep(-0.3, 0.7, dot(R_az_norm, band_az_norm))`. Aurora-band parameters (per-light intensity, palette color, orbital position) come from the rig buffer — same buffer, new semantics.
+- The sample is multiplied by thin-film `F0_thin` at NdotV → final substrate color.
+- Atmospheric depth via `mix(surfaceColor, rm_ferrofluidBaseSky(zenith, scene), fogFactor)` where fogFactor is the standard depth-based fog ramp.
+- `rm_finishLightingPass` is **bypassed** entirely for matID == 2 — the procedural sky function plays the role of the IBL ambient + fog tail. No diffuse IBL irradiance contribution (metallic=1 → kd = 0); no separate fog mix (sky function carries it).
+
+**(b) The §5.8 musical contract is preserved at the rig boundary.** `FerrofluidStageRig.tick()` still consumes `vocals_pitch_hz → palette()`, `drums_energy_dev_smoothed → per-light intensity envelope`, `arousal → orbital velocity`. Only the GPU-side interpretation of the buffer's per-light fields changes:
+
+- `lights[i].positionAndIntensity.xyz` → **sky-direction vector** for an aurora band (normalized internally). Previously: world-space light position.
+- `lights[i].positionAndIntensity.w` → **band brightness multiplier**. Previously: light intensity.
+- `lights[i].color.xyz` → **band hue**. Previously: light RGB.
+- `lights[i].activeLightCount` → **active band count**. Unchanged.
+
+**(c) `voronoi_smooth` utility added to support continuous spike geometry.** As a coupled change (without which the rebuilt lighting cannot read correctly), `Presets/Shaders/Utilities/Texture/Voronoi.metal` gains `voronoi_smooth(p, scale, k)` — Quilez's exponential soft-min Voronoi. `FerrofluidOcean.metal` `fo_ferrofluid_field` is rewritten to use `voronoi_smooth` instead of `voronoi_f1f2`. The C¹-continuous height field eliminates cell-boundary normal-flip artifacts that the rebuilt lighting would otherwise amplify into a visible dot pattern. Reference: https://iquilezles.org/articles/smoothvoronoi/.
+
+**(d) D-125(d) screen-space shadow march decision is moot under the new paradigm.** There are no discrete lights to cast shadows from; the sky reflection has no "shadow" concept. The "shadow march disabled for matID == 2" carve-out in D-125(d) is retired with no successor — matID == 2 has no direct lighting at all.
+
+### Reason
+
+The pivot is forced by the M7 failure (D-125 implementation as specified produced invisible beams) plus desk research (Leitl's WebGL ferrofluid project showed that the canonical technique for "audio-reactive ferrofluid with colored lighting" is procedural-sky reflection, not discrete-light Cook-Torrance). The slot-9 buffer + matID == 2 dispatch ABI is preserved — only the shader's reading of the buffer changes — so the cost of the pivot is contained to one MSL branch + supporting utility functions, with zero impact on other ray-march presets.
+
+### What was rejected
+
+- **Boosting per-light intensity to overcome inverse-square attenuation.** Would saturate the mirror surface near the beam intersection (anti-reference 5_anti_chrome_blob) without producing the diffuse-gradient character the references show.
+- **Moving the lights closer to the surface (low orbit altitude).** Loses the "overhead colored lighting" composition; produces pillar reflections at grazing angles (anti-reference: point-source-pillar in `08_*`).
+- **Adding a Cook-Torrance Phong-specular layer ON TOP of the new sky reflection** (proposed mid-rebuild). Reintroduces the "rig as lights" framing the pivot was retiring. The sky function's bright regions already produce specular catches via mirror reflection when the surface normal aligns — adding a separate Phong term would be mathematically redundant with the sky's bright-band sampling.
+- **Multi-elevation aurora bands** (each rig light at a different orbit altitude). Out of scope for the rescue — single-elevation ring is the neighborhood simplification; per-light orbit altitudes are reserved as a possible Phase B extension.
+
+### Forward references
+
+- V.9 Session 4.5 Phase A (2026-05-14) implements D-126 end to end: `rm_ferrofluidBaseSky` + `rm_ferrofluidSky` in `Shaders/RayMarch.metal`; matID == 2 branch rewritten; `voronoi_smooth` in `Utilities/Texture/Voronoi.metal`; `fo_ferrofluid_field` switched to smooth Voronoi + linear cone.
+- Failed Approach #61 records the original Cook-Torrance failure; Failed Approaches #64 and #65 record the discipline learnings from the rebuild iteration cycle.
+- A future second `SHADER_CRAFT.md §5.8` consumer that adopts this paradigm inherits the slot-9 buffer ABI but reads the buffer's per-light fields as sky-feature parameters per §D-126(b).
