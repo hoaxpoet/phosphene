@@ -189,24 +189,42 @@ extension VisualizerEngine {
                         // frame SPH-lite compute pass driven by audio forces.
                         if let particles = FerrofluidParticles(device: context.device,
                                                                library: shaderLibrary.library) {
-                            // Phase 1 initial bake — first frame already has a
-                            // populated height texture before the per-frame
-                            // closure fires. Phase 2b kept this so preset-apply
-                            // doesn't show a blank frame waiting for the per-
-                            // frame compute dispatch.
+                            // V.9 Session 4.5c Phase 1 round 4 (2026-05-14):
+                            // PIN PARTICLES. The one-shot bake at preset apply
+                            // is the ONLY bake. Particles stay at canonical
+                            // voronoi positions for the lifetime of the
+                            // preset; heightfield topology is static; spike
+                            // HEIGHT modulates at sample time via
+                            // `fo_spike_strength` (`liveGate × 2.0 +
+                            // bass_energy_dev × 0.7`). Closest to real
+                            // ferrofluid physics — spikes are pinned at
+                            // field-gradient peaks and only their height
+                            // varies with field strength.
+                            //
+                            // The Phase 2c force-and-integrate per-frame
+                            // dispatch (SPH pressure + drums radial impulse
+                            // + rotation + arousal scale) was producing
+                            // frame-to-frame topology drift that read as
+                            // "smudged blur" rather than discrete spikes.
+                            // D-127(d) rejected the Phase 2c force model;
+                            // this commit goes one step further and removes
+                            // motion entirely until the geometry character
+                            // reads as ferrofluid in static form. Phase 3
+                            // (wave-coherent motion) is deferred behind
+                            // that gate.
                             particles.bakeHeightField(commandQueue: context.commandQueue)
                             ferrofluidParticles = particles
                             pipeline.setRayMarchPresetHeightTexture(particles.heightTexture)
-                            // Phase 2b per-frame compute dispatch: encode
-                            // particle update (pos += vel × dt) followed by
-                            // height-field re-bake on each frame's command
-                            // buffer before the G-buffer pass reads slot 10.
-                            pipeline.setRayMarchPresetComputeDispatch { [weak particles] cmdBuf, features, stems, dt in
-                                particles?.encodePerFrameUpdate(into: cmdBuf,
-                                                                dt: dt,
-                                                                features: features,
-                                                                stems: stems)
-                            }
+                            // setRayMarchPresetComputeDispatch intentionally
+                            // NOT set — per-preset teardown at line 68 cleared
+                            // any prior closure, so no per-frame compute
+                            // dispatch fires. Re-enable by reinstating the
+                            // closure below once geometry reads as ferrofluid.
+                            //
+                            // pipeline.setRayMarchPresetComputeDispatch { [weak particles] cmdBuf, features, stems, dt in
+                            //     particles?.encodePerFrameUpdate(into: cmdBuf, dt: dt,
+                            //                                     features: features, stems: stems)
+                            // }
                         } else {
                             // swiftlint:disable:next line_length
                             logger.error("FerrofluidParticles: failed to allocate particle scaffolding for preset '\(desc.name)' — falling back to placeholder (no spikes)")
