@@ -326,6 +326,21 @@ static float3 rm_ferrofluidSky(float3 R,
                                 constant SceneUniforms& scene) {
     float3 baseSky = rm_ferrofluidBaseSky(R, scene);
 
+    // V.9 Session 4.5c Phase 1 tuning round 2 (2026-05-14 post-second-Billie-Jean
+    // capture): aurora curtain BYPASSED. Matt's read on `2026-05-14T22-24-39Z`:
+    // "still washed out … in and out of focus in time with the music. sharper
+    // on drum hits … effect is lost when everything is all blurry and smudged."
+    // The signal Matt is reading isn't aurora intensity — it's spike-lattice
+    // height collapsing in steady-state because `fo_spike_strength` is
+    // deviation-only (Phase 2 problem). Until the substrate reads as
+    // ferrofluid consistently, layering chromatic content on top is
+    // decorating a broken foundation. Aurora code is preserved below and
+    // re-enabled when substrate is solid; Matt: "the light is not important
+    // right now and can be layered on later." LIMIT VARIABLES.
+    (void)features;
+    (void)stems;
+    return baseSky;
+
     // ── Live-stems gate ────────────────────────────────────────────
     // Silence collapses to base sky only; the safety net for prep states,
     // intro-to-song boundaries, and source-app paused. On real-music captures
