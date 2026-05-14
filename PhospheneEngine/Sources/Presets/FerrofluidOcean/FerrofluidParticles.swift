@@ -118,12 +118,40 @@ public final class FerrofluidParticles: @unchecked Sendable {
     /// should be near-conical for sharp specular catches.
     public static let apexSmoothK: Float = 0.03
 
+    // MARK: - Spatial-hash grid (Phase 2a)
+
+    /// Uniform-grid side length over the world patch. 64 × 64 = 4096 cells.
+    /// Cell size in world units = `worldSpan / cellGridSide` = 0.3125 wu
+    /// (about 2× `spikeBaseRadius`). Each cell holds 1-2 particles in
+    /// equilibrium at Phase 1 density; motion headroom is the per-cell
+    /// slot count below.
+    public static let cellGridSide: Int = 64
+
+    /// Maximum particles per cell. Phase 1 static density sees 1-2/cell;
+    /// 16 slots gives 8-16× headroom for Phase 2 motion (particle clusters
+    /// from SPH pressure under bass impulses). Overflow is silently dropped
+    /// at the bin kernel level — guard rails added per CLAUDE.md
+    /// "no allocation in the IO callback" spirit applied to the GPU path.
+    public static let cellSlotCapacity: Int = 16
+
     // MARK: - GPU resources
 
-    /// UMA buffer of 2048 `SIMD2<Float>` particle positions in world XZ.
+    /// UMA buffer of 6000 `SIMD2<Float>` particle positions in world XZ.
     /// Phase 1: written once at init, read once at bake. Phase 2: written
     /// per frame by the SPH-lite update pass.
     public let particleBuffer: MTLBuffer
+
+    /// UMA buffer of per-cell occupancy counts (`atomic_uint`, one per
+    /// cell). Reset every bake; bin kernel atomically increments. Sized
+    /// `cellGridSide² × sizeof(UInt32)` = 16 KB. (Phase 2a.)
+    public let cellCountBuffer: MTLBuffer
+
+    /// UMA buffer of per-cell particle index slots (`uint`, capacity ×
+    /// per-cell). Bin kernel writes the particle index at the
+    /// pre-increment count's slot. Sized
+    /// `cellGridSide² × cellSlotCapacity × sizeof(UInt32)` = 256 KB.
+    /// (Phase 2a.)
+    public let cellSlotBuffer: MTLBuffer
 
     /// UMA r16Float 512×512 texture carrying the baked height field.
     /// Sampled at fragment texture slot 10 of the ray-march G-buffer pass.
@@ -133,9 +161,12 @@ public final class FerrofluidParticles: @unchecked Sendable {
     // MARK: - Internal
 
     private let bakePipeline: MTLComputePipelineState
+    private let resetCellsPipeline: MTLComputePipelineState
+    private let binParticlesPipeline: MTLComputePipelineState
     private let device: MTLDevice
 
-    /// Bake parameters mirrored on the GPU side via a 16-byte struct.
+    /// Bake parameters mirrored on the GPU side via a 32-byte struct.
+    /// (Phase 2a extended with grid metadata.)
     private struct BakeUniforms {
         var worldOriginXZ: SIMD2<Float>     // (worldOriginX, worldOriginZ)
         var worldSpan: Float                // worldSpan
@@ -143,7 +174,10 @@ public final class FerrofluidParticles: @unchecked Sendable {
         var spikeBaseRadius: Float          // spikeBaseRadius
         var apexSmoothK: Float              // apexSmoothK
         var particleCount: UInt32           // particleCount
+        var cellGridSide: UInt32            // cellGridSide
+        var cellSlotCapacity: UInt32        // cellSlotCapacity
         var pad0: UInt32                    // 16-byte align
+        var pad1: UInt32                    // 16-byte align
     }
 
     // MARK: - Init
@@ -171,7 +205,29 @@ public final class FerrofluidParticles: @unchecked Sendable {
         }
         self.particleBuffer = buf
 
-        // Height texture: r16Float, 512×512, UMA shared, read-write so the
+        // Spatial-hash buffers (Phase 2a). Count buffer: one UInt32 per
+        // cell, atomically incremented by the bin kernel. Slot buffer:
+        // capacity UInt32s per cell, holding particle indices. Both UMA
+        // shared so the bin kernel atomically writes and the bake kernel
+        // reads in the same dispatch.
+        let cellCount = Self.cellGridSide * Self.cellGridSide
+        let cellCountBytes = cellCount * MemoryLayout<UInt32>.stride
+        guard let countBuf = device.makeBuffer(length: cellCountBytes,
+                                               options: .storageModeShared) else {
+            particleLogger.error("FerrofluidParticles: cell count buffer allocation failed")
+            return nil
+        }
+        self.cellCountBuffer = countBuf
+
+        let slotBytes = cellCount * Self.cellSlotCapacity * MemoryLayout<UInt32>.stride
+        guard let slotBuf = device.makeBuffer(length: slotBytes,
+                                              options: .storageModeShared) else {
+            particleLogger.error("FerrofluidParticles: cell slot buffer allocation failed")
+            return nil
+        }
+        self.cellSlotBuffer = slotBuf
+
+        // Height texture: r16Float, NxN, UMA shared, read-write so the
         // compute kernel can write and the G-buffer fragment can sample.
         let texDesc = MTLTextureDescriptor.texture2DDescriptor(
             pixelFormat: .r16Float,
@@ -186,16 +242,26 @@ public final class FerrofluidParticles: @unchecked Sendable {
         }
         self.heightTexture = tex
 
-        // Compute pipeline from the engine library's `ferrofluid_height_bake`
-        // kernel. The kernel lives in `Renderer/Shaders/FerrofluidParticles.metal`.
-        guard let fn = library.makeFunction(name: "ferrofluid_height_bake") else {
+        // Compute pipelines from the engine library. All three kernels
+        // live in `Renderer/Shaders/FerrofluidParticles.metal`.
+        guard let bakeFn = library.makeFunction(name: "ferrofluid_height_bake") else {
             particleLogger.error("FerrofluidParticles: ferrofluid_height_bake function not found")
             return nil
         }
+        guard let resetFn = library.makeFunction(name: "ferrofluid_reset_cell_counts") else {
+            particleLogger.error("FerrofluidParticles: ferrofluid_reset_cell_counts function not found")
+            return nil
+        }
+        guard let binFn = library.makeFunction(name: "ferrofluid_bin_particles") else {
+            particleLogger.error("FerrofluidParticles: ferrofluid_bin_particles function not found")
+            return nil
+        }
         do {
-            self.bakePipeline = try device.makeComputePipelineState(function: fn)
+            self.bakePipeline = try device.makeComputePipelineState(function: bakeFn)
+            self.resetCellsPipeline = try device.makeComputePipelineState(function: resetFn)
+            self.binParticlesPipeline = try device.makeComputePipelineState(function: binFn)
         } catch {
-            particleLogger.error("FerrofluidParticles: bake pipeline creation failed: \(error)")
+            particleLogger.error("FerrofluidParticles: pipeline creation failed: \(error)")
             return nil
         }
 
@@ -227,16 +293,24 @@ public final class FerrofluidParticles: @unchecked Sendable {
         }
     }
 
-    /// Encode the bake compute dispatch into the caller's command buffer
-    /// without committing. Used by the test harness to bundle the bake with
-    /// the subsequent render dispatch in a single command buffer.
+    /// Encode the bake compute dispatch chain into the caller's command buffer
+    /// without committing. Three kernels run in sequence inside one encoder:
+    ///   1. `ferrofluid_reset_cell_counts` — zero out the per-cell occupancy
+    ///      counters before the next bin pass.
+    ///   2. `ferrofluid_bin_particles` — each particle thread atomically
+    ///      writes its index to its spatial-hash cell's slot list.
+    ///   3. `ferrofluid_height_bake` — each texel thread looks up the 3×3
+    ///      cells around its world XZ, soft-mins distances to the bounded
+    ///      neighbour particles, applies the linear cone, writes height.
+    ///
+    /// All three kernels share one `BakeUniforms` constant; the encoder is
+    /// torn down at the end. Used by the test harness to bundle the bake
+    /// with the subsequent render dispatch in a single command buffer.
     public func encodeBake(into commandBuffer: MTLCommandBuffer) {
         guard let encoder = commandBuffer.makeComputeCommandEncoder() else {
             particleLogger.error("FerrofluidParticles.encodeBake: makeComputeCommandEncoder returned nil")
             return
         }
-        encoder.setComputePipelineState(bakePipeline)
-        encoder.setBuffer(particleBuffer, offset: 0, index: 0)
         var uniforms = BakeUniforms(
             worldOriginXZ: SIMD2(Self.worldOriginX, Self.worldOriginZ),
             worldSpan: Self.worldSpan,
@@ -244,18 +318,60 @@ public final class FerrofluidParticles: @unchecked Sendable {
             spikeBaseRadius: Self.spikeBaseRadius,
             apexSmoothK: Self.apexSmoothK,
             particleCount: UInt32(Self.particleCount),
-            pad0: 0)
+            cellGridSide: UInt32(Self.cellGridSide),
+            cellSlotCapacity: UInt32(Self.cellSlotCapacity),
+            pad0: 0,
+            pad1: 0)
+
+        // Pass 1: reset cell counts to zero. One thread per cell.
+        encoder.setComputePipelineState(resetCellsPipeline)
+        encoder.setBuffer(cellCountBuffer, offset: 0, index: 0)
         encoder.setBytes(&uniforms,
                          length: MemoryLayout<BakeUniforms>.stride,
                          index: 1)
-        encoder.setTexture(heightTexture, index: 0)
+        let cellCount = Self.cellGridSide * Self.cellGridSide
+        let resetTPG = MTLSize(width: 64, height: 1, depth: 1)
+        let resetGroups = MTLSize(width: (cellCount + 63) / 64, height: 1, depth: 1)
+        encoder.dispatchThreadgroups(resetGroups, threadsPerThreadgroup: resetTPG)
 
-        let threadsPerGroup = MTLSize(width: 16, height: 16, depth: 1)
-        let groups = MTLSize(
+        // Metal's `MTLComputeCommandEncoder` does NOT serialize consecutive
+        // dispatches by default — they may execute concurrently. The bin
+        // kernel writes cell counts that the bake kernel reads, so without
+        // explicit barriers the bake races against bin and reads stale /
+        // mid-write counts. Insert `memoryBarrier(scope: .buffers)` between
+        // each dependent dispatch pair.
+        encoder.memoryBarrier(scope: .buffers)
+
+        // Pass 2: bin each particle into its cell via atomic fetch-add.
+        encoder.setComputePipelineState(binParticlesPipeline)
+        encoder.setBuffer(particleBuffer, offset: 0, index: 0)
+        encoder.setBytes(&uniforms,
+                         length: MemoryLayout<BakeUniforms>.stride,
+                         index: 1)
+        encoder.setBuffer(cellCountBuffer, offset: 0, index: 2)
+        encoder.setBuffer(cellSlotBuffer, offset: 0, index: 3)
+        let binTPG = MTLSize(width: 64, height: 1, depth: 1)
+        let binGroups = MTLSize(width: (Self.particleCount + 63) / 64, height: 1, depth: 1)
+        encoder.dispatchThreadgroups(binGroups, threadsPerThreadgroup: binTPG)
+
+        encoder.memoryBarrier(scope: .buffers)
+
+        // Pass 3: per-texel bake reads 3×3 cells around its XZ.
+        encoder.setComputePipelineState(bakePipeline)
+        encoder.setBuffer(particleBuffer, offset: 0, index: 0)
+        encoder.setBytes(&uniforms,
+                         length: MemoryLayout<BakeUniforms>.stride,
+                         index: 1)
+        encoder.setBuffer(cellCountBuffer, offset: 0, index: 2)
+        encoder.setBuffer(cellSlotBuffer, offset: 0, index: 3)
+        encoder.setTexture(heightTexture, index: 0)
+        let bakeTPG = MTLSize(width: 16, height: 16, depth: 1)
+        let bakeGroups = MTLSize(
             width: (Self.heightTextureSize + 15) / 16,
             height: (Self.heightTextureSize + 15) / 16,
             depth: 1)
-        encoder.dispatchThreadgroups(groups, threadsPerThreadgroup: threadsPerGroup)
+        encoder.dispatchThreadgroups(bakeGroups, threadsPerThreadgroup: bakeTPG)
+
         encoder.endEncoding()
     }
 
@@ -269,70 +385,9 @@ public final class FerrofluidParticles: @unchecked Sendable {
         return Array(UnsafeBufferPointer(start: ptr, count: Self.particleCount))
     }
 
-    /// Compute the canonical Phase 1 initial position for a particle index.
-    /// Public so tests can verify the bake input without re-reading GPU memory.
-    public static func canonicalInitialPosition(forIndex i: Int) -> SIMD2<Float> {
-        let layout = canonicalGridLayout()
-        let row = i / layout.columns
-        let col = i % layout.columns
-        let cellCoord = SIMD2<Int32>(Int32(col), Int32(row))
-        let offset = voronoiCellOffset(cell: cellCoord)
-        // Map (col + offset.x, row + offset.y) from scaled-space [0..cols] /
-        // [0..rows] to world XZ [worldOriginX, +span] / [worldOriginZ, +span].
-        let scaledX = Float(col) + offset.x
-        let scaledZ = Float(row) + offset.y
-        let normalisedX = scaledX / Float(layout.columns)
-        let normalisedZ = scaledZ / Float(layout.rows)
-        let worldX = worldOriginX + normalisedX * worldSpan
-        let worldZ = worldOriginZ + normalisedZ * worldSpan
-        return SIMD2(worldX, worldZ)
-    }
-
-    // MARK: - Private: initial positions
-
-    private struct GridLayout {
-        let columns: Int
-        let rows: Int
-        var capacity: Int { columns * rows }
-    }
-
-    /// Canonical Phase 1 grid: **80 × 75 = 6000 cells** (no trim). X spacing
-    /// `worldSpan / 80 = 0.25 world units` matches Phase A's
-    /// `voronoi_smooth(scale = 4)` cell side exactly; Z spacing
-    /// `worldSpan / 75 = 0.267 world units` adds a ~7 % anisotropy that's
-    /// not visible at the camera tilt (the eye doesn't compare X vs Z cell
-    /// spacing across a tilted ground plane). Particles overlap their tent
-    /// base at this spacing (peak base radius 0.15 → diameter 0.30 > 0.25
-    /// spacing) for wall-to-wall coverage — Matt's "peaks touch
-    /// base-to-base" spec, finally satisfied at the empirical density.
-    private static func canonicalGridLayout() -> GridLayout {
-        GridLayout(columns: 80, rows: 75)
-    }
-
-    /// Populate the particle buffer with the canonical Phase 1 positions.
-    /// Mirrors `canonicalInitialPosition(forIndex:)` for the actual write.
-    private func writeInitialParticlePositions() {
-        let ptr = particleBuffer.contents().bindMemory(
-            to: SIMD2<Float>.self, capacity: Self.particleCount)
-        for i in 0 ..< Self.particleCount {
-            ptr[i] = Self.canonicalInitialPosition(forIndex: i)
-        }
-    }
-
-    // MARK: - Private: Voronoi cell offset (mirror of MSL `voronoi_cell_offset`)
-
-    /// Ported from `Presets/Shaders/Utilities/Texture/Voronoi.metal`'s
-    /// `voronoi_hash_int` + `voronoi_cell_offset`. Required so the Phase 1
-    /// initial particle XZ positions match the cell-center coordinates a
-    /// `voronoi_smooth` pass would emit (Matt's Q1 confirmation
-    /// 2026-05-14): "hex grid + per-cell `voronoi_cell_offset` hash". The
-    /// 32-bit `Int32` math matches MSL's `int` width semantics.
-    private static func voronoiCellOffset(cell: SIMD2<Int32>) -> SIMD2<Float> {
-        let cx = cell.x &* 1453 &+ cell.y &* 2971
-        let cy = cell.x &* 3539 &+ cell.y &* 1117
-        let qx = (cx ^ (cx >> 9)) &* 0x45D9_F3B
-        let qy = (cy ^ (cy >> 9)) &* 0x45D9_F3B
-        let masked = SIMD2<Int32>(qx & 0xFFFF, qy & 0xFFFF)
-        return SIMD2(Float(masked.x), Float(masked.y)) / 65535.0
-    }
+    // Note: `canonicalInitialPosition(forIndex:)`, the canonical grid
+    // layout, and the CPU `voronoi_cell_offset` hash port live in
+    // `FerrofluidParticles+InitialPositions.swift` (extracted to satisfy
+    // SwiftLint's 400-line file cap after the Phase 2a spatial-hash
+    // additions). The split is mechanical; semantics are unchanged.
 }
