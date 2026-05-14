@@ -135,13 +135,10 @@ extension RenderPipeline {
 
         let noiseTextures = textureManagerLock.withLock { textureManager }
         let ibl = iblManagerLock.withLock { iblManager }
-        // Snapshot slot-8 per-preset buffer (D-LM-buffer-slot-8) and slot-9
-        // stage-rig buffer (V.9 Session 3 / D-125). Slot 8 is read by the
-        // lighting pass only; slot 9 is read by BOTH the G-buffer pass and the
-        // lighting pass (the preamble declares it on every ray-march fragment
-        // function), so non-stage-rig presets pass through the placeholder.
+        // Snapshot slot-8 per-preset buffer (D-LM-buffer-slot-8). Slot 8 is
+        // read by the lighting pass only. (The §5.8 stage-rig slot-9 path
+        // was retired in V.9 Session 4.5c — no longer in the preamble.)
         let presetBuf3 = directPresetFragmentBuffer3Lock.withLock { directPresetFragmentBuffer3 }
-        let presetBuf4 = directPresetFragmentBuffer4Lock.withLock { directPresetFragmentBuffer4 }
         let presetHeightTex = rayMarchPresetHeightTextureLock.withLock { rayMarchPresetHeightTexture }
         let computeDispatch = rayMarchPresetComputeDispatchLock.withLock { rayMarchPresetComputeDispatch }
 
@@ -167,7 +164,6 @@ extension RenderPipeline {
             iblManager: ibl,
             postProcessChain: chainForBloom,
             presetFragmentBuffer3: presetBuf3,
-            presetFragmentBuffer4: presetBuf4,
             presetHeightTexture: presetHeightTex
         )
 

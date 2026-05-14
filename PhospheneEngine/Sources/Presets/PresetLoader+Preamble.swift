@@ -321,26 +321,6 @@ extension PresetLoader {
             float barCounter;                   // LM.3.2 — increments on f.barPhase01 wrap (or every 4 bass beats)
         };
 
-        // ── §5.8 Stage-Rig preset-uniform state (slot 9, V.9 Session 3 / D-125) ──
-        // Byte-identical to the Swift `StageRigState` value type in
-        // `Shared/StageRigState.swift`. Bound at fragment slot 9 of BOTH the
-        // ray-march G-buffer pass and the lighting pass for every ray-march
-        // preset — presets that do not adopt §5.8 receive a zero-filled
-        // placeholder (`RayMarchPipeline.stageRigPlaceholderBuffer`) so the
-        // binding is always defined. Layout: 4 B activeLightCount + 12 B pad
-        // + 6 × 32 B lights = 208 B, 16-byte aligned. Locked by
-        // `StageRigStateLayoutTests.test_stageRigState_strideIs208`. (D-125)
-        struct StageRigLight {
-            float4 positionAndIntensity;        // xyz = world position, w = intensity
-            float4 color;                       // xyz = linear RGB, w = 0
-        };
-        struct StageRigState {
-            uint   activeLightCount;            // 0..6
-            uint   _pad0;
-            float2 _pad1;
-            StageRigLight lights[6];
-        };
-
         // ── Per-preset forward declarations ──────────────────────────────────
         // Ray march presets must define both. `stems` is bound at buffer(3) —
         // apply the D-019 warmup fallback when reading. `outMatID` is the LM.1
@@ -369,13 +349,6 @@ extension PresetLoader {
                            constant LumenPatternState& lumen);
 
         // ── G-buffer fragment (compiled per-preset with sceneSDF + sceneMaterial) ──
-        //
-        // Slot 9 (`stageRig`) carries the §5.8 stage-rig state for V.9 Session 3
-        // / D-125. The G-buffer pass does not read it directly — sceneMaterial
-        // is concerned with material properties (albedo / roughness / metallic /
-        // matID), not light sums — but the buffer must be bound at every
-        // ray-march draw so the slot-9 declaration is satisfied. Lighting-pass
-        // dispatch on matID == 2 in `raymarch_lighting_fragment` consumes it.
         fragment GBufferOutput raymarch_gbuffer_fragment(
             VertexOut               in       [[stage_in]],
             constant FeatureVector& features [[buffer(0)]],
@@ -384,7 +357,6 @@ extension PresetLoader {
             constant StemFeatures&  stems    [[buffer(3)]],
             constant SceneUniforms& scene    [[buffer(4)]],
             constant LumenPatternState& lumen [[buffer(8)]],
-            constant StageRigState& stageRig [[buffer(9)]],
             texture2d<float> noiseLQ          [[texture(4)]],
             texture2d<float> noiseHQ          [[texture(5)]],
             texture3d<float> noiseVolume      [[texture(6)]],
@@ -392,9 +364,6 @@ extension PresetLoader {
             texture2d<float> blueNoise        [[texture(8)]],
             texture2d<float> ferrofluidHeight [[texture(10)]]
         ) {
-            // Silence unused stage-rig binding warning when the G-buffer
-            // fragment does not consume slot 9 (every current preset).
-            (void)stageRig;
             GBufferOutput out;
 
             // ── Reconstruct camera ray ───────────────────────────────────────

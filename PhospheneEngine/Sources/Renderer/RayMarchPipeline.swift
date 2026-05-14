@@ -174,22 +174,6 @@ public final class RayMarchPipeline: @unchecked Sendable {
     /// zero-filled state is never read.
     let lumenPlaceholderBuffer: MTLBuffer
 
-    // MARK: - Slot 9 Placeholder Buffer (V.9 Session 3 / D-125)
-
-    /// Zero-filled placeholder buffer for fragment slot 9 — bound for ray-march
-    /// presets that do not adopt the `SHADER_CRAFT.md §5.8` stage-rig recipe
-    /// (i.e. every preset other than Ferrofluid Ocean V.9 at first-consumer
-    /// time). Sized to `StageRigState` (208 bytes per D-125(c)). The preamble's
-    /// `raymarch_gbuffer_fragment` and `RayMarch.metal`'s
-    /// `raymarch_lighting_fragment` both declare slot 9 via
-    /// `constant StageRigState&` and Metal validation requires every declared
-    /// buffer to be bound at draw time.
-    ///
-    /// Zero-filled means `activeLightCount == 0`, so the `matID == 2` loop in
-    /// the lighting pass executes zero iterations — non-stage-rig presets are
-    /// completely unaffected by slot 9's presence.
-    let stageRigPlaceholderBuffer: MTLBuffer
-
     // MARK: - Slot 10 Placeholder Texture (V.9 Session 4.5b)
 
     /// Zero-filled 1×1 `r16Float` texture bound at fragment texture slot 10
@@ -297,22 +281,6 @@ public final class RayMarchPipeline: @unchecked Sendable {
         memset(placeholder.contents(), 0, 376)
         self.lumenPlaceholderBuffer = placeholder
 
-        // Allocate the slot-9 zero placeholder once. Sized to match Swift
-        // `StageRigState.stride` (V.9 Session 3 / D-125: 208 bytes — 16-byte
-        // header + 6 × 32-byte StageRigLight). Same rationale as the slot-8
-        // placeholder: a static literal keeps the engine free of a
-        // Shared-module size lookup at init. The
-        // `StageRigStateLayoutTests.test_stageRigState_strideIs208` regression
-        // test traps if the value drifts.
-        guard let stageRigPH = context.device.makeBuffer(
-            length: 208,
-            options: .storageModeShared
-        ) else {
-            throw RayMarchPipelineError.bufferAllocationFailed
-        }
-        memset(stageRigPH.contents(), 0, 208)
-        self.stageRigPlaceholderBuffer = stageRigPH
-
         // Allocate the 1×1 r16Float zero-filled height-texture placeholder for
         // slot 10. Non-Ferrofluid ray-march presets receive this in place of a
         // real baked texture; a sample returns 0 so `fo_ferrofluid_field_sampled`
@@ -397,12 +365,6 @@ public final class RayMarchPipeline: @unchecked Sendable {
     ///     When nil the zero-filled `lumenPlaceholderBuffer` is bound — required because the
     ///     preamble's `raymarch_gbuffer_fragment` declares `[[buffer(8)]]` on every ray-march preset.
     ///     First consumer: Lumen Mosaic's `LumenPatternState`. (D-LM-buffer-slot-8)
-    ///   - presetFragmentBuffer4: Optional per-preset CPU-driven state buffer bound at fragment slot 9
-    ///     of BOTH the G-buffer and lighting passes. When nil the zero-filled
-    ///     `stageRigPlaceholderBuffer` is bound — required because the preamble's
-    ///     `raymarch_gbuffer_fragment` and `RayMarch.metal`'s `raymarch_lighting_fragment` both
-    ///     declare `[[buffer(9)]]` on every ray-march preset. First consumer: Ferrofluid Ocean V.9's
-    ///     `FerrofluidStageRig` driving the §5.8 stage rig per D-125 (matID == 2 lighting dispatch).
     ///   - presetHeightTexture: Optional per-preset baked height texture bound at fragment texture
     ///     slot 10 of the G-buffer pass. When nil the zero-filled `ferrofluidHeightPlaceholderTexture`
     ///     is bound — required because the preamble declares `texture2d<float> ferrofluidHeight
@@ -420,7 +382,6 @@ public final class RayMarchPipeline: @unchecked Sendable {
         iblManager: IBLManager? = nil,
         postProcessChain: PostProcessChain? = nil,
         presetFragmentBuffer3: MTLBuffer? = nil,
-        presetFragmentBuffer4: MTLBuffer? = nil,
         presetHeightTexture: MTLTexture? = nil
     ) {
         guard gbuffer0 != nil, gbuffer1 != nil, gbuffer2 != nil, litTexture != nil else {
@@ -437,7 +398,6 @@ public final class RayMarchPipeline: @unchecked Sendable {
             stemFeatures: stemFeatures,
             noiseTextures: noiseTextures,
             presetFragmentBuffer3: presetFragmentBuffer3,
-            presetFragmentBuffer4: presetFragmentBuffer4,
             presetHeightTexture: presetHeightTexture
         )
 
@@ -454,8 +414,7 @@ public final class RayMarchPipeline: @unchecked Sendable {
             features: &features,
             noiseTextures: noiseTextures,
             iblManager: iblManager,
-            presetFragmentBuffer3: presetFragmentBuffer3,
-            presetFragmentBuffer4: presetFragmentBuffer4
+            presetFragmentBuffer3: presetFragmentBuffer3
         )
 
         // Optional SSGI pass (Increment 3.17): indirect diffuse between lighting and composite.

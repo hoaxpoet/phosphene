@@ -141,20 +141,6 @@ extension RenderPipeline {
         directPresetFragmentBuffer3Lock.withLock { directPresetFragmentBuffer3 = buffer }
     }
 
-    /// Attach a quaternary per-preset fragment buffer (bound at buffer(9)).
-    ///
-    /// Bound at fragment slot 9 of BOTH the ray-march G-buffer pass and the
-    /// ray-march lighting pass. Non-stage-rig presets receive the zero-filled
-    /// `RayMarchPipeline.stageRigPlaceholderBuffer` so the slot 9 declaration
-    /// is always satisfied — Metal validation requires every declared buffer
-    /// to be bound at draw time. First consumer: Ferrofluid Ocean V.9
-    /// (carrier struct: `StageRigState` in `Shared/StageRigState.swift`,
-    /// driven by `FerrofluidStageRig`). Pass nil to detach. Thread-safe —
-    /// can be called from any queue. (V.9 Session 3 / D-125)
-    public func setDirectPresetFragmentBuffer4(_ buffer: MTLBuffer?) {
-        directPresetFragmentBuffer4Lock.withLock { directPresetFragmentBuffer4 = buffer }
-    }
-
     /// Attach a per-preset baked height field for ray-march presets (bound at fragment texture(10)).
     ///
     /// Bound at fragment texture slot 10 of the ray-march G-buffer pass.

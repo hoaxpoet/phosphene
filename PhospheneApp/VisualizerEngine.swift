@@ -134,14 +134,6 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// `applyPreset`. (LM.2 / D-LM-buffer-slot-8.)
     var lumenPatternEngine: LumenPatternEngine?
 
-    /// Ferrofluid Ocean §5.8 stage-rig (V.9 Session 3) — allocated when that
-    /// preset is active, nil otherwise. Owns the 208-byte UMA buffer bound at
-    /// fragment slot 9 of the ray-march G-buffer + lighting passes via
-    /// `setDirectPresetFragmentBuffer4` in `applyPreset`. Per-frame tick reads
-    /// (FeatureVector, StemFeatures) to advance orbital phase, per-light hue,
-    /// and the drums-envelope intensity. (D-125 / D-125(f).)
-    var ferrofluidStageRig: FerrofluidStageRig?
-
     /// Ferrofluid Ocean particle scaffolding (V.9 Session 4.5b Phase 1) —
     /// allocated when that preset is active, nil otherwise. Owns the 2048-
     /// particle UMA buffer + 512×512 r16Float baked height texture bound at

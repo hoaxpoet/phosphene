@@ -234,12 +234,12 @@ public final class FerrofluidParticles: @unchecked Sendable {
 
     // MARK: - CPU-side smoothing state (Phase 2c)
 
-    /// Smoothed `stems.drumsEnergyDev` envelope (150 ms τ — same recipe as
-    /// `FerrofluidStageRig`). Drives the drums shock-impulse force without
-    /// edge-triggering, satisfying `Scripts/check_drums_beat_intensity.sh` +
-    /// Failed Approach #4 (beat onsets are never a primary motion driver).
-    /// Guarded by `lock` because the per-frame closure is captured weakly
-    /// and may be called from non-MainActor threads.
+    /// Smoothed `stems.drumsEnergyDev` envelope (150 ms τ). Drives the drums
+    /// shock-impulse force without edge-triggering, satisfying
+    /// `Scripts/check_drums_beat_intensity.sh` + Failed Approach #4 (beat
+    /// onsets are never a primary motion driver). Guarded by `lock` because
+    /// the per-frame closure is captured weakly and may be called from
+    /// non-MainActor threads.
     private var smoothedDrumsEnergyDev: Float = 0
     private let lock = NSLock()
 

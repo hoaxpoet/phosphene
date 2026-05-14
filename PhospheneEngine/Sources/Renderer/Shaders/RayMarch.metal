@@ -302,10 +302,20 @@ static float3 rm_ferrofluidBaseSky(float3 R, constant SceneUniforms& scene) {
     return baseSky * scene.lightColor.rgb;
 }
 
-/// Ferrofluid procedural sky: base purple gradient plus aurora curtain
-/// bands driven by the §5.8 stage-rig. Per D-126 (V.9 Session 4.5 rescue),
-/// this replaces the Cook-Torrance per-light loop that matID == 2 shipped
-/// at Session 3 (Failed Approach #61: inverse-square attenuation at any
+/// Ferrofluid procedural sky.
+///
+/// **V.9 Session 4.5c (post-rig-removal): aurora bands temporarily
+/// deferred.** The §5.8 stage-rig that previously drove the aurora-band
+/// hue / intensity / orbit has been removed; this function now returns
+/// only the base purple gradient × `scene.lightColor.rgb` mood tint.
+/// Direct audio→aurora routing lands in the next commit (Session 4.5c
+/// follow-up); after that, `R` will be tested against direct audio
+/// uniforms to produce the chromatic overlay the substrate reflects.
+///
+/// **Pre-rig-removal history.** Aurora curtain bands driven by the §5.8
+/// stage-rig. Per D-126 (V.9 Session 4.5 rescue), this replaced the
+/// Cook-Torrance per-light loop that matID == 2 shipped at Session 3
+/// (Failed Approach #61: inverse-square attenuation at any
 /// reasonable physical orbit distance gave invisible beams against the IBL
 /// the mirror also reflected).
 ///
@@ -351,58 +361,13 @@ static float3 rm_ferrofluidBaseSky(float3 R, constant SceneUniforms& scene) {
 /// the §5.8 palette() output (palette phase shifted by mood-independent
 /// vocals_pitch_hz), and a double-tint would over-saturate.
 static float3 rm_ferrofluidSky(float3 R,
-                                constant StageRigState& rig,
                                 constant SceneUniforms& scene) {
-    float3 baseSky = rm_ferrofluidBaseSky(R, scene);
-
-    // Horizontal projection of R (for azimuthal localization). Cached once
-    // per pixel — independent of band index inside the loop.
-    float2 R_az      = R.xz;
-    float  R_az_len  = length(R_az);
-    // Near-zenith degeneracy: when R points nearly straight up, azimuthal
-    // direction is undefined and every band's azim alignment should read
-    // as "fully aligned" (all azimuths converge at the pole). Sentinel
-    // value drives `azim_falloff = 1` in the branch below.
-    bool   R_at_pole = R_az_len < 1e-4;
-    float2 R_az_norm = R_at_pole ? float2(0.0, 0.0) : (R_az / R_az_len);
-
-    float3 auroraSum = float3(0.0);
-    for (uint i = 0; i < rig.activeLightCount && i < 6; i++) {
-        float3 lightPos     = rig.lights[i].positionAndIntensity.xyz;
-        float  bandIntens   = rig.lights[i].positionAndIntensity.w;
-        float3 bandColor    = rig.lights[i].color.xyz;
-        // The orbit position is at altitude 6 / radius 4 (JSON defaults);
-        // length ~7.21 so the normalized direction has y ≈ 0.83 — bands
-        // sit ~33° from zenith. All 4 bands share this elevation per the
-        // single orbit altitude in the descriptor; only azimuth differs.
-        float3 bandDir      = normalize(lightPos);
-
-        // Stripe in elevation: 1.0 at R.y == bandDir.y, smooth falloff to 0
-        // at |R.y - bandDir.y| == thickness. Below-horizon (R.y < 0) and
-        // near-zenith (R.y near 1) cases naturally fade out as the diff
-        // exceeds thickness.
-        float vertFalloff   = smoothstep(kFerrofluidSkyStripeThickness,
-                                         0.0,
-                                         abs(R.y - bandDir.y));
-
-        // Azimuthal localization: dot of normalized horizontal projections.
-        // R_at_pole sentinel: at the pole every azimuth is equivalent, so
-        // emit full strength (a band visible at the pole should be visible
-        // regardless of which azimuth the pixel is "looking from").
-        float2 band_az      = bandDir.xz;
-        float  band_az_len  = max(length(band_az), 1e-6);
-        float2 band_az_norm = band_az / band_az_len;
-        float  azim_dot     = R_at_pole ? 1.0 : dot(R_az_norm, band_az_norm);
-        float  azim_falloff = smoothstep(kFerrofluidSkyBandAzimuthFloor,
-                                         kFerrofluidSkyBandAzimuthPeak,
-                                         azim_dot);
-
-        auroraSum          += bandColor * bandIntens
-                            * vertFalloff * azim_falloff
-                            * kFerrofluidSkyBandIntensityScale;
-    }
-
-    return baseSky + auroraSum;
+    // Session 4.5c (post-rig-removal): aurora bands deferred to the next
+    // commit. For now, sky reflection = base purple gradient × mood tint
+    // only. The matID == 2 lighting branch still uses this as the
+    // substrate's reflection content; without aurora the substrate reads
+    // as a uniform dim purple mirror until direct audio routing lands.
+    return rm_ferrofluidBaseSky(R, scene);
 }
 
 /// Shared "lighting tail" for matID == 0 (default Cook-Torrance) and matID == 3
@@ -566,7 +531,6 @@ fragment float4 raymarch_lighting_fragment(
     VertexOut                   in        [[stage_in]],
     constant FeatureVector&     features  [[buffer(0)]],
     constant SceneUniforms&     scene     [[buffer(4)]],
-    constant StageRigState&     stageRig  [[buffer(9)]],
     texture2d<float>            gbuf0     [[texture(0)]],   // rg16Float: depth, unused
     texture2d<float>            gbuf1     [[texture(1)]],   // rgba8Snorm: normal xyz, AO
     texture2d<float>            gbuf2     [[texture(2)]],   // rgba8Unorm: albedo, packed material
@@ -727,11 +691,10 @@ fragment float4 raymarch_lighting_fragment(
         float3 R     = reflect(-V, N);
         float  NdotV = max(dot(N, V), 0.0);
 
-        // Procedural sky + aurora bands. Audio routing flows through the
-        // stage-rig per D-125: vocals_pitch → palette phase per band,
-        // drums_energy_dev → per-band intensity envelope, arousal → orbit
-        // speed (= band-direction sweep rate).
-        float3 skyReflection = rm_ferrofluidSky(R, stageRig, scene);
+        // Procedural sky (V.9 Session 4.5c: aurora-band overlay deferred
+        // to the direct-audio routing commit; for now this returns the
+        // base purple gradient × mood-tint only).
+        float3 skyReflection = rm_ferrofluidSky(R, scene);
 
         // Thin-film Fresnel F0 at NdotV — the half-vector coincides with N
         // for a perfect mirror reflection (V mirror-reflected about N).
