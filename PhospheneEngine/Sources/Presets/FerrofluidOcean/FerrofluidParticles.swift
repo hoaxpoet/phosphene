@@ -91,16 +91,22 @@ public final class FerrofluidParticles: @unchecked Sendable {
     public static let worldSpan: Float = 20.0
 
     /// Quilez polynomial smooth-min weight. Original spec was Leitl's
-    /// `w = 0.1` default; **tuning pass 2026-05-14 dropped to 0.02** after
-    /// Matt's review of the static contact sheet flagged the smoothed-out
-    /// peaks (the V.9 prompt explicitly permitted this revisit: "Revisit
-    /// only if rendering shows peaks merging or staying too discrete").
-    /// `0.02` produces a much sharper smooth-min transition between
-    /// adjacent particles — closer to Phase A's `voronoi_smooth k = 32`
-    /// effective smoothness band of ~0.008 world units. Phase 2 motion
-    /// may require bumping back up to avoid pop-in artifacts as particles
-    /// move past each other; revisit at Phase 2 STOP gate.
-    public static let smoothMinW: Float = 0.02
+    /// `w = 0.1` default; **tuning pass 2026-05-14 dropped to 0.02**, then
+    /// **Phase 1 round 4 dropped to 0.005** after Matt's `2026-05-14T22-37-26Z`
+    /// review flagged "no spikes like the reference images." With particles
+    /// pinned at canonical voronoi positions there's no motion concern
+    /// (smooth-min only needs to provide C¹ continuity for the bake's
+    /// distance interpolation; tighter `w` produces sharper valley
+    /// transitions between adjacent particles, pulling midpoint heights
+    /// closer to the raw `min()` of cone-base-radius distance fields).
+    /// At particle spacing 0.25 wu / spike radius 0.15 wu, midpoint
+    /// distance moves from ~0.120 (w=0.02) to ~0.124 (w=0.005) — close
+    /// to the raw min of 0.125 — which combined with the squared height
+    /// profile (`fo_ferrofluid_field_sampled`'s `height² ` curve, also
+    /// added in round 4) drives valley heights to ~3% of peak. Phase 2
+    /// motion is currently off; if motion returns, this may need to bump
+    /// back up to avoid pop-in artifacts.
+    public static let smoothMinW: Float = 0.005
 
     /// Spike base radius in world units. The bake produces a tent-shaped
     /// peak at each particle that falls to zero at `spikeBaseRadius`.

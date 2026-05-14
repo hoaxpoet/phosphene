@@ -63,8 +63,8 @@ final class FerrofluidParticlesTests: XCTestCase {
                        "World origin X locked")
         XCTAssertEqual(FerrofluidParticles.worldOriginZ, -8.0,
                        "World origin Z locked")
-        XCTAssertEqual(FerrofluidParticles.smoothMinW, 0.02, accuracy: 1e-6,
-                       "Polynomial smooth-min weight tuned to 0.02 (2026-05-14) for sharp transitions; matches Phase A k=32 effective smoothness band")
+        XCTAssertEqual(FerrofluidParticles.smoothMinW, 0.005, accuracy: 1e-6,
+                       "Polynomial smooth-min weight tightened to 0.005 (V.9 Session 4.5c Phase 1 round 4, 2026-05-14) for near-min distance interpolation; combined with the squared height profile in `ferrofluid_height_bake`, valley heights pull to ~3% of peak per the discrete-spike target in `04_specular_razor_highlights.jpg`. Particles are pinned in this round so no motion-driven pop-in concern from tight `w`.")
         XCTAssertEqual(FerrofluidParticles.spikeBaseRadius, 0.15, accuracy: 1e-6,
                        "Spike tent base radius tuned to 0.15 world units (2026-05-14) — matches Phase A voronoi_smooth(scale=4) kSpikeRadius=0.6 scaled-space → 0.15 world")
         XCTAssertEqual(FerrofluidParticles.apexSmoothK, 0.03, accuracy: 1e-6,
