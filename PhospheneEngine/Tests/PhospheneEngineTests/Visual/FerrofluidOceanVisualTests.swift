@@ -224,7 +224,18 @@ final class FerrofluidOceanVisualTests: XCTestCase {
     /// fog tail (also fed by `rm_ferrofluidBaseSky`) carries the tint at depth
     /// as well, giving the strongest signal.
     func testFerrofluidOceanMoodTintAtmosphereShifts() throws {
+        // V.9 Session 4.5c Phase 1 round 6 (Leitl port): matID == 2 no longer
+        // uses `rm_ferrofluidSky` / `rm_ferrofluidBaseSky`. The dominant
+        // scene-color contribution is the static IBL prefiltered cubemap
+        // sampled at the reflection vector — `scene.lightColor.rgb` is not
+        // multiplied anywhere in the new matID == 2 path. D-022 mood-tint
+        // propagation for Ferrofluid Ocean is deferred to Step 4 (aurora
+        // overlay returns as a supplementary layer). Until then this gate is
+        // intentionally obsolete; body preserved for re-activation.
+        throw XCTSkip("Obsolete under V.9 Session 4.5c Phase 1 Leitl port; re-activates in Step 4 when aurora overlay returns")
+        // swiftlint:disable:next unreachable_code
         let outDir = try makeOutputDirectory(suffix: "mood_tint")
+        // swiftlint:disable:next unreachable_code
         let preset = try requirePreset()
 
         // The production render loop calls RenderPipeline.applyAudioModulation
@@ -294,7 +305,14 @@ final class FerrofluidOceanVisualTests: XCTestCase {
     /// disabled" sentinel in PresetDescriptor+SceneUniforms) so any visible
     /// cool-vs-warm shift here MUST come from the sky-base multiply.
     func testFerrofluidOceanMoodTintSkyBaseShift() throws {
+        // V.9 Session 4.5c Phase 1 round 6 (Leitl port): matID == 2 doesn't
+        // read `rm_ferrofluidBaseSky` — the env-map ambient layer dominates
+        // and is not mood-tinted. Same skip rationale as
+        // testFerrofluidOceanMoodTintAtmosphereShifts above.
+        throw XCTSkip("Obsolete under V.9 Session 4.5c Phase 1 Leitl port; re-activates in Step 4 when aurora overlay returns")
+        // swiftlint:disable:next unreachable_code
         let outDir = try makeOutputDirectory(suffix: "mood_tint_sky_base")
+        // swiftlint:disable:next unreachable_code
         let preset = try requirePreset()
 
         var coolFeatures = fixtureSilence()
