@@ -23,7 +23,7 @@ private func makePlan(trackCount: Int = 2, duration: TimeInterval = 180) throws 
 
 private func makeTestPreset(name: String = "TestPreset") throws -> PresetDescriptor {
     let json = """
-    {"name":"\(name)","family":"abstract","motion_intensity":0.5,
+    {"name":"\(name)","family":"hypnotic","motion_intensity":0.5,
      "color_temperature_range":[0.3,0.7],"fatigue_risk":"medium",
      "complexity_cost":{"tier1":1.0,"tier2":1.0},
      "transition_affordances":["crossfade"]}

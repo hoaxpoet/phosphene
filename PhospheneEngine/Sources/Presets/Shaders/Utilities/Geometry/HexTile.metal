@@ -70,10 +70,11 @@ static inline HexTileResult hex_tile_uv(float2 uv, float tileScale, float blendW
     // Scale UV into hex grid space.
     float2 scaledUV = uv * tileScale;
 
-    // Hex grid basis vectors (equilateral triangle lattice).
-    // Two axes at 0° and 60° produce the hex cell centres.
-    const float2 e1 = float2(1.0, 0.0);
-    const float2 e2 = float2(0.5, 0.866025);   // cos(60°), sin(60°)
+    // Hex grid basis vectors (equilateral triangle lattice): e1 = (1, 0) and
+    // e2 = (0.5, sin 60° = 0.866) — two axes at 0° and 60° produce the hex
+    // cell centres. The skew below projects uv into that basis directly;
+    // explicit `e1` / `e2` constants are redundant (and `-Werror` in Xcode's
+    // Metal stage trips on the unused declarations).
 
     // Project UV into skewed coordinates.
     float s = scaledUV.x - scaledUV.y * 0.577350;  // tan(30°) = 1/√3
