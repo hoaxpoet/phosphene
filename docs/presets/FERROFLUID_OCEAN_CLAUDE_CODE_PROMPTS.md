@@ -1083,11 +1083,18 @@ Apply Leitl's `almostIdentity(res, 0.1, 0.04)` apex smoothing. Output = final sp
 
 Three phases with explicit STOP gates between them, per the Authoring Discipline rule:
 
-**Phase 1 — Scaffolding (no audio yet).** Build the particle buffer + height-map bake compute kernel + sceneSDF read + render-pipeline wiring. Particles at FIXED positions (regular grid) for testing — no SPH physics yet. Acceptance: render produces a hex-pack pyramid field equivalent to the current Phase A output. Side-by-side with current main branch should show no regression. STOP and surface to Matt after Phase 1 — if scaffolding produces structurally different output than the smooth-Voronoi current, the integration has a problem before audio gets added.
+**Phase 1 — Scaffolding (no audio yet).** Build the particle buffer + height-map bake compute kernel + sceneSDF read + render-pipeline wiring. Particles at FIXED positions (regular grid) for testing — no SPH physics yet. Acceptance: render produces a hex-pack pyramid field equivalent to the current Phase A output — scale + density as anchored in `docs/VISUAL_REFERENCES/ferrofluid_ocean/README.md`'s `01_macro_*` annotation. Side-by-side with current main branch should show no regression. STOP and surface to Matt after Phase 1 — if scaffolding produces structurally different output than the smooth-Voronoi current, the integration has a problem before audio gets added.
 
-**Phase 2 — SPH-lite physics + audio forces.** Add the per-frame particle update compute pass with pressure forces + audio routing. Acceptance: particles drift organically; bass produces peak formation; drum hits scatter particles visibly; silence has gentle baseline drift only. Side-by-side with Leitl's demo running on whistled/sung input — neighborhood-match on motion character. STOP and surface to Matt before Phase 3. If divergent from Leitl's motion character, re-scope; do not iterate on guesses (Failed Approach #64).
+**Phase 2 — SPH-lite physics + audio forces.** Add the per-frame particle update compute pass with pressure forces + audio routing. Acceptance: particles drift organically; bass produces peak formation; drum hits scatter particles visibly; silence has gentle baseline drift only. Read the README's anti-references list before tuning forces — particularly the **"Beat-driven primary motion"** anti-reference (continuous-energy primitives must drive motion; onset edges are accents only) and the **"Aurora reads as a club rig"** rule (motion must read as continuous and physically plausible, not jittery / beat-quantized). Side-by-side with Leitl's demo running on whistled/sung input — neighborhood-match on motion character. STOP and surface to Matt before Phase 3. If divergent from Leitl's motion character, re-scope; do not iterate on guesses (Failed Approach #64).
 
-**Phase 3 — Tuning + verification against references.** Match peak count / density / speed to the user-supplied still references and to Leitl's live demo. M7-prep contact sheet across the four standard fixtures + a "live music" reconstruction from a real session capture. If references match, close the increment. If structural divergence remains, STOP — particle approach may need re-scoping.
+**Phase 3 — Tuning + verification against references.** Match peak count / density / speed against:
+- The user-supplied Rosensweig stills (4 photos shared 2026-05-14)
+- The folder's curated stills, especially the README's **Mandatory traits → Detail cascade** section (macro = scale + density per `01_*`; meso = lattice-defect character per `02_*`; specular = razor highlights per `04_*`)
+- Leitl's live demo running on real audio
+
+M7-prep contact sheet across the four standard fixtures + a "live music" reconstruction from a real session capture. If references match, close the increment. If structural divergence remains, STOP — particle approach may need re-scoping.
+
+**Note on README audio-routing items this increment re-enables.** The README's Audio Routing section currently marks `other_energy_dev → rotational flow direction` as **deferred** because the post-Phase-A smooth-Voronoi geometry has no domain-warp seed to rotate. Re-introducing particle motion brings the rotational-flow audio routing back into scope — Phase 2 implements it as a contribution to particle-force direction. Update the README's deferred-items list when this routing lands.
 
 ### Failed-approach guards (must satisfy)
 
@@ -1098,6 +1105,7 @@ Three phases with explicit STOP gates between them, per the Authoring Discipline
 - Do not assert "production won't show this" without rendering at 1920×1080 (Failed Approach #64).
 - Do not negotiate away components of Leitl's reference implementation under unverified "redundancy" arguments (Failed Approach #65) — adopt the canonical SPH-lite + iterative smooth-min approach verbatim unless rendering shows the same character is achieved differently.
 - Do not present engineering decisions (counts, sizes, parameters) to Matt without product-level framing and recommendations (CLAUDE.md Authoring Discipline — "Decisions presented to Matt must be framed in product-level language").
+- Do not start authoring without reading `docs/VISUAL_REFERENCES/ferrofluid_ocean/README.md` cover-to-cover (Failed Approach #63), particularly: (a) the **Mandatory traits → Detail cascade** section for the target spike topology, (b) the **Anti-references** list for the documented failure modes around motion (beat-driven primary motion, club-rig strobing, decoration layers without articulated musical role), (c) the **Audio routing notes → Deferred** subsection for the routings this increment re-enables.
 
 ### Prerequisites — read in order
 
