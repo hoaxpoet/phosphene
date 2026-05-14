@@ -1,16 +1,21 @@
-// FerrofluidParamsDecoderTests — V.9 Session 4 Phase A regression gate for the
-// `ferrofluid` JSON block decode contract (D-124).
+// FerrofluidParamsDecoderTests — V.9 Session 4.5 Phase 0 regression gate for
+// the `ferrofluid` JSON block decode contract (D-124).
+//
+// Session 4 schema (5 fields driving 4 detail layers) was reduced to 2 fields
+// in Session 4.5 Phase 0 after M7 review rejected the droplet / meso warp /
+// micro-normal decoration layers (Failed Approach #62). Only the audio-
+// modulated thin-film thickness remains.
 //
 // Tests:
-//   1. Full block — every field decodes to the JSON-supplied value.
-//   2. Empty block — every field falls back to the documented default.
+//   1. Full block — both fields decode to the JSON-supplied value.
+//   2. Empty block — both fields fall back to the documented default.
 //   3. Missing block — ferrofluid property is nil.
-//   4. Partial block — only supplied fields take JSON; rest take defaults.
+//   4. Partial block — only supplied field takes JSON; the other takes default.
 //   5. Negative values — warn-and-floor to the documented default.
 //   6. Codable round-trip — synthesised encoder matches custom decoder.
 //   7. On-disk back-fill — FerrofluidOcean.json's ferrofluid block decodes
-//      with the expected V.9 Session 4 spec values, proving the schema is in
-//      place on the production preset.
+//      with the expected V.9 Session 4.5 spec values, proving the schema is
+//      in place on the production preset.
 
 import Testing
 import Foundation
@@ -26,9 +31,6 @@ private enum FerrofluidDecoderTestError: Error { case noMetalDevice }
     {
         "name": "FerroFull",
         "ferrofluid": {
-            "meso_strength": 1.25,
-            "droplet_strength": 0.75,
-            "micro_normal_amplitude": 0.03,
             "thin_film_thickness_baseline_nm": 210,
             "thin_film_arousal_range_nm": 35
         }
@@ -36,9 +38,6 @@ private enum FerrofluidDecoderTestError: Error { case noMetalDevice }
     """
     let descriptor = try JSONDecoder().decode(PresetDescriptor.self, from: Data(json.utf8))
     let params = try #require(descriptor.ferrofluid)
-    #expect(params.mesoStrength == 1.25)
-    #expect(params.dropletStrength == 0.75)
-    #expect(params.microNormalAmplitude == 0.03)
     #expect(params.thinFilmThicknessBaselineNm == 210)
     #expect(params.thinFilmArousalRangeNm == 35)
 }
@@ -51,9 +50,6 @@ private enum FerrofluidDecoderTestError: Error { case noMetalDevice }
     """
     let descriptor = try JSONDecoder().decode(PresetDescriptor.self, from: Data(json.utf8))
     let params = try #require(descriptor.ferrofluid)
-    #expect(params.mesoStrength == 1.0)
-    #expect(params.dropletStrength == 1.0)
-    #expect(params.microNormalAmplitude == 0.02)
     #expect(params.thinFilmThicknessBaselineNm == 220)
     #expect(params.thinFilmArousalRangeNm == 40)
 }
@@ -73,15 +69,11 @@ private enum FerrofluidDecoderTestError: Error { case noMetalDevice }
 
 @Test func ferrofluidParams_partialBlock_appliesDefaults() throws {
     let json = """
-    { "name": "FerroPartial", "ferrofluid": { "meso_strength": 0.5, "thin_film_thickness_baseline_nm": 200 } }
+    { "name": "FerroPartial", "ferrofluid": { "thin_film_thickness_baseline_nm": 200 } }
     """
     let descriptor = try JSONDecoder().decode(PresetDescriptor.self, from: Data(json.utf8))
     let params = try #require(descriptor.ferrofluid)
-    #expect(params.mesoStrength == 0.5, "supplied value preserved")
     #expect(params.thinFilmThicknessBaselineNm == 200, "supplied value preserved")
-    // Defaults for fields not supplied.
-    #expect(params.dropletStrength == 1.0, "default droplet_strength")
-    #expect(params.microNormalAmplitude == 0.02, "default micro_normal_amplitude")
     #expect(params.thinFilmArousalRangeNm == 40, "default thin_film_arousal_range_nm")
 }
 
@@ -92,9 +84,6 @@ private enum FerrofluidDecoderTestError: Error { case noMetalDevice }
     {
         "name": "FerroNegative",
         "ferrofluid": {
-            "meso_strength": -0.5,
-            "droplet_strength": -1.0,
-            "micro_normal_amplitude": -0.01,
             "thin_film_thickness_baseline_nm": -100,
             "thin_film_arousal_range_nm": -20
         }
@@ -102,13 +91,6 @@ private enum FerrofluidDecoderTestError: Error { case noMetalDevice }
     """
     let descriptor = try JSONDecoder().decode(PresetDescriptor.self, from: Data(json.utf8))
     let params = try #require(descriptor.ferrofluid)
-    // Every negative input must fall back to the spec default.
-    #expect(params.mesoStrength == 1.0,
-            "negative meso_strength should floor to default 1.0")
-    #expect(params.dropletStrength == 1.0,
-            "negative droplet_strength should floor to default 1.0")
-    #expect(params.microNormalAmplitude == 0.02,
-            "negative micro_normal_amplitude should floor to default 0.02")
     #expect(params.thinFilmThicknessBaselineNm == 220,
             "negative thin_film_thickness_baseline_nm should floor to default 220")
     #expect(params.thinFilmArousalRangeNm == 40,
@@ -122,9 +104,6 @@ private enum FerrofluidDecoderTestError: Error { case noMetalDevice }
     {
         "name": "FerroRoundTrip",
         "ferrofluid": {
-            "meso_strength": 0.85,
-            "droplet_strength": 1.15,
-            "micro_normal_amplitude": 0.025,
             "thin_film_thickness_baseline_nm": 230,
             "thin_film_arousal_range_nm": 45
         }
@@ -139,9 +118,6 @@ private enum FerrofluidDecoderTestError: Error { case noMetalDevice }
     let pA = try #require(first.ferrofluid)
     let pB = try #require(second.ferrofluid)
     #expect(pA == pB, "Codable round-trip must preserve all FerrofluidParams fields")
-    #expect(pB.mesoStrength == 0.85)
-    #expect(pB.dropletStrength == 1.15)
-    #expect(pB.microNormalAmplitude == 0.025)
     #expect(pB.thinFilmThicknessBaselineNm == 230)
     #expect(pB.thinFilmArousalRangeNm == 45)
 }
@@ -155,14 +131,11 @@ private enum FerrofluidDecoderTestError: Error { case noMetalDevice }
     let loader = PresetLoader(device: device, pixelFormat: .bgra8Unorm_srgb)
     let preset = try #require(
         loader.presets.first { $0.descriptor.name == "Ferrofluid Ocean" },
-        "Ferrofluid Ocean preset must exist for V.9 Session 4 Phase A back-fill check"
+        "Ferrofluid Ocean preset must exist for V.9 Session 4.5 Phase 0 back-fill check"
     )
     let params = try #require(preset.descriptor.ferrofluid,
-                              "Ferrofluid Ocean's JSON must carry the V.9 Session 4 ferrofluid block")
-    // V.9 Session 4 spec defaults — production preset uses the documented baseline.
-    #expect(params.mesoStrength == 1.0)
-    #expect(params.dropletStrength == 1.0)
-    #expect(params.microNormalAmplitude == 0.02)
+                              "Ferrofluid Ocean's JSON must carry the V.9 Session 4.5 ferrofluid block")
+    // V.9 Session 4.5 spec defaults — production preset uses the documented baseline.
     #expect(params.thinFilmThicknessBaselineNm == 220)
     #expect(params.thinFilmArousalRangeNm == 40)
 }
