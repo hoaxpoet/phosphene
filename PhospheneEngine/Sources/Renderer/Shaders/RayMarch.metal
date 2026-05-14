@@ -367,12 +367,19 @@ static float3 rm_ferrofluidSky(float3 R,
 
     // ── Curtain shape: vertical stripe × azimuthal soft-edge wedge ──
     // Elevation stripe sits at kCurtainElevation; thickness gives soft top
-    // and bottom edges. Azimuthal wedge covers ~120° (smoothstep edges from
-    // dot=0.0 to dot=0.5 — equivalent to ~60° each side of the wedge centre).
+    // and bottom edges. Phase 1 tuning pass (2026-05-14 post-Billie-Jean
+    // capture): tightened azimuthal wedge from full-half-sky (~300° visible
+    // when floor=0.0/peak=0.5) to localized ~145° (floor=0.30/peak=0.75)
+    // and vertical band from 0.55 → 0.35 so the curtain is a localized
+    // region of the sky rather than a uniform tinted haze across the whole
+    // substrate. The references (`04_*`) show pitch-black substrate with
+    // saturated chromatic content present only where the spike ridges
+    // catch a localized sky source — wider/brighter curtain washes the
+    // spike-lattice specular catches into a haze.
     constexpr float kCurtainElevation       = 0.83;
-    constexpr float kCurtainStripeThickness = 0.55;
-    constexpr float kCurtainAzimuthFloor    = 0.0;
-    constexpr float kCurtainAzimuthPeak     = 0.5;
+    constexpr float kCurtainStripeThickness = 0.35;
+    constexpr float kCurtainAzimuthFloor    = 0.30;
+    constexpr float kCurtainAzimuthPeak     = 0.75;
     float vertFalloff = smoothstep(kCurtainStripeThickness, 0.0,
                                    abs(R.y - kCurtainElevation));
 
@@ -398,8 +405,18 @@ static float3 rm_ferrofluidSky(float3 R,
     // Baseline keeps the curtain visible during sustained-volume music; the
     // 150 ms-smoothed drums_energy_dev rides on top. Both terms are gated by
     // liveGate so silence collapses to base sky.
-    constexpr float kCurtainBaselineIntensity  = 0.30;
-    constexpr float kCurtainModulationIntensity = 0.50;
+    //
+    // Phase 1 tuning pass (2026-05-14 post-Billie-Jean capture): dropped from
+    // baseline 0.30 + modulation 0.50 → 0.13 + 0.22. Initial coefficients
+    // saturated the substrate's mirror reflection to a uniform purple haze at
+    // the curtain elevation and washed out the spike-ridge specular catches
+    // that are the only way ferrofluid texture can read on a near-mirror
+    // material. Empirically: peak curtain channel was ~0.80 pre-thin-film
+    // (× F0 ~0.5 = 0.40 final), enough to dominate the spikes; cut by ~2.3×
+    // it drops to ~0.35 (× F0 = 0.17) so spike ridges still catch the curtain
+    // colour but substrate troughs stay pitch-black per `04_*`.
+    constexpr float kCurtainBaselineIntensity  = 0.13;
+    constexpr float kCurtainModulationIntensity = 0.22;
     float drumsSmoothed = clamp(stems.drums_energy_dev_smoothed, 0.0, 1.5);
     float curtainIntensity = kCurtainBaselineIntensity
                            + kCurtainModulationIntensity * drumsSmoothed;
