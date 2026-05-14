@@ -28,7 +28,7 @@ Per [`SHADER_CRAFT.md §10.3`](../SHADER_CRAFT.md) (V.9 redirect) and the README
 | V.9 Session 1 | Gerstner-wave macro displacement + Rosensweig spike-field SDF + JSON sidecar v2 + clean-slate test retirement | ✅ 2026-05-13 |
 | V.9 Session 2 | Material recipe: §4.6 base + thin-film interference (`thinfilm_rgb` from `Utilities/PBR/Thin.metal`) + atmosphere fog tinted by D-022 | ✅ 2026-05-13 |
 | V.9 Session 3 | §5.8 stage-rig lighting recipe (implements D-125: slot-9 buffer + `matID == 2` dispatch + FerrofluidStageRig Swift class) | ✅ 2026-05-13 |
-| V.9 Session 4 | Audio routing (meso domain warp + micro detail noise + droplet beading + all D-026 deviation routing finalized) | ⏳ Not started |
+| V.9 Session 4 | Audio routing (meso domain warp + micro detail noise + droplet beading + all D-026 deviation routing finalized) | ✅ 2026-05-13 |
 | V.9 Session 5 | Cert review + perf capture + golden hash regeneration + Matt M7 sign-off | ⏳ Not started |
 
 ---
@@ -633,17 +633,41 @@ Per CLAUDE.md Increment Completion Protocol:
 
 ---
 
-## V.9 Session 4 — Audio routing + meso/micro detail layers (placeholder)
+## V.9 Session 4 — Audio routing + meso/micro detail layers — ✅ LANDED 2026-05-13
 
-Implements:
+### Landed work summary
 
-- Meso: `warped_fbm` domain-warp of spike-center positions per §3.4 + §10.3.2; flow velocity driven by `stems.drums_beat` rising edges. References `02_meso_lattice_defects.jpg` + `02c_meso_excited_water_specular.jpg`.
-- Micro: `fbm8(p * 15.0)` normal perturbation amplitude 0.02 per §10.3.3; hash-lattice micro-droplets at spike tips on high amplitude per `03_*` / `03b_*` (Cassie-Baxter beading).
-- Audio routing finalization: nine-route mapping documented in [`docs/VISUAL_REFERENCES/ferrofluid_ocean/README.md`](../VISUAL_REFERENCES/ferrofluid_ocean/README.md) "Audio routing notes" — all D-026 deviation primitives or D-022 mood-valence; no absolute-threshold patterns; no `*_beat` rising edges except where explicitly accent-only.
-- Triplanar texturing on non-planar spike walls per §12.2 (`triplanar_normal` from `Utilities/PBR/Triplanar.metal`).
-- Detail normals via `combine_normals_udn` from `Utilities/PBR/DetailNormals.metal`.
+Three-phase landing across nine commits (`[V.9-session-4 P0]` / `[V.9-session-4 PA]` / `[V.9-session-4 PB]` prefixes). Each phase's acceptance gates passed before the next began.
 
-Full prompt authored at Session 4 start.
+**Phase 0 — Session 3 follow-up backfill** (4 commits, ~580 lines):
+1. `StageRigDecoderTests` (11 tests): `light_count` clamp [3, 6] fallback to 4 on out-of-range (2 / 7 / -1 / 99); `palette_phase_offsets` exact length pass-through, shorter input pads evenly (j/count for the tail), longer input truncates; Codable round-trip; missing block decodes as nil; partial block applies §5.8 spec defaults.
+2. `FerrofluidStageRigMathTests` (8 tests, 5 suites): silence convergence (per-light intensity → `intensity_baseline × floor_coef = 2.0` at §5.8 defaults; smoothedDrumsDev → 0); 150 ms discrete-time smoother step response (~0.65 at 3τ, ≥ 0.995 at 10τ); pitch-shift confidence gate at 0.60 boundary (palette delta confirms log-perceptual vs fallback path); `otherEnergyDev` × 0.15 scale at endpoints; arousal-driven orbital phase advance (high arousal +1.0 → 0.20 rad/s, low arousal -1.0 → 0.05 rad/s after 60 ticks).
+3. Silence-state matID == 2 visual snapshot: `testFerrofluidOceanRendersFourFixtures` now binds a real `FerrofluidStageRig` (tick × 30 at 60 fps for envelope convergence) for the silence fixture and asserts `avgChannel > 8.0` (stricter than the blanket `lit > 100` — catches a regression where the matID == 2 branch returns `vec3(0)` at silence).
+4. `Scripts/check_drums_beat_intensity.sh` CI grep gate: bans `drumsBeat` / `drums_beat` from `Sources/Presets/FerrofluidOcean/*`, `Sources/Shared/StageRigState.swift`, `Sources/Presets/*StageRig*.swift`, and the matID == 2 branch of `RayMarch.metal`. Comment lines and `(void)` casts filtered. Manual injection verified.
+5. Decoder fixes + doc-comment touch-ups: `intensity_smoothing_tau_ms ≤ 0` warn-and-floor to §5.8 default; palette_phase_offsets pad now caches `originalCount` before append loop (prior formula gave [in0, in1, 0.5, 1.0] instead of [in0, in1, 0.5, 0.75]); `FerrofluidStageRig.reset()` doc-comment notes test-only status.
+
+**Phase A — Material detail layers** (3 commits, ~256 lines):
+1. `PresetDescriptor.FerrofluidParams` JSON schema decoder with five fields (`meso_strength` 1.0 / `droplet_strength` 1.0 / `micro_normal_amplitude` 0.02 / `thin_film_thickness_baseline_nm` 220 / `thin_film_arousal_range_nm` 40); negative-value warn-and-floor. 7 `FerrofluidParamsDecoderTests` (full / empty / missing / partial / negative / Codable round-trip / on-disk back-fill). Production `FerrofluidOcean.json` carries the block with §5.8 defaults.
+2. `FerrofluidOcean.metal` meso + droplet utilities: `fo_meso_warp(xz, strength)` (2-component 2-octave `fbm4` at scale 2.0, amplitude 0.15); `fo_ferrofluid_field` takes mesoStrength and warps Voronoi sample position before f1 evaluation; `fo_droplet_sdf(p, fieldStrength, dropletStrength, mesoStrength, swellHere)` (hemispherical SDF beads per Voronoi cell, radius 0.04 × dropletStrength, apex-fraction 0.6 × radius). `sceneSDF` composes height-field surface + droplet sphere via `op_smooth_union(surfaceSdf, dropletSdf, 0.04)`. Phase A holds strengths at hardcoded `fo_meso_strength_phaseA() = 1.0` / `fo_droplet_strength_phaseA() = 1.0`.
+3. `RayMarch.metal` matID == 2 micro-normal perturbation: three `noiseFBM` samples at scale 15 derive a tangent-space normal vector; perturbs N at amplitude 0.02 before BRDF consumption. NEVER audio-modulated (substrate's intrinsic tactile identity per §5.8 silence-state semantics). Linear-repeat sampler wraps the 256×256 noise texture for < 7 cm world-space repetition.
+
+**Phase B — Audio routing finalization** (2 commits, ~61 lines):
+1. `FerrofluidOcean.metal` meso + droplet strength formulas wired from D-026 deviation primitives: `fo_meso_strength(f) = clamp(0.5 + 1.5 × max(0, f.mid_att_rel), 0, 2)` (baseline 0.5 silence-state turbulence — never zero per §5.8 "gentle film" silence semantics); `fo_droplet_strength(f) = clamp(0.0 + 2.0 × max(0, f.bass_att_rel), 0, 2)` (0 at silence per `10_silence_calm_body.jpg`).
+2. `RayMarch.metal` matID == 2 & matID == 3 thin-film thickness modulation: `thicknessNm = 220 + clamp(features.arousal, -1, 1) × 40` → effective [180, 260] nm. Stays inside the subtle blue-to-cyan band (rainbow oil-slick fail mode > ~300 nm). Both branches updated so a future preset adopting the single-light fallback thin-film inherits the audio-modulated iridescence. D-022 mood-tinted IBL ambient + fog path through `rm_finishLightingPass` is unaffected (downstream of thickness).
+
+**Acceptance gates:** all pass. P0 (4 gates): SwiftLint strict clean on touched files; 20 new tests pass; silence-state visual snapshot fires the new avg-channel assertion (avg ≈ 12–15); grep gate exits 0 on clean tree + non-zero on manual violation injection. PA (8 gates): preset count remains 15 (Failed Approach #44 silent-drop gate passes); all 6 `FerrofluidOceanVisualTests` pass with new layers visible in contact sheet; `testFerrofluidOceanStageRigDispatchActive` still passes (matID == 2 dispatch unaffected by sceneSDF additions); `FerrofluidParamsDecoderTests` (7 new). PB (7 gates): full 1256-test engine suite passes; `check_drums_beat_intensity.sh` + `check_sample_rate_literals.sh` both clean; mood-tint atmosphere + IBL gates carry forward through thickness-modulated matID == 2 (avg diff ~32 / ~20, well above 1.0 threshold); SwiftLint strict clean on touched files.
+
+**Visual harness output paths:** `/var/folders/.../PhospheneFerrofluidOceanV9Session1/fixtures/` (Phase A + Phase B 4-fixture contact sheet); `/var/folders/.../PhospheneFerrofluidOceanV9Session1/mood_tint/` (cool/warm valence pair); `.../stage_rig_dispatch/`, `.../mood_tint_ibl/`, `.../independence/` (carry-forward from prior sessions). All renders observed in-neighbourhood of the references; pixel-match cert is Session 5's job per the §10.3.5 / Failed Approach #49 anti-tuning rule.
+
+**Audio data hierarchy compliance:** every new audio coupling uses a D-026 deviation primitive (`mid_att_rel`, `bass_att_rel`) or a smoothed scalar (`arousal`). No `*_beat` onset edges; no raw AGC arithmetic (Failed Approach #31); no impossible AGC gate combinations (Failed Approach #57). CI grep gates enforce both `drumsBeat`-in-intensity (the new gate) and the existing literal-`44100` + raw-AGC-band patterns.
+
+**Deferred to Session 5 (TODO markers + ENGINEERING_PLAN entry):** production tuning of `intensity_baseline` / `orbit_altitude` / `orbit_radius` against the references (Failed Approach #49 — tune against references, not in the abstract); golden-hash regen for Ferrofluid Ocean in `PresetRegressionTests` (currently commented `// V.9 Session 1 — regen at Session 5`); rewrite of `FerrofluidBeatSyncTests` / `FerrofluidLiveAudioTests` / `PresetAcceptanceTests` (Session 1 skip-guards still in place); M7 cert review against `04_specular_razor_highlights.jpg` + `01_macro_ferrofluid_at_swell_scale.jpg`; single-shadow-light hack if M7 reveals shadow-lift gap; perf capture on M1/M2 (Tier 1) and M3+ (Tier 2 ≤ 7.0 ms p95).
+
+### Mid-session sanity check outcome
+
+The Phase A mid-session contact sheet rendered the four standard fixtures + the silence fixture. The renders showed structural correctness: silence fixture has gentle macro swell + visible micro-detail in beam reflections (no spikes, no droplets); steady-mid fixture has visible meso turbulence + droplet beading; beat-heavy fixture has prominent spike-tip droplet activity. The Phase B contact sheet renders showed the audio routing engaged: meso turbulence amplitude scales with `mid_att_rel`, droplet strength scales with `bass_att_rel`, and the cool/warm thin-film thickness shift produced subtle iridescent breathing in beam reflections. No structural divergence from the references was observed (Failed Approach #49 trigger condition was not hit). Final pixel-match cert is Session 5's job.
+
+### Session 4 prompt (original — kept for traceability below)
 
 ---
 
