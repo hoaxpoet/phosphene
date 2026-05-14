@@ -69,22 +69,35 @@ public final class FerrofluidParticles: @unchecked Sendable {
     public static let worldOriginZ: Float = -8.0
     public static let worldSpan: Float = 20.0
 
-    /// Quilez polynomial smooth-min weight per Leitl's reference. Tuned to
-    /// match the Phase A `voronoi_smooth` `k = 32` distinct-cells character
-    /// when particles sit on a rectangular int-cell + hash-offset grid.
-    public static let smoothMinW: Float = 0.1
+    /// Quilez polynomial smooth-min weight. Original spec was Leitl's
+    /// `w = 0.1` default; **tuning pass 2026-05-14 dropped to 0.02** after
+    /// Matt's review of the static contact sheet flagged the smoothed-out
+    /// peaks (the V.9 prompt explicitly permitted this revisit: "Revisit
+    /// only if rendering shows peaks merging or staying too discrete").
+    /// `0.02` produces a much sharper smooth-min transition between
+    /// adjacent particles — closer to Phase A's `voronoi_smooth k = 32`
+    /// effective smoothness band of ~0.008 world units. Phase 2 motion
+    /// may require bumping back up to avoid pop-in artifacts as particles
+    /// move past each other; revisit at Phase 2 STOP gate.
+    public static let smoothMinW: Float = 0.02
 
     /// Spike base radius in world units. The bake produces a tent-shaped
     /// peak at each particle that falls to zero at `spikeBaseRadius`.
-    /// Sized to ~half the particle spacing so neighbour peaks touch
-    /// base-to-base ("wall-to-wall pyramid coverage" per the README's
-    /// `01_macro_*` annotation and Matt's "medium density" lock-in).
-    public static let spikeBaseRadius: Float = 0.25
+    /// **Tuning pass 2026-05-14 dropped from 0.25 → 0.15** to match Phase
+    /// A's effective world-unit peak radius (`voronoi_smooth(scale = 4.0)`
+    /// with `kSpikeRadius = 0.6` scaled-space units → 0.6 / 4 = 0.15
+    /// world units). Wider radii overlap neighbouring particles into a
+    /// continuous mound rather than discrete spikes (Matt's 2026-05-14
+    /// review: "peak tips not present, dark troughs not present").
+    public static let spikeBaseRadius: Float = 0.15
 
     /// Apex-rounding parameter for `almostIdentity` smoothing on the
-    /// soft-min output. Matches Leitl's default; rounds the cone tips so
-    /// they read as ferrofluid peaks rather than perfect cones.
-    public static let apexSmoothK: Float = 0.1
+    /// soft-min output. **Tuning pass 2026-05-14 dropped from 0.1 → 0.03**
+    /// to keep peak tips razor-sharp per `04_specular_razor_highlights.jpg`.
+    /// Leitl's 0.1 reads as ferrofluid peaks on his demo scale; at
+    /// Phosphene's larger world patch the same 0.1 rounded apexes that
+    /// should be near-conical for sharp specular catches.
+    public static let apexSmoothK: Float = 0.03
 
     // MARK: - GPU resources
 
