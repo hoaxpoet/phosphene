@@ -79,6 +79,41 @@ static inline VoronoiResult voronoi_f1f2(float2 p, float scale) {
     return r;
 }
 
+// ─── 2D Smooth Voronoi ────────────────────────────────────────────────────────
+
+/// Smooth Voronoi (Inigo Quilez): soft-min of distances to neighbor cell
+/// centres using exponential blending. Replaces the hard `min()` of regular
+/// Voronoi with a weighted sum so the output is C¹-continuous across cell
+/// boundaries. Useful for height fields and other geometry where the
+/// regular Voronoi's discontinuous gradient at cell boundaries causes
+/// shading artifacts (sharp normal flips, aliased crease lines).
+///
+/// Formula: `-(1/k) × log₂(Σ exp₂(-k × dᵢ))` over the 9 neighbor cells.
+/// As k → ∞ the function approaches regular Voronoi (sharp); as k → 0 it
+/// approaches the unweighted mean distance (smooth blob field). Quilez's
+/// reference uses k = 32 for visible cells with smooth boundaries.
+///
+/// Returns the smoothed distance in scaled-space units (same convention
+/// as `voronoi_f1f2.f1`). Divide by `scale` to convert to world space.
+///
+/// Reference: https://iquilezles.org/articles/smoothvoronoi/
+static inline float voronoi_smooth(float2 p, float scale, float k) {
+    float2 sp = p * scale;
+    float2 i  = floor(sp);
+    float2 f  = fract(sp);
+    float res = 0.0;
+    for (int dy = -1; dy <= 1; dy++) {
+        for (int dx = -1; dx <= 1; dx++) {
+            int2   cell   = int2(i) + int2(dx, dy);
+            float2 offset = voronoi_cell_offset(cell);
+            float2 r_vec  = float2(dx, dy) + offset - f;
+            float  d      = length(r_vec);
+            res += exp2(-k * d);
+        }
+    }
+    return -(1.0 / k) * log2(res);
+}
+
 // ─── 3D Voronoi ──────────────────────────────────────────────────────────────
 
 /// 3D Voronoi F1 distance only (cheaper than F1+F2 in 3D due to 27-cell lookup).
