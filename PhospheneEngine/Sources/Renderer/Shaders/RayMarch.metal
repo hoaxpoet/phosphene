@@ -79,6 +79,58 @@ constexpr constant float kLumenEmissionGain = 1.0;
 /// a small fraction of the IBL irradiance to the emission output.
 constexpr constant float kLumenIBLFloor = 0.05;
 
+// MARK: - matID == 2 Ferrofluid sky tunables (V.9 Session 4.5 / D-126)
+//
+// Session 4 shipped the §5.8 stage-rig as discrete point lights with
+// inverse-square falloff. Live M7 review (2026-05-13) rejected the
+// implementation: at the spec orbit altitude/radius the inverse-square
+// attenuation gave invisible beams against the IBL the mirror also reflected
+// (Failed Approach #61). Session 4.5 Phase A replaces the GPU consumption
+// paradigm with **mirror-reflects-procedural-sky** — the substrate is a
+// near-mirror metallic that reflects a procedurally-generated sky whose base
+// gradient carries D-022 mood-tint and whose aurora bands carry the §5.8
+// stage-rig audio routing (vocals_pitch → palette, drums_energy_dev →
+// intensity, arousal → orbit speed). The §5.8 musical contract is preserved
+// at the rig boundary; only the GPU consumption changes from Cook-Torrance
+// per-light loop to procedural sky sampled at the reflection vector.
+
+/// Aurora curtain stripe thickness in `R.y` units. The stripe sits at
+/// `bandDir.y` (≈ 0.83 with JSON orbit altitude 6 / radius 4) and fades to
+/// 0 when `|R.y - bandDir.y|` exceeds this value. 0.30 ≈ a 35° tall band in
+/// elevation (full extent), with a soft smoothstep top and bottom. The
+/// stripe-shape replaces the original `pow(R · bandDir, k)` falloff per the
+/// Phase A rework — circular cosine spotlights cannot produce the
+/// elongated curtain geometry the reference (`08_*`) shows, regardless of
+/// exponent tuning. Failed Approach #61 specifically warns against the
+/// "point-source / pillar reflection" reading; anisotropic falloff
+/// (`vertFalloff × azim_falloff`) avoids it structurally.
+constexpr constant float kFerrofluidSkyStripeThickness = 0.30;
+
+/// Azimuthal falloff edges. `smoothstep(floor, peak, R_az · band_az)` where
+/// the dots are normalized horizontal-projection unit vectors. Each band
+/// covers azim_dot ∈ [floor, peak] with smooth ramp; at full peak it's
+/// indistinguishable from being directly under the band's azimuth, and at
+/// floor it fades to zero contribution. With 4 bands at 90° spacing
+/// (JSON `light_count = 4`), `floor = -0.3` (≈ 107°) and `peak = 0.7` (≈
+/// 46°) give adjacent bands smooth overlap zones where colors blend,
+/// preventing both "hard band edges" and "muddy color summation across the
+/// whole sky".
+constexpr constant float kFerrofluidSkyBandAzimuthFloor = -0.3;
+constexpr constant float kFerrofluidSkyBandAzimuthPeak  =  0.7;
+
+/// Per-band intensity scale. The §5.8 rig outputs per-light intensities in
+/// the [2.0, 5.0] range at the JSON defaults (baseline 5.0 × (floor 0.4 +
+/// swing 0.6 × smoothedDrumsDev ∈ [0, 1])). The sky composition is
+/// `base + Σ (bandColor × bandIntensity × vertFalloff × azim_falloff × scale)`.
+/// 0.50 sizes per-band peak contribution at production intensity so aurora
+/// is the visible hero subject per `08_*`: peak per-channel band
+/// contribution ≈ `1 × 2.3 × 1 × 1 × 0.50 = 1.15` at production steady-mid,
+/// × thin-film F0 (~0.5 avg) = 0.575, ACES → sRGB → ~165/255 in 8-bit (very
+/// visible). The dispatch test (intensity_baseline 200) saturates as
+/// expected — the harness only checks that an active rig produces
+/// measurable diff vs placeholder.
+constexpr constant float kFerrofluidSkyBandIntensityScale = 0.50;
+
 // MARK: - Helpers
 
 /// Reconstruct perspective ray direction for the given screen UV.
@@ -219,6 +271,138 @@ static float3 rm_skyColor(float3 rayDir) {
     float3 horizon = float3(0.85, 0.90, 1.0);
     float3 zenith  = float3(0.10, 0.30, 0.8);
     return mix(horizon, zenith, t);
+}
+
+/// Ferrofluid base sky: dark purple-to-near-black gradient anchored on
+/// `07_atmosphere_dark_purple_fog.jpg`. Three-stop blend driven by R.y:
+///   R.y = -1 (looking straight down):  near-black with subtle violet
+///   R.y =  0 (horizon):                dim warm-purple
+///   R.y = +1 (zenith):                 darker cool-purple
+/// Most reflection rays off the ferrofluid hit R.y ≥ 0 (surface points up
+/// because gravity), so the upper hemisphere dominates the visible
+/// appearance. The below-horizon stop carries darkening on steep spike
+/// facets where R can dip below the horizon.
+///
+/// The `scene.lightColor.rgb` multiply carries the D-022 mood-tint through
+/// the entire reflected sky — cool valence biases the substrate toward
+/// blue-purple, warm toward magenta/amber. Anchors the
+/// `testFerrofluidOceanMoodTintSkyBaseShift` regression gate.
+static float3 rm_ferrofluidBaseSky(float3 R, constant SceneUniforms& scene) {
+    // Phase A rework (2026-05-13): values bumped ~30% from the previous
+    // 0.10/0.05/0.14 horizon — the dim aurora-curtain rework leaves the
+    // base sky carrying more of the visible substrate color, so it needs
+    // enough brightness to read as "dark purple atmosphere" rather than
+    // "near-black void" while staying inside the `07_atmosphere_dark_purple_fog.jpg`
+    // value range (the reference is dark but visibly purple, not black).
+    constexpr float3 lowSky  = float3(0.006, 0.003, 0.010);  // below-horizon near-black
+    constexpr float3 midSky  = float3(0.13,  0.07,  0.18);   // horizon dim warm-purple
+    constexpr float3 highSky = float3(0.05,  0.035, 0.10);   // zenith darker cool-purple
+    float3 baseSky = mix(lowSky, midSky, smoothstep(-1.0, 0.0, R.y));
+    baseSky = mix(baseSky, highSky, smoothstep(0.0, 1.0, R.y));
+    return baseSky * scene.lightColor.rgb;
+}
+
+/// Ferrofluid procedural sky: base purple gradient plus aurora curtain
+/// bands driven by the §5.8 stage-rig. Per D-126 (V.9 Session 4.5 rescue),
+/// this replaces the Cook-Torrance per-light loop that matID == 2 shipped
+/// at Session 3 (Failed Approach #61: inverse-square attenuation at any
+/// reasonable physical orbit distance gave invisible beams against the IBL
+/// the mirror also reflected).
+///
+/// **Phase A rework (2026-05-13 follow-up to first side-by-side):** the
+/// initial Phase A implementation used `pow(R · bandDir, k)` for per-band
+/// falloff. That formulation is **rotationally symmetric** around `bandDir`
+/// — every band is necessarily a circular blob, regardless of exponent.
+/// The reference `08_lighting_aurora_over_dark_water.jpg` shows
+/// **elongated curtain shapes** (long-in-azimuth, narrow-in-elevation),
+/// which a single dot-product falloff cannot produce. The rework decomposes
+/// `R` against the band into two independent axes:
+///
+///   1. Vertical (elevation): `vertFalloff = smoothstep(thickness, 0, |R.y - bandDir.y|)`
+///      — a stripe at the band's elevation with soft top and bottom edges.
+///      All 4 bands sit at the same elevation (bandDir.y ≈ 0.83 because all
+///      lights share the JSON orbit altitude / radius), so the rendered
+///      result is a ring of color at ~33° from zenith.
+///   2. Azimuthal: `azim_falloff = smoothstep(floor, peak, R_az · band_az)`
+///      where the dots are normalized horizontal-projection unit vectors.
+///      Localizes each band to its azimuth direction; as `orbitPhase`
+///      advances on the CPU side the bands sweep azimuthally around the
+///      sky while staying at the same elevation. Reference-like "moving
+///      colored curtains overhead."
+///
+/// Multi-elevation bands (curtains at different latitudes per the
+/// reference's branching aurora) would require per-light orbit altitudes —
+/// out of scope for the rescue. Single-elevation ring is the "neighborhood"
+/// simplification.
+///
+/// Spec signature (per Session 4.5 prompt) includes `constant FeatureVector& f`
+/// and `constant StemFeatures& stems`. The current body consumes only the
+/// rig — the rig itself already encapsulates the audio→palette/intensity/
+/// orbit-speed contract per D-125 (FerrofluidStageRig advances every frame
+/// from features + stems and writes the slot-9 buffer). Future enhancements
+/// wanting direct stem/feature access at sky-sample time (e.g. time-driven
+/// base-sky modulation) will need to (a) bind stems to the lighting
+/// fragment and (b) extend this signature. Skipping the unused params keeps
+/// the engine wiring minimal under the rescue.
+///
+/// Aurora bands are additive on top of the base sky; the base-sky
+/// `scene.lightColor.rgb` multiply propagates D-022 mood tint. Aurora band
+/// colors are NOT re-multiplied by lightColor because they already carry
+/// the §5.8 palette() output (palette phase shifted by mood-independent
+/// vocals_pitch_hz), and a double-tint would over-saturate.
+static float3 rm_ferrofluidSky(float3 R,
+                                constant StageRigState& rig,
+                                constant SceneUniforms& scene) {
+    float3 baseSky = rm_ferrofluidBaseSky(R, scene);
+
+    // Horizontal projection of R (for azimuthal localization). Cached once
+    // per pixel — independent of band index inside the loop.
+    float2 R_az      = R.xz;
+    float  R_az_len  = length(R_az);
+    // Near-zenith degeneracy: when R points nearly straight up, azimuthal
+    // direction is undefined and every band's azim alignment should read
+    // as "fully aligned" (all azimuths converge at the pole). Sentinel
+    // value drives `azim_falloff = 1` in the branch below.
+    bool   R_at_pole = R_az_len < 1e-4;
+    float2 R_az_norm = R_at_pole ? float2(0.0, 0.0) : (R_az / R_az_len);
+
+    float3 auroraSum = float3(0.0);
+    for (uint i = 0; i < rig.activeLightCount && i < 6; i++) {
+        float3 lightPos     = rig.lights[i].positionAndIntensity.xyz;
+        float  bandIntens   = rig.lights[i].positionAndIntensity.w;
+        float3 bandColor    = rig.lights[i].color.xyz;
+        // The orbit position is at altitude 6 / radius 4 (JSON defaults);
+        // length ~7.21 so the normalized direction has y ≈ 0.83 — bands
+        // sit ~33° from zenith. All 4 bands share this elevation per the
+        // single orbit altitude in the descriptor; only azimuth differs.
+        float3 bandDir      = normalize(lightPos);
+
+        // Stripe in elevation: 1.0 at R.y == bandDir.y, smooth falloff to 0
+        // at |R.y - bandDir.y| == thickness. Below-horizon (R.y < 0) and
+        // near-zenith (R.y near 1) cases naturally fade out as the diff
+        // exceeds thickness.
+        float vertFalloff   = smoothstep(kFerrofluidSkyStripeThickness,
+                                         0.0,
+                                         abs(R.y - bandDir.y));
+
+        // Azimuthal localization: dot of normalized horizontal projections.
+        // R_at_pole sentinel: at the pole every azimuth is equivalent, so
+        // emit full strength (a band visible at the pole should be visible
+        // regardless of which azimuth the pixel is "looking from").
+        float2 band_az      = bandDir.xz;
+        float  band_az_len  = max(length(band_az), 1e-6);
+        float2 band_az_norm = band_az / band_az_len;
+        float  azim_dot     = R_at_pole ? 1.0 : dot(R_az_norm, band_az_norm);
+        float  azim_falloff = smoothstep(kFerrofluidSkyBandAzimuthFloor,
+                                         kFerrofluidSkyBandAzimuthPeak,
+                                         azim_dot);
+
+        auroraSum          += bandColor * bandIntens
+                            * vertFalloff * azim_falloff
+                            * kFerrofluidSkyBandIntensityScale;
+    }
+
+    return baseSky + auroraSum;
 }
 
 /// Shared "lighting tail" for matID == 0 (default Cook-Torrance) and matID == 3
@@ -490,25 +674,35 @@ fragment float4 raymarch_lighting_fragment(
         return float4(albedo * kLumenEmissionGain + ambientFloor, 1.0);
     }
 
-    // ── matID == 2 — §5.8 stage-rig metallic thin-film (V.9 Session 3 / D-125) ──
+    // ── matID == 2 — Ferrofluid mirror-reflects-procedural-sky (V.9 Session 4.5 / D-126) ──
     //
-    // Ferrofluid Ocean's adopted lighting path: the same pitch-black metallic
-    // thin-film substrate as matID == 3, but lit by the multi-light orbital
-    // stage-rig (3–6 colored beams) bound at fragment slot 9. The single
-    // scene-uniform light is *ignored* on this path — beam reflections sweep
-    // diagonally across the ferrofluid surface, palette evolving from the
-    // `palette()` IQ cosine driven by `accumulated_audio_time + per-light
-    // phase + pitch_shift` (computed on the CPU in `FerrofluidStageRig`).
+    // Session 3 (D-125) shipped the §5.8 stage-rig as a Cook-Torrance per-light
+    // loop. Session 4 live M7 review (2026-05-13) rejected that paradigm —
+    // inverse-square attenuation at the JSON orbit altitude/radius (6 / 4)
+    // gave invisible beams against the IBL the mirror also reflected
+    // (Failed Approach #61). The references' mechanic for a near-mirror
+    // substrate (low roughness + metallic=1) is **mirror-reflects-sky**:
+    // chromatic content lives in what the surface REFLECTS (procedural sky
+    // + aurora bands), not in direct lights cast onto the surface.
     //
-    // Per D-125(d), screen-space shadow march is **disabled** for this branch
-    // — cost prohibitive at 4–6 lights × 12 march steps each. Revisit at
-    // Session 5 cert review if a fidelity gap demands shadow lift.
+    // Session 4.5 Phase A replaces the GPU consumption paradigm:
+    //   1. Compute the reflection vector R = reflect(-V, N).
+    //   2. Sample `rm_ferrofluidSky(R, stageRig, scene)` — base purple
+    //      gradient + aurora bands fed by the stage-rig outputs (the rig
+    //      itself still consumes vocals_pitch_hz / drums_energy_dev /
+    //      arousal per D-125; only the GPU side reinterprets the buffer).
+    //   3. Multiply by thin-film Fresnel F0 at NdotV — gives the mirror its
+    //      frequency-dependent reflectance + the subtle iridescent shift
+    //      at edges.
+    //   4. Mix toward the base sky at the zenith direction with `fogFactor`
+    //      so distant surface fades into atmospheric tint.
     //
-    // Per D-125(c), `stageRig.activeLightCount` is in [0, 6]; the loop body
-    // is empty when 0 (zero-filled placeholder), preserving the silence
-    // fallback per §5.8 silence-state semantics. The CPU-side
-    // `FerrofluidStageRig` writes `activeLightCount` from the JSON-decoded
-    // `stage_rig.light_count` (clamped [3, 6] by `PresetDescriptor.StageRig`).
+    // `rm_finishLightingPass` is bypassed: the substrate is mirror-only
+    // (metallic=1 → kd = 0, no diffuse IBL irradiance contribution) and the
+    // base sky already plays the role of the atmospheric fog tail. The
+    // §5.8 musical contract is preserved at the rig boundary; D-125's
+    // "intensity buffer + palette per beam" contract still drives the
+    // visible scene through the aurora bands.
     if (matID == 2) {
         // V.9 Session 4 Phase B: thin-film thickness modulated by arousal.
         // baseline 220 nm ± 40 nm range → effective [180 nm, 260 nm], which
@@ -517,12 +711,6 @@ fragment float4 raymarch_lighting_fragment(
         // Constants match FerrofluidOcean.json's `ferrofluid` block defaults
         // (thin_film_thickness_baseline_nm = 220, thin_film_arousal_range_nm = 40)
         // — the JSON values document intent; the MSL constants implement.
-        //
-        // Session 4.5 rescue (Phase 0): micro-normal perturbation removed
-        // (Failed Approach #62 — destroyed the substrate's mirror identity
-        // by scattering thin-film specular into wet-concrete texture). The
-        // surface returns to the G-buffer normal, restoring razor-mirror
-        // specular character per `04_specular_razor_highlights.jpg`.
         constexpr float kFerrofluidFilmThicknessBaselineNm = 220.0;
         constexpr float kFerrofluidFilmThicknessRangeNm    = 40.0;
         float arousalClamped = clamp(features.arousal, -1.0, 1.0);
@@ -532,52 +720,46 @@ fragment float4 raymarch_lighting_fragment(
         constexpr float kFerrofluidFilmIORThin     = 1.45;
         constexpr float kFerrofluidFilmIORBase     = 1.0;
 
-        float3 V         = normalize(scene.cameraOriginAndFov.xyz - worldPos);
-        float3 directLit = float3(0.0);
+        // Reflection vector. For a smooth metallic mirror at low roughness,
+        // a single sky-sample at R is a reasonable approximation of the
+        // BRDF lobe integral (roughness=0.08 keeps the lobe narrow).
+        float3 V     = normalize(scene.cameraOriginAndFov.xyz - worldPos);
+        float3 R     = reflect(-V, N);
+        float  NdotV = max(dot(N, V), 0.0);
 
-        // Per-beam Cook-Torrance accumulation. The shader-side counter is
-        // 'uint' to match the MSL struct field; the CPU clamps it to [0, 6]
-        // at write time (StageRigState.activeLightCount) so the loop is
-        // bounded by the buffer's lights[6] tuple length.
-        for (uint i = 0; i < stageRig.activeLightCount && i < 6; i++) {
-            float3 lightPos    = stageRig.lights[i].positionAndIntensity.xyz;
-            float  beamIntens  = stageRig.lights[i].positionAndIntensity.w;
-            float3 beamColor   = stageRig.lights[i].color.xyz;
+        // Procedural sky + aurora bands. Audio routing flows through the
+        // stage-rig per D-125: vocals_pitch → palette phase per band,
+        // drums_energy_dev → per-band intensity envelope, arousal → orbit
+        // speed (= band-direction sweep rate).
+        float3 skyReflection = rm_ferrofluidSky(R, stageRig, scene);
 
-            float3 L           = lightPos - worldPos;
-            float  beamDist    = length(L);
-            L                  = normalize(L);
-            float3 H           = normalize(L + V);
-            float  VdotH       = max(dot(V, H), 0.0);
-            // Inverse-square falloff with the same `+1` singularity guard the
-            // default matID == 0 path uses, so beam reflections at large
-            // surface distances decay smoothly rather than singularly.
-            float  attenuation = 1.0 / (1.0 + beamDist * beamDist);
+        // Thin-film Fresnel F0 at NdotV — the half-vector coincides with N
+        // for a perfect mirror reflection (V mirror-reflected about N).
+        // Frequency-dependent reflectance gives the subtle iridescent shift
+        // visible at grazing angles, distinguishing the substrate from a
+        // vanilla mirror.
+        float3 F0_thin = rm_thinfilm_rgb(NdotV,
+                                         kFerrofluidFilmThicknessNm,
+                                         kFerrofluidFilmIORThin,
+                                         kFerrofluidFilmIORBase);
 
-            // Thin-film F0 — same recipe as matID == 3 (silicone-oil-like
-            // 220 nm film over an opaque metallic substrate). This is what
-            // produces the iridescent shift in beam reflections that
-            // distinguishes Ferrofluid Ocean from a vanilla mirror surface.
-            float3 F0_thin     = rm_thinfilm_rgb(VdotH,
-                                                 kFerrofluidFilmThicknessNm,
-                                                 kFerrofluidFilmIORThin,
-                                                 kFerrofluidFilmIORBase);
+        float3 surfaceColor = skyReflection * F0_thin;
 
-            float3 beamContrib = rm_brdf_with_F0(N, V, L, albedo, F0_thin, roughness, metallic)
-                               * beamColor * beamIntens * attenuation;
-            directLit += beamContrib;
-        }
+        // Atmospheric depth: tint distant reflections toward the base sky
+        // at the zenith so the horizon edge fades into atmosphere. Fog
+        // color uses the base sky only (without aurora bands) because fog
+        // is a static atmospheric tint — auroras at the visible zenith
+        // would otherwise leak into the haze and over-brighten distant
+        // pixels. When fog is disabled (fogFar >= 1e5 sentinel), fogFactor
+        // ≈ 0 for all reasonable depths and the mix degenerates to
+        // surfaceColor.
+        float fogNear   = scene.sceneParamsB.x;
+        float fogFar    = scene.sceneParamsB.y;
+        float worldT    = depthNorm * farPlane;
+        float fogFactor = clamp((worldT - fogNear) / max(fogFar - fogNear, 0.001), 0.0, 1.0);
+        float3 fogColor = rm_ferrofluidBaseSky(float3(0.0, 1.0, 0.0), scene);
 
-        // D-125(d): no screen-space shadow march. The high-intensity
-        // beams + roughness ≥ 0.05 already spread the specular lobe per
-        // §5.8 "pillar reflections" failure-mode mitigation; per-light
-        // shadow march would also be cost-prohibitive at 4–6 lights.
-
-        return float4(rm_finishLightingPass(
-            directLit, N, V, albedo, roughness, metallic, ao,
-            depthNorm, farPlane, rayDir, scene,
-            iblIrradiance, iblPrefiltered, iblBRDFLUT, iblSamp
-        ), 1.0);
+        return float4(mix(surfaceColor, fogColor, fogFactor), 1.0);
     }
 
     // ── matID == 3 — metallic thin-film Cook-Torrance (V.9 Session 2) ──
