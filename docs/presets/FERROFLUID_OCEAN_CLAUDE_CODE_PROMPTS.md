@@ -1132,3 +1132,110 @@ M7-prep contact sheet across the four standard fixtures + a "live music" reconst
 
 Per CLAUDE.md Increment Completion Protocol. Multiple commits expected (one per phase; Phase 1 ~3 commits, Phase 2 ~4 commits, Phase 3 ~2 commits). None pushed without Matt's explicit approval.
 
+
+---
+
+## V.9 Session 4.5c — Stage-rig retirement + direct audio→aurora routing + remaining Phase 2 rework
+
+**Status:** ⏳ Not started. Authored 2026-05-14 by Claude after this session ran out of context; first commit (§5.8 stage-rig removal) already landed in this session (`local main`, post-Session-4.5b). Drafted under Matt's explicit direction:
+> "Yes to prompt drafting" + "vocals-pitch with mood fallback" + "yes to DECISIONS.md cleanup" (2026-05-14)
+
+### Why this increment
+
+Real-music testing of Session 4.5b Phase 2c (audio-reactive particle forces) exposed three problems on the Love Rehab session capture (`/Users/braesidebandit/Documents/phosphene_sessions/2026-05-14T18-17-51Z`):
+
+1. **The preset feels frozen for ~8 s** after track start. Cause is the stem-warmup transition: `fo_stem_warmup_blend` flips from proxy-driven (`f.bass_att_rel`) to stem-driven (`stems.bassEnergyDev`) when total stem energy crosses 0.02 → 0.06. The two sources have different ranges and character, so the visual behaviour changes abruptly at the boundary. Matt's stated requirement (2026-05-14): "8s warmup is NOT desirable — it creates a sudden change in the preset behavior after the stem-separation pipeline runs."
+2. **Audio reactivity is not the right shape for the preset.** Matt's reframing (2026-05-14): "I'm expecting the music to cause the ocean to undulate like waves on the deep sea; maybe the energy of the song has some impact on the length of the ferrofluid spikes. The color from the sky reflecting on the ferrofluid, and the color of the sky itself, can be influenced by something in the music." Phase 2c implemented Leitl-style XZ scatter/drift; Matt wants ocean-wave undulation as the macro response.
+3. **The §5.8 stage rig is the wrong abstraction.** Matt's correction (2026-05-14): "We have already had this conversation about replacing the stage rig with something else. ... The change was from 'stage lighting' to just the aurora reflection." The orbital-light/per-light-palette framework was retired at this session's commit 1; the aurora reflection (a procedural sky overlay the substrate mirror-reflects) remains, but its audio routing now needs to come from direct uniforms, not a per-light state machine.
+
+This session restores audio-reactive aurora (replacing the rig), fixes the warmup discontinuity, applies a baseline+modulation pattern across the existing audio routing so the preset stays alive during sustained-volume music, and redesigns Phase 2c particle motion as wave-coherent ocean undulation rather than scatter.
+
+### Goal
+
+Ferrofluid Ocean reads as a *living ocean of magnetic fluid* from the moment the preset becomes active. Music drives:
+- **Ocean undulation** — Gerstner swell at always-on baseline amplitude + deviation modulation. Macro wave motion never freezes during sustained passages.
+- **Spike length** — `bass_energy_dev` modulates above a music-is-playing baseline. Lattice stays present whenever music plays.
+- **Sky reflection (aurora)** — vocals-pitch-driven hue with mood-valence fallback; smoothed-drums intensity; slow azimuthal drift driven by `accumulated_audio_time × arousal`. Replaces the §5.8 rig.
+- **Sky base color** — D-022 mood tint (already wired; no change).
+- **Particle motion** — wave-coherent flow that contributes to the perceived undulation (not Phase 2c's scatter/drift/rotation).
+
+Silence still resolves to the existing calm-body state per `10_silence_calm_body.jpg`.
+
+### Reference implementation
+
+Same references as 4.5b apply, with one nuance: the sky overlay design draws from `08_lighting_aurora_over_dark_water.jpg` for the *quality* of aurora-on-dark-water (continuous diffuse gradients, never beat-strobed, doubled in the substrate reflection). The §5.8 rig is gone — do **not** restore it.
+
+### Phase structure
+
+Three phases. Each has its own STOP gate; do not advance without Matt's visual approval.
+
+**Phase 1 — Direct audio → sky aurora routing (rebuild what the rig was producing).** Replaces the deleted `rm_ferrofluidSky` rig-loop with audio-uniform-driven aurora. Specifically:
+- Pass audio uniforms (vocals_pitch_hz, vocals_pitch_confidence, drums_energy_dev, arousal, accumulated_audio_time, valence) into `raymarch_lighting_fragment` via a new small uniforms struct or extension of an existing one.
+- One or two aurora curtains at fixed elevations in the procedural sky. Each curtain:
+  - **Hue** ← `palette()` phase = vocals_pitch_hz normalized (perceptual log-scale over 80 Hz–1 kHz, confidence-gated at ≥ 0.6) + mood-valence fallback below the confidence threshold. Matt's 2026-05-14 sign-off: "Vocals-pitch with mood fallback. I am willing to try your approach; I hope it works out well." See Failed-approach #65 (don't negotiate components of a working reference away) for the rationale on *not* simplifying to mood-only.
+  - **Intensity** ← `drums_energy_dev` smoothed 150 ms τ (same recipe as the retired rig's smoother).
+  - **Drift** ← curtain azimuth advances slowly at `accumulated_audio_time × arousal × coef`. Slow — full revolution in ~30-60 s at high arousal; pauses entirely at silence (energy-paused clock).
+  - **Live-stems gate** — fade the curtains in/out via `smoothstep(0.02, 0.10, totalStemEnergy)` so silence shows base sky only.
+- Acceptance: Matt's eye on a real-music capture. Aurora visibly tracks music; never beat-strobed; settles to base sky at silence.
+
+**Phase 2 — Baseline + deviation audio routing rework (fixes "frozen during sustained music" + 8s warmup).** Applies the *music-is-playing baseline + music-is-changing modulation* pattern to:
+- `fo_swell_scale` — Gerstner amplitude. Currently `0.4 + 0.6 × smoothstep(-0.5, 0.5, arousal) + 0.3 × drums_energy_dev`. Change to a pattern where the baseline scales with `totalStemEnergy` (always-on while music plays) and deviations add on top.
+- `fo_spike_strength` — currently driven by `bass_energy_dev` (deviation only). Change to `bass_energy × baseline_coef + bass_energy_dev × modulation_coef` so the lattice stays present at average-music levels and rises on bass surges. (Reading raw `bass_energy` for scaling is OK per CLAUDE.md — the prohibition is on *thresholding* raw AGC, not multiplying by it.)
+- Aurora intensity from Phase 1 — same pattern: baseline-while-live + deviation-modulated brightness.
+- **Warmup smoothness** — the `fo_stem_warmup_blend` proxy↔stem crossover must produce visually-continuous output. Either (a) match the proxy-path and stem-path coefficients so the crossover is invisible, or (b) use a slower, smoother crossover (e.g. 5–10 s ramp) so any residual difference is below the eye's threshold. Acceptance: a track-start capture shows no behavioural-change moment at the stem-pipeline-ready boundary.
+
+**Phase 3 — Particle motion rework: wave-coherent undulation (Phase 2c replacement).** Phase 2c's force model (XZ scatter + rotation + radial drum impulse) was the wrong character for this preset. New design:
+- Particles drift in coherent wave-like patterns that contribute to the *macro undulation* the user perceives. Concretely: a per-particle force aligned to the Gerstner-wave gradient at the particle's XZ position, scaled by music energy. Net effect: peaks rise/fall and translate in the direction of wave propagation, not in random directions.
+- Drum hits add a vertical/jiggle component — small magnitude per particle, decoded from a per-particle hash so each particle moves in a slightly different direction (still no synchronized radial explosion).
+- Equilibrium spring + viscous damping retained.
+- Live-stems gate applied to all motion forces (silence → particles settle to canonical).
+- Acceptance: Matt's eye on a real-music capture. Surface reads as *moving like deep-sea waves*; no random scatter; no synchronized explosions; settles to calm at silence.
+
+### What stays unchanged from Session 4.5b
+
+- 1080p / 4K target resolution.
+- 4096² height texture, 6000 particles, 80×75 hex-pack initial layout.
+- Phase 2a's spatial-hash + bounded-K bake infrastructure (used by the new wave-coherent motion in Phase 3).
+- Phase 2b's per-frame compute dispatch hook on `RenderPipeline`.
+- Particle struct (position + velocity).
+- D-022 mood-tinted base sky.
+- The `rm_ferrofluidSky` / `rm_ferrofluidBaseSky` function names (signatures change to drop the rig param + add audio uniforms; Phase 1 already removed the rig param).
+
+### Locked-in decisions
+
+| Decision | Value | Source |
+|---|---|---|
+| Aurora hue source | Vocals pitch (confidence ≥ 0.6) with mood-valence fallback | Matt 2026-05-14 |
+| Aurora drift | Slow azimuthal, driven by `accumulated_audio_time × arousal × coef` | Matt 2026-05-14 |
+| Stage rig | **REMOVED** in this session's commit 1. Do not restore. | Matt 2026-05-14 |
+| Audio routing pattern | Baseline-while-music-plays + deviation-modulated | Matt 2026-05-14 |
+| Warmup behaviour | No sudden behavioural change at the stem-pipeline-ready boundary | Matt 2026-05-14 |
+| Particle motion character | Wave-coherent undulation, not scatter | Matt 2026-05-14 |
+
+### Failed-approach guards (carries forward from 4.5b)
+
+- Do not use `drumsBeat` in intensity scope.
+- Do not write the literal `44100`.
+- Do not use free-running `sin(time)` in motion.
+- Do not threshold raw AGC arithmetic. (Multiplying by raw energy as a baseline coefficient IS permitted; the prohibition is on thresholding via comparison.)
+- Do not assert "production won't show this" without rendering at 1920×1080.
+- Do not start authoring without reading `docs/VISUAL_REFERENCES/ferrofluid_ocean/README.md` cover-to-cover.
+
+**New for this session (4.5c discipline lesson):**
+
+- **Do not assert that a previously-documented mechanism is "wired" without verifying Matt's current intent.** This session opened with the V.9 Session 4.5b prompt's "what stays unchanged" block claiming the §5.8 stage rig stays. Matt had previously stated the rig was deprecated. Claude (this session) carried the prompt's claim forward without verifying, then asserted the rig as a wired mechanism when proposing audio routing. Matt had to remind us twice. The doc was wrong; Matt's stated intent was right. **Rule:** when a session's prompt makes claims about preserved infrastructure, cross-check Matt's recent statements in CCD session transcripts / memory / chat before treating the prompt as authoritative.
+
+### Prerequisites — read in order
+
+1. `docs/VISUAL_REFERENCES/ferrofluid_ocean/README.md` (Failed Approach #63). **Note**: the README still references the §5.8 stage rig in its Audio Routing section. That documentation is stale post-this-session's commit 1; read for the *visual references* and *mandatory traits*, ignore the rig-driven routing descriptions.
+2. The Love Rehab session capture: `/Users/braesidebandit/Documents/phosphene_sessions/2026-05-14T18-17-51Z` — particularly `features.csv` (frame timing + arousal + accumulatedAudioTime) and `stems.csv` (per-stem energies + deviations + vocals pitch). This is the artifact that flagged Phase 2c.
+3. `docs/DECISIONS.md` D-127 (rig retirement, added this session).
+4. CLAUDE.md Authoring Discipline section.
+5. `PhospheneEngine/Sources/Renderer/Shaders/RayMarch.metal` — current state of `rm_ferrofluidSky` (returns base sky only; aurora to come back here).
+6. `PhospheneEngine/Sources/Renderer/Shaders/FerrofluidOcean.metal` — `fo_swell_scale` + `fo_spike_strength` audio routing (will be reworked in Phase 2).
+7. `PhospheneEngine/Sources/Presets/FerrofluidOcean/FerrofluidParticles.swift` + Renderer Shaders/FerrofluidParticles.metal — current Phase 2c force model (will be reworked in Phase 3).
+
+### Closeout
+
+Per CLAUDE.md Increment Completion Protocol. Three phases × ~2-3 commits each. **STOP and surface to Matt after every phase** (acceptance is his eye on a real-music capture). None pushed without explicit approval.
+

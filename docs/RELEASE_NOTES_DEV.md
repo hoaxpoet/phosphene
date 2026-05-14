@@ -6,6 +6,28 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-14-b] V.9 Session 4.5c step 1 — Stage-rig retirement (D-127)
+
+**Increment:** V.9 Session 4.5c commit 1. **Status:** Stage rig removed; aurora reflection deferred to next commit; Ferrofluid Ocean substrate currently reflects base purple sky only.
+
+This session opened with the V.9 Session 4.5b prompt's "what stays unchanged" block listing the §5.8 stage rig as preserved infrastructure. Matt had communicated the rig's deprecation in prior sessions ("at least twice" per his correction). Claude carried the prompt's preserved-claim forward without verifying, then asserted the rig as a wired mechanism multiple times when proposing audio routing. Matt's framing: "This is a HUGE miss." See D-127 + the new memory note `feedback_verify_with_matt_on_architecture.md` for the discipline carry-forward.
+
+After Matt's confirmation ("The change was from 'stage lighting' to just the aurora reflection") this commit removes the §5.8 stage-rig framework end-to-end. The aurora reflection mechanic stays as a procedural sky overlay the substrate mirror-reflects; its audio routing is rebuilt from direct uniforms in the next commit.
+
+**What's removed.** `FerrofluidStageRig` Swift class. `Shared/StageRigState.swift` Swift mirror + tests. `PresetDescriptor.StageRig` decoder + `stageRig` field + JSON `stage_rig` CodingKey + JSON block. `RenderPipeline.directPresetFragmentBuffer4` + lock + setter (`setDirectPresetFragmentBuffer4`). `RayMarchPipeline.stageRigPlaceholderBuffer`. Slot-9 `setFragmentBuffer` bindings in `runGBufferPass`, `runLightingPass`, `drawWithRayMarch`, `RenderPipeline+Draw`, `RenderPipeline+Staged`, `RenderPipeline+MVWarp`. `RayMarchPipeline.render` / `runGBufferPass` / `runLightingPass` signatures lose `presetFragmentBuffer4`. Preamble + Common.metal `StageRigLight` / `StageRigState` MSL structs. `[[buffer(9)]] constant StageRigState&` in `raymarch_gbuffer_fragment` + `raymarch_lighting_fragment`. The aurora-band loop in `rm_ferrofluidSky`. `VisualizerEngine.ferrofluidStageRig` property + applyPreset instantiation. Tests `StageRigStateLayoutTests`, `StageRigDecoderTests`, `FerrofluidStageRigMathTests`. Visual gate `testFerrofluidOceanSkyReflectionDispatchActive`.
+
+**Visual consequence.** `rm_ferrofluidSky` now returns only the base purple gradient × D-022 mood tint. Direct audio→aurora routing returns in the next commit (Session 4.5c Phase 1).
+
+**Verification.** Engine `swift build` clean; app `xcodebuild build` clean; `FerrofluidParticlesTests` 9/9 pass; `FerrofluidOceanVisualTests` 5/5 active gates pass (Gate 6 retired).
+
+**Docs updated.** `docs/DECISIONS.md` gains D-127 (rig retirement + aurora replacement plan). `docs/presets/FERROFLUID_OCEAN_CLAUDE_CODE_PROMPTS.md` gains the V.9 Session 4.5c prompt covering commits 2-3+ (direct audio→aurora, baseline+modulation rework, warmup fix, particle motion redesign as wave-coherent flow). Memory note `feedback_verify_with_matt_on_architecture.md` captures the discipline rule. `FerrofluidOceanVisualTests` header retired stale Session-3-era gate descriptions.
+
+**Carry-forward to Session 4.5c next session.** Three phases planned: Phase 1 (direct audio→aurora), Phase 2 (baseline+modulation audio routing + 8s warmup fix), Phase 3 (wave-coherent particle motion — Phase 2c replacement). Locked-in decisions: vocals-pitch hue with mood-valence fallback (Matt 2026-05-14); aurora bands at fixed elevations with slow azimuthal drift from `accumulated_audio_time × arousal`; baseline-while-music-plays + deviation-modulated audio routing across all mechanisms. See the V.9 Session 4.5c prompt for the full scope.
+
+**Git status.** Branch `main`, ahead of `origin/main` by 13 commits (Session 4.5b Phase 1 / 2a / 2b / 2c plus this stage-rig removal commit and follow-up docs commits). No push.
+
+---
+
 ## [dev-2026-05-14-a] V.9 Session 4.5b Phase 1 — Ferrofluid Ocean particle scaffolding (texture-backed height field)
 
 **Increment:** V.9 Session 4.5b Phase 1. **Status:** Phase 1 STOP gate satisfied — visual verdict requires Matt's review of the side-by-side PNGs.

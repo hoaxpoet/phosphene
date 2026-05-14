@@ -3606,3 +3606,55 @@ The pivot is forced by the M7 failure (D-125 implementation as specified produce
 - V.9 Session 4.5 Phase A (2026-05-14) implements D-126 end to end: `rm_ferrofluidBaseSky` + `rm_ferrofluidSky` in `Shaders/RayMarch.metal`; matID == 2 branch rewritten; `voronoi_smooth` in `Utilities/Texture/Voronoi.metal`; `fo_ferrofluid_field` switched to smooth Voronoi + linear cone.
 - Failed Approach #61 records the original Cook-Torrance failure; Failed Approaches #64 and #65 record the discipline learnings from the rebuild iteration cycle.
 - A future second `SHADER_CRAFT.md §5.8` consumer that adopts this paradigm inherits the slot-9 buffer ABI but reads the buffer's per-light fields as sky-feature parameters per §D-126(b).
+
+## D-127 — §5.8 stage rig retired; aurora reflection retained via direct audio uniforms (V.9 Session 4.5c, 2026-05-14)
+
+**Status:** Accepted (2026-05-14)
+
+### Context
+
+D-125 introduced the `SHADER_CRAFT.md §5.8` stage-rig recipe — 4-6 orbital point lights with per-light palette / intensity / orbital phase, carried via slot-9 fragment buffer + Swift `FerrofluidStageRig` state class. D-126 amended D-125's GPU consumption from Cook-Torrance per-light loop to mirror-reflects-procedural-sky, with `rm_ferrofluidSky` reading the slot-9 buffer's per-light fields as aurora-band parameters. The slot-9 buffer + `FerrofluidStageRig` machinery survived the D-126 amendment.
+
+Matt directed (2026-05-14, this session): "We have already had this conversation about replacing the stage rig with something else. ... The change was from 'stage lighting' to just the aurora reflection." The aurora reflection mechanic (procedural sky overlay the substrate mirror-reflects) stays; the stage-rig framework (orbital lights, slot-9 buffer, `FerrofluidStageRig` class, per-light palette/intensity/phase machinery, JSON `stage_rig` block) is retired.
+
+The discipline failure that preceded this decision is documented inline in the V.9 Session 4.5c prompt under the new "do not assert that a previously-documented mechanism is wired without verifying Matt's current intent" rule. Matt had communicated the deprecation in prior sessions; this session's prompt (V.9 Session 4.5b) preserved the rig in its "what stays unchanged" block; Claude carried the prompt's claim forward without verifying.
+
+### Decisions
+
+**(a) The §5.8 stage rig is removed.** D-125's slot-9 fragment buffer ABI is gone. D-125's `FerrofluidStageRig` Swift class is gone. D-125's `PresetDescriptor.StageRig` decoder and JSON `stage_rig` block are gone. D-125's preamble `StageRigState` MSL struct declarations are gone. The `directPresetFragmentBuffer4` setter on `RenderPipeline` is gone.
+
+**(b) Aurora reflection is preserved via direct audio uniforms.** `rm_ferrofluidSky` continues to be sampled at the reflection vector by the `matID == 2` branch in `raymarch_lighting_fragment`. Aurora content is rebuilt from audio uniforms passed directly into the lighting fragment (V.9 Session 4.5c Phase 1; implementation lands in the next session). Specifically:
+
+- **Hue** ← `vocals_pitch_hz` (perceptual log-scale, confidence-gated at ≥ 0.6) with mood-valence fallback below the confidence threshold. Decision per Matt's 2026-05-14 sign-off ("vocals-pitch with mood fallback").
+- **Intensity** ← `drums_energy_dev` smoothed 150 ms τ (same recipe as the retired rig's smoother).
+- **Drift** ← curtain azimuth advances at `accumulated_audio_time × arousal × coef`. Slow; pauses at silence.
+- **Live-stems gate** ← `smoothstep(0.02, 0.10, totalStemEnergy)` so silence shows the base purple sky only.
+
+The musical contract (vocals → hue, drums → intensity, arousal → motion) is preserved; only the implementation abstraction changes from "orbital point lights with per-light buffer" to "direct audio uniforms read by the sky function."
+
+**(c) D-125 and D-126 are marked HISTORICAL.** The decisions remain in `docs/DECISIONS.md` for the project archaeology but their implementations are gone. Future readers tracing the aurora-reflection mechanism should land on D-127 (this entry) for the current implementation pattern, not D-125 / D-126.
+
+**(d) Phase 2c particle force model is rejected at the same time.** The Leitl-style XZ scatter/drift force model implemented in V.9 Session 4.5b Phase 2c does not produce the wave-undulation character the preset wants. Phase 2c is retired; Session 4.5c Phase 3 replaces it with wave-coherent particle motion aligned to the Gerstner-wave gradient. Phase 2a (spatial-hash bake) and Phase 2b (per-frame compute dispatch hook) infrastructure carries forward unchanged — only the force model is replaced.
+
+### Reason
+
+Real-music testing of Session 4.5b Phase 2c on the Love Rehab session capture (`/Users/braesidebandit/Documents/phosphene_sessions/2026-05-14T18-17-51Z`) flagged that:
+
+1. The XZ-scatter / radial-drum-impulse / tangential-rotation force model produces visible scatter, not the *ocean undulation* the preset's design intent calls for.
+2. The deviation-only audio gating produces "frozen" visuals during sustained-volume music (which is most of any song) — energy deviations sit near zero except at transient moments.
+3. The §5.8 stage rig's orbital-light abstraction is the wrong primitive for "aurora reflection" — orbital geometry doesn't add musical meaning, and the per-light buffer adds infrastructure overhead without payoff.
+
+The replacement design (direct audio uniforms feeding the sky function + baseline+modulation audio routing + wave-coherent particle motion) is structurally simpler, has no orbital-position state machine, and routes audio more directly into perceived motion.
+
+### What was rejected
+
+- **Keep the rig and just tune coefficients.** Matt had already deprecated the rig in prior session communications; carrying the implementation forward against his stated intent was the discipline failure that led to this decision.
+- **Mood-only aurora hue (no vocals pitch coupling).** Considered briefly; rejected because aurora-as-mood-only reads as static ambient lighting rather than song-specific musical content. Matt's sign-off (2026-05-14): "Vocals-pitch with mood fallback. I am willing to try your approach; I hope it works out well." (The fallback to mood-only is available if the vocals-pitch coupling reads as too jittery on real music.)
+- **Retain the slot-9 buffer ABI for a hypothetical future consumer.** No second consumer was ever planned. Removing the ABI now is cheaper than maintaining placeholder infrastructure.
+
+### Forward references
+
+- V.9 Session 4.5c Phase 1 — direct audio → aurora routing in `rm_ferrofluidSky` (the next session implements).
+- V.9 Session 4.5c Phase 2 — baseline + deviation audio routing rework + warmup smoothness fix.
+- V.9 Session 4.5c Phase 3 — wave-coherent particle motion (replaces Phase 2c).
+- D-125 + D-126 are now historical; cite D-127 for the current aurora-reflection implementation pattern.
