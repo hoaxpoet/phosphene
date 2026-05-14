@@ -156,26 +156,57 @@ static inline float fo_gerstner_swell(float2 xz, float t, float swellScale) {
 
 // MARK: - Rosensweig spike field
 //
-// SHADER_CRAFT §4.6 recipe. Voronoi-based hex-like cell centres + per-cell jitter
-// + per-cell time-animated phase. fieldStrength routed from stems.bass_energy_dev
+// SHADER_CRAFT §4.6 recipe. fieldStrength routed from stems.bass_energy_dev
 // (via fo_spike_strength). Session 4.5 rescue: meso domain warp dropped per
-// Failed Approach #62 — the warp competed with the hero spike signal without
-// a load-bearing musical role of its own. Lattice sampled directly on world xz.
+// Failed Approach #62; per-cell temporal sin oscillation dropped (Failed
+// Approach #33 echo — free-running sin adds motion the music isn't driving;
+// the t parameter is consequently absent from this function).
 //
-// Voronoi sampled on world xz at scale 4.0. Per-cell jitter from fbm8 seeded by
-// cell centre keeps spike heights varied across cells.
+// **Session 4.5 final geometry — smooth Voronoi (after desk research).**
+// History: I iterated six times on this function trying to eliminate a
+// per-cell "dot pattern" in the rendered surface. Each fix was a guess that
+// got tested and falsified. Matt eventually pointed out that ferrofluid
+// rendering is a solved problem and I should do desk research instead of
+// guessing. The desk research found Robert Leitl's audio-reactive WebGL
+// ferrofluid project — the closest published reference to Phosphene's use
+// case — which builds its height field from Inigo Quilez's **smooth
+// Voronoi**. Smooth Voronoi blends distances to all neighbor cells via
+// exponential weighting, producing a C¹-continuous height field with no
+// boundary normal flips. That's the structural fix for the dot pattern,
+// which was rooted in the hard `min()` discontinuity at every cell edge
+// in regular Voronoi.
+//
+// References (full set):
+//   - Robert Leitl, Ferrofluid Web Experiment:
+//     https://robert-leitl.medium.com/ferrofluid-7fd5cb55bc8d
+//   - Inigo Quilez, Smooth Voronoi:
+//     https://iquilezles.org/articles/smoothvoronoi/
+//   - Rosensweig instability video (geometry reference):
+//     https://www.youtube.com/watch?v=39oyuJLQt_E
+//   - User-supplied still references (hex-pack pointed pyramids)
+//
+// **Unit note:** `voronoi_smooth` returns distance in scaled-space units
+// (same convention as `voronoi_f1f2.f1`). At scale 4.0, the hex cell
+// circumradius in scaled space is ≈ 0.577. `kSpikeRadius = 0.6` ensures
+// the linear cone extends past the circumradius so every cell's height
+// reaches the cell boundary with non-zero magnitude → wall-to-wall pyramid
+// coverage (no flat ground between spikes, matching the tightly-packed
+// hex tile in the references). This corrects an earlier bug where
+// `kSpikeRadius = 0.25` was assumed to be world-space metres but was
+// actually scaled-space units, giving only 25% cell coverage.
+//
+// Per-spike height variation: the previous `cellHash` trick required
+// `v.id` from regular Voronoi, which smooth Voronoi does not expose.
+// Phase B may add fbm-modulated radius for organic variation between
+// spikes if needed.
 
-static inline float fo_ferrofluid_field(float3 p, float fieldStrength, float t) {
+static inline float fo_ferrofluid_field(float3 p, float fieldStrength) {
     if (fieldStrength <= 0.0) return 0.0;
-    VoronoiResult v = voronoi_f1f2(p.xz, 4.0);
-    // Per-cell jitter from fBM seeded by cell centre.
-    float jitter = fbm8(float3(v.pos * 2.0, 0.0)) * 0.3;
-    float d = v.f1 + jitter * 0.05;
-    // Conical spike profile with bell-curve falloff (§4.6).
-    float spike = exp(-d * d * 40.0);
-    // Time-animated per-cell phase: cell hash → unique phase per spike.
-    float cellPhase = float(v.id & 0xFFFF) * (FO_TWO_PI / float(0xFFFF));
-    spike *= 0.5 + 0.5 * sin(t * 0.8 + cellPhase);
+    constexpr float kVoronoiScale   = 4.0;
+    constexpr float kVoronoiSmoothK = 32.0;   // Quilez default — smooth but distinct
+    constexpr float kSpikeRadius    = 0.6;    // scaled-space units; > 0.577 circumradius
+    float smoothD = voronoi_smooth(p.xz, kVoronoiScale, kVoronoiSmoothK);
+    float spike   = max(0.0, 1.0 - smoothD / kSpikeRadius);
     return spike * fieldStrength * 0.15;
 }
 
@@ -198,7 +229,7 @@ float sceneSDF(float3 p,
     (void)s;
     float t        = f.accumulated_audio_time;
     float swell    = fo_gerstner_swell(p.xz, t, fo_swell_scale(f, stems));
-    float spikes   = fo_ferrofluid_field(p, fo_spike_strength(f, stems), t);
+    float spikes   = fo_ferrofluid_field(p, fo_spike_strength(f, stems));
     float surfaceY = swell + spikes;
     return p.y - surfaceY;
 }
