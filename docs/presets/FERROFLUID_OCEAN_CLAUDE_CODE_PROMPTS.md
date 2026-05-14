@@ -2,7 +2,7 @@
 
 Session prompts for Phase V.9 (Ferrofluid Ocean redirect, per D-124 / 2026-05-13). Each session lands as its own commit on local `main`; the prompts here are versioned alongside the implementation so future Claude sessions can read the exact contract under which each session was authored.
 
-**Status:** Phase V.9 Sessions 1–2 ✅ (2026-05-13). Macro layer + material/atmosphere layer landed. Sessions 3–5 remain unimplemented.
+**Status:** Sessions 1 ✅ / 2 ✅ / 3 ✅ (2026-05-13). Session 4 ⚠ shipped 2026-05-13 then failed M7 review same day; Session 4.5 is the rescue. Session 4.5 Phase 0 ✅ (2026-05-13, commit `cda15d47`) reverted Session 4's decoration layers. Session 4.5 Phase A ✅ (2026-05-14) rebuilt matID == 2 to mirror-reflects-procedural-sky (D-126) + switched the spike-field to Quilez smooth Voronoi. Session 4.5b (particle motion) ⏳ Not started — prompt locked in 2026-05-14. Session 4.5 Phase B (Gerstner retune + residual spike tuning) ⏳ Not started, scope depends on what 4.5b delivers. Session 4.5 Phase C (cert-prep verification) ⏳ Not started. Session 5 (M7 sign-off + perf capture + golden hash regen) ⏳ Not started. See the increment ledger below for the canonical list of phase rows.
 
 ---
 
@@ -700,7 +700,7 @@ Session 4 commits (P0 + PA + PB) remain in git history; Phase 4.5 Phase 0 revert
 
 ## V.9 Session 4.5 — Rescue: revert decoration + replace §5.8 lighting paradigm + spike/swell retune
 
-**Status:** ⏳ Not started. Authored 2026-05-13 post-Session-4 M7 review failure (see Session 4 M7 review outcome above).
+**Status:** Phase 0 ✅ (2026-05-13, commit `cda15d47`). Phase A ✅ (2026-05-14, commits `860b23e6` PA1 / `3e37ea42` PA2 / `4ddf6512` PA3 / `0bc85047` docs). Session 4.5b inserted 2026-05-14 (particle motion — see prompt below). Phase B ⏳ Not started (re-scoped post-Phase-A, awaiting 4.5b). Phase C ⏳ Not started (re-scoped post-Phase-A). Original prompt authored 2026-05-13 post-Session-4 M7 review failure (see Session 4 M7 review outcome above).
 
 **Why a rescue session.** V.9 Session 4 shipped Phase 0 + Phase A + Phase B and passed every automated gate, but the M7 review of the live session capture flagged four structural failures (full root-cause diagnosis under the Session 4 "M7 review outcome" block above). The §5.8 stage-rig as "discrete point lights with inverse-square falloff" is the wrong implementation paradigm for a near-mirror substrate; the references' mechanic is **mirror-reflects-aurora-sky**, not point-lights-cast-onto-surface. The Phase A decoration layers (droplets, micro-normal, meso warp) are visible noise without load-bearing musical role. This session is the rescue.
 
@@ -727,7 +727,7 @@ Phases must complete in order. Each phase has acceptance gates; do not start the
 
 ---
 
-#### Phase 0 — Revert decoration layers
+#### Phase 0 — Revert decoration layers ✅ LANDED 2026-05-13 (commit `cda15d47`)
 
 1. **Revert the Cassie-Baxter droplet field entirely.**
    - Drop `fo_droplet_sdf` + `FO_DROPLET_RADIUS` / `FO_DROPLET_APEX_FRACTION` / `FO_SMOOTH_UNION_K` constants from `FerrofluidOcean.metal`.
@@ -769,7 +769,7 @@ Phases must complete in order. Each phase has acceptance gates; do not start the
 
 ---
 
-#### Phase A — Replace §5.8 lighting paradigm with aurora-sky reflection
+#### Phase A — Replace §5.8 lighting paradigm with aurora-sky reflection ✅ LANDED 2026-05-14 (commits `860b23e6` PA1 / `3e37ea42` PA2 / `4ddf6512` PA3 / `0bc85047` docs)
 
 Conceptual change: matID == 2 becomes a **mirror-reflects-procedural-sky** path. The §5.8 musical contract (vocals_pitch → palette, drums_energy_dev → intensity, arousal → orbit speed) is preserved; only the GPU consumption changes from "Cook-Torrance per-light loop" to "sample procedural sky at reflection vector."
 
