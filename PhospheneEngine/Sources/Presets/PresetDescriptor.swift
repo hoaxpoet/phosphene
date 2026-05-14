@@ -185,6 +185,84 @@ public struct StageRig: Sendable, Codable, Equatable {
     }
 }
 
+/// Ferrofluid Ocean-specific material detail parameters (V.9 Session 4 / D-124).
+///
+/// Declared in the preset's JSON sidecar under the `"ferrofluid"` block.
+/// Each field is a *baseline scale or amplitude* for one of the four material
+/// detail layers added in Session 4:
+///
+///   - `meso_strength`: domain-warped meso turbulence scale (§3.4 / §10.3.x).
+///     Phase A holds at 1.0; Phase B multiplies by `mid_att_rel`-derived envelope.
+///   - `droplet_strength`: Cassie-Baxter spike-tip droplet field scale. Phase A
+///     holds at 1.0; Phase B multiplies by `bass_att_rel`-derived envelope.
+///   - `micro_normal_amplitude`: high-frequency normal perturbation amplitude
+///     (always-on tactile detail). NEVER audio-modulated — it's the substrate's
+///     intrinsic character per §5.8 silence-state semantics.
+///   - `thin_film_thickness_baseline_nm`: center of the iridescent thin-film
+///     interference band. Defaults to 220 nm (silicone-oil-like, blue-to-cyan
+///     band). Phase B modulates ± `thin_film_arousal_range_nm` from arousal.
+///   - `thin_film_arousal_range_nm`: half-range of the audio-driven thickness
+///     modulation. 40 nm keeps the band inside the "subtle blue-to-cyan" range
+///     and well below the "rainbow oil-slick" failure mode.
+///
+/// All fields decode with sensible defaults; out-of-range values warn and
+/// fall back to the spec default. The block as a whole is optional — a nil
+/// `ferrofluid` block means the consumer (currently only Ferrofluid Ocean)
+/// uses hardcoded MSL constants matching these defaults.
+public struct FerrofluidParams: Sendable, Codable, Equatable {
+    public var mesoStrength: Float
+    public var dropletStrength: Float
+    public var microNormalAmplitude: Float
+    public var thinFilmThicknessBaselineNm: Float
+    public var thinFilmArousalRangeNm: Float
+
+    public init(
+        mesoStrength: Float = 1.0,
+        dropletStrength: Float = 1.0,
+        microNormalAmplitude: Float = 0.02,
+        thinFilmThicknessBaselineNm: Float = 220,
+        thinFilmArousalRangeNm: Float = 40
+    ) {
+        self.mesoStrength = mesoStrength
+        self.dropletStrength = dropletStrength
+        self.microNormalAmplitude = microNormalAmplitude
+        self.thinFilmThicknessBaselineNm = thinFilmThicknessBaselineNm
+        self.thinFilmArousalRangeNm = thinFilmArousalRangeNm
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case mesoStrength = "meso_strength"
+        case dropletStrength = "droplet_strength"
+        case microNormalAmplitude = "micro_normal_amplitude"
+        case thinFilmThicknessBaselineNm = "thin_film_thickness_baseline_nm"
+        case thinFilmArousalRangeNm = "thin_film_arousal_range_nm"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        // Helper: decode with default; if the decoded value is negative, warn
+        // and use the default. Negative amplitudes / thicknesses are not
+        // physically meaningful and silently flooring would mask author error.
+        func decodeNonNegative(_ key: CodingKeys, default defaultValue: Float, name: String) throws -> Float {
+            let value = try container.decodeIfPresent(Float.self, forKey: key) ?? defaultValue
+            if value < 0 {
+                Logging.renderer.warning(
+                    "PresetDescriptor.FerrofluidParams: \(name) \(value) is negative — using default \(defaultValue)")
+                return defaultValue
+            }
+            return value
+        }
+        self.mesoStrength = try decodeNonNegative(.mesoStrength, default: 1.0, name: "meso_strength")
+        self.dropletStrength = try decodeNonNegative(.dropletStrength, default: 1.0, name: "droplet_strength")
+        self.microNormalAmplitude = try decodeNonNegative(
+            .microNormalAmplitude, default: 0.02, name: "micro_normal_amplitude")
+        self.thinFilmThicknessBaselineNm = try decodeNonNegative(
+            .thinFilmThicknessBaselineNm, default: 220, name: "thin_film_thickness_baseline_nm")
+        self.thinFilmArousalRangeNm = try decodeNonNegative(
+            .thinFilmArousalRangeNm, default: 40, name: "thin_film_arousal_range_nm")
+    }
+}
+
 /// A single scene light declared in a ray march preset's JSON sidecar.
 public struct SceneLight: Sendable, Codable, Equatable {
     /// World-space light position.
@@ -325,6 +403,17 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
     /// the single-light `SceneUniforms` path (matID == 0 / matID == 3). See
     /// D-125(e) for the canonical JSON schema. First consumer: Ferrofluid Ocean.
     public let stageRig: StageRig?
+
+    /// Ferrofluid Ocean-specific material detail parameters (V.9 Session 4 / D-124).
+    ///
+    /// Optional block under the `"ferrofluid"` JSON key. When present, declares
+    /// the material detail baselines for meso turbulence, micro normal,
+    /// Cassie-Baxter droplets, and thin-film thickness modulation range.
+    /// Phase A wires the schema; Phase B routes audio modulation through these
+    /// baselines. A nil value means the consumer falls back to MSL constants
+    /// matching the documented defaults. Ferrofluid Ocean-specific — not a
+    /// catalog-wide schema.
+    public let ferrofluid: FerrofluidParams?
 
     /// Fog density for ray march presets (0 = no fog; 0.05 ≈ heavy fog).
     /// Maps `fogFar = max(1, 1/sceneFog)` and is stored in `sceneParamsB.y`.
@@ -483,6 +572,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         case sceneCamera = "scene_camera"
         case sceneLights = "scene_lights"
         case stageRig = "stage_rig"
+        case ferrofluid
         case sceneFog = "scene_fog"
         case sceneFogNear = "scene_fog_near"
         case sceneAmbient = "scene_ambient"
@@ -539,6 +629,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         sceneCamera      = try container.decodeIfPresent(SceneCamera.self, forKey: .sceneCamera)
         sceneLights      = try container.decodeIfPresent([SceneLight].self, forKey: .sceneLights) ?? []
         stageRig         = try container.decodeIfPresent(StageRig.self, forKey: .stageRig)
+        ferrofluid       = try container.decodeIfPresent(FerrofluidParams.self, forKey: .ferrofluid)
         sceneFog         = try container.decodeIfPresent(Float.self, forKey: .sceneFog) ?? 0
         sceneFogNear     = try container.decodeIfPresent(Float.self, forKey: .sceneFogNear) ?? 20.0
         sceneAmbient     = try container.decodeIfPresent(Float.self, forKey: .sceneAmbient) ?? 0.1

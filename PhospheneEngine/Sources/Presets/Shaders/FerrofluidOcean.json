@@ -30,6 +30,13 @@
     "intensity_swing_coef": 0.6,
     "intensity_smoothing_tau_ms": 150
   },
+  "ferrofluid": {
+    "meso_strength": 1.0,
+    "droplet_strength": 1.0,
+    "micro_normal_amplitude": 0.02,
+    "thin_film_thickness_baseline_nm": 220,
+    "thin_film_arousal_range_nm": 40
+  },
   "scene_fog": 0.04,
   "scene_fog_near": 0.0,
   "scene_far_plane": 40.0,
