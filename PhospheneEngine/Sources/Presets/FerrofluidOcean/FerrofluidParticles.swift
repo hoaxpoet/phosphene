@@ -48,9 +48,21 @@ public final class FerrofluidParticles: @unchecked Sendable {
 
     // MARK: - Locked parameters (Phase 1)
 
-    /// Particle count locked at 2048 per the V.9 Session 4.5b spec
-    /// ("medium density — peaks touch base-to-base").
-    public static let particleCount: Int = 2048
+    /// Particle count: original spec was 2048 ("medium density"); **density
+    /// pass 2026-05-14 bumped to 6000** after Matt's review of the tuned
+    /// contact sheet flagged the static spikes as still too sparse vs the
+    /// Phase A `voronoi_smooth` reference. The earlier "medium ~2000"
+    /// framing was a forecast before the Phase A render was available; in
+    /// practice, 2048 particles in the 20-world-unit patch produce ~0.44 wu
+    /// spacing, leaving ~0.13 wu gaps between peak bases at the tuned 0.15
+    /// peak radius. Phase A's `voronoi_smooth(scale = 4)` places cells at
+    /// 0.25 wu spacing → peaks overlap base-to-base. Matching that density
+    /// over the 20×20 patch needs 80 × 75 = 6000 cells (X spacing 0.25 wu
+    /// matches Phase A exactly; Z spacing 0.267 wu adds a ~7 % anisotropy
+    /// that's invisible at the camera tilt). Phase 2 per-frame bake cost
+    /// scales linearly: ~0.6 ms per bake on Apple Silicon at 6000 particles
+    /// × 1024² texels, well within the 60 fps frame budget.
+    public static let particleCount: Int = 6000
 
     /// Height texture is 1024×1024 r16Float. Original spec was 512² ("~1.5 cm
     /// per pixel") but Matt's 2026-05-14 product review flagged that
@@ -277,15 +289,17 @@ public final class FerrofluidParticles: @unchecked Sendable {
         var capacity: Int { columns * rows }
     }
 
-    /// Canonical Phase 1 grid: 46 × 45 = 2070 cells; first 2048 are used,
-    /// the trailing 22 of the last row are skipped. Slight density falloff
-    /// in the lower-right of the patch is acceptable — the visible camera
-    /// frustum is roughly centred so the missing cells sit at the patch
-    /// edge anyway. Choosing a count divisor that approximates the square
-    /// aspect of `worldSpan × worldSpan` keeps the per-cell mapping close
-    /// to isotropic.
+    /// Canonical Phase 1 grid: **80 × 75 = 6000 cells** (no trim). X spacing
+    /// `worldSpan / 80 = 0.25 world units` matches Phase A's
+    /// `voronoi_smooth(scale = 4)` cell side exactly; Z spacing
+    /// `worldSpan / 75 = 0.267 world units` adds a ~7 % anisotropy that's
+    /// not visible at the camera tilt (the eye doesn't compare X vs Z cell
+    /// spacing across a tilted ground plane). Particles overlap their tent
+    /// base at this spacing (peak base radius 0.15 → diameter 0.30 > 0.25
+    /// spacing) for wall-to-wall coverage — Matt's "peaks touch
+    /// base-to-base" spec, finally satisfied at the empirical density.
     private static func canonicalGridLayout() -> GridLayout {
-        GridLayout(columns: 46, rows: 45)
+        GridLayout(columns: 80, rows: 75)
     }
 
     /// Populate the particle buffer with the canonical Phase 1 positions.
