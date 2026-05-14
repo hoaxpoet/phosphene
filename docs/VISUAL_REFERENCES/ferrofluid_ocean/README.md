@@ -127,6 +127,11 @@ Image sources:
 
 All Unsplash photographs are CC0-equivalent under the Unsplash License (free for commercial use, no attribution required); attributions provided as courtesy.
 
+**Technical references / prior art:**
+
+- **Inigo Quilez — Smooth Voronoi.** The exp/log soft-min Voronoi algorithm used by the preset's spike-field height function lives at https://iquilezles.org/articles/smoothvoronoi/. Ported verbatim into `PhospheneEngine/Sources/Presets/Shaders/Utilities/Texture/Voronoi.metal` as `voronoi_smooth(p, scale, k)` in V.9 Session 4.5 Phase A.
+- **Robert Leitl — Audio-reactive WebGL ferrofluid.** https://robert-leitl.medium.com/ferrofluid-7fd5cb55bc8d (writeup) and https://github.com/robert-leitl/ferrofluid (source) — the closest published reference to Phosphene's use case. Leitl's project surfaced smooth Voronoi as the canonical fix for the cell-boundary normal-flip artifact during Session 4.5 desk research after six iterations of first-principles fixes failed to converge (Failed Approach #64). His four-layer fluid-shading model and SPH-style particle simulation also inform the planned V.9 Session 4.5b particle-motion increment. Demo: https://robert-leitl.github.io/ferrofluid/dist/?debug=true.
+
 **Retired in V.9 redirect (2026-05-13):**
 
 - `01_macro_horizon_dark_coast.jpg` (Christopher La Rocca, Reynisfjara) — horizon framing wrong scale under redirect.
