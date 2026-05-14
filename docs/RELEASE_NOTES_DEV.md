@@ -6,6 +6,78 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-14-a] V.9 Session 4.5b Phase 1 — Ferrofluid Ocean particle scaffolding (texture-backed height field)
+
+**Increment:** V.9 Session 4.5b Phase 1. **Status:** Phase 1 STOP gate satisfied — visual verdict requires Matt's review of the side-by-side PNGs.
+
+Phase 1 of the particle-motion increment introduces a baked-height-texture path to Ferrofluid Ocean's `sceneSDF` without changing the surface character. Particles are *static* in Phase 1 (positions match what a `voronoi_smooth` cell-center pass would emit — scaled-space integer cells + per-cell `voronoi_cell_offset` hash); the bake runs once at preset-apply and the resulting texture is sampled per ray-march iteration. Phase 2 will add SPH-lite per-frame motion + audio forces.
+
+**Files changed.**
+
+New:
+- `PhospheneEngine/Sources/Presets/FerrofluidOcean/FerrofluidParticles.swift` — public class, 2048-particle UMA buffer, 1024×1024 r16Float UMA height texture, bake compute pipeline, init-time bake.
+- `PhospheneEngine/Sources/Renderer/Shaders/FerrofluidParticles.metal` — `ferrofluid_height_bake` compute kernel: Quilez polynomial smooth-min (w=0.1) + `almostIdentity` apex smoothing.
+- `PhospheneEngine/Tests/PhospheneEngineTests/Presets/FerrofluidParticlesTests.swift` — 7 contract gates (locked constants, canonical positions bounded + unique, buffer-contents match, texture descriptor, bake idempotent, bake non-zero output).
+- `docs/diagnostics/V9_session_4_5b_phase1/{01_silence,02_steady_mid,03_beat_heavy,04_quiet}_{main,phase1}.png` — side-by-side fixture renders at 1920×1080.
+
+Modified:
+- `PhospheneEngine/Sources/Presets/PresetLoader+Preamble.swift` — file-scope `kFerrofluidHeightSampler` (clamp_to_zero), `sceneSDF` forward declaration gains `texture2d<float> ferrofluidHeight` param, `raymarch_gbuffer_fragment` declares `[[texture(10)]]`, 8 `sceneSDF` call sites updated.
+- `PhospheneEngine/Sources/Presets/Shaders/FerrofluidOcean.metal` — `fo_ferrofluid_field_sampled` reads texture via the file-scope sampler; Phase A inline path preserved as `fo_ferrofluid_field_inline` for diagnostic reference.
+- `PhospheneEngine/Sources/Presets/Shaders/{GlassBrutalist,KineticSculpture,LumenMosaic,VolumetricLithograph}.metal` — sceneSDF signatures grow new param; bodies silence with `(void)ferrofluidHeight;`.
+- `PhospheneEngine/Sources/Renderer/RayMarchPipeline.swift` — `ferrofluidHeightPlaceholderTexture` (1×1 r16Float, zero-filled) allocated in init; `render(...)` accepts optional `presetHeightTexture`.
+- `PhospheneEngine/Sources/Renderer/RayMarchPipeline+Passes.swift` — `runGBufferPass` binds slot-10 texture (placeholder when nil).
+- `PhospheneEngine/Sources/Renderer/RenderPipeline.swift` — `rayMarchPresetHeightTexture` storage + lock.
+- `PhospheneEngine/Sources/Renderer/RenderPipeline+PresetSwitching.swift` — `setRayMarchPresetHeightTexture(_:)` setter API.
+- `PhospheneEngine/Sources/Renderer/RenderPipeline+RayMarch.swift` — snapshot the texture under lock and pass to `RayMarchPipeline.render(...)`.
+- `PhospheneApp/VisualizerEngine.swift` — `ferrofluidParticles: FerrofluidParticles?` storage var.
+- `PhospheneApp/VisualizerEngine+Presets.swift` — `applyPreset` allocates `FerrofluidParticles`, bakes, wires `setRayMarchPresetHeightTexture` for Ferrofluid Ocean; reset path nils + detaches slot-10 for non-Ferrofluid presets.
+- `PhospheneEngine/Tests/PhospheneEngineTests/Visual/FerrofluidOceanVisualTests.swift` — `renderDeferredRayMarch` instantiates + bakes `FerrofluidParticles` and binds slot-10.
+
+**Product decision applied (Matt, 2026-05-14):** original spec was 512² r16Float height texture; bumped to **1024²** in response to the fullscreen / 4K stretch concern. Texture memory: 0.5 MB → 2 MB; Phase 1 bake cost (one-shot) negligible; Phase 2 per-frame bake budget ~2 ms (within frame budget).
+
+**Tests run.**
+- New `FerrofluidParticlesTests`: 7 / 7 passed (0.946 s — bake idempotent; 0.177 s — bake non-zero; rest sub-10 ms).
+- `FerrofluidOceanVisualTests` (the 6-gate Ferrofluid suite): 6 / 6 passed.
+- Full engine suite: 1256 tests, 2 failures — both pre-existing parallel-execution timing flakes (`MetadataPreFetcher.fetch_networkTimeout` — listed in baseline memory; and `SoakTestHarness.cancel() causes run() to return before duration expires` — passes in isolation in 0.564 s). Neither failure touches code in this increment.
+- Engine `swift build` clean, app `xcodebuild` clean.
+- `swift test --package-path PhospheneEngine --filter FerrofluidOceanVisualTests/testFerrofluidOceanRendersFourFixtures` was also run on a stash of main to capture the baseline PNGs for the side-by-side.
+
+**Visual harness output.**
+
+Side-by-side PNGs in `docs/diagnostics/V9_session_4_5b_phase1/`:
+
+| Fixture | MD5 main | MD5 phase1 | Verdict |
+|---|---|---|---|
+| `01_silence` | `ba930c0386c94a219cbff7fffe7c59a8` | `ba930c0386c94a219cbff7fffe7c59a8` | **byte-identical** — `fieldStrength <= 0` early-exit preserved across both paths. |
+| `02_steady_mid` | `c0072a6d33a6cc2d71234b8185f6f4ff` | `20862744858b78d0bb1253dbd2a9aeb3` | differs (different smooth-min: Quilez polynomial soft-min over particle distances vs main's `voronoi_smooth` exp/log soft-min over neighbour cells). Visual verdict needs Matt. |
+| `03_beat_heavy` | `a9638b9ed2e346e47486a0e7b44e41e3` | `52e309164ea8796c13c41ce374e737b9` | differs (same root cause as `02`). Visual verdict needs Matt. |
+| `04_quiet` | `86bd01bb0e7b580fad721e6c5791d526` | `86bd01bb0e7b580fad721e6c5791d526` | **byte-identical** — same early-exit path as `01`. |
+
+Structural equivalence: 2 of 4 fixtures byte-identical; the other 2 use a different smooth-min function but place peaks at the same XZ coordinates a `voronoi_smooth` cell-center pass would emit. Existing structural gates (`lit > 100`, no clipping, sky-reflection-dispatch diff ≥ 1.0 threshold) all pass with the new texture-sample path. **Claude cannot read PNG colour content; final "no regression vs main" verdict requires Matt's side-by-side review.**
+
+**Documentation updates.**
+- `docs/ENGINEERING_PLAN.md` — Session 4.5b Phase 1 entry added under Increment V.9.
+- `docs/RELEASE_NOTES_DEV.md` — this entry.
+- `docs/ENGINE/RENDER_CAPABILITY_REGISTRY.md` — new row for fragment texture slot 10 + per-preset baked height field; status promoted Missing → Supported.
+- `docs/diagnostics/V9_session_4_5b_phase1/` — Phase 1 + main side-by-side PNGs.
+
+**Capability registry updates.** Promoted "Per-preset baked height field for ray-march SDF" from Missing → Supported (slot 10, 1×1 placeholder pattern). Updated "Fragment texture slot reservations 0–13" to include slot 10.
+
+**Engineering plan updates.** Marked V.9 Session 4.5b Phase 1 complete in the Increment V.9 section of `ENGINEERING_PLAN.md`.
+
+**Known risks and follow-ups.**
+
+1. **Visual verdict still required.** Phase 1 STOP gate is "structurally equivalent to current main"; the structural gates pass and the silence/quiet fixtures are byte-identical, but `02_steady_mid` / `03_beat_heavy` differ at the texture level. Recommend Matt opens the four side-by-side PNG pairs before approving Phase 2. If Phase 1 reads as substantially different in shape / density / coverage, the smooth-min `w`, the particle count, or the world-XZ patch can be retuned before motion lands.
+2. **`PhospheneAppTests` build failure on `.fluid` / `.abstract` enum references** — confirmed pre-existing on main via stash + rebuild. Fallout from commit `cf67793c` (D-123 `family` taxonomy refactor) where the `PresetCategory` enum dropped `.fluid` / `.abstract` but the corresponding app-layer tests were not updated. Out of scope for V.9; recommend filing a "PhospheneAppTests enum drift" cleanup increment. Engine suite is unaffected and passes.
+3. **Two pre-existing parallel-timing test flakes** — `MetadataPreFetcher.fetch_networkTimeout` and `SoakTestHarness.cancel() causes run() to return before duration expires`. Both pass when run in isolation; both are timing-sensitive under parallel load. Not introduced by this increment.
+4. **Phase 1 inline diagnostic path retained.** `fo_ferrofluid_field_inline` remains in `FerrofluidOcean.metal` for diagnostic comparison against the texture-sample path. Will be removed at Phase 3 if no diagnostic use case emerges.
+
+**Next recommended increment.** Phase 2 — SPH-lite particle update + audio forces. Per-frame compute dispatch (replaces one-shot init bake), spatial-hash binning for the O(N²) → O(N) particle interaction pass, audio routing per the V.9 Session 4.5b prompt (`bass_energy_dev` repulsive pressure, smoothed `drums_energy_dev` impulses, `accumulated_audio_time × audio coef` rotational drift, `arousal` magnitude scale). STOP gate before Phase 3 (per the prompt): Leitl-demo-character match.
+
+**Git status.** Branch `main`. Phase 1 commits land here. No upstream push (per CLAUDE.md: "Do not push to the remote without Matt's explicit approval"). `git status` will be clean post-commit.
+
+---
+
 ## [dev-2026-05-12-g] BUG-011 CLOSED — Arachne over Tier 2 frame budget, closed against relaxed drops-only criteria
 
 **Increment:** BUG-011 closure. **Status:** Resolved. One commit (this commit, doc-only).

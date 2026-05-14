@@ -730,9 +730,10 @@ texture(5)  = noiseHQ    (1024² .r8Unorm Perlin FBM)
 texture(6)  = noiseVolume (64³ .r8Unorm 3D FBM)
 texture(7)  = noiseFBM   (1024² .rgba8Unorm R=Perlin G=shifted B=Worley A=curl)
 texture(8)  = blueNoise  (256² .r8Unorm IGN dither)
-texture(9)  = IBL irradiance cubemap (32² .rgba16Float)
-texture(10) = IBL prefiltered env (128² .rgba16Float, 5 mip levels)
-texture(11) = BRDF LUT (512² .rg16Float)
+texture(9)  = IBL irradiance cubemap (32² .rgba16Float) — ray-march lighting pass
+texture(10) = IBL prefiltered env (128² .rgba16Float, 5 mip levels) — ray-march lighting pass
+              | per-preset baked height field (e.g. Ferrofluid Ocean V.9 Session 4.5b 1024² .r16Float UMA) — ray-march G-buffer pass. Different encoders; no overlap.
+texture(11) = BRDF LUT (512² .rg16Float) — ray-march lighting pass
 ```
 
 ### Buffer Binding Layout
