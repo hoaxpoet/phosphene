@@ -52,8 +52,8 @@ final class FerrofluidParticlesTests: XCTestCase {
     // MARK: - Gate 1: locked constants
 
     func test_lockedConstants_phase1Contract() {
-        XCTAssertEqual(FerrofluidParticles.particleCount, 2048,
-                       "V.9 Session 4.5b spec locks N = 2048 particles (medium density)")
+        XCTAssertEqual(FerrofluidParticles.particleCount, 6000,
+                       "Density pass 2026-05-14 bumped to 6000 to match Phase A voronoi_smooth(scale=4) density — original 2048 was sparser than the reference")
         XCTAssertEqual(FerrofluidParticles.heightTextureSize, 1024,
                        "V.9 Session 4.5b product addendum: bumped to 1024² for fullscreen / 4K sharpness")
         XCTAssertEqual(FerrofluidParticles.worldSpan, 20.0,
