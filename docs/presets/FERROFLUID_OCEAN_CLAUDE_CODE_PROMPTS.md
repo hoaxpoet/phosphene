@@ -1112,12 +1112,3 @@ Three phases with explicit STOP gates between them, per the Authoring Discipline
 
 Per CLAUDE.md Increment Completion Protocol. Multiple commits expected (one per phase; Phase 1 ~3 commits, Phase 2 ~4 commits, Phase 3 ~2 commits). None pushed without Matt's explicit approval.
 
----
-
-## Notes for future sessions
-
-- **§5.8 stage-rig recipe is reusable.** D-125 is a catalog-wide reservation; future presets adopting §5.8 follow the same slot-9 + `matID == 2` pattern. Second-consumer is the trigger to extract a generic `StageRigEngine` from `FerrofluidStageRig`.
-- **The `04_*` reference is dual-anchor.** It teaches both specular character (§10.3.4, Session 2) and stage-rig lighting (§10.3.6, Session 3). The purple beam in the photograph is one frozen instant of a moving colored beam rig — not a static purple light direction. Read accordingly.
-- **The `01_*` reference's apparent grid regularity is anti-directive.** The preset's lattice is domain-warped per §3.4 + Session 4; `01_*` teaches scale and density, NOT periodicity.
-- **The `08_*` aurora reference is for the *quality* of light moving over a dark reflective body, not for the literal lighting paradigm.** The preset's beams are continuous diffuse gradients, not atmospheric ionization. Point-source pillar reflections (moon-on-lake) are a documented failure mode — Session 3 must avoid.
-- **The `10_*` silence reference makes silence a real visual destination, not a "10 % baseline lattice."** At total silence the surface is a calm dark body of liquid with macro swell breathing through and lattice fully collapsed. Session 1 implements this; Sessions 2–4 must not break it.
