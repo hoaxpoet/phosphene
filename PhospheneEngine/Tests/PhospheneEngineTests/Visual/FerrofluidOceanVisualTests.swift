@@ -1,4 +1,4 @@
-// FerrofluidOceanVisualTests — V.9 Session 1+2 visual harness.
+// FerrofluidOceanVisualTests — V.9 Session 1–4.5 visual harness.
 //
 // Session 1 gates (per FERROFLUID_OCEAN_CLAUDE_CODE_PROMPTS.md §1–§3):
 //
@@ -9,29 +9,43 @@
 //
 //   2. testFerrofluidOceanRendersFourFixtures — preset renders successfully
 //      at the four standard fixtures (silence / steady-mid / beat-heavy /
-//      quiet) and produces non-black, non-clipped output. Visual quality is
-//      NOT a Session 1 gate; quality verification lives in Sessions 2–5.
+//      quiet) and produces non-black, non-clipped output. Every fixture
+//      ticks a real `FerrofluidStageRig` (Session 4.5: aurora-band sky
+//      reflection requires an active rig to produce visible chromatic
+//      content; silence-only rig from Session 3 left non-silence fixtures
+//      rendering placeholder-only with no bands).
 //
 //   3. testFerrofluidOceanIndependenceStatesReachable — D-124(d) independence
 //      contract: calm-body-with-spikes (low arousal + high bass_dev) and
 //      agitated-body-without-spikes (high arousal + low bass_dev) produce
 //      visibly distinct frames. Pixel diff > threshold, no golden hash lock.
 //
-// Session 2 gates (per FERROFLUID_OCEAN_CLAUDE_CODE_PROMPTS.md §4):
+// Session 2 gates, adapted for Session 4.5 (per FERROFLUID_OCEAN prompt §4):
 //
 //   4. testFerrofluidOceanMoodTintAtmosphereShifts — silence fixture rendered
-//      twice (valence -0.9 → cool fog; valence +0.9 → warm fog) produces a
-//      visible palette shift through the D-022 mood-tinted *fog* path.
-//      Asserts average channel difference > 1.0.
+//      twice (valence -0.9 → cool; valence +0.9 → warm) produces a visible
+//      palette shift through the V.9 Session 4.5 procedural-sky path. The
+//      sky function's `baseSky * scene.lightColor.rgb` multiply carries
+//      D-022 mood-tint through the entire reflected sky. Asserts average
+//      channel difference > 1.0.
 //
-//   5. testFerrofluidOceanMoodTintIBLPropagation — same valence-shift comparison
-//      but with a real IBLManager bound and fog explicitly disabled, so the
-//      gate exercises the *IBL ambient* path (`ambient *= scene.lightColor.rgb`)
-//      independently of the fog path. Catches a refactor that removes the IBL
-//      multiply while leaving the fog tint intact — the dominant production
-//      mood-tint path for surface pixels closer than fogNear.
+//   5. testFerrofluidOceanMoodTintSkyBaseShift — same valence-shift comparison
+//      with fog explicitly disabled, so the gate exercises only the sky-base
+//      `scene.lightColor.rgb` multiply (the Session 4.5 replacement for the
+//      Session 2 IBL ambient path; matID == 2 no longer reads
+//      iblIrradiance/iblPrefiltered/iblBRDFLUT after the
+//      `rm_finishLightingPass` bypass).
 //
-// All five tests share the deferred-ray-march render path (`RayMarchPipeline`
+// Session 3 + Session 4.5 dispatch gate:
+//
+//   6. testFerrofluidOceanSkyReflectionDispatchActive — steady-mid fixture
+//      rendered with an active `FerrofluidStageRig` (4 lights, non-zero
+//      intensity) vs the zero-filled placeholder (activeLightCount = 0).
+//      Under Session 4.5, an active rig adds aurora bands to the sky
+//      reflection; placeholder leaves only the dim purple base. Diff
+//      threshold ≥ 1.0 in avg channel.
+//
+// All six tests share the deferred-ray-march render path (`RayMarchPipeline`
 // driven directly), the same path used by PresetVisualReviewTests for pure
 // ray-march presets.
 
@@ -46,8 +60,14 @@ final class FerrofluidOceanVisualTests: XCTestCase {
     private var device: MTLDevice!
     private var loader: PresetLoader!
 
-    private static let renderWidth  = 384
-    private static let renderHeight = 216
+    // V.9 Session 4.5: bumped from the 384×216 thumbnail resolution to
+    // full 1920×1080 (production-target 1080p). Lower resolutions hid
+    // pixel-scale artifacts and led to incorrect "production won't show this"
+    // assessments; tests now render at the resolution Phosphene actually
+    // ships at. Per-pixel threshold-based assertions (avg channel diff, lit
+    // count) are resolution-independent so all gate values port as-is.
+    private static let renderWidth  = 1920
+    private static let renderHeight = 1080
 
     override func setUpWithError() throws {
         device = MTLCreateSystemDefaultDevice()
@@ -88,30 +108,34 @@ final class FerrofluidOceanVisualTests: XCTestCase {
         for fixture in fixtures {
             var features = fixture.features
             let stems    = fixture.stems
-            // Session 4 P0-3: the silence fixture must exercise the matID == 2
-            // stage-rig dispatch with a real rig bound — without it, the
-            // §5.8 silence-state semantics (floor_coef × baseline ≈ 2.0 idle
-            // intensity per active beam) collapse to placeholder zeros and
-            // the avg-channel assertion below cannot fire. The 3 non-silence
-            // fixtures still render via the placeholder path to preserve the
-            // Session 1 non-trivial-output gate.
-            let silenceRig: FerrofluidStageRig?
-            if fixture.name == "01_silence", let descriptor = preset.descriptor.stageRig {
-                silenceRig = FerrofluidStageRig(device: device, descriptor: descriptor)
-                if let rig = silenceRig {
+            // Session 4.5: every fixture exercises the matID == 2 sky-
+            // reflection dispatch with a real rig bound. The Session 3 silence-
+            // only rig allocation left steady-mid / beat-heavy / quiet
+            // rendering with `activeLightCount = 0` — no aurora bands
+            // contributed, so the rendered output was indistinguishable from
+            // a placeholder render and the Phase A acceptance gate
+            // ("Steady-mid fixture: bands brighter") could not fire. Ticking
+            // a rig per fixture lets the per-fixture stems drive the rig's
+            // palette / intensity / orbit-speed state and produces a
+            // contact sheet that reflects the §5.8 musical contract end-to-end.
+            let fixtureRig: FerrofluidStageRig?
+            if let descriptor = preset.descriptor.stageRig {
+                fixtureRig = FerrofluidStageRig(device: device, descriptor: descriptor)
+                if let rig = fixtureRig {
                     // 30 ticks at 60 fps so the smoothedDrumsDev envelope has
-                    // converged to 0 (silence-state semantics).
+                    // converged toward the fixture's stem values per the §5.8
+                    // 150 ms smoothing constant (~3 τ at 0.5 s of ticks).
                     for _ in 0..<30 {
                         rig.tick(features: features, stems: stems, dt: 1.0 / 60.0)
                     }
                 }
             } else {
-                silenceRig = nil
+                fixtureRig = nil
             }
             let pixels   = try renderDeferredRayMarch(preset: preset,
                                                      features: &features,
                                                      stems: stems,
-                                                     stageRig: silenceRig)
+                                                     stageRig: fixtureRig)
             try writePNG(bgraPixels: pixels,
                          width: Self.renderWidth, height: Self.renderHeight,
                          to: outDir.appendingPathComponent("\(fixture.name).png"))
@@ -137,19 +161,21 @@ final class FerrofluidOceanVisualTests: XCTestCase {
             XCTAssertTrue(anyUnderClipped,
                           "Fixture '\(fixture.name)' rendered fully clipped — unexpected")
 
-            // Session 4 P0-3: silence-state matID == 2 idle-beam presence.
-            // The §5.8 silence-state semantics specify that even with
-            // drumsEnergyDev = 0 the per-beam intensity collapses to
-            // floor_coef × baseline (≈ 2.0 at §5.8 defaults), so beam
-            // reflections still produce a visible ferrofluid surface — never
-            // fully black. The existing `lit > 100` gate accepts up to 99.97
-            // % black pixels; this stricter average-channel gate catches a
-            // regression where the matID == 2 branch returns vec3(0) at
-            // silence (e.g. an unintended `activeLightCount = 0` shortcut, a
-            // stale buffer binding, or a future refactor that drops the
-            // intensity floor multiplier). Threshold 8 ≈ 3 % linear average,
-            // well below the ~12–25 typical Session 3 silence render and
-            // far above the all-black floor.
+            // Session 4.5: silence-state sky-reflection presence. Even with
+            // drumsEnergyDev = 0 the rig's per-light intensity collapses to
+            // floor_coef × baseline (≈ 2.0 at §5.8 defaults), so the dim
+            // aurora bands ride on top of the base purple gradient — the
+            // substrate is dark but never pure black. The `lit > 100` gate
+            // above accepts up to 99.97 % black pixels; this stricter
+            // average-channel gate catches a regression where the matID == 2
+            // sky function returns vec3(0) at silence (e.g. a stale buffer
+            // binding, an `activeLightCount = 0` shortcut, or a future
+            // refactor that drops the rig.lights iteration). Threshold 4
+            // ≈ 1.6 % linear average — below the Session 4.5 silence
+            // baseline (~6–10) and far above the all-black floor. Lower
+            // than the Session 3 threshold of 8 because the new sky path
+            // intentionally renders darker at silence (base purple, not
+            // gray-blue IBL) — the visual change is the whole point.
             if fixture.name == "01_silence" {
                 var channelSum: UInt64 = 0
                 for i in 0 ..< pixels.count where i % 4 != 3 {
@@ -158,12 +184,12 @@ final class FerrofluidOceanVisualTests: XCTestCase {
                 let channelCount = UInt64(pixels.count / 4 * 3)
                 let avgChannel = Double(channelSum) / Double(channelCount)
                 XCTAssertGreaterThan(
-                    avgChannel, 8.0,
-                    "Silence fixture avg channel \(avgChannel) ≤ 8 — matID == 2 idle-beam presence likely collapsed (§5.8 silence-state)")
+                    avgChannel, 4.0,
+                    "Silence fixture avg channel \(avgChannel) ≤ 4 — matID == 2 sky reflection likely collapsed (V.9 Session 4.5)")
             }
         }
 
-        print("[FerrofluidOcean V.9 Session 1] fixtures written to: \(outDir.path)")
+        print("[FerrofluidOcean V.9 Session 4.5] fixtures written to: \(outDir.path)")
     }
 
     // MARK: - Gate 3: independence states reachable (D-124(d))
@@ -217,8 +243,15 @@ final class FerrofluidOceanVisualTests: XCTestCase {
         print("[FerrofluidOcean V.9 Session 1] independence frames written to: \(outDir.path) (avg diff = \(avg))")
     }
 
-    // MARK: - Gate 4 (V.9 Session 2): mood-tint atmosphere shift (D-022)
+    // MARK: - Gate 4 (V.9 Session 4.5): mood-tint atmosphere shift (D-022)
 
+    /// Verifies that the D-022 cool/warm valence tint propagates through the
+    /// matID == 2 procedural sky path (Session 4.5 / D-126). The sky function's
+    /// `baseSky * scene.lightColor.rgb` multiply carries the entire reflected
+    /// sky toward the mood-derived tint; aurora bands are additive on top and
+    /// keep their palette-driven colors unchanged. With fog ENABLED the far-sky
+    /// fog tail (also fed by `rm_ferrofluidBaseSky`) carries the tint at depth
+    /// as well, giving the strongest signal.
     func testFerrofluidOceanMoodTintAtmosphereShifts() throws {
         let outDir = try makeOutputDirectory(suffix: "mood_tint")
         let preset = try requirePreset()
@@ -260,35 +293,37 @@ final class FerrofluidOceanVisualTests: XCTestCase {
         let pixelChannels = UInt64(pixelsCool.count / 4 * 3)
         let avg = Double(diff) / Double(pixelChannels)
 
-        // Cool→warm tint at valence ±0.9 lands at roughly (0.70, 0.86, 1.36)
-        // vs (1.22, 1.08, 0.73) — multiplied through the D-022 mood-tinted
-        // fogColor in the matID == 3 branch, the cool-purple-blue vs
-        // warm-amber shift produces an avg channel diff well above 1.0 (the
-        // observed value at Session 2 close-out is ~31 with the fixture-side
-        // fogNear=0 override). The 1.0 threshold leaves ~30× headroom; if a
-        // future refactor of the matID == 3 branch drops the lightColor.rgb
-        // multiply on fogColor, this gate trips long before silent regression.
+        // Cool→warm tint at valence ±0.9 multiplies the base sky's
+        // (0.05, 0.025, 0.07) horizon stripe by lightColor (~0.70, 0.86, 1.36)
+        // vs (1.22, 1.08, 0.73), giving the substrate a clear cool-purple vs
+        // warm-amber shift. The 1.0 threshold leaves headroom against the
+        // expected diff (~5–15 under the new dim-sky baseline; the absolute
+        // diff is lower than the Session 2 matID == 3 path because the base
+        // sky's value range is intentionally smaller, but the *relative*
+        // shift is the same). If a future refactor drops the
+        // `baseSky * scene.lightColor.rgb` multiply this gate trips.
         XCTAssertGreaterThan(
             avg, 1.0,
-            "Mood-tint atmosphere shift collapsed (avg channel diff = \(avg)) — D-022 IBL/fog tint not propagating through matID == 3 branch")
+            "Mood-tint atmosphere shift collapsed (avg channel diff = \(avg)) — D-022 tint not propagating through matID == 2 procedural sky")
 
-        print("[FerrofluidOcean V.9 Session 2] mood-tint frames written to: \(outDir.path) (avg diff = \(avg))")
+        print("[FerrofluidOcean V.9 Session 4.5] mood-tint frames written to: \(outDir.path) (avg diff = \(avg))")
     }
 
-    // MARK: - Gate 5 (V.9 Session 2 follow-up): IBL-path mood-tint propagation
+    // MARK: - Gate 5 (V.9 Session 4.5): sky-base mood-tint propagation (fog disabled)
 
-    /// Verifies that the D-022 `ambient *= scene.lightColor.rgb` line inside
-    /// `rm_finishLightingPass` carries the mood tint through the IBL ambient
-    /// path, not just through fog. In production with IBL textures bound,
-    /// surface pixels closer than `fogNear` see *zero* fog contribution but
-    /// still need to take the cool/warm tint — that path is what this gate
-    /// covers.
+    /// Verifies that the sky function's `baseSky * scene.lightColor.rgb`
+    /// multiply (inside `rm_ferrofluidBaseSky`) is the sole mood-tint vector
+    /// when fog is disabled. Session 2 ran this as `testFerrofluidOcean
+    /// MoodTintIBLPropagation` against the `rm_finishLightingPass` IBL path;
+    /// Session 4.5 bypasses that helper for matID == 2 and the IBL ambient
+    /// path is no longer reachable. The replacement gates the sky base's
+    /// lightColor multiply directly.
     ///
     /// Disables fog explicitly (`sceneParamsB.y = 1e6` matches the "fog
     /// disabled" sentinel in PresetDescriptor+SceneUniforms) so any visible
-    /// cool-vs-warm shift here MUST come from the IBL ambient multiply.
-    func testFerrofluidOceanMoodTintIBLPropagation() throws {
-        let outDir = try makeOutputDirectory(suffix: "mood_tint_ibl")
+    /// cool-vs-warm shift here MUST come from the sky-base multiply.
+    func testFerrofluidOceanMoodTintSkyBaseShift() throws {
+        let outDir = try makeOutputDirectory(suffix: "mood_tint_sky_base")
         let preset = try requirePreset()
 
         var coolFeatures = fixtureSilence()
@@ -297,6 +332,12 @@ final class FerrofluidOceanVisualTests: XCTestCase {
         warmFeatures.valence = 0.9
         let stems = stemsZero()
 
+        // bindIBL is kept on so the placeholder IBL textures don't fall back
+        // to unbound-texture zero — but matID == 2 doesn't read them under
+        // Session 4.5, so this should be a no-op for the actual rendered
+        // pixels. Keeping it true preserves Session 2 test isolation against
+        // a future regression that re-routes matID == 2 through
+        // `rm_finishLightingPass`.
         let pixelsCool = try renderDeferredRayMarch(
             preset: preset, features: &coolFeatures, stems: stems,
             applyValenceTint: true, bindIBL: true, disableFog: true)
@@ -306,10 +347,10 @@ final class FerrofluidOceanVisualTests: XCTestCase {
 
         try writePNG(bgraPixels: pixelsCool,
                      width: Self.renderWidth, height: Self.renderHeight,
-                     to: outDir.appendingPathComponent("a_valence_negative_cool_ibl.png"))
+                     to: outDir.appendingPathComponent("a_valence_negative_cool_no_fog.png"))
         try writePNG(bgraPixels: pixelsWarm,
                      width: Self.renderWidth, height: Self.renderHeight,
-                     to: outDir.appendingPathComponent("b_valence_positive_warm_ibl.png"))
+                     to: outDir.appendingPathComponent("b_valence_positive_warm_no_fog.png"))
 
         precondition(pixelsCool.count == pixelsWarm.count)
         var diff: UInt64 = 0
@@ -320,52 +361,66 @@ final class FerrofluidOceanVisualTests: XCTestCase {
         let avg = Double(diff) / Double(pixelChannels)
 
         // With fog disabled, all tint propagation flows through the
-        // `ambient *= scene.lightColor.rgb` multiply in rm_finishLightingPass.
-        // IBL irradiance on a ferrofluid surface (albedo ~0.02-0.05, metallic=1)
-        // is dominated by the prefiltered specular reflection of the sky;
-        // valence ±0.9 shifts the lightColor by ~30-40% per channel, so the
-        // ACES-toned cool-vs-warm diff should land well above noise. The 1.0
-        // threshold leaves headroom; observed at close-out is ~10-20.
+        // `baseSky * scene.lightColor.rgb` multiply in `rm_ferrofluidBaseSky`.
+        // The aurora bands are zero (placeholder rig path), so the substrate
+        // reflects only the dim purple gradient × thin-film F0 — the cool
+        // vs warm shift comes entirely from the base sky's lightColor
+        // multiply. 1.0 threshold leaves headroom against the expected
+        // diff (~2–8 under the new dim baseline).
         XCTAssertGreaterThan(
             avg, 1.0,
-            "IBL-path mood-tint shift collapsed (avg channel diff = \(avg)) — the `ambient *= scene.lightColor.rgb` line in rm_finishLightingPass is the most likely regression site")
+            "Sky-base mood-tint shift collapsed (avg channel diff = \(avg)) — `baseSky * scene.lightColor.rgb` in rm_ferrofluidBaseSky is the most likely regression site")
 
-        print("[FerrofluidOcean V.9 Session 2 IBL] mood-tint frames written to: \(outDir.path) (avg diff = \(avg))")
+        print("[FerrofluidOcean V.9 Session 4.5 sky base] mood-tint frames written to: \(outDir.path) (avg diff = \(avg))")
     }
 
-    // MARK: - Gate 6 (V.9 Session 3): §5.8 stage-rig multi-light dispatch active (D-125)
+    // MARK: - Gate 6 (V.9 Session 4.5): sky-reflection dispatch active (D-126)
 
     /// Verifies that the matID == 2 dispatch branch in
     /// `raymarch_lighting_fragment` actually reads the slot-9 stage-rig
-    /// buffer. Two renders of the steady-mid fixture:
+    /// buffer and consumes it through `rm_ferrofluidSky`. Two renders of the
+    /// steady-mid fixture:
     ///   - "active rig"      — a FerrofluidStageRig with activeLightCount = 4
     ///                         and non-zero intensities. Buffer bound at slot 9.
+    ///                         Aurora bands ride on top of the base purple sky.
     ///   - "placeholder only" — nil rig, so the zero-filled
     ///                         RayMarchPipeline.stageRigPlaceholderBuffer is
-    ///                         bound (activeLightCount = 0 ⇒ matID == 2 loop
-    ///                         body never executes).
-    /// The two frames must be measurably distinct (avg channel diff > 5.0).
+    ///                         bound (activeLightCount = 0 ⇒ rm_ferrofluidSky's
+    ///                         aurora loop never executes). Surface reflects
+    ///                         only the dim base purple sky.
+    ///
+    /// The two frames must be measurably distinct (avg channel diff > 1.0).
     /// If this collapses, either (a) the slot-9 buffer is not reaching the
-    /// shader, (b) the matID == 2 loop body is unreachable, or (c) the
-    /// ferrofluid surface stopped emitting matID == 2 from sceneMaterial.
-    func testFerrofluidOceanStageRigDispatchActive() throws {
-        let outDir = try makeOutputDirectory(suffix: "stage_rig_dispatch")
+    /// shader, (b) the rm_ferrofluidSky aurora loop is unreachable, or (c)
+    /// the ferrofluid surface stopped emitting matID == 2 from sceneMaterial.
+    /// Renamed from `testFerrofluidOceanStageRigDispatchActive` at Session 4.5
+    /// because the dispatch path no longer accumulates Cook-Torrance per-beam
+    /// contributions — it samples a procedural sky at the reflection vector.
+    func testFerrofluidOceanSkyReflectionDispatchActive() throws {
+        let outDir = try makeOutputDirectory(suffix: "sky_reflection_dispatch")
         let preset = try requirePreset()
 
         // The dispatch gate uses a *test-harness-tuned* StageRig descriptor —
-        // close-in orbit + high intensity_baseline — so the per-light beam
-        // contributions overwhelm the IBL ambient floor and produce a clearly
-        // measurable diff against the placeholder render. The production
-        // Ferrofluid Ocean values (orbit_altitude 6, orbit_radius 4,
-        // intensity_baseline 5) are tuned for the V.9 reference frames at
-        // Session 5 cert review; that tuning lives in JSON and is not the
-        // dispatch gate's concern. This gate verifies the slot-9 buffer
-        // reaches the shader — the production tuning is validated by
-        // Session 5 manual M7 review against `04_*` / `08_*`.
+        // boosted intensity_baseline — so the aurora-band contributions
+        // produce a clearly measurable diff against the placeholder render.
+        // The production Ferrofluid Ocean values (intensity_baseline 5) are
+        // tuned for the V.9 reference frames at Session 5 cert review; that
+        // tuning lives in JSON and is not the dispatch gate's concern. This
+        // gate verifies the slot-9 buffer reaches the shader — the
+        // production tuning is validated by Session 5 manual M7 review
+        // against `04_*` / `08_*`.
+        //
+        // Orbit altitude / radius stay at production values (6 / 4) so the
+        // bandDir = normalize(lightPos) computation in rm_ferrofluidSky
+        // produces the same upper-hemisphere band placement under test as
+        // under production. The Session 3 dispatch test used close-in 2/2
+        // orbit to amplify Cook-Torrance attenuation; under Session 4.5
+        // the relevant signal is bandDir direction, not surface distance,
+        // so production values give a more representative test.
         let stageRigDesc = StageRig(
             lightCount: 4,
-            orbitAltitude: 2.0,
-            orbitRadius: 2.0,
+            orbitAltitude: 6.0,
+            orbitRadius: 4.0,
             orbitSpeedBaseline: 0.05,
             orbitSpeedArousalCoef: 0.15,
             palettePhaseOffsets: [0.0, 0.33, 0.67, 0.17],
@@ -401,7 +456,7 @@ final class FerrofluidOceanVisualTests: XCTestCase {
 
         try writePNG(bgraPixels: pixelsActive,
                      width: Self.renderWidth, height: Self.renderHeight,
-                     to: outDir.appendingPathComponent("a_stage_rig_active.png"))
+                     to: outDir.appendingPathComponent("a_sky_reflection_active.png"))
         try writePNG(bgraPixels: pixelsInactive,
                      width: Self.renderWidth, height: Self.renderHeight,
                      to: outDir.appendingPathComponent("b_placeholder_only.png"))
@@ -414,23 +469,18 @@ final class FerrofluidOceanVisualTests: XCTestCase {
         let pixelChannels = UInt64(pixelsActive.count / 4 * 3)
         let avg = Double(diff) / Double(pixelChannels)
 
-        // 0.3 threshold (above the ~0.05 pure-noise floor; the
-        // testFerrofluidOceanIndependenceStatesReachable gate uses 0.5 with
-        // a similar rationale). With the test-harness-tuned StageRig (radius
-        // 2, baseline intensity 200) the per-light specular contributions
-        // produce a measurable beam-reflection signal on the ferrofluid
-        // surface. ACES tone-mapping bounds the visible per-pixel delta
-        // because the placeholder ambient floor and the active-beam HDR
-        // values both saturate near the ACES asymptote — the dispatch gate's
-        // job is to prove the slot-9 buffer reaches the shader, not to
-        // validate per-pixel brightness (that's the Session 5 cert review
-        // against `04_*` / `08_*`). If the diff collapses below 0.3, the
-        // slot-9 binding is broken regardless of tonemap headroom.
+        // 1.0 threshold per the Session 4.5 prompt's Phase A acceptance
+        // gate. With the boosted intensity_baseline (200) and 4 active
+        // bands at non-zero intensities, the aurora contribution to the
+        // sky should be visibly bright at the band centers — placeholder
+        // gives only the dim base purple. ACES tone-mapping in the
+        // composite pass bounds the visible per-pixel delta, but the diff
+        // accumulates across the full frame.
         XCTAssertGreaterThan(
-            avg, 0.3,
-            "Stage-rig dispatch inactive (avg channel diff = \(avg)) — slot-9 buffer not reaching matID == 2 branch")
+            avg, 1.0,
+            "Sky-reflection dispatch inactive (avg channel diff = \(avg)) — slot-9 buffer not reaching matID == 2 sky branch")
 
-        print("[FerrofluidOcean V.9 Session 3] stage-rig dispatch frames written to: \(outDir.path) (avg diff = \(avg))")
+        print("[FerrofluidOcean V.9 Session 4.5] sky-reflection dispatch frames written to: \(outDir.path) (avg diff = \(avg))")
     }
 
     // MARK: - Render
