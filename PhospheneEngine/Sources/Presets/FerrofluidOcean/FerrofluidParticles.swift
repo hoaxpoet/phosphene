@@ -30,6 +30,7 @@
 import Foundation
 import Metal
 import simd
+import Shared
 import os.log
 
 private let particleLogger = Logger(subsystem: "com.phosphene.presets", category: "FerrofluidParticles")
@@ -204,15 +205,43 @@ public final class FerrofluidParticles: @unchecked Sendable {
         var pad1: UInt32                    // 16-byte align
     }
 
-    /// Per-frame update uniforms for `ferrofluid_particle_update`. Phase 2b
-    /// only consumes `dt`; Phase 2c will extend this struct with audio
-    /// force inputs (bass / drums / other / arousal).
+    /// Per-frame update uniforms for `ferrofluid_particle_update`. Phase 2c
+    /// extends with the four audio inputs (bass / drums-smoothed / other /
+    /// arousal), `accumulated_audio_time` for rotational drift, and grid
+    /// metadata (cell side / capacity / world XZ patch + the canonical-
+    /// grid rows/columns) for spatial-hash neighbour lookup and on-the-fly
+    /// canonical-position recomputation. 64 bytes, 16-byte aligned.
     private struct UpdateUniforms {
-        var dt: Float                       // seconds since previous update
-        var particleCount: UInt32           // active particle count
-        var pad0: Float
-        var pad1: Float
+        var dt: Float
+        var particleCount: UInt32
+        var accumulatedAudioTime: Float
+        var arousal: Float
+
+        var bassEnergyDev: Float
+        var drumsEnergyDevSmoothed: Float
+        var otherEnergyDev: Float
+        var pressureBaseRadius: Float
+
+        var worldOriginXZ: SIMD2<Float>
+        var worldSpan: Float
+        var cellGridSide: UInt32
+
+        var cellSlotCapacity: UInt32
+        var gridColumns: UInt32
+        var gridRows: UInt32
+        var pad0: UInt32
     }
+
+    // MARK: - CPU-side smoothing state (Phase 2c)
+
+    /// Smoothed `stems.drumsEnergyDev` envelope (150 ms τ — same recipe as
+    /// `FerrofluidStageRig`). Drives the drums shock-impulse force without
+    /// edge-triggering, satisfying `Scripts/check_drums_beat_intensity.sh` +
+    /// Failed Approach #4 (beat onsets are never a primary motion driver).
+    /// Guarded by `lock` because the per-frame closure is captured weakly
+    /// and may be called from non-MainActor threads.
+    private var smoothedDrumsEnergyDev: Float = 0
+    private let lock = NSLock()
 
     // MARK: - Init
 
@@ -423,38 +452,116 @@ public final class FerrofluidParticles: @unchecked Sendable {
     }
 
     /// Encode a single particle-update compute dispatch into the caller's
-    /// command buffer. Advances each particle's position by
-    /// `velocity × dt`. Phase 2b: no forces; velocity stays whatever was
-    /// last written. Phase 2c will extend this to apply audio forces +
-    /// SPH-lite pressure between bin and update.
-    public func encodeUpdate(into commandBuffer: MTLCommandBuffer, dt: Float) {
+    /// command buffer. Phase 2c: integrates audio forces (pressure / drums
+    /// impulse / rotational drift) + equilibrium spring + damping into
+    /// each particle's velocity, then advances `position += velocity × dt`
+    /// via semi-implicit Euler. `audio` carries the per-frame uniforms;
+    /// when zero (silence), only equilibrium + damping run → particles
+    /// settle to canonical positions (gentle baseline drift only).
+    ///
+    /// Reads the spatial-hash buffers populated by the most recent bake
+    /// pass to find neighbour particles for pressure forces. **Callers
+    /// must encode a bake before each update** so the spatial-hash
+    /// reflects the current positions (`encodePerFrameUpdate` handles the
+    /// ordering: bake → update → bake).
+    public func encodeUpdate(into commandBuffer: MTLCommandBuffer,
+                             dt: Float,
+                             audio: UpdateAudio = .silent) {
         guard let encoder = commandBuffer.makeComputeCommandEncoder() else {
             particleLogger.error("FerrofluidParticles.encodeUpdate: makeComputeCommandEncoder returned nil")
             return
         }
+        let layout = Self.canonicalGridLayout()
         var uniforms = UpdateUniforms(
             dt: dt,
             particleCount: UInt32(Self.particleCount),
-            pad0: 0,
-            pad1: 0)
+            accumulatedAudioTime: audio.accumulatedAudioTime,
+            arousal: audio.arousal,
+            bassEnergyDev: audio.bassEnergyDev,
+            drumsEnergyDevSmoothed: audio.drumsEnergyDevSmoothed,
+            otherEnergyDev: audio.otherEnergyDev,
+            pressureBaseRadius: Self.spikeBaseRadius * 2.0,
+            worldOriginXZ: SIMD2(Self.worldOriginX, Self.worldOriginZ),
+            worldSpan: Self.worldSpan,
+            cellGridSide: UInt32(Self.cellGridSide),
+            cellSlotCapacity: UInt32(Self.cellSlotCapacity),
+            gridColumns: UInt32(layout.columns),
+            gridRows: UInt32(layout.rows),
+            pad0: 0)
         encoder.setComputePipelineState(updateParticlesPipeline)
         encoder.setBuffer(particleBuffer, offset: 0, index: 0)
         encoder.setBytes(&uniforms,
                          length: MemoryLayout<UpdateUniforms>.stride,
                          index: 1)
+        encoder.setBuffer(cellCountBuffer, offset: 0, index: 2)
+        encoder.setBuffer(cellSlotBuffer, offset: 0, index: 3)
         let tpg = MTLSize(width: 64, height: 1, depth: 1)
         let groups = MTLSize(width: (Self.particleCount + 63) / 64, height: 1, depth: 1)
         encoder.dispatchThreadgroups(groups, threadsPerThreadgroup: tpg)
         encoder.endEncoding()
     }
 
-    /// Per-frame closure entry point. Encodes update (position += velocity ×
-    /// dt) then bake (height field from updated positions) into the caller's
-    /// command buffer. Used by the production render path's per-frame
-    /// compute-dispatch hook.
-    public func encodePerFrameUpdate(into commandBuffer: MTLCommandBuffer, dt: Float) {
-        encodeUpdate(into: commandBuffer, dt: dt)
+    /// Per-frame closure entry point. Encodes bake → update → bake into the
+    /// caller's command buffer. The first bake populates the spatial-hash
+    /// from the previous frame's positions so the update kernel can compute
+    /// pressure forces from neighbour lookups; update advances positions by
+    /// the integrated force model; the second bake refreshes the height
+    /// texture for the G-buffer pass that follows.
+    ///
+    /// Phase 2c reads `features` / `stems` to derive audio uniforms:
+    ///   - `stems.bassEnergyDev`           → pressure radius scale
+    ///   - `stems.drumsEnergyDev` (smoothed CPU-side, 150 ms τ) → radial impulse
+    ///   - `stems.otherEnergyDev`          → tangential rotation rate
+    ///   - `features.arousal`              → global force magnitude scale
+    ///   - `features.accumulatedAudioTime` → energy-paused time axis
+    public func encodePerFrameUpdate(into commandBuffer: MTLCommandBuffer,
+                                     dt: Float,
+                                     features: FeatureVector,
+                                     stems: StemFeatures) {
+        let audio = lock.withLock { () -> UpdateAudio in
+            let tauSeconds: Float = 0.150
+            let alpha = min(dt / tauSeconds, 1.0)
+            let target = max(0, stems.drumsEnergyDev)
+            smoothedDrumsEnergyDev += (target - smoothedDrumsEnergyDev) * alpha
+            return UpdateAudio(
+                accumulatedAudioTime: features.accumulatedAudioTime,
+                arousal: max(-1, min(1, features.arousal)),
+                bassEnergyDev: max(0, stems.bassEnergyDev),
+                drumsEnergyDevSmoothed: smoothedDrumsEnergyDev,
+                otherEnergyDev: max(0, stems.otherEnergyDev))
+        }
+        // bake (re-populates spatial hash from current positions) → update
+        // (consumes hash for pressure neighbour lookup) → bake (refreshes
+        // height texture from updated positions for the G-buffer pass).
         encodeBake(into: commandBuffer)
+        encodeUpdate(into: commandBuffer, dt: dt, audio: audio)
+        encodeBake(into: commandBuffer)
+    }
+
+    /// Per-frame closure entry point (Phase 2b compatibility — no audio).
+    /// Retained so older Phase 2b call sites still link; production wiring
+    /// in `VisualizerEngine+Presets.swift` uses the audio-aware overload.
+    public func encodePerFrameUpdate(into commandBuffer: MTLCommandBuffer, dt: Float) {
+        encodeBake(into: commandBuffer)
+        encodeUpdate(into: commandBuffer, dt: dt, audio: .silent)
+        encodeBake(into: commandBuffer)
+    }
+
+    /// CPU-side bundle for audio uniforms; lets `encodeUpdate` stay
+    /// non-`Sendable`-throwing while the closure-driven path packages
+    /// audio inputs upstream.
+    public struct UpdateAudio: Sendable {
+        public let accumulatedAudioTime: Float
+        public let arousal: Float
+        public let bassEnergyDev: Float
+        public let drumsEnergyDevSmoothed: Float
+        public let otherEnergyDev: Float
+        public static let silent = UpdateAudio(
+            accumulatedAudioTime: 0,
+            arousal: 0,
+            bassEnergyDev: 0,
+            drumsEnergyDevSmoothed: 0,
+            otherEnergyDev: 0)
     }
 
     // MARK: - Test seam

@@ -223,8 +223,11 @@ extension VisualizerEngine {
                             // particle update (pos += vel × dt) followed by
                             // height-field re-bake on each frame's command
                             // buffer before the G-buffer pass reads slot 10.
-                            pipeline.setRayMarchPresetComputeDispatch { [weak particles] cmdBuf, _, _, dt in
-                                particles?.encodePerFrameUpdate(into: cmdBuf, dt: dt)
+                            pipeline.setRayMarchPresetComputeDispatch { [weak particles] cmdBuf, features, stems, dt in
+                                particles?.encodePerFrameUpdate(into: cmdBuf,
+                                                                dt: dt,
+                                                                features: features,
+                                                                stems: stems)
                             }
                         } else {
                             // swiftlint:disable:next line_length

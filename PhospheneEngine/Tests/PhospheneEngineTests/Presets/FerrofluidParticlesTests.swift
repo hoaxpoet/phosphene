@@ -30,6 +30,7 @@
 //      returns 0 (via clamp-to-zero or explicit zero-band).
 
 import Metal
+import simd
 import XCTest
 @testable import Presets
 @testable import Renderer
@@ -217,71 +218,84 @@ final class FerrofluidParticlesTests: XCTestCase {
             "Bake produced only \(nonZero) / \(totalTexels) non-zero texels — expected the spike field to cover at least a quarter of the patch interior")
     }
 
-    // MARK: - Phase 2b: particle update advances positions by velocity
+    // MARK: - Phase 2c: audio forces drive particle motion
+    //
+    // Phase 2b had two velocity-propagation gates that tested pure
+    // `pos += v × dt`. Phase 2c's force model (equilibrium spring + viscous
+    // damping + pressure + drums + rotation, all integrated semi-implicit
+    // Euler) supersedes those — damping decelerates a seeded velocity to
+    // zero within ~0.3 s and the equilibrium spring pulls position back
+    // toward canonical, so the Phase 2b expectation of "position drifts
+    // by velocity × dt" no longer holds. The Phase 2c tests below cover
+    // the load-bearing properties of the new model: audio forces produce
+    // visible displacement; silence produces no displacement.
 
-    /// Inject a known velocity, run a particle update, confirm positions
-    /// advanced by `velocity × dt`. Tolerance is tight (1e-5) because the
-    /// update kernel is pure linear arithmetic; any deviation indicates a
-    /// real bug in the kernel binding or struct layout.
-    func test_particleUpdate_advancesPositionsByVelocity() throws {
+    /// Non-zero audio inputs (bass + drums + arousal) drive forces that
+    /// push particles away from canonical equilibrium. Inverse: zero audio
+    /// → particles stay at canonical (within tiny rounding from the spring
+    /// + damping balance). Asserts the displacement under active audio is
+    /// at least an order of magnitude larger than at silence.
+    func test_audioForces_displaceParticlesFromCanonical() throws {
         let particles = try XCTUnwrap(
             FerrofluidParticles(device: device, library: library),
             "FerrofluidParticles allocation failed")
-        let seededVelocity = SIMD2<Float>(0.10, -0.05)  // world units per second
-        particles.seedVelocityForTesting(seededVelocity)
-        let canonicalPositions = particles.snapshotParticlePositions()
+        let canonical = particles.snapshotParticlePositions()
 
-        // Run one update at dt = 1/60 second.
+        // Drive non-zero audio for 60 frames (1 sec at 60 fps). 0.5 bass
+        // and 0.5 drums-smoothed produce noticeable pressure + radial
+        // impulse; arousal 0.5 keeps the global scale near maximum.
+        let activeAudio = FerrofluidParticles.UpdateAudio(
+            accumulatedAudioTime: 0.5,
+            arousal: 0.5,
+            bassEnergyDev: 0.5,
+            drumsEnergyDevSmoothed: 0.5,
+            otherEnergyDev: 0.2)
         let dt: Float = 1.0 / 60.0
-        let cmdBuf = try XCTUnwrap(commandQueue.makeCommandBuffer())
-        particles.encodeUpdate(into: cmdBuf, dt: dt)
-        cmdBuf.commit()
-        cmdBuf.waitUntilCompleted()
-        XCTAssertEqual(cmdBuf.status, .completed,
-                       "Update command buffer failed: \(String(describing: cmdBuf.error))")
-
-        let updatedPositions = particles.snapshotParticlePositions()
-        let expectedDelta = seededVelocity * dt
-        XCTAssertEqual(canonicalPositions.count, updatedPositions.count)
-        for i in 0 ..< canonicalPositions.count {
-            let delta = updatedPositions[i] - canonicalPositions[i]
-            XCTAssertEqual(delta.x, expectedDelta.x, accuracy: 1e-5,
-                "Particle \(i) X did not advance by velocity.x × dt — got \(delta.x), expected \(expectedDelta.x)")
-            XCTAssertEqual(delta.y, expectedDelta.y, accuracy: 1e-5,
-                "Particle \(i) Z did not advance by velocity.y × dt — got \(delta.y), expected \(expectedDelta.y)")
-        }
-    }
-
-    /// Run 60 updates (1 sec at 60 fps) and confirm positions advanced by
-    /// `velocity × 1.0`. Verifies the per-frame loop accumulates correctly,
-    /// not just the single-step case.
-    func test_particleUpdate_accumulatesOverManyFrames() throws {
-        let particles = try XCTUnwrap(
-            FerrofluidParticles(device: device, library: library),
-            "FerrofluidParticles allocation failed")
-        let seededVelocity = SIMD2<Float>(0.02, 0.03)
-        particles.seedVelocityForTesting(seededVelocity)
-        let canonicalPositions = particles.snapshotParticlePositions()
-
-        let dt: Float = 1.0 / 60.0
-        let frameCount = 60
-        for _ in 0 ..< frameCount {
+        for _ in 0 ..< 60 {
             let cmdBuf = try XCTUnwrap(commandQueue.makeCommandBuffer())
-            particles.encodeUpdate(into: cmdBuf, dt: dt)
+            // Bake first so the spatial-hash reflects current positions
+            // before the update reads it for neighbour lookup.
+            particles.encodeBake(into: cmdBuf)
+            particles.encodeUpdate(into: cmdBuf, dt: dt, audio: activeAudio)
             cmdBuf.commit()
             cmdBuf.waitUntilCompleted()
         }
+        let postActive = particles.snapshotParticlePositions()
 
-        let updatedPositions = particles.snapshotParticlePositions()
-        let expectedDelta = seededVelocity * (dt * Float(frameCount))
-        // Larger tolerance: 60-frame accumulation accumulates rounding.
-        for i in 0 ..< canonicalPositions.count {
-            let delta = updatedPositions[i] - canonicalPositions[i]
-            XCTAssertEqual(delta.x, expectedDelta.x, accuracy: 1e-3,
-                "Particle \(i) X did not advance by velocity.x × 1.0 — got \(delta.x), expected \(expectedDelta.x)")
-            XCTAssertEqual(delta.y, expectedDelta.y, accuracy: 1e-3,
-                "Particle \(i) Z did not advance by velocity.y × 1.0 — got \(delta.y), expected \(expectedDelta.y)")
+        // Total displacement magnitude across all particles.
+        var totalDispActive: Float = 0
+        for i in 0 ..< canonical.count {
+            totalDispActive += simd_length(postActive[i] - canonical[i])
         }
+        let avgDispActive = totalDispActive / Float(canonical.count)
+        XCTAssertGreaterThan(avgDispActive, 0.005,
+            "Active audio should displace particles meaningfully — got avg \(avgDispActive) wu, expected > 0.005")
+    }
+
+    /// Inverse case: zero audio + zero initial velocity → no displacement.
+    /// Equilibrium spring + damping keep particles at canonical.
+    func test_silentAudio_keepsParticlesAtCanonical() throws {
+        let particles = try XCTUnwrap(
+            FerrofluidParticles(device: device, library: library),
+            "FerrofluidParticles allocation failed")
+        let canonical = particles.snapshotParticlePositions()
+
+        let dt: Float = 1.0 / 60.0
+        for _ in 0 ..< 60 {
+            let cmdBuf = try XCTUnwrap(commandQueue.makeCommandBuffer())
+            particles.encodeBake(into: cmdBuf)
+            particles.encodeUpdate(into: cmdBuf, dt: dt, audio: .silent)
+            cmdBuf.commit()
+            cmdBuf.waitUntilCompleted()
+        }
+        let postSilent = particles.snapshotParticlePositions()
+
+        var maxDisp: Float = 0
+        for i in 0 ..< canonical.count {
+            maxDisp = max(maxDisp, simd_length(postSilent[i] - canonical[i]))
+        }
+        XCTAssertLessThan(maxDisp, 0.001,
+            "Silent audio + zero initial velocity should leave particles at canonical — got max \(maxDisp) wu, expected < 0.001")
     }
 
     // MARK: - Helpers

@@ -59,12 +59,52 @@ struct FerrofluidBakeUniforms {
 };
 
 /// Per-frame update uniforms (mirror of Swift `UpdateUniforms`).
+/// Phase 2c extended for force model + spatial-hash neighbour lookup.
 struct FerrofluidUpdateUniforms {
-    float dt;                   // seconds since previous update
-    uint  particleCount;        // active particle count
-    float _pad0;
-    float _pad1;
+    float dt;                       // seconds since previous update
+    uint  particleCount;            // active particle count
+    float accumulatedAudioTime;     // energy-paused time axis
+    float arousal;                  // [-1, 1] global force magnitude scale
+
+    float bassEnergyDev;            // pressure radius scale
+    float drumsEnergyDevSmoothed;   // radial impulse magnitude (150 ms τ)
+    float otherEnergyDev;           // tangential rotation rate
+    float pressureBaseRadius;       // baseline inter-particle repulsion range
+
+    float2 worldOriginXZ;           // shared with bake uniforms
+    float  worldSpan;
+    uint   cellGridSide;
+
+    uint cellSlotCapacity;
+    uint gridColumns;               // canonical-position grid X count (80)
+    uint gridRows;                  // canonical-position grid Z count (75)
+    uint _pad0;
 };
+
+// ─── Canonical-position helper (mirror of Swift `canonicalInitialPosition`) ───
+
+/// Reproduces `FerrofluidParticles.canonicalInitialPosition(forIndex:)` on
+/// the GPU side so each particle can be sprung back toward its equilibrium
+/// XZ during silence. Port of `voronoi_cell_offset` from
+/// `Presets/Shaders/Utilities/Texture/Voronoi.metal`, integer-width safe.
+static inline float2 fo_canonical_position(uint i, constant FerrofluidUpdateUniforms& u) {
+    uint cols = u.gridColumns;
+    uint rows = u.gridRows;
+    uint row = i / cols;
+    uint col = i - row * cols;
+    int  cx  = int(col);
+    int  cy  = int(row);
+    int  qx  = cx * 1453 + cy * 2971;
+    int  qy  = cx * 3539 + cy * 1117;
+    int  hx  = (qx ^ (qx >> 9)) * 0x45D9F3B;
+    int  hy  = (qy ^ (qy >> 9)) * 0x45D9F3B;
+    float2 hashOffset = float2(float(hx & 0xFFFF), float(hy & 0xFFFF)) / 65535.0;
+    float scaledX = float(col) + hashOffset.x;
+    float scaledZ = float(row) + hashOffset.y;
+    float normX   = scaledX / float(cols);
+    float normZ   = scaledZ / float(rows);
+    return u.worldOriginXZ + float2(normX, normZ) * u.worldSpan;
+}
 
 // ─── Polynomial smooth-min (Inigo Quilez) ──────────────────────────────────
 
@@ -130,18 +170,117 @@ kernel void ferrofluid_bin_particles(
     }
 }
 
-// ─── Particle update kernel (Phase 2b: pos += vel × dt) ────────────────────
+// ─── Particle update kernel (Phase 2c: force model + semi-implicit Euler) ─
 
+/// Per-particle force-and-integrate. Reads the spatial-hash buffers
+/// populated by the most recent bake pass to find neighbours within 3×3
+/// cells for pressure computation. Force model:
+///
+///   F_pressure     — SPH-lite outward repulsion from neighbours within
+///                    `pressureBaseRadius × (1 + bass_energy_dev × bassCoef)`.
+///                    `bass_energy_dev` is the only audio-modulated radius;
+///                    other forces use fixed scales.
+///   F_equilibrium  — Spring back toward the particle's canonical voronoi-
+///                    cell-centre XZ. Provides the silence-state restoring
+///                    force so when audio energy drops to zero, particles
+///                    settle to canonical positions per the V.9 4.5b spec.
+///   F_rotation     — Tangential force around patch centre, scaled by
+///                    `other_energy_dev`. Per Failed Approach #33, NOT
+///                    sourced from `sin(time × constant)` — the
+///                    energy-paused `accumulated_audio_time` axis is read
+///                    only as a smooth time argument (currently unused;
+///                    reserved for future Phase 3 audio variants).
+///   F_drums        — Radial-outward impulse scaled by the 150 ms-smoothed
+///                    `drums_energy_dev`. Smoothed → no edge triggering;
+///                    satisfies `check_drums_beat_intensity.sh`.
+///   F_damping      — Viscous drag `-cv` prevents runaway acceleration.
+///   F_total       *= `0.5 + max(0, arousal) × 0.5` (arousal global scale,
+///                    never zero so silent-state damping still applies).
 kernel void ferrofluid_particle_update(
-    device FerrofluidParticle*           particles [[buffer(0)]],
-    constant FerrofluidUpdateUniforms& u           [[buffer(1)]],
-    uint                                gid        [[thread_position_in_grid]])
+    device FerrofluidParticle*           particles  [[buffer(0)]],
+    constant FerrofluidUpdateUniforms& u            [[buffer(1)]],
+    constant uint*                       cellCounts [[buffer(2)]],
+    constant uint*                       cellSlots  [[buffer(3)]],
+    uint                                 gid        [[thread_position_in_grid]])
 {
     if (gid >= u.particleCount) { return; }
-    // Semi-implicit Euler — Phase 2b has zero forces, so velocity is
-    // constant and this is just `pos += vel × dt`. Phase 2c will insert
-    // force computation (pressure + audio) between the read and write.
-    particles[gid].position += particles[gid].velocity * u.dt;
+    FerrofluidParticle p = particles[gid];
+
+    // Per-particle equilibrium (silence rest position).
+    float2 canonical = fo_canonical_position(gid, u);
+
+    // Patch-centre relative geometry (drums / rotation forces).
+    float2 patchCentre = u.worldOriginXZ + u.worldSpan * 0.5;
+    float2 fromCentre  = p.position - patchCentre;
+    float  radius      = max(length(fromCentre), 1e-4);
+    float2 radial      = fromCentre / radius;
+    float2 tangent     = float2(-radial.y, radial.x);    // CCW perpendicular
+
+    // ── F_pressure: SPH-lite outward repulsion from neighbours ──
+    // Gated by `bass_energy_dev` — at silence (bass = 0) pressure is
+    // zero everywhere, satisfying the V.9 4.5b "silence: particles
+    // settle to low-energy equilibrium" spec. Radius is fixed at the
+    // baseline (1.2 × particle spacing) so the pressure region stays
+    // localized regardless of bass; bass scales the **force magnitude**.
+    float2 pressureForce = float2(0.0, 0.0);
+    float  pressureRadius = u.pressureBaseRadius;
+    // Map current position to spatial-hash cell.
+    float2 normalized = (p.position - u.worldOriginXZ) / u.worldSpan;
+    int gx = clamp(int(floor(normalized.x * float(u.cellGridSide))),
+                   0, int(u.cellGridSide) - 1);
+    int gy = clamp(int(floor(normalized.y * float(u.cellGridSide))),
+                   0, int(u.cellGridSide) - 1);
+    int side = int(u.cellGridSide);
+    for (int dy = -1; dy <= 1; dy++) {
+        int cy = gy + dy;
+        if (cy < 0 || cy >= side) { continue; }
+        for (int dx = -1; dx <= 1; dx++) {
+            int cx = gx + dx;
+            if (cx < 0 || cx >= side) { continue; }
+            uint flat = uint(cy) * u.cellGridSide + uint(cx);
+            uint count = min(cellCounts[flat], u.cellSlotCapacity);
+            for (uint k = 0; k < count; k++) {
+                uint otherIdx = cellSlots[flat * u.cellSlotCapacity + k];
+                if (otherIdx == gid) { continue; }
+                float2 toMe = p.position - particles[otherIdx].position;
+                float  dist = length(toMe);
+                if (dist > 1e-4 && dist < pressureRadius) {
+                    float falloff = (pressureRadius - dist) / pressureRadius;
+                    pressureForce += (toMe / dist) * (falloff * falloff) * 6.0;
+                }
+            }
+        }
+    }
+    pressureForce *= u.bassEnergyDev;
+
+    // ── F_equilibrium: spring back to canonical (silence rest) ──
+    float2 equilibriumForce = (canonical - p.position) * 4.0;
+
+    // ── F_rotation: tangential drift around patch centre ──
+    // Angular velocity proportional to `other_energy_dev`. Tangent ×
+    // radius keeps angular velocity constant across the patch (all
+    // particles rotate at same ω regardless of radius from centre).
+    float angularVelocity = u.otherEnergyDev * 0.5;     // rad/s at full energy
+    float2 rotationForce = tangent * angularVelocity * radius * 1.0;
+
+    // ── F_drums: radial outward shock impulse ──
+    float2 drumsForce = radial * u.drumsEnergyDevSmoothed * 3.5;
+
+    // ── F_damping: viscous drag ──
+    float2 dampingForce = p.velocity * -3.5;
+
+    // Sum + arousal scale (never reach zero so silence still damps).
+    float2 totalForce = pressureForce + equilibriumForce + rotationForce + drumsForce + dampingForce;
+    float arousalScale = 0.6 + max(0.0, u.arousal) * 0.5;
+    totalForce *= arousalScale;
+
+    // Semi-implicit Euler — update velocity first, then advance position
+    // using the new velocity. More stable than forward Euler for spring
+    // systems with damping.
+    p.velocity += totalForce * u.dt;
+    p.position += p.velocity * u.dt;
+
+    particles[gid] = p;
 }
 
 // ─── Bake kernel: per-texel 3×3 cell lookup + bounded-K soft-min ───────────
