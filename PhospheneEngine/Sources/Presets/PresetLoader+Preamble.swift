@@ -116,8 +116,13 @@ extension PresetLoader {
             // vocals_pitch_hz = 0 means unvoiced or confidence below 0.6.
             float vocals_pitch_hz;    float vocals_pitch_confidence;
 
-            // Padding to 256 bytes (floats 43–64).
-            float _pad1,  _pad2,  _pad3,  _pad4,  _pad5,  _pad6,  _pad7,  _pad8;
+            // Aurora-reflection drums smoother (float 43, V.9 Session 4.5c / D-127).
+            // CPU-side 150 ms τ EMA over drums_energy_dev. Consumed by
+            // FerrofluidOcean's matID == 2 sky function; zero on other presets.
+            float drums_energy_dev_smoothed;
+
+            // Padding to 256 bytes (floats 44–64).
+            float _pad2,  _pad3,  _pad4,  _pad5,  _pad6,  _pad7,  _pad8;
             float _pad9,  _pad10, _pad11, _pad12, _pad13, _pad14, _pad15, _pad16;
             float _pad17, _pad18, _pad19, _pad20, _pad21, _pad22;
         };

@@ -7,7 +7,8 @@
 /// Floats 17–24: MV-1 deviation primitives (2 per stem: EnergyRel, EnergyDev).
 /// Floats 25–40: MV-3a rich metadata (4 per stem: onsetRate, centroid, attackRatio, energySlope).
 /// Floats 41–42: MV-3c vocal pitch (vocalsPitchHz, vocalsPitchConfidence).
-/// Floats 43–64: padding to 256-byte boundary.
+/// Float 43:     V.9 / D-127 drumsEnergyDev 150 ms τ EMA (aurora curtain intensity).
+/// Floats 44–64: padding to 256-byte boundary.
 ///
 /// Band slot semantics:
 /// - **vocals**: band0 = presence (1–4 kHz), band1 = air (4–8 kHz)
@@ -125,9 +126,17 @@ public struct StemFeatures: Sendable, Equatable {
     /// Confidence of vocalsPitchHz estimate (0–1). < 0.6 → unreliable.
     public var vocalsPitchConfidence: Float
 
-    // --- Floats 43–64: padding to 256 bytes (22 floats) ---
+    // --- Float 43: V.9 Session 4.5c / D-127 aurora-reflection drums smoother ---
+
+    /// `drumsEnergyDev` after a CPU-side 150 ms τ EMA. Drives the Ferrofluid
+    /// Ocean aurora curtain intensity (matID == 2 sky function). The renderer
+    /// updates this in `RenderPipeline.drawWithRayMarch` before the lighting
+    /// pass binds StemFeatures at buffer(3). Zero on every other preset.
+    public var drumsEnergyDevSmoothed: Float
+
+    // --- Floats 44–64: padding to 256 bytes (21 floats) ---
     // swiftlint:disable identifier_name
-    var _sfPad1: Float; var _sfPad2: Float; var _sfPad3: Float; var _sfPad4: Float
+    var _sfPad2: Float; var _sfPad3: Float; var _sfPad4: Float
     var _sfPad5: Float; var _sfPad6: Float; var _sfPad7: Float; var _sfPad8: Float
     var _sfPad9: Float; var _sfPad10: Float; var _sfPad11: Float; var _sfPad12: Float
     var _sfPad13: Float; var _sfPad14: Float; var _sfPad15: Float; var _sfPad16: Float
@@ -166,7 +175,8 @@ public struct StemFeatures: Sendable, Equatable {
         self.otherOnsetRate = 0; self.otherCentroid = 0
         self.otherAttackRatio = 0; self.otherEnergySlope = 0
         self.vocalsPitchHz = 0; self.vocalsPitchConfidence = 0
-        self._sfPad1  = 0; self._sfPad2  = 0; self._sfPad3  = 0; self._sfPad4  = 0
+        self.drumsEnergyDevSmoothed = 0
+        self._sfPad2  = 0; self._sfPad3  = 0; self._sfPad4  = 0
         self._sfPad5  = 0; self._sfPad6  = 0; self._sfPad7  = 0; self._sfPad8  = 0
         self._sfPad9  = 0; self._sfPad10 = 0; self._sfPad11 = 0; self._sfPad12 = 0
         self._sfPad13 = 0; self._sfPad14 = 0; self._sfPad15 = 0; self._sfPad16 = 0

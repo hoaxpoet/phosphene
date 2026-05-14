@@ -320,6 +320,7 @@ struct MatIDDispatchTests {
         }
         pipeline.runLightingPass(commandBuffer: cmd,
                                  features: &features,
+                                 stemFeatures: StemFeatures.zero,
                                  noiseTextures: nil,
                                  iblManager: nil,
                                  presetFragmentBuffer3: nil)

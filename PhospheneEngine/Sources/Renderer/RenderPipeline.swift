@@ -54,6 +54,13 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     var latestStemFeatures = StemFeatures.zero
     let stemFeaturesLock = NSLock()
 
+    /// 150 ms τ EMA of `StemFeatures.drumsEnergyDev`, updated by
+    /// `drawWithRayMarch` and patched into the stems snapshot bound at fragment
+    /// buffer(3). Drives the Ferrofluid Ocean aurora curtain intensity envelope
+    /// (V.9 Session 4.5c / D-127). Accessed only from the `@MainActor` ray-march
+    /// draw path — no lock required.
+    var auroraDrumsSmoothed: Float = 0
+
     // MARK: - Feedback Textures (Milkdrop-style ping-pong)
 
     /// Double-buffered feedback textures. Index flips each frame.
