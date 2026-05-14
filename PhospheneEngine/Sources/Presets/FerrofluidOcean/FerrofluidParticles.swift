@@ -110,13 +110,26 @@ public final class FerrofluidParticles: @unchecked Sendable {
 
     /// Spike base radius in world units. The bake produces a tent-shaped
     /// peak at each particle that falls to zero at `spikeBaseRadius`.
-    /// **Tuning pass 2026-05-14 dropped from 0.25 → 0.15** to match Phase
-    /// A's effective world-unit peak radius (`voronoi_smooth(scale = 4.0)`
-    /// with `kSpikeRadius = 0.6` scaled-space units → 0.6 / 4 = 0.15
-    /// world units). Wider radii overlap neighbouring particles into a
-    /// continuous mound rather than discrete spikes (Matt's 2026-05-14
-    /// review: "peak tips not present, dark troughs not present").
-    public static let spikeBaseRadius: Float = 0.15
+    /// History: 0.25 → 0.15 → **0.06 (V.9 Session 4.5c Phase 1 round 5,
+    /// 2026-05-14)**. Matt's `2026-05-14T22:47Z` review showed the rendered
+    /// substrate as a continuous bumpy fabric, not the discrete tall
+    /// needles `01_macro_ferrofluid_at_swell_scale.jpg` anchors. Three
+    /// shape failures the prior radius produced:
+    ///
+    ///   1. Spike bases overlapped (radius 0.15 > half-spacing 0.125 →
+    ///      adjacent cones bleed into each other before reaching the
+    ///      ground plane → continuous fabric, not isolated peaks).
+    ///   2. Aspect ratio at baseline was 2:1 (height 0.30 wu / radius
+    ///      0.15 wu) — short stubby cones. References show 3-5:1 tall
+    ///      narrow needles.
+    ///   3. Apex slope at res=0 was `-2/R = -13.3` — not pointed enough
+    ///      for the references' razor-sharp tips.
+    ///
+    /// At 0.06: radius 0.06 << half-spacing 0.125 → 0.065 wu of dark
+    /// substrate between adjacent peak bases. Baseline aspect ratio
+    /// becomes 0.30/0.06 = 5:1. Apex slope at res=0 doubles to `-33`
+    /// (sharper point).
+    public static let spikeBaseRadius: Float = 0.06
 
     /// Apex-rounding parameter for `almostIdentity` smoothing on the
     /// soft-min output. **Tuning pass 2026-05-14 dropped from 0.1 → 0.03**
