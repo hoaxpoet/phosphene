@@ -14,10 +14,25 @@
 //      deviation primitive per §5.8.
 //
 // Bound at fragment slot 9 of the ray-march pipeline by
-// `RenderPipeline.setDirectPresetFragmentBuffer4`. `raymarch_lighting_fragment`
+// `RenderPipeline.setDirectPresetFragmentBuffer4`.
+//
+// **GPU consumption (V.9 Session 4.5 / D-126):** `raymarch_lighting_fragment`
 // (RayMarch.metal) dispatches the matID == 2 branch on Ferrofluid Ocean
-// surface pixels and loops over `stageRig.activeLightCount` to accumulate
-// Cook-Torrance contributions per beam.
+// surface pixels and feeds the per-light state to `rm_ferrofluidSky` —
+// the substrate is a near-mirror metallic that reflects a procedurally-
+// generated sky whose aurora bands' central directions come from
+// `lights[i].positionAndIntensity.xyz` (treated as sky direction vectors),
+// colors from `lights[i].color.xyz`, and per-band brightness from
+// `lights[i].positionAndIntensity.w`. Session 3 originally consumed this
+// buffer as discrete point lights with Cook-Torrance + inverse-square
+// attenuation; live M7 review (2026-05-13) rejected that paradigm because
+// physical falloff at the JSON orbit altitude/radius gave invisible beams
+// against the IBL the mirror also reflected (Failed Approach #61). The
+// §5.8 musical contract (vocals_pitch → palette, drums_energy_dev →
+// intensity, arousal → orbit speed) is preserved at this rig boundary
+// unchanged; only the GPU side reinterprets the buffer's geometric
+// semantics from "world-space light positions" to "sky directions for
+// aurora bands."
 //
 // Audio data hierarchy (CLAUDE.md):
 //   - Intensity envelope: `stems.drumsEnergyDev` is a deviation primitive
