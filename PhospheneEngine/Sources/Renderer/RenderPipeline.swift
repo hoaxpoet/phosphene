@@ -176,6 +176,17 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     var directPresetFragmentBuffer4: MTLBuffer?
     let directPresetFragmentBuffer4Lock = NSLock()
 
+    // MARK: - Ray-March Preset Height Texture (texture(10))
+
+    /// Per-preset baked height field for ray-march presets. Bound at fragment
+    /// texture slot 10 of the ray-march G-buffer pass — non-Ferrofluid presets
+    /// receive the zero-filled 1×1 `RayMarchPipeline.ferrofluidHeightPlaceholderTexture`
+    /// so the slot-10 declaration is always satisfied. First consumer:
+    /// Ferrofluid Ocean V.9 (`FerrofluidParticles.heightTexture`, per V.9
+    /// Session 4.5b Phase 1).
+    var rayMarchPresetHeightTexture: MTLTexture?
+    let rayMarchPresetHeightTextureLock = NSLock()
+
     // MARK: - Dynamic Text Overlay (texture 12)
 
     /// Per-frame CPU text rasterization for text-overlay presets (e.g. SpectralCartograph).

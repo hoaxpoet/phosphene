@@ -190,6 +190,18 @@ public final class RayMarchPipeline: @unchecked Sendable {
     /// completely unaffected by slot 9's presence.
     let stageRigPlaceholderBuffer: MTLBuffer
 
+    // MARK: - Slot 10 Placeholder Texture (V.9 Session 4.5b)
+
+    /// Zero-filled 1×1 `r16Float` texture bound at fragment texture slot 10
+    /// for every ray-march preset that does not own a Ferrofluid-style baked
+    /// height field. The preamble's `raymarch_gbuffer_fragment` declares
+    /// `texture2d<float> ferrofluidHeight [[texture(10)]]` and Metal
+    /// validation requires every declared texture to be bound at draw time.
+    /// Zero sample value ⇒ `fo_ferrofluid_field_sampled` returns 0 ⇒ no
+    /// spikes, so non-Ferrofluid presets are unaffected.
+    /// (V.9 Session 4.5b Phase 1.)
+    let ferrofluidHeightPlaceholderTexture: MTLTexture
+
     // MARK: - Metal
 
     let context: MetalContext
@@ -301,6 +313,29 @@ public final class RayMarchPipeline: @unchecked Sendable {
         memset(stageRigPH.contents(), 0, 208)
         self.stageRigPlaceholderBuffer = stageRigPH
 
+        // Allocate the 1×1 r16Float zero-filled height-texture placeholder for
+        // slot 10. Non-Ferrofluid ray-march presets receive this in place of a
+        // real baked texture; a sample returns 0 so `fo_ferrofluid_field_sampled`
+        // contributes nothing. (V.9 Session 4.5b Phase 1.)
+        let placeholderDesc = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .r16Float,
+            width: 1,
+            height: 1,
+            mipmapped: false)
+        placeholderDesc.storageMode = .shared
+        placeholderDesc.usage = [.shaderRead]
+        guard let placeholderTex = context.device.makeTexture(descriptor: placeholderDesc) else {
+            throw RayMarchPipelineError.bufferAllocationFailed
+        }
+        // r16Float: 2 bytes per pixel. Zero-initialise. UInt16(0) maps to
+        // 0.0 as a Float16 (half) — sample returns 0 cleanly.
+        var zero: UInt16 = 0
+        placeholderTex.replace(region: MTLRegionMake2D(0, 0, 1, 1),
+                               mipmapLevel: 0,
+                               withBytes: &zero,
+                               bytesPerRow: 2)
+        self.ferrofluidHeightPlaceholderTexture = placeholderTex
+
         logger.info("RayMarchPipeline initialized")
     }
 
@@ -368,6 +403,11 @@ public final class RayMarchPipeline: @unchecked Sendable {
     ///     `raymarch_gbuffer_fragment` and `RayMarch.metal`'s `raymarch_lighting_fragment` both
     ///     declare `[[buffer(9)]]` on every ray-march preset. First consumer: Ferrofluid Ocean V.9's
     ///     `FerrofluidStageRig` driving the §5.8 stage rig per D-125 (matID == 2 lighting dispatch).
+    ///   - presetHeightTexture: Optional per-preset baked height texture bound at fragment texture
+    ///     slot 10 of the G-buffer pass. When nil the zero-filled `ferrofluidHeightPlaceholderTexture`
+    ///     is bound — required because the preamble declares `texture2d<float> ferrofluidHeight
+    ///     [[texture(10)]]` on every ray-march preset. First consumer: Ferrofluid Ocean V.9's
+    ///     `FerrofluidParticles` per the V.9 Session 4.5b Phase 1 contract.
     public func render(
         gbufferPipelineState: MTLRenderPipelineState,
         features: inout FeatureVector,
@@ -380,7 +420,8 @@ public final class RayMarchPipeline: @unchecked Sendable {
         iblManager: IBLManager? = nil,
         postProcessChain: PostProcessChain? = nil,
         presetFragmentBuffer3: MTLBuffer? = nil,
-        presetFragmentBuffer4: MTLBuffer? = nil
+        presetFragmentBuffer4: MTLBuffer? = nil,
+        presetHeightTexture: MTLTexture? = nil
     ) {
         guard gbuffer0 != nil, gbuffer1 != nil, gbuffer2 != nil, litTexture != nil else {
             logger.error("RayMarchPipeline.render called before textures allocated — skipping")
@@ -396,7 +437,8 @@ public final class RayMarchPipeline: @unchecked Sendable {
             stemFeatures: stemFeatures,
             noiseTextures: noiseTextures,
             presetFragmentBuffer3: presetFragmentBuffer3,
-            presetFragmentBuffer4: presetFragmentBuffer4
+            presetFragmentBuffer4: presetFragmentBuffer4,
+            presetHeightTexture: presetHeightTexture
         )
 
         // G-buffer debug bypass: skip lighting/SSGI/ACES entirely.

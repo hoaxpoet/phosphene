@@ -706,9 +706,11 @@ static inline float lm_frost(float3 p) {
 float sceneSDF(float3 p,
                constant FeatureVector& f,
                constant SceneUniforms& s,
-               constant StemFeatures& stems) {
+               constant StemFeatures& stems,
+               texture2d<float> ferrofluidHeight) {
     (void)f;
     (void)stems;
+    (void)ferrofluidHeight;  // V.9 Session 4.5b slot-10; Ferrofluid Ocean only.
 
     // Panel half-extents: oversized so the box bleeds past the visible
     // frame on every side. Per contract §P.1.

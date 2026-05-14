@@ -142,6 +142,7 @@ extension RenderPipeline {
         // function), so non-stage-rig presets pass through the placeholder.
         let presetBuf3 = directPresetFragmentBuffer3Lock.withLock { directPresetFragmentBuffer3 }
         let presetBuf4 = directPresetFragmentBuffer4Lock.withLock { directPresetFragmentBuffer4 }
+        let presetHeightTex = rayMarchPresetHeightTextureLock.withLock { rayMarchPresetHeightTexture }
         rayMarchState.render(
             gbufferPipelineState: activePipeline,
             features: &features,
@@ -154,7 +155,8 @@ extension RenderPipeline {
             iblManager: ibl,
             postProcessChain: chainForBloom,
             presetFragmentBuffer3: presetBuf3,
-            presetFragmentBuffer4: presetBuf4
+            presetFragmentBuffer4: presetBuf4,
+            presetHeightTexture: presetHeightTex
         )
 
         // Present only when rendering directly to the drawable (normal path).
