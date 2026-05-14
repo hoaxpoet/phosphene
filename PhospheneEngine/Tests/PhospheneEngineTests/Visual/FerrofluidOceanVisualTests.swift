@@ -1,6 +1,6 @@
-// FerrofluidOceanVisualTests — V.9 Session 1–4.5 visual harness.
+// FerrofluidOceanVisualTests — V.9 Session 1–4.5c visual harness.
 //
-// Session 1 gates (per FERROFLUID_OCEAN_CLAUDE_CODE_PROMPTS.md §1–§3):
+// Active gates (post Session 4.5c stage-rig removal):
 //
 //   1. testFerrofluidOceanShaderCompiles — preset loads and the ray-march
 //      G-buffer pipeline state is non-nil. Failed Approach #44 (silent Metal
@@ -9,43 +9,31 @@
 //
 //   2. testFerrofluidOceanRendersFourFixtures — preset renders successfully
 //      at the four standard fixtures (silence / steady-mid / beat-heavy /
-//      quiet) and produces non-black, non-clipped output. Every fixture
-//      ticks a real `FerrofluidStageRig` (Session 4.5: aurora-band sky
-//      reflection requires an active rig to produce visible chromatic
-//      content; silence-only rig from Session 3 left non-silence fixtures
-//      rendering placeholder-only with no bands).
+//      quiet) and produces non-black, non-clipped output.
 //
 //   3. testFerrofluidOceanIndependenceStatesReachable — D-124(d) independence
 //      contract: calm-body-with-spikes (low arousal + high bass_dev) and
 //      agitated-body-without-spikes (high arousal + low bass_dev) produce
 //      visibly distinct frames. Pixel diff > threshold, no golden hash lock.
 //
-// Session 2 gates, adapted for Session 4.5 (per FERROFLUID_OCEAN prompt §4):
-//
 //   4. testFerrofluidOceanMoodTintAtmosphereShifts — silence fixture rendered
 //      twice (valence -0.9 → cool; valence +0.9 → warm) produces a visible
-//      palette shift through the V.9 Session 4.5 procedural-sky path. The
-//      sky function's `baseSky * scene.lightColor.rgb` multiply carries
-//      D-022 mood-tint through the entire reflected sky. Asserts average
-//      channel difference > 1.0.
+//      palette shift through the procedural-sky path's
+//      `baseSky * scene.lightColor.rgb` multiply (D-022 mood-tint).
+//      Asserts average channel difference > 1.0.
 //
 //   5. testFerrofluidOceanMoodTintSkyBaseShift — same valence-shift comparison
-//      with fog explicitly disabled, so the gate exercises only the sky-base
-//      `scene.lightColor.rgb` multiply (the Session 4.5 replacement for the
-//      Session 2 IBL ambient path; matID == 2 no longer reads
-//      iblIrradiance/iblPrefiltered/iblBRDFLUT after the
-//      `rm_finishLightingPass` bypass).
+//      with fog explicitly disabled, isolating the `scene.lightColor.rgb`
+//      multiply (matID == 2 bypasses `rm_finishLightingPass` per D-126).
 //
-// Session 3 + Session 4.5 dispatch gate:
+// Retired in Session 4.5c (rig removal, D-127):
 //
-//   6. testFerrofluidOceanSkyReflectionDispatchActive — steady-mid fixture
-//      rendered with an active `FerrofluidStageRig` (4 lights, non-zero
-//      intensity) vs the zero-filled placeholder (activeLightCount = 0).
-//      Under Session 4.5, an active rig adds aurora bands to the sky
-//      reflection; placeholder leaves only the dim purple base. Diff
-//      threshold ≥ 1.0 in avg channel.
+//   - testFerrofluidOceanSkyReflectionDispatchActive — compared rig-active vs
+//     placeholder renders; meaningless without the rig. A new audio-driven
+//     aurora gate will replace it once Session 4.5c Phase 1 lands direct
+//     audio uniforms in `rm_ferrofluidSky`.
 //
-// All six tests share the deferred-ray-march render path (`RayMarchPipeline`
+// All gates share the deferred-ray-march render path (`RayMarchPipeline`
 // driven directly), the same path used by PresetVisualReviewTests for pure
 // ray-march presets.
 
