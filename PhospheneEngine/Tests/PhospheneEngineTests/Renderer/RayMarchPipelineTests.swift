@@ -33,7 +33,9 @@ final class RayMarchPipelineTests: XCTestCase {
     float sceneSDF(float3 p,
                    constant FeatureVector& f,
                    constant SceneUniforms& s,
-                   constant StemFeatures& stems) {
+                   constant StemFeatures& stems,
+                   texture2d<float> ferrofluidHeight) {
+        (void)ferrofluidHeight;
         return length(p) - 1.0;
     }
 
