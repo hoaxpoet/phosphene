@@ -64,7 +64,7 @@ public final class FerrofluidParticles: @unchecked Sendable {
     /// that's invisible at the camera tilt). Phase 2 per-frame bake cost
     /// scales linearly: ~0.6 ms per bake on Apple Silicon at 6000 particles
     /// × 1024² texels, well within the 60 fps frame budget.
-    public static let particleCount: Int = 6000
+    public static let particleCount: Int = 1520
 
     /// Height texture: original spec 512² → 1024² (Matt 2026-05-14
     /// fullscreen/4K product addendum) → 2048² (smoothness pass
@@ -129,7 +129,18 @@ public final class FerrofluidParticles: @unchecked Sendable {
     /// substrate between adjacent peak bases. Baseline aspect ratio
     /// becomes 0.30/0.06 = 5:1. Apex slope at res=0 doubles to `-33`
     /// (sharper point).
-    public static let spikeBaseRadius: Float = 0.06
+    ///
+    /// Round 11 (2026-05-15): bumped 0.06 → 0.12 in coordination with
+    /// particle count 6000 → 1500 (4× fewer). New spacing ≈ 0.50 wu
+    /// (X) / 0.53 wu (Z); half-spacing 0.25 > radius 0.12 → spikes still
+    /// clearly isolated with 0.13 wu of dark substrate between bases.
+    /// Per-spike screen coverage ≈ 4× larger so individual pyramids
+    /// register as distinct objects in the frame, not tiny orbs blending
+    /// into a continuous texture. Trade-off: aspect ratio at baseline
+    /// drops 5:1 → 2.5:1 (height 0.30 wu / radius 0.12 wu) — stockier
+    /// pyramids. Acceptable to start; if too short, follow up with a
+    /// height_multiplier increase rather than narrowing radius back down.
+    public static let spikeBaseRadius: Float = 0.12
 
     /// Apex-rounding parameter for `almostIdentity` smoothing on the
     /// soft-min output. **Tuning pass 2026-05-14 dropped from 0.1 → 0.03**

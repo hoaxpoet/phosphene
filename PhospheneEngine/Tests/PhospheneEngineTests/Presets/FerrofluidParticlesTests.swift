@@ -53,8 +53,8 @@ final class FerrofluidParticlesTests: XCTestCase {
     // MARK: - Gate 1: locked constants
 
     func test_lockedConstants_phase1Contract() {
-        XCTAssertEqual(FerrofluidParticles.particleCount, 6000,
-                       "Density pass 2026-05-14 bumped to 6000 to match Phase A voronoi_smooth(scale=4) density — original 2048 was sparser than the reference")
+        XCTAssertEqual(FerrofluidParticles.particleCount, 1520,
+                       "Round 11 (2026-05-15): 6000 → 1520 (40 × 38 grid) to make individual spikes register as distinct objects in the frame rather than tiny orbs blending into a continuous texture. Coordinated with spikeBaseRadius 0.06 → 0.12 (same round) so spike density × per-spike screen coverage ratio matches the references' visible foreground density. 1520 chosen for exact 40×38 grid factorization at ~5 % Z/X anisotropy (worldSpan / 40 = 0.500, worldSpan / 38 = 0.526).")
         XCTAssertEqual(FerrofluidParticles.heightTextureSize, 4096,
                        "Texel-grid pass 2026-05-14: bumped to 4096² so the texture pixel scale (0.005 wu) sits below the 1080p screen-pixel scale (~0.006 wu) → texel-grid staircase falls below rendered-pixel size")
         XCTAssertEqual(FerrofluidParticles.worldSpan, 20.0,
@@ -65,8 +65,8 @@ final class FerrofluidParticlesTests: XCTestCase {
                        "World origin Z locked")
         XCTAssertEqual(FerrofluidParticles.smoothMinW, 0.005, accuracy: 1e-6,
                        "Polynomial smooth-min weight tightened to 0.005 (V.9 Session 4.5c Phase 1 round 4, 2026-05-14) for near-min distance interpolation; combined with the squared height profile in `ferrofluid_height_bake`, valley heights pull to ~3% of peak per the discrete-spike target in `04_specular_razor_highlights.jpg`. Particles are pinned in this round so no motion-driven pop-in concern from tight `w`.")
-        XCTAssertEqual(FerrofluidParticles.spikeBaseRadius, 0.06, accuracy: 1e-6,
-                       "Spike tent base radius narrowed to 0.06 world units (V.9 Session 4.5c Phase 1 round 5, 2026-05-14) so adjacent spikes are isolated (radius 0.06 << half-spacing 0.125 → 0.065 wu dark substrate between peak bases) and baseline aspect ratio becomes 5:1 (height 0.30 wu / radius 0.06 wu) — matches `01_macro_ferrofluid_at_swell_scale.jpg` tall-narrow-needle character vs the prior 0.15's short-stubby-overlapping-cones.")
+        XCTAssertEqual(FerrofluidParticles.spikeBaseRadius, 0.12, accuracy: 1e-6,
+                       "Spike tent base radius grew 0.06 → 0.12 in round 11 (2026-05-15) coordinated with particle count 6000 → 1500. New spacing 0.50 wu, half-spacing 0.25 > radius 0.12 → spikes still isolated with 0.13 wu gap. Per-spike screen coverage ≈ 4× larger. Baseline aspect drops 5:1 → 2.5:1; if too short, follow up with height_multiplier increase.")
         XCTAssertEqual(FerrofluidParticles.apexSmoothK, 0.03, accuracy: 1e-6,
                        "almostIdentity apex-smoothing tuned to 0.03 (2026-05-14) — keep peak tips razor-sharp per 04_specular_razor_highlights.jpg")
     }
