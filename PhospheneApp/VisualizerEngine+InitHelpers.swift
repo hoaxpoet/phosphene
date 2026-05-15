@@ -101,7 +101,8 @@ extension VisualizerEngine {
         analyzer: StemAnalyzer,
         classifier: MoodClassifier?,
         device: MTLDevice,
-        sessionRecorder: SessionRecorder? = nil
+        sessionRecorder: SessionRecorder? = nil,
+        metadataFetcher: MetadataPreFetcher? = nil
     ) -> SessionManager {
         let resolvedSep: any StemSeparating = sep ?? NullStemSeparator()
         let beatGridAnalyzer: (any BeatGridAnalyzing)? = {
@@ -118,6 +119,7 @@ extension VisualizerEngine {
             stemAnalyzer: analyzer,
             moodClassifier: classifier ?? MoodClassifier(),
             beatGridAnalyzer: beatGridAnalyzer,
+            metadataFetcher: metadataFetcher,
             sessionRecorder: sessionRecorder
         )
         return SessionManager(

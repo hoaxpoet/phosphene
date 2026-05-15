@@ -182,6 +182,22 @@ constant GerstnerWaveParams kGerstnerWaves[kGerstnerNumWaves] = {
 /// fold-over even with all 4 waves at constructive peak.
 constant float kGerstnerSteepness = 0.3;
 
+/// Number of bars per complete wave cycle. Round 26 (2026-05-15) —
+/// `2026-05-15T17-28-14Z` review (Matt): "I wouldn't describe Love
+/// Rehab's movement as calm." At round-21's bar-locked setting
+/// (1 cycle per bar), Love Rehab cycled every 2.03 s — far faster
+/// than real ocean swell periods (5-15 s). The earlier
+/// accumulated_audio_time path was inadvertently slowing this
+/// dramatically (energy-weighted accumulator ≈ 0.09 × wall-clock
+/// post-AGC-settle → effective ~23 s cycle); round 24's swap to
+/// `features.time` exposed the underlying 1-bar rate.
+///
+/// 6 bars-per-cycle puts Love Rehab at 12.2 s/cycle (4/4 @ 118 BPM)
+/// and Money at 20.5 s/cycle (with the round-26 prep-time meter
+/// fix bringing beats_per_bar to 7). Both inside real-ocean-swell
+/// territory.
+constant float kGerstnerBarsPerCycle = 6.0;
+
 /// Compute Gerstner displacement at world-XZ position `p` at
 /// `musicBars` of music time (= `accumulated_audio_time × tempoScale
 /// / beatsPerBar`). Each wave advances one full cycle per bar.
@@ -195,8 +211,10 @@ static float3 gerstner_displacement(float2 p,
         float2 D = kGerstnerWaves[i].direction;
         float k = 2.0 * M_PI_F / kGerstnerWaves[i].wavelength;
         float A = kGerstnerWaves[i].baseAmplitude * amplitudeMul;
-        // Phase advance: 2π per bar (one wave cycle per bar).
-        float phaseAdvance = 2.0 * M_PI_F * musicBars;
+        // Phase advance: 2π per (kGerstnerBarsPerCycle bars). One full
+        // wave cycle takes `kGerstnerBarsPerCycle` bars, not one — see
+        // the constant's doc-comment for the rationale.
+        float phaseAdvance = 2.0 * M_PI_F * musicBars / kGerstnerBarsPerCycle;
         float phase = k * dot(D, p) - phaseAdvance;
         float cosP = cos(phase);
         float sinP = sin(phase);
