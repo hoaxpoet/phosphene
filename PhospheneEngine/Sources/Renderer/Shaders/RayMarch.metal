@@ -423,24 +423,31 @@ static float3 rm_ferrofluidSky(float3 R,
     // baseline 0.30 + modulation 0.50 → 0.13 + 0.22 to prevent uniform purple
     // haze when wired through the thin-film path.
     //
-    // Round 28 (2026-05-15) — Matt's `2026-05-15T18-12-04Z` review:
-    // "very subtle purples and greens, maybe a little magenta, but they are
-    // muted ... I'd like the aurora to be highly intense, emitting almost
-    // neon light so that it produces something closer to the reference
-    // images." With the round-27 wiring through Layer 2 ambient (× 0.2
-    // weight), peak aurora was only 0.092 RGB — overwhelmed by Leitl's
-    // specular layer (× 1.2). Bumped coefficients to:
+    // Round 28 (2026-05-15) — bumped baseline 0.13 → 0.40 and modulation
+    // 0.22 → 0.50 for visible brightness; ambient weight 0.2 → 0.7. Peak
+    // aurora pixel reached 0.805 RGB.
     //
-    //   baseline 0.13 → 0.40  (3×) — vivid hue even at silence-adjacent
-    //   modulation 0.22 → 0.50 (2.3×) — drum hits visibly pulse intensity
+    // Round 29 (2026-05-15) — Matt: "I am looking for BRIGHT colors -
+    // literally neon shades like in the reference images." Further push
+    // toward the saturated-color character of `04_*` and `08_*`:
     //
-    // Combined with the round-28 ambient weight bump (0.2 → 0.7 in the
-    // composition block below), peak aurora pixel = 1.15 × 0.7 = 0.80 RGB.
-    // Bright saturated color, no white-clip — preserves the chromatic
-    // content of the hue palette per the `04_*` (saturated purple) and
-    // `08_*` (saturated green) references rather than washing to white.
-    constexpr float kCurtainBaselineIntensity  = 0.40;
-    constexpr float kCurtainModulationIntensity = 0.50;
+    //   baseline 0.40 → 0.60  — vivid even between drum hits
+    //   modulation 0.50 → 1.00 — drum hits drive into clamp-saturation
+    //
+    // Combined with round-29's ambient weight 0.7 → 1.0 (the physically
+    // correct weighting for a metallic mirror at roughness 0.08), peak
+    // aurora RGB on the dominant-channel saturates to 1.0 (neon) while
+    // weaker channels stay near 0 (pure hue, not white-clipped). The
+    // hue palette's chromatic content remains legible across the
+    // drum-modulation range.
+    //
+    // Peak signal: 0.60 + 1.00 × 1.5 = 2.10. After ambient × 1.0:
+    // 2.10 multiplier on the palette per channel. Dominant channel
+    // (palette peak ~0.78) → 1.64 → clamps to 1.0 = saturated. Weak
+    // channel (palette ~0.001) → 0.002 = pitch-black. Saturated neon
+    // hue per the references.
+    constexpr float kCurtainBaselineIntensity  = 0.60;
+    constexpr float kCurtainModulationIntensity = 1.00;
     float drumsSmoothed = clamp(stems.drums_energy_dev_smoothed, 0.0, 1.5);
     float curtainIntensity = kCurtainBaselineIntensity
                            + kCurtainModulationIntensity * drumsSmoothed;
@@ -618,11 +625,23 @@ static float3 fluid_shading(float3 V, float3 N,
     float3 L = keyLightDir;
     float3 R = reflect(L, N);
 
-    // ── Layer 1: specular (Phong, shininess 50) ────────────────────
-    // Leitl: `specularValue * 1.2` (raw scalar, not the colored variant
-    // he computes but never uses in the final composition).
+    // ── Layer 1: specular (Phong, shininess 50, env-tinted) ────────
+    // Round 29 (2026-05-15): tinted by `rm_ferrofluidSky` at the
+    // key-light reflection angle R. Pre-round-29 the specular was
+    // `specularValue × white × 1.2` → uniform white sheen on spike
+    // peaks (Matt's `2026-05-15T18-24-55Z` review: "the white sheen
+    // on the surface of the fluid peaks is not great"). The references
+    // (`04_specular_razor_highlights.jpg`) show SATURATED-COLORED
+    // razor catches, not white — the highlight inherits the env
+    // content at the reflection angle. Multiplying the Phong
+    // concentration term by the env at that angle gives "saturated
+    // neon razor catches where the key-light reflection aligns
+    // with the aurora curtain in the sky, dim elsewhere." Closer to
+    // a physically-correct colored-mirror specular than Leitl's
+    // uniform white.
     constexpr float kFluidShininess = 50.0;
     float specularValue = fluid_pow_fast(max(0.0, dot(R, -V)), kFluidShininess);
+    float3 specularEnv = rm_ferrofluidSky(R, features, stems, scene);
 
     // ── Layer 2: ambient (procedural ferrofluid sky with aurora) ───
     // Round 27 (2026-05-15): sources from `rm_ferrofluidSky` instead
@@ -677,27 +696,18 @@ static float3 fluid_shading(float3 V, float3 N,
     iridescence *= edgeMask * tiltGate * kFluidIridescenceWeight * (2.0 - kFluidZoom * 2.0);
 
     // ── Composition ────────────────────────────────────────────────
-    // Round 28 (2026-05-15) — ambient weight 0.2 → 0.7. Per Matt's
-    // `2026-05-15T18-12-04Z` review the aurora content needed to be
-    // dominant on the near-mirror substrate ("neon ... closer to the
-    // reference images"), not subordinate to the specular term. Leitl's
-    // 0.2 weight matched HIS dish-scale scene where the env had less
-    // saturated content; at Phosphene's substrate framing with the
-    // saturated aurora in the env, 0.7 weighting puts the env reflection
-    // as the dominant chromatic source — appropriate for metallic=1,
-    // roughness=0.08 material.
-    //
-    // Fresnel + specular kept at Leitl's values: the razor-edge highlights
-    // on spike ridges (specular) and rim sheen at grazing angles (fresnel)
-    // are the load-bearing markers of the ferrofluid material identity,
-    // and they sit ON TOP of the aurora content rather than competing
-    // with it.
-    constexpr float kFluidAmbientWeight   = 0.7;
+    // Round 29 (2026-05-15): ambient weight 0.7 → 1.0 (physically correct
+    // for a metallic mirror at roughness 0.08 — the env reflection IS
+    // the dominant visible content). Specular weight 1.2 → 0.8 since
+    // the env tint provides chromatic saturation; the Phong scalar is
+    // doing less heavy lifting now and a lower weight keeps highlights
+    // from over-saturating their bright channel.
+    constexpr float kFluidAmbientWeight   = 1.0;
     constexpr float kFluidFresnelWeight   = 0.3;
-    constexpr float kFluidSpecularWeight  = 1.2;
+    constexpr float kFluidSpecularWeight  = 0.8;
     return ambient * kFluidAmbientWeight
          + fresnel * kFluidFresnelWeight
-         + specularValue * kFluidSpecularWeight
+         + specularEnv * specularValue * kFluidSpecularWeight
          + iridescence;
 }
 // swiftlint:enable function_parameter_count
