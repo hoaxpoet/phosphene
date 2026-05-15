@@ -113,8 +113,17 @@ static inline float fo_spike_strength(constant FeatureVector& f,
     // we lean harder on f.bass_dev's transient peaks during warmup.
     // Spikes appear on bass hits, substrate stays flat between hits
     // until stems are ready.
-    constexpr float kSpikeStemBaseCoef   = 4.0;
-    constexpr float kSpikeStemModulation = 1.5;
+    // Round 15 (2026-05-15) — re-tune. The `2026-05-15T14-10-12Z` capture
+    // (Love Rehab + Money) showed `stems.bass_energy` peaks at 2.583 and
+    // `stems.bass_energy_dev` at 4.860 — much wider than the ~0.5-1.0 /
+    // 0-3.3 range round 14 was tuned against. Round-14 constants
+    // (4.0 / 1.5) produced peak spike heights of 2.64 wu (aspect 22:1 —
+    // wire-thin wires, not pyramids). Drop to 1.5 / 0.5: peak ≈ 0.95 wu
+    // (aspect ~8:1, proper needle). Mean drops to ~0.08 wu at calm music
+    // — small but visible; if too quiet at silence-adjacent passages,
+    // the next round bumps BaseCoef back up (or shifts to sqrt-scaling).
+    constexpr float kSpikeStemBaseCoef   = 1.5;
+    constexpr float kSpikeStemModulation = 0.5;
     constexpr float kSpikeProxyGain      = 5.0;
     float proxyDev   = max(0.0, f.bass_dev);
     float stemDev    = max(0.0, stems.bass_energy_dev);
