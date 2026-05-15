@@ -422,39 +422,12 @@ static float3 rm_ferrofluidSky(float3 R,
     // spikes that reflect roughly horizontally. Curtain at horizon
     // (R.y = 0) means substrate-between (R.y ≈ 0.31) misses it,
     // spike sides (R.y ≈ 0 for outward-facing sides) catch it.
-    // Round 36 (2026-05-15): added second band at elevation -0.35 to light
-    // the spike LOWER body / base region. The single band at elevation 0.0
-    // (rounds 30-35) catches only normals where Rview.y ∈ [-0.175, +0.175]
-    // — a sliver of the spike body. Calculated reflection vectors at the
-    // round-34 camera:
-    //
-    //   substrate-between   Rview.y ≈ +0.8   zenith                    misses
-    //   spike tip           Rview.y ≈ +0.8   zenith                    misses
-    //   spike upper body    Rview.y ≈ +0.5   above band 1              misses
-    //   spike mid-body      Rview.y ≈  0.0   IN band 1                 BRIGHT
-    //   spike LOWER body    Rview.y ≈ -0.3   below band 1, IN band 2   BRIGHT
-    //   below-spike facets  Rview.y ≈ -0.5   below band 2              misses
-    //
-    // Two-band coverage (R.y ∈ ~[-0.525, +0.175]) lights the spike body
-    // from mid down to the base. Substrate-between's Rview.y ≈ +0.8 stays
-    // far above both bands → pitch-black character preserved. Spike tips at
-    // Rview.y ≈ +0.8 stay dark too → matches references' dark-tip character.
-    //
-    // Both bands share the same azimuthal wedge / orbital drift / palette /
-    // intensity at round 36 — they read as a single coherent aurora that
-    // wraps further down the sky, not two independent auroras. If round 37
-    // needs vertical chromatic variation, the lower band can take a
-    // different palette phase offset.
-    constexpr float kCurtainElevation1      = 0.0;
-    constexpr float kCurtainElevation2      = -0.35;
+    constexpr float kCurtainElevation       = 0.0;
     constexpr float kCurtainStripeThickness = 0.35;
     constexpr float kCurtainAzimuthFloor    = 0.30;
     constexpr float kCurtainAzimuthPeak     = 0.75;
-    float vertFalloff1 = smoothstep(kCurtainStripeThickness, 0.0,
-                                    abs(R.y - kCurtainElevation1));
-    float vertFalloff2 = smoothstep(kCurtainStripeThickness, 0.0,
-                                    abs(R.y - kCurtainElevation2));
-    float vertFalloff  = max(vertFalloff1, vertFalloff2);
+    float vertFalloff = smoothstep(kCurtainStripeThickness, 0.0,
+                                   abs(R.y - kCurtainElevation));
 
     float2 R_az       = R.xz;
     float  R_az_len   = length(R_az);
