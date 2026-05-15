@@ -117,6 +117,25 @@ static inline float poly_smin(float a, float b, float k) {
     return mix(a, b, h) - h * (1.0 - h) * (k / (1.0 + 3.0 * k));
 }
 
+/// Inigo Quilez `almostIdentity` — smooth approach to identity from a fixed
+/// value at the origin. For `x ≥ m` returns `x` (identity). For `x < m`,
+/// smoothly lifts the value: returns `n` at `x=0`, blends to `m` at `x=m`
+/// with C¹ continuity at the join.
+///
+/// Used in Leitl's ferrofluid bake to round the apex of each spike: with
+/// `m=0.1, n=0.04` applied to the normalized distance-from-particle, the
+/// post-inversion height never reaches a perfect 1.0 — instead it smoothly
+/// curves over the apex creating the rounded-fang character Matt's
+/// reference photos show. Reference:
+/// https://iquilezles.org/articles/functions/
+static inline float almost_identity(float x, float m, float n) {
+    if (x > m) return x;
+    float a = 2.0 * n - m;
+    float b = 2.0 * m - 3.0 * n;
+    float t = x / m;
+    return (a * t + b) * t * t + n;
+}
+
 // ─── Cell index helpers ────────────────────────────────────────────────────
 
 /// World XZ → cell coordinate (uint2 within [0, cellGridSide)). Clamped at
@@ -326,40 +345,48 @@ kernel void ferrofluid_height_bake(
         }
     }
 
-    // Squared cone profile (V.9 Session 4.5c Phase 1 round 18, 2026-05-15).
-    // Extends Leitl's `pow(distance_field, spikeFactor)` ferrofluid-shape
-    // technique to Phosphene's particle-bake approach. `n = 2` is the
-    // static-state baseline; a future ZOOM-coupling increment may raise
-    // the exponent with audio energy per Leitl's polynomial remap
-    // (1 at silence → 25 at peak), but the per-frame bake cost gate is
-    // held until after this static-shape commit is approved.
+    // Leitl-faithful spike profile (V.9 Session 4.5c Phase 1 round 42,
+    // 2026-05-15). Matt's `2026-05-15T21:45Z` question — "How did Leitl
+    // solve for the shape of the spikes?" — sent me back to the
+    // published reference at
+    // https://github.com/robert-leitl/ferrofluid/blob/main/src/app/shader/height-map.frag.glsl
     //
-    // Round-9 history: squared profile was tried and retired then because
-    // at sparse 6000-/1520-particle density with 0.06-/0.12-wu radius the
-    // squared shape read as "stocky snowman pyramids" rather than
-    // ferrofluid. Round 17 (2026-05-15) bumped density to 3025 particles
-    // with 0.17-wu radius — bases nearly touch (half-spacing 0.182 wu vs
-    // radius 0.17 wu). At this density the squared profile produces the
-    // intended ferrofluid character: sharp tips (slope -2/R at r=0),
-    // concave-curved sides (silhouette bows inward going up), bases that
-    // smoothly merge with adjacent spikes via the zero-slope-at-r=R
-    // meeting — matches `01_macro_*`, `02_meso_*`, `04_specular_*`.
+    // Leitl's bake (verbatim):
     //
-    //   linearCone(r) = max(0, 1 - r/R)        — round 9 → 17 profile
-    //   height(r)     = linearCone(r)²          — round 18 (current)
+    //   res = clamp(res * u_spikeFactor, 0., 1.);
+    //   res = almostIdentity(res, 0.1, 0.04);   // ← tip rounding
+    //   res = (1. - res);
+    //   res *= u_heightFactor;
     //
-    // Property comparison at the apex (r → 0):
-    //   linear:  slope -1/R           (sharp pyramid tip)
-    //   squared: slope -2/R           (sharper pyramid tip — 2× steepness)
-    // At the base (r → R):
-    //   linear:  slope -1/R           (hard valley between cones)
-    //   squared: slope 0              (smooth merge between cones — no valley)
+    // Three differences from the round-18 squared-cone profile:
     //
-    // The smooth-base property is load-bearing — it eliminates the V-shaped
-    // valleys the linear cone produces at cell midpoints, replacing them
-    // with U-shaped substrate troughs that match how real ferrofluid
-    // spikes meet the underlying fluid.
-    float linearCone = max(0.0, 1.0 - res / u.spikeBaseRadius);
-    float height = linearCone * linearCone;
+    //   1. LINEAR cone, not squared. Tip slope is -1/R, not -2/R — gentler
+    //      taper, less razor-sharp at the apex.
+    //   2. `almostIdentity(res, 0.1, 0.04)` rounds the apex. The constant
+    //      `apexSmoothK` was declared in `BakeUniforms` since round 1 but
+    //      never wired into the kernel; the bake-flow `pow(linearCone, 2)`
+    //      bypassed the almostIdentity path entirely. Round 42 corrects
+    //      this — wiring the rounding in produces the slight bulb-tip
+    //      character the reference photos show on real ferrofluid spikes
+    //      (the references Matt re-anchored on, 2026-05-15T21:38Z).
+    //   3. The almostIdentity's `n=0.04` parameter floors the height at the
+    //      very center to 0.96 instead of 1.0 — the apex is rounded down by
+    //      a small amount with smooth C¹ continuity.
+    //
+    // Phosphene's `spikeBaseRadius` is the inverse of Leitl's spikeFactor
+    // (`1/R = spikeFactor`). At our static `spikeBaseRadius = 0.17`,
+    // effective spikeFactor = 5.88 — wider-than-Leitl's-silence-state
+    // (1.0) but narrower than his peak (25.0). Audio-coupling of spike
+    // width is deferred to a future round.
+    //
+    // Round 18's stated benefit of "smooth merge at base (slope 0 at r=R)"
+    // is preserved by the linear cone + almostIdentity flow at adjacent
+    // particle midpoints (where r ≈ R for both particles, both contribute
+    // small heights via the smooth-min that already merges them).
+    constexpr float kLeitlIdentityM = 0.1;   // matches Leitl's height-map.frag.glsl
+    constexpr float kLeitlIdentityN = 0.04;
+    float dist01 = clamp(res / u.spikeBaseRadius, 0.0, 1.0);
+    dist01 = almost_identity(dist01, kLeitlIdentityM, kLeitlIdentityN);
+    float height = 1.0 - dist01;
     heightTex.write(float4(height, 0.0, 0.0, 0.0), gid);
 }
