@@ -266,16 +266,35 @@ static float3 rm_ferrofluidBaseSky(float3 R, constant SceneUniforms& scene) {
     return baseSky * scene.lightColor.rgb;
 }
 
-/// IQ-style cosine palette (V.3 cookbook). Phase `t` ∈ [0, 1] cycles through
-/// the full color wheel; the `d = (0, 0.33, 0.67)` offset gives the warm-red
-/// → cool-blue → green rotation. Used by the Ferrofluid Ocean aurora curtain
-/// for hue selection.
+/// Aurora-realistic 3-stop palette (Round 31, 2026-05-15). Matt's
+/// `2026-05-15T18-33-20Z` review attached an infographic of real-aurora
+/// hues by atmospheric chemistry: excited atomic oxygen produces
+/// red/pink at high altitudes and green at lower altitudes; ionized
+/// molecular nitrogen produces blue/purple at low altitudes. The
+/// pre-round-31 IQ-cosine palette cycled through arbitrary hues that
+/// didn't match these real-aurora primaries.
+///
+/// Three saturated stops, smooth interpolation, wraps at t=1.0:
+///   t ≈ 0.00 → pink/magenta  (1.00, 0.20, 0.55) — high-altitude O
+///   t ≈ 0.33 → green         (0.10, 1.00, 0.30) — low-altitude O
+///   t ≈ 0.67 → purple/blue   (0.45, 0.10, 1.00) — low-altitude N2
+///
+/// Music coupling continues to work: vocals_pitch_hz (with valence
+/// fallback) drives `t` via `palettePhase` in `rm_ferrofluidSky`,
+/// shifting the rim color through these aurora primaries as the
+/// vocal melody moves.
 static float3 rm_palette(float t) {
-    constexpr float3 a = float3(0.5, 0.5, 0.5);
-    constexpr float3 b = float3(0.5, 0.5, 0.5);
-    constexpr float3 c = float3(1.0, 1.0, 1.0);
-    constexpr float3 d = float3(0.0, 0.33, 0.67);
-    return a + b * cos(2.0 * M_PI_F * (c * t + d));
+    constexpr float3 pink   = float3(1.00, 0.20, 0.55);
+    constexpr float3 green  = float3(0.10, 1.00, 0.30);
+    constexpr float3 purple = float3(0.45, 0.10, 1.00);
+    float tw = fract(t);
+    if (tw < 0.333) {
+        return mix(pink, green, smoothstep(0.0, 0.333, tw));
+    }
+    if (tw < 0.667) {
+        return mix(green, purple, smoothstep(0.333, 0.667, tw));
+    }
+    return mix(purple, pink, smoothstep(0.667, 1.0, tw));
 }
 
 /// Ferrofluid procedural sky — base purple gradient + audio-reactive aurora curtain.
@@ -699,24 +718,27 @@ static float3 fluid_shading(float3 V, float3 N,
     iridescence *= edgeMask * tiltGate * kFluidIridescenceWeight * (2.0 - kFluidZoom * 2.0);
 
     // ── Composition ────────────────────────────────────────────────
-    // Round 30 (2026-05-15): ambient weight 1.0 → 0.3. The round-29
-    // weighting of 1.0 made the substrate-between-spikes purple
-    // because flat substrate (normal ≈ +Y) reflects upward at
-    // R.y ≈ 0.31, catching base sky at moderate elevation ≈
-    // (0.10, 0.06, 0.16). × 1.0 = visible purple. Dropping to 0.3
-    // gives substrate-between ≈ (0.03, 0.018, 0.048) — near-black
-    // per references' "pitch-black between-spikes" character.
+    // Round 31 (2026-05-15): specular weight 1.2 → 0.0. Matt's
+    // `2026-05-15T18-33-20Z` directive: "I don't want bright white
+    // specular at spike tips. The moon is the only reasonable light
+    // source for this and I would rather the only source of color be
+    // from the aurora curtains." With the Phong key-light layer at
+    // zero weight, the substrate has NO independent white highlights —
+    // every visible pixel is the env reflection at that surface's
+    // reflection vector, which is either dark base sky or aurora
+    // content. Aurora becomes the sole light source.
     //
-    // Aurora-on-spike-sides still reads as neon because the aurora
-    // signal was boosted (curtain baseline 0.6 → 1.0, modulation
-    // 1.0 → 1.5 in `rm_ferrofluidSky` above): peak signal 3.25 × 0.3
-    // ambient = 0.975 → saturated neon at the dominant channel.
+    // The `specularValue` is preserved in the math for easy revival
+    // if the visual is too dark without ANY tip illumination — would
+    // restore at a very low weight (e.g., 0.1) for "subtle moon
+    // glint" character.
     //
-    // Specular weight 0.8 → 1.2 (Leitl's original) — bright white
-    // razor catches at spike tips per references.
+    // Ambient weight 0.3 unchanged from round 30 — substrate-between
+    // stays near-black at base-sky reflection; spike sides catching
+    // saturated curtain × 0.3 still hit neon at peak music energy.
     constexpr float kFluidAmbientWeight   = 0.3;
     constexpr float kFluidFresnelWeight   = 0.3;
-    constexpr float kFluidSpecularWeight  = 1.2;
+    constexpr float kFluidSpecularWeight  = 0.0;
     return ambient * kFluidAmbientWeight
          + fresnel * kFluidFresnelWeight
          + specularValue * kFluidSpecularWeight
