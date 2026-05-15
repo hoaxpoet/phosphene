@@ -41,26 +41,29 @@ extension FerrofluidParticles {
         var capacity: Int { columns * rows }
     }
 
-    /// Canonical grid: **80 × 80 = 6400 cells** (Round 47, 2026-05-15).
-    /// X / Z spacing `worldSpan / 80 = 0.25 world units` — isotropic.
-    /// Particles at this density with `spikeBaseRadius = 0.125` have
-    /// bases exactly touching (half-spacing 0.125 = radius 0.125).
-    /// Each 2.5-wu radial cluster contains ~100 particles → ~10 spike
-    /// rings, matching the reference photos' per-cluster density.
+    /// Canonical grid: **55 × 55 = 3025 cells** (Round 17, 2026-05-15).
+    /// X / Z spacing `worldSpan / 55 = 0.3636 world units` — isotropic.
+    /// Particles at this density with `spikeBaseRadius = 0.17` have bases
+    /// that nearly touch (half-spacing 0.182 > radius 0.17 by only
+    /// 0.012 wu) → dense lattice with thin substrate channels between
+    /// peaks, matching the reference set's packing density per
+    /// `01_macro_ferrofluid_at_swell_scale.jpg`.
     ///
     /// History:
     ///   - 80 × 75 = 6000 cells with radius 0.15 (wall-to-wall overlap)
-    ///   - 80 × 75 = 6000 cells with radius 0.06 (isolated, too small)
-    ///   - 40 × 38 = 1520 cells with radius 0.12 (Round 11) — too sparse
-    ///   - 55 × 55 = 3025 cells with radius 0.17 (Round 17) — bases
-    ///     nearly touching, but with the round-45 radial clusters in
-    ///     play this rendered ~7 spikes across each cluster vs the
-    ///     references' ~10.
-    ///   - 80 × 80 = 6400 cells with radius 0.125 (Round 47, current) —
-    ///     denser packing per cluster, exact bases-touching geometry
-    ///     at the new 0.25-wu spacing.
+    ///   - 80 × 75 = 6000 cells with radius 0.06 (isolated, but
+    ///     per-spike screen coverage too small — Matt's
+    ///     `2026-05-15T12-36-08Z` review: "still nowhere close to actual
+    ///     ferrofluid")
+    ///   - 40 × 38 = 1520 cells with radius 0.12 (Round 11) — discrete
+    ///     pyramids registered but Matt's `2026-05-15T14-31-24Z` review
+    ///     flagged "too few spikes, lots of empty space between spikes"
+    ///     vs the reference set's ~35-40 visible spike-rows.
+    ///   - 55 × 55 = 3025 cells with radius 0.17 (Round 17, current) —
+    ///     ~2× more spike-rows, bases nearly touch, area coverage
+    ///     17 % → 75 %.
     static func canonicalGridLayout() -> GridLayout {
-        GridLayout(columns: 80, rows: 80)
+        GridLayout(columns: 55, rows: 55)
     }
 
     /// Populate the particle buffer with the canonical Phase 1 positions
