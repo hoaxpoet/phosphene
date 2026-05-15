@@ -109,6 +109,91 @@ constant float kFerrofluidMeshNormalEps = 0.00390625;
 /// derivatives to world-space tangent lengths.
 constant float kFerrofluidMeshWorldSpan = 20.0;
 
+// MARK: - Gerstner ocean displacement (Phase 1 round 19, 2026-05-15)
+//
+// Adds a Gerstner-wave macro displacement field underneath the spike
+// lattice — implements the README §Mandatory traits §macro spec:
+// "4 superposed Gerstner waves; amplitude routed from arousal +
+// drums_energy_dev accent."
+//
+// Physical model: Gerstner waves give particles circular paths (vertical
+// undulation + horizontal sway). The crests propagate in each wave's
+// direction at its phase speed. This produces the "ocean flowing toward
+// camera" reading even though no net particle translation occurs — the
+// VISUAL of moving crests does the work, matching Matt's 2026-05-15
+// "fluid moves toward/away from camera" framing.
+//
+// Direction mix: one wave straight toward camera (+Z dominant), two at
+// ±~20° offsets for chop variation, one more perpendicular for
+// surface-texture detail. Wavelengths 6-12 wu (mostly toward the long
+// end so the rolling reads as ocean-swell scale, not pond-ripple).
+// Phase speeds 1.0-1.8 wu/s — typical Gerstner-physics scaling
+// (c ∝ √λ for gravity waves; values shortened for visible motion at
+// 60 fps).
+//
+// Audio coupling:
+//   amplitudeMul = presenceGate × (0.7 + 0.3·arousal + 0.2·drums_dev)
+//   speedMul     = 0.5 + 0.5·arousal + 0.15·drums_dev
+//   time         = features.accumulated_audio_time (pauses at silence)
+//
+// presenceGate is the same total-stem-energy `smoothstep(0.02, 0.10)`
+// pattern the rest of the preset uses for silence-fallback. At true
+// silence: amplitudeMul = 0 → flat substrate (matches the spike
+// lattice's silence-collapse behaviour). At music playing: amplitude
+// scales from 70% (calm) to ~140% (peak energy) of the constant base.
+
+constant int kGerstnerNumWaves = 4;
+
+struct GerstnerWaveParams {
+    float2 direction;       // unit vector in XZ
+    float wavelength;       // world units
+    float baseAmplitude;    // world units (before audio modulation)
+    float baseSpeed;        // world units per second (before audio modulation)
+};
+
+constant GerstnerWaveParams kGerstnerWaves[kGerstnerNumWaves] = {
+    // Primary: toward camera (+Z), longest wavelength, dominant amplitude
+    { float2(0.0, 1.0),        12.0, 0.10, 1.2 },
+    // Slight right-toward-camera offset (~17° from primary)
+    { float2(0.2873, 0.9579),   8.0, 0.08, 1.0 },
+    // Slight left-toward-camera offset (~22° from primary)
+    { float2(-0.3939, 0.9191), 10.0, 0.07, 1.4 },
+    // More perpendicular, shorter wavelength — surface chop
+    { float2(0.8321, 0.5547),   6.0, 0.05, 1.8 }
+};
+
+/// Gerstner horizontal-sway factor (Q in Tessendorf's notation). 0 =
+/// pure sinusoidal Y-displacement (no horizontal motion); 1 = maximum
+/// circular orbit (risks wave-tip overlap for high amplitudes). 0.3 is
+/// conservative — gives visible crest-rolling character without
+/// fold-over even with all 4 waves at constructive peak.
+constant float kGerstnerSteepness = 0.3;
+
+/// Compute Gerstner displacement at world-XZ position `p`, time `t`.
+/// Returns float3 (dx, dy, dz) to add to the un-displaced vertex
+/// position. `amplitudeMul` scales all wave amplitudes uniformly;
+/// `speedMul` scales propagation speed.
+static float3 gerstner_displacement(float2 p,
+                                     float t,
+                                     float amplitudeMul,
+                                     float speedMul) {
+    float3 disp = float3(0.0);
+    for (int i = 0; i < kGerstnerNumWaves; i++) {
+        float2 D = kGerstnerWaves[i].direction;
+        float k = 2.0 * M_PI_F / kGerstnerWaves[i].wavelength;
+        float A = kGerstnerWaves[i].baseAmplitude * amplitudeMul;
+        float c = kGerstnerWaves[i].baseSpeed * speedMul;
+        float omega = k * c;
+        float phase = k * dot(D, p) - omega * t;
+        float cosP = cos(phase);
+        float sinP = sin(phase);
+        disp.x += kGerstnerSteepness * A * D.x * cosP;
+        disp.y += A * sinP;
+        disp.z += kGerstnerSteepness * A * D.y * cosP;
+    }
+    return disp;
+}
+
 // MARK: - Vertex shader
 
 /// Sample the heightmap at `uv`, return world-space Y displacement
@@ -136,33 +221,73 @@ vertex FerrofluidMeshVaryings ferrofluid_mesh_vertex(
 
     float spikeStr = fmesh_spike_strength(features, stems);
 
-    // Centre sample — drives this vertex's own Y displacement.
-    float yCenter = fmesh_sample_height(heightTex, heightSamp,
-                                         in.uv, spikeStr);
+    // ── Gerstner audio modulation (Phase 1 round 19) ───────────────
+    float arousalClamped = clamp(features.arousal, 0.0, 1.0);
+    float drumsClamped   = max(0.0, stems.drums_energy_dev);
+    float totalStemEnergy = stems.vocals_energy + stems.drums_energy
+                          + stems.bass_energy + stems.other_energy;
+    float presenceGate = smoothstep(0.02, 0.10, totalStemEnergy);
+    float amplitudeMul = presenceGate
+                       * (0.7 + 0.3 * arousalClamped + 0.2 * drumsClamped);
+    float speedMul     = 0.5 + 0.5 * arousalClamped + 0.15 * drumsClamped;
+    float gerstnerTime = features.accumulated_audio_time;
 
-    // Neighbour samples — drive the normal via cross product. Sample at
-    // ±eps in U and V so the derivative is symmetric (matches the
-    // central-differences pattern in the SDF path's normal estimation).
-    float yRight = fmesh_sample_height(heightTex, heightSamp,
-                                        in.uv + float2(kFerrofluidMeshNormalEps, 0.0),
-                                        spikeStr);
-    float yLeft  = fmesh_sample_height(heightTex, heightSamp,
-                                        in.uv - float2(kFerrofluidMeshNormalEps, 0.0),
-                                        spikeStr);
-    float yFwd   = fmesh_sample_height(heightTex, heightSamp,
-                                        in.uv + float2(0.0, kFerrofluidMeshNormalEps),
-                                        spikeStr);
-    float yBack  = fmesh_sample_height(heightTex, heightSamp,
-                                        in.uv - float2(0.0, kFerrofluidMeshNormalEps),
-                                        spikeStr);
+    // World-space epsilon for neighbour sampling (single mesh segment).
+    float worldEps = kFerrofluidMeshNormalEps * kFerrofluidMeshWorldSpan;
 
-    // World displacement vector.
-    float3 displaced = float3(in.position.x, in.position.y + yCenter, in.position.z);
+    // ── Spike heightmap samples (one centre + 4 neighbours) ────────
+    // Centre drives the vertex's own Y; neighbours feed the normal.
+    float yCenter_spike = fmesh_sample_height(heightTex, heightSamp,
+                                               in.uv, spikeStr);
+    float yRight_spike  = fmesh_sample_height(heightTex, heightSamp,
+                                               in.uv + float2(kFerrofluidMeshNormalEps, 0.0),
+                                               spikeStr);
+    float yLeft_spike   = fmesh_sample_height(heightTex, heightSamp,
+                                               in.uv - float2(kFerrofluidMeshNormalEps, 0.0),
+                                               spikeStr);
+    float yFwd_spike    = fmesh_sample_height(heightTex, heightSamp,
+                                               in.uv + float2(0.0, kFerrofluidMeshNormalEps),
+                                               spikeStr);
+    float yBack_spike   = fmesh_sample_height(heightTex, heightSamp,
+                                               in.uv - float2(0.0, kFerrofluidMeshNormalEps),
+                                               spikeStr);
+
+    // ── Gerstner samples at matching world-XZ positions ────────────
+    // For the CENTRE we use the full 3D displacement (x, y, z) — the
+    // vertex shifts horizontally to ride the wave. For neighbours we
+    // only need Y for the normal calc (height-field approximation;
+    // horizontal Gerstner displacement of neighbours is small relative
+    // to wavelength so the slope contribution is negligible).
+    float3 gerstnerCentre = gerstner_displacement(in.position.xz,
+                                                   gerstnerTime,
+                                                   amplitudeMul,
+                                                   speedMul);
+    float yRight_g = gerstner_displacement(in.position.xz + float2(worldEps, 0.0),
+                                            gerstnerTime, amplitudeMul, speedMul).y;
+    float yLeft_g  = gerstner_displacement(in.position.xz + float2(-worldEps, 0.0),
+                                            gerstnerTime, amplitudeMul, speedMul).y;
+    float yFwd_g   = gerstner_displacement(in.position.xz + float2(0.0, worldEps),
+                                            gerstnerTime, amplitudeMul, speedMul).y;
+    float yBack_g  = gerstner_displacement(in.position.xz + float2(0.0, -worldEps),
+                                            gerstnerTime, amplitudeMul, speedMul).y;
+
+    // Combined Y at each sample point — spike lattice rides on top of the
+    // Gerstner swell, both contributing to the surface height.
+    float yCenter = yCenter_spike + gerstnerCentre.y;
+    float yRight  = yRight_spike  + yRight_g;
+    float yLeft   = yLeft_spike   + yLeft_g;
+    float yFwd    = yFwd_spike    + yFwd_g;
+    float yBack   = yBack_spike   + yBack_g;
+
+    // World displacement vector — centre gets the full Gerstner XZ sway
+    // in addition to the combined Y.
+    float3 displaced = float3(in.position.x + gerstnerCentre.x,
+                              in.position.y + yCenter,
+                              in.position.z + gerstnerCentre.z);
 
     // Tangent vectors in world space. UV-space epsilon maps to world-space
     // distance via worldSpan: dWorld = (eps × 2) × worldSpan in the X / Z
     // directions. Heights at ±eps neighbours yield the Y component.
-    float worldEps = kFerrofluidMeshNormalEps * kFerrofluidMeshWorldSpan;
     float3 tangentX = float3(2.0 * worldEps, yRight - yLeft, 0.0);
     float3 tangentZ = float3(0.0, yFwd - yBack, 2.0 * worldEps);
 
