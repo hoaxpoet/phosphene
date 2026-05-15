@@ -389,7 +389,21 @@ static float3 rm_ferrofluidSky(float3 R,
     // saturated chromatic content present only where the spike ridges
     // catch a localized sky source — wider/brighter curtain washes the
     // spike-lattice specular catches into a haze.
-    constexpr float kCurtainElevation       = 0.83;
+    // Round 30 (2026-05-15): elevation 0.83 → 0.0 (horizon). Pre-round-30
+    // the curtain sat at high elevation (~0.83 = ~56° above horizon).
+    // Flat substrate (normal +Y) reflects at R.y ≈ +0.31 for the current
+    // camera tilt — catching base sky NOT the curtain. Spike sides with
+    // tilted normals had various R.y values but rarely hit elevation
+    // 0.83 either. Net result: curtain content was mostly invisible
+    // except at very steep ridge angles, and the substrate-between
+    // showed the dim base-sky purple at the moderate elevation it WAS
+    // reflecting. The references' visual signature (saturated rim color
+    // on spike SIDES, black between, white at TIPS) requires the
+    // colored content to be at LOW elevation so it lights the SIDES of
+    // spikes that reflect roughly horizontally. Curtain at horizon
+    // (R.y = 0) means substrate-between (R.y ≈ 0.31) misses it,
+    // spike sides (R.y ≈ 0 for outward-facing sides) catch it.
+    constexpr float kCurtainElevation       = 0.0;
     constexpr float kCurtainStripeThickness = 0.35;
     constexpr float kCurtainAzimuthFloor    = 0.30;
     constexpr float kCurtainAzimuthPeak     = 0.75;
@@ -427,27 +441,21 @@ static float3 rm_ferrofluidSky(float3 R,
     // 0.22 → 0.50 for visible brightness; ambient weight 0.2 → 0.7. Peak
     // aurora pixel reached 0.805 RGB.
     //
-    // Round 29 (2026-05-15) — Matt: "I am looking for BRIGHT colors -
-    // literally neon shades like in the reference images." Further push
-    // toward the saturated-color character of `04_*` and `08_*`:
+    // Round 30 (2026-05-15) — bumped further to compensate for the
+    // round-30 ambient-weight drop (1.0 → 0.3) which was needed to kill
+    // the purple-substrate-between problem from round 29. The aurora
+    // intensities scale up to keep aurora-on-spike-sides at neon
+    // saturation despite the lower ambient weight:
     //
-    //   baseline 0.40 → 0.60  — vivid even between drum hits
-    //   modulation 0.50 → 1.00 — drum hits drive into clamp-saturation
+    //   baseline   0.60 → 1.00  — saturated even at calm music
+    //   modulation 1.00 → 1.50 — drum hits push deeper into clamp
     //
-    // Combined with round-29's ambient weight 0.7 → 1.0 (the physically
-    // correct weighting for a metallic mirror at roughness 0.08), peak
-    // aurora RGB on the dominant-channel saturates to 1.0 (neon) while
-    // weaker channels stay near 0 (pure hue, not white-clipped). The
-    // hue palette's chromatic content remains legible across the
-    // drum-modulation range.
-    //
-    // Peak signal: 0.60 + 1.00 × 1.5 = 2.10. After ambient × 1.0:
-    // 2.10 multiplier on the palette per channel. Dominant channel
-    // (palette peak ~0.78) → 1.64 → clamps to 1.0 = saturated. Weak
-    // channel (palette ~0.001) → 0.002 = pitch-black. Saturated neon
-    // hue per the references.
-    constexpr float kCurtainBaselineIntensity  = 0.60;
-    constexpr float kCurtainModulationIntensity = 1.00;
+    // Peak signal: 1.00 + 1.50 × 1.5 = 3.25. After round-30 ambient × 0.3:
+    // 0.975 multiplier on the palette per channel — dominant palette
+    // channel saturates to 1.0 = neon. Substrate-between catching base
+    // sky × 0.3 = (0.03, 0.018, 0.048) ≈ near-black per references.
+    constexpr float kCurtainBaselineIntensity  = 1.00;
+    constexpr float kCurtainModulationIntensity = 1.50;
     float drumsSmoothed = clamp(stems.drums_energy_dev_smoothed, 0.0, 1.5);
     float curtainIntensity = kCurtainBaselineIntensity
                            + kCurtainModulationIntensity * drumsSmoothed;
@@ -625,23 +633,18 @@ static float3 fluid_shading(float3 V, float3 N,
     float3 L = keyLightDir;
     float3 R = reflect(L, N);
 
-    // ── Layer 1: specular (Phong, shininess 50, env-tinted) ────────
-    // Round 29 (2026-05-15): tinted by `rm_ferrofluidSky` at the
-    // key-light reflection angle R. Pre-round-29 the specular was
-    // `specularValue × white × 1.2` → uniform white sheen on spike
-    // peaks (Matt's `2026-05-15T18-24-55Z` review: "the white sheen
-    // on the surface of the fluid peaks is not great"). The references
-    // (`04_specular_razor_highlights.jpg`) show SATURATED-COLORED
-    // razor catches, not white — the highlight inherits the env
-    // content at the reflection angle. Multiplying the Phong
-    // concentration term by the env at that angle gives "saturated
-    // neon razor catches where the key-light reflection aligns
-    // with the aurora curtain in the sky, dim elsewhere." Closer to
-    // a physically-correct colored-mirror specular than Leitl's
-    // uniform white.
+    // ── Layer 1: specular (Phong, shininess 50, scalar white) ──────
+    // Round 30 (2026-05-15): REVERTED to Leitl's original white-scalar
+    // form. The round-29 env-tinted experiment produced green/yellow
+    // tips because the curtain at elevation 0.83 was catching the
+    // key-light reflection angle on spike tips (Matt's
+    // `2026-05-15T18-33-20Z`: "highlights on the peak (which used to
+    // be white) are green / yellow"). References show the spike-tip
+    // specular as BRIGHT WHITE — studio key-light reflecting off the
+    // razor edges, separate phenomenon from the colored side-lighting
+    // that gives the spike SIDES their saturated rim colors.
     constexpr float kFluidShininess = 50.0;
     float specularValue = fluid_pow_fast(max(0.0, dot(R, -V)), kFluidShininess);
-    float3 specularEnv = rm_ferrofluidSky(R, features, stems, scene);
 
     // ── Layer 2: ambient (procedural ferrofluid sky with aurora) ───
     // Round 27 (2026-05-15): sources from `rm_ferrofluidSky` instead
@@ -696,18 +699,27 @@ static float3 fluid_shading(float3 V, float3 N,
     iridescence *= edgeMask * tiltGate * kFluidIridescenceWeight * (2.0 - kFluidZoom * 2.0);
 
     // ── Composition ────────────────────────────────────────────────
-    // Round 29 (2026-05-15): ambient weight 0.7 → 1.0 (physically correct
-    // for a metallic mirror at roughness 0.08 — the env reflection IS
-    // the dominant visible content). Specular weight 1.2 → 0.8 since
-    // the env tint provides chromatic saturation; the Phong scalar is
-    // doing less heavy lifting now and a lower weight keeps highlights
-    // from over-saturating their bright channel.
-    constexpr float kFluidAmbientWeight   = 1.0;
+    // Round 30 (2026-05-15): ambient weight 1.0 → 0.3. The round-29
+    // weighting of 1.0 made the substrate-between-spikes purple
+    // because flat substrate (normal ≈ +Y) reflects upward at
+    // R.y ≈ 0.31, catching base sky at moderate elevation ≈
+    // (0.10, 0.06, 0.16). × 1.0 = visible purple. Dropping to 0.3
+    // gives substrate-between ≈ (0.03, 0.018, 0.048) — near-black
+    // per references' "pitch-black between-spikes" character.
+    //
+    // Aurora-on-spike-sides still reads as neon because the aurora
+    // signal was boosted (curtain baseline 0.6 → 1.0, modulation
+    // 1.0 → 1.5 in `rm_ferrofluidSky` above): peak signal 3.25 × 0.3
+    // ambient = 0.975 → saturated neon at the dominant channel.
+    //
+    // Specular weight 0.8 → 1.2 (Leitl's original) — bright white
+    // razor catches at spike tips per references.
+    constexpr float kFluidAmbientWeight   = 0.3;
     constexpr float kFluidFresnelWeight   = 0.3;
-    constexpr float kFluidSpecularWeight  = 0.8;
+    constexpr float kFluidSpecularWeight  = 1.2;
     return ambient * kFluidAmbientWeight
          + fresnel * kFluidFresnelWeight
-         + specularEnv * specularValue * kFluidSpecularWeight
+         + specularValue * kFluidSpecularWeight
          + iridescence;
 }
 // swiftlint:enable function_parameter_count
