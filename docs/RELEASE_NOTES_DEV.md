@@ -6,6 +6,69 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-15-a] V.9 Session 4.5c Phase 1 — 18-round Ferrofluid Ocean rebuild (Leitl architecture port)
+
+**Increment:** V.9 Session 4.5c Phase 1, 18 commits spanning 2026-05-14 → 2026-05-15. **Status:** Phase 1 closed. Phase 2 (SPH motion + ZOOM coupling) handed off via `docs/presets/FERROFLUID_OCEAN_PHASE2_PROMPT.md` for the next session.
+
+Phase 1 took Ferrofluid Ocean from "audio-reactive aurora curtain over SDF-ray-marched heightfield substrate" through 15 rounds of iteration to a working "tessellated-mesh + vertex-displacement substrate rendered with Robert Leitl's four-layer fluid-shading material under a procedural studio env" — the architectural baseline for Phase 2. Matt's `2026-05-15T13:45:11Z` capture confirmed the substrate reads as ferrofluid spikes; subsequent rounds tuned iridescence, substrate darkness, audio coupling, and irregular-track response.
+
+**Pattern of work.** The first 7 rounds were tactical changes against the SDF-ray-marched substrate (aurora bypass, particle pinning, bake sharpness, radius adjustment, env swap, fresnel coord fix). Each fix addressed the prior specific complaint and revealed a new failure mode. Round 12 (Matt's "Match Leitl - tesselated mesh + vertex displacement from heightmap") triggered the architectural pivot — Failed Approach #65 admission that "verbatim Leitl port" had only covered the fragment shader, not the geometry pipeline. Rounds 13-15 are post-mesh tuning: iridescence rainbow streaks, substrate brightness, audio coupling for irregular tracks, spike-height calibration.
+
+**Files changed (Phase 1 totals, end-to-end):**
+
+New:
+- `PhospheneEngine/Sources/Renderer/Shaders/FerrofluidMesh.metal` — 260 lines. Mesh vertex shader (samples heightmap, displaces, finite-difference normal) + G-buffer fragment (writes matID==2 format the existing lighting fragment reads).
+- `PhospheneEngine/Sources/Presets/FerrofluidOcean/FerrofluidMesh.swift` — 240 lines. 257×257 vertex grid, UInt32 index buffer, G-buffer pipeline state + depth-stencil state, encode method.
+- `docs/presets/FERROFLUID_OCEAN_PHASE2_PROMPT.md` — next-session continuation prompt (SPH, ZOOM, entry animation).
+
+Modified:
+- `PhospheneEngine/Sources/Renderer/Shaders/RayMarch.metal` — Leitl four-layer material (`fluid_shading`), procedural studio env (`fluid_studio_env`), fresnel coord adaptation (N.z → dot(N, V)), iridescence tilt gate.
+- `PhospheneEngine/Sources/Renderer/RayMarchPipeline.swift` — depth attachment for mesh path, `meshGBufferEncoder` dispatch closure, dispatch routing.
+- `PhospheneEngine/Sources/Renderer/RayMarchPipeline+Passes.swift` — `runMeshGBufferPass` (depth-attached render pass + closure invocation).
+- `PhospheneEngine/Sources/Renderer/RenderPipeline+PresetSwitching.swift` — `setMeshGBufferEncoder` public setter.
+- `PhospheneEngine/Sources/Presets/Shaders/FerrofluidOcean.metal` — `fo_spike_strength` reworked through rounds 1, 10, 13, 14, 15 (currently `bass_energy × 1.5 + bass_energy_dev × 0.5`; warmup proxy `bass_dev × 5.0`).
+- `PhospheneEngine/Sources/Presets/Shaders/FerrofluidOcean.json` — camera lowered (0, 4, -2.5) → (0, 2.5, -4.0); FOV 50 → 55; angle 42° → 18° down.
+- `PhospheneEngine/Sources/Presets/FerrofluidOcean/FerrofluidParticles.swift` — particle count 6000 → 1520 (40×38 grid); spikeBaseRadius 0.15 → 0.12 wu; smoothMinW 0.02 → 0.005 (held).
+- `PhospheneEngine/Sources/Presets/FerrofluidOcean/FerrofluidParticles+InitialPositions.swift` — grid 80×75 → 40×38.
+- `PhospheneEngine/Sources/Renderer/Shaders/FerrofluidParticles.metal` — linear cone profile (was squared).
+- `PhospheneApp/VisualizerEngine.swift` + `VisualizerEngine+Presets.swift` — `FerrofluidMesh` property + wiring at preset apply, teardown in per-preset reset, `setMeshGBufferEncoder` setter call.
+- `PhospheneEngine/Tests/PhospheneEngineTests/Visual/FerrofluidOceanVisualTests.swift` — D-126-era mood-tint tests marked `XCTSkip` (obsolete under Leitl port; re-activate in Phase 4 when aurora overlay returns).
+- `PhospheneEngine/Tests/PhospheneEngineTests/Presets/FerrofluidParticlesTests.swift` — locked-constants assertions updated for the new particle-count + radius + smoothMinW values.
+- `docs/VISUAL_REFERENCES/ferrofluid_ocean/README.md` — Last-amended header + Audio routing notes updated through D-127.
+
+**Verification.** Engine `swift build` clean; app `xcodebuild build` clean; 9/9 `FerrofluidParticlesTests`, all `MatIDDispatchTests`, all 15-preset `PresetRegression` hashes preserve; 5/5 active `FerrofluidOceanVisualTests` (2 D-126 mood-tint tests marked obsolete + skipped). Full engine suite passes except 2 pre-existing parallel-execution flakes (`MetadataPreFetcher.fetch_networkTimeout`, `SoakTestHarness.cancel`).
+
+**Visual progression (key capture URLs):**
+- `2026-05-14T18-17-51Z` (Love Rehab, baseline before Phase 1) — pre-aurora work
+- `2026-05-14T22-06-07Z` (4-track playlist, post-aurora) — Matt: "still washed out"
+- `2026-05-14T22-37-26Z` (Billie Jean, post-pinning + bake sharpen) — Matt: "no spikes like reference"
+- `2026-05-15T01-16-02Z` (Leitl-fragment-port + corridor IBL) — Matt: "not even close" (chrome floor)
+- `2026-05-15T03-05-37Z` (studio env + fresnel coord fix) — Matt: "no better no worse" (fresnel bug found here)
+- `2026-05-15T03-27-48Z` (post-fresnel-fix studio env) — Matt: "darker, do we zoom or fewer/larger orbs?"
+- `2026-05-15T04-34-38Z` (lower camera angle) — Matt: "snowmen"
+- `2026-05-15T12-36-08Z` (linear cone + camera elevated) — Matt: "still nowhere close, 15s warmup"
+- `2026-05-15T13-04-32Z` (fewer/bigger spikes + warmup proxy) — Matt: "spikes flash for 1s then 8-10s blank"
+- **`2026-05-15T13-45-11Z` (mesh + vertex displacement — Step B)** — Matt: "much better, foundation works"
+- `2026-05-15T13-56-20Z` (post-mesh cleanup) — Matt: "not pitch black; irregular tracks don't work; still 8-10s delay"
+- `2026-05-15T14-10-12Z` (round 14 — pre-recalibration) — calibration defect found (peaks 2.64 wu wire-thin), fixed in round 15
+
+**Phase 1 architecture invariants now established:**
+- Ferrofluid Ocean is the only preset rendering via tessellated mesh + vertex displacement. Every other ray-march preset stays on SDF.
+- `matID == 2` in the lighting fragment routes to Leitl's four-layer material. Mesh path's G-buffer fragment writes matID=2; rest of the pipeline is unchanged.
+- Audio coupling drives spike height only (no env coupling currently). Phase 2 will add ZOOM-driven multi-parameter coupling.
+
+**Known gaps for Phase 2:**
+1. SPH particle motion (Leitl uses full pressure / force / integrate / sort / offset pipeline; ours has particles pinned).
+2. ZOOM-coupled bake parameters (Leitl couples 4 params to single audio scalar via polynomial remaps).
+3. Entry animation (Leitl's 7-second `ZOOM 1.0 → 0.5` fade-up).
+4. Single audio control scalar with spring-momentum smoothing (precursor to #1-3).
+
+See `docs/presets/FERROFLUID_OCEAN_PHASE2_PROMPT.md` for the full next-session brief.
+
+**Git status.** Branch `main`, ahead of `origin/main` by 17 commits (18 Phase 1 commits + 1 prompt-file commit pending). No push.
+
+---
+
 ## [dev-2026-05-14-c] V.9 Session 4.5c Phase 1 — Direct audio → aurora routing (D-127)
 
 **Increment:** V.9 Session 4.5c Phase 1. **Status:** Code complete; engine + app builds clean; targeted tests pass. STOP gate pending Matt's eye on a real-music capture against a vocal-forward track (Billie Jean per his 2026-05-14 sign-off).
