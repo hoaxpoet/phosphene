@@ -78,6 +78,12 @@ public final class SessionPreparer: ObservableObject {
     private let stemAnalyzer: any StemAnalyzing
     private let moodClassifier: any MoodClassifying
     private let beatGridAnalyzer: (any BeatGridAnalyzing)?
+    /// Optional metadata fetcher used to override ML-detected meter on
+    /// odd time-signature tracks. Fetched in parallel with the preview
+    /// PCM download during `prepareTrack`. When `nil` (e.g. tests, or no
+    /// metadata sources configured), the cached `BeatGrid.beatsPerBar`
+    /// carries the ML-detected value unchanged. Round 26 (2026-05-15).
+    private let metadataFetcher: MetadataPreFetcher?
 
     /// Optional SessionRecorder for `WIRING:` instrumentation logs (BUG-006.1).
     /// `nil` in tests; wired through from `VisualizerEngine` in production so
@@ -123,6 +129,7 @@ public final class SessionPreparer: ObservableObject {
         stemAnalyzer: any StemAnalyzing,
         moodClassifier: any MoodClassifying,
         beatGridAnalyzer: (any BeatGridAnalyzing)? = nil,
+        metadataFetcher: MetadataPreFetcher? = nil,
         cache: StemCache = StemCache(),
         sessionRecorder: SessionRecorder? = nil
     ) {
@@ -132,6 +139,7 @@ public final class SessionPreparer: ObservableObject {
         self.stemAnalyzer = stemAnalyzer
         self.moodClassifier = moodClassifier
         self.beatGridAnalyzer = beatGridAnalyzer
+        self.metadataFetcher = metadataFetcher
         self.cache = cache
         self.sessionRecorder = sessionRecorder
     }
@@ -274,9 +282,26 @@ public final class SessionPreparer: ObservableObject {
         // Download and decode to mono PCM.
         // TODO(U.4-followup): wire URLSession download progress callback; use -1 until then.
         trackStatuses[track] = .downloading(progress: -1)
-        guard let preview = await downloader.download(track: track, from: url) else {
+        // Round 26 (2026-05-15): fetch metadata in parallel with the PCM
+        // download. The fetcher hits Soundcharts / iTunes Search /
+        // MusicBrainz over the network — same I/O class as the download.
+        // Async-let gates: the download value is required (throw on
+        // failure); the metadata is optional (best-effort; nil on
+        // failure means no override gets applied, ML-detected meter
+        // stands).
+        async let previewTask = downloader.download(track: track, from: url)
+        async let profileTask: PreFetchedTrackProfile? = {
+            guard let fetcher = self.metadataFetcher else { return nil }
+            let trackMetadata = TrackMetadata(
+                title: track.title,
+                artist: track.artist
+            )
+            return await fetcher.prefetch(for: trackMetadata)
+        }()
+        guard let preview = await previewTask else {
             throw SessionPreparationError.downloadFailed(track.title)
         }
+        let prefetchedProfile = await profileTask
 
         // All CPU-bound analysis runs off the main actor.
         // NOTE: .mir and .beatGrid sub-stages are not emitted separately
@@ -294,7 +319,8 @@ public final class SessionPreparer: ObservableObject {
                     separator: separator,
                     analyzer: analyzer,
                     classifier: classifier,
-                    beatGridAnalyzer: gridAnalyzer
+                    beatGridAnalyzer: gridAnalyzer,
+                    prefetchedProfile: prefetchedProfile
                 )
             }.value
         } catch {

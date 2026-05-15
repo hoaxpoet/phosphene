@@ -39,6 +39,13 @@ private struct FFTContext {
 extension SessionPreparer {
 
     // MARK: - analyzePreview
+    //
+    // `analyzePreview` runs sequential pipeline stages (stem separation →
+    // analyzer warmup → MIR → beat grid → drums beat grid → grid-onset
+    // calibration). Body length exceeds SwiftLint's default cap because
+    // each stage is a few lines; splitting into helpers would obscure the
+    // sequential pipeline structure that's the point of this function.
+    // swiftlint:disable function_body_length
 
     /// Run the full analysis pipeline on a decoded preview clip.
     ///
@@ -52,13 +59,17 @@ extension SessionPreparer {
     ///   - classifier: Mood classifier (injected for testing).
     ///   - beatGridAnalyzer: Optional Beat This! analyzer. When `nil`, the
     ///     returned `CachedTrackData.beatGrid` is `.empty`.
+    ///   - prefetchedProfile: Optional pre-fetched track metadata. When
+    ///     `prefetchedProfile.timeSignature` is non-nil, the ML-detected
+    ///     `BeatGrid.beatsPerBar` is overridden before caching.
     /// - Returns: Fully populated `CachedTrackData`.
     nonisolated static func analyzePreview(
         _ preview: PreviewAudio,
         separator: any StemSeparating,
         analyzer: any StemAnalyzing,
         classifier: any MoodClassifying,
-        beatGridAnalyzer: (any BeatGridAnalyzing)? = nil
+        beatGridAnalyzer: (any BeatGridAnalyzing)? = nil,
+        prefetchedProfile: PreFetchedTrackProfile? = nil
     ) throws -> CachedTrackData {
 
         // Step 1: Separate stems from preview PCM.
@@ -101,14 +112,30 @@ extension SessionPreparer {
         )
 
         // Step 5: Beat This! offline beat grid on full mix (nil analyzer → BeatGrid.empty).
-        let beatGrid: BeatGrid
+        let beatGridRaw: BeatGrid
         if let gridAnalyzer = beatGridAnalyzer {
-            beatGrid = gridAnalyzer.analyzeBeatGrid(
+            beatGridRaw = gridAnalyzer.analyzeBeatGrid(
                 samples: preview.pcmSamples,
                 sampleRate: Double(preview.sampleRate)
             )
         } else {
-            beatGrid = .empty
+            beatGridRaw = .empty
+        }
+
+        // Round 26 (2026-05-15): metadata-driven meter override. The ML
+        // detector sometimes guesses the meter wrong on odd
+        // time-signature tracks (Money's 7/4 → detected as 2/X). When
+        // the external metadata source returns a `time_signature`,
+        // override the auto-detected meter before caching the grid so
+        // the cached value is correct on disk and the live drift
+        // tracker installs the corrected meter from the moment
+        // playback begins (no runtime-correction race window).
+        let beatGrid: BeatGrid
+        if let timeSignature = prefetchedProfile?.timeSignature,
+           !beatGridRaw.beats.isEmpty {
+            beatGrid = beatGridRaw.overridingBeatsPerBar(timeSignature)
+        } else {
+            beatGrid = beatGridRaw
         }
 
         // Step 6: Beat This! offline beat grid on drums stem only (DSP.4 diagnostic).
@@ -136,6 +163,8 @@ extension SessionPreparer {
             gridOnsetOffsetMs: gridOnsetOffsetMs
         )
     }
+
+    // swiftlint:enable function_body_length
 
     /// Replay the preview audio through the live BeatDetector offline and
     /// return the median (gridBeat − onsetTime) offset in milliseconds

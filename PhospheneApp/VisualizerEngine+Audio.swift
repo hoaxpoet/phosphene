@@ -30,7 +30,11 @@ extension VisualizerEngine {
         audioRouter.onAudioSamples = makeAudioSampleCallback(buf: buf, fft: fft)
         audioRouter.onSignalStateChanged = makeSignalStateCallback()
 
-        let fetcher = MetadataPreFetcher(fetchers: Self.buildFetcherList())
+        // Round 26 (2026-05-15): `preFetcher` is now constructed early in
+        // `VisualizerEngine.init` so SessionPreparer can share the same
+        // cache + fetcher list. Reuse it here for the track-change
+        // callback rather than constructing a duplicate.
+        let fetcher = preFetcher ?? MetadataPreFetcher(fetchers: Self.buildFetcherList())
         preFetcher = fetcher
         audioRouter.onTrackChange = makeTrackChangeCallback(fetcher: fetcher)
 

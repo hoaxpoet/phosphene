@@ -585,6 +585,14 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         self.stemAnalyzer = analyzer
         self.stemSeparator = sep
         self.sessionRecorder = SessionRecorder()
+        // Round 26 (2026-05-15): construct the metadata fetcher early so it
+        // can be shared between SessionPreparer (offline prep-time meter
+        // override via time_signature) and `makeAudioRouter`'s track-change
+        // callback (BPM/key display + late-arriving meter correction). One
+        // fetcher, one LRU cache; prep populates the cache for tracks in the
+        // playlist, runtime hits the same cache on track-change so the
+        // network request from the runtime side is a no-op.
+        let metadataFetcher = MetadataPreFetcher(fetchers: Self.buildFetcherList())
         // SessionManager is always created — uses the same component instances as the engine.
         // Ad-hoc mode never invokes the preparer; session mode uses it for pre-analysis.
         self.sessionManager = Self.makeSessionManager(
@@ -592,8 +600,10 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
             analyzer: analyzer,
             classifier: classifier,
             device: ctx.device,
-            sessionRecorder: self.sessionRecorder
+            sessionRecorder: self.sessionRecorder,
+            metadataFetcher: metadataFetcher
         )
+        self.preFetcher = metadataFetcher
         // BUG-006.2 fix (cause 1): wire engine.stemCache to the SessionPreparer's
         // cache instance. The cache reference is stable from init; entries get
         // added as `SessionPreparer.prepare(tracks:)` completes per-track.
