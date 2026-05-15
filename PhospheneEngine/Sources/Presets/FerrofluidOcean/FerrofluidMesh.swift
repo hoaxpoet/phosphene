@@ -233,22 +233,51 @@ public final class FerrofluidMesh: @unchecked Sendable {
         self.depthStencilState = dss
     }
 
+    // MARK: - Per-frame vertex uniforms (Phase 1 round 20)
+
+    /// Mirror of `FerrofluidMeshUniforms` in FerrofluidMesh.metal.
+    /// `tempoScale = bpm / 60` (beats per second); 0 at silence /
+    /// pre-grid-lock state. Bound at vertex `[[buffer(5)]]`.
+    public struct MeshUniforms {
+        public var tempoScale: Float
+        public var pad0: Float
+        public var pad1: Float
+        public var pad2: Float
+
+        public init(tempoScale: Float) {
+            self.tempoScale = tempoScale
+            self.pad0 = 0
+            self.pad1 = 0
+            self.pad2 = 0
+        }
+    }
+
     // MARK: - Encode
+    //
+    // `encodeGBufferPass` takes six explicit binding-point parameters —
+    // encoder, features, stems, sceneUniforms, meshUniforms, heightTexture.
+    // Bundling them into a struct would obscure the binding contract.
+
+    // swiftlint:disable function_parameter_count
 
     /// Encode the G-buffer pass for the ferrofluid mesh into `encoder`.
     /// Caller is responsible for the render pass descriptor + encoder
     /// lifecycle (begin / end); this method only sets pipeline state +
     /// buffers + textures + issues the indexed draw call.
+    ///
+    /// `meshUniforms` carries the per-frame vertex-stage uniforms —
+    /// currently just `tempoScale` (CPU-computed from live BPM).
     public func encodeGBufferPass(into encoder: MTLRenderCommandEncoder,
                                   features: inout FeatureVector,
                                   stems: inout StemFeatures,
                                   sceneUniforms: inout SceneUniforms,
+                                  meshUniforms: inout MeshUniforms,
                                   heightTexture: MTLTexture) {
         encoder.setRenderPipelineState(pipelineState)
         encoder.setDepthStencilState(depthStencilState)
 
         // Vertex stage bindings. Mesh vertex buffer at slot 16 (matches
-        // the vertex descriptor's bufferIndex); uniforms at slots 0/3/4.
+        // the vertex descriptor's bufferIndex); uniforms at slots 0/3/4/5.
         encoder.setVertexBuffer(vertexBuffer, offset: 0, index: Self.kVertexBufferSlot)
         encoder.setVertexBytes(&features,
                                length: MemoryLayout<FeatureVector>.stride,
@@ -259,6 +288,9 @@ public final class FerrofluidMesh: @unchecked Sendable {
         encoder.setVertexBytes(&sceneUniforms,
                                length: MemoryLayout<SceneUniforms>.stride,
                                index: 4)
+        encoder.setVertexBytes(&meshUniforms,
+                               length: MemoryLayout<MeshUniforms>.stride,
+                               index: 5)
         encoder.setVertexTexture(heightTexture, index: 10)
 
         // Fragment stage — only needs SceneUniforms (for depth normalization).
@@ -272,4 +304,6 @@ public final class FerrofluidMesh: @unchecked Sendable {
                                        indexBuffer: indexBuffer,
                                        indexBufferOffset: 0)
     }
+
+    // swiftlint:enable function_parameter_count
 }
