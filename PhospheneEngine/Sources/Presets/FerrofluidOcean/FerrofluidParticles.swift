@@ -66,16 +66,18 @@ public final class FerrofluidParticles: @unchecked Sendable {
     /// × 1024² texels, well within the 60 fps frame budget.
     ///
     /// **Density pass 2026-05-15 (V.9 Session 4.5c Phase 1 round 17)**:
-    /// `1520 → 3025` (55 × 55 grid). Matt's review of the
-    /// `2026-05-15T14-31-24Z` capture flagged "too few spikes, lots of
-    /// empty space between spikes" vs the reference set's dense lattice
-    /// (`01_macro_*` shows ~35-40 spike-rows visible across the patch;
-    /// the 1520-particle render showed ~20). Coordinated with
-    /// `spikeBaseRadius` 0.12 → 0.17 (round 17 same commit) — new
-    /// X/Z spacing 20/55 ≈ 0.364 wu, half-spacing 0.182 wu just slightly
-    /// over radius 0.17 → bases nearly touch with a thin substrate
-    /// channel between, matching the reference packing density.
-    public static let particleCount: Int = 3025
+    /// `1520 → 3025` (55 × 55 grid).
+    ///
+    /// **Round 47 (2026-05-15)**: `3025 → 6400` (80 × 80 grid). Matt's
+    /// `2026-05-15T22:30Z` capture review after round 45's radial-cluster
+    /// architecture: "could be more densely packed, following the reference
+    /// examples." At 55² density each cluster (2.5 wu wide) contains ~47
+    /// particles → 7 spikes across cluster diameter. Reference image 1
+    /// shows ~10 spikes across diameter — denser. Bumping to 80² gives
+    /// 100 particles/cluster, 10 across diameter. Coordinated with
+    /// `spikeBaseRadius` 0.17 → 0.125 same commit so bases-touching
+    /// invariant is preserved at the new 0.25-wu spacing.
+    public static let particleCount: Int = 6400
 
     /// Height texture: original spec 512² → 1024² (Matt 2026-05-14
     /// fullscreen/4K product addendum) → 2048² (smoothness pass
@@ -161,21 +163,17 @@ public final class FerrofluidParticles: @unchecked Sendable {
     /// **Round 44 (2026-05-15)**: 0.17 → 0.10. (Subsequently reverted in
     /// round 45 — see below.)
     ///
-    /// **Round 45 (2026-05-15)**: 0.10 → 0.17 (revert). Matt's
-    /// `2026-05-15T22:30Z` observation: every reference photo shows spikes
-    /// as RADIAL CLUSTERS with bases touching within each cluster —
-    /// concentric rings of spikes radiating from a central focal point
-    /// (the physics of the Rosensweig instability under a magnetic field).
-    /// Round 44's narrowing was correcting a symptom (round-42's dome
-    /// reading at bases-touching) of the wrong problem; the actual issue
-    /// was the missing radial displacement architecture. Round 45 reverts
-    /// the radius (bases-touching is correct, just within clusters) and
-    /// adds radial cluster displacement in the mesh shader so each spike
-    /// leans outward from its nearest cluster's focal point below the
-    /// substrate. The "ocean" is now interpreted as a magnetically-charged
-    /// surface with multiple distributed cluster centers (see
-    /// `kClusterSpacing`/`kClusterFocalDepth` in `FerrofluidMesh.metal`).
-    public static let spikeBaseRadius: Float = 0.17
+    /// **Round 45 (2026-05-15)**: 0.10 → 0.17 (revert).
+    ///
+    /// **Round 47 (2026-05-15)**: 0.17 → 0.125. Coordinated with
+    /// `particleCount` 3025 → 6400 (80×80 grid) for denser cluster
+    /// packing per Matt's `2026-05-15T22:30Z` direction. New particle
+    /// spacing 20/80 = 0.25 wu, half-spacing 0.125 wu → radius 0.125
+    /// exactly = half-spacing → bases touch precisely without overlap.
+    /// Aspect ratio at peak height (0.30 wu): 2.4:1 — closer to
+    /// reference 3:1 territory. Within each 2.5-wu cluster: 100 particles
+    /// at 0.25 wu spacing → ~10 spike rings visible.
+    public static let spikeBaseRadius: Float = 0.125
 
     /// Apex-rounding parameter for `almostIdentity` smoothing on the
     /// soft-min output. **Tuning pass 2026-05-14 dropped from 0.1 → 0.03**
