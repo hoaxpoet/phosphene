@@ -96,8 +96,19 @@ constant float kFerrofluidMeshHeightFactor = 0.15;
 /// Heightmap UV epsilon for neighbor sampling in the normal computation.
 /// 1.0 / mesh-segments-per-side. Matches one mesh-segment world distance,
 /// so the computed normal is consistent with the rasterized triangle's
-/// orientation. (256 segments → 1/256 ≈ 0.0039)
-constant float kFerrofluidMeshNormalEps = 0.00390625;
+/// orientation. Must stay in sync with `FerrofluidMesh.segmentsPerSide`.
+///
+/// History: 1/256 from rounds 12-34. Round 35 bumped mesh to 512 segments
+/// but missed updating this constant — normals were being computed from
+/// neighbors TWO mesh segments apart, averaging the heightmap over a
+/// 32×32-texel window (comparable to spike feature size, ~35 texels for
+/// a 0.17 wu radius spike). Round 40 (2026-05-15, re-application after
+/// round 39 was bundled-reverted with round 38) corrects to 1/512 to
+/// match round-35's mesh. Note: this is a real coordination bug fix; it
+/// does NOT by itself resolve the spike-shading character problem the
+/// recent rounds have been chasing (which is dominated by per-vertex
+/// normal + triangle interpolation, a separate architectural issue).
+constant float kFerrofluidMeshNormalEps = 0.001953125;
 
 /// World span the heightmap covers, in X and Z. Must match
 /// `FerrofluidParticles.worldSpan` (20.0) — used to convert UV-space
