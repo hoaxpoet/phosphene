@@ -72,7 +72,8 @@ public final class DynamicTextOverlay: @unchecked Sendable {
         let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue)
         guard let ctx = CGContext(
             data: buf.contents(),
-            width: width, height: height,
+            width: width,
+            height: height,
             bitsPerComponent: 8,
             bytesPerRow: bytesPerRow,
             space: colorSpace,
