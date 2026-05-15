@@ -484,7 +484,17 @@ static float3 rm_ferrofluidSky(float3 R,
     // long sections of constant valence still show colour evolution (the
     // curtain is *moving* in the sky, the references read as "moving colored
     // light" not "static blob with audio-reactive brightness").
-    constexpr float kCurtainBasePhase = 0.82;  // deep magenta-violet starting hue
+    // Round 32 (2026-05-15): base phase 0.82 → 0.50. Pre-round-32 the
+    // legacy 0.82 value (deep magenta-violet, from the IQ-cosine palette
+    // era) combined with the round-31 aurora-realistic 3-stop palette
+    // put `t` in the 0.52-1.12 (wraps to 0.12) range — mostly purple-to-
+    // pink territory, never reaching the green primary at t=0.33. Matt's
+    // `2026-05-15T18-46-51Z` review: "Most of what I have seen thus far
+    // is in the purple / magenta color families. What brings out green
+    // or blue, for example?" At base 0.50, `t` ranges 0.20-0.80 — covers
+    // pink, green, and purple primaries roughly evenly as vocals_pitch /
+    // valence shift across their range.
+    constexpr float kCurtainBasePhase = 0.50;  // centred on green-to-purple transition
     float t = kCurtainBasePhase + palettePhase + 0.10 * sin(curtainAzimuth * 0.5);
     float3 curtainHue = rm_palette(t);
 
@@ -718,26 +728,20 @@ static float3 fluid_shading(float3 V, float3 N,
     iridescence *= edgeMask * tiltGate * kFluidIridescenceWeight * (2.0 - kFluidZoom * 2.0);
 
     // ── Composition ────────────────────────────────────────────────
-    // Round 31 (2026-05-15): specular weight 1.2 → 0.0. Matt's
-    // `2026-05-15T18-33-20Z` directive: "I don't want bright white
-    // specular at spike tips. The moon is the only reasonable light
-    // source for this and I would rather the only source of color be
-    // from the aurora curtains." With the Phong key-light layer at
-    // zero weight, the substrate has NO independent white highlights —
-    // every visible pixel is the env reflection at that surface's
-    // reflection vector, which is either dark base sky or aurora
-    // content. Aurora becomes the sole light source.
+    // Round 32 (2026-05-15): fresnel weight 0.3 → 0.0. Matt's
+    // `2026-05-15T18-46-51Z` review: "I'm also seeing some gray at the
+    // top of peaks that looks like it does not belong." Diagnosed as
+    // the fresnel layer (`fresnelValue × float3(0.9, 1.0, 1.0) × 0.3`)
+    // firing on back-facing spike-side regions just below apex where
+    // view-angle becomes grazing — cyan-tinted near-white = gray at
+    // low weight. Per the round-31 "aurora is the only color source"
+    // directive, this non-aurora-driven layer must also go to zero.
     //
-    // The `specularValue` is preserved in the math for easy revival
-    // if the visual is too dark without ANY tip illumination — would
-    // restore at a very low weight (e.g., 0.1) for "subtle moon
-    // glint" character.
-    //
-    // Ambient weight 0.3 unchanged from round 30 — substrate-between
-    // stays near-black at base-sky reflection; spike sides catching
-    // saturated curtain × 0.3 still hit neon at peak music energy.
+    // Specular kept at 0 from round 31. Ambient at 0.3 from round 30.
+    // Iridescence at the tiny 0.005 weight is the only remaining
+    // non-aurora layer and is essentially invisible.
     constexpr float kFluidAmbientWeight   = 0.3;
-    constexpr float kFluidFresnelWeight   = 0.3;
+    constexpr float kFluidFresnelWeight   = 0.0;
     constexpr float kFluidSpecularWeight  = 0.0;
     return ambient * kFluidAmbientWeight
          + fresnel * kFluidFresnelWeight
