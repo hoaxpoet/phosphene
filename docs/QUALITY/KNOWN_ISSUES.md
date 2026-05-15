@@ -304,6 +304,184 @@ Scope: 1 commit (criteria update + KNOWN_ISSUES status flip + release note). Clo
 
 ---
 
+### BUG-012 — MPSGraph EXC_BAD_ACCESS in StemFFTEngine during sustained force-dispatch
+
+**Severity:** P1 (process-fatal crash; surfaced under sustained jank — ML dispatch scheduler hitting the 2100 ms ceiling and force-firing repeatedly. Not reproducible on every session but observed at least once at 2026-05-15T17:54Z.)
+**Domain tag:** ml
+**Status:** Open
+**Introduced:** Unknown; surfaced 2026-05-15. Stack frames are all in code that predates the V.9 Session 4.5c ferrofluid work — none of the rounds 16-26 commits touched StemFFTEngine, MPSGraph, or live stem separation. Suspect a latent race that requires specific timing patterns to surface.
+**Resolved:** —
+
+---
+
+### Expected behavior
+
+`StemFFTEngine.runForwardGraph()` completes its MPSGraph dispatch on every call, returning the forward STFT real + imag outputs to `StemSeparator.stft(mono:)`. No nil-pointer dereference, no process termination.
+
+### Actual behavior
+
+`EXC_BAD_ACCESS (code=1, address=0x8)` at `MPSGraph.run(withMTLCommandQueue:feeds:targetOperations:resultsDictionary:)`, called from `StemFFTEngine.runForwardGraph()`. Address 0x8 is "offset 8 from nil" — typical signature of accessing a member on a nil object reference. The session that captured the crash (`~/Documents/phosphene_sessions/2026-05-15T17-54-49Z/`) shows clean shutdown in session.log (`SessionRecorder finished (7140 frames, 15 stem dumps)`) — the crash fired after the session-recorder finalised, during continued playback or teardown.
+
+Stack:
+
+```
+Thread 71 — com.phosphene.stemSeparator queue
+0  MPSGraphOSLog
+6  -[MPSGraph runWithMTLCommandQueue:feeds:targetOperations:resultsDictionary:]
+7  StemFFTEngine.runForwardGraph()
+8  StemFFTEngine.gpuForward(mono:)
+9  StemFFTEngine.forward(mono:)
+10 StemSeparator.stft(mono:)
+11 StemSeparator.separate(audio:channelCount:sampleRate:)
+12 VisualizerEngine.performStemSeparation()
+13 closure #2 in closure #1 in VisualizerEngine.runStemSeparation()
+```
+
+Preceding session.log lines show repeated `ML: force-dispatch after 2100ms — ceiling hit, jank ignored` messages — the ML dispatch scheduler force-firing because the previous separation exceeded the 2100 ms ceiling.
+
+### Reproduction steps
+
+1. Start a session with a Spotify-prepared playlist.
+2. Run playback for ≥ 3 minutes (Love Rehab + Money has reproduced once at 2026-05-15T17:54Z).
+3. Observe sustained `force-dispatch after >2100ms` messages in session.log indicating ML scheduler backpressure.
+4. The crash may fire mid-playback or during teardown — not deterministic.
+
+**Minimum reproducer:** unknown — single observed occurrence so far. Suspected trigger: high concurrent load on the stem separator queue (multiple in-flight separations + force-dispatch races) on Tier 2 hardware.
+
+---
+
+### Session artifacts
+
+**Session directory:** `~/Documents/phosphene_sessions/2026-05-15T17-54-49Z/`
+
+**Hardware:** Apple M2 Pro (Mac mini), macOS 26.4.1.
+
+**Xcode screenshot (manually captured):** EXC_BAD_ACCESS dialog at the MPSGraph.run call site, Thread 71 — com.phosphene.stemSeparator queue.
+
+session.log tail at the time of the crash:
+
+```log
+[2026-05-15T17:57:27Z] stem separation 14 (440320 samples) track=Money → 0014_Money
+SessionRecorder finished (7140 frames, 15 stem dumps)
+```
+
+(Crash fired after this line — outside the session-recorder's captured range.)
+
+---
+
+### Suspected failure class
+
+`concurrency` — race between the ML dispatch scheduler's force-dispatch path and a stem separator's in-flight buffer / graph reference. Address 0x8 = nil-pointer offset → a held reference was concurrently freed.
+
+**Evidence for this class:** The force-dispatch messages preceding the crash indicate sustained backpressure. The ML scheduler force-fires a NEW dispatch while a PRIOR dispatch may still be holding buffers. If teardown of the prior dispatch races with the new one's setup, you get a nil-pointer access at MPSGraph.run.
+
+---
+
+### Verification criteria
+
+When this defect is resolved:
+
+- [ ] Sustained 5+ minutes of stem-separation-heavy playback with multiple force-dispatch events does not crash.
+- [ ] An instrumented capture shows MPSGraph buffer lifetimes are properly scoped to one dispatch (no overlapping references).
+- [ ] If concurrency is confirmed: a regression test exercises the force-dispatch path with deliberately racing setup/teardown.
+
+**Manual validation required:** Yes — multi-minute capture on Tier 2 hardware under sustained load.
+
+---
+
+### Fix scope
+
+Investigation: 2-4 hours (instrument MPSGraph buffer lifetimes, audit force-dispatch path for concurrent buffer access). Fix: depends on findings — could be a single missing lock or a larger refactor of the dispatch scheduler's concurrent semantics.
+
+### Related
+
+Out of scope for V.9 Session 4.5c ferrofluid preset work (none of rounds 16-26 touched StemFFTEngine or MPSGraph). Filed for a future dedicated investigation.
+
+---
+
+### BUG-013 — Soundcharts does not expose `time_signature`; ML meter detection wrong on some odd-meter tracks
+
+**Severity:** P2 (visual artifact on a subset of odd-meter tracks. Bar-locked motion presets (Ferrofluid Ocean) cycle at the wrong rate on tracks where the ML meter detector guesses wrong AND the metadata source can't override. Current production playlist only surfaces this on Pink Floyd's Money 7/4 → cycles at 5.85 s/cycle on Ferrofluid Ocean instead of the intended 20.5 s/cycle. Visual still reads as "ocean swell" per Matt's 2026-05-15T17-54-49Z review.)
+**Domain tag:** dsp.beat
+**Status:** Open
+**Introduced:** Surfaced 2026-05-15 during Ferrofluid Ocean Round 25-26 metadata-override implementation.
+**Resolved:** —
+
+---
+
+### Expected behavior
+
+When `MetadataPreFetcher` returns a profile for a track, `PreFetchedTrackProfile.timeSignature` carries the track's time-signature numerator (3 for 3/4, 4 for 4/4, 7 for 7/4, etc.). `SessionPreparer.analyzePreview` overrides `BeatGrid.beatsPerBar` with this value before caching. Downstream consumers (FerrofluidMesh vertex shader's bar-locked wave cycling) use the correct meter.
+
+### Actual behavior
+
+`PreFetchedTrackProfile.timeSignature` is always nil in production. Soundcharts (the only metadata source in production that exposes audio features) does not return `time_signature` in its API response — verified by adding the decode field and observing zero hits in session.log (no `Using pre-fetched time signature: N/X` lines for any of Love Rehab, So What, There There, Pyramid Song, Money).
+
+Result: `BeatGrid.beatsPerBar` retains the ML-detected value. For Money (actual 7/4), the ML detector classifies as `meter=2/X` — wave cycle is `6 × 60 × 2 / 123 = 5.85 s` instead of the intended `6 × 60 × 7 / 123 = 20.5 s`.
+
+### Reproduction steps
+
+1. Build app: `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build`
+2. Start a Spotify-prepared session including Money by Pink Floyd.
+3. Switch to Ferrofluid Ocean preset.
+4. Observe wave cycle period during Money playback (~5.85 s, not the intended 20.5 s).
+5. `grep "time signature" session.log` returns no matches.
+6. `grep "BeatGrid installed" session.log` shows `meter=2/X` for Money.
+
+**Minimum reproducer:** any Spotify-prepared session containing Money (or Pyramid Song's 16/8, or any other odd-meter track where the ML detector guesses wrong).
+
+---
+
+### Session artifacts
+
+**Session directory:** `~/Documents/phosphene_sessions/2026-05-15T17-54-49Z/`
+
+```log
+[2026-05-15T17:57:01Z] BeatGrid installed: source=preparedCache, track='Money', bpm=123.2, beats=62, meter=2/X
+```
+
+No `Using pre-fetched time signature` lines exist in the file.
+
+---
+
+### Suspected failure class
+
+`api-contract` — Soundcharts' audio-features endpoint doesn't expose `time_signature` (or strips it from the Spotify upstream they proxy). The Phosphene-side override mechanism is wired correctly (Round 26); it has no value to consume.
+
+**Evidence for this class:** Decoder was added with `CodingKeys: time_signature` mapping; field stays nil on every track. ML override path fires (Round 25 / 26 code paths) but with nil input → no-op.
+
+---
+
+### Verification criteria
+
+When this defect is resolved:
+
+- [ ] `session.log` includes `Using pre-fetched time signature: N/X` lines for tracks where the value is known.
+- [ ] Money's installed BeatGrid logs `meter=7/X`, not `meter=2/X`.
+- [ ] Ferrofluid Ocean wave cycle on Money matches the intended `6 × 60 × 7 / 123 = 20.5 s` period.
+
+**Manual validation required:** Yes — visual confirmation that Money's wave rolls at the calmer 20.5 s cadence.
+
+---
+
+### Fix scope
+
+Three potential paths:
+
+1. **Path B — per-track hardcoded overrides.** Maintain a small JSON config mapping `spotifyID → timeSignature` for known-tricky tracks. Works for the few odd-meter tracks Matt's playlists actually contain; doesn't scale. ~40 lines + manual curation.
+
+2. **Add a different metadata source that exposes `time_signature`.** Spotify's `/audio-features` had the field but was deprecated for most apps in late 2024. AudD or AcousticBrainz might. Each new fetcher = ~150-300 lines of integration.
+
+3. **Improve ML meter detection on odd-meter tracks.** Out of scope for Phosphene application code — would require either retraining Beat This! or post-processing the downbeat probabilities with a meter-specific search.
+
+Current status: deferred. The Round 26 visual review accepted Money's 5.85 s cycle as "smooth and synced — solid." Revisit if/when a future playlist surfaces an odd-meter track where the visual reads wrong.
+
+### Related
+
+V.9 Session 4.5c Rounds 25-26 (metadata-override wiring), Round 21-24 (Gerstner bar-locked motion), BUG-001 (Money 7/4 live-path detection failure — different code path, related cause).
+
+---
+
 ### BUG-001 — Money 7/4 stays REACTIVE on live path
 
 **Severity:** P2
