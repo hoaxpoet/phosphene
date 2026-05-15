@@ -445,12 +445,42 @@ static float3 rm_ferrofluidSky(float3 R,
     // compressed in elevation space). If this reads too thin (curtain
     // becomes a hairline only a few pixels wide per spike), round 38
     // bumps to 0.15 or backs further off toward 0.20.
+    // Round 38 (2026-05-15): replaced soft smoothstep falloff with hard
+    // step + thin AA edge. Matt's `2026-05-15T21:03:19Z` capture review
+    // diagnosis on round 37: the band POSITION on each spike was correct,
+    // but the band EDGES still had a soft glow/halo character — especially
+    // on foreground spikes where each band's pixel footprint is larger.
+    // Root cause: smoothstep's S-curve falloff is inherently soft even
+    // when compressed (round 37 narrowed the range from 0.35 → 0.10 but
+    // kept the same gradient shape; the falloff is still a gentle
+    // sigmoid).
+    //
+    // The references (`04_specular_razor_highlights.jpg`) show specular
+    // catches with razor-hard edges — what a near-mirror surface
+    // reflecting a sharply-bounded sky feature actually looks like. To
+    // produce that visually, the sky FEATURE itself must have hard edges.
+    //
+    // New form: a near-binary band. Fully bright within `kCurtainHalfWidth`
+    // of the band center; falls off to dark over `kCurtainEdgeWidth`
+    // (kept just wide enough to act as sub-pixel anti-aliasing rather
+    // than a visible gradient).
+    //
+    //   |———— fully bright ————|—— AA ——|——— fully dark ———
+    //  -0.06                  +0.06    +0.08   →  R.y
+    //
+    // Net band footprint (0.16 wide) is slightly LARGER than round-37
+    // (0.20 with most of it dim) but the "bright" portion is wider AND
+    // the transition is sharper. Total energy per spike-side catch
+    // increases; edge crispness increases substantially.
     constexpr float kCurtainElevation       = 0.0;
-    constexpr float kCurtainStripeThickness = 0.10;
+    constexpr float kCurtainHalfWidth       = 0.06;
+    constexpr float kCurtainEdgeWidth       = 0.02;
     constexpr float kCurtainAzimuthFloor    = 0.30;
     constexpr float kCurtainAzimuthPeak     = 0.75;
-    float vertFalloff = smoothstep(kCurtainStripeThickness, 0.0,
-                                   abs(R.y - kCurtainElevation));
+    float dist = abs(R.y - kCurtainElevation);
+    float vertFalloff = 1.0 - smoothstep(kCurtainHalfWidth,
+                                          kCurtainHalfWidth + kCurtainEdgeWidth,
+                                          dist);
 
     float2 R_az       = R.xz;
     float  R_az_len   = length(R_az);
