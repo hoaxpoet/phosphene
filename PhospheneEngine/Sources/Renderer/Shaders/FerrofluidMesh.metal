@@ -63,17 +63,21 @@ static inline float fmesh_stem_warmup_blend(constant StemFeatures& stems) {
 static inline float fmesh_spike_strength(constant FeatureVector& f,
                                           constant StemFeatures& stems) {
     float liveGate = fmesh_stem_warmup_blend(stems);
-    // Round 13 (2026-05-15) — must stay in sync with `fo_spike_strength`
-    // constants in FerrofluidOcean.metal. Mesh path consumed these in
-    // the vertex stage; SDF path consumed them in the fragment. Update
-    // both together.
-    constexpr float kSpikeStemBaseline   = 2.0;
+    // Round 14 (2026-05-15) — must stay in sync with `fo_spike_strength`
+    // in FerrofluidOcean.metal. Replaced constant baseline with
+    // raw-bass-scaled music-presence term so tracks with sparse
+    // percussion but steady bass amplitude (Money, There There) get
+    // an always-visible spike baseline driven by bass amplitude, not
+    // just transient deviations. Mesh path consumes these in the
+    // vertex stage; SDF path consumed them in the fragment.
+    constexpr float kSpikeStemBaseCoef   = 4.0;
     constexpr float kSpikeStemModulation = 1.5;
-    constexpr float kSpikeProxyGain      = 2.5;
+    constexpr float kSpikeProxyGain      = 5.0;
     float proxyDev  = max(0.0, f.bass_dev);
     float stemDev   = max(0.0, stems.bass_energy_dev);
     float warmupStr = proxyDev * kSpikeProxyGain;
-    float steadyStr = kSpikeStemBaseline + stemDev * kSpikeStemModulation;
+    float steadyStr = stems.bass_energy * kSpikeStemBaseCoef
+                    + stemDev * kSpikeStemModulation;
     return mix(warmupStr, steadyStr, liveGate);
 }
 

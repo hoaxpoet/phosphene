@@ -89,23 +89,38 @@ static inline float fo_stem_warmup_blend(constant StemFeatures& stems) {
 static inline float fo_spike_strength(constant FeatureVector& f,
                                       constant StemFeatures& stems) {
     float liveGate = fo_stem_warmup_blend(stems);
-    // Round 13 (2026-05-15) — modulation 0.7 → 1.5 + proxy gain 1.5 → 2.5.
-    // Audio coupling was too subtle in the mesh-path render (Matt:
-    // "amplify audio coupling"). At BJ steady mean bass_dev 0.25 the
-    // height goes from `(2.0+0.7×0.25)×0.15 = 0.32 wu` →
-    // `(2.0+1.5×0.25)×0.15 = 0.36 wu` (modest); at SNA peak bass_dev 3.29
-    // it goes from `(2.0+0.7×3.29)×0.15 = 0.65 wu` →
-    // `(2.0+1.5×3.29)×0.15 = 1.04 wu` (peaks now ~3× taller than baseline
-    // vs ~2× before). Proxy gain bump makes the warmup window's response
-    // also more dramatic — `f.bass_dev × 2.5` peaks ~3.7 → 0.55 wu at
-    // peaks before stems are ready.
-    constexpr float kSpikeStemBaseline   = 2.0;
+    // Round 14 (2026-05-15) — replace constant baseline with raw-bass-
+    // scaled music-presence term. Matt's `2026-05-15T13:56:20Z`: "works
+    // for regular beat, not There There / Money." Diagnosis: constant
+    // baseline + deviation-only modulation tracks the RATE OF CHANGE
+    // of bass, not the ABSOLUTE AMPLITUDE. Tracks with sparse percussion
+    // but steady bass amplitude (Money, There There) produce small dev
+    // → small response.
+    //
+    // New formula: `stems.bass_energy × 4.0` (music-presence — raw bass
+    // amplitude) + `bass_energy_dev × 1.5` (transient response on top).
+    // Multiplying by raw AGC is allowed; thresholding is the
+    // anti-pattern (CLAUDE.md). At true silence bass_energy = 0 → no
+    // spike, lattice collapses. At music quiet (bass_energy ≈ 0.4):
+    // 1.6 baseline → 0.24 wu. At music peak (bass_energy=0.6, dev=3.29):
+    // 2.4 + 4.93 = 7.33 → 1.10 wu. ALWAYS responsive when music plays
+    // regardless of meter regularity.
+    //
+    // Proxy gain bump 2.5 → 5.0 makes the warmup window's transient
+    // response more dramatic — the 8-10 s pre-stem window has no
+    // music-presence primitive that's AGC-safe (memory: `bass_att_rel`
+    // is broken; `bass_att` is AGC-baseline-non-zero at silence). So
+    // we lean harder on f.bass_dev's transient peaks during warmup.
+    // Spikes appear on bass hits, substrate stays flat between hits
+    // until stems are ready.
+    constexpr float kSpikeStemBaseCoef   = 4.0;
     constexpr float kSpikeStemModulation = 1.5;
-    constexpr float kSpikeProxyGain      = 2.5;
+    constexpr float kSpikeProxyGain      = 5.0;
     float proxyDev   = max(0.0, f.bass_dev);
     float stemDev    = max(0.0, stems.bass_energy_dev);
     float warmupStr  = proxyDev * kSpikeProxyGain;
-    float steadyStr  = kSpikeStemBaseline + stemDev * kSpikeStemModulation;
+    float steadyStr  = stems.bass_energy * kSpikeStemBaseCoef
+                     + stemDev * kSpikeStemModulation;
     return mix(warmupStr, steadyStr, liveGate);
 }
 
