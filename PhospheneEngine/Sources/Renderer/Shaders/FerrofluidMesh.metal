@@ -128,9 +128,19 @@ constant float kFerrofluidMeshWorldSpan = 20.0;
 // position the four waves still interfere because they hit that
 // position at different phases (depending on direction · position).
 //
-// Audio coupling (unchanged from round 20):
-//   amplitudeMul = presenceGate × (0.7 + 0.3·arousal + 0.5·drums_dev)
+// Audio coupling (Round 22, 2026-05-15): drum coupling dropped.
+//   amplitudeMul = presenceGate × (0.7 + 0.3·arousal)
 //   tempoScale   = bpm / 60 (CPU-passed; 0 at silence / pre-lock)
+//
+// Round 20-21 kept a `0.5·drums_dev` amplitude pump. Matt's
+// `2026-05-15T16-50-20Z` review: "The waves are triggered on every
+// beat, tied to the bass ... it leads to a very jerky result - not
+// smooth at all." The phase advancement was already once-per-bar, but
+// drum hits pulsed amplitudeMul from 0.7 to ~1.7 on every kick,
+// snapping the wave height per beat. With the per-beat pulse removed,
+// amplitude modulates only with arousal (5-second envelope on the
+// mood classifier) — slow, smooth, calm baseline that varies with
+// song section energy but not per-beat.
 //
 // At silence: tempoScale = 0 → musicBars = 0 → wave phase frozen;
 // presenceGate also = 0 → amplitudeMul = 0 → substrate flat.
@@ -217,14 +227,14 @@ vertex FerrofluidMeshVaryings ferrofluid_mesh_vertex(
     // entirely in the Gerstner wave amplitude + tempo-driven motion.
     float spikeStr = kFerrofluidSpikeStrength;
 
-    // ── Gerstner audio modulation (Phase 1 round 20) ───────────────
+    // ── Gerstner audio modulation (Phase 1 round 22) ───────────────
+    // Drum coupling retired this round — see comment above the
+    // Gerstner block for the rationale.
     float arousalClamped = clamp(features.arousal, 0.0, 1.0);
-    float drumsClamped   = max(0.0, stems.drums_energy_dev);
     float totalStemEnergy = stems.vocals_energy + stems.drums_energy
                           + stems.bass_energy + stems.other_energy;
     float presenceGate = smoothstep(0.02, 0.10, totalStemEnergy);
-    float amplitudeMul = presenceGate
-                       * (0.7 + 0.3 * arousalClamped + 0.5 * drumsClamped);
+    float amplitudeMul = presenceGate * (0.7 + 0.3 * arousalClamped);
 
     // Music time in bars: 0 when paused or pre-grid-lock (tempoScale=0
     // or accumulated_audio_time=0). When music plays, this increments
