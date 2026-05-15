@@ -46,7 +46,7 @@ public struct Smoother: Sendable {
     /// `factor(at:)` and applying the mix inline.
     @inlinable
     public func step(current: Float, target: Float, at fps: Float) -> Float {
-        let f = factor(at: fps)
-        return f * current + (1 - f) * target
+        let alpha = factor(at: fps)
+        return alpha * current + (1 - alpha) * target
     }
 }
