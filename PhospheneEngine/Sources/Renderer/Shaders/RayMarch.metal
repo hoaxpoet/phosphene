@@ -422,8 +422,31 @@ static float3 rm_ferrofluidSky(float3 R,
     // spikes that reflect roughly horizontally. Curtain at horizon
     // (R.y = 0) means substrate-between (R.y ≈ 0.31) misses it,
     // spike sides (R.y ≈ 0 for outward-facing sides) catch it.
+    // Round 37 (2026-05-15): kCurtainStripeThickness 0.35 → 0.10. Matt's
+    // `2026-05-15T20:30:38Z` review after backing out the round-36 multi-band
+    // experiment: "purple reflections on the side of each spike still looks
+    // hazy and smeared ... curtain reflection lacks shine." Diagnosis: the
+    // soft smoothstep falloff over 0.35 elevation (~40° vertical band with
+    // gradual transition) reads as a wide soft gradient when reflected off
+    // a spike side — the optical signature of a diffuse light source on a
+    // matte surface, not a near-mirror catching a sharp feature.
+    // `04_specular_razor_highlights.jpg` anchors razor-thin specular bands
+    // on each spike ridge — that's the visual signature of a near-mirror
+    // reflecting a sharply-bounded sky feature. Compressing the band to
+    // 0.10 thickness narrows the catch region 3.5× and steepens the
+    // smoothstep gradient correspondingly, turning the spike-side
+    // reflection from "hazy purple wash" into a crisp colored line —
+    // closer to specular-ridge character with aurora as the color source
+    // instead of white key light.
+    //
+    // Trade-off: each spike reflects the curtain over a smaller region of
+    // its body. "Lit area" shrinks; "lit intensity" per pixel stays the
+    // same at peak (smoothstep peak is still 1.0; the falloff is just
+    // compressed in elevation space). If this reads too thin (curtain
+    // becomes a hairline only a few pixels wide per spike), round 38
+    // bumps to 0.15 or backs further off toward 0.20.
     constexpr float kCurtainElevation       = 0.0;
-    constexpr float kCurtainStripeThickness = 0.35;
+    constexpr float kCurtainStripeThickness = 0.10;
     constexpr float kCurtainAzimuthFloor    = 0.30;
     constexpr float kCurtainAzimuthPeak     = 0.75;
     float vertFalloff = smoothstep(kCurtainStripeThickness, 0.0,
