@@ -180,7 +180,9 @@ struct QualityReelAnalyzerCommand: ParsableCommand {
         )
         print(String(
             format: "[QRA] beat probs: max=%.4f mean=%.4f frames>0.5=%d",
-            beatMax, beatMean, aboveHalf
+            beatMax,
+            beatMean,
+            aboveHalf
         ))
 
         return BeatGridResolver.resolve(
