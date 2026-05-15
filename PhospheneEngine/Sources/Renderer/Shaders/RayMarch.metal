@@ -326,20 +326,18 @@ static float3 rm_ferrofluidSky(float3 R,
                                 constant SceneUniforms& scene) {
     float3 baseSky = rm_ferrofluidBaseSky(R, scene);
 
-    // V.9 Session 4.5c Phase 1 tuning round 2 (2026-05-14 post-second-Billie-Jean
-    // capture): aurora curtain BYPASSED. Matt's read on `2026-05-14T22-24-39Z`:
-    // "still washed out … in and out of focus in time with the music. sharper
-    // on drum hits … effect is lost when everything is all blurry and smudged."
-    // The signal Matt is reading isn't aurora intensity — it's spike-lattice
-    // height collapsing in steady-state because `fo_spike_strength` is
-    // deviation-only (Phase 2 problem). Until the substrate reads as
-    // ferrofluid consistently, layering chromatic content on top is
-    // decorating a broken foundation. Aurora code is preserved below and
-    // re-enabled when substrate is solid; Matt: "the light is not important
-    // right now and can be layered on later." LIMIT VARIABLES.
-    (void)features;
-    (void)stems;
-    return baseSky;
+    // V.9 Session 4.5c Phase 1 tuning round 2 (2026-05-14): aurora curtain
+    // was bypassed pending consistent substrate reading. Round 27
+    // (2026-05-15) UNBYPASSES it — Matt's `2026-05-15T17-54-49Z` review:
+    // "Undulation is smooth and synced with the music - solid. I am ready
+    // to proceed to material reflectivity if there are no big issues
+    // discovered." The substrate is now stable (density, shape, motion
+    // all approved across rounds 17-26); aurora returns as the
+    // chromatic content that the near-mirror substrate reflects.
+    //
+    // The fall-through path below executes — the curtain shape + drum
+    // intensity + arousal-driven orbit are all preserved verbatim
+    // from the pre-bypass state.
 
     // ── Live-stems gate ────────────────────────────────────────────
     // Silence collapses to base sky only; the safety net for prep states,
@@ -581,8 +579,20 @@ static inline float3 fluid_palette(float t,
 /// the ferrofluid substrate reflected a corridor → "bright chrome floor
 /// with dark pits" visual (Matt's `2026-05-15T01-16-02Z` review). Other
 /// three layers (specular / fresnel / iridescence) unchanged.
+// Round 27 (2026-05-15): now takes features / stems / scene so the
+// Layer 2 ambient can sample `rm_ferrofluidSky` instead of the
+// monochrome `fluid_studio_env`. Substrate mirror-reflects the
+// audio-reactive aurora curtain per D-126 — the "08_lighting_*"
+// reference's mirror-reflects-sky mechanic. Without aurora content
+// in the env, the substrate had nothing chromatic to reflect; that's
+// why round-26's material read as gray-ish rather than shiny-black-
+// with-colored-aurora-reflections.
+// swiftlint:disable function_parameter_count
 static float3 fluid_shading(float3 V, float3 N,
-                            float3 worldPos, float3 cameraPos) {
+                            float3 worldPos, float3 cameraPos,
+                            constant FeatureVector& features,
+                            constant StemFeatures& stems,
+                            constant SceneUniforms& scene) {
     // Fixed key light at infinity. Leitl uses normalize(2, 1, 1) — rear-
     // upper-right. The single key light at infinity has no inverse-square
     // attenuation, so Failed Approach #61 (invisible orbital lights at
@@ -603,12 +613,17 @@ static float3 fluid_shading(float3 V, float3 N,
     constexpr float kFluidShininess = 50.0;
     float specularValue = fluid_pow_fast(max(0.0, dot(R, -V)), kFluidShininess);
 
-    // ── Layer 2: ambient (procedural studio env at reflection) ─────
-    // Replaces the global IBL prefiltered cubemap (warm corridor) with
-    // a ferrofluid-appropriate procedural studio env — see
-    // `fluid_studio_env` above.
+    // ── Layer 2: ambient (procedural ferrofluid sky with aurora) ───
+    // Round 27 (2026-05-15): sources from `rm_ferrofluidSky` instead
+    // of `fluid_studio_env` so the near-mirror substrate reflects the
+    // audio-reactive aurora curtain (D-126 mirror-reflects-sky). At
+    // silence the sky function falls through to `rm_ferrofluidBaseSky`
+    // (dark-purple atmospheric gradient) — substrate still reflects
+    // something coherent rather than going pure-black. `fluid_studio_env`
+    // is retained in the file for future contexts that need a neutral
+    // monochrome env.
     float3 Rview = reflect(-V, N);
-    float3 ambient = fluid_studio_env(Rview);
+    float3 ambient = rm_ferrofluidSky(Rview, features, stems, scene);
 
     // ── Layer 3: fresnel (cool white edge sheen) ───────────────────
     // Leitl uses `ft = dot(N, vec3(0, 0, 1))` — in his WebGL coord system
@@ -650,7 +665,7 @@ static float3 fluid_shading(float3 V, float3 N,
     constexpr float kFluidZoom = 0.5;
     iridescence *= edgeMask * tiltGate * kFluidIridescenceWeight * (2.0 - kFluidZoom * 2.0);
 
-    // ── Composition (Leitl verbatim) ───────────────────────────────
+    // ── Composition (Leitl verbatim weights) ───────────────────────
     constexpr float kFluidAmbientWeight   = 0.2;
     constexpr float kFluidFresnelWeight   = 0.3;
     constexpr float kFluidSpecularWeight  = 1.2;
@@ -659,6 +674,7 @@ static float3 fluid_shading(float3 V, float3 N,
          + specularValue * kFluidSpecularWeight
          + iridescence;
 }
+// swiftlint:enable function_parameter_count
 
 /// Shared "lighting tail" for matID == 0 (default Cook-Torrance) and matID == 3
 /// (thin-film Cook-Torrance) — adds D-022 mood-tinted IBL ambient and applies
@@ -939,15 +955,19 @@ fragment float4 raymarch_lighting_fragment(
     // Leitl's working reference away as "redundant" and got neither
     // paradigm working).
     //
-    // Aurora overlay (`rm_ferrofluidSky` + audio uniforms) and thin-film F0
-    // helpers (`rm_thinfilm_rgb`) are preserved in the file for Step 4
-    // re-introduction as supplementary layers on top of Leitl's material —
-    // they do not participate in this Step 1 commit.
+    // Round 27 (2026-05-15): aurora overlay is now WIRED into the Layer 2
+    // ambient inside `fluid_shading` via `rm_ferrofluidSky(Rview, …)`. The
+    // near-mirror substrate reflects the audio-reactive aurora curtain at
+    // its reflection vector (D-126 mirror-reflects-sky mechanic). Thin-film
+    // F0 helpers (`rm_thinfilm_rgb`) remain unwired — separate decision.
     if (matID == 2) {
         float3 V = normalize(scene.cameraOriginAndFov.xyz - worldPos);
         float3 color = fluid_shading(V, N,
                                      worldPos,
-                                     scene.cameraOriginAndFov.xyz);
+                                     scene.cameraOriginAndFov.xyz,
+                                     features,
+                                     stems,
+                                     scene);
         return float4(color, 1.0);
     }
 
