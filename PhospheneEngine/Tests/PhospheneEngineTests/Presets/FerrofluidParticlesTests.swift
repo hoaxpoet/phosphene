@@ -53,8 +53,8 @@ final class FerrofluidParticlesTests: XCTestCase {
     // MARK: - Gate 1: locked constants
 
     func test_lockedConstants_phase1Contract() {
-        XCTAssertEqual(FerrofluidParticles.particleCount, 1520,
-                       "Round 11 (2026-05-15): 6000 → 1520 (40 × 38 grid) to make individual spikes register as distinct objects in the frame rather than tiny orbs blending into a continuous texture. Coordinated with spikeBaseRadius 0.06 → 0.12 (same round) so spike density × per-spike screen coverage ratio matches the references' visible foreground density. 1520 chosen for exact 40×38 grid factorization at ~5 % Z/X anisotropy (worldSpan / 40 = 0.500, worldSpan / 38 = 0.526).")
+        XCTAssertEqual(FerrofluidParticles.particleCount, 3025,
+                       "Round 17 (2026-05-15): 1520 → 3025 (55 × 55 grid). Matt's review of the `2026-05-15T14-31-24Z` capture flagged 'too few spikes, lots of empty space between spikes' vs the reference set's dense lattice (`01_macro_*` shows ~35-40 spike-rows visible; round-11's 1520 particles showed ~20). Coordinated with spikeBaseRadius 0.12 → 0.17 (round 17 same commit) — new X/Z spacing 20/55 ≈ 0.364 wu, half-spacing 0.182 wu just over radius 0.17 → bases nearly touch. Isotropic 55 × 55 grid replaces round-11's anisotropic 40 × 38.")
         XCTAssertEqual(FerrofluidParticles.heightTextureSize, 4096,
                        "Texel-grid pass 2026-05-14: bumped to 4096² so the texture pixel scale (0.005 wu) sits below the 1080p screen-pixel scale (~0.006 wu) → texel-grid staircase falls below rendered-pixel size")
         XCTAssertEqual(FerrofluidParticles.worldSpan, 20.0,
@@ -65,8 +65,8 @@ final class FerrofluidParticlesTests: XCTestCase {
                        "World origin Z locked")
         XCTAssertEqual(FerrofluidParticles.smoothMinW, 0.005, accuracy: 1e-6,
                        "Polynomial smooth-min weight tightened to 0.005 (V.9 Session 4.5c Phase 1 round 4, 2026-05-14) for near-min distance interpolation; combined with the squared height profile in `ferrofluid_height_bake`, valley heights pull to ~3% of peak per the discrete-spike target in `04_specular_razor_highlights.jpg`. Particles are pinned in this round so no motion-driven pop-in concern from tight `w`.")
-        XCTAssertEqual(FerrofluidParticles.spikeBaseRadius, 0.12, accuracy: 1e-6,
-                       "Spike tent base radius grew 0.06 → 0.12 in round 11 (2026-05-15) coordinated with particle count 6000 → 1500. New spacing 0.50 wu, half-spacing 0.25 > radius 0.12 → spikes still isolated with 0.13 wu gap. Per-spike screen coverage ≈ 4× larger. Baseline aspect drops 5:1 → 2.5:1; if too short, follow up with height_multiplier increase.")
+        XCTAssertEqual(FerrofluidParticles.spikeBaseRadius, 0.17, accuracy: 1e-6,
+                       "Spike base radius 0.12 → 0.17 in round 17 (2026-05-15), coordinated with particle count 1520 → 3025 (55 × 55 grid). New X/Z spacing 0.364 wu, half-spacing 0.182 wu → radius 0.17 just under half-spacing → bases nearly touch with ~0.012 wu substrate channel between. Area coverage rises 17 % → 75 %, closing the empty-substrate gap Matt flagged on `2026-05-15T14-31-24Z` against the reference set's dense lattice.")
         XCTAssertEqual(FerrofluidParticles.apexSmoothK, 0.03, accuracy: 1e-6,
                        "almostIdentity apex-smoothing tuned to 0.03 (2026-05-14) — keep peak tips razor-sharp per 04_specular_razor_highlights.jpg")
     }
@@ -76,7 +76,7 @@ final class FerrofluidParticlesTests: XCTestCase {
     func test_canonicalInitialPositions_areBoundedAndOrdered() {
         // Every canonical position lies inside the world patch (no overflow
         // from the cell-hash addition). Ordering is row-major scan over the
-        // 46 × 45 grid.
+        // 55 × 55 grid (Round 17, 2026-05-15).
         let minX = FerrofluidParticles.worldOriginX
         let maxX = FerrofluidParticles.worldOriginX + FerrofluidParticles.worldSpan
         let minZ = FerrofluidParticles.worldOriginZ
