@@ -37,13 +37,23 @@ struct FerrofluidMeshVertex {
     float2 uv       [[attribute(1)]];   // [0, 1] addressing the heightmap
 };
 
-/// Interpolated outputs from vertex → fragment. Worldpos + normal are
-/// needed by the fragment for G-buffer output; depth is computed from
-/// the rasterizer's clip-space position.
+/// Interpolated outputs from vertex → fragment.
+///
+/// Round 41 (2026-05-15): added `uv` so the fragment can compute the
+/// surface normal per-pixel from the heightmap, bypassing the rasterizer's
+/// linear interpolation of `worldNormal` across triangle faces — which at
+/// 9 verts per spike diameter produces visible polygon-facet shading
+/// (rendered as "blob/droplet" reading on foreground spikes once the
+/// curtain band edges are sharp enough to expose the underlying mesh).
+///
+/// `worldNormal` is retained for backwards compatibility but the fragment
+/// shader no longer reads it for the gbuffer output — it's now computed
+/// per-pixel from the heightmap's local gradient at `uv`.
 struct FerrofluidMeshVaryings {
     float4 clipPosition [[position]];
     float3 worldPosition;
     float3 worldNormal;
+    float2 uv;
 };
 
 // MARK: - Per-frame vertex uniforms (Phase 1 round 20)
@@ -407,6 +417,7 @@ vertex FerrofluidMeshVaryings ferrofluid_mesh_vertex(
     out.clipPosition  = float4(clipX, clipY, clipZ, clipW);
     out.worldPosition = displaced;
     out.worldNormal   = normalWS;
+    out.uv            = in.uv;
     return out;
 }
 
@@ -422,8 +433,9 @@ struct FerrofluidMeshGBufferOutput {
 };
 
 fragment FerrofluidMeshGBufferOutput ferrofluid_mesh_gbuffer_fragment(
-    FerrofluidMeshVaryings  in    [[stage_in]],
-    constant SceneUniforms& scene [[buffer(4)]]
+    FerrofluidMeshVaryings  in        [[stage_in]],
+    constant SceneUniforms& scene     [[buffer(4)]],
+    texture2d<float>        heightTex [[texture(10)]]
 ) {
     FerrofluidMeshGBufferOutput out;
 
@@ -438,9 +450,36 @@ fragment FerrofluidMeshGBufferOutput ferrofluid_mesh_gbuffer_fragment(
     // matID == 2 → routes to Leitl four-layer material in lighting pass.
     out.gbuf0 = float4(depthNorm, 2.0, 0.0, 0.0);
 
-    // Normal (already normalized in vertex stage; rasterizer interpolation
-    // can denormalize so renormalize). AO = 1.0 (no occlusion data).
-    float3 normal = normalize(in.worldNormal);
+    // ── Per-pixel normal (Round 41, 2026-05-15) ────────────────────
+    // Compute the normal from the heightmap's local gradient at THIS
+    // pixel's UV, rather than reading the vertex-interpolated worldNormal
+    // (which suffered from linear interpolation across triangle faces,
+    // producing visible polygon-facet shading once the curtain edges
+    // were sharp enough to expose the underlying low-poly mesh).
+    //
+    // Math is identical to the vertex shader's normal computation but
+    // run at fragment resolution. The Gerstner contribution is dropped
+    // (the heightmap encodes only the spike field, not the swell).
+    // Consequences: spike geometry renders at the heightmap's true
+    // resolution (4096²) regardless of mesh density; substrate-between
+    // gets a perfectly flat +Y normal (Gerstner geometric displacement
+    // still happens at vertex stage but its slope is no longer in the
+    // shading normal). The latter trade-off is consistent with the
+    // pitch-black-substrate intent — flat substrate reflects zenith
+    // uniformly.
+    constexpr sampler heightSamp(coord::normalized,
+                                  filter::linear,
+                                  address::clamp_to_zero);
+    float spikeStrFactor = kFerrofluidSpikeStrength * kFerrofluidMeshHeightFactor;
+    float eps = kFerrofluidMeshNormalEps;
+    float worldEps = eps * kFerrofluidMeshWorldSpan;
+    float hR = heightTex.sample(heightSamp, in.uv + float2( eps, 0.0)).r * spikeStrFactor;
+    float hL = heightTex.sample(heightSamp, in.uv + float2(-eps, 0.0)).r * spikeStrFactor;
+    float hF = heightTex.sample(heightSamp, in.uv + float2( 0.0,  eps)).r * spikeStrFactor;
+    float hB = heightTex.sample(heightSamp, in.uv + float2( 0.0, -eps)).r * spikeStrFactor;
+    float3 tangentX = float3(2.0 * worldEps, hR - hL, 0.0);
+    float3 tangentZ = float3(0.0, hF - hB, 2.0 * worldEps);
+    float3 normal = normalize(cross(tangentZ, tangentX));
     out.gbuf1 = float4(normal, 1.0);
 
     // Albedo: pitch-black per §4.6 `mat_ferrofluid` recipe — substrate is

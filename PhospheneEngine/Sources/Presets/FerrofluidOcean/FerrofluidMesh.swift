@@ -307,10 +307,17 @@ public final class FerrofluidMesh: @unchecked Sendable {
                                index: 5)
         encoder.setVertexTexture(heightTexture, index: 10)
 
-        // Fragment stage — only needs SceneUniforms (for depth normalization).
+        // Fragment stage bindings:
+        //   SceneUniforms (slot 4) — depth normalization
+        //   heightTexture (slot 10) — round-41 per-pixel normal computation
+        //     samples the spike heightmap at the pixel's interpolated UV,
+        //     bypassing the rasterizer's linear interpolation of the
+        //     vertex-stage normal (which exposed mesh polygon facets once
+        //     curtain edges sharpened).
         encoder.setFragmentBytes(&sceneUniforms,
                                  length: MemoryLayout<SceneUniforms>.stride,
                                  index: 4)
+        encoder.setFragmentTexture(heightTexture, index: 10)
 
         encoder.drawIndexedPrimitives(type: .triangle,
                                        indexCount: Self.indexCount,
