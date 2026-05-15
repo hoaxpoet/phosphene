@@ -637,17 +637,18 @@ static float3 fluid_shading(float3 V, float3 N,
     constexpr float3 palD = float3(0.0, 0.33, 0.67);
     float3 iridescence = fluid_palette(ft * 3.0, palA, palB, palC, palD) * (1.0 - ft);
     // Edge mask centered on our patch (worldXZ ~ (0, 2)).
-    // Round 13 (2026-05-15): scale 0.16 → 0.30 tightens iridescence to
-    // a smaller central region (was producing rainbow streaks across
-    // the whole substrate at oblique camera angles). Weight 0.05 → 0.015
-    // drops the layer's overall contribution; it should be subtle hue
-    // shift not visible banding.
+    // Tilt gate added round 14 (2026-05-15) — flat substrate (N ≈ +Y)
+    // contributes zero iridescence; only tilted spike sides do. Removes
+    // residual rainbow tint on the flat substrate that was preventing the
+    // pitch-black between-spikes character.
     constexpr float2 patchCenter = float2(0.0, 2.0);
     float2 center = (worldPos.xz - patchCenter) * 0.30;
     float edgeMask = 1.0 - smoothstep(0.0, 0.8, dot(center, center));
-    constexpr float kFluidIridescenceWeight = 0.015;
+    float tilt     = 1.0 - max(0.0, N.y);
+    float tiltGate = smoothstep(0.2, 0.6, tilt);
+    constexpr float kFluidIridescenceWeight = 0.005;
     constexpr float kFluidZoom = 0.5;
-    iridescence *= edgeMask * kFluidIridescenceWeight * (2.0 - kFluidZoom * 2.0);
+    iridescence *= edgeMask * tiltGate * kFluidIridescenceWeight * (2.0 - kFluidZoom * 2.0);
 
     // ── Composition (Leitl verbatim) ───────────────────────────────
     constexpr float kFluidAmbientWeight   = 0.2;
