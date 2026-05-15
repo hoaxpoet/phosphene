@@ -30,6 +30,13 @@
 // Performance: all working buffers pre-allocated at init; zero heap allocation
 //   per frame inside process(). Protected by NSLock for thread safety.
 
+// swiftlint:disable file_length
+// File length warning suppressed: the STFT pipeline is one cohesive
+// numerical-kernel module. Splitting buildMelFilterbank or processLocked
+// to a sibling file would either (a) leak private state across files or
+// (b) require regenerating the BeatThisPreprocessorGoldenTest reference
+// activation dump, which is a non-trivial change. Accept the file length.
+
 import Foundation
 import Accelerate
 @preconcurrency import AVFoundation
@@ -109,8 +116,8 @@ public final class BeatThisPreprocessor: @unchecked Sendable {
 
         // Periodic Hann window: w[n] = 0.5 × (1 − cos(2π×n/N))
         // Matches torch.hann_window(N, periodic=True).
-        window = (0..<Self.nFFT).map { n in
-            0.5 * (1.0 - cos(2.0 * Float.pi * Float(n) / Float(Self.nFFT)))
+        window = (0..<Self.nFFT).map { sampleIdx in
+            0.5 * (1.0 - cos(2.0 * Float.pi * Float(sampleIdx) / Float(Self.nFFT)))
         }
 
         windowedFrame = [Float](repeating: 0, count: Self.nFFT)
@@ -153,6 +160,7 @@ public final class BeatThisPreprocessor: @unchecked Sendable {
 
     // MARK: - Core pipeline (must be called under lock)
 
+    // swiftlint:disable:next function_body_length
     private func processLocked(
         samples: [Float],
         inputSampleRate: Double
@@ -163,41 +171,41 @@ public final class BeatThisPreprocessor: @unchecked Sendable {
             ? samples
             : resample(samples, from: inputSampleRate, to: Double(Self.sampleRate))
 
-        let N = signal.count
-        guard N >= 2 else {
-            logger.warning("BeatThisPreprocessor: signal too short (\(N) samples)")
+        let nSamples = signal.count
+        guard nSamples >= 2 else {
+            logger.warning("BeatThisPreprocessor: signal too short (\(nSamples) samples)")
             return ([], 0)
         }
 
-        let P = Self.padSize          // 512
-        let T = N / Self.hopLength + 1
-        let paddedN = N + 2 * P
+        let padN = Self.padSize          // 512
+        let nFrames = nSamples / Self.hopLength + 1
+        let paddedN = nSamples + 2 * padN
 
         // 2. Grow padded buffer if needed (amortised; rare after first call)
         if paddedSignal.count < paddedN {
             paddedSignal = [Float](repeating: 0, count: paddedN)
         }
 
-        // 3. Reflect-pad: left = signal[P..1] (reversed), right = signal[N-2..N-P-1]
+        // 3. Reflect-pad: left = signal[padN..1] (reversed), right = signal[nSamples-2..nSamples-padN-1]
         signal.withUnsafeBufferPointer { sig in
             guard let sigBase = sig.baseAddress else { return }
             paddedSignal.withUnsafeMutableBufferPointer { pad in
                 guard let padBase = pad.baseAddress else { return }
-                // Left reflect: padded[i] = signal[P - i] for i in 0..<P
-                for i in 0..<P {
-                    padBase[i] = sigBase[P - i]
+                // Left reflect: padded[i] = signal[padN - i] for i in 0..<padN
+                for i in 0..<padN {
+                    padBase[i] = sigBase[padN - i]
                 }
                 // Copy signal
-                memcpy(padBase + P, sigBase, N * MemoryLayout<Float>.size)
-                // Right reflect: padded[N+P+j] = signal[N-2-j] for j in 0..<P
-                for j in 0..<P {
-                    padBase[N + P + j] = sigBase[N - 2 - j]
+                memcpy(padBase + padN, sigBase, nSamples * MemoryLayout<Float>.size)
+                // Right reflect: padded[nSamples+padN+j] = signal[nSamples-2-j] for j in 0..<padN
+                for j in 0..<padN {
+                    padBase[nSamples + padN + j] = sigBase[nSamples - 2 - j]
                 }
             }
         }
 
-        // 4. STFT → mel → log1p across all T frames
-        var output = [Float](repeating: 0, count: T * Self.nMels)
+        // 4. STFT → mel → log1p across all nFrames frames
+        var output = [Float](repeating: 0, count: nFrames * Self.nMels)
 
         // Hoist unsafe-buffer-pointer accesses outside the frame loop.
         splitRealp.withUnsafeMutableBufferPointer { rBuf in
@@ -210,6 +218,11 @@ public final class BeatThisPreprocessor: @unchecked Sendable {
         paddedSignal.withUnsafeBufferPointer { padBuf in
         output.withUnsafeMutableBufferPointer { outBuf in
 
+            // swiftlint:disable force_unwrapping
+            // baseAddress on a non-empty UnsafeBufferPointer is guaranteed
+            // non-nil; all nine buffers above are pre-allocated at init
+            // (windowedFrame, splitRealp, splitImagp, magnitudes, melFrame,
+            // filterbank, window) or sized just above (paddedSignal, output).
             let rBase  = rBuf.baseAddress!
             let iBase  = iBuf.baseAddress!
             let wBase  = wBuf.baseAddress!
@@ -219,9 +232,10 @@ public final class BeatThisPreprocessor: @unchecked Sendable {
             let fbBase = fbBuf.baseAddress!
             let padBase = padBuf.baseAddress!
             let outBase = outBuf.baseAddress!
+            // swiftlint:enable force_unwrapping
 
-            for t in 0..<T {
-                let frameStart = t * Self.hopLength
+            for frameIdx in 0..<nFrames {
+                let frameStart = frameIdx * Self.hopLength
 
                 // 4a. Window the frame: wf[n] = padded[frameStart+n] × window[n]
                 vDSP_vmul(padBase + frameStart, 1, wBase, 1, wfBase, 1, vDSP_Length(Self.nFFT))
@@ -260,11 +274,11 @@ public final class BeatThisPreprocessor: @unchecked Sendable {
                 vvlog1pf(mfBase, mfBase, &cnt)
 
                 // 4i. Copy mel frame into output
-                memcpy(outBase + t * Self.nMels, mfBase, Self.nMels * MemoryLayout<Float>.size)
+                memcpy(outBase + frameIdx * Self.nMels, mfBase, Self.nMels * MemoryLayout<Float>.size)
             }
         }}}}}}}}} // end nested withUnsafe* closures
 
-        return (data: output, frameCount: T)
+        return (data: output, frameCount: nFrames)
     }
 
     // MARK: - Slaney mel filterbank
@@ -297,8 +311,8 @@ public final class BeatThisPreprocessor: @unchecked Sendable {
         // FFT bin frequencies: linspace(0, sr/2, nBins) — matches torchaudio.
         // all_freqs[b] = b × (sample_rate/2) / (nBins−1)
         let halfSr = Float(Self.sampleRate) / 2.0  // 11025 Hz
-        let allFreqs = (0..<Self.nBins).map { b -> Float in
-            Float(b) * halfSr / Float(Self.nBins - 1)
+        let allFreqs = (0..<Self.nBins).map { binIdx -> Float in
+            Float(binIdx) * halfSr / Float(Self.nBins - 1)
         }
 
         // nMels+2 mel breakpoints, linspace in mel → converted to Hz.
@@ -306,8 +320,8 @@ public final class BeatThisPreprocessor: @unchecked Sendable {
         let melMax  = hzToMel(Self.fMax)
         let nPoints = Self.nMels + 2  // 130
         let fPts = (0..<nPoints).map { i -> Float in
-            let t = Float(i) / Float(nPoints - 1)
-            return melToHz(melMin + t * (melMax - melMin))
+            let frac = Float(i) / Float(nPoints - 1)
+            return melToHz(melMin + frac * (melMax - melMin))
         }
 
         // Triangle filters: continuous frequency interpolation (torchaudio formula).
@@ -315,18 +329,18 @@ public final class BeatThisPreprocessor: @unchecked Sendable {
         //   falling[b,m] = (fPts[m+2] − allFreqs[b]) / (fPts[m+2] − fPts[m+1])
         //   weight[b,m]  = max(0, min(rising, falling))
         // filterbank layout: row m, col b → filterbank[m * nBins + b]
-        for m in 0..<Self.nMels {
-            let fLeft   = fPts[m]
-            let fCenter = fPts[m + 1]
-            let fRight  = fPts[m + 2]
+        for melIdx in 0..<Self.nMels {
+            let fLeft   = fPts[melIdx]
+            let fCenter = fPts[melIdx + 1]
+            let fRight  = fPts[melIdx + 2]
             let riseW   = fCenter - fLeft    // > 0 by construction
             let fallW   = fRight - fCenter  // > 0 by construction
 
-            for b in 0..<Self.nBins {
-                let hz      = allFreqs[b]
+            for binIdx in 0..<Self.nBins {
+                let hz      = allFreqs[binIdx]
                 let rising  = riseW > 0 ? (hz - fLeft) / riseW : 0
                 let falling = fallW > 0 ? (fRight - hz) / fallW : 0
-                filterbank[m * Self.nBins + b] = max(0.0, min(rising, falling))
+                filterbank[melIdx * Self.nBins + binIdx] = max(0.0, min(rising, falling))
             }
         }
     }
@@ -363,6 +377,10 @@ public final class BeatThisPreprocessor: @unchecked Sendable {
         srcBuf.frameLength = AVAudioFrameCount(srcCount)
         samples.withUnsafeBufferPointer { src in
             _ = src  // suppress unused-result warning; memcpy is the side effect
+            // floatChannelData is non-nil for any AVAudioFormat constructed via
+            // standardFormatWithSampleRate (Float32 PCM) — verified above.
+            // baseAddress is non-nil on a non-empty buffer (srcCount >= 1).
+            // swiftlint:disable:next force_unwrapping
             memcpy(srcBuf.floatChannelData![0], src.baseAddress!, srcCount * MemoryLayout<Float>.size)
         }
 
@@ -387,6 +405,9 @@ public final class BeatThisPreprocessor: @unchecked Sendable {
         }
 
         let outCount = Int(dstBuf.frameLength)
+        // floatChannelData is non-nil for any AVAudioFormat constructed via
+        // standardFormatWithSampleRate (Float32 PCM) — verified above.
+        // swiftlint:disable:next force_unwrapping
         return Array(UnsafeBufferPointer(start: dstBuf.floatChannelData![0], count: outCount))
     }
 }
