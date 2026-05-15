@@ -132,6 +132,66 @@ constant float kFerrofluidMeshWorldSpan = 20.0;
 constant float kFerrofluidMeshWorldOriginX = -10.0;
 constant float kFerrofluidMeshWorldOriginZ = -8.0;
 
+// MARK: - Radial cluster displacement (Phase 1 round 45, 2026-05-15)
+//
+// Matt's `2026-05-15T22:30Z` observation: every reference photo of real
+// ferrofluid shows spikes organized as RADIAL CLUSTERS — concentric rings
+// radiating from a focal point — never as a uniform field of straight-up
+// spikes. This is the physics of the Rosensweig instability following
+// magnetic field lines.
+//
+// Round 45 introduces a regular grid of cluster centers across the
+// substrate patch. Each spike vertex's displacement direction is no longer
+// pure +Y; it is `normalize(vertex - focalPoint)`, where `focalPoint` is
+// at `(clusterCenter.x, -kClusterFocalDepth, clusterCenter.z)` directly
+// below the nearest cluster center. This produces:
+//
+//   - Spikes at a cluster center: straight up (direction = +Y)
+//   - Spikes at a cluster edge: lean outward at angle atan(r / focalDepth)
+//   - Spikes between clusters: lean opposite ways on each side of the
+//     boundary (a known discontinuity; round 46 may add smooth-min
+//     blending if it reads as visible seams)
+//
+// "Magnetically-charged atmosphere" per Matt's framing means the field is
+// present uniformly across the patch — clusters cover the entire ocean,
+// not just one mound.
+
+/// Distance between adjacent cluster centers in world units. 2.5 wu →
+/// 8×8 = 64 clusters across the 20×20 patch. Each cluster's half-extent
+/// is 1.25 wu, comfortably larger than the 0.182-wu spike spacing so each
+/// cluster contains ~50 spikes (an inner spike + several concentric rings).
+constant float kClusterSpacing = 2.5;
+
+/// Depth of the magnetic focal point below the substrate, in world units.
+/// Combined with the cluster half-extent (1.25 wu), this gives the maximum
+/// lean angle at cluster edges: atan(1.25 / 1.5) ≈ 40° from vertical —
+/// matches the middle-ring spike lean visible in the reference photos.
+constant float kClusterFocalDepth = 1.5;
+
+/// Find the nearest cluster center for a given substrate XZ position.
+/// Clusters sit on a regular grid with origin at (0, 0); centers are at
+/// (kClusterSpacing/2 + n·kClusterSpacing) for all integer n in each axis.
+static inline float2 fmesh_nearest_cluster_center(float2 worldXZ) {
+    float2 cell = floor(worldXZ / kClusterSpacing);
+    return (cell + 0.5) * kClusterSpacing;
+}
+
+/// Given a substrate position (post-Gerstner) and a spike height value
+/// from the heightmap, compute the radial displacement vector for that
+/// vertex. The displacement direction points from the focal point (below
+/// the nearest cluster center) through the vertex; magnitude is the
+/// spike height. At cluster center: pure +Y displacement (direction is
+/// (0, 1, 0)). Away from center: tilted outward.
+static inline float3 fmesh_radial_displacement(float3 substratePos,
+                                                 float spikeHeight) {
+    float2 clusterCenter = fmesh_nearest_cluster_center(substratePos.xz);
+    float3 focalPoint = float3(clusterCenter.x,
+                                -kClusterFocalDepth,
+                                clusterCenter.y);
+    float3 direction = normalize(substratePos - focalPoint);
+    return direction * spikeHeight;
+}
+
 // MARK: - Gerstner ocean displacement (Phase 1 round 21, 2026-05-15)
 //
 // Bar-locked Gerstner waves. Round 20 tied wave phase to individual
@@ -371,11 +431,19 @@ vertex FerrofluidMeshVaryings ferrofluid_mesh_vertex(
     float yFwd    = yFwd_spike    + yFwd_g;
     float yBack   = yBack_spike   + yBack_g;
 
-    // World displacement vector — centre gets the full Gerstner XZ sway
-    // in addition to the combined Y.
-    float3 displaced = float3(in.position.x + gerstnerCentre.x,
-                              in.position.y + yCenter,
-                              in.position.z + gerstnerCentre.z);
+    // Round 45 (2026-05-15): radial cluster displacement. The substrate
+    // position rides on the Gerstner waves; spikes lean radially outward
+    // from the focal point below the nearest cluster center.
+    //
+    // Substrate position = un-displaced vertex + full Gerstner offset
+    // (horizontal sway + vertical wave). Spike displacement is computed
+    // FROM the substrate position outward, so spikes ride on top of the
+    // waves and lean correctly per-cluster.
+    float3 substratePos = float3(in.position.x + gerstnerCentre.x,
+                                  in.position.y + gerstnerCentre.y,
+                                  in.position.z + gerstnerCentre.z);
+    float3 spikeDisp = fmesh_radial_displacement(substratePos, yCenter_spike);
+    float3 displaced = substratePos + spikeDisp;
 
     // Tangent vectors in world space. UV-space epsilon maps to world-space
     // distance via worldSpan: dWorld = (eps × 2) × worldSpan in the X / Z
@@ -471,19 +539,22 @@ fragment FerrofluidMeshGBufferOutput ferrofluid_mesh_gbuffer_fragment(
     // (Matt's `2026-05-15T21:50Z` update from "pitch black" to "glossy
     // black"), instead of a perfectly flat substrate reflecting zenith
     // uniformly.
+    // Round 45 (2026-05-15): per-pixel normal now computed from FULL
+    // displaced surface points at 4 UV neighbors (substrate + radial
+    // spike displacement), not from heightmap gradients alone. The
+    // radial-cluster geometry means the surface is no longer a simple
+    // height field Y=f(x,z); spike tips are radially offset from their
+    // bases, so the normal direction varies in a way the heightmap
+    // gradient can't capture. Computing tangent vectors from the
+    // full displaced positions is the correct general formulation.
     constexpr sampler heightSamp(coord::normalized,
                                   filter::linear,
                                   address::clamp_to_zero);
     float spikeStrFactor = kFerrofluidSpikeStrength * kFerrofluidMeshHeightFactor;
     float eps = kFerrofluidMeshNormalEps;
     float worldEps = eps * kFerrofluidMeshWorldSpan;
-    float hR_spike = heightTex.sample(heightSamp, in.uv + float2( eps, 0.0)).r * spikeStrFactor;
-    float hL_spike = heightTex.sample(heightSamp, in.uv + float2(-eps, 0.0)).r * spikeStrFactor;
-    float hF_spike = heightTex.sample(heightSamp, in.uv + float2( 0.0,  eps)).r * spikeStrFactor;
-    float hB_spike = heightTex.sample(heightSamp, in.uv + float2( 0.0, -eps)).r * spikeStrFactor;
 
-    // Gerstner audio uniforms (same recipe as the vertex shader's
-    // amplitudeMul / musicBars derivation — kept in sync).
+    // Gerstner audio uniforms (matches the vertex shader's recipe).
     float totalStemEnergy = stems.vocals_energy + stems.drums_energy
                           + stems.bass_energy + stems.other_energy;
     float presenceGate = smoothstep(0.02, 0.10, totalStemEnergy);
@@ -493,25 +564,38 @@ fragment FerrofluidMeshGBufferOutput ferrofluid_mesh_gbuffer_fragment(
     float musicBars = musicBeats / beatsPerBar;
 
     // Recover original (pre-displacement) world XZ from interpolated UV.
-    // `in.uv` is the linear interpolation of vertex UVs, which were
-    // generated from un-displaced positions — so `worldOrigin + uv ×
-    // worldSpan` gives the same world XZ the vertex shader used for its
-    // Gerstner samples.
     float2 worldXZ = float2(kFerrofluidMeshWorldOriginX + in.uv.x * kFerrofluidMeshWorldSpan,
                             kFerrofluidMeshWorldOriginZ + in.uv.y * kFerrofluidMeshWorldSpan);
 
-    float hR_g = gerstner_displacement(worldXZ + float2( worldEps, 0.0),     musicBars, amplitudeMul).y;
-    float hL_g = gerstner_displacement(worldXZ + float2(-worldEps, 0.0),     musicBars, amplitudeMul).y;
-    float hF_g = gerstner_displacement(worldXZ + float2( 0.0,      worldEps), musicBars, amplitudeMul).y;
-    float hB_g = gerstner_displacement(worldXZ + float2( 0.0,     -worldEps), musicBars, amplitudeMul).y;
+    // Sample spike heights at 4 UV neighbors.
+    float hR_spike = heightTex.sample(heightSamp, in.uv + float2( eps, 0.0)).r * spikeStrFactor;
+    float hL_spike = heightTex.sample(heightSamp, in.uv + float2(-eps, 0.0)).r * spikeStrFactor;
+    float hF_spike = heightTex.sample(heightSamp, in.uv + float2( 0.0,  eps)).r * spikeStrFactor;
+    float hB_spike = heightTex.sample(heightSamp, in.uv + float2( 0.0, -eps)).r * spikeStrFactor;
 
-    float hR = hR_spike + hR_g;
-    float hL = hL_spike + hL_g;
-    float hF = hF_spike + hF_g;
-    float hB = hB_spike + hB_g;
+    // Full Gerstner displacement at the 4 neighbor world positions.
+    float3 g_R = gerstner_displacement(worldXZ + float2( worldEps, 0.0),     musicBars, amplitudeMul);
+    float3 g_L = gerstner_displacement(worldXZ + float2(-worldEps, 0.0),     musicBars, amplitudeMul);
+    float3 g_F = gerstner_displacement(worldXZ + float2( 0.0,      worldEps), musicBars, amplitudeMul);
+    float3 g_B = gerstner_displacement(worldXZ + float2( 0.0,     -worldEps), musicBars, amplitudeMul);
 
-    float3 tangentX = float3(2.0 * worldEps, hR - hL, 0.0);
-    float3 tangentZ = float3(0.0, hF - hB, 2.0 * worldEps);
+    // Substrate positions at the 4 neighbors (pre-displacement XZ + Gerstner).
+    float3 sub_R = float3(worldXZ.x + worldEps + g_R.x, g_R.y, worldXZ.y          + g_R.z);
+    float3 sub_L = float3(worldXZ.x - worldEps + g_L.x, g_L.y, worldXZ.y          + g_L.z);
+    float3 sub_F = float3(worldXZ.x + g_F.x,            g_F.y, worldXZ.y + worldEps + g_F.z);
+    float3 sub_B = float3(worldXZ.x + g_B.x,            g_B.y, worldXZ.y - worldEps + g_B.z);
+
+    // Full displaced surface points: substrate + radial spike displacement.
+    float3 p_R = sub_R + fmesh_radial_displacement(sub_R, hR_spike);
+    float3 p_L = sub_L + fmesh_radial_displacement(sub_L, hL_spike);
+    float3 p_F = sub_F + fmesh_radial_displacement(sub_F, hF_spike);
+    float3 p_B = sub_B + fmesh_radial_displacement(sub_B, hB_spike);
+
+    // Tangent vectors from the full position differences. This captures
+    // both the height gradient AND the radial-direction variation across
+    // the spike, producing correct normals for the leaning-spike geometry.
+    float3 tangentX = p_R - p_L;
+    float3 tangentZ = p_F - p_B;
     float3 normal = normalize(cross(tangentZ, tangentX));
     out.gbuf1 = float4(normal, 1.0);
 

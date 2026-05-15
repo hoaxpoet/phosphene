@@ -158,21 +158,24 @@ public final class FerrofluidParticles: @unchecked Sendable {
     /// half-spacing → bases nearly touch with ~0.012 wu substrate
     /// channel between adjacent peaks.
     ///
-    /// **Round 44 (2026-05-15)**: 0.17 → 0.10. Round 42 swapped the
-    /// squared-cone profile for Leitl's linear cone + almostIdentity,
-    /// which when combined with our bases-touching width produced
-    /// rounded-bump character (foreground spikes read as hershey-kiss
-    /// domes, per Matt's `2026-05-15T22:00Z` capture review). The
-    /// references consistently show NARROW spike bases with VISIBLE
-    /// substrate between them, not bases-touching. Narrowing to 0.10
-    /// leaves 0.082 wu of dark substrate between adjacent peak bases
-    /// (clear visible gap), aspect ratio rises from 1.76:1 to 3:1
-    /// matching the reference 3-5:1 range, area coverage drops from
-    /// ~75% to ~24% (substrate visible across most of the patch).
-    /// Pairs with round-44 tightened apex rounding (almostIdentity
-    /// m=0.04, n=0.016) so the apex roundness scales proportionally
-    /// to the narrower spike.
-    public static let spikeBaseRadius: Float = 0.10
+    /// **Round 44 (2026-05-15)**: 0.17 → 0.10. (Subsequently reverted in
+    /// round 45 — see below.)
+    ///
+    /// **Round 45 (2026-05-15)**: 0.10 → 0.17 (revert). Matt's
+    /// `2026-05-15T22:30Z` observation: every reference photo shows spikes
+    /// as RADIAL CLUSTERS with bases touching within each cluster —
+    /// concentric rings of spikes radiating from a central focal point
+    /// (the physics of the Rosensweig instability under a magnetic field).
+    /// Round 44's narrowing was correcting a symptom (round-42's dome
+    /// reading at bases-touching) of the wrong problem; the actual issue
+    /// was the missing radial displacement architecture. Round 45 reverts
+    /// the radius (bases-touching is correct, just within clusters) and
+    /// adds radial cluster displacement in the mesh shader so each spike
+    /// leans outward from its nearest cluster's focal point below the
+    /// substrate. The "ocean" is now interpreted as a magnetically-charged
+    /// surface with multiple distributed cluster centers (see
+    /// `kClusterSpacing`/`kClusterFocalDepth` in `FerrofluidMesh.metal`).
+    public static let spikeBaseRadius: Float = 0.17
 
     /// Apex-rounding parameter for `almostIdentity` smoothing on the
     /// soft-min output. **Tuning pass 2026-05-14 dropped from 0.1 → 0.03**
