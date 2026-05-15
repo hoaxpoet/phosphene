@@ -15,22 +15,25 @@ import simd
 extension FerrofluidParticles {
 
     /// Compute the canonical Phase 1 initial position for a particle index.
-    /// Public so tests can verify the bake input without re-reading GPU memory.
+    /// Round 48 (2026-05-15) replaced the uniform-grid layout with explicit
+    /// lotus-pattern clusters: particles arranged in concentric rings
+    /// around each of 16 cluster centers (4×4 grid at 5-wu spacing).
+    ///
+    /// Index mapping:
+    ///   - `clusterID = i / kParticlesPerCluster`
+    ///   - `clusterLocal = i % kParticlesPerCluster`
+    ///   - `(clusterCol, clusterRow) = (clusterID % 4, clusterID / 4)`
+    ///   - `clusterLocal` indexes into the lotus pattern (1 center +
+    ///     6 + 12 + 18 = 37 positions).
     public static func canonicalInitialPosition(forIndex i: Int) -> SIMD2<Float> {
-        let layout = canonicalGridLayout()
-        let row = i / layout.columns
-        let col = i % layout.columns
-        let cellCoord = SIMD2<Int32>(Int32(col), Int32(row))
-        let offset = voronoiCellOffset(cell: cellCoord)
-        // Map (col + offset.x, row + offset.y) from scaled-space [0..cols] /
-        // [0..rows] to world XZ [worldOriginX, +span] / [worldOriginZ, +span].
-        let scaledX = Float(col) + offset.x
-        let scaledZ = Float(row) + offset.y
-        let normalisedX = scaledX / Float(layout.columns)
-        let normalisedZ = scaledZ / Float(layout.rows)
-        let worldX = worldOriginX + normalisedX * worldSpan
-        let worldZ = worldOriginZ + normalisedZ * worldSpan
-        return SIMD2(worldX, worldZ)
+        let clusterID = i / kParticlesPerCluster
+        let clusterLocal = i % kParticlesPerCluster
+        let clusterCol = clusterID % kClusterGridSide
+        let clusterRow = clusterID / kClusterGridSide
+        let centerX = worldOriginX + (Float(clusterCol) + 0.5) * kClusterSpacing
+        let centerZ = worldOriginZ + (Float(clusterRow) + 0.5) * kClusterSpacing
+        let offsetFromCenter = lotusParticleOffset(localIndex: clusterLocal)
+        return SIMD2(centerX + offsetFromCenter.x, centerZ + offsetFromCenter.y)
     }
 
     // MARK: - Internal
@@ -41,29 +44,59 @@ extension FerrofluidParticles {
         var capacity: Int { columns * rows }
     }
 
-    /// Canonical grid: **55 × 55 = 3025 cells** (Round 17, 2026-05-15).
-    /// X / Z spacing `worldSpan / 55 = 0.3636 world units` — isotropic.
-    /// Particles at this density with `spikeBaseRadius = 0.17` have bases
-    /// that nearly touch (half-spacing 0.182 > radius 0.17 by only
-    /// 0.012 wu) → dense lattice with thin substrate channels between
-    /// peaks, matching the reference set's packing density per
-    /// `01_macro_ferrofluid_at_swell_scale.jpg`.
+    /// Lotus-pattern cluster layout — round 48 (2026-05-15).
     ///
-    /// History:
-    ///   - 80 × 75 = 6000 cells with radius 0.15 (wall-to-wall overlap)
-    ///   - 80 × 75 = 6000 cells with radius 0.06 (isolated, but
-    ///     per-spike screen coverage too small — Matt's
-    ///     `2026-05-15T12-36-08Z` review: "still nowhere close to actual
-    ///     ferrofluid")
-    ///   - 40 × 38 = 1520 cells with radius 0.12 (Round 11) — discrete
-    ///     pyramids registered but Matt's `2026-05-15T14-31-24Z` review
-    ///     flagged "too few spikes, lots of empty space between spikes"
-    ///     vs the reference set's ~35-40 visible spike-rows.
-    ///   - 55 × 55 = 3025 cells with radius 0.17 (Round 17, current) —
-    ///     ~2× more spike-rows, bases nearly touch, area coverage
-    ///     17 % → 75 %.
+    /// 4 × 4 = 16 clusters across the 20 × 20 wu patch at 5-wu spacing.
+    /// Cluster centers at world XZ (-7.5, -2.5, +2.5, +7.5) in each axis,
+    /// measured from `worldOriginX/Z = -10 / -8`.
+    ///
+    /// Each cluster contains 37 particles arranged in concentric rings
+    /// (Leitl-faithful — his spherical geometry projects to this pattern
+    /// when flattened around a focal point):
+    ///   - Ring 0: 1 particle at center
+    ///   - Ring 1: 6 particles at r = 0.33 wu
+    ///   - Ring 2: 12 particles at r = 0.67 wu
+    ///   - Ring 3: 18 particles at r = 1.00 wu
+    ///
+    /// Outer ring radius is 1.0 wu, leaving ~3.0 wu of substrate between
+    /// adjacent cluster outer edges — the "ocean dotted with magnetic
+    /// peaks" character Matt directed.
+    static let kClusterGridSide: Int = 4
+    static let kClusterSpacing: Float = 5.0
+    static let kParticlesPerCluster: Int = 37
+    static let kLotusRingRadii: [Float] = [0.0, 0.33, 0.67, 1.00]
+
+    /// GridLayout is retained for back-compat with tests that iterate
+    /// `0 ..< particleCount`. `columns × rows = particleCount`; the
+    /// previous row-major mapping is preserved trivially by setting
+    /// `columns = 1, rows = particleCount`.
     static func canonicalGridLayout() -> GridLayout {
-        GridLayout(columns: 55, rows: 55)
+        GridLayout(columns: 1, rows: particleCount)
+    }
+
+    /// Map a within-cluster index (0..36) to its (x, z) offset from the
+    /// cluster center, in world units. Ring 0 is the lone center
+    /// particle; rings 1-3 contain 6, 12, 18 particles spaced evenly
+    /// around concentric circles.
+    static func lotusParticleOffset(localIndex i: Int) -> SIMD2<Float> {
+        switch i {
+        case 0:
+            return SIMD2(0, 0)
+        case 1...6:
+            let angle = Float(i - 1) / 6.0 * 2.0 * .pi
+            let r = kLotusRingRadii[1]
+            return SIMD2(r * cos(angle), r * sin(angle))
+        case 7...18:
+            let angle = Float(i - 7) / 12.0 * 2.0 * .pi
+            let r = kLotusRingRadii[2]
+            return SIMD2(r * cos(angle), r * sin(angle))
+        case 19...36:
+            let angle = Float(i - 19) / 18.0 * 2.0 * .pi
+            let r = kLotusRingRadii[3]
+            return SIMD2(r * cos(angle), r * sin(angle))
+        default:
+            return SIMD2(0, 0)
+        }
     }
 
     /// Populate the particle buffer with the canonical Phase 1 positions
