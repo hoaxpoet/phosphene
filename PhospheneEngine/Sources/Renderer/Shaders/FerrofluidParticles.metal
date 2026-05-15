@@ -383,10 +383,20 @@ kernel void ferrofluid_height_bake(
     // is preserved by the linear cone + almostIdentity flow at adjacent
     // particle midpoints (where r ≈ R for both particles, both contribute
     // small heights via the smooth-min that already merges them).
-    constexpr float kLeitlIdentityM = 0.1;   // matches Leitl's height-map.frag.glsl
-    constexpr float kLeitlIdentityN = 0.04;
+    // Round 44 (2026-05-15): tightened apex-rounding constants from
+    // Leitl's verbatim (0.1, 0.04) to (0.04, 0.016). Reason: Leitl's
+    // constants were tuned for his audio-coupled spike width where peak
+    // `spikeFactor=25` → effective radius ~0.04 wu. At our static
+    // `spikeBaseRadius` (now 0.10 wu, see round-44 commit), the rounding
+    // zone needs to scale proportionally — otherwise the same `m=0.1`
+    // covers 10% of each spike's radius and reads as a dome instead of
+    // a rounded tip. New `m=0.04`: rounded zone is r/R ≤ 0.04 → top 4%
+    // of each spike's radius is rounded, the rest is linear cone. Apex
+    // height capped at 1 - 0.016 = 0.984 (subtle round, not flattening).
+    constexpr float kApexRoundM = 0.04;
+    constexpr float kApexRoundN = 0.016;
     float dist01 = clamp(res / u.spikeBaseRadius, 0.0, 1.0);
-    dist01 = almost_identity(dist01, kLeitlIdentityM, kLeitlIdentityN);
+    dist01 = almost_identity(dist01, kApexRoundM, kApexRoundN);
     float height = 1.0 - dist01;
     heightTex.write(float4(height, 0.0, 0.0, 0.0), gid);
 }

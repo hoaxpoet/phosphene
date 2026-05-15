@@ -156,13 +156,23 @@ public final class FerrofluidParticles: @unchecked Sendable {
     /// `particleCount` 1520 → 3025 (55 × 55 grid). New X/Z spacing
     /// 0.364 wu, half-spacing 0.182 wu → radius 0.17 is just under
     /// half-spacing → bases nearly touch with ~0.012 wu substrate
-    /// channel between adjacent peaks. Area coverage rises from ~17 %
-    /// (round 11) to ~75 %, closing the "too much empty substrate"
-    /// gap Matt flagged on `2026-05-15T14-31-24Z` against the
-    /// reference set's dense lattice. Aspect at peak height drops
-    /// from ~7.8 : 1 (round 16) to ~5.5 : 1 — within the reference
-    /// range of 3-5 : 1 for stocky-pyramid ferrofluid character.
-    public static let spikeBaseRadius: Float = 0.17
+    /// channel between adjacent peaks.
+    ///
+    /// **Round 44 (2026-05-15)**: 0.17 → 0.10. Round 42 swapped the
+    /// squared-cone profile for Leitl's linear cone + almostIdentity,
+    /// which when combined with our bases-touching width produced
+    /// rounded-bump character (foreground spikes read as hershey-kiss
+    /// domes, per Matt's `2026-05-15T22:00Z` capture review). The
+    /// references consistently show NARROW spike bases with VISIBLE
+    /// substrate between them, not bases-touching. Narrowing to 0.10
+    /// leaves 0.082 wu of dark substrate between adjacent peak bases
+    /// (clear visible gap), aspect ratio rises from 1.76:1 to 3:1
+    /// matching the reference 3-5:1 range, area coverage drops from
+    /// ~75% to ~24% (substrate visible across most of the patch).
+    /// Pairs with round-44 tightened apex rounding (almostIdentity
+    /// m=0.04, n=0.016) so the apex roundness scales proportionally
+    /// to the narrower spike.
+    public static let spikeBaseRadius: Float = 0.10
 
     /// Apex-rounding parameter for `almostIdentity` smoothing on the
     /// soft-min output. **Tuning pass 2026-05-14 dropped from 0.1 → 0.03**
