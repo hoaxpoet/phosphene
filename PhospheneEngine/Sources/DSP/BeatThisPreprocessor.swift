@@ -123,6 +123,7 @@ public final class BeatThisPreprocessor: @unchecked Sendable {
 
         buildMelFilterbank()
 
+        // swiftlint:disable:next line_length
         logger.info("BeatThisPreprocessor ready: sr=\(Self.sampleRate) n_fft=\(Self.nFFT) hop=\(Self.hopLength) mels=\(Self.nMels)")
     }
 
@@ -223,8 +224,7 @@ public final class BeatThisPreprocessor: @unchecked Sendable {
                 let frameStart = t * Self.hopLength
 
                 // 4a. Window the frame: wf[n] = padded[frameStart+n] × window[n]
-                vDSP_vmul(padBase + frameStart, 1, wBase, 1, wfBase, 1,
-                          vDSP_Length(Self.nFFT))
+                vDSP_vmul(padBase + frameStart, 1, wBase, 1, wfBase, 1, vDSP_Length(Self.nFFT))
 
                 // 4b. Pack real signal into split complex for vDSP_fft_zrip.
                 //     Real signal treated as N/2 complex pairs: re[k]=signal[2k], im[k]=signal[2k+1].
@@ -251,8 +251,7 @@ public final class BeatThisPreprocessor: @unchecked Sendable {
                 vDSP_vsmul(mBase, 1, &scale, mBase, 1, vDSP_Length(Self.nBins))
 
                 // 4g. Mel filterbank: (nMels, nBins) × (nBins,) → (nMels,)
-                vDSP_mmul(fbBase, 1, mBase, 1, mfBase, 1,
-                          vDSP_Length(Self.nMels), 1, vDSP_Length(Self.nBins))
+                vDSP_mmul(fbBase, 1, mBase, 1, mfBase, 1, vDSP_Length(Self.nMels), 1, vDSP_Length(Self.nBins))
 
                 // 4h. log1p(logMultiplier × mel): multiply then vvlog1pf
                 var mult = Self.logMultiplier
@@ -263,7 +262,6 @@ public final class BeatThisPreprocessor: @unchecked Sendable {
                 // 4i. Copy mel frame into output
                 memcpy(outBase + t * Self.nMels, mfBase, Self.nMels * MemoryLayout<Float>.size)
             }
-
         }}}}}}}}} // end nested withUnsafe* closures
 
         return (data: output, frameCount: T)
@@ -322,11 +320,11 @@ public final class BeatThisPreprocessor: @unchecked Sendable {
             let fCenter = fPts[m + 1]
             let fRight  = fPts[m + 2]
             let riseW   = fCenter - fLeft    // > 0 by construction
-            let fallW   = fRight  - fCenter  // > 0 by construction
+            let fallW   = fRight - fCenter  // > 0 by construction
 
             for b in 0..<Self.nBins {
                 let hz      = allFreqs[b]
-                let rising  = riseW > 0 ? (hz - fLeft)  / riseW : 0
+                let rising  = riseW > 0 ? (hz - fLeft) / riseW : 0
                 let falling = fallW > 0 ? (fRight - hz) / fallW : 0
                 filterbank[m * Self.nBins + b] = max(0.0, min(rising, falling))
             }
