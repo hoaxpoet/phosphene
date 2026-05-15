@@ -81,6 +81,11 @@ public struct PreFetchedTrackProfile: Sendable, Equatable, Codable {
     public var genreTags: [String]
     /// Track duration in seconds (from external source, may differ from Now Playing).
     public var duration: Double?
+    /// Time-signature numerator (e.g. 3 for 3/4, 4 for 4/4, 7 for 7/4).
+    /// Used to override the ML-detected `BeatGrid.beatsPerBar` when the
+    /// analyzer guesses wrong on odd time-signature tracks (Round 25,
+    /// 2026-05-15).
+    public var timeSignature: Int?
     /// When this profile was fetched.
     public var fetchedAt: Date
 
@@ -88,7 +93,8 @@ public struct PreFetchedTrackProfile: Sendable, Equatable, Codable {
     public var hasData: Bool {
         bpm != nil || key != nil || energy != nil ||
         valence != nil || danceability != nil ||
-        !genreTags.isEmpty || duration != nil
+        !genreTags.isEmpty || duration != nil ||
+        timeSignature != nil
     }
 
     public init(
@@ -99,6 +105,7 @@ public struct PreFetchedTrackProfile: Sendable, Equatable, Codable {
         danceability: Float? = nil,
         genreTags: [String] = [],
         duration: Double? = nil,
+        timeSignature: Int? = nil,
         fetchedAt: Date = Date()
     ) {
         self.bpm = bpm
@@ -108,6 +115,7 @@ public struct PreFetchedTrackProfile: Sendable, Equatable, Codable {
         self.danceability = danceability
         self.genreTags = genreTags
         self.duration = duration
+        self.timeSignature = timeSignature
         self.fetchedAt = fetchedAt
     }
 }
