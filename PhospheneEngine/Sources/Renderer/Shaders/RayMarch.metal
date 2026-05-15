@@ -498,6 +498,45 @@ static inline float fluid_pow_fast(float a, float b) {
     return a / ((1.0 - b) * a + b);
 }
 
+/// Procedural studio-style environment for the matID == 2 ferrofluid ambient
+/// layer. Inline replacement for the IBL prefiltered cubemap sample —
+/// Phosphene's global IBL is hardcoded as a warm concrete-corridor interior
+/// (see `IBL.metal::ibl_proc_env` — "appropriate for enclosed architectural
+/// presets (GlassBrutalist)") which made the metallic ferrofluid mirror
+/// reflect a corridor instead of a ferrofluid-appropriate scene. This
+/// function returns what an ambient probe in a studio environment would
+/// produce: mostly near-black, with a single concentrated bright zone
+/// aligned with the Phong key direction so the two layers reinforce each
+/// other.
+///
+/// Why not extend `IBLManager` to support per-preset env? Larger
+/// infrastructure change deferred to a future increment. Per-preset IBL
+/// would also handle Glass Brutalist's corridor vs Ferrofluid's studio vs
+/// future outdoor presets cleanly. For now this inline procedural env is
+/// the minimum-surface change.
+static inline float3 fluid_studio_env(float3 R) {
+    constexpr float3 keyLightDir = float3(2.0, 1.0, 1.0) * 0.5773502691896258;
+    constexpr float3 darkBase = float3(0.02, 0.02, 0.03);
+    constexpr float3 deepDark = float3(0.005, 0.005, 0.008);
+    constexpr float3 brightSpot = float3(1.0, 0.95, 0.85);
+
+    // Concentrated bright source aligned with the Phong key direction.
+    // smoothstep edges 0.5 → 0.95 in dot space: peak when R is within
+    // ~18° of keyDir, fully off when R is >60° away. Spike sides whose
+    // normals align such that R hits the key zone catch the bright spot;
+    // everything else stays near darkBase.
+    float keyAlign  = dot(R, keyLightDir);
+    float spotMask  = smoothstep(0.5, 0.95, keyAlign);
+
+    // Subtle vertical gradient — above-horizon darker by default than
+    // below-horizon, both very dark. Gives the substrate a slight tonal
+    // anchor when no key alignment is present.
+    float zenithT = smoothstep(-0.3, 0.7, R.y);
+    float3 sky    = mix(deepDark, darkBase, zenithT);
+
+    return mix(sky, brightSpot, spotMask);
+}
+
 /// Quilez cosine palette. Same recipe as `rm_palette` above but with caller-
 /// supplied a/b/c/d coefficients per Leitl's `fluidShading` iridescence
 /// configuration.
@@ -514,12 +553,17 @@ static inline float3 fluid_palette(float t,
 /// `N`         — surface normal (normalized).
 /// `worldPos`  — world-space position of the surface point.
 /// `cameraPos` — camera world-space position.
-/// `iblPref`   — prefiltered env cubemap (texture(10) in lighting pass).
-/// `iblSamp`   — IBL sampler.
+///
+/// Phase 1 round 7 (2026-05-15) — ambient layer's env source switched from
+/// the global IBL prefiltered cubemap (hardcoded as a warm concrete-
+/// corridor interior, see `IBL.metal::ibl_proc_env`) to `fluid_studio_env`
+/// — a small procedural studio env with a concentrated bright zone aligned
+/// with the Phong key direction. Diagnosis: with Phosphene's corridor IBL
+/// the ferrofluid substrate reflected a corridor → "bright chrome floor
+/// with dark pits" visual (Matt's `2026-05-15T01-16-02Z` review). Other
+/// three layers (specular / fresnel / iridescence) unchanged.
 static float3 fluid_shading(float3 V, float3 N,
-                            float3 worldPos, float3 cameraPos,
-                            texturecube<float> iblPref,
-                            sampler iblSamp) {
+                            float3 worldPos, float3 cameraPos) {
     // Fixed key light at infinity. Leitl uses normalize(2, 1, 1) — rear-
     // upper-right. The single key light at infinity has no inverse-square
     // attenuation, so Failed Approach #61 (invisible orbital lights at
@@ -535,11 +579,12 @@ static float3 fluid_shading(float3 V, float3 N,
     constexpr float kFluidShininess = 50.0;
     float specularValue = fluid_pow_fast(max(0.0, dot(R, -V)), kFluidShininess);
 
-    // ── Layer 2: ambient (env map sampled at reflection) ───────────
-    // Phosphene's existing IBL prefiltered cubemap. Sample at LOD 0
-    // (sharp / mirror-like) — substrate is roughness ~0.08.
+    // ── Layer 2: ambient (procedural studio env at reflection) ─────
+    // Replaces the global IBL prefiltered cubemap (warm corridor) with
+    // a ferrofluid-appropriate procedural studio env — see
+    // `fluid_studio_env` above.
     float3 Rview = reflect(-V, N);
-    float3 ambient = ibl_sample_prefiltered(Rview, 0.0, iblPref, iblSamp, 4);
+    float3 ambient = fluid_studio_env(Rview);
 
     // ── Layer 3: fresnel (cool white edge sheen) ───────────────────
     // `ft = N.z` per Leitl's `dot(N, normalize(vec3(0,0,1)))`.
@@ -864,9 +909,7 @@ fragment float4 raymarch_lighting_fragment(
         float3 V = normalize(scene.cameraOriginAndFov.xyz - worldPos);
         float3 color = fluid_shading(V, N,
                                      worldPos,
-                                     scene.cameraOriginAndFov.xyz,
-                                     iblPrefiltered,
-                                     iblSamp);
+                                     scene.cameraOriginAndFov.xyz);
         return float4(color, 1.0);
     }
 
