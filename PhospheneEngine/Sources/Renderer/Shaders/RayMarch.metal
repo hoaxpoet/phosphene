@@ -530,8 +530,13 @@ static inline float3 fluid_studio_env(float3 R) {
     constexpr float3 fillLightDir = float3(-0.8675, 0.4048, -0.2892);
 
     // ── Tonal anchor (vertical gradient, both very dark) ──
-    constexpr float3 floorTint = float3(0.025, 0.020, 0.015); // warm-dim below
-    constexpr float3 ceilTint  = float3(0.015, 0.018, 0.030); // cool-dim above
+    // Round 13 (2026-05-15): halved from round-7 values to darken the
+    // substrate's flat-plane reflection. References show pitch-black
+    // substrate with brightness only on spike-side catches; previous
+    // values left flat-plane reflections at ~(0.018, 0.018, 0.024)
+    // (visible silver-gray after × 0.2 ambient weight).
+    constexpr float3 floorTint = float3(0.012, 0.010, 0.008); // warm-dim below
+    constexpr float3 ceilTint  = float3(0.008, 0.009, 0.015); // cool-dim above
     float upT      = R.y * 0.5 + 0.5;
     float3 base    = mix(floorTint, ceilTint, smoothstep(0.0, 1.0, upT));
 
@@ -631,12 +636,16 @@ static float3 fluid_shading(float3 V, float3 N,
     constexpr float3 palC = float3(1.0, 1.0, 1.0);
     constexpr float3 palD = float3(0.0, 0.33, 0.67);
     float3 iridescence = fluid_palette(ft * 3.0, palA, palB, palC, palD) * (1.0 - ft);
-    // Edge mask centered on our patch (worldXZ ~ (0, 2)) at scale 0.16
-    // (10× smaller than Leitl's 1.6 to match our 10× larger geometry).
+    // Edge mask centered on our patch (worldXZ ~ (0, 2)).
+    // Round 13 (2026-05-15): scale 0.16 → 0.30 tightens iridescence to
+    // a smaller central region (was producing rainbow streaks across
+    // the whole substrate at oblique camera angles). Weight 0.05 → 0.015
+    // drops the layer's overall contribution; it should be subtle hue
+    // shift not visible banding.
     constexpr float2 patchCenter = float2(0.0, 2.0);
-    float2 center = (worldPos.xz - patchCenter) * 0.16;
+    float2 center = (worldPos.xz - patchCenter) * 0.30;
     float edgeMask = 1.0 - smoothstep(0.0, 0.8, dot(center, center));
-    constexpr float kFluidIridescenceWeight = 0.05;
+    constexpr float kFluidIridescenceWeight = 0.015;
     constexpr float kFluidZoom = 0.5;
     iridescence *= edgeMask * kFluidIridescenceWeight * (2.0 - kFluidZoom * 2.0);
 
