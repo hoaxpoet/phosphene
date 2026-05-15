@@ -41,17 +41,23 @@ extension FerrofluidParticles {
         var capacity: Int { columns * rows }
     }
 
-    /// Canonical Phase 1 grid: **80 × 75 = 6000 cells** (no trim). X spacing
-    /// `worldSpan / 80 = 0.25 world units` matches Phase A's
-    /// `voronoi_smooth(scale = 4)` cell side exactly; Z spacing
-    /// `worldSpan / 75 = 0.267 world units` adds a ~7 % anisotropy that's
-    /// not visible at the camera tilt (the eye doesn't compare X vs Z cell
-    /// spacing across a tilted ground plane). Particles overlap their tent
-    /// base at this spacing (peak base radius 0.15 → diameter 0.30 > 0.25
-    /// spacing) for wall-to-wall coverage — Matt's "peaks touch
-    /// base-to-base" spec, finally satisfied at the empirical density.
+    /// Canonical grid: **40 × 38 = 1520 cells** (Round 11, 2026-05-15).
+    /// X spacing `worldSpan / 40 = 0.500 world units`; Z spacing
+    /// `worldSpan / 38 = 0.526 world units` adds ~5 % anisotropy that's
+    /// not visible at the camera tilt. Particles at this density with
+    /// `spikeBaseRadius = 0.12` are clearly isolated (half-spacing
+    /// 0.25 > radius 0.12 → 0.13 wu of dark substrate between adjacent
+    /// peak bases). Per-spike screen coverage ~4× the prior 80×75
+    /// density so individual pyramids register as distinct objects in
+    /// the frame.
+    ///
+    /// History: 80 × 75 = 6000 cells with radius 0.15 (wall-to-wall
+    /// overlap) → 80 × 75 = 6000 cells with radius 0.06 (isolated, but
+    /// per-spike screen coverage too small — Matt's
+    /// `2026-05-15T12-36-08Z` review: "still nowhere close to actual
+    /// ferrofluid").
     static func canonicalGridLayout() -> GridLayout {
-        GridLayout(columns: 80, rows: 75)
+        GridLayout(columns: 40, rows: 38)
     }
 
     /// Populate the particle buffer with the canonical Phase 1 positions
