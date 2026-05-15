@@ -128,19 +128,29 @@ constant float kFerrofluidMeshWorldSpan = 20.0;
 // position the four waves still interfere because they hit that
 // position at different phases (depending on direction · position).
 //
-// Audio coupling (Round 22, 2026-05-15): drum coupling dropped.
-//   amplitudeMul = presenceGate × (0.7 + 0.3·arousal)
+// Audio coupling (Round 23, 2026-05-15): arousal coupling dropped.
+//   amplitudeMul = presenceGate × 0.85
 //   tempoScale   = bpm / 60 (CPU-passed; 0 at silence / pre-lock)
 //
-// Round 20-21 kept a `0.5·drums_dev` amplitude pump. Matt's
-// `2026-05-15T16-50-20Z` review: "The waves are triggered on every
-// beat, tied to the bass ... it leads to a very jerky result - not
-// smooth at all." The phase advancement was already once-per-bar, but
-// drum hits pulsed amplitudeMul from 0.7 to ~1.7 on every kick,
-// snapping the wave height per beat. With the per-beat pulse removed,
-// amplitude modulates only with arousal (5-second envelope on the
-// mood classifier) — slow, smooth, calm baseline that varies with
-// song section energy but not per-beat.
+// Round 22 kept a `0.3·arousal` amplitude term. Matt's
+// `2026-05-15T17-00-22Z` review: "When each song settles after
+// Phosphene has completed its analysis, the movement of the waves
+// feel musical and smooth. Prior to this 'settling,' the motion is
+// a little jerky (start and stop)." Session-analysis of features.csv
+// pinned the cause: the mood classifier's per-track warmup produces
+// a +0.835 initial spike that decays to the song's true value
+// (e.g. -0.832 in Love Rehab's intro) over ~0.5 s — amplitudeMul
+// drops 0.95 → 0.70 in 30 frames, snapping the wave amplitude
+// visibly at every song start.
+//
+// Round 23 drops arousal entirely. Constant 0.85 sits inside the
+// range Matt approved post-settle (Love Rehab body: amplitudeMul
+// 0.70 → 0.84 across sections at the round-22 coupling). Loses
+// song-section variation in wave amplitude, but the variation was
+// small (~20% range) compared to the start-of-song transient (26%
+// drop in 0.5 s) it caused. Song-section music response moves to
+// the aurora layer (Matt's earlier suggestion) which doesn't share
+// the classifier-warmup artifact.
 //
 // At silence: tempoScale = 0 → musicBars = 0 → wave phase frozen;
 // presenceGate also = 0 → amplitudeMul = 0 → substrate flat.
@@ -227,14 +237,13 @@ vertex FerrofluidMeshVaryings ferrofluid_mesh_vertex(
     // entirely in the Gerstner wave amplitude + tempo-driven motion.
     float spikeStr = kFerrofluidSpikeStrength;
 
-    // ── Gerstner audio modulation (Phase 1 round 22) ───────────────
-    // Drum coupling retired this round — see comment above the
+    // ── Gerstner audio modulation (Phase 1 round 23) ───────────────
+    // Arousal coupling retired this round — see comment above the
     // Gerstner block for the rationale.
-    float arousalClamped = clamp(features.arousal, 0.0, 1.0);
     float totalStemEnergy = stems.vocals_energy + stems.drums_energy
                           + stems.bass_energy + stems.other_energy;
     float presenceGate = smoothstep(0.02, 0.10, totalStemEnergy);
-    float amplitudeMul = presenceGate * (0.7 + 0.3 * arousalClamped);
+    float amplitudeMul = presenceGate * 0.85;
 
     // Music time in bars: 0 when paused or pre-grid-lock (tempoScale=0
     // or accumulated_audio_time=0). When music plays, this increments
