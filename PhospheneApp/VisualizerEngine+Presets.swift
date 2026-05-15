@@ -238,15 +238,10 @@ extension VisualizerEngine {
                                 colorAttachmentFormats: gbufferFormats,
                                 depthAttachmentFormat: RayMarchPipeline.gbufferDepthPixelFormat) {
                                 ferrofluidMesh = mesh
-                                pipeline.setMeshGBufferEncoder { [weak mesh] encoder, features, stems, sceneUniforms, heightTex in
-                                    guard let mesh = mesh else { return }
-                                    mesh.encodeGBufferPass(into: encoder,
-                                                           features: &features,
-                                                           stems: &stems,
-                                                           sceneUniforms: &sceneUniforms,
-                                                           heightTexture: heightTex)
-                                }
+                                pipeline.setMeshGBufferEncoder(
+                                    makeFerrofluidMeshEncoder(mesh: mesh))
                             } else {
+                                // swiftlint:disable:next line_length
                                 logger.error("FerrofluidMesh: failed to allocate mesh — falling back to SDF path for '\(desc.name)'")
                             }
 
@@ -477,6 +472,29 @@ extension VisualizerEngine {
     /// became unconditional once the conformance landed.
     private func activePresetSignaling() -> (any PresetSignaling)? {
         return arachneState
+    }
+
+    /// Build the per-frame G-buffer encode closure for Ferrofluid Ocean
+    /// (Phase 1 round 20). Reads the live BPM from
+    /// `mirPipeline.liveDriftTracker.currentBPM` each frame and converts
+    /// to `tempoScale = bpm / 60` for the Gerstner phase advancement.
+    /// At silence / pre-grid-lock state `currentBPM = 0` → tempoScale = 0
+    /// → waves freeze (also gated by amplitude `presenceGate`).
+    private func makeFerrofluidMeshEncoder(
+        mesh: FerrofluidMesh
+    ) -> RayMarchPipeline.MeshGBufferEncode {
+        return { [weak mesh, weak self] encoder, features, stems, sceneUniforms, heightTex in
+            guard let mesh = mesh else { return }
+            let bpm = self?.mirPipeline.liveDriftTracker.currentBPM ?? 0
+            let tempoScale = Float(bpm) / 60.0
+            var meshUniforms = FerrofluidMesh.MeshUniforms(tempoScale: tempoScale)
+            mesh.encodeGBufferPass(into: encoder,
+                                    features: &features,
+                                    stems: &stems,
+                                    sceneUniforms: &sceneUniforms,
+                                    meshUniforms: &meshUniforms,
+                                    heightTexture: heightTex)
+        }
     }
 
     /// Handle a `PresetSignaling.presetCompletionEvent` firing.
