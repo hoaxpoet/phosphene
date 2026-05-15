@@ -70,15 +70,22 @@ static inline float fmesh_spike_strength(constant FeatureVector& f,
     // an always-visible spike baseline driven by bass amplitude, not
     // just transient deviations. Mesh path consumes these in the
     // vertex stage; SDF path consumed them in the fragment.
-    // Round 15 (2026-05-15) — must stay in sync with `fo_spike_strength`.
-    // See FerrofluidOcean.metal for the constant-drop rationale.
-    constexpr float kSpikeStemBaseCoef   = 1.5;
+    // Round 16 (2026-05-15) — must stay in sync with `fo_spike_strength`.
+    // Round 15 dropped peaks to 8:1 but the baseline collapsed: p50
+    // bass_energy ≈ 0.28 produced ~0.5:1 aspect (almost flat), only
+    // Money's p99+ kicks read as spikes. Switch the base term to
+    // sqrt-scale + bump 1.5 → 2.5: p50 ≈ 1.7:1 (visibly spike), peak
+    // unchanged at 7.7:1. Dev term stays linear so transients keep
+    // their dynamic character. See FerrofluidOcean.metal for the
+    // distribution analysis backing the constants.
+    constexpr float kSpikeStemBaseCoef   = 2.5;
     constexpr float kSpikeStemModulation = 0.5;
     constexpr float kSpikeProxyGain      = 5.0;
     float proxyDev  = max(0.0, f.bass_dev);
     float stemDev   = max(0.0, stems.bass_energy_dev);
     float warmupStr = proxyDev * kSpikeProxyGain;
-    float steadyStr = stems.bass_energy * kSpikeStemBaseCoef
+    float bassBase  = sqrt(max(0.0, stems.bass_energy));
+    float steadyStr = bassBase * kSpikeStemBaseCoef
                     + stemDev * kSpikeStemModulation;
     return mix(warmupStr, steadyStr, liveGate);
 }

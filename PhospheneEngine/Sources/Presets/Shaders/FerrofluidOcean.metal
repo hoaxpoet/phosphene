@@ -118,17 +118,39 @@ static inline float fo_spike_strength(constant FeatureVector& f,
     // `stems.bass_energy_dev` at 4.860 — much wider than the ~0.5-1.0 /
     // 0-3.3 range round 14 was tuned against. Round-14 constants
     // (4.0 / 1.5) produced peak spike heights of 2.64 wu (aspect 22:1 —
-    // wire-thin wires, not pyramids). Drop to 1.5 / 0.5: peak ≈ 0.95 wu
-    // (aspect ~8:1, proper needle). Mean drops to ~0.08 wu at calm music
-    // — small but visible; if too quiet at silence-adjacent passages,
-    // the next round bumps BaseCoef back up (or shifts to sqrt-scaling).
-    constexpr float kSpikeStemBaseCoef   = 1.5;
+    // wire-thin wires, not pyramids). Round 15 dropped to 1.5 / 0.5:
+    // peak ≈ 0.95 wu (aspect ~8:1, proper needle).
+    //
+    // Round 16 (2026-05-15) — re-tune again. The `2026-05-15T14-22-14Z`
+    // capture (Love Rehab + So What + There There + Pyramid Song +
+    // Money) showed bass_energy distribution p10=0.13 / p50=0.28 /
+    // p75=0.32 / p90=0.43 / p99=0.78 / max=2.42. At round-15's linear
+    // 1.5x baseline, the p50 spike height was 0.064 wu (aspect 0.5:1 —
+    // almost flat), only Money's p99+ kicks cleared the spike radius.
+    // Matt's read: "blunted the spikes a bit too much. Not really
+    // spiking most of the time, but they still spike for certain beats
+    // of Money." The peaks (~7:1 aspect) are good; the baseline is the
+    // problem.
+    //
+    // Switch the base term to sqrt-scale (compresses dynamic range,
+    // brings the typical-music baseline up toward visibly-spiky
+    // territory) and bump the coefficient 1.5 → 2.5:
+    //   p10  → sqrt(0.13) × 2.5 = 0.90 → 0.135 wu = aspect 1.1:1
+    //   p50  → sqrt(0.28) × 2.5 = 1.32 → 0.198 wu = aspect 1.7:1
+    //   p90  → sqrt(0.43) × 2.5 = 1.64 → 0.246 wu = aspect 2.1:1
+    //   max  → sqrt(2.42) × 2.5 = 3.89 → 0.583 wu + dev 0.341 wu
+    //          = 0.924 wu = aspect 7.7:1 (same as round-15 peak).
+    // Dev term stays linear at 0.5 so peak transient response is
+    // unchanged. Round-15's commit message anticipated this exact move
+    // ("or shifts to sqrt-scaling").
+    constexpr float kSpikeStemBaseCoef   = 2.5;
     constexpr float kSpikeStemModulation = 0.5;
     constexpr float kSpikeProxyGain      = 5.0;
     float proxyDev   = max(0.0, f.bass_dev);
     float stemDev    = max(0.0, stems.bass_energy_dev);
     float warmupStr  = proxyDev * kSpikeProxyGain;
-    float steadyStr  = stems.bass_energy * kSpikeStemBaseCoef
+    float bassBase   = sqrt(max(0.0, stems.bass_energy));
+    float steadyStr  = bassBase * kSpikeStemBaseCoef
                      + stemDev * kSpikeStemModulation;
     return mix(warmupStr, steadyStr, liveGate);
 }
