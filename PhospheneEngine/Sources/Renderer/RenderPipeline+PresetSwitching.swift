@@ -165,6 +165,18 @@ extension RenderPipeline {
         rayMarchPresetComputeDispatchLock.withLock { rayMarchPresetComputeDispatch = closure }
     }
 
+    /// Attach the mesh G-buffer encode closure (V.9 Session 4.5c Phase 1
+    /// Step B). When set, the ray-march pipeline dispatches via
+    /// `runMeshGBufferPass` instead of the SDF `runGBufferPass` —
+    /// replacing the SDF geometry path entirely for the active preset.
+    /// First consumer: Ferrofluid Ocean's `FerrofluidMesh`. Pass nil to
+    /// return to SDF. Thread-safe.
+    public func setMeshGBufferEncoder(_ encoder: RayMarchPipeline.MeshGBufferEncode?) {
+        rayMarchLock.withLock {
+            rayMarchPipeline?.setMeshGBufferEncoder(encoder)
+        }
+    }
+
     /// Attach a dynamic text overlay for presets that declare `text_overlay: true`.
     /// The overlay texture is bound at fragment texture(12) during direct-pass draws.
     /// Pass `nil` to detach (e.g. on preset switch away from a text-overlay preset).

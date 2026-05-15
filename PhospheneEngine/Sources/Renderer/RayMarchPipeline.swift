@@ -58,6 +58,17 @@ public final class RayMarchPipeline: @unchecked Sendable {
     /// Nil until `allocateTextures` is called.
     public private(set) var ssgiTexture: MTLTexture?
 
+    /// Depth buffer for mesh-rendered G-buffer paths (Ferrofluid Ocean's
+    /// `FerrofluidMesh` path — V.9 Session 4.5c Phase 1 Step B). `.depth32Float`.
+    /// SDF presets bypass it (their pipeline has no depth attachment); only
+    /// mesh-pipeline state objects reference its pixel format. Allocated alongside
+    /// the colour G-buffers when the mesh path is in use.
+    public private(set) var gbufferDepth: MTLTexture?
+
+    /// Pixel format of `gbufferDepth`. Used at FerrofluidMesh pipeline-state creation
+    /// time so the pipeline's depth-attachment format matches the texture's format.
+    public static let gbufferDepthPixelFormat: MTLPixelFormat = .depth32Float
+
     // MARK: - Pipeline States
 
     /// Lighting pass: reads 3 G-buffer targets, evaluates PBR, writes to `.rgba16Float`.
@@ -173,6 +184,35 @@ public final class RayMarchPipeline: @unchecked Sendable {
     /// trailing `lumen` parameter and silences it via `(void)lumen;` — the
     /// zero-filled state is never read.
     let lumenPlaceholderBuffer: MTLBuffer
+
+    // MARK: - Mesh G-buffer dispatch (V.9 Session 4.5c Phase 1 Step B)
+
+    /// Encode-closure type for the mesh G-buffer path. When set, replaces
+    /// the SDF ray-march G-buffer pass with a mesh-rendered alternative —
+    /// closure receives the encoder for a render pass that already has the
+    /// 3 colour G-buffer attachments + depth attachment configured, plus
+    /// the per-frame audio uniforms and the baked height texture.
+    /// First consumer: Ferrofluid Ocean's `FerrofluidMesh`. Set to nil
+    /// for SDF-rendered presets.
+    public typealias MeshGBufferEncode = (
+        _ encoder: MTLRenderCommandEncoder,
+        _ features: inout FeatureVector,
+        _ stems: inout StemFeatures,
+        _ sceneUniforms: inout SceneUniforms,
+        _ heightTexture: MTLTexture
+    ) -> Void
+
+    /// When non-nil, ray-march presets dispatch through `runMeshGBufferPass`
+    /// instead of `runGBufferPass`. SDF presets keep this nil. Thread-safe
+    /// via `meshGBufferLock`.
+    public var meshGBufferEncoder: MeshGBufferEncode?
+    let meshGBufferLock = NSLock()
+
+    /// Set the mesh G-buffer encode closure. Pass nil to detach (returns to
+    /// the SDF ray-march path). Thread-safe.
+    public func setMeshGBufferEncoder(_ encode: MeshGBufferEncode?) {
+        meshGBufferLock.withLock { meshGBufferEncoder = encode }
+    }
 
     // MARK: - Slot 10 Placeholder Texture (V.9 Session 4.5b)
 
@@ -327,6 +367,20 @@ public final class RayMarchPipeline: @unchecked Sendable {
         litTexture  = context.makeSharedTexture(width: texWidth, height: texHeight, pixelFormat: .rgba16Float)
         ssgiTexture = context.makeSharedTexture(width: ssgiW, height: ssgiH, pixelFormat: .rgba16Float)
 
+        // Depth texture for mesh-rendered G-buffer paths (FerrofluidMesh).
+        // Allocated unconditionally so the size stays in lockstep with the
+        // colour G-buffers; the SDF path simply doesn't attach it.
+        // `.depth32Float` is unfilterable + private; storageMode defaults to
+        // .private on macOS for depth textures.
+        let depthDesc = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: Self.gbufferDepthPixelFormat,
+            width: texWidth,
+            height: texHeight,
+            mipmapped: false)
+        depthDesc.storageMode = .private
+        depthDesc.usage = [.renderTarget]
+        gbufferDepth = context.device.makeTexture(descriptor: depthDesc)
+
         logger.info("RayMarchPipeline textures allocated: \(texWidth)×\(texHeight), SSGI: \(ssgiW)×\(ssgiH)")
     }
 
@@ -389,17 +443,33 @@ public final class RayMarchPipeline: @unchecked Sendable {
             return
         }
 
-        runGBufferPass(
-            commandBuffer: commandBuffer,
-            gbufferPipelineState: gbufferPipelineState,
-            features: &features,
-            fftBuffer: fftBuffer,
-            waveformBuffer: waveformBuffer,
-            stemFeatures: stemFeatures,
-            noiseTextures: noiseTextures,
-            presetFragmentBuffer3: presetFragmentBuffer3,
-            presetHeightTexture: presetHeightTexture
-        )
+        // V.9 Session 4.5c Phase 1 Step B: mesh G-buffer dispatch.
+        // When a per-preset mesh encoder is attached (Ferrofluid Ocean's
+        // `FerrofluidMesh`), render via vertex-displaced mesh instead of
+        // SDF ray march. The mesh path requires the baked height texture
+        // to be ready — caller passes it via `presetHeightTexture`.
+        let meshEncoder = meshGBufferLock.withLock { meshGBufferEncoder }
+        if let meshEncoder = meshEncoder, let heightTex = presetHeightTexture {
+            runMeshGBufferPass(
+                commandBuffer: commandBuffer,
+                encode: meshEncoder,
+                features: &features,
+                stemFeatures: stemFeatures,
+                heightTexture: heightTex
+            )
+        } else {
+            runGBufferPass(
+                commandBuffer: commandBuffer,
+                gbufferPipelineState: gbufferPipelineState,
+                features: &features,
+                fftBuffer: fftBuffer,
+                waveformBuffer: waveformBuffer,
+                stemFeatures: stemFeatures,
+                noiseTextures: noiseTextures,
+                presetFragmentBuffer3: presetFragmentBuffer3,
+                presetHeightTexture: presetHeightTexture
+            )
+        }
 
         // G-buffer debug bypass: skip lighting/SSGI/ACES entirely.
         // gbuf2 is written directly to the drawable so the 4-quadrant

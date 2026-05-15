@@ -143,6 +143,14 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// add per-frame SPH-lite motion + audio forces.
     var ferrofluidParticles: FerrofluidParticles?
 
+    /// Tessellated quad mesh + G-buffer pipeline for the V.9 Session 4.5c
+    /// Phase 1 Step B mesh-displacement path. Allocated alongside
+    /// `ferrofluidParticles` when Ferrofluid Ocean is the active preset;
+    /// owns the 256² vertex buffer, index buffer, mesh G-buffer pipeline
+    /// state, and depth-stencil state. The encode closure registered via
+    /// `setMeshGBufferEncoder` captures a weak reference to this instance.
+    var ferrofluidMesh: FerrofluidMesh?
+
     /// Dynamic text overlay for SpectralCartograph — allocated when that preset is
     /// active, nil otherwise. Freed and detached on every `applyPreset` call.
     var spectralCartographOverlay: DynamicTextOverlay?
