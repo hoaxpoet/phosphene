@@ -64,7 +64,18 @@ public final class FerrofluidParticles: @unchecked Sendable {
     /// that's invisible at the camera tilt). Phase 2 per-frame bake cost
     /// scales linearly: ~0.6 ms per bake on Apple Silicon at 6000 particles
     /// × 1024² texels, well within the 60 fps frame budget.
-    public static let particleCount: Int = 1520
+    ///
+    /// **Density pass 2026-05-15 (V.9 Session 4.5c Phase 1 round 17)**:
+    /// `1520 → 3025` (55 × 55 grid). Matt's review of the
+    /// `2026-05-15T14-31-24Z` capture flagged "too few spikes, lots of
+    /// empty space between spikes" vs the reference set's dense lattice
+    /// (`01_macro_*` shows ~35-40 spike-rows visible across the patch;
+    /// the 1520-particle render showed ~20). Coordinated with
+    /// `spikeBaseRadius` 0.12 → 0.17 (round 17 same commit) — new
+    /// X/Z spacing 20/55 ≈ 0.364 wu, half-spacing 0.182 wu just slightly
+    /// over radius 0.17 → bases nearly touch with a thin substrate
+    /// channel between, matching the reference packing density.
+    public static let particleCount: Int = 3025
 
     /// Height texture: original spec 512² → 1024² (Matt 2026-05-14
     /// fullscreen/4K product addendum) → 2048² (smoothness pass
@@ -140,7 +151,18 @@ public final class FerrofluidParticles: @unchecked Sendable {
     /// drops 5:1 → 2.5:1 (height 0.30 wu / radius 0.12 wu) — stockier
     /// pyramids. Acceptable to start; if too short, follow up with a
     /// height_multiplier increase rather than narrowing radius back down.
-    public static let spikeBaseRadius: Float = 0.12
+    ///
+    /// **Round 17 (2026-05-15)**: 0.12 → 0.17 wu, coordinated with
+    /// `particleCount` 1520 → 3025 (55 × 55 grid). New X/Z spacing
+    /// 0.364 wu, half-spacing 0.182 wu → radius 0.17 is just under
+    /// half-spacing → bases nearly touch with ~0.012 wu substrate
+    /// channel between adjacent peaks. Area coverage rises from ~17 %
+    /// (round 11) to ~75 %, closing the "too much empty substrate"
+    /// gap Matt flagged on `2026-05-15T14-31-24Z` against the
+    /// reference set's dense lattice. Aspect at peak height drops
+    /// from ~7.8 : 1 (round 16) to ~5.5 : 1 — within the reference
+    /// range of 3-5 : 1 for stocky-pyramid ferrofluid character.
+    public static let spikeBaseRadius: Float = 0.17
 
     /// Apex-rounding parameter for `almostIdentity` smoothing on the
     /// soft-min output. **Tuning pass 2026-05-14 dropped from 0.1 → 0.03**
