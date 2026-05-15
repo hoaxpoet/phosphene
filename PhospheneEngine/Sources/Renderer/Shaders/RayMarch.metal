@@ -420,16 +420,27 @@ static float3 rm_ferrofluidSky(float3 R,
     // liveGate so silence collapses to base sky.
     //
     // Phase 1 tuning pass (2026-05-14 post-Billie-Jean capture): dropped from
-    // baseline 0.30 + modulation 0.50 → 0.13 + 0.22. Initial coefficients
-    // saturated the substrate's mirror reflection to a uniform purple haze at
-    // the curtain elevation and washed out the spike-ridge specular catches
-    // that are the only way ferrofluid texture can read on a near-mirror
-    // material. Empirically: peak curtain channel was ~0.80 pre-thin-film
-    // (× F0 ~0.5 = 0.40 final), enough to dominate the spikes; cut by ~2.3×
-    // it drops to ~0.35 (× F0 = 0.17) so spike ridges still catch the curtain
-    // colour but substrate troughs stay pitch-black per `04_*`.
-    constexpr float kCurtainBaselineIntensity  = 0.13;
-    constexpr float kCurtainModulationIntensity = 0.22;
+    // baseline 0.30 + modulation 0.50 → 0.13 + 0.22 to prevent uniform purple
+    // haze when wired through the thin-film path.
+    //
+    // Round 28 (2026-05-15) — Matt's `2026-05-15T18-12-04Z` review:
+    // "very subtle purples and greens, maybe a little magenta, but they are
+    // muted ... I'd like the aurora to be highly intense, emitting almost
+    // neon light so that it produces something closer to the reference
+    // images." With the round-27 wiring through Layer 2 ambient (× 0.2
+    // weight), peak aurora was only 0.092 RGB — overwhelmed by Leitl's
+    // specular layer (× 1.2). Bumped coefficients to:
+    //
+    //   baseline 0.13 → 0.40  (3×) — vivid hue even at silence-adjacent
+    //   modulation 0.22 → 0.50 (2.3×) — drum hits visibly pulse intensity
+    //
+    // Combined with the round-28 ambient weight bump (0.2 → 0.7 in the
+    // composition block below), peak aurora pixel = 1.15 × 0.7 = 0.80 RGB.
+    // Bright saturated color, no white-clip — preserves the chromatic
+    // content of the hue palette per the `04_*` (saturated purple) and
+    // `08_*` (saturated green) references rather than washing to white.
+    constexpr float kCurtainBaselineIntensity  = 0.40;
+    constexpr float kCurtainModulationIntensity = 0.50;
     float drumsSmoothed = clamp(stems.drums_energy_dev_smoothed, 0.0, 1.5);
     float curtainIntensity = kCurtainBaselineIntensity
                            + kCurtainModulationIntensity * drumsSmoothed;
@@ -665,8 +676,23 @@ static float3 fluid_shading(float3 V, float3 N,
     constexpr float kFluidZoom = 0.5;
     iridescence *= edgeMask * tiltGate * kFluidIridescenceWeight * (2.0 - kFluidZoom * 2.0);
 
-    // ── Composition (Leitl verbatim weights) ───────────────────────
-    constexpr float kFluidAmbientWeight   = 0.2;
+    // ── Composition ────────────────────────────────────────────────
+    // Round 28 (2026-05-15) — ambient weight 0.2 → 0.7. Per Matt's
+    // `2026-05-15T18-12-04Z` review the aurora content needed to be
+    // dominant on the near-mirror substrate ("neon ... closer to the
+    // reference images"), not subordinate to the specular term. Leitl's
+    // 0.2 weight matched HIS dish-scale scene where the env had less
+    // saturated content; at Phosphene's substrate framing with the
+    // saturated aurora in the env, 0.7 weighting puts the env reflection
+    // as the dominant chromatic source — appropriate for metallic=1,
+    // roughness=0.08 material.
+    //
+    // Fresnel + specular kept at Leitl's values: the razor-edge highlights
+    // on spike ridges (specular) and rim sheen at grazing angles (fresnel)
+    // are the load-bearing markers of the ferrofluid material identity,
+    // and they sit ON TOP of the aurora content rather than competing
+    // with it.
+    constexpr float kFluidAmbientWeight   = 0.7;
     constexpr float kFluidFresnelWeight   = 0.3;
     constexpr float kFluidSpecularWeight  = 1.2;
     return ambient * kFluidAmbientWeight
