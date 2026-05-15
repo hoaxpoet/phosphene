@@ -104,44 +104,36 @@ constant float kFerrofluidMeshNormalEps = 0.00390625;
 /// derivatives to world-space tangent lengths.
 constant float kFerrofluidMeshWorldSpan = 20.0;
 
-// MARK: - Gerstner ocean displacement (Phase 1 round 20, 2026-05-15)
+// MARK: - Gerstner ocean displacement (Phase 1 round 21, 2026-05-15)
 //
-// Tempo-coupled Gerstner waves. Round 19 advanced wave phase via
-// wall-clock `accumulated_audio_time × omega`, untethered from musical
-// tempo — Matt's `2026-05-15T16-02-12Z` review: waves "are not rolling
-// or propagating from far toward camera" and "doesn't feel like it is
-// moving in time with the music."
+// Bar-locked Gerstner waves. Round 20 tied wave phase to individual
+// beats (per-wave beatsPerCycle 2/3/2/4) — Matt's `2026-05-15T16-35-17Z`
+// review: "too active for Love Rehab and chaotic for the 7/4 rhythm
+// of Money. ... The waves fire on the first beat of a new bar, so
+// once per bar." Per-beat coupling produced restless motion that
+// competed with the music's bar-level structure on calm tracks and
+// clashed with odd time signatures.
 //
-// Round 20 replaces wall-clock with tempo-scaled music time. CPU
-// passes `tempoScale = bpm / 60` (beats per second) each frame via
-// `FerrofluidMeshUniforms`. Music-time-in-beats = `accumulated_audio_time
-// × tempoScale`. Each wave advances `1 / beatsPerCycle` cycles per
-// beat: at BPM=120 with beatsPerCycle=2 (half-time), the wave completes
-// one full cycle every 2 beats = 1 s, propagating `wavelength / 1 s` =
-// 12 wu/s on the primary wave. Speed scales naturally with BPM.
+// Round 21 locks all four waves to one cycle per bar. CPU passes
+// `tempoScale = bpm / 60` via FerrofluidMeshUniforms; the vertex
+// shader reads `features.beatsPerBar` directly (defaults to 4 in the
+// MIRPipeline; updates to the track's time signature when a BeatGrid
+// is installed — Money's 7/4 → beatsPerBar=7, bar duration
+// 7×60/123 = 3.41 s; Love Rehab's 4/4 → beatsPerBar=4, bar duration
+// 4×60/118 = 2.03 s).
 //
-// Per-wave `beatsPerCycle` (2 / 3 / 2 / 4) creates polyrhythmic surface
-// motion without the regularity of all-same-rate. The primary and
-// third waves share half-time (clearest "rolling" signal); the
-// secondary uses 3-per-cycle; the chop uses 4-per-cycle (slower
-// undertow). Different rates mean the wave pattern never fully repeats.
+// All four waves share the same bar-locked rate. Visual variation
+// comes from spatial axes — different directions, wavelengths, and
+// amplitudes — not from temporal rate offsets. At any given world
+// position the four waves still interfere because they hit that
+// position at different phases (depending on direction · position).
 //
-// Audio coupling (round 20):
+// Audio coupling (unchanged from round 20):
 //   amplitudeMul = presenceGate × (0.7 + 0.3·arousal + 0.5·drums_dev)
+//   tempoScale   = bpm / 60 (CPU-passed; 0 at silence / pre-lock)
 //
-// Speed is NOT audio-modulated — it's tempo-driven. Drum-pump stays on
-// amplitude only (waves SWELL on drums, don't ACCELERATE off-tempo).
-// Drum-pump factor strengthened 0.2 → 0.5 so drum hits produce visible
-// amplitude swells alongside the tempo-locked propagation.
-//
-// Base amplitudes doubled vs round 19 (sum 0.30 wu → 0.60 wu) so waves
-// are the dominant motion, not subtle background ambience. Spike
-// audio coupling deprecated this round so the wave amplification
-// doesn't fight the spike-on-beat pulse anymore.
-//
-// presenceGate = `smoothstep(0.02, 0.10, totalStemEnergy)` — at silence
-// the gate is 0, amplitudeMul is 0, substrate flat. (Same pattern as
-// round 19; regression-test compatibility preserved.)
+// At silence: tempoScale = 0 → musicBars = 0 → wave phase frozen;
+// presenceGate also = 0 → amplitudeMul = 0 → substrate flat.
 
 constant int kGerstnerNumWaves = 4;
 
@@ -149,22 +141,17 @@ struct GerstnerWaveParams {
     float2 direction;       // unit vector in XZ
     float wavelength;       // world units
     float baseAmplitude;    // world units (before audio modulation)
-    float beatsPerCycle;    // beats per full wave cycle (round 20)
 };
 
 constant GerstnerWaveParams kGerstnerWaves[kGerstnerNumWaves] = {
     // Primary: toward camera (+Z), longest wavelength, dominant amplitude.
-    // beatsPerCycle=2 (half-time) — one wave cycle every 2 beats.
-    { float2(0.0, 1.0),        12.0, 0.20, 2.0 },
+    { float2(0.0, 1.0),        12.0, 0.20 },
     // Slight right-toward-camera offset (~17° from primary).
-    // beatsPerCycle=3 — slower than primary, polyrhythmic.
-    { float2(0.2873, 0.9579),   8.0, 0.16, 3.0 },
+    { float2(0.2873, 0.9579),   8.0, 0.16 },
     // Slight left-toward-camera offset (~22° from primary).
-    // beatsPerCycle=2 — matches primary cadence.
-    { float2(-0.3939, 0.9191), 10.0, 0.14, 2.0 },
+    { float2(-0.3939, 0.9191), 10.0, 0.14 },
     // More perpendicular, shorter wavelength — surface chop.
-    // beatsPerCycle=4 — longest period; slow undertow.
-    { float2(0.8321, 0.5547),   6.0, 0.10, 4.0 }
+    { float2(0.8321, 0.5547),   6.0, 0.10 }
 };
 
 /// Gerstner horizontal-sway factor (Q in Tessendorf's notation). 0 =
@@ -175,20 +162,20 @@ constant GerstnerWaveParams kGerstnerWaves[kGerstnerNumWaves] = {
 constant float kGerstnerSteepness = 0.3;
 
 /// Compute Gerstner displacement at world-XZ position `p` at
-/// `musicBeats` of music time (= `accumulated_audio_time × tempoScale`).
+/// `musicBars` of music time (= `accumulated_audio_time × tempoScale
+/// / beatsPerBar`). Each wave advances one full cycle per bar.
 /// Returns float3 (dx, dy, dz) to add to the un-displaced vertex
 /// position. `amplitudeMul` scales all wave amplitudes uniformly.
 static float3 gerstner_displacement(float2 p,
-                                     float musicBeats,
+                                     float musicBars,
                                      float amplitudeMul) {
     float3 disp = float3(0.0);
     for (int i = 0; i < kGerstnerNumWaves; i++) {
         float2 D = kGerstnerWaves[i].direction;
         float k = 2.0 * M_PI_F / kGerstnerWaves[i].wavelength;
         float A = kGerstnerWaves[i].baseAmplitude * amplitudeMul;
-        // Phase advance from start: 2π × musicBeats / beatsPerCycle.
-        float phaseAdvance = 2.0 * M_PI_F * musicBeats
-                           / kGerstnerWaves[i].beatsPerCycle;
+        // Phase advance: 2π per bar (one wave cycle per bar).
+        float phaseAdvance = 2.0 * M_PI_F * musicBars;
         float phase = k * dot(D, p) - phaseAdvance;
         float cosP = cos(phase);
         float sinP = sin(phase);
@@ -239,10 +226,19 @@ vertex FerrofluidMeshVaryings ferrofluid_mesh_vertex(
     float amplitudeMul = presenceGate
                        * (0.7 + 0.3 * arousalClamped + 0.5 * drumsClamped);
 
-    // Music time in beats: 0 when paused or pre-grid-lock (tempoScale=0
-    // or accumulated_audio_time=0). When music plays with a stable
-    // tempo, this increments at tempoScale beats per second.
+    // Music time in bars: 0 when paused or pre-grid-lock (tempoScale=0
+    // or accumulated_audio_time=0). When music plays, this increments
+    // at one unit per bar — `(tempoScale / beatsPerBar)` bars per
+    // second. Each wave advances one full cycle per bar.
+    //
+    // `features.beats_per_bar` defaults to 4 (MIRPipeline) and updates
+    // to the track's time signature when a BeatGrid is installed
+    // (Money's 7/4 → 7; Love Rehab's 4/4 → 4). Clamped with
+    // `max(1, …)` defensively in case a malformed value reaches the
+    // shader.
     float musicBeats = features.accumulated_audio_time * meshUniforms.tempoScale;
+    float beatsPerBar = max(1.0, features.beats_per_bar);
+    float musicBars = musicBeats / beatsPerBar;
 
     // World-space epsilon for neighbour sampling (single mesh segment).
     float worldEps = kFerrofluidMeshNormalEps * kFerrofluidMeshWorldSpan;
@@ -271,16 +267,16 @@ vertex FerrofluidMeshVaryings ferrofluid_mesh_vertex(
     // horizontal Gerstner displacement of neighbours is small relative
     // to wavelength so the slope contribution is negligible).
     float3 gerstnerCentre = gerstner_displacement(in.position.xz,
-                                                   musicBeats,
+                                                   musicBars,
                                                    amplitudeMul);
     float yRight_g = gerstner_displacement(in.position.xz + float2(worldEps, 0.0),
-                                            musicBeats, amplitudeMul).y;
+                                            musicBars, amplitudeMul).y;
     float yLeft_g  = gerstner_displacement(in.position.xz + float2(-worldEps, 0.0),
-                                            musicBeats, amplitudeMul).y;
+                                            musicBars, amplitudeMul).y;
     float yFwd_g   = gerstner_displacement(in.position.xz + float2(0.0, worldEps),
-                                            musicBeats, amplitudeMul).y;
+                                            musicBars, amplitudeMul).y;
     float yBack_g  = gerstner_displacement(in.position.xz + float2(0.0, -worldEps),
-                                            musicBeats, amplitudeMul).y;
+                                            musicBars, amplitudeMul).y;
 
     // Combined Y at each sample point — spike lattice rides on top of the
     // Gerstner swell, both contributing to the surface height.
