@@ -89,9 +89,19 @@ static inline float fo_stem_warmup_blend(constant StemFeatures& stems) {
 static inline float fo_spike_strength(constant FeatureVector& f,
                                       constant StemFeatures& stems) {
     float liveGate = fo_stem_warmup_blend(stems);
+    // Round 13 (2026-05-15) — modulation 0.7 → 1.5 + proxy gain 1.5 → 2.5.
+    // Audio coupling was too subtle in the mesh-path render (Matt:
+    // "amplify audio coupling"). At BJ steady mean bass_dev 0.25 the
+    // height goes from `(2.0+0.7×0.25)×0.15 = 0.32 wu` →
+    // `(2.0+1.5×0.25)×0.15 = 0.36 wu` (modest); at SNA peak bass_dev 3.29
+    // it goes from `(2.0+0.7×3.29)×0.15 = 0.65 wu` →
+    // `(2.0+1.5×3.29)×0.15 = 1.04 wu` (peaks now ~3× taller than baseline
+    // vs ~2× before). Proxy gain bump makes the warmup window's response
+    // also more dramatic — `f.bass_dev × 2.5` peaks ~3.7 → 0.55 wu at
+    // peaks before stems are ready.
     constexpr float kSpikeStemBaseline   = 2.0;
-    constexpr float kSpikeStemModulation = 0.7;
-    constexpr float kSpikeProxyGain      = 1.5;
+    constexpr float kSpikeStemModulation = 1.5;
+    constexpr float kSpikeProxyGain      = 2.5;
     float proxyDev   = max(0.0, f.bass_dev);
     float stemDev    = max(0.0, stems.bass_energy_dev);
     float warmupStr  = proxyDev * kSpikeProxyGain;
