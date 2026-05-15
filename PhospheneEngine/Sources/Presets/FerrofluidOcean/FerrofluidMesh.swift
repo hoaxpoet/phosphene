@@ -26,22 +26,36 @@ public final class FerrofluidMesh: @unchecked Sendable {
 
     // MARK: - Configuration
 
-    /// Mesh resolution — vertices per side. 256 → 65 536 vertices,
-    /// 255² × 2 = 130 050 triangles. World patch is 20 × 20 wu (see
-    /// `FerrofluidParticles.worldSpan`), so vertex density is
-    /// `256 / 20 = 12.8` verts/wu. At `spikeBaseRadius = 0.12`, that's
-    /// ~1.5 verts per spike radius — marginal. Bump to 384 / 512 if
-    /// individual spike silhouettes read as polygonal.
-    public static let segmentsPerSide: Int = 256
+    /// Mesh resolution — vertices per side. World patch is 20 × 20 wu
+    /// (see `FerrofluidParticles.worldSpan`).
+    ///
+    /// **Round 35 (V.9 Session 4.5c Phase 1, 2026-05-15): 256 → 512.**
+    /// At 256² verts the density was 12.8 verts/wu → ~2.2 verts per
+    /// spike radius at `spikeBaseRadius = 0.17` — too coarse to resolve
+    /// the 5:1 cone tip; rasterizer linear-interpolation across triangle
+    /// faces smeared peak silhouettes into rounded blobs and caused
+    /// adjacent peaks to read as parallel ridges (Matt
+    /// `2026-05-15T19-16-34Z` capture review). The height texture is
+    /// already 4096² and carries crystal-clear cones; the mesh was the
+    /// bottleneck on tip sharpness. 512² lifts density to 25.6 verts/wu
+    /// → ~4.4 verts per spike radius / ~9 verts per spike diameter,
+    /// enough to carve out each cone's tip distinctly.
+    ///
+    /// 513² = 263 169 vertices → UInt32 indices remain mandatory (already
+    /// in use; see `idxStride` below). 511² × 2 = 522 242 triangles total.
+    /// Memory: vertex buffer 5.0 MB + index buffer 6.0 MB = 11.0 MB total
+    /// (+7.4 MB vs round 34). Per-frame vertex-shader cost rises ~4× but
+    /// vertex stages are not the bottleneck at this preset's draw counts
+    /// (M2 Pro session GPU times 2-15 ms with significant headroom);
+    /// fragment cost is unchanged (same pixel coverage, smaller
+    /// triangles).
+    public static let segmentsPerSide: Int = 512
 
     /// Vertices per side = segments + 1.
     public static let verticesPerSide: Int = segmentsPerSide + 1
 
-    /// Total vertex count. Stored in 16-bit indices — must stay ≤ 65 535
-    /// at this resolution (`257² = 66 049` is over the limit at
-    /// segments = 256, so we use segments = 255 vertices per side
-    /// internally; the public `verticesPerSide` is the count of unique
-    /// vertices along each edge of the grid).
+    /// Total vertex count. Indexed with UInt32 (see `idxStride` below) —
+    /// no upper bound from the index type at any reasonable resolution.
     public static var vertexCount: Int { verticesPerSide * verticesPerSide }
 
     /// Triangle count = `segmentsPerSide² × 2`.
