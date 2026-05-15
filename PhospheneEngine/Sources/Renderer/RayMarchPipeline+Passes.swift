@@ -96,6 +96,66 @@ extension RayMarchPipeline {
     // swiftlint:enable function_parameter_count
 }
 
+// MARK: - Mesh G-buffer Pass (V.9 Session 4.5c Phase 1 Step B)
+
+extension RayMarchPipeline {
+
+    /// Alternative G-buffer pass for presets that render via vertex-displaced
+    /// mesh instead of SDF ray march. Sets up a render pass with the same
+    /// 3 colour attachments as `runGBufferPass` PLUS a depth attachment
+    /// (needed for triangle occlusion), then calls the caller-provided
+    /// `encode` closure to issue the actual draw call.
+    ///
+    /// First consumer: Ferrofluid Ocean's `FerrofluidMesh`. The closure
+    /// is set via `setMeshGBufferEncoder(_:)` on RenderPipeline, captured
+    /// by `RayMarchPipeline.render`, and dispatched here.
+    func runMeshGBufferPass(
+        commandBuffer: MTLCommandBuffer,
+        encode: MeshGBufferEncode,
+        features: inout FeatureVector,
+        stemFeatures: StemFeatures,
+        heightTexture: MTLTexture
+    ) {
+        guard let g0 = gbuffer0, let g1 = gbuffer1, let g2 = gbuffer2,
+              let depth = gbufferDepth else {
+            passLogger.error("runMeshGBufferPass: G-buffer or depth texture nil — skipping")
+            return
+        }
+
+        let desc = MTLRenderPassDescriptor()
+        desc.colorAttachments[0].texture     = g0
+        desc.colorAttachments[0].loadAction  = .clear
+        // Match the SDF path's sky-pixel marker: g0.r = 1.0 (depth ≥ 0.999
+        // sentinel) → lighting fragment treats unwritten pixels as sky.
+        desc.colorAttachments[0].clearColor  = MTLClearColor(red: 1, green: 0, blue: 0, alpha: 0)
+        desc.colorAttachments[0].storeAction = .store
+
+        desc.colorAttachments[1].texture     = g1
+        desc.colorAttachments[1].loadAction  = .clear
+        desc.colorAttachments[1].clearColor  = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
+        desc.colorAttachments[1].storeAction = .store
+
+        desc.colorAttachments[2].texture     = g2
+        desc.colorAttachments[2].loadAction  = .clear
+        desc.colorAttachments[2].clearColor  = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
+        desc.colorAttachments[2].storeAction = .store
+
+        desc.depthAttachment.texture     = depth
+        desc.depthAttachment.loadAction  = .clear
+        desc.depthAttachment.clearDepth  = 1.0
+        desc.depthAttachment.storeAction = .dontCare
+
+        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: desc) else {
+            passLogger.error("runMeshGBufferPass: makeRenderCommandEncoder returned nil")
+            return
+        }
+
+        var stems = stemFeatures
+        encode(encoder, &features, &stems, &sceneUniforms, heightTexture)
+        encoder.endEncoding()
+    }
+}
+
 // MARK: - Lighting Pass
 
 extension RayMarchPipeline {

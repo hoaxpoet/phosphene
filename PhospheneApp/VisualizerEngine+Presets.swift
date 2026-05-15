@@ -4,6 +4,7 @@
 import Combine
 import CoreGraphics
 import Foundation
+import Metal
 import os.log
 import Orchestrator
 import Presets
@@ -58,6 +59,7 @@ extension VisualizerEngine {
         gossamerState = nil
         lumenPatternEngine = nil
         ferrofluidParticles = nil
+        ferrofluidMesh = nil
         spectralCartographOverlay = nil
         pipeline.setDynamicTextOverlay(nil)
         pipeline.setTextOverlayCallback(nil)
@@ -66,6 +68,7 @@ extension VisualizerEngine {
         pipeline.setDirectPresetFragmentBuffer3(nil)
         pipeline.setRayMarchPresetHeightTexture(nil)
         pipeline.setRayMarchPresetComputeDispatch(nil)
+        pipeline.setMeshGBufferEncoder(nil)
         pipeline.setPostProcessChain(nil)
         pipeline.setRayMarchPipeline(nil)
         pipeline.setFeedbackParams(nil)
@@ -215,16 +218,41 @@ extension VisualizerEngine {
                             particles.bakeHeightField(commandQueue: context.commandQueue)
                             ferrofluidParticles = particles
                             pipeline.setRayMarchPresetHeightTexture(particles.heightTexture)
+
+                            // V.9 Session 4.5c Phase 1 Step B (2026-05-15) —
+                            // mesh-displacement G-buffer path replaces the SDF
+                            // ray-march path for Ferrofluid Ocean only.
+                            // Tessellated quad mesh + vertex displacement from
+                            // the same baked height texture matches Leitl's
+                            // `spikes.vert.glsl` architecture verbatim. Other
+                            // ray-march presets (Glass Brutalist / Kinetic
+                            // Sculpture / Lumen Mosaic / Volumetric Lithograph)
+                            // keep the SDF path — meshGBufferEncoder is set
+                            // only here and cleared in the per-preset teardown.
+                            let gbufferFormats: [MTLPixelFormat] = [
+                                .rg16Float, .rgba8Snorm, .rgba8Unorm
+                            ]
+                            if let mesh = FerrofluidMesh(
+                                device: context.device,
+                                library: shaderLibrary.library,
+                                colorAttachmentFormats: gbufferFormats,
+                                depthAttachmentFormat: RayMarchPipeline.gbufferDepthPixelFormat) {
+                                ferrofluidMesh = mesh
+                                pipeline.setMeshGBufferEncoder { [weak mesh] encoder, features, stems, sceneUniforms, heightTex in
+                                    guard let mesh = mesh else { return }
+                                    mesh.encodeGBufferPass(into: encoder,
+                                                           features: &features,
+                                                           stems: &stems,
+                                                           sceneUniforms: &sceneUniforms,
+                                                           heightTexture: heightTex)
+                                }
+                            } else {
+                                logger.error("FerrofluidMesh: failed to allocate mesh — falling back to SDF path for '\(desc.name)'")
+                            }
+
                             // setRayMarchPresetComputeDispatch intentionally
-                            // NOT set — per-preset teardown at line 68 cleared
-                            // any prior closure, so no per-frame compute
-                            // dispatch fires. Re-enable by reinstating the
-                            // closure below once geometry reads as ferrofluid.
-                            //
-                            // pipeline.setRayMarchPresetComputeDispatch { [weak particles] cmdBuf, features, stems, dt in
-                            //     particles?.encodePerFrameUpdate(into: cmdBuf, dt: dt,
-                            //                                     features: features, stems: stems)
-                            // }
+                            // NOT set — particles are pinned (Phase 1 round 4),
+                            // so the one-shot bake is sufficient.
                         } else {
                             // swiftlint:disable:next line_length
                             logger.error("FerrofluidParticles: failed to allocate particle scaffolding for preset '\(desc.name)' — falling back to placeholder (no spikes)")
