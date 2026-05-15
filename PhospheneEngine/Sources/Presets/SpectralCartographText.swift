@@ -47,6 +47,7 @@ public enum SpectralCartographText {
 
     // MARK: - Entry point
 
+    // swiftlint:disable function_body_length
     /// Draw all typographic labels for one frame of the Spectral Cartograph dashboard.
     ///
     /// - Parameters:
@@ -142,14 +143,26 @@ public enum SpectralCartographText {
         // These appear below the mode label in the clear space between the orb and
         // the bottom panels. Large enough to read at a glance during live diagnosis.
         drawBeatInBar(
-            beatPhase01: beatPhase01, barPhase01: barPhase01, beatsPerBar: beatsPerBar,
-            lockState: lockState, y: 0.825, ctx: ctx, cw: cw, ch: ch
+            beatPhase01: beatPhase01,
+            barPhase01: barPhase01,
+            beatsPerBar: beatsPerBar,
+            lockState: lockState,
+            y: 0.825,
+            ctx: ctx,
+            cw: cw,
+            ch: ch
         )
         drawDriftReadout(
-            driftMs: driftMs, phaseOffsetMs: phaseOffsetMs,
-            lockState: lockState, y: 0.875, ctx: ctx, cw: cw, ch: ch
+            driftMs: driftMs,
+            phaseOffsetMs: phaseOffsetMs,
+            lockState: lockState,
+            y: 0.875,
+            ctx: ctx,
+            cw: cw,
+            ch: ch
         )
     }
+    // swiftlint:enable function_body_length
 
     // MARK: - BPM
 
