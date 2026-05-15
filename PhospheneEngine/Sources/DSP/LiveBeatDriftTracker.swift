@@ -427,6 +427,29 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
         )
     }
 
+    /// Override `beatsPerBar` on the installed grid without resetting drift,
+    /// lock, or onset state. Used by the metadata-driven meter-correction
+    /// path (Round 25, 2026-05-15): the ML beat detector's auto-detected
+    /// meter is sometimes wrong on odd time-signature tracks (e.g. Pink
+    /// Floyd's Money classified as 2/X instead of 7/X). When external
+    /// metadata (Spotify `/audio-features` `time_signature`) provides a
+    /// more reliable value, we override the meter here. No-op when no
+    /// grid is installed or `newValue` matches the current `beatsPerBar`.
+    public func overrideBeatsPerBar(_ newValue: Int) {
+        lock.lock(); defer { lock.unlock() }
+        guard !grid.beats.isEmpty else { return }
+        let clamped = max(1, newValue)
+        guard clamped != grid.beatsPerBar else { return }
+        let previous = grid.beatsPerBar
+        self.grid = grid.overridingBeatsPerBar(clamped)
+        // Resize the slot-onset histogram for the new meter. Drift / lock
+        // state preserved — only the meter changes.
+        slotOnsetCounts = [Int](repeating: 0, count: max(clamped, 1))
+        logger.info(
+            "LiveBeatDriftTracker beatsPerBar override: \(previous)/X → \(clamped)/X"
+        )
+    }
+
     /// Clear drift / onset / lock state. Does NOT clear the installed grid.
     public func reset() {
         lock.lock(); defer { lock.unlock() }

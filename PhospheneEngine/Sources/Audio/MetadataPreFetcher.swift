@@ -180,6 +180,7 @@ public final class MetadataPreFetcher: @unchecked Sendable {
         var valence: Float?
         var danceability: Float?
         var duration: Double?
+        var timeSignature: Int?
         var allGenres: [String] = []
 
         for partial in partials {
@@ -189,6 +190,7 @@ public final class MetadataPreFetcher: @unchecked Sendable {
             if valence == nil { valence = partial.valence }
             if danceability == nil { danceability = partial.danceability }
             if duration == nil { duration = partial.duration }
+            if timeSignature == nil { timeSignature = partial.timeSignature }
             allGenres.append(contentsOf: partial.genreTags)
         }
 
@@ -203,7 +205,8 @@ public final class MetadataPreFetcher: @unchecked Sendable {
             valence: valence,
             danceability: danceability,
             genreTags: uniqueGenres,
-            duration: duration
+            duration: duration,
+            timeSignature: timeSignature
         )
     }
 }

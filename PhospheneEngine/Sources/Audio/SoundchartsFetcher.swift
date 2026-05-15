@@ -137,7 +137,8 @@ public final class SoundchartsFetcher: MetadataFetching, Sendable {
                 key: keyName,
                 energy: song.audioFeatures?.energy,
                 valence: song.audioFeatures?.valence,
-                danceability: song.audioFeatures?.danceability
+                danceability: song.audioFeatures?.danceability,
+                timeSignature: song.audioFeatures?.timeSignature
             )
         } catch {
             logger.debug("Soundcharts: metadata error — \(error.localizedDescription)")
@@ -175,4 +176,18 @@ private struct SCAudioFeatures: Decodable {
     let energy: Float?
     let valence: Float?
     let danceability: Float?
+    /// Time-signature numerator (Round 25, 2026-05-15). `Int?` so the
+    /// decode silently sets it to nil if Soundcharts doesn't return the
+    /// field. Spotify's `/audio-features` includes it; whether
+    /// Soundcharts exposes it through their proxy is the unknown this
+    /// commit answers — on first session with this build, if the field
+    /// stays nil for tracks where Spotify would know the meter (e.g.
+    /// Money @ 7), then Soundcharts is not exposing it and we need
+    /// Path B / a different metadata source.
+    let timeSignature: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case tempo, key, mode, energy, valence, danceability
+        case timeSignature = "time_signature"
+    }
 }

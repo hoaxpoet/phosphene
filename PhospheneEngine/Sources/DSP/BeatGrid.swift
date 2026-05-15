@@ -83,6 +83,26 @@ public struct BeatGrid: Sendable, Hashable, Codable {
 
 extension BeatGrid {
 
+    /// Return a new grid with `beatsPerBar` overridden to a new value, keeping
+    /// every other field (beats, downbeats, BPM, frameRate, frameCount,
+    /// barConfidence) unchanged. Used by metadata-driven meter override
+    /// when an external source (e.g. Spotify `/audio-features`'
+    /// `time_signature`) provides a more reliable meter than the ML beat
+    /// detector's auto-detected value. Round 25 (2026-05-15).
+    public func overridingBeatsPerBar(_ newValue: Int) -> BeatGrid {
+        let clamped = max(1, newValue)
+        if clamped == beatsPerBar { return self }
+        return BeatGrid(
+            beats: beats,
+            downbeats: downbeats,
+            bpm: bpm,
+            beatsPerBar: clamped,
+            barConfidence: barConfidence,
+            frameRate: frameRate,
+            frameCount: frameCount
+        )
+    }
+
     /// Return a new grid with all beat and downbeat times shifted by `seconds`,
     /// then extrapolated forward to `horizon` seconds past the last shifted beat.
     ///

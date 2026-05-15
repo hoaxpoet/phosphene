@@ -228,6 +228,12 @@ public struct PartialTrackProfile: Sendable {
     public var danceability: Float?
     public var genreTags: [String]
     public var duration: Double?
+    /// Time-signature numerator (e.g. 3 for 3/4, 4 for 4/4, 7 for 7/4).
+    /// Spotify's `/audio-features` endpoint exposes this; other metadata
+    /// sources may not. Used to override the ML-detected meter on
+    /// `BeatGrid.beatsPerBar` when the analyzer guesses wrong on odd
+    /// time-signature tracks. Round 25 (2026-05-15).
+    public var timeSignature: Int?
 
     public init(
         bpm: Float? = nil,
@@ -236,7 +242,8 @@ public struct PartialTrackProfile: Sendable {
         valence: Float? = nil,
         danceability: Float? = nil,
         genreTags: [String] = [],
-        duration: Double? = nil
+        duration: Double? = nil,
+        timeSignature: Int? = nil
     ) {
         self.bpm = bpm
         self.key = key
@@ -245,6 +252,7 @@ public struct PartialTrackProfile: Sendable {
         self.danceability = danceability
         self.genreTags = genreTags
         self.duration = duration
+        self.timeSignature = timeSignature
     }
 }
 

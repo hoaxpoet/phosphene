@@ -163,6 +163,23 @@ extension VisualizerEngine {
                     self.estimatedKey = key
                     captureLogger.info("Using pre-fetched key: \(key)")
                 }
+                // Round 25 (2026-05-15): metadata-driven meter override.
+                // The ML beat detector's auto-detected `beatsPerBar` is
+                // sometimes wrong on odd time-signature tracks (e.g.
+                // Money classified as 2/X instead of 7/X). When the
+                // external metadata source returns a `time_signature`,
+                // override the live drift tracker's meter so wave
+                // cycling on bar-locked presets (Ferrofluid Ocean) uses
+                // the correct value. No-op when the field is nil
+                // (source doesn't expose it) or matches the current
+                // value.
+                if let timeSignature = profile?.timeSignature {
+                    self.mirPipeline.liveDriftTracker
+                        .overrideBeatsPerBar(timeSignature)
+                    captureLogger.info(
+                        "Using pre-fetched time signature: \(timeSignature)/X"
+                    )
+                }
             }
         }
     }
