@@ -85,25 +85,48 @@ struct FerrofluidUpdateUniforms {
 
 /// Reproduces `FerrofluidParticles.canonicalInitialPosition(forIndex:)` on
 /// the GPU side so each particle can be sprung back toward its equilibrium
-/// XZ during silence. Port of `voronoi_cell_offset` from
-/// `Presets/Shaders/Utilities/Texture/Voronoi.metal`, integer-width safe.
+/// XZ during silence.
+///
+/// Round 48 (2026-05-15): replaced the uniform-grid + voronoi-cell-offset
+/// hash layout with explicit lotus-pattern clusters — 16 clusters in 4×4
+/// grid at 5-wu spacing, each containing 37 particles in concentric rings
+/// (1 center + 6 + 12 + 18). Mirror of the Swift-side
+/// `canonicalInitialPosition(forIndex:)` + `lotusParticleOffset(localIndex:)`
+/// at `FerrofluidParticles+InitialPositions.swift`. The `u.gridColumns` /
+/// `u.gridRows` uniforms passed from CPU are now `(1, 592)`; this kernel
+/// derives cluster + ring info from the particle index directly.
 static inline float2 fo_canonical_position(uint i, constant FerrofluidUpdateUniforms& u) {
-    uint cols = u.gridColumns;
-    uint rows = u.gridRows;
-    uint row = i / cols;
-    uint col = i - row * cols;
-    int  cx  = int(col);
-    int  cy  = int(row);
-    int  qx  = cx * 1453 + cy * 2971;
-    int  qy  = cx * 3539 + cy * 1117;
-    int  hx  = (qx ^ (qx >> 9)) * 0x45D9F3B;
-    int  hy  = (qy ^ (qy >> 9)) * 0x45D9F3B;
-    float2 hashOffset = float2(float(hx & 0xFFFF), float(hy & 0xFFFF)) / 65535.0;
-    float scaledX = float(col) + hashOffset.x;
-    float scaledZ = float(row) + hashOffset.y;
-    float normX   = scaledX / float(cols);
-    float normZ   = scaledZ / float(rows);
-    return u.worldOriginXZ + float2(normX, normZ) * u.worldSpan;
+    // Hardcoded to match Swift `FerrofluidParticles+InitialPositions.swift`.
+    // Keep in sync if either layout changes.
+    constexpr uint  kParticlesPerCluster = 37u;
+    constexpr uint  kClusterGridSide     = 4u;
+    constexpr float kClusterSpacing      = 5.0;
+    constexpr float kRing1Radius         = 0.33;
+    constexpr float kRing2Radius         = 0.67;
+    constexpr float kRing3Radius         = 1.00;
+
+    uint clusterID    = i / kParticlesPerCluster;
+    uint clusterLocal = i - clusterID * kParticlesPerCluster;
+    uint clusterCol   = clusterID % kClusterGridSide;
+    uint clusterRow   = clusterID / kClusterGridSide;
+    float centerX = u.worldOriginXZ.x + (float(clusterCol) + 0.5) * kClusterSpacing;
+    float centerZ = u.worldOriginXZ.y + (float(clusterRow) + 0.5) * kClusterSpacing;
+
+    float2 localOffset = float2(0.0, 0.0);
+    if (clusterLocal == 0u) {
+        // Ring 0: center particle, offset (0, 0).
+    } else if (clusterLocal <= 6u) {
+        float angle = float(clusterLocal - 1u) / 6.0 * 2.0 * M_PI_F;
+        localOffset = float2(cos(angle), sin(angle)) * kRing1Radius;
+    } else if (clusterLocal <= 18u) {
+        float angle = float(clusterLocal - 7u) / 12.0 * 2.0 * M_PI_F;
+        localOffset = float2(cos(angle), sin(angle)) * kRing2Radius;
+    } else if (clusterLocal <= 36u) {
+        float angle = float(clusterLocal - 19u) / 18.0 * 2.0 * M_PI_F;
+        localOffset = float2(cos(angle), sin(angle)) * kRing3Radius;
+    }
+
+    return float2(centerX, centerZ) + localOffset;
 }
 
 // ─── Polynomial smooth-min (Inigo Quilez) ──────────────────────────────────
