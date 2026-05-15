@@ -326,22 +326,40 @@ kernel void ferrofluid_height_bake(
         }
     }
 
-    // Linear cone: 1 at the particle (res = 0), 0 at `spikeBaseRadius`.
-    // Negative output (when res > base) is clamped to 0.
+    // Squared cone profile (V.9 Session 4.5c Phase 1 round 18, 2026-05-15).
+    // Extends Leitl's `pow(distance_field, spikeFactor)` ferrofluid-shape
+    // technique to Phosphene's particle-bake approach. `n = 2` is the
+    // static-state baseline; a future ZOOM-coupling increment may raise
+    // the exponent with audio energy per Leitl's polynomial remap
+    // (1 at silence → 25 at peak), but the per-frame bake cost gate is
+    // held until after this static-shape commit is approved.
     //
-    // V.9 Session 4.5c Phase 1 round 9 (2026-05-15): squared profile
-    // (`h *= h`) retired. Squaring was introduced in round 4 to pull
-    // valley heights toward zero when adjacent cones overlapped at the
-    // base (radius 0.15 wu > half-spacing 0.125 wu). Round 5 narrowed
-    // radius to 0.06 wu → cones no longer overlap (half-spacing 0.125
-    // >> radius 0.06) → linear cone's `max(0, 1 - r/R)` already gives
-    // pitch-black valleys naturally. The squaring's only remaining
-    // effect was distorting the cone profile: apex still sharp (slope
-    // `-2/R`) but base flattened (slope 0) → "snowman" silhouette
-    // when viewed at oblique angle (Matt's `2026-05-15T04-34-38Z`
-    // review). Linear profile gives uniform slope from apex to base =
-    // clean pointed pyramid silhouette per
-    // `01_macro_ferrofluid_at_swell_scale.jpg`.
-    float height = max(0.0, 1.0 - res / u.spikeBaseRadius);
+    // Round-9 history: squared profile was tried and retired then because
+    // at sparse 6000-/1520-particle density with 0.06-/0.12-wu radius the
+    // squared shape read as "stocky snowman pyramids" rather than
+    // ferrofluid. Round 17 (2026-05-15) bumped density to 3025 particles
+    // with 0.17-wu radius — bases nearly touch (half-spacing 0.182 wu vs
+    // radius 0.17 wu). At this density the squared profile produces the
+    // intended ferrofluid character: sharp tips (slope -2/R at r=0),
+    // concave-curved sides (silhouette bows inward going up), bases that
+    // smoothly merge with adjacent spikes via the zero-slope-at-r=R
+    // meeting — matches `01_macro_*`, `02_meso_*`, `04_specular_*`.
+    //
+    //   linearCone(r) = max(0, 1 - r/R)        — round 9 → 17 profile
+    //   height(r)     = linearCone(r)²          — round 18 (current)
+    //
+    // Property comparison at the apex (r → 0):
+    //   linear:  slope -1/R           (sharp pyramid tip)
+    //   squared: slope -2/R           (sharper pyramid tip — 2× steepness)
+    // At the base (r → R):
+    //   linear:  slope -1/R           (hard valley between cones)
+    //   squared: slope 0              (smooth merge between cones — no valley)
+    //
+    // The smooth-base property is load-bearing — it eliminates the V-shaped
+    // valleys the linear cone produces at cell midpoints, replacing them
+    // with U-shaped substrate troughs that match how real ferrofluid
+    // spikes meet the underlying fluid.
+    float linearCone = max(0.0, 1.0 - res / u.spikeBaseRadius);
+    float height = linearCone * linearCone;
     heightTex.write(float4(height, 0.0, 0.0, 0.0), gid);
 }
