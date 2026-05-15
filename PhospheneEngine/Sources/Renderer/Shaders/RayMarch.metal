@@ -498,43 +498,57 @@ static inline float fluid_pow_fast(float a, float b) {
     return a / ((1.0 - b) * a + b);
 }
 
-/// Procedural studio-style environment for the matID == 2 ferrofluid ambient
+/// Procedural studio environment for the matID == 2 ferrofluid ambient
 /// layer. Inline replacement for the IBL prefiltered cubemap sample —
 /// Phosphene's global IBL is hardcoded as a warm concrete-corridor interior
-/// (see `IBL.metal::ibl_proc_env` — "appropriate for enclosed architectural
-/// presets (GlassBrutalist)") which made the metallic ferrofluid mirror
-/// reflect a corridor instead of a ferrofluid-appropriate scene. This
-/// function returns what an ambient probe in a studio environment would
-/// produce: mostly near-black, with a single concentrated bright zone
-/// aligned with the Phong key direction so the two layers reinforce each
-/// other.
+/// (see `IBL.metal::ibl_proc_env`) which made the metallic ferrofluid
+/// mirror reflect a corridor instead of a ferrofluid-appropriate scene.
 ///
-/// Why not extend `IBLManager` to support per-preset env? Larger
-/// infrastructure change deferred to a future increment. Per-preset IBL
-/// would also handle Glass Brutalist's corridor vs Ferrofluid's studio vs
-/// future outdoor presets cleanly. For now this inline procedural env is
-/// the minimum-surface change.
+/// Composition: 3-light studio rig in env-map form.
+///
+///   1. **Vertical tonal gradient** — cool-dim above horizon, warm-dim below.
+///      Both very low values; gives the substrate a subtle tonal anchor
+///      when no light alignment is present rather than pitch-black.
+///   2. **Key light (bright warm)** — concentrated bright zone aligned with
+///      the Phong key direction (rear-upper-right). Provides the dominant
+///      bright catches on spike sides whose reflections point at it.
+///   3. **Fill light (dim cool)** — broader, dimmer cool spot from the
+///      opposite-side / upper-left. Adds chromatic variation to spike
+///      sides catching the opposing direction so the surface doesn't
+///      read mono-warm.
+///
+/// All three reinforce each other: spikes whose reflection vectors trace
+/// across these zones as they move through the substrate produce the
+/// references' "dark substrate with concentrated bright catches" character.
 static inline float3 fluid_studio_env(float3 R) {
-    constexpr float3 keyLightDir = float3(2.0, 1.0, 1.0) * 0.5773502691896258;
-    constexpr float3 darkBase = float3(0.02, 0.02, 0.03);
-    constexpr float3 deepDark = float3(0.005, 0.005, 0.008);
-    constexpr float3 brightSpot = float3(1.0, 0.95, 0.85);
+    // ── Key + fill light directions (precomputed normalized) ──
+    // Key matches the Phong specular key direction so specular highlights
+    // and env reflections reinforce on the same spike sides.
+    //   normalize(2, 1, 1)    = (0.8165, 0.4082, 0.4082) — magnitude √6
+    //   normalize(-1.5, 0.7, -0.5) = (-0.8675, 0.4048, -0.2892) — magnitude √2.99
+    constexpr float3 keyLightDir  = float3( 0.8165, 0.4082,  0.4082);
+    constexpr float3 fillLightDir = float3(-0.8675, 0.4048, -0.2892);
 
-    // Concentrated bright source aligned with the Phong key direction.
-    // smoothstep edges 0.5 → 0.95 in dot space: peak when R is within
-    // ~18° of keyDir, fully off when R is >60° away. Spike sides whose
-    // normals align such that R hits the key zone catch the bright spot;
-    // everything else stays near darkBase.
+    // ── Tonal anchor (vertical gradient, both very dark) ──
+    constexpr float3 floorTint = float3(0.025, 0.020, 0.015); // warm-dim below
+    constexpr float3 ceilTint  = float3(0.015, 0.018, 0.030); // cool-dim above
+    float upT      = R.y * 0.5 + 0.5;
+    float3 base    = mix(floorTint, ceilTint, smoothstep(0.0, 1.0, upT));
+
+    // ── Key light (bright warm, narrow) ──
+    constexpr float3 keyColor = float3(1.0, 0.92, 0.78);
     float keyAlign  = dot(R, keyLightDir);
-    float spotMask  = smoothstep(0.5, 0.95, keyAlign);
+    float keyMask   = smoothstep(0.55, 0.95, keyAlign);
 
-    // Subtle vertical gradient — above-horizon darker by default than
-    // below-horizon, both very dark. Gives the substrate a slight tonal
-    // anchor when no key alignment is present.
-    float zenithT = smoothstep(-0.3, 0.7, R.y);
-    float3 sky    = mix(deepDark, darkBase, zenithT);
+    // ── Fill light (dim cool, broader) ──
+    constexpr float3 fillColor = float3(0.35, 0.45, 0.60);
+    float fillAlign = dot(R, fillLightDir);
+    float fillMask  = smoothstep(0.3, 0.85, fillAlign);
 
-    return mix(sky, brightSpot, spotMask);
+    float3 lit = base;
+    lit = mix(lit, fillColor, fillMask);
+    lit = mix(lit, keyColor, keyMask); // key wins where it overlaps fill
+    return lit;
 }
 
 /// Quilez cosine palette. Same recipe as `rm_palette` above but with caller-
@@ -569,7 +583,12 @@ static float3 fluid_shading(float3 V, float3 N,
     // attenuation, so Failed Approach #61 (invisible orbital lights at
     // spec orbit distance) doesn't recur — distance to the light isn't a
     // parameter at all for a directional source.
-    constexpr float3 keyLightDir = float3(2.0, 1.0, 1.0) * 0.5773502691896258; // = normalize(2,1,1)
+    // Pre-normalized: normalize(2, 1, 1) = (0.8165, 0.4082, 0.4082).
+    // (Previous `* 0.5773502691896258` was the inverse of √3, not √6 —
+    // produced a non-normalized L of magnitude 1.414, which made
+    // `reflect(L, N)` return an over-magnitude R and broke the dot product
+    // range for Phong. Round 8 fix.)
+    constexpr float3 keyLightDir = float3(0.8165, 0.4082, 0.4082);
     float3 L = keyLightDir;
     float3 R = reflect(L, N);
 
@@ -587,8 +606,17 @@ static float3 fluid_shading(float3 V, float3 N,
     float3 ambient = fluid_studio_env(Rview);
 
     // ── Layer 3: fresnel (cool white edge sheen) ───────────────────
-    // `ft = N.z` per Leitl's `dot(N, normalize(vec3(0,0,1)))`.
-    float ft = N.z;
+    // Leitl uses `ft = dot(N, vec3(0, 0, 1))` — in his WebGL coord system
+    // `(0, 0, 1)` is "toward the camera." For Phosphene the analogue is
+    // `dot(N, V)` (surface-to-camera) — same SEMANTIC meaning (how
+    // perpendicular-to-camera the normal is). The verbatim `N.z` port
+    // was Leitl-coord-specific and made fresnel fire at max for any
+    // surface whose normal had zero Z-component (i.e. the entire flat
+    // substrate). After this fix: flat substrate facing camera has high
+    // ft → 1-ft small → smoothstep returns 0 → no fresnel. Grazing
+    // spike-side normals have small ft → 1-ft large → fresnel at max
+    // (correct rim sheen). Round 8 fix (2026-05-15).
+    float ft = max(0.0, dot(N, V));
     float fresnelValue = smoothstep(0.6, 1.0, min(1.0, pow(1.0 - ft, 2.0)));
     // Depth modulation: near-camera surfaces get more fresnel, far less.
     // Adapted from Leitl's `1.0 - position.z` — see MARK note (1).
