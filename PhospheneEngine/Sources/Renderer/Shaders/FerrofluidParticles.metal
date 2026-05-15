@@ -328,17 +328,20 @@ kernel void ferrofluid_height_bake(
 
     // Linear cone: 1 at the particle (res = 0), 0 at `spikeBaseRadius`.
     // Negative output (when res > base) is clamped to 0.
+    //
+    // V.9 Session 4.5c Phase 1 round 9 (2026-05-15): squared profile
+    // (`h *= h`) retired. Squaring was introduced in round 4 to pull
+    // valley heights toward zero when adjacent cones overlapped at the
+    // base (radius 0.15 wu > half-spacing 0.125 wu). Round 5 narrowed
+    // radius to 0.06 wu → cones no longer overlap (half-spacing 0.125
+    // >> radius 0.06) → linear cone's `max(0, 1 - r/R)` already gives
+    // pitch-black valleys naturally. The squaring's only remaining
+    // effect was distorting the cone profile: apex still sharp (slope
+    // `-2/R`) but base flattened (slope 0) → "snowman" silhouette
+    // when viewed at oblique angle (Matt's `2026-05-15T04-34-38Z`
+    // review). Linear profile gives uniform slope from apex to base =
+    // clean pointed pyramid silhouette per
+    // `01_macro_ferrofluid_at_swell_scale.jpg`.
     float height = max(0.0, 1.0 - res / u.spikeBaseRadius);
-    // V.9 Session 4.5c Phase 1 round 4: squared profile (`h² `). Squaring
-    // pulls valley heights toward zero faster than the linear cone — at
-    // midpoint between adjacent particles, raw height ≈ 0.17 → squared
-    // ≈ 0.030 (~3% of peak). Apex slope at res=0 is steeper (`-2/R` vs
-    // `-1/R` linear), making spike tips read more pointed. Combined with
-    // `smoothMinW = 0.005` (tightened from 0.02 in this same round), the
-    // bake produces near-discrete-spike topology with near-pitch-black
-    // valleys per `04_specular_razor_highlights.jpg`. Linear cone profile
-    // preserved on the inline diagnostic path (`fo_ferrofluid_field_inline`
-    // in `FerrofluidOcean.metal`) for A/B comparison.
-    height *= height;
     heightTex.write(float4(height, 0.0, 0.0, 0.0), gid);
 }

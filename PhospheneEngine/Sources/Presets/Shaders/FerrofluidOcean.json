@@ -14,7 +14,7 @@
   "transition_affordances": ["crossfade"],
   "section_suitability": ["buildup", "peak", "bridge"],
   "complexity_cost": { "tier1": 4.0, "tier2": 5.5 },
-  "scene_camera": { "position": [0, 1.8, -4.0], "target": [0, 0.3, 3.0], "fov": 55 },
+  "scene_camera": { "position": [0, 2.5, -4.0], "target": [0, 0.3, 3.0], "fov": 55 },
   "scene_lights": [
     { "position": [0, 6.0, 2.0], "color": [0.9, 0.95, 1.0], "intensity": 0.0 }
   ],
