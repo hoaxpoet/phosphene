@@ -307,16 +307,26 @@ public final class FerrofluidMesh: @unchecked Sendable {
                                index: 5)
         encoder.setVertexTexture(heightTexture, index: 10)
 
-        // Fragment stage bindings:
-        //   SceneUniforms (slot 4) — depth normalization
-        //   heightTexture (slot 10) — round-41 per-pixel normal computation
-        //     samples the spike heightmap at the pixel's interpolated UV,
-        //     bypassing the rasterizer's linear interpolation of the
-        //     vertex-stage normal (which exposed mesh polygon facets once
-        //     curtain edges sharpened).
+        // Fragment stage bindings (round 43 mirror the vertex bindings so
+        // the per-pixel normal computation can include the Gerstner
+        // contribution at each pixel's interpolated UV):
+        //   FeatureVector       (slot 0)  — features.time / beats_per_bar
+        //   StemFeatures        (slot 3)  — totalStemEnergy → presence gate
+        //   SceneUniforms       (slot 4)  — depth normalization
+        //   MeshUniforms        (slot 5)  — live tempoScale = bpm / 60
+        //   heightTexture       (slot 10) — spike heightmap for spike Y
+        encoder.setFragmentBytes(&features,
+                                 length: MemoryLayout<FeatureVector>.stride,
+                                 index: 0)
+        encoder.setFragmentBytes(&stems,
+                                 length: MemoryLayout<StemFeatures>.stride,
+                                 index: 3)
         encoder.setFragmentBytes(&sceneUniforms,
                                  length: MemoryLayout<SceneUniforms>.stride,
                                  index: 4)
+        encoder.setFragmentBytes(&meshUniforms,
+                                 length: MemoryLayout<MeshUniforms>.stride,
+                                 index: 5)
         encoder.setFragmentTexture(heightTexture, index: 10)
 
         encoder.drawIndexedPrimitives(type: .triangle,

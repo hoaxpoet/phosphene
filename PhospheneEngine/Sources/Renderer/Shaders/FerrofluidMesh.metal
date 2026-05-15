@@ -125,6 +125,13 @@ constant float kFerrofluidMeshNormalEps = 0.001953125;
 /// derivatives to world-space tangent lengths.
 constant float kFerrofluidMeshWorldSpan = 20.0;
 
+/// World-XZ origin corresponding to UV (0, 0). Must match
+/// `FerrofluidParticles.worldOriginX/Z`. Used by the fragment shader's
+/// per-pixel normal computation (round 43+) to recover original world XZ
+/// from interpolated UV for Gerstner-displacement sampling.
+constant float kFerrofluidMeshWorldOriginX = -10.0;
+constant float kFerrofluidMeshWorldOriginZ = -8.0;
+
 // MARK: - Gerstner ocean displacement (Phase 1 round 21, 2026-05-15)
 //
 // Bar-locked Gerstner waves. Round 20 tied wave phase to individual
@@ -433,9 +440,12 @@ struct FerrofluidMeshGBufferOutput {
 };
 
 fragment FerrofluidMeshGBufferOutput ferrofluid_mesh_gbuffer_fragment(
-    FerrofluidMeshVaryings  in        [[stage_in]],
-    constant SceneUniforms& scene     [[buffer(4)]],
-    texture2d<float>        heightTex [[texture(10)]]
+    FerrofluidMeshVaryings  in           [[stage_in]],
+    constant FeatureVector& features     [[buffer(0)]],
+    constant StemFeatures&  stems        [[buffer(3)]],
+    constant SceneUniforms& scene        [[buffer(4)]],
+    constant FerrofluidMeshUniforms& meshUniforms [[buffer(5)]],
+    texture2d<float>        heightTex    [[texture(10)]]
 ) {
     FerrofluidMeshGBufferOutput out;
 
@@ -450,22 +460,16 @@ fragment FerrofluidMeshGBufferOutput ferrofluid_mesh_gbuffer_fragment(
     // matID == 2 → routes to Leitl four-layer material in lighting pass.
     out.gbuf0 = float4(depthNorm, 2.0, 0.0, 0.0);
 
-    // ── Per-pixel normal (Round 41, 2026-05-15) ────────────────────
-    // Compute the normal from the heightmap's local gradient at THIS
-    // pixel's UV, rather than reading the vertex-interpolated worldNormal
-    // (which suffered from linear interpolation across triangle faces,
-    // producing visible polygon-facet shading once the curtain edges
-    // were sharp enough to expose the underlying low-poly mesh).
-    //
-    // Math is identical to the vertex shader's normal computation but
-    // run at fragment resolution. The Gerstner contribution is dropped
-    // (the heightmap encodes only the spike field, not the swell).
-    // Consequences: spike geometry renders at the heightmap's true
-    // resolution (4096²) regardless of mesh density; substrate-between
-    // gets a perfectly flat +Y normal (Gerstner geometric displacement
-    // still happens at vertex stage but its slope is no longer in the
-    // shading normal). The latter trade-off is consistent with the
-    // pitch-black-substrate intent — flat substrate reflects zenith
+    // ── Per-pixel normal (Round 41, extended Round 43 with Gerstner) ──
+    // Compute the normal from the surface's local gradient at THIS pixel.
+    // Round 41 introduced this approach to bypass the rasterizer's linear
+    // interpolation of vertex-stage normals (which exposed polygon facets
+    // once curtain edges sharpened). Round 41 used spike-only heights;
+    // Round 43 brings the Gerstner contribution back so the substrate
+    // between spikes shimmers — gentle Gerstner-induced normal variation
+    // creates moving highlights that read as "glossy black surface"
+    // (Matt's `2026-05-15T21:50Z` update from "pitch black" to "glossy
+    // black"), instead of a perfectly flat substrate reflecting zenith
     // uniformly.
     constexpr sampler heightSamp(coord::normalized,
                                   filter::linear,
@@ -473,10 +477,39 @@ fragment FerrofluidMeshGBufferOutput ferrofluid_mesh_gbuffer_fragment(
     float spikeStrFactor = kFerrofluidSpikeStrength * kFerrofluidMeshHeightFactor;
     float eps = kFerrofluidMeshNormalEps;
     float worldEps = eps * kFerrofluidMeshWorldSpan;
-    float hR = heightTex.sample(heightSamp, in.uv + float2( eps, 0.0)).r * spikeStrFactor;
-    float hL = heightTex.sample(heightSamp, in.uv + float2(-eps, 0.0)).r * spikeStrFactor;
-    float hF = heightTex.sample(heightSamp, in.uv + float2( 0.0,  eps)).r * spikeStrFactor;
-    float hB = heightTex.sample(heightSamp, in.uv + float2( 0.0, -eps)).r * spikeStrFactor;
+    float hR_spike = heightTex.sample(heightSamp, in.uv + float2( eps, 0.0)).r * spikeStrFactor;
+    float hL_spike = heightTex.sample(heightSamp, in.uv + float2(-eps, 0.0)).r * spikeStrFactor;
+    float hF_spike = heightTex.sample(heightSamp, in.uv + float2( 0.0,  eps)).r * spikeStrFactor;
+    float hB_spike = heightTex.sample(heightSamp, in.uv + float2( 0.0, -eps)).r * spikeStrFactor;
+
+    // Gerstner audio uniforms (same recipe as the vertex shader's
+    // amplitudeMul / musicBars derivation — kept in sync).
+    float totalStemEnergy = stems.vocals_energy + stems.drums_energy
+                          + stems.bass_energy + stems.other_energy;
+    float presenceGate = smoothstep(0.02, 0.10, totalStemEnergy);
+    float amplitudeMul = presenceGate * 0.85;
+    float musicBeats = features.time * meshUniforms.tempoScale;
+    float beatsPerBar = max(1.0, features.beats_per_bar);
+    float musicBars = musicBeats / beatsPerBar;
+
+    // Recover original (pre-displacement) world XZ from interpolated UV.
+    // `in.uv` is the linear interpolation of vertex UVs, which were
+    // generated from un-displaced positions — so `worldOrigin + uv ×
+    // worldSpan` gives the same world XZ the vertex shader used for its
+    // Gerstner samples.
+    float2 worldXZ = float2(kFerrofluidMeshWorldOriginX + in.uv.x * kFerrofluidMeshWorldSpan,
+                            kFerrofluidMeshWorldOriginZ + in.uv.y * kFerrofluidMeshWorldSpan);
+
+    float hR_g = gerstner_displacement(worldXZ + float2( worldEps, 0.0),     musicBars, amplitudeMul).y;
+    float hL_g = gerstner_displacement(worldXZ + float2(-worldEps, 0.0),     musicBars, amplitudeMul).y;
+    float hF_g = gerstner_displacement(worldXZ + float2( 0.0,      worldEps), musicBars, amplitudeMul).y;
+    float hB_g = gerstner_displacement(worldXZ + float2( 0.0,     -worldEps), musicBars, amplitudeMul).y;
+
+    float hR = hR_spike + hR_g;
+    float hL = hL_spike + hL_g;
+    float hF = hF_spike + hF_g;
+    float hB = hB_spike + hB_g;
+
     float3 tangentX = float3(2.0 * worldEps, hR - hL, 0.0);
     float3 tangentZ = float3(0.0, hF - hB, 2.0 * worldEps);
     float3 normal = normalize(cross(tangentZ, tangentX));
