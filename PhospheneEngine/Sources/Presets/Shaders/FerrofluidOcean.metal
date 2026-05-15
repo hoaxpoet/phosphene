@@ -57,43 +57,46 @@ static inline float fo_stem_warmup_blend(constant StemFeatures& stems) {
     return smoothstep(FO_STEM_WARMUP_LO, FO_STEM_WARMUP_HI, total);
 }
 
-// Spike-field strength: baseline + modulation (V.9 Session 4.5c Phase 1 round 3).
+// Spike-field strength: warmup-proxy crossfaded to stem-driven baseline+modulation.
 //
-// **Phase 1 round 3 (2026-05-14 post-second-Billie-Jean capture)** reworked
-// this from deviation-only (`max(0, bass_energy_dev)`) to
-// `liveGate × baseline + bass_energy_dev × modulation`. The deviation-only
-// shape collapsed the lattice in steady-state on real music — Billie Jean
-// `bass_energy_dev` mean=0.25 produced spike height 0.037 wu (visually rippled,
-// not ferrofluid); only deviation peaks (e.g. SNA's 3.29 → 0.49 wu) read as
-// proper ferrofluid texture. Matt's read: "going in and out of focus in time
-// with the music. sharper on drum hits." Cause: lattice height tracked
-// deviation, so most-of-the-time-music was visually flat. Baseline pattern
-// makes the spike lattice consistently present whenever music plays;
-// deviation peaks still rise sharper on top.
+// Three-stage routing:
+//
+//   silence              → liveGate ≈ 0 → strength = 0 → lattice collapsed
+//   music, stems warming → liveGate < 1 → proxy path via `f.bass_dev`
+//   music, stems ready   → liveGate ≈ 1 → stem path (baseline + modulation)
+//
+// Round 10 (2026-05-15) re-introduces the warmup proxy after Matt's
+// `2026-05-15T12-36-08Z` review: "It took nearly 15 s of playback before
+// the spikes appeared." Cause: the stem pipeline needs ~10 s to produce
+// confident output on a fresh (un-cached) track; while liveGate < 1, the
+// pre-round-10 routing had baseline=0 and no proxy, so the substrate
+// rendered flat for the entire warmup window.
+//
+// Round 3's retirement of the proxy used `f.bass_att_rel` which the
+// 2026-05-14T22:06Z capture showed capped at 0 on real music (separate
+// FeatureVector / MV-1 defect for later triage). `f.bass_dev` works on
+// real music — the same Love Rehab capture showed range [0, 2.45], mean
+// 0.003 (deviation-mode, sharp peaks on bass transients). Used here as
+// the warmup proxy directly — deviation-modulated only (no baseline)
+// since the FeatureVector lacks a "music is playing" indicator we can
+// drive a constant baseline against without falling into the AGC-
+// thresholding anti-pattern.
 //
 // Numbers:
-//   baseline   2.0 × liveGate → 0.30 wu spike height when music plays
-//   modulation 0.7 × bass_energy_dev → peak adds ~0.49 wu (SNA), ~0.18 wu (BJ mean)
-//   silence  → liveGate ≈ 0 → lattice fully collapses per `10_silence_calm_body.jpg`.
-//
-// `f` (FeatureVector) is unused after the rework. The previous fallback to
-// `f.bass_att_rel` is removed — that primitive is capped at 0 across real-music
-// captures (separate FeatureVector / MV-1 defect for later triage; latent
-// because real-music sessions are stem-ready and the proxy didn't fire). The
-// loss of the proxy means a very-cold-start window (~5 s before any stems
-// arrive) shows zero spikes; acceptable because the orchestrator only routes
-// to this preset after stem prep completes (stems cached or freshly
-// analysed) so the cold-start window is effectively never hit in normal
-// playback.
+//   warmup proxy: `f.bass_dev × 1.5` → peaks ~3.7 on a kick hit (BJ)
+//   stem path:   `2.0 + stems.bass_energy_dev × 0.7` (round 3 unchanged)
+//   smooth crossfade between them as stems warm up via liveGate.
 static inline float fo_spike_strength(constant FeatureVector& f,
                                       constant StemFeatures& stems) {
-    (void)f;
     float liveGate = fo_stem_warmup_blend(stems);
-    constexpr float kSpikeBaseline   = 2.0;
-    constexpr float kSpikeModulation = 0.7;
-    float baseline   = liveGate * kSpikeBaseline;
-    float modulation = max(0.0, stems.bass_energy_dev) * kSpikeModulation;
-    return baseline + modulation;
+    constexpr float kSpikeStemBaseline   = 2.0;
+    constexpr float kSpikeStemModulation = 0.7;
+    constexpr float kSpikeProxyGain      = 1.5;
+    float proxyDev   = max(0.0, f.bass_dev);
+    float stemDev    = max(0.0, stems.bass_energy_dev);
+    float warmupStr  = proxyDev * kSpikeProxyGain;
+    float steadyStr  = kSpikeStemBaseline + stemDev * kSpikeStemModulation;
+    return mix(warmupStr, steadyStr, liveGate);
 }
 
 // Swell amplitude scale per D-124(d): arousal sets the sustained baseline at
