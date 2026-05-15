@@ -152,8 +152,9 @@ constant float kFerrofluidMeshWorldSpan = 20.0;
 // the aurora layer (Matt's earlier suggestion) which doesn't share
 // the classifier-warmup artifact.
 //
-// At silence: tempoScale = 0 → musicBars = 0 → wave phase frozen;
-// presenceGate also = 0 → amplitudeMul = 0 → substrate flat.
+// At silence: presenceGate = 0 → amplitudeMul = 0 → substrate flat.
+// (Phase keeps advancing on the wall-clock from features.time; this
+// is invisible because amplitudeMul gates the wave to zero.)
 
 constant int kGerstnerNumWaves = 4;
 
@@ -245,17 +246,36 @@ vertex FerrofluidMeshVaryings ferrofluid_mesh_vertex(
     float presenceGate = smoothstep(0.02, 0.10, totalStemEnergy);
     float amplitudeMul = presenceGate * 0.85;
 
-    // Music time in bars: 0 when paused or pre-grid-lock (tempoScale=0
-    // or accumulated_audio_time=0). When music plays, this increments
-    // at one unit per bar — `(tempoScale / beatsPerBar)` bars per
-    // second. Each wave advances one full cycle per bar.
+    // Music time in bars: 0 when tempoScale=0 (pre-grid-lock). When
+    // music plays, this increments at one unit per bar —
+    // `(tempoScale / beatsPerBar)` bars per second. Each wave advances
+    // one full cycle per bar.
+    //
+    // **Round 24 (2026-05-15)**: source switched from
+    // `features.accumulated_audio_time` → `features.time`. The former
+    // is NOT a clock — it's an energy-weighted accumulator
+    // (`_accumulatedAudioTime += max(0,energy)·deltaTime` in
+    // RenderPipeline.swift) that advances at variable rates while
+    // AGC normalises the bass/mid/treble energy bands. Result: wave
+    // phase rate fluctuated for the 20-30 s AGC-settling window of
+    // every track (Matt's `2026-05-15T17-19-40Z` review:
+    // "Love Rehab is jerky for the first 30 seconds, then the waves
+    // smooth out. Takes about 20 s for Money.").
+    //
+    // `features.time` is pure wall-clock
+    // (`CFAbsoluteTimeGetCurrent() - startTime` in RenderPipeline.swift)
+    // — monotonic, ungated, no AGC dependency. Wave phase advances at
+    // a constant rate from the moment music begins. Trade-off: phase
+    // continues advancing during silence between tracks, but
+    // `presenceGate` zeroes amplitude at silence so the substrate is
+    // flat regardless — the phase advancement is invisible.
     //
     // `features.beats_per_bar` defaults to 4 (MIRPipeline) and updates
     // to the track's time signature when a BeatGrid is installed
-    // (Money's 7/4 → 7; Love Rehab's 4/4 → 4). Clamped with
-    // `max(1, …)` defensively in case a malformed value reaches the
-    // shader.
-    float musicBeats = features.accumulated_audio_time * meshUniforms.tempoScale;
+    // (Love Rehab's 4/4 → 4; Money's installed meter happens to be
+    // 2/X → 2 per the 17-19-40Z session log, not the 7/4 we expected
+    // from the BPM analysis). Clamped with `max(1, …)` defensively.
+    float musicBeats = features.time * meshUniforms.tempoScale;
     float beatsPerBar = max(1.0, features.beats_per_bar);
     float musicBars = musicBeats / beatsPerBar;
 
