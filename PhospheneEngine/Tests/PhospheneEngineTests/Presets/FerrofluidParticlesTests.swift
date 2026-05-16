@@ -53,8 +53,8 @@ final class FerrofluidParticlesTests: XCTestCase {
     // MARK: - Gate 1: locked constants
 
     func test_lockedConstants_phase1Contract() {
-        XCTAssertEqual(FerrofluidParticles.particleCount, 592,
-                       "Round 48 (2026-05-15): 3025 → 592 (16 lotus clusters × 37 particles per cluster). Matt's `2026-05-15T23:24Z` lotus-blossom reference review: clusters need concentric ring structure, uniform-grid produced rectangular sub-grids that read as disordered. 4×4 cluster grid at 5-wu spacing; each cluster has 1 center + 6 + 12 + 18 = 37 particles in concentric rings. Leitl-faithful within each cluster.")
+        XCTAssertEqual(FerrofluidParticles.particleCount, 3025,
+                       "Round 17 (2026-05-15): 1520 → 3025 (55 × 55 grid). Matt's review of the `2026-05-15T14-31-24Z` capture flagged 'too few spikes, lots of empty space between spikes' vs the reference set's dense lattice (`01_macro_*` shows ~35-40 spike-rows visible; round-11's 1520 particles showed ~20). Coordinated with spikeBaseRadius 0.12 → 0.17 (round 17 same commit) — new X/Z spacing 20/55 ≈ 0.364 wu, half-spacing 0.182 wu just over radius 0.17 → bases nearly touch. Isotropic 55 × 55 grid replaces round-11's anisotropic 40 × 38.")
         XCTAssertEqual(FerrofluidParticles.heightTextureSize, 4096,
                        "Texel-grid pass 2026-05-14: bumped to 4096² so the texture pixel scale (0.005 wu) sits below the 1080p screen-pixel scale (~0.006 wu) → texel-grid staircase falls below rendered-pixel size")
         XCTAssertEqual(FerrofluidParticles.worldSpan, 20.0,
@@ -74,10 +74,9 @@ final class FerrofluidParticlesTests: XCTestCase {
     // MARK: - Gate 2: canonical positions match voronoi-cell-offset structure
 
     func test_canonicalInitialPositions_areBoundedAndOrdered() {
-        // Every canonical position lies inside the world patch.
-        // Round 48 (2026-05-15) replaced the row-major 55×55 scan with
-        // lotus-cluster layout: 16 clusters in 4×4 grid, each with
-        // concentric particle rings.
+        // Every canonical position lies inside the world patch (no overflow
+        // from the cell-hash addition). Ordering is row-major scan over the
+        // 55 × 55 grid (Round 17, 2026-05-15).
         let minX = FerrofluidParticles.worldOriginX
         let maxX = FerrofluidParticles.worldOriginX + FerrofluidParticles.worldSpan
         let minZ = FerrofluidParticles.worldOriginZ
@@ -96,23 +95,18 @@ final class FerrofluidParticlesTests: XCTestCase {
     }
 
     func test_canonicalInitialPositions_areUnique() {
-        // Each lotus-cluster particle has a unique (ring, angle) within
-        // its cluster; across 16 clusters their world XZ positions are
-        // also distinct because each cluster has a different center.
-        // Round 48 (2026-05-15) replaced the uniform-grid-with-jitter
-        // layout with explicit lotus rings.
+        // Per-cell hash offsets jitter each particle inside its cell, so no
+        // two particles share an XZ. Anti-reference: the README's
+        // "Perfectly regular hexagonal lattice" anti-pattern would have
+        // particles at identical fractional positions inside each cell.
         var seen: Set<UInt64> = []
         seen.reserveCapacity(FerrofluidParticles.particleCount)
         for i in 0 ..< FerrofluidParticles.particleCount {
             let p = FerrofluidParticles.canonicalInitialPosition(forIndex: i)
-            // Compose the two Float bit patterns into a UInt64 directly.
-            // (The prior Int32-via-Int64 round-trip sign-extended negative
-            // floats and collapsed the high 32 bits to 0xFFFF_FFFF, producing
-            // false collisions whenever both X and Z were negative — only
-            // surfaced under the round-48 lotus layout which has negative
-            // cos/sin offsets, not under the prior uniform-grid + hash-jitter
-            // layout where coords were mostly positive.)
-            let key = (UInt64(p.x.bitPattern) << 32) | UInt64(p.y.bitPattern)
+            // 32-bit pair as a key — collisions extremely unlikely for the
+            // hash output's [0, 1) jitter inside a unit cell.
+            let key = (UInt64(bitPattern: Int64(Int32(bitPattern: p.x.bitPattern))) << 32)
+                    |  UInt64(bitPattern: Int64(Int32(bitPattern: p.y.bitPattern)))
             XCTAssertFalse(seen.contains(key),
                 "particle \(i) at (\(p.x), \(p.y)) duplicates an earlier particle")
             seen.insert(key)

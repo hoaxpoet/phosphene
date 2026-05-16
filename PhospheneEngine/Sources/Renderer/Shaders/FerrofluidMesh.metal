@@ -156,22 +156,16 @@ constant float kFerrofluidMeshWorldOriginZ = -8.0;
 // present uniformly across the patch — clusters cover the entire ocean,
 // not just one mound.
 
-/// Distance between adjacent cluster centers in world units.
-///
-/// Round 48 (2026-05-15): bumped 2.5 → 5.0. Coordinated with the
-/// lotus-pattern particle redistribution in
-/// `FerrofluidParticles+InitialPositions.swift` — 4×4 = 16 clusters
-/// across the 20×20 patch, each containing 37 particles in concentric
-/// rings (outer ring at r=1.0 wu). At 5-wu spacing there's ~3 wu of
-/// substrate between adjacent cluster outer edges → the "multi-cluster
-/// ocean" framing finally has visible ocean between the magnetic peaks.
-constant float kClusterSpacing = 5.0;
+/// Distance between adjacent cluster centers in world units. 2.5 wu →
+/// 8×8 = 64 clusters across the 20×20 patch. Each cluster's half-extent
+/// is 1.25 wu, comfortably larger than the 0.182-wu spike spacing so each
+/// cluster contains ~50 spikes (an inner spike + several concentric rings).
+constant float kClusterSpacing = 2.5;
 
 /// Depth of the magnetic focal point below the substrate, in world units.
-/// Combined with the cluster outer-ring radius (1.0 wu), this gives the
-/// maximum lean angle at outer-ring particles:
-/// atan(1.0 / 1.5) ≈ 33.7° from vertical — matches the lotus-blossom
-/// outer-petal lean visible in `2026-05-15T23:30Z` reference photo.
+/// Combined with the cluster half-extent (1.25 wu), this gives the maximum
+/// lean angle at cluster edges: atan(1.25 / 1.5) ≈ 40° from vertical —
+/// matches the middle-ring spike lean visible in the reference photos.
 constant float kClusterFocalDepth = 1.5;
 
 /// Find the nearest cluster center for a given substrate XZ position.

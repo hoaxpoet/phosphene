@@ -66,33 +66,16 @@ public final class FerrofluidParticles: @unchecked Sendable {
     /// × 1024² texels, well within the 60 fps frame budget.
     ///
     /// **Density pass 2026-05-15 (V.9 Session 4.5c Phase 1 round 17)**:
-    /// `1520 → 3025` (55 × 55 grid). Uniform-grid layout.
-    ///
-    /// **Round 48 (2026-05-15)**: `3025 → 592` (16 clusters × 37 particles
-    /// per cluster). Matt's `2026-05-15T23:24Z` lotus-blossom reference
-    /// review: clusters need concentric ring structure (organized
-    /// petals around a center, like a lotus flower) — uniform-grid
-    /// particles produced rectangular sub-grids per cluster that read
-    /// as disordered when the radial displacement was layered on top.
-    ///
-    /// Leitl-faithful within each cluster (Failed Approach #65 — don't
-    /// negotiate away components of a working reference implementation).
-    /// His spherical geometry + radial displacement naturally produces
-    /// concentric rings of particles when projected onto a flat plane;
-    /// we replicate that explicitly here:
-    ///
-    ///   - 1 center particle
-    ///   - Ring 1: 6 particles at radius 0.33 wu (60° apart)
-    ///   - Ring 2: 12 particles at radius 0.67 wu (30° apart)
-    ///   - Ring 3: 18 particles at radius 1.00 wu (20° apart)
-    ///   = 37 particles per cluster
-    ///
-    /// 16 clusters in a 4×4 grid at 5-wu spacing (centers at
-    /// {-7.5, -2.5, +2.5, +7.5} in X and Z) leaves ~3 wu of "ocean"
-    /// substrate between adjacent cluster edges — the "multi-cluster
-    /// distributed ocean" framing Matt directed in `2026-05-15T22:30Z`
-    /// finally gets visible substrate between clusters.
-    public static let particleCount: Int = 592
+    /// `1520 → 3025` (55 × 55 grid). Matt's review of the
+    /// `2026-05-15T14-31-24Z` capture flagged "too few spikes, lots of
+    /// empty space between spikes" vs the reference set's dense lattice
+    /// (`01_macro_*` shows ~35-40 spike-rows visible across the patch;
+    /// the 1520-particle render showed ~20). Coordinated with
+    /// `spikeBaseRadius` 0.12 → 0.17 (round 17 same commit) — new
+    /// X/Z spacing 20/55 ≈ 0.364 wu, half-spacing 0.182 wu just slightly
+    /// over radius 0.17 → bases nearly touch with a thin substrate
+    /// channel between, matching the reference packing density.
+    public static let particleCount: Int = 3025
 
     /// Height texture: original spec 512² → 1024² (Matt 2026-05-14
     /// fullscreen/4K product addendum) → 2048² (smoothness pass
