@@ -176,20 +176,55 @@ static inline float2 fmesh_nearest_cluster_center(float2 worldXZ) {
     return (cell + 0.5) * kClusterSpacing;
 }
 
+/// Round 49 (2026-05-16): per-cluster dome envelope — Leitl's `res *= edge`
+/// from spikes.vert.glsl that was missed when porting the radial-cluster
+/// architecture in round 45. Multiplies the spike height by a cos falloff
+/// centered on each cluster: 1.0 at center, 0.0 at cluster radius (half
+/// the cluster spacing).
+///
+/// Why this matters: without the envelope, all particles in a cluster
+/// produce equal-height spikes (the smooth-Voronoi heightmap is roughly
+/// uniform across the cluster's coverage). The radial displacement leans
+/// them outward but doesn't shorten them — so each cluster reads as a
+/// cylindrical disc with bumps on top, not as a lotus-blossom dome.
+/// Matt's `2026-05-16T00:48:49Z` capture flagged this directly.
+///
+/// With the envelope, central particles produce the tallest spikes
+/// (envelope = 1.0), outer particles produce progressively shorter spikes
+/// (cos falloff toward edges), and particles right at the cluster
+/// boundary produce zero-height (envelope = 0) — leaving the substrate
+/// at wave level there. Adjacent clusters' envelopes meet at zero at the
+/// midpoint between them, so the surface is continuously covered with
+/// lotus-dome features (each cluster center is a tall lotus, the field
+/// in between is gentle Gerstner waves).
+static inline float fmesh_cluster_envelope(float distFromClusterCenter) {
+    float clusterRadius = kClusterSpacing * 0.5;
+    float normDist = clamp(distFromClusterCenter / clusterRadius, 0.0, 1.0);
+    return cos(normDist * 0.5 * M_PI_F);
+}
+
 /// Given a substrate position (post-Gerstner) and a spike height value
 /// from the heightmap, compute the radial displacement vector for that
 /// vertex. The displacement direction points from the focal point (below
 /// the nearest cluster center) through the vertex; magnitude is the
-/// spike height. At cluster center: pure +Y displacement (direction is
-/// (0, 1, 0)). Away from center: tilted outward.
+/// spike height multiplied by the per-cluster dome envelope (Leitl's
+/// `res *= edge`).
+///
+/// At cluster center: envelope = 1.0, pure +Y displacement (direction is
+/// (0, 1, 0)). Away from center: envelope < 1.0 (shorter spike), tilted
+/// outward. At cluster edge: envelope = 0.0, no spike (substrate level).
 static inline float3 fmesh_radial_displacement(float3 substratePos,
                                                  float spikeHeight) {
     float2 clusterCenter = fmesh_nearest_cluster_center(substratePos.xz);
+    float distFromCenter = length(substratePos.xz - clusterCenter);
+    float envelope = fmesh_cluster_envelope(distFromCenter);
+    float envelopedHeight = spikeHeight * envelope;
+
     float3 focalPoint = float3(clusterCenter.x,
                                 -kClusterFocalDepth,
                                 clusterCenter.y);
     float3 direction = normalize(substratePos - focalPoint);
-    return direction * spikeHeight;
+    return direction * envelopedHeight;
 }
 
 // MARK: - Gerstner ocean displacement (Phase 1 round 21, 2026-05-15)
