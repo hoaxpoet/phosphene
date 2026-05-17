@@ -329,13 +329,10 @@ public final class FerrofluidParticles: @unchecked Sendable {
 
     // MARK: - CPU-side smoothing state (Phase 2c)
 
-    /// Smoothed `stems.drumsEnergyDev` envelope (150 ms τ). Drives the drums
-    /// shock-impulse force without edge-triggering, satisfying
-    /// `Scripts/check_drums_beat_intensity.sh` + Failed Approach #4 (beat
-    /// onsets are never a primary motion driver). Guarded by `lock` because
-    /// the per-frame closure is captured weakly and may be called from
-    /// non-MainActor threads.
-    private var smoothedDrumsEnergyDev: Float = 0
+    /// Per-frame lock. Reserved for future per-frame state mutations
+    /// (Phase 2c's `smoothedDrumsEnergyDev` envelope was retired in round 54
+    /// under the constant-field premise — see
+    /// `encodePerFrameUpdate(features:stems:)` docstring).
     private let lock = NSLock()
 
     // MARK: - Init
@@ -603,33 +600,42 @@ public final class FerrofluidParticles: @unchecked Sendable {
     /// the integrated force model; the second bake refreshes the height
     /// texture for the G-buffer pass that follows.
     ///
-    /// Phase 2c reads `features` / `stems` to derive audio uniforms:
-    ///   - `stems.bassEnergyDev`           → pressure radius scale
-    ///   - `stems.drumsEnergyDev` (smoothed CPU-side, 150 ms τ) → radial impulse
-    ///   - `stems.otherEnergyDev`          → tangential rotation rate
-    ///   - `features.arousal`              → global force magnitude scale
-    ///   - `features.accumulatedAudioTime` → energy-paused time axis
+    /// **Round 54 (2026-05-17, constant-field premise enforcement)**: the
+    /// engine entry point now passes `UpdateAudio.silent` regardless of
+    /// the live `features` / `stems` inputs. The constant-field premise
+    /// (round 50) committed Ferrofluid Ocean to "spike geometry is constant;
+    /// audio modulates ONLY the swell underneath and the aurora overhead,
+    /// never the spike geometry." The Phase 2c particle-motion forces
+    /// violated that premise — at moderate audio (bass_dev 0.5, drums
+    /// 0.5, arousal 0.5) the spring/damping system reached steady-state
+    /// displacement ~0.37 wu, over 2× the spike base radius (0.17 wu)
+    /// and exceeding particle-to-particle spacing (0.333 wu) → particles
+    /// routinely drifted past neighbors → smooth-Voronoi blend produced
+    /// the malformed-cone artifact Matt flagged in the 2026-05-16 live
+    /// screenshot. Silencing the engine path keeps particles at canonical
+    /// positions; the audio response continues to live entirely in
+    /// `fo_swell_scale` (Gerstner amplitude) and `rm_ferrofluidSky`
+    /// (procedural aurora) as specified.
+    ///
+    /// The Phase 2c force model code remains intact in
+    /// `ferrofluid_particle_update`; a future increment may re-enable it
+    /// under a different premise (e.g. Phase 3 polish with drastically
+    /// scaled-down forces). The direct `encodeUpdate` path is also
+    /// preserved (used by `FerrofluidParticlesTests` to exercise the
+    /// kernel's force model directly).
+    ///
+    /// The `features` / `stems` parameters are kept on the signature so
+    /// no caller-site changes are required.
     public func encodePerFrameUpdate(into commandBuffer: MTLCommandBuffer,
                                      dt: Float,
                                      features: FeatureVector,
                                      stems: StemFeatures) {
-        let audio = lock.withLock { () -> UpdateAudio in
-            let tauSeconds: Float = 0.150
-            let alpha = min(dt / tauSeconds, 1.0)
-            let target = max(0, stems.drumsEnergyDev)
-            smoothedDrumsEnergyDev += (target - smoothedDrumsEnergyDev) * alpha
-            return UpdateAudio(
-                accumulatedAudioTime: features.accumulatedAudioTime,
-                arousal: max(-1, min(1, features.arousal)),
-                bassEnergyDev: max(0, stems.bassEnergyDev),
-                drumsEnergyDevSmoothed: smoothedDrumsEnergyDev,
-                otherEnergyDev: max(0, stems.otherEnergyDev))
-        }
+        _ = features; _ = stems   // round 54: ignored under constant-field premise
         // bake (re-populates spatial hash from current positions) → update
         // (consumes hash for pressure neighbour lookup) → bake (refreshes
         // height texture from updated positions for the G-buffer pass).
         encodeBake(into: commandBuffer)
-        encodeUpdate(into: commandBuffer, dt: dt, audio: audio)
+        encodeUpdate(into: commandBuffer, dt: dt, audio: .silent)
         encodeBake(into: commandBuffer)
     }
 
