@@ -445,10 +445,26 @@ static float3 rm_ferrofluidSky(float3 R,
     // compressed in elevation space). If this reads too thin (curtain
     // becomes a hairline only a few pixels wide per spike), round 38
     // bumps to 0.15 or backs further off toward 0.20.
+    // Round 51 (2026-05-16, Step 2a) — aurora coverage widened to enrich
+    // per-spike chiaroscuro. The pre-step-2 hairline band at horizon
+    // (thickness 0.10, azimuth wedge 0.30→0.75) meant most spike normals
+    // reflected dim base sky, so adjacent cones all picked up the same
+    // dim purple value and blurred together visually. Widening the aurora
+    // gives spikes at varied tilts/orientations meaningfully different
+    // sky content to mirror, producing the per-spike contrast that
+    // defines individual cone silhouettes in the reference photos.
+    //   - StripeThickness 0.10 → 0.70 (covers most of upper hemisphere
+    //     with some aurora contribution; peak at horizon, falling smoothly
+    //     up toward zenith).
+    //   - AzimuthFloor 0.30 → -0.70 (curtain reaches around most of the
+    //     azimuthal arc with at least partial intensity; bright zone
+    //     stays concentrated around the curtain center direction).
+    //   - AzimuthPeak 0.75 → 0.80 (slight tighten to keep the brightest
+    //     point a localized "hot spot" rather than a uniform wash).
     constexpr float kCurtainElevation       = 0.0;
-    constexpr float kCurtainStripeThickness = 0.10;
-    constexpr float kCurtainAzimuthFloor    = 0.30;
-    constexpr float kCurtainAzimuthPeak     = 0.75;
+    constexpr float kCurtainStripeThickness = 0.70;
+    constexpr float kCurtainAzimuthFloor    = -0.70;
+    constexpr float kCurtainAzimuthPeak     = 0.80;
     float vertFalloff = smoothstep(kCurtainStripeThickness, 0.0,
                                    abs(R.y - kCurtainElevation));
 
@@ -496,8 +512,16 @@ static float3 rm_ferrofluidSky(float3 R,
     // 0.975 multiplier on the palette per channel — dominant palette
     // channel saturates to 1.0 = neon. Substrate-between catching base
     // sky × 0.3 = (0.03, 0.018, 0.048) ≈ near-black per references.
-    constexpr float kCurtainBaselineIntensity  = 1.00;
-    constexpr float kCurtainModulationIntensity = 1.50;
+    // Round 51 (2026-05-16, Step 2a): intensity pushed into neon territory
+    // per Matt's directive ("not dim — bright, fully saturated, almost neon").
+    // Baseline 1.00 → 2.50 makes the aurora consistently bright-saturated
+    // across the music; modulation 1.50 → 2.00 keeps drum-driven peaks
+    // pushing meaningfully past baseline. At peak: 2.5 + 2.0×1.5 = 5.5
+    // (palette × falloffs reduces effective per-pixel value; mid-falloff
+    // pixels still reach ~0.8 RGB = saturated neon when palette is near
+    // primary color).
+    constexpr float kCurtainBaselineIntensity  = 2.50;
+    constexpr float kCurtainModulationIntensity = 2.00;
     float drumsSmoothed = clamp(stems.drums_energy_dev_smoothed, 0.0, 1.5);
     float curtainIntensity = kCurtainBaselineIntensity
                            + kCurtainModulationIntensity * drumsSmoothed;
