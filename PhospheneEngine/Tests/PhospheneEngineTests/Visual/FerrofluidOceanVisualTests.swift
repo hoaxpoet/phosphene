@@ -383,7 +383,8 @@ final class FerrofluidOceanVisualTests: XCTestCase {
         applyValenceTint: Bool = false,
         bindIBL: Bool = true,            // round-56 test/prod-parity: bind IBL by default
         disableFog: Bool = false,
-        enableBloom: Bool = true         // round-56 test/prod-parity: bloom on by default for `post_process` presets
+        enableBloom: Bool = true,        // round-56 test/prod-parity: bloom on by default for `post_process` presets
+        useMeshPath: Bool = false        // round-57: live FerrofluidOcean now uses SDF path (mesh-encoder wire-up removed in VisualizerEngine+Presets.swift). Set to `true` to test the legacy mesh path.
     ) throws -> [UInt8] {
         let context       = try MetalContext()
         let shaderLibrary = try ShaderLibrary(context: context)
@@ -446,6 +447,38 @@ final class FerrofluidOceanVisualTests: XCTestCase {
         let iblManager: IBLManager? = bindIBL
             ? try IBLManager(context: context, shaderLibrary: shaderLibrary)
             : nil
+
+        // Round 57 (2026-05-17): test/prod parity for the MESH render path.
+        // Production wires a FerrofluidMesh + mesh G-buffer encoder for
+        // Ferrofluid Ocean specifically (VisualizerEngine+Presets.swift:235-246) —
+        // when set, RayMarchPipeline.render takes the runMeshGBufferPass
+        // branch instead of runGBufferPass (the SDF path). Rounds 50-56
+        // tuned the SDF path while live used the mesh path; fixture results
+        // diverged from live. This wiring closes that gap.
+        var ferrofluidMesh: FerrofluidMesh? = nil
+        if useMeshPath {
+            let gbufferFormats: [MTLPixelFormat] = [.rg16Float, .rgba8Snorm, .rgba8Unorm]
+            if let mesh = FerrofluidMesh(
+                device: context.device,
+                library: shaderLibrary.library,
+                colorAttachmentFormats: gbufferFormats,
+                depthAttachmentFormat: RayMarchPipeline.gbufferDepthPixelFormat) {
+                ferrofluidMesh = mesh
+                pipeline.setMeshGBufferEncoder({ [weak mesh] encoder, features, stems, sceneUniforms, heightTex in
+                    guard let mesh = mesh else { return }
+                    // Test harness uses tempoScale = 2.0 (corresponds to 120 BPM,
+                    // typical music). Production reads from live drift tracker.
+                    var meshUniforms = FerrofluidMesh.MeshUniforms(tempoScale: 2.0)
+                    mesh.encodeGBufferPass(into: encoder,
+                                            features: &features,
+                                            stems: &stems,
+                                            sceneUniforms: &sceneUniforms,
+                                            meshUniforms: &meshUniforms,
+                                            heightTexture: heightTex)
+                })
+            }
+        }
+        _ = ferrofluidMesh  // keep alive for the duration of the encode
 
         // Round 56 (2026-05-17): test/prod parity for bloom. Production wires
         // a PostProcessChain when the preset descriptor's `passes` array

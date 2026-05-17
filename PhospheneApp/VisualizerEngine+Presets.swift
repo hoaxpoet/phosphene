@@ -220,30 +220,46 @@ extension VisualizerEngine {
                             pipeline.setRayMarchPresetHeightTexture(particles.heightTexture)
 
                             // V.9 Session 4.5c Phase 1 Step B (2026-05-15) —
-                            // mesh-displacement G-buffer path replaces the SDF
-                            // ray-march path for Ferrofluid Ocean only.
-                            // Tessellated quad mesh + vertex displacement from
-                            // the same baked height texture matches Leitl's
-                            // `spikes.vert.glsl` architecture verbatim. Other
-                            // ray-march presets (Glass Brutalist / Kinetic
-                            // Sculpture / Lumen Mosaic / Volumetric Lithograph)
-                            // keep the SDF path — meshGBufferEncoder is set
-                            // only here and cleared in the per-preset teardown.
-                            let gbufferFormats: [MTLPixelFormat] = [
-                                .rg16Float, .rgba8Snorm, .rgba8Unorm
-                            ]
-                            if let mesh = FerrofluidMesh(
-                                device: context.device,
-                                library: shaderLibrary.library,
-                                colorAttachmentFormats: gbufferFormats,
-                                depthAttachmentFormat: RayMarchPipeline.gbufferDepthPixelFormat) {
-                                ferrofluidMesh = mesh
-                                pipeline.setMeshGBufferEncoder(
-                                    makeFerrofluidMeshEncoder(mesh: mesh))
-                            } else {
-                                // swiftlint:disable:next line_length
-                                logger.error("FerrofluidMesh: failed to allocate mesh — falling back to SDF path for '\(desc.name)'")
-                            }
+                            // mesh-displacement G-buffer path was introduced
+                            // to replace the SDF ray-march path for Ferrofluid
+                            // Ocean, mirroring Leitl's `spikes.vert.glsl`
+                            // architecture.
+                            //
+                            // **Round 57 (2026-05-17) — disabled.** The mesh
+                            // path's per-pixel normal computation (heightmap
+                            // sampling at ±0.039 wu eps) produced visible
+                            // "scoop" artifacts on foreground cones — eps
+                            // crosses cone-edge boundaries (cone radius 0.17
+                            // wu) and produces tilted normals that reflect
+                            // wrong sky directions. Diagnostics in rounds
+                            // 50-56 chased this across SDF tuning before
+                            // realizing the live render path was the mesh
+                            // path the whole time (test fixtures had been
+                            // exercising the SDF path; the test/prod gap was
+                            // structural). Switching live back to the SDF
+                            // path uses the round-56 Lipschitz-corrected
+                            // `sceneSDF` which renders cleanly. The mesh
+                            // path is preserved in the codebase for a future
+                            // increment that addresses its normal-computation
+                            // properly; this commit just unwires it from
+                            // live so users see clean cones immediately.
+                            //
+                            // Original mesh-encoder wire-up (preserved for
+                            // reference but commented out):
+                            //
+                            //   let gbufferFormats: [MTLPixelFormat] = [
+                            //       .rg16Float, .rgba8Snorm, .rgba8Unorm
+                            //   ]
+                            //   if let mesh = FerrofluidMesh(
+                            //       device: context.device,
+                            //       library: shaderLibrary.library,
+                            //       colorAttachmentFormats: gbufferFormats,
+                            //       depthAttachmentFormat: RayMarchPipeline.gbufferDepthPixelFormat) {
+                            //       ferrofluidMesh = mesh
+                            //       pipeline.setMeshGBufferEncoder(
+                            //           makeFerrofluidMeshEncoder(mesh: mesh))
+                            //   }
+                            _ = ferrofluidMesh  // intentionally unused under round 57
 
                             // setRayMarchPresetComputeDispatch intentionally
                             // NOT set — particles are pinned (Phase 1 round 4),
