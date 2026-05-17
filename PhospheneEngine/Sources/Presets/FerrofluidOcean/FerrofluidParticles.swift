@@ -85,10 +85,24 @@ public final class FerrofluidParticles: @unchecked Sendable {
     /// **Round 52b (2026-05-16)**: 3025 → 3600 (60 × 60 grid). Matt's
     /// follow-up review showed visible bald gaps in the round-52 frames
     /// — the slight bump tightens hash-offset spacing so the lattice
-    /// fully covers the patch. Coordinated with the round-52b lotus
-    /// envelope tuning (floor raised 0.40 → 0.55, spacing widened
-    /// 2.5 → 4.5 wu) in `ferrofluid_height_bake`.
-    public static let particleCount: Int = 3600
+    /// fully covers the patch.
+    ///
+    /// **Round 55 (2026-05-17)**: 3600 → 2500 (50 × 50 grid). At round-52b
+    /// density (0.333 wu spacing, radius 0.17 wu) ~6-8 particles fell inside
+    /// each pixel's smooth-min blend zone — the poly-smin's per-iteration
+    /// "lift" accumulated across that many particles → height inflation
+    /// and ridge-merge distortion (Matt's 2026-05-17 live-app review:
+    /// "spikes merging together due to bad math"). Round-55 density of
+    /// 2500 puts spacing at 0.4 wu, half-spacing 0.2 wu (> radius 0.17 wu
+    /// → cone bases nearly touch with ~0.03 wu substrate channel between);
+    /// per-pixel blend-zone particle count drops to 3-4, accumulated lift
+    /// becomes small enough that cone shapes render cleanly. An earlier
+    /// 40 × 40 = 1600 attempt produced clean cones but with too much
+    /// visible substrate between bases (Matt's "1600 is probably too few,
+    /// recommend 2500"); 2500 lands at the dense regime he asked for.
+    /// Coordinated with the round-55 lotus-envelope removal — uniform
+    /// spike height across the patch.
+    public static let particleCount: Int = 2500
 
     /// Height texture: original spec 512² → 1024² (Matt 2026-05-14
     /// fullscreen/4K product addendum) → 2048² (smoothness pass

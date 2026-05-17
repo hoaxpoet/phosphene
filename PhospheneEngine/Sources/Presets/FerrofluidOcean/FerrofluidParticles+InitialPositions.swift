@@ -65,13 +65,17 @@ extension FerrofluidParticles {
     ///     misread "well-spaced" regime from incomplete reference
     ///     analysis.
     static func canonicalGridLayout() -> GridLayout {
-        // Round 52b (2026-05-16): 55 × 55 → 60 × 60 (3025 → 3600). Slight
-        // density bump to fill visible hash-offset gaps Matt flagged in
-        // the round-52 review. Spacing 20/60 = 0.333 wu; half-spacing
-        // 0.167 wu < radius 0.17 wu → bases marginally overlap (smooth-
-        // min handles the blend). Coordinated with the round-52b lotus-
-        // envelope tuning in the bake.
-        GridLayout(columns: 60, rows: 60)
+        // Round 55 (2026-05-17): 60 × 60 → 50 × 50 (3600 → 2500). Round-52b
+        // density produced smooth-min lift accumulation that distorted cone
+        // shapes (~6-8 particles in each pixel's blend zone). Round-55 puts
+        // spacing at 0.4 wu / half-spacing 0.2 wu — just larger than the
+        // 0.17 wu spike radius, so each pixel's blend zone contains 3-4
+        // particles, accumulated lift small enough for clean cone shapes
+        // while preserving the dense reference-faithful packing Matt
+        // confirmed at 2500. (An earlier 40×40 = 1600 attempt this round
+        // produced clean cones but too much visible substrate — sparse
+        // reading.)
+        GridLayout(columns: 50, rows: 50)
     }
 
     /// Populate the particle buffer with the canonical Phase 1 positions
