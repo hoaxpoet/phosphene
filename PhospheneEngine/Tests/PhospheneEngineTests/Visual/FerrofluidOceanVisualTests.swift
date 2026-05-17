@@ -381,8 +381,9 @@ final class FerrofluidOceanVisualTests: XCTestCase {
         features: inout FeatureVector,
         stems: StemFeatures,
         applyValenceTint: Bool = false,
-        bindIBL: Bool = false,
-        disableFog: Bool = false
+        bindIBL: Bool = true,            // round-56 test/prod-parity: bind IBL by default
+        disableFog: Bool = false,
+        enableBloom: Bool = true         // round-56 test/prod-parity: bloom on by default for `post_process` presets
     ) throws -> [UInt8] {
         let context       = try MetalContext()
         let shaderLibrary = try ShaderLibrary(context: context)
@@ -446,6 +447,28 @@ final class FerrofluidOceanVisualTests: XCTestCase {
             ? try IBLManager(context: context, shaderLibrary: shaderLibrary)
             : nil
 
+        // Round 56 (2026-05-17): test/prod parity for bloom. Production wires
+        // a PostProcessChain when the preset descriptor's `passes` array
+        // includes "post_process" — see RenderPipeline+RayMarch.swift:120-125
+        // (`passesIncludePostProcess ? ppChain : nil`). FerrofluidOcean.json
+        // declares `["ray_march", "post_process"]`, so the live app runs the
+        // bloom + ACES chain. Tests previously passed `postProcessChain: nil`,
+        // silently bypassing bloom — fixtures rendered cleanly while live
+        // looked smeared, breaking the test/prod equivalence Matt called out
+        // (2026-05-17 review: "testing settings should be identical to
+        // production"). The chain is now constructed and bound here whenever
+        // (a) the preset declares post_process and (b) the test doesn't
+        // explicitly disable it.
+        let ppChain: PostProcessChain?
+        let presetDeclaresPostProcess = preset.descriptor.usePostProcess
+        if enableBloom && presetDeclaresPostProcess {
+            let chain = try PostProcessChain(context: context, shaderLibrary: shaderLibrary)
+            chain.allocateTextures(width: Self.renderWidth, height: Self.renderHeight)
+            ppChain = chain
+        } else {
+            ppChain = nil
+        }
+
         let floatStride = MemoryLayout<Float>.stride
         let fftBuf = try XCTUnwrap(context.makeSharedBuffer(length: 512 * floatStride))
         let wavBuf = try XCTUnwrap(context.makeSharedBuffer(length: 2048 * floatStride))
@@ -472,7 +495,7 @@ final class FerrofluidOceanVisualTests: XCTestCase {
             commandBuffer: cmdBuf,
             noiseTextures: nil,
             iblManager: iblManager,
-            postProcessChain: nil,
+            postProcessChain: ppChain,
             presetFragmentBuffer3: nil,
             presetHeightTexture: particles.heightTexture
         )
@@ -594,6 +617,15 @@ final class FerrofluidOceanVisualTests: XCTestCase {
                              otherEnergy: 0.4)
         s.bassEnergyDev = 0.4
         s.drumsEnergyDev = 0.35
+        // Round 56 (2026-05-17): populate drumsEnergyDevSmoothed to match
+        // live-music peak levels (~1.0-1.5 observed in session captures).
+        // Previously left at 0 default, which meant fixtures rendered with
+        // aurora at baseline-only intensity (2.5 pre-falloff) while live
+        // rendered at baseline + modulation × 1.5 (~5.5 pre-falloff). This
+        // gap silently hid bloom-driven smearing from the test path. Setting
+        // it to a realistic peak value here reproduces the live conditions
+        // in fixture renders.
+        s.drumsEnergyDevSmoothed = 1.0
         return s
     }
 

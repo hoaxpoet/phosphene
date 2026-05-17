@@ -57,45 +57,34 @@ static inline float fo_stem_warmup_blend(constant StemFeatures& stems) {
     return smoothstep(FO_STEM_WARMUP_LO, FO_STEM_WARMUP_HI, total);
 }
 
-// Spike-field strength: CONSTANT under the V.9 Session 4.5c Phase 1 round 50
-// "constant-field premise". Returns 1.0 always.
+// Spike-field strength: constant baseline + small bass-deviation modulation.
 //
-// **Premise change (2026-05-16).** Prior rounds treated the Rosensweig spike
-// height as Leitl-style "magnetic field strength = audio amplitude" — spikes
-// emerged with music and collapsed at silence. Matt's review of the
-// 2026-05-16T21-10-39Z session frames + reading of Leitl's source surfaced
-// the contradiction: Phosphene's preset premise is "what if the ocean were
-// made of ferrofluid?" That premise implies an ambient, permanent magnetic
-// field — same way real oceans have ambient gravity. Under that premise the
-// spike lattice is part of the ocean's identity, present constantly at its
-// characteristic shape regardless of whether music is playing. Music
-// modulates the swell underneath (`fo_swell_scale`) and the aurora overhead
-// (`rm_ferrofluidSky`), not the spike geometry itself.
+// **Constant-field premise** (round 50, 2026-05-16). Phosphene's Ferrofluid
+// Ocean preset premise is "what if the ocean were made of ferrofluid?" That
+// implies an ambient, permanent magnetic field — the Rosensweig spike
+// lattice is part of the ocean's identity, present constantly at its
+// characteristic shape regardless of music. The lattice does NOT collapse
+// at silence; spike width is not audio-coupled; the fundamental geometry
+// is constant. Music modulates the swell (`fo_swell_scale`) and the aurora
+// (`rm_ferrofluidSky`).
 //
-// What's retired:
-//   - The proxy/stem crossfade. Spikes no longer fade in over the ~10 s stem
-//     warmup window — they're present from frame 0.
-//   - The audio-coupled height (raw bass + dev). Spike height is constant,
-//     governed by the bake's `spikeBaseRadius` + the `× 0.15` height scale in
-//     `fo_ferrofluid_field_sampled` only.
-//   - The silence-collapse behavior. The lattice does NOT fade out at
-//     `totalStemEnergy == 0`. The destination silence state is now "calm
-//     ferrofluid ocean" (constant spike lattice + low-amplitude swell + base
-//     sky reflection) rather than "glassy water with no spikes".
+// **Round 56 polish** (2026-05-17). On top of the constant baseline, return
+// a small ±10 % height modulation from `bass_energy_dev`. This is the
+// "subtle music response" originally anticipated by the round-50 docstring
+// — a faint "responding to disturbance" quality without changing the
+// fundamental shape. Spikes stay clearly conical at all music levels; bass
+// transients just add gentle vertical breath. Coefficient 0.10 keeps the
+// modulation perceptible but within the "constant-field" character.
 //
-// What stays audio-coupled (other functions):
-//   - Swell amplitude (`fo_swell_scale`): arousal baseline + drums accent.
-//   - Aurora curtain (`rm_ferrofluidSky`): vocals → hue, drums → intensity,
-//     arousal → drift, totalStemEnergy → live-stems gate.
-//
-// Future Phase 3 polish may re-introduce a small ±10–15 % height jitter on
-// top of the constant baseline so spikes have a faint "responding to
-// disturbance" quality without their fundamental shape changing. Optional;
-// not in this round.
+// At silence (`bass_energy_dev = 0`): returns 1.0 → full constant lattice.
+// At peak music (`bass_energy_dev` ~1.0): returns ~1.10 → 10 % taller spikes.
+// At extreme transients (`bass_energy_dev` > 1.0): clamped at the upper end
+// of the deviation primitive's typical range.
 static inline float fo_spike_strength(constant FeatureVector& f,
                                       constant StemFeatures& stems) {
-    (void)f; (void)stems;
-    return 1.0;
+    (void)f;
+    float bassDev = clamp(stems.bass_energy_dev, 0.0, 1.5);
+    return 1.0 + 0.10 * bassDev;
 }
 
 // Swell amplitude scale per D-124(d): arousal sets the sustained baseline at
@@ -308,7 +297,22 @@ float sceneSDF(float3 p,
                                                  fo_spike_strength(f, stems),
                                                  ferrofluidHeight);
     float surfaceY = swell + spikes;
-    return p.y - surfaceY;
+    // Round 56 (2026-05-17): Lipschitz-corrected SDF. The naive
+    // `p.y - surfaceY` returns the VERTICAL distance to the surface, not the
+    // true 3D minimum distance. For tall narrow cones (height 0.62 wu / base
+    // radius 0.17 wu = max gradient ~3.65), the true distance to a sloped
+    // cone side is up to 3.78× smaller than the vertical distance when the
+    // ray-march sample point is laterally near a cone. Without correction,
+    // the ray-march (which assumes Lipschitz-1) overshoots the surface →
+    // inconsistent surface-hit positions across pixels → noisy normals
+    // from central differences → banded/scooped patterns on cone surfaces
+    // (the artifact Matt flagged in every live screenshot rounds 50-55).
+    // Dividing by 4 gives a conservative upper bound (4 > 3.78) on the
+    // height-field gradient → SDF underestimates true distance → ray-march
+    // never overshoots → clean surface hits → smooth normals → cones
+    // render as clean smooth mirror cones (verified by side-by-side
+    // diagnostic 2026-05-17 — see commit message).
+    return (p.y - surfaceY) / 4.0;
 }
 
 // MARK: - sceneMaterial (Session 3: §5.8 stage-rig dispatch via matID == 2)
