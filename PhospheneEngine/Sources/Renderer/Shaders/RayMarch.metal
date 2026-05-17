@@ -397,7 +397,18 @@ static float3 rm_ferrofluidSky(float3 R,
     // slow but never freezes mid-song, energetic music orbits at ~30 s per
     // revolution (high-arousal cap). accumulated_audio_time pauses at silence
     // per MIRPipeline — total silence freezes the orbit too.
-    constexpr float kCurtainBaseRevolutionSeconds = 30.0;
+    // Round 55 (2026-05-17): kCurtainBaseRevolutionSeconds 30.0 → 1.0.
+    // The drift time-axis is `accumulated_audio_time` which advances at
+    // ~7-9 % of wall-clock (energy-paused, AGC-normalized; see
+    // `project_accumulated_audio_time_not_clock` memory). The pre-round-55
+    // 30 s base period gave wall-clock revolutions of ~5-7 minutes at
+    // typical-music arousal — palette appeared static within a single
+    // session view (measured: only 0.20 phase advancement over 88 s of
+    // FFO playback in the 2026-05-17T12-54-04Z session). 1.0 s base
+    // period puts wall-clock revolutions at ~10-15 s depending on
+    // arousal — visible color rotation through the saturated palette
+    // stops within seconds of viewing.
+    constexpr float kCurtainBaseRevolutionSeconds = 1.0;
     constexpr float kCurtainBaseAngularSpeed =
         2.0 * M_PI_F / kCurtainBaseRevolutionSeconds;
     float arousalSpeed = mix(0.5, 1.0, smoothstep(-1.0, 1.0, features.arousal));
@@ -554,15 +565,21 @@ static float3 rm_ferrofluidSky(float3 R,
     // in the green-to-purple transition band. Combined with the existing
     // valence/pitch palette-phase offset (±0.20), total phase range now
     // spans 0.50 ± 0.55 = [-0.05, 1.05] — full rotation through all
-    // three primaries across the orbit. Plus spatial color variation
-    // from a small R.y-driven phase offset so different parts of the
-    // sky read as different hues simultaneously (real auroras show
-    // green at low altitude transitioning to pink/red higher up).
+    // three primaries across the orbit.
+    //
+    // Round 55 (2026-05-17): the round-53 `spatialPhase = R.y * 0.18`
+    // term was retired. The intent was "real auroras vary across the sky"
+    // but in Phosphene's substrate geometry it caused green-glow-under-
+    // spikes: substrate flat pixels reflect at high R.y (~0.7-0.9 with
+    // the oblique camera) → spatial phase pushed substrate reflections
+    // toward green while cone-side reflections (lower R.y) stayed at
+    // pink/magenta → looked like the ground emitted green light, which
+    // is nonsensical under mirror-reflects-sky. Temporal orbit drift
+    // alone rotates the palette through all primaries over ~10-15 s
+    // wall-clock; we don't need a spatial axis on top.
     constexpr float kCurtainBasePhase = 0.50;
-    float spatialPhase = R.y * 0.18;  // higher elevation → +0.18 phase shift
     float t = kCurtainBasePhase + palettePhase
-            + 0.35 * sin(curtainAzimuth * 0.5)
-            + spatialPhase;
+            + 0.35 * sin(curtainAzimuth * 0.5);
     float3 curtainHue = rm_palette(t);
 
     float3 aurora = curtainHue * curtainIntensity

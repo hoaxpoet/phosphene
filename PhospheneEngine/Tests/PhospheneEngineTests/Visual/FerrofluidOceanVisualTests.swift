@@ -141,12 +141,16 @@ final class FerrofluidOceanVisualTests: XCTestCase {
             // average-channel gate catches a regression where the matID == 2
             // sky function returns vec3(0) at silence (e.g. a stale buffer
             // binding, an `activeLightCount = 0` shortcut, or a future
-            // refactor that drops the rig.lights iteration). Threshold 4
-            // ≈ 1.6 % linear average — below the Session 4.5 silence
-            // baseline (~6–10) and far above the all-black floor. Lower
-            // than the Session 3 threshold of 8 because the new sky path
-            // intentionally renders darker at silence (base purple, not
-            // gray-blue IBL) — the visual change is the whole point.
+            // refactor that drops the rig.lights iteration).
+            //
+            // Threshold history:
+            //   Session 3:        > 8 (gray-blue IBL silence baseline)
+            //   Session 4.5:      > 4 (purple base sky)
+            //   Round 53/55:      > 1.5 (Refn base-sky crush: midSky from 0.13
+            //                     down to 0.020; round-55 lattice thinning
+            //                     drops silence avg ~3.7 in measured fixture)
+            // 1.5 still catches "all-black" failure (avg would be ~0.1)
+            // while accepting the round-53 crushed-black baseline.
             if fixture.name == "01_silence" {
                 var channelSum: UInt64 = 0
                 for i in 0 ..< pixels.count where i % 4 != 3 {
@@ -155,8 +159,8 @@ final class FerrofluidOceanVisualTests: XCTestCase {
                 let channelCount = UInt64(pixels.count / 4 * 3)
                 let avgChannel = Double(channelSum) / Double(channelCount)
                 XCTAssertGreaterThan(
-                    avgChannel, 4.0,
-                    "Silence fixture avg channel \(avgChannel) ≤ 4 — matID == 2 sky reflection likely collapsed (V.9 Session 4.5)")
+                    avgChannel, 1.5,
+                    "Silence fixture avg channel \(avgChannel) ≤ 1.5 — matID == 2 sky reflection likely collapsed (V.9 Session 4.5)")
             }
         }
 

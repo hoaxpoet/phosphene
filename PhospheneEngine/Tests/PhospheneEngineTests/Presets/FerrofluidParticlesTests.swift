@@ -53,8 +53,8 @@ final class FerrofluidParticlesTests: XCTestCase {
     // MARK: - Gate 1: locked constants
 
     func test_lockedConstants_phase1Contract() {
-        XCTAssertEqual(FerrofluidParticles.particleCount, 3600,
-                       "Round 52b (2026-05-16): 3025 → 3600 (60 × 60 grid). Slight density bump to fill visible hash-offset gaps Matt flagged in the round-52 review. Coordinated with the lotus-envelope tuning in the bake (spacing 2.5 → 4.5 wu, floor 0.40 → 0.55) so the lotus pattern reads clearly while no inter-cluster region falls to bare-substrate appearance.")
+        XCTAssertEqual(FerrofluidParticles.particleCount, 2500,
+                       "Round 55 (2026-05-17): 3600 → 2500 (50 × 50 grid). The round-52b high-density lattice (0.333 wu spacing) put ~6-8 particles in each pixel's smooth-min blend zone → poly-smin lift accumulation distorted cone shapes (Matt's 2026-05-17 live-app review: 'spikes merging together due to bad math'). Round-55 spacing 0.4 wu / half-spacing 0.2 wu → 3-4 particles per blend zone, accumulated lift small enough for clean cone rendering at reference-faithful packing density.")
         XCTAssertEqual(FerrofluidParticles.heightTextureSize, 4096,
                        "Texel-grid pass 2026-05-14: bumped to 4096² so the texture pixel scale (0.005 wu) sits below the 1080p screen-pixel scale (~0.006 wu) → texel-grid staircase falls below rendered-pixel size")
         XCTAssertEqual(FerrofluidParticles.worldSpan, 20.0,
