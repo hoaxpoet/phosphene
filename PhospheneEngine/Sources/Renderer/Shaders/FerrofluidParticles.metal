@@ -398,5 +398,51 @@ kernel void ferrofluid_height_bake(
     float dist01 = clamp(res / u.spikeBaseRadius, 0.0, 1.0);
     dist01 = almost_identity(dist01, kApexRoundM, kApexRoundN);
     float height = 1.0 - dist01;
+
+    // ── Lotus-cluster height envelope (V.9 Session 4.5c Phase 1 round 52,
+    //     2026-05-16) ──
+    //
+    // Multi-cluster lotus-flower pattern across the ocean per Matt's
+    // 2026-05-16 brief: spikes should read as densely-packed lotus
+    // blooms distributed across the patch (option (a) — many lotus
+    // clusters distributed like flowers in a field, not one big central
+    // focal point). Implementation: divide the world-XZ plane into a
+    // grid of cluster cells (kClusterSpacing wu apart); for each texel
+    // compute distance to the nearest cluster center; modulate spike
+    // height by an envelope that peaks at cluster centers and tapers
+    // smoothly to a minimum at cluster boundaries. The taper is C¹-
+    // continuous so adjacent clusters blend without visible seams.
+    //
+    // Envelope range: 0.40 (inter-cluster minimum, ~40 % of full spike
+    // height) → 1.00 (cluster center, full spike height). The minimum
+    // is non-zero so the lattice stays continuous between clusters
+    // (densely-packed per Matt's brief; lotus blooms rise above an
+    // ever-present spike field rather than emerging from gaps).
+    //
+    // kClusterSpacing 2.5 wu — same constant FerrofluidMesh.metal uses
+    // (round 45). At our 20 wu world span this gives an 8 × 8 = 64
+    // cluster centers; with ~3025 particles, ~47 particles per cluster
+    // → each cluster has enough spike density to read as a bloom rather
+    // than as a single tall stalk.
+    // Round 52b (2026-05-16): spacing 2.5 → 4.5 wu, envelope floor
+    // 0.40 → 0.55. The round-52 lotus envelope was too subtle at the
+    // camera distance (each 2.5 wu cluster subtended ~2 frame rows on
+    // screen → radial pattern indistinguishable from uniform field) and
+    // the deep envelope floor (0.40) produced bald patches at inter-
+    // cluster minima. 4.5 wu spacing puts ~4 clusters per visible
+    // frame-width → lotus blooms occupy meaningful screen area; the
+    // 0.55 floor keeps all inter-cluster spikes at aspect ratio ≥ 2:1
+    // so nothing reads as bare substrate while preserving a 45 % height
+    // differential between bloom centers and edges.
+    constexpr float kClusterSpacing      = 4.5;
+    constexpr float kClusterEnvelopeMin  = 0.55;
+    float2 clusterCell    = floor(pXZ / kClusterSpacing);
+    float2 clusterCenter  = (clusterCell + 0.5) * kClusterSpacing;
+    float  distToCenter   = length(pXZ - clusterCenter);
+    float  halfSpacing    = 0.5 * kClusterSpacing;
+    float  envelopeFactor = mix(kClusterEnvelopeMin, 1.0,
+                                smoothstep(halfSpacing, 0.0, distToCenter));
+    height *= envelopeFactor;
+
     heightTex.write(float4(height, 0.0, 0.0, 0.0), gid);
 }

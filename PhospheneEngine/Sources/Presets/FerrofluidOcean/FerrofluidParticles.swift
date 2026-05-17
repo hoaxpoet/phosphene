@@ -75,17 +75,20 @@ public final class FerrofluidParticles: @unchecked Sendable {
     /// X/Z spacing 20/55 ≈ 0.364 wu, half-spacing 0.182 wu just slightly
     /// over radius 0.17 → bases nearly touch with a thin substrate
     /// channel between, matching the reference packing density.
-    /// **Round 50 (2026-05-16)**: 3025 → 1521 (39 × 39 grid). Combined
-    /// with round-50's 4× height multiplier bump in `fo_ferrofluid_field_sampled`,
-    /// the round-17 dense lattice (3025 particles, half-spacing 0.182 wu
-    /// just barely > radius 0.17 wu) merged adjacent cones into malformed
-    /// blobs because the tall cones' bases blend through the smooth-min.
-    /// The 39 × 39 grid puts half-spacing at 0.256 wu (well clear of the
-    /// 0.17 wu radius), giving ~0.17 wu visible substrate gap between
-    /// adjacent cone bases — the well-spaced regime the reference photos
-    /// show for cleanly-readable individual cone silhouettes (Matt's
-    /// 2026-05-16T22:38Z review attachment).
-    public static let particleCount: Int = 1521
+    /// **Round 52 (2026-05-16)**: 1521 → 3025 (55 × 55 grid). Round 50
+    /// reduced to 1521 on the misread theory that references show
+    /// "well-spaced cones with visible substrate gaps"; Matt's
+    /// 2026-05-16T23-xx-xxZ review with the lotus-flower-pattern brief
+    /// + close-up Rosensweig reference confirmed the opposite: spikes
+    /// should be packed tight.
+    ///
+    /// **Round 52b (2026-05-16)**: 3025 → 3600 (60 × 60 grid). Matt's
+    /// follow-up review showed visible bald gaps in the round-52 frames
+    /// — the slight bump tightens hash-offset spacing so the lattice
+    /// fully covers the patch. Coordinated with the round-52b lotus
+    /// envelope tuning (floor raised 0.40 → 0.55, spacing widened
+    /// 2.5 → 4.5 wu) in `ferrofluid_height_bake`.
+    public static let particleCount: Int = 3600
 
     /// Height texture: original spec 512² → 1024² (Matt 2026-05-14
     /// fullscreen/4K product addendum) → 2048² (smoothness pass

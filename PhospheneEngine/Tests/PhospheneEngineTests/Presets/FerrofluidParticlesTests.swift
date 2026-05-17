@@ -53,8 +53,8 @@ final class FerrofluidParticlesTests: XCTestCase {
     // MARK: - Gate 1: locked constants
 
     func test_lockedConstants_phase1Contract() {
-        XCTAssertEqual(FerrofluidParticles.particleCount, 1521,
-                       "Round 50 (2026-05-16): 3025 → 1521 (39 × 39 grid). Combined with round-50's 4× height multiplier bump, the round-17 dense lattice merged adjacent cones into malformed blobs because tall cones' bases blend through the smooth-min when half-spacing ~= radius. The 39 × 39 grid puts half-spacing at 0.256 wu (well clear of 0.17 wu radius), giving ~0.17 wu visible substrate gap between adjacent cone bases — the well-spaced regime the reference photos show for cleanly-readable cone silhouettes.")
+        XCTAssertEqual(FerrofluidParticles.particleCount, 3600,
+                       "Round 52b (2026-05-16): 3025 → 3600 (60 × 60 grid). Slight density bump to fill visible hash-offset gaps Matt flagged in the round-52 review. Coordinated with the lotus-envelope tuning in the bake (spacing 2.5 → 4.5 wu, floor 0.40 → 0.55) so the lotus pattern reads clearly while no inter-cluster region falls to bare-substrate appearance.")
         XCTAssertEqual(FerrofluidParticles.heightTextureSize, 4096,
                        "Texel-grid pass 2026-05-14: bumped to 4096² so the texture pixel scale (0.005 wu) sits below the 1080p screen-pixel scale (~0.006 wu) → texel-grid staircase falls below rendered-pixel size")
         XCTAssertEqual(FerrofluidParticles.worldSpan, 20.0,

@@ -41,37 +41,37 @@ extension FerrofluidParticles {
         var capacity: Int { columns * rows }
     }
 
-    /// Canonical grid: **39 × 39 = 1521 cells** (Round 50, 2026-05-16).
-    /// X / Z spacing `worldSpan / 39 = 0.513 world units` — isotropic.
-    /// With `spikeBaseRadius = 0.17` half-spacing 0.256 wu > radius 0.17
-    /// by 0.086 wu → ~0.17 wu visible substrate gap between adjacent
-    /// cone bases (~50 % of base diameter), landing in the well-spaced
-    /// regime the reference photographs show for cleanly-isolated cone
-    /// silhouettes. The earlier 55 × 55 = 3025 grid (round 17) packed
-    /// bases so tight (0.012 wu channel) that adjacent spike-bases blended
-    /// via the smooth-min into the merged-blob failure mode the reference
-    /// also shows in its densest regions — round 50 backs off to the
-    /// well-spaced regime instead.
+    /// Canonical grid: **55 × 55 = 3025 cells** (Round 52, 2026-05-16 —
+    /// restored from round 50's 1521 reduction). X / Z spacing
+    /// `worldSpan / 55 = 0.364 world units` — isotropic. With
+    /// `spikeBaseRadius = 0.17` half-spacing 0.182 wu > radius 0.17 by
+    /// only 0.012 wu → bases nearly touch. The merging that motivated
+    /// the round-50 reduction was a symptom of uniform-grid placement,
+    /// not over-density — the round-52 lotus-cluster envelope in the
+    /// bake (see `ferrofluid_height_bake`) modulates per-pixel spike
+    /// height by distance to nearest cluster center so cluster centers
+    /// peak with full-height spikes and inter-cluster regions taper down
+    /// naturally, giving the lotus-bloom character per the references
+    /// (Matt's 2026-05-16 brief: "densely-packed, lotus-flower pattern").
     ///
     /// History:
     ///   - 80 × 75 = 6000 cells with radius 0.15 (wall-to-wall overlap)
     ///   - 80 × 75 = 6000 cells with radius 0.06 (isolated, but
-    ///     per-spike screen coverage too small — Matt's
-    ///     `2026-05-15T12-36-08Z` review: "still nowhere close to actual
-    ///     ferrofluid")
-    ///   - 40 × 38 = 1520 cells with radius 0.12 (Round 11) — discrete
-    ///     pyramids registered but Matt's `2026-05-15T14-31-24Z` review
-    ///     flagged "too few spikes, lots of empty space between spikes"
-    ///     vs the reference set's ~35-40 visible spike-rows.
-    ///   - 55 × 55 = 3025 cells with radius 0.17 (Round 17) — bases
-    ///     nearly touch; combined with the round-50 4× height-multiplier
-    ///     bump (0.15 → 0.63), adjacent cones merged into the malformed-
-    ///     blob failure mode.
-    ///   - 39 × 39 = 1521 cells with radius 0.17 (Round 50, current) —
-    ///     well-spaced cones with ~0.17 wu visible substrate gap between
-    ///     bases, matching the reference's cleanly-isolated-cone regime.
+    ///     per-spike screen coverage too small)
+    ///   - 40 × 38 = 1520 cells with radius 0.12 (Round 11)
+    ///   - 55 × 55 = 3025 cells with radius 0.17 (Round 17 / Round 52,
+    ///     current — restored after round-50 lotus-pattern pivot).
+    ///   - 39 × 39 = 1521 cells with radius 0.17 (Round 50, reverted) —
+    ///     misread "well-spaced" regime from incomplete reference
+    ///     analysis.
     static func canonicalGridLayout() -> GridLayout {
-        GridLayout(columns: 39, rows: 39)
+        // Round 52b (2026-05-16): 55 × 55 → 60 × 60 (3025 → 3600). Slight
+        // density bump to fill visible hash-offset gaps Matt flagged in
+        // the round-52 review. Spacing 20/60 = 0.333 wu; half-spacing
+        // 0.167 wu < radius 0.17 wu → bases marginally overlap (smooth-
+        // min handles the blend). Coordinated with the round-52b lotus-
+        // envelope tuning in the bake.
+        GridLayout(columns: 60, rows: 60)
     }
 
     /// Populate the particle buffer with the canonical Phase 1 positions
