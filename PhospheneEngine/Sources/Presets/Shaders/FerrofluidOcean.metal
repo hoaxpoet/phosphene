@@ -111,9 +111,19 @@ static inline float fo_swell_scale(constant FeatureVector& f,
 // MARK: - Gerstner macro displacement
 //
 // Preset-level per `mat_ocean` (§4.14) convention. 4 superposed waves; Session 4
-// may extend to 6. Time source is `f.accumulated_audio_time` (FeatureVector
-// field 25) — energy-weighted clock that breathes with the music (CLAUDE.md
-// Failed Approach #33 prohibits free-running sin(time)).
+// may extend to 6. **Round 58 (2026-05-17): time source switched from
+// `accumulated_audio_time` to `features.time`** (monotonic wall-clock) so
+// macro swell undulation is visible at human timescales. The
+// `accumulated_audio_time` clock advances at ~7-9 % wall-clock and made
+// wave periods 60-196 s — practically static. Failed Approach #33's
+// "no free-running sin(time)" prohibition applies to motion the viewer
+// expects to land with the music (primary motion in active visual
+// subjects). Macro ocean swell is ambient/atmospheric — exactly the
+// category #33's scope clause EXCLUDES ("dust mote drift, slow mood
+// gradients, accumulated_audio_time-driven palette cycling, sky-band
+// low-frequency fbm4 modulation"). The swell is a permanent ambient
+// property of the body of liquid; its rolling motion is not music-
+// reactive (the AMPLITUDE is, via fo_swell_scale).
 //
 // Per-wave parameters: direction, wavelength, base amplitude, speed.
 
@@ -291,7 +301,22 @@ float sceneSDF(float3 p,
                constant StemFeatures& stems,
                texture2d<float> ferrofluidHeight) {
     (void)s;
-    float t        = f.accumulated_audio_time;
+    // Round 58 (2026-05-17): switch Gerstner time source from
+    // `accumulated_audio_time` to `features.time`. The accumulated_audio_time
+    // primitive advances at ~7-9 % of wall-clock (energy-weighted, pauses at
+    // silence) — with Gerstner wave angular speeds 0.4-1.3 rad/s, that made
+    // wall-clock wave periods 60-196 seconds (practically static at
+    // session-viewing timescales). Matt's 2026-05-17T23-31-11Z review:
+    // "the undulation of the ocean is no longer present." `features.time`
+    // is monotonic wall-clock seconds → waves roll at their natural rates,
+    // giving the body-of-liquid character the "ferrofluid ocean" framing
+    // depends on. The ocean keeps breathing at silence (more ocean-like
+    // than music-paused). The audio response continues to live in the
+    // aurora (vocals → hue, drums → intensity, arousal → drift) and the
+    // swell AMPLITUDE (arousal baseline + drums accent via
+    // `fo_swell_scale`) — only the wave PROPAGATION uses real time now.
+    // See `project_accumulated_audio_time_not_clock` memory for the rule.
+    float t        = f.time;
     float swell    = fo_gerstner_swell(p.xz, t, fo_swell_scale(f, stems));
     float spikes   = fo_ferrofluid_field_sampled(p,
                                                  fo_spike_strength(f, stems),
