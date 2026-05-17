@@ -41,13 +41,17 @@ extension FerrofluidParticles {
         var capacity: Int { columns * rows }
     }
 
-    /// Canonical grid: **55 × 55 = 3025 cells** (Round 17, 2026-05-15).
-    /// X / Z spacing `worldSpan / 55 = 0.3636 world units` — isotropic.
-    /// Particles at this density with `spikeBaseRadius = 0.17` have bases
-    /// that nearly touch (half-spacing 0.182 > radius 0.17 by only
-    /// 0.012 wu) → dense lattice with thin substrate channels between
-    /// peaks, matching the reference set's packing density per
-    /// `01_macro_ferrofluid_at_swell_scale.jpg`.
+    /// Canonical grid: **39 × 39 = 1521 cells** (Round 50, 2026-05-16).
+    /// X / Z spacing `worldSpan / 39 = 0.513 world units` — isotropic.
+    /// With `spikeBaseRadius = 0.17` half-spacing 0.256 wu > radius 0.17
+    /// by 0.086 wu → ~0.17 wu visible substrate gap between adjacent
+    /// cone bases (~50 % of base diameter), landing in the well-spaced
+    /// regime the reference photographs show for cleanly-isolated cone
+    /// silhouettes. The earlier 55 × 55 = 3025 grid (round 17) packed
+    /// bases so tight (0.012 wu channel) that adjacent spike-bases blended
+    /// via the smooth-min into the merged-blob failure mode the reference
+    /// also shows in its densest regions — round 50 backs off to the
+    /// well-spaced regime instead.
     ///
     /// History:
     ///   - 80 × 75 = 6000 cells with radius 0.15 (wall-to-wall overlap)
@@ -59,11 +63,15 @@ extension FerrofluidParticles {
     ///     pyramids registered but Matt's `2026-05-15T14-31-24Z` review
     ///     flagged "too few spikes, lots of empty space between spikes"
     ///     vs the reference set's ~35-40 visible spike-rows.
-    ///   - 55 × 55 = 3025 cells with radius 0.17 (Round 17, current) —
-    ///     ~2× more spike-rows, bases nearly touch, area coverage
-    ///     17 % → 75 %.
+    ///   - 55 × 55 = 3025 cells with radius 0.17 (Round 17) — bases
+    ///     nearly touch; combined with the round-50 4× height-multiplier
+    ///     bump (0.15 → 0.63), adjacent cones merged into the malformed-
+    ///     blob failure mode.
+    ///   - 39 × 39 = 1521 cells with radius 0.17 (Round 50, current) —
+    ///     well-spaced cones with ~0.17 wu visible substrate gap between
+    ///     bases, matching the reference's cleanly-isolated-cone regime.
     static func canonicalGridLayout() -> GridLayout {
-        GridLayout(columns: 55, rows: 55)
+        GridLayout(columns: 39, rows: 39)
     }
 
     /// Populate the particle buffer with the canonical Phase 1 positions

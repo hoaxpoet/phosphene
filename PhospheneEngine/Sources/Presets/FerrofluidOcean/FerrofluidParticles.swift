@@ -75,7 +75,17 @@ public final class FerrofluidParticles: @unchecked Sendable {
     /// X/Z spacing 20/55 ≈ 0.364 wu, half-spacing 0.182 wu just slightly
     /// over radius 0.17 → bases nearly touch with a thin substrate
     /// channel between, matching the reference packing density.
-    public static let particleCount: Int = 3025
+    /// **Round 50 (2026-05-16)**: 3025 → 1521 (39 × 39 grid). Combined
+    /// with round-50's 4× height multiplier bump in `fo_ferrofluid_field_sampled`,
+    /// the round-17 dense lattice (3025 particles, half-spacing 0.182 wu
+    /// just barely > radius 0.17 wu) merged adjacent cones into malformed
+    /// blobs because the tall cones' bases blend through the smooth-min.
+    /// The 39 × 39 grid puts half-spacing at 0.256 wu (well clear of the
+    /// 0.17 wu radius), giving ~0.17 wu visible substrate gap between
+    /// adjacent cone bases — the well-spaced regime the reference photos
+    /// show for cleanly-readable individual cone silhouettes (Matt's
+    /// 2026-05-16T22:38Z review attachment).
+    public static let particleCount: Int = 1521
 
     /// Height texture: original spec 512² → 1024² (Matt 2026-05-14
     /// fullscreen/4K product addendum) → 2048² (smoothness pass
@@ -175,6 +185,23 @@ public final class FerrofluidParticles: @unchecked Sendable {
     /// substrate. The "ocean" is now interpreted as a magnetically-charged
     /// surface with multiple distributed cluster centers (see
     /// `kClusterSpacing`/`kClusterFocalDepth` in `FerrofluidMesh.metal`).
+    ///
+    /// **Round 50 (2026-05-16) — constant-field premise**: radius stays
+    /// at 0.17 wu but the HEIGHT scale increases 4× alongside (see
+    /// `fo_ferrofluid_field_sampled` height multiplier). The session
+    /// 2026-05-16T21-10-39Z capture reads as a field of rounded purple
+    /// beads, not Rosensweig needles. Diagnosis (with Matt): aspect
+    /// ratio at the old config was 0.14 wu height / 0.17 wu radius =
+    /// 0.8:1 — wider than tall = dome reading. Reference photographs
+    /// (Matt's 2026-05-16 attachments) show 3-4× taller than wide cones.
+    /// Fix is to preserve the radius (keeps individual spikes at
+    /// rendered-visible scale for the camera at y=4.6) while increasing
+    /// the height multiplier so aspect lands at ~3.7:1 = reference-
+    /// faithful needle character. Combined with `fo_spike_strength`
+    /// being switched to a constant 1.0 (see that function's docstring
+    /// for the constant-field premise), the spike lattice is now a
+    /// constant geometric property of the ocean rather than an
+    /// audio-coupled response.
     public static let spikeBaseRadius: Float = 0.17
 
     /// Apex-rounding parameter for `almostIdentity` smoothing on the

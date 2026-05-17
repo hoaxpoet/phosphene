@@ -53,8 +53,8 @@ final class FerrofluidParticlesTests: XCTestCase {
     // MARK: - Gate 1: locked constants
 
     func test_lockedConstants_phase1Contract() {
-        XCTAssertEqual(FerrofluidParticles.particleCount, 3025,
-                       "Round 17 (2026-05-15): 1520 → 3025 (55 × 55 grid). Matt's review of the `2026-05-15T14-31-24Z` capture flagged 'too few spikes, lots of empty space between spikes' vs the reference set's dense lattice (`01_macro_*` shows ~35-40 spike-rows visible; round-11's 1520 particles showed ~20). Coordinated with spikeBaseRadius 0.12 → 0.17 (round 17 same commit) — new X/Z spacing 20/55 ≈ 0.364 wu, half-spacing 0.182 wu just over radius 0.17 → bases nearly touch. Isotropic 55 × 55 grid replaces round-11's anisotropic 40 × 38.")
+        XCTAssertEqual(FerrofluidParticles.particleCount, 1521,
+                       "Round 50 (2026-05-16): 3025 → 1521 (39 × 39 grid). Combined with round-50's 4× height multiplier bump, the round-17 dense lattice merged adjacent cones into malformed blobs because tall cones' bases blend through the smooth-min when half-spacing ~= radius. The 39 × 39 grid puts half-spacing at 0.256 wu (well clear of 0.17 wu radius), giving ~0.17 wu visible substrate gap between adjacent cone bases — the well-spaced regime the reference photos show for cleanly-readable cone silhouettes.")
         XCTAssertEqual(FerrofluidParticles.heightTextureSize, 4096,
                        "Texel-grid pass 2026-05-14: bumped to 4096² so the texture pixel scale (0.005 wu) sits below the 1080p screen-pixel scale (~0.006 wu) → texel-grid staircase falls below rendered-pixel size")
         XCTAssertEqual(FerrofluidParticles.worldSpan, 20.0,
@@ -66,7 +66,7 @@ final class FerrofluidParticlesTests: XCTestCase {
         XCTAssertEqual(FerrofluidParticles.smoothMinW, 0.005, accuracy: 1e-6,
                        "Polynomial smooth-min weight tightened to 0.005 (V.9 Session 4.5c Phase 1 round 4, 2026-05-14) for near-min distance interpolation; combined with the squared height profile in `ferrofluid_height_bake`, valley heights pull to ~3% of peak per the discrete-spike target in `04_specular_razor_highlights.jpg`. Particles are pinned in this round so no motion-driven pop-in concern from tight `w`.")
         XCTAssertEqual(FerrofluidParticles.spikeBaseRadius, 0.17, accuracy: 1e-6,
-                       "Spike base radius 0.12 → 0.17 in round 17 (2026-05-15), coordinated with particle count 1520 → 3025 (55 × 55 grid). New X/Z spacing 0.364 wu, half-spacing 0.182 wu → radius 0.17 just under half-spacing → bases nearly touch with ~0.012 wu substrate channel between. Area coverage rises 17 % → 75 %, closing the empty-substrate gap Matt flagged on `2026-05-15T14-31-24Z` against the reference set's dense lattice.")
+                       "Spike base radius 0.17 wu retained in round 50 (2026-05-16). Round 50 preserves the radius for camera-distance-appropriate spike sizing (the y=4.6 camera makes narrower bases project as invisible dots) and instead increases the HEIGHT multiplier in `fo_ferrofluid_field_sampled` to land aspect at ~3.7:1 (= reference-faithful needle character). See spikeBaseRadius docstring + `fo_spike_strength` docstring for the constant-field premise.")
         XCTAssertEqual(FerrofluidParticles.apexSmoothK, 0.03, accuracy: 1e-6,
                        "almostIdentity apex-smoothing tuned to 0.03 (2026-05-14) — keep peak tips razor-sharp per 04_specular_razor_highlights.jpg")
     }
@@ -202,17 +202,13 @@ final class FerrofluidParticlesTests: XCTestCase {
         particles.bakeHeightField(commandQueue: commandQueue)
 
         // Sample the texture: count texels with non-zero height. With
-        // `spikeBaseRadius = 0.06` (V.9 4.5c round 5) and 6000 particles in
-        // the 20×20 wu patch, expected lattice coverage is
-        // 6000 × π × 0.06² / 400 = ~17 % of the patch area. The threshold
+        // `spikeBaseRadius = 0.17` (retained in round 50) and 3025
+        // particles in the 20×20 wu patch, expected lattice coverage is
+        // 3025 × π × 0.17² / 400 = ~68 % of the patch area. The threshold
         // here is "bake produces meaningful non-zero output" — set well
         // above zero so any silent bake failure trips, well below the
         // expected coverage so future radius tuning doesn't false-fail
-        // this gate. The earlier 25 % threshold was sized for the
-        // 0.15 wu radius (~71 % expected coverage) and is no longer
-        // applicable; the SHAPE intent shifted from "continuous bumpy
-        // fabric" to "isolated tall needles with dark substrate
-        // between."
+        // this gate.
         let bytes = readHeightTexture(particles.heightTexture)
         // r16Float: 2 bytes per pixel. Decode each pair as Float16 → Float.
         var nonZero = 0
@@ -224,7 +220,7 @@ final class FerrofluidParticlesTests: XCTestCase {
             }
         }
         XCTAssertGreaterThan(nonZero, totalTexels / 20,
-            "Bake produced only \(nonZero) / \(totalTexels) non-zero texels — expected at least 5 % of the patch covered by the spike lattice (the actual target is ~17 % at the current radius/density; the 5 % floor catches silent bake failures while leaving headroom for future radius tuning)")
+            "Bake produced only \(nonZero) / \(totalTexels) non-zero texels — expected at least 5 % of the patch covered by the spike lattice (the actual target is ~68 % at the current radius/density; the 5 % floor catches silent bake failures while leaving headroom for future radius tuning)")
     }
 
     // MARK: - Phase 2c: audio forces drive particle motion

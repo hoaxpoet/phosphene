@@ -57,102 +57,45 @@ static inline float fo_stem_warmup_blend(constant StemFeatures& stems) {
     return smoothstep(FO_STEM_WARMUP_LO, FO_STEM_WARMUP_HI, total);
 }
 
-// Spike-field strength: warmup-proxy crossfaded to stem-driven baseline+modulation.
+// Spike-field strength: CONSTANT under the V.9 Session 4.5c Phase 1 round 50
+// "constant-field premise". Returns 1.0 always.
 //
-// Three-stage routing:
+// **Premise change (2026-05-16).** Prior rounds treated the Rosensweig spike
+// height as Leitl-style "magnetic field strength = audio amplitude" — spikes
+// emerged with music and collapsed at silence. Matt's review of the
+// 2026-05-16T21-10-39Z session frames + reading of Leitl's source surfaced
+// the contradiction: Phosphene's preset premise is "what if the ocean were
+// made of ferrofluid?" That premise implies an ambient, permanent magnetic
+// field — same way real oceans have ambient gravity. Under that premise the
+// spike lattice is part of the ocean's identity, present constantly at its
+// characteristic shape regardless of whether music is playing. Music
+// modulates the swell underneath (`fo_swell_scale`) and the aurora overhead
+// (`rm_ferrofluidSky`), not the spike geometry itself.
 //
-//   silence              → liveGate ≈ 0 → strength = 0 → lattice collapsed
-//   music, stems warming → liveGate < 1 → proxy path via `f.bass_dev`
-//   music, stems ready   → liveGate ≈ 1 → stem path (baseline + modulation)
+// What's retired:
+//   - The proxy/stem crossfade. Spikes no longer fade in over the ~10 s stem
+//     warmup window — they're present from frame 0.
+//   - The audio-coupled height (raw bass + dev). Spike height is constant,
+//     governed by the bake's `spikeBaseRadius` + the `× 0.15` height scale in
+//     `fo_ferrofluid_field_sampled` only.
+//   - The silence-collapse behavior. The lattice does NOT fade out at
+//     `totalStemEnergy == 0`. The destination silence state is now "calm
+//     ferrofluid ocean" (constant spike lattice + low-amplitude swell + base
+//     sky reflection) rather than "glassy water with no spikes".
 //
-// Round 10 (2026-05-15) re-introduces the warmup proxy after Matt's
-// `2026-05-15T12-36-08Z` review: "It took nearly 15 s of playback before
-// the spikes appeared." Cause: the stem pipeline needs ~10 s to produce
-// confident output on a fresh (un-cached) track; while liveGate < 1, the
-// pre-round-10 routing had baseline=0 and no proxy, so the substrate
-// rendered flat for the entire warmup window.
+// What stays audio-coupled (other functions):
+//   - Swell amplitude (`fo_swell_scale`): arousal baseline + drums accent.
+//   - Aurora curtain (`rm_ferrofluidSky`): vocals → hue, drums → intensity,
+//     arousal → drift, totalStemEnergy → live-stems gate.
 //
-// Round 3's retirement of the proxy used `f.bass_att_rel` which the
-// 2026-05-14T22:06Z capture showed capped at 0 on real music (separate
-// FeatureVector / MV-1 defect for later triage). `f.bass_dev` works on
-// real music — the same Love Rehab capture showed range [0, 2.45], mean
-// 0.003 (deviation-mode, sharp peaks on bass transients). Used here as
-// the warmup proxy directly — deviation-modulated only (no baseline)
-// since the FeatureVector lacks a "music is playing" indicator we can
-// drive a constant baseline against without falling into the AGC-
-// thresholding anti-pattern.
-//
-// Numbers:
-//   warmup proxy: `f.bass_dev × 1.5` → peaks ~3.7 on a kick hit (BJ)
-//   stem path:   `2.0 + stems.bass_energy_dev × 0.7` (round 3 unchanged)
-//   smooth crossfade between them as stems warm up via liveGate.
+// Future Phase 3 polish may re-introduce a small ±10–15 % height jitter on
+// top of the constant baseline so spikes have a faint "responding to
+// disturbance" quality without their fundamental shape changing. Optional;
+// not in this round.
 static inline float fo_spike_strength(constant FeatureVector& f,
                                       constant StemFeatures& stems) {
-    float liveGate = fo_stem_warmup_blend(stems);
-    // Round 14 (2026-05-15) — replace constant baseline with raw-bass-
-    // scaled music-presence term. Matt's `2026-05-15T13:56:20Z`: "works
-    // for regular beat, not There There / Money." Diagnosis: constant
-    // baseline + deviation-only modulation tracks the RATE OF CHANGE
-    // of bass, not the ABSOLUTE AMPLITUDE. Tracks with sparse percussion
-    // but steady bass amplitude (Money, There There) produce small dev
-    // → small response.
-    //
-    // New formula: `stems.bass_energy × 4.0` (music-presence — raw bass
-    // amplitude) + `bass_energy_dev × 1.5` (transient response on top).
-    // Multiplying by raw AGC is allowed; thresholding is the
-    // anti-pattern (CLAUDE.md). At true silence bass_energy = 0 → no
-    // spike, lattice collapses. At music quiet (bass_energy ≈ 0.4):
-    // 1.6 baseline → 0.24 wu. At music peak (bass_energy=0.6, dev=3.29):
-    // 2.4 + 4.93 = 7.33 → 1.10 wu. ALWAYS responsive when music plays
-    // regardless of meter regularity.
-    //
-    // Proxy gain bump 2.5 → 5.0 makes the warmup window's transient
-    // response more dramatic — the 8-10 s pre-stem window has no
-    // music-presence primitive that's AGC-safe (memory: `bass_att_rel`
-    // is broken; `bass_att` is AGC-baseline-non-zero at silence). So
-    // we lean harder on f.bass_dev's transient peaks during warmup.
-    // Spikes appear on bass hits, substrate stays flat between hits
-    // until stems are ready.
-    // Round 15 (2026-05-15) — re-tune. The `2026-05-15T14-10-12Z` capture
-    // (Love Rehab + Money) showed `stems.bass_energy` peaks at 2.583 and
-    // `stems.bass_energy_dev` at 4.860 — much wider than the ~0.5-1.0 /
-    // 0-3.3 range round 14 was tuned against. Round-14 constants
-    // (4.0 / 1.5) produced peak spike heights of 2.64 wu (aspect 22:1 —
-    // wire-thin wires, not pyramids). Round 15 dropped to 1.5 / 0.5:
-    // peak ≈ 0.95 wu (aspect ~8:1, proper needle).
-    //
-    // Round 16 (2026-05-15) — re-tune again. The `2026-05-15T14-22-14Z`
-    // capture (Love Rehab + So What + There There + Pyramid Song +
-    // Money) showed bass_energy distribution p10=0.13 / p50=0.28 /
-    // p75=0.32 / p90=0.43 / p99=0.78 / max=2.42. At round-15's linear
-    // 1.5x baseline, the p50 spike height was 0.064 wu (aspect 0.5:1 —
-    // almost flat), only Money's p99+ kicks cleared the spike radius.
-    // Matt's read: "blunted the spikes a bit too much. Not really
-    // spiking most of the time, but they still spike for certain beats
-    // of Money." The peaks (~7:1 aspect) are good; the baseline is the
-    // problem.
-    //
-    // Switch the base term to sqrt-scale (compresses dynamic range,
-    // brings the typical-music baseline up toward visibly-spiky
-    // territory) and bump the coefficient 1.5 → 2.5:
-    //   p10  → sqrt(0.13) × 2.5 = 0.90 → 0.135 wu = aspect 1.1:1
-    //   p50  → sqrt(0.28) × 2.5 = 1.32 → 0.198 wu = aspect 1.7:1
-    //   p90  → sqrt(0.43) × 2.5 = 1.64 → 0.246 wu = aspect 2.1:1
-    //   max  → sqrt(2.42) × 2.5 = 3.89 → 0.583 wu + dev 0.341 wu
-    //          = 0.924 wu = aspect 7.7:1 (same as round-15 peak).
-    // Dev term stays linear at 0.5 so peak transient response is
-    // unchanged. Round-15's commit message anticipated this exact move
-    // ("or shifts to sqrt-scaling").
-    constexpr float kSpikeStemBaseCoef   = 2.5;
-    constexpr float kSpikeStemModulation = 0.5;
-    constexpr float kSpikeProxyGain      = 5.0;
-    float proxyDev   = max(0.0, f.bass_dev);
-    float stemDev    = max(0.0, stems.bass_energy_dev);
-    float warmupStr  = proxyDev * kSpikeProxyGain;
-    float bassBase   = sqrt(max(0.0, stems.bass_energy));
-    float steadyStr  = bassBase * kSpikeStemBaseCoef
-                     + stemDev * kSpikeStemModulation;
-    return mix(warmupStr, steadyStr, liveGate);
+    (void)f; (void)stems;
+    return 1.0;
 }
 
 // Swell amplitude scale per D-124(d): arousal sets the sustained baseline at
@@ -315,7 +258,16 @@ static inline float fo_ferrofluid_field_sampled(float3 p,
     float u = (p.x - FO_HEIGHT_WORLD_ORIGIN_X) / FO_HEIGHT_WORLD_SPAN;
     float v = (p.z - FO_HEIGHT_WORLD_ORIGIN_Z) / FO_HEIGHT_WORLD_SPAN;
     float spike = heightTex.sample(heightSamp, float2(u, v)).r;
-    return spike * fieldStrength * 0.15;
+    // Round 50 (2026-05-16): height multiplier 0.15 → 0.63 to land aspect
+    // ratio at ~3.7:1 (= reference-faithful needle character). With
+    // spikeBaseRadius = 0.17 wu and constant fieldStrength = 1.0, peak
+    // height = 1.0 × 0.984 × 0.63 ≈ 0.62 wu / radius 0.17 wu ≈ 3.7:1
+    // aspect. Tall enough that the cone body dominates the rounded apex
+    // (the rounded apex was previously dominating because it WAS the
+    // whole shape). See `fo_spike_strength` docstring for the constant-
+    // field premise + FerrofluidParticles.swift::spikeBaseRadius for the
+    // radius-vs-height trade-off discussion.
+    return spike * fieldStrength * 0.63;
 }
 
 // Phase A inline fallback. Retained for diagnostic comparison + the case
