@@ -252,15 +252,22 @@ static float3 rm_skyColor(float3 rayDir) {
 /// blue-purple, warm toward magenta/amber. Anchors the
 /// `testFerrofluidOceanMoodTintSkyBaseShift` regression gate.
 static float3 rm_ferrofluidBaseSky(float3 R, constant SceneUniforms& scene) {
-    // Phase A rework (2026-05-13): values bumped ~30% from the previous
-    // 0.10/0.05/0.14 horizon — the dim aurora-curtain rework leaves the
-    // base sky carrying more of the visible substrate color, so it needs
-    // enough brightness to read as "dark purple atmosphere" rather than
-    // "near-black void" while staying inside the `07_atmosphere_dark_purple_fog.jpg`
-    // value range (the reference is dark but visibly purple, not black).
-    constexpr float3 lowSky  = float3(0.006, 0.003, 0.010);  // below-horizon near-black
-    constexpr float3 midSky  = float3(0.13,  0.07,  0.18);   // horizon dim warm-purple
-    constexpr float3 highSky = float3(0.05,  0.035, 0.10);   // zenith darker cool-purple
+    // Round 53 (2026-05-17, Step 2b — Refn aurora aesthetic): base sky
+    // crushed to near-black across the whole hemisphere per Matt's
+    // 2026-05-16 brief ("amped-up neon-glow aurora borealis, as if pulled
+    // from a Nicolas Winding Refn film"). The dramatic high-contrast
+    // chiaroscuro of Refn's palette (Drive / Neon Demon / Only God
+    // Forgives) requires near-black backgrounds against which the neon
+    // aurora reads as genuinely fluorescent. Pre-round-53 midSky was
+    // (0.13, 0.07, 0.18) — dim purple visible everywhere even where
+    // aurora was absent → substrate reflection picked up dim purple
+    // tone → adjacent spikes blurred into uniform mass. Round 53 crushes
+    // base sky 6-8× so non-aurora regions read as deep blacks; aurora
+    // additive contribution on top now produces the high-contrast
+    // black-to-neon transition the references show.
+    constexpr float3 lowSky  = float3(0.002, 0.001, 0.004);  // below-horizon black
+    constexpr float3 midSky  = float3(0.020, 0.010, 0.030);  // horizon near-black with violet trace
+    constexpr float3 highSky = float3(0.010, 0.006, 0.018);  // zenith deep-black with cool trace
     float3 baseSky = mix(lowSky, midSky, smoothstep(-1.0, 0.0, R.y));
     baseSky = mix(baseSky, highSky, smoothstep(0.0, 1.0, R.y));
     return baseSky * scene.lightColor.rgb;
@@ -541,8 +548,21 @@ static float3 rm_ferrofluidSky(float3 R,
     // or blue, for example?" At base 0.50, `t` ranges 0.20-0.80 — covers
     // pink, green, and purple primaries roughly evenly as vocals_pitch /
     // valence shift across their range.
-    constexpr float kCurtainBasePhase = 0.50;  // centred on green-to-purple transition
-    float t = kCurtainBasePhase + palettePhase + 0.10 * sin(curtainAzimuth * 0.5);
+    // Round 53 (2026-05-17): widened orbit drift component 0.10 → 0.35 so
+    // the curtain hue cycles visibly through the saturated palette stops
+    // (pink at t=0 / green at 0.33 / purple at 0.67) rather than sitting
+    // in the green-to-purple transition band. Combined with the existing
+    // valence/pitch palette-phase offset (±0.20), total phase range now
+    // spans 0.50 ± 0.55 = [-0.05, 1.05] — full rotation through all
+    // three primaries across the orbit. Plus spatial color variation
+    // from a small R.y-driven phase offset so different parts of the
+    // sky read as different hues simultaneously (real auroras show
+    // green at low altitude transitioning to pink/red higher up).
+    constexpr float kCurtainBasePhase = 0.50;
+    float spatialPhase = R.y * 0.18;  // higher elevation → +0.18 phase shift
+    float t = kCurtainBasePhase + palettePhase
+            + 0.35 * sin(curtainAzimuth * 0.5)
+            + spatialPhase;
     float3 curtainHue = rm_palette(t);
 
     float3 aurora = curtainHue * curtainIntensity
