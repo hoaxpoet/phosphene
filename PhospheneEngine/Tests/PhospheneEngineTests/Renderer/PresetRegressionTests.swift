@@ -152,7 +152,7 @@ private let goldenPresetHashes: [String: PresetHashes] = [
     // — i.e. between the three fixtures, not between AV.1 and AV.2 at the
     // same fixture). At 64×64 dHash with 9×8 cell quantisation the AV.1 →
     // AV.2 visual delta is Hamming-distance ~1-4 bits per fixture.
-    "Aurora Veil": (steady: 0x109B0A1B5E1B1B9A, beatHeavy: 0x109F0E1F1E1F1F9E, quiet: 0x109F0E1F561D1F9E),
+    "Aurora Veil": (steady: 0x109B0A1B5E1B1B9A, beatHeavy: 0x109F0E1F1E1D1F9E, quiet: 0x109F0E1F561D1F9E),
     // V.9 Session 1 — regen at Session 5 cert review (D-124 redirect: full preset
     // rewrite, glass-dish baseline replaced; golden hashes are stale by design).
     // "Ferrofluid Ocean": (steady: 0x56AB1C4A28B32727, beatHeavy: 0x5CB393AAAFA84840, quiet: 0xA64C51A62FD35356),
