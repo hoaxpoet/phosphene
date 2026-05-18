@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lumen Mosaic — Palette Library, Vol. II</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;1,9..144,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0c;
+    --bg-card: #0f0f13;
+    --text: #ebe8e0;
+    --text-dim: #8a8782;
+    --text-faint: #4d4b48;
+    --rule: #1c1c22;
+    --accent: #d4b87a;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body { margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Fraunces', Georgia, serif;
+    font-weight: 400;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  .page {
+    max-width: 1040px;
+    margin: 0 auto;
+    padding: 72px 36px 120px;
+  }
+
+  /* Masthead */
+
+  .masthead {
+    border-bottom: 1px solid var(--rule);
+    padding-bottom: 36px;
+    margin-bottom: 56px;
+  }
+
+  .eyebrow {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 20px;
+  }
+
+  h1 {
+    font-family: 'Fraunces', serif;
+    font-weight: 300;
+    font-size: 60px;
+    line-height: 1.0;
+    margin: 0 0 24px;
+    letter-spacing: -0.025em;
+    font-variation-settings: "opsz" 144;
+  }
+
+  h1 em {
+    font-style: italic;
+    font-weight: 400;
+    color: var(--accent);
+  }
+
+  .lede {
+    font-size: 18px;
+    color: var(--text-dim);
+    max-width: 640px;
+    line-height: 1.55;
+    margin: 0 0 18px;
+  }
+
+  .lede strong {
+    color: var(--text);
+    font-weight: 400;
+  }
+
+  .lede:last-child {
+    margin-bottom: 0;
+  }
+
+  /* Audit callout */
+
+  .audit {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    line-height: 1.7;
+    color: var(--text-dim);
+    background: #0c0c10;
+    border-left: 2px solid var(--accent);
+    padding: 18px 22px;
+    margin: 28px 0 0;
+    letter-spacing: 0.01em;
+  }
+
+  .audit strong {
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-size: 10px;
+    display: block;
+    margin-bottom: 8px;
+  }
+
+  /* Section heads */
+
+  .section-head {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    margin: 24px 0 40px;
+    padding-top: 28px;
+    border-top: 1px solid var(--rule);
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+
+  .section-head .right {
+    font-style: normal;
+    color: var(--text-faint);
+  }
+
+  /* Plate */
+
+  .plate {
+    margin-bottom: 80px;
+  }
+
+  .plate-head {
+    display: flex;
+    align-items: baseline;
+    gap: 20px;
+    margin-bottom: 10px;
+  }
+
+  .plate-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-faint);
+    letter-spacing: 0.1em;
+  }
+
+  .plate-name {
+    font-family: 'Fraunces', serif;
+    font-weight: 400;
+    font-size: 36px;
+    letter-spacing: -0.015em;
+    font-variation-settings: "opsz" 144;
+    margin: 0;
+    color: var(--text);
+  }
+
+  .plate-id {
+    font-style: italic;
+    color: var(--text-dim);
+    font-size: 16px;
+    margin: 0 0 32px;
+    max-width: 720px;
+    line-height: 1.55;
+    font-weight: 300;
+  }
+
+  /* Swatch strip */
+
+  .swatch-strip {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: 0;
+    border-radius: 3px;
+    overflow: hidden;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.04);
+  }
+
+  .swatch {
+    aspect-ratio: 1 / 1.3;
+  }
+
+  .meta-row {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: 0;
+    margin-top: 10px;
+  }
+
+  .meta-cell {
+    text-align: center;
+    padding: 0 4px;
+  }
+
+  .meta-name {
+    font-family: 'Fraunces', serif;
+    font-style: italic;
+    font-size: 11px;
+    color: var(--text-dim);
+    line-height: 1.25;
+    display: block;
+    min-height: 28px;
+    font-weight: 300;
+  }
+
+  .meta-hex {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--text-faint);
+    letter-spacing: 0.04em;
+    margin-top: 4px;
+    display: block;
+  }
+
+  /* Preview panel */
+
+  .preview {
+    margin-top: 28px;
+    padding: 20px;
+    background: #050506;
+    border-radius: 4px;
+    border: 1px solid var(--rule);
+  }
+
+  .preview-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--text-faint);
+    margin-bottom: 14px;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .preview-grid {
+    display: grid;
+    grid-template-columns: repeat(9, 1fr);
+    gap: 5px;
+  }
+
+  .preview-cell {
+    aspect-ratio: 1;
+    border-radius: 14% 9% 16% 7% / 9% 16% 7% 14%;
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,0.18);
+  }
+
+  /* Footer */
+
+  footer {
+    margin-top: 64px;
+    padding-top: 32px;
+    border-top: 1px solid var(--rule);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-faint);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    line-height: 1.8;
+  }
+
+  footer .right { float: right; }
+
+  @media (max-width: 720px) {
+    .page { padding: 48px 18px 80px; }
+    h1 { font-size: 40px; }
+    .lede { font-size: 16px; }
+    .audit { font-size: 10px; padding: 14px 16px; }
+    .plate-name { font-size: 26px; }
+    .plate-id { font-size: 14px; }
+    .meta-name { font-size: 9px; min-height: 24px; }
+    .meta-hex { font-size: 8px; }
+    .preview-grid { grid-template-columns: repeat(6, 1fr); }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="masthead">
+    <div class="eyebrow">Phosphene · Phase LM · Palette Library Exploration · Vol. II</div>
+    <h1>Six further <em>palettes</em></h1>
+    <p class="lede">Continuation of the library. Six new plates drawing from sources the first seven did not touch — Indian festival, mineral geology, mid-century American painting, tropical biology, Persian manuscript, Japanese woodblock.</p>
+    <p class="lede">Each was chosen against an explicit audit of which primary colour territories were missing from Vol. I.</p>
+    <div class="audit">
+      <strong>Audit · what Vol. I did not cover</strong>
+      Pure citrine yellow (not gold or amber) · true scarlet (not blood-red or crimson) · chartreuse and peridot · amethyst at saturation · ochre and burnt sienna at saturation · coral that is neither hot magenta nor blood-red · pistachio at saturation · Prussian blue (greener and deeper than ultramarine) · Persian turquoise (distinct from Caribbean) · willow and cypress greens.
+    </div>
+  </header>
+
+  <!-- 08 HOLI -->
+  <section class="plate">
+    <div class="plate-head"><span class="plate-num">08</span><h2 class="plate-name">Holi</h2></div>
+    <p class="plate-id">Indian spring festival. Powdered gulal pigments thrown skyward — the air at the festival peak. Five distinct pinks span ultra-saturated gulal through rose; the signature is the pink–turmeric–vermilion–Krishna-blue contrast no other palette achieves. Brings <strong>banana yellow</strong> (a clean primary the library has been missing) and <strong>neem</strong> (saturated leaf-lime).</p>
+    <div class="swatch-strip">
+      <div class="swatch" style="background:#FF0E84"></div>
+      <div class="swatch" style="background:#FF5A8B"></div>
+      <div class="swatch" style="background:#FF1F8F"></div>
+      <div class="swatch" style="background:#E8A317"></div>
+      <div class="swatch" style="background:#F4900C"></div>
+      <div class="swatch" style="background:#FFD800"></div>
+      <div class="swatch" style="background:#E34234"></div>
+      <div class="swatch" style="background:#1E59C9"></div>
+      <div class="swatch" style="background:#FF7518"></div>
+      <div class="swatch" style="background:#95C11F"></div>
+      <div class="swatch" style="background:#8E44AD"></div>
+      <div class="swatch" style="background:#1B998B"></div>
+    </div>
+    <div class="meta-row">
+      <div class="meta-cell"><span class="meta-name">Gulal pink</span><span class="meta-hex">FF0E84</span></div>
+      <div class="meta-cell"><span class="meta-name">Rose</span><span class="meta-hex">FF5A8B</span></div>
+      <div class="meta-cell"><span class="meta-name">Magenta</span><span class="meta-hex">FF1F8F</span></div>
+      <div class="meta-cell"><span class="meta-name">Turmeric</span><span class="meta-hex">E8A317</span></div>
+      <div class="meta-cell"><span class="meta-name">Sindoor saffron</span><span class="meta-hex">F4900C</span></div>
+      <div class="meta-cell"><span class="meta-name">Banana yellow</span><span class="meta-hex">FFD800</span></div>
+      <div class="meta-cell"><span class="meta-name">Vermilion</span><span class="meta-hex">E34234</span></div>
+      <div class="meta-cell"><span class="meta-name">Krishna blue</span><span class="meta-hex">1E59C9</span></div>
+      <div class="meta-cell"><span class="meta-name">Marigold</span><span class="meta-hex">FF7518</span></div>
+      <div class="meta-cell"><span class="meta-name">Neem</span><span class="meta-hex">95C11F</span></div>
+      <div class="meta-cell"><span class="meta-name">Holi violet</span><span class="meta-hex">8E44AD</span></div>
+      <div class="meta-cell"><span class="meta-name">Peacock teal</span><span class="meta-hex">1B998B</span></div>
+    </div>
+    <div class="preview">
+      <div class="preview-label"><span>Panel preview · uniform sample</span><span>27 cells</span></div>
+      <div class="preview-grid" data-palette='["#FF0E84","#FF5A8B","#FF1F8F","#E8A317","#F4900C","#FFD800","#E34234","#1E59C9","#FF7518","#95C11F","#8E44AD","#1B998B"]'></div>
+    </div>
+  </section>
+
+  <!-- 09 GEODE -->
+  <section class="plate">
+    <div class="plate-head"><span class="plate-num">09</span><h2 class="plate-name">Geode</h2></div>
+    <p class="plate-id">Gemstone cross-sections laid out on a museum drawer. Each colour a distinct mineral. Brings <strong>citrine</strong> (the pure yellow the library has lacked), <strong>amethyst</strong> at full saturation, <strong>peridot</strong> chartreuse, <strong>malachite</strong>, <strong>rose quartz</strong> as a saturated rose (not pastel), and <strong>tiger&rsquo;s eye</strong> for the warm-brown register at jewel-tone chroma. Hematite and smoky quartz are the deep-anchor cells.</p>
+    <div class="swatch-strip">
+      <div class="swatch" style="background:#9966CC"></div>
+      <div class="swatch" style="background:#E3CF09"></div>
+      <div class="swatch" style="background:#DC526F"></div>
+      <div class="swatch" style="background:#04A777"></div>
+      <div class="swatch" style="background:#B4C424"></div>
+      <div class="swatch" style="background:#733635"></div>
+      <div class="swatch" style="background:#2A52BE"></div>
+      <div class="swatch" style="background:#B5651D"></div>
+      <div class="swatch" style="background:#C13B26"></div>
+      <div class="swatch" style="background:#4A5859"></div>
+      <div class="swatch" style="background:#5C4033"></div>
+      <div class="swatch" style="background:#5BC8AF"></div>
+    </div>
+    <div class="meta-row">
+      <div class="meta-cell"><span class="meta-name">Amethyst</span><span class="meta-hex">9966CC</span></div>
+      <div class="meta-cell"><span class="meta-name">Citrine</span><span class="meta-hex">E3CF09</span></div>
+      <div class="meta-cell"><span class="meta-name">Rose quartz</span><span class="meta-hex">DC526F</span></div>
+      <div class="meta-cell"><span class="meta-name">Malachite</span><span class="meta-hex">04A777</span></div>
+      <div class="meta-cell"><span class="meta-name">Peridot</span><span class="meta-hex">B4C424</span></div>
+      <div class="meta-cell"><span class="meta-name">Garnet</span><span class="meta-hex">733635</span></div>
+      <div class="meta-cell"><span class="meta-name">Lapis lazuli</span><span class="meta-hex">2A52BE</span></div>
+      <div class="meta-cell"><span class="meta-name">Tiger&rsquo;s eye</span><span class="meta-hex">B5651D</span></div>
+      <div class="meta-cell"><span class="meta-name">Carnelian</span><span class="meta-hex">C13B26</span></div>
+      <div class="meta-cell"><span class="meta-name">Hematite</span><span class="meta-hex">4A5859</span></div>
+      <div class="meta-cell"><span class="meta-name">Smoky quartz</span><span class="meta-hex">5C4033</span></div>
+      <div class="meta-cell"><span class="meta-name">Aquamarine</span><span class="meta-hex">5BC8AF</span></div>
+    </div>
+    <div class="preview">
+      <div class="preview-label"><span>Panel preview · uniform sample</span><span>27 cells</span></div>
+      <div class="preview-grid" data-palette='["#9966CC","#E3CF09","#DC526F","#04A777","#B4C424","#733635","#2A52BE","#B5651D","#C13B26","#4A5859","#5C4033","#5BC8AF"]'></div>
+    </div>
+  </section>
+
+  <!-- 10 ROTHKO CHAPEL -->
+  <section class="plate">
+    <div class="plate-head"><span class="plate-num">10</span><h2 class="plate-name">Rothko Chapel</h2></div>
+    <p class="plate-id">Late Rothko, Houston 1971. Deep saturated planes — oxblood, plum, aubergine, ochre, burnt sienna, rust. The first palette here that achieves vividness through <em>depth</em> rather than brightness. The whole library&rsquo;s &ldquo;low-value high-chroma&rdquo; pocket. A panel pulling from this reads as meditation, not motion. Either exactly right or exactly wrong for the preset, depending on the playlist — but adds territory nothing else covers.</p>
+    <div class="swatch-strip">
+      <div class="swatch" style="background:#5C0A0A"></div>
+      <div class="swatch" style="background:#4E1C49"></div>
+      <div class="swatch" style="background:#5B3256"></div>
+      <div class="swatch" style="background:#B47A2C"></div>
+      <div class="swatch" style="background:#722F37"></div>
+      <div class="swatch" style="background:#800020"></div>
+      <div class="swatch" style="background:#C54B8C"></div>
+      <div class="swatch" style="background:#B0561C"></div>
+      <div class="swatch" style="background:#B22222"></div>
+      <div class="swatch" style="background:#2B1A2E"></div>
+      <div class="swatch" style="background:#B7410E"></div>
+      <div class="swatch" style="background:#C9A227"></div>
+    </div>
+    <div class="meta-row">
+      <div class="meta-cell"><span class="meta-name">Maroon</span><span class="meta-hex">5C0A0A</span></div>
+      <div class="meta-cell"><span class="meta-name">Plum</span><span class="meta-hex">4E1C49</span></div>
+      <div class="meta-cell"><span class="meta-name">Aubergine</span><span class="meta-hex">5B3256</span></div>
+      <div class="meta-cell"><span class="meta-name">Burnt ochre</span><span class="meta-hex">B47A2C</span></div>
+      <div class="meta-cell"><span class="meta-name">Wine</span><span class="meta-hex">722F37</span></div>
+      <div class="meta-cell"><span class="meta-name">Burgundy</span><span class="meta-hex">800020</span></div>
+      <div class="meta-cell"><span class="meta-name">Mulberry</span><span class="meta-hex">C54B8C</span></div>
+      <div class="meta-cell"><span class="meta-name">Burnt sienna</span><span class="meta-hex">B0561C</span></div>
+      <div class="meta-cell"><span class="meta-name">Indian red</span><span class="meta-hex">B22222</span></div>
+      <div class="meta-cell"><span class="meta-name">Charcoal violet</span><span class="meta-hex">2B1A2E</span></div>
+      <div class="meta-cell"><span class="meta-name">Rust</span><span class="meta-hex">B7410E</span></div>
+      <div class="meta-cell"><span class="meta-name">Antique gold</span><span class="meta-hex">C9A227</span></div>
+    </div>
+    <div class="preview">
+      <div class="preview-label"><span>Panel preview · uniform sample</span><span>27 cells</span></div>
+      <div class="preview-grid" data-palette='["#5C0A0A","#4E1C49","#5B3256","#B47A2C","#722F37","#800020","#C54B8C","#B0561C","#B22222","#2B1A2E","#B7410E","#C9A227"]'></div>
+    </div>
+  </section>
+
+  <!-- 11 TROPICAL AVIARY -->
+  <section class="plate">
+    <div class="plate-head"><span class="plate-num">11</span><h2 class="plate-name">Tropical Aviary</h2></div>
+    <p class="plate-id">Scarlet macaw, toucan beak, quetzal tail, Morpho butterfly, cock-of-the-rock, heliconia flower. Pure primary saturation at biological extreme. Brings <strong>true scarlet</strong> (cleaner and more orange-leaning than blood-red), <strong>pure yellow</strong>, <strong>parrot lime</strong>, and <strong>heliconia coral</strong> — the library&rsquo;s first warm pink that is neither hot magenta nor crimson. Closest analogue to Carnival but with biological rather than folk-art register.</p>
+    <div class="swatch-strip">
+      <div class="swatch" style="background:#FF2400"></div>
+      <div class="swatch" style="background:#FF8000"></div>
+      <div class="swatch" style="background:#FFD300"></div>
+      <div class="swatch" style="background:#007FFF"></div>
+      <div class="swatch" style="background:#009E60"></div>
+      <div class="swatch" style="background:#FF5F1F"></div>
+      <div class="swatch" style="background:#FF4F8B"></div>
+      <div class="swatch" style="background:#7FFF00"></div>
+      <div class="swatch" style="background:#1560BD"></div>
+      <div class="swatch" style="background:#C71F37"></div>
+      <div class="swatch" style="background:#FF6A4D"></div>
+      <div class="swatch" style="background:#DE2F8F"></div>
+    </div>
+    <div class="meta-row">
+      <div class="meta-cell"><span class="meta-name">Macaw scarlet</span><span class="meta-hex">FF2400</span></div>
+      <div class="meta-cell"><span class="meta-name">Toucan tangerine</span><span class="meta-hex">FF8000</span></div>
+      <div class="meta-cell"><span class="meta-name">Beak yellow</span><span class="meta-hex">FFD300</span></div>
+      <div class="meta-cell"><span class="meta-name">Morpho blue</span><span class="meta-hex">007FFF</span></div>
+      <div class="meta-cell"><span class="meta-name">Quetzal emerald</span><span class="meta-hex">009E60</span></div>
+      <div class="meta-cell"><span class="meta-name">Cock-of-the-rock</span><span class="meta-hex">FF5F1F</span></div>
+      <div class="meta-cell"><span class="meta-name">Hibiscus</span><span class="meta-hex">FF4F8B</span></div>
+      <div class="meta-cell"><span class="meta-name">Parrot lime</span><span class="meta-hex">7FFF00</span></div>
+      <div class="meta-cell"><span class="meta-name">Cassowary blue</span><span class="meta-hex">1560BD</span></div>
+      <div class="meta-cell"><span class="meta-name">Hummingbird ruby</span><span class="meta-hex">C71F37</span></div>
+      <div class="meta-cell"><span class="meta-name">Heliconia coral</span><span class="meta-hex">FF6A4D</span></div>
+      <div class="meta-cell"><span class="meta-name">Cattleya magenta</span><span class="meta-hex">DE2F8F</span></div>
+    </div>
+    <div class="preview">
+      <div class="preview-label"><span>Panel preview · uniform sample</span><span>27 cells</span></div>
+      <div class="preview-grid" data-palette='["#FF2400","#FF8000","#FFD300","#007FFF","#009E60","#FF5F1F","#FF4F8B","#7FFF00","#1560BD","#C71F37","#FF6A4D","#DE2F8F"]'></div>
+    </div>
+  </section>
+
+  <!-- 12 PERSIAN MINIATURE -->
+  <section class="plate">
+    <div class="plate-head"><span class="plate-num">12</span><h2 class="plate-name">Persian Miniature</h2></div>
+    <p class="plate-id">Safavid manuscript painting, 16th century — Tabriz court, Shiraz, Isfahan. The canonical Persian palette is famously narrow but deeply saturated: lapis ground stone, malachite, vermilion, saffron, gold leaf. Brings <strong>Persian turquoise</strong> (a specific darker blue-green distinct from Caribbean cyan), <strong>pistachio</strong>, <strong>Persian carmine</strong>, and <strong>pomegranate</strong>. The most disciplined of the new six — hues cluster, range is depth not breadth.</p>
+    <div class="swatch-strip">
+      <div class="swatch" style="background:#1F3F94"></div>
+      <div class="swatch" style="background:#008B8B"></div>
+      <div class="swatch" style="background:#0BDA51"></div>
+      <div class="swatch" style="background:#E34234"></div>
+      <div class="swatch" style="background:#D70040"></div>
+      <div class="swatch" style="background:#F4C430"></div>
+      <div class="swatch" style="background:#D4AF37"></div>
+      <div class="swatch" style="background:#B22222"></div>
+      <div class="swatch" style="background:#93C572"></div>
+      <div class="swatch" style="background:#283593"></div>
+      <div class="swatch" style="background:#6E1F84"></div>
+      <div class="swatch" style="background:#2E5728"></div>
+    </div>
+    <div class="meta-row">
+      <div class="meta-cell"><span class="meta-name">Lapis ultramarine</span><span class="meta-hex">1F3F94</span></div>
+      <div class="meta-cell"><span class="meta-name">Persian turquoise</span><span class="meta-hex">008B8B</span></div>
+      <div class="meta-cell"><span class="meta-name">Malachite</span><span class="meta-hex">0BDA51</span></div>
+      <div class="meta-cell"><span class="meta-name">Vermilion</span><span class="meta-hex">E34234</span></div>
+      <div class="meta-cell"><span class="meta-name">Persian carmine</span><span class="meta-hex">D70040</span></div>
+      <div class="meta-cell"><span class="meta-name">Saffron</span><span class="meta-hex">F4C430</span></div>
+      <div class="meta-cell"><span class="meta-name">Gold leaf</span><span class="meta-hex">D4AF37</span></div>
+      <div class="meta-cell"><span class="meta-name">Pomegranate</span><span class="meta-hex">B22222</span></div>
+      <div class="meta-cell"><span class="meta-name">Pistachio</span><span class="meta-hex">93C572</span></div>
+      <div class="meta-cell"><span class="meta-name">Persian indigo</span><span class="meta-hex">283593</span></div>
+      <div class="meta-cell"><span class="meta-name">Royal purple</span><span class="meta-hex">6E1F84</span></div>
+      <div class="meta-cell"><span class="meta-name">Cypress green</span><span class="meta-hex">2E5728</span></div>
+    </div>
+    <div class="preview">
+      <div class="preview-label"><span>Panel preview · uniform sample</span><span>27 cells</span></div>
+      <div class="preview-grid" data-palette='["#1F3F94","#008B8B","#0BDA51","#E34234","#D70040","#F4C430","#D4AF37","#B22222","#93C572","#283593","#6E1F84","#2E5728"]'></div>
+    </div>
+  </section>
+
+  <!-- 13 UKIYO-E -->
+  <section class="plate">
+    <div class="plate-head"><span class="plate-num">13</span><h2 class="plate-name">Ukiyo-e</h2></div>
+    <p class="plate-id">Edo woodblock printing — Hokusai&rsquo;s <em>Great Wave</em>, Hiroshige&rsquo;s <em>Tōkaidō Road</em>. <strong>Prussian blue</strong> arrived in Japan in the 1820s and reshaped late Edo printmaking; it is unlike any blue elsewhere in the library — greener and deeper than ultramarine, more saturated than indigo. Pair with willow green, susuki gold, sakura cerise, and Hokusai turquoise for the seasonal register. The brown anchors (sumi, tea) read as paper texture and ink wash.</p>
+    <div class="swatch-strip">
+      <div class="swatch" style="background:#003153"></div>
+      <div class="swatch" style="background:#E34234"></div>
+      <div class="swatch" style="background:#1A237E"></div>
+      <div class="swatch" style="background:#5D8233"></div>
+      <div class="swatch" style="background:#8E4585"></div>
+      <div class="swatch" style="background:#DE3163"></div>
+      <div class="swatch" style="background:#CC7722"></div>
+      <div class="swatch" style="background:#2B2B2B"></div>
+      <div class="swatch" style="background:#007D8C"></div>
+      <div class="swatch" style="background:#8B4513"></div>
+      <div class="swatch" style="background:#BFA350"></div>
+      <div class="swatch" style="background:#EC5800"></div>
+    </div>
+    <div class="meta-row">
+      <div class="meta-cell"><span class="meta-name">Prussian blue</span><span class="meta-hex">003153</span></div>
+      <div class="meta-cell"><span class="meta-name">Vermilion</span><span class="meta-hex">E34234</span></div>
+      <div class="meta-cell"><span class="meta-name">Indigo</span><span class="meta-hex">1A237E</span></div>
+      <div class="meta-cell"><span class="meta-name">Willow green</span><span class="meta-hex">5D8233</span></div>
+      <div class="meta-cell"><span class="meta-name">Plum</span><span class="meta-hex">8E4585</span></div>
+      <div class="meta-cell"><span class="meta-name">Sakura cerise</span><span class="meta-hex">DE3163</span></div>
+      <div class="meta-cell"><span class="meta-name">Ochre</span><span class="meta-hex">CC7722</span></div>
+      <div class="meta-cell"><span class="meta-name">Sumi charcoal</span><span class="meta-hex">2B2B2B</span></div>
+      <div class="meta-cell"><span class="meta-name">Hokusai turquoise</span><span class="meta-hex">007D8C</span></div>
+      <div class="meta-cell"><span class="meta-name">Tea brown</span><span class="meta-hex">8B4513</span></div>
+      <div class="meta-cell"><span class="meta-name">Susuki gold</span><span class="meta-hex">BFA350</span></div>
+      <div class="meta-cell"><span class="meta-name">Persimmon</span><span class="meta-hex">EC5800</span></div>
+    </div>
+    <div class="preview">
+      <div class="preview-label"><span>Panel preview · uniform sample</span><span>27 cells</span></div>
+      <div class="preview-grid" data-palette='["#003153","#E34234","#1A237E","#5D8233","#8E4585","#DE3163","#CC7722","#2B2B2B","#007D8C","#8B4513","#BFA350","#EC5800"]'></div>
+    </div>
+  </section>
+
+  <footer>
+    <span>M7 · 2026-05-17 · phase LM · palette library · vol. II · plates 08—13</span>
+    <span class="right">Library now 13 palettes</span>
+  </footer>
+
+</div>
+
+<script>
+  // Mulberry32 — deterministic PRNG so every load shows the same preview layout
+  function mulberry32(seed) {
+    return function() {
+      seed |= 0;
+      seed = seed + 0x6D2B79F5 | 0;
+      let t = seed;
+      t = Math.imul(t ^ t >>> 15, t | 1);
+      t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+
+  document.querySelectorAll('.preview-grid').forEach(function(grid, idx) {
+    var palette = JSON.parse(grid.getAttribute('data-palette'));
+    // offset seed so Vol. II patterns differ from Vol. I — start at 8 to continue numbering
+    var rand = mulberry32((idx + 8) * 137 + 23);
+    var cells = 27;
+    var html = '';
+    for (var i = 0; i < cells; i++) {
+      var c = palette[Math.floor(rand() * palette.length)];
+      html += '<div class="preview-cell" style="background:' + c + '"></div>';
+    }
+    grid.innerHTML = html;
+  });
+</script>
+
+</body>
+</html>

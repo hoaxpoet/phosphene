@@ -314,7 +314,7 @@ Scope: 1 commit (criteria update + KNOWN_ISSUES status flip + release note). Clo
 
 ### Expected behavior
 
-Different sessions / different tracks should produce visibly distinct **palette character** at the panel level — a Cathedral Lights session should read as light-through-stained-glass, a Refn Glow session as warm-neon-shadow, a Glacier session as frozen-blue-on-snow. Within a session, every cell can still be any colour the palette allows; across sessions, the listener perceives different palettes.
+Different songs should produce visibly distinct **palette character** at the panel level — a track drawing Cathedral Lights should read as light-through-stained-glass, a track drawing Refn Glow as warm-neon-shadow, a track drawing Glacier as frozen-blue-on-snow. Within a song, every cell can still be any colour the palette's 12 entries allow; across songs, the listener perceives the palette changing at track boundaries.
 
 ### Actual behavior (LM.4.6 + LM.7 baseline)
 
@@ -334,9 +334,9 @@ The contact-sheet output of `RENDER_VISUAL=1 swift test --package-path Phosphene
 
 ### Verification criteria
 
-- Automated: `LumenPaletteSpectrumTests` asserts palette membership (every cell colour matches one of the 12 palette entries to within float epsilon) per LM.4.7's rewritten test suite.
-- Manual: Matt M7 review on a real-music multi-track session — each session's palette reads as its named character (e.g. a Cathedral Lights session reads as stained-glass; a Refn Glow session reads as warm-neon-shadow) at the panel level, distinct from other palettes' panel-level character.
-- Mechanical: the LM.9 pale-tone-share gate (≤ 0.30; per D-LM-cream-rescission) passes for all 18 palettes — Cathedral Lights specifically must pass at its ~25 % nominal share.
+- Automated: `LumenPaletteSpectrumTests` asserts palette membership (every cell colour matches one of the 12 palette entries to within float epsilon) per LM.4.7's rewritten test suite; per-song selection determinism (same `(track ID, previous-palette)` → same drawn palette); immediate-repeat exclusion (consecutive tracks cannot share a palette).
+- Manual: Matt M7 review on a real-music multi-track session — each song's palette reads as its named character (e.g. a track drawing Cathedral Lights reads as stained-glass; a track drawing Refn Glow reads as warm-neon-shadow) at the panel level, distinct from neighbouring tracks' palettes; the palette change at track boundaries is visible.
+- Mechanical: the LM.9 pale-tone-share gate (≤ 0.30; per D-LM-cream-rescission) passes for all 18 palettes — Cathedral Lights specifically must pass at its ~17 % nominal share (2 of 12 palette entries pale under the rule's linear-RGB definition; see D-LM-cream-rescission Erratum).
 
 ### Related
 

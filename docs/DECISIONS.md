@@ -3661,11 +3661,11 @@ The replacement design (direct audio uniforms feeding the sky function + baselin
 
 ---
 
-## D-LM-palette-library — Curated 18-palette library for Lumen Mosaic cell colour (Increment LM.4.7, filed 2026-05-18)
+## D-LM-palette-library — Curated 18-palette library for Lumen Mosaic cell colour (Increment LM.4.7, filed 2026-05-18; amended 2026-05-18 — selection granularity per-song, not per-session)
 
 **Status.** Accepted (paperwork-only; implementation lands at Increment LM.4.7).
 
-**Decision.** Lumen Mosaic's per-cell colour source changes from LM.4.6's pure uniform random RGB (with LM.7's per-track chromatic-projected tint) to a **library of 18 hand-authored 12-colour palettes**. The Orchestrator selects one palette per session by drawing from a probability distribution biased on the session's mood (valence + arousal). Within a session, every visible cell samples uniformly from the drawn palette's 12 entries. The per-track seed perturbs **sampling order** within the palette — which 12-bucket a given cell lands in — and never perturbs palette membership.
+**Decision.** Lumen Mosaic's per-cell colour source changes from LM.4.6's pure uniform random RGB (with LM.7's per-track chromatic-projected tint) to a **library of 18 hand-authored 12-colour palettes**. The Orchestrator selects one palette **per song** by drawing from a probability distribution biased on the per-track mood (valence + arousal). Within a song, every visible cell samples uniformly from the drawn palette's 12 entries. The per-track seed perturbs **sampling order** within the palette — which 12-bucket a given cell lands in — and never perturbs palette membership. Per-song selection biases against immediate repeats: a song will not draw the same palette as the immediately previous song (the previous palette is removed from the candidate set before the weighted draw); other anti-repeat penalties (last-N, family clustering) are not applied.
 
 The 18 palettes are:
 
@@ -3680,21 +3680,28 @@ The 2026-05-17 palette exploration conversation produced 18 hand-authored palett
 
 **Why the library defuses the original E.2 monotony objection.**
 
-- **Library size (18 ≠ 4).** Four palettes meant any frequent listener saw the same four moods cycle predictably. Eighteen palettes drawn one-per-session means a multi-hour listening run traverses many palettes without repetition.
-- **Mood biases selection probability, never deterministic mapping.** The retired E.2 form was "mood quadrant → palette." The library form is "mood → probability distribution over all 18 palettes" — every palette has non-zero probability everywhere in the mood plane, with the distribution shape favouring palettes whose character aligns with the session's mood. A low-valence high-arousal session is more likely to draw Rothko Chapel or Tenebrism than Carnival, but Carnival is not excluded.
-- **Per-session selection, not per-track.** A long playlist's tracks stay within one palette's identity for the session; the palette becomes part of how that listening session feels. Per-track variety comes from the seed-driven sampling-order perturbation within the palette plus the existing LM.3.2 band-routed beat-driven dance.
+- **Library size (18 ≠ 4).** Four palettes meant any frequent listener saw the same four moods cycle predictably. Eighteen palettes drawn one-per-song means even a five-track listening run traverses five palettes; longer listening runs traverse most of the library.
+- **Mood biases selection probability, never deterministic mapping.** The retired E.2 form was "mood quadrant → palette." The library form is "mood → probability distribution over the eligible 17 palettes (after the immediate-repeat exclusion)" — every eligible palette has non-zero probability everywhere in the mood plane, with the distribution shape favouring palettes whose character aligns with the per-track mood. A low-valence high-arousal track is more likely to draw Rothko Chapel or Tenebrism than Carnival, but Carnival is not excluded.
+- **Per-song selection, not per-session.** Per-song palette change makes the palette part of how *each track* feels rather than how the *session* feels — a long playlist visibly traverses many palette characters, supporting the multi-preset-per-song product axis (see `feedback_multi_preset_per_song.md`). The previous palette is removed from the candidate set on the next track; the weighted draw runs over the remaining 17. Per-cell variety within a track comes from the seed-driven sampling-order perturbation within the palette plus the existing LM.3.2 band-routed beat-driven dance.
 
 **Orchestrator selection model.**
 
+Each palette declares an **explicit (valence, arousal) anchor** — a 2D point in mood space — as part of its Swift declaration. The weight function is a Gaussian over Euclidean distance from the anchor to the current track's (valence, arousal):
+
 ```
-P(palette_i | valence, arousal) ∝ weight(palette_i, valence, arousal)
+weight(palette_i, mood) = exp( -‖mood − anchor_i‖² / (2 × σ²) )
+P(palette_i | mood) ∝ weight(palette_i, mood)        for palette_i ∈ candidate set
 ```
 
-Each palette declares a mood affinity vector (or affinity function). The weight function produces a non-negative scalar per palette per (valence, arousal); the session draws one palette by weighted sampling. The draw is stable within a session: the same `(playlist, mood snapshot at session start)` always produces the same palette. Concrete weight function shape (Gaussian over mood-distance, soft-max temperature, etc.) is implementation freedom at LM.4.7; the contract here is only "probability biasing, never deterministic mapping, every palette reachable everywhere."
+The candidate set is `library \ {previous_palette}` — the immediately previous song's palette is removed before the weighted draw. The first song of a session has no previous palette and draws from the full library of 18.
 
-**Within-session sampling.**
+`σ` (kernel width) is a tunable file-scope constant; default ~0.35 in normalised mood-space units `[-1, +1]` per axis. Tighter σ → mood-fit dominates and most songs draw their highest-affinity palette; looser σ → variety dominates and mood becomes a soft bias. The default lands variety-leaning: even a very-low-valence-very-high-arousal track has non-zero probability of drawing Cathedral Lights, but Tenebrism / Rothko Chapel / Obsidian are much more likely.
 
-Cells sample uniformly from the drawn palette's 12 entries: `cell_palette_idx = lm_hash_u32(cell_id ^ step ^ track_seed ^ section_salt) % 12`. The LM.3.2 team/period beat-step ratchet is preserved — cells advance their palette index on rising-edge of their assigned band's beat — but the index is into the 12-entry palette array, not into the full RGB cube. Per-track seed continues to perturb the sampling order so different tracks within a session show distinct cell-by-cell colour layouts even though they share the palette.
+The draw is **stable per (track, previous-palette)** — the same `(track identity, previous palette)` always produces the same palette, deterministic via a hash seeded by the track ID. This makes session replay reproducible and makes BUG-014 verification straightforward.
+
+**Per-song sampling.**
+
+Cells sample uniformly from the drawn palette's 12 entries: `cell_palette_idx = lm_hash_u32(cell_id ^ step ^ track_seed ^ section_salt) % 12`. The LM.3.2 team/period beat-step ratchet is preserved — cells advance their palette index on rising-edge of their assigned band's beat — but the index is into the 12-entry palette array, not into the full RGB cube. Per-track seed perturbs sampling order so that consecutive tracks drawing the same palette would (in principle, though the anti-repeat rule prevents this) show distinct cell-by-cell colour layouts; in practice the same-palette case is prevented by the anti-repeat rule and the seed perturbs the within-palette mapping across the (rare) case of returning to a palette later in the playlist.
 
 **Relationship to retired decisions.**
 
@@ -3705,14 +3712,19 @@ Cells sample uniformly from the drawn palette's 12 entries: `cell_palette_idx = 
 
 **What was rejected.**
 
+- **Per-session selection (one palette for the whole playlist).** Initially documented in the 2026-05-18 paperwork session; reversed in same-day amendment after Matt clarified "one palette per song." Per-song selection makes the palette part of how each track feels and supports the multi-preset-per-song product axis. Per-session would mean a 5-track playlist shows one palette identity even though we have 18 — wastes the curated variety.
+- **No anti-repeat rule (pure mood-weighted draw, consecutive repeats allowed).** Rejected because two consecutive tracks drawing the same palette stutter visually — same Voronoi cell colours twice in a row reads as "the preset didn't change" rather than as a deliberate mood emphasis. The immediate-previous-palette exclusion is the smallest mechanism that prevents the stutter without aggressive anti-repeat penalties pushing the draw away from mood-fit.
+- **Anti-repeat over a longer window (last-N exclusion for N > 1).** Considered; pushes harder against mood-fit for marginal variety gain. With 17 eligible palettes per draw and Gaussian-over-distance weighting, palette-character drift across the playlist is already high — no need for stronger anti-repeat.
 - **Procedurally-generated palettes (synthesised at session start from a few mood parameters).** Considered; would scale to infinite palettes but loses the hand-authored named character that makes each palette distinct. The conversation's "Cathedral Lights" / "Refn Glow" / "Holi" identities are not reachable by a 4-parameter procedural generator without re-inventing the curation work as a procedural-tuning pass.
 - **Hard mood → palette mapping (single palette per mood quadrant).** Replays the E.2 monotony failure — predictable cycling, no surprise.
 - **No mood bias at all (uniform random palette draw).** Rejected because sad-music-bright-palette and happy-music-dark-palette mismatches are jarring even when individual palettes are good; biasing the distribution costs nothing and preserves variety.
+- **Affinity vector over multiple mood axes** (per-axis weights for valence / arousal / energy / etc.). Considered; more expressive but more authoring overhead per palette. The 2D (valence, arousal) anchor is the simplest declaration that captures the qualitative differences between palettes (warm-low-arousal Rothko Chapel vs cold-high-arousal Glacier vs warm-high-arousal Carnival).
+- **Affinity derived from palette statistics (no explicit declaration).** Rejected because it removes the per-palette tuning surface — Matt cannot override "Cathedral Lights reads as low-arousal-moderate-valence" if the statistics-derived anchor disagrees. Explicit anchors are an authoring decision; statistics-derived is an inference Phosphene does not need.
 - **Larger library (30+ palettes).** Deferred; 18 is the curated count from the 2026-05-17 conversation. Future palette additions are a separate increment under the rule below.
 
 **Rule.** New palette additions require Matt M7 review per palette and a DECISIONS.md amendment citing this D-number. Palette removals are also gated on Matt sign-off — palettes are part of the session-to-session identity of the preset, and silently removing one changes what a returning user sees.
 
-**Carry-forward.** Increment LM.4.7 (ENGINEERING_PLAN.md) is the implementation. The increment ships `LumenMosaicPaletteLibrary.swift` with the 18 palettes as `[SIMD3<Float>]` constants of length 12, an orchestrator weight function + draw site, an `lm_cell_palette` rewrite that indexes into the per-session palette via cell hash + step + per-track seed, slot-8 GPU ABI extension to carry the 12-colour palette (36 floats or equivalent), rewritten `LumenPaletteSpectrumTests` asserting palette membership (every cell colour matches one of the 12 palette entries to within float epsilon), and the LM.9 pale-tone-share gate (per D-LM-cream-rescission) passing for all 18 palettes mechanically.
+**Carry-forward.** Increment LM.4.7 (ENGINEERING_PLAN.md) is the implementation. The increment ships `LumenMosaicPaletteLibrary.swift` with the 18 palettes as `[SIMD3<Float>]` constants of length 12 + a per-palette `moodAnchor: SIMD2<Float>`, an orchestrator weight function + per-song draw site + previous-palette tracking, an `lm_cell_palette` rewrite that indexes into the per-song palette via cell hash + step + per-track seed, slot-8 GPU ABI extension to carry the 12-colour palette (36 floats or equivalent), rewritten `LumenPaletteSpectrumTests` asserting palette membership (every cell colour matches one of the 12 palette entries to within float epsilon), and the LM.9 pale-tone-share gate (per D-LM-cream-rescission) passing for all 18 palettes mechanically.
 
 ---
 
@@ -3728,7 +3740,7 @@ Cells sample uniformly from the drawn palette's 12 entries: `cell_palette_idx = 
 
 **Context.** The 2026-05-09 CLAUDE.md rule ("No muted palettes (mandatory)" + the DO NOT bullet "Do not ship muted, pastel, or cream-haze palettes") was drafted in response to LM.2's all-tinted-cream output and LM.4.5 v1's pastel guardrail that biased every cell toward low-saturation cream regardless of intended palette. Both failure modes shared the same shape — the **whole panel** read as cream — and the rule that landed conflated "panel-dominantly-cream" with "cream-appears-anywhere." Six months of preset authoring under that rule made the conflation visible: real stained-glass references (Sainte-Chapelle, Chartres), Ming porcelain references, Persian-miniature illuminations, and dozens of other historical visual languages use pale highlights against deep jewel-tone or near-black grounds. The blanket prohibition foreclosed all of those palettes.
 
-The 2026-05-17 palette exploration produced **Cathedral Lights** as a deliberate test case: 4 of its 12 colours are pale (warm white, pale gold-cream, soft lavender, pale sky-blue), 7 are deep jewel tones (sapphire, ruby, emerald, amethyst, deep teal, oxblood, royal purple), and 1 anchors the dark end (near-black slate). At ~30 visible cells with uniform sampling, the expected pale-cell count is `~30 × 4 / 12 = ~10` cells — **~33 %** of the panel. Matt's review of the palette preview read it as light-through-stained-glass — the LM.2 / LM.4.5 v1 failure mode does not reproduce. Drift in pale-cell share around the expected fraction lands in the [25 %, 40 %] band depending on the per-cell hash draw; the **30 % ceiling** is the calibration point that allows Cathedral Lights as the dominant-pale-but-still-jewel-grounded edge case while still rejecting an LM.2-style all-cream panel.
+The 2026-05-17 palette exploration produced **Cathedral Lights** as a deliberate test case. Its design-intent classification (per the Cathedral Lights HTML's "Roles" legend) is 7 ground colours (jewel tones) + 4 light colours + 1 anchor; the design narrative groups Cathedral cream, beeswax honey, pearl ivory, and sky pane as the "light" register. **Erratum (filed at amendment time, 2026-05-18):** under the rule's own definition (linear RGB `min(R, G, B) > 0.65`), only two of those four entries are actually pale — Cathedral cream `F2DEAC` (min channel 0.675) and pearl ivory `EDE4D1` (min channel 0.820). Beeswax honey `E8B95B` has B=0.357 (not pale) and sky pane `87B4D9` has R=0.529 (not pale). The realised pale-share under uniform sampling is therefore `2/12 ≈ 16.7 %`, not the `4/12 ≈ 33 %` originally cited in this paragraph. The earlier intuition argument confused the design-narrative "light" group with the rule's mechanical definition; the rule itself was correctly defined, and Cathedral Lights passes the 30 % ceiling comfortably (~17 % expected pale-share, well clear of 30 %). The 30 % calibration point remains correct as the boundary above which a panel starts reading as cream-dominant; Cathedral Lights stays inside that boundary even at peak hash-draw variance.
 
 **The compositional rule (the load-bearing distinction a future preset author must read).**
 
@@ -3740,7 +3752,7 @@ The 2026-05-17 palette exploration produced **Cathedral Lights** as a deliberate
 - **Per fixture frame:** classify each cell by its linear RGB. Pale if `min(R, G, B) > 0.65`; not pale otherwise.
 - **Gate:** reject the fixture if `pale_cell_count / total_cells > 0.30`.
 - **Where it runs:** the LM.9 certification gate set, applied to every Lumen Mosaic palette in the library (D-LM-palette-library) and to every future palette addition.
-- **Calibration point:** Cathedral Lights passes at ~25 % nominal pale-cell share with margin for per-cell-hash drift up to ~30 %. A palette with > 4 pale entries out of 12 (i.e. > 33 % palette pale-share) will trip the gate on most hash draws and is rejected at palette-author time.
+- **Calibration point:** Cathedral Lights passes at ~17 % nominal pale-cell share (2 of 12 palette entries pale under the rule's linear-RGB definition; see Erratum in the Context section above). At the 30 % ceiling, ~13 percentage points of margin remain for hash-draw variance — comfortable. A palette with > 4 pale entries out of 12 (i.e. > 33 % palette pale-share under the rule's definition) will trip the gate on most hash draws and is rejected at palette-author time.
 
 **Why a hard ceiling rather than a soft penalty.**
 
