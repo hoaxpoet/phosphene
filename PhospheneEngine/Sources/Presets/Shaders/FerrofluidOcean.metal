@@ -72,28 +72,46 @@ static inline float fo_stem_warmup_blend(constant StemFeatures& stems) {
 // `bass_energy_dev`. Coefficient 0.10 was chosen to be "barely perceptible
 // vertical breath."
 //
-// **Round 60 (2026-05-18)**: coefficient 0.10 → 0.35 (clamped). Matt's
-// 2026-05-18T01-01-08Z review: "I thought the spikes, particularly spike
-// HEIGHT, was supposed to be musically reactive. If this is how the preset
-// is coded, it's lost." Round-56's 10 % was too subtle to perceive against
-// the larger swell motion — typical music bass_energy_dev sits at 0.2-0.4,
-// giving multiplier 1.02-1.04 (2-4 % taller spikes — invisible). Round 60
-// bumps to 0.35 with clamp at 1.0 so typical-music peaks give clearly
-// visible 7-14 % spike-height variation, and strong transients (bass_dev
-// up to 1.0) give up to 35 % taller spikes — readable as "spikes
-// responding to the beat" without disrupting the constant-field character.
+// **Round 60 (2026-05-18)**: coefficient 0.10 → 0.35 (clamped). Made spike-
+// height response visible.
 //
-// At silence (`bass_energy_dev = 0`): returns 1.0 → full constant lattice.
-// At typical music peak (`bass_energy_dev` ~0.5): returns 1.175 → 17.5 %
-// taller spikes — clearly visible.
-// At extreme transient (`bass_energy_dev` ≥ 1.0): returns 1.35 → 35 %
-// taller — readable as "responding to the kick" while staying clearly
-// conical.
+// **Round 61 (2026-05-18)**: gate the spike-height pulse to the DOWNBEAT
+// only (first beat of each bar) instead of firing on every bass transient.
+// Matt's 2026-05-18T03-12-28Z review: "The swelling and the spike motion
+// are struggling to coexist. The spike motion would be more effective if
+// it were slowed considerably, for example on the first beat of the bar
+// only."
+//
+// Why: round 60's per-transient pulse fired ~2 Hz at typical 120 BPM
+// (quarter-note rate), while the macro swell oscillates at 0.1 Hz (~10 s
+// wave period). The 20× rate gap made the two motions compete visually.
+// Gating to downbeat puts the pulse at 0.5 Hz (one per ~2 s bar at 4/4
+// 120 BPM) — closer to swell rate, so the two motions read as
+// complementary (slow background swell + bar-locked spike thump) rather
+// than competing (fast spike flicker over slow waves).
+//
+// Implementation: `bar_phase01` rises 0 → 1 across each bar (MV-3b,
+// D-028). A smoothstep that peaks at phase 0 and decays over the first
+// 20 % of the bar produces a short pulse on each downbeat. Multiplied
+// by `bass_energy_dev` so the pulse magnitude scales with how strong
+// the bass hit is — silent or quiet downbeats produce a tiny pulse;
+// loud-bass downbeats produce a clear thump.
+//
+// At silence: `bar_phase01` continues to advance (clock keeps running)
+// but `bass_energy_dev = 0` zeroes the pulse → constant lattice.
+// On a typical-music downbeat (bass_dev 0.5): peak multiplier 1.25 →
+// 25 % taller spikes for ~0.4 s, then settles.
+// On a strong downbeat (bass_dev 1.0): peak multiplier 1.50 → 50 %
+// taller — readable as a clear bar-locked thump.
 static inline float fo_spike_strength(constant FeatureVector& f,
                                       constant StemFeatures& stems) {
-    (void)f;
     float bassDev = clamp(stems.bass_energy_dev, 0.0, 1.0);
-    return 1.0 + 0.35 * bassDev;
+    // bar_phase01 = 0 at downbeat, → 1 at next downbeat. Peak pulse at
+    // phase 0, smooth decay to 0 by phase 0.20. With typical 4/4 bars
+    // at 120 BPM (bar = 2 s), pulse lasts ~0.4 s — visible "spike
+    // thump on the downbeat" without flickering on every kick.
+    float downbeatPulse = smoothstep(0.20, 0.0, f.bar_phase01);
+    return 1.0 + 0.50 * downbeatPulse * bassDev;
 }
 
 // Swell amplitude scale per D-124(d): arousal sets the sustained baseline at

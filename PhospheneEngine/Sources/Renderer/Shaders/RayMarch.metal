@@ -410,12 +410,17 @@ static float3 rm_ferrofluidSky(float3 R,
     // stops within seconds of viewing.
     //
     // Round 60 (2026-05-18): 1.0 → 1.25 (20 % slower per Matt's
-    // 2026-05-18T01-01-08Z review: "Colors are transitioning too fast,
-    // could stand to slow down 20%"). Period 25 % longer → angular
-    // speed 20 % slower → wall-clock revolutions now ~12.5-18.75 s
-    // depending on arousal — still visible color rotation within
-    // session-viewing timescales, but breathes more.
-    constexpr float kCurtainBaseRevolutionSeconds = 1.25;
+    // 2026-05-18T01-01-08Z review).
+    //
+    // Round 61 (2026-05-18): 1.25 → 2.5 (further 50 % slower per Matt's
+    // 2026-05-18T03-12-28Z review: "The colors are still transitioning
+    // too quickly"). Wall-clock revolutions now ~25-37.5 s depending on
+    // arousal — colors visibly cycle through pink/green/purple but each
+    // phase lingers long enough to read as a "mood" rather than a
+    // strobe. Round-55's 1.0 was the original anti-static fix; round 60
+    // bumped 25 % slower; round 61 doubles round-60's value for a
+    // smoother breathing rhythm. Total: 2.5× slower than round 55.
+    constexpr float kCurtainBaseRevolutionSeconds = 2.5;
     constexpr float kCurtainBaseAngularSpeed =
         2.0 * M_PI_F / kCurtainBaseRevolutionSeconds;
     float arousalSpeed = mix(0.5, 1.0, smoothstep(-1.0, 1.0, features.arousal));
