@@ -6,6 +6,61 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-18-f] AV.2.2 — Drop mv_warp from Aurora Veil + discipline-rule promotions
+
+**Increment:** AV.2.2. **Status:** Landed 2026-05-18.
+
+AV.2.1 hotfix did not resolve the live-session smear. Matt's second session (`2026-05-18T22-17-36Z`) showed identical painterly green/magenta blobs at silence with no stars visible. Built an env-gated multi-frame diagnostic test (`AuroraVeilMVWarpAccumulationTest`) that runs Aurora Veil through the full mv_warp pipeline (scene → warp → compose → swap, 60 frames at silence) and produced quantitative proof of the actual root cause:
+
+```
+mv_warp ON (design 0.945/0.005):  0 stars in upper sky, sky max-luma 0.39, frame max 0.54
+mv_warp OFF:                    115 stars,             sky max-luma 0.96, frame max 0.97
+mv_warp TAME (decay 0.70):      306 stars,             sky max-luma 0.85, frame max 1.00
+```
+
+mv_warp at the design parameters destroys ALL high-frequency content over its ~17-frame decay window. The per-vertex curl-noise advection (0.005 UV/frame) gives each pixel a random walk through 17+ frames; combined with decay 0.945, sparse pinpoints (stars) and sharp noise edges get dragged into smears that the accumulator then averages. This is structural to the Milkdrop-pattern feedback accumulator — it works for plasma/abstract shaders where the entire frame is feedback-driven, but is fundamentally incompatible with content that includes high-frequency detail.
+
+**Why mv_warp shouldn't have been in this preset from AV.1.** The dossier (`AURORA_VEIL_RESEARCH_2026-05-18.md`) cites six working aurora references: nimitz "Auroras" (Shadertoy XtGGRt), Lawlor & Genetti 2011, Wittens NeverSeenTheSky, Roy Theunissen, Magnetosphere, Sigur Rós tour visuals. **None of them use a feedback accumulator like mv_warp.** Substrate drift in working aurora implementations comes from: (a) time-driven rotation inside the noise sample (nimitz), (b) animation of the flux map (Lawlor), (c) fluid-sim advection (Wittens). The dossier's §2.1 line 121 asserted "Phosphene's mv_warp at `decay = 0.945` handles the substrate timescale" but cited no aurora-research backing — mv_warp was smuggled into the design from Milkdrop conventions without empirical grounding. AV.1 / AV.2 / AV.2.1 all implemented this unbacked assertion and shipped with green tests because no test exercised mv_warp's multi-frame accumulation. Three increments wasted before the diagnostic test was written.
+
+### Files changed
+
+- `PhospheneEngine/Sources/Presets/Shaders/AuroraVeil.json` — `"passes": ["mv_warp"]` → `[]`. Description updated.
+- `PhospheneEngine/Sources/Presets/Shaders/AuroraVeil.metal` — `mvWarpPerFrame` + `mvWarpPerVertex` removed. Header docstring updated with empirical justification + dossier gap analysis.
+- `PhospheneEngine/Tests/PhospheneEngineTests/Presets/AuroraVeilMVWarpAccumulationTest.swift` — **new**. Env-gated (`AURORA_VEIL_MVWARP_DIAG=1`) multi-frame harness; permanent regression guard.
+- `CLAUDE.md` Authoring Discipline — two new sections promoted (described below).
+- Memory: `feedback_production_grade_testing.md` + `feedback_research_first_design.md`.
+- `docs/ENGINEERING_PLAN.md` Phase AV: AV.2.1 marked ❌ (superseded); AV.2.2 ✅; AV.2.3 ⏳ added.
+
+### Discipline rules promoted
+
+Two CLAUDE.md sections, Matt-approved 2026-05-18:
+
+1. **Test in the production-grade rendering pipeline. No shortcuts.** Every preset increment with temporal behaviour must include a multi-frame test through the live dispatch path. Single-frame tests through `preset.pipelineState` alone are NOT sufficient. Closeout reports must state which dispatch path the tests exercised. The Aurora Veil case is the load-bearing example.
+
+2. **Design is upstream of testing — surface risks immediately.** Grounding priority (soft rule):
+   - L1: working code reference in a comparable visual context (preferred).
+   - L2: academic paper + clear math implementable from the description alone.
+   - L3: no reference, design-doc assertion only (highest risk — surface to Matt before authoring; he decides).
+   Surface threshold: any L3 mechanism, surface BEFORE writing code.
+
+### Tests run
+
+- `swift test --filter "AuroraVeil|PresetLoaderCompileFailure|PresetRegression|PresetAcceptance|FidelityRubric"` — 43 / 43 green (added the 1 new diag test; runs trivially when env var unset).
+- `AURORA_VEIL_MVWARP_DIAG=1 swift test --filter "AuroraVeil"` — diagnostic produces the table above + three PNGs.
+- `xcodebuild -scheme PhospheneApp build` — BUILD SUCCEEDED.
+- `swiftlint --strict` touched files — 0 violations.
+
+### Live re-verification gate (load-bearing)
+
+AV.2.2 is "empirically validated in test" but NOT "live-confirmed." Matt to run another live session and verify stars + ribbons are visible, no painterly smear. Diagnostic test predicts ~115 stars + clean ribbons; live session is the final check.
+
+### Known follow-ups
+
+- **AV.2.3** — Re-introduce drift mechanisms grounded in dossier: (a) curl-noise perturbation INSIDE `aurora_tri_noise_2d` per §1.3 line 61, (b) two-column SUM-merge instead of three-column MAX per §1.3 line 62, (c) extend the diagnostic harness to replay `raw_tap.wav` from a captured session so the seven audio routes can be validated against real music before filing as ✅.
+- **AV.3 grounding research** — The sub-second flicker + 2–20 s pulsation mechanisms in the design have no cited working code reference (only Springer/AGU physics papers). Per the new soft rule, this is L2 grounding (physics-derived math) and acceptable, but I will surface concrete proposals to Matt before authoring rather than implementing the design-doc assertion directly.
+
+---
+
 ## [dev-2026-05-18-e] AV.2.1 — Aurora Veil motion-smear hotfix
 
 **Increment:** AV.2.1. **Status:** Landed 2026-05-18.
