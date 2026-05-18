@@ -3721,7 +3721,7 @@ A lightweight ambient ribbon preset for quiet listening, low-energy passages, an
 2. **Iconic visual subject deliverable at fidelity.** Lightweight rubric profile (D-067(b)) — emission-only direct fragment, exempt from M1 detail cascade and M3 material count. Comparable pattern: Gossamer's direct-fragment + mv_warp recipe is the closest neighbour. Fidelity bar is reachable.
 3. **Infrastructure-feasible.** Uses only existing utilities (`warped_fbm` / `curl_noise` / `palette_cool` / `SpectralHistoryBuffer` / `blue_noise_sample` / hash-based starfield). No engine work.
 
-**Status.** AV.1 ✅ (2026-05-18). AV.2 ✅ (2026-05-18). AV.2.1 ❌ (2026-05-18, misdiagnosed motion-smear hotfix; superseded). AV.2.2 ✅ (2026-05-18, mv_warp dropped after empirical multi-frame diagnostic). AV.2.3 ⏳ (re-introduce drift mechanisms grounded in dossier; curl-noise inside noise sample + two-column SUM). AV.3 ⏳. **Schedule:** AV.2.3 after Matt's live re-verification of AV.2.2; AV.3 sequenced after AV.2.3 + an empirical-grounding research pass for sub-second flicker + 2–20 s pulsation.
+**Status.** AV.1 ✅ (2026-05-18). AV.2 ✅ (2026-05-18). AV.2.1 ❌ (2026-05-18, misdiagnosed motion-smear hotfix; superseded). AV.2.2 ✅ (2026-05-18, mv_warp dropped after empirical multi-frame diagnostic). AV.2.2a ✅ (2026-05-18, drawDirect slot-6 binding hotfix for crash exposed by AV.2.2 dispatch-path change). AV.2.3 ⏳ (re-introduce drift mechanisms grounded in dossier + integration test against live RenderPipeline). AV.3 ⏳. **Schedule:** AV.2.3 after Matt's live re-verification of AV.2.2 + AV.2.2a; AV.3 sequenced after AV.2.3 + an empirical-grounding research pass for sub-second flicker + 2–20 s pulsation.
 
 ### Increment AV.1 — Single-ribbon foundation ✅ (2026-05-18)
 

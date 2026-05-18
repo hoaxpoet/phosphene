@@ -53,6 +53,47 @@ struct AuroraVeilMVWarpAccumulationTest {
     private static let frameCount = 60      // ~1 s at 60 fps; well past mv_warp's ~17-frame decay window
     private static let deltaTime: Float = 1.0 / 60.0
 
+    // MARK: - drawDirect slot-6 contract (AV.2.2a regression guard)
+    //
+    // AV.2.2 dropped mv_warp from Aurora Veil's passes, moving its render
+    // dispatch from the mv_warp path (which binds slot 6) to the direct path
+    // (`drawDirect` — which did NOT bind slot 6 pre-fix). First live frame
+    // crashed on the unbound `[[buffer(6)]]` read in `aurora_fragment`.
+    //
+    // This static-source assertion fires if a future edit removes the slot-6
+    // binding from `drawDirect`. Cheap regression guard; complements (but
+    // does not replace) a full integration test that exercises drawDirect
+    // end-to-end against a live RenderPipeline + MTKView (deferred to
+    // AV.2.3 scope — see RELEASE_NOTES `[dev-2026-05-18-g]`).
+    @Test("drawDirect binds fragment slot 6 for direct-pass preset state buffers")
+    func test_drawDirect_bindsSlot6() throws {
+        let repoRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()  // /Presets/
+            .deletingLastPathComponent()  // /PhospheneEngineTests/
+            .deletingLastPathComponent()  // /Tests/
+            .deletingLastPathComponent()  // /PhospheneEngine/
+            .deletingLastPathComponent()  // repo root
+        let drawSource = repoRoot
+            .appendingPathComponent("PhospheneEngine/Sources/Renderer/RenderPipeline+Draw.swift")
+        let src = try String(contentsOf: drawSource, encoding: .utf8)
+        // Extract the body of `func drawDirect(` so we don't get false-positive
+        // matches from comments elsewhere in the file.
+        guard let drawDirectRange = src.range(of: "func drawDirect(") else {
+            Issue.record("RenderPipeline+Draw.swift: `func drawDirect(` not found — file refactored?")
+            return
+        }
+        let body = String(src[drawDirectRange.lowerBound...])
+        #expect(
+            body.contains("offset: 0, index: 6"),
+            """
+            drawDirect no longer binds fragment slot 6. AV.2.2a regression: \
+            Aurora Veil's [[buffer(6)]] AuroraVeilStateGPU read will crash on \
+            the first frame after preset apply. Restore the slot-6 binding \
+            (mirrors renderSceneToTexture in RenderPipeline+MVWarp.swift).
+            """
+        )
+    }
+
     @Test("Multi-frame mv_warp accumulation: ON / OFF / TAME (env-gated)")
     func test_mvwarpAccumulation_diag() throws {
         guard ProcessInfo.processInfo.environment["AURORA_VEIL_MVWARP_DIAG"] == "1" else {
