@@ -12,6 +12,8 @@
 //
 // Output: /tmp/phosphene_visual/<ISO8601>/<preset>_{silence,mid,beat}.png
 //         /tmp/phosphene_visual/<ISO8601>/<preset>_contact_sheet.png  (Arachne only)
+//         /tmp/phosphene_visual/<ISO8601>/Lumen_palette_<name>.png  (LM.4.7 — one per palette)
+//         /tmp/phosphene_visual/<ISO8601>/Lumen_palette_library_contact_sheet.png  (6×3 grid of 18 palettes)
 //
 // See V.7.6.1 in docs/ENGINEERING_PLAN.md and D-072 in docs/DECISIONS.md.
 
@@ -295,6 +297,227 @@ struct PresetVisualReviewTests {
             try buildArachneContactSheet(renderedMidPNG: midURL, to: sheetURL)
             print("[PresetVisualReview] wrote \(sheetURL.lastPathComponent)")
         }
+    }
+
+    // MARK: - Lumen Mosaic palette-library contact sheet (LM.4.7)
+    //
+    // Render Lumen Mosaic once per palette in the 18-entry library and
+    // compose a 6×3 contact sheet so Matt can sign off on per-palette
+    // character without playing every track in a real-music session.
+    //
+    // Each cell: rendered preset frame downscaled into a fixed-size tile +
+    // a label band carrying the palette name and its (valence, arousal)
+    // mood anchor. The per-cell render uses a fixed mid-energy fixture
+    // and zero per-track seed so the only inter-cell variable is the
+    // palette payload — the layout reads as a side-by-side compare.
+
+    @Test("Render Lumen Mosaic palette library contact sheet (RENDER_VISUAL=1)")
+    func renderLumenMosaicPaletteContactSheet() throws {
+        guard ProcessInfo.processInfo.environment["RENDER_VISUAL"] == "1" else {
+            print("[PresetVisualReview] RENDER_VISUAL not set, skipping palette contact sheet")
+            return
+        }
+
+        let ctx = try MetalContext()
+        guard let preset = _acceptanceFixture.presets.first(where: {
+            $0.descriptor.name == "Lumen Mosaic"
+        }) else {
+            print("[PresetVisualReview] Lumen Mosaic preset not found, skipping palette contact sheet")
+            return
+        }
+
+        let outputDir = try makeOutputDirectory()
+        print("[PresetVisualReview] palette contact-sheet output dir: \(outputDir.path)")
+
+        let library = LumenMosaicPaletteLibrary.all
+        var perPaletteImages: [(palette: LumenPalette, image: CGImage)] = []
+        perPaletteImages.reserveCapacity(library.count)
+
+        for palette in library {
+            guard let engine = LumenPatternEngine(device: ctx.device, seed: 42) else {
+                throw VisualReviewError.preconditionFailed(
+                    "failed to allocate LumenPatternEngine for palette \(palette.name)")
+            }
+            // Zero track seed: the only inter-cell variable should be the
+            // palette payload. Pre-warm the smoothed valence/arousal toward
+            // a neutral (0, 0) so the per-palette read is the palette's
+            // character, not a mood-induced agent drift. `setPalette(_:)`
+            // is called last so the write-to-GPU at the end flushes the
+            // most recent state including the palette payload.
+            engine.setTrackSeed(.zero)
+            var primer = midFixture
+            primer.deltaTime = 5.0
+            engine.tick(features: primer, stems: .zero)
+            var advance = midFixture
+            advance.deltaTime = 1.0 / 60.0
+            for _ in 0..<30 { engine.tick(features: advance, stems: .zero) }
+            engine.setPalette(palette)
+
+            var fv = midFixture
+            let pixels = try renderDeferredRayMarchFrame(preset: preset,
+                                                         context: ctx,
+                                                         lumenEngine: engine,
+                                                         features: &fv)
+            let safeName = palette.name.replacingOccurrences(of: " ", with: "_")
+            let url = outputDir.appendingPathComponent("Lumen_palette_\(safeName).png")
+            try writePNG(bgraPixels: pixels,
+                         width: Self.renderWidth, height: Self.renderHeight,
+                         to: url)
+            print("[PresetVisualReview] wrote \(url.lastPathComponent)")
+
+            if let cgImage = makeCGImage(bgraPixels: pixels,
+                                         width: Self.renderWidth,
+                                         height: Self.renderHeight) {
+                perPaletteImages.append((palette, cgImage))
+            }
+        }
+
+        let sheetURL = outputDir.appendingPathComponent("Lumen_palette_library_contact_sheet.png")
+        try buildLumenPaletteContactSheet(images: perPaletteImages, to: sheetURL)
+        print("[PresetVisualReview] wrote \(sheetURL.lastPathComponent)")
+    }
+
+    /// Compose 18 per-palette renders into a 6×3 grid. Each cell contains
+    /// the rendered preset frame on top, a 12-square strip of raw palette
+    /// colours immediately below it, and a name + mood-anchor label band
+    /// at the bottom. The swatch strip is what makes the per-palette
+    /// character read at thumbnail size — the Voronoi-mosaic render's
+    /// per-cell colour signal averages out on downsample, but the strip
+    /// shows the curated 12 colours directly. Sheet sized so it's
+    /// readable on a 27" display (~2960 px wide).
+    private func buildLumenPaletteContactSheet(
+        images: [(palette: LumenPalette, image: CGImage)],
+        to outURL: URL
+    ) throws {
+        let cols = 6
+        let rows = 3
+        let cellW = 480
+        let renderH = 320
+        let swatchH = 36
+        let labelH = 56
+        let cellH = renderH + swatchH + labelH
+        let gutter = 8
+        let margin = 16
+
+        let sheetW = margin * 2 + cols * cellW + (cols - 1) * gutter
+        let sheetH = margin * 2 + rows * cellH + (rows - 1) * gutter
+
+        guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else {
+            throw VisualReviewError.cgImageFailed
+        }
+        let bitmapInfo = CGBitmapInfo(rawValue:
+            CGImageAlphaInfo.premultipliedFirst.rawValue
+            | CGBitmapInfo.byteOrder32Little.rawValue)
+        guard let ctx = CGContext(data: nil,
+                                  width: sheetW, height: sheetH,
+                                  bitsPerComponent: 8,
+                                  bytesPerRow: sheetW * 4,
+                                  space: colorSpace,
+                                  bitmapInfo: bitmapInfo.rawValue) else {
+            throw VisualReviewError.cgImageFailed
+        }
+
+        // Dark background — keeps the per-cell renders' tonal envelope
+        // visible without a competing white surround.
+        ctx.setFillColor(red: 0.08, green: 0.08, blue: 0.08, alpha: 1)
+        ctx.fill(CGRect(x: 0, y: 0, width: sheetW, height: sheetH))
+
+        // Lanczos resampling for the 1920 → 480 downsample preserves cell
+        // boundaries better than the default (bilinear).
+        ctx.interpolationQuality = .high
+
+        // CoreGraphics origin is bottom-left; we fill cells top-to-bottom
+        // by computing y from the top, then flipping into CG coordinates.
+        for (index, entry) in images.enumerated() {
+            let row = index / cols
+            let col = index % cols
+            let xPx = margin + col * (cellW + gutter)
+            let yPxFromTop = margin + row * (cellH + gutter)
+            let cgY = sheetH - yPxFromTop - cellH
+
+            // Render image — top of the cell.
+            let imageRect = CGRect(x: xPx, y: cgY + swatchH + labelH,
+                                   width: cellW, height: renderH)
+            ctx.draw(entry.image, in: imageRect)
+
+            // 12-square swatch strip — middle band of the cell, directly
+            // below the render. Each swatch is `cellW / 12` wide × swatchH
+            // tall. Linear-RGB palette entries are encoded to sRGB by the
+            // CGContext via the colourspace conversion.
+            let swatchW = CGFloat(cellW) / 12.0
+            for (slot, color) in entry.palette.colors.enumerated() {
+                let swatchRect = CGRect(
+                    x: CGFloat(xPx) + swatchW * CGFloat(slot),
+                    y: CGFloat(cgY + labelH),
+                    width: ceil(swatchW),
+                    height: CGFloat(swatchH))
+                ctx.setFillColor(
+                    red: CGFloat(linearToSRGBChannel(color.x)),
+                    green: CGFloat(linearToSRGBChannel(color.y)),
+                    blue: CGFloat(linearToSRGBChannel(color.z)),
+                    alpha: 1)
+                ctx.fill(swatchRect)
+            }
+
+            // Label band — bottom of the cell.
+            let labelRect = CGRect(x: xPx, y: cgY,
+                                   width: cellW, height: labelH)
+            ctx.setFillColor(red: 0, green: 0, blue: 0, alpha: 1)
+            ctx.fill(labelRect)
+        }
+
+        // Draw labels via NSGraphicsContext for clean AppKit-rendered text.
+        let nsContext = NSGraphicsContext(cgContext: ctx, flipped: false)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = nsContext
+
+        let nameAttrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.boldSystemFont(ofSize: 18),
+            .foregroundColor: NSColor.white,
+        ]
+        let anchorAttrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 13),
+            .foregroundColor: NSColor(red: 0.78, green: 0.78, blue: 0.78, alpha: 1),
+        ]
+
+        for (index, entry) in images.enumerated() {
+            let row = index / cols
+            let col = index % cols
+            let xPx = margin + col * (cellW + gutter)
+            let yPxFromTop = margin + row * (cellH + gutter)
+            let cgY = sheetH - yPxFromTop - cellH
+
+            let nameOrigin = NSPoint(x: CGFloat(xPx + 12),
+                                     y: CGFloat(cgY + labelH - 26))
+            NSAttributedString(string: entry.palette.name, attributes: nameAttrs)
+                .draw(at: nameOrigin)
+
+            let anchorText = String(format: "v=%+.2f  a=%+.2f",
+                                    entry.palette.moodAnchor.x,
+                                    entry.palette.moodAnchor.y)
+            let anchorOrigin = NSPoint(x: CGFloat(xPx + 12),
+                                       y: CGFloat(cgY + 6))
+            NSAttributedString(string: anchorText, attributes: anchorAttrs)
+                .draw(at: anchorOrigin)
+        }
+        NSGraphicsContext.restoreGraphicsState()
+
+        guard let cgImage = ctx.makeImage() else {
+            throw VisualReviewError.cgImageFailed
+        }
+        try writeCGImage(cgImage, to: outURL)
+    }
+
+    /// Linear-RGB → sRGB transfer for one channel (IEC 61966-2-1). Used by
+    /// the contact-sheet swatch strip so on-screen pixel colour matches
+    /// what the shader paints into the rgba8Unorm albedo: the rendered
+    /// preset frame is encoded to sRGB by the swapchain; the swatch strip
+    /// has to do the same conversion explicitly because `ctx.setFillColor`
+    /// in an sRGB colourspace context takes its arguments as sRGB values.
+    private func linearToSRGBChannel(_ value: Float) -> Float {
+        let clamped = max(0, min(1, value))
+        if clamped <= 0.0031308 { return clamped * 12.92 }
+        return 1.055 * powf(clamped, 1 / 2.4) - 0.055
     }
 
     // MARK: - Output directory
