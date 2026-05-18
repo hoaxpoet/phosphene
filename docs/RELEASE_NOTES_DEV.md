@@ -6,6 +6,47 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-18-e] AV.2.1 — Aurora Veil motion-smear hotfix
+
+**Increment:** AV.2.1. **Status:** Landed 2026-05-18.
+
+Hotfix on AV.2 driven by a live-session report (session `2026-05-18T21-44-14Z`). Matt reported that with AV.2 the "entire scene is moving rapidly, creating a very smeary mess of aurora curtains and stars" and that "even at silence, the scene is moving wildly." Extracted video frames at t = 10 / 30 / 60 s confirmed: amorphous green-magenta cloud blobs with no readable vertical ribbon structure, stars washed out, painterly smear character — fundamentally not what the references show.
+
+**Root cause #1 — per-column velocity differential under mv_warp.** AV.2 introduced `kAuroraColumnVelocity = {1.00, 0.75, 0.55}` per `AURORA_VEIL_DESIGN.md §5.5`'s "parallax illusion of depth (distant ribbons appear to move slower)" idea. With the three columns MAX-merged into the aurora accumulator and rotating at different substrate rates, the "winner" column at each pixel shifts over time. mv_warp's ~1 s persistence trail (decay 0.945) + per-vertex curl-noise advection at 0.005 UV then accumulated those winner-shifts into painterly smear — destroyed the nimitz vertical-streak ribbon character and washed out the stars (which got dragged across frames by the same accumulator). AV.1 didn't have this because it was single-column; the rotation rate differential was an AV.2-only regression. Reference photos `01` / `04` separate depth via horizontal screen position + atmospheric perspective dimming, not differential motion — still photos can't encode velocity differentials anyway, so the design's "parallax-from-motion" idea was an over-extrapolation. **Fix:** drop `velocityScale` from `aurora_tri_noise_2d` + `raymarch_column` signatures and the call site. All three columns now share the same substrate-rotation rate; depth distinction is from `colOffset` (horizontal screen position) + `colDepth` (depth-scale dimming) only.
+
+**Root cause #2 — mv_warp's freshly-allocated textures aren't zero-initialised.** The same session video showed ~1 s of full-screen magenta at the moment of preset switch into Aurora Veil (Waveform → Arachne → Aurora Veil in quick succession). `MVWarpState` allocates three new `storageMode = .private` textures via `setupMVWarp`; Metal does NOT guarantee zero-initialisation of fresh GPU-private memory — whatever bit pattern previously occupied that memory bleeds through mv_warp's compose-pass decay blend on the first frame, fading over the ~1 s persistence trail. **Fix:** added `clearWarpTexturesToBlack` helper called from `setupMVWarp` — encodes a load-action-clear render pass for each of the three textures (`warpTexture` / `composeTexture` / `sceneTexture`) so first-frame compose reads black, not undefined GPU memory. Helps every mv_warp preset, not just Aurora Veil.
+
+### Product-level decision context
+
+Surfaced both fixes to Matt as product-level questions (per CLAUDE.md Authoring Discipline: "decisions presented to Matt must be framed in product-level language with explicit benefits and trade-offs"). Initial framing was too engineering-jargon; reframed into plain-English options describing what the user sees:
+- *"How should the three aurora curtains move?"* → All three drift together (recommended; Matt approved).
+- *"Should I fix the magenta-flash when switching to Aurora Veil?"* → Fix as a small follow-up (recommended; Matt approved).
+
+### Files changed
+
+- `PhospheneEngine/Sources/Presets/Shaders/AuroraVeil.metal` — `kAuroraColumnVelocity` constant removed; `velocityScale` parameter removed from `aurora_tri_noise_2d` + `raymarch_column`; multi-column loop simplified; AV.2.1 rationale documented inline.
+- `PhospheneEngine/Sources/Renderer/RenderPipeline+MVWarp.swift` — `setupMVWarp` now calls a private `clearWarpTexturesToBlack(warpTex:composeTex:sceneTex:)` helper after allocation. Encodes one load-action-clear pass per texture; no GPU-side persistent state added.
+- `PhospheneEngine/Tests/PhospheneEngineTests/Renderer/PresetRegressionTests.swift` — Aurora Veil `beatHeavy` golden updated (1-bit drift from velocityScale removal at 64×64 dHash resolution; well within the 8-bit Hamming threshold but updated for accuracy).
+- `docs/ENGINEERING_PLAN.md` + `docs/RELEASE_NOTES_DEV.md`.
+
+### Tests run
+
+- `swift test --filter "AuroraVeil|PresetLoaderCompileFailure|PresetRegression|PresetAcceptance|FidelityRubric"` — 42 / 42 green across 9 suites.
+- `xcodebuild -scheme PhospheneApp build` — BUILD SUCCEEDED.
+- `swiftlint lint --strict` on touched files — 0 violations.
+- `RENDER_VISUAL=1` Aurora Veil silence frame at 1920×1280 shows crisp stars + green-base / magenta-crown + intact bottom silhouette. **Single-frame test renders don't exercise mv_warp's frame-to-frame accumulation** — live re-verification is the load-bearing gate; the visual side-by-side single frame is the sanity floor only.
+
+### Known risks
+
+Live re-verification needed before declaring this closed. Single-frame fixtures can't tell you whether the multi-frame smear under mv_warp accumulation is actually gone — only running the app with Aurora Veil active for ≥ 5 s can confirm. The structural change (one drift rate across all columns + cleared mv_warp textures on preset apply) is the right diagnosis from the session video evidence, but the verification floor is "Matt runs another session, doesn't see the smear."
+
+If the smear persists despite this fix, the next candidates (in order):
+1. mv_warp `curl_noise` advection amplitude 0.005 → 0.002 (less per-vertex flow accumulation).
+2. mv_warp `decay` 0.945 → 0.88 (shorter trails so less compounds).
+3. `kAuroraGain` 2.4 → 1.8 (less clamp saturation; clamp-driven flicker reduced).
+
+---
+
 ## [dev-2026-05-18-d] AV.2 — Aurora Veil multi-column parallax + audio routing
 
 **Increment:** AV.2. **Status:** Landed 2026-05-18.
