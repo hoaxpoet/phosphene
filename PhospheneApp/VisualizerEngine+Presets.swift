@@ -360,25 +360,11 @@ extension VisualizerEngine {
                     }
                 }
 
-                // Aurora Veil-specific (AV.2): allocate kink accumulator +
-                // pitch-smoother state, wire tick + fragment buffer at slot 6.
-                // Mirrors the Gossamer pattern above — the same slot-6
-                // `setDirectPresetFragmentBuffer` carries the 16-byte
-                // `AuroraVeilStateGPU` struct to the shader.
-                if desc.name == "Aurora Veil" {
-                    if let state = AuroraVeilState(device: context.device) {
-                        auroraVeilState = state
-                        state.reset()
-                        pipeline.setDirectPresetFragmentBuffer(state.stateBuffer)
-                        pipeline.setMeshPresetTick { [weak state] features, stems in
-                            state?.tick(deltaTime: features.deltaTime,
-                                        features: features,
-                                        stems: stems)
-                        }
-                    } else {
-                        logger.error("AuroraVeilState: failed to allocate state for preset '\(desc.name)'")
-                    }
-                }
+                // (Aurora Veil's per-preset state was previously here, inside
+                // case .mvWarp. AV.2.2 dropped mv_warp from Aurora Veil's
+                // passes, so this nested block never fires anymore. The state
+                // allocation moved OUT of the switch to a pass-agnostic block
+                // below — see "Aurora Veil-specific" after the `for pass` loop.)
 
             case .staged:
                 // V.ENGINE.1: bridge per-stage compiled pipelines into the renderer.
@@ -422,6 +408,34 @@ extension VisualizerEngine {
 
             case .direct:
                 break // No subsystem setup required; direct rendering is the default fallback.
+            }
+        }
+
+        // Aurora Veil-specific (AV.2.2b): allocate kink accumulator +
+        // pitch-smoother state and wire it at slot 6 + per-frame tick.
+        // This block sits OUTSIDE the `for pass` switch above because
+        // AV.2.2 dropped mv_warp from Aurora Veil's passes (`passes: []`),
+        // and a nested-in-`.mvWarp` setup block never fires when the
+        // passes array is empty. AV.2.2a's drawDirect slot-6 binding fix
+        // was necessary but not sufficient — the buffer was never being
+        // created, so even the corrected drawDirect skipped it (nil
+        // setter). Live session 2026-05-18T23-07-33Z still crashed.
+        //
+        // The setMeshPresetTick closure is invoked from RenderPipeline+Draw
+        // line ~120 once per frame regardless of dispatch path, so it
+        // works correctly for both mv_warp and direct presets.
+        if desc.name == "Aurora Veil" {
+            if let state = AuroraVeilState(device: context.device) {
+                auroraVeilState = state
+                state.reset()
+                pipeline.setDirectPresetFragmentBuffer(state.stateBuffer)
+                pipeline.setMeshPresetTick { [weak state] features, stems in
+                    state?.tick(deltaTime: features.deltaTime,
+                                features: features,
+                                stems: stems)
+                }
+            } else {
+                logger.error("AuroraVeilState: failed to allocate state for preset '\(desc.name)'")
             }
         }
 

@@ -6,6 +6,45 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-18-h] AV.2.2b — Move Aurora Veil state allocation out of `case .mvWarp:`
+
+**Increment:** AV.2.2b. **Status:** Landed 2026-05-18.
+
+AV.2.2a fixed `drawDirect` to bind slot 6 if the setter was set, but the live session `2026-05-18T23-07-33Z` crashed identically. The drawDirect fix was necessary but not sufficient. The actual root cause: **the Aurora Veil state allocation block in `VisualizerEngine+Presets.swift` was nested inside `case .mvWarp:` of the `for pass in passes` switch.** AV.2.2 changed `passes: ["mv_warp"]` → `[]`. The switch loop body never executed, so `AuroraVeilState` was never allocated and `setDirectPresetFragmentBuffer` was never called. `directPresetFragmentBuffer` stayed nil. `drawDirect`'s conditional binding correctly skipped (nothing to bind), shader's `[[buffer(6)]]` read hit unbound memory, crash.
+
+### Fourth Aurora Veil "tests passed but live broke" failure in a row
+
+Pattern is now unambiguous:
+- AV.2: smear (mv_warp accumulator + nimitz noise incompatible) — masked because no test exercised multi-frame mv_warp
+- AV.2.1: smear unchanged (misdiagnosed velocityScale) — masked because no diagnostic test existed at all
+- AV.2.2: built diagnostic test, identified mv_warp as cause, dropped it — masked the crash at drawDirect because the diagnostic manually orchestrated bindings
+- AV.2.2a: fixed drawDirect to bind slot 6, added static-source regression test — masked the crash at applyPreset because the regression test only checked drawDirect source, not whether `setDirectPresetFragmentBuffer` was actually being called for Aurora Veil
+- AV.2.2b: this commit — moved Aurora Veil state allocation out of `case .mvWarp:` to a pass-agnostic block after the switch
+
+Every fix this round closed exactly one boundary and missed another. The CLAUDE.md "test in production-grade pipeline" rule was correct in spirit and useless in practice — I kept patching test gaps one boundary at a time while production-failure pre-existing on a different boundary.
+
+### The fix
+
+`PhospheneApp/VisualizerEngine+Presets.swift` — the Aurora Veil state allocation block (allocate `AuroraVeilState`, call `state.reset()`, `setDirectPresetFragmentBuffer`, `setMeshPresetTick`) moved from inside `case .mvWarp:` (lines 363-381) to **after the `for pass in passes` switch closes** (alongside the text-overlay setup block). The block now fires regardless of which passes the descriptor declares — pattern matches "per-preset state allocation that's pass-agnostic," which `desc.textOverlay` already follows.
+
+The `setMeshPresetTick` closure works correctly outside the mv_warp branch because `meshPresetTick` is invoked from `RenderPipeline+Draw.swift:120` once per frame regardless of dispatch path.
+
+### Tests run
+
+- `xcodebuild -scheme PhospheneApp build` — BUILD SUCCEEDED.
+- `swift test --filter "AuroraVeil|PresetRegression|PresetAcceptance|FidelityRubric"` — 43 / 43 green.
+- `swiftlint --strict` touched files — 0 violations.
+
+### Meta-acknowledgement (this needs to actually mean something now)
+
+The static-source regression test from AV.2.2a is insufficient because it only verifies drawDirect's source. The real preventative test is an **integration test that loads each preset through `VisualizerEngine.applyPreset` and verifies the engine's per-preset state setters were called as expected.** That captures the boundary AV.2.2b crashed at. Captured as AV.2.3 follow-up scope. Until that exists, no further claim of "discipline rule working" is honest.
+
+### Live re-verification gate
+
+Matt to run another session. Aurora Veil should now allocate state, bind slot 6 via drawDirect, render without crash, and exhibit the AV.2.2 prediction (crisp stars, readable ribbons, no smear).
+
+---
+
 ## [dev-2026-05-18-g] AV.2.2a — drawDirect slot-6 binding hotfix
 
 **Increment:** AV.2.2a. **Status:** Landed 2026-05-18.
