@@ -3,7 +3,9 @@
 **Family:** fluid
 **Render pipeline:** direct_fragment + mv_warp (single pass `["mv_warp"]`, per D-027)
 **Rubric:** lightweight (per D-067(b) — emission-only direct-fragment preset, exempt from M1 detail cascade and M3 material-count requirements)
-**Last curated:** 2026-05-08
+**Last curated:** 2026-05-08 (annotations amended 2026-05-18 for the volumetric-raymarch architectural pivot)
+
+> **Amendment 2026-05-18.** A pre-implementation desk-research pass (`docs/presets/AURORA_VEIL_RESEARCH_2026-05-18.md`) pivoted the rendering architecture from 2D-pixel-ribbon to **volumetric vertical-column raymarch** (nimitz "Auroras" + Lawlor-Genetti factorization). The reference set below is unchanged — the visual TARGET is the same; what changed is the SHADER ARCHITECTURE used to reach the target. The mandatory-traits checklist further down is amended to add multi-timescale motion + emissive compositing + drum-kink rare-event gating as explicit checks. A 9-question authenticity rubric (`AURORA_VEIL_RESEARCH_2026-05-18.md §2.3`) is the load-bearing AV.3 cert gate.
 
 > **Architectural reminder.** Aurora Veil renders a 2.5D scene: stars + 2–3 layered ribbons + sky gradient inside a single fragment shader, with mv_warp providing temporal accumulation. There is no SDF, no PBR, no mesh shader. The whole point of this preset's catalog role is to be the lowest-barrier authoring example — the canonical Milkdrop pattern (direct fragment + per-vertex feedback warp) which currently has no consumer. References below assume that target.
 
@@ -30,14 +32,19 @@ The lightweight rubric ladder is L1–L4. For Aurora Veil specifically:
 - [ ] **L3 — Performance budget.** p95 ≤ Tier 1 ~4.0 ms / Tier 2 ~1.7 ms (per design §7). Verified by `PresetPerformanceTests` against silence / steady / beat-heavy fixtures.
 - [ ] **L4 — Frame match.** Matt M7 review against `01` and `04` for hero composition; against `02` for palette correctness; against `03` for fold structure.
 
-Plus design-doc-specific must-haves (rooted in §3 trait matrix and §5 architecture):
+Plus design-doc-specific must-haves (rooted in §3 trait matrix and §5 architecture — amended 2026-05-18 for the volumetric-raymarch pivot):
 
-- [ ] **Multi-ribbon composition.** 2–3 layered curtain ribbons with depth-scale dimming (`depthScale[i] ∈ {1.0, 0.7, 0.5}`); verified visually against `04`. A single-ribbon render is a fail — the depth of real aurora is lost.
-- [ ] **Vertical color stratification.** Lower portion of each ribbon → green base; upper portion → magenta crown; transition sampled from IQ cosine palette with `t = uv.y + pitchHue`. Verified against `02`.
-- [ ] **Vertical ray striations within each curtain.** `fbm4(float2(uv.x * 80 + raysPhase[i], y * 4))` — the fine pillars that read as electron-precipitation columns. Verified visually against `03`.
-- [ ] **Stars on dark sky.** Sparse pinpoints from `hash_f01_2(uv * 800) > 0.997`. NOT a procedural noise sky — real aurora night sky is mostly black with sparse stars. Verified visually against `01`.
-- [ ] **mv_warp shimmer/echo.** `decay = 0.945`, `baseRot ≈ 0.0008`, `baseZoom ≈ 0.0015`. Curtains leave a faint trail when they shift, not a smear. Reference §5.3 of design doc.
-- [ ] **No free-running `sin(time)` motion.** All oscillation must be audio-anchored or mv_warp-driven (CLAUDE.md Arachne tuning rule, applies catalog-wide).
+- [ ] **Vertical-column volumetric raymarch.** Per-fragment 50-step march up an implicit vertical column, sampling triangular domain-warped noise at each step. (NOT a 2D horizontal-proximity test against a centre-line — that's the legacy approach that read as 2D ribbon. See `AURORA_VEIL_RESEARCH_2026-05-18.md §1.1` for the algorithm.)
+- [ ] **Vertical color stratification by ALTITUDE (Lawlor `H(z)` curve).** Per-march-step IQ-cosine palette evaluation `sin(1.0 - vec3(2.15, -0.5, 1.2) + i * 0.043)` — green at low march-step (low altitude), magenta at high march-step (high altitude). Verified against `02`. (Indexing by `uv.y` directly is acceptable as a fallback but indexing by march-step is physically correct and what authentic aurora prior art uses.)
+- [ ] **Triangular domain-warped noise (not Perlin/fBM).** Sharp ribbon edges. ≥ 4 octaves, ≥ 1 per-octave rotation. Verified against `03`'s fine pillar structure. Substituting the engine's `fbm8` for triangular noise produces blurry-pillow Failure Mode #8.
+- [ ] **Running-average vertical smear.** `avgCol = mix(avgCol, col2, 0.5)` accumulated across march steps — converts noise samples into vertical ribbons. The single line that distinguishes "aurora" from "salt-and-pepper" output.
+- [ ] **Multi-timescale motion** (research §2.1 — non-negotiable). Substrate drift via `tri_noise_2d` time argument + mv_warp decay; subsecond ray flicker via fast-time noise modulation on per-step density; 2–20 s whole-curtain pulsation via slow envelope. A single uniform-speed translation is Failure Mode #4.
+- [ ] **Stars on dark sky, additive composite.** Sparse pinpoints from `hash_f01_2(uv * 800) > 0.997`; stars punch through aurora regions because the composite is `sky + aurora`, not `mix(sky, aurora, mask)` (Failure Mode #5 avoided). Reference `01`.
+- [ ] **mv_warp shimmer/echo.** `decay = 0.945`, `baseRot ≈ 0.0008`, `baseZoom ≈ 0.0015`. Curl-noise advection on per-vertex displacement (not straight time-pan) — mimics NeverSeenTheSky vortical motion at fragment-shader cost. Reference §5.3 of design doc.
+- [ ] **Drum-kink rare-event gated (NOT raw `drums_energy_dev` direct coupling).** `kinkAccumulator` charges only on high-amplitude drum events (`smoothstep(0.4, 0.7, drums_energy_dev)`), decays at ~0.5/s; visual response is a 1–2 s slow shudder, not per-beat deflection. Failure Mode #11 avoided.
+- [ ] **No free-running `sin(time)` motion.** All oscillation must be audio-anchored or mv_warp-driven or noise-perturbation-driven (CLAUDE.md Failed Approach #33, applies catalog-wide).
+
+**The 9-question authenticity rubric (research §2.3) is the AV.3 cert gate.** A render answers YES to all nine to pass M7. NO to any maps to a specific Failure Mode (#1–#15) from the taxonomy. The rubric is reproduced in `AURORA_VEIL_RESEARCH_2026-05-18.md §2.3` — implementer reads it before authoring + at every checkpoint.
 
 ## Expected / strongly preferred traits
 
