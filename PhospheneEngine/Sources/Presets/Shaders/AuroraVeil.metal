@@ -1,10 +1,24 @@
-// AuroraVeil.metal — Direct-fragment + mv_warp ambient ribbon preset.
+// AuroraVeil.metal — Direct-fragment ambient ribbon preset.
+//
+// AV.2.2 (2026-05-18): mv_warp pass DROPPED. The empirical
+// `AuroraVeilMVWarpAccumulationTest` (env-gated) demonstrated that mv_warp
+// at the design parameters (decay 0.945, curl-noise advection 0.005 UV)
+// washes out ALL high-frequency content over its ~17-frame decay window:
+// 0 stars / sky-max-luma 0.39 / smeared blobs after 60 frames at silence,
+// matching the live-session bug Matt reported in sessions
+// `2026-05-18T21-44-14Z` and `2026-05-18T22-17-36Z`. With mv_warp OFF:
+// 115 crisp stars / sky-max-luma 0.96 / clean rendering matching the
+// reference photos. The references (`01` / `02` / `03` / `04`) show
+// static curtains with slow internal drift — NOT persistence trails;
+// mv_warp was producing the wrong character for this preset. The
+// triangular-noise field's own time-driven rotation (0.10 rad/s × time)
+// provides the slow drift the design §5.4 substrate-row asked for.
 //
 // AV.2 — Multi-column raymarch + audio routing. Three implicit drift columns
 // at off-thirds horizontal positions establish multi-curtain parallax depth
 // (foreground at uv.x, mid-ground at uv.x + 0.27, background at uv.x - 0.18),
-// with per-column depth-scale dimming + non-parallel drift velocities. The
-// seven audio routes from AURORA_VEIL_DESIGN.md §5.7 layer on top:
+// with per-column depth-scale dimming. The seven audio routes from
+// AURORA_VEIL_DESIGN.md §5.7 layer on top:
 //
 //   1. Hue along ribbon  ← stems.vocals_pitch_hz (smoothed CPU-side, §5.7)
 //   2. Brightness breath ← f.bass_att_rel (D-019-blended with stems)
@@ -464,59 +478,8 @@ fragment float4 aurora_fragment(
     return float4(finalColor, 1.0);
 }
 
-// ── MV-Warp functions ─────────────────────────────────────────────────────────
-// Required by the mvWarp preamble forward declarations (D-027).
-
-MVWarpPerFrame mvWarpPerFrame(
-    constant FeatureVector& f,
-    constant StemFeatures&  stems,
-    constant SceneUniforms& s
-) {
-    (void)stems; (void)s;
-
-    MVWarpPerFrame pf;
-    pf.cx = 0.0; pf.cy = 0.0;
-    pf.dx = 0.0; pf.dy = 0.0;
-    pf.sx = 1.0; pf.sy = 1.0;
-    pf.warp = 0.0;
-
-    pf.zoom  = 1.0 + 0.0015;  // slight inward drift
-
-    // AV.2 — slow rotation now mixes in valence (`+ 0.0004 × valence`) per
-    // design §5.3. Positive valence (major-key) → slightly faster CCW
-    // rotation; negative → slower. Continuous primary, never beat-coupled.
-    pf.rot   = 0.0008 + 0.0004 * f.valence;
-    pf.decay = 0.945;          // ~1 s persistence trail
-
-    // Carry f.time through pf.q1 so per-vertex curl_noise advection has a
-    // monotonic time source (per-vertex doesn't see SceneUniforms). AV.2
-    // does NOT pass kinkAccumulator through pf.q2 — the q-vars are
-    // reconstructed per frame so they can't carry persistent state; the
-    // kink is consumed directly in `aurora_fragment` from buffer(6).
-    pf.q1 = f.time;
-    pf.q2 = 0.0; pf.q3 = 0.0; pf.q4 = 0.0;
-    pf.q5 = 0.0; pf.q6 = 0.0; pf.q7 = 0.0; pf.q8 = 0.0;
-    return pf;
-}
-
-float2 mvWarpPerVertex(
-    float2 uv, float rad, float ang,
-    thread const MVWarpPerFrame& pf,
-    constant FeatureVector& f,
-    constant StemFeatures& stems
-) {
-    (void)rad; (void)ang; (void)f; (void)stems;
-
-    float2 centre = float2(0.5, 0.5);
-    float2 p      = uv - centre;
-    float  zoomAmt = 1.0 / max(pf.zoom, 0.001);
-    float2 zoomed  = p * zoomAmt + centre;
-
-    // Curl-noise advection on the per-vertex displacement field. Mimics the
-    // NeverSeenTheSky vortical-flow motion signature (research §1.3) at
-    // fragment-shader cost via the V.1 curl_noise utility — no fluid solver.
-    // pf.q1 carries f.time from per-frame; multiplied by 0.1 for slow temporal
-    // evolution (the substrate-drift timescale per §5.4).
-    float2 disp = curl_noise(float3(uv * 2.0, pf.q1 * 0.1)).xy * 0.005;
-    return zoomed + disp;
-}
+// AV.2.2: mv_warp pass dropped. The `mvWarpPerFrame` + `mvWarpPerVertex`
+// functions that AV.1 + AV.2 required are no longer compiled — the
+// preset's `passes: []` in `AuroraVeil.json` means the loader skips the
+// mv_warp preamble's forward-declaration enforcement. See header docstring
+// for the empirical justification from `AuroraVeilMVWarpAccumulationTest`.
