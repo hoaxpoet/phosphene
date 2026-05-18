@@ -353,6 +353,30 @@ If a question requires Matt to already know implementation details to answer it,
 
 The cost of pausing is small. The cost of another day of mechanical iteration on a broken concept is high.
 
+**Test in the production-grade rendering pipeline. No shortcuts.** Promoted to CLAUDE.md from Matt's instruction 2026-05-18 after AV.1 / AV.2 / AV.2.1 each shipped with green tests despite producing painterly smear in live playback — the Aurora Veil test harnesses rendered single frames through `preset.pipelineState` directly, bypassing the mv_warp accumulator the live app uses. Three increments wasted before the diagnostic test that exercises mv_warp was written.
+
+**The rule:** every preset increment that depends on temporal behavior must include a test that runs the same dispatch path the live app uses — for ≥ N frames where N covers the relevant accumulator decay window — and inspects the multi-frame output. "Same dispatch path" means: if the preset uses `mv_warp`, the test runs scene → warp → compose → swap in a loop. If it uses `staged`, the test runs all stages. If it uses `ray_march`, the test runs G-buffer → lighting → composite. Tests that bypass to `preset.pipelineState` alone are sufficient ONLY for verifying the shader's instantaneous output; they do NOT prove the preset works under the live rendering pipeline.
+
+**Concrete obligations:**
+1. **Before authoring a preset that uses `mv_warp` / `staged` / `feedback` / `ray_march` + `post_process`** — write or extend the multi-frame test harness FIRST. Verify the live pipeline path is reachable from a test before shipping any shader work.
+2. **For mv_warp-using presets specifically** — `AuroraVeilMVWarpAccumulationTest` is the reference pattern (env-gated, runs scene → warp → compose → swap for 60 frames at silence, captures the final accumulator + a quantitative star-count metric). Adapt for new presets; do not reinvent.
+3. **For staged presets** — the harness must bind the same slot-6 / slot-7 buffers the production path binds (CLAUDE.md FA #66; same principle generalizes).
+4. **Single-frame tests stay valuable** for shader-math gates (palette stratification, deviation primitives, brightness amplitude). They are NOT sufficient on their own.
+5. **Closeout reports must state which dispatch path the tests exercised.** "Tests pass" alone is no longer evidence of correctness.
+
+**Tell-tale phrasing of the failure:** "the silence test passes, so silence is stable" / "the visual review PNG looks clean" / "the regression hash is within Hamming threshold." None of these prove the preset works under the live pipeline if the test bypasses it. Surface this and write the missing harness BEFORE filing the increment as ✅.
+
+**Design is upstream of testing — surface risks immediately.** A passing test of a flawed design just ships the flaw faster. When the design doc proposes a mechanism without empirical grounding (e.g., AV's "mv_warp on top of nimitz's procedural recipe" — no published aurora demo combines those), name that as a risk to Matt **before** writing any code, not after the rendering smears in live.
+
+**Grounding priority (Matt-approved 2026-05-18, soft rule).** Required grounding for each mechanism, in descending order of preference:
+1. **Working code reference in a comparable visual context.** Cite Shadertoy ID, GitHub repo, demo URL.
+2. **Academic paper or physics derivation + clear math** that can be implemented from the description alone. Example: Lawlor's `H(z)` curve from the WSCG 2011 paper.
+3. **No reference, just the design doc's assertion.** Highest risk. Surface explicitly as "no empirical grounding for X" before authoring; Matt decides whether to accept the risk or descope.
+
+When combining two mechanisms (e.g., procedural recipe + feedback accumulator), the combination itself needs grounding — not just each piece individually. AV's failure was layering mv_warp on top of nimitz without any working aurora demo doing the same combination; neither piece alone was the problem, the combination was.
+
+The threshold for "surface immediately" is when you reach grounding level 3 (no reference) on any non-trivial mechanism. Don't proceed silently on assertion alone.
+
 ---
 
 ## What NOT To Do
