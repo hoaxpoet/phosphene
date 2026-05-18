@@ -57,7 +57,7 @@ static inline float fo_stem_warmup_blend(constant StemFeatures& stems) {
     return smoothstep(FO_STEM_WARMUP_LO, FO_STEM_WARMUP_HI, total);
 }
 
-// Spike-field strength: constant baseline + bass-deviation modulation.
+// Spike-field strength: CONSTANT — returns 1.0 always.
 //
 // **Constant-field premise** (round 50, 2026-05-16). Phosphene's Ferrofluid
 // Ocean preset premise is "what if the ocean were made of ferrofluid?" That
@@ -66,52 +66,40 @@ static inline float fo_stem_warmup_blend(constant StemFeatures& stems) {
 // characteristic shape regardless of music. The lattice does NOT collapse
 // at silence; spike width is not audio-coupled; the fundamental geometry
 // is constant. Music modulates the swell (`fo_swell_scale`) and the aurora
-// (`rm_ferrofluidSky`).
+// (`rm_ferrofluidSky`), not the spikes.
 //
-// **Round 56 polish** (2026-05-17). Subtle ±10% height modulation from
-// `bass_energy_dev`. Coefficient 0.10 was chosen to be "barely perceptible
-// vertical breath."
+// **History of attempted spike-height audio coupling (all reverted):**
 //
-// **Round 60 (2026-05-18)**: coefficient 0.10 → 0.35 (clamped). Made spike-
-// height response visible.
+// Round 56 added `1.0 + 0.10 × bass_energy_dev` as a "subtle music
+// response" polish layer. It was too subtle (2-4 % at typical music) to
+// read visibly.
 //
-// **Round 61 (2026-05-18)**: gate the spike-height pulse to the DOWNBEAT
-// only (first beat of each bar) instead of firing on every bass transient.
-// Matt's 2026-05-18T03-12-28Z review: "The swelling and the spike motion
-// are struggling to coexist. The spike motion would be more effective if
-// it were slowed considerably, for example on the first beat of the bar
-// only."
+// Round 60 bumped the coefficient to 0.35 to make the response visible.
+// That worked at the per-pixel level but competed with the macro Gerstner
+// swell (spike pulse fired at ~2 Hz quarter-note rate, swell oscillated
+// at ~0.1 Hz). Matt's 2026-05-18T03-12-28Z review: "The swelling and the
+// spike motion are struggling to coexist."
 //
-// Why: round 60's per-transient pulse fired ~2 Hz at typical 120 BPM
-// (quarter-note rate), while the macro swell oscillates at 0.1 Hz (~10 s
-// wave period). The 20× rate gap made the two motions compete visually.
-// Gating to downbeat puts the pulse at 0.5 Hz (one per ~2 s bar at 4/4
-// 120 BPM) — closer to swell rate, so the two motions read as
-// complementary (slow background swell + bar-locked spike thump) rather
-// than competing (fast spike flicker over slow waves).
+// Round 61 gated the pulse to `bar_phase01` (downbeat-only). That created
+// a different defect: bar boundaries don't align with bass kicks
+// musically. Most bass kicks fall mid-bar (`bar_phase ~0.6`) where the
+// pulse is gated off; bar wraps trigger pulses regardless of whether bass
+// is loud right then. Visual rhythm doesn't match music rhythm — looks
+// like an artifact. Matt's 2026-05-18T13-20-10Z review: "bar-locked spike
+// thump looks like a defect, not a feature."
 //
-// Implementation: `bar_phase01` rises 0 → 1 across each bar (MV-3b,
-// D-028). A smoothstep that peaks at phase 0 and decays over the first
-// 20 % of the bar produces a short pulse on each downbeat. Multiplied
-// by `bass_energy_dev` so the pulse magnitude scales with how strong
-// the bass hit is — silent or quiet downbeats produce a tiny pulse;
-// loud-bass downbeats produce a clear thump.
-//
-// At silence: `bar_phase01` continues to advance (clock keeps running)
-// but `bass_energy_dev = 0` zeroes the pulse → constant lattice.
-// On a typical-music downbeat (bass_dev 0.5): peak multiplier 1.25 →
-// 25 % taller spikes for ~0.4 s, then settles.
-// On a strong downbeat (bass_dev 1.0): peak multiplier 1.50 → 50 %
-// taller — readable as a clear bar-locked thump.
+// **Round 63 (2026-05-18) — revert to round-50 premise.** Three successive
+// attempts (rounds 56, 60, 61) to layer audio-reactive spike-height on top
+// of the constant lattice each produced something that read as artifact.
+// The spike geometry is the ocean's identity; modulating it with music
+// fights the swell's rhythm and the aurora's chromatic motion. Music
+// response stays in `fo_swell_scale` (arousal + drums → swell amplitude)
+// and `rm_ferrofluidSky` (vocals → hue, drums → intensity, arousal →
+// drift). Spikes are constant geometry, period.
 static inline float fo_spike_strength(constant FeatureVector& f,
                                       constant StemFeatures& stems) {
-    float bassDev = clamp(stems.bass_energy_dev, 0.0, 1.0);
-    // bar_phase01 = 0 at downbeat, → 1 at next downbeat. Peak pulse at
-    // phase 0, smooth decay to 0 by phase 0.20. With typical 4/4 bars
-    // at 120 BPM (bar = 2 s), pulse lasts ~0.4 s — visible "spike
-    // thump on the downbeat" without flickering on every kick.
-    float downbeatPulse = smoothstep(0.20, 0.0, f.bar_phase01);
-    return 1.0 + 0.50 * downbeatPulse * bassDev;
+    (void)f; (void)stems;
+    return 1.0;
 }
 
 // Swell amplitude scale per D-124(d): arousal sets the sustained baseline at
