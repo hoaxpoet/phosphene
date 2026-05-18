@@ -35,7 +35,9 @@ struct PresetLoaderCompileFailureTest {
     ///
     /// History: 14 → 15 at DM.1 (Drift Motes, D-097 / D-099). 15 → 16 at LM.1
     /// (Lumen Mosaic, D-LM-matid). 16 → 15 when Drift Motes was retired.
-    static let expectedProductionPresetCount = 15
+    /// 15 → 16 at AV.1 (Aurora Veil — direct-fragment + mv_warp ambient
+    /// ribbon preset, lightweight rubric).
+    static let expectedProductionPresetCount = 16
 
     @Test("PresetLoader.presets.count matches expectedProductionPresetCount — catches Failed Approach #44 silent drops")
     func test_presetLoaderProductionCount() {
