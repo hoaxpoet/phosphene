@@ -308,11 +308,20 @@ extension RenderPipeline {
         var stems = stemFeatures
         encoder.setFragmentBytes(&stems, length: MemoryLayout<StemFeatures>.size, index: 3)
         encoder.setFragmentBuffer(spectralHistory.gpuBuffer, offset: 0, index: 5)
-        // Bind optional tertiary per-preset fragment data at buffer(8) for direct-pass
-        // presets that need preset-uniform CPU-driven state (D-LM-buffer-slot-8).
-        // Slots 6 / 7 are not bound on the direct-pass today (no consumer); slot 8
-        // is reserved here for future direct-pass presets (e.g. ad-hoc state-bearing
-        // presets that don't go through the staged or mv_warp paths).
+        // Bind optional per-preset fragment data at buffer(6) / buffer(7) for
+        // direct-pass presets that need preset-uniform CPU-driven state. AV.2.2
+        // introduced the first direct-pass slot-6 consumer (`AuroraVeilState`
+        // — kink accumulator + smoothed pitch); the same `setDirectPresetFragmentBuffer`
+        // setters used by the mv_warp / staged paths are honoured here. Without
+        // this binding, Aurora Veil's `[[buffer(6)]]` shader read hits an
+        // unbound buffer and crashes the first frame after preset apply.
+        if let presetBuf = directPresetFragmentBufferLock.withLock({ directPresetFragmentBuffer }) {
+            encoder.setFragmentBuffer(presetBuf, offset: 0, index: 6)
+        }
+        if let presetBuf2 = directPresetFragmentBuffer2Lock.withLock({ directPresetFragmentBuffer2 }) {
+            encoder.setFragmentBuffer(presetBuf2, offset: 0, index: 7)
+        }
+        // Slot 8 — tertiary per-preset fragment data (D-LM-buffer-slot-8).
         if let presetBuf3 = directPresetFragmentBuffer3Lock.withLock({ directPresetFragmentBuffer3 }) {
             encoder.setFragmentBuffer(presetBuf3, offset: 0, index: 8)
         }

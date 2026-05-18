@@ -6,6 +6,40 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-18-g] AV.2.2a — drawDirect slot-6 binding hotfix
+
+**Increment:** AV.2.2a. **Status:** Landed 2026-05-18.
+
+AV.2.2 moved Aurora Veil from `passes: ["mv_warp"]` to `passes: []`. Live session `2026-05-18T22-58-43Z` crashed the app on first frame after the Arachne → Aurora Veil preset switch.
+
+**Root cause.** The `drawDirect` render path (taken when `passes: []`) did NOT bind fragment slot 6, although the comment in `RenderPipeline+Draw.swift:312` explicitly stated *"Slots 6 / 7 are not bound on the direct-pass today (no consumer)."* Aurora Veil's `aurora_fragment` declares `constant AuroraVeilStateGPU& av [[buffer(6)]]` — when AV.2.2 moved it to the direct path without updating `drawDirect`, the buffer read hit unbound GPU memory. AV.1 / AV.2 / AV.2.1 didn't hit this because the mv_warp path's `renderSceneToTexture` DOES bind slot 6 (mv_warp path was the active dispatch).
+
+**Same failure class as AV.1–AV.2.1.** The AV.2.2 diagnostic test (`AuroraVeilMVWarpAccumulationTest`) exercised the mv_warp accumulator path but manually orchestrated buffer bindings — it didn't go through `drawDirect`. So when AV.2.2's JSON change selected `drawDirect` as the new dispatch, the test gap that's been masking these bugs (test bypasses production dispatch) reopened at a different boundary. The discipline rule I codified in AV.2.2 says tests must use the live dispatch path; the corollary is **when the JSON `passes` field changes, tests must verify the new dispatch path, not the old one.**
+
+### Fix
+
+`PhospheneEngine/Sources/Renderer/RenderPipeline+Draw.swift` — `drawDirect` now binds slot 6 and slot 7 conditionally on `directPresetFragmentBuffer` / `directPresetFragmentBuffer2` being set (mirrors `renderSceneToTexture` in `RenderPipeline+MVWarp.swift:350`). Two-line addition; safe because the buffers are nilled on preset apply by the existing reset block in `VisualizerEngine+Presets.swift`.
+
+### Regression guard
+
+`AuroraVeilMVWarpAccumulationTest.test_drawDirect_bindsSlot6` — a static-source assertion that fires if a future edit removes the slot-6 binding from `drawDirect`. Verified by regression simulation: removing the binding line caused the test to fail with a clear message; restoring it passed. Cheap regression guard; the full integration test that exercises `drawDirect` end-to-end against a live `RenderPipeline` + `MTKView` is AV.2.3 follow-up scope (factors `drawDirect` into a testable helper that takes a render-pass descriptor instead of a view).
+
+### Tests run
+
+- `swift test --filter "AuroraVeil|PresetRegression|PresetAcceptance|FidelityRubric"` — 43 / 43 green (+ 1 new static-source test).
+- `xcodebuild -scheme PhospheneApp build` — BUILD SUCCEEDED.
+- Regression simulation: removed the slot-6 binding line, test FAILED as expected. Restored.
+
+### Live re-verification gate
+
+Matt to run another session; should now successfully advance Arachne → Aurora Veil without crashing, and the AV.2.2 stars + ribbon prediction (from the multi-frame diagnostic) should be visible.
+
+### Meta-acknowledgement
+
+This is the third "tests passed but live broke" bug on Aurora Veil. Pattern: my tests bind explicitly what production should bind via dispatch, and they keep masking integration bugs at dispatch-path boundaries. The static-source regression guard helps at this specific boundary; the load-bearing fix is a real integration test against the live `RenderPipeline` pipeline — captured as AV.2.3 follow-up. The CLAUDE.md "test in production-grade pipeline" rule needs sharpening: not just "multi-frame" but **"through the actual render-pipeline dispatch the live app selects, with no manual buffer bindings in the test that the production code should be doing."**
+
+---
+
 ## [dev-2026-05-18-f] AV.2.2 — Drop mv_warp from Aurora Veil + discipline-rule promotions
 
 **Increment:** AV.2.2. **Status:** Landed 2026-05-18.
