@@ -304,6 +304,49 @@ Scope: 1 commit (criteria update + KNOWN_ISSUES status flip + release note). Clo
 
 ---
 
+### BUG-014 — Lumen Mosaic panel aggregate uniform across tracks (LM.4.6 limitation superseded by LM.4.7 palette library)
+
+**Severity:** P3 (visible but accepted at cert time; impact is "every Lumen Mosaic session feels statistically similar at the panel level" rather than a hard quality regression — Matt accepted the trade-off at LM.4.6 with the verdict *"Working. It's close enough. I'm giving up the fight on colors,"* and the 2026-05-17 palette exploration converged on a structural fix.)
+**Domain tag:** preset.fidelity
+**Status:** Open — pending LM.4.7 implementation. **Will be resolved by Increment LM.4.7** (`docs/ENGINEERING_PLAN.md` Phase LM, status ⏳ at filing time).
+**Introduced:** Documented as a known trade-off at LM.4.6 (`c0f9ccf3`, 2026-05-12) — the shader file header, the ENGINEERING_PLAN Increment LM.4.6 "Honest math caveat" section, and the D-LM-7 amendment all explicitly call it out. LM.7 (`888bb856`-following commits, 2026-05-12) mitigated it at the aggregate-mean level via the per-track chromatic-projected tint (D-LM-7); the palette-character-per-session gap remained.
+**Resolved:** — (LM.4.7 — see D-LM-palette-library)
+
+### Expected behavior
+
+Different sessions / different tracks should produce visibly distinct **palette character** at the panel level — a Cathedral Lights session should read as light-through-stained-glass, a Refn Glow session as warm-neon-shadow, a Glacier session as frozen-blue-on-snow. Within a session, every cell can still be any colour the palette allows; across sessions, the listener perceives different palettes.
+
+### Actual behavior (LM.4.6 + LM.7 baseline)
+
+The cell-colour generator (`lm_cell_palette`) samples uniformly from the full RGB cube on every track, with LM.7's per-track tint sliding the sampling window by `±0.20` per channel along the chromatic plane. At ~30 visible cells per panel, law-of-large-numbers convergence makes the **aggregate distribution shape** (mean, hue histogram, saturation distribution) statistically identical across tracks except for the chromatic-plane offset. The aggregate-mean offset gives each track a faintly distinct **tint** but does not give it a distinct **palette character** — every panel still looks like a sample from the same uniform RGB cube with a small chromatic shift.
+
+### Reproduction steps
+
+1. Run a multi-track Lumen Mosaic session against the LM.4.6 + LM.7 baseline (any commit between `c0f9ccf3` / `888bb856` and the LM.4.7 implementation commit).
+2. Compare 3–4 panel screenshots taken at the same beat phase across 3–4 different tracks.
+3. Observe: the panels are distinguishable (different specific colours per cell, slight chromatic-mean offset) but the overall **palette identity** does not vary — each panel reads as "a random sample from the same uniform-RGB distribution."
+
+The contact-sheet output of `RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter PresetVisualReview` makes the failure mode visible across the 9-fixture set.
+
+### Suspected failure class
+
+`algorithm` — the cell-colour generator's sampling distribution shape is track-invariant by construction. LM.7's tint mitigates the **mean** of the distribution but not the **shape**. The fix is a structural replacement of the cell-colour source — palette-library-driven per-cell sampling with per-session palette selection — not a tuning pass on the existing generator.
+
+### Verification criteria
+
+- Automated: `LumenPaletteSpectrumTests` asserts palette membership (every cell colour matches one of the 12 palette entries to within float epsilon) per LM.4.7's rewritten test suite.
+- Manual: Matt M7 review on a real-music multi-track session — each session's palette reads as its named character (e.g. a Cathedral Lights session reads as stained-glass; a Refn Glow session reads as warm-neon-shadow) at the panel level, distinct from other palettes' panel-level character.
+- Mechanical: the LM.9 pale-tone-share gate (≤ 0.30; per D-LM-cream-rescission) passes for all 18 palettes — Cathedral Lights specifically must pass at its ~25 % nominal share.
+
+### Related
+
+- D-LM-palette-library (this session) — the 18-palette library is the structural fix.
+- D-LM-cream-rescission (this session) — the anti-cream rule rescission is what makes pale-rich palettes (Cathedral Lights, Cycladic, Ming Porcelain) shippable inside the library.
+- LM.4.6 + LM.7 entries in `docs/ENGINEERING_PLAN.md` (Phase LM, both ✅ 2026-05-12) — the prior shape and its documented trade-off.
+- LM.4.7 entry in `docs/ENGINEERING_PLAN.md` (Phase LM, ⏳) — the implementation increment.
+
+---
+
 ### BUG-012 — MPSGraph EXC_BAD_ACCESS in StemFFTEngine during sustained force-dispatch
 
 **Severity:** P1 (process-fatal crash; surfaced under sustained jank — ML dispatch scheduler hitting the 2100 ms ceiling and force-firing repeatedly. Not reproducible on every session but observed at least once at 2026-05-15T17:54Z.)
