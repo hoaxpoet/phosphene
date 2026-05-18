@@ -1,23 +1,34 @@
-// LumenPaletteSpectrumTests — Regression-lock for LM.4.6 (uniform random
-// RGB per cell) + LM.6 (cell-depth gradient + hot-spot) + LM.7
-// (per-track RGB tint vector for aggregate-mean distinction).
+// LumenPaletteSpectrumTests — Contract regression for LM.4.7 (curated
+// 18-palette library + per-song mood-biased selection) + LM.6 (cell-depth
+// gradient + hot-spot) + LM.9 pale-tone-share gate (D-LM-cream-rescission).
 //
-// Mirror of `lm_cell_palette` + the LM.6 depth-gradient / hot-spot block
-// in `LumenMosaic.metal`. Asserts:
-//   1. Per-cell uniqueness — 1500 cells produce ≥ 500 distinct colours.
-//   2. R/G/B coverage — each channel spans both halves of [0, 1].
-//   3. Per-track distinctness — same cell on different trackSeeds → different RGB.
-//   4. Determinism — same inputs → same RGB.
-//   5. Beat-step change — single team-counter step on a period=1 cell changes RGB.
-//   6. Section boundary — bassCounter crossing kSectionBeatLength changes RGB.
-//   7. Within-section stable — within the same section bucket + step, RGB is constant.
-//   8. LM.6 cell-depth gradient — centre brighter than edge.
-//   9. LM.6 hot-spot — multiplier peaks at f1=0, decays to 1.0 past kHotSpotRadius × f2.
-//  10. LM.6 depth gradient — monotonic decreasing across the cell radius.
-//  11. LM.7 warm track — aggregate mean R high, B low.
-//  12. LM.7 cool track — aggregate mean R low, B high.
-//  13. LM.7 distinct tracks — different trackSeeds produce visibly different aggregate means.
-//  14. LM.7 neutral track — zero trackSeeds produce mean near middle-gray.
+// Mirrors the post-LM.4.7 `lm_cell_palette` in Swift and asserts:
+//   1. Palette membership — every produced cell colour is byte-equal to
+//      one of the active palette's 12 entries.
+//   2. Per-song selection determinism — same (mood, recentIndices,
+//      trackSeed) → same drawn index.
+//   3. Anti-repeat — selectPalette never returns any palette in the
+//      `recentPaletteIndices` set, validated across a window-sized
+//      grid sweep (D-LM-palette-library 2026-05-18 amendment widened
+//      the window from N=1 to N=3).
+//   4. Mood-weighted distribution shape — relative ordering of warm /
+//      cool / dark / bright palettes matches the README quadrant
+//      groupings under high-VA and low-VA moods.
+//   5. Pale-tone-share gate (LM.9) — for each of the 18 palettes, the
+//      sampled cell pale-share is ≤ 0.30 (`min(R,G,B) > 0.65` predicate).
+//      Cathedral Lights is the calibration palette (~16.7 % nominal).
+//   6. Track-change reproducibility — a scripted (trackSeed × mood)
+//      sequence with anti-repeat applied produces a reproducible
+//      sequence of drawn palette indices. The window-size policy
+//      (`kAntiRepeatWindow = 3`) is enforced — no palette repeats
+//      within any 3-track sliding window.
+//
+// LM.6 cell-depth gradient + hot-spot tests are preserved verbatim
+// (the LM.6 albedo modulation block in `sceneMaterial` is unchanged
+// by LM.4.7). The LM.7-era `test_achromaticAlignedSeed_doesNotWash`
+// test is removed — the failure mode it locked cannot occur on the
+// palette-table path (cells sample from a curated 12-entry table that
+// by construction avoids the achromatic-axis wash).
 
 import Testing
 import simd
@@ -39,8 +50,9 @@ private enum LMPalette {
     static let hotSpotShape: Float           = 4.0
     static let hotSpotIntensity: Float       = 0.30
 
-    // LM.7 — per-track RGB tint magnitude. Mirror the .metal constant.
-    static let tintMagnitude: Float          = 0.25
+    // LM.9 — pale-tone-share gate (D-LM-cream-rescission / §12.7).
+    static let palePredicateThreshold: Float = 0.65
+    static let palePanelShareCeiling: Float  = 0.30
 }
 
 // MARK: - Shader algorithm mirrored in Swift
@@ -64,6 +76,18 @@ private func lmTrackSeedHash(seedA: Float, seedB: Float, seedC: Float, seedD: Fl
     return lmHashU32((a & 0xFF) | ((b & 0xFF) << 8) | ((c & 0xFF) << 16) | ((d & 0xFF) << 24))
 }
 
+/// Inverse of `LumenMosaicPaletteLibrary.srgbToLinear` — convert one
+/// linear-RGB channel back to sRGB for the LM.9 pale-tone-share gate.
+/// The pale predicate is defined against the perceptually-normalised
+/// (sRGB-encoded) representation of the colour — the form the eye sees
+/// on screen and the form the README calibration math uses (F2DEAC has
+/// sRGB min channel 0.675, which is what classifies it as pale).
+private func lmLinearToSRGB(_ x: Float) -> Float {
+    let c = max(0, min(1, x))
+    if c <= 0.0031308 { return c * 12.92 }
+    return 1.055 * powf(c, 1 / 2.4) - 0.055
+}
+
 private func lmPeriod(cellHash: UInt32) -> Float {
     let bucket = (cellHash >> 8) & 0x7
     if bucket >= 7 { return 8 }
@@ -83,12 +107,15 @@ private func lmTeamCounter(
     return 0 // static team
 }
 
-/// Mirror of `lm_cell_palette` (LM.4.6) — pure uniform random RGB.
+/// Mirror of `lm_cell_palette` (LM.4.7) — palette-table lookup.
+/// `palette` is the 12-entry per-song colour table (linear RGB).
 private func lmCellPaletteRGB(
     cellHash: UInt32,
+    palette: [SIMD3<Float>],
     seedA: Float, seedB: Float, seedC: Float, seedD: Float,
     bassCounter: Float, midCounter: Float, trebleCounter: Float
 ) -> SIMD3<Float> {
+    precondition(palette.count == 12)
     let teamCounter = lmTeamCounter(cellHash: cellHash,
                                     bass: bassCounter, mid: midCounter, treble: trebleCounter)
     let period = lmPeriod(cellHash: cellHash)
@@ -98,24 +125,9 @@ private func lmCellPaletteRGB(
 
     let stepMix: UInt32     = UInt32(step) &* 0x9E37_79B9
     let sectionMix: UInt32  = sectionSalt &* 0xCC9E_2D51
-    let colourHash = lmHashU32(cellHash ^ stepMix ^ trackSeed ^ sectionMix)
-
-    let r = Float((colourHash >>  0) & 0xFF) * (1.0 / 255.0)
-    let g = Float((colourHash >>  8) & 0xFF) * (1.0 / 255.0)
-    let b = Float((colourHash >> 16) & 0xFF) * (1.0 / 255.0)
-
-    // LM.7 — per-track RGB tint, projected onto the chromatic plane
-    // (mean subtracted) so achromatic-aligned seeds don't produce
-    // toward-white / toward-black wash. saturate-clamped.
-    let rawTint = SIMD3<Float>(seedA, seedB, seedC)
-    let meanShift = (rawTint.x + rawTint.y + rawTint.z) / 3.0
-    let trackTint = (rawTint - SIMD3<Float>(repeating: meanShift)) * LMPalette.tintMagnitude
-    let tinted = SIMD3<Float>(r, g, b) + trackTint
-    return SIMD3<Float>(
-        max(0, min(1, tinted.x)),
-        max(0, min(1, tinted.y)),
-        max(0, min(1, tinted.z))
-    )
+    let h = lmHashU32(cellHash ^ stepMix ^ trackSeed ^ sectionMix)
+    let idx = Int(h % 12)
+    return palette[idx]
 }
 
 // MARK: - Random sampler
@@ -133,143 +145,327 @@ private struct Mulberry32 {
     mutating func nextSigned() -> Float  { nextUniform() * 2 - 1 }
 }
 
-// MARK: - Suite 1: Per-cell uniqueness
+// MARK: - Suite 1: Palette membership
 
-@Suite("LM.4.6 — per-cell uniqueness")
-struct LumenPaletteUniquenessTests {
+@Suite("LM.4.7 — palette membership")
+struct LumenPaletteMembershipTests {
 
-    @Test func test_1500cells_produceManyDistinctColours() {
-        var rng = Mulberry32(state: 0x1234_ABCD)
-        var samples: Set<UInt32> = []
-        for _ in 0..<1500 {
-            let cellHash = rng.nextUInt32()
-            let rgb = lmCellPaletteRGB(cellHash: cellHash,
-                                       seedA: 0.3, seedB: 0.1, seedC: -0.2, seedD: 0.5,
-                                       bassCounter: 0, midCounter: 0, trebleCounter: 0)
-            let r6 = UInt32(min(max(rgb.x, 0), 0.999) * 64)
-            let g6 = UInt32(min(max(rgb.y, 0), 0.999) * 64)
-            let b6 = UInt32(min(max(rgb.z, 0), 0.999) * 64)
-            samples.insert((r6 << 12) | (g6 << 6) | b6)
+    /// Every cell colour the shader produces under any combination of
+    /// (cellHash, step, trackSeed, sectionSalt) must be byte-equal (within
+    /// float epsilon) to one of the 12 entries of the bound palette. This
+    /// is the structural contract of the LM.4.7 path — cells never
+    /// synthesise colour outside the curated table.
+    @Test func test_everyCellSample_matchesActivePaletteEntry() {
+        for palette in LumenMosaicPaletteLibrary.all {
+            let colours = palette.colors
+            #expect(colours.count == 12,
+                    "palette \(palette.name) must have 12 colours, got \(colours.count)")
+            var rng = Mulberry32(state: 0x1234_ABCD)
+            for _ in 0..<1000 {
+                let cellHash = rng.nextUInt32()
+                let seedA = rng.nextSigned()
+                let seedB = rng.nextSigned()
+                let seedC = rng.nextSigned()
+                let seedD = rng.nextSigned()
+                let bC = rng.nextUniform() * 200
+                let mC = rng.nextUniform() * 200
+                let tC = rng.nextUniform() * 200
+                let rgb = lmCellPaletteRGB(
+                    cellHash: cellHash,
+                    palette: colours,
+                    seedA: seedA, seedB: seedB, seedC: seedC, seedD: seedD,
+                    bassCounter: bC, midCounter: mC, trebleCounter: tC
+                )
+                let match = colours.contains { entry in
+                    abs(entry.x - rgb.x) < 1e-6 &&
+                    abs(entry.y - rgb.y) < 1e-6 &&
+                    abs(entry.z - rgb.z) < 1e-6
+                }
+                #expect(match,
+                        "palette \(palette.name): produced \(rgb) outside the 12-entry table")
+            }
         }
-        #expect(samples.count > 500,
-                "only \(samples.count) distinct colours from 1500 cells")
     }
 }
 
-// MARK: - Suite 2: RGB channel coverage
+// MARK: - Suite 2: Per-song selection determinism
 
-@Suite("LM.4.6 — RGB channel coverage")
-struct LumenPaletteChannelCoverageTests {
+@Suite("LM.4.7 — per-song selection determinism")
+struct LumenPaletteSelectionDeterminismTests {
 
-    @Test func test_1000samples_eachChannelSpansBothHalves() {
-        var rng = Mulberry32(state: 0xCAFE_BABE)
-        var rLow = 0, rHigh = 0
-        var gLow = 0, gHigh = 0
-        var bLow = 0, bHigh = 0
-        for _ in 0..<1000 {
-            let cellHash = rng.nextUInt32()
-            let seedA = rng.nextSigned()
-            let seedB = rng.nextSigned()
-            let seedC = rng.nextSigned()
-            let seedD = rng.nextSigned()
-            let rgb = lmCellPaletteRGB(cellHash: cellHash,
-                                       seedA: seedA, seedB: seedB, seedC: seedC, seedD: seedD,
-                                       bassCounter: 0, midCounter: 0, trebleCounter: 0)
-            if rgb.x < 0.5 { rLow += 1 } else { rHigh += 1 }
-            if rgb.y < 0.5 { gLow += 1 } else { gHigh += 1 }
-            if rgb.z < 0.5 { bLow += 1 } else { bHigh += 1 }
-        }
-        #expect(rLow >= 100 && rHigh >= 100, "R channel collapsed: low=\(rLow) high=\(rHigh)")
-        #expect(gLow >= 100 && gHigh >= 100, "G channel collapsed: low=\(gLow) high=\(gHigh)")
-        #expect(bLow >= 100 && bHigh >= 100, "B channel collapsed: low=\(bLow) high=\(bHigh)")
-    }
-}
-
-// MARK: - Suite 3: Per-track distinctness + determinism
-
-@Suite("LM.4.6 — per-track distinctness + determinism")
-struct LumenPaletteTrackDistinctnessTests {
-
-    @Test func test_sameCell_differentTrackSeeds_differentColour() {
-        let cellHash: UInt32 = 0x1234_ABCD
-        let trackA = lmCellPaletteRGB(cellHash: cellHash,
-                                      seedA: +1, seedB: +1, seedC: +1, seedD: +1,
-                                      bassCounter: 0, midCounter: 0, trebleCounter: 0)
-        let trackB = lmCellPaletteRGB(cellHash: cellHash,
-                                      seedA: -1, seedB: -1, seedC: -1, seedD: -1,
-                                      bassCounter: 0, midCounter: 0, trebleCounter: 0)
-        #expect(trackA != trackB, "same cell on different trackSeeds produced same colour")
-    }
-
-    @Test func test_sameSeed_deterministic() {
+    @Test func test_sameTriple_returnsSameIndex_acrossManySeeds() {
         var rng = Mulberry32(state: 0xF00D_F00D)
-        for _ in 0..<10 {
-            let cellHash = rng.nextUInt32()
-            let seedA = rng.nextSigned()
-            let seedB = rng.nextSigned()
-            let seedC = rng.nextSigned()
-            let seedD = rng.nextSigned()
-            let first = lmCellPaletteRGB(cellHash: cellHash,
-                                         seedA: seedA, seedB: seedB, seedC: seedC, seedD: seedD,
-                                         bassCounter: 0, midCounter: 0, trebleCounter: 0)
-            let second = lmCellPaletteRGB(cellHash: cellHash,
-                                          seedA: seedA, seedB: seedB, seedC: seedC, seedD: seedD,
-                                          bassCounter: 0, midCounter: 0, trebleCounter: 0)
-            #expect(first == second, "non-deterministic palette for cellHash \(cellHash)")
+        for _ in 0..<32 {
+            let mood = SIMD2<Float>(rng.nextSigned() * 0.8, rng.nextSigned() * 0.8)
+            let recent = [Int(rng.nextUInt32() % 18),
+                          Int(rng.nextUInt32() % 18),
+                          Int(rng.nextUInt32() % 18)]
+            let seed = UInt64(rng.nextUInt32()) | (UInt64(rng.nextUInt32()) << 32)
+            let first = LumenMosaicPaletteLibrary.selectPalette(
+                mood: mood, recentPaletteIndices: recent, trackSeed: seed)
+            let second = LumenMosaicPaletteLibrary.selectPalette(
+                mood: mood, recentPaletteIndices: recent, trackSeed: seed)
+            #expect(first == second,
+                    "selectPalette non-deterministic for mood=\(mood) recent=\(recent) seed=\(seed): \(first) vs \(second)")
+        }
+    }
+
+    @Test func test_firstSong_emptyRecent_drawsFromFullLibrary() {
+        // No recent palettes → all 18 are candidates. A sweep over many
+        // seeds should cover most of the library.
+        var seenIndices: Set<Int> = []
+        for seed in 0..<5000 {
+            let idx = LumenMosaicPaletteLibrary.selectPalette(
+                mood: SIMD2<Float>(0, 0),
+                recentPaletteIndices: [],
+                trackSeed: UInt64(seed))
+            seenIndices.insert(idx)
+        }
+        #expect(seenIndices.count >= 10,
+                "first-song draw at mid-mood should cover ≥ 10 palettes across 5000 seeds, saw \(seenIndices.count)")
+    }
+
+    @Test func test_antiRepeatWindow_isThree() {
+        // Lock the documented policy. If we change the window size we
+        // should update this assertion AND the carry-forward in
+        // D-LM-palette-library.
+        #expect(LumenMosaicPaletteLibrary.kAntiRepeatWindow == 3)
+    }
+}
+
+// MARK: - Suite 3: Anti-repeat
+
+@Suite("LM.4.7 — anti-repeat (window = 3)")
+struct LumenPaletteAntiRepeatTests {
+
+    /// Single-item exclusion case — the N=1 contract from the original
+    /// D-LM-palette-library spec must still hold under the widened window.
+    @Test func test_selectPalette_neverReturnsImmediatelyPreviousIndex() {
+        let moods: [SIMD2<Float>] = [
+            SIMD2(0, 0), SIMD2(0.7, 0.7), SIMD2(-0.7, 0.7),
+            SIMD2(-0.7, -0.7), SIMD2(0.7, -0.7), SIMD2(0.3, -0.4)
+        ]
+        for prev in 0..<18 {
+            for mood in moods {
+                for seedBase in 0..<20 {
+                    let seed = UInt64(prev * 10_000 + seedBase) ^ 0xDEAD_BEEF_DEAD_F00D
+                    let idx = LumenMosaicPaletteLibrary.selectPalette(
+                        mood: mood, recentPaletteIndices: [prev], trackSeed: seed)
+                    #expect(idx != prev,
+                            "anti-repeat-1 violated: prev=\(prev) returned \(idx) at mood=\(mood) seed=\(seed)")
+                    #expect(idx >= 0 && idx < 18,
+                            "selectPalette returned out-of-bounds index \(idx)")
+                }
+            }
+        }
+    }
+
+    /// Full-window exclusion case (the post-amendment N=3 contract): a
+    /// recent-3 sliding window must be excluded in its entirety on every
+    /// draw, across a mood × seed sweep.
+    @Test func test_selectPalette_excludesEntireRecentWindow() {
+        let moods: [SIMD2<Float>] = [
+            SIMD2(0, 0), SIMD2(0.7, 0.7), SIMD2(-0.7, 0.7),
+            SIMD2(-0.7, -0.7), SIMD2(0.7, -0.7), SIMD2(0.3, -0.4)
+        ]
+        // Sample a handful of representative recent-3 windows. Permutations
+        // matter to the deterministic-PRNG draw, not to the exclusion
+        // semantics, so a small set covers the contract.
+        let windows: [[Int]] = [
+            [0, 1, 2], [5, 6, 7], [10, 11, 12], [15, 16, 17],
+            [3, 9, 14], [4, 8, 13], [0, 8, 17], [7, 13, 2]
+        ]
+        for window in windows {
+            let excluded = Set(window)
+            for mood in moods {
+                for seedBase in 0..<25 {
+                    let seed = UInt64(seedBase * 137) ^ 0xCAFE_BABE_FEED_0BAD
+                    let idx = LumenMosaicPaletteLibrary.selectPalette(
+                        mood: mood, recentPaletteIndices: window, trackSeed: seed)
+                    #expect(!excluded.contains(idx),
+                            "anti-repeat-N=3 violated: returned \(idx) ∈ window \(window) at mood=\(mood) seed=\(seed)")
+                    #expect(idx >= 0 && idx < 18,
+                            "selectPalette returned out-of-bounds index \(idx)")
+                }
+            }
         }
     }
 }
 
-// MARK: - Suite 4: Beat-step change
+// MARK: - Suite 4: Mood-weighted distribution shape
 
-@Suite("LM.4.6 — beat-step change")
-struct LumenPaletteBeatStepTests {
+@Suite("LM.4.7 — mood-weighted distribution shape")
+struct LumenPaletteMoodDistributionTests {
 
-    /// cellHash 0x14: bucket = 20 (bass team), periodBucket = 0 → period 1.
-    private let period1BassCell: UInt32 = 0x0000_0014
+    private func drawCounts(
+        mood: SIMD2<Float>,
+        trials: Int = 10_000,
+        seedSalt: UInt64 = 0
+    ) -> [Int: Int] {
+        var counts: [Int: Int] = [:]
+        for s in 0..<trials {
+            let seed = UInt64(s) ^ seedSalt
+            let idx = LumenMosaicPaletteLibrary.selectPalette(
+                mood: mood, recentPaletteIndices: [], trackSeed: seed)
+            counts[idx, default: 0] += 1
+        }
+        return counts
+    }
 
-    @Test func test_singleBeatChangesColour() {
-        let cellHash = period1BassCell
-        let rgb0 = lmCellPaletteRGB(cellHash: cellHash,
-                                    seedA: 0.5, seedB: -0.2, seedC: 0.7, seedD: -0.4,
-                                    bassCounter: 0, midCounter: 0, trebleCounter: 0)
-        let rgb1 = lmCellPaletteRGB(cellHash: cellHash,
-                                    seedA: 0.5, seedB: -0.2, seedC: 0.7, seedD: -0.4,
-                                    bassCounter: 1, midCounter: 0, trebleCounter: 0)
-        #expect(rgb0 != rgb1, "single beat step produced identical colour")
+    /// Per README: high-valence high-arousal favours Carnival(6),
+    /// Holi(7), Tropical Aviary(10), Refn Glow(1) over Rothko Chapel(9),
+    /// Tenebrism(16), Cathedral Lights(13).
+    @Test func test_highVA_favoursWarmHighEnergyPalettes() {
+        let counts = drawCounts(mood: SIMD2<Float>(0.7, 0.7))
+        let favouredSum = (counts[1] ?? 0) + (counts[6] ?? 0)
+                        + (counts[7] ?? 0) + (counts[10] ?? 0)
+        let disfavouredSum = (counts[9] ?? 0) + (counts[13] ?? 0) + (counts[16] ?? 0)
+        #expect(favouredSum > disfavouredSum * 2,
+                "high-VA: favoured (Carnival/Holi/Aviary/Refn) sum \(favouredSum) not ≥ 2× disfavoured (Rothko/Cathedral/Tenebrism) \(disfavouredSum)")
+    }
+
+    /// Per README: low-valence low-arousal favours Rothko Chapel(9),
+    /// Tenebrism(16), Cathedral Lights(13), Kintsugi(5) over Carnival(6),
+    /// Holi(7), Tropical Aviary(10).
+    @Test func test_lowVA_favoursDarkLowEnergyPalettes() {
+        let counts = drawCounts(mood: SIMD2<Float>(-0.7, -0.7))
+        let favouredSum = (counts[5] ?? 0) + (counts[9] ?? 0)
+                        + (counts[13] ?? 0) + (counts[16] ?? 0)
+        let disfavouredSum = (counts[6] ?? 0) + (counts[7] ?? 0) + (counts[10] ?? 0)
+        #expect(favouredSum > disfavouredSum * 2,
+                "low-VA: favoured (Kintsugi/Rothko/Cathedral/Tenebrism) sum \(favouredSum) not ≥ 2× disfavoured (Carnival/Holi/Aviary) \(disfavouredSum)")
     }
 }
 
-// MARK: - Suite 5: Section boundary mutation
+// MARK: - Suite 5: Pale-tone-share gate (LM.9 / D-LM-cream-rescission)
 
-@Suite("LM.4.6 — section salt mutation")
-struct LumenPaletteSectionTests {
+@Suite("LM.9 — pale-tone-share gate")
+struct LumenPaletteCreamGateTests {
 
-    /// Static-team cell (bucket >= 90): teamCounter is always 0, so step
-    /// stays 0 regardless of bassCounter; only sectionSalt drives the
-    /// colour change at the boundary.
-    private let staticCell: UInt32 = 0x0000_005A
-
-    @Test func test_sectionBoundary_changesColour() {
-        let bC0: Float = 32   // section bucket 0
-        let bC1: Float = 96   // section bucket 1 (crossed 64-beat boundary)
-        let rgb0 = lmCellPaletteRGB(cellHash: staticCell,
-                                    seedA: 0.5, seedB: -0.2, seedC: 0.7, seedD: -0.4,
-                                    bassCounter: bC0, midCounter: 0, trebleCounter: 0)
-        let rgb1 = lmCellPaletteRGB(cellHash: staticCell,
-                                    seedA: 0.5, seedB: -0.2, seedC: 0.7, seedD: -0.4,
-                                    bassCounter: bC1, midCounter: 0, trebleCounter: 0)
-        #expect(rgb0 != rgb1, "section boundary did not change colour")
+    /// For each of the 18 palettes, sample N cells via the post-LM.4.7
+    /// `lm_cell_palette` path and assert the pale-cell share is ≤ 0.30.
+    /// Cathedral Lights — the calibration palette — has 2 of 12 pale
+    /// entries by the rule's mechanical definition, so its empirical
+    /// share lands near 2/12 ≈ 0.167 well under the 0.30 ceiling.
+    @Test func test_every_palette_passes_paleShareCeiling() {
+        for palette in LumenMosaicPaletteLibrary.all {
+            let colours = palette.colors
+            var rng = Mulberry32(state: 0x5A5A_AAAA)
+            let n = 1500
+            var paleCount = 0
+            for _ in 0..<n {
+                let cellHash = rng.nextUInt32()
+                let seedA = rng.nextSigned()
+                let seedB = rng.nextSigned()
+                let seedC = rng.nextSigned()
+                let seedD = rng.nextSigned()
+                let bC = rng.nextUniform() * 200
+                let mC = rng.nextUniform() * 200
+                let tC = rng.nextUniform() * 200
+                let rgb = lmCellPaletteRGB(
+                    cellHash: cellHash,
+                    palette: colours,
+                    seedA: seedA, seedB: seedB, seedC: seedC, seedD: seedD,
+                    bassCounter: bC, midCounter: mC, trebleCounter: tC
+                )
+                let srgbR = lmLinearToSRGB(rgb.x)
+                let srgbG = lmLinearToSRGB(rgb.y)
+                let srgbB = lmLinearToSRGB(rgb.z)
+                let m = min(srgbR, min(srgbG, srgbB))
+                if m > LMPalette.palePredicateThreshold { paleCount += 1 }
+            }
+            let share = Float(paleCount) / Float(n)
+            #expect(share <= LMPalette.palePanelShareCeiling,
+                    "palette \(palette.name) pale-share \(share) exceeds ceiling \(LMPalette.palePanelShareCeiling)")
+        }
     }
 
-    @Test func test_withinSection_colourStable() {
-        let rgbA = lmCellPaletteRGB(cellHash: staticCell,
-                                    seedA: 0.1, seedB: 0.2, seedC: 0.3, seedD: 0.4,
-                                    bassCounter: 10, midCounter: 0, trebleCounter: 0)
-        let rgbB = lmCellPaletteRGB(cellHash: staticCell,
-                                    seedA: 0.1, seedB: 0.2, seedC: 0.3, seedD: 0.4,
-                                    bassCounter: 50, midCounter: 0, trebleCounter: 0)
-        #expect(rgbA == rgbB, "colour drifted within section bucket")
+    /// Cathedral Lights is the cream-rescission calibration point per
+    /// D-LM-cream-rescission. Lock the expected ~16.7 % nominal share —
+    /// hash-draw variance should keep it well below the 30 % ceiling.
+    @Test func test_cathedralLights_calibrationPoint() {
+        guard let palette = LumenMosaicPaletteLibrary.all.first(where: { $0.name == "Cathedral Lights" }) else {
+            Issue.record("Cathedral Lights palette not found in library")
+            return
+        }
+        let colours = palette.colors
+        var rng = Mulberry32(state: 0xBEEF_BEEF)
+        let n = 4000
+        var paleCount = 0
+        for _ in 0..<n {
+            let cellHash = rng.nextUInt32()
+            let bC = rng.nextUniform() * 200
+            let rgb = lmCellPaletteRGB(
+                cellHash: cellHash,
+                palette: colours,
+                seedA: 0, seedB: 0, seedC: 0, seedD: 0,
+                bassCounter: bC, midCounter: 0, trebleCounter: 0
+            )
+            let srgbR = lmLinearToSRGB(rgb.x)
+            let srgbG = lmLinearToSRGB(rgb.y)
+            let srgbB = lmLinearToSRGB(rgb.z)
+            let m = min(srgbR, min(srgbG, srgbB))
+            if m > LMPalette.palePredicateThreshold { paleCount += 1 }
+        }
+        let share = Float(paleCount) / Float(n)
+        // 2 / 12 = 0.1667 ± hash-draw variance (~0.02 at n=4000).
+        #expect(share > 0.10 && share < 0.25,
+                "Cathedral Lights calibration share \(share) outside expected [0.10, 0.25] window")
+    }
+}
+
+// MARK: - Suite 6: Track-change reproducibility
+
+@Suite("LM.4.7 — track-change reproducibility")
+struct LumenPaletteTrackSequenceTests {
+
+    /// A scripted sequence of (mood, trackSeed) pairs walked through
+    /// `selectPalette` with the `kAntiRepeatWindow = 3` policy applied
+    /// must reproduce the same sequence of palette indices every run —
+    /// load-bearing for session replay. The same walk must also
+    /// satisfy the policy: no palette repeats within any 3-track
+    /// sliding window.
+    @Test func test_scriptedTrackSequence_isReproducible() {
+        struct Track { let mood: SIMD2<Float>; let seed: UInt64 }
+        let script: [Track] = [
+            Track(mood: SIMD2( 0.6,  0.6), seed: 0xA1B2_C3D4_E5F6_0708),
+            Track(mood: SIMD2(-0.5, -0.5), seed: 0x1234_5678_9ABC_DEF0),
+            Track(mood: SIMD2( 0.0,  0.0), seed: 0xDEAD_BEEF_F00D_F00D),
+            Track(mood: SIMD2(-0.7,  0.5), seed: 0xCAFE_BABE_FACE_C0DE),
+            Track(mood: SIMD2( 0.4, -0.5), seed: 0xBADD_CAFE_FEED_0BAD),
+            Track(mood: SIMD2( 0.7,  0.7), seed: 0x0011_2233_4455_6677),
+            Track(mood: SIMD2(-0.4,  0.3), seed: 0xF00D_BABE_C0DE_F00D),
+            Track(mood: SIMD2( 0.2, -0.6), seed: 0xBEEF_BEEF_BEEF_BEEF),
+        ]
+        let cap = LumenMosaicPaletteLibrary.kAntiRepeatWindow
+
+        func walk(_ script: [Track]) -> [Int] {
+            var draws: [Int] = []
+            var window: [Int] = []
+            for track in script {
+                let idx = LumenMosaicPaletteLibrary.selectPalette(
+                    mood: track.mood, recentPaletteIndices: window, trackSeed: track.seed)
+                draws.append(idx)
+                window.append(idx)
+                if window.count > cap {
+                    window.removeFirst(window.count - cap)
+                }
+            }
+            return draws
+        }
+
+        let pass1 = walk(script)
+        let pass2 = walk(script)
+        #expect(pass1 == pass2, "track-sequence draws diverged across runs: \(pass1) vs \(pass2)")
+
+        // Anti-repeat-N=3 applied across the scripted walk — no palette
+        // repeats within any 3-track sliding window.
+        for i in 1..<pass1.count {
+            let windowStart = max(0, i - cap)
+            let recent = Array(pass1[windowStart..<i])
+            #expect(!recent.contains(pass1[i]),
+                    "anti-repeat-3 violated at step \(i): \(pass1[i]) appears in recent \(recent); full sequence \(pass1)")
+        }
     }
 }
 
@@ -304,7 +500,7 @@ private func lmHotSpotMultiplier(f1: Float, f2: Float) -> Float {
     return 1.0 + shaped * LMPalette.hotSpotIntensity
 }
 
-// MARK: - Suite 6: LM.6 — Cell-depth gradient
+// MARK: - Suite 7: LM.6 — Cell-depth gradient (preserved verbatim)
 
 @Suite("LM.6 — cell-depth gradient")
 struct LumenCellDepthGradientTests {
@@ -321,13 +517,11 @@ struct LumenCellDepthGradientTests {
 
     @Test func test_hotSpot_brightensCellCentre() {
         let f2: Float = 0.1
-        // At f1=0 the hot-spot is at peak: multiplier = 1 + 1×kHotSpotIntensity.
         let peakMul = lmHotSpotMultiplier(f1: 0, f2: f2)
         let expectedPeak: Float = 1.0 + LMPalette.hotSpotIntensity
         #expect(abs(peakMul - expectedPeak) < 1e-5,
                 "hot-spot peak multiplier should be \(expectedPeak), got \(peakMul)")
 
-        // At f1 > kHotSpotRadius × f2 the hot-spot has fully decayed.
         let outsideMul = lmHotSpotMultiplier(f1: LMPalette.hotSpotRadius * f2 + 1e-3, f2: f2)
         #expect(abs(outsideMul - 1.0) < 1e-5,
                 "hot-spot multiplier outside kHotSpotRadius × f2 should be 1.0, got \(outsideMul)")
@@ -343,104 +537,7 @@ struct LumenCellDepthGradientTests {
             #expect(curr < prev - 1e-6,
                     "depth gradient not monotonic at sample \(i): \(prev) → \(curr)")
         }
-        // Endpoint sanity (re-validate Suite 6.1 invariants on this sample grid).
         #expect(abs(factors.first! - 1.0) < 1e-5)
         #expect(abs(factors.last!  - LMPalette.cellEdgeDarkness) < 1e-5)
-    }
-}
-
-// MARK: - Suite 7: LM.7 — Per-track aggregate-mean tint
-
-/// Aggregate the mean RGB over many independent cells on a single track.
-/// Mirrors what an observer perceives looking at a panel of ~30 visible
-/// cells but uses 2000 samples for a stable statistic.
-private func aggregateMean(
-    seedA: Float, seedB: Float, seedC: Float, seedD: Float,
-    sampleCount: Int = 2000,
-    rngState: UInt32 = 0xABCD_1234
-) -> SIMD3<Float> {
-    var rng = Mulberry32(state: rngState)
-    var sum = SIMD3<Float>(0, 0, 0)
-    for _ in 0..<sampleCount {
-        let cellHash = rng.nextUInt32()
-        let rgb = lmCellPaletteRGB(
-            cellHash: cellHash,
-            seedA: seedA, seedB: seedB, seedC: seedC, seedD: seedD,
-            bassCounter: 0, midCounter: 0, trebleCounter: 0
-        )
-        sum += rgb
-    }
-    return sum / Float(sampleCount)
-}
-
-@Suite("LM.7 — per-track aggregate-mean tint")
-struct LumenTrackTintTests {
-
-    @Test func test_warmTrack_aggregateMeanLeansWarm() {
-        // seedA = +1, seedC = -1 → tint ≈ (+0.25, 0, -0.25) → warm
-        let mean = aggregateMean(seedA: +1, seedB: 0, seedC: -1, seedD: 0)
-        #expect(mean.x > 0.60, "warm track mean R should lean high, got \(mean.x)")
-        #expect(mean.z < 0.40, "warm track mean B should lean low, got \(mean.z)")
-        #expect(mean.x > mean.z + 0.15,
-                "warm track should have R−B gap > 0.15, got R=\(mean.x) B=\(mean.z)")
-    }
-
-    @Test func test_coolTrack_aggregateMeanLeansCool() {
-        // seedA = -1, seedC = +1 → tint ≈ (-0.25, 0, +0.25) → cool
-        let mean = aggregateMean(seedA: -1, seedB: 0, seedC: +1, seedD: 0)
-        #expect(mean.x < 0.40, "cool track mean R should lean low, got \(mean.x)")
-        #expect(mean.z > 0.60, "cool track mean B should lean high, got \(mean.z)")
-        #expect(mean.z > mean.x + 0.15,
-                "cool track should have B−R gap > 0.15, got R=\(mean.x) B=\(mean.z)")
-    }
-
-    @Test func test_distinctTracks_haveDistinctAggregateMeans() {
-        let trackA = aggregateMean(seedA: +0.8, seedB: -0.3, seedC: +0.1, seedD: 0)
-        let trackB = aggregateMean(seedA: -0.5, seedB: +0.7, seedC: -0.6, seedD: 0)
-        let trackC = aggregateMean(seedA: -0.2, seedB: -0.6, seedC: +0.9, seedD: 0)
-        let distAB = simd_distance(trackA, trackB)
-        let distAC = simd_distance(trackA, trackC)
-        let distBC = simd_distance(trackB, trackC)
-        #expect(distAB > 0.20, "tracks A,B aggregate-mean distance \(distAB) too small")
-        #expect(distAC > 0.20, "tracks A,C aggregate-mean distance \(distAC) too small")
-        #expect(distBC > 0.20, "tracks B,C aggregate-mean distance \(distBC) too small")
-    }
-
-    @Test func test_neutralTrack_aggregateMeanNearMiddleGray() {
-        // All seeds zero → tint = (0,0,0) → behaviour identical to LM.4.6.
-        // Aggregate mean should land near (0.5, 0.5, 0.5).
-        let mean = aggregateMean(seedA: 0, seedB: 0, seedC: 0, seedD: 0)
-        let dist = simd_distance(mean, SIMD3<Float>(0.5, 0.5, 0.5))
-        #expect(dist < 0.05,
-                "neutral track mean should be near middle gray, got \(mean) dist=\(dist)")
-    }
-
-    /// Regression-lock the chromatic-projection fix (Matt 2026-05-12).
-    /// Seeds aligned along the achromatic axis (all-positive or
-    /// all-negative) would, without the mean-subtraction projection,
-    /// shift the panel toward white (washed) or black (muddy). With
-    /// the projection in place, achromatic-aligned seeds collapse to
-    /// the chromatic plane — the panel reads as neutral-middle-gray
-    /// rather than washed/muddy.
-    @Test func test_achromaticAlignedSeed_doesNotWash() {
-        // All-positive seeds — what produced the track_v1 wash before
-        // the fix.
-        let allPos = aggregateMean(seedA: +1, seedB: +1, seedC: +1, seedD: 0)
-        #expect(allPos.x < 0.60,
-                "achromatic-+ track must not wash toward white (got R=\(allPos.x))")
-        #expect(allPos.y < 0.60,
-                "achromatic-+ track must not wash toward white (got G=\(allPos.y))")
-        #expect(allPos.z < 0.60,
-                "achromatic-+ track must not wash toward white (got B=\(allPos.z))")
-
-        // All-negative seeds — would push toward black under the
-        // unprojected tint.
-        let allNeg = aggregateMean(seedA: -1, seedB: -1, seedC: -1, seedD: 0)
-        #expect(allNeg.x > 0.40,
-                "achromatic-− track must not collapse toward black (got R=\(allNeg.x))")
-        #expect(allNeg.y > 0.40,
-                "achromatic-− track must not collapse toward black (got G=\(allNeg.y))")
-        #expect(allNeg.z > 0.40,
-                "achromatic-− track must not collapse toward black (got B=\(allNeg.z))")
     }
 }

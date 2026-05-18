@@ -3678,7 +3678,7 @@ The preset was originally sequenced as 10 increments LM.0 → LM.9 with cert sig
 
 ### Increment LM.4.7 — Curated 18-palette library + mood-biased Orchestrator selection
 
-**Status:** ⏳ Planned. Paperwork-only session 2026-05-18 filed `D-LM-palette-library` + `D-LM-cream-rescission`; CLAUDE.md + KNOWN_ISSUES.md + this entry updated. Implementation session not yet started.
+**Status:** ✅ Implementation landed 2026-05-18; Matt M7 sign-off on the same-day 5-track session with one tuning note (within-quadrant clustering), addressed by the same-day amendment widening `kAntiRepeatWindow` from N=1 to N=3 (`[dev-2026-05-18-b]`, D-LM-palette-library amended). Paperwork-only session earlier the same day filed `D-LM-palette-library` + `D-LM-cream-rescission`; CLAUDE.md + KNOWN_ISSUES.md + this entry updated.
 
 **Scope.** Replace LM.4.6's `lm_cell_palette` uniform-random-RGB body (and the LM.7 per-track chromatic-projected tint built on top of it) with palette-library-driven cell colours. **Each song** selects one of **18 hand-authored 12-colour palettes**; the Orchestrator picks the palette via a mood-biased Gaussian-over-distance weight function with the immediately previous song's palette excluded from the candidate set. Within a song, cells sample uniformly from the drawn palette's 12 entries via cell-hash modulo 12. The per-track seed perturbs **sampling order** within the palette (which 12-bucket a given cell lands in for that track) — never palette membership. The LM.3.2 team/period beat-step ratchet is preserved; cells advance their palette index on rising-edge of their assigned band's beat. Cites `D-LM-palette-library`.
 

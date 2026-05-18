@@ -6,6 +6,68 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-18-b] LM.4.7 amendment — anti-repeat window widened N=1 → N=3
+
+**Increment:** LM.4.7 follow-up. **Status:** Tuning amendment after Matt's 2026-05-18 M7 session on the LM.4.7 baseline.
+
+Matt's verdict on the [LM.4.7 M7 session](/Users/braesidebandit/Documents/phosphene_sessions/2026-05-18T16-48-14Z) (5 tracks: Love Rehab → There, There → Pyramid Song → Money → So What): *"Session looks good. Only note is that some very similar palettes were selected next to one another, so there could be some greater effort to selecting for difference."* Diagnosis: within-quadrant clustering. The library has 4–5 palettes per mood quadrant; σ=0.35 doesn't differentiate within a quadrant; the N=1 anti-repeat rule prevents only the *exact same* palette twice, not "two different palettes that look similar." Tracks whose preview-clip moods landed in the same neighborhood pulled from the same 4–5-palette cluster on consecutive draws.
+
+**Fix.** Widen `kAntiRepeatWindow` from N=1 to N=3. The last 3 drawn palette indices are excluded from the candidate set on every draw. Library has 18, so 15 mood-weighted candidates remain per draw — the Gaussian is wide enough that the third-highest candidate within a quadrant has comparable mass to the first, so mood-fit erosion is small. D-LM-palette-library amended; the original "no last-N for N > 1, Gaussian already gives high drift" prediction is documented as contradicted by the M7 session data.
+
+**Files changed:**
+
+Modified:
+- `PhospheneEngine/Sources/Presets/Lumen/LumenMosaicPaletteLibrary.swift` — added public `kAntiRepeatWindow: Int = 3` constant; `selectPalette` signature changed from `previousPaletteIndex: Int?` → `recentPaletteIndices: [Int]`; candidate-set exclusion broadened to `Set(recentPaletteIndices)`; added defensive branch when the caller excludes every library entry (mathematically unreachable for `N ≤ 17` but guarded).
+- `PhospheneEngine/Sources/Presets/Lumen/LumenPatternEngine.swift` — `previousPaletteIndex: Int?` replaced with `recentPaletteIndices: [Int]`, persisted across track changes and reset to empty on engine re-instantiation.
+- `PhospheneApp/VisualizerEngine+Stems.swift` — track-change site now maintains a FIFO of recently-drawn palette indices, trimming to `kAntiRepeatWindow` after every `setPalette(_:)`.
+- `PhospheneEngine/Tests/PhospheneEngineTests/Presets/LumenPaletteSpectrumTests.swift` — anti-repeat suite split into two tests (single-item case + full-window case); selection-determinism test now passes a 3-element recent window; track-change reproducibility suite extended to 8 tracks and now asserts no palette repeats within any 3-track sliding window; new `test_antiRepeatWindow_isThree` regression-locks the constant.
+
+Docs:
+- `docs/DECISIONS.md` — D-LM-palette-library "What was rejected" entry on anti-repeat-N > 1 amended with the M7-session evidence and the N=3 carry-forward.
+- `docs/RELEASE_NOTES_DEV.md` — this entry.
+
+**Verification.** `swift build` clean. `swift test --filter "LumenPalette|LumenPatternEngine"` — 43/43 pass, including the new anti-repeat-N=3 + window-policy regression tests. `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build` — clean. `swiftlint lint --strict` — 0 violations on touched files.
+
+**Known follow-ups.**
+- Re-validate on the next M7 session. If mood-fit feels eroded (especially on track 4 / 5 of long sessions where the window has been continuously full), pull back to N=2. If within-cluster repeats are still visible, escalate to option (b) — a per-palette character distance penalty term in the weight function.
+
+---
+
+## [dev-2026-05-18-a] LM.4.7 — Lumen Mosaic curated 18-palette library + per-song mood-biased selection
+
+**Increment:** LM.4.7. **Status:** Implementation landed; pending Matt M7 review on a real-music multi-track session.
+
+Resolves BUG-014 (Lumen Mosaic panel aggregate statistically identical across tracks under LM.4.6 + LM.7). Lumen Mosaic's cell-colour source is now a **library of 18 hand-authored 12-colour palettes** (Autumnal, Refn Glow, Glacier, Art Deco, Abyssal Bioluminescence, Kintsugi, Carnival, Holi, Geode, Rothko Chapel, Tropical Aviary, Persian Miniature, Ukiyo-e, Cathedral Lights, Cycladic, Ming Porcelain, Tenebrism, Obsidian). The Orchestrator selects one palette **per song** via a mood-biased Gaussian-over-distance draw with the immediately previous palette excluded from the candidate set. Within a song, cells uniformly sample one of the drawn palette's 12 entries via the existing LM.3.2 team/period beat-step ratchet — the dance mechanism is preserved verbatim; only the final hash→RGB step is replaced with `hash → idx % 12 → palette[idx]`. LM.7's per-track chromatic-projected tint retires with this increment (`kTintMagnitude` removed; the `test_achromaticAlignedSeed_doesNotWash` regression is no longer applicable — the curated palette table avoids the achromatic-axis wash by construction).
+
+**Files changed:**
+
+New:
+- `PhospheneEngine/Sources/Presets/Lumen/LumenMosaicPaletteLibrary.swift` — 18 named palettes with explicit `moodAnchor: SIMD2<Float>` per palette + `selectPalette(mood:previousPaletteIndex:trackSeed:) -> Int` weighted-draw algorithm (Gaussian-over-distance with σ = 0.35; Mulberry32 PRNG seeded from the FNV-1a track hash). Hex anchors per `docs/VISUAL_REFERENCES/lumen_mosaic/palette_library/` design artifacts, converted sRGB → linear at table build.
+
+Modified:
+- `PhospheneEngine/Sources/Presets/Lumen/LumenPatternEngine.swift` — `LumenPatternState` extended with 12 × `LumenPaletteEntry` palette payload (stride 376 → 568 B); new `LumenPaletteEntry` value type (16 B, 4-byte aligned so it lands without padding at offset 376); new `previousPaletteIndex: Int?` property and `setPalette(_:)` method on `LumenPatternEngine`. LM.7-era `trackPaletteSeed{A,B,C,D}` floats retained as zeroed dead weight for ABI continuity per prompt guidance.
+- `PhospheneEngine/Sources/Presets/PresetLoader+Preamble.swift` — MSL preamble extended with matching `LumenPaletteEntry` struct + 12-entry palette array on `LumenPatternState`; `trackPaletteSeed{A,B,C,D}` comments updated to "LM.7-era; unused after LM.4.7".
+- `PhospheneEngine/Sources/Renderer/RayMarchPipeline.swift` — `lumenPlaceholderBuffer` length 376 → 568.
+- `PhospheneEngine/Sources/Presets/Shaders/LumenMosaic.metal` — `lm_cell_palette` rewritten to palette-table lookup. LM.7 tint block (`kTintMagnitude`, raw-tint vector, chromatic-mean-subtraction projection, saturate-clamp blend) removed. File header condensed: LM.4.7 paragraph at top; LM.4.5.x / LM.7 / LM.4.5.4 / LM.4.5.2 historical paragraphs collapsed to a single-sentence pointer.
+- `PhospheneApp/VisualizerEngine+Stems.swift` — track-change handler now also looks up the prepared `TrackProfile.mood` from `stemCache`, calls `LumenMosaicPaletteLibrary.selectPalette(...)`, pushes the drawn palette via `lumenEngine.setPalette(...)`, and updates `lumenEngine.previousPaletteIndex`. Live reactive mode (no profile in cache) falls back to mood `(0, 0)` — biases toward Autumnal / Art Deco.
+- `PhospheneEngine/Tests/PhospheneEngineTests/Presets/LumenPaletteSpectrumTests.swift` — full rewrite. Six new suites: palette membership (every cell colour matches an entry of the active palette), per-song selection determinism, anti-repeat (18 × 6-mood-grid × 20-seed sweep), mood-weighted distribution shape (high-VA / low-VA relative ordering), LM.9 pale-tone-share ≤ 0.30 (D-LM-cream-rescission) for all 18 palettes including the Cathedral Lights calibration point (~16.7 % nominal), and track-change reproducibility (scripted track sequence reproduces deterministically across runs). The LM.6 cell-depth-gradient + hot-spot suite is preserved verbatim. The LM.7-era `test_achromaticAlignedSeed_doesNotWash` test is removed.
+- `PhospheneEngine/Tests/PhospheneEngineTests/Presets/LumenPatternEngineTests.swift` — stride invariant flipped 376 → 568; added `test_lumenPaletteEntry_strideIs16`.
+- `PhospheneEngine/Tests/PhospheneEngineTests/Renderer/PresetRegressionTests.swift` — render harness now binds an explicit Autumnal palette (index 0 of `LumenMosaicPaletteLibrary.all`) at slot 8 when the active preset is Lumen Mosaic, with pre-ticked band counters (bass=7, mid=3, treble=1) so the palette walk is deterministic. Lumen Mosaic golden hash UNCHANGED at `0xF0F0C8CCCCC8F0F0` (the harness captures `color(0)` of the ray-march G-buffer — `{depth, matID}` — not the lighting albedo; per-cell palette colour drift is invisible at this hash by construction). Hash comment updated to reflect the new binding.
+
+Docs:
+- `docs/QUALITY/KNOWN_ISSUES.md` — BUG-014 flipped to Resolved with rationale; LM.4.7 cited.
+- `docs/ENGINEERING_PLAN.md` — Increment LM.4.7 status flipped ⏳ → ✅.
+- `docs/RELEASE_NOTES_DEV.md` — this entry.
+
+**Verification.** `swift build --package-path PhospheneEngine` clean. `swift test --filter "LumenPalette|LumenPatternEngine|PresetLoaderCompileFailure|PresetRegression|PresetAcceptance|FidelityRubric"` — all suites pass. `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build` — clean. Full engine suite green except for pre-existing parallel-execution timing flakes (`MetadataPreFetcher.fetch_networkTimeout` is documented; several `SessionManager` + `ProgressiveReadiness` tests that pass in isolation but race under parallel load) — confirmed unrelated to LM.4.7 by re-run in isolation.
+
+**Known follow-ups.**
+- Matt M7 review on a real-music multi-track session (≥ 6 tracks spanning mood quadrants) is the load-bearing final gate. Per the increment's Done-when criterion: each track's drawn palette must read as its named character at the panel level; the palette change at track boundaries must be visible; mood-bias direction must feel right without being deterministic; the anti-repeat rule must be visible on a contrived two-track stretch with very similar mood.
+- Retiring the four `trackPaletteSeed{A,B,C,D}` floats from `LumenPatternState` (now dead-weight ABI continuity per LM.7 retirement) is deferred — a 16-byte struct migration that would force `LumenPatternState_strideIs568` test + `lumenPlaceholderBuffer` size + every consumer of `lm_track_seed_hash` to update in lockstep. A future cleanup increment can pay that cost when there's another reason to touch the struct layout.
+- `docs/presets/LUMEN_MOSAIC_DESIGN.md` §3 Decisions D.4 / E.3 lines need rewriting to reflect the library architecture; deferred to a separate documentation session per the prompt's "out of scope" guidance.
+
+---
+
 ## [dev-2026-05-15-a] V.9 Session 4.5c Phase 1 — 18-round Ferrofluid Ocean rebuild (Leitl architecture port)
 
 **Increment:** V.9 Session 4.5c Phase 1, 18 commits spanning 2026-05-14 → 2026-05-15. **Status:** Phase 1 closed. Phase 2 (SPH motion + ZOOM coupling) handed off via `docs/presets/FERROFLUID_OCEAN_PHASE2_PROMPT.md` for the next session.

@@ -128,18 +128,24 @@ private func driveSteady(
 @Suite("LumenPatternState struct layout")
 struct LumenPatternStateLayoutTests {
 
-    @Test func test_lumenPatternState_strideIs376() {
-        // Contract: lights (4 × 32 = 128) + patterns (4 × 48 = 192) + 14 × 4-byte
-        // trailing fields (activeLightCount, activePatternCount, ambientFloorIntensity,
-        // smoothedValence, smoothedArousal, pad0, trackPaletteSeed{A,B,C,D},
-        // bassCounter, midCounter, trebleCounter, barCounter) = 376.
-        // LM.3.2 grew the struct from 360 → 376 bytes (added the four band
-        // counters bassCounter/midCounter/trebleCounter/barCounter on top of
-        // the LM.3 layout). The RayMarchPipeline.lumenPlaceholderBuffer
-        // literal must match — if this test trips, update both this
-        // assertion AND the placeholder size in RayMarchPipeline.swift, AND
-        // the matching MSL struct in PresetLoader+Preamble.swift.
-        #expect(MemoryLayout<LumenPatternState>.stride == 376)
+    @Test func test_lumenPatternState_strideIs568() {
+        // Contract (LM.4.7): lights (4 × 32 = 128) + patterns (4 × 48 = 192)
+        // + 14 × 4-byte trailing fields (activeLightCount, activePatternCount,
+        // ambientFloorIntensity, smoothedValence, smoothedArousal, pad0,
+        // trackPaletteSeed{A,B,C,D}, bassCounter, midCounter, trebleCounter,
+        // barCounter) = 376 + 12 × LumenPaletteEntry (16 B each, 192 B) = 568.
+        // LM.4.7 grew the struct from 376 → 568 bytes (added the 12-entry
+        // per-song palette payload on top of the LM.3.2 layout, per
+        // D-LM-palette-library / D-LM-buffer-slot-8). The
+        // `RayMarchPipeline.lumenPlaceholderBuffer` literal must match — if
+        // this test trips, update both this assertion AND the placeholder
+        // size in RayMarchPipeline.swift, AND the matching MSL struct in
+        // PresetLoader+Preamble.swift.
+        #expect(MemoryLayout<LumenPatternState>.stride == 568)
+    }
+
+    @Test func test_lumenPaletteEntry_strideIs16() {
+        #expect(MemoryLayout<LumenPaletteEntry>.stride == 16)
     }
 
     @Test func test_lumenLightAgent_strideIs32() {
