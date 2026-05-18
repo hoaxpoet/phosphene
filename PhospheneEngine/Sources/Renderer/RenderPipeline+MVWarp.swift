@@ -90,6 +90,15 @@ extension RenderPipeline {
             return
         }
 
+        // AV.2.1: clear freshly-allocated textures to black. storageMode =
+        // .private GPU memory is NOT guaranteed zero-initialised — without
+        // this, the first post-preset-switch frame can read whatever bit
+        // pattern previously occupied that memory (live AV.2 session read
+        // as full-screen magenta for ~1 s after preset switch).
+        clearWarpTexturesToBlack(warpTex: warpTex,
+                                 composeTex: composeTex,
+                                 sceneTex: sceneTex)
+
         let state = MVWarpState(
             warpTexture: warpTex,
             composeTexture: composeTex,
@@ -101,6 +110,21 @@ extension RenderPipeline {
         )
         mvWarpLock.withLock { mvWarpState = state }
         mvWarpLogger.info("mv_warp textures allocated: \(width)×\(height), format=\(bundle.pixelFormat.rawValue)")
+    }
+
+    /// Clear each mv_warp texture to black via load-action-clear render
+    /// passes so first-frame compose reads black, not undefined GPU memory.
+    private func clearWarpTexturesToBlack(warpTex: MTLTexture, composeTex: MTLTexture, sceneTex: MTLTexture) {
+        guard let cmdBuf = context.commandQueue.makeCommandBuffer() else { return }
+        for tex in [warpTex, composeTex, sceneTex] {
+            let desc = MTLRenderPassDescriptor()
+            desc.colorAttachments[0].texture     = tex
+            desc.colorAttachments[0].loadAction  = .clear
+            desc.colorAttachments[0].clearColor  = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
+            desc.colorAttachments[0].storeAction = .store
+            if let encoder = cmdBuf.makeRenderCommandEncoder(descriptor: desc) { encoder.endEncoding() }
+        }
+        cmdBuf.commit()
     }
 
     /// Reallocate the mv_warp textures at a new drawable size (called from `drawableSizeWillChange`).
