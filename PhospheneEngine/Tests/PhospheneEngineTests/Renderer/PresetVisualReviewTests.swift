@@ -206,6 +206,20 @@ struct PresetVisualReviewTests {
             return state
         }()
 
+        // AV.2: Aurora Veil reads a 16-byte AuroraVeilStateGPU at slot 6.
+        // Allocate a state class and reset it; the per-fixture render loop
+        // below ticks it once per fixture to produce the appropriate
+        // kinkAccumulator + smoothedPitchNorm for each frame. Standard
+        // fixtures (silence / mid / beat) have stems.zero so the audio
+        // routes stay at their neutral / fallback values — the visual
+        // review verifies the multi-column structure + substrate-drift
+        // motion across time, not the audio coupling (which has dedicated
+        // tests: AuroraVeilContinuousDominanceTest + AuroraVeilPitchHueTest).
+        let auroraVeilState: AuroraVeilState? = {
+            guard presetName == "Aurora Veil" else { return nil }
+            return AuroraVeilState(device: ctx.device)
+        }()
+
         // Lumen Mosaic: allocate the 4-light pattern engine once, re-prewarm
         // it per fixture so mood smoothing converges to that fixture's
         // valence/arousal before rendering. The engine flushes
@@ -277,8 +291,16 @@ struct PresetVisualReviewTests {
                 advance.deltaTime = 1.0 / 60.0
                 for _ in 0..<30 { engine.tick(features: advance, stems: .zero) }
             }
+            // AV.2: tick AuroraVeilState so the slot-6 buffer reflects the
+            // current fixture's kink + pitch. With stems.zero in the
+            // standard fixtures the accumulator stays at 0 and the pitch
+            // ring stays at the neutral 0.5 baseline (silence-equivalent).
+            if let avState = auroraVeilState {
+                avState.tick(deltaTime: fv.deltaTime, features: fv, stems: .zero)
+            }
             let pixels = try renderFrame(preset: preset, context: ctx,
                                          arachneState: arachneState,
+                                         auroraVeilState: auroraVeilState,
                                          lumenEngine: lumenEngine,
                                          features: &fv)
             let url = outputDir.appendingPathComponent(
@@ -540,6 +562,7 @@ struct PresetVisualReviewTests {
         preset: PresetLoader.LoadedPreset,
         context: MetalContext,
         arachneState: ArachneState?,
+        auroraVeilState: AuroraVeilState? = nil,
         lumenEngine: LumenPatternEngine? = nil,
         features: inout FeatureVector
     ) throws -> [UInt8] {
@@ -612,6 +635,12 @@ struct PresetVisualReviewTests {
         if let arachneState = arachneState {
             encoder.setFragmentBuffer(arachneState.webBuffer, offset: 0, index: 6)
             encoder.setFragmentBuffer(arachneState.spiderBuffer, offset: 0, index: 7)
+        } else if let auroraVeilState = auroraVeilState {
+            // AV.2: bind the 16-byte AuroraVeilStateGPU at slot 6. Ticked
+            // per fixture by the caller before this dispatch — for the
+            // standard silence/mid/beat fixtures (all stems.zero) the
+            // buffer stays at silence-equivalent values.
+            encoder.setFragmentBuffer(auroraVeilState.stateBuffer, offset: 0, index: 6)
         }
 
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)

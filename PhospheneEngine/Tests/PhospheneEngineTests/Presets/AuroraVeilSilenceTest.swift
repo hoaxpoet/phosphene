@@ -29,6 +29,18 @@ import Metal
 @testable import Presets
 @testable import Shared
 
+// 16-byte zero-initialised AuroraVeilStateGPU mirror used by the test
+// harness. `kinkAccumulator = 0` (no kink at silence — matches CPU state's
+// silence-stable baseline); `smoothedPitchNorm = 0` (irrelevant because
+// the shader's `pitchConfident` gate is 0 when stems are zero, so the read
+// falls back to the neutral 0.5 baseline).
+private struct AuroraVeilStateGPUMirror {
+    var kinkAccumulator: Float = 0
+    var smoothedPitchNorm: Float = 0
+    var padA: Float = 0
+    var padB: Float = 0
+}
+
 @Suite("AuroraVeil silence")
 struct AuroraVeilSilenceTest {
 
@@ -202,12 +214,20 @@ struct AuroraVeilSilenceTest {
             let fft  = ctx.makeSharedBuffer(length: 512 * floatStride),
             let wav  = ctx.makeSharedBuffer(length: 2048 * floatStride),
             let stem = ctx.makeSharedBuffer(length: MemoryLayout<StemFeatures>.size),
-            let hist = ctx.makeSharedBuffer(length: 4096 * floatStride)
+            let hist = ctx.makeSharedBuffer(length: 4096 * floatStride),
+            let avState = ctx.makeSharedBuffer(length: MemoryLayout<AuroraVeilStateGPUMirror>.stride)
         else { return nil }
         _ = fft.contents().initializeMemory(as: UInt8.self, repeating: 0, count: 512 * floatStride)
         _ = stem.contents().initializeMemory(as: UInt8.self, repeating: 0,
                                              count: MemoryLayout<StemFeatures>.size)
         _ = hist.contents().initializeMemory(as: UInt8.self, repeating: 0, count: 4096 * floatStride)
+        // AV.2: bind a zero AuroraVeilStateGPU at slot 6. The shader's
+        // pitch-confidence gate (`vocals_pitch_confidence >= 0.5`) is 0 in
+        // silence so `smoothedPitchNorm` is ignored; `kinkAccumulator = 0`
+        // produces no lateral UV jitter. Silence equivalent to AV.1.
+        var avState0 = AuroraVeilStateGPUMirror()
+        avState.contents().copyMemory(from: &avState0,
+                                      byteCount: MemoryLayout<AuroraVeilStateGPUMirror>.stride)
 
         // Silence FeatureVector — time advanced enough that the time-driven
         // noise rotation is non-trivial (so the asymmetric stratification
@@ -228,6 +248,7 @@ struct AuroraVeilSilenceTest {
         enc.setFragmentBuffer(wav, offset: 0, index: 2)
         enc.setFragmentBuffer(stem, offset: 0, index: 3)
         enc.setFragmentBuffer(hist, offset: 0, index: 5)
+        enc.setFragmentBuffer(avState, offset: 0, index: 6)
         enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         enc.endEncoding()
         cmd.commit()

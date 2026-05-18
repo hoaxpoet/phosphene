@@ -140,17 +140,19 @@ private let goldenPresetHashes: [String: PresetHashes] = [
     // PresetVisualReviewTests where the harness binds a fully-built
     // Arachne state with a real polygon.
     "Arachne": (steady: 0x0000000000000000, beatHeavy: 0x0000004000000000, quiet: 0x0000000000000000),
-    // AV.1 (2026-05-18): Aurora Veil is silence-stable (no audio routing
-    // until AV.2). The three fixtures differ on `f.time` (3.0 steady /
-    // 5.0 beatHeavy / 2.0 quiet) which drives the `aurora_tri_noise_2d`
-    // per-octave rotation + curl_noise advection at the substrate-drift
-    // timescale (§5.4 tens-of-seconds). The hashes vary across fixtures
-    // because the noise field is at different rotational phases — that's
-    // legitimate temporal drift, not audio coupling. Once AV.2 wires the
-    // audio routes (vocal-pitch palette phase, bass brightness breathing,
-    // mid fold density, gated drum kink), the beat-heavy / quiet hashes
-    // will drift further from steady; expect a hash regen at that point.
-    "Aurora Veil": (steady: 0x109B0B1B5E1B1B9A, beatHeavy: 0x109E0E1E1E1D1E9E, quiet: 0x109F0F1F561D1F9E),
+    // AV.2 (2026-05-18): Aurora Veil now wires seven audio routes per §5.7,
+    // but the regression fixtures don't set `bass_att_rel` / `mid_att_rel`
+    // / `valence` / stems, so routes 2/3/4/6/7 fire at their neutral
+    // values and the harness's zeroed slot-6 buffer leaves the
+    // smoothedPitchNorm gated to the 0.5 baseline (route 1 inactive) and
+    // the kinkAccumulator at 0 (route 5 inactive). The shader's pixel
+    // output therefore diverges from AV.1 ONLY by the 3-column max-merge
+    // raymarch structure (and the per-column non-parallel substrate drift
+    // velocities, which only matter when `f.time` differs across fixtures
+    // — i.e. between the three fixtures, not between AV.1 and AV.2 at the
+    // same fixture). At 64×64 dHash with 9×8 cell quantisation the AV.1 →
+    // AV.2 visual delta is Hamming-distance ~1-4 bits per fixture.
+    "Aurora Veil": (steady: 0x109B0A1B5E1B1B9A, beatHeavy: 0x109F0E1F1E1F1F9E, quiet: 0x109F0E1F561D1F9E),
     // V.9 Session 1 — regen at Session 5 cert review (D-124 redirect: full preset
     // rewrite, glass-dish baseline replaced; golden hashes are stale by design).
     // "Ferrofluid Ocean": (steady: 0x56AB1C4A28B32727, beatHeavy: 0x5CB393AAAFA84840, quiet: 0xA64C51A62FD35356),
@@ -355,6 +357,14 @@ struct PresetRegressionTests {
         encoder.setFragmentBuffer(buffers.stem, offset: 0, index: 3)
         if let sceneBuf = buffers.scene { encoder.setFragmentBuffer(sceneBuf, offset: 0, index: 4) }
         encoder.setFragmentBuffer(buffers.hist, offset: 0, index: 5)
+        // AV.2: Aurora Veil reads a 16-byte AuroraVeilStateGPU at slot 6
+        // (kinkAccumulator + smoothedPitchNorm). The fixtures have zero
+        // stems → confidence gate is 0 → smoothedPitchNorm is ignored; the
+        // kink is 0; so a zero buffer is the silence-equivalent state and
+        // the harness binds it explicitly to avoid an unbound-buffer read.
+        if let avState = buffers.auroraVeilState {
+            encoder.setFragmentBuffer(avState, offset: 0, index: 6)
+        }
         if let lumenBuf = buffers.lumen {
             encoder.setFragmentBuffer(lumenBuf, offset: 0, index: 8)
         }
@@ -376,6 +386,7 @@ struct PresetRegressionTests {
         let hist: MTLBuffer
         let scene: MTLBuffer?
         let lumen: MTLBuffer?
+        let auroraVeilState: MTLBuffer?
     }
 
     private func makeRenderBuffers(context: MetalContext, preset: PresetLoader.LoadedPreset) throws -> RenderBuffers {
@@ -432,7 +443,23 @@ struct PresetRegressionTests {
             }
         }
 
-        return RenderBuffers(fft: fft, wav: wav, stem: stem, hist: hist, scene: scene, lumen: lumen)
+        // AV.2: Aurora Veil reads a 16-byte AuroraVeilStateGPU at slot 6
+        // (kinkAccumulator + smoothedPitchNorm). The regression fixtures
+        // have zero stems → shader's confidence gate is 0 → smoothedPitchNorm
+        // ignored; the kink is 0 anyway. Bind a zero buffer so the slot is
+        // populated rather than left undefined.
+        var auroraVeilState: MTLBuffer?
+        if preset.descriptor.name == "Aurora Veil" {
+            let avStride = 16   // matches AuroraVeilStateGPU stride (4 × float)
+            if let buf = context.makeSharedBuffer(length: avStride) {
+                _ = buf.contents().initializeMemory(as: UInt8.self, repeating: 0, count: avStride)
+                auroraVeilState = buf
+            }
+        }
+
+        return RenderBuffers(fft: fft, wav: wav, stem: stem, hist: hist,
+                             scene: scene, lumen: lumen,
+                             auroraVeilState: auroraVeilState)
     }
 
     // MARK: - dHash
