@@ -174,7 +174,7 @@ struct PresetVisualReviewTests {
     // pipeline state to a 1-attachment encoder — a Metal format mismatch
     // that produces raw G-buffer output instead of the deferred lit result.
     @Test("Render preset to PNGs + contact sheet (RENDER_VISUAL=1)",
-          arguments: ["Arachne", "Gossamer", "Volumetric Lithograph", "Lumen Mosaic"])
+          arguments: ["Arachne", "Aurora Veil", "Gossamer", "Volumetric Lithograph", "Lumen Mosaic"])
     func renderPresetVisualReview(_ presetName: String) throws {
         guard ProcessInfo.processInfo.environment["RENDER_VISUAL"] == "1" else {
             print("[PresetVisualReview] RENDER_VISUAL not set, skipping \(presetName)")
