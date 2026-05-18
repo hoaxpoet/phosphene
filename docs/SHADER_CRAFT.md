@@ -2122,6 +2122,68 @@ substantive-similarity level.
   the post-adversarial-review revisions including bullet 3
   strengthening.
 
+### 12.7 Pale-tone-share ceiling (palette-driven presets only)
+
+**Applies to:** any Phosphene preset whose primary colour source is a
+discrete per-cell, per-shard, per-tile, or per-particle palette
+register — Lumen Mosaic (LM.4.7+) is the load-bearing consumer.
+**Does not apply to** continuous-colour presets (ray-march scenes,
+fluid simulations, plasma-family) — their colour discipline lives in
+the §4 material cookbook (per-recipe saturation and roughness) and
+in §5 lighting recipes, not in this gate.
+
+**Rule.** Per non-silence fixture frame, classify each cell / shard /
+tile / particle by its linear RGB. A sample is **pale** if
+`min(R, G, B) > 0.65` — that is, every channel is in the upper third
+of the [0, 1] range (cream, ivory, pearl, bone, pale-pink,
+pale-azure, pale-mint, pale-anything). A fixture is **rejected** if
+`pale_sample_count / total_samples > 0.30`. The ceiling is a hard
+floor on cert; soft scoring (e.g. "pale-share weighted into the
+orchestrator") is not an acceptable substitute because the LM.2
+cream-haze failure mode tolerates a lot of bad-tie-breaker margin.
+
+**Why this exists.** The categorical "no muted / pastel / cream-haze
+palettes" rule that landed after the 2026-05-09 LM.2 verdict
+foreclosed every stained-glass / porcelain / miniature / Cycladic
+palette. D-LM-cream-rescission replaces the categorical rule with
+this compositional ceiling: cream-as-accent against saturated ground
+is permitted; cream-as-dominant-surface is not. The 30 % threshold
+is calibrated against Cathedral Lights (4 of 12 palette entries pale
+→ ~33 % palette pale-share → ~25 % nominal panel pale-share with
+margin for hash-draw variance up to ~30 %).
+
+**The compositional distinction (load-bearing for future preset
+authors).**
+
+- **Pale as structural highlight = permitted.** The visual language
+  is *"deep jewel tones interrupted by points of cream-coloured
+  light"* — stained-glass, Ming porcelain, Persian miniature,
+  Cycladic at the pale-rich end. Pale cells read as
+  light-through-glass or pearlescent highlights against the
+  saturated ground; total share stays under 30 %.
+- **Pale as dominant surface = rejected.** A panel where the eye
+  reads "this is mostly cream/pale with some colour" is the LM.2
+  failure mode. Mood-tint formulas of the form
+  `mix(cream, hue, sat)` that pull every cell toward a desaturated
+  baseline are the canonical anti-pattern; they remain forbidden as
+  a shader-authoring shape even if the resulting panel happens to
+  stay under 30 % pale on a specific track (the form is wrong; the
+  per-track pale-share is downstream luck).
+
+**Relationship to §12.1.** The pale-tone-share ceiling is **not**
+in the §12.1 universal-mandatory list — it applies conditionally to
+palette-driven presets and is a no-op for the ray-march /
+fluid-sim / plasma majority. It is treated as a mandatory gate
+**for the presets in scope** rather than a globally-mandatory item.
+
+**Carry-forward.** The gate's mechanical implementation lands at
+`LumenPaletteSpectrumTests` (or wherever the LM.9 cert gate set
+lives in code) per Increment LM.4.7. Future palette-driven presets
+inherit the gate at their own cert sweep — they do not get a free
+pass because the gate is "for Lumen Mosaic." Filed as
+D-LM-cream-rescission; the parent palette-library architecture is
+D-LM-palette-library.
+
 ---
 
 ## 13. Failed Approaches (Shader-Specific)
@@ -2148,7 +2210,7 @@ Consolidated from observed preset iterations. Additive to `CLAUDE.md §Failed Ap
 
 **44. Mesh-shader presets without per-instance variation.** L-system fractals, particle swarms, procedural structures — if every instance is identical, the preset reads as clone-stamped. Per-instance hash-driven jitter is mandatory.
 
-**45. Four-color palette presets with uniform saturation.** Saturation pushes to the eye as "cartoon." Real palettes have saturation variation (some near-white, some deep, some near-black). Use IQ cosine palette families with per-sample saturation modulation.
+**45. Four-color palette presets with uniform saturation.** Saturation pushes to the eye as "cartoon." Real palettes have saturation variation (some near-white, some deep, some near-black). Use IQ cosine palette families with per-sample saturation modulation. **Compositional ceiling (per D-LM-cream-rescission / §12.7):** the "some near-white" share is bounded — pale samples (linear RGB `min(R, G, B) > 0.65`) must remain ≤ 30 % of the panel for palette-driven presets, even when the per-sample saturation modulation produces healthy variation. Pale as structural highlight is permitted; pale as dominant ground reproduces the LM.2 cream-haze failure mode and is rejected at cert.
 
 **46. Shader code written top-to-bottom without the coarse-to-fine pass structure.** Observed pattern: a single fragment shader tries to do everything. Observed result: debugging is impossible because all layers are interdependent. Pass structure per §2.2 makes each iteration targeted.
 
