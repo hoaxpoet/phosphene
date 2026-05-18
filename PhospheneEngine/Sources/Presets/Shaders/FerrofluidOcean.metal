@@ -134,36 +134,53 @@ struct FOGerstnerWave {
     float speed;       // angular speed scalar applied to t
 };
 
-// Wave parameter table — 4 waves at varying scales/directions to break
-// periodicity. Lengths span 0.8–4.0; smaller waves carry smaller amplitudes
-// per Gerstner steepness convention so the surface stays differentiable.
+// Wave parameter table — ported from the (now-disabled) mesh-path Gerstner
+// in `FerrofluidMesh.metal` per round 59 (2026-05-18). Matt's
+// 2026-05-18T00-53-39Z review: "The effect of deep ocean waves is lost."
+// The previous SDF-path parameters (wavelengths 0.8-4.0 wu, max amplitude
+// sum 0.34 wu) produced surface ripples, not ocean swell. The mesh-path
+// parameters used while the mesh path was active (wavelengths 6-12 wu,
+// max amplitude sum 0.60 wu) gave deep-ocean swell that Matt approved.
+// Round 59 ports those parameters here so the SDF path produces the same
+// swell character.
+//
+// Wave speeds: derived from a 6-bar-per-cycle target at 120 BPM ≈ 12 s/cycle
+// → angular speed 2π/12 ≈ 0.52 rad/s for the longest wavelength. Shorter
+// waves get proportionally faster speeds. The mesh-path used tempo-locked
+// phase (musicBars / 6) — the SDF path uses fixed wall-clock speeds since
+// the tempo signal isn't trivially available here. Periods land at 8-15 s
+// (real ocean swell range).
 static inline FOGerstnerWave fo_wave(int i) {
     FOGerstnerWave w;
     switch (i) {
         default:
         case 0:
-            w.dir        = normalize(float2(1.0, 0.3));
-            w.wavelength = 4.0;
-            w.amplitude  = 0.15;
-            w.speed      = 0.4;
+            // Primary: toward camera (+Z), longest wavelength, dominant amplitude.
+            w.dir        = float2(0.0, 1.0);
+            w.wavelength = 12.0;
+            w.amplitude  = 0.20;
+            w.speed      = 0.52;       // ≈ 12.1 s/cycle
             break;
         case 1:
-            w.dir        = normalize(float2(-0.5, 1.0));
-            w.wavelength = 2.5;
-            w.amplitude  = 0.10;
-            w.speed      = 0.6;
+            // Slight right-toward-camera offset (~17° from primary).
+            w.dir        = float2(0.2873, 0.9579);
+            w.wavelength = 8.0;
+            w.amplitude  = 0.16;
+            w.speed      = 0.64;       // ≈ 9.8 s/cycle
             break;
         case 2:
-            w.dir        = normalize(float2(0.8, -0.6));
-            w.wavelength = 1.5;
-            w.amplitude  = 0.06;
-            w.speed      = 0.9;
+            // Slight left-toward-camera offset (~22° from primary).
+            w.dir        = float2(-0.3939, 0.9191);
+            w.wavelength = 10.0;
+            w.amplitude  = 0.14;
+            w.speed      = 0.57;       // ≈ 11.0 s/cycle
             break;
         case 3:
-            w.dir        = normalize(float2(-0.9, -0.4));
-            w.wavelength = 0.8;
-            w.amplitude  = 0.03;
-            w.speed      = 1.3;
+            // More perpendicular, shorter wavelength — surface chop.
+            w.dir        = float2(0.8321, 0.5547);
+            w.wavelength = 6.0;
+            w.amplitude  = 0.10;
+            w.speed      = 0.85;       // ≈ 7.4 s/cycle
             break;
     }
     return w;
