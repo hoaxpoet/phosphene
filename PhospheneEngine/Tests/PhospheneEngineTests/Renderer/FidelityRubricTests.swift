@@ -97,6 +97,7 @@ struct FidelityRubricReportTests {
 /// Update this dictionary when rubric logic or shader source is intentionally changed.
 private let expectedAutomatedGate: [String: Bool] = [
     "Arachne":              false,   // full; V.7.5 §10.1.9 — M3 fails (chitin removed from spider)
+    "Aurora Veil":          false,   // lightweight; L2 fails — AV.1 has no audio routing (lands at AV.2)
     "Ferrofluid Ocean":     false,   // full; M3 fails
     "Fractal Tree":         false,   // full; M3 fails
     "Glass Brutalist":      false,   // full; M3 fails
