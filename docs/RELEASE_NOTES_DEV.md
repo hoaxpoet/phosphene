@@ -6,6 +6,62 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-18-d] AV.2 — Aurora Veil multi-column parallax + audio routing
+
+**Increment:** AV.2. **Status:** Landed 2026-05-18.
+
+Aurora Veil graduates from silence-stable single-column (AV.1) to audio-responsive multi-column. Three implicit drift columns at off-thirds horizontal positions (foreground at uv.x, mid-ground at +0.27 depth 0.7, background at -0.18 depth 0.5) establish the multi-curtain parallax depth `04_atmosphere_multi_curtain_parallax.jpg` shows; per-column depth-scale dimming + non-parallel substrate-rotation velocities (1.0× / 0.75× / 0.55× per column) give the parallax illusion that distant ribbons drift slower. The combined accumulator is MAX over columns rather than SUM — preserves ribbon character at overlap rather than over-saturating. **9-Q rubric Q3 + Q7 progress.** AV.1 had both at partial; AV.2 improves both — per-column noise variation gives vertical structure non-uniformity (Q3); off-thirds anchors give the off-axis composition the references show (Q7). Full closure of both still waits on AV.3 sub-second flicker.
+
+**The seven `AURORA_VEIL_DESIGN.md §5.7` audio routes are wired with D-019 stem-warmup blend.** Vocals_pitch_hz → palette baseOffset additive (CPU-smoothed 5-frame moving average via new `AuroraVeilState` class, confidence-gated fallback to neutral 0.5); `f.bass_att_rel` → brightness breathing (0.85 + 0.30 × bassRel — continuous primary, never beat) + substrate drift speed (0.06 + 0.04 × bassRel); `f.mid_att_rel` → fold density (`tri_noise_2d` spatial-frequency multiplier 1.0 + 0.30 × midRel); gated `stems.drums_energy_dev` → curtain kink via CPU-side rare-event accumulator (`max(prev × 0.93, drumsDev × smoothstep(0.4, 0.7, drumsDev))` per `AURORA_VEIL_DESIGN.md §5.6`; visual response is fragment-space lateral UV jitter on column noise — produces 1–2 s slow shudder, NOT per-beat strobe, Failure Mode #11 mitigation by construction); `f.valence` → palette warm/cool additive phase; `f.beat_phase01` gated by `vocals_pitch_confidence > 0.5` → per-star twinkle (subtle ±30 % brightness modulation).
+
+**§AV-kink resolution:** Path B from the prompt (CPU-side state class, 16-byte UMA buffer at slot 6) selected per recommendation. Path A (shader q-var) infeasible — `pf` reconstructed per frame, no GPU-side persistent state for direct-fragment preset. Path C (warp-feedback ghost) infeasible — preamble doesn't expose feedback texture to direct-fragment shader. Kink visual realised as fragment-space lateral UV jitter `kinkAmp × sin(uv.y × 12)` on the column noise sample (mv_warp y-displacement would require engine plumbing for mvWarpPerFrame to read slot 6); produces equivalent shudder reading on the column. State class mirrors the `GossamerState` pattern (`@unchecked Sendable`, NSLock-guarded tick, `.storageModeShared` buffer, per-frame `tick(deltaTime:features:stems:)` flush, `reset()` at preset apply).
+
+### Files changed
+
+- `PhospheneEngine/Sources/Presets/Shaders/AuroraVeil.metal` — header docstring + `aurora_fragment` rewritten: 3-column raymarch loop with depth-scale dimming + per-column `velocityScale`; seven audio routes; slot-6 `constant AuroraVeilStateGPU& av [[buffer(6)]]` read; D-019 stem-warmup blend (matches Gossamer.metal:127–135 verbatim); valence-modulated mv_warp rotation (`0.0008 + 0.0004 × valence`). `aurora_tri_noise_2d` extended with `velocityScale` parameter.
+- `PhospheneEngine/Sources/Presets/Shaders/AuroraVeil.json` — `description` reflects AV.2 audio-responsive state; `motion_intensity` 0.25 → 0.35. `certified: false` still (AV.3 Matt M7 gate).
+- `PhospheneEngine/Sources/Presets/AuroraVeil/AuroraVeilState.swift` — **new** — CPU-side `AuroraVeilState` class with kink accumulator + 5-frame pitch-smoothing ring buffer; 16-byte UMA `stateBuffer`; `tick(deltaTime:features:stems:)` + `reset()` API. Confidence-gated pitch normalisation (`< 0.5` → neutral 0.5; else `log2(max(hz, 80)/80) / 4`). Kink decay uses `pow(0.93, deltaTime × 60)` for frame-rate-independent timescale.
+- `PhospheneApp/VisualizerEngine.swift` — `auroraVeilState: AuroraVeilState?` property added (mirrors `gossamerState`).
+- `PhospheneApp/VisualizerEngine+Presets.swift` — `applyPreset` resets the state class at preset apply, wires `setDirectPresetFragmentBuffer(state.stateBuffer)` at slot 6 + `setMeshPresetTick { state.tick(...) }` (mirrors Gossamer block).
+- `PhospheneEngine/Tests/PhospheneEngineTests/Presets/AuroraVeilSilenceTest.swift` — bind a zero 16-byte state buffer at slot 6 (silence-equivalent: confidence-gated pitch falls back to 0.5; kink = 0).
+- `PhospheneEngine/Tests/PhospheneEngineTests/Presets/AuroraVeilContinuousDominanceTest.swift` — **new** — two assertions: bass sweep monotonic mean-luma over aurora band (uv.y ∈ [0.30, 0.70]) with span ≥ 0.03; kink-driven MSD ≤ 10 % of bass-driven MSD (encodes §5.7 continuous-vs-accent ≥ 10× contract).
+- `PhospheneEngine/Tests/PhospheneEngineTests/Presets/AuroraVeilPitchHueTest.swift` — **new** — 8-step `smoothedPitchNorm` sweep ∈ [0, 1]; assert hue scalar `atan2(R-G, B-G)` is monotonic + no step delta > 45 % of total sweep range (catches actual quantisation without flagging IQ-palette natural curvature).
+- `PhospheneEngine/Tests/PhospheneEngineTests/Renderer/PresetRegressionTests.swift` — `RenderBuffers.auroraVeilState: MTLBuffer?` field; allocate + bind a zero 16-byte state buffer at slot 6 when rendering Aurora Veil. Golden hashes regenerated (1–4 dHash bits drift from AV.1 per fixture — multi-column structural change at fixed audio inputs).
+- `PhospheneEngine/Tests/PhospheneEngineTests/Renderer/PresetVisualReviewTests.swift` — allocate `AuroraVeilState` per render pass; `renderFrame` gains `auroraVeilState: AuroraVeilState?` param; binds `stateBuffer` at slot 6.
+- `PhospheneEngine/Tests/PhospheneEngineTests/Renderer/FidelityRubricTests.swift` — `expectedAutomatedGate["Aurora Veil"]` flipped `false` → `true` (L2 deviation primitives now used).
+- `docs/ENGINEERING_PLAN.md` — Phase AV / Increment AV.2 flipped ⏳ → ✅ with delivered scope + done-when + open-question outcomes.
+
+### Tests run
+
+- `swift test --package-path PhospheneEngine --filter "AuroraVeil|PresetLoaderCompileFailure|PresetRegression|PresetAcceptance|FidelityRubric"` — all green (42 tests, 9 suites).
+- `swift test --package-path PhospheneEngine` full suite green (1242 / 1243 — 1 documented flake: `MetadataPreFetcher.fetch_networkTimeout` per CLAUDE.md).
+- `RENDER_VISUAL=1 swift test --filter "PresetVisualReview"` — produces `/tmp/phosphene_visual/<ISO>/Aurora_Veil_{silence,mid,beat}.png` at 1920×1280.
+- `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build` — BUILD SUCCEEDED.
+- `swiftlint lint --strict` on touched files — 0 violations.
+
+### Visual review
+
+Side-by-side comparison of `Aurora_Veil_{silence,mid,beat}.png` against `01_macro_curtain_hero_purple_green.jpg` / `04_atmosphere_multi_curtain_parallax.jpg` (mandatory targets) + anti-ref `09_anti_neon_festival_aurora.jpg`: rendered output reads as belonging in the same visual conversation as `01` / `04` (green base + magenta crown stratification, dark sky context, sparse stars throughout, intact bottom-band silhouette where `auroraEnv` cuts off at uv.y > 0.84); does NOT read like `09` (no festival strobe, no pure-saturation neon, no converging cones, no kinetic motion to a focal point). Per-column structure is improved vs AV.1 single-column (horizontal-noise variation now exists), but three columns blend rather than reading as fully discrete ribbons — full Q3 / Q7 closure waits on AV.3 sub-second flicker. The `mid` vs `beat` fixture frames are similar because the shared fixtures don't set `bass_att_rel` / `mid_att_rel` / valence / stems — the dedicated `AuroraVeilContinuousDominanceTest` + `AuroraVeilPitchHueTest` exercise the audio routes directly with controlled state.
+
+**9-Q authenticity rubric (research §2.3) — AV.2 status:** Q1 vertical stratification only ✓ · Q2 green-dominant palette ✓ · Q3 vertical ray fine structure **improved partial** (multi-column gives per-column non-parallel noise variation; full closure with AV.3 sub-second flicker) · Q4 multi-timescale motion N/A at AV.2 (deferred to AV.3) · Q5 emissive compositing ✓ · Q6 soft top / sharp bottom **partial** (envelope intact; deferred polish) · Q7 off-axis composition **improved partial** (off-thirds anchors give asymmetric composition; full closure may need depth-dim tuning at AV.3) · Q8 brightness gradient within curtain ✓ · Q9 no theatrical beams ✓.
+
+### Open-question outcomes
+
+- **§AV-kink** → Path B (CPU-side state class + slot-6 buffer + fragment-shader read). Kink applied as fragment-space lateral UV jitter rather than mv_warp y-displacement because mvWarpPerFrame can't access slot 6 without engine plumbing; visual effect equivalent (column shudder on rare drum events, 1–2 s decay).
+- **§AV-beatresp** → `beatMotion ≤ continuousMotion × 2 + 1` invariant passes — fixtures have zero stems → kink accumulator stays at 0 → no per-beat motion above continuous baseline.
+- **§AV-perf** → no observable test-suite slowdown from 3× noise sampling at fixture resolutions (64×64 PresetRegression, 128×64 dominance test, 256×128 silence test, 1920×1280 visual review). Explicit profiling deferred to AV.3 cert work per prompt.
+- **§AV-routing-conflicts** → `f.bass_att_rel` drives both brightness (amplitude) AND substrate drift speed (rate) per design §5.7; visual sanity check did not show "fighting itself" reading. Retained as designed; revisit at AV.3 M7 if Matt flags it.
+- **§AV-pitch-smoothing** → CPU-side 5-frame moving average via `AuroraVeilState.pitchRing`. `Common.metal` exposes no `vocals_pitch_*_smoothed` proxy (only `drums_energy_dev_smoothed`, V.9 / D-127, ferrofluid-only); CPU smoothing is the path.
+
+### Known follow-ups (AV.3)
+
+- Sub-second ray flicker (5–10 Hz) per design §5.4 — `rzt *= 1.0 + 0.10 × fbm2(float2(uv.x × 4.0, time × 8.0))` at the per-march-step level. Closes Q3 fully and adds Q4 contribution.
+- 2–20 s whole-curtain pulsation envelope — `aurora *= 0.85 + 0.15 × fbm2(float2(time × 0.1, 0.0))`. Closes Q4.
+- Matt M7 cert review against named references. Anti-ref check vs `09`. Performance profile run vs Tier-2 1.7 ms budget — if exceeded, fallback chain: 50→35 march steps, background column 5→4 octaves, drop to 2 columns.
+- Tuning palette constants, mv_warp amplitudes, fold-density coefficients against curated references. JSON `certified: true` flip on green.
+
+---
+
 ## [dev-2026-05-18-c] AV.1 — Aurora Veil single-column raymarch foundation
 
 **Increment:** AV.1. **Status:** Landed 2026-05-18.
