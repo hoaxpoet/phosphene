@@ -57,7 +57,7 @@ static inline float fo_stem_warmup_blend(constant StemFeatures& stems) {
     return smoothstep(FO_STEM_WARMUP_LO, FO_STEM_WARMUP_HI, total);
 }
 
-// Spike-field strength: constant baseline + small bass-deviation modulation.
+// Spike-field strength: constant baseline + bass-deviation modulation.
 //
 // **Constant-field premise** (round 50, 2026-05-16). Phosphene's Ferrofluid
 // Ocean preset premise is "what if the ocean were made of ferrofluid?" That
@@ -68,23 +68,32 @@ static inline float fo_stem_warmup_blend(constant StemFeatures& stems) {
 // is constant. Music modulates the swell (`fo_swell_scale`) and the aurora
 // (`rm_ferrofluidSky`).
 //
-// **Round 56 polish** (2026-05-17). On top of the constant baseline, return
-// a small ±10 % height modulation from `bass_energy_dev`. This is the
-// "subtle music response" originally anticipated by the round-50 docstring
-// — a faint "responding to disturbance" quality without changing the
-// fundamental shape. Spikes stay clearly conical at all music levels; bass
-// transients just add gentle vertical breath. Coefficient 0.10 keeps the
-// modulation perceptible but within the "constant-field" character.
+// **Round 56 polish** (2026-05-17). Subtle ±10% height modulation from
+// `bass_energy_dev`. Coefficient 0.10 was chosen to be "barely perceptible
+// vertical breath."
+//
+// **Round 60 (2026-05-18)**: coefficient 0.10 → 0.35 (clamped). Matt's
+// 2026-05-18T01-01-08Z review: "I thought the spikes, particularly spike
+// HEIGHT, was supposed to be musically reactive. If this is how the preset
+// is coded, it's lost." Round-56's 10 % was too subtle to perceive against
+// the larger swell motion — typical music bass_energy_dev sits at 0.2-0.4,
+// giving multiplier 1.02-1.04 (2-4 % taller spikes — invisible). Round 60
+// bumps to 0.35 with clamp at 1.0 so typical-music peaks give clearly
+// visible 7-14 % spike-height variation, and strong transients (bass_dev
+// up to 1.0) give up to 35 % taller spikes — readable as "spikes
+// responding to the beat" without disrupting the constant-field character.
 //
 // At silence (`bass_energy_dev = 0`): returns 1.0 → full constant lattice.
-// At peak music (`bass_energy_dev` ~1.0): returns ~1.10 → 10 % taller spikes.
-// At extreme transients (`bass_energy_dev` > 1.0): clamped at the upper end
-// of the deviation primitive's typical range.
+// At typical music peak (`bass_energy_dev` ~0.5): returns 1.175 → 17.5 %
+// taller spikes — clearly visible.
+// At extreme transient (`bass_energy_dev` ≥ 1.0): returns 1.35 → 35 %
+// taller — readable as "responding to the kick" while staying clearly
+// conical.
 static inline float fo_spike_strength(constant FeatureVector& f,
                                       constant StemFeatures& stems) {
     (void)f;
-    float bassDev = clamp(stems.bass_energy_dev, 0.0, 1.5);
-    return 1.0 + 0.10 * bassDev;
+    float bassDev = clamp(stems.bass_energy_dev, 0.0, 1.0);
+    return 1.0 + 0.35 * bassDev;
 }
 
 // Swell amplitude scale per D-124(d): arousal sets the sustained baseline at

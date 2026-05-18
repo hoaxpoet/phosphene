@@ -408,7 +408,14 @@ static float3 rm_ferrofluidSky(float3 R,
     // period puts wall-clock revolutions at ~10-15 s depending on
     // arousal — visible color rotation through the saturated palette
     // stops within seconds of viewing.
-    constexpr float kCurtainBaseRevolutionSeconds = 1.0;
+    //
+    // Round 60 (2026-05-18): 1.0 → 1.25 (20 % slower per Matt's
+    // 2026-05-18T01-01-08Z review: "Colors are transitioning too fast,
+    // could stand to slow down 20%"). Period 25 % longer → angular
+    // speed 20 % slower → wall-clock revolutions now ~12.5-18.75 s
+    // depending on arousal — still visible color rotation within
+    // session-viewing timescales, but breathes more.
+    constexpr float kCurtainBaseRevolutionSeconds = 1.25;
     constexpr float kCurtainBaseAngularSpeed =
         2.0 * M_PI_F / kCurtainBaseRevolutionSeconds;
     float arousalSpeed = mix(0.5, 1.0, smoothstep(-1.0, 1.0, features.arousal));
