@@ -2,7 +2,7 @@
   "name": "Aurora Veil",
   "family": "hypnotic",
   "duration": 60,
-  "description": "An aurora curtain drifts over a faintly-starred night sky — green base, magenta crown, slow compounding motion via mv_warp feedback (AV.1: silence-stable; audio routing lands at AV.2)",
+  "description": "Three drifting aurora curtains at off-thirds depth — green base, magenta crown, vocal-pitch hue migration along the ribbon, bass-breathing brightness, drum-gated curtain shudder; slow compounding motion via mv_warp feedback",
   "author": "Matt",
   "passes": ["mv_warp"],
   "fragment_function": "aurora_fragment",
@@ -15,7 +15,7 @@
     "bass": "brightness_breath"
   },
   "visual_density": 0.40,
-  "motion_intensity": 0.25,
+  "motion_intensity": 0.35,
   "color_temperature_range": [0.15, 0.55],
   "fatigue_risk": "low",
   "transition_affordances": ["crossfade", "morph"],
