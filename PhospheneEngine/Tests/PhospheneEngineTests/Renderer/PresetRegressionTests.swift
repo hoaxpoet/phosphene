@@ -140,6 +140,17 @@ private let goldenPresetHashes: [String: PresetHashes] = [
     // PresetVisualReviewTests where the harness binds a fully-built
     // Arachne state with a real polygon.
     "Arachne": (steady: 0x0000000000000000, beatHeavy: 0x0000004000000000, quiet: 0x0000000000000000),
+    // AV.1 (2026-05-18): Aurora Veil is silence-stable (no audio routing
+    // until AV.2). The three fixtures differ on `f.time` (3.0 steady /
+    // 5.0 beatHeavy / 2.0 quiet) which drives the `aurora_tri_noise_2d`
+    // per-octave rotation + curl_noise advection at the substrate-drift
+    // timescale (§5.4 tens-of-seconds). The hashes vary across fixtures
+    // because the noise field is at different rotational phases — that's
+    // legitimate temporal drift, not audio coupling. Once AV.2 wires the
+    // audio routes (vocal-pitch palette phase, bass brightness breathing,
+    // mid fold density, gated drum kink), the beat-heavy / quiet hashes
+    // will drift further from steady; expect a hash regen at that point.
+    "Aurora Veil": (steady: 0x109B0B1B5E1B1B9A, beatHeavy: 0x109E0E1E1E1D1E9E, quiet: 0x109F0F1F561D1F9E),
     // V.9 Session 1 — regen at Session 5 cert review (D-124 redirect: full preset
     // rewrite, glass-dish baseline replaced; golden hashes are stale by design).
     // "Ferrofluid Ocean": (steady: 0x56AB1C4A28B32727, beatHeavy: 0x5CB393AAAFA84840, quiet: 0xA64C51A62FD35356),
