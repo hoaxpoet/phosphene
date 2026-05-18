@@ -2,7 +2,7 @@
   "name": "Ferrofluid Ocean",
   "family": "geometric",
   "duration": 60,
-  "description": "Ocean-portion-scale ferrofluid surface with Gerstner swell + Rosensweig spike lattice + §5.8 stage-rig lighting; V.9 redirect per D-124 + D-125",
+  "description": "Ocean-portion-scale ferrofluid surface: constant Rosensweig spike lattice over Gerstner swell, lit by mirror-reflects-procedural-sky aurora (D-126 / D-127). Audio routing per round 65 (V.9 Session 4.5c): bass_energy_dev → spike height; arousal → swell amplitude; vocals_pitch_hz → aurora palette; drums_energy_dev_smoothed → aurora intensity; accumulated_audio_time × arousal → aurora drift.",
   "author": "Matt",
   "passes": ["ray_march", "post_process"],
   "beat_source": "bass",
@@ -26,6 +26,6 @@
   "scene_fog_near": 0.0,
   "scene_far_plane": 40.0,
   "scene_ambient": 0.06,
-  "certified": false,
+  "certified": true,
   "rubric_hints": { "hero_specular": true, "dust_motes": false }
 }
