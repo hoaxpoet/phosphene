@@ -18,6 +18,8 @@ struct SpotifyConnectionView: View {
     let onConnect: @Sendable ([TrackIdentity], PlaylistSource) async -> Void
     let onUseAppleMusicInstead: () -> Void
 
+    @FocusState private var isURLFieldFocused: Bool
+
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
@@ -33,6 +35,11 @@ struct SpotifyConnectionView: View {
         }
         .navigationTitle(String(localized: "connector.spotify.title"))
         .accessibilityIdentifier(Self.accessibilityID)
+        .onAppear {
+            // Dispatched async so focus lands after the NavigationStack push animation
+            // has completed and the TextField is in the responder chain.
+            DispatchQueue.main.async { isURLFieldFocused = true }
+        }
     }
 
     // MARK: - Paste field
@@ -51,6 +58,7 @@ struct SpotifyConnectionView: View {
             .padding(12)
             .background(Color.white.opacity(0.07))
             .cornerRadius(8)
+            .focused($isURLFieldFocused)
             .accessibilityIdentifier("phosphene.spotify.urlField")
         }
     }
