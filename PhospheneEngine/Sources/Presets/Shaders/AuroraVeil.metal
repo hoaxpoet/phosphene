@@ -82,14 +82,25 @@ constant float kAuroraGain       = 2.4;
 // Reference `04_atmosphere_multi_curtain_parallax.jpg` shows three ribbons
 // with this depth-ordered brightness pattern.
 //
-// Drift velocity scales scale the per-octave noise-rotation rate so the
-// background column's noise field rotates slower than the foreground's —
-// parallax illusion of depth (distant ribbons appear to move slower).
+// AV.2.1 (2026-05-18): per-column drift-velocity differential dropped. The
+// AV.2 design's "parallax illusion of depth via differential drift speed"
+// idea (background rotating at 0.55× foreground rate, etc.) compounded
+// badly with mv_warp's ~1 s persistence trail: each pixel's "winner"
+// column (after the MAX-merge of the three columns' noise samples) shifted
+// over time as the columns drifted at different rates, and mv_warp
+// accumulated those shifts into a painterly smear that destroyed the
+// nimitz vertical-streak ribbon character. Reference photos `01` and `04`
+// show depth separation via horizontal position + atmospheric perspective
+// (depth-scale dimming), NOT via differential motion — still frames don't
+// encode velocity differentials anyway. Live session 2026-05-18T21:44:14Z
+// confirmed: with the velocity differential, even silence renders as
+// smeared green clouds with no readable ribbons + washed-out stars; the
+// fix restores ribbon character without losing the multi-column horizontal
+// distinction.
 
 constant int    kAuroraColumns        = 3;
 constant float4 kAuroraColumnOffsets  = float4( 0.00,  0.27, -0.18, 0.0);
 constant float4 kAuroraColumnDepths   = float4( 1.00,  0.70,  0.50, 0.0);
-constant float4 kAuroraColumnVelocity = float4( 1.00,  0.75,  0.55, 0.0);
 
 // ── Audio routing constants (AV.2 — design §5.7) ─────────────────────────────
 
@@ -176,12 +187,13 @@ static inline float2x2 aurora_mm2(float a) {
 }
 
 // Five octaves of domain-warped triangular noise. `spd` is the per-octave
-// rotation rate; nimitz uses 0.06 as the default. `velocityScale` (AV.2
-// addition) scales BOTH the per-octave rotation rate AND the base substrate
-// rotation rate so background columns rotate slower than foreground —
-// parallax illusion of depth. Returns a positive scalar density in [0, 0.55]
-// that reads as "where the curtain is bright at this (xz) location at this
-// time."
+// rotation rate; nimitz uses 0.06 as the default. AV.2.1 dropped the
+// per-column `velocityScale` parameter that AV.2 introduced — see the
+// AV.2.1 comment block above on `kAuroraColumnOffsets` for the rationale.
+// All columns now share the same noise-field rotation rate; depth
+// distinction comes from horizontal sample position + per-column depth
+// scaling. Returns a positive scalar density in [0, 0.55] that reads as
+// "where the curtain is bright at this (xz) location at this time."
 //
 // Rotation rate note: nimitz's literal `mm2(time * 0.5)` runs the substrate
 // drift at ~30s per full rotation, which is faster than the §5.4 design
@@ -193,17 +205,17 @@ static inline float2x2 aurora_mm2(float a) {
 // continuousMotion * 2.0 + 1.0`. Reduce the base rotation rate to 0.10
 // (full rotation in ~60s); the per-octave `dg` rotation by `spd` stays as
 // designed.
-static inline float aurora_tri_noise_2d(float2 p, float spd, float time, float velocityScale) {
+static inline float aurora_tri_noise_2d(float2 p, float spd, float time) {
     float2 bp = p;
-    bp = aurora_mm2(time * 0.10 * velocityScale) * bp;
+    bp = aurora_mm2(time * 0.10) * bp;
     float z  = 1.8;
     float z2 = 2.5;
     float rz = 0.0;
     for (int i = 0; i < 5; i++) {
         float2 dg = aurora_tri2(bp * 1.85) * 0.75;
-        dg = aurora_mm2(time * spd * velocityScale) * dg;
+        dg = aurora_mm2(time * spd) * dg;
         bp -= dg / z2;
-        bp = aurora_mm2(-time * 0.10 * velocityScale) * bp;
+        bp = aurora_mm2(-time * 0.10) * bp;
         rz += (aurora_tri(bp.x) + aurora_tri(bp.y)) * z;
         bp *= 1.3;
         z  *= 0.42;
@@ -221,7 +233,6 @@ static inline float aurora_tri_noise_2d(float2 p, float spd, float time, float v
 // Parameters:
 //   columnUVx     — anchor horizontal noise coordinate (uv.x + offset + kink)
 //   uv_y          — fragment screen y (for the Lawlor stratification curve)
-//   velocityScale — per-column substrate-rotation scale (parallax depth)
 //   driftSpeed    — bass-modulated `spd` argument to `aurora_tri_noise_2d`
 //   foldScale     — mid-modulated noise spatial frequency multiplier
 //   paletteOffset — sum of vocals-pitch + valence palette additive offsets
@@ -229,7 +240,6 @@ static inline float aurora_tri_noise_2d(float2 p, float spd, float time, float v
 static inline float3 raymarch_column(
     float columnUVx,
     float uv_y,
-    float velocityScale,
     float driftSpeed,
     float foldScale,
     float paletteOffset,
@@ -257,7 +267,7 @@ static inline float3 raymarch_column(
         // its horizontal frequency.
         float rzt = aurora_tri_noise_2d(
             float2(columnUVx * foldScale, pt * foldScale),
-            driftSpeed, time, velocityScale);
+            driftSpeed, time);
 
         // Per-march-step IQ-cosine palette (the Lawlor H(z) curve). Both
         // `phaseRate` and `baseOffset` are static-or-slowly-varying functions
@@ -412,15 +422,20 @@ fragment float4 aurora_fragment(
     float kinkPhase = sin(uv.y * kKinkSpatialFreq);
 
     for (int c = 0; c < kAuroraColumns; c++) {
-        float colOffset    = kAuroraColumnOffsets[c];
-        float colDepth     = kAuroraColumnDepths[c];
-        float colVelocity  = kAuroraColumnVelocity[c];
+        float colOffset = kAuroraColumnOffsets[c];
+        float colDepth  = kAuroraColumnDepths[c];
 
         // Per-column horizontal anchor with the audio-coupled lateral kink.
         float columnUVx = uv.x + colOffset + kinkAmp * kinkPhase;
 
+        // AV.2.1: all columns share the same substrate-rotation rate; depth
+        // distinction is from `colOffset` (horizontal screen position) +
+        // `colDepth` (atmospheric perspective dimming). Per-column velocity
+        // differential was producing column-winner switching under mv_warp's
+        // ~1 s accumulator → painterly smear. See `kAuroraColumnOffsets`
+        // comment block above.
         float3 colContribution = raymarch_column(
-            columnUVx, uv.y, colVelocity,
+            columnUVx, uv.y,
             driftSpeed, foldScale, paletteOffset, time);
 
         auroraColor = max(auroraColor, colContribution * colDepth);
