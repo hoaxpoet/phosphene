@@ -6,6 +6,59 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-18-c] AV.1 — Aurora Veil single-column raymarch foundation
+
+**Increment:** AV.1. **Status:** Landed 2026-05-18.
+
+Phosphene gains its 16th production preset and its first canonical-Milkdrop-pattern consumer (direct-fragment + mv_warp, with infrastructure in place since MV-2 / D-027 but no preset using it beyond Gossamer). Aurora Veil's role in the catalog is the **ambient ribbon** — what plays during quiet listening, low-energy passages, and the comedown after a peak. AV.1 lands the silence-stable foundation; AV.2 wires audio routing; AV.3 cert-flips after Matt M7.
+
+**The recipe.** Clean-room MSL reimplementation of nimitz's "Auroras" procedural recipe (Shadertoy XtGGRt, 2017; algorithm not source — the Shadertoy GLSL is CC-BY-NC-SA, incompatible with Phosphene's MIT). 50-step per-fragment volumetric raymarch up an implicit vertical column, sampling triangular domain-warped noise (`aurora_tri_noise_2d` — 5 octaves with per-octave rotation, 1/pow density curve) at each step. Per-march-step IQ-cosine palette cycling encodes the Lawlor-Genetti H(z) altitude curve (green base → magenta crown). Running-average vertical smear coalesces noise samples into ribbon streaks. mv_warp at conservative parameters (decay 0.945, zoom 0.0015, rot 0.0008) with curl-noise advection for vortical-motion character. Sky gradient + sparse hash-thresholded stars composited additively under the aurora. Reference set + 9-question authenticity rubric (research dossier §2.3) + 15-mode failure taxonomy (§2.2) is the AV.3 cert gate.
+
+**No audio reactivity at AV.1.** Silence-stable rendering by design; the AV.1 acceptance is "preset compiles, loads, renders a visible aurora at zero audio, three vertical regions present (sky / aurora band / dark base), Lawlor green/magenta stratification visible." AV.2 wires the seven audio routes from `AURORA_VEIL_DESIGN.md §5.7` (vocals_pitch_hz → palette phase, bass_att_rel → brightness, mid_att_rel → fold density, gated drums_energy_dev → curtain kink, valence → palette warm/cool, beat_phase01 + vocals_pitch_confidence → star twinkle).
+
+**Files changed:**
+
+New:
+- `PhospheneEngine/Sources/Presets/Shaders/AuroraVeil.metal` — `aurora_fragment` + `aurora_tri_noise_2d` clean-room helpers + `mvWarpPerFrame` / `mvWarpPerVertex`. Citations to nimitz + Lawlor & Genetti in the header docstring.
+- `PhospheneEngine/Sources/Presets/Shaders/AuroraVeil.json` — `family: hypnotic` (Matt-approved 2026-05-18; `fluid` from design doc isn't in `PresetCategory` enum); `passes: ["mv_warp"]`; `rubric_profile: lightweight` per D-067(b); `certified: false`; `section_suitability: [ambient, comedown, bridge]`; tier1/tier2 4.0/1.7 ms per design §7.
+- `PhospheneEngine/Tests/PhospheneEngineTests/Presets/AuroraVeilSilenceTest.swift` — three assertions: non-black mean luma + green-base/magenta-crown stratification along brightest column + form-complexity ≥ 2 (sky band gradient + aurora local max + dark base region).
+
+Modified:
+- `PhospheneEngine/Tests/PhospheneEngineTests/Presets/PresetLoaderCompileFailureTest.swift` — `expectedProductionPresetCount` 15 → 16.
+- `PhospheneEngine/Tests/PhospheneEngineTests/Renderer/PresetRegressionTests.swift` — Aurora Veil golden hashes for steady / beat-heavy / quiet (3-fixture set); explanatory comment notes the across-fixture hash variation comes from `f.time` differences driving substrate-drift noise rotation, not audio coupling.
+- `PhospheneEngine/Tests/PhospheneEngineTests/Renderer/PresetVisualReviewTests.swift` — "Aurora Veil" added to the `renderPresetVisualReview` argument list. Produces `Aurora_Veil_{silence,mid,beat}.png` under `RENDER_VISUAL=1`.
+- `PhospheneEngine/Tests/PhospheneEngineTests/Renderer/FidelityRubricTests.swift` — Aurora Veil entry in `expectedAutomatedGate` (`false` — L2 deviation-primitive heuristic fails because AV.1 has no audio routing; AV.2 lands those routes).
+
+Docs:
+- `docs/ENGINEERING_PLAN.md` — Phase AV / Increment AV.1 flipped ⏳ → ✅; AV.2 + AV.3 carry forward with the open questions resolved at AV.1 noted.
+- `docs/RELEASE_NOTES_DEV.md` — this entry.
+
+**Implementation notes (deviations from the literal prompt recipe).**
+
+The prompt's verbatim `pt = 0.8 + pow(float(i), 1.4) * 0.002` + per-`i` palette produces a uv.y-invariant column integration for fragments at the same uv.x (every pixel in a column traverses the identical i=0..49 palette+noise sequence; no screen-y dependency anywhere in the literal recipe). The design's "Lawlor H(z) on screen" + the silence test's "vertically-stratified colour" assertion both require a screen-y dependency that's absent from the prompt's literal recipe — nimitz's actual shader gets it via the camera ray's `ro.y / rd.y` per-fragment, which the prompt's camera-less simplification drops.
+
+Shader threads uv.y through `phaseRate = mix(0.005, 0.043, topness)` (palette cycling throttled near the green base) + `baseOffset = 2.0 * topness` (lands integration in the magenta range at the crown). All four nimitz load-bearing components (triangular noise, 50-step march, running-average smear, per-march-step palette cycling) are preserved — the cycling is just throttled at the lower aurora edge. Documented inline as the camera-less analog of nimitz's per-ray `ro.y / rd.y` altitude bias (FA #65 — this is NOT subtracting from the reference recipe; it's threading screen-altitude dependency through it where nimitz's camera setup did it implicitly).
+
+Substrate-drift rotation rate reduced to `time * 0.10` (from nimitz's `time * 0.5`) so per-fixture noise rotation stays under the PresetAcceptance `beatMotion ≤ continuousMotion * 2 + 1` invariant and matches §5.4 "tens of seconds (substrate drift)" target. Sky blue trimmed (top B 0.020 → 0.010; bottom B 0.040 → 0.020) to make the aurora's green palette readable. Final `min(sky + col, 0.95)` clamp prevents bright-star-plus-bright-aurora pixels from clipping to byte 255 (PresetAcceptance "no white clip" gate).
+
+**Verification.**
+- `swift test --package-path PhospheneEngine --filter "AuroraVeil|PresetLoaderCompileFailure|PresetRegression|PresetAcceptance|FidelityRubric"` — all green (39 tests, 7 suites).
+- `swift test --package-path PhospheneEngine` — full suite, only failures are pre-existing flakes (`MetadataPreFetcher.fetch_networkTimeout`, `SoakTestHarness.cancel` timing race) per CLAUDE.md.
+- `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build` — clean.
+- `swiftlint lint --strict --config .swiftlint.yml` — 0 violations on touched files.
+- `RENDER_VISUAL=1 swift test --filter "PresetVisualReview"` — produces `/tmp/phosphene_visual/<ISO>/Aurora_Veil_{silence,mid,beat}.png`. Visual side-by-side: rendered output reads as belonging in the same visual conversation as refs `01` / `02` / `04` (green base / magenta crown stratification, stars through, naturalistic palette, no theatrical beam cues); does NOT read like anti-reference `09` (no pure-saturation neon, no converging cones, no festival-strobe characteristics).
+
+**9-question authenticity rubric (research §2.3) — AV.1 status:** Q1 vertical stratification only ✓ · Q2 green-dominant palette ✓ · Q3 vertical ray fine structure **partial** (single-column noise gives horizontal-band brightness variation rather than crisp vertical rays — AV.2 multi-column + AV.3 sub-second ray flicker close the gap) · Q4 multi-timescale motion **N/A** at AV.1 (substrate drift only per §5.4; sub-second flicker + 2–20 s pulsation deferred to AV.3) · Q5 emissive compositing ✓ · Q6 soft top / sharp bottom **partial** (envelope shape OK; could be more asymmetric) · Q7 off-axis composition **partial** (single-column = uniform horizontal envelope; AV.2 ribbons at off-thirds positions close the gap) · Q8 brightness gradient within curtain ✓ · Q9 no theatrical beams ✓. Partial answers all stem from the single-column AV.1 scope by design; documented for AV.2 / AV.3 attention.
+
+**Open-question outcomes:** §AV-fam → `hypnotic` (Matt-approved 2026-05-18 — groups with Plasma's slow ambient register; family-repeat penalty applies between consecutive Plasma + Aurora Veil picks, semantically right for the "ambient ribbon" role). §AV-perf → not exercised at AV.1 (no perf regression observed; explicit profiling deferred to AV.3 cert work). §AV-sin → per-march-step `sin(float(i) * phaseRate + baseOffset)` is `i`-indexed (loop counter, not time), inline-documented in shader as NOT a Failed Approach #33 violation. §AV-stars-twinkle → AV.2 author's decision.
+
+**Risks + follow-ups (AV.2 / AV.3).**
+- AV.2 wires the seven audio routes per `AURORA_VEIL_DESIGN.md §5.7` (with the `kinkAccumulator` rare-event gating from research §3.2 mandatory). Adds two more drift columns at off-thirds positions for parallax / vertical ray fine structure (closes Q3 + Q7). Adds `AuroraVeilContinuousDominanceTest` + `AuroraVeilPitchHueTest`.
+- AV.3 adds the sub-second ray-flicker noise layer (5–10 Hz) + the 2–20 s whole-curtain pulsation envelope (closes Q4 + Q6). Matt M7 review against `01` / `02` / `03` / `04` + anti-ref check vs `09` is the cert gate. Perf-profile run; if `aurora_tri_noise_2d` overshoots Tier-2 budget, fallback chain per `prompts/AV.1-prompt.md §AV-perf` (50→40 march steps, 5→4 octaves, Theunissen abs-of-difference as last resort).
+- The PresetAcceptance `beatMotion ≤ continuousMotion * 2 + 1` invariant currently passes because the AV.1 shader has no audio routing and time-only deltas are bounded. When AV.2 wires audio reactivity, this invariant could push back on the routing amplitudes; mitigation is already in design (rare-event-gated kink, continuous-vs-accent ratio ≥ 10× per §5.7).
+
+---
+
 ## [dev-2026-05-18-b] LM.4.7 amendment — anti-repeat window widened N=1 → N=3
 
 **Increment:** LM.4.7 follow-up. **Status:** Tuning amendment after Matt's 2026-05-18 M7 session on the LM.4.7 baseline.
