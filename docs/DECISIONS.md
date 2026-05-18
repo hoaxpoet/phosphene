@@ -3658,3 +3658,103 @@ The replacement design (direct audio uniforms feeding the sky function + baselin
 - V.9 Session 4.5c Phase 2 — baseline + deviation audio routing rework + warmup smoothness fix.
 - V.9 Session 4.5c Phase 3 — wave-coherent particle motion (replaces Phase 2c).
 - D-125 + D-126 are now historical; cite D-127 for the current aurora-reflection implementation pattern.
+
+---
+
+## D-LM-palette-library — Curated 18-palette library for Lumen Mosaic cell colour (Increment LM.4.7, filed 2026-05-18)
+
+**Status.** Accepted (paperwork-only; implementation lands at Increment LM.4.7).
+
+**Decision.** Lumen Mosaic's per-cell colour source changes from LM.4.6's pure uniform random RGB (with LM.7's per-track chromatic-projected tint) to a **library of 18 hand-authored 12-colour palettes**. The Orchestrator selects one palette per session by drawing from a probability distribution biased on the session's mood (valence + arousal). Within a session, every visible cell samples uniformly from the drawn palette's 12 entries. The per-track seed perturbs **sampling order** within the palette — which 12-bucket a given cell lands in — and never perturbs palette membership.
+
+The 18 palettes are:
+
+- **Vol. I (7):** Autumnal, Refn Glow, Glacier, Art Deco, Abyssal Bioluminescence, Kintsugi, Carnival.
+- **Vol. II (6):** Holi, Geode, Rothko Chapel, Tropical Aviary, Persian Miniature, Ukiyo-e.
+- **Plate 14:** Cathedral Lights (the cream-rescission proof point — see D-LM-cream-rescission).
+- **Plates 15–18:** Cycladic, Ming Porcelain, Tenebrism, Obsidian.
+
+**Context.** Decision E.2 (4 hand-picked mood-quadrant palette banks) was retired 2026-05-09 on Matt's monotony objection: *"four hand-picked palettes will lead to a very monotonous preset."* LM.4.6 — pure uniform random RGB per cell — replaced it after extended iteration through LM.4.5.x's HSV-with-rules attempts. Matt's verdict on LM.4.6 (2026-05-12) was *"Working. It's close enough. I'm giving up the fight on colors"* — explicitly the white flag, not a positive endorsement. The documented LM.4.6 trade-off (shader file header, ENGINEERING_PLAN Increment LM.4.6, D-LM-7 amendment) is that uniform random sampling produces **statistically identical panel aggregates** across tracks (different specific cell colours, same distribution shape — law of large numbers). LM.7's per-track chromatic-projected tint mitigated this at the aggregate level but did not give each session a distinct **palette character**; every track still looked like a sample from the same uniform RGB cube with a small chromatic offset.
+
+The 2026-05-17 palette exploration conversation produced 18 hand-authored palettes with distinct named characters (mossy stained-glass for Autumnal, warm-neon-shadow for Refn Glow, frozen-blue-on-snow for Glacier, lacquer-and-gold for Art Deco, deep-sea bioluminescent emerald for Abyssal Bioluminescence, gold-on-black-cracked-porcelain for Kintsugi, saturated-festival for Carnival, magenta-yellow-cyan-powder for Holi, mineral-crystal-section for Geode, oxblood-and-charcoal for Rothko Chapel, parrot-feather for Tropical Aviary, manuscript-mineral-pigments for Persian Miniature, woodblock-mineral-flat for Ukiyo-e, jewel-tones-with-cream-highlights for Cathedral Lights, white-ground-with-cobalt for Cycladic, porcelain-and-cobalt for Ming Porcelain, near-black-with-single-warm-highlight for Tenebrism, black-with-iridescent-flash for Obsidian).
+
+**Why the library defuses the original E.2 monotony objection.**
+
+- **Library size (18 ≠ 4).** Four palettes meant any frequent listener saw the same four moods cycle predictably. Eighteen palettes drawn one-per-session means a multi-hour listening run traverses many palettes without repetition.
+- **Mood biases selection probability, never deterministic mapping.** The retired E.2 form was "mood quadrant → palette." The library form is "mood → probability distribution over all 18 palettes" — every palette has non-zero probability everywhere in the mood plane, with the distribution shape favouring palettes whose character aligns with the session's mood. A low-valence high-arousal session is more likely to draw Rothko Chapel or Tenebrism than Carnival, but Carnival is not excluded.
+- **Per-session selection, not per-track.** A long playlist's tracks stay within one palette's identity for the session; the palette becomes part of how that listening session feels. Per-track variety comes from the seed-driven sampling-order perturbation within the palette plus the existing LM.3.2 band-routed beat-driven dance.
+
+**Orchestrator selection model.**
+
+```
+P(palette_i | valence, arousal) ∝ weight(palette_i, valence, arousal)
+```
+
+Each palette declares a mood affinity vector (or affinity function). The weight function produces a non-negative scalar per palette per (valence, arousal); the session draws one palette by weighted sampling. The draw is stable within a session: the same `(playlist, mood snapshot at session start)` always produces the same palette. Concrete weight function shape (Gaussian over mood-distance, soft-max temperature, etc.) is implementation freedom at LM.4.7; the contract here is only "probability biasing, never deterministic mapping, every palette reachable everywhere."
+
+**Within-session sampling.**
+
+Cells sample uniformly from the drawn palette's 12 entries: `cell_palette_idx = lm_hash_u32(cell_id ^ step ^ track_seed ^ section_salt) % 12`. The LM.3.2 team/period beat-step ratchet is preserved — cells advance their palette index on rising-edge of their assigned band's beat — but the index is into the 12-entry palette array, not into the full RGB cube. Per-track seed continues to perturb the sampling order so different tracks within a session show distinct cell-by-cell colour layouts even though they share the palette.
+
+**Relationship to retired decisions.**
+
+- **E.2 (REVIVED in palette-library form).** Original E.2 (4 mood-quadrant banks) is retired in shape but preserved in spirit: the library architecture is the version that defuses the monotony objection.
+- **E.3 (procedural IQ-cosine `palette()`) is superseded** by the library as the cell-colour mechanism for Lumen Mosaic. The `palette()` utility may still appear elsewhere in the engine; it is not the LM.4.7 cell-colour path.
+- **D-LM-7 (per-track aggregate-mean RGB tint with chromatic projection)** is superseded for Lumen Mosaic — the LM.4.7 path doesn't need it because the drawn palette is already character-distinct. The chromatic-projection math remains in the codebase only if a future preset needs the same shape; the constant `kTintMagnitude` retires with LM.4.7.
+- **D.4 / D.6** are superseded for Lumen Mosaic — the cell-colour generator is now palette-table-driven, not `accumulated_audio_time`-driven (D.4) and not pure hash → RGB (D.6).
+
+**What was rejected.**
+
+- **Procedurally-generated palettes (synthesised at session start from a few mood parameters).** Considered; would scale to infinite palettes but loses the hand-authored named character that makes each palette distinct. The conversation's "Cathedral Lights" / "Refn Glow" / "Holi" identities are not reachable by a 4-parameter procedural generator without re-inventing the curation work as a procedural-tuning pass.
+- **Hard mood → palette mapping (single palette per mood quadrant).** Replays the E.2 monotony failure — predictable cycling, no surprise.
+- **No mood bias at all (uniform random palette draw).** Rejected because sad-music-bright-palette and happy-music-dark-palette mismatches are jarring even when individual palettes are good; biasing the distribution costs nothing and preserves variety.
+- **Larger library (30+ palettes).** Deferred; 18 is the curated count from the 2026-05-17 conversation. Future palette additions are a separate increment under the rule below.
+
+**Rule.** New palette additions require Matt M7 review per palette and a DECISIONS.md amendment citing this D-number. Palette removals are also gated on Matt sign-off — palettes are part of the session-to-session identity of the preset, and silently removing one changes what a returning user sees.
+
+**Carry-forward.** Increment LM.4.7 (ENGINEERING_PLAN.md) is the implementation. The increment ships `LumenMosaicPaletteLibrary.swift` with the 18 palettes as `[SIMD3<Float>]` constants of length 12, an orchestrator weight function + draw site, an `lm_cell_palette` rewrite that indexes into the per-session palette via cell hash + step + per-track seed, slot-8 GPU ABI extension to carry the 12-colour palette (36 floats or equivalent), rewritten `LumenPaletteSpectrumTests` asserting palette membership (every cell colour matches one of the 12 palette entries to within float epsilon), and the LM.9 pale-tone-share gate (per D-LM-cream-rescission) passing for all 18 palettes mechanically.
+
+---
+
+## D-LM-cream-rescission — Anti-cream project rule rescinded; replaced by pale-tone-share compositional ceiling (Increment LM.4.7, filed 2026-05-18)
+
+**Status.** Accepted (paperwork-only; mechanical enforcement lands at Increment LM.4.7).
+
+**Decision.** The CLAUDE.md project rule that prohibited muted / pastel / cream-haze palettes (introduced after Matt's 2026-05-09 LM.2 verdict and the parallel LM.4.5 v1 rejection) is **rescinded as a categorical exclusion**. It is replaced by a **compositional rule** with mechanical enforcement:
+
+- **Pale tones** (defined as cells whose linear RGB has `min(R, G, B) > 0.65` — cream, ivory, pearl, bone, pale-pink, pale-azure, pale-mint, pale-anything where every channel is in the upper third) are **permitted as structural highlight**.
+- **Pale tones are forbidden as dominant ground.** A panel where pale cells exceed **30 %** of total cells (the dominant-area fraction at the standard ~30-visible-cell Voronoi layout) is rejected. This is the mechanical gate.
+- **The retired LM.2 / LM.4.5 v1 failure mode is still explicitly forbidden** — mood-tint formulas of the form `mix(cream, hue, sat)` that pull every cell toward a desaturated baseline regardless of input remain an anti-pattern in shader authoring. The distinction is now compositional, not categorical: pale colours appearing in the palette is fine; pale colours **dominating the panel** is not.
+
+**Context.** The 2026-05-09 CLAUDE.md rule ("No muted palettes (mandatory)" + the DO NOT bullet "Do not ship muted, pastel, or cream-haze palettes") was drafted in response to LM.2's all-tinted-cream output and LM.4.5 v1's pastel guardrail that biased every cell toward low-saturation cream regardless of intended palette. Both failure modes shared the same shape — the **whole panel** read as cream — and the rule that landed conflated "panel-dominantly-cream" with "cream-appears-anywhere." Six months of preset authoring under that rule made the conflation visible: real stained-glass references (Sainte-Chapelle, Chartres), Ming porcelain references, Persian-miniature illuminations, and dozens of other historical visual languages use pale highlights against deep jewel-tone or near-black grounds. The blanket prohibition foreclosed all of those palettes.
+
+The 2026-05-17 palette exploration produced **Cathedral Lights** as a deliberate test case: 4 of its 12 colours are pale (warm white, pale gold-cream, soft lavender, pale sky-blue), 7 are deep jewel tones (sapphire, ruby, emerald, amethyst, deep teal, oxblood, royal purple), and 1 anchors the dark end (near-black slate). At ~30 visible cells with uniform sampling, the expected pale-cell count is `~30 × 4 / 12 = ~10` cells — **~33 %** of the panel. Matt's review of the palette preview read it as light-through-stained-glass — the LM.2 / LM.4.5 v1 failure mode does not reproduce. Drift in pale-cell share around the expected fraction lands in the [25 %, 40 %] band depending on the per-cell hash draw; the **30 % ceiling** is the calibration point that allows Cathedral Lights as the dominant-pale-but-still-jewel-grounded edge case while still rejecting an LM.2-style all-cream panel.
+
+**The compositional rule (the load-bearing distinction a future preset author must read).**
+
+- **Cream as accent against saturated ground = permitted.** The visual language is *"deep jewel tones interrupted by points of cream-coloured light"* — Cathedral Lights, Ming Porcelain, Persian Miniature, Cycladic at the pale-rich end, and any future palette that places pale highlights in the < 30 % minority. The pale cells read as **structural highlight**: the lit pieces of glass in a stained-glass window, the pearlescent dots in a Mughal manuscript, the lime-wash of a Cycladic structure against the sea.
+- **Cream as dominant surface = rejected.** A panel where the eye reads "this is mostly cream/pale with some colour" is the LM.2 failure mode. Mechanically: > 30 % of cells with `min(R, G, B) > 0.65`. The pale-tone-share gate (LM.9, see D-LM-palette-library carry-forward) enforces this per fixture frame.
+
+**Mechanical enforcement.**
+
+- **Per fixture frame:** classify each cell by its linear RGB. Pale if `min(R, G, B) > 0.65`; not pale otherwise.
+- **Gate:** reject the fixture if `pale_cell_count / total_cells > 0.30`.
+- **Where it runs:** the LM.9 certification gate set, applied to every Lumen Mosaic palette in the library (D-LM-palette-library) and to every future palette addition.
+- **Calibration point:** Cathedral Lights passes at ~25 % nominal pale-cell share with margin for per-cell-hash drift up to ~30 %. A palette with > 4 pale entries out of 12 (i.e. > 33 % palette pale-share) will trip the gate on most hash draws and is rejected at palette-author time.
+
+**Why a hard ceiling rather than a soft penalty.**
+
+A soft scoring penalty (e.g. "pale-share weighted into orchestrator score") would let cream-haze palettes survive on tie-breakers. The LM.2 failure mode is the kind of regression that needs a hard floor; allowing it back in by score is the original failure mode by another name. The 30 % ceiling is below the boundary where a panel starts reading as cream-dominant (≥ ~40 % is unambiguously cream-haze; the 25–35 % band is the structural-highlight register) and gives ~5 percentage points of margin for hash-draw variance against the Cathedral Lights calibration point.
+
+**What was rejected.**
+
+- **Keeping the categorical anti-cream rule.** Forecloses every stained-glass / porcelain / miniature / Cycladic palette. The 2026-05-17 palette exploration produced five palettes (Cathedral Lights, Cycladic, Ming Porcelain, plus Persian Miniature and Ukiyo-e at the pale-rich end) that would all have been excluded — and Matt accepted each as ship-worthy on visual preview.
+- **A higher pale-tone-share ceiling (40 %, 50 %).** Tested against the LM.2 failure-mode threshold; cream-haze starts reading at ~40 % and above. 30 % is the calibrated ceiling that admits structural-highlight palettes (Cathedral Lights at ~25 %, others below) and rejects cream-dominant panels (≥ ~40 %).
+- **A lower ceiling (20 %, 15 %).** Excludes Cathedral Lights and any palette with a deliberate large pale-highlight share. The cream-rescission is what makes those palettes shippable; tightening the ceiling reproduces the original rule at a different threshold without solving the underlying conflation.
+- **HSV-domain definition of "pale" instead of linear-RGB `min(R, G, B) > 0.65`.** HSV-pale (`S < 0.25 ∧ V > 0.85`) and linear-RGB-pale agree on the obvious cases but diverge at the pale-saturated edge (pale magenta, pale teal). The linear-RGB definition catches both achromatic-pale and chromatic-pale-with-all-channels-high; the HSV definition lets chromatic-pale-with-high-V through. The LM.2 failure mode is panel-wide low-channel-variance; the linear-RGB form maps more directly onto that failure.
+
+**Rule.** The pale-tone-share ceiling (≤ 0.30) is the project's compositional rule on cream / pale in Phosphene presets going forward. Authoring guidance (CLAUDE.md, SHADER_CRAFT.md) is updated to reflect this. The categorical "Do not ship muted, pastel, or cream-haze palettes" wording is retired; the parallel CLAUDE.md DO NOT bullet is rewritten under this decision. The mood-tint anti-pattern (`mix(cream, hue, sat)`) remains forbidden as a shader-authoring shape — but as an anti-pattern in the implementation, not as a categorical exclusion of pale colours from the palette space.
+
+**Scope.** This decision governs Lumen Mosaic at LM.4.7 directly. It applies project-wide to any preset that exposes a per-cell or per-shard discrete colour register — future palette-based presets inherit the same gate. Continuous-colour presets (ray-march scenes, fluid simulations, plasma-family) are not in scope; their colour discipline lives in SHADER_CRAFT.md material cookbook recipes (e.g. mat_chitin, mat_oceanWater) where the relevant rule is per-recipe saturation and roughness, not aggregate pale-share.
+
+**Carry-forward.** Increment LM.4.7 (ENGINEERING_PLAN.md) implements the pale-tone-share gate in `LumenPaletteSpectrumTests` (or wherever the LM.9 cert gates land in code) and verifies it passes for all 18 palettes in the library — Cathedral Lights being the calibration point. The CLAUDE.md DO NOT bullet is updated in this same paperwork session. The Visual Quality Floor pointer is updated to refer to the pale-tone-share rule rather than the retired no-muted-palettes rule.
