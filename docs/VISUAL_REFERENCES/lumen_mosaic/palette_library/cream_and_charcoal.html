@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lumen Mosaic — Palette Library, Plates 15—18</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;1,9..144,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0c;
+    --bg-card: #0f0f13;
+    --text: #ebe8e0;
+    --text-dim: #8a8782;
+    --text-faint: #4d4b48;
+    --rule: #1c1c22;
+    --accent: #d4b87a;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body { margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Fraunces', Georgia, serif;
+    font-weight: 400;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  .page {
+    max-width: 1040px;
+    margin: 0 auto;
+    padding: 72px 36px 120px;
+  }
+
+  /* Masthead */
+
+  .masthead {
+    border-bottom: 1px solid var(--rule);
+    padding-bottom: 36px;
+    margin-bottom: 56px;
+  }
+
+  .eyebrow {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 20px;
+  }
+
+  h1 {
+    font-family: 'Fraunces', serif;
+    font-weight: 300;
+    font-size: 60px;
+    line-height: 1.0;
+    margin: 0 0 24px;
+    letter-spacing: -0.025em;
+    font-variation-settings: "opsz" 144;
+  }
+
+  h1 em {
+    font-style: italic;
+    font-weight: 400;
+    color: var(--accent);
+  }
+
+  .lede {
+    font-size: 18px;
+    color: var(--text-dim);
+    max-width: 660px;
+    line-height: 1.55;
+    margin: 0 0 18px;
+  }
+
+  .lede strong {
+    color: var(--text);
+    font-weight: 400;
+  }
+
+  .lede:last-child {
+    margin-bottom: 0;
+  }
+
+  /* Section heads */
+
+  .section-head {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    margin: 24px 0 40px;
+    padding-top: 28px;
+    border-top: 1px solid var(--rule);
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+
+  .section-head .right {
+    font-style: normal;
+    color: var(--text-faint);
+  }
+
+  /* Plate */
+
+  .plate {
+    margin-bottom: 80px;
+  }
+
+  .plate-head {
+    display: flex;
+    align-items: baseline;
+    gap: 20px;
+    margin-bottom: 10px;
+  }
+
+  .plate-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-faint);
+    letter-spacing: 0.1em;
+  }
+
+  .plate-name {
+    font-family: 'Fraunces', serif;
+    font-weight: 400;
+    font-size: 36px;
+    letter-spacing: -0.015em;
+    font-variation-settings: "opsz" 144;
+    margin: 0;
+    color: var(--text);
+  }
+
+  .plate-id {
+    font-style: italic;
+    color: var(--text-dim);
+    font-size: 16px;
+    margin: 0 0 32px;
+    max-width: 720px;
+    line-height: 1.55;
+    font-weight: 300;
+  }
+
+  .plate-id strong {
+    color: var(--text);
+    font-style: normal;
+    font-weight: 400;
+  }
+
+  /* Swatch strip */
+
+  .swatch-strip {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: 0;
+    border-radius: 3px;
+    overflow: hidden;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.04);
+  }
+
+  .swatch {
+    aspect-ratio: 1 / 1.3;
+  }
+
+  .meta-row {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: 0;
+    margin-top: 10px;
+  }
+
+  .meta-cell {
+    text-align: center;
+    padding: 0 4px;
+  }
+
+  .meta-name {
+    font-family: 'Fraunces', serif;
+    font-style: italic;
+    font-size: 11px;
+    color: var(--text-dim);
+    line-height: 1.25;
+    display: block;
+    min-height: 28px;
+    font-weight: 300;
+  }
+
+  .meta-hex {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--text-faint);
+    letter-spacing: 0.04em;
+    margin-top: 4px;
+    display: block;
+  }
+
+  /* Preview panel */
+
+  .preview {
+    margin-top: 28px;
+    padding: 20px;
+    background: #050506;
+    border-radius: 4px;
+    border: 1px solid var(--rule);
+  }
+
+  .preview-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--text-faint);
+    margin-bottom: 14px;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .preview-grid {
+    display: grid;
+    grid-template-columns: repeat(9, 1fr);
+    gap: 5px;
+  }
+
+  .preview-cell {
+    aspect-ratio: 1;
+    border-radius: 14% 9% 16% 7% / 9% 16% 7% 14%;
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,0.18);
+  }
+
+  /* Footer */
+
+  footer {
+    margin-top: 64px;
+    padding-top: 32px;
+    border-top: 1px solid var(--rule);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-faint);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    line-height: 1.8;
+  }
+
+  footer .right { float: right; }
+
+  @media (max-width: 720px) {
+    .page { padding: 48px 18px 80px; }
+    h1 { font-size: 40px; }
+    .lede { font-size: 16px; }
+    .plate-name { font-size: 26px; }
+    .plate-id { font-size: 14px; }
+    .meta-name { font-size: 9px; min-height: 24px; }
+    .meta-hex { font-size: 8px; }
+    .preview-grid { grid-template-columns: repeat(6, 1fr); }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="masthead">
+    <div class="eyebrow">Phosphene · Phase LM · Palette Library · Plates 15—18</div>
+    <h1>Cream &amp; <em>charcoal</em></h1>
+    <p class="lede">Four plates exploring the territory opened by Cathedral Lights. Two with <strong>cream/white</strong> as a primary structural colour (15—16) and two with <strong>black/charcoal</strong> as a primary structural colour (17—18).</p>
+    <p class="lede">Cathedral Lights established cream as <em>structural highlight</em> in a deep-jewel-dominant field. Cycladic and Ming Porcelain invert that — cream as ground, saturated colour as accent. Tenebrism and Obsidian push the dark-dominance direction symmetrically.</p>
+  </header>
+
+  <div class="section-head"><span>Cream-primary</span><span class="right">15 — 16</span></div>
+
+  <!-- 15 CYCLADIC -->
+  <section class="plate">
+    <div class="plate-head"><span class="plate-num">15</span><h2 class="plate-name">Cycladic</h2></div>
+    <p class="plate-id">Santorini, Mykonos, Naxos — Greek island whitewash. <strong>Limewash, Crete sand, and Aegean foam</strong> do the cream-primary structural work; Aegean cobalt and Greek flag blue ground the deep end; bougainvillea, hibiscus, and lemon punctuate. The library&rsquo;s first true cream-as-ground palette — the inverse of Cathedral Lights, where saturation was ground and cream was highlight.</p>
+    <div class="swatch-strip">
+      <div class="swatch" style="background:#F8F4EB"></div>
+      <div class="swatch" style="background:#0F4C81"></div>
+      <div class="swatch" style="background:#DA0D6D"></div>
+      <div class="swatch" style="background:#1B8FB5"></div>
+      <div class="swatch" style="background:#C95B3A"></div>
+      <div class="swatch" style="background:#003D8E"></div>
+      <div class="swatch" style="background:#6B7F1E"></div>
+      <div class="swatch" style="background:#E8D3A3"></div>
+      <div class="swatch" style="background:#E83A7A"></div>
+      <div class="swatch" style="background:#E0F2EE"></div>
+      <div class="swatch" style="background:#F2D03B"></div>
+      <div class="swatch" style="background:#2B2A28"></div>
+    </div>
+    <div class="meta-row">
+      <div class="meta-cell"><span class="meta-name">Limewash white</span><span class="meta-hex">F8F4EB</span></div>
+      <div class="meta-cell"><span class="meta-name">Aegean cobalt</span><span class="meta-hex">0F4C81</span></div>
+      <div class="meta-cell"><span class="meta-name">Bougainvillea</span><span class="meta-hex">DA0D6D</span></div>
+      <div class="meta-cell"><span class="meta-name">Aegean turquoise</span><span class="meta-hex">1B8FB5</span></div>
+      <div class="meta-cell"><span class="meta-name">Sun terracotta</span><span class="meta-hex">C95B3A</span></div>
+      <div class="meta-cell"><span class="meta-name">Flag blue</span><span class="meta-hex">003D8E</span></div>
+      <div class="meta-cell"><span class="meta-name">Olive leaf</span><span class="meta-hex">6B7F1E</span></div>
+      <div class="meta-cell"><span class="meta-name">Crete sand</span><span class="meta-hex">E8D3A3</span></div>
+      <div class="meta-cell"><span class="meta-name">Hibiscus</span><span class="meta-hex">E83A7A</span></div>
+      <div class="meta-cell"><span class="meta-name">Aegean foam</span><span class="meta-hex">E0F2EE</span></div>
+      <div class="meta-cell"><span class="meta-name">Mediterranean lemon</span><span class="meta-hex">F2D03B</span></div>
+      <div class="meta-cell"><span class="meta-name">Donkey grey</span><span class="meta-hex">2B2A28</span></div>
+    </div>
+    <div class="preview">
+      <div class="preview-label"><span>Panel preview · uniform sample</span><span>27 cells</span></div>
+      <div class="preview-grid" data-palette='["#F8F4EB","#0F4C81","#DA0D6D","#1B8FB5","#C95B3A","#003D8E","#6B7F1E","#E8D3A3","#E83A7A","#E0F2EE","#F2D03B","#2B2A28"]'></div>
+    </div>
+  </section>
+
+  <!-- 16 MING PORCELAIN -->
+  <section class="plate">
+    <div class="plate-head"><span class="plate-num">16</span><h2 class="plate-name">Ming Porcelain</h2></div>
+    <p class="plate-id">Jingdezhen kilns, 14th–18th century. The famous cobalt-and-white underglaze tradition with later <em>famille rose</em> and <em>famille verte</em> overglaze additions. <strong>Jingdezhen porcelain and pale celadon</strong> as ground; underglaze cobalt and sang-de-boeuf carry the deep saturation; imperial yellow, famille rose, peach bloom animate the mid-register. Quieter than Cycladic — Eastern, disciplined, ceramic. Brings <strong>sang-de-boeuf</strong>, a copper-glaze oxblood unlike any red elsewhere in the library.</p>
+    <div class="swatch-strip">
+      <div class="swatch" style="background:#F5EFE0"></div>
+      <div class="swatch" style="background:#1B3A8A"></div>
+      <div class="swatch" style="background:#6E0E18"></div>
+      <div class="swatch" style="background:#6CA37F"></div>
+      <div class="swatch" style="background:#DC668E"></div>
+      <div class="swatch" style="background:#E3B824"></div>
+      <div class="swatch" style="background:#B5331C"></div>
+      <div class="swatch" style="background:#4E2C50"></div>
+      <div class="swatch" style="background:#C77F6A"></div>
+      <div class="swatch" style="background:#2E8B57"></div>
+      <div class="swatch" style="background:#D7E4D0"></div>
+      <div class="swatch" style="background:#1F1611"></div>
+    </div>
+    <div class="meta-row">
+      <div class="meta-cell"><span class="meta-name">Jingdezhen porcelain</span><span class="meta-hex">F5EFE0</span></div>
+      <div class="meta-cell"><span class="meta-name">Underglaze cobalt</span><span class="meta-hex">1B3A8A</span></div>
+      <div class="meta-cell"><span class="meta-name">Sang-de-boeuf</span><span class="meta-hex">6E0E18</span></div>
+      <div class="meta-cell"><span class="meta-name">Celadon</span><span class="meta-hex">6CA37F</span></div>
+      <div class="meta-cell"><span class="meta-name">Famille rose</span><span class="meta-hex">DC668E</span></div>
+      <div class="meta-cell"><span class="meta-name">Imperial yellow</span><span class="meta-hex">E3B824</span></div>
+      <div class="meta-cell"><span class="meta-name">Iron-red</span><span class="meta-hex">B5331C</span></div>
+      <div class="meta-cell"><span class="meta-name">Aubergine</span><span class="meta-hex">4E2C50</span></div>
+      <div class="meta-cell"><span class="meta-name">Peach bloom</span><span class="meta-hex">C77F6A</span></div>
+      <div class="meta-cell"><span class="meta-name">Famille verte</span><span class="meta-hex">2E8B57</span></div>
+      <div class="meta-cell"><span class="meta-name">Pale celadon</span><span class="meta-hex">D7E4D0</span></div>
+      <div class="meta-cell"><span class="meta-name">Sumi outline</span><span class="meta-hex">1F1611</span></div>
+    </div>
+    <div class="preview">
+      <div class="preview-label"><span>Panel preview · uniform sample</span><span>27 cells</span></div>
+      <div class="preview-grid" data-palette='["#F5EFE0","#1B3A8A","#6E0E18","#6CA37F","#DC668E","#E3B824","#B5331C","#4E2C50","#C77F6A","#2E8B57","#D7E4D0","#1F1611"]'></div>
+    </div>
+  </section>
+
+  <div class="section-head"><span>Charcoal-primary</span><span class="right">17 — 18</span></div>
+
+  <!-- 17 TENEBRISM -->
+  <section class="plate">
+    <div class="plate-head"><span class="plate-num">17</span><h2 class="plate-name">Tenebrism</h2></div>
+    <p class="plate-id">Caravaggio, late 1590s onward. The Italian Baroque discovery that <em>black ground plus dramatic warm light equals unprecedented emotional weight</em>. <strong>Caravaggio black and charcoal void</strong> hold the panel; vermilion robe, lapis drapery, wine madder, and brass armour carry the saturated mid-register; candle flame gold and tallow cream are the highlights where light falls on skin and wax. The library&rsquo;s first explicitly figurative-painterly palette — every cell has a referent in oil on canvas.</p>
+    <div class="swatch-strip">
+      <div class="swatch" style="background:#0A0907"></div>
+      <div class="swatch" style="background:#C03220"></div>
+      <div class="swatch" style="background:#E8B324"></div>
+      <div class="swatch" style="background:#1A3F94"></div>
+      <div class="swatch" style="background:#D49475"></div>
+      <div class="swatch" style="background:#6F1A1E"></div>
+      <div class="swatch" style="background:#A67B2F"></div>
+      <div class="swatch" style="background:#2D4F3E"></div>
+      <div class="swatch" style="background:#8C0817"></div>
+      <div class="swatch" style="background:#E2C285"></div>
+      <div class="swatch" style="background:#1A1612"></div>
+      <div class="swatch" style="background:#C29039"></div>
+    </div>
+    <div class="meta-row">
+      <div class="meta-cell"><span class="meta-name">Caravaggio black</span><span class="meta-hex">0A0907</span></div>
+      <div class="meta-cell"><span class="meta-name">Vermilion robe</span><span class="meta-hex">C03220</span></div>
+      <div class="meta-cell"><span class="meta-name">Candle flame gold</span><span class="meta-hex">E8B324</span></div>
+      <div class="meta-cell"><span class="meta-name">Lapis drapery</span><span class="meta-hex">1A3F94</span></div>
+      <div class="meta-cell"><span class="meta-name">Flesh peach</span><span class="meta-hex">D49475</span></div>
+      <div class="meta-cell"><span class="meta-name">Wine madder</span><span class="meta-hex">6F1A1E</span></div>
+      <div class="meta-cell"><span class="meta-name">Brass armour</span><span class="meta-hex">A67B2F</span></div>
+      <div class="meta-cell"><span class="meta-name">Mantle green</span><span class="meta-hex">2D4F3E</span></div>
+      <div class="meta-cell"><span class="meta-name">Blood crimson</span><span class="meta-hex">8C0817</span></div>
+      <div class="meta-cell"><span class="meta-name">Tallow cream</span><span class="meta-hex">E2C285</span></div>
+      <div class="meta-cell"><span class="meta-name">Charcoal void</span><span class="meta-hex">1A1612</span></div>
+      <div class="meta-cell"><span class="meta-name">Gilt frame</span><span class="meta-hex">C29039</span></div>
+    </div>
+    <div class="preview">
+      <div class="preview-label"><span>Panel preview · uniform sample</span><span>27 cells</span></div>
+      <div class="preview-grid" data-palette='["#0A0907","#C03220","#E8B324","#1A3F94","#D49475","#6F1A1E","#A67B2F","#2D4F3E","#8C0817","#E2C285","#1A1612","#C29039"]'></div>
+    </div>
+  </section>
+
+  <!-- 18 OBSIDIAN -->
+  <section class="plate">
+    <div class="plate-head"><span class="plate-num">18</span><h2 class="plate-name">Obsidian</h2></div>
+    <p class="plate-id">Volcanic geology — Iceland&rsquo;s Reykjanes, Mexico&rsquo;s Popocatépetl, Hawaii&rsquo;s Kīlauea. <strong>Four dark anchors</strong> hold the panel (obsidian glass, basalt, ash, glacial obsidian); magma orange, sulfur yellow, cinder red, and geothermal blue are the eruption colours. The library&rsquo;s most aggressively dark-dominant palette and the only geologically-derived one. The hot-and-cold contrast (magma against glacial obsidian) does the work Tenebrism does with warm-on-warm — a different emotional register at the same dark saturation.</p>
+    <div class="swatch-strip">
+      <div class="swatch" style="background:#0E0B14"></div>
+      <div class="swatch" style="background:#F73E12"></div>
+      <div class="swatch" style="background:#E8D31C"></div>
+      <div class="swatch" style="background:#3B3833"></div>
+      <div class="swatch" style="background:#6F8C3F"></div>
+      <div class="swatch" style="background:#94251A"></div>
+      <div class="swatch" style="background:#686157"></div>
+      <div class="swatch" style="background:#C9A338"></div>
+      <div class="swatch" style="background:#1E9CB5"></div>
+      <div class="swatch" style="background:#F9A11B"></div>
+      <div class="swatch" style="background:#C7DCE2"></div>
+      <div class="swatch" style="background:#1C2538"></div>
+    </div>
+    <div class="meta-row">
+      <div class="meta-cell"><span class="meta-name">Obsidian</span><span class="meta-hex">0E0B14</span></div>
+      <div class="meta-cell"><span class="meta-name">Magma orange</span><span class="meta-hex">F73E12</span></div>
+      <div class="meta-cell"><span class="meta-name">Sulfur yellow</span><span class="meta-hex">E8D31C</span></div>
+      <div class="meta-cell"><span class="meta-name">Basalt</span><span class="meta-hex">3B3833</span></div>
+      <div class="meta-cell"><span class="meta-name">Lichen green</span><span class="meta-hex">6F8C3F</span></div>
+      <div class="meta-cell"><span class="meta-name">Cinder red</span><span class="meta-hex">94251A</span></div>
+      <div class="meta-cell"><span class="meta-name">Ash grey</span><span class="meta-hex">686157</span></div>
+      <div class="meta-cell"><span class="meta-name">Pyrite gold</span><span class="meta-hex">C9A338</span></div>
+      <div class="meta-cell"><span class="meta-name">Geothermal blue</span><span class="meta-hex">1E9CB5</span></div>
+      <div class="meta-cell"><span class="meta-name">Magma yellow</span><span class="meta-hex">F9A11B</span></div>
+      <div class="meta-cell"><span class="meta-name">Snowmelt</span><span class="meta-hex">C7DCE2</span></div>
+      <div class="meta-cell"><span class="meta-name">Glacial obsidian</span><span class="meta-hex">1C2538</span></div>
+    </div>
+    <div class="preview">
+      <div class="preview-label"><span>Panel preview · uniform sample</span><span>27 cells</span></div>
+      <div class="preview-grid" data-palette='["#0E0B14","#F73E12","#E8D31C","#3B3833","#6F8C3F","#94251A","#686157","#C9A338","#1E9CB5","#F9A11B","#C7DCE2","#1C2538"]'></div>
+    </div>
+  </section>
+
+  <footer>
+    <span>M7 · 2026-05-17 · phase LM · palette library · plates 15—18</span>
+    <span class="right">Library now 18 palettes</span>
+  </footer>
+
+</div>
+
+<script>
+  // Mulberry32 — deterministic PRNG so every load shows the same preview layout
+  function mulberry32(seed) {
+    return function() {
+      seed |= 0;
+      seed = seed + 0x6D2B79F5 | 0;
+      let t = seed;
+      t = Math.imul(t ^ t >>> 15, t | 1);
+      t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+
+  document.querySelectorAll('.preview-grid').forEach(function(grid, idx) {
+    var palette = JSON.parse(grid.getAttribute('data-palette'));
+    // continue numbering: plate 15-18 → offset seed 15+
+    var rand = mulberry32((idx + 15) * 137 + 23);
+    var cells = 27;
+    var html = '';
+    for (var i = 0; i < cells; i++) {
+      var c = palette[Math.floor(rand() * palette.length)];
+      html += '<div class="preview-cell" style="background:' + c + '"></div>';
+    }
+    grid.innerHTML = html;
+  });
+</script>
+
+</body>
+</html>
