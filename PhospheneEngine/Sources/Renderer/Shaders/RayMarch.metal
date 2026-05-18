@@ -824,20 +824,25 @@ static float3 fluid_shading(float3 V, float3 N,
     iridescence *= edgeMask * tiltGate * kFluidIridescenceWeight * (2.0 - kFluidZoom * 2.0);
 
     // ── Composition ────────────────────────────────────────────────
-    // Round 32 (2026-05-15): fresnel weight 0.3 → 0.0. Matt's
-    // `2026-05-15T18-46-51Z` review: "I'm also seeing some gray at the
-    // top of peaks that looks like it does not belong." Diagnosed as
-    // the fresnel layer (`fresnelValue × float3(0.9, 1.0, 1.0) × 0.3`)
-    // firing on back-facing spike-side regions just below apex where
-    // view-angle becomes grazing — cyan-tinted near-white = gray at
-    // low weight. Per the round-31 "aurora is the only color source"
-    // directive, this non-aurora-driven layer must also go to zero.
+    // Round 32 (2026-05-15): fresnel weight 0.3 → 0.0 to fix "gray at
+    // the top of peaks" Matt flagged at the time.
     //
-    // Specular kept at 0 from round 31. Ambient at 0.3 from round 30.
-    // Iridescence at the tiny 0.005 weight is the only remaining
-    // non-aurora layer and is essentially invisible.
+    // Round 64 (2026-05-18): re-enable fresnel at 0.20 (lower than
+    // Leitl's original 0.30 for safety). Reference photos of chrome
+    // ferrofluid show bright silhouette edges where fresnel fires —
+    // that's the "rim" character we've been missing since round 32.
+    // The conditions that produced the round-32 gray-peaks artifact
+    // (curtain at elevation 0.83 catching peak normals, plus various
+    // SDF/normal issues) have all been addressed in rounds 33-63, so
+    // the cyan-tinted fresnel rim should now read as clean chrome
+    // edge brightening rather than artifact-gray. Easy to bump up
+    // (0.30) or down (0.15) based on visual review.
+    //
+    // Specular kept at 0 (Leitl's Phong key was studio-style; matID==2
+    // uses sky-reflection paradigm so the equivalent rim/highlight
+    // comes from fresnel + ambient instead).
     constexpr float kFluidAmbientWeight   = 0.3;
-    constexpr float kFluidFresnelWeight   = 0.0;
+    constexpr float kFluidFresnelWeight   = 0.20;
     constexpr float kFluidSpecularWeight  = 0.0;
     return ambient * kFluidAmbientWeight
          + fresnel * kFluidFresnelWeight
