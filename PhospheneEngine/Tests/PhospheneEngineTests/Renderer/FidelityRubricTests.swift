@@ -151,7 +151,22 @@ struct FidelityRubricGateTests {
     // stained-glass aesthetic is the design intent, not a multi-material
     // PBR composition). Matt's approval is the load-bearing gate per
     // SHADER_CRAFT.md §12.1 M7.
-    private static let certifiedPresets: Set<String> = ["Lumen Mosaic"]
+    //
+    // V.9 Session 4.5c R69 (2026-05-18): Ferrofluid Ocean certified after
+    // real-music session 2026-05-18T13-50-15Z + M7 review against
+    // `04_specular_razor_highlights.jpg` (hero anchor) and
+    // `08_lighting_aurora_over_dark_water.jpg` (D-126 mirror-reflects-sky
+    // canonical). Closes V.9 Session 4.5c (rounds 50–65 — constant-field
+    // premise + smooth-Voronoi spike lattice + SDF Lipschitz correction +
+    // mesh-path retire + Leitl fluid_shading + arousal-only swell +
+    // bass-reactive spikes). M7 contact sheet + analysis at
+    // `docs/VISUAL_REFERENCES/ferrofluid_ocean/M7_R69/`. The preset's
+    // automated rubric gate reads false because the matID==2 path bypasses
+    // the V.3 mat_* cookbook in favor of Leitl four-layer fluid_shading
+    // (ambient + fresnel + specular + iridescence — by-design paradigm
+    // pivot per D-126); the visual fidelity bar is met by other means.
+    // Matt's approval is the load-bearing gate per SHADER_CRAFT.md §12.1 M7.
+    private static let certifiedPresets: Set<String> = ["Lumen Mosaic", "Ferrofluid Ocean"]
 
     @Test func automatedGate_uncertifiedPresetsAreUncertified() async {
         let store = PresetCertificationStore()
