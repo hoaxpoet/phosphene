@@ -213,17 +213,45 @@ static inline FOGerstnerWave fo_wave(int i) {
     return w;
 }
 
-// Sum vertical displacement at world xz; t is accumulated_audio_time.
-// swellScale multiplies every wave's amplitude uniformly.
-static inline float fo_gerstner_swell(float2 xz, float t, float swellScale) {
-    float y = 0.0;
+// Tessendorf horizontal-sway parameter (round 62, 2026-05-18). 0 = pure
+// sinusoidal Y displacement; 1 = maximum circular orbit. Mirror of the
+// mesh-path `kGerstnerSteepness` value, deferred when porting Gerstner
+// parameters in round 59. 0.3 gives visible crest-rolling without wave-tip
+// fold-over even at constructive peak of all 4 waves.
+constant float kSwellSteepness = 0.3;
+
+// Compute full 3D Gerstner displacement (x sway + y height + z sway) at
+// world xz; t is `features.time` (wall-clock seconds, monotonic — set in
+// sceneSDF after round 58). swellScale multiplies every wave's amplitude.
+//
+// Returns the surface displacement vector that the un-displaced point
+// `(xz.x, 0, xz.y)` undergoes — i.e., the surface point IS at
+// `(xz.x + disp.x, disp.y, xz.y + disp.z)`. To find the surface height
+// at a fixed world-XZ position p, the inverse-mapping is needed; for
+// height-field SDF rendering, the forward-Euler approximation
+// `spike_sample_pos = p.xz - disp.xz` is accurate at small steepness
+// (the 0.3 value here is well within the linear-approximation regime).
+//
+// Tessendorf reference: J. Tessendorf, "Simulating Ocean Water," 2001,
+// §3.3 "Simple Sum-of-Sinusoids" with the displacement orbit term.
+static inline float3 fo_gerstner_swell(float2 xz, float t, float swellScale) {
+    float3 disp = float3(0.0);
     for (int i = 0; i < 4; i++) {
         FOGerstnerWave w = fo_wave(i);
         float k     = FO_TWO_PI / max(w.wavelength, 0.001);
         float phase = dot(w.dir, xz) * k - w.speed * t;
-        y += (w.amplitude * swellScale) * cos(phase);
+        float A     = w.amplitude * swellScale;
+        float cosP  = cos(phase);
+        float sinP  = sin(phase);
+        // Vertical sine displacement (height of crest).
+        disp.y += A * sinP;
+        // Horizontal sway in the wave's propagation direction. Crests
+        // move forward and back relative to their travel — the visible
+        // "rolling" character of ocean swell.
+        disp.x += kSwellSteepness * A * w.dir.x * cosP;
+        disp.z += kSwellSteepness * A * w.dir.y * cosP;
     }
-    return y;
+    return disp;
 }
 
 // MARK: - Rosensweig spike field
@@ -361,11 +389,22 @@ float sceneSDF(float3 p,
     // `fo_swell_scale`) — only the wave PROPAGATION uses real time now.
     // See `project_accumulated_audio_time_not_clock` memory for the rule.
     float t        = f.time;
-    float swell    = fo_gerstner_swell(p.xz, t, fo_swell_scale(f, stems));
-    float spikes   = fo_ferrofluid_field_sampled(p,
+    // Round 62 (2026-05-18): Gerstner now returns full 3D displacement
+    // (Tessendorf sway). The horizontal X/Z components shift the spike
+    // sample position so each spike rides on the wave it's part of —
+    // crests carry their spikes forward, troughs carry theirs back.
+    // Forward-Euler approximation: at small steepness (0.3) the inverse
+    // mapping is approximately linear, so we step the spike-sample XZ
+    // backward by the swell's horizontal displacement to find the
+    // un-displaced source position. Accurate enough at our steepness;
+    // exact form would require fixed-point iteration which isn't worth
+    // the cost for this visual difference.
+    float3 swellD  = fo_gerstner_swell(p.xz, t, fo_swell_scale(f, stems));
+    float3 spikeP  = float3(p.x - swellD.x, p.y, p.z - swellD.z);
+    float spikes   = fo_ferrofluid_field_sampled(spikeP,
                                                  fo_spike_strength(f, stems),
                                                  ferrofluidHeight);
-    float surfaceY = swell + spikes;
+    float surfaceY = swellD.y + spikes;
     // Round 56 (2026-05-17): Lipschitz-corrected SDF. The naive
     // `p.y - surfaceY` returns the VERTICAL distance to the surface, not the
     // true 3D minimum distance. For tall narrow cones (height 0.62 wu / base
