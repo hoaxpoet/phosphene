@@ -57,70 +57,64 @@ static inline float fo_stem_warmup_blend(constant StemFeatures& stems) {
     return smoothstep(FO_STEM_WARMUP_LO, FO_STEM_WARMUP_HI, total);
 }
 
-// Spike-field strength: CONSTANT — returns 1.0 always.
+// Spike-field strength: constant baseline + bass-deviation modulation.
 //
-// **Constant-field premise** (round 50, 2026-05-16). Phosphene's Ferrofluid
-// Ocean preset premise is "what if the ocean were made of ferrofluid?" That
-// implies an ambient, permanent magnetic field — the Rosensweig spike
-// lattice is part of the ocean's identity, present constantly at its
-// characteristic shape regardless of music. The lattice does NOT collapse
-// at silence; spike width is not audio-coupled; the fundamental geometry
-// is constant. Music modulates the swell (`fo_swell_scale`) and the aurora
-// (`rm_ferrofluidSky`), not the spikes.
+// **Round 65 (2026-05-18) — reactivated.** Matt's 2026-05-18T13-37-57Z
+// review identified that the per-beat reactivity Matt was reading as
+// "off" was actually the SWELL responding to drums, not the spikes. With
+// round 65 removing the drums coupling from `fo_swell_scale`, the
+// substrate becomes a slow atmospheric layer — and the per-beat motion
+// previously carried by the swell moves to the spike heights. The
+// "competing motions" problem from rounds 60/61 was about the swell and
+// spikes BOTH being beat-reactive at similar magnitudes; with only the
+// spikes carrying the beat now, there's no competition.
 //
-// **History of attempted spike-height audio coupling (all reverted):**
+// Formula: round-60's continuous form, `1.0 + 0.35 × clamp(bass_dev, 0, 1)`.
 //
-// Round 56 added `1.0 + 0.10 × bass_energy_dev` as a "subtle music
-// response" polish layer. It was too subtle (2-4 % at typical music) to
-// read visibly.
+// At silence (`bass_energy_dev = 0`): returns 1.0 → full constant lattice.
+// At typical music peak (`bass_dev` ~0.5): returns 1.175 → 17.5 % taller.
+// At strong transient (`bass_dev` ≥ 1.0): returns 1.35 → 35 % taller.
 //
-// Round 60 bumped the coefficient to 0.35 to make the response visible.
-// That worked at the per-pixel level but competed with the macro Gerstner
-// swell (spike pulse fired at ~2 Hz quarter-note rate, swell oscillated
-// at ~0.1 Hz). Matt's 2026-05-18T03-12-28Z review: "The swelling and the
-// spike motion are struggling to coexist."
-//
-// Round 61 gated the pulse to `bar_phase01` (downbeat-only). That created
-// a different defect: bar boundaries don't align with bass kicks
-// musically. Most bass kicks fall mid-bar (`bar_phase ~0.6`) where the
-// pulse is gated off; bar wraps trigger pulses regardless of whether bass
-// is loud right then. Visual rhythm doesn't match music rhythm — looks
-// like an artifact. Matt's 2026-05-18T13-20-10Z review: "bar-locked spike
-// thump looks like a defect, not a feature."
-//
-// **Round 63 (2026-05-18) — revert to round-50 premise.** Three successive
-// attempts (rounds 56, 60, 61) to layer audio-reactive spike-height on top
-// of the constant lattice each produced something that read as artifact.
-// The spike geometry is the ocean's identity; modulating it with music
-// fights the swell's rhythm and the aurora's chromatic motion. Music
-// response stays in `fo_swell_scale` (arousal + drums → swell amplitude)
-// and `rm_ferrofluidSky` (vocals → hue, drums → intensity, arousal →
-// drift). Spikes are constant geometry, period.
+// **Earlier history (preserved for the lessons):** Rounds 56/60/61 each
+// tried audio-coupled spike heights while the swell was ALSO beat-
+// reactive; results read as "competing" or "artifact." Round 63 reverted
+// to pure constant 1.0. Round 65 reactivates with the swell drums-
+// coupling REMOVED so there's no competing motion. This is the correct
+// pairing: slow swell + bass-reactive spikes, instead of bass-reactive
+// swell + constant or beat-locked spikes.
 static inline float fo_spike_strength(constant FeatureVector& f,
                                       constant StemFeatures& stems) {
-    (void)f; (void)stems;
-    return 1.0;
+    (void)f;
+    float bassDev = clamp(stems.bass_energy_dev, 0.0, 1.0);
+    return 1.0 + 0.35 * bassDev;
 }
 
-// Swell amplitude scale per D-124(d): arousal sets the sustained baseline at
-// ~70%, drums_energy_dev adds short-period crest emphasis at ~30%.
+// Swell amplitude scale — slow energy-driven drift only (round 65, 2026-05-18).
+//
+// **History:** Pre-round-65 the formula added `0.3 × drums_energy_dev` as a
+// per-beat crest emphasis. Matt's 2026-05-18T13-37-57Z review identified
+// this as the visible "substrate tied to bass" effect: swell amplitude
+// pumped 0.70 → 0.91 on each drum hit (~25 % wave-height jump per beat).
+// He preferred deactivating the substrate's beat reactivity and moving the
+// per-beat response to the spike heights instead.
+//
+// Round 65 removes the drums term. The swell becomes purely atmospheric —
+// amplitude drifts slowly with `arousal` (the broad energy curve of the
+// music) but doesn't pulse per beat. The spike-height response (see
+// `fo_spike_strength`) is reactivated in the same round to carry the
+// beat reactivity that the swell used to.
 //
 //   silent + neutral arousal  → 0.4 (gentle calm-body breathing)
-//   peak arousal + drum hit   → 0.4 + 0.6 + 0.3 = 1.3 (clamped by amplitudes)
+//   peak arousal              → 0.4 + 0.6 = 1.0 (sustained)
 //
-// Independence with spike height (driven by bass_energy_dev) is load-bearing:
-// calm-body-with-spikes and agitated-body-without-spikes must both be reachable.
+// Trade-off: silence-to-music transition no longer has the drum-driven
+// "swell ramps up on first hit" character. Acceptable — arousal smoothing
+// rises over a few seconds when music starts, so the swell amplitude
+// still builds appropriately, just smoothly instead of beat-driven.
 static inline float fo_swell_scale(constant FeatureVector& f,
                                    constant StemFeatures& stems) {
-    float blend = fo_stem_warmup_blend(stems);
-    // drums proxy during warmup: beat_bass is a weak surrogate so motion
-    // continues to read at silence; deviation primitive takes over once stems land.
-    float drumsProxy = f.beat_bass * 0.3;
-    float drumsStem  = max(0.0, stems.drums_energy_dev);
-    float drums      = mix(drumsProxy, drumsStem, blend);
-    return 0.4
-         + 0.6 * smoothstep(-0.5, 0.5, f.arousal)
-         + 0.3 * drums;
+    (void)stems;
+    return 0.4 + 0.6 * smoothstep(-0.5, 0.5, f.arousal);
 }
 
 // MARK: - Gerstner macro displacement
