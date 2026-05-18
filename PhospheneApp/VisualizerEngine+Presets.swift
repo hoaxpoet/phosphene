@@ -57,6 +57,7 @@ extension VisualizerEngine {
         pipeline.setMeshPresetTick(nil)
         arachneState = nil
         gossamerState = nil
+        auroraVeilState = nil
         lumenPatternEngine = nil
         ferrofluidParticles = nil
         ferrofluidMesh = nil
@@ -356,6 +357,26 @@ extension VisualizerEngine {
                         }
                     } else {
                         logger.error("GossamerState: failed to allocate wave pool for preset '\(desc.name)'")
+                    }
+                }
+
+                // Aurora Veil-specific (AV.2): allocate kink accumulator +
+                // pitch-smoother state, wire tick + fragment buffer at slot 6.
+                // Mirrors the Gossamer pattern above — the same slot-6
+                // `setDirectPresetFragmentBuffer` carries the 16-byte
+                // `AuroraVeilStateGPU` struct to the shader.
+                if desc.name == "Aurora Veil" {
+                    if let state = AuroraVeilState(device: context.device) {
+                        auroraVeilState = state
+                        state.reset()
+                        pipeline.setDirectPresetFragmentBuffer(state.stateBuffer)
+                        pipeline.setMeshPresetTick { [weak state] features, stems in
+                            state?.tick(deltaTime: features.deltaTime,
+                                        features: features,
+                                        stems: stems)
+                        }
+                    } else {
+                        logger.error("AuroraVeilState: failed to allocate state for preset '\(desc.name)'")
                     }
                 }
 

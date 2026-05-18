@@ -127,6 +127,13 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// via `setMeshPresetTick` / `setDirectPresetFragmentBuffer` in `applyPreset`.
     var gossamerState: GossamerState?
 
+    /// Aurora Veil kink-accumulator + pitch-smoother state — allocated when
+    /// the Aurora Veil preset is active, nil otherwise. Tick closure and
+    /// stateBuffer are wired via `setMeshPresetTick` /
+    /// `setDirectPresetFragmentBuffer` in `applyPreset` (AV.2 — same Gossamer
+    /// pattern, slot 6).
+    var auroraVeilState: AuroraVeilState?
+
     /// Lumen Mosaic 4-light pattern engine — allocated when the Lumen Mosaic
     /// preset is active, nil otherwise. Tick closure flushes the engine state
     /// to a 336-byte UMA buffer bound at fragment slot 8 of the ray-march
