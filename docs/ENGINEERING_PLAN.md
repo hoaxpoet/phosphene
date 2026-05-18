@@ -3676,6 +3676,39 @@ The preset was originally sequenced as 10 increments LM.0 → LM.9 with cert sig
 
 **BUG-004 closed 2026-05-12** as a downstream consequence. The BUG-004 closure increment expanded `GoldenSessionTests.makeRealCatalog()` from 11 → 15 production presets so the orchestrator's `includeUncertifiedPresets: false` filter is now end-to-end exercised against the real production cert state; added a new `Session D` test (`sessionD_lumenMosaicWinsFirstSegment`) that regression-locks Lumen Mosaic winning at least one segment under a plausible mood profile (BPM=75 / val=0.0 / arous=+0.30); and fixed the stale `MatIDDispatchTests.kLumenEmissionGain` constant (4.0 → 1.0 post-LM.3.2-round-4). Milestone D advances **0 → 1 / 22+** with Lumen Mosaic as Phosphene's first production certified preset. See `docs/QUALITY/KNOWN_ISSUES.md` Resolved section for the full closure entry.
 
+### Increment LM.4.7 — Curated 18-palette library + mood-biased Orchestrator selection
+
+**Status:** ⏳ Planned. Paperwork-only session 2026-05-18 filed `D-LM-palette-library` + `D-LM-cream-rescission`; CLAUDE.md + KNOWN_ISSUES.md + this entry updated. Implementation session not yet started.
+
+**Scope.** Replace LM.4.6's `lm_cell_palette` uniform-random-RGB body (and the LM.7 per-track chromatic-projected tint built on top of it) with palette-library-driven cell colours. Each session selects one of **18 hand-authored 12-colour palettes**; the Orchestrator picks the palette via a mood-biased probability distribution over the library. Within a session, cells sample uniformly from the drawn palette's 12 entries via cell-hash modulo 12. The per-track seed perturbs **sampling order** within the palette (which 12-bucket a given cell lands in for that track) — never palette membership. The LM.3.2 team/period beat-step ratchet is preserved; cells advance their palette index on rising-edge of their assigned band's beat. Cites `D-LM-palette-library`.
+
+The pale-tone-share gate (≤ 0.30 of cells; pale = linear RGB `min(R, G, B) > 0.65`) lands in this increment as the mechanical enforcement of `D-LM-cream-rescission`. Cathedral Lights is the calibration palette (~25 % nominal pale-cell share, ~30 % worst-case under hash-draw variance).
+
+**The 18 palettes.** Vol. I — Autumnal, Refn Glow, Glacier, Art Deco, Abyssal Bioluminescence, Kintsugi, Carnival. Vol. II — Holi, Geode, Rothko Chapel, Tropical Aviary, Persian Miniature, Ukiyo-e. Plate 14 — Cathedral Lights. Plates 15–18 — Cycladic, Ming Porcelain, Tenebrism, Obsidian.
+
+**Done when.**
+
+- New file `PhospheneEngine/Sources/Presets/LumenMosaicPaletteLibrary.swift` defines 18 palettes as `[SIMD3<Float>]` constants, each exactly 12 entries, named to match the design artifacts (Autumnal, Refn Glow, Glacier, Art Deco, Abyssal Bioluminescence, Kintsugi, Carnival, Holi, Geode, Rothko Chapel, Tropical Aviary, Persian Miniature, Ukiyo-e, Cathedral Lights, Cycladic, Ming Porcelain, Tenebrism, Obsidian).
+- Orchestrator selection model implemented: weight function `(valence, arousal, palette) → non-negative scalar`; weighted draw at session start; selection stable within a session. Per `D-LM-palette-library`: mood biases **selection probability**, never deterministic mapping; every palette has non-zero probability everywhere in the mood plane.
+- `lm_cell_palette` (MSL) rewritten to index into the per-session palette via `palette_idx = lm_hash_u32(cell_id ^ step ^ track_seed ^ section_salt) % 12` and look up the corresponding palette entry. The pre-LM.4.7 hash → RGB-cube path is removed. The LM.7 per-track chromatic-projected tint path is removed (`kTintMagnitude` retires).
+- Slot-8 GPU ABI extended to carry the 12-colour palette as 36 floats (or equivalent per implementation choice — e.g. 12 × `float4` packed). `LumenPatternState` stride updated; Swift-side `CommonLayoutTest` regression-locks the new size. `directPresetFragmentBuffer3` setter wires the per-session palette into the binding.
+- `LumenPaletteSpectrumTests` rewritten — assertions on **palette membership** (every cell colour matches one of the 12 palette entries to within float epsilon), per-session palette stability, mood-biased selection probability distribution shape, palette character distinctness across the 18-palette set. Replaces the existing Suite 7 (LM.7 chromatic-projection assertions); LM.7-specific tests retire with the LM.7 code path.
+- LM.9 pale-tone-share gate implemented as a new test (location TBD — `LumenPaletteSpectrumTests` or `FidelityRubric`): per non-silence fixture frame, classify each cell by linear RGB; reject the fixture if `pale_cell_count / total_cells > 0.30`. **Passes for all 18 palettes mechanically.** Cathedral Lights specifically must pass at its ~25 % nominal share with margin.
+- `PresetRegression` Lumen Mosaic golden hash regenerated — the regression harness's slot-8 zero-bound default is no longer equivalent to "neutral palette" because the cell-colour lookup is into a palette table. The new golden hash reflects the post-LM.4.7 baseline; the regression test pins the new value.
+- Engine + app build clean; SwiftLint 0 violations on touched files.
+- **Matt M7 review** on a real-music multi-track session: each session's drawn palette reads as its named character (Cathedral Lights → stained-glass, Refn Glow → warm-neon-shadow, Glacier → frozen-blue-on-snow, etc.); the orchestrator's mood-biased selection feels mood-appropriate across the playlist (low-valence / high-arousal sessions trend toward Rothko Chapel / Tenebrism / Abyssal Bioluminescence; high-valence / high-arousal sessions trend toward Carnival / Holi / Tropical Aviary; etc.) without being deterministic.
+
+**Verify.**
+
+- `swift test --package-path PhospheneEngine --filter "LumenPalette|PresetLoaderCompileFailure|PresetRegression|PresetAcceptance|FidelityRubric"`
+- `RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter PresetVisualReview` — 18-palette contact sheet at the standard 9-fixture set, plus per-palette mean / aggregate-character verification.
+- `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build`
+- `swiftlint lint --strict --config .swiftlint.yml`
+
+**Honest trade-offs documented.** Per-cell freedom is narrower than LM.4.6: each cell samples one of 12 colours, not from the full 16M-colour RGB cube. Matt explicitly accepted this trade-off in the 2026-05-17 conversation in exchange for palette character per session. Across the 18 palettes, the union of reachable colours covers a wide swath of the cube; what changes is that **within a given session**, only 12 colours appear, which is the property that makes the palette read as a coherent visual identity.
+
+**Carry-forward.** Resolves BUG-014 (`docs/QUALITY/KNOWN_ISSUES.md` Open) — flip to Resolved with the LM.4.7 commit hash. New palette additions (post-LM.4.7) require Matt M7 review per palette and a `D-LM-palette-library`-citing amendment in `DECISIONS.md`. Palette removals are also gated on Matt sign-off. The LM.7 chromatic-projection code path retires with LM.4.7; the `kTintMagnitude` constant and the `test_achromaticAlignedSeed_doesNotWash` test are removed (the failure mode they regression-lock cannot occur on the palette-table path because cells sample from a curated 12-entry table that, by construction, avoids the achromatic-axis wash).
+
 ---
 
 ## Phase AV — Aurora Veil (direct-fragment + mv_warp preset)
