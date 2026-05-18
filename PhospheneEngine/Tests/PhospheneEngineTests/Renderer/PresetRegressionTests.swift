@@ -173,6 +173,17 @@ private let goldenPresetHashes: [String: PresetHashes] = [
     // — domed cells reading as backlit glass instead of flat tiles, plus
     // optional centre hot-spots — is observed via `RENDER_VISUAL=1
     // PresetVisualReviewTests` 9-fixture set.
+    //
+    // LM.4.7 (curated 18-palette library + per-song mood-biased selection):
+    // hash UNCHANGED. The regression harness now binds an explicit Autumnal
+    // palette (index 0 of `LumenMosaicPaletteLibrary.all`) at slot 8 with
+    // pre-ticked band counters so `lm_cell_palette` walks the 12 palette
+    // entries deterministically — but the harness samples `color(0)` of the
+    // ray-march G-buffer (`{depth, matID}`), not the lighting-pass albedo.
+    // Per-cell palette colour drift is invisible at this hash; cell shape
+    // (depth + matID) is what dHash measures. Real per-track palette
+    // identity is observed via `RENDER_VISUAL=1 PresetVisualReviewTests`
+    // and Matt M7 review on real-music sessions (BUG-014 acceptance).
     "Lumen Mosaic": (steady: 0xF0F0C8CCCCC8F0F0, beatHeavy: 0xF0F0C8CCCCC8F0F0, quiet: 0xF0F0C8CCCCC8F0F0),
     "Membrane": (steady: 0x33E3A919C9627939, beatHeavy: 0x12A3A998C9646139, quiet: 0x47E3C919CD627959),
     "Murmuration": (steady: 0x07449B6727773FF8, beatHeavy: 0x0B449A4727373FF8, quiet: 0x0744936727773FF8),
@@ -333,6 +344,9 @@ struct PresetRegressionTests {
         encoder.setFragmentBuffer(buffers.stem, offset: 0, index: 3)
         if let sceneBuf = buffers.scene { encoder.setFragmentBuffer(sceneBuf, offset: 0, index: 4) }
         encoder.setFragmentBuffer(buffers.hist, offset: 0, index: 5)
+        if let lumenBuf = buffers.lumen {
+            encoder.setFragmentBuffer(lumenBuf, offset: 0, index: 8)
+        }
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         encoder.endEncoding()
         cmdBuf.commit()
@@ -350,6 +364,7 @@ struct PresetRegressionTests {
         let stem: MTLBuffer
         let hist: MTLBuffer
         let scene: MTLBuffer?
+        let lumen: MTLBuffer?
     }
 
     private func makeRenderBuffers(context: MetalContext, preset: PresetLoader.LoadedPreset) throws -> RenderBuffers {
@@ -372,7 +387,41 @@ struct PresetRegressionTests {
             buf.contents().copyMemory(from: &su, byteCount: MemoryLayout<SceneUniforms>.size)
             scene = buf
         }
-        return RenderBuffers(fft: fft, wav: wav, stem: stem, hist: hist, scene: scene)
+
+        // LM.4.7: Lumen Mosaic reads a 12-entry palette payload at slot 8.
+        // The regression harness binds an explicit Autumnal-palette state
+        // (palette index 0 from `LumenMosaicPaletteLibrary.all`) so the
+        // golden hash is deterministic and reproducible across runs. Other
+        // presets receive a nil binding; they don't read slot 8 (the
+        // preamble's `LumenPatternState` parameter is silenced via
+        // `(void)lumen;` in their `sceneMaterial` overrides, but the
+        // pipeline requires SOMETHING bound — falls through to the
+        // pipeline's automatic placeholder if the encoder skips slot 8).
+        var lumen: MTLBuffer?
+        if preset.descriptor.name == "Lumen Mosaic" {
+            let stateStride = MemoryLayout<LumenPatternState>.stride
+            if let buf = context.makeSharedBuffer(length: stateStride) {
+                var state = LumenPatternState()
+                let palette = LumenMosaicPaletteLibrary.all[0]   // Autumnal
+                let entries: [LumenPaletteEntry] = palette.colors.map { LumenPaletteEntry($0) }
+                state.palette = (
+                    entries[0], entries[1], entries[2],  entries[3],
+                    entries[4], entries[5], entries[6],  entries[7],
+                    entries[8], entries[9], entries[10], entries[11]
+                )
+                // Tick a few synthetic beats forward so `bassCounter` is
+                // non-zero and the palette walk produces a representative
+                // sample of the 12 entries (sectionSalt = 0, step varies).
+                state.bassCounter   = 7
+                state.midCounter    = 3
+                state.trebleCounter = 1
+                state.activeLightCount = 4
+                buf.contents().copyMemory(from: &state, byteCount: stateStride)
+                lumen = buf
+            }
+        }
+
+        return RenderBuffers(fft: fft, wav: wav, stem: stem, hist: hist, scene: scene, lumen: lumen)
     }
 
     // MARK: - dHash

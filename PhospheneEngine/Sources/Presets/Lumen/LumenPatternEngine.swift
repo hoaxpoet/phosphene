@@ -5,8 +5,8 @@
 // (`LumenLightAgent`, `LumenPattern`, `LumenPatternState`), the engine class,
 // and the mood-tint / smoothstep math helpers all need to live in the same
 // translation unit so the in-place `MemoryLayout<LumenPatternState>.stride
-// == 376` assertion in `init?(device:seed:)` and the matching MSL preamble
-// stay tightly coupled. Splitting any of them out would increase risk of
+// == 568` assertion in `LumenPatternEngineTests` and the matching MSL
+// preamble stay tightly coupled. Splitting any of them out would increase risk of
 // the Swift / MSL byte layouts diverging silently. Same disposition as
 // `ArachneState.swift`.
 //
@@ -21,7 +21,7 @@
 //
 //   1. Each frame the engine consumes one (FeatureVector, StemFeatures) tick
 //      and updates four `LumenLightAgent` slots.
-//   2. The state is flushed to a 376-byte UMA `MTLBuffer` (`patternBuffer`).
+//   2. The state is flushed to a 568-byte UMA `MTLBuffer` (`patternBuffer`).
 //   3. RenderPipeline binds the buffer at fragment slot 8 of the ray-march
 //      lighting pass; the LumenMosaic shader reads it and computes the
 //      cell-quantized backlight per the contract §P.3 / §P.4 recipes.
@@ -167,7 +167,43 @@ public struct LumenPattern: Sendable, Equatable {
     public static let idle = LumenPattern()
 }
 
-// MARK: - LumenPatternState (376 bytes — LM.3.2)
+// MARK: - LumenPaletteEntry (16 bytes)
+
+/// One curated palette colour, byte-identical to the matching MSL struct
+/// in `LumenMosaic.metal`'s preamble. The 4-Float layout (4-byte aligned,
+/// 16-byte stride) is deliberately *not* `SIMD3<Float>` + pad — `SIMD3`
+/// would force 16-byte alignment, but a tuple of 12 entries inserted at a
+/// non-16-aligned offset within `LumenPatternState` (offset 376 % 16 = 8)
+/// would force Swift to insert 8 bytes of padding before the array. The
+/// explicit 4 × Float layout has natural 4-byte alignment and lands
+/// contiguously after `barCounter` with no insertion. The MSL side
+/// mirrors with `struct LumenPaletteEntry { float r; float g; float b;
+/// float a; };` (same alignment), so the byte-by-byte memcpy from
+/// `patternBuffer.contents()` lands at matching offsets on both sides.
+public struct LumenPaletteEntry: Sendable, Equatable {
+    public var red: Float
+    public var green: Float
+    public var blue: Float
+    public var alpha: Float
+
+    public init(red: Float = 0, green: Float = 0, blue: Float = 0, alpha: Float = 0) {
+        self.red = red
+        self.green = green
+        self.blue = blue
+        self.alpha = alpha
+    }
+
+    public init(_ rgb: SIMD3<Float>) {
+        self.red = rgb.x
+        self.green = rgb.y
+        self.blue = rgb.z
+        self.alpha = 0
+    }
+
+    public static let zero = LumenPaletteEntry()
+}
+
+// MARK: - LumenPatternState (568 bytes — LM.4.7)
 
 // swiftlint:disable large_tuple
 
@@ -175,12 +211,23 @@ public struct LumenPattern: Sendable, Equatable {
 /// matching MSL struct in `LumenMosaic.metal`. Bound at fragment slot 8 of
 /// the ray-march lighting pass.
 ///
-/// Layout (LM.3.2): 4 × LumenLightAgent (128 B) + 4 × LumenPattern (192 B)
+/// Layout (LM.4.7):
+///   4 × LumenLightAgent (128 B)
+/// + 4 × LumenPattern    (192 B)
 /// + 6 × Float32 scalars (counts + ambient + valence + arousal + pad0 = 24 B)
 /// + 4 × Float32 trackPaletteSeed{A,B,C,D} (16 B)
 /// + 4 × Float32 band counters (bass/mid/treble/bar = 16 B)
-/// = 376 B. The Swift `MemoryLayout<LumenPatternState>.stride` is asserted
-/// to be 376 in `LumenPatternEngineTests.test_lumenPatternState_strideIs376`.
+/// + 12 × LumenPaletteEntry (192 B) — LM.4.7 per-song palette payload
+/// = 568 B. The Swift `MemoryLayout<LumenPatternState>.stride` is asserted
+/// to be 568 in `LumenPatternEngineTests.test_lumenPatternState_strideIs568`.
+///
+/// **LM.4.7 ABI note.** The `trackPaletteSeedA/B/C/D` fields are retained
+/// as zeroed dead weight after LM.4.7 — they were the LM.7 chromatic-tint
+/// seed plumbing, and `lm_cell_palette` no longer reads them. Retiring
+/// them would shift 16 bytes of offsets inside the struct and force a
+/// regression-hash sweep across every preset that binds slot 8 (currently
+/// only Lumen Mosaic). Left in place; a future cleanup increment can
+/// retire them at its own cost.
 public struct LumenPatternState: Sendable {
     public var lights: (LumenLightAgent, LumenLightAgent, LumenLightAgent, LumenLightAgent)
     public var patterns: (LumenPattern, LumenPattern, LumenPattern, LumenPattern)
@@ -225,6 +272,16 @@ public struct LumenPatternState: Sendable {
     public var midCounter: Float
     public var trebleCounter: Float
     public var barCounter: Float
+    /// LM.4.7 — per-song palette payload. The shader's `lm_cell_palette`
+    /// reads `palette[idx]` for `idx = hash % 12`. Cells of every team /
+    /// period / section step land in this same 12-entry table for the
+    /// duration of the song; `LumenPatternEngine.setPalette(_:)` writes a
+    /// new payload at each track change.
+    public var palette: (
+        LumenPaletteEntry, LumenPaletteEntry, LumenPaletteEntry, LumenPaletteEntry,
+        LumenPaletteEntry, LumenPaletteEntry, LumenPaletteEntry, LumenPaletteEntry,
+        LumenPaletteEntry, LumenPaletteEntry, LumenPaletteEntry, LumenPaletteEntry
+    )
 
     public init(
         lights: (LumenLightAgent, LumenLightAgent, LumenLightAgent, LumenLightAgent) =
@@ -244,7 +301,15 @@ public struct LumenPatternState: Sendable {
         bassCounter: Float = 0,
         midCounter: Float = 0,
         trebleCounter: Float = 0,
-        barCounter: Float = 0
+        barCounter: Float = 0,
+        palette: (
+            LumenPaletteEntry, LumenPaletteEntry, LumenPaletteEntry, LumenPaletteEntry,
+            LumenPaletteEntry, LumenPaletteEntry, LumenPaletteEntry, LumenPaletteEntry,
+            LumenPaletteEntry, LumenPaletteEntry, LumenPaletteEntry, LumenPaletteEntry
+        ) = (
+            .zero, .zero, .zero, .zero, .zero, .zero,
+            .zero, .zero, .zero, .zero, .zero, .zero
+        )
     ) {
         self.lights = lights
         self.patterns = patterns
@@ -262,6 +327,7 @@ public struct LumenPatternState: Sendable {
         self.midCounter = midCounter
         self.trebleCounter = trebleCounter
         self.barCounter = barCounter
+        self.palette = palette
     }
 
     /// Indexed light access (read-only). LM.2 has exactly 4 lights.
@@ -408,6 +474,19 @@ public final class LumenPatternEngine: @unchecked Sendable {
     /// Wall-clock seconds since this engine was instantiated. Drives the
     /// drift-Lissajous phase. Reset to 0 on `reset()`.
     public private(set) var elapsedTime: Float = 0
+
+    /// LM.4.7 — FIFO of recently-drawn palette indices, oldest → newest,
+    /// capped at `LumenMosaicPaletteLibrary.kAntiRepeatWindow` (3 at LM.4.7
+    /// amendment). The track-change site appends the freshly-drawn index
+    /// after each `setPalette(_:)` and trims to the window size; the next
+    /// track's `selectPalette(...)` call excludes every entry. Started as
+    /// a singular `previousPaletteIndex: Int?` field; widened to a window
+    /// at the 2026-05-18 amendment after Matt's M7 session showed
+    /// within-quadrant clustering with N=1 (D-LM-palette-library
+    /// amendment). Reset to empty on engine re-instantiation; persists
+    /// across `reset()` (which is called on preset re-apply, not on
+    /// track change).
+    public var recentPaletteIndices: [Int] = []
 
     // MARK: - Private state
 
@@ -621,6 +700,35 @@ public final class LumenPatternEngine: @unchecked Sendable {
             // would carry over and a cell would jump to a far-off palette
             // index on the very first beat of the new track).
             resetBeatTrackingState()
+        }
+        writeToGPU()
+    }
+
+    /// LM.4.7 — write the drawn per-song palette into the slot-8 GPU
+    /// payload. Called at most once per track change, immediately after
+    /// `LumenMosaicPaletteLibrary.selectPalette(...)` resolves the
+    /// index. The 12 entries are mirrored byte-for-byte into the MSL
+    /// `palette[12]` array in the lighting fragment's slot-8 read.
+    ///
+    /// Padding to 12 (defensive): if the caller passes fewer than 12
+    /// colours, the tail is left at the prior payload's value — but
+    /// every shipped library palette has exactly 12 entries by
+    /// construction (`LumenPalette.colors` is precondition-checked at
+    /// table-build time), so this branch is unreachable in practice.
+    public func setPalette(_ palette: LumenPalette) {
+        let entries: [LumenPaletteEntry] = palette.colors.prefix(12)
+            .map { LumenPaletteEntry($0) }
+        lock.withLock {
+            // Index 0 is required; the others are populated under the
+            // 12-entry precondition. Replace each slot explicitly because
+            // tuple member assignment via subscript is not available.
+            if entries.count >= 12 {
+                state.palette = (
+                    entries[0], entries[1], entries[2], entries[3],
+                    entries[4], entries[5], entries[6], entries[7],
+                    entries[8], entries[9], entries[10], entries[11]
+                )
+            }
         }
         writeToGPU()
     }

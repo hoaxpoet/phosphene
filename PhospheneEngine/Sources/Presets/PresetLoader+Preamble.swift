@@ -307,6 +307,17 @@ extension PresetLoader {
             float duration;
             int   kindRaw;
         };
+        // LumenPaletteEntry — 4 × float (16 B, 4-byte aligned). Mirrors
+        // the Swift `LumenPaletteEntry` value type. The 4-component layout
+        // (rather than `float3`) keeps the array's storage 4-byte-aligned
+        // so the 12-entry tuple lands contiguously after `barCounter`
+        // without alignment padding on either side. (LM.4.7)
+        struct LumenPaletteEntry {
+            float r;
+            float g;
+            float b;
+            float a;
+        };
         struct LumenPatternState {
             LumenLightAgent lights[4];
             LumenPattern    patterns[4];
@@ -316,14 +327,15 @@ extension PresetLoader {
             float smoothedValence;              // LM.3 — 5 s low-pass valence; drives palette `(a, d)` interpolation
             float smoothedArousal;              // LM.3 — 5 s low-pass arousal; drives palette `(b, c)` interpolation
             float pad0;
-            float trackPaletteSeedA;            // LM.3 — per-track perturbation of palette `a` (offset)
-            float trackPaletteSeedB;            // LM.3 — per-track perturbation of palette `b` (chroma amplitude)
-            float trackPaletteSeedC;            // LM.3 — per-track perturbation of palette `c` (channel rate)
-            float trackPaletteSeedD;            // LM.3 — per-track perturbation of palette `d` (phase / hue family)
+            float trackPaletteSeedA;            // LM.7-era; unused after LM.4.7 (retained for ABI)
+            float trackPaletteSeedB;            // LM.7-era; unused after LM.4.7
+            float trackPaletteSeedC;            // LM.7-era; unused after LM.4.7
+            float trackPaletteSeedD;            // LM.7-era; unused after LM.4.7
             float bassCounter;                  // LM.3.2 — increments on f.beatBass rising-edge × beatStrength
             float midCounter;                   // LM.3.2 — increments on f.beatMid rising-edge × beatStrength
             float trebleCounter;                // LM.3.2 — increments on f.beatTreble rising-edge × beatStrength
             float barCounter;                   // LM.3.2 — increments on f.barPhase01 wrap (or every 4 bass beats)
+            LumenPaletteEntry palette[12];      // LM.4.7 — per-song palette payload (D-LM-palette-library)
         };
 
         // ── Per-preset forward declarations ──────────────────────────────────

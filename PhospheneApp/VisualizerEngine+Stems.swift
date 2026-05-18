@@ -13,10 +13,12 @@ import Foundation
 import Metal
 import ML
 import os.log
+import Presets
 import QuartzCore
 import Renderer
 import Session
 import Shared
+import simd
 
 private let logger = Logger(subsystem: "com.phosphene.app", category: "VisualizerEngine")
 
@@ -470,15 +472,59 @@ extension VisualizerEngine {
         }
         // StemSampleBuffer intentionally not reset — continues accumulating for live separation.
 
-        // LM.3 (D-LM-e3): refresh Lumen Mosaic's per-track palette seed so
-        // two tracks at the same mood produce visibly different palette
-        // character. Hash the title + artist into a 64-bit seed; the
-        // engine derives 4 perturbation components in [-1, +1]. No-op
-        // when Lumen Mosaic is not the active preset.
+        // LM.3 (D-LM-e3) + LM.4.7 (D-LM-palette-library): refresh Lumen
+        // Mosaic's per-track palette seed AND draw a fresh per-song
+        // palette from the 18-palette library. No-op when Lumen Mosaic
+        // is not the active preset.
         if let identity, let lumenEngine = lumenPatternEngine {
-            let hash = Self.lumenTrackSeedHash(for: identity)
-            lumenEngine.setTrackSeed(fromHash: hash)
+            refreshLumenPaletteForTrack(identity: identity, lumenEngine: lumenEngine)
         }
+    }
+
+    /// LM.4.7 per-track palette refresh — extracted into a helper to keep
+    /// `resetStemPipeline(...)` under SwiftLint's function_body_length cap.
+    /// Sets the track seed, draws a mood-biased palette from the 18-palette
+    /// library (excluding the last `kAntiRepeatWindow` drawn indices), and
+    /// pushes the result through the slot-8 GPU payload.
+    ///
+    /// The FNV-1a track seed is reused both as the deterministic PRNG seed
+    /// for the palette draw and as a sampling-order perturbation inside
+    /// the palette (the `lm_track_seed_hash` MSL path).
+    ///
+    /// Mood comes from the prepared `TrackProfile` if cached; falls back
+    /// to mood-space centre `(0, 0)` in live reactive mode pre-convergence
+    /// — biases toward Autumnal / Art Deco (the neutral-quadrant anchors)
+    /// without crashing. Documented per D-LM-palette-library.
+    private func refreshLumenPaletteForTrack(
+        identity: TrackIdentity,
+        lumenEngine: LumenPatternEngine
+    ) {
+        let hash = Self.lumenTrackSeedHash(for: identity)
+        lumenEngine.setTrackSeed(fromHash: hash)
+
+        let mood: SIMD2<Float>
+        if let profile = stemCache?.trackProfile(for: identity) {
+            mood = SIMD2<Float>(profile.mood.valence, profile.mood.arousal)
+        } else {
+            mood = SIMD2<Float>(0, 0)
+        }
+        let chosen = LumenMosaicPaletteLibrary.selectPalette(
+            mood: mood,
+            recentPaletteIndices: lumenEngine.recentPaletteIndices,
+            trackSeed: hash
+        )
+        lumenEngine.setPalette(LumenMosaicPaletteLibrary.all[chosen])
+
+        // FIFO append + trim to the window size. With 18 palettes and
+        // window=3, even after a long session 15 candidates remain
+        // mood-weighted per draw.
+        var window = lumenEngine.recentPaletteIndices
+        window.append(chosen)
+        let cap = LumenMosaicPaletteLibrary.kAntiRepeatWindow
+        if window.count > cap {
+            window.removeFirst(window.count - cap)
+        }
+        lumenEngine.recentPaletteIndices = window
     }
 
     /// Derive a deterministic 64-bit seed from a track identity. Uses the

@@ -4,16 +4,18 @@
 // camera frame and bleeds 50% past it on every side, so the viewer sees
 // only a field of vivid stained-glass cells dancing to the music.
 //
-// LM.7 — Per-track RGB tint vector. Adds a small per-track tint
-// (derived from `lumen.trackPaletteSeed{A,B,C}`) to every cell's
-// uniform random RGB, saturate-clamped. Result: each track plays at a
-// visibly distinct aggregate mean (warm vs cool vs amber vs teal etc.)
-// without restricting per-cell freedom — every cell still independently
-// rolls a colour from the full RGB cube, just from a slightly shifted
-// sampling window. Per Matt 2026-05-12: *"mean should NOT be
-// middle-gray; the mean should be different for each track played."*
-// Closes the LM.4.6 "panel-aggregate uniform across tracks" complaint
-// while preserving the LM.4.6 per-cell independence contract in spirit.
+// LM.4.7 — Curated 18-palette library; per-song palette selection.
+// The Orchestrator picks one of 18 hand-authored 12-colour palettes per
+// song via a mood-biased Gaussian-over-distance draw (with the immediately
+// previous song's palette excluded). `LumenMosaicPaletteLibrary.swift`
+// holds the 18 palettes + the selection function; `LumenPatternEngine.
+// setPalette(_:)` writes the drawn 12-entry payload into slot 8 at each
+// track change. `lm_cell_palette` indexes into that payload via
+// `idx = hash(cellHash, step, trackSeed, sectionSalt) % 12`. Replaces
+// LM.4.6's uniform random RGB + LM.7's chromatic-projected per-track
+// tint (both retired with this increment); closes BUG-014. The LM.3.2
+// team/period beat-step ratchet upstream of the palette lookup is
+// preserved verbatim. See D-LM-palette-library + D-LM-cream-rescission.
 //
 // LM.6 — Cell-depth gradient + optional hot-spot specular. Each cell
 // reads as a 3D-ish dome: brightest at the centre (where the backlit
@@ -27,74 +29,12 @@
 // in the lighting path, no per-pixel dot artifacts. The lighting
 // fragment's matID == 1 emission contract is unchanged.
 //
-// LM.4.6 — Pure uniform random RGB per cell. Each cell INDEPENDENTLY
-// picks one of 16M possible colours. No rules, no anchors, no zones,
-// no clusters. The hash combines (cellHash, beat step, trackSeed,
-// sectionSalt) so the random choice differs per cell, per beat, per
-// track, per section. Section salt now reads `lumen.bassCounter / 64`
-// (every ~32 s at 120 BPM, resets on track change) — fixed from the
-// LM.4.5.3 broken accumulatedAudioTime proxy.
-//
-// Per Matt 2026-05-11: "EVERY CELL CAN BE INDEPENDENT OF ITS
-// NEIGHBORS... I literally want ANY possible color to be possible
-// within ANY cell." Anchor distributions and spatial zones explicitly
-// rejected. Pure independence is the contract. LM.7 (above) refines
-// this: per-cell independence still holds, but the per-track tint
-// vector means the *distribution* the cells sample from is shifted
-// per track. The reachable colour set shrinks slightly at extreme
-// tints (cells whose uniform RGB + tint would land outside [0, 1]
-// clamp to the cube face), but every track still samples a
-// 3-dimensional region of the cube with mass at every interior point.
-// Earlier LM.4.5.4 — Pure uniform random RGB. No rules. Each cell picks a
-// colour at random from the full 16M-colour RGB cube. The hash
-// combines (cellHash, beat step, trackSeed, sectionSalt) so the
-// random choice differs per cell, per beat, per track, per section.
-// No HSV indirection, no coupling rule, no mood gamma, no per-track
-// hue bias — pure random sampling. All previous LM.4.5.x rules
-// retired per Matt's 2026-05-11 ask: "All I am asking you to do
-// now is choose at random a color from the 4-billion-color bag."
-//
-// Per-cell brightness variation lives separately in `lm_cell_intensity`
-// (multiplies the colour by [0.3, 1.6] × bar pulse) — gives stained-
-// glass brightness diversity without restricting which colours appear.
-//
-// Section salt: bassCounter / 64 (every ~32 s at 120 BPM). Resets on
-// track change. Replaces the broken LM.4.5.3 accumulatedAudioTime
-// proxy that never advanced past bucket 0 in production playback.
-//
-// Caveat: pure random includes pales, grays, and washed cells. If
-// the visual is too noisy / too gray-tan-dominant, the next iteration
-// can re-introduce constraints (coupling, sat floor, hue region).
-// Earlier LM.4.5.2 — Full-cube palette card model with val/sat coupling. Each
-// track gets a procedurally-generated "card" of `kCardSize` (48) colours;
-// cells pick slots deterministically (cellHash + beat-step ratchet) and
-// the colour at each slot is `lm_hash_u32(cardIndex ^ trackSeed)` decoded
-// as three uniform HSV samples. Hue spans the full wheel (uniform);
-// SATURATION spans the full range [0, 1] (uniform); value spans
-// [0.08, 0.95] with arousal-driven gamma bias. **Coupling rule
-// (mandatory)**: `val ≤ sat + kValSatCouplingMargin (0.20)` —
-// a weak (low-sat) cell is forced to also be dark, so the
-// pale/washed/cream-tinted family is unreachable by construction.
-// The trackSeed XOR makes two tracks at the same mood produce
-// completely different cards.
-//
-// Why coupling, not a saturation floor (the LM.4.5.1 mistake): pale
-// colours and muted colours look almost the same on screen but are
-// produced differently. Pale = light + weak (washed-out — the
-// rejected v1 failure mode). Muted = dark + weak (dusty rose,
-// espresso, sage — real colours). The difference is value, not
-// saturation. The coupling rule keeps the muted family and bans
-// the pale family without flooring sat — every kind of colour is
-// allowed, including charcoals, browns, slates, dusty earth tones,
-// and near-greys.
-//
-// LM.4.5.2 supersedes LM.4.5.1 (sat floor at 0.70 — too restrictive,
-// produced jewel-tone-only output) and LM.4.5 v1 (no coupling —
-// produced pale washed cells across ~23 % of the panel). LM.4.5
-// supersedes LM.3.2's IQ-cosine palette, which floored sat at 0.78
-// and val at 0.80 and centred hue ±0.20 around a mood axis —
-// every cell sat inside ~5 % of the HSV cube. See `kCardSize` /
-// `kValSatCouplingMargin` constants block + `lm_cell_palette`.
+// LM.4.6 history (superseded by LM.4.7): pure uniform random RGB per
+// cell. Per Matt 2026-05-12 ("I'm giving up the fight on colors"), the
+// LM.4.6 / LM.7 baseline produced statistically identical panel
+// aggregates across tracks — BUG-014. LM.4.7's palette library closes
+// that gap. The LM.4.5.x card-model iterations and the original LM.3.2
+// IQ-cosine palette are also retired; see `git log` for the chain.
 //
 // Band-routed beat-driven dance (LM.3.2, preserved verbatim). Each cell is
 // assigned to one of four "teams" by `hash(cell_id ^ trackSeedHash) % 100`:
@@ -366,30 +306,13 @@ constant float kSectionBeatLength       = 64.0f;
 // constant lived here. Per Matt 2026-05-11 it added unwanted structure;
 // the palette is back to pure uniform random RGB per cell.
 
-/// LM.7 — Per-track RGB tint magnitude. Each cell still samples uniform
-/// random RGB independently (LM.4.6 contract preserved). A small
-/// per-track tint vector derived from `lumen.trackPaletteSeed{A,B,C}`
-/// (each ∈ [-1, +1] from FNV-1a hash of "title | artist") is added to
-/// every cell's RGB before saturate-clamp. Result: every track has a
-/// visibly different aggregate mean (warm tracks lean orange/amber;
-/// cool tracks lean teal/cyan; etc.) while per-cell freedom is
-/// preserved — every cell still independently rolls a colour from the
-/// full RGB cube, just from a slightly shifted sampling window.
-///
-/// At kTintMagnitude = 0.25, the per-channel mean shifts up to ±0.20
-/// after the saturate clamp (the linear ±0.25 loses ~0.05 to clamp
-/// pile-up at 0/1). Some extreme corners (e.g. pure cyan on a maximally
-/// warm track where seedA = +1) become unreachable; near-corner is
-/// still reachable. This is the agreed-on relaxation of the LM.4.6
-/// "every colour reachable in every track" framing — Matt 2026-05-12:
-/// *"mean should NOT be middle-gray; the mean should be different for
-/// each track played."*
-///
-/// **Tuning surface (M7 review):** lower (0.15) for subtler per-track
-/// distinction with less clamp loss at extremes; raise (0.35) for
-/// stronger panel-aggregate variety at the cost of more colour
-/// squashing near the cube corners.
-constant float kTintMagnitude = 0.25f;
+// LM.7 — kTintMagnitude (per-track chromatic-projection tint magnitude)
+// retired at LM.4.7. The palette-table lookup makes a per-track tint
+// redundant — every drawn palette is already character-distinct. The
+// chromatic-projection math (mean-subtract along the achromatic axis)
+// is gone with it; the LM.7 / LM.4.6 `test_achromaticAlignedSeed_doesNotWash`
+// regression no longer applies (cells sample from a curated 12-entry
+// table, which avoids the achromatic-axis wash by construction).
 /// Gamma endpoints for arousal-driven VALUE-only distribution bias.
 /// arousal = -1 → gamma 1.8 (concave: biases toward darker cells —
 /// deep cobalts, deep wines, ruby shadows); arousal = +1 → gamma 0.55
@@ -580,28 +503,43 @@ static inline float lm_cell_intensity(uint cellHash, float barPhase01) {
     return baseIntensity * barFactor;
 }
 
-/// LM.4.5.4 — pure uniform random RGB. No rules.
+/// LM.4.7 — Palette-table lookup. Replaces LM.4.6 (uniform random RGB
+/// per cell) + LM.7 (per-track chromatic-projection tint).
 ///
-/// Each cell picks a colour at random from the full 16-million-color
-/// RGB cube (3 × 8-bit channels). The hash combines (cellHash, beat
-/// step, trackSeed, sectionSalt) so the random choice differs per
-/// cell, per beat, per track, per section. No HSV indirection, no
-/// coupling rule, no mood gamma, no per-track hue rotation. Pure
-/// random sampling.
+/// The Orchestrator selects one of 18 hand-authored 12-colour palettes
+/// per song and writes the drawn 12 entries into `lumen.palette[0..11]`
+/// via `LumenPatternEngine.setPalette(_:)` at each track change. Each
+/// cell's palette index for the current beat / section is the lower
+/// 4 bits of an avalanche hash of (cellHash, step, trackSeed, sectionSalt)
+/// taken modulo 12 — so the index walks the palette deterministically
+/// on each beat step + section boundary, but every cell's colour at any
+/// given moment is one of the 12 curated palette entries (D-LM-palette-library).
+///
+/// The team / period / step / sectionSalt computation upstream is
+/// preserved verbatim from LM.3.2 / LM.4.6 — only the final
+/// `hash → RGB` body changes to `hash → idx % 12 → palette[idx]`.
 ///
 /// Per-cell brightness variation lives separately in `lm_cell_intensity`
-/// (multiplies the colour by [0.3, 1.6] × bar pulse). That gives
-/// stained-glass brightness diversity without restricting which
-/// colours appear.
+/// (multiplies the colour by [0.85, 1.15] × bar pulse) — gives
+/// stained-glass brightness diversity without restricting which palette
+/// entries appear.
 ///
-/// Section salt: derived from `lumen.bassCounter / 64` — every 64
-/// grid beats (≈ 32 s at 120 BPM) the palette resets. bassCounter
-/// resets on track change, so each track starts fresh from section 0.
-/// Time-quantised proxy for true `StructuralPrediction.sectionIndex`.
+/// **Section salt:** `lumen.bassCounter / kSectionBeatLength` quantised
+/// into integer buckets — every ~32 s at 120 BPM the palette-index walk
+/// reshuffles. `bassCounter` resets on track change via
+/// `LumenPatternEngine.setTrackSeed(_:)`, so each track starts fresh
+/// from section 0.
+///
+/// **Regression-harness path:** when slot 8 is bound to the zero-filled
+/// `lumenPlaceholderBuffer` (e.g. unit tests that don't bind a real
+/// palette), every entry of `lumen.palette` reads as (0,0,0,0) and the
+/// shader returns pure black. Production fixtures must bind an explicit
+/// palette payload via `setPalette(_:)` to receive coloured output —
+/// see `PresetRegressionTests` for the Autumnal-bound fixture.
 static inline float3 lm_cell_palette(uint cellHash,
                                      constant LumenPatternState& lumen) {
-    // Team selection — drives the beat-step ratchet (per-cell colour
-    // changes on each team's beat).
+    // Team selection — drives the beat-step ratchet (per-cell palette
+    // index advances on each team's beat).
     uint teamBucket = cellHash % 100u;
     float teamCounter = 0.0f;
     if (teamBucket < kBassTeamCutoff) {
@@ -624,44 +562,19 @@ static inline float3 lm_cell_palette(uint cellHash,
     uint sectionSalt = uint(floor(lumen.bassCounter / kSectionBeatLength));
     uint trackSeed   = lm_track_seed_hash(lumen);
 
-    // Pure uniform random RGB per cell. Any of 16M colours equally
-    // likely. Cell × beat × track × section all XOR'd into one hash so
-    // every (cell, beat, track, section) tuple gets its own colour.
-    uint colourHash = lm_hash_u32(cellHash
-                               ^ (uint(step) * 0x9E3779B9u)
-                               ^ trackSeed
-                               ^ (sectionSalt * 0xCC9E2D51u));
-
-    float r = float((colourHash >>  0u) & 0xFFu) * (1.0f / 255.0f);
-    float g = float((colourHash >>  8u) & 0xFFu) * (1.0f / 255.0f);
-    float b = float((colourHash >> 16u) & 0xFFu) * (1.0f / 255.0f);
-
-    // LM.7 — per-track RGB tint vector. Shifts the aggregate panel mean
-    // per track without restricting per-cell freedom (cells still
-    // independently sample the full uniform random RGB cube). The
-    // saturate-clamp keeps values in rgba8Unorm storage range; the
-    // small clamp pile-up at cube faces is the documented trade-off for
-    // visible track-to-track aggregate distinction. When all three
-    // trackPaletteSeed components are 0 (e.g. regression-harness path
-    // where slot-8 is zero-bound), tint is (0,0,0) and behaviour is
-    // identical to LM.4.6.
-    //
-    // **Chromatic projection (Matt 2026-05-12 fix):** the raw tint is
-    // projected onto the chromatic plane (perpendicular to the
-    // achromatic axis (1,1,1)/√3) by subtracting its mean component.
-    // Without this, seed configurations near the achromatic diagonal
-    // (e.g. all-positive → +0.25 on all channels) shift the whole
-    // panel toward white or black, producing washed/muddy aggregates
-    // instead of chromatic ones. Mean-subtraction guarantees a *hue*
-    // shift on every track. Side-effect: tracks whose seeds happen to
-    // be roughly equal (achromatic-aligned) lose tint strength
-    // proportionally and read as neutral — preferred over washed.
-    float3 rawTint = float3(lumen.trackPaletteSeedA,
-                            lumen.trackPaletteSeedB,
-                            lumen.trackPaletteSeedC);
-    float meanShift = (rawTint.r + rawTint.g + rawTint.b) * (1.0f / 3.0f);
-    float3 trackTint = (rawTint - float3(meanShift)) * kTintMagnitude;
-    return saturate(float3(r, g, b) + trackTint);
+    // Avalanche hash → 12-bucket palette index. The four inputs (cell,
+    // step, track, section) are XOR'd into one hash so every tuple gets
+    // its own palette slot. Mod 12 collapses the 32-bit hash space onto
+    // the 12-entry palette; the slight bias from `2^32 % 12 != 0` is
+    // ≈ 2 × 10⁻¹⁰ per slot, far below any perceptible threshold.
+    uint h = lm_hash_u32(cellHash
+                       ^ (uint(step) * 0x9E3779B9u)
+                       ^ trackSeed
+                       ^ (sectionSalt * 0xCC9E2D51u));
+    uint idx = h % 12u;
+    return float3(lumen.palette[idx].r,
+                  lumen.palette[idx].g,
+                  lumen.palette[idx].b);
 }
 
 /// Voronoi domed-cell relief field. Returns a per-pixel scalar in

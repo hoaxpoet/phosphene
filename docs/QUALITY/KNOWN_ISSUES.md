@@ -308,9 +308,9 @@ Scope: 1 commit (criteria update + KNOWN_ISSUES status flip + release note). Clo
 
 **Severity:** P3 (visible but accepted at cert time; impact is "every Lumen Mosaic session feels statistically similar at the panel level" rather than a hard quality regression — Matt accepted the trade-off at LM.4.6 with the verdict *"Working. It's close enough. I'm giving up the fight on colors,"* and the 2026-05-17 palette exploration converged on a structural fix.)
 **Domain tag:** preset.fidelity
-**Status:** Open — pending LM.4.7 implementation. **Will be resolved by Increment LM.4.7** (`docs/ENGINEERING_PLAN.md` Phase LM, status ⏳ at filing time).
+**Status:** Resolved by Increment LM.4.7 (pending Matt M7 review on real-music multi-track session per the Done-when criterion in `docs/ENGINEERING_PLAN.md`).
 **Introduced:** Documented as a known trade-off at LM.4.6 (`c0f9ccf3`, 2026-05-12) — the shader file header, the ENGINEERING_PLAN Increment LM.4.6 "Honest math caveat" section, and the D-LM-7 amendment all explicitly call it out. LM.7 (`888bb856`-following commits, 2026-05-12) mitigated it at the aggregate-mean level via the per-track chromatic-projected tint (D-LM-7); the palette-character-per-session gap remained.
-**Resolved:** — (LM.4.7 — see D-LM-palette-library)
+**Resolved:** 2026-05-18, LM.4.7 implementation (commit pending). `lm_cell_palette` rewritten to palette-table lookup over a per-song 12-colour drawn palette. The Orchestrator selects one of 18 hand-authored palettes per song via mood-biased Gaussian-over-distance draw with anti-repeat exclusion of the last `kAntiRepeatWindow = 3` drawn palettes (widened from N=1 same day after Matt's M7 session showed within-quadrant clustering — see D-LM-palette-library amendment + release-note `[dev-2026-05-18-b]`). New `LumenMosaicPaletteLibrary.swift` holds the catalogue + `selectPalette(...)` algorithm; new slot-8 ABI fields carry the 12-entry palette payload; `LumenPaletteSpectrumTests` regression-locks the six LM.4.7 contract suites (palette membership, selection determinism, anti-repeat over the full recent-window, mood-weighted distribution shape, LM.9 pale-tone-share ≤ 0.30 for all 18 palettes, scripted track-sequence reproducibility). LM.7's chromatic-projection tint (`kTintMagnitude` + raw-tint vector) retired with this increment.
 
 ### Expected behavior
 
