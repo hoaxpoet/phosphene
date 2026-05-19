@@ -123,32 +123,43 @@ constant float4 kAuroraColumnDepths   = float4( 1.00,  0.70,  0.50, 0.0);
 constant float kStemWarmupLow  = 0.02;
 constant float kStemWarmupHigh = 0.06;
 
-// Route 1 — vocal pitch palette phase. Amplitude 1.6 maps the smoothed pitch
-// span [0, 1] (E2 → C7) to ±0.8 phase shift on the IQ palette baseOffset —
-// roughly one full hue migration cycle across the 4-octave singing range.
-constant float kVocalsPitchAmp = 1.6;
+// Route 1 — vocal pitch palette phase. AV.2.2c (2026-05-19): amplitude
+// reduced 1.6 → 0.8 after live session 2026-05-19T01-12-47Z showed the
+// hue migration shifting visibly per-frame; halving slows the migration
+// to "Sigur-Rós-slow" perceived rate (~half an IQ palette cycle across
+// the 4-octave singing range).
+constant float kVocalsPitchAmp = 0.8;
 
-// Route 2 — brightness breathing. `0.85 + 0.30 × bassRel` gives a 30 %
-// amplitude continuous primary driver per §5.7. With bassRel clamped to
-// [-1, 1], the final scale lies in [0.55, 1.15].
+// Route 2 — brightness breathing. AV.2.2c (2026-05-19): amplitude reduced
+// 0.30 → 0.15 after the same live session. Brightness now varies in
+// [0.70, 1.00] instead of [0.55, 1.15] — gentler breathing, no per-frame
+// pulsing visible.
 constant float kBrightnessBase = 0.85;
-constant float kBrightnessAmp  = 0.30;
+constant float kBrightnessAmp  = 0.15;
 
-// Route 3 — fold density. `tri_noise_2d` spatial frequency scaling per §5.7.
-// `1.0 + 0.30 × midRel` thickens folds on rising mids. The `aurora_tri_noise_2d`
-// p-input multiplier is applied via `marchPos × foldScale`.
-constant float kFoldDensityAmp = 0.30;
+// Route 3 — fold density. AV.2.2c (2026-05-19): amplitude reduced 0.30 →
+// 0.10. Was the DOMINANT motion contributor — changing the noise sample's
+// spatial frequency frame-to-frame morphs the entire noise field, so
+// continuous mid_att_rel modulation produced restless per-frame
+// re-shaping. Quartered amplitude keeps the audio coupling perceptible
+// (mids still thicken folds 10 %) without continuous noise-field morph.
+constant float kFoldDensityAmp = 0.10;
 
-// Route 5 — curtain kink. Fragment-space lateral UV jitter on the column noise
-// sample, scaled by kinkAccumulator. Amplitude 0.003 UV ≈ 4 px at 1080p —
-// visible shudder, not a deflection. Matches design §5.6 / §5.7.
-constant float kKinkAmp        = 0.003;
+// Route 5 — curtain kink. AV.2.2c (2026-05-19): amplitude halved 0.003 →
+// 0.0015 UV. The kink-charge gate thresholds (CPU-side, see
+// `AuroraVeilState.kinkChargeLo/Hi`) also raised from 0.4/0.7 → 0.6/0.9
+// — observed gate-fire rate on Billie Jean was 9.4 % of frames (not
+// "rare"); the design intent was rare-event gating with damped
+// 1-2 s shudder, so the gate is now sized for genuinely rare events
+// (~2 % of frames) and the shudder amplitude when it does fire is half
+// as wide.
+constant float kKinkAmp        = 0.0015;
 constant float kKinkSpatialFreq = 12.0;
 
-// Route 6 — valence palette warm/cool. Positive valence (major-key) shifts the
-// baseOffset by `+0.4 × valence` → warmer (more magenta crown); negative
-// valence shifts cooler. Stacks additively with route 1.
-constant float kValencePaletteAmp = 0.4;
+// Route 6 — valence palette warm/cool. AV.2.2c (2026-05-19): amplitude
+// reduced 0.4 → 0.2 for coherent calmer-tuning pass. Major/minor key
+// tilt is subtler.
+constant float kValencePaletteAmp = 0.2;
 
 // Route 7 — star twinkle. 30 % amplitude per-star brightness modulation,
 // gated by `vocals_pitch_confidence > 0.5` (the gate is in shader, not here).
