@@ -169,6 +169,27 @@ constant float kKinkSpatialFreq = 12.0;
 // tilt is subtler.
 constant float kValencePaletteAmp = 0.2;
 
+// Route 8 — synth/melody flash (AV.2.2f, 2026-05-19). The Demucs "other"
+// stem captures content that isn't drums/bass/vocals — lead synths,
+// keyboards, guitar lines. Threshold-gate stems.other_energy_dev so the
+// route fires only on the larger transients (the actual note attacks),
+// not on continuous low-level mid-band background. Each pulse adds a
+// brief shift to the per-fragment palette baseOffset → aurora hue
+// flashes momentarily on each synth/melody attack and settles back.
+// Targets the Billie Jean lead-synth motif Matt flagged as a "really
+// fun" feature to reflect; also fires on guitar lines / keyboard hooks
+// on other tracks.
+//
+// Firing rate on Billie Jean (live session 2026-05-19T21-30-32Z):
+//   stems.other_energy_dev > 0.4: 9.3% of frames (per-note clear)
+//   stems.other_energy_dev > 0.7: ~2% of frames (only the loudest events)
+// No FV proxy: the "other" stem has no FeatureVector equivalent (FV only
+// carries 3 bands + spectral features). Pre-warmup the dev primitive is
+// zero by construction → route is silence-stable (D-019 fallback).
+constant float kSynthFlashGateLo = 0.4;
+constant float kSynthFlashGateHi = 0.7;
+constant float kSynthFlashAmp    = 0.6;   // rad shift on palette baseOffset
+
 // Route 7 — star twinkle. 30 % amplitude per-star brightness modulation,
 // gated by `vocals_pitch_confidence > 0.5` (the gate is in shader, not here).
 constant float kStarTwinkleAmp        = 0.30;
@@ -385,11 +406,21 @@ fragment float4 aurora_fragment(
     float pitchConfident = step(kStarTwinkleConfGate, stems.vocals_pitch_confidence);
     float pitchNorm = mix(0.5, av.smoothedPitchNorm, pitchConfident);
 
-    // Stack routes 1 + 6 into a single additive paletteOffset that all three
-    // columns share (so the hue migration is coherent across ribbons rather
-    // than each ribbon hue-shifting independently).
+    // Route 8 — synth/melody flash. Threshold-gate stems.other_energy_dev so
+    // only the larger transients fire (the actual note attacks). No FV
+    // proxy needed — pre-warmup stems are zero by construction → route
+    // silence-stable. The pulse adds a brief positive shift to baseOffset
+    // → palette flashes warmer (toward magenta) on each synth/melody
+    // attack and settles back.
+    float otherDev = stems.other_energy_dev;
+    float synthPulse = smoothstep(kSynthFlashGateLo, kSynthFlashGateHi, otherDev);
+
+    // Stack routes 1 + 6 + 8 into a single additive paletteOffset that all
+    // three columns share (so the hue migration is coherent across ribbons
+    // rather than each ribbon hue-shifting independently).
     float paletteOffset = (pitchNorm - 0.5) * kVocalsPitchAmp
-                        + valence * kValencePaletteAmp;
+                        + valence * kValencePaletteAmp
+                        + synthPulse * kSynthFlashAmp;
 
     // Route 4 — substrate drift speed. `bassDev` is positive-only; result
     // lies in [0.06, 0.06 + kAuroraDriftSpeedGain × dev_clamped]. Drift
