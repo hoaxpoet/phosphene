@@ -130,12 +130,16 @@ constant float kStemWarmupHigh = 0.06;
 // the 4-octave singing range).
 constant float kVocalsPitchAmp = 0.8;
 
-// Route 2 — brightness breathing. AV.2.2c (2026-05-19): amplitude reduced
-// 0.30 → 0.15 after the same live session. Brightness now varies in
-// [0.70, 1.00] instead of [0.55, 1.15] — gentler breathing, no per-frame
-// pulsing visible.
+// Route 2 — brightness breathing. AV.2.2c reduced amplitude 0.30 → 0.15;
+// AV.2.2d (2026-05-19) restored to 0.30 because the primitive switched
+// from signed `bass_att_rel` (which sat structurally negative on real
+// music) to positive-only `bass_dev`. With the positive-only primitive,
+// brightness modulates UP only, not down — 0.30 gives visible bass-driven
+// pulses in [0.85, 1.15] (clamped at the 0.95 ceiling on heavy bass) but
+// the modulation only fires on actual transients (bass_dev = 0 most of the
+// time), so the result is occasional pulses, not continuous breathing.
 constant float kBrightnessBase = 0.85;
-constant float kBrightnessAmp  = 0.15;
+constant float kBrightnessAmp  = 0.30;
 
 // Route 3 — fold density. AV.2.2c (2026-05-19): amplitude reduced 0.30 →
 // 0.10. Was the DOMINANT motion contributor — changing the noise sample's
@@ -345,11 +349,20 @@ fragment float4 aurora_fragment(
                           + stems.bass_energy   + stems.other_energy;
     float stemMix = smoothstep(kStemWarmupLow, kStemWarmupHigh, totalStemEnergy);
 
-    // Route 2 + Route 4 — bass-rel (continuous brightness breathing + drift
-    // speed). FV proxy `f.bass_att_rel` is the deviation primitive at the
-    // FeatureVector layer; stem proxy `stems.bass_energy_rel` is the
-    // D-026 equivalent on the stem layer.
-    float bassRel = mix(f.bass_att_rel, stems.bass_energy_rel, stemMix);
+    // Route 2 + Route 4 — bass-driven brightness + drift speed.
+    //
+    // AV.2.2d (2026-05-19): switched from `bass_att_rel` to `bass_dev` after
+    // live session 2026-05-19T21-05-33Z showed bassAttRel sat structurally
+    // negative (mean −0.586, max +0.054) on real music — the route ran
+    // entirely in its dim-half, brightness barely modulated upward. Root
+    // cause: AGC normalises full-mix bass to ~0.21 mean on rock/hip-hop,
+    // so `bass_att_rel = 2 × bass_att − 1 ≈ −0.58` typical. The deviation
+    // primitive `f.bass_dev` = max(0, bassRel) is the right shape — fires
+    // only when the instantaneous bass band crosses its running average,
+    // i.e., on actual transients. Same for `stems.bass_energy_dev`. Both
+    // are positive-only; the brightness route now goes UP on bass, never
+    // down (matches "breathing" intuition).
+    float bassDev = mix(f.bass_dev, stems.bass_energy_dev, stemMix);
 
     // Route 3 — mid-rel (continuous fold density). FV proxy `f.mid_att_rel`;
     // stem proxy `stems.vocals_energy_rel` (matches Gossamer.metal:134 — the
@@ -374,10 +387,10 @@ fragment float4 aurora_fragment(
     float paletteOffset = (pitchNorm - 0.5) * kVocalsPitchAmp
                         + valence * kValencePaletteAmp;
 
-    // Route 4 — substrate drift speed. `bassRel` is in [-1, 1]; we map
-    // negative bass to a slight drift slowdown (still positive) and positive
-    // bass to up to +kAuroraDriftSpeedGain. Result lies in [0.02, 0.10].
-    float driftSpeed = kAuroraDriftSpeedBase + kAuroraDriftSpeedGain * max(0.0, bassRel);
+    // Route 4 — substrate drift speed. `bassDev` is positive-only; result
+    // lies in [0.06, 0.06 + kAuroraDriftSpeedGain × dev_clamped]. Drift
+    // accelerates only on bass transients; no slowdown phase.
+    float driftSpeed = kAuroraDriftSpeedBase + kAuroraDriftSpeedGain * clamp(bassDev, 0.0, 1.0);
 
     // Route 3 — fold density. `midRel ≥ 0` thickens; `midRel < 0` slightly
     // loosens. Result in [0.7, 1.3].
@@ -467,8 +480,10 @@ fragment float4 aurora_fragment(
     }
 
     // Route 2 — brightness breathing. Apply AFTER the MAX so brightness
-    // modulation is global (the whole aurora pulses, not per-column).
-    float brightnessScale = kBrightnessBase + kBrightnessAmp * clamp(bassRel, -1.0, 1.0);
+    // modulation is global (the whole aurora pulses, not per-column). Uses
+    // positive-only bassDev so the brightness only goes UP on bass
+    // transients (AV.2.2d).
+    float brightnessScale = kBrightnessBase + kBrightnessAmp * clamp(bassDev, 0.0, 1.0);
     auroraColor *= brightnessScale;
 
     // Aurora altitude envelope. Localizes the curtain to the upper-middle of
