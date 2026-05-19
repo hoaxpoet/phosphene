@@ -5,6 +5,21 @@
 // the separated vocals waveform from StemAnalyzer; pitch estimates are
 // written into StemFeatures.vocalsPitchHz / vocalsPitchConfidence.
 //
+// **2026-05-19 fix (P0 — vocalsPitchConfidence was 0 % in every session).**
+// The tracker accumulates incoming samples into an internal 2048-sample
+// ring buffer; YIN runs on the full buffer once it's been filled at least
+// once. Callers can pass any window size (live path: 1024; SessionPreparer:
+// 1024; unit tests: 2048+) and the tracker reassembles a valid YIN window
+// across calls. Before the fix, the live caller passed 1024-sample windows
+// directly to YIN — `fillWindow()` zero-padded the first half of the
+// internal buffer, making the cross-correlation in the difference function
+// structurally zero (`base[0..1024]` was all zeros, so dotpr = 0 for every
+// τ), so the CMNDF never dipped below the 0.15 threshold and `findMinimum`
+// always returned -1 → `(hz: 0, confidence: 0)` every frame. The bug was
+// invisible to PitchTrackerTests because the tests pass full 2048-sample
+// windows directly. Same test/prod parity gap as Aurora Veil's recent
+// cascade — CLAUDE.md "test in production-grade pipeline" rule applies.
+//
 // Algorithm steps (§ references are to the YIN paper):
 //   1. Difference function d[τ] = Σ_{j=0}^{W/2−1} (x[j] − x[j+τ])²
 //                               = r[0] + r[τ] − 2c[τ]
@@ -62,8 +77,18 @@ public final class PitchTracker: @unchecked Sendable {
     /// rawHz on the first voiced frame after silence instead of smoothing from ~0.
     private var wasVoiced: Bool = false
 
+    /// Total samples accumulated into `windowBuffer` since the last `reset()`,
+    /// saturating at `windowSize`. YIN only runs once the buffer has been
+    /// filled at least once — before that, the older half of the ring buffer
+    /// holds the zero-initialised baseline and the correlation would be
+    /// degenerate (this was the pre-2026-05-19 bug).
+    private var samplesAccumulated: Int = 0
+
     // MARK: - Pre-allocated buffers
 
+    /// 2048-sample ring buffer. Callers can pass any window size to `process`;
+    /// each call shifts older samples left and appends the incoming chunk at
+    /// the tail. YIN reads the full buffer once `samplesAccumulated >= windowSize`.
     private var windowBuffer: [Float]
     private var diffBuffer: [Float]
     private var cmndfBuffer: [Float]
@@ -103,7 +128,16 @@ public final class PitchTracker: @unchecked Sendable {
             return (hz: 0, confidence: 0)
         }
 
-        fillWindow(from: waveform)
+        appendToRingBuffer(waveform)
+        // YIN requires a full 2048-sample window. Before the buffer has been
+        // filled at least once, the older half holds the zero-initialised
+        // baseline and the correlation is degenerate (this was the
+        // pre-2026-05-19 bug — the live path passed 1024-sample windows
+        // directly so half the buffer was always zeros).
+        guard samplesAccumulated >= windowSize else {
+            return (hz: 0, confidence: 0)
+        }
+
         computeDifferenceFunction()
         computeCMNDF()
 
@@ -135,22 +169,46 @@ public final class PitchTracker: @unchecked Sendable {
 
     // MARK: - YIN Algorithm Steps
 
-    private func fillWindow(from waveform: [Float]) {
-        let available = min(windowSize, waveform.count)
-        let srcOffset = waveform.count - available
-        let padCount  = windowSize - available
-        if padCount > 0 {
-            withUnsafeMutablePointer(to: &windowBuffer[0]) { ptr in
-                ptr.initialize(repeating: 0, count: padCount)
+    /// Append incoming waveform samples to the internal ring buffer, shifting
+    /// older samples left to make room. The buffer always holds the most
+    /// recent `windowSize` samples after this call. Callers can pass any
+    /// number of samples — 1024 (live path / SessionPreparer), 2048 (unit
+    /// tests), or anything else — and the accumulator produces a valid YIN
+    /// window over multiple calls.
+    private func appendToRingBuffer(_ waveform: [Float]) {
+        let incoming = waveform.count
+        if incoming >= windowSize {
+            // Incoming is larger than the buffer — replace entirely with the
+            // most recent `windowSize` samples.
+            let srcOffset = incoming - windowSize
+            waveform.withUnsafeBufferPointer { src in
+                guard let srcBase = src.baseAddress else { return }
+                windowBuffer.withUnsafeMutableBufferPointer { dst in
+                    guard let dstBase = dst.baseAddress else { return }
+                    dstBase.update(from: srcBase + srcOffset, count: windowSize)
+                }
+            }
+            samplesAccumulated = windowSize
+            return
+        }
+        // Shift existing buffer left by `incoming` samples to discard the
+        // oldest data, then copy the new samples to the freed tail.
+        let keepCount = windowSize - incoming
+        windowBuffer.withUnsafeMutableBufferPointer { dst in
+            guard let dstBase = dst.baseAddress else { return }
+            // memmove-style shift (handles overlap correctly).
+            for i in 0..<keepCount {
+                dstBase[i] = dstBase[i + incoming]
             }
         }
         waveform.withUnsafeBufferPointer { src in
             guard let srcBase = src.baseAddress else { return }
             windowBuffer.withUnsafeMutableBufferPointer { dst in
                 guard let dstBase = dst.baseAddress else { return }
-                (dstBase + padCount).update(from: srcBase + srcOffset, count: available)
+                (dstBase + keepCount).update(from: srcBase, count: incoming)
             }
         }
+        samplesAccumulated = min(windowSize, samplesAccumulated + incoming)
     }
 
     private func computeDifferenceFunction() {
@@ -209,12 +267,16 @@ public final class PitchTracker: @unchecked Sendable {
 
     // MARK: - Reset
 
-    /// Reset pitch EMA state.  Call on track change.
+    /// Reset pitch EMA state. Call on track change.
     public func reset() {
         lock.lock()
         defer { lock.unlock() }
         emaHz = 0
         wasVoiced = false
+        samplesAccumulated = 0
+        // Clear the ring buffer so the next track doesn't carry residual
+        // samples from the previous one.
+        for i in 0..<windowBuffer.count { windowBuffer[i] = 0 }
         logger.info("PitchTracker reset")
     }
 }

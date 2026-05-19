@@ -6,6 +6,58 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-19-f] PT.1 — PitchTracker ring-buffer fix (P0: vocals_pitch route was always 0)
+
+**Increment:** PT.1 (PitchTracker P0 fix). **Status:** Landed 2026-05-19.
+
+`vocalsPitchConfidence` was 0 % across **every Aurora Veil live session** (0 of 5,999+ frames had confidence > 0.5 on three vocal-heavy songs). The dossier's load-bearing AV feature — "Sigur-Rós-grade slow hue migration along the vocal melody" — had literally never fired. The deferral of this issue across AV.2.2c through AV.2.2g was a prioritization mistake; Matt called it out and the priority got re-set to P0.
+
+### Root cause — window-size mismatch + test/prod parity gap
+
+PitchTracker is designed for **2048-sample windows** (`windowSize: Int = 2048`, `halfWindow: Int = 1024`). The live audio path (`VisualizerEngine+Audio.swift` line 206) and SessionPreparer cached-analysis path (`SessionPreparer+Analysis.swift` line 197) both pass **1024-sample windows** to `StemAnalyzer.analyze`, which forwards `stemWaveforms[0]` to `pitchTracker.process`.
+
+When given a 1024-sample input, the old `fillWindow` function zero-padded the first half of the 2048-sample internal buffer:
+
+```
+fillWindow(1024-sample input):
+  available = min(2048, 1024) = 1024
+  padCount  = 2048 - 1024     = 1024
+  Result: windowBuffer = [1024 zeros, 1024 signal samples]
+```
+
+The cross-correlation in `computeDifferenceFunction()` then read `base[0..1024]` (all zeros) → `dotpr = 0` for every τ → `diffBuffer[τ] = r0 + rTau - 2·crossCorr = 0 + rTau - 0 = rTau`. The YIN difference function lost its periodic-dip structure — `findMinimum` never found a CMNDF below the 0.15 threshold → `process()` returned `(hz: 0, confidence: 0)` on every frame.
+
+**The bug was invisible to existing unit tests** because they pass full 2048-sample windows directly to `process()`. Same test/prod parity gap as the recent Aurora Veil cascade — CLAUDE.md "test in production-grade pipeline" rule applies here too: tests must exercise the dispatch path the live code uses, not a simplified version that masks the wiring.
+
+### The fix
+
+`PitchTracker.swift` — replaced one-shot `fillWindow` with an internal ring-buffer `appendToRingBuffer`. The tracker now accumulates samples across `process()` calls. Callers can pass any window size (live: 1024, cache: 1024, tests: 2048+) and the tracker reassembles a valid YIN window across multiple calls. Added a `samplesAccumulated` gate so YIN runs only once the buffer has been filled at least once — before that, returns `(0, 0)` (clean silence-fallback during the warmup phase).
+
+The buffer fills in exactly 2 calls (2 × 1024 = 2048 samples) at the live path's analysis rate (~94 Hz), so pitch detection starts firing within ~22 ms of audio reaching the tracker.
+
+`reset()` now also clears the ring buffer and the accumulator count so track changes don't carry residual samples.
+
+### Regression test
+
+`pitchTracker_consecutive1024Windows_detectsPitch` — feeds 32 consecutive 1024-sample chunks of a harmonic vocal signal (220 Hz fundamental + 4 harmonics + 5 % noise) and verifies pitch is detected within 5 chunks at ±50 cents tolerance + confidence ≥ 0.6. Reproduces the live-path scenario directly. Verified the test fails cleanly with the old behaviour (regression-simulated by disabling the gate) and passes with the fix.
+
+### Tests
+
+- `swift test --filter "PitchTracker|StemAnalyzer|AuroraVeil|PresetRegression|PresetAcceptance|FidelityRubric"` — **56 / 56 green** (added the new regression test).
+- `xcodebuild -scheme PhospheneApp build` — BUILD SUCCEEDED.
+- `swiftlint --strict` — 0 violations.
+
+### Predicted live impact
+
+Matt's next session: Aurora Veil's Route 1 (vocals_pitch palette migration) should fire for the first time. The dossier-emphasised slow hue migration along the vocal melody — distinctive Aurora Veil signature — finally observable in live playback. Should also benefit any other preset that consumes `stems.vocals_pitch_hz` / `_confidence` (Gossamer's wave-hue emission may also be affected; will need to verify it doesn't regress).
+
+### Remaining P1 / P2 items per the re-set prioritization
+
+- **P1 — Drum kink gate over-fires on heavy drums.** On Outkast / Foo Fighters, `drumsEnergyDev > 0.6` fires 8.9 % of frames. Needs higher gate threshold (0.9 / 1.5) or per-music-density adaptation. Next increment.
+- **P2 — Stem-warmup window ~40 s vs documented ~10 s.** Engine pipeline issue; SessionPreparer / live-analyzer crossfade taking longer than documented. Empirically observed in multiple sessions. Separate investigation.
+
+---
+
 ## [dev-2026-05-19-e] AV.2.2g — Raise synth-flash amplitude (1.5 vs co-firing brightness pulse)
 
 **Increment:** AV.2.2g. **Status:** Landed 2026-05-19.
