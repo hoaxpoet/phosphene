@@ -6,6 +6,52 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-19-c] AV.2.2e — Threshold-gate the brightness route
+
+**Increment:** AV.2.2e. **Status:** Landed 2026-05-19.
+
+AV.2.2d live-test session `2026-05-19T21-30-32Z` (Billie Jean → Seven Nation Army → Get Lucky). Matt's feedback: *"Still a bit too animated, uncoordinated."* Diagnostic from `stems.csv`:
+
+- `stems.bass_energy_dev > 0.2` fires on **60.2 %** of frames during Billie Jean
+- The unfiltered route modulated brightness continuously at varying amplitudes → "uncoordinated, restless wobble"
+- Gate distribution:
+  - `> 0.3`: 15.9 % of frames (~one fire per 6 frames — matches kick/synth pulse rate)
+  - `> 0.4`: 8.8 % (clearly per-note)
+  - `> 0.5`: 4.0 %
+
+### The change
+
+Add a `smoothstep(0.30, 0.55, bassDev)` gate to the brightness route. Below 0.30: no brightness response (brightness sits at base 0.85). Above 0.55: full `kBrightnessAmp` shift. Between: smooth ramp. Brightness now clearly pulses on the larger bass transients and settles between them — punctuated, not continuous.
+
+```metal
+// AV.2.2d (was):
+float brightnessScale = kBrightnessBase + kBrightnessAmp * clamp(bassDev, 0, 1);
+
+// AV.2.2e (now):
+float bassPulse = smoothstep(kBrightnessGateLo, kBrightnessGateHi, bassDev);
+float brightnessScale = kBrightnessBase + kBrightnessAmp * bassPulse;
+```
+
+Two new constants: `kBrightnessGateLo = 0.30`, `kBrightnessGateHi = 0.55`. Drift speed (route 4) left ungated for now — continuous coupling is OK there; gating both would be two variables moving at once.
+
+Predicted live: aurora reads as pulsing in time with bass hits / synth notes / kicks rather than constantly fluctuating. Between musical events the brightness sits at base.
+
+### Tests
+
+- `AuroraVeilContinuousDominanceTest` sweep still passes. With the gate, low sweep points (`bassDev = 0.0` and `0.2`) produce identical baseline brightness; mid (`0.4`) reaches partial gate; high (`0.6`, `0.8`) gate fully. The existing monotonicity tolerance handles equal-step entries; the route-unwired regression gate (span ≥ 0.012) still fires on real route output.
+- 43 / 43 tests green; `xcodebuild PhospheneApp build` clean; `swiftlint --strict` 0 violations.
+
+### Live re-verification gate
+
+Matt runs another session. Expected: bass-driven brightness pulses are clearly punctuated and align with musical events (synth notes, kicks); between events brightness settles at base. If "uncoordinated" reading is gone, AV.2.2f adds the synth-flash route via `stems.other_energy_dev` for the Billie Jean lead-synth motif reflection.
+
+### Two route issues still in queue
+
+- **Route 1 (vocals_pitch palette migration)** still silent — confidence 0 % across all sessions. Upstream stem-analyzer diagnostic needed.
+- **AV.2.2f (planned)** — add a new synth/melody-flash route consuming `stems.other_energy_dev` with `smoothstep(0.4, 0.7)` gate → palette baseOffset additive shift. Targets the Billie Jean lead synth (motif visible as a hue flash on each note). Only ships after AV.2.2e live-confirms the "uncoordinated" issue is resolved.
+
+---
+
 ## [dev-2026-05-19-b] AV.2.2d — Brightness route re-shaped to use bass_dev
 
 **Increment:** AV.2.2d. **Status:** Landed 2026-05-19.

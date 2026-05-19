@@ -131,15 +131,19 @@ constant float kStemWarmupHigh = 0.06;
 constant float kVocalsPitchAmp = 0.8;
 
 // Route 2 — brightness breathing. AV.2.2c reduced amplitude 0.30 → 0.15;
-// AV.2.2d (2026-05-19) restored to 0.30 because the primitive switched
-// from signed `bass_att_rel` (which sat structurally negative on real
-// music) to positive-only `bass_dev`. With the positive-only primitive,
-// brightness modulates UP only, not down — 0.30 gives visible bass-driven
-// pulses in [0.85, 1.15] (clamped at the 0.95 ceiling on heavy bass) but
-// the modulation only fires on actual transients (bass_dev = 0 most of the
-// time), so the result is occasional pulses, not continuous breathing.
-constant float kBrightnessBase = 0.85;
-constant float kBrightnessAmp  = 0.30;
+// AV.2.2d restored to 0.30 after switching primitive to positive-only
+// `bass_dev`. AV.2.2e (2026-05-19) adds a smoothstep threshold-gate on
+// top — live session 2026-05-19T21-30-32Z showed `stems.bass_energy_dev`
+// > 0.2 fires on 60.2 % of frames during Billie Jean, so the unfiltered
+// route modulated brightness continuously and read as "uncoordinated"
+// rather than "pulsing with the music." The gate (lo 0.3 / hi 0.55) lets
+// only the larger transients through (~16 % of frames at 0.3, ~4 % at
+// 0.55) so brightness clearly pulses on bass events and settles to base
+// between them.
+constant float kBrightnessBase    = 0.85;
+constant float kBrightnessAmp     = 0.30;
+constant float kBrightnessGateLo  = 0.30;
+constant float kBrightnessGateHi  = 0.55;
 
 // Route 3 — fold density. AV.2.2c (2026-05-19): amplitude reduced 0.30 →
 // 0.10. Was the DOMINANT motion contributor — changing the noise sample's
@@ -480,10 +484,13 @@ fragment float4 aurora_fragment(
     }
 
     // Route 2 — brightness breathing. Apply AFTER the MAX so brightness
-    // modulation is global (the whole aurora pulses, not per-column). Uses
-    // positive-only bassDev so the brightness only goes UP on bass
-    // transients (AV.2.2d).
-    float brightnessScale = kBrightnessBase + kBrightnessAmp * clamp(bassDev, 0.0, 1.0);
+    // modulation is global (the whole aurora pulses, not per-column).
+    // AV.2.2e: threshold-gate the bassDev signal so brightness only pulses
+    // on the larger bass transients (gate ramp 0.30 → 0.55), not on every
+    // small bass-stem fluctuation. Below 0.30 the brightness stays at
+    // base 0.85; above 0.55 it reaches the full kBrightnessAmp shift.
+    float bassPulse = smoothstep(kBrightnessGateLo, kBrightnessGateHi, bassDev);
+    float brightnessScale = kBrightnessBase + kBrightnessAmp * bassPulse;
     auroraColor *= brightnessScale;
 
     // Aurora altitude envelope. Localizes the curtain to the upper-middle of
