@@ -6,6 +6,65 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-19-d] AV.2.2f — Synth/melody-flash route via `stems.other_energy_dev`
+
+**Increment:** AV.2.2f. **Status:** Landed 2026-05-19.
+
+Matt flagged the higher-pitched lead synth in Billie Jean's intro (the "doot-doot" motif before the vocals enter) as a feature he'd find fun to see reflected in the aurora. The Demucs 4-stem separator routes that synth into the "other" stem (drums / bass / vocals / **other** — "other" captures keys / synth / guitar / anything that's not the first three).
+
+### The change — new audio route 8
+
+Route 8 (synth/melody flash): `smoothstep(0.4, 0.7, stems.other_energy_dev)` × **0.6** added to the per-fragment palette `baseOffset`. The route fires only on the larger transients in the "other" stem (the actual note attacks), gating out continuous low-level mid-band background. Each pulse causes a brief positive shift to the IQ-palette phase → aurora hue flashes warmer (toward magenta) on each synth/melody attack and settles back when the note ends.
+
+Three new constants in `AuroraVeil.metal`:
+
+```c
+constant float kSynthFlashGateLo = 0.4;
+constant float kSynthFlashGateHi = 0.7;
+constant float kSynthFlashAmp    = 0.6;   // rad shift on palette baseOffset
+```
+
+Stacks into the existing `paletteOffset` aggregator alongside routes 1 (vocals_pitch) and 6 (valence) so all three columns hue-shift coherently.
+
+### Why this should work for Billie Jean specifically
+
+Live session `2026-05-19T21-30-32Z`'s `stems.other_energy_dev` time-series showed:
+- t=11–38 s: 0.247 (pre-warmup cached baseline)
+- t=42 s onward (live analyzer active): variable 0.0 to 0.75
+- t=49.9 s peak: **0.750** — coincident with the synth motif peaking
+- t=57.6 s: 0.011 (between synth phrases)
+
+The other-stem dev firing rate on Billie Jean:
+- `> 0.4`: **9.3 %** of frames — per-note clarity (matches synth-note attack rate)
+- `> 0.7`: ~2 % — only the loudest events
+- The gate ramp 0.4 → 0.7 means partial flashes during medium-amplitude notes, full flashes on the strongest hits
+
+On other tracks the same route fires on whatever melodic / keyboard content the other-stem isolates: guitar lines on Seven Nation Army, the Nile Rodgers rhythm guitar on Get Lucky.
+
+### Silence fallback / D-019 compliance
+
+The "other" stem has no FeatureVector equivalent (FV only carries 3 bands + spectral features), so the route has no FV proxy. Pre-warmup the dev primitive is zero by construction (no stem signal → no deviation), so the route is silence-stable: `synthPulse = 0` → `paletteOffset` shift = 0 → palette stays at the AV.1 stratification baseline.
+
+### Tests
+
+- `swift test --filter "AuroraVeil|PresetRegression|PresetAcceptance|FidelityRubric"` — 43 / 43 green.
+- `xcodebuild -scheme PhospheneApp build` — BUILD SUCCEEDED.
+- No new test added: the existing `AuroraVeilContinuousDominanceTest` doesn't set `stems.other_energy_dev` so the new route stays at 0 (route silence-stable). `AuroraVeilPitchHueTest` is unaffected (palette-pitch route still tested independently).
+
+### Live re-verification gate
+
+Matt's next session — should see:
+- Billie Jean intro: brief warm hue flashes on each lead-synth note ("doot-doot" reflected as palette pulses)
+- Brightness still pulses on bass transients per AV.2.2e
+- Both routes operate on independent visual axes (brightness vs hue) — no competing-rhythms conflict
+- Quiet sections between phrases: aurora settles to base brightness + Lawlor stratification baseline palette
+
+### Remaining route issue
+
+- **Route 1 (vocals_pitch palette migration)** is still silent — `vocalsPitchConfidence` was 0 % across all sessions. Upstream stem-analyzer diagnostic (separate increment) still needed. With route 8 now driving a melody-coupled hue flash, the absence of route 1 is less of a gap — but the long-form "Sigur-Rós-grade slow hue migration along the vocal line" feature the dossier emphasised is still on hold pending the pitch-tracker fix.
+
+---
+
 ## [dev-2026-05-19-c] AV.2.2e — Threshold-gate the brightness route
 
 **Increment:** AV.2.2e. **Status:** Landed 2026-05-19.
