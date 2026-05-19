@@ -48,12 +48,13 @@ struct AuroraVeilContinuousDominanceTest {
 
     @Test("Brightness breathing scales monotonically with bass_dev")
     func test_bassSweep_monotonic() throws {
-        // AV.2.2d sweep positive-only bassDev (route now consumes
-        // `f.bass_dev`, the positive-only deviation primitive, instead of
-        // signed `bass_att_rel`). The previous test swept bassAttRel ∈
-        // [-0.8, 0.8] to exercise both halves of a signed primitive; the
-        // new route only responds to positive transients, so the sweep
-        // is [0.0, 0.8].
+        // AV.2.2d sweep positive-only bassDev. AV.2.2e adds a smoothstep
+        // gate (lo 0.30 / hi 0.55) so bassDev below 0.30 produces no
+        // brightness response (brightness stays at base). Sweep stays in
+        // [0.0, 0.8] but the lower-end steps (0.0, 0.2) will land at
+        // identical baseline brightness — the monotonicity check below
+        // tolerates equal-step. The span 0.0 → 0.8 is what catches the
+        // route-unwired regression.
         let sweep: [Float] = [0.0, 0.2, 0.4, 0.6, 0.8]
         var meanLumas: [Float] = []
         for bassDev in sweep {
