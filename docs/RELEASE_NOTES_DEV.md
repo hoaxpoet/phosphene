@@ -6,6 +6,61 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-19-a] AV.2.2c — Calmer-tuning audio-route amplitude pass
+
+**Increment:** AV.2.2c. **Status:** Landed 2026-05-19.
+
+First successful live session of Aurora Veil (`2026-05-19T01-12-47Z`, 3m45s of Billie Jean → Daft Punk). Matt's feedback: *"Preset is visible now. It looks good, but it's too active with music playing. The aurora effect is pretty cool, there's just too much motion."* Audio-routing amplitudes are sized too aggressively for the design's "ambient ribbon" register; calming the audio routes brings the preset into its target character.
+
+### Diagnosis from session data
+
+Mid-session window (rows 5000–10000 of `features.csv` + `stems.csv`, ~Billie Jean):
+
+| Source | Driver | Pre-AV.2.2c amp | Observed firing | Motion contribution |
+|---|---|---|---|---|
+| Fold density (route 3) | `mid_att_rel` ↔ `vocals_energy_rel` | × 0.30 spatial-freq | continuous, every frame | **LARGEST** — spatial-frequency changes morph the entire noise field per frame |
+| Curtain kink (route 5) | gated `drums_energy_dev` | × 0.003 UV jitter | gate fired **9.4 %** of frames (drumsEnergyDev > 0.4); design intent was "rare events" but on real pop music 0.4 isn't rare | Visible lateral shudder; accumulator stays charged most of the time |
+| Brightness breath (route 2) | `bass_att_rel` | × 0.30 (0.55–1.15 range) | continuous, every frame; observed bassAttRel mean −0.59 | Whole-frame brightness pulsing |
+| Other routes | — | — | — | Slow, not "motion" |
+
+The dominant per-frame motion source is **fold density** — `1.0 + 0.30 × midRel` multiplies the noise sample's spatial frequency, and continuous-but-fluctuating midRel makes the entire noise field morph frame-to-frame. The kink gate sized for "rare events" turned out to fire ~10 % of frames on typical pop music (drumsEnergyDev > 0.4 is mid-typical, not rare).
+
+### Constants changed
+
+Single shader-constants edit + matching CPU-side gate adjustment. No structural changes.
+
+| Constant | Pre-AV.2.2c | Post | Effect |
+|---|---|---|---|
+| `kFoldDensityAmp` (AuroraVeil.metal) | 0.30 | **0.10** | Mids thicken folds 1/3 as aggressively → noise field stays much more stable frame-to-frame. Biggest single calm-down. |
+| `kinkChargeLo` / `kinkChargeHi` (AuroraVeilState.swift) | 0.4 / 0.7 | **0.6 / 0.9** | Drum kink fires only on genuinely rare hits (~2 % of frames instead of 9 %). What's left feels like an occasional shudder, not constant agitation. |
+| `kKinkAmp` (AuroraVeil.metal) | 0.003 | **0.0015** | When the rare event does fire, the shudder is half as wide. Still visible, less aggressive. |
+| `kBrightnessAmp` (AuroraVeil.metal) | 0.30 | **0.15** | Brightness varies in 0.70–1.00× instead of 0.55–1.15× — gentler breathing. |
+| `kVocalsPitchAmp` (AuroraVeil.metal) | 1.6 | **0.8** | Hue migration along the ribbon happens half as fast — Sigur-Rós-slow rather than visibly sliding. |
+| `kValencePaletteAmp` (AuroraVeil.metal) | 0.4 | **0.2** | Major/minor key tilt is subtler. |
+
+Routes left unchanged: drift speed (route 4 — already low + clamped to `max(0, bassRel)`); star twinkle (route 7 — subtle enough by design).
+
+### Test threshold adjustment
+
+`AuroraVeilContinuousDominanceTest`'s bass-sweep span threshold lowered 0.03 → 0.012 to match the halved brightness amplitude. The test's job is to catch a regression (route unwired); the specific amplitude is a tuning parameter, not a contract.
+
+### Tests run
+
+- `swift test --filter "AuroraVeil|PresetRegression|PresetAcceptance|FidelityRubric"` — 43 / 43 green.
+- `xcodebuild -scheme PhospheneApp build` — BUILD SUCCEEDED.
+- `swiftlint --strict` touched files — 0 violations.
+
+### Live re-verification gate
+
+Matt runs another session. Expected: same visual character ("the aurora effect is pretty cool") but with significantly less per-frame motion. Brightness should breathe gently rather than pulse; folds should thicken on mids but the noise field should stay stable between mid transients; the kink should be an occasional 1–2 s shudder, not a continuous agitation; hue migration along the ribbon should be a slow walk over many seconds.
+
+### Known follow-ups
+
+- AV.2.3 (held until live-verification of AV.2.2c) — dossier-grounded redesign: curl-noise INSIDE `aurora_tri_noise_2d` sample coordinate per dossier §1.3 line 61, two-column SUM-merge instead of three-column MAX per §1.3 line 62, multi-frame audio-route harness that replays `raw_tap.wav`, and an `applyPreset` integration test that catches the AV.2.2b class of regression.
+- Per-route fine-tuning if any individual amp still reads wrong after live test — one-line follow-up each.
+
+---
+
 ## [dev-2026-05-18-h] AV.2.2b — Move Aurora Veil state allocation out of `case .mvWarp:`
 
 **Increment:** AV.2.2b. **Status:** Landed 2026-05-18.

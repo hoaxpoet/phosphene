@@ -95,14 +95,20 @@ struct AuroraVeilContinuousDominanceTest {
         // multiplicative scale spans [0.61, 1.09] ≈ 1.78× range; mean
         // luma is expected to span a substantial fraction of the aurora
         // band's baseline luma.
+        // AV.2.2c: threshold lowered 0.03 → 0.012 after kBrightnessAmp was
+        // reduced 0.30 → 0.15 (live session 2026-05-19T01-12-47Z calmer-tuning
+        // pass). The test's job is to catch a REGRESSION (route unwired),
+        // not to enforce a specific amplitude. Observed span at the new
+        // amplitude across [-0.8, 0.8] sweep is ~0.020; threshold 0.012 keeps
+        // headroom but flags a true regression to zero.
         let span = meanLumas.last! - meanLumas.first!
         #expect(
-            span >= 0.03,
+            span >= 0.012,
             """
-            Bass sweep span \(span) below 0.03 mean-luma threshold — \
-            brightness breathing route (f.bass_att_rel → 0.85 + 0.30 × \
-            bassRel) is wired but not producing visible response. \
-            Sweep: \(sweepStr).
+            Bass sweep span \(span) below 0.012 mean-luma threshold — \
+            brightness breathing route (f.bass_att_rel → 0.85 + 0.15 × \
+            bassRel post-AV.2.2c) is wired but not producing visible \
+            response. Sweep: \(sweepStr).
             """
         )
     }
