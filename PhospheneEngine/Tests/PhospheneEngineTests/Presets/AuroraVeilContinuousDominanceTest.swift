@@ -46,23 +46,18 @@ struct AuroraVeilContinuousDominanceTest {
 
     // MARK: - Bass sweep monotonicity
 
-    @Test("Brightness breathing scales monotonically with bass_att_rel")
+    @Test("Brightness breathing scales monotonically with bass_dev")
     func test_bassSweep_monotonic() throws {
-        // Sweep the FULL brightness-breathing range of the route. The
-        // shader applies `clamp(bassRel, -1, 1) * 0.30 + 0.85` so the
-        // observable range is bassRel ∈ [-1, 1]. Sampling at five points
-        // across this range exercises the route below and above the
-        // baseline. (Positive-only sweeps risk clipping the brightest
-        // pixels against the shader's `min(.., 0.95)` HDR clamp — the
-        // brightest aurora pixels saturate at any non-trivial bassRel
-        // because the AV.2 multi-column max-merge raises the pre-clamp
-        // brightness aggressively. Mean luma over the aurora band is
-        // the right observable; the negative half of the sweep is where
-        // the route's dynamic range is unambiguously visible.)
-        let sweep: [Float] = [-0.8, -0.4, 0.0, 0.4, 0.8]
+        // AV.2.2d sweep positive-only bassDev (route now consumes
+        // `f.bass_dev`, the positive-only deviation primitive, instead of
+        // signed `bass_att_rel`). The previous test swept bassAttRel ∈
+        // [-0.8, 0.8] to exercise both halves of a signed primitive; the
+        // new route only responds to positive transients, so the sweep
+        // is [0.0, 0.8].
+        let sweep: [Float] = [0.0, 0.2, 0.4, 0.6, 0.8]
         var meanLumas: [Float] = []
-        for bassRel in sweep {
-            guard let pixels = try renderFrame(bassAttRel: bassRel,
+        for bassDev in sweep {
+            guard let pixels = try renderFrame(bassDev: bassDev,
                                                kinkAccumulator: 0,
                                                pitchNorm: 0.5,
                                                pitchConfidence: 0) else {
@@ -74,7 +69,7 @@ struct AuroraVeilContinuousDominanceTest {
 
         // Print the sweep so a failure is debuggable from the test log alone.
         let sweepStr = zip(sweep, meanLumas)
-            .map { "bassRel=\($0.0) → mean=\(String(format: "%.4f", $0.1))" }
+            .map { "bassDev=\($0.0) → mean=\(String(format: "%.4f", $0.1))" }
             .joined(separator: ", ")
 
         // Monotonicity: each step ≥ previous. Tolerance for fp + per-octave
@@ -95,20 +90,22 @@ struct AuroraVeilContinuousDominanceTest {
         // multiplicative scale spans [0.61, 1.09] ≈ 1.78× range; mean
         // luma is expected to span a substantial fraction of the aurora
         // band's baseline luma.
-        // AV.2.2c: threshold lowered 0.03 → 0.012 after kBrightnessAmp was
-        // reduced 0.30 → 0.15 (live session 2026-05-19T01-12-47Z calmer-tuning
-        // pass). The test's job is to catch a REGRESSION (route unwired),
-        // not to enforce a specific amplitude. Observed span at the new
-        // amplitude across [-0.8, 0.8] sweep is ~0.020; threshold 0.012 keeps
-        // headroom but flags a true regression to zero.
+        // AV.2.2d: route consumes `f.bass_dev` (positive-only, amp 0.30).
+        // Sweep [0.0, 0.8] produces brightness shift 0.85 → 1.09 pre-clamp;
+        // post-clamp the observable mean-luma span is bounded by the 0.95
+        // ceiling. Observed sweep span ~0.018 because most bright aurora
+        // pixels saturate at clamp; the route is monotonic but compressed.
+        // Threshold 0.012 catches a true regression (route unwired →
+        // constant brightness → zero span) without flagging the clamp-
+        // bounded observable.
         let span = meanLumas.last! - meanLumas.first!
         #expect(
             span >= 0.012,
             """
             Bass sweep span \(span) below 0.012 mean-luma threshold — \
-            brightness breathing route (f.bass_att_rel → 0.85 + 0.15 × \
-            bassRel post-AV.2.2c) is wired but not producing visible \
-            response. Sweep: \(sweepStr).
+            brightness breathing route (f.bass_dev → 0.85 + 0.30 × bassDev \
+            post-AV.2.2d) is wired but not producing visible response. \
+            Sweep: \(sweepStr).
             """
         )
     }
@@ -118,7 +115,7 @@ struct AuroraVeilContinuousDominanceTest {
     @Test("Drum-kink amplitude ≤ 10% of bass-brightness amplitude at peak")
     func test_continuousDominanceRatio() throws {
         // Control: bass = 0, kink = 0. Both audio routes silent.
-        guard let control = try renderFrame(bassAttRel: 0,
+        guard let control = try renderFrame(bassDev: 0,
                                             kinkAccumulator: 0,
                                             pitchNorm: 0.5,
                                             pitchConfidence: 0) else {
@@ -126,12 +123,12 @@ struct AuroraVeilContinuousDominanceTest {
             return
         }
         // Peak bass, zero kink.
-        guard let peakBass = try renderFrame(bassAttRel: 0.8,
+        guard let peakBass = try renderFrame(bassDev: 0.8,
                                              kinkAccumulator: 0,
                                              pitchNorm: 0.5,
                                              pitchConfidence: 0) else { return }
         // Zero bass, peak kink.
-        guard let peakKink = try renderFrame(bassAttRel: 0,
+        guard let peakKink = try renderFrame(bassDev: 0,
                                              kinkAccumulator: 0.8,
                                              pitchNorm: 0.5,
                                              pitchConfidence: 0) else { return }
@@ -167,7 +164,7 @@ struct AuroraVeilContinuousDominanceTest {
     // MARK: - Render harness
 
     private func renderFrame(
-        bassAttRel: Float,
+        bassDev: Float,
         kinkAccumulator: Float,
         pitchNorm: Float,
         pitchConfidence: Float
@@ -216,7 +213,7 @@ struct AuroraVeilContinuousDominanceTest {
         // substrate-drift differences between sweep steps confounding the
         // luma comparison.
         var features = FeatureVector(time: 3.0, deltaTime: 1.0 / 60.0)
-        features.bassAttRel = bassAttRel
+        features.bassDev = bassDev
 
         // Slot-6 state buffer.
         var avMirror = AuroraVeilStateGPUMirror(
