@@ -6,6 +6,48 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-19-e] AV.2.2g — Raise synth-flash amplitude (1.5 vs co-firing brightness pulse)
+
+**Increment:** AV.2.2g. **Status:** Landed 2026-05-19.
+
+AV.2.2f live-test session `2026-05-19T21-57-33Z`. Matt: *"Works well for Get Lucky. I didn't really see the Doot Doots emphasized — too much activity from the bass / drums / vocals?"* Diagnosis confirmed the route is firing on the verses; visual reading is being masked.
+
+### What the data showed
+
+Post-warmup Billie Jean (rows 1100–2899, ~30 s into song to end):
+```
+synth-flash fires (other > 0.4):                   15.2% of frames
+synth + bass co-fire (both routes simultaneous):   13.5% of frames
+synth fires alone (bass < 0.1):                     0.0% of frames
+synth fires with quiet bass (< 0.2):                0.1% of frames
+```
+
+**99 %** of synth-flash fires coincide with a simultaneous bass brightness pulse. The two routes operate on independent visual axes (brightness vs hue) but they fire together on Billie Jean's groove — every synth note coincides with a kick-or-bass-note hit. The brightness pulse dominates the visual response; the 0.6-rad hue shift is too subtle to register alongside it.
+
+### Also confirmed: Billie Jean intro is in the stem-cache window
+
+The first ~40 s of Billie Jean show `stems.other_energy_dev = 0.247` (constant — cached value from SessionPreparer's 30 s preview analysis). The live analyzer takes over at ~t = 43 s. The iconic intro synth motif (~t = 17–23 s in the song) falls entirely within the pre-warmup window, so the route cannot fire there. **This is an engine-level pipeline issue (CLAUDE.md documents ~10 s crossfade; empirically observed ~35–40 s), not an Aurora Veil tuning issue.** Filed for separate investigation.
+
+### The fix
+
+`kSynthFlashAmp` 0.6 → **1.5**. Single constant edit. Palette `baseOffset` now shifts by ~24 % of the IQ cycle per synth pulse (was ~10 %) — perceptibly different region of the palette even when brightness is pulsing simultaneously. Verse synths should now read as distinct hue shifts coinciding with the brightness pulses, rather than getting masked.
+
+### Tests
+
+- `swift test --filter "AuroraVeil|PresetRegression|PresetAcceptance|FidelityRubric"` — 43 / 43 green.
+- `xcodebuild -scheme PhospheneApp build` — BUILD SUCCEEDED.
+
+### Live re-verification gate
+
+Matt's next session: verses of Billie Jean should now show the synth-coupled hue shift even though brightness is also pulsing. If 1.5 rad is still not enough to read distinctly, the next move is an additive magenta-tint overlay (a different visual mechanism from `baseOffset` shift) — captured as AV.2.2h pending the live test.
+
+### Known follow-ups still open
+
+- **Stem-cache warmup is ~40 s, not the documented ~10 s.** Engine-pipeline issue. Aurora Veil intros don't react until live analyzer takes over.
+- **Route 1 (vocals_pitch palette migration)** still silent — `vocalsPitchConfidence = 0 %` across all sessions. Upstream stem-analyzer issue.
+
+---
+
 ## [dev-2026-05-19-d] AV.2.2f — Synth/melody-flash route via `stems.other_energy_dev`
 
 **Increment:** AV.2.2f. **Status:** Landed 2026-05-19.
