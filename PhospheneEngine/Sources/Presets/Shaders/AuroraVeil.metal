@@ -188,7 +188,13 @@ constant float kValencePaletteAmp = 0.2;
 // zero by construction → route is silence-stable (D-019 fallback).
 constant float kSynthFlashGateLo = 0.4;
 constant float kSynthFlashGateHi = 0.7;
-constant float kSynthFlashAmp    = 0.6;   // rad shift on palette baseOffset
+// AV.2.2g (2026-05-19): amplitude raised 0.6 → 1.5 because live session
+// 2026-05-19T21-57-33Z showed the route fires 15.2 % of frames on Billie
+// Jean verses but 99 % of those frames also have a simultaneous bass
+// brightness pulse — the hue shift was visually masked by the brightness
+// modulation. Larger amp (≈ 24 % of the IQ palette cycle) makes the
+// per-pulse hue shift perceptible even when brightness is pulsing too.
+constant float kSynthFlashAmp    = 1.5;   // rad shift on palette baseOffset
 
 // Route 7 — star twinkle. 30 % amplitude per-star brightness modulation,
 // gated by `vocals_pitch_confidence > 0.5` (the gate is in shader, not here).
