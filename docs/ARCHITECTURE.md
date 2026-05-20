@@ -80,13 +80,15 @@ This ordering is the most important design rule in the project. Continuous-energ
 **MIR pipeline components** (`DSP` module):
 
 - `BandEnergyProcessor` — Milkdrop-style AGC (output = raw / runningAverage × 0.5). 3-band and 6-band per frame. Deviation primitives `xRel`/`xDev` exposed in `FeatureVector` (D-026).
-- `BeatDetector` — 6-band onset detection with per-band cooldowns and grouped pulses; tempo via IOI histogram autocorrelation.
-- `BeatPredictor` (MV-3b) — IIR period smoother on onset rising edges. Writes `beatPhase01` (0→1 per inter-beat interval) and `beatsUntilNext` to `FeatureVector`. Enables anticipatory pre-beat animation.
-- `ChromaExtractor` — 12-bin chroma with bin-count normalization; Krumhansl-Schmuckler key estimation.
+- `BeatDetector` — 6-band onset detection with per-band cooldowns and grouped pulses; tempo via IOI histogram (sub_bass-only timestamps per D-075) + autocorrelation fallback.
+- `LiveBeatDriftTracker` (DSP.2 S7) — **primary beat-phase path when an offline `BeatGrid` is installed.** Cross-correlates `BeatDetector`'s sub_bass onset stream against the cached grid in a ±50 ms window, EMA-tracks drift, and computes `beatPhase01` / `beatsUntilNext` / `barPhase01` / `beatsPerBar` analytically. The BUG-007.x cluster of fixes (lock hysteresis, per-track grid-onset calibration, audio-output-latency compensation, bar-phase auto-rotate, hybrid runtime recalibration) all live here.
+- `BeatPredictor` (MV-3b) — **reactive-mode fallback** when no offline grid is installed. IIR period smoother on onset rising edges. Writes `beatPhase01` (0→1 per inter-beat interval) and `beatsUntilNext` to `FeatureVector`.
+- `ChromaExtractor` — 12-bin chroma with bin-count normalization; Krumhansl-Schmuckler key estimation (24 profiles).
 - `SpectralAnalyzer` — centroid, rolloff, flux via vDSP.
+- `StructuralAnalyzer` / `NoveltyDetector` / `SelfSimilarityMatrix` — section-boundary detection. Self-similarity matrix (600-frame × 16-feature ring buffer) feeds checkerboard-kernel novelty detection (every 30 frames) → `StructuralPrediction`. **Audit note (CA.1, 2026-05-20):** this chain runs per frame in `MIRPipeline.process` but its output (`latestStructuralPrediction`) is currently consumed only at *preparation time* by `SessionPreparer`; the runtime per-frame work has no live reader. Tracked as a CA-future cleanup.
 - `StemAnalyzer` — per-stem `BandEnergyProcessor` + `BeatDetector` on drums + rich metadata (onset rate, centroid, attack ratio, energy slope) via fast/slow RMS EMAs + `PitchTracker` on vocals. Runs at audio-callback rate (~94 Hz) on a sliding 1024-sample window.
-- `PitchTracker` (MV-3c) — YIN autocorrelation (vDSP_dotpr, 2048-sample window). Key implementation detail: after finding the first CMNDF crossing below threshold, the algorithm advances to the local minimum before parabolic interpolation — stopping at the crossing causes catastrophic extrapolation on the descending slope. Exposes `vocalsPitchHz`/`vocalsPitchConfidence` in `StemFeatures`.
-- `MIRPipeline` — coordinator: builds `FeatureVector` from all the above each frame.
+- `PitchTracker` (MV-3c) — YIN autocorrelation (vDSP_dotpr, 2048-sample window). Key implementation detail: after finding the first CMNDF crossing below threshold, the algorithm advances to the local minimum before parabolic interpolation — stopping at the crossing causes catastrophic extrapolation on the descending slope. Live caller passes 1024-sample windows; an internal 2048-sample ring buffer accumulates before YIN runs (the **PT.1 fix, 2026-05-19**: pre-fix the live path zero-padded the buffer and `vocalsPitchConfidence` was structurally 0 for ~5 months). Exposes `vocalsPitchHz`/`vocalsPitchConfidence` in `StemFeatures`.
+- `MIRPipeline` — coordinator: builds `FeatureVector` from all the above each frame. Picks `LiveBeatDriftTracker` over `BeatPredictor` whenever `liveDriftTracker.hasGrid == true`.
 
 **`StemFeatures` layout** (GPU buffer(3), 64 floats = 256 bytes):
 - Floats 1–16: per-stem energy, band0, band1, beat (four stems).
@@ -279,6 +281,8 @@ No CoreML dependency. All ML runs on MPSGraph (GPU) or Accelerate (CPU).
 
 **Test surface:** `SessionRecorderTests` validates round-trip correctness against known inputs (CSV column-by-column, WAV PCM sample-by-sample within 16-bit quantization, MP4 readable by `AVURLAsset`). A passing session that shows wrong data tells you the upstream pipeline is wrong, not the recorder.
 
+**Manual MIR recording is a separate path.** The `R` keyboard shortcut toggles `MIRPipeline.startRecording()` / `stopRecording()` (implemented in `DSP/MIRPipeline+Recording.swift`), which writes a *different* file: `~/phosphene_features.csv` (17 columns, 1 Hz throttled, includes `track` / `artist` columns and `stableKey` / `stableBPM`). This path is independent of the auto-on per-session `SessionRecorder` and was historically the only MIR-data path before `SessionRecorder` was added. Both are kept: `SessionRecorder` is for full per-session diagnostic captures; the `R`-shortcut path is for ad-hoc MIR-feature inspection across multiple short observation windows without producing the larger per-session bundle. The schemas and cadences differ; do not assume they are interchangeable.
+
 ## Soak Test Infrastructure (Increment 7.1, D-060)
 
 `SoakTestHarness` (`Diagnostics` module) drives `AudioInputRouter` in `.localFile` mode for a configurable duration (default 2 hours) and produces a structured `Report` with memory growth, frame timing percentiles, dropped frames, quality-level transitions, signal-state transitions, and ML force-dispatch counts.
@@ -413,19 +417,26 @@ PhospheneEngine/
     MusicKitBridge          → Optional MusicKit catalog enrichment, graceful no-op
     Protocols               → AudioCapturing, AudioBuffering, FFTProcessing, MoodClassifying, MetadataProviding, MetadataFetching
   DSP/
+    DSP.swift               → Module marker (imports only)
     SpectralAnalyzer        → Spectral centroid, rolloff, flux via vDSP
     BandEnergyProcessor     → 3-band + 6-band energy, AGC, FPS-independent smoothing
-    ChromaExtractor         → 12-bin chroma, Krumhansl-Schmuckler key estimation, bin-count normalized
+    ChromaExtractor         → 12-bin chroma (≥500 Hz floor), Krumhansl-Schmuckler key estimation, bin-count normalized
     BeatDetector            → 6-band onset detection, grouped beat pulses, tempo via autocorrelation. recordOnsetTimestamps sources from result.onsets[0] (sub_bass per-band events), never fuses bands (D-075).
-    BeatDetector+Tempo      → IOI-based tempo via computeStableTempo: trimmed-mean IOI over the trailing 10 s window (median, drop outliers outside [0.5×, 2×], mean of inliers, BPM = 60/meanIOI). Histogram still built but consumed only by the diagnostic dump (D-075). Plus estimateTempo (autocorrelation fallback).
+    BeatDetector+Tempo      → IOI-based tempo via computeStableTempo: trimmed-mean IOI over the trailing 10 s window (median, drop outliers outside [0.5×, 2×], mean of inliers, BPM = 60/meanIOI). Histogram still built but consumed only by the diagnostic dump (D-075). Plus estimateTempo (autocorrelation fallback). Halving-only octave correction at BPM > 175 (BUG-009; sub-80 doubling deleted per D-079).
     BeatDetector+TempoDiagnostics → DSP.1 baseline-capture instrumentation. dumpHistogram + dumpEarly + dumpTempoTimestamp gated behind BEATDETECTOR_DUMP_HIST=1; optional file output via BEATDETECTOR_DUMP_FILE=<path>. Silent in production.
-    MIRPipeline             → Coordinator: all analyzers → FeatureVector for GPU; owns BeatPredictor (D-028)
-    BeatPredictor           → IIR beat-phase predictor: rising-edge onset → period estimate → beatPhase01/beatsUntilNext in FeatureVector (MV-3b, D-028)
-    PitchTracker            → YIN autocorrelation pitch detector (vDSP_dotpr, 2048-sample window, 80–1000 Hz, local-minimum refinement) → vocalsPitchHz/Confidence in StemFeatures (MV-3c, D-028)
-    SelfSimilarityMatrix    → Ring buffer of feature vectors, vDSP cosine similarity
-    NoveltyDetector         → Checkerboard kernel boundary detection, adaptive threshold
-    StructuralAnalyzer      → Section boundary prediction, repetition detection
+    BeatGrid                → Codable/Hashable/Sendable value type for Beat This!-resolved offline grids. offsetBy / halvingOctaveCorrected / overridingBeatsPerBar / localTiming / nearestBeat / beatIndex(at:). Forward-extrapolates beat times to a horizon for live-window grids (BUG-R001).
+    BeatGridResolver        → Stateless transformer: Beat This! per-frame beat/downbeat probabilities → BeatGrid. 7-frame max-pool peak picking, ±40 ms downbeat-to-beat snap, trimmed-mean IOI BPM, median-downbeat-IOI meter (D-073/D-075/D-077).
+    BeatThisPreprocessor    → Beat This! log-mel preprocessor (sr=22050, nFFT=1024, hop=441, nMels=128, fMin=30, fMax=11000, Slaney scale, frame-length normalization). Zero-alloc post-init; NSLock-guarded.
+    LiveBeatDriftTracker    → DSP.2 S7 primary beat-phase path. Onset-matched drift tracking against cached BeatGrid (±50 ms window, EMA α=0.4). Variance-adaptive tight-match window [30 ms, 80 ms] (BUG-007.5). BPM-aware lock-release gate `max(2.5 s, 4 × medianPeriod)` (BUG-007.5 part 3). Bar-phase auto-rotate with kick-on-1+3 tiebreaker (BUG-007.4b/4c). Per-track grid-onset calibration via setGrid(_:initialDriftMs:) (BUG-007.8) and runtime hybrid recalibration via applyCalibration (BUG-007.9). audioOutputLatencyMs (BUG-007.6) + visualPhaseOffsetMs apply to the display path only — onset matching uses unmodified playbackTime.
+    MIRPipeline             → Coordinator: all analyzers → FeatureVector for GPU. Prefers LiveBeatDriftTracker for beat-phase when grid is installed; falls back to BeatPredictor in reactive mode (D-078). Drives StructuralAnalyzer + writes latestStructuralPrediction (currently consumed only at prep time — CA.1 audit finding).
+    MIRPipeline+Recording   → Manual MIR-only CSV recording to ~/phosphene_features.csv (1 Hz throttled, 17 columns). Bound to `R` keyboard shortcut. Distinct from SessionRecorder's auto per-session features.csv (different path, different schema, different cadence).
+    BeatPredictor           → Reactive-mode fallback IIR beat-phase predictor when no offline grid: rising-edge onset → period estimate → beatPhase01/beatsUntilNext in FeatureVector (MV-3b, D-028). Bypassed whenever LiveBeatDriftTracker.hasGrid is true.
+    PitchTracker            → YIN autocorrelation pitch detector (vDSP_dotpr, 2048-sample window, 80–1000 Hz, local-minimum refinement). Internal ring buffer accumulates 1024-sample live increments before YIN runs (PT.1 fix, 2026-05-19; pre-fix the live path zero-padded the buffer and confidence was structurally 0). → vocalsPitchHz/Confidence in StemFeatures (MV-3c, D-028).
+    SelfSimilarityMatrix    → Ring buffer of feature vectors, vDSP cosine similarity (600 frames × 16 features)
+    NoveltyDetector         → Checkerboard kernel boundary detection, adaptive threshold (mean + 1.5σ), min-peak-distance gate
+    StructuralAnalyzer      → Section boundary prediction (70% duration consistency + 30% repetition similarity), feeds latestStructuralPrediction on MIRPipeline. CA.1 audit note: runtime per-frame work currently consumed only at preparation time by SessionPreparer.
     StemAnalyzer            → Per-stem energy (4× BandEnergyProcessor) + beat (1× BeatDetector on drums) + rich metadata (MV-3a) + PitchTracker (MV-3c) → StemFeatures (64 floats, 256 bytes)
+    StemAnalyzer+RichMetadata → Per-stem onset rate / centroid / attack ratio / energy slope computation. Fast/slow RMS EMAs (50/500 ms), rising-edge flux onsets with 100 ms refractory, 0.5 s decay window, ×2.0 rate multiplier.
   ML/
     StemSeparator.swift      → STFT → MPSGraph → iSTFT pipeline, StemSeparating protocol
     StemSeparator+Reconstruct → iSTFT reconstruction + mono averaging
@@ -618,7 +629,7 @@ Two parallel paths feed `BeatDetector.Result`:
 
 ### Chroma
 
-Bin-count normalized: weight = `1/binsInPitchClass`. Skip bins below 65 Hz. At 48kHz/1024-point FFT, pitch classes get 31–55 bins — without normalization, key estimation is biased.
+Bin-count normalized: weight = `1/binsInPitchClass`. Skip bins below **500 Hz** — at 48 kHz / 1024-point FFT, the 46.875 Hz bin spacing puts bins 2 / 5 / 10 all in the F♯ pitch class, biasing key estimation systematically. Higher harmonics carry accurate pitch information. Above the floor, pitch classes get 31–55 bins — without bin-count normalization, key estimation is biased toward classes that own more bins. Code: `ChromaExtractor.minFrequency = 500.0` (the file-level docstring at `ChromaExtractor.swift:16` says "65 Hz" but the constant is 500 Hz — the constant is authoritative; the comment is stale and is queued for a code-pass cleanup in a future increment, CA.1 audit finding).
 
 ### Mood Classifier Inputs
 
