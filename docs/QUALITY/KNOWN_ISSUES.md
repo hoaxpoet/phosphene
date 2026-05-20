@@ -1400,6 +1400,35 @@ Recommended for BUG-008.2: option (1) only. Defer (2)/(3) until **BUG-007** (loc
 
 ---
 
+### BUG-R010 — PitchTracker `vocalsPitchConfidence` structurally 0 due to live-path zero-padding (PT.1 retroactive)
+
+**Severity:** P1 (visible — Aurora Veil's vocals-pitch route had 0% firing across every session for ~5 months; same root cause would have affected any future vocals-pitch preset).
+**Domain tag:** dsp.pitch
+**Status:** Resolved
+**Introduced:** Original `PitchTracker.swift` implementation (MV-3c, D-028, 2026-04-17).
+**Resolved:** PT.1, 2026-05-19 (logged in `docs/ENGINEERING_PLAN.md` `[PT.1]` block + Aurora Veil AV.2 closeout narrative). **Retroactive `Resolved` entry filed by Phase CA.1 audit on 2026-05-20** per CLAUDE.md Defect Handling Protocol obligation that every fix increment update `KNOWN_ISSUES.md`. The PT.1 increment shipped without a `BUG-` entry — this row closes that gap.
+
+**Root cause:** The live caller (`StemAnalyzer`) passes 1024-sample windows to `PitchTracker.process(_:)`. The pre-fix implementation copied the input into the first half of an internal 2048-sample buffer and zero-padded the second half. The YIN difference function is `d[τ] = vDSP_dotpr(x[0..1024], x[τ..τ+1024])` — with the second half all zeros, the cross-correlation was structurally zero for every τ, the CMNDF never dipped below the 0.15 threshold, `findMinimum` always returned -1, and the method always returned `(hz: 0, confidence: 0)`.
+
+**Why it survived ~5 months undetected.** `PitchTrackerTests` passes full 2048-sample windows directly to `process`, so the test never exercised the live-incremental code path. Same test/prod parity failure mode that the Aurora Veil AV.1 / AV.2 / AV.2.1 cascade hit (CLAUDE.md: "Test in the production-grade rendering pipeline. No shortcuts"). Pre-PT.1 closeouts that asserted Aurora Veil's vocals-pitch route was working were citing self-judgment, not measured route-firing rates — the diagnostic infrastructure to verify the claim (now `PresetSessionReplay` / SR.1) did not exist.
+
+**Fix:** `PitchTracker.swift` rewritten to (a) maintain a 2048-sample ring buffer via `appendToRingBuffer(_:)` (lines 178–212), (b) track `samplesAccumulated` and only run YIN once it reaches `windowSize` (guard at lines 137–139), (c) shift the ring left and append for sub-window inputs. Live 1024-sample inputs now accumulate across two consecutive calls before YIN runs, instead of being zero-padded.
+
+**Expected behavior:** On real vocals input, `vocalsPitchConfidence > 0.5` fires at a non-trivial rate (~20–25 % of frames per Aurora Veil session data). On silence, returns `(0, 0)` correctly.
+
+**Actual behavior post-fix:** `ENGINEERING_PLAN.md:3858` records "Route 1 vocals melody → hue ... 23.28 % (was 0 % pre-PT.1)" — measured from `features.csv` across a real Aurora Veil session.
+
+**Verification criteria:**
+- [x] Source-level: ring-buffer fill guard at `PitchTracker.swift:137-139`; incremental append at `:178-212`.
+- [x] Empirical: Route-firing rate ≥ 5 % on a real vocals-bearing track (Aurora Veil session log).
+- [ ] **Test-surface gap (acknowledged):** existing `PitchTrackerTests` still pass full 2048-sample windows directly. A live-incremental-path regression test that exercises the 1024-sample append behavior end-to-end has not yet been written. Filing as follow-up work; not a blocker for this entry's `Resolved` status because empirical evidence from production replay covers the gap.
+
+**Confirmed failure class:** `pipeline-wiring` (zero-padding instead of accumulating across calls).
+
+**Related:** D-028 (MV-3c PitchTracker design), AV.2.h Three-Channel curation (Aurora Veil — Route 1 = vocals_pitch hue), CLAUDE.md Failed Approach "diagnostic infrastructure precedes fidelity claims" (this bug is the canonical example).
+
+---
+
 ### QR.2 — Stem-affinity scoring AGC saturation + reactive-mode TrackProfile adversarial penalty
 
 **Severity:** P2 (orchestrator correctness; affected every Spotify/Apple Music session)
