@@ -69,15 +69,16 @@ public final class AuroraVeilState: @unchecked Sendable {
     /// so a variable framerate doesn't change the visual shudder timescale.
     private static let kinkDecayPerFrame60: Float = 0.93
 
-    /// Rare-event gate window on `drumsEnergyDev`. AV.2.2c (2026-05-19):
-    /// raised from 0.4/0.7 → 0.6/0.9 after live session 2026-05-18T01-12-47Z
-    /// showed drumsEnergyDev > 0.4 firing on 9.4 % of frames during typical
-    /// pop music (Billie Jean) — not "rare events" as the §5.6 design
-    /// intended. Raising the threshold to 0.6/0.9 brings gate-fire rate
-    /// to ~2 % of frames (genuinely rare). Below 0.6: no charge.
-    /// 0.6–0.9: smooth ramp. Above 0.9: full charge.
-    private static let kinkChargeLo: Float = 0.6
-    private static let kinkChargeHi: Float = 0.9
+    /// Rare-event gate window on `drumsEnergyDev`. AV.2.h (2026-05-19):
+    /// raised from 0.6/0.9 → 0.9/1.5 after AV.2.2d's diagnostic showed the
+    /// previous gate still fired 8.9 % of frames on heavy-drum music
+    /// (Outkast / Foo Fighters) — `drumsEnergyDev` distribution extends
+    /// past 0.6 on busy material. 0.9/1.5 limits firing to ~1-3 % on
+    /// heavy material and ~0.5 % on lighter tracks — matches the "1-2 s
+    /// slow shudder on rare drum emphasis" design intent (§5.6 + research
+    /// §3.2). Below 0.9: no charge. 0.9–1.5: smooth ramp. Above 1.5: full.
+    private static let kinkChargeLo: Float = 0.9
+    private static let kinkChargeHi: Float = 1.5
 
     /// Pitch-smoothing window length (§5.7 — "5-frame moving average").
     private static let pitchSmoothWindow = 5

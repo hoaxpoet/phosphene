@@ -6,6 +6,63 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-19-g] AV.2.h — Three-Channel curation (drop 5 routes; raise kink gate)
+
+**Increment:** AV.2.h. **Status:** Landed 2026-05-19.
+
+Matt's feedback on session `2026-05-19T22-49-41Z` (first session with PT.1's pitch-tracker fix active): *"I feel like the preset works better at the beginning of the song — it's more synced to the beat. After 40ish seconds, it starts to diverge. This preset has great potential, but its programming is still muddled. I think we need to make more careful, conscious decisions about what makes the final cut. I don't know what is possible with the preset, so I'm hesitant to weigh in."*
+
+That's a design-call moment, not another tuning fix. The accumulated AV.2.2c-through-AV.2.2g state had **8 routes** all firing simultaneously post-warmup — every audio primitive coupled to a visual axis. The first ~40 s of any track is the stem-cache pre-warmup window where stems sit at cached static values below every gate threshold, so during that window only the FV-only routes are active (valence + substrate drift) — slow, coherent. At t ≈ 40 s the stem analyzer takes over and all 8 routes wake up simultaneously. The transition from "coherent slow drift" to "8 routes competing" is exactly the "muddled" reading.
+
+The right fix isn't more amplitude tuning — it's **curating the route set**.
+
+### Design pivot: Three-Channel Aurora
+
+Matt picked Personality 2 from three options surfaced at the product-personality level:
+- **Personality 1 (Melody-Led):** only Route 1 active; Sigur-Rós-grade meditative.
+- **Personality 2 (Three-Channel):** three musical features → three independent visual axes. SELECTED.
+- **Personality 3 (current 8-route):** "muddled."
+
+**Routes kept (3):**
+- **Route 1 — Vocals melody → ribbon HUE.** Palette baseOffset shifts with `smoothedPitchNorm` from CPU-side AuroraVeilState. Now actually fires post-PT.1 (10.7 % of frames on Billie Jean — was 0 % in every prior session).
+- **Route 2 — Bass transients → BRIGHTNESS pulse.** `smoothstep(0.30, 0.55, bassDev)` gate; brightness pulses on the larger bass transients, sits at base 0.85 between.
+- **Route 5 — Drum events → curtain KINK.** Kink gate raised 0.6/0.9 → **0.9/1.5** so it's genuinely rare (target ~1-3 % of frames on heavy-drum music, ~0.5 % on lighter material). Combined P1 fix.
+
+**Routes dropped (5):**
+- **Route 3 (fold density):** every-frame modulation of noise spatial frequency morphed the entire noise field per frame — major contributor to "muddled."
+- **Route 4 (drift speed):** redundant with Route 2's bass coupling. Failed Approach #67 — one primitive per visual axis. Substrate drift comes from the noise field's own time-driven rotation now.
+- **Route 6 (valence palette):** slow tilt that competed with Route 1 for the palette baseOffset axis.
+- **Route 7 (star twinkle):** extra beat-coupled signal that added noise without anchoring a distinct musical feature. Stars now render at their hash-determined static brightness (matches references' "still photograph" star character).
+- **Route 8 (synth flash):** added a second hue-axis driver competing with Route 1. Matt's "doot-doot reflection" intent is now served by Route 1's vocal-pitch hue migration instead.
+
+### Files changed
+
+- `AuroraVeil.metal` — header docstring rewritten with curation rationale; constants for routes 3/4/6/7/8 removed or commented out; `paletteOffset` reduced to single Route 1 contribution; `driftSpeed = kAuroraDriftSpeedBase` (constant); `foldScale = 1.0` (constant); star twinkle removed from sky composite; route count comments updated.
+- `AuroraVeilState.swift` — `kinkChargeLo / kinkChargeHi` raised 0.6/0.9 → 0.9/1.5 (P1 fix folded in).
+- `AuroraVeil.json` — description rewritten: "Three-channel audio coupling: vocal melody migrates the ribbon's hue, bass transients pulse brightness, rare drum events produce a 1-2 s lateral shudder."
+
+### Tests + build
+
+- `swift test --filter "AuroraVeil|PitchTracker|PresetRegression|PresetAcceptance|FidelityRubric"` — **50 / 50 green**.
+- `xcodebuild -scheme PhospheneApp build` — BUILD SUCCEEDED.
+- `swiftlint --strict` — 0 violations.
+
+### Predicted live impact
+
+Matt's next session — Aurora Veil should now have a coherent character:
+- Vocal melody → slow hue walk along the ribbon (Sigur-Rós-grade, finally observable post-PT.1)
+- Bass kicks → visible brightness pulses (gated to bigger transients)
+- Rare drum emphases → occasional 1-2 s lateral shudder (truly rare now at 0.9/1.5 gate)
+- Everything else: slow, stable, intentional
+
+Each audio coupling has its own visual axis; none compete. The "muddled" reading should resolve.
+
+### Remaining open item
+
+**P2 — Stem-warmup window ~40 s vs documented ~10 s.** Engine-pipeline issue affecting all presets' intro responsiveness. Empirically observed in every multi-track session. The 40-s pre-warmup is why "the first 40 seconds works better" — fewer routes are firing. Filed as a separate engine investigation; not addressed in AV.2.h.
+
+---
+
 ## [dev-2026-05-19-f] PT.1 — PitchTracker ring-buffer fix (P0: vocals_pitch route was always 0)
 
 **Increment:** PT.1 (PitchTracker P0 fix). **Status:** Landed 2026-05-19.
