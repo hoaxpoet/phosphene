@@ -3711,6 +3711,52 @@ The pale-tone-share gate (≤ 0.30 of cells; pale = linear RGB `min(R, G, B) > 0
 
 ---
 
+## Phase SR — Session Replay diagnostic infrastructure
+
+Diagnostic harness that closes the "I cannot inspect this preset" gap surfaced during the AV.2.x cascade closeout (2026-05-20). Closeouts asserting audio-coupling or visual-fidelity claims must now cite generated evidence packs instead of assertion-shaped language. See [docs/ENGINE/SESSION_REPLAY.md](ENGINE/SESSION_REPLAY.md) for usage + extension. The accompanying CLAUDE.md discipline rule ("Diagnostic infrastructure precedes fidelity claims") is the project-wide standard.
+
+### Increment SR.1 — Initial harness + Aurora Veil ✅ (2026-05-20)
+
+**Scope.** New `PresetSessionReplay` Swift executable target inside `PhospheneEngine/`. Parses session `features.csv` + `stems.csv`, computes per-route firing statistics, extracts video frames at the N strongest audio events per route, runs a uniform-grid frame-delta motion-band frequency decomposition, calibrates per-question image-processing proxies against a preset's curated reference set, emits a Markdown evidence pack. Aurora Veil is the first registered preset (3 routes + 8 single-frame rubric questions + Q4 motion-band).
+
+**Delivered.** `PhospheneEngine/Sources/PresetSessionReplay/` — 12 files, ~1,400 LOC. Modules: `SessionData` (CSV parser), `RouteSpec` + `RouteAnalyzer` (generic), `AuroraVeilRoutes` (concrete), `AudioEventExtractor`, `VideoFrameExtractor` (ffmpeg wrapper), `MotionBandAnalyzer` (DFT frame-delta decomposition), `ImagingPrimitives` (canonical 480×320 RGBAImage + per-pixel ops + 1D spatial FFT), `RubricQuestion` (generic per-Q proxy + verdict logic), `AuroraVeilRubric` (8 single-frame proxies), `ReferenceCalibration` (calibrates against reference set, emits verdicts with σ-distance), `ReportGenerator` (Markdown emission), `PresetSessionReplay` (CLI). Package.swift target added. `docs/ENGINE/SESSION_REPLAY.md` extension guide. CLAUDE.md discipline rule promoted.
+
+**End-to-end verification.** Run against session `2026-05-20T01-23-03Z` (AV.2.h verification, 132 s) + Aurora Veil reference set:
+
+| Route | Gate | Firing % |
+|---|---|---|
+| Route 1 vocals melody → hue | `stems.vocals_pitch_confidence ≥ 0.5` | **23.28 %** (was 0 % pre-PT.1) |
+| Route 2 bass transients → brightness pulse | `smoothstep(0.30, 0.55, bassDev)` | **14.31 %** (partial) / 4.24 % (full) |
+| Route 5 drum events → curtain kink | `smoothstep(0.70, 1.00, drumsEnergyDev)` | **1.75 %** (partial) / 0.45 % (full) |
+
+| Q | Visual rubric verdict |
+|---|---|
+| Q2 Green-dominant palette | **within family** |
+| Q3 Vertical ray fine structure | **reads like anti-reference** |
+| Q5 Emissive compositing | uncalibrated (proxy constant) |
+| Q8 Brightness gradient within curtain | **outside family** |
+| Q1, Q6, Q7, Q9 | uncalibrated |
+
+Q3 = reads-like-anti-reference is the load-bearing empirical confirmation of the diffuse-glow vs active-curtain reframing (Matt's product call at AV.3 cert prep). Drove the AV.3 pause + AV.3.x scope reframe.
+
+**Done-when.** ✅ Engine builds clean. ✅ `swift build --target PresetSessionReplay` clean. ✅ `swiftlint --strict` 0 violations across all 12 SR.1 files. ✅ Existing test suite (50 tests, `AuroraVeil|PitchTracker|PresetRegression|PresetAcceptance|FidelityRubric`) still passes. ✅ End-to-end run against AV.2.h session emits report + per-route frames + rubric-grid frames + motion-grid frames. ✅ Discipline rule in CLAUDE.md. ✅ Extension guide in `docs/ENGINE/SESSION_REPLAY.md`.
+
+**Known limitations (documented in `docs/ENGINE/SESSION_REPLAY.md`, not deferred work).**
+- Q5 proxy returns constant 0.5 fallback when star-class detection finds no pixels — framework correctly flags `uncalibrated`. SR.2 refines.
+- Reference selection per question — currently uses all references for every Q; some refs (e.g., AV `02` palette-only) shouldn't anchor shape-related Qs. SR.2 adds per-Q reference selection.
+- Single preset registered (Aurora Veil). Other presets register their own `<Preset>Routes.swift` + `<Preset>Rubric.swift`.
+- Naive O(N²) DFT — fine at SR.1 scale; switch to vDSP if grids scale > 10 k samples.
+- Gate-constant duplication from Aurora Veil shader. Documented; SR.2 centralizes.
+
+**Follow-ups for SR.2+ (planned, not blocking AV.3.x):**
+- Per-Q reference selection (annotation-driven).
+- Refined Q5 proxy (actual per-image star count instead of region-density ratio).
+- Centralized gate constants shared between shader bindings + replay tooling.
+- Other presets registered (Lumen Mosaic, Arachne, Ferrofluid Ocean, future Aurora Curtain).
+- CI integration: run harness against committed reference sessions in PR review.
+
+---
+
 ## Phase AV — Aurora Veil (direct-fragment + mv_warp preset)
 
 A lightweight ambient ribbon preset for quiet listening, low-energy passages, and comedown sections. Direct-fragment + mv_warp pattern — the canonical Milkdrop shape with no current consumer in the catalog. Aurora curtains over a faintly-starred night sky, with vocals-pitch hue stratification, bass-driven brightness breathing, and drums-coupled curtain kink. Authoritative design at [docs/presets/AURORA_VEIL_DESIGN.md](presets/AURORA_VEIL_DESIGN.md); reference set curated at [docs/VISUAL_REFERENCES/aurora_veil/](VISUAL_REFERENCES/aurora_veil/) (5 references + anti-reference, plus architecture contract).
@@ -3721,7 +3767,21 @@ A lightweight ambient ribbon preset for quiet listening, low-energy passages, an
 2. **Iconic visual subject deliverable at fidelity.** Lightweight rubric profile (D-067(b)) — emission-only direct fragment, exempt from M1 detail cascade and M3 material count. Comparable pattern: Gossamer's direct-fragment + mv_warp recipe is the closest neighbour. Fidelity bar is reachable.
 3. **Infrastructure-feasible.** Uses only existing utilities (`warped_fbm` / `curl_noise` / `palette_cool` / `SpectralHistoryBuffer` / `blue_noise_sample` / hash-based starfield). No engine work.
 
-**Status.** AV.1 ✅ (2026-05-18). AV.2 ✅ (2026-05-18). AV.2.1 ❌ (2026-05-18, misdiagnosed motion-smear hotfix; superseded). AV.2.2 ✅ (2026-05-18, mv_warp dropped). AV.2.2a ✅ (2026-05-18, drawDirect slot-6 binding hotfix). AV.2.2b ✅ (2026-05-18, state allocation moved out of `case .mvWarp:`). AV.2.2c ✅ (2026-05-19, calmer-tuning amplitude pass). AV.2.2d ✅ (2026-05-19, brightness route switched to `bass_dev`). AV.2.2e ✅ (2026-05-19, brightness route threshold-gated). AV.2.2f ✅ (2026-05-19, synth-flash route via `stems.other_energy_dev`). AV.2.2g ✅ (2026-05-19, synth-flash amplitude raised 0.6 → 1.5). PT.1 ✅ (2026-05-19, PitchTracker ring-buffer fix — vocals_pitch route had been 0 % in every prior session due to 1024-sample-input-to-2048-sample-tracker wiring bug). AV.2.h ✅ (2026-05-19, Three-Channel curation: dropped routes 3 / 4 / 6 / 7 / 8 after Matt's "muddled" feedback; kept Route 1 vocals-pitch hue + Route 2 bass brightness pulse + Route 5 drum kink with raised gate 0.9/1.5; three musical features → three independent visual axes, no competing rhythms). AV.2.3 ⏳ (dossier-grounded redesign + integration test). AV.3 ⏳. **Schedule:** AV.2.2f after Matt's live re-verification of AV.2.2e.
+**Status.** AV.1 ✅ (2026-05-18). AV.2 ✅ (2026-05-18). AV.2.1 ❌ (2026-05-18, misdiagnosed motion-smear hotfix; superseded). AV.2.2 ✅ (2026-05-18, mv_warp dropped). AV.2.2a ✅ (2026-05-18, drawDirect slot-6 binding hotfix). AV.2.2b ✅ (2026-05-18, state allocation moved out of `case .mvWarp:`). AV.2.2c ✅ (2026-05-19, calmer-tuning amplitude pass). AV.2.2d ✅ (2026-05-19, brightness route switched to `bass_dev`). AV.2.2e ✅ (2026-05-19, brightness route threshold-gated). AV.2.2f ✅ (2026-05-19, synth-flash route via `stems.other_energy_dev`). AV.2.2g ✅ (2026-05-19, synth-flash amplitude raised 0.6 → 1.5). PT.1 ✅ (2026-05-19, PitchTracker ring-buffer fix — vocals_pitch route had been 0 % in every prior session due to 1024-sample-input-to-2048-sample-tracker wiring bug). AV.2.h ✅ (2026-05-19, Three-Channel curation: dropped routes 3 / 4 / 6 / 7 / 8 after Matt's "muddled" feedback; kept Route 1 vocals-pitch hue + Route 2 bass brightness pulse + Route 5 drum kink with raised gate 0.9/1.5; three musical features → three independent visual axes, no competing rhythms). AV.2.h.1 ✅ (2026-05-20, kink gate 0.9/1.5 → 0.7/1.0). AV.3 🚫 **Paused 2026-05-20** — AV.3 cert prep surfaced (i) 9-Q rubric Q3 = NO + Q7 = NO via SR.1 calibrated rubric (Q3 reads-like-anti-reference, Q8 outside-family) and (ii) a design reframing — the current preset authentically depicts diffuse-glow aurora; the current curated reference set anchors active-curtain aurora. Matt's product-level call (2026-05-20): two-preset split. AV.3 cert work for the current preset is replaced by **AV.3.x** — re-curate references to diffuse-glow aurora + cert against the new set. Active-curtain aurora gets a new preset (**Phase AC — Aurora Curtain**, planned) using the per-pixel-ray construction recipe from [docs/presets/AURORA_VEIL_RESEARCH_AV3X_2026-05-20.md](presets/AURORA_VEIL_RESEARCH_AV3X_2026-05-20.md) §3.1.
+
+### Increment AV.3.x — Diffuse-glow reference re-curation + cert ⏳ Planned
+
+**Scope.** Matt curates 4–5 diffuse-glow / pulsating-patch aurora reference images replacing the current curtain-form set in `docs/VISUAL_REFERENCES/aurora_veil/`. Update `AURORA_VEIL_README.md` annotations + mandatory-traits checklist + 9-Q rubric variant (some Qs may not apply to diffuse-glow). Update `AURORA_VEIL_DESIGN.md §5` to reframe design intent as diffuse-glow aurora. Re-run `PresetSessionReplay` against the new reference set; calibration should produce `withinFamily` verdicts for the Qs that apply. M7 review against new set. On Matt's "yes," flip `AuroraVeil.json certified: true`.
+
+**Done-when.** Reference set re-curated (Matt). README annotations updated. DESIGN §5 reframed. Per-Q rubric variant amended for diffuse-glow (some Qs marked N/A). SR.1 report against AV session + new refs shows ≥ 5 Qs `withinFamily` or N/A; no `readsLikeAntiReference`. M7 sign-off captured. `certified: true` flipped. ENGINEERING_PLAN + RELEASE_NOTES updated.
+
+### Phase AC — Aurora Curtain (planned, post AV.3.x)
+
+**Concept.** Active-curtain aurora — vertical ribbons, fold drape, visible ray pillars, off-axis composition with silhouette foreground. The form the AV reference set originally anchored. Distinct preset, sibling not subclass (D-097); ships its own .metal, .json, state class, reference set, and rubric.
+
+**Authoritative design.** [docs/presets/AURORA_VEIL_RESEARCH_AV3X_2026-05-20.md](presets/AURORA_VEIL_RESEARCH_AV3X_2026-05-20.md) §3.1 (per-pixel ray construction) + §3.2 (off-axis composition + silhouette foreground) + §3.3 (sub-second ray flicker) + §3.4 (sharp bottom edge).
+
+**Status.** Planned. **Schedule:** waits on AV.3.x cert. Detailed prompt to be authored at scoping time.
 
 ### Increment AV.1 — Single-ribbon foundation ✅ (2026-05-18)
 
