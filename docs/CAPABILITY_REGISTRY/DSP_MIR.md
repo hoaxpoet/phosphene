@@ -27,6 +27,8 @@
 
 **The highest-priority non-`production-active` finding** is the runtime `StructuralAnalyzer` cluster. Per-frame work runs (chroma → 16-element feature vector → similarity matrix → novelty detection every 30 frames → boundary prediction) and writes `latestStructuralPrediction`, but the only consumer is `SessionPreparer+Analysis.swift:289` extracting `sectionIndex + 1` *at preparation time*. The orchestrator path that reads `StructuralPrediction` at runtime (`TransitionPolicy.swift:165`, `LiveAdapter.swift:250`, `ReactiveOrchestrator.swift:316`) gets that prediction from `SessionPlanner.swift:317` constructed *synthetically* — not from MIRPipeline. This is a real piece of dead runtime work, on the audio-callback hot path.
 
+**Five follow-up items are tracked in [§Follow-up Backlog](#follow-up-backlog) below** as candidate increments (`CA.1-FU-1` through `CA.1-FU-5`). Per the kickoff's audit-only discipline, none ship as part of this audit increment.
+
 **Doc-drift findings of note:**
 
 1. The `DSP/` module-map block at [`docs/ARCHITECTURE.md:415-428`](../ARCHITECTURE.md) lists 13 files but the directory contains 20. Six load-bearing files are absent from the canonical module map, including `LiveBeatDriftTracker.swift` (the BUG-007.x focal point and the largest DSP file at 808 LoC). This is the same drift the kickoff prompt was authored to surface.
@@ -337,6 +339,26 @@ Applied as a minor sweep — see commit 2:
 1. **PT.1 — `PitchTracker` vocals_pitch_confidence ring-buffer fix (2026-05-19)** — add a `Resolved` entry retroactively. The fix landed without filing a `BUG-` entry; per CLAUDE.md Defect Handling Protocol, every fix increment must update `KNOWN_ISSUES.md`. The narrative is recoverable from `PitchTracker.swift:8-21`, `ENGINEERING_PLAN.md:3900` (AV.2 closeout), and `DECISIONS.md:327` (D-028 implementation note). Filed as **BUG-R010** (continuing the BUG-R### numbering used for the QR.x retroactive-Resolved entries).
 
 No Open entries reproduced as no-longer-applicable. No entries whose code surface no longer exists.
+
+---
+
+## Follow-up Backlog
+
+Findings surfaced by CA.1 that are *not* corrected in this audit increment. Each row is a candidate follow-up increment with enough scope to act on cold. Per the kickoff's "audit-only" discipline, fixes do not bundle into the audit — they ship as separate increments scheduled whenever Matt prioritises them.
+
+Items are greppable as `CA\.1-FU-\d+`. If/when CA.2+ audits land, a top-level `docs/CAPABILITY_REGISTRY/FOLLOWUPS.md` aggregator can collate across registries — defer that until there's actually overlap to collate.
+
+| ID | Scope | Done-when | Est. sessions | Status |
+|---|---|---|---|---|
+| **CA.1-FU-1** | Eliminate the per-frame `StructuralAnalyzer` + `NoveltyDetector` + `SelfSimilarityMatrix` runtime-orphan chain. Two options to pick at planning time: **(a)** gate the chain in `MIRPipeline.process` so it runs at preparation time only (cheapest — preserves the existing prep-time `sectionCount` consumer at `SessionPreparer+Analysis.swift:289`); **(b)** wire `MIRPipeline.latestStructuralPrediction` into `VisualizerEngine` → orchestrator at runtime so `TransitionPolicy.structuralBoundary` triggers fire from real per-frame predictions instead of from the synthetic `StructuralPrediction` currently constructed at `SessionPlanner.swift:317` (higher leverage; more code touched). | Audio-callback hot path no longer runs SSM + novelty detection per frame, OR the orchestrator's runtime `prediction` is sourced from MIRPipeline instead of synthetically. Tests + golden sessions regenerated. Closeout cites which option (a/b) was chosen and why. | 1–2 | Ready now |
+| **CA.1-FU-2** | Demote `MIRPipeline.spectralRolloff` from `public private(set) var` to `private` (or delete entirely). Zero non-DSP consumers; the underlying value still flows into `StructuralAnalyzer.SpectralSummary.rolloff` internally and that path is unchanged. Natural to bundle with FU-1 — if the StructuralAnalyzer chain is gated to prep-time only, the public field is doubly redundant. | Public exposure removed; build green; `grep -rn "spectralRolloff" PhospheneApp PhospheneEngine/Sources` returns DSP-only hits. | <1 | Ready now (natural to bundle with FU-1) |
+| **CA.1-FU-3** | Trivial code-comment cleanup: `ChromaExtractor.swift:16` header docstring says "Bins below 65 Hz (C2) are skipped" but the constant at `:63` is `minFrequency = 500.0` (≈ B4). The constant is authoritative; the comment is stale. CA.1 left the code untouched per audit-only rule; this is the leftover alignment. | Header comment at `ChromaExtractor.swift:16` references 500 Hz / B4 and the rationale matches the comment at `:60-63`. | <1 | Ready now (trivial) |
+| **CA.1-FU-4** | Add a `PitchTracker` regression test that exercises the **live-incremental code path** (two consecutive `process(samples:)` calls with 1024-sample inputs, ring buffer fills on the second call, YIN fires only then). Existing tests at `PitchTrackerTests.swift:47-87` pass full 2048-sample windows directly — the same test/prod parity gap that hid the PT.1 bug for ~5 months. BUG-R010 explicitly acknowledges this gap. | New test in `PitchTrackerTests` runs two consecutive `process(samples: [Float](repeating: …, count: 1024))` calls on a synthetic 440 Hz tone; asserts confidence is 0 on call 1 (ring buffer not yet full) and confidence ≥ 0.6 on call 2 (ring buffer full, YIN runs against the accumulated buffer). | 1 | Ready now |
+| **CA.1-FU-5** | Relocate `Sources/Session/GridOnsetCalibrator.swift` and (probably) `Sources/Session/BeatGridAnalyzer.swift` to `Sources/DSP/`. Both are DSP capabilities by every functional criterion except file location. The `BeatGridAnalyzing` *protocol* may legitimately stay in Session (the testability-seam pattern is shared with `StemAnalyzing` / `MoodClassifying`); the `DefaultBeatGridAnalyzer` *implementation* belongs in DSP. Decide at planning time. | Files relocated; `PhospheneEngine/Package.swift` module dependencies updated; tests still pass; the Session module's dependency on DSP types narrows. | 1 | **Blocked on CA-Session audit.** The Session subsystem audit (likely CA.3+) will surface other DSP↔Session boundary work that should be bundled — moving these two files in isolation now would mean two separate Session-module touches. |
+
+**Bundling recommendation.** FU-1 + FU-2 are natural to land in a single increment (both touch `MIRPipeline.swift`; FU-2 trivial once FU-1's structural decision is made). FU-3 is trivial enough to fold into any DSP-adjacent commit that lands in the next few weeks. FU-4 stands alone. FU-5 waits for CA-Session.
+
+**Priority order if Matt picks just one this week:** FU-1 (the runtime orphan is real CPU on the audio-callback hot path — a one-session structural decision with measurable savings; the rest are housekeeping). FU-4 is the next-most-valuable on engineering risk grounds (one of the audit's load-bearing recommendations was that PT.1-shaped test/prod parity bugs are the failure mode worth defending against, and this test closes that specific defence for `PitchTracker`).
 
 ---
 
