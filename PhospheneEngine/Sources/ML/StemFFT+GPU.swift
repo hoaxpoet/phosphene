@@ -9,6 +9,7 @@ import Accelerate
 import Foundation
 import Metal
 import MetalPerformanceShadersGraph
+import Shared
 
 extension StemFFTEngine {
 
@@ -98,11 +99,25 @@ extension StemFFTEngine {
             forwardRealOutput: realOutData,
             forwardImagOutput: imagOutData
         ]
+        let dispatchID = currentDispatchID
+        BUG012Probe.notice(
+            "MPSGraph.run forward CALL",
+            dispatchID: dispatchID,
+            detail: bug012BufferSummary(
+                input: forwardInputBuffer,
+                real: forwardRealBuffer,
+                imag: forwardImagBuffer
+            )
+        )
         forwardGraph.run(
             with: commandQueue,
             feeds: feeds,
             targetOperations: nil,
             resultsDictionary: targets
+        )
+        BUG012Probe.notice(
+            "MPSGraph.run forward RETURN",
+            dispatchID: dispatchID
         )
     }
 
@@ -247,12 +262,49 @@ extension StemFFTEngine {
             inverseImagInput: imagInData
         ]
         let targets: [MPSGraphTensor: MPSGraphTensorData] = [inverseRealOutput: outData]
+        let dispatchID = currentDispatchID
+        BUG012Probe.notice(
+            "MPSGraph.run inverse CALL",
+            dispatchID: dispatchID,
+            detail: bug012BufferSummary(
+                input: inverseRealBuffer,
+                real: inverseImagBuffer,
+                imag: inverseOutputBuffer
+            )
+        )
         inverseGraph.run(
             with: commandQueue,
             feeds: feeds,
             targetOperations: nil,
             resultsDictionary: targets
         )
+        BUG012Probe.notice(
+            "MPSGraph.run inverse RETURN",
+            dispatchID: dispatchID
+        )
+    }
+
+    /// Compact, log-friendly description of the three MTLBuffers passed to
+    /// MPSGraph for the forward path. Captures address + length + storage
+    /// mode + retainCount surrogate (existence check via `description`) so
+    /// the next BUG-012 crash log can show whether the buffers were valid
+    /// at the moment of the call.
+    fileprivate func bug012BufferSummary(
+        input: MTLBuffer,
+        real: MTLBuffer,
+        imag: MTLBuffer
+    ) -> String {
+        // Buffer addresses (`Unmanaged.passUnretained` → opaque pointer)
+        // — used for cross-call equality checks in the post-mortem only.
+        let inputAddr = Unmanaged.passUnretained(input as AnyObject).toOpaque()
+        let realAddr = Unmanaged.passUnretained(real as AnyObject).toOpaque()
+        let imagAddr = Unmanaged.passUnretained(imag as AnyObject).toOpaque()
+        let inputMode = input.storageMode.rawValue
+        let realMode = real.storageMode.rawValue
+        let imagMode = imag.storageMode.rawValue
+        return "input=\(inputAddr)/\(input.length)b/sm\(inputMode) " +
+               "real=\(realAddr)/\(real.length)b/sm\(realMode) " +
+               "imag=\(imagAddr)/\(imag.length)b/sm\(imagMode)"
     }
 
     /// CPU-side overlap-add of the inverse graph output.

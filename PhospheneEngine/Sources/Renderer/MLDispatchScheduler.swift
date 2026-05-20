@@ -177,6 +177,25 @@ public final class MLDispatchScheduler {
         }
 
         lastDecision = decision
+
+        // BUG-012 instrumentation: log every decision (not just forceDispatch)
+        // with the context that produced it. Correlated with stem-dispatch IDs
+        // via timestamp + thread label in the unified log.
+        let decisionLabel: String
+        switch decision {
+        case .dispatchNow: decisionLabel = "dispatchNow"
+        case .defer(let ms): decisionLabel = "defer(\(Int(ms))ms)"
+        case .forceDispatch: decisionLabel = "forceDispatch"
+        }
+        BUG012Probe.log(
+            "MLDispatchScheduler.decide=\(decisionLabel)",
+            detail: "maxFrameMs=\(String(format: "%.2f", context.recentMaxFrameMs)) " +
+                    "obs=\(context.recentFramesObserved) " +
+                    "budget=\(String(format: "%.1f", context.currentTierBudgetMs)) " +
+                    "pending=\(String(format: "%.0f", context.pendingForMs))ms " +
+                    "forceCount=\(forceDispatchCount)"
+        )
+
         return decision
     }
 }

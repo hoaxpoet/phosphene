@@ -117,6 +117,12 @@ public final class StemSeparator: StemSeparating, @unchecked Sendable {
         }
 
         logger.info("StemSeparator loaded: MPSGraph engine, \(Self.nFFT)-pt STFT, \(Self.nBins) bins")
+
+        BUG012Probe.recordStemSeparatorInit()
+    }
+
+    deinit {
+        BUG012Probe.recordStemSeparatorDeinit()
     }
 
     // MARK: - Separation
@@ -133,6 +139,8 @@ public final class StemSeparator: StemSeparating, @unchecked Sendable {
     ///   - sampleRate: Input sample rate in Hz.
     /// - Returns: Separation result with per-stem metadata.
     public func separate(audio: [Float], channelCount: Int, sampleRate: Float) throws -> StemSeparationResult {
+        let bug012ID = logBUG012SeparateEnter(audio: audio, channelCount: channelCount, sampleRate: sampleRate)
+        defer { BUG012Probe.log("separate EXIT", dispatchID: bug012ID) }
         let monoFrames = audio.count / max(channelCount, 1)
         guard monoFrames >= Self.hopLength else {
             throw StemSeparationError.insufficientSamples(audio.count)
@@ -369,5 +377,23 @@ public final class StemSeparator: StemSeparating, @unchecked Sendable {
         }
 
         return (left, right)
+    }
+
+    // MARK: - BUG-012 Instrumentation
+
+    /// BUG-012 helper — allocate a dispatch ID + emit the `separate ENTER`
+    /// log. Extracted so the main `separate(audio:...)` body stays under
+    /// SwiftLint's `function_body_length` cap. Remove with the rest of the
+    /// BUG-012 probe once the defect closes.
+    private func logBUG012SeparateEnter(
+        audio: [Float], channelCount: Int, sampleRate: Float
+    ) -> UInt64 {
+        let dispatchID = BUG012Probe.nextDispatchID()
+        BUG012Probe.log(
+            "separate ENTER",
+            dispatchID: dispatchID,
+            detail: "samples=\(audio.count) ch=\(channelCount) sr=\(sampleRate)"
+        )
+        return dispatchID
     }
 }

@@ -77,19 +77,34 @@ extension VisualizerEngine {
         let now = CACurrentMediaTime()
 
         // Record the start of the pending window on first entry (not on retries).
-        if pendingDispatchStartTime == nil {
+        let isFirstEntry = pendingDispatchStartTime == nil
+        if isFirstEntry {
             pendingDispatchStartTime = now
             logger.debug("ML: stem dispatch requested, starting pending window")
         }
         let start = pendingDispatchStartTime ?? now
         let pendingForMs = Float((now - start) * 1000)
 
+        // BUG-012 instrumentation
+        BUG012Probe.log(
+            "runStemSeparation timer/retry",
+            detail: "firstEntry=\(isFirstEntry) pending=\(String(format: "%.0f", pendingForMs))ms"
+        )
+
         Task { @MainActor [weak self] in
-            guard let self else { return }
+            guard let self else {
+                BUG012Probe.notice("runStemSeparation MainActor self=nil — engine deallocated")
+                return
+            }
 
             guard let scheduler = self.mlDispatchScheduler else {
                 // No scheduler wired (tests / headless) — dispatch immediately.
+                BUG012Probe.log("runStemSeparation no-scheduler → queue performStemSeparation")
                 self.stemQueue.async { [weak self] in
+                    if self == nil {
+                        BUG012Probe.notice("stemQueue.async self=nil before performStemSeparation (no-scheduler path)")
+                        return
+                    }
                     self?.performStemSeparation()
                 }
                 return
@@ -110,6 +125,10 @@ extension VisualizerEngine {
                 self.pendingDispatchStartTime = nil
                 // Return to stemQueue for the actual 142ms MPSGraph call.
                 self.stemQueue.async { [weak self] in
+                    if self == nil {
+                        BUG012Probe.notice("stemQueue.async self=nil before performStemSeparation")
+                        return
+                    }
                     self?.performStemSeparation()
                 }
 
@@ -117,6 +136,10 @@ extension VisualizerEngine {
                 // Keep pendingDispatchStartTime intact to preserve the elapsed duration.
                 let deadline: DispatchTime = .now() + .milliseconds(Int(retryInMs))
                 self.stemQueue.asyncAfter(deadline: deadline) { [weak self] in
+                    if self == nil {
+                        BUG012Probe.notice("stemQueue.asyncAfter self=nil before runStemSeparation retry")
+                        return
+                    }
                     self?.runStemSeparation()
                 }
             }
@@ -130,7 +153,13 @@ extension VisualizerEngine {
     /// Extracted from the pre-6.3 `runStemSeparation`. Runs on stemQueue after the
     /// scheduler gate in `runStemSeparation` clears the frame timing check.
     func performStemSeparation() {
-        guard let separator = stemSeparator else { return }
+        let dispatchID = BUG012Probe.nextDispatchID()
+        BUG012Probe.enterStemDispatch(dispatchID: dispatchID)
+
+        guard let separator = stemSeparator else {
+            BUG012Probe.exitStemDispatch(dispatchID: dispatchID, outcome: "no-separator")
+            return
+        }
 
         // Snapshot ~10s using the actual tap rate (D-079, QR.1).
         let actualRate = tapSampleRate
@@ -138,6 +167,7 @@ extension VisualizerEngine {
         let requiredStereo = Int(actualRate) * 10 * 2
         guard samples.count >= requiredStereo else {
             logger.debug("Stem pipeline: warmup (\(samples.count)/\(requiredStereo) samples)")
+            BUG012Probe.exitStemDispatch(dispatchID: dispatchID, outcome: "warmup-skip")
             return
         }
 
@@ -145,15 +175,22 @@ extension VisualizerEngine {
         let rms = stemSampleBuffer.rms(seconds: 10, sampleRate: actualRate)
         guard rms > Self.silenceRMSThreshold else {
             logger.debug("Stem pipeline: skipping — silence (RMS=\(rms))")
+            BUG012Probe.exitStemDispatch(dispatchID: dispatchID, outcome: "silence-skip")
             return
         }
 
         do {
             // Pass the actual tap rate; the separator resamples internally
             // to its model rate (D-079, QR.1).
+            BUG012Probe.notice(
+                "separator.separate CALL",
+                dispatchID: dispatchID,
+                detail: "samples=\(samples.count) sr=\(actualRate)"
+            )
             let result = try separator.separate(
                 audio: samples, channelCount: 2, sampleRate: Float(actualRate)
             )
+            BUG012Probe.notice("separator.separate RETURN", dispatchID: dispatchID)
 
             // Extract mono waveforms from each stem buffer.
             let sampleCount = result.sampleCount
@@ -183,8 +220,10 @@ extension VisualizerEngine {
                 sampleRate: Int(StemSeparator.modelSampleRate),
                 trackTitle: currentTrack?.title
             )
+            BUG012Probe.exitStemDispatch(dispatchID: dispatchID, outcome: "ok")
         } catch {
             logger.error("Stem separation failed: \(error)")
+            BUG012Probe.exitStemDispatch(dispatchID: dispatchID, outcome: "threw")
         }
 
         // BUG-007.9: hybrid runtime recalibration. After stem separation succeeds
