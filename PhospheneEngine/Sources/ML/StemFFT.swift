@@ -210,9 +210,12 @@ public final class StemFFTEngine: StemFFTEngineProtocol, @unchecked Sendable {
         self.windowSquareSum = Self.computeWindowSquareSum(window: win)
 
         logger.info("StemFFTEngine ready: MPSGraph, \(Self.nFFT)-pt FFT, \(Self.modelFrameCount) frames")
+
+        BUG012Probe.recordStemFFTEngineInit()
     }
 
     deinit {
+        BUG012Probe.recordStemFFTEngineDeinit()
         vDSP_destroy_fftsetup(fftSetup)
     }
 
@@ -331,26 +334,53 @@ public final class StemFFTEngine: StemFFTEngineProtocol, @unchecked Sendable {
     // MARK: - Public API
 
     public func forward(mono: [Float]) -> (magnitude: [Float], phase: [Float]) {
+        let dispatchID = BUG012Probe.nextDispatchID()
+        BUG012Probe.log(
+            "fft forward await-lock",
+            dispatchID: dispatchID,
+            detail: "samples=\(mono.count)"
+        )
         lock.lock()
-        defer { lock.unlock() }
+        defer {
+            lock.unlock()
+            BUG012Probe.log("fft forward lock-released", dispatchID: dispatchID)
+        }
+        BUG012Probe.enterFFTForward(dispatchID: dispatchID)
+        defer { BUG012Probe.exitFFTForward(dispatchID: dispatchID, outcome: "returned") }
         if forceCPUFallback {
+            BUG012Probe.log("fft forward path=cpu", dispatchID: dispatchID)
             return cpuForward(mono: mono)
         }
+        currentDispatchID = dispatchID
+        defer { currentDispatchID = 0 }
         return gpuForward(mono: mono)
     }
 
     public func inverse(
         magnitude: [Float], phase: [Float], nbFrames: Int, originalLength: Int?
     ) -> [Float] {
+        let dispatchID = BUG012Probe.nextDispatchID()
         lock.lock()
         defer { lock.unlock() }
+        BUG012Probe.enterFFTInverse(dispatchID: dispatchID)
+        defer { BUG012Probe.exitFFTInverse(dispatchID: dispatchID, outcome: "returned") }
         if forceCPUFallback {
             return cpuInverse(
                 magnitude: magnitude, phase: phase, nbFrames: nbFrames, originalLength: originalLength
             )
         }
+        currentDispatchID = dispatchID
+        defer { currentDispatchID = 0 }
         return gpuInverse(
             magnitude: magnitude, phase: phase, nbFrames: nbFrames, originalLength: originalLength
         )
     }
+
+    // MARK: - BUG-012 Probe Context
+
+    /// Dispatch ID flowing through the current `forward` / `inverse` call.
+    /// Set under `lock`; read by `+GPU` extension methods (`runForwardGraph`,
+    /// `runInverseGraph`) so the MPSGraph.run boundary log lines correlate
+    /// with the outer call's ID. Zero when no GPU call is active.
+    internal var currentDispatchID: UInt64 = 0
 }

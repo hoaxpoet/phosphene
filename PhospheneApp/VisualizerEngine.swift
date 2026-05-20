@@ -666,8 +666,18 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
             }
 
         setupTerminationObserver()
+
+        BUG012Probe.recordVisualizerEngineInit()
     }
     // swiftlint:enable cyclomatic_complexity function_body_length
+
+    /// BUG-012 instrumentation — record VisualizerEngine teardown. If a crash
+    /// fires during teardown, the deinit log line lands in `session.log`
+    /// before the process exits and gives a clear "we were dying when this
+    /// crashed" signal. Remove once BUG-012 closes.
+    deinit {
+        BUG012Probe.recordVisualizerEngineDeinit()
+    }
 
     /// Build the GPU particle system used by the Murmuration preset.
     /// Quality of movement over quantity — each bird should be visible.
