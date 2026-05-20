@@ -3719,6 +3719,32 @@ The pale-tone-share gate (≤ 0.30 of cells; pale = linear RGB `min(R, G, B) > 0
 
 ---
 
+## Phase CA — Capability Audit (2026-05-20)
+
+**Motivation.** Drift between docs and code is real and has cost session time. Concrete evidence from the 2026-05-20 design conversation: a Cold-Start design pass proposed building "C2 + first-onset anchoring" infrastructure that turned out to **already exist in production** via the BUG-007.x series — Claude had no prior knowledge of it because it wasn't surfaced in the high-traffic docs. Same session: `docs/CAPABILITY_GAP_AUDIT.md` is referenced from this file but doesn't exist as a file. These are not hypothetical drift; they are blocking real work.
+
+Phase CA addresses the drift systematically through per-subsystem code-vs-docs audits. Each increment audits one subsystem: reads the actual source, traces consumers, cross-references docs, and assigns a health verdict to every capability the subsystem exposes. Output is `docs/CAPABILITY_REGISTRY/<subsystem>.md` per pass, plus a top-level `docs/CAPABILITY_REGISTRY.md` index assembled after multiple passes.
+
+**Phase scope is one-increment-at-a-time.** The wider phase plan firms up after CA.1's "approach validation" step confirms the format produces actionable value. Do not plan CA.2-CA.N upfront.
+
+### Increment CA.1 — DSP / MIR
+
+**Status.** Scoped 2026-05-20. Kickoff doc: [`docs/prompts/PHASE_CA_KICKOFF_CA1_DSP_MIR_2026-05-20.md`](prompts/PHASE_CA_KICKOFF_CA1_DSP_MIR_2026-05-20.md).
+
+**Scope.** All 20 files in `PhospheneEngine/Sources/DSP/` plus DSP-adjacent capabilities at subsystem boundaries (DSP↔Audio, DSP↔ML, DSP↔Session, DSP↔App). The DSP subsystem is first because (a) it's the subsystem where this session's blind spot lived (BUG-007.x cold-start beat-sync infrastructure invisible to Claude); (b) the BUG-007.x series produced significant incremental infrastructure most likely to be undercaptured in docs; (c) the output feeds directly into Phase CS verification work.
+
+**Output.** `docs/CAPABILITY_REGISTRY/DSP_MIR.md`. Plus BUG entries for any `broken-but-claimed` findings; doc-drift corrections to load-bearing docs in the same increment.
+
+**Verdicts assigned per capability.** `production-active`, `production-orphan`, `dead`, `stub`, `documented-but-missing`, `built-but-undocumented`, `broken-but-claimed`, `unverified-claim`, `boundary-deferred`. Definitions in the kickoff doc.
+
+**Discipline.** Audit-only. No code changes during the audit beyond the new audit doc and minor doc-drift corrections. Fix work that the audit surfaces is scheduled as separate increments. Stop-and-report criteria and methodology fully spec'd in the kickoff document — read it before starting.
+
+**Done-when.** Audit document published with verdicts for every public capability in scope; all `broken-but-claimed` findings have BUG entries; drift corrections to CLAUDE.md / ENGINEERING_PLAN.md / DECISIONS.md landed; approach-validation section produces an honest critique of whether the format should continue.
+
+**After CA.1 lands** — surface to Matt: summary counts, recommended approach changes for CA.2, recommended next subsystem (audit-driven, may not be the originally-planned "Audio").
+
+---
+
 ## Phase CS — Cold-Start Sync (2026-05-20)
 
 **Motivation.** Matt 2026-05-20: "The product should be at least beat-synced from frame 1, having 1s of wonky performance while the transition occurs is acceptable but this should be the only session wonkiness." This is restated as the load-bearing commercial-viability bar for the listening-party use case (collaborative Spotify playlists of novel tracks). If we cannot meet it, the product is not viable as conceived.
