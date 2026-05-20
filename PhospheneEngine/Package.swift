@@ -139,6 +139,15 @@ let package = Package(
             ],
             path: "Sources/UtilityCostTableUpdater"
         ),
+        .executableTarget(
+            name: "PresetSessionReplay",
+            dependencies: [
+                "Shared",
+                "Presets",
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+            ],
+            path: "Sources/PresetSessionReplay"
+        ),
         .testTarget(
             name: "PhospheneEngineTests",
             dependencies: [
