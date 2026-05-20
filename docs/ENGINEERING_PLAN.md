@@ -3719,6 +3719,102 @@ The pale-tone-share gate (≤ 0.30 of cells; pale = linear RGB `min(R, G, B) > 0
 
 ---
 
+## Phase CS — Cold-Start Sync (2026-05-20)
+
+**Motivation.** Matt 2026-05-20: "The product should be at least beat-synced from frame 1, having 1s of wonky performance while the transition occurs is acceptable but this should be the only session wonkiness." This is restated as the load-bearing commercial-viability bar for the listening-party use case (collaborative Spotify playlists of novel tracks). If we cannot meet it, the product is not viable as conceived.
+
+**Design + adversarial review:** [`docs/COLD_START_SYNC_DESIGN_2026-05-20.md`](COLD_START_SYNC_DESIGN_2026-05-20.md). All five increments below trace to that document. **Read it before scoping any CS increment.**
+
+**Surprise from the design pass.** Most of the C2 + first-onset-anchor proposal sketched in the 2026-05-20 design conversation **already exists in production code**, built incrementally across the BUG-007.x series:
+
+- `BeatGrid.offsetBy(_:horizon:)` extrapolates beats 300 s forward (`PhospheneEngine/Sources/DSP/BeatGrid.swift:120`).
+- `GridOnsetCalibrator` measures per-track grid-vs-onset offset at preparation time (`PhospheneEngine/Sources/Session/GridOnsetCalibrator.swift`).
+- `LiveBeatDriftTracker.setGrid(_:initialDriftMs:)` seeds the drift EMA with the calibrated value at track install (`PhospheneEngine/Sources/DSP/LiveBeatDriftTracker.swift:408`).
+- BUG-007.9 hybrid runtime re-calibration refines the calibration against actual tap audio after ~15 s.
+
+The remaining work is **verification + targeted filling**, not new architecture. See design doc §4 (what exists) and §5 (what's unverified) for the full picture.
+
+### Increment CS.1 — Empirical verification of existing cold-start beat sync
+
+**Scope.** Build a verification harness (extending `PresetSessionReplay` from SR.1 is a strong candidate base) that measures observed visual beat phase against the cached beat grid for the first 10 s of playback across a representative track sample. Output: per-track distribution of `(visual_beat_time − audible_beat_time)` deltas.
+
+**Bar to clear.** ≥ 90 % of tracks in a 10-track party playlist meet ±50 ms phase from frame 1.
+
+**Done-when.**
+- Harness extension lands and runs end-to-end against a real captured session.
+- Per-track phase-delta distribution is emitted as part of the SR.1 report or a new sibling report.
+- Verdict for each track: `pass` (within bar) / `fail` (out of bar) / `degenerate` (rhythmless — bar does not apply).
+- If pass-rate ≥ 90 %: increment closes; proceed to CS.2.
+- If pass-rate < 90 %: increment surfaces the failure cases; CS.1 follow-up diagnoses before CS.2 begins.
+
+**Estimated sessions:** 1-2.
+
+### Increment CS.2 — First-segment minimum duration
+
+**Scope.** Add a first-segment-of-track minimum duration constraint to `SessionPlanner.planOneSegment` (`PhospheneEngine/Sources/Orchestrator/SessionPlanner+Segments.swift:137`). Target 10-12 s. Handle: tracks shorter than the minimum (allow violation); section boundaries inside the minimum window (push to next bar boundary after the minimum). Regenerate golden session tests.
+
+**Done-when.**
+- `planOneSegment` honors the new constraint for first segments only (subsequent segments unaffected).
+- Golden sessions regenerated; per-track scoring decisions documented in commit message.
+- Edge-case tests: 8 s track, 12 s track, 60 s track with section boundary at t=6 s, 60 s track with section boundary at t=15 s.
+
+**Estimated sessions:** 1.
+
+### Increment CS.3 — Data-hierarchy compliance audit
+
+**Scope.** Read every `.metal` preset file in the catalog. For each, classify every audio-reactive driver as `primary` / `accent` / `proxy-fallback`. Compare against CLAUDE.md's Audio Data Hierarchy rule. Output: `docs/PRESET_DATA_HIERARCHY_AUDIT_<date>.md` with per-preset findings.
+
+Specific check criteria per preset (see design doc §6.4 for the full list):
+- Continuous bands (`f.bass`, `f.mid`, `f.treble` and `_att_rel` / `_dev` variants) — used as primary driver?
+- Stem energies (`stems.X_energy`) — used as primary driver? If so, D-019 warmup blend present?
+- Beat onsets — used as accent only?
+- Predicted beats / bar phase — used for jitter-free motion where appropriate?
+
+**Done-when.** Per-preset audit document published; preliminary scan suggests `Starburst`, `KineticSculpture`, `GlassBrutalist`, `Arachne` need close review. No code changes in this increment.
+
+**Estimated sessions:** 1-2.
+
+### Increment CS.4 — Targeted fixes from audit findings
+
+**Scope.** Per non-compliant preset surfaced by CS.3: minimum-change fix to bring into D-019 / D-026 compliance without altering visual intent. One commit per preset. Golden hashes regenerate per preset.
+
+**Risk.** Preset-touching work is where Claude's track record is worst (Drift Motes, Aurora Veil pattern). Each CS.4 sub-increment is scoped tightly (one preset, minimum change). Matt M7 review per preset before flipping the audit document's verdict from `non-compliant` to `compliant`.
+
+**Done-when.** Every preset flagged in CS.3 either has a compliance fix landed and M7-approved, or has an explicit decision to defer / retire (rare).
+
+**Estimated sessions:** variable — one per affected preset.
+
+### Increment CS.5 — Documentation of the cold-start contract
+
+**Scope.** Promote the cold-start data-flow understanding into CLAUDE.md and SHADER_CRAFT.md as a durable rule:
+- New CLAUDE.md section under "Audio Data Hierarchy" titled "Cold-Start Phase Contract" describing `gridOnsetOffsetMs` calibration, D-019 blend pattern, first-segment minimum duration, and the implication that violating presets look broken during cold-start.
+- Short SHADER_CRAFT.md section pointing authors at the CS.3 audit checklist.
+- New decision record `D-XXX — Cold-start sync architecture (Phase CS, 2026-05-XX)`. Documents what's in production, what was verified, what was added.
+
+**Done-when.** Docs land; reference from any subsequent preset prompt confirms the rules.
+
+**Estimated sessions:** ½.
+
+### Phase exit criteria
+
+Phase CS closes when, in this order:
+
+1. CS.1 verification passes (≥ 90 % of representative tracks meet ±50 ms phase from frame 1), OR documented diagnosis of why it doesn't with a path to fix.
+2. CS.2 first-segment minimum landed; golden sessions green.
+3. CS.3 audit document published.
+4. CS.4 fix increments completed for every preset CS.3 flagged.
+5. CS.5 documentation merged.
+6. **Matt manual validation on a real listening-party playlist confirms perceptual beat sync from frame 1.** The load-bearing close criterion.
+
+### Out of scope for Phase CS
+
+- BUG-013 time-signature for odd-meter tracks — different defect, different fix.
+- Audio output latency UX (AirPods / Bluetooth compensation) — future Phase.
+- Section-aware visuals, mood arc, stem time-varying — fundamentally blocked by the streaming-only constraint.
+- Any work that would relax the streaming-only architectural constraint (local files, capture-on-first-listen, third-party data services). Matt explicitly deprioritized these on 2026-05-20.
+
+---
+
 ## Phase SR — Session Replay diagnostic infrastructure
 
 Diagnostic harness that closes the "I cannot inspect this preset" gap surfaced during the AV.2.x cascade closeout (2026-05-20). Closeouts asserting audio-coupling or visual-fidelity claims must now cite generated evidence packs instead of assertion-shaped language. See [docs/ENGINE/SESSION_REPLAY.md](ENGINE/SESSION_REPLAY.md) for usage + extension. The accompanying CLAUDE.md discipline rule ("Diagnostic infrastructure precedes fidelity claims") is the project-wide standard.
