@@ -1,5 +1,35 @@
 // AuroraVeil.metal — Direct-fragment ambient ribbon preset.
 //
+// **AV.2.h (2026-05-19) — Three-Channel curation.** Matt's feedback on
+// session `2026-05-19T22-49-41Z` ("first 40 s works better; after that
+// the programming is muddled") triggered a design pivot away from the
+// 8-route maximally-coupled state of AV.2.2g. The first 40 s of any
+// track is the stem-cache pre-warmup window where most routes are
+// gated off (stems sit at static cached values below their thresholds);
+// post-warmup all 8 routes wake up simultaneously and visually compete.
+// The fix isn't more tuning — it's curating the route set.
+//
+// Three musical features → three independent visual axes, no
+// competition. The other 5 audio routes are removed.
+//
+//   1. Vocals melody  → ribbon HUE (palette baseOffset, slow walk)
+//   2. Bass transients → BRIGHTNESS pulse (gated, smoothstep(0.30, 0.55))
+//   5. Drum events    → curtain KINK (rare-event gated, 0.90/1.50)
+//
+// Routes dropped from AV.2.2g:
+//   3 — fold density (mid → noise spatial frequency): every-frame
+//       modulation that morphed the noise field; was contributing to
+//       the "muddled" reading
+//   4 — drift speed (bass → noise rotation rate): redundant with the
+//       brightness route's bass coupling; one primitive per axis (FA #67)
+//   6 — valence palette warm/cool: slow tilt that competed with the
+//       vocals-pitch hue route for the palette baseOffset axis
+//   7 — star twinkle (beat_phase01 gated by pitch confidence): an
+//       additional beat-coupled signal that added noise without anchoring
+//       a distinct musical feature
+//   8 — synth flash (other_energy_dev → palette baseOffset): added a
+//       second hue-axis driver that competed with route 1
+//
 // AV.2.2 (2026-05-18): mv_warp pass DROPPED. The empirical
 // `AuroraVeilMVWarpAccumulationTest` (env-gated) demonstrated that mv_warp
 // at the design parameters (decay 0.945, curl-noise advection 0.005 UV)
@@ -145,61 +175,33 @@ constant float kBrightnessAmp     = 0.30;
 constant float kBrightnessGateLo  = 0.30;
 constant float kBrightnessGateHi  = 0.55;
 
-// Route 3 — fold density. AV.2.2c (2026-05-19): amplitude reduced 0.30 →
-// 0.10. Was the DOMINANT motion contributor — changing the noise sample's
-// spatial frequency frame-to-frame morphs the entire noise field, so
-// continuous mid_att_rel modulation produced restless per-frame
-// re-shaping. Quartered amplitude keeps the audio coupling perceptible
-// (mids still thicken folds 10 %) without continuous noise-field morph.
-constant float kFoldDensityAmp = 0.10;
+// Route 3 — fold density: REMOVED (AV.2.h). Was an every-frame modulator
+// of the noise spatial frequency, which morphed the entire noise field
+// per frame. Contributed to the "muddled" reading post-warmup.
 
-// Route 5 — curtain kink. AV.2.2c (2026-05-19): amplitude halved 0.003 →
-// 0.0015 UV. The kink-charge gate thresholds (CPU-side, see
-// `AuroraVeilState.kinkChargeLo/Hi`) also raised from 0.4/0.7 → 0.6/0.9
-// — observed gate-fire rate on Billie Jean was 9.4 % of frames (not
-// "rare"); the design intent was rare-event gating with damped
-// 1-2 s shudder, so the gate is now sized for genuinely rare events
-// (~2 % of frames) and the shudder amplitude when it does fire is half
-// as wide.
-constant float kKinkAmp        = 0.0015;
+// Route 5 — curtain kink. AV.2.h (2026-05-19): kink gate thresholds raised
+// to 0.90 / 1.50 (CPU-side in `AuroraVeilState`) for genuinely rare-event
+// firing — observed `drumsEnergyDev` distribution on heavy-drum music
+// (Outkast / Foo Fighters) extended past 0.6, so the prior 0.6/0.9 gate
+// fired 8.9 % of frames (not rare). 0.90/1.50 limits firing to ~1-3 % on
+// heavy-drum music, ~0.5 % on lighter material — matches the "1-2 s slow
+// shudder on rare drum emphasis" design intent (§5.6 + research §3.2).
+constant float kKinkAmp         = 0.0015;
 constant float kKinkSpatialFreq = 12.0;
 
-// Route 6 — valence palette warm/cool. AV.2.2c (2026-05-19): amplitude
-// reduced 0.4 → 0.2 for coherent calmer-tuning pass. Major/minor key
-// tilt is subtler.
-constant float kValencePaletteAmp = 0.2;
+// Routes 4 (drift speed), 6 (valence palette), 7 (star twinkle), 8 (synth
+// flash) REMOVED in AV.2.h — see header docstring for rationale.
 
-// Route 8 — synth/melody flash (AV.2.2f, 2026-05-19). The Demucs "other"
-// stem captures content that isn't drums/bass/vocals — lead synths,
-// keyboards, guitar lines. Threshold-gate stems.other_energy_dev so the
-// route fires only on the larger transients (the actual note attacks),
-// not on continuous low-level mid-band background. Each pulse adds a
-// brief shift to the per-fragment palette baseOffset → aurora hue
-// flashes momentarily on each synth/melody attack and settles back.
-// Targets the Billie Jean lead-synth motif Matt flagged as a "really
-// fun" feature to reflect; also fires on guitar lines / keyboard hooks
-// on other tracks.
-//
-// Firing rate on Billie Jean (live session 2026-05-19T21-30-32Z):
-//   stems.other_energy_dev > 0.4: 9.3% of frames (per-note clear)
-//   stems.other_energy_dev > 0.7: ~2% of frames (only the loudest events)
-// No FV proxy: the "other" stem has no FeatureVector equivalent (FV only
-// carries 3 bands + spectral features). Pre-warmup the dev primitive is
-// zero by construction → route is silence-stable (D-019 fallback).
-constant float kSynthFlashGateLo = 0.4;
-constant float kSynthFlashGateHi = 0.7;
-// AV.2.2g (2026-05-19): amplitude raised 0.6 → 1.5 because live session
-// 2026-05-19T21-57-33Z showed the route fires 15.2 % of frames on Billie
-// Jean verses but 99 % of those frames also have a simultaneous bass
-// brightness pulse — the hue shift was visually masked by the brightness
-// modulation. Larger amp (≈ 24 % of the IQ palette cycle) makes the
-// per-pulse hue shift perceptible even when brightness is pulsing too.
-constant float kSynthFlashAmp    = 1.5;   // rad shift on palette baseOffset
+// (Route 7 star-twinkle confidence-gate constant retained at module scope
+// even though the route is removed — its threshold value 0.5 doubles as
+// the gate threshold for Route 1's pitchConfident check, which is still
+// active and now actually fires post-PT.1.)
 
 // Route 7 — star twinkle. 30 % amplitude per-star brightness modulation,
 // gated by `vocals_pitch_confidence > 0.5` (the gate is in shader, not here).
-constant float kStarTwinkleAmp        = 0.30;
-constant float kStarTwinkleConfGate   = 0.5;
+// kStarTwinkleAmp removed (route 7 dropped).
+// kStarTwinkleConfGate removed; pitchConfident now uses the literal 0.5
+// inline.
 
 // ── GPU state buffer (AV.2 — Path B per prompts/AV.2-prompt.md §AV-kink) ─────
 //
@@ -395,47 +397,29 @@ fragment float4 aurora_fragment(
     // down (matches "breathing" intuition).
     float bassDev = mix(f.bass_dev, stems.bass_energy_dev, stemMix);
 
-    // Route 3 — mid-rel (continuous fold density). FV proxy `f.mid_att_rel`;
-    // stem proxy `stems.vocals_energy_rel` (matches Gossamer.metal:134 — the
-    // closest mid-band stem analogue is vocals-energy-rel, since vocals
-    // typically occupy the mid band).
-    float midRel = mix(f.mid_att_rel, stems.vocals_energy_rel, stemMix);
-
-    // Route 6 — valence palette warm/cool. No stem analogue; FV only.
-    float valence = f.valence;
-
     // Route 1 — vocal-pitch normalized + smoothed (CPU-side via AuroraVeilState).
     // Confidence-gated: when YIN/CREPE confidence < threshold (silence,
     // unvoiced, or pre-stems), fall back to the mid-palette neutral 0.5 baseline
     // so the route is silence-stable per §5.8. When confident, consume the
     // smoothed value from the state buffer (5-frame moving average per §5.7).
-    float pitchConfident = step(kStarTwinkleConfGate, stems.vocals_pitch_confidence);
+    // PT.1 (2026-05-19) fixed the upstream PitchTracker ring-buffer bug;
+    // before that, pitchConfidence was 0 % across every session and this
+    // gate kept pitchNorm at the 0.5 fallback always.
+    float pitchConfident = step(0.5, stems.vocals_pitch_confidence);
     float pitchNorm = mix(0.5, av.smoothedPitchNorm, pitchConfident);
 
-    // Route 8 — synth/melody flash. Threshold-gate stems.other_energy_dev so
-    // only the larger transients fire (the actual note attacks). No FV
-    // proxy needed — pre-warmup stems are zero by construction → route
-    // silence-stable. The pulse adds a brief positive shift to baseOffset
-    // → palette flashes warmer (toward magenta) on each synth/melody
-    // attack and settles back.
-    float otherDev = stems.other_energy_dev;
-    float synthPulse = smoothstep(kSynthFlashGateLo, kSynthFlashGateHi, otherDev);
+    // Route 1 only — paletteOffset is the single palette-axis driver after
+    // AV.2.h's curation (route 6 valence + route 8 synth-flash both
+    // dropped to keep one primitive per visual axis).
+    float paletteOffset = (pitchNorm - 0.5) * kVocalsPitchAmp;
 
-    // Stack routes 1 + 6 + 8 into a single additive paletteOffset that all
-    // three columns share (so the hue migration is coherent across ribbons
-    // rather than each ribbon hue-shifting independently).
-    float paletteOffset = (pitchNorm - 0.5) * kVocalsPitchAmp
-                        + valence * kValencePaletteAmp
-                        + synthPulse * kSynthFlashAmp;
-
-    // Route 4 — substrate drift speed. `bassDev` is positive-only; result
-    // lies in [0.06, 0.06 + kAuroraDriftSpeedGain × dev_clamped]. Drift
-    // accelerates only on bass transients; no slowdown phase.
-    float driftSpeed = kAuroraDriftSpeedBase + kAuroraDriftSpeedGain * clamp(bassDev, 0.0, 1.0);
-
-    // Route 3 — fold density. `midRel ≥ 0` thickens; `midRel < 0` slightly
-    // loosens. Result in [0.7, 1.3].
-    float foldScale = 1.0 + kFoldDensityAmp * clamp(midRel, -1.0, 1.0);
+    // Drift speed + fold density are constants in AV.2.h — routes 4 and 3
+    // dropped to reduce the per-frame noise-field morphing that was
+    // contributing to the "muddled" reading. Substrate drift comes from
+    // the noise field's own time-driven rotation inside
+    // `aurora_tri_noise_2d` (the nimitz recipe).
+    float driftSpeed = kAuroraDriftSpeedBase;
+    float foldScale  = 1.0;
 
     // Route 5 — curtain kink (fragment-space lateral UV jitter on the column
     // noise sample). Path B per prompts/AV.2-prompt.md §AV-kink: CPU-side
@@ -481,9 +465,11 @@ fragment float4 aurora_fragment(
     // when YIN is unsure). The 0.30 amplitude is a *modulation index*, not a
     // brightness scale — the twinkle adds ±30 % brightness around the base
     // starShade value.
-    float starPhase   = f.beat_phase01 * 2.0 * M_PI_F + starShade * M_PI_F;
-    float starTwinkle = 1.0 + kStarTwinkleAmp * sin(starPhase) * pitchConfident;
-    sky += float3(0.85, 0.92, 1.0) * starHit * (0.40 + 0.60 * starShade) * starTwinkle;
+    // Route 7 — star twinkle REMOVED in AV.2.h. Stars now render at their
+    // hash-determined static brightness; one less beat-coupled signal in
+    // the visual field. Matches the references' "still photograph" star
+    // character.
+    sky += float3(0.85, 0.92, 1.0) * starHit * (0.40 + 0.60 * starShade);
 
     // ── Layer 2: Multi-column volumetric aurora raymarch ─────────────────────
     // Per design §5.5: three implicit drift columns at off-thirds horizontal
