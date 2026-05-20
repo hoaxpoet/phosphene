@@ -6,6 +6,34 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-20-a] AV.2.h.1 — Kink gate tune (0.9/1.5 → 0.7/1.0)
+
+**Increment:** AV.2.h.1. **Status:** Landed 2026-05-20.
+
+AV.2.h live-test session `2026-05-20T01-23-03Z` confirmed the three-channel curation works as intended:
+
+- **Route 1 (vocals melody → hue):** fires on **84.0 %** of frames post-PT.1. The dossier's load-bearing feature is finally live throughout the song.
+- **Route 2 (bass → brightness pulse):** punctuated firing — 8.9 % partial gate + 2.5 % full gate. Working as designed.
+- **Route 5 (drum → kink):** fired **0 %** of frames the entire session. Gate (0.9/1.5) was higher than the song's `drumsEnergyDev` max (0.849). The third leg of the curated tripod was effectively absent.
+
+### The tune
+
+`kinkChargeLo / Hi` 0.9 / 1.5 → **0.7 / 1.0**. Predicted firing rates:
+- Billie Jean: ~0.7 % of frames (1 shudder per ~2.5 s of music)
+- Heavy-drum tracks (Outkast / Foo Fighters): ~2-3 % (occasional emphasis without saturating)
+
+I'd overcorrected from AV.2.2c's 0.6/0.9 (8.9 % on heavy material). 0.7/1.0 sits between — properly rare on heavy material, present on lighter material.
+
+### Tests + build
+
+50 / 50 green. `xcodebuild` clean. `swiftlint --strict` clean.
+
+### Visual quality status
+
+Frames from session `2026-05-20T01-23-03Z` (t=50 s Billie Jean, t=90 s Get Lucky) read in the same visual conversation as references `01` / `04`: crisp stars throughout, green-base aurora with magenta-crown wash, three columns subtly distinguishable, dark sky context intact. The "muddled" reading from AV.2.2g is resolved.
+
+---
+
 ## [dev-2026-05-19-g] AV.2.h — Three-Channel curation (drop 5 routes; raise kink gate)
 
 **Increment:** AV.2.h. **Status:** Landed 2026-05-19.
