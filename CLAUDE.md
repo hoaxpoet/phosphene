@@ -377,6 +377,14 @@ When combining two mechanisms (e.g., procedural recipe + feedback accumulator), 
 
 The threshold for "surface immediately" is when you reach grounding level 3 (no reference) on any non-trivial mechanism. Don't proceed silently on assertion alone.
 
+**Diagnostic infrastructure precedes fidelity claims.** Promoted to CLAUDE.md from the AV.2.x cascade closeout 2026-05-20. A closeout that asserts an audio-coupled route works must cite per-route firing evidence from the session's `features.csv` / `stems.csv` — frame counts, threshold-crossing percentages, video-frame extracts at the audio events. A closeout that asserts the rendered output belongs in the same visual family as the references must cite the per-question rubric proxy scores + reference family centroid + σ-distance verdict. "Visually verified," "reads in the same visual conversation as references," and "the route works" are gate-bypass language unless backed by cited evidence.
+
+**The tool that produces the evidence is `PresetSessionReplay` (SR.1, 2026-05-20).** See `docs/ENGINE/SESSION_REPLAY.md` for invocation + extension. Every preset closeout asserting audio-coupling or visual-fidelity claims runs the harness against the relevant session + reference set and embeds (or links) the generated `replay_report.md` in the closeout.
+
+**When the diagnostic doesn't exist for a question, the closeout says "cannot verify X" instead of asserting it. Building the missing diagnostic is the next increment, not a future task.** PT.1 was the existence proof: `vocalsPitchConfidence` was 0 % across every Aurora Veil session for ~5 months while closeout after closeout I authored claimed the route worked. The 10-line script tallying `vocalsPitchConfidence ≥ 0.5` from features.csv that would have caught it before AV.1 shipped didn't exist; I filled the gap with assertion-shaped language instead of building it. That pattern is retired.
+
+**Verdicts on broken proxies are forbidden.** SR.1's rubric calibration flags a proxy `uncalibrated` when its scores across the reference set are too scattered (σ > 50 % of |mean|) or constant (σ ≈ 0). "Uncalibrated" is an honest verdict — it means the proxy isn't reliable, NOT that the render is OK. A closeout that cites an uncalibrated proxy as evidence of cert-readiness is gate-bypass. Either refine the proxy (SR.1.x / SR.2) or say "cannot verify."
+
 ---
 
 ## What NOT To Do

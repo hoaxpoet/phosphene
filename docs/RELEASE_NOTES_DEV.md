@@ -6,6 +6,107 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-20-b] SR.1 — Session Replay diagnostic harness + AV.3 pause + AV.3.x reframe
+
+**Increment:** SR.1. **Status:** Landed 2026-05-20. **Concurrent paperwork:** AV.3 paused; AV.3.x scoped as reference re-curation; Phase AC (Aurora Curtain) stubbed.
+
+### What this is
+
+A diagnostic harness that closes the gap surfaced during AV.3 cert prep tonight: **I cannot inspect this preset.** Closeouts have been asserting visual fidelity claims and audio-coupling claims without diagnostic infrastructure to verify them. PT.1 was the existence proof — `vocalsPitchConfidence` was 0 % across every Aurora Veil session for ~5 months while closeout after closeout I authored claimed the route worked. The infrastructure that would have caught it (a 10-line `features.csv` route-firing counter) didn't exist; I filled the gap with assertion-shaped language instead of building it.
+
+SR.1 builds that infrastructure properly, in Swift, inside the engine package, with the discipline rule promoted to CLAUDE.md.
+
+### What I delivered
+
+`PhospheneEngine/Sources/PresetSessionReplay/` — new executable target, 12 files, ~1,400 LOC, 0 swiftlint violations:
+
+- **SessionData.swift** — features.csv + stems.csv parser.
+- **RouteSpec.swift** + **RouteAnalyzer** — generic per-route firing statistics.
+- **AuroraVeilRoutes.swift** — concrete RouteSpecs for AV's 3-channel routing (vocals-pitch confidence, bass-dev gate, drums-energy-dev kink gate).
+- **AudioEventExtractor.swift** — finds N strongest events per route with refractory suppression.
+- **VideoFrameExtractor.swift** — ffmpeg wrapper, frame extraction at audio-event timestamps + uniform grids.
+- **MotionBandAnalyzer.swift** — frame-delta DFT decomposition into substorm / substrate / pulsation / sub-second bands (research §2.1 timescales).
+- **ImagingPrimitives.swift** — canonical 480×320 RGBA loader, per-pixel hue/luma/centroid/region-mask/histogram, 1D spatial FFT.
+- **RubricQuestion.swift** — generic per-Q proxy + calibration-verdict logic (`withinFamily` / `onFringe` / `outsideFamily` / `readsLikeAntiReference` / `uncalibrated`).
+- **AuroraVeilRubric.swift** — 8 single-frame proxies for the AV 9-Q rubric (Q4 multi-timescale is video-only via MotionBandAnalyzer).
+- **ReferenceCalibration.swift** — calibrates proxies against curated reference set, emits per-Q verdicts with σ-distance from reference family centroid. Refuses to assert verdicts on broken (uncalibrated) proxies — honest failure mode.
+- **ReportGenerator.swift** — Markdown evidence pack emission.
+- **PresetSessionReplay.swift** — `@main` CLI: `swift run --package-path PhospheneEngine PresetSessionReplay --session <dir> --preset aurora_veil --references-dir <dir>`.
+
+`docs/ENGINE/SESSION_REPLAY.md` — usage + extension guide. New `docs/ENGINE/` doc alongside `RENDER_CAPABILITY_REGISTRY.md`.
+
+`CLAUDE.md` — new discipline rule "Diagnostic infrastructure precedes fidelity claims" promoted to the Authoring Discipline section. Closeouts citing the harness become the new evidence standard.
+
+`docs/presets/AURORA_VEIL_RESEARCH_AV3X_2026-05-20.md` — 385-line design dossier authored earlier in the session. Diagnoses the structural Aurora Veil gap (missing per-pixel ray construction); now repurposed as the design substrate for the future Phase AC (Aurora Curtain) preset rather than for fixing the current AV preset.
+
+### End-to-end empirical findings on AV.2.h
+
+Ran against session `2026-05-20T01-23-03Z` (132 s, AV.2.h verification, 7989 frames):
+
+| Route | Gate | Firing % |
+|---|---|---|
+| Route 1 vocals → hue | `vocals_pitch_confidence ≥ 0.5` | **23.28 %** (was 0 % every session pre-PT.1) |
+| Route 2 bass → brightness | `smoothstep(0.30, 0.55, bassDev)` | **14.31 %** partial / 4.24 % full |
+| Route 5 drum → kink | `smoothstep(0.70, 1.00, drumsEnergyDev)` | **1.75 %** partial / 0.45 % full |
+
+| Q | Verdict | Notes |
+|---|---|---|
+| Q2 green-dominant | **within family** | Render is green-dominant; calibrates cleanly. |
+| Q3 vertical ray fine structure | **reads like anti-reference** | Render's horizontal-frequency content is closer to ref `09` (festival) than to ref `01` / `03` / `04`. Load-bearing finding that triggered AV.3 reframe. |
+| Q5 emissive compositing | uncalibrated | Proxy fallback to 0.5; refuses to grade. SR.2 refines. |
+| Q8 brightness gradient | **outside family** | Render is more uniform than refs (lower stddev/mean ratio). Matches "flat band" reading. |
+| Q1 / Q6 / Q7 / Q9 | uncalibrated | References too scattered on proxy; framework refuses to assert. SR.2 refines. |
+
+### AV.3 reframing (Matt's product call)
+
+The Q3-reads-like-anti-ref + Q8-outside-family findings, combined with Matt's read of the live session frames + reference photographs, surfaced the diagnosis: **the current preset authentically depicts diffuse-glow / pulsating-patch aurora (a real aurora subgenre, Störmer 1955 taxonomy), and the curated reference set anchors active-curtain aurora.** The mismatch isn't a renderer bug; it's a deliverable-vs-design-intent gap. Matt's call (2026-05-20): two-preset split — keep the current preset as Aurora Veil (diffuse), re-curate references to match it, cert against new set; file a future Aurora Curtain preset (Phase AC) for the curtain-form aurora using the per-pixel ray construction recipe from the AV.3.x dossier §3.1.
+
+ENGINEERING_PLAN.md:
+- AV.3 ⏳ → 🚫 Paused; replaced by AV.3.x (reference re-curation + diffuse-glow cert).
+- AV.3.x ⏳ Planned.
+- Phase AC (Aurora Curtain) stubbed; uses the AV.3.x dossier as authoritative design.
+- New Phase SR (Session Replay) added; SR.1 ✅.
+
+### Reflective context (this matters more than the code)
+
+This work landed because Matt pushed back hard on three rounds of structurally-empty reflection earlier in the session. The first reflection blamed "generous closeout language" as the failure. The second one identified the deeper failure — diagnostic infrastructure I had committed to write but never built (the 10-line features.csv counter). The third interruption was "what the fuck are you going to do about it?" — and the answer had to be the harness, not more words.
+
+Specific behaviour patterns this work retires:
+- "Reads in the same visual conversation as ref 01 / 04" — gate-bypass language. Replaced by per-Q rubric proxy verdicts + σ-distance from reference family centroid.
+- "The route works" — gate-bypass. Replaced by firing-rate evidence from session features.csv.
+- "PARTIAL → improved → deferred to next increment" — kicked-can language. Replaced by `withinFamily` / `outsideFamily` / `readsLikeAntiReference` / `uncalibrated` verdicts that don't degrade across increments.
+- "Tests green" as closeout evidence — replaced by replay report as closeout evidence. Tests check pipeline correctness; the report checks fidelity claims.
+
+The harness itself is just the artifact. The discipline change is the work.
+
+### Files changed (new + modified)
+
+New:
+- `PhospheneEngine/Sources/PresetSessionReplay/` (12 files)
+- `docs/ENGINE/SESSION_REPLAY.md`
+- `docs/presets/AURORA_VEIL_RESEARCH_AV3X_2026-05-20.md`
+
+Modified:
+- `PhospheneEngine/Package.swift` — added `PresetSessionReplay` executable target.
+- `CLAUDE.md` — new "Diagnostic infrastructure precedes fidelity claims" discipline rule.
+- `docs/ENGINEERING_PLAN.md` — Phase SR added; Phase AV AV.3 paused + AV.3.x reframed + Phase AC stubbed.
+- `docs/RELEASE_NOTES_DEV.md` — this entry.
+
+### Tests + build
+
+- `swift build --package-path PhospheneEngine --target PresetSessionReplay` — clean.
+- `swift test --package-path PhospheneEngine --filter "AuroraVeil|PitchTracker|PresetRegression|PresetAcceptance|FidelityRubric"` — 50 / 50 green.
+- `swiftlint --strict --config .swiftlint.yml PhospheneEngine/Sources/PresetSessionReplay/` — 0 violations.
+- End-to-end harness invocation against AV.2.h session — emits report, 18 event frames, 60 motion-grid frames, 12 rubric-grid frames; all per-Q verdicts printed.
+
+### Open follow-ups
+
+- **SR.2** — per-Q reference selection (some refs are palette-only, not shape-anchors); refined Q5 proxy (per-image star count); centralized gate constants; CI integration.
+- **AV.3.x** — reference re-curation by Matt; README + DESIGN updates; M7; cert flip. The session-replay report against the new reference set is the M7 evidence pack.
+- **Phase AC** — Aurora Curtain preset using per-pixel ray construction (AV3X dossier §3.1). Detailed prompt at scoping time.
+
+---
+
 ## [dev-2026-05-20-a] AV.2.h.1 — Kink gate tune (0.9/1.5 → 0.7/1.0)
 
 **Increment:** AV.2.h.1. **Status:** Landed 2026-05-20.
