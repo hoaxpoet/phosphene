@@ -436,9 +436,44 @@ When this defect is resolved:
 
 Investigation: 2-4 hours (instrument MPSGraph buffer lifetimes, audit force-dispatch path for concurrent buffer access). Fix: depends on findings — could be a single missing lock or a larger refactor of the dispatch scheduler's concurrent semantics.
 
+### 2026-05-20 race-surface analysis (no fix; instrumentation only)
+
+A dispatch-path analysis was completed against the one observed crash. Findings:
+
+- `stemQueue` (`com.phosphene.stemSeparator`) is a serial `DispatchQueue` (utility QoS). The 5 s `DispatchSourceTimer`, the MainActor scheduler-decide hop, and the `stemQueue.async { performStemSeparation() }` re-entry all enqueue onto the same serial queue. By construction `performStemSeparation` cannot be concurrent with itself.
+- `StemFFTEngine` holds its `MPSGraph`, `commandQueue`, and `MTLBuffer`s as `let` members. `StemSeparator` holds the engine via `private let fftEngine`. `VisualizerEngine` holds the separator via `let stemSeparator: StemSeparator?`. Strong references — the engine's resources cannot be torn down while a `performStemSeparation` call is in flight unless `VisualizerEngine` itself is being deallocated.
+- `StemFFTEngine.forward(mono:)` acquires an internal `NSLock` before entering `gpuForward → runForwardGraph`. Concurrent callers (if they ever existed) would block, not race.
+- The `MLDispatchScheduler` is pure-state. It does not mutate any cross-thread resource on `forceDispatch`; the caller is the one that submits the new dispatch.
+- The crash fired *after* `SessionRecorder finished` in `session.log`. That correlates with teardown — the surviving hypothesis is a teardown race during a MainActor scheduler hop where `[weak self]` resolves non-nil at the boundary and the engine deinitialises while a `stemQueue.async` is enqueued.
+
+What we *don't* know and the next reproduction must capture: (a) whether `[weak self]` was nil at the MainActor or stemQueue hop, (b) whether the engine was actively being deinit'd, (c) whether MPSGraph buffer addresses were valid immediately before the call, (d) where the 2100 ms force-dispatch ceiling fired *relative to* the dispatching that crashed, (e) whether two `performStemSeparation` calls were somehow in flight despite the serial-queue contract.
+
+**Instrumentation installed (`[BUG-012-i1]`, 2026-05-20).** Pure-observability additions across `PhospheneEngine/Sources/Shared/`, `Sources/ML/`, `Sources/Renderer/`, and `PhospheneApp/`:
+
+- `Logging.bug012` (new os.Logger category `com.phosphene/bug012`).
+- `BUG012Probe` namespace (`Sources/Shared/BUG012Probe.swift`) with: monotonic dispatch-ID generator, in-flight counters for `stem dispatch` and `fft forward` / `fft inverse` with `.notice`-level **ALARM** logs if any counter exceeds 1, lifecycle counters for `StemFFTEngine` / `StemSeparator` / `VisualizerEngine` init+deinit, free-form `log()` / `notice()` helpers tagged `[BUG-012]`.
+- `StemFFTEngine.init/deinit/forward/inverse` — lifecycle + in-flight + lock-acquire/release events.
+- `StemFFTEngine.runForwardGraph/runInverseGraph` — buffer-address + storage-mode dump immediately before `MPSGraph.run`; matching post-call line.
+- `StemSeparator.init/deinit/separate` — lifecycle + ENTER/EXIT log per call.
+- `MLDispatchScheduler.decide` — log every decision (was only `.forceDispatch`).
+- `VisualizerEngine.init/deinit` — lifecycle markers.
+- `VisualizerEngine+Stems.runStemSeparation` — timer-fire log, MainActor `self?` resolution, scheduler decision, queued performStemSeparation, weak-self resolution at each `stemQueue.async` re-entry (logs explicitly if `self == nil`).
+- `VisualizerEngine+Stems.performStemSeparation` — `enterStemDispatch` / `exitStemDispatch` with outcome label (`ok` / `threw` / `warmup-skip` / `silence-skip` / `no-separator`); the separator.separate call is wrapped in `.notice`-level CALL/RETURN log lines.
+
+Regression test: `BUG012ConcurrencyTest` (4 threads × 3 forwards on one engine) regression-locks the engine's thread-safety contract. The test does not reproduce the crash today; it fires if a future change exposes `StemFFTEngine.forward` to genuinely concurrent callers (a stricter contract than the dispatch path requires, hence safer).
+
+**How to read the next reproduction:**
+```
+log show --predicate 'subsystem == "com.phosphene" AND category == "bug012"' --info --last 30m | grep '[BUG-012]'
+```
+- Look for the last `[BUG-012] MPSGraph.run forward CALL id=N input=...` before the crash. The buffer-address line tells you whether the buffers were the expected ones.
+- Look for any `[BUG-012][ALARM]` lines. Any alarm at all is diagnostic gold — it means a serial-queue or lock contract was violated.
+- Look for `[BUG-012] VisualizerEngine deinit` near the crash. Presence = teardown race; absence = steady-state crash.
+- Look for `[BUG-012] stemQueue.async self=nil` lines. Presence = the engine was already nil when stemQueue picked the closure up.
+
 ### Related
 
-Out of scope for V.9 Session 4.5c ferrofluid preset work (none of rounds 16-26 touched StemFFTEngine or MPSGraph). Filed for a future dedicated investigation.
+Out of scope for V.9 Session 4.5c ferrofluid preset work (none of rounds 16-26 touched StemFFTEngine or MPSGraph). Filed for a future dedicated investigation. Step 1 (instrumentation) landed 2026-05-20 as increment `[BUG-012-i1]`; step 2 (diagnosis from instrumented reproduction) and step 3 (fix) follow.
 
 ---
 

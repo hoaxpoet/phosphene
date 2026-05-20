@@ -32,6 +32,14 @@ Test infrastructure: swift-testing + XCTest across unit, integration, regression
 
 ## Recently Completed
 
+### Increment BUG-012-i1 — MPSGraph crash instrumentation ✅ (2026-05-20)
+
+Step 1 of the multi-increment P1 defect protocol for [BUG-012](QUALITY/KNOWN_ISSUES.md#bug-012--mpsgraph-exc_bad_access-in-stemfftengine-during-sustained-force-dispatch). Pure-observability — no behaviour change. Added `Logging.bug012`, new `BUG012Probe` namespace (`Sources/Shared/BUG012Probe.swift`) with dispatch-ID generator + in-flight counters with `.notice`-level **ALARM** logs + lifecycle counters for `StemFFTEngine` / `StemSeparator` / `VisualizerEngine`. Site instrumentation at `StemFFTEngine.init/deinit/forward/inverse/runForwardGraph/runInverseGraph`, `StemSeparator.init/deinit/separate`, `MLDispatchScheduler.decide` (every decision, not just `forceDispatch`), `VisualizerEngine.init/deinit`, `VisualizerEngine+Stems.runStemSeparation/performStemSeparation`. New regression test `BUG012ConcurrencyTest` regression-locks `StemFFTEngine.forward` thread safety. Dispatch-path analysis (race-surface findings, surviving hypothesis: teardown race during MainActor scheduler hop, grep targets for the next reproduction) lives in `docs/QUALITY/KNOWN_ISSUES.md` BUG-012 § "2026-05-20 race-surface analysis". Full closeout in `docs/RELEASE_NOTES_DEV.md` `[dev-2026-05-20-c]`.
+
+Verification: engine + app builds clean; `swift test` 1248 tests / 162 suites with 5 pre-existing-only failures (1 documented flake, 2 SessionManager parallel-load timing flakes, 2 AuroraVeil tests failing due to uncommitted AV.2.h.1 carry-over confirmed by stash-isolation); SwiftLint `--strict` 0 violations on touched files; targeted ML test surface (`BUG012ConcurrencyTest` + `StemFFTTests` + `StemSeparator` Swift Testing suite) 15/15 green.
+
+Step 2 (diagnosis from instrumented reproduction) waits on next BUG-012 crash. Step 3 (fix) waits on diagnosis. Probe + test stay until the bug closes.
+
 ### Increment BUG-011 CLOSED — Arachne over Tier 2 frame budget resolved against relaxed drops-only criteria ✅ (2026-05-12)
 
 Matt's 2026-05-12 closure decision after the 37,821-frame production re-capture (session `2026-05-12T20-30-28Z`, ~21 min of pinned Arachne on M2 Pro): drops (>32 ms) = 0.02 % passes the 8 % gate by 400× margin; p95 = 15.303 ms remains 1.3 ms above the 14 ms design target and p50 = 13.708 ms remains above the 8 ms target, but the drops result is the user-perceptible metric and the over-budget frames still complete within one refresh window (~16-17 ms). The architecture contract specifies M3+ as Tier 2; M2 Pro is borderline. Accepting "p95 = 15.3 ms on borderline silicon" is consistent with the contract's spirit.

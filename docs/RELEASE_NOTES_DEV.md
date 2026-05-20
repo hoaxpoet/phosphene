@@ -6,6 +6,71 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-20-c] BUG-012-i1 — MPSGraph crash instrumentation
+
+**Increment:** `[BUG-012-i1]`. **Status:** Landed 2026-05-20. Pure-observability — no behaviour change.
+
+### What this is
+
+Step 1 of the multi-increment P1 defect protocol for [BUG-012](QUALITY/KNOWN_ISSUES.md#bug-012--mpsgraph-exc_bad_access-in-stemfftengine-during-sustained-force-dispatch) (`EXC_BAD_ACCESS` at `StemFFTEngine.runForwardGraph` under sustained ML force-dispatch, observed once 2026-05-15). The crash is rare, has no minimum reproducer, and one stack trace gives only a hypothesis (`concurrency` failure class — race between teardown of one dispatch and setup of the next). Investigation increment writes the diagnostics needed to convert the next reproduction into a fix; no fix code lands here.
+
+### Dispatch-path analysis
+
+Performed before adding any logging. Findings:
+
+- `stemQueue` is serial; the timer, the MainActor scheduler hop, and the `stemQueue.async` re-entry all enqueue on it. `performStemSeparation` cannot be concurrent with itself.
+- All MPSGraph resources are held by `let` members chained `StemFFTEngine → StemSeparator → VisualizerEngine`. The only path to teardown during an in-flight dispatch is `VisualizerEngine` deallocation.
+- `StemFFTEngine.forward` is internally `NSLock`-serialized. Even if multiple callers existed they would block, not race.
+
+Surviving hypothesis: teardown race during a MainActor scheduler hop where `[weak self]` resolves non-nil at the boundary and the engine deinitialises while a `stemQueue.async` is queued. Cannot confirm without instrumentation.
+
+### What I delivered
+
+`PhospheneEngine/Sources/Shared/BUG012Probe.swift` — diagnostic namespace with:
+- Monotonic dispatch-ID generator (`nextDispatchID() -> UInt64`).
+- In-flight counters for `stem dispatch` (outer `performStemSeparation`) and `fft forward` / `fft inverse` (inner `StemFFTEngine.forward/inverse`). `.notice`-level **ALARM** lines fire if any counter exceeds 1 — the dispatch-path analysis says this is unreachable; a violation would localise the race immediately.
+- Lifecycle counters for `StemFFTEngine`, `StemSeparator`, `VisualizerEngine`. Init/deinit each log; a crash during teardown is now distinguishable from a steady-state crash.
+- `log()` / `notice()` helpers tagged `[BUG-012]` for grep-ability inside `session.log` / unified log.
+
+`PhospheneEngine/Sources/Shared/Logging.swift` — added `Logging.bug012` category. Filter: `log show --predicate 'subsystem == "com.phosphene" AND category == "bug012"'`.
+
+Site instrumentation across:
+- `Sources/ML/StemFFT.swift` — init/deinit + `forward` / `inverse` enter/exit (lock-acquire/release, in-flight counters).
+- `Sources/ML/StemFFT+GPU.swift` — buffer address + storage-mode dump immediately before `MPSGraph.run` (forward + inverse); matching post-call notice.
+- `Sources/ML/StemSeparator.swift` — init/deinit + `separate(...)` ENTER/EXIT with sample-count / channel-count / sample-rate detail.
+- `Sources/Renderer/MLDispatchScheduler.swift` — every `.dispatchNow` / `.defer(ms)` / `.forceDispatch` decision logs with full context (previously only `forceDispatch` did).
+- `PhospheneApp/VisualizerEngine.swift` — init/deinit lifecycle markers.
+- `PhospheneApp/VisualizerEngine+Stems.swift` — timer-fire log, MainActor `[weak self]` resolution, scheduler decision, weak-self resolution at every `stemQueue.async` re-entry (explicit log if `self == nil`), `performStemSeparation` `enterStemDispatch` / `exitStemDispatch` with outcome label, separator.separate CALL/RETURN.
+
+`PhospheneEngine/Tests/PhospheneEngineTests/ML/BUG012ConcurrencyTest.swift` — regression-locks `StemFFTEngine.forward` thread safety: 4 threads × 3 forwards on one engine, asserts non-crash + serialization + lifecycle counter correctness. Tighter than the dispatch path requires; future architectural changes that expose the engine to concurrent callers fire the test.
+
+### Verification
+
+- `swift build` clean (engine package).
+- `xcodebuild -scheme PhospheneApp build` clean.
+- `swift test --filter "BUG012ConcurrencyTest|StemFFTTests|StemSeparator"` — 15 tests, 0 failures.
+- `swift test` (full engine suite, 1248 tests / 162 suites) — 5 failures all pre-existing and unrelated to BUG-012-i1:
+  - 1 × `MetadataPreFetcher.fetch_networkTimeout` — documented flake in CLAUDE.md pre-existing list.
+  - 2 × `ProgressiveReadiness` `startNow_*` — documented SessionManager parallel-load timing flakes.
+  - 2 × `AuroraVeil continuous dominance` — caused by uncommitted AV.2.h.1 carry-over (modified `AuroraVeilState.swift` / `AuroraVeil.json` / `AuroraVeil.metal` predate this session). Confirmed by stashing those three files: AV tests pass green with BUG-012-i1 alone. Surfaced for Matt's awareness; outside this increment's scope.
+- `swiftlint --strict` — 0 violations on all 8 touched files + the new probe + the new test.
+
+### Docs touched
+
+- `docs/QUALITY/KNOWN_ISSUES.md` — BUG-012 entry extended with race-surface analysis + instrumentation summary + "how to read the next reproduction" grep targets.
+- `docs/RELEASE_NOTES_DEV.md` — this entry.
+- `docs/ENGINEERING_PLAN.md` — BUG-012-i1 entry in Recently Completed.
+
+### Carry-forward
+
+Step 2 (diagnosis from instrumented reproduction) waits on the next BUG-012 crash. Step 3 (fix) waits on diagnosis. Probe + test stay until the bug closes; remove with the fix.
+
+### Git status
+
+Branch `main`, 2 commits ahead of origin from prior sessions. Modified files in this increment: `PhospheneEngine/Sources/Shared/Logging.swift`, `Sources/ML/StemFFT.swift`, `Sources/ML/StemFFT+GPU.swift`, `Sources/ML/StemSeparator.swift`, `Sources/Renderer/MLDispatchScheduler.swift`, `PhospheneApp/VisualizerEngine.swift`, `PhospheneApp/VisualizerEngine+Stems.swift`. New files: `Sources/Shared/BUG012Probe.swift`, `Tests/PhospheneEngineTests/ML/BUG012ConcurrencyTest.swift`. The pre-existing uncommitted AV.2.h.1 carry-over (`AuroraVeilState.swift` / `AuroraVeil.json` / `AuroraVeil.metal`) is *not* part of this increment and stays in the working tree for Matt to handle.
+
+---
+
 ## [dev-2026-05-20-b] SR.1 — Session Replay diagnostic harness + AV.3 pause + AV.3.x reframe
 
 **Increment:** SR.1. **Status:** Landed 2026-05-20. **Concurrent paperwork:** AV.3 paused; AV.3.x scoped as reference re-curation; Phase AC (Aurora Curtain) stubbed.
