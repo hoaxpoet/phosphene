@@ -6,6 +6,47 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-21-d] SpotifyOAuthTokenProvider — clientID injection + ReadyViewModel flakes
+
+**Increment:** test-infrastructure cleanup (no increment ID — small dedicated pass). **Status:** Landed 2026-05-21 after the parallel-execution budget widening (`[dev-2026-05-21-c]`). Local commits only; not pushed.
+
+### What this is
+
+Five `SpotifyOAuthTokenProviderTests` failed deterministically with `Caught error: .spotifyAuthFailure("SpotifyClientID missing from Info.plist")` because the test target's `Info.plist` does not carry a `SpotifyClientID` key — production code reads `Bundle.main.infoDictionary?["SpotifyClientID"]` at three sites in the provider. The fix injects a `clientID` parameter at the provider's init so tests pass a stub value without depending on the test-target plist.
+
+During verification, three additional `ReadyViewModelTests` flakes surfaced — these were documented in the memory note `project_test_baseline.md` but I had missed them when widening `ReadyViewTimeoutIntegrationTests.swift` in [dev-2026-05-21-c] (different file, same suite name pattern). They follow the same parallel-execution timing pattern; widened in the same pass.
+
+### Files changed
+
+**Production (1 file):**
+
+| File | Change |
+|---|---|
+| `PhospheneApp/Services/SpotifyOAuthTokenProvider.swift` | Added `clientID: String? = nil` parameter to `init`. New private `resolveClientID()` helper consolidates the three former `Bundle.main.infoDictionary?["SpotifyClientID"]` reads — returns the injected override when present (tests), otherwise reads `Bundle.main` (production). Added file-level `// swiftlint:disable file_length` with justification — the file is 13 lines over the 400-line limit; the actor's four logical concerns (state + protocol surface, PKCE plumbing, token-exchange HTTP, encoding helpers) are not cleanly splittable without widening `private` access modifiers across files or adding pbxproj registration overhead beyond this task's scope. |
+
+**Test (2 files):**
+
+| File | Change |
+|---|---|
+| `PhospheneAppTests/SpotifyOAuthTokenProviderTests.swift` | `makeProvider(...)` helper now passes `clientID: "test_client_id"` to `SpotifyOAuthTokenProvider.init`. No other test code changed — the 5 previously-failing tests now exercise the full keychain / URLProtocol-stub paths they were authored against. |
+| `PhospheneAppTests/ReadyViewModelTests.swift` | Three `try await Task.sleep(for: .milliseconds(600))` sites → `1500` (siblings to the `ReadyViewTimeoutIntegrationTests` retry test widened in `[dev-2026-05-21-c]`; same root cause, missed file in the previous pass). |
+
+### Verification
+
+- `swiftlint lint --strict --config .swiftlint.yml` — **0 violations across 371 files**.
+- `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' test` — **app suite passes** (328 tests in 60 suites, 0 issues). All 5 SpotifyOAuthTokenProvider tests resolved; all 3 ReadyViewModelTests siblings resolved.
+- The engine subset still shows the same 4 love_rehab.m4a fixture-cascade failures — NOT flakes, separate scope (fixture distribution).
+
+### Notes
+
+The `clientID` injection point is a clean architectural improvement, not just a test workaround: it makes the provider explicitly configurable from any caller (future multi-account support, CI environments, local dev with personal client IDs). The `Bundle.main` fallback preserves the existing production behaviour.
+
+`resolveClientID()` is `private` to the actor and called from three sites — `login()`, `handleCallback()`, and `acquire()`. The two callers that previously had inline `guard let clientID = Bundle.main.infoDictionary?[...]` patterns now `try resolveClientID()`; the third (`handleCallback`) keeps an explicit `do { ... } catch { resumeContinuation(throwing:) }` because it runs inside a callback that needs to resume a pending continuation rather than propagate the error.
+
+Memory note `project_test_baseline.md` refreshed to mark the 5 Spotify tests + 3 ReadyViewModel tests as resolved.
+
+---
+
 ## [dev-2026-05-21-c] Test-flake cleanup — parallel-execution budget widening
 
 **Increment:** test-infrastructure cleanup (no increment ID — small dedicated pass). **Status:** Landed 2026-05-21 after the SwiftLint cleanup. Local commits only; not pushed.
