@@ -46,6 +46,38 @@ struct LocalizedCopyTests {
         #expect(!copy.contains("%d"), "Expected format specifier resolved in: \(copy)")
     }
 
+    // MARK: - CA-Shared-FU-1: retryStatus wire-up
+
+    @Test("spotifyRateLimited copy sources retry suffix from retryStatus.description")
+    func test_spotifyRateLimited_retrySuffixFromAccessor() {
+        // The localized base ("Spotify is being slow — still trying") no longer
+        // contains the attempt number; the suffix is appended by LocalizedCopy
+        // from UserFacingError.retryStatus.description ("attempt 2 of 3").
+        let copy = LocalizedCopy.string(for: .spotifyRateLimited(attempt: 2))
+        #expect(copy.contains("attempt 2 of 3"),
+                "Expected retryStatus.description suffix in copy: '\(copy)'")
+        #expect(copy.contains("(attempt 2 of 3)"),
+                "Expected parenthesised suffix in copy: '\(copy)'")
+    }
+
+    @Test("spotifyRateLimited base copy is the localized headline only")
+    func test_spotifyRateLimited_baseCopy_noInlineFormat() {
+        // The Localizable.strings value no longer carries a %d placeholder —
+        // the wire-up moved the attempt-number formatting out of the .strings
+        // file into UserFacingError.retryStatus + LocalizedCopy.appendRetryStatus.
+        let copy = LocalizedCopy.string(for: .spotifyRateLimited(attempt: 1))
+        #expect(copy.hasPrefix("Spotify is being slow"),
+                "Expected base headline at start of copy: '\(copy)'")
+    }
+
+    @Test("non-retrying error has no suffix appended")
+    func test_nonRetryingError_noSuffix() {
+        // .silenceExtended has retryStatus == nil — no suffix should be appended.
+        let copy = LocalizedCopy.string(for: .silenceExtended)
+        #expect(!copy.contains(" ("),
+                "Expected no retry suffix on non-retrying error: '\(copy)'")
+    }
+
     @Test("sampleRateMismatch interpolates rate in Hz")
     func test_sampleRateMismatch_interpolation() {
         let copy = LocalizedCopy.string(for: .sampleRateMismatch(rateHz: 96_000))
