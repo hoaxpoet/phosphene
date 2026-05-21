@@ -43,8 +43,9 @@
 "error.connection.spotify_url_is_artist"    = "That’s an artist page, not a playlist. Phosphene needs a playlist URL.";
 "error.connection.spotify_url_unknown"      = "That link doesn’t look like a Spotify playlist.";
 
-/* %d = attempt number (1–3) */
-"error.connection.spotify_rate_limited"     = "Spotify is being slow — still trying (attempt %d of 3)";
+/* Headline only. CA-Shared-FU-1: retry progress (e.g. "attempt 2 of 3") appended
+   automatically in LocalizedCopy.appendRetryStatus from UserFacingError.retryStatus. */
+"error.connection.spotify_rate_limited"     = "Spotify is being slow — still trying";
 
 "error.connection.spotify_unreachable.headline" = "Couldn’t reach Spotify.";
 "error.connection.spotify_unreachable.body"     = "Check your network or try a different source.";

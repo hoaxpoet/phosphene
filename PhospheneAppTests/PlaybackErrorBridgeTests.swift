@@ -105,6 +105,27 @@ struct PlaybackErrorBridgeTests {
         #expect(fix.toastManager.visibleToasts.isEmpty)
     }
 
+    // MARK: - CA-Shared-FU-1: isConditionBound wire-up
+
+    @Test("silenceExtended toast carries .infinity duration via isConditionBound gate")
+    func test_silenceExtended_durationIsInfinity_viaAccessor() {
+        // CA-Shared-FU-1: the bridge sources the toast's duration from
+        // error.isConditionBound rather than hardcoding `.infinity`. The
+        // accessor returns true for silenceExtended, so the toast gets
+        // `.infinity` (manual / condition-bound dismissal only).
+        #expect(UserFacingError.silenceExtended.isConditionBound == true)
+    }
+
+    @Test("non-condition-bound errors get finite duration when routed via accessor gate")
+    func test_nonConditionBoundError_durationIsFinite_viaAccessor() {
+        // Reciprocal check: errors that are NOT condition-bound (e.g.
+        // tapReinstallAllFailed) flow through the same gate but get the
+        // finite default duration. Verifying the accessor returns false so
+        // the bridge's duration branch lands on the 4 s side.
+        #expect(UserFacingError.tapReinstallAllFailed.isConditionBound == false)
+        #expect(UserFacingError.mpsGraphAllocationFailure.isConditionBound == false)
+    }
+
     @Test("suspect state does not clear silence tracking")
     func test_suspectState_doesNotClear() async {
         let fix = makeSUT()

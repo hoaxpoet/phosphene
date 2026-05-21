@@ -39,8 +39,12 @@ enum LocalizedCopy {
             return loc("error.connection.spotify_url_malformed")
         case .spotifyURLNotPlaylist(let kind):
             return spotifyRejectionCopy(kind)
-        case .spotifyRateLimited(let attempt):
-            return String(format: loc("error.connection.spotify_rate_limited"), attempt)
+        case .spotifyRateLimited:
+            // Retry progress sourced from UserFacingError.retryStatus (CA-Shared-FU-1).
+            // The localized base copy is the headline ("Spotify is being slow — still
+            // trying"); retryStatus.description supplies the trailing "attempt N of 3".
+            return appendRetryStatus(base: loc("error.connection.spotify_rate_limited"),
+                                     status: error.retryStatus)
         case .spotifyUnreachable:
             return loc("error.connection.spotify_unreachable.headline")
         case .emptyPlaylist:
@@ -124,6 +128,16 @@ enum LocalizedCopy {
 
     private static func loc(_ key: String) -> String {
         String(localized: String.LocalizationValue(key), bundle: Bundle.main)
+    }
+
+    /// Append `retryStatus.description` to `base` as a parenthetical suffix when present.
+    ///
+    /// Wires UserFacingError.retryStatus into user-facing copy per CA-Shared-FU-1 —
+    /// the accessor is the canonical source for retry-progress text, replacing the
+    /// String(format:) inline path previously used for spotifyRateLimited.
+    private static func appendRetryStatus(base: String, status: ErrorRetryStatus?) -> String {
+        guard let suffix = status?.description, !suffix.isEmpty else { return base }
+        return "\(base) (\(suffix))"
     }
 
     private static func spotifyRejectionCopy(_ kind: UserFacingError.SpotifyRejectionKind) -> String {

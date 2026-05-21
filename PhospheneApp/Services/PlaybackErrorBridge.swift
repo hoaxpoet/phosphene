@@ -107,16 +107,32 @@ final class PlaybackErrorBridge {
         guard let conditionID = error.conditionID else { return }
         guard !tracker.isAsserted(conditionID) else { return }
 
-        let toast = PhospheneToast(
-            severity: .degradation,
-            copy: LocalizedCopy.string(for: error),
-            duration: .infinity,
-            source: .signalState,
-            conditionID: conditionID
-        )
-        toastManager.enqueue(toast)
+        toastManager.enqueue(toast(for: error, severity: .degradation, source: .signalState))
         tracker.assert(conditionID)
         let threshold = Self.silenceToastThresholdSeconds
         logger.info("PlaybackErrorBridge: \(threshold, format: .fixed(precision: 0))s silence — toast shown")
+    }
+
+    /// Build a `PhospheneToast` for a `UserFacingError`, gating `duration` and
+    /// `conditionID` on `error.isConditionBound` per CA-Shared-FU-1.
+    ///
+    /// Condition-bound errors (silence brief/extended, audio levels low) keep
+    /// their toast visible until the underlying condition clears — duration is
+    /// `.infinity` and the toast carries the error's `conditionID` so
+    /// `ToastManager.dismissByCondition(_:)` can auto-clear it on recovery.
+    /// Non-condition-bound errors use the default 4 s auto-dismiss.
+    private func toast(
+        for error: UserFacingError,
+        severity: PhospheneToast.Severity,
+        source: PhospheneToast.Source
+    ) -> PhospheneToast {
+        let bound = error.isConditionBound
+        return PhospheneToast(
+            severity: severity,
+            copy: LocalizedCopy.string(for: error),
+            duration: bound ? .infinity : 4,
+            source: source,
+            conditionID: bound ? error.conditionID : nil
+        )
     }
 }
