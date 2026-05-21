@@ -225,6 +225,11 @@ public enum SpectralCartographText {
 
     // MARK: - DSP.3.3 Beat-in-bar counter
 
+    // Parameter count (8) is intentional: 4 audio-state inputs + vertical position +
+    // 3-param canvas context (ctx/cw/ch). Bundling the canvas would shadow the
+    // pattern shared with the other draw helpers in this file.
+    // swiftlint:disable function_parameter_count
+
     /// Draw the beat-in-bar counter: e.g. "3 / 4" in large bold text.
     ///
     /// Only shown when a BeatGrid is installed (lockState ≥ 1) and beatsPerBar > 1.
@@ -266,6 +271,9 @@ public enum SpectralCartographText {
     ///
     /// Format: "Δ drift = +12 ms" in muted colour; shown only when grid is active.
     /// If phaseOffsetMs ≠ 0, adds a second line: "offset = +10 ms" in amber.
+    ///
+    /// Parameter count (7) is intentional — same shape as `drawBeatInBar`: audio
+    /// state + vertical position + canvas (ctx/cw/ch).
     private static func drawDriftReadout(
         driftMs: Float,
         phaseOffsetMs: Float,
@@ -303,6 +311,8 @@ public enum SpectralCartographText {
             CTLineDraw(line, ctx)
         }
     }
+
+    // swiftlint:enable function_parameter_count
 
     // MARK: - Helpers
 
