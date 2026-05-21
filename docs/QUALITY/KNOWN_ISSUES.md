@@ -8,6 +8,59 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 ---
 
+### BUG-015 — `applyLiveUpdate(...)` has zero production call sites; Orchestrator live-adaptation pipeline is dead at runtime
+
+**Severity:** P1 (load-bearing product claim — "the AI Orchestrator has planned the entire visual session and adapts as the music unfolds" per CLAUDE.md top — the adaptation half does not run).
+**Domain tag:** `pipeline-wiring`
+**Status:** Open
+**Introduced:** Surfaced 2026-05-20 by [CA.4 Orchestrator audit](../CAPABILITY_REGISTRY/ORCHESTRATOR.md). The root condition pre-dates this filing; `git log -p PhospheneApp/VisualizerEngine+Audio.swift -- *applyLiveUpdate*` will narrow when (or whether) the call site was ever added. Phase 4.5 (Live Adaptation) and 4.6 (Ad-Hoc Reactive Mode) both shipped ✅ at the Orchestrator-module surface (LiveAdapter / ReactiveOrchestrator implementations + unit tests + the `applyLiveUpdate(...)` entry point method); the App-layer audio-callback invocation of `applyLiveUpdate(...)` appears to have never been wired.
+**Resolved:** —
+
+**Expected behavior.** During session-mode playback: planned transitions reschedule against live structural boundaries when the deviation exceeds 5 s; mood overrides fire mid-track when measured valence/arousal diverges from pre-analyzed mood by > 0.4 (with the 30 s per-track cooldown enforced by `DefaultLiveAdapter.cooldownAdaptation(...)` per D-080 rule 3); the L diagnostic-hold / capture-mode grace window / `wait_for_completion_event` suppression machinery actually has something to suppress. During ad-hoc playback after the 15 s listening window: `DefaultReactiveOrchestrator.evaluate(...)` returns preset suggestions; the 60 s reactive cooldown in `VisualizerEngine+Orchestrator` rate-limits them; switches land at structural boundaries or score-gap thresholds per D-036.
+
+**Actual behavior.** Neither path runs. `liveAdapter.adapt(...)` and `reactiveOrchestrator.evaluate(...)` are exercised only by unit tests. The session-log shows no `Orchestrator:`, `LiveAdapter:`, or `Reactive` log lines from the live-adaptation event family across any real-music capture.
+
+**Reproduction steps.**
+
+1. Run any session (Spotify-prepared or ad-hoc) for ≥ 30 seconds.
+2. Open `~/Documents/phosphene_sessions/<ts>/session.log`.
+3. Observe: no `LiveAdapter: boundary rescheduled`, `LiveAdapter: preset override`, or `Reactive [...]: '...' replaces` lines.
+4. Confirm absence via grep:
+   ```
+   $ grep -rn "applyLiveUpdate" PhospheneApp PhospheneEngine --include="*.swift"
+   ```
+   Returns 1 declaration (`VisualizerEngine+Orchestrator.swift:166`), 4 doc-comment / commentary references in unrelated files, 1 test reference. **Zero actual invocations.**
+
+**Minimum reproducer.** Any session. The bug is structural — no audio-driven path invokes `applyLiveUpdate(...)`.
+
+**Session artifacts.** Any `session.log` from a recent capture (the log family that's missing is the load-bearing artifact — its absence is the symptom).
+
+**Suspected failure class.** `pipeline-wiring` per `docs/QUALITY/DEFECT_TAXONOMY.md`. The Orchestrator-module surface is complete and correct; the App-layer invocation site was never added (or was removed during a refactor — likely candidates: `VisualizerEngine+Audio.swift` analysis-queue tick, or a Combine sink on the MIR feature publisher).
+
+**Verification criteria (write before the fix).**
+
+- [ ] Automated: a new integration test exercises a 30 s reactive session against synthetic FeatureVectors (or a recorded capture) and asserts at least one `reactiveOrchestrator.evaluate(...)` invocation happens after the 15 s listening window. Test fixture: any real-music preview clip; or the SoakTestHarness localFile mode driving 30 s of audio.
+- [ ] Manual: a real-music session capture's `session.log` shows at least one entry from the `Orchestrator:` `LiveAdapter:` or `Reactive` log-line family during a > 1 minute playback. (Today: zero such lines.)
+- [ ] Regression: the 30 s per-track mood-override cooldown enforced by `DefaultLiveAdapter.cooldownAdaptation(...)` (verified at `LiveAdapter.swift:362-381` per CA.4) is preserved post-fix — the fix MUST NOT bypass the cooldown machinery. A test that fires N consecutive mood-divergence events at < 30 s intervals on the same track asserts ≤ 1 override is applied.
+
+**Fix scope.** Multi-increment per the CLAUDE.md Defect Handling Protocol (this is P1, not P0; the trivial-collapse exemption requires Matt's explicit approval and the fix is unlikely to be < 5 lines).
+
+1. **Instrumentation (this BUG entry establishes the read; no separate instrumentation increment needed — the grep evidence is reproducible from any source checkout).**
+2. **Diagnosis** — locate the intended call site. Two candidate sites surfaced by the audit:
+   - (a) `VisualizerEngine+Audio.swift` analysis-queue tick at a 1–10 Hz cadence (per-track cooldown is already enforced inside `DefaultLiveAdapter`; the cadence just needs to be low enough that the cooldown's 30 s window dominates).
+   - (b) A Combine sink on `MIRPipeline`'s feature publisher (lower-frequency, naturally bound to feature updates).
+3. **Fix** — implement the chosen wire. The `boundary` argument should source from either `pipeline.latestStructuralPrediction` (real per-frame; would also resolve CA.1-FU-1 option (b)) or `StructuralPrediction.none` sentinel (simpler; pairs with CA.1-FU-1 option (a) gating the per-frame chain to prep-time only).
+4. **Validation** — run the verification criteria above; produce a session-log capture showing the live-adaptation event family is firing.
+5. **Release notes** — update `RELEASE_NOTES_DEV.md`; mark Resolved in this entry with the commit hash.
+
+**Related.** CA.4 audit deliverable (this filing); CA.1-FU-1 (re-scoped — see [`docs/CAPABILITY_REGISTRY/ORCHESTRATOR.md` §Resolution-of-CA.1-runtime-production-orphan-re-evaluation](../CAPABILITY_REGISTRY/ORCHESTRATOR.md)); CA.4-FU-1 (demote dead `DefaultLiveAdapter.transitionPolicy` field; natural to bundle with the BUG-015 fix); D-035 (live adaptation design — implementation faithful, wiring absent); D-036 (reactive orchestrator design — same); D-080 (QR.2 mood-override cooldown + reactive `liveStemFeatures` wiring — both unreachable until BUG-015 lands); BUG-001 (`Money 7/4 stays REACTIVE on live path` — different concept; BUG-001's "REACTIVE" refers to the SpectralCartograph mode label / DSP-side lock state, NOT the Orchestrator's reactive mode).
+
+**Why P1 not P0.** P0 is "session-blocking" per the taxonomy; the product still plays sessions and the static plan does work (`DefaultSessionPlanner.plan(...)` and the canonical-identity wiring at `VisualizerEngine+Capture.swift:131` per BUG-006.2 are both reachable). What's broken is the adaptation half — the product runs as a static playlist with no live response to detected boundaries or mood shifts. That's a significant degradation of the product's stated value but not a session-blocker.
+
+**Notes on existing tests.** The audit's grep confirmed that `LiveAdapterTests`, `ReactiveOrchestratorTests`, `DiagnosticHoldTests`, and the other 13 Orchestrator test files exercise `liveAdapter.adapt(...)` / `reactiveOrchestrator.evaluate(...)` directly with fabricated inputs. The tests pass. They do not catch BUG-015 because they bypass the App-layer entry point. The verification criterion #1 above closes that test/prod gap.
+
+---
+
 ### BUG-011 — Arachne over Tier 2 frame budget at the median
 
 **Severity:** P2 (visible degradation under specific conditions: Arachne active on Tier 2 hardware. Median frame already at the FrameBudgetManager downshift threshold; 53% of frames over budget. Not a session-blocker — drop rate at the 32 ms threshold is 1.46%, so most frames complete inside one refresh — but the visual will feel laggy when Arachne is selected, and the governor will downshift quality more aggressively than intended.)
