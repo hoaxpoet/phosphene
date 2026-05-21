@@ -18,10 +18,6 @@ final class MultiDisplayToastBridge {
     private let toastManager: ToastManager
     private let displayManager: DisplayManager
 
-    // Coalescing: rapid adds/removes within 0.5s produce one toast.
-    private var coalesceTask: Task<Void, Never>?
-    private var pendingEvents: [String] = []
-
     init(toastManager: ToastManager, displayManager: DisplayManager) {
         self.toastManager = toastManager
         self.displayManager = displayManager
