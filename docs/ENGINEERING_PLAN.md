@@ -3848,9 +3848,20 @@ Phase CA addresses the drift systematically through per-subsystem code-vs-docs a
 
 **After CA.6 lands** — surface to Matt: summary counts; PlaybackChromeViewModel BUG-015 / D-091 consumer chain verdict (clean — matches design byte-for-byte); D-091 single-SettingsStore enforcement verdict (clean across View tree); DASH.7 dashboard surface verdict (clean against D-088 / D-089 with two file-header docstring drifts flagged); U.10 / U.11 timing-margin compliance verdict (clean across all 9 widened test files); three CA.6-FU follow-ups (DashboardOverlayView docstring drift; DashboardCardView docstring drift; ConnectorPickerView Apple-Music inline VM consistency question); CA.5-FU-2 carried forward (still pending Matt's product call); recommended next subsystem (CA.7 — CA-Renderer). The App layer is now fully closed.
 
-### Increment CA.7 — TBD (recommend CA-Renderer)
+### Increment CA.7 — Renderer (kickoff doc landed; audit pending Matt's scheduling)
 
-**Status.** Pending Matt's scheduling. Recommended subsystem: **CA-Renderer** (`PhospheneEngine/Sources/Renderer/` — largest unaudited engine module; FrameBudgetManager + RenderPipeline + MLDispatchScheduler + Dashboard renderer + per-pass pipelines). Alternative: CA-Audio (smaller; closes AudioInputRouter + SilenceDetector + InputLevelMonitor + StreamingMetadata + MetadataPreFetcher per CA.3's boundary-noted item). Pick when convenient. Same methodology as CA.1-CA.6.
+**Status.** Kickoff doc landed 2026-05-21 in commit `bf5dc4ac` ([`docs/prompts/PHASE_CA_KICKOFF_CA7_RENDERER_2026-05-21.md`](prompts/PHASE_CA_KICKOFF_CA7_RENDERER_2026-05-21.md)). Audit itself pending Matt's scheduling — hand the kickoff to a fresh Claude Code session when ready.
+
+**Scope.** `PhospheneEngine/Sources/Renderer/` — 38 files / ~13,067 LoC. Recommended sub-scope split per the kickoff:
+
+- **CA.7a (core pipeline; ~22 files / ~7.5k LoC):** RenderPipeline + 9 extensions, RayMarchPipeline + 2 extensions, FrameBudgetManager, MLDispatchScheduler (BUG-012-i1 instrumented — read-only), MetalContext, IBLManager, TextureManager, PostProcessChain, Protocols, ShaderLibrary, DynamicTextOverlay.
+- **CA.7b (supporting; ~15 files / ~5.5k LoC):** Dashboard/ (8 files — DASH.7 producer side: BeatCardBuilder / StemsCardBuilder / PerfCardBuilder / DashboardCardLayout / DashboardSnapshot / DashboardFontLoader / StemEnergyHistory / PerfSnapshot), Geometry/ (4 files — MeshGenerator / ParticleGeometry / ParticleGeometryRegistry / ProceduralGeometry), RayTracing/ (3 files — BVHBuilder / RayIntersector / RayIntersector+Internal).
+
+**Five required verifications** per the kickoff: (1) GPU contract slot reservations vs CLAUDE.md / ARCHITECTURE.md (textures 0-11, buffers 0-8 with per-preset 6/7/8 reservations per D-LM-buffer-slot-8 / D-092 / D-094); (2) MLDispatchScheduler D-059 5-rule algorithm line-by-line; (3) FrameBudgetManager 30-frame rolling window + 180-frame upshift hysteresis (BUG-011 closure depended on this); (4) mv_warp accumulator dispatch path reachable from tests per the CLAUDE.md "production-grade pipeline" rule (AuroraVeilMVWarpAccumulationTest is the reference pattern); (5) Failed Approach #66 G-buffer test/prod parity at the RayMarchPipeline mesh-vs-SDF branch.
+
+**Alternative subsystem:** CA-Audio (smaller; closes AudioInputRouter + SilenceDetector + InputLevelMonitor + StreamingMetadata + MetadataPreFetcher per CA.3's boundary-noted item). The recommendation in the kickoff is CA.7 = Renderer because it is the largest unaudited engine surface and home of the load-bearing GPU contract; CA-Audio remains available as a smaller alternative.
+
+**Same methodology as CA.1-CA.6** (audit-only; sub-scope decision at Pass 0; visibility grep verification; cited grep for production-orphan claims; per-file verdicts; doc-drift corrections in the same increment; BUG-012-i1 instrumented files remain read-only).
 
 ---
 
