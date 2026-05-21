@@ -1,15 +1,19 @@
-// LiveAdaptationToastBridge — Emits ack toasts for engine adaptation events + user actions.
+// LiveAdaptationToastBridge — Emits acknowledgement toasts for user-initiated
+// playback-action adaptations (more-like-this, less-like-this, reshuffle, preset
+// nudge, re-plan, undo, mood-lock). All emission flows through `emitAck(_:)`
+// invoked by `DefaultPlaybackActionRouter` (per D-050 / U.6b).
 //
-// Two observation sources:
-//   1. Engine: VisualizerEngine live adaptation events (boundary reschedule / mood override).
-//      Only emits toasts when UserDefaults flag is on.
-//   2. User: via PlaybackActionRouter — wired in U.6b when the router publishes events.
+// Engine-driven adaptations (`VisualizerEngine.applyLiveUpdate(...)` boundary
+// rescheduling / mood overrides) intentionally do NOT toast — the visual change
+// itself is the user-visible feedback per UX_SPEC §7.4 ("on keystroke") and the
+// CA.5-FU-2 product decision (2026-05-21).
 //
-// The flag "phosphene.showLiveAdaptationToasts" defaults to false until U.8 Settings
-// panel ships. Coalescing: 3 adaptations within 2 s → single toast.
+// The flag "phosphene.settings.visuals.showLiveAdaptationToasts" gates emission.
+// Default true for fresh installs (U.6b); existing users keep their explicit choice.
+// Coalescing: messages within 2 s → single toast ("Plan updated (N changes)").
 //
-// Silence handling (previously SilenceToastBridge) was moved to PlaybackErrorBridge
-// in U.7 Part C — now uses condition-ID semantics and the correct 15s threshold.
+// Silence handling (previously SilenceToastBridge) moved to PlaybackErrorBridge
+// in U.7 Part C — uses condition-ID semantics + 15 s threshold.
 
 import Combine
 import Foundation
@@ -19,10 +23,13 @@ private let logger = Logger(subsystem: "com.phosphene.app", category: "LiveAdapt
 
 // MARK: - LiveAdaptationToastBridge
 
-/// Bridges orchestrator adaptation events to the toast queue.
+/// Bridges user-initiated playback-action adaptations to the toast queue.
 ///
-/// Currently only wires the Settings flag check and coalescing logic.
-/// Actual event subscriptions land in U.6b when PlaybackActionRouter publishes events.
+/// Consumed exclusively by `DefaultPlaybackActionRouter` (11 `emitAck(_:)` call sites
+/// covering moreLikeThis / lessLikeThis / reshuffleUpcoming / presetNudge / rePlanSession
+/// / undoLastAdaptation / toggleMoodLock plus the ambient `lessLikeThis` hint).
+/// Engine-driven adaptations intentionally do NOT reach this bridge per UX_SPEC §7.4
+/// and the CA.5-FU-2 product decision (Matt 2026-05-21).
 @MainActor
 final class LiveAdaptationToastBridge {
 
