@@ -108,8 +108,12 @@ struct ConnectorPickerView: View {
     private func destination(for type: ConnectorType) -> some View {
         switch type {
         case .appleMusic:
-            AppleMusicConnectionView(
-                viewModel: AppleMusicConnectionViewModel(),
+            // CA.6-FU-3 (2026-05-21): wrapped so the VM survives ConnectorPickerView
+            // body re-evaluations (parent `viewModel.appleMusicRunning` flips on
+            // NSWorkspace launch/terminate observers — would otherwise rebuild the
+            // VM and orphan the in-flight 2 s auto-retry Task). Same shape as
+            // `OAuthSpotifyConnectionWrapper` below.
+            AppleMusicConnectionWrapper(
                 onConnect: onConnect,
                 onUseSpotifyInstead: { dismiss() }
             )
@@ -144,6 +148,35 @@ struct ConnectorPickerView: View {
                 onUseAppleMusicInstead: { }
             )
         }
+    }
+}
+
+// MARK: - AppleMusicConnectionWrapper
+
+/// A thin view wrapper that owns the `AppleMusicConnectionViewModel` as a `@StateObject`,
+/// ensuring the VM and its in-flight Tasks survive across SwiftUI body re-evaluations.
+///
+/// `ConnectorPickerView` re-evaluates whenever its observed `viewModel.appleMusicRunning`
+/// flag changes — fired by the NSWorkspace launch/terminate observers (250 ms-debounced).
+/// A ViewModel created inline in the `navigationDestination(for:)` `@ViewBuilder` would
+/// be rebuilt at each re-eval, orphaning the in-flight 2 s auto-retry Task and reverting
+/// the connection state machine to `.idle`. `@StateObject` here persists the VM for the
+/// full lifetime of this view regardless of how many times the parent re-evaluates.
+///
+/// Mirrors the `OAuthSpotifyConnectionWrapper` pattern below (CA.6-FU-3, 2026-05-21).
+private struct AppleMusicConnectionWrapper: View {
+
+    let onConnect: @Sendable ([TrackIdentity], PlaylistSource) async -> Void
+    let onUseSpotifyInstead: () -> Void
+
+    @StateObject private var viewModel = AppleMusicConnectionViewModel()
+
+    var body: some View {
+        AppleMusicConnectionView(
+            viewModel: viewModel,
+            onConnect: onConnect,
+            onUseSpotifyInstead: onUseSpotifyInstead
+        )
     }
 }
 
