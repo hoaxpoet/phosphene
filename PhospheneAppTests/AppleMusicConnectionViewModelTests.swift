@@ -18,7 +18,7 @@ struct AppleMusicConnectionViewModelTests {
         // state is still .noCurrentPlaylist rather than cycling back to .connecting.
         let vm = AppleMusicConnectionViewModel(connector: connector)
         vm.beginConnect()
-        try await Task.sleep(for: .milliseconds(50))
+        try await Task.sleep(for: .milliseconds(300))
         if case .noCurrentPlaylist = vm.state { } else {
             Issue.record("Expected .noCurrentPlaylist, got \(vm.state)")
         }
@@ -36,9 +36,12 @@ struct AppleMusicConnectionViewModelTests {
         )
         vm.beginConnect()
         // First attempt: empty → .noCurrentPlaylist → InstantDelay fires immediately.
-        // 500ms gives the full async chain (connect → noCurrentPlaylist → yield →
+        // 1500ms gives the full async chain (connect → noCurrentPlaylist → yield →
         // retry → connect → connected) ample time regardless of executor scheduling.
-        try await Task.sleep(for: .milliseconds(500))
+        // Previously 500ms; widened to absorb @MainActor contention during the
+        // 328-test parallel app run (CLAUDE.md U.11 precedent — 2-3× headroom
+        // over the worst-observed delay).
+        try await Task.sleep(for: .milliseconds(1500))
         // Second attempt should have succeeded.
         if case .connected(let count) = vm.state {
             #expect(count == 1)
@@ -57,7 +60,7 @@ struct AppleMusicConnectionViewModelTests {
             delayProvider: InstantDelay()
         )
         vm.beginConnect()
-        try await Task.sleep(for: .milliseconds(50))
+        try await Task.sleep(for: .milliseconds(300))
         #expect(vm.state == .notRunning)
         #expect(connector.callCount == 1)  // no retry after notRunning
     }
@@ -72,7 +75,7 @@ struct AppleMusicConnectionViewModelTests {
             delayProvider: InstantDelay()
         )
         vm.beginConnect()
-        try await Task.sleep(for: .milliseconds(50))
+        try await Task.sleep(for: .milliseconds(300))
         if case .error = vm.state { } else {
             Issue.record("Expected .error, got \(vm.state)")
         }
@@ -88,7 +91,7 @@ struct AppleMusicConnectionViewModelTests {
             delayProvider: InstantDelay()
         )
         vm.beginConnect()
-        try await Task.sleep(for: .milliseconds(50))
+        try await Task.sleep(for: .milliseconds(300))
         if case .connected(let count) = vm.state {
             #expect(count == 2)
             startSessionCalled = true  // view would call onConnect here

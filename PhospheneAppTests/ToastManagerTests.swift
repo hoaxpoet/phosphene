@@ -29,10 +29,11 @@ struct ToastManagerTests {
         let toast = PhospheneToast(severity: .info, copy: "Short-lived", duration: 0.05)
         tm.enqueue(toast)
         #expect(tm.visibleToasts.count == 1)
-        // 400ms gives 350ms margin over the 50ms toast duration — needed
-        // because @MainActor contention during parallel test runs can delay
-        // the auto-dismiss task.
-        try await Task.sleep(for: .milliseconds(400))
+        // 1000ms gives 950ms margin over the 50ms toast duration. Previously
+        // 400ms; the wider budget absorbs @MainActor contention during the
+        // 328-test parallel app run (CLAUDE.md U.11 precedent — 2-3× headroom
+        // over the worst-observed delay).
+        try await Task.sleep(for: .milliseconds(1000))
         #expect(tm.visibleToasts.isEmpty)
     }
 

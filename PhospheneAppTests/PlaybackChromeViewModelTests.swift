@@ -81,8 +81,11 @@ struct PlaybackChromeViewModelTests {
     @Test func overlayAutoHides_afterDelay() async throws {
         let (vm, _, _, _, _) = makeVM(delay: InstantDelay())
         // InstantDelay makes the 3s timer effectively instant (Task.yield).
-        // 300ms gives margin for @MainActor scheduling under parallel test load.
-        try await Task.sleep(for: .milliseconds(300))
+        // 1000ms (was 300ms) absorbs @MainActor scheduling under parallel test
+        // load — observed overlayVisible == true at the 300ms mark on a 328-test
+        // parallel app run. The U.11 precedent (CLAUDE.md) carries 2-3× headroom
+        // over the worst-observed delay.
+        try await Task.sleep(for: .milliseconds(1000))
         #expect(!vm.overlayVisible)
     }
 

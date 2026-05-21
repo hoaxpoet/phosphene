@@ -91,7 +91,7 @@ struct NetworkRecoveryCoordinatorTests {
         fix.reachability.setOnline(true)
 
         // Wait past the debounce window so the Task runs.
-        let debouncePlus = NetworkRecoveryCoordinator.recoveryDebounceSecs + 0.1
+        let debouncePlus = NetworkRecoveryCoordinator.recoveryDebounceSecs + 1.0
         try? await Task.sleep(for: .seconds(debouncePlus))
 
         #expect(fix.coordinator.recoveryAttemptCount == 1)
@@ -110,7 +110,7 @@ struct NetworkRecoveryCoordinatorTests {
         fix.reachability.setOnline(true)
 
         // Wait past ONE full debounce window.
-        let debouncePlus = NetworkRecoveryCoordinator.recoveryDebounceSecs + 0.1
+        let debouncePlus = NetworkRecoveryCoordinator.recoveryDebounceSecs + 1.0
         try? await Task.sleep(for: .seconds(debouncePlus))
 
         // Second online event cancelled the first Task — only one attempt should have fired.
@@ -120,7 +120,7 @@ struct NetworkRecoveryCoordinatorTests {
     @Test("recovery cap: attempts stop after maxRecoveryAttempts")
     func test_recoveryCap_stopsAt3() async {
         let fix = makeFixture(initialState: .preparing)
-        let debounce = NetworkRecoveryCoordinator.recoveryDebounceSecs + 0.1
+        let debounce = NetworkRecoveryCoordinator.recoveryDebounceSecs + 1.0
 
         // Drive 4 online recovery cycles, each waiting for the full debounce.
         for _ in 0..<4 {
@@ -136,7 +136,7 @@ struct NetworkRecoveryCoordinatorTests {
     @Test("resetForNewSession resets counter and state guard works after reset")
     func test_resetForNewSession_resetsCount() async {
         let fix = makeFixture(initialState: .preparing)
-        let debounce = NetworkRecoveryCoordinator.recoveryDebounceSecs + 0.1
+        let debounce = NetworkRecoveryCoordinator.recoveryDebounceSecs + 1.0
 
         // Exhaust the cap.
         for _ in 0..<NetworkRecoveryCoordinator.maxRecoveryAttempts {
@@ -170,7 +170,7 @@ struct NetworkRecoveryCoordinatorTests {
         fix.coordinator.resetForNewSession()
 
         // Wait past the original debounce window.
-        let debouncePlus = NetworkRecoveryCoordinator.recoveryDebounceSecs + 0.1
+        let debouncePlus = NetworkRecoveryCoordinator.recoveryDebounceSecs + 1.0
         try? await Task.sleep(for: .seconds(debouncePlus))
 
         // The cancelled task should not have incremented the count.
