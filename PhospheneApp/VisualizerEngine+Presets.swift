@@ -68,7 +68,6 @@ extension VisualizerEngine {
         pipeline.setDirectPresetFragmentBuffer2(nil)
         pipeline.setDirectPresetFragmentBuffer3(nil)
         pipeline.setRayMarchPresetHeightTexture(nil)
-        pipeline.setRayMarchPresetComputeDispatch(nil)
         pipeline.setMeshGBufferEncoder(nil)
         pipeline.setPostProcessChain(nil)
         pipeline.setRayMarchPipeline(nil)
@@ -261,10 +260,6 @@ extension VisualizerEngine {
                             //           makeFerrofluidMeshEncoder(mesh: mesh))
                             //   }
                             _ = ferrofluidMesh  // intentionally unused under round 57
-
-                            // setRayMarchPresetComputeDispatch intentionally
-                            // NOT set — particles are pinned (Phase 1 round 4),
-                            // so the one-shot bake is sufficient.
                         } else {
                             // swiftlint:disable:next line_length
                             logger.error("FerrofluidParticles: failed to allocate particle scaffolding for preset '\(desc.name)' — falling back to placeholder (no spikes)")
