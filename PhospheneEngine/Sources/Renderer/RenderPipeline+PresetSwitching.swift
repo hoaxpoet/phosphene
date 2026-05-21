@@ -153,18 +153,6 @@ extension RenderPipeline {
         rayMarchPresetHeightTextureLock.withLock { rayMarchPresetHeightTexture = texture }
     }
 
-    /// Attach a per-preset per-frame compute dispatch closure for ray-march presets.
-    ///
-    /// The closure is invoked from `drawWithRayMarch` on the current frame's
-    /// command buffer **before** the G-buffer pass is encoded, so any
-    /// texture the closure writes is ready when the ray-march reads it.
-    /// First consumer: Ferrofluid Ocean V.9's per-frame particle update +
-    /// height-field bake (V.9 Session 4.5b Phase 2b). Pass nil to detach.
-    /// Thread-safe.
-    public func setRayMarchPresetComputeDispatch(_ closure: RayMarchPresetComputeDispatch?) {
-        rayMarchPresetComputeDispatchLock.withLock { rayMarchPresetComputeDispatch = closure }
-    }
-
     /// Attach the mesh G-buffer encode closure (V.9 Session 4.5c Phase 1
     /// Step B). When set, the ray-march pipeline dispatches via
     /// `runMeshGBufferPass` instead of the SDF `runGBufferPass` —
