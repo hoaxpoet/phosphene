@@ -432,7 +432,7 @@ Seven new fields were added to `PresetDescriptor` to give the Orchestrator (Incr
 
 ## D-032: Preset scoring weights and penalty structure (Increment 4.1)
 
-**Status:** Accepted (2026-04-20)
+**Status:** Accepted (2026-04-20). **Amended 2026-05-06 by D-080 rule 5** — `cutEnergyThreshold` raised from 0.7 → 0.85 (reserves hard cuts for true climax moments only); see D-080 for the QR.2 rationale. The four sub-score weights, the multiplicative-penalty structure, and the fatigue cooldowns (60 / 120 / 300 s) remain unchanged.
 
 `DefaultPresetScorer` combines four sub-scores into a final [0, 1] total using fixed weights and two multiplicative penalties.
 

@@ -6,8 +6,14 @@
 // `minSegmentDuration` floor has elapsed, otherwise queues the event until the
 // floor is reached.
 //
-// V.7.6.2 wires the protocol and subscription path; only Arachne is expected to
-// emit, and Arachne does NOT emit yet — wiring is V.7.8.
+// V.7.6.2 wires the protocol and subscription path. ArachneState conforms via
+// `Sources/Orchestrator/ArachneStateSignaling.swift` (cross-module placement
+// per D-095 to avoid a Presets→Orchestrator dependency cycle). Arachne emits
+// from `advanceStablePhase` in `ArachneState.swift:977` once the build cycle
+// reaches `.stable` (shipped V.7.7C.2, 2026-05-09). The orchestrator-side
+// subscription is wired end-to-end at `VisualizerEngine+Presets.swift:497-573`
+// (BUG-011 round 8, 2026-05-12). Most presets do NOT emit; only those with a
+// finite construction or build sequence opt in.
 
 import Combine
 import Foundation

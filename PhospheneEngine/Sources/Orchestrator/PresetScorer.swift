@@ -83,7 +83,7 @@ public extension PresetScoring {
 
 /// Concrete implementation of `PresetScoring` using the weighted sub-score model.
 ///
-/// ## Weight rationale (D-030)
+/// ## Weight rationale (D-032)
 /// - **mood (0.30)**: highest weight — the primary axis of Orchestrator fit.
 /// - **stemAffinity (0.25)**: second highest — stems are the most reliable audio signal.
 /// - **sectionSuitability (0.25)**: equal to stems — structural fit matters as much.
