@@ -462,6 +462,8 @@ What we *don't* know and the next reproduction must capture: (a) whether `[weak 
 
 Regression test: `BUG012ConcurrencyTest` (4 threads × 3 forwards on one engine) regression-locks the engine's thread-safety contract. The test does not reproduce the crash today; it fires if a future change exposes `StemFFTEngine.forward` to genuinely concurrent callers (a stricter contract than the dispatch path requires, hence safer).
 
+**Centralised instrumentation reading-aid:** the complete per-line BUG-012-i1 probe map (every `BUG012Probe` call site labelled with its dispatch-ID semantics and severity) is published as part of the CA.2 ML capability audit at [`docs/CAPABILITY_REGISTRY/ML.md §BUG-012 instrumentation map`](../CAPABILITY_REGISTRY/ML.md#bug-012-instrumentation-map). The CA.2 audit's read of every BUG-012-adjacent code path (2026-05-20) did not edit any instrumented file and surfaced no new candidate root cause beyond the race-surface analysis above. One small diagnostic enrichment is suggested for the next instrumentation tranche — `CA.2-FU-2` in the audit's Follow-up Backlog.
+
 **How to read the next reproduction:**
 ```
 log show --predicate 'subsystem == "com.phosphene" AND category == "bug012"' --info --last 30m | grep '[BUG-012]'

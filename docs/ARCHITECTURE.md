@@ -241,10 +241,11 @@ The app shell routes `SessionManager.state` to one top-level SwiftUI view per se
 
 ## ML Inference
 
-No CoreML dependency. All ML runs on MPSGraph (GPU) or Accelerate (CPU).
+No CoreML dependency. All ML runs on MPSGraph (GPU) or Accelerate (CPU). Three production models:
 
-- **Stem separator** (MPSGraph): Open-Unmix HQ, Float32 throughout, 142ms warm predict for 10s audio. STFT/iSTFT via Accelerate/vDSP. The 5s background timer fires every 5 seconds; actual dispatch may be deferred up to 2 s (Tier 1) or 1.5 s (Tier 2) if recent frames are over budget — see Dispatch Scheduling below.
-- **Mood classifier** (Accelerate): 4-layer MLP (10→64→32→16→2) via `vDSP_mmul`. 3,346 hardcoded Float32 params from DEAM training.
+- **Stem separator** (MPSGraph): Open-Unmix HQ, Float32 throughout, 142 ms warm predict for 10 s audio (D-009 / D-010). Window: `modelFrameCount = 431` frames × `hopLength = 1024` samples = `requiredMonoSamples = 440320` (≈10 s at 44.1 kHz); `nFFT = 4096`. STFT/iSTFT via the `StemFFTEngine` MPSGraph path (Increment 3.1a; CPU vDSP fallback retained behind `forceCPUFallback`). The 5 s background timer fires every 5 seconds; actual dispatch may be deferred up to 2 s (Tier 1) or 1.5 s (Tier 2) if recent frames are over budget — see Dispatch Scheduling below. Open-Unmix HQ weights: 172 tensors / ~136 MB, loaded at init with BN-fusion baked in.
+- **Beat This! transformer** (MPSGraph): 128-dim transformer, 4 heads, 6 blocks, 512 FFN, 1500-frame fixed window (~30 s at 50 fps; sr=22050, hop=441). Input: log-mel spectrogram `[T, 128]` from `BeatThisPreprocessor` (DSP module). Output: per-frame beat + downbeat sigmoid probabilities consumed by `BeatGridResolver` (DSP module) to produce a `BeatGrid`. Architecture: PartialFTTransformer frontend (stem `BN1d → Conv2d(4×3)` → 3 PartialFT blocks with bi-directional F/T attention + RoPE + gating → projection) → 6 transformer blocks (manual RMSNorm + manual SDPA + RoPE paired-adjacent rotation; all three are macOS 14 workarounds — `scaledDotProductAttention` is macOS 15+) → post-norm → 2-class head. Weights: 161 tensors / 8.4 MB / Float32 (extracted from the MIT-licensed reference checkpoint), BN-fused at load. NSLock-guarded inference. D-077 (pivot from D-076 BeatNet, abandoned 2026-05-04 — see `docs/diagnostics/DSP.2-beatnet-archive.md`). Composed with `BeatThisPreprocessor` + `BeatGridResolver` inside `BeatGridAnalyzer` (Session module, CA.1 boundary-deferred).
+- **Mood classifier** (Accelerate): 4-layer MLP (10→64→32→16→2) via `vDSP_mmul`. 3,346 hardcoded Float32 params from DEAM training. Tanh output; output clamped to [-1, 1]; per-frame EMA smoothing at α = 0.1 (~0.7 s time constant at 94 Hz). D-009.
 
 ### Dispatch Scheduling (Increment 6.3)
 
@@ -438,13 +439,22 @@ PhospheneEngine/
     StemAnalyzer            → Per-stem energy (4× BandEnergyProcessor) + beat (1× BeatDetector on drums) + rich metadata (MV-3a) + PitchTracker (MV-3c) → StemFeatures (64 floats, 256 bytes)
     StemAnalyzer+RichMetadata → Per-stem onset rate / centroid / attack ratio / energy slope computation. Fast/slow RMS EMAs (50/500 ms), rising-edge flux onsets with 100 ms refractory, 0.5 s decay window, ×2.0 rate multiplier.
   ML/
-    StemSeparator.swift      → STFT → MPSGraph → iSTFT pipeline, StemSeparating protocol
-    StemSeparator+Reconstruct → iSTFT reconstruction + mono averaging
-    StemModel.swift          → MPSGraph Open-Unmix HQ engine, pre-allocated UMA I/O buffers
-    StemModel+Graph         → MPSGraph construction: per-stem subgraph, LSTM, FC, BN helpers
-    StemModel+Weights       → Weight manifest parsing, .bin loading, BN fusion (12 fusions at init)
-    MoodClassifier.swift    → vDSP_mmul MLP → valence/arousal, MoodClassifying protocol
-    MoodClassifier+Weights  → Hardcoded Float32 weight arrays (3,346 params)
+    ML.swift                 → Module entry-point marker (just `import Foundation`).
+    BeatThisModel.swift      → Top-level Beat This! transformer wrapper. `public final class BeatThisModel`. Hyperparameters as public static lets (embedDim=128, numHeads=4, headDim=32, numBlocks=6, ffnDim=512, inputMels=128, outputClasses=2). NSLock-guarded `predict(spectrogram:frameCount:)` and `predictDiagnostic(...)` (DSP.2 S8 layer-diff anchor). Internal `tMax = 1500` frame window. D-077.
+    BeatThisModel+Frontend   → PartialFTTransformer frontend: stem BN1d→Conv2d(4×3) → 3 PartialFT blocks (bi-directional F/T attention + RoPE 4D + gating + downsampling Conv2d(2×3)) → BN2d → GELU → projection to (tMax, 128). Block dims (32,32) → (64,16) → (128,8). PyTorch-spec ordering: partial → conv → norm → GELU (DSP.2 S8 fix).
+    BeatThisModel+Graph      → Encoder graph: 6 transformer blocks (manual RMSNorm + manual SDPA + RoPE 3D paired-adjacent rotation, all macOS 14 workarounds) → post-norm → head linear → beat/downbeat logits via sigmoid. RoPE base 10000; SDPA scale 1/√headDim.
+    BeatThisModel+Ops        → MPSGraph primitive helpers: BeatLinearSpec, buildRMSNorm (eps=1e-6), buildGELU (tanh-approx with PyTorch constants), buildLinear, makeConst/makeOnesConst/makeZerosConst. All internal.
+    BeatThisModel+Weights    → Manifest parser + 161-tensor loader from Sources/ML/Weights/beat_this/. 8.4 MB Float32. BN-fusion at load (eps=1e-5). Conv weight rearrangement OIHW→HWIO. Weight structs: BeatThisWeights / BeatThisFrontendBlockWeights / BeatThisTransformerBlockWeights / BeatThisAttnWeights / BeatThisFFNWeights / BeatThisFusedBN.
+    StemSeparator.swift      → STFT → MPSGraph → iSTFT pipeline, StemSeparating protocol. Public static lets: nFFT=4096, hopLength=1024, nBins=2049, modelSampleRate=44100, stemCount=4, modelFrameCount=431, requiredMonoSamples=440320. NSLock-guarded UMA buffer writes. BUG-012-i1 instrumentation hooks via `BUG012Probe`.
+    StemSeparator+Reconstruct → iSTFT reconstruction + mono averaging (vDSP_vadd + vDSP_vsmul). Internal.
+    StemModel.swift          → MPSGraph Open-Unmix HQ engine (`StemModelEngine`), pre-allocated UMA I/O buffers (inputMagL/R, outputBuffers per stem). 172 tensors / ~136 MB loaded at init; single graph hosts all 4 stems. NSLock-guarded `predict()`.
+    StemModel+Graph          → MPSGraph construction: per-stem subgraph (input slice 1487 bins → FC1(2974→512) + BN1 + Tanh → 3-layer bidirectional LSTM hidden=256 → concat → FC2(1024→512) + BN2 + ReLU → FC3(512→4098) + BN3 + denorm → ReLU mask × input → output [431, 2, 2049]). 4 stem subgraphs sharing the same input placeholder.
+    StemModel+Weights        → Weight manifest parsing + .bin loading + BN fusion (eps=1e-5) + bidirectional-LSTM weight assembly (forward + reverse stacked per MPSGraph contract). PyTorch bias_ih + bias_hh summed per direction before stacking.
+    StemFFT.swift            → STFT/iSTFT engine entry: `StemFFTEngine` + `StemFFTEngineProtocol`. NSLock-guarded forward/inverse. Hann window, vDSP setup, MPSGraph forward/inverse resources. BUG-012-i1 instrumentation: dispatch-ID allocation, in-flight counters with ALARM-on-overflow, lock await/release log lines. `forceCPUFallback` for cross-validation testing.
+    StemFFT+CPU              → Accelerate vDSP STFT/iSTFT fallback (cross-validation + non-431-frame inputs). Center-padded, DC/Nyquist packing per vDSP_fft_zrip convention. Internal.
+    StemFFT+GPU              → MPSGraph forward/inverse path. `runForwardGraph()` is the DOCUMENTED BUG-012 EXC_BAD_ACCESS crash site (address 0x8, force-dispatch race; instrumentation in place per BUG-012-i1, diagnosis pending next reproduction). vDSP-vs-MPSGraph amplitude convention: forward × 2 for vDSP parity; inverse round-trips at unity gain via HermiteanToRealFFT scalingMode=.size.
+    MoodClassifier.swift     → vDSP_mmul MLP (10 → 64 ReLU → 32 ReLU → 16 ReLU → 2 tanh) + EMA smoothing (α=0.1, ~0.7 s @ 94 Hz). MoodClassifying protocol. Hardcoded z-score scaler means/stds matching `tools/data/mood_scaler.json`.
+    MoodClassifier+Weights   → Hardcoded Float32 weight arrays (3,346 params total: 640+64+2048+32+512+16+32+2). Extracted by `tools/extract_mood_weights.py` from a Float16 CoreML model.
   Renderer/
     MetalContext            → MTLDevice, command queue, triple-buffered semaphore, shared-texture helper
     ShaderLibrary           → Auto-discover .metal files, runtime compilation, cache
@@ -633,7 +643,19 @@ Bin-count normalized: weight = `1/binsInPitchClass`. Skip bins below **500 Hz** 
 
 ### Mood Classifier Inputs
 
-10 features: 6-band energy, centroid, flux, major/minor key correlations. NOT raw 12-bin chroma (a tiny MLP cannot learn the Krumhansl-Schmuckler function from raw bins). Spectral flux normalized via running-max AGC (0.999 decay). Centroid normalized by Nyquist (24000 Hz).
+10 features, in this order at the call site (`VisualizerEngine+Audio.accumulateMoodFeatures`):
+
+| Index | Value | Source |
+|---|---|---|
+| 0–5 | 6-band energy (subBass, lowBass, lowMid, midHigh, highMid, high) | `FeatureVector.subBass/…/high` |
+| 6 | `spectralCentroid` normalized 0–1 by Nyquist (24000 Hz) | `MIRPipeline.rawSmoothedCentroid / 24000` |
+| 7 | `spectralFlux` raw smoothed value (un-AGC-normalized) | `MIRPipeline.rawSmoothedFlux` |
+| 8 | `majorKeyCorrelation` (best Pearson r vs K-S major profiles, 0–1) | `MIRPipeline.latestMajorKeyCorrelation` |
+| 9 | `minorKeyCorrelation` (best Pearson r vs K-S minor profiles, 0–1) | `MIRPipeline.latestMinorKeyCorrelation` |
+
+NOT raw 12-bin chroma (a tiny MLP cannot learn the Krumhansl-Schmuckler function from raw bins). The classifier-input docstring at `MoodClassifier.swift:14-19` is authoritative for the input contract.
+
+**Important: index 7 is the RAW smoothed flux, not the AGC-normalized value.** `MIRPipeline.normalizedFlux` (running-max AGC, 0.999 decay) is what flows into `FeatureVector.spectralFlux` for GPU consumption, but the mood classifier was trained against `rawSmoothedFlux` and the runtime path matches that. Prior versions of this doc claimed AGC-normalized; the claim was stale (CA.2 audit finding 2026-05-20). Z-score normalization is applied per-element inside `MoodClassifier.classify` via the hardcoded `scalerMeans` / `scalerStds` from `tools/data/mood_scaler.json`; the mood classifier is the one that normalizes, not the upstream pipeline.
 
 ---
 
