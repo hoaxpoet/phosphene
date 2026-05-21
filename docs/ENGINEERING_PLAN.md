@@ -32,6 +32,34 @@ Test infrastructure: swift-testing + XCTest across unit, integration, regression
 
 ## Recently Completed
 
+### CA-Audio-FU-9 — ARCH structural-claims sync (Module Map + §Key Types + per-source-file inline drift) ✅ (2026-05-21)
+
+Twelfth Phase CA increment of the day — the consolidation pass for the 7-in-a-row Module Map drift pattern surfaced across CA.5 / CA.6 / CA.7a / CA.7b / CA-Audio / CA-Presets / CA-Shared. **Closes Phase CA: every Swift engine surface is audited AND the structural-claim documentation matches the code.**
+
+**Scope expanded by CA-Shared closeout** from the original "Module Map only" filing to cover three additional axes: ARCH §Key Types (3 fictional struct claims surfaced by CA-Shared); ARCH §GPU Contract Details (verified clean in this pass — slot bindings match RenderPipeline + SpectralHistoryBuffer); per-source-file inline doc-comment drift (3 items surfaced by CA-Shared).
+
+**Landed changes:**
+
+- **§Module Map Shared/ block** — 5 missing entries added: `Shared.swift` module marker, the four `AudioFeatures+*` extension files (Analyzed / Frame / Metadata / SceneUniforms), `StemFeatures.swift` (D-099 / DM.2), `BeatSyncSnapshot.swift` (CLAUDE.md §Defect Handling artifact), the four `SessionRecorder+*` extensions (CSV / RawTap / Stems / Video), `BUG012Probe.swift` (BUG-012-i1 instrumentation, read-only), `UserFacingError.swift` + `UserFacingError+Presentation.swift`, `Dashboard/DashboardTokens.swift`. RenderPass enum cases corrected to include `mv_warp` and `staged`. SpectralHistoryBuffer entry's reserved-section description updated to reflect post-beat-grid layout (beat_times / bpm / lock_state / session_mode / downbeat_times / drift_ms through slot [2429]).
+
+- **§Module Map Presets/ block** — 16 missing entries added: `Presets.swift` module marker, three `PresetLoader+*` extensions (`+Mesh`, `+Utilities`, `+WarpPreamble`), `PresetMetadata`, `PresetMaxDuration`, `PresetStage`, `SpectralCartographText`, two `FidelityRubric+*` extensions (`+Mandatory`, `+Optional`), `AuroraVeil/AuroraVeilState.swift`, three `FerrofluidOcean/*` files (`FerrofluidMesh`, `FerrofluidParticles`, `+InitialPositions`), four `Arachnid/ArachneState+*` extensions (`+BackgroundWebs`, `+ListeningPose`, `+Spider`, `+M7Diag`). The CA-Presets "18 missing files" finding is now closed (CA-Presets's count was off by 2 — actual missing = 16 once duplicates were de-duped against existing inline references).
+
+- **§Module Map Diagnostics/ block** — 2 missing entries added: `SoakTestHarness+AudioGen` (procedural audio generator extracted for file-length compliance) and `SoakTestHarness+Reporting` (JSON + Markdown report builder extracted for file-length compliance).
+
+- **§Module Map Renderer/ block** — 1 missing entry added: `RayTracing/RayIntersector+Internal` (the `packed_float3` vs `SIMD3<Float>` workaround file cross-referenced from `AudioFeatures+SceneUniforms.swift:9`).
+
+- **§Module Map App/ block** — verified close to complete (~109 referenced entries vs 108 actual files); no systemic gap.
+
+- **§Key Types section** — comprehensive rewrite. Deleted three entirely fictional struct claims (`BandEnergy`, `SpectralFeatures`, `OnsetPulses`) — these have never existed in code; the corresponding data lives inside FeatureVector. Moved three misplaced types (`Particle`, `SessionState`, `AudioSignalState`) out of the "Shared Module" sub-block into a new "Cross-module reference types" sub-block (their actual modules: Renderer/Presets, Session, Audio respectively). Added missing RenderPass cases (`mv_warp`, `staged`). Corrected FeatureVector field documentation — was claiming structural prediction + camera uniforms live in floats 1–24 when they actually live in separate structs (StructuralPrediction + SceneUniforms); now lists actual field layout. Clarified EmotionalState's `quadrant` as a computed property. Corrected SpectralHistoryBuffer reserved-section description (was [2402..2419]; actual is [2402..2429] through driftMs). Added missing types: `BeatSyncSnapshot`, `MetadataSource`, `StemSampleBuffer`, `Smoother`, `UMABuffer`, `UMARingBuffer`, `UserFacingError`.
+
+- **Per-source-file inline doc-comment drift** — 3 items fixed in this commit: `AnalyzedFrame.swift:35` "Packed feature vector for GPU uniform upload (96 bytes)" → 192 bytes (D-099 / DM.2 post-extension size); `SpectralHistoryBuffer.swift:78` class-level "[2402..4095] reserved" rewritten to enumerate the beat-grid metadata layout through [2429]; `DashboardTokens.swift:5` "D-080" → "D-081 / DASH.1.1" (D-080 is the QR.2 stem-affinity decision, not the placement rationale).
+
+**Verification:** SwiftLint baseline holds at 0 / 371. `swift build --package-path PhospheneEngine` → Build complete (3.84s). Engine test suite: 1,248 tests across 162 suites — all passing (unchanged; only doc-comment lines touched in Swift code). App test suite: 333 tests / 60 suites — all passing.
+
+**Phase CA closure status:** with FU-9 landed, every Swift engine surface in `PhospheneEngine/Sources/` and `PhospheneApp/` is (a) audited via a capability-registry document AND (b) structurally documented in ARCHITECTURE.md without fictional claims or misplaced entries. **Phase CA is complete.** The only remaining audit work is the optional `.metal` shader audit (CA-Preset-Shaders) — recommend NOT scheduling per CA-Shared closeout (FidelityRubric + M7 manual review already cover that surface; methodology is distinct from capability-registry verdicts).
+
+**Approach validation:** the consolidation-pass approach worked well — single-pass file inventory + per-block diff + targeted insertion edits. The CA-Shared "scope extension" recommendation to fold §Key Types + §GPU Contract Details + inline drift into FU-9 was correct: doing all four axes in one pass kept the doc-coherence story tight rather than scattering related fixes across multiple increments. Total wall-clock for FU-9 itself was ~1 session; the combined FU-1 + FU-2 + FU-3 + FU-9 wall-clock for the day was ~3 sessions. **The 7-in-a-row Module Map drift pattern is now closed.** Future audits should still surface drift when it appears, but the systemic backlog is gone.
+
 ### CA-Shared-FU-1 (wire-up) + CA-Shared-FU-2 (retire) + CA-Shared-FU-3 (retire) ✅ (2026-05-21)
 
 Same-day resolution of three CA-Shared follow-ups, all under Matt's direction:
