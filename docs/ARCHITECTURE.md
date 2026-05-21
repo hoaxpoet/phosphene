@@ -37,11 +37,14 @@ Playlist / streaming source
 
 Live audio capture (Core Audio tap)
 → AudioInputRouter → AudioBuffer (UMARingBuffer)
-→ LookaheadBuffer (2.5s analysis/render split)
 → FFTProcessor (vDSP 1024-point → 512 bins)
 → MIRPipeline (BandEnergy + BeatDetector + Chroma + Spectral + Structural)
 → StemSeparator (MPSGraph, background 5s cadence)
 → AnalyzedFrame (FeatureVector + StemFeatures + EmotionalState)
+# LookaheadBuffer (2.5s analysis/render split) — planned anticipatory architecture; not yet wired.
+# AudioInputRouter declares onAnalysisFrame / onRenderFrame callbacks but no production
+# code assigns them. See docs/CAPABILITY_REGISTRY/AUDIO.md (CA-Audio-FU-2) — Matt's
+# product call needed on whether to wire, keep as infrastructure, or retire.
 
 → Orchestrator (session mode or ad-hoc mode)
 → RenderPipeline (Metal)
@@ -479,20 +482,22 @@ PhospheneApp/               → SwiftUI shell, views, view models
 
 PhospheneEngine/
   Audio/
-    SystemAudioCapture      → Core Audio tap: system-wide or per-app
-    AudioInputRouter        → Unified source: .systemAudio/.application/.localFile → callbacks + dual analysis/render frames
-    LookaheadBuffer         → Timestamped ring buffer, dual read heads (analysis + render), configurable 2.5s delay
+    Audio                   → Module marker (imports + module-level header noting Core Audio taps as primary capture path per FA #29 / #21 / #22)
+    SystemAudioCapture      → Core Audio tap: system-wide or per-app. FA #21 verified: .systemAudio uses stereoGlobalTapButExcludeProcesses: []; .application uses stereoMixdownOfProcesses: [PID] (non-empty array, the prohibited empty-array form does not appear).
+    AudioInputRouter        → Unified source: .systemAudio/.application/.localFile → callbacks. Wires SilenceDetector + tap-reinstall state machine; immutably captures tap sample rate via per-buffer callback (D-079/QR.1). onAnalysisFrame / onRenderFrame callbacks declared but unwired pending LookaheadBuffer product call.
+    AudioInputRouter+SignalState → Tap-reinstall state machine (ARCH §68): backoff 3s → 10s → 30s; three attempts; cancel-on-active; re-check state before performing the install. No dedicated tests today (CA-Audio-FU-4).
+    LookaheadBuffer         → production-orphan (CA-Audio); Timestamped ring buffer, dual read heads (analysis + render), configurable 2.5s delay. Zero production instantiations; planned anticipatory-architecture capability for Orchestrator lookahead-coupled decisions. Matt's keep/wire/retire product call pending (CA-Audio-FU-2).
     AudioBuffer             → IO proc → UMARingBuffer<Float> bridge for GPU
-    FFTProcessor            → vDSP 1024-pt FFT → 512 magnitude bins in UMABuffer
-    SilenceDetector         → DRM silence state machine: .active → .suspect (1.5s) → .silent (3s) → .recovering → .active (0.5s hold)
-    InputLevelMonitor       → Continuous tap-quality assessment: rolling peak dBFS (21s window) + 3-band spectral EMAs → SignalQuality (green/yellow/red) with reason string. Peak-only classification after session 2026-04-17T21-05-47Z showed treble-ratio thresholds fired false positives on bass-heavy tracks. Hysteresis (30-frame hold) prevents log flapping. Logged to session.log on quality transitions via VisualizerEngine+Audio.
+    FFTProcessor            → vDSP 1024-pt FFT → 512 magnitude bins in UMABuffer. printHistogram(barCount:) debug API has zero production consumers (CA-Audio-FU-6).
+    SilenceDetector         → DRM silence state machine: .active → .suspect (1.5s) → .silent (3s) → .recovering → .active (0.5s hold). Module-internal class (not public); only consumed by AudioInputRouter.
+    InputLevelMonitor       → Continuous tap-quality assessment: rolling peak dBFS (21s decay time constant via 0.9995 per-update decay at ~94 Hz) + 3-band spectral EMAs → SignalQuality (green/yellow/red) with reason string. Peak-only classification after session 2026-04-17T21-05-47Z showed treble-ratio thresholds fired false positives on bass-heavy tracks. Hysteresis (30-frame hold) prevents log flapping. Logged to session.log on quality transitions via VisualizerEngine+Audio. No dedicated tests today (CA-Audio-FU-5).
     StreamingMetadata       → AppleScript polling of Apple Music/Spotify, track change detection
-    MetadataPreFetcher      → Parallel async queries, LRU cache, merge partial results, 3s per-fetcher timeouts
-    MusicBrainzFetcher      → Free API, genre tags + duration
-    SpotifyFetcher          → Client credentials, search-only track matching
-    SoundchartsFetcher      → Optional commercial API (SOUNDCHARTS_APP_ID/SOUNDCHARTS_API_KEY env vars)
-    MusicKitBridge          → Optional MusicKit catalog enrichment, graceful no-op
-    Protocols               → AudioCapturing, AudioBuffering, FFTProcessing, MoodClassifying, MetadataProviding, MetadataFetching
+    MetadataPreFetcher      → Parallel async queries, LRU cache, merge partial results, 3s per-fetcher timeouts. CA.3 Session ↔ Audio boundary-noted item resolved by CA-Audio. Producer of PreFetchedTrackProfile (Shared); consumer at SessionPreparer.swift:299 + App track-change runtime path.
+    MusicBrainzFetcher      → Free API, genre tags + duration. Always-on in buildFetcherList().
+    SpotifyFetcher          → Client credentials flow (env vars SPOTIFY_CLIENT_ID + SPOTIFY_CLIENT_SECRET). Calls /v1/search for duration only — audio-features endpoint deprecated Nov 2024. Distinct from the Session-layer SpotifyWebAPIConnector (OAuth user-token flow; /items endpoint) where FAs #45-47 + BUG-005 live.
+    SoundchartsFetcher      → Optional commercial API (SOUNDCHARTS_APP_ID/SOUNDCHARTS_API_KEY env vars). Decodes time_signature correctly; BUG-013 is the upstream API not returning the field, not a parser defect.
+    MusicKitBridge          → production-orphan (CA-Audio). Contains MusicKitFetcher class (file/type name mismatch). Zero production wiring (not in buildFetcherList()); zero test sites. fetchBPM(for:) is a stub (MusicKit Swift SDK does not expose tempo). Matt's delete/keep product call pending (CA-Audio-FU-3).
+    Protocols               → AudioCapturing, AudioBuffering, FFTProcessing, MoodClassifying (re-export from ML), StemSeparating (re-export from ML), MetadataProviding, MetadataFetching; plus value types AudioSignalState, TrackChangeEvent, PartialTrackProfile, StemSeparationResult/Error, MoodClassificationError
   DSP/
     DSP.swift               → Module marker (imports only)
     SpectralAnalyzer        → Spectral centroid, rolloff, flux via vDSP
