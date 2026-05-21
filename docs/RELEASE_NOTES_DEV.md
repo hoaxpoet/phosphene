@@ -6,6 +6,78 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-21-c] CA.4-FU-2 — Doc-state closeout (source comments already fixed in CA.4 audit landing)
+
+**Increment:** `[CA.4-FU-2]`. **Status:** Resolved 2026-05-21 (doc-state only — code changes already shipped 2026-05-20 in commit `faee28a7` as part of the CA.4 audit landing).
+
+### What this is
+
+CA.4's audit deliverable (`docs/CAPABILITY_REGISTRY/ORCHESTRATOR.md`) listed three follow-ups in its backlog: CA.4-FU-1 (demote `transitionPolicy` field — resolved in [dev-2026-05-21-b]), CA.4-FU-2 (two source-comment doc-drift fixes), and CA.4-FU-3 / BUG-015 (wire `applyLiveUpdate(...)` to runtime — resolved in [dev-2026-05-21-a]).
+
+CA.4-FU-2 specified two trivial source-comment corrections:
+
+- **(a) `PresetScorer.swift:86`** — change `(D-030)` → `(D-032)`. D-030 is the SpectralHistoryBuffer GPU-contract decision; D-032 is the weight-rationale decision the doc comment was actually citing.
+- **(b) `PresetSignaling.swift:9-10`** — replace the stale `"Arachne does NOT emit yet — wiring is V.7.8."` with a current-state description citing V.7.7C.2 / D-095 (Arachne emission shipped 2026-05-09) and BUG-011 round 8 (orchestrator-side subscription wired 2026-05-12).
+
+### What I found
+
+Both corrections **had already been applied inline with the CA.4 audit increment itself**. CA.4's own release-notes entry ([dev-2026-05-20-?] — see `ENGINEERING_PLAN.md` line 37) documented the change verbatim: *"in-source comments at PresetScorer.swift:86 (D-030 → D-032) and PresetSignaling.swift:9-10 (current-state rewrite per D-095 + BUG-011 round 8)"*. The CA.4-FU-2 backlog row in `ORCHESTRATOR.md` was nonetheless left in "Ready now" state — an internal inconsistency in the audit deliverable: the audit decided to bundle these tiny edits with the main landing rather than file them as separate follow-up commits, but the backlog table wasn't updated to reflect that.
+
+Post-fact grep verification 2026-05-21:
+
+```
+$ grep -n "Weight rationale" PhospheneEngine/Sources/Orchestrator/PresetScorer.swift
+86:    /// ## Weight rationale (D-032)
+```
+
+```
+$ sed -n '8,16p' PhospheneEngine/Sources/Orchestrator/PresetSignaling.swift
+// V.7.6.2 wires the protocol and subscription path. ArachneState conforms via
+// `Sources/Orchestrator/ArachneStateSignaling.swift` (cross-module placement
+// per D-095 to avoid a Presets→Orchestrator dependency cycle). Arachne emits
+// from `advanceStablePhase` in `ArachneState.swift:977` once the build cycle
+// reaches `.stable` (shipped V.7.7C.2, 2026-05-09). The orchestrator-side
+// subscription is wired end-to-end at `VisualizerEngine+Presets.swift:497-573`
+// (BUG-011 round 8, 2026-05-12). Most presets do NOT emit; only those with a
+// finite construction or build sequence opt in.
+```
+
+Both files reflect the current state. Done-when criteria from the backlog row (*"Both source files reflect current state. swift build clean."*) are met as of `faee28a7`.
+
+### Fix
+
+No code change in this increment — the source corrections already shipped.
+
+Doc-state cleanup only:
+
+- `docs/CAPABILITY_REGISTRY/ORCHESTRATOR.md` — backlog row Status flipped from "Ready now" to "✅ Resolved 2026-05-20 (bundled by CA.4 audit, commit `faee28a7`)" with the post-fact grep evidence inline.
+- `docs/ENGINEERING_PLAN.md` — new "Increment CA.4-FU-2" entry added above the CA.4-FU-1 block.
+- `docs/RELEASE_NOTES_DEV.md` — this entry.
+
+### Validation
+
+- No source code changed — build / test state is identical to commit `37ea9587` (CA.4-FU-1 landing).
+- Grep verification of `PresetScorer.swift:86` and `PresetSignaling.swift:9-16` confirms both files reflect the spec'd current state.
+
+### Files changed
+
+Edited (3 files, all docs):
+- `docs/CAPABILITY_REGISTRY/ORCHESTRATOR.md` — backlog row Status update.
+- `docs/ENGINEERING_PLAN.md` — new CA.4-FU-2 entry.
+- `docs/RELEASE_NOTES_DEV.md` — this entry.
+
+### Known risks and follow-ups
+
+- **CA.1-FU-1** — also being addressed in the same session (next commit, [dev-2026-05-21-d]) as a similar doc-state closeout (BUG-015's choice of option (a) for prediction sourcing folded CA.1-FU-1's "gate-to-prep-time" fix, per the audit's own §Resolution branch at line 463).
+- **BUG-015 validation** — wire is live but Matt's real-music session-log capture is still required before flipping `KNOWN_ISSUES.md` to Resolved (per [dev-2026-05-21-a]).
+- After this and the upcoming CA.1-FU-1 commit, all CA.4 audit follow-ups become tracked-resolved.
+
+### Git status
+
+Branch: `claude/nervous-franklin-25b8cb` (worktree `.claude/worktrees/nervous-franklin-25b8cb`). Local commit only; no remote push.
+
+---
+
 ## [dev-2026-05-21-b] CA.4-FU-1 — Demote `DefaultLiveAdapter.transitionPolicy` dead field
 
 **Increment:** `[CA.4-FU-1]`. **Status:** Landed 2026-05-21 (local commit). Closes one of the three CA.4 audit follow-ups; the audit's BUG-015 finding has its own resolution path (wire landed in commit `b3f1efd9` earlier on 2026-05-21, pending real-music session validation).
