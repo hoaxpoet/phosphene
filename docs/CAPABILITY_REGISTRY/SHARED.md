@@ -785,7 +785,7 @@ No other CLAUDE.md drift surfaced in CA-Shared.
 
 ### Updates needed in ARCHITECTURE.md
 
-**Bundled into CA-Audio-FU-9 (Module Map Sync). Concrete diff list:**
+**Resolved 2026-05-21 via CA-Audio-FU-9 (Module Map Sync, scope expanded to §Module Map + §Key Types + §GPU Contract Details + per-source-file inline drift).** Concrete diff list (now landed):
 
 1. **§Module Map Shared/ block** (lines 668-678): add 4 missing files:
    - `StemFeatures` → "256 bytes (64 floats). GPU buffer(3). MV-3 / D-099 / DM.2. Per-stem energy + band + beat (16) + MV-1 deviation primitives (8) + MV-3a rich metadata (16) + MV-3c vocal pitch (2) + D-127 drumsEnergyDevSmoothed (1) + padding (21)."
