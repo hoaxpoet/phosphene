@@ -6,6 +6,123 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-21-a] BUG-015 — Wire `applyLiveUpdate(...)` to runtime audio path
+
+**Increment:** `[BUG-015]`. **Status:** Wire landed 2026-05-21; **pending Matt's real-music session validation before final Resolved flip in `KNOWN_ISSUES.md`** (verification criterion #2 — manual session-log capture — needs a real audio session and cannot be driven from the test harness).
+
+### What this is
+
+The fix increment for [BUG-015](QUALITY/KNOWN_ISSUES.md#bug-015), surfaced 2026-05-20 by the CA.4 Orchestrator capability audit. Severity P1, domain `pipeline-wiring`. Pre-fix grep evidence:
+
+```
+$ grep -rn "applyLiveUpdate" PhospheneApp PhospheneEngine --include="*.swift"
+```
+
+returned the declaration site (`VisualizerEngine+Orchestrator.swift:166`), 5 doc-comment / commentary references in unrelated files, 2 test references, and **zero actual invocations**. The Phase 4.5 `DefaultLiveAdapter` and 4.6 `DefaultReactiveOrchestrator` machinery were fully implemented and unit-tested but never reached running production — the AI-Orchestrator product claim (*"adapts as the music unfolds"* per CLAUDE.md top) ran half-realised, with the static-plan half working and the live-adaptation half dead.
+
+Identical failure pattern to the AV.1 / AV.2 / AV.2.1 cascade (CLAUDE.md *"Test in the production-grade rendering pipeline. No shortcuts."* discipline rule promoted 2026-05-18): unit tests passed green against the Orchestrator-module API directly while the App-layer entry point that the live pipeline depended on was never wired. The 16 Orchestrator test files all pass on pre-fix `main`; they invoke `liveAdapter.adapt(...)` / `reactiveOrchestrator.evaluate(...)` directly and bypass the App-layer entry point. They cannot catch BUG-015 by construction.
+
+### Design decisions
+
+**Wire site:** end of `processAnalysisFrame(...)` in `PhospheneApp/VisualizerEngine+Audio.swift`. New `runOrchestratorLiveUpdate(mir:)` method lives in `PhospheneApp/VisualizerEngine+Orchestrator.swift` (by responsibility — same file that owns `applyLiveUpdate`). The analysis queue ticks at the FFT-hop rate (~94 Hz at 48 kHz / 512-hop).
+
+**Cadence:** ≈ 3.1 Hz — every 30th analysis frame (`analysisFrameCount % 30 == 0`). Within the kickoff's 1–5 Hz target. The 30 s per-track mood-override cooldown enforced by `DefaultLiveAdapter.cooldownAdaptation(...)` suppresses ~94 redundant calls per allowed override at this rate; boundary rescheduling is naturally rate-limited by the 5 s deviation threshold.
+
+**Prediction source:** **option (a)** from the kickoff — `mirPipeline.latestStructuralPrediction`. Realises the full product claim (boundary rescheduling fires against real per-frame predictions, not a `.none` sentinel). **Folds CA.1-FU-1 into this fix** — the per-frame `StructuralAnalyzer` chain in `MIRPipeline.process` now has a runtime consumer; no separate gate-to-prep-time-only increment needs to ship.
+
+**Threading:** Two new lock-guarded fields on `VisualizerEngine`, guarded by the existing `orchestratorLock`:
+
+- `var liveTrackPlanIndex: Int?` — written from the audio-thread part of `makeTrackChangeCallback` (via `indexInLivePlan(matching:)`, which is non-actor-isolated and itself takes the lock); read in the wire snapshot. Separate from the MainActor-bound `@Published var currentTrackIndex: Int?` SwiftUI surface — both reflect the same plan walk; they stay in lockstep.
+- `var lastClassifiedMood: EmotionalState` — written from the analysis queue inside `publishMoodResult(...)` after the stability-attenuated mood is computed. Defaults to `.neutral` so the wire is well-defined before the first mood frame fires (~3 s).
+
+Single-acquisition snapshot via a private `OrchestratorWireSnapshot` struct (struct rather than tuple to satisfy SwiftLint `large_tuple`).
+
+**Off-plan track handling:** when `livePlan != nil && liveTrackPlanIndex == nil` (cover, remaster, or encoding-different variant the plan walker couldn't match — same case as the QR.4 / D-091 `@Published currentTrackIndex == nil` path), the wire returns without calling `applyLiveUpdate`. Routing such a track into session-mode plan adaptation would patch the wrong segment; routing it into reactive mode would clobber the user's session-mode context. The next plan-matched track resumes the wire.
+
+**CA.4-FU-1 (`DefaultLiveAdapter.transitionPolicy` dead field):** **not bundled.** The fix touches App layer only; no edit to `LiveAdapter.swift`. CA.4-FU-1 remains as a separately-shippable sub-5-line increment.
+
+**Stretch scope #3 (`liveStemFeatures` in reactive mode):** the kickoff doc was stale on this — the wiring is **already correctly implemented** at `PhospheneApp/VisualizerEngine+Orchestrator.swift:273`:
+
+```swift
+let liveStemFeatures: StemFeatures? = elapsed >= 10.0 ? pipeline.currentStemFeatures() : nil
+```
+
+and passed to `reactiveOrchestrator.evaluate(...)` at line 283 per D-080 rule 7. No change needed.
+
+### What I delivered
+
+`PhospheneAppTests/OrchestratorWiringRegressionTests.swift` — new file. Source-presence regression gate. Two assertions:
+
+1. `VisualizerEngine+Audio.swift` must contain a non-comment call to `applyLiveUpdate(` or `runOrchestratorLiveUpdate(`. Comments are stripped before the check (both `//` line and `/* */` block) so a doc-comment mention cannot satisfy the assertion.
+2. App layer must contain at least one production call site for `applyLiveUpdate(` outside the declaration in `VisualizerEngine+Orchestrator.swift`. Walks the `PhospheneApp/` directory and excludes the declaration token.
+
+Same pattern as `SettingsStoreEnvironmentRegressionTests` (QR.4 / D-091). Both assertions **fail** against pre-fix `main`, **pass** against the wired state — verified end-to-end before and after the fix. The Orchestrator-side `LiveAdapterTests`, `ReactiveOrchestratorTests`, `DiagnosticHoldTests`, `StemAffinityScoringTests` all stay green; the regression gate this test installs catches the App-layer wiring shape, not the module-internal behaviour those tests already verify.
+
+`PhospheneApp/VisualizerEngine.swift` — added two lock-guarded analysis-queue fields (`liveTrackPlanIndex: Int?`, `lastClassifiedMood: EmotionalState = .neutral`). Pure additions; no edits to the BUG-012-i1 instrumentation lines in this file (the kickoff's overlap warning).
+
+`PhospheneApp/VisualizerEngine+Capture.swift` — track-change callback resolves the plan index on the audio-thread part of the callback (before the MainActor task) and writes `liveTrackPlanIndex` under `orchestratorLock`. The MainActor task continues to set `@Published currentTrackIndex` for SwiftUI consumers; both fields share a single resolution.
+
+`PhospheneApp/VisualizerEngine+Audio.swift` — restructured `processAnalysisFrame` so the orchestrator wire runs regardless of whether the mood classifier early-outs (boundary rescheduling does not need a mood input). Added `lastClassifiedMood` write to `publishMoodResult` immediately after `pipeline.setMood(...)`. Added the call to `runOrchestratorLiveUpdate(mir: mir)`. Added `import DSP` (already imported transitively but explicit now).
+
+`PhospheneApp/VisualizerEngine+Orchestrator.swift` — added `runOrchestratorLiveUpdate(mir:)`, `static let orchestratorWireFrameDivisor: Int = 30`, and the private `OrchestratorWireSnapshot` struct. Added `import DSP`.
+
+`PhospheneApp.xcodeproj/project.pbxproj` — registered `OrchestratorWiringRegressionTests.swift` in all four required sections (`PBXBuildFile`, `PBXFileReference`, `PBXGroup`, `PBXSourcesBuildPhase`) using fresh UUIDs `P10005` / `P20005` (next-available block after `P10004` / `P20004` per the U.11 convention).
+
+### Verification
+
+**Regression test against pre-fix `main`** — confirmed fails:
+
+```
+✘ Test "VisualizerEngine+Audio.swift wires the Orchestrator live-adaptation pipeline" recorded an issue
+✘ Test "App layer contains a production call site for applyLiveUpdate(" recorded an issue
+```
+
+**Regression test against the wired state** — confirmed passes:
+
+```
+✔ Test "VisualizerEngine+Audio.swift wires the Orchestrator live-adaptation pipeline" passed
+✔ Test "App layer contains a production call site for applyLiveUpdate(" passed
+✔ Test run with 2 tests in 1 suite passed after 0.044 seconds.
+```
+
+**Orchestrator engine test suite** — 55 tests / 9 suites green, including the three cooldown tests at `LiveAdapterTests.swift:280-342` (`moodOverrideCooldown_firstOverrideFires`, `moodOverrideCooldown_secondWithin30sIsSuppressed`, `moodOverrideCooldown_afterCooldownOverrideFiresAgain`). The wire preserves the 30 s per-track mood-override cooldown machinery — `DefaultLiveAdapter.cooldownAdaptation(...)` is unchanged; the wire just calls `applyLiveUpdate(...)` at the chosen cadence and lets the adapter's internal cooldown suppress redundant calls.
+
+**App build** — `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build` — clean.
+
+**Full engine suite** — `swift test --package-path PhospheneEngine` — 1247/1248 pass; the single failure is `MetadataPreFetcherTests.fetch_networkTimeout_returnsWithinBudget()`, the pre-existing flake explicitly allowlisted by the kickoff's "pre-existing flakes" clause.
+
+**Full app suite** — `xcodebuild test -scheme PhospheneApp -destination 'platform=macOS'` — 308/328 pass; 20 failures, all timing-based parallel-execution flakes. Confirmed pre-existing by stashing my changes and re-running the same failing test classes (`AppleMusicConnectionViewModelTests`, `NetworkRecoveryCoordinatorTests`, `SpotifyConnectionViewModelTests`, `PlaybackChromeViewModelTests`) in isolation against pristine `main`: 30 tests / 4 suites passed in 8.5 s. The full-suite parallel run reproduces the same flake pattern documented in CLAUDE.md U.10 (URLProtocol stub races) + U.11 (`@MainActor` debounce timing under parallel load). None of the failing tests touch the BUG-015 wire code.
+
+**SwiftLint** — `swiftlint lint --strict --config .swiftlint.yml` — 18 violations remain on `main`, all pre-existing in `SessionRecorder.swift`, `SpectralCartographText.swift`, and `FerrofluidOcean/FerrofluidMesh.swift` (none from this increment; verified via `git log` of the violation files). The two violations my initial draft introduced (`identifier_name` for `c` in the test, `large_tuple` for the 3-element snapshot) were fixed before this entry was written.
+
+### Pending validation — needs Matt
+
+**Verification criterion #2** from the BUG-015 KNOWN_ISSUES entry: a real-music session capture's `session.log` must contain at least one line from the `Orchestrator:` / `LiveAdapter:` / `Reactive` log-line family during a > 1 minute playback. This cannot be driven from the test harness (requires screen-capture permission, real audio playback through Spotify / Apple Music / ad-hoc playback). The path of least resistance is a reactive-mode session (no playlist connected, any music source). After ~15 seconds of audio, the reactive accumulation state transitions `.listening → .ramping` and the first `Orchestrator (reactive): ...` line should fire when a score gap or boundary triggers a suggestion.
+
+**Until that capture lands, `KNOWN_ISSUES.md` keeps `Status: Open` with a "Wire landed; pending real-music validation" note in the Resolved field.** Final flip happens when Matt confirms the session-log lines appear.
+
+### Docs touched
+
+- `docs/QUALITY/KNOWN_ISSUES.md` — BUG-015 entry: `Status` annotated "Open — wire landed 2026-05-21, pending real-music session validation"; `Resolved` field annotated with the wire commit pointer once that commit lands.
+- `docs/RELEASE_NOTES_DEV.md` — this entry.
+- `docs/ENGINEERING_PLAN.md` — no update yet (BUG-015 already appears in the doc set via the CA.4 audit's filing; the wire's increment will be filed when the post-validation commit lands).
+
+### Out-of-scope follow-ups surfaced
+
+- **CA.4-FU-1** — demote dead `DefaultLiveAdapter.transitionPolicy` field (≤ 5 LOC; non-breaking; tests don't reference the parameter per the audit's grep). Decoupled from BUG-015; bundle into the next App-layer increment that touches `LiveAdapter.swift` if convenient, or ship standalone.
+- **CA.1-FU-1** — **collapsed into BUG-015's fix.** The per-frame `StructuralAnalyzer` chain stays on because the orchestrator wire now consumes its output (option (a) prediction source). No separate increment required.
+- **18 pre-existing SwiftLint violations** in `SessionRecorder.swift` (1), `SpectralCartographText.swift` (2), and `FerrofluidOcean/FerrofluidMesh.swift` (15). Outside BUG-015 scope. Memory note `project_swiftlint_baseline.md` says "0 violations after L-1 cleanup; any violation in active source paths is a regression" — these accumulated since L-1. Recommend a small lint-cleanup increment.
+
+### Git status
+
+Working tree on `main`. Pre-commit: 5 modified files + 1 new test file + 1 modified pbxproj. Files modified: `PhospheneApp.xcodeproj/project.pbxproj`, `PhospheneApp/VisualizerEngine.swift`, `PhospheneApp/VisualizerEngine+Audio.swift`, `PhospheneApp/VisualizerEngine+Capture.swift`, `PhospheneApp/VisualizerEngine+Orchestrator.swift`. New file: `PhospheneAppTests/OrchestratorWiringRegressionTests.swift`. The untracked `default.profraw` is a build artifact (carry-over, not part of this increment).
+
+`docs/QUALITY/KNOWN_ISSUES.md` BUG-012 is Open (different concept — BUG-012-i1 instrumentation in place, awaiting next reproduction). BUG-001 is Open (different concept — `REACTIVE` mode label DSP-side, not Orchestrator reactive mode). BUG-015 wire does not interfere with either bug's investigation surface.
+
+**Awaiting Matt's go-ahead** to commit the wire as commit 1 (engine + tests + pbxproj), with commit 2 (RELEASE_NOTES_DEV.md + KNOWN_ISSUES.md Resolved field) following the real-music session capture.
+
+---
+
 ## [dev-2026-05-20-c] BUG-012-i1 — MPSGraph crash instrumentation
 
 **Increment:** `[BUG-012-i1]`. **Status:** Landed 2026-05-20. Pure-observability — no behaviour change.

@@ -8,6 +8,7 @@
 // main thread (buildPlan) or the analysis queue (applyLiveUpdate). All access is
 // guarded by orchestratorLock — same pattern as stemsStateLock in +Stems.
 
+import DSP
 import Foundation
 import Metal
 import Orchestrator
@@ -247,6 +248,76 @@ extension VisualizerEngine {
 
         let patched = plan.applying(effectiveAdaptation, at: trackIndex)
         orchestratorLock.withLock { livePlan = patched }
+    }
+
+    // MARK: - BUG-015 Wire (Analysis-Queue Tick → applyLiveUpdate)
+
+    /// Cadence divisor for `runOrchestratorLiveUpdate(mir:)`. The analysis
+    /// queue ticks at the FFT-hop rate (≈ 94 Hz at 48 kHz / 512-hop), so a
+    /// divisor of 30 fires the orchestrator wire at ≈ 3.1 Hz. The 30 s
+    /// per-track mood-override cooldown (`DefaultLiveAdapter.cooldownAdaptation`
+    /// per D-080) suppresses ~94 redundant calls per allowed override at this
+    /// rate. Boundary rescheduling is unaffected by cadence — it only fires
+    /// when the live prediction drifts more than 5 s from the *rescheduled*
+    /// transition time, so a high tick rate is safe.
+    static let orchestratorWireFrameDivisor: Int = 30
+
+    /// BUG-015 wire: tick the live-adaptation pipeline at ~3 Hz from the
+    /// analysis queue. Called from `processAnalysisFrame` after each per-
+    /// frame MIR + mood update completes. Snapshots the three inputs
+    /// `applyLiveUpdate(...)` needs under one `orchestratorLock` acquisition,
+    /// then calls the engine method (which acquires its own locks as it
+    /// patches `livePlan`).
+    ///
+    /// Prediction source: `mirPipeline.latestStructuralPrediction` (option (a)
+    /// from the BUG-015 kickoff). This realises the full product claim —
+    /// boundary rescheduling fires against real per-frame structural
+    /// predictions, not a `.none` sentinel — and folds CA.1-FU-1 into this
+    /// fix: the per-frame `StructuralAnalyzer` chain in `MIRPipeline.process`
+    /// now has a runtime consumer.
+    ///
+    /// Off-plan track handling: when `livePlan != nil` but the live track has
+    /// no plan index (cover, remaster, or encoding-different variant the plan
+    /// walker couldn't match), the wire returns without calling
+    /// `applyLiveUpdate` — neither session-mode behaviour (the wrong segment
+    /// would be patched) nor reactive-mode behaviour (the user is in a
+    /// session, not an ad-hoc playback) is correct. When `livePlan == nil`,
+    /// `applyLiveUpdate` routes to `applyReactiveUpdate` and the `trackIdx`
+    /// value is ignored.
+    func runOrchestratorLiveUpdate(mir: MIRPipeline) {
+        guard analysisFrameCount % Self.orchestratorWireFrameDivisor == 0 else { return }
+
+        let snapshot = orchestratorLock.withLock {
+            OrchestratorWireSnapshot(
+                hasPlan: livePlan != nil,
+                trackIndex: liveTrackPlanIndex,
+                mood: lastClassifiedMood
+            )
+        }
+
+        if snapshot.hasPlan, snapshot.trackIndex == nil {
+            // Off-plan track in session mode — neither session nor reactive
+            // behaviour applies. Skip silently; the next track change that
+            // matches a plan entry resumes the wire.
+            return
+        }
+
+        applyLiveUpdate(
+            trackIndex: snapshot.trackIndex ?? 0,
+            elapsedTrackTime: mir.elapsedSeconds,
+            boundary: mir.latestStructuralPrediction,
+            mood: snapshot.mood
+        )
+    }
+
+    /// Single-acquisition snapshot of the three `applyLiveUpdate(...)` inputs
+    /// that live behind `orchestratorLock`. Kept as a struct rather than a
+    /// tuple so SwiftLint's `large_tuple` rule stays satisfied; same shape,
+    /// same semantics.
+    private struct OrchestratorWireSnapshot {
+        let hasPlan: Bool
+        let trackIndex: Int?
+        let mood: EmotionalState
     }
 
     // MARK: - Reactive Mode (Ad-Hoc Sessions)

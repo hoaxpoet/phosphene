@@ -489,6 +489,29 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Set on entry, reset to nil when `buildPlan()` succeeds (real plan takes over).
     var reactiveSessionStart: Date?
 
+    // MARK: - BUG-015 Live-Adaptation Wire Inputs
+
+    /// 0-based plan index for the live track, resolved on the audio thread in
+    /// `makeTrackChangeCallback`. Read by `runOrchestratorLiveUpdate(mir:)` on
+    /// the analysis queue. Nil when no plan exists OR when the live track is
+    /// not in the plan (cover/remaster/encoding-different variant). Guarded by
+    /// `orchestratorLock` so cross-thread access is race-free (BUG-015).
+    ///
+    /// Separate from the `@Published var currentTrackIndex: Int?` SwiftUI
+    /// surface: that one is MainActor-bound (written inside a
+    /// `Task { @MainActor }` block), so it is not safe to read from the
+    /// analysis queue without a thread hop. This field is the lock-guarded
+    /// analysis-queue mirror — same value, different access discipline.
+    var liveTrackPlanIndex: Int?
+
+    /// Most recent mood classification (post-stability attenuation) written
+    /// by `publishMoodResult` on the analysis queue. Read by
+    /// `runOrchestratorLiveUpdate(mir:)` on the same queue and passed into
+    /// `applyLiveUpdate(mood:)` (BUG-015). Defaults to `.neutral` so the wire
+    /// is well-defined before the first mood frame fires (≈ first 3 seconds).
+    /// Guarded by `orchestratorLock`.
+    var lastClassifiedMood: EmotionalState = .neutral
+
     // MARK: - Preset Signaling (V.7.6.2)
 
     /// Subscription to the active preset's `presetCompletionEvent`. Replaced on

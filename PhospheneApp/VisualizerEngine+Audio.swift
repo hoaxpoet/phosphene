@@ -171,8 +171,17 @@ extension VisualizerEngine {
         // the offline pre-analysis path.
         runLiveBeatAnalysisIfNeeded()
 
-        guard let mood = moodClassifier else { return }
-        runMoodClassifier(mood: mood, fv: fv, mir: mir, magnitudes: magnitudes)
+        if let mood = moodClassifier {
+            runMoodClassifier(mood: mood, fv: fv, mir: mir, magnitudes: magnitudes)
+        }
+
+        // BUG-015: tick the orchestrator live-adaptation pipeline at ~3 Hz
+        // (every 30th analysis frame). Runs regardless of whether the mood
+        // classifier fired this frame — boundary rescheduling and the
+        // reactive-mode path do not strictly require a fresh mood value
+        // (the cached `lastClassifiedMood` defaults to `.neutral` until
+        // the first classification lands ~3 s into a session).
+        runOrchestratorLiveUpdate(mir: mir)
     }
 
     /// Slide a 1024-sample window through the most recent separated stem
@@ -415,6 +424,12 @@ extension VisualizerEngine {
         attenuated.valence *= stability
         attenuated.arousal *= stability
         pipeline.setMood(valence: attenuated.valence, arousal: attenuated.arousal)
+
+        // BUG-015: cache the post-stability-attenuated mood for the
+        // analysis-queue orchestrator wire. Same lock that guards `livePlan`
+        // and `liveTrackPlanIndex` so a single acquisition snapshots the
+        // full call-input set for `applyLiveUpdate(...)`.
+        orchestratorLock.withLock { lastClassifiedMood = attenuated }
 
         // Publish signal-quality changes to session.log on transitions (not
         // every frame).  Read the snapshot here on the analysis queue so the

@@ -50,6 +50,7 @@
 		P10002 /* EndedViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = P20002; };
 		P10003 /* ConnectingViewCancelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = P20003; };
 		P10004 /* PlaybackChromeIndexBindingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = P20004; };
+		P10005 /* OrchestratorWiringRegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = P20005; };
 		A10003 /* PhospheneEngine in Frameworks */ = {isa = PBXBuildFile; productRef = A80001; };
 		A10010 /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20010; };
 		A10011 /* MetalKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20011; };
@@ -208,6 +209,7 @@
 		P20002 /* EndedViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EndedViewTests.swift; sourceTree = "<group>"; };
 		P20003 /* ConnectingViewCancelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectingViewCancelTests.swift; sourceTree = "<group>"; };
 		P20004 /* PlaybackChromeIndexBindingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackChromeIndexBindingTests.swift; sourceTree = "<group>"; };
+		P20005 /* OrchestratorWiringRegressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrchestratorWiringRegressionTests.swift; sourceTree = "<group>"; };
 		O20007 /* DarkVibrancyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DarkVibrancyView.swift; sourceTree = "<group>"; };
 		A20004 /* PhospheneApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PhospheneApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A20005 /* PhospheneEngine */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = PhospheneEngine; path = PhospheneEngine; sourceTree = "<group>"; };
@@ -693,6 +695,7 @@
 				P20002 /* EndedViewTests.swift */,
 				P20003 /* ConnectingViewCancelTests.swift */,
 				P20004 /* PlaybackChromeIndexBindingTests.swift */,
+				P20005 /* OrchestratorWiringRegressionTests.swift */,
 			);
 			path = PhospheneAppTests;
 			sourceTree = "<group>";
@@ -971,6 +974,7 @@
 				P10002 /* EndedViewTests.swift in Sources */,
 				P10003 /* ConnectingViewCancelTests.swift in Sources */,
 				P10004 /* PlaybackChromeIndexBindingTests.swift in Sources */,
+				P10005 /* OrchestratorWiringRegressionTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
