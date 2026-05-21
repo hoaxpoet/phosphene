@@ -18,14 +18,20 @@ private let logger = Logger(subsystem: "com.phosphene", category: "SpectralHisto
 ///
 /// GPU buffer layout (4096 Float32 = 16 384 bytes, bound at fragment index 5):
 /// ```
-/// [0..479]    valence        (-1..1, raw)
-/// [480..959]  arousal        (-1..1, raw)
-/// [960..1439] beat_phase01   (0..1, raw sawtooth)
-/// [1440..1919] bass_dev      (0..1, positive deviation)
-/// [1920..2399] bar_phase01   (0..1, phrase-level sawtooth; 0 = no BeatGrid)
-/// [2400]      write_head     (integer stored as Float, 0..479)
-/// [2401]      samples_valid  (integer stored as Float, capped at 480)
-/// [2402..4095] reserved      (zeroed; future consumers)
+/// [0..479]     valence            (-1..1, raw)
+/// [480..959]   arousal            (-1..1, raw)
+/// [960..1439]  beat_phase01       (0..1, raw sawtooth)
+/// [1440..1919] bass_dev           (0..1, positive deviation)
+/// [1920..2399] bar_phase01        (0..1, phrase-level sawtooth; 0 = no BeatGrid)
+/// [2400]       write_head         (integer stored as Float, 0..479)
+/// [2401]       samples_valid      (integer stored as Float, capped at 480)
+/// [2402..2417] beat_times[16]     (seconds relative to playback head; Float.infinity = unused)
+/// [2418]       bpm                (cached BeatGrid BPM; 0 = no grid / reactive)
+/// [2419]       lock_state         (0=unlocked / 1=locking / 2=locked)
+/// [2420]       session_mode       (0=reactive / 1=planned+unlocked / 2=planned+locking / 3=planned+locked)
+/// [2421..2428] downbeat_times[8]  (seconds relative to playback head; Float.infinity = unused)
+/// [2429]       drift_ms           (drift-tracker correction; 0 = no grid / reactive)
+/// [2430..4095] reserved           (zeroed; future consumers)
 /// ```
 public final class SpectralHistoryBuffer: @unchecked Sendable {
 

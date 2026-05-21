@@ -32,7 +32,7 @@ public struct AnalyzedFrame: Sendable {
     /// Per-stem separation metadata (vocals, drums, bass, other).
     public var stemData: StemData
 
-    /// Packed feature vector for GPU uniform upload (96 bytes).
+    /// Packed feature vector for GPU uniform upload (192 bytes / 48 floats per D-099 / DM.2).
     public var featureVector: FeatureVector
 
     /// Continuous valence/arousal emotional state.

@@ -1,7 +1,8 @@
 // DashboardTokens — Static design-system tokens for the Telemetry dashboard.
 //
-// Lives in Shared so future SwiftUI chrome (settings, inspector) can consume the
-// same palette without depending on the Renderer module (D-080).
+// Lives in Shared so SwiftUI chrome (settings, inspector, App-side dashboard
+// cards) can consume the same palette without depending on the Renderer module
+// (D-081 / DASH.1.1; see DECISIONS.md for the placement rationale).
 //
 // All values are compile-time constants — no instances, no allocations.
 // Color values are derived from `.impeccable.md` OKLCH spec via offline
