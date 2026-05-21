@@ -6,6 +6,42 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-21-b] SwiftLint baseline restoration — 18 → 0 violations
+
+**Increment:** lint cleanup (no increment ID — small dedicated pass). **Status:** Landed 2026-05-21 alongside BUG-015. Local commits only; not pushed.
+
+### What this is
+
+`swiftlint lint --strict --config .swiftlint.yml` had drifted from the post-L-1 0-violation baseline to **18 violations** by 2026-05-21, surfaced during the BUG-015 fix increment. Memory note `project_swiftlint_baseline.md` documents the baseline. All 18 violations were pre-existing and unrelated to BUG-015 — they had accumulated across the V.9 Session 4.5c Ferrofluid Ocean work and the SpectralCartograph DSP.3.3 additions.
+
+### Files changed
+
+| File | Violation class | Fix |
+|---|---|---|
+| `PhospheneEngine/Sources/Presets/FerrofluidOcean/FerrofluidMesh.swift` | `colon` (×5) | Removed alignment padding in `Vertex` struct and GPU-resource declarations. |
+| `PhospheneEngine/Sources/Presets/FerrofluidOcean/FerrofluidMesh.swift` | `line_length` | Bound `colorAttachmentFormats.count` to a local before the log call. |
+| `PhospheneEngine/Sources/Presets/FerrofluidOcean/FerrofluidMesh.swift` | `multiline_arguments` (×3) | Vertex constructor now uses one-arg-per-line form. |
+| `PhospheneEngine/Sources/Presets/FerrofluidOcean/FerrofluidMesh.swift` | `operator_usage_whitespace` (×4) | Removed alignment spaces around `*` in the index-fill loop. |
+| `PhospheneEngine/Sources/Presets/FerrofluidOcean/FerrofluidMesh.swift` | `cyclomatic_complexity` + `function_body_length` (init) | Paired `// swiftlint:disable` around `init?`; inline TODO to factor `vertex-grid population` + `pipeline-state setup` into helpers during the next Ferrofluid increment. |
+| `PhospheneEngine/Sources/Presets/SpectralCartographText.swift` | `function_parameter_count` (×2: `drawBeatInBar` 8 params, `drawDriftReadout` 7 params) | Paired `// swiftlint:disable function_parameter_count` around both private static draw helpers. Parameter shapes (4 audio-state inputs + vertical position + 3-param canvas context) are intentional and shared with the sibling draw helpers. |
+| `PhospheneEngine/Sources/Shared/SessionRecorder.swift` | `file_length` (408 / 400) | Extracted `recordStemSeparation(...)` to new `SessionRecorder+Stems.swift`. The split follows the established `+CSV` / `+RawTap` / `+Video` extension pattern. Main file now 375 lines. |
+| `PhospheneEngine/Sources/Shared/SessionRecorder+Stems.swift` | *(new file, ~37 lines)* | Stem-WAV-dump extension extracted from main file. |
+
+### Verification
+
+- `swiftlint lint --strict --config .swiftlint.yml` — **0 violations across 371 files** (was 18, was 370 files pre-extraction).
+- `swift test --package-path PhospheneEngine` — **green** modulo the documented pre-existing flakes: `MetadataPreFetcher.fetch_networkTimeout` (timing flake), `SoakTestHarness.cancel()` (timing flake under parallel load), and 4 cascading failures from a missing `love_rehab.m4a` fixture (`PhospheneEngine/Tests/Fixtures/tempo/love_rehab.m4a` does not exist in this worktree — fixture presence gate fires as designed).
+- `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build` — **BUILD SUCCEEDED**.
+- `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' test` — **green** modulo the same engine flakes + documented app-layer parallel-execution timing flakes: `ToastManager.autoDismiss_afterDuration`, `AppleMusicConnectionViewModel.noCurrentPlaylist`, `ReadyViewTimeoutIntegrationTests.test_retry_resets_audio_detector_state`, plus 5 `SpotifyOAuthTokenProvider` tests that fail with `SpotifyClientID missing from Info.plist` (environment, not regression).
+
+### Notes
+
+The FerrofluidMesh init disable was the only non-mechanical choice. The init bundles guard-based allocation + pipeline-state compilation + grid population into one routine; splitting would scatter the failure paths across helpers with no readability benefit at the cyclomatic-complexity-12 size. The disable carries a TODO to revisit during the next Ferrofluid increment when separate vertex-grid-population and pipeline-state-setup helpers would be independently testable.
+
+Memory note `project_swiftlint_baseline.md` refreshed to reflect the 2026-05-21 cleanup (new files added; no L-1-era files removed).
+
+---
+
 ## [dev-2026-05-21-a] BUG-015 — Wire `applyLiveUpdate(...)` to runtime audio path
 
 **Increment:** `[BUG-015]`. **Status:** Wire landed 2026-05-21; **pending Matt's real-music session validation before final Resolved flip in `KNOWN_ISSUES.md`** (verification criterion #2 — manual session-log capture — needs a real audio session and cannot be driven from the test harness).
