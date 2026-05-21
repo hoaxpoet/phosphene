@@ -8,41 +8,6 @@ import os.log
 
 private let logger = Logger(subsystem: "com.phosphene", category: "shared")
 
-// MARK: - Protocol
-
-/// Abstracts a ring buffer that accumulates interleaved stereo PCM samples
-/// for downstream stem separation. Protocol exists for test doubles.
-public protocol StemSampleBuffering: AnyObject, Sendable {
-    /// Append interleaved stereo samples to the ring buffer. Thread-safe.
-    func write(samples: UnsafePointer<Float>, count: Int)
-
-    /// Copy the latest `seconds` worth of interleaved stereo samples.
-    /// Returns an empty array if insufficient data has been written.
-    func snapshotLatest(seconds: Double) -> [Float]
-
-    /// Copy the latest `seconds` of interleaved stereo samples using `sampleRate`
-    /// as the actual audio rate instead of the buffer's stored initialization rate.
-    ///
-    /// Use this when the Core Audio tap rate differs from the rate the buffer was
-    /// initialized with (e.g. tap at 48000 Hz, buffer initialized at 44100 Hz).
-    /// Passing the actual rate ensures the correct number of frames is retrieved.
-    func snapshotLatest(seconds: Double, sampleRate: Double) -> [Float]
-
-    /// Compute the RMS energy of the latest `seconds` of buffered audio.
-    /// Returns 0 if no data is available. Thread-safe.
-    func rms(seconds: Double) -> Float
-
-    /// Compute the RMS energy of the latest `seconds` using `sampleRate` as the
-    /// actual audio rate, mirroring the rate-aware `snapshotLatest` overload so
-    /// callers running on a tap whose rate differs from the buffer init rate
-    /// (e.g. tap at 48000 Hz, buffer initialized at 44100 Hz) measure energy
-    /// over the correct number of frames.
-    func rms(seconds: Double, sampleRate: Double) -> Float
-
-    /// Clear all stored samples (e.g., on track change). Thread-safe.
-    func reset()
-}
-
 // MARK: - StemSampleBuffer
 
 /// Thread-safe interleaved stereo PCM ring buffer.
@@ -51,7 +16,7 @@ public protocol StemSampleBuffering: AnyObject, Sendable {
 /// When full, new samples overwrite the oldest. Storage is a plain `[Float]`
 /// (CPU-only — no Metal dependency since stem separation reads on CPU before
 /// dispatching to MPSGraph on GPU).
-public final class StemSampleBuffer: StemSampleBuffering, @unchecked Sendable {
+public final class StemSampleBuffer: @unchecked Sendable {
 
     // MARK: - Properties
 
@@ -76,7 +41,7 @@ public final class StemSampleBuffer: StemSampleBuffering, @unchecked Sendable {
         self.storage = [Float](repeating: 0, count: self.capacity)
     }
 
-    // MARK: - StemSampleBuffering
+    // MARK: - API
 
     public func write(samples: UnsafePointer<Float>, count: Int) {
         guard count > 0 else { return }

@@ -12,56 +12,6 @@ import os.log
 
 private let logger = Logger(subsystem: "com.phosphene", category: "SpectralHistory")
 
-// MARK: - Protocol
-
-/// Abstracts the spectral history GPU buffer; enables test doubles.
-public protocol SpectralHistoryPublishing: AnyObject, Sendable {
-    /// Pre-allocated `.storageModeShared` MTLBuffer for fragment binding at index 5.
-    var gpuBuffer: MTLBuffer { get }
-
-    /// Append one frame's worth of MIR data to the ring buffers.
-    /// Call exactly once per frame, before fragment encoders are created.
-    func append(features: FeatureVector, stems: StemFeatures)
-
-    // swiftlint:disable function_parameter_count
-    /// Write cached beat-grid metadata for the SpectralCartograph diagnostic overlay.
-    /// Thread-safe — may be called from the analysis queue while `append` runs on the render thread.
-    /// `relativeBeatTimes`: up to 16 beat times in seconds relative to current playback head
-    ///   (positive = upcoming). Pass `Float.infinity` or fewer than 16 entries for unused slots.
-    /// `relativeDownbeatTimes`: up to 8 downbeat times (same convention). Unused = `Float.infinity`.
-    /// `bpm`: BPM from the cached BeatGrid (0 = no grid).
-    /// `lockState`: 0 = unlocked, 1 = locking, 2 = locked.
-    /// `sessionMode`: 0 = reactive, 1 = planned+unlocked, 2 = planned+locking, 3 = planned+locked.
-    /// `driftMs`: current drift-tracker correction in milliseconds (0 = no grid / reactive).
-    func updateBeatGridData(
-        relativeBeatTimes: [Float],
-        relativeDownbeatTimes: [Float],
-        bpm: Float,
-        lockState: Int,
-        sessionMode: Int,
-        driftMs: Float
-    )
-    // swiftlint:enable function_parameter_count
-
-    /// Read cached BPM and lock state for the DynamicTextOverlay callback.
-    /// Thread-safe — uses the beat-grid lock.
-    /// Returns `(bpm: 0, lockState: 0)` when no grid is available.
-    func readOverlayState() -> (bpm: Float, lockState: Int)
-
-    /// Read the session mode written by the analysis queue.
-    /// Thread-safe — uses the beat-grid lock.
-    /// Returns 0 (reactive) when no mode has been written.
-    func readSessionMode() -> Int
-
-    /// Read the drift-tracker correction in milliseconds.
-    /// Thread-safe — uses the beat-grid lock.
-    /// Returns 0 when no grid is installed.
-    func readDriftMs() -> Float
-
-    /// Zero the buffer and reset ring indices. Call on track change.
-    func reset()
-}
-
 // MARK: - SpectralHistoryBuffer
 
 /// Per-frame MIR history ring buffer for the `instrument` preset family.
@@ -77,7 +27,7 @@ public protocol SpectralHistoryPublishing: AnyObject, Sendable {
 /// [2401]      samples_valid  (integer stored as Float, capped at 480)
 /// [2402..4095] reserved      (zeroed; future consumers)
 /// ```
-public final class SpectralHistoryBuffer: SpectralHistoryPublishing, @unchecked Sendable {
+public final class SpectralHistoryBuffer: @unchecked Sendable {
 
     // MARK: - Layout Constants
 
