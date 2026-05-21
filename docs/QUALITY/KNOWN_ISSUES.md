@@ -8,6 +8,106 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 ---
 
+### BUG-016 — Lumen Mosaic "not working" in 2026-05-21 reactive-mode sessions
+
+**Severity:** P2 (visible degradation on one production preset; not session-blocking — Matt cycled past it in both 2026-05-21 sessions and the remaining catalog rendered correctly).
+**Domain tag:** preset.fidelity
+**Status:** Open — reproduction incomplete. Matt reported "Lumen Mosaic was not working on my last session" while running the BUG-015 validation capture (2026-05-21). Concrete symptom not yet captured. Filed to ensure the finding doesn't get lost; needs a follow-up reproduction with the symptom documented before fix work begins.
+**Introduced:** Unknown. Lumen Mosaic's most recent published increments are LM.4.7 (palette library, BUG-014 resolution) and LM.7 in `ARCHITECTURE.md §Module Map`. Whether the failure post-dates one of those increments or is a pre-existing issue surfaced by reactive-mode catalog cycling is not yet established.
+**Resolved:** —
+
+---
+
+### Expected behavior
+
+Lumen Mosaic renders a 4-light pattern engine driving a cell-mosaic surface with per-beat cell-colour dance per the CLAUDE.md "Visual Quality Floor / Authoring Discipline" notes (preset has strong drums + vocals stem affinity; cell-depth gradient via albedo per the Failed Approach #23 scope clarification; pale-tone-share ≤ 0.30 per LM.9). Selecting Lumen Mosaic via `Shift+→` in either reactive or session-mode playback should produce the certified visual.
+
+### Actual behavior
+
+Matt's report: "Lumen Mosaic was not working." Symptom not characterized further. Candidate failure modes the investigation should distinguish on the next reproduction:
+
+1. **Black or blank screen.** Suggests a Metal pipeline state failure — empty draw, missing texture binding, or shader compilation error caught only at runtime. Look in `~/Library/Logs/DiagnosticReports/` and the unified log for Metal errors near the preset switch.
+2. **Stuck on a previous preset's image.** Suggests the preset apply path failed silently — `applyPreset` returned without binding the new pipeline state. Look in `session.log` for the `preset → Lumen Mosaic` line followed by zero subsequent rendering activity.
+3. **Visual artifacts (corrupted geometry, garbled colours, frame-rate stutter).** Suggests a shader or buffer-binding bug. Check fragment-slot bindings, particularly slot 8 (LM.2 / D-LM-buffer-slot-8 — the 336-byte `LumenPatternEngine` UMA buffer).
+4. **No audio response.** Suggests the per-frame tick or stem-affinity routing is broken. The preset's audio coupling lives in `LumenPatternEngine` (App layer) flushing state to slot 8.
+5. **Pale-dominant ground (LM.9 regression).** Aggregate pale-cell share > 0.30 — would mean LM.9's cert gate isn't enforcing post-LM.4.7. Visually the panel reads as cream-dominated rather than vivid.
+
+The prior 2026-05-21T13-58-07Z session.log shows Lumen Mosaic was active for ~11 s (lines 36–38 of that capture: `[13:59:22Z] preset → Lumen Mosaic` → `[13:59:33Z] preset → Membrane`) with no error/warning lines emitted in that window — consistent with "rendered something, but not what was expected" rather than "crashed or produced no frames."
+
+### Reproduction steps
+
+1. Build and launch the app: `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build` then run from Xcode or `open` the built bundle.
+2. Grant screen-capture permission if prompted.
+3. Start music playback (Spotify, Apple Music, or any system audio source).
+4. Cycle to Lumen Mosaic via `Shift+→` (8 presses from the default Waveform per the 2026-05-21 capture order: Arachne → Aurora Veil → Ferrofluid Ocean → Fractal Tree → Glass Brutalist → Gossamer → Kinetic Sculpture → Lumen Mosaic).
+5. Observe: characterize the symptom against the 5 candidates above. Capture a screenshot or short video.
+6. End the session normally so `session.log`, `features.csv`, `stems.csv`, `video.mp4` are all written.
+
+**Minimum reproducer:** any music source, any track. Lumen Mosaic's failure is preset-level and should reproduce regardless of audio content. The "any track" claim needs verification — the 2026-05-21T13-58-07Z capture was Led Zeppelin "Black Dog"; whether the symptom is track-correlated or universal is part of the open diagnosis.
+
+---
+
+### Session artifacts
+
+**Session directory:** `~/Documents/phosphene_sessions/2026-05-21T13-58-07Z/` (Lumen Mosaic was active from 13:59:22Z to 13:59:33Z — ~11 s of frames are buried in `video.mp4` at that timestamp range).
+
+Additional artifacts needed on next reproduction:
+
+- A still screenshot of the broken state (most diagnostic; the existing video has the frames but a fresh screenshot at known wall-clock is faster).
+- `session.log` from a session where the user holds on Lumen Mosaic for ≥ 30 s rather than cycling past in 11 s.
+- The unified-log Metal-related lines around the preset switch:
+  ```
+  log show --predicate 'subsystem == "com.phosphene" OR subsystem CONTAINS "Metal"' --info --last 5m
+  ```
+
+```log
+[2026-05-21T13:59:22Z] preset → Lumen Mosaic     ← switch happened
+[2026-05-21T13:59:26Z] stem separation 10 ...    ← +4s, stem pipeline still firing
+[2026-05-21T13:59:31Z] stem separation 11 ...    ← +9s, no errors
+[2026-05-21T13:59:33Z] preset → Membrane         ← Matt cycled away
+```
+
+No error or warning lines in the 11-second Lumen Mosaic window.
+
+---
+
+### Suspected failure class
+
+`pipeline-wiring` OR `render-state` OR `regression` — cannot narrow without symptom characterization. The session.log silence rules out a crash; rules in: silent shader failure, wrong buffer binding, palette-library regression from LM.4.7, or a recent unintentional change to the LumenPatternEngine tick.
+
+**Evidence for this class:** the failure is preset-specific (other presets in the cycle rendered correctly per the same session.log), Metal pipeline state binding is per-preset, and Lumen Mosaic's slot-8 fragment buffer dispatch is unique in the catalog.
+
+---
+
+### Verification criteria
+
+When this defect is resolved, the following must all pass:
+
+- [ ] Matt confirms Lumen Mosaic renders correctly in a reactive-mode session ≥ 30 s of held-on time.
+- [ ] Visual matches the LM.7 reference frames in `docs/VISUAL_REFERENCES/LumenMosaic/` (if a curated reference set exists — needs verification during the diagnosis).
+- [ ] Pale-tone-share ≤ 0.30 maintained per LM.9.
+- [ ] `PresetVisualReviewTests` or equivalent harness still produces a recognizable Lumen Mosaic render (if such a harness exists for this preset; if not, that's a separate gap to file).
+
+**Manual validation required:** Yes — preset.fidelity per CLAUDE.md's Defect Handling Protocol. Automated golden-hash regression is insufficient; Matt's M7-style review is the load-bearing check.
+
+---
+
+### Fix scope
+
+Unknown until symptom is characterized. Candidate scopes by failure class:
+
+- *Pipeline wiring:* small (≤ 20 LOC) — buffer binding, slot ordering, or tick closure registration in `VisualizerEngine+Presets.swift` (`applyPreset .lumenMosaic:` branch).
+- *Shader / render-state:* medium — `LumenMosaic.metal` regression, possibly tied to a recent shader-library change.
+- *Palette-library regression (LM.4.7):* small-to-medium — depends on which palette and which mood-mapping broke.
+
+Filed before the diagnosis per CLAUDE.md "evidence-before-implementation" so future-Matt + future-Claude know this is open and unresolved rather than buried in chat.
+
+### Related
+
+CLAUDE.md §Visual Quality Floor (pale-tone-share rule per D-LM-cream-rescission); `docs/SHADER_CRAFT.md §12.1` (Lumen Mosaic cert gates); D-LM-buffer-slot-8 (slot 8 fragment-buffer reservation); D-LM-palette-library (LM.4.7 curated palettes); D-LM-cream-rescission (the rescinded categorical anti-cream rule). BUG-014 (Resolved via LM.4.7 — verify no orchestrator-side scoring path encodes the pre-LM.4.7 palette assumption; this BUG-016 is a separate observed failure post-LM.4.7).
+
+---
+
 ### BUG-015 — `applyLiveUpdate(...)` has zero production call sites; Orchestrator live-adaptation pipeline is dead at runtime
 
 **Severity:** P1 (load-bearing product claim — "the AI Orchestrator has planned the entire visual session and adapts as the music unfolds" per CLAUDE.md top — the adaptation half does not run).
