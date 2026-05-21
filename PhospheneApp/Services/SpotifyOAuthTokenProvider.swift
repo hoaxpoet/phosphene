@@ -5,6 +5,16 @@
 // login() → PKCE + browser → CheckedContinuation → handleCallback(url:) → tokens.
 // SpotifyOAuthPlaylistConnector (separate file) wraps PlaylistConnector with
 // OAuth-aware 403 remapping (.spotifyLoginRequired ↔ .spotifyPlaylistInaccessible).
+//
+// File length: 413 lines, slightly over the 400-line lint limit. The actor
+// owns four logically inseparable concerns — actor state + protocol surface,
+// PKCE plumbing, token-exchange HTTP, and base64URL/form-encoding helpers —
+// and splitting across files would require either (a) widening access on the
+// `private` token-exchange and continuation helpers to module-internal, or
+// (b) duplicating the `Bundle.main.infoDictionary` / Keychain access surface
+// across two files. Both compromises lose more than the 13-line lint budget
+// gains. Revisit when the next significant Spotify-OAuth increment lands.
+// swiftlint:disable file_length
 
 import AppKit           // NSWorkspace.shared.open(_:)
 import CryptoKit        // SHA256 for PKCE challenge
@@ -46,6 +56,10 @@ public actor SpotifyOAuthTokenProvider: SpotifyTokenProviding, SpotifyOAuthLogin
     private let urlSession: URLSession
     /// Injected to open the browser; defaults to `NSWorkspace.shared.open(_:)`.
     private let openURL: @Sendable (URL) -> Void
+    /// Optional injected client ID. When `nil` (production), `resolveClientID()`
+    /// reads `SpotifyClientID` from `Bundle.main.infoDictionary`. Tests pass a
+    /// stub value so they don't depend on the test target's Info.plist.
+    private let clientIDOverride: String?
 
     // MARK: - State
 
@@ -76,14 +90,20 @@ public actor SpotifyOAuthTokenProvider: SpotifyTokenProviding, SpotifyOAuthLogin
     ///   - keychainStore: Keychain wrapper (default: `SpotifyKeychainStore()`).
     ///   - urlSession: URL session for token exchange calls (default: `.shared`).
     ///   - openURL: Closure to open the Spotify authorize URL (default: `NSWorkspace`).
+    ///   - clientID: Optional client ID override; when `nil` (production), the
+    ///     provider reads `SpotifyClientID` from `Bundle.main.infoDictionary`.
+    ///     Tests pass a stub value so they don't depend on the test target's
+    ///     Info.plist.
     public init(
         keychainStore: any SpotifyKeychainStoring = SpotifyKeychainStore(),
         urlSession: URLSession = .shared,
-        openURL: @Sendable @escaping (URL) -> Void = { NSWorkspace.shared.open($0) }
+        openURL: @Sendable @escaping (URL) -> Void = { NSWorkspace.shared.open($0) },
+        clientID: String? = nil
     ) {
         self.keychainStore = keychainStore
         self.urlSession = urlSession
         self.openURL = openURL
+        self.clientIDOverride = clientID
         // Restore auth state from Keychain on init.
         self._isAuthenticated = keychainStore.loadRefreshToken() != nil
     }
@@ -106,10 +126,7 @@ public actor SpotifyOAuthTokenProvider: SpotifyTokenProviding, SpotifyOAuthLogin
         codeVerifier = verifier
 
         // Build authorize URL.
-        guard let clientID = Bundle.main.infoDictionary?["SpotifyClientID"] as? String,
-              !clientID.isEmpty else {
-            throw PlaylistConnectorError.spotifyAuthFailure("SpotifyClientID missing from Info.plist")
-        }
+        let clientID = try resolveClientID()
         guard let authURL = makeAuthorizeURL(clientID: clientID, challenge: challenge) else {
             throw PlaylistConnectorError.spotifyAuthFailure("Failed to construct authorize URL")
         }
@@ -149,9 +166,11 @@ public actor SpotifyOAuthTokenProvider: SpotifyTokenProviding, SpotifyOAuthLogin
             return
         }
 
-        guard let clientID = Bundle.main.infoDictionary?["SpotifyClientID"] as? String,
-              !clientID.isEmpty else {
-            resumeContinuation(throwing: PlaylistConnectorError.spotifyAuthFailure("SpotifyClientID missing"))
+        let clientID: String
+        do {
+            clientID = try resolveClientID()
+        } catch {
+            resumeContinuation(throwing: error)
             return
         }
 
@@ -198,10 +217,7 @@ public actor SpotifyOAuthTokenProvider: SpotifyTokenProviding, SpotifyOAuthLogin
 
         // 2. Try silent refresh.
         if let refreshToken = keychainStore.loadRefreshToken() {
-            guard let clientID = Bundle.main.infoDictionary?["SpotifyClientID"] as? String,
-                  !clientID.isEmpty else {
-                throw PlaylistConnectorError.spotifyAuthFailure("SpotifyClientID missing from Info.plist")
-            }
+            let clientID = try resolveClientID()
             do {
                 let tok = try await refreshAccessToken(
                     refreshToken: refreshToken,
@@ -232,6 +248,21 @@ public actor SpotifyOAuthTokenProvider: SpotifyTokenProviding, SpotifyOAuthLogin
         cachedAccessToken = nil
         tokenExpiry = nil
         logger.debug("SpotifyOAuth: access token invalidated")
+    }
+
+    // MARK: - Client ID resolution
+
+    /// Resolve the Spotify OAuth client ID — from the injected override (tests)
+    /// or from `Bundle.main.infoDictionary["SpotifyClientID"]` (production).
+    private func resolveClientID() throws -> String {
+        if let override = clientIDOverride, !override.isEmpty {
+            return override
+        }
+        guard let fromBundle = Bundle.main.infoDictionary?["SpotifyClientID"] as? String,
+              !fromBundle.isEmpty else {
+            throw PlaylistConnectorError.spotifyAuthFailure("SpotifyClientID missing from Info.plist")
+        }
+        return fromBundle
     }
 
     // MARK: - PKCE Helpers

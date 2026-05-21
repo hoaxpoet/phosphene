@@ -89,7 +89,8 @@ private func makeProvider(
     return SpotifyOAuthTokenProvider(
         keychainStore: keychain,
         urlSession: makeSession(),
-        openURL: openURL
+        openURL: openURL,
+        clientID: "test_client_id"
     )
 }
 
