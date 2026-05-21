@@ -108,7 +108,12 @@ private func makeSessionManager(
 
 @MainActor
 private func waitUntilNotPreparing(_ manager: SessionManager) async {
-    let deadline = Date().addingTimeInterval(3)
+    // 10 s deadline (was 3 s) to absorb parallel-execution contention during
+    // 1248-test runs — observed manager.state == .preparing at the 3 s mark
+    // on a worktree session with the broader suite under heavy load. The
+    // U.11 precedent (CLAUDE.md) carries 2-3× headroom over the worst
+    // observed delay.
+    let deadline = Date().addingTimeInterval(10)
     while manager.state == .preparing && Date() < deadline {
         try? await Task.sleep(nanoseconds: 10_000_000)
     }
