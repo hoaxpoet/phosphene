@@ -18,8 +18,8 @@ import Foundation
 /// Construct with the rate you want at 30 fps (`rate30`); call
 /// `factor(at:)` to get the per-frame decay at the actual fps. Used
 /// either as a multiplicative decay (`current *= factor`) or as the
-/// retain weight in an EMA (`result = factor * current + (1 - factor) * target`,
-/// available as `step(current:target:at:)`).
+/// retain weight in an inline EMA
+/// (`result = factor * current + (1 - factor) * target`).
 @frozen
 public struct Smoother: Sendable {
 
@@ -37,16 +37,5 @@ public struct Smoother: Sendable {
     @inlinable
     public func factor(at fps: Float) -> Float {
         powf(rate30, 30.0 / fps)
-    }
-
-    /// EMA step: `result = factor * current + (1 - factor) * target`.
-    ///
-    /// Convenience wrapper for the common "smoothed value moves toward a
-    /// new target each frame" pattern. Equivalent to computing
-    /// `factor(at:)` and applying the mix inline.
-    @inlinable
-    public func step(current: Float, target: Float, at fps: Float) -> Float {
-        let alpha = factor(at: fps)
-        return alpha * current + (1 - alpha) * target
     }
 }
