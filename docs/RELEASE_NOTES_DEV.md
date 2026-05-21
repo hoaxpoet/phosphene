@@ -22,7 +22,7 @@ User-visible release notes are not yet in scope (no public build).
 | `PhospheneEngine/Sources/Presets/FerrofluidOcean/FerrofluidMesh.swift` | `line_length` | Bound `colorAttachmentFormats.count` to a local before the log call. |
 | `PhospheneEngine/Sources/Presets/FerrofluidOcean/FerrofluidMesh.swift` | `multiline_arguments` (×3) | Vertex constructor now uses one-arg-per-line form. |
 | `PhospheneEngine/Sources/Presets/FerrofluidOcean/FerrofluidMesh.swift` | `operator_usage_whitespace` (×4) | Removed alignment spaces around `*` in the index-fill loop. |
-| `PhospheneEngine/Sources/Presets/FerrofluidOcean/FerrofluidMesh.swift` | `cyclomatic_complexity` + `function_body_length` (init) | Paired `// swiftlint:disable` around `init?`; inline TODO to factor `vertex-grid population` + `pipeline-state setup` into helpers during the next Ferrofluid increment. |
+| `PhospheneEngine/Sources/Presets/FerrofluidOcean/FerrofluidMesh.swift` | `cyclomatic_complexity` + `function_body_length` (init) | *Initial fix:* paired `// swiftlint:disable` around `init?` with TODO. *Follow-up same day:* TODO addressed — `init?` body refactored into four private static helpers (`populateVertexGrid`, `populateIndexBuffer`, `makePipelineState`, `makeDepthStencilState`). Disables removed; init is now 44 lines / complexity 6. No behaviour change — vertex grid, index buffer, pipeline state, and depth-stencil state are byte-identical with the prior path. |
 | `PhospheneEngine/Sources/Presets/SpectralCartographText.swift` | `function_parameter_count` (×2: `drawBeatInBar` 8 params, `drawDriftReadout` 7 params) | Paired `// swiftlint:disable function_parameter_count` around both private static draw helpers. Parameter shapes (4 audio-state inputs + vertical position + 3-param canvas context) are intentional and shared with the sibling draw helpers. |
 | `PhospheneEngine/Sources/Shared/SessionRecorder.swift` | `file_length` (408 / 400) | Extracted `recordStemSeparation(...)` to new `SessionRecorder+Stems.swift`. The split follows the established `+CSV` / `+RawTap` / `+Video` extension pattern. Main file now 375 lines. |
 | `PhospheneEngine/Sources/Shared/SessionRecorder+Stems.swift` | *(new file, ~37 lines)* | Stem-WAV-dump extension extracted from main file. |
@@ -36,9 +36,9 @@ User-visible release notes are not yet in scope (no public build).
 
 ### Notes
 
-The FerrofluidMesh init disable was the only non-mechanical choice. The init bundles guard-based allocation + pipeline-state compilation + grid population into one routine; splitting would scatter the failure paths across helpers with no readability benefit at the cyclomatic-complexity-12 size. The disable carries a TODO to revisit during the next Ferrofluid increment when separate vertex-grid-population and pipeline-state-setup helpers would be independently testable.
+The FerrofluidMesh init was the only non-mechanical case. *Initial choice* was a paired `// swiftlint:disable` around `init?` with a TODO to factor helpers later — bundled allocation + pipeline-state compilation + grid population into one routine, all with `guard … else { return nil }` failure paths. *Follow-up same day* (per Matt's direction) addressed the TODO: `init?` now orchestrates four private static helpers (`populateVertexGrid`, `populateIndexBuffer`, `makePipelineState`, `makeDepthStencilState`). The guards stay in the helpers that own the failure conditions; init's own complexity drops from 12 → 6 and its body from ~90 lines → ~44. Disables removed.
 
-Memory note `project_swiftlint_baseline.md` refreshed to reflect the 2026-05-21 cleanup (new files added; no L-1-era files removed).
+Memory note `project_swiftlint_baseline.md` refreshed to reflect the 2026-05-21 cleanup (new files added; FerrofluidMesh init refactor mentioned; per-function disable list now empty).
 
 ---
 
