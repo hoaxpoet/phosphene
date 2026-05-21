@@ -65,6 +65,23 @@ swiftlint lint --strict --config .swiftlint.yml
 
 **Do NOT pass `SWIFT_TREAT_WARNINGS_AS_ERRORS=YES` on the command line.** It propagates to SPM dependencies and conflicts with `-suppress-warnings`. The flag is enforced per-target via `PhospheneApp/Phosphene.xcconfig`.
 
+### Worktree setup: fetch local audio fixtures
+
+`PhospheneEngine/Tests/Fixtures/tempo/` is gitignored — the directory contains 30-second iTunes preview clips for the DSP.1 / BUG-008 / BeatThis regression tests, and those clips are licensed (do not commit). Fresh checkouts and new `git worktree add` sessions do not inherit them.
+
+If `swift test --package-path PhospheneEngine` reports 4 `BeatThis*` / `LiveDriftValidation` / `BeatGridAccuracyDiagnostic` failures with messages like *"love_rehab.m4a missing at .../Tests/Fixtures/tempo/love_rehab.m4a"*, the fixtures are missing. Either:
+
+```bash
+# Re-fetch from the public iTunes Search CDN (covers love_rehab/so_what/there_there)
+Scripts/fetch_tempo_fixtures.sh
+
+# OR (in a worktree) copy from your main checkout if it already has them
+cp /path/to/main/checkout/PhospheneEngine/Tests/Fixtures/tempo/*.m4a \
+   PhospheneEngine/Tests/Fixtures/tempo/
+```
+
+The `BeatThisFixturePresenceGate` suite is intentionally designed to fail loudly when the fixture tree is empty — silent skips have masked the DSP.2 S8 four-bug regression surface in the past (see CLAUDE.md *§What NOT To Do* on silent fixture skips).
+
 ## Claude Code Session Checklist
 
 Every session that modifies Swift code must end with all four passing:
