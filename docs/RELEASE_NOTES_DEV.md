@@ -121,6 +121,34 @@ Working tree on `main`. Pre-commit: 5 modified files + 1 new test file + 1 modif
 
 **Awaiting Matt's go-ahead** to commit the wire as commit 1 (engine + tests + pbxproj), with commit 2 (RELEASE_NOTES_DEV.md + KNOWN_ISSUES.md Resolved field) following the real-music session capture.
 
+### Update 1 — Commit 1 landed; first validation pass inconclusive
+
+**Commit 1:** `b3f1efd9` `[BUG-015] Orchestrator: wire applyLiveUpdate to analysis-queue tick at ~3 Hz`. Landed locally on `main`. No push.
+
+**First validation capture** (Matt's `2026-05-21T13-58-07Z` session, Led Zeppelin "Black Dog - Remaster" at 166 BPM, ~110 s, 6 456 frames, 18 stem separations, ~23 manual preset switches via Shift+→). Result: `grep -E "Orchestrator|LiveAdapter|Reactive" session.log` returns **zero lines**.
+
+Inconclusive, not negative. Diagnosed:
+
+1. **In reactive mode the only existing log path is at `VisualizerEngine+Orchestrator.swift:291`**, which fires only when `decision.suggestedPreset != nil` AND `decision.accumulationState != .listening`. With rapid manual preset cycling keeping `currentPreset` well-fitted to the audio, the reactive scorer's score-gap discriminator (≥ 0.20) frequently doesn't trigger and the decision returns `holdDecision` → `suggestedPreset == nil` → no log. The wire firing → reactive holding → silent log is a valid path.
+2. **The existing Orchestrator log calls at `VisualizerEngine+Orchestrator.swift:194, 238, 291` write to `os.Logger` only, not to `session.log`.** Confirmed: `SessionRecorder.log(_:)` is the writer for `session.log` (per the explicit comment at `VisualizerEngine+WiringLogs.swift:9`); the Orchestrator log calls do not dual-write. So even if reactive *had* suggested a switch, the line would land in the unified log (`log show --predicate 'category == "VisualizerEngine"'`) but never in `session.log`. The BUG-015 kickoff's verification criterion #2 ("session.log contains ≥ 1 line from the live-adaptation event family") was structurally unmeetable as written. Doc-vs-runtime gap, not a code bug.
+
+### Update 2 — Diagnostic landed; awaiting follow-up validation capture
+
+**Commit 2 (pending push):** adds a once-per-track `Orchestrator: wire active (mode=…, planIdx=…, elapsedTrackTime=…s)` diagnostic to `runOrchestratorLiveUpdate(mir:)`. Dual-writes to `session.log` and the unified log per the `VisualizerEngine+WiringLogs.swift` pattern. Latched by `orchestratorWireLoggedThisTrack: Bool` on `VisualizerEngine`, guarded by `orchestratorLock`, reset to `false` in `makeTrackChangeCallback` so each track produces exactly one diagnostic line. Closes both ambiguity sources from the first capture:
+
+- *Reactive-hold silence:* the diagnostic fires regardless of scoring outcome — every track that plays > ~0.32 s (the first 30-frame analysis-frame tick) emits one line.
+- *Doc-vs-runtime gap:* `sessionRecorder?.log(...)` write means the line lands in `session.log`, matching the BUG-015 verification criterion's "grep against session.log" check by construction.
+
+Files touched in commit 2: `PhospheneApp/VisualizerEngine.swift` (new field + doc), `PhospheneApp/VisualizerEngine+Orchestrator.swift` (diagnostic block in `runOrchestratorLiveUpdate(mir:)`), `PhospheneApp/VisualizerEngine+Capture.swift` (per-track latch reset).
+
+Verification of commit 2:
+
+- `OrchestratorWiringRegressionTests` — green (the source-presence regression test is satisfied by either `applyLiveUpdate(` or `runOrchestratorLiveUpdate(`; the diagnostic does not alter the call-site count).
+- Orchestrator engine suite — `swift test --package-path PhospheneEngine --filter "Orchestrator|LiveAdapter|ReactiveOrchestrator|DiagnosticHold"` — 36 tests / 6 suites green.
+- SwiftLint — 0 new violations from the diagnostic.
+
+**Awaiting Matt's follow-up session capture.** Once `session.log` from a ≥ 30 s session shows `Orchestrator: wire active (mode=…, …)`, BUG-015's verification criterion #2 is satisfied and a small commit 3 flips `KNOWN_ISSUES.md` Status to Resolved and adds the commit hash to the Resolved field.
+
 ---
 
 ## [dev-2026-05-20-c] BUG-012-i1 — MPSGraph crash instrumentation

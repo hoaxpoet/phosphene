@@ -512,6 +512,22 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Guarded by `orchestratorLock`.
     var lastClassifiedMood: EmotionalState = .neutral
 
+    /// Once-per-track diagnostic latch for `runOrchestratorLiveUpdate(mir:)`
+    /// (BUG-015 follow-up). When `false`, the next wire tick that actually
+    /// reaches `applyLiveUpdate(...)` emits one `Orchestrator: wire active`
+    /// line to both `session.log` (via `sessionRecorder?.log`) and the
+    /// unified log (via `os.Logger`), then flips to `true`. Reset to
+    /// `false` in the track-change callback so each new track produces
+    /// exactly one wire-active line. Closes the BUG-015 validation
+    /// ambiguity where reactive `holdDecision` paths log nothing per the
+    /// existing log gate at `VisualizerEngine+Orchestrator.swift:291`,
+    /// AND closes the doc-vs-runtime gap noted during BUG-015's first
+    /// validation pass: existing Orchestrator log lines write to
+    /// `os.Logger` only, not to `session.log`. The diagnostic dual-writes
+    /// per the `VisualizerEngine+WiringLogs.swift` pattern.
+    /// Guarded by `orchestratorLock`.
+    var orchestratorWireLoggedThisTrack: Bool = false
+
     // MARK: - Preset Signaling (V.7.6.2)
 
     /// Subscription to the active preset's `presetCompletionEvent`. Replaced on
