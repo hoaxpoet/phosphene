@@ -108,6 +108,40 @@ CLAUDE.md §Visual Quality Floor (pale-tone-share rule per D-LM-cream-rescission
 
 ---
 
+### Addendum (CA-Presets, 2026-05-21)
+
+The Presets-Swift capability audit ([`docs/CAPABILITY_REGISTRY/PRESETS.md`](../CAPABILITY_REGISTRY/PRESETS.md)) read `LumenPatternEngine.swift` + `LumenMosaicPaletteLibrary.swift` end-to-end and characterised one Swift-side candidate root cause for the symptom:
+
+**LumenPatternEngine.init? silently fails on `device.makeBuffer` failure.** At `LumenPatternEngine.swift:580-585`:
+
+```swift
+public init?(device: MTLDevice, seed: UInt64 = 0) {
+    let bufSize = MemoryLayout<LumenPatternState>.stride  // 568 bytes
+    guard let buf = device.makeBuffer(length: bufSize, options: .storageModeShared) else {
+        return nil   // ← silent — no os.Logger, no sessionRecorder
+    }
+    ...
+}
+```
+
+The init returns nil with **no logging from the Presets-module-internal side**. The App-side construction at `VisualizerEngine+Presets.swift:423-433` catches the nil and logs via `logger.error(...)` to category `"com.phosphene.app"` — but that line does NOT reach `session.log` (which is the engine-module `Logging.session` channel).
+
+**Mapping CA-Presets findings to the 5 candidate failure modes above:**
+
+| Candidate | CA-Presets verdict |
+|---|---|
+| 1. Black/blank screen | **PLAUSIBLE.** If `device.makeBuffer(568 bytes, .storageModeShared)` fails (memory pressure, GPU-device disconnect, etc.), `lumenPatternEngine` stays nil → App-side falls through without binding slot 8 → `LumenMosaic.metal` reads zeroed `LumenPatternState` → renders against the LM.4.7 zeroed-palette path. **Verifiable on next reproduction:** check session.log for an `os.Logger.error("LumenPatternState: failed to allocate state")` line near the preset switch (it would be in the unified log via `log show --predicate 'subsystem CONTAINS "com.phosphene"'`, but NOT in session.log without the FU-4 instrumentation fix). |
+| 2. Stuck on previous preset | Out of Presets-Swift scope (App-layer `applyPreset` switch logic). |
+| 3. Visual artifacts | Out of Presets-Swift scope (`LumenMosaic.metal` shader). |
+| 4. No audio response | **PLAUSIBLE.** `LumenPatternEngine._tick` updates band counters only on `f.beatPhase01` wraps (from > 0.85 to < 0.15). **No FFT fallback** (documented at `LumenPatternEngine.swift:895-898` as a known LM.4.3 limitation). If `f.beatPhase01` stays at 0 (reactive mode pre-grid, or silence), no counters advance and the panel reads static. **Verifiable on next reproduction:** check features.csv for `beat_phase01` values across the affected window. If identically 0 → Mode 4 confirmed → known reactive-mode limitation. |
+| 5. Pale-dominant LM.9 regression | Verifiable via offline color analysis of `LumenMosaicPaletteLibrary.all` 18 palettes against the ≤ 0.30 pale-share gate. **Note:** the pale-share ceiling is NOT enforced as a FidelityRubric automated item — it is M7-manual-only. |
+
+**Recommended diagnostic upgrade (filed as CA-Presets-FU-4):** add `Logging.session?.log("LumenPatternEngine init failed: device.makeBuffer returned nil for \(bufSize) bytes")` to the App-side construction failure branch at `VisualizerEngine+Presets.swift:433` (additive — keep the `logger.error` line). Closes the silent-init-failure diagnosis gap for the next reproduction.
+
+**No code changes landed in this addendum** — the audit is read-only; fixes wait for Matt's reproduction + scope authorisation.
+
+---
+
 ### BUG-015 — `applyLiveUpdate(...)` has zero production call sites; Orchestrator live-adaptation pipeline is dead at runtime
 
 **Severity:** P1 (load-bearing product claim — "the AI Orchestrator has planned the entire visual session and adapts as the music unfolds" per CLAUDE.md top — the adaptation half does not run).
