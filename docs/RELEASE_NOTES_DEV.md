@@ -6,6 +6,48 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-21-e] Engine test cleanup — fixture restore + SessionManagerCancel widening
+
+**Increment:** test-infrastructure cleanup (no increment ID — small dedicated pass). **Status:** Landed 2026-05-21 after the SpotifyOAuthTokenProvider clientID injection (`[dev-2026-05-21-d]`). Local commits only; not pushed.
+
+### What this is
+
+Four engine tests failed deterministically in the worktree because `PhospheneEngine/Tests/Fixtures/tempo/love_rehab.m4a` was absent:
+
+- `BeatThisFixturePresenceGate."love_rehab.m4a is present in the test fixtures tree"` (the gate itself)
+- `BeatThisLayerMatchTests.test_swiftMatchesPython_allKeyStages`
+- `LiveDriftValidationTests."loveRehab: live drift tracker locks within 5s..."`
+- `BeatGridAccuracyDiagnosticTests."loveRehab: port produces upstream-faithful 118 BPM..."`
+
+The directory `PhospheneEngine/Tests/Fixtures/tempo/` is gitignored — preview clips are licensed and do not get committed. Fresh `git worktree add` sessions therefore inherit a missing fixture tree until the developer either runs `Scripts/fetch_tempo_fixtures.sh` (which already exists) or copies the files from their main checkout. The `BeatThisFixturePresenceGate` is intentionally designed to fail loudly so the missing fixture is visible — silent skips previously hid the DSP.2 S8 four-bug regression surface (per CLAUDE.md *§What NOT To Do*).
+
+After restoring the fixtures in this worktree, the engine suite exposed one further parallel-execution timing flake: `SessionManagerCancelTests.cancel_fromReady_transitionsToIdle` — same `preparing → ready` polling pattern as the `ProgressiveReadinessTests.waitUntilNotPreparing` helper widened in `[dev-2026-05-21-c]`. Same fix.
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `PhospheneEngine/Tests/Fixtures/tempo/` | Gitignored audio fixtures restored in the worktree (not tracked by git; mechanical copy from the main checkout). |
+| `PhospheneEngine/Tests/PhospheneEngineTests/Session/SessionManagerCancelTests.swift` | `cancel_fromReady_transitionsToIdle` polling deadline 3 s → 10 s. Matches the `ProgressiveReadinessTests.waitUntilNotPreparing` widening. |
+| `docs/RUNBOOK.md` | New *§Worktree setup: fetch local audio fixtures* section under *§Build and Test* — documents the gitignored fixture path, the two recovery routes (`Scripts/fetch_tempo_fixtures.sh` or copy-from-main-checkout), and the reason the presence gate fails loudly. |
+
+### Verification
+
+- `swiftlint lint --strict --config .swiftlint.yml` — **0 violations across 371 files**.
+- `swift test --package-path PhospheneEngine` — **1248 tests in 162 suites pass, 0 issues**. The four love_rehab cascade failures and the SessionManagerCancel timing flake are gone.
+- `xcodebuild -scheme PhospheneApp test` — app suite remains clean (last green at `[dev-2026-05-21-d]`).
+
+### Notes
+
+Net repository test state across today's three flake-cleanup increments (`[dev-2026-05-21-c]` + `[d]` + `[e]`):
+- Engine suite: green (1248/1248).
+- App suite: green (328/328).
+- No `SpotifyClientID missing` failures, no `love_rehab.m4a` cascade, no documented parallel-execution timing flakes outstanding.
+
+Memory note `project_test_baseline.md` refreshed.
+
+---
+
 ## [dev-2026-05-21-d] SpotifyOAuthTokenProvider — clientID injection + ReadyViewModel flakes
 
 **Increment:** test-infrastructure cleanup (no increment ID — small dedicated pass). **Status:** Landed 2026-05-21 after the parallel-execution budget widening (`[dev-2026-05-21-c]`). Local commits only; not pushed.
