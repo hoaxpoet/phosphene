@@ -302,6 +302,34 @@ extension VisualizerEngine {
             return
         }
 
+        // BUG-015 once-per-track diagnostic. Emits one "Orchestrator: wire
+        // active" line the first time the wire actually reaches
+        // `applyLiveUpdate(...)` on a given track. Dual-writes to
+        // `session.log` (via `sessionRecorder?.log`) and the unified log
+        // (via `os.Logger`) per the `VisualizerEngine+WiringLogs.swift`
+        // pattern — the existing Orchestrator log calls at line 194 / 238 /
+        // 291 write to os.Logger only and never land in session.log, so a
+        // reactive session where every decision returns `holdDecision` (the
+        // common case under stable manual preset cycling) leaves session.log
+        // silent and the wire indistinguishable from "not firing." This line
+        // closes that ambiguity by construction. Reset to `false` per
+        // track change in `makeTrackChangeCallback`, so each track produces
+        // exactly one diagnostic line.
+        let shouldLogFirstFire = orchestratorLock.withLock {
+            if orchestratorWireLoggedThisTrack { return false }
+            orchestratorWireLoggedThisTrack = true
+            return true
+        }
+        if shouldLogFirstFire {
+            let mode = snapshot.hasPlan ? "session" : "reactive"
+            let trackIdxStr = snapshot.trackIndex.map(String.init) ?? "—"
+            let msg = "Orchestrator: wire active "
+                + "(mode=\(mode), planIdx=\(trackIdxStr), "
+                + "elapsedTrackTime=\(String(format: "%.1f", mir.elapsedSeconds))s)"
+            sessionRecorder?.log(msg)
+            logger.info("\(msg)")
+        }
+
         applyLiveUpdate(
             trackIndex: snapshot.trackIndex ?? 0,
             elapsedTrackTime: mir.elapsedSeconds,

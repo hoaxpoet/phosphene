@@ -129,6 +129,12 @@ extension VisualizerEngine {
             let resolvedPlanIndex = self.indexInLivePlan(matching: event.current)
             self.orchestratorLock.withLock {
                 self.liveTrackPlanIndex = resolvedPlanIndex
+                // BUG-015 diagnostic: reset the per-track wire-active log
+                // latch so the next analysis tick that reaches
+                // `applyLiveUpdate(...)` produces exactly one diagnostic
+                // line for this new track. Pairs with the latch set in
+                // `runOrchestratorLiveUpdate(mir:)`.
+                self.orchestratorWireLoggedThisTrack = false
             }
 
             Task { @MainActor in
