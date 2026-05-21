@@ -55,9 +55,12 @@ struct ReadyViewTimeoutIntegrationTests {
         let (vm, sigPub, _) = makeReadyViewModel()
 
         // Simulate audio arriving so hasDetectedAudio becomes true.
-        // 600ms gives 350ms margin over the 250ms confirmation timer.
+        // 1500ms gives 1250ms margin over the 250ms confirmation timer.
+        // Previously 600ms; widened to absorb @MainActor contention during the
+        // 328-test parallel app run (CLAUDE.md U.11 precedent — 2-3× headroom
+        // over the worst-observed delay).
         sigPub.send(.active)
-        try await Task.sleep(for: .milliseconds(600))
+        try await Task.sleep(for: .milliseconds(1500))
         #expect(vm.hasDetectedAudio, "pre-condition: audio must have been detected")
         #expect(!vm.isTimedOut, "no timeout has occurred yet")
 
