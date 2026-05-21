@@ -13,7 +13,7 @@
 		B10002 /* PhospheneApp.app in Frameworks */ = {isa = PBXBuildFile; fileRef = A20004; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		A10020 /* MetalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20020; };
 		A10021 /* DebugOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20021; };
-		A10022 /* MusicKitFetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20022; };
+		A10022 /* ITunesSearchFetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20022; };
 		A10040 /* VisualizerEngine+Orchestrator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20040; };
 		N10006 /* VisualizerEngine+WiringLogs.swift in Sources */ = {isa = PBXBuildFile; fileRef = N20006; };
 		N10007 /* VisualizerEngine+TrackIdentityResolution.swift in Sources */ = {isa = PBXBuildFile; fileRef = N20007; };
@@ -191,7 +191,7 @@
 		A20003 /* PhospheneApp.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = PhospheneApp.entitlements; sourceTree = "<group>"; };
 		A20020 /* MetalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetalView.swift; sourceTree = "<group>"; };
 		A20021 /* DebugOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugOverlayView.swift; sourceTree = "<group>"; };
-		A20022 /* MusicKitFetcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicKitFetcher.swift; sourceTree = "<group>"; };
+		A20022 /* ITunesSearchFetcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ITunesSearchFetcher.swift; sourceTree = "<group>"; };
 		A20031 /* VisualizerEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualizerEngine.swift; sourceTree = "<group>"; };
 		A20032 /* VisualizerEngine+Audio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VisualizerEngine+Audio.swift"; sourceTree = "<group>"; };
 		A20033 /* VisualizerEngine+Stems.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VisualizerEngine+Stems.swift"; sourceTree = "<group>"; };
@@ -428,7 +428,7 @@
 				A20040 /* VisualizerEngine+Orchestrator.swift */,
 				N20006 /* VisualizerEngine+WiringLogs.swift */,
 				N20007 /* VisualizerEngine+TrackIdentityResolution.swift */,
-				A20022 /* MusicKitFetcher.swift */,
+				A20022 /* ITunesSearchFetcher.swift */,
 				D40001 /* Permissions */,
 				H40001 /* Models */,
 				C40001 /* ViewModels */,
@@ -821,7 +821,7 @@
 				O10007 /* DarkVibrancyView.swift in Sources */,
 				A10020 /* MetalView.swift in Sources */,
 				A10021 /* DebugOverlayView.swift in Sources */,
-				A10022 /* MusicKitFetcher.swift in Sources */,
+				A10022 /* ITunesSearchFetcher.swift in Sources */,
 				A10040 /* VisualizerEngine+Orchestrator.swift in Sources */,
 				N10006 /* VisualizerEngine+WiringLogs.swift in Sources */,
 				N10007 /* VisualizerEngine+TrackIdentityResolution.swift in Sources */,
