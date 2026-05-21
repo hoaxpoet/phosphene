@@ -2,11 +2,12 @@
 // (DASH.7 + DASH.7.1).
 //
 // Per DASH.7.1 brand-alignment (D-088): no per-card chrome. The card
-// is now a typographic section — Clash Display title at 18pt, followed
-// by rows. Container chrome (material panel + dividers) is shared at
-// the `DashboardOverlayView` level. This honors the .impeccable.md
-// anti-pattern "no rounded-rectangle cards … use whitespace and
-// typography hierarchy instead".
+// is now a typographic section — Clash Display Medium title at
+// `DashboardTokens.TypeScale.bodyLarge` (15 pt) relative to `.title3`,
+// followed by rows. Container chrome (material panel + dividers) is
+// shared at the `DashboardOverlayView` level. This honors the
+// .impeccable.md anti-pattern "no rounded-rectangle cards … use
+// whitespace and typography hierarchy instead".
 
 import Renderer
 import Shared
