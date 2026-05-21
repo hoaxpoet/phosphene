@@ -6,6 +6,62 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-21-d] CA.1-FU-1 — Doc-state closeout (folded by BUG-015 via option (b))
+
+**Increment:** `[CA.1-FU-1]`. **Status:** Resolved 2026-05-21 (doc-state only — folded into BUG-015's fix, commit `b3f1efd9`, 2026-05-21).
+
+### What this is
+
+The final outstanding CA.4 audit follow-up. CA.1-FU-1 was re-scoped by the CA.4 audit (2026-05-20) into a prep-time gate for the per-frame `StructuralAnalyzer` + `NoveltyDetector` + `SelfSimilarityMatrix` chain in `MIRPipeline.process`. The audit's §Resolution narrative at `ORCHESTRATOR.md:447-465` laid out a decision matrix:
+
+- **Option (a):** if BUG-015's fix sources `liveBoundary` from `StructuralPrediction.none` or a sentinel, ship the gate — saves audio-callback CPU with zero behavioural change.
+- **Option (b):** if BUG-015's fix sources `liveBoundary` from `MIRPipeline.latestStructuralPrediction`, the per-frame chain stays on by design and the gate would break the wire — *"the option-(b) work folds into BUG-015's fix; no separate CA.1-FU-1 increment is required"* (audit verdict line 463).
+
+### What BUG-015 chose
+
+BUG-015's wire (commit `b3f1efd9`, 2026-05-21) took **option (b)**. Evidence:
+
+- `PhospheneApp/VisualizerEngine+Orchestrator.swift:287-311` — `runOrchestratorLiveUpdate(mir:)` reads `mir.latestStructuralPrediction` and passes it as the `boundary` argument to `applyLiveUpdate(...)`.
+- `PhospheneApp/VisualizerEngine+Orchestrator.swift:272-277` — the inline comment explicitly cites the fold: *"Prediction source: `mirPipeline.latestStructuralPrediction` (option (a) from the BUG-015 kickoff). This realises the full product claim — boundary rescheduling fires against real per-frame structural predictions, not a `.none` sentinel — and folds CA.1-FU-1 into this fix: the per-frame `StructuralAnalyzer` chain in `MIRPipeline.process` now has a runtime consumer."*
+
+(Naming note: the BUG-015 kickoff used "option (a)" to mean "source from `latestStructuralPrediction`" — opposite to the CA.4 audit's labelling. The audit's option (b) and BUG-015's option (a) refer to the *same code path*. The semantic outcome is unambiguous: the per-frame chain stays on, and the prediction reaches the orchestrator via direct read.)
+
+### Why no code change is required
+
+Gating the per-frame `StructuralAnalyzer` chain to prep-time only — as CA.1-FU-1's spec called for — would now break the BUG-015 wire. The per-frame chain has exactly the runtime consumer it lacked at audit time, and that consumer is live. The audit's own §Resolution branch at line 463 anticipated this exact case and prescribed closing CA.1-FU-1 without a separate increment.
+
+### Verification
+
+- `PhospheneEngine/Sources/DSP/MIRPipeline.swift:249` confirms `structuralAnalyzer.process(...)` runs per-frame inside `MIRPipeline.process(...)` and writes `latestStructuralPrediction`.
+- `PhospheneApp/VisualizerEngine+Orchestrator.swift:308` confirms the BUG-015 wire reads that field and passes it to `applyLiveUpdate(boundary:)`.
+- The chain ↔ consumer ↔ wire ↔ orchestrator path is end-to-end live as of `b3f1efd9`.
+
+### Fix
+
+No code change. Doc-state cleanup only:
+
+- `docs/CAPABILITY_REGISTRY/ORCHESTRATOR.md` — CA.1-FU-1 backlog row Status flipped from "Ready now (decoupled from BUG-015)" to "✅ Resolved 2026-05-21 (folded by BUG-015, commit `b3f1efd9`)" with the option-(b) trace inline. §Resolution narrative gained a closeout note recording which branch BUG-015 took.
+- `docs/ENGINEERING_PLAN.md` — new "Increment CA.1-FU-1" entry added above the CA.4-FU-2 block.
+- `docs/RELEASE_NOTES_DEV.md` — this entry.
+
+### Files changed
+
+Edited (3 files, all docs):
+- `docs/CAPABILITY_REGISTRY/ORCHESTRATOR.md` — CA.1-FU-1 backlog row + §Resolution closeout note.
+- `docs/ENGINEERING_PLAN.md` — new CA.1-FU-1 entry.
+- `docs/RELEASE_NOTES_DEV.md` — this entry.
+
+### Known risks and follow-ups
+
+- **All three CA.4 audit follow-ups are now tracked-resolved.** CA.4-FU-1 ([dev-2026-05-21-b], commit `37ea9587`), CA.4-FU-2 ([dev-2026-05-21-c], commit `75b7ff38`), CA.1-FU-1 (this entry). BUG-015 / CA.4-FU-3 wire shipped at `b3f1efd9` and is pending Matt's real-music session-log capture for `KNOWN_ISSUES.md` flip.
+- **No new risks introduced** — doc-state-only change; the underlying code is BUG-015's, which is independently validated by its own test paths.
+
+### Git status
+
+Branch: `claude/nervous-franklin-25b8cb` (worktree `.claude/worktrees/nervous-franklin-25b8cb`). Local commit only; no remote push.
+
+---
+
 ## [dev-2026-05-21-c] CA.4-FU-2 — Doc-state closeout (source comments already fixed in CA.4 audit landing)
 
 **Increment:** `[CA.4-FU-2]`. **Status:** Resolved 2026-05-21 (doc-state only — code changes already shipped 2026-05-20 in commit `faee28a7` as part of the CA.4 audit landing).
