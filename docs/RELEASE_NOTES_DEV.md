@@ -6,6 +6,60 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-21-b] CA.4-FU-1 — Demote `DefaultLiveAdapter.transitionPolicy` dead field
+
+**Increment:** `[CA.4-FU-1]`. **Status:** Landed 2026-05-21 (local commit). Closes one of the three CA.4 audit follow-ups; the audit's BUG-015 finding has its own resolution path (wire landed in commit `b3f1efd9` earlier on 2026-05-21, pending real-music session validation).
+
+### What this is
+
+Follow-up to the 2026-05-20 CA.4 Orchestrator capability audit. The audit (commit `faee28a7`) surfaced `DefaultLiveAdapter.transitionPolicy: any TransitionDeciding` at `PhospheneEngine/Sources/Orchestrator/LiveAdapter.swift:176, 188, 191` as a `production-orphan` field — constructor-injected and stored but never read anywhere in `LiveAdapter*.swift`. The adapter's two evaluation paths (`evaluateBoundaryReschedule(...)` at `LiveAdapter.swift:255-266` and the mood-override path in `LiveAdapter+MoodOverride.swift:70-81`) construct `PlannedTransition` / `LiveAdaptation.PresetOverride` values directly without going through `TransitionDeciding.evaluate(...)`. The field's deadness is independent of BUG-015: the wire landed earlier on 2026-05-21 in commit `b3f1efd9` and the field still stayed dead because the wire targets `applyLiveUpdate(...)`, not the policy-evaluation path the field would feed.
+
+### Fix
+
+Option (a) from the audit's CA.4-FU-1 backlog row: remove the `transitionPolicy` parameter from `DefaultLiveAdapter.init(...)` and the stored property. Three lines of `LiveAdapter.swift` deleted (the property declaration at `:176`, the parameter at `:188`, the assignment at `:191`). The public init is now:
+
+```swift
+public init(
+    scorer: any PresetScoring = DefaultPresetScorer()
+) {
+    self.scorer = scorer
+}
+```
+
+`TransitionDeciding` and `DefaultTransitionPolicy` remain unchanged — they're still consumed by `DefaultSessionPlanner.transitionPolicy` (the planning-time policy evaluation site at `SessionPlanner.swift:326`).
+
+### Call-site impact
+
+Pre-edit grep confirmed three call sites: `PhospheneApp/VisualizerEngine.swift:461` (zero-arg `DefaultLiveAdapter()`), `PhospheneEngine/Tests/PhospheneEngineTests/Orchestrator/LiveAdapterTests.swift:22` (zero-arg), `PhospheneEngine/Tests/PhospheneEngineTests/Orchestrator/OrchestratorDiagnosticExclusionTests.swift:143` (zero-arg). No call site passed `transitionPolicy:` explicitly. Parameter removal is a non-breaking change — no caller edit required.
+
+### Validation
+
+- `swift test --package-path PhospheneEngine --filter "LiveAdapter"` — **11/11 pass** (1 suite, ~4 ms).
+- `swift test --package-path PhospheneEngine --filter "DefaultLiveAdapter|TransitionPolicy|SessionPlanner|PresetScorer|ReactiveOrchestrator|DiagnosticHold|PartialPlan|StemAffinity|PresetSignaling|MaxDurationFramework|GoldenSession|MultiSegmentSmoke|Orchestrator"` — **114 tests / 17 suites pass** (full Orchestrator subsystem).
+- `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build` — **BUILD SUCCEEDED**.
+- `swiftlint lint --strict --config .swiftlint.yml` — 18 pre-existing violations in `SessionRecorder.swift`, `SpectralCartographText.swift`, `FerrofluidMesh.swift`; **zero new violations introduced by this edit** in any `LiveAdapter*.swift` file.
+- Post-edit grep `grep -rn "transitionPolicy" PhospheneEngine/Sources/Orchestrator/LiveAdapter*.swift` — **zero hits**, confirming the field is fully removed from the LiveAdapter surface. The remaining four hits in `SessionPlanner.swift` are the planning-time policy (still live, unchanged).
+
+### Files changed
+
+**Edited (4 files, all docs except the source edit):**
+- `PhospheneEngine/Sources/Orchestrator/LiveAdapter.swift` — three lines removed (`:176, :188, :191`).
+- `docs/CAPABILITY_REGISTRY/ORCHESTRATOR.md` — backlog row Status flipped to ✅ Resolved 2026-05-21; file-level entity table row for `transitionPolicy` struck through and marked resolved; §production-orphan section gained a resolution stamp citing the post-fix grep.
+- `docs/ENGINEERING_PLAN.md` — new "Increment CA.4-FU-1" entry inserted above the CA.4 block.
+- `docs/RELEASE_NOTES_DEV.md` — this entry.
+
+### Known risks and follow-ups
+
+- **CA.4-FU-2** (source-comment cleanups: `PresetScorer.swift:86` D-030 → D-032; `PresetSignaling.swift:9-10` stale "wiring is V.7.8" claim) — still pending; was bundleable with this increment but was not requested in the CA.4-FU-1 kickoff. Ready to land in a single follow-up commit when prioritised.
+- **BUG-015 validation** — wire is live but Matt's real-music session-log capture is still required before flipping `KNOWN_ISSUES.md` to Resolved (per [dev-2026-05-21-a]).
+- **CA.1-FU-1** (per-frame `StructuralAnalyzer` chain prep-time gate) — also still pending; decoupled from this work.
+
+### Git status
+
+Branch: `claude/nervous-franklin-25b8cb` (worktree `.claude/worktrees/nervous-franklin-25b8cb`). Local commit only; no remote push.
+
+---
+
 ## [dev-2026-05-21-a] BUG-015 — Wire `applyLiveUpdate(...)` to runtime audio path
 
 **Increment:** `[BUG-015]`. **Status:** Wire landed 2026-05-21; **pending Matt's real-music session validation before final Resolved flip in `KNOWN_ISSUES.md`** (verification criterion #2 — manual session-log capture — needs a real audio session and cannot be driven from the test harness).
