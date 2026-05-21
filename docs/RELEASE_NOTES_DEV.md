@@ -149,6 +149,37 @@ Verification of commit 2:
 
 **Awaiting Matt's follow-up session capture.** Once `session.log` from a ≥ 30 s session shows `Orchestrator: wire active (mode=…, …)`, BUG-015's verification criterion #2 is satisfied and a small commit 3 flips `KNOWN_ISSUES.md` Status to Resolved and adds the commit hash to the Resolved field.
 
+### Update 3 — Validation confirmed; BUG-015 Resolved
+
+Matt's `2026-05-21T14-19-32Z` follow-up capture (Black Dog - Remaster, reactive mode, ~2 min, 7 519 frames, 23 stem separations):
+
+```
+$ grep "Orchestrator: wire active" ~/Documents/phosphene_sessions/2026-05-21T14-19-32Z/session.log
+[2026-05-21T14:19:40Z] Orchestrator: wire active (mode=reactive, planIdx=—, elapsedTrackTime=8.2s)
+[2026-05-21T14:19:41Z] Orchestrator: wire active (mode=reactive, planIdx=—, elapsedTrackTime=0.0s)
+```
+
+Two lines, both as expected:
+
+- **Line 6 (8.2 s after SessionRecorder start, before any track change):** the first wire fire happened in the warmup state where `MIRPipeline` had been processing FFT magnitudes for 8.2 s but no track-change callback had fired yet. `mir.elapsedSeconds` had been accumulating since pipeline init. This is informative — the wire fires from app launch, not from first-track-change, which is the correct semantic (reactive mode is always-on from the analysis tick).
+- **Line 11 (1 s later, after the `track → Black Dog - Remaster` event at line 7):** the new-track wire fire shows `elapsedTrackTime=0.0s`, proving (a) `mir.reset()` correctly zeroed `elapsedSeconds` on track change, (b) the per-track `orchestratorWireLoggedThisTrack` latch was reset by the track-change callback, and (c) the wire then fired on the very next 30-frame analysis-tick boundary.
+
+Both lines reflect:
+- `mode=reactive` — correct (no playlist connected; no plan built).
+- `planIdx=—` — correct (no plan, so no plan-index resolution).
+- One line per track — confirms the per-track latch is doing its job. Without it the wire would have logged ~250 times over the session (~3 Hz × 110 s).
+
+Verification criterion #2 satisfied. `KNOWN_ISSUES.md` Status flipped to Resolved.
+
+**Commit 3:** flips `KNOWN_ISSUES.md` Status from "Open — wire landed, pending validation" to "Resolved 2026-05-21" and cites the commit hashes. Filed concurrently with this RELEASE_NOTES update.
+
+### Out-of-scope follow-ups (spawned as task chips per Matt's go-ahead)
+
+- **CA.4-FU-1: demote DefaultLiveAdapter.transitionPolicy** — sub-5-line cleanup of the dead-field surfaced by CA.4. Independent of BUG-015.
+- **SwiftLint cleanup: 18 pre-existing violations** — restore the L-1 zero-violation baseline. None of the violations are from BUG-015's changes; they accumulated on `main` between L-1 and 2026-05-21 in `SessionRecorder.swift`, `SpectralCartographText.swift`, and `FerrofluidOcean/FerrofluidMesh.swift`.
+
+Both are independent of BUG-015 and stay decoupled.
+
 ---
 
 ## [dev-2026-05-20-c] BUG-012-i1 — MPSGraph crash instrumentation

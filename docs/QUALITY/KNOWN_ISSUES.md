@@ -12,9 +12,21 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 **Severity:** P1 (load-bearing product claim — "the AI Orchestrator has planned the entire visual session and adapts as the music unfolds" per CLAUDE.md top — the adaptation half does not run).
 **Domain tag:** `pipeline-wiring`
-**Status:** **Open — wire landed 2026-05-21, pending real-music session validation.** The App-layer wire is in place (`runOrchestratorLiveUpdate(mir:)` calls `applyLiveUpdate(...)` from the analysis-queue tick at ~3 Hz; sources `liveBoundary` from `mirPipeline.latestStructuralPrediction`); the regression test (`OrchestratorWiringRegressionTests.swift`) passes; the Orchestrator engine suite (including the three QR.2 / D-080 cooldown tests) is green. Verification criterion #2 — manual confirmation that `session.log` contains live-adaptation-family lines during a > 1 minute real-music session — is the remaining gate before Status flips to Resolved.
+**Status:** **Resolved 2026-05-21.** The App-layer wire is in place (`runOrchestratorLiveUpdate(mir:)` calls `applyLiveUpdate(...)` from the analysis-queue tick at ~3 Hz; sources `liveBoundary` from `mirPipeline.latestStructuralPrediction`); the regression test (`OrchestratorWiringRegressionTests.swift`) passes; the Orchestrator engine suite (including the three QR.2 / D-080 cooldown tests) stays green. Verification criterion #2 confirmed by Matt's `2026-05-21T14-19-32Z` session capture: `session.log` shows two `Orchestrator: wire active` lines (one at 8.2 s pre-first-track-change in warmup state, one at 0.0 s elapsed on the new track after `mir.reset()`), proving the wire fires AND the per-track diagnostic latch resets correctly on track change.
 **Introduced:** Surfaced 2026-05-20 by [CA.4 Orchestrator audit](../CAPABILITY_REGISTRY/ORCHESTRATOR.md). The root condition pre-dates this filing; `git log -p PhospheneApp/VisualizerEngine+Audio.swift -- *applyLiveUpdate*` will narrow when (or whether) the call site was ever added. Phase 4.5 (Live Adaptation) and 4.6 (Ad-Hoc Reactive Mode) both shipped ✅ at the Orchestrator-module surface (LiveAdapter / ReactiveOrchestrator implementations + unit tests + the `applyLiveUpdate(...)` entry point method); the App-layer audio-callback invocation of `applyLiveUpdate(...)` was never wired until 2026-05-21.
-**Resolved:** Pending real-music session validation. Wire commit lands first (verification criterion #1 — automated regression test — is met); Resolved flag flips in a follow-up commit once Matt confirms session.log shows the live-adaptation event family firing at reasonable cadence.
+**Resolved:** 2026-05-21 in three commits:
+- `b3f1efd9` — wire: `runOrchestratorLiveUpdate(mir:)` + regression test `OrchestratorWiringRegressionTests.swift` + lock-guarded `liveTrackPlanIndex` / `lastClassifiedMood` fields + pbxproj registration.
+- `5efc6a90` — once-per-track `Orchestrator: wire active` diagnostic dual-writing to `session.log` (via `SessionRecorder.log`) and the unified log (via `os.Logger`). Closes the verification-criterion-#2 doc-vs-runtime gap (existing Orchestrator log lines never reached `session.log`).
+- `<commit 3 hash>` — Status flip + RELEASE_NOTES_DEV.md final entry.
+
+Validation evidence (Matt's `~/Documents/phosphene_sessions/2026-05-21T14-19-32Z/session.log` lines 6 and 11):
+
+```
+[2026-05-21T14:19:40Z] Orchestrator: wire active (mode=reactive, planIdx=—, elapsedTrackTime=8.2s)
+[2026-05-21T14:19:41Z] Orchestrator: wire active (mode=reactive, planIdx=—, elapsedTrackTime=0.0s)
+```
+
+7 519 frames / 23 stem dumps in that session confirm the full audio path is alive; the once-per-track latch is verified (exactly one diagnostic line per track, no per-frame noise).
 
 **Expected behavior.** During session-mode playback: planned transitions reschedule against live structural boundaries when the deviation exceeds 5 s; mood overrides fire mid-track when measured valence/arousal diverges from pre-analyzed mood by > 0.4 (with the 30 s per-track cooldown enforced by `DefaultLiveAdapter.cooldownAdaptation(...)` per D-080 rule 3); the L diagnostic-hold / capture-mode grace window / `wait_for_completion_event` suppression machinery actually has something to suppress. During ad-hoc playback after the 15 s listening window: `DefaultReactiveOrchestrator.evaluate(...)` returns preset suggestions; the 60 s reactive cooldown in `VisualizerEngine+Orchestrator` rate-limits them; switches land at structural boundaries or score-gap thresholds per D-036.
 
