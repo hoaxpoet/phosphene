@@ -32,6 +32,23 @@ Test infrastructure: swift-testing + XCTest across unit, integration, regression
 
 ## Recently Completed
 
+### CA-Shared-FU-1 (wire-up) + CA-Shared-FU-2 (retire) + CA-Shared-FU-3 (retire) ✅ (2026-05-21)
+
+Same-day resolution of three CA-Shared follow-ups, all under Matt's direction:
+
+- **CA-Shared-FU-1 — wire up `UserFacingError.retryStatus` + `.isConditionBound`.** Matt's product call: wire up. Two consumer changes:
+  - `LocalizedCopy.string(for: .spotifyRateLimited)` now sources the "attempt N of 3" suffix from `error.retryStatus.description` via new helper `appendRetryStatus(base:status:)`. Localizable.strings `error.connection.spotify_rate_limited` value reduced from `"Spotify is being slow — still trying (attempt %d of 3)"` to the base headline only — the suffix is composed by the helper. Output identical: `"Spotify is being slow — still trying (attempt 2 of 3)"`.
+  - `PlaybackErrorBridge.showSilenceExtendedToast` now constructs toasts via new `toast(for:severity:source:)` helper that gates `duration: .infinity` AND `conditionID` on `error.isConditionBound`. Replaces the prior hardcoded silence-specific values. Behaviour unchanged for `silenceExtended` (still condition-bound, still gets `.infinity` duration + conditionID); future condition-bound errors (`audioLevelsLow`, `silenceBrief` if producers fire them) automatically route through the same gate.
+  - Five new regression tests (3 in LocalizedCopyTests, 2 in PlaybackErrorBridgeTests).
+
+- **CA-Shared-FU-2 — retire `SpectralHistoryPublishing` + `StemSampleBuffering` protocols.** Matt's product call: retire. Both public protocol declarations deleted from their respective files; concrete classes (`SpectralHistoryBuffer`, `StemSampleBuffer`) drop the protocol conformance and keep only `@unchecked Sendable`. Public method surface unchanged — every method was already declared `public` directly on the class. Test suite green without modification (tests already used concrete types). Same shape as CA.7-FU-4 dead-API retirement: if a future test or DI seam genuinely needs a protocol, re-introducing one is trivial.
+
+- **CA-Shared-FU-3 — retire `Smoother.step(current:target:at:)`.** Matt's product call: retire. Convenience method deleted from `Smoother.swift`; doc-comment updated to reflect the simpler shape (`factor(at:)` only, inline EMA at call sites — matches the current convention in BeatDetector / BandEnergyProcessor). All 4 existing `factor(at:)` callers unaffected.
+
+**Verification:** SwiftLint baseline holds at 0 violations / 371 files. Engine test suite: 1,248 tests across 162 suites — all passing (unchanged). App test suite: **333 tests across 60 suites — all passing** (up from 328; 5 new FU-1 regression tests). `xcodebuild -scheme PhospheneApp test` → TEST SUCCEEDED.
+
+CA-Shared follow-up table updated with Resolved entries citing Matt's product calls + behaviour summary; Summary verdict counts updated (production-orphan: 2 protocols + 3 accessors → 0). All three follow-ups closed in one commit-cluster ahead of the FU-9 ARCH sync increment.
+
 ### CA-Shared — Shared Capability Audit ✅ (2026-05-21)
 
 Eleventh per-subsystem audit pass under Phase CA — **closes the last unaudited Swift surface in the engine module.** Produced [`docs/CAPABILITY_REGISTRY/SHARED.md`](CAPABILITY_REGISTRY/SHARED.md) — 25 Swift files / 3,515 LoC (matches kickoff). Single-pass direct-read, no Explore agents needed; methodology stable since CA-Audio.
