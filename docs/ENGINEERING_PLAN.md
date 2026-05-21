@@ -3873,7 +3873,7 @@ Phase CA addresses the drift systematically through per-subsystem code-vs-docs a
 
 ### Increment CA.7b — Renderer Capability Audit (Dashboard / Geometry / RayTracing)
 
-**Status.** Pending. CA.7a closeout 2026-05-21 recommends CA.7b as the natural next increment.
+**Status.** Kickoff doc landed 2026-05-21 ([`docs/prompts/PHASE_CA_KICKOFF_CA7B_RENDERER_SUPPORTING_2026-05-21.md`](prompts/PHASE_CA_KICKOFF_CA7B_RENDERER_SUPPORTING_2026-05-21.md)). Audit itself pending Matt's scheduling — hand the kickoff to a fresh Claude Code session when ready. CA.7a closeout 2026-05-21 recommended CA.7b as the natural next increment.
 
 **Scope.** `PhospheneEngine/Sources/Renderer/Dashboard/` (8 files / 766 LoC — DASH.7 producer side: BeatCardBuilder / StemsCardBuilder / PerfCardBuilder / DashboardCardLayout / DashboardSnapshot / DashboardFontLoader / StemEnergyHistory / PerfSnapshot), `Renderer/Geometry/` (4 files / 727 LoC — MeshGenerator / ParticleGeometry / ParticleGeometryRegistry / ProceduralGeometry), `Renderer/RayTracing/` (3 files / 748 LoC — BVHBuilder / RayIntersector / RayIntersector+Internal). Total: 15 files / 2,241 LoC.
 
