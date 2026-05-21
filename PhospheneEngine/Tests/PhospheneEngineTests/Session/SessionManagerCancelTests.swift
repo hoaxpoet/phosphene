@@ -143,7 +143,11 @@ struct SessionManagerCancelTests {
 
         await manager.startSession(source: .appleMusicCurrentPlaylist)
         // startSession returns early while .preparing; wait for natural completion.
-        let deadline = Date().addingTimeInterval(3)
+        // 10 s deadline (was 3 s) absorbs parallel-execution contention under
+        // the 1248-test suite — matches the ProgressiveReadinessTests
+        // waitUntilNotPreparing widening (CLAUDE.md U.11 precedent: 2-3×
+        // headroom over the worst-observed delay).
+        let deadline = Date().addingTimeInterval(10)
         while manager.state == .preparing && Date() < deadline {
             try? await Task.sleep(nanoseconds: 10_000_000)
         }
