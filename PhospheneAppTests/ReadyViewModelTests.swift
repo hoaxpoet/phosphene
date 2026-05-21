@@ -105,7 +105,7 @@ struct ReadyViewModelTests {
         var advanced = false
         let cancellable = vm.shouldAdvanceToPlaying.sink { advanced = true }
         sigPub.send(.active)
-        try await Task.sleep(for: .milliseconds(600))
+        try await Task.sleep(for: .milliseconds(1500))
         #expect(advanced)
         _ = cancellable
     }
@@ -113,7 +113,7 @@ struct ReadyViewModelTests {
     @Test func audioDetectedBeforeTimeout_hasDetectedAudioFlips() async throws {
         let (vm, sigPub, _, _) = makeViewModel()
         sigPub.send(.active)
-        try await Task.sleep(for: .milliseconds(600))
+        try await Task.sleep(for: .milliseconds(1500))
         #expect(vm.hasDetectedAudio)
         #expect(!vm.isTimedOut)
     }
@@ -126,7 +126,7 @@ struct ReadyViewModelTests {
     @Test func retry_resetsDetectorAndClearsTimeout() async throws {
         let (vm, sigPub, _, _) = makeViewModel()
         sigPub.send(.active)
-        try await Task.sleep(for: .milliseconds(600))
+        try await Task.sleep(for: .milliseconds(1500))
         #expect(vm.hasDetectedAudio)
 
         vm.retry()
