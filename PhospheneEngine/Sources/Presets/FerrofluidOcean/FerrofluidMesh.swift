@@ -106,19 +106,6 @@ public final class FerrofluidMesh: @unchecked Sendable {
     public let depthStencilState: MTLDepthStencilState
 
     // MARK: - Init
-    //
-    // The initializer bundles mesh allocation, vertex/index population, and
-    // pipeline-state compilation into one routine — each step has its own
-    // `guard … else { return nil }` failure path so splitting would scatter
-    // the failure handling across helpers. The cyclomatic complexity (12)
-    // and body length (~90 lines) are tracked for revisit during the next
-    // Ferrofluid increment; see TODO below.
-    //
-    // TODO(Ferrofluid): factor the vertex-grid population and pipeline-state
-    // setup into private helpers when the next preset increment lands; both
-    // are independently testable and would drop init under the 10/60 limits.
-
-    // swiftlint:disable cyclomatic_complexity function_body_length
 
     /// Allocate the mesh buffers + compile the G-buffer pipeline state.
     /// Returns nil if any allocation or pipeline compilation fails.
@@ -132,22 +119,48 @@ public final class FerrofluidMesh: @unchecked Sendable {
             return nil
         }
 
-        // ── Allocate vertex buffer ───────────────────────────────────
-        let vertexStride = MemoryLayout<Vertex>.stride
-        let totalVerts   = Self.vertexCount
-        let vbLen        = totalVerts * vertexStride
+        let vbLen = Self.vertexCount * MemoryLayout<Vertex>.stride
         guard let vb = device.makeBuffer(length: vbLen, options: .storageModeShared) else {
             meshLogger.error("FerrofluidMesh: vertex buffer allocation failed (\(vbLen) bytes)")
             return nil
         }
+        Self.populateVertexGrid(into: vb)
         self.vertexBuffer = vb
 
-        // Populate the grid. Vertex `(col, row)` sits at world XZ
-        // `worldOrigin + (col/segments, row/segments) × worldSpan` with
-        // Y = 0 (the vertex shader displaces Y based on heightmap).
-        // UV addresses the heightmap with the same mapping the bake uses
-        // — `(col/segments, row/segments)` directly.
-        let ptr = vb.contents().bindMemory(to: Vertex.self, capacity: totalVerts)
+        let ibLen = Self.indexCount * MemoryLayout<UInt32>.stride
+        guard let ib = device.makeBuffer(length: ibLen, options: .storageModeShared) else {
+            meshLogger.error("FerrofluidMesh: index buffer allocation failed (\(ibLen) bytes)")
+            return nil
+        }
+        Self.populateIndexBuffer(into: ib)
+        self.indexBuffer = ib
+
+        guard let ps = Self.makePipelineState(
+            device: device,
+            library: library,
+            colorAttachmentFormats: colorAttachmentFormats,
+            depthAttachmentFormat: depthAttachmentFormat
+        ) else {
+            return nil
+        }
+        self.pipelineState = ps
+
+        guard let dss = Self.makeDepthStencilState(device: device) else {
+            return nil
+        }
+        self.depthStencilState = dss
+    }
+
+    // MARK: - Init helpers
+
+    /// Fill the grid vertex buffer. Vertex `(col, row)` sits at world XZ
+    /// `worldOrigin + (col/segments, row/segments) × worldSpan` with
+    /// Y = 0 (the vertex shader displaces Y based on heightmap). UV
+    /// addresses the heightmap with the same mapping the bake uses
+    /// — `(col/segments, row/segments)` directly.
+    private static func populateVertexGrid(into buffer: MTLBuffer) {
+        let totalVerts = Self.vertexCount
+        let ptr = buffer.contents().bindMemory(to: Vertex.self, capacity: totalVerts)
         let originX = FerrofluidParticles.worldOriginX
         let originZ = FerrofluidParticles.worldOriginZ
         let span    = FerrofluidParticles.worldSpan
@@ -166,21 +179,15 @@ public final class FerrofluidMesh: @unchecked Sendable {
                     uvV: normV)
             }
         }
+    }
 
-        // ── Allocate index buffer (UInt32 — 256² vertices exceeds 65 535) ─
-        let idxStride = MemoryLayout<UInt32>.stride
-        let ibLen     = Self.indexCount * idxStride
-        guard let ib = device.makeBuffer(length: ibLen, options: .storageModeShared) else {
-            meshLogger.error("FerrofluidMesh: index buffer allocation failed (\(ibLen) bytes)")
-            return nil
-        }
-        self.indexBuffer = ib
-
-        // Populate triangle indices. Each grid cell (`segmentsPerSide²`
-        // total) produces two triangles forming a quad — CCW winding
-        // when viewed from +Y so the cross-product normal in the vertex
-        // shader points "up" for the flat (undisplaced) plane.
-        let idxPtr  = ib.contents().bindMemory(to: UInt32.self, capacity: Self.indexCount)
+    /// Fill the index buffer with triangle indices (UInt32 — 256² vertices
+    /// exceeds 65 535). Each grid cell (`segmentsPerSide²` total) produces
+    /// two triangles forming a quad — CCW winding when viewed from +Y so
+    /// the cross-product normal in the vertex shader points "up" for the
+    /// flat (undisplaced) plane.
+    private static func populateIndexBuffer(into buffer: MTLBuffer) {
+        let idxPtr  = buffer.contents().bindMemory(to: UInt32.self, capacity: Self.indexCount)
         let perRow  = UInt32(Self.verticesPerSide)
         var writeAt = 0
         for row in 0 ..< Self.segmentsPerSide {
@@ -200,8 +207,31 @@ public final class FerrofluidMesh: @unchecked Sendable {
                 writeAt += 6
             }
         }
+    }
 
-        // ── Build pipeline state ─────────────────────────────────────
+    /// Compile the G-buffer render pipeline state. Returns nil if either
+    /// shader function is missing or `MTLDevice.makeRenderPipelineState`
+    /// throws.
+    ///
+    /// Vertex descriptor — attribute 0 = position (float3),
+    /// attribute 1 = uv (float2). Mesh vertex buffer lives at slot 16 to
+    /// avoid collision with the `[[buffer(0)]]` FeatureVector /
+    /// `[[buffer(3)]]` StemFeatures / `[[buffer(4)]]` SceneUniforms
+    /// binding slots in the vertex shader. Metal's stage_in +
+    /// `[[buffer(N)]]` mechanisms share the same binding table, so the
+    /// mesh vertex buffer's slot must be distinct from any
+    /// `[[buffer(N)]]` declared in the shader signature.
+    ///
+    /// Depth attachment so triangle occlusion resolves correctly. (The
+    /// SDF path doesn't use a depth attachment — depth is encoded
+    /// analytically in gbuffer0.r — but the mesh path overlaps triangles
+    /// and needs hardware depth test.)
+    private static func makePipelineState(
+        device: MTLDevice,
+        library: MTLLibrary,
+        colorAttachmentFormats: [MTLPixelFormat],
+        depthAttachmentFormat: MTLPixelFormat
+    ) -> MTLRenderPipelineState? {
         guard let vertFn = library.makeFunction(name: "ferrofluid_mesh_vertex") else {
             meshLogger.error("FerrofluidMesh: ferrofluid_mesh_vertex function not found")
             return nil
@@ -216,13 +246,6 @@ public final class FerrofluidMesh: @unchecked Sendable {
         desc.vertexFunction = vertFn
         desc.fragmentFunction = fragFn
 
-        // Vertex descriptor — attribute 0 = position (float3), attribute 1 = uv (float2).
-        // Mesh vertex buffer lives at slot 16 to avoid collision with the
-        // `[[buffer(0)]]` FeatureVector / `[[buffer(3)]]` StemFeatures /
-        // `[[buffer(4)]]` SceneUniforms binding slots in the vertex shader.
-        // Metal's stage_in + [[buffer(N)]] mechanisms share the same binding
-        // table, so the mesh vertex buffer's slot must be distinct from any
-        // [[buffer(N)]] declared in the shader signature.
         let vd = MTLVertexDescriptor()
         vd.attributes[0].format = .float3
         vd.attributes[0].offset = 0
@@ -239,21 +262,19 @@ public final class FerrofluidMesh: @unchecked Sendable {
         for (i, fmt) in colorAttachmentFormats.enumerated() {
             desc.colorAttachments[i].pixelFormat = fmt
         }
-
-        // Depth attachment so triangle occlusion resolves correctly.
-        // (The SDF path doesn't use a depth attachment — depth is encoded
-        // analytically in gbuffer0.r — but the mesh path overlaps triangles
-        // and needs hardware depth test.)
         desc.depthAttachmentPixelFormat = depthAttachmentFormat
 
         do {
-            self.pipelineState = try device.makeRenderPipelineState(descriptor: desc)
+            return try device.makeRenderPipelineState(descriptor: desc)
         } catch {
             meshLogger.error("FerrofluidMesh: pipeline state creation failed: \(error)")
             return nil
         }
+    }
 
-        // Depth-test state — closest fragment wins, depth write enabled.
+    /// Build the depth-stencil state — closest fragment wins, depth write
+    /// enabled. Returns nil if the device declines the descriptor.
+    private static func makeDepthStencilState(device: MTLDevice) -> MTLDepthStencilState? {
         let dsd = MTLDepthStencilDescriptor()
         dsd.depthCompareFunction = .less
         dsd.isDepthWriteEnabled  = true
@@ -261,10 +282,8 @@ public final class FerrofluidMesh: @unchecked Sendable {
             meshLogger.error("FerrofluidMesh: depth-stencil state creation failed")
             return nil
         }
-        self.depthStencilState = dss
+        return dss
     }
-
-    // swiftlint:enable cyclomatic_complexity function_body_length
 
     // MARK: - Per-frame vertex uniforms (Phase 1 round 20)
 
