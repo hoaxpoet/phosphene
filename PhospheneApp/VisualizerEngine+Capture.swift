@@ -116,6 +116,21 @@ extension VisualizerEngine {
             guard let self else { return }
             mir.currentTrackName = event.current.title ?? ""
             mir.currentArtistName = event.current.artist ?? ""
+
+            // BUG-015: resolve the live track's plan index on the audio thread
+            // and store it under `orchestratorLock` for the analysis-queue
+            // `runOrchestratorLiveUpdate(mir:)` wire. The MainActor field
+            // `currentTrackIndex` is set inside the Task below for SwiftUI
+            // consumers; both reflect the same plan walk so they stay in lock-
+            // step. Resolved before the MainActor task so the orchestrator
+            // wire sees the new index on the next analysis tick (~3 Hz).
+            // `indexInLivePlan(matching:)` itself is non-actor-isolated and
+            // takes `orchestratorLock` internally.
+            let resolvedPlanIndex = self.indexInLivePlan(matching: event.current)
+            self.orchestratorLock.withLock {
+                self.liveTrackPlanIndex = resolvedPlanIndex
+            }
+
             Task { @MainActor in
                 self.currentTrack = event.current
                 self.preFetchedProfile = nil
@@ -128,7 +143,7 @@ extension VisualizerEngine {
                 // string matches. nil when the track is not part of the plan
                 // (covers, remasters, encoding-different versions) or when no plan
                 // exists.
-                self.currentTrackIndex = self.indexInLivePlan(matching: event.current)
+                self.currentTrackIndex = resolvedPlanIndex
             }
             mir.reset()
             self.pipeline.resetAccumulatedAudioTime()
