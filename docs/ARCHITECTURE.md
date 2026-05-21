@@ -178,10 +178,10 @@ Baselines for these modulations are captured in `RayMarchPipeline.BaseSceneSnaps
 - `TextureManager` — 5 pre-computed noise textures generated via Metal compute at init.
 - `RenderPipeline+MVWarp` — Milkdrop-style per-vertex feedback warp: `MVWarpPipelineBundle`, `MVWarpState`, `setupMVWarp`, `drawWithMVWarp` (3-pass warp/compose/blit), `clearMVWarpState`, `reallocateMVWarpTextures`.
 
-**Binding layout:**
+**Binding layout (summary — see §GPU Contract Details for the canonical contract):**
 
-- Textures: 0=feedback read, 1=feedback write, 2–3=reserved, 4=noiseLQ, 5=noiseHQ, 6=noiseVolume, 7=noiseFBM, 8=blueNoise, 9=IBL irradiance, 10=IBL prefiltered, 11=BRDF LUT.
-- Buffers: 0=FFT, 1=waveform, 2=FeatureVector, 3=StemFeatures, 4–7=future.
+- Textures: 0=feedback read, 1=feedback write, 2–3=reserved, 4=noiseLQ, 5=noiseHQ, 6=noiseVolume, 7=noiseFBM, 8=blueNoise, 9=IBL irradiance, 10=IBL prefiltered env OR per-preset baked height field (different encoders; no overlap — see D-127), 11=BRDF LUT, 12=DynamicTextOverlay (direct-pass only — SpectralCartograph), 13+=staged-composition sampled stage outputs (V.ENGINE.1).
+- Buffers: 0=FeatureVector, 1=FFT, 2=waveform, 3=StemFeatures, 4=SceneUniforms (ray-march G-buffer/lighting/SSGI **only**; reused by mesh-shader path for `meshPresetFragmentBuffer`), 5=SpectralHistory (direct-pass), 6=per-preset fragment buffer #1 (D-092 — Gossamer wave pool / Arachne web pool), 7=per-preset fragment buffer #2 (D-094 — Arachne spider state), 8=per-preset fragment buffer #3 (D-LM-buffer-slot-8 — Lumen Mosaic `LumenPatternState`).
 
 ## Presets
 
@@ -535,19 +535,26 @@ PhospheneEngine/
     MetalContext            → MTLDevice, command queue, triple-buffered semaphore, shared-texture helper
     ShaderLibrary           → Auto-discover .metal files, runtime compilation, cache
     RenderPipeline          → Render graph dispatch, feedback ping-pong, activePasses guarded by passesLock
-    RenderPipeline+Draw     → Draw paths: direct, mesh, postProcess, feedback, warp, blit, particles
-    RenderPipeline+MeshDraw → Mesh shader draw: drawWithMeshShader, offscreen pass
-    RenderPipeline+PostProcess → HDR post-process: drawWithPostProcess, lazy texture allocation
-    RenderPipeline+RayMarch → Ray march draw: drawWithRayMarch + per-frame audio-reactive SceneUniforms modulation (light intensity from any-band beat, lightColor from valence, fogFar from arousal, camera dolly from features.time, glass-fin position from bass). Reads BaseSceneSnapshot for additive-on-baseline behaviour.
-    RenderPipeline+MVWarp   → MV-2 per-vertex feedback warp: MVWarpPipelineBundle, MVWarpState, setupMVWarp, drawWithMVWarp (3-pass: warp grid → compose → blit), clearMVWarpState, reallocateMVWarpTextures
-    RenderPipeline+ICB      → Indirect command buffer: drawWithICB, populate compute + execute render
+    RenderPipeline+Draw     → Per-frame render-graph executor (renderFrame). Walks activePasses, dispatches the first available pass. MV-2 multi-pass flow: when .mvWarp is present, a preceding .rayMarch pass renders to warpState.sceneTexture and continues the loop instead of returning. Fallback path is drawDirect.
+    RenderPipeline+MeshDraw → Mesh shader draw: drawWithMeshShader. Delegates to MeshGenerator (native M3+ mesh or M1/M2 vertex fallback). Binds meshPresetFragmentBuffer at slot 4 (mutually exclusive with ray-march's SceneUniforms; the two paths never fire on the same frame).
+    RenderPipeline+PostProcess → HDR post-process: drawWithPostProcess (stand-alone path; ray-march presets get bloom via PostProcessChain.runBloomAndComposite instead).
+    RenderPipeline+FeedbackDraw → Milkdrop-style global feedback path (Membrane). FeedbackDrawContext value type + 2-mode (particle vs surface) dispatch + ping-pong texture swap.
+    RenderPipeline+RayMarch → Ray march draw: drawWithRayMarch + per-frame audio-reactive SceneUniforms modulation (light intensity from any-band beat, lightColor from valence, fogFar from arousal, camera dolly from features.time, glass-fin position from bass). Reads BaseSceneSnapshot for additive-on-baseline behaviour. Plus the 150ms-τ aurora-drums EMA smoother (V.9 Session 4.5c / D-127) and the optional per-preset compute dispatch hook (V.9 Session 4.5b Phase 2b — currently nil in production).
+    RenderPipeline+MVWarp   → MV-2 per-vertex feedback warp (D-027): MVWarpPipelineBundle, MVWarpState, setupMVWarp, drawWithMVWarp (3-pass: warp grid → compose → blit + texture swap), clearMVWarpState, reallocateMVWarpTextures, setMVWarpDecay. AV.2.1 black-clear-on-allocation. Reduced-motion fallback skips the accumulator (single-frame render).
+    RenderPipeline+ICB      → Indirect command buffer: drawWithICB, populate compute + execute render. Test-active (RenderPipelineICBTests) but production-orphan today — no preset declares "icb" in passes and no production setICBState call. Deliberately deferred per VisualizerEngine+Presets.swift:305 comment.
+    RenderPipeline+Staged   → V.ENGINE.1 per-preset staged composition (Arachne V.7.7B+). StagedStageSpec value type; ordered stage list with per-stage offscreen .rgba16Float textures (non-final) + drawable (final). Earlier stages' outputs sampled at fragment texture(13)+. Per-preset fragment buffers 6/7/8 bound uniformly across every stage.
+    RenderPipeline+BudgetGovernor → applyQualityLevel(_:): translates FrameBudgetManager.QualityLevel into per-subsystem flags (SSGI on/off, bloom on/off, ray-march step count 0.75×, particle fraction 0.5×, mesh density 0.5×). Each level is a strict superset of the previous (D-057).
+    RenderPipeline+PresetSwitching → All per-preset setter API: setActivePipelineState, setFeedbackParams, setMeshGenerator/+PresetBuffer/+PresetTick/+PresetFragmentBuffer, setParticleGeometry, setPostProcessChain, setRayMarchPipeline, setFeatures (mood-preserving per D-024), setMood, setStemFeatures, setDirectPresetFragmentBuffer{,2,3} (D-092/D-094/D-LM-buffer-slot-8), setRayMarchPresetHeightTexture/+ComputeDispatch (V.9 Session 4.5b), setMeshGBufferEncoder (V.9 Session 4.5c — Ferrofluid Ocean round-57 retirement set nil in live), setDynamicTextOverlay/+TextOverlayCallback.
     FrameBudgetManager      → Pure-state frame timing governor: QualityLevel ladder (full→noSSGI→noBloom→reducedRayMarch→reducedParticles→reducedMesh), asymmetric hysteresis (3 overruns down / 180 frames up), per-tier Configuration factories, reset() on preset change. Exposes recentMaxFrameMs/recentFramesObserved (30-slot rolling window) via FrameTimingProviding for ML scheduling. D-057, D-059.
     MLDispatchScheduler     → Pure-state ML dispatch controller: gates stem separation dispatch onto frame-timing-clean moments. Decision enum (dispatchNow/defer/forceDispatch), DispatchContext value type, decide(context:) algorithm. Tier defaults: 2000ms/30-frame (Tier 1), 1500ms/20-frame (Tier 2). FrameTimingProviding protocol for testability. D-059.
-    RayMarchPipeline        → Deferred 3-pass: G-buffer textures, lighting pipeline, composite pipeline. reducedMotion is an OR-gate: a11yReducedMotion || governorSkipsSSGI (D-054, D-057). stepCountMultiplier written to sceneParamsB.z each frame.
-    RayMarchPipeline+Passes → SSGI pass extraction for file-length compliance
-    PostProcessChain        → HDR scene texture, bloom ping-pong, 4 pipeline states, ACES composite. bloomEnabled gates bright-pass + blur; composite always runs for ACES tone-mapping.
+    RayMarchPipeline        → Deferred 3-pass: G-buffer textures, lighting pipeline, composite pipeline. reducedMotion is an OR-gate: a11yReducedMotion || governorSkipsSSGI (D-054, D-057). stepCountMultiplier written to sceneParamsB.z each frame. Owns lumenPlaceholderBuffer (568B zero-filled slot-8 fallback per D-LM-buffer-slot-8) + ferrofluidHeightPlaceholderTexture (1×1 r16Float zero-fallback for texture(10)). meshGBufferEncoder branch (V.9 Session 4.5c Phase 1 Step B / Failed Approach #66) — set via setMeshGBufferEncoder; nil in live production since Ferrofluid Ocean round 57. depthDebugEnabled/runDepthDebugPass cluster is currently dead (CA.7a-FU-2).
+    RayMarchPipeline+Passes → Per-pass encoders: runGBufferPass, runMeshGBufferPass (FA#66 mesh branch), runLightingPass, runSSGIPass, runSSGIBlendPass, runDepthDebugPass (dead — CA.7a-FU-2), runGBufferDebugPass (G key), runCompositePass. Slot-8 (LumenPatternState) + slot-10 (FerrofluidParticles height) placeholder fallbacks live here.
+    RayMarchPipeline+PipelineStates → Static factory buildPipelineBundle returning compiled lighting/SSGI/SSGI-blend/composite/gbufferDebug/depthDebug pipeline states + sampler. Single call site: RayMarchPipeline.init.
+    PostProcessChain        → HDR scene texture, bloom ping-pong, 4 pipeline states, ACES composite. bloomEnabled gates bright-pass + blur; composite always runs for ACES tone-mapping. runBloomAndComposite is the ray-march integration path (consumes externally-rendered HDR scene texture from RayMarchPipeline).
     IBLManager              → Irradiance cubemap (32²) + prefiltered env (128², 5 mips) + BRDF LUT (512²)
     TextureManager          → 5 noise textures via Metal compute at init, bound at texture(4–8)
+    DynamicTextOverlay      → Per-frame CPU text rasterization via Core Text + Core Graphics into a 2048×1024 .rgba8Unorm shared (UMA) MTLTexture. CTM permanently flipped to match Metal's top-left UV convention. Bound at fragment texture(12) for presets that declare text_overlay: true (SpectralCartograph mode label).
+    Protocols               → Rendering protocol (AnyObject, MTKViewDelegate, Sendable; required setActivePipelineState(_:)). Concrete: RenderPipeline.
     Geometry/ParticleGeometry → Protocol for per-preset particle compute+render pipelines (D-097). Three members: update(features:stemFeatures:commandBuffer:), render(encoder:features:), activeParticleFraction. AnyObject + Sendable. `RenderPipeline.particleGeometry` storage and `setParticleGeometry(_:)` API are typed as `(any ParticleGeometry)?`. Future particle presets each ship their own conformer rather than parameterizing a shared pipeline.
     Geometry/ProceduralGeometry → GPU compute particle system for Murmuration: UMA buffer + compute + render pipelines. activeParticleFraction scales compute dispatch count (governor gate). Conforms to `ParticleGeometry` (D-097); the conformance is the only Murmuration-side change in DM.0 — kernel names, particle count, drag, decay rate are unchanged.
     Geometry/MeshGenerator  → M3+ mesh shader + M1/M2 vertex fallback, draw dispatch abstraction. densityMultiplier passed at object/mesh buffer(1) for M3+ opt-in; no-op on M1/M2 vertex path.
@@ -869,6 +876,17 @@ texture(9)  = IBL irradiance cubemap (32² .rgba16Float) — ray-march lighting 
 texture(10) = IBL prefiltered env (128² .rgba16Float, 5 mip levels) — ray-march lighting pass
               | per-preset baked height field (e.g. Ferrofluid Ocean V.9 Session 4.5b 1024² .r16Float UMA) — ray-march G-buffer pass. Different encoders; no overlap.
 texture(11) = BRDF LUT (512² .rg16Float) — ray-march lighting pass
+texture(12) = DynamicTextOverlay (2048×1024 .rgba8Unorm, .storageModeShared UMA) — direct-pass only.
+              Bound by RenderPipeline.drawDirect when a text-overlay preset is active
+              (SpectralCartograph mode label). The overlay is CPU-rasterised once per frame
+              via Core Text + Core Graphics into the shared MTLTexture before the encoder
+              is created; the GPU then reads from UMA memory zero-copy. Created/destroyed
+              by setDynamicTextOverlay(_:) on preset switch.
+texture(13+) = Staged-composition sampled stage outputs (V.ENGINE.1).
+              kStagedSampledTextureFirstSlot = 13. Each staged preset declares a `samples`
+              list per stage; earlier stages' outputs are bound at texture(13), texture(14),
+              ... in declared order. Used by Arachne V.7.7B+ for the WORLD → COMPOSITE
+              architecture (the worldTex sample at texture(13) — D-093).
 ```
 
 ### Buffer Binding Layout
@@ -877,7 +895,11 @@ buffer(0) = FeatureVector (192 bytes, 48 floats)        ← all fragment encoder
 buffer(1) = FFT magnitudes (512 floats)
 buffer(2) = waveform samples (1024 floats)
 buffer(3) = StemFeatures (256 bytes, 64 floats)
-buffer(4) = SceneUniforms (128 bytes) — ray march G-buffer, lighting, SSGI passes ONLY
+buffer(4) = SceneUniforms (128 bytes) — ray march G-buffer, lighting, SSGI passes ONLY.
+              **Slot 4 is reused** by the mesh-shader path for `meshPresetFragmentBuffer`
+              (RenderPipeline+MeshDraw.swift:73). The two paths are mutually exclusive —
+              a preset declares either `mesh_shader` or `ray_march`, never both on the
+              same frame — so the slot is safely reusable per-dispatch-path.
 buffer(5) = SpectralHistory (4096 Float32, 16 KB) — direct-pass fragment encoders
               [0..479]    valence trail (-1..1)
               [480..959]  arousal trail (-1..1)
