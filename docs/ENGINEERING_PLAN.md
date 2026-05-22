@@ -32,6 +32,38 @@ Test infrastructure: swift-testing + XCTest across unit, integration, regression
 
 ## Recently Completed
 
+### CA-Presets-FU-4 — Lumen Mosaic init-failure instrumentation ✅ (2026-05-21)
+
+First of the Tier-1 Phase CA follow-up batch (CA-Presets-FU-4 + CA-Audio-FU-4). Closes the silent-allocation-failure diagnosis gap surfaced by the CA-Presets audit and documented in the BUG-016 addendum (`docs/QUALITY/KNOWN_ISSUES.md:111-141`). **BUG-016 stays Open** — instrumentation is not a fix; the increment closes the gap that prevented previous reproductions from being characterised post-hoc.
+
+**Landed changes (commit `cb8cb0bb`):**
+
+- **`PhospheneEngine/Sources/Presets/Lumen/LumenPatternEngine.swift`** (lines 580-595) — `Logging.session.error(...)` added inside the `init?(device:seed:)` failure branch. Writes to the unified log under category `"session"`. Captures the failure regardless of which App-side caller triggers the init (future-proofs against caller-site refactors that might drop the App-side log).
+- **`PhospheneApp/VisualizerEngine+Presets.swift`** (lines 165-187, the LumenMosaic instantiation site inside `applyPreset .rayMarch`) — `sessionRecorder?.log(...)` added alongside the existing `logger.error(...)` call. Writes to `~/Documents/phosphene_sessions/<ts>/session.log` so the next reproduction is greppable from the on-disk artifact without a `log show` invocation.
+
+**Belt-and-braces rationale:** the BUG-016 addendum's original recipe (`Logging.session?.log(...)` at the App-side site) was structurally inverted on channel routing — `Logging.session` is an `os.Logger`, not a `SessionRecorder`, so it writes only to the unified log. The on-disk `session.log` file is owned by `SessionRecorder.log(_:)`. The increment covers both channels: App-side gets the on-disk write; engine-internal gets the unified-log write with caller-site-agnostic coverage. Two corrections to the original addendum (channel routing + line-number citations) landed inline in the BUG-016 addendum follow-on note.
+
+**Retrieval predicates for the next reproduction:**
+
+```bash
+# On-disk session.log (App-side SessionRecorder write)
+grep "LumenPatternEngine: failed to allocate slot-8 buffer" \
+  ~/Documents/phosphene_sessions/<ts>/session.log
+
+# Unified log (engine-internal Logging.session.error write)
+log show --predicate 'subsystem == "com.phosphene" AND category == "session"' \
+  --info --last 30m | grep "LumenPatternEngine init failed"
+```
+
+**Verification:** SwiftLint baseline holds at 0 violations / 371 files (one line-length violation surfaced and fixed in-pass via multi-line string literal). Engine test suite: 1,248 tests across 162 suites — all passing (unchanged; no test surface modified). App build: `BUILD SUCCEEDED` on `xcodebuild -scheme PhospheneApp build`. App tests: passing (no test surface modified).
+
+**Doc updates:**
+- `docs/QUALITY/KNOWN_ISSUES.md` BUG-016 addendum extended with the new instrumentation note + corrected retrieval predicates.
+- `docs/CAPABILITY_REGISTRY/PRESETS.md` CA-Presets-FU-4 row: Open → Resolved 2026-05-21 with commit hash + a summary of the two corrections to the original recipe.
+- This ENGINEERING_PLAN.md entry.
+
+**Risks and follow-ups:** if BUG-016 reproduces and neither retrieval predicate fires, the failure mode is one of the 4 non-allocation candidates (stuck-on-previous, visual artifacts, no-audio-response, or pale-dominant LM.9 regression) documented in the BUG-016 addendum's "5 candidate failure modes" table. Path-of-investigation is unchanged for those cases.
+
 ### CA-Audio-FU-9 — ARCH structural-claims sync (Module Map + §Key Types + per-source-file inline drift) ✅ (2026-05-21)
 
 Twelfth Phase CA increment of the day — the consolidation pass for the 7-in-a-row Module Map drift pattern surfaced across CA.5 / CA.6 / CA.7a / CA.7b / CA-Audio / CA-Presets / CA-Shared. **Closes Phase CA: every Swift engine surface is audited AND the structural-claim documentation matches the code.**

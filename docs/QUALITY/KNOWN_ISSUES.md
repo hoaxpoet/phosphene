@@ -142,6 +142,35 @@ The init returns nil with **no logging from the Presets-module-internal side**. 
 
 ---
 
+### Addendum (CA-Presets-FU-4 instrumentation landed, 2026-05-21)
+
+The diagnostic upgrade recommended above shipped as CA-Presets-FU-4 (commit `cb8cb0bb`). Two corrections to the previous addendum's recipe were applied:
+
+1. **Channel routing.** The previous addendum proposed `Logging.session?.log(...)` for the App-side site. That is structurally wrong: `Logging.session` is an `os.Logger` (not Optional, not a `SessionRecorder`), so it does NOT write to the on-disk `session.log` file. The on-disk file is owned by `SessionRecorder.log(_:)`. The shipped instrumentation covers BOTH channels:
+   - **App-side** (`VisualizerEngine+Presets.swift:172-186`): `sessionRecorder?.log(...)` writes to the on-disk `session.log` file (greppable without `log show` invocation).
+   - **Engine-internal** (`LumenPatternEngine.swift:583-595`): `Logging.session.error(...)` writes to the unified log under category `"session"` (captures even from App-side caller variants that don't have `SessionRecorder` in scope).
+
+2. **Site line numbers.** The previous addendum cited `VisualizerEngine+Presets.swift:423-433` as the App-side LumenMosaic construction site. Those lines belong to the AuroraVeil branch. The actual LumenMosaic site is at lines 165-187 (the `if desc.name == "Lumen Mosaic"` block inside `applyPreset .rayMarch`).
+
+**Retrieval predicates for the next reproduction:**
+
+```bash
+# On-disk session.log (App-side SessionRecorder write)
+grep "LumenPatternEngine: failed to allocate slot-8 buffer" \
+  ~/Documents/phosphene_sessions/<ts>/session.log
+
+# Unified log (engine-internal Logging.session.error write)
+log show --predicate 'subsystem == "com.phosphene" AND category == "session"' \
+  --info --last 30m | grep "LumenPatternEngine init failed"
+```
+
+**BUG-016 stays Open.** Instrumentation is not a fix. The next reproduction should:
+1. Reproduce the failure (Lumen Mosaic visible degradation in a reactive-mode session).
+2. Check both predicates above. If either fires, Candidate 1 (Black/blank screen via silent `device.makeBuffer` nil) is confirmed and the fix scope is "make `LumenPatternState` allocation more robust" or "investigate why `.storageModeShared` is failing at 568 bytes on Matt's hardware."
+3. If neither predicate fires, the failure is one of the other 4 candidate modes (stuck-on-previous, visual artifacts, no-audio-response, or pale-dominant LM.9 regression) — proceed with the per-candidate diagnosis path.
+
+---
+
 ### BUG-015 — `applyLiveUpdate(...)` has zero production call sites; Orchestrator live-adaptation pipeline is dead at runtime
 
 **Severity:** P1 (load-bearing product claim — "the AI Orchestrator has planned the entire visual session and adapts as the music unfolds" per CLAUDE.md top — the adaptation half does not run).
