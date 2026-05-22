@@ -12,7 +12,7 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 **Severity:** P1 (load-bearing product claim — "beat-synced from frame 1 of every track", Matt's Phase CS bar 2026-05-20. CS.1 empirical verification: 7 of 10 tracks fail the ±50 ms bar. Not session-blocking — the session plays and the BUG-007.9 runtime recalibration partially corrects after ~15 s — so not P0.)
 **Domain tag:** `dsp.beat`
-**Status:** Open — **direction decided (2026-05-22); fix to be designed.** CS.1.y.2 (onset-based) and short-window Beat This! both failed — see the addenda below. Matt's decision: cold-start uses the cached grid as-is from frame 1 ("approximately synced" — within ~±130 ms on most tracks), then full-window live Beat This! phase-corrects the grid at ~15–20 s ("locked within ~20 s"). The product claim moves from "exact from frame 1" to "approximately synced immediately, locked within ~20 s". The CS.1.y.2-redo fix is the next increment (design-first).
+**Status:** Open — **CS.1.y.2-redo redo.1 + redo.2 landed 2026-05-22; awaiting redo.3 validation** (fresh capture + post-snap `ColdStartVerifier` + Matt's M7). The earlier CS.1.y.2 (onset-based) and short-window Beat This! attempts were exhausted; Matt set the "approx now, exact by ~20 s" direction; design + Step 1 window-length measurement + the production fix now sit in tree. BUG-017 stays Open until M7 confirms perceptual sync on the post-snap window (the verifier-circularity caveat — fix aligns to Beat This!-on-tap, verifier scores against the same — makes M7 the load-bearing close gate). See the addenda below for the full chain, and `RELEASE_NOTES_DEV.md [dev-2026-05-22-c]` for the redo.1 + redo.2 diff.
 **Introduced:** Pre-CS.1. The cold-start grid-install path (`VisualizerEngine+Stems.swift:485`, `cached.beatGrid.offsetBy(0)`) and the preview-only `GridOnsetCalibrator` (`GridOnsetCalibrator.swift:13`) predate this filing — part of the BUG-007.x cold-start infrastructure series. The preview-vs-track phase gap was never closed; CS.1's verification harness surfaced it empirically 2026-05-22.
 **Resolved:** —
 
@@ -119,6 +119,26 @@ The CS.1.y.2-redo step-1 measurement (offline; `ColdStartVerifier --rediagnose`,
 **Where this leaves BUG-017.** Three signal sources have now been tried and exhausted: live sub-bass onsets (CS.1.y.2 — off-beat, reverted), short-window Beat This! (this re-diagnosis — erratic, non-reproducible), and the cached grid alone (CS.1 baseline — 3/10 pass). None achieves the bar (≥ 90 % within ±50 ms from frame 1, ≤ 5 s budget). The only reliable beat reference is full-window (~15–25 s) Beat This!, which by definition is not available inside the cold-start window. **The bar as specified is not achievable under the streaming-only constraint with the tools available.** That is a product-level finding, and it was put to Matt.
 
 **Decision (2026-05-22).** Matt's call: do not chase fast (≤ 5 s) phase acquisition. Cold-start uses the cached grid as-is from frame 1 — which CS.1 showed is *approximately* right already (8/10 tracks within ±130 ms). Then, at ~15–20 s, run full-window live Beat This! on the tap audio and phase-correct the cached grid to it (a one-time snap to exact). Product claim: "approximately synced immediately, locked within ~20 s." The fix (**CS.1.y.2-redo**) supersedes the onset-based and short-window directions; it is closely related to the existing `performLiveBeatInference` live-Beat This! path (currently runs only when no grid is installed) and to BUG-007.9 runtime recalibration (currently `GridOnsetCalibrator`-based — the unreliable onset tool). To be designed design-first before any code.
+
+### Addendum (CS.1.y.2-redo redo.1 + redo.2 — implementation landed, awaiting validation, 2026-05-22)
+
+The CS.1.y.2-redo design surfaced to Matt before code; snap = instant snap (Matt-ratified). Implemented in two halves:
+
+**redo.1 (Step 1 window-length measurement) ✅.** Extended `ColdStartVerifier --rediagnose` to take `--rediagnose-windows` (default `3,4,5` preserved). Ran on both captures with `10,15,20`. Result: **at 15 s, phase reproducibly ≤ 8 ms across both captures on every track including HUMBLE and Money; at 20 s, ≤ 6 ms.** Decisive vs the 3/4/5 s re-diagnosis (1-3/10). Reports written to `<capture>/cold_start_rediagnosis_10-15-20.md`. **W = 15 s ratified** by Matt. The bundled "viable" verdict (8-9/10) folded a strict R ≥ 0.90 gate that's tempo-jitter-sensitive — the *raw phase* (what the fix needs) is 10/10 within ±30 ms at 15-20 s. The redo.2 confidence gate is loose by design.
+
+**redo.2 (implementation) ✅.** No new architecture — the fix swaps the *measurement tool* inside BUG-007.9's `runtimeRecalibrationIfDue`. Specifics:
+
+- **Engine** — new `LiveBeatDriftTracker.applyColdStartPhaseCorrection(liveGrid:)` computes the circular-mean phase residual between the installed cached grid and a passed-in live Beat This! grid; gates with degenerate-only guards (≥ 8 live beats, live BPM within ±15 % of cached BPM) plus a loose R floor (0.5); applies via the existing drift-set path (no grid reinstall, no lock-state reset). `applyCalibration` refactored to share `setDriftLocked` with the new method.
+- **Engine tests** — `LiveBeatDriftTrackerColdStartPhaseTests.swift` adds 8 contracts including the load-bearing **lock state, matchedOnsets, and drift-EMA ring are preserved across the correction** check (the BUG-007.x regression guard).
+- **App** — `runtimeRecalibrationIfDue` reworked: snapshot 15 s of tap audio, run `DefaultBeatGridAnalyzer.analyzeBeatGrid`, shift to track-relative time, call the new engine method. **Dropped the `matchedOnsetCount ≥ 8` gate** that would never open on ½-beat-off tracks (the exact failure case BUG-017 is about — onsets can't match a wrong grid within ±50 ms). `stemSampleBuffer.maxSeconds` 15 → 18 (15 s window on a 48 kHz tap needs ~16.5 s of model-rate capacity; cost ~0.6 MB). `GridOnsetCalibrator` retained only for its prep-time `gridOnsetOffsetMs` seed.
+- **Verifier** — new `--window-start-s` option for measuring the post-snap window (redo.3 needs `--window-start-s 20`).
+
+Verification:
+- Engine suite: **1273 / 1273 pass** (1265 baseline + 8 new cold-start tests).
+- App build clean; project-wide `swiftlint --strict`: 0 violations across 380 files.
+- `ColdStartVerifier --self-test`: PASS (7/7).
+
+**Pending — redo.3 (validation).** Matt: produce a fresh full-session capture with `PHOSPHENE_FULL_RAW_TAP=1` on the post-fix build. Then `ColdStartVerifier --session <capture> --window-start-s 20` should show ≥ 90 % within ±50 ms in the post-snap window. Then M7 perceptual review with attention on HUMBLE and Money (the verifier-circularity tracks). On M7 pass: BUG-017 flips to Resolved with the commit hash; ENGINEERING_PLAN CS.1.y to ✅; `RELEASE_NOTES_DEV.md [dev-2026-05-22-d]` records closeout.
 
 ---
 

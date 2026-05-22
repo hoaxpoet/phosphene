@@ -4165,23 +4165,22 @@ The remaining work is **verification + targeted filling**, not new architecture.
 
 **Done-when (met).** Root cause identified with code-level evidence; documented in `KNOWN_ISSUES.md` (BUG-017); no fix code.
 
-### Increment CS.1.y — Cold-start grid-phase fix (BUG-017) — **direction decided; CS.1.y.2-redo to be designed**
+### Increment CS.1.y — Cold-start grid-phase fix (BUG-017) — **CS.1.y.2-redo redo.1 + redo.2 landed; awaiting redo.3 validation**
 
-**Status (2026-05-22).** Two candidate cold-start phase sources were tried and exhausted; Matt then set the direction.
+**Status (2026-05-22).** Three signal sources for the ≤ 5 s phase acquisition were tried and exhausted; Matt set a new direction ("approx now, exact by ~20 s"); the design landed; redo.1 measurement + redo.2 implementation are in tree; redo.3 validation is pending Matt's fresh capture + M7.
 
-- **CS.1.y.1 design ✅** — surfaced to Matt; budget ratified (then raised to < 5 s).
-- **CS.1.y.2 (onset-based fix) — attempted, failed validation, reverted.** The onset-based phase acquisition (commit `dbcc018d`, reverted `f71b0456`) was engine-green but `ColdStartVerifier` scored 0/10 — *worse* than CS.1's 3/10: the sub-bass onset detector fires on off-beat sub-bass events, not beats. Unsound, not mistuned (CLAUDE.md Failed Approach #68).
-- **CS.1.y re-diagnosis (short-window Beat This!) — done; direction found unusable.** Offline measurement (`ColdStartVerifier --rediagnose`, commit `b27226d3`): Beat This! on a 3/4/5 s window reproduces the full-window phase on only 1–3/10 tracks, and is **non-reproducible** — the same track recorded twice gives different short-window phase (Everlong: clean in one capture, ±211 ms unstable in the other). Money has no beat in its intro at all.
-- **No signal achieves the bar in ≤ 5 s.** Live onsets (off-beat), short-window Beat This! (erratic/non-reproducible), cached grid alone (3/10) — all exhausted. The only reliable beat reference is full-window (~15–25 s) Beat This!, unavailable inside the cold-start window.
+- **CS.1.y.1 design ✅** — original design surfaced; budget ratified.
+- **CS.1.y.2 (onset-based fix) — failed, reverted.** Commit `dbcc018d` reverted by `f71b0456`. ColdStartVerifier 0/10. Sub-bass onset detector is not a beat-phase reference (CLAUDE.md Failed Approach #68).
+- **CS.1.y re-diagnosis (short-window Beat This!) — done.** `ColdStartVerifier --rediagnose` (commit `b27226d3`) found 3/4/5 s windows unusable (1-3/10, non-reproducible).
+- **Direction decision (Matt, 2026-05-22).** "Approx now, exact by ~20 s." Cached grid stays from frame 1 ("approx"); at ~15-20 s full-window live Beat This! phase-corrects the grid ("exact").
+- **CS.1.y.2-redo design ✅** — design surfaced to Matt; snap = instant snap; W to be measured before code; the fix swaps the *measurement tool* inside BUG-007.9's `runtimeRecalibrationIfDue` (BUG-007.9 structure stays — one-shot per track, `applyCalibration` apply path, `runtimeRecalibrationDone` latch); `GridOnsetCalibrator` survives for its prep-time `gridOnsetOffsetMs` seed only.
+- **CS.1.y.2-redo redo.1 (measurement) ✅** — `ColdStartVerifier --rediagnose` extended to take `--rediagnose-windows` (default `3,4,5` preserved). Run on both captures with `10,15,20`. Result decisive: phase reproducibly ≤ 8 ms at 15 s, ≤ 6 ms at 20 s across both captures and every test track including HUMBLE and Money. **W = 15 s ratified** (Matt). Capture reports written: `<capture>/cold_start_rediagnosis_10-15-20.md`.
+- **CS.1.y.2-redo redo.2 (implementation) ✅** — engine method `LiveBeatDriftTracker.applyColdStartPhaseCorrection(liveGrid:)` (circular-mean phase residual + loose confidence gate: ≥ 8 live beats, BPM within ±15 %, R ≥ 0.5); 8 new engine regression tests covering the gate cases + lock-state preservation. App-side rework of `runtimeRecalibrationIfDue` (Beat This! path; drops the `matchedOnsetCount ≥ 8` gate that would never open on ½-beat-off tracks); `stemSampleBuffer.maxSeconds` 15 → 18 (15 s window on a 48 kHz tap needs ~16.5 s of model-rate capacity). Verifier `--window-start-s` for post-snap measurement. Engine suite **1273/1273 green** (1265 baseline + 8 new); app build clean; `swiftlint --strict` 0 / 380 files. Full diff: `RELEASE_NOTES_DEV.md [dev-2026-05-22-c]`.
+- **CS.1.y.2-redo redo.3 (validation) — pending Matt.** Fresh full-session capture with `PHOSPHENE_FULL_RAW_TAP=1` on the post-fix build → `ColdStartVerifier --window-start-s 20` reports ≥ 90 % within ±50 ms in the post-snap window → Matt's M7 perceptual review on HUMBLE and Money (the load-bearing gate; verifier-circularity carry-forward — the verifier scores against Beat This!-on-tap which is also what the fix aligns to).
 
-**Decision (Matt, 2026-05-22).** "≥ 90 % within ±50 ms from frame 1, ≤ 5 s" is not achievable under streaming-only. Direction chosen: cold-start uses the cached grid as-is from frame 1 ("approximately synced" — CS.1 showed 8/10 tracks within ±130 ms), then full-window live Beat This! phase-corrects the grid at ~15–20 s ("locked within ~20 s"). Product claim moves from "exact from frame 1" to "approximately synced immediately, locked within ~20 s".
+**Done-when (unchanged).** `ColdStartVerifier` ≥ 90 % pass on the post-snap window; engine suite green; BUG-007.x lock machinery + steady-state tracking preserved (covered by the new regression test); Matt M7 confirms perceptual sync.
 
-**Next increment — CS.1.y.2-redo (design-first).** Build the ~15–20 s phase tighten. Scope to design with Matt before any code:
-- *"Approx now" half* needs no code — the cached grid is already installed from frame 1.
-- *"Exact by ~20 s" half*: run full-window Beat This! on ~15–20 s of live tap audio, extract its phase, and phase-correct the cached grid (a one-time `drift` re-seed → a visible snap). Closely related to `performLiveBeatInference` (`VisualizerEngine+Stems.swift` — currently runs the live-Beat This! path only when no grid is installed) and to **BUG-007.9** runtime recalibration (currently `GridOnsetCalibrator`-based — the unreliable onset tool; likely superseded by this).
-- Design questions: window length (15 vs 20 vs 25 s — the re-diagnosis showed full-window Beat This! reliable; confirm the shortest reliable length); the apply mechanism + its interaction with the BUG-007.x lock machine (same regression surface CS.1.y.2 had); whether it replaces or augments BUG-007.9; regression-test strategy.
-
-Full analysis: BUG-017 CS.1.y.2 + re-diagnosis + Decision addenda; `RELEASE_NOTES_DEV.md [dev-2026-05-22-a]` / `[dev-2026-05-22-b]`. BUG-017 stays Open.
+**Estimated sessions remaining:** 1 (redo.3 validation).
 
 **Sequencing (Matt-ratified 2026-05-22).** CS.1 verified the cold-start infrastructure does *not* work; CS.2–CS.5 are all refinements that assume a correct cold-start grid (CS.2 protects the cold-start window; CS.3/CS.4 keep presets from over-relying on stems; CS.5 documents the contract). The BUG-017 fix is therefore **upstream of CS.2–CS.5** and is the load-bearing next CS increment. CS.2–CS.5 follow it.
 
