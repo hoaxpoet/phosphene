@@ -73,11 +73,18 @@ enum ColdStartAnalysis {
     static let degenerateOffGridFraction = 0.35
     /// Fewer than this many audible onsets in the window → degenerate (rhythmless).
     static let minOnsetsForRhythmic = 4
+    /// Seconds of slack beyond the cold-start window used for clock alignment.
+    /// The alignment envelope = `firstWindowS + this` — long enough to register
+    /// unambiguously, short enough to stay inside a 30 s `raw_tap.wav`.
+    static let alignmentSlackS = 12.0
 
     static func run(
         tracks: [TrackSegment], rawTap: RawTapAnalysis, config: VerifierConfig
     ) -> ColdStartAnalysisResult {
-        let alignments = ClockAlignment.align(tracks: tracks, rawTap: rawTap)
+        let alignments = ClockAlignment.align(
+            tracks: tracks,
+            rawTap: rawTap,
+            alignmentWindowS: config.firstWindowS + alignmentSlackS)
         let alignByIndex = Dictionary(uniqueKeysWithValues: alignments.map { ($0.trackIndex, $0) })
 
         var results: [TrackResult] = []
@@ -112,6 +119,16 @@ enum ColdStartAnalysis {
         }
         guard context.windowGridBPM > 0 else {
             return degenerateResult(track, alignment, context, "no usable grid BPM in window")
+        }
+        // Without a confident raw_tap↔features alignment the deltas are not
+        // trustworthy — mark un-verifiable rather than emit a garbage verdict.
+        // The common cause is raw_tap.wav not covering this track (30 s default
+        // cap — capture with PHOSPHENE_FULL_RAW_TAP=1 for a multi-track session).
+        guard alignment.confident else {
+            let corr = String(format: "%.2f", alignment.correlation)
+            let reason = "raw_tap↔features alignment unreliable (correlation \(corr)) "
+                + "— track audio likely outside raw_tap.wav coverage"
+            return degenerateResult(track, alignment, context, reason)
         }
 
         // Audible beats: raw_tap onsets mapped into playback-time, windowed.
