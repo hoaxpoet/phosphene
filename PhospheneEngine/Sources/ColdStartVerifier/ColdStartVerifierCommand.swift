@@ -6,56 +6,47 @@
 // WHAT IT MEASURES
 // ----------------
 // For a real captured session, for the first N seconds of every track, it
-// compares the *visual* beat times (when `beatPhase01` wraps in features.csv)
-// against the *audible* beat times (sub-bass onsets re-detected offline from
-// raw_tap.wav). The per-beat delta distribution, per-track and aggregate, is
-// the CS.1 measurement.
+// compares the *visual* beat times (`beatPhase01` wraps in features.csv) against
+// the *audible* beats. The per-beat delta distribution, per-track and aggregate,
+// is the CS.1 measurement.
 //
-// HARNESS-LOCATION DECISION (CS.1, kickoff step 2)
-// ------------------------------------------------
-// This is a NEW sibling executable target, NOT an extension of PresetSessionReplay
-// (which the design doc §7.1 floated as a candidate base). Rationale:
-//   • CS.1 ground truth requires re-running `BeatDetector` (and, as a follow-up,
-//     Beat This!) on raw_tap.wav — i.e. it needs the `DSP` (and `ML`) modules.
-//     `PresetSessionReplay` depends only on `Shared` + `Presets`; adding DSP/ML
-//     to a preset-rubric tool is scope creep.
-//   • Cold-start sync is engine-level and preset-agnostic. PresetSessionReplay's
-//     architecture (per-preset routes + image-processing rubric proxies) does
-//     not fit a beat-phase measurement.
-//   • The project already establishes the pattern of small, single-purpose
-//     offline runner targets: `TempoDumpRunner` (Audio+DSP), `BeatThisActivation-
-//     Dumper` (DSP+ML). CS.1 fits that pattern exactly.
+// MEASUREMENT — OPTION C (design discussion 2026-05-22)
+// -----------------------------------------------------
+// The audible-beat reference is a one-beat-per-beat grid from Beat This! re-run
+// offline on a per-track slice of raw_tap.wav. `beatBass` (the live onset
+// feature) was tried first and rejected: it fires >1×/beat, which turns a per-
+// beat measurement into a meaningless walking sawtooth. Beat This! is a beat
+// *tracker* — exactly one beat per beat.
 //
-// GROUND-TRUTH DECISION (CS.1, kickoff step 3)
-// --------------------------------------------
-// Primary ground truth: re-run `BeatDetector` on raw_tap.wav offline — the same
-// sub-bass onset detector `GridOnsetCalibrator` and the live `LiveBeatDriftTracker`
-// match against. Independent of the live AGC state, frame cadence, and dropped
-// frames. Beat This! offline cross-check is a CS.1 follow-up (`--beat-this`,
-// not yet implemented) — the BeatDetector path is a complete primary measurement.
-//
-// CLOCK ALIGNMENT
-// ---------------
-// features.csv and raw_tap.wav are written by the same SessionRecorder but in
-// independent clocks (features.csv `wallclock_s` / per-track `playback_time_s`;
-// raw_tap.wav in tap-sample-time). They ARE the same audio, so a low-frequency
-// energy-envelope cross-correlation recovers the true per-track offset — a
-// measurement-tool alignment of a known-real relationship, not a fudge.
+// CLOCK OFFSET
+// ------------
+// raw_tap.wav and features.csv are both faithful real-time clocks with a per-
+// track constant offset. The offset is pinned sync-independently by pairing
+// raw_tap BeatDetector onsets against features.csv `beatBass` onsets (same
+// physical events, same detector, two clocks) — see ClockOffset. This carries
+// no visual-vs-audible sync error, so it cannot hide a real sync error.
 //
 // DISPLAY-SHIFT CAVEAT
 // --------------------
-// `beatPhase01` is computed from `pt + drift + (visualPhaseOffsetMs +
-// audioOutputLatencyMs)` (LiveBeatDriftTracker.swift:573). raw_tap.wav is
-// tap-time. The raw per-beat delta therefore carries `−displayShift`. Pass the
-// in-effect shift via `--display-shift-ms` to recover the latency-corrected
-// calibration error; the report prints both. Audio-output-latency itself is
-// out of scope for Phase CS (design doc §6.13).
+// `beatPhase01` bakes in `visualPhaseOffsetMs + audioOutputLatencyMs`
+// (LiveBeatDriftTracker.swift:573). Pass the in-effect shift via
+// `--display-shift-ms` to recover the latency-corrected calibration error; the
+// report prints both. Audio-output latency itself is out of scope for Phase CS.
+//
+// HARNESS LOCATION (CS.1, kickoff step 2)
+// ---------------------------------------
+// A new sibling executable target, not an extension of PresetSessionReplay —
+// cold-start sync is engine-level and needs DSP / ML / Session, which the
+// preset-rubric tool does not depend on. Follows the project's per-job offline-
+// runner pattern (TempoDumpRunner, BeatThisActivationDumper).
 //
 // USAGE
 //   .build/release/ColdStartVerifier --session ~/Documents/phosphene_sessions/<dir>
 
 import ArgumentParser
 import Foundation
+import Metal
+import Session
 
 @main
 struct ColdStartVerifierCommand: ParsableCommand {
@@ -108,8 +99,7 @@ struct ColdStartVerifierCommand: ParsableCommand {
             passWindowMs: passWindowMs,
             tightWindowMs: tightWindowMs,
             passRate: passRate,
-            displayShiftMs: displayShiftMs
-        )
+            displayShiftMs: displayShiftMs)
 
         print("ColdStartVerifier: loading session \(sessionURL.path)")
         let artifacts = try SessionArtifacts.load(directory: sessionURL)
@@ -120,13 +110,22 @@ struct ColdStartVerifierCommand: ParsableCommand {
         guard FileManager.default.fileExists(atPath: rawTapURL.path) else {
             throw VerifierError.missingRawTap(rawTapURL)
         }
-        print("ColdStartVerifier: analysing raw_tap.wav (offline BeatDetector ground truth)")
+        print("ColdStartVerifier: decoding raw_tap.wav + detecting sub-bass onsets")
         let rawTap = try RawTapAnalysis.analyze(url: rawTapURL)
         print("ColdStartVerifier: raw_tap \(rawTap.durationS.rounded())s @ "
-            + "\(Int(rawTap.sampleRate)) Hz, \(rawTap.onsets.count) sub-bass onsets")
+            + "\(Int(rawTap.sampleRate)) Hz, \(rawTap.onsets.count) onsets")
 
+        guard let device = MTLCreateSystemDefaultDevice() else {
+            throw VerifierError.noMetalDevice
+        }
+        let analyzer = try DefaultBeatGridAnalyzer(device: device)
+        print("ColdStartVerifier: running Beat This! per track …")
         let analysis = ColdStartAnalysis.run(
-            tracks: artifacts.tracks, rawTap: rawTap, config: config)
+            tracks: artifacts.tracks,
+            config: config,
+            rawTap: rawTap,
+            rawTapStartWallclockS: artifacts.rawTapStartWallclockS,
+            analyzer: analyzer)
 
         let report = VerifierReport.render(
             sessionURL: sessionURL,
@@ -159,6 +158,7 @@ enum VerifierError: Error, CustomStringConvertible {
     case missingColumn(String)
     case emptyFeatures
     case rawTapDecodeFailed(String)
+    case noMetalDevice
 
     var description: String {
         switch self {
@@ -175,6 +175,8 @@ enum VerifierError: Error, CustomStringConvertible {
                 + "no playback."
         case .rawTapDecodeFailed(let detail):
             return "raw_tap.wav could not be decoded: \(detail)"
+        case .noMetalDevice:
+            return "no Metal device available — Beat This! inference requires Metal."
         }
     }
 }

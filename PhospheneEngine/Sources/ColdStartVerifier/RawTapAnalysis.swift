@@ -1,14 +1,17 @@
-// RawTapAnalysis — Offline ground-truth beat detection on raw_tap.wav.
+// RawTapAnalysis — Decode raw_tap.wav and detect sub-bass onsets.
 //
 // raw_tap.wav is the Core Audio tap audio captured before any Phosphene DSP
 // (SessionRecorder+RawTap.swift). This module decodes it to mono Float32 and
 // replays it through the SAME FFTProcessor → BeatDetector path the live engine
-// and `GridOnsetCalibrator` use — at the engine's 1024-sample non-overlapping
-// hop — producing sub-bass onset timestamps that are the CS.1 ground truth for
-// "audible beat time".
+// uses, producing sub-bass onset timestamps.
 //
-// It also emits a low-frequency energy envelope (one value per FFT hop) used by
-// ClockAlignment to register raw_tap.wav against features.csv.
+// CS.1 (option C) uses two things from raw_tap.wav:
+//   • `samples` — sliced per track and run through Beat This! offline to get a
+//     one-beat-per-beat audible reference grid.
+//   • `onsets` — paired against features.csv `beatBass` onsets to pin the
+//     per-track clock offset between raw-tap time and playback_time_s. This is
+//     sync-independent (pure onset cross-detection, no grid), so it does not
+//     absorb any visual-vs-audible sync error into the offset.
 
 import AVFoundation
 import Audio
@@ -16,22 +19,17 @@ import DSP
 import Foundation
 import Metal
 
-/// Offline analysis result for one raw_tap.wav.
+/// Decoded raw_tap.wav plus its offline sub-bass onset times.
 struct RawTapAnalysis {
+    /// Mono Float32 PCM, the whole file.
+    let samples: [Float]
     let sampleRate: Double
     let durationS: Double
     /// Sub-bass onset timestamps (seconds, raw-tap clock). BeatDetector onsets[0].
     let onsets: [Double]
-    /// Low-frequency energy, one value per `envelopeHopS` (raw-tap clock).
-    let lowEnvelope: [Double]
-    /// Spacing between consecutive `lowEnvelope` samples, seconds.
-    let envelopeHopS: Double
 
     /// FFT window / hop — matches FFTProcessor.fftSize and the live FFT cadence.
     static let hop = 1024
-    /// Magnitude bins summed for the alignment envelope (~47–470 Hz @ 48 kHz):
-    /// kick fundamental + low harmonics. Bin 0 (DC) skipped.
-    static let envelopeBinRange = 1...10
 
     static func analyze(url: URL) throws -> RawTapAnalysis {
         let (samples, sampleRate) = try decodeMonoFloat32(url: url)
@@ -48,39 +46,28 @@ struct RawTapAnalysis {
             binCount: 512, sampleRate: Float(sampleRate), fftSize: hop)
         let fps = Float(sampleRate) / Float(hop)
         let deltaTime = Float(hop) / Float(sampleRate)
-        let envelopeHopS = Double(hop) / sampleRate
+        let hopS = Double(hop) / sampleRate
 
         var onsets: [Double] = []
-        var envelope: [Double] = []
         var offset = 0
         var frameIdx = 0
         while offset + hop <= samples.count {
             let window = Array(samples[offset..<offset + hop])
             _ = fft.process(samples: window, sampleRate: Float(sampleRate))
             let mags = Array(fft.magnitudeBuffer.pointer)
-            envelope.append(lowEnergy(mags))
             let result = detector.process(
                 magnitudes: mags, fps: fps, deltaTime: deltaTime)
             if !result.onsets.isEmpty, result.onsets[0] {
-                onsets.append(Double(frameIdx) * envelopeHopS)
+                onsets.append(Double(frameIdx) * hopS)
             }
             offset += hop
             frameIdx += 1
         }
         return RawTapAnalysis(
+            samples: samples,
             sampleRate: sampleRate,
             durationS: Double(samples.count) / sampleRate,
-            onsets: onsets,
-            lowEnvelope: envelope,
-            envelopeHopS: envelopeHopS)
-    }
-
-    private static func lowEnergy(_ mags: [Float]) -> Double {
-        var sum = 0.0
-        for bin in envelopeBinRange where bin < mags.count {
-            sum += Double(mags[bin])
-        }
-        return sum
+            onsets: onsets)
     }
 
     /// Decode any AVFoundation-readable audio file to mono Float32. raw_tap.wav
