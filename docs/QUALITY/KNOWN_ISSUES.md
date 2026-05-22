@@ -12,7 +12,7 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 **Severity:** P1 (load-bearing product claim — "beat-synced from frame 1 of every track", Matt's Phase CS bar 2026-05-20. CS.1 empirical verification: 7 of 10 tracks fail the ±50 ms bar. Not session-blocking — the session plays and the BUG-007.9 runtime recalibration partially corrects after ~15 s — so not P0.)
 **Domain tag:** `dsp.beat`
-**Status:** Open — diagnosed (CS.1.x, 2026-05-22). Root cause identified with code-level evidence; no fix code landed (diagnosis increment per the Defect Handling Protocol multi-increment process).
+**Status:** Open — fix implemented (CS.1.y.2, 2026-05-22), validation pending (CS.1.y.3). Diagnosed in CS.1.x; the cold-start phase-acquisition fix is implemented and the engine suite is green, but BUG-017 stays **Open** until `ColdStartVerifier` on a fresh post-fix capture confirms ≥ 90 % of tracks pass and Matt's M7 confirms frame-1 sync. See the CS.1.y.2 addendum below.
 **Introduced:** Pre-CS.1. The cold-start grid-install path (`VisualizerEngine+Stems.swift:485`, `cached.beatGrid.offsetBy(0)`) and the preview-only `GridOnsetCalibrator` (`GridOnsetCalibrator.swift:13`) predate this filing — part of the BUG-007.x cold-start infrastructure series. The preview-vs-track phase gap was never closed; CS.1's verification harness surfaced it empirically 2026-05-22.
 **Resolved:** —
 
@@ -87,6 +87,27 @@ To be scoped as a follow-up increment; not started in this diagnosis increment.
 ### Related
 
 CS.1 (verification harness — `ColdStartVerifier`); the Phase CS kickoff + `docs/COLD_START_SYNC_DESIGN_2026-05-20.md`; the BUG-007.x cold-start infrastructure series (BUG-007.6 latency, BUG-007.8 `setGrid(_:initialDriftMs:)`, BUG-007.9 hybrid runtime recalibration); `GridOnsetCalibrator`; D-019 (stem warmup blend); CLAUDE.md "Cold-Start Phase Contract".
+
+### Addendum (CS.1.y.2 — fix implemented, 2026-05-22)
+
+The fix is implemented entirely within `PhospheneEngine/Sources/DSP/LiveBeatDriftTracker.swift` — a **cold-start phase acquisition** that runs in parallel with the steady-state EMA:
+
+- Each of the first live sub-bass onsets contributes a nearest-beat residual (unbounded — no ±50 ms match window, since a gross error is exactly what that window cannot see), wrapped into [−P/2, P/2].
+- The residuals are aggregated by **circular mean**; the **resultant length R ∈ [0,1]** is the cluster-tightness confidence (standard directional statistics — the phase-estimation stage of a two-stage beat tracker).
+- When a confident cluster forms (`n ≥ 3` ∧ `R ≥ 0.95`, or `n ≥ 2` ∧ `R ≥ 0.95` at the 3.0 s deadline) the acquisition resolves: a correction ≥ 50 ms re-seeds `drift` and resets the lock machinery (mechanically identical to a fresh `setGrid`); a sub-threshold correction is a no-op (steady-state untouched). No confident cluster by the deadline → it **declines** (seeded phase left as-is — honest limitation for rhythmless / wrong-tempo material).
+
+**Design refinements vs the CS.1.y.1 fix direction in §Fix scope above:**
+
+1. **The `GridOnsetCalibrator.maxMatchWindow` widening (§Fix scope bullet 2) was evaluated and dropped.** With the in-tracker acquisition handling the gross correction, the calibrator is never the gross-correction path — BUG-007.9 runs only post-lock (post-correct-phase), where ±200 ms is ample — and widening its window risks regressing prep-time detection-latency calibration. The fix touches only `LiveBeatDriftTracker.swift`; the install path (`VisualizerEngine+Stems.swift`) needs no change (acquisition self-arms on `setGrid`).
+2. **The confidence gate (R ≥ 0.95) was calibrated against the `LiveDriftValidation` love_rehab integration test**, which initially regressed: the live sub-bass onset detector's first ~3 s are warmup-noisy and produce a *ramp* of residuals (measured −153 / −117 / −35 ms) whose 3-onset circular resultant is ≈ 0.82 — a false-confident "cluster" that an 0.80 gate accepted, applying a wrong −107 ms correction that trapped the EMA. R ≥ 0.95 rejects the warmup ramp (acquisition declines, no-op) while admitting a genuine cluster (R ≈ 0.99).
+
+**Verification done (CS.1.y.2):** engine suite `swift test --package-path PhospheneEngine` — 1272 tests pass (1265 baseline + 7 new cold-start tests); all 41 pre-existing `LiveBeatDriftTracker` tests pass unchanged; SwiftLint 0 violations; app build succeeds.
+
+**Verification still required (CS.1.y.3 — keeps this Open):**
+- [ ] `ColdStartVerifier` on a fresh `PHOSPHENE_FULL_RAW_TAP=1` capture (after this fix is built) reports ≥ 90 % of tracks passing.
+- [ ] Matt M7 perceptual review on a real listening-party playlist.
+
+**Known risk for CS.1.y.3.** The love_rehab finding shows the live sub-bass onset detector is noisier in the cold-start window than the CS.1.y.1 design assumed. The 0.95 gate makes the fix **safe** (a noisy onset stream → decline → no regression) but its **efficacy** on the real BUG-017 tracks depends on those tracks forming a confident onset cluster. If `ColdStartVerifier` shows cold-start declining on the failing tracks rather than correcting them, the fix direction (sub-bass-onset-based) needs to change to a Beat This!-based cold-start — a design revision requiring Matt's input before CS.1.y.3 can close.
 
 ---
 
