@@ -4149,22 +4149,35 @@ Phase CA addresses the drift systematically through per-subsystem code-vs-docs a
 
 The remaining work is **verification + targeted filling**, not new architecture. See design doc §4 (what exists) and §5 (what's unverified) for the full picture.
 
-### Increment CS.1 — Empirical verification of existing cold-start beat sync
+### Increment CS.1 — Empirical verification of existing cold-start beat sync ✅
 
-**Scope.** Build a verification harness (extending `PresetSessionReplay` from SR.1 is a strong candidate base) that measures observed visual beat phase against the cached beat grid for the first 10 s of playback across a representative track sample. Output: per-track distribution of `(visual_beat_time − audible_beat_time)` deltas.
+**Status: complete (2026-05-22). Verdict: FAIL — 3 of 10 tracks pass** the ±50 ms / 90 % bar (session `2026-05-22T16-57-36Z`). Pass-rate < 90 % → per the done-when, the increment surfaced the failure cases; CS.1.x diagnosed them.
 
-**Bar to clear.** ≥ 90 % of tracks in a 10-track party playlist meet ±50 ms phase from frame 1.
+**Scope (as built).** A new sibling executable target `ColdStartVerifier` (`PhospheneEngine/Sources/ColdStartVerifier/`) — NOT an extension of `PresetSessionReplay` (it needs `DSP` / `ML` / `Session`, which the preset-rubric tool does not depend on). The final measurement design (option C, after several iterations in commits `27c76c47` → `989f81a5`): visual beat = `beatPhase01` wraps in `features.csv`; audible beat = a Beat This! one-beat-per-beat grid re-detected offline from a per-track slice of `raw_tap.wav`; the raw-tap ↔ playback-time clock offset is pinned via a precise raw-tap-start timestamp added to `SessionRecorder` (commit `1e2e47fa`). Output: per-track `(visual − audible)` delta distribution + `cold_start_report.md` evidence pack.
 
-**Done-when.**
-- Harness extension lands and runs end-to-end against a real captured session.
-- Per-track phase-delta distribution is emitted as part of the SR.1 report or a new sibling report.
-- Verdict for each track: `pass` (within bar) / `fail` (out of bar) / `degenerate` (rhythmless — bar does not apply).
-- If pass-rate ≥ 90 %: increment closes; proceed to CS.2.
-- If pass-rate < 90 %: increment surfaces the failure cases; CS.1 follow-up diagnoses before CS.2 begins.
+**Done-when (met).** Harness built + self-tested + run end-to-end against a real session; per-track `pass`/`fail`/`degenerate` verdicts emitted; pass-rate < 90 % → failures surfaced, CS.1.x diagnoses before CS.2.
 
-**Estimated sessions:** 1-2.
+### Increment CS.1.x — Cold-start grid-phase diagnosis ✅
+
+**Status: complete (2026-05-22).** Diagnosis-only increment (Defect Handling Protocol multi-increment process). Filed **BUG-017** in `docs/QUALITY/KNOWN_ISSUES.md`.
+
+**Finding.** The 7 failing tracks carry a per-track *systematic* phase offset (−128 to +338 ms, all within ±½-beat; within-track tight — MAD ~15 ms — a clean phase error, not jitter). Root cause: the cold-start grid is installed `cached.beatGrid.offsetBy(0)` (`VisualizerEngine+Stems.swift:485`) — Beat This! on the 30 s Spotify preview clip, with the preview's timeline used as the track's timeline verbatim. The preview is an arbitrary excerpt, so the grid's phase is off by an arbitrary per-track amount. `GridOnsetCalibrator` runs on the preview (not the live track start) so it cannot correct it; the live drift EMA makes no gross phase jump; the BUG-007.9 recalibration fires only after the 10 s window and its ±200 ms cap discards large offsets. Full root cause in BUG-017.
+
+**Done-when (met).** Root cause identified with code-level evidence; documented in `KNOWN_ISSUES.md` (BUG-017); no fix code.
+
+### Increment CS.1.y — Cold-start grid-phase fix (BUG-017) — **reprioritized: next**
+
+**Sequencing (Matt-ratified 2026-05-22).** CS.1 verified the cold-start infrastructure does *not* work; CS.2–CS.5 are all refinements that assume a correct cold-start grid (CS.2 protects the cold-start window; CS.3/CS.4 keep presets from over-relying on stems; CS.5 documents the contract). The BUG-017 fix is therefore **upstream of CS.2–CS.5** and is the load-bearing next CS increment. CS.2–CS.5 follow it.
+
+**Scope.** Give the cold-start the *track-start* phase — the only source of which is the live tap audio from frame 1. Direction (to be designed before any code): a cold-start phase acquisition that phase-locks the grid (correct tempo, wrong phase) to the first live sub-bass onsets in the first ~1–2 s; widen or remove the ±200 ms `GridOnsetCalibrator.maxMatchWindow` cap. Touches the cold-start grid-install path (`VisualizerEngine+Stems.swift`) and `LiveBeatDriftTracker` — interacts with the BUG-007.x lock state machine, so it is **design-first** per the "design is upstream" discipline, and likely splits into design → implement → validate sub-increments.
+
+**Done-when.** `ColdStartVerifier` on a fresh full-session capture reports ≥ 90 % of tracks passing; BUG-007.x lock machinery + steady-state tracking preserved (regression); Matt M7 perceptual review confirms frame-1 sync.
+
+**Estimated sessions:** 2–3 (design + implementation + validation).
 
 ### Increment CS.2 — First-segment minimum duration
+
+**Sequencing.** Gated behind CS.1.y (BUG-017 fix) — CS.2–CS.5 all assume a correct cold-start grid (Matt-ratified reprioritization, 2026-05-22).
 
 **Scope.** Add a first-segment-of-track minimum duration constraint to `SessionPlanner.planOneSegment` (`PhospheneEngine/Sources/Orchestrator/SessionPlanner+Segments.swift:137`). Target 10-12 s. Handle: tracks shorter than the minimum (allow violation); section boundaries inside the minimum window (push to next bar boundary after the minimum). Regenerate golden session tests.
 
@@ -4214,12 +4227,13 @@ Specific check criteria per preset (see design doc §6.4 for the full list):
 
 Phase CS closes when, in this order:
 
-1. CS.1 verification passes (≥ 90 % of representative tracks meet ±50 ms phase from frame 1), OR documented diagnosis of why it doesn't with a path to fix.
-2. CS.2 first-segment minimum landed; golden sessions green.
-3. CS.3 audit document published.
-4. CS.4 fix increments completed for every preset CS.3 flagged.
-5. CS.5 documentation merged.
-6. **Matt manual validation on a real listening-party playlist confirms perceptual beat sync from frame 1.** The load-bearing close criterion.
+1. ✅ CS.1 verification ran; pass-rate < 90 % (3/10) → CS.1.x diagnosis documented (BUG-017) with a fix path.
+2. CS.1.y — BUG-017 cold-start grid-phase fix landed; `ColdStartVerifier` re-run on a fresh capture reports ≥ 90 % of tracks passing.
+3. CS.2 first-segment minimum landed; golden sessions green.
+4. CS.3 audit document published.
+5. CS.4 fix increments completed for every preset CS.3 flagged.
+6. CS.5 documentation merged.
+7. **Matt manual validation on a real listening-party playlist confirms perceptual beat sync from frame 1.** The load-bearing close criterion.
 
 ### Out of scope for Phase CS
 
