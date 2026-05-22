@@ -4165,7 +4165,9 @@ The remaining work is **verification + targeted filling**, not new architecture.
 
 **Done-when (met).** Root cause identified with code-level evidence; documented in `KNOWN_ISSUES.md` (BUG-017); no fix code.
 
-### Increment CS.1.y — Cold-start grid-phase fix (BUG-017) — **reprioritized: next**
+### Increment CS.1.y — Cold-start grid-phase fix (BUG-017) — **in progress: validation (CS.1.y.3) pending**
+
+**Status (2026-05-22).** Split into design → implement → validate sub-increments. **CS.1.y.1 design ✅** — surfaced to Matt; budget decision ratified ("up to ~3 s" wonky window for slow/sparse tracks). **CS.1.y.2 implementation ✅** — cold-start phase acquisition landed in `LiveBeatDriftTracker.swift`; engine suite green (1272 tests); see `RELEASE_NOTES_DEV.md [dev-2026-05-22-a]` and the BUG-017 CS.1.y.2 addendum. **CS.1.y.3 validation — pending** a fresh `PHOSPHENE_FULL_RAW_TAP=1` capture from Matt: `ColdStartVerifier` ≥ 90 % + M7 review. BUG-017 stays Open until CS.1.y.3 closes.
 
 **Sequencing (Matt-ratified 2026-05-22).** CS.1 verified the cold-start infrastructure does *not* work; CS.2–CS.5 are all refinements that assume a correct cold-start grid (CS.2 protects the cold-start window; CS.3/CS.4 keep presets from over-relying on stems; CS.5 documents the contract). The BUG-017 fix is therefore **upstream of CS.2–CS.5** and is the load-bearing next CS increment. CS.2–CS.5 follow it.
 
