@@ -184,7 +184,7 @@ Baselines for these modulations are captured in `RayMarchPipeline.BaseSceneSnaps
 **Binding layout (summary — see §GPU Contract Details for the canonical contract):**
 
 - Textures: 0=feedback read, 1=feedback write, 2–3=reserved, 4=noiseLQ, 5=noiseHQ, 6=noiseVolume, 7=noiseFBM, 8=blueNoise, 9=IBL irradiance, 10=IBL prefiltered env OR per-preset baked height field (different encoders; no overlap — see D-127), 11=BRDF LUT, 12=DynamicTextOverlay (direct-pass only — SpectralCartograph), 13+=staged-composition sampled stage outputs (V.ENGINE.1).
-- Buffers: 0=FeatureVector, 1=FFT, 2=waveform, 3=StemFeatures, 4=SceneUniforms (ray-march G-buffer/lighting/SSGI **only**; reused by mesh-shader path for `meshPresetFragmentBuffer`), 5=SpectralHistory (direct-pass), 6=per-preset fragment buffer #1 (D-092 — Gossamer wave pool / Arachne web pool), 7=per-preset fragment buffer #2 (D-094 — Arachne spider state), 8=per-preset fragment buffer #3 (D-LM-buffer-slot-8 — Lumen Mosaic `LumenPatternState`).
+- Buffers: 0=FeatureVector, 1=FFT, 2=waveform, 3=StemFeatures, 4=SceneUniforms (ray-march G-buffer/lighting/SSGI **only**), 5=SpectralHistory (direct-pass), 6=per-preset fragment buffer #1 (D-092 — Gossamer wave pool / Arachne web pool), 7=per-preset fragment buffer #2 (D-094 — Arachne spider state), 8=per-preset fragment buffer #3 (D-LM-buffer-slot-8 — Lumen Mosaic `LumenPatternState`).
 
 ## Presets
 
@@ -541,7 +541,7 @@ PhospheneEngine/
     ShaderLibrary           → Auto-discover .metal files, runtime compilation, cache
     RenderPipeline          → Render graph dispatch, feedback ping-pong, activePasses guarded by passesLock
     RenderPipeline+Draw     → Per-frame render-graph executor (renderFrame). Walks activePasses, dispatches the first available pass. MV-2 multi-pass flow: when .mvWarp is present, a preceding .rayMarch pass renders to warpState.sceneTexture and continues the loop instead of returning. Fallback path is drawDirect.
-    RenderPipeline+MeshDraw → Mesh shader draw: drawWithMeshShader. Delegates to MeshGenerator (native M3+ mesh or M1/M2 vertex fallback). Binds meshPresetFragmentBuffer at slot 4 (mutually exclusive with ray-march's SceneUniforms; the two paths never fire on the same frame).
+    RenderPipeline+MeshDraw → Mesh shader draw: drawWithMeshShader. Delegates to MeshGenerator (native M3+ mesh or M1/M2 vertex fallback).
     RenderPipeline+PostProcess → HDR post-process: drawWithPostProcess (stand-alone path; ray-march presets get bloom via PostProcessChain.runBloomAndComposite instead).
     RenderPipeline+FeedbackDraw → Milkdrop-style global feedback path (Membrane). FeedbackDrawContext value type + 2-mode (particle vs surface) dispatch + ping-pong texture swap.
     RenderPipeline+RayMarch → Ray march draw: drawWithRayMarch + per-frame audio-reactive SceneUniforms modulation (light intensity from any-band beat, lightColor from valence, fogFar from arousal, camera dolly from features.time, glass-fin position from bass). Reads BaseSceneSnapshot for additive-on-baseline behaviour. Plus the 150ms-τ aurora-drums EMA smoother (V.9 Session 4.5c / D-127) and the optional per-preset compute dispatch hook (V.9 Session 4.5b Phase 2b — currently nil in production).
@@ -958,10 +958,6 @@ buffer(1) = FFT magnitudes (512 floats)
 buffer(2) = waveform samples (1024 floats)
 buffer(3) = StemFeatures (256 bytes, 64 floats)
 buffer(4) = SceneUniforms (128 bytes) — ray march G-buffer, lighting, SSGI passes ONLY.
-              **Slot 4 is reused** by the mesh-shader path for `meshPresetFragmentBuffer`
-              (RenderPipeline+MeshDraw.swift:73). The two paths are mutually exclusive —
-              a preset declares either `mesh_shader` or `ray_march`, never both on the
-              same frame — so the slot is safely reusable per-dispatch-path.
 buffer(5) = SpectralHistory (4096 Float32, 16 KB) — direct-pass fragment encoders
               [0..479]    valence trail (-1..1)
               [480..959]  arousal trail (-1..1)
