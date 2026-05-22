@@ -186,7 +186,15 @@ struct SessionArtifacts {
                     bpm: bpm ?? 0,
                     meter: meter.flatMap(Int.init) ?? 0))
             } else if line.contains("raw tap capture started"), events.rawTapStart == nil {
-                events.rawTapStart = lineTimestamp(line)
+                // Prefer the precise `wallclock=` field (full CFAbsoluteTime);
+                // fall back to the 1-second log stamp for pre-CS.1 captures.
+                if let range = line.range(of: "wallclock="),
+                   let precise = Double(line[range.upperBound...]
+                       .trimmingCharacters(in: .whitespaces)) {
+                    events.rawTapStart = precise
+                } else {
+                    events.rawTapStart = lineTimestamp(line)
+                }
             }
         }
         return events
