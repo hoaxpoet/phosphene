@@ -6,6 +6,45 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-22-b] CS.1.y re-diagnosis — short-window Beat This! found unusable; BUG-017 blocked
+
+**Increment:** CS.1.y re-diagnosis (Step 1 of the CS.1.y.2-redo plan). **Status:** Done 2026-05-22. Local commit only; not pushed. **Outcome: the replacement fix direction is not viable** — BUG-017 is now blocked pending a product-level decision from Matt.
+
+### What this is
+
+After CS.1.y.2 (onset-based fix) failed and was reverted (`[dev-2026-05-22-a]`), the replacement direction was to correct the cold-start grid phase from Beat This! on the first few seconds of live tap audio. The load-bearing unknown — does Beat This! give an accurate *phase* on a ≤ 5 s window — needed an offline measurement before any fix code.
+
+Added `ColdStartVerifier --rediagnose` (commit `b27226d3`): for each track it runs Beat This! on the first 3 / 4 / 5 s of the raw-tap slice and compares the beat phase to full-window Beat This! (the verifier's audible-beat reference). New `ReDiagnosis.swift`; `run()`'s verify and rediagnose paths extracted to helpers; the existing verify path + `--self-test` untouched.
+
+### Finding
+
+Short-window Beat This! cannot reproduce the full-window phase:
+
+- Capture `2026-05-22T16-57-36Z`: **3/10** tracks viable (±30 ms, R ≥ 0.90). Capture `2026-05-22T19-03-59Z`: **1–2/10**.
+- **Non-reproducible:** the same track recorded twice gives different short-window phase — Everlong is clean (±6 ms) in one capture and unstable (±211 ms swing) in the other. Only Royals is viable in both. A fix on a non-reproducible signal would behave differently every session.
+- HUMBLE: garbage phase (±200 ms+ swings). Money: no beats found in the cold-start window at all (cash-register SFX intro). B.O.B.: degenerate/empty short-window grids.
+
+Three signal sources are now exhausted — live onsets (off-beat), short-window Beat This! (erratic), cached grid alone (3/10). None achieves the bar in ≤ 5 s. The only reliable beat reference is full-window (~15–25 s) Beat This!, which is not available inside the cold-start window.
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `PhospheneEngine/Sources/ColdStartVerifier/ReDiagnosis.swift` | New — the `--rediagnose` analysis + report. |
+| `PhospheneEngine/Sources/ColdStartVerifier/ColdStartVerifierCommand.swift` | `--rediagnose` flag; `run()` verify/rediagnose paths extracted to helpers. |
+
+Per-capture reports written to `<session>/cold_start_rediagnosis.md` (capture artifacts, not committed).
+
+### Verification
+
+- `swiftlint --strict` — 0 violations on both files. `ColdStartVerifier --self-test` — PASS (7/7); the existing verify path is unchanged. No engine-library or app code touched.
+
+### What's next
+
+Not engineering. "≥ 90 % within ±50 ms from frame 1, ≤ 5 s" appears not achievable under the streaming-only constraint. The decision — accept a longer settle window, reframe the cold-start accuracy target, or pause Phase CS — is Matt's. BUG-017 stays Open, blocked.
+
+---
+
 ## [dev-2026-05-22-a] CS.1.y.2 — Cold-start phase acquisition: attempted, failed validation, reverted
 
 **Increment:** CS.1.y.2 (the Fix stage of the P1 multi-increment BUG-017). **Status:** Attempted and **reverted** 2026-05-22 — the fix failed CS.1.y.3 validation. Local commits only; not pushed. BUG-017 remains **Open**; the increment is being re-designed.

@@ -4165,9 +4165,16 @@ The remaining work is **verification + targeted filling**, not new architecture.
 
 **Done-when (met).** Root cause identified with code-level evidence; documented in `KNOWN_ISSUES.md` (BUG-017); no fix code.
 
-### Increment CS.1.y — Cold-start grid-phase fix (BUG-017) — **in progress: re-design needed**
+### Increment CS.1.y — Cold-start grid-phase fix (BUG-017) — **BLOCKED: pending Matt's product decision on the cold-start bar**
 
-**Status (2026-05-22).** Split into design → implement → validate. **CS.1.y.1 design ✅** — surfaced to Matt; budget decision ratified ("up to ~3 s"). **CS.1.y.2 implementation — attempted, failed validation, reverted.** The onset-based cold-start phase acquisition (commit `dbcc018d`, reverted by `f71b0456`) was engine-green but `ColdStartVerifier` on a fresh post-fix capture scored 0/10 — *worse* than CS.1's 3/10: the sub-bass onset detector fires on off-beat sub-bass events, not beats, so the fix locked the visual to the bassline on syncopated tracks. The fix direction is unsound, not mistuned. Full analysis: BUG-017 CS.1.y.2 addendum + `RELEASE_NOTES_DEV.md [dev-2026-05-22-a]` + CLAUDE.md Failed Approach #68. **Next:** CS.1.y.2-redo — re-design around Beat This! on early live tap audio (the reliable beat detector). Load-bearing pre-work: an offline measurement of whether Beat This! gives accurate phase on a short (~4–6 s) window within the budget. To be scoped with Matt. BUG-017 stays Open.
+**Status (2026-05-22).** Two candidate cold-start phase sources have been tried and exhausted; the increment is blocked on a product-level decision.
+
+- **CS.1.y.1 design ✅** — surfaced to Matt; budget ratified (then raised to < 5 s).
+- **CS.1.y.2 (onset-based fix) — attempted, failed validation, reverted.** The onset-based phase acquisition (commit `dbcc018d`, reverted `f71b0456`) was engine-green but `ColdStartVerifier` scored 0/10 — *worse* than CS.1's 3/10: the sub-bass onset detector fires on off-beat sub-bass events, not beats. Unsound, not mistuned (CLAUDE.md Failed Approach #68).
+- **CS.1.y re-diagnosis (short-window Beat This!) — done; direction found unusable.** Offline measurement (`ColdStartVerifier --rediagnose`, commit `b27226d3`): Beat This! on a 3/4/5 s window reproduces the full-window phase on only 1–3/10 tracks, and is **non-reproducible** — the same track recorded twice gives different short-window phase (Everlong: clean in one capture, ±211 ms unstable in the other). Money has no beat in its intro at all.
+- **No signal achieves the bar in ≤ 5 s.** Live onsets (off-beat), short-window Beat This! (erratic/non-reproducible), cached grid alone (3/10) — all exhausted. The only reliable beat reference is full-window (~15–25 s) Beat This!, unavailable inside the cold-start window.
+
+**Next: not engineering — a product decision.** "≥ 90 % of tracks within ±50 ms from frame 1, ≤ 5 s budget" appears not achievable under the streaming-only constraint. Matt to decide: accept a longer settle window, reframe the cold-start accuracy target, or pause Phase CS. Full analysis: BUG-017 CS.1.y.2 + re-diagnosis addenda; `RELEASE_NOTES_DEV.md [dev-2026-05-22-a]` / `[dev-2026-05-22-b]`. BUG-017 stays Open.
 
 **Sequencing (Matt-ratified 2026-05-22).** CS.1 verified the cold-start infrastructure does *not* work; CS.2–CS.5 are all refinements that assume a correct cold-start grid (CS.2 protects the cold-start window; CS.3/CS.4 keep presets from over-relying on stems; CS.5 documents the contract). The BUG-017 fix is therefore **upstream of CS.2–CS.5** and is the load-bearing next CS increment. CS.2–CS.5 follow it.
 

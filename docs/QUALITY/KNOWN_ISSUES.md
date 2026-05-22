@@ -12,7 +12,7 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 **Severity:** P1 (load-bearing product claim — "beat-synced from frame 1 of every track", Matt's Phase CS bar 2026-05-20. CS.1 empirical verification: 7 of 10 tracks fail the ±50 ms bar. Not session-blocking — the session plays and the BUG-007.9 runtime recalibration partially corrects after ~15 s — so not P0.)
 **Domain tag:** `dsp.beat`
-**Status:** Open — CS.1.y.2 fix attempt **failed validation and was reverted** (2026-05-22). The onset-based fix direction is unsound; the increment is being re-designed around Beat This! See the CS.1.y.2 addendum below.
+**Status:** Open — **blocked, pending a product-level decision from Matt.** CS.1.y.2 (onset-based fix) failed validation and was reverted; the CS.1.y re-diagnosis then found the replacement direction (short-window Beat This!) also unusable. Both candidate cold-start phase sources are exhausted; no signal achieves the bar within a ≤5 s budget. See the CS.1.y.2 and CS.1.y re-diagnosis addenda below.
 **Introduced:** Pre-CS.1. The cold-start grid-install path (`VisualizerEngine+Stems.swift:485`, `cached.beatGrid.offsetBy(0)`) and the preview-only `GridOnsetCalibrator` (`GridOnsetCalibrator.swift:13`) predate this filing — part of the BUG-007.x cold-start infrastructure series. The preview-vs-track phase gap was never closed; CS.1's verification harness surfaced it empirically 2026-05-22.
 **Resolved:** —
 
@@ -103,6 +103,20 @@ The baseline tolerates off-beat onsets only because the steady-state EMA's ±50 
 **New fix direction (CS.1.y.2-redo, to be designed with Matt).** The only reliable track-start *beat*-phase source is Beat This! itself — not the sub-bass onset detector. (`ColdStartVerifier`'s own ground-truth reference is Beat This! re-run on the tap audio, and those beat times are clean.) The direction: run Beat This! on the first few seconds of live tap audio and correct the cached grid's phase from it — both sides Beat This!, no onset-vs-beat confusion. `performLiveBeatInference` (`VisualizerEngine+Stems.swift`) already runs Beat This! on live tap at 10 s. **Open question / load-bearing pre-work:** whether Beat This! produces an accurate *phase* on a short (~4–6 s) window, and whether that window fits Matt's "~3 s" budget — to be answered by an offline measurement increment before any code (the cached grid already supplies a reliable tempo; only phase is needed).
 
 **Verification criteria #1/#2 (above) unchanged.** The verification-criteria checkboxes remain the close gate for whatever CS.1.y.2-redo lands.
+
+### Addendum (CS.1.y re-diagnosis — short-window Beat This! found unusable, 2026-05-22)
+
+The CS.1.y.2-redo step-1 measurement (offline; `ColdStartVerifier --rediagnose`, commit `b27226d3`) tested the open question above: can Beat This! on a short (3/4/5 s) window of live tap audio reproduce the beat *phase* of full-window Beat This! (the verifier's audible-beat reference)? It cannot.
+
+- **Capture `2026-05-22T16-57-36Z`: 3/10 tracks viable** (≤ 30 ms, R ≥ 0.90) at every window length. **Capture `2026-05-22T19-03-59Z`: 1–2/10.**
+- **Non-reproducible across captures.** The same track recorded twice gives different short-window phase: Everlong is clean (R 0.98, ±6 ms) in the first capture and **unstable** (±211 ms swing across 3/4/5 s) in the second; Around the World, Seven Nation Army flip likewise. Only Royals is viable in both. A fix built on a signal that is not reproducible per track would behave differently every session.
+- **HUMBLE**: short-window phase is garbage and wildly unstable (−202 / −161 / +269 ms across 3/4/5 s).
+- **Money**: Beat This! finds **no beats at all** in the first 3/4/5 s — its intro is the looped cash-register/coin SFX, so there is no beat in the cold-start window to sync to (structurally unfixable).
+- **B.O.B.**: short-window Beat This! returns degenerate/empty grids (0–3 beats).
+
+**Root cause:** the existing `DefaultBeatGridAnalyzer.analyzeBeatGrid` bundles Beat This! inference with `BeatGridResolver`'s tempo estimation, and short windows degrade tempo (Failed Approaches #50/#51). Small changes in window length flip the output (Superstition's resultant collapses 0.95 → 0.26 → 0.19 as the window *grows*). A measurement caveat: the harness uses `analyzeBeatGrid`, so it cannot isolate whether Beat This!'s raw beat-activation output (before the resolver) is more stable than the full pipeline — but beat *count* itself flips across window lengths, which points at the transformer's activations, not just the resolver.
+
+**Where this leaves BUG-017.** Three signal sources have now been tried and exhausted: live sub-bass onsets (CS.1.y.2 — off-beat, reverted), short-window Beat This! (this re-diagnosis — erratic, non-reproducible), and the cached grid alone (CS.1 baseline — 3/10 pass). None achieves the bar (≥ 90 % within ±50 ms from frame 1, ≤ 5 s budget). The only reliable beat reference is full-window (~15–25 s) Beat This!, which by definition is not available inside the cold-start window. **The bar as specified appears not to be achievable under the streaming-only constraint with the tools available.** That is a product-level finding — the next step is Matt's decision on the bar (accept a longer settle window; reframe the cold-start accuracy target; or pause Phase CS), not further engineering. CS.1.y is blocked pending that decision.
 
 ---
 
