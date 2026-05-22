@@ -32,6 +32,34 @@ Test infrastructure: swift-testing + XCTest across unit, integration, regression
 
 ## Recently Completed
 
+### CA-Audio-FU-5 — InputLevelMonitor regression tests ✅ (2026-05-21)
+
+First of the Tier-2 Phase CA follow-up batch (CA-Audio-FU-5 + CA.7b-FU-4). Closes the zero-test-coverage gap on `InputLevelMonitor` flagged by the CA-Audio audit (AUDIO.md:807 follow-up row; AUDIO.md:232 finding). The 322-line audio-quality observer is production-active (consumer at `VisualizerEngine.swift:415`) and implements a non-trivial state machine — `0.9995`/update peak-envelope decay (~21 s time constant at the 94 Hz analysis rate), 30-frame grade hysteresis (`gradeSwitchFrames=30`), a warmup gate (`warmupFrames=60`), and a peak-only classifier (treble-fraction gating removed post-2026-04-17T21-05-47Z after the Oxytocin false-positive) — but had no dedicated tests prior to this increment. A refactor or tuning change could silently regress any of these with no test signal; the failure mode would be "the diagnostic overlay shows the wrong grade on real music."
+
+**Landed changes (commit `f570688f`):**
+
+- **New test file** `PhospheneEngine/Tests/PhospheneEngineTests/Audio/InputLevelMonitorTests.swift` — 8 regression tests covering the 6 audit-recommended cases + 2 productivity additions:
+  1. `test_submitSamples_peakDecaysAt0_9995` (audit #1) — drives a known peak then N silent submissions; asserts the published `peakDBFS` matches the analytical `0.9995^N` decay within Float tolerance (`< 0.01` dBFS).
+  2. `test_submitMagnitudes_bandEnergyDominantBand` (audit #2, renamed from `bandEnergyEMA` to reflect the dominant-band-routing assertion shape) — sub/mid/treble band-energy routing verified via dominant-band spectra (a band-index swap in the bin-bound math would flip the asserted ratios).
+  3. `test_recompute_warmupReturnsUnknown` (audit #3) — `.unknown` / "warming up" before `warmupFrames` (60) sample submissions accumulate; a real classification once warmup completes.
+  4. `test_recompute_belowCriticalReturnsRed` (audit #4) — sustained peak at -20 dBFS (below `peakCriticalDBFS` -15) classifies `.red` with a dBFS-naming reason string.
+  5. `test_recompute_hysteresisRequires30Frames` (audit #5) — drives `.red`, spikes to a `.green` candidate; asserts the 29th post-spike recompute still publishes `.red` and the 30th flips it (off-by-one defence on `gradeSwitchFrames=30`).
+  6. `test_reset_clearsAllEnvelopes` (audit #6) — `reset()` zeroes every envelope, the frame counter, and overwrites the published snapshot with the default.
+  7. `test_classification_isPeakOnlyNotTrebleSensitive` (added) — Oxytocin defence: drives a high peak with a bass-only spectrum, then floods the EMAs with treble-only spectra; the grade must stay `.green` throughout. A regression that re-introduced treble-balance gating would flip this and the Oxytocin false-positive would be back.
+  8. `test_thresholdConstants_matchDesignSpec` (added) — locks `peakWarningDBFS`/-9, `peakCriticalDBFS`/-15, `warmupFrames`/60 against silent retunes (same shape as `AudioInputRouterSignalStateTests.test_reinstallDelays_matchDesignSpec`).
+
+**Zero production-code changes required.** `InputLevelMonitor`'s public surface (`submitSamples`, `submitMagnitudes`, `currentSnapshot`, `reset`) is directly testable and consumes raw `Float` buffers — no injectable dependency, no testability seam, no test double needed. Tests use a `submitSamples(_:_:)` helper to pass `[Float]` arrays via `withUnsafeBufferPointer` without tripping the `force_unwrapping` lint rule.
+
+**Test methodology.** No real-time waiting — `InputLevelMonitor`'s decay is per-`submitSamples`-call, not per-wall-clock-second, so a test that drives 100 submissions to verify the decay window runs in ~1 ms. Float assertions use absolute tolerance (Float multiplication over 100 iterations drifts in the 5th decimal). Each test instantiates a fresh monitor — no shared state, parallel-safe, no `@Suite(.serialized)` needed.
+
+**Verification:** SwiftLint baseline holds at 0 violations / 371 files (test files in `PhospheneEngine/Tests/` are excluded per `.swiftlint.yml:8`, so the file count is unchanged). Engine test suite: **1,265 tests across 162 suites — all passing** (up from 1,257; +8 new tests). App test suite: 333 tests / 60 suites — the engine-target test file is not built by the App scheme, so the App surface is unaffected; the App run surfaced only pre-existing `@MainActor`-contention timing flakes (`FirstAudioDetectorTests`, `AppleMusicConnectionViewModelTests`, `StreamingMetadataTests` — all pass cleanly in isolation; see Risks below).
+
+**Doc updates:**
+- `docs/CAPABILITY_REGISTRY/AUDIO.md` CA-Audio-FU-5 row: Open → Resolved 2026-05-21 with commit hash + per-test name + scope rationale.
+- This ENGINEERING_PLAN.md entry.
+
+**Risks and follow-ups:** none for the increment itself — the tests are read-only against existing public API and require no production-code change. The App test suite exhibited a pre-existing `@MainActor`-contention timing flake during verification: `FirstAudioDetectorTests` (3 tests using 600 ms `Task.sleep` over a 250 ms internal timer; the test file's own line-35 comment documents the mechanism) failed under the full parallel App suite but passed cleanly in isolation (7/7, 0.6–1.2 s each). This is the same flake class as the documented `AppleMusicConnectionViewModel` timing/race flake and the CLAUDE.md "@MainActor debounce test timing margins under parallel execution" note (U.11). It is not a regression: this increment's code lives in the engine test target, which the App scheme does not build. Recommend a future App-side increment widen `FirstAudioDetectorTests`' sleep margins (or mark the suite `.serialized`) — out of scope for FU-5.
+
 ### CA-Audio-FU-4 — Tap-reinstall regression tests ✅ (2026-05-21)
 
 Second of the Tier-1 Phase CA follow-up batch (CA-Presets-FU-4 + CA-Audio-FU-4). Closes the zero-test-coverage gap on `AudioInputRouter+SignalState.swift` flagged by the CA-Audio audit (AUDIO.md:806 follow-up row; AUDIO.md:160 finding). The 105-line extension implements the critical scrub-recovery path (3 attempts with 3/10/30 s backoff) but had no dedicated tests prior to this increment — a refactor or tuning regression could silently break audio recovery on every scrub-induced silence event with no test signal.
