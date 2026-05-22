@@ -63,11 +63,23 @@ struct ColdStartVerifierCommand: ParsableCommand {
     var selfTest: Bool = false
 
     @Flag(name: .long,
-          help: "CS.1.y re-diagnosis: measure short-window (3/4/5 s) Beat This! phase accuracy.")
+          help: "CS.1.y re-diagnosis: measure short-window Beat This! phase accuracy.")
     var rediagnose: Bool = false
+
+    @Option(name: .long,
+            help: "Comma-separated window lengths (seconds) for --rediagnose. Default: 3,4,5.")
+    var rediagnoseWindows: String = "3,4,5"
 
     @Option(name: .long, help: "Cold-start window measured per track, seconds.")
     var firstWindowS: Double = 10.0
+
+    @Option(name: .long,
+            help: """
+                Offset (s) into each track at which the measurement window starts. \
+                Default 0 = measure from track start ('approx now' check). \
+                Set to ~20 to measure post-snap phase ('exact by ~20 s' check).
+                """)
+    var windowStartS: Double = 0.0
 
     @Option(name: .long, help: "Pass tolerance: |delta| within this many ms counts as aligned.")
     var passWindowMs: Double = 50.0
@@ -100,6 +112,7 @@ struct ColdStartVerifierCommand: ParsableCommand {
         let sessionURL = URL(fileURLWithPath: (session as NSString).expandingTildeInPath)
         let config = VerifierConfig(
             firstWindowS: firstWindowS,
+            windowStartS: windowStartS,
             passWindowMs: passWindowMs,
             tightWindowMs: tightWindowMs,
             passRate: passRate,
@@ -180,12 +193,15 @@ struct ColdStartVerifierCommand: ParsableCommand {
         rawTap: RawTapAnalysis,
         analyzer: DefaultBeatGridAnalyzer
     ) throws {
-        print("ColdStartVerifier: re-diagnosis — short-window Beat This! phase accuracy …")
+        let windows = try parseRediagnoseWindows()
+        let windowList = windows.map { String(format: "%.0f", $0) }.joined(separator: "/")
+        print("ColdStartVerifier: re-diagnosis — Beat This! phase accuracy (\(windowList) s) …")
         let rediag = ReDiagnosis.run(
             tracks: artifacts.tracks,
             rawTap: rawTap,
             rawTapStartWallclockS: artifacts.rawTapStartWallclockS,
-            analyzer: analyzer)
+            analyzer: analyzer,
+            windows: windows)
         let md = ReDiagnosis.report(session: sessionURL, rawTap: rawTap, results: rediag)
         let rediagOut = out.map {
             URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath)
@@ -195,11 +211,30 @@ struct ColdStartVerifierCommand: ParsableCommand {
         print(ReDiagnosis.consoleSummary(rediag))
         print("ColdStartVerifier: re-diagnosis report → \(rediagOut.path)")
     }
+
+    /// Parse `--rediagnose-windows` into a sorted list of positive window
+    /// lengths (seconds). Throws a ValidationError on malformed input.
+    private func parseRediagnoseWindows() throws -> [Double] {
+        let parsed = rediagnoseWindows
+            .split(separator: ",")
+            .compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }
+            .filter { $0 > 0 }
+            .sorted()
+        guard !parsed.isEmpty else {
+            throw ValidationError(
+                "--rediagnose-windows must be a comma-separated list of positive numbers.")
+        }
+        return parsed
+    }
 }
 
 /// Thresholds + measurement configuration for a verification run.
 struct VerifierConfig {
     let firstWindowS: Double
+    /// Offset (s) into each track at which the measurement window starts.
+    /// 0 = measure from track start ("approx now" check). ~20 = measure
+    /// post-snap (CS.1.y.2-redo "exact by ~20 s" check).
+    let windowStartS: Double
     let passWindowMs: Double
     let tightWindowMs: Double
     let passRate: Double

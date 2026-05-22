@@ -28,9 +28,12 @@ enum ReDiagnosis {
 
     // MARK: - Tunables
 
-    /// Short windows tested (s). The cold-start fix would run Beat This! on the
-    /// first W s of live tap audio; the correction it produces is valid back to
-    /// frame 1 (it is *applied* at ~W s — within Matt's < 5 s budget).
+    /// Default window lengths tested (s) when `--rediagnose-windows` is not
+    /// passed. The cold-start fix runs Beat This! on the first W s of live tap
+    /// audio and phase-corrects the cached grid from it; this measures whether
+    /// a window of length W reproduces the full-window beat phase. The original
+    /// CS.1.y re-diagnosis (≤ 5 s) found 3/4/5 s unusable — the CS.1.y.2-redo
+    /// direction (~15–20 s) is measured by passing `--rediagnose-windows`.
     static let testWindowsS: [Double] = [3.0, 4.0, 5.0]
     /// Reference grid: full-window Beat This! — the same slice the verifier uses
     /// as its audible-beat ground truth (3 s lead-in, 25 s total; 25 s keeps the
@@ -47,8 +50,8 @@ enum ReDiagnosis {
     /// Below this many reference beats Beat This! struggled on the *full* window
     /// — the track is flagged suspect regardless of the short-window result.
     static let minReferenceBeats = 8
-    /// Short-window phase spread (across 3/4/5 s) above this flags the track:
-    /// Beat This! phase is unstable here, so no window length is trustworthy.
+    /// Short-window phase spread (across the tested windows) above this flags
+    /// the track: Beat This! phase is unstable, no window length is trustworthy.
     static let unstableSpreadMs = 50.0
 
     // MARK: - Result model
@@ -87,7 +90,8 @@ enum ReDiagnosis {
         tracks: [TrackSegment],
         rawTap: RawTapAnalysis,
         rawTapStartWallclockS: Double?,
-        analyzer: DefaultBeatGridAnalyzer
+        analyzer: DefaultBeatGridAnalyzer,
+        windows: [Double] = testWindowsS
     ) -> [TrackReDiag] {
         tracks.enumerated().map { idx, track in
             print("  [\(idx + 1)/\(tracks.count)] \(track.label) — short-window Beat This! …")
@@ -95,7 +99,8 @@ enum ReDiagnosis {
                 track: track,
                 rawTap: rawTap,
                 rawTapStartWallclockS: rawTapStartWallclockS,
-                analyzer: analyzer)
+                analyzer: analyzer,
+                windows: windows)
         }
     }
 
@@ -103,7 +108,8 @@ enum ReDiagnosis {
         track: TrackSegment,
         rawTap: RawTapAnalysis,
         rawTapStartWallclockS: Double?,
-        analyzer: DefaultBeatGridAnalyzer
+        analyzer: DefaultBeatGridAnalyzer,
+        windows: [Double]
     ) -> TrackReDiag {
         guard let rawStart = rawTapStartWallclockS, let first = track.frames.first else {
             return TrackReDiag(
@@ -141,8 +147,38 @@ enum ReDiagnosis {
         }
 
         // Short windows — exactly what a live cold-start fix would see.
-        var windows: [WindowResult] = []
-        for windowS in testWindowsS {
+        let windowResults = measureWindows(
+            windows: windows,
+            rawTap: rawTap,
+            offsetS: offsetS,
+            reference: reference,
+            analyzer: analyzer)
+
+        // A track is suspect when the per-window phase estimates disagree: a
+        // viable track's windows should converge as W grows, not scatter.
+        let offsets = windowResults.map(\.phaseErrorMs)
+        let spread = (offsets.max() ?? 0) - (offsets.min() ?? 0)
+        let unstable = spread > unstableSpreadMs
+        let windowList = windows.map { String(format: "%.0f", $0) }.joined(separator: "/")
+        let unstableNote = "short-window phase spans \(Int(spread.rounded())) ms "
+            + "across \(windowList) s — Beat This! phase is unstable on this track"
+        return TrackReDiag(
+            label: track.label,
+            referenceBeatCount: reference.count,
+            referenceBPM: refBPM,
+            windows: windowResults,
+            flagged: unstable,
+            flagReason: unstable ? unstableNote : nil)
+    }
+
+    /// Run Beat This! on each `windows` slice of `rawTap` (each starting at
+    /// `offsetS`) and compare its phase to the full-window `reference` grid.
+    private static func measureWindows(
+        windows: [Double], rawTap: RawTapAnalysis, offsetS: Double,
+        reference: [Double], analyzer: DefaultBeatGridAnalyzer
+    ) -> [WindowResult] {
+        let refPeriod = medianIOI(reference)
+        return windows.map { windowS in
             let short = BeatThisGrid.beats(
                 samples: rawTap.samples,
                 sampleRate: rawTap.sampleRate,
@@ -151,28 +187,13 @@ enum ReDiagnosis {
                 analyzer: analyzer)
             let stats = phaseOffset(of: short, vs: reference, period: refPeriod)
             let shortPeriod = medianIOI(short)
-            windows.append(WindowResult(
+            return WindowResult(
                 windowS: windowS,
                 beatCount: short.count,
                 gridBPM: shortPeriod > 0 ? 60.0 / shortPeriod : 0,
                 phaseErrorMs: stats.offsetMs,
-                resultant: stats.resultant))
+                resultant: stats.resultant)
         }
-
-        // A track is suspect when the 3/4/5 s phase estimates disagree: a viable
-        // track's windows should converge as W grows, not scatter.
-        let offsets = windows.map(\.phaseErrorMs)
-        let spread = (offsets.max() ?? 0) - (offsets.min() ?? 0)
-        let unstable = spread > unstableSpreadMs
-        let unstableNote = "short-window phase spans \(Int(spread.rounded())) ms "
-            + "across 3/4/5 s — Beat This! phase is unstable on this track"
-        return TrackReDiag(
-            label: track.label,
-            referenceBeatCount: reference.count,
-            referenceBPM: refBPM,
-            windows: windows,
-            flagged: unstable,
-            flagReason: unstable ? unstableNote : nil)
     }
 
     // MARK: - Phase comparison
@@ -217,6 +238,13 @@ enum ReDiagnosis {
 
     // MARK: - Reporting
 
+    /// The window lengths actually measured — recovered from the first track
+    /// that produced results (flagged tracks carry no windows). Falls back to
+    /// the documented default when every track was flagged.
+    static func derivedWindows(_ results: [ReDiagnosis.TrackReDiag]) -> [Double] {
+        results.first { !$0.windows.isEmpty }?.windows.map(\.windowS) ?? testWindowsS
+    }
+
     static func consoleSummary(_ results: [ReDiagnosis.TrackReDiag]) -> String {
         var lines = ["CS.1.y re-diagnosis — short-window Beat This! phase accuracy"]
         for result in results {
@@ -228,7 +256,7 @@ enum ReDiagnosis {
             let flag = result.flagged ? "  ⚠ \(result.flagReason ?? "")" : ""
             lines.append("  \(result.label) — \(cells.joined(separator: "  "))\(flag)")
         }
-        for window in ReDiagnosis.testWindowsS {
+        for window in derivedWindows(results) {
             let viable = results.filter { result in
                 result.windows.first { $0.windowS == window }?.viable ?? false
             }.count
@@ -261,6 +289,11 @@ enum ReDiagnosis {
         let stamp = ISO8601DateFormatter().string(from: Date())
         let durationStr = String(format: "%.1f", rawTap.durationS)
         let resultantStr = String(format: "%.2f", viableResultant)
+        let windows = derivedWindows(results)
+        let windowList = windows.map { String(format: "%.0f", $0) }.joined(separator: " / ")
+        let windowHeader = windows.map { "\(String(format: "%.0f", $0)) s" }
+            .joined(separator: " | ")
+        let windowDivider = windows.map { _ in "---" }.joined(separator: "|")
         var md = """
         # Cold-Start Re-Diagnosis (CS.1.y) — short-window Beat This! phase accuracy
 
@@ -271,21 +304,21 @@ enum ReDiagnosis {
         ## Question
 
         The CS.1.y.2 onset-based fix failed (Failed Approach #68). The replacement
-        direction corrects the cold-start grid phase from Beat This! run on the
-        first ≤ 5 s of live tap audio. This measures whether that is viable: for
-        each track, Beat This! on the first 3 / 4 / 5 s of the tap is compared to
-        full-window Beat This! (the verifier's audible-beat reference). A window
-        is **viable** when its phase is within ±\(Int(viablePhaseErrorMs)) ms of
-        the reference with resultant ≥ \(resultantStr).
+        direction corrects the cold-start grid phase from Beat This! run on an
+        early window of live tap audio. This measures whether that is viable: for
+        each track, Beat This! on the first \(windowList) s of the tap is compared
+        to full-window Beat This! (the verifier's audible-beat reference). A
+        window is **viable** when its phase is within ±\(Int(viablePhaseErrorMs)) ms
+        of the reference with resultant ≥ \(resultantStr).
 
         ## Per-track, per-window phase error
 
-        | Track | ref beats | ref BPM | 3 s | 4 s | 5 s |
-        |---|---|---|---|---|---|
+        | Track | ref beats | ref BPM | \(windowHeader) |
+        |---|---|---|\(windowDivider)|
 
         """
         for result in results {
-            md += renderRow(result) + "\n"
+            md += renderRow(result, windowCount: windows.count) + "\n"
         }
         md += "\n_Cell: phase offset vs full-window reference (signed ms), "
         md += "resultant R, beat count, ✓ viable / ✗ not._\n\n"
@@ -294,10 +327,14 @@ enum ReDiagnosis {
         return md
     }
 
-    private static func renderRow(_ result: ReDiagnosis.TrackReDiag) -> String {
+    private static func renderRow(
+        _ result: ReDiagnosis.TrackReDiag, windowCount: Int
+    ) -> String {
         guard !result.windows.isEmpty else {
-            return "| \(result.label) | — | — | "
-                + "FLAGGED: \(result.flagReason ?? "no data") | | |"
+            var row = "| \(result.label) | — | — | "
+                + "FLAGGED: \(result.flagReason ?? "no data") |"
+            for _ in 1..<max(windowCount, 1) { row += " |" }
+            return row
         }
         let bpm = String(format: "%.1f", result.referenceBPM)
         var row = "| \(result.label) | \(result.referenceBeatCount) | \(bpm) |"
@@ -321,11 +358,11 @@ enum ReDiagnosis {
     private static func renderWindowSummary(_ results: [ReDiagnosis.TrackReDiag]) -> String {
         let rated = results.filter { !$0.windows.isEmpty }.count
         var md = "## Window viability summary\n\n| Window | tracks viable |\n|---|---|\n"
-        for window in testWindowsS {
+        for window in derivedWindows(results) {
             let viable = results.filter { result in
                 result.windows.first { $0.windowS == window }?.viable ?? false
             }.count
-            md += "| \(Int(window)) s | \(viable) / \(rated) |\n"
+            md += "| \(String(format: "%.0f", window)) s | \(viable) / \(rated) |\n"
         }
         return md + "\n"
     }

@@ -40,6 +40,7 @@ enum SelfTest {
         let injectedDeltaMs = 8.0
         let config = VerifierConfig(
             firstWindowS: 10,
+            windowStartS: 0,
             passWindowMs: 50,
             tightWindowMs: 30,
             passRate: 0.9,
