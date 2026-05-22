@@ -8,6 +8,88 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 ---
 
+### BUG-017 — Cold-start visual beat carries a per-track phase offset (preview-clip phase used as track phase)
+
+**Severity:** P1 (load-bearing product claim — "beat-synced from frame 1 of every track", Matt's Phase CS bar 2026-05-20. CS.1 empirical verification: 7 of 10 tracks fail the ±50 ms bar. Not session-blocking — the session plays and the BUG-007.9 runtime recalibration partially corrects after ~15 s — so not P0.)
+**Domain tag:** `dsp.beat`
+**Status:** Open — diagnosed (CS.1.x, 2026-05-22). Root cause identified with code-level evidence; no fix code landed (diagnosis increment per the Defect Handling Protocol multi-increment process).
+**Introduced:** Pre-CS.1. The cold-start grid-install path (`VisualizerEngine+Stems.swift:485`, `cached.beatGrid.offsetBy(0)`) and the preview-only `GridOnsetCalibrator` (`GridOnsetCalibrator.swift:13`) predate this filing — part of the BUG-007.x cold-start infrastructure series. The preview-vs-track phase gap was never closed; CS.1's verification harness surfaced it empirically 2026-05-22.
+**Resolved:** —
+
+### Expected behavior
+
+Per Matt's Phase CS bar (`docs/COLD_START_SYNC_DESIGN_2026-05-20.md` §3): from frame 1 of every track, the visual beat (`beatPhase01` wrap) lands within ±50 ms of the audible beat; ≥ 90 % of beats in the first 10 s within tolerance; ≥ 90 % of tracks passing.
+
+### Actual behavior
+
+CS.1's `ColdStartVerifier` harness, run on the full-session capture `2026-05-22T16-57-36Z` (10 tracks; Beat This! one-beat-per-beat audible reference; clock offset pinned via the precise raw-tap-start timestamp added to `SessionRecorder` in CS.1):
+
+**3 of 10 tracks pass; 7 fail.** Per-track median visual-vs-audible offset over the first 10 s:
+
+| Track | Median Δ | Within ±50 ms | Verdict |
+|---|---|---|---|
+| Around the World | +28 ms | 95 % | pass |
+| Get Lucky | +17 ms | 90 % | pass |
+| Royals | +8 ms | 93 % | pass |
+| Billie Jean | +69 ms | 10 % | fail |
+| Seven Nation Army | +93 ms | 35 % | fail |
+| Superstition | −28 ms | 44 % | fail |
+| Everlong | −66 ms | 23 % | fail |
+| B.O.B. | +10 ms | 73 % | fail |
+| HUMBLE. | +338 ms | 0 % | fail |
+| Money | −128 ms | 0 % | fail |
+
+The offset is a **per-track systematic phase error, not jitter** — within each track the per-beat deltas are tight (HUMBLE: every beat +320 to +364 ms, MAD ~15 ms). The errors span −128 to +338 ms, all within ±½-beat of the track tempo. HUMBLE (76 BPM, 790 ms period) is ~0.43 beat off.
+
+### Reproduction steps
+
+1. Rebuild + launch the app (CS.1's `SessionRecorder` precise raw-tap-start change in tree).
+2. Set `PHOSPHENE_FULL_RAW_TAP=1` in the Xcode scheme; play a ~10-track Spotify-prepared playlist.
+3. `swift run ColdStartVerifier --session <dir>` (from `PhospheneEngine/`).
+4. Observe: < 90 % of tracks pass the ±50 ms / 90 % bar; per-track median offsets span > 400 ms.
+
+**Minimum reproducer:** any Spotify-prepared playlist. The defect is structural — the cold-start grid phase is set from the preview clip on every track.
+
+### Session artifacts
+
+- Session: `~/Documents/phosphene_sessions/2026-05-22T16-57-36Z/`
+- Evidence pack: `<session>/cold_start_report.md` (full per-track table, failure dives, clock offsets).
+
+### Suspected failure class
+
+`calibration`. The cold-start beat grid is not calibrated to the track's actual start phase.
+
+**Root cause (CS.1.x diagnosis — code-level evidence):**
+
+1. **`VisualizerEngine+Stems.swift:485`** installs the cold-start grid as `cached.beatGrid.offsetBy(0)`. `cached.beatGrid` is Beat This! run on the **30-second Spotify preview clip**. `.offsetBy(0)` uses the preview clip's timeline as the track's timeline verbatim. But the preview is an arbitrary 30 s excerpt — its position in the full track is unknown — so the grid's beat phase, applied from track t=0, is off by the preview clip's arbitrary phase offset, folding to ±½-beat per track.
+2. **`GridOnsetCalibrator`** (the `initialDriftMs` seed) runs on the **preview audio** (`GridOnsetCalibrator.swift:13`). It measures the Beat This!-vs-onset-detector latency *within the preview* — it never sees the live track start, so it structurally cannot measure or correct the preview-vs-track phase error. This is why the frame-1 `drift_ms` seed is small (±60 ms) while the real offset is 60–338 ms — they are different quantities.
+3. The **live drift tracker** corrects small continuous drift via an EMA — it does not make a gross ½-beat phase jump (HUMBLE stays +338 ms even post-"lock").
+4. The **BUG-007.9 runtime recalibration** (`VisualizerEngine+Stems.swift` `recalibrateGridFromTapAudio`) re-calibrates against live tap audio — but only after ~15 s of buffered tap audio (outside the 10 s cold-start window), and its `GridOnsetCalibrator` has a ±200 ms `maxMatchWindow` (`GridOnsetCalibrator.swift:41`) that silently returns 0 (no correction) when the true offset exceeds 200 ms — so it cannot fix the worst cases even later.
+
+The 3 passing tracks are tracks whose preview clip happened to start near a beat boundary (small phase error).
+
+### Verification criteria (write before the fix)
+
+- [ ] Automated: `ColdStartVerifier` on a fresh full-session capture reports ≥ 90 % of tracks passing the ±50 ms / 90 % bar.
+- [ ] Manual: Matt's M7 perceptual review on a real listening-party playlist confirms the visuals are beat-synced from frame 1.
+- [ ] Regression: the BUG-007.x lock state machine and steady-state tracking are preserved — the fix adds a cold-start phase acquisition and must not destabilise the steady-state tracker.
+
+### Fix scope
+
+Multi-increment (P1). The fix must give the cold-start the **track-start phase**, whose only source is the live tap audio from frame 1. Direction:
+
+- A cold-start phase acquisition: in the first ~1–2 s of playback, phase-lock the grid (correct tempo, wrong phase) to the first live sub-bass onsets — a gross phase correction up front — rather than trusting the preview clip's phase and waiting for the 15 s recalibration.
+- Widen or remove the ±200 ms `maxMatchWindow` cap so gross corrections are not discarded.
+- Touches the cold-start grid-install path (`VisualizerEngine+Stems.swift`) and `LiveBeatDriftTracker`. Design before code — the change interacts with the BUG-007.x lock state machine.
+
+To be scoped as a follow-up increment; not started in this diagnosis increment.
+
+### Related
+
+CS.1 (verification harness — `ColdStartVerifier`); the Phase CS kickoff + `docs/COLD_START_SYNC_DESIGN_2026-05-20.md`; the BUG-007.x cold-start infrastructure series (BUG-007.6 latency, BUG-007.8 `setGrid(_:initialDriftMs:)`, BUG-007.9 hybrid runtime recalibration); `GridOnsetCalibrator`; D-019 (stem warmup blend); CLAUDE.md "Cold-Start Phase Contract".
+
+---
+
 ### BUG-016 — Lumen Mosaic "not working" in 2026-05-21 reactive-mode sessions
 
 **Severity:** P2 (visible degradation on one production preset; not session-blocking — Matt cycled past it in both 2026-05-21 sessions and the remaining catalog rendered correctly).
