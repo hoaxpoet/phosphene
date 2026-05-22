@@ -32,6 +32,35 @@ Test infrastructure: swift-testing + XCTest across unit, integration, regression
 
 ## Recently Completed
 
+### CA-Audio-FU-4 — Tap-reinstall regression tests ✅ (2026-05-21)
+
+Second of the Tier-1 Phase CA follow-up batch (CA-Presets-FU-4 + CA-Audio-FU-4). Closes the zero-test-coverage gap on `AudioInputRouter+SignalState.swift` flagged by the CA-Audio audit (AUDIO.md:806 follow-up row; AUDIO.md:160 finding). The 105-line extension implements the critical scrub-recovery path (3 attempts with 3/10/30 s backoff) but had no dedicated tests prior to this increment — a refactor or tuning regression could silently break audio recovery on every scrub-induced silence event with no test signal.
+
+**Landed changes (commit `a6404575`):**
+
+- **New test file** `PhospheneEngine/Tests/PhospheneEngineTests/Audio/AudioInputRouterSignalStateTests.swift` — 9 regression tests covering the 5 audit-recommended cases + 4 productivity additions:
+  1. `test_scheduleNextReinstall_attemptCountSequence` (audit #1) — counter advances 1→2→3 then caps at 3, with no further workItem scheduling on the 4th call.
+  2. `test_scheduleNextReinstall_doesNotDoubleScheduleWhilePending` (added) — guards the `guard reinstallWorkItem == nil else { return false }` branch at line 51; a regression would double-bump attempts on overlapping silence callbacks and burn through the 3-attempt cap on the first scrub.
+  3. `test_cancelPendingReinstall_resetsAttempts` (audit #2) — verifies cancel zeroes both the workItem handle AND the attempt counter.
+  4. `test_handleSignalStateChange_silentSchedulesReinstall` (added) — the `.silent` entry point from the SilenceDetector callback.
+  5. `test_handleSignalStateChange_activeCancelsPending` (added) — the `.active` recovery entry point.
+  6. `test_attemptTapReinstall_skipsIfStateNotSilent` (audit #3) — verifies the state-changed guard at line 78-83 (returns to `.active` during backoff window does NOT trigger reinstall).
+  7. `test_backoffExhausted_noNewScheduling` (audit #4) — after 3 attempts the counter caps and no new workItem is scheduled; stable under repeated silence-callback firings.
+  8. `test_nextActiveToSilent_resetsAttempts` (audit #5) — full silence→active→silence cycle, second silence run starts at attempts=1 (not continuation from prior).
+  9. `test_reinstallDelays_matchDesignSpec` (added) — locks the `[3.0, 10.0, 30.0]` tuning against future silent retuning; if a real tuning change ships, this test must be updated in the same increment with the rationale in the commit message.
+
+**Zero production-code changes required.** The internal init `init(capture:metadata:silenceDetector:)` was already in place as a testability seam at `AudioInputRouter.swift:91-101` (taking an injectable `SilenceDetector` which itself has injectable `timeProvider`). All reinstall-machine functions (`handleSignalStateChange`, `scheduleNextReinstall`, `cancelPendingReinstall`, `attemptTapReinstall`, `performTapReinstall`) are package-internal-visibility and accessible via `@testable import Audio`. The `reinstallAttempts` / `reinstallWorkItem` / `reinstallDelays` fields likewise.
+
+**Test methodology.** The asyncAfter'd workItems in `scheduleNextReinstall` use real wall-clock delays of 3/10/30 s. Tests do NOT wait — they either simulate the workItem firing by directly calling the relevant API (e.g., calling `scheduleNextReinstall` again after a `clearPendingWithoutResettingAttempts` helper), or they verify the synchronous side effects (counter, workItem handle) without exercising the deferred execution path. Each test that schedules cleans up via `defer { router.cancelPendingReinstall() }` so background asyncAfter calls don't fire mid-next-test. All 9 tests run in ~1 ms each; total suite delta is ~9 ms wall-clock.
+
+**Verification:** SwiftLint baseline holds at 0 violations / 371 files. Engine test suite: **1,257 tests across 162 suites — all passing** (up from 1,248; +9 new tests). App test suite: 333 tests / 60 suites — all passing (no change). Build clean on both `swift build --package-path PhospheneEngine` and `xcodebuild -scheme PhospheneApp test`.
+
+**Doc updates:**
+- `docs/CAPABILITY_REGISTRY/AUDIO.md` CA-Audio-FU-4 row: Open → Resolved 2026-05-21 with commit hash + per-test name + scope rationale.
+- This ENGINEERING_PLAN.md entry.
+
+**Risks and follow-ups:** none. The tests are read-only against existing internal API and require no production-code change. If a future refactor narrows the visibility of any of the reinstall-machine methods (e.g., making `scheduleNextReinstall` truly private), the tests will fail to compile and the refactor author will need to either preserve the internal-visibility surface or move the relevant tests behind a different seam.
+
 ### CA-Presets-FU-4 — Lumen Mosaic init-failure instrumentation ✅ (2026-05-21)
 
 First of the Tier-1 Phase CA follow-up batch (CA-Presets-FU-4 + CA-Audio-FU-4). Closes the silent-allocation-failure diagnosis gap surfaced by the CA-Presets audit and documented in the BUG-016 addendum (`docs/QUALITY/KNOWN_ISSUES.md:111-141`). **BUG-016 stays Open** — instrumentation is not a fix; the increment closes the gap that prevented previous reproductions from being characterised post-hoc.
