@@ -6,37 +6,28 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
-## [dev-2026-05-22-a] CS.1.y.2 — Cold-start phase acquisition (BUG-017 fix, implementation)
+## [dev-2026-05-22-a] CS.1.y.2 — Cold-start phase acquisition: attempted, failed validation, reverted
 
-**Increment:** CS.1.y.2 (the Fix stage of the P1 multi-increment BUG-017; CS.1.y.1 design was surfaced to Matt and the budget decision ratified — "up to ~3 s"; CS.1.y.3 validation is pending a fresh capture). **Status:** Implemented + engine-green 2026-05-22. Local commits only; not pushed. **BUG-017 is NOT yet marked Resolved** — validation (`ColdStartVerifier` ≥ 90 % on a fresh post-fix capture + Matt's M7) is CS.1.y.3.
+**Increment:** CS.1.y.2 (the Fix stage of the P1 multi-increment BUG-017). **Status:** Attempted and **reverted** 2026-05-22 — the fix failed CS.1.y.3 validation. Local commits only; not pushed. BUG-017 remains **Open**; the increment is being re-designed.
 
-### What this is
+### What was attempted
 
-BUG-017: the cold-start beat grid is installed `cached.beatGrid.offsetBy(0)` — Beat This! run on the 30 s Spotify preview clip, with the preview's timeline used as the track's timeline verbatim. The preview is an arbitrary excerpt, so the grid's tempo is reliable but its phase carries a per-track ±½-beat error. CS.1 measured 7/10 tracks failing the ±50 ms bar; nothing in the 10 s window corrects a gross error (the EMA's ±50 ms onset window cannot see it).
+A **cold-start phase acquisition** in `LiveBeatDriftTracker` (commit `dbcc018d`): collect the first live sub-bass onsets, take the circular mean of their nearest-beat residuals, and — on a confident cluster (resultant `R ≥ 0.95`) — apply a one-shot gross `drift` correction. Premise (CS.1.y.1 design, Matt-ratified budget "up to ~3 s"): a few live onsets at the known tempo pin the beat phase. The engine suite was green at this point (1272 tests; 7 new cold-start tests).
 
-The fix adds a **cold-start phase acquisition** entirely within `LiveBeatDriftTracker`: it collects the first live sub-bass onsets, computes the circular mean of their nearest-beat residuals, and — when a confident cluster forms — applies a one-shot gross `drift` correction (re-seed + lock-state reset, mechanically identical to a fresh `setGrid`). It runs in parallel with the steady-state EMA; a sub-threshold correction is a no-op (steady-state untouched), and a deadline with no confident cluster declines (seeded phase left as-is). The install path needs no change — acquisition self-arms on `setGrid`.
+### Why it was reverted
 
-### Design refinements vs the surfaced design
+`ColdStartVerifier` on the post-fix capture `2026-05-22T19-03-59Z`: **0 / 10 tracks pass — worse than CS.1's 3 / 10.** The three pre-fix-passing tracks regressed 100–300 ms (Around the World +28 → +129 ms, Get Lucky +17 → +198 ms, Royals +8 → +316 ms).
 
-- **`GridOnsetCalibrator.maxMatchWindow` widening was dropped.** With the in-tracker acquisition handling the gross correction, the calibrator is never the gross-correction path (BUG-007.9 runs only post-lock, i.e. post-correct-phase), and widening its window risks regressing prep-time detection-latency calibration. The fix is entirely within `LiveBeatDriftTracker.swift`.
-- **Confidence gate calibrated against real data.** The `LiveDriftValidation` love_rehab integration test exposed that the live sub-bass onset detector's first ~3 s are warmup-noisy — residuals ramp (`−153 / −117 / −35 ms`) rather than cluster. A 3-onset warmup ramp has circular resultant R ≈ 0.82; a genuine cluster gives R ≈ 0.99. The `coldStartMinResultant` gate is **0.95** — it rejects the warmup ramp (cold-start then declines, no-op) while admitting a real cluster.
+**The fix direction is unsound.** The sub-bass onset detector fires on sub-bass *events* (bass notes, 808s), not *beats* — on syncopated tracks those are off-beat (Billie Jean −226 ms, Royals +316 ms). The cold-start algebraically aligns the visual onto the onset phase (`visual = liveOnset`), i.e. onto the bassline. Off-beat clusters are *tight* (MAD ~10 ms, steady across the full 10 s window — not warmup, not jitter), so they pass the `R ≥ 0.95` gate, which measures cluster tightness, not on-beat-ness. No threshold tuning fixes a structurally-wrong signal. The fix also overrides the sometimes-fine preview-calibration seed, so it specifically destroys the tracks that previously worked. Full analysis: BUG-017 CS.1.y.2 addendum in `KNOWN_ISSUES.md`.
 
-### Files changed
+### Resolution
 
-| File | Change |
-|---|---|
-| `PhospheneEngine/Sources/DSP/LiveBeatDriftTracker.swift` | Cold-start phase acquisition: 6 tunables, 3 state fields, public `coldStartCorrectionApplied` accessor, 6 private methods (`acquireColdStartPhaseLocked`, `coldStartResidualLocked`, `coldStartCircularStatsLocked`, `maybeResolveColdStartLocked`, `applyColdStartCorrectionLocked`, `resetLockStateForColdStartLocked`). `update()` calls acquisition before the EMA; the no-onset decay block was extracted to `applyNoOnsetDriftDecayLocked` (pure move). `resetStateLocked` clears the new fields. |
-| `PhospheneEngine/Tests/PhospheneEngineTests/DSP/LiveBeatDriftTrackerTests.swift` | 7 new cold-start regression tests (large error, HUMBLE-scale 76 BPM, aligned no-op, scattered decline, too-few-onsets decline, re-arm on setGrid, steady-state lock-hold after correction). |
+- `dbcc018d` reverted by `f71b0456` — engine suite back to the 1265-test green baseline.
+- New fix direction (CS.1.y.2-redo): correct the cached grid's phase from **Beat This!** run on early live tap audio (the reliable beat detector — `ColdStartVerifier`'s own ground truth), not the sub-bass onset detector. Open pre-work: does Beat This! give accurate phase on a short (~4–6 s) window, and does that fit the "~3 s" budget — an offline measurement increment before any code. Design to be scoped with Matt.
 
-### Verification
+### Durable learning
 
-- `swift test --package-path PhospheneEngine` — **1272 tests in 162 suites pass, 0 issues** (1265 baseline + 7 new). All 41 pre-existing `LiveBeatDriftTracker` tests pass **unchanged** — the no-op / decline gates keep on-phase and scattered inputs on their existing paths.
-- `swiftlint lint --strict` — 0 violations on `LiveBeatDriftTracker.swift`.
-- App build (`xcodebuild -scheme PhospheneApp build`) — engine API change is purely additive (`coldStartCorrectionApplied` accessor); no app code touched.
-
-### Known risk / what CS.1.y.3 must answer
-
-The love_rehab finding showed the live sub-bass onset detector is noisier in the cold-start window than the design assumed. The 0.95 gate makes the fix **safe** — on a noisy onset stream it declines (no-op, no regression) rather than mis-correcting. But its **efficacy** on real BUG-017 tracks (does it form a confident cluster and correct, or decline?) is unverified and depends on those tracks' onset-stream quality. `ColdStartVerifier` on a fresh post-fix capture is the load-bearing check. If it shows cold-start declining on the BUG-017 tracks, the fix direction (sub-bass-onset-based) needs revisiting toward a Beat This!-based cold-start — a design revision for Matt.
+CLAUDE.md Failed Approach **#68** added — phase-locking the cold-start grid to live sub-bass onsets: the sub-bass onset detector is not a beat-phase reference.
 
 ---
 
