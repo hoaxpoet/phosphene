@@ -151,12 +151,25 @@ Promoted from CLAUDE.md and prior session learnings:
 - **Pretending Matt's M7 review can be skipped.** The phase's exit criterion is Matt's perceptual validation on a real listening-party playlist. Automated measurement passing is necessary but not sufficient.
 - **Generating structure as a substitute for substance.** If a section of a closeout report has more headers than findings, the work isn't done. The Authoring Discipline rule applies.
 
-## Status on entry (2026-05-20)
+## Status on entry
 
-- Branch: `main`. 5 commits ahead of `origin/main`.
-- Local `main` includes the BUG-012 instrumentation increment (commits `94a55a29`, `a57c79fa`, `23bbb825`).
-- Working tree is clean except for `default.profraw` (build artifact). Aurora Veil carry-over from prior session has been stashed (`stash@{0}` titled "AV.2.h.1 carry-over").
-- No CS-phase code has landed. This is the kickoff.
+**Original (2026-05-20):** Branch `main`, 5 commits ahead of `origin/main`; BUG-012
+instrumentation increment on top; no CS-phase code landed.
+
+**Updated (2026-05-21) — start of CS.1 session.** The repo has moved on since the
+kickoff was written:
+
+- `[CS.0]` scoping (this prompt + `COLD_START_SYNC_DESIGN_2026-05-20.md` + the
+  `ENGINEERING_PLAN.md` Phase CS section) landed as commit `217a4221`.
+- BUG-012-i1 instrumentation landed on top (`94a55a29`, `a57c79fa`, `23bbb825`).
+- An entire Phase CA (DSP-subsystem documentation audit) then ran — many `CA-*` /
+  `CA.7b-FU-4` commits. Most recent `main` commit: `5586d97e`.
+- Branch `main`, 4 commits ahead of `origin/main`. Working tree clean except
+  `default.profraw` (build artifact). `stash@{0}` "AV.2.h.1 carry-over" still parked.
+- CS.0 scoping is committed; no CS.1+ implementation code has landed. CS.1 begins now.
+- **Verification-data gap:** every session directory under
+  `~/Documents/phosphene_sessions/` is empty (header-only `features.csv`, no
+  `raw_tap.wav`). CS.1 step 5 needs a real multi-track capture; see CS.1 notes.
 
 ## Sign-off
 
