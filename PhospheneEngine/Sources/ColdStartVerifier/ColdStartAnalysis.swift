@@ -185,12 +185,20 @@ enum ColdStartAnalysis {
         track: TrackSegment, config: VerifierConfig,
         offsetS: Double, beatThisCount: Int
     ) -> TrackContext {
-        let firstPt = track.firstPlaybackTimeS
+        let firstPt = track.firstPlaybackTimeS + config.windowStartS
         let windowEnd = firstPt + config.firstWindowS
-        let windowFrames = track.frames.filter { $0.playbackTimeS <= windowEnd }
+        let windowFrames = track.frames.filter {
+            $0.playbackTimeS >= firstPt && $0.playbackTimeS <= windowEnd
+        }
         let bpms = windowFrames.map(\.gridBPM).filter { $0 > 0 }
+        // `frame1DriftMs` = drift at the start of the measurement window. For
+        // windowStartS = 0 this is true frame 1; for a post-snap window
+        // (windowStartS ≈ 20) it is the drift right after the snap landed.
+        let frame1Drift = windowFrames.first?.driftMs
+            ?? track.frames.first?.driftMs
+            ?? 0
         return TrackContext(
-            frame1DriftMs: track.frames.first?.driftMs ?? 0,
+            frame1DriftMs: frame1Drift,
             windowGridBPM: bpms.isEmpty ? (track.installedBPM ?? 0) : median(bpms),
             lockReachedAtPt: track.frames.first { $0.lockState == 2 }?.playbackTimeS,
             firstPt: firstPt,

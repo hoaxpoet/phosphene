@@ -46,7 +46,7 @@ enum VerifierReport {
 
         | Parameter | Value |
         |---|---|
-        | Cold-start window | first \(fmt(config.firstWindowS, 0)) s of each track |
+        | Window | \(fmt(config.firstWindowS, 0)) s @ +\(fmt(config.windowStartS, 0)) s into each track |
         | Pass tolerance | ±\(fmt(config.passWindowMs, 0)) ms |
         | Aspirational tolerance | ±\(fmt(config.tightWindowMs, 0)) ms |
         | Per-track pass rate | \(fmt(config.passRate * 100, 0))% of windowed beats |
