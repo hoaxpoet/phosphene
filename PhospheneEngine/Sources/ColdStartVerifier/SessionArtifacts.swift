@@ -58,6 +58,14 @@ struct LogGridEvent {
     let meter: Int
 }
 
+/// A "track →" line from session.log, with its wall-clock timestamp.
+struct LogTrackEvent {
+    /// CFAbsoluteTime — the same epoch as features.csv `wallclock_s`.
+    let timeS: Double
+    let title: String
+    let artist: String
+}
+
 /// Everything parsed from a session directory.
 struct SessionArtifacts {
     let directory: URL
@@ -68,6 +76,10 @@ struct SessionArtifacts {
     /// track change resets elapsedSeconds from many seconds back to ~0; within a
     /// track it only increases. 1 s is unambiguous.
     static let boundaryDropThresholdS = 1.0
+
+    /// A frame run starting more than this many seconds before the first
+    /// "track →" log event is pre-playback (preparation) and is not a track.
+    static let preRollToleranceS = 8.0
 
     static func load(directory: URL) throws -> SessionArtifacts {
         let featuresURL = directory.appendingPathComponent("features.csv")
@@ -136,7 +148,7 @@ struct SessionArtifacts {
     // MARK: - session.log
 
     private struct LogEvents {
-        var tracks: [(title: String, artist: String)] = []
+        var tracks: [LogTrackEvent] = []
         var grids: [LogGridEvent] = []
     }
 
@@ -147,12 +159,19 @@ struct SessionArtifacts {
             if let range = line.range(of: "track → ") {
                 let rest = String(line[range.upperBound...])
                 // SessionRecorder writes "track → <title> — <artist>".
+                let title: String
+                let artist: String
                 if let dash = rest.range(of: " — ") {
-                    events.tracks.append((String(rest[..<dash.lowerBound]),
-                                          String(rest[dash.upperBound...])))
+                    title = String(rest[..<dash.lowerBound])
+                    artist = String(rest[dash.upperBound...])
                 } else {
-                    events.tracks.append((rest, ""))
+                    title = rest
+                    artist = ""
                 }
+                events.tracks.append(LogTrackEvent(
+                    timeS: lineTimestamp(line) ?? 0,
+                    title: title,
+                    artist: artist))
             } else if line.contains("BeatGrid installed:") {
                 let title = capture(line, between: "track='", and: "'") ?? ""
                 let bpm = capture(line, between: "bpm=", and: ",").flatMap(Double.init)
@@ -164,6 +183,16 @@ struct SessionArtifacts {
             }
         }
         return events
+    }
+
+    /// Parse the leading `[ISO8601]` timestamp of a session.log line into a
+    /// CFAbsoluteTime (`Date.timeIntervalSinceReferenceDate` — the epoch
+    /// features.csv `wallclock_s` also uses). nil when the line has no timestamp.
+    private static func lineTimestamp(_ line: String) -> Double? {
+        guard line.hasPrefix("["), let close = line.firstIndex(of: "]") else { return nil }
+        let iso = String(line[line.index(after: line.startIndex)..<close])
+        guard let date = ISO8601DateFormatter().date(from: iso) else { return nil }
+        return date.timeIntervalSinceReferenceDate
     }
 
     /// Substring between two delimiters, or nil if either is absent.
@@ -190,13 +219,26 @@ struct SessionArtifacts {
         }
         if !current.isEmpty { runs.append(current) }
 
-        // Match log events positionally — both are chronological. A reactive
-        // session emits no "track →" line; unmatched runs stay unlabelled.
-        return runs.enumerated().map { idx, run in
-            let track = idx < log.tracks.count ? log.tracks[idx] : nil
+        // Drop pre-playback runs — those starting before the first "track →"
+        // event (preparation idles the render loop before the user presses
+        // play). The remaining runs map 1:1 to track events in order: a track
+        // never resets MIRPipeline mid-playback, so one run per track. Without
+        // this, a leading prep run shifts every track label by one.
+        let events = log.tracks
+        let trackRuns: [[FeatureFrame]]
+        if let firstEvent = events.first {
+            trackRuns = runs.filter {
+                ($0.first?.wallclockS ?? 0) >= firstEvent.timeS - preRollToleranceS
+            }
+        } else {
+            trackRuns = runs   // no log events (reactive session) — positional
+        }
+
+        return trackRuns.enumerated().map { idx, run in
+            let event = idx < events.count ? events[idx] : nil
             var bpm: Double?
             var meter: Int?
-            if let title = track?.title,
+            if let title = event?.title,
                let grid = log.grids.first(where: { $0.title == title }) {
                 bpm = grid.bpm > 0 ? grid.bpm : nil
                 meter = grid.meter > 0 ? grid.meter : nil
@@ -204,8 +246,8 @@ struct SessionArtifacts {
             return TrackSegment(
                 index: idx,
                 frames: run,
-                title: track?.title,
-                artist: track.flatMap { $0.artist.isEmpty ? nil : $0.artist },
+                title: event?.title,
+                artist: event.flatMap { $0.artist.isEmpty ? nil : $0.artist },
                 installedBPM: bpm,
                 installedMeter: meter)
         }

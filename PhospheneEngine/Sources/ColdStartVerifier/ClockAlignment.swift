@@ -32,14 +32,21 @@ enum ClockAlignment {
     /// Minimum peak correlation for a confident alignment.
     static let minConfidentCorrelation = 0.5
 
-    static func align(tracks: [TrackSegment], rawTap: RawTapAnalysis) -> [TrackAlignment] {
+    /// Align each track. `alignmentWindowS` caps the feature envelope to the
+    /// first N seconds of the track: it must be shorter than `raw_tap.wav` for
+    /// the cross-correlation to have slide room, and only the cold-start region
+    /// near track start needs accurate registration anyway.
+    static func align(
+        tracks: [TrackSegment], rawTap: RawTapAnalysis, alignmentWindowS: Double
+    ) -> [TrackAlignment] {
         let hop = rawTap.envelopeHopS
         let rawEnv = rawTap.lowEnvelope
         var results: [TrackAlignment] = []
         var searchFloor = 0   // raw-tap hop index this track must start at or after
 
         for track in tracks {
-            let featEnv = buildFeatureEnvelope(track: track, hop: hop)
+            let featEnv = buildFeatureEnvelope(
+                track: track, hop: hop, maxSeconds: alignmentWindowS)
             guard featEnv.count >= 4, rawEnv.count > featEnv.count + searchFloor else {
                 results.append(TrackAlignment(
                     trackIndex: track.index,
@@ -57,18 +64,26 @@ enum ClockAlignment {
                 offsetS: offset,
                 correlation: peak.correlation,
                 confident: confident))
-            searchFloor = Int(peak.lag) + featEnv.count
+            // The next track begins after this track's full recorded extent in
+            // raw-tap time — not merely after the alignment window.
+            let trackEndRawHop = Int((track.lastPlaybackTimeS - offset) / hop)
+            searchFloor = max(searchFloor + 1, trackEndRawHop)
         }
         return results
     }
 
     // MARK: - Feature envelope
 
-    /// Resample a track's `subBass` column onto a uniform `hop`-spaced grid in
-    /// playback-time, by linear interpolation between recorded frames.
-    private static func buildFeatureEnvelope(track: TrackSegment, hop: Double) -> [Double] {
-        let frames = track.frames
-        guard let first = frames.first, let last = frames.last, hop > 0 else { return [] }
+    /// Resample the first `maxSeconds` of a track's `subBass` column onto a
+    /// uniform `hop`-spaced grid in playback-time, by linear interpolation
+    /// between recorded frames.
+    private static func buildFeatureEnvelope(
+        track: TrackSegment, hop: Double, maxSeconds: Double
+    ) -> [Double] {
+        guard let first = track.frames.first, hop > 0 else { return [] }
+        let cutoff = first.playbackTimeS + maxSeconds
+        let frames = Array(track.frames.prefix { $0.playbackTimeS <= cutoff })
+        guard let last = frames.last, frames.count >= 2 else { return [] }
         let span = last.playbackTimeS - first.playbackTimeS
         guard span > 0 else { return [] }
         let count = Int(span / hop) + 1
