@@ -32,6 +32,33 @@ Test infrastructure: swift-testing + XCTest across unit, integration, regression
 
 ## Recently Completed
 
+### CA.7b-FU-4 — setMeshPresetBuffer/setMeshPresetFragmentBuffer retirement ✅ (2026-05-21)
+
+Second of the Tier-2 Phase CA follow-up batch (CA-Audio-FU-5 + CA.7b-FU-4). Resolves the latent slot-1 buffer-binding collision flagged by the CA.7b audit (RENDERER_SUPPORTING.md:572 follow-up row; §Findings lines 431-451). `setMeshPresetBuffer(_:)` bound a per-preset world-state buffer at object/mesh `buffer(1)` — the same slot `MeshGenerator.draw()` writes `densityMultiplier` to. If a future mesh-shader preset ever set the preset buffer non-nil, `densityMultiplier` would silently clobber it. The collision was **latent only**: a Pass-0 grep confirmed `setMeshPresetBuffer` had zero non-nil production callers (its sole call site was `pipeline.setMeshPresetBuffer(nil)`, the reset). `setMeshPresetFragmentBuffer` (slot 4) did not collide but was equally caller-less.
+
+**Matt's product call (Pass 0): option (b) — deprecate + remove the setter pair.** Three options were surfaced: (a) rebind to a free slot, (b) deprecate + remove, (c) document the latent collision with a `// TODO:`. Option (b) was the audit-author recommendation; precedent is CA.7-FU-4's `setRayMarchPresetComputeDispatch` retirement (`8ac45e73`). Re-introducing either setter is trivial if a future preset needs per-preset mesh-shader world state.
+
+**Landed changes (commit `eb0aedc8`):**
+
+- **`PhospheneEngine/Sources/Renderer/RenderPipeline.swift`** — removed the `meshPresetBuffer` + `meshPresetBufferLock` ivars, the `meshPresetFragmentBuffer` + `meshPresetFragmentBufferLock` ivars, and the `// MARK: - Mesh Preset Fragment Buffer (buffer(4))` section. Fixed the `directPresetFragmentBuffer` doc-comment's dangling "Follows the same pattern as `meshPresetBuffer`" reference.
+- **`PhospheneEngine/Sources/Renderer/RenderPipeline+PresetSwitching.swift`** — removed the `setMeshPresetBuffer(_:)` and `setMeshPresetFragmentBuffer(_:)` declarations.
+- **`PhospheneEngine/Sources/Renderer/RenderPipeline+MeshDraw.swift`** — removed the slot-1 object/mesh-buffer bind block and the slot-4 fragment-buffer bind block from `drawWithMeshShader`.
+- **`PhospheneApp/VisualizerEngine+Presets.swift`** — removed the two `setMeshPreset*Buffer(nil)` reset calls in `applyPreset`.
+- **`PhospheneApp/VisualizerEngine.swift`** — corrected the `arachneState` doc-comment: it claimed the Arachne webBuffer wires via `setMeshPresetBuffer`; the actual setter is `setDirectPresetFragmentBuffer` (slot 6, D-092) — the comment was already stale before this increment.
+- **`PhospheneEngine/Sources/Presets/Arachnid/ArachneState+Spider.swift`** — historical comment no longer names the retired `meshPresetFragmentBuffer` symbol; notes the CA.7b-FU-4 retirement so a future grep doesn't trap on a dead reference.
+
+**GPU-contract doc sync (broader than the kickoff brief enumerated).** The retirement removed the slot-4 `meshPresetFragmentBuffer` binding entirely, which several GPU-contract docs described as a live "slot-4 reuse." Per CLAUDE.md (the capability registry + GPU contract must track code), all of these were corrected in the docs commit: `RENDERER.md` rows 182 (`RenderPipeline+MeshDraw.swift`), 190 (`RenderPipeline+PresetSwitching.swift` API inventory), 261 (slot-4 buffer-binding table row); `ARCHITECTURE.md` buffer-slot list, Module Map `RenderPipeline+MeshDraw` entry, and §GPU Contract Details `buffer(4)` block. Slot 1 is now `densityMultiplier`-exclusive; slot 4 is ray-march-`SceneUniforms`-exclusive.
+
+**Verification:** SwiftLint baseline holds at 0 violations / 371 files. Engine builds clean (`swift build`). Engine test suite: **1,265 tests across 162 suites — all passing** (unchanged from CA-Audio-FU-5; no test referenced either setter, so no test surface changed). App builds clean. No production behaviour change — both setters were dead API; the slot-1 collision was latent.
+
+**Doc updates:**
+- `docs/CAPABILITY_REGISTRY/RENDERER_SUPPORTING.md` CA.7b-FU-4 row: Open → Resolved 2026-05-21 with Matt's product call + commit hash + scope summary; the §Findings follow-up-backlog summary line updated to reflect option (b).
+- `docs/CAPABILITY_REGISTRY/RENDERER.md` rows 182 / 190 / 261 — slot-4 reuse claims removed, API inventory updated, file-length numbers re-synced (`82`→`69`, `194`→`170`).
+- `docs/ARCHITECTURE.md` buffer-slot list + Module Map + §GPU Contract Details `buffer(4)` block — slot-4 reuse statements removed.
+- This ENGINEERING_PLAN.md entry.
+
+**Known risks and follow-ups:** none for the increment — both setters were verified dead before removal, and the engine test suite (the authoritative renderer check) is fully green. Two observations surfaced for future increments: (1) **pre-existing CA.7-FU-4 doc-drift** — `RENDERER.md` lines 180 + 190 still list the `RayMarchPresetComputeDispatch` typealias / `setRayMarchPresetComputeDispatch` setter even though CA.7-FU-4 retired them in code (`8ac45e73`); not fixed here (out of CA.7b-FU-4 scope), recommend folding into a future Renderer doc-pruning pass. (2) **App-scheme test flake environment** — `xcodebuild -scheme PhospheneApp test` runs the engine `PhospheneEngineTests.xctest` (1,265 tests) plus `PhospheneAppTests` (333) together at a parallelism that produces non-deterministic timing/GPU flakes (observed across four runs this session: `FirstAudioDetectorTests`, `AppleMusicConnectionViewModelTests`, `StreamingMetadataTests`, `RenderPipelineICBTests`, `SessionManagerTests` — each flaked on a different run, each passes cleanly in isolation and under `swift test`). Not a regression from either Tier-2 increment; recommend a future App-side increment widen the affected suites' timing margins or mark GPU suites `.serialized`.
+
 ### CA-Audio-FU-5 — InputLevelMonitor regression tests ✅ (2026-05-21)
 
 First of the Tier-2 Phase CA follow-up batch (CA-Audio-FU-5 + CA.7b-FU-4). Closes the zero-test-coverage gap on `InputLevelMonitor` flagged by the CA-Audio audit (AUDIO.md:807 follow-up row; AUDIO.md:232 finding). The 322-line audio-quality observer is production-active (consumer at `VisualizerEngine.swift:415`) and implements a non-trivial state machine — `0.9995`/update peak-envelope decay (~21 s time constant at the 94 Hz analysis rate), 30-frame grade hysteresis (`gradeSwitchFrames=30`), a warmup gate (`warmupFrames=60`), and a peak-only classifier (treble-fraction gating removed post-2026-04-17T21-05-47Z after the Oxytocin false-positive) — but had no dedicated tests prior to this increment. A refactor or tuning change could silently regress any of these with no test signal; the failure mode would be "the diagnostic overlay shows the wrong grade on real music."
