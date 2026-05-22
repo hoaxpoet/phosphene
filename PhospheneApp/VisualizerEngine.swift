@@ -115,7 +115,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
 
     /// Arachne web-pool state — allocated when the Arachne preset is active,
     /// nil otherwise. Tick closure and webBuffer are wired into the render pipeline
-    /// via `setMeshPresetTick` / `setMeshPresetBuffer` in `applyPreset`.
+    /// via `setMeshPresetTick` / `setDirectPresetFragmentBuffer` in `applyPreset`.
     var arachneState: ArachneState?
 
     /// Latest bass stem attack ratio — updated each per-frame stem analysis pass,

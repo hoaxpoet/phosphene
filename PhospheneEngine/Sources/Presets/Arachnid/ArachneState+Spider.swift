@@ -11,8 +11,9 @@
 //
 // ArachneSpiderGPU (80 bytes) is bound at fragment buffer(7) in the mv_warp/direct
 // fragment pass and consumed by the spider SDF in arachne_fragment.
-// (D-040 originally specified buffer(4)/meshPresetFragmentBuffer; the buffer moved
-// to buffer(7)/directPresetFragmentBuffer2 in the ray-march remaster, Increment 3.5.10.)
+// (D-040 originally specified buffer(4); the buffer moved to buffer(7)/
+// directPresetFragmentBuffer2 in the ray-march remaster, Increment 3.5.10. The
+// slot-4 mesh-preset setter pair was retired entirely in CA.7b-FU-4.)
 //
 // Trigger (V.7.5 §10.1.9, restoring D-040 + re-tuned per M7 data; per-segment gate per V.7.7C.2):
 //   features.subBass > 0.30

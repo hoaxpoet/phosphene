@@ -52,8 +52,6 @@ extension VisualizerEngine {
         // This prevents stale subsystem state from the previous preset bleeding through.
         pipeline.setActivePasses([])
         pipeline.setMeshGenerator(nil)
-        pipeline.setMeshPresetBuffer(nil)
-        pipeline.setMeshPresetFragmentBuffer(nil)
         pipeline.setMeshPresetTick(nil)
         arachneState = nil
         gossamerState = nil

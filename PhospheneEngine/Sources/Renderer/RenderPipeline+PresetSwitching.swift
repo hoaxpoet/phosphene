@@ -42,12 +42,6 @@ extension RenderPipeline {
         presetLogger.info("Mesh generator \(generator != nil ? "attached" : "detached")")
     }
 
-    /// Attach a per-preset world-state MTLBuffer for mesh presets (bound at object/mesh buffer(1)).
-    /// Pass `nil` to detach. Thread-safe — can be called from any queue.
-    public func setMeshPresetBuffer(_ buffer: MTLBuffer?) {
-        meshPresetBufferLock.withLock { meshPresetBuffer = buffer }
-    }
-
     /// Attach a per-frame tick closure for mesh preset state updates.
     /// Called once per frame before the mesh draw. Pass `nil` to detach.
     /// Thread-safe — can be called from any queue.
@@ -109,12 +103,6 @@ extension RenderPipeline {
     /// Returns `.zero` until the first stem separation completes.
     public func currentStemFeatures() -> StemFeatures {
         stemFeaturesLock.withLock { latestStemFeatures }
-    }
-
-    /// Attach a per-preset fragment buffer for mesh presets (bound at fragment buffer(4)).
-    /// Pass nil to detach. Thread-safe — can be called from any queue.
-    public func setMeshPresetFragmentBuffer(_ buffer: MTLBuffer?) {
-        meshPresetFragmentBufferLock.withLock { meshPresetFragmentBuffer = buffer }
     }
 
     /// Attach a per-preset fragment buffer for direct-fragment mv_warp presets (bound at buffer(6)).
