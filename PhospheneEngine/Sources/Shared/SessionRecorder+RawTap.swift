@@ -18,12 +18,23 @@ extension SessionRecorder {
         channelCount: UInt32
     ) {
         guard count > 0 else { return }
+        // Captured synchronously on the audio thread: the wall-clock of the
+        // first raw-tap buffer is raw_tap.wav's precise time origin. It is
+        // logged at full CFAbsoluteTime precision (vs the 1-second log stamp)
+        // so ColdStartVerifier can pin the raw-tap ↔ playback-time clock offset
+        // — features.csv `wallclock_s` uses the same CFAbsoluteTime epoch.
+        let wallclock = CFAbsoluteTimeGetCurrent()
         let byteCount = count * MemoryLayout<Float>.size
         let data = Data(bytes: pointer, count: byteCount)
         let sr = UInt32(sampleRate)
         let ch = UInt16(channelCount)
         queue.async { [weak self] in
-            self?.appendRawTapBytes(data: data, sampleRate: sr, channelCount: ch, sampleCount: count)
+            self?.appendRawTapBytes(
+                data: data,
+                sampleRate: sr,
+                channelCount: ch,
+                sampleCount: count,
+                wallclock: wallclock)
         }
     }
 
@@ -31,7 +42,8 @@ extension SessionRecorder {
         data: Data,
         sampleRate: UInt32,
         channelCount: UInt16,
-        sampleCount: Int
+        sampleCount: Int,
+        wallclock: CFAbsoluteTime
     ) {
         if rawTapDone || didFinish { return }
 
@@ -47,7 +59,9 @@ extension SessionRecorder {
             rawTapHandle = fh
             writeRawTapHeaderStub(to: fh, sampleRate: sampleRate, channelCount: channelCount)
             rawTapHeaderWritten = true
-            log("raw tap capture started sr=\(sampleRate) Hz ch=\(channelCount) max=\(Int(rawTapDurationSeconds))s")
+            let startStr = String(format: "%.4f", wallclock)
+            log("raw tap capture started sr=\(sampleRate) Hz ch=\(channelCount) "
+                + "max=\(Int(rawTapDurationSeconds))s wallclock=\(startStr)")
         }
 
         guard let fh = rawTapHandle else { return }
