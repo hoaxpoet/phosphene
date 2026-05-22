@@ -173,6 +173,17 @@ extension VisualizerEngine {
                             logger.error(
                                 "LumenPatternEngine: failed to allocate slot-8 buffer for preset '\(desc.name)'"
                             )
+                            // BUG-016 / CA-Presets-FU-4 instrumentation: persist the
+                            // failure to session.log so the next reproduction is
+                            // greppable from the on-disk artifact. The logger.error
+                            // line above writes only to the unified log (category
+                            // "VisualizerEngine"); the SessionRecorder writer below
+                            // lands the same event in ~/Documents/phosphene_sessions/
+                            // <ts>/session.log. Engine-side parallel log at
+                            // LumenPatternEngine.swift:586 (category "session").
+                            sessionRecorder?.log(
+                                "LumenPatternEngine: failed to allocate slot-8 buffer for preset '\(desc.name)'"
+                            )
                         }
                     }
 
