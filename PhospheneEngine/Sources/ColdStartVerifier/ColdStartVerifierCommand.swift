@@ -62,6 +62,10 @@ struct ColdStartVerifierCommand: ParsableCommand {
     @Flag(name: .long, help: "Validate the harness's measurement arithmetic in-memory and exit.")
     var selfTest: Bool = false
 
+    @Flag(name: .long,
+          help: "CS.1.y re-diagnosis: measure short-window (3/4/5 s) Beat This! phase accuracy.")
+    var rediagnose: Bool = false
+
     @Option(name: .long, help: "Cold-start window measured per track, seconds.")
     var firstWindowS: Double = 10.0
 
@@ -119,6 +123,32 @@ struct ColdStartVerifierCommand: ParsableCommand {
             throw VerifierError.noMetalDevice
         }
         let analyzer = try DefaultBeatGridAnalyzer(device: device)
+
+        if rediagnose {
+            try runReDiagnosis(
+                sessionURL: sessionURL,
+                artifacts: artifacts,
+                rawTap: rawTap,
+                analyzer: analyzer)
+            return
+        }
+        try runVerification(
+            sessionURL: sessionURL,
+            config: config,
+            artifacts: artifacts,
+            rawTap: rawTap,
+            analyzer: analyzer)
+    }
+
+    /// The CS.1 cold-start verification path. Extracted from `run()` to keep
+    /// that function under the function-body length gate.
+    private func runVerification(
+        sessionURL: URL,
+        config: VerifierConfig,
+        artifacts: SessionArtifacts,
+        rawTap: RawTapAnalysis,
+        analyzer: DefaultBeatGridAnalyzer
+    ) throws {
         print("ColdStartVerifier: running Beat This! per track …")
         let analysis = ColdStartAnalysis.run(
             tracks: artifacts.tracks,
@@ -140,6 +170,30 @@ struct ColdStartVerifierCommand: ParsableCommand {
         print("")
         print(analysis.consoleSummary(config: config))
         print("ColdStartVerifier: report → \(outURL.path)")
+    }
+
+    /// CS.1.y re-diagnosis: short-window Beat This! phase accuracy. Extracted
+    /// from `run()` to keep that function under the function-body length gate.
+    private func runReDiagnosis(
+        sessionURL: URL,
+        artifacts: SessionArtifacts,
+        rawTap: RawTapAnalysis,
+        analyzer: DefaultBeatGridAnalyzer
+    ) throws {
+        print("ColdStartVerifier: re-diagnosis — short-window Beat This! phase accuracy …")
+        let rediag = ReDiagnosis.run(
+            tracks: artifacts.tracks,
+            rawTap: rawTap,
+            rawTapStartWallclockS: artifacts.rawTapStartWallclockS,
+            analyzer: analyzer)
+        let md = ReDiagnosis.report(session: sessionURL, rawTap: rawTap, results: rediag)
+        let rediagOut = out.map {
+            URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath)
+        } ?? sessionURL.appendingPathComponent("cold_start_rediagnosis.md")
+        try md.write(to: rediagOut, atomically: true, encoding: .utf8)
+        print("")
+        print(ReDiagnosis.consoleSummary(rediag))
+        print("ColdStartVerifier: re-diagnosis report → \(rediagOut.path)")
     }
 }
 
