@@ -148,6 +148,15 @@ let package = Package(
             ],
             path: "Sources/PresetSessionReplay"
         ),
+        .executableTarget(
+            name: "ColdStartVerifier",
+            dependencies: [
+                "Audio",
+                "DSP",
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+            ],
+            path: "Sources/ColdStartVerifier"
+        ),
         .testTarget(
             name: "PhospheneEngineTests",
             dependencies: [
