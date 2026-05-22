@@ -30,7 +30,7 @@ enum SelfTest {
         let estimated = ClockOffset.estimate(
             rawOnsets: rawOnsets,
             beatBassOnsets: beatPts,
-            coarseS: knownOffset + 0.6)   // coarse anchor within ±1 s
+            coarseS: knownOffset + 0.05)   // precise coarse anchor (±tens of ms)
         check(
             near(estimated, knownOffset, tol: 0.03),
             "ClockOffset recovered \(fmt(estimated)) ≈ \(knownOffset)",

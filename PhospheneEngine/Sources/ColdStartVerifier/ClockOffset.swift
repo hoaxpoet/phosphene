@@ -7,16 +7,21 @@
 // by the SAME algorithm in two clocks, so the gap within a matched pair is
 // purely the clock-origin difference — it carries no visual-vs-audible sync
 // error, so estimating the offset this way cannot absorb (and hide) a real
-// sync error. The wall-clock anchor (`coarseS`, ±1 s from 1-second log
-// resolution) seeds the search; the histogram mode of (rawOnset − beatBassOnset)
-// refines it to a few ms.
+// sync error. The wall-clock anchor (`coarseS`) seeds the search; since the
+// CS.1 SessionRecorder change records the raw-tap-start at full CFAbsoluteTime
+// precision, that anchor is good to a few tens of ms — tight enough that the
+// onset pairing is unambiguous — and the histogram mode of
+// (rawOnset − beatBassOnset) refines it to a few ms.
 
 import Foundation
 
 enum ClockOffset {
 
-    /// Search radius around the coarse anchor (s) — covers the ±1 s log resolution.
-    static let searchRadiusS = 1.5
+    /// Search radius around the coarse anchor (s). With the precise raw-tap-start
+    /// timestamp the coarse anchor is good to a few tens of ms, so the radius
+    /// only needs to exceed the matched-pair spread while staying below a
+    /// half-beat — keeping the onset pairing unambiguous.
+    static let searchRadiusS = 0.15
     /// Histogram bin width for the offset mode (s).
     static let binS = 0.02
 
