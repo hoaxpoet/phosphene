@@ -85,11 +85,6 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     var meshGenerator: MeshGenerator?
     let meshLock = NSLock()
 
-    /// Optional per-preset world-state buffer for mesh presets (e.g. ArachneState.webBuffer).
-    /// When non-nil, bound at object buffer(1) + mesh buffer(1) before the mesh draw.
-    var meshPresetBuffer: MTLBuffer?
-    let meshPresetBufferLock = NSLock()
-
     /// Optional per-frame tick closure for mesh preset state (e.g. ArachneState.tick).
     /// Called once per frame in renderFrame before the draw pass.
     var meshPresetTick: (@Sendable (FeatureVector, StemFeatures) -> Void)?
@@ -141,16 +136,10 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     /// Per-frame MIR history ring buffer — bound at fragment buffer(5). Updated each frame.
     public let spectralHistory: SpectralHistoryBuffer
 
-    // MARK: - Mesh Preset Fragment Buffer (buffer(4))
-
-    /// Per-preset fragment buffer for mesh presets (e.g. Arachne spider). Bound at fragment buffer(4).
-    var meshPresetFragmentBuffer: MTLBuffer?
-    let meshPresetFragmentBufferLock = NSLock()
-
     // MARK: - Direct Preset Fragment Buffer (buffer(6))
 
     /// Per-preset fragment buffer at index 6 for direct mv_warp presets (e.g. Gossamer).
-    /// Follows the same pattern as `meshPresetBuffer`.
+    /// Set via `setDirectPresetFragmentBuffer`; `nil` when no active preset uses it.
     var directPresetFragmentBuffer: MTLBuffer?
     let directPresetFragmentBufferLock = NSLock()
 
