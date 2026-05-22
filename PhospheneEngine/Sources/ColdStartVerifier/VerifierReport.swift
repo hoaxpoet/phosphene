@@ -35,8 +35,7 @@ enum VerifierReport {
         - **Generated:** \(stamp)
         - **Session:** `\(sessionURL.lastPathComponent)`
         - **Frames:** \(artifacts.frames.count) across \(artifacts.tracks.count) track segment(s)
-        - **raw_tap.wav:** \(fmt(rawTap.durationS, 1)) s @ \(Int(rawTap.sampleRate)) Hz, \
-        \(rawTap.onsets.count) sub-bass onsets detected offline
+        - **raw_tap.wav:** \(fmt(rawTap.durationS, 1)) s @ \(Int(rawTap.sampleRate)) Hz
 
         """
     }
@@ -50,7 +49,7 @@ enum VerifierReport {
         | Cold-start window | first \(fmt(config.firstWindowS, 0)) s of each track |
         | Pass tolerance | ±\(fmt(config.passWindowMs, 0)) ms |
         | Aspirational tolerance | ±\(fmt(config.tightWindowMs, 0)) ms |
-        | Per-track pass rate | \(fmt(config.passRate * 100, 0))% of matched beats |
+        | Per-track pass rate | \(fmt(config.passRate * 100, 0))% of windowed beats |
         | Display-shift correction | \(fmt(config.displayShiftMs, 1)) ms |
 
         """
@@ -82,32 +81,30 @@ enum VerifierReport {
         let passWin = fmt(config.passWindowMs, 0)
         let tightWin = fmt(config.tightWindowMs, 0)
         var md = "## Per-track results\n\n"
-        md += "| # | Track | BPM | Align corr | Frame-1 drift | Locked @ "
-        md += "| Matched | Within ±\(passWin)ms | Within ±\(tightWin)ms "
-        md += "| Median corr. Δ | Verdict |\n"
+        md += "| # | Track | BPM | Frame-1 drift | Locked @ | Matched "
+        md += "| Within ±\(passWin)ms | Within ±\(tightWin)ms | Median corr. Δ "
+        md += "| Clock offset | Verdict |\n"
         md += "|---|---|---|---|---|---|---|---|---|---|---|\n"
         for row in analysis.tracks {
             md += perTrackRow(row)
         }
-        md += "\n_Align corr ⚠️ = low-confidence raw_tap↔features alignment; "
-        md += "treat that row's deltas with caution._\n\n"
+        md += "\n_Matched = windowed Beat This! beats that found a visual beat within "
+        md += "match range. Clock offset = raw-tap ↔ playback-time offset (onset-paired)._\n\n"
         return md
     }
 
     private static func perTrackRow(_ row: TrackResult) -> String {
         let bpm = row.windowGridBPM > 0 ? fmt(row.windowGridBPM, 1) : "—"
-        let corr = row.alignment.confident
-            ? fmt(row.alignment.correlation, 2)
-            : "\(fmt(row.alignment.correlation, 2)) ⚠️"
         let lock = row.lockReachedAtPt.map { "\(fmt($0, 1)) s" } ?? "—"
         let matched = row.verdict == .degenerate
             ? "—" : "\(row.matchedCount)/\(row.matchedCount + row.unmatchedCount)"
         let pass = row.withinPassPct.map { fmt($0 * 100, 0) + "%" } ?? "—"
         let tight = row.withinTightPct.map { fmt($0 * 100, 0) + "%" } ?? "—"
         let med = row.medianCorrectedMs.map { fmtSigned($0, 1) + " ms" } ?? "—"
-        return "| \(row.track.index + 1) | \(row.track.label) | \(bpm) | \(corr) "
+        return "| \(row.track.index + 1) | \(row.track.label) | \(bpm) "
             + "| \(fmtSigned(row.frame1DriftMs, 1)) ms | \(lock) | \(matched) "
-            + "| \(pass) | \(tight) | \(med) | \(verdictBadge(row.verdict)) |\n"
+            + "| \(pass) | \(tight) | \(med) | \(fmt(row.clockOffsetS, 2)) s "
+            + "| \(verdictBadge(row.verdict)) |\n"
     }
 
     private static func failureDives(
@@ -123,13 +120,13 @@ enum VerifierReport {
             md += "MAD \(fmt(result.madMs ?? 0, 1)) ms; "
             md += "\(fmt((result.withinPassPct ?? 0) * 100, 0))% within "
             md += "±\(fmt(config.passWindowMs, 0)) ms.\n\n"
-            md += "| Onset (pt s) | Visual beat (pt s) | Raw Δ | Corrected Δ |\n"
+            md += "| Audible beat (pt s) | Visual beat (pt s) | Raw Δ | Corrected Δ |\n"
             md += "|---|---|---|---|\n"
             for delta in result.deltas {
                 let visual = delta.visualBeatPt.map { fmt($0, 3) } ?? "— (unmatched)"
                 let raw = delta.rawDeltaMs.map { fmtSigned($0, 1) + " ms" } ?? "—"
                 let corr = delta.correctedDeltaMs.map { fmtSigned($0, 1) + " ms" } ?? "—"
-                md += "| \(fmt(delta.onsetPt, 3)) | \(visual) | \(raw) | \(corr) |\n"
+                md += "| \(fmt(delta.audibleBeatPt, 3)) | \(visual) | \(raw) | \(corr) |\n"
             }
             md += "\n"
         }
@@ -150,24 +147,24 @@ enum VerifierReport {
         """
         ## Methodology & caveats
 
-        - **Ground truth:** `raw_tap.wav` (Core Audio tap audio, pre-DSP) replayed \
-        through the engine's `FFTProcessor` → `BeatDetector` at the 1024-sample hop. \
-        `onsets[0]` (sub-bass) is the audible-beat reference — the same detector \
-        `GridOnsetCalibrator` and the live `LiveBeatDriftTracker` match against.
-        - **Visual beats:** `beatPhase01` sawtooth wraps in `features.csv`, crossing \
-        time interpolated from the phase advance on each side of the wrapping frame.
-        - **Clock alignment:** per-track low-frequency energy-envelope cross-correlation \
-        between `raw_tap.wav` and `features.csv` `subBass`. Tracks aligned in order, \
-        each constrained after the previous in tap-time. A ⚠️ in the table marks a \
-        low-confidence alignment (weak correlation or too-short envelope).
+        - **Visual beat:** `beatPhase01` sawtooth wraps in `features.csv` — the grid \
+        prediction the cold-start infrastructure produces.
+        - **Audible beat:** a Beat This! beat. Beat This! is re-run offline on a \
+        per-track ~25 s slice of `raw_tap.wav` (the pre-DSP tap audio) — a genuine \
+        one-beat-per-beat tracker, unlike the live `beatBass` onset feature which \
+        fires more than once per beat.
+        - **Clock offset:** raw_tap.wav and features.csv are independent but faithful \
+        real-time clocks. The per-track offset is pinned by pairing raw_tap \
+        BeatDetector onsets against features.csv `beatBass` onsets — the same physical \
+        events, so the offset is sync-independent and cannot absorb a real sync error.
         - **Display-shift caveat:** `beatPhase01` bakes in `visualPhaseOffsetMs + \
-        audioOutputLatencyMs` (LiveBeatDriftTracker.swift:573); `raw_tap.wav` is \
-        tap-time. The raw per-beat Δ therefore carries `−displayShift`. The corrected \
-        Δ adds back the configured `--display-shift-ms` (\(fmt(config.displayShiftMs, 1)) ms) \
-        to recover the genuine calibration error. Audio-output latency itself is \
-        out of scope for Phase CS (design doc §6.13).
-        - **Beat This! cross-check** (design doc §7.1, kickoff step 3) is a CS.1 \
-        follow-up — the BeatDetector path above is the complete primary measurement.
+        audioOutputLatencyMs` (LiveBeatDriftTracker.swift:573). The corrected Δ adds \
+        back the configured `--display-shift-ms` (\(fmt(config.displayShiftMs, 1)) ms) \
+        to recover the genuine calibration error. Audio-output latency itself is out \
+        of scope for Phase CS (design doc §6.13).
+        - **Meaningful window:** the verdict is strongest in the pre-lock portion of \
+        the cold-start window — once the drift tracker locks (`Locked @`), \
+        `beatPhase01` is nudged toward the live onsets by design.
 
         """
     }

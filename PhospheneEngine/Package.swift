@@ -153,6 +153,7 @@ let package = Package(
             dependencies: [
                 "Audio",
                 "DSP",
+                "Session",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ],
             path: "Sources/ColdStartVerifier"

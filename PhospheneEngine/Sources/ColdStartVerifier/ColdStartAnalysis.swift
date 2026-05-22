@@ -1,18 +1,24 @@
-// ColdStartAnalysis — The CS.1 measurement.
+// ColdStartAnalysis — the CS.1 measurement (Option C).
 //
-// For each track, for the first `firstWindowS` seconds, compare visual beat
-// times (beatPhase01 sawtooth wraps in features.csv) against audible beat times
-// (raw_tap.wav sub-bass onsets, mapped into playback-time via ClockAlignment).
+// Visual beat  = `beatPhase01` sawtooth wrap (the grid prediction the cold-start
+//                infrastructure produces) — features.csv, playback-time clock.
+// Audible beat = a Beat This! beat. Beat This! is re-run offline on a per-track
+//                slice of raw_tap.wav (BeatThisGrid) — a genuine beat *tracker*,
+//                one beat per beat. Its beats are mapped from the raw-tap clock
+//                into playback-time via the sync-independent ClockOffset.
+//
+// Why Option C: `beatBass` (the live onset feature) fires >1×/beat, so matching
+// it to per-beat visual beats produced a meaningless walking-sawtooth delta
+// (see 2026-05-22 discussion). Beat This! gives a true one-per-beat grid, so the
+// per-beat delta is a real visual-vs-audible sync error.
 //
 // Per-track verdict (kickoff step 4):
-//   pass       — non-degenerate; ≥ passRate of matched audible beats land within
-//                ±passWindowMs of a visual beat (display-shift-corrected).
+//   pass       — non-degenerate; ≥ passRate of windowed beats within ±passWindowMs.
 //   fail       — non-degenerate; below passRate.
-//   degenerate — no grid installed (reactive mode), too few audible onsets
-//                (rhythmless), or too many onsets off-grid (syncopated). The
-//                "beat-synced from frame 1" bar does not cleanly apply.
+//   degenerate — no grid, no raw-tap anchor, or Beat This! found too few beats.
 
 import Foundation
+import Session
 
 // MARK: - Result model
 
@@ -20,11 +26,11 @@ enum TrackVerdict: String {
     case pass, fail, degenerate
 }
 
-/// One audible beat and its nearest visual beat.
+/// One audible beat (Beat This!) and its nearest visual beat.
 struct BeatDelta {
-    let onsetPt: Double
+    let audibleBeatPt: Double
     let visualBeatPt: Double?
-    /// visual − audible, ms. nil when unmatched.
+    /// visual − audible, ms. nil when no visual beat is within match range.
     let rawDeltaMs: Double?
     /// rawDeltaMs + displayShiftMs — the latency-corrected calibration error.
     let correctedDeltaMs: Double?
@@ -32,73 +38,81 @@ struct BeatDelta {
 
 struct TrackResult {
     let track: TrackSegment
-    let alignment: TrackAlignment
     let verdict: TrackVerdict
     let degenerateReason: String?
-    let deltas: [BeatDelta]            // first-window, audible-beat order
+    let deltas: [BeatDelta]              // windowed audible beats, in order
     let matchedCount: Int
-    let unmatchedCount: Int
+    let unmatchedCount: Int              // audible beats with no visual beat near
     let medianCorrectedMs: Double?
-    let madMs: Double?                 // median absolute deviation of corrected delta
-    let withinPassPct: Double?
+    let madMs: Double?
+    let withinPassPct: Double?           // of all windowed audible beats
     let withinTightPct: Double?
     let frame1DriftMs: Double
     let windowGridBPM: Double
     let lockReachedAtPt: Double?
+    /// raw-tap ↔ playback-time clock offset used to map Beat This! beats.
+    let clockOffsetS: Double
+    /// Total Beat This! beats found over the analysed slice.
+    let beatThisBeatCount: Int
 }
 
 struct ColdStartAnalysisResult {
     let tracks: [TrackResult]
-    let aggregatePassRate: Double      // over non-degenerate tracks
+    let aggregatePassRate: Double        // over non-degenerate tracks
     let overallPass: Bool
 }
 
-/// Per-track setup values reused across the degenerate / rated paths.
+/// Per-track setup values threaded through the degenerate / rated paths.
 private struct TrackContext {
     let frame1DriftMs: Double
     let windowGridBPM: Double
     let lockReachedAtPt: Double?
+    let firstPt: Double
     let windowEnd: Double
+    let clockOffsetS: Double
+    let beatThisBeatCount: Int
 }
 
 // MARK: - Analysis
 
 enum ColdStartAnalysis {
 
-    /// Onset is matched to a visual beat when within this fraction of a beat
-    /// period. Beyond it the onset is "off-grid" (syncopation / detector noise).
+    /// `beatBass` rising-edge threshold (used only to pin the clock offset).
+    static let beatBassOnsetThreshold = 0.6
+    /// An audible beat matches a visual beat within this fraction of a period.
     static let maxMatchFractionOfPeriod = 0.6
-    /// A non-reactive track with more than this fraction of windowed onsets
-    /// off-grid is reclassified `degenerate` (syncopated) rather than failed.
-    static let degenerateOffGridFraction = 0.35
-    /// Fewer than this many audible onsets in the window → degenerate (rhythmless).
-    static let minOnsetsForRhythmic = 4
-    /// Seconds of slack beyond the cold-start window used for clock alignment.
-    /// The alignment envelope = `firstWindowS + this` — long enough to register
-    /// unambiguously, short enough to stay inside a 30 s `raw_tap.wav`.
-    static let alignmentSlackS = 12.0
+    /// Fewer than this many Beat This! beats in the window → degenerate.
+    static let minBeatsForRhythmic = 4
+    /// Beat This! slice: lead-in before the track, and total slice length (s).
+    /// 25 s keeps the spectrogram under Beat This!'s tMax (30 s at 50 fps).
+    static let sliceLeadS = 3.0
+    static let sliceDurationS = 25.0
 
     static func run(
-        tracks: [TrackSegment], rawTap: RawTapAnalysis, config: VerifierConfig
+        tracks: [TrackSegment], config: VerifierConfig,
+        rawTap: RawTapAnalysis, rawTapStartWallclockS: Double?,
+        analyzer: DefaultBeatGridAnalyzer
     ) -> ColdStartAnalysisResult {
-        let alignments = ClockAlignment.align(
-            tracks: tracks,
-            rawTap: rawTap,
-            alignmentWindowS: config.firstWindowS + alignmentSlackS)
-        let alignByIndex = Dictionary(uniqueKeysWithValues: alignments.map { ($0.trackIndex, $0) })
-
         var results: [TrackResult] = []
-        for track in tracks {
-            let alignment = alignByIndex[track.index]
-                ?? TrackAlignment(
-                    trackIndex: track.index,
-                    offsetS: 0,
-                    correlation: 0,
-                    confident: false)
-            results.append(analyzeTrack(
-                track: track, alignment: alignment, rawTap: rawTap, config: config))
+        for (idx, track) in tracks.enumerated() {
+            print("  [\(idx + 1)/\(tracks.count)] \(track.label) — Beat This! …")
+            if let resolved = resolveAudibleBeats(
+                track: track,
+                rawTap: rawTap,
+                rawTapStartWallclockS: rawTapStartWallclockS,
+                analyzer: analyzer) {
+                results.append(evaluate(
+                    track: track,
+                    audibleBeatsPt: resolved.beatsPt,
+                    offsetS: resolved.offsetS,
+                    config: config))
+            } else {
+                let ctx = makeContext(
+                    track: track, config: config, offsetS: 0, beatThisCount: 0)
+                results.append(degenerateResult(
+                    track, ctx, "no raw-tap-start anchor in session.log"))
+            }
         }
-
         let rated = results.filter { $0.verdict != .degenerate }
         let passed = rated.filter { $0.verdict == .pass }.count
         let rate = rated.isEmpty ? 0 : Double(passed) / Double(rated.count)
@@ -108,118 +122,121 @@ enum ColdStartAnalysis {
             overallPass: !rated.isEmpty && rate >= config.passRate)
     }
 
-    private static func analyzeTrack(
-        track: TrackSegment, alignment: TrackAlignment,
-        rawTap: RawTapAnalysis, config: VerifierConfig
-    ) -> TrackResult {
-        let context = makeContext(track: track, config: config)
+    /// Beat This! one-per-beat grid for a track, mapped into playback-time, plus
+    /// the clock offset used. nil when there is no raw-tap-start anchor.
+    private static func resolveAudibleBeats(
+        track: TrackSegment, rawTap: RawTapAnalysis,
+        rawTapStartWallclockS: Double?, analyzer: DefaultBeatGridAnalyzer
+    ) -> (beatsPt: [Double], offsetS: Double)? {
+        guard let rawStart = rawTapStartWallclockS, let first = track.frames.first else {
+            return nil
+        }
+        // Sync-independent clock offset (rawTapTime ≈ playbackTime + offsetS).
+        let beatBass = beatBassOnsets(frames: track.frames)
+        let coarse = (first.wallclockS - rawStart) - first.playbackTimeS
+        let offsetS = ClockOffset.estimate(
+            rawOnsets: rawTap.onsets, beatBassOnsets: beatBass, coarseS: coarse)
+        let beatThisRawTap = BeatThisGrid.beats(
+            samples: rawTap.samples,
+            sampleRate: rawTap.sampleRate,
+            sliceStartS: offsetS - sliceLeadS,
+            durationS: sliceDurationS,
+            analyzer: analyzer)
+        return (beatThisRawTap.map { $0 - offsetS }, offsetS)
+    }
 
+    /// The pure per-track verdict: given the Beat This! audible beats already
+    /// mapped into playback-time, measure them against `beatPhase01` wraps.
+    static func evaluate(
+        track: TrackSegment, audibleBeatsPt: [Double],
+        offsetS: Double, config: VerifierConfig
+    ) -> TrackResult {
+        let context = makeContext(
+            track: track,
+            config: config,
+            offsetS: offsetS,
+            beatThisCount: audibleBeatsPt.count)
         guard track.hasGrid else {
-            return degenerateResult(track, alignment, context, "no beat grid installed (reactive mode)")
+            return degenerateResult(track, context, "no beat grid installed (reactive mode)")
         }
         guard context.windowGridBPM > 0 else {
-            return degenerateResult(track, alignment, context, "no usable grid BPM in window")
+            return degenerateResult(track, context, "no usable grid BPM in window")
         }
-        // Without a confident raw_tap↔features alignment the deltas are not
-        // trustworthy — mark un-verifiable rather than emit a garbage verdict.
-        // The common cause is raw_tap.wav not covering this track (30 s default
-        // cap — capture with PHOSPHENE_FULL_RAW_TAP=1 for a multi-track session).
-        guard alignment.confident else {
-            let corr = String(format: "%.2f", alignment.correlation)
-            let reason = "raw_tap↔features alignment unreliable (correlation \(corr)) "
-                + "— track audio likely outside raw_tap.wav coverage"
-            return degenerateResult(track, alignment, context, reason)
+        let audible = audibleBeatsPt.filter {
+            $0 >= context.firstPt && $0 <= context.windowEnd
         }
-
-        // Audible beats: raw_tap onsets mapped into playback-time, windowed.
-        let onsets = rawTap.onsets
-            .map { $0 + alignment.offsetS }
-            .filter { $0 >= track.firstPlaybackTimeS && $0 <= context.windowEnd }
-            .sorted()
-        guard onsets.count >= minOnsetsForRhythmic else {
-            let reason = "only \(onsets.count) audible onsets in first "
-                + "\(Int(config.firstWindowS)) s (rhythmless)"
-            return degenerateResult(track, alignment, context, reason)
+        guard audible.count >= minBeatsForRhythmic else {
+            let reason = "Beat This! found only \(audible.count) beats in first "
+                + "\(Int(config.firstWindowS)) s (rhythmless or analysis failed)"
+            return degenerateResult(track, context, reason)
         }
-
-        // Visual beats: beatPhase01 sawtooth wraps, windowed.
-        let visualBeats = visualBeatTimes(frames: track.frames)
-            .filter { $0 >= track.firstPlaybackTimeS && $0 <= context.windowEnd }
-            .sorted()
-
+        let visual = visualBeatTimes(frames: track.frames).filter {
+            $0 >= context.firstPt && $0 <= context.windowEnd
+        }
         let period = 60.0 / context.windowGridBPM
         let deltas = matchDeltas(
-            onsets: onsets, visualBeats: visualBeats, period: period, config: config)
-        let matched = deltas.compactMap(\.correctedDeltaMs)
-        let unmatched = deltas.count - matched.count
-
-        if Double(unmatched) / Double(deltas.count) > degenerateOffGridFraction {
-            let reason = "\(unmatched)/\(deltas.count) audible onsets off-grid "
-                + "(syncopated — bar does not cleanly apply)"
-            return degenerateResult(track, alignment, context, reason)
-        }
-        guard !matched.isEmpty else {
-            return degenerateResult(
-                track, alignment, context, "no audible beat matched a visual beat")
-        }
-        return rateTrack(
-            track: track,
-            alignment: alignment,
-            context: context,
-            deltas: deltas,
-            config: config)
+            audible: audible, visual: visual, period: period, config: config)
+        return rateTrack(track: track, context: context, deltas: deltas, config: config)
     }
 
     // MARK: - Per-track stages
 
     private static func makeContext(
-        track: TrackSegment, config: VerifierConfig
+        track: TrackSegment, config: VerifierConfig,
+        offsetS: Double, beatThisCount: Int
     ) -> TrackContext {
-        let windowEnd = track.firstPlaybackTimeS + config.firstWindowS
+        let firstPt = track.firstPlaybackTimeS
+        let windowEnd = firstPt + config.firstWindowS
         let windowFrames = track.frames.filter { $0.playbackTimeS <= windowEnd }
         let bpms = windowFrames.map(\.gridBPM).filter { $0 > 0 }
         return TrackContext(
             frame1DriftMs: track.frames.first?.driftMs ?? 0,
             windowGridBPM: bpms.isEmpty ? (track.installedBPM ?? 0) : median(bpms),
             lockReachedAtPt: track.frames.first { $0.lockState == 2 }?.playbackTimeS,
-            windowEnd: windowEnd)
+            firstPt: firstPt,
+            windowEnd: windowEnd,
+            clockOffsetS: offsetS,
+            beatThisBeatCount: beatThisCount)
     }
 
-    /// Match each windowed audible onset to its nearest visual beat.
+    /// Match each windowed audible beat to its nearest visual beat.
     private static func matchDeltas(
-        onsets: [Double], visualBeats: [Double], period: Double, config: VerifierConfig
+        audible: [Double], visual: [Double], period: Double, config: VerifierConfig
     ) -> [BeatDelta] {
         let maxMatch = maxMatchFractionOfPeriod * period
-        return onsets.map { onset in
-            if let nearest = nearestValue(to: onset, in: visualBeats),
-               abs(nearest - onset) <= maxMatch {
-                let raw = (nearest - onset) * 1000.0
+        return audible.map { beat in
+            if let nearest = nearestValue(to: beat, in: visual),
+               abs(nearest - beat) <= maxMatch {
+                let raw = (nearest - beat) * 1000.0
                 return BeatDelta(
-                    onsetPt: onset,
+                    audibleBeatPt: beat,
                     visualBeatPt: nearest,
                     rawDeltaMs: raw,
                     correctedDeltaMs: raw + config.displayShiftMs)
             }
             return BeatDelta(
-                onsetPt: onset, visualBeatPt: nil, rawDeltaMs: nil, correctedDeltaMs: nil)
+                audibleBeatPt: beat,
+                visualBeatPt: nil,
+                rawDeltaMs: nil,
+                correctedDeltaMs: nil)
         }
     }
 
     private static func rateTrack(
-        track: TrackSegment, alignment: TrackAlignment, context: TrackContext,
+        track: TrackSegment, context: TrackContext,
         deltas: [BeatDelta], config: VerifierConfig
     ) -> TrackResult {
         let matched = deltas.compactMap(\.correctedDeltaMs)
         let unmatched = deltas.count - matched.count
-        let med = median(matched)
-        let mad = median(matched.map { abs($0 - med) })
-        let withinPass = Double(matched.filter { abs($0) <= config.passWindowMs }.count)
-            / Double(matched.count)
-        let withinTight = Double(matched.filter { abs($0) <= config.tightWindowMs }.count)
-            / Double(matched.count)
+        // Within-tolerance fraction is over ALL windowed audible beats — an
+        // unmatched beat (no visual beat near it) is a missed beat, a failure.
+        let total = Double(max(deltas.count, 1))
+        let withinPass = Double(matched.filter { abs($0) <= config.passWindowMs }.count) / total
+        let withinTight = Double(matched.filter { abs($0) <= config.tightWindowMs }.count) / total
+        let med = matched.isEmpty ? nil : median(matched)
+        let mad = matched.isEmpty ? nil : median(matched.map { abs($0 - (med ?? 0)) })
         return TrackResult(
             track: track,
-            alignment: alignment,
             verdict: withinPass >= config.passRate ? .pass : .fail,
             degenerateReason: nil,
             deltas: deltas,
@@ -231,16 +248,16 @@ enum ColdStartAnalysis {
             withinTightPct: withinTight,
             frame1DriftMs: context.frame1DriftMs,
             windowGridBPM: context.windowGridBPM,
-            lockReachedAtPt: context.lockReachedAtPt)
+            lockReachedAtPt: context.lockReachedAtPt,
+            clockOffsetS: context.clockOffsetS,
+            beatThisBeatCount: context.beatThisBeatCount)
     }
 
     private static func degenerateResult(
-        _ track: TrackSegment, _ alignment: TrackAlignment,
-        _ context: TrackContext, _ reason: String
+        _ track: TrackSegment, _ context: TrackContext, _ reason: String
     ) -> TrackResult {
         TrackResult(
             track: track,
-            alignment: alignment,
             verdict: .degenerate,
             degenerateReason: reason,
             deltas: [],
@@ -252,15 +269,30 @@ enum ColdStartAnalysis {
             withinTightPct: nil,
             frame1DriftMs: context.frame1DriftMs,
             windowGridBPM: context.windowGridBPM,
-            lockReachedAtPt: context.lockReachedAtPt)
+            lockReachedAtPt: context.lockReachedAtPt,
+            clockOffsetS: context.clockOffsetS,
+            beatThisBeatCount: context.beatThisBeatCount)
     }
 
-    // MARK: - Visual beats
+    // MARK: - Onset / beat extraction
 
-    /// Times (playback-time) at which `beatPhase01` wraps from ~1 back to ~0 —
-    /// i.e. a beat lands. The crossing is interpolated within the wrapping frame
-    /// gap from the phase advance on each side.
-    private static func visualBeatTimes(frames: [FeatureFrame]) -> [Double] {
+    /// `beatBass` onset times (playback-time) — rising edges crossing up past
+    /// `beatBassOnsetThreshold`. Used only to pin the clock offset.
+    static func beatBassOnsets(frames: [FeatureFrame]) -> [Double] {
+        var onsets: [Double] = []
+        var prev = 0.0
+        for frame in frames {
+            if frame.beatBass > beatBassOnsetThreshold, prev <= beatBassOnsetThreshold {
+                onsets.append(frame.playbackTimeS)
+            }
+            prev = frame.beatBass
+        }
+        return onsets
+    }
+
+    /// Times (playback-time) at which `beatPhase01` wraps from ~1 back to ~0.
+    /// The crossing is interpolated within the wrapping frame gap.
+    static func visualBeatTimes(frames: [FeatureFrame]) -> [Double] {
         var beats: [Double] = []
         guard frames.count > 1 else { return beats }
         for idx in 1..<frames.count {
@@ -279,7 +311,7 @@ enum ColdStartAnalysis {
 
     // MARK: - Numeric helpers
 
-    private static func nearestValue(to target: Double, in sorted: [Double]) -> Double? {
+    static func nearestValue(to target: Double, in sorted: [Double]) -> Double? {
         guard !sorted.isEmpty else { return nil }
         var lo = 0
         var hi = sorted.count - 1

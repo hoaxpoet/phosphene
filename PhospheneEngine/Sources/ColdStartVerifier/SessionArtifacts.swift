@@ -71,15 +71,15 @@ struct SessionArtifacts {
     let directory: URL
     let frames: [FeatureFrame]
     let tracks: [TrackSegment]
+    /// CFAbsoluteTime of the "raw tap capture started" log line — the wall-clock
+    /// origin of raw_tap.wav, used as the coarse alignment anchor. nil when the
+    /// line is absent (1-second log resolution; good to ±1 s).
+    let rawTapStartWallclockS: Double?
 
     /// Track boundary when playback_time_s drops by more than this (s). A real
     /// track change resets elapsedSeconds from many seconds back to ~0; within a
     /// track it only increases. 1 s is unambiguous.
     static let boundaryDropThresholdS = 1.0
-
-    /// A frame run starting more than this many seconds before the first
-    /// "track →" log event is pre-playback (preparation) and is not a track.
-    static let preRollToleranceS = 8.0
 
     static func load(directory: URL) throws -> SessionArtifacts {
         let featuresURL = directory.appendingPathComponent("features.csv")
@@ -93,7 +93,11 @@ struct SessionArtifacts {
         let log = (try? String(contentsOf: logURL, encoding: .utf8)).map(parseLog) ?? LogEvents()
 
         let tracks = segment(frames: frames, log: log)
-        return SessionArtifacts(directory: directory, frames: frames, tracks: tracks)
+        return SessionArtifacts(
+            directory: directory,
+            frames: frames,
+            tracks: tracks,
+            rawTapStartWallclockS: log.rawTapStart)
     }
 
     // MARK: - features.csv
@@ -150,6 +154,7 @@ struct SessionArtifacts {
     private struct LogEvents {
         var tracks: [LogTrackEvent] = []
         var grids: [LogGridEvent] = []
+        var rawTapStart: Double?
     }
 
     private static func parseLog(_ text: String) -> LogEvents {
@@ -180,6 +185,8 @@ struct SessionArtifacts {
                     title: title,
                     bpm: bpm ?? 0,
                     meter: meter.flatMap(Int.init) ?? 0))
+            } else if line.contains("raw tap capture started"), events.rawTapStart == nil {
+                events.rawTapStart = lineTimestamp(line)
             }
         }
         return events
@@ -219,17 +226,25 @@ struct SessionArtifacts {
         }
         if !current.isEmpty { runs.append(current) }
 
-        // Drop pre-playback runs — those starting before the first "track →"
-        // event (preparation idles the render loop before the user presses
-        // play). The remaining runs map 1:1 to track events in order: a track
-        // never resets MIRPipeline mid-playback, so one run per track. Without
-        // this, a leading prep run shifts every track label by one.
+        // Identify the first track-playback run: the one whose start wall-clock
+        // is nearest the first "track →" event. Preparation idles the render
+        // loop before playback, producing one or more leading pre-roll runs
+        // with no event — they precede that run and are dropped. Remaining runs
+        // map 1:1 to events in order (a track never resets MIRPipeline mid-
+        // playback). Without this, a leading pre-roll run shifts every label.
         let events = log.tracks
         let trackRuns: [[FeatureFrame]]
-        if let firstEvent = events.first {
-            trackRuns = runs.filter {
-                ($0.first?.wallclockS ?? 0) >= firstEvent.timeS - preRollToleranceS
+        if let firstEvent = events.first, !runs.isEmpty {
+            var firstTrackRun = 0
+            var bestDiff = Double.infinity
+            for (idx, run) in runs.enumerated() {
+                let diff = abs((run.first?.wallclockS ?? 0) - firstEvent.timeS)
+                if diff < bestDiff {
+                    bestDiff = diff
+                    firstTrackRun = idx
+                }
             }
+            trackRuns = Array(runs[firstTrackRun...])
         } else {
             trackRuns = runs   // no log events (reactive session) — positional
         }
