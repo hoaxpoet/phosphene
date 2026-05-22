@@ -176,41 +176,6 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
     /// produce 3–4 consecutive non-tight events during instrumental breaks.
     private static let lockReleaseBeatMultiplier: Double = 4.0
 
-    // MARK: - Tunables (Cold-Start Phase Acquisition — BUG-017 / CS.1.y)
-
-    /// Onsets required before a cold-start phase correction can resolve early
-    /// (before the deadline). Three agreeing onsets at a known tempo pin the
-    /// phase robustly against a single syncopated onset.
-    private static let coldStartMinOnsets: Int = 3
-    /// Relaxed onset requirement at the deadline — two agreeing onsets are
-    /// accepted as a last resort so slow, sparse-kick tracks (HUMBLE, 76 BPM)
-    /// still get corrected within the budget.
-    private static let coldStartDeadlineMinOnsets: Int = 2
-    /// Circular resultant-length threshold [0, 1] for a "confident cluster".
-    /// Below it the acquisition declines rather than risk applying a wrong
-    /// gross correction — the BUG-017 design's confidence gate.
-    ///
-    /// 0.95 ≈ a cluster tighter than ±25 ms (circular σ). Calibrated against
-    /// the `LiveDriftValidation` love_rehab integration test: the live sub-bass
-    /// onset detector's first ~3 s are warmup-noisy and produce a *ramp* of
-    /// residuals (measured −153 / −117 / −35 ms) whose 3-onset circular
-    /// resultant is ≈ 0.82 — a false-confident cluster. A genuine on-beat
-    /// cluster (synthetic, or CS.1's within-track MAD ~15 ms) gives R ≈ 0.99.
-    /// 0.95 rejects the warmup ramp while admitting a real cluster.
-    private static let coldStartMinResultant: Double = 0.95
-    /// Minimum |correction − seeded drift| worth applying. Below this the grid
-    /// is already well-phased: the steady-state EMA handles the rest, so the
-    /// acquisition resolves as a no-op and the steady-state lock progress is
-    /// preserved untouched. Equal to the EMA onset search window — errors below
-    /// it are EMA-correctable and already inside the ±50 ms product bar.
-    private static let coldStartApplyThresholdSeconds: Double = 0.050
-    /// Hard budget: the cold-start correction lands by this playback time or
-    /// the acquisition declines (Matt-ratified 2026-05-22 — "up to ~3 s").
-    private static let coldStartDeadlineSeconds: Double = 3.0
-    /// Defensive cap on the residual ring — acquisition normally resolves well
-    /// before this many onsets accumulate.
-    private static let coldStartMaxResiduals: Int = 12
-
     /// Default audio output latency (BUG-007.6) for new tracker instances.
     /// 0 by default — engine-level neutral. Production wiring (`MIRPipeline.init`
     /// in the app layer, or any other live-tap context) should set this to a
@@ -264,16 +229,6 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
     /// usually lands on the song's downbeat (most listeners start playback at
     /// or near a strong-beat moment). Reset to nil on `setGrid` / `reset`.
     private var firstTightOnsetRawSlot: Int?
-    /// Cold-start phase-acquisition residuals (BUG-017 / CS.1.y): the signed
-    /// nearest-beat offset of each of the first live sub-bass onsets, wrapped
-    /// into [−P/2, P/2]. Aggregated by circular mean to estimate the cold-start
-    /// phase error. Reset on `setGrid` / `reset`.
-    private var coldStartResiduals: [Double] = []
-    /// True once cold-start acquisition has resolved for the current track —
-    /// whether by applying a correction, a no-op, or a decline. One-shot.
-    private var coldStartResolved: Bool = false
-    /// Backing store for `coldStartCorrectionApplied`.
-    private var _coldStartCorrectionApplied: Bool = false
     private let lock = NSLock()
 
     // MARK: - Init
@@ -321,17 +276,6 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
     public var matchedOnsetCount: Int {
         lock.lock(); defer { lock.unlock() }
         return matchedOnsets
-    }
-
-    /// Diagnostic (BUG-017 / CS.1.y): `true` once cold-start phase acquisition
-    /// has applied a *gross* phase correction on the current track. Stays
-    /// `false` while still acquiring, or if acquisition resolved as a no-op
-    /// (grid already well-phased) or a decline (no confident onset cluster).
-    /// Read-only — for the regression tests and the debug overlay. Reset on
-    /// `setGrid` / `reset`.
-    public var coldStartCorrectionApplied: Bool {
-        lock.lock(); defer { lock.unlock() }
-        return _coldStartCorrectionApplied
     }
 
     /// Override the drift EMA with a calibrated value (BUG-007.9). Used by
@@ -524,9 +468,6 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
         manualRotationPressed = false                          // BUG-007.4b
         firstTightOnsetRawSlot = nil                           // BUG-007.4c
         _barPhaseOffset = 0   // BUG-007.4: cleared on track change so each track starts fresh
-        coldStartResiduals.removeAll(keepingCapacity: true)    // BUG-017 / CS.1.y
-        coldStartResolved = false                              // BUG-017 / CS.1.y
-        _coldStartCorrectionApplied = false                    // BUG-017 / CS.1.y
         // _audioOutputLatencyMs intentionally NOT reset — it's a system property.
     }
 
@@ -560,11 +501,6 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
         // bias (typically negative), not output latency.
         let pt = playbackTime
         let dt = Double(max(deltaTime, 0.001))
-
-        // BUG-017 / CS.1.y: cold-start phase acquisition. Runs before the
-        // steady-state EMA so a one-shot gross phase correction lands first;
-        // the triggering onset then feeds the EMA at the corrected phase.
-        acquireColdStartPhaseLocked(subBassOnset: subBassOnset, at: pt)
 
         if subBassOnset {
             lastOnsetTime = pt
@@ -621,8 +557,12 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
             }
         }
 
-        // No-onset drift decay toward 0 when the input has gone quiet.
-        applyNoOnsetDriftDecayLocked(pt: pt, dt: dt)
+        // No-onset decay toward 0 when the input has gone quiet for longer
+        // than two median beat periods. Per-frame EMA with τ = 1 s.
+        if lastOnsetTime >= 0 && (pt - lastOnsetTime) > 2.0 * medianPeriod {
+            let decayAlpha = dt / (Self.decayTau + dt)
+            drift *= (1 - decayAlpha)
+        }
 
         let lockState = computeLockStateLocked(at: pt)
         // BUG-007.6 + existing visualPhaseOffsetMs: shift display time by
@@ -641,159 +581,6 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
             beatsPerBar: grid.beatsPerBar,
             lockState: lockState
         )
-    }
-
-    // MARK: - No-Onset Decay
-
-    /// Decay `drift` toward 0 when no onset has arrived for longer than two
-    /// median beat periods (per-frame EMA, τ = `decayTau`). Prevents runaway
-    /// drift on silent input. Extracted from `update()` (CS.1.y) — no
-    /// behavioural change. Caller must hold the lock.
-    private func applyNoOnsetDriftDecayLocked(pt: Double, dt: Double) {
-        guard lastOnsetTime >= 0, (pt - lastOnsetTime) > 2.0 * medianPeriod else { return }
-        let decayAlpha = dt / (Self.decayTau + dt)
-        drift *= (1 - decayAlpha)
-    }
-
-    // MARK: - Cold-Start Phase Acquisition (BUG-017 / CS.1.y)
-
-    /// Cold-start phase acquisition step. Collects the live sub-bass onset's
-    /// phase residual and resolves the one-shot gross correction once a
-    /// confident onset cluster forms (or the budget expires). No-op once
-    /// resolved. Caller must hold the lock.
-    ///
-    /// The cached grid's tempo is reliable (Beat This!) but its phase is set
-    /// from an arbitrary preview-clip excerpt, so it carries a per-track ±½-beat
-    /// error (BUG-017). The steady-state EMA's ±50 ms onset search window
-    /// cannot see a gross error; this routine measures it from the first live
-    /// onsets and applies it directly.
-    private func acquireColdStartPhaseLocked(subBassOnset: Bool, at pt: Double) {
-        guard !coldStartResolved else { return }
-        if subBassOnset {
-            coldStartResiduals.append(coldStartResidualLocked(onsetTime: pt))
-            if coldStartResiduals.count > Self.coldStartMaxResiduals {
-                coldStartResiduals.removeFirst(coldStartResiduals.count - Self.coldStartMaxResiduals)
-            }
-        }
-        maybeResolveColdStartLocked(at: pt)
-    }
-
-    /// Signed offset from `onsetTime` to the nearest cached grid beat, wrapped
-    /// into [−P/2, P/2] (P = `medianPeriod`). Positive ⇒ the grid beat is later
-    /// than the onset. One onset's estimate of the cold-start phase error.
-    /// Unlike `BeatGrid.nearestBeat(to:within:)` it has no match window — a
-    /// gross cold-start error is exactly what the ±50 ms steady-state window
-    /// cannot see. Caller must hold the lock.
-    private func coldStartResidualLocked(onsetTime pt: Double) -> Double {
-        guard !grid.beats.isEmpty else { return 0 }
-        let period = medianPeriod > 0 ? medianPeriod : 0.5
-        var lo = 0
-        var hi = grid.beats.count - 1
-        while lo < hi {
-            let mid = (lo + hi) / 2
-            if grid.beats[mid] < pt { lo = mid + 1 } else { hi = mid }
-        }
-        var residual = grid.beats[lo] - pt
-        for cand in [lo - 1, lo + 1] where cand >= 0 && cand < grid.beats.count {
-            let candidate = grid.beats[cand] - pt
-            if abs(candidate) < abs(residual) { residual = candidate }
-        }
-        // Wrap into [−P/2, P/2] so an onset before beats[0] (the grid is only
-        // forward-extrapolated) still yields a meaningful phase residual.
-        return residual - period * (residual / period).rounded()
-    }
-
-    /// Circular mean and resultant length of the collected cold-start
-    /// residuals over the beat period. `mean` ∈ (−P/2, P/2] is the aggregate
-    /// phase-error estimate; `resultant` ∈ [0, 1] is the cluster-tightness
-    /// confidence (1 = identical residuals, 0 = uniformly scattered /
-    /// antipodal). Standard directional statistics — the phase-estimation
-    /// stage of a two-stage beat tracker (cf. Ellis 2007). Caller holds the lock.
-    private func coldStartCircularStatsLocked() -> (mean: Double, resultant: Double) {
-        guard !coldStartResiduals.isEmpty else { return (0, 0) }
-        let period = medianPeriod > 0 ? medianPeriod : 0.5
-        var sumCos = 0.0
-        var sumSin = 0.0
-        for residual in coldStartResiduals {
-            let theta = 2.0 * .pi * residual / period
-            sumCos += cos(theta)
-            sumSin += sin(theta)
-        }
-        let count = Double(coldStartResiduals.count)
-        let resultant = (sumCos * sumCos + sumSin * sumSin).squareRoot() / count
-        let mean = atan2(sumSin, sumCos) * period / (2.0 * .pi)
-        return (mean, resultant)
-    }
-
-    /// Decide whether cold-start acquisition can resolve this frame. Resolves
-    /// (one-shot) when a confident onset cluster has formed
-    /// (`n ≥ coldStartMinOnsets` ∧ `R ≥ coldStartMinResultant`), or at the
-    /// deadline. A confident cluster applies a gross correction (or no-ops when
-    /// it is too small to matter); a deadline with no confident cluster
-    /// declines, leaving the seeded phase untouched (honest limitation for
-    /// rhythmless / syncopated / wrong-tempo material). Caller holds the lock.
-    private func maybeResolveColdStartLocked(at pt: Double) {
-        let onsetCount = coldStartResiduals.count
-        let deadlineReached = pt >= Self.coldStartDeadlineSeconds
-        let minNeeded = deadlineReached
-            ? Self.coldStartDeadlineMinOnsets
-            : Self.coldStartMinOnsets
-        if onsetCount >= minNeeded {
-            let stats = coldStartCircularStatsLocked()
-            if stats.resultant >= Self.coldStartMinResultant {
-                applyColdStartCorrectionLocked(correction: stats.mean, resultant: stats.resultant)
-                return
-            }
-        }
-        if deadlineReached {
-            coldStartResolved = true
-            let deadlineStr = String(format: "%.1f", Self.coldStartDeadlineSeconds)
-            logger.info("BUG-017 cold-start: declined — no confident cluster within \(deadlineStr)s (\(onsetCount) onsets)")
-        }
-    }
-
-    /// Apply (or no-op) the cold-start gross phase correction. A correction at
-    /// or above `coldStartApplyThresholdSeconds` re-seeds `drift` and resets the
-    /// steady-state lock machinery so tracking restarts cleanly from the
-    /// corrected phase — mechanically the same as a fresh `setGrid` re-seed. A
-    /// sub-threshold correction is a no-op: the grid is already well-phased and
-    /// the steady-state tracker keeps its progress. User bar-phase intent
-    /// (`Shift+B`) is preserved either way. Caller must hold the lock.
-    private func applyColdStartCorrectionLocked(correction: Double, resultant: Double) {
-        coldStartResolved = true
-        let onsetCount = coldStartResiduals.count
-        let delta = abs(correction - drift)
-        let rStr = String(format: "%.2f", resultant)
-        guard delta >= Self.coldStartApplyThresholdSeconds else {
-            let deltaStr = String(format: "%.0f", delta * 1000)
-            // swiftlint:disable:next line_length
-            logger.info("BUG-017 cold-start: resolved as no-op — grid within \(deltaStr) ms of correct phase (R=\(rStr), \(onsetCount) onsets)")
-            return
-        }
-        let oldStr = String(format: "%+.0f", drift * 1000.0)
-        let newStr = String(format: "%+.0f", correction * 1000.0)
-        resetLockStateForColdStartLocked()
-        drift = correction
-        _coldStartCorrectionApplied = true
-        // swiftlint:disable:next line_length
-        logger.info("BUG-017 cold-start: applied gross phase correction — drift \(oldStr) → \(newStr) ms (R=\(rStr), \(onsetCount) onsets)")
-    }
-
-    /// Reset the steady-state lock machinery (matched onsets, deviation ring,
-    /// slot histogram, auto-rotate one-shot) so it restarts cleanly from a
-    /// cold-start phase correction. Does NOT touch `drift` (the caller
-    /// re-seeds it), the installed grid, the cold-start latch, `lastOnsetTime`
-    /// (the triggering onset re-sets it), or user bar-phase intent
-    /// (`_barPhaseOffset` / `manualRotationPressed` — preserved). Caller holds
-    /// the lock.
-    private func resetLockStateForColdStartLocked() {
-        matchedOnsets = 0
-        consecutiveMisses = 0
-        firstNonTightMatchTime = nil
-        driftDeviationRing.removeAll(keepingCapacity: true)
-        slotOnsetCounts = [Int](repeating: 0, count: max(grid.beatsPerBar, 1))
-        autoRotateAttempted = false
-        firstTightOnsetRawSlot = nil
     }
 
     // MARK: - Helpers
