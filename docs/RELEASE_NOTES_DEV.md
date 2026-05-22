@@ -6,6 +6,89 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-22-c] CS.1.y.2-redo — Beat This! cold-start phase correction (BUG-017): redo.1 measurement + redo.2 implementation landed; awaiting validation
+
+**Increment:** CS.1.y.2-redo (redo.1 + redo.2). **Status:** Local commits only; not pushed. **Outcome:** the design surfaced + ratified, the load-bearing Step 1 measurement passed decisively, and the production fix is in tree with engine regression tests green. **BUG-017 stays Open** — closure requires a fresh full-session capture from Matt + ColdStartVerifier on the post-snap window + M7 perceptual review (redo.3).
+
+### What this is
+
+The reframed direction from the 2026-05-22 decision (`[dev-2026-05-22-b]`): cold-start uses the cached grid as-is from frame 1 ("approximately synced"), then at ~15 s a full-window live Beat This! phase-corrects the grid ("locked within ~20 s"). The fix is the "exact by ~20 s" half — the "approx now" half needs no code (the cached-grid install already runs from frame 1).
+
+The fix is **not new architecture** — it swaps the measurement tool inside BUG-007.9's `runtimeRecalibrationIfDue` (which was using the discredited onset-based `GridOnsetCalibrator`, Failed Approach #68) for a Beat This!-vs-cached-grid phase comparison. Same apply path (`drift` re-seed via the existing `applyCalibration` family), same one-shot-per-track structure, no grid reinstall, no lock-state reset. The `GridOnsetCalibrator` survives for its prep-time `gridOnsetOffsetMs` seed (the small frame-1 bias — part of "approx now"); only its runtime use is retired.
+
+### redo.1 — Step 1 measurement (load-bearing pre-work)
+
+Extended `ColdStartVerifier --rediagnose` to take `--rediagnose-windows` (default `3,4,5` preserved). Measured 10/15/20 s on both existing captures (`2026-05-22T16-57-36Z`, `2026-05-22T19-03-59Z`).
+
+**Result: at 15 s and 20 s, phase reproducibly within ≤ 8 ms across both captures, on every test track — including HUMBLE and Money.** Decisive vs the 3/4/5 s re-diagnosis (1-3/10).
+
+| Window | max abs phase (cap1 / cap2) | tracks within ±30 ms |
+|---|---|---|
+| 10 s | 15 / 13 ms | 9/10 (Money empty — SFX intro) |
+| 15 s | 8 / 6 ms | 10/10 |
+| 20 s | 6 / 4 ms | 10/10 |
+
+The bundled `viable` gate folded R ≥ 0.90 in addition to phase ≤ 30 ms; the R-driven ✗ marks (Around the World, parts of SNA / HUMBLE / Superstition) reflect live-grid-tempo jitter, **not phase errors** — the fix keeps the cached grid's reliable preview tempo, so a strict R-gate would wrongly reject correctable tracks. The redo.2 confidence gate is loose by design (see below).
+
+**Window chosen: W = 15 s** (Matt-ratified). Phase ≤ 8 ms reproducible; clears Money's intro; smaller buffer bump.
+
+### redo.2 — fix implementation
+
+**Engine — `PhospheneEngine/Sources/DSP/LiveBeatDriftTracker.swift`:**
+- New public method `applyColdStartPhaseCorrection(liveGrid:) -> ColdStartPhaseCorrectionOutcome`. Computes circular-mean phase residual between the installed cached grid and a passed-in live Beat This! grid; gates on degenerate-only guards (≥ 8 live beats, live BPM within ±15 % of cached BPM) plus a loose R floor (0.5). Applies the correction by re-seeding `drift` only — lock state, matched-onset count, and the drift-EMA ring are preserved across the correction (regression-tested).
+- Refactored `applyCalibration(driftMs:)` to share a `setDriftLocked` helper with the new method.
+- New engine regression test file `LiveBeatDriftTrackerColdStartPhaseTests.swift` — 8 contracts: no-grid-skip, degenerate-live-grid-skip, BPM-disagreement-skip, aligned-grids-apply-near-zero, +180 ms within-half-period, +400 ms wrap to −100 ms, lock state & matched-onset preservation, garbage live grid → low-confidence skip.
+
+**App — `PhospheneApp/VisualizerEngine+Stems.swift`:**
+- `runtimeRecalibrationIfDue` reworked from the GridOnsetCalibrator path to the new Beat This! path: snapshot 15 s of tap audio, run `DefaultBeatGridAnalyzer.analyzeBeatGrid` (shared with the reactive-mode live Beat This! path), shift to track-relative time, call `tracker.applyColdStartPhaseCorrection(liveGrid:)`. One-shot per track via the existing `runtimeRecalibrationDone` latch.
+- **Dropped the `matchedOnsetCount ≥ 8` gate** — on a ½-beat-off track onsets can't match the wrong grid within ±50 ms, so that gate would never open on exactly the tracks BUG-017 is about (HUMBLE, etc.).
+- Logs the outcome to both `session.log` (`sessionRecorder?.log`) and the unified log per CA-Presets-FU-4 routing.
+
+**App — `PhospheneApp/VisualizerEngine.swift`:**
+- `stemSampleBuffer.maxSeconds` bumped 15 → 18 so a 15 s window snapshot on a 48 kHz tap has comfortable margin (≈ 16.5 s real-time capacity at model-rate sizing). Cost ≈ 0.6 MB.
+
+**Verifier — `PhospheneEngine/Sources/ColdStartVerifier/ColdStartVerifierCommand.swift`:**
+- New `--window-start-s` option (default 0). For redo.3 validation the verifier should measure phase in a window starting at ~20 s (post-snap) — `--window-start-s 20` does that. Default behaviour (CS.1's frame-1 measurement) unchanged.
+
+### Verifier circularity caveat (carried forward unchanged)
+
+The fix aligns the cached grid to Beat This!-on-tap; the verifier's own ground truth is Beat This!-on-tap → post-fix verifier pass is *expected by construction*, necessary but not sufficient. **Matt's M7 perceptual review on HUMBLE and Money is the load-bearing close gate** — those are the tracks where Beat This! itself could be the failure mode the verifier can't catch.
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `PhospheneEngine/Sources/DSP/LiveBeatDriftTracker.swift` | New `applyColdStartPhaseCorrection` + outcome enum + tunables; refactor `applyCalibration` to share `setDriftLocked`; new `circularMeanPhase` static helper. |
+| `PhospheneEngine/Tests/PhospheneEngineTests/DSP/LiveBeatDriftTrackerColdStartPhaseTests.swift` | New — 8 regression tests for the new method. |
+| `PhospheneApp/VisualizerEngine+Stems.swift` | Reworked `runtimeRecalibrationIfDue` (Beat This! phase compare, drops the matched-onset gate); new `ensureLiveBeatGridAnalyzer` / `computeColdStartLiveGrid` / `logColdStartPhaseOutcome` helpers. |
+| `PhospheneApp/VisualizerEngine.swift` | `stemSampleBuffer.maxSeconds` 15 → 18. |
+| `PhospheneEngine/Sources/ColdStartVerifier/ReDiagnosis.swift` | `run`/`analyzeTrack` take `windows: [Double]`; `derivedWindows` helper; report header + summary dynamic; extracted `measureWindows` helper to stay under length cap. |
+| `PhospheneEngine/Sources/ColdStartVerifier/ColdStartVerifierCommand.swift` | New `--rediagnose-windows` + `--window-start-s` options; `parseRediagnoseWindows` helper; `VerifierConfig.windowStartS`. |
+| `PhospheneEngine/Sources/ColdStartVerifier/ColdStartAnalysis.swift` | `makeContext` applies `config.windowStartS`; `frame1DriftMs` derived from windowed frames so the report's "frame 1" column reflects the chosen window's start. |
+| `PhospheneEngine/Sources/ColdStartVerifier/SelfTest.swift` | Construct `VerifierConfig` with `windowStartS: 0`. |
+| `PhospheneEngine/Sources/ColdStartVerifier/VerifierReport.swift` | Report config row now shows both window length AND window-start offset. |
+
+### Verification
+
+- **Engine tests: 1273 / 1273 pass** (1265 baseline + 8 new cold-start tests; no regressions).
+- App build: clean.
+- Project-wide `swiftlint --strict`: 0 violations across 380 files.
+- `ColdStartVerifier --self-test`: PASS (7/7).
+- redo.1 reports written to both capture dirs (`cold_start_rediagnosis_10-15-20.md`).
+
+### Pending — redo.3 validation gates
+
+1. Matt produces a fresh full-session capture with `PHOSPHENE_FULL_RAW_TAP=1` against the post-fix build.
+2. `ColdStartVerifier --session <capture> --window-start-s 20` — expect ≥ 90 % of tracks within ±50 ms post-snap.
+3. M7 perceptual review with attention on HUMBLE and Money (the tracks where verifier circularity makes M7 the gate).
+4. Closeout: BUG-017 Resolved + commit hash, RELEASE_NOTES `[dev-2026-05-22-d]`, ENGINEERING_PLAN CS.1.y flipped to ✅.
+
+### Durable learning
+
+No new Failed Approach this round — the design followed the rules. Specifically, the R-gate refinement (loose, not strict R ≥ 0.90) is the result of *empirical Step 1 measurement* before commit (CLAUDE.md "diagnostic infrastructure precedes fidelity claims"); the regression-test for lock-state preservation enforces the design's commitment that `applyCalibration`'s drift-only-touch invariant carries forward to the new method (CLAUDE.md "BUG-007.x lock machinery + steady-state tracking preserved").
+
+---
+
 ## [dev-2026-05-22-b] CS.1.y re-diagnosis — short-window Beat This! found unusable; BUG-017 blocked
 
 **Increment:** CS.1.y re-diagnosis (Step 1 of the CS.1.y.2-redo plan). **Status:** Done 2026-05-22. Local commit only; not pushed. **Outcome: the replacement fix direction is not viable** — BUG-017 is now blocked pending a product-level decision from Matt.
