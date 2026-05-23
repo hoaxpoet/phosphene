@@ -140,6 +140,10 @@ Verification:
 
 **Pending — redo.3 (validation).** Matt: produce a fresh full-session capture with `PHOSPHENE_FULL_RAW_TAP=1` on the post-fix build. Then `ColdStartVerifier --session <capture> --window-start-s 20` should show ≥ 90 % within ±50 ms in the post-snap window. Then M7 perceptual review with attention on HUMBLE and Money (the verifier-circularity tracks). On M7 pass: BUG-017 flips to Resolved with the commit hash; ENGINEERING_PLAN CS.1.y to ✅; `RELEASE_NOTES_DEV.md [dev-2026-05-22-d]` records closeout.
 
+### Addendum (CS.1.y.2-redo redo.3 round 1 — extrapolation bug found + fixed, 2026-05-23)
+
+Matt's first validation capture (`~/Documents/phosphene_sessions/2026-05-23T02-17-24Z/`) on the redo.2 build surfaced a one-line bug in `VisualizerEngine+Stems.swift` `computeColdStartLiveGrid`: it called `rawGrid.offsetBy(bufferStartTime)` with the default `horizon: 300`, extrapolating the 15 s live grid forward 300 s before passing it to the engine method. Symptoms in `session.log`: 3/10 tracks applied with `matched ≈ 600+` (should have been ~30) and inflated drift values (Billie Jean +152 ms, Get Lucky +231 ms — both far larger than CS.1's per-track baseline phase errors of +69 / +17 ms); 7/10 skipped with R = 0.01-0.21. Root cause: even tiny tempo errors compound over 300 s into multi-period phase walks → residual cluster scatters → R collapses on real-music tempo jitter. Fixed with `horizon: 0`; the engine method's doc comment now states the un-extrapolated-input contract explicitly. The `redo.1` `ColdStartVerifier --rediagnose` measurement did NOT catch this because its `BeatThisGrid.beats` builds short-window grids without `offsetBy` — a test/prod parity gap between the offline measurement tool and the production live-grid construction. Full analysis: `RELEASE_NOTES_DEV.md [dev-2026-05-23-a]`. Engine suite: 1273 / 1273 still green. **redo.3 round 2 still pending** — needs another full-session capture from Matt on the rebuilt app.
+
 ---
 
 ### BUG-016 — Lumen Mosaic "not working" in 2026-05-21 reactive-mode sessions
