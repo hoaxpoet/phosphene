@@ -355,6 +355,14 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
     /// ~15 s of live tap audio. If they agree, re-seed `drift` so the visual
     /// beat phase aligns with the live (audible) beats.
     ///
+    /// **`liveGrid` must contain ONLY the actually-measured beats from the
+    /// Beat This! window — not an extrapolated grid.** The cached grid is
+    /// already extrapolated to provide long-range context; an extrapolated
+    /// live grid compounds tiny tempo errors over hundreds of seconds and
+    /// collapses the residual-cluster resultant on real-music tempo jitter
+    /// (BUG-017 redo.3 round 1 finding, 2026-05-22). Callers building the
+    /// live grid via `BeatGrid.offsetBy` MUST pass `horizon: 0`.
+    ///
     /// Per the redo.1 measurement (CS.1.y, 2026-05-22): a 15 s Beat This!
     /// window reproduces the full-window phase within ≤ 8 ms reproducibly
     /// across captures, on every test track including HUMBLE and Money. The

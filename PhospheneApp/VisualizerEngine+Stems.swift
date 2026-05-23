@@ -318,8 +318,17 @@ extension VisualizerEngine {
         // No halving-octave correction at 15 s — Beat This! is reliable on
         // this window (per redo.1 measurement). The BPM tolerance gate in
         // `applyColdStartPhaseCorrection` catches any real disagreement.
+        //
+        // `horizon: 0` is load-bearing here. `BeatGrid.offsetBy(_:)` defaults
+        // to `horizon: 300` — extrapolating the grid 300 s forward using the
+        // tempo Beat This! estimated from the 15 s window. Tiny tempo errors
+        // compound over 300 s into multi-period phase walks → the residual
+        // cluster vs the cached grid scatters → R collapses on real music
+        // (BUG-017 redo.3 round 1 finding, 2026-05-22). The phase correction
+        // only needs the actually-measured beats; the cached grid is already
+        // extrapolated to provide the long-range context to match against.
         let bufferStartTime = elapsed - bufferedSeconds
-        return rawGrid.offsetBy(bufferStartTime)
+        return rawGrid.offsetBy(bufferStartTime, horizon: 0)
     }
 
     /// Single per-track log line summarising the cold-start phase correction

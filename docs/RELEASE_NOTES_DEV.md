@@ -6,6 +6,81 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-23-a] CS.1.y.2-redo redo.3 round 1 — extrapolation bug found in `computeColdStartLiveGrid`; one-line fix in tree, awaiting fresh capture
+
+**Increment:** CS.1.y.2-redo redo.3 round 1 (first validation attempt). **Status:** Local commit only; not pushed. **Outcome: redo.2 build had a one-line bug in how the live grid was constructed — found via Matt's first validation capture; fixed; needs another capture.**
+
+### What happened
+
+Matt produced a fresh capture (`~/Documents/phosphene_sessions/2026-05-23T02-17-24Z/`) on the redo.2 build. `session.log` showed the new path firing on every track and per-track `runtimeRecalibrationDone` resetting cleanly. But:
+
+- **3/10 tracks applied a correction** with surprising drifts and degraded R:
+  - Billie Jean: drift = +152 ms, R = 0.87, matched = **613** ← red flag
+  - Get Lucky: drift = +231 ms, R = 0.66, matched = 609
+  - Royals: drift = +22 ms, R = 0.74, matched = 445
+- **7/10 tracks skipped low-confidence** with R = 0.01-0.21.
+
+The `matched=613` is the discriminator. A 15 s Beat This! window at 120 BPM should produce ~30 beats. 613 beats = 30 measured + ~600 extrapolated forward.
+
+### Root cause — `BeatGrid.offsetBy` default horizon
+
+`VisualizerEngine+Stems.swift` `computeColdStartLiveGrid` called:
+
+```swift
+return rawGrid.offsetBy(bufferStartTime)
+```
+
+`BeatGrid.offsetBy(_ seconds:, horizon: Double = 300.0)` extrapolates beats forward by `horizon` seconds using the tempo estimated from the input. The default 300 s ceiling was inherited from the cached-grid install path (where extrapolation is wanted — the cached grid must cover the full track length). For the cold-start phase correction live grid, **extrapolation is wrong**: Beat This!'s tempo on a 15 s window is reliable for the measured beats but, projected 300 s forward, even a 0.5 BPM tempo error compounds to multi-period phase walks. The circular mean across ~630 beats (30 measured + 600 extrapolated) scatters → R collapses on tracks with any tempo jitter; on tracks where live and cached tempos agree closely (Billie Jean), residuals stay clustered but at a shifted mean (the long-window phase walk inflates the apparent offset).
+
+This is consistent with the observed pattern: R near 0 on 7/10, R 0.66-0.87 on 3/10, with the 3 applied tracks all showing drifts 100-200 ms larger than the per-track phase errors CS.1 measured on the same playlist.
+
+### Fix (one line + load-bearing comment)
+
+```swift
+return rawGrid.offsetBy(bufferStartTime, horizon: 0)
+```
+
+The live grid carries only the actually-measured ~30 beats, shifted to track-relative time. The cached grid already supplies long-range context for `nearestValue` matching. The engine method's doc comment now states the un-extrapolated-input contract explicitly:
+
+> `liveGrid` must contain ONLY the actually-measured beats from the Beat This! window — not an extrapolated grid. ... Callers building the live grid via `BeatGrid.offsetBy` MUST pass `horizon: 0`.
+
+### Why redo.1's measurement didn't catch this
+
+`ColdStartVerifier --rediagnose` uses `BeatThisGrid.beats` to construct its short-window grid, which never calls `offsetBy` — the slice is shifted manually with `+sliceOrigin` and stays un-extrapolated. The redo.1 measurement was therefore correct (≤ 8 ms phase reproducibility at 15 s); the failure was specifically in how my redo.2 production code built the live grid, which the redo.1 measurement could not have caught because it doesn't exercise that path.
+
+This is a "test/prod parity" failure (CLAUDE.md `feedback_fixture_live_parity.md` family) — the offline measurement tool and the production fix took different paths to build the live grid, and the production path had a default I didn't notice.
+
+### What the buggy capture's verifier output showed
+
+For completeness (these are diagnostic of the buggy build, not the intended fix):
+
+- `--window-start-s 0` (first 10 s, cold-start phase): 0/10 pass; per-track medians span −133 to +232 ms. The medians are larger than CS.1's because the snap landed near the start of the measurement window on several tracks and shifted the visual phase by the snap amount.
+- `--window-start-s 20 --first-window-s 10` (post-snap window): 2/10 pass (Billie Jean −2.4 ms, Seven Nation Army −11 ms). Others span −97 to +287 ms. 2 tracks (Royals, HUMBLE) degenerate (Beat This! found only 3 beats in the 30-40 s window — the slice landed in a quieter song section).
+
+Reports preserved at `<capture>/cold_start_report_approx_now.md` and `<capture>/cold_start_report_post_snap.md`.
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `PhospheneApp/VisualizerEngine+Stems.swift` | `computeColdStartLiveGrid` passes `horizon: 0` to `offsetBy`; load-bearing comment explaining why. |
+| `PhospheneEngine/Sources/DSP/LiveBeatDriftTracker.swift` | `applyColdStartPhaseCorrection` doc comment now states the un-extrapolated-input contract explicitly. |
+
+### Verification
+
+- Engine suite: **1273 / 1273 pass** (same as redo.2).
+- App build clean; `swiftlint --strict` on touched files: 0 violations.
+
+### Pending — redo.3 round 2
+
+Matt: produce another full-session capture with `PHOSPHENE_FULL_RAW_TAP=1` on the rebuilt app (this fix is unpushed local commit). Then `ColdStartVerifier --session <new-capture> --window-start-s 20 --first-window-s 10` should show the post-snap medians cluster near 0 ms. The R values in `session.log` should be high (≥ 0.9) on most tracks; `matched` should be ~30 (not 600+).
+
+### Durable learning
+
+Not a new Failed Approach — the bug is a classic "default that fits one caller, wrong for another." Worth noting for future engine API design: load-bearing optional parameters that differ between consumers (the cached-grid path WANTS horizon=300; the live-grid path WANTS horizon=0) are an invitation to this kind of bug. A future cleanup could split `BeatGrid.offsetBy` into `offsetBy(_:)` (shift only) and `offsetByAndExtrapolate(_:horizon:)` (explicit) so neither caller can pick the wrong default by omission. Out of scope for this round.
+
+---
+
 ## [dev-2026-05-22-c] CS.1.y.2-redo — Beat This! cold-start phase correction (BUG-017): redo.1 measurement + redo.2 implementation landed; awaiting validation
 
 **Increment:** CS.1.y.2-redo (redo.1 + redo.2). **Status:** Local commits only; not pushed. **Outcome:** the design surfaced + ratified, the load-bearing Step 1 measurement passed decisively, and the production fix is in tree with engine regression tests green. **BUG-017 stays Open** — closure requires a fresh full-session capture from Matt + ColdStartVerifier on the post-snap window + M7 perceptual review (redo.3).
