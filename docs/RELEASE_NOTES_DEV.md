@@ -6,6 +6,92 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-24-b] BSAudit — Beat-Sync Audit (BUG-017 diagnosis): per-component verdicts published; cross-capture Beat This! reference non-reproducibility identified as dominant root cause
+
+**Increment:** BSAudit (Diagnosis stage of P1 BUG-017, audit-only). **Status:** Complete 2026-05-24. **Outcome:** Per-component audit deliverable published; BUG-017's symptom statement refined against empirical evidence from the four reference captures; ranked root-cause hypotheses + per-component fix scope sketches surfaced as a follow-up backlog. **No fix code in this increment.** **BUG-017 stays Open** — Matt sign-off on the BSAudit-FU-* backlog direction is the next step.
+
+### What this is
+
+The audit kickoff at `docs/prompts/BEAT_SYNC_AUDIT_KICKOFF.md` (authored 2026-05-24 after the CS.1.y.2-redo revert in `[dev-2026-05-24-a]`) called for a Phase CA-pattern audit scoped to the beat-sync wiring: six components in dependency order — prep-time grid + `gridOnsetOffsetMs` seeding, cold-start grid install, live drift EMA, EMA behaviour under wrong-phase grids, verifier clock-offset estimation, and the `BeatDetector` sub-bass onset feed shared by all three.
+
+The deliverable is [`docs/CAPABILITY_REGISTRY/BEAT_SYNC.md`](../CAPABILITY_REGISTRY/BEAT_SYNC.md). It is read-only and proposes no fix code; every recommendation is a sketch under §Fix Scope Sketches and explicitly requires Matt sign-off before scheduling.
+
+### Per-component verdicts (summary)
+
+| Component | Verdict |
+|---|---|
+| 1a. Prep-time Beat This! grid | `production-active-but-broken` (preview-time grid treated as track-time at install) |
+| 1b. Prep-time `gridOnsetOffsetMs` seed (`GridOnsetCalibrator`) | `documented-but-broken` — Failed Approach #68 still live at prep time |
+| 2. Cold-start grid install (`offsetBy(0)`) | `documented-but-broken` — BUG-017's original static defect |
+| 3. Live drift EMA | `production-active` for its designed purpose; structurally cannot make gross phase corrections |
+| 4. EMA under wrong-phase grid | `characterized` — bimodal failure (Regime A wobble; Regime B stuck-off-beat) |
+| 5a. Verifier clock-offset estimate | `unverified-claim` — bounded by ±150 ms search radius; instrumentation gap |
+| 5b. Verifier ground-truth Beat This!-on-tap | `production-active-but-broken` as cross-capture stable reference |
+| 6. `BeatDetector` sub-bass onset feed | `production-active-but-broken` as beat-phase reference (3 consumers, all FA #68) |
+
+### Headline findings
+
+1. **The symptom is compound, not single-rooted.** Two defect classes act simultaneously: (a) a *static* per-track phase offset on syncopated tracks — BUG-017's original framing, ≤ ½-beat per track because Spotify previews are arbitrary excerpts; (b) *cross-capture variability* of the verification reference itself — a new finding. The CS.1.y.2-redo cycle's verifier-passing→M7-failing pattern is explained: verifier and M7 disagreed *because the verifier's reference moved across captures*.
+
+2. **Beat This! on a 25 s live-tap slice is not cross-capture reproducible** on 5-6 of 10 catalog tracks. From the cap3 vs cap4 `applyColdStartPhaseCorrection` log lines (same fix code, same Spotify previews, same builds): snap-drift differences ≥85 ms on Billie Jean, SNA, Get Lucky, Superstition, Everlong, B.O.B.; Around the World tempo-doubled in cap4 (198.6 vs 121.3 BPM); HUMBLE between-half-time in cap3 (88.1 BPM). Only Royals is reproducible to ≤10 ms. The redo.1 "10/10 viable at 15 s" measurement compared 15s-vs-25s on the SAME slice within ONE capture; it did NOT measure the production case (across captures).
+
+3. **Failed Approach #68 is still live at prep time.** `GridOnsetCalibrator` (still in production) measures sub-bass-onset-vs-preview-grid alignment using the same sub-bass onset detector the CS.1.y.2 runtime fix used. The prep-time use produces small seeds (≤30 ms typical, ≤60.3 ms max across the catalog) because the calibrator is matching preview onsets to the *preview's own grid* — succeeding at that task but not at the BUG-017 task. The same detector (Component 6) is used in three places: prep (1b), runtime EMA (3), and verifier clock-offset (5a) — same FA #68 limitation across all three.
+
+4. **The live drift EMA under a wrong-phase grid is bimodal.** From cap1 baseline data (no runtime correction): Regime A (sub-50ms-off) → drift bounces in a 30-90 ms band biased toward off-beat sub-bass onsets (Billie Jean, B.O.B.); Regime B (>50ms-off) → drift parks near seed because no onsets match within ±50 ms (HUMBLE +338 ms, drift parked at +0.4 ms). Both regimes produce visible mis-sync; both are inevitable consequences of the ±50 ms hard match window + onset-as-phase-reference design.
+
+5. **`gridOnsetOffsetMs` reproducibility across preps** — mostly deterministic (7/10 tracks identical across 4 captures); 3/10 tracks vary by 11-30 ms when prep re-ran (Billie Jean cap3, Get Lucky cap4, Money cap1). Magnitude is small relative to the BUG-017 phase errors (100s of ms); not the dominant cause but a real source of small cross-capture variability.
+
+### Ranked root-cause hypotheses
+
+| Rank | Hypothesis | Cross-capture variability | Systematic offset on syncopated tracks |
+|---|---|---|---|
+| 1 | Beat This!-on-tap not cross-capture reproducible (Component 5b) | **Dominant** (100s of ms on 6/10 tracks) | Small |
+| 2 | Sub-bass onsets used as beat-phase reference (Components 6, 1b, 3, 5a) | Small (<50 ms) | **Dominant** (per-track 100s of ms) |
+| 3 | Cold-start install equates preview-time with track-time (Components 1a/2) | None (static) | **Dominant** (BUG-017's original) |
+| 4 | Verifier clock-offset noise (5a) | Small (±50-150 ms bound) | Small |
+| 5 | `gridOnsetOffsetMs` non-determinism (1b) | Small (≤30 ms on 3/10) | None |
+| 6 | Compound interactions | Residual | Residual |
+
+### Per-component fix scope sketches (none authorized; Matt sign-off required)
+
+- **Component 1b** — Retire `GridOnsetCalibrator` from prep (delete or reframe as detection-latency-only). Removes one production use of FA #68.
+- **Component 2** — Document the structural limitation honestly ("approx now, exact by ~20 s" — already the 2026-05-22 product-direction). Optionally introduce a `coldStart` lock-state.
+- **Component 3** — *Do not change.* The EMA does its job; extending it for gross phase recovery is the failure mode CS.1.y.2 and CS.1.y.2-redo both hit.
+- **Component 5a** — One-line instrumentation: log `coarseS` + `offsetS - coarseS` per track in `ColdStartVerifier`; ≤1 hour, closes Hypothesis 4.
+- **Component 5b** — *Research-only.* Find or build a cross-capture-stable reference (full-tap-window Beat This!, human-tap ground truth). **Load-bearing pre-work for any future BUG-017 closeout.**
+- **Component 6** — Retire phase-reference use at the call sites (1b, 3, 5a); detector itself is fine.
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `docs/CAPABILITY_REGISTRY/BEAT_SYNC.md` | New — audit deliverable. |
+| `docs/QUALITY/KNOWN_ISSUES.md` | BUG-017 addendum: refined symptom statement against audit findings, ranked hypotheses, per-component fix scope sketches, open-empirical-question gaps. |
+| `docs/ENGINEERING_PLAN.md` | Phase CS / CS.1.y reworked to point at the audit document; new BSAudit increment entry marked ✅. |
+| `docs/RELEASE_NOTES_DEV.md` | This entry. |
+
+### Verification
+
+- No code changes. Engine suite unaffected (1265/1265 baseline preserved per `[dev-2026-05-24-a]`).
+- `git status` — only doc edits.
+- The audit's read-only methodology (Phase CA pattern) means no test surface to regress.
+
+### Durable learning
+
+1. **Verification infrastructure stability is a prerequisite for fix-claim trustworthiness.** The CS.1.y.2-redo cycle landed five fix increments while the verifier's audible-beat reference (Beat This!-on-tap) was itself moving across captures. No fix can converge when the measurement tool that judges convergence is unstable. The next CLAUDE.md "diagnostic infrastructure precedes fidelity claims" rule extension is: *diagnostic infrastructure stability precedes fix-claim trustworthiness.* When a fix's empirical evidence comes from a verifier that has not been characterised cross-environment, the fix is on unstable ground regardless of how clean its passes look.
+
+2. **Within-slice reproducibility is not the same as cross-capture reproducibility.** The redo.1 measurement validated 15s-vs-25s Beat This! on the same slice within one capture (≤8 ms). The production case is 15s-of-capture-A vs 15s-of-capture-B on different physical recordings of the same Spotify preview, and that comparison failed for 6/10 tracks. A measurement-design rule: when validating a fix that will run in production across many captures, validate the *production case*, not the *engineering convenience case*. This generalises beyond beat-sync to any cross-session correctness claim.
+
+3. **The same defect class can be live in multiple places.** Failed Approach #68 (sub-bass onsets as beat-phase reference) was retired from the runtime fix in CS.1.y.2 but is still live in `GridOnsetCalibrator` (prep), `LiveBeatDriftTracker.update` (runtime EMA), and `ColdStartAnalysis` (verifier clock-offset). When a Failed Approach is added to CLAUDE.md after a specific failure, sweep the codebase for OTHER places the same defect class is live — don't assume the named-and-removed instance is the only one.
+
+### What's next
+
+- Matt sign-off on the BSAudit-FU-* follow-up backlog direction. The audit does not commit to which of FU-1 through FU-6 are worth scheduling; that's a product/strategy decision.
+- **Critical gate:** BSAudit-FU-5 (Component 5b cross-capture-stable reference research). Without this, no future BUG-017 fix can claim convergence.
+- If FU-5 finds no stable reference, Component 2's "document the structural limitation" becomes the canonical position — the 2026-05-22 "approx now, exact by ~20 s" product-direction decision stands, and the closing artifact is documentation rather than a fix.
+
+---
+
 ## [dev-2026-05-24-a] CS.1.y.2-redo cold-start phase correction (BUG-017) — reverted after three captures showed no perceptual convergence; beat-sync audit next
 
 **Increment:** CS.1.y.2-redo redo.3 (validation). **Status:** Implementation reverted 2026-05-24. **Outcome:** the fix is not converging perceptually; BUG-017 scope broadened to "beat-sync infrastructure is not perceptually aligned across the catalog"; next step is a beat-sync audit (no more fix code until the audit produces a per-component verdict). Matt-approved.

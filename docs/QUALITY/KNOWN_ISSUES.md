@@ -162,6 +162,41 @@ Three validation captures across 2026-05-22 → 2026-05-24 established that the 
 
 **Audit kickoff prompt:** `docs/prompts/BEAT_SYNC_AUDIT_KICKOFF.md` (next session).
 
+### Addendum (Beat-Sync Audit deliverable, BSAudit, 2026-05-24)
+
+The audit published as [`docs/CAPABILITY_REGISTRY/BEAT_SYNC.md`](../CAPABILITY_REGISTRY/BEAT_SYNC.md). Read-only; no fix code. Per-component verdicts with empirical grounding from the four reference captures (`2026-05-22T16-57-36Z`, `2026-05-22T19-03-59Z`, `2026-05-23T02-39-54Z`, `2026-05-24T15-07-31Z`).
+
+**Refined symptom statement.** The "beat-sync infrastructure is not perceptually aligned across the catalog" symptom (Matt 2026-05-24) decomposes into **two distinct defect classes acting simultaneously**:
+
+1. **Systematic per-track phase offset on syncopated tracks** (BUG-017's original framing). The cold-start install path `cached.beatGrid.offsetBy(0)` treats preview-clip timeline as track timeline; the `gridOnsetOffsetMs` seed (sub-bass-onset-based, prep-time — Failed Approach #68 still live in production at prep time) cannot measure preview-vs-track phase. Result: 7/10 tracks in cap1 carry per-track phase offsets ≤ ½-beat at the track's tempo (HUMBLE +338 ms; Money −128 ms). Static defect — same value every capture.
+2. **Cross-capture variability of the verification reference** (new finding). Beat This! on a 25 s slice of live tap audio produces *different beat positions* on 5-6 of 10 tracks across captures of the same Spotify previews — the dominant finding behind the cap1→cap4 baseline degradation (3/10 PASS → 1/10 PASS) and the cap3→cap4 snap-drift divergence (≥85 ms on 6/10 tracks with the same fix). The CS.1.y.2-redo cycle's verifier-passing→M7-failing pattern is explained: verifier and M7 disagreed because the verifier's reference moved across captures. The redo.1 "10/10 viable at 15 s" measurement validated within-slice reproducibility, not the production case (cross-capture). Beat This!-on-tap is fine as a within-capture reference but is not a stable physical reference across captures.
+
+**Ranked root-cause hypotheses (full evidence in [`BEAT_SYNC.md`](../CAPABILITY_REGISTRY/BEAT_SYNC.md) §Ranked):**
+
+| Rank | Hypothesis | Drives cross-capture variability | Drives systematic offset on syncopated tracks |
+|---|---|---|---|
+| 1 | Beat This!-on-tap not cross-capture reproducible (Component 5b) | **Dominant** | Small |
+| 2 | Sub-bass onsets used as beat-phase reference in 3 places (Components 6, 1b, 3, 5a) | Small (<50 ms) | **Dominant** (per-track 100s of ms) |
+| 3 | Cold-start install: preview-time as track-time (Components 1a/2) | None (static) | **Dominant** (BUG-017's original static defect) |
+| 4 | Verifier clock-offset noise (Component 5a) | Small (±50-150 ms, bounded by `searchRadiusS`) | Small |
+| 5 | `gridOnsetOffsetMs` non-determinism (Component 1b) | Small (≤30 ms on 3/10 tracks) | None |
+
+**Per-component fix scope sketches** (none authorized for implementation; Matt sign-off required):
+
+- **Component 1b** — Delete `GridOnsetCalibrator` from prep, or reframe its output as detection-latency only (not beat-phase). Removes one of three production uses of sub-bass onsets as a phase reference.
+- **Component 2** — Document the structural limitation honestly: "approximately beat-synced from frame 1; exact phase recovered within ~20 s" (already the 2026-05-22 product-direction decision). Optionally add a `coldStart` lock-state distinction so presets don't accent-pulse on a known-suspect grid.
+- **Component 3** — *Do not change.* The EMA does its designed job correctly; CS.1.y.2 and CS.1.y.2-redo both failed because they tried to extend it past its design envelope.
+- **Component 5a** — One-line instrumentation: log `coarseS` + `offsetS - coarseS` per track in `ColdStartVerifier`; re-run on existing captures; close Hypothesis 4 with measurement.
+- **Component 5b** — *Research-only.* Find or build a cross-capture-stable reference (full-tap Beat This! window, or human-tap ground truth). **Load-bearing pre-work for any future BUG-017 closeout** — no fix can claim convergence while the verification infrastructure cannot judge it reliably.
+- **Component 6** — *Do not change the detector.* Retire its use as a phase reference at the call sites (Components 1b, 3, 5a); CLAUDE.md Failed Approach #68 generalizes from "the runtime fix" to "any use as a phase primitive."
+
+**Open empirical questions surfaced as gaps** (not blocking this audit; would require small instrumentation increments):
+- Q1 follow-up: re-run `GridOnsetCalibrator` cross-capture on archived preview audio to confirm whether the 11-30 ms seed variation on 3/10 tracks comes from preview-byte differences or from a hidden non-determinism in the calibrator.
+- Q5: instrument verifier clock-offset refinement to characterise per-capture noise (≤1 hour instrumentation).
+- Q6 follow-up: per-track sub-bass-onset-distance distribution against full-window Beat This! ground truth (1-2 hour offline analysis), if/when a stable ground truth exists.
+
+**BUG-017 stays Open** with the refined symptom statement above. The next step is **Matt sign-off on direction** for the BSAudit-FU-* follow-up backlog ([`BEAT_SYNC.md`](../CAPABILITY_REGISTRY/BEAT_SYNC.md) §Follow-up Backlog) — not another fix increment. **No new fix code until a Component 5b cross-capture-stable reference exists or a Component 2-style honest-limitation product framing is documented.**
+
 ---
 
 ### BUG-016 — Lumen Mosaic "not working" in 2026-05-21 reactive-mode sessions
