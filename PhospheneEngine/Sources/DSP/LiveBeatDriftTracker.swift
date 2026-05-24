@@ -74,30 +74,6 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
         case locked
     }
 
-    // MARK: - Cold-Start Phase Correction Outcome (CS.1.y.2-redo, BUG-017)
-
-    /// Outcome of a single `applyColdStartPhaseCorrection(liveGrid:)` call.
-    /// Reported so the caller can log per-track which gate fired (or that the
-    /// correction landed).
-    public enum ColdStartPhaseCorrectionOutcome: Sendable {
-        /// Correction applied. `driftMs` is the new absolute drift value.
-        case applied(driftMs: Double, matchedBeats: Int, resultant: Double)
-        /// Skipped: no cached grid installed.
-        case skippedNoGrid
-        /// Skipped: live grid has too few beats (degenerate, e.g. Money's
-        /// cash-register SFX intro).
-        case skippedLiveGridDegenerate(beatCount: Int)
-        /// Skipped: live BPM disagrees with cached BPM beyond the tolerance
-        /// band (catches octave errors and tempo garbage).
-        case skippedTempoDisagreement(liveBPM: Double, cachedBPM: Double)
-        /// Skipped: no beat pairs matched (cached/live grids don't overlap
-        /// in time — shouldn't happen in practice).
-        case skippedNoMatches
-        /// Skipped: residual cluster resultant below the loose confidence
-        /// floor (truly degenerate measurement).
-        case skippedLowConfidence(resultant: Double)
-    }
-
     // MARK: - Result
 
     /// Per-frame output for FeatureVector and the debug overlay.
@@ -199,29 +175,6 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
     /// 3.16 s — enough headroom for HUMBLE-class sparse onset streams that
     /// produce 3–4 consecutive non-tight events during instrumental breaks.
     private static let lockReleaseBeatMultiplier: Double = 4.0
-
-    /// Minimum beats required in the live Beat This! grid for the cold-start
-    /// phase correction to fire (CS.1.y.2-redo). Below this the grid is
-    /// degenerate — Money's cash-register intro produces 0–1 beats in a 10 s
-    /// window; a 15 s window typically yields ≥ 16 beats on every real-music
-    /// track. 8 is conservative.
-    private static let coldStartMinLiveBeats: Int = 8
-    /// Maximum fractional disagreement between live and cached BPM for the
-    /// cold-start correction (CS.1.y.2-redo). ±15 % catches octave errors and
-    /// tempo garbage while admitting normal Beat This! BPM jitter. The redo.1
-    /// measurement showed agreement well within this on the test playlist.
-    private static let coldStartBPMTolerance: Double = 0.15
-    /// Minimum matched beat pairs (live ↔ nearest cached) for the cold-start
-    /// correction. Below this the circular mean is statistically thin.
-    private static let coldStartMinMatchedBeats: Int = 6
-    /// Loose resultant floor for the cold-start correction (CS.1.y.2-redo).
-    /// Loose by design: the redo.1 measurement showed several tracks where
-    /// phase is reproducible to ≤ 8 ms but the live-vs-reference R sits at
-    /// 0.5–0.9 because of slight live-grid tempo wander. The fix keeps the
-    /// cached grid's reliable tempo and only corrects phase, so tempo-jitter
-    /// R-suppression should not block a sound correction. 0.5 catches the
-    /// truly-degenerate cluster while admitting the wider real-music range.
-    private static let coldStartMinResultant: Double = 0.5
 
     /// Default audio output latency (BUG-007.6) for new tracker instances.
     /// 0 by default — engine-level neutral. Production wiring (`MIRPipeline.init`
@@ -335,145 +288,12 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
     /// Clamps to ±500 ms.
     public func applyCalibration(driftMs: Double) {
         lock.lock(); defer { lock.unlock() }
-        setDriftLocked(driftMs: driftMs, source: "BUG-007.9 runtime recalibration")
-    }
-
-    /// Re-seed `drift` from a calibrated absolute value (ms). Clamps to ±500 ms.
-    /// Does NOT reset `matchedOnsets`, `lockState`, the EMA, or any auxiliary
-    /// state — only `drift` jumps. Caller must hold the lock.
-    private func setDriftLocked(driftMs: Double, source: String) {
         let clampedMs = max(-500.0, min(500.0, driftMs))
         let oldDriftMs = drift * 1000.0
         drift = clampedMs / 1000.0
         let oldStr = String(format: "%+.1f", oldDriftMs)
         let newStr = String(format: "%+.1f", clampedMs)
-        logger.info("\(source): drift \(oldStr) → \(newStr) ms")
-    }
-
-    /// CS.1.y.2-redo cold-start phase correction (BUG-017). Compare the
-    /// installed cached grid against a `liveGrid` produced by Beat This! on
-    /// ~15 s of live tap audio. If they agree, re-seed `drift` so the visual
-    /// beat phase aligns with the live (audible) beats.
-    ///
-    /// **`liveGrid` must contain ONLY the actually-measured beats from the
-    /// Beat This! window — not an extrapolated grid.** The cached grid is
-    /// already extrapolated to provide long-range context; an extrapolated
-    /// live grid compounds tiny tempo errors over hundreds of seconds and
-    /// collapses the residual-cluster resultant on real-music tempo jitter
-    /// (BUG-017 redo.3 round 1 finding, 2026-05-22). Callers building the
-    /// live grid via `BeatGrid.offsetBy` MUST pass `horizon: 0`.
-    ///
-    /// Per the redo.1 measurement (CS.1.y, 2026-05-22): a 15 s Beat This!
-    /// window reproduces the full-window phase within ≤ 8 ms reproducibly
-    /// across captures, on every test track including HUMBLE and Money. The
-    /// confidence gate is deliberately loose: degenerate-only guards
-    /// (`coldStartMinLiveBeats`, ±15 % BPM band) plus a loose R floor
-    /// (`coldStartMinResultant`). Strict R would wrongly reject tracks whose
-    /// phase is fine but whose live-grid tempo wandered slightly.
-    ///
-    /// Sign convention: `drift = circularMean(cachedBeat − liveBeat)`,
-    /// wrapped to ±½-period. Same as `applyCalibration`. Lock state and the
-    /// matched-onset count are preserved across the correction — only
-    /// `drift` jumps (a one-time snap, accepted per the Phase CS decision
-    /// 2026-05-22).
-    @discardableResult
-    public func applyColdStartPhaseCorrection(
-        liveGrid: BeatGrid
-    ) -> ColdStartPhaseCorrectionOutcome {
-        lock.lock(); defer { lock.unlock() }
-        guard !grid.beats.isEmpty else { return .skippedNoGrid }
-        guard liveGrid.beats.count >= Self.coldStartMinLiveBeats else {
-            return .skippedLiveGridDegenerate(beatCount: liveGrid.beats.count)
-        }
-        let cachedBPM = grid.bpm
-        let liveBPM = liveGrid.bpm
-        if cachedBPM > 0, liveBPM > 0 {
-            let ratio = liveBPM / cachedBPM
-            guard ratio >= (1 - Self.coldStartBPMTolerance),
-                  ratio <= (1 + Self.coldStartBPMTolerance) else {
-                return .skippedTempoDisagreement(liveBPM: liveBPM, cachedBPM: cachedBPM)
-            }
-        }
-        let period = max(medianPeriod, 1e-3)
-        let phase = Self.circularMeanPhase(
-            cachedBeats: grid.beats, liveBeats: liveGrid.beats, period: period
-        )
-        guard phase.matched >= Self.coldStartMinMatchedBeats else {
-            return .skippedNoMatches
-        }
-        guard phase.resultant >= Self.coldStartMinResultant else {
-            return .skippedLowConfidence(resultant: phase.resultant)
-        }
-        let driftMs = phase.offsetS * 1000.0
-        setDriftLocked(
-            driftMs: driftMs,
-            source: "CS.1.y.2-redo cold-start phase correction"
-                + " (R=\(String(format: "%.2f", phase.resultant))"
-                + ", matched=\(phase.matched))"
-        )
-        return .applied(
-            driftMs: driftMs, matchedBeats: phase.matched, resultant: phase.resultant
-        )
-    }
-
-    /// Result of `circularMeanPhase`.
-    struct CircularPhaseResult: Sendable {
-        /// Mean residual (seconds), wrapped to [−P/2, +P/2].
-        let offsetS: Double
-        /// Resultant length [0, 1] — cluster tightness.
-        let resultant: Double
-        /// Number of live beats that contributed.
-        let matched: Int
-    }
-
-    /// Circular-mean phase offset (seconds) between a cached and a live beat
-    /// sequence with a known period. For each live beat, the residual to the
-    /// nearest cached beat is wrapped to [−P/2, +P/2] and folded into a
-    /// circular mean. Math mirrors `ReDiagnosis.phaseOffset` (duplicated
-    /// because that lives in the ColdStartVerifier executable target and is
-    /// not importable here).
-    static func circularMeanPhase(
-        cachedBeats: [Double], liveBeats: [Double], period: Double
-    ) -> CircularPhaseResult {
-        guard !cachedBeats.isEmpty, !liveBeats.isEmpty, period > 0 else {
-            return CircularPhaseResult(offsetS: 0, resultant: 0, matched: 0)
-        }
-        var sumCos = 0.0
-        var sumSin = 0.0
-        var matched = 0
-        for beat in liveBeats {
-            guard let nearest = nearestValueLocked(to: beat, in: cachedBeats) else { continue }
-            var residual = nearest - beat
-            residual -= period * (residual / period).rounded()
-            let theta = 2.0 * .pi * residual / period
-            sumCos += cos(theta)
-            sumSin += sin(theta)
-            matched += 1
-        }
-        guard matched > 0 else {
-            return CircularPhaseResult(offsetS: 0, resultant: 0, matched: 0)
-        }
-        let resultant = (sumCos * sumCos + sumSin * sumSin).squareRoot() / Double(matched)
-        let meanResidual = atan2(sumSin, sumCos) * period / (2.0 * .pi)
-        return CircularPhaseResult(
-            offsetS: meanResidual, resultant: resultant, matched: matched
-        )
-    }
-
-    /// Nearest value in a sorted ascending array. Pure helper for
-    /// `circularMeanPhase`. Returns nil only when `sorted` is empty.
-    private static func nearestValueLocked(to target: Double, in sorted: [Double]) -> Double? {
-        guard !sorted.isEmpty else { return nil }
-        var lo = 0
-        var hi = sorted.count - 1
-        while lo < hi {
-            let mid = (lo + hi) / 2
-            if sorted[mid] < target { lo = mid + 1 } else { hi = mid }
-        }
-        let upper = sorted[lo]
-        guard lo > 0 else { return upper }
-        let lower = sorted[lo - 1]
-        return abs(upper - target) < abs(lower - target) ? upper : lower
+        logger.info("BUG-007.9 runtime recalibration: drift \(oldStr) → \(newStr) ms")
     }
 
     /// Additional visual phase offset in milliseconds, applied to the displayed
