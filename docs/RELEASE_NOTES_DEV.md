@@ -6,6 +6,64 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-24-a] CS.1.y.2-redo cold-start phase correction (BUG-017) — reverted after three captures showed no perceptual convergence; beat-sync audit next
+
+**Increment:** CS.1.y.2-redo redo.3 (validation). **Status:** Implementation reverted 2026-05-24. **Outcome:** the fix is not converging perceptually; BUG-017 scope broadened to "beat-sync infrastructure is not perceptually aligned across the catalog"; next step is a beat-sync audit (no more fix code until the audit produces a per-component verdict). Matt-approved.
+
+### What was reverted
+
+Three commits — engine + app + extrapolation follow-up:
+- `1e77fdf6` — `VisualizerEngine: fix live-grid extrapolation default in cold-start correction`
+- `82775977` — `VisualizerEngine: Beat This! cold-start phase correction wiring`
+- `8f04be7e` — `LiveBeatDriftTracker: applyColdStartPhaseCorrection`
+
+`976a78b3` (ColdStartVerifier `--rediagnose-windows` + `--window-start-s` diagnostic tooling) **stays in tree** — diagnostic-only, no production behaviour change, still useful for the audit.
+
+### Evidence chain (three captures over 48 h)
+
+**Capture 1 — `2026-05-23T02-17-24Z` (redo.2 first validation).** Engine bug: `computeColdStartLiveGrid` passed default `horizon: 300` to `BeatGrid.offsetBy` for the live grid, inflating residuals over the 300 s extrapolation. Symptoms: 3/10 tracks applied with `matched=600+` (should be ~30) and inflated drifts; 7/10 skipped low-confidence. Fixed in `1e77fdf6` (`horizon: 0`).
+
+**Capture 2 — `2026-05-23T02-39-54Z` (post-extrapolation fix).** Engine signatures clean (`matched ≈ 21-39`, R 0.87-1.00 on most). Verifier post-snap window: **4/7 PASS, 3/7 FAIL + 3 DEGENERATE.**
+- ✓ Big wins: Billie Jean 89 % → 100 % PASS; Around the World 10 % → 100 % PASS (cached was +139 ms off, snap +210 ms → post-snap +2 ms); Everlong 31 % → 100 % PASS (+62 → +2 ms).
+- ✗ Two regressions on previously-passing tracks: Get Lucky 95 % PASS pre-snap → 0 % FAIL post-snap (R=0.99 confident wrong measurement, drift −109 ms); Seven Nation Army got worse post-snap.
+- The CS.1.y.2 failure mode (Failed Approach #68 — tight-but-wrong cluster) reappearing in Beat-This!-vs-Beat-This! form: high R does not protect against half-period phase ambiguity.
+
+**Capture 3 — `2026-05-24T15-07-31Z` (M7).** Matt switched off Ferrofluid Ocean (preset has visual bugs unrelated to beat sync) and ran SpectralCartograph (diagnostic preset with beat-grid overlay) for the perceptual review. **M7 verdict: "drift is very much real across tracks; even after Beat This! pass the song rarely snaps to the beat and does not follow the downbeat."**
+
+Empirical findings from capture 3:
+1. **Cross-capture non-reproducibility on multiple tracks.** Same songs, same cached grids, snap values varying ≥ 100 ms run-to-run (Billie Jean −6/+79; SNA +88/−160; Get Lucky −109/−7; Everlong +44/−116; Superstition −181/+63 across captures 2 and 3). Beat This! on a 15 s tap is reproducible *within* a capture against a 25 s reference *on the same slice* (what redo.1 measured) but is NOT reproducible *across* captures for several tracks. The failure mode that killed 3-5 s windows in CS.1.y is alive at 15 s on a subset of tracks.
+2. **Pre-snap baseline degraded.** This capture's verifier approx-now: 1/10 PASS vs CS.1's 3/10. Same cached grids → either `gridOnsetOffsetMs` seeding is non-deterministic across preps, the verifier's clock-offset estimate is noise-coupled, or there's a regression elsewhere. The "approximately within ±130 ms" claim the 2026-05-22 product direction depended on does not hold.
+3. **EMA bouncing within tracks.** Drift ranges of 200-300 ms within single steady-state tracks; HUMBLE only 43 % locked post-snap (consecutive onset misses → lock drops). The EMA is being whipsawed.
+
+### Root finding
+
+Five fix increments (CS.1 → CS.1.y.1 → CS.1.y.2 → CS.1.y.2-redo redo.1 → redo.2 → redo.3 round 1 → round 2 fix) on the same defect without perceptual convergence. **The model of the problem is wrong somewhere upstream.** Per CLAUDE.md "iteration converges only when each step integrates feedback into the model" and Failed Approach #58 (Drift Motes — pattern of producing fixes on a structurally-broken substrate). The next step is an audit, not another fix.
+
+### Likely upstream candidates (none confirmed; audit's job to test)
+
+1. **Prep-time `gridOnsetOffsetMs` is still onset-based** — `GridOnsetCalibrator` runs `BeatDetector` on the preview audio. Same Failed Approach #68 root cause we left in place at prep time on the grounds that "the seed is small." Possibly it isn't, on the catalog Matt actually listens to.
+2. **EMA tracks off-beat onsets** when seeded into a wrong-phase grid — sub-bass onsets within ±50 ms of the wrong-phase cached grid are *off-beat* onsets the EMA then locks to.
+3. **Verifier clock-offset estimate** uses sub-bass onsets to pin offset — sensitive to per-capture acoustic variability.
+4. **Some compound interaction** among the above and the live drift tracker we haven't characterised.
+
+### Verification
+
+- Engine suite: **1265 / 1265 pass** (back to pre-redo.2 baseline; the 8 regression tests went with the file).
+- App build clean.
+- `ColdStartVerifier --self-test`: PASS (7/7) — diagnostic tooling intact.
+
+### What's next
+
+A beat-sync audit increment (analogous to Phase CA's DSP audit but scoped to the beat-sync wiring specifically). Kickoff prompt: `docs/prompts/BEAT_SYNC_AUDIT_KICKOFF.md`. Audit's job: produce a per-component verdict on what's working vs what's broken across the beat-sync wiring (BeatGrid prep, `gridOnsetOffsetMs`, `LiveBeatDriftTracker` EMA behaviour under wrong-phase grids, the `BeatDetector` sub-bass onset feed, verifier clock-offset reliability), with empirical grounding per component. No new fix code until the audit publishes.
+
+### Durable learning
+
+The redo.1 measurement validated "Beat This!@15 s vs Beat This!@25 s on the *same* tap slice within a single capture." It did NOT validate "Beat This!@15 s of capture A vs the user's perception of capture B." The production claim depended on cross-capture reproducibility that the measurement did not cover. A measurement-design gap to keep in mind for the audit and any future fix: validate the *production case* (across-capture, across-slice variability), not just the *engineering convenience case* (same slice, controlled comparison).
+
+The R-gate refinement we made (loose, not strict R ≥ 0.90) was right for the within-capture reproducibility data but wrong for the production case: a confident-but-wrong measurement (Get Lucky R=0.99, drift −109 ms in capture 2 → drift −7 ms in capture 3) passes any R-gate because R measures cluster tightness, not on-beat-ness — the same shape as Failed Approach #68. CLAUDE.md FA #68 already names this for the sub-bass onset detector; the lesson generalises to *any* high-confidence measurement whose noise model isn't characterised across the deployment surface.
+
+---
+
 ## [dev-2026-05-22-c] CS.1.y.2-redo — Beat This! cold-start phase correction (BUG-017): redo.1 measurement + redo.2 implementation landed; awaiting validation
 
 **Increment:** CS.1.y.2-redo (redo.1 + redo.2). **Status:** Local commits only; not pushed. **Outcome:** the design surfaced + ratified, the load-bearing Step 1 measurement passed decisively, and the production fix is in tree with engine regression tests green. **BUG-017 stays Open** — closure requires a fresh full-session capture from Matt + ColdStartVerifier on the post-snap window + M7 perceptual review (redo.3).

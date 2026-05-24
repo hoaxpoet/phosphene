@@ -12,7 +12,7 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 **Severity:** P1 (load-bearing product claim — "beat-synced from frame 1 of every track", Matt's Phase CS bar 2026-05-20. CS.1 empirical verification: 7 of 10 tracks fail the ±50 ms bar. Not session-blocking — the session plays and the BUG-007.9 runtime recalibration partially corrects after ~15 s — so not P0.)
 **Domain tag:** `dsp.beat`
-**Status:** Open — **CS.1.y.2-redo redo.1 + redo.2 landed 2026-05-22; awaiting redo.3 validation** (fresh capture + post-snap `ColdStartVerifier` + Matt's M7). The earlier CS.1.y.2 (onset-based) and short-window Beat This! attempts were exhausted; Matt set the "approx now, exact by ~20 s" direction; design + Step 1 window-length measurement + the production fix now sit in tree. BUG-017 stays Open until M7 confirms perceptual sync on the post-snap window (the verifier-circularity caveat — fix aligns to Beat This!-on-tap, verifier scores against the same — makes M7 the load-bearing close gate). See the addenda below for the full chain, and `RELEASE_NOTES_DEV.md [dev-2026-05-22-c]` for the redo.1 + redo.2 diff.
+**Status:** Open — **CS.1.y.2-redo reverted 2026-05-24 after three validation captures showed no perceptual convergence.** Scope broadened beyond the original preview-vs-track grid-phase offset: Matt's M7 on capture `2026-05-24T15-07-31Z` (SpectralCartograph diagnostic) — "drift very much real across tracks"; "rarely snaps to the beat and does not follow downbeat." The broader symptom is "beat-sync infrastructure is not perceptually aligned across the catalog." Five fix increments on the same defect with no perceptual convergence is the Drift-Motes pattern (Failed Approach #58) at infrastructure scope — next step is a beat-sync audit (no more fix code until the audit produces a per-component verdict with empirical grounding). See the trailing addendum (CS.1.y.2-redo redo.3 round 1 failed and round-1 fix did not converge) and `RELEASE_NOTES_DEV.md [dev-2026-05-24-a]` for the full evidence chain. Audit kickoff: `docs/prompts/BEAT_SYNC_AUDIT_KICKOFF.md`.
 **Introduced:** Pre-CS.1. The cold-start grid-install path (`VisualizerEngine+Stems.swift:485`, `cached.beatGrid.offsetBy(0)`) and the preview-only `GridOnsetCalibrator` (`GridOnsetCalibrator.swift:13`) predate this filing — part of the BUG-007.x cold-start infrastructure series. The preview-vs-track phase gap was never closed; CS.1's verification harness surfaced it empirically 2026-05-22.
 **Resolved:** —
 
@@ -139,6 +139,28 @@ Verification:
 - `ColdStartVerifier --self-test`: PASS (7/7).
 
 **Pending — redo.3 (validation).** Matt: produce a fresh full-session capture with `PHOSPHENE_FULL_RAW_TAP=1` on the post-fix build. Then `ColdStartVerifier --session <capture> --window-start-s 20` should show ≥ 90 % within ±50 ms in the post-snap window. Then M7 perceptual review with attention on HUMBLE and Money (the verifier-circularity tracks). On M7 pass: BUG-017 flips to Resolved with the commit hash; ENGINEERING_PLAN CS.1.y to ✅; `RELEASE_NOTES_DEV.md [dev-2026-05-22-d]` records closeout.
+
+### Addendum (CS.1.y.2-redo redo.3 round 1 failed and round-1 fix did not converge — implementation reverted 2026-05-24)
+
+Three validation captures across 2026-05-22 → 2026-05-24 established that the CS.1.y.2-redo fix does **not** converge perceptually. **Reverted 2026-05-24.** What stays in tree: the `ColdStartVerifier --rediagnose-windows` + `--window-start-s` diagnostic tooling (commit `976a78b3`). What was reverted: the engine `applyColdStartPhaseCorrection` method + 8 regression tests; the app `runtimeRecalibrationIfDue` rework + `stemSampleBuffer` 15 → 18 bump; the live-grid extrapolation follow-up fix.
+
+**Evidence chain:**
+
+| Capture | Outcome |
+|---|---|
+| `2026-05-23T02-17-24Z` (round 1) | Engine bug — fix passed default `horizon: 300` to `BeatGrid.offsetBy` for the live grid, inflating residuals over the 300 s extrapolation. 3/10 tracks applied with `matched=600+` (should be ~30) and inflated drifts. Fixed in `1e77fdf6` (`horizon: 0`). |
+| `2026-05-23T02-39-54Z` (round 2 post-fix) | Engine signatures clean (`matched ≈ 21-39`, R high). Verifier post-snap window: 4/7 PASS, 3/7 FAIL + 3 DEGENERATE. **Two regressions on previously-passing tracks**: Get Lucky (95 % PASS pre-snap → 0 % FAIL post-snap; R=0.99 confident wrong measurement); Seven Nation Army (failing → worse). The CS.1.y.2 R-gate failure (Failed Approach #68) reappearing in Beat-This!-vs-Beat-This! form: tight cluster, wrong phase. |
+| `2026-05-24T15-07-31Z` (round 3) | Matt's M7: "drift very much real across tracks"; "rarely snaps to the beat and does not follow downbeat." Cross-capture non-reproducibility confirmed on multiple tracks (Billie Jean -6/+79; SNA +88/-160; Get Lucky -109/-7; Everlong +44/-116; Superstition -181/+63 across captures). Pre-snap baseline also degraded: 1/10 PASS vs CS.1's 3/10. EMA drift bouncing 200-300 ms within steady-state tracks; HUMBLE only 43 % locked post-snap. |
+
+**Root finding.** Beat This! on a 15 s tap is reproducible *within* a capture against a 25 s reference *on the same slice* (what redo.1 measured) — but is NOT reproducible *across* captures or *across* slice positions for several tracks. The "non-reproducibility across captures" failure mode that killed the 3-5 s windows in the original CS.1.y re-diagnosis is alive at 15 s on a subset of tracks. redo.1 made a measurement that did not cover the production case (the production case is "Beat This!@first-15-s-of-tap" compared to whatever the user perceives later, not "Beat This!@15 s of slice A vs Beat This!@25 s of the same slice").
+
+**Also surfaced:** the pre-fix "approx now" baseline itself degraded across captures using identical cached grids — either `gridOnsetOffsetMs` seeding is non-deterministic across preps (the prep-time `GridOnsetCalibrator` is still onset-based — Failed Approach #68's root cause that we left in place at prep time), or the verifier's clock-offset estimate is noise-coupled, or there's an unrelated regression. The "approximately within ±130 ms" claim CS.1 made (and that the 2026-05-22 product-direction decision relied on) does not hold across captures.
+
+**Pattern.** CS.1 → CS.1.y.1 → CS.1.y.2 → CS.1.y re-diag → CS.1.y.2-redo redo.1 → redo.2 → redo.3 round 1 fix → round 2 fix = **five fix increments on the same defect without perceptual convergence.** This is the Drift-Motes pattern (Failed Approach #58) at infrastructure scope. Per CLAUDE.md "stop and report instead of forging ahead" and "iteration converges only when each step integrates feedback into the model" — the model is wrong upstream, more fixes won't help.
+
+**Status.** **BUG-017 stays Open** but its scope is now broader than the original cold-start grid-phase offset: the broader symptom is "beat-sync infrastructure is not perceptually aligned across the catalog" (Matt 2026-05-24). To be addressed by a beat-sync audit increment (analogous to Phase CA's DSP audit but scoped to the beat-sync wiring specifically — `GridOnsetCalibrator` prep-time seeding, `LiveBeatDriftTracker` EMA behaviour under wrong-phase grids, verifier clock-offset sensitivity, and whether the broader perceptual drift comes from one root cause or several). **No fix code until the audit produces a per-component verdict with empirical grounding.**
+
+**Audit kickoff prompt:** `docs/prompts/BEAT_SYNC_AUDIT_KICKOFF.md` (next session).
 
 ---
 
