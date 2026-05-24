@@ -226,17 +226,13 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
 
     /// Ring buffer accumulating interleaved stereo PCM for stem separation.
     /// Buffer capacity is sized at `StemSeparator.modelSampleRate` (44100 Hz)
-    /// for `maxSeconds` of stereo audio; on a 48 kHz tap it holds
-    /// `maxSeconds × 44100/48000` s. Sized to comfortably exceed every
-    /// consumer's window — stem separation snapshots 10 s; the CS.1.y.2-redo
-    /// cold-start phase correction snapshots 15 s (needs ≥ 15 s on a 48 kHz
-    /// tap → 18 s of model-rate capacity gives ~16.5 s of real time, a
-    /// comfortable margin). The actual tap rate is supplied to the rate-aware
-    /// `snapshotLatest`/`rms` overloads so the retrieved sample count matches
-    /// real wall-clock time. (D-079, QR.1; CS.1.y.2-redo, BUG-017)
+    /// for `maxSeconds` of stereo audio; on a 48 kHz tap it still holds ≈ 13.8 s,
+    /// which exceeds every consumer's 10 s window. The actual tap rate is
+    /// supplied to the rate-aware `snapshotLatest`/`rms` overloads so the
+    /// retrieved sample count matches real wall-clock time. (D-079, QR.1)
     let stemSampleBuffer = StemSampleBuffer(
         sampleRate: Double(StemSeparator.modelSampleRate),
-        maxSeconds: 18
+        maxSeconds: 15
     )
 
     /// Lock guarding `_tapSampleRate`. Writes happen on the audio thread; reads

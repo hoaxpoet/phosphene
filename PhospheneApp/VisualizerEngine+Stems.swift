@@ -233,140 +233,64 @@ extension VisualizerEngine {
         runtimeRecalibrationIfDue()
     }
 
-    // MARK: - CS.1.y.2-redo: Cold-Start Phase Correction (BUG-017)
+    // MARK: - BUG-007.9: hybrid runtime recalibration
 
-    /// Beat This! window snapshotted for the cold-start phase correction.
-    /// 15 s established by the CS.1.y.2-redo Step 1 measurement (2026-05-22):
-    /// reproduces full-window phase within ≤ 8 ms across both reference
-    /// captures, on every test track including HUMBLE and Money.
-    private static let coldStartPhaseWindowSeconds: Double = 15.0
+    /// Minimum tap-audio duration (seconds) to snapshot for runtime recalibration.
+    /// Sized to fit comfortably within `stemSampleBuffer.maxSeconds` (~13 s).
+    private static let runtimeRecalibrationWindowSeconds: Double = 12.0
 
-    /// Minimum elapsed playback time before the cold-start correction fires.
-    /// Matches the window length — the buffer-coverage guard inside
-    /// `computeColdStartLiveGrid` requires at least `window − 0.5 s` of real
-    /// audio, so a sub-15 s elapsed value cannot satisfy it anyway.
-    private static let coldStartPhaseMinElapsedSeconds: Double = 15.0
+    /// Minimum `matchedOnsetCount` before runtime recalibration fires. After
+    /// this many tight matches, the EMA has settled enough that overriding
+    /// the bias won't introduce transient mid-track jumps.
+    private static let runtimeRecalibrationMinMatchedOnsets: Int = 8
 
-    /// CS.1.y.2-redo cold-start phase correction (replaces BUG-007.9's
-    /// onset-based recalibration, Failed Approach #68). Snapshot ~15 s of
-    /// tap audio, run Beat This!, compare its phase against the installed
-    /// cached grid, and — when the loose confidence gate clears — re-seed
-    /// `drift` so the visual beat aligns with the audible beats. One-shot
-    /// per track. Runs on `stemQueue` (from `performStemSeparation`).
-    /// The prep-time `gridOnsetOffsetMs` seed via `GridOnsetCalibrator` is
-    /// unaffected — only the runtime correction is reworked.
+    /// Replay the latest 12 s of tap audio through GridOnsetCalibrator and
+    /// override the drift EMA with the runtime-derived offset. One-shot per
+    /// track. Runs on `stemQueue` (already on it from `performStemSeparation`).
+    /// Skips when:
+    ///   - already done for this track
+    ///   - no grid is installed (reactive mode)
+    ///   - lock hasn't stabilised yet (matchedOnsets < 8)
+    ///   - insufficient tap-audio buffered
+    ///   - calibrator returns 0 (no signal — keep prep-time bias)
     private func runtimeRecalibrationIfDue() {
         guard !runtimeRecalibrationDone else { return }
         let tracker = mirPipeline.liveDriftTracker
         guard tracker.hasGrid else { return }
-        let elapsed = mirPipeline.elapsedSeconds
-        guard elapsed >= Self.coldStartPhaseMinElapsedSeconds else { return }
-        guard let analyzer = ensureLiveBeatGridAnalyzer() else {
-            runtimeRecalibrationDone = true   // latch on init failure too
-            return
-        }
-        guard let liveGrid = computeColdStartLiveGrid(
-            elapsed: elapsed, analyzer: analyzer
-        ) else { return }
-        runtimeRecalibrationDone = true   // one-shot regardless of outcome
-        let trackTitle = currentTrack?.title ?? "unknown"
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            let outcome = self.mirPipeline.liveDriftTracker
-                .applyColdStartPhaseCorrection(liveGrid: liveGrid)
-            self.logColdStartPhaseOutcome(outcome, trackTitle: trackTitle)
-        }
-    }
-
-    /// Lazy-load `liveBeatGridAnalyzer` (shared with the reactive-mode live
-    /// Beat This! path). Returns nil on init failure.
-    private func ensureLiveBeatGridAnalyzer() -> DefaultBeatGridAnalyzer? {
-        if let existing = liveBeatGridAnalyzer { return existing }
-        do {
-            let analyzer = try DefaultBeatGridAnalyzer(device: context.device)
-            liveBeatGridAnalyzer = analyzer
-            return analyzer
-        } catch {
-            logger.error("CS.1.y.2-redo: DefaultBeatGridAnalyzer init failed: \(error)")
-            return nil
-        }
-    }
-
-    /// Snapshot the latest tap audio, run Beat This! on it, and shift the
-    /// resulting beat times into track-relative playback time. Returns nil
-    /// when the buffer is too short or Beat This! returned an empty grid —
-    /// the caller retries on the next stem-separation cycle.
-    private func computeColdStartLiveGrid(
-        elapsed: Double, analyzer: DefaultBeatGridAnalyzer
-    ) -> BeatGrid? {
+        guard tracker.matchedOnsetCount >= Self.runtimeRecalibrationMinMatchedOnsets else { return }
         let actualRate = tapSampleRate
         let interleaved = stemSampleBuffer.snapshotLatest(
-            seconds: Self.coldStartPhaseWindowSeconds, sampleRate: actualRate
+            seconds: Self.runtimeRecalibrationWindowSeconds, sampleRate: actualRate
         )
-        guard interleaved.count >= 2 else { return nil }
-        let monoCount = interleaved.count / 2
-        let bufferedSeconds = Double(monoCount) / actualRate
-        // Require the snapshot to cover at least the target window minus a
-        // small slack; otherwise wait for the next stem-separation cycle.
-        guard bufferedSeconds >= Self.coldStartPhaseWindowSeconds - 0.5 else { return nil }
-        var mono = [Float](repeating: 0, count: monoCount)
-        for i in 0..<monoCount {
+        guard interleaved.count >= 2 else { return }
+        var mono = [Float](repeating: 0, count: interleaved.count / 2)
+        for i in 0..<mono.count {
             mono[i] = (interleaved[i * 2] + interleaved[i * 2 + 1]) * 0.5
         }
-        let rawGrid = analyzer.analyzeBeatGrid(samples: mono, sampleRate: actualRate)
-        guard !rawGrid.beats.isEmpty else { return nil }
-        // No halving-octave correction at 15 s — Beat This! is reliable on
-        // this window (per redo.1 measurement). The BPM tolerance gate in
-        // `applyColdStartPhaseCorrection` catches any real disagreement.
-        //
-        // `horizon: 0` is load-bearing here. `BeatGrid.offsetBy(_:)` defaults
-        // to `horizon: 300` — extrapolating the grid 300 s forward using the
-        // tempo Beat This! estimated from the 15 s window. Tiny tempo errors
-        // compound over 300 s into multi-period phase walks → the residual
-        // cluster vs the cached grid scatters → R collapses on real music
-        // (BUG-017 redo.3 round 1 finding, 2026-05-22). The phase correction
-        // only needs the actually-measured beats; the cached grid is already
-        // extrapolated to provide the long-range context to match against.
-        let bufferStartTime = elapsed - bufferedSeconds
-        return rawGrid.offsetBy(bufferStartTime, horizon: 0)
-    }
-
-    /// Single per-track log line summarising the cold-start phase correction
-    /// outcome. Called on MainActor after `applyColdStartPhaseCorrection`.
-    @MainActor
-    private func logColdStartPhaseOutcome(
-        _ outcome: LiveBeatDriftTracker.ColdStartPhaseCorrectionOutcome,
-        trackTitle: String
-    ) {
-        let prefix = "CS.1.y.2-redo cold-start phase correction"
-        let detail = describeColdStartOutcome(outcome)
-        logger_liveBeat("\(prefix): track='\(trackTitle)' \(detail)")
-        sessionRecorder?.log("\(prefix): track='\(trackTitle)' \(detail)")
-    }
-
-    /// Format a one-line description of an outcome. Pure — extracted so
-    /// `logColdStartPhaseOutcome` stays under the function-body length cap.
-    private func describeColdStartOutcome(
-        _ outcome: LiveBeatDriftTracker.ColdStartPhaseCorrectionOutcome
-    ) -> String {
-        switch outcome {
-        case .applied(let driftMs, let matched, let resultant):
-            let driftStr = String(format: "%+.1f", driftMs)
-            let rStr = String(format: "%.2f", resultant)
-            return "applied — drift=\(driftStr) ms, R=\(rStr), matched=\(matched)"
-        case .skippedNoGrid:
-            return "skipped — no cached grid"
-        case .skippedLiveGridDegenerate(let beats):
-            return "skipped — live grid degenerate (\(beats) beats)"
-        case .skippedTempoDisagreement(let live, let cached):
-            let liveStr = String(format: "%.1f", live)
-            let cachedStr = String(format: "%.1f", cached)
-            return "skipped — BPM disagreement live=\(liveStr) vs cached=\(cachedStr)"
-        case .skippedNoMatches:
-            return "skipped — no matched beat pairs"
-        case .skippedLowConfidence(let resultant):
-            let rStr = String(format: "%.2f", resultant)
-            return "skipped — low confidence (R=\(rStr))"
+        let grid = tracker.currentGrid
+        let calibrator = GridOnsetCalibrator()
+        let runtimeOffsetMs = calibrator.calibrate(
+            samples: mono, sampleRate: actualRate, grid: grid
+        )
+        // Skip apply if calibrator couldn't compute a result (no onsets in
+        // window, etc.) — keep the prep-time bias rather than zeroing out.
+        guard runtimeOffsetMs != 0 else {
+            runtimeRecalibrationDone = true
+            logger_liveBeat(
+                "BUG-007.9: runtime recalibration skipped — calibrator returned 0 (insufficient signal)"
+            )
+            return
+        }
+        let priorMs = tracker.currentDriftMs
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.mirPipeline.liveDriftTracker.applyCalibration(driftMs: runtimeOffsetMs)
+            self.runtimeRecalibrationDone = true
+            let priorStr = String(format: "%+.1f", priorMs)
+            let newStr = String(format: "%+.1f", runtimeOffsetMs)
+            self.logger_liveBeat(
+                "BUG-007.9: runtime recalibration fired — drift \(priorStr) → \(newStr) ms (12 s tap audio)"
+            )
         }
     }
 
