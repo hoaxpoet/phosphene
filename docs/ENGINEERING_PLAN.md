@@ -4165,7 +4165,21 @@ The remaining work is **verification + targeted filling**, not new architecture.
 
 **Done-when (met).** Root cause identified with code-level evidence; documented in `KNOWN_ISSUES.md` (BUG-017); no fix code.
 
-### Increment CS.1.y — Cold-start grid-phase fix (BUG-017) — **CS.1.y.2-redo reverted 2026-05-24; superseded by a beat-sync audit increment**
+### Increment BSAudit — Beat-Sync Audit (BUG-017 diagnosis stage) ✅
+
+**Status: complete (2026-05-24).** Audit-only; no fix code. Deliverable: [`docs/CAPABILITY_REGISTRY/BEAT_SYNC.md`](CAPABILITY_REGISTRY/BEAT_SYNC.md). Six components scoped per the kickoff (prep-time grid + onset-offset seeding; cold-start grid install; live drift EMA; EMA under wrong-phase grids; verifier clock-offset; sub-bass onset feed); per-component verdicts with empirical grounding from the four reference captures (`2026-05-22T16-57-36Z` through `2026-05-24T15-07-31Z`).
+
+**Headline findings.**
+1. **The "beat-sync infrastructure is not perceptually aligned across the catalog" symptom is compound**, not single-rooted: a *static* per-track phase offset on syncopated tracks (the original BUG-017) plus *cross-capture variability* of the verification reference itself (a new finding).
+2. **Beat This! on a 25 s live-tap slice is not cross-capture reproducible** on 5-6 of 10 catalog tracks — the dominant cause of the CS.1.y.2-redo cycle's verifier-passing→M7-failing pattern. The redo.1 "10/10 viable at 15 s" measurement validated within-slice reproducibility, not the production case.
+3. **Failed Approach #68 is still live at prep time** in `GridOnsetCalibrator` — sub-bass-onset-vs-grid alignment used as a beat-phase reference. Same architectural mistake the CS.1.y.2 runtime fix attempted; not yet retired at prep.
+4. **The live drift EMA's behaviour under a wrong-phase grid is bimodal:** sub-50ms-off → biases drift toward off-beat onsets (Regime A wobble); >50ms-off → rejects all onsets, drift parks at seed (Regime B stuck-off-beat). Both visible in cap1 baseline without any synthetic injection.
+
+**Per-component verdicts and ranked root-cause hypotheses are in the [`BEAT_SYNC.md`](CAPABILITY_REGISTRY/BEAT_SYNC.md) document. BUG-017's symptom statement was refined in `KNOWN_ISSUES.md` against the audit findings.** Per-component fix scope sketches surfaced as a follow-up backlog (BSAudit-FU-1 through FU-6), none authorized; **Matt sign-off on direction is the next step**, not another fix increment.
+
+**Done-when (met).** Per-component verdicts published with empirical grounding; six specific empirical questions either answered from the existing captures or surfaced as gaps requiring instrumentation; ranked root-cause hypotheses table; per-component fix scope sketches.
+
+### Increment CS.1.y — Cold-start grid-phase fix (BUG-017) — **CS.1.y.2-redo reverted 2026-05-24; superseded by BSAudit; awaiting direction decision**
 
 **Status (2026-05-22).** Three signal sources for the ≤ 5 s phase acquisition were tried and exhausted; Matt set a new direction ("approx now, exact by ~20 s"); the design landed; redo.1 measurement + redo.2 implementation are in tree; redo.3 validation is pending Matt's fresh capture + M7.
 
@@ -4186,7 +4200,9 @@ The remaining work is **verification + targeted filling**, not new architecture.
 
 **Done-when.** Audit document published with per-component verdicts; root-cause hypotheses ranked by evidence; **no new fix code until the audit produces a clear picture.**
 
-**Audit kickoff:** `docs/prompts/BEAT_SYNC_AUDIT_KICKOFF.md` — to be opened in the next session.
+**Audit ✅** — landed 2026-05-24 as **BSAudit** (above). Per-component verdicts + ranked root-cause hypotheses + per-component fix scope sketches in [`docs/CAPABILITY_REGISTRY/BEAT_SYNC.md`](CAPABILITY_REGISTRY/BEAT_SYNC.md). BUG-017 stays Open with the refined symptom statement (KNOWN_ISSUES.md addendum 2026-05-24); next step is **Matt sign-off on the BSAudit-FU-* backlog**, not another fix.
+
+**Critical follow-up gate (from the audit's strongest finding):** Component 5b — Beat This!-on-tap is not cross-capture reproducible on a substantial subset of the catalog. **No future fix can claim convergence while the verification infrastructure cannot judge it reliably.** BSAudit-FU-5 (research-only: full-tap-window Beat This! reproducibility, or human-tap ground truth) is the load-bearing pre-work; if it does not yield a stable reference, the "approx now, exact by ~20 s" 2026-05-22 product-direction (recast as Component 2's "document the structural limitation") becomes the canonical position.
 
 **Sequencing (Matt-ratified 2026-05-22).** CS.1 verified the cold-start infrastructure does *not* work; CS.2–CS.5 are all refinements that assume a correct cold-start grid (CS.2 protects the cold-start window; CS.3/CS.4 keep presets from over-relying on stems; CS.5 documents the contract). The BUG-017 fix is therefore **upstream of CS.2–CS.5** and is the load-bearing next CS increment. CS.2–CS.5 follow it.
 
