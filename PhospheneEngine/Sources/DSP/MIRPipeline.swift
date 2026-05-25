@@ -1,3 +1,4 @@
+// swiftlint:disable file_length
 // MIRPipeline — Coordinator for all MIR feature extraction.
 // Owns the four analyzers (SpectralAnalyzer, BandEnergyProcessor, ChromaExtractor,
 // BeatDetector), runs them in sequence, and populates a FeatureVector for GPU upload.
@@ -25,12 +26,19 @@ public final class MIRPipeline: @unchecked Sendable {
     /// Live tracks fall back to this when `liveDriftTracker.hasGrid == false`.
     public let beatPredictor: BeatPredictor
 
-    /// DSP.2 S7: drift tracker against an offline `BeatGrid`. Owns the live
-    /// `beatPhase01` / `beatsUntilNext` for tracks with cached Beat This!
-    /// analysis. Created once at init; populated via `setBeatGrid(_:)` on
-    /// track change. Empty grid → tracker returns zero phase and the pipeline
-    /// falls back to `beatPredictor` in `buildFeatureVector`.
+    /// BSAudit.3 (2026-05-24): BPM-anchored phase-acquisition tracker. Owns
+    /// the live `beatPhase01` / `beatsUntilNext` / `accentConfidence` for
+    /// tracks with a cached BPM prior. Created once at init; populated via
+    /// `setBeatGrid(_:)` (or the new BSAudit.3 `installBPMPrior` entry point
+    /// once the app-layer wiring switches in sub-commit 3) on track change.
+    /// No prior → tracker returns zero phase and the pipeline falls back to
+    /// `beatPredictor` in `buildFeatureVector`.
     public let liveDriftTracker: LiveBeatDriftTracker
+
+    /// BSAudit.3 broadband-flux peak detector. Drives
+    /// `liveDriftTracker.update(broadbandPeak:...)` each frame from
+    /// `SpectralAnalyzer.smoothedFlux`. Design §6.3.
+    public let broadbandPeakDetector: BroadbandPeakDetector
 
     // MARK: - CPU-Side Properties
 
@@ -124,6 +132,7 @@ public final class MIRPipeline: @unchecked Sendable {
         self.structuralAnalyzer = StructuralAnalyzer()
         self.beatPredictor = BeatPredictor()
         self.liveDriftTracker = LiveBeatDriftTracker()
+        self.broadbandPeakDetector = BroadbandPeakDetector()
         self.nyquist = sampleRate / 2.0
 
         logger.info("MIRPipeline created: \(binCount) bins, \(sampleRate) Hz")
@@ -268,17 +277,11 @@ public final class MIRPipeline: @unchecked Sendable {
         )
     }
 
-    /// Assemble a FeatureVector from analyzer results.
-    ///
-    /// MV-1: deviation primitives (bassRel, bassDev, etc.) are derived here
-    /// from the AGC-normalized energy fields. Formula: xRel = (x - 0.5) * 2.0,
-    /// xDev = max(0, xRel). These are stable across mix-density changes because
-    /// the AGC numerator and denominator track together (D-026).
-    ///
-    /// MV-3b: beatPhase01 and beatsUntilNext are populated from BeatPredictor
-    /// each frame, enabling anticipatory motion in preset shaders (D-028).
-    private func buildFeatureVector(_ ctx: ProcessContext) -> FeatureVector {
-        var fv = FeatureVector(
+    /// Construct the un-derived FeatureVector from analyzer results.
+    /// Extracted from `buildFeatureVector` so the deviation / phase logic
+    /// stays under the function_body_length lint cap.
+    private func makeRawFeatureVector(from ctx: ProcessContext) -> FeatureVector {
+        FeatureVector(
             bass: ctx.energy.bass,
             mid: ctx.energy.mid,
             treble: ctx.energy.treble,
@@ -302,6 +305,19 @@ public final class MIRPipeline: @unchecked Sendable {
             time: ctx.time,
             deltaTime: ctx.deltaTime
         )
+    }
+
+    /// Assemble a FeatureVector from analyzer results.
+    ///
+    /// MV-1: deviation primitives (bassRel, bassDev, etc.) are derived here
+    /// from the AGC-normalized energy fields. Formula: xRel = (x - 0.5) * 2.0,
+    /// xDev = max(0, xRel). These are stable across mix-density changes because
+    /// the AGC numerator and denominator track together (D-026).
+    ///
+    /// MV-3b: beatPhase01 and beatsUntilNext are populated from BeatPredictor
+    /// each frame, enabling anticipatory motion in preset shaders (D-028).
+    private func buildFeatureVector(_ ctx: ProcessContext) -> FeatureVector {
+        var fv = makeRawFeatureVector(from: ctx)
         // MV-1: Derive deviation primitives from AGC-normalized values.
         fv.bassRel = (fv.bass - 0.5) * 2.0
         fv.bassDev = max(0, fv.bassRel)
@@ -312,12 +328,16 @@ public final class MIRPipeline: @unchecked Sendable {
         fv.bassAttRel = (fv.bassAtt - 0.5) * 2.0
         fv.midAttRel  = (fv.midAtt - 0.5) * 2.0
         fv.trebAttRel = (fv.trebleAtt - 0.5) * 2.0
-        // DSP.2 S7: prefer the offline-grid drift tracker when a cached
-        // `BeatGrid` is installed.  In reactive mode (no grid), fall back to
-        // the legacy `BeatPredictor` IIR estimator.
+        // BSAudit.3 (2026-05-24): prefer the BPM-prior drift tracker when a
+        // prior has been installed (cached or live). In reactive mode (no
+        // prior), fall back to the legacy `BeatPredictor` IIR estimator.
         if liveDriftTracker.hasGrid {
+            let broadbandPeak = broadbandPeakDetector.process(
+                smoothedFlux: ctx.spectral.smoothedFlux,
+                deltaTime: ctx.deltaTime
+            )
             let driftResult = liveDriftTracker.update(
-                subBassOnset: ctx.beat.onsets[0],
+                broadbandPeak: broadbandPeak,
                 playbackTime: elapsedSeconds,   // Double (QR.1 / D-079)
                 deltaTime: ctx.deltaTime
             )
@@ -344,21 +364,55 @@ public final class MIRPipeline: @unchecked Sendable {
 
     // MARK: - Live Drift Grid
 
-    /// Install or clear the offline `BeatGrid` consumed by `liveDriftTracker`.
-    /// Pass `nil` (or `.empty`) to revert to reactive-mode behaviour, which
-    /// uses `BeatPredictor` for `beatPhase01` / `beatsUntilNext`.
-    /// Call from the app layer on track change after consulting `StemCache`.
+    /// Install or clear the BPM prior consumed by `liveDriftTracker`. Pass
+    /// `nil` (or `.empty`) to revert to reactive-mode behaviour, which uses
+    /// `BeatPredictor` for `beatPhase01` / `beatsUntilNext`. Call from the
+    /// app layer on track change after consulting `StemCache`.
+    ///
+    /// BSAudit.3 (2026-05-24): the grid's beat positions are no longer
+    /// consumed for phase — only the BPM and `beatsPerBar` flow through. The
+    /// new BSAudit.3 `installBPMPrior(bpm:character:beatsPerBar:)` entry
+    /// point is wired in sub-commit 3.
     public func setBeatGrid(_ grid: BeatGrid?) {
-        liveDriftTracker.setGrid(grid ?? .empty)
+        installBPMPrior(
+            bpm: grid?.bpm ?? 0,
+            character: nil,
+            beatsPerBar: grid?.beatsPerBar ?? 4
+        )
         logger.info("MIR_BEAT_GRID: set (\(grid?.beats.count ?? 0) beats)")
     }
 
-    /// Set the offline `BeatGrid` AND seed the drift EMA with the calibrated
-    /// per-track offset (BUG-007.8). Used by the prepared-cache install path.
+    /// Legacy entry point. `initialDriftMs` is ignored — the BPM-prior
+    /// architecture supersedes the prep-time drift seed (design §5.2).
     public func setBeatGrid(_ grid: BeatGrid?, initialDriftMs: Double) {
-        liveDriftTracker.setGrid(grid ?? .empty, initialDriftMs: initialDriftMs)
+        setBeatGrid(grid)
         let driftStr = String(format: "%+.1f", initialDriftMs)
-        logger.info("MIR_BEAT_GRID: set (\(grid?.beats.count ?? 0) beats, initialDrift=\(driftStr) ms)")
+        logger.info("MIR_BEAT_GRID: set (legacy initialDrift=\(driftStr) ms ignored — BPM prior)")
+    }
+
+    /// BSAudit.3 install path. Configures both the drift tracker and the
+    /// broadband peak detector for the new track's tempo.
+    ///
+    /// - Parameters:
+    ///   - bpm: Cached tempo from Beat This! preview analysis. Pass 0 to
+    ///     clear the prior (revert to reactive mode).
+    ///   - character: Rhythm-character metadata from preparation. Nil →
+    ///     neutral defaults.
+    ///   - beatsPerBar: Time-signature numerator (4 default).
+    public func installBPMPrior(
+        bpm: Double,
+        character: RhythmCharacter?,
+        beatsPerBar: Int = 4
+    ) {
+        liveDriftTracker.installBPMPrior(
+            bpm: bpm,
+            character: character,
+            beatsPerBar: beatsPerBar
+        )
+        broadbandPeakDetector.reset()
+        broadbandPeakDetector.setBPM(bpm)
+        let bpmStr = String(format: "%.1f", bpm)
+        logger.info("MIR_BPM_PRIOR: installed bpm=\(bpmStr), meter=\(beatsPerBar)/X")
     }
 
     /// Reset all analyzers and internal state.
@@ -371,6 +425,7 @@ public final class MIRPipeline: @unchecked Sendable {
         structuralAnalyzer.reset()
         beatPredictor.reset()
         liveDriftTracker.reset()
+        broadbandPeakDetector.reset()
 
         lock.lock()
         fluxRunningMax = 1e-6
