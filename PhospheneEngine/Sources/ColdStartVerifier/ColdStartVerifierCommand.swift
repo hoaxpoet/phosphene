@@ -78,6 +78,30 @@ struct ColdStartVerifierCommand: ParsableCommand {
           help: "BSAudit.2 Path A.2: cross-capture Beat This! reproducibility (--sessions list).")
     var crossCapture: Bool = false
 
+    @Flag(name: .long,
+          help: """
+                BSAudit.3.validate.1: score the % of audible beats with a visual \
+                accent within ±accept-ms. Per-track verdict PASS-firing | \
+                PASS-degraded | FAIL; aggregate gate 90 % of catalog.
+                """)
+    var accentWindowPassRate: Bool = false
+
+    @Option(name: .long,
+            help: "Acceptance half-width (ms) around each audible beat for an accent hit.")
+    var acceptMs: Double = AccentWindowPassRate.defaultAcceptMs
+
+    @Option(name: .long,
+            help: "Rising-edge threshold for the (gated) `beatComposite` column.")
+    var accentThreshold: Double = AccentWindowPassRate.defaultAccentThreshold
+
+    @Option(name: .long,
+            help: "Per-track PASS-firing gate (fraction of audible beats hit).")
+    var perTrackPassRate: Double = AccentWindowPassRate.defaultPerTrackPassRate
+
+    @Option(name: .long,
+            help: "PASS-degraded ceiling for max accent_confidence over the window.")
+    var degradedConfThreshold: Double = AccentWindowPassRate.defaultDegradedConfThreshold
+
     @Option(name: .long,
             help: "Comma-separated session directories for --cross-capture (first = reference).")
     var sessions: String = ""
@@ -145,6 +169,14 @@ struct ColdStartVerifierCommand: ParsableCommand {
         }
         if positionSweep {
             try runPositionSweep(
+                sessionURL: loaded.url,
+                artifacts: loaded.artifacts,
+                rawTap: loaded.rawTap,
+                analyzer: loaded.analyzer)
+            return
+        }
+        if accentWindowPassRate {
+            try runAccentWindowPassRate(
                 sessionURL: loaded.url,
                 artifacts: loaded.artifacts,
                 rawTap: loaded.rawTap,
