@@ -41,7 +41,21 @@ public struct CachedTrackData: Sendable {
     /// `LiveBeatDriftTracker.setGrid(_:initialDriftMs:)` as the EMA's initial
     /// bias so drift starts at the right value rather than chasing it at runtime.
     /// Defaults to 0 for backward compatibility — pre-fix calibration omitted.
+    ///
+    /// BSAudit.3 (2026-05-24): retained on the cache for backward compatibility
+    /// with pre-BSAudit.3 entries on disk, but no longer read at install time
+    /// (the BPM-prior architecture replaces the prep-time phase seed). Field
+    /// will be removed in a future cache-format migration once existing entries
+    /// have aged out.
     public let gridOnsetOffsetMs: Double
+
+    /// BSAudit.3 (2026-05-24) — rhythm-character metadata for BPM-anchored
+    /// phase acquisition. Consumed by
+    /// `LiveBeatDriftTracker.installBPMPrior(bpm:character:)` to scale the
+    /// phase-acquisition tunables to the track's rhythmic character.
+    /// Optional for backward compatibility — older cache entries return nil
+    /// and the runtime treats nil as `RhythmCharacter.neutral`.
+    public let rhythmCharacter: RhythmCharacter?
 
     // MARK: - Init
 
@@ -51,7 +65,8 @@ public struct CachedTrackData: Sendable {
         trackProfile: TrackProfile,
         beatGrid: BeatGrid = .empty,
         drumsBeatGrid: BeatGrid = .empty,
-        gridOnsetOffsetMs: Double = 0
+        gridOnsetOffsetMs: Double = 0,
+        rhythmCharacter: RhythmCharacter? = nil
     ) {
         self.stemWaveforms = stemWaveforms
         self.stemFeatures = stemFeatures
@@ -59,6 +74,7 @@ public struct CachedTrackData: Sendable {
         self.beatGrid = beatGrid
         self.drumsBeatGrid = drumsBeatGrid
         self.gridOnsetOffsetMs = gridOnsetOffsetMs
+        self.rhythmCharacter = rhythmCharacter
     }
 }
 

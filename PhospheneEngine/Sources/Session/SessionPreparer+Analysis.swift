@@ -152,7 +152,16 @@ extension SessionPreparer {
         }
 
         // Step 7 (BUG-007.8): per-track grid-vs-onset offset calibration.
+        // BSAudit.3 (2026-05-24): retained for cache backward compatibility
+        // but no longer consumed at install time (the BPM-prior architecture
+        // replaces the prep-time phase seed). Will be removed in a future
+        // cache-format migration.
         let gridOnsetOffsetMs = Self.computeGridOnsetOffsetMs(preview: preview, grid: beatGrid)
+
+        // Step 8 (BSAudit.3): rhythm-character metadata for the BPM-prior
+        // phase-acquisition path. Nil when the grid is empty (no rhythm
+        // structure to characterise) or the preview is too short.
+        let rhythmCharacter = Self.computeRhythmCharacter(preview: preview, grid: beatGrid)
 
         return CachedTrackData(
             stemWaveforms: stemWaveforms,
@@ -160,7 +169,8 @@ extension SessionPreparer {
             trackProfile: profile,
             beatGrid: beatGrid,
             drumsBeatGrid: drumsBeatGrid,
-            gridOnsetOffsetMs: gridOnsetOffsetMs
+            gridOnsetOffsetMs: gridOnsetOffsetMs,
+            rhythmCharacter: rhythmCharacter
         )
     }
 
