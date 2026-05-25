@@ -4165,6 +4165,25 @@ The remaining work is **verification + targeted filling**, not new architecture.
 
 **Done-when (met).** Root cause identified with code-level evidence; documented in `KNOWN_ISSUES.md` (BUG-017); no fix code.
 
+### Increment BSAudit.3 — BPM-anchored phase acquisition design + impl + validate + close ✅ (resolved against accepted limit)
+
+**Status: complete (2026-05-25). Outcome: BUG-017 Resolved against accepted structural limit per Matt's Choice A decision.** The BSAudit.3.impl architecture is the production cold-start contract; the ±60 ms / 3 s perceptual sync sub-goal of the original Phase CS bar is retired as structurally unachievable. CLAUDE.md gains §Cold-Start Phase Contract + Failed Approach #69. See `RELEASE_NOTES_DEV.md [dev-2026-05-25-a]` for the full narrative.
+
+**Sub-increments:**
+
+- **BSAudit.3.design ✅** (`19a49db0`, 2026-05-24) — design doc `docs/BPM_ANCHORED_PHASE_ACQUISITION_DESIGN_2026-05-24.md`; three open decisions resolved (soft ramp; default `phaseAcquisitionDifficulty` formula; dual-candidate octave-risk).
+- **BSAudit.3.impl.1 ✅** (`efaf8cb4`, 2026-05-24) — DSP/Session foundation: broadband peak detector + `RhythmCharacter` metadata (no behaviour change).
+- **BSAudit.3.impl.2 ✅** (`13d0f456`, 2026-05-24) — `LiveBeatDriftTracker` BPM-prior + broadband-peak phase acquisition + confidence-gated accents.
+- **BSAudit.3.impl.3 ✅** (`30d032ea`, 2026-05-24) — integration: install BPM prior, gate accents by confidence, retire `GridOnsetCalibrator`.
+- **BSAudit.3.validate.1 ✅** (`515f9b89`, 2026-05-25) — verifier: `accent_confidence` in features.csv + `--accent-window-pass-rate` mode + 2 new self-test cases (PASS 11/11).
+- **BSAudit.3.validate.2 ✅** (`cf83037c`, 2026-05-25) — historical baseline: `--accent-window-pass-rate` against 3 pre-impl reference captures (cap1 absent on disk); summary doc at [`docs/diagnostics/BSAUDIT_3_HISTORICAL_BASELINE_2026-05-25.md`](diagnostics/BSAUDIT_3_HISTORICAL_BASELINE_2026-05-25.md). All 30 pre-impl samples PASS-firing at ≥ 95 %.
+- **BSAudit.3.validate.3 + diag.1 ✅** (`346f7487`, 2026-05-25) — fresh post-impl capture `2026-05-25T15-20-49Z`; verifier reads **FAIL — 4/10 pass**. Verifier extended with per-track diagnostic block (first broadband peak time/residual, first accent fire time/residual, confidence/lock-state timings, per-fire residual distribution). Root-cause findings at [`docs/diagnostics/BSAUDIT_3_VALIDATE_3_DIAG_2026-05-25.md`](diagnostics/BSAUDIT_3_VALIDATE_3_DIAG_2026-05-25.md): three structural failures (wrong-anchor lock on broadband flux; confidence accumulator doesn't back-pressure; metric is gameable by over-firing).
+- **BSAudit.3.close ✅** (this commit, 2026-05-25) — Matt's Choice A: accept structural limit + document. CLAUDE.md §Cold-Start Phase Contract + Failed Approach #69 + What NOT To Do entry; KNOWN_ISSUES BUG-017 → Resolved with three closeout addenda; RELEASE_NOTES `[dev-2026-05-25-a]`; BEAT_SYNC.md closeout addendum; HISTORICAL_DEAD_ENDS entry.
+
+**Outcome at the design level.** Six iterations (CS.1 → CS.1.y.2 → CS.1.y re-diag → CS.1.y.2-redo r1+r2 → BSAudit.3.impl) exhausted the available short-window automated signals for cold-start beat-phase derivation. None converged on > 70 % of catalog. The premise that some automated signal in the first ~3 s reliably gives audible beat phase is empirically falsified. Production contract is what CLAUDE.md §Cold-Start Phase Contract documents: continuous-energy from frame 1, BPM-prior + confidence-gated accents, graceful degradation on hard tracks; what's accepted as unattainable is per-track ±60 ms perceptual lock within 3 s from automated tap-audio analysis alone.
+
+**Done-when (met).** All six sub-increments shipped; production architecture stays at BSAudit.3.impl; CLAUDE.md / KNOWN_ISSUES / RELEASE_NOTES / BEAT_SYNC.md / HISTORICAL_DEAD_ENDS documentation reflects the accepted contract; verifier diagnostic infrastructure persists for any future related work; six-iteration pattern documented as Failed Approach #69 for future-Claude.
+
 ### Increment BSAudit.2 — Path A research (Beat This!-on-tap reproducibility) ✅
 
 **Status: complete (2026-05-24).** Research-only — no production code touched. Two new `ColdStartVerifier` modes (`--position-sweep` for within-capture, `--cross-capture` for across captures) + new modules ([`BeatPhaseStats.swift`](../PhospheneEngine/Sources/ColdStartVerifier/BeatPhaseStats.swift), [`PositionSweep.swift`](../PhospheneEngine/Sources/ColdStartVerifier/PositionSweep.swift), [`PositionSweepReport.swift`](../PhospheneEngine/Sources/ColdStartVerifier/PositionSweepReport.swift), [`CrossCapture.swift`](../PhospheneEngine/Sources/ColdStartVerifier/CrossCapture.swift), [`CrossCaptureReport.swift`](../PhospheneEngine/Sources/ColdStartVerifier/CrossCaptureReport.swift), [`ColdStartVerifierCommand+PathA.swift`](../PhospheneEngine/Sources/ColdStartVerifier/ColdStartVerifierCommand+PathA.swift)) running on the four reference captures.
