@@ -537,3 +537,114 @@ The Phase CS-scope decision Matt made on 2026-05-22 ("approximately synced immed
 ---
 
 — Claude (2026-05-24, audit-only)
+
+---
+
+## Addendum — BSAudit.2 (Path A) findings (2026-05-24)
+
+The BSAudit deliverable above identified BSAudit-FU-5 (cross-capture-stable reference research) as the critical follow-up gate. Path A — "is Beat This!-on-tap reproducible across captures at *some* slice configuration?" — was scoped as the cheaper of two options (Path B being human-tap ground truth). BSAudit.2 implements two measurement modes in `ColdStartVerifier` (`--position-sweep` for within-capture, `--cross-capture` for across captures) and runs them on the four reference captures. **Findings are decisive: no slice configuration salvages Beat This!-on-tap as a stable reference.**
+
+### Code (research-only — no production code touched)
+
+| File | Purpose |
+|---|---|
+| [`BeatPhaseStats.swift`](../../PhospheneEngine/Sources/ColdStartVerifier/BeatPhaseStats.swift) | Shared circular-mean phase math + median-IOI. ReDiagnosis factored to use it. |
+| [`PositionSweep.swift`](../../PhospheneEngine/Sources/ColdStartVerifier/PositionSweep.swift) + [`PositionSweepReport.swift`](../../PhospheneEngine/Sources/ColdStartVerifier/PositionSweepReport.swift) | Path A.1: for each track, Beat This! at sliding 25 s slices (default 10 s stride). |
+| [`CrossCapture.swift`](../../PhospheneEngine/Sources/ColdStartVerifier/CrossCapture.swift) + [`CrossCaptureReport.swift`](../../PhospheneEngine/Sources/ColdStartVerifier/CrossCaptureReport.swift) | Path A.2: across multiple sessions of the same playlist, compare same-position-25s-slice grids vs first-session reference. |
+| [`ColdStartVerifierCommand+PathA.swift`](../../PhospheneEngine/Sources/ColdStartVerifier/ColdStartVerifierCommand+PathA.swift) | CLI runners; flag wiring in the main command file. |
+
+Engine suite: **1265 / 1265 pass** (baseline preserved). `--self-test`: PASS (7/7). Project-wide `swiftlint --strict`: 0 violations across 386 files.
+
+### Path A.1 — Within-capture position sensitivity
+
+For each track, Beat This! is run on the first 25 s slice (reference) and at sliding 10 s strides up to 6 positions. Per-position phase residual vs position-0 reference, signed ms.
+
+| Track | cap1 spread | cap2 spread | cap3 spread | cap4 spread | Reading |
+|---|---|---|---|---|---|
+| Billie Jean | **384 ⚠** | **389 ⚠** | **382 ⚠** | **410 ⚠** | persistent: always position-unstable, always spans ~400 ms |
+| Around the World | **397 ⚠** | **388 ⚠** | **393 ⚠** | 45 (short slice) | persistent on full-length captures |
+| Seven Nation Army | 34 | 35 | 43 | 19 | always stable |
+| Get Lucky | **218 ⚠** | **83 ⚠** | **180 ⚠** | 45 (short slice) | usually unstable |
+| Superstition | **344 ⚠** | **244 ⚠** | **108 ⚠** | **96 ⚠** | always unstable, magnitudes shrinking over captures |
+| Everlong | 39 | 46 | 44 | 21 | always stable |
+| Royals | **310 ⚠** | **183 ⚠** | **264 ⚠** | 40 (short slice) | usually unstable; monotonic drift signature |
+| HUMBLE | 25 | 12 | 1 | 4 | always stable |
+| B.O.B. | **286 ⚠** | **161 ⚠** | **195 ⚠** | **113 ⚠** | always unstable |
+| Money | **116 ⚠** | **120 ⚠** | **145 ⚠** | **108 ⚠** | always unstable |
+
+**Position-unstable count per capture:** cap1: 7/10. cap2: 7/10. cap3: 7/10. cap4: 4/10 (3 tracks ran with too few positions to flag).
+
+**Pattern.** The same 7 tracks (Billie Jean, Around the World, Get Lucky, Superstition, Royals, B.O.B., Money) are persistently position-unstable across every capture. The same 3 tracks (Seven Nation Army, Everlong, HUMBLE) are persistently position-stable.
+
+**Two qualitative behaviours seen.**
+
+1. **Monotonic phase drift.** Get Lucky (cap1: 0/-14/-50/-106/-161/-218 ms) and Royals (cap1: 0/+14/+68/+143/+224/+310 ms) show a near-linear march in phase residual as the slice moves further from track start. This means Beat This! is detecting a slightly *different tempo* at each position — the residual accumulates with the inter-position distance. Beat This! on a 25 s slice is not just shifting phase, it's misestimating period.
+2. **Erratic large jumps.** Billie Jean (cap1: 0/-29/-114/-247/+137/-12 ms — the +137 ms is a half-period flip) and Around the World show wild swings including sign flips. Beat This! is locking onto fundamentally different metric interpretations at different positions, jumping between (e.g.) on-beat and off-beat downbeats.
+
+Either behaviour is fatal for using Beat This!-on-tap as a stable verification reference.
+
+### Path A.2 — Cross-capture reproducibility
+
+Same-position (slice starting at playback-time 0) 25 s Beat This! across all 4 captures, with cap1 as the reference. Per-session phase residual vs cap1 reference.
+
+| Track | cap2 vs cap1 | cap3 vs cap1 | cap4 vs cap1 | max \|Δ\| | viable? |
+|---|---|---|---|---|---|
+| Billie Jean | -221 | +94 | +86 | 221 | ✗ |
+| Around the World | -123 | -120 | +100 | 123 | ✗ |
+| Seven Nation Army | +101 | -163 | -204 | 204 | ✗ (was within-capture stable!) |
+| Get Lucky | -183 | -18 ✓ | +85 | 183 | ✗ |
+| Superstition | +120 | +19 ✓ | +189 | 189 | ✗ |
+| Everlong | -89 | -113 | +95 | 113 | ✗ (was within-capture stable!) |
+| Royals | -294 | -255 | +288 | 294 | ✗ |
+| HUMBLE | +68 | +8 ✓ | -322 | 322 | ✗ (was within-capture stable, cap4 breaks it) |
+| B.O.B. | -112 | +2 ✓ | +135 | 135 | ✗ |
+| Money | +153 | +103 | +193 | 193 | ✗ |
+
+**Result: 10 of 10 tracks cross-capture-unstable.** Even Seven Nation Army, Everlong, and HUMBLE — the within-capture-stable tracks — are cross-capture unstable. HUMBLE especially: stable to within 1-25 ms within every capture, but cap4 reads -322 ms different from cap1 at the same playback-time.
+
+### What this means
+
+**Path A is empirically falsified.** No 25 s slice configuration of Beat This!-on-tap is reproducible:
+
+- *Across positions within one capture:* 7 of 10 tracks fail by 100-400 ms.
+- *Across captures at the same position:* 10 of 10 tracks fail by 100-322 ms.
+- *No subset of tracks survives both:* HUMBLE is within-capture-stable but cross-capture-fails. Get Lucky is partially cross-capture stable (cap3 only) but always position-unstable.
+
+A stable longer/stitched window is highly unlikely to rescue this — Beat This! detects different metric interpretations of the same physical audio depending on (a) where the 25 s window starts within the track and (b) which capture's tap audio is fed in. A longer window stitched from multiple 25 s passes would have to RECONCILE conflicting interpretations Beat This! itself produces; that reconciliation is not a feature of the model.
+
+This *empirically confirms* BSAudit's Hypothesis 1 at maximum strength: Beat This!-on-tap is structurally not a cross-capture-stable beat-phase reference for the catalog Matt actually listens to. Within the streaming-only architectural constraint, the verification infrastructure required to judge fix-claim trustworthiness for BUG-017 does not currently exist.
+
+### Implication for the BSAudit follow-up backlog
+
+| Item | Status after BSAudit.2 |
+|---|---|
+| BSAudit-FU-5 Path A | **Closed (empirically falsified)**. Beat This!-on-tap is not a viable cross-capture reference at any 25 s slice configuration; longer-window stitching cannot reconcile conflicting Beat This! outputs. |
+| BSAudit-FU-5 Path B | **Promoted to load-bearing.** Human-tap reference is now the only remaining route to a cross-capture-stable verification ground truth. |
+| BSAudit-FU-1 (refine BUG-017 symptom) | Already done in 2026-05-24 addendum; nothing to add. |
+| BSAudit-FU-2 (retire `GridOnsetCalibrator` from prep) | Still pending Matt sign-off. Independent of FU-5. |
+| BSAudit-FU-3 (cold-start lock-state distinction) | Still pending Matt sign-off. Independent of FU-5. |
+| BSAudit-FU-4 (verifier clock-offset instrumentation) | Still cheap (≤1 hour). Independent of FU-5. |
+| BSAudit-FU-6 (CLAUDE.md FA #68 generalisation) | Still cheap (doc-only). Independent of FU-5. |
+
+**The fork in the road.** Two product-level positions are now distinguishable:
+
+1. **Build the human-tap reference** (Path B). Unblocks any future BUG-017 fix-claim because it gives the verifier a stable ground truth. Cost: a small CLI tool + Matt taps along to the 10-track catalog during playback (~4 min of taps + ~1 session of tooling).
+2. **Accept the structural limit and document.** Adopt the 2026-05-22 product-direction ("approximately synced immediately, locked within ~20 s") as the canonical position; recast the verifier as "useful for relative comparisons within one capture, not as an absolute judge across builds." Cost: documentation only.
+
+The audit does not pick between (1) and (2); that is a product-strategy decision for Matt. Either is consistent with the empirical findings.
+
+### Capture reports
+
+Generated per-capture (in each session directory):
+- `cold_start_position_sweep.md` — per-capture per-track per-position phase residual table.
+- `cold_start_cross_capture.md` (in cap1 directory) — pairwise cross-capture table for all 4 captures.
+
+### Hard rules followed
+
+- **No fix code.** All four new modules + the CLI runner are sibling to production code; the production beat-sync wiring is untouched.
+- **Engine suite green:** 1265 / 1265 (pre-BSAudit.2 baseline preserved).
+- **Lint:** 0 violations across 386 files.
+- **Empirical grounding:** every claim in this addendum cites the capture reports + per-track numeric evidence.
+
+— Claude (2026-05-24, BSAudit.2, research-only)
+

@@ -6,6 +6,78 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-24-c] BSAudit.2 — Path A research (Beat This!-on-tap reproducibility): empirically falsified; Path B promoted to load-bearing
+
+**Increment:** BSAudit.2 (research follow-up to BSAudit). **Status:** Complete 2026-05-24. **Outcome:** Two new `ColdStartVerifier` modes (`--position-sweep`, `--cross-capture`) implemented and run on the four reference captures. **Path A (Beat This!-on-tap as cross-capture-stable reference) empirically falsified.** No production code touched.
+
+### What this is
+
+BSAudit-FU-5 (the audit's load-bearing follow-up) had two routes: Path A (does Beat This!-on-tap reproduce across captures at *some* slice configuration?) and Path B (build a human-tap ground truth instead). Path A was the cheaper route to attempt first. BSAudit.2 implements two measurement modes and runs them across the existing four captures to test Path A.
+
+### Code
+
+| File | Purpose |
+|---|---|
+| [`PhospheneEngine/Sources/ColdStartVerifier/BeatPhaseStats.swift`](../PhospheneEngine/Sources/ColdStartVerifier/BeatPhaseStats.swift) | New — circular-mean phase residual + median-IOI shared helpers. `ReDiagnosis` refactored to use them. |
+| [`PositionSweep.swift`](../PhospheneEngine/Sources/ColdStartVerifier/PositionSweep.swift) + [`PositionSweepReport.swift`](../PhospheneEngine/Sources/ColdStartVerifier/PositionSweepReport.swift) | New — Path A.1 within-capture sliding-slice position sensitivity. |
+| [`CrossCapture.swift`](../PhospheneEngine/Sources/ColdStartVerifier/CrossCapture.swift) + [`CrossCaptureReport.swift`](../PhospheneEngine/Sources/ColdStartVerifier/CrossCaptureReport.swift) | New — Path A.2 cross-capture same-position comparison. |
+| [`ColdStartVerifierCommand+PathA.swift`](../PhospheneEngine/Sources/ColdStartVerifier/ColdStartVerifierCommand+PathA.swift) | New — extension hosting the Path A runners (keeps the main command file under SwiftLint's file-length cap). |
+| `ColdStartVerifierCommand.swift` | Updated — new `--position-sweep` / `--cross-capture` flags + `--sessions` / `--slice-duration-s` / `--position-stride-s` / `--cross-capture-start-s` options + dispatch. |
+| `ReDiagnosis.swift` | Updated — phase math factored to `BeatPhaseStats` (no behaviour change). |
+
+### Findings (full table in [`BEAT_SYNC.md` Addendum](../docs/CAPABILITY_REGISTRY/BEAT_SYNC.md#addendum--bsaudit2-path-a-findings-2026-05-24))
+
+**Path A.1 — within-capture position sensitivity.** For each track, Beat This! on a 25 s slice at sliding 10 s positions within the SAME audio. **7 of 10 tracks position-unstable in every capture.** Phase spread examples (cap1):
+
+- Billie Jean: 384 ms spread across 6 positions (cap1 +0/-29/-114/-247/+137/-12). Persistent — same ~400 ms spread in cap2 (389), cap3 (382), cap4 (410).
+- Around the World: 397 ms spread (cap1). 388/393/45 across other caps (cap4 is short).
+- Get Lucky: 218 ms spread — monotonic drift (0/-14/-50/-106/-161/-218) — Beat This! mis-estimating *period*, residual compounds with slice distance.
+- Royals: 310 ms spread — also monotonic drift signature.
+- Superstition: 344 ms spread. B.O.B.: 286 ms. Money: 116 ms.
+
+Stable across all captures: Seven Nation Army, Everlong, HUMBLE (all within ≤50 ms spread).
+
+**Path A.2 — cross-capture reproducibility.** Same playback-time 25 s slice across the 4 captures, cap1 as reference. **10 of 10 tracks cross-capture-unstable** (max |Δ| > 50 ms). Worst:
+
+- HUMBLE: max |Δ| 322 ms (within-capture-stable, but cap4 reads −322 ms vs cap1)
+- Royals: 294 ms
+- Billie Jean: 221 ms
+- Seven Nation Army: 204 ms (within-capture-stable, cross-capture-unstable)
+
+Even within-capture-stable tracks (SNA, Everlong, HUMBLE) are cross-capture-unstable. The two failure modes are independent.
+
+### Root finding
+
+Beat This!-on-tap produces conflicting metric interpretations of the same physical audio. Within-capture variability comes from position-dependent mis-period-estimation. Cross-capture variability comes from per-capture acoustic context shifts (codec timing, mixer state, tap-driver buffering — Beat This!'s transformer is sensitive to these). **A longer/stitched window cannot reconcile conflicting outputs the model itself produces** — there is no signal Beat This! emits that says "this 25 s gave me a wrong interpretation; favor the other one."
+
+**Path A is closed (empirically falsified).**
+
+### Implication
+
+**Path B (human-tap ground truth) is now the only remaining route to a cross-capture-stable verification reference.** The BSAudit-FU-5 backlog item is updated in KNOWN_ISSUES.md's BUG-017 addendum. Two product-strategy options:
+
+1. **Build Path B.** A small CLI tap-tempo tool; Matt taps along to the 10-track catalog during playback (~4 min of taps). Outputs per-track ground-truth beat times. Unblocks any future BUG-017 fix-claim because the verifier finally has a stable reference.
+2. **Accept the structural limit and document.** Adopt the 2026-05-22 "approximately synced immediately, locked within ~20 s" as the canonical product position. Recast `ColdStartVerifier` as "useful for relative comparison within one capture, not as an absolute judge of fix-claims across builds."
+
+The increment does not pick between these. Matt's call.
+
+### Verification
+
+- Engine suite: **1265 / 1265 pass** (BSAudit baseline preserved).
+- `ColdStartVerifier --self-test`: PASS (7/7).
+- Project-wide `swiftlint --strict`: 0 violations across 386 files.
+- 4 per-capture position-sweep reports + 1 cross-capture report written to `~/Documents/phosphene_sessions/<cap>/cold_start_position_sweep.md` and `~/Documents/phosphene_sessions/2026-05-22T16-57-36Z/cold_start_cross_capture.md`.
+
+### Durable learning
+
+**A measurement that "validates" a downstream-fix prerequisite must use the prerequisite's exact production failure mode, not a controlled subset.** The CS.1.y.2-redo redo.1 measurement validated Beat This!@15s vs Beat This!@25s on the same slice within one capture (high agreement). What it did NOT validate: Beat This!@same-position vs Beat This!@different-position within one capture (now empirically falsified at 7/10 tracks), or Beat This! across captures (now empirically falsified at 10/10). The production case has two axes of variability the redo.1 measurement degenerated to zero of. This generalises: any "viable on this single test" measurement is provisional until the production variability axes are characterised.
+
+### What's next
+
+Matt sign-off on which of the two product-strategy options above to take. If (1), BSAudit.3 scopes the human-tap CLI. If (2), BSAudit.3 is documentation only (CLAUDE.md + product copy updates).
+
+---
+
 ## [dev-2026-05-24-b] BSAudit — Beat-Sync Audit (BUG-017 diagnosis): per-component verdicts published; cross-capture Beat This! reference non-reproducibility identified as dominant root cause
 
 **Increment:** BSAudit (Diagnosis stage of P1 BUG-017, audit-only). **Status:** Complete 2026-05-24. **Outcome:** Per-component audit deliverable published; BUG-017's symptom statement refined against empirical evidence from the four reference captures; ranked root-cause hypotheses + per-component fix scope sketches surfaced as a follow-up backlog. **No fix code in this increment.** **BUG-017 stays Open** — Matt sign-off on the BSAudit-FU-* backlog direction is the next step.

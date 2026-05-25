@@ -4165,6 +4165,22 @@ The remaining work is **verification + targeted filling**, not new architecture.
 
 **Done-when (met).** Root cause identified with code-level evidence; documented in `KNOWN_ISSUES.md` (BUG-017); no fix code.
 
+### Increment BSAudit.2 — Path A research (Beat This!-on-tap reproducibility) ✅
+
+**Status: complete (2026-05-24).** Research-only — no production code touched. Two new `ColdStartVerifier` modes (`--position-sweep` for within-capture, `--cross-capture` for across captures) + new modules ([`BeatPhaseStats.swift`](../PhospheneEngine/Sources/ColdStartVerifier/BeatPhaseStats.swift), [`PositionSweep.swift`](../PhospheneEngine/Sources/ColdStartVerifier/PositionSweep.swift), [`PositionSweepReport.swift`](../PhospheneEngine/Sources/ColdStartVerifier/PositionSweepReport.swift), [`CrossCapture.swift`](../PhospheneEngine/Sources/ColdStartVerifier/CrossCapture.swift), [`CrossCaptureReport.swift`](../PhospheneEngine/Sources/ColdStartVerifier/CrossCaptureReport.swift), [`ColdStartVerifierCommand+PathA.swift`](../PhospheneEngine/Sources/ColdStartVerifier/ColdStartVerifierCommand+PathA.swift)) running on the four reference captures.
+
+**Outcome: Path A empirically falsified.** Within-capture: 7 of 10 tracks position-unstable (100-410 ms phase spread across 25 s slice positions in the same audio). Cross-capture: 10 of 10 tracks differ by 100-322 ms across the 4 captures at the same playback-time. No 25 s slice configuration of Beat This!-on-tap is a stable reference. Full evidence in [`docs/CAPABILITY_REGISTRY/BEAT_SYNC.md` §Addendum — BSAudit.2 (Path A) findings](CAPABILITY_REGISTRY/BEAT_SYNC.md#addendum--bsaudit2-path-a-findings-2026-05-24).
+
+**Implication.** BSAudit-FU-5 Path A is **closed (falsified)**; Path B (human-tap ground truth) is now load-bearing for any future BUG-017 fix-claim that depends on automated verification. Two product-strategy options remain: (1) build Path B (small CLI + ~4 min of Matt's taps); (2) accept the structural limit and adopt the 2026-05-22 "approximately synced immediately, locked within ~20 s" framing as canonical. Matt's call.
+
+**Done-when (met).** Within-capture + cross-capture measurements published; per-capture reports written; BSAudit-FU-5 Path A verdict published; FU-5 Path B promoted in the follow-up backlog.
+
+**Verification.**
+- Engine suite: **1265 / 1265 pass** (pre-BSAudit.2 baseline preserved).
+- `ColdStartVerifier --self-test`: PASS (7/7).
+- Project-wide `swiftlint --strict`: 0 violations across 386 files.
+- 4 capture-level reports + 1 cross-capture report written to session directories.
+
 ### Increment BSAudit — Beat-Sync Audit (BUG-017 diagnosis stage) ✅
 
 **Status: complete (2026-05-24).** Audit-only; no fix code. Deliverable: [`docs/CAPABILITY_REGISTRY/BEAT_SYNC.md`](CAPABILITY_REGISTRY/BEAT_SYNC.md). Six components scoped per the kickoff (prep-time grid + onset-offset seeding; cold-start grid install; live drift EMA; EMA under wrong-phase grids; verifier clock-offset; sub-bass onset feed); per-component verdicts with empirical grounding from the four reference captures (`2026-05-22T16-57-36Z` through `2026-05-24T15-07-31Z`).

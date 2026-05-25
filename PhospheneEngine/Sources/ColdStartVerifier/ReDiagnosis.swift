@@ -198,42 +198,15 @@ enum ReDiagnosis {
 
     // MARK: - Phase comparison
 
-    /// Circular-mean phase offset (signed ms) of `grid` relative to `reference`,
-    /// plus the resultant length [0,1]. Residual = grid beat − nearest reference
-    /// beat, wrapped into [−P/2, P/2]; aggregated as a circular mean so the wrap
-    /// at ±P/2 is handled correctly. Both grids are in the raw-tap clock; a
-    /// constant clock shift does not affect the offset (it is shift-invariant).
+    /// Thin wrappers around `BeatPhaseStats` shared with PositionSweep + CrossCapture.
     private static func phaseOffset(
-        of grid: [Double],
-        vs reference: [Double],
-        period: Double
+        of grid: [Double], vs reference: [Double], period: Double
     ) -> (offsetMs: Double, resultant: Double) {
-        guard !grid.isEmpty, !reference.isEmpty, period > 0 else { return (0, 0) }
-        var sumCos = 0.0
-        var sumSin = 0.0
-        var matched = 0
-        for beat in grid {
-            guard let nearest = ColdStartAnalysis.nearestValue(to: beat, in: reference)
-            else { continue }
-            var residual = beat - nearest
-            residual -= period * (residual / period).rounded()
-            let theta = 2.0 * .pi * residual / period
-            sumCos += cos(theta)
-            sumSin += sin(theta)
-            matched += 1
-        }
-        guard matched > 0 else { return (0, 0) }
-        let resultant = (sumCos * sumCos + sumSin * sumSin).squareRoot() / Double(matched)
-        let meanResidual = atan2(sumSin, sumCos) * period / (2.0 * .pi)
-        return (meanResidual * 1000.0, resultant)
+        BeatPhaseStats.phaseOffset(of: grid, vs: reference, period: period)
     }
 
     private static func medianIOI(_ beats: [Double]) -> Double {
-        guard beats.count >= 2 else { return 0 }
-        var iois: [Double] = []
-        iois.reserveCapacity(beats.count - 1)
-        for i in 1..<beats.count { iois.append(beats[i] - beats[i - 1]) }
-        return ColdStartAnalysis.median(iois)
+        BeatPhaseStats.medianIOI(beats)
     }
 
     // MARK: - Reporting
