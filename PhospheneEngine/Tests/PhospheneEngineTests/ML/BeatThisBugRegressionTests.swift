@@ -119,7 +119,7 @@ struct BeatThisBugRegressionTests {
     /// tests; here we gate only on "doesn't crash, returns finite output."
     @Test func test_reactiveMode_setBeatGridNil_returnsBeatPredictorOutput() throws {
         let mir = MIRPipeline()
-        mir.setBeatGrid(nil)
+        mir.installBPMPrior(bpm: 0, character: nil)
 
         // Feed 100 frames of silent (zero-magnitude) FFT input.
         let mags = [Float](repeating: 0, count: 512)
