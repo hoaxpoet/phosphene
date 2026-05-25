@@ -225,73 +225,10 @@ extension VisualizerEngine {
             logger.error("Stem separation failed: \(error)")
             BUG012Probe.exitStemDispatch(dispatchID: dispatchID, outcome: "threw")
         }
-
-        // BUG-007.9: hybrid runtime recalibration. After stem separation succeeds
-        // (i.e. we have ≥10 s of buffered tap audio AND lock has stabilised),
-        // re-run GridOnsetCalibrator against the *tap* audio to override the
-        // prep-time bias. Closes the preview-vs-tap encoding mismatch.
-        runtimeRecalibrationIfDue()
-    }
-
-    // MARK: - BUG-007.9: hybrid runtime recalibration
-
-    /// Minimum tap-audio duration (seconds) to snapshot for runtime recalibration.
-    /// Sized to fit comfortably within `stemSampleBuffer.maxSeconds` (~13 s).
-    private static let runtimeRecalibrationWindowSeconds: Double = 12.0
-
-    /// Minimum `matchedOnsetCount` before runtime recalibration fires. After
-    /// this many tight matches, the EMA has settled enough that overriding
-    /// the bias won't introduce transient mid-track jumps.
-    private static let runtimeRecalibrationMinMatchedOnsets: Int = 8
-
-    /// Replay the latest 12 s of tap audio through GridOnsetCalibrator and
-    /// override the drift EMA with the runtime-derived offset. One-shot per
-    /// track. Runs on `stemQueue` (already on it from `performStemSeparation`).
-    /// Skips when:
-    ///   - already done for this track
-    ///   - no grid is installed (reactive mode)
-    ///   - lock hasn't stabilised yet (matchedOnsets < 8)
-    ///   - insufficient tap-audio buffered
-    ///   - calibrator returns 0 (no signal — keep prep-time bias)
-    private func runtimeRecalibrationIfDue() {
-        guard !runtimeRecalibrationDone else { return }
-        let tracker = mirPipeline.liveDriftTracker
-        guard tracker.hasGrid else { return }
-        guard tracker.matchedOnsetCount >= Self.runtimeRecalibrationMinMatchedOnsets else { return }
-        let actualRate = tapSampleRate
-        let interleaved = stemSampleBuffer.snapshotLatest(
-            seconds: Self.runtimeRecalibrationWindowSeconds, sampleRate: actualRate
-        )
-        guard interleaved.count >= 2 else { return }
-        var mono = [Float](repeating: 0, count: interleaved.count / 2)
-        for i in 0..<mono.count {
-            mono[i] = (interleaved[i * 2] + interleaved[i * 2 + 1]) * 0.5
-        }
-        let grid = tracker.currentGrid
-        let calibrator = GridOnsetCalibrator()
-        let runtimeOffsetMs = calibrator.calibrate(
-            samples: mono, sampleRate: actualRate, grid: grid
-        )
-        // Skip apply if calibrator couldn't compute a result (no onsets in
-        // window, etc.) — keep the prep-time bias rather than zeroing out.
-        guard runtimeOffsetMs != 0 else {
-            runtimeRecalibrationDone = true
-            logger_liveBeat(
-                "BUG-007.9: runtime recalibration skipped — calibrator returned 0 (insufficient signal)"
-            )
-            return
-        }
-        let priorMs = tracker.currentDriftMs
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            self.mirPipeline.liveDriftTracker.applyCalibration(driftMs: runtimeOffsetMs)
-            self.runtimeRecalibrationDone = true
-            let priorStr = String(format: "%+.1f", priorMs)
-            let newStr = String(format: "%+.1f", runtimeOffsetMs)
-            self.logger_liveBeat(
-                "BUG-007.9: runtime recalibration fired — drift \(priorStr) → \(newStr) ms (12 s tap audio)"
-            )
-        }
+        // BSAudit.3 (2026-05-24): BUG-007.9 hybrid runtime recalibration is
+        // retired (design §5.7). The BPM-prior architecture acquires phase
+        // continuously via broadband-flux peaks; no post-stem-separation
+        // recalibration pass is needed.
     }
 
     // MARK: - Live Beat This! Analysis
@@ -428,11 +365,19 @@ extension VisualizerEngine {
             guard let self else { return }
             let replacedExisting = self.mirPipeline.liveDriftTracker.hasGrid
             let trackTitle = self.currentTrack?.title ?? "unknown"
-            self.mirPipeline.setBeatGrid(grid)
-            let replaceNote = replacedExisting ? " (replaced existing grid)" : ""
+            // BSAudit.3 (2026-05-24): live Beat This! analysis on the tap
+            // also flows through the BPM-prior path. No rhythm-character
+            // metadata is available (the live grid is derived in-stream),
+            // so the runtime uses neutral defaults.
+            self.mirPipeline.installBPMPrior(
+                bpm: grid.bpm,
+                character: nil,
+                beatsPerBar: grid.beatsPerBar
+            )
+            let replaceNote = replacedExisting ? " (replaced existing prior)" : ""
             self.logger_liveBeat(
                 "BEAT_GRID_INSTALL: source=liveAnalysis, track='\(trackTitle)', " +
-                "bpm=\(bpmStr), beats=\(beatCount), meter=\(meter)/X, " +
+                "bpm=\(bpmStr), beats=\(beatCount) (advisory), meter=\(meter)/X, " +
                 "firstBeat=\(firstBeat)s\(replaceNote)"
             )
             self.sessionRecorder?.log(
@@ -469,8 +414,8 @@ extension VisualizerEngine {
         // Allow live Beat This! to re-fire (up to liveBeatMaxAttempts) for the new track.
         liveBeatAnalysisAttempts = 0
 
-        // BUG-007.9: hybrid runtime recalibration is one-shot per track.
-        runtimeRecalibrationDone = false
+        // BSAudit.3 (2026-05-24): BUG-007.9 runtime recalibration is retired
+        // (design §5.7); no per-track reset required.
 
         pipeline.spectralHistory.reset()
 
@@ -480,30 +425,35 @@ extension VisualizerEngine {
         if let identity, let cached = stemCache?.loadForPlayback(track: identity) {
             let replacedExisting = mirPipeline.liveDriftTracker.hasGrid
             pipeline.setStemFeatures(cached.stemFeatures)
-            // BUG-007.8: pass per-track grid-vs-onset offset as initial drift bias.
-            mirPipeline.setBeatGrid(
-                cached.beatGrid.offsetBy(0),
-                initialDriftMs: cached.gridOnsetOffsetMs
+            // BSAudit.3 (2026-05-24): switch from cached-grid + onset-offset
+            // seeding to the BPM-prior architecture. Only the BPM and meter
+            // flow through; the cached `beatGrid.beats` is no longer consumed
+            // for phase (design §5.3). The cached `rhythmCharacter` scales
+            // the runtime phase-acquisition tunables (design §6.4).
+            mirPipeline.installBPMPrior(
+                bpm: cached.beatGrid.bpm,
+                character: cached.rhythmCharacter,
+                beatsPerBar: cached.beatGrid.beatsPerBar
             )
             let grid = cached.beatGrid
             let title = identity.title
             if !grid.beats.isEmpty {
                 let bpmStr = String(format: "%.1f", grid.bpm)
-                let firstBeat = grid.beats.first.map { String(format: "%.3f", $0) } ?? "none"
-                let replaceNote = replacedExisting ? " (replaced existing grid)" : ""
+                let replaceNote = replacedExisting ? " (replaced existing prior)" : ""
                 let beatCount = grid.beats.count
                 let meter = grid.beatsPerBar
+                let charNote = cached.rhythmCharacter == nil ? " — neutral character" : ""
                 // swiftlint:disable:next line_length
-                logger.info("BEAT_GRID_INSTALL: source=preparedCache, track='\(title)', bpm=\(bpmStr), beats=\(beatCount), meter=\(meter)/X, firstBeat=\(firstBeat)s\(replaceNote)")
+                logger.info("BEAT_GRID_INSTALL: source=preparedCache, track='\(title)', bpm=\(bpmStr), beats=\(beatCount) (advisory), meter=\(meter)/X\(replaceNote)\(charNote)")
                 // swiftlint:disable:next line_length
-                sessionRecorder?.log("BeatGrid installed: source=preparedCache, track='\(title)', bpm=\(bpmStr), beats=\(beatCount), meter=\(meter)/X")
+                sessionRecorder?.log("BPM prior installed: source=preparedCache, track='\(title)', bpm=\(bpmStr), meter=\(meter)/X")
             } else {
                 // swiftlint:disable:next line_length
                 logger.info("BEAT_GRID_INSTALL: source=preparedCache, track='\(title)' — empty grid, live inference will be allowed")
             }
         } else {
             pipeline.setStemFeatures(.zero)
-            mirPipeline.setBeatGrid(nil)
+            mirPipeline.installBPMPrior(bpm: 0, character: nil)
             let trackDesc = identity.map { "'\($0.title)'" } ?? "unknown"
             logger.info(
                 "BEAT_GRID_INSTALL: source=none, track=\(trackDesc) — no cache entry, live inference will be allowed"

@@ -29,9 +29,8 @@ public final class MIRPipeline: @unchecked Sendable {
     /// BSAudit.3 (2026-05-24): BPM-anchored phase-acquisition tracker. Owns
     /// the live `beatPhase01` / `beatsUntilNext` / `accentConfidence` for
     /// tracks with a cached BPM prior. Created once at init; populated via
-    /// `setBeatGrid(_:)` (or the new BSAudit.3 `installBPMPrior` entry point
-    /// once the app-layer wiring switches in sub-commit 3) on track change.
-    /// No prior → tracker returns zero phase and the pipeline falls back to
+    /// `installBPMPrior(bpm:character:beatsPerBar:)` on track change. No
+    /// prior → tracker returns zero phase and the pipeline falls back to
     /// `beatPredictor` in `buildFeatureVector`.
     public let liveDriftTracker: LiveBeatDriftTracker
 
@@ -345,6 +344,18 @@ public final class MIRPipeline: @unchecked Sendable {
             fv.beatsUntilNext = driftResult.beatsUntilNext
             fv.barPhase01     = driftResult.barPhase01
             fv.beatsPerBar    = Float(driftResult.beatsPerBar)
+            // BSAudit.3 design §6.5: gate beat-rate accent fields by the
+            // tracker's phase-acquisition confidence. `beatPhase01` /
+            // `barPhase01` are NOT gated — they're continuous-phase outputs
+            // some presets use for non-pulse motion (vocal pitch contour
+            // tracking etc.). Only the pulse-shape fields go to zero when
+            // the system has not yet acquired credible phase.
+            let conf = driftResult.accentConfidence
+            fv.accentConfidence = conf
+            fv.beatBass *= conf
+            fv.beatMid *= conf
+            fv.beatTreble *= conf
+            fv.beatComposite *= conf
         } else {
             let predictorResult = beatPredictor.update(
                 subBassOnset: ctx.beat.onsets[0],
@@ -363,32 +374,6 @@ public final class MIRPipeline: @unchecked Sendable {
     }
 
     // MARK: - Live Drift Grid
-
-    /// Install or clear the BPM prior consumed by `liveDriftTracker`. Pass
-    /// `nil` (or `.empty`) to revert to reactive-mode behaviour, which uses
-    /// `BeatPredictor` for `beatPhase01` / `beatsUntilNext`. Call from the
-    /// app layer on track change after consulting `StemCache`.
-    ///
-    /// BSAudit.3 (2026-05-24): the grid's beat positions are no longer
-    /// consumed for phase — only the BPM and `beatsPerBar` flow through. The
-    /// new BSAudit.3 `installBPMPrior(bpm:character:beatsPerBar:)` entry
-    /// point is wired in sub-commit 3.
-    public func setBeatGrid(_ grid: BeatGrid?) {
-        installBPMPrior(
-            bpm: grid?.bpm ?? 0,
-            character: nil,
-            beatsPerBar: grid?.beatsPerBar ?? 4
-        )
-        logger.info("MIR_BEAT_GRID: set (\(grid?.beats.count ?? 0) beats)")
-    }
-
-    /// Legacy entry point. `initialDriftMs` is ignored — the BPM-prior
-    /// architecture supersedes the prep-time drift seed (design §5.2).
-    public func setBeatGrid(_ grid: BeatGrid?, initialDriftMs: Double) {
-        setBeatGrid(grid)
-        let driftStr = String(format: "%+.1f", initialDriftMs)
-        logger.info("MIR_BEAT_GRID: set (legacy initialDrift=\(driftStr) ms ignored — BPM prior)")
-    }
 
     /// BSAudit.3 install path. Configures both the drift tracker and the
     /// broadband peak detector for the new track's tempo.
