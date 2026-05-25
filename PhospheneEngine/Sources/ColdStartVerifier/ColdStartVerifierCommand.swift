@@ -70,6 +70,30 @@ struct ColdStartVerifierCommand: ParsableCommand {
             help: "Comma-separated window lengths (seconds) for --rediagnose. Default: 3,4,5.")
     var rediagnoseWindows: String = "3,4,5"
 
+    @Flag(name: .long,
+          help: "BSAudit.2 Path A.1: within-capture Beat This! position sensitivity sweep.")
+    var positionSweep: Bool = false
+
+    @Flag(name: .long,
+          help: "BSAudit.2 Path A.2: cross-capture Beat This! reproducibility (--sessions list).")
+    var crossCapture: Bool = false
+
+    @Option(name: .long,
+            help: "Comma-separated session directories for --cross-capture (first = reference).")
+    var sessions: String = ""
+
+    @Option(name: .long,
+            help: "Beat This! slice length (s) for --position-sweep / --cross-capture. Default: 25.")
+    var sliceDurationS: Double = 25.0
+
+    @Option(name: .long,
+            help: "Position stride (s) for --position-sweep. Default: 10.")
+    var positionStrideS: Double = 10.0
+
+    @Option(name: .long,
+            help: "Position start (s) into each track for --cross-capture. Default: 0.")
+    var crossCaptureStartS: Double = 0.0
+
     @Option(name: .long, help: "Cold-start window measured per track, seconds.")
     var firstWindowS: Double = 10.0
 
@@ -99,17 +123,34 @@ struct ColdStartVerifierCommand: ParsableCommand {
 
     func run() throws {
         if selfTest {
-            do {
-                try SelfTest.run()
-            } catch {
-                throw ExitCode.failure
-            }
+            do { try SelfTest.run() } catch { throw ExitCode.failure }
+            return
+        }
+        if crossCapture {
+            try runCrossCapture()
             return
         }
         guard let session else {
             throw ValidationError("--session is required (or pass --self-test).")
         }
-        let sessionURL = URL(fileURLWithPath: (session as NSString).expandingTildeInPath)
+        let loaded = try loadSingleSession(path: session)
+
+        if rediagnose {
+            try runReDiagnosis(
+                sessionURL: loaded.url,
+                artifacts: loaded.artifacts,
+                rawTap: loaded.rawTap,
+                analyzer: loaded.analyzer)
+            return
+        }
+        if positionSweep {
+            try runPositionSweep(
+                sessionURL: loaded.url,
+                artifacts: loaded.artifacts,
+                rawTap: loaded.rawTap,
+                analyzer: loaded.analyzer)
+            return
+        }
         let config = VerifierConfig(
             firstWindowS: firstWindowS,
             windowStartS: windowStartS,
@@ -117,12 +158,32 @@ struct ColdStartVerifierCommand: ParsableCommand {
             tightWindowMs: tightWindowMs,
             passRate: passRate,
             displayShiftMs: displayShiftMs)
+        try runVerification(
+            sessionURL: loaded.url,
+            config: config,
+            artifacts: loaded.artifacts,
+            rawTap: loaded.rawTap,
+            analyzer: loaded.analyzer)
+    }
 
+    /// Bundle returned by `loadSingleSession` so per-mode runners receive a
+    /// fully-prepared environment.
+    struct LoadedSession {
+        let url: URL
+        let artifacts: SessionArtifacts
+        let rawTap: RawTapAnalysis
+        let analyzer: DefaultBeatGridAnalyzer
+    }
+
+    /// Decode + analyze one session's raw_tap, parse its features.csv / log,
+    /// and instantiate the Beat This! analyzer. Shared by --rediagnose,
+    /// --position-sweep, and the verification path.
+    func loadSingleSession(path: String) throws -> LoadedSession {
+        let sessionURL = URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
         print("ColdStartVerifier: loading session \(sessionURL.path)")
         let artifacts = try SessionArtifacts.load(directory: sessionURL)
         print("ColdStartVerifier: \(artifacts.frames.count) frames, "
             + "\(artifacts.tracks.count) track segment(s)")
-
         let rawTapURL = sessionURL.appendingPathComponent("raw_tap.wav")
         guard FileManager.default.fileExists(atPath: rawTapURL.path) else {
             throw VerifierError.missingRawTap(rawTapURL)
@@ -131,23 +192,12 @@ struct ColdStartVerifierCommand: ParsableCommand {
         let rawTap = try RawTapAnalysis.analyze(url: rawTapURL)
         print("ColdStartVerifier: raw_tap \(rawTap.durationS.rounded())s @ "
             + "\(Int(rawTap.sampleRate)) Hz, \(rawTap.onsets.count) onsets")
-
         guard let device = MTLCreateSystemDefaultDevice() else {
             throw VerifierError.noMetalDevice
         }
         let analyzer = try DefaultBeatGridAnalyzer(device: device)
-
-        if rediagnose {
-            try runReDiagnosis(
-                sessionURL: sessionURL,
-                artifacts: artifacts,
-                rawTap: rawTap,
-                analyzer: analyzer)
-            return
-        }
-        try runVerification(
-            sessionURL: sessionURL,
-            config: config,
+        return LoadedSession(
+            url: sessionURL,
             artifacts: artifacts,
             rawTap: rawTap,
             analyzer: analyzer)

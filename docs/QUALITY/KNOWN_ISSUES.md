@@ -197,6 +197,22 @@ The audit published as [`docs/CAPABILITY_REGISTRY/BEAT_SYNC.md`](../CAPABILITY_R
 
 **BUG-017 stays Open** with the refined symptom statement above. The next step is **Matt sign-off on direction** for the BSAudit-FU-* follow-up backlog ([`BEAT_SYNC.md`](../CAPABILITY_REGISTRY/BEAT_SYNC.md) §Follow-up Backlog) — not another fix increment. **No new fix code until a Component 5b cross-capture-stable reference exists or a Component 2-style honest-limitation product framing is documented.**
 
+### Addendum (BSAudit.2 — Path A falsified, 2026-05-24)
+
+The BSAudit follow-up BSAudit-FU-5 split into Path A (Beat This!-on-tap reproducibility) and Path B (human-tap ground truth). BSAudit.2 implemented Path A as two `ColdStartVerifier` modes and ran them on the four reference captures. **Path A is empirically falsified — no 25 s slice configuration of Beat This!-on-tap is reproducible.** Full evidence in [`BEAT_SYNC.md` Addendum — BSAudit.2 (Path A) findings](../CAPABILITY_REGISTRY/BEAT_SYNC.md#addendum--bsaudit2-path-a-findings-2026-05-24).
+
+**Findings.**
+- **Within-capture position sensitivity:** for the same audio in the same capture, Beat This! on a 25 s slice produces different beat positions when the slice start moves by 10 s. 7 of 10 tracks fail by 100-410 ms phase spread across positions. Two qualitative behaviours: monotonic phase drift (Beat This! mis-estimating period — Get Lucky, Royals) and erratic large jumps (Beat This! locking to different metric interpretations — Billie Jean, Around the World).
+- **Cross-capture instability:** 10 of 10 tracks differ by 100-322 ms in same-position 25 s Beat This! across the 4 captures. Even tracks that are within-capture-stable (Seven Nation Army, Everlong, HUMBLE) are cross-capture-unstable — HUMBLE within-capture-stable to ≤ 25 ms but cap4 reads −322 ms different from cap1 at the same playback-time.
+
+**Implication.** A longer/stitched window cannot rescue this — Beat This! produces conflicting metric interpretations the model itself cannot reconcile. Path A is closed.
+
+**Path B (human-tap reference) is now load-bearing** for any future BUG-017 fix-claim that depends on automated verification. The product-strategy fork is now:
+1. **Build Path B** (small CLI + ~4 min of Matt's taps for the 10-track catalog + ~1 session of tooling). Unblocks future fix-claims with a stable ground truth.
+2. **Accept the structural limit and document** (2026-05-22 "approximately synced immediately, locked within ~20 s" position becomes the canonical answer; recast `ColdStartVerifier` as within-capture-only).
+
+The audit does not pick between these. Matt's call.
+
 ---
 
 ### BUG-016 — Lumen Mosaic "not working" in 2026-05-21 reactive-mode sessions
