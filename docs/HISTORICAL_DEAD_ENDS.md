@@ -88,3 +88,31 @@ For entries describing **tech that may have evolved since the original observati
 **Original entry:** Bin-count bias across pitch classes when accumulating chroma without bin-count normalisation.
 
 > Moved to graveyard 2026-05-13 (DOC.3a). Calibration-specific learning; the correct approach (bin-count normalisation, weight = 1 / binsInPitchClass) is documented in CLAUDE.md §Audio Analysis Tuning §Chroma. No active rule needed — `ChromaExtractor.swift` implements the correct form by construction.
+
+---
+
+## Cold-start beat-phase derivation dead ends
+
+### Six iterations on automated short-window cold-start beat-phase derivation (CS.1 → BSAudit.3, 2026-05-22 → 2026-05-25)
+
+**The shared premise (now falsified):** "there is some automated signal in the first ~3 s of live tap audio that reliably tells us the audible beat phase of a novel track." Six iterations attempted to identify and use such a signal; each used a different mechanism; each failed in a different way. None converged on > 70 % of the 10-track reference catalog. The premise was retired under Matt's Choice A decision 2026-05-25.
+
+| Iteration | Mechanism | Result | Why it failed | Reference |
+|---|---|---|---|---|
+| CS.1 | Trust cached `BeatGrid` phase from frame 1 (`offsetBy(0)`) | 3/10 PASS the ±50 ms / 90 % bar | Preview clip is a mid-song excerpt; preview-time clock ≠ track-time clock | [`KNOWN_ISSUES.md` BUG-017](QUALITY/KNOWN_ISSUES.md), CS.1 baseline |
+| CS.1.y.2 | Phase-lock from first live sub-bass onsets | 0/10 PASS, reverted | Sub-bass detector fires on sub-bass *events* (bassline notes, 808s), off-beat on syncopated tracks. Confidence gate on cluster *tightness* can't distinguish on-beat cluster from off-beat cluster. | [CLAUDE.md Failed Approach #68](../CLAUDE.md#failed-approaches--do-not-repeat) |
+| CS.1.y re-diagnosis | Beat This! on 3–5 s live tap | 1–3/10 viable, non-reproducible across captures | Short windows degrade Beat This!'s tempo + period estimation | `KNOWN_ISSUES.md` BUG-017 addendum (CS.1.y re-diagnosis) |
+| CS.1.y.2-redo r1 | Beat This!@15 s snap (default horizon bug) | engine bug `horizon: 300`; refixed | Implementation bug — `horizon: 0` patch landed | `RELEASE_NOTES_DEV.md [dev-2026-05-23]` |
+| CS.1.y.2-redo r2 | Beat This!@15 s snap | 4/7 cap2 pass, cross-capture unstable on cap3 + cap4; reverted | Beat This!@15s is per-capture stable but cross-capture unstable on 5–6 of 10 catalog tracks ([BSAudit.2 finding](CAPABILITY_REGISTRY/BEAT_SYNC.md#addendum--bsaudit2-path-a-findings-2026-05-24)) | `[dev-2026-05-24-a]` |
+| BSAudit.3.impl | BPM-prior + broadband-peak phase acquisition + confidence-gated accents | 4/10 PASS-firing\|degraded on the new metric (fresh capture `2026-05-25T15-20-49Z`); architecture retained but ±60 ms / 3 s perceptual sub-goal retired | Broadband flux fires on pre-beat content (pad swells, vocal entries) — anchors off-beat on 5/10 tracks. Confidence accumulator doesn't back-pressure because periodic content at quarter-note rates reinforces *any* phase that matches the period. | [`BSAUDIT_3_VALIDATE_3_DIAG_2026-05-25.md`](diagnostics/BSAUDIT_3_VALIDATE_3_DIAG_2026-05-25.md) |
+
+**The active rule that retired this dead-end pattern:** [CLAUDE.md Failed Approach #69](../CLAUDE.md#failed-approaches--do-not-repeat) — don't file iteration #7 on this defect without a fundamentally different premise. Any future cold-start beat-phase work requires either:
+- A human-tap reference (BSAudit-FU-5 Path B — small CLI + ~4 min of Matt's taps for the 10-track catalog).
+- Full-track local-file analysis (not currently available given the streaming-only constraint).
+- Manual per-track calibration UX (not currently scoped).
+
+Anything in the short-window-tap-audio family has been exhaustively explored.
+
+**What lives in production today:** BSAudit.3.impl architecture (BPM prior + broadband-peak phase acquisition + confidence-gated accents + graceful degradation on hard tracks). The contract is documented in [CLAUDE.md §Cold-Start Phase Contract](../CLAUDE.md#cold-start-phase-contract). The architecture's behaviour at the design level: continuous-energy modulation from frame 1; per-beat accent firing in steady state on the majority of catalog; graceful silence (no false-positive beat claims) on tracks the BPM-prior can't lock.
+
+> Moved to graveyard 2026-05-25 (BSAudit.3.close). Last verified against capture `2026-05-25T15-20-49Z`. The active rule (Failed Approach #69) catches the recurrence pattern; this entry catalogues the six historical iterations so future-Claude can see the dead-end shape at a glance.

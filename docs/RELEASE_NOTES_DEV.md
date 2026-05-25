@@ -6,6 +6,52 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-25-a] BSAudit.3 closeout — Option A: accept structural limit; BUG-017 Resolved against accepted limit
+
+**Increment:** BSAudit.3 (full chain — impl.1 + impl.2 + impl.3 + validate.1 + validate.2 + diag.1 + close). **Status:** BUG-017 Resolved 2026-05-25 against accepted structural limit per Matt's Choice A decision. **Outcome:** the BSAudit.3.impl architecture stays in production as the cold-start contract; the ±60 ms / 3 s perceptual sync sub-goal is retired as structurally unachievable; CLAUDE.md gains §Cold-Start Phase Contract + Failed Approach #69.
+
+### What this closes
+
+BUG-017 was filed 2026-05-22 against the Phase CS bar ("beat-synced from frame 1 of every track"). CS.1 empirically falsified the bar at 3/10 PASS. Five fix-class iterations followed: CS.1.y.1 (design); CS.1.y.2 (sub-bass-onset snap — FA #68; 0/10; reverted); CS.1.y re-diagnosis (short-window Beat This! — 1-3/10 viable, non-reproducible); CS.1.y.2-redo r1 (engine bug); r2 (Beat This!@15s snap — 4/7 cap2 / cross-capture unstable on cap3+cap4; reverted). After the fifth iteration Matt flagged the Drift Motes pattern at infrastructure scope and the BSAudit audit was filed 2026-05-24. BSAudit + BSAudit.2 (Path A falsified) led to BSAudit.3 (design-first re-architecture). BSAudit.3.impl shipped 2026-05-24 (`efaf8cb4..30d032ea`). BSAudit.3.validate.1 + .2 (2026-05-25) added the verifier diagnostic mode + a historical baseline. BSAudit.3.validate.3 attempted M7 on a fresh capture; the verifier scored 4/10 PASS on the new metric, and Matt surfaced the structural concern that no catalog preset can perceptually discriminate the architecture (FFO is invariant to BSAudit.3; LumenMosaic has BUG-016 open; the design-comment promise of Membrane was unvalidated).
+
+BSAudit.3.diag.1 (`346f7487`) extended the verifier with per-track diagnostic infrastructure and produced the root-cause findings: three empirically-grounded structural failures (wrong-anchor lock on broadband flux; confidence accumulator doesn't back-pressure; metric is gameable by over-firing) confirm iteration #6 territory per CLAUDE.md Failed Approach #58. The decision tree was framed as four options; Matt picked **Choice A — accept the structural limit + document**.
+
+### What's in production
+
+The BSAudit.3.impl architecture stays. Production behaviour:
+
+- Continuous-energy modulation from frame 1 (Audio Data Hierarchy Layer 1, unchanged).
+- Cached `BeatGrid` install via `MIRPipeline.installBPMPrior(bpm:character:beatsPerBar:)` — BPM + meter from Beat This! on the 30 s Spotify preview.
+- `LiveBeatDriftTracker` BPM-prior + broadband-peak phase acquisition with EMA + confidence accumulator (design §6.4).
+- Confidence-gated accents — `beatBass / beatMid / beatTreble / beatComposite × accentConfidence` per design §6.5. Gating ramps accent amplitudes in as confidence climbs (the soft-ramp warmup). Pre-impl baseline's accent over-firing during cold-start is suppressed.
+- Graceful degradation on hard tracks — confidence stays below the gate, accents stay quiet, no false-positive beat claims. Empirically confirmed in the fresh-capture diagnostic (Seven Nation Army, Money both PASS-degraded).
+- Steady-state lock — EMA refines phase over the track; D-019 stem warmup provides a cleaner drums-isolated signal post-warmup.
+
+### What's accepted as unattainable
+
+Original Phase CS bar (`docs/COLD_START_SYNC_DESIGN_2026-05-20.md` §3): "from frame 1 of every track, the visual beat lands within ±50 ms of the audible beat; ≥ 90 % of beats in the first 10 s within tolerance; ≥ 90 % of tracks passing." Six iterations between 2026-05-22 and 2026-05-25 demonstrated this is structurally unachievable from short live tap audio. The available signals (sub-bass onsets, short-window Beat This!, Beat This!@15s, broadband flux peaks) all fail differently on >30 % of catalog. CLAUDE.md Failed Approach #69 captures the pattern + the discriminator for any future work in this space (which requires a fundamentally different premise — human-tap reference per BSAudit-FU-5 Path B; full-track local-file analysis; manual per-track calibration UX — not another short-window signal).
+
+### Documentation changes (this closeout commit)
+
+- `CLAUDE.md` — new **§Cold-Start Phase Contract** subsection under §Audio Data Hierarchy documenting what BSAudit.3.impl delivers and what it does NOT deliver. New **Failed Approach #69** in §Failed Approaches with the full six-iteration timeline + discriminator. New entry in §What NOT To Do retiring further short-window-signal iteration.
+- `docs/QUALITY/KNOWN_ISSUES.md` — BUG-017 status flipped to **Resolved 2026-05-25 (closed against accepted structural limit)**. New closeout addendum chains: BSAudit.3 design + impl 2026-05-24; validate.1 + .2 diagnostic infrastructure + historical baseline 2026-05-25; diag.1 + Failed Approach #69 2026-05-25; resolution against Choice A.
+- `docs/ENGINEERING_PLAN.md` — BSAudit.3 entries added: design, impl.1/.2/.3, validate.1/.2, diag.1, close. Phase CS / CS.1.y closed against accepted limit.
+- `docs/CAPABILITY_REGISTRY/BEAT_SYNC.md` — new closeout addendum recording Matt's Choice A decision + pointers to CLAUDE.md §Cold-Start Phase Contract + the diagnostic findings.
+- `docs/HISTORICAL_DEAD_ENDS.md` — new entry for "automated short-window cold-start beat-phase derivation" pattern with the six-iteration timeline as historical record.
+
+### Verification
+
+- Engine SwiftTesting: 1252/1252 (no code changes in this closeout commit).
+- `swiftlint --strict` 0 violations.
+- `ColdStartVerifier --self-test` PASS (11/11).
+- Production runtime unchanged from BSAudit.3.impl (`30d032ea`).
+
+### Local-only
+
+The six BSAudit.3 commits (`efaf8cb4..346f7487`) plus this closeout are all local on `main`. Push pending Matt's explicit "yes, push."
+
+---
+
 ## [dev-2026-05-24-c] BSAudit.2 — Path A research (Beat This!-on-tap reproducibility): empirically falsified; Path B promoted to load-bearing
 
 **Increment:** BSAudit.2 (research follow-up to BSAudit). **Status:** Complete 2026-05-24. **Outcome:** Two new `ColdStartVerifier` modes (`--position-sweep`, `--cross-capture`) implemented and run on the four reference captures. **Path A (Beat This!-on-tap as cross-capture-stable reference) empirically falsified.** No production code touched.

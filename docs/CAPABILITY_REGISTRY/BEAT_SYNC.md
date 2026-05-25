@@ -648,3 +648,52 @@ Generated per-capture (in each session directory):
 
 — Claude (2026-05-24, BSAudit.2, research-only)
 
+
+---
+
+## Addendum — BSAudit.3 closeout (Matt's Choice A decision, 2026-05-25)
+
+This audit's load-bearing follow-up (BSAudit-FU-5) was resolved via a different path than the two it framed. Rather than Path A (Beat This!-on-tap as cross-capture-stable reference — empirically falsified in [BSAudit.2](#addendum--bsaudit2-path-a-findings-2026-05-24)) or Path B (human-tap ground truth — not built), Matt chose a third path 2026-05-24: a design-first re-architecture of the cold-start contract itself. **BSAudit.3** = design + impl + validate + diag + close, 2026-05-24 → 2026-05-25.
+
+**BSAudit.3.impl** ([`docs/BPM_ANCHORED_PHASE_ACQUISITION_DESIGN_2026-05-24.md`](../BPM_ANCHORED_PHASE_ACQUISITION_DESIGN_2026-05-24.md), commits `efaf8cb4..30d032ea`) replaced the "trust cached grid phase" + "snap to live Beat This!" approaches with **BPM-prior + broadband-peak phase acquisition + confidence-gated accents**:
+
+- `GridOnsetCalibrator` retired entirely — this audit's Component 1b finding (Failed Approach #68 still live at prep) was resolved.
+- `cached.beatGrid.bpm` consumed via `MIRPipeline.installBPMPrior(bpm:character:beatsPerBar:)`; the cached beat *positions* are no longer used (this audit's Component 1a + Component 2 mis-use retired).
+- `LiveBeatDriftTracker` reworked to anchor phase on the first broadband-flux peak (`SpectralAnalyzer.smoothedFlux`, not sub-bass — this audit's Component 6 finding addressed), accumulate confidence via an EMA, and emit `accentConfidence ∈ [0, 1]`. `MIRPipeline.buildFeatureVector` multiplies the beat-rate accent fields by this scalar (design §6.5).
+- `RhythmCharacter` pre-analysis metadata extends `CachedTrackData` for per-track tunable scaling.
+
+**BSAudit.3.validate** ([`BSAUDIT_3_HISTORICAL_BASELINE_2026-05-25`](../diagnostics/BSAUDIT_3_HISTORICAL_BASELINE_2026-05-25.md), commits `515f9b89`, `cf83037c`) added a new verifier mode `--accent-window-pass-rate` per the architecture's design §8: scores "did a `beatComposite` rising-edge fire within ±60 ms of each audible beat?" with PASS-firing | PASS-degraded | FAIL verdicts. Historical baseline against pre-impl captures: all 30 track samples PASS-firing at ≥ 95 %.
+
+**BSAudit.3.diag.1** ([`BSAUDIT_3_VALIDATE_3_DIAG_2026-05-25`](../diagnostics/BSAUDIT_3_VALIDATE_3_DIAG_2026-05-25.md), commit `346f7487`) ran the verifier against a fresh post-impl capture `2026-05-25T15-20-49Z`. **Aggregate FAIL — 4 of 10 tracks pass.** The verifier was extended with a per-track diagnostic block (first broadband peak time + residual, first accent fire + residual, confidence/lock-state timings, per-fire residual distribution) and produced three structurally-grounded findings:
+
+1. **Broadband-flux-as-phase-anchor is unsound.** 5 of 10 tracks anchored > 100 ms off the nearest audible beat (Billie Jean −212 ms, ATW −231 ms, SNA −291 ms, Royals −516 ms, B.O.B. −309 ms). Consistently negative residuals indicate broadband flux fires on *pre-beat* content (pad swells, vocal entries, hi-hat lead-ins) — the same architectural shape as Failed Approach #68 at the broadband layer.
+2. **Confidence accumulator does NOT back-pressure off-anchor lock.** Design §9.1's mitigation falsified: HUMBLE (anchor −68 ms) reached confidence 0.9; Billie Jean (anchor −212 ms) reached 1.0. Periodic broadband content at quarter-note rates reinforces *any* phase that matches the period prior, not just the on-beat one.
+3. **`--accent-window-pass-rate` metric is gameable by accent over-firing.** Billie Jean: 25+ accent fires in 10 s vs 19 audible beats; per-fire median |residual| = 109 ms; metric reads 95 % PASS-firing. "Any accent within ±60 ms of each beat" is trivially satisfied by accent over-firing.
+
+The fresh capture demonstrated this audit's worst case: **six iterations on the same defect (CS.1 → CS.1.y.2 → CS.1.y re-diag → CS.1.y.2-redo r1+r2 → BSAudit.3.impl), each using a different mechanism, none converging on > 70 % of catalog.** This is the project-scope twin of Failed Approach #58 (Drift Motes at preset scope), now codified as **Failed Approach #69**. The premise the six iterations did not change — "some automated signal in the first ~3 s of tap audio reliably gives audible beat phase of a novel track" — is empirically falsified.
+
+### Resolution
+
+**Matt's Choice A decision (2026-05-25):** retain BSAudit.3.impl as the production cold-start architecture (gated accents + graceful degradation is a real improvement); accept the ±60 ms / 3 s perceptual sync sub-goal as structurally unachievable; document the contract honestly.
+
+- Production architecture stays at `30d032ea` (BSAudit.3.impl.3).
+- `ColdStartVerifier --accent-window-pass-rate` mode + per-track diagnostic block stays as diagnostic infrastructure.
+- CLAUDE.md §Cold-Start Phase Contract documents the achievable contract (continuous-energy from frame 1; BPM-prior + confidence-gated accents; graceful degradation on hard tracks).
+- CLAUDE.md Failed Approach #69 retires further automated short-window cold-start beat-phase derivation.
+- BUG-017 status: **Resolved against accepted structural limit.**
+- BSAudit-FU-5 Path B (human-tap reference) remains a viable future direction if perceptual-sync requirements ever change; not currently scoped.
+
+### What this audit's per-component verdicts now read like post-closeout
+
+| Component | Pre-closeout verdict | Post-closeout state |
+|---|---|---|
+| 1a. Prep-time Beat This! grid | `production-active-but-broken` (for phase) | **Resolved** — `installBPMPrior` consumes BPM only; cached beat positions no longer used for phase. |
+| 1b. Prep-time `gridOnsetOffsetMs` | `documented-but-broken` | **Resolved** — `GridOnsetCalibrator` retired entirely. |
+| 2. Cold-start grid install | `documented-but-broken` | **Resolved against accepted limit** — install path now BPM-only; per-track phase offset accepted as residual limit per CLAUDE.md §Cold-Start Phase Contract. |
+| 3. Live drift EMA | `production-active` | Unchanged at the API; semantics now driven by the BSAudit.3 confidence accumulator rather than the legacy ±50 ms hard match. |
+| 4. EMA under wrong-phase grid | `characterized` (bimodal) | Superseded — BSAudit.3.impl no longer installs a wrong-phase grid; the wrong-anchor problem now lives at the broadband-peak phase acquisition layer, characterized in `BSAUDIT_3_VALIDATE_3_DIAG_2026-05-25.md`. |
+| 5a. Verifier clock-offset | `unverified-claim` | Unchanged — instrumentation step never executed; not load-bearing for the closeout. |
+| 5b. Beat This!-on-tap reference stability | `production-active-but-broken` (cross-capture) | **Accepted as known limit** — the `ColdStartVerifier --accent-window-pass-rate` mode is within-capture-only by design per Path A falsification. Cross-capture comparisons remain out of scope for any future verifier use. |
+| 6. `BeatDetector` sub-bass onset | `production-active-but-broken` (as phase reference) | **Resolved** — no remaining production code uses sub-bass onsets as a phase reference. The detector's onset-stream use for beat-pulse fields (Layer 4 accents) remains correct and uncontroversial. |
+
+— Claude (2026-05-25, BSAudit.3.close)
