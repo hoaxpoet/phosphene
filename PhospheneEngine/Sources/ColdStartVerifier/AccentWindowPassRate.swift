@@ -76,6 +76,10 @@ struct AccentWindowTrackResult {
     let windowGridBPM: Double
     let firstPt: Double
     let windowEnd: Double
+    /// BSAudit.3.diag — per-track root-cause indicators (always populated;
+    /// the report renders the section only for non-degenerate tracks).
+    /// See `AccentWindowDiagnostic.swift` for the struct definition.
+    let diagnostic: AccentWindowDiagnostic
 }
 
 struct AccentWindowAnalysisResult {
@@ -217,15 +221,10 @@ enum AccentWindowPassRate {
         let hits = countAccentHits(
             audible: audible, frames: windowFrames, config: config)
         let rate = Double(hits) / Double(audible.count)
-        let verdict: AccentWindowVerdict
-        if rate >= config.perTrackPassRate {
-            verdict = .passFiring
-        } else if maxConf < config.degradedConfThreshold
-                  && maxComposite <= config.accentThreshold {
-            verdict = .passDegraded
-        } else {
-            verdict = .fail
-        }
+        let verdict = verdictFor(
+            rate: rate, maxConf: maxConf, maxComposite: maxComposite, config: config)
+        let diagnostic = AccentWindowDiagnostics.compute(
+            audible: audible, frames: windowFrames, config: config)
         return AccentWindowTrackResult(
             track: track,
             verdict: verdict,
@@ -239,7 +238,20 @@ enum AccentWindowPassRate {
             clockOffsetS: offsetS,
             windowGridBPM: windowBPM,
             firstPt: firstPt,
-            windowEnd: windowEnd)
+            windowEnd: windowEnd,
+            diagnostic: diagnostic)
+    }
+
+    /// Per-track verdict from the design §6.5 + §6.6 gate. Extracted from
+    /// `evaluate(...)` to keep the function body under the SwiftLint length cap.
+    private static func verdictFor(
+        rate: Double, maxConf: Double, maxComposite: Double,
+        config: AccentWindowConfig
+    ) -> AccentWindowVerdict {
+        if rate >= config.perTrackPassRate { return .passFiring }
+        if maxConf < config.degradedConfThreshold
+            && maxComposite <= config.accentThreshold { return .passDegraded }
+        return .fail
     }
 
     /// Number of audible beats that have at least one rising-edge accent row
@@ -291,7 +303,8 @@ enum AccentWindowPassRate {
             clockOffsetS: offsetS,
             windowGridBPM: windowBPM,
             firstPt: firstPt,
-            windowEnd: windowEnd)
+            windowEnd: windowEnd,
+            diagnostic: AccentWindowDiagnostics.empty())
     }
 }
 

@@ -126,8 +126,72 @@ enum AccentWindowReport {
                 format: "- Max accent_confidence in window: %.3f  •  Max beatComposite: %.3f",
                 result.maxConfidence,
                 result.maxComposite))
+            lines.append(contentsOf: diagnosticLines(result.diagnostic))
         }
         return lines.joined(separator: "\n")
+    }
+
+    /// BSAudit.3.diag — per-track root-cause indicators block. Emitted in the
+    /// per-track detail of every non-degenerate track so the validate.3
+    /// post-mortem can rank hypotheses per track.
+    private static func diagnosticLines(_ diag: AccentWindowDiagnostic) -> [String] {
+        var lines: [String] = []
+        lines.append("- **Diagnostic (BSAudit.3.diag):**")
+        lines.append(formatPeak(diag))
+        lines.append(formatAccentFire(diag))
+        lines.append(formatStateTimings(diag))
+        lines.append(formatResidualSummary(diag))
+        return lines
+    }
+
+    private static func formatPeak(_ diag: AccentWindowDiagnostic) -> String {
+        guard let peak = diag.firstPeakPlaybackS else {
+            return "  - First broadband peak: *not detected in window* (cold-start never anchored)"
+        }
+        if let res = diag.firstPeakResidualMs {
+            return String(
+                format: "  - First broadband peak: %.3f s (residual %+.0f ms vs nearest audible beat)",
+                peak,
+                res)
+        }
+        return String(format: "  - First broadband peak: %.3f s", peak)
+    }
+
+    private static func formatAccentFire(_ diag: AccentWindowDiagnostic) -> String {
+        guard let fire = diag.firstAccentFirePlaybackS else {
+            return "  - First accent fire (beatComposite > threshold): *never crossed in window*"
+        }
+        if let res = diag.firstAccentResidualMs {
+            return String(
+                format: "  - First accent fire: %.3f s (residual %+.0f ms vs nearest audible beat)",
+                fire,
+                res)
+        }
+        return String(format: "  - First accent fire: %.3f s", fire)
+    }
+
+    private static func formatStateTimings(_ diag: AccentWindowDiagnostic) -> String {
+        let conf30 = diag.confidenceCrossed30PlaybackS.map { String(format: "%.3f s", $0) }
+            ?? "*never*"
+        let locked = diag.lockReachedPlaybackS.map { String(format: "%.3f s", $0) }
+            ?? "*never*"
+        return "  - accent_confidence ≥ 0.30 at: \(conf30)  •  lock_state == 2 at: \(locked)"
+    }
+
+    private static func formatResidualSummary(_ diag: AccentWindowDiagnostic) -> String {
+        guard !diag.accentResidualsMs.isEmpty else {
+            return "  - Accent-fire residual distribution: *no accent fires in window*"
+        }
+        let median = diag.medianAbsAccentResidualMs ?? 0
+        let head = diag.accentResidualsMs.prefix(8)
+            .map { String(format: "%+.0f", $0) }
+            .joined(separator: ", ")
+        let suffix = diag.accentResidualsMs.count > 8 ? ", …" : ""
+        return String(
+            format: "  - Accent-fire residuals (ms): [%@%@]  •  median |residual| = %.0f ms",
+            head,
+            suffix,
+            median)
     }
 
     // MARK: - Helpers
