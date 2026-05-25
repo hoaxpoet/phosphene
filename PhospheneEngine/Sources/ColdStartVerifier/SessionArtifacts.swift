@@ -21,12 +21,23 @@ struct FeatureFrame {
     let beatPhase01: Double
     let subBass: Double
     let beatBass: Double
+    /// BSAudit.3.validate: `beatComposite` (gated by accentConfidence on the
+    /// BSAudit.3.impl build; raw on pre-impl builds). The
+    /// `--accent-window-pass-rate` verifier scores the rising edge over
+    /// `accent_threshold` against the Beat This! audible-beat reference.
+    let beatComposite: Double
     let bassAttRel: Double
     let gridBPM: Double
     let driftMs: Double
     let lockState: Int    // 0 unlocked, 1 locking, 2 locked
     let sessionMode: Int  // 0 reactive, 1 unlocked-grid, 2 locking-grid, 3 locked-grid
     let beatsPerBar: Int
+    /// BSAudit.3.validate: phase-acquisition confidence ∈ [0, 1] from
+    /// `LiveBeatDriftTracker` (design §6.5). Defaults to 1.0 when the column
+    /// is absent — pre-BSAudit.3.impl captures predate the schema and their
+    /// `beatComposite` column was never gated, so treating confidence as 1.0
+    /// recovers the rising-edge accent semantics they actually wrote.
+    let accentConfidence: Double
 }
 
 /// A contiguous run of frames belonging to one track (playback_time_s monotonic).
@@ -120,18 +131,29 @@ struct SessionArtifacts {
         let iPhase = try col("beatPhase01")
         let iSub = try col("subBass")
         let iBeatBass = try col("beatBass")
+        let iBeatComposite = try col("beatComposite")
         let iAtt = try col("bassAttRel")
         let iBpm = try col("grid_bpm")
         let iDrift = try col("drift_ms")
         let iLock = try col("lock_state")
         let iMode = try col("beat_sync_mode")
         let iBpb = try col("beatsPerBar")
+        // accent_confidence is BSAudit.3.validate.1's schema addition. Older
+        // captures predate it — treat as 1.0 (no gating, the raw beatComposite
+        // is what the pre-impl runtime wrote).
+        let iConf = indexOf["accent_confidence"]
 
         var frames: [FeatureFrame] = []
         frames.reserveCapacity(lines.count - 1)
         for line in lines.dropFirst() {
             let fields = line.split(separator: ",", omittingEmptySubsequences: false).map(String.init)
             guard fields.count >= columns.count else { continue }
+            let confValue: Double = {
+                guard let iConf, iConf < fields.count else { return 1.0 }
+                let raw = fields[iConf]
+                guard !raw.isEmpty, let value = Double(raw) else { return 1.0 }
+                return value
+            }()
             frames.append(FeatureFrame(
                 frame: Int(fields[iFrame]) ?? 0,
                 wallclockS: Double(fields[iWall]) ?? 0,
@@ -139,12 +161,14 @@ struct SessionArtifacts {
                 beatPhase01: Double(fields[iPhase]) ?? 0,
                 subBass: Double(fields[iSub]) ?? 0,
                 beatBass: Double(fields[iBeatBass]) ?? 0,
+                beatComposite: Double(fields[iBeatComposite]) ?? 0,
                 bassAttRel: Double(fields[iAtt]) ?? 0,
                 gridBPM: Double(fields[iBpm]) ?? 0,
                 driftMs: Double(fields[iDrift]) ?? 0,
                 lockState: Int(fields[iLock]) ?? 0,
                 sessionMode: Int(fields[iMode]) ?? 0,
-                beatsPerBar: Int(fields[iBpb]) ?? 1))
+                beatsPerBar: Int(fields[iBpb]) ?? 1,
+                accentConfidence: confValue))
         }
         return frames
     }
