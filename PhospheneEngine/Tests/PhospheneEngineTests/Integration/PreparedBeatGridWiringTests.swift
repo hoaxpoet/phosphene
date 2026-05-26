@@ -1,33 +1,29 @@
-// PreparedBeatGridWiringTests — DSP.3.6 / BSAudit.3.impl.3
+// PreparedBeatGridWiringTests — DSP.3.6
 //
-// Verifies the prepared-cache BPM-prior wiring path:
-//   StemCache → resetStemPipeline(for:) → MIRPipeline.installBPMPrior → liveDriftTracker.hasGrid
+// Verifies the prepared-cache BeatGrid wiring path:
+//   StemCache → resetStemPipeline(for:) → MIRPipeline.setBeatGrid → liveDriftTracker.hasGrid
 //
 // `resetStemPipeline(for:)` lives in the app layer (VisualizerEngine+Stems.swift) and
-// requires a full Metal/audio stack that cannot be spun up in SPM tests. These tests
-// exercise the critical chain components directly, mirroring the post-BSAudit.3
-// production code path:
+// requires a full Metal/audio stack that cannot be spun up in SPM tests.  These tests
+// therefore exercise the critical chain components directly, mirroring the production
+// code path exactly:
 //
 //   App layer (resetStemPipeline):
 //     if let cached = stemCache?.loadForPlayback(track: identity) {
-//         mirPipeline.installBPMPrior(
-//             bpm: cached.beatGrid.bpm,
-//             character: cached.rhythmCharacter,
-//             beatsPerBar: cached.beatGrid.beatsPerBar
-//         )
+//         mirPipeline.setBeatGrid(cached.beatGrid)          ← identical here
 //     } else {
-//         mirPipeline.installBPMPrior(bpm: 0, character: nil)
+//         mirPipeline.setBeatGrid(nil)                       ← identical here
 //     }
 //
 // Five invariants proven:
-//   1. Prepared non-empty BeatGrid stored in StemCache → MIRPipeline receives BPM →
+//   1. Prepared non-empty BeatGrid stored in StemCache → MIRPipeline receives it →
 //      liveDriftTracker.hasGrid == true, currentBPM matches (prepared path wins).
 //   2. liveDriftTracker.hasGrid == true → the `runLiveBeatAnalysisIfNeeded` guard
-//      fires → live inference is blocked (prepared prior protected).
-//   3. No cache entry → installBPMPrior(bpm: 0) → hasGrid == false → live inference allowed.
-//   4. Cache entry with .empty BeatGrid → installBPMPrior(bpm: 0) → hasGrid == false →
+//      fires → live inference is blocked (prepared grid protected).
+//   3. No cache entry → setBeatGrid(nil) → hasGrid == false → live inference allowed.
+//   4. Cache entry with .empty BeatGrid → setBeatGrid(.empty) → hasGrid == false →
 //      live inference still allowed (empty prepared grid doesn't block live fallback).
-//   5. Track change to uncached track → prior cleared → hasGrid == false → live allowed.
+//   5. Track change to uncached track → grid cleared → hasGrid == false → live allowed.
 
 import Foundation
 import Testing
@@ -77,13 +73,9 @@ struct PreparedBeatGridWiringTests {
 
         // Simulate resetStemPipeline(for:) loading and installing.
         if let cached = cache.loadForPlayback(track: track) {
-            mir.installBPMPrior(
-                bpm: cached.beatGrid.bpm,
-                character: cached.rhythmCharacter,
-                beatsPerBar: cached.beatGrid.beatsPerBar
-            )
+            mir.setBeatGrid(cached.beatGrid)
         } else {
-            mir.installBPMPrior(bpm: 0, character: nil)
+            mir.setBeatGrid(nil)
         }
 
         #expect(mir.liveDriftTracker.hasGrid,
@@ -109,13 +101,9 @@ struct PreparedBeatGridWiringTests {
 
         // Reproduce resetStemPipeline installation.
         if let cached = cache.loadForPlayback(track: track) {
-            mir.installBPMPrior(
-                bpm: cached.beatGrid.bpm,
-                character: cached.rhythmCharacter,
-                beatsPerBar: cached.beatGrid.beatsPerBar
-            )
+            mir.setBeatGrid(cached.beatGrid)
         } else {
-            mir.installBPMPrior(bpm: 0, character: nil)
+            mir.setBeatGrid(nil)
         }
 
         // This is the exact guard test from runLiveBeatAnalysisIfNeeded.
@@ -138,13 +126,9 @@ struct PreparedBeatGridWiringTests {
 
         // Reproduce resetStemPipeline with no cache hit.
         if let cached = cache.loadForPlayback(track: track) {
-            mir.installBPMPrior(
-                bpm: cached.beatGrid.bpm,
-                character: cached.rhythmCharacter,
-                beatsPerBar: cached.beatGrid.beatsPerBar
-            )
+            mir.setBeatGrid(cached.beatGrid)
         } else {
-            mir.installBPMPrior(bpm: 0, character: nil)
+            mir.setBeatGrid(nil)
         }
 
         #expect(!mir.liveDriftTracker.hasGrid,
@@ -171,13 +155,9 @@ struct PreparedBeatGridWiringTests {
 
         // Reproduce resetStemPipeline — cache hit, but grid is .empty.
         if let cached = cache.loadForPlayback(track: track) {
-            mir.installBPMPrior(
-                bpm: cached.beatGrid.bpm,
-                character: cached.rhythmCharacter,
-                beatsPerBar: cached.beatGrid.beatsPerBar
-            )
+            mir.setBeatGrid(cached.beatGrid)
         } else {
-            mir.installBPMPrior(bpm: 0, character: nil)
+            mir.setBeatGrid(nil)
         }
 
         #expect(!mir.liveDriftTracker.hasGrid,
@@ -198,25 +178,17 @@ struct PreparedBeatGridWiringTests {
         // Track A: prepared with a real grid.
         cache.store(makeCachedData(grid: makeGrid(bpm: 120.0)), for: trackA)
         if let cached = cache.loadForPlayback(track: trackA) {
-            mir.installBPMPrior(
-                bpm: cached.beatGrid.bpm,
-                character: cached.rhythmCharacter,
-                beatsPerBar: cached.beatGrid.beatsPerBar
-            )
+            mir.setBeatGrid(cached.beatGrid)
         } else {
-            mir.installBPMPrior(bpm: 0, character: nil)
+            mir.setBeatGrid(nil)
         }
         #expect(mir.liveDriftTracker.hasGrid, "Track A should have a grid after install")
 
         // Track B: no cache entry — simulates track change to an ad-hoc track.
         if let cached = cache.loadForPlayback(track: trackB) {
-            mir.installBPMPrior(
-                bpm: cached.beatGrid.bpm,
-                character: cached.rhythmCharacter,
-                beatsPerBar: cached.beatGrid.beatsPerBar
-            )
+            mir.setBeatGrid(cached.beatGrid)
         } else {
-            mir.installBPMPrior(bpm: 0, character: nil)
+            mir.setBeatGrid(nil)
         }
         #expect(!mir.liveDriftTracker.hasGrid,
                 "After track change to uncached track, grid must be cleared")

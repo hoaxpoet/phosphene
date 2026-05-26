@@ -241,13 +241,9 @@ struct PreparedBeatGridAppLayerWiringTests {
         let cached = cache.loadForPlayback(track: identity)
         #expect(cached != nil, "cache lookup must hit using canonical identity")
 
-        // 5. MIRPipeline installs the prepared BPM prior.
+        // 5. MIRPipeline installs the prepared grid.
         if let cached {
-            mir.installBPMPrior(
-                bpm: cached.beatGrid.bpm,
-                character: cached.rhythmCharacter,
-                beatsPerBar: cached.beatGrid.beatsPerBar
-            )
+            mir.setBeatGrid(cached.beatGrid)
         }
 
         // 6. liveDriftTracker reports hasGrid == true — the SpectralCartograph
@@ -271,13 +267,9 @@ struct PreparedBeatGridAppLayerWiringTests {
         let partial = makePartialIdentity()
         let cached = cache.loadForPlayback(track: partial)
         if let cached {
-            mir.installBPMPrior(
-                bpm: cached.beatGrid.bpm,
-                character: cached.rhythmCharacter,
-                beatsPerBar: cached.beatGrid.beatsPerBar
-            )
+            mir.setBeatGrid(cached.beatGrid)
         } else {
-            mir.installBPMPrior(bpm: 0, character: nil)
+            mir.setBeatGrid(nil)
         }
 
         // Pre-fix outcome: cache miss, hasGrid stays false.
