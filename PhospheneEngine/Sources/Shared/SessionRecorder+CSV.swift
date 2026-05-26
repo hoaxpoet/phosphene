@@ -43,13 +43,7 @@ extension SessionRecorder {
         // gpuMs is unavailable (cb.gpuEndTime <= cb.gpuStartTime).
         let cpu = frameCPUms.map { String(format: "%.4f", $0) } ?? ""
         let gpu = frameGPUms.map { String(format: "%.4f", $0) } ?? ""
-        // BSAudit.3.validate.1 — accent_confidence (∈ [0, 1]; 0 = pre-anchor,
-        // 1 = locked). The beat-rate accent fields above are already multiplied
-        // by this value; the column carries the gating scalar separately so
-        // the verifier can distinguish a missed accent (low composite, high
-        // confidence) from graceful degradation (low composite, low confidence).
-        let conf = String(format: "%.4f", fv.accentConfidence)
-        let timing = ",\(cpu),\(gpu),\(conf)\n"
+        let timing = ",\(cpu),\(gpu)\n"
         return base + sync + timing
     }
 

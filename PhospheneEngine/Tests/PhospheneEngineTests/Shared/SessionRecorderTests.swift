@@ -101,7 +101,7 @@ final class SessionRecorderTests: XCTestCase {
         XCTAssertEqual(Float(row2[4]) ?? -1, 0.9, accuracy: 0.0001)
     }
 
-    // MARK: - frame_cpu_ms / frame_gpu_ms / accent_confidence columns
+    // MARK: - frame_cpu_ms / frame_gpu_ms columns
 
     func test_featuresHeader_includesFrameTimingColumns() throws {
         let recorder = try XCTUnwrap(SessionRecorder(baseDir: tempDir))
@@ -111,12 +111,8 @@ final class SessionRecorderTests: XCTestCase {
             contentsOf: recorder.sessionDir.appendingPathComponent("features.csv"),
             encoding: .utf8)
         let header = csv.split(separator: "\n").first ?? ""
-        // BSAudit.3.validate.1 appended accent_confidence after frame_gpu_ms
-        // per the CSV append-only invariant; the prior tail
-        // (`frame_cpu_ms,frame_gpu_ms`) remains contiguous immediately before.
-        XCTAssertTrue(header.hasSuffix("frame_cpu_ms,frame_gpu_ms,accent_confidence"),
-                      "features.csv header must end with "
-                      + "frame_cpu_ms,frame_gpu_ms,accent_confidence "
+        XCTAssertTrue(header.hasSuffix("frame_cpu_ms,frame_gpu_ms"),
+                      "features.csv header must end with frame_cpu_ms,frame_gpu_ms "
                       + "(append-only invariant), got: \(header)")
     }
 
@@ -133,10 +129,10 @@ final class SessionRecorderTests: XCTestCase {
         XCTAssertEqual(rows.count, 2, "Header + 1 data row")
         let cells = rows[1].split(separator: ",", omittingEmptySubsequences: false)
             .map(String.init)
-        // Tail: …, frame_cpu_ms, frame_gpu_ms, accent_confidence.
-        XCTAssertEqual(Float(cells[cells.count - 3]) ?? -1, 4.25, accuracy: 0.001,
+        // frame_cpu_ms is the second-to-last column; frame_gpu_ms is the last.
+        XCTAssertEqual(Float(cells[cells.count - 2]) ?? -1, 4.25, accuracy: 0.001,
                        "frame_cpu_ms round-trip")
-        XCTAssertEqual(Float(cells[cells.count - 2]) ?? -1, 1.75, accuracy: 0.001,
+        XCTAssertEqual(Float(cells[cells.count - 1]) ?? -1, 1.75, accuracy: 0.001,
                        "frame_gpu_ms round-trip")
     }
 
@@ -156,8 +152,8 @@ final class SessionRecorderTests: XCTestCase {
         XCTAssertEqual(rows.count, 2)
         let cells = rows[1].split(separator: ",", omittingEmptySubsequences: false)
             .map(String.init)
-        XCTAssertEqual(cells[cells.count - 3], "", "frame_cpu_ms empty before any timing observed")
-        XCTAssertEqual(cells[cells.count - 2], "", "frame_gpu_ms empty before any timing observed")
+        XCTAssertEqual(cells[cells.count - 2], "", "frame_cpu_ms empty before any timing observed")
+        XCTAssertEqual(cells[cells.count - 1], "", "frame_gpu_ms empty before any timing observed")
     }
 
     func test_recordFrameTiming_gpuNil_writesEmptyGPUCellOnly() throws {
@@ -174,31 +170,10 @@ final class SessionRecorderTests: XCTestCase {
         let rows = csv.split(separator: "\n")
         let cells = rows[1].split(separator: ",", omittingEmptySubsequences: false)
             .map(String.init)
-        XCTAssertEqual(Float(cells[cells.count - 3]) ?? -1, 3.5, accuracy: 0.001,
+        XCTAssertEqual(Float(cells[cells.count - 2]) ?? -1, 3.5, accuracy: 0.001,
                        "frame_cpu_ms still written when gpu nil")
-        XCTAssertEqual(cells[cells.count - 2], "",
+        XCTAssertEqual(cells[cells.count - 1], "",
                        "frame_gpu_ms empty when gpuMs is nil")
-    }
-
-    func test_recordFrame_writesAccentConfidenceAtTail() throws {
-        // BSAudit.3.validate.1 regression: accent_confidence is the final
-        // column. Verify the recorder emits the FeatureVector's value at the
-        // tail position so the verifier can parse it back unchanged.
-        let recorder = try XCTUnwrap(SessionRecorder(baseDir: tempDir))
-        var features = FeatureVector.zero
-        features.accentConfidence = 0.625
-        recorder.recordFrame(features: features, stems: StemFeatures.zero)
-        recorder.finish()
-
-        let csv = try String(
-            contentsOf: recorder.sessionDir.appendingPathComponent("features.csv"),
-            encoding: .utf8)
-        let rows = csv.split(separator: "\n")
-        XCTAssertEqual(rows.count, 2, "Header + 1 data row")
-        let cells = rows[1].split(separator: ",", omittingEmptySubsequences: false)
-            .map(String.init)
-        XCTAssertEqual(Float(cells[cells.count - 1]) ?? -1, 0.625, accuracy: 0.001,
-                       "accent_confidence round-trips at the tail position")
     }
 
     // MARK: - Stems CSV round-trips known StemFeatures exactly
