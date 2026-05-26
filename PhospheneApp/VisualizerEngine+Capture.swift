@@ -164,6 +164,14 @@ extension VisualizerEngine {
             // stored. Falls back to the partial identity for ad-hoc/reactive
             // sessions where livePlan is nil.
             let identity = self.canonicalTrackIdentity(matching: partialIdentity) ?? partialIdentity
+            // BUG-016 fix (2026-05-26): persist the resolved identity so
+            // `applyPreset` can refresh per-track preset state (Lumen Mosaic
+            // palette) when the user activates a preset mid-track. Before this
+            // line existed, the identity escaped the closure scope and was only
+            // available to `resetStemPipeline` below — so any preset whose
+            // per-track GPU payload is wired through `resetStemPipeline` would
+            // render against zero-filled defaults until the next track change.
+            self.lastResolvedTrackIdentity = identity
             self.logTrackChangeObserved(event: event, identity: identity)
             self.resetStemPipeline(for: identity, caller: .trackChange)
             self.kickoffPreFetch(for: event.current, fetcher: fetcher)

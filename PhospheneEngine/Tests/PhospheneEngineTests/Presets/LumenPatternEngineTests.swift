@@ -643,3 +643,57 @@ struct LumenLM44CounterTests {
                 "setTrackSeed did not persist the seed it was passed")
     }
 }
+
+// MARK: - Suite 13: Palette payload contract (BUG-016)
+
+/// Contract: a freshly-initialised `LumenPatternEngine` ships with an all-zero
+/// palette payload, and `setPalette(_:)` is the only path that populates it.
+///
+/// BUG-016 (2026-05-26): the regression made visible by Matt's "black-and-
+/// white panel" report was that `setPalette(_:)` was only being called from
+/// `resetStemPipeline → refreshLumenPaletteForTrack`, which fires on track
+/// change. If the user cycled to Lumen Mosaic mid-track (`Shift+→`), the
+/// engine was freshly instantiated with the zero-palette default and stayed
+/// that way until the next track change. The shader's `lm_cell_palette`
+/// lookup returned (0,0,0) for every cell — cells rendered black, cell-
+/// boundary frost mixed toward float3(1.0), and the panel read as a black-
+/// and-white Voronoi grid with no perceptible motion.
+///
+/// These tests document the trap so a future change that removes the zero
+/// default (e.g. seeding the engine with `LumenMosaicPaletteLibrary.all[0]`
+/// at init) trips this gate — at which point the app-side
+/// `refreshLumenPaletteForTrack` call in `applyPreset` becomes redundant and
+/// can be removed.
+@Suite("Palette payload (BUG-016 trap)")
+struct LumenPalettePayloadTests {
+
+    @Test func test_freshEngine_paletteIsAllZero() throws {
+        let engine = try makeEngine()
+        let snap = engine.snapshot()
+        // Probe slots 0, 5, 11 — full coverage of the 12-entry tuple would
+        // restate the same assertion 12 times.
+        #expect(snap.palette.0  == LumenPaletteEntry.zero,
+                "default palette[0] is not zero — BUG-016 trap may have changed")
+        #expect(snap.palette.5  == LumenPaletteEntry.zero,
+                "default palette[5] is not zero — BUG-016 trap may have changed")
+        #expect(snap.palette.11 == LumenPaletteEntry.zero,
+                "default palette[11] is not zero — BUG-016 trap may have changed")
+    }
+
+    @Test func test_setPalette_populatesAllTwelveSlots() throws {
+        let engine = try makeEngine()
+        // Pick a stable palette from the library (index 0). Any entry works;
+        // we just need a known-non-zero payload to write through setPalette.
+        let palette = LumenMosaicPaletteLibrary.all[0]
+        engine.setPalette(palette)
+        let snap = engine.snapshot()
+        let expected = palette.colors.prefix(12).map { LumenPaletteEntry($0) }
+        let actual: [LumenPaletteEntry] = [
+            snap.palette.0,  snap.palette.1,  snap.palette.2,  snap.palette.3,
+            snap.palette.4,  snap.palette.5,  snap.palette.6,  snap.palette.7,
+            snap.palette.8,  snap.palette.9,  snap.palette.10, snap.palette.11
+        ]
+        #expect(actual == Array(expected),
+                "setPalette did not populate all 12 slots correctly")
+    }
+}

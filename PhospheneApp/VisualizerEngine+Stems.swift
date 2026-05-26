@@ -534,7 +534,12 @@ extension VisualizerEngine {
     /// to mood-space centre `(0, 0)` in live reactive mode pre-convergence
     /// — biases toward Autumnal / Art Deco (the neutral-quadrant anchors)
     /// without crashing. Documented per D-LM-palette-library.
-    private func refreshLumenPaletteForTrack(
+    ///
+    /// `internal` (not `private`) so `applyPreset` in
+    /// `VisualizerEngine+Presets.swift` can call it at preset-activation
+    /// time — required by the BUG-016 fix so the palette is loaded when
+    /// the user switches to Lumen Mosaic mid-track.
+    func refreshLumenPaletteForTrack(
         identity: TrackIdentity,
         lumenEngine: LumenPatternEngine
     ) {

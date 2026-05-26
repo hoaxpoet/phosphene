@@ -68,6 +68,16 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Current track metadata from Now Playing.
     @Published var currentTrack: TrackMetadata?
 
+    /// Most-recently-resolved canonical `TrackIdentity` for the live track.
+    /// Set by the track-change handler in `VisualizerEngine+Capture.swift`
+    /// after `canonicalTrackIdentity(matching:)` resolution; consumed by
+    /// `applyPreset` so per-track preset state (e.g. Lumen Mosaic's per-song
+    /// palette draw) can be loaded when a preset is activated mid-track,
+    /// without waiting for the next track-change to fire `resetStemPipeline`.
+    /// Internal-only twin of `currentTrack`; not `@Published` because no view
+    /// model binds to it. (BUG-016 fix, 2026-05-26.)
+    var lastResolvedTrackIdentity: TrackIdentity?
+
     /// 0-based index of the live track within `livePlannedSession`, or nil when
     /// the track is not part of the plan (covers, remasters, encoding-different
     /// versions) or when no plan exists. Set by the orchestrator plan walk in
