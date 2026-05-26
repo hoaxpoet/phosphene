@@ -1,89 +1,92 @@
-// MIRPipelineDriftIntegrationTests — BSAudit.3.impl.2 integration tests for
-// the MIRPipeline → LiveBeatDriftTracker / BeatPredictor / BroadbandPeakDetector
-// path. Replaces the DSP.2 S7 cached-grid integration tests now that the
-// runtime architecture consumes broadband peaks + a BPM prior instead of
-// cached beat positions + sub-bass onset matching.
+// MIRPipelineDriftIntegrationTests — DSP.2 S7 integration tests for the
+// MIRPipeline → LiveBeatDriftTracker / BeatPredictor switch behaviour.
 //
 // Three contracts:
-//   1. With a BPM prior installed, MIRPipeline drives the drift tracker via
-//      its own BroadbandPeakDetector — phase emerges after enough peaks.
-//   2. Without a prior (reactive mode), beatPhase01 falls back to
-//      BeatPredictor.
-//   3. installBPMPrior mid-stream re-configures both the tracker and the
-//      broadband peak detector.
+//   1. With a non-empty grid installed, beatPhase01 follows the cached grid
+//      regardless of any onset signal — proves drift tracker is consulted.
+//   2. With nil/empty grid (reactive mode), beatPhase01 is non-zero after a
+//      few onsets — proves BeatPredictor still owns the path.
+//   3. Switching the grid mid-stream takes effect on the very next frame.
 
 import Foundation
 import Testing
 @testable import DSP
-import Shared
 
 // MARK: - Helpers
 
-/// Magnitude buffer that produces no onsets / flux (silence) — 512 zeros.
+private func uniformGrid(bpm: Double = 120, beats: Int = 32) -> BeatGrid {
+    let period = 60.0 / bpm
+    let beatTimes = (0..<beats).map { Double($0) * period }
+    let downbeatTimes = stride(from: 0, to: beats, by: 4).map {
+        Double($0) * period
+    }
+    return BeatGrid(
+        beats: beatTimes, downbeats: downbeatTimes, bpm: bpm,
+        beatsPerBar: 4, barConfidence: 1.0, frameRate: 50, frameCount: 1500
+    )
+}
+
+/// Magnitude buffer that produces no onsets (silence) — 512 zeros.
 private let silenceMagnitudes = [Float](repeating: 0, count: 512)
 
-/// Magnitude buffer with strong broadband energy used to coax both the
-/// `BeatDetector` and `SpectralAnalyzer.flux` paths into firing.
-private let broadbandImpulseMagnitudes: [Float] = {
+/// Magnitude buffer with strong sub-bass energy used to coax BeatDetector into
+/// firing onset events. Bins 0..3 cover ~20–80 Hz at 48 kHz / 1024 fft.
+private let bassImpulseMagnitudes: [Float] = {
     var m = [Float](repeating: 0, count: 512)
-    // Spread energy across the spectrum so SpectralAnalyzer.flux climbs and
-    // BeatDetector band 0 (sub-bass) also fires.
-    for i in 0..<4 { m[i] = 5.0 }     // sub-bass
-    for i in 4..<16 { m[i] = 3.0 }    // low-bass + low-mid
-    for i in 16..<64 { m[i] = 2.0 }   // mid
-    for i in 64..<256 { m[i] = 0.5 }  // high
+    for i in 0..<4 { m[i] = 5.0 }
     return m
 }()
 
-@Suite("MIRPipeline → drift tracker integration (BSAudit.3)")
+@Suite("MIRPipeline → drift tracker integration")
 struct MIRPipelineDriftIntegrationTests {
 
-    // MARK: 1. With BPM prior: drift tracker drives phase after peaks
+    // MARK: 1. With grid: drift tracker drives phase
 
-    @Test("withPrior_driftTrackerAcquiresPhaseFromBroadbandPeaks")
-    func test_withPrior_acquiresPhase() {
+    @Test("withGrid_usesDriftTracker")
+    func test_withGrid_usesDriftTracker() {
         let mir = MIRPipeline()
-        mir.installBPMPrior(bpm: 120, character: nil, beatsPerBar: 4)
+        mir.setBeatGrid(uniformGrid(bpm: 120))
 
-        // Drive frames at 100 fps, firing impulses at 120 BPM (every 0.5 s
-        // → every 50 frames). The pipeline's BroadbandPeakDetector emits
-        // peaks that anchor + advance the tracker.
+        // Drive 1.0 second of silence at 100 fps. Drift tracker has a grid;
+        // BeatPredictor would only output zero phase without onsets, but the
+        // drift tracker uses cached beats + elapsedSeconds, so phase rises
+        // monotonically across each cached 0.5 s beat window.
         let dt: Float = 0.01
-        let beatPeriod: Float = 0.5
-        var t: Float = 0
-        for _ in 0..<400 {  // 4 seconds
-            let frameMod = t.truncatingRemainder(dividingBy: beatPeriod)
-            let mags = (frameMod < dt) ? broadbandImpulseMagnitudes : silenceMagnitudes
-            _ = mir.process(magnitudes: mags, fps: 100, time: 0, deltaTime: dt)
-            t += dt
+        var phases: [Float] = []
+        for _ in 0..<100 {
+            let fv = mir.process(
+                magnitudes: silenceMagnitudes, fps: 100, time: 0, deltaTime: dt
+            )
+            phases.append(fv.beatPhase01)
         }
-        // After 4 seconds with peaks at every 0.5 s, the tracker should be
-        // locked (it needs ~5 confirmations to clear lockThreshold=0.80).
-        #expect(mir.liveDriftTracker.currentLockState == .locked)
-        #expect(mir.liveDriftTracker.currentAccentConfidence > 0.5)
+        // Phase should reach > 0.5 somewhere in the first second (one full beat).
+        let maxPhase = phases.max() ?? 0
+        #expect(maxPhase > 0.5,
+                "drift tracker should drive phase from grid, max phase = \(maxPhase)")
     }
 
-    // MARK: 2. Without prior: BeatPredictor fallback
+    // MARK: 2. Without grid: BeatPredictor fallback
 
-    @Test("withoutPrior_fallsBackToBeatPredictor")
-    func test_withoutPrior_fallsBackToBeatPredictor() {
+    @Test("withoutGrid_fallsBackToBeatPredictor")
+    func test_withoutGrid_fallsBackToBeatPredictor() {
         let mir = MIRPipeline()
-        // No installBPMPrior call → tracker has no prior → BeatPredictor owns phase.
+        // No setBeatGrid call → tracker is empty → BeatPredictor owns phase.
 
-        // Drive 2 s with broadband impulses at 120 BPM.
+        // Drive 2 s with bass impulses every 0.5 s (120 BPM kick).
         let dt: Float = 0.01
         let beatPeriod: Float = 0.5
         var t: Float = 0
         var lastPhase: Float = 0
         for _ in 0..<200 {
             let frameMod = t.truncatingRemainder(dividingBy: beatPeriod)
-            let mags = (frameMod < dt) ? broadbandImpulseMagnitudes : silenceMagnitudes
+            let mags = (frameMod < dt) ? bassImpulseMagnitudes : silenceMagnitudes
             let fv = mir.process(magnitudes: mags, fps: 100, time: 0, deltaTime: dt)
             lastPhase = fv.beatPhase01
             t += dt
         }
-        // BeatPredictor needs ≥ 2 onsets to lock; after several beats it
-        // should produce a non-zero phase between beats.
+        // BeatPredictor needs ≥ 2 onsets to lock; after 4 beats it should
+        // produce a non-zero phase between beats. We probe right after the
+        // 4-second mark with a no-onset frame.
         let probe = mir.process(
             magnitudes: silenceMagnitudes, fps: 100, time: 0, deltaTime: 0.05
         )
@@ -91,13 +94,14 @@ struct MIRPipelineDriftIntegrationTests {
                 "BeatPredictor fallback should produce non-zero phase after onsets, got \(probe.beatPhase01) (last=\(lastPhase))")
     }
 
-    // MARK: 3. Mid-stream prior switch re-configures the pipeline
+    // MARK: 3. Mid-stream grid switch takes effect immediately
 
-    @Test("installBPMPriorMidStream_takesEffectImmediately")
-    func test_installBPMPriorMidStream() {
+    @Test("gridSwitchMidStream_takesEffectImmediately")
+    func test_gridSwitchMidStream_takesEffectImmediately() {
         let mir = MIRPipeline()
 
-        // Phase A: reactive mode (no prior) → silence → phase 0 (BeatPredictor).
+        // Phase A: reactive mode (no grid) → phase comes from BeatPredictor.
+        // Without onsets, BeatPredictor outputs phase 0.
         let dt: Float = 0.01
         for _ in 0..<10 {
             _ = mir.process(magnitudes: silenceMagnitudes, fps: 100, time: 0, deltaTime: dt)
@@ -108,23 +112,21 @@ struct MIRPipelineDriftIntegrationTests {
         #expect(beforeSwitch.beatPhase01 == 0,
                 "reactive mode with silence → phase 0; got \(beforeSwitch.beatPhase01)")
 
-        // Install a BPM prior mid-stream — both tracker and broadband
-        // peak detector reset.
-        mir.installBPMPrior(bpm: 120, character: nil, beatsPerBar: 4)
-        #expect(mir.liveDriftTracker.currentBPM == 120)
-        #expect(mir.liveDriftTracker.currentLockState == .unlocked)
+        // Switch to a grid mid-stream.
+        mir.setBeatGrid(uniformGrid(bpm: 120))
 
-        // Drive peaks — phase emerges.
-        let beatPeriod: Float = 0.5
-        var t: Float = 0
-        for _ in 0..<200 {  // 2 seconds, 4 beats
-            let frameMod = t.truncatingRemainder(dividingBy: beatPeriod)
-            let mags = (frameMod < dt) ? broadbandImpulseMagnitudes : silenceMagnitudes
-            _ = mir.process(magnitudes: mags, fps: 100, time: 0, deltaTime: dt)
-            t += dt
+        // Drive enough frames for elapsedSeconds to land mid-beat (around 0.25 s
+        // into a beat). Since elapsedSeconds is already ~0.11 s from phase A,
+        // we just step a little more.
+        for _ in 0..<20 {
+            _ = mir.process(magnitudes: silenceMagnitudes, fps: 100, time: 0, deltaTime: dt)
         }
-        // Even without reaching `.locked`, accent confidence should have
-        // climbed and beatPhase01 should have updated.
-        #expect(mir.liveDriftTracker.currentAccentConfidence > 0)
+        let afterSwitch = mir.process(
+            magnitudes: silenceMagnitudes, fps: 100, time: 0, deltaTime: dt
+        )
+        // Now phase should be drift-tracker driven and non-zero somewhere in
+        // [0, 1) — definitely not stuck at 0.
+        #expect(afterSwitch.beatPhase01 > 0,
+                "after grid switch, drift tracker should produce non-zero phase, got \(afterSwitch.beatPhase01)")
     }
 }

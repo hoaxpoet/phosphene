@@ -1,67 +1,88 @@
-// swiftlint:disable file_length
-// LiveBeatDriftTrackerTests — BSAudit.3.impl.2 contract tests for the
-// BPM-anchored phase-acquisition tracker.
+// LiveBeatDriftTrackerTests — DSP.2 S7 unit tests for the offline-grid drift tracker.
 //
-// Replaces the previous DSP.2 S7 cached-grid-anchored EMA tests (retired
-// 2026-05-24 with the BSAudit.3 architecture rework). Per kickoff: "the
-// existing LiveBeatDriftTrackerColdStartPhaseTests.swift and related test
-// files cover behavior that's being replaced. New tests cover the §6.2 state
-// machine, §6.3 peak detector integration, §6.4 acquisition under various
-// input streams, §9.x edge cases (first peak isn't a beat, quiet intro,
-// cross-fade, octave-risk dual-candidate). At least 10 new tests. BUG-007.x
-// preservation: BUG-007.4 (Shift+B), BUG-007.4b/c (auto-rotate), BUG-007.6
-// (audioOutputLatencyMs) all preserved per design §5.7."
+// Eight contracts:
+//   1. Empty grid → zero phase, .unlocked.
+//   2. Perfectly aligned onsets → drift converges to 0.
+//   3. Onsets shifted +30 ms → drift converges to +30 ms.
+//   4. No onsets for 5 s → drift decays toward 0 (no runaway).
+//   5. Phase rises monotonically between cached beats.
+//   6. lockState progression unlocked → locking → locked.
+//   7. setGrid(_:) resets all drift / onset / lock state.
+//   8. barPhase01 aligned to downbeats on a 4/4 grid.
 
 import Foundation
 import Testing
 @testable import DSP
-import Shared
 
 // MARK: - Fixtures
 
-/// A simple `RhythmCharacter` builder for tests — supplies neutral defaults
-/// when fields are omitted.
-private func makeCharacter(
-    onsetsPerBeat: Float = 2.0,
-    octaveRisk: Float = 0.0,
-    phaseAcquisitionDifficulty: Float = 0.0,
-    syncopationIndex: Float = 0.0,
-    beatStrengthProfile: [Float] = [1, 0.5, 0.8, 0.5]
-) -> RhythmCharacter {
-    RhythmCharacter(
-        beatStrengthProfile: beatStrengthProfile,
-        onsetsPerBeat: onsetsPerBeat,
-        octaveRisk: octaveRisk,
-        phaseAcquisitionDifficulty: phaseAcquisitionDifficulty,
-        syncopationIndex: syncopationIndex
+/// Synthetic Money 7/4-style grid. First beat at 0.14 s, period = 60/bpm.
+/// `coverageSeconds` controls the raw span (30 s = same as a Spotify preview).
+/// Does NOT call offsetBy() — callers that want extrapolation must do so explicitly.
+private func makeMoneySyntheticGrid(
+    bpm: Double = 123.2,
+    coverageSeconds: Double = 30.0
+) -> BeatGrid {
+    let period = 60.0 / bpm
+    var beats: [Double] = []
+    var downbeats: [Double] = []
+    var t = 0.14
+    while t <= coverageSeconds {
+        beats.append(t)
+        t += period
+    }
+    for i in stride(from: 0, to: beats.count, by: 2) {
+        downbeats.append(beats[i])
+    }
+    return BeatGrid(
+        beats: beats,
+        downbeats: downbeats,
+        bpm: bpm,
+        beatsPerBar: 2,
+        barConfidence: 0.7,
+        frameRate: 50.0,
+        frameCount: Int(coverageSeconds * 50)
     )
 }
 
-/// Drive `tracker` with peaks at `peakTimes` (track-relative seconds). The
-/// loop runs at `fps` and fires `broadbandPeak: true` on the first frame at
-/// or after each scheduled peak time. Returns the final `Result`.
+private func makeUniformGrid(
+    bpm: Double = 120,
+    beats: Int = 32,
+    beatsPerBar: Int = 4
+) -> BeatGrid {
+    let period = 60.0 / bpm
+    let beatTimes = (0..<beats).map { Double($0) * period }
+    let downbeatTimes = stride(from: 0, to: beats, by: beatsPerBar).map {
+        Double($0) * period
+    }
+    return BeatGrid(
+        beats: beatTimes,
+        downbeats: downbeatTimes,
+        bpm: bpm,
+        beatsPerBar: beatsPerBar,
+        barConfidence: 1.0,
+        frameRate: 50.0,
+        frameCount: 1500
+    )
+}
+
+/// Drive `tracker` over `durationSeconds` at 100 fps. Calls `onsetAt(t)` to
+/// decide whether the sub_bass onset bool is true at playback time `t`.
 @discardableResult
-private func driveWithPeaks(
+private func drive(
     _ tracker: LiveBeatDriftTracker,
-    peakTimes: [Double],
     durationSeconds: Double,
-    fps: Double = 100
+    fps: Double = 100,
+    onsetAt: (Double) -> Bool
 ) -> LiveBeatDriftTracker.Result {
     let dt = 1.0 / fps
-    var nextPeakIdx = 0
     var t = 0.0
     var last = LiveBeatDriftTracker.Result(
-        beatPhase01: 0, beatsUntilNext: 1, barPhase01: 0,
-        beatsPerBar: 1, lockState: .unlocked, accentConfidence: 0
+        beatPhase01: 0, beatsUntilNext: 1, barPhase01: 0, beatsPerBar: 4, lockState: .unlocked
     )
     while t < durationSeconds {
-        var peak = false
-        if nextPeakIdx < peakTimes.count && t >= peakTimes[nextPeakIdx] {
-            peak = true
-            nextPeakIdx += 1
-        }
         last = tracker.update(
-            broadbandPeak: peak,
+            subBassOnset: onsetAt(t),
             playbackTime: t,
             deltaTime: Float(dt)
         )
@@ -70,443 +91,1138 @@ private func driveWithPeaks(
     return last
 }
 
-/// Schedule N peaks at `bpm` starting at `start` seconds.
-private func periodicPeaks(
-    bpm: Double, count: Int, start: Double = 0.0, jitterMs: Double = 0.0
-) -> [Double] {
-    let period = 60.0 / bpm
-    return (0..<count).map { i in
-        let nominal = start + Double(i) * period
-        // Deterministic small jitter so peaks aren't exactly on FFT-quantized
-        // boundaries; tests stay reproducible since jitterMs sequences are
-        // computed from i alone.
-        let jitter = jitterMs * 0.001 * Double((i % 3) - 1)
-        return nominal + jitter
-    }
+/// Sendable holder for capturing the most recent `isTightMatch` flag from a
+/// `LiveBeatDriftTraceEntry` callback. Swift Testing closures are `@Sendable`,
+/// so closures must not mutate stack-local vars directly.
+private final class TightCapture: @unchecked Sendable {
+    var value: Bool = false
 }
 
-// MARK: - Tests
+// MARK: - Suite
 
-@Suite("LiveBeatDriftTracker (BSAudit.3)")
+@Suite("LiveBeatDriftTracker")
 struct LiveBeatDriftTrackerTests {
 
-    // MARK: - No-Prior Behavior
+    // MARK: 1. Empty grid
 
-    @Test("noBPMPrior_emitsZeroPhase_unlocked")
-    func noBPMPrior_emitsZeroPhase() {
+    @Test("emptyGrid_returnsZeroPhase")
+    func test_emptyGrid_returnsZeroPhase() {
         let tracker = LiveBeatDriftTracker()
-        let result = tracker.update(
-            broadbandPeak: true, playbackTime: 1.0, deltaTime: 0.01
-        )
-        #expect(result.beatPhase01 == 0)
-        #expect(result.lockState == .unlocked)
-        #expect(result.accentConfidence == 0)
-        #expect(tracker.hasGrid == false)
-        #expect(tracker.currentBPM == 0)
-    }
-
-    @Test("installBPMPrior_zeroBPM_clearsPrior")
-    func installBPMPrior_zeroBPM_clearsPrior() {
-        let tracker = LiveBeatDriftTracker()
-        tracker.installBPMPrior(bpm: 120, character: nil)
-        #expect(tracker.hasGrid == true)
-        tracker.installBPMPrior(bpm: 0, character: nil)
-        #expect(tracker.hasGrid == false)
-        #expect(tracker.currentBPM == 0)
-    }
-
-    // MARK: - §6.2 State Machine
-
-    @Test("stateMachine_coldStart_thenAcquiring_thenLocked")
-    func stateMachine_coldStart_acquiring_locked() {
-        let tracker = LiveBeatDriftTracker()
-        tracker.installBPMPrior(bpm: 120, character: makeCharacter())
-        // Initially coldStart → public .unlocked.
-        #expect(tracker.currentLockState == .unlocked)
-        // Drive enough peaks to confirm 4+ predictions (gain=0.30 at
-        // difficulty=0, lockThreshold=0.80; 4 confirms reach 0.1+4×0.3=1.0).
-        // Stop the drive right after the last peak so we don't accumulate
-        // post-peak misses that would re-decay confidence.
-        let peaks = periodicPeaks(bpm: 120, count: 6)
-        let result = driveWithPeaks(
-            tracker, peakTimes: peaks, durationSeconds: 3.0
-        )
-        // After enough confirmations, state should be locked.
-        #expect(result.lockState == .locked)
-        #expect(result.accentConfidence > 0.70)
-    }
-
-    @Test("stateMachine_lockedThenDegraded_whenPeaksStop")
-    func stateMachine_locked_degraded() {
-        let tracker = LiveBeatDriftTracker()
-        tracker.installBPMPrior(bpm: 120, character: makeCharacter())
-        // Get locked.
-        let lockedPeaks = periodicPeaks(bpm: 120, count: 6)
-        _ = driveWithPeaks(tracker, peakTimes: lockedPeaks, durationSeconds: 3.5)
-        #expect(tracker.currentLockState == .locked)
-        // Now run 10 s of silence (no peaks). Misses decrement confidence.
-        let result = driveWithPeaks(
-            tracker, peakTimes: [], durationSeconds: 10.0
-        )
-        // Confidence should drop below dropThreshold (0.3) and demote.
-        #expect(result.accentConfidence < 0.3)
-        #expect(result.lockState == .locking)   // .degraded → public .locking
-    }
-
-    @Test("stateMachine_degradedRecoversToLocked_whenPeaksResume")
-    func stateMachine_degraded_recovers() {
-        let tracker = LiveBeatDriftTracker()
-        tracker.installBPMPrior(bpm: 120, character: makeCharacter())
-        // Get locked.
-        _ = driveWithPeaks(
-            tracker, peakTimes: periodicPeaks(bpm: 120, count: 6),
-            durationSeconds: 3.5
-        )
-        // Silence to degrade — drive enough misses to fall below dropThreshold.
-        // 10 missed beats × 0.10 decay = 1.0 reduction — guaranteed below 0.3.
-        _ = driveWithPeaks(tracker, peakTimes: [], durationSeconds: 10.0)
-        #expect(tracker.currentLockState == .locking)
-        // Resume peaks — phase predictor advanced through the silence so the
-        // resumed peaks may or may not align. Confidence climbs at gain=0.30
-        // per confirmed prediction.
-        let resumedStart = 10.0
-        let resumePeaks = periodicPeaks(bpm: 120, count: 8, start: resumedStart)
-        let resumeResult = driveWithPeaks(
-            tracker, peakTimes: resumePeaks, durationSeconds: 14.0
-        )
-        // At minimum, confidence must increase from the degraded value.
-        #expect(resumeResult.accentConfidence > 0)
-    }
-
-    // MARK: - §6.4 Phase Acquisition
-
-    @Test("phaseAcquisition_anchorsAtFirstPeak")
-    func phaseAcquisition_anchorsAtFirstPeak() {
-        let tracker = LiveBeatDriftTracker()
-        tracker.installBPMPrior(bpm: 120, character: makeCharacter())
-        // First peak at t=0.5; tracker should anchor and emit small confidence.
-        _ = driveWithPeaks(
-            tracker, peakTimes: [0.5], durationSeconds: 0.6
-        )
-        // After one peak: state .acquiring (public .locking).
-        #expect(tracker.currentLockState == .locking)
-        #expect(tracker.currentAccentConfidence > 0)
-    }
-
-    @Test("phaseAcquisition_confidenceRampsSmoothly")
-    func phaseAcquisition_confidenceRamps() {
-        let tracker = LiveBeatDriftTracker()
-        tracker.installBPMPrior(bpm: 120, character: makeCharacter())
-        var confSeries: [Float] = []
-        // Begin peaks at t=0.5 so the early frames are pre-anchor (conf=0).
-        let peaks = periodicPeaks(bpm: 120, count: 4, start: 0.5)
-        let dt = 1.0 / 100.0
-        var t = 0.0
-        var nextIdx = 0
-        // Drive only as long as peaks are arriving so the series captures
-        // the ramp without later post-peak decay.
-        while t < 2.1 {
-            let peak = nextIdx < peaks.count && t >= peaks[nextIdx]
-            if peak { nextIdx += 1 }
-            let result = tracker.update(
-                broadbandPeak: peak, playbackTime: t, deltaTime: Float(dt)
-            )
-            confSeries.append(result.accentConfidence)
-            t += dt
+        // No setGrid() call → empty by default.
+        let r = tracker.update(subBassOnset: true, playbackTime: 1.0, deltaTime: 0.01)
+        #expect(r.beatPhase01 == 0)
+        #expect(r.beatsUntilNext == 1)
+        #expect(r.barPhase01 == 0)
+        if case .unlocked = r.lockState {} else {
+            #expect(Bool(false), "expected .unlocked for empty grid")
         }
-        // Pre-anchor sample (t=0.2) → conf = 0. Post-anchor early sample
-        // (t=0.6 — right after the first peak at t=0.5) → conf = 0.1 seed.
-        // Mid-ramp (t=1.1, after two confirms) → conf = 0.4. Final
-        // (t=2.05, after three confirms) → conf ≈ 0.7+.
-        let preAnchor = confSeries[20]   // t = 0.20s
-        let postAnchor = confSeries[60]  // t = 0.60s, post-first-peak
-        let final = confSeries.last ?? 0
-        #expect(preAnchor < postAnchor)
-        #expect(postAnchor < final)
-        #expect(final > 0.5)
     }
 
-    @Test("phaseAcquisition_offBeatFirstPeak_doesNotConfidentlyLock")
-    func phaseAcquisition_offBeatFirstPeak() {
+    // MARK: 2. Aligned onsets → zero drift
+
+    @Test("perfectlyAlignedOnsets_zeroDrift")
+    func test_perfectlyAlignedOnsets_zeroDrift() {
         let tracker = LiveBeatDriftTracker()
-        tracker.installBPMPrior(bpm: 120, character: makeCharacter())
-        // Anchor at t=0.0 (will be wrong — we want kicks at 0.25, 0.75, 1.25 …).
-        // After anchoring at t=0, the predictor expects the next beat at
-        // t=0.5. But real kicks fire at 0.25, 0.75, 1.25 — each ±50ms window
-        // around (0.5, 1.0, 1.5, ...) sees NO real kick. So confidence
-        // should stay low.
-        let realKicks = [0.25, 0.75, 1.25, 1.75, 2.25, 2.75]
-        let peaks = [0.0] + realKicks
-        let result = driveWithPeaks(
-            tracker, peakTimes: peaks, durationSeconds: 3.5
-        )
-        // Tracker never crosses lockThreshold (0.80) because the kicks land
-        // off the predicted beats. Confidence may climb temporarily on the
-        // initial 0.1 seed but consistent misses drive it back down.
-        #expect(result.lockState != .locked)
-    }
+        let grid = makeUniformGrid(bpm: 120, beats: 32)
+        tracker.setGrid(grid)
 
-    @Test("phaseAcquisition_difficultyScalesGainAndWindow")
-    func phaseAcquisition_difficultyScaling() {
-        // Easy track (difficulty=0): gain=0.30, lockThreshold=0.80.
-        // 3 confirmations after anchor = 0.1 + 3×0.30 = 1.00 → locked.
-        let easyTracker = LiveBeatDriftTracker()
-        easyTracker.installBPMPrior(
-            bpm: 120,
-            character: makeCharacter(phaseAcquisitionDifficulty: 0.0)
-        )
-        _ = driveWithPeaks(
-            easyTracker, peakTimes: periodicPeaks(bpm: 120, count: 5),
-            durationSeconds: 2.8
-        )
-        #expect(easyTracker.currentLockState == .locked)
-
-        // Hard track (difficulty=1.0): gain=0.15, lockThreshold=0.50.
-        // 3 confirmations after anchor = 0.1 + 3×0.15 = 0.55 → locked.
-        // 5 confirmations easily clears 0.50.
-        let hardTracker = LiveBeatDriftTracker()
-        hardTracker.installBPMPrior(
-            bpm: 120,
-            character: makeCharacter(phaseAcquisitionDifficulty: 1.0)
-        )
-        _ = driveWithPeaks(
-            hardTracker, peakTimes: periodicPeaks(bpm: 120, count: 5),
-            durationSeconds: 2.8
-        )
-        // Hard tracker locks at lower threshold (0.50) with confidence ≥ 0.40
-        // after 2 confirmations; should reach .locked by 5 confirmations.
-        #expect(hardTracker.currentLockState == .locked)
-    }
-
-    // MARK: - §9.4 Quiet Intro
-
-    @Test("quietIntro_staysInColdStart_thenAcquires")
-    func quietIntro_staysInColdStart() {
-        let tracker = LiveBeatDriftTracker()
-        tracker.installBPMPrior(bpm: 120, character: makeCharacter())
-        // 5 seconds of silence, no peaks.
-        _ = driveWithPeaks(tracker, peakTimes: [], durationSeconds: 5.0)
-        #expect(tracker.currentLockState == .unlocked)
-        #expect(tracker.currentAccentConfidence == 0)
-        // Then peaks arrive — anchor + acquire.
-        _ = driveWithPeaks(
-            tracker,
-            peakTimes: periodicPeaks(bpm: 120, count: 4, start: 5.0),
-            durationSeconds: 8.0
-        )
-        // After 4 confirmations from 5s quiet intro, tracker reaches locked.
-        #expect(tracker.currentLockState == .locked)
-    }
-
-    // MARK: - §9.6 Cross-Fade / Track Change
-
-    @Test("trackChange_resetsState")
-    func trackChange_resetsState() {
-        let tracker = LiveBeatDriftTracker()
-        tracker.installBPMPrior(bpm: 120, character: makeCharacter())
-        _ = driveWithPeaks(
-            tracker, peakTimes: periodicPeaks(bpm: 120, count: 6),
-            durationSeconds: 3.5
-        )
-        #expect(tracker.currentLockState == .locked)
-        // New track at a different BPM.
-        tracker.installBPMPrior(bpm: 76, character: makeCharacter())
-        // State resets — confidence 0, lockState .unlocked.
-        #expect(tracker.currentLockState == .unlocked)
-        #expect(tracker.currentAccentConfidence == 0)
-        #expect(tracker.currentBPM == 76)
-    }
-
-    // MARK: - §9.2 Octave-Risk Dual-Candidate
-
-    @Test("octaveRisk_dualCandidate_promotesHigherBPMWhenPeaksFireAtDoubleRate")
-    func octaveRisk_dualCandidate_doubleRate() {
-        let tracker = LiveBeatDriftTracker()
-        // Cached BPM is 60 (half-time error). Real peaks fire at 120 BPM.
-        tracker.installBPMPrior(
-            bpm: 60,
-            character: makeCharacter(octaveRisk: 0.7)
-        )
-        // Drive peaks at 120 BPM — the alt candidate (at 120) should win.
-        _ = driveWithPeaks(
-            tracker, peakTimes: periodicPeaks(bpm: 120, count: 8),
-            durationSeconds: 5.0
-        )
-        // After 4+ confirmations on the alt candidate, the decision fires.
-        // The promoted primary should now be at 120 BPM.
-        #expect(tracker.currentBPM == 120)
-    }
-
-    @Test("octaveRisk_dualCandidate_stayWithPrimaryWhenItMatches")
-    func octaveRisk_dualCandidate_primaryWins() {
-        let tracker = LiveBeatDriftTracker()
-        tracker.installBPMPrior(
-            bpm: 120, character: makeCharacter(octaveRisk: 0.7)
-        )
-        _ = driveWithPeaks(
-            tracker, peakTimes: periodicPeaks(bpm: 120, count: 8),
-            durationSeconds: 5.0
-        )
-        #expect(tracker.currentBPM == 120)
-    }
-
-    // MARK: - Phase Output
-
-    @Test("beatPhase_risesMonotonicallyBetweenBeats")
-    func beatPhase_risesMonotonically() {
-        let tracker = LiveBeatDriftTracker()
-        tracker.installBPMPrior(bpm: 120, character: makeCharacter())
-        // Anchor at t=0.5; drive a few confirmations, then sample phase
-        // between beats.
-        let peaks = periodicPeaks(bpm: 120, count: 4)
-        _ = driveWithPeaks(
-            tracker, peakTimes: peaks, durationSeconds: 2.0
-        )
-        // Sample phase across the gap between beats 4 and 5 (t ≈ 2.0 → 2.5).
-        var lastPhase: Float = 0
-        var monotonic = true
-        let dt = 1.0 / 100.0
-        var t = 2.05
-        while t < 2.45 {
-            let result = tracker.update(
-                broadbandPeak: false, playbackTime: t, deltaTime: Float(dt)
-            )
-            // Skip the wrap point.
-            if result.beatPhase01 + 0.01 < lastPhase {
-                lastPhase = result.beatPhase01
-                t += dt
-                continue
-            }
-            if result.beatPhase01 < lastPhase { monotonic = false; break }
-            lastPhase = result.beatPhase01
-            t += dt
+        let period = 0.5  // 120 BPM
+        // Fire onset on the frame closest to each cached beat for 8 s.
+        // Verify the resulting beatPhase01 right after a beat is near 0
+        // (matched to grid → drift ~ 0 → phase resets at the cached beat).
+        let r = drive(tracker, durationSeconds: 8.0) { t in
+            // True on frames within ± 0.5 dt of any beat.
+            let nearest = round(t / period) * period
+            return abs(t - nearest) < 0.005
         }
-        #expect(monotonic)
+        // After 8 s of perfect alignment, lock state should be .locked.
+        if case .locked = r.lockState {
+            // expected
+        } else {
+            #expect(Bool(false), "expected .locked after 16 aligned beats")
+        }
     }
 
-    // MARK: - BUG-007.6 Audio Output Latency (preserved per design §5.7)
+    // MARK: 3. Shifted onsets → drift converges to offset
 
-    @Test("audioOutputLatencyMs_setterClampsToRange")
-    func audioOutputLatencyMs_clamps() {
+    @Test("shiftedOnsets_convergesToOffset")
+    func test_shiftedOnsets_convergesToOffset() {
         let tracker = LiveBeatDriftTracker()
-        tracker.audioOutputLatencyMs = 1000
-        #expect(tracker.audioOutputLatencyMs == 500)
-        tracker.audioOutputLatencyMs = -1000
-        #expect(tracker.audioOutputLatencyMs == -500)
-        tracker.audioOutputLatencyMs = 50
-        #expect(tracker.audioOutputLatencyMs == 50)
-    }
+        let grid = makeUniformGrid(bpm: 120, beats: 32)
+        tracker.setGrid(grid)
 
-    @Test("audioOutputLatencyMs_persistsAcrossInstallBPMPrior")
-    func audioOutputLatencyMs_persistsAcrossInstall() {
-        let tracker = LiveBeatDriftTracker()
-        tracker.installBPMPrior(bpm: 120, character: nil)
-        tracker.audioOutputLatencyMs = 75
-        // New track — latency should persist (platform-class property).
-        tracker.installBPMPrior(bpm: 76, character: nil)
-        #expect(tracker.audioOutputLatencyMs == 75)
-    }
+        let period = 0.5
+        let shift = 0.030  // playback runs 30 ms early ⇒ onsets land 30 ms before cached beats
+        // Equivalently, cached beats are 30 ms ahead of where onsets fire.
+        // Drift = (cachedBeat − playbackOnsetTime) should approach +0.030.
+        // Onsets fire when playbackTime is `period * n − shift`, so cached beat
+        // (= period * n) is +shift from the onset. drift converges to +shift.
+        _ = drive(tracker, durationSeconds: 8.0) { t in
+            let nearestOnset = round((t + shift) / period) * period - shift
+            return abs(t - nearestOnset) < 0.005
+        }
 
-    @Test("audioOutputLatencyMs_shiftsDisplayNotMatching")
-    func audioOutputLatencyMs_shiftsDisplayPath() {
-        // With L = 80 ms, the displayed beatPhase01 lags behind the
-        // matching path. After locking, sampling phase at a "true" beat
-        // time should NOT return 0 — it should reflect the offset.
-        let tracker = LiveBeatDriftTracker()
-        tracker.installBPMPrior(bpm: 120, character: makeCharacter())
-        tracker.audioOutputLatencyMs = 80
-        _ = driveWithPeaks(
-            tracker, peakTimes: periodicPeaks(bpm: 120, count: 6),
-            durationSeconds: 3.5
-        )
-        // Sample at exactly one beat-period into the future from anchor.
-        // Without latency, beatPhase01 would wrap to 0. With +80 ms latency,
-        // the displayed time is 80 ms past the next beat → phase ~ 0.16.
+        // Probe drift indirectly: at playbackTime = period (1 beat in), the
+        // computed beatPhase01 reflects (pt + drift − beats[idx]) / period.
+        // If drift ≈ +0.030, then at pt=period, phase ≈ 0.030 / period = 0.06.
         let probe = tracker.update(
-            broadbandPeak: false, playbackTime: 3.5, deltaTime: 0.01
+            subBassOnset: false, playbackTime: period, deltaTime: 0.01
         )
-        // The displayed phase reflects the offset — definitely non-zero.
-        #expect(probe.beatPhase01 > 0)
+        // 30 ms / 500 ms = 0.06.  Tolerance ±0.02 (≈ 10 ms drift slack).
+        #expect(abs(probe.beatPhase01 - 0.06) < 0.02,
+                "expected phase ≈ 0.06 at +30 ms drift, got \(probe.beatPhase01)")
     }
 
-    // MARK: - BUG-007.4 Bar-Phase Rotation (preserved per design §5.7)
+    // MARK: 4. No onsets → drift decays toward 0
 
-    @Test("barPhaseOffset_rotatesBarPhase_modBeatsPerBar")
-    func barPhaseOffset_rotatesBarPhase() {
+    @Test("noOnsetsInWindow_driftDecaysToZero")
+    func test_noOnsetsInWindow_driftDecaysToZero() {
         let tracker = LiveBeatDriftTracker()
-        tracker.installBPMPrior(bpm: 120, character: makeCharacter(), beatsPerBar: 4)
-        tracker.barPhaseOffset = 5   // wraps to 1
-        #expect(tracker.barPhaseOffset == 1)
-        tracker.barPhaseOffset = -1  // wraps to 3
-        #expect(tracker.barPhaseOffset == 3)
-        tracker.barPhaseOffset = 0
-        #expect(tracker.barPhaseOffset == 0)
+        let grid = makeUniformGrid(bpm: 120, beats: 32)
+        tracker.setGrid(grid)
+
+        // Phase 1: install a +30 ms drift via 6 shifted onsets.
+        let period = 0.5
+        let shift = 0.030
+        _ = drive(tracker, durationSeconds: 3.0) { t in
+            let nearestOnset = round((t + shift) / period) * period - shift
+            return abs(t - nearestOnset) < 0.005
+        }
+
+        // Phase 2: feed 5 s of silence and check that drift decays.
+        // We can't read drift directly — probe via beatPhase01 at exactly a
+        // cached beat: with drift ≈ 0 we'd get phase ≈ 0; with drift > 0 we'd
+        // get phase > 0.  After decay it should be near 0.
+        let dt = 0.01
+        var t = 3.0
+        for _ in 0..<500 {
+            _ = tracker.update(
+                subBassOnset: false, playbackTime: t, deltaTime: Float(dt)
+            )
+            t += dt
+        }
+        // Probe at a cached beat.  pt + drift ≈ pt (drift decayed).
+        let probe = tracker.update(
+            subBassOnset: false, playbackTime: period * 6, deltaTime: 0.01
+        )
+        // Drift may not fully decay to 0 in 5 s with τ=0.2 — but should be ≪ 30 ms.
+        // 30 ms / 500 ms = 0.06; expect phase ≪ 0.06.
+        #expect(probe.beatPhase01 < 0.02,
+                "expected drift to decay; phase was \(probe.beatPhase01)")
     }
 
-    @Test("barPhaseOffset_suppressesAutoRotate_afterManualPress")
-    func barPhaseOffset_suppressesAutoRotate() {
+    // MARK: 5. Phase rises monotonically between beats
+
+    @Test("phaseMonotonicallyRisesBetweenBeats")
+    func test_phaseMonotonicallyRisesBetweenBeats() {
         let tracker = LiveBeatDriftTracker()
-        tracker.installBPMPrior(bpm: 120, character: makeCharacter(), beatsPerBar: 4)
-        // User presses Shift+B.
-        tracker.barPhaseOffset = 2
-        // Drive plenty of locked confirmations.
-        _ = driveWithPeaks(
-            tracker, peakTimes: periodicPeaks(bpm: 120, count: 16),
-            durationSeconds: 9.0
-        )
-        // Auto-rotate must not override the manual setting.
-        #expect(tracker.barPhaseOffset == 2)
+        let grid = makeUniformGrid(bpm: 120, beats: 32)
+        tracker.setGrid(grid)
+
+        // Sample phase across one beat at high rate, no onsets (drift stays 0).
+        let period = 0.5
+        var samples: [Float] = []
+        let dt = 0.01
+        var t = 0.001  // start a hair past the first beat
+        while t < period - 0.001 {
+            let r = tracker.update(
+                subBassOnset: false, playbackTime: t, deltaTime: Float(dt)
+            )
+            samples.append(r.beatPhase01)
+            t += dt
+        }
+        #expect(samples.count > 30)
+        #expect(samples.first ?? 1 < 0.05)
+        #expect(samples.last ?? 0 > 0.9)
+        let isMono = zip(samples, samples.dropFirst()).allSatisfy { $0 <= $1 + 1e-4 }
+        #expect(isMono, "phase must be monotonically non-decreasing within one beat")
     }
 
-    // MARK: - Relative Beat / Downbeat Projection
+    // MARK: 6. Lock state progression
 
-    @Test("relativeBeatTimes_noPrior_returnsEmpty")
-    func relativeBeatTimes_noPrior() {
+    @Test("lockStateProgression")
+    func test_lockStateProgression() {
         let tracker = LiveBeatDriftTracker()
-        let times = tracker.relativeBeatTimes(playbackTime: 5.0, count: 4)
-        #expect(times.isEmpty)
-    }
+        let grid = makeUniformGrid(bpm: 120, beats: 32)
+        tracker.setGrid(grid)
 
-    @Test("relativeBeatTimes_projectsFromPhaseAnchorAndPeriod")
-    func relativeBeatTimes_projects() {
-        let tracker = LiveBeatDriftTracker()
-        tracker.installBPMPrior(bpm: 120, character: makeCharacter())
-        // Anchor + a few confirmations.
-        _ = driveWithPeaks(
-            tracker, peakTimes: periodicPeaks(bpm: 120, count: 4),
-            durationSeconds: 2.0
-        )
-        let upcoming = tracker.relativeBeatTimes(
-            playbackTime: 2.1, count: 4, window: 4.0
-        )
-        // We expect at least 2 beats projected (some past, some future).
-        #expect(upcoming.count >= 2)
-        // Periods between consecutive returned beats ≈ 0.5 s.
-        if upcoming.count >= 2 {
-            let diffs = zip(upcoming, upcoming.dropFirst()).map { $1 - $0 }
-            for diff in diffs {
-                #expect(abs(diff - 0.5) < 0.05)
+        // No onsets yet: .locking is acceptable (or .unlocked) only before
+        // any onset. Probe with a no-onset frame; expect not .locked.
+        let r0 = tracker.update(subBassOnset: false, playbackTime: 0, deltaTime: 0.01)
+        if case .locked = r0.lockState {
+            #expect(Bool(false), "should not be .locked before any onset")
+        }
+
+        // Fire 6 well-aligned onsets at 120 BPM (one every 0.5 s).
+        // 4 should put us past the lockThreshold = .locked.
+        let period = 0.5
+        let dt = 0.01
+        var t = 0.0
+        var last = r0
+        for beatIdx in 1...6 {
+            // Step right up to the next cached beat (period * beatIdx).
+            let target = Double(beatIdx) * period
+            while t + dt < target {
+                _ = tracker.update(
+                    subBassOnset: false, playbackTime: t, deltaTime: Float(dt)
+                )
+                t += dt
             }
+            // Fire one onset frame at the beat.
+            last = tracker.update(subBassOnset: true, playbackTime: t, deltaTime: Float(dt))
+            t += dt
+        }
+
+        if case .locked = last.lockState {
+            // expected
+        } else {
+            #expect(Bool(false), "expected .locked after 6 aligned onsets, got \(last.lockState)")
         }
     }
 
-    // MARK: - Reset
+    // MARK: 7. setGrid(_:) resets state
 
-    @Test("reset_clearsPhaseAndConfidenceButPreservesPrior")
-    func reset_clearsPhaseButPreservesPrior() {
+    @Test("gridSwitch_resetsState")
+    func test_gridSwitch_resetsState() {
         let tracker = LiveBeatDriftTracker()
-        tracker.installBPMPrior(bpm: 120, character: makeCharacter())
-        _ = driveWithPeaks(
-            tracker, peakTimes: periodicPeaks(bpm: 120, count: 6),
-            durationSeconds: 3.5
-        )
-        #expect(tracker.currentAccentConfidence > 0)
+        let g1 = makeUniformGrid(bpm: 120, beats: 32)
+        tracker.setGrid(g1)
+
+        // Lock against g1 with 6 aligned onsets.
+        let period = 0.5
+        _ = drive(tracker, durationSeconds: 4.0) { t in
+            let nearest = round(t / period) * period
+            return abs(t - nearest) < 0.005
+        }
+
+        // Install g2 (different tempo). State should fully reset → .unlocked
+        // until a fresh onset is matched.
+        let g2 = makeUniformGrid(bpm: 90, beats: 32)
+        tracker.setGrid(g2)
+        let r = tracker.update(subBassOnset: false, playbackTime: 0.0, deltaTime: 0.01)
+        if case .unlocked = r.lockState {
+            // expected
+        } else {
+            #expect(Bool(false), "expected .unlocked immediately after setGrid")
+        }
+        // And drift should be 0: probing at exact beat 0 → phase 0.
+        #expect(r.beatPhase01 < 0.02)
+    }
+
+    // MARK: 8. Bar phase
+
+    @Test("barPhase01_aligned")
+    func test_barPhase01_aligned() {
+        let tracker = LiveBeatDriftTracker()
+        // 4/4 grid, downbeats at beats 0, 4, 8, 12.  120 BPM → period 0.5 s,
+        // bar duration = 2.0 s.
+        let grid = makeUniformGrid(bpm: 120, beats: 32, beatsPerBar: 4)
+        tracker.setGrid(grid)
+
+        // At playbackTime = 1.0 s, we are exactly at beat 2 (mid-bar) with
+        // drift ≈ 0 (no onsets fed; grid pristine).  barPhase01 should be 0.5.
+        let r = tracker.update(subBassOnset: false, playbackTime: 1.0, deltaTime: 0.01)
+        #expect(abs(r.barPhase01 - 0.5) < 0.05,
+                "expected barPhase01 ≈ 0.5 at beat 2 of a 4/4 bar, got \(r.barPhase01)")
+    }
+
+    // MARK: 9–15. Public API coverage (SC overhaul prerequisite)
+    //
+    // Tests 9–10 cover `currentBPM`, tests 11 cover `currentLockState`, and
+    // tests 12–15 cover `relativeBeatTimes`.  These APIs ship in DSP.2 S7 and
+    // are consumed by the SC overhaul; unit tests here ensure any breakage
+    // surfaces in the cheap unit suite before the more expensive visual review.
+
+    // MARK: 9. currentBPM — no grid
+
+    @Test("currentBPM_noGrid_returnsZero")
+    func test_currentBPM_noGrid_returnsZero() {
+        let tracker = LiveBeatDriftTracker()
+        #expect(tracker.currentBPM == 0.0, "currentBPM should be 0 when no grid is installed")
+    }
+
+    // MARK: 10. currentBPM — with grid
+
+    @Test("currentBPM_withGrid_matchesGridBPM")
+    func test_currentBPM_withGrid_matchesGridBPM() {
+        let tracker = LiveBeatDriftTracker()
+        let grid = makeUniformGrid(bpm: 125.0, beats: 32)
+        tracker.setGrid(grid)
+        #expect(abs(tracker.currentBPM - 125.0) < 0.01,
+                "currentBPM should reflect the grid's BPM=125, got \(tracker.currentBPM)")
+    }
+
+    // MARK: 11. currentLockState — no grid
+
+    @Test("currentLockState_noGrid_returnsUnlocked")
+    func test_currentLockState_noGrid_returnsUnlocked() {
+        let tracker = LiveBeatDriftTracker()
+        if case .unlocked = tracker.currentLockState {
+            // expected
+        } else {
+            #expect(Bool(false), "expected .unlocked with no grid, got \(tracker.currentLockState)")
+        }
+    }
+
+    // MARK: 12. relativeBeatTimes — no grid → empty
+
+    @Test("relativeBeatTimes_noGrid_returnsEmpty")
+    func test_relativeBeatTimes_noGrid_returnsEmpty() {
+        let tracker = LiveBeatDriftTracker()
+        let times = tracker.relativeBeatTimes(playbackTime: 0, count: 4)
+        #expect(times.isEmpty, "relativeBeatTimes should be empty when no grid is installed")
+    }
+
+    // MARK: 13. relativeBeatTimes — count ceiling respected
+
+    @Test("relativeBeatTimes_respectsCountCeiling")
+    func test_relativeBeatTimes_respectsCountCeiling() {
+        let tracker = LiveBeatDriftTracker()
+        let grid = makeUniformGrid(bpm: 120, beats: 32)
+        tracker.setGrid(grid)
+        // Request only 3 beats from a window that contains many more.
+        let times = tracker.relativeBeatTimes(playbackTime: 0, count: 3, window: 30.0)
+        #expect(times.count <= 3,
+                "relativeBeatTimes should return at most count=3 entries, got \(times.count)")
+    }
+
+    // MARK: 14. relativeBeatTimes — past beats have negative relative times
+
+    @Test("relativeBeatTimes_includesPastBeatsAsNegative")
+    func test_relativeBeatTimes_includesPastBeatsAsNegative() {
+        let tracker = LiveBeatDriftTracker()
+        let grid = makeUniformGrid(bpm: 120, beats: 32)  // beats at 0, 0.5, 1.0, ...
+        tracker.setGrid(grid)
+
+        // At playbackTime = 1.0, the beat at t=0.5 should appear as relative ≈ -0.5.
+        let times = tracker.relativeBeatTimes(playbackTime: 1.0, count: 20, window: 3.0)
+        let pastBeats = times.filter { $0 < 0 }
+        #expect(!pastBeats.isEmpty, "beats before playbackTime=1.0 should appear with negative relative times")
+
+        // Beat at t=0.5 → relative = 0.5 − 1.0 = -0.5 (with drift=0).
+        #expect(times.contains(where: { abs($0 - (-0.5)) < 0.05 }),
+                "beat at t=0.5 should appear as ≈ -0.5 relative to playbackTime=1.0; times=\(times)")
+    }
+
+    // MARK: 15. relativeBeatTimes — upcoming beats are positive
+
+    @Test("relativeBeatTimes_upcomingBeatsArePositive")
+    func test_relativeBeatTimes_upcomingBeatsArePositive() {
+        let tracker = LiveBeatDriftTracker()
+        let grid = makeUniformGrid(bpm: 120, beats: 32)  // beats at 0, 0.5, 1.0, ...
+        tracker.setGrid(grid)
+
+        // At playbackTime = 0.1 (just past beat 0), the next beat is at t=0.5.
+        // Its relative time = 0.5 − 0.1 = +0.4.
+        let times = tracker.relativeBeatTimes(playbackTime: 0.1, count: 4, window: 5.0)
+        let upcoming = times.filter { $0 > 0 }
+        #expect(!upcoming.isEmpty, "expected upcoming beats (positive) at playbackTime=0.1")
+        #expect(times.contains(where: { abs($0 - 0.4) < 0.05 }),
+                "beat at t=0.5 should appear as ≈ +0.4 relative to playbackTime=0.1; times=\(times)")
+    }
+
+    // MARK: 16. BUG-007.2 regression — extrapolated grid holds lock past 30 s (Fix A gate)
+
+    /// Installs a Money-style grid via offsetBy(0) (mirroring the production prepared-cache path
+    /// after Fix A). Drives 50 s of 400 ms onsets and asserts that lock is .locked at t = 40 s.
+    /// Before Fix A the prepared grid had no extrapolated beats past t ≈ 30 s, so nearestBeat()
+    /// returned nil for all subsequent onsets and lock permanently dropped to .locking.
+    @Test("lockHoldsAfter30sWithExtrapolatedGrid")
+    func test_lockHoldsAfter30sWithExtrapolatedGrid() {
+        let rawGrid = makeMoneySyntheticGrid(bpm: 123.2, coverageSeconds: 30.0)
+        let grid = rawGrid.offsetBy(0)   // mirrors the Fix-A production path
+        let tracker = LiveBeatDriftTracker()
+        tracker.setGrid(grid)
+
+        let fps: Double = 60
+        let dt = Float(1.0 / fps)
+        var onsetAccum: Double = 0
+        let onsetIntervalS: Double = 0.400
+        var sampledLockState: LiveBeatDriftTracker.LockState = .unlocked
+
+        for frame in 0..<Int(50.0 * fps) {
+            let t = Double(frame) / fps
+            onsetAccum += 1.0 / fps
+            let isOnset = onsetAccum >= onsetIntervalS
+            if isOnset { onsetAccum -= onsetIntervalS }
+
+            let result = tracker.update(subBassOnset: isOnset, playbackTime: t, deltaTime: dt)
+            if t >= 40.0 && t < 40.0 + 1.0 / fps + 0.001 {
+                sampledLockState = result.lockState
+            }
+        }
+
+        if case .locked = sampledLockState {
+            // expected — Fix A: extrapolated grid keeps nearestBeat() returning non-nil at t=40 s
+        } else {
+            #expect(Bool(false), "BUG-007.2 Fix A regression: expected .locked at t=40 s with extrapolated grid, got \(sampledLockState)")
+        }
+    }
+
+    // MARK: 17. BUG-007.2 regression — lock oscillations bounded on extrapolated grid (Fix B gate)
+
+    /// With an extrapolated grid (Fix A) and lockReleaseMisses = 5 (Fix B), Money's 400 ms
+    /// onset cadence vs 487 ms beat period should produce at most 2 LOCKED→LOCKING transitions
+    /// in 60 s of deterministic 400 ms onsets. Before Fix B (lockReleaseMisses = 3), runs of
+    /// 3 consecutive misses dropped lock every ~1–2 s, producing many oscillations per minute.
+    @Test("lockDoesNotOscillateOnStableInput")
+    func test_lockDoesNotOscillateOnStableInput() {
+        let rawGrid = makeMoneySyntheticGrid(bpm: 123.2, coverageSeconds: 30.0)
+        let grid = rawGrid.offsetBy(0)
+        let tracker = LiveBeatDriftTracker()
+        tracker.setGrid(grid)
+
+        let fps: Double = 60
+        let dt = Float(1.0 / fps)
+        var onsetAccum: Double = 0
+        let onsetIntervalS: Double = 0.400
+        var prevLock: LiveBeatDriftTracker.LockState = .unlocked
+        var lockedToLockingTransitions = 0
+
+        for frame in 0..<Int(60.0 * fps) {
+            let t = Double(frame) / fps
+            onsetAccum += 1.0 / fps
+            let isOnset = onsetAccum >= onsetIntervalS
+            if isOnset { onsetAccum -= onsetIntervalS }
+
+            let result = tracker.update(subBassOnset: isOnset, playbackTime: t, deltaTime: dt)
+            if case .locked = prevLock, case .locking = result.lockState {
+                lockedToLockingTransitions += 1
+            }
+            prevLock = result.lockState
+        }
+
+        // swiftlint:disable:next line_length
+        #expect(lockedToLockingTransitions <= 2, "BUG-007.2 Fix B regression: expected ≤2 LOCKED→LOCKING transitions in 60 s on a correctly extrapolated grid; got \(lockedToLockingTransitions)")
+    }
+
+    // MARK: 19. BUG-007.4 — barPhaseOffset rotates barPhase01 modulo beatsPerBar
+
+    /// Cycling `barPhaseOffset` shifts which beat is labelled "1" without affecting beat-phase.
+    /// Setter wraps modulo `beatsPerBar` — passing offset = beatsPerBar must equal offset = 0.
+    @Test("barPhaseOffset_rotatesBarPhase_modBeatsPerBar")
+    func test_barPhaseOffsetRotates() {
+        let grid = makeUniformGrid(bpm: 120, beats: 32, beatsPerBar: 4)
+        let tracker = LiveBeatDriftTracker()
+        tracker.setGrid(grid)
+        // Drive a few onsets so phase is computable.
+        let dt: Float = 1.0 / 60.0
+        for frame in 0..<60 {
+            _ = tracker.update(subBassOnset: frame % 30 == 0,
+                               playbackTime: Double(frame) / 60.0, deltaTime: dt)
+        }
+        // At playbackTime = 0.5 s (start of beat 2 of bar 1, 120 BPM), with offset=0:
+        // beatsSinceDownbeat=1 → barPhase01 ≈ 0.25.
+        let probe0 = tracker.update(subBassOnset: false, playbackTime: 0.5, deltaTime: dt)
+        let phaseAtZero = probe0.barPhase01
+
+        tracker.barPhaseOffset = 1
+        let probe1 = tracker.update(subBassOnset: false, playbackTime: 0.5, deltaTime: dt)
+        // Offset=1 should advance bar phase by 1/4 (one beat in 4/4).
+        let expectedDelta = Float(0.25)
+        let observedDelta = probe1.barPhase01 - phaseAtZero
+        let normalised = observedDelta - floor(observedDelta)
+        #expect(abs(normalised - expectedDelta) < 0.05,
+                "Expected barPhase01 to advance by ~0.25 with offset=1; got Δ=\(observedDelta)")
+
+        // Wrap: offset = beatsPerBar should equal offset = 0.
+        tracker.barPhaseOffset = 4
+        #expect(tracker.barPhaseOffset == 0,
+                "Setter must wrap modulo beatsPerBar (4 → 0); got \(tracker.barPhaseOffset)")
+
+        // Reset on setGrid:
+        tracker.barPhaseOffset = 2
+        tracker.setGrid(grid)
+        #expect(tracker.barPhaseOffset == 0,
+                "barPhaseOffset must reset to 0 on setGrid")
+    }
+
+    // MARK: 20. BUG-007.5 — sparse onsets do not drop lock by count
+
+    /// Half-time trap groove (~76 BPM, beat period ~790 ms) produces 7 consecutive
+    /// non-tight onsets across roughly 5.5 seconds. Pre-fix, the count gate
+    /// (`lockReleaseMisses=7`) would drop lock the moment the 7th non-tight arrived.
+    /// Time-based gate (`lockReleaseTimeSeconds=2.5`) drops lock after 2.5 s — which
+    /// is correct: HUMBLE-style sparse onsets that span 5+ s of non-tight events
+    /// genuinely indicate a lost lock, but 7 onsets within 2.5 s do not.
+    @Test("sparseNonTightOnsets_doNotDropLockByCount")
+    func test_sparseNonTightOnsetsDoNotDropLockByCount() {
+        let grid = makeUniformGrid(bpm: 120, beats: 64)
+        let tracker = LiveBeatDriftTracker()
+        // Disable latency for this test — we're measuring lock semantics, not timing.
+        tracker.audioOutputLatencyMs = 0
+        tracker.setGrid(grid)
+
+        // Phase 1: drive 4 perfectly-aligned onsets to acquire lock.
+        let dt: Float = 1.0 / 60.0
+        let beatPeriod = 0.5  // 120 BPM
+        for i in 0..<4 {
+            let t = Double(i) * beatPeriod
+            _ = tracker.update(subBassOnset: true, playbackTime: t, deltaTime: dt)
+        }
+        if case .locked = tracker.currentLockState {} else {
+            #expect(Bool(false), "Should be locked after 4 aligned onsets")
+        }
+
+        // Phase 2: 7 onsets each shifted +40 ms (just outside ±30 ms tight gate).
+        // At 120 BPM with 7 sparse onsets at e.g. half-rate, they span 7 × 0.5 = 3.5 s.
+        // Adjust onset spacing to 0.3 s so 7 onsets span only 7 × 0.3 = 2.1 s — UNDER
+        // the 2.5 s lock-release gate. Pre-fix would drop on the 7th miss; post-fix holds.
+        var dropCount = 0
+        var prevState: LiveBeatDriftTracker.LockState = .locked
+        for i in 0..<7 {
+            let t = 4.0 * beatPeriod + Double(i) * 0.3 + 0.040  // +40 ms shifted
+            let result = tracker.update(subBassOnset: true, playbackTime: t, deltaTime: dt)
+            if case .locked = prevState, case .locking = result.lockState { dropCount += 1 }
+            prevState = result.lockState
+        }
+        #expect(dropCount == 0,
+                "BUG-007.5: 7 non-tight onsets within 2.1 s must not drop lock; got \(dropCount) drops")
+    }
+
+    // MARK: 21. BUG-007.5 — sustained non-tight stream eventually drops lock by time
+
+    /// Alternating-sign jitter (±45 ms shifts) keeps the EMA near 0 while every
+    /// individual instantDrift is ~45 ms from the EMA — outside the ±30 ms tight
+    /// gate. After 2.5 s of this sustained non-tight pattern, lock must drop.
+    /// (Pure same-sign shifts let the EMA converge so the events become "tight"
+    /// relative to the moving EMA — see test 20 for that pattern.)
+    @Test("sustainedNonTightOnsets_dropsLockByTime")
+    func test_sustainedNonTightOnsetsDropsLockByTime() {
+        let grid = makeUniformGrid(bpm: 120, beats: 64)
+        let tracker = LiveBeatDriftTracker()
+        tracker.audioOutputLatencyMs = 0
+        tracker.setGrid(grid)
+
+        // Acquire lock.
+        let dt: Float = 1.0 / 60.0
+        let beatPeriod = 0.5
+        for i in 0..<4 {
+            _ = tracker.update(subBassOnset: true,
+                               playbackTime: Double(i) * beatPeriod, deltaTime: dt)
+        }
+        // 8 onsets at 0.5 s spacing, each shifted +80 ms from grid. 80 ms is
+        // outside the ±50 ms search window so `nearestBeat` returns nil for every
+        // onset — all non-tight. Span: 8 × 0.5 = 4 s, exceeding the 2.5 s gate.
+        var droppedAtIndex: Int?
+        var prevState: LiveBeatDriftTracker.LockState = .locked
+        for i in 0..<8 {
+            let t = 4.0 * beatPeriod + Double(i) * beatPeriod + 0.080
+            let result = tracker.update(subBassOnset: true, playbackTime: t, deltaTime: dt)
+            if case .locked = prevState, case .locking = result.lockState, droppedAtIndex == nil {
+                droppedAtIndex = i
+            }
+            prevState = result.lockState
+        }
+        #expect(droppedAtIndex != nil,
+                "BUG-007.5: lock must drop after 2.5 s of sustained non-tight onsets")
+    }
+
+    // MARK: 22. BUG-007.6 — audioOutputLatencyMs shifts display time, not matching
+
+    /// Latency comp does NOT touch onset matching (matching operates on tap-time
+    /// onsets). It shifts the display phase forward by L ms so visual orb fires
+    /// when the listener hears the audio, not when the tap captured it. Verify:
+    /// (a) drift converges to the same value with or without latency (matching unaffected);
+    /// (b) `beatPhase01` at a given playbackTime differs by L between latency=0 and latency=L.
+    @Test("audioOutputLatencyMs_shiftsDisplayNotMatching")
+    func test_audioOutputLatencyShiftsDisplayNotMatching() {
+        let grid = makeUniformGrid(bpm: 120, beats: 64)
+        let beatPeriod = 0.5
+        let dt: Float = 1.0 / 60.0
+
+        // Tracker A: no latency comp. Drive perfectly aligned onsets.
+        let trackerA = LiveBeatDriftTracker()
+        trackerA.audioOutputLatencyMs = 0
+        trackerA.setGrid(grid)
+        for i in 0..<8 {
+            _ = trackerA.update(subBassOnset: true, playbackTime: Double(i) * beatPeriod, deltaTime: dt)
+        }
+        let driftA = trackerA.currentDriftMs
+
+        // Tracker B: latency = 50 ms. Same input.
+        let trackerB = LiveBeatDriftTracker()
+        trackerB.audioOutputLatencyMs = 50.0
+        trackerB.setGrid(grid)
+        for i in 0..<8 {
+            _ = trackerB.update(subBassOnset: true, playbackTime: Double(i) * beatPeriod, deltaTime: dt)
+        }
+        let driftB = trackerB.currentDriftMs
+
+        // Matching path is unaffected by latency: drift values must be identical.
+        #expect(abs(driftA - driftB) < 0.5,
+                "BUG-007.6: latency must not affect drift convergence; got A=\(driftA) B=\(driftB)")
+
+        // Display path shifts by L: at the same playback time, beatPhase01 should be
+        // larger for tracker B (further along in the beat) by L/period = 50/500 = 0.1.
+        let probeA = trackerA.update(subBassOnset: false, playbackTime: 4.25 * beatPeriod, deltaTime: dt)
+        let probeB = trackerB.update(subBassOnset: false, playbackTime: 4.25 * beatPeriod, deltaTime: dt)
+        let phaseDelta = probeB.beatPhase01 - probeA.beatPhase01
+        // Expected delta: 0.10 (50 ms / 500 ms beat period). Tolerance ±0.02.
+        #expect(abs(phaseDelta - 0.10) < 0.02,
+                "BUG-007.6: latency=50 ms should advance beatPhase01 by ~0.10; got Δ=\(phaseDelta)")
+    }
+
+    // MARK: 23. BUG-007.6 — latency setter clamps to ±500 ms
+
+    @Test("audioOutputLatencyMs_setter_clampsToRange")
+    func test_audioOutputLatencyClampsRange() {
+        let tracker = LiveBeatDriftTracker()
+        tracker.audioOutputLatencyMs = 1000.0
+        #expect(tracker.audioOutputLatencyMs == 500.0)
+        tracker.audioOutputLatencyMs = -1000.0
+        #expect(tracker.audioOutputLatencyMs == -500.0)
+        tracker.audioOutputLatencyMs = 75.0
+        #expect(tracker.audioOutputLatencyMs == 75.0)
+    }
+
+    // MARK: 24. BUG-007.6 — latency persists across reset/setGrid (system property)
+
+    @Test("audioOutputLatencyMs_persistsAcrossSetGrid")
+    func test_audioOutputLatencyPersistsAcrossReset() {
+        let grid = makeUniformGrid(bpm: 120, beats: 32)
+        let tracker = LiveBeatDriftTracker()
+        tracker.audioOutputLatencyMs = 75.0
+        tracker.setGrid(grid)
+        #expect(tracker.audioOutputLatencyMs == 75.0,
+                "BUG-007.6: audioOutputLatencyMs is a system property and must persist across track changes")
         tracker.reset()
-        #expect(tracker.currentAccentConfidence == 0)
-        #expect(tracker.currentLockState == .unlocked)
-        // BPM prior preserved.
-        #expect(tracker.currentBPM == 120)
-        #expect(tracker.hasGrid == true)
+        #expect(tracker.audioOutputLatencyMs == 75.0,
+                "BUG-007.6: reset() must not reset audioOutputLatencyMs either")
+    }
+
+    // MARK: 25. BUG-007.5 part 2 — adaptive tight gate widens for noisy onset streams
+
+    /// MC / HUMBLE pattern: drift envelope spans ~40 ms even when bounded near 0.
+    /// Pre-fix (fixed ±30 ms), individual onsets at the edge of the envelope tripped
+    /// the time gate. Adaptive gate widens to ~2σ ≈ 40-60 ms on noisy material so
+    /// lock retention catches up to the envelope.
+    @Test("adaptiveTightGate_widensForNoisyOnsetStream")
+    func test_adaptiveTightGateWidensForNoisyOnsetStream() {
+        let grid = makeUniformGrid(bpm: 120, beats: 64)
+        let trackerFloor = LiveBeatDriftTracker()
+        trackerFloor.audioOutputLatencyMs = 0
+        trackerFloor.setGrid(grid)
+        let trackerAdaptive = LiveBeatDriftTracker()
+        trackerAdaptive.audioOutputLatencyMs = 0
+        trackerAdaptive.setGrid(grid)
+
+        // Phase 1: acquire lock on both with 5 perfectly aligned onsets.
+        let beatPeriod = 0.5
+        let dt: Float = 1.0 / 60.0
+        for i in 0..<5 {
+            _ = trackerFloor.update(subBassOnset: true,
+                                    playbackTime: Double(i) * beatPeriod, deltaTime: dt)
+            _ = trackerAdaptive.update(subBassOnset: true,
+                                       playbackTime: Double(i) * beatPeriod, deltaTime: dt)
+        }
+        // Phase 2: 8 noisy onsets with ±35 ms uncorrelated jitter (just outside
+        // the 30 ms floor). The adaptive tracker should accumulate σ ≈ 25 ms,
+        // widening the gate to ~50 ms — onsets become tight relative to the EMA.
+        // The floor tracker keeps the 30 ms gate; many onsets remain non-tight.
+        let jitters: [Double] = [0.035, -0.032, 0.038, -0.034, 0.036, -0.030, 0.033, -0.037]
+        var tightCountAdaptive = 0
+        var tightCountFloor = 0
+        let captureFloor = TightCapture()
+        let captureAdaptive = TightCapture()
+        trackerFloor.diagnosticTrace = { entry in captureFloor.value = entry.isTightMatch }
+        trackerAdaptive.diagnosticTrace = { entry in captureAdaptive.value = entry.isTightMatch }
+        for i in 0..<jitters.count {
+            let t = Double(5 + i) * beatPeriod + jitters[i]
+            _ = trackerFloor.update(subBassOnset: true, playbackTime: t, deltaTime: dt)
+            _ = trackerAdaptive.update(subBassOnset: true, playbackTime: t, deltaTime: dt)
+            if captureFloor.value { tightCountFloor += 1 }
+            if captureAdaptive.value { tightCountAdaptive += 1 }
+        }
+        // Both trackers run identical code paths in this test (same instance
+        // type) — adaptive gate is on by default. The "floor" tracker can't be
+        // disabled at runtime, so this test verifies the *effect*: with 35 ms
+        // jitter we expect majority of onsets to be tight (gate widened above
+        // 35 ms) — at fixed 30 ms gate, 0/8 would be tight.
+        // swiftlint:disable:next line_length
+        #expect(tightCountAdaptive >= 4, "BUG-007.5 pt2: expected ≥4 tight matches with adaptive gate on ±35 ms jitter; got \(tightCountAdaptive)")
+    }
+
+    // MARK: 26. BUG-007.5 part 2 — adaptive ring resets on setGrid
+
+    @Test("adaptiveTightGate_ringResetsOnSetGrid")
+    func test_adaptiveRingResetsOnSetGrid() {
+        let grid1 = makeUniformGrid(bpm: 120, beats: 32)
+        let grid2 = makeUniformGrid(bpm: 100, beats: 32)
+        let tracker = LiveBeatDriftTracker()
+        tracker.audioOutputLatencyMs = 0
+
+        // First track: drive ±40 ms jitter for 12 onsets — σ accumulates large.
+        tracker.setGrid(grid1)
+        let dt: Float = 1.0 / 60.0
+        for i in 0..<12 {
+            let jitter = (i % 2 == 0) ? 0.040 : -0.040
+            _ = tracker.update(subBassOnset: true,
+                               playbackTime: Double(i) * 0.5 + jitter, deltaTime: dt)
+        }
+        // After 12 jittered onsets the ring has built a wide σ (around ~40 ms).
+        // If the ring carried over to a new track, a +60 ms shift would still be
+        // tight (~80 ms gate). After reset, ring is empty → floor gate (30 ms) →
+        // 60 ms shift is non-tight.
+
+        // Switch tracks: setGrid clears the ring. Then drive 5 *aligned* onsets
+        // to acquire lock without re-populating σ much. Ring entries: ~0, 0, 0, 0, 0.
+        tracker.setGrid(grid2)
+        let period2 = 0.6   // 100 BPM
+        for i in 0..<5 {
+            _ = tracker.update(subBassOnset: true,
+                               playbackTime: Double(i) * period2, deltaTime: dt)
+        }
+        // After 5 aligned onsets, σ ≈ 0, gate = floor (30 ms).
+        let tightCapture = TightCapture()
+        tracker.diagnosticTrace = { entry in tightCapture.value = entry.isTightMatch }
+        // Fire onset at +60 ms — well outside the floor. With ring reset → non-tight.
+        // If ring carried over from grid1's wide σ → would be tight (gate ≈ 80 ms).
+        _ = tracker.update(subBassOnset: true, playbackTime: 5 * period2 + 0.060, deltaTime: dt)
+        #expect(!tightCapture.value,
+                "BUG-007.5 pt2: variance ring must reset on setGrid (no carryover from prior track)")
+    }
+
+    // MARK: 27. BUG-007.4b — auto-rotate selects the dominant kick-density slot
+
+    /// Synthetic kick-on-beats-1+3 pattern (HUMBLE-style trap groove), but with
+    /// the prepared grid's "downbeat" at slot 2 (off by 2 — typical Spotify-clip
+    /// rotation error). After 8+ tight onsets, auto-rotate should pick slot 2
+    /// (where kicks land most) and rotate it to displayed "1".
+    @Test("autoRotate_picksDominantKickSlotAfterLockAcquired")
+    func test_autoRotatePicksDominantKickSlot() {
+        // Build a 4/4 grid with downbeats at every 4th beat. Beat times are at
+        // 0.5 s spacing (120 BPM); downbeats at 0.0, 2.0, 4.0, ...
+        let grid = makeUniformGrid(bpm: 120, beats: 64, beatsPerBar: 4)
+        let tracker = LiveBeatDriftTracker()
+        tracker.audioOutputLatencyMs = 0
+        tracker.setGrid(grid)
+
+        // Drive aligned kicks on raw slots 1 and 3 only (the "kick" slots).
+        // Slot 0 and 2 get nothing. After enough onsets, slot 1 or 3 is dominant
+        // (whichever has more hits). To make slot 2 dominant in this test we'd
+        // need to feed only on slot 2 — but with `beatsSinceDownbeat` indexing
+        // that's just every 4th beat starting from beat 2. Let's set up: kick on
+        // raw slots {2} predominantly.
+        let dt: Float = 1.0 / 60.0
+        let beatPeriod = 0.5
+        // Drive 12 onsets, all on raw slot 2 (every 4th beat starting from beat 2).
+        // beats 2, 6, 10, 14, ... at times 1.0, 3.0, 5.0, 7.0, ... s.
+        for i in 0..<12 {
+            let t = 1.0 + Double(i) * 4.0 * beatPeriod
+            _ = tracker.update(subBassOnset: true, playbackTime: t, deltaTime: dt)
+        }
+        // After 12 aligned onsets all on slot 2, auto-rotate should fire and
+        // map slot 2 → displayed slot 0. Offset = (4 − 2) % 4 = 2.
+        #expect(tracker.barPhaseOffset == 2,
+                "BUG-007.4b: dominant slot 2 should auto-rotate offset to 2; got \(tracker.barPhaseOffset)")
+    }
+
+    // MARK: 28. BUG-007.4b — auto-rotate is suppressed by manual Shift+B
+
+    /// If the user presses `Shift+B` (sets `barPhaseOffset` externally) before
+    /// auto-rotate fires, the manual choice wins and auto-rotate is permanently
+    /// suppressed for the current track.
+    @Test("autoRotate_suppressedByManualPress")
+    func test_autoRotateSuppressedByManualPress() {
+        let grid = makeUniformGrid(bpm: 120, beats: 64, beatsPerBar: 4)
+        let tracker = LiveBeatDriftTracker()
+        tracker.audioOutputLatencyMs = 0
+        tracker.setGrid(grid)
+
+        // User presses Shift+B once before any onsets arrive (offset → 1).
+        tracker.barPhaseOffset = 1
+        #expect(tracker.barPhaseOffset == 1)
+
+        // Now drive 12 onsets on raw slot 2 — would normally trigger auto-rotate to 2.
+        let dt: Float = 1.0 / 60.0
+        let beatPeriod = 0.5
+        for i in 0..<12 {
+            let t = 1.0 + Double(i) * 4.0 * beatPeriod
+            _ = tracker.update(subBassOnset: true, playbackTime: t, deltaTime: dt)
+        }
+        // Manual press wins: offset stays at 1, NOT 2.
+        #expect(tracker.barPhaseOffset == 1,
+                "BUG-007.4b: manual Shift+B must suppress auto-rotate; got \(tracker.barPhaseOffset)")
+    }
+
+    // MARK: 29. BUG-007.4b — auto-rotate is no-op when no clear winner (4-on-the-floor)
+
+    /// Four-on-the-floor electronic music (OMT) puts equal kick density on all
+    /// 4 slots. Auto-rotate must NOT pick a random slot — it should leave the
+    /// offset at 0 (Beat This!'s default) and let manual `Shift+B` handle the
+    /// rotation. Otherwise we'd corrupt the offset on tracks where the heuristic
+    /// has no signal.
+    @Test("autoRotate_noOpWhenAllSlotsEqual")
+    func test_autoRotateNoOpWhenAllSlotsEqual() {
+        let grid = makeUniformGrid(bpm: 120, beats: 64, beatsPerBar: 4)
+        let tracker = LiveBeatDriftTracker()
+        tracker.audioOutputLatencyMs = 0
+        tracker.setGrid(grid)
+
+        // Drive 16 perfectly aligned onsets on EVERY beat — equal density on all
+        // 4 slots (each gets 4 hits). No clear winner.
+        let dt: Float = 1.0 / 60.0
+        let beatPeriod = 0.5
+        for i in 0..<16 {
+            let t = Double(i) * beatPeriod
+            _ = tracker.update(subBassOnset: true, playbackTime: t, deltaTime: dt)
+        }
+        // No clear winner → offset stays at default 0.
+        #expect(tracker.barPhaseOffset == 0,
+                "BUG-007.4b: equal-density input should NOT trigger rotation; got \(tracker.barPhaseOffset)")
+    }
+
+    // MARK: 30. BUG-007.4b — auto-rotate fires only once per track
+
+    /// Once auto-rotate has attempted (whether it rotated or not), it must not
+    /// fire again on the same track even if subsequent kick density changes
+    /// would now suggest a different rotation. This protects against mid-track
+    /// section changes (e.g. drop, breakdown) jerking the visual into a new
+    /// rotation. Track changes (`setGrid`) reset the flag.
+    @Test("autoRotate_firesOnceUntilSetGrid")
+    func test_autoRotateFiresOnceUntilSetGrid() {
+        let grid = makeUniformGrid(bpm: 120, beats: 64, beatsPerBar: 4)
+        let tracker = LiveBeatDriftTracker()
+        tracker.audioOutputLatencyMs = 0
+        tracker.setGrid(grid)
+
+        // Phase 1: 12 onsets on raw slot 2 — auto-rotate fires, offset = 2.
+        let dt: Float = 1.0 / 60.0
+        let beatPeriod = 0.5
+        for i in 0..<12 {
+            let t = 1.0 + Double(i) * 4.0 * beatPeriod
+            _ = tracker.update(subBassOnset: true, playbackTime: t, deltaTime: dt)
+        }
+        #expect(tracker.barPhaseOffset == 2)
+
+        // Phase 2: 16 more onsets all on raw slot 0 — IF auto-rotate could
+        // re-fire, it would override to offset=0. But it's one-shot, so the
+        // offset must stay at 2.
+        let phase2Start = 1.0 + 12.0 * 4.0 * beatPeriod   // continue past phase 1
+        for i in 0..<16 {
+            let t = phase2Start + Double(i) * 4.0 * beatPeriod
+            // raw slot 0 hits at times that are integer multiples of (4 × 0.5) = 2.0 s.
+            let alignedTime = (t / 2.0).rounded() * 2.0
+            _ = tracker.update(subBassOnset: true, playbackTime: alignedTime, deltaTime: dt)
+        }
+        #expect(tracker.barPhaseOffset == 2,
+                "BUG-007.4b: one-shot auto-rotate must not re-fire; offset stayed at 2")
+
+        // Phase 3: track change — setGrid resets the flag. Now phase 1's pattern
+        // would re-trigger auto-rotate (proving the flag is per-track).
+        tracker.setGrid(grid)
+        #expect(tracker.barPhaseOffset == 0, "setGrid must reset offset")
+        for i in 0..<12 {
+            let t = 1.0 + Double(i) * 4.0 * beatPeriod
+            _ = tracker.update(subBassOnset: true, playbackTime: t, deltaTime: dt)
+        }
+        #expect(tracker.barPhaseOffset == 2,
+                "BUG-007.4b: after setGrid the auto-rotate fires again on new evidence")
+    }
+
+    // MARK: 31. BUG-007.5 part 3 — BPM-aware lock-release at slow tempos
+
+    /// HUMBLE-class half-time grid (76 BPM, 790 ms beat period). With a fixed
+    /// 2.5 s gate, 4 consecutive non-tight onsets at 790 ms spacing accumulate
+    /// 3.16 s — drops lock. BPM-aware gate (4 × 0.79 = 3.16 s) holds through 4
+    /// non-tight onsets and only drops on the 5th (~3.95 s after the first).
+    @Test("bpmAwareLockRelease_holdsLongerOnSlowGrid")
+    func test_bpmAwareLockReleaseHoldsLongerOnSlowGrid() {
+        // Build a 76 BPM grid (HUMBLE-style). Period = 60/76 ≈ 0.789 s.
+        let bpm = 76.0
+        let period = 60.0 / bpm
+        let beats = (0..<64).map { Double($0) * period }
+        let downbeats = stride(from: 0, to: 64, by: 4).map { Double($0) * period }
+        let grid = BeatGrid(
+            beats: beats, downbeats: downbeats, bpm: bpm, beatsPerBar: 4,
+            barConfidence: 0.9, frameRate: 50.0, frameCount: 1500
+        )
+        let tracker = LiveBeatDriftTracker()
+        tracker.audioOutputLatencyMs = 0
+        tracker.setGrid(grid)
+
+        // Acquire lock with 5 perfectly aligned onsets.
+        let dt: Float = 1.0 / 60.0
+        for i in 0..<5 {
+            _ = tracker.update(subBassOnset: true,
+                               playbackTime: Double(i) * period, deltaTime: dt)
+        }
+        // Drive 4 onsets at +80 ms shift (outside 50 ms search window — nil match
+        // counts as non-tight). 4 × 0.79 = 3.16 s span. Pre-fix gate (2.5 s)
+        // would drop lock on event 4 (at ~2.4 s). BPM-aware gate (3.16 s) holds.
+        var droppedAtIndex: Int?
+        var prevState: LiveBeatDriftTracker.LockState = .locked
+        for i in 0..<4 {
+            let t = 5.0 * period + Double(i) * period + 0.080
+            let result = tracker.update(subBassOnset: true, playbackTime: t, deltaTime: dt)
+            if case .locked = prevState, case .locking = result.lockState, droppedAtIndex == nil {
+                droppedAtIndex = i
+            }
+            prevState = result.lockState
+        }
+        #expect(droppedAtIndex == nil,
+                "BUG-007.5 pt3: BPM-aware gate must hold lock through 4 non-tight onsets at 76 BPM (3.16 s span); dropped at \(droppedAtIndex ?? -1)")
+    }
+
+    // MARK: 32. BUG-007.5 part 3 — fast-tempo gate stays at floor (2.5 s)
+
+    /// At 120 BPM (period 0.5 s), `4 × period = 2.0 s` — below the 2.5 s floor.
+    /// Gate must stay at 2.5 s for fast tracks (BPM-aware doesn't shorten the
+    /// floor — it only widens the gate at slow tempos).
+    @Test("bpmAwareLockRelease_floorHoldsForFastTracks")
+    func test_bpmAwareLockReleaseFloorHoldsForFastTracks() {
+        let grid = makeUniformGrid(bpm: 120, beats: 64, beatsPerBar: 4)
+        let tracker = LiveBeatDriftTracker()
+        tracker.audioOutputLatencyMs = 0
+        tracker.setGrid(grid)
+
+        // Acquire lock.
+        let dt: Float = 1.0 / 60.0
+        let beatPeriod = 0.5
+        for i in 0..<5 {
+            _ = tracker.update(subBassOnset: true,
+                               playbackTime: Double(i) * beatPeriod, deltaTime: dt)
+        }
+        // Drive 8 non-tight onsets at 0.5 s spacing — span 4 s, well past 2.5 s floor.
+        var droppedAtIndex: Int?
+        var prevState: LiveBeatDriftTracker.LockState = .locked
+        for i in 0..<8 {
+            let t = 5.0 * beatPeriod + Double(i) * beatPeriod + 0.080
+            let result = tracker.update(subBassOnset: true, playbackTime: t, deltaTime: dt)
+            if case .locked = prevState, case .locking = result.lockState, droppedAtIndex == nil {
+                droppedAtIndex = i
+            }
+            prevState = result.lockState
+        }
+        // Should drop after 2.5 s of non-tight events. At 0.5 s spacing that's
+        // event index ≥ 5 (5 × 0.5 = 2.5 s). Allow some slack.
+        #expect(droppedAtIndex != nil,
+                "BUG-007.5 pt3: floor 2.5 s must still drop lock on fast-tempo non-tight stream")
+        if let idx = droppedAtIndex {
+            #expect(idx >= 4 && idx <= 7,
+                    "BUG-007.5 pt3: drop should occur near 2.5 s (index ~5); got index \(idx)")
+        }
+    }
+
+    // MARK: 33. BUG-007.4c — kick-on-1+3 alternating pattern auto-rotates via first-onset tiebreaker
+
+    /// HUMBLE / SLTS / Everlong style: kick on raw slots 0 + 2 with similar
+    /// counts. BUG-007.4b's 1.5× ratio rejects this (1.0× ratio). BUG-007.4c's
+    /// alternating-pattern detector picks the slot matching the first tight
+    /// onset (typically the song's downbeat).
+    @Test("autoRotate_kickOn1And3_picksFirstOnsetSlot")
+    func test_autoRotateKickOn1And3PicksFirstOnsetSlot() {
+        let grid = makeUniformGrid(bpm: 120, beats: 64, beatsPerBar: 4)
+        let tracker = LiveBeatDriftTracker()
+        tracker.audioOutputLatencyMs = 0
+        tracker.setGrid(grid)
+
+        // Drive 8 onsets alternating raw slot 2 then raw slot 0:
+        //   First onset on slot 2 → firstTightOnsetRawSlot = 2.
+        //   Counts end up [4, 0, 4, 0]. Top = 4 (slot 0), runner = 4 (slot 2).
+        //   1.25× tie → BUG-007.4c kicks in. Tiebreaker: slot 2 (first onset).
+        //   Expected offset = (4 − 2) % 4 = 2.
+        let dt: Float = 1.0 / 60.0
+        let beatPeriod = 0.5
+        for i in 0..<8 {
+            // Even i → slot 2 (beats 2, 6, 10, ... at times 1.0, 3.0, 5.0, ...)
+            // Odd i → slot 0 (beats 4, 8, 12, ... at times 2.0, 4.0, 6.0, ...)
+            let beatIdx = (i % 2 == 0) ? (2 + (i / 2) * 4) : (4 + (i / 2) * 4)
+            let t = Double(beatIdx) * beatPeriod
+            _ = tracker.update(subBassOnset: true, playbackTime: t, deltaTime: dt)
+        }
+        #expect(tracker.barPhaseOffset == 2,
+                "BUG-007.4c: kick-on-1+3 with first onset on slot 2 → offset should be 2; got \(tracker.barPhaseOffset)")
+    }
+
+    // MARK: 34. BUG-007.4c — alternating pattern with first onset on slot 0 stays at offset 0
+
+    /// Same alternating distribution but first onset on slot 0 → tiebreaker
+    /// picks slot 0 → offset stays 0 (no rotation needed).
+    @Test("autoRotate_kickOn1And3_firstOnsetSlot0_noRotation")
+    func test_autoRotateKickOn1And3FirstOnsetSlot0() {
+        let grid = makeUniformGrid(bpm: 120, beats: 64, beatsPerBar: 4)
+        let tracker = LiveBeatDriftTracker()
+        tracker.audioOutputLatencyMs = 0
+        tracker.setGrid(grid)
+
+        // Drive 8 onsets: slot 0 first, then alternating with slot 2.
+        let dt: Float = 1.0 / 60.0
+        let beatPeriod = 0.5
+        for i in 0..<8 {
+            let beatIdx = (i % 2 == 0) ? (0 + (i / 2) * 4) : (2 + (i / 2) * 4)
+            let t = Double(beatIdx) * beatPeriod
+            _ = tracker.update(subBassOnset: true, playbackTime: t, deltaTime: dt)
+        }
+        #expect(tracker.barPhaseOffset == 0,
+                "BUG-007.4c: kick-on-1+3 with first onset on slot 0 → no rotation; got offset=\(tracker.barPhaseOffset)")
+    }
+
+    // MARK: 35. BUG-007.4c — 4-on-the-floor still produces no rotation (regression guard)
+
+    /// 4-on-the-floor (all 4 slots equal) must NOT trigger auto-rotate. The
+    /// alternating-pattern detector requires the *other* slots be near-zero.
+    /// With all slots holding ~25 % of total, the pattern is rejected.
+    @Test("autoRotate_fourOnTheFloor_noRotation_BUG_007_4c_regression")
+    func test_autoRotateFourOnTheFloorNoRotationRegression() {
+        let grid = makeUniformGrid(bpm: 120, beats: 64, beatsPerBar: 4)
+        let tracker = LiveBeatDriftTracker()
+        tracker.audioOutputLatencyMs = 0
+        tracker.setGrid(grid)
+
+        // Drive 16 onsets — every beat. Counts = [4, 4, 4, 4]. Top = runner = 4
+        // → tie ratio met. BUT others (slots 1+3) have 8 hits, NOT ≤20 % of top.
+        // Pattern rejected. No rotation.
+        let dt: Float = 1.0 / 60.0
+        let beatPeriod = 0.5
+        for i in 0..<16 {
+            let t = Double(i) * beatPeriod
+            _ = tracker.update(subBassOnset: true, playbackTime: t, deltaTime: dt)
+        }
+        #expect(tracker.barPhaseOffset == 0,
+                "BUG-007.4c: 4-on-the-floor must NOT trigger rotation; got offset=\(tracker.barPhaseOffset)")
+    }
+
+    // MARK: 36. BUG-007.8 — setGrid(_:initialDriftMs:) seeds the EMA at the calibrated offset
+
+    /// Pre-loading drift to the per-track calibrated offset (from
+    /// `GridOnsetCalibrator` at preparation time) eliminates the ~4-onset
+    /// convergence delay where the visual lags audio at track start.
+    @Test("setGrid_initialDriftMs_seedsTheDriftEMA")
+    func test_setGridInitialDriftMsSeedsTheDriftEMA() {
+        let grid = makeUniformGrid(bpm: 120, beats: 32)
+        let tracker = LiveBeatDriftTracker()
+        tracker.audioOutputLatencyMs = 0
+        // Apply +50 ms initial drift (grid is 50 ms later than detector onsets).
+        tracker.setGrid(grid, initialDriftMs: 50.0)
+        #expect(abs(tracker.currentDriftMs - 50.0) < 0.01,
+                "BUG-007.8: drift must be seeded at +50 ms; got \(tracker.currentDriftMs)")
+    }
+
+    // MARK: 37. BUG-007.8 — initial drift clamped to ±500 ms
+
+    @Test("setGrid_initialDriftMs_clampsToRange")
+    func test_setGridInitialDriftClampsToRange() {
+        let grid = makeUniformGrid(bpm: 120, beats: 32)
+        let tracker = LiveBeatDriftTracker()
+        tracker.audioOutputLatencyMs = 0
+
+        tracker.setGrid(grid, initialDriftMs: 1000.0)
+        #expect(abs(tracker.currentDriftMs - 500.0) < 0.01)
+
+        tracker.setGrid(grid, initialDriftMs: -1000.0)
+        #expect(abs(tracker.currentDriftMs - (-500.0)) < 0.01)
+    }
+
+    // MARK: 38. BUG-007.8 — backward-compat setGrid(_:) starts drift at 0
+
+    @Test("setGrid_backwardCompat_driftStartsAtZero")
+    func test_setGridBackwardCompatDriftStartsAtZero() {
+        let grid = makeUniformGrid(bpm: 120, beats: 32)
+        let tracker = LiveBeatDriftTracker()
+        tracker.audioOutputLatencyMs = 0
+        // Old single-argument setGrid path — must preserve existing behaviour
+        // (drift starts at 0, not at some inherited value).
+        tracker.setGrid(grid)
+        #expect(tracker.currentDriftMs == 0.0,
+                "BUG-007.8: single-arg setGrid must default initialDriftMs=0")
+    }
+
+    // MARK: 39. BUG-007.9 — applyCalibration overrides drift EMA
+
+    /// Simulates the hybrid runtime recalibration path: prep-time bias was
+    /// +50 ms, runtime calibration on tap audio measures −20 ms, applyCalibration
+    /// overrides the EMA. Subsequent reads of currentDriftMs reflect the new
+    /// runtime-calibrated value.
+    @Test("applyCalibration_overridesDriftEMA")
+    func test_applyCalibrationOverridesDriftEMA() {
+        let grid = makeUniformGrid(bpm: 120, beats: 32)
+        let tracker = LiveBeatDriftTracker()
+        tracker.audioOutputLatencyMs = 0
+        tracker.setGrid(grid, initialDriftMs: 50.0)
+        #expect(abs(tracker.currentDriftMs - 50.0) < 0.01,
+                "BUG-007.9: bias seeded at +50 ms")
+
+        // Runtime calibration says drift should be −20 ms. Apply.
+        tracker.applyCalibration(driftMs: -20.0)
+        #expect(abs(tracker.currentDriftMs - (-20.0)) < 0.01,
+                "BUG-007.9: applyCalibration must override; got \(tracker.currentDriftMs)")
+    }
+
+    // MARK: 40. BUG-007.9 — applyCalibration clamps to ±500 ms
+
+    @Test("applyCalibration_clampsToRange")
+    func test_applyCalibrationClampsToRange() {
+        let grid = makeUniformGrid(bpm: 120, beats: 32)
+        let tracker = LiveBeatDriftTracker()
+        tracker.audioOutputLatencyMs = 0
+        tracker.setGrid(grid, initialDriftMs: 0)
+
+        tracker.applyCalibration(driftMs: 1000.0)
+        #expect(abs(tracker.currentDriftMs - 500.0) < 0.01)
+
+        tracker.applyCalibration(driftMs: -1000.0)
+        #expect(abs(tracker.currentDriftMs - (-500.0)) < 0.01)
+    }
+
+    // MARK: 41. BUG-007.9 — currentGrid + matchedOnsetCount accessors
+
+    @Test("currentGrid_andMatchedOnsetCount_exposed")
+    func test_currentGridAndMatchedOnsetCountExposed() {
+        let grid = makeUniformGrid(bpm: 120, beats: 32, beatsPerBar: 4)
+        let tracker = LiveBeatDriftTracker()
+        tracker.audioOutputLatencyMs = 0
+        tracker.setGrid(grid)
+        #expect(tracker.currentGrid.beats.count == grid.beats.count,
+                "BUG-007.9: currentGrid must expose installed grid")
+        #expect(tracker.matchedOnsetCount == 0,
+                "Initial matchedOnsetCount is 0")
+
+        // Drive 4 aligned onsets to acquire lock.
+        let dt: Float = 1.0 / 60.0
+        for i in 0..<4 {
+            _ = tracker.update(subBassOnset: true, playbackTime: Double(i) * 0.5, deltaTime: dt)
+        }
+        #expect(tracker.matchedOnsetCount >= 4,
+                "matchedOnsetCount should reflect tight matches")
+    }
+
+    // MARK: 18. BUG-007.2 regression — raw grid (no offsetBy) drops lock after coverage (negative case)
+
+    /// Documents the pre-fix behaviour as a known-bad path. Without offsetBy(), the prepared-cache
+    /// grid covers only ~30 s of beats. Once playbackTime exceeds that window, all onsets miss
+    /// and lock permanently drops to .locking. This test prevents a future regression where
+    /// offsetBy(0) is accidentally removed from the production prepared-cache install path.
+    @Test("preparedGridExhaustion_withoutOffsetBy_dropsLock")
+    func test_preparedGridExhaustion_withoutOffsetBy_dropsLock() {
+        // Intentionally: raw grid with no offsetBy() — same as pre-Fix-A production behaviour.
+        let grid = makeMoneySyntheticGrid(bpm: 123.2, coverageSeconds: 30.0)
+        let tracker = LiveBeatDriftTracker()
+        tracker.setGrid(grid)
+
+        let fps: Double = 60
+        let dt = Float(1.0 / fps)
+        var onsetAccum: Double = 0
+        let onsetIntervalS: Double = 0.400
+        var stateAt35s: LiveBeatDriftTracker.LockState = .unlocked
+
+        for frame in 0..<Int(40.0 * fps) {
+            let t = Double(frame) / fps
+            onsetAccum += 1.0 / fps
+            let isOnset = onsetAccum >= onsetIntervalS
+            if isOnset { onsetAccum -= onsetIntervalS }
+
+            let result = tracker.update(subBassOnset: isOnset, playbackTime: t, deltaTime: dt)
+            if t >= 35.0 && t < 35.0 + 1.0 / fps + 0.001 {
+                stateAt35s = result.lockState
+            }
+        }
+
+        if case .locked = stateAt35s {
+            // swiftlint:disable:next line_length
+            #expect(Bool(false), "BUG-007.2 negative regression: raw grid (no offsetBy) should NOT hold .locked at t=35 s — if this passes, someone re-introduced a grid exhaustion workaround that hides the bug")
+        }
+        // Any other state (.locking or .unlocked) is the expected pre-fix behaviour.
     }
 }
-// swiftlint:enable file_length
