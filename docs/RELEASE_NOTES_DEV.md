@@ -6,6 +6,64 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-26-a] BUG-016 Resolved — Lumen Mosaic per-song palette loaded at preset-activate
+
+**Increment:** BUG-016 fix (trivial-collapse single-increment, Matt's explicit approval 2026-05-26).
+**Status:** Resolved 2026-05-26 (commit pending). Manual M7 validation outstanding — see [`docs/QUALITY/KNOWN_ISSUES.md`](QUALITY/KNOWN_ISSUES.md) BUG-016 Resolution Addendum.
+
+### Symptom
+
+Matt's report (2026-05-26): "Lumen Mosaic just displays a black and white panel, no color or motion."
+
+### Root cause
+
+LM.4.7 (commit `6eef536c`, 2026-05-18) replaced Lumen Mosaic's procedural cell-color path with a per-song 12-entry palette payload (`lumen.palette[0..11]`) populated by `LumenPatternEngine.setPalette(_:)`. The orchestrator-side hook (`refreshLumenPaletteForTrack` in `VisualizerEngine+Stems.swift`) was wired to fire from `resetStemPipeline`, which only fires on track change. When the user cycled to Lumen Mosaic via `Shift+→` mid-track, `LumenPatternEngine` was freshly instantiated with the zero-initialised default palette — every shader palette lookup returned `(0,0,0)`. The cell-boundary frost halo (`LumenMosaic.metal:775-779`) mixed `cell_hue (=0)` toward `float3(1.0f)`, giving a black-Voronoi-grid-with-white-frost-halos reading. Motion existed internally (band counters advanced; palette index walked) but every slot resolved to the same colour, so the visual reading was "no motion."
+
+The CA-Presets-FU-4 instrumentation (commit `cb8cb0bb`, 2026-05-21) was guarding the wrong path — it watched for `device.makeBuffer` returning nil at init. The actual failure path has init returning a valid engine; only the palette payload is the zero default. No instrumentation fired.
+
+### Fix
+
+- New `var lastResolvedTrackIdentity: TrackIdentity?` on `VisualizerEngine` (`PhospheneApp/VisualizerEngine.swift`), set by the track-change handler in `VisualizerEngine+Capture.swift` after `canonicalTrackIdentity(matching:)` resolves the identity. Internal-only (not `@Published`); view models continue to bind to `currentTrack` / `currentTrackIndex`.
+- `refreshLumenPaletteForTrack(identity:lumenEngine:)` in `VisualizerEngine+Stems.swift` promoted from `private` to `internal` so `applyPreset` in `VisualizerEngine+Presets.swift` can call it.
+- `VisualizerEngine+Presets.swift` LM branch now calls `refreshLumenPaletteForTrack` immediately after `LumenPatternEngine` instantiation, gated on `lastResolvedTrackIdentity`. Activating LM mid-track now loads the palette from the same library + mood-bias path that runs at track-change.
+
+Net behavior change: < 30 LOC. No architectural risk — additive call to an existing function with an existing identity.
+
+### Regression coverage
+
+New `LumenPalettePayloadTests` suite in `PhospheneEngine/Tests/PhospheneEngineTests/Presets/LumenPatternEngineTests.swift`:
+
+- `test_freshEngine_paletteIsAllZero` — documents the BUG-016 trap. A future change that seeds the engine with a non-zero default trips this gate, signalling that the app-side `refreshLumenPaletteForTrack` call in `applyPreset` has become redundant.
+- `test_setPalette_populatesAllTwelveSlots` — locks the `setPalette → snapshot.palette` contract the app-side fix relies on.
+
+### Verification
+
+- **Engine:** 1267 tests in 162 suites — all pass. New `LumenPalettePayloadTests` (2/2) pass.
+- **App:** 5 failures, all pre-existing parallel-execution timing flakes — `AppleMusicConnectionViewModelTests/{connectSuccess, connectNotRunning, connectParseFailure, connectNoCurrentPlaylist}` and `ToastManagerTests/autoDismiss_afterDuration`. All 5 pass in isolation; none touch Lumen / VisualizerEngine code paths. Documented per `feedback_synthetic_audio.md` memory + `project_test_baseline.md` (`AppleMusicConnectionViewModel` is in the known-flake list; `ToastManager/autoDismiss` is a new addition to the same timing-flake class).
+- **Manual (outstanding):** Matt's M7 review — Lumen Mosaic must render the certified vivid stained-glass visual when activated via `Shift+→` mid-track in a reactive-mode session ≥ 30 s held-on. Per-beat palette dance visible. No black-and-white-grid symptom.
+
+### Touched files
+
+- `PhospheneApp/VisualizerEngine.swift` — new property `lastResolvedTrackIdentity`.
+- `PhospheneApp/VisualizerEngine+Capture.swift` — set `lastResolvedTrackIdentity` in the track-change handler.
+- `PhospheneApp/VisualizerEngine+Presets.swift` — call `refreshLumenPaletteForTrack` at LM instantiation.
+- `PhospheneApp/VisualizerEngine+Stems.swift` — promote `refreshLumenPaletteForTrack` from `private` to internal default.
+- `PhospheneEngine/Tests/PhospheneEngineTests/Presets/LumenPatternEngineTests.swift` — new `LumenPalettePayloadTests` suite.
+- `docs/QUALITY/KNOWN_ISSUES.md` — BUG-016 status flipped to Resolved; new Resolution Addendum.
+- `docs/RELEASE_NOTES_DEV.md` — this entry.
+
+### Local-only
+
+This release is local-only — `main` branch on `Matthews-Mac-mini`. No remote push.
+
+### Related
+
+- BUG-014 (LM.4.6 → LM.4.7 palette-library, Resolved 2026-05-18) — introduced the palette payload dependency that BUG-016 exposes.
+- CA-Presets-FU-4 instrumentation (commit `cb8cb0bb`) — stays in place; guards a different failure mode (`device.makeBuffer` nil) that has not been observed.
+- CSP.1 (Cold-Start Perceptual Tempo Scaffold) — paused pending BUG-016 resolution; will resume once Matt's manual M7 confirms LM renders correctly.
+
+---
+
 ## [dev-2026-05-25-a] BSAudit.3 closeout — Option A: accept structural limit; BUG-017 Resolved against accepted limit
 
 **Increment:** BSAudit.3 (full chain — impl.1 + impl.2 + impl.3 + validate.1 + validate.2 + diag.1 + close). **Status:** BUG-017 Resolved 2026-05-25 against accepted structural limit per Matt's Choice A decision. **Outcome:** the BSAudit.3.impl architecture stays in production as the cold-start contract; the ±60 ms / 3 s perceptual sync sub-goal is retired as structurally unachievable; CLAUDE.md gains §Cold-Start Phase Contract + Failed Approach #69.

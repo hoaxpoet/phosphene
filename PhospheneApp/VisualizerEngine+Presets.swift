@@ -167,6 +167,27 @@ extension VisualizerEngine {
                             pipeline.setMeshPresetTick { [weak engine] features, stems in
                                 engine?.tick(features: features, stems: stems)
                             }
+                            // BUG-016 fix (2026-05-26): load the per-song
+                            // palette immediately on preset activation. Before
+                            // this call existed, the palette payload stayed at
+                            // its zero-initialised default (every entry
+                            // (0,0,0)) until the next track change fired
+                            // `resetStemPipeline → refreshLumenPaletteForTrack`.
+                            // Cells rendered black; the cell-boundary frost
+                            // halo mixed toward float3(1.0) — visible result
+                            // was a black-and-white Voronoi grid with no
+                            // perceptible motion (per-beat palette-index walk
+                            // had nothing to walk through). The fix calls the
+                            // same helper `resetStemPipeline` does, gated on
+                            // the most-recently-resolved `TrackIdentity`
+                            // persisted by the track-change handler in
+                            // `VisualizerEngine+Capture.swift`.
+                            if let identity = lastResolvedTrackIdentity {
+                                refreshLumenPaletteForTrack(
+                                    identity: identity,
+                                    lumenEngine: engine
+                                )
+                            }
                         } else {
                             logger.error(
                                 "LumenPatternEngine: failed to allocate slot-8 buffer for preset '\(desc.name)'"
