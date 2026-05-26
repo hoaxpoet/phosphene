@@ -322,10 +322,6 @@ public final class SessionRecorder: @unchecked Sendable {
         // positions so positional parsers (DSP.1 baselines, manual awk
         // diagnostics) keep working. New columns go at the end.
         // DM.3a appends frame_cpu_ms and frame_gpu_ms (full-pipeline timing).
-        // BSAudit.3.validate.1 appends accent_confidence (the BSAudit.3 design
-        // §6.5 phase-acquisition confidence the `MIRPipeline` multiplies the
-        // beat-rate accent fields by) so the `--accent-window-pass-rate`
-        // verifier mode can score the gated rising edges.
         let featuresHeader = """
             frame,wallclock_s,time,deltaTime,bass,mid,treble,\
             subBass,lowBass,lowMid,midHigh,highMid,high,\
@@ -334,7 +330,7 @@ public final class SessionRecorder: @unchecked Sendable {
             beatPhase01,bassRel,bassDev,bassAttRel,\
             barPhase01_permille,beatsPerBar,beat_in_bar,is_downbeat,\
             beat_sync_mode,lock_state,grid_bpm,playback_time_s,drift_ms,\
-            frame_cpu_ms,frame_gpu_ms,accent_confidence
+            frame_cpu_ms,frame_gpu_ms
 
             """
         let stemsHeader = """
