@@ -151,12 +151,16 @@ extension SessionPreparer {
             drumsBeatGrid = .empty
         }
 
-        // BSAudit.3 (2026-05-24): rhythm-character metadata for the
-        // BPM-prior phase-acquisition path (design §7). Nil when the grid
-        // is empty (no rhythm structure to characterise) or the preview is
-        // too short. `GridOnsetCalibrator` retired in the same increment;
-        // `gridOnsetOffsetMs` is left at 0 on the cache so older entries
-        // load with the same field present (cache backward compatibility).
+        // Step 7 (BUG-007.8): per-track grid-vs-onset offset calibration.
+        // BSAudit.3 (2026-05-24): retained for cache backward compatibility
+        // but no longer consumed at install time (the BPM-prior architecture
+        // replaces the prep-time phase seed). Will be removed in a future
+        // cache-format migration.
+        let gridOnsetOffsetMs = Self.computeGridOnsetOffsetMs(preview: preview, grid: beatGrid)
+
+        // Step 8 (BSAudit.3): rhythm-character metadata for the BPM-prior
+        // phase-acquisition path. Nil when the grid is empty (no rhythm
+        // structure to characterise) or the preview is too short.
         let rhythmCharacter = Self.computeRhythmCharacter(preview: preview, grid: beatGrid)
 
         return CachedTrackData(
@@ -165,12 +169,29 @@ extension SessionPreparer {
             trackProfile: profile,
             beatGrid: beatGrid,
             drumsBeatGrid: drumsBeatGrid,
-            gridOnsetOffsetMs: 0,
+            gridOnsetOffsetMs: gridOnsetOffsetMs,
             rhythmCharacter: rhythmCharacter
         )
     }
 
     // swiftlint:enable function_body_length
+
+    /// Replay the preview audio through the live BeatDetector offline and
+    /// return the median (gridBeat − onsetTime) offset in milliseconds
+    /// (BUG-007.8). Stored on `CachedTrackData` and applied at playback time
+    /// as the drift EMA's initial bias — eliminates the per-track drift
+    /// wandering observed in session 2026-05-07T22-00-00Z (drift averages
+    /// spanned −95 to +96 ms across a single playlist). Returns 0 when the
+    /// grid is empty or there's insufficient data.
+    nonisolated private static func computeGridOnsetOffsetMs(
+        preview: PreviewAudio, grid: BeatGrid
+    ) -> Double {
+        GridOnsetCalibrator().calibrate(
+            samples: preview.pcmSamples,
+            sampleRate: Double(preview.sampleRate),
+            grid: grid
+        )
+    }
 
     // MARK: - StemAnalyzer Warmup
 

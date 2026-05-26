@@ -36,11 +36,9 @@ import Foundation
 ///     // Bar phase (floats 37–38)
 ///     float bar_phase01;   // 0 in reactive mode
 ///     float beats_per_bar; // 4 default
-///     // BSAudit.3 accent confidence (float 39)
-///     float accent_confidence;   // 0 = pre-anchor, 1 = locked
-///     // Padding to 192 bytes (floats 40–48)
+///     // Padding to 192 bytes (floats 39–48)
 ///     float _pad3, _pad4, _pad5, _pad6, _pad7,
-///           _pad8, _pad9, _pad10, _pad11;
+///           _pad8, _pad9, _pad10, _pad11, _pad12;
 /// };
 /// ```
 @frozen
@@ -173,18 +171,7 @@ public struct FeatureVector: Sendable {
     /// Defaults to 4 when no BeatGrid is installed.
     public var beatsPerBar: Float
 
-    // --- BSAudit.3 accent confidence (float 39, design §6.5) ---
-
-    /// Phase-acquisition confidence ∈ [0, 1] from `LiveBeatDriftTracker`.
-    /// 0 = pre-anchor / no prior installed; 1 = sustained confirmations on
-    /// the BPM prior. `MIRPipeline.buildFeatureVector` multiplies the
-    /// `beatBass` / `beatMid` / `beatTreble` / `beatComposite` accent
-    /// fields by this value so beat-rate visual accents only fire when the
-    /// tracker has credible phase. `beatPhase01` / `barPhase01` are NOT
-    /// gated — presets can still use them for continuous phase-driven motion.
-    public var accentConfidence: Float
-
-    // --- Padding to 192 bytes (48 floats total — floats 40–48) ---
+    // --- Padding to 192 bytes (48 floats total — floats 39–48) ---
     // swiftlint:disable identifier_name
     var _pad3: Float
     var _pad4: Float
@@ -195,6 +182,7 @@ public struct FeatureVector: Sendable {
     var _pad9: Float
     var _pad10: Float
     var _pad11: Float
+    var _pad12: Float
     // swiftlint:enable identifier_name
 
     public init(
@@ -231,12 +219,10 @@ public struct FeatureVector: Sendable {
         self.beatPhase01 = 0; self.beatsUntilNext = 0
         // Bar phase — from LiveBeatDriftTracker when a BeatGrid is installed.
         self.barPhase01 = 0; self.beatsPerBar = 4
-        // BSAudit.3 accent confidence — populated by MIRPipeline each frame.
-        self.accentConfidence = 0
         // Padding
         self._pad3 = 0; self._pad4 = 0
         self._pad5 = 0; self._pad6 = 0; self._pad7 = 0; self._pad8 = 0
-        self._pad9 = 0; self._pad10 = 0; self._pad11 = 0
+        self._pad9 = 0; self._pad10 = 0; self._pad11 = 0; self._pad12 = 0
     }
 
     /// All-zero feature vector.

@@ -34,15 +34,9 @@ struct FeatureVector {
     // Bar phase: 0 at downbeat, rises to 1 at next downbeat (floats 37–38).
     float bar_phase01;
     float beats_per_bar;
-    // BSAudit.3 (2026-05-24): phase-acquisition confidence (float 39).
-    // 0 = pre-anchor / no BPM prior; 1 = locked. Beat-rate accent fields
-    // (beat_bass / beat_mid / beat_treble / beat_composite) are already
-    // multiplied by this value at the CPU side before upload, so presets
-    // can ignore this field and still see correctly-gated accents.
-    float accent_confidence;
-    // Padding to 192 bytes (floats 40–48).
+    // Padding to 192 bytes (floats 39–48).
     float _pad3, _pad4, _pad5, _pad6, _pad7,
-          _pad8, _pad9, _pad10, _pad11;
+          _pad8, _pad9, _pad10, _pad11, _pad12;
 };
 
 // MARK: - FeedbackParams

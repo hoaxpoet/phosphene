@@ -290,10 +290,10 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// meters like Money 7/4 that Beat This! misses in a short window).
     var liveBeatAnalysisAttempts: Int = 0
 
-    // BSAudit.3 (2026-05-24): BUG-007.9 hybrid runtime recalibration was
-    // retired alongside `GridOnsetCalibrator` (design §5.7). The BPM-prior
-    // architecture acquires phase via broadband peaks at runtime; no second
-    // re-calibration pass is needed.
+    /// Whether the BUG-007.9 hybrid runtime recalibration has fired for the
+    /// current track. One-shot: set true after a successful recalibration
+    /// (or a deliberate skip). Reset to false in `resetStemPipeline(for:)`.
+    var runtimeRecalibrationDone: Bool = false
 
     // MARK: - Stem Per-Frame Analysis State
     //

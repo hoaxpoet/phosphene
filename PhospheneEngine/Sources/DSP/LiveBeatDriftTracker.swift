@@ -326,6 +326,34 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
         // — they are platform-class properties surviving track changes.
     }
 
+    // MARK: - Backward-Compatible Shims
+
+    /// Legacy entry point preserved for one increment so app-layer call sites
+    /// retain their build during the BSAudit.3.impl.2 → impl.3 transition.
+    /// Discards `initialDriftMs` — the BPM-prior architecture supersedes the
+    /// prep-time drift seed (design §5.2).
+    public func setGrid(_ newGrid: BeatGrid) {
+        let character: RhythmCharacter? = nil
+        installBPMPrior(
+            bpm: newGrid.bpm,
+            character: character,
+            beatsPerBar: newGrid.beatsPerBar
+        )
+    }
+
+    /// Legacy entry point. `initialDriftMs` is ignored.
+    public func setGrid(_ newGrid: BeatGrid, initialDriftMs: Double) {
+        setGrid(newGrid)
+    }
+
+    /// Legacy no-op preserved so the BUG-007.9 runtime-recalibration call
+    /// site retains its build during sub-commit 2. Removed in sub-commit 3
+    /// alongside `GridOnsetCalibrator`.
+    public func applyCalibration(driftMs: Double) {
+        // Intentionally empty — BUG-007.9 is retired (design §5.7).
+        _ = driftMs
+    }
+
     // MARK: - Public Accessors
 
     /// Whether a BPM prior is currently installed.
@@ -352,15 +380,18 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
         return primary.confidence
     }
 
-    /// Legacy drift readout. The BPM-prior architecture has no drift
-    /// primitive — returns 0. Preserved as the existing
-    /// `SpectralHistoryBuffer` diagnostic feed publishes a "drift_ms" value
-    /// to `SpectralCartograph`; that diagnostic now reads 0 ms in
-    /// BPM-prior mode (no drift to display).
+    /// Legacy drift readout. The BPM-prior architecture has no drift primitive;
+    /// returns 0 to preserve compile-compatibility for one increment.
     public var currentDriftMs: Double { 0 }
 
-    /// Count of confirmed predictions on the primary candidate. Surfaces
-    /// for diagnostic / test inspection.
+    /// Legacy grid accessor. The BPM-prior architecture has no grid primitive
+    /// at runtime; returns `.empty` to preserve compile-compatibility for one
+    /// increment.
+    public var currentGrid: BeatGrid { .empty }
+
+    /// Count of confirmed predictions on the primary candidate. Preserves
+    /// the BUG-007.9 gate semantics until that path is retired in
+    /// sub-commit 3.
     public var matchedOnsetCount: Int {
         lock.lock(); defer { lock.unlock() }
         return primary.matchedPredictions
