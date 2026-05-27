@@ -1,4 +1,5 @@
-// LocalFilePlaybackFormatCoverageTests — LF.2 (2026-05-27).
+// LocalFilePlaybackFormatCoverageTests — LF.2 (2026-05-27) + LF.4 cache
+// roundtrip extension (D-131).
 //
 // Exercises the LF.2 pre-analysis path against multiple container formats:
 // M4A/AAC, MP3, FLAC (+ WAV when present). The load-bearing question is
@@ -7,6 +8,11 @@
 // install path (BeatGrid + StemFeatures install on the live pipeline)
 // is exercised by the live capture run; this suite tests the format-
 // decode + offline-analysis surface only.
+//
+// LF.4: each per-format test also exercises the PersistentStemCache
+// roundtrip (store → load → equal-fields), so format-specific Codable
+// issues that the M4A-only LF.3 PersistentStemCacheTests would have
+// missed surface here.
 //
 // Opt-in via `LF_FORMAT_COVERAGE=1` (matches the SOAK_TESTS=1 pattern).
 // Fixtures live under `PhospheneEngine/Tests/Fixtures/tempo/` which is
@@ -20,6 +26,8 @@
 //   3. Asserts sample rate, frame count, duration are plausible.
 //   4. Runs `SessionPreparer.analyzePreview` with real ML deps.
 //   5. Asserts BeatGrid is non-empty (BPM > 0) and StemFeatures finite.
+//   6. (LF.4) Persists the result via PersistentStemCache.store,
+//      reloads it, and asserts the load-bearing fields roundtrip.
 
 import AVFoundation
 import Foundation
@@ -152,5 +160,40 @@ struct LocalFilePlaybackFormatCoverageTests {
                 "\(filename): bassEnergy must be finite (got \(stems.bassEnergy))")
         #expect(stems.otherEnergy.isFinite,
                 "\(filename): otherEnergy must be finite (got \(stems.otherEnergy))")
+
+        // Step 5 (LF.4) — PersistentStemCache roundtrip. Catches format-specific
+        // Codable serialization issues that the M4A-only LF.3
+        // PersistentStemCacheTests would have missed.
+        let tempCacheDir = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+            .appendingPathComponent("LocalFileFormatCoverage-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempCacheDir) }
+        let persistentCache = try PersistentStemCache(rootDirectory: tempCacheDir, maxBytes: Int64.max)
+        try persistentCache.store(cached, hash: expectedHash, decodedDuration: preview.duration)
+        #expect(persistentCache.contains(hash: expectedHash),
+                "\(filename): persistent cache should contain hash after store")
+        let loaded = try persistentCache.load(hash: expectedHash)
+
+        #expect(loaded.decodedDuration == preview.duration,
+                "\(filename): decodedDuration roundtrip Δ \(loaded.decodedDuration - preview.duration)")
+        #expect(loaded.cached.beatGrid.bpm == cached.beatGrid.bpm,
+                "\(filename): BeatGrid.bpm roundtrip Δ \(loaded.cached.beatGrid.bpm - cached.beatGrid.bpm)")
+        #expect(loaded.cached.beatGrid.beats.count == cached.beatGrid.beats.count,
+                "\(filename): BeatGrid.beats.count roundtrip differs")
+        #expect(loaded.cached.stemFeatures.vocalsEnergy == cached.stemFeatures.vocalsEnergy,
+                "\(filename): vocalsEnergy roundtrip differs")
+        #expect(loaded.cached.stemFeatures.drumsEnergy == cached.stemFeatures.drumsEnergy,
+                "\(filename): drumsEnergy roundtrip differs")
+        #expect(loaded.cached.stemFeatures.bassEnergy == cached.stemFeatures.bassEnergy,
+                "\(filename): bassEnergy roundtrip differs")
+        #expect(loaded.cached.stemFeatures.otherEnergy == cached.stemFeatures.otherEnergy,
+                "\(filename): otherEnergy roundtrip differs")
+        #expect(loaded.cached.stemWaveforms.count == cached.stemWaveforms.count,
+                "\(filename): stem count roundtrip differs")
+        for (i, (originalStem, loadedStem)) in zip(cached.stemWaveforms, loaded.cached.stemWaveforms).enumerated() {
+            #expect(originalStem.count == loadedStem.count,
+                    "\(filename): stem \(i) length roundtrip differs")
+            #expect(originalStem == loadedStem,
+                    "\(filename): stem \(i) samples roundtrip differs")
+        }
     }
 }
