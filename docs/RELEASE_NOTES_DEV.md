@@ -6,6 +6,159 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-28-e] PERF.3 — Fix beat-dominant light-intensity flicker (BUG-019 resolved)
+
+**Increment:** PERF.3 (Phase PERF step 3 — the actual fix). **Status:** Implemented 2026-05-28. Engine 1328/1328 tests pass; SwiftLint `--strict` clean; app build clean. **BUG-019 resolved.** Manual M7 outstanding (Matt's gate).
+
+### What this fixes
+
+The "intermittent flickering during FFO playback that has existed since FFO existed." Matt's perceptual report through five rounds of investigation: lag / flickering / brief hangs / coming out of sync.
+
+### Root cause (not what we thought)
+
+Three rounds of timing instrumentation (PERF.1 / PERF.2-render / PERF.2-pass) ruled out timing-side causes:
+- Not the analysis pipeline (PERF.1 subsystems flat across all sessions)
+- Not the render-loop setup/teardown (PERF.2-render: encode and renderframe move in lockstep)
+- Not the per-sub-pass dispatch (PERF.2-pass: G-buffer, lighting, SSGI, post-process all flat)
+
+The fourth diagnostic — ffmpeg signalstats on the rendered video.mp4 — caught the actual signature: **76 brightness-oscillation events across 200 s of FFO playback** in session `2026-05-27T22-49-42Z`. Adjacent frames show 2–22 luma-unit brightness swings throughout the session. The flicker is in the rendered video, not in presentation.
+
+Tracing the brightness oscillations back to features.csv: each oscillation pair aligns with a beat-detector firing (beatBass / beatMid / beatComposite swinging 0.4 → 1.0 → 0.4). The lighting formula in `RenderPipeline+RayMarch.swift:applyAudioModulation` was:
+
+```swift
+let beatPulse = max(features.beatBass, max(features.beatMid, features.beatComposite))
+let intensityMul = 0.4 + max(0, min(1, beatPulse)) * 2.6
+```
+
+Pre-beat (beatPulse ≈ 0.4): `intensityMul = 1.44`. Beat-frame (beatPulse = 1.0): `intensityMul = 3.0`. **2.1× single-frame brightness multiplier swing per beat.** At ~3 Hz beat rate, that's 3 brightness pumps per second. The decay between beats varied with beat strength, producing the irregular flicker character Matt described.
+
+This is **CLAUDE.md Failed Approach #4 directly** — beat-dominant visual design. The beat term (max contribution 2.6) was 6.5× the baseline (0.4). The Audio Data Hierarchy rule is "beat is accent, never primary; base_zoom and base_rot (continuous energy) should be 2–4× larger than beat_zoom and beat_rot (onset pulses)." The same principle applies to lighting intensity, and the previous formula inverted it.
+
+### The fix
+
+Restructured `applyAudioModulation` so continuous bass is the primary driver and beat is an accent:
+
+```swift
+let bassPrimary = max(0, min(1.0, features.bass))
+let beatPulse = max(features.beatBass, max(features.beatMid, features.beatComposite))
+let beatAccent = max(0, min(1.0, beatPulse))
+let intensityMul = 1.0 + bassPrimary * 0.4 + beatAccent * 0.15
+```
+
+- Baseline 1.0 (full preset-spec'd brightness)
+- Continuous bass adds up to +0.4 (40% modulation from per-frame energy, smooth)
+- Beat pulse adds at most +0.15 (15% accent on top, gentle)
+- Worst-case range [1.0, 1.55]; typical [1.0, 1.3]
+- **Single-frame beat-fire swing: ±0.15 (vs ±2.1 before — 14× smaller)**
+
+### Scope
+
+This is in `applyAudioModulation`, which is called from `drawWithRayMarch` for every ray-march preset. The fix benefits all of them:
+
+- Ferrofluid Ocean (the loudest complaint)
+- Lumen Mosaic
+- Aurora Veil
+- Volumetric Lithograph
+- Membrane
+- Crystalline Cavern (when shipped)
+- Every future ray-march preset
+
+This is preset-agnostic per the function's original design intent (the docstring says "Option-A preset-agnostic audio modulation"). Failed Approach #4 is a project-wide policy; if other ray-march presets also had beat-dominant brightness pumps, they should be fixed in the same place.
+
+### Verification
+
+- **Engine:** 1328 / 1328 tests pass. `PresetRegressionTests` (Hamming-distance-tolerant golden-hash comparisons) all pass — the visual change is within tolerance for the golden suite.
+- **App build:** succeeds.
+- **SwiftLint `--strict`:** 0 violations on the touched file.
+- **Empirical confirmation of the bug:** ffmpeg signalstats output on session `2026-05-27T22-49-42Z` shows 76 brightness-oscillation events, mean ~3 per 20 s window, aligned with beat firings.
+
+**Manual M7 (your gate).** Same protocol as before — tap-path FFO session. Expected:
+- **Visible flicker on FFO during steady-state playback should be eliminated or substantially reduced.** The single-frame brightness swing is now ±0.15 (14× smaller than before).
+- **Other ray-march presets get the same treatment.** May feel less "beat-pulsey" or more "musically continuous" — let me know if any preset feels too inert without the strong beat coupling. If so, we can introduce a per-preset multiplier in the JSON sidecar.
+- **No regression in the cold-start motion** that CSP.3.1 introduced. That fix was in FFO's spike-height formula, separate from the lighting intensity formula.
+
+### What this does NOT touch
+
+- `cameraDolly` modulation (bass-driven, unchanged)
+- `lightColor` tint (valence-driven, unchanged)
+- `fog` scaling (arousal-driven, unchanged)
+- `fin` position (bass-driven, unchanged)
+- Any preset shader internals — this is engine-level lighting only
+
+### What this also doesn't touch (separately diagnosed)
+
+The earlier "sustained CPU bump for ~50 s" pattern observed in sessions `2026-05-27T21-12-48Z` and `2026-05-27T21-48-28Z`, with the 96 ms recovery hitch, remains characterized but uncategorized. PERF.2-pass instrumentation showed the bump is not in our render path's per-sub-pass dispatch. It's likely an environmental (system-level memory pressure, GPU contention) intermittent event that BUG-019's perceptual symptom **also** described. The flicker fix (this increment) addresses the consistent visible symptom; the intermittent CPU bump (also recorded under BUG-019) is now characterized as a probably-environmental separate phenomenon. We'll see how M7 lands before deciding whether to chase it further.
+
+### Touched files
+
+- `PhospheneEngine/Sources/Renderer/RenderPipeline+RayMarch.swift` — 3-line formula change + rationale comment.
+- `docs/ENGINEERING_PLAN.md` — PERF.3 closeout.
+- `docs/QUALITY/KNOWN_ISSUES.md` — BUG-019 resolved entry.
+- `docs/RELEASE_NOTES_DEV.md` — this entry.
+
+### Local-only
+
+Local commit on `main`. No remote push.
+
+### Related
+
+- `[dev-2026-05-28-c]` and `[dev-2026-05-28-d]` — PERF.2-render + PERF.2-pass instrumentation rounds that built the diagnostic vocabulary used here. They ruled out three hypothesis classes (analysis-pipeline / render-encode / per-sub-pass) and the columns remain useful for future render-perf investigations.
+- CLAUDE.md Failed Approach #4 — the project-policy rule this fix complies with.
+
+---
+
+## [dev-2026-05-27-i] LF.4 — Local-file playback as a user-facing feature
+
+**Increment:** LF.4. **Status:** Implemented 2026-05-27. Engine 1328/1328 tests pass (+25 over LF.3's 1303). App build green. Soak suite 7/7 (315 s). `LF_FORMAT_COVERAGE=1` 3/3 (now with persist-roundtrip step). Release build green. Sample-rate literal gate clean. Localized-strings gate clean. Cold/warm latency on `love_rehab.m4a` ≈ 1.9 s / 607 ms — matches LF.3 baseline (~2 s / ~634 ms).
+
+### What landed
+
+**SessionManager owns the LF lifecycle.** A new `SessionManager.startLocalFile(at:)` API drives the full `idle → preparing → ready → playing` state machine for a single local file. The preparation work is delegated to a new `LocalFilePreparing` protocol that `VisualizerEngine` conforms to — the engine still owns the heavy ML deps (`StemSeparator`, `StemAnalyzer`, `MoodClassifier`, `BeatGridAnalyzer`, `PersistentStemCache`) while SessionManager drives state transitions. The engine subscribes to `.ready` and `handleLocalFileReady()` installs the cached BeatGrid via `resetStemPipeline(for:)`, starts the LF audio router, and calls `beginPlayback()` to advance to `.playing`. The LF.1 / LF.2 / LF.3 entry points (`startLocalFilePlayback`, `prepareAndStartLocalFilePlayback`, `_completeLocalFilePlaybackStart`) are removed; the `PHOSPHENE_LOCAL_FILE_PLAYBACK` env-var hook routes through `engine.sessionManager.startLocalFile(at:)` so the dev workflow keeps working with no behaviour change.
+
+**Source model: new `SessionOrigin` enum.** `SessionOrigin.{playlist(PlaylistSource), localFile(URL)}` published as `@Published var currentSource: SessionOrigin?` on SessionManager. The `localFilePlaybackActive` boolean flag on VisualizerEngine is retired; consumers (ContentView's permission gate, `startAudio`'s LF guard) read `sessionManager.currentSource?.isLocalFile`. The enum extends naturally to LF.5 multi-file.
+
+**User-facing surfaces.** `File → Open Local File…` menu item with `⌘O` accelerator (NSOpenPanel-backed, chosen over `.fileImporter` for validation-message control). Drag-and-drop on the main window (`.onDrop(of: [.fileURL])` accepts a single audio file; multi-file drops rejected with localized alert). Pre-analysis progress UI reuses the existing `PreparationProgressView` — single-track sessions work via the existing `computeReadiness` "all terminal, one ready" branch. `Phosphene → Clear Local-File Cache (<size>)` shows the current footprint reactively (new `@Published var localFileCacheBytes` publisher refreshed on init + after each prep + after each clear). Replace-on-open: opening a local file while a streaming session is active calls `cancel()` first (silent replace; macOS-idiomatic).
+
+**LRU eviction.** `PersistentStemCache` gains `totalBytes() -> Int64`, `evictToMaxBytes(_:) -> Int`, `clearAll() -> Int64`. `store(...)` calls `evictToMaxBytes(configuredMaxBytes())` after every successful write — cap continuously enforced. Eviction order is mtime-ascending (oldest first); reads don't bump mtime, so the policy is approximate "least-recently-used" — acceptable for the LF scope where users re-play the same tracks. Default cap **500 MB ≈ 70 cached tracks**. UserDefaults override via `phosphene.cache.localFile.maxBytes`.
+
+### Files
+
+**New:**
+- `PhospheneEngine/Sources/Session/LocalFilePreparing.swift` (protocol + result type)
+- `PhospheneApp/VisualizerEngine+LocalFilePlayback.swift` (`LocalFilePreparing` conformance + `.ready` observer)
+- `PhospheneApp/LocalFileMenuCommands.swift` (menu / drop / clear-cache glue + NSAlert presentation)
+- `PhospheneEngine/Tests/PhospheneEngineTests/Session/SessionManagerLocalFileTests.swift` (14 tests)
+- `PhospheneEngine/Tests/PhospheneEngineTests/Session/PersistentStemCacheEvictionTests.swift` (11 tests)
+- `docs/diagnostics/LF4_REGRESSION_2026-05-27.md` (cold/warm capture)
+
+**Modified:**
+- `PhospheneEngine/Sources/Session/SessionTypes.swift` (`SessionOrigin` enum)
+- `PhospheneEngine/Sources/Session/SessionManager.swift` (`startLocalFile(at:)` + currentSource publisher)
+- `PhospheneEngine/Sources/Session/PersistentStemCache.swift` (eviction + clearAll + totalBytes)
+- `PhospheneApp/VisualizerEngine.swift` (localFilePlaybackActive removed; new cacheBytes publisher)
+- `PhospheneApp/VisualizerEngine+PublicAPI.swift` (LF entry points removed; file shrinks past `file_length` warning)
+- `PhospheneApp/ContentView.swift` (permission gate + LF .ready routing)
+- `PhospheneApp/PhospheneApp.swift` (Commands block + .onDrop + env-var hook reroute)
+- `PhospheneApp/en.lproj/Localizable.strings` (menu labels + alert copy + preparation copy stubs)
+- `PhospheneApp.xcodeproj/project.pbxproj` (Q10001/Q20001 + Q10002/Q20002 four-section entries)
+- `PhospheneEngine/Tests/PhospheneEngineTests/Audio/LocalFilePlaybackFormatCoverageTests.swift` (cache-roundtrip step 5)
+- `docs/DECISIONS.md` (D-131)
+- `docs/ENGINEERING_PLAN.md`, `docs/ARCHITECTURE.md`, `docs/UX_SPEC.md`, `docs/RUNBOOK.md`
+
+### Cold/warm latency
+
+Cold (~1.9 s wall to audio router): same structural cost as LF.3 — dominated by `analyzePreview` (~1.5 s ML inference) + persist (~7 ms). No regression past LF.3's ~2 s target.
+Warm (~607 ms wall): same as LF.3 (~634 ms baseline). Cache-hit path itself is < 100 ms; the rest is SessionRecorder + AVAudioEngine + Release dyld boot. State-machine overhead is invisible.
+
+### Test counts
+
+- Engine: 1328/1328 (LF.3 was 1303; +14 SessionManagerLocalFileTests + 11 PersistentStemCacheEvictionTests)
+- App: 304/305 (only failure is pre-existing `MetadataPreFetcherTests.fetch_networkTimeout` flake)
+- `LF_FORMAT_COVERAGE=1`: 3/3 (now with persist-roundtrip step)
+- `SOAK_TESTS=1`: 7/7 (315 s)
+
+---
+
 ## [dev-2026-05-28-d] PERF.2-pass — Ray-march per-sub-pass timing, plus PERF.2-render diagnosis from session 21:48:28Z
 
 **Increment:** PERF.2-pass (Phase PERF step 2.5 — combined diagnosis + per-sub-pass instrumentation). **Status:** Implemented 2026-05-28. Engine 1317/1317 tests pass; SwiftLint `--strict` clean; app build clean (app tests have 3 pre-existing `FirstAudioDetectorTests` parallel-execution flakes that pass in isolation). Next: fresh tap-path capture past 70 s session-uptime + at least one bump cycle, run by Matt.

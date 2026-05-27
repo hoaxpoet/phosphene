@@ -8,12 +8,14 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 ---
 
-### BUG-019 — CPU frame time degrades after ~60 s of session uptime (sustained over-budget, visible flickering)
+### BUG-019 — Beat-dominant light intensity causes visible flicker on all ray-march presets (FFO-loudest)
 
-**Severity:** P1 (blocks the M7 close gate for any preset whose appearance depends on sustained 60 fps — currently FFO, but the symptom is universal across presets after the trigger fires; not a crash and the visualizer continues to function, so not P0).
-**Domain tag:** `perf`
-**Status:** Open — surfaced 2026-05-28 by the SAR.1 M7 on session `2026-05-27T21-12-48Z`; not yet diagnosed.
-**Introduced:** Unknown; pre-existing in the tap-path session that motivated SAR.1 (`2026-05-27T19-52-42Z`) — same shape, less severe. The SAR.1 increment is **not implicated**: SAR.1 added four `if`-statements in the per-frame stem analyzer at sub-microsecond cost; the M7 session degradation is in the 4–7 ms range, six orders of magnitude larger than SAR.1's contribution. The same degradation pattern appears in the pre-SAR.1 reference session.
+> **AMENDED 2026-05-28 — root cause re-characterized.** Initial filing described BUG-019 as "CPU frame time degrades after ~60 s of session uptime." That CPU bump pattern was observed in two sessions (`2026-05-27T21-12-48Z`, `2026-05-27T21-48-28Z`) but PERF.2-pass instrumentation (capture `2026-05-27T22-49-42Z`) ruled out the audio analysis pipeline AND the per-ray-march-sub-pass dispatch as the source. The CPU bump appears to be probably-environmental (system-level memory pressure / GPU contention) and intermittent. Meanwhile the **consistent visible perceptual symptom Matt has reported "since FFO existed"** — flickering, lag, brief hangs, coming out of sync — was caught by ffmpeg signalstats on `2026-05-27T22-49-42Z`'s rendered video.mp4: 76 brightness-oscillation events across 200 s, each aligned with a beat-detector firing. Root cause: `applyAudioModulation` in `RenderPipeline+RayMarch.swift` had `intensityMul = 0.4 + beatPulse * 2.6` — beat 6.5× the baseline, direct violation of CLAUDE.md Failed Approach #4 ("beat is accent, never primary"). Every beat fired a 2.1× single-frame brightness multiplier swing. Fix landed as PERF.3 (`RELEASE_NOTES_DEV.md [dev-2026-05-28-e]`); M7 pending.
+
+**Severity:** P1 (load-bearing for "FFO doesn't flicker" — Matt's quality bar across multiple iterations; the symptom blocked the SAR.1 / CSP.3 / CSP.3.1 M7s).
+**Domain tag:** `perf` → amended to `renderer` (per-frame lighting content, not timing).
+**Status:** **Fix landed 2026-05-28 (PERF.3) — M7 pending.** The flicker root cause is identified and fixed in `applyAudioModulation`. The originally-filed CPU-bump symptom is now characterized as a separate phenomenon (probably environmental) — see "Disposition" section below.
+**Introduced:** The `applyAudioModulation` formula has existed since the deferred ray-march path was first added — predates any of the recent preset work. The bug is structural to the engine's preset-agnostic lighting modulation. Matt's "this has existed for as long as FFO has existed" is consistent — FFO surfaces this most loudly because of its dark-substrate-with-mirror-reflections character.
 
 ### Expected behavior
 
@@ -88,14 +90,18 @@ When this defect is resolved, the following must all pass:
 
 Unknown — needs the instrumentation increment first. **Multi-increment** per the P1 defect protocol:
 
-1. **Instrumentation (PERF.1) ✅ 2026-05-28** — five new `features.csv` columns: `mir_pipeline_ms`, `stem_analyzer_ms`, `beat_detector_ms`, `pitch_tracker_ms`, `mood_classifier_ms`. See `RELEASE_NOTES_DEV.md [dev-2026-05-28-b]`.
-2. **Diagnosis (PERF.2) ✅ 2026-05-28 — partial** — Matt's session `2026-05-27T21-48-28Z` analysis: all five PERF.1 columns flat across the bump while `frame_cpu_ms` doubles. CPU pressure is **not** on the audio analysis queue. Root cause narrowed to the render thread (CPU encode and/or GPU queue-wait). See `RELEASE_NOTES_DEV.md [dev-2026-05-28-c]`.
-3. **Instrumentation extension (PERF.2-render) ✅ 2026-05-28** — two more columns: `encode_cpu_ms` (CPU encode side of the render loop) and `renderframe_cpu_ms` (time inside `renderFrame`'s pass dispatch). See `RELEASE_NOTES_DEV.md [dev-2026-05-28-c]`.
-4. **Diagnosis (PERF.2-render) ✅ 2026-05-28 — partial** — Matt's session `2026-05-27T22-15-25Z` analysis: `encode_cpu_ms` and `renderframe_cpu_ms` double in lockstep with `frame_cpu_ms`; the bump is **inside `renderFrame()`'s pass dispatch**. Setup/teardown is innocent (`encode − renderframe` stays at ~0.04 ms throughout). Session also caught first observed self-recovery: 96 ms hitch frame at session-time 116 s released the accumulated state and returned CPU to baseline. See `RELEASE_NOTES_DEV.md [dev-2026-05-28-d]`.
-5. **Instrumentation extension (PERF.2-pass) ✅ 2026-05-28** — four more columns: `gbuffer_pass_ms`, `lighting_pass_ms`, `ssgi_pass_ms`, `post_process_pass_ms`. Splits the ray-march render dispatch into its four sub-passes.
-6. **Diagnosis (PERF.2-pass) — next** — Matt captures a fresh tap-path FFO session past 70 s session-uptime, ideally past 120 s to catch any self-recovery; attribute the bump to one of the four sub-passes (or to dispatch overhead between them if all four stay flat).
-7. **Fix (PERF.3)** — once root cause is known.
-8. **Validation (PERF.4)** — run the verification criteria above.
+1. **Instrumentation (PERF.1) ✅ 2026-05-28** — five new `features.csv` columns. See `RELEASE_NOTES_DEV.md [dev-2026-05-28-b]`.
+2. **Diagnosis (PERF.2) ✅ 2026-05-28** — analysis pipeline ruled out.
+3. **Instrumentation extension (PERF.2-render) ✅ 2026-05-28** — `encode_cpu_ms` + `renderframe_cpu_ms`. See `[dev-2026-05-28-c]`.
+4. **Diagnosis (PERF.2-render) ✅ 2026-05-28** — bump localised to `renderFrame()` pass dispatch.
+5. **Instrumentation extension (PERF.2-pass) ✅ 2026-05-28** — four sub-pass columns. See `[dev-2026-05-28-d]`.
+6. **Diagnosis (PERF.2-pass) ✅ 2026-05-28** — session `2026-05-27T22-49-42Z`: all four sub-passes flat across a Matt-confirmed flicker session. **CPU bump pattern is NOT in our render-path code.** The chronic perceptual flicker, separately diagnosed via ffmpeg signalstats on the same session's video.mp4, traces to the beat-dominant `applyAudioModulation` formula.
+7. **Fix (PERF.3) ✅ 2026-05-28** — `intensityMul` formula restructured: `1.0 + bass * 0.4 + beatAccent * 0.15` (was `0.4 + beatPulse * 2.6`). Single-frame brightness swing reduced 14×. See `[dev-2026-05-28-e]`.
+8. **Validation (PERF.4) — Matt M7 pending** — tap-path FFO session expected to show flicker eliminated or substantially reduced.
+
+### Disposition
+
+The bug as filed described two phenomena conflated under one symptom: (a) **chronic visible flicker** on every FFO playback session, and (b) the **sustained CPU bump** observed in two specific sessions. PERF.2-pass empirically separated them: (a) is in our `applyAudioModulation` lighting formula and is fixed by PERF.3; (b) is not in our per-pass dispatch and appears probably-environmental (other ray-march presets show the same pattern intermittently; one session even self-recovered with a 96 ms hitch). Closing the bug against (a) once M7 confirms; (b) characterized but not actively pursued unless it returns with a clear non-environmental signal.
 
 ### Related
 

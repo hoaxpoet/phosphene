@@ -32,6 +32,80 @@ Test infrastructure: swift-testing + XCTest across unit, integration, regression
 
 ## Recently Completed
 
+### Increment LF.4 — Local-File Playback as a User-Facing Feature ✅ (2026-05-27)
+
+Lifts local-file playback from the LF.3 `PHOSPHENE_LOCAL_FILE_PLAYBACK` env-var hook to a first-class user-facing feature on the macOS app surface. The user clicks `File → Open Local File…` (⌘O) — or drags an audio file onto the app window — and the file plays through Phosphene with the same `idle → preparing → ready → playing` state machine the streaming path uses. Cache hygiene moves from "operator deletes `~/Library/Application Support/Phosphene/StemCache/` by hand" to an automatic LRU eviction policy (default 500 MB cap ≈ 70 cached tracks) plus a `Phosphene → Clear Local-File Cache (<size>)` menu item showing the current footprint.
+
+**Landed changes:**
+
+- **`PhospheneEngine/Sources/Session/SessionTypes.swift`** — new `SessionOrigin` enum (`.playlist(PlaylistSource) / .localFile(URL)`) with `isLocalFile` / `localFileURL` accessors. Consumers stop tracking parallel booleans for "is this a local-file session"; they read `sessionManager.currentSource?.isLocalFile`.
+- **`PhospheneEngine/Sources/Session/LocalFilePreparing.swift`** (new) — protocol that `SessionManager.startLocalFile(at:)` delegates the hash + persistent-cache + analyze + persist pipeline to. `VisualizerEngine` conforms (Task 2) and the protocol keeps SessionManager from importing StemSeparator / PersistentStemCache / MoodClassifier / BeatGridAnalyzer.
+- **`PhospheneEngine/Sources/Session/SessionManager.swift`** — new `startLocalFile(at:)` API. Hashes off-main via the preparer delegate, transitions through `.preparing` → `.ready` (engine reacts to install BeatGrid + start audio + advance to `.playing`). Same-URL re-entry is a no-op; different-URL or active streaming session is silently replaced via `cancel()`. `progressiveReadinessLevel` jumps `.preparing → .fullyPrepared` via the existing `computeReadiness` "all terminal, one ready" branch. `cancel()` / `endSession()` clear `currentSource` + `currentPlan`. A placeholder identity in `preparingTracks` keeps `PreparationProgressView` from rendering its empty-state during the ~2 s `analyzePreview` window.
+- **`PhospheneEngine/Sources/Session/PersistentStemCache.swift`** — new `totalBytes() -> Int64`, `evictToMaxBytes(_:) -> Int`, `clearAll() -> Int64`. `store(...)` calls `evictToMaxBytes(configuredMaxBytes())` after every successful write. Eviction order is mtime-ascending (oldest first). New `maxBytes:` init parameter for tests + future settings UI. New static `defaultMaxBytes: Int64 = 500 MB` + `maxBytesUserDefaultsKey = "phosphene.cache.localFile.maxBytes"`.
+- **`PhospheneApp/VisualizerEngine+LocalFilePlayback.swift`** (new) — `LocalFilePreparing` conformance + `.ready` observer (`handleLocalFileReady()` installs cached BeatGrid via `resetStemPipeline`, starts the LF audio router, advances to `.playing` via `beginPlayback()`). Off-main worker (`runLocalFilePreparation`) carries the LF.3 hash + cache + analyze + persist logic verbatim — only the entry point shape changes.
+- **`PhospheneApp/VisualizerEngine+PublicAPI.swift`** — LF.1 / LF.2 / LF.3 entry points removed (`startLocalFilePlayback(url:)`, `prepareAndStartLocalFilePlayback(url:)`, `_completeLocalFilePlaybackStart(url:tag:)`). `startAudio()` now annotates `@MainActor` and reads `sessionManager.currentSource?.isLocalFile`. File shrinks below the 400-line `file_length` warning so the disable comment is gone too.
+- **`PhospheneApp/VisualizerEngine.swift`** — `localFilePlaybackActive` field removed. New `@Published var localFileCacheBytes: Int64` publisher + `refreshLocalFileCacheBytes()` method drive the menu cache-size label. Primed at engine init; refreshed inside `handleLocalFileReady()`. Wires `sessionManager.localFilePreparer = self` post-init. The `.ready` Combine observer dispatches LF vs streaming (`buildPlan()` for streaming; `handleLocalFileReady()` for LF).
+- **`PhospheneApp/LocalFileMenuCommands.swift`** (new) — glue between the SwiftUI Commands block / `.onDrop` modifier and `SessionManager.startLocalFile(at:)`. Owns the `NSOpenPanel` for the menu picker, the drop-provider URL resolution, the extension validation pass (`.m4a` / `.mp3` / `.flac`), the cache-clear action, and the localized alert presentation. Resolves drag-and-drop URLs on the `loadItem` completion queue (not the Task hop) to satisfy Swift 6 strict-concurrency.
+- **`PhospheneApp/PhospheneApp.swift`** — `.commands { CommandGroup(replacing: .newItem) { … } CommandGroup(after: .appInfo) { … } }` adds `File → Open Local File…` (⌘O) and `Phosphene → Clear Local-File Cache (<size>)`. `.onDrop(of: [.fileURL])` accepts a single audio file. Env-var hook now routes through `engine.sessionManager.startLocalFile(at:)` so the dev workflow keeps working with no behaviour change.
+- **`PhospheneApp/ContentView.swift`** — permission gate now reads `engine.sessionManager.currentSource?.isLocalFile`. LF `.ready` routes directly to `PlaybackView` (no `ReadyView` flash during the cross-state transition).
+- **`PhospheneApp/en.lproj/Localizable.strings`** — new strings for `menu.file.open_local_file`, `menu.app.clear_local_file_cache`, the `NSOpenPanel` title, the unsupported-format / multiple-files / unreadable alerts, the cache-cleared confirmation, and the LF preparation copy stubs.
+- **`PhospheneApp.xcodeproj/project.pbxproj`** — 4-section entries for the two new app-layer files (`Q10001/Q20001` for `VisualizerEngine+LocalFilePlayback.swift`; `Q10002/Q20002` for `LocalFileMenuCommands.swift`).
+
+**Tests:**
+
+- **`PhospheneEngine/Tests/PhospheneEngineTests/Session/SessionManagerLocalFileTests.swift`** (new, 14 tests) — state-machine transitions, cache store under synthetic identity, progressive-readiness short-circuit, same-URL no-op, different-URL replace, no-preparer / preparer-returns-nil degradation, cancel + endSession source clearing.
+- **`PhospheneEngine/Tests/PhospheneEngineTests/Session/PersistentStemCacheEvictionTests.swift`** (new, 11 tests) — `totalBytes()` accuracy, `evictToMaxBytes()` boundary cases (cap=0 / cap=Int64.max / cap=midpoint), mtime ordering (touched entry survives), `clearAll()` on populated and empty caches, `store()` with injected cap triggers auto-eviction.
+- **`PhospheneEngine/Tests/PhospheneEngineTests/Audio/LocalFilePlaybackFormatCoverageTests.swift`** (modified) — each per-format test (M4A/AAC, MP3, FLAC) now exercises the `PersistentStemCache` roundtrip (`store → load → equal-fields`). Catches format-specific Codable serialization issues that the M4A-only LF.3 PersistentStemCacheTests would have missed.
+
+**Diagnostic capture:**
+
+- **`docs/diagnostics/LF4_REGRESSION_2026-05-27.md`** (new) — Cold/warm latency re-capture on `love_rehab.m4a` through the new SessionManager-driven path. Confirms no regression past LF.3's baseline.
+
+**Documentation updates:**
+
+- **`docs/DECISIONS.md`** — new D-131 (SessionManager LF source model + LRU eviction policy + cache-clear UX). D-130's Out-of-scope updated — "cache eviction policy / size bounds (LF.4)" and "cache-clear UI / cache-stats display (LF.4)" struck through as Done.
+- **`docs/ARCHITECTURE.md`** — §Session Preparation step 3 LF sub-bullet extended for the SessionManager-owned lifecycle; §Session Manager state machine adds the LF source path.
+- **`docs/UX_SPEC.md`** — new sub-section under §3 for the LF entry point + the `.preparing` state mapping for local files.
+- **`docs/RUNBOOK.md`** — Local-file stem cache management subsection updated for the menu item + automatic eviction policy.
+- **`docs/RELEASE_NOTES_DEV.md`** — `[dev-2026-05-27-d]` entry.
+
+**Out of scope (deferred):**
+
+- Multi-file playlist semantics (folder ingestion / M3U / `.fpl`). LF.5.
+- Crossfade / gapless segue. LF.5.
+- ID3 / Vorbis tag extraction; album-art display. LF.5.
+- "Recent Files" submenu. LF.5.
+- Settings UI for the cache-size cap (UserDefaults override only at LF.4 scope).
+- Per-track cache invalidation UI.
+- Streaming-path persistent cache (Spotify track ID → cached analysis surviving app restart). Different cache-key shape and invalidation surface.
+- File-association handling (double-click `.m4a` in Finder → opens Phosphene). LF.5.
+- Mid-track resumption on `AVAudioEngineConfigurationChange` (still best-effort from beginning).
+- Multi-process cache safety (Phosphene is single-instance).
+- Production telemetry / cache hit-rate dashboards.
+- Generalising the LF source to network streams (HTTP / SoundCloud / etc.).
+
+**Verification.**
+
+- LF.1 regression gate green: `swift test --filter AudioInputRouterSignalStateTests` (11/11).
+- LF.2 format-coverage gate green: `LF_FORMAT_COVERAGE=1 swift test --filter LocalFilePlaybackFormatCoverageTests` (3/3 — now with persist-roundtrip).
+- LF.3 + LF.4 cache tests green: `PersistentStemCacheTests` (11/11) + `PersistentStemCacheEvictionTests` (11/11) + `PreviewAudioContentHashTests` (8/8).
+- LF.4 lifecycle tests green: `SessionManagerLocalFileTests` (14/14).
+- Soak tests green: `SOAK_TESTS=1 swift test --filter SoakTestHarness` (7/7, 315 s).
+- Sample-rate literal gate green: `Scripts/check_sample_rate_literals.sh` exit 0.
+- Localized-strings gate green: `Scripts/check_user_strings.sh` exit 0.
+- Release build green: `xcodebuild -scheme PhospheneApp -configuration Release build` exit 0.
+- Live cold/warm capture matches LF.3 baseline. See `docs/diagnostics/LF4_REGRESSION_2026-05-27.md`.
+
+**Known risks and follow-ups.**
+
+- Cancel UX during the ~2 s `analyzePreview` window honours `cancellationRequested` only after the preparer returns — the cancel button responds visually (state → .idle) but the worker can't be interrupted mid-stem-separation. Acceptable for LF.4 (the worker is < 2 s); LF.5 multi-file work may need cooperative cancellation.
+- The label on the `Phosphene → Clear Local-File Cache (<size>)` menu item updates reactively via the `@Published` publisher, but SwiftUI menu items don't reactively re-render while open — the size can stale while the menu is hovered. Refreshes on next open. Acceptable.
+- The `ReadyView` flash is fully suppressed for LF (ContentView routes LF `.ready` to `PlaybackView`); a streaming session that drops back to `.ready` post-`.playing` still goes through `ReadyView`.
+- Drag-and-drop accepts single files only. Multi-file drops are rejected with a localized alert.
+- The cache-clear menu action uses an `NSAlert` confirmation; no undo. Acceptable — the disk write of a new file restores the cache for that file in ~2 s anyway.
+
+**Recommended next increment.** LF.5 — multi-file playlist semantics (folder ingestion, M3U files, "Recent Files" submenu, file-association handling). The LF.4 `SessionOrigin` enum was designed to extend naturally to `.localFolder([URL])`.
+
 ### Increment LF.3 — Persistent Content-Keyed Stem Cache ✅ (2026-05-27)
 
 Closes the LF.2 follow-up Matt named at closeout: LF.2's `StemCache.store(_:for:)` was process-lifetime only, so a second launch on the same local file re-ran the full ~2 s pre-analysis even though the result would be byte-identical. LF.3 makes the cache persistent. Same file across app launches → near-instant startup (~634 ms wall vs LF.2's ~2 s, **a ~3× speedup**, well under the 500 ms cache-hit-path target). First launch on a fresh install behaves identically to LF.2 (cache miss → `analyzePreview` runs → result written to disk in 4 ms wall).
@@ -4696,13 +4770,26 @@ Measurement via `CACurrentMediaTime()` snapshots inside `RayMarchPipeline.render
 
 See `RELEASE_NOTES_DEV.md [dev-2026-05-28-d]` for the closeout.
 
-### Increment PERF.3 — Fix (placeholder)
+### Increment PERF.3 — Fix beat-dominant light-intensity flicker (2026-05-28) ✅
 
-Once root cause is known from PERF.2-pass's next capture. Add or extend regression tests.
+PERF.2-pass capture `2026-05-27T22-49-42Z` showed ray-march sub-passes flat across a flicker-confirmed session — ruling out per-pass CPU as the cause. Pivot to ffmpeg signalstats on rendered video.mp4: **76 brightness-oscillation events across 200 s**, adjacent frames showing 2–22 luma-unit swings. Each oscillation aligned with a beat-detector firing.
 
-### Increment PERF.4 — Validation (placeholder)
+Root cause: `applyAudioModulation` in `RenderPipeline+RayMarch.swift` had `intensityMul = 0.4 + beatPulse * 2.6` — beat term 6.5× baseline. Direct violation of CLAUDE.md Failed Approach #4 ("beat is accent, never primary"). Every beat pulse → 2.1× single-frame brightness swing → ~3 Hz visible flicker.
 
-Verification criteria from BUG-019: `FrameTimingReporter` p95 ≤ tier budget over 90 s tap-path; 2-hour soak test passes; Matt M7 perceives no flickering.
+**Fix.** `intensityMul = 1.0 + bass * 0.4 + beatAccent * 0.15`. Baseline 1.0; continuous bass primary (up to +40%); beat accent only (up to +15%). Worst-case range [1.0, 1.55]; single-frame swing ±0.15 (14× smaller). Affects all ray-march presets.
+
+**Done-when.**
+
+- [x] Engine: 1328 / 1328 tests pass. `PresetRegressionTests` golden hashes pass within tolerance.
+- [x] App build: succeeds.
+- [x] SwiftLint `--strict`: 0 violations.
+- [ ] **Matt M7 (load-bearing gate).** Tap-path FFO session. Expected: visible flicker eliminated or substantially reduced. Other ray-march presets feel "musically continuous" rather than "beat-pulsey." Per-preset JSON multiplier available as a follow-up if any preset feels too inert.
+
+See `RELEASE_NOTES_DEV.md [dev-2026-05-28-e]` for the full closeout.
+
+### Increment PERF.4 — Validation (after M7)
+
+Verification criteria from BUG-019: `FrameTimingReporter` p95 ≤ tier budget over 90 s tap-path; 2-hour soak test passes; Matt M7 perceives no flickering. If M7 reports the perceptual problem is gone, BUG-019 closes against the flicker fix. The "sustained CPU bump" pattern observed earlier remains characterized but classed as a probably-environmental separate phenomenon (PERF.2-pass empirically ruled out our render-path code as the source).
 
 ---
 
