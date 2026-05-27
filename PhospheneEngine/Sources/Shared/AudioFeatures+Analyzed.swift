@@ -171,25 +171,9 @@ public struct FeatureVector: Sendable {
     /// Defaults to 4 when no BeatGrid is installed.
     public var beatsPerBar: Float
 
-    /// CSP.2 (2026-05-27) — track-relative elapsed time in seconds. Resets to
-    /// 0 on track change (via `MIRPipeline.reset()` in the track-change
-    /// handler). Enables shaders to crossfade from cold-start signal sources
-    /// (live FeatureVector primitives, available frame 1) to warm signal
-    /// sources (live per-frame StemFeatures analysis, reliably available
-    /// after ~5 s) over a smooth time-based blend.
-    ///
-    /// Stored as `Float` here despite `MIRPipeline.elapsedSeconds` being
-    /// `Double` — at hour-scale sessions Float ULP is ≈ 240 µs which is
-    /// orders of magnitude smaller than any cold-start window's tolerance.
-    /// The Double is the storage type; the Float is the read-out for GPU
-    /// upload. Per QR.1 / D-079.
-    ///
-    /// Slot reclaimed from `_pad3` to preserve byte-identical layout of
-    /// all fields 1–38.
-    public var trackElapsedS: Float
-
-    // --- Padding to 192 bytes (48 floats total — floats 40–48) ---
+    // --- Padding to 192 bytes (48 floats total — floats 39–48) ---
     // swiftlint:disable identifier_name
+    var _pad3: Float
     var _pad4: Float
     var _pad5: Float
     var _pad6: Float
@@ -235,11 +219,8 @@ public struct FeatureVector: Sendable {
         self.beatPhase01 = 0; self.beatsUntilNext = 0
         // Bar phase — from LiveBeatDriftTracker when a BeatGrid is installed.
         self.barPhase01 = 0; self.beatsPerBar = 4
-        // CSP.2 — populated by MIRPipeline.buildFeatureVector each frame from
-        // `elapsedSeconds`. 0 at track start; rises monotonically.
-        self.trackElapsedS = 0
         // Padding
-        self._pad4 = 0
+        self._pad3 = 0; self._pad4 = 0
         self._pad5 = 0; self._pad6 = 0; self._pad7 = 0; self._pad8 = 0
         self._pad9 = 0; self._pad10 = 0; self._pad11 = 0; self._pad12 = 0
     }
