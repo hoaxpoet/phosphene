@@ -640,7 +640,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         // supports A/B testing the hypothesis that a phase-humble tempo hint
         // improves perceived rhythmic competence during the first ~12 s of a
         // novel track. To run the off-side of the A/B without recompiling:
-        //   defaults write com.phosphene.PhospheneApp softTempoPulseEnabled -bool NO
+        //   defaults write com.phosphene.app softTempoPulseEnabled -bool NO
         // See CLAUDE.md §Cold-Start Phase Contract + ENGINEERING_PLAN.md CSP.1.
         let softTempoPulseToggleKey = "softTempoPulseEnabled"
         let softTempoPulseEnabled = (UserDefaults.standard
