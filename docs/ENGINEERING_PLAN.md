@@ -4532,15 +4532,55 @@ Cold-start blocker discovered during the CSP.3 → CSP.3.1 dive: the four per-st
 - [x] App build: succeeds. App Xcode tests: 5 pre-existing parallel-execution flakes pass in isolation (not regressions from SAR.1).
 - [x] SwiftLint `--strict`: 0 violations on `StemAnalyzer.swift` + `StemAnalyzerDeviationSeedingTests.swift`.
 - [x] Pre-fix cross-session range check across 7 recent sessions confirms the chronic out-of-range pattern (max deviation 2.09 → 40.85).
-- [ ] **Matt M7 (load-bearing gate).** Re-run the FFO A/B with the `ffoColdStartFixEnabled` toggle. Expected: the 18–30 s "preset stops moving / flickering colors" symptom disappears; CSP.3.1 cold-start motion remains; `stems.csv` shows no chronic out-of-range deviation rows.
+- [x] **Matt M7 (2026-05-28, session `2026-05-27T21-12-48Z`).** Verdict: "no different" visually. Post-fix CSV confirms math contract met (max deviation 37.69 → 2.87, 13× drop; first-frame saturation eliminated). Diagnostic dive identified the "no different" cause as a separate CPU perf bug filed as **BUG-019** (`frame_cpu_ms` doubles 11 → 23 ms at session-time 67 s, sustained over-budget through end of playback). BUG-019 is pre-existing — same shape appears in the pre-SAR.1 reference session — and orthogonal to SAR.1. **SAR.1 stays landed**; closeout treats math-contract correctness as the increment's deliverable.
 
-See `RELEASE_NOTES_DEV.md [dev-2026-05-28-a]` for the full evidence pack + closeout. Phase CSP can resume after Matt's M7.
+See `RELEASE_NOTES_DEV.md [dev-2026-05-28-a]` for the full evidence pack + M7 addendum. Phase CSP **paused** pending BUG-019 diagnosis.
 
 ### What's next for Phase CSP
 
-If CSP.3.1 carries the cold-start on FFO (after SAR.1 unblocks the deviation-primitive consumer at the shader layer), the pattern (one-sided baseline + smoothed continuous proxy + crossfade timed to real warmup) extends to other affected presets — Volumetric Lithograph being next per Matt's 2026-05-27 prioritisation (terrain pulse + camera dolly are both stems-routed).
+**Paused** pending BUG-019 (Phase PERF below). No point tuning FFO's cold-start consumer at the shader layer while ~30 % of frames are missing their deadline — the visual signal is too noisy to read.
 
-If CSP.3.1 doesn't carry, the next move is Matt's stress-test methodology suggestion: build per-preset cold-start measurement infrastructure — characterise what each preset's audio reactivity actually does across tempo / meter / energy variation — then propose fixes grounded in measured baselines. That work would slot here as **CSP-Stress.1** (or similar).
+After BUG-019 is at least diagnosed (root cause identified, fix scope known), revisit CSP.3.1's M7 verdict — re-running the same A/B in a CPU-clean build is the first read on whether the cold-start design itself works.
+
+If CSP.3.1 then carries the cold-start on FFO, the pattern (one-sided baseline + smoothed continuous proxy + crossfade timed to real warmup) extends to other affected presets — Volumetric Lithograph being next per Matt's 2026-05-27 prioritisation (terrain pulse + camera dolly are both stems-routed).
+
+If CSP.3.1 still doesn't carry post-BUG-019, the next move is Matt's stress-test methodology suggestion: build per-preset cold-start measurement infrastructure — characterise what each preset's audio reactivity actually does across tempo / meter / energy variation — then propose fixes grounded in measured baselines. That work would slot here as **CSP-Stress.1** (or similar).
+
+---
+
+## Phase PERF — Tap-path CPU degradation diagnosis (2026-05-28 →)
+
+Surfaced 2026-05-28 by the SAR.1 M7 close. `features.csv` `frame_cpu_ms` doubles from ~11 ms to ~22–24 ms at session-time 67–68 s and stays elevated for the rest of the session, producing visible flickering / hangs at the perceptual layer. GPU stable throughout — pure CPU bottleneck somewhere in the tap-path audio-analysis pipeline. LF-path sessions (local-file playback) run at 1.3–1.4 ms CPU throughout, isolating the issue to a tap-path-specific component. Pre-existing — same shape in the pre-SAR.1 reference session — but never characterised until now.
+
+Filed as **BUG-019** (P1, `perf`). Multi-increment P1 process per the defect protocol: instrumentation → diagnosis → fix → validation.
+
+### Increment PERF.1 — Per-subsystem timing instrumentation (scope-pending, awaiting Matt sign-off)
+
+Add per-subsystem timing columns to `features.csv` so the 11 ms → 23 ms CPU jump can be attributed. Working scope (subject to Matt's sign-off before any code lands):
+
+- `stem_analyzer_ms` — wall-clock cost of `StemAnalyzer.analyze` per frame.
+- `beat_detector_ms` — wall-clock cost of the drums beat-detector path inside the stem analyzer.
+- `pitch_tracker_ms` — wall-clock cost of `PitchTracker.process` (YIN on vocals stem).
+- `mir_pipeline_ms` — wall-clock cost of the per-frame `MIRPipeline` tick.
+- One catch-all `analysis_other_ms` so the sum-of-parts approximates total CPU and gaps point to remaining unmeasured surfaces.
+
+No new behaviour, no algorithmic changes, no allocations on the hot path (timing via `DispatchTime.now()` start/end snapshots, single-frame arithmetic, CSV column-write only).
+
+Goal: a fresh tap-path session capture, run past the 70 s session-time mark, shows which subsystem(s) account for the doubling. Diagnosis (PERF.2) then proposes the fix.
+
+**Done-when.** Engine + app builds clean, SwiftLint `--strict` clean, new fields appear in `features.csv` with reasonable values throughout, and a captured tap-path session ≥ 90 s reveals which column(s) climb at session-time 67–68 s.
+
+### Increment PERF.2 — Diagnosis (placeholder)
+
+Read the instrumented session capture. Identify which subsystem(s) account for the CPU climb. Document root cause in `KNOWN_ISSUES.md` BUG-019. No fix code in this increment.
+
+### Increment PERF.3 — Fix (placeholder)
+
+Once root cause is known. Add or extend regression tests.
+
+### Increment PERF.4 — Validation (placeholder)
+
+Verification criteria from BUG-019: `FrameTimingReporter` p95 ≤ tier budget over 90 s tap-path; 2-hour soak test passes; Matt M7 perceives no flickering.
 
 ---
 

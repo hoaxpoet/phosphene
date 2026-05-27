@@ -8,7 +8,9 @@ User-visible release notes are not yet in scope (no public build).
 
 ## [dev-2026-05-28-a] SAR.1 — Stem analyzer deviation primitives self-seed on first non-zero frame
 
-**Increment:** SAR.1 (Stem Analyzer Range). **Status:** Implemented 2026-05-28. Engine 1281/1281 + app tests pass (5 pre-existing parallel-execution flakes pass in isolation); SwiftLint `--strict` clean on touched files; manual M7 outstanding.
+> **M7 ADDENDUM 2026-05-28.** Matt's manual M7 on session `2026-05-27T21-12-48Z` (Billie Jean + Superstition, toggle ON, build at commit `801f3f3a`): "Around 25 s through the end of playback (~40 s), the FFO preset was glitchy and difficult to determine sync for both tracks. I would ultimately say no different." Post-fix CSV evidence confirms SAR.1 landed cleanly at the math layer (max deviation 37.69 → 2.87, a 13× drop; first-frame cold-start saturation eliminated). The "no different" verdict traces to a **separate CPU performance bug** discovered during the M7 review: `frame_cpu_ms` doubles from ~11 ms to ~23 ms at session-time 67–68 s and stays elevated, causing ~1 in 3 frames to miss the 16.67 ms deadline — exactly the "flickering / artifacts / temporarily hangs" symptom Matt described. The same degradation pattern appears in the pre-SAR.1 reference session (`2026-05-27T19-52-42Z`), confirming the perf bug is pre-existing and not introduced by SAR.1. Filed as **BUG-019** (P1, `perf`). **SAR.1 itself stays landed** — the math contract fix is correct, the empirical CSV evidence is what SAR.1 promised, and reverting it would re-introduce the 38× deviation spikes for no benefit. Phase CSP is **paused** until BUG-019 is at least diagnosed.
+
+**Increment:** SAR.1 (Stem Analyzer Range). **Status:** **Closed 2026-05-28** — math contract met; M7 visual verdict was "no different" due to a separately-discovered CPU perf bug (BUG-019), not a SAR.1 defect. Engine 1281/1281 + app tests pass (5 pre-existing parallel-execution flakes pass in isolation); SwiftLint `--strict` clean on touched files.
 
 ### What this fixes
 
