@@ -57,13 +57,14 @@ Phosphene uses a provider-oriented capture architecture. The current default pro
 
 Supported capture modes (abstracted by `AudioInputRouter`):
 
-- `.systemAudio` — system-wide tap (default)
-- `.application(bundleIdentifier:)` — per-app tap
-- `.localFile(URL)` — file playback for testing/offline use
+- `.systemAudio` — system-wide Core Audio process tap (default)
+- `.application(bundleIdentifier:)` — per-app Core Audio process tap
+- `.localFile(URL)` — diagnostic PCM injection from a file; does NOT play audio through speakers. Used by `SoakTestHarness` and the `D-052` settings toggle.
+- `.localFilePlayback(URL)` — `AVAudioEngine`-based playback through the default output device with a tap on the player node (pre-mixer, pre-volume). Bypasses Core Audio process taps entirely — no screen-capture permission required. LF.1 spike (D-128). Activated at app launch via the `PHOSPHENE_LOCAL_FILE_PLAYBACK` env var; `VisualizerEngine.startLocalFilePlayback(url:)` transitions the session to ad-hoc and skips `startAudio()`'s tap path.
 
 Operational requirements:
 
-- Screen capture permission is required for non-zero audio delivery. `AudioHardwareCreateProcessTap` succeeds without permission but delivers silence.
+- Screen capture permission is required for non-zero audio delivery on the process-tap modes (`.systemAudio`, `.application`). `AudioHardwareCreateProcessTap` succeeds without permission but delivers silence. The `.localFilePlayback` mode is the exception — it bypasses the tap.
 - Capture must not allocate or block on the real-time audio thread.
 - DRM silence detection via `SilenceDetector` monitors for sustained zero-energy frames and transitions to ambient visual mode.
 - Tap input quality is continuously assessed by `InputLevelMonitor`: rolling peak dBFS (21 s window) and 3-band spectral balance EMAs → `SignalQuality` (green/yellow/red). Classification is peak-only — treble-ratio thresholds were removed after they produced false positives on bass-heavy tracks. Quality transitions are logged to session.log with 30-frame hysteresis to prevent flapping.
@@ -484,8 +485,9 @@ PhospheneEngine/
   Audio/
     Audio                   → Module marker (imports + module-level header noting Core Audio taps as primary capture path per FA #29 / #21 / #22)
     SystemAudioCapture      → Core Audio tap: system-wide or per-app. FA #21 verified: .systemAudio uses stereoGlobalTapButExcludeProcesses: []; .application uses stereoMixdownOfProcesses: [PID] (non-empty array, the prohibited empty-array form does not appear).
-    AudioInputRouter        → Unified source: .systemAudio/.application/.localFile → callbacks. Wires SilenceDetector + tap-reinstall state machine; immutably captures tap sample rate via per-buffer callback (D-079/QR.1). onAnalysisFrame / onRenderFrame callbacks declared but unwired pending LookaheadBuffer product call.
-    AudioInputRouter+SignalState → Tap-reinstall state machine (ARCH §68): backoff 3s → 10s → 30s; three attempts; cancel-on-active; re-check state before performing the install. No dedicated tests today (CA-Audio-FU-4).
+    AudioInputRouter        → Unified source: .systemAudio/.application/.localFile/.localFilePlayback → callbacks. Wires SilenceDetector + tap-reinstall state machine; immutably captures tap sample rate via per-buffer callback (D-079/QR.1). onAnalysisFrame / onRenderFrame callbacks declared but unwired pending LookaheadBuffer product call. .localFilePlayback delegates to LocalFilePlaybackProvider (LF.1 / D-128); does NOT install a process tap.
+    AudioInputRouter+SignalState → Tap-reinstall state machine (ARCH §68): backoff 3s → 10s → 30s; three attempts; cancel-on-active; re-check state before performing the install. Mode-gated: scheduler is dormant in .localFile + .localFilePlayback modes (LF.1 / D-128) — those modes have no process tap to reinstall.
+    LocalFilePlaybackProvider → LF.1 spike (D-128, 2026-05-27). Plays a local audio file through the default output device via AVAudioEngine + AVAudioPlayerNode; installs a tap on the player node's output bus (pre-mixer, pre-volume) and forwards interleaved float32 PCM through onAudioSamples. Loops at EOF. Observes AVAudioEngineConfigurationChange and restarts on fire. Bypasses Core Audio process taps; no screen-capture permission required.
     LookaheadBuffer         → production-orphan + planned-consumer (CA-Audio-FU-2 resolved 2026-05-21 — KEPT per Matt). Timestamped ring buffer, dual read heads (analysis + render), configurable 2.5s delay. Zero production instantiations today; planned consumers: Phase MV anticipatory preset transitions (mv_warp crossfade completes ON the structural boundary instead of after), drop-anticipation visual telegraphing, beat-aligned switches to the exact frame, MILKDROP_ARCHITECTURE.md musicality.
     AudioBuffer             → IO proc → UMARingBuffer<Float> bridge for GPU
     FFTProcessor            → vDSP 1024-pt FFT → 512 magnitude bins in UMABuffer. printHistogram(barCount:) debug API has zero production consumers (CA-Audio-FU-6).
