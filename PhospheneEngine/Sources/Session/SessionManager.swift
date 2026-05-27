@@ -52,8 +52,19 @@ public final class SessionManager: ObservableObject {
     @Published public private(set) var currentPlan: SessionPlan?
 
     /// The playlist source that originated this session.
-    /// Set at `startSession(source:)` entry; nil in ad-hoc mode.
+    /// Set at `startSession(source:)` entry; nil in ad-hoc mode and in local-file mode.
     @Published public private(set) var sessionSource: PlaylistSource?
+
+    /// What kind of input is driving the current session.
+    ///
+    /// `.playlist(source)` — set at the start of every `startSession(...)` variant.
+    /// `.localFile(url)` — set at the start of `startLocalFile(at:)` (LF.4).
+    /// `nil` — `.idle` / `.ended`, or `startAdHocSession()` (pre-LF.4 ad-hoc path,
+    /// which has no source at all).
+    ///
+    /// Consumers that need to know "is this a local-file session" should read
+    /// `currentSource?.isLocalFile` rather than tracking a parallel boolean.
+    @Published public private(set) var currentSource: SessionOrigin?
 
     /// Tracks currently being prepared. Set when entering `.preparing`.
     /// Cleared when leaving `.preparing` (success, failure, or cancel).
@@ -63,6 +74,14 @@ public final class SessionManager: ObservableObject {
 
     private let connector: any PlaylistConnecting
     private let preparer: SessionPreparer
+
+    /// App-layer delegate that owns the heavy ML deps used by
+    /// `startLocalFile(at:)`. Wired post-init by `VisualizerEngine` so
+    /// the engine can hand SessionManager its `StemSeparator` / analyzer /
+    /// classifier / BeatGridAnalyzer / `PersistentStemCache` without
+    /// SessionManager itself growing those imports. `nil` in test setups
+    /// — `startLocalFile(at:)` then logs + degrades to ad-hoc-like state.
+    public weak var localFilePreparer: (any LocalFilePreparing)?
 
     /// Optional SessionRecorder for `WIRING:` instrumentation logs (BUG-006.1).
     /// Wired through from `VisualizerEngine` so handoff to engine cache attach
@@ -136,6 +155,7 @@ public final class SessionManager: ObservableObject {
     /// - Parameter source: The playlist source to connect to.
     public func startSession(source: PlaylistSource) async {
         sessionSource = source
+        currentSource = .playlist(source)
         guard state == .idle || state == .ended else {
             let current = self.state.rawValue
             logger.info("SessionManager: ignoring startSession (state=\(current))")
@@ -174,6 +194,7 @@ public final class SessionManager: ObservableObject {
     ///   - source: The originating playlist source (stored for session metadata).
     public func startSession(preFetchedTracks tracks: [TrackIdentity], source: PlaylistSource) async {
         sessionSource = source
+        currentSource = .playlist(source)
         guard state == .idle || state == .ended else {
             let current = self.state.rawValue
             logger.info("SessionManager: ignoring startSession (state=\(current))")
@@ -299,6 +320,111 @@ public final class SessionManager: ObservableObject {
         logger.info("SessionManager: ad-hoc session started — reactive mode only")
     }
 
+    /// Start a single-file local playback session (LF.4 / D-131).
+    ///
+    /// Transitions: `.idle`/`.ended` → `.preparing` → `.ready`. The caller
+    /// (the `VisualizerEngine` `.ready` observer) is responsible for
+    /// installing the cached `BeatGrid` via `resetStemPipeline(for:)`,
+    /// starting the LF audio router, and calling `beginPlayback()` to
+    /// transition `.ready → .playing`.
+    ///
+    /// Replace-on-open: if the session is already active in a streaming
+    /// or different-file mode, `cancel()` is called first. Same-URL
+    /// re-entry is a no-op (avoids re-running pre-analysis when the user
+    /// re-picks the same file).
+    ///
+    /// Preparation work is delegated to `localFilePreparer` (typically
+    /// `VisualizerEngine`), which owns the ML deps. When the delegate is
+    /// `nil` or returns `nil`, the session still transitions to `.ready` —
+    /// playback proceeds without the cached install (LF.1 fallthrough).
+    ///
+    /// - Parameter url: Local audio file URL. Caller must verify the file
+    ///   exists and is readable before calling.
+    public func startLocalFile(at url: URL) async {
+        // Same-URL re-entry: no-op (avoid re-running pre-analysis when the user
+        // re-picks the same file from the menu).
+        if let active = currentSource, case .localFile(let activeURL) = active,
+           activeURL == url,
+           state == .preparing || state == .ready || state == .playing {
+            logger.info("SessionManager: startLocalFile ignored — same URL already active")
+            return
+        }
+
+        // Replace-on-open: if any other session is active, end it cleanly.
+        if state != .idle && state != .ended {
+            logger.info("SessionManager: startLocalFile — replacing active session")
+            cancel()
+        }
+
+        cancellationRequested = false
+        sessionSource = nil
+        currentSource = .localFile(url)
+        preparingTracks = []                              // populated below once identity is synthesised
+        progressiveReadinessLevel = .preparing
+        state = .preparing
+        logger.info("SessionManager: preparing local file \(url.lastPathComponent, privacy: .public)")
+
+        let openMsg = "WIRING: SessionManager.startLocalFile ENTER " +
+            "file='\(url.lastPathComponent)'"
+        sessionRecorder?.log(openMsg)
+
+        guard let preparer = localFilePreparer else {
+            logger.warning("SessionManager: no localFilePreparer wired — degrading to no-cache start")
+            _completeLocalFileReady(result: nil, url: url)
+            return
+        }
+
+        let result = await preparer.prepareLocalFile(url: url)
+
+        guard !cancellationRequested else {
+            logger.info("SessionManager: local-file preparation cancelled")
+            return
+        }
+
+        if let result {
+            // Write the cached entry into the shared StemCache so the engine's
+            // resetStemPipeline(for:) call on `.ready` finds it via loadForPlayback.
+            self.preparer.cache.store(result.cached, for: result.identity)
+        }
+
+        _completeLocalFileReady(result: result, url: url)
+    }
+
+    /// Shared transition into `.ready` for the LF.4 path. Writes the single-track
+    /// `SessionPlan`, advances `progressiveReadinessLevel`, and flips state.
+    /// Called both on prep success (cache install will follow on the engine side)
+    /// and on prep failure (LF.1 fallthrough — engine starts audio without a
+    /// cached install).
+    @MainActor
+    private func _completeLocalFileReady(result: LocalFilePrepResult?, url: URL) {
+        let identity: TrackIdentity
+        if let result {
+            identity = result.identity
+        } else {
+            // No prep result — synthesise a placeholder identity. The engine's
+            // `resetStemPipeline(for:)` on `.ready` will take the cache-miss
+            // branch and the live pipeline catches up after ~10 s.
+            identity = TrackIdentity(
+                title: url.lastPathComponent,
+                artist: "local file",
+                duration: 0,
+                spotifyID: "local:" + url.path
+            )
+        }
+        preparingTracks = [identity]
+        currentPlan = SessionPlan(tracks: [identity])
+        progressiveReadinessLevel = .fullyPrepared
+        preparingTracks = []
+        state = .ready
+        let sourceLabel = result?.source.label ?? "noCache"
+        logger.info(
+            "SessionManager: local file ready (\(sourceLabel, privacy: .public)) — \(url.lastPathComponent, privacy: .public)"
+        )
+        let readyMsg = "WIRING: SessionManager.startLocalFile→ready " +
+            "file='\(url.lastPathComponent)' source=\(sourceLabel)"
+        sessionRecorder?.log(readyMsg)
+    }
+
     /// Signal that the user has started playback.
     ///
     /// Transitions `.ready` → `.playing`. A no-op for any other state.
@@ -338,6 +464,9 @@ public final class SessionManager: ObservableObject {
         statusCancellable = nil
         preparingTracks = []
         progressiveReadinessLevel = .preparing
+        currentSource = nil
+        sessionSource = nil
+        currentPlan = nil
         state = .idle
         logger.info("SessionManager: cancelled — returning to .idle")
     }
@@ -346,6 +475,7 @@ public final class SessionManager: ObservableObject {
     ///
     /// Transitions any state → `.ended`. Safe to call at any point.
     public func endSession() {
+        currentSource = nil
         state = .ended
         logger.info("SessionManager: session ended")
     }

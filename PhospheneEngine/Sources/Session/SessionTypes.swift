@@ -64,6 +64,42 @@ public enum ProgressiveReadinessLevel: Sendable, Equatable, Comparable {
 /// Minimum number of consecutive ready tracks (from position 1) required to unlock "Start now".
 public let defaultProgressiveReadinessThreshold: Int = 3
 
+// MARK: - SessionOrigin
+
+/// What kind of input is driving the current session.
+///
+/// `.playlist(source)` — connector-driven streaming session (Apple Music, Spotify).
+/// `.localFile(url)` — single local-file playback (LF.4). Multi-file ingestion
+/// (folder / M3U) is LF.5 territory; that will likely extend this enum or use
+/// a separate `.localFolder([URL])` case as appropriate.
+public enum SessionOrigin: Sendable, Equatable {
+    case playlist(PlaylistSource)
+    case localFile(URL)
+}
+
+extension SessionOrigin {
+    public static func == (lhs: SessionOrigin, rhs: SessionOrigin) -> Bool {
+        switch (lhs, rhs) {
+        case (.playlist, .playlist): return true   // PlaylistSource itself is not Equatable
+        case (.localFile(let l), .localFile(let r)): return l == r
+        default: return false
+        }
+    }
+
+    /// True when this origin represents a local-file session. Consumers that
+    /// used to read `VisualizerEngine.localFilePlaybackActive` now read this.
+    public var isLocalFile: Bool {
+        if case .localFile = self { return true }
+        return false
+    }
+
+    /// The file URL when this origin is `.localFile`, otherwise `nil`.
+    public var localFileURL: URL? {
+        if case .localFile(let url) = self { return url }
+        return nil
+    }
+}
+
 // MARK: - SessionPlan
 
 /// A planned visual session for an ordered playlist.
