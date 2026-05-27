@@ -106,6 +106,22 @@ public final class StemAnalyzer: StemAnalyzing, @unchecked Sendable {
     /// Formula: runningAvg = runningAvg * decay + energy * (1 - decay)
     /// Then: energyRel = (energy - runningAvg) * 2.0
     ///       energyDev = max(0, energyRel)
+    ///
+    /// **First-frame seeding (SAR.1, 2026-05-28).** Each entry is sentinel-zero
+    /// at construction and after `reset()`. The first call to
+    /// `updateEMAsAndComputeDeviations` with non-zero energy seeds the entry to
+    /// that energy value (per stem, independently). This makes the first
+    /// deviation exactly 0 ("no deviation from this song's typical energy") and
+    /// the EMA evolves from there. Without this seeding the first-frame
+    /// deviation was `2 × energy` — for live stem energies that reach 10–19
+    /// during the cold-start window, deviation primitives were emitting values
+    /// 20–38× the declared `[0, 1]` ceiling, leaving presets that consume
+    /// `*_energy_dev` (Ferrofluid Ocean, Lumen Mosaic, Aurora Veil,
+    /// Volumetric Lithograph, Membrane) reading saturated input for ~30 s
+    /// after every track change. Steady-state behaviour is unchanged.
+    /// Empirical evidence: session 2026-05-27T19-52-42Z stems.csv —
+    /// bassEnergyDev ramped 0 → 7.81 → 16.05 → 27.18 → 37.69 over ~60 ms at
+    /// the live-stems handoff, then slowly decayed back into range.
     private var stemRunningAvg: [Float] = [0, 0, 0, 0]
     private static let stemEMADecay: Float = 0.9989
 
@@ -222,9 +238,30 @@ public final class StemAnalyzer: StemAnalyzing, @unchecked Sendable {
         var otherRel: Float
     }
 
+    /// Updates the per-stem EMA running averages and returns the deviation
+    /// primitives (`*_energy_rel`, with `*_energy_dev = max(0, rel)` applied by
+    /// the caller).
+    ///
+    /// **Seeding (SAR.1, 2026-05-28).** Before the EMA update, each entry of
+    /// `stemRunningAvg` that is still at its sentinel zero is seeded from the
+    /// corresponding stem's energy on this frame — but only if that energy is
+    /// itself non-zero. After seeding, the deviation for that frame is exactly
+    /// 0; subsequent frames evolve the EMA normally. Each stem is seeded
+    /// independently: a stem whose energy is 0 on the first post-reset frame
+    /// stays unseeded until a frame where it has non-zero energy. This
+    /// eliminates the cold-start "deviation = 2 × energy" inflation that left
+    /// deviation primitives 20–38× over their declared `[0, 1]` ceiling at
+    /// every track change.
     private func updateEMAsAndComputeDeviations(
         vocalsE: Float, drumsE: Float, bassE: Float, otherE: Float
     ) -> StemDeviations {
+        // First-frame seeding: only fires when runningAvg is exactly 0 (sentinel
+        // — set at construction and on reset) AND the stem has non-zero energy.
+        if stemRunningAvg[0] == 0 && vocalsE > 0 { stemRunningAvg[0] = vocalsE }
+        if stemRunningAvg[1] == 0 && drumsE > 0 { stemRunningAvg[1] = drumsE }
+        if stemRunningAvg[2] == 0 && bassE > 0 { stemRunningAvg[2] = bassE }
+        if stemRunningAvg[3] == 0 && otherE > 0 { stemRunningAvg[3] = otherE }
+
         let decay = Self.stemEMADecay
         stemRunningAvg[0] = stemRunningAvg[0] * decay + vocalsE * (1 - decay)
         stemRunningAvg[1] = stemRunningAvg[1] * decay + drumsE * (1 - decay)
