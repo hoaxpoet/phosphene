@@ -12,7 +12,7 @@ import Shared
 /// All fields are optional where the analysis may not converge in 30 seconds
 /// (e.g., BPM estimation needs multiple beat onsets). The Orchestrator treats
 /// nil fields as "unknown" and falls back to live MIR as playback progresses.
-public struct TrackProfile: Sendable {
+public struct TrackProfile: Sendable, Codable {
 
     // MARK: - Fields
 
