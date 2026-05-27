@@ -95,8 +95,31 @@ extension RenderPipeline {
 
     /// Update per-stem features from the background stem pipeline.
     /// Thread-safe — called from the stem queue at ~5s cadence.
+    ///
+    /// CSP.2 (2026-05-27) — `cachedBassProportion` is **preserved** across
+    /// updates: the incoming `features.cachedBassProportion` is ignored and
+    /// the field retains whatever value was last set via
+    /// `setCachedBassProportion(_:)`. This implements the "frozen for the
+    /// track's duration" contract — live per-frame stem analysis must not
+    /// overwrite the cached preview-derived proportion that Ferrofluid
+    /// Ocean's spike-height baseline depends on.
     public func setStemFeatures(_ features: StemFeatures) {
-        stemFeaturesLock.withLock { latestStemFeatures = features }
+        stemFeaturesLock.withLock {
+            var next = features
+            next.cachedBassProportion = latestStemFeatures.cachedBassProportion
+            latestStemFeatures = next
+        }
+    }
+
+    /// CSP.2 — install the cached bass proportion for the current track.
+    /// Called once at track-change from the app layer's `resetStemPipeline`,
+    /// computed from `CachedTrackData.stemFeatures` (the preview-analysis
+    /// snapshot). Preserved across all subsequent `setStemFeatures(_:)`
+    /// updates until the next call to this method. Thread-safe.
+    public func setCachedBassProportion(_ value: Float) {
+        stemFeaturesLock.withLock {
+            latestStemFeatures.cachedBassProportion = value
+        }
     }
 
     /// Read the latest per-stem features snapshot. Thread-safe.

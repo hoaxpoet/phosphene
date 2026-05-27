@@ -4318,6 +4318,42 @@ Phase CS closes when, in this order:
 
 ---
 
+## Phase CSP — Cold-Start Perception (2026-05-26)
+
+Per-preset cold-start fixes leveraging the proxy-then-stems crossfade pattern + cached pre-playback analysis ("perceive, not just hear"). Direct response to Matt's two-week-running cold-start complaint — primarily the "Ferrofluid Ocean feels inert at the start of every track" symptom (2026-05-27). Phase CSP is preset-by-preset implementation work; the underlying philosophy (use everything the preset can perceive at frame 1, not just live audio) is captured in CLAUDE.md §Cold-Start Phase Contract.
+
+### Increment CSP.1 + CSP.1.1 — Soft tempo pulse (tried + reverted 2026-05-27)
+
+**Status: reverted 2026-05-27 after two negative A/Bs (Lumen Mosaic, Membrane).** Implementation worked correctly (toggle behaviour verified from `features.csv`); hypothesis empirically not validated on those test beds. See `RELEASE_NOTES_DEV.md [dev-2026-05-27-a]` for the closeout + durable learnings. The increment is preserved as historical record; the codebase is back to the pre-CSP state.
+
+### Increment CSP.2 — Ferrofluid Ocean spike heights via cached perception + cold-start crossfade ⏳ (implemented 2026-05-27, M7 outstanding)
+
+**Scope.** Two layers added to `fo_spike_strength` in `FerrofluidOcean.metal`:
+
+- **Layer 1 (cached baseline).** Cached bass proportion from preview analysis → ±25 % spike-height baseline at frame 1. Magnitude approved by Matt 2026-05-27 ("Visible").
+- **Layer 2 (live overall bass → isolated stem crossfade).** `f.bass_dev` (AGC, available frame 1) drives spike pulsing during cold-start; smoothstep crossfade (`smoothstep(0.5, 8.0, f.track_elapsed_s)`) to `stems.bass_energy_dev` over the warmup window.
+
+**Plumbing.** Two new fields reclaimed from existing padding slots (D-099 additive-struct-extension pattern):
+
+- `FeatureVector.trackElapsedS` (Float 39, reclaimed from `_pad3`) — track-relative wall-clock seconds, reset by `MIRPipeline.reset()`. Populated in `buildFeatureVector`.
+- `StemFeatures.cachedBassProportion` (Float 44, reclaimed from `_sfPad2`) — frozen for the track's duration; preserved across live `setStemFeatures(_:)` updates by `RenderPipeline+PresetSwitching`'s merge logic. Installed in `VisualizerEngine+Stems.swift:resetStemPipeline` from `CachedTrackData.stemFeatures`.
+
+**Done-when (in flight).**
+
+- [x] Engine: 1275 / 1275 tests pass. New `CSP2DataPlumbingTests` suite (8 tests across 2 sub-suites) regression-locks both fields' contracts.
+- [x] SwiftLint `--strict`: 0 violations.
+- [x] App build: succeeds.
+- [ ] **Matt M7 (load-bearing gate).** Manual review on a session where Ferrofluid Ocean is active at track start. Expected: spikes at song-appropriate baseline from frame 1 + per-frame pulsing with live bass from frame 1 + smooth handoff to isolated bass at ~5–8 s.
+
+**Outcome handling.**
+
+- **Better:** cert. Same proxy-then-stems pattern likely applies to Volumetric Lithograph (terrain pulse, camera dolly — both currently stems-dependent). File CSP.3 if Matt wants.
+- **Worse or no different:** diagnose from `features.csv` (`bass_dev`, `bass_energy_dev`, and the timeline) before reverting. Possible failure modes: cached bass proportion is 0 (cache miss), `trackElapsedS` not resetting on track change, or shader-side mix not producing the expected blend value.
+
+**Rationale.** Direct implementation of Matt's "perceive, not just hear" framing from 2026-05-27. The previous CSP.1 attempt was item #5 ("metadata BPM as soft oscillator") of his six-ingredient cold-start vision; CSP.2 implements items #2 (bass/mid/treble energy → live overall bass for cold-start pulsing) and adds the cached-perception layer that uses what the preset already knows about the song from preview analysis.
+
+---
+
 ## Phase SR — Session Replay diagnostic infrastructure
 
 Diagnostic harness that closes the "I cannot inspect this preset" gap surfaced during the AV.2.x cascade closeout (2026-05-20). Closeouts asserting audio-coupling or visual-fidelity claims must now cite generated evidence packs instead of assertion-shaped language. See [docs/ENGINE/SESSION_REPLAY.md](ENGINE/SESSION_REPLAY.md) for usage + extension. The accompanying CLAUDE.md discipline rule ("Diagnostic infrastructure precedes fidelity claims") is the project-wide standard.

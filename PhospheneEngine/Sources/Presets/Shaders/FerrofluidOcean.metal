@@ -82,11 +82,60 @@ static inline float fo_stem_warmup_blend(constant StemFeatures& stems) {
 // coupling REMOVED so there's no competing motion. This is the correct
 // pairing: slow swell + bass-reactive spikes, instead of bass-reactive
 // swell + constant or beat-locked spikes.
+// CSP.2 (2026-05-27) — cold-start window: live FeatureVector proxies provide
+// per-frame spike pulsing during the first ~5–8 s before live per-frame
+// StemFeatures analysis becomes reliable. Without this, cached preview-
+// snapshot stems give a fixed non-default spike height that doesn't respond
+// to the live audio, which is the "biggest cold-start problem" symptom Matt
+// flagged 2026-05-27. Two layers:
+//
+//   Layer 1 (baseline, frozen for the track): cached_bass_proportion from the
+//   preview analysis sets the song-appropriate height the spikes hover at.
+//   ±25 % range across the [0.0, 0.5] proportion range (Matt's "Visible"
+//   approval 2026-05-27).
+//
+//   Layer 2 (per-frame motion, crossfaded over cold-start): live
+//   `f.bass_dev` (AGC-normalised, available from frame 1) drives the pulsing
+//   during 0–8 s; smoothstep crossfade to `stems.bass_energy_dev` (cleaner,
+//   isolated-bass-only) thereafter. The blend signal is `f.track_elapsed_s`
+//   (track-relative wall-clock, reset on track change). At 8 s the live
+//   per-frame stem analyzer is reliably producing values.
+//
+// At cold-start, when cached_bass_proportion is 0 (live reactive mode, no
+// preview analysis available), the baseline collapses to 1.0 — identical to
+// the pre-CSP.2 behaviour. So the change is additive: cached metadata
+// improves cold-start where available, and absent cached metadata produces
+// the unchanged baseline.
+constant float FO_SPIKE_COLD_START_FADE_START_S = 0.5;
+constant float FO_SPIKE_COLD_START_FADE_END_S   = 8.0;
+constant float FO_SPIKE_BASELINE_RANGE          = 0.25;   // ±25 % per Matt approval
+constant float FO_SPIKE_BASELINE_PIVOT          = 0.25;   // proportion=0.25 → baseline=1.0
+
 static inline float fo_spike_strength(constant FeatureVector& f,
                                       constant StemFeatures& stems) {
-    (void)f;
-    float bassDev = clamp(stems.bass_energy_dev, 0.0, 1.0);
-    return 1.0 + 0.35 * bassDev;
+    // Layer 1 — cached baseline. Maps cached_bass_proportion across
+    // [0.0, 0.5] to a [1.0 − range, 1.0 + range] multiplier; clamped so
+    // out-of-range proportions (which shouldn't occur but are bounded for
+    // safety) don't exceed the ±25 % envelope.
+    float proportion = clamp(stems.cached_bass_proportion, 0.0, 0.5);
+    float baselineDelta = (proportion - FO_SPIKE_BASELINE_PIVOT)
+                        * (FO_SPIKE_BASELINE_RANGE / FO_SPIKE_BASELINE_PIVOT);
+    float baseline = 1.0 + clamp(baselineDelta,
+                                 -FO_SPIKE_BASELINE_RANGE,
+                                  FO_SPIKE_BASELINE_RANGE);
+
+    // Layer 2 — cold-start crossfade. blend = 0 during early cold-start;
+    // smoothsteps to 1 at FO_SPIKE_COLD_START_FADE_END_S.
+    float blend = smoothstep(FO_SPIKE_COLD_START_FADE_START_S,
+                             FO_SPIKE_COLD_START_FADE_END_S,
+                             f.track_elapsed_s);
+    float proxy = clamp(f.bass_dev, 0.0, 1.0);
+    float warm  = clamp(stems.bass_energy_dev, 0.0, 1.0);
+    float src   = mix(proxy, warm, blend);
+
+    // Combine: per-track baseline + per-frame source modulation. Original
+    // formula's per-frame coefficient (0.35) preserved verbatim.
+    return baseline + 0.35 * src;
 }
 
 // Swell amplitude scale — slow energy-driven drift only (round 65, 2026-05-18).
