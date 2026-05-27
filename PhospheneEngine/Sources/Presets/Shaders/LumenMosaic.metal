@@ -227,19 +227,6 @@ constant float kCellIntensityJitter = 0.15f;   // adds [0, 0.15] from hash
 constant float kBarPulseMagnitude = 0.20f;
 constant float kBarPulseShape     = 8.0f;
 
-/// CSP.1 (2026-05-26) — soft tempo-pulse magnitude. Multiplied with
-/// `f.soft_tempo_pulse01` (∈ [0, 0.25]) to produce a layered breathing
-/// modulation on cell intensity during the cold-start window
-/// (full amplitude 0–6 s, smoothstep ramp to 0 by 12 s). Peak combined
-/// brightness effect when the pulse is at full amplitude is ~15 %
-/// (0.25 × 0.6 = 0.15) — well below the 20 % bar pulse, so the soft
-/// pulse reads as a subtle texture rather than competing with the
-/// per-downbeat flash. Zero when no BeatGrid is installed or when the
-/// `softTempoPulseEnabled` UserDefaults toggle is off — in those cases
-/// `f.soft_tempo_pulse01` is 0 and the multiplication collapses to 1.0.
-/// See CLAUDE.md §Cold-Start Phase Contract + ENGINEERING_PLAN.md CSP.1.
-constant float kSoftTempoMagnitude = 0.60f;
-
 /// LM.4.5.3 — uncapped per-cell palette + per-track hue bias +
 /// per-cell brightness variation + section-driven mutation.
 ///
@@ -500,9 +487,7 @@ static inline uint lm_track_seed_hash(constant LumenPatternState& lumen) {
 /// for ABI continuity but their `intensity` / `colorR/G/B` fields are
 /// unused here. `LM.4` may revisit per-cell pattern bursts that read the
 /// agent positions.
-static inline float lm_cell_intensity(uint cellHash,
-                                      float barPhase01,
-                                      float softTempoPulse01) {
+static inline float lm_cell_intensity(uint cellHash, float barPhase01) {
     // LM.4.5.3: per-cell brightness varies WIDELY (0.30 to 1.60) so
     // some cells are dim shadows and some over-expose into bloom —
     // dramatic stained-glass brightness diversity. Replaces the
@@ -515,11 +500,7 @@ static inline float lm_cell_intensity(uint cellHash,
     float baseIntensity = mix(kCellBrightnessMin, kCellBrightnessMax, jitterNorm);
     float barShape = pow(saturate(barPhase01), kBarPulseShape);
     float barFactor = 1.0f + kBarPulseMagnitude * barShape;
-    // CSP.1 — soft tempo-pulse scaffold during cold-start. Collapses to 1.0
-    // when no BeatGrid is installed, the toggle is off, or the fade window
-    // has elapsed (f.soft_tempo_pulse01 == 0 in all those cases).
-    float softTempoFactor = 1.0f + kSoftTempoMagnitude * softTempoPulse01;
-    return baseIntensity * barFactor * softTempoFactor;
+    return baseIntensity * barFactor;
 }
 
 /// LM.4.7 — Palette-table lookup. Replaces LM.4.6 (uniform random RGB
@@ -780,9 +761,7 @@ void sceneMaterial(float3 p,
     // landed-work entry in `CLAUDE.md` for the diagnosis. The LM.3.2
     // per-cell beat-step palette dance + bar pulse are the entire
     // visual story now.
-    float cell_intensity = lm_cell_intensity(cellHash,
-                                             f.bar_phase01,
-                                             f.soft_tempo_pulse01);
+    float cell_intensity = lm_cell_intensity(cellHash, f.bar_phase01);
 
     // Frosted-glass diffusion at cell boundaries (LM.3.2 round 7,
     // 2026-05-10). The Voronoi `f2 - f1` distance is the natural

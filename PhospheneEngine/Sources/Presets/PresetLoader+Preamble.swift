@@ -51,14 +51,8 @@ extension PresetLoader {
             // Bar phase: 0 at downbeat, rises to 1 at next downbeat (floats 37–38).
             float bar_phase01;    // phrase-level envelope; 0 in reactive mode
             float beats_per_bar; // time-sig numerator (4 for 4/4, 3 for 3/4)
-            // CSP.1 — phase-humble tempo scaffold during cold-start window.
-            // Squared raised-cosine pulse at cached BeatGrid BPM, faded
-            // smoothstep 6–12 s, zero when no grid or toggle off. ∈ [0, 0.25].
-            // Float 39 — reclaimed from `_pad3`. See Common.metal + CLAUDE.md
-            // §Cold-Start Phase Contract.
-            float soft_tempo_pulse01;
-            // Padding to 192 bytes (floats 40–48).
-            float _pad4, _pad5, _pad6, _pad7,
+            // Padding to 192 bytes (floats 39–48).
+            float _pad3, _pad4, _pad5, _pad6, _pad7,
                   _pad8, _pad9, _pad10, _pad11, _pad12;
         };
 

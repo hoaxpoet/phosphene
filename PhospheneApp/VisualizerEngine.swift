@@ -635,17 +635,6 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         // at runtime via `,`/`.` developer shortcuts. AirPods / Bluetooth users
         // will need a higher value; surfaces as a setting in a future increment.
         self.mirPipeline.liveDriftTracker.audioOutputLatencyMs = 50.0
-        // CSP.1 (2026-05-26): per-track soft tempo-pulse scaffold for the
-        // low-confidence cold-start window. UserDefaults toggle (default ON)
-        // supports A/B testing the hypothesis that a phase-humble tempo hint
-        // improves perceived rhythmic competence during the first ~12 s of a
-        // novel track. To run the off-side of the A/B without recompiling:
-        //   defaults write com.phosphene.PhospheneApp softTempoPulseEnabled -bool NO
-        // See CLAUDE.md §Cold-Start Phase Contract + ENGINEERING_PLAN.md CSP.1.
-        let softTempoPulseToggleKey = "softTempoPulseEnabled"
-        let softTempoPulseEnabled = (UserDefaults.standard
-            .object(forKey: softTempoPulseToggleKey) as? Bool) ?? true
-        self.mirPipeline.softTempoPulseEnabled = softTempoPulseEnabled
         let tier = Self.detectDeviceTier(device: ctx.device)
         self.murmurationGeometry = Self.makeMurmurationGeometry(context: ctx, library: lib)
         self.moodClassifier = classifier

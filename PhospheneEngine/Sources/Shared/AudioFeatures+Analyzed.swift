@@ -171,27 +171,9 @@ public struct FeatureVector: Sendable {
     /// Defaults to 4 when no BeatGrid is installed.
     public var beatsPerBar: Float
 
-    /// CSP.1 (2026-05-26) — phase-humble tempo scaffold during the
-    /// cold-start window. Amplitude ∈ `[0, 0.25]`, a squared raised-cosine
-    /// pulse at the cached `BeatGrid` BPM (period `T = 60 / bpm`),
-    /// modulated by a time-based fade envelope (full amplitude 0–6 s,
-    /// smoothstep ramp 6–12 s, zero after) anchored to `elapsedSeconds`.
-    /// Trough at `t = 0` so the visual warms up smoothly rather than
-    /// pulsing at frame 1.
-    ///
-    /// Zero when no `BeatGrid` is installed, when the
-    /// `softTempoPulseEnabled` toggle is off, or after the fade window.
-    /// Phase-humble — does NOT claim alignment with audible beats.
-    /// Consumers should use it for subtle breathing / density / shimmer
-    /// / texture pressure, never for hard flashes or beat hits (the
-    /// rule is the same as for any cold-start accent layer).
-    ///
-    /// Slot reclaimed from `_pad3` to preserve byte-identical layout
-    /// of all existing fields.
-    public var softTempoPulse01: Float
-
     // --- Padding to 192 bytes (48 floats total — floats 39–48) ---
     // swiftlint:disable identifier_name
+    var _pad3: Float
     var _pad4: Float
     var _pad5: Float
     var _pad6: Float
@@ -237,10 +219,8 @@ public struct FeatureVector: Sendable {
         self.beatPhase01 = 0; self.beatsUntilNext = 0
         // Bar phase — from LiveBeatDriftTracker when a BeatGrid is installed.
         self.barPhase01 = 0; self.beatsPerBar = 4
-        // CSP.1 — populated by MIRPipeline.buildFeatureVector per frame.
-        self.softTempoPulse01 = 0
         // Padding
-        self._pad4 = 0
+        self._pad3 = 0; self._pad4 = 0
         self._pad5 = 0; self._pad6 = 0; self._pad7 = 0; self._pad8 = 0
         self._pad9 = 0; self._pad10 = 0; self._pad11 = 0; self._pad12 = 0
     }
