@@ -1,4 +1,12 @@
 // SessionRecorder — Continuous diagnostic capture during real playback.
+// swiftlint:disable file_length
+//
+// File grew past the 400-line warning when PERF.1 + PERF.2-render +
+// PERF.2-pass added per-subsystem and per-pass timing storage. The CSV
+// header + setter methods are split into +CSV / +Timing extensions where
+// possible; what remains is the class core (init, recordFrame, raw-tap
+// streaming, video writer) — splitting further would obscure the
+// recorder's threading model.
 //
 // Writes to ~/Documents/phosphene_sessions/<ISO-timestamp>/ while the app is
 // running, producing:
@@ -128,10 +136,15 @@ public final class SessionRecorder: @unchecked Sendable {
     var latestPitchTrackerMs: Float?
     var latestMoodClassifierMs: Float?
 
-    // MARK: Render-loop CPU breakdown (PERF.2-render — BUG-019 instrumentation).
-    // Setter + threading contract in `SessionRecorder+Timing.swift`.
+    // MARK: Render-loop CPU breakdown (PERF.2-render + PERF.2-pass — BUG-019).
+    // Setters in `SessionRecorder+Timing.swift`. Ray-march-pass fields stay
+    // nil on frames where the active preset doesn't take the ray-march path.
     var latestEncodeCPUms: Float?
     var latestRenderFrameCPUms: Float?
+    var latestGBufferPassMs: Float?
+    var latestLightingPassMs: Float?
+    var latestSSGIPassMs: Float?
+    var latestPostProcessPassMs: Float?
 
     // MARK: Raw-tap streaming WAV state (diagnostic — first 30s).
     var rawTapHandle: FileHandle?
@@ -260,11 +273,18 @@ public final class SessionRecorder: @unchecked Sendable {
                 encodeCpuMs: self.latestEncodeCPUms,
                 renderFrameCpuMs: self.latestRenderFrameCPUms
             )
+            let passTiming = RayMarchPassTimingSnapshot(
+                gbufferPassMs: self.latestGBufferPassMs,
+                lightingPassMs: self.latestLightingPassMs,
+                ssgiPassMs: self.latestSSGIPassMs,
+                postProcessPassMs: self.latestPostProcessPassMs
+            )
             // swiftlint:disable multiline_arguments
             let fRow = SessionRecorder.csvRow(features: features, stems: stems, beatSync: beatSync,
                                               frame: idx, wallclock: now,
                                               frameCPUms: cpuMs, frameGPUms: gpuMs,
-                                              subsystem: subsystem, renderTiming: renderTiming)
+                                              subsystem: subsystem, renderTiming: renderTiming,
+                                              rayMarchPass: passTiming)
             // swiftlint:enable multiline_arguments
             self.featuresHandle.write(fRow.data(using: .utf8) ?? Data())
             let sRow = SessionRecorder.csvRow(stems: stems, frame: idx, wallclock: now)
@@ -346,7 +366,8 @@ public final class SessionRecorder: @unchecked Sendable {
             beat_sync_mode,lock_state,grid_bpm,playback_time_s,drift_ms,\
             frame_cpu_ms,frame_gpu_ms,track_elapsed_s,cached_bass_proportion,\
             mir_pipeline_ms,stem_analyzer_ms,beat_detector_ms,pitch_tracker_ms,mood_classifier_ms,\
-            encode_cpu_ms,renderframe_cpu_ms
+            encode_cpu_ms,renderframe_cpu_ms,\
+            gbuffer_pass_ms,lighting_pass_ms,ssgi_pass_ms,post_process_pass_ms
 
             """
         let stemsHeader = """

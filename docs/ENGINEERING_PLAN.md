@@ -4669,9 +4669,36 @@ Derived in post-processing:
 
 See `RELEASE_NOTES_DEV.md [dev-2026-05-28-c]` for the full closeout.
 
+### Increment PERF.2-render — Diagnosis from session `2026-05-27T22-15-25Z` (2026-05-28) ✅ narrowed to renderFrame dispatch
+
+`encode_cpu_ms` and `renderframe_cpu_ms` both doubled in lockstep with `frame_cpu_ms` (0.37 → 9 ms across the bump transition). The CPU work is **inside `renderFrame()`'s pass dispatch** — specifically one of the `drawWith*` functions. The session also caught the first observed self-recovery: bumped at session-time ~60 s, sustained for ~56 s, then a single 96 ms hitch frame at 116 s released the state and returned cpu to baseline. Recovery moment uncorrelated with any session-log event.
+
+See `RELEASE_NOTES_DEV.md [dev-2026-05-28-d]` for the diagnostic narrative.
+
+### Increment PERF.2-pass — Ray-march per-sub-pass timing (2026-05-28) ✅
+
+Added four more `features.csv` columns to attribute the bump within the ray-march path:
+
+- `gbuffer_pass_ms` — G-buffer pass (SDF or mesh)
+- `lighting_pass_ms` — lighting pass
+- `ssgi_pass_ms` — SSGI pass + blend (0 when suppressed)
+- `post_process_pass_ms` — bloom / composite
+
+Measurement via `CACurrentMediaTime()` snapshots inside `RayMarchPipeline.render(...)`. Surfaced via new `onRayMarchPassTimingObserved` callback. Frames running non-ray-march presets leave the cells empty.
+
+**Done-when.**
+
+- [x] Engine: 1317/1317 tests pass. New `SessionRecorderTests` round-trip + cold-start tests.
+- [x] App build: succeeds. (3 pre-existing `FirstAudioDetectorTests` parallel-execution flakes pass in isolation.)
+- [x] SwiftLint `--strict`: 0 violations on 7 touched files.
+- [x] CSV header invariant test asserts `features.csv` ends with `gbuffer_pass_ms,lighting_pass_ms,ssgi_pass_ms,post_process_pass_ms`.
+- [ ] **Matt captures a fresh tap-path FFO session past 70 s session-uptime, ideally through one full bump cycle (≥ 120 s).** PERF.2-pass diagnosis reads the four new columns to identify which sub-pass owns the growing CPU work.
+
+See `RELEASE_NOTES_DEV.md [dev-2026-05-28-d]` for the closeout.
+
 ### Increment PERF.3 — Fix (placeholder)
 
-Once root cause is known from PERF.2-render's next capture. Add or extend regression tests.
+Once root cause is known from PERF.2-pass's next capture. Add or extend regression tests.
 
 ### Increment PERF.4 — Validation (placeholder)
 

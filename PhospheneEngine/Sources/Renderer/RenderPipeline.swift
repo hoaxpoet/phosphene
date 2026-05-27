@@ -260,6 +260,17 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     ///                         the dispatched pass or in the pre/post setup.
     public var onRenderTimingObserved: ((_ encodeCpuMs: Float, _ renderframeCpuMs: Float) -> Void)?
 
+    /// Ray-march per-pass CPU breakdown observer (PERF.2-pass — BUG-019 instrumentation).
+    /// Fires from `drawWithRayMarch` after `RayMarchPipeline.render(...)` returns. Only
+    /// invoked on ray-march frames; other preset paths leave the recorder's values empty.
+    ///   - `gbufferMs`: wall-clock of the G-buffer pass (SDF or mesh dispatch).
+    ///   - `lightingMs`: wall-clock of the lighting pass.
+    ///   - `ssgiMs`: wall-clock of SSGI pass + blend (0 when suppressed for this frame).
+    ///   - `postProcessMs`: wall-clock of bloom / composite.
+    public var onRayMarchPassTimingObserved: (
+        (_ gbufferMs: Float, _ lightingMs: Float, _ ssgiMs: Float, _ postProcessMs: Float) -> Void
+    )?
+
     // MARK: - Timing
 
     let startTime: CFAbsoluteTime

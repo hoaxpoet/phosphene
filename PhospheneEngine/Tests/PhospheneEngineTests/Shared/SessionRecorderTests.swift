@@ -101,20 +101,24 @@ final class SessionRecorderTests: XCTestCase {
         XCTAssertEqual(Float(row2[4]) ?? -1, 0.9, accuracy: 0.0001)
     }
 
-    // MARK: - frame_cpu_ms / frame_gpu_ms / per-subsystem timing / render-loop columns
+    // MARK: - frame_cpu_ms / frame_gpu_ms / per-subsystem / render-loop / ray-march pass columns
     //
-    // CSV column layout from the end after PERF.2-render (BUG-019 instrumentation):
-    //   cells[count -  1] = renderframe_cpu_ms      (PERF.2-render)
-    //   cells[count -  2] = encode_cpu_ms           (PERF.2-render)
-    //   cells[count -  3] = mood_classifier_ms      (PERF.1)
-    //   cells[count -  4] = pitch_tracker_ms        (PERF.1)
-    //   cells[count -  5] = beat_detector_ms        (PERF.1)
-    //   cells[count -  6] = stem_analyzer_ms        (PERF.1)
-    //   cells[count -  7] = mir_pipeline_ms         (PERF.1)
-    //   cells[count -  8] = cached_bass_proportion  (CSP.3)
-    //   cells[count -  9] = track_elapsed_s         (CSP.3)
-    //   cells[count - 10] = frame_gpu_ms            (DM.3a)
-    //   cells[count - 11] = frame_cpu_ms            (DM.3a)
+    // CSV column layout from the end after PERF.2-pass (BUG-019 instrumentation):
+    //   cells[count -  1] = post_process_pass_ms    (PERF.2-pass)
+    //   cells[count -  2] = ssgi_pass_ms            (PERF.2-pass)
+    //   cells[count -  3] = lighting_pass_ms        (PERF.2-pass)
+    //   cells[count -  4] = gbuffer_pass_ms         (PERF.2-pass)
+    //   cells[count -  5] = renderframe_cpu_ms      (PERF.2-render)
+    //   cells[count -  6] = encode_cpu_ms           (PERF.2-render)
+    //   cells[count -  7] = mood_classifier_ms      (PERF.1)
+    //   cells[count -  8] = pitch_tracker_ms        (PERF.1)
+    //   cells[count -  9] = beat_detector_ms        (PERF.1)
+    //   cells[count - 10] = stem_analyzer_ms        (PERF.1)
+    //   cells[count - 11] = mir_pipeline_ms         (PERF.1)
+    //   cells[count - 12] = cached_bass_proportion  (CSP.3)
+    //   cells[count - 13] = track_elapsed_s         (CSP.3)
+    //   cells[count - 14] = frame_gpu_ms            (DM.3a)
+    //   cells[count - 15] = frame_cpu_ms            (DM.3a)
 
     func test_featuresHeader_includesFrameTimingColumns() throws {
         let recorder = try XCTUnwrap(SessionRecorder(baseDir: tempDir))
@@ -129,8 +133,11 @@ final class SessionRecorderTests: XCTestCase {
         XCTAssertTrue(header.contains(
             "mir_pipeline_ms,stem_analyzer_ms,beat_detector_ms,pitch_tracker_ms,mood_classifier_ms"),
                       "features.csv header must contain the PERF.1 timing block, got: \(header)")
-        XCTAssertTrue(header.hasSuffix("encode_cpu_ms,renderframe_cpu_ms"),
-                      "features.csv header must end with the PERF.2-render timing block, got: \(header)")
+        XCTAssertTrue(header.contains("encode_cpu_ms,renderframe_cpu_ms"),
+                      "features.csv header must contain the PERF.2-render timing block, got: \(header)")
+        XCTAssertTrue(header.hasSuffix(
+            "gbuffer_pass_ms,lighting_pass_ms,ssgi_pass_ms,post_process_pass_ms"),
+                      "features.csv header must end with the PERF.2-pass timing block, got: \(header)")
     }
 
     func test_recordFrameTiming_thenRecordFrame_writesTimingValues() throws {
@@ -146,9 +153,9 @@ final class SessionRecorderTests: XCTestCase {
         XCTAssertEqual(rows.count, 2, "Header + 1 data row")
         let cells = rows[1].split(separator: ",", omittingEmptySubsequences: false)
             .map(String.init)
-        XCTAssertEqual(Float(cells[cells.count - 11]) ?? -1, 4.25, accuracy: 0.001,
+        XCTAssertEqual(Float(cells[cells.count - 15]) ?? -1, 4.25, accuracy: 0.001,
                        "frame_cpu_ms round-trip")
-        XCTAssertEqual(Float(cells[cells.count - 10]) ?? -1, 1.75, accuracy: 0.001,
+        XCTAssertEqual(Float(cells[cells.count - 14]) ?? -1, 1.75, accuracy: 0.001,
                        "frame_gpu_ms round-trip")
     }
 
@@ -168,8 +175,8 @@ final class SessionRecorderTests: XCTestCase {
         XCTAssertEqual(rows.count, 2)
         let cells = rows[1].split(separator: ",", omittingEmptySubsequences: false)
             .map(String.init)
-        XCTAssertEqual(cells[cells.count - 11], "", "frame_cpu_ms empty before any timing observed")
-        XCTAssertEqual(cells[cells.count - 10], "", "frame_gpu_ms empty before any timing observed")
+        XCTAssertEqual(cells[cells.count - 15], "", "frame_cpu_ms empty before any timing observed")
+        XCTAssertEqual(cells[cells.count - 14], "", "frame_gpu_ms empty before any timing observed")
     }
 
     func test_recordFrameTiming_gpuNil_writesEmptyGPUCellOnly() throws {
@@ -186,9 +193,9 @@ final class SessionRecorderTests: XCTestCase {
         let rows = csv.split(separator: "\n")
         let cells = rows[1].split(separator: ",", omittingEmptySubsequences: false)
             .map(String.init)
-        XCTAssertEqual(Float(cells[cells.count - 11]) ?? -1, 3.5, accuracy: 0.001,
+        XCTAssertEqual(Float(cells[cells.count - 15]) ?? -1, 3.5, accuracy: 0.001,
                        "frame_cpu_ms still written when gpu nil")
-        XCTAssertEqual(cells[cells.count - 10], "",
+        XCTAssertEqual(cells[cells.count - 14], "",
                        "frame_gpu_ms empty when gpuMs is nil")
     }
 
@@ -210,10 +217,10 @@ final class SessionRecorderTests: XCTestCase {
         XCTAssertEqual(rows.count, 2)
         let cells = rows[1].split(separator: ",", omittingEmptySubsequences: false)
             .map(String.init)
-        XCTAssertEqual(Float(cells[cells.count - 9]) ?? -1, 7.234, accuracy: 0.0005,
-                       "track_elapsed_s round-trip — column count-9 (post-PERF.2-render)")
-        XCTAssertEqual(Float(cells[cells.count - 8]) ?? -1, 0.31415, accuracy: 0.0001,
-                       "cached_bass_proportion round-trip — column count-8 (post-PERF.2-render)")
+        XCTAssertEqual(Float(cells[cells.count - 13]) ?? -1, 7.234, accuracy: 0.0005,
+                       "track_elapsed_s round-trip — column count-13 (post-PERF.2-pass)")
+        XCTAssertEqual(Float(cells[cells.count - 12]) ?? -1, 0.31415, accuracy: 0.0001,
+                       "cached_bass_proportion round-trip — column count-12 (post-PERF.2-pass)")
     }
 
     // MARK: - PERF.1 per-subsystem timing columns
@@ -237,16 +244,16 @@ final class SessionRecorderTests: XCTestCase {
         XCTAssertEqual(rows.count, 2)
         let cells = rows[1].split(separator: ",", omittingEmptySubsequences: false)
             .map(String.init)
-        XCTAssertEqual(Float(cells[cells.count - 7]) ?? -1, 0.42, accuracy: 0.001,
-                       "mir_pipeline_ms round-trip — column count-7")
-        XCTAssertEqual(Float(cells[cells.count - 6]) ?? -1, 1.85, accuracy: 0.001,
-                       "stem_analyzer_ms round-trip — column count-6")
-        XCTAssertEqual(Float(cells[cells.count - 5]) ?? -1, 0.31, accuracy: 0.001,
-                       "beat_detector_ms round-trip — column count-5")
-        XCTAssertEqual(Float(cells[cells.count - 4]) ?? -1, 0.97, accuracy: 0.001,
-                       "pitch_tracker_ms round-trip — column count-4")
-        XCTAssertEqual(Float(cells[cells.count - 3]) ?? -1, 0.12, accuracy: 0.001,
-                       "mood_classifier_ms round-trip — column count-3")
+        XCTAssertEqual(Float(cells[cells.count - 11]) ?? -1, 0.42, accuracy: 0.001,
+                       "mir_pipeline_ms round-trip — column count-11")
+        XCTAssertEqual(Float(cells[cells.count - 10]) ?? -1, 1.85, accuracy: 0.001,
+                       "stem_analyzer_ms round-trip — column count-10")
+        XCTAssertEqual(Float(cells[cells.count - 9]) ?? -1, 0.31, accuracy: 0.001,
+                       "beat_detector_ms round-trip — column count-9")
+        XCTAssertEqual(Float(cells[cells.count - 8]) ?? -1, 0.97, accuracy: 0.001,
+                       "pitch_tracker_ms round-trip — column count-8")
+        XCTAssertEqual(Float(cells[cells.count - 7]) ?? -1, 0.12, accuracy: 0.001,
+                       "mood_classifier_ms round-trip — column count-7")
     }
 
     func test_recordFrame_beforeAnySubsystemTimings_writesEmptyCells() throws {
@@ -264,9 +271,9 @@ final class SessionRecorderTests: XCTestCase {
         let rows = csv.split(separator: "\n")
         let cells = rows[1].split(separator: ",", omittingEmptySubsequences: false)
             .map(String.init)
-        // PERF.1 columns are at count-3 through count-7 after PERF.2-render
-        // appended two columns at the end. All five must be empty pre-firing.
-        for offset in 3...7 {
+        // PERF.1 columns are at count-7 through count-11 after PERF.2-render +
+        // PERF.2-pass appended six columns at the end. All five must be empty pre-firing.
+        for offset in 7...11 {
             XCTAssertEqual(cells[cells.count - offset], "",
                            "subsystem timing column count-\(offset) must be empty before first observation")
         }
@@ -287,10 +294,10 @@ final class SessionRecorderTests: XCTestCase {
         XCTAssertEqual(rows.count, 2)
         let cells = rows[1].split(separator: ",", omittingEmptySubsequences: false)
             .map(String.init)
-        XCTAssertEqual(Float(cells[cells.count - 2]) ?? -1, 2.34, accuracy: 0.001,
-                       "encode_cpu_ms round-trip — column count-2")
-        XCTAssertEqual(Float(cells[cells.count - 1]) ?? -1, 1.50, accuracy: 0.001,
-                       "renderframe_cpu_ms round-trip — column count-1 (last)")
+        XCTAssertEqual(Float(cells[cells.count - 6]) ?? -1, 2.34, accuracy: 0.001,
+                       "encode_cpu_ms round-trip — column count-6")
+        XCTAssertEqual(Float(cells[cells.count - 5]) ?? -1, 1.50, accuracy: 0.001,
+                       "renderframe_cpu_ms round-trip — column count-5")
     }
 
     func test_recordFrame_beforeAnyRenderTimings_writesEmptyCells() throws {
@@ -306,8 +313,57 @@ final class SessionRecorderTests: XCTestCase {
         let rows = csv.split(separator: "\n")
         let cells = rows[1].split(separator: ",", omittingEmptySubsequences: false)
             .map(String.init)
-        XCTAssertEqual(cells[cells.count - 2], "", "encode_cpu_ms empty before first observation")
-        XCTAssertEqual(cells[cells.count - 1], "", "renderframe_cpu_ms empty before first observation")
+        XCTAssertEqual(cells[cells.count - 6], "", "encode_cpu_ms empty before first observation")
+        XCTAssertEqual(cells[cells.count - 5], "", "renderframe_cpu_ms empty before first observation")
+    }
+
+    // MARK: - PERF.2-pass ray-march per-pass timing columns
+
+    func test_recordRayMarchPassTimings_thenRecordFrame_writesAllFourColumns() throws {
+        let recorder = try XCTUnwrap(SessionRecorder(baseDir: tempDir))
+        recorder.recordRayMarchPassTimings(
+            gbufferMs: 0.61,
+            lightingMs: 0.84,
+            ssgiMs: 0.0,
+            postProcessMs: 0.42
+        )
+        recorder.recordFrame(features: FeatureVector.zero, stems: StemFeatures.zero)
+        recorder.finish()
+
+        let csv = try String(
+            contentsOf: recorder.sessionDir.appendingPathComponent("features.csv"),
+            encoding: .utf8)
+        let rows = csv.split(separator: "\n")
+        XCTAssertEqual(rows.count, 2)
+        let cells = rows[1].split(separator: ",", omittingEmptySubsequences: false)
+            .map(String.init)
+        XCTAssertEqual(Float(cells[cells.count - 4]) ?? -1, 0.61, accuracy: 0.001,
+                       "gbuffer_pass_ms round-trip — column count-4")
+        XCTAssertEqual(Float(cells[cells.count - 3]) ?? -1, 0.84, accuracy: 0.001,
+                       "lighting_pass_ms round-trip — column count-3")
+        XCTAssertEqual(Float(cells[cells.count - 2]) ?? -1, 0.0, accuracy: 0.001,
+                       "ssgi_pass_ms round-trip — column count-2 (0.0 = SSGI suppressed this frame)")
+        XCTAssertEqual(Float(cells[cells.count - 1]) ?? -1, 0.42, accuracy: 0.001,
+                       "post_process_pass_ms round-trip — column count-1 (last)")
+    }
+
+    func test_recordFrame_beforeAnyRayMarchPassTimings_writesEmptyCells() throws {
+        let recorder = try XCTUnwrap(SessionRecorder(baseDir: tempDir))
+        // Cold-start (or non-ray-march preset): no recordRayMarchPassTimings
+        // has fired. All four pass columns must be empty cells.
+        recorder.recordFrame(features: FeatureVector.zero, stems: StemFeatures.zero)
+        recorder.finish()
+
+        let csv = try String(
+            contentsOf: recorder.sessionDir.appendingPathComponent("features.csv"),
+            encoding: .utf8)
+        let rows = csv.split(separator: "\n")
+        let cells = rows[1].split(separator: ",", omittingEmptySubsequences: false)
+            .map(String.init)
+        for offset in 1...4 {
+            XCTAssertEqual(cells[cells.count - offset], "",
+                           "ray-march pass column count-\(offset) must be empty before first observation")
+        }
     }
 
     // MARK: - Stems CSV round-trips known StemFeatures exactly
