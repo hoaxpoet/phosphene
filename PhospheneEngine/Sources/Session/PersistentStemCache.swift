@@ -48,6 +48,23 @@ public enum PersistentStemCacheError: Error, Sendable, Equatable {
     case malformedStem(stemLabel: String, byteCount: Int)
 }
 
+// MARK: - Loaded entry
+
+/// Bundle returned by `PersistentStemCache.load(hash:)`. Carries the
+/// `CachedTrackData` plus auxiliary fields (`decodedDuration`) that
+/// are persisted alongside the cache contents but are not part of
+/// `CachedTrackData` itself.
+public struct PersistentStemCacheEntry: Sendable {
+    public let cached: CachedTrackData
+    /// Duration of the source audio in seconds, as recorded at store time.
+    public let decodedDuration: TimeInterval
+
+    public init(cached: CachedTrackData, decodedDuration: TimeInterval) {
+        self.cached = cached
+        self.decodedDuration = decodedDuration
+    }
+}
+
 // MARK: - Metadata envelope
 
 /// On-disk JSON wrapper around a `CachedTrackData`'s non-waveform
@@ -65,6 +82,13 @@ private struct PersistentStemCacheEntryMetadata: Codable {
     /// Sample counts for the four stem waveforms in the same order they
     /// were stored. Used to validate the `.f32` byte counts on load.
     let stemSampleCounts: [Int]
+    /// Duration of the source audio in seconds, as decoded by
+    /// `PreviewAudio.fromLocalFile(at:)`. Persisted so the synthetic
+    /// `TrackIdentity` reconstructed on a cache hit carries the same
+    /// `duration` value as the one built during a fresh-analyze pass —
+    /// `WIRING:` log lines and `TrackIdentity.==` then match across
+    /// cache hit/miss.
+    let decodedDuration: TimeInterval
 }
 
 // MARK: - PersistentStemCache
@@ -163,7 +187,7 @@ public final class PersistentStemCache: @unchecked Sendable {
     /// Throws `PersistentStemCacheError` on any failure (missing file,
     /// schema mismatch, corrupt JSON, malformed waveform). Callers
     /// treat any thrown error as a cache miss.
-    public func load(hash: String) throws -> CachedTrackData {
+    public func load(hash: String) throws -> PersistentStemCacheEntry {
         try lock.withLock {
             let dir = directory(for: hash)
             let metadata = try readMetadata(in: dir)
@@ -183,13 +207,17 @@ public final class PersistentStemCache: @unchecked Sendable {
                 let samples = try readFloats(from: path, label: label, expectedCount: expectedCount)
                 stemWaveforms.append(samples)
             }
-            return CachedTrackData(
+            let cached = CachedTrackData(
                 stemWaveforms: stemWaveforms,
                 stemFeatures: metadata.stemFeatures,
                 trackProfile: metadata.trackProfile,
                 beatGrid: metadata.beatGrid,
                 drumsBeatGrid: metadata.drumsBeatGrid,
                 gridOnsetOffsetMs: metadata.gridOnsetOffsetMs
+            )
+            return PersistentStemCacheEntry(
+                cached: cached,
+                decodedDuration: metadata.decodedDuration
             )
         }
     }
@@ -198,7 +226,16 @@ public final class PersistentStemCache: @unchecked Sendable {
     /// per-hash directory if missing; overwrites any prior entry at the
     /// same hash. Writes are issued individually; a process kill
     /// mid-store leaves a partial directory that `load(hash:)` rejects.
-    public func store(_ data: CachedTrackData, hash: String) throws {
+    ///
+    /// `decodedDuration` is the duration (seconds) returned from
+    /// `PreviewAudio.fromLocalFile(at:)`. Persisted so the synthetic
+    /// `TrackIdentity` on a future cache-hit carries the same duration
+    /// value.
+    public func store(
+        _ data: CachedTrackData,
+        hash: String,
+        decodedDuration: TimeInterval
+    ) throws {
         try lock.withLock {
             let dir = directory(for: hash)
             try fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -212,7 +249,8 @@ public final class PersistentStemCache: @unchecked Sendable {
                 stemFeatures: data.stemFeatures,
                 trackProfile: data.trackProfile,
                 gridOnsetOffsetMs: data.gridOnsetOffsetMs,
-                stemSampleCounts: sampleCounts
+                stemSampleCounts: sampleCounts,
+                decodedDuration: decodedDuration
             )
 
             // Write stems first so a partial-store leaves metadata
