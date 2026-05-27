@@ -2,6 +2,7 @@
 // Owns the four analyzers (SpectralAnalyzer, BandEnergyProcessor, ChromaExtractor,
 // BeatDetector), runs them in sequence, and populates a FeatureVector for GPU upload.
 // Chroma, key, and tempo are exposed as CPU-side properties for the Orchestrator.
+// swiftlint:disable file_length
 
 import Foundation
 import Shared
@@ -92,6 +93,34 @@ public final class MIRPipeline: @unchecked Sendable {
     /// Current track info for recording. Set by the app layer.
     public var currentTrackName: String = ""
     public var currentArtistName: String = ""
+
+    // MARK: - CSP.1 — Soft Tempo Pulse Scaffold
+
+    /// Toggle for the CSP.1 soft tempo pulse scaffold. App layer reads
+    /// `UserDefaults.standard.bool(forKey: "softTempoPulseEnabled")` at
+    /// VisualizerEngine init and applies via this property. Default `true` —
+    /// the soft pulse is the experiment group of Matt's A/B; set false to
+    /// run the off-side of the A/B without recompiling:
+    /// ```
+    /// defaults write com.phosphene.PhospheneApp softTempoPulseEnabled -bool NO
+    /// ```
+    /// See CLAUDE.md §Cold-Start Phase Contract + ENGINEERING_PLAN.md CSP.1.
+    public var softTempoPulseEnabled: Bool = true
+
+    /// CSP.1 — amplitude budget for `softTempoPulse01`. Default 0.25 per the
+    /// approved CSP.1 spec; upper bound 0.30 if Matt's A/B reports the
+    /// default is too subtle. Exposed for tuning, not for orchestrator use.
+    public var softTempoPulseAmplitude: Float = 0.25
+
+    /// CSP.1 — fade envelope start (seconds since track start). Below this,
+    /// full amplitude. Default 6 s per the approved spec.
+    public var softTempoPulseFadeStartS: Double = 6.0
+
+    /// CSP.1 — fade envelope end (seconds since track start). Above this,
+    /// zero. Smoothstep ramp between `softTempoPulseFadeStartS` and this.
+    /// Default 12 s — matches the D-019 stem warmup window so the scaffold
+    /// steps aside by the time stems are providing reliable beat info.
+    public var softTempoPulseFadeEndS: Double = 12.0
 
     // MARK: - Normalization State
 
@@ -339,7 +368,65 @@ public final class MIRPipeline: @unchecked Sendable {
             fv.barPhase01     = 0   // reactive: no downbeat info
             fv.beatsPerBar    = 4   // assume 4/4 until BeatGrid available
         }
+        // CSP.1 — soft tempo-pulse scaffold for the cold-start window.
+        fv.softTempoPulse01 = computeSoftTempoPulse(elapsedSeconds: elapsedSeconds)
         return fv
+    }
+
+    // MARK: - CSP.1 — Soft Tempo Pulse Computation
+
+    /// Compute the CSP.1 phase-humble tempo scaffold for the current frame.
+    ///
+    /// - Returns 0 when the toggle is off, when no `BeatGrid` is installed,
+    ///   when the cached BPM is non-positive, or after the fade window has
+    ///   elapsed. Phase-humble: the cosine is anchored at `t = 0` with the
+    ///   trough at that instant, so the visual warms up smoothly rather
+    ///   than punching at frame 1, and no claim is made about alignment
+    ///   with the audible beats.
+    /// - Amplitude budget: `softTempoPulseAmplitude` (default 0.25 ∈ [0, 0.30]).
+    /// - Pulse shape: squared raised-cosine — `pow(0.5 - 0.5 × cos(2π × t/T), 2)`
+    ///   where `T = 60 / bpm`. Smooth, pulse-like, no sharp edges.
+    /// - Fade envelope: full amplitude for `t < fadeStart`; smoothstep ramp
+    ///   from `fadeStart` to `fadeEnd`; zero after `fadeEnd`.
+    /// - Designed to fade out by the D-019 stem warmup window (~10 s) so by
+    ///   the time stems are reliable, the scaffold has stepped aside.
+    ///
+    /// See CLAUDE.md §Cold-Start Phase Contract for the broader contract;
+    /// `MIRPipelineSoftTempoPulseTests` regression-locks the contract here.
+    private func computeSoftTempoPulse(elapsedSeconds: Double) -> Float {
+        guard softTempoPulseEnabled else { return 0 }
+        guard liveDriftTracker.hasGrid else { return 0 }
+        let bpm = liveDriftTracker.currentBPM
+        guard bpm > 0 else { return 0 }
+        // Fade envelope: 1.0 until fadeStart, smoothstep down to 0 by fadeEnd.
+        // `elapsedSeconds` is measured from the most recent `MIRPipeline.reset()`
+        // (called by `mir.reset()` in the track-change callback — see
+        // VisualizerEngine+Capture.swift), so `elapsedSeconds = 0` is track start.
+        let fadeStart = softTempoPulseFadeStartS
+        let fadeEnd = softTempoPulseFadeEndS
+        let fade: Double
+        if elapsedSeconds <= fadeStart {
+            fade = 1.0
+        } else if elapsedSeconds >= fadeEnd {
+            fade = 0.0
+        } else {
+            // Smoothstep(fadeStart, fadeEnd, elapsedSeconds) returns 0→1;
+            // invert to 1→0 for the fade-out envelope.
+            let span = fadeEnd - fadeStart
+            let progress = (elapsedSeconds - fadeStart) / span
+            // 3p² - 2p³ is the standard smoothstep polynomial.
+            fade = 1.0 - (progress * progress * (3.0 - 2.0 * progress))
+        }
+        if fade <= 0 { return 0 }
+        // Pulse shape: squared raised-cosine at the cached BPM period.
+        // Anchored at trough (elapsedSeconds=0 → 0) so the visual warms up
+        // smoothly rather than punching at frame 1.
+        let period = 60.0 / bpm                                          // s/beat
+        let phase = (elapsedSeconds / period) - floor(elapsedSeconds / period)
+        let cosTerm = 0.5 - 0.5 * cos(2.0 * .pi * phase)                 // ∈ [0, 1]
+        let pulse = cosTerm * cosTerm                                    // softening
+        let amplitude = Double(softTempoPulseAmplitude)
+        return Float(amplitude * fade * pulse)
     }
 
     // MARK: - Live Drift Grid

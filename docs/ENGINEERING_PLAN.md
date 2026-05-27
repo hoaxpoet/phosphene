@@ -4318,6 +4318,54 @@ Phase CS closes when, in this order:
 
 ---
 
+## Phase CSP — Cold-Start Perceptual Tempo Scaffold (2026-05-26)
+
+Direct reframing of Phase CS's exhausted premise. Phase CS attempted (across six iterations) to solve cold-start beat-phase derivation from short-window automated signals; that premise is empirically falsified and retired (Failed Approach #69). Phase CSP works on a different premise: **improve perceived rhythmic competence during the low-confidence cold-start window without attempting to solve cold-start beat phase.** Single hypothesis test under Matt's binary-judgment validation discipline; no architectural commitment beyond the increment.
+
+### Increment CSP.1 — Soft tempo pulse scaffold ⏳ (in-flight 2026-05-26)
+
+**Goal.** Surface a quiet, phase-humble tempo hint during the cold-start window so beat-accent-driven presets read as tempo-aware rather than purely energy-led. Hypothesis: a low-amplitude pulse at the cached BPM, fading on a 6–12 s time window from track start, improves perceived musical competence without claiming any specific beat alignment.
+
+**Non-goals.**
+- Do not attempt another cold-start beat phase derivation (Failed Approach #69 still binding).
+- Do not change the BSAudit.3 contract (it's the pre-impl baseline post-2026-05-25 revert — see CLAUDE.md §Cold-Start Phase Contract).
+- Do not introduce a `SyncPerceptionController` or multi-field `sync_entry_profile` schema (Matt's pushback 2026-05-26 against premature architecture).
+- Do not gate or rename `beatPhase01` / `barPhase01` (continuous phase fields stay as-is).
+
+**Design.**
+
+- **New `FeatureVector` field:** `softTempoPulse01: Float` ∈ `[0, 0.25]`. Computed per-frame in `MIRPipeline.buildFeatureVector`.
+- **BPM source:** cached `BeatGrid.bpm` via `liveDriftTracker.currentBPM`. When no grid is installed, the field is 0 (no claim).
+- **Fade envelope:** full amplitude 0–6 s; smoothstep ramp 6–12 s to zero; zero after 12 s. Anchored to `elapsedSeconds` (resets to 0 on track change via `MIRPipeline.reset()`). Matches the D-019 stem warmup window so by the time stems are providing reliable beat info, the soft pulse has stepped aside.
+- **Pulse shape:** squared raised-cosine — `pow(0.5 - 0.5 × cos(2π × t / T), 2)` where `T = 60 / bpm`. Trough at `t = 0` (phase-humble: visual warms up smoothly rather than punching at frame 1), peak at `t = T/2`, smooth oscillation. Amplitude budget `0.25` (upper bound `0.30` if `0.25` is too subtle).
+- **A/B toggle:** `UserDefaults.standard.bool(forKey: "softTempoPulseEnabled")`. Default ON (treat as the experiment group). To disable for the off-side of the A/B:
+  ```sh
+  defaults write com.phosphene.PhospheneApp softTempoPulseEnabled -bool NO
+  ```
+- **First consumer:** Lumen Mosaic, `lm_cell_intensity`. Multiplies cell brightness by `1 + 0.6 × soft_tempo_pulse01` — additive to the existing per-cell jitter and bar pulse. Peak effect ~15 % brightness modulation at the pulse peak; below the bar pulse's ~30 % to keep it "subtle layer, not lead." LM is the heaviest beat-accent-driven preset in the catalog so cold-start fall-back to pure energy is most visible there.
+
+**Validation.**
+
+- **Initial test (gate for any wider rollout):** one track from the BSAudit.3 validate-3 set where confidence stayed low (any of: Get Lucky, Superstition, Everlong, HUMBLE., B.O.B.). Lumen Mosaic. A/B: with toggle ON vs OFF. Matt's binary judgment — better, worse, or no different. No defect classification required.
+- **Wider classification gate (only if initial A/B lands "better"):** 5–10 tracks × 3–5 presets defect classification per the CSP.1 plain-text spec (inert / wrong beat pulses / confidence-ramp jump / preset mismatch / acceptable). Out of scope for the initial increment.
+
+**Touched files (planned).**
+
+- `PhospheneEngine/Sources/Shared/AudioFeatures+Analyzed.swift` — new `softTempoPulse01` field (replaces `_pad3`).
+- `PhospheneEngine/Sources/Renderer/Shaders/Common.metal` — matching MSL struct edit.
+- `PhospheneEngine/Sources/DSP/MIRPipeline.swift` — new property `softTempoPulseEnabled: Bool`, computation in `buildFeatureVector`.
+- `PhospheneEngine/Sources/Presets/Shaders/LumenMosaic.metal` — `lm_cell_intensity` consumes `f.soft_tempo_pulse01`.
+- `PhospheneApp/VisualizerEngine.swift` — read UserDefaults toggle, apply to `mirPipeline.softTempoPulseEnabled`.
+- `PhospheneEngine/Tests/PhospheneEngineTests/DSP/MIRPipelineSoftTempoPulseTests.swift` — new test file covering amplitude budget, period match to BPM, fade envelope shape, zero-when-no-grid, toggle behaviour.
+
+**Done-when.**
+
+- Field lands, computation lands, LM consumes it, toggle works, engine + app suites pass, Matt runs the A/B on one validate-3 low-confidence track and calls it better / worse / no-different. **Better** → CSP.1 cert. **Worse or no-different** → revert, file as Failed Approach (the time-based premise didn't pay off), reconsider direction.
+
+**Rationale.** Reframed direction approved by Matt 2026-05-26 (the original CSP.1 spec used `accentConfidence` as the fade signal; that field doesn't exist in production post-revert — switching to time-based fade keeps the hypothesis testable without resurrecting BSAudit.3.impl).
+
+---
+
 ## Phase SR — Session Replay diagnostic infrastructure
 
 Diagnostic harness that closes the "I cannot inspect this preset" gap surfaced during the AV.2.x cascade closeout (2026-05-20). Closeouts asserting audio-coupling or visual-fidelity claims must now cite generated evidence packs instead of assertion-shaped language. See [docs/ENGINE/SESSION_REPLAY.md](ENGINE/SESSION_REPLAY.md) for usage + extension. The accompanying CLAUDE.md discipline rule ("Diagnostic infrastructure precedes fidelity claims") is the project-wide standard.
