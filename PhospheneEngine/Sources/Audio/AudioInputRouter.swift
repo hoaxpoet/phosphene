@@ -1,8 +1,9 @@
 // AudioInputRouter — Unified audio input abstraction.
-// Routes audio from one of three sources into a callback:
+// Routes audio from one of four sources into a callback:
 //   1. System audio via Core Audio taps (default)
 //   2. Specific-app audio via Core Audio taps
-//   3. Local file via AVAudioFile (fallback for testing/offline use)
+//   3. Local file via AVAudioFile (diagnostic / offline injection — does NOT play audio)
+//   4. Local file via AVAudioEngine playback (plays audio + taps player node — LF.1)
 //
 // Consumers receive audio via a callback regardless of source.
 // Mode switching is seamless.
@@ -22,8 +23,17 @@ public enum InputMode: Sendable, Equatable {
     case systemAudio
     /// Capture audio from a specific application.
     case application(bundleIdentifier: String)
-    /// Play from a local audio file (testing/offline fallback).
+    /// Feed PCM from a local audio file into the analysis pipeline at
+    /// near-real-time, without playing audio through speakers. Used by
+    /// `SoakTestHarness` and the diagnostic capture-mode toggle (D-052).
+    /// Does NOT install a process tap and does NOT participate in the
+    /// tap-reinstall scheduler.
     case localFile(URL)
+    /// Play a local audio file through the default output device via
+    /// `AVAudioEngine`, with the analysis tap installed on the player
+    /// node (pre-mixer, pre-volume). Bypasses Core Audio process taps
+    /// entirely — no screen-capture permission required. LF.1 spike.
+    case localFilePlayback(URL)
 }
 
 // MARK: - AudioInputRouter
@@ -42,6 +52,10 @@ public final class AudioInputRouter: @unchecked Sendable {
     let systemCapture: any AudioCapturing
     private let metadataProvider: (any MetadataProviding)?
     private var filePlaybackTask: Task<Void, Never>?
+    /// Owned by the router while `.localFilePlayback(URL)` is active.
+    /// Created in `startFilePlayback(playback:)` and torn down in
+    /// `stopInternal()`. LF.1.
+    private var localFilePlaybackProvider: LocalFilePlaybackProvider?
     let lock = NSLock()
 
     /// Monotonically increasing timestamp base.
@@ -162,6 +176,11 @@ public final class AudioInputRouter: @unchecked Sendable {
         case .localFile(let url):
             startFilePlayback(url: url)
             logger.info("Router started: local file (\(url.lastPathComponent))")
+
+        case .localFilePlayback(let url):
+            try startLocalFilePlayback(url: url)
+            logger.info(
+                "[LF.1] Router started: local-file playback (\(url.lastPathComponent))")
         }
 
         // Wire metadata observation if a provider is configured.
@@ -223,7 +242,23 @@ public final class AudioInputRouter: @unchecked Sendable {
         metadataProvider?.currentTrack
     }
 
-    // MARK: - Local File Playback
+    // MARK: - Local File Playback (LF.1 — speakers + analysis tap)
+
+    /// Start `LocalFilePlaybackProvider` and forward its analysis tap into
+    /// the router's `onAudioSamples` callback + `SilenceDetector`. The
+    /// callback signature matches the process-tap path exactly, so the
+    /// downstream analysis pipeline is source-agnostic.
+    private func startLocalFilePlayback(url: URL) throws {
+        let provider = LocalFilePlaybackProvider(url: url)
+        provider.onAudioSamples = { [weak self] samples, count, rate, channels in
+            self?.silenceDetector.update(samples: samples, count: count)
+            self?.onAudioSamples?(samples, count, rate, channels)
+        }
+        try provider.start()
+        localFilePlaybackProvider = provider
+    }
+
+    // MARK: - Local File Diagnostic Injection (offline — does NOT play audio)
 
     private func startFilePlayback(url: URL) {
         let callback = onAudioSamples
@@ -300,6 +335,9 @@ public final class AudioInputRouter: @unchecked Sendable {
         case .localFile:
             filePlaybackTask?.cancel()
             filePlaybackTask = nil
+        case .localFilePlayback:
+            localFilePlaybackProvider?.stop()
+            localFilePlaybackProvider = nil
         case nil:
             break
         }
