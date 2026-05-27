@@ -1,0 +1,262 @@
+// LocalFilePlaybackProvider — Plays a local audio file through the default
+// output device and exposes the analysis-tap signal via a callback that
+// matches `SystemAudioCapture.onAudioBuffer`'s contract.
+//
+// LF.1 spike (2026-05-27). Unlike the offline `.localFile(URL)` mode (which
+// only feeds PCM into the analysis pipeline at near-real-time without
+// playing audio), this provider plays the file via `AVAudioEngine` +
+// `AVAudioPlayerNode` and installs a tap on the player node's output bus
+// (pre-mixer, pre-volume). Phosphene owns the playhead. Core Audio process
+// taps are bypassed entirely — no screen-capture permission required.
+
+@preconcurrency import AVFoundation
+import Foundation
+import os.log
+
+private let logger = Logger(subsystem: "com.phosphene.audio", category: "LocalFilePlaybackProvider")
+
+// MARK: - LocalFilePlaybackProvider
+
+/// Plays an audio file via `AVAudioEngine` and forwards analysis-bus PCM
+/// to a callback. Loops indefinitely at EOF — matches the existing
+/// `.localFile(URL)` mode's behavior so the spike's verification window
+/// is not bounded by the fixture's duration.
+///
+/// Threading: the tap callback fires on an AVAudioEngine-owned background
+/// thread. `onAudioSamples` is invoked from that thread; consumers must
+/// handle off-main-thread delivery identically to the process-tap path.
+///
+/// Lifecycle: `start()` opens the file, starts the engine, installs the
+/// tap, and begins playback. `stop()` reverses everything. Both are
+/// idempotent and safe to call concurrently (NSLock-serialized).
+///
+/// `AVAudioEngineConfigurationChange` notifications are observed and
+/// trigger a stop → start cycle (best-effort restart from beginning).
+@available(macOS 14.2, *)
+public final class LocalFilePlaybackProvider: @unchecked Sendable {
+
+    // MARK: - State
+
+    /// The file being played. Captured at init; immutable for the
+    /// provider's lifetime. A different file requires a new provider.
+    private let url: URL
+
+    /// Guards `engine` / `playerNode` / `audioFile` / `interleavedScratch` /
+    /// `configChangeObserver` across `start()` / `stop()` / configuration-
+    /// change restart paths. NOT taken inside the tap callback — the
+    /// callback is real-time-ish (AVAudioEngine background thread) and
+    /// reads `interleavedScratch` only.
+    private let lock = NSLock()
+
+    private var engine: AVAudioEngine?
+    private var playerNode: AVAudioPlayerNode?
+    private var audioFile: AVAudioFile?
+
+    /// Scratch buffer used to interleave AVAudioPCMBuffer's planar L/R
+    /// channels into the interleaved float32 layout the downstream
+    /// `onAudioSamples` callback expects. Sized to the largest tap buffer
+    /// seen so far; grown lazily inside the callback if a larger frame
+    /// count arrives.
+    private var interleavedScratch: [Float] = []
+
+    /// Retained so `removeObserver` can be called in `_stopLocked`.
+    private var configChangeObserver: NSObjectProtocol?
+
+    // MARK: - Callback
+
+    /// Receives interleaved float32 PCM samples from the player-node tap.
+    /// Parameters: (samples pointer, total floats = frames × channels, sample rate, channel count).
+    ///
+    /// Matches the `SystemAudioCapture.onAudioBuffer` contract exactly so
+    /// the downstream pipeline (`AudioInputRouter.onAudioSamples` consumers)
+    /// is source-agnostic. Set before calling `start()`; subsequent changes
+    /// take effect only after the next `start()`.
+    public var onAudioSamples: ((_ samples: UnsafePointer<Float>, _ sampleCount: Int,
+                                 _ sampleRate: Float, _ channelCount: UInt32) -> Void)?
+
+    // MARK: - Init
+
+    /// Create a provider that will play the file at `url` when `start()` is called.
+    public init(url: URL) {
+        self.url = url
+    }
+
+    deinit {
+        lock.withLock { _stopLocked() }
+    }
+
+    // MARK: - Public API
+
+    /// Open the file, start the engine, install the tap, and begin playback.
+    ///
+    /// Throws on file decode or engine-start failure. Calling `start()`
+    /// when the provider is already running first tears the previous
+    /// instance down.
+    public func start() throws {
+        try lock.withLock { try _startLocked() }
+    }
+
+    /// Stop playback and tear down the engine. Safe to call multiple times
+    /// or when the provider has never been started.
+    public func stop() {
+        lock.withLock { _stopLocked() }
+    }
+
+    // MARK: - Private — assume `lock` held
+
+    private func _startLocked() throws {
+        _stopLocked()
+
+        let file = try AVAudioFile(forReading: url)
+        let engine = AVAudioEngine()
+        let player = AVAudioPlayerNode()
+
+        engine.attach(player)
+        engine.connect(player, to: engine.mainMixerNode, format: file.processingFormat)
+
+        // The tap sees the player's OUTPUT (post-attach, pre-mixer). After
+        // `connect(... format: file.processingFormat)`, that output format
+        // is the file's native processing format — typically Float32 planar
+        // at the file's sample rate (44100 Hz for love_rehab.m4a). The
+        // mixer downstream handles any sample-rate conversion to the
+        // output device's format (often 48 kHz on macOS). The tap is
+        // pre-volume, so the user's mainMixerNode.outputVolume does not
+        // affect the analysis signal.
+        let tapFormat = player.outputFormat(forBus: 0)
+        let sampleRate = Float(tapFormat.sampleRate)
+        let channelCount = tapFormat.channelCount
+
+        interleavedScratch = [Float](repeating: 0, count: 1024 * Int(channelCount))
+
+        // Capture `onAudioSamples` at install time — the spike contract is
+        // "set the callback, then call start()." This matches the existing
+        // `.localFile` mode pattern in `AudioInputRouter.startFilePlayback`.
+        let callback = onAudioSamples
+        player.installTap(onBus: 0, bufferSize: 1024, format: tapFormat) { [weak self] buffer, _ in
+            self?.handleTapBuffer(buffer,
+                                  sampleRate: sampleRate,
+                                  channelCount: channelCount,
+                                  callback: callback)
+        }
+
+        try engine.start()
+        scheduleFileLoop(player: player, file: file)
+        player.play()
+
+        let observer = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange,
+            object: engine,
+            queue: nil
+        ) { [weak self] _ in
+            self?.handleConfigurationChange()
+        }
+
+        self.engine = engine
+        self.playerNode = player
+        self.audioFile = file
+        self.configChangeObserver = observer
+
+        let lastComponent = self.url.lastPathComponent
+        let rate = Int(sampleRate)
+        logger.info(
+            "[LF.1] start: \(lastComponent, privacy: .public) \(rate) Hz \(channelCount) ch")
+    }
+
+    private func _stopLocked() {
+        if let observer = configChangeObserver {
+            NotificationCenter.default.removeObserver(observer)
+            configChangeObserver = nil
+        }
+        if let player = playerNode {
+            player.stop()
+            player.removeTap(onBus: 0)
+        }
+        engine?.stop()
+        engine = nil
+        playerNode = nil
+        audioFile = nil
+    }
+
+    /// Re-schedule the file each time the player drains its scheduled
+    /// content — AVAudioPlayerNode has no native loop mode for
+    /// `scheduleFile`. Uses the public `lock` to confirm the (player, file)
+    /// pair is still the active one before re-scheduling, so concurrent
+    /// `stop()` calls cancel cleanly.
+    private func scheduleFileLoop(player: AVAudioPlayerNode, file: AVAudioFile) {
+        player.scheduleFile(file, at: nil) { [weak self, weak player, weak file] in
+            guard let self, let player, let file else { return }
+            let stillActive: Bool = self.lock.withLock {
+                self.playerNode === player && self.audioFile === file
+            }
+            guard stillActive else { return }
+            self.scheduleFileLoop(player: player, file: file)
+        }
+    }
+
+    private func handleTapBuffer(
+        _ buffer: AVAudioPCMBuffer,
+        sampleRate: Float,
+        channelCount: AVAudioChannelCount,
+        callback: ((UnsafePointer<Float>, Int, Float, UInt32) -> Void)?
+    ) {
+        guard let callback else { return }
+        guard let floatData = buffer.floatChannelData else { return }
+        let frames = Int(buffer.frameLength)
+        guard frames > 0 else { return }
+
+        let totalSamples = frames * Int(channelCount)
+
+        if interleavedScratch.count < totalSamples {
+            interleavedScratch = [Float](repeating: 0, count: totalSamples)
+        }
+
+        // Process-tap path delivers interleaved float32 stereo (L/R/L/R…).
+        // AVAudioPCMBuffer with the processing format gives planar channels.
+        // Interleave here so the downstream contract matches exactly.
+        if channelCount >= 2 {
+            let left = floatData[0]
+            let right = floatData[1]
+            interleavedScratch.withUnsafeMutableBufferPointer { ptr in
+                guard let base = ptr.baseAddress else { return }
+                for i in 0..<frames {
+                    base[i * 2] = left[i]
+                    base[i * 2 + 1] = right[i]
+                }
+            }
+        } else {
+            let src = floatData[0]
+            interleavedScratch.withUnsafeMutableBufferPointer { ptr in
+                guard let base = ptr.baseAddress else { return }
+                for i in 0..<frames {
+                    base[i] = src[i]
+                }
+            }
+        }
+
+        interleavedScratch.withUnsafeBufferPointer { ptr in
+            guard let base = ptr.baseAddress else { return }
+            callback(base, totalSamples, sampleRate, UInt32(channelCount))
+        }
+    }
+
+    /// AVAudioEngine fires this when the audio configuration changes
+    /// (device switch, sample-rate change). Restart from the beginning —
+    /// mid-track resumption requires tracking the play head's frame
+    /// position and is out of scope for the LF.1 spike.
+    private func handleConfigurationChange() {
+        logger.info("[LF.1] AVAudioEngine config change — restarting engine")
+        // Dispatch off the notification thread so we don't block it while
+        // we tear down + restart. The public `start()` / `stop()` take the
+        // lock, so concurrent calls serialize naturally.
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            self.stop()
+            do {
+                try self.start()
+            } catch {
+                let msg = error.localizedDescription
+                logger.error("[LF.1] Failed to restart engine after config change: \(msg, privacy: .public)")
+            }
+        }
+    }
+}
