@@ -130,6 +130,51 @@ enum LocalFileMenuCommands {
         return types
     }
 
+    // MARK: - Clear cache
+
+    /// Action target for `Phosphene → Clear Local-File Cache (…)`. Calls
+    /// `PersistentStemCache.clearAll()` and surfaces a confirmation alert
+    /// reporting the bytes freed. No-op when the persistent cache failed
+    /// to initialise (LF.3 root-directory error path).
+    @MainActor
+    static func clearLocalFileCache(engine: VisualizerEngine) {
+        guard let cache = engine.persistentStemCache else {
+            menuLogger.warning("[LF.4] clearLocalFileCache no-op: persistentStemCache=nil")
+            return
+        }
+        do {
+            let freed = try cache.clearAll()
+            engine.refreshLocalFileCacheBytes()
+            menuLogger.info("[LF.4] Cleared local-file cache: freed \(freed) bytes")
+            presentClearedAlert(freedBytes: freed)
+        } catch {
+            menuLogger.error("[LF.4] clearLocalFileCache failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    @MainActor
+    private static func presentClearedAlert(freedBytes: Int64) {
+        let alert = NSAlert()
+        alert.messageText = String(localized: "lf.cache.cleared.title")
+        alert.informativeText = String(
+            format: String(localized: "lf.cache.cleared.body"),
+            formatBytes(freedBytes)
+        )
+        alert.addButton(withTitle: String(localized: "cta.close"))
+        alert.alertStyle = .informational
+        alert.runModal()
+    }
+
+    /// Render a byte count as a short human-readable string (1 MB, 67.4 MB, 1.2 GB).
+    /// Used by both the menu label and the post-clear confirmation copy.
+    static func formatBytes(_ bytes: Int64) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useMB, .useGB, .useKB]
+        formatter.countStyle = .file
+        formatter.allowsNonnumericFormatting = false
+        return formatter.string(fromByteCount: bytes)
+    }
+
     // MARK: - Error presentation
 
     enum UnsupportedReason {

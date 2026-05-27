@@ -125,15 +125,31 @@ struct PhospheneApp: App {
                 LocalFileMenuCommands.handleDrop(providers: providers, engine: engine)
             }
         }
-        // LF.4 — File menu addition. Replaces the default "New" command
-        // group (which we don't have a meaningful action for) with our
+        // LF.4 — File menu + Phosphene-menu additions.
+        //
+        // File: replace the default "New" command group with our
         // "Open Local File…" entry, keeping ⌘O as the canonical shortcut.
+        //
+        // Phosphene (.appInfo): add a "Clear Local-File Cache (<size>)" item
+        // that surfaces the current disk footprint in the menu label. The
+        // size auto-refreshes via the `localFileCacheBytes` publisher.
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button(String(localized: "menu.file.open_local_file")) {
                     LocalFileMenuCommands.openLocalFilePanel(engine: engine)
                 }
                 .keyboardShortcut("o", modifiers: .command)
+            }
+            CommandGroup(after: .appInfo) {
+                Divider()
+                Button(action: {
+                    LocalFileMenuCommands.clearLocalFileCache(engine: engine)
+                }) {
+                    Text(String(
+                        format: String(localized: "menu.app.clear_local_file_cache"),
+                        LocalFileMenuCommands.formatBytes(engine.localFileCacheBytes)
+                    ))
+                }
             }
         }
     }

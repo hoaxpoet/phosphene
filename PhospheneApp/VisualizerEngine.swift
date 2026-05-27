@@ -243,6 +243,19 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// launch.
     var persistentStemCache: PersistentStemCache?
 
+    /// Current persistent-cache footprint in bytes. Drives the dynamic
+    /// `Phosphene → Clear Local-File Cache (<size>)` menu label (LF.4 / D-131).
+    /// Refreshed on engine init, after each LF preparation completes, and
+    /// after `clearAll()` runs. Slightly stale between refreshes is fine
+    /// — the menu label re-reads on next refresh.
+    @Published var localFileCacheBytes: Int64 = 0
+
+    /// Recompute the persistent-cache footprint and republish.
+    @MainActor
+    func refreshLocalFileCacheBytes() {
+        localFileCacheBytes = persistentStemCache?.totalBytes() ?? 0
+    }
+
     /// Stem separator (MPSGraph on GPU).
     let stemSeparator: StemSeparator?
 
@@ -710,6 +723,8 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
             )
             self.persistentStemCache = nil
         }
+        // LF.4: prime the menu cache-size publisher.
+        self.localFileCacheBytes = self.persistentStemCache?.totalBytes() ?? 0
 
         // Wire the frame-budget governor and ML dispatch scheduler. Read QualityCeiling
         // from UserDefaults to determine if ultra mode (recording) disables both. D-057(d), D-059(d).
