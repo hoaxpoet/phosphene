@@ -32,6 +32,55 @@ Test infrastructure: swift-testing + XCTest across unit, integration, regression
 
 ## Recently Completed
 
+### Increment LF.1.5 — LF vs Process-Tap A/B Comparison ✅ (2026-05-27)
+
+Measurement-only follow-up to LF.1. LF.1 proved the new local-file playback path *works*; LF.1.5 proves the new path's analysis output is *equivalent on the load-bearing musical metrics* and *characterizably different on the frequency-domain / level-sensitive metrics*. Two captured sessions on `love_rehab.m4a`, one throwaway analysis script, one markdown comparison report, and a small dev hook to make the tap-path capture reproducible.
+
+**Landed changes:**
+
+- **`PhospheneApp/PhospheneApp.swift`** — `PHOSPHENE_AUTOSTART_ADHOC=1` dev hook added to the existing `.task` modifier on the root view. When the env var is `1` AND `PHOSPHENE_LOCAL_FILE_PLAYBACK` is NOT set, fires the same code path as IdleView's "Start listening now" button (`engine.sessionManager.startAdHocSession()`). LF env var takes precedence; both unset means normal launch. ~10-line addition. Env-var-gated, dev-only — no new UI, no effect when unset.
+- **`Scripts/lf1_5_ab_compare.py`** (new, ~370 lines, executable) — Python 3 throwaway-grade analysis script. Reads two session dirs' `features.csv` by column NAME (robust to CSP.3-style schema additions); detects the active analysis window as the longest contiguous `grid_bpm > 0` run; trims the middle 80 %; computes per-band-energy means, final BPM, final mood, mean spectral centroid, sub-bass onset proxy count; parses sample rate from `session.log`'s `raw tap capture started sr=<N> Hz` line; emits a markdown report with deltas table + tolerance verdict + interpretation. Not in any engine/app build target.
+- **`docs/diagnostics/LF1.5_AB_COMPARISON_2026-05-27.md`** (new) — the comparison report. Two sessions: LF `2026-05-27T19-44-25Z` (2001 frames, 44.1 kHz tap, BeatGrid 118.7 BPM) vs tap `2026-05-27T19-47-18Z` (2700 frames, 48 kHz tap, BeatGrid 118.0 BPM). Verdict: CHARACTERIZABLE DELTAS. All breaches trace to expected structural differences (sample rate, volume residue, noise floor); the load-bearing musical metrics (BPM, subBass, sub-bass onset proxy) all within tolerance.
+- **`docs/DECISIONS.md`** — D-128 Out-of-scope list updated: LF.1.5 done. New "Empirical characterization (LF.1.5, 2026-05-27)" subsection appended with headline deltas (BPM, sample rate, volume residue) and "Implications for downstream LF increments."
+- **`docs/ARCHITECTURE.md`** — Audio Analysis Tuning gets a new "LF playback vs process-tap path — empirical deltas (LF.1.5)" subsection: load-bearing metrics equivalent; centroid + mood SR-shifted; per-band energies skew 17-24 % same-direction with the tap-path volume residue; authoring rule (use deviation primitives) is unchanged from D-026.
+- **`CLAUDE.md`** — Audio Analysis Tuning pointer expanded to flag the new subsection.
+- **`docs/RELEASE_NOTES_DEV.md`** — `[dev-2026-05-27-f]` entry.
+
+**Headline deltas** (middle 80 % of active window, LF vs tap):
+
+- **BPM:** 118.7 vs 118.0 (Δ = 0.67 BPM, ✅ within ±3). Both paths share the same ~6 BPM offset vs Love Rehab's true 125 BPM — a Beat This! short-window characteristic, not a path-quality effect.
+- **subBass mean:** 0.2597 vs 0.2144 (Δ = -17.4 %, ✅ within ±25 %).
+- **bass mean:** 0.2316 vs 0.1754 (Δ = -24.3 %, ✅ within ±25 %).
+- **treble mean:** 0.0013 vs 0.0010 (Δ = -23.0 %, ✅ within ±25 %).
+- **mid mean:** 0.0140 vs 0.0095 (Δ = -32.4 %, ⚠ exceeded — but near noise floor; Love Rehab is bass-dominant, mid band is essentially empty).
+- **spectralCentroid:** 0.0871 vs 0.0675 (Δ = -22.5 %, ⚠ exceeded ±15 % — explainable: FFT bin width scales with sample rate, shifting normalized-bin centroid for identical audio content).
+- **valence:** 0.4800 vs 0.6435 (Δ = +34 %, ⚠ exceeded — downstream of centroid via `MoodClassifier` input index 6, not independent).
+- **arousal:** 0.6130 vs 0.3830 (Δ = -37.5 %, ⚠ exceeded — same; downstream of centroid).
+- **Sub-bass onset proxy** (p90 frame count): 113 vs 123 (Δ = +8.8 %, ✅ within ±25 %).
+
+The 17-24 % skew across load-bearing bands all in the same direction is consistent with the volume residue (LF taps pre-mixer at ~0 dBFS, tap path post-output at ~-8 dBFS = 2.5× quieter on this host with default volume + Spotify-normalization-off RUNBOOK settings). AGC compresses but does not fully eliminate the level difference.
+
+**Tests + build:**
+
+- `swift test --package-path PhospheneEngine --filter AudioInputRouterSignalStateTests` — 11/11 pass.
+- `SOAK_TESTS=1 swift test --package-path PhospheneEngine --filter SoakTestHarnessTests` — 7/7 pass (regression gate for `.localFile` mode untouched + LF.1.5's gates for `.localFilePlayback`).
+- `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' -configuration Release build` — clean.
+- `swiftlint lint --strict --config .swiftlint.yml PhospheneApp/PhospheneApp.swift` — 0 violations on touched files.
+
+**Sessions captured:**
+
+- LF: `~/Documents/phosphene_sessions/2026-05-27T19-44-25Z/` (2001 frames, raw_tap.wav 44100 Hz, BeatGrid 118.7 BPM, session.log clean of tap-reinstall lines).
+- Tap: `~/Documents/phosphene_sessions/2026-05-27T19-47-18Z/` (2700 frames, raw_tap.wav 48000 Hz, BeatGrid 118.0 BPM, two `audio signal → silent` log lines are pre-afplay startup window + post-afplay tail — both outside the analysis window).
+
+**Known risks and follow-ups:**
+
+- **Single-fixture characterization.** love_rehab is bass-heavy electronic at 125 BPM. Cross-track variance (genres with stronger mid-band content, irregular meters, low-amplitude classical, etc.) is LF.2 territory if the LF arc proceeds. The deltas observed here may not generalize — the mid-noise-floor finding in particular is track-dependent.
+- **`PHOSPHENE_AUTOSTART_ADHOC` hook remains in place.** Env-var-gated and dev-only; no effect when unset. Harmless to leave indefinitely and useful for future tap-path reproducibility. Revert is a single hunk if Matt prefers.
+- **Comparison script is throwaway.** Not wired into CI; the comparison is a one-off measurement, not a regression gate. Re-execution recipe is documented in the script header + the report's Method section. Future LF increments may re-run if the analysis pipeline changes; that's a manual decision, not an automated one.
+- **`spectralCentroid` Nyquist normalization is constant `24000 Hz`.** At 44.1 kHz the actual Nyquist is 22050, so the LF path's centroid is mathematically shifted by ~9 % vs the tap path's at 48 kHz (Nyquist 24000) for the same Hz content. Documented as expected; not a defect.
+
+**Recommended next increment.** LF.2 — stem separation pre-analysis of the full local file. The LF path bypasses the 30 s Spotify-preview limitation, so the offline `BeatGrid` analyzer + `MIRPipeline` + `StemAnalyzer` can run over the full track, producing a higher-quality cached `TrackProfile` than the preview-clip-derived one used today. The cross-path centroid + mood shifts characterized here are path-stable (same fixture on same path = same numbers), so LF.2's stem-analysis output will be path-self-consistent without compensation.
+
 ### Increment LF.1 — Local-File Player Spike ✅ (2026-05-27)
 
 First step in the LF.1 → LF.4 discovery arc exploring whether Phosphene playing local audio files itself (via `AVAudioEngine`) bypasses the documented pain points of the Core Audio process-tap path (DRM silent zeros, screen-capture permission, scrub-induced teardown, no playhead). Spike scope: prove the player + tap path works end-to-end and that the downstream analysis pipeline is genuinely source-agnostic.

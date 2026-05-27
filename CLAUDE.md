@@ -189,7 +189,7 @@ The BSAudit.3.impl architecture (commits `efaf8cb4..30d032ea`, shipped 2026-05-2
 
 ## Audio Analysis Tuning
 
-See [docs/ARCHITECTURE.md §Audio Analysis Tuning](docs/ARCHITECTURE.md#audio-analysis-tuning) for AGC behaviour, frequency band definitions, onset detection thresholds, validated onset counts, tempo estimation, chroma normalization, and mood-classifier inputs. The bedrock rule of audio data hierarchy (above) is the operating principle; the tuning section is the calibrated values that implement it.
+See [docs/ARCHITECTURE.md §Audio Analysis Tuning](docs/ARCHITECTURE.md#audio-analysis-tuning) for AGC behaviour, frequency band definitions, onset detection thresholds, validated onset counts, tempo estimation, chroma normalization, and mood-classifier inputs. The bedrock rule of audio data hierarchy (above) is the operating principle; the tuning section is the calibrated values that implement it. The ARCHITECTURE subsection "LF playback vs process-tap path — empirical deltas (LF.1.5)" characterizes the cross-path numerical differences — BPM and beat-grid timing agree; `spectralCentroid` and `valence`/`arousal` shift with capture sample rate; AGC compresses but does not fully eliminate the LF-vs-tap volume delta on load-bearing per-band energies (17-24 % skew, all same direction). Authoring rule (unchanged): drive primary motion from deviation primitives (D-026), not absolute thresholds — that makes presets robust to source-path differences for the same reason it makes them robust across tracks.
 
 ---
 
