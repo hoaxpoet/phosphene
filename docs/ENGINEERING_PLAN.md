@@ -4318,6 +4318,34 @@ Phase CS closes when, in this order:
 
 ---
 
+## Phase CSP — Cold-Start Perception (2026-05-26 → 2026-05-27, two reverted iterations)
+
+Per-preset cold-start fixes leveraging proxy-then-stems crossfades + cached pre-playback analysis. Two iterations attempted 2026-05-26 / 2026-05-27, both reverted. Phase paused pending a different premise (likely a stress-test-measurement-first approach).
+
+### Increment CSP.1 + CSP.1.1 — Soft tempo pulse (tried + reverted 2026-05-27)
+
+Soft tempo-rate breathing during cold-start, wired into Lumen Mosaic and Membrane. Two A/B tests both returned "no perceptible difference" — LM was structurally the wrong test bed (already busy with beat-rate activity); Membrane was structurally favourable but the tested magnitude (0.30 displacement factor) was below the perception floor.
+
+**Status: reverted 2026-05-27.** See `RELEASE_NOTES_DEV.md [dev-2026-05-27-a]` for full closeout + durable learnings.
+
+### Increment CSP.2 — FFO cached perception + cold-start crossfade (tried + reverted 2026-05-27)
+
+Two layers on Ferrofluid Ocean's spike-height function: `cached_bass_proportion` → ±25 % baseline; cold-start crossfade from `f.bass_dev` (proxy) → `stems.bass_energy_dev` (warm) over 0.5–8 s. Matt's M7 returned partial-pass / partial-regression — three structural issues exposed:
+
+1. **Crossfade timing wrong.** Live stems arrive at ~13–15 s (measured), not the 5–8 s assumed. The crossfade completed before live stems arrived, producing a visible transition at ~15 s.
+2. **Proxy signal too sparse.** `f.bass_dev` is a deviation primitive — fires only above the AGC average; ≈ 0 for ~99 % of frames on normal music. No per-frame motion delivered during cold-start.
+3. **Baseline pivot landed in the wrong place.** Billie Jean's cached proportion ≈ 0.25 → zero baseline contribution; Royals' < 0.25 → sub-default spikes ("inert and broken").
+
+**Status: reverted 2026-05-27.** See `RELEASE_NOTES_DEV.md [dev-2026-05-27-b]` for full closeout + durable learnings.
+
+### What's next for Phase CSP
+
+Per Failed Approach #69's discriminator rule, a third iteration on the same cold-start defect needs a fundamentally different premise — not "tune CSP.2's parameters." The empirical findings above are constraints any future cold-start attempt has to design within (timing target ~13–15 s; smoothed continuous primitive for cold-start proxy, not deviation primitive; one-sided baseline formula or different pivot).
+
+Matt's stress-test methodology suggestion (2026-05-27): build per-preset cold-start measurement infrastructure first — characterise what each preset's audio reactivity actually does across tempo / meter / energy variation — then propose fixes grounded in measured baselines. That work would slot here as **CSP-Stress.1** (or similar) and is the recommended next move. Not in any active scope yet.
+
+---
+
 ## Phase SR — Session Replay diagnostic infrastructure
 
 Diagnostic harness that closes the "I cannot inspect this preset" gap surfaced during the AV.2.x cascade closeout (2026-05-20). Closeouts asserting audio-coupling or visual-fidelity claims must now cite generated evidence packs instead of assertion-shaped language. See [docs/ENGINE/SESSION_REPLAY.md](ENGINE/SESSION_REPLAY.md) for usage + extension. The accompanying CLAUDE.md discipline rule ("Diagnostic infrastructure precedes fidelity claims") is the project-wide standard.
