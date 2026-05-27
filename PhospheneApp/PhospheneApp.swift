@@ -118,6 +118,23 @@ struct PhospheneApp: App {
                     engine.sessionManager.startAdHocSession()
                 }
             }
+            // LF.4 — drag-and-drop of a single local audio file into the
+            // app window opens the same flow as `File → Open Local File…`.
+            // Multi-file drops are rejected with a localized alert.
+            .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+                LocalFileMenuCommands.handleDrop(providers: providers, engine: engine)
+            }
+        }
+        // LF.4 — File menu addition. Replaces the default "New" command
+        // group (which we don't have a meaningful action for) with our
+        // "Open Local File…" entry, keeping ⌘O as the canonical shortcut.
+        .commands {
+            CommandGroup(replacing: .newItem) {
+                Button(String(localized: "menu.file.open_local_file")) {
+                    LocalFileMenuCommands.openLocalFilePanel(engine: engine)
+                }
+                .keyboardShortcut("o", modifiers: .command)
+            }
         }
     }
 }

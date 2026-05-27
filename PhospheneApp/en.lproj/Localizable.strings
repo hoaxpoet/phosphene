@@ -356,3 +356,21 @@
 "a11y.toast.dismiss.label"                  = "Dismiss notification";
 
 "a11y.preparation.topBanner.dismiss.label"  = "Dismiss warning";
+
+// MARK: - LF.4 Local-file playback
+
+"menu.file.open_local_file"             = "Open Local File…";
+
+"lf.open.panel.title"                   = "Choose a local audio file";
+
+"lf.open.error.unsupported.title"           = "That file can’t be played";
+"lf.open.error.unsupported_format"          = "Phosphene supports .m4a, .mp3, and .flac files.";
+"lf.open.error.multiple_files"              = "Drop one file at a time.";
+"lf.open.error.unreadable"                  = "Phosphene couldn’t read that file. Try a different one.";
+
+"lf.toast.switched_to_local_file"           = "Now playing local file: %@";
+
+"lf.preparing.title"                        = "Reading the music";
+"lf.preparing.subtitle"                     = "%@";
+"lf.preparing.failure.headline"             = "Couldn’t read “%@”.";
+"lf.preparing.failure.body"                 = "Try a different file, or check that it isn’t damaged.";
