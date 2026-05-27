@@ -107,14 +107,6 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Whether screen capture permission has been granted.
     @Published var hasScreenCapturePermission = false
 
-    /// True when the LF.1 local-file playback path is active. Lets
-    /// `ContentView` bypass the screen-capture permission gate (the
-    /// playback path uses `AVAudioEngine`, not Core Audio process taps,
-    /// so it does not need that permission). Set synchronously at the
-    /// start of `startLocalFilePlayback(url:)` so it is visible to the
-    /// first SwiftUI body re-render that follows.
-    @Published var localFilePlaybackActive: Bool = false
-
     /// Current audio signal state — `.silent` indicates DRM-triggered tap silencing.
     @Published var audioSignalState: AudioSignalState = .active
 
@@ -704,10 +696,11 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         self.stemCache = self.sessionManager.cache
 
         // LF.3 / D-130: stand up the persistent disk-backed cache used
-        // by `prepareAndStartLocalFilePlayback(url:)`. Defaults to
+        // by the LF preparation path (consumed by VisualizerEngine+LocalFilePlayback.swift
+        // through the `LocalFilePreparing` delegate). Defaults to
         // `~/Library/Application Support/Phosphene/StemCache/`. Failure
         // to create the directory leaves `persistentStemCache = nil`
-        // and the LF path falls through to LF.2's in-memory-only flow.
+        // and the LF path falls through to the in-memory-only flow.
         do {
             self.persistentStemCache = try PersistentStemCache()
         } catch {
@@ -742,14 +735,31 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
             self.router = setupAudioRouting(audioBuffer: buf, fftProcessor: fft)
         }
 
+        // LF.4: SessionManager delegates the heavy ML pipeline back to the
+        // engine via the `LocalFilePreparing` protocol. Wired here, post-init,
+        // because SessionManager was constructed before `self` was fully
+        // available. The weak reference lets SessionManager survive engine
+        // teardown cleanly.
+        sessionManager.localFilePreparer = self
+
         // Trigger plan construction whenever the session reaches .ready.
+        // For LF sessions (`currentSource.isLocalFile`), `handleLocalFileReady()`
+        // installs the cached BeatGrid + starts the LF audio router + advances
+        // the session to `.playing` directly. For streaming sessions, `buildPlan()`
+        // produces the planned-session structure.
         // Also reset currentSessionPlanSeed on .connecting so each session gets a fresh seed.
         let mgr = sessionManager
         stateCancellable = mgr.$state
             .sink { [weak self] newState in
                 guard let self else { return }
                 if newState == .connecting { self.currentSessionPlanSeed = nil }
-                if newState == .ready { self.buildPlan() }
+                if newState == .ready {
+                    if self.sessionManager.currentSource?.isLocalFile == true {
+                        self.handleLocalFileReady()
+                    } else {
+                        self.buildPlan()
+                    }
+                }
             }
 
         // Extend the plan as background preparation makes more tracks available.
