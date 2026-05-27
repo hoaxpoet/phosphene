@@ -133,6 +133,10 @@ extension VisualizerEngine: LocalFilePreparing {
             applyPreset(current)
             showPresetName(current.descriptor.name)
         }
+
+        // LF.4: refresh the menu cache-size publisher after each LF prep
+        // (cache-miss path writes ~7 MB; menu label updates to reflect it).
+        refreshLocalFileCacheBytes()
     }
 
     // MARK: - Off-main worker

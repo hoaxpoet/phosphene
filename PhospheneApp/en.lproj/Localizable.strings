@@ -361,6 +361,11 @@
 
 "menu.file.open_local_file"             = "Open Local File…";
 
+"menu.app.clear_local_file_cache"       = "Clear Local-File Cache (%@)";
+
+"lf.cache.cleared.title"                = "Local-file cache cleared";
+"lf.cache.cleared.body"                 = "Freed %@ of disk space.";
+
 "lf.open.panel.title"                   = "Choose a local audio file";
 
 "lf.open.error.unsupported.title"           = "That file can’t be played";
