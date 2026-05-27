@@ -40,6 +40,7 @@
 		A10036 /* VisualizerEngine+InitHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20036; };
 		A10037 /* VisualizerEngine+PublicAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20037; };
 		Q10001 /* VisualizerEngine+LocalFilePlayback.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q20001; };
+		Q10002 /* LocalFileMenuCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q20002; };
 		O10001 /* DashboardOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = O20001; };
 		O10002 /* DashboardCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = O20002; };
 		O10003 /* DashboardRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = O20003; };
@@ -201,6 +202,7 @@
 		A20036 /* VisualizerEngine+InitHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VisualizerEngine+InitHelpers.swift"; sourceTree = "<group>"; };
 		A20037 /* VisualizerEngine+PublicAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VisualizerEngine+PublicAPI.swift"; sourceTree = "<group>"; };
 		Q20001 /* VisualizerEngine+LocalFilePlayback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VisualizerEngine+LocalFilePlayback.swift"; sourceTree = "<group>"; };
+		Q20002 /* LocalFileMenuCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LocalFileMenuCommands.swift"; sourceTree = "<group>"; };
 		O20001 /* DashboardOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardOverlayView.swift; sourceTree = "<group>"; };
 		O20002 /* DashboardCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardCardView.swift; sourceTree = "<group>"; };
 		O20003 /* DashboardRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardRowView.swift; sourceTree = "<group>"; };
@@ -428,6 +430,7 @@
 				O20005 /* VisualizerEngine+Dashboard.swift */,
 				A20037 /* VisualizerEngine+PublicAPI.swift */,
 				Q20001 /* VisualizerEngine+LocalFilePlayback.swift */,
+				Q20002 /* LocalFileMenuCommands.swift */,
 				A20040 /* VisualizerEngine+Orchestrator.swift */,
 				N20006 /* VisualizerEngine+WiringLogs.swift */,
 				N20007 /* VisualizerEngine+TrackIdentityResolution.swift */,
@@ -817,6 +820,7 @@
 				A10036 /* VisualizerEngine+InitHelpers.swift in Sources */,
 				A10037 /* VisualizerEngine+PublicAPI.swift in Sources */,
 				Q10001 /* VisualizerEngine+LocalFilePlayback.swift in Sources */,
+				Q10002 /* LocalFileMenuCommands.swift in Sources */,
 				O10001 /* DashboardOverlayView.swift in Sources */,
 				O10002 /* DashboardCardView.swift in Sources */,
 				O10003 /* DashboardRowView.swift in Sources */,
