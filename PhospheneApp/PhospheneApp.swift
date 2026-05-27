@@ -94,13 +94,25 @@ struct PhospheneApp: App {
             // audio file, bypass the normal IdleView → SessionManager flow
             // and play the file directly via AVAudioEngine. Empty / absent
             // / unreadable env var: no log, normal launch proceeds.
+            //
+            // LF.1.5 — Process-tap autostart hook (dev-only, env-var-gated).
+            // When `PHOSPHENE_AUTOSTART_ADHOC=1` is set AND the LF env var is
+            // NOT, fire the same code path IdleView's "Start listening now"
+            // button uses. Makes the LF-vs-tap A/B reproducible without a
+            // manual UI click. LF env var takes precedence.
             .task {
-                guard let raw = ProcessInfo.processInfo.environment["PHOSPHENE_LOCAL_FILE_PLAYBACK"],
-                      !raw.isEmpty else { return }
-                let url = URL(fileURLWithPath: raw)
-                guard FileManager.default.isReadableFile(atPath: url.path) else { return }
-                lfLogger.info("[LF.1] local-file playback mode: \(url.path, privacy: .public)")
-                engine.startLocalFilePlayback(url: url)
+                let env = ProcessInfo.processInfo.environment
+                if let raw = env["PHOSPHENE_LOCAL_FILE_PLAYBACK"], !raw.isEmpty {
+                    let url = URL(fileURLWithPath: raw)
+                    guard FileManager.default.isReadableFile(atPath: url.path) else { return }
+                    lfLogger.info("[LF.1] local-file playback mode: \(url.path, privacy: .public)")
+                    engine.startLocalFilePlayback(url: url)
+                    return
+                }
+                if env["PHOSPHENE_AUTOSTART_ADHOC"] == "1" {
+                    lfLogger.info("[LF.1.5] autostart ad-hoc session (PHOSPHENE_AUTOSTART_ADHOC=1)")
+                    engine.sessionManager.startAdHocSession()
+                }
             }
         }
     }
