@@ -51,13 +51,8 @@ extension PresetLoader {
             // Bar phase: 0 at downbeat, rises to 1 at next downbeat (floats 37–38).
             float bar_phase01;    // phrase-level envelope; 0 in reactive mode
             float beats_per_bar; // time-sig numerator (4 for 4/4, 3 for 3/4)
-            // CSP.2 — track-relative elapsed seconds. Reset to 0 at track
-            // change. Enables shader-side cold-start crossfade. Float 39 —
-            // reclaimed from `_pad3`. See Common.metal + CLAUDE.md
-            // §Cold-Start Phase Contract.
-            float track_elapsed_s;
-            // Padding to 192 bytes (floats 40–48).
-            float _pad4, _pad5, _pad6, _pad7,
+            // Padding to 192 bytes (floats 39–48).
+            float _pad3, _pad4, _pad5, _pad6, _pad7,
                   _pad8, _pad9, _pad10, _pad11, _pad12;
         };
 
@@ -126,13 +121,8 @@ extension PresetLoader {
             // FerrofluidOcean's matID == 2 sky function; zero on other presets.
             float drums_energy_dev_smoothed;
 
-            // CSP.2 — bass proportion from preview analysis. Frozen for the
-            // track's duration. Drives FFO spike-height baseline at frame 1.
-            // Float 44 — reclaimed from `_pad2`.
-            float cached_bass_proportion;
-
-            // Padding to 256 bytes (floats 45–64).
-            float _pad3,  _pad4,  _pad5,  _pad6,  _pad7,  _pad8;
+            // Padding to 256 bytes (floats 44–64).
+            float _pad2,  _pad3,  _pad4,  _pad5,  _pad6,  _pad7,  _pad8;
             float _pad9,  _pad10, _pad11, _pad12, _pad13, _pad14, _pad15, _pad16;
             float _pad17, _pad18, _pad19, _pad20, _pad21, _pad22;
         };
