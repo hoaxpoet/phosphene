@@ -8,6 +8,99 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 ---
 
+### BUG-019 — CPU frame time degrades after ~60 s of session uptime (sustained over-budget, visible flickering)
+
+**Severity:** P1 (blocks the M7 close gate for any preset whose appearance depends on sustained 60 fps — currently FFO, but the symptom is universal across presets after the trigger fires; not a crash and the visualizer continues to function, so not P0).
+**Domain tag:** `perf`
+**Status:** Open — surfaced 2026-05-28 by the SAR.1 M7 on session `2026-05-27T21-12-48Z`; not yet diagnosed.
+**Introduced:** Unknown; pre-existing in the tap-path session that motivated SAR.1 (`2026-05-27T19-52-42Z`) — same shape, less severe. The SAR.1 increment is **not implicated**: SAR.1 added four `if`-statements in the per-frame stem analyzer at sub-microsecond cost; the M7 session degradation is in the 4–7 ms range, six orders of magnitude larger than SAR.1's contribution. The same degradation pattern appears in the pre-SAR.1 reference session.
+
+### Expected behavior
+
+CPU frame time stays under the 60 fps budget of 16.67 ms for the full duration of a session. p95 sits comfortably under tier budget; no sustained over-budget windows during steady-state playback. No visible flickering / artifacts / hangs.
+
+### Actual behavior
+
+CPU frame time roughly doubles around 60–68 seconds of session uptime and remains elevated for the rest of the session. GPU frame time is stable throughout — the bottleneck is purely CPU, not the render pipeline.
+
+**M7 session evidence — `2026-05-27T21-12-48Z` (post-SAR.1, tap path, FFO preset, Billie Jean → Superstition):**
+
+| Window (session-time) | CPU avg | CPU max | GPU avg | GPU max |
+|---|---:|---:|---:|---:|
+| 0–60 s | 10–12 ms | 16–18 ms | 8–10 ms | 14–15 ms |
+| 66–90 s | **22–24 ms** | **28–30 ms** | 8–10 ms | 14–15 ms |
+
+At 22–24 ms per frame, roughly 1 in 3 frames misses the 16.67 ms deadline. Matt's perceptual report: "Screen flickers and it looks like there are visual artifacts for a split second while the screen temporarily hangs. Looks like a performance bug — like the visualizer is overloaded." Matt's timing estimate ("around 25 s through end of playback") aligns with ~15 s into Superstition (the second track) where session-time hits 68 s — i.e. the symptom appears in the second track because the trigger window happens to fall inside it.
+
+Within the elevated window the per-frame trace shows a periodic ~250 ms sawtooth (~4 Hz), suggesting one or more subsystems doing burst work on that cadence rather than per-frame steady cost.
+
+**Pre-SAR.1 reference — `2026-05-27T19-52-42Z` (pre-fix, tap path, same general track set):**
+
+| Window (session-time) | CPU avg | CPU max |
+|---|---:|---:|
+| 0–50 s | 13.7 ms | 17–18 ms |
+| 60–90 s | **17–18 ms** | **30.6 ms (60–70 s window); one 103.9 ms spike at 70–80 s** |
+
+Same shape, less severe in averages but with a much worse one-off spike. The two sessions confirm the pattern is pre-existing rather than introduced by SAR.1.
+
+**LF-path sessions (`2026-05-27T19-44-25Z`, `2026-05-27T19-47-18Z`) ran at 1.3–1.4 ms CPU avg throughout** — local-file playback bypasses the process tap path and shows none of this degradation. The bottleneck lives in the tap-path live-analysis pipeline, not in any shared component.
+
+### Reproduction steps
+
+1. Build PhospheneApp (current `main`, post-SAR.1 — the bug pre-dates SAR.1 so any recent build will reproduce).
+2. Start an ad-hoc tap-path session (Spotify prepared playlist, FFO preset).
+3. Play tracks continuously past the 60 s session-uptime mark.
+4. Observe: visible flickering / brief hangs from ~60 s session-time onwards; `features.csv` `frame_cpu_ms` column doubles from ~10 ms to ~22 ms in the same window.
+
+**Minimum reproducer:** any tap-path session that runs continuously past ~60–70 s. Track content does not appear to matter; the trigger correlates with session uptime, not track-specific audio.
+
+### Session artifacts
+
+- **Primary:** `~/Documents/phosphene_sessions/2026-05-27T21-12-48Z/features.csv` — columns 36 (`frame_cpu_ms`) and 37 (`frame_gpu_ms`) show the doubling at frame ~4080 (session-time 67–68 s).
+- **Pre-SAR.1 reference:** `~/Documents/phosphene_sessions/2026-05-27T19-52-42Z/features.csv` — same shape, slightly milder.
+- **LF-path counter-example:** `~/Documents/phosphene_sessions/2026-05-27T19-44-25Z/features.csv` and `~/Documents/phosphene_sessions/2026-05-27T19-47-18Z/features.csv` — sustained 1.3–1.4 ms CPU throughout, ruling out shared (renderer / GPU / common-DSP) components.
+
+### Suspected failure class
+
+`resource-management` (most likely) or `algorithm`. Working hypotheses, none confirmed:
+
+1. **Accumulating state in the tap-path live-analysis pipeline.** The stem separator runs every 5 s; the live stem analyzer feeds the analyzer per frame. Some component may be accumulating bookkeeping (lists, ring buffers, EMA state) that gets walked or copied on every frame, with cost that grows over session uptime.
+2. **A code-path that engages after a track-elapsed-time gate.** Live stems converge ~13–15 s into a track (the CSP.3 timeline). If the live path has heavier per-frame cost than the cached path, and live stems coming online during the *second* track (after ~60 s session-time) coincides with the trigger window, the bump would land where it does. Doesn't explain why the same gate didn't fire 15 s into the first track at session-time ~22 s where CPU was still ~11 ms.
+3. **Cross-track state-reset incompleteness.** A buffer / accumulator / EMA owned by an analysis component isn't being cleared on track change and is paying a cost that's a function of how much data it has seen so far.
+4. **Thermal throttling.** Apple Silicon performance cores can throttle if sustained CPU load pushes thermal headroom; the M7 session was the second of several runs that afternoon. Doesn't fully explain why GPU stays flat (thermal usually affects both).
+
+The ~4 Hz / 250 ms sawtooth visible in the per-frame CPU trace is a discriminator — something is firing on that period after the trigger, and identifying it would likely identify the subsystem.
+
+**Evidence for `resource-management`:** the same shape appears in multiple independent sessions, the trigger is session-uptime-driven not audio-content-driven, and the LF path (which bypasses some analysis components) is completely unaffected.
+
+### Verification criteria
+
+When this defect is resolved, the following must all pass:
+
+- [ ] Automated: `FrameTimingReporter` p95 ≤ tier budget (Tier 2 budget 16.67 ms at 60 fps) over a 90 s continuous tap-path session.
+- [ ] Automated: 2-hour `SoakTestHarness` run shows no monotonic CPU-time growth past tier budget.
+- [ ] Domain artifact: `features.csv` from a 90 s tap-path session shows `frame_cpu_ms` distribution with no second-half doubling vs first-half.
+- [ ] Manual: Matt's FFO M7 (or any other certified preset M7) — no perceived flickering / hangs / artifacts throughout a continuous-playback session of ≥ 90 s.
+
+**Manual validation required:** Yes. The defect surfaced as a perceptual report; closing it requires a perceptual confirmation, not just a green automated gate.
+
+### Fix scope
+
+Unknown — needs the instrumentation increment first. Likely **multi-increment** per the P1 defect protocol:
+
+1. **Instrumentation** (next increment after BUG-019 filing) — add per-subsystem timing columns to `features.csv` (stem analyzer, beat detector, mood classifier, pitch tracker, MIR pipeline as a whole, plus session-bookkeeping if relevant). Commit and stop.
+2. **Diagnosis** — re-run the M7 capture protocol with the instrumented build; identify which subsystem(s) account for the 11 ms → 23 ms CPU bump. Document root cause in this entry. No fix code in this increment.
+3. **Fix** — once root cause is known.
+4. **Validation** — run the verification criteria above.
+
+### Related
+
+- Increment: SAR.1 — surfaced this bug because SAR.1's math-layer fix landed cleanly while Matt's M7 verdict was "no different" visually; investigation traced the residual symptom to CPU pressure rather than to the deviation primitives SAR.1 touched.
+- Phase CSP — **paused** until BUG-019 is at least diagnosed. No point tuning FFO's cold-start consumer at the shader layer while ~30 % of frames are missing their deadline.
+- Capability: `CAPABILITY_REGISTRY/PERFORMANCE.md` (if/when this defect is closed, the entry there gets the validation evidence).
+
+---
+
 ### BUG-017 — Cold-start visual beat carries a per-track phase offset (preview-clip phase used as track phase)
 
 > **AMENDED 2026-05-26 — BSAudit.3.impl was reverted on 2026-05-25 evening.** Commits `33cd57e9` / `6758a617` / `002b5f2b` / `35305b5e` backed out the impl runtime after Choice A's "doc-only closeout" (`438edbbb`, same day, earlier). The diagnostic tooling (`--accent-window-pass-rate` verifier mode, the 4 new SelfTest checks, the diagnostic findings doc, the historical baseline doc) was retained per Matt's "yes, keep the tools" sign-off. Production is the pre-impl baseline; the resolution against the accepted structural limit still holds, but the runtime architecture described below as "production" is no longer in the code. The text below preserves the BSAudit.3.impl narrative as historical record; see CLAUDE.md §Cold-Start Phase Contract for the current production state. See `docs/RELEASE_NOTES_DEV.md` `[dev-2026-05-26-b]` for the revert narrative.
