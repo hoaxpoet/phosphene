@@ -1,4 +1,13 @@
-// VisualizerEngine+PublicAPI — startAudio, toggles, and display helpers.
+// VisualizerEngine+PublicAPI — startAudio, toggles, display helpers, and
+// the LF.1 / LF.2 / LF.3 local-file playback dispatch.
+//
+// LF.4 follow-up: when the env-var hook graduates to a real user-facing
+// feature, the LF.* methods + helpers move to a dedicated extension file
+// (VisualizerEngine+LocalFilePlayback.swift). That refactor needs a
+// pbxproj 4-section edit; left out of LF.3 to avoid scope creep and
+// merge conflicts with the parallel PERF.1 / BUG-019 workstream. The
+// `file_length` disable below is the tracked acknowledgement.
+// swiftlint:disable file_length
 
 import Audio
 import CoreGraphics
@@ -210,17 +219,18 @@ extension VisualizerEngine {
         // returns a (identity, cached, source) triple describing how the
         // data was obtained — `persistentDisk` means we hit the disk
         // cache and SKIPPED analyzePreview entirely.
+        let inputs = LocalFilePrepInputs(
+            url: url,
+            filename: filename,
+            separator: sep,
+            analyzer: analyzer,
+            classifier: classifier,
+            beatGridAnalyzer: gridAnalyzer,
+            persistentCache: persistentCache,
+            recorder: recorder
+        )
         let outcome: LocalFilePrepOutcome? = await Task.detached(priority: .userInitiated) {
-            await Self.runLocalFilePreparation(
-                url: url,
-                filename: filename,
-                separator: sep,
-                analyzer: analyzer,
-                classifier: classifier,
-                beatGridAnalyzer: gridAnalyzer,
-                persistentCache: persistentCache,
-                recorder: recorder
-            )
+            await Self.runLocalFilePreparation(inputs: inputs)
         }.value
 
         if let outcome {
@@ -253,19 +263,11 @@ extension VisualizerEngine {
     /// separator, decode error, etc.) — the caller then falls through
     /// to the LF.1 no-cache start.
     nonisolated private static func runLocalFilePreparation(
-        url: URL,
-        filename: String,
-        separator: StemSeparator?,
-        analyzer: StemAnalyzer,
-        classifier: any MoodClassifying,
-        beatGridAnalyzer: (any BeatGridAnalyzing)?,
-        persistentCache: PersistentStemCache?,
-        recorder: SessionRecorder?
+        inputs: LocalFilePrepInputs
     ) async -> LocalFilePrepOutcome? {
-        // Step 1 — content hash.
         let contentHash: String
         do {
-            contentHash = try PreviewAudio.sha256(of: url)
+            contentHash = try PreviewAudio.sha256(of: inputs.url)
         } catch {
             let msg = error.localizedDescription
             apiLogger.error(
@@ -275,46 +277,81 @@ extension VisualizerEngine {
         }
         let shortHash = String(contentHash.prefix(12))
 
-        // Step 2 — try the persistent cache.
-        if let persistentCache, persistentCache.contains(hash: contentHash) {
-            do {
-                let entry = try persistentCache.load(hash: contentHash)
-                let identity = TrackIdentity(
-                    title: filename,
-                    artist: "local file",
-                    duration: entry.decodedDuration,
-                    spotifyID: "local:sha256:" + contentHash
-                )
-                let cached = entry.cached
-                let bpmStr = String(format: "%.1f", cached.beatGrid.bpm)
-                let beatCount = cached.beatGrid.beats.count
-                let msg = "STEM_CACHE_HIT: source=persistentDisk, track='\(filename)', "
-                    + "hash=\(shortHash), bpm=\(bpmStr), beats=\(beatCount)"
-                recorder?.log(msg)
-                apiLogger.info("\(msg, privacy: .public)")
-                return LocalFilePrepOutcome(
-                    identity: identity,
-                    cached: cached,
-                    source: .persistentDisk
-                )
-            } catch {
-                // Cache file present but unreadable (schema mismatch,
-                // corruption, partial write). Log + treat as miss; we
-                // overwrite below.
-                let msg = "STEM_CACHE_MISS: source=persistentDisk, track='\(filename)', "
-                    + "hash=\(shortHash), reason=load-failed(\(error.localizedDescription))"
-                recorder?.log(msg)
-                apiLogger.warning("\(msg, privacy: .public)")
-            }
-        } else if persistentCache != nil {
-            let msg = "STEM_CACHE_MISS: source=persistentDisk, track='\(filename)', "
-                + "hash=\(shortHash), reason=no-entry"
-            recorder?.log(msg)
-            apiLogger.info("\(msg, privacy: .public)")
+        if let hit = tryLoadFromPersistentCache(
+            inputs: inputs,
+            contentHash: contentHash,
+            shortHash: shortHash
+        ) {
+            return hit
         }
 
-        // Step 3 — cache miss path. Decode + analyze (LF.2's flow).
-        guard let separator else {
+        return analyzeAndPersist(
+            inputs: inputs,
+            contentHash: contentHash,
+            shortHash: shortHash
+        )
+    }
+
+    /// Step 2 of the LF.3 worker: consult the persistent cache. Returns
+    /// the loaded outcome on hit, `nil` on miss (no entry, load failed,
+    /// or no cache configured). Emits a `STEM_CACHE_HIT` /
+    /// `STEM_CACHE_MISS` log line in every branch.
+    nonisolated private static func tryLoadFromPersistentCache(
+        inputs: LocalFilePrepInputs,
+        contentHash: String,
+        shortHash: String
+    ) -> LocalFilePrepOutcome? {
+        guard let persistentCache = inputs.persistentCache else { return nil }
+        guard persistentCache.contains(hash: contentHash) else {
+            let msg = "STEM_CACHE_MISS: source=persistentDisk, track='\(inputs.filename)', "
+                + "hash=\(shortHash), reason=no-entry"
+            inputs.recorder?.log(msg)
+            apiLogger.info("\(msg, privacy: .public)")
+            return nil
+        }
+        do {
+            let entry = try persistentCache.load(hash: contentHash)
+            let identity = TrackIdentity(
+                title: inputs.filename,
+                artist: "local file",
+                duration: entry.decodedDuration,
+                spotifyID: "local:sha256:" + contentHash
+            )
+            let cached = entry.cached
+            let bpmStr = String(format: "%.1f", cached.beatGrid.bpm)
+            let beatCount = cached.beatGrid.beats.count
+            let msg = "STEM_CACHE_HIT: source=persistentDisk, track='\(inputs.filename)', "
+                + "hash=\(shortHash), bpm=\(bpmStr), beats=\(beatCount)"
+            inputs.recorder?.log(msg)
+            apiLogger.info("\(msg, privacy: .public)")
+            return LocalFilePrepOutcome(
+                identity: identity,
+                cached: cached,
+                source: .persistentDisk
+            )
+        } catch {
+            // Cache file present but unreadable (schema mismatch,
+            // corruption, partial write). Log + treat as miss; the
+            // analyze path overwrites the broken entry below.
+            let msg = "STEM_CACHE_MISS: source=persistentDisk, track='\(inputs.filename)', "
+                + "hash=\(shortHash), reason=load-failed(\(error.localizedDescription))"
+            inputs.recorder?.log(msg)
+            apiLogger.warning("\(msg, privacy: .public)")
+            return nil
+        }
+    }
+
+    /// Step 3+4 of the LF.3 worker: run `analyzePreview` (LF.2's flow),
+    /// persist the result to disk, return the outcome. Returns `nil`
+    /// when the separator is missing or the analysis pipeline throws.
+    /// Persist failure is non-fatal — logs a warning and still returns
+    /// the in-memory outcome so the live pipeline gets the install.
+    nonisolated private static func analyzeAndPersist(
+        inputs: LocalFilePrepInputs,
+        contentHash: String,
+        shortHash: String
+    ) -> LocalFilePrepOutcome? {
+        guard let separator = inputs.separator else {
             apiLogger.warning(
                 "[LF.3] no stem separator — continuing without cached install"
             )
@@ -323,13 +360,13 @@ extension VisualizerEngine {
         let preview: PreviewAudio
         let cached: CachedTrackData
         do {
-            preview = try PreviewAudio.fromLocalFile(at: url, contentHash: contentHash)
+            preview = try PreviewAudio.fromLocalFile(at: inputs.url, contentHash: contentHash)
             cached = try SessionPreparer.analyzePreview(
                 preview,
                 separator: separator,
-                analyzer: analyzer,
-                classifier: classifier,
-                beatGridAnalyzer: beatGridAnalyzer,
+                analyzer: inputs.analyzer,
+                classifier: inputs.classifier,
+                beatGridAnalyzer: inputs.beatGridAnalyzer,
                 prefetchedProfile: nil
             )
         } catch {
@@ -340,8 +377,7 @@ extension VisualizerEngine {
             return nil
         }
 
-        // Step 4 — persist for next launch. Failure is non-fatal.
-        if let persistentCache {
+        if let persistentCache = inputs.persistentCache {
             let writeStart = Date()
             do {
                 try persistentCache.store(
@@ -352,9 +388,9 @@ extension VisualizerEngine {
                 let elapsedMs = Int(Date().timeIntervalSince(writeStart) * 1000)
                 let totalSamples = cached.stemWaveforms.reduce(0) { $0 + $1.count }
                 let bytes = totalSamples * MemoryLayout<Float>.size
-                let msg = "STEM_CACHE_WROTE: source=persistentDisk, track='\(filename)', "
+                let msg = "STEM_CACHE_WROTE: source=persistentDisk, track='\(inputs.filename)', "
                     + "hash=\(shortHash), bytes=\(bytes), elapsedMs=\(elapsedMs)"
-                recorder?.log(msg)
+                inputs.recorder?.log(msg)
                 apiLogger.info("\(msg, privacy: .public)")
             } catch {
                 let msg = error.localizedDescription
@@ -435,7 +471,22 @@ extension VisualizerEngine {
     }
 }
 
-// MARK: - LF.3 Outcome
+// MARK: - LF.3 Inputs / Outcome
+
+/// Bundle of injected dependencies the LF.3 off-main worker reads.
+/// Collapses what would otherwise be an 8-parameter call into one,
+/// and keeps the worker itself Sendable-safe (every field is either
+/// an immutable value or a Sendable reference type).
+struct LocalFilePrepInputs: Sendable {
+    let url: URL
+    let filename: String
+    let separator: StemSeparator?
+    let analyzer: StemAnalyzer
+    let classifier: any MoodClassifying
+    let beatGridAnalyzer: (any BeatGridAnalyzing)?
+    let persistentCache: PersistentStemCache?
+    let recorder: SessionRecorder?
+}
 
 /// Outcome of the off-main local-file preparation worker. Distinguishes
 /// disk-cache hits from fresh analysis so the LF.3 log line + closeout
