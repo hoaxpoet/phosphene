@@ -82,11 +82,68 @@ static inline float fo_stem_warmup_blend(constant StemFeatures& stems) {
 // coupling REMOVED so there's no competing motion. This is the correct
 // pairing: slow swell + bass-reactive spikes, instead of bass-reactive
 // swell + constant or beat-locked spikes.
+// CSP.3 (2026-05-27) — Ferrofluid Ocean spike-height cold-start fix.
+//
+// Three corrections relative to CSP.2 (which was reverted after Matt's M7):
+//
+// 1. CROSSFADE TIMING — extended to 0.5 → 14 s (was 0.5 → 8 s in CSP.2).
+//    The session diagnostic at 2026-05-27T15-18-55Z showed live per-frame
+//    stem analysis arrives at ~13–15 s in real sessions, not the 5–8 s
+//    CSP.2 assumed. Extending the window so the crossfade hands off
+//    *to* live stems, not *before* them, removes the visible transition
+//    at ~15 s that Matt observed as "rhythm and sync fall apart."
+//
+// 2. COLD-START PROXY — `features.bass_att` (smoothed continuous bass),
+//    not `features.bass_dev` (deviation primitive). The deviation primitive
+//    fires only above the AGC average — on typical music with AGC bass
+//    clustering in [0.1, 0.3], `bass_dev ≈ 0` for ~99 % of frames, so it
+//    delivered no per-frame motion. `bass_att` is continuous and varies
+//    with the bass content of the live mix; matches the SHAPE of what
+//    the warm-state isolated stem signal does.
+//
+// 3. ONE-SIDED BASELINE — cached proportion *above* 0.25 boosts the
+//    spike baseline up to +25 %; *below* 0.25 leaves the baseline at 1.0
+//    (no penalty). CSP.2's symmetric formula gave sub-default baselines
+//    on sparse-bass tracks (Royals → "inert and broken"). The one-sided
+//    form means bass-heavy tracks get visibly more posture, sparse
+//    tracks look exactly like today.
+//
+// Per-frame coefficient (0.35) preserved verbatim from pre-CSP behaviour.
+//
+// **Toggle off-path.** When `MIRPipeline.ffoColdStartFixEnabled` is false:
+// the app layer writes `track_elapsed_s = 100.0` (crossfade → 1.0 → fully
+// warm path) AND `cached_bass_proportion = 0.25` (one-sided baseline → 0).
+// Then `fo_spike_strength` reduces exactly to the pre-CSP.3 formula
+// `1.0 + 0.35 × clamp(stems.bass_energy_dev, 0, 1)`. A/B verifiable from
+// `features.csv` (both new fields are logged as trailing columns).
+
+constant float FO_SPIKE_COLD_START_FADE_START_S = 0.5;
+constant float FO_SPIKE_COLD_START_FADE_END_S   = 14.0;
+constant float FO_SPIKE_BASELINE_PIVOT          = 0.25;   // proportion below this → no baseline boost
+constant float FO_SPIKE_BASELINE_RANGE          = 0.25;   // ±25 % per Matt approval 2026-05-27
+
 static inline float fo_spike_strength(constant FeatureVector& f,
                                       constant StemFeatures& stems) {
-    (void)f;
-    float bassDev = clamp(stems.bass_energy_dev, 0.0, 1.0);
-    return 1.0 + 0.35 * bassDev;
+    // Layer 1 — one-sided baseline. Proportion above the pivot boosts
+    // height; proportion at or below leaves baseline at 1.0.
+    float proportion = clamp(stems.cached_bass_proportion, 0.0, 1.0);
+    float aboveThreshold = max(proportion - FO_SPIKE_BASELINE_PIVOT, 0.0);
+    // Scale `aboveThreshold` (range [0, 0.75]) → [0, 0.25] by * (1/3).
+    // Pivot 0.25 → 0; theoretical max 1.0 → +0.25.
+    float baseline = 1.0 + clamp(aboveThreshold * (FO_SPIKE_BASELINE_RANGE / (1.0 - FO_SPIKE_BASELINE_PIVOT)),
+                                 0.0, FO_SPIKE_BASELINE_RANGE);
+
+    // Layer 2 — cold-start crossfade. Cold-start: live overall bass
+    // (continuous, smoothed). Warm: isolated bass stem (cleaner).
+    float blend = smoothstep(FO_SPIKE_COLD_START_FADE_START_S,
+                             FO_SPIKE_COLD_START_FADE_END_S,
+                             f.track_elapsed_s);
+    float proxy = clamp(f.bass_att, 0.0, 1.0);          // continuous, frame 1
+    float warm  = clamp(stems.bass_energy_dev, 0.0, 1.0); // sparse-event, ~15 s+
+    float src   = mix(proxy, warm, blend);
+
+    // Combine: per-track baseline + per-frame source. 0.35 preserved.
+    return baseline + 0.35 * src;
 }
 
 // Swell amplitude scale — slow energy-driven drift only (round 65, 2026-05-18).

@@ -32,6 +32,64 @@ Test infrastructure: swift-testing + XCTest across unit, integration, regression
 
 ## Recently Completed
 
+### Increment LF.1 — Local-File Player Spike ✅ (2026-05-27)
+
+First step in the LF.1 → LF.4 discovery arc exploring whether Phosphene playing local audio files itself (via `AVAudioEngine`) bypasses the documented pain points of the Core Audio process-tap path (DRM silent zeros, screen-capture permission, scrub-induced teardown, no playhead). Spike scope: prove the player + tap path works end-to-end and that the downstream analysis pipeline is genuinely source-agnostic.
+
+**Landed changes:**
+
+- **`PhospheneEngine/Sources/Audio/LocalFilePlaybackProvider.swift`** (new, ~190 lines) — `AVAudioEngine` + `AVAudioPlayerNode` + `AVAudioFile` graph. Installs an analysis tap on the player node's output bus (pre-mixer, pre-volume), manually interleaves planar L/R into the L/R/L/R contract the existing pipeline expects, loops at EOF (re-schedules via `scheduleFile` completion handler), observes `AVAudioEngineConfigurationChange`. NSLock-serialized public API; `@preconcurrency import AVFoundation` for ObjC Sendable interop.
+- **`PhospheneEngine/Sources/Audio/AudioInputRouter.swift`** — added `InputMode.localFilePlayback(URL)` as a sibling to `.localFile(URL)` (which stays byte-identical for `SoakTestHarness`). New `startLocalFilePlayback(url:)` helper and `localFilePlaybackProvider` ivar. The router's metadata-observer path still fires (harmless — `StreamingMetadata` just polls Now Playing and finds nothing).
+- **`PhospheneEngine/Sources/Audio/AudioInputRouter+SignalState.swift`** — mode-gate at the top of `scheduleNextReinstall()`: in `.localFile` and `.localFilePlayback`, the scheduler is dormant. There is no process tap to reinstall, and silence in a played file is real musical silence, not a teardown. `attemptTapReinstall`'s exhaustive switch updated to compile-fail on future enum additions.
+- **`PhospheneEngine/Tests/PhospheneEngineTests/Audio/AudioInputRouterSignalStateTests.swift`** — added 2 regression tests locking the mode-gate behavior (`test_scheduleNextReinstall_isNoOpInLocalFilePlaybackMode`, `test_scheduleNextReinstall_isNoOpInLocalFileMode`). Updated 6 pre-existing tests to set `currentMode = .systemAudio` so the scheduler exercises the attempt-counter logic the tests are locking (matching the established pattern in `test_attemptTapReinstall_skipsIfStateNotSilent`).
+- **`PhospheneApp/VisualizerEngine.swift`** — added `@Published var localFilePlaybackActive: Bool = false`. Set synchronously at the start of `startLocalFilePlayback(url:)` so the first SwiftUI body re-render that follows can see it.
+- **`PhospheneApp/VisualizerEngine+PublicAPI.swift`** — new `startLocalFilePlayback(url:)` method (router start + stem pipeline + `sessionManager.startAdHocSession()` + initial `applyPreset`). Added an early-return guard at the top of `startAudio()` — `if localFilePlaybackActive { return }`. Without this guard, `PlaybackView.setup()`'s unconditional `engine.startAudio()` call would invoke `audioRouter.start(.systemAudio)`, which calls `stopInternal()` first and tears down the LocalFilePlaybackProvider milliseconds after it started. Verified during manual verification — the bug showed as an empty features.csv (audio path silently clobbered); the guard fixed it.
+- **`PhospheneApp/PhospheneApp.swift`** — `.task` modifier on the root view reads `PHOSPHENE_LOCAL_FILE_PLAYBACK` and calls `engine.startLocalFilePlayback(url:)` when the env var points at a readable file. Empty / absent / unreadable env var: no log, normal launch proceeds.
+- **`PhospheneApp/ContentView.swift`** — permission gate widened to `if permissionMonitor.isScreenCaptureGranted || engine.localFilePlaybackActive`. The LF playback path uses AVAudioEngine, not Core Audio process taps, so screen-capture permission is irrelevant — bypass keeps the spike's "no permission required" promise.
+
+**Manual verification on `love_rehab.m4a`** (session `2026-05-27T15-55-19Z`):
+
+1. ✅ Audio played for full file duration. features.csv contains 1684 frames spanning t=0.89 to t=28.96 s (matches the 29.93 s file minus the ~1 s engine-startup gap).
+2. ⚠️ Visualizer rendered (1684 frames recorded, video.mp4 = 7.2 MB) — Matt must visually confirm the output is music-correlated; my mechanical check cannot judge visual content.
+3. ✅ raw_tap.wav captured at 44100 Hz / 2 ch / Float32 interleaved, 28.2 s duration, max amplitude 1.000 / min -0.995 / RMS 0.305. Max hitting 1.0 reflects love_rehab's mastered peaks (Spotify normalization off — see `RUNBOOK.md`).
+4. ✅ features.csv bass/mid/treble non-zero throughout (frame 0: 0.167/0.051/0.003; frame 800: 0.191/0.012/0.000; frame 1680: 0.177/0.011/0.001). Live BeatGrid installed at t=10s with bpm=118.5 (matches Love Rehab truth) — implies sub-bass onsets were firing at the expected rate.
+5. ✅ session.log clean of `tap reinstall` / `CGRequestScreenCaptureAccess` / `DRM silence` (grep returns zero matches).
+
+Plus the bonus: the unified log shows the full LF.1 startup sequence:
+- `[LF.1] local-file playback mode: ...` (env-var hook fired)
+- `[LF.1] start: love_rehab.m4a 44100 Hz 2 ch` (provider opened the file)
+- `[LF.1] Router started: local-file playback` (router accepted the mode)
+- `[LF.1] LF playback router started: love_rehab.m4a` (engine confirmed)
+- `[LF.1] startAudio skipped — LF playback already active` (the clobber-guard fired exactly when expected).
+
+**Tests:**
+- Engine `swift test --package-path PhospheneEngine` — **1269/1269 pass** (added 2; previously 1267).
+- `SOAK_TESTS=1 swift test --filter SoakTestHarnessTests` — **7/7 pass** (regression gate for the untouched `.localFile` mode).
+- App-scheme `xcodebuild test` — 5 pre-existing parallel-run flakes (`RenderPipelineICBTests.test_gpuDrivenRendering_cpuFrameTimeReduced`, `AppleMusicConnectionViewModelTests.*`) documented in CA.7b-FU-4's follow-ups + `project_test_baseline.md` memory. Not regressions: my changes don't touch Renderer/ICB or AppleMusic. Each passes cleanly in isolation per the documented flake profile.
+
+**Build + lint:**
+- `xcodebuild -scheme PhospheneApp build` — clean (zero warnings on touched files).
+- `swiftlint lint --strict --config .swiftlint.yml` against the 8 touched files — 0 violations.
+- `-configuration Release` build — clean.
+
+**Documentation updates:**
+- `docs/ENGINEERING_PLAN.md` (this entry).
+- `docs/DECISIONS.md` — D-128 (new).
+- `docs/ARCHITECTURE.md` — Audio Capture section adds `.localFilePlayback` mode + the screen-capture permission carve-out; Audio module map adds `LocalFilePlaybackProvider` and updates the `AudioInputRouter` + `AudioInputRouter+SignalState` entries.
+- `docs/RELEASE_NOTES_DEV.md` — `[dev-2026-05-27-c]` entry.
+- `CLAUDE.md` — the LF.1 prompt's "Module map" reference was to the canonical module map, which CLAUDE.md itself documents as living in `docs/ARCHITECTURE.md §Module Map`. Updated there; CLAUDE.md itself did not need a change.
+
+**Known risks and follow-ups:**
+
+- **Visual content not mechanically verifiable.** All 1684 render frames produced; whether the visualizer showed *music-correlated* output (the prompt's verification #2) requires Matt to watch the session. The raw signals (live BeatGrid lock at 118.5 BPM, non-zero bass/mid/treble across the full 28.96 s) say the upstream pipeline received clean audio, which is the necessary condition for music-correlated visuals — but not sufficient on its own.
+- **Sub-bass onset count over a 5-second window** (verification #4's tighter sub-bound) is not directly exposed in features.csv. The proxy signal — live BeatGrid installation at 118.5 BPM matching truth within 1 BPM — is strong (the Beat This! analyzer would not have locked at that tempo without dense sub-bass onsets), but not the literal grep the prompt asked for. Could be added to the SessionRecorder per-frame schema in a future cleanup.
+- **AVAudioFile open + AVAudioEngine.start() took ~2.3 s** in the verification run (env-var hook fires at t=17.04, provider start logs at t=19.34). Acceptable for the spike — audio is flowing before the user has time to notice — but worth measuring on cold-start scenarios in LF.2 to confirm it's not a problem under different conditions.
+- **`AVAudioEngineConfigurationChange` restart is best-effort from the file beginning.** Mid-track resumption requires tracking the player's frame position; deferred to LF.4 if user-facing playback ships.
+- **Loop-at-EOF is permanent** in the spike. A real product would surface a "play once" mode and a per-track / per-playlist looping toggle. LF.4 scope.
+- **No `SessionManager` integration.** The spike transitions to ad-hoc reactive mode and never enters the planned-session flow. LF.4 scope.
+
+**Recommended next increment.** LF.1.5 — A/B comparison of the new path vs. the process-tap path on the same audio. The spike proves the new path *works*; LF.1.5 would prove the analysis output is *equivalent* (or characterize the deltas — e.g., the LF path runs at the file's native 44.1 kHz, the process-tap path typically runs at 48 kHz, so beat-grid timing and FFT bin alignment will differ measurably).
+
 ### CA.7b-FU-4 — setMeshPresetBuffer/setMeshPresetFragmentBuffer retirement ✅ (2026-05-21)
 
 Second of the Tier-2 Phase CA follow-up batch (CA-Audio-FU-5 + CA.7b-FU-4). Resolves the latent slot-1 buffer-binding collision flagged by the CA.7b audit (RENDERER_SUPPORTING.md:572 follow-up row; §Findings lines 431-451). `setMeshPresetBuffer(_:)` bound a per-preset world-state buffer at object/mesh `buffer(1)` — the same slot `MeshGenerator.draw()` writes `densityMultiplier` to. If a future mesh-shader preset ever set the preset buffer non-nil, `densityMultiplier` would silently clobber it. The collision was **latent only**: a Pass-0 grep confirmed `setMeshPresetBuffer` had zero non-nil production callers (its sole call site was `pipeline.setMeshPresetBuffer(nil)`, the reset). `setMeshPresetFragmentBuffer` (slot 4) did not collide but was equally caller-less.
@@ -4338,11 +4396,37 @@ Two layers on Ferrofluid Ocean's spike-height function: `cached_bass_proportion`
 
 **Status: reverted 2026-05-27.** See `RELEASE_NOTES_DEV.md [dev-2026-05-27-b]` for full closeout + durable learnings.
 
+### Increment CSP.3 — FFO cold-start fix with the three corrections from CSP.2 ⏳ (implemented 2026-05-27, M7 outstanding)
+
+Same product target as CSP.2; three specific corrections applied directly from the CSP.2 dive findings:
+
+1. **Crossfade window: 0.5 → 14 s** (was 0.5 → 8 s in CSP.2) — matches measured live-stems arrival.
+2. **Cold-start proxy: `f.bass_att`** (smoothed continuous bass; was `f.bass_dev` deviation primitive in CSP.2) — continuous per-frame motion instead of sparse-event signal.
+3. **One-sided baseline:** cached proportion *above* 0.25 boosts spike baseline up to +25 %; below 0.25 leaves it at 1.0 (no penalty). Sparse-bass tracks (Royals) look exactly like today; bass-heavy tracks get visible posture.
+
+Plus the operational gaps CSP.2 surfaced:
+
+- **UserDefaults A/B toggle `ffoColdStartFixEnabled`** (default ON). OFF arm collapses to the exact pre-CSP.3 formula via writing sentinel values (`trackElapsedS = 100.0`, `cachedBassProportion = 0.25` pivot).
+- **`features.csv` instrumentation** for both new fields as trailing columns — A/B verifiable from artifacts in ~30 seconds.
+
+**Done-when (in flight).**
+
+- [x] Engine: 1277 / 1277 tests pass. New `CSP3DataPlumbingTests` suite (8 tests, 3 sub-suites): trackElapsedS reset + accumulation (toggle ON), trackElapsedS = 100.0 (toggle OFF), cachedBassProportion preserved across live updates. Plus `test_recordFrame_csp3Fields_writtenToCSV` round-trip.
+- [x] SwiftLint `--strict`: 0 violations.
+- [x] App build: succeeds.
+- [ ] **Matt M7 (load-bearing gate).** Same A/B protocol as CSP.2 — but now verifiable from `features.csv` so a negative-result diagnostic dive is bounded.
+
+**Outcome handling.**
+
+- **Better:** cert. Same pattern likely extends to Volumetric Lithograph's terrain pulse and camera dolly — file CSP.4 if Matt wants.
+- **No different:** the design space at the cached-perception + live-overall-bass layer is exhausted at this consumption point. Pivot to Matt's stress-test methodology suggestion (CSP-Stress.1, below).
+- **Worse:** revert; capture specific failure modes before reverting (which track, what part of the timeline, what does the spike behaviour look like).
+
 ### What's next for Phase CSP
 
-Per Failed Approach #69's discriminator rule, a third iteration on the same cold-start defect needs a fundamentally different premise — not "tune CSP.2's parameters." The empirical findings above are constraints any future cold-start attempt has to design within (timing target ~13–15 s; smoothed continuous primitive for cold-start proxy, not deviation primitive; one-sided baseline formula or different pivot).
+If CSP.3 carries the cold-start on FFO, the pattern (one-sided baseline + smoothed continuous proxy + crossfade timed to real warmup) extends to other affected presets — Volumetric Lithograph being next per Matt's 2026-05-27 prioritisation (terrain pulse + camera dolly are both stems-routed).
 
-Matt's stress-test methodology suggestion (2026-05-27): build per-preset cold-start measurement infrastructure first — characterise what each preset's audio reactivity actually does across tempo / meter / energy variation — then propose fixes grounded in measured baselines. That work would slot here as **CSP-Stress.1** (or similar) and is the recommended next move. Not in any active scope yet.
+If CSP.3 doesn't carry, the next move is Matt's stress-test methodology suggestion: build per-preset cold-start measurement infrastructure — characterise what each preset's audio reactivity actually does across tempo / meter / energy variation — then propose fixes grounded in measured baselines. That work would slot here as **CSP-Stress.1** (or similar).
 
 ---
 

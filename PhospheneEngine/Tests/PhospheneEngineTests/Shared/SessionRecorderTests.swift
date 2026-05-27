@@ -111,9 +111,15 @@ final class SessionRecorderTests: XCTestCase {
             contentsOf: recorder.sessionDir.appendingPathComponent("features.csv"),
             encoding: .utf8)
         let header = csv.split(separator: "\n").first ?? ""
-        XCTAssertTrue(header.hasSuffix("frame_cpu_ms,frame_gpu_ms"),
-                      "features.csv header must end with frame_cpu_ms,frame_gpu_ms "
-                      + "(append-only invariant), got: \(header)")
+        // CSP.3 (2026-05-27): track_elapsed_s and cached_bass_proportion appended
+        // after the frame-timing columns. The frame-timing columns must still
+        // appear in the same order (append-only invariant); they are no longer
+        // the suffix.
+        XCTAssertTrue(header.contains("frame_cpu_ms,frame_gpu_ms,track_elapsed_s,cached_bass_proportion"),
+                      "features.csv header must contain frame_cpu_ms,frame_gpu_ms,track_elapsed_s,"
+                      + "cached_bass_proportion in that order (append-only invariant), got: \(header)")
+        XCTAssertTrue(header.hasSuffix("cached_bass_proportion"),
+                      "features.csv header must end with cached_bass_proportion (CSP.3), got: \(header)")
     }
 
     func test_recordFrameTiming_thenRecordFrame_writesTimingValues() throws {
@@ -129,10 +135,14 @@ final class SessionRecorderTests: XCTestCase {
         XCTAssertEqual(rows.count, 2, "Header + 1 data row")
         let cells = rows[1].split(separator: ",", omittingEmptySubsequences: false)
             .map(String.init)
-        // frame_cpu_ms is the second-to-last column; frame_gpu_ms is the last.
-        XCTAssertEqual(Float(cells[cells.count - 2]) ?? -1, 4.25, accuracy: 0.001,
+        // CSP.3: column layout from the end:
+        //   cells[count - 1] = cached_bass_proportion
+        //   cells[count - 2] = track_elapsed_s
+        //   cells[count - 3] = frame_gpu_ms
+        //   cells[count - 4] = frame_cpu_ms
+        XCTAssertEqual(Float(cells[cells.count - 4]) ?? -1, 4.25, accuracy: 0.001,
                        "frame_cpu_ms round-trip")
-        XCTAssertEqual(Float(cells[cells.count - 1]) ?? -1, 1.75, accuracy: 0.001,
+        XCTAssertEqual(Float(cells[cells.count - 3]) ?? -1, 1.75, accuracy: 0.001,
                        "frame_gpu_ms round-trip")
     }
 
@@ -152,8 +162,9 @@ final class SessionRecorderTests: XCTestCase {
         XCTAssertEqual(rows.count, 2)
         let cells = rows[1].split(separator: ",", omittingEmptySubsequences: false)
             .map(String.init)
-        XCTAssertEqual(cells[cells.count - 2], "", "frame_cpu_ms empty before any timing observed")
-        XCTAssertEqual(cells[cells.count - 1], "", "frame_gpu_ms empty before any timing observed")
+        // CSP.3: see column layout note in test above.
+        XCTAssertEqual(cells[cells.count - 4], "", "frame_cpu_ms empty before any timing observed")
+        XCTAssertEqual(cells[cells.count - 3], "", "frame_gpu_ms empty before any timing observed")
     }
 
     func test_recordFrameTiming_gpuNil_writesEmptyGPUCellOnly() throws {
@@ -170,10 +181,35 @@ final class SessionRecorderTests: XCTestCase {
         let rows = csv.split(separator: "\n")
         let cells = rows[1].split(separator: ",", omittingEmptySubsequences: false)
             .map(String.init)
-        XCTAssertEqual(Float(cells[cells.count - 2]) ?? -1, 3.5, accuracy: 0.001,
+        // CSP.3: see column layout note in test above.
+        XCTAssertEqual(Float(cells[cells.count - 4]) ?? -1, 3.5, accuracy: 0.001,
                        "frame_cpu_ms still written when gpu nil")
-        XCTAssertEqual(cells[cells.count - 1], "",
+        XCTAssertEqual(cells[cells.count - 3], "",
                        "frame_gpu_ms empty when gpuMs is nil")
+    }
+
+    func test_recordFrame_csp3Fields_writtenToCSV() throws {
+        // CSP.3 contract: features.csv carries trackElapsedS + cachedBassProportion
+        // as trailing columns so the FFO cold-start A/B is verifiable from artifacts.
+        let recorder = try XCTUnwrap(SessionRecorder(baseDir: tempDir))
+        var fv = FeatureVector.zero
+        fv.trackElapsedS = 7.234
+        var stems = StemFeatures.zero
+        stems.cachedBassProportion = 0.31415
+        recorder.recordFrame(features: fv, stems: stems)
+        recorder.finish()
+
+        let csv = try String(
+            contentsOf: recorder.sessionDir.appendingPathComponent("features.csv"),
+            encoding: .utf8)
+        let rows = csv.split(separator: "\n")
+        XCTAssertEqual(rows.count, 2)
+        let cells = rows[1].split(separator: ",", omittingEmptySubsequences: false)
+            .map(String.init)
+        XCTAssertEqual(Float(cells[cells.count - 2]) ?? -1, 7.234, accuracy: 0.0005,
+                       "track_elapsed_s round-trip — second-to-last column")
+        XCTAssertEqual(Float(cells[cells.count - 1]) ?? -1, 0.31415, accuracy: 0.0001,
+                       "cached_bass_proportion round-trip — last column")
     }
 
     // MARK: - Stems CSV round-trips known StemFeatures exactly

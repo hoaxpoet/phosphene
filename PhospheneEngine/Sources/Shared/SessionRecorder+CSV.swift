@@ -6,12 +6,13 @@ extension SessionRecorder {
 
     // swiftlint:disable multiline_arguments
     static func csvRow(features fv: FeatureVector, frame: Int, wallclock: CFAbsoluteTime) -> String {
-        csvRow(features: fv, beatSync: .zero, frame: frame, wallclock: wallclock,
+        csvRow(features: fv, stems: .zero, beatSync: .zero, frame: frame, wallclock: wallclock,
                frameCPUms: nil, frameGPUms: nil)
     }
 
     static func csvRow(
         features fv: FeatureVector,
+        stems: StemFeatures,
         beatSync bs: BeatSyncSnapshot,
         frame: Int,
         wallclock: CFAbsoluteTime,
@@ -43,7 +44,13 @@ extension SessionRecorder {
         // gpuMs is unavailable (cb.gpuEndTime <= cb.gpuStartTime).
         let cpu = frameCPUms.map { String(format: "%.4f", $0) } ?? ""
         let gpu = frameGPUms.map { String(format: "%.4f", $0) } ?? ""
-        let timing = ",\(cpu),\(gpu)\n"
+        // CSP.3 — track_elapsed_s + cached_bass_proportion appended so the
+        // FFO cold-start A/B is verifiable from artifacts. Both are 0 in
+        // the default `csvRow(features:...)` overload (used in test harnesses
+        // that don't have stems context).
+        let elapsed = String(format: "%.4f", fv.trackElapsedS)
+        let bassProp = String(format: "%.5f", stems.cachedBassProportion)
+        let timing = ",\(cpu),\(gpu),\(elapsed),\(bassProp)\n"
         return base + sync + timing
     }
 

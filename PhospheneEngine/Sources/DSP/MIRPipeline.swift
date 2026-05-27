@@ -2,6 +2,7 @@
 // Owns the four analyzers (SpectralAnalyzer, BandEnergyProcessor, ChromaExtractor,
 // BeatDetector), runs them in sequence, and populates a FeatureVector for GPU upload.
 // Chroma, key, and tempo are exposed as CPU-side properties for the Orchestrator.
+// swiftlint:disable file_length
 
 import Foundation
 import Shared
@@ -92,6 +93,26 @@ public final class MIRPipeline: @unchecked Sendable {
     /// Current track info for recording. Set by the app layer.
     public var currentTrackName: String = ""
     public var currentArtistName: String = ""
+
+    // MARK: - CSP.3 — FFO cold-start fix toggle
+
+    /// Toggle for the CSP.3 Ferrofluid Ocean cold-start fix. App layer reads
+    /// `UserDefaults.standard.bool(forKey: "ffoColdStartFixEnabled")` at
+    /// VisualizerEngine init and applies via this property. Default `true` —
+    /// CSP.3 is the experiment arm of Matt's A/B. To run the off-side
+    /// without recompiling:
+    /// ```
+    /// defaults write com.phosphene.app ffoColdStartFixEnabled -bool NO
+    /// ```
+    ///
+    /// **When false**, `buildFeatureVector` writes `trackElapsedS = 100.0`
+    /// instead of the real elapsed time, so the FFO shader's
+    /// `smoothstep(0.5, 14, trackElapsedS)` returns 1.0 — the cold-start
+    /// crossfade collapses to the warm path. Combined with the app layer
+    /// also writing `cachedBassProportion = 0.25` (pivot) when off,
+    /// `fo_spike_strength` reduces exactly to the pre-CSP.3 formula
+    /// `1.0 + 0.35 * stems.bass_energy_dev`. A/B-able from the same build.
+    public var ffoColdStartFixEnabled: Bool = true
 
     // MARK: - Normalization State
 
@@ -302,6 +323,13 @@ public final class MIRPipeline: @unchecked Sendable {
             time: ctx.time,
             deltaTime: ctx.deltaTime
         )
+        // CSP.3 — track-relative elapsed seconds for shader-side cold-start
+        // crossfade. Reset to 0 by reset() on track change. Double storage,
+        // Float upload (D-079 / QR.1). When `ffoColdStartFixEnabled` is OFF,
+        // write 100.0 so the FFO shader's smoothstep(0.5, 14, ...) returns
+        // 1.0 — the cold-start path collapses to the warm path, restoring
+        // pre-CSP.3 behaviour without recompiling.
+        fv.trackElapsedS = ffoColdStartFixEnabled ? Float(elapsedSeconds) : 100.0
         // MV-1: Derive deviation primitives from AGC-normalized values.
         fv.bassRel = (fv.bass - 0.5) * 2.0
         fv.bassDev = max(0, fv.bassRel)

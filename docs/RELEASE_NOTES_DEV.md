@@ -6,6 +6,107 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-27-d] LF.1 Local-file player spike landed — env-var-driven AVAudioEngine playback path
+
+**Increment:** LF.1 (first of the LF.1 → LF.4 local-file discovery arc). **Status:** complete 2026-05-27.
+
+Adds a sibling `InputMode.localFilePlayback(URL)` to `AudioInputRouter` and a new `LocalFilePlaybackProvider` that plays a local audio file through the default output device via `AVAudioEngine` + `AVAudioPlayerNode`, taps the player node's output (pre-mixer, pre-volume), and forwards interleaved float32 PCM through the existing pipeline. Bypasses the Core Audio process-tap path entirely — no screen-capture permission required for the LF path. The existing `.localFile(URL)` diagnostic-injection mode (`SoakTestHarness`, D-052 settings toggle) is preserved byte-identical as a sibling case.
+
+Activated at app launch via `PHOSPHENE_LOCAL_FILE_PLAYBACK=/path/to/file env-launched-app`. The `.task` modifier on `ContentView` reads the env var, calls `VisualizerEngine.startLocalFilePlayback(url:)`, which starts the LF provider, fires the stem pipeline, and transitions `SessionManager` to ad-hoc / `.playing`. `ContentView`'s permission gate is widened to `if isScreenCaptureGranted || localFilePlaybackActive` so the visualizer renders even on a fresh install. `startAudio()` (the process-tap path that `PlaybackView.setup()` calls unconditionally) is short-circuited when LF playback is already active — without this guard, the systemAudio tap install would tear down the LF provider milliseconds after it started. The tap-reinstall scheduler in `AudioInputRouter+SignalState` is mode-gated to be dormant in both `.localFile` and `.localFilePlayback` (no process tap to reinstall, and silence in a played file is real musical silence). See D-128 for the full rationale.
+
+Manual verification on `love_rehab.m4a`: 1684 features.csv frames over 28.96 s, raw_tap.wav at native 44100 Hz with RMS ≈ 0.31, live BeatGrid installed at 118.5 BPM (matches truth), session.log clean of `tap reinstall` / `CGRequestScreenCaptureAccess` / `DRM silence`. Engine tests: 1269/1269 pass (added 2 mode-gate regression tests). SoakTestHarness: 7/7 pass (`.localFile` regression gate intact). 0 SwiftLint violations on the 8 touched files.
+
+Out of scope (deferred to LF.2/LF.3/LF.4): full-track stem pre-analysis, content-keyed cache, folder/M3U ingestion, drag-and-drop / picker UI, crossfade, ID3 tags, SessionManager integration, A/B vs process-tap.
+
+---
+
+## [dev-2026-05-27-c] CSP.3 — FFO cold-start fix (corrected for the three CSP.2 findings)
+
+**Increment:** CSP.3 (single increment, two layers + toggle + instrumentation). **Status:** Implemented 2026-05-27. Engine + app tests pass; manual M7 outstanding (Matt's gate).
+
+### What this fixes
+
+Same product target as CSP.2 — Ferrofluid Ocean's cold-start "biggest problem" where spike heights sit at a song-appropriate but fixed value for the first ~15 s instead of pulsing with live audio. CSP.3 applies the three concrete findings from CSP.2's M7 dive directly.
+
+### The three corrections (vs CSP.2)
+
+1. **Crossfade window: 0.5 s → 14 s.** (CSP.2 used 0.5 → 8 s.) Matches the measured ~13–15 s live-stems convergence time from session `2026-05-27T15-18-55Z`. Now the crossfade hands off *to* live stems instead of finishing before they arrive — no visible "glitch at second 15."
+
+2. **Cold-start proxy: `f.bass_att`** (smoothed continuous bass). (CSP.2 used `f.bass_dev` — a deviation primitive that fires only above AGC average, so ≈ 0 for ~99 % of frames.) `f.bass_att` is continuous and varies with the bass content of the live mix; matches the shape of the warm-state isolated-stem signal.
+
+3. **One-sided baseline.** Cached bass proportion *above* 0.25 → boost spike baseline up to +25 %; *below* 0.25 → baseline stays at 1.0 (no penalty). (CSP.2's symmetric formula penalised sparse-bass tracks like Royals → "inert and broken." The one-sided form: bass-heavy songs visibly tall, sparse songs look exactly like today.)
+
+### A/B toggle + instrumentation
+
+- **UserDefaults toggle `ffoColdStartFixEnabled`** (default ON). Off-side: `defaults write com.phosphene.app ffoColdStartFixEnabled -bool NO`. When OFF, the app writes `trackElapsedS = 100.0` (collapses crossfade to fully warm) and `cachedBassProportion = 0.25` (collapses one-sided baseline to 0) — `fo_spike_strength` then reduces *exactly* to the pre-CSP.3 formula `1.0 + 0.35 × clamp(stems.bass_energy_dev, 0, 1)`. A/B verifiable from the same build.
+- **`features.csv` columns added:** `track_elapsed_s` and `cached_bass_proportion` as trailing columns. A/B verifiable from artifacts in ~30 seconds (the gap that cost an hour of awk-ing during the CSP.2 dive).
+
+### How it works (plain English)
+
+When you press play on a new song:
+
+- **Frame 1:** spikes at a song-appropriate height baseline. Bass-heavy songs (hip-hop, electronic with deep sub) start with **taller** spikes; sparse vocal-led songs look exactly like today (no penalty).
+- **Seconds 0–14:** spikes pulse with the live overall bass in the mix (continuous, smoothed). Bass content → spikes rise; quiet moments → spikes settle.
+- **Seconds 14+:** smooth crossfade to the isolated bass track (the existing warm-state behaviour, exactly as the preset has worked).
+
+### Plumbing changes (same shape as CSP.2)
+
+- New `FeatureVector.trackElapsedS` field (reclaimed from `_pad3`). Populated by `MIRPipeline.buildFeatureVector` from `elapsedSeconds`. Toggle-gated.
+- New `StemFeatures.cachedBassProportion` field (reclaimed from `_sfPad2`). Preserved across live `setStemFeatures(_:)` updates by `RenderPipeline+PresetSwitching`. Installed at track-change in `VisualizerEngine+Stems.swift:resetStemPipeline` from `CachedTrackData.stemFeatures`.
+- `MIRPipeline.ffoColdStartFixEnabled` (Bool, default true). When false, writes `trackElapsedS = 100.0`. App layer reads UserDefaults and sets at init.
+- `RenderPipeline.setCachedBassProportion(_:)` setter; `setStemFeatures(_:)` merge logic preserves the field across live updates.
+- `FerrofluidOcean.metal` `fo_spike_strength` rewritten with constants `FO_SPIKE_COLD_START_FADE_START_S = 0.5`, `FO_SPIKE_COLD_START_FADE_END_S = 14.0`, `FO_SPIKE_BASELINE_PIVOT = 0.25`, `FO_SPIKE_BASELINE_RANGE = 0.25`.
+- `SessionRecorder` CSV header + writer extended (`csvRow(features:beatSync:...)` signature gains a `stems:` parameter).
+
+### Verification
+
+- **Engine:** 1277 / 1277 tests pass. New `CSP3DataPlumbingTests` suite (8 tests across 3 sub-suites): trackElapsedS reset + accumulation (toggle ON), trackElapsedS = 100.0 (toggle OFF), cachedBassProportion preserved across live updates. New `test_recordFrame_csp3Fields_writtenToCSV` regression-locks the CSV round-trip.
+- **App build:** succeeds.
+- **SwiftLint `--strict`:** 0 violations.
+
+**Manual M7 (outstanding — your gate):**
+
+1. Confirm starting state: `defaults read com.phosphene.app ffoColdStartFixEnabled` (or `defaults delete` if previously set).
+2. Run Phosphene. Cycle to Ferrofluid Ocean via `Shift+→`. Play a low-confidence track from the BSAudit.3 validate-3 set — Billie Jean, Royals, Superstition, or Money work as good test cases (you've seen all four in prior sessions).
+3. Watch the first ~15 seconds. Expected: spike heights at a song-appropriate baseline from frame 1, pulsing with the live bass from frame 1, smooth handoff to the today-behaviour around 13–15 s.
+4. Quit. `defaults write com.phosphene.app ffoColdStartFixEnabled -bool NO`. Relaunch. Same track from the start. This should look identical to pre-CSP behaviour.
+5. Binary judgment on the ON arm vs the OFF arm: better, worse, or no different.
+
+**Verifiable from artifacts.** After the run, `features.csv` columns `track_elapsed_s` and `cached_bass_proportion` should show:
+- ON arm: `track_elapsed_s` rising from ~0 at track start, `cached_bass_proportion` set to the computed value for the track (Billie Jean ≈ 0.25, Royals lower, varies by song).
+- OFF arm: `track_elapsed_s` = 100.0 throughout, `cached_bass_proportion` = 0.25 throughout.
+
+### Outcome handling
+
+- **Better:** CSP.3 cert. Same pattern (one-sided baseline + continuous proxy + crossfade timed to real warmup) likely extends to Volumetric Lithograph's terrain pulse and camera dolly — file CSP.4 if you want.
+- **No different:** investigate from CSV before reverting. If the new fields show the expected values but the visual is unchanged, the design space at the cached-perception + live-overall-bass layer is exhausted (move to measurement-first methodology, CSP-Stress.1).
+- **Worse:** revert immediately. Specific failure modes to capture before reverting: which track, what part of the timeline, what does the spike behaviour look like.
+
+### Touched files
+
+- `PhospheneEngine/Sources/Shared/AudioFeatures+Analyzed.swift` — `trackElapsedS` field.
+- `PhospheneEngine/Sources/Shared/StemFeatures.swift` — `cachedBassProportion` field.
+- `PhospheneEngine/Sources/Renderer/Shaders/Common.metal` + `PhospheneEngine/Sources/Presets/PresetLoader+Preamble.swift` — MSL field mirrors.
+- `PhospheneEngine/Sources/DSP/MIRPipeline.swift` — `ffoColdStartFixEnabled` property; toggle-gated `trackElapsedS` write.
+- `PhospheneEngine/Sources/Renderer/RenderPipeline+PresetSwitching.swift` — `setStemFeatures(_:)` merge logic + new `setCachedBassProportion(_:)`.
+- `PhospheneEngine/Sources/Presets/Shaders/FerrofluidOcean.metal` — `fo_spike_strength` rewritten.
+- `PhospheneEngine/Sources/Shared/SessionRecorder.swift` + `SessionRecorder+CSV.swift` — CSV header + writer (signature gains `stems:`).
+- `PhospheneApp/VisualizerEngine.swift` — UserDefaults toggle read at init.
+- `PhospheneApp/VisualizerEngine+Stems.swift` — toggle-gated cached proportion install at track-change.
+- `PhospheneEngine/Tests/PhospheneEngineTests/DSP/CSP3DataPlumbingTests.swift` (new) + `Shared/SessionRecorderTests.swift` updates.
+- `docs/ENGINEERING_PLAN.md` + `docs/RELEASE_NOTES_DEV.md`.
+
+### Local-only
+
+Local commit on `main`. No remote push.
+
+### Related
+
+- `[dev-2026-05-27-b]` (below) — the CSP.2 revert. The three findings from that revert's lessons section are exactly the three corrections in CSP.3.
+- `[dev-2026-05-27-a]` — the CSP.1 + CSP.1.1 revert.
+
+---
+
 ## [dev-2026-05-27-b] CSP.2 reverted — wrong timing, wrong proxy signal, wrong baseline pivot
 
 **Increment:** single `git revert` of CSP.2 (`aefe98e7` → revert `e753b4f4`). **Status:** complete 2026-05-27.
