@@ -107,6 +107,14 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Whether screen capture permission has been granted.
     @Published var hasScreenCapturePermission = false
 
+    /// True when the LF.1 local-file playback path is active. Lets
+    /// `ContentView` bypass the screen-capture permission gate (the
+    /// playback path uses `AVAudioEngine`, not Core Audio process taps,
+    /// so it does not need that permission). Set synchronously at the
+    /// start of `startLocalFilePlayback(url:)` so it is visible to the
+    /// first SwiftUI body re-render that follows.
+    @Published var localFilePlaybackActive: Bool = false
+
     /// Current audio signal state — `.silent` indicates DRM-triggered tap silencing.
     @Published var audioSignalState: AudioSignalState = .active
 
@@ -635,6 +643,22 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         // at runtime via `,`/`.` developer shortcuts. AirPods / Bluetooth users
         // will need a higher value; surfaces as a setting in a future increment.
         self.mirPipeline.liveDriftTracker.audioOutputLatencyMs = 50.0
+        // CSP.3 (2026-05-27): Ferrofluid Ocean cold-start fix toggle. Reads
+        // UserDefaults at app launch; default ON (CSP.3 is the experimental
+        // arm of Matt's A/B). To run the off-side without recompiling:
+        //   defaults write com.phosphene.app ffoColdStartFixEnabled -bool NO
+        // The toggle gates TWO things:
+        //   1. MIRPipeline.trackElapsedS writes the real time when ON; 100.0
+        //      when OFF (collapses the shader's smoothstep crossfade to the
+        //      warm path).
+        //   2. resetStemPipeline installs the computed cached bass proportion
+        //      when ON; 0.25 (the formula pivot) when OFF (collapses the
+        //      shader's one-sided baseline contribution to 0).
+        // Together, OFF restores the pre-CSP.3 `1.0 + 0.35*bass_energy_dev`
+        // formula exactly. See CLAUDE.md §Cold-Start Phase Contract.
+        let ffoColdStartFixEnabled = (UserDefaults.standard
+            .object(forKey: "ffoColdStartFixEnabled") as? Bool) ?? true
+        self.mirPipeline.ffoColdStartFixEnabled = ffoColdStartFixEnabled
         let tier = Self.detectDeviceTier(device: ctx.device)
         self.murmurationGeometry = Self.makeMurmurationGeometry(context: ctx, library: lib)
         self.moodClassifier = classifier

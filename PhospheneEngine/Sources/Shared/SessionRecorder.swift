@@ -237,7 +237,7 @@ public final class SessionRecorder: @unchecked Sendable {
             let cpuMs = self.latestFrameCPUms
             let gpuMs = self.latestFrameGPUms
             // swiftlint:disable multiline_arguments
-            let fRow = SessionRecorder.csvRow(features: features, beatSync: beatSync,
+            let fRow = SessionRecorder.csvRow(features: features, stems: stems, beatSync: beatSync,
                                               frame: idx, wallclock: now,
                                               frameCPUms: cpuMs, frameGPUms: gpuMs)
             // swiftlint:enable multiline_arguments
@@ -322,6 +322,10 @@ public final class SessionRecorder: @unchecked Sendable {
         // positions so positional parsers (DSP.1 baselines, manual awk
         // diagnostics) keep working. New columns go at the end.
         // DM.3a appends frame_cpu_ms and frame_gpu_ms (full-pipeline timing).
+        // CSP.3 (2026-05-27) — track_elapsed_s + cached_bass_proportion
+        // appended so the FFO cold-start A/B is verifiable from artifacts
+        // (gap that surfaced after CSP.2's revert — the diagnostic dive cost
+        // an hour because neither field was loggable).
         let featuresHeader = """
             frame,wallclock_s,time,deltaTime,bass,mid,treble,\
             subBass,lowBass,lowMid,midHigh,highMid,high,\
@@ -330,7 +334,7 @@ public final class SessionRecorder: @unchecked Sendable {
             beatPhase01,bassRel,bassDev,bassAttRel,\
             barPhase01_permille,beatsPerBar,beat_in_bar,is_downbeat,\
             beat_sync_mode,lock_state,grid_bpm,playback_time_s,drift_ms,\
-            frame_cpu_ms,frame_gpu_ms
+            frame_cpu_ms,frame_gpu_ms,track_elapsed_s,cached_bass_proportion
 
             """
         let stemsHeader = """

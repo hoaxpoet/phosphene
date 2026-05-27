@@ -171,9 +171,24 @@ public struct FeatureVector: Sendable {
     /// Defaults to 4 when no BeatGrid is installed.
     public var beatsPerBar: Float
 
-    // --- Padding to 192 bytes (48 floats total — floats 39–48) ---
+    /// CSP.3 (2026-05-27) — track-relative elapsed time in seconds. Resets to
+    /// 0 on `MIRPipeline.reset()` (the track-change call). Used by shaders
+    /// for cold-start crossfade signal sourcing — proxy fields (live
+    /// FeatureVector) for the first ~14 s, then live per-frame stem analysis
+    /// once it converges.
+    ///
+    /// **When the `ffoColdStartFixEnabled` UserDefaults toggle is OFF**,
+    /// `MIRPipeline` populates this field with a large value (100.0) so the
+    /// shader's `smoothstep(0.5, 14, trackElapsedS)` returns 1.0 — the cold-
+    /// start path collapses to the warm path, restoring pre-CSP behaviour
+    /// without recompiling.
+    ///
+    /// Slot reclaimed from `_pad3` to preserve byte-identical layout of
+    /// fields 1–38.
+    public var trackElapsedS: Float
+
+    // --- Padding to 192 bytes (48 floats total — floats 40–48) ---
     // swiftlint:disable identifier_name
-    var _pad3: Float
     var _pad4: Float
     var _pad5: Float
     var _pad6: Float
@@ -219,8 +234,13 @@ public struct FeatureVector: Sendable {
         self.beatPhase01 = 0; self.beatsUntilNext = 0
         // Bar phase — from LiveBeatDriftTracker when a BeatGrid is installed.
         self.barPhase01 = 0; self.beatsPerBar = 4
+        // CSP.3 — populated by MIRPipeline.buildFeatureVector each frame from
+        // `elapsedSeconds`. 0 at track start; rises monotonically. When the
+        // ffoColdStartFixEnabled toggle is off, MIRPipeline writes 100.0
+        // instead so the shader-side crossfade collapses to the warm path.
+        self.trackElapsedS = 0
         // Padding
-        self._pad3 = 0; self._pad4 = 0
+        self._pad4 = 0
         self._pad5 = 0; self._pad6 = 0; self._pad7 = 0; self._pad8 = 0
         self._pad9 = 0; self._pad10 = 0; self._pad11 = 0; self._pad12 = 0
     }

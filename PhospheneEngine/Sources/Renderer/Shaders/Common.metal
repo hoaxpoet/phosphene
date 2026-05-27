@@ -34,8 +34,14 @@ struct FeatureVector {
     // Bar phase: 0 at downbeat, rises to 1 at next downbeat (floats 37–38).
     float bar_phase01;
     float beats_per_bar;
-    // Padding to 192 bytes (floats 39–48).
-    float _pad3, _pad4, _pad5, _pad6, _pad7,
+    // CSP.3 (2026-05-27) — track-relative elapsed time in seconds. Reset
+    // to 0 at track change. Used by FerrofluidOcean's spike-height
+    // cold-start crossfade. When the ffoColdStartFixEnabled toggle is
+    // OFF, MIRPipeline writes 100.0 here so the smoothstep collapses to
+    // the warm path. Float 39 — reclaimed from `_pad3`.
+    float track_elapsed_s;
+    // Padding to 192 bytes (floats 40–48).
+    float _pad4, _pad5, _pad6, _pad7,
           _pad8, _pad9, _pad10, _pad11, _pad12;
 };
 
@@ -101,8 +107,16 @@ struct StemFeatures {
     // matID == 2).
     float drums_energy_dev_smoothed;
 
-    // Padding to 256 bytes (floats 44–64).
-    float _pad2,  _pad3,  _pad4,  _pad5,  _pad6,  _pad7,  _pad8;
+    // CSP.3 (2026-05-27) — bass proportion from pre-playback analysis of
+    // the 30 s preview clip. Frozen for the track's duration (preserved
+    // across live setStemFeatures updates). Drives FFO spike-height
+    // baseline. ∈ [0, 1]. When ffoColdStartFixEnabled is OFF, app layer
+    // sets this to 0.25 (the pivot) so the one-sided baseline formula
+    // contributes 0. Float 44 — reclaimed from `_pad2`.
+    float cached_bass_proportion;
+
+    // Padding to 256 bytes (floats 45–64).
+    float _pad3,  _pad4,  _pad5,  _pad6,  _pad7,  _pad8;
     float _pad9,  _pad10, _pad11, _pad12, _pad13, _pad14, _pad15, _pad16;
     float _pad17, _pad18, _pad19, _pad20, _pad21, _pad22;
 };
