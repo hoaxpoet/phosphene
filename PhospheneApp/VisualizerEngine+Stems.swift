@@ -483,9 +483,11 @@ extension VisualizerEngine {
             // CSP.3 (2026-05-27) — install the cached bass proportion for
             // the track. When the ffoColdStartFixEnabled toggle is ON,
             // compute proportion = bassEnergy / total from the preview
-            // snapshot. When OFF, install 0.25 (the formula pivot) so the
-            // FFO shader's one-sided baseline contribution collapses to 0,
-            // restoring pre-CSP.3 behaviour for the A/B off-arm.
+            // snapshot. When OFF, install 0.15 (the formula pivot per
+            // CSP.3.1) so the FFO shader's one-sided baseline contribution
+            // collapses to 0, restoring pre-CSP.3 behaviour for the
+            // A/B off-arm. Sentinel value MUST match
+            // `FO_SPIKE_BASELINE_PIVOT` in `FerrofluidOcean.metal`.
             let proportionForFFO: Float
             if mirPipeline.ffoColdStartFixEnabled {
                 let stems = cached.stemFeatures
@@ -493,9 +495,9 @@ extension VisualizerEngine {
                     + stems.bassEnergy + stems.otherEnergy
                 proportionForFFO = totalStemEnergy > 0
                     ? stems.bassEnergy / totalStemEnergy
-                    : 0.25
+                    : 0.15
             } else {
-                proportionForFFO = 0.25  // pivot — collapses baseline to 0
+                proportionForFFO = 0.15  // pivot — collapses baseline to 0
             }
             pipeline.setCachedBassProportion(proportionForFFO)
             // BUG-007.8: pass per-track grid-vs-onset offset as initial drift bias.
@@ -521,11 +523,13 @@ extension VisualizerEngine {
             }
         } else {
             pipeline.setStemFeatures(.zero)
-            // CSP.3 — no cached preview available (live reactive mode / ad-hoc
-            // playback / cache miss). Install the formula pivot (0.25) so the
-            // FFO baseline contribution is 0; the Layer-2 cold-start crossfade
-            // still operates with f.bass_att during early playback.
-            pipeline.setCachedBassProportion(0.25)
+            // CSP.3.1 — no cached preview available (live reactive mode /
+            // ad-hoc playback / cache miss). Install the formula pivot
+            // (0.15) so the FFO baseline contribution is 0; the Layer-2
+            // cold-start crossfade still operates with f.bass during
+            // early playback. Sentinel value MUST match
+            // `FO_SPIKE_BASELINE_PIVOT` in `FerrofluidOcean.metal`.
+            pipeline.setCachedBassProportion(0.15)
             mirPipeline.setBeatGrid(nil)
             let trackDesc = identity.map { "'\($0.title)'" } ?? "unknown"
             logger.info(

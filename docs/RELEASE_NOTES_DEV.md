@@ -6,6 +6,61 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-27-e] CSP.3.1 — bass_att → bass, baseline pivot 0.25 → 0.15
+
+**Increment:** CSP.3.1 (two-constant refinement of CSP.3). **Status:** Implemented 2026-05-27. Engine + app tests pass; manual M7 outstanding.
+
+### Why this is here
+
+Matt's CSP.3 M7 on session `2026-05-27T19-38-32Z` (toggle ON, verified from CSV) returned "I still do not see movement of the spikes until about 8 seconds." Diagnostic dive on the new CSV columns surfaced two specific quantitative problems:
+
+1. **`f.bass_att` is too smoothed.** Range during cold-start (first ~12 s): `0.16–0.33`. After multiplying by 0.35, that's a 5.6–11.6 % spike-height variation — about **6 % peak-to-trough**, below the perception floor against FFO's mostly-static spike field. The `att` suffix on `bass_att` literally means *attenuated* (heavy smoothing); it's the wrong primitive for per-frame motion driver. `f.bass` (less smoothed) ranges `0.03–0.53` in the same window, giving ~16 % variation — comfortably visible.
+
+2. **Cached bass proportion is at-or-below the 0.25 pivot for the tested tracks.** Get Lucky: `0.24796`. Superstition: `0.17577`. The one-sided baseline gave **zero contribution** for both — Layer 1 wasn't doing anything for the songs Matt actually plays. Lowering the pivot to 0.15 puts both above the threshold and Layer 1 starts to contribute (Get Lucky ~3 %, Superstition ~1 % — small but non-zero).
+
+### The change
+
+Two constant edits in `FerrofluidOcean.metal` (`fo_spike_strength`):
+
+- `proxy = clamp(f.bass_att, 0.0, 1.0)` → `proxy = clamp(f.bass, 0.0, 1.0)`. Less-smoothed continuous bass for the cold-start crossfade source.
+- `FO_SPIKE_BASELINE_PIVOT = 0.25` → `0.15`. Lower threshold so real-world cached_bass_proportion values get above the floor.
+
+Plus one corresponding edit in `VisualizerEngine+Stems.swift`: the OFF-arm sentinel for `cachedBassProportion` updated from `0.25` to `0.15` to match the new pivot (so toggle-OFF still collapses to the exact pre-CSP formula). Both call sites (cache-hit branch + cache-miss branch).
+
+### What this changes for the viewer
+
+- CSP.3's cold-start spike-height variation: ~6 % peak-to-trough (invisible against the static field).
+- CSP.3.1's cold-start spike-height variation: ~16 % peak-to-trough (~3× the visible range).
+
+Plus Layer 1 baseline now contributes non-zero across songs from frame 1.
+
+### Verification
+
+- All CSP.3 plumbing tests still pass (no test changes needed — sentinels and formula are content, not contract).
+- App build: succeeds.
+- SwiftLint `--strict`: 0 violations.
+
+**Manual M7 (your gate):** same A/B protocol. Same CSV-verifiable. Expected: `f.bass` swing in the live mix → visible spike-height variation during cold-start.
+
+### Open question after this
+
+If CSP.3.1 still doesn't deliver visible cold-start motion, the spike-height consumption point itself isn't going to work — design space at that layer is exhausted. Next move is either a different consumption point (back to swell or aurora, despite the prior ranking) or the stress-test methodology pivot (CSP-Stress.1).
+
+### Touched files
+
+- `PhospheneEngine/Sources/Presets/Shaders/FerrofluidOcean.metal` — two constants + comment updates.
+- `PhospheneApp/VisualizerEngine+Stems.swift` — OFF-arm sentinel (both call sites).
+
+### Local-only
+
+Local commit on `main`. No remote push.
+
+### Related
+
+- `[dev-2026-05-27-c]` (below) — CSP.3, which this refines.
+
+---
+
 ## [dev-2026-05-27-d] LF.1 Local-file player spike landed — env-var-driven AVAudioEngine playback path
 
 **Increment:** LF.1 (first of the LF.1 → LF.4 local-file discovery arc). **Status:** complete 2026-05-27.
