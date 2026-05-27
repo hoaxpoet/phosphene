@@ -4554,21 +4554,19 @@ Surfaced 2026-05-28 by the SAR.1 M7 close. `features.csv` `frame_cpu_ms` doubles
 
 Filed as **BUG-019** (P1, `perf`). Multi-increment P1 process per the defect protocol: instrumentation → diagnosis → fix → validation.
 
-### Increment PERF.1 — Per-subsystem timing instrumentation (scope-pending, awaiting Matt sign-off)
+### Increment PERF.1 — Per-subsystem timing instrumentation ✅ (2026-05-28)
 
-Add per-subsystem timing columns to `features.csv` so the 11 ms → 23 ms CPU jump can be attributed. Working scope (subject to Matt's sign-off before any code lands):
+Added five timing columns to `features.csv` so the BUG-019 CPU bump can be attributed: `mir_pipeline_ms`, `stem_analyzer_ms`, `beat_detector_ms`, `pitch_tracker_ms`, `mood_classifier_ms`. Measurement via `DispatchTime.now().uptimeNanoseconds` snapshots bracketing each component's per-frame call. No behaviour change, no allocations on the hot path; sub-microsecond cost per measurement. Inner stem-analyzer timings (beat detector + pitch tracker) surfaced as `lastBeatDetectorMs` / `lastPitchTrackerMs` on `StemAnalyzer` and read on the same serial queue, so no cross-queue synchronization needed.
 
-- `stem_analyzer_ms` — wall-clock cost of `StemAnalyzer.analyze` per frame.
-- `beat_detector_ms` — wall-clock cost of the drums beat-detector path inside the stem analyzer.
-- `pitch_tracker_ms` — wall-clock cost of `PitchTracker.process` (YIN on vocals stem).
-- `mir_pipeline_ms` — wall-clock cost of the per-frame `MIRPipeline` tick.
-- One catch-all `analysis_other_ms` so the sum-of-parts approximates total CPU and gaps point to remaining unmeasured surfaces.
+**Done-when.**
 
-No new behaviour, no algorithmic changes, no allocations on the hot path (timing via `DispatchTime.now()` start/end snapshots, single-frame arithmetic, CSV column-write only).
+- [x] Engine: 1295 / 1295 tests pass. New `SessionRecorderTests`: `test_recordSubsystemTimings_thenRecordFrame_writesAllFiveColumns` (round-trip) + `test_recordFrame_beforeAnySubsystemTimings_writesEmptyCells` (cold-start). 5 existing column-position tests updated for the new layout (DM.3a + CSP.3 cells shifted by 5).
+- [x] App build: succeeds.
+- [x] SwiftLint `--strict`: 0 violations on 6 touched files (1 new file: `SessionRecorder+Timing.swift`, which absorbed `recordFrameTiming` to keep the main `SessionRecorder.swift` under the 400-line warning).
+- [x] CSV header round-trip: invariant test asserts `features.csv` ends with the PERF.1 timing block.
+- [ ] **Matt captures a fresh tap-path session past 70 s session-uptime.** Any prepared Spotify playlist with FFO (or any other preset — the bug isn't preset-specific). PERF.2 reads the new columns to attribute the bump.
 
-Goal: a fresh tap-path session capture, run past the 70 s session-time mark, shows which subsystem(s) account for the doubling. Diagnosis (PERF.2) then proposes the fix.
-
-**Done-when.** Engine + app builds clean, SwiftLint `--strict` clean, new fields appear in `features.csv` with reasonable values throughout, and a captured tap-path session ≥ 90 s reveals which column(s) climb at session-time 67–68 s.
+See `RELEASE_NOTES_DEV.md [dev-2026-05-28-b]` for the full closeout.
 
 ### Increment PERF.2 — Diagnosis (placeholder)
 

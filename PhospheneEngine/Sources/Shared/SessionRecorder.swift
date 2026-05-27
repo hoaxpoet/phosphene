@@ -120,6 +120,14 @@ public final class SessionRecorder: @unchecked Sendable {
     var latestFrameCPUms: Float?
     var latestFrameGPUms: Float?
 
+    // MARK: Per-subsystem analysis timing (PERF.1 — BUG-019 instrumentation).
+    // Setter + threading contract in `SessionRecorder+Timing.swift`.
+    var latestMIRPipelineMs: Float?
+    var latestStemAnalyzerMs: Float?
+    var latestBeatDetectorMs: Float?
+    var latestPitchTrackerMs: Float?
+    var latestMoodClassifierMs: Float?
+
     // MARK: Raw-tap streaming WAV state (diagnostic — first 30s).
     var rawTapHandle: FileHandle?
     var rawTapSampleRate: UInt32 = 0
@@ -236,10 +244,18 @@ public final class SessionRecorder: @unchecked Sendable {
             self.frameIndex += 1
             let cpuMs = self.latestFrameCPUms
             let gpuMs = self.latestFrameGPUms
+            let subsystem = SubsystemTimingSnapshot(
+                mirPipelineMs: self.latestMIRPipelineMs,
+                stemAnalyzerMs: self.latestStemAnalyzerMs,
+                beatDetectorMs: self.latestBeatDetectorMs,
+                pitchTrackerMs: self.latestPitchTrackerMs,
+                moodClassifierMs: self.latestMoodClassifierMs
+            )
             // swiftlint:disable multiline_arguments
             let fRow = SessionRecorder.csvRow(features: features, stems: stems, beatSync: beatSync,
                                               frame: idx, wallclock: now,
-                                              frameCPUms: cpuMs, frameGPUms: gpuMs)
+                                              frameCPUms: cpuMs, frameGPUms: gpuMs,
+                                              subsystem: subsystem)
             // swiftlint:enable multiline_arguments
             self.featuresHandle.write(fRow.data(using: .utf8) ?? Data())
             let sRow = SessionRecorder.csvRow(stems: stems, frame: idx, wallclock: now)
@@ -247,18 +263,6 @@ public final class SessionRecorder: @unchecked Sendable {
             guard !throttled, let tex = self.captureTexture else { return }
             self.lastVideoFrameTime = now
             self.appendVideoFrame(from: tex, wallclock: now)
-        }
-    }
-
-    /// Record one frame's CPU + GPU timing as observed by `RenderPipeline`.
-    /// Wires `RenderPipeline.onFrameTimingObserved` to the next features.csv
-    /// row's `frame_cpu_ms` / `frame_gpu_ms` columns. Safe to call from any
-    /// thread — the update hops onto the recorder's serial queue. (DM.3a)
-    public func recordFrameTiming(cpuMs: Float, gpuMs: Float?) {
-        queue.async { [weak self] in
-            guard let self = self else { return }
-            self.latestFrameCPUms = cpuMs
-            self.latestFrameGPUms = gpuMs
         }
     }
 
@@ -326,6 +330,13 @@ public final class SessionRecorder: @unchecked Sendable {
         // appended so the FFO cold-start A/B is verifiable from artifacts
         // (gap that surfaced after CSP.2's revert — the diagnostic dive cost
         // an hour because neither field was loggable).
+        // PERF.1 (2026-05-28) — per-subsystem analysis-frame timing breakdown
+        // appended to attribute the BUG-019 CPU degradation:
+        // mir_pipeline_ms (MIRPipeline.process), stem_analyzer_ms
+        // (StemAnalyzer.analyze total), beat_detector_ms (drums BeatDetector
+        // inside stem analyzer), pitch_tracker_ms (vocals YIN inside stem
+        // analyzer), mood_classifier_ms (runMoodClassifier; 0 on
+        // non-firing frames).
         let featuresHeader = """
             frame,wallclock_s,time,deltaTime,bass,mid,treble,\
             subBass,lowBass,lowMid,midHigh,highMid,high,\
@@ -334,7 +345,8 @@ public final class SessionRecorder: @unchecked Sendable {
             beatPhase01,bassRel,bassDev,bassAttRel,\
             barPhase01_permille,beatsPerBar,beat_in_bar,is_downbeat,\
             beat_sync_mode,lock_state,grid_bpm,playback_time_s,drift_ms,\
-            frame_cpu_ms,frame_gpu_ms,track_elapsed_s,cached_bass_proportion
+            frame_cpu_ms,frame_gpu_ms,track_elapsed_s,cached_bass_proportion,\
+            mir_pipeline_ms,stem_analyzer_ms,beat_detector_ms,pitch_tracker_ms,mood_classifier_ms
 
             """
         let stemsHeader = """

@@ -138,13 +138,19 @@ extension VisualizerEngine {
         lastAnalysisTime = now
         let effectiveFps = 1.0 / dt
 
+        // PERF.1 — BUG-019 instrumentation. Wrap the per-subsystem hot paths
+        // with DispatchTime.now() snapshots so the cost-by-component can be
+        // attributed from features.csv. No allocations on the hot path; cost
+        // of the measurement itself is sub-microsecond.
         let mir = mirPipeline
+        let mirT0 = DispatchTime.now().uptimeNanoseconds
         let fv = mir.process(
             magnitudes: magnitudes,
             fps: effectiveFps,
             time: 0,
             deltaTime: dt
         )
+        let mirPipelineMs = Float(DispatchTime.now().uptimeNanoseconds - mirT0) / 1_000_000.0
 
         // Feed live MIR features to the render pipeline.
         pipeline.setFeatures(fv)
@@ -163,7 +169,13 @@ extension VisualizerEngine {
         // once per 5s separation cycle (piecewise-constant values hit the
         // GPU for 5s at a time — see session 2026-04-16T20-56-46Z where
         // only 25 unique drumsBeat values appeared across 8,987 frames).
+        let stemT0 = DispatchTime.now().uptimeNanoseconds
         runPerFrameStemAnalysis(fps: effectiveFps)
+        let stemAnalyzerMs = Float(DispatchTime.now().uptimeNanoseconds - stemT0) / 1_000_000.0
+        // Inner timings surfaced by StemAnalyzer (drums beat detector +
+        // vocals YIN pitch). Reads are safe — same serial analysis queue.
+        let beatDetectorMs = stemAnalyzer.lastBeatDetectorMs
+        let pitchTrackerMs = stemAnalyzer.lastPitchTrackerMs
 
         // Live Beat This! trigger — fires once per track after 10s of buffered
         // audio, installing a BeatGrid for ad-hoc/reactive sessions. Spotify-
@@ -171,8 +183,11 @@ extension VisualizerEngine {
         // the offline pre-analysis path.
         runLiveBeatAnalysisIfNeeded()
 
+        var moodClassifierMs: Float = 0
         if let mood = moodClassifier {
+            let moodT0 = DispatchTime.now().uptimeNanoseconds
             runMoodClassifier(mood: mood, fv: fv, mir: mir, magnitudes: magnitudes)
+            moodClassifierMs = Float(DispatchTime.now().uptimeNanoseconds - moodT0) / 1_000_000.0
         }
 
         // BUG-015: tick the orchestrator live-adaptation pipeline at ~3 Hz
@@ -182,6 +197,19 @@ extension VisualizerEngine {
         // (the cached `lastClassifiedMood` defaults to `.neutral` until
         // the first classification lands ~3 s into a session).
         runOrchestratorLiveUpdate(mir: mir)
+
+        // Push the breakdown to the session recorder. The next features.csv
+        // row to be written (on the render-loop completion handler, ~60 Hz)
+        // reads these and emits the per-subsystem columns. Lag is bounded
+        // by the analysis-vs-render frame rate gap (analysis ~94 Hz,
+        // render ~60 Hz), same pattern as frame_cpu_ms.
+        sessionRecorder?.recordSubsystemTimings(
+            mirPipelineMs: mirPipelineMs,
+            stemAnalyzerMs: stemAnalyzerMs,
+            beatDetectorMs: beatDetectorMs,
+            pitchTrackerMs: pitchTrackerMs,
+            moodClassifierMs: moodClassifierMs
+        )
     }
 
     /// Slide a 1024-sample window through the most recent separated stem

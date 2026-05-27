@@ -143,6 +143,19 @@ public final class StemAnalyzer: StemAnalyzing, @unchecked Sendable {
     var magnitudes: [Float]
     private let lock = NSLock()
 
+    // MARK: - Per-frame Timing Breakdown (PERF.1 — BUG-019 instrumentation)
+
+    /// Wall-clock cost in milliseconds of the drums-stem beat detector
+    /// during the most recent `analyze(...)` call. Read by VisualizerEngine
+    /// after `analyze` returns, on the same serial analysis queue — no
+    /// synchronization needed.
+    public private(set) var lastBeatDetectorMs: Float = 0
+
+    /// Wall-clock cost in milliseconds of the vocals-stem YIN pitch tracker
+    /// during the most recent `analyze(...)` call. Same threading contract
+    /// as `lastBeatDetectorMs`.
+    public private(set) var lastPitchTrackerMs: Float = 0
+
     // MARK: - Init
 
     /// Create a stem analyzer.
@@ -197,7 +210,14 @@ public final class StemAnalyzer: StemAnalyzing, @unchecked Sendable {
         let (bassResult, bassMags) = analyzeStem(stemWaveforms[2], processor: energyProcessors[2], fps: fps)
         let (otherResult, otherMags) = analyzeStem(stemWaveforms[3], processor: energyProcessors[3], fps: fps)
         let drumsMags = computeMagnitudes(from: stemWaveforms[1])
+        // PERF.1 — time the drums beat detector + vocals pitch tracker
+        // independently inside the stem analyzer so the BUG-019 attribution
+        // can drill below `stem_analyzer_ms` without a second instrumentation
+        // pass. Surfaced as `lastBeatDetectorMs` / `lastPitchTrackerMs` for
+        // the caller (VisualizerEngine.processAnalysisFrame) to read.
+        let beatT0 = DispatchTime.now().uptimeNanoseconds
         let beatResult = drumsBeatDetector.process(magnitudes: drumsMags, fps: fps, deltaTime: dt)
+        lastBeatDetectorMs = Float(DispatchTime.now().uptimeNanoseconds - beatT0) / 1_000_000.0
         let vocalsE = vocalsResult.bass + vocalsResult.mid + vocalsResult.treble
         let drumsE = drumsResult.bass + drumsResult.mid + drumsResult.treble
         let bassE = bassResult.bass + bassResult.mid + bassResult.treble
@@ -206,7 +226,9 @@ public final class StemAnalyzer: StemAnalyzing, @unchecked Sendable {
         let allResults: [BandEnergyProcessor.Result] = [vocalsResult, drumsResult, bassResult, otherResult]
         let allMags = [vocalsMags, drumsMags, bassMags, otherMags]
         let richAll = computeAllRichFeatures(stemWaveforms: stemWaveforms, results: allResults, mags: allMags, dt: dt)
+        let pitchT0 = DispatchTime.now().uptimeNanoseconds
         let (pitchHz, pitchConf) = pitchTracker.process(waveform: stemWaveforms[0])
+        lastPitchTrackerMs = Float(DispatchTime.now().uptimeNanoseconds - pitchT0) / 1_000_000.0
         let inputs = StemBandInputs(
             vocalsE: vocalsE,
             vocalsResult: vocalsResult,
