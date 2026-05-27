@@ -56,6 +56,37 @@ public struct RenderTimingSnapshot: Sendable {
     public static let empty = RenderTimingSnapshot(encodeCpuMs: nil, renderFrameCpuMs: nil)
 }
 
+/// Ray-march per-pass timing breakdown. (PERF.2-pass — BUG-019 instrumentation.)
+/// Captured inside `RayMarchPipeline.render(...)` and plumbed via
+/// `RenderPipeline.onRayMarchPassTimingObserved`. All fields optional so frames
+/// where the active preset doesn't take the ray-march path emit empty cells
+/// (mv_warp, feedback, ICB, post-process-only paths all produce nil values).
+public struct RayMarchPassTimingSnapshot: Sendable {
+    public let gbufferPassMs: Float?
+    public let lightingPassMs: Float?
+    public let ssgiPassMs: Float?
+    public let postProcessPassMs: Float?
+
+    public init(
+        gbufferPassMs: Float?,
+        lightingPassMs: Float?,
+        ssgiPassMs: Float?,
+        postProcessPassMs: Float?
+    ) {
+        self.gbufferPassMs = gbufferPassMs
+        self.lightingPassMs = lightingPassMs
+        self.ssgiPassMs = ssgiPassMs
+        self.postProcessPassMs = postProcessPassMs
+    }
+
+    public static let empty = RayMarchPassTimingSnapshot(
+        gbufferPassMs: nil,
+        lightingPassMs: nil,
+        ssgiPassMs: nil,
+        postProcessPassMs: nil
+    )
+}
+
 extension SessionRecorder {
 
     // MARK: - CSV row formatting
@@ -63,7 +94,8 @@ extension SessionRecorder {
     // swiftlint:disable multiline_arguments
     static func csvRow(features fv: FeatureVector, frame: Int, wallclock: CFAbsoluteTime) -> String {
         csvRow(features: fv, stems: .zero, beatSync: .zero, frame: frame, wallclock: wallclock,
-               frameCPUms: nil, frameGPUms: nil, subsystem: .empty, renderTiming: .empty)
+               frameCPUms: nil, frameGPUms: nil, subsystem: .empty, renderTiming: .empty,
+               rayMarchPass: .empty)
     }
 
     static func csvRow(
@@ -75,7 +107,8 @@ extension SessionRecorder {
         frameCPUms: Float? = nil,
         frameGPUms: Float? = nil,
         subsystem: SubsystemTimingSnapshot = .empty,
-        renderTiming: RenderTimingSnapshot = .empty
+        renderTiming: RenderTimingSnapshot = .empty,
+        rayMarchPass: RayMarchPassTimingSnapshot = .empty
     ) -> String {
         let base = String(format: "%d,%.4f,%.4f,%.4f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,"
                                + "%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,"
@@ -123,8 +156,15 @@ extension SessionRecorder {
         // first render-loop completion handler fires.
         let encodeMs = renderTiming.encodeCpuMs.map { String(format: "%.4f", $0) } ?? ""
         let rfMs = renderTiming.renderFrameCpuMs.map { String(format: "%.4f", $0) } ?? ""
-        let renderTimingCols = ",\(encodeMs),\(rfMs)\n"
-        return base + sync + timing + subTiming + renderTimingCols
+        let renderTimingCols = ",\(encodeMs),\(rfMs)"
+        // PERF.2-pass — ray-march per-pass CPU breakdown. Empty cells on frames
+        // where the active preset doesn't take the ray-march path.
+        let gbufMs = rayMarchPass.gbufferPassMs.map { String(format: "%.4f", $0) } ?? ""
+        let lightMs = rayMarchPass.lightingPassMs.map { String(format: "%.4f", $0) } ?? ""
+        let ssgiMs = rayMarchPass.ssgiPassMs.map { String(format: "%.4f", $0) } ?? ""
+        let postMs = rayMarchPass.postProcessPassMs.map { String(format: "%.4f", $0) } ?? ""
+        let rayMarchPassCols = ",\(gbufMs),\(lightMs),\(ssgiMs),\(postMs)\n"
+        return base + sync + timing + subTiming + renderTimingCols + rayMarchPassCols
     }
 
     static func csvRow(stems: StemFeatures, frame: Int, wallclock: CFAbsoluteTime) -> String {

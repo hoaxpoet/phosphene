@@ -51,9 +51,11 @@ extension RenderPipeline {
 
 extension RenderPipeline {
 
-    // swiftlint:disable function_parameter_count
+    // swiftlint:disable function_parameter_count function_body_length
     // `drawWithRayMarch` takes 7 parameters — the minimal render-pass context plus
-    // an optional scene output texture for the mv_warp handoff.
+    // an optional scene output texture for the mv_warp handoff. PERF.2-pass adds
+    // a 7-line `onRayMarchPassTimingObserved` callback fire to surface per-sub-pass
+    // timings, pushing the body just past the 60-line limit.
 
     /// Deferred ray march render pass.
     ///
@@ -176,6 +178,17 @@ extension RenderPipeline {
             presetHeightTexture: presetHeightTex
         )
 
+        // PERF.2-pass — surface per-sub-pass timings to the recorder so BUG-019
+        // diagnosis can drill below renderframe_cpu_ms. Reads from
+        // `rayMarchState`'s `lastFooPassMs` properties (set inside `render(...)`
+        // on this same MainActor thread — no synchronization needed).
+        onRayMarchPassTimingObserved?(
+            rayMarchState.lastGBufferPassMs,
+            rayMarchState.lastLightingPassMs,
+            rayMarchState.lastSSGIPassMs,
+            rayMarchState.lastPostProcessPassMs
+        )
+
         // Present only when rendering directly to the drawable (normal path).
         // When sceneOutputTexture is non-nil, the mv_warp blit pass presents instead.
         if let drawable = drawable {
@@ -183,7 +196,7 @@ extension RenderPipeline {
         }
     }
 
-    // swiftlint:enable function_parameter_count
+    // swiftlint:enable function_parameter_count function_body_length
 
     // MARK: - Audio-Reactive Modulation
 

@@ -70,4 +70,30 @@ extension SessionRecorder {
             self.latestRenderFrameCPUms = renderFrameCpuMs
         }
     }
+
+    /// Record one ray-march frame's per-sub-pass timing breakdown for the
+    /// next features.csv row's `gbuffer_pass_ms` / `lighting_pass_ms` /
+    /// `ssgi_pass_ms` / `post_process_pass_ms` columns. Wires
+    /// `RenderPipeline.onRayMarchPassTimingObserved` to the recorder.
+    /// (PERF.2-pass — BUG-019 instrumentation.)
+    ///
+    /// Only fires on frames where the active preset takes the ray-march path.
+    /// Frames running mv_warp / feedback / ICB / post-process-only paths leave
+    /// these CSV cells empty (the recorder's latest* fields stay at their last
+    /// observed value, which is fine — diagnostic scans should filter by the
+    /// known-active preset).
+    public func recordRayMarchPassTimings(
+        gbufferMs: Float,
+        lightingMs: Float,
+        ssgiMs: Float,
+        postProcessMs: Float
+    ) {
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            self.latestGBufferPassMs = gbufferMs
+            self.latestLightingPassMs = lightingMs
+            self.latestSSGIPassMs = ssgiMs
+            self.latestPostProcessPassMs = postProcessMs
+        }
+    }
 }

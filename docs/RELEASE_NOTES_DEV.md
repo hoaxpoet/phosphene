@@ -6,6 +6,95 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-28-d] PERF.2-pass — Ray-march per-sub-pass timing, plus PERF.2-render diagnosis from session 21:48:28Z
+
+**Increment:** PERF.2-pass (Phase PERF step 2.5 — combined diagnosis + per-sub-pass instrumentation). **Status:** Implemented 2026-05-28. Engine 1317/1317 tests pass; SwiftLint `--strict` clean; app build clean (app tests have 3 pre-existing `FirstAudioDetectorTests` parallel-execution flakes that pass in isolation). Next: fresh tap-path capture past 70 s session-uptime + at least one bump cycle, run by Matt.
+
+### PERF.2-render diagnosis from session `2026-05-27T22-15-25Z`
+
+PERF.2-render added two columns (`encode_cpu_ms`, `renderframe_cpu_ms`) to split the render-loop wall-clock. Matt captured a session past 70 s. The data delivers a decisive verdict:
+
+| Window (session-time) | `frame_cpu_ms` avg | `encode_cpu_ms` avg | `renderframe_cpu_ms` avg | `frame_gpu_ms` avg |
+|---|---:|---:|---:|---:|
+| 50–60 s (pre-bump) | 4.75 | 0.37 | 0.34 | 3.78 |
+| 80–90 s (peak) | 13.54 | **9.02** | **8.99** | 3.90 |
+| 100–110 s (peak) | 13.87 | **9.78** | **9.74** | 3.42 |
+| 120–130 s (recovered) | 5.30 | 0.33 | 0.29 | 4.42 |
+
+`encode_cpu_ms` and `renderframe_cpu_ms` double in lockstep with `frame_cpu_ms`. The delta `encode − renderframe` stays at ~0.04 ms throughout — pre/post setup is innocent. **The CPU work is inside `renderFrame()`'s pass dispatch** (specifically one of the `drawWith*` functions). GPU work is stable at 3.5–4.5 ms — the bump is purely CPU.
+
+### The bump self-recovered for the first time
+
+This session bumped at session-time ~60 s, sustained for ~56 seconds, then **recovered with a single 96 ms hitch frame** at 116.03 s:
+
+```
+115.82 s  cpu=13.82  enc=8.96  rf=8.92    ← still bumped
+116.03 s  cpu=96.42  enc=72.40 rf=72.30   ← recovery hitch (1 frame, all the work in encode)
+116.16 s  cpu= 4.68  enc=0.31  rf=0.27    ← immediately back to baseline
+```
+
+After 116 s, every window through end-of-session sat at ~5–6 ms cpu. The prior M7 session (`2026-05-27T21-12-48Z`) never hit this recovery and stayed bumped through end of capture. The recovery moment doesn't correlate with any session-log event (no track change, no preset change, no stem-separation event right at 116.03 s — sep 13 fired at session-time 112 s, sep 14 at 117 s; the hitch lands between them). **The 96 ms hitch is itself an encode-CPU-side event** — `enc=72.40` accounts for almost all of `cpu=96.42`, meaning the cleanup work happens on the render thread's CPU during encode.
+
+Combined picture: render-pass dispatch accumulates state for ~60 s, doubles CPU encode work per frame, then at some unidentified trigger releases the state in a single ~100 ms cleanup frame and returns to baseline. Suggests a buffer / cache / encoder state that grows under sustained playback and gets evicted at some threshold.
+
+### What PERF.2-pass adds
+
+Four more columns to `features.csv`, scoped to the ray-march path:
+
+| Column | Measures |
+|---|---|
+| `gbuffer_pass_ms` | wall-clock of the G-buffer pass (SDF or mesh) |
+| `lighting_pass_ms` | wall-clock of the lighting pass |
+| `ssgi_pass_ms` | wall-clock of SSGI pass + blend (0 when suppressed) |
+| `post_process_pass_ms` | wall-clock of bloom / composite |
+
+Measurement via `CACurrentMediaTime()` snapshots inside `RayMarchPipeline.render(...)`. Each sub-pass's value is stored on `RayMarchPipeline.lastFooPassMs` (`public private(set) var`), read by `RenderPipeline.drawWithRayMarch` after `render(...)` returns (same MainActor thread — no synchronization), and plumbed via a new `onRayMarchPassTimingObserved` callback.
+
+Frames running non-ray-march presets leave these cells empty. Empty cells distinguish "preset doesn't use this path" from "measured 0".
+
+### What the next capture will tell us
+
+For an FFO session running past the 70 s bump trigger, three actionable outcomes:
+
+- **One of `gbuffer_pass_ms`, `lighting_pass_ms`, `ssgi_pass_ms`, `post_process_pass_ms` doubles** — we know which sub-pass owns the growing state. PERF.3 (fix) targets it.
+- **Multiple sub-passes double in lockstep** — the bump is a shared resource (texture pool, command-buffer encoder state) affecting all of them. Likely cause: GPU back-pressure causing `makeRenderCommandEncoder` calls to block.
+- **None of the four sub-passes doubles, but `renderframe_cpu_ms` still does** — the bump is in dispatch overhead between sub-passes (uniform updates, audio modulation, drawable acquisition inside `drawWithRayMarch` before `rayMarchState.render`). Less likely given the code-read; would point at lock contention or per-frame allocations.
+
+### Verification
+
+- **Engine:** 1317/1317 tests pass. Added 2 new tests in `SessionRecorderTests`: `test_recordRayMarchPassTimings_thenRecordFrame_writesAllFourColumns` (round-trip), `test_recordFrame_beforeAnyRayMarchPassTimings_writesEmptyCells` (cold-start). Existing column-position tests updated for the PERF.2-pass layout (DM.3a / CSP.3 / PERF.1 / PERF.2-render cells shifted by 4).
+- **App build:** succeeds. App test failures (3 in `FirstAudioDetectorTests`) are pre-existing parallel-execution flakes — pass in isolation per the project test-baseline flake list.
+- **SwiftLint `--strict`:** 0 violations on the 7 touched source files. `SessionRecorder.swift` over the 400-line warning now; file-length warning disabled at top with a comment explaining the +CSV / +Timing extension split and what remains in the core file.
+- **CSV header invariant:** new test asserts `features.csv` ends with `gbuffer_pass_ms,lighting_pass_ms,ssgi_pass_ms,post_process_pass_ms`.
+
+### What's next
+
+Matt captures a fresh tap-path FFO session past 70 s session-uptime. Ideally run continuously through one full bump cycle (i.e. past ~120 s) so we capture both the bumped window and a recovery, if it happens again. PERF.2-pass diagnosis reads the four new columns to attribute the bump. PERF.3 (the fix) targets it.
+
+### Touched files
+
+- `PhospheneEngine/Sources/Renderer/RayMarchPipeline.swift` — 4 `lastFooPassMs` properties; `CACurrentMediaTime()` snapshots wrapping each sub-pass dispatch inside `render(...)`; QuartzCore import.
+- `PhospheneEngine/Sources/Renderer/RenderPipeline.swift` — new `onRayMarchPassTimingObserved` callback.
+- `PhospheneEngine/Sources/Renderer/RenderPipeline+RayMarch.swift` — fires the new callback after `rayMarchState.render(...)` returns.
+- `PhospheneEngine/Sources/Shared/SessionRecorder.swift` — 4 new `latest*PassMs` storage fields; CSV header extended.
+- `PhospheneEngine/Sources/Shared/SessionRecorder+CSV.swift` — `RayMarchPassTimingSnapshot` value type; `csvRow(...)` gains `rayMarchPass:` parameter.
+- `PhospheneEngine/Sources/Shared/SessionRecorder+Timing.swift` — `recordRayMarchPassTimings(...)` setter.
+- `PhospheneApp/VisualizerEngine+InitHelpers.swift` — wires the new callback.
+- `PhospheneEngine/Tests/PhospheneEngineTests/Shared/SessionRecorderTests.swift` — 2 new tests + position updates.
+- `docs/ENGINEERING_PLAN.md` — PERF.2-pass status added; PERF.2 diagnosis findings recorded.
+- `docs/QUALITY/KNOWN_ISSUES.md` — BUG-019 updated with PERF.2-render diagnosis result.
+
+### Local-only
+
+Local commit on `main`. No remote push.
+
+### Related
+
+- `[dev-2026-05-28-c]` — PERF.2-render (the previous instrumentation increment whose data this one diagnoses).
+- BUG-019 in `KNOWN_ISSUES.md`.
+
+---
+
 ## [dev-2026-05-28-c] PERF.2-render — Render-loop CPU breakdown, plus PERF.2 diagnosis from PERF.1 capture
 
 **Increment:** PERF.2-render (Phase PERF step 2 — combined diagnosis + render-loop instrumentation). **Status:** Implemented 2026-05-28. Engine 1303/1303 tests pass; SwiftLint `--strict` clean; app build clean. Next: fresh tap-path capture past the 70 s session-time mark, run by Matt, to attribute the bump to either render-encode CPU or GPU-queue-wait.

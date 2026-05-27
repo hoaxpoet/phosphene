@@ -90,10 +90,12 @@ Unknown — needs the instrumentation increment first. **Multi-increment** per t
 
 1. **Instrumentation (PERF.1) ✅ 2026-05-28** — five new `features.csv` columns: `mir_pipeline_ms`, `stem_analyzer_ms`, `beat_detector_ms`, `pitch_tracker_ms`, `mood_classifier_ms`. See `RELEASE_NOTES_DEV.md [dev-2026-05-28-b]`.
 2. **Diagnosis (PERF.2) ✅ 2026-05-28 — partial** — Matt's session `2026-05-27T21-48-28Z` analysis: all five PERF.1 columns flat across the bump while `frame_cpu_ms` doubles. CPU pressure is **not** on the audio analysis queue. Root cause narrowed to the render thread (CPU encode and/or GPU queue-wait). See `RELEASE_NOTES_DEV.md [dev-2026-05-28-c]`.
-3. **Instrumentation extension (PERF.2-render) ✅ 2026-05-28** — two more columns: `encode_cpu_ms` (CPU encode side of the render loop) and `renderframe_cpu_ms` (time inside `renderFrame`'s pass dispatch). Splits the render-loop wall-clock into (a) CPU encode, (b) GPU queue-wait + execute, (c) pre/post setup around the dispatched pass.
-4. **Diagnosis (PERF.2-diagnose) — next** — Matt captures a fresh tap-path session past 70 s session-uptime; attribute the bump to setup/teardown (encode doubles, renderframe flat), render dispatch (both double), or GPU queue-wait (neither doubles). Update this entry with the verdict.
-5. **Fix (PERF.3)** — once root cause is known.
-6. **Validation (PERF.4)** — run the verification criteria above.
+3. **Instrumentation extension (PERF.2-render) ✅ 2026-05-28** — two more columns: `encode_cpu_ms` (CPU encode side of the render loop) and `renderframe_cpu_ms` (time inside `renderFrame`'s pass dispatch). See `RELEASE_NOTES_DEV.md [dev-2026-05-28-c]`.
+4. **Diagnosis (PERF.2-render) ✅ 2026-05-28 — partial** — Matt's session `2026-05-27T22-15-25Z` analysis: `encode_cpu_ms` and `renderframe_cpu_ms` double in lockstep with `frame_cpu_ms`; the bump is **inside `renderFrame()`'s pass dispatch**. Setup/teardown is innocent (`encode − renderframe` stays at ~0.04 ms throughout). Session also caught first observed self-recovery: 96 ms hitch frame at session-time 116 s released the accumulated state and returned CPU to baseline. See `RELEASE_NOTES_DEV.md [dev-2026-05-28-d]`.
+5. **Instrumentation extension (PERF.2-pass) ✅ 2026-05-28** — four more columns: `gbuffer_pass_ms`, `lighting_pass_ms`, `ssgi_pass_ms`, `post_process_pass_ms`. Splits the ray-march render dispatch into its four sub-passes.
+6. **Diagnosis (PERF.2-pass) — next** — Matt captures a fresh tap-path FFO session past 70 s session-uptime, ideally past 120 s to catch any self-recovery; attribute the bump to one of the four sub-passes (or to dispatch overhead between them if all four stay flat).
+7. **Fix (PERF.3)** — once root cause is known.
+8. **Validation (PERF.4)** — run the verification criteria above.
 
 ### Related
 

@@ -24,6 +24,7 @@
 //   3. The composite pass is skipped in favour of the chain's bloom composite.
 
 import Metal
+import QuartzCore
 import Shared
 import os.log
 
@@ -98,6 +99,24 @@ public final class RayMarchPipeline: @unchecked Sendable {
     private var a11yReducedMotion: Bool = false
     /// Governor-driven suppression. Set via `setGovernorSkipsSSGI(_:)`.
     private var governorSkipsSSGI: Bool = false
+
+    // MARK: - Per-pass Timing Breakdown (PERF.2-pass — BUG-019 instrumentation)
+    //
+    // Set inside `render(...)`. Read by `RenderPipeline.drawWithRayMarch` after
+    // the render call returns, on the same MainActor thread — no synchronization.
+    // Captures wall-clock per sub-pass via `CACurrentMediaTime()`.
+
+    /// Wall-clock cost in ms of the G-buffer pass during the most recent `render(...)` call.
+    public private(set) var lastGBufferPassMs: Float = 0
+    /// Wall-clock cost in ms of the lighting pass during the most recent `render(...)` call.
+    public private(set) var lastLightingPassMs: Float = 0
+    /// Wall-clock cost in ms of SSGI (pass + blend) during the most recent `render(...)`
+    /// call. 0 when SSGI is disabled or suppressed for this frame.
+    public private(set) var lastSSGIPassMs: Float = 0
+    /// Wall-clock cost in ms of the post-process bloom / composite pass during the most
+    /// recent `render(...)` call. Includes either the `PostProcessChain.runBloomAndComposite`
+    /// call (when a chain is attached) or the fallback `runCompositePass`.
+    public private(set) var lastPostProcessPassMs: Float = 0
 
     /// `true` when SSGI must be suppressed, regardless of `ssgiEnabled`.
     /// Computed as the OR of `a11yReducedMotion` and `governorSkipsSSGI`.
@@ -391,8 +410,10 @@ public final class RayMarchPipeline: @unchecked Sendable {
 
     // MARK: - Render Entry Point
 
-    // swiftlint:disable function_parameter_count
+    // swiftlint:disable function_parameter_count function_body_length
     // `render` takes 9 parameters — the minimal render context for a multi-pass pipeline.
+    // PERF.2-pass instrumentation adds 4 wrap-around timing snapshots that push the
+    // body just past the 60-line limit. The added lines are diagnostic-only.
 
     /// Run the full deferred ray march pipeline on the given command buffer.
     ///
@@ -447,6 +468,12 @@ public final class RayMarchPipeline: @unchecked Sendable {
         // `FerrofluidMesh`), render via vertex-displaced mesh instead of
         // SDF ray march. The mesh path requires the baked height texture
         // to be ready — caller passes it via `presetHeightTexture`.
+        //
+        // PERF.2-pass — per-sub-pass CPU encode timing. Wall-clock via
+        // CACurrentMediaTime() so the BUG-019 attribution can drill below
+        // `renderframe_cpu_ms`. Sub-microsecond per snapshot; same MainActor
+        // thread as the caller (no synchronization needed).
+        let gbufT0 = CACurrentMediaTime()
         let meshEncoder = meshGBufferLock.withLock { meshGBufferEncoder }
         if let meshEncoder = meshEncoder, let heightTex = presetHeightTexture {
             runMeshGBufferPass(
@@ -469,15 +496,20 @@ public final class RayMarchPipeline: @unchecked Sendable {
                 presetHeightTexture: presetHeightTexture
             )
         }
+        lastGBufferPassMs = Float((CACurrentMediaTime() - gbufT0) * 1000)
 
         // G-buffer debug bypass: skip lighting/SSGI/ACES entirely.
         // gbuf2 is written directly to the drawable so the 4-quadrant
         // diagnostic colors are unmodified when they reach the screen.
         if debugGBufferMode {
             runGBufferDebugPass(commandBuffer: commandBuffer, outputTexture: outputTexture)
+            lastLightingPassMs = 0
+            lastSSGIPassMs = 0
+            lastPostProcessPassMs = 0
             return
         }
 
+        let lightT0 = CACurrentMediaTime()
         runLightingPass(
             commandBuffer: commandBuffer,
             features: &features,
@@ -486,14 +518,20 @@ public final class RayMarchPipeline: @unchecked Sendable {
             iblManager: iblManager,
             presetFragmentBuffer3: presetFragmentBuffer3
         )
+        lastLightingPassMs = Float((CACurrentMediaTime() - lightT0) * 1000)
 
         // Optional SSGI pass (Increment 3.17): indirect diffuse between lighting and composite.
         // Suppressed when reducedMotion is true per U.9 / D-054.
         if ssgiEnabled && !reducedMotion {
+            let ssgiT0 = CACurrentMediaTime()
             runSSGIPass(commandBuffer: commandBuffer, features: &features, noiseTextures: noiseTextures)
             runSSGIBlendPass(commandBuffer: commandBuffer)
+            lastSSGIPassMs = Float((CACurrentMediaTime() - ssgiT0) * 1000)
+        } else {
+            lastSSGIPassMs = 0
         }
 
+        let postT0 = CACurrentMediaTime()
         if let chain = postProcessChain {
             // Route litTexture through the PostProcessChain bloom + ACES path.
             guard let lit = litTexture else { return }
@@ -502,9 +540,10 @@ public final class RayMarchPipeline: @unchecked Sendable {
         } else {
             runCompositePass(commandBuffer: commandBuffer, outputTexture: outputTexture)
         }
+        lastPostProcessPassMs = Float((CACurrentMediaTime() - postT0) * 1000)
     }
 
-    // swiftlint:enable function_parameter_count
+    // swiftlint:enable function_parameter_count function_body_length
 
     // MARK: - Private Helpers
 

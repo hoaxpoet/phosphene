@@ -55,6 +55,17 @@ extension VisualizerEngine {
         pipe.onRenderTimingObserved = { [weak recorder] encodeMs, renderframeMs in
             recorder?.recordRenderTimings(encodeCpuMs: encodeMs, renderFrameCpuMs: renderframeMs)
         }
+        // PERF.2-pass — feed the ray-march per-sub-pass breakdown
+        // (gbuffer/lighting/ssgi/post-process) so the BUG-019 fix increment
+        // has a concrete target.
+        pipe.onRayMarchPassTimingObserved = { [weak recorder] gbufMs, lightMs, ssgiMs, postMs in
+            recorder?.recordRayMarchPassTimings(
+                gbufferMs: gbufMs,
+                lightingMs: lightMs,
+                ssgiMs: ssgiMs,
+                postProcessMs: postMs
+            )
+        }
     }
 
     /// Wire per-frame dashboard snapshot push. Replaces the DASH.6 GPU
