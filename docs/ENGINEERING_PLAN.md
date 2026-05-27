@@ -4340,7 +4340,7 @@ Direct reframing of Phase CS's exhausted premise. Phase CS attempted (across six
 - **Pulse shape:** squared raised-cosine — `pow(0.5 - 0.5 × cos(2π × t / T), 2)` where `T = 60 / bpm`. Trough at `t = 0` (phase-humble: visual warms up smoothly rather than punching at frame 1), peak at `t = T/2`, smooth oscillation. Amplitude budget `0.25` (upper bound `0.30` if `0.25` is too subtle).
 - **A/B toggle:** `UserDefaults.standard.bool(forKey: "softTempoPulseEnabled")`. Default ON (treat as the experiment group). To disable for the off-side of the A/B:
   ```sh
-  defaults write com.phosphene.app softTempoPulseEnabled -bool NO
+  defaults write com.phosphene.PhospheneApp softTempoPulseEnabled -bool NO
   ```
 - **First consumer:** Lumen Mosaic, `lm_cell_intensity`. Multiplies cell brightness by `1 + 0.6 × soft_tempo_pulse01` — additive to the existing per-cell jitter and bar pulse. Peak effect ~15 % brightness modulation at the pulse peak; below the bar pulse's ~30 % to keep it "subtle layer, not lead." LM is the heaviest beat-accent-driven preset in the catalog so cold-start fall-back to pure energy is most visible there.
 
