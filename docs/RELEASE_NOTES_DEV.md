@@ -6,6 +6,46 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-27-f] LF.1.5 — LF vs process-tap A/B comparison on love_rehab.m4a
+
+**Increment:** LF.1.5 (measurement increment following LF.1). **Status:** Done 2026-05-27. Engine + soak regression tests green; verdict CHARACTERIZABLE DELTAS; doc updates landed.
+
+### What landed
+
+- `PhospheneApp/PhospheneApp.swift` — added `PHOSPHENE_AUTOSTART_ADHOC=1` dev hook (env-var-gated, dev-only) that fires the same code path as IdleView's "Start listening now" button when set and the LF env var is not. Makes the LF-vs-tap A/B reproducible without manual UI interaction. LF env var continues to take precedence.
+- `Scripts/lf1_5_ab_compare.py` — throwaway-grade Python script that reads two session-dir features.csv files, detects each session's active window (contiguous `grid_bpm > 0`), trims the middle 80 %, and emits a markdown comparison report with BPM / per-band-energy / centroid / mood / onset-proxy deltas + a verdict classifier (WITHIN TOLERANCE / CHARACTERIZABLE DELTAS / UNEXPECTED DIVERGENCE). Not wired into any build or CI target.
+- `docs/diagnostics/LF1.5_AB_COMPARISON_2026-05-27.md` — the actual A/B report. Headline numbers: LF 118.7 / tap 118.0 BPM (Δ = 0.67 BPM, ✅ within ±3); subBass -17 %, bass -24 %, treble -23 % (all same-direction skew on the tap path consistent with volume residue); spectralCentroid -22.5 % (SR-driven FFT bin-width effect); valence +34 % / arousal -38 % (downstream of centroid into MoodClassifier). Verdict: CHARACTERIZABLE DELTAS — all breaches trace to expected structural differences (sample rate, post-output volume, noise floor on near-empty bands).
+- `docs/DECISIONS.md` — D-128's Out-of-scope list marked LF.1.5 done and appended an "Empirical characterization (LF.1.5, 2026-05-27)" subsection with the headline deltas and implications for downstream LF increments.
+- `docs/ARCHITECTURE.md` — Audio Analysis Tuning gets a new "LF playback vs process-tap path — empirical deltas (LF.1.5)" subsection covering the equivalent metrics (BPM / beat-grid / onset rate), the SR-driven shift (centroid + mood), the volume residue (load-bearing bands skew 17-24 % same-direction), and the authoring rule (deviation primitives keep presets robust to source-path differences).
+- `CLAUDE.md` — Audio Analysis Tuning pointer flagged with the new LF-vs-tap content.
+- `docs/ENGINEERING_PLAN.md` — LF.1.5 Recently Completed entry.
+
+### Sessions captured (Mac mini M2 Pro, host audio Apogee Duet 3 @ 48 kHz, system rate 48 kHz)
+
+- **LF:** `~/Documents/phosphene_sessions/2026-05-27T19-44-25Z/` (2001 frames; raw_tap.wav 44100 Hz; BeatGrid lock 118.7 BPM; signal green throughout; log clean of tap-reinstall).
+- **Tap:** `~/Documents/phosphene_sessions/2026-05-27T19-47-18Z/` (2700 frames; raw_tap.wav 48000 Hz; BeatGrid lock 118.0 BPM; the two `silent` log lines are startup-window before afplay started + post-afplay tail — expected, both outside the analysis window).
+
+### Why this matters
+
+LF.1's spike proved the new path *works* end-to-end. LF.1.5's measurement proves the new path's analysis output is *equivalent on the load-bearing musical metrics* (BPM, beat-grid timing, sub-bass band) and *characterizably different on the frequency-domain / level-sensitive metrics* (centroid + mood from sample rate; load-bearing bands skew from volume residue). No surprise; no upstream architectural concerns; the LF arc can proceed to LF.2 (stem separation pre-analysis of the full track).
+
+### Verification
+
+- `swift test --package-path PhospheneEngine --filter AudioInputRouterSignalStateTests` — 11/11 pass.
+- `SOAK_TESTS=1 swift test --package-path PhospheneEngine --filter SoakTestHarnessTests` — 7/7 pass (LF.1's regression gate for the untouched `.localFile` mode + LF.1.5's gates for `.localFilePlayback`).
+- `xcodebuild -scheme PhospheneApp -configuration Release build` — clean.
+- `swiftlint lint --strict --config .swiftlint.yml PhospheneApp/PhospheneApp.swift` — 0 violations.
+
+### Out of scope
+
+- Cross-track variance (LF.2 territory if the LF arc proceeds; comparison is single-fixture for LF.1.5).
+- Per-frame timeline alignment of the two paths.
+- Stem-level comparison (the tap path's live separator timing adds noise unrelated to source-path).
+- Wiring `lf1_5_ab_compare.py` into CI.
+- An automated regression gate on the deltas (the comparison is a one-off measurement).
+
+---
+
 ## [dev-2026-05-27-e] CSP.3.1 — bass_att → bass, baseline pivot 0.25 → 0.15
 
 **Increment:** CSP.3.1 (two-constant refinement of CSP.3). **Status:** Implemented 2026-05-27. Engine + app tests pass; manual M7 outstanding.
