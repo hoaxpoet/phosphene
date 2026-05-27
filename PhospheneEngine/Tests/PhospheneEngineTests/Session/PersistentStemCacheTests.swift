@@ -94,6 +94,11 @@ struct PersistentStemCacheTests {
         #expect(lhs.trackProfile.estimatedSectionCount == rhs.trackProfile.estimatedSectionCount)
     }
 
+    /// Default duration used by the test fixtures. Matches `love_rehab.m4a`
+    /// (29.93 s) so future tests that combine the fixture file with the
+    /// in-memory CachedTrackData stay consistent.
+    private static let defaultDuration: TimeInterval = 29.93
+
     // MARK: - Tests
 
     @Test("Roundtrip: store then load produces equivalent data")
@@ -104,11 +109,12 @@ struct PersistentStemCacheTests {
 
         let original = Self.makeCachedTrackData(stemSampleCount: 4410)
         #expect(cache.contains(hash: Self.fixtureHash) == false)
-        try cache.store(original, hash: Self.fixtureHash)
+        try cache.store(original, hash: Self.fixtureHash, decodedDuration: Self.defaultDuration)
         #expect(cache.contains(hash: Self.fixtureHash) == true)
 
         let loaded = try cache.load(hash: Self.fixtureHash)
-        Self.expectEqual(loaded, original)
+        Self.expectEqual(loaded.cached, original)
+        #expect(loaded.decodedDuration == Self.defaultDuration)
     }
 
     @Test("Roundtrip preserves StemFeatures fields beyond the 16 base floats")
@@ -131,8 +137,9 @@ struct PersistentStemCacheTests {
             trackProfile: TrackProfile()
         )
 
-        try cache.store(data, hash: Self.fixtureHash)
-        let loaded = try cache.load(hash: Self.fixtureHash)
+        try cache.store(data, hash: Self.fixtureHash, decodedDuration: Self.defaultDuration)
+        let entry = try cache.load(hash: Self.fixtureHash)
+        let loaded = entry.cached
         #expect(loaded.stemFeatures.vocalsEnergyRel == 0.71)
         #expect(loaded.stemFeatures.drumsEnergyDev == 0.42)
         #expect(loaded.stemFeatures.vocalsPitchHz == 220.5)
@@ -158,7 +165,7 @@ struct PersistentStemCacheTests {
         defer { try? FileManager.default.removeItem(at: tempDir) }
         let cache = try PersistentStemCache(rootDirectory: tempDir)
         let data = Self.makeCachedTrackData()
-        try cache.store(data, hash: Self.fixtureHash)
+        try cache.store(data, hash: Self.fixtureHash, decodedDuration: Self.defaultDuration)
 
         // Rewrite metadata.json with a bogus schema version. Use the
         // same hash; preserve every other field so the failure is
@@ -183,7 +190,7 @@ struct PersistentStemCacheTests {
         defer { try? FileManager.default.removeItem(at: tempDir) }
         let cache = try PersistentStemCache(rootDirectory: tempDir)
         let data = Self.makeCachedTrackData()
-        try cache.store(data, hash: Self.fixtureHash)
+        try cache.store(data, hash: Self.fixtureHash, decodedDuration: Self.defaultDuration)
 
         let dir = tempDir
             .appendingPathComponent("sha256", isDirectory: true)
@@ -203,7 +210,7 @@ struct PersistentStemCacheTests {
         defer { try? FileManager.default.removeItem(at: tempDir) }
         let cache = try PersistentStemCache(rootDirectory: tempDir)
         let data = Self.makeCachedTrackData()
-        try cache.store(data, hash: Self.fixtureHash)
+        try cache.store(data, hash: Self.fixtureHash, decodedDuration: Self.defaultDuration)
 
         let dir = tempDir
             .appendingPathComponent("sha256", isDirectory: true)
@@ -225,7 +232,7 @@ struct PersistentStemCacheTests {
         defer { try? FileManager.default.removeItem(at: tempDir) }
         let cache = try PersistentStemCache(rootDirectory: tempDir)
         let data = Self.makeCachedTrackData()
-        try cache.store(data, hash: Self.fixtureHash)
+        try cache.store(data, hash: Self.fixtureHash, decodedDuration: Self.defaultDuration)
 
         let dir = tempDir
             .appendingPathComponent("sha256", isDirectory: true)
@@ -247,16 +254,18 @@ struct PersistentStemCacheTests {
         let cache = try PersistentStemCache(rootDirectory: tempDir)
 
         let first = Self.makeCachedTrackData(stemSampleCount: 100)
-        try cache.store(first, hash: Self.fixtureHash)
+        try cache.store(first, hash: Self.fixtureHash, decodedDuration: 10.0)
 
         let second = Self.makeCachedTrackData(stemSampleCount: 500)
-        try cache.store(second, hash: Self.fixtureHash)
+        try cache.store(second, hash: Self.fixtureHash, decodedDuration: 50.0)
 
-        let loaded = try cache.load(hash: Self.fixtureHash)
+        let entry = try cache.load(hash: Self.fixtureHash)
+        let loaded = entry.cached
         #expect(loaded.stemWaveforms[0].count == 500)
         #expect(loaded.stemWaveforms[1].count == 500)
         #expect(loaded.stemWaveforms[2].count == 500)
         #expect(loaded.stemWaveforms[3].count == 500)
+        #expect(entry.decodedDuration == 50.0, "store overwrite must update decodedDuration too")
     }
 
     @Test("Concurrent store + load are serialized safely")
@@ -265,13 +274,21 @@ struct PersistentStemCacheTests {
         defer { try? FileManager.default.removeItem(at: tempDir) }
         let cache = try PersistentStemCache(rootDirectory: tempDir)
         // Seed an initial entry so loaders have something to read.
-        try cache.store(Self.makeCachedTrackData(), hash: Self.fixtureHash)
+        try cache.store(
+            Self.makeCachedTrackData(),
+            hash: Self.fixtureHash,
+            decodedDuration: Self.defaultDuration
+        )
 
         await withTaskGroup(of: Void.self) { group in
             for i in 0..<32 {
                 let payload = Self.makeCachedTrackData(stemSampleCount: 64 + i * 4)
                 group.addTask {
-                    try? cache.store(payload, hash: Self.fixtureHash)
+                    try? cache.store(
+                        payload,
+                        hash: Self.fixtureHash,
+                        decodedDuration: Self.defaultDuration
+                    )
                 }
                 group.addTask {
                     _ = try? cache.load(hash: Self.fixtureHash)
@@ -280,7 +297,8 @@ struct PersistentStemCacheTests {
         }
 
         // After the fan-out, the final entry should still be readable.
-        let loaded = try cache.load(hash: Self.fixtureHash)
+        let entry = try cache.load(hash: Self.fixtureHash)
+        let loaded = entry.cached
         #expect(loaded.stemWaveforms.count == 4)
         // Every stem array should be the same length (matches whichever
         // store landed last — but never a mix-and-match across writers).
@@ -303,7 +321,7 @@ struct PersistentStemCacheTests {
         defer { try? FileManager.default.removeItem(at: tempDir) }
         let cache = try PersistentStemCache(rootDirectory: tempDir)
         let data = Self.makeCachedTrackData()
-        try cache.store(data, hash: Self.fixtureHash)
+        try cache.store(data, hash: Self.fixtureHash, decodedDuration: Self.defaultDuration)
 
         let prefix = String(Self.fixtureHash.prefix(2))
         let dir = tempDir

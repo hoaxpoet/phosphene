@@ -2,9 +2,11 @@
 
 import Audio
 import CoreGraphics
+import DSP
 import Foundation
 import ML
 import Session
+import Shared
 import SwiftUI
 import os.log
 
@@ -135,7 +137,7 @@ extension VisualizerEngine {
         }
     }
 
-    // MARK: - LF.2 — Pre-analyzed Local File Playback
+    // MARK: - LF.2 / LF.3 — Pre-analyzed Local File Playback
 
     /// Run the offline pre-analysis pipeline on the local file, install
     /// the cached `BeatGrid` and stem-feature snapshot into the live
@@ -143,6 +145,14 @@ extension VisualizerEngine {
     /// over `startLocalFilePlayback(url:)` is that `BeatGrid` is installed
     /// at session start (not ~10 s in, after live Beat This! converges),
     /// and `stems.csv` shows non-zero stem features from frame 0.
+    ///
+    /// **LF.3 (D-130):** The cached `CachedTrackData` is now persisted
+    /// to disk under `~/Library/Application Support/Phosphene/StemCache/`
+    /// keyed by the SHA-256 of the file's bytes. A second launch on the
+    /// same file installs cached BeatGrid + stems in ~100 ms instead of
+    /// re-running the ~2 s pre-analysis. Cache failures (missing files,
+    /// schema mismatch, etc.) are non-fatal — the path falls through to
+    /// LF.2 re-analyze + persist.
     ///
     /// Pre-analysis uses the same `SessionPreparer.analyzePreview(...)`
     /// pipeline as the streaming path. The underlying analyzers have
@@ -154,10 +164,10 @@ extension VisualizerEngine {
     /// recording per BSAudit.2 cross-capture instability).
     ///
     /// Dispatch model: blocking. The audio router is started only after
-    /// pre-analysis returns. UI latency ~2–4 s on M2 Pro for typical-length
-    /// files. If any pre-analysis step throws (missing weights, etc.),
-    /// falls through silently to the LF.1 behaviour (no cached install;
-    /// live pipeline catches up after ~10 s).
+    /// pre-analysis returns. UI latency ~2 s cold / ~100 ms warm on M2
+    /// Pro for typical-length files. If any pre-analysis step throws
+    /// (missing weights, etc.), falls through silently to the LF.1
+    /// behaviour (no cached install; live pipeline catches up after ~10 s).
     ///
     /// Invoked from the `PHOSPHENE_LOCAL_FILE_PLAYBACK` env-var hook in
     /// `PhospheneApp.swift`. No-op if LF playback is already active.
@@ -169,7 +179,7 @@ extension VisualizerEngine {
         }
         // Flip the flag synchronously so ContentView's permission gate
         // bypasses immediately and the user doesn't see a flash of
-        // permission-onboarding UI during the ~2–4 s pre-analysis window.
+        // permission-onboarding UI during the ~2 s pre-analysis window.
         localFilePlaybackActive = true
 
         let startTime = Date()
@@ -192,49 +202,173 @@ extension VisualizerEngine {
             }
         }
         let gridAnalyzer = liveBeatGridAnalyzer
+        let persistentCache = persistentStemCache
+        let recorder = sessionRecorder
+        let filename = url.lastPathComponent
 
-        let analysisResult: (identity: TrackIdentity, cached: CachedTrackData)?
-        if let sep {
-            do {
-                analysisResult = try await Task.detached(priority: .userInitiated) {
-                    let preview = try PreviewAudio.fromLocalFile(at: url)
-                    let cached = try SessionPreparer.analyzePreview(
-                        preview,
-                        separator: sep,
-                        analyzer: analyzer,
-                        classifier: classifier,
-                        beatGridAnalyzer: gridAnalyzer,
-                        prefetchedProfile: nil
-                    )
-                    return (preview.trackIdentity, cached)
-                }.value
-            } catch {
-                let msg = error.localizedDescription
-                apiLogger.error(
-                    "[LF.2] pre-analysis failed: \(msg, privacy: .public) — continuing uncached"
-                )
-                analysisResult = nil
-            }
-        } else {
-            apiLogger.warning("[LF.2] no stem separator — continuing without cached install")
-            analysisResult = nil
-        }
+        // LF.3: hash + cache lookup + analyze, all off-main. The closure
+        // returns a (identity, cached, source) triple describing how the
+        // data was obtained — `persistentDisk` means we hit the disk
+        // cache and SKIPPED analyzePreview entirely.
+        let outcome: LocalFilePrepOutcome? = await Task.detached(priority: .userInitiated) {
+            await Self.runLocalFilePreparation(
+                url: url,
+                filename: filename,
+                separator: sep,
+                analyzer: analyzer,
+                classifier: classifier,
+                beatGridAnalyzer: gridAnalyzer,
+                persistentCache: persistentCache,
+                recorder: recorder
+            )
+        }.value
 
-        if let analysisResult {
-            let cached = analysisResult.cached
-            let identity = analysisResult.identity
+        if let outcome {
+            let cached = outcome.cached
+            let identity = outcome.identity
             stemCache?.store(cached, for: identity)
             let bpmStr = String(format: "%.1f", cached.beatGrid.bpm)
             let elapsedMs = Int(Date().timeIntervalSince(startTime) * 1000)
             let beatCount = cached.beatGrid.beats.count
-            apiLogger.info("[LF.2] pre-analysis done: bpm=\(bpmStr) beats=\(beatCount) elapsed=\(elapsedMs)ms")
+            let sourceLabel = outcome.source.label
+            apiLogger.info(
+                // swiftlint:disable:next line_length
+                "[LF.3] cached install: source=\(sourceLabel, privacy: .public) bpm=\(bpmStr) beats=\(beatCount) elapsed=\(elapsedMs)ms"
+            )
             // resetStemPipeline reads stemCache and installs the BeatGrid
             // + cached StemFeatures + cached bass proportion. This is the
             // load-bearing call — the BEAT_GRID_INSTALL log line fires here.
             resetStemPipeline(for: identity, caller: .other)
         }
 
-        _completeLocalFilePlaybackStart(url: url, tag: "LF.2")
+        _completeLocalFilePlaybackStart(url: url, tag: "LF.3")
+    }
+
+    // MARK: - LF.3 helpers
+
+    /// Off-main worker that hashes the file, consults the persistent
+    /// disk cache, and either loads the cached entry or runs the full
+    /// `analyzePreview` pipeline and persists the result. Returns `nil`
+    /// when neither path produces a usable `CachedTrackData` (no
+    /// separator, decode error, etc.) — the caller then falls through
+    /// to the LF.1 no-cache start.
+    nonisolated private static func runLocalFilePreparation(
+        url: URL,
+        filename: String,
+        separator: StemSeparator?,
+        analyzer: StemAnalyzer,
+        classifier: any MoodClassifying,
+        beatGridAnalyzer: (any BeatGridAnalyzing)?,
+        persistentCache: PersistentStemCache?,
+        recorder: SessionRecorder?
+    ) async -> LocalFilePrepOutcome? {
+        // Step 1 — content hash.
+        let contentHash: String
+        do {
+            contentHash = try PreviewAudio.sha256(of: url)
+        } catch {
+            let msg = error.localizedDescription
+            apiLogger.error(
+                "[LF.3] sha256 failed: \(msg, privacy: .public) — falling through to no-cache start"
+            )
+            return nil
+        }
+        let shortHash = String(contentHash.prefix(12))
+
+        // Step 2 — try the persistent cache.
+        if let persistentCache, persistentCache.contains(hash: contentHash) {
+            do {
+                let entry = try persistentCache.load(hash: contentHash)
+                let identity = TrackIdentity(
+                    title: filename,
+                    artist: "local file",
+                    duration: entry.decodedDuration,
+                    spotifyID: "local:sha256:" + contentHash
+                )
+                let cached = entry.cached
+                let bpmStr = String(format: "%.1f", cached.beatGrid.bpm)
+                let beatCount = cached.beatGrid.beats.count
+                let msg = "STEM_CACHE_HIT: source=persistentDisk, track='\(filename)', "
+                    + "hash=\(shortHash), bpm=\(bpmStr), beats=\(beatCount)"
+                recorder?.log(msg)
+                apiLogger.info("\(msg, privacy: .public)")
+                return LocalFilePrepOutcome(
+                    identity: identity,
+                    cached: cached,
+                    source: .persistentDisk
+                )
+            } catch {
+                // Cache file present but unreadable (schema mismatch,
+                // corruption, partial write). Log + treat as miss; we
+                // overwrite below.
+                let msg = "STEM_CACHE_MISS: source=persistentDisk, track='\(filename)', "
+                    + "hash=\(shortHash), reason=load-failed(\(error.localizedDescription))"
+                recorder?.log(msg)
+                apiLogger.warning("\(msg, privacy: .public)")
+            }
+        } else if persistentCache != nil {
+            let msg = "STEM_CACHE_MISS: source=persistentDisk, track='\(filename)', "
+                + "hash=\(shortHash), reason=no-entry"
+            recorder?.log(msg)
+            apiLogger.info("\(msg, privacy: .public)")
+        }
+
+        // Step 3 — cache miss path. Decode + analyze (LF.2's flow).
+        guard let separator else {
+            apiLogger.warning(
+                "[LF.3] no stem separator — continuing without cached install"
+            )
+            return nil
+        }
+        let preview: PreviewAudio
+        let cached: CachedTrackData
+        do {
+            preview = try PreviewAudio.fromLocalFile(at: url, contentHash: contentHash)
+            cached = try SessionPreparer.analyzePreview(
+                preview,
+                separator: separator,
+                analyzer: analyzer,
+                classifier: classifier,
+                beatGridAnalyzer: beatGridAnalyzer,
+                prefetchedProfile: nil
+            )
+        } catch {
+            let msg = error.localizedDescription
+            apiLogger.error(
+                "[LF.3] pre-analysis failed: \(msg, privacy: .public) — continuing uncached"
+            )
+            return nil
+        }
+
+        // Step 4 — persist for next launch. Failure is non-fatal.
+        if let persistentCache {
+            let writeStart = Date()
+            do {
+                try persistentCache.store(
+                    cached,
+                    hash: contentHash,
+                    decodedDuration: preview.duration
+                )
+                let elapsedMs = Int(Date().timeIntervalSince(writeStart) * 1000)
+                let totalSamples = cached.stemWaveforms.reduce(0) { $0 + $1.count }
+                let bytes = totalSamples * MemoryLayout<Float>.size
+                let msg = "STEM_CACHE_WROTE: source=persistentDisk, track='\(filename)', "
+                    + "hash=\(shortHash), bytes=\(bytes), elapsedMs=\(elapsedMs)"
+                recorder?.log(msg)
+                apiLogger.info("\(msg, privacy: .public)")
+            } catch {
+                let msg = error.localizedDescription
+                apiLogger.warning(
+                    "[LF.3] persistent cache store failed: \(msg, privacy: .public)"
+                )
+            }
+        }
+
+        return LocalFilePrepOutcome(
+            identity: preview.trackIdentity,
+            cached: cached,
+            source: .freshAnalysis
+        )
     }
 
     // MARK: - Accessibility (U.9, D-054)
@@ -299,4 +433,27 @@ extension VisualizerEngine {
             }
         }
     }
+}
+
+// MARK: - LF.3 Outcome
+
+/// Outcome of the off-main local-file preparation worker. Distinguishes
+/// disk-cache hits from fresh analysis so the LF.3 log line + closeout
+/// diagnostics can identify which path each launch took.
+struct LocalFilePrepOutcome: Sendable {
+    enum Source: Sendable {
+        case persistentDisk
+        case freshAnalysis
+
+        var label: String {
+            switch self {
+            case .persistentDisk: return "persistentDisk"
+            case .freshAnalysis: return "freshAnalysis"
+            }
+        }
+    }
+
+    let identity: TrackIdentity
+    let cached: CachedTrackData
+    let source: Source
 }

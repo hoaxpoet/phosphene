@@ -239,6 +239,18 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// (BUG-006.2 fix for cause 1 — was declared but never assigned.)
     var stemCache: StemCache?
 
+    /// Disk-backed content-keyed stem cache for local-file playback
+    /// (LF.3 / D-130). Lives alongside the in-memory `stemCache` —
+    /// the persistent layer survives app restarts so a second launch
+    /// on the same local file installs cached BeatGrid + stems in
+    /// ~100 ms instead of re-running the ~2 s pre-analysis. Wired
+    /// eagerly in `init` to a default cache rooted at
+    /// `~/Library/Application Support/Phosphene/StemCache/`. Stays
+    /// `nil` if the cache directory can't be created — the LF path
+    /// then falls through to the LF.2 in-memory-only flow on every
+    /// launch.
+    var persistentStemCache: PersistentStemCache?
+
     /// Stem separator (MPSGraph on GPU).
     let stemSeparator: StemSeparator?
 
@@ -690,6 +702,21 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         // Before this assignment, every `resetStemPipeline(for:)` call took the
         // cache-miss branch and the prepared BeatGrid never installed.
         self.stemCache = self.sessionManager.cache
+
+        // LF.3 / D-130: stand up the persistent disk-backed cache used
+        // by `prepareAndStartLocalFilePlayback(url:)`. Defaults to
+        // `~/Library/Application Support/Phosphene/StemCache/`. Failure
+        // to create the directory leaves `persistentStemCache = nil`
+        // and the LF path falls through to LF.2's in-memory-only flow.
+        do {
+            self.persistentStemCache = try PersistentStemCache()
+        } catch {
+            let msg = error.localizedDescription
+            logger.warning(
+                "[LF.3] PersistentStemCache init failed: \(msg, privacy: .public) — disk cache disabled"
+            )
+            self.persistentStemCache = nil
+        }
 
         // Wire the frame-budget governor and ML dispatch scheduler. Read QualityCeiling
         // from UserDefaults to determine if ultra mode (recording) disables both. D-057(d), D-059(d).
