@@ -359,7 +359,17 @@ public final class SessionManager: ObservableObject {
         cancellationRequested = false
         sessionSource = nil
         currentSource = .localFile(url)
-        preparingTracks = []                              // populated below once identity is synthesised
+        // Surface a placeholder track in `preparingTracks` so PreparationProgressView
+        // renders a row for the duration of the ~2 s analyzePreview window. The
+        // synthetic LF identity (with `local:sha256:` prefix) replaces this once
+        // the off-main worker resolves the file hash.
+        let placeholderIdentity = TrackIdentity(
+            title: url.lastPathComponent,
+            artist: "local file",
+            duration: 0,
+            spotifyID: "local:" + url.path
+        )
+        preparingTracks = [placeholderIdentity]
         progressiveReadinessLevel = .preparing
         state = .preparing
         logger.info("SessionManager: preparing local file \(url.lastPathComponent, privacy: .public)")
