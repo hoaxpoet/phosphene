@@ -1,8 +1,10 @@
 # BSAudit.3.diag — Root-Cause Dive on the 2026-05-25T15-20-49Z Fresh Capture
 
+> **AMENDED 2026-05-26 — diagnostic findings preserved.** The BSAudit.3.impl runtime characterized by these findings was reverted on 2026-05-25 evening (`33cd57e9` / `6758a617` / `002b5f2b` / `35305b5e`). The findings stand as the empirical evidence that motivated both Matt's Choice A decision and the subsequent revert — the three structural failures characterized here (wrong-anchor lock on broadband flux; confidence accumulator doesn't back-pressure; metric is gameable by over-firing) apply to any short-window automated signal source, not just to the specific BSAudit.3.impl mechanism. The diagnostic infrastructure that produced these findings was retained through the revert per Matt's "yes, keep the tools" sign-off. See [CLAUDE.md §Cold-Start Phase Contract](../../CLAUDE.md#cold-start-phase-contract) for the current production-state description.
+
 **Date:** 2026-05-25
 **Capture under analysis:** `~/Documents/phosphene_sessions/2026-05-25T15-20-49Z/`
-**Build state:** `30d032ea` (BSAudit.3.impl.3) + validate.1 schema addition staged.
+**Build state:** `30d032ea` (BSAudit.3.impl.3) + validate.1 schema addition staged. **Note 2026-05-26:** the impl runtime that produced this capture's behavior was subsequently reverted same evening; the capture and findings are preserved as historical record of the architecture that was attempted.
 **Scope:** read-only diagnostic. Per CLAUDE.md Defect Handling Protocol, post-validation-failure work returns to the **Diagnosis** stage. No fix code in this increment.
 **Tool extension:** the `--accent-window-pass-rate` mode gained a per-track diagnostic block (`AccentWindowDiagnostic.swift`) so future post-mortems start from data, not speculation. Shipped alongside this doc.
 
