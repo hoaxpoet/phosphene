@@ -216,8 +216,20 @@ extension RenderPipeline {
         rayMarchState.sceneUniforms.cameraOriginAndFov.x = base.cameraPosition.x
         rayMarchState.sceneUniforms.cameraOriginAndFov.y = base.cameraPosition.y
         rayMarchState.sceneUniforms.cameraOriginAndFov.z = dollyZ
+        // PERF.3 (BUG-019 fix) — light-intensity restructured per CLAUDE.md Failed
+        // Approach #4 (beat is accent, never primary). Previous formula
+        // `0.4 + beatPulse * 2.6` had the beat term 6.5× the baseline; every beat
+        // fired a single-frame 2.1× brightness multiplier swing of the whole scene,
+        // visible as 3 Hz flicker on FFO (verified by ffmpeg signalstats on
+        // session 2026-05-27T22-49-42Z video.mp4: 76 brightness-oscillation events
+        // across 200 s of playback, matching beat firing rate). The restructured
+        // formula puts continuous bass as the primary driver (per the Audio Data
+        // Hierarchy rule) and keeps the beat as a small accent. Worst-case range
+        // [1.0, 1.55]; single-frame beat-fire swing ±0.15 (vs ±2.1 before).
+        let bassPrimary = max(0, min(1.0, features.bass))
         let beatPulse = max(features.beatBass, max(features.beatMid, features.beatComposite))
-        let intensityMul = 0.4 + max(0, min(1, beatPulse)) * 2.6
+        let beatAccent = max(0, min(1.0, beatPulse))
+        let intensityMul = 1.0 + bassPrimary * 0.4 + beatAccent * 0.15
         rayMarchState.sceneUniforms.lightPositionAndIntensity.w = base.lightIntensity * intensityMul
         let valence = max(-1, min(1, features.valence))
         let warm = max(0, valence)
