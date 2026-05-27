@@ -34,7 +34,23 @@ extension AudioInputRouter {
     /// Schedule the next tap-reinstall attempt with exponential backoff.
     /// No-op if we've exhausted `reinstallDelays` (treats prolonged silence
     /// as a real pause rather than a stuck tap).
+    ///
+    /// **Mode gate (LF.1):** the reinstall scheduler only applies to process-
+    /// tap modes (`.systemAudio`, `.application`). In `.localFile` (offline
+    /// PCM injection) and `.localFilePlayback` (AVAudioEngine playback)
+    /// there is no tap to reinstall — silence in a played file is real
+    /// musical silence, not a teardown. Skipping the schedule here keeps
+    /// the "Tap reinstall scheduled" log line out of `session.log` for
+    /// non-tap modes, which the LF.1 verification grep depends on.
     func scheduleNextReinstall() {
+        let mode = lock.withLock { currentMode }
+        switch mode {
+        case .localFile, .localFilePlayback, nil:
+            return
+        case .systemAudio, .application:
+            break
+        }
+
         let attempt: Int
         let delay: TimeInterval
         let shouldSchedule: Bool
@@ -90,7 +106,10 @@ extension AudioInputRouter {
         case .application(let bundleID):
             performTapReinstall(captureMode: .application(bundleIdentifier: bundleID),
                                 attemptNumber: attemptNumber)
-        case .localFile:
+        case .localFile, .localFilePlayback:
+            // Defensive: scheduleNextReinstall() already gates these modes
+            // out, so this branch is unreachable in practice. Kept exhaustive
+            // so future enum additions trigger a compile error here too.
             break
         }
     }
