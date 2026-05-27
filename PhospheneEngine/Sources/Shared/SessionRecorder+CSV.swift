@@ -43,7 +43,12 @@ extension SessionRecorder {
         // gpuMs is unavailable (cb.gpuEndTime <= cb.gpuStartTime).
         let cpu = frameCPUms.map { String(format: "%.4f", $0) } ?? ""
         let gpu = frameGPUms.map { String(format: "%.4f", $0) } ?? ""
-        let timing = ",\(cpu),\(gpu)\n"
+        // CSP.1.1 — soft_tempo_pulse01 appended so A/B sessions are
+        // verifiable from features.csv. Field is 0 during the OFF arm of
+        // the A/B (toggle off), the cold-start window before any BeatGrid
+        // is installed, and after the fade envelope completes (t ≥ 12 s).
+        let pulse = String(format: "%.5f", fv.softTempoPulse01)
+        let timing = ",\(cpu),\(gpu),\(pulse)\n"
         return base + sync + timing
     }
 
