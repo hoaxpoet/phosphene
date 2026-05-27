@@ -2,6 +2,7 @@
 // These types flow between PreviewResolver, PreviewDownloader, StemCache,
 // and SessionPreparer as the pipeline moves from URL → PCM → stems → profile.
 
+import AVFoundation
 import Foundation
 
 // MARK: - SessionState
@@ -121,4 +122,80 @@ public struct PreviewAudio: Sendable {
         self.sampleRate = sampleRate
         self.duration = duration
     }
+
+    // MARK: - Local-file decode (LF.2)
+
+    /// Decode a local audio file to a mono `PreviewAudio` value via
+    /// `AVAudioFile`. Stereo (and higher-channel) inputs are averaged
+    /// to mono. The returned `PreviewAudio` carries a synthetic
+    /// `TrackIdentity` keyed by the file path (`spotifyID = "local:" +
+    /// url.path`) so cache lookups don't collide with any real
+    /// catalog track.
+    ///
+    /// Used by the LF.2 path
+    /// (`VisualizerEngine.prepareAndStartLocalFilePlayback(url:)`) and
+    /// by `LocalFilePlaybackFormatCoverageTests` to exercise the
+    /// decode + offline-analysis pipeline against MP3 / FLAC / M4A
+    /// fixtures.
+    public static func fromLocalFile(at url: URL) throws -> PreviewAudio {
+        let file = try AVAudioFile(forReading: url)
+        let format = file.processingFormat
+        let frameCount = AVAudioFrameCount(file.length)
+        guard frameCount > 0 else {
+            throw LocalFileDecodeError.emptyFile
+        }
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else {
+            throw LocalFileDecodeError.bufferAllocationFailed
+        }
+        try file.read(into: buffer)
+
+        let actualFrames = Int(buffer.frameLength)
+        guard actualFrames > 0, let channelData = buffer.floatChannelData else {
+            throw LocalFileDecodeError.emptyDecodedBuffer
+        }
+        let channelCount = Int(format.channelCount)
+
+        var samples: [Float]
+        if channelCount == 1 {
+            samples = Array(UnsafeBufferPointer(start: channelData[0], count: actualFrames))
+        } else {
+            samples = [Float](repeating: 0, count: actualFrames)
+            let scale = 1.0 / Float(channelCount)
+            for ch in 0..<channelCount {
+                let ptr = UnsafeBufferPointer(start: channelData[ch], count: actualFrames)
+                for i in 0..<actualFrames {
+                    samples[i] += ptr[i] * scale
+                }
+            }
+        }
+
+        let sampleRate = Int(format.sampleRate)
+        let duration = TimeInterval(actualFrames) / format.sampleRate
+
+        let identity = TrackIdentity(
+            title: url.lastPathComponent,
+            artist: "local file",
+            duration: duration,
+            spotifyID: "local:" + url.path
+        )
+
+        return PreviewAudio(
+            trackIdentity: identity,
+            pcmSamples: samples,
+            sampleRate: sampleRate,
+            duration: duration
+        )
+    }
+}
+
+// MARK: - LocalFileDecodeError
+
+/// Failures specific to `PreviewAudio.fromLocalFile(at:)`. Distinct
+/// from `PreviewDownloader` errors because the LF path opens the file
+/// directly off-disk rather than going through the network → temp-file
+/// → AVAudioFile pattern.
+public enum LocalFileDecodeError: Error, Sendable {
+    case emptyFile
+    case bufferAllocationFailed
+    case emptyDecodedBuffer
 }

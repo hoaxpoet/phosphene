@@ -50,10 +50,17 @@ extension SessionPreparer {
     /// Run the full analysis pipeline on a decoded preview clip.
     ///
     /// Executes stem separation → StemAnalyzer warmup → MIR analysis in sequence.
-    /// Called from a `Task.detached` block inside `prepareTrack(_:)`.
+    /// Called from a `Task.detached` block inside `prepareTrack(_:)` (streaming
+    /// path) and from `VisualizerEngine.prepareAndStartLocalFilePlayback(url:)`
+    /// (LF.2 path, 2026-05-27) to pre-warm local-file playback.
+    ///
+    /// `public` so the App-layer LF.2 entry point can drive pre-analysis
+    /// directly without going through the full `SessionManager` /
+    /// `SessionPreparer.prepare(tracks:)` orchestration (LF.2 is single-file
+    /// + ad-hoc, no playlist).
     ///
     /// - Parameters:
-    ///   - preview: Mono Float32 PCM from PreviewDownloader.
+    ///   - preview: Mono Float32 PCM from PreviewDownloader or local-file decode.
     ///   - separator: Stem separator to use (injected for testing).
     ///   - analyzer: Stem energy analyzer (injected for testing).
     ///   - classifier: Mood classifier (injected for testing).
@@ -63,7 +70,7 @@ extension SessionPreparer {
     ///     `prefetchedProfile.timeSignature` is non-nil, the ML-detected
     ///     `BeatGrid.beatsPerBar` is overridden before caching.
     /// - Returns: Fully populated `CachedTrackData`.
-    nonisolated static func analyzePreview(
+    nonisolated public static func analyzePreview(
         _ preview: PreviewAudio,
         separator: any StemSeparating,
         analyzer: any StemAnalyzing,
