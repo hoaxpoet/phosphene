@@ -118,10 +118,25 @@ float membrane_D(float2 uv, float2 asp, float t,
     float ring = membrane_ring(asp, impactAsp, features.beat_bass,
                                1.10, 0.20, 0.045);
 
+    // CSP.1 (2026-05-26) — soft tempo-pulse scaffold for the cold-start
+    // window. Adds a subtle global breathing at the cached BeatGrid BPM,
+    // distinct from the time-rate `breath` (FBM at t × 0.16) and the
+    // time-rate `wave` (sin at t × 0.33). One-primitive-per-layer at one
+    // timescale per Failed Approach #67: tempo-rate ≠ ambient-time-rate
+    // ≠ per-kick-event. Zero when no `BeatGrid` is installed, the
+    // `softTempoPulseEnabled` toggle is off, or after the 12 s fade
+    // envelope completes — so the term collapses to 0 outside the
+    // cold-start window. Magnitude 0.30 gives a peak displacement
+    // contribution of ~0.075 (= 0.30 × 0.25 amplitude budget), similar
+    // in scale to the always-on `breath * 0.40` term, so on Membrane's
+    // visibly-quieter baseline the scaffold reads as ambient breathing
+    // at tempo rather than as a hidden modulation. See CLAUDE.md
+    // §Cold-Start Phase Contract.
     float raw = breath * 0.40
               + wave * (0.08 + features.bass_att * 0.40)
               + goose * 0.35
-              + ring * 0.55;
+              + ring * 0.55
+              + features.soft_tempo_pulse01 * 0.30;
 
     // Edge tension: the drumskin is anchored at the frame boundary.
     // Displacement is free in the interior and forced smoothly to zero
