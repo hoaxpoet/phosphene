@@ -2,6 +2,7 @@
 // Owns the four analyzers (SpectralAnalyzer, BandEnergyProcessor, ChromaExtractor,
 // BeatDetector), runs them in sequence, and populates a FeatureVector for GPU upload.
 // Chroma, key, and tempo are exposed as CPU-side properties for the Orchestrator.
+// swiftlint:disable file_length
 
 import Foundation
 import Shared
@@ -302,6 +303,10 @@ public final class MIRPipeline: @unchecked Sendable {
             time: ctx.time,
             deltaTime: ctx.deltaTime
         )
+        // CSP.2 — track-relative elapsed seconds for shader-side cold-start
+        // crossfade. Reset to 0 by reset() on track change. Float-cast at the
+        // read site (Double storage, Float upload — D-079 / QR.1).
+        fv.trackElapsedS = Float(elapsedSeconds)
         // MV-1: Derive deviation primitives from AGC-normalized values.
         fv.bassRel = (fv.bass - 0.5) * 2.0
         fv.bassDev = max(0, fv.bassRel)

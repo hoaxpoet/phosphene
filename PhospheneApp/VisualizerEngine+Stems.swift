@@ -480,6 +480,18 @@ extension VisualizerEngine {
         if let identity, let cached = stemCache?.loadForPlayback(track: identity) {
             let replacedExisting = mirPipeline.liveDriftTracker.hasGrid
             pipeline.setStemFeatures(cached.stemFeatures)
+            // CSP.2 (2026-05-27) — install the cached bass proportion for
+            // the track. Derived from the preview-analysis stem snapshot;
+            // preserved across live `setStemFeatures` updates by
+            // `RenderPipeline+PresetSwitching.swift`'s lock-guarded merge.
+            // Drives Ferrofluid Ocean's spike-height baseline at frame 1.
+            let stems = cached.stemFeatures
+            let totalStemEnergy = stems.vocalsEnergy + stems.drumsEnergy
+                + stems.bassEnergy + stems.otherEnergy
+            let bassProportion: Float = totalStemEnergy > 0
+                ? stems.bassEnergy / totalStemEnergy
+                : 0
+            pipeline.setCachedBassProportion(bassProportion)
             // BUG-007.8: pass per-track grid-vs-onset offset as initial drift bias.
             mirPipeline.setBeatGrid(
                 cached.beatGrid.offsetBy(0),
@@ -503,6 +515,13 @@ extension VisualizerEngine {
             }
         } else {
             pipeline.setStemFeatures(.zero)
+            // CSP.2 — no cached preview analysis available (live reactive
+            // mode, ad-hoc playback, or cache miss). Clear the per-track
+            // bass proportion so it doesn't carry over from a previous
+            // track; FFO's spike baseline collapses to 1.0 (default, no
+            // song-specific posture), and Layer 2 (live overall bass
+            // pulsing) continues to operate.
+            pipeline.setCachedBassProportion(0)
             mirPipeline.setBeatGrid(nil)
             let trackDesc = identity.map { "'\($0.title)'" } ?? "unknown"
             logger.info(

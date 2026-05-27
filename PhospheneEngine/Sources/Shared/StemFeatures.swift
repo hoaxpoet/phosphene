@@ -134,9 +134,23 @@ public struct StemFeatures: Sendable, Equatable {
     /// pass binds StemFeatures at buffer(3). Zero on every other preset.
     public var drumsEnergyDevSmoothed: Float
 
-    // --- Floats 44–64: padding to 256 bytes (21 floats) ---
+    /// CSP.2 (2026-05-27) — bass proportion from the pre-playback analysis
+    /// of the 30 s preview clip. `bassEnergy / (vocalsEnergy + drumsEnergy +
+    /// bassEnergy + otherEnergy)`, ∈ `[0, 1]`. Frozen for the track's
+    /// duration: populated once at track-change from the cached
+    /// `CachedTrackData.stemFeatures` and **preserved across live per-frame
+    /// `setStemFeatures(_:)` updates** (see `RenderPipeline+PresetSwitching`).
+    /// Drives the Ferrofluid Ocean spike-height baseline at frame 1 (Layer 1
+    /// of the CSP.2 cold-start fix). Zero when no cached preview analysis
+    /// is available (live reactive mode, ad-hoc playback).
+    ///
+    /// Slot reclaimed from `_sfPad2` to preserve byte-identical layout of
+    /// fields 1–43.
+    public var cachedBassProportion: Float
+
+    // --- Floats 45–64: padding to 256 bytes (20 floats) ---
     // swiftlint:disable identifier_name
-    var _sfPad2: Float; var _sfPad3: Float; var _sfPad4: Float
+    var _sfPad3: Float; var _sfPad4: Float
     var _sfPad5: Float; var _sfPad6: Float; var _sfPad7: Float; var _sfPad8: Float
     var _sfPad9: Float; var _sfPad10: Float; var _sfPad11: Float; var _sfPad12: Float
     var _sfPad13: Float; var _sfPad14: Float; var _sfPad15: Float; var _sfPad16: Float
@@ -176,7 +190,8 @@ public struct StemFeatures: Sendable, Equatable {
         self.otherAttackRatio = 0; self.otherEnergySlope = 0
         self.vocalsPitchHz = 0; self.vocalsPitchConfidence = 0
         self.drumsEnergyDevSmoothed = 0
-        self._sfPad2  = 0; self._sfPad3  = 0; self._sfPad4  = 0
+        self.cachedBassProportion = 0
+        self._sfPad3  = 0; self._sfPad4  = 0
         self._sfPad5  = 0; self._sfPad6  = 0; self._sfPad7  = 0; self._sfPad8  = 0
         self._sfPad9  = 0; self._sfPad10 = 0; self._sfPad11 = 0; self._sfPad12 = 0
         self._sfPad13 = 0; self._sfPad14 = 0; self._sfPad15 = 0; self._sfPad16 = 0
