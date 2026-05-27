@@ -36,12 +36,15 @@ struct ContentView: View {
 
     var body: some View {
         Group {
-            // LF.1: in local-file playback mode the audio path is
+            // LF.4: in local-file playback mode the audio path is
             // AVAudioEngine, not Core Audio process taps, so screen-capture
             // permission is irrelevant. Bypass the gate so the visualizer
             // renders even on a fresh install where permission was never
-            // granted.
-            if permissionMonitor.isScreenCaptureGranted || engine.localFilePlaybackActive {
+            // granted. The `currentSource` publisher tracks LF state — derived
+            // from the canonical SessionManager source rather than a parallel
+            // boolean flag (was `engine.localFilePlaybackActive` pre-LF.4).
+            if permissionMonitor.isScreenCaptureGranted
+                || engine.sessionManager.currentSource?.isLocalFile == true {
                 sessionStateBody
             } else {
                 PermissionOnboardingView()
@@ -64,7 +67,16 @@ struct ContentView: View {
         case .preparing:
             preparingView
         case .ready:
-            readyView
+            // LF.4: local-file sessions don't show ReadyView (the user
+            // has nothing to confirm — Phosphene IS the player). The engine's
+            // `.ready` handler advances to `.playing` in the same MainActor
+            // tick; routing the visible UI directly to PlaybackView avoids
+            // any flash of ReadyView during the cross-state transition.
+            if engine.sessionManager.currentSource?.isLocalFile == true {
+                playbackView
+            } else {
+                readyView
+            }
         case .playing:
             playbackView
         case .ended:
