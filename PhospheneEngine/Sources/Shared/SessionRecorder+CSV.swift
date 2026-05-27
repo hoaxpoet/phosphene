@@ -1,5 +1,42 @@
 import Foundation
 
+/// One analysis-frame's per-subsystem timing breakdown, captured by
+/// VisualizerEngine and read by `SessionRecorder.recordFrame` when writing
+/// the next features.csv row. (PERF.1 — BUG-019 instrumentation.)
+///
+/// All fields are optional so the CSV writer can emit empty cells before
+/// the first analysis-frame has fired (cold-start frames before the
+/// analysis queue produces its first row).
+public struct SubsystemTimingSnapshot: Sendable {
+    public let mirPipelineMs: Float?
+    public let stemAnalyzerMs: Float?
+    public let beatDetectorMs: Float?
+    public let pitchTrackerMs: Float?
+    public let moodClassifierMs: Float?
+
+    public init(
+        mirPipelineMs: Float?,
+        stemAnalyzerMs: Float?,
+        beatDetectorMs: Float?,
+        pitchTrackerMs: Float?,
+        moodClassifierMs: Float?
+    ) {
+        self.mirPipelineMs = mirPipelineMs
+        self.stemAnalyzerMs = stemAnalyzerMs
+        self.beatDetectorMs = beatDetectorMs
+        self.pitchTrackerMs = pitchTrackerMs
+        self.moodClassifierMs = moodClassifierMs
+    }
+
+    public static let empty = SubsystemTimingSnapshot(
+        mirPipelineMs: nil,
+        stemAnalyzerMs: nil,
+        beatDetectorMs: nil,
+        pitchTrackerMs: nil,
+        moodClassifierMs: nil
+    )
+}
+
 extension SessionRecorder {
 
     // MARK: - CSV row formatting
@@ -7,7 +44,7 @@ extension SessionRecorder {
     // swiftlint:disable multiline_arguments
     static func csvRow(features fv: FeatureVector, frame: Int, wallclock: CFAbsoluteTime) -> String {
         csvRow(features: fv, stems: .zero, beatSync: .zero, frame: frame, wallclock: wallclock,
-               frameCPUms: nil, frameGPUms: nil)
+               frameCPUms: nil, frameGPUms: nil, subsystem: .empty)
     }
 
     static func csvRow(
@@ -17,7 +54,8 @@ extension SessionRecorder {
         frame: Int,
         wallclock: CFAbsoluteTime,
         frameCPUms: Float? = nil,
-        frameGPUms: Float? = nil
+        frameGPUms: Float? = nil,
+        subsystem: SubsystemTimingSnapshot = .empty
     ) -> String {
         let base = String(format: "%d,%.4f,%.4f,%.4f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,"
                                + "%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,"
@@ -50,8 +88,18 @@ extension SessionRecorder {
         // that don't have stems context).
         let elapsed = String(format: "%.4f", fv.trackElapsedS)
         let bassProp = String(format: "%.5f", stems.cachedBassProportion)
-        let timing = ",\(cpu),\(gpu),\(elapsed),\(bassProp)\n"
-        return base + sync + timing
+        let timing = ",\(cpu),\(gpu),\(elapsed),\(bassProp)"
+        // PERF.1 — per-subsystem analysis-frame timing breakdown. Empty cells
+        // until the first analysis-frame fires (cold-start frames before the
+        // analysis queue produces its first row). Order matches the header in
+        // `SessionRecorder.makeFileHandles`.
+        let mirMs = subsystem.mirPipelineMs.map { String(format: "%.4f", $0) } ?? ""
+        let stemMs = subsystem.stemAnalyzerMs.map { String(format: "%.4f", $0) } ?? ""
+        let beatMs = subsystem.beatDetectorMs.map { String(format: "%.4f", $0) } ?? ""
+        let pitchMs = subsystem.pitchTrackerMs.map { String(format: "%.4f", $0) } ?? ""
+        let moodMs = subsystem.moodClassifierMs.map { String(format: "%.4f", $0) } ?? ""
+        let subTiming = ",\(mirMs),\(stemMs),\(beatMs),\(pitchMs),\(moodMs)\n"
+        return base + sync + timing + subTiming
     }
 
     static func csvRow(stems: StemFeatures, frame: Int, wallclock: CFAbsoluteTime) -> String {

@@ -86,12 +86,12 @@ When this defect is resolved, the following must all pass:
 
 ### Fix scope
 
-Unknown — needs the instrumentation increment first. Likely **multi-increment** per the P1 defect protocol:
+Unknown — needs the instrumentation increment first. **Multi-increment** per the P1 defect protocol:
 
-1. **Instrumentation** (next increment after BUG-019 filing) — add per-subsystem timing columns to `features.csv` (stem analyzer, beat detector, mood classifier, pitch tracker, MIR pipeline as a whole, plus session-bookkeeping if relevant). Commit and stop.
-2. **Diagnosis** — re-run the M7 capture protocol with the instrumented build; identify which subsystem(s) account for the 11 ms → 23 ms CPU bump. Document root cause in this entry. No fix code in this increment.
-3. **Fix** — once root cause is known.
-4. **Validation** — run the verification criteria above.
+1. **Instrumentation (PERF.1) ✅ 2026-05-28** — five new `features.csv` columns: `mir_pipeline_ms`, `stem_analyzer_ms`, `beat_detector_ms`, `pitch_tracker_ms`, `mood_classifier_ms`. See `RELEASE_NOTES_DEV.md [dev-2026-05-28-b]`.
+2. **Diagnosis (PERF.2 — next)** — read a fresh tap-path capture run past 70 s session-uptime; identify which subsystem(s) account for the 11 ms → 23 ms CPU bump. Update this entry with root cause. No fix code in this increment.
+3. **Fix (PERF.3)** — once root cause is known.
+4. **Validation (PERF.4)** — run the verification criteria above.
 
 ### Related
 

@@ -6,6 +6,79 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-28-b] PERF.1 — Per-subsystem analysis-frame timing in features.csv
+
+**Increment:** PERF.1 (Phase PERF step 1, BUG-019 instrumentation). **Status:** Implemented 2026-05-28. Engine 1295/1295 tests pass; SwiftLint `--strict` 0 violations on touched files; app build clean. Next: Matt re-runs a tap-path capture past the 70 s session-time mark; PERF.2 (diagnosis) reads the result.
+
+### What this is
+
+Per the multi-increment P1 defect process for BUG-019 (CPU frame time doubles ~67 s into a session, sustained over-budget). PERF.1 is instrumentation-only — no behaviour change, no algorithmic edits, no allocations on the hot path. The goal is to attribute the 11 ms → 23 ms CPU bump to specific audio-analysis components so PERF.2 can pin down the root cause.
+
+### Five new features.csv columns
+
+Appended after `cached_bass_proportion` (preserving the append-only column-position invariant):
+
+| Column | Measures |
+|---|---|
+| `mir_pipeline_ms` | wall-clock cost of `MIRPipeline.process(...)` per analysis frame |
+| `stem_analyzer_ms` | wall-clock cost of `StemAnalyzer.analyze(...)` per analysis frame |
+| `beat_detector_ms` | drums-stem beat detector cost (inner timing inside the stem analyzer) |
+| `pitch_tracker_ms` | vocals-stem YIN pitch tracker cost (inner timing inside the stem analyzer) |
+| `mood_classifier_ms` | `runMoodClassifier(...)` cost; `0` on frames where the classifier didn't fire |
+
+Cold-start frames (before the first analysis frame fires) get empty cells, mirroring the existing `frame_cpu_ms` / `frame_gpu_ms` convention. Empty cells distinguish "no measurement yet" from "measured 0."
+
+### How the timing works
+
+Each measurement is a pair of `DispatchTime.now().uptimeNanoseconds` snapshots bracketing the component's call. Sub-microsecond cost; no heap allocation; no synchronisation overhead on the hot path. Threading:
+
+- `MIRPipeline.process`, `StemAnalyzer.analyze`, and `runMoodClassifier` all run on the serial analysis queue (`VisualizerEngine.processAnalysisFrame`).
+- `StemAnalyzer` surfaces its two inner timings (`lastBeatDetectorMs`, `lastPitchTrackerMs`) as `public private(set) var`s — written + read on the same serial queue, no lock.
+- `processAnalysisFrame` calls `sessionRecorder?.recordSubsystemTimings(...)` at the end of each analysis frame. The recorder hops onto its own serial queue (matches the `recordFrameTiming` pattern).
+- Lag is bounded by the analysis-vs-render rate gap (~94 Hz vs ~60 Hz) — same shape as `frame_cpu_ms` / `frame_gpu_ms`. Each CSV row carries the most recent analysis-frame timing.
+
+### What we'll learn from the next capture
+
+A fresh tap-path session captured past 70 s session-uptime will show which column doubles when `frame_cpu_ms` does. Three broad outcomes:
+
+- **`mir_pipeline_ms` doubles** — the MIRPipeline path (FFT processing, band energies, beat detection, mood inputs accumulation) is the culprit. PERF.2 dives into the components.
+- **`stem_analyzer_ms` doubles** (potentially with `beat_detector_ms` or `pitch_tracker_ms` showing the inner attribution) — the per-frame stem analysis is the culprit.
+- **None of the new columns doubles** — the cost is in unmeasured surfaces (live Beat This! trigger, orchestrator live update, render-path itself, accumulated state outside these wrappers). PERF.2 then widens instrumentation.
+
+### Verification
+
+- **Engine:** 1295/1295 tests pass. Added 2 new tests in `SessionRecorderTests`: `test_recordSubsystemTimings_thenRecordFrame_writesAllFiveColumns` (round-trip), `test_recordFrame_beforeAnySubsystemTimings_writesEmptyCells` (cold-start). Updated 5 existing column-position tests for the new layout (DM.3a / CSP.3 cells shifted by 5).
+- **App build:** succeeds.
+- **SwiftLint `--strict`:** 0 violations on the 5 touched source files + 1 new file.
+- **CSV header round-trip:** new test asserts `features.csv` ends with `mir_pipeline_ms,stem_analyzer_ms,beat_detector_ms,pitch_tracker_ms,mood_classifier_ms` (PERF.1 invariant for future column additions).
+
+### Touched files
+
+- `PhospheneEngine/Sources/Shared/SessionRecorder.swift` — five `latest*Ms` storage fields; CSV header updated; `recordFrameTiming` moved to the new `+Timing.swift` extension (file-length lint).
+- `PhospheneEngine/Sources/Shared/SessionRecorder+Timing.swift` (new) — both `recordFrameTiming` and `recordSubsystemTimings`.
+- `PhospheneEngine/Sources/Shared/SessionRecorder+CSV.swift` — new `SubsystemTimingSnapshot` value type; `csvRow(...)` gains a `subsystem:` parameter; five timing cells appended to the row.
+- `PhospheneEngine/Sources/DSP/StemAnalyzer.swift` — `lastBeatDetectorMs` / `lastPitchTrackerMs` exposed; inner timing wrappers around `drumsBeatDetector.process(...)` and `pitchTracker.process(...)`.
+- `PhospheneApp/VisualizerEngine+Audio.swift` — `processAnalysisFrame` wraps `mir.process(...)`, `runPerFrameStemAnalysis(...)`, and `runMoodClassifier(...)` with `DispatchTime` snapshots; pushes the breakdown to the recorder at end of frame.
+- `PhospheneEngine/Tests/PhospheneEngineTests/Shared/SessionRecorderTests.swift` — 2 new tests + 5 existing column-position tests updated.
+- `docs/ENGINEERING_PLAN.md` — PERF.1 done-when checkboxes.
+- `docs/QUALITY/KNOWN_ISSUES.md` — BUG-019 fix-scope updated to note instrumentation is in tree.
+
+### What's next
+
+Matt captures a fresh tap-path session that plays continuously past 70 s session-uptime (any prepared Spotify playlist, FFO or any preset — the bug isn't preset-specific). Then PERF.2 reads the new columns to attribute the bump. No code fix in this increment; PERF.3 picks that up once the root cause is identified.
+
+### Local-only
+
+Local commit on `main`. No remote push.
+
+### Related
+
+- BUG-019 in `KNOWN_ISSUES.md` — the defect this instrumentation diagnoses.
+- `[dev-2026-05-28-a]` — SAR.1 closeout that surfaced BUG-019.
+- Phase PERF in `ENGINEERING_PLAN.md` — increment chain (PERF.1 → PERF.2 → PERF.3 → PERF.4).
+
+---
+
 ## [dev-2026-05-28-a] SAR.1 — Stem analyzer deviation primitives self-seed on first non-zero frame
 
 > **M7 ADDENDUM 2026-05-28.** Matt's manual M7 on session `2026-05-27T21-12-48Z` (Billie Jean + Superstition, toggle ON, build at commit `801f3f3a`): "Around 25 s through the end of playback (~40 s), the FFO preset was glitchy and difficult to determine sync for both tracks. I would ultimately say no different." Post-fix CSV evidence confirms SAR.1 landed cleanly at the math layer (max deviation 37.69 → 2.87, a 13× drop; first-frame cold-start saturation eliminated). The "no different" verdict traces to a **separate CPU performance bug** discovered during the M7 review: `frame_cpu_ms` doubles from ~11 ms to ~23 ms at session-time 67–68 s and stays elevated, causing ~1 in 3 frames to miss the 16.67 ms deadline — exactly the "flickering / artifacts / temporarily hangs" symptom Matt described. The same degradation pattern appears in the pre-SAR.1 reference session (`2026-05-27T19-52-42Z`), confirming the perf bug is pre-existing and not introduced by SAR.1. Filed as **BUG-019** (P1, `perf`). **SAR.1 itself stays landed** — the math contract fix is correct, the empirical CSV evidence is what SAR.1 promised, and reverting it would re-introduce the 38× deviation spikes for no benefit. Phase CSP is **paused** until BUG-019 is at least diagnosed.
