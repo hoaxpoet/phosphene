@@ -3770,3 +3770,51 @@ A soft scoring penalty (e.g. "pale-share weighted into orchestrator score") woul
 **Scope.** This decision governs Lumen Mosaic at LM.4.7 directly. It applies project-wide to any preset that exposes a per-cell or per-shard discrete colour register — future palette-based presets inherit the same gate. Continuous-colour presets (ray-march scenes, fluid simulations, plasma-family) are not in scope; their colour discipline lives in SHADER_CRAFT.md material cookbook recipes (e.g. mat_chitin, mat_oceanWater) where the relevant rule is per-recipe saturation and roughness, not aggregate pale-share.
 
 **Carry-forward.** Increment LM.4.7 (ENGINEERING_PLAN.md) implements the pale-tone-share gate in `LumenPaletteSpectrumTests` (or wherever the LM.9 cert gates land in code) and verifies it passes for all 18 palettes in the library — Cathedral Lights being the calibration point. The CLAUDE.md DO NOT bullet is updated in this same paperwork session. The Visual Quality Floor pointer is updated to refer to the pale-tone-share rule rather than the retired no-muted-palettes rule.
+
+
+## D-128 — Local-file playback uses an in-process AVAudioEngine, not the Core Audio process tap (LF.1, 2026-05-27)
+
+**Status:** Accepted (2026-05-27).
+
+**Context.** The Core Audio process-tap path (`AudioHardwareCreateProcessTap`) has accumulated several documented pain points: DRM-triggered silent zeros (FA #22 / SilenceDetector / D-022 tap-reinstall scheduler), screen-capture permission as a hard prerequisite for non-zero delivery (FA #22), scrub-induced teardown requiring backoff-installed recovery (ARCH §Audio Capture), and no first-class playhead. The process-tap also assumes Phosphene is a passive observer of audio someone else is playing — `PRODUCT_SPEC.md` codifies the "Phosphene does not control playback" principle, and the streaming path strictly observes it. LF.1 is the first spike in an LF.1 → LF.4 discovery arc exploring whether Phosphene playing local files itself — owning the playhead, decode path, and analysis tap — bypasses those problems for that specific source.
+
+**Decision.** A new `InputMode.localFilePlayback(URL)` case routes to a `LocalFilePlaybackProvider` class that:
+
+1. Opens an `AVAudioFile` (Float32 planar at the file's native rate — 44100 Hz for love_rehab.m4a).
+2. Drives an `AVAudioEngine` graph: `AVAudioPlayerNode → engine.mainMixerNode → outputNode`.
+3. Installs the analysis tap on the **player node's output bus (bus 0)**, pre-mixer and pre-volume. The user's output-volume control does not affect the analysis signal.
+4. Forwards interleaved float32 PCM through the existing `onAudioSamples` callback so the downstream `UMARingBuffer` / FFT / MIR / stem pipeline is source-agnostic. The provider manually interleaves planar L/R into the L/R/L/R layout `SystemAudioCapture` delivers (matching `AudioInputRouter.startFilePlayback`'s pattern for the existing `.localFile` diagnostic mode).
+5. Loops at EOF (re-schedules the file via `AVAudioPlayerNode.scheduleFile`'s completion handler), matching the existing `.localFile` mode's `file.framePosition = 0` behavior.
+6. Observes `AVAudioEngineConfigurationChange` and restarts on fire (best-effort from beginning; mid-track resumption deferred).
+
+`AudioInputRouter`'s tap-reinstall scheduler (`+SignalState.swift`) is mode-gated so it is dormant in both `.localFile` and `.localFilePlayback` modes — those modes have no process tap to reinstall, and silence in a played file is real musical silence, not a teardown.
+
+The launch path reads `PHOSPHENE_LOCAL_FILE_PLAYBACK` at app start (`.task` modifier on `ContentView` in `PhospheneApp.swift`). When the env var points at a readable file, `VisualizerEngine.startLocalFilePlayback(url:)` flips `localFilePlaybackActive`, starts the LF provider, runs the stem pipeline, and transitions `SessionManager` to ad-hoc / `.playing`. `startAudio()` (the process-tap launch path that `PlaybackView.setup()` calls unconditionally) checks `localFilePlaybackActive` first and short-circuits — without this guard, the systemAudio tap install would call `AudioInputRouter.stopInternal()` and tear down the LF provider milliseconds after it started. `ContentView`'s permission gate also checks `localFilePlaybackActive` so the visualizer renders even on a fresh install where screen-capture permission was never granted.
+
+**Coexistence with existing `.localFile(URL)` mode.** The new case is a sibling, not a replacement. `.localFile(URL)` is preserved byte-identical: it feeds PCM into the analysis pipeline at near-real-time without playing audio through speakers. `SoakTestHarness` (D-060) and `CaptureModeReconciler`'s settings toggle (D-052) continue to use `.localFile`. `SoakTestHarnessTests` is the regression gate — green after LF.1 lands. Future increments (LF.2+) might converge the two cases, but the LF.1 spike preserves the diagnostic path intact.
+
+**Relationship to the PRODUCT_SPEC.md "Phosphene does not control playback" principle.** This decision intentionally and narrowly amends the principle for the local-file source. The streaming path (Apple Music, Spotify) is untouched — Phosphene continues to passively observe audio the user controls in their streaming app. The local-file path is the exception: when Phosphene plays a local file itself, it owns the playhead because the file has no separate playback owner to coordinate with. The scope of the amendment is the new `.localFilePlayback` mode only; the principle stands for every other source. If LF.4 graduates this spike to a shipping feature, the UX_SPEC.md surfaces (settings audio-source picker, drag-and-drop, etc.) will need to make the playback-controlling-app distinction explicit so the user is not surprised by Phosphene producing sound for local files but not for streaming.
+
+**Rejected alternatives.**
+
+- **Reuse the existing `.localFile(URL)` case + add a "play through speakers" flag.** Conflates the diagnostic-injection contract (used by `SoakTestHarness` since 7.1) with the user-facing playback contract. Adding a flag risks accidental playback during soak runs and complicates the SoakTestHarness regression gate. Sibling cases keep both contracts byte-identical and let each evolve independently.
+
+- **Use `AVAudioFile` + `AVAudioEngine` but route through the same backing implementation as `.localFile`.** Same conflation problem, plus the existing `.localFile` implementation uses a `Task.detached` polling loop with `Task.sleep(for:)` — appropriate for diagnostic injection but a poor fit for real-time playback where `AVAudioEngine`'s own scheduling is the right tool.
+
+- **Hijack the process-tap path to play audio in Phosphene's own process.** Possible in principle (Core Audio aggregate devices can include both inputs and outputs), but defeats the entire premise of the spike — the goal was to bypass the process-tap path's documented problems, not work around them.
+
+- **A separate top-level `PlaybackSource` abstraction parallel to `InputMode`.** Premature. The spike scope is "does owning playback work end-to-end" — adding a new abstraction is LF.4 work if the spike succeeds. LF.1 reuses `InputMode` because that's the smallest change that proves the concept.
+
+**Verification (manual + automated).** The LF.1 closeout's manual verification reports a clean run on `love_rehab.m4a`: 1684 features.csv frames over 28.96 s (matching the fixture's 29.93 s with the expected ~1 s startup gap), raw_tap.wav at the file's native 44100 Hz with healthy RMS ≈ 0.31 (max amplitude 1.0 — Love Rehab's mastered peaks), session.log clean of any "Tap reinstall scheduled" / "CGRequestScreenCaptureAccess" / "DRM silence" lines, and an installed live BeatGrid at 118.5 BPM matching the track's true tempo within rounding. The two new regression tests `test_scheduleNextReinstall_isNoOpInLocalFilePlaybackMode` and `test_scheduleNextReinstall_isNoOpInLocalFileMode` lock the mode-gate behavior so a future tap-reinstall edit cannot re-enable scheduling for either mode.
+
+**Out of scope (deferred).** Per the LF.1 prompt:
+- Stem separation pre-analysis of the full track (LF.2).
+- Persistent content-keyed stem cache (LF.3).
+- Folder ingestion, M3U import, playlist semantics (LF.4).
+- Drag-and-drop UI, settings audio-source picker, output-device routing (LF.4).
+- Crossfade / gapless segue (LF.4).
+- ID3/Vorbis tag extraction, album art display (LF.4).
+- `SessionManager` integration (LF.4).
+- A/B comparison vs. process-tap on the same audio (LF.1.5).
+- Concurrency hardening of `tapSampleRate` propagation (separate ongoing task).
+- Format-coverage testing across MP3 / FLAC / M4A / AAC (LF.2).
