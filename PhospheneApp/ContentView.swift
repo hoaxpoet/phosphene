@@ -36,7 +36,12 @@ struct ContentView: View {
 
     var body: some View {
         Group {
-            if permissionMonitor.isScreenCaptureGranted {
+            // LF.1: in local-file playback mode the audio path is
+            // AVAudioEngine, not Core Audio process taps, so screen-capture
+            // permission is irrelevant. Bypass the gate so the visualizer
+            // renders even on a fresh install where permission was never
+            // granted.
+            if permissionMonitor.isScreenCaptureGranted || engine.localFilePlaybackActive {
                 sessionStateBody
             } else {
                 PermissionOnboardingView()

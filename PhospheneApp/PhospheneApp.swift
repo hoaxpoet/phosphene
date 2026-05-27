@@ -1,5 +1,9 @@
+import Foundation
 import Renderer
 import SwiftUI
+import os.log
+
+private let lfLogger = Logger(subsystem: "com.phosphene.app", category: "LF1")
 
 /// Phosphene application entry point.
 ///
@@ -84,6 +88,19 @@ struct PhospheneApp: App {
             .onOpenURL { url in
                 guard url.scheme == "phosphene", url.host == "spotify-callback" else { return }
                 Task { await spotifyOAuth.handleCallback(url: url) }
+            }
+            // LF.1 — Local-file playback hook. When the
+            // `PHOSPHENE_LOCAL_FILE_PLAYBACK` env var points at a readable
+            // audio file, bypass the normal IdleView → SessionManager flow
+            // and play the file directly via AVAudioEngine. Empty / absent
+            // / unreadable env var: no log, normal launch proceeds.
+            .task {
+                guard let raw = ProcessInfo.processInfo.environment["PHOSPHENE_LOCAL_FILE_PLAYBACK"],
+                      !raw.isEmpty else { return }
+                let url = URL(fileURLWithPath: raw)
+                guard FileManager.default.isReadableFile(atPath: url.path) else { return }
+                lfLogger.info("[LF.1] local-file playback mode: \(url.path, privacy: .public)")
+                engine.startLocalFilePlayback(url: url)
             }
         }
     }
