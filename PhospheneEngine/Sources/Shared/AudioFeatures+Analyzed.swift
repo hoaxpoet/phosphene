@@ -325,7 +325,7 @@ public enum EmotionalQuadrant: String, Sendable, Equatable, Codable {
 /// Maps to Russell's circumplex model of affect:
 /// - Valence: -1 (negative/sad) to +1 (positive/happy)
 /// - Arousal: -1 (calm/relaxed) to +1 (energetic/excited)
-public struct EmotionalState: Sendable, Equatable {
+public struct EmotionalState: Sendable, Equatable, Codable {
 
     /// Emotional valence: -1 (sad/tense) to +1 (happy/calm).
     public var valence: Float

@@ -205,3 +205,130 @@ public struct StemFeatures: Sendable, Equatable {
     /// All-zero stem features — safe default during warmup.
     public static let zero = StemFeatures()
 }
+
+// MARK: - Codable
+
+/// On-disk encoding for `PersistentStemCache` (LF.3, D-130).
+///
+/// Only the 44 load-bearing fields participate. The internal `_sfPad*`
+/// padding floats (slots 45–64) exist for the 256-byte GPU contract and
+/// have no semantic content — excluding them keeps the on-disk format
+/// stable across any future padding-layout change.
+extension StemFeatures: Codable {
+
+    // swiftlint:disable:next nesting
+    private enum CodingKeys: String, CodingKey {
+        case vocalsEnergy, vocalsBand0, vocalsBand1, vocalsBeat
+        case drumsEnergy, drumsBand0, drumsBand1, drumsBeat
+        case bassEnergy, bassBand0, bassBand1, bassBeat
+        case otherEnergy, otherBand0, otherBand1, otherBeat
+        case vocalsEnergyRel, vocalsEnergyDev
+        case drumsEnergyRel, drumsEnergyDev
+        case bassEnergyRel, bassEnergyDev
+        case otherEnergyRel, otherEnergyDev
+        case vocalsOnsetRate, vocalsCentroid, vocalsAttackRatio, vocalsEnergySlope
+        case drumsOnsetRate, drumsCentroid, drumsAttackRatio, drumsEnergySlope
+        case bassOnsetRate, bassCentroid, bassAttackRatio, bassEnergySlope
+        case otherOnsetRate, otherCentroid, otherAttackRatio, otherEnergySlope
+        case vocalsPitchHz, vocalsPitchConfidence
+        case drumsEnergyDevSmoothed
+        case cachedBassProportion
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init()
+        vocalsEnergy = try c.decode(Float.self, forKey: .vocalsEnergy)
+        vocalsBand0 = try c.decode(Float.self, forKey: .vocalsBand0)
+        vocalsBand1 = try c.decode(Float.self, forKey: .vocalsBand1)
+        vocalsBeat = try c.decode(Float.self, forKey: .vocalsBeat)
+        drumsEnergy = try c.decode(Float.self, forKey: .drumsEnergy)
+        drumsBand0 = try c.decode(Float.self, forKey: .drumsBand0)
+        drumsBand1 = try c.decode(Float.self, forKey: .drumsBand1)
+        drumsBeat = try c.decode(Float.self, forKey: .drumsBeat)
+        bassEnergy = try c.decode(Float.self, forKey: .bassEnergy)
+        bassBand0 = try c.decode(Float.self, forKey: .bassBand0)
+        bassBand1 = try c.decode(Float.self, forKey: .bassBand1)
+        bassBeat = try c.decode(Float.self, forKey: .bassBeat)
+        otherEnergy = try c.decode(Float.self, forKey: .otherEnergy)
+        otherBand0 = try c.decode(Float.self, forKey: .otherBand0)
+        otherBand1 = try c.decode(Float.self, forKey: .otherBand1)
+        otherBeat = try c.decode(Float.self, forKey: .otherBeat)
+        vocalsEnergyRel = try c.decode(Float.self, forKey: .vocalsEnergyRel)
+        vocalsEnergyDev = try c.decode(Float.self, forKey: .vocalsEnergyDev)
+        drumsEnergyRel = try c.decode(Float.self, forKey: .drumsEnergyRel)
+        drumsEnergyDev = try c.decode(Float.self, forKey: .drumsEnergyDev)
+        bassEnergyRel = try c.decode(Float.self, forKey: .bassEnergyRel)
+        bassEnergyDev = try c.decode(Float.self, forKey: .bassEnergyDev)
+        otherEnergyRel = try c.decode(Float.self, forKey: .otherEnergyRel)
+        otherEnergyDev = try c.decode(Float.self, forKey: .otherEnergyDev)
+        vocalsOnsetRate = try c.decode(Float.self, forKey: .vocalsOnsetRate)
+        vocalsCentroid = try c.decode(Float.self, forKey: .vocalsCentroid)
+        vocalsAttackRatio = try c.decode(Float.self, forKey: .vocalsAttackRatio)
+        vocalsEnergySlope = try c.decode(Float.self, forKey: .vocalsEnergySlope)
+        drumsOnsetRate = try c.decode(Float.self, forKey: .drumsOnsetRate)
+        drumsCentroid = try c.decode(Float.self, forKey: .drumsCentroid)
+        drumsAttackRatio = try c.decode(Float.self, forKey: .drumsAttackRatio)
+        drumsEnergySlope = try c.decode(Float.self, forKey: .drumsEnergySlope)
+        bassOnsetRate = try c.decode(Float.self, forKey: .bassOnsetRate)
+        bassCentroid = try c.decode(Float.self, forKey: .bassCentroid)
+        bassAttackRatio = try c.decode(Float.self, forKey: .bassAttackRatio)
+        bassEnergySlope = try c.decode(Float.self, forKey: .bassEnergySlope)
+        otherOnsetRate = try c.decode(Float.self, forKey: .otherOnsetRate)
+        otherCentroid = try c.decode(Float.self, forKey: .otherCentroid)
+        otherAttackRatio = try c.decode(Float.self, forKey: .otherAttackRatio)
+        otherEnergySlope = try c.decode(Float.self, forKey: .otherEnergySlope)
+        vocalsPitchHz = try c.decode(Float.self, forKey: .vocalsPitchHz)
+        vocalsPitchConfidence = try c.decode(Float.self, forKey: .vocalsPitchConfidence)
+        drumsEnergyDevSmoothed = try c.decode(Float.self, forKey: .drumsEnergyDevSmoothed)
+        cachedBassProportion = try c.decode(Float.self, forKey: .cachedBassProportion)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(vocalsEnergy, forKey: .vocalsEnergy)
+        try c.encode(vocalsBand0, forKey: .vocalsBand0)
+        try c.encode(vocalsBand1, forKey: .vocalsBand1)
+        try c.encode(vocalsBeat, forKey: .vocalsBeat)
+        try c.encode(drumsEnergy, forKey: .drumsEnergy)
+        try c.encode(drumsBand0, forKey: .drumsBand0)
+        try c.encode(drumsBand1, forKey: .drumsBand1)
+        try c.encode(drumsBeat, forKey: .drumsBeat)
+        try c.encode(bassEnergy, forKey: .bassEnergy)
+        try c.encode(bassBand0, forKey: .bassBand0)
+        try c.encode(bassBand1, forKey: .bassBand1)
+        try c.encode(bassBeat, forKey: .bassBeat)
+        try c.encode(otherEnergy, forKey: .otherEnergy)
+        try c.encode(otherBand0, forKey: .otherBand0)
+        try c.encode(otherBand1, forKey: .otherBand1)
+        try c.encode(otherBeat, forKey: .otherBeat)
+        try c.encode(vocalsEnergyRel, forKey: .vocalsEnergyRel)
+        try c.encode(vocalsEnergyDev, forKey: .vocalsEnergyDev)
+        try c.encode(drumsEnergyRel, forKey: .drumsEnergyRel)
+        try c.encode(drumsEnergyDev, forKey: .drumsEnergyDev)
+        try c.encode(bassEnergyRel, forKey: .bassEnergyRel)
+        try c.encode(bassEnergyDev, forKey: .bassEnergyDev)
+        try c.encode(otherEnergyRel, forKey: .otherEnergyRel)
+        try c.encode(otherEnergyDev, forKey: .otherEnergyDev)
+        try c.encode(vocalsOnsetRate, forKey: .vocalsOnsetRate)
+        try c.encode(vocalsCentroid, forKey: .vocalsCentroid)
+        try c.encode(vocalsAttackRatio, forKey: .vocalsAttackRatio)
+        try c.encode(vocalsEnergySlope, forKey: .vocalsEnergySlope)
+        try c.encode(drumsOnsetRate, forKey: .drumsOnsetRate)
+        try c.encode(drumsCentroid, forKey: .drumsCentroid)
+        try c.encode(drumsAttackRatio, forKey: .drumsAttackRatio)
+        try c.encode(drumsEnergySlope, forKey: .drumsEnergySlope)
+        try c.encode(bassOnsetRate, forKey: .bassOnsetRate)
+        try c.encode(bassCentroid, forKey: .bassCentroid)
+        try c.encode(bassAttackRatio, forKey: .bassAttackRatio)
+        try c.encode(bassEnergySlope, forKey: .bassEnergySlope)
+        try c.encode(otherOnsetRate, forKey: .otherOnsetRate)
+        try c.encode(otherCentroid, forKey: .otherCentroid)
+        try c.encode(otherAttackRatio, forKey: .otherAttackRatio)
+        try c.encode(otherEnergySlope, forKey: .otherEnergySlope)
+        try c.encode(vocalsPitchHz, forKey: .vocalsPitchHz)
+        try c.encode(vocalsPitchConfidence, forKey: .vocalsPitchConfidence)
+        try c.encode(drumsEnergyDevSmoothed, forKey: .drumsEnergyDevSmoothed)
+        try c.encode(cachedBassProportion, forKey: .cachedBassProportion)
+    }
+}
