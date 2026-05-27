@@ -102,7 +102,7 @@ public final class MIRPipeline: @unchecked Sendable {
     /// the soft pulse is the experiment group of Matt's A/B; set false to
     /// run the off-side of the A/B without recompiling:
     /// ```
-    /// defaults write com.phosphene.app softTempoPulseEnabled -bool NO
+    /// defaults write com.phosphene.PhospheneApp softTempoPulseEnabled -bool NO
     /// ```
     /// See CLAUDE.md §Cold-Start Phase Contract + ENGINEERING_PLAN.md CSP.1.
     public var softTempoPulseEnabled: Bool = true
