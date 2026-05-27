@@ -653,6 +653,8 @@ Generated per-capture (in each session directory):
 
 ## Addendum — BSAudit.3 closeout (Matt's Choice A decision, 2026-05-25)
 
+> **AMENDED 2026-05-26 — BSAudit.3.impl was reverted on 2026-05-25 evening** (commits `33cd57e9` / `6758a617` / `002b5f2b` / `35305b5e`) after the Choice A "doc-only closeout" earlier that same day. The diagnostic tooling (`--accent-window-pass-rate` verifier mode, the 4 new SelfTest checks, the diagnostic findings docs) was retained per Matt's "yes, keep the tools" sign-off. Production reverted to the pre-impl baseline: cached `BeatGrid` install via `MIRPipeline.setBeatGrid` (no `installBPMPrior` path), `LiveBeatDriftTracker` in pre-impl form, `GridOnsetCalibrator` reinstated, no `accentConfidence` field, ungated beat accents. The text below describes the BSAudit.3.impl architecture as it shipped at closeout time; treat it as historical record of the attempt that motivated Choice A, not as current production. See [CLAUDE.md §Cold-Start Phase Contract](../../CLAUDE.md#cold-start-phase-contract) for the current production-state description.
+
 This audit's load-bearing follow-up (BSAudit-FU-5) was resolved via a different path than the two it framed. Rather than Path A (Beat This!-on-tap as cross-capture-stable reference — empirically falsified in [BSAudit.2](#addendum--bsaudit2-path-a-findings-2026-05-24)) or Path B (human-tap ground truth — not built), Matt chose a third path 2026-05-24: a design-first re-architecture of the cold-start contract itself. **BSAudit.3** = design + impl + validate + diag + close, 2026-05-24 → 2026-05-25.
 
 **BSAudit.3.impl** ([`docs/BPM_ANCHORED_PHASE_ACQUISITION_DESIGN_2026-05-24.md`](../BPM_ANCHORED_PHASE_ACQUISITION_DESIGN_2026-05-24.md), commits `efaf8cb4..30d032ea`) replaced the "trust cached grid phase" + "snap to live Beat This!" approaches with **BPM-prior + broadband-peak phase acquisition + confidence-gated accents**:
@@ -674,10 +676,10 @@ The fresh capture demonstrated this audit's worst case: **six iterations on the 
 
 ### Resolution
 
-**Matt's Choice A decision (2026-05-25):** retain BSAudit.3.impl as the production cold-start architecture (gated accents + graceful degradation is a real improvement); accept the ±60 ms / 3 s perceptual sync sub-goal as structurally unachievable; document the contract honestly.
+**Matt's Choice A decision (2026-05-25):** the initial closeout retained BSAudit.3.impl as the production cold-start architecture and accepted the ±60 ms / 3 s perceptual sync sub-goal as structurally unachievable. **AMENDED 2026-05-26 — the impl runtime was reverted same evening; production is the pre-impl baseline.** The structural-limit acceptance still holds; only the runtime in place changed.
 
-- Production architecture stays at `30d032ea` (BSAudit.3.impl.3).
-- `ColdStartVerifier --accent-window-pass-rate` mode + per-track diagnostic block stays as diagnostic infrastructure.
+- Initial closeout production architecture: `30d032ea` (BSAudit.3.impl.3). **AMENDED 2026-05-26: reverted same evening** (`33cd57e9` / `6758a617` / `002b5f2b` / `35305b5e`); production is the pre-`efaf8cb4` baseline.
+- `ColdStartVerifier --accent-window-pass-rate` mode + per-track diagnostic block stays as diagnostic infrastructure (retained through the revert per "yes, keep the tools").
 - CLAUDE.md §Cold-Start Phase Contract documents the achievable contract (continuous-energy from frame 1; BPM-prior + confidence-gated accents; graceful degradation on hard tracks).
 - CLAUDE.md Failed Approach #69 retires further automated short-window cold-start beat-phase derivation.
 - BUG-017 status: **Resolved against accepted structural limit.**
@@ -687,13 +689,14 @@ The fresh capture demonstrated this audit's worst case: **six iterations on the 
 
 | Component | Pre-closeout verdict | Post-closeout state |
 |---|---|---|
-| 1a. Prep-time Beat This! grid | `production-active-but-broken` (for phase) | **Resolved** — `installBPMPrior` consumes BPM only; cached beat positions no longer used for phase. |
-| 1b. Prep-time `gridOnsetOffsetMs` | `documented-but-broken` | **Resolved** — `GridOnsetCalibrator` retired entirely. |
-| 2. Cold-start grid install | `documented-but-broken` | **Resolved against accepted limit** — install path now BPM-only; per-track phase offset accepted as residual limit per CLAUDE.md §Cold-Start Phase Contract. |
-| 3. Live drift EMA | `production-active` | Unchanged at the API; semantics now driven by the BSAudit.3 confidence accumulator rather than the legacy ±50 ms hard match. |
-| 4. EMA under wrong-phase grid | `characterized` (bimodal) | Superseded — BSAudit.3.impl no longer installs a wrong-phase grid; the wrong-anchor problem now lives at the broadband-peak phase acquisition layer, characterized in `BSAUDIT_3_VALIDATE_3_DIAG_2026-05-25.md`. |
+| 1a. Prep-time Beat This! grid | `production-active-but-broken` (for phase) | **Was "Resolved" at closeout** — `installBPMPrior` consumed BPM only; cached beat positions no longer used for phase. **AMENDED 2026-05-26:** the impl revert removed `installBPMPrior`; cached beat positions are again used by `MIRPipeline.setBeatGrid` per the pre-impl path. Component returns to `production-active-but-broken` for phase use. |
+| 1b. Prep-time `gridOnsetOffsetMs` | `documented-but-broken` | **Was "Resolved" at closeout** — `GridOnsetCalibrator` retired entirely. **AMENDED 2026-05-26:** the impl revert reinstated `GridOnsetCalibrator`. Component returns to `documented-but-broken`. |
+| 2. Cold-start grid install | `documented-but-broken` | **Was "Resolved against accepted limit" at closeout** — install path was BPM-only. **AMENDED 2026-05-26:** install path is again the pre-impl form (beat positions consumed). The per-track phase offset is still accepted as the residual structural limit per CLAUDE.md §Cold-Start Phase Contract; only the runtime mechanism for handling it changed back. |
+| 3. Live drift EMA | `production-active` | **Was "unchanged at API; semantics driven by BSAudit.3 confidence accumulator" at closeout. AMENDED 2026-05-26:** the impl revert restored the legacy ±50 ms hard-match EMA. Semantics back to pre-impl. |
+| 4. EMA under wrong-phase grid | `characterized` (bimodal) | **Was "superseded" at closeout** — impl ostensibly removed wrong-phase grids. **AMENDED 2026-05-26:** impl was reverted; the pre-impl wrong-phase-grid characterization (bimodal EMA behavior) is again the operating reality on cross-capture-unstable tracks. |
 | 5a. Verifier clock-offset | `unverified-claim` | Unchanged — instrumentation step never executed; not load-bearing for the closeout. |
-| 5b. Beat This!-on-tap reference stability | `production-active-but-broken` (cross-capture) | **Accepted as known limit** — the `ColdStartVerifier --accent-window-pass-rate` mode is within-capture-only by design per Path A falsification. Cross-capture comparisons remain out of scope for any future verifier use. |
-| 6. `BeatDetector` sub-bass onset | `production-active-but-broken` (as phase reference) | **Resolved** — no remaining production code uses sub-bass onsets as a phase reference. The detector's onset-stream use for beat-pulse fields (Layer 4 accents) remains correct and uncontroversial. |
+| 5b. Beat This!-on-tap reference stability | `production-active-but-broken` (cross-capture) | **Accepted as known limit** — the `ColdStartVerifier --accent-window-pass-rate` mode is within-capture-only by design per Path A falsification. Cross-capture comparisons remain out of scope for any future verifier use. (Unchanged by the impl revert — this verdict is about the verifier tool, which was retained.) |
+| 6. `BeatDetector` sub-bass onset | `production-active-but-broken` (as phase reference) | **Was "Resolved" at closeout** — no remaining production code used sub-bass onsets as phase reference. **AMENDED 2026-05-26:** impl revert restored sub-bass-onset use in `LiveBeatDriftTracker` (pre-impl form). The detector's onset-stream use for beat-pulse fields (Layer 4 accents) remains correct and uncontroversial. |
 
 — Claude (2026-05-25, BSAudit.3.close)
+— AMENDED Claude (2026-05-26, BSAudit.3.revert.docs)

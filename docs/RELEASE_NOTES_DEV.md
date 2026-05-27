@@ -6,6 +6,53 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-26-b] BSAudit.3.revert.docs — doc-state alignment with the 2026-05-25 evening impl revert
+
+**Increment:** BSAudit.3.revert.docs (doc-only). **Status:** Complete 2026-05-26. **Scope:** align 8 documents with the production reality after the BSAudit.3.impl reverts on 2026-05-25 evening.
+
+### Why this increment exists
+
+Matt's Choice A "doc-only closeout" of BSAudit.3 (`438edbbb`, 2026-05-25 afternoon) retained the BSAudit.3.impl runtime as production. Same evening, Matt reverted the three impl commits and a companion CSV-column commit (`33cd57e9` / `6758a617` / `002b5f2b` / `35305b5e`), retaining only the diagnostic tooling per "yes, keep the tools." The closeout commit message — "Production runtime stays at BSAudit.3.impl (30d032ea)" — and the related doc updates (CLAUDE.md §Cold-Start Phase Contract; KNOWN_ISSUES BUG-017; this file's `[dev-2026-05-25-a]` entry; BEAT_SYNC.md; HISTORICAL_DEAD_ENDS; ENGINEERING_PLAN.md; the BPM-anchored-phase-acquisition design doc; the validate.3 diagnostic findings) all describe a runtime that is no longer in production.
+
+The drift was surfaced by the BUG-016 fix investigation (2026-05-26) when researching where `accentConfidence` lived for CSP.1's planned fade signal. Per the Authoring Discipline rule "Verify against the artifact before asserting facts about it," CSP.1 cannot proceed against a doc that disagrees with the code; that's how iteration #7 of a six-iteration dead-end gets accidentally filed. This increment fixes the doc state first; CSP.1's direction (time-based fade signal vs. reinstall the impl) becomes a separate post-doc-correction decision.
+
+### What changed (8 files, surgical annotation strategy)
+
+- **`CLAUDE.md` §Cold-Start Phase Contract** — rewritten. New "Production delivers at cold-start (post-2026-05-25 revert)" block describes the pre-impl baseline (cached `BeatGrid` install via `MIRPipeline.setBeatGrid`, `LiveBeatDriftTracker` pre-impl form, `GridOnsetCalibrator` reinstated, ungated beat accents). The BSAudit.3.impl architecture is demoted to a "Historical: the BSAudit.3.impl attempt" subsection. Preset-authoring rules updated — accent gating is NO LONGER automatic; presets that need cold-start accent suppression must implement it themselves.
+- **`CLAUDE.md` Failed Approach #69** — annotated. Resolution paragraph updated to note the impl was reverted same-day after Choice A. The premise + the structural limit + the discriminator all still stand; only the runtime in place changed.
+- **`CLAUDE.md` §What NOT To Do** — bullet on "do not file another iteration on automated cold-start beat-phase derivation" updated. The rule stands; the parenthetical "(BSAudit.3.impl is the accepted contract)" replaced with an honest description of the pre-impl baseline.
+- **`docs/QUALITY/KNOWN_ISSUES.md` BUG-017** — AMENDED block at top + inline annotation in the Resolution section. The Resolved verdict still holds (against the accepted structural limit); the runtime architecture described is now historical.
+- **`docs/RELEASE_NOTES_DEV.md` `[dev-2026-05-25-a]`** — AMENDED block at top forward-referencing this entry.
+- **`docs/HISTORICAL_DEAD_ENDS.md`** — "What lives in production today" rewritten to describe the pre-impl baseline. Graveyard tombstone annotated.
+- **`docs/CAPABILITY_REGISTRY/BEAT_SYNC.md`** — Closeout Addendum annotated. Per-component verdicts table updated: components 1a / 1b / 2 / 3 / 4 / 6 all return to their pre-impl verdicts (the impl revert undid the closeout-time "Resolved" verdicts). Component 5a + 5b unchanged. Diagnostic infrastructure verdict (verifier mode + tooling) retained.
+- **`docs/ENGINEERING_PLAN.md`** — BSAudit.3 entry gets two new sub-increment rows: `BSAudit.3.revert ✅` (the three reverts + CSV column drop) and `BSAudit.3.revert.docs ✅` (this commit). impl.1/.2/.3 rows annotated with their revert commits. Done-when rewritten.
+- **`docs/BPM_ANCHORED_PHASE_ACQUISITION_DESIGN_2026-05-24.md`** — AMENDED block at top. Status line updated from "Pre-implementation design" to "Implemented 2026-05-24, reverted 2026-05-25 evening. Historical record."
+- **`docs/diagnostics/BSAUDIT_3_VALIDATE_3_DIAG_2026-05-25.md`** — AMENDED block at top. Diagnostic findings preserved; the impl runtime they characterize was subsequently reverted.
+
+### Strategy
+
+Surgical annotation, not rewrite. Each affected document gets a clear AMENDED 2026-05-26 block at the top of the relevant section saying "BSAudit.3.impl was reverted on 2026-05-25 evening — production is the pre-impl baseline." The body text stays as-is, preserving the audit trail. The exception is CLAUDE.md §Cold-Start Phase Contract, where future-Claude reads to understand production — that section's "what delivers" subsection was rewritten in place so the in-flight reader doesn't have to scroll past historical context.
+
+### Verification
+
+- Doc-only increment. `swift build --package-path PhospheneEngine` passes (no code touched). `swiftlint --strict` not relevant.
+- Cross-file consistency check: every doc that previously claimed BSAudit.3.impl as production now either (a) has an AMENDED block forwarding to the current-state description, (b) has been rewritten to describe the current state directly (CLAUDE.md §Cold-Start Phase Contract), or (c) is explicitly marked historical.
+
+### Local-only
+
+Local commit on `main`. No remote push.
+
+### What this unblocks
+
+CSP.1 (Cold-Start Perceptual Tempo Scaffold) was paused pending this doc-correction. The original CSP.1 spec used `accentConfidence` as the fade signal; that field no longer exists. The three options surfaced 2026-05-26 still stand: (1) time-based fade signal, (2) reinstall BSAudit.3.impl, (3) doc-fix first. Option (3) is now complete; (1) vs (2) becomes the next product decision.
+
+### Related
+
+- BSAudit.3 increment chain — `[dev-2026-05-25-a]` above, now AMENDED to forward-reference this entry.
+- BUG-017 — Resolution status unchanged (still Resolved against accepted structural limit); the runtime architecture described in the resolution is now annotated as historical.
+
+---
+
 ## [dev-2026-05-26-a] BUG-016 Resolved — Lumen Mosaic per-song palette loaded at preset-activate
 
 **Increment:** BUG-016 fix (trivial-collapse single-increment, Matt's explicit approval 2026-05-26).
@@ -66,7 +113,9 @@ This release is local-only — `main` branch on `Matthews-Mac-mini`. No remote p
 
 ## [dev-2026-05-25-a] BSAudit.3 closeout — Option A: accept structural limit; BUG-017 Resolved against accepted limit
 
-**Increment:** BSAudit.3 (full chain — impl.1 + impl.2 + impl.3 + validate.1 + validate.2 + diag.1 + close). **Status:** BUG-017 Resolved 2026-05-25 against accepted structural limit per Matt's Choice A decision. **Outcome:** the BSAudit.3.impl architecture stays in production as the cold-start contract; the ±60 ms / 3 s perceptual sync sub-goal is retired as structurally unachievable; CLAUDE.md gains §Cold-Start Phase Contract + Failed Approach #69.
+> **AMENDED 2026-05-26 — the BSAudit.3.impl runtime described as "stays in production" below was reverted on 2026-05-25 evening** (commits `33cd57e9` / `6758a617` / `002b5f2b` / `35305b5e`). The diagnostic tooling was retained per Matt's "yes, keep the tools" sign-off; the runtime is the pre-impl baseline. The structural-limit acceptance still holds. See `[dev-2026-05-26-b]` above for the revert narrative + the doc-correction increment.
+
+**Increment:** BSAudit.3 (full chain — impl.1 + impl.2 + impl.3 + validate.1 + validate.2 + diag.1 + close). **Status:** BUG-017 Resolved 2026-05-25 against accepted structural limit per Matt's Choice A decision. **Outcome:** the BSAudit.3.impl architecture was retained in production at closeout time as the cold-start contract (subsequently reverted same evening — see annotation above); the ±60 ms / 3 s perceptual sync sub-goal is retired as structurally unachievable; CLAUDE.md gains §Cold-Start Phase Contract + Failed Approach #69.
 
 ### What this closes
 

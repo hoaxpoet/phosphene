@@ -1,8 +1,10 @@
 # BPM-Anchored Phase Acquisition — Design + Adversarial Review
 
+> **AMENDED 2026-05-26 — historical record.** This design was implemented as BSAudit.3.impl (commits `efaf8cb4..30d032ea`, 2026-05-24) and reverted on 2026-05-25 evening (`33cd57e9` / `6758a617` / `002b5f2b` / `35305b5e`) after the validate.3 + diag.1 findings characterized the structural failure modes (wrong-anchor lock on broadband flux; confidence accumulator doesn't back-pressure off-anchor lock; metric is gameable by accent over-firing — see [`docs/diagnostics/BSAUDIT_3_VALIDATE_3_DIAG_2026-05-25.md`](diagnostics/BSAUDIT_3_VALIDATE_3_DIAG_2026-05-25.md)). Matt's Choice A decision (2026-05-25) accepted the ±60 ms / 3 s perceptual sync sub-goal as structurally unachievable. Production is the pre-impl baseline. This document is preserved as historical record of the design that motivated and was tested by Choice A. See [CLAUDE.md §Cold-Start Phase Contract](../CLAUDE.md#cold-start-phase-contract) for the current production-state description.
+
 **Date:** 2026-05-24
 **Phase:** BSAudit.3 (design)
-**Status:** Pre-implementation design. No code changes have landed.
+**Status:** ~~Pre-implementation design. No code changes have landed.~~ **Implemented 2026-05-24, reverted 2026-05-25 evening. Historical record.**
 **Prior art:** [`docs/COLD_START_SYNC_DESIGN_2026-05-20.md`](COLD_START_SYNC_DESIGN_2026-05-20.md) (Phase CS); [`docs/CAPABILITY_REGISTRY/BEAT_SYNC.md`](CAPABILITY_REGISTRY/BEAT_SYNC.md) (BSAudit + BSAudit.2 empirical falsification of Beat This!-on-tap reproducibility). Read those first.
 **CLAUDE.md anchors:** Failed Approach #68 (sub-bass onsets as beat-phase reference); Authoring Discipline §"Articulate the musical role"; §"Grounding priority"; §"Diagnostic infrastructure precedes fidelity claims"; §"Verify Matt's current intent before trusting any 'what stays unchanged' claim."
 
