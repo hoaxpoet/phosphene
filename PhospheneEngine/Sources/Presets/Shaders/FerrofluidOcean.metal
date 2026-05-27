@@ -119,7 +119,16 @@ static inline float fo_stem_warmup_blend(constant StemFeatures& stems) {
 
 constant float FO_SPIKE_COLD_START_FADE_START_S = 0.5;
 constant float FO_SPIKE_COLD_START_FADE_END_S   = 14.0;
-constant float FO_SPIKE_BASELINE_PIVOT          = 0.25;   // proportion below this → no baseline boost
+// CSP.3.1 (2026-05-27): pivot lowered from 0.25 → 0.15. Session
+// 2026-05-27T19-38-32Z measured Get Lucky's cached_bass_proportion at
+// 0.248 and Superstition's at 0.176 — both at-or-below the original 0.25
+// pivot, so Layer 1 contributed zero on the tracks Matt actually plays.
+// Lowering to 0.15 puts both above the threshold (Get Lucky gets ~3 %,
+// Superstition ~1 %). Smaller than the design "Visible (± 25 %)" magnitude
+// because real-world proportions don't reach the formula's max; the
+// scale was tuned for theoretical max proportion = 1.0 which doesn't
+// occur in practice.
+constant float FO_SPIKE_BASELINE_PIVOT          = 0.15;
 constant float FO_SPIKE_BASELINE_RANGE          = 0.25;   // ±25 % per Matt approval 2026-05-27
 
 static inline float fo_spike_strength(constant FeatureVector& f,
@@ -134,11 +143,21 @@ static inline float fo_spike_strength(constant FeatureVector& f,
                                  0.0, FO_SPIKE_BASELINE_RANGE);
 
     // Layer 2 — cold-start crossfade. Cold-start: live overall bass
-    // (continuous, smoothed). Warm: isolated bass stem (cleaner).
+    // (continuous). Warm: isolated bass stem (cleaner).
+    //
+    // CSP.3.1 (2026-05-27): switched proxy from `f.bass_att` to `f.bass`.
+    // Session 2026-05-27T19-38-32Z showed `bass_att` ranged 0.16–0.33
+    // during cold-start (smoothed, slow-flowing) → only 6 % peak-to-trough
+    // spike-height variation, below perception floor. `f.bass` (less
+    // smoothed, instant continuous) ranges 0.03–0.53 in the same window
+    // → ~16 % variation, comfortably visible. The `att` suffix on
+    // `bass_att` literally means *attenuated* (heavily smoothed) — wrong
+    // primitive for per-frame motion driver. `f.bass` matches what other
+    // bass-driven presets use (Volumetric Lithograph's camera dolly).
     float blend = smoothstep(FO_SPIKE_COLD_START_FADE_START_S,
                              FO_SPIKE_COLD_START_FADE_END_S,
                              f.track_elapsed_s);
-    float proxy = clamp(f.bass_att, 0.0, 1.0);          // continuous, frame 1
+    float proxy = clamp(f.bass, 0.0, 1.0);              // continuous, frame 1
     float warm  = clamp(stems.bass_energy_dev, 0.0, 1.0); // sparse-event, ~15 s+
     float src   = mix(proxy, warm, blend);
 
