@@ -1,10 +1,16 @@
 // PersistentStemCache — Disk-backed content-keyed cache for local-file
-// pre-analysis results (LF.3 / D-130).
+// pre-analysis results (LF.3 / D-130; LF.4 / D-131 eviction + clear).
 //
 // Sibling to `StemCache` (in-memory only). The persistent layer keys on
 // the SHA-256 of the source audio file's bytes, not on `TrackIdentity`
 // — so renamed/moved files still hit cache, and so the on-disk format
 // stays decoupled from `TrackIdentity`'s evolving schema.
+//
+// LF.4: an LRU eviction policy keeps the cache from growing unbounded.
+// Default cap is 500 MB (~70 tracks at ~7 MB/track). Eviction fires
+// after every successful `store(...)` call so the cap is continuously
+// enforced. `clearAll()` is the user-facing reset hook surfaced via the
+// `Phosphene → Clear Local-File Cache (<size>)` menu item.
 //
 // Layout on disk:
 //
@@ -118,12 +124,27 @@ public final class PersistentStemCache: @unchecked Sendable {
     /// cache lives in production.
     public static let defaultRootSubpath: String = "Phosphene/StemCache"
 
+    /// `UserDefaults` key holding the LRU eviction cap (Int64 byte count).
+    /// Operators can override the default 500 MB cap without a recompile:
+    ///   defaults write com.phosphene.app phosphene.cache.localFile.maxBytes -int <bytes>
+    public static let maxBytesUserDefaultsKey: String = "phosphene.cache.localFile.maxBytes"
+
+    /// LF.4 default cap. 500 MB ≈ 70 cached tracks at ~7 MB/track (LF.3
+    /// per-track budget — `metadata.json` ~5 KB + four 1.76 MB `.f32` stems).
+    public static let defaultMaxBytes: Int64 = 500 * 1024 * 1024
+
     // MARK: - State
 
     /// Root directory on disk. Created if missing at init time.
     public let rootDirectory: URL
     private let lock = NSLock()
     private let fileManager: FileManager
+
+    /// Eviction cap in bytes. `nil` defers to
+    /// `Self.configuredMaxBytes()` (UserDefaults override → default 500 MB).
+    /// Tests inject a fixed value here to avoid cross-test UserDefaults
+    /// contamination during parallel execution.
+    private let injectedMaxBytes: Int64?
 
     // MARK: - Init
 
@@ -132,10 +153,20 @@ public final class PersistentStemCache: @unchecked Sendable {
     /// `~/Library/Application Support/Phosphene/StemCache/`. Creates
     /// the directory tree if missing (idempotent).
     ///
+    /// `maxBytes` overrides the auto-eviction cap consulted after every
+    /// `store(...)`. Production callers leave it `nil` so the
+    /// UserDefaults-driven `configuredMaxBytes()` applies; tests inject a
+    /// huge value to disable eviction or a small value to exercise it.
+    ///
     /// Tests should pass a fresh temp directory so they don't collide
     /// with the user's real cache.
-    public init(rootDirectory: URL? = nil, fileManager: FileManager = .default) throws {
+    public init(
+        rootDirectory: URL? = nil,
+        maxBytes: Int64? = nil,
+        fileManager: FileManager = .default
+    ) throws {
         self.fileManager = fileManager
+        self.injectedMaxBytes = maxBytes
         if let rootDirectory {
             self.rootDirectory = rootDirectory
         } else {
@@ -267,10 +298,18 @@ public final class PersistentStemCache: @unchecked Sendable {
             let json = try encoder.encode(metadata)
             try json.write(to: metadataPath, options: .atomic)
         }
+        // Eviction is intentionally OUTSIDE the lock — `evictToMaxBytes`
+        // acquires the lock itself, and recursive NSLock acquisition deadlocks.
+        // The post-store window before eviction is bounded; an external reader
+        // racing with eviction sees either the pre-eviction set or the
+        // post-eviction set (both internally consistent). `try?` swallows any
+        // eviction error — eviction failure is non-fatal (cache just grows).
+        let cap = injectedMaxBytes ?? Self.configuredMaxBytes()
+        _ = try? evictToMaxBytes(cap)
     }
 
     /// Remove the cached entry for a given hash, if present. Used by
-    /// tests; production has no eviction path (LF.4 territory).
+    /// tests and by `evictToMaxBytes(_:)` during LF.4 LRU eviction.
     public func remove(hash: String) throws {
         try lock.withLock {
             let dir = directory(for: hash)
@@ -278,6 +317,172 @@ public final class PersistentStemCache: @unchecked Sendable {
                 try fileManager.removeItem(at: dir)
             }
         }
+    }
+
+    // MARK: - LF.4 housekeeping
+
+    /// Sum the byte count of every cached file under `rootDirectory`. O(N)
+    /// over per-hash directory listings — cheap enough to call from the
+    /// SwiftUI menu update path (a few hundred `stat` calls for a full
+    /// 500 MB cache).
+    public func totalBytes() -> Int64 {
+        lock.withLock { Self.computeTotalBytes(under: rootDirectory) }
+    }
+
+    /// Evict cached entries (oldest first by `metadata.json` mtime) until
+    /// the cache's total footprint is at or below `maxBytes`. Returns the
+    /// number of entries removed. `maxBytes <= 0` evicts everything.
+    ///
+    /// Mtime is the eviction discriminator because it's the cheapest
+    /// per-entry attribute the filesystem already tracks for our writes
+    /// — `store(...)` writes metadata.json atomically last, so its mtime
+    /// reflects the last successful population. Reads do not bump mtime,
+    /// so the "least-recently-stored" eviction order is approximate, not
+    /// "least-recently-used" in the strict sense. Acceptable for the LF
+    /// scope: the user re-plays the same tracks repeatedly, so writes are
+    /// rare and the mtime ordering still favours retention of the most
+    /// recently played files.
+    @discardableResult
+    public func evictToMaxBytes(_ maxBytes: Int64) throws -> Int {
+        try evictToMaxBytes(maxBytes, recorder: nil)
+    }
+
+    @discardableResult
+    func evictToMaxBytes(_ maxBytes: Int64, recorder: SessionRecorder?) throws -> Int {
+        try lock.withLock {
+            var entries = try Self.enumerateEntries(under: rootDirectory)
+            var total = entries.reduce(Int64(0)) { $0 + $1.bytes }
+            if total <= maxBytes { return 0 }
+
+            entries.sort { $0.mtime < $1.mtime } // oldest first
+            var evicted = 0
+            for entry in entries {
+                if total <= maxBytes { break }
+                try fileManager.removeItem(at: entry.directory)
+                total -= entry.bytes
+                evicted += 1
+                let msg = "STEM_CACHE_EVICTED: hash=\(entry.hashPrefix), bytes=\(entry.bytes)"
+                recorder?.log(msg)
+            }
+            return evicted
+        }
+    }
+
+    /// Remove every cached entry. Returns the number of bytes freed.
+    /// Preserves the root directory itself so subsequent `store(...)` calls
+    /// don't need to re-create it.
+    @discardableResult
+    public func clearAll() throws -> Int64 {
+        try lock.withLock {
+            let freed = Self.computeTotalBytes(under: rootDirectory)
+            guard let contents = try? fileManager.contentsOfDirectory(
+                at: rootDirectory,
+                includingPropertiesForKeys: nil
+            ) else {
+                return 0
+            }
+            for child in contents {
+                try fileManager.removeItem(at: child)
+            }
+            return freed
+        }
+    }
+
+    // MARK: - LF.4 eviction helpers
+
+    /// Per-cached-entry summary used by `evictToMaxBytes`. `hashPrefix`
+    /// is the first 12 hex chars of the full hash for log lines.
+    private struct CacheEntryInfo {
+        let directory: URL
+        let bytes: Int64
+        let mtime: Date
+        let hashPrefix: String
+    }
+
+    /// Resolve the operator-configured eviction cap, falling back to
+    /// `defaultMaxBytes` (500 MB) when the UserDefaults key is unset.
+    static func configuredMaxBytes() -> Int64 {
+        let raw = UserDefaults.standard.object(forKey: maxBytesUserDefaultsKey)
+        if let int64 = raw as? Int64 {
+            return int64
+        }
+        if let int = raw as? Int {
+            return Int64(int)
+        }
+        if let number = raw as? NSNumber {
+            return number.int64Value
+        }
+        return defaultMaxBytes
+    }
+
+    /// Walk every `sha256/<aa>/<full-hash>/` subdir under `root` and
+    /// return an unordered array of `CacheEntryInfo`. Uses the
+    /// metadata.json mtime as the eviction sort key (cheap to read; bumped
+    /// on every successful `store(...)` overwrite). Skips directories
+    /// that don't contain the expected file set.
+    private static func enumerateEntries(under root: URL) throws -> [CacheEntryInfo] {
+        let fm = FileManager.default
+        let sha256Root = root.appendingPathComponent("sha256", isDirectory: true)
+        guard fm.fileExists(atPath: sha256Root.path) else { return [] }
+        let shardURLs = (try? fm.contentsOfDirectory(
+            at: sha256Root,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        )) ?? []
+        var result: [CacheEntryInfo] = []
+        result.reserveCapacity(64)
+        for shard in shardURLs {
+            let hashDirs = (try? fm.contentsOfDirectory(
+                at: shard,
+                includingPropertiesForKeys: [.contentModificationDateKey, .isDirectoryKey],
+                options: [.skipsHiddenFiles]
+            )) ?? []
+            for hashDir in hashDirs {
+                let metadata = hashDir.appendingPathComponent(metadataFilename)
+                guard fm.fileExists(atPath: metadata.path) else { continue }
+                let attrs = try? fm.attributesOfItem(atPath: metadata.path)
+                let mtime = (attrs?[.modificationDate] as? Date) ?? Date(timeIntervalSince1970: 0)
+                let bytes = computeBytes(in: hashDir)
+                let hashPrefix = String(hashDir.lastPathComponent.prefix(12))
+                result.append(CacheEntryInfo(
+                    directory: hashDir,
+                    bytes: bytes,
+                    mtime: mtime,
+                    hashPrefix: hashPrefix
+                ))
+            }
+        }
+        return result
+    }
+
+    /// Sum the file sizes inside a single per-hash directory.
+    private static func computeBytes(in directory: URL) -> Int64 {
+        let fm = FileManager.default
+        let children = (try? fm.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.fileSizeKey],
+            options: [.skipsHiddenFiles]
+        )) ?? []
+        var total: Int64 = 0
+        for child in children {
+            let attrs = try? fm.attributesOfItem(atPath: child.path)
+            if let size = attrs?[.size] as? Int64 {
+                total += size
+            } else if let size = attrs?[.size] as? Int {
+                total += Int64(size)
+            } else if let size = attrs?[.size] as? NSNumber {
+                total += size.int64Value
+            }
+        }
+        return total
+    }
+
+    /// Aggregate `computeBytes(in:)` across every per-hash directory under
+    /// `root/sha256/<aa>/`. Returns 0 when the cache tree is empty or
+    /// the root directory doesn't yet contain a `sha256/` subdir.
+    private static func computeTotalBytes(under root: URL) -> Int64 {
+        let entries = (try? enumerateEntries(under: root)) ?? []
+        return entries.reduce(Int64(0)) { $0 + $1.bytes }
     }
 
     // MARK: - File-layout helpers
