@@ -78,6 +78,11 @@ private func clearPendingWithoutResettingAttempts(_ router: AudioInputRouter) {
 @available(macOS 14.2, *)
 @Test func test_scheduleNextReinstall_attemptCountSequence() {
     let (router, _, _, _) = makeTestRouter()
+    // LF.1: scheduler is mode-gated. Set a tap mode so the scheduler
+    // exercises the attempt-counter logic this test is locking. Without
+    // it the scheduler short-circuits at the mode-gate and the counter
+    // stays at 0.
+    router.lock.withLock { router.currentMode = .systemAudio }
     defer { router.cancelPendingReinstall() }
 
     router.scheduleNextReinstall()
@@ -109,6 +114,7 @@ private func clearPendingWithoutResettingAttempts(_ router: AudioInputRouter) {
 @available(macOS 14.2, *)
 @Test func test_scheduleNextReinstall_doesNotDoubleScheduleWhilePending() {
     let (router, _, _, _) = makeTestRouter()
+    router.lock.withLock { router.currentMode = .systemAudio }  // LF.1 mode-gate
     defer { router.cancelPendingReinstall() }
 
     router.scheduleNextReinstall()
@@ -130,6 +136,7 @@ private func clearPendingWithoutResettingAttempts(_ router: AudioInputRouter) {
 @available(macOS 14.2, *)
 @Test func test_cancelPendingReinstall_resetsAttempts() {
     let (router, _, _, _) = makeTestRouter()
+    router.lock.withLock { router.currentMode = .systemAudio }  // LF.1 mode-gate
 
     router.scheduleNextReinstall()
     #expect(router.reinstallAttempts == 1)
@@ -148,6 +155,7 @@ private func clearPendingWithoutResettingAttempts(_ router: AudioInputRouter) {
 @available(macOS 14.2, *)
 @Test func test_handleSignalStateChange_silentSchedulesReinstall() {
     let (router, _, _, _) = makeTestRouter()
+    router.lock.withLock { router.currentMode = .systemAudio }  // LF.1 mode-gate
     defer { router.cancelPendingReinstall() }
 
     router.handleSignalStateChange(.silent)
@@ -161,6 +169,7 @@ private func clearPendingWithoutResettingAttempts(_ router: AudioInputRouter) {
 @available(macOS 14.2, *)
 @Test func test_handleSignalStateChange_activeCancelsPending() {
     let (router, _, _, _) = makeTestRouter()
+    router.lock.withLock { router.currentMode = .systemAudio }  // LF.1 mode-gate
 
     router.handleSignalStateChange(.silent)
     #expect(router.reinstallAttempts == 1)
@@ -211,6 +220,7 @@ private func clearPendingWithoutResettingAttempts(_ router: AudioInputRouter) {
 @available(macOS 14.2, *)
 @Test func test_backoffExhausted_noNewScheduling() {
     let (router, _, _, _) = makeTestRouter()
+    router.lock.withLock { router.currentMode = .systemAudio }  // LF.1 mode-gate
     defer { router.cancelPendingReinstall() }
 
     for _ in 0..<3 {
@@ -242,6 +252,7 @@ private func clearPendingWithoutResettingAttempts(_ router: AudioInputRouter) {
 @available(macOS 14.2, *)
 @Test func test_nextActiveToSilent_resetsAttempts() {
     let (router, _, _, _) = makeTestRouter()
+    router.lock.withLock { router.currentMode = .systemAudio }  // LF.1 mode-gate
     defer { router.cancelPendingReinstall() }
 
     // First silence run: attempts → 1.
@@ -265,6 +276,47 @@ private func clearPendingWithoutResettingAttempts(_ router: AudioInputRouter) {
     // Second silence run: attempts must start fresh at 1.
     router.handleSignalStateChange(.silent)
     #expect(router.reinstallAttempts == 1)         // fresh, NOT continuation from 2
+}
+
+// MARK: - LF.1 — Mode-gate
+
+/// LF.1 regression lock: the tap-reinstall scheduler is a no-op in
+/// `.localFilePlayback` and `.localFile` modes — there is no process tap
+/// to reinstall, and silence in a played file is real musical silence,
+/// not a tap teardown. Verifies the gate at the top of
+/// `scheduleNextReinstall(...)`. A regression would cause "Tap reinstall
+/// scheduled" log lines to appear in `session.log` during local-file
+/// playback sessions, breaking the LF.1 manual-verification grep.
+@available(macOS 14.2, *)
+@Test func test_scheduleNextReinstall_isNoOpInLocalFilePlaybackMode() {
+    let (router, _, _, _) = makeTestRouter()
+    let url = URL(fileURLWithPath: "/dev/null")
+    router.lock.withLock { router.currentMode = .localFilePlayback(url) }
+    defer { router.cancelPendingReinstall() }
+
+    router.scheduleNextReinstall()
+    #expect(router.reinstallAttempts == 0)
+    #expect(router.reinstallWorkItem == nil)
+
+    // handleSignalStateChange(.silent) also routes through the same gate.
+    router.handleSignalStateChange(.silent)
+    #expect(router.reinstallAttempts == 0)
+    #expect(router.reinstallWorkItem == nil)
+}
+
+/// LF.1 regression lock: the existing `.localFile` (diagnostic injection)
+/// mode is also gated. Mirrors the playback gate so the offline
+/// `SoakTestHarness` path never schedules a reinstall either.
+@available(macOS 14.2, *)
+@Test func test_scheduleNextReinstall_isNoOpInLocalFileMode() {
+    let (router, _, _, _) = makeTestRouter()
+    let url = URL(fileURLWithPath: "/dev/null")
+    router.lock.withLock { router.currentMode = .localFile(url) }
+    defer { router.cancelPendingReinstall() }
+
+    router.scheduleNextReinstall()
+    #expect(router.reinstallAttempts == 0)
+    #expect(router.reinstallWorkItem == nil)
 }
 
 // MARK: - Backoff tuning regression-lock
