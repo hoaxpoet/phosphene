@@ -50,6 +50,11 @@ extension VisualizerEngine {
         pipe.onFrameTimingObserved = { [weak recorder] cpuMs, gpuMs in
             recorder?.recordFrameTiming(cpuMs: cpuMs, gpuMs: gpuMs)
         }
+        // PERF.2-render — feed the render-loop CPU breakdown (encode_cpu_ms +
+        // renderframe_cpu_ms) so BUG-019 diagnosis can split where the bump lands.
+        pipe.onRenderTimingObserved = { [weak recorder] encodeMs, renderframeMs in
+            recorder?.recordRenderTimings(encodeCpuMs: encodeMs, renderFrameCpuMs: renderframeMs)
+        }
     }
 
     /// Wire per-frame dashboard snapshot push. Replaces the DASH.6 GPU

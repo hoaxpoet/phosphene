@@ -37,6 +37,25 @@ public struct SubsystemTimingSnapshot: Sendable {
     )
 }
 
+/// Render-loop CPU breakdown for the next features.csv row. (PERF.2-render —
+/// BUG-019 instrumentation.) Captured by `RenderPipeline.draw` in the command-
+/// buffer completion handler, plumbed through `onRenderTimingObserved`.
+///
+/// Both fields are optional so cold-start frames (before the first render-loop
+/// completion fires) emit empty cells, distinguishing "no measurement yet"
+/// from "measured 0."
+public struct RenderTimingSnapshot: Sendable {
+    public let encodeCpuMs: Float?
+    public let renderFrameCpuMs: Float?
+
+    public init(encodeCpuMs: Float?, renderFrameCpuMs: Float?) {
+        self.encodeCpuMs = encodeCpuMs
+        self.renderFrameCpuMs = renderFrameCpuMs
+    }
+
+    public static let empty = RenderTimingSnapshot(encodeCpuMs: nil, renderFrameCpuMs: nil)
+}
+
 extension SessionRecorder {
 
     // MARK: - CSV row formatting
@@ -44,7 +63,7 @@ extension SessionRecorder {
     // swiftlint:disable multiline_arguments
     static func csvRow(features fv: FeatureVector, frame: Int, wallclock: CFAbsoluteTime) -> String {
         csvRow(features: fv, stems: .zero, beatSync: .zero, frame: frame, wallclock: wallclock,
-               frameCPUms: nil, frameGPUms: nil, subsystem: .empty)
+               frameCPUms: nil, frameGPUms: nil, subsystem: .empty, renderTiming: .empty)
     }
 
     static func csvRow(
@@ -55,7 +74,8 @@ extension SessionRecorder {
         wallclock: CFAbsoluteTime,
         frameCPUms: Float? = nil,
         frameGPUms: Float? = nil,
-        subsystem: SubsystemTimingSnapshot = .empty
+        subsystem: SubsystemTimingSnapshot = .empty,
+        renderTiming: RenderTimingSnapshot = .empty
     ) -> String {
         let base = String(format: "%d,%.4f,%.4f,%.4f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,"
                                + "%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,"
@@ -98,8 +118,13 @@ extension SessionRecorder {
         let beatMs = subsystem.beatDetectorMs.map { String(format: "%.4f", $0) } ?? ""
         let pitchMs = subsystem.pitchTrackerMs.map { String(format: "%.4f", $0) } ?? ""
         let moodMs = subsystem.moodClassifierMs.map { String(format: "%.4f", $0) } ?? ""
-        let subTiming = ",\(mirMs),\(stemMs),\(beatMs),\(pitchMs),\(moodMs)\n"
-        return base + sync + timing + subTiming
+        let subTiming = ",\(mirMs),\(stemMs),\(beatMs),\(pitchMs),\(moodMs)"
+        // PERF.2-render — render-loop CPU breakdown. Empty cells until the
+        // first render-loop completion handler fires.
+        let encodeMs = renderTiming.encodeCpuMs.map { String(format: "%.4f", $0) } ?? ""
+        let rfMs = renderTiming.renderFrameCpuMs.map { String(format: "%.4f", $0) } ?? ""
+        let renderTimingCols = ",\(encodeMs),\(rfMs)\n"
+        return base + sync + timing + subTiming + renderTimingCols
     }
 
     static func csvRow(stems: StemFeatures, frame: Int, wallclock: CFAbsoluteTime) -> String {

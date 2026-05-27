@@ -52,4 +52,22 @@ extension SessionRecorder {
             self.latestMoodClassifierMs = moodClassifierMs
         }
     }
+
+    /// Record one render frame's CPU breakdown for the next features.csv
+    /// row's `encode_cpu_ms` / `renderframe_cpu_ms` columns. Wires
+    /// `RenderPipeline.onRenderTimingObserved` to the recorder.
+    /// (PERF.2-render — BUG-019 instrumentation.)
+    ///
+    ///   - `encodeCpuMs`: wall-clock from `draw()` entry through
+    ///     `commandBuffer.commit()` (CPU encode side only).
+    ///   - `renderFrameCpuMs`: time inside `renderFrame(...)` — the per-pass
+    ///     dispatch. Tells you whether the CPU work is in the pass or in the
+    ///     pre/post setup around it.
+    public func recordRenderTimings(encodeCpuMs: Float, renderFrameCpuMs: Float) {
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            self.latestEncodeCPUms = encodeCpuMs
+            self.latestRenderFrameCPUms = renderFrameCpuMs
+        }
+    }
 }

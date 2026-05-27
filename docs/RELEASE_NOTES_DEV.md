@@ -6,6 +6,80 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-28-c] PERF.2-render — Render-loop CPU breakdown, plus PERF.2 diagnosis from PERF.1 capture
+
+**Increment:** PERF.2-render (Phase PERF step 2 — combined diagnosis + render-loop instrumentation). **Status:** Implemented 2026-05-28. Engine 1303/1303 tests pass; SwiftLint `--strict` clean; app build clean. Next: fresh tap-path capture past the 70 s session-time mark, run by Matt, to attribute the bump to either render-encode CPU or GPU-queue-wait.
+
+### PERF.2 diagnosis from session `2026-05-27T21-48-28Z`
+
+PERF.1 (the previous increment) added five per-subsystem timing columns to `features.csv`. Matt captured a session running past 70 s session-uptime. The data falsifies the original hypothesis:
+
+| Window | `frame_cpu_ms` avg | `mir_pipeline_ms` avg | `stem_analyzer_ms` avg | `beat_detector_ms` avg | `pitch_tracker_ms` avg | `mood_classifier_ms` avg |
+|---|---:|---:|---:|---:|---:|---:|
+| 0–60 s | 5–7 ms | 0.7–1.0 ms | 0.5–1.25 ms | 0.3–0.4 ms | 0.4–0.5 ms | ~0.05 ms |
+| 80 s onwards | **14–16 ms** | 0.7–1.0 ms | ~1.2 ms | ~0.4 ms | ~0.45 ms | ~0.05 ms |
+
+`frame_cpu_ms` doubled at the 67–68 s mark. **None of the five PERF.1 columns moved.** Per-frame transition view (rel=76.80 → 76.92 s): CPU jumps 5.11 → 13.59 ms in two frames; subsystem timings unchanged (mir 0.61 → 0.59, stem 0.84 → 0.84, beat 0.11 → 0.12, pitch 0.41 → 0.42, mood 0.08 → 0.05).
+
+Conclusion: **the CPU bump is NOT on the audio analysis pipeline.** The five subsystems sum to ~2.5 ms combined; `frame_cpu_ms` is 14 ms; ~11 ms of CPU per frame is happening outside the instrumented surfaces. Reading the `RenderPipeline.draw` implementation (`RenderPipeline.swift:380-440`) clarifies: `frame_cpu_ms` is wall-clock from `draw()` entry to the GPU command-buffer completion handler firing — it includes CPU encode time *and* GPU queue-wait/execute time. The audio analysis queue is on a separate thread; its work doesn't appear in this measurement.
+
+### What PERF.2-render adds
+
+Two more columns appended to `features.csv` to split the render-loop wall-clock:
+
+| Column | Measures |
+|---|---|
+| `encode_cpu_ms` | wall-clock from `draw()` entry through `commandBuffer.commit()` — pure CPU encode side |
+| `renderframe_cpu_ms` | time inside `renderFrame(...)` — the big switch over active passes |
+
+With these, the diagnostic split becomes:
+- `commit_to_complete_ms = frame_cpu_ms − encode_cpu_ms` — GPU queue-wait + GPU-execute + completion-handler dispatch
+- `pre_post_render_ms = encode_cpu_ms − renderframe_cpu_ms` — pre-renderFrame setup + post-renderFrame hook + commit() overhead
+
+Three actionable outcomes from the next capture:
+- **`encode_cpu_ms` doubles but `renderframe_cpu_ms` stays flat** — work is in the setup/teardown around the render dispatch (drawable acquisition, frame timing wiring, recorder hooks).
+- **Both `encode_cpu_ms` and `renderframe_cpu_ms` double** — the CPU work is inside the dispatched pass (drill into per-pass next).
+- **Neither doubles** — the cost is in `commit_to_complete_ms`, i.e. GPU queue contention or GPU work itself (despite `frame_gpu_ms` looking flat). Suggests Metal/GPU-driver-side rather than Swift-side root cause.
+
+### How the timing works
+
+`RenderPipeline.draw` now snapshots `CACurrentMediaTime()` at three points: `cpuDrawStart` (existing), `renderframeStart` (before the pass dispatch), and a third immediately before `commandBuffer.commit()`. The first two snapshots yield `renderframe_cpu_ms`; the third yields `encode_cpu_ms`. Both flow through a new `onRenderTimingObserved` callback on `RenderPipeline`, mirroring the existing `onFrameTimingObserved`. `SessionRecorder.recordRenderTimings(encodeCpuMs:renderFrameCpuMs:)` is the recorder-side setter.
+
+No allocations on the hot path; cost of the three `CACurrentMediaTime()` snapshots is sub-microsecond.
+
+### Verification
+
+- **Engine:** 1303/1303 tests pass. Added 2 new tests in `SessionRecorderTests`: `test_recordRenderTimings_thenRecordFrame_writesBothColumns` (round-trip), `test_recordFrame_beforeAnyRenderTimings_writesEmptyCells` (cold-start). Updated PERF.1 column-position assertions (subsystem columns shifted from count-5..count-1 to count-7..count-3).
+- **App build:** succeeds.
+- **SwiftLint `--strict`:** 0 violations on the 5 touched source files. `SessionRecorder.swift` history comment block consolidated to keep the file under the 400-line warning.
+- **CSV header invariant:** new test assertion that `features.csv` ends with `encode_cpu_ms,renderframe_cpu_ms` (column-position regression lock).
+
+### What's next
+
+Matt captures a fresh tap-path session past the 70 s session-time mark. PERF.2-render's diagnosis pass reads `encode_cpu_ms` and `renderframe_cpu_ms` across the bump and routes the result to one of the three actionable outcomes above. PERF.3 (the fix) then has a concrete target.
+
+### Touched files
+
+- `PhospheneEngine/Sources/Renderer/RenderPipeline.swift` — `cpuDrawStart` / `renderframeStart` / `encodeCpuMs` snapshots; new `onRenderTimingObserved` callback fired from the completion handler.
+- `PhospheneEngine/Sources/Shared/SessionRecorder.swift` — 2 new `latest*Ms` storage fields; CSV header extended.
+- `PhospheneEngine/Sources/Shared/SessionRecorder+Timing.swift` — new `recordRenderTimings(encodeCpuMs:renderFrameCpuMs:)` setter.
+- `PhospheneEngine/Sources/Shared/SessionRecorder+CSV.swift` — `RenderTimingSnapshot` value type; `csvRow(...)` gains `renderTiming:` parameter; 2 timing cells appended to each row.
+- `PhospheneApp/VisualizerEngine+InitHelpers.swift` — wire `onRenderTimingObserved` → `recordRenderTimings`.
+- `PhospheneEngine/Tests/PhospheneEngineTests/Shared/SessionRecorderTests.swift` — 2 new tests + existing position-tests updated for the new layout.
+- `docs/ENGINEERING_PLAN.md` — Phase PERF status update (PERF.1 done; PERF.2-render landed; PERF.2-diagnose findings recorded).
+- `docs/QUALITY/KNOWN_ISSUES.md` — BUG-019 fix-scope updated with diagnosis findings; instrumentation status updated.
+
+### Local-only
+
+Local commit on `main`. No remote push.
+
+### Related
+
+- `[dev-2026-05-28-b]` — PERF.1 (the previous instrumentation increment that produced the data this increment diagnoses).
+- BUG-019 in `KNOWN_ISSUES.md` — the defect this work is converging on.
+
+---
+
 ## [dev-2026-05-27-h] LF.3 — Persistent content-keyed stem cache for local-file playback
 
 **Increment:** LF.3 (Phase LF step 3, D-130). **Status:** Implemented + verified 2026-05-27. Cold launch matches LF.2 baseline (~2 s); warm launch (cache populated) drops to ~634 ms — ~3× faster than LF.2 cold-start. PersistentStemCacheTests 11/11, PreviewAudioContentHashTests 8/8, LF format-coverage tests 3/3, AudioInputRouterSignalStateTests 11/11. Release build clean.

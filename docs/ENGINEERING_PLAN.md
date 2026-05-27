@@ -4637,13 +4637,41 @@ Added five timing columns to `features.csv` so the BUG-019 CPU bump can be attri
 
 See `RELEASE_NOTES_DEV.md [dev-2026-05-28-b]` for the full closeout.
 
-### Increment PERF.2 — Diagnosis (placeholder)
+### Increment PERF.2 — Diagnosis from PERF.1 capture (2026-05-28) ✅ analysis-pipeline ruled out
 
-Read the instrumented session capture. Identify which subsystem(s) account for the CPU climb. Document root cause in `KNOWN_ISSUES.md` BUG-019. No fix code in this increment.
+Matt's `2026-05-27T21-48-28Z` session (PERF.1 build, played continuously past 70 s) yielded a sharp answer: the CPU bump is NOT on the audio analysis queue. All five PERF.1 columns stay flat across the 67–68 s transition while `frame_cpu_ms` doubles from ~5 ms to ~14 ms. Combined subsystem totals are ~2.5 ms while `frame_cpu_ms` is 14 ms — ~11 ms of unaccounted CPU per frame.
+
+Reading `RenderPipeline.draw` (lines 380–440) clarified why: `frame_cpu_ms` is wall-clock from `draw()` entry to the GPU command-buffer completion handler firing. It includes CPU encode + GPU queue-wait + GPU-execute + completion dispatch. The audio analysis queue is a separate thread; its work doesn't show up in `frame_cpu_ms`.
+
+Hypothesis revised: the CPU pressure is on the render thread itself. PERF.2-render (below, instrumentation-only) splits the render-loop wall-clock to attribute it.
+
+See `RELEASE_NOTES_DEV.md [dev-2026-05-28-c]` for the full diagnostic write-up.
+
+### Increment PERF.2-render — Render-loop CPU breakdown (2026-05-28) ✅
+
+Added two more `features.csv` columns to split the render-loop wall-clock for the PERF.2 diagnosis re-run:
+
+- `encode_cpu_ms` — wall-clock from `draw()` entry through `commandBuffer.commit()`. Pure CPU encode side; excludes GPU wait/execute.
+- `renderframe_cpu_ms` — time inside `renderFrame(...)` (the big switch over active passes). Tells us whether the CPU is in the dispatched pass or in pre/post setup.
+
+Derived in post-processing:
+
+- `commit_to_complete_ms = frame_cpu_ms − encode_cpu_ms` — GPU queue-wait + GPU-execute + completion dispatch.
+- `pre_post_render_ms = encode_cpu_ms − renderframe_cpu_ms` — pre/post setup around the dispatched pass.
+
+**Done-when.**
+
+- [x] Engine: 1303 / 1303 tests pass. New `SessionRecorderTests` (round-trip + cold-start) + existing column-position tests updated.
+- [x] App build: succeeds.
+- [x] SwiftLint `--strict`: 0 violations on 5 touched files.
+- [x] CSV header invariant test asserts `features.csv` ends with `encode_cpu_ms,renderframe_cpu_ms`.
+- [ ] **Matt captures a fresh tap-path session past 70 s session-uptime.** PERF.2-render (diagnose re-run) reads `encode_cpu_ms` and `renderframe_cpu_ms` to attribute the bump to one of three outcomes: setup/teardown (encode doubles but renderframe flat), render dispatch (both double), or GPU queue-wait (neither doubles).
+
+See `RELEASE_NOTES_DEV.md [dev-2026-05-28-c]` for the full closeout.
 
 ### Increment PERF.3 — Fix (placeholder)
 
-Once root cause is known. Add or extend regression tests.
+Once root cause is known from PERF.2-render's next capture. Add or extend regression tests.
 
 ### Increment PERF.4 — Validation (placeholder)
 
