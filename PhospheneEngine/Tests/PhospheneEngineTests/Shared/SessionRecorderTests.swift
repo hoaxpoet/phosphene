@@ -111,15 +111,9 @@ final class SessionRecorderTests: XCTestCase {
             contentsOf: recorder.sessionDir.appendingPathComponent("features.csv"),
             encoding: .utf8)
         let header = csv.split(separator: "\n").first ?? ""
-        // CSP.1.1 (2026-05-27) appended `soft_tempo_pulse01` after the
-        // frame-timing columns. The frame-timing columns must still be
-        // present in the same order (append-only invariant) but they are
-        // no longer the suffix.
-        XCTAssertTrue(header.contains("frame_cpu_ms,frame_gpu_ms,soft_tempo_pulse01"),
-                      "features.csv header must contain frame_cpu_ms,frame_gpu_ms,"
-                      + "soft_tempo_pulse01 in that order (append-only invariant), got: \(header)")
-        XCTAssertTrue(header.hasSuffix("soft_tempo_pulse01"),
-                      "features.csv header must end with soft_tempo_pulse01 (CSP.1.1), got: \(header)")
+        XCTAssertTrue(header.hasSuffix("frame_cpu_ms,frame_gpu_ms"),
+                      "features.csv header must end with frame_cpu_ms,frame_gpu_ms "
+                      + "(append-only invariant), got: \(header)")
     }
 
     func test_recordFrameTiming_thenRecordFrame_writesTimingValues() throws {
@@ -135,14 +129,10 @@ final class SessionRecorderTests: XCTestCase {
         XCTAssertEqual(rows.count, 2, "Header + 1 data row")
         let cells = rows[1].split(separator: ",", omittingEmptySubsequences: false)
             .map(String.init)
-        // CSP.1.1 (2026-05-27): soft_tempo_pulse01 appended after the
-        // frame-timing columns. Column layout (from the end):
-        //   cells[count - 1] = soft_tempo_pulse01
-        //   cells[count - 2] = frame_gpu_ms
-        //   cells[count - 3] = frame_cpu_ms
-        XCTAssertEqual(Float(cells[cells.count - 3]) ?? -1, 4.25, accuracy: 0.001,
+        // frame_cpu_ms is the second-to-last column; frame_gpu_ms is the last.
+        XCTAssertEqual(Float(cells[cells.count - 2]) ?? -1, 4.25, accuracy: 0.001,
                        "frame_cpu_ms round-trip")
-        XCTAssertEqual(Float(cells[cells.count - 2]) ?? -1, 1.75, accuracy: 0.001,
+        XCTAssertEqual(Float(cells[cells.count - 1]) ?? -1, 1.75, accuracy: 0.001,
                        "frame_gpu_ms round-trip")
     }
 
@@ -162,9 +152,8 @@ final class SessionRecorderTests: XCTestCase {
         XCTAssertEqual(rows.count, 2)
         let cells = rows[1].split(separator: ",", omittingEmptySubsequences: false)
             .map(String.init)
-        // CSP.1.1: see column layout note in test above.
-        XCTAssertEqual(cells[cells.count - 3], "", "frame_cpu_ms empty before any timing observed")
-        XCTAssertEqual(cells[cells.count - 2], "", "frame_gpu_ms empty before any timing observed")
+        XCTAssertEqual(cells[cells.count - 2], "", "frame_cpu_ms empty before any timing observed")
+        XCTAssertEqual(cells[cells.count - 1], "", "frame_gpu_ms empty before any timing observed")
     }
 
     func test_recordFrameTiming_gpuNil_writesEmptyGPUCellOnly() throws {
@@ -181,32 +170,10 @@ final class SessionRecorderTests: XCTestCase {
         let rows = csv.split(separator: "\n")
         let cells = rows[1].split(separator: ",", omittingEmptySubsequences: false)
             .map(String.init)
-        // CSP.1.1: see column layout note in test above.
-        XCTAssertEqual(Float(cells[cells.count - 3]) ?? -1, 3.5, accuracy: 0.001,
+        XCTAssertEqual(Float(cells[cells.count - 2]) ?? -1, 3.5, accuracy: 0.001,
                        "frame_cpu_ms still written when gpu nil")
-        XCTAssertEqual(cells[cells.count - 2], "",
+        XCTAssertEqual(cells[cells.count - 1], "",
                        "frame_gpu_ms empty when gpuMs is nil")
-    }
-
-    func test_recordFrame_softTempoPulse01_writtenToCSV() throws {
-        // CSP.1.1 contract: features.csv carries the softTempoPulse01 field
-        // value so A/B sessions are verifiable from the artifact (the gap
-        // that surfaced after Matt's first A/B run on Lumen Mosaic).
-        let recorder = try XCTUnwrap(SessionRecorder(baseDir: tempDir))
-        var fv = FeatureVector.zero
-        fv.softTempoPulse01 = 0.12345
-        recorder.recordFrame(features: fv, stems: StemFeatures.zero)
-        recorder.finish()
-
-        let csv = try String(
-            contentsOf: recorder.sessionDir.appendingPathComponent("features.csv"),
-            encoding: .utf8)
-        let rows = csv.split(separator: "\n")
-        XCTAssertEqual(rows.count, 2)
-        let cells = rows[1].split(separator: ",", omittingEmptySubsequences: false)
-            .map(String.init)
-        XCTAssertEqual(Float(cells[cells.count - 1]) ?? -1, 0.12345, accuracy: 0.0001,
-                       "soft_tempo_pulse01 round-trip — last column")
     }
 
     // MARK: - Stems CSV round-trips known StemFeatures exactly
