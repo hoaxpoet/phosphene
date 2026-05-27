@@ -89,9 +89,11 @@ When this defect is resolved, the following must all pass:
 Unknown — needs the instrumentation increment first. **Multi-increment** per the P1 defect protocol:
 
 1. **Instrumentation (PERF.1) ✅ 2026-05-28** — five new `features.csv` columns: `mir_pipeline_ms`, `stem_analyzer_ms`, `beat_detector_ms`, `pitch_tracker_ms`, `mood_classifier_ms`. See `RELEASE_NOTES_DEV.md [dev-2026-05-28-b]`.
-2. **Diagnosis (PERF.2 — next)** — read a fresh tap-path capture run past 70 s session-uptime; identify which subsystem(s) account for the 11 ms → 23 ms CPU bump. Update this entry with root cause. No fix code in this increment.
-3. **Fix (PERF.3)** — once root cause is known.
-4. **Validation (PERF.4)** — run the verification criteria above.
+2. **Diagnosis (PERF.2) ✅ 2026-05-28 — partial** — Matt's session `2026-05-27T21-48-28Z` analysis: all five PERF.1 columns flat across the bump while `frame_cpu_ms` doubles. CPU pressure is **not** on the audio analysis queue. Root cause narrowed to the render thread (CPU encode and/or GPU queue-wait). See `RELEASE_NOTES_DEV.md [dev-2026-05-28-c]`.
+3. **Instrumentation extension (PERF.2-render) ✅ 2026-05-28** — two more columns: `encode_cpu_ms` (CPU encode side of the render loop) and `renderframe_cpu_ms` (time inside `renderFrame`'s pass dispatch). Splits the render-loop wall-clock into (a) CPU encode, (b) GPU queue-wait + execute, (c) pre/post setup around the dispatched pass.
+4. **Diagnosis (PERF.2-diagnose) — next** — Matt captures a fresh tap-path session past 70 s session-uptime; attribute the bump to setup/teardown (encode doubles, renderframe flat), render dispatch (both double), or GPU queue-wait (neither doubles). Update this entry with the verdict.
+5. **Fix (PERF.3)** — once root cause is known.
+6. **Validation (PERF.4)** — run the verification criteria above.
 
 ### Related
 

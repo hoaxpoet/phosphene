@@ -249,6 +249,17 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     /// Secondary timing observer for soak/diagnostics (D-060c). Same source as `frameBudgetManager`.
     public var onFrameTimingObserved: ((_ cpuMs: Float, _ gpuMs: Float?) -> Void)?
 
+    /// Render-loop CPU breakdown observer (PERF.2-render — BUG-019 instrumentation).
+    /// Fires from the same command-buffer completion handler as `onFrameTimingObserved`,
+    /// so the lag pattern is identical (1–3 frames behind the features the row carries).
+    ///   - `encodeCpuMs`: wall-clock from `draw()` entry through `commandBuffer.commit()`.
+    ///                    Excludes the inflight-semaphore wait (pre-entry) and the GPU
+    ///                    queue-wait + GPU-execute (post-commit).
+    ///   - `renderframeCpuMs`: time spent inside `renderFrame(...)` — the big switch
+    ///                         over active passes. Tells you whether the CPU work is in
+    ///                         the dispatched pass or in the pre/post setup.
+    public var onRenderTimingObserved: ((_ encodeCpuMs: Float, _ renderframeCpuMs: Float) -> Void)?
+
     // MARK: - Timing
 
     let startTime: CFAbsoluteTime
@@ -387,20 +398,6 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
         }
 
         let cpuDrawStart = CACurrentMediaTime()
-        commandBuffer.addCompletedHandler { [semaphore = context.inflightSemaphore, weak self, cpuDrawStart] cb in
-            semaphore.signal()
-            let cpuMs = Float((CACurrentMediaTime() - cpuDrawStart) * 1000)
-            let gpuMs: Float? = cb.gpuEndTime > cb.gpuStartTime
-                ? Float((cb.gpuEndTime - cb.gpuStartTime) * 1000)
-                : nil
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                self.onFrameTimingObserved?(cpuMs, gpuMs)
-                guard let mgr = self.frameBudgetManager else { return }
-                let level = mgr.observe(.init(cpuFrameMs: cpuMs, gpuFrameMs: gpuMs))
-                self.applyQualityLevel(level)
-            }
-        }
 
         let now = CFAbsoluteTimeGetCurrent()
         let elapsed = Float(now - startTime)
@@ -427,12 +424,42 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
         let stemSnap = stemFeaturesLock.withLock { latestStemFeatures }
         spectralHistory.append(features: features, stems: stemSnap)
 
+        // PERF.2-render — BUG-019 instrumentation. Time the renderFrame dispatch
+        // (the big switch over active passes) separately from the surrounding
+        // setup + commit overhead, so the CPU bump can be attributed.
+        let renderframeStart = CACurrentMediaTime()
         renderFrame(commandBuffer: commandBuffer, view: view, features: &features)
+        let renderframeCpuMs = Float((CACurrentMediaTime() - renderframeStart) * 1000)
 
         // Session recording hook — after renderFrame so drawable has the final image.
         if let hook = onFrameRendered, let drawable = view.currentDrawable {
             let stems = stemFeaturesLock.withLock { latestStemFeatures }
             hook(drawable.texture, features, stems, commandBuffer)
+        }
+
+        // PERF.2-render — total CPU encode time, from draw() entry through
+        // commandBuffer.commit(). Excludes the inflight-semaphore wait (which
+        // happens before cpuDrawStart) and the GPU wait/execute time (which
+        // happens after commit()). Combined with frame_cpu_ms (full wall-clock
+        // including GPU completion handler dispatch), the diagnostic split is:
+        //   commit_to_complete_ms = frame_cpu_ms - encode_cpu_ms
+        //   pre_post_render_ms    = encode_cpu_ms - renderframe_cpu_ms
+        let encodeCpuMs = Float((CACurrentMediaTime() - cpuDrawStart) * 1000)
+        let sema = context.inflightSemaphore
+        commandBuffer.addCompletedHandler { [weak self, cpuDrawStart, encodeCpuMs, renderframeCpuMs, sema] cb in
+            sema.signal()
+            let cpuMs = Float((CACurrentMediaTime() - cpuDrawStart) * 1000)
+            let gpuMs: Float? = cb.gpuEndTime > cb.gpuStartTime
+                ? Float((cb.gpuEndTime - cb.gpuStartTime) * 1000)
+                : nil
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.onFrameTimingObserved?(cpuMs, gpuMs)
+                self.onRenderTimingObserved?(encodeCpuMs, renderframeCpuMs)
+                guard let mgr = self.frameBudgetManager else { return }
+                let level = mgr.observe(.init(cpuFrameMs: cpuMs, gpuFrameMs: gpuMs))
+                self.applyQualityLevel(level)
+            }
         }
 
         commandBuffer.commit()
