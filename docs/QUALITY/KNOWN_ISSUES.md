@@ -439,7 +439,7 @@ Matt characterised the symptom on 2026-05-26: "black-and-white panel, no color, 
 **Verification criteria.**
 
 - [x] **Automated:** engine test suite (1267 tests, 162 suites) passes; new `LumenPalettePayloadTests` suite passes (2 / 2). App test suite passes aside from 5 pre-existing parallel-execution timing flakes (`AppleMusicConnectionViewModelTests` ×4 + `ToastManagerTests/autoDismiss_afterDuration`) — all 5 pass in isolation, none touch LM code paths.
-- [ ] **Manual (Matt):** Lumen Mosaic renders the certified vivid stained-glass visual when activated via `Shift+→` mid-track in a reactive-mode session ≥ 30 s held-on time. Per-beat palette dance is visible. No black-and-white-grid symptom.
+- [x] **Manual (Matt):** Lumen Mosaic renders the certified vivid stained-glass visual when activated via `Shift+→` mid-track in a reactive-mode session ≥ 30 s held-on time. Per-beat palette dance is visible. No black-and-white-grid symptom. **Confirmed 2026-05-26** ("It works"). Black-and-white-grid symptom gone on mid-track switch.
 
 **Manual validation is the load-bearing gate** per CLAUDE.md's Defect Handling Protocol for `preset.fidelity` domain. The new contract tests document the trap but cannot prove the visual symptom is gone — only Matt's M7-style review can.
 
