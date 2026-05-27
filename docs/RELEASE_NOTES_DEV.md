@@ -6,6 +6,68 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-27-b] CSP.2 reverted — wrong timing, wrong proxy signal, wrong baseline pivot
+
+**Increment:** single `git revert` of CSP.2 (`aefe98e7` → revert `e753b4f4`). **Status:** complete 2026-05-27.
+
+### What happened
+
+CSP.2 (committed 2026-05-27 morning) added a cached-bass-proportion-driven spike-height baseline + a cold-start crossfade from `f.bass_dev` (live overall bass) to `stems.bass_energy_dev` (isolated bass) for Ferrofluid Ocean. Matt's M7 review on session `2026-05-27T15-18-55Z` returned partial-pass / partial-regression: "FFO itself looks glitchy after 15 seconds — the initial 5 seconds look better, but then the rhythm and sync fall apart. Royals doesn't work — preset looks inert for the first 10 seconds and now it looks broken. Superstition looks good for the first 20-ish seconds and then starts glitching."
+
+Diagnostic dive into `features.csv` / `stems.csv` exposed three concrete issues, all of which empirical measurement could have caught before the build:
+
+1. **Crossfade timing was wrong.** Designed for live stems arriving at ~5–8 s; actual data shows live stems arrive at **~13–15 s**. The crossfade completed at 8 s and switched the spike source to `stems.bass_energy_dev` — which was STILL the cached snapshot (constant) until ~15 s. Between 8 and 15 s, spikes sat at a fixed value; then abruptly started varying when live stems arrived. The visible "glitching" at 15–20 s matches this transition.
+
+2. **The cold-start proxy signal was structurally too sparse.** `f.bass_dev` (an AGC-deviation primitive) fires only when bass exceeds the AGC average. For normal music, live AGC bass clusters in `[0.1, 0.3]` and almost never crosses 0.5 — so `bass_dev ≈ 0` for ~99 % of frames. The "spikes pulse with live bass during cold-start" effect described in the plain-English design never actually happened: the source signal was zero.
+
+3. **The baseline magnitude landed at the wrong pivot.** Billie Jean's cached_bass_proportion computes to ~0.25 — exactly at the formula's pivot, contributing nothing to the baseline. Royals (sparse vocal-led) lands below 0.25, giving a **sub**-default baseline — spikes shorter than today, which Matt read as "inert and now broken."
+
+### What got reverted
+
+Single `git revert e753b4f4` undid CSP.2's commit `aefe98e7`. Removed:
+
+- `FeatureVector.trackElapsedS` field (Swift + Common.metal + PresetLoader+Preamble.swift)
+- `StemFeatures.cachedBassProportion` field
+- `MIRPipeline` populates `trackElapsedS` from `elapsedSeconds`
+- `RenderPipeline+PresetSwitching` setStemFeatures merge logic + `setCachedBassProportion(_:)` method
+- `FerrofluidOcean.metal`'s rewritten `fo_spike_strength` (back to single-source stems formula)
+- `VisualizerEngine+Stems.swift` cached-proportion install at track-change
+- `CSP2DataPlumbingTests.swift` (8 tests across 2 sub-suites) deleted
+
+Codebase back to pre-CSP.2 state. (Same effective state as the pre-CSP.1 baseline after the earlier reverts.)
+
+### Verification
+
+- **Engine:** 1269 / 1269 tests pass.
+- **App build:** succeeds.
+- **SwiftLint `--strict`:** 0 violations in CSP-related files. (2 unrelated violations in `LocalFilePlaybackProvider.swift` + `VisualizerEngine+PublicAPI.swift` are from in-flight uncommitted work in the working tree at revert time — not from this revert.)
+
+### Lessons (durable — constraints for any future cold-start attempt)
+
+These are not "CSP.2 was a Failed Approach" — they're empirical measurements that any future cold-start work has to design within.
+
+- **Live per-frame stem analysis takes ~13–15 seconds to arrive in real sessions**, not the 5–8 s the CSP.2 timing constants assumed. Any future cold-start crossfade that hands off from a proxy to live stems needs its timing tuned to real observed convergence. The 5–8 s number was a design guess; the 13–15 s number is what the session data shows.
+- **`f.bass_dev` is the wrong cold-start proxy for continuous per-frame motion.** It's a deviation primitive designed to fire only on transients above the AGC average — sparse by design. For *continuous* per-frame spike pulsing, the right candidate is one of the smoothed continuous bass fields (`f.bass`, `f.bass_att`), not the dev primitive. The dev primitive is correct for *accent / event* response, not for "baseline modulation that breathes with the music."
+- **Baseline-modulation formulas have to handle the case where the input lands AT the pivot AND the case where it lands BELOW.** CSP.2's `(proportion - 0.25) * 1.0` formula gave zero contribution at 0.25 (Billie Jean's actual value) and *negative* contribution below 0.25 (Royals → spikes shorter than default). A future baseline formula should be one-sided (proportion above some threshold → taller; below → unchanged) or use a different pivot.
+- **The `track_elapsed_s` plumbing pattern itself was clean.** Reclaimed from a `_pad3` slot; populated from `MIRPipeline.elapsedSeconds`; resets on track-change. It was reverted along with everything else for a clean rollback, but the next attempt could re-introduce it (this time with a correct timing target).
+- **Lack of per-track instrumentation made the diagnostic dive harder than it should have been.** Neither new field (`trackElapsedS`, `cachedBassProportion`) was in `features.csv`, so the cached proportion had to be computed manually from `stems.csv` and the crossfade state inferred from elapsed playback time. For any next attempt: instrument the new fields into the CSV from day 1.
+
+### What this means for "what's next"
+
+Phase CSP has now tried two iterations, both reverted (CSP.1 / CSP.1.1; CSP.2). The pattern is "promising design → ship → A/B reveals it didn't work for reasons that empirical data could have caught earlier." Per CLAUDE.md Failed Approach #69's discriminator rule, a third iteration on the same defect needs a fundamentally different premise — not "tune the parameters of CSP.2."
+
+A reasonable next move would be Matt's stress-test methodology suggestion from earlier 2026-05-27: build the cold-start measurement infrastructure FIRST (per-preset session capture during the first 30 s; characterise what each preset's audio reactivity actually looks like across tempo / meter / energy variation); THEN propose a fix grounded in measured baselines rather than design hypotheses. That work would be a separate increment (CSP-Stress.1 or similar) and is not in scope for this commit.
+
+### Local-only
+
+Local commit on `main`. No remote push.
+
+### Related
+
+- `[dev-2026-05-27-a]` (below) — the prior CSP.1 + CSP.1.1 revert. CSP.2 was the "do it right this time" attempt; it landed with three structural issues the prior revert's "lessons" section did not specifically anticipate.
+
+---
+
 ## [dev-2026-05-27-a] CSP.1 + CSP.1.1 reverted — wrong shape of cold-start fix
 
 **Increment:** three sequential `git revert` commits undoing the soft-tempo-pulse work. **Status:** complete 2026-05-27.
