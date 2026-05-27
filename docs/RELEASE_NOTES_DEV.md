@@ -6,6 +6,62 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-27-a] CSP.1 + CSP.1.1 reverted — wrong shape of cold-start fix
+
+**Increment:** three sequential `git revert` commits undoing the soft-tempo-pulse work. **Status:** complete 2026-05-27.
+
+### What happened
+
+CSP.1 (2026-05-26) and CSP.1.1 (2026-05-27 morning) added a "soft tempo pulse" — a quiet tempo-rate breathing signal during the cold-start window — and wired it into Lumen Mosaic and Membrane as test consumers. Hypothesis: a phase-humble tempo hint during the low-confidence cold-start window would improve perceived rhythmic competence.
+
+Two A/B tests (LM, Membrane), both with toggle behaviour verified from features.csv, both returned "no perceptible difference" from Matt.
+
+### Why it didn't pan out
+
+The framing was too narrow. Matt's original vision (one week ago) had six cold-start ingredients: broadband loudness, bass/mid/treble energy, spectral flux, waveform envelope, metadata BPM as a soft oscillator, and preset-specific breathing motion. The soft tempo pulse was item #5. CSP.1 implemented #5 alone and treated it as the whole answer.
+
+The structural cold-start issue — specifically for Ferrofluid Ocean, the preset Matt flagged as the biggest complaint — lives elsewhere:
+
+- FFO's audio routing is entirely based on isolated stem tracks (drums / bass / vocals / other extracted separately).
+- Stems need ~10 seconds of live audio to extract.
+- Until stems are ready, FFO has nothing to respond to. Spike heights sit at default; aurora is dim; swell is gentle.
+
+FFO already has the crossfade mechanism for this in `FerrofluidOcean.metal:53–58` (`fo_stem_warmup_blend`), documented as "use overall sound during cold-start, smooth crossfade to stems once ready." But `fo_spike_strength` skips the overall-sound half — it discards the FeatureVector parameter and uses only `stems.bass_energy_dev`. That's the actual cold-start bug.
+
+Additionally, per Matt's repeated correction during the CSP.1 / CSP.1.1 cycle: the cold-start fix should use everything the preset can *perceive* at frame 1, including the pre-playback analysis cache (mood, BPM, stem proportions). "Hear" (live audio only) is narrower than "perceive" (live audio + cached analysis). The soft tempo pulse used neither — it just oscillated at the cached BPM.
+
+### What got reverted
+
+Three sequential reverts in commit order:
+- `f5f6e02e` (CSP.1.1: Membrane consumer + CSV instrumentation) → reverted by `a952fbb0`
+- `32a335eb` (CSP.1: bundle ID doc fix) → reverted by `70e09853`
+- `47330fab` (CSP.1: FeatureVector field + MIRPipeline computation + LumenMosaic consumer + toggle) → reverted by `2b96f941`
+
+`PhospheneEngine/Tests/PhospheneEngineTests/DSP/MIRPipelineSoftTempoPulseTests.swift` deleted. `features.csv` `soft_tempo_pulse01` column removed. Codebase back to the pre-CSP state.
+
+### Verification
+
+- Engine: 1267 / 1267 tests pass.
+- SwiftLint `--strict`: 0 violations.
+- App build: succeeds.
+
+### Lessons (durable)
+
+- **"Hear" vs "perceive."** Live audio is the narrower category. The bigger category includes pre-playback analysis (cached BPM, mood, stem proportions, time signature) — available at frame 1, no waiting required. Cold-start work should use the whole perception, not just the live half.
+- **Single-ingredient implementations of multi-ingredient visions don't A/B well.** CSP.1 picked item #5 of a six-item list and tested it in isolation. The whole-vision approach (cached + live overall sound + isolated stems, layered) is the load-bearing direction.
+- **Test bed selection is structural, not incidental.** LM's beat-rate visual busyness swamped any subtle modulation. Membrane had pre-existing baseline issues that confounded the test. The right test beds are the presets where the cold-start "inert" symptom is most visible — Ferrofluid Ocean (biggest complaint) and Volumetric Lithograph (second).
+- **Communicate in plain English.** Matt is product / design lead, not a peer engineer. He told me this multiple times during the CSP.1 / CSP.1.1 cycle and I kept lapsing into code-block / function-name framing. The CLAUDE.md Authoring Discipline rule "Decisions presented to Matt must be framed in product-level language" applies to closeout reporting too, not just decision asks.
+
+### What's next
+
+CSP.2 — wire FFO spike heights through the existing `fo_stem_warmup_blend` crossfade with `f.bass_dev` (AGC-deviation primitive, available frame 1) as the cold-start proxy and `stems.bass_energy_dev` as the warm signal. Layer in cached perception (TrackProfile bass proportion → spike baseline at frame 1) as a follow-on if the basic crossfade lands. Separate increment, separate scope.
+
+### Local-only
+
+Reverts on `main`. No remote push.
+
+---
+
 ## [dev-2026-05-26-b] BSAudit.3.revert.docs — doc-state alignment with the 2026-05-25 evening impl revert
 
 **Increment:** BSAudit.3.revert.docs (doc-only). **Status:** Complete 2026-05-26. **Scope:** align 8 documents with the production reality after the BSAudit.3.impl reverts on 2026-05-25 evening.
