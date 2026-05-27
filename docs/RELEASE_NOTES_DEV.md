@@ -6,6 +6,95 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-28-a] SAR.1 — Stem analyzer deviation primitives self-seed on first non-zero frame
+
+**Increment:** SAR.1 (Stem Analyzer Range). **Status:** Implemented 2026-05-28. Engine 1281/1281 + app tests pass (5 pre-existing parallel-execution flakes pass in isolation); SwiftLint `--strict` clean on touched files; manual M7 outstanding.
+
+### What this fixes
+
+The four per-stem deviation primitives — `vocalsEnergyDev`, `drumsEnergyDev`, `bassEnergyDev`, `otherEnergyDev` — are documented as `[0, 1]` but were chronically emitting values 2–41× that ceiling. Affects every stem-consuming preset (Ferrofluid Ocean, Lumen Mosaic, Aurora Veil, Volumetric Lithograph, Membrane), for ~30 seconds after every track change, on every session captured to date.
+
+Evidence pack — pre-fix max deviation across 7 recent sessions (declared range is `[0, 1]`):
+
+| Session | Frames | bassMax | drumsMax | vocalsMax | otherMax |
+|---|---:|---:|---:|---:|---:|
+| 2026-05-27T16-09-47Z | 66,184 | 7.44 | 6.68 | 8.52 | 7.11 |
+| 2026-05-27T19-38-32Z | 6,449 | 4.81 | 2.79 | 3.87 | 3.12 |
+| 2026-05-27T19-44-25Z | 2,001 | 2.09 | 2.33 | 3.00 | 2.00 |
+| 2026-05-27T19-47-18Z | 2,700 | 28.07 | 28.65 | 26.31 | 27.05 |
+| 2026-05-27T19-52-42Z | 5,270 | **37.69** | 37.28 | 38.68 | 40.85 |
+| 2026-05-27T20-29-39Z | 2,150 | 0.75 | 0.64 | 2.63 | 1.05 |
+| 2026-05-27T20-32-45Z | 2,190 | 0.76 | 0.68 | 2.69 | 1.03 |
+
+Cold-start ramp in session `2026-05-27T19-52-42Z` at the live-stems handoff (rows 844–849, ~60 ms):
+
+| Row | bassEnergyDev |
+|---:|---:|
+| 843 | 0.14 |
+| 844 | **7.81** |
+| 845 | 16.05 |
+| 846 | 20.14 |
+| 847 | 27.18 |
+| 848 | 29.54 |
+| 849 | **37.69** |
+
+Slow decay back into range over ~30 seconds as the 10-second EMA converged.
+
+### Root cause
+
+In `PhospheneEngine/Sources/DSP/StemAnalyzer.swift`, the running-average backing store for the deviation EMA (`stemRunningAvg`) was initialised to four zeros at construction and re-zeroed by `reset()`. Combined with the deviation formula `dev = (energy − runningAvg) × 2.0`, the first post-reset frame with energy `E` emitted deviation `2E`. Live stem energy reaches 10–19 during the cold-start window, so deviation primitives ramped to 20–38× the declared ceiling on every track change. The 10-second EMA decay (intentional, per the 2026-04-17 Slint outro diagnosis) means convergence back into range takes ~30 seconds.
+
+`StemAnalyzer.reset()` is called from `VisualizerEngine+Stems.swift:457` (`resetStemPipeline(for:caller:)`) on every track change.
+
+### The fix
+
+Self-seed each entry of `stemRunningAvg` from the first frame after a reset where the corresponding stem's energy is non-zero. After seeding, the first deviation is exactly 0 ("no deviation from this song's typical energy"); the EMA evolves normally from there. The four stems seed independently — a stem whose energy is 0 on the first post-reset frame stays unseeded until a frame where it has non-zero energy.
+
+Four lines inside `updateEMAsAndComputeDeviations`, guarded by `stemRunningAvg[i] == 0` (sentinel) AND `energy_i > 0`. Steady-state behaviour is unchanged; the EMA decay constant is unchanged.
+
+### What this changes for the viewer
+
+The chronic cold-start "every track change → ~30 s of saturated deviation primitives" pattern goes away. Presets that consume `*_energy_dev` (Ferrofluid Ocean spike heights, Lumen Mosaic cell colors, Aurora Veil brightness route, Volumetric Lithograph terrain pulse, Membrane kick shockwave) stop reading clamp-ceiling inputs during the first 30 seconds of each track. Rare extreme-transient spikes can still exceed 1.0 in steady state because the 10-second EMA can't react to single-frame transients — these are infrequent and acceptable per the existing `max(0, rel)` clamp at the preset shader layer.
+
+### Verification
+
+- **Engine SPM:** `swift test --package-path PhospheneEngine` — 1281/1281 pass. New `StemAnalyzerDeviationSeedingTests` suite (4 tests): first-frame deviation = 0, steady state stays in `[0, 1]`, `reset()` re-arms the seed, per-stem seeding is independent.
+- **App Xcode tests:** 328/333 pass; the 5 failures are pre-existing parallel-execution flakes that pass in isolation — `RenderPipelineICBTests.test_gpuDrivenRendering_cpuFrameTimeReduced` (2 ms wall-clock perf gate) + `AppleMusicConnectionViewModelTests.{connectNoCurrentPlaylist, connectNotRunning, connectSuccess, connectParseFailure}` (per the project test-baseline flake list).
+- **App build:** succeeds.
+- **SwiftLint `--strict`:** 0 violations on `StemAnalyzer.swift` and `StemAnalyzerDeviationSeedingTests.swift`. Three pre-existing violations elsewhere are in uncommitted local work outside SAR.1's scope (Matt's LF-arc files: `SessionPreparer+Analysis.swift`, `VisualizerEngine+PublicAPI.swift`).
+
+**Manual M7 (your gate).** Re-run the FFO A/B with the `ffoColdStartFixEnabled` toggle. Expected: the 18–30 s "preset stops moving / flickering colors" symptom (the chronic clamp-saturation) disappears; the CSP.3.1 cold-start motion remains. The session's `stems.csv` should show no rows with `bassEnergyDev > 1.0` (or vanishingly few — only on extreme single-frame transients, not the chronic 2–4 % of frames out of range that exists today).
+
+### Why post-fix evidence can't be collected from existing capture files
+
+The fix is in the live analyzer's output path. Existing `stems.csv` files were captured before the fix was running, so they can't be retested directly — the math in this codebase doesn't get re-applied to existing CSVs. The unit tests above are the math-correctness check; the cross-session pre-fix scan is the chronic-pattern characterisation; Matt's M7 session is the post-fix empirical close.
+
+### What this does NOT touch
+
+- No preset shaders. The fix is in the analyzer; downstream presets benefit without code changes.
+- The EMA decay constant (0.9989 / ~10 s). Intentional per the 2026-04-17 Slint outro diagnosis (long-EMA-time-constant rationale preserved in the docstring).
+- `BandEnergyProcessor` (separate AGC for `FeatureVector`'s `bass` / `mid` / `treble`).
+- The `accumulated_audio_time` accumulator, `MIRPipeline.elapsedSeconds`, or any other long-running state.
+
+### Touched files
+
+- `PhospheneEngine/Sources/DSP/StemAnalyzer.swift` — four-line seeding block in `updateEMAsAndComputeDeviations` + docstring updates explaining both the long-EMA-time-constant rationale (existing) and the new first-frame seeding (added).
+- `PhospheneEngine/Tests/PhospheneEngineTests/DSP/StemAnalyzerDeviationSeedingTests.swift` — new file, 4 contract tests.
+- `docs/ENGINEERING_PLAN.md` — SAR.1 row under Phase CSP; Phase CSP can resume after SAR.1 lands.
+- `docs/QUALITY/KNOWN_ISSUES.md` — BUG-018 (P1, `dsp.stem`) filed + resolved against this increment.
+- `docs/RELEASE_NOTES_DEV.md` — this entry.
+
+### Local-only
+
+Local commit on `main`. No remote push.
+
+### Related
+
+- `[dev-2026-05-27-e]` (below) — CSP.3.1, which exposed this bug during the CSP.2 → CSP.3.1 dive. Phase CSP can resume after SAR.1.
+- `[dev-2026-05-27-b]` (further below) — CSP.2 dive findings; the deviation-primitive saturation was a contributing failure mode that was treated at the preset-shader layer rather than the analyzer layer.
+
+---
+
 ## [dev-2026-05-27-f] LF.1.5 — LF vs process-tap A/B comparison on love_rehab.m4a
 
 **Increment:** LF.1.5 (measurement increment following LF.1). **Status:** Done 2026-05-27. Engine + soak regression tests green; verdict CHARACTERIZABLE DELTAS; doc updates landed.

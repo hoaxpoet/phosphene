@@ -4471,11 +4471,27 @@ Plus the operational gaps CSP.2 surfaced:
 - **No different:** the design space at the cached-perception + live-overall-bass layer is exhausted at this consumption point. Pivot to Matt's stress-test methodology suggestion (CSP-Stress.1, below).
 - **Worse:** revert; capture specific failure modes before reverting (which track, what part of the timeline, what does the spike behaviour look like).
 
+### Increment SAR.1 — Stem analyzer EMA self-seeding (Stem Analyzer Range, 2026-05-28) ✅
+
+Cold-start blocker discovered during the CSP.3 → CSP.3.1 dive: the four per-stem deviation primitives (`vocalsEnergyDev` / `drumsEnergyDev` / `bassEnergyDev` / `otherEnergyDev`) are declared `[0, 1]` but were emitting 2–41× that ceiling on every track change, for ~30 s as the 10-second EMA converged. Root cause: the EMA running-average backing store was zero-initialised and re-zeroed by `reset()`; combined with `dev = (energy − runningAvg) × 2`, the first post-reset frame emitted `2 × energy`. Affected every stem-consuming preset (FFO spike heights, Lumen Mosaic cell colors, Aurora Veil brightness route, Volumetric Lithograph terrain pulse, Membrane kick shockwave).
+
+**Fix.** Self-seed each entry of `stemRunningAvg` from the first frame after a reset where the corresponding stem's energy is non-zero. Each stem seeds independently. Steady-state behaviour and the EMA decay constant are unchanged.
+
+**Done-when.**
+
+- [x] Engine: 1281 / 1281 tests pass. New `StemAnalyzerDeviationSeedingTests` suite (4 tests): first-frame deviation = 0, steady state stays in `[0, 1]`, `reset()` re-arms the seed, per-stem seeding is independent.
+- [x] App build: succeeds. App Xcode tests: 5 pre-existing parallel-execution flakes pass in isolation (not regressions from SAR.1).
+- [x] SwiftLint `--strict`: 0 violations on `StemAnalyzer.swift` + `StemAnalyzerDeviationSeedingTests.swift`.
+- [x] Pre-fix cross-session range check across 7 recent sessions confirms the chronic out-of-range pattern (max deviation 2.09 → 40.85).
+- [ ] **Matt M7 (load-bearing gate).** Re-run the FFO A/B with the `ffoColdStartFixEnabled` toggle. Expected: the 18–30 s "preset stops moving / flickering colors" symptom disappears; CSP.3.1 cold-start motion remains; `stems.csv` shows no chronic out-of-range deviation rows.
+
+See `RELEASE_NOTES_DEV.md [dev-2026-05-28-a]` for the full evidence pack + closeout. Phase CSP can resume after Matt's M7.
+
 ### What's next for Phase CSP
 
-If CSP.3 carries the cold-start on FFO, the pattern (one-sided baseline + smoothed continuous proxy + crossfade timed to real warmup) extends to other affected presets — Volumetric Lithograph being next per Matt's 2026-05-27 prioritisation (terrain pulse + camera dolly are both stems-routed).
+If CSP.3.1 carries the cold-start on FFO (after SAR.1 unblocks the deviation-primitive consumer at the shader layer), the pattern (one-sided baseline + smoothed continuous proxy + crossfade timed to real warmup) extends to other affected presets — Volumetric Lithograph being next per Matt's 2026-05-27 prioritisation (terrain pulse + camera dolly are both stems-routed).
 
-If CSP.3 doesn't carry, the next move is Matt's stress-test methodology suggestion: build per-preset cold-start measurement infrastructure — characterise what each preset's audio reactivity actually does across tempo / meter / energy variation — then propose fixes grounded in measured baselines. That work would slot here as **CSP-Stress.1** (or similar).
+If CSP.3.1 doesn't carry, the next move is Matt's stress-test methodology suggestion: build per-preset cold-start measurement infrastructure — characterise what each preset's audio reactivity actually does across tempo / meter / energy variation — then propose fixes grounded in measured baselines. That work would slot here as **CSP-Stress.1** (or similar).
 
 ---
 

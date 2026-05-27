@@ -1147,6 +1147,76 @@ These test failures are pre-existing, environment-dependent, and do not indicate
 
 ## Resolved (recent)
 
+### BUG-018 — Stem deviation primitives systematically exceed declared `[0, 1]` ceiling during cold-start
+
+**Severity:** P1 (load-bearing for "preset doesn't look broken" product claim — affects all stem-consuming presets on every track change for ~30 seconds).
+**Domain tag:** dsp.stem
+**Status:** **Resolved 2026-05-28** — manual M7 outstanding (Matt's gate).
+**Introduced:** Pre-existing. The deviation EMA was added with `stemRunningAvg: [Float] = [0, 0, 0, 0]` (zero-initialised, re-zeroed on `reset()`) and the formula `dev = (energy − runningAvg) × 2.0`. The first post-reset frame has always emitted `2 × energy` instead of 0; bug surfaced explicitly during the CSP.3 → CSP.3.1 dive 2026-05-27 when Matt observed FFO spike heights pinning to the shader's clamp ceiling during cold-start.
+**Resolved:** 2026-05-28 — SAR.1. Self-seed each `stemRunningAvg[i]` from the first post-reset frame where stem `i` has non-zero energy. See `RELEASE_NOTES_DEV.md [dev-2026-05-28-a]`.
+
+### Expected behavior
+
+`vocalsEnergyDev`, `drumsEnergyDev`, `bassEnergyDev`, `otherEnergyDev` stay within their declared `[0, 1]` range across the session, including immediately after every track change. Rare extreme single-frame transients can exceed 1.0 (the 10-second EMA can't react that fast), but there is no chronic out-of-range pattern across cold-start windows.
+
+### Actual behavior
+
+Every track change produces a ramp from 0 → 8 → 16 → 27 → 38 across ~60 ms at the live-stems handoff, then a ~30-second slow decay back into range. All four stems exhibit the pattern. Pre-fix cross-session scan across 7 recent sessions (2026-05-27, 87,194 total frames):
+
+| Session | bassMax | drumsMax | vocalsMax | otherMax |
+|---|---:|---:|---:|---:|
+| 2026-05-27T16-09-47Z | 7.44 | 6.68 | 8.52 | 7.11 |
+| 2026-05-27T19-38-32Z | 4.81 | 2.79 | 3.87 | 3.12 |
+| 2026-05-27T19-44-25Z | 2.09 | 2.33 | 3.00 | 2.00 |
+| 2026-05-27T19-47-18Z | 28.07 | 28.65 | 26.31 | 27.05 |
+| 2026-05-27T19-52-42Z | 37.69 | 37.28 | 38.68 | 40.85 |
+| 2026-05-27T20-29-39Z | 0.75 | 0.64 | 2.63 | 1.05 |
+| 2026-05-27T20-32-45Z | 0.76 | 0.68 | 2.69 | 1.03 |
+
+Affected presets (consumers of `*_energy_dev`): Ferrofluid Ocean spike heights, Lumen Mosaic cell colors, Aurora Veil brightness route, Volumetric Lithograph terrain pulse, Membrane kick shockwave. Visual symptom: presets read clamp-saturated input for the first ~30 seconds of each track, producing "stuck on max" behaviour (FFO spike pinning, LM color saturation, etc.). Misattributed to per-preset cold-start design failures during the CSP.2 dive.
+
+### Reproduction steps
+
+1. Play any track in any session-recording-enabled run.
+2. Inspect `stems.csv` columns `bassEnergyDev`, `drumsEnergyDev`, `vocalsEnergyDev`, `otherEnergyDev`.
+3. Observe: 2–4 % of rows have values > 1.0; max value across a session typically 5–40× the declared ceiling; concentrated in the first ~30 seconds of each track (live-stems convergence window).
+
+**Minimum reproducer:** any captured session. The bug is structural and reproduces on every track change.
+
+### Session artifacts
+
+- **Primary evidence:** `~/Documents/phosphene_sessions/2026-05-27T19-52-42Z/stems.csv` — rows 844–849 show the cold-start ramp 0 → 7.81 → 16.05 → 27.18 → 37.69 across ~60 ms. 185 of 5270 frames (3.51 %) have `bassEnergyDev > 1.0`.
+- **Cross-session evidence:** 7-session sweep above. Pattern is structural.
+- `features.csv` is not load-bearing here — the deviation primitives are in `stems.csv`. `session.log` shows no anomaly (the EMA math is silent).
+
+### Suspected failure class
+
+`algorithm`. The deviation EMA's running-average initialisation is incompatible with its formula. The two pieces interact correctly in steady state but the first post-reset frame has no defined energy reference, so the formula reduces to `2 × energy` for any non-zero input. Same failure shape as MV-1's authoring intent (D-026: "deviation primitives drive primary motion") presumes the primitives respect their declared range; the analyzer-layer bug invalidates that for ~30 seconds out of every track.
+
+**Evidence for this class:** the math is locally consistent (decay = 0.9989, blend = 0.0011, formula matches the docstring) but the initial-condition handling is wrong. Not a concurrency, sample-rate, or pipeline-wiring failure — the code does exactly what it says, just with the wrong starting state.
+
+### Verification criteria
+
+- [x] Automated: `StemAnalyzerDeviationSeedingTests` suite — 4 tests covering first-frame deviation = 0, steady state stays in `[0, 1]`, `reset()` re-arms the seed, per-stem seeding is independent. All pass.
+- [x] Pre-fix cross-session range check (above) confirms the chronic pattern across multiple sessions; documented in `RELEASE_NOTES_DEV.md [dev-2026-05-28-a]`.
+- [ ] **Manual M7:** Matt re-runs the FFO A/B with the `ffoColdStartFixEnabled` toggle. Expected: the 18–30 s "preset stops moving / flickering colors" symptom disappears; CSP.3.1 cold-start motion remains. Fresh session `stems.csv` shows no chronic out-of-range deviation rows (≤ rare single-frame transients only).
+- [x] Regression: the long-EMA-time-constant rationale (2026-04-17 Slint outro diagnosis) is preserved — the decay constant 0.9989 is unchanged.
+
+**Manual validation required:** Yes. Subjective gate: the visual response should feel "continuously alive" through the cold-start window on stem-consuming presets, not "saturated then settling."
+
+### Fix scope
+
+Contained. Four lines in `updateEMAsAndComputeDeviations` (StemAnalyzer.swift:259-262) plus docstring updates. No preset shader changes; no engine-wide architecture changes. Steady-state behaviour unchanged. Trivial P1 collapse (per `DEFECT_TAXONOMY.md` — small change, root cause obvious from the empirical artifact, no architectural risk).
+
+### Related
+
+- Increment: SAR.1 (single increment, trivial P1 collapse approved by direct prompt scope).
+- Failed Approach: this is the analyzer-layer twin of Failed Approach #31 (absolute thresholds on AGC-normalised energy) — same root pattern (assumes a steady-state reference that doesn't exist on cold-start) at the deviation-primitive layer.
+- Decision: D-026 (deviation primitives drive primary motion). SAR.1 makes D-026's design contract empirically true for the first 30 seconds of each track.
+- Phase: Phase CSP can resume after SAR.1.
+
+---
+
 ### Sweep note (2026-05-12)
 
 The 11 entries below were moved from the Open section to here as part of a quality-docs audit. Each was already marked `Status: Resolved` (or `Status: Closed — attempt reverted`, for BUG-007.3) in its body but had not been physically relocated. No content changes — entries are byte-identical to the originals; only their position in the document changed. Sort order is by resolution date (newest first within the 11), then back into the existing Resolved chronology.
