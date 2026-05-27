@@ -3808,7 +3808,7 @@ The launch path reads `PHOSPHENE_LOCAL_FILE_PLAYBACK` at app start (`.task` modi
 **Verification (manual + automated).** The LF.1 closeout's manual verification reports a clean run on `love_rehab.m4a`: 1684 features.csv frames over 28.96 s (matching the fixture's 29.93 s with the expected ~1 s startup gap), raw_tap.wav at the file's native 44100 Hz with healthy RMS ≈ 0.31 (max amplitude 1.0 — Love Rehab's mastered peaks), session.log clean of any "Tap reinstall scheduled" / "CGRequestScreenCaptureAccess" / "DRM silence" lines, and an installed live BeatGrid at 118.5 BPM matching the track's true tempo within rounding. The two new regression tests `test_scheduleNextReinstall_isNoOpInLocalFilePlaybackMode` and `test_scheduleNextReinstall_isNoOpInLocalFileMode` lock the mode-gate behavior so a future tap-reinstall edit cannot re-enable scheduling for either mode.
 
 **Out of scope (deferred).** Per the LF.1 prompt:
-- Stem separation pre-analysis of the full track (LF.2).
+- ~~Stem separation pre-analysis of the full track (LF.2).~~ **Done in LF.2 — see D-129.**
 - Persistent content-keyed stem cache (LF.3).
 - Folder ingestion, M3U import, playlist semantics (LF.4).
 - Drag-and-drop UI, settings audio-source picker, output-device routing (LF.4).
@@ -3817,7 +3817,7 @@ The launch path reads `PHOSPHENE_LOCAL_FILE_PLAYBACK` at app start (`.task` modi
 - `SessionManager` integration (LF.4).
 - ~~A/B comparison vs. process-tap on the same audio (LF.1.5).~~ **Done in LF.1.5 — see empirical characterization below.**
 - Concurrency hardening of `tapSampleRate` propagation (separate ongoing task).
-- Format-coverage testing across MP3 / FLAC / M4A / AAC (LF.2).
+- ~~Format-coverage testing across MP3 / FLAC / M4A / AAC (LF.2).~~ **Done in LF.2 — see D-129.**
 
 **Empirical characterization (LF.1.5, 2026-05-27).** A/B comparison on `love_rehab.m4a` (host: Mac mini M2 Pro, system default output Apogee Duet 3 at 48 kHz) — `docs/diagnostics/LF1.5_AB_COMPARISON_2026-05-27.md`. Verdict: **characterizable deltas**, all explainable by known structural differences; no unexpected divergence. Headline numbers (LF vs tap, middle 80 % of active window):
 
@@ -3826,3 +3826,70 @@ The launch path reads `PHOSPHENE_LOCAL_FILE_PLAYBACK` at app start (`.task` modi
 - **Volume / amplitude:** LF pre-mixer at ~0 dBFS, tap post-output at ~-8 dBFS (2.5× quieter). AGC compresses but does not fully eliminate this level difference: load-bearing bands all skew tap-lower by 17–24 % (subBass -17 %, bass -24 %, treble -23 %, mid noise-floor) in the same direction proportional to the level ratio. This is consistent with the AGC's running-average converging to a lower baseline on the quieter input. The volume-level skew on the tap path is a known property of the existing process-tap architecture (`RUNBOOK.md §Audio levels too low`); the LF path does not have this dependency by construction.
 
 **Implications for downstream LF increments.** Within the tolerance Phosphene's downstream consumers need, the load-bearing musical metrics (BPM, subBass, sub-bass onset rate) agree across paths. Stems extracted from either path will be analyzed against a consistent beat reference. The cross-path centroid + mood deltas are SR-driven and path-stable (re-running the same fixture on the same path gives the same numbers), so the LF arc can proceed without compensating for them at the analysis layer. Single-fixture characterization — cross-track variance is LF.2 territory.
+
+---
+
+## D-129 — LF.2 dispatch model: blocking pre-analysis, in-memory cache only (LF.2, 2026-05-27)
+
+**Status:** Accepted (2026-05-27).
+
+**Context.** LF.1 proved local-file playback works end-to-end via `AVAudioEngine` (D-128). LF.1.5 characterized the LF path's analysis output vs the process-tap path on the same audio — load-bearing musical metrics agree; structural deltas all explainable. LF.1's known follow-up: the live `BeatGrid` was still installed ~10 s into the track by the live Beat This! analyzer after AGC convergence, leaving beat-driven preset accents wrong-phase for the first ~10 s. This is the same warmup gap the streaming path closes via `SessionPreparer.analyzePreview` on the 30 s preview clip — but LF.1 had no equivalent.
+
+**Decision.** A new `@MainActor async` entry point `VisualizerEngine.prepareAndStartLocalFilePlayback(url:)` runs `SessionPreparer.analyzePreview(...)` on the file PCM BEFORE the audio router starts. The cached `BeatGrid` + `StemFeatures` are stored in `StemCache` with a synthetic `TrackIdentity` (`spotifyID = "local:" + url.path`); `resetStemPipeline(for:caller:)`'s existing cache-hit branch installs both into the live pipeline via `MIRPipeline.setBeatGrid(...)` + `pipeline.setStemFeatures(...)`. The audio router is started only after pre-analysis completes — UI sees ~2 s blank between env-var hook firing and first rendered frame.
+
+Three design choices baked in:
+
+1. **Blocking pre-analysis dispatch.** Pre-analysis runs inside `Task.detached(priority: .userInitiated)`; the LF.2 method `await`s the result before starting the router. Rejected alternative: parallel pre-analysis (audio starts immediately; cache install happens mid-track ~2 s in). The blocking model gives the cleanest "BeatGrid installed at t≈0" closeout-gate evidence and matches LF.2's done-when bar. ~2 s UX latency is acceptable for the dev-only env-var hook scope.
+
+2. **In-memory cache only.** The `CachedTrackData` for an LF track is stored in `StemCache` keyed by the synthetic identity for the lifetime of the process. No disk persistence. Persistent content-keyed caching (so a second launch of the same file skips re-analysis) is LF.3 territory.
+
+3. **Re-use of `SessionPreparer.analyzePreview` (now `public`).** The LF.2 path drives `analyzePreview` directly, bypassing the higher-level `SessionPreparer.prepare(tracks:)` orchestration (LF.2 is single-file + ad-hoc, no playlist, no Network I/O — fields like `PreviewResolver` / `PreviewDownloader` do not apply). Visibility change: `analyzePreview` is now `public` rather than `internal`. The function is already designed as a self-contained pure function (nonisolated, static, no captures); exposing it surfaces it for both the streaming path (existing caller via `SessionPreparer.prepareTrack`) and LF.2 (new caller via `VisualizerEngine.prepareAndStartLocalFilePlayback`).
+
+**The "full-track" framing is structurally aspirational at LF.2 scope.** The underlying analyzers have fixed window limits:
+
+- `StemSeparator.separate(...)` silently truncates to `requiredMonoSamples = 440320` (~10 s at 44.1 kHz) via `padOrTruncate`. The Open-Unmix HQ MPSGraph has a fixed window; no tiling.
+- `BeatThisModel.predictCore(...)` clamps to `tMax = 1500` frames (~30 s at 22050 Hz / hop 441). Fixed transformer input length; no sliding-window aggregation.
+
+`SessionPreparer.analyzePreview` accepts full-file PCM and the analyzers silently process the first 10/30 s. The MIR pass (`analyzeMIR`) iterates vDSP FFT over the full input and IS sample-count-agnostic.
+
+The LF.2 win is therefore not "analyze the full track" — it is:
+
+- **Same PCM bytes pre-analyzed AND played.** The cached `BeatGrid`'s phase is correct on the live audio by construction. The streaming path's preview-clip indirection (iTunes Search returns a different recording for each track) is the source of Beat This!'s cross-capture instability per BSAudit.2; LF.2 eliminates that entirely for local files.
+- **Pre-analysis happens before audio starts.** The BeatGrid + StemFeatures are installed at session start, not ~10 s in. `BEAT_GRID_INSTALL: source=preparedCache` appears in session.log line 5 (before `raw tap capture started`), vs the LF.1 baseline where `source=liveAnalysis` appears at line 8 (~5 s after `signal quality → green`).
+- **`stems.csv` shows non-zero stem features from frame 0** (the cached `StemFeatures` snapshot is installed via `pipeline.setStemFeatures(cached.stemFeatures)` before any audio flows).
+
+True full-track stem + beat analysis would require StemSeparator tiling (concatenate per-tile outputs into a full-track stem waveform) and Beat This! sliding-window aggregation. Both are explicitly out of LF.2 scope; they would be LF.3+ work if a need arises (e.g., per-section-aware orchestration on long local files).
+
+**Format coverage.** `LocalFilePlaybackFormatCoverageTests` (engine swift-testing) exercises the decode + offline-analysis surface against three formats: M4A/AAC, MP3, FLAC. Gated by `LF_FORMAT_COVERAGE=1` (matches the `SOAK_TESTS=1` opt-in pattern). Each test decodes via `PreviewAudio.fromLocalFile(at:)` (the new public Session-module entry point), runs the result through `SessionPreparer.analyzePreview` with real ML deps (`StemSeparator`, `StemAnalyzer`, `MoodClassifier`, `DefaultBeatGridAnalyzer`), and asserts non-empty BeatGrid + finite StemFeatures. WAV is descoped — `AVAudioFile` decode for raw WAV is already covered by the `PreviewDownloader` magic-byte path. Fixtures created by transcoding `love_rehab.m4a` via `afconvert -f flac -d flac` (FLAC) and `ffmpeg -codec:a libmp3lame -b:a 192k` (MP3) — both .gitignore'd under `PhospheneEngine/Tests/Fixtures/tempo/` per the existing pattern.
+
+**Rejected alternatives.**
+
+- **Parallel pre-analysis dispatch** (audio starts immediately; cache install happens ~2 s in). Cleaner UX but the closeout gate "BeatGrid installed at t≈0" requires blocking. Adoptable later if UX feedback demands it.
+- **Truncate the LF pre-analysis input to 30 s explicitly** rather than passing full-file PCM through analyzePreview. Cosmetically cleaner but no different in outcome — the analyzers truncate either way.
+- **Expand StemSeparator + Beat This! windows to handle full tracks** (tiling + sliding-window aggregation). Significantly larger scope; would touch ML dispatch budgets (16 stem-sep tiles for a 3-minute song = ~2.3 s of additional GPU work per pre-analysis). Probably its own increment if a downstream need arises.
+- **Surface the synthetic `TrackIdentity` as a first-class concept (e.g., new `TrackIdentitySource` enum case).** Premature. The synthetic identity's only consumer is `StemCache.store(_:for:)` + `loadForPlayback(track:)` — both are key-based and don't introspect the identity's provenance. A first-class concept becomes worth introducing when (a) the UI needs to render local-file tracks differently from streaming tracks, or (b) the orchestrator needs to behave differently for them. Neither is in LF.2 scope.
+- **Add a `localFilePlayback` case to `ResetStemPipelineCaller`.** Considered. The enum already has a `.other` case documented as "any future call site" — exactly the LF.2 use case. A dedicated case would clarify the wiring-log breadcrumbs slightly but adds enum-surface area without changing behaviour. Refile if a future increment needs the granularity.
+
+**Out of scope (deferred).**
+
+- Persistent content-keyed stem cache (LF.3). The LF.2 cache is process-lifetime only.
+- Folder ingestion / M3U / multi-file playlist semantics (LF.4).
+- File-picker UI / settings audio-source toggle / drag-and-drop (LF.4).
+- Crossfade / gapless segue between tracks (LF.4).
+- ID3 / Vorbis tag extraction, album-art display (LF.4).
+- `SessionManager` integration (LF.4). LF.2 stays in ad-hoc / env-var-driven flow.
+- Cross-fixture LF-vs-tap A/B comparison across multiple tracks. The LF.1.5 comparison is single-fixture and stays that way; LF.2's A/B is LF-before-vs-LF-after only.
+- Stem-cache eviction policy / memory budgets. LF.3 / LF.4 work.
+- Concurrency hardening of `tapSampleRate` propagation. Separate ongoing task (D-128 also notes this).
+- Mid-track resumption on `AVAudioEngineConfigurationChange`. Still best-effort from beginning, per LF.1 / LF.4 deferral.
+- Production telemetry / startup latency dashboards.
+
+**Verification.**
+
+- LF.1 regression gate green: `swift test --package-path PhospheneEngine --filter AudioInputRouterSignalStateTests` (11/11).
+- LF.1.5 / SoakTestHarness gate green: `SOAK_TESTS=1 swift test --package-path PhospheneEngine --filter SoakTestHarnessTests` (7/7).
+- New LF.2 format-coverage tests green: `LF_FORMAT_COVERAGE=1 swift test --package-path PhospheneEngine --filter LocalFilePlaybackFormatCoverageTests` (3/3 — M4A, MP3, FLAC).
+- Full engine suite green: 1281/1281 tests passing.
+- Sample-rate literal gate green: `Scripts/check_sample_rate_literals.sh` exit 0 (the new code reads `tapSampleRate` and `preview.sampleRate` — no `44100` literals introduced).
+- Live capture verification: session `2026-05-27T20-32-45Z` shows `BeatGrid installed: source=preparedCache, ..., bpm=118.1` at session.log line 5 — BEFORE `raw tap capture started` (line 7) and `signal quality → green` (line 10). The LF.1.5 baseline capture (`2026-05-27T19-44-25Z`) had `source=liveAnalysis` at line 8, ~5 s after signal-quality green. Full session-log diff + metrics-preservation table in `docs/diagnostics/LF2_BEFORE_AFTER_2026-05-27.md`.
+- Pre-analysis startup latency on M2 Pro: ~2 s for `love_rehab.m4a` (30 s file). Well under the prompt's 5 s target for 3-minute songs (longer files don't grow linearly because the analyzers truncate to their fixed windows).
