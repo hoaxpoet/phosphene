@@ -3872,7 +3872,7 @@ True full-track stem + beat analysis would require StemSeparator tiling (concate
 
 **Out of scope (deferred).**
 
-- Persistent content-keyed stem cache (LF.3). The LF.2 cache is process-lifetime only.
+- ~~Persistent content-keyed stem cache (LF.3). The LF.2 cache is process-lifetime only.~~ **Done via D-130 (LF.3, 2026-05-27).**
 - Folder ingestion / M3U / multi-file playlist semantics (LF.4).
 - File-picker UI / settings audio-source toggle / drag-and-drop (LF.4).
 - Crossfade / gapless segue between tracks (LF.4).
@@ -3893,3 +3893,64 @@ True full-track stem + beat analysis would require StemSeparator tiling (concate
 - Sample-rate literal gate green: `Scripts/check_sample_rate_literals.sh` exit 0 (the new code reads `tapSampleRate` and `preview.sampleRate` — no `44100` literals introduced).
 - Live capture verification: session `2026-05-27T20-32-45Z` shows `BeatGrid installed: source=preparedCache, ..., bpm=118.1` at session.log line 5 — BEFORE `raw tap capture started` (line 7) and `signal quality → green` (line 10). The LF.1.5 baseline capture (`2026-05-27T19-44-25Z`) had `source=liveAnalysis` at line 8, ~5 s after signal-quality green. Full session-log diff + metrics-preservation table in `docs/diagnostics/LF2_BEFORE_AFTER_2026-05-27.md`.
 - Pre-analysis startup latency on M2 Pro: ~2 s for `love_rehab.m4a` (30 s file). Well under the prompt's 5 s target for 3-minute songs (longer files don't grow linearly because the analyzers truncate to their fixed windows).
+
+---
+
+## D-130 — LF.3 persistent content-keyed stem cache (LF.3, 2026-05-27)
+
+**Status:** Accepted (2026-05-27).
+
+**Context.** LF.2 (D-129) installed a `BeatGrid` + `StemFeatures` snapshot before the audio router starts, but only in `StemCache` (process-lifetime in-memory). A second launch on the same file re-ran the full ~2 s `analyzePreview` pipeline even though the result would be byte-identical. For a dev hook that's harmless; for any LF.4 graduation (file picker, drag-and-drop, multi-file ingest) it would feel slow and wasteful.
+
+**Decision.** A new `PersistentStemCache` in the Session module persists `CachedTrackData` to disk keyed by the SHA-256 of the source file's bytes. `VisualizerEngine.prepareAndStartLocalFilePlayback(url:)` consults the disk cache before running pre-analysis. Cache hit → load + install, skip `analyzePreview` entirely (~634 ms wall on M2 Pro). Cache miss → LF.2 flow + persist for next launch (cold path matches LF.2's ~2 s).
+
+Three baked-in design choices:
+
+1. **Content-hash key.** `spotifyID = "local:sha256:" + hash` replaces LF.2's `"local:" + url.path`. Bytes are what matter; renamed/moved copies of the same file resolve to the same cache entry by construction. `PreviewAudio.sha256(of:)` (CryptoKit-backed full-file pass) produces output byte-identical to `shasum -a 256 <file>` and is the only producer. LF.2's in-memory cache has no real users; first LF.3 launch on a previously-LF.2-decoded file is just a cache miss.
+
+2. **Storage layout: per-stem `.f32` files + small `metadata.json`.** Per-hash directory at `<root>/sha256/<aa>/<full-hash>/` where `<aa>` is the first two hex chars (filesystem sharding so 1000+ tracks don't pile under one directory). `metadata.json` carries `cacheSchemaVersion: 1`, the full `BeatGrid` / `drumsBeatGrid` / `StemFeatures` / `TrackProfile`, plus `gridOnsetOffsetMs`, `stemSampleCounts`, and `decodedDuration` (the last so a warm-launch `TrackIdentity` carries the same `duration` value as the cold-launch one — `TrackIdentity.==` includes duration, and a `WIRING:` log mismatch on otherwise-identical inputs is exactly the kind of drift D-079 was created to eliminate). The four stem waveforms are raw little-endian `Float32` files (one per stem, named `vocals.f32` / `drums.f32` / `bass.f32` / `other.f32`). Rejected single-packed-binary because per-stem files are inspectable with downstream audio tools (`afconvert`, sox, etc.) and keep the JSON tiny (~5 KB).
+
+3. **Schema versioning + non-fatal failures.** `cacheSchemaVersion: Int` lives in `metadata.json`. Any non-matching value treats the entry as a miss and overwrites. Schema version 1 is permanent — never re-define what it means; bump to 2 if the format changes. Every cache error (`PersistentStemCacheError.{rootDirectoryUnavailable, schemaMismatch, corruptMetadata, missingStem, malformedStem}`) is non-fatal: log warning, fall through to in-memory / re-analyze path. The cache is an optimization, never a correctness requirement.
+
+**Codable plumbing.** `BeatGrid` was already `Codable`. `TrackIdentity` was already `Codable` (the `spotifyPreviewURL` hint is excluded from encode). LF.3 adds `Codable` to:
+
+- `EmotionalState` (default synth on two Floats).
+- `TrackProfile` (default synth — every nested field is Codable).
+- `StemFeatures` (explicit `CodingKeys` excluding the `_sfPad3...22` padding floats). The 256-byte GPU layout has 20 internal padding floats slots 45–64 that exist for buffer-alignment, not data. Default `Codable` synthesis would encode them and lock the on-disk format to the current padding shape; explicit `CodingKeys` over the 44 load-bearing fields make the format robust to any future padding-layout change. Decode init zero-fills the pad floats via `self.init()` before keyed reads, so a Swift API change that adds/removes pad fields is invisible to the on-disk format.
+
+**Rejected alternatives.**
+
+- **Single packed binary file (`stems.bin` with a small header).** One file open instead of four; small savings. Loses the inspectability of per-stem `.f32` files (operators can't pipe `vocals.f32` into `afconvert -f wav` without re-deriving the framing). Not worth the perf delta.
+- **Persist `CachedTrackData` directly via `Codable`.** Same on-disk footprint as the chosen approach, but `[[Float]]` round-tripped through JSON inflates ~7 MB of waveform data into ~50 MB of text. Per-stem raw-float files are the right call.
+- **Truncate hash to a 16-char prefix.** Saves a tiny amount of metadata-file size; introduces a non-zero collision probability that has no benefit. Full SHA-256 is cheap (~30 ms for 1 MB AAC on M2 Pro), so use the full hex.
+- **Hash against `(inode, mtime, size)` instead of file contents.** Skips the read pass on warm launch (saving ~30 ms). Adds invalidation surface: `rsync` preserves inode, BUT a file copied to a new path gets a new inode even with identical content, so two identical files would cache separately. The content-hash key is the right primitive; the `(inode, mtime, size)` check is a possible future shortcut if hash cost becomes load-bearing on multi-GB lossless files. Not currently a problem.
+- **Cache eviction policy at LF.3 scope.** LF.3 doesn't add eviction — cache grows linearly as the user plays new files (~7 MB per track, so 1000 tracks = 6.7 GB — well within local-disk budgets for the env-var-hook scope). LF.4 territory if multi-file ingest becomes routine.
+- **Migrate LF.2 path-keyed cache entries.** LF.2's cache is process-lifetime; no real users have a cache to migrate. First LF.3 launch on a previously-LF.2-decoded file is simply a cache miss.
+- **Surface cache hits / misses in the UI.** Operator-only diagnostic at LF.3 scope (`STEM_CACHE_HIT / MISS / WROTE` lines in session.log). LF.4 if user-facing cache management becomes useful.
+
+**Out of scope (deferred).**
+
+- Streaming-path persistence (Spotify track ID → cached analysis surviving app restart). Different cache-key shape (metadata-derived, not content-derived), different invalidation surface (Spotify can rotate preview URLs). Design discussion is its own increment if the need surfaces.
+- Cache eviction policy / size bounds (LF.4).
+- Cache-clear UI / cache-stats display (LF.4 or separate dev-tooling increment).
+- Folder / M3U / multi-file ingestion (LF.4).
+- File-picker UI / settings audio-source toggle / drag-and-drop (LF.4).
+- `SessionManager` integration (LF.4). LF.3 stays in ad-hoc / env-var-driven flow.
+- Cross-fixture cache verification across multiple tracks. Single-fixture verification (love_rehab.m4a) was sufficient for LF.3 done-when.
+- StemSeparator tiling / Beat This! sliding-window aggregation. The cached data is the same 10 s of stems + 30 s of beats LF.2 produces; lifting those limits is a separate infrastructure increment.
+- Hash-truncation / partial-file hashing. Full-file SHA-256 is fast enough.
+- Multi-process cache safety. Phosphene is a single-instance app.
+- Mid-track resumption on `AVAudioEngineConfigurationChange`. Still best-effort from beginning, per LF.1 / LF.4 deferral.
+- Production telemetry / cache hit-rate dashboards.
+
+**Verification.**
+
+- LF.1 regression gate green: `swift test --package-path PhospheneEngine --filter AudioInputRouterSignalStateTests` (11/11).
+- LF.2 format-coverage gate green: `LF_FORMAT_COVERAGE=1 swift test --package-path PhospheneEngine --filter LocalFilePlaybackFormatCoverageTests` (3/3).
+- New LF.3 tests green: `PersistentStemCacheTests` (11/11), `PreviewAudioContentHashTests` (8/8).
+- Sample-rate literal gate green: `Scripts/check_sample_rate_literals.sh` exit 0.
+- Release build: `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' -configuration Release build` exit 0.
+- Live cold capture (session `2026-05-27T22-00-23Z`): `STEM_CACHE_MISS: reason=no-entry` at session.log line 3 → `STEM_CACHE_WROTE: bytes=7045120, elapsedMs=4` at line 4 → `BeatGrid installed: source=preparedCache` at line 7 → audio router at +2.408 s wall. Matches LF.2 cold-start (~2 s, no regression).
+- Live warm capture (session `2026-05-27T22-00-59Z`): `STEM_CACHE_HIT: bpm=118.1, beats=59` at session.log line 3 → `BeatGrid installed` at line 6 → audio router at +634 ms wall. ~3× speedup over LF.2 cold-start.
+- On-disk layout verified (`~/Library/Application Support/Phosphene/StemCache/sha256/c1/c1685f07d559…/{metadata.json,vocals.f32,drums.f32,bass.f32,other.f32}`, 6.7 MB total per track).
+- Full diagnostics in `docs/diagnostics/LF3_COLD_WARM_2026-05-27.md`.

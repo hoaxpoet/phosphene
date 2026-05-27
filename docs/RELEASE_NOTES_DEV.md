@@ -6,6 +6,48 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-27-h] LF.3 — Persistent content-keyed stem cache for local-file playback
+
+**Increment:** LF.3 (Phase LF step 3, D-130). **Status:** Implemented + verified 2026-05-27. Cold launch matches LF.2 baseline (~2 s); warm launch (cache populated) drops to ~634 ms — ~3× faster than LF.2 cold-start. PersistentStemCacheTests 11/11, PreviewAudioContentHashTests 8/8, LF format-coverage tests 3/3, AudioInputRouterSignalStateTests 11/11. Release build clean.
+
+### What this is
+
+LF.2 closed the cold-start gap LF.1 left behind by running `analyzePreview` on the file PCM before the audio router starts. But LF.2's cache (`StemCache.store(_:for:)`) was process-lifetime only — a second launch on the same file re-ran the full ~2 s pre-analysis even though the result would be byte-identical. LF.3 makes that cache persistent.
+
+### Landed code
+
+- **New `PhospheneEngine/Sources/Session/PersistentStemCache.swift`** — disk-backed content-keyed cache. Layout: `~/Library/Application Support/Phosphene/StemCache/sha256/<aa>/<full-hash>/{metadata.json, vocals.f32, drums.f32, bass.f32, other.f32}`. Per-track footprint ~6.7 MB. Schema version 1. NSLock-guarded.
+- **New `PreviewAudio.sha256(of:)`** in `SessionTypes.swift` — CryptoKit-backed full-file SHA-256. Matches `shasum -a 256` byte-for-byte.
+- **Synthetic identity migration** — `spotifyID = "local:" + url.path` → `"local:sha256:" + hash`. Renamed/moved copies of the same bytes resolve to the same `TrackIdentity`.
+- **`prepareAndStartLocalFilePlayback(url:)`** rewritten to hash → consult disk cache → load or analyze + persist. New `LocalFilePrepOutcome` value type carries source enum (`persistentDisk` / `freshAnalysis`).
+- **`Codable` conformance added** for `EmotionalState`, `TrackProfile`, and `StemFeatures` (explicit `CodingKeys` excluding `_sfPad*` padding floats on `StemFeatures` so the on-disk format is robust to future padding-layout changes).
+- **Three new log lines** matching the existing `WIRING:` pattern: `STEM_CACHE_HIT`, `STEM_CACHE_MISS`, `STEM_CACHE_WROTE` — each with track name, 12-char hash prefix, and load-bearing metadata.
+
+### Tests
+
+- `PersistentStemCacheTests` — 11 tests covering roundtrip, missing-entry / schema-mismatch / corrupt-JSON / missing-stem / malformed-stem-byte-count, overwrite, concurrent access, shard layout, default vs explicit root.
+- `PreviewAudioContentHashTests` — 8 tests covering hash format / stability / path-independence / content-distinguishing / missing-file / `shasum -a 256` reference output / identity-prefix / precomputed-hash honoured.
+- `LocalFilePlaybackFormatCoverageTests` — identity assertion updated from `local:<path>` to `local:sha256:<hash>`. All 3 format tests still pass (M4A, MP3, FLAC).
+
+### Diagnostic capture
+
+- **`docs/diagnostics/LF3_COLD_WARM_2026-05-27.md`** — full cold/warm report on `love_rehab.m4a`. Cold session `2026-05-27T22-00-23Z`: `STEM_CACHE_MISS reason=no-entry` → `STEM_CACHE_WROTE bytes=7045120 elapsedMs=4` → `BeatGrid installed` at +2 s. Warm session `2026-05-27T22-00-59Z`: `STEM_CACHE_HIT` → `BeatGrid installed` → audio router at +634 ms wall.
+
+### Operational notes
+
+Operator-facing cleanup: `rm -rf ~/Library/Application\ Support/Phosphene/StemCache`. Cache should be wiped after upgrading StemSeparator weights or Beat This! checkpoints (the cache contains analysis output from the old models). RUNBOOK has the canonical commands.
+
+Cache failures are non-fatal — every error type falls through to the LF.2 in-memory-only flow. `STEM_CACHE_MISS: source=persistentDisk, …, reason=load-failed(…)` is the diagnostic signature for a corrupted entry.
+
+### Known follow-ups
+
+- Streaming-path persistence is a separate increment (different cache-key shape, different invalidation surface).
+- No eviction policy yet (LF.4).
+- No cache-stats UI (LF.4).
+- Hash-on-every-launch is a fixed ~30 ms cost for typical AAC; ~200 ms for 50 MB lossless. Hash-against-(inode,mtime,size) is a possible future shortcut if LF graduates to routine large-file playback.
+
+---
+
 ## [dev-2026-05-28-b] PERF.1 — Per-subsystem analysis-frame timing in features.csv
 
 **Increment:** PERF.1 (Phase PERF step 1, BUG-019 instrumentation). **Status:** Implemented 2026-05-28. Engine 1295/1295 tests pass; SwiftLint `--strict` 0 violations on touched files; app build clean. Next: Matt re-runs a tap-path capture past the 70 s session-time mark; PERF.2 (diagnosis) reads the result.

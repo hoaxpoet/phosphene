@@ -82,6 +82,65 @@ cp /path/to/main/checkout/PhospheneEngine/Tests/Fixtures/tempo/*.m4a \
 
 The `BeatThisFixturePresenceGate` suite is intentionally designed to fail loudly when the fixture tree is empty — silent skips have masked the DSP.2 S8 four-bug regression surface in the past (see CLAUDE.md *§What NOT To Do* on silent fixture skips).
 
+## Local-file stem cache management (LF.3, D-130)
+
+When Phosphene is launched against a local file via the
+`PHOSPHENE_LOCAL_FILE_PLAYBACK` env-var hook, the offline pre-analysis
+result (`BeatGrid` + per-stem waveforms + `StemFeatures` + `TrackProfile`)
+is persisted to disk under
+
+```
+~/Library/Application Support/Phosphene/StemCache/sha256/<aa>/<full-hash>/
+```
+
+where `<aa>` is the first two hex chars of the file's SHA-256 (filesystem
+sharding) and `<full-hash>` is the full hex digest. Each entry holds five
+files: `metadata.json` (5 KB) and `vocals.f32` / `drums.f32` / `bass.f32`
+/ `other.f32` (~1.76 MB each — raw little-endian Float32 PCM). Per-track
+footprint: ~6.7 MB.
+
+**Operator commands.**
+
+```sh
+# Inspect contents
+find "$HOME/Library/Application Support/Phosphene/StemCache" -type f
+
+# Size
+du -sh "$HOME/Library/Application Support/Phosphene/StemCache"
+
+# Wipe all cached entries (any future launch re-runs pre-analysis)
+rm -rf "$HOME/Library/Application Support/Phosphene/StemCache"
+
+# Wipe one entry by file hash
+shasum -a 256 path/to/file.m4a   # → c1685f07d559...
+rm -rf "$HOME/Library/Application Support/Phosphene/StemCache/sha256/c1/c1685f07d559..."
+```
+
+**When to clear the cache.**
+
+- After upgrading `StemSeparator` model weights — the cached stems were
+  produced by the old separator and are now stale relative to live runs.
+  Cache schema versioning does NOT auto-detect model drift; this is an
+  operator responsibility.
+- After upgrading the Beat This! model checkpoint — same story for cached
+  BeatGrids.
+- After bumping `PersistentStemCache.currentSchemaVersion`. (Mismatched
+  entries are auto-treated as misses and overwritten — no manual wipe
+  required, but it's tidy to clear them in one shot.)
+- When disk-space is tight and the user wants to reclaim per-track
+  footprint.
+
+**Cache-corruption recovery.** A `STEM_CACHE_MISS: source=persistentDisk,
+…, reason=load-failed(…)` line in `session.log` indicates an entry was
+present but unreadable. The path then runs fresh analysis and overwrites
+the broken entry — no manual intervention required.
+
+**Cache hit/miss telemetry.** Session-log lines `STEM_CACHE_HIT` /
+`STEM_CACHE_MISS` / `STEM_CACHE_WROTE` log each cache event (track name,
+12-char hash prefix, BPM/beats, write byte count, elapsed ms). See
+`docs/diagnostics/LF3_COLD_WARM_2026-05-27.md` for the cold-vs-warm
+latency reference.
+
 ## Claude Code Session Checklist
 
 Every session that modifies Swift code must end with all four passing:

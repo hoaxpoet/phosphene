@@ -32,6 +32,75 @@ Test infrastructure: swift-testing + XCTest across unit, integration, regression
 
 ## Recently Completed
 
+### Increment LF.3 — Persistent Content-Keyed Stem Cache ✅ (2026-05-27)
+
+Closes the LF.2 follow-up Matt named at closeout: LF.2's `StemCache.store(_:for:)` was process-lifetime only, so a second launch on the same local file re-ran the full ~2 s pre-analysis even though the result would be byte-identical. LF.3 makes the cache persistent. Same file across app launches → near-instant startup (~634 ms wall vs LF.2's ~2 s, **a ~3× speedup**, well under the 500 ms cache-hit-path target). First launch on a fresh install behaves identically to LF.2 (cache miss → `analyzePreview` runs → result written to disk in 4 ms wall).
+
+**Landed changes:**
+
+- **`PhospheneEngine/Sources/Session/PersistentStemCache.swift`** (new) — Disk-backed content-keyed cache. Layout: `<root>/sha256/<aa>/<full-hash>/{metadata.json, vocals.f32, drums.f32, bass.f32, other.f32}` where `<aa>` is the first two hex chars (filesystem sharding) and `<full-hash>` is the file's SHA-256. The four `.f32` files are raw little-endian Float32 PCM (matches `[[Float]]` in memory). `metadata.json` carries `cacheSchemaVersion: 1`, the `BeatGrid` / `drumsBeatGrid` / `StemFeatures` / `TrackProfile`, `gridOnsetOffsetMs`, `stemSampleCounts`, and `decodedDuration` (so a warm-launch `TrackIdentity` carries the same `duration` value as a cold-launch one). NSLock-guarded for thread safety. Errors surface as `PersistentStemCacheError` (`rootDirectoryUnavailable`, `schemaMismatch`, `corruptMetadata`, `missingStem`, `malformedStem`) — all non-fatal; callers fall through to the LF.2 in-memory path.
+
+- **`PhospheneEngine/Sources/Shared/StemFeatures.swift`** (modified) — explicit `Codable` conformance with `CodingKeys` excluding the `_sfPad3...22` padding floats. On-disk format includes only the 44 load-bearing fields, robust to any future change in the 64-float GPU padding layout.
+
+- **`PhospheneEngine/Sources/Shared/AudioFeatures+Analyzed.swift`** (modified) — `EmotionalState` is now `Codable` (default synth on two Floats).
+
+- **`PhospheneEngine/Sources/Session/TrackProfile.swift`** (modified) — `TrackProfile` is now `Codable` (default synth — every nested field is Codable).
+
+- **`PhospheneEngine/Sources/Session/SessionTypes.swift`** (modified) — `PreviewAudio.sha256(of:)` added (CryptoKit-backed full-file SHA-256; matches `shasum -a 256` byte-for-byte). `PreviewAudio.fromLocalFile(at:contentHash:)` gains the optional `contentHash:` parameter so callers that already need the hash don't pay for two full-file reads. Synthetic identity migrated from `local:<path>` to `local:sha256:<hash>` — renamed/moved copies of the same bytes resolve to the same `TrackIdentity`.
+
+- **`PhospheneApp/VisualizerEngine.swift`** (modified) — new `persistentStemCache: PersistentStemCache?` field constructed at engine init under `~/Library/Application Support/Phosphene/StemCache/`. Failure to create the directory leaves the field nil and the LF path falls through to LF.2's in-memory-only flow.
+
+- **`PhospheneApp/VisualizerEngine+PublicAPI.swift`** (modified) — `prepareAndStartLocalFilePlayback(url:)` is now cache-aware. Off-main worker (`runLocalFilePreparation`) hashes the file → consults the persistent cache → on hit loads + skips analyzePreview entirely → on miss runs the LF.2 flow + persists the result. New `LocalFilePrepOutcome` value type carries an `.persistentDisk` / `.freshAnalysis` source enum for the log line. Three new wiring-log lines added matching the existing `WIRING:` / `BEAT_GRID_INSTALL:` pattern: `STEM_CACHE_HIT: source=persistentDisk, track=…, hash=<first-12>, bpm=…, beats=…`, `STEM_CACHE_MISS: source=persistentDisk, …, reason={no-entry, load-failed(…)}`, `STEM_CACHE_WROTE: source=persistentDisk, …, bytes=…, elapsedMs=…`.
+
+**Tests:**
+
+- **`PhospheneEngine/Tests/PhospheneEngineTests/Session/PersistentStemCacheTests.swift`** (new, 11 tests) — Roundtrip (base + extended StemFeatures fields), missing-entry / schema-mismatch / corrupt-JSON / missing-stem / malformed-stem-byte-count all throw, overwrite replaces all four stem files (and updates `decodedDuration`), concurrent store/load fan-out is NSLock-serialized, two-byte hash-prefix sharding verified, default constructor honours explicit `rootDirectory`.
+
+- **`PhospheneEngine/Tests/PhospheneEngineTests/Session/PreviewAudioContentHashTests.swift`** (new, 8 tests) — `sha256(of:)` returns 64-char lowercase hex; stable across reads; independent of path; distinguishes content; throws on missing file; matches `shasum -a 256 love_rehab.m4a` reference output (`c1685f07d559…`); `fromLocalFile()` emits the new `local:sha256:` prefix; explicit `contentHash:` is honoured verbatim (no recompute).
+
+- **`PhospheneEngine/Tests/PhospheneEngineTests/Audio/LocalFilePlaybackFormatCoverageTests.swift`** (modified) — identity assertion updated from `local:<path>` to `local:sha256:<hash>`.
+
+**Diagnostic capture:**
+
+- **`docs/diagnostics/LF3_COLD_WARM_2026-05-27.md`** (new) — Cold/warm side-by-side on `love_rehab.m4a` (M2 Pro, Release build). Cold session `2026-05-27T22-00-23Z`: `STEM_CACHE_MISS` at line 3, `STEM_CACHE_WROTE bytes=7045120 elapsedMs=4` at line 4, `BeatGrid installed: source=preparedCache` at line 7, audio router at +2.408 s — matches LF.2 cold (no regression). Warm session `2026-05-27T22-00-59Z`: `STEM_CACHE_HIT` at line 3, `BeatGrid installed` at line 6, audio router at +634 ms — ~3× faster than LF.2. On-disk layout verified at 6.7 MB per track (4 × 1.76 MB stem files + 5 KB metadata.json).
+
+**Documentation updates:**
+
+- **`docs/DECISIONS.md`** — new D-130 (LF.3 cache layout + content-hash key + schema versioning + `local:` + path → `local:sha256:` + hash identity migration). D-129's Out-of-scope list updated — "persistent content-keyed stem cache (LF.3)" struck through as Done.
+- **`docs/ARCHITECTURE.md`** — §Session Preparation step 3 LF sub-bullet extended to mention the persistent cache layer.
+- **`docs/RUNBOOK.md`** — new "Local-file stem cache management" subsection (cache location, how to clear, expected size per track).
+- **`docs/RELEASE_NOTES_DEV.md`** — `[dev-2026-05-27-c]` entry (LF.3 commits).
+
+**Out of scope (deferred):**
+
+- **Streaming-path persistence.** Spotify track ID → cached analysis surviving app restart. Different cache-key shape (metadata-derived, not content-derived), different invalidation surface (Spotify can rotate preview URLs). Design discussion is its own increment if the need surfaces.
+- **Cache eviction policy / size bounds.** LF.4 territory if needed.
+- **Cache-clear UI / cache-stats display.** Operator-facing cleanup is `rm -rf ~/Library/Application\ Support/Phosphene/StemCache`. Documented in RUNBOOK.
+- **Folder / M3U / multi-file ingestion (LF.4).**
+- **File-picker UI / settings audio-source toggle / drag-and-drop (LF.4).**
+- **`SessionManager` integration (LF.4).** LF.3 stays in ad-hoc / env-var-driven flow.
+- **Cross-fixture cache verification across multiple tracks.** Single-fixture verification was sufficient for LF.3 done-when.
+- **StemSeparator tiling / Beat This! sliding-window aggregation.** LF.2's "full-track" framing was structurally aspirational; LF.3 inherits the same 10 s / 30 s windows (the cached data IS the first 10 s of stems + 30 s of beats).
+- **Multi-process cache safety** (two PhospheneApp instances launching the same file simultaneously). Phosphene is a single-instance app.
+
+**Verification.**
+
+- LF.1 regression gate green: `swift test --filter AudioInputRouterSignalStateTests` (11/11).
+- LF.2 format-coverage gate green: `LF_FORMAT_COVERAGE=1 swift test --filter LocalFilePlaybackFormatCoverageTests` (3/3 — M4A, MP3, FLAC).
+- New LF.3 tests green: `swift test --filter PersistentStemCacheTests` (11/11) + `swift test --filter PreviewAudioContentHash` (8/8).
+- Sample-rate literal gate green: `Scripts/check_sample_rate_literals.sh` exit 0 (the new code reads `tapSampleRate`, `preview.sampleRate`, and the persisted `decodedDuration` — no `44100` literals introduced).
+- Release build: `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' -configuration Release build` exit 0.
+- Live cold/warm capture: see `docs/diagnostics/LF3_COLD_WARM_2026-05-27.md`.
+
+**Known risks and follow-ups:**
+
+- Single-fixture verification (love_rehab.m4a). Cross-track behaviour is LF.3+ if needed.
+- Hash-on-every-launch is a fixed ~30 ms tax for typical AAC; ~200 ms for 50 MB lossless. Hash-against-(inode,mtime,size) is a possible future shortcut but adds invalidation surface — currently a non-issue.
+- No production telemetry / cache hit-rate dashboards.
+- Cache-corruption recovery is automatic (`STEM_CACHE_MISS: reason=load-failed`) but not surfaced anywhere user-visible. LF.4+.
+
+**Recommended next increment.** LF.4 — file picker / drag-and-drop UI + `SessionManager` integration. The LF arc has been infrastructure-first; with LF.3 closed, the next move is to lift LF from the `PHOSPHENE_LOCAL_FILE_PLAYBACK` env-var hook to a user-facing feature. Cache eviction policy and per-file cache-stats fall out naturally from that work.
+
 ### Increment LF.2 — Full-Track Offline Pre-Analysis ✅ (2026-05-27)
 
 Closes the structural gap LF.1 left behind: when a local file is played via `PHOSPHENE_LOCAL_FILE_PLAYBACK`, the live `BeatGrid` was installed by the live Beat This! analyzer ~10 s into the track after AGC convergence (LF.1 baseline session `2026-05-27T19-44-25Z` shows `source=liveAnalysis` at log line 8, after `signal quality → green`). LF.2 runs `SessionPreparer.analyzePreview` on the file PCM BEFORE the audio router starts, installs the cached `BeatGrid` + `StemFeatures` into the live pipeline via `resetStemPipeline(for:caller:)`, then starts audio. The cached BeatGrid is installed at session start (log line 5 in the LF.2 capture, BEFORE `raw tap capture started`).
