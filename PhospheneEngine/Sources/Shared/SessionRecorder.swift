@@ -322,9 +322,6 @@ public final class SessionRecorder: @unchecked Sendable {
         // positions so positional parsers (DSP.1 baselines, manual awk
         // diagnostics) keep working. New columns go at the end.
         // DM.3a appends frame_cpu_ms and frame_gpu_ms (full-pipeline timing).
-        // CSP.1.1 (2026-05-27) appends soft_tempo_pulse01 so A/B sessions
-        // are verifiable from artifacts (the field was added in CSP.1 but
-        // not logged — gap surfaced after Matt's first A/B run on LM).
         let featuresHeader = """
             frame,wallclock_s,time,deltaTime,bass,mid,treble,\
             subBass,lowBass,lowMid,midHigh,highMid,high,\
@@ -333,7 +330,7 @@ public final class SessionRecorder: @unchecked Sendable {
             beatPhase01,bassRel,bassDev,bassAttRel,\
             barPhase01_permille,beatsPerBar,beat_in_bar,is_downbeat,\
             beat_sync_mode,lock_state,grid_bpm,playback_time_s,drift_ms,\
-            frame_cpu_ms,frame_gpu_ms,soft_tempo_pulse01
+            frame_cpu_ms,frame_gpu_ms
 
             """
         let stemsHeader = """

@@ -4364,36 +4364,6 @@ Direct reframing of Phase CS's exhausted premise. Phase CS attempted (across six
 
 **Rationale.** Reframed direction approved by Matt 2026-05-26 (the original CSP.1 spec used `accentConfidence` as the fade signal; that field doesn't exist in production post-revert — switching to time-based fade keeps the hypothesis testable without resurrecting BSAudit.3.impl).
 
-### Increment CSP.1.1 — Instrumentation + Membrane consumer ✅ (2026-05-27)
-
-**Scope.** Two-part follow-up to CSP.1 after the first A/B run on Lumen Mosaic returned "no difference observed."
-
-**Findings from the LM A/B.**
-1. CSP.1 didn't log `softTempoPulse01` to `features.csv`, so the A/B could not be verified from artifacts. Instrumentation gap.
-2. Matt's structural critique: Lumen Mosaic stacks three visible beat-rate signals (per-cell palette walk, per-cell brightness jitter [0.30, 1.60], 20 % bar pulse on each downbeat). A 15 % global brightness modulation has no headroom against that activity — LM doesn't have a "rhythmically inert cold-start baseline" to improve on, so it was structurally the wrong test bed.
-
-**Delivered.**
-- `PhospheneEngine/Sources/Shared/SessionRecorder.swift` — `soft_tempo_pulse01` column appended to the `features.csv` header (append-only invariant; trailing column).
-- `PhospheneEngine/Sources/Shared/SessionRecorder+CSV.swift` — per-frame write of `fv.softTempoPulse01` at the new column position.
-- `PhospheneEngine/Sources/Presets/Shaders/Membrane.metal` — `membrane_D` consumes `features.soft_tempo_pulse01 × 0.30` as an additive global displacement term, distinct from the time-rate `breath` (FBM at t × 0.16), the time-rate `wave` (sin at t × 0.33), and the per-kick `ring` event. Adds a subtle ambient breathing at the cached BPM during the cold-start window; collapses to 0 outside it. Magnitude 0.30 chosen because Membrane's baseline is visibly quieter than LM's, so a smaller percentage modulation reads as ambient breathing rather than getting lost.
-- `PhospheneEngine/Tests/PhospheneEngineTests/Shared/SessionRecorderTests.swift` — column-position assertions updated to reflect the new trailing column; new `test_recordFrame_softTempoPulse01_writtenToCSV` regression-locks the CSV round-trip.
-
-**Why Membrane.** Per-kick shockwave goes structurally quiet between kicks. The breath / wave terms run at fixed time rates (not tempo). Adding a soft tempo-rate breathing fills the gap between kick events without competing with anything at the same timescale — one-primitive-per-layer per Failed Approach #67.
-
-**Validation gate (Matt — outstanding).** Same A/B protocol as CSP.1, swapping Lumen Mosaic for Membrane:
-1. Pick one low-confidence track from the BSAudit.3 validate-3 set: Get Lucky, Superstition, Everlong, HUMBLE., or B.O.B.
-2. Run Phosphene with the toggle ON (default) — `defaults delete com.phosphene.app softTempoPulseEnabled` if a prior `-bool NO` is set. Cycle to Membrane. Play track from start. Observe first ~12 s.
-3. Quit. `defaults write com.phosphene.app softTempoPulseEnabled -bool NO`. Relaunch. Same track, same preset. Observe.
-4. Binary judgment — **better**, **worse**, or **no different**.
-5. **Verifiable now:** `features.csv` will show `soft_tempo_pulse01` non-zero in the ON run and identically zero in the OFF run within the first 12 s.
-
-**Verification (automated).**
-- Engine: 1278 / 1278 tests pass. New CSV-round-trip test green. Existing column-position tests updated to reflect the new trailing column.
-- SwiftLint `--strict`: 0 violations.
-- App build: succeeds.
-
-**Done-when.** Instrumentation gap closed (verifiable from artifacts); Membrane consumer wired; Matt runs the A/B and reports verdict. If **better** → both LM and Membrane keep the consumer, extend to other presets. If **worse** or **no different** on Membrane too → revert CSP.1 + CSP.1.1, file the time-based-fade-on-Membrane outcome as Failed Approach, close CSP phase.
-
 ---
 
 ## Phase SR — Session Replay diagnostic infrastructure
