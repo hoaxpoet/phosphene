@@ -99,8 +99,14 @@ struct LocalFilePlaybackFormatCoverageTests {
                 "\(filename): expected at least 25 s of PCM (got \(preview.pcmSamples.count) samples)")
         #expect(preview.duration > 25.0 && preview.duration < 35.0,
                 "\(filename): expected 25–35 s duration (got \(preview.duration))")
-        #expect(preview.trackIdentity.spotifyID == "local:" + url.path,
-                "\(filename): synthetic identity should encode the file path")
+        // LF.3 (D-130) — identity migrated from `local:` + url.path to
+        // `local:sha256:` + content hash so the cache key survives file
+        // renames and is independent of the launcher's cwd.
+        #expect(preview.trackIdentity.spotifyID?.hasPrefix("local:sha256:") == true,
+                "\(filename): synthetic identity should encode the content hash")
+        let expectedHash = try PreviewAudio.sha256(of: url)
+        #expect(preview.trackIdentity.spotifyID == "local:sha256:" + expectedHash,
+                "\(filename): identity hash should match PreviewAudio.sha256(of:)")
 
         // Step 3 — Run the full offline analysis pipeline.
         guard let device = MTLCreateSystemDefaultDevice() else {
