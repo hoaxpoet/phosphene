@@ -22,7 +22,7 @@ During tracks where Phosphene can't claim beat phase confidently in the cold-sta
 - **Pulse shape:** squared raised-cosine — `pow(0.5 - 0.5 × cos(2π × t / T), 2)` where `T = 60 / bpm`. Trough at `t = 0` (phase-humble: visual warms up smoothly rather than punching at frame 1), peak at `t = T/2`, smooth oscillation.
 - **A/B toggle:** `UserDefaults.standard.bool(forKey: "softTempoPulseEnabled")`. Default ON. To run the off-side of the A/B without recompiling:
   ```sh
-  defaults write com.phosphene.PhospheneApp softTempoPulseEnabled -bool NO
+  defaults write com.phosphene.app softTempoPulseEnabled -bool NO
   ```
 - **First consumer:** Lumen Mosaic, `lm_cell_intensity`. Multiplies cell brightness by `1 + 0.60 × soft_tempo_pulse01`. Peak combined brightness effect at full pulse amplitude is ~15 % (0.25 × 0.60) — below the 20 % bar pulse so the soft scaffold reads as a layered texture rather than competing with the per-downbeat flash.
 
@@ -46,7 +46,7 @@ During tracks where Phosphene can't claim beat phase confidently in the cold-sta
 **Manual validation gate (Matt — outstanding):**
 1. Pick one low-confidence track from the BSAudit.3 validate-3 set: Get Lucky, Superstition, Everlong, HUMBLE., or B.O.B. (the ones where confidence never climbed cleanly in the impl baseline).
 2. Run Phosphene with the toggle ON (default). Cycle to Lumen Mosaic via `Shift+→` and play the track from the start. Observe the first ~12 s.
-3. Quit. Run `defaults write com.phosphene.PhospheneApp softTempoPulseEnabled -bool NO`.
+3. Quit. Run `defaults write com.phosphene.app softTempoPulseEnabled -bool NO`.
 4. Relaunch. Same track from the start. Same preset. Observe the first ~12 s.
 5. Binary judgment: **better**, **worse**, or **no different**. No defect classification required.
 
