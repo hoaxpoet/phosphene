@@ -34,16 +34,8 @@ struct FeatureVector {
     // Bar phase: 0 at downbeat, rises to 1 at next downbeat (floats 37–38).
     float bar_phase01;
     float beats_per_bar;
-    // CSP.1 — phase-humble tempo scaffold during cold-start window. ∈ [0, 0.25].
-    // Squared raised-cosine pulse at cached BeatGrid BPM, modulated by a
-    // time-based fade envelope (full 0–6 s, smoothstep ramp 6–12 s, zero after).
-    // Trough at t=0; phase-humble (no beat-alignment claim). Zero when no grid
-    // is installed or when the softTempoPulseEnabled toggle is off. Float 39 —
-    // reclaimed from `_pad3` to preserve byte-identical layout of fields 1–38.
-    // See CLAUDE.md §Cold-Start Phase Contract.
-    float soft_tempo_pulse01;
-    // Padding to 192 bytes (floats 40–48).
-    float _pad4, _pad5, _pad6, _pad7,
+    // Padding to 192 bytes (floats 39–48).
+    float _pad3, _pad4, _pad5, _pad6, _pad7,
           _pad8, _pad9, _pad10, _pad11, _pad12;
 };
 
