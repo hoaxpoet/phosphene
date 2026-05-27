@@ -89,11 +89,15 @@ struct PhospheneApp: App {
                 guard url.scheme == "phosphene", url.host == "spotify-callback" else { return }
                 Task { await spotifyOAuth.handleCallback(url: url) }
             }
-            // LF.1 — Local-file playback hook. When the
+            // LF.1 / LF.2 — Local-file playback hook. When the
             // `PHOSPHENE_LOCAL_FILE_PLAYBACK` env var points at a readable
             // audio file, bypass the normal IdleView → SessionManager flow
-            // and play the file directly via AVAudioEngine. Empty / absent
-            // / unreadable env var: no log, normal launch proceeds.
+            // and play the file directly via AVAudioEngine. LF.2 (2026-05-27)
+            // upgrades the launch path to run offline pre-analysis on the
+            // file BEFORE starting audio, so BeatGrid + StemFeatures are
+            // installed from frame 0 (no ~10 s live-analyzer warmup gap).
+            // Empty / absent / unreadable env var: no log, normal launch
+            // proceeds.
             //
             // LF.1.5 — Process-tap autostart hook (dev-only, env-var-gated).
             // When `PHOSPHENE_AUTOSTART_ADHOC=1` is set AND the LF env var is
@@ -105,8 +109,8 @@ struct PhospheneApp: App {
                 if let raw = env["PHOSPHENE_LOCAL_FILE_PLAYBACK"], !raw.isEmpty {
                     let url = URL(fileURLWithPath: raw)
                     guard FileManager.default.isReadableFile(atPath: url.path) else { return }
-                    lfLogger.info("[LF.1] local-file playback mode: \(url.path, privacy: .public)")
-                    engine.startLocalFilePlayback(url: url)
+                    lfLogger.info("[LF.2] local-file playback mode: \(url.path, privacy: .public)")
+                    await engine.prepareAndStartLocalFilePlayback(url: url)
                     return
                 }
                 if env["PHOSPHENE_AUTOSTART_ADHOC"] == "1" {

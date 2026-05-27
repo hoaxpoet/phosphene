@@ -3,6 +3,8 @@
 import Audio
 import CoreGraphics
 import Foundation
+import ML
+import Session
 import SwiftUI
 import os.log
 
@@ -98,14 +100,27 @@ extension VisualizerEngine {
         // (see ContentView.swift). The router start is synchronous so the
         // tap is already delivering samples by the time SwiftUI repaints.
         localFilePlaybackActive = true
+        _completeLocalFilePlaybackStart(url: url, tag: "LF.1")
+    }
 
+    /// Shared start sequence used by both `startLocalFilePlayback(url:)`
+    /// (LF.1, no pre-analysis) and `prepareAndStartLocalFilePlayback(url:)`
+    /// (LF.2, pre-analysis first). Caller is responsible for flipping
+    /// `localFilePlaybackActive = true` BEFORE invoking — this helper
+    /// only handles the audio-router start, stem-pipeline start, ad-hoc
+    /// session transition, and initial preset apply.
+    ///
+    /// `tag` distinguishes log lines so post-mortem traces can tell which
+    /// entry point fired.
+    @MainActor
+    private func _completeLocalFilePlaybackStart(url: URL, tag: String) {
         if #available(macOS 14.2, *), let audioRouter = router as? AudioInputRouter {
             do {
                 try audioRouter.start(mode: .localFilePlayback(url))
-                apiLogger.info("[LF.1] LF playback router started: \(url.lastPathComponent, privacy: .public)")
+                apiLogger.info("[\(tag, privacy: .public)] LF playback router started: \(url.lastPathComponent, privacy: .public)")
             } catch {
                 let msg = error.localizedDescription
-                apiLogger.error("[LF.1] LF playback router start failed: \(msg, privacy: .public)")
+                apiLogger.error("[\(tag, privacy: .public)] LF playback router start failed: \(msg, privacy: .public)")
                 localFilePlaybackActive = false
                 return
             }
@@ -118,6 +133,108 @@ extension VisualizerEngine {
             applyPreset(current)
             showPresetName(current.descriptor.name)
         }
+    }
+
+    // MARK: - LF.2 — Pre-analyzed Local File Playback
+
+    /// Run the offline pre-analysis pipeline on the local file, install
+    /// the cached `BeatGrid` and stem-feature snapshot into the live
+    /// pipeline, then start playback via the LF.1 audio path. The win
+    /// over `startLocalFilePlayback(url:)` is that `BeatGrid` is installed
+    /// at session start (not ~10 s in, after live Beat This! converges),
+    /// and `stems.csv` shows non-zero stem features from frame 0.
+    ///
+    /// Pre-analysis uses the same `SessionPreparer.analyzePreview(...)`
+    /// pipeline as the streaming path. The underlying analyzers have
+    /// fixed window limits (StemSeparator ~10 s; Beat This! ~30 s); inputs
+    /// longer than those limits are silently truncated by the analyzers.
+    /// The LF.2 win is structural — same PCM bytes are pre-analyzed AND
+    /// played, so the BeatGrid's phase is correct on the live audio by
+    /// construction (vs streaming, where the preview clip is a different
+    /// recording per BSAudit.2 cross-capture instability).
+    ///
+    /// Dispatch model: blocking. The audio router is started only after
+    /// pre-analysis returns. UI latency ~2–4 s on M2 Pro for typical-length
+    /// files. If any pre-analysis step throws (missing weights, etc.),
+    /// falls through silently to the LF.1 behaviour (no cached install;
+    /// live pipeline catches up after ~10 s).
+    ///
+    /// Invoked from the `PHOSPHENE_LOCAL_FILE_PLAYBACK` env-var hook in
+    /// `PhospheneApp.swift`. No-op if LF playback is already active.
+    @MainActor
+    func prepareAndStartLocalFilePlayback(url: URL) async {
+        guard !localFilePlaybackActive else {
+            apiLogger.info("[LF.2] prepareAndStartLocalFilePlayback ignored — already active")
+            return
+        }
+        // Flip the flag synchronously so ContentView's permission gate
+        // bypasses immediately and the user doesn't see a flash of
+        // permission-onboarding UI during the ~2–4 s pre-analysis window.
+        localFilePlaybackActive = true
+
+        let startTime = Date()
+        let sep = stemSeparator
+        let analyzer = stemAnalyzer
+        let classifier: any MoodClassifying = moodClassifier ?? MoodClassifier()
+        // The live Beat This! analyzer is lazy-initialised at first
+        // live-inference call. For LF.2 we need it ready BEFORE audio
+        // starts, so force eager init here. The same instance is then
+        // reused by `performLiveBeatInference` once audio is flowing —
+        // Beat This! state is per-call, no contention.
+        if liveBeatGridAnalyzer == nil {
+            do {
+                liveBeatGridAnalyzer = try DefaultBeatGridAnalyzer(device: context.device)
+            } catch {
+                let msg = error.localizedDescription
+                apiLogger.warning(
+                    "[LF.2] DefaultBeatGridAnalyzer init failed: \(msg, privacy: .public) — cached grid empty"
+                )
+            }
+        }
+        let gridAnalyzer = liveBeatGridAnalyzer
+
+        let analysisResult: (identity: TrackIdentity, cached: CachedTrackData)?
+        if let sep {
+            do {
+                analysisResult = try await Task.detached(priority: .userInitiated) {
+                    let preview = try PreviewAudio.fromLocalFile(at: url)
+                    let cached = try SessionPreparer.analyzePreview(
+                        preview,
+                        separator: sep,
+                        analyzer: analyzer,
+                        classifier: classifier,
+                        beatGridAnalyzer: gridAnalyzer,
+                        prefetchedProfile: nil
+                    )
+                    return (preview.trackIdentity, cached)
+                }.value
+            } catch {
+                let msg = error.localizedDescription
+                apiLogger.error(
+                    "[LF.2] pre-analysis failed: \(msg, privacy: .public) — continuing uncached"
+                )
+                analysisResult = nil
+            }
+        } else {
+            apiLogger.warning("[LF.2] no stem separator — continuing without cached install")
+            analysisResult = nil
+        }
+
+        if let analysisResult {
+            let cached = analysisResult.cached
+            let identity = analysisResult.identity
+            stemCache?.store(cached, for: identity)
+            let bpmStr = String(format: "%.1f", cached.beatGrid.bpm)
+            let elapsedMs = Int(Date().timeIntervalSince(startTime) * 1000)
+            let beatCount = cached.beatGrid.beats.count
+            apiLogger.info("[LF.2] pre-analysis done: bpm=\(bpmStr) beats=\(beatCount) elapsed=\(elapsedMs)ms")
+            // resetStemPipeline reads stemCache and installs the BeatGrid
+            // + cached StemFeatures + cached bass proportion. This is the
+            // load-bearing call — the BEAT_GRID_INSTALL log line fires here.
+            resetStemPipeline(for: identity, caller: .other)
+        }
+
+        _completeLocalFilePlaybackStart(url: url, tag: "LF.2")
     }
 
     // MARK: - Accessibility (U.9, D-054)
