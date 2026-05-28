@@ -64,6 +64,12 @@ struct PhospheneApp: App {
             .environmentObject(permissionMonitor)
             .environmentObject(settingsStore)
             .environmentObject(accessibilityState)
+            // GAP A (2026-05-28) — inject recentsStore so
+            // LocalSourceConnectionView (and any future LF surface) can read
+            // it via @EnvironmentObject instead of being threaded down through
+            // every wrapping view. Existing call sites that take recentsStore
+            // as a parameter are unchanged.
+            .environmentObject(recentsStore)
             // Inject the OAuth provider so ConnectorPickerView can build SpotifyConnectionViewModel.
             .environment(\.spotifyOAuthProvider, spotifyOAuth)
             // Wire SettingsStore preference → AccessibilityState on every change.
