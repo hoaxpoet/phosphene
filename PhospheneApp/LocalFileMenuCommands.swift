@@ -240,7 +240,16 @@ enum LocalFileMenuCommands {
     /// Content-type list used by `NSOpenPanel`. UTType doesn't ship a
     /// FLAC constant on macOS 14 so we look it up by filename-extension.
     private static func supportedAudioContentTypes() -> [UTType] {
-        var types: [UTType] = [.mpeg4Audio, .mp3]
+        // Use the broad `.audio` parent UTI (every audio format conforms to
+        // it) so files don't appear greyed-out when the system reports a
+        // slightly different specific UTI than the one we'd whitelist
+        // explicitly. Observed on macOS 26.4.1 with `.m4a` / `.mp3` /
+        // `.flac` fixtures — every entry was rendered disabled even though
+        // the extensions match `allowedExtensions`. The specific UTIs are
+        // still appended as belt-and-suspenders so the picker shows the
+        // right preview icons. `dispatchLocalFile`'s extension validation
+        // is the actual trust boundary; the picker filter is a hint.
+        var types: [UTType] = [.audio, .mpeg4Audio, .mp3]
         if let flac = UTType(filenameExtension: "flac") {
             types.append(flac)
         }
