@@ -2,7 +2,8 @@
 // swiftlint:disable:next blanket_disable_command
 // swiftlint:disable type_body_length
 // PersistentStemCache — Disk-backed content-keyed cache for local-file
-// pre-analysis results (LF.3 / D-130; LF.4 / D-131 eviction + clear).
+// pre-analysis results (LF.3 / D-130; LF.4 / D-131 eviction + clear;
+// LF.5 / D-132 schema v2 with ID3 / Vorbis metadata).
 //
 // Sibling to `StemCache` (in-memory only). The persistent layer keys on
 // the SHA-256 of the source audio file's bytes, not on `TrackIdentity`
@@ -15,17 +16,24 @@
 // enforced. `clearAll()` is the user-facing reset hook surfaced via the
 // `Phosphene → Clear Local-File Cache (<size>)` menu item.
 //
+// LF.5: `metadata.json` schema bumps to version 2 with an optional
+// `metadata: LocalFileMetadata` field carrying ID3 / Vorbis-extracted
+// title / artist / album. Optional `artwork.bin` sibling holds raw image
+// bytes (PNG / JPEG — whatever the container embedded). Schema-v1 entries
+// on disk throw `schemaMismatch` and the caller re-prepares.
+//
 // Layout on disk:
 //
 //     <rootDirectory>/
 //       sha256/
 //         <aa>/                      (first 2 hex chars of the hash)
 //           <full-hash>/
-//             metadata.json          (schemaVersion + BeatGrid + StemFeatures + TrackProfile + …)
+//             metadata.json          (schemaVersion + BeatGrid + StemFeatures + TrackProfile + LocalFileMetadata + …)
 //             vocals.f32             (raw little-endian Float32 PCM)
 //             drums.f32
 //             bass.f32
 //             other.f32
+//             artwork.bin            (LF.5; optional — only present when the source ships embedded art)
 //
 // Failure model: all cache failures (missing files, schema mismatch,
 // corrupt JSON, partial write) surface as `PersistentStemCacheError`.
@@ -60,17 +68,32 @@ public enum PersistentStemCacheError: Error, Sendable, Equatable {
 // MARK: - Loaded entry
 
 /// Bundle returned by `PersistentStemCache.load(hash:)`. Carries the
-/// `CachedTrackData` plus auxiliary fields (`decodedDuration`) that
-/// are persisted alongside the cache contents but are not part of
-/// `CachedTrackData` itself.
+/// `CachedTrackData` plus auxiliary fields (`decodedDuration`,
+/// `metadata`, `artworkData`) that are persisted alongside the cache
+/// contents but are not part of `CachedTrackData` itself.
 public struct PersistentStemCacheEntry: Sendable {
     public let cached: CachedTrackData
     /// Duration of the source audio in seconds, as recorded at store time.
     public let decodedDuration: TimeInterval
+    /// AVAsset.commonMetadata-extracted title / artist / album from the
+    /// source file. All fields nil when the file shipped no metadata.
+    /// Added in schema v2 (LF.5).
+    public let metadata: LocalFileMetadata
+    /// Raw artwork bytes (PNG / JPEG, depending on container). `nil` when
+    /// the source file shipped no embedded artwork. Persisted as a sibling
+    /// `artwork.bin` file in the cache directory. Added in schema v2 (LF.5).
+    public let artworkData: Data?
 
-    public init(cached: CachedTrackData, decodedDuration: TimeInterval) {
+    public init(
+        cached: CachedTrackData,
+        decodedDuration: TimeInterval,
+        metadata: LocalFileMetadata = LocalFileMetadata(),
+        artworkData: Data? = nil
+    ) {
         self.cached = cached
         self.decodedDuration = decodedDuration
+        self.metadata = metadata
+        self.artworkData = artworkData
     }
 }
 
@@ -98,6 +121,9 @@ private struct PersistentStemCacheEntryMetadata: Codable {
     /// `WIRING:` log lines and `TrackIdentity.==` then match across
     /// cache hit/miss.
     let decodedDuration: TimeInterval
+    /// AVAsset.commonMetadata-extracted title / artist / album. Added in
+    /// schema v2 (LF.5). Nil when the source file shipped no metadata.
+    let metadata: LocalFileMetadata?
 }
 
 // MARK: - PersistentStemCache
@@ -116,12 +142,23 @@ public final class PersistentStemCache: @unchecked Sendable {
     /// On-disk schema version. Increment when the on-disk format
     /// changes in a way that previously-written entries can no longer
     /// be read correctly — `load(hash:)` treats any non-matching
-    /// version as a miss. Never re-define the meaning of version 1.
-    public static let currentSchemaVersion: Int = 1
+    /// version as a miss. Never re-define the meaning of any prior version.
+    ///
+    /// History:
+    ///   v1 (LF.3 / D-130) — original schema.
+    ///   v2 (LF.5 / D-132) — adds `metadata: LocalFileMetadata?` (ID3 /
+    ///                       Vorbis title / artist / album) + optional
+    ///                       sibling `artwork.bin` file with raw image bytes.
+    public static let currentSchemaVersion: Int = 2
 
     /// Names of the stem `.f32` files. Order matches `CachedTrackData.stemWaveforms`
     /// (`[vocals, drums, bass, other]`).
     public static let stemLabels: [String] = ["vocals", "drums", "bass", "other"]
+
+    /// Filename for the optional artwork sibling (LF.5). Bytes are raw image
+    /// data (PNG / JPEG depending on container). Absence is non-fatal; the
+    /// entry remains valid as long as the metadata.json + four stems exist.
+    public static let artworkFilename: String = "artwork.bin"
 
     /// Default sub-path under `~/Library/Application Support` where the
     /// cache lives in production.
@@ -249,9 +286,18 @@ public final class PersistentStemCache: @unchecked Sendable {
                 drumsBeatGrid: metadata.drumsBeatGrid,
                 gridOnsetOffsetMs: metadata.gridOnsetOffsetMs
             )
+
+            // Artwork is optional — missing file or empty bytes is fine.
+            let artworkPath = dir.appendingPathComponent(Self.artworkFilename)
+            let artworkData: Data? = fileManager.fileExists(atPath: artworkPath.path)
+                ? try? Data(contentsOf: artworkPath)
+                : nil
+
             return PersistentStemCacheEntry(
                 cached: cached,
-                decodedDuration: metadata.decodedDuration
+                decodedDuration: metadata.decodedDuration,
+                metadata: metadata.metadata ?? LocalFileMetadata(),
+                artworkData: artworkData
             )
         }
     }
@@ -268,7 +314,9 @@ public final class PersistentStemCache: @unchecked Sendable {
     public func store(
         _ data: CachedTrackData,
         hash: String,
-        decodedDuration: TimeInterval
+        decodedDuration: TimeInterval,
+        metadata: LocalFileMetadata = LocalFileMetadata(),
+        artworkData: Data? = nil
     ) throws {
         try lock.withLock {
             let dir = directory(for: hash)
@@ -276,7 +324,7 @@ public final class PersistentStemCache: @unchecked Sendable {
 
             let waveforms = data.stemWaveforms
             let sampleCounts = waveforms.map { $0.count }
-            let metadata = PersistentStemCacheEntryMetadata(
+            let envelope = PersistentStemCacheEntryMetadata(
                 cacheSchemaVersion: Self.currentSchemaVersion,
                 beatGrid: data.beatGrid,
                 drumsBeatGrid: data.drumsBeatGrid,
@@ -284,7 +332,8 @@ public final class PersistentStemCache: @unchecked Sendable {
                 trackProfile: data.trackProfile,
                 gridOnsetOffsetMs: data.gridOnsetOffsetMs,
                 stemSampleCounts: sampleCounts,
-                decodedDuration: decodedDuration
+                decodedDuration: decodedDuration,
+                metadata: metadata.isEmpty ? nil : metadata
             )
 
             // Write stems first so a partial-store leaves metadata
@@ -295,10 +344,23 @@ public final class PersistentStemCache: @unchecked Sendable {
                 try writeFloats(samples, to: path)
             }
 
+            // Write optional artwork.bin before metadata.json so a partial-store
+            // either has the complete entry (incl. artwork) or fails the
+            // metadata.json existence check (caller treats as miss).
+            let artworkPath = dir.appendingPathComponent(Self.artworkFilename)
+            if let artworkData, !artworkData.isEmpty {
+                try artworkData.write(to: artworkPath, options: .atomic)
+            } else if fileManager.fileExists(atPath: artworkPath.path) {
+                // Overwrite-without-artwork case: prior entry had artwork, new
+                // one doesn't. Remove the stale sibling so post-load reads
+                // don't surface stale art.
+                try? fileManager.removeItem(at: artworkPath)
+            }
+
             let metadataPath = dir.appendingPathComponent(Self.metadataFilename)
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.sortedKeys, .prettyPrinted]
-            let json = try encoder.encode(metadata)
+            let json = try encoder.encode(envelope)
             try json.write(to: metadataPath, options: .atomic)
         }
         // Eviction is intentionally OUTSIDE the lock — `evictToMaxBytes`
