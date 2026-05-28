@@ -43,16 +43,25 @@ public struct LocalFilePrepResult: Sendable {
     /// Where the data came from (disk cache hit vs fresh analysis).
     public let source: Source
 
+    /// Raw artwork bytes (PNG / JPEG, depending on container) lifted from
+    /// the LF.5 persistent cache's `artwork.bin` sibling on a cache hit, or
+    /// extracted directly by `PreviewAudio.extractArtwork(at:)` on a fresh
+    /// analysis. `nil` when the source file shipped no embedded artwork.
+    /// LF.6: consumed by the engine's `currentTrackArtworkData` publisher.
+    public let artworkData: Data?
+
     public init(
         identity: TrackIdentity,
         cached: CachedTrackData,
         decodedDuration: TimeInterval,
-        source: Source
+        source: Source,
+        artworkData: Data? = nil
     ) {
         self.identity = identity
         self.cached = cached
         self.decodedDuration = decodedDuration
         self.source = source
+        self.artworkData = artworkData
     }
 }
 
