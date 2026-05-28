@@ -6,6 +6,89 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-28-q] BUG-020.fix — gate destructive resets on title change
+
+**Increment:** BUG-020.fix (the fix; follows BUG-020.diag instrumentation). **Status:** Implemented 2026-05-28. Engine 1358/1358 tests pass; app build clean; SwiftLint `--strict` clean. Manual M7 outstanding.
+
+### Root cause (confirmed)
+
+The diagnostic from `[dev-2026-05-28-p]` captured the bug in session `2026-05-28T19-21-18Z`. Three callback firings logged across the session; the middle one is spurious:
+
+```
+19:21:54  current='Love Rehab'  currentArtist='Chaim'       previous='<nil>'      ← legitimate
+19:23:34  current='Love Rehab'  currentArtist='Pink Floyd'  previous='Love Rehab' previousArtist='Chaim'  ← spurious
+19:23:36  current='Money'       currentArtist='Pink Floyd'  previous='Love Rehab' previousArtist='Pink Floyd'  ← legitimate
+```
+
+CSV state-resets align exactly (after correcting a 31 s timeline-alignment error in the initial diagnosis — SessionRecorder is created before the first rendered frame; CSV `wallclock_s` for the first frame was 19:21:49, not the directory-name timestamp 19:21:18):
+
+- rel=4.322 (= wallclock 19:21:54) — Love Rehab start, reset is correct
+- rel=105.061 (= wallclock 19:23:34) — **mid-track reset triggered by the spurious "Love Rehab — Pink Floyd" event**
+
+The spurious event is Spotify's metadata publisher in a transitional state: the artist field updates before the title field during track-to-track transitions. The combined `('Love Rehab', 'Pink Floyd')` pair doesn't exist as a real track — the canonical-identity lookup falls back to `resolution=partialFallback identity.spotifyID=nil identity.duration=nil aboutToReset=true`. The callback fired its destructive resets anyway: `mir.reset()`, `pipeline.resetAccumulatedAudioTime()`, `resetStemPipeline(...)`. The real Money event arrived 2 seconds later, by which point mid-track state was already destroyed.
+
+### The fix
+
+Single early-return gate in `makeTrackChangeCallback`, between the BUG-020 diagnostic log and the per-track-change side effects:
+
+```swift
+if event.previous?.title == event.current.title {
+    self.sessionRecorder?.log(
+        "WIRING: trackChangeCallback SUPPRESSED (same title) ...")
+    return
+}
+```
+
+Title is the smallest reliable signal: a real track change always produces a different title; same-title events are spurious by construction. Same-title covers / remasters with identical titles are vanishingly rare in practice and would only produce "no visible reset at the cover boundary," not a destructive bug.
+
+The early-return also suppresses:
+- `mir.currentTrackName` / `mir.currentArtistName` updates (would otherwise propagate bad metadata to `mir.process` for the next analysis frame)
+- Orchestrator wire updates (`indexInLivePlan(matching:)` would return nil for the spurious identity → would corrupt `liveTrackPlanIndex`)
+- Async MainActor task (`currentTrack = event.current`, `track →` log line, `currentTrackIndex` publish)
+- `mir.reset()` + `pipeline.resetAccumulatedAudioTime()` + `resetStemPipeline()` — the destructive triple
+- `kickoffPreFetch` (would otherwise pre-fetch metadata for a nonexistent track)
+
+### What this preserves
+
+- Legitimate first track-change (previous = nil, current = real) — `nil != current.title` → reset fires normally.
+- Legitimate track-to-track transition (previous = "Love Rehab", current = "Money") — titles differ → reset fires normally.
+- Same-track re-emit by other publishers (LF playback, metadata refresh) — same title → suppressed (correct behavior; mid-track state shouldn't reset).
+
+### What this does NOT touch
+
+- The diagnostic `WIRING: trackChangeCallback FIRED` log line continues to fire for every callback invocation (BUG-020.diag, commit `594e4181`). Now paired with `WIRING: trackChangeCallback SUPPRESSED` on the same-title path — both visible in session.log so the suppression rate is auditable.
+- The Spotify metadata publisher itself is unchanged. The spurious transitional events are still emitted; they just don't destroy state anymore.
+
+### Verification
+
+- **Engine:** 1358 / 1358 tests pass.
+- **App build:** succeeds.
+- **SwiftLint `--strict`:** 0 violations.
+
+**Manual M7 (your gate).** Capture a Spotify-prefetched session, FFO preset, two or more tracks. Play continuously across one or two track-to-track transitions. Expected:
+- **No mid-track visual flicker / state reset around the 30–40 s before each track-to-track transition.** The spurious metadata events should now produce `WIRING: trackChangeCallback SUPPRESSED` log lines instead of destroying state.
+- **Legitimate track-changes still produce all the right per-track behavior** — preset transition, BeatGrid install, mood reset, accumulator reset, stem pipeline reset.
+- `features.csv` shows accumulatedAudioTime accumulating cleanly from each track's start to the next genuine track-change (no zero-resets mid-track).
+
+If the perceptual flicker persists, the suppression log lines in session.log + the absence of corresponding state-reset patterns in features.csv will help pin down a different cause.
+
+### Touched files
+
+- `PhospheneApp/VisualizerEngine+Capture.swift` — 7-line early-return gate + rationale comment.
+- `docs/QUALITY/KNOWN_ISSUES.md` — BUG-020 status updated to "Fix landed 2026-05-28 — M7 pending."
+- `docs/RELEASE_NOTES_DEV.md` — this entry.
+
+### Local-only
+
+Local commit on `main`. No remote push.
+
+### Related
+
+- `[dev-2026-05-28-p]` — BUG-020.diag (the diagnostic that captured the bug).
+- BUG-020 in `KNOWN_ISSUES.md` — the defect this closes (pending M7).
+
+---
+
 ## [dev-2026-05-28-p] BUG-020 diagnostic — synchronous log line in track-change callback
 
 **Increment:** BUG-020.diag (diagnostic instrumentation; not a fix). **Status:** Implemented 2026-05-28. Engine 1358/1358 tests pass; app build clean; SwiftLint `--strict` clean. **Awaiting Matt's next session capture.**

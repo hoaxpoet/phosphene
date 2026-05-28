@@ -134,6 +134,35 @@ extension VisualizerEngine {
                 + "current='\(curTitle)' currentArtist='\(curArtist)' "
                 + "previous='\(prevTitle)' previousArtist='\(prevArtist)' "
                 + "sameTrack=\(sameTrack)")
+            // BUG-020 fix — gate ALL per-track-change side effects on title
+            // change. Diagnosis: Spotify's metadata publisher emits a transitional
+            // event during track-to-track transitions where the ARTIST updates
+            // before the TITLE. The callback receives e.g. `current='Love Rehab'
+            // currentArtist='Pink Floyd' previous='Love Rehab' previousArtist=
+            // 'Chaim'` — a track that doesn't exist (`identity.spotifyID=nil
+            // identity.duration=nil resolution=partialFallback`). Pre-fix the
+            // callback fired its destructive resets anyway: `mir.reset()`,
+            // `resetAccumulatedAudioTime()`, `resetStemPipeline(...)`. The real
+            // track change (Money) then arrived 2 seconds later, by which point
+            // mid-track state was destroyed → visible flicker / "idling".
+            // Reproduced in session 2026-05-28T19-21-18Z, captured under
+            // [BUG-020.diag] (commit 594e4181).
+            //
+            // Title-change gate is the smallest reliable signal: same-title
+            // events are spurious by construction (a real track change always
+            // produces a different title; covers/remasters with identical titles
+            // are vanishingly rare in practice and would only produce
+            // "no visible reset at the cover boundary," not a destructive bug).
+            // Returning early also skips the orchestrator wire updates +
+            // metadata pre-fetch, which would otherwise propagate the bad
+            // metadata downstream.
+            if event.previous?.title == event.current.title {
+                self.sessionRecorder?.log(
+                    "WIRING: trackChangeCallback SUPPRESSED (same title) "
+                    + "current='\(curTitle)' currentArtist='\(curArtist)' "
+                    + "previous='\(prevTitle)' previousArtist='\(prevArtist)'")
+                return
+            }
             mir.currentTrackName = event.current.title ?? ""
             mir.currentArtistName = event.current.artist ?? ""
 
