@@ -6,6 +6,51 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-28-s] BUG-020 — closeout (Matt M7 "none" verdict)
+
+**Increment:** BUG-020 closeout (no new code; documentation-only). **Status:** Resolved 2026-05-28 against Matt's M7 verdict on session `2026-05-28T19-59-20Z` ("none, ready to close as resolved").
+
+### Verdict
+
+Matt's M7 protocol after BUG-020.fix landed (commit `e9443e9f`, narrated in `[dev-2026-05-28-q]`) was: capture two post-fix sessions, one with a fresh shorter-songs playlist for natural transitions, one re-running the original Love Rehab → Money playlist that surfaced the bug. Both sessions M7'd clean:
+
+| Session | Playlist | Matt's verdict |
+|---|---|---|
+| `2026-05-28T18-31-06Z` (pre-fix) | Love Rehab → Money | "some flickering around 40 s into playback for Love Rehab" |
+| `2026-05-28T19-50-25Z` (post-fix) | Shorter-songs (fresh, for natural transitions) | clean — no mid-track flicker reported |
+| `2026-05-28T19-59-20Z` (post-fix) | Love Rehab → Money (original repro playlist) | "none" — no mid-track flicker reported |
+
+The post-fix sessions also produced clean diagnostic evidence: every `WIRING: trackChangeCallback FIRED` log line maps 1:1 to a legitimate track-change event with a different title from previous; no `WIRING: trackChangeCallback SUPPRESSED` lines fired across either session. The Spotify metadata jitter that produced the spurious `('Love Rehab', 'Pink Floyd')` event in the original diagnostic session `19-21-18Z` is intermittent and did not reproduce in the M7 sessions — but the fix's catch path is correct by construction (gate matches the diagnosed spurious-event signature exactly: `previous.title == current.title`), so it will catch the jitter automatically if/when it re-occurs.
+
+### The two-step arc
+
+| Increment | Commit | What |
+|---|---|---|
+| BUG-020.diag | `594e4181` | Added synchronous log line at the top of `makeTrackChangeCallback` so every callback invocation is captured with `current` + `previous` + `sameTrack` flag, regardless of whether the `@MainActor` task runs. Diagnostic line is preserved post-close for ongoing auditing. |
+| BUG-020.fix | `e9443e9f` | Added title-equality early-return gate in `makeTrackChangeCallback` between the diagnostic log and the per-track-change side effects. Suppressed-callback log line fires when the gate catches a spurious event. Narrated in `[dev-2026-05-28-q]`. |
+
+The diagnostic step was load-bearing: the original BUG-020 hypothesis (from the pre-fix M7 verdict) was that some publisher chain was re-emitting same-track events. The diagnostic captured the actual spurious-event signature — a transient `('Love Rehab', 'Pink Floyd')` from Spotify's metadata publisher updating artist-before-title during a track-to-track transition — which is what the fix gates on. Without the diagnostic capture, the fix could have been over-broad (e.g. coalescing all callbacks within a window) or under-broad (e.g. gating only on a specific publisher).
+
+### What stays in place
+
+- `// BUG-020 diagnostic — synchronous log of every callback invocation` (`VisualizerEngine+Capture.swift` ~line 117): the FIRED log line. Preserved so any future spurious event is captured with the same evidence the original diagnosis used.
+- `// BUG-020 fix — gate ALL per-track-change side effects on title change` (~line 137): the early-return gate and its SUPPRESSED log line. The accompanying comment is the documented record of the diagnosed root cause; do not remove without first reading session `2026-05-28T19-21-18Z` artifacts.
+
+### Closeout
+
+- **Files changed:** `docs/QUALITY/KNOWN_ISSUES.md` (BUG-020 entry: Status → Resolved; Resolved field added with commit refs); `docs/RELEASE_NOTES_DEV.md` (this entry).
+- **Tests run:** No code change; engine + app test suite already 1358/1358 + clean from `[dev-2026-05-28-q]`.
+- **Visual harness output:** N/A (closeout, not a preset change).
+- **Documentation updates:** KNOWN_ISSUES.md + RELEASE_NOTES_DEV.md.
+- **Capability registry updates:** N/A.
+- **Engineering plan updates:** N/A (defect closeout, not a planned increment).
+- **Known risks and follow-ups:**
+  - If the SUPPRESSED log line starts firing in production sessions, the Spotify-publisher artist-before-title transition is recurring. The gate handles it correctly; the log entry is the audit trail.
+  - A real cover/remaster with an identical title to the prior track would suppress a legitimate track-change (titled in the BUG-020.fix code comment as "vanishingly rare in practice"). If that ever occurs, the visible symptom is "no visible state reset at the cover boundary," not the destructive bug this fix addresses. Acceptable trade-off.
+- **Git status:** BUG-020.diag (`594e4181`) and BUG-020.fix (`e9443e9f`) already on `main`. This closeout commits only doc updates. Still 18+ commits ahead of `origin/main`; push pending Matt's "yes, push" approval per `CLAUDE.md`.
+
+---
+
 ## [dev-2026-05-28-r] BUG-022 — fragmented MP4 for crash-recoverable session video
 
 **Increment:** BUG-022 (trivial P2; single-increment diagnose-and-fix per the `CLAUDE.md §Defect Handling Protocol` trivial-collapse rule). **Status:** Implemented 2026-05-28. `SessionRecorderTests` (19/19) pass. Working tree is dirty with an unrelated BUG-020.fix edit; commit pending Matt's scope call.
