@@ -340,32 +340,36 @@ enum LocalFileMenuCommands {
     // MARK: - Error / truncation presentation
 
     enum UnsupportedReason {
-        case multipleFiles
+        case multipleFiles                              // legacy LF.4 case — never fires post-LF.5
         case unsupportedFormat
         case unreadable
         case emptyFolder
         case m3uParseFailed
     }
 
+    /// GAP F (2026-05-28): non-destructive errors now route to the inline
+    /// `LocalFileErrorStore` instead of presenting an NSAlert modal.
+    /// IdleView + LocalSourceConnectionView observe the store and render a
+    /// short-lived banner. Modals were the wrong surface per
+    /// `.impeccable.md` ("No modal dialogs except for destructive
+    /// confirmation"). The truncation + cache-cleared alerts below stay as
+    /// NSAlert — truncation is informational mid-action (toast belongs
+    /// here but needs a cross-state bridge — LF.6); cache-cleared is a
+    /// confirmation of a destructive action and is the modal-allowed case.
     @MainActor
     static func presentUnsupportedAlert(reason: UnsupportedReason) {
-        let alert = NSAlert()
-        alert.messageText = String(localized: "lf.open.error.unsupported.title")
+        let mapped: UserFacingLocalFileError
         switch reason {
-        case .multipleFiles:
-            alert.informativeText = String(localized: "lf.open.error.multiple_files")
-        case .unsupportedFormat:
-            alert.informativeText = String(localized: "lf.open.error.unsupported_format")
+        case .multipleFiles, .unsupportedFormat:
+            mapped = .unsupportedFormat
         case .unreadable:
-            alert.informativeText = String(localized: "lf.open.error.unreadable")
+            mapped = .unreadable
         case .emptyFolder:
-            alert.informativeText = String(localized: "lf.open.error.empty_folder")
+            mapped = .emptyFolder
         case .m3uParseFailed:
-            alert.informativeText = String(localized: "lf.open.error.m3u_parse_failed")
+            mapped = .m3uParseFailed
         }
-        alert.addButton(withTitle: String(localized: "cta.close"))
-        alert.alertStyle = .warning
-        alert.runModal()
+        LocalFileErrorStore.shared.report(mapped)
     }
 
     @MainActor

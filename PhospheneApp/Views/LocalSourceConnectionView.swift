@@ -29,6 +29,7 @@ struct LocalSourceConnectionView: View {
 
     @EnvironmentObject private var engine: VisualizerEngine
     @EnvironmentObject private var recentsStore: LocalFileRecentsStore
+    @EnvironmentObject private var errorStore: LocalFileErrorStore
 
     var body: some View {
         ZStack {
@@ -37,6 +38,16 @@ struct LocalSourceConnectionView: View {
             VStack(spacing: 0) {
                 Spacer().frame(minHeight: 24)
                 heading
+                // GAP F (2026-05-28): inline error banner replaces NSAlert
+                // modals for non-destructive LF errors (unsupported format,
+                // unreadable, M3U parse failed, empty folder). Auto-clears
+                // after 6 s; tap to dismiss.
+                if let error = errorStore.lastError {
+                    LocalFileErrorBanner(message: error.localizedMessage) {
+                        errorStore.clear()
+                    }
+                    .padding(.top, 12)
+                }
                 Spacer().frame(height: 28)
                 actionTiles
                 Spacer()

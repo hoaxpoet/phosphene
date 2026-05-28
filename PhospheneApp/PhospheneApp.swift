@@ -70,6 +70,10 @@ struct PhospheneApp: App {
             // every wrapping view. Existing call sites that take recentsStore
             // as a parameter are unchanged.
             .environmentObject(recentsStore)
+            // GAP F (2026-05-28) — inject the LF error store so IdleView and
+            // LocalSourceConnectionView can render inline error banners that
+            // replace NSAlert modals for non-destructive errors.
+            .environmentObject(LocalFileErrorStore.shared)
             // Inject the OAuth provider so ConnectorPickerView can build SpotifyConnectionViewModel.
             .environment(\.spotifyOAuthProvider, spotifyOAuth)
             // Wire SettingsStore preference → AccessibilityState on every change.

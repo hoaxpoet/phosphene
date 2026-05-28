@@ -15,6 +15,7 @@ struct IdleView: View {
     static let adHocButtonID          = "phosphene.idle.startListening"
 
     @EnvironmentObject private var engine: VisualizerEngine
+    @EnvironmentObject private var errorStore: LocalFileErrorStore
 
     @State private var showPhotosensitivityNotice = false
     @State private var showConnectorPicker        = false
@@ -44,6 +45,17 @@ struct IdleView: View {
                 .foregroundColor(.white.opacity(0.5))
                 .font(.subheadline)
                 .accessibilityIdentifier(Self.adHocButtonID)
+            }
+
+            // GAP F (2026-05-28): inline LF error surface. Renders only when
+            // a non-destructive LF error fires (unsupported format, unreadable,
+            // M3U parse, empty folder). Auto-clears after 6 s; tap to dismiss
+            // earlier. Replaces NSAlert modals for these cases.
+            if let error = errorStore.lastError {
+                LocalFileErrorBanner(message: error.localizedMessage) {
+                    errorStore.clear()
+                }
+                .padding(.top, 4)
             }
 
             Spacer()
