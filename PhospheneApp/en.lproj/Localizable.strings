@@ -379,3 +379,20 @@
 "lf.preparing.subtitle"                     = "%@";
 "lf.preparing.failure.headline"             = "Couldn’t read “%@”.";
 "lf.preparing.failure.body"                 = "Try a different file, or check that it isn’t damaged.";
+
+// MARK: - LF.5 Multi-file local playback
+
+"menu.file.open_local_folder"               = "Open Local Folder…";
+"menu.file.open_recent"                     = "Open Recent";
+"menu.file.open_recent.empty"               = "Nothing yet";
+"menu.file.open_recent.missing_suffix"      = " (missing)";
+"menu.file.open_recent.clear"               = "Clear Recents";
+
+"lf.open.folder.panel.title"                = "Choose a folder of audio files";
+
+"lf.open.error.empty_folder"                = "That folder doesn’t have any playable audio files.";
+"lf.open.error.m3u_parse_failed"            = "Phosphene couldn’t read that playlist. Check the file and try again.";
+
+/* %1$d = files queued (capped at 200), %2$d = total files found */
+"lf.queue.truncation.title"                 = "Queued the first %1$d tracks";
+"lf.queue.truncation.body"                  = "Phosphene queued the first %1$d of %2$d audio files. Open a smaller folder to listen to the whole batch in one session.";

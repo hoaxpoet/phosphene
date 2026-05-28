@@ -29,6 +29,10 @@ struct PhospheneApp: App {
     @StateObject private var settingsStore = SettingsStore()
     @StateObject private var accessibilityState = AccessibilityState()
 
+    /// LF.5 Recents store — last 10 local-file / folder / M3U opens persisted
+    /// in `phosphene.lf.recents` UserDefaults. Drives `File → Open Recent ▸`.
+    @StateObject private var recentsStore = LocalFileRecentsStore()
+
     /// Long-lived Spotify OAuth actor — not `@StateObject` because actors are not
     /// `ObservableObject`; stored as a plain `let` since `PhospheneApp` is `@MainActor`.
     private let spotifyOAuth = SpotifyOAuthTokenProvider.makeLive()
@@ -118,27 +122,62 @@ struct PhospheneApp: App {
                     engine.sessionManager.startAdHocSession()
                 }
             }
-            // LF.4 — drag-and-drop of a single local audio file into the
-            // app window opens the same flow as `File → Open Local File…`.
-            // Multi-file drops are rejected with a localized alert.
+            // LF.4 + LF.5 — drag-and-drop into the app window. LF.4 supported
+            // a single audio file; LF.5 extends to multi-file drops, folders
+            // (recursive walk), `.m3u` playlists (parsed via M3UParser), and
+            // any combination thereof. Mixed drops are flattened in drop
+            // order.
             .onDrop(of: [.fileURL], isTargeted: nil) { providers in
-                LocalFileMenuCommands.handleDrop(providers: providers, engine: engine)
+                LocalFileMenuCommands.handleDrop(
+                    providers: providers,
+                    engine: engine,
+                    recentsStore: recentsStore
+                )
             }
         }
-        // LF.4 — File menu + Phosphene-menu additions.
+        // LF.4 + LF.5 — File menu + Phosphene-menu additions.
         //
-        // File: replace the default "New" command group with our
-        // "Open Local File…" entry, keeping ⌘O as the canonical shortcut.
+        // File menu:
+        //   - "Open Local File…"      (⌘O)            — LF.4
+        //   - "Open Local Folder…"                    — LF.5
+        //   - "Open Recent ▸" submenu                 — LF.5
         //
-        // Phosphene (.appInfo): add a "Clear Local-File Cache (<size>)" item
-        // that surfaces the current disk footprint in the menu label. The
-        // size auto-refreshes via the `localFileCacheBytes` publisher.
+        // Phosphene (.appInfo): "Clear Local-File Cache (<size>)" item that
+        // surfaces the current disk footprint in the menu label. The size
+        // auto-refreshes via the `localFileCacheBytes` publisher.
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button(String(localized: "menu.file.open_local_file")) {
-                    LocalFileMenuCommands.openLocalFilePanel(engine: engine)
+                    LocalFileMenuCommands.openLocalFilePanel(
+                        engine: engine,
+                        recentsStore: recentsStore
+                    )
                 }
                 .keyboardShortcut("o", modifiers: .command)
+
+                Button(String(localized: "menu.file.open_local_folder")) {
+                    LocalFileMenuCommands.openLocalFolderPanel(
+                        engine: engine,
+                        recentsStore: recentsStore
+                    )
+                }
+
+                Divider()
+
+                Menu(String(localized: "menu.file.open_recent")) {
+                    if recentsStore.recents.isEmpty {
+                        Button(String(localized: "menu.file.open_recent.empty")) {}
+                            .disabled(true)
+                    } else {
+                        ForEach(recentsStore.recents) { item in
+                            recentsMenuButton(for: item)
+                        }
+                        Divider()
+                        Button(String(localized: "menu.file.open_recent.clear")) {
+                            recentsStore.clearAll()
+                        }
+                    }
+                }
             }
             CommandGroup(after: .appInfo) {
                 Divider()
@@ -148,6 +187,42 @@ struct PhospheneApp: App {
                 )
                 Button(clearLabel) {
                     LocalFileMenuCommands.clearLocalFileCache(engine: engine)
+                }
+            }
+        }
+    }
+
+    // MARK: - LF.5 Recents submenu row builder
+
+    /// One button in the `File → Open Recent ▸` submenu. Stale entries (file
+    /// moved or deleted) render with a "(missing)" suffix and the click
+    /// removes the entry from the list instead of opening it.
+    @ViewBuilder
+    private func recentsMenuButton(for item: RecentItem) -> some View {
+        let baseLabel = item.displayLabel
+        let missing = item.isMissing
+        let label = missing
+            ? baseLabel + String(localized: "menu.file.open_recent.missing_suffix")
+            : baseLabel
+        Button(label) {
+            if missing {
+                recentsStore.remove(item)
+                return
+            }
+            Task { @MainActor in
+                switch item.kind {
+                case .file:
+                    await LocalFileMenuCommands.openLocalFile(
+                        at: item.url, engine: engine, recentsStore: recentsStore
+                    )
+                case .folder:
+                    await LocalFileMenuCommands.openLocalFolder(
+                        at: item.url, engine: engine, recentsStore: recentsStore
+                    )
+                case .m3u:
+                    await LocalFileMenuCommands.openLocalM3U(
+                        at: item.url, engine: engine, recentsStore: recentsStore
+                    )
                 }
             }
         }
