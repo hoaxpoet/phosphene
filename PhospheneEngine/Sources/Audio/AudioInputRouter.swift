@@ -140,6 +140,23 @@ public final class AudioInputRouter: @unchecked Sendable {
     /// `@Published` properties.
     public var onSignalStateChanged: ((_ state: AudioSignalState) -> Void)?
 
+    /// LF.5 — Fires when the `.localFilePlayback(URL)` mode's audio file
+    /// reaches end-of-stream. When set, the underlying
+    /// `LocalFilePlaybackProvider` will NOT loop the file at EOF; instead
+    /// this callback drives the LF.5 queue advance via
+    /// `VisualizerEngine.advanceLocalFileQueue()`. When nil (LF.1 / LF.4
+    /// default), the provider loops the file forever (preserved single-file
+    /// dev workflow).
+    ///
+    /// MUST be set BEFORE `start(mode: .localFilePlayback(url))`; the value
+    /// captured at start time is relayed into the provider's `onFileEnded`.
+    /// Subsequent assignments take effect on the NEXT `start()`, not
+    /// retroactively. Engine consumers re-bind on every per-track restart.
+    ///
+    /// Invoked on the AVAudioEngine scheduleFile completion thread; consumers
+    /// hop to MainActor before touching UI or @Published state.
+    public var onLocalFilePlaybackEnded: (@Sendable () -> Void)?
+
     /// Current audio signal state as determined by the silence detector.
     public var signalState: AudioSignalState {
         silenceDetector.state
@@ -248,12 +265,17 @@ public final class AudioInputRouter: @unchecked Sendable {
     /// the router's `onAudioSamples` callback + `SilenceDetector`. The
     /// callback signature matches the process-tap path exactly, so the
     /// downstream analysis pipeline is source-agnostic.
+    ///
+    /// LF.5: when `onLocalFilePlaybackEnded` is non-nil, it is relayed into
+    /// the provider's `onFileEnded` so the queue advances at EOF instead of
+    /// looping. Nil-callback preserves the LF.1 loop-forever default.
     private func startLocalFilePlayback(url: URL) throws {
         let provider = LocalFilePlaybackProvider(url: url)
         provider.onAudioSamples = { [weak self] samples, count, rate, channels in
             self?.silenceDetector.update(samples: samples, count: count)
             self?.onAudioSamples?(samples, count, rate, channels)
         }
+        provider.onFileEnded = onLocalFilePlaybackEnded
         try provider.start()
         localFilePlaybackProvider = provider
     }
