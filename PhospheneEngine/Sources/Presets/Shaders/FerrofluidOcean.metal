@@ -477,19 +477,32 @@ float sceneSDF(float3 p,
     // Round 56 (2026-05-17): Lipschitz-corrected SDF. The naive
     // `p.y - surfaceY` returns the VERTICAL distance to the surface, not the
     // true 3D minimum distance. For tall narrow cones (height 0.62 wu / base
-    // radius 0.17 wu = max gradient ~3.65), the true distance to a sloped
-    // cone side is up to 3.78× smaller than the vertical distance when the
-    // ray-march sample point is laterally near a cone. Without correction,
-    // the ray-march (which assumes Lipschitz-1) overshoots the surface →
-    // inconsistent surface-hit positions across pixels → noisy normals
-    // from central differences → banded/scooped patterns on cone surfaces
-    // (the artifact Matt flagged in every live screenshot rounds 50-55).
-    // Dividing by 4 gives a conservative upper bound (4 > 3.78) on the
-    // height-field gradient → SDF underestimates true distance → ray-march
-    // never overshoots → clean surface hits → smooth normals → cones
-    // render as clean smooth mirror cones (verified by side-by-side
-    // diagnostic 2026-05-17 — see commit message).
-    return (p.y - surfaceY) / 4.0;
+    // radius 0.17 wu = max gradient ~3.65 at spike strength 1.0), the true
+    // distance to a sloped cone side is up to 3.78× smaller than the
+    // vertical distance when the ray-march sample point is laterally near a
+    // cone. Without correction, the ray-march (which assumes Lipschitz-1)
+    // overshoots the surface → inconsistent surface-hit positions across
+    // pixels → noisy normals from central differences → banded/scooped
+    // patterns (rounds 50-55) or gray pixels at tips (CSP.3.3 M7).
+    //
+    // CSP.3.4 (2026-05-28) — divisor bumped 4 → 10 to accommodate the
+    // post-CSP.3.3 spike-strength range. The /4 divisor was sized for spike
+    // strength 1.0 (no modulation); it bounds gradients up to 4. Post-CSP.3.3
+    // `fo_spike_strength` returns up to baseline 1.25 + 0.8 × f.bass(1.28) ≈
+    // 2.27 — effective gradient up to 3.65 × 2.27 = 8.3. /10 gives a
+    // conservative ceiling (10 > 8.3) that covers the full modulation range
+    // including the rare f.bass-near-1.0 frames (0.1 % of playback). Matt
+    // CSP.3.3 M7: "gray artifacts at the tips of spikes during heavy bass
+    // hits" on Money (session 2026-05-28T13-31-47Z, max spike strength 1.36
+    // in Money window) + "flickering around 38 s in for Love Rehab"
+    // (session-time 73 s, spike strength 1.25-1.29) → both are
+    // Lipschitz-overshoot artifacts at modulated spike heights.
+    //
+    // Cost: each ray-march step is smaller, requiring more iterations to
+    // converge on the surface. Net per-pixel cost increases moderately at
+    // the SDF level. No effect on rendered output beyond removing the
+    // overshoot artifacts.
+    return (p.y - surfaceY) / 10.0;
 }
 
 // MARK: - sceneMaterial (Session 3: §5.8 stage-rig dispatch via matID == 2)
