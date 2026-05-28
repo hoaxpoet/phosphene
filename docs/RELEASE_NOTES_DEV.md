@@ -6,6 +6,63 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-28-k] LF.5.fix — Orchestrator wire, End-Session stop, transport bar
+
+Three defects surfaced by Matt's 2026-05-28 LF.5 smoke session (sessions
+`2026-05-28T17-06-08Z` / `17-11-43Z` / `17-13-48Z`). Fixed in two
+commits (`488afc1e` + `fe09a594`) plus this closeout.
+
+**BUG-LF5-1 — orchestrator stayed REACTIVE for multi-file sessions.**
+The streaming-path orchestrator wire-up in `makeTrackChangeCallback`
+(set `liveTrackPlanIndex` under `orchestratorLock`) was missing from
+LF.5's `handleLocalFileReady` + `advanceLocalFileQueue`. Result: zero
+per-track preset changes across an 8-track folder; orchestrator picked
+presets autonomously every ~7 s based on audio reactivity, ignoring the
+SessionPlan. Fix: mirror the streaming wire-up in both LF entry points
++ set `lastResolvedTrackIdentity` so `applyPreset` can refresh per-track
+GPU payload (Lumen Mosaic palette, etc.).
+
+**BUG-LF5-2 — End Session did not stop LF audio.** SessionManager
+flipped state to `.ended` but never asked the audio router to stop;
+`AVAudioEngine` kept playing the last track. Fix: extend the existing
+`sessionManager.$state` `.sink` in `VisualizerEngine` init to call
+`audioRouter.stop()` on `.ended`. Idempotent + safe for streaming
+(process-tap teardown is correct behaviour at session end).
+
+**BUG-LF5-3 — no music-player UX for LF sessions** (Matt-requested
+expansion at fix time). UX-2 invariant ("no playback controls on
+PlaybackView") was written when streaming was the only path; for LF
+Phosphene IS the player. New hover-revealed transport bar (Stop /
+Prev / Play-Pause / Next) at bottom-center of `PlaybackChromeView` for
+`currentSource?.isLocalFile == true`. UX_SPEC §7.3 + §10 amended with
+the LF carve-out.
+
+**API surface added:**
+- `LocalFilePlaybackProvider.{pause(), resume(), isPaused}`
+- `AudioInputRouter.{pauseLocalFilePlayback(), resumeLocalFilePlayback(), isLocalFilePlaybackPaused}`
+- `VisualizerEngine.{isLocalFilePaused: Bool, togglePauseLocalFile(), skipToNextLocalFileTrack(), skipToPreviousLocalFileTrack(), stopLocalFilePlayback()}`
+- `VisualizerEngine.advanceLocalFileQueue(direction: .forward|.backward)` — prev at index 0 is a no-op.
+
+**UI surface added:**
+- `LocalFileTransportBar` SwiftUI view — 4 SF-Symbol buttons in an
+  `.ultraThinMaterial`-backed rounded rect. Glyph reads from
+  `viewModel.isLocalFilePaused` (`play.fill` vs `pause.fill`).
+- `PlaybackChromeView` gains 4 callback parameters (default no-ops for
+  source compatibility) + `isLocalFileSession` render gate.
+- `PlaybackChromeViewModel` grows `currentSourcePublisher` +
+  `isLocalFilePausedPublisher` inputs.
+- 10 new `Localizable.strings` keys (tooltip + a11y pairs per button).
+
+**Verification.** Engine regression gate green (`SessionManagerLocalFileTests` +
+`PersistentStemCacheTests` + `AudioInputRouterSignalStateTests` — 67 tests, no
+regressions). App `Release` build green. SwiftLint clean. Pending: Matt re-runs
+the LF.5 smoke and confirms (a) per-track preset transitions log alongside
+`BeatGrid installed` lines, (b) End Session (or transport-bar Stop) actually
+silences audio, (c) hover reveals the transport bar centered at bottom, (d)
+Play/Pause preserves playhead position.
+
+---
+
 ## [dev-2026-05-28-j] LF.5 — Multi-File Local Playback + File-Association + Recents
 
 LF.5 (D-132) lifts local-file playback past LF.4's single-file ceiling. The user picks a folder, drags multiple files, opens a `.m3u` playlist, or double-clicks an `.m4a` in Finder — and Phosphene queues the audio in order, walks through with orchestrator-driven preset selection per track, surfaces a `File → Open Recent ▸` submenu of the last 10 opens, and persists ID3 / Vorbis title / artist / album / artwork alongside each cached entry. Mid-session transitions are hard cuts; single-file env-var hook continues to loop the file for the dev workflow.
