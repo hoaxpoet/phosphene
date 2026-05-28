@@ -796,6 +796,15 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
                     }
                 }
                 if newState == .ended {
+                    // LF.5.fix.2-FU2: halt the stem analyzer timer BEFORE
+                    // stopping the audio router. The timer fires every 5 s
+                    // and drains the stem lookahead buffer; without this
+                    // call the analyzer kept running for ~60-120 s after
+                    // Stop on the verification session 2026-05-28T19-42-50Z
+                    // (12 separations on stale / silence frames). Cancelling
+                    // first means no further dispatch lands after the audio
+                    // router teardown.
+                    self.stopStemPipeline()
                     // LF.5.fix D-LF5-2: Phosphene IS the player for local-file
                     // sessions, so End Session must actually stop audio. For
                     // streaming sessions stop() also tears down the Core Audio
