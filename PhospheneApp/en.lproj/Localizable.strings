@@ -100,12 +100,18 @@
 
 // MARK: - Idle
 
-"idle.connect_button"   = "Connect a playlist";
+/* GAP B Direction 1 (2026-05-28): primary CTA broadened from
+   "Connect a playlist" to cover all three sources the post-GAP A
+   ConnectorPickerView offers — Apple Music, Spotify, and Local files. */
+"idle.connect_button"   = "Choose music";
 "idle.adhoc_button"     = "Start listening now";
 
 // MARK: - Connector picker
 
-"connector.picker.title"                    = "Connect a playlist";
+/* GAP B Direction 1 (2026-05-28): title shifted from the playlist-centric
+   "Connect a playlist" to "Choose a source" — accurate to the post-GAP A
+   reality where the picker offers Apple Music, Spotify, and Local files. */
+"connector.picker.title"                    = "Choose a source";
 "connector.picker.close_button"             = "Close";
 "connector.picker.apple_music_disabled"     = "Open Apple Music first";
 "connector.picker.open_apple_music_button"  = "Open Apple Music";
