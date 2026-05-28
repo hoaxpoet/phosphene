@@ -115,6 +115,33 @@ public final class LocalFilePlaybackProvider: @unchecked Sendable {
         lock.withLock { _stopLocked() }
     }
 
+    /// Pause playback without tearing down the engine. The player retains its
+    /// position; `resume()` continues from the same frame. Safe to call when
+    /// already paused or before `start()`.
+    ///
+    /// LF.5.fix D-LF5-3: transport controls (hover-revealed Stop / Prev /
+    /// Play-Pause / Next) drive into this method.
+    public func pause() {
+        lock.withLock { playerNode?.pause() }
+    }
+
+    /// Resume playback after `pause()`. Safe to call when already playing or
+    /// before `start()`.
+    public func resume() {
+        lock.withLock { playerNode?.play() }
+    }
+
+    /// `true` while the engine + player exist and the player is not currently
+    /// playing (paused state). `false` when stopped or actively playing.
+    /// Used by the transport controls view model to render the right glyph
+    /// (▶ vs ⏸).
+    public var isPaused: Bool {
+        lock.withLock {
+            guard let player = playerNode, engine != nil else { return false }
+            return !player.isPlaying
+        }
+    }
+
     // MARK: - Private — assume `lock` held
 
     private func _startLocked() throws {

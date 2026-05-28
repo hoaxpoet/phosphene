@@ -79,6 +79,10 @@ struct PlaybackView: View {
             Just(.fullyPrepared).eraseToAnyPublisher(),
         dashboardSnapshotPublisher: AnyPublisher<DashboardSnapshot?, Never> =
             Just(nil).eraseToAnyPublisher(),
+        currentSourcePublisher: AnyPublisher<SessionOrigin?, Never> =
+            Just(nil).eraseToAnyPublisher(),
+        isLocalFilePausedPublisher: AnyPublisher<Bool, Never> =
+            Just(false).eraseToAnyPublisher(),
         onEndSession: @escaping () -> Void,
         reduceMotion: Bool
     ) {
@@ -91,7 +95,9 @@ struct PlaybackView: View {
             currentPresetNamePublisher: currentPresetNamePublisher,
             livePlanPublisher: livePlanPublisher,
             reduceMotionPublisher: reduceMotionPublisher,
-            progressiveReadinessPublisher: progressiveReadinessPublisher
+            progressiveReadinessPublisher: progressiveReadinessPublisher,
+            currentSourcePublisher: currentSourcePublisher,
+            isLocalFilePausedPublisher: isLocalFilePausedPublisher
         ))
         _endSessionVM = StateObject(wrappedValue: EndSessionConfirmViewModel(
             sessionManager: sessionManager
@@ -120,7 +126,11 @@ struct PlaybackView: View {
                 viewModel: chromeVM,
                 toastManager: toastManager,
                 onSettings: { showSettings = true },
-                onEndSession: { endSessionVM.requestEnd() }
+                onEndSession: { endSessionVM.requestEnd() },
+                onLocalFileStop: { engine.stopLocalFilePlayback() },
+                onLocalFilePrev: { engine.skipToPreviousLocalFileTrack() },
+                onLocalFilePlayPause: { engine.togglePauseLocalFile() },
+                onLocalFileNext: { engine.skipToNextLocalFileTrack() }
             )
 
             // Layer 4: Shortcut help overlay

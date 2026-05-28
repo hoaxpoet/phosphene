@@ -47,6 +47,13 @@ struct PlaybackChromeView: View {
     let toastManager: ToastManager
     let onSettings: () -> Void
     let onEndSession: () -> Void
+    /// LF.5.fix D-LF5-3 transport-bar callbacks. Default no-ops keep streaming-
+    /// path callers (and tests) source-compatible — the bar only renders when
+    /// `viewModel.isLocalFileSession == true`.
+    var onLocalFileStop: () -> Void = {}
+    var onLocalFilePrev: () -> Void = {}
+    var onLocalFilePlayPause: () -> Void = {}
+    var onLocalFileNext: () -> Void = {}
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -82,6 +89,20 @@ struct PlaybackChromeView: View {
             .padding(.top, 48)
             .frame(maxWidth: .infinity, alignment: .top)
             .frame(maxHeight: .infinity, alignment: .top)
+
+            // Bottom-center: LF.5.fix D-LF5-3 transport bar (LF mode only).
+            if viewModel.isLocalFileSession {
+                LocalFileTransportBar(
+                    isPaused: viewModel.isLocalFilePaused,
+                    onStop: onLocalFileStop,
+                    onPrev: onLocalFilePrev,
+                    onPlayPause: onLocalFilePlayPause,
+                    onNext: onLocalFileNext
+                )
+                .padding(.bottom, 36)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .frame(maxHeight: .infinity, alignment: .bottom)
+            }
 
             // Bottom-trailing: toast container (Part C)
             ToastContainerView(toastManager: toastManager)
