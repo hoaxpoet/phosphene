@@ -254,6 +254,12 @@
 "ended.cta.newSession"      = "Start another session";
 "ended.cta.openFolder"      = "Open sessions folder";
 
+/* GAP H (2026-05-28): replay CTA for LF-ended sessions.
+   %@ = folder name, playlist filename, or single-file filename */
+"ended.cta.replay_named"    = "Play %@ again";
+/* %d = track count for a multi-file LF drop with no named source */
+"ended.cta.replay_count"    = "Play these %d tracks again";
+
 // MARK: - Full-screen error view (Part B)
 
 "fullscreen_error.default_headline" = "Something went wrong.";

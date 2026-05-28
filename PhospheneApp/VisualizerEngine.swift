@@ -1,4 +1,6 @@
 // swiftlint:disable file_length
+// swiftlint:disable:next blanket_disable_command
+// swiftlint:disable type_body_length
 // VisualizerEngine — Audio capture → FFT → MIR analysis → renderer pipeline owner.
 //
 // Created once at app launch by ContentView via @StateObject. Audio capture
@@ -262,6 +264,13 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// LF.5.fix D-LF5-3.
     @Published var isLocalFilePaused: Bool = false
 
+    /// GAP H (2026-05-28): the most-recently-active LF SessionOrigin,
+    /// preserved across `endSession()` so EndedView can offer a
+    /// "Play %@ again" CTA. Cleared when a streaming session takes over;
+    /// updated whenever a fresh LF session starts. `nil` between launches
+    /// AND when the last completed session was streaming.
+    @Published var lastEndedLocalFileOrigin: SessionOrigin?
+
     /// Stem separator (MPSGraph on GPU).
     let stemSeparator: StemSeparator?
 
@@ -520,6 +529,11 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
 
     /// Retains the subscription that calls `extendPlan()` as readiness level advances.
     var readinessCancellable: AnyCancellable?
+
+    /// GAP H (2026-05-28): retains the subscription that stashes the most
+    /// recent LF SessionOrigin into `lastEndedLocalFileOrigin` for the
+    /// EndedView "Play <name> again" CTA.
+    var lastLocalFileSourceCancellable: AnyCancellable?
 
     /// Seeded LCG perturbation value shared between `buildPlan()` and `extendPlan()`.
     /// Reset to nil when a new session begins (`.connecting` state), so each session
@@ -795,6 +809,27 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
                     // (or a re-open of the same file) doesn't inherit a stale
                     // paused flag.
                     self.isLocalFilePaused = false
+                }
+            }
+
+        // GAP H (2026-05-28): stash the most recent LF SessionOrigin across
+        // endSession so EndedView can offer a "Play <name> again" CTA. The
+        // observer overrides on every LF emit (preserves the latest LF
+        // source). A streaming-session emit clears it (the next EndedView
+        // for that session shouldn't suggest replaying an unrelated LF
+        // source). A nil emit (during endSession) is intentionally ignored
+        // — that's exactly the moment we want to preserve.
+        lastLocalFileSourceCancellable = mgr.$currentSource
+            .removeDuplicates()
+            .sink { [weak self] source in
+                guard let self else { return }
+                switch source {
+                case .localFile, .localFiles, .localFolder, .localPlaylist:
+                    self.lastEndedLocalFileOrigin = source
+                case .playlist:
+                    self.lastEndedLocalFileOrigin = nil
+                case .none:
+                    break                          // preserve stash through endSession
                 }
             }
 

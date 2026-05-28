@@ -29,6 +29,7 @@ struct ContentView: View {
     @EnvironmentObject private var permissionMonitor: PermissionMonitor
     @EnvironmentObject private var engine: VisualizerEngine
     @EnvironmentObject private var accessibilityState: AccessibilityState
+    @EnvironmentObject private var recentsStore: LocalFileRecentsStore
 
     init(viewModel: SessionStateViewModel) {
         self._viewModel = StateObject(wrappedValue: viewModel)
@@ -84,12 +85,52 @@ struct ContentView: View {
             // the prompt assumed endSession() did the .ended → .idle transition,
             // but it transitions any state → `.ended`. cancel() is the documented
             // .idle return path.
+            //
+            // GAP H (2026-05-28): when the just-ended session was a local-file
+            // session, pass the stashed origin + a replay closure so EndedView
+            // can offer "Play <name> again." The closure dispatches back through
+            // LocalFileMenuCommands to re-open the right source.
             EndedView(
                 trackCount: engine.sessionManager.currentPlan?.tracks.count ?? 0,
                 sessionDuration: nil,
                 onStartNewSession: { engine.sessionManager.cancel() },
-                onOpenSessionsFolder: { EndedView.openSessionsFolder() }
+                onOpenSessionsFolder: { EndedView.openSessionsFolder() },
+                lastLocalFileOrigin: engine.lastEndedLocalFileOrigin,
+                onReplayLocalFile: engine.lastEndedLocalFileOrigin.map { origin in
+                    { replayLocalFile(origin: origin) }
+                }
             )
+        }
+    }
+
+    /// GAP H: dispatch a stashed LF SessionOrigin back through the LF entry
+    /// points. Single files / folders / playlists go through their respective
+    /// `openLocal*` helpers (which re-promote to Recents). Flat-drop origins
+    /// re-queue the expanded URL list directly.
+    @MainActor
+    private func replayLocalFile(origin: SessionOrigin) {
+        // Returning to .idle first ensures startLocalFiles can take over
+        // cleanly (endSession leaves state == .ended; cancel returns to .idle).
+        engine.sessionManager.cancel()
+        Task { @MainActor in
+            switch origin {
+            case .localFile(let url):
+                await LocalFileMenuCommands.openLocalFile(
+                    at: url, engine: engine, recentsStore: recentsStore
+                )
+            case .localFolder(let folder, _):
+                await LocalFileMenuCommands.openLocalFolder(
+                    at: folder, engine: engine, recentsStore: recentsStore
+                )
+            case .localPlaylist(let playlist, _):
+                await LocalFileMenuCommands.openLocalM3U(
+                    at: playlist, engine: engine, recentsStore: recentsStore
+                )
+            case .localFiles(let urls):
+                await engine.sessionManager.startLocalFiles(at: urls, origin: .localFiles(urls))
+            case .playlist:
+                break                       // never happens — stash is LF-only
+            }
         }
     }
 
