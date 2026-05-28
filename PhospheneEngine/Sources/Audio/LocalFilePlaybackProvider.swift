@@ -173,6 +173,16 @@ public final class LocalFilePlaybackProvider: @unchecked Sendable {
             configChangeObserver = nil
             return refs
         }
+        // LF.5.fix.2-FU1: skip the teardown helper entirely when the snapshot
+        // is all-nil. `start()` calls `stop()` unconditionally to clear any
+        // previous instance lock-free; on the first call (and on subsequent
+        // start→stop→start cycles where the prior teardown already ran), the
+        // snapshot has nothing to release. Emitting the breadcrumb pair
+        // anyway clutters session.log with paired ENTER/EXIT lines that
+        // bracket zero work.
+        if oldRefs.player == nil && oldRefs.engine == nil && oldRefs.observer == nil {
+            return
+        }
         Self.teardownAVFoundation(refs: oldRefs, diagnostic: onDiagnosticEvent)
     }
 
