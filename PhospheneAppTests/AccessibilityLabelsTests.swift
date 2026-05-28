@@ -42,7 +42,7 @@ struct AccessibilityLabelsTests {
             isEnabled: false,
             disabledCaption: nil
         )
-        #expect(label.contains("Local Folder"))
+        #expect(label.contains(ConnectorType.localFolder.title))
         #expect(!label.isEmpty)
     }
 
