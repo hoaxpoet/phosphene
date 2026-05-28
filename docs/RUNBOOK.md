@@ -82,12 +82,11 @@ cp /path/to/main/checkout/PhospheneEngine/Tests/Fixtures/tempo/*.m4a \
 
 The `BeatThisFixturePresenceGate` suite is intentionally designed to fail loudly when the fixture tree is empty — silent skips have masked the DSP.2 S8 four-bug regression surface in the past (see CLAUDE.md *§What NOT To Do* on silent fixture skips).
 
-## Local-file stem cache management (LF.3, D-130)
+## Local-file stem cache management (LF.3 / LF.4, D-130 / D-131)
 
-When Phosphene is launched against a local file via the
-`PHOSPHENE_LOCAL_FILE_PLAYBACK` env-var hook, the offline pre-analysis
-result (`BeatGrid` + per-stem waveforms + `StemFeatures` + `TrackProfile`)
-is persisted to disk under
+Local-file playback (LF.4) persists the offline pre-analysis result
+(`BeatGrid` + per-stem waveforms + `StemFeatures` + `TrackProfile`) to disk
+under
 
 ```
 ~/Library/Application Support/Phosphene/StemCache/sha256/<aa>/<full-hash>/
@@ -99,6 +98,12 @@ files: `metadata.json` (5 KB) and `vocals.f32` / `drums.f32` / `bass.f32`
 / `other.f32` (~1.76 MB each — raw little-endian Float32 PCM). Per-track
 footprint: ~6.7 MB.
 
+**User-facing controls (LF.4).** `Phosphene → Clear Local-File Cache (<size>)`
+shows the current cache footprint in the menu label and empties the cache
+on click (with a confirmation alert reporting the bytes freed). Automatic
+LRU eviction runs after every cache write — the default 500 MB cap
+(~70 cached tracks) keeps the footprint bounded without manual cleanup.
+
 **Operator commands.**
 
 ```sh
@@ -108,12 +113,18 @@ find "$HOME/Library/Application Support/Phosphene/StemCache" -type f
 # Size
 du -sh "$HOME/Library/Application Support/Phosphene/StemCache"
 
-# Wipe all cached entries (any future launch re-runs pre-analysis)
+# Wipe all cached entries (or use Phosphene → Clear Local-File Cache)
 rm -rf "$HOME/Library/Application Support/Phosphene/StemCache"
 
 # Wipe one entry by file hash
 shasum -a 256 path/to/file.m4a   # → c1685f07d559...
 rm -rf "$HOME/Library/Application Support/Phosphene/StemCache/sha256/c1/c1685f07d559..."
+
+# Override the default 500 MB eviction cap (1 GB example)
+defaults write com.phosphene.app phosphene.cache.localFile.maxBytes -int 1073741824
+
+# Read the current cap (LF.4)
+defaults read com.phosphene.app phosphene.cache.localFile.maxBytes
 ```
 
 **When to clear the cache.**

@@ -142,13 +142,12 @@ struct PhospheneApp: App {
             }
             CommandGroup(after: .appInfo) {
                 Divider()
-                Button(action: {
+                let clearLabel = String(
+                    format: String(localized: "menu.app.clear_local_file_cache"),
+                    LocalFileMenuCommands.formatBytes(engine.localFileCacheBytes)
+                )
+                Button(clearLabel) {
                     LocalFileMenuCommands.clearLocalFileCache(engine: engine)
-                }) {
-                    Text(String(
-                        format: String(localized: "menu.app.clear_local_file_cache"),
-                        LocalFileMenuCommands.formatBytes(engine.localFileCacheBytes)
-                    ))
                 }
             }
         }

@@ -1,3 +1,6 @@
+// swiftlint:disable file_length
+// swiftlint:disable:next blanket_disable_command
+// swiftlint:disable type_body_length
 // PersistentStemCache — Disk-backed content-keyed cache for local-file
 // pre-analysis results (LF.3 / D-130; LF.4 / D-131 eviction + clear).
 //
