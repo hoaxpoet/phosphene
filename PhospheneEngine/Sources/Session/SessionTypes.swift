@@ -69,34 +69,70 @@ public let defaultProgressiveReadinessThreshold: Int = 3
 /// What kind of input is driving the current session.
 ///
 /// `.playlist(source)` — connector-driven streaming session (Apple Music, Spotify).
-/// `.localFile(url)` — single local-file playback (LF.4). Multi-file ingestion
-/// (folder / M3U) is LF.5 territory; that will likely extend this enum or use
-/// a separate `.localFolder([URL])` case as appropriate.
+/// `.localFile(url)` — single local audio file (LF.4).
+/// `.localFiles(urls)` — flat list from a multi-file drag-and-drop (LF.5).
+/// `.localFolder(folder, expanded)` — recursively-walked folder (LF.5). `folder`
+///     is the originally-selected root; `expanded` is the alphabetically-ordered
+///     audio file list.
+/// `.localPlaylist(playlist, expanded)` — `.m3u` / `.m3u8` file opened by the user
+///     (LF.5). `playlist` is the `.m3u` file URL; `expanded` is the parsed
+///     ordered track URL list (relative paths resolved).
 public enum SessionOrigin: Sendable, Equatable {
     case playlist(PlaylistSource)
     case localFile(URL)
+    case localFiles([URL])
+    case localFolder(URL, expanded: [URL])
+    case localPlaylist(URL, expanded: [URL])
 }
 
 extension SessionOrigin {
     public static func == (lhs: SessionOrigin, rhs: SessionOrigin) -> Bool {
         switch (lhs, rhs) {
         case (.playlist, .playlist): return true   // PlaylistSource itself is not Equatable
-        case (.localFile(let lhsURL), .localFile(let rhsURL)): return lhsURL == rhsURL
+        case (.localFile(let lhsURL), .localFile(let rhsURL)):
+            return lhsURL == rhsURL
+        case (.localFiles(let lhsURLs), .localFiles(let rhsURLs)):
+            return lhsURLs == rhsURLs
+        case (.localFolder(let lFolder, let lExpanded), .localFolder(let rFolder, let rExpanded)):
+            return lFolder == rFolder && lExpanded == rExpanded
+        case (.localPlaylist(let lPlaylist, let lExpanded), .localPlaylist(let rPlaylist, let rExpanded)):
+            return lPlaylist == rPlaylist && lExpanded == rExpanded
         default: return false
         }
     }
 
-    /// True when this origin represents a local-file session. Consumers that
-    /// used to read `VisualizerEngine.localFilePlaybackActive` now read this.
+    /// True when this origin represents any local-file session (single, multi,
+    /// folder, or playlist). Consumers that used to read
+    /// `VisualizerEngine.localFilePlaybackActive` read this.
     public var isLocalFile: Bool {
-        if case .localFile = self { return true }
-        return false
+        switch self {
+        case .localFile, .localFiles, .localFolder, .localPlaylist: return true
+        case .playlist: return false
+        }
     }
 
-    /// The file URL when this origin is `.localFile`, otherwise `nil`.
+    /// The first / currently-active local-file URL, or `nil` when this origin
+    /// is `.playlist`. For multi-file origins this is the head of the queue
+    /// (used for early UI labels before per-track identity arrives).
     public var localFileURL: URL? {
-        if case .localFile(let url) = self { return url }
-        return nil
+        switch self {
+        case .localFile(let url): return url
+        case .localFiles(let urls): return urls.first
+        case .localFolder(_, let expanded), .localPlaylist(_, let expanded): return expanded.first
+        case .playlist: return nil
+        }
+    }
+
+    /// The full expanded ordered URL queue for this origin. `[]` for `.playlist`.
+    /// Used by `SessionManager.startLocalFiles(at:origin:)` consumers + the
+    /// LF.5 mid-session track-advance path.
+    public var allLocalFileURLs: [URL] {
+        switch self {
+        case .localFile(let url): return [url]
+        case .localFiles(let urls): return urls
+        case .localFolder(_, let expanded), .localPlaylist(_, let expanded): return expanded
+        case .playlist: return []
+        }
     }
 }
 

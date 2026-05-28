@@ -88,13 +88,17 @@ extension VisualizerEngine: LocalFilePreparing {
 
     /// Called from the engine's `sessionManager.$state` subscription when the
     /// state machine transitions to `.ready` AND `currentSource` is a local
-    /// file. Installs the cached BeatGrid (cache lookup hits the in-memory
-    /// `StemCache` that SessionManager populated during preparation), starts
-    /// the LF audio router, and advances the session to `.playing`.
+    /// file (LF.4 single-file or LF.5 multi-file / folder / playlist). Installs
+    /// the cached BeatGrid (cache lookup hits the in-memory `StemCache` that
+    /// SessionManager populated during preparation), starts the LF audio router
+    /// with the **first** URL in the queue, and advances the session to
+    /// `.playing`. Mid-session advance to subsequent queue entries is the
+    /// `advanceLocalFileQueue()` path (LF.5 Task 8) — not this one.
     @MainActor
     func handleLocalFileReady() {
         guard let source = sessionManager.currentSource,
-              case .localFile(let url) = source else {
+              source.isLocalFile,
+              let url = source.localFileURL else {
             return
         }
         guard let identity = sessionManager.currentPlan?.tracks.first else {

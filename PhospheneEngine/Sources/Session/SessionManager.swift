@@ -329,118 +329,208 @@ public final class SessionManager: ObservableObject {
 
     /// Start a single-file local playback session (LF.4 / D-131).
     ///
-    /// Transitions: `.idle`/`.ended` → `.preparing` → `.ready`. The caller
-    /// (the `VisualizerEngine` `.ready` observer) is responsible for
-    /// installing the cached `BeatGrid` via `resetStemPipeline(for:)`,
-    /// starting the LF audio router, and calling `beginPlayback()` to
-    /// transition `.ready → .playing`.
-    ///
-    /// Replace-on-open: if the session is already active in a streaming
-    /// or different-file mode, `cancel()` is called first. Same-URL
-    /// re-entry is a no-op (avoids re-running pre-analysis when the user
-    /// re-picks the same file).
-    ///
-    /// Preparation work is delegated to `localFilePreparer` (typically
-    /// `VisualizerEngine`), which owns the ML deps. When the delegate is
-    /// `nil` or returns `nil`, the session still transitions to `.ready` —
-    /// playback proceeds without the cached install (LF.1 fallthrough).
+    /// Thin wrapper around `startLocalFiles(at:origin:)` (LF.5 / D-132) so the
+    /// LF.4 menu / drag-and-drop / env-var entry points keep working with no
+    /// behaviour change. See `startLocalFiles(at:origin:)` for the lifecycle.
     ///
     /// - Parameter url: Local audio file URL. Caller must verify the file
     ///   exists and is readable before calling.
     public func startLocalFile(at url: URL) async {
-        // Same-URL re-entry: no-op (avoid re-running pre-analysis when the user
-        // re-picks the same file from the menu).
-        if let active = currentSource, case .localFile(let activeURL) = active,
-           activeURL == url,
-           state == .preparing || state == .ready || state == .playing {
-            logger.info("SessionManager: startLocalFile ignored — same URL already active")
+        await startLocalFiles(at: [url], origin: .localFile(url))
+    }
+
+    /// Start a multi-file local playback session (LF.5 / D-132).
+    ///
+    /// Sibling to the streaming-path `startSession(...)` API but driven by a
+    /// pre-resolved URL queue instead of a `PlaylistConnecting`. Walks the URL
+    /// list sequentially via the `LocalFilePreparing` delegate, populates
+    /// `preparingTracks` with one identity per file (placeholder before per-file
+    /// preparation, real `local:sha256:<hash>` identity after), advances
+    /// `progressiveReadinessLevel` as terminal-ready entries accumulate, and
+    /// transitions:
+    ///
+    ///     `.idle / .ended` → `.preparing` → `.ready`
+    ///
+    /// The `VisualizerEngine` `.ready` observer installs the first track's
+    /// cached `BeatGrid`, starts the LF audio router, and calls `beginPlayback()`
+    /// to transition `.ready → .playing`. Mid-session advance to subsequent
+    /// queue entries happens in `VisualizerEngine.advanceLocalFileQueue()` (LF.5
+    /// Task 8) when the audio router reports end-of-file.
+    ///
+    /// Same-origin re-entry (identical URL list AND identical `SessionOrigin`
+    /// shape) is a no-op. Any other active session is silently replaced via
+    /// `cancel()` first (macOS-idiomatic).
+    ///
+    /// Per Matt's audit sign-off (2026-05-27), callers above this layer should
+    /// truncate large queues to ≤ 200 URLs to avoid cache-eviction churn under
+    /// the 500 MB cap (~70 cached tracks); the menu / drop handlers in
+    /// `LocalFileMenuCommands` enforce that ceiling.
+    ///
+    /// - Parameters:
+    ///   - urls: Ordered list of local audio file URLs. Caller verifies
+    ///     readability + extension before passing. Empty list is a no-op
+    ///     (logged warning, state unchanged).
+    ///   - origin: The `SessionOrigin` to publish. UI uses this for source-aware
+    ///     labels — `.localFolder` shows folder name, `.localPlaylist` shows
+    ///     M3U filename, `.localFiles` shows track count, `.localFile` shows
+    ///     filename.
+    public func startLocalFiles(at urls: [URL], origin: SessionOrigin) async {
+        guard !urls.isEmpty else {
+            logger.warning("SessionManager: startLocalFiles called with empty URL list — no-op")
             return
         }
-
-        // Replace-on-open: if any other session is active, end it cleanly.
+        if _shouldShortCircuitMultiFileEntry(origin: origin) { return }
         if state != .idle && state != .ended {
-            logger.info("SessionManager: startLocalFile — replacing active session")
+            logger.info("SessionManager: startLocalFiles — replacing active session")
             cancel()
         }
+        _beginMultiFileTransition(urls: urls, origin: origin)
 
+        var preparedTracks: [TrackIdentity] = []
+        preparedTracks.reserveCapacity(urls.count)
+        let placeholders = preparingTracks
+
+        for (index, url) in urls.enumerated() {
+            if cancellationRequested {
+                logger.info(
+                    "SessionManager: startLocalFiles cancelled after \(preparedTracks.count) of \(urls.count)"
+                )
+                return
+            }
+            guard let identity = await _prepareOneLocalFile(
+                url: url,
+                index: index,
+                totalCount: urls.count,
+                fallback: placeholders[index]
+            ) else {
+                return                                              // cancellation mid-prep
+            }
+            preparedTracks.append(identity)
+            _updatePreparingTracksIdentity(at: index, identity: identity)
+        }
+
+        if cancellationRequested { return }
+        _completeLocalFilesReady(tracks: preparedTracks)
+    }
+
+    /// Same-origin re-entry guard. Returns `true` when the in-flight session
+    /// already matches the requested origin and the caller should bail out.
+    private func _shouldShortCircuitMultiFileEntry(origin: SessionOrigin) -> Bool {
+        if let active = currentSource, active == origin,
+           state == .preparing || state == .ready || state == .playing {
+            logger.info("SessionManager: startLocalFiles ignored — same origin already active")
+            return true
+        }
+        return false
+    }
+
+    /// Shared entry transition for `startLocalFiles(at:origin:)`: clears the
+    /// cancellation flag, seeds placeholder identities, flips state to
+    /// `.preparing`, and emits the WIRING breadcrumb.
+    private func _beginMultiFileTransition(urls: [URL], origin: SessionOrigin) {
         cancellationRequested = false
         sessionSource = nil
-        currentSource = .localFile(url)
-        // Surface a placeholder track in `preparingTracks` so PreparationProgressView
-        // renders a row for the duration of the ~2 s analyzePreview window. The
-        // synthetic LF identity (with `local:sha256:` prefix) replaces this once
-        // the off-main worker resolves the file hash.
-        let placeholderIdentity = TrackIdentity(
+        currentSource = origin
+        let placeholders = urls.map { Self.makePlaceholderIdentity(url: $0) }
+        preparingTracks = placeholders
+        progressiveReadinessLevel = .preparing
+        state = .preparing
+        let firstName = urls.first?.lastPathComponent ?? "?"
+        logger.info(
+            "SessionManager: preparing \(urls.count) local file(s) — first='\(firstName, privacy: .public)'"
+        )
+        let openMsg = "WIRING: SessionManager.startLocalFiles ENTER " +
+            "count=\(urls.count) first='\(firstName)' origin=\(Self.originLabel(origin))"
+        sessionRecorder?.log(openMsg)
+    }
+
+    /// Run the per-file preparer call. Returns the prepared identity, the
+    /// fallback (LF.1) placeholder identity on prep failure, or `nil` when
+    /// cancellation fired mid-prep (caller should bail out).
+    private func _prepareOneLocalFile(
+        url: URL,
+        index: Int,
+        totalCount: Int,
+        fallback: TrackIdentity
+    ) async -> TrackIdentity? {
+        let identity: TrackIdentity
+        let sourceLabel: String
+        if let preparer = localFilePreparer {
+            let result = await preparer.prepareLocalFile(url: url)
+            if cancellationRequested {
+                logger.info("SessionManager: startLocalFiles cancelled mid-prep")
+                return nil
+            }
+            if let result {
+                self.preparer.cache.store(result.cached, for: result.identity)
+                identity = result.identity
+                sourceLabel = result.source.label
+            } else {
+                identity = fallback
+                sourceLabel = "noCache"
+            }
+        } else {
+            identity = fallback
+            sourceLabel = "noCache"
+        }
+        let perFileMsg = "WIRING: SessionManager.localFile prepared #\(index + 1) " +
+            "of \(totalCount) file='\(url.lastPathComponent)' source=\(sourceLabel)"
+        sessionRecorder?.log(perFileMsg)
+        return identity
+    }
+
+    /// Replace the placeholder at `index` in `preparingTracks` with the
+    /// resolved identity. Called per-file as the queue walks; lets
+    /// `PreparationProgressView` show the real title/artist as each file's
+    /// preparer returns.
+    private func _updatePreparingTracksIdentity(at index: Int, identity: TrackIdentity) {
+        var updated = preparingTracks
+        if index < updated.count {
+            updated[index] = identity
+        }
+        preparingTracks = updated
+    }
+
+    /// Shared transition into `.ready` for the LF.5 multi-file path. Writes the
+    /// `SessionPlan`, advances `progressiveReadinessLevel`, clears
+    /// `preparingTracks`, and flips state.
+    @MainActor
+    private func _completeLocalFilesReady(tracks: [TrackIdentity]) {
+        currentPlan = SessionPlan(tracks: tracks)
+        progressiveReadinessLevel = .fullyPrepared
+        preparingTracks = []
+        state = .ready
+        logger.info("SessionManager: local files ready — \(tracks.count) track(s)")
+        let readyMsg = "WIRING: SessionManager.startLocalFiles→ready " +
+            "count=\(tracks.count)"
+        sessionRecorder?.log(readyMsg)
+    }
+
+    /// Synthesise the LF.5 placeholder identity for a local file URL. Used both
+    /// by `startLocalFiles` (initial seed) and as a fallback when the
+    /// `LocalFilePreparing` delegate returns `nil` for a file.
+    private static func makePlaceholderIdentity(url: URL) -> TrackIdentity {
+        TrackIdentity(
             title: url.lastPathComponent,
             artist: "local file",
             duration: 0,
             spotifyID: "local:" + url.path
         )
-        preparingTracks = [placeholderIdentity]
-        progressiveReadinessLevel = .preparing
-        state = .preparing
-        logger.info("SessionManager: preparing local file \(url.lastPathComponent, privacy: .public)")
-
-        let openMsg = "WIRING: SessionManager.startLocalFile ENTER " +
-            "file='\(url.lastPathComponent)'"
-        sessionRecorder?.log(openMsg)
-
-        guard let preparer = localFilePreparer else {
-            logger.warning("SessionManager: no localFilePreparer wired — degrading to no-cache start")
-            _completeLocalFileReady(result: nil, url: url)
-            return
-        }
-
-        let result = await preparer.prepareLocalFile(url: url)
-
-        guard !cancellationRequested else {
-            logger.info("SessionManager: local-file preparation cancelled")
-            return
-        }
-
-        if let result {
-            // Write the cached entry into the shared StemCache so the engine's
-            // resetStemPipeline(for:) call on `.ready` finds it via loadForPlayback.
-            self.preparer.cache.store(result.cached, for: result.identity)
-        }
-
-        _completeLocalFileReady(result: result, url: url)
     }
 
-    /// Shared transition into `.ready` for the LF.4 path. Writes the single-track
-    /// `SessionPlan`, advances `progressiveReadinessLevel`, and flips state.
-    /// Called both on prep success (cache install will follow on the engine side)
-    /// and on prep failure (LF.1 fallthrough — engine starts audio without a
-    /// cached install).
-    @MainActor
-    private func _completeLocalFileReady(result: LocalFilePrepResult?, url: URL) {
-        let identity: TrackIdentity
-        if let result {
-            identity = result.identity
-        } else {
-            // No prep result — synthesise a placeholder identity. The engine's
-            // `resetStemPipeline(for:)` on `.ready` will take the cache-miss
-            // branch and the live pipeline catches up after ~10 s.
-            identity = TrackIdentity(
-                title: url.lastPathComponent,
-                artist: "local file",
-                duration: 0,
-                spotifyID: "local:" + url.path
-            )
+    /// Compact log label for a `SessionOrigin`. Used in `WIRING:` breadcrumbs to
+    /// discriminate the four LF entry shapes (`localFile`, `localFiles`,
+    /// `localFolder`, `localPlaylist`) without dumping the full URL list.
+    private static func originLabel(_ origin: SessionOrigin) -> String {
+        switch origin {
+        case .playlist: return "playlist"
+        case .localFile: return "localFile"
+        case .localFiles(let urls): return "localFiles(\(urls.count))"
+        case .localFolder(let folder, let expanded):
+            return "localFolder('\(folder.lastPathComponent)',\(expanded.count))"
+        case .localPlaylist(let playlist, let expanded):
+            return "localPlaylist('\(playlist.lastPathComponent)',\(expanded.count))"
         }
-        preparingTracks = [identity]
-        currentPlan = SessionPlan(tracks: [identity])
-        progressiveReadinessLevel = .fullyPrepared
-        preparingTracks = []
-        state = .ready
-        let sourceLabel = result?.source.label ?? "noCache"
-        let filename = url.lastPathComponent
-        logger.info(
-            "SessionManager: local file ready (\(sourceLabel, privacy: .public)) — \(filename, privacy: .public)"
-        )
-        let readyMsg = "WIRING: SessionManager.startLocalFile→ready " +
-            "file='\(url.lastPathComponent)' source=\(sourceLabel)"
-        sessionRecorder?.log(readyMsg)
     }
 
     /// Signal that the user has started playback.
