@@ -8,6 +8,84 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 ---
 
+### BUG-020 — Mid-track state reset (track-change callback firing spuriously)
+
+**Severity:** P1 (visible artifact during steady-state playback — reported by Matt CSP.3.5 M7 of session `2026-05-28T18-31-06Z` as "some flickering around 40 s into playback for Love Rehab" after BUG-019 close).
+**Domain tag:** `pipeline-wiring`
+**Status:** Open — diagnostic instrumentation about to land (PERF-style diagnose-first pattern); root cause not yet identified.
+**Introduced:** Unknown; surfaced 2026-05-28 during CSP.3.5 M7 review. Was likely masked by the chronic PERF.3-era flicker before that fix landed.
+
+### Expected behavior
+
+Once a track starts playing, `accumulatedAudioTime`, `valence`, `arousal`, `beatPhase01`, `bassAttRel`, and related per-track accumulators evolve smoothly until the next genuine track-change event. No mid-track state resets.
+
+### Actual behavior
+
+In session `2026-05-28T18-31-06Z`, at session-time 83.728 s (≈ 38 s into Love Rehab playback), the visualizer state resets within a single frame:
+
+| Feature | Frame before (rel=83.711) | Frame after (rel=83.728) |
+|---|---:|---:|
+| `time` (wall-clock) | 122.28 | 122.30 (monotonic, fine) |
+| `accumulatedAudioTime` | 5.8008 | **0.0002** |
+| `valence` | 0.006 | **1.000** |
+| `arousal` | 0.289 | **0.000** |
+| `beatPhase01` | 0.834 | **0.000** |
+| `bassAttRel` | -0.912 | -0.995 |
+
+The pattern matches a track-change event firing (`mir.reset()` + `pipeline.resetAccumulatedAudioTime()` synchronously at `VisualizerEngine+Capture.swift:154-155`), but **the session log shows NO track-change event at that moment** — only "stem separation 6" at 18:32:30 (which doesn't touch these fields). The next logged track-change is Money at session-time 122 s.
+
+The session-recorder log line for track-change is inside an async `Task { @MainActor }` block (lines 140-153 of the same file); the `mir.reset()` + `resetAccumulatedAudioTime()` fire synchronously OUTSIDE that task. This asymmetry means a spurious callback invocation can reset state without producing a corresponding log line, if the MainActor task is dropped/deferred/superseded.
+
+Matt's perceptual symptom — flicker at 40 s into Love Rehab — maps directly: the visual state lurches because every state that drives FFO's appearance (mood tint, accumulated time for Gerstner waves, beat phase) snaps to defaults/extremes in one frame.
+
+### Reproduction steps
+
+1. Build PhospheneApp current main.
+2. Start an LF playback session with love_rehab.m4a (the M7 session's source).
+3. Play the file continuously past 40 s.
+4. Observe: visible visual lurch around 38–40 s into playback. `features.csv` shows the multi-field reset at the same wall-clock moment.
+
+**Minimum reproducer:** any track ≥ 40 s long played continuously without manual intervention. Whether it's content-specific or session-uptime-driven not yet determined.
+
+### Session artifacts
+
+- **Primary:** `~/Documents/phosphene_sessions/2026-05-28T18-31-06Z/features.csv` — columns 22 / 19 / 20 / 23 / 26 show the reset pattern at frame ~5000.
+- **Session log:** `~/Documents/phosphene_sessions/2026-05-28T18-31-06Z/session.log` — notable for the ABSENCE of a track-change line at 18:32:29.
+
+### Suspected failure class
+
+`pipeline-wiring`. Working hypotheses, none confirmed:
+
+1. **Track-change publisher re-emits same-track event.** The publisher chain (Spotify metadata polling? LF playback metadata refresh? `AudioInputRouter` mode switch?) emits a `TrackChangeEvent` where `current` matches the actually-still-playing track. The callback fires its destructive reset regardless of whether the title changed.
+2. **A second publisher is also fanning out track-change events.** LF.5 added file-association + Recents — if one of those paths emits its own track-change event for a same-file re-open, the callback fires.
+3. **An orchestrator-driven re-evaluation triggers the callback.** Less likely given how the callback is wired, but worth ruling out.
+4. **A timer-driven metadata-fetcher periodic refresh.** `MetadataPreFetcher` may be re-emitting on a fetch completion.
+
+### Verification criteria
+
+When this defect is resolved, the following must all pass:
+
+- [ ] Automated: `features.csv` from a 60 s continuous-playback session shows no mid-track reset of `accumulatedAudioTime`, `valence`, `arousal`, `beatPhase01`.
+- [ ] Manual: Matt's FFO M7 on a continuous-playback session of ≥ 60 s on any track reports no mid-track flickering/lurching.
+
+**Manual validation required:** Yes. Perceptual confirmation required.
+
+### Fix scope
+
+Unknown until diagnose step lands. Multi-increment per the P1 defect protocol:
+
+1. **Diagnostic instrumentation (BUG-020.diag)** — add synchronous log line at the top of the `makeTrackChangeCallback` callback so EVERY invocation is captured with `current` + `previous` + timestamp, regardless of whether the @MainActor task runs. Capture a session; identify the spurious caller.
+2. **Diagnosis (BUG-020.cause)** — read the captured log; identify the publisher + caller chain producing the spurious event. Document root cause in this entry.
+3. **Fix (BUG-020.fix)** — either eliminate the spurious publisher emission, or guard the callback's reset behind a same-track-identity short-circuit, depending on where the bug is.
+
+### Related
+
+- BUG-019 closeout (`[dev-2026-05-28-i]`) — this bug was masked by PERF.3-era brightness flicker before that fix landed; surfaced once the brightness residual stabilised.
+- `[dev-2026-05-28-j]` LF.5 — added LF.5 multi-file playback path, a candidate source of spurious events.
+- CLAUDE.md "What NOT To Do": "Do not match plan entries against the live track via lowercased title+artist string." That rule is about *plan walks*, not track-change events, but the underlying lesson (don't trust title+artist for identity) may apply if the publisher chain is using imprecise matching.
+
+---
+
 ### BUG-LF5-1 — Orchestrator stayed REACTIVE for LF.5 multi-file sessions
 
 > **RESOLVED 2026-05-28** — commit `488afc1e` (`[LF.5.fix] D-LF5-1 + D-LF5-2`). Mirrored `makeTrackChangeCallback`'s orchestrator wire in `handleLocalFileReady` (planIdx=0) and `advanceLocalFileQueue` (planIdx=nextIdx).

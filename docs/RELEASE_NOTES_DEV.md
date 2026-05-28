@@ -6,6 +6,81 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-28-p] BUG-020 diagnostic — synchronous log line in track-change callback
+
+**Increment:** BUG-020.diag (diagnostic instrumentation; not a fix). **Status:** Implemented 2026-05-28. Engine 1358/1358 tests pass; app build clean; SwiftLint `--strict` clean. **Awaiting Matt's next session capture.**
+
+### Why this is here
+
+Matt's CSP.3.5 M7 (session `2026-05-28T18-31-06Z`) reported "some flickering around 40 s into playback for Love Rehab" after the white-artifact regression cleared. Initial read was that this was the PERF.3 residual brightness flicker. Closer investigation revealed a different bug:
+
+At session-time 83.728 s (≈ 38 s into Love Rehab), the visualizer state resets within a single frame: `accumulatedAudioTime` 5.80 → 0.0002, `valence` 0.006 → 1.000, `arousal` 0.289 → 0.000, `beatPhase01` 0.834 → 0.000, `bassAttRel` -0.912 → -0.995. This is the signature of the track-change callback firing (`mir.reset()` + `pipeline.resetAccumulatedAudioTime()` synchronously at `VisualizerEngine+Capture.swift:154-155`).
+
+**But session.log shows no track-change at that moment.** The only logged events are stem separations (which don't touch these fields). The logged track-change for Money arrives 38 s after the state-reset moment.
+
+The structural asymmetry: in the callback, the destructive resets fire synchronously. The session-recorder log line ("track → ...") is inside an async `Task { @MainActor }` block that can be dropped/deferred if MainActor is busy. **A spurious callback invocation can reset state without producing a corresponding log line** — exactly what the session shows.
+
+Filed as **BUG-020** (P1, `pipeline-wiring`). Multi-increment diagnose-then-fix process.
+
+### What this adds
+
+A single `sessionRecorder?.log(...)` call at the top of `makeTrackChangeCallback`'s closure (before any side effects), capturing every invocation with:
+
+- `current` title + artist (which track the event was for)
+- `previous` title + artist (so same-track re-emits are flagged)
+- `sameTrack` bool (`true` if title + artist match previous)
+
+Log format:
+
+```
+WIRING: trackChangeCallback FIRED current='<title>' currentArtist='<artist>'
+  previous='<previousTitle>' previousArtist='<previousArtist>' sameTrack=<true|false>
+```
+
+Synchronous so it fires regardless of MainActor scheduling. Mirrors the existing `WIRING:` log style.
+
+### What this does NOT do
+
+- **No fix.** Pure observation. The destructive `mir.reset()` + `pipeline.resetAccumulatedAudioTime()` still fire on every callback invocation, spurious or not.
+- **No new files.** Single 12-line addition in `VisualizerEngine+Capture.swift`.
+- **No test changes.** The behavior is unchanged; only diagnostic logging differs.
+
+### Verification
+
+- **Engine:** 1358 / 1358 tests pass.
+- **App build:** succeeds.
+- **SwiftLint `--strict`:** 0 violations.
+
+**Next step (Matt's gate).** Capture a session matching the BUG-020 reproducer:
+
+1. Build current `main` (commit landing this entry).
+2. LF playback of love_rehab.m4a, FFO preset, play continuously past 40 s.
+3. Observe the visible mid-track flicker (if it reproduces).
+4. End session cleanly.
+5. Send me the session path.
+
+Then the new `WIRING: trackChangeCallback FIRED` lines in `session.log` will show every callback invocation. The mid-track spurious invocation should be visible with a `sameTrack=true` marker (same title+artist as previous), telling us:
+- whether the bug is a same-track re-emit (most likely hypothesis)
+- whether multiple distinct events fire in close succession
+- which publisher chain is producing the spurious emission (next diagnostic step works backward from there)
+
+### Touched files
+
+- `PhospheneApp/VisualizerEngine+Capture.swift` — 12-line synchronous log block inside the `makeTrackChangeCallback` closure.
+- `docs/QUALITY/KNOWN_ISSUES.md` — new BUG-020 entry in Open section.
+- `docs/RELEASE_NOTES_DEV.md` — this entry.
+
+### Local-only
+
+Local commit on `main`. No remote push.
+
+### Related
+
+- `[dev-2026-05-28-n]` and `[dev-2026-05-28-o]` — CSP.3.5 + CSP.3.5.1 (white-artifact fix); this bug surfaced once those landed.
+- BUG-020 in `KNOWN_ISSUES.md` — the defect this instrumentation diagnoses.
+
+---
+
 ## [dev-2026-05-28-o] CSP.3.5.1 — FFO Lipschitz: apply the intended /6 to the operative line (complete CSP.3.5)
 
 **Increment:** CSP.3.5.1 (CSP.3.5 completion). **Status:** Implemented 2026-05-28. Engine 1358 / 1358 tests pass; `PresetAcceptanceTests` invariant 4 ("Preset has readable form with normal energy input") now passes for Ferrofluid Ocean — was reproducibly failing at the value that actually shipped after CSP.3.5.

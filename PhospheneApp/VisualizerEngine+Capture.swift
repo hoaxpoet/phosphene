@@ -114,6 +114,26 @@ extension VisualizerEngine {
         let mir = mirPipeline
         return { [weak self] event in
             guard let self else { return }
+            // BUG-020 diagnostic — synchronous log of every callback invocation.
+            // The async `Task { @MainActor }` block below logs "track → ..." but
+            // can be delayed/dropped if the MainActor is busy. The destructive
+            // resets (`mir.reset()`, `pipeline.resetAccumulatedAudioTime()`) fire
+            // synchronously regardless. This diagnostic line captures the
+            // "callback fired" moment with current + previous identity so a
+            // spurious mid-track callback (suspected source of mid-track state
+            // resets observed in session 2026-05-28T18-31-06Z) is visible in
+            // session.log even when the async log line goes missing.
+            let curTitle = event.current.title ?? "?"
+            let curArtist = event.current.artist ?? "?"
+            let prevTitle = event.previous?.title ?? "<nil>"
+            let prevArtist = event.previous?.artist ?? "<nil>"
+            let sameTrack = (event.previous?.title == event.current.title
+                && event.previous?.artist == event.current.artist)
+            self.sessionRecorder?.log(
+                "WIRING: trackChangeCallback FIRED "
+                + "current='\(curTitle)' currentArtist='\(curArtist)' "
+                + "previous='\(prevTitle)' previousArtist='\(prevArtist)' "
+                + "sameTrack=\(sameTrack)")
             mir.currentTrackName = event.current.title ?? ""
             mir.currentArtistName = event.current.artist ?? ""
 
