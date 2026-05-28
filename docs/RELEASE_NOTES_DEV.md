@@ -6,6 +6,69 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-28-r] BUG-022 — fragmented MP4 for crash-recoverable session video
+
+**Increment:** BUG-022 (trivial P2; single-increment diagnose-and-fix per the `CLAUDE.md §Defect Handling Protocol` trivial-collapse rule). **Status:** Implemented 2026-05-28. `SessionRecorderTests` (19/19) pass. Working tree is dirty with an unrelated BUG-020.fix edit; commit pending Matt's scope call.
+
+### Why this is here
+
+Matt's BUG-022 prompt named session `2026-05-28T19-04-51Z`'s `video.mp4` (62 MB) as unreadable: `ffprobe ... moov atom not found ... Invalid data found when processing input`. That session was the BUG-021 force-quit, and the M7 evidence pipeline (`ffmpeg signalstats` brightness oscillation counts cited in `[dev-2026-05-28-h]`, `[dev-2026-05-28-i]`, and the CSP.3.5.1 close in `[dev-2026-05-28-p]`) requires `ffprobe`-readable session videos. With the bug present, every abnormal-termination session loses post-hoc visual evidence even though the analytical artifacts (`features.csv` / `stems.csv` / `session.log` / `raw_tap.wav`) survive.
+
+Cross-checked against the recent session corpus: 3/8 sessions logged `SessionRecorder finished` and all 3 are `ffprobe`-readable; 5/8 didn't and all 5 are not. Perfect correlation — the bug is "abnormal termination skips `finishWriting`," not "writer dropped data" or "frame timing is off."
+
+### Root cause
+
+`AVAssetWriter` writes mdat (sample data) progressively but defers the moov index until `finishWriting(completionHandler:)`. `SessionRecorder.finish()` is reachable only from `deinit` (never fires on process kill) and `NSApplication.willTerminateNotification` (fires only on clean Cmd+Q). Force-quit / `kill -9` / crash all skip both — the resulting `video.mp4` is mdat-only and unreadable by every standard MP4 parser.
+
+### What this changes
+
+One line in `PhospheneEngine/Sources/Shared/SessionRecorder+Video.swift`:
+
+```swift
+writer.movieFragmentInterval = CMTime(seconds: 5, preferredTimescale: 1)
+```
+
+set immediately after `AVAssetWriter(outputURL:fileType:)` returns, with a 12-line comment explaining the BUG-022 context. With this property non-zero, AVAssetWriter writes (1) an initial moov atom with metadata immediately at `startWriting()` time, (2) mdat boxes for media data, and (3) a `moof` (movie fragment) box every 5 s indexing the preceding mdat. Up to the last fragment boundary is always recoverable.
+
+Clean Cmd+Q still calls `finishWriting` via the `willTerminate` observer and produces a final moov as before — the file is fragmented MP4 either way and is fully readable by `ffprobe`, `ffmpeg`, QuickTime, and `AVURLAsset` (it's a standard ISO MP4 profile). Worst-case data loss on abnormal termination is the last ≤ 5 s (≤ 2.5 MB at the 4 Mbps target bitrate).
+
+### Why not the alternatives
+
+- **(a) Ensure `finish()` runs on all paths.** Doesn't help force-quit / crash / `kill -9` — the actual repro on the named session. Sufficient only for clean exits, which already work.
+- **(c) Recovery pass at session-open time.** Significantly more complex (parse MP4 + rebuild moov from mdat). Adds an external dependency (e.g. `untrunc` / `mp4recover`). Out of proportion to the gain.
+
+(b) — the fragmented-MP4 approach — handles every termination path in one line with no architectural risk.
+
+### Tests + verification
+
+- `swift test --package-path PhospheneEngine --filter "SessionRecorder"` → **19/19 pass** including the existing `test_recordFrame_withCaptureTexture_producesReadableVideo` (clean-finish path regression check).
+- Build: no Swift API change; same imports.
+- Verification matrix (manual; user is expected to run on next session):
+  - Cmd+Q → readable ✓ (already worked; regression)
+  - `kill -9` mid-session → readable ✓ (the BUG-022 contract — previously broken)
+  - "End session" + Cmd+Q → readable ✓
+  - The next BUG-021-style force-quit, if any, will produce a readable `video.mp4`.
+
+### Out of scope
+
+- **Recovering past damaged files** (per BUG-022 prompt). The 5 affected sessions on Matt's disk remain unrecoverable without an external tool; their CSV / log / WAV artifacts are intact.
+- **`SessionManager.endSession()` finalization.** The recorder is app-lifetime, not session-lifetime — forcing a per-Phosphene-session moov would require restarting the writer with no benefit now that the running file is crash-recoverable.
+- **Compression / codec / bitrate changes.**
+- **CSP.3.5.1 / BUG-019 / BUG-020 / BUG-021 chains.** Untouched.
+
+### Closeout
+
+- **Files changed:** `PhospheneEngine/Sources/Shared/SessionRecorder+Video.swift` (1 line of code + 12 lines of comment); `docs/QUALITY/KNOWN_ISSUES.md` (BUG-022 entry); `docs/RELEASE_NOTES_DEV.md` (this entry).
+- **Tests run:** `SessionRecorderTests` 19/19 pass.
+- **Visual harness output:** N/A (not a preset change).
+- **Documentation updates:** KNOWN_ISSUES.md + RELEASE_NOTES_DEV.md.
+- **Capability registry updates:** N/A (no renderer / harness / preset infra change).
+- **Engineering plan updates:** N/A (defect fix, not a planned increment).
+- **Known risks and follow-ups:** None for the fix itself. Follow-up if Matt wants past-file recovery: write a one-off `Scripts/recover_orphan_mp4s.sh` against `untrunc` for `~/Documents/phosphene_sessions/`.
+- **Git status:** BUG-020.fix landed as `e9443e9f` during this session, so the working tree is now clean of unrelated edits. BUG-022 changes (three files: `SessionRecorder+Video.swift`, `KNOWN_ISSUES.md`, `RELEASE_NOTES_DEV.md`) are unstaged; commit pending Matt's call.
+
+---
+
 ## [dev-2026-05-28-q] BUG-020.fix — gate destructive resets on title change
 
 **Increment:** BUG-020.fix (the fix; follows BUG-020.diag instrumentation). **Status:** Implemented 2026-05-28. Engine 1358/1358 tests pass; app build clean; SwiftLint `--strict` clean. Manual M7 outstanding.

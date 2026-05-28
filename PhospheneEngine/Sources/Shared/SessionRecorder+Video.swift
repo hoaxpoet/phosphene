@@ -113,6 +113,17 @@ extension SessionRecorder {
     private func setupVideoWriter(width: Int, height: Int) -> Bool {
         do {
             let writer = try AVAssetWriter(outputURL: videoURL, fileType: .mp4)
+            // BUG-022 — write a fragmented MP4 so the file remains playable
+            // even if the process exits without calling `finishWriting`
+            // (force-quit, crash, signal kill). Default AVAssetWriter only
+            // writes the `moov` index when `finishWriting` runs, so any
+            // abnormal termination produces an `mdat`-only file that
+            // ffprobe / ffmpeg / QuickTime cannot open. With a 5 s fragment
+            // interval the writer flushes a `moof` (movie fragment) every
+            // 5 s; up to the last fragment boundary is always recoverable.
+            // Clean Cmd+Q still hits `finishWriting` via the willTerminate
+            // observer and produces a full final moov as before.
+            writer.movieFragmentInterval = CMTime(seconds: 5, preferredTimescale: 1)
             let settings: [String: Any] = [
                 AVVideoCodecKey: AVVideoCodecType.h264,
                 AVVideoWidthKey: width,

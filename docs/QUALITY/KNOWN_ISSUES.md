@@ -8,6 +8,79 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 ---
 
+### BUG-022 — Session video.mp4 unreadable after force-quit / crash (missing moov atom) (2026-05-28)
+
+> **RESOLVED 2026-05-28** — Trivial P2; collapsed diagnose-and-fix into a single increment per `CLAUDE.md §Defect Handling Protocol`.
+
+**Severity:** P2 (no functional defect in playback or analysis; only post-hoc diagnostic evidence — `ffmpeg signalstats`, frame extraction, AVURLAsset reads — is broken).
+**Domain tag:** `resource-management`.
+**Failure class:** `resource-management` (writer index never written when teardown doesn't reach `finishWriting`).
+**Introduced:** Original `SessionRecorder` design; surfaced now because BUG-021 (force-quit reproducer) made the failure visible at high frequency.
+
+### Expected behavior
+
+Every session directory's `video.mp4` is readable by ffprobe / ffmpeg / QuickTime — independent of how the session ended (clean Cmd+Q, "End session" button, force-quit, crash, signal kill). The M7 evidence pipeline (`ffmpeg signalstats` brightness oscillation counts, frame extraction for visual review) works against every session video.
+
+### Actual behavior
+
+`AVAssetWriter` writes mdat (sample data) progressively but only writes moov (the index) when `finishWriting(completionHandler:)` runs. `SessionRecorder.finish()` is reachable from two call sites: `deinit` (never fires when the process is killed by signal) and `NSApplication.willTerminateNotification` (fires only on clean Cmd+Q-style termination). Force-quit, `kill -9`, and crashes all skip `finish()`, so the resulting `video.mp4` is mdat-only and cannot be parsed by any standard tool: `ffprobe -v error -show_entries format=duration ...` returns `moov atom not found ... Invalid data found when processing input`.
+
+### Reproduction steps
+
+1. Launch Phosphene; let it record some frames.
+2. Force-quit the app (Activity Monitor → Force Quit, or `kill -9 $(pgrep PhospheneApp)`).
+3. `ffprobe ~/Documents/phosphene_sessions/<latest>/video.mp4` → `moov atom not found`.
+
+### Session artifacts
+
+Across `~/Documents/phosphene_sessions/2026-05-28*`:
+- 3 sessions (`18-31-06Z`, `18-59-47Z`, `19-21-18Z`) ended cleanly — all 3 have `SessionRecorder finished` in `session.log` AND a valid moov.
+- 5 sessions (`17-44-10Z`, `17-50-42Z`, `19-04-51Z`, `19-26-13Z`, `19-35-13Z`) ended abnormally (BUG-021 force-quits or earlier hangs) — none have the finish-marker AND none have a moov. Perfect 1-to-1 correlation.
+- The named reproducer in the BUG-022 prompt (`2026-05-28T19-04-51Z`) is the BUG-021 force-quit session; the moov-missing state is a downstream effect of the unrelated freeze-and-force-quit, not a bug in the session itself.
+
+### Root cause
+
+`SessionRecorder+Video.swift:setupVideoWriter` initialized the `AVAssetWriter` with no `movieFragmentInterval`, so the writer accumulated all sample tables in memory and intended to write them in a single moov at the end of writing. When the process terminates without `finishWriting`, the writer's intended final moov is never written. The on-disk file ends with the last appended mdat.
+
+This is a single-cause defect with no architectural risk:
+- The recorder is app-lifetime, not session-lifetime — `SessionManager.endSession()` correctly does not call `finish()`.
+- The clean Cmd+Q path is already wired (`VisualizerEngine+InitHelpers.swift:149-157`).
+- The bug is purely "what does the on-disk file look like before `finish()` is called?"
+
+### Fix
+
+`SessionRecorder+Video.swift:setupVideoWriter` now sets `writer.movieFragmentInterval = CMTime(seconds: 5, preferredTimescale: 1)` immediately after `AVAssetWriter` init. With this property non-zero, AVAssetWriter writes:
+
+1. An initial `moov` atom with metadata (no sample tables) immediately at `startWriting()` time.
+2. `mdat` boxes for media data, as before.
+3. A `moof` (movie fragment) box every 5 s, indexing the preceding mdat data.
+
+Up to the last fragment boundary is always recoverable. Clean Cmd+Q still calls `finishWriting` via the `willTerminate` observer and produces a final moov as before (the file is fragmented MP4 either way — still fully readable by ffprobe / ffmpeg / QuickTime / AVURLAsset).
+
+Worst-case data loss on abnormal termination: up to the most recent 5 s of recorded video (≤ 2.5 MB at the 4 Mbps target bitrate, 30 fps cap).
+
+### Verification
+
+- Engine test suite filtered to `SessionRecorderTests` (19 tests) passes after the change — the existing `test_recordFrame_withCaptureTexture_producesReadableVideo` still validates the clean-finish path.
+- Manual matrix (post-fix): launch a session, write ≥ 10 s of frames, then test each termination path:
+  - Cmd+Q → `ffprobe` reads duration ✓ (already worked pre-fix; regression check)
+  - `kill -9` → `ffprobe` reads duration ✓ (was broken pre-fix; the fix's contract)
+  - "End session" button + Cmd+Q → `ffprobe` reads duration ✓
+  - Real session under app workload (BUG-021-style flow) → next captured session validates this in practice.
+- Resulting MP4s remain compatible with the M7 evidence pipeline (`ffmpeg signalstats`, frame extraction) per the AVAssetWriter fragmented-MP4 contract.
+
+### Out of scope
+
+- **Recovering existing damaged files.** The 5 affected sessions on Matt's disk (`2026-05-28T17-44-10Z`, `17-50-42Z`, `19-04-51Z`, `19-26-13Z`, `19-35-13Z`) remain unrecoverable without an external tool like `untrunc`/`mp4recover`. Per the BUG-022 prompt, retroactive recovery is explicitly out of scope. Their `features.csv` / `session.log` / `stems.csv` / `raw_tap.wav` remain intact.
+- **Calling `finish()` from `SessionManager.endSession()`.** The recorder is app-lifetime, not session-lifetime. Forcing finalization on session-end would require restarting the writer for the next session, with no benefit (the running file is already crash-recoverable via the fragment interval).
+- **Changing codec, bitrate, or video resolution.** Per BUG-022 prompt scope.
+
+### Resolved
+
+Commit pending Matt's sign-off. (Working tree was originally dirty with an unrelated BUG-020.fix edit; that has since been committed as `e9443e9f`, so the BUG-022 change is now in a clean-commit state — three files: `SessionRecorder+Video.swift`, `KNOWN_ISSUES.md`, `RELEASE_NOTES_DEV.md`.)
+
+---
+
 ### BUG-021 — Next button froze the app + orchestrator cycled every preset alphabetically (LF.5, 2026-05-28)
 
 > **RESOLVED 2026-05-28** — root cause identified via two-stage diagnostic; structural fix landed.
