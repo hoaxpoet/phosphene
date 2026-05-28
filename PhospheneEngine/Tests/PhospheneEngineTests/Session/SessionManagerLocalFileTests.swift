@@ -624,6 +624,85 @@ struct SessionManagerLocalFileTests {
         #expect(manager.cache.count == 0)
     }
 
+    @Test func startLocalFiles_publishesPerTrackStatus() async throws {
+        // LF.5 Task 2: SessionPreparer.prepareLocalFiles drives trackStatuses
+        // transitions through the same publisher streaming uses. The placeholder
+        // identities (keyed on URL.path) must observe at least one
+        // .analyzing(.stemSeparation) and one .ready snapshot per file.
+        let manager = try makeLFManager()
+        let urls = threeURLs
+        let stub = makeMultiStub(urls)
+        // 30 ms per-file delay so the test can observe intermediate statuses.
+        let delayedStub = MultiStubLocalFilePreparer(
+            results: stub.resultsByFilename,
+            preparationDelayMs: 30
+        )
+        manager.localFilePreparer = delayedStub
+
+        // Capture every trackStatuses snapshot emitted during the run.
+        var snapshots: [[TrackIdentity: TrackPreparationStatus]] = []
+        let cancellable = manager.preparationProgress?
+            .trackStatusesPublisher
+            .sink { snapshots.append($0) }
+        defer { cancellable?.cancel() }
+
+        await manager.startLocalFiles(at: urls, origin: .localFiles(urls))
+
+        #expect(manager.state == .ready)
+        #expect(snapshots.count >= urls.count * 2,
+                "Expected ≥ \(urls.count * 2) status snapshots (analyzing + ready per file), got \(snapshots.count)")
+
+        // Each placeholder must have hit `.analyzing(.stemSeparation)` AND
+        // ended on `.ready` somewhere in the captured timeline.
+        for index in 0..<urls.count {
+            let placeholder = TrackIdentity(
+                title: urls[index].lastPathComponent,
+                artist: "local file",
+                duration: 0,
+                spotifyID: "local:" + urls[index].path
+            )
+            let analyzingSeen = snapshots.contains { $0[placeholder] == .analyzing(stage: .stemSeparation) }
+            let readySeen = snapshots.contains { $0[placeholder] == .ready }
+            #expect(analyzingSeen, "Placeholder #\(index) never observed .analyzing(.stemSeparation)")
+            #expect(readySeen, "Placeholder #\(index) never observed .ready")
+        }
+    }
+
+    @Test func startLocalFiles_preparerReturnsNil_emitsPartialStatus() async throws {
+        // LF.5 Task 2: when the delegate returns nil for a file (LF.1 fallthrough),
+        // SessionPreparer publishes `.partial` for that placeholder and routes the
+        // identity into the SessionPreparationResult's failedTracks list.
+        let manager = try makeLFManager()
+        let urls = threeURLs
+        // Stub returns nothing — every file falls through.
+        let stub = MultiStubLocalFilePreparer(results: [:])
+        manager.localFilePreparer = stub
+
+        var snapshots: [[TrackIdentity: TrackPreparationStatus]] = []
+        let cancellable = manager.preparationProgress?
+            .trackStatusesPublisher
+            .sink { snapshots.append($0) }
+        defer { cancellable?.cancel() }
+
+        await manager.startLocalFiles(at: urls, origin: .localFiles(urls))
+
+        #expect(manager.state == .ready)
+        #expect(manager.cache.count == 0, "No delegate result → no cache entries")
+        for index in 0..<urls.count {
+            let placeholder = TrackIdentity(
+                title: urls[index].lastPathComponent,
+                artist: "local file",
+                duration: 0,
+                spotifyID: "local:" + urls[index].path
+            )
+            let partialSeen = snapshots.contains {
+                if case .partial = $0[placeholder] { return true }
+                return false
+            }
+            #expect(partialSeen, "Placeholder #\(index) never observed .partial after nil prep result")
+        }
+    }
+
     @Test func cancel_midQueue_returnsToIdleWithPartialCache() async throws {
         let manager = try makeLFManager()
         let urls = threeURLs

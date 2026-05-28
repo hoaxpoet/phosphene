@@ -386,31 +386,23 @@ public final class SessionManager: ObservableObject {
         }
         _beginMultiFileTransition(urls: urls, origin: origin)
 
-        var preparedTracks: [TrackIdentity] = []
-        preparedTracks.reserveCapacity(urls.count)
         let placeholders = preparingTracks
+        let result = await preparer.prepareLocalFiles(
+            urls: urls,
+            placeholders: placeholders,
+            via: localFilePreparer
+        )
 
-        for (index, url) in urls.enumerated() {
-            if cancellationRequested {
-                logger.info(
-                    "SessionManager: startLocalFiles cancelled after \(preparedTracks.count) of \(urls.count)"
-                )
-                return
-            }
-            guard let identity = await _prepareOneLocalFile(
-                url: url,
-                index: index,
-                totalCount: urls.count,
-                fallback: placeholders[index]
-            ) else {
-                return                                              // cancellation mid-prep
-            }
-            preparedTracks.append(identity)
-            _updatePreparingTracksIdentity(at: index, identity: identity)
+        if cancellationRequested {
+            logger.info("SessionManager: startLocalFiles cancelled before .ready transition")
+            return
         }
 
-        if cancellationRequested { return }
-        _completeLocalFilesReady(tracks: preparedTracks)
+        // Combine the prepared `local:sha256:` identities with any failed
+        // placeholders (LF.1 fallthrough rows) into a single plan. Order
+        // matches the original URL queue because the preparer walks in order.
+        let allTracks = result.cachedTracks + result.failedTracks
+        _completeLocalFilesReady(tracks: allTracks)
     }
 
     /// Same-origin re-entry guard. Returns `true` when the in-flight session
@@ -442,53 +434,6 @@ public final class SessionManager: ObservableObject {
         let openMsg = "WIRING: SessionManager.startLocalFiles ENTER " +
             "count=\(urls.count) first='\(firstName)' origin=\(Self.originLabel(origin))"
         sessionRecorder?.log(openMsg)
-    }
-
-    /// Run the per-file preparer call. Returns the prepared identity, the
-    /// fallback (LF.1) placeholder identity on prep failure, or `nil` when
-    /// cancellation fired mid-prep (caller should bail out).
-    private func _prepareOneLocalFile(
-        url: URL,
-        index: Int,
-        totalCount: Int,
-        fallback: TrackIdentity
-    ) async -> TrackIdentity? {
-        let identity: TrackIdentity
-        let sourceLabel: String
-        if let preparer = localFilePreparer {
-            let result = await preparer.prepareLocalFile(url: url)
-            if cancellationRequested {
-                logger.info("SessionManager: startLocalFiles cancelled mid-prep")
-                return nil
-            }
-            if let result {
-                self.preparer.cache.store(result.cached, for: result.identity)
-                identity = result.identity
-                sourceLabel = result.source.label
-            } else {
-                identity = fallback
-                sourceLabel = "noCache"
-            }
-        } else {
-            identity = fallback
-            sourceLabel = "noCache"
-        }
-        let perFileMsg = "WIRING: SessionManager.localFile prepared #\(index + 1) " +
-            "of \(totalCount) file='\(url.lastPathComponent)' source=\(sourceLabel)"
-        sessionRecorder?.log(perFileMsg)
-        return identity
-    }
-
-    /// Replace the placeholder at `index` in `preparingTracks` with the
-    /// resolved identity. Called per-file as the queue walks; lets
-    /// `PreparationProgressView` show the real title/artist as each file's
-    /// preparer returns.
-    private func _updatePreparingTracksIdentity(at index: Int, identity: TrackIdentity) {
-        var updated = preparingTracks
-        if index < updated.count {
-            updated[index] = identity
-        }
-        preparingTracks = updated
     }
 
     /// Shared transition into `.ready` for the LF.5 multi-file path. Writes the
