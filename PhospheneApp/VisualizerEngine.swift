@@ -271,6 +271,23 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// AND when the last completed session was streaming.
     @Published var lastEndedLocalFileOrigin: SessionOrigin?
 
+    /// LF.5.fix.3-C: URL that `handleLocalFileReady` already committed to
+    /// playback for the current LF session. Used as a duplicate-emission
+    /// guard — if `handleLocalFileReady` fires a second time for the same
+    /// URL (e.g. a stale prep result driving a redundant `_completeLocalFilesReady`),
+    /// the call no-ops instead of tearing down the audio router mid-track.
+    ///
+    /// Captured in session 2026-05-28T20-57-46Z lines 78-94: SZ2 was already
+    /// playing when a second `prepareLocalFiles DONE` triggered .ready again
+    /// → `handleLocalFileReady` ran provider.teardown + restart from frame
+    /// 0 with no user input. With Bug A's gen-counter fix in place this
+    /// shouldn't fire, but Matt requested defense-in-depth (URL match only)
+    /// at LF.5.fix.3-C kickoff so future races can't reproduce the symptom.
+    ///
+    /// Cleared on `.preparing` (new session starting) and `.ended` (session
+    /// teardown) in the state-machine observer.
+    var lastStartedLocalFilePlaybackURL: URL?
+
     /// Stem separator (MPSGraph on GPU).
     let stemSeparator: StemSeparator?
 
@@ -788,6 +805,14 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
             .sink { [weak self] newState in
                 guard let self else { return }
                 if newState == .connecting { self.currentSessionPlanSeed = nil }
+                if newState == .preparing {
+                    // LF.5.fix.3-C: each new session entry clears the
+                    // duplicate-emission guard so the next `.ready` for a
+                    // genuinely new URL proceeds normally. Within a session,
+                    // .preparing → .ready → .playing is once-and-done; the
+                    // field remains nil until handleLocalFileReady commits it.
+                    self.lastStartedLocalFilePlaybackURL = nil
+                }
                 if newState == .ready {
                     if self.sessionManager.currentSource?.isLocalFile == true {
                         self.handleLocalFileReady()
@@ -818,6 +843,9 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
                     // (or a re-open of the same file) doesn't inherit a stale
                     // paused flag.
                     self.isLocalFilePaused = false
+                    // LF.5.fix.3-C: release the URL marker so a re-open of
+                    // the same file starts cleanly.
+                    self.lastStartedLocalFilePlaybackURL = nil
                 }
             }
 

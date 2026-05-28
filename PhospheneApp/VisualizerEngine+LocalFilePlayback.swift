@@ -102,6 +102,19 @@ extension VisualizerEngine: LocalFilePreparing {
               let url = source.localFileURL else {
             return
         }
+        // LF.5.fix.3-C: duplicate-emission guard. If `_completeLocalFilesReady`
+        // somehow fires a second time for the URL we already started, do NOT
+        // tear down the audio router + restart from frame 0 — that's the
+        // 21:02:14 self-inflicted SZ2 restart in session 2026-05-28T20-57-46Z.
+        // Bug A's gen-counter gate should prevent the upstream duplicate
+        // _completeLocalFilesReady; this is the local defense at the
+        // consumer side per Matt's LF.5.fix.3-C kickoff (URL match only).
+        if let started = lastStartedLocalFilePlaybackURL, started == url {
+            lfLogger.info(
+                "[LF.5.fix.3-C] handleLocalFileReady ignored — already started for \(url.lastPathComponent, privacy: .public)"
+            )
+            return
+        }
         guard let identity = sessionManager.currentPlan?.tracks.first else {
             lfLogger.warning("[LF.4] .ready with LF source but no identity in plan — falling through")
             return
@@ -198,6 +211,10 @@ extension VisualizerEngine: LocalFilePreparing {
             do {
                 try audioRouter.start(mode: .localFilePlayback(url))
                 lfLogger.info("[LF.4] LF playback router started: \(url.lastPathComponent, privacy: .public)")
+                // LF.5.fix.3-C: mark this URL as the "committed" playback so
+                // a subsequent duplicate .ready emission no-ops at the guard
+                // above. Cleared on the next .preparing / .ended transition.
+                lastStartedLocalFilePlaybackURL = url
             } catch {
                 let msg = error.localizedDescription
                 lfLogger.error("[LF.4] LF playback router start failed: \(msg, privacy: .public)")
