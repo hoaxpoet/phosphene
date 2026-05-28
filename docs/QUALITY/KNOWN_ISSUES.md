@@ -8,6 +8,63 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 ---
 
+### BUG-021 — Next button froze the app + orchestrator cycled every preset alphabetically (LF.5, 2026-05-28)
+
+**Status:** Partial mitigation landed (revert + diagnostic) 2026-05-28. Root cause not yet identified.
+
+**Severity:** P1 (UX-blocker — required force-quit).
+**Domain tag:** `concurrency` + `pipeline-wiring`.
+**Session:** `2026-05-28T19-04-51Z`. 2-track folder ([2014] - Can't Leave the Night - Sustain).
+
+### Expected behavior
+
+Pressing Next on the transport bar advances to the next track within ~50 ms (LF.4 baseline). Session log shows `BEAT_GRID_INSTALL caller=trackChange` for the new track + `raw tap capture started` shortly after. Orchestrator in planned mode follows the planner's per-track segment assignments — typically 2-4 preset transitions per track.
+
+### Actual behavior
+
+1. **Freeze on Next button press.** Beachball; force-quit required. Last log entry: `stem separation 22` then nothing. No advance breadcrumbs.
+2. **Orchestrator cycling through every preset alphabetically.** ~25 preset transitions in 2 minutes, one every ~5 s, following alphabetical order: Waveform → Arachne → Aurora Veil → Ferrofluid Ocean → Fractal Tree → Glass Brutalist → Gossamer → Kinetic Sculpture → Lumen Mosaic → Membrane → Murmuration → Nebula → Plasma → Spectral Cartograph → Staged Sandbox → Volumetric Lithograph → loop. Not the planner's variety output; a systematic walk through the catalog.
+
+### Reproduction steps
+
+1. macOS 26.4.1, Phosphene HEAD with D-LF5-4 buildPlan() call present in handleLocalFileReady.
+2. File → Open Local Folder → pick a 2+ track folder.
+3. Let it play for ~90 s. Observe preset transitions every ~5 s in alphabetical order.
+4. Press Next on the transport bar.
+5. Beachball; app unresponsive. Force-quit.
+
+### Session artifacts
+
+- `~/Documents/phosphene_sessions/2026-05-28T19-04-51Z/session.log` — shows the preset cycling AND the abrupt log end at 19:08:36 with no advance breadcrumbs (matches MainActor hang).
+- Orchestrator wire line: `mode=session, planIdx=0, elapsedTrackTime=105.4s` — planned mode engaged (per D-LF5-1 + D-LF5-4 wire) but elapsedTrackTime 105.4 s after 3 s of playback is suspicious.
+
+### Suspected failure class
+
+Hypothesized chain (not yet verified):
+1. D-LF5-4's buildPlan() call produces a pathological plan when the certified catalog has only 2 presets (FerrofluidOcean + LumenMosaic) — the plan-walker resorts to walking the full catalog alphabetically when scoring ties are common.
+2. Each preset transition runs `applyPreset` on MainActor (GPU pipeline rebuild). Cumulative load is significant.
+3. When user presses Next, `advanceLocalFileQueue` runs on MainActor. If the orchestrator's plan-walker enters a tight loop after the `liveTrackPlanIndex = nextIdx` write, MainActor never gets back to finishing the advance. Hang.
+
+### Mitigation landed (this commit)
+
+- **Revert D-LF5-4's buildPlan() call** in `handleLocalFileReady`. LF sessions return to the pre-D-LF5-4 reactive-orchestrator behaviour: no multi-preset variety per song, but no cycling-through-alphabet bug either. The D-LF5-1 `liveTrackPlanIndex` write stays — the orchestrator just won't have a livePlannedSession to consult.
+- **Diagnostic** added to `advanceLocalFileQueue`: synchronous `sessionRecorder?.log("WIRING: advanceLocalFileQueue …")` lines at each step (ENTER / audioRouter.stop BEGIN/COMPLETE / resetStemPipeline COMPLETE / orchestratorLock COMPLETE / audioRouter.start BEGIN/COMPLETE / EXIT). If the freeze recurs after this commit, the last logged step identifies the hanging call.
+
+### Verification criteria
+
+- 5 successive Next presses on a 3-track folder complete in < 200 ms each.
+- session.log shows 3 `BEAT_GRID_INSTALL caller=trackChange` lines + 3 `raw tap capture started` lines.
+- Preset transitions ≤ 3 per minute on average (reactive scheduler's normal cadence).
+- WIRING breadcrumbs for advanceLocalFileQueue land at all steps without any gap > 200 ms between consecutive steps.
+
+### Outstanding work
+
+- Diagnose **why** the planner's alphabetical-cycle behaviour kicks in. Read `VisualizerEngine+Orchestrator.swift`'s plan-walker; investigate scoring-tie resolution; check whether the segment duration math collapses with only 2 certified presets.
+- Re-enable buildPlan() for LF when the certified catalog reaches ≥ 5 presets AND the plan-walker is verified safe under short-segment plans.
+- Identify the precise MainActor hang point from the next session capture's WIRING breadcrumbs.
+
+---
+
 ### BUG-020 — Mid-track state reset (track-change callback firing spuriously)
 
 **Severity:** P1 (visible artifact during steady-state playback — reported by Matt CSP.3.5 M7 of session `2026-05-28T18-31-06Z` as "some flickering around 40 s into playback for Love Rehab" after BUG-019 close).

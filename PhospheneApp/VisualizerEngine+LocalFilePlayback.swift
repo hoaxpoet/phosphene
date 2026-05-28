@@ -111,23 +111,28 @@ extension VisualizerEngine: LocalFilePreparing {
         // wrote into it).
         resetStemPipeline(for: identity, caller: .other)
 
-        // LF.5.fix D-LF5-4: build the multi-segment PlannedSession so the
-        // orchestrator can drive multi-preset-per-song behaviour instead of
-        // falling back to one-preset-per-track. Streaming gets this via the
-        // `.ready` observer's `buildPlan()` branch; LF.5 originally bypassed
-        // that entirely — the planner's per-track segment list was never
-        // produced for LF, so `livePlannedSession` stayed nil and the
-        // orchestrator had nothing to consult even after the D-LF5-1 wire
-        // fix below was applied. Order: BeatGrid install first (cache is
-        // populated), then buildPlan (reads cache.trackProfile per track),
-        // then orchestrator wire (planIdx=0).
-        buildPlan()
+        // BUG-021 revert (2026-05-28) — D-LF5-4's `buildPlan()` call here was
+        // implicated in pathological orchestrator behaviour: session
+        // `2026-05-28T19-04-51Z` showed the orchestrator cycling through every
+        // preset alphabetically (one every ~5 s), and the user-pressed Next
+        // button locked the app (force-quit required). Two hypotheses: (a)
+        // the planner produces broken segmentation with only 2 certified
+        // presets in the catalog (FerrofluidOcean + LumenMosaic) — the
+        // orchestrator then walks the catalog when the segment scoring ties;
+        // (b) the constant applyPreset churn saturates MainActor so the
+        // Next-press click can't get serviced. Either way, reverting to
+        // pre-D-LF5-4 behaviour (no buildPlan → orchestrator stays reactive
+        // for LF; no multi-preset variety per song but no chaos) buys back a
+        // working app while the planner side is investigated separately.
+        // Re-enable buildPlan for LF when the certified catalog grows
+        // AND the plan walker's behaviour for short segments is verified.
 
-        // LF.5.fix D-LF5-1: tell the orchestrator about the LF plan so it runs
-        // in planned mode (and applies per-track presets) instead of reactive.
-        // The streaming path wires this in `makeTrackChangeCallback`
-        // (VisualizerEngine+Capture.swift:129) under `orchestratorLock`; LF.5
-        // bypasses that callback so we mirror the writes here.
+        // LF.5.fix D-LF5-1 (unchanged): tell the orchestrator about the LF
+        // plan so it runs in planned mode (and applies per-track presets)
+        // instead of reactive. The streaming path wires this in
+        // `makeTrackChangeCallback` (VisualizerEngine+Capture.swift:129)
+        // under `orchestratorLock`; LF.5 bypasses that callback so we mirror
+        // the writes here.
         lastResolvedTrackIdentity = identity
         orchestratorLock.withLock {
             liveTrackPlanIndex = 0
@@ -221,10 +226,23 @@ extension VisualizerEngine: LocalFilePreparing {
         lfLogger.info(
             "[LF.5] advance: \(currentIdx) → \(nextIdx), next='\(nextURL.lastPathComponent, privacy: .public)'"
         )
+        // BUG-021 diagnostic (2026-05-28): synchronous session.log breadcrumbs
+        // at each advance step so the next capture pinpoints where a
+        // user-pressed Next hangs (session 2026-05-28T19-04-51Z froze + force-
+        // quit). lfLogger writes to os.log; sessionRecorder writes to
+        // session.log on the call thread. If a step blocks MainActor, the
+        // last successfully-logged step identifies the culprit.
+        sessionRecorder?.log(
+            "WIRING: advanceLocalFileQueue ENTER from=\(currentIdx) to=\(nextIdx) " +
+            "file='\(nextURL.lastPathComponent)' direction=\(direction)"
+        )
 
         if #available(macOS 14.2, *), let audioRouter = router as? AudioInputRouter {
+            sessionRecorder?.log("WIRING: advanceLocalFileQueue audioRouter.stop BEGIN")
             audioRouter.stop()
+            sessionRecorder?.log("WIRING: advanceLocalFileQueue audioRouter.stop COMPLETE")
             resetStemPipeline(for: nextIdentity, caller: .trackChange)
+            sessionRecorder?.log("WIRING: advanceLocalFileQueue resetStemPipeline COMPLETE")
             // LF.5.fix D-LF5-1: mirror `makeTrackChangeCallback`'s orchestrator
             // wire-up. Without these, the analysis-queue's
             // `runOrchestratorLiveUpdate` sees `liveTrackPlanIndex = nil` and
@@ -234,6 +252,7 @@ extension VisualizerEngine: LocalFilePreparing {
                 liveTrackPlanIndex = nextIdx
                 orchestratorWireLoggedThisTrack = false
             }
+            sessionRecorder?.log("WIRING: advanceLocalFileQueue orchestratorLock COMPLETE")
             // Re-bind the EOF callback BEFORE start() — AudioInputRouter
             // captures the callback at start time and relays it into the
             // freshly-constructed provider.
@@ -241,12 +260,18 @@ extension VisualizerEngine: LocalFilePreparing {
                 Task { @MainActor in self?.advanceLocalFileQueue() }
             }
             do {
+                sessionRecorder?.log("WIRING: advanceLocalFileQueue audioRouter.start BEGIN")
                 try audioRouter.start(mode: .localFilePlayback(nextURL))
+                sessionRecorder?.log("WIRING: advanceLocalFileQueue audioRouter.start COMPLETE")
                 currentTrackIndex = nextIdx
                 isLocalFilePaused = false                                   // restart implies playing
+                sessionRecorder?.log("WIRING: advanceLocalFileQueue EXIT ok=true")
             } catch {
                 let msg = error.localizedDescription
                 lfLogger.error("[LF.5] audio router restart failed: \(msg, privacy: .public)")
+                sessionRecorder?.log(
+                    "WIRING: advanceLocalFileQueue EXIT ok=false error='\(msg)'"
+                )
                 // Stop advancing — user can re-pick from Recents or pick a new file.
             }
         }
