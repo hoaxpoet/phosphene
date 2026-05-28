@@ -1,3 +1,4 @@
+// swiftlint:disable file_length
 // LocalFilePlaybackProvider — Plays a local audio file through the default
 // output device and exposes the analysis-tap signal via a callback that
 // matches `SystemAudioCapture.onAudioBuffer`'s contract.
@@ -59,7 +60,7 @@ public final class LocalFilePlaybackProvider: @unchecked Sendable {
     /// count arrives.
     private var interleavedScratch: [Float] = []
 
-    /// Retained so `removeObserver` can be called in `_stopLocked`.
+    /// Retained so `removeObserver` can be called during teardown.
     private var configChangeObserver: NSObjectProtocol?
 
     // MARK: - Callback
@@ -88,14 +89,11 @@ public final class LocalFilePlaybackProvider: @unchecked Sendable {
     public var onFileEnded: (@Sendable () -> Void)?
 
     /// BUG-021 (2026-05-28) — synchronous diagnostic hook. When set, the
-    /// `_stopLocked` teardown calls this at each sub-step (remove observer,
-    /// player.stop, player.removeTap, engine.stop, nil-out). Session
-    /// `2026-05-28T19-26-13Z` showed `audioRouter.stop()` hanging
-    /// indefinitely on MainActor inside this method without any indication
-    /// of which sub-line blocked. The handler runs on whatever thread
-    /// `_stopLocked` runs on (typically MainActor for transport-driven
-    /// teardown). App-layer wires this to `SessionRecorder.log` so the
-    /// breadcrumb lands in session.log on the call thread.
+    /// `teardownAVFoundation` static helper (called from `stop()` and
+    /// `start()`) emits a breadcrumb at each sub-step (remove observer,
+    /// player.stop, player.removeTap, engine.stop). App-layer wires this
+    /// to `SessionRecorder.log` so the breadcrumbs land in session.log
+    /// on the call thread.
     public var onDiagnosticEvent: ((String) -> Void)?
 
     // MARK: - Init
@@ -106,7 +104,19 @@ public final class LocalFilePlaybackProvider: @unchecked Sendable {
     }
 
     deinit {
-        lock.withLock { _stopLocked() }
+        // deinit can't acquire `lock` safely (the owning actor may be torn
+        // down). Snapshot + tear down without locking. The provider is
+        // being destroyed, so no other thread can race against us.
+        let oldRefs = TeardownRefs(
+            player: playerNode,
+            engine: engine,
+            observer: configChangeObserver
+        )
+        playerNode = nil
+        engine = nil
+        audioFile = nil
+        configChangeObserver = nil
+        Self.teardownAVFoundation(refs: oldRefs, diagnostic: nil)
     }
 
     // MARK: - Public API
@@ -117,13 +127,53 @@ public final class LocalFilePlaybackProvider: @unchecked Sendable {
     /// when the provider is already running first tears the previous
     /// instance down.
     public func start() throws {
+        // BUG-021 fix (2026-05-28): tear down any previous instance BEFORE
+        // taking the lock to set up the new one — same reason as `stop()`
+        // below (avoids the AVAudioPlayerNode.stop() / scheduleFile-callback
+        // ABBA deadlock against the provider's NSLock).
+        stop()
         try lock.withLock { try _startLocked() }
     }
 
     /// Stop playback and tear down the engine. Safe to call multiple times
     /// or when the provider has never been started.
+    ///
+    /// BUG-021 fix (2026-05-28): snapshots the AVFoundation refs + nil-outs
+    /// the fields under the lock, then releases the lock and does the
+    /// AVFoundation teardown (player.stop / removeTap / engine.stop) outside
+    /// it. Session `2026-05-28T19-35-13Z` hit a hang at `player.stop()`
+    /// because:
+    ///
+    ///   1. MainActor held `lock` via the original `lock.withLock {
+    ///      _stopLocked() }` wrapper.
+    ///   2. `player.stop()` blocked waiting for AVFoundation's render thread
+    ///      to drain.
+    ///   3. The render thread was running a `scheduleFile` completion
+    ///      callback that tries `lock.withLock { … }` to check whether the
+    ///      player it captured is still the active one.
+    ///   4. Step 3 blocked on lock → step 2 blocked on render → MainActor
+    ///      blocked indefinitely. Classic ABBA.
+    ///
+    /// With this change, by the time `player.stop()` waits for the callback,
+    /// the callback finds `playerNode == nil` (we nil-ed it under the lock
+    /// already), bails out, and returns. No deadlock.
     public func stop() {
-        lock.withLock { _stopLocked() }
+        let oldRefs: TeardownRefs = lock.withLock {
+            let refs = TeardownRefs(
+                player: playerNode,
+                engine: engine,
+                observer: configChangeObserver
+            )
+            // Nil out under the lock so the scheduleFile completion callback
+            // (which acquires the lock to check `playerNode === player`)
+            // sees the post-teardown state when it next runs.
+            playerNode = nil
+            engine = nil
+            audioFile = nil
+            configChangeObserver = nil
+            return refs
+        }
+        Self.teardownAVFoundation(refs: oldRefs, diagnostic: onDiagnosticEvent)
     }
 
     /// Pause playback without tearing down the engine. The player retains its
@@ -156,7 +206,14 @@ public final class LocalFilePlaybackProvider: @unchecked Sendable {
     // MARK: - Private — assume `lock` held
 
     private func _startLocked() throws {
-        _stopLocked()
+        // BUG-021 fix (2026-05-28): the leading `_stopLocked()` call here
+        // was the deadlock origin — it acquired the lock indirectly via
+        // `_stopLocked`'s synchronous AVFoundation teardown while the
+        // scheduleFile completion callback also tried to take the lock.
+        // The new `start()` public method calls `stop()` (which now
+        // tears down outside the lock) BEFORE invoking `_startLocked`,
+        // so by the time we reach this point any previous instance is
+        // already gone and the fields below are guaranteed nil.
 
         let file = try AVAudioFile(forReading: url)
         let engine = AVAudioEngine()
@@ -213,33 +270,45 @@ public final class LocalFilePlaybackProvider: @unchecked Sendable {
             "[LF.1] start: \(lastComponent, privacy: .public) \(rate) Hz \(channelCount) ch")
     }
 
-    private func _stopLocked() {
-        // BUG-021 (2026-05-28) — synchronous breadcrumbs on every sub-step.
-        // Session 2026-05-28T19-26-13Z showed `audioRouter.stop()` hanging
-        // here with no indication of which sub-line blocked. The next capture
-        // will show the last successfully-logged step.
-        onDiagnosticEvent?("provider._stopLocked ENTER")
-        if let observer = configChangeObserver {
-            onDiagnosticEvent?("provider._stopLocked removeObserver BEGIN")
+    /// BUG-021 (2026-05-28): tear-down ref bundle. Snapshotted under the
+    /// provider's `lock` in `stop()`, then passed to
+    /// `teardownAVFoundation(...)` outside the lock so AVFoundation calls
+    /// don't deadlock against the scheduleFile completion callback that
+    /// itself acquires the lock.
+    private struct TeardownRefs {
+        let player: AVAudioPlayerNode?
+        let engine: AVAudioEngine?
+        let observer: NSObjectProtocol?
+    }
+
+    /// Tear down the AVFoundation objects held in `refs`. Safe to call from
+    /// any thread; takes no locks. Diagnostic breadcrumbs (BUG-021) land
+    /// here so we can confirm in `session.log` that the deadlock pattern is
+    /// no longer reachable — each sub-step now runs lock-free.
+    nonisolated private static func teardownAVFoundation(
+        refs: TeardownRefs,
+        diagnostic: ((String) -> Void)?
+    ) {
+        diagnostic?("provider.teardown ENTER")
+        if let observer = refs.observer {
+            diagnostic?("provider.teardown removeObserver BEGIN")
             NotificationCenter.default.removeObserver(observer)
-            configChangeObserver = nil
-            onDiagnosticEvent?("provider._stopLocked removeObserver COMPLETE")
+            diagnostic?("provider.teardown removeObserver COMPLETE")
         }
-        if let player = playerNode {
-            onDiagnosticEvent?("provider._stopLocked player.stop BEGIN")
+        if let player = refs.player {
+            diagnostic?("provider.teardown player.stop BEGIN")
             player.stop()
-            onDiagnosticEvent?("provider._stopLocked player.stop COMPLETE")
-            onDiagnosticEvent?("provider._stopLocked player.removeTap BEGIN")
+            diagnostic?("provider.teardown player.stop COMPLETE")
+            diagnostic?("provider.teardown player.removeTap BEGIN")
             player.removeTap(onBus: 0)
-            onDiagnosticEvent?("provider._stopLocked player.removeTap COMPLETE")
+            diagnostic?("provider.teardown player.removeTap COMPLETE")
         }
-        onDiagnosticEvent?("provider._stopLocked engine.stop BEGIN")
-        engine?.stop()
-        onDiagnosticEvent?("provider._stopLocked engine.stop COMPLETE")
-        engine = nil
-        playerNode = nil
-        audioFile = nil
-        onDiagnosticEvent?("provider._stopLocked EXIT")
+        if let engine = refs.engine {
+            diagnostic?("provider.teardown engine.stop BEGIN")
+            engine.stop()
+            diagnostic?("provider.teardown engine.stop COMPLETE")
+        }
+        diagnostic?("provider.teardown EXIT")
     }
 
     /// Re-schedule the file each time the player drains its scheduled

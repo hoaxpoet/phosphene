@@ -10,9 +10,17 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 ### BUG-021 — Next button froze the app + orchestrator cycled every preset alphabetically (LF.5, 2026-05-28)
 
-**Status:** Partial mitigation landed (revert + diagnostic) 2026-05-28. Root cause not yet identified.
+> **RESOLVED 2026-05-28** — root cause identified via two-stage diagnostic; structural fix landed.
+>
+> **Round-1 diagnostic** (`2ab70ced`) localized the hang to `audioRouter.stop()`. **Round-2** (`8d8576f2`) instrumented every sub-step inside `LocalFilePlaybackProvider._stopLocked`. Session `2026-05-28T19-35-13Z` ended at `provider._stopLocked player.stop BEGIN` — `AVAudioPlayerNode.stop()` was the blocking call.
+>
+> **Root cause:** ABBA deadlock between the provider's NSLock and AVFoundation's render thread. `stop()` was wrapped in `lock.withLock { _stopLocked() }`. Inside, `player.stop()` blocks waiting for the render thread to drain. The render thread was running a `scheduleFile` completion callback that itself acquires the same lock to check whether the captured player is still active. NSLock is non-recursive — MainActor held the lock → callback blocked on it → `player.stop()` waited for callback → MainActor waited forever.
+>
+> **Fix:** snapshot AVFoundation refs + nil-out the fields under the lock, release the lock, then call `player.stop()` / `removeTap` / `engine.stop()` outside the lock. When the completion callback runs during teardown, its `playerNode === player` check fails (we nil-ed it under the lock already) and the callback bails out without recursing. New `teardownAVFoundation(refs:diagnostic:)` static helper holds the post-lock teardown sequence. `start()` calls `stop()` before acquiring the lock so the previous-instance teardown also runs lock-free.
+>
+> **Companion problem also resolved.** The GAP D revert (round-1 commit) was the right call for the orchestrator cycling. Session 2026-05-28T19-35-13Z shows `mode=reactive, planIdx=0` and no alphabetical-cycle bug.
 
-**Severity:** P1 (UX-blocker — required force-quit).
+**Severity:** P1 (UX-blocker — required force-quit). Resolved.
 **Domain tag:** `concurrency` + `pipeline-wiring`.
 **Session:** `2026-05-28T19-04-51Z`. 2-track folder ([2014] - Can't Leave the Night - Sustain).
 
