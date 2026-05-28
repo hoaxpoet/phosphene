@@ -44,6 +44,7 @@
 		Q10003 /* LocalFileRecentsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q20003; };
 		Q10005 /* LocalFileTransportBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q20005; };
 		Q10006 /* LocalSourceConnectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q20006; };
+		Q10007 /* LocalFileErrorStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q20007; };
 		Q10004 /* LocalFileMenuCommands+Drop.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q20004; };
 		O10001 /* DashboardOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = O20001; };
 		O10002 /* DashboardCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = O20002; };
@@ -211,6 +212,7 @@
 		Q20003 /* LocalFileRecentsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalFileRecentsStore.swift; sourceTree = "<group>"; };
 		Q20005 /* LocalFileTransportBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalFileTransportBar.swift; sourceTree = "<group>"; };
 		Q20006 /* LocalSourceConnectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalSourceConnectionView.swift; sourceTree = "<group>"; };
+		Q20007 /* LocalFileErrorStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalFileErrorStore.swift; sourceTree = "<group>"; };
 		Q20004 /* LocalFileMenuCommands+Drop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LocalFileMenuCommands+Drop.swift"; sourceTree = "<group>"; };
 		O20001 /* DashboardOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardOverlayView.swift; sourceTree = "<group>"; };
 		O20002 /* DashboardCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardCardView.swift; sourceTree = "<group>"; };
@@ -442,6 +444,7 @@
 				Q20001 /* VisualizerEngine+LocalFilePlayback.swift */,
 				Q20002 /* LocalFileMenuCommands.swift */,
 				Q20003 /* LocalFileRecentsStore.swift */,
+				Q20007 /* LocalFileErrorStore.swift */,
 				Q20004 /* LocalFileMenuCommands+Drop.swift */,
 				A20040 /* VisualizerEngine+Orchestrator.swift */,
 				N20006 /* VisualizerEngine+WiringLogs.swift */,
@@ -837,6 +840,7 @@
 				Q10001 /* VisualizerEngine+LocalFilePlayback.swift in Sources */,
 				Q10002 /* LocalFileMenuCommands.swift in Sources */,
 				Q10003 /* LocalFileRecentsStore.swift in Sources */,
+				Q10007 /* LocalFileErrorStore.swift in Sources */,
 				Q10005 /* LocalFileTransportBar.swift in Sources */,
 				Q10004 /* LocalFileMenuCommands+Drop.swift in Sources */,
 				O10001 /* DashboardOverlayView.swift in Sources */,
