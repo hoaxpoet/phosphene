@@ -6,6 +6,88 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-28-v] LF.5.fix.2-FU5 — `lastAnalysisTime` reset on LF startup (closes FU-4's second mover)
+
+**Increment:** LF.5.fix.2-FU5. **Status:** Resolved 2026-05-28. Sub-P1 — collapses diagnose + fix + validate per CLAUDE.md Defect Handling Protocol.
+
+### What happened
+
+FU-4 (commit `9f83c471`) shipped with the diagnosis "`MIRPipeline.elapsedSeconds` accumulates during the prep window because nobody resets it before audio starts." That diagnosis was correct — the fix added `mirPipeline.reset()` + `pipeline.resetAccumulatedAudioTime()` immediately before `audioRouter.start(...)` in `handleLocalFileReady`.
+
+The verification session `2026-05-28T21-08-33Z` showed the fix **didn't take effect**:
+
+```
+[21:08:33Z] SessionRecorder started
+[21:10:04Z] raw tap capture started sr=44100 Hz ...
+[21:10:07Z] Orchestrator: wire active (mode=reactive, planIdx=0, elapsedTrackTime=94.3s)
+```
+
+3 s of real playback (21:10:07 − 21:10:04), but `elapsedTrackTime=94.3s` (≈ playback start − session start = 91 s + 3 s of real frames).
+
+### Root cause — the second mover
+
+`VisualizerEngine.lastAnalysisTime` (declared at [VisualizerEngine.swift:490](PhospheneApp/VisualizerEngine.swift:490)) is initialized to `CFAbsoluteTimeGetCurrent()` at [VisualizerEngine+Audio.swift:28](PhospheneApp/VisualizerEngine+Audio.swift:28) when `setupAudioRouting` runs (engine init time). After that, it's only updated inside `processAnalysisFrame`:
+
+```swift
+let now = CFAbsoluteTimeGetCurrent()
+let dt = max(Float(now - lastAnalysisTime), 0.001)  // first-frame dt ≈ 91 s
+lastAnalysisTime = now
+…
+let fv = mir.process(magnitudes:, fps:, time:, deltaTime: dt)  // deltaTime: 91s
+```
+
+With a 91 s prep window before the first audio frame post-`audioRouter.start`, the very first call to `processAnalysisFrame` computes `dt ≈ 91 s`. That `dt` flows into `mir.process(deltaTime:)`, which executes `elapsedSeconds += Double(ctx.deltaTime)` at [MIRPipeline.swift:235](PhospheneEngine/Sources/DSP/MIRPipeline.swift:235) — re-adding 91 s on a SINGLE frame, immediately after FU-4's `mirPipeline.reset()` correctly zeroed it.
+
+**Numerical match.** 91 s (single huge first-frame dt) + ~3 s (real frames over wall-clock 21:10:04 → 21:10:07) = 94 s. Exactly matches the observed 94.3 s.
+
+### Why FU-3 (advance) didn't expose this
+
+In the LF advance case, audio had been flowing right up to `audioRouter.stop()`, so `lastAnalysisTime` was recent (last frame ~10 ms before stop). The first frame post-restart sees a small `dt` and FU-3's `mirPipeline.reset()` alone is sufficient. FU-3 was correct for its case; the latent `lastAnalysisTime` issue only matters when there's a meaningful gap between engine init and first audio frame — which is exactly the LF startup case.
+
+### The fix
+
+One-line addition to `handleLocalFileReady`, alongside the FU-4 resets:
+
+```swift
+mirPipeline.reset()                                  // FU-4
+pipeline.resetAccumulatedAudioTime()                 // FU-4
+lastAnalysisTime = CFAbsoluteTimeGetCurrent()        // FU-5
+```
+
+Now the first frame post-`audioRouter.start` sees a small `dt` (typically < 100 ms — the time between `audioRouter.start` returning and the first sample-callback hop to the analysis queue), and `elapsedSeconds` evolves correctly from zero.
+
+### Verification
+
+- App build: clean (`xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build` → `BUILD SUCCEEDED`).
+- Engine targeted suite: **41/41 ✓** on `MIRPipeline + SessionManagerLocalFile`, including `elapsedSeconds_accumulatesAsDouble_isMoreAccurateThanFloat`.
+- SwiftLint `--strict` clean on `VisualizerEngine+LocalFilePlayback.swift`.
+
+### Manual smoke (Matt to confirm)
+
+Same as FU-4: open Local Folder, wait for playback, stop the session, grep `~/Documents/phosphene_sessions/<timestamp>/session.log` for the first `Orchestrator: wire active` line. Pass criterion: `elapsedTrackTime` < 5 s, not the prep-window duration.
+
+### Latent in streaming startup
+
+The same `lastAnalysisTime`-set-at-engine-init pattern exists for the streaming path — first-frame `dt` is wrong-shaped by the gap between engine init and first audio frame post-Spotify-tap-install. The streaming gap is typically a few seconds (not 91 s), so the visible first-frame `elapsedTrackTime` skew is ~5 s, not visible at FU-4's granularity. Per Matt's audit-step decision, FU-5 scope stays LF-only; streaming startup is a separate consideration if/when its skew becomes a measurable problem.
+
+### Files touched
+
+**Source (1):**
+- `PhospheneApp/VisualizerEngine+LocalFilePlayback.swift` — one-line addition in `handleLocalFileReady`, extended FU-4 comment to explain the two-mover diagnosis.
+
+**Docs (3):**
+- `docs/QUALITY/KNOWN_ISSUES.md` — FU-4 strike-through rewritten with the two-mover explanation; FU-5 noted as the actual closer.
+- `docs/RELEASE_NOTES_DEV.md` — this entry. FU-4's `[dev-2026-05-28-u]` entry remains as the partial-fix narrative.
+- `docs/ENGINEERING_PLAN.md` — LF.5.fix.2 row extended from four to five follow-ups; FU-4/FU-5 paired as "first attempt + closer."
+
+### Out of scope
+
+- Streaming startup path (see "Latent in streaming startup" above).
+- Refactoring `lastAnalysisTime` ownership into MIRPipeline (cleaner but bigger diff; not warranted by the bug surface today).
+- Other consumers of `lastAnalysisTime` — only `processAnalysisFrame` reads/writes it, and the FU-5 reset puts it in the correct state immediately before audio begins.
+
+---
+
 ## [dev-2026-05-28-u] LF.5.fix.2-FU4 — `mir.reset()` on LF startup (cousin to FU-3)
 
 **Increment:** LF.5.fix.2-FU4. **Status:** Resolved 2026-05-28. Per CLAUDE.md Defect Handling Protocol, this is a trivial sub-P1 defect (cosmetic / latent for any future planner consumer that wants per-track time from frame 1) and collapses diagnose + fix + validate into one increment, matching the FU-1/FU-2/FU-3 collapsed shape.
