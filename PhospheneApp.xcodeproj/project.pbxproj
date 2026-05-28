@@ -43,6 +43,7 @@
 		Q10002 /* LocalFileMenuCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q20002; };
 		Q10003 /* LocalFileRecentsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q20003; };
 		Q10005 /* LocalFileTransportBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q20005; };
+		Q10006 /* LocalSourceConnectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q20006; };
 		Q10004 /* LocalFileMenuCommands+Drop.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q20004; };
 		O10001 /* DashboardOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = O20001; };
 		O10002 /* DashboardCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = O20002; };
@@ -209,6 +210,7 @@
 		Q20002 /* LocalFileMenuCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LocalFileMenuCommands.swift"; sourceTree = "<group>"; };
 		Q20003 /* LocalFileRecentsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalFileRecentsStore.swift; sourceTree = "<group>"; };
 		Q20005 /* LocalFileTransportBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalFileTransportBar.swift; sourceTree = "<group>"; };
+		Q20006 /* LocalSourceConnectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalSourceConnectionView.swift; sourceTree = "<group>"; };
 		Q20004 /* LocalFileMenuCommands+Drop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LocalFileMenuCommands+Drop.swift"; sourceTree = "<group>"; };
 		O20001 /* DashboardOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardOverlayView.swift; sourceTree = "<group>"; };
 		O20002 /* DashboardCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardCardView.swift; sourceTree = "<group>"; };
@@ -514,6 +516,7 @@
 				E20006 /* ConnectorPickerView.swift */,
 				E20007 /* AppleMusicConnectionView.swift */,
 				E20008 /* SpotifyConnectionView.swift */,
+				Q20006 /* LocalSourceConnectionView.swift */,
 				F20001 /* TrackPreparationRow.swift */,
 				F20002 /* TrackPreparationStatusIcon.swift */,
 				K20010 /* SettingsView.swift */,
@@ -868,6 +871,7 @@
 				E10006 /* ConnectorPickerView.swift in Sources */,
 				E10007 /* AppleMusicConnectionView.swift in Sources */,
 				E10008 /* SpotifyConnectionView.swift in Sources */,
+				Q10006 /* LocalSourceConnectionView.swift in Sources */,
 				E10011 /* ConnectorPickerViewModel.swift in Sources */,
 				E10012 /* AppleMusicConnectionViewModel.swift in Sources */,
 				E10013 /* SpotifyConnectionViewModel.swift in Sources */,

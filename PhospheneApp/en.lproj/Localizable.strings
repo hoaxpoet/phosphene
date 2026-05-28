@@ -411,3 +411,23 @@
 "playback.transport.pause.a11y"             = "Pause playback";
 "playback.transport.next.tooltip"           = "Next track";
 "playback.transport.next.a11y"              = "Skip to next track";
+
+// MARK: - GAP A (2026-05-28) — LocalSourceConnectionView
+// Sub-picker reached from ConnectorPickerView's Local files tile. Three
+// action tiles (folder / single file / playlist) + a drag-and-drop teaching
+// hint. Replaces the LF.4-era "Coming later" placeholder.
+
+"lf_source.nav.title"                       = "Local files";
+"lf_source.headline"                        = "Open from your library";
+"lf_source.subhead"                         = "Pick what you'd like to play. Phosphene cues it up from disk.";
+
+"lf_source.tile.folder.title"               = "Folder";
+"lf_source.tile.folder.subtitle"            = "Read every supported file in alphabetical order";
+"lf_source.tile.file.title"                 = "Single file";
+"lf_source.tile.file.subtitle"              = ".m4a, .mp3, or .flac";
+"lf_source.tile.playlist.title"             = "Playlist";
+"lf_source.tile.playlist.subtitle"          = ".m3u or .m3u8";
+
+"lf_source.drop_hint"                       = "You can also drop files, folders, or playlists anywhere on the window.";
+
+"lf.open.m3u.panel.title"                   = "Choose a .m3u or .m3u8 playlist";

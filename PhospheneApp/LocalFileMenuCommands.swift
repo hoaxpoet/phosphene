@@ -99,6 +99,29 @@ enum LocalFileMenuCommands {
         }
     }
 
+    // MARK: - M3U picker (LF.5 / GAP A)
+
+    /// Show `NSOpenPanel` filtered for `.m3u` / `.m3u8` playlists. On
+    /// confirmation parses + queues the playlist's expanded URL list,
+    /// promotes the entry into Recents, and dispatches.
+    @MainActor
+    static func openLocalM3UPanel(engine: VisualizerEngine, recentsStore: LocalFileRecentsStore) {
+        let panel = NSOpenPanel()
+        panel.title = String(localized: "lf.open.m3u.panel.title")
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = supportedPlaylistContentTypes()
+        panel.allowsOtherFileTypes = false
+
+        guard panel.runModal() == .OK, let url = panel.url else {
+            return                                          // user cancelled
+        }
+        Task { @MainActor in
+            await openLocalM3U(at: url, engine: engine, recentsStore: recentsStore)
+        }
+    }
+
     // MARK: - Recents-driven re-entry (LF.5)
 
     /// Open a remembered file (Recents submenu click + file-association).
@@ -252,6 +275,21 @@ enum LocalFileMenuCommands {
         var types: [UTType] = [.audio, .mpeg4Audio, .mp3]
         if let flac = UTType(filenameExtension: "flac") {
             types.append(flac)
+        }
+        return types
+    }
+
+    /// Content-type list used by the M3U `NSOpenPanel`. Both extensions are
+    /// looked up by filename-extension because UTType doesn't ship M3U
+    /// constants reliably across macOS versions. `dispatchLocalFile`-equivalent
+    /// extension validation in `openLocalM3U(at:...)` is the trust boundary;
+    /// the picker filter is a hint.
+    private static func supportedPlaylistContentTypes() -> [UTType] {
+        var types: [UTType] = []
+        for ext in ["m3u", "m3u8"] {
+            if let utType = UTType(filenameExtension: ext) {
+                types.append(utType)
+            }
         }
         return types
     }

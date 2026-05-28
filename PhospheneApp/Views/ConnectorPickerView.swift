@@ -88,11 +88,13 @@ struct ConnectorPickerView: View {
 
     @ViewBuilder
     private var localFolderTile: some View {
-        ConnectorTileView(
-            type: .localFolder,
-            isEnabled: false,
-            disabledCaption: String(localized: "connector.picker.local_folder_disabled")
-        )
+        // GAP A (2026-05-28): tile is now enabled — LF.5 shipped 24h prior.
+        // Pushes LocalSourceConnectionView (file / folder / playlist picker)
+        // onto the parent NavigationStack, matching the AM / Spotify shape.
+        NavigationLink(value: ConnectorType.localFolder) {
+            ConnectorTileView(type: .localFolder, isEnabled: true)
+        }
+        .buttonStyle(.plain)
     }
 
     @ViewBuilder
@@ -120,10 +122,9 @@ struct ConnectorPickerView: View {
         case .spotify:
             spotifyDestination
         case .localFolder:
-            Text(String(localized: "connector.picker.local_placeholder"))
-                .foregroundColor(.white.opacity(0.5))
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color.black)
+            // GAP A (2026-05-28): replaces the LF.4-era "Coming later" stub
+            // with the dedicated file / folder / playlist picker.
+            LocalSourceConnectionView()
         }
     }
 

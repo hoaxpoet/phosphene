@@ -12,7 +12,7 @@ enum ConnectorType: String, CaseIterable, Codable, Hashable {
         switch self {
         case .appleMusic:  return "Apple Music"
         case .spotify:     return "Spotify"
-        case .localFolder: return "Local Folder"
+        case .localFolder: return "Local files"
         }
     }
 
@@ -20,7 +20,7 @@ enum ConnectorType: String, CaseIterable, Codable, Hashable {
         switch self {
         case .appleMusic:  return "Read your current Apple Music playlist"
         case .spotify:     return "Connect with a Spotify playlist link"
-        case .localFolder: return "Play from a folder of audio files"
+        case .localFolder: return "Play a file, folder, or playlist from disk"
         }
     }
 
