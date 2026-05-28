@@ -1,8 +1,11 @@
-// SessionManagerLocalFileTests — LF.4 single-file lifecycle for SessionManager.
+// SessionManagerLocalFileTests — LF.4 single-file + LF.5 multi-file
+// lifecycle for SessionManager.
 //
-// Exercises `startLocalFile(at:)` and its interaction with the existing
-// state machine (idle/preparing/ready/playing transitions, replace-on-open,
-// progressive-readiness short-circuit, no-preparer degradation).
+// Exercises `startLocalFile(at:)` and `startLocalFiles(at:origin:)` and their
+// interaction with the existing state machine (idle/preparing/ready/playing
+// transitions, replace-on-open, progressive-readiness short-circuit,
+// no-preparer degradation, mid-queue cancellation, per-origin source
+// discrimination).
 //
 // External ML deps are injected via a `LocalFilePreparing` stub so these
 // tests stay engine-only and don't need Metal weights / real audio.
@@ -40,6 +43,32 @@ private final class StubLocalFilePreparer: LocalFilePreparing, @unchecked Sendab
             try? await Task.sleep(nanoseconds: preparationDelayMs * 1_000_000)
         }
         return resultToReturn
+    }
+}
+
+/// Multi-URL variant of `StubLocalFilePreparer`: returns a different canned
+/// result per URL keyed by `url.lastPathComponent`. Falls back to `nil` for
+/// unknown URLs (exercises the LF.1 no-cache fallthrough per-track). Records
+/// `callOrder` so multi-file tests can assert sequential delegation.
+private final class MultiStubLocalFilePreparer: LocalFilePreparing, @unchecked Sendable {
+
+    let resultsByFilename: [String: LocalFilePrepResult]
+    let preparationDelayMs: UInt64
+    private(set) var callCount = 0
+    private(set) var callOrder: [URL] = []
+
+    init(results: [String: LocalFilePrepResult], preparationDelayMs: UInt64 = 0) {
+        self.resultsByFilename = results
+        self.preparationDelayMs = preparationDelayMs
+    }
+
+    func prepareLocalFile(url: URL) async -> LocalFilePrepResult? {
+        callCount += 1
+        callOrder.append(url)
+        if preparationDelayMs > 0 {
+            try? await Task.sleep(nanoseconds: preparationDelayMs * 1_000_000)
+        }
+        return resultsByFilename[url.lastPathComponent]
     }
 }
 
@@ -379,5 +408,245 @@ struct SessionManagerLocalFileTests {
         } else {
             Issue.record("Expected sessionSource == .appleMusicCurrentPlaylist")
         }
+    }
+
+    // MARK: - LF.5 multi-file lifecycle
+
+    private var threeURLs: [URL] {
+        [
+            URL(fileURLWithPath: "/private/var/tmp/love_rehab.m4a"),
+            URL(fileURLWithPath: "/private/var/tmp/so_what.m4a"),
+            URL(fileURLWithPath: "/private/var/tmp/there_there.m4a")
+        ]
+    }
+
+    private func makeMultiStub(_ urls: [URL]) -> MultiStubLocalFilePreparer {
+        var results: [String: LocalFilePrepResult] = [:]
+        for (index, url) in urls.enumerated() {
+            // Distinct synthetic hashes so each cache entry resolves separately.
+            let hash = String(format: "%064x", index + 1)
+            results[url.lastPathComponent] = makeStubPrepResult(url: url, hash: hash)
+        }
+        return MultiStubLocalFilePreparer(results: results)
+    }
+
+    @Test func startLocalFiles_threeURLs_preparesEachInOrder() async throws {
+        let manager = try makeLFManager()
+        let urls = threeURLs
+        let stub = makeMultiStub(urls)
+        manager.localFilePreparer = stub
+
+        await manager.startLocalFiles(at: urls, origin: .localFiles(urls))
+
+        #expect(manager.state == .ready)
+        #expect(stub.callCount == 3)
+        #expect(stub.callOrder == urls, "Preparer must be called sequentially in URL order")
+        #expect(manager.currentPlan?.tracks.count == 3)
+    }
+
+    @Test func startLocalFiles_storesEveryCachedEntry() async throws {
+        let manager = try makeLFManager()
+        let urls = threeURLs
+        let stub = makeMultiStub(urls)
+        manager.localFilePreparer = stub
+
+        await manager.startLocalFiles(at: urls, origin: .localFiles(urls))
+
+        // Every track in the resulting plan should resolve to a cache entry.
+        for track in manager.currentPlan?.tracks ?? [] {
+            #expect(manager.cache.loadForPlayback(track: track) != nil,
+                    "Cache miss for prepared track \(track.title)")
+        }
+        #expect(manager.cache.count == 3)
+    }
+
+    @Test func startLocalFiles_setsCurrentSource_toLocalFiles() async throws {
+        let manager = try makeLFManager()
+        let urls = threeURLs
+        let stub = makeMultiStub(urls)
+        manager.localFilePreparer = stub
+
+        await manager.startLocalFiles(at: urls, origin: .localFiles(urls))
+
+        #expect(manager.currentSource?.isLocalFile == true)
+        #expect(manager.currentSource?.localFileURL == urls.first)
+        #expect(manager.currentSource?.allLocalFileURLs == urls)
+        #expect(manager.sessionSource == nil)
+    }
+
+    @Test func startLocalFiles_setsCurrentSource_toLocalFolder() async throws {
+        let manager = try makeLFManager()
+        let urls = threeURLs
+        let folder = URL(fileURLWithPath: "/private/var/tmp/Music")
+        let stub = makeMultiStub(urls)
+        manager.localFilePreparer = stub
+
+        await manager.startLocalFiles(at: urls, origin: .localFolder(folder, expanded: urls))
+
+        if case .localFolder(let observedFolder, let observedExpanded) = manager.currentSource {
+            #expect(observedFolder == folder)
+            #expect(observedExpanded == urls)
+        } else {
+            Issue.record(
+                "Expected currentSource == .localFolder(…), got \(String(describing: manager.currentSource))"
+            )
+        }
+    }
+
+    @Test func startLocalFiles_setsCurrentSource_toLocalPlaylist() async throws {
+        let manager = try makeLFManager()
+        let urls = threeURLs
+        let playlist = URL(fileURLWithPath: "/private/var/tmp/mix.m3u")
+        let stub = makeMultiStub(urls)
+        manager.localFilePreparer = stub
+
+        await manager.startLocalFiles(at: urls, origin: .localPlaylist(playlist, expanded: urls))
+
+        if case .localPlaylist(let observedPlaylist, let observedExpanded) = manager.currentSource {
+            #expect(observedPlaylist == playlist)
+            #expect(observedExpanded == urls)
+        } else {
+            Issue.record(
+                "Expected currentSource == .localPlaylist(…), got \(String(describing: manager.currentSource))"
+            )
+        }
+    }
+
+    @Test func startLocalFiles_progressiveReadinessJumpsToFullyPrepared() async throws {
+        let manager = try makeLFManager()
+        let urls = threeURLs
+        let stub = makeMultiStub(urls)
+        manager.localFilePreparer = stub
+
+        await manager.startLocalFiles(at: urls, origin: .localFiles(urls))
+
+        #expect(manager.progressiveReadinessLevel == .fullyPrepared)
+    }
+
+    @Test func startLocalFiles_emptyList_isNoOp() async throws {
+        let manager = try makeLFManager()
+        let stub = makeMultiStub(threeURLs)
+        manager.localFilePreparer = stub
+
+        await manager.startLocalFiles(at: [], origin: .localFiles([]))
+
+        #expect(manager.state == .idle)
+        #expect(stub.callCount == 0)
+        #expect(manager.currentSource == nil)
+    }
+
+    @Test func startLocalFiles_sameOrigin_isNoOp() async throws {
+        let manager = try makeLFManager()
+        let urls = threeURLs
+        let stub = makeMultiStub(urls)
+        manager.localFilePreparer = stub
+
+        await manager.startLocalFiles(at: urls, origin: .localFiles(urls))
+        manager.beginPlayback()                                            // .ready → .playing
+
+        await manager.startLocalFiles(at: urls, origin: .localFiles(urls)) // second call
+        #expect(stub.callCount == 3, "Second startLocalFiles on same origin should not re-prepare")
+        #expect(manager.state == .playing)
+    }
+
+    @Test func startLocalFiles_differentURLList_replacesSession() async throws {
+        let manager = try makeLFManager()
+        let firstURLs = threeURLs
+        let stub1 = makeMultiStub(firstURLs)
+        manager.localFilePreparer = stub1
+
+        await manager.startLocalFiles(at: firstURLs, origin: .localFiles(firstURLs))
+
+        let secondURLs = [
+            URL(fileURLWithPath: "/private/var/tmp/money.m4a"),
+            URL(fileURLWithPath: "/private/var/tmp/pyramid_song.m4a")
+        ]
+        let stub2 = makeMultiStub(secondURLs)
+        manager.localFilePreparer = stub2
+
+        await manager.startLocalFiles(at: secondURLs, origin: .localFiles(secondURLs))
+
+        #expect(manager.currentSource?.allLocalFileURLs == secondURLs)
+        #expect(stub2.callCount == 2)
+        #expect(manager.currentPlan?.tracks.count == 2)
+    }
+
+    @Test func startLocalFiles_singleURLAsWrapper_matchesStartLocalFile() async throws {
+        // Regression gate for the LF.5 consolidation: startLocalFile(at:) is now
+        // a thin wrapper around startLocalFiles(at: [url], origin: .localFile(url)).
+        // Asserts the wrapper sets the LF.4-shaped source + plan + state.
+        let manager = try makeLFManager()
+        let stub = StubLocalFilePreparer(result: makeStubPrepResult(url: fileURL))
+        manager.localFilePreparer = stub
+
+        await manager.startLocalFile(at: fileURL)
+
+        if case .localFile(let observedURL) = manager.currentSource {
+            #expect(observedURL == fileURL)
+        } else {
+            Issue.record(
+                "startLocalFile wrapper must yield .localFile origin, got \(String(describing: manager.currentSource))"
+            )
+        }
+        #expect(manager.state == .ready)
+        #expect(manager.currentPlan?.tracks.count == 1)
+        #expect(manager.progressiveReadinessLevel == .fullyPrepared)
+    }
+
+    @Test func startLocalFiles_replacesActiveStreamingSession() async throws {
+        let manager = try makeLFManager()
+        await manager.startSession(source: .appleMusicCurrentPlaylist)
+
+        let urls = threeURLs
+        let stub = makeMultiStub(urls)
+        manager.localFilePreparer = stub
+
+        await manager.startLocalFiles(at: urls, origin: .localFiles(urls))
+
+        #expect(manager.currentSource?.isLocalFile == true)
+        #expect(manager.state == .ready)
+        #expect(stub.callCount == 3)
+        #expect(manager.sessionSource == nil)
+    }
+
+    @Test func startLocalFiles_noPreparerWired_stillTransitionsToReady() async throws {
+        let manager = try makeLFManager()
+        // No localFilePreparer set; placeholder identities populate the plan
+        // and the LF.1 fallthrough still produces .ready.
+        let urls = threeURLs
+
+        await manager.startLocalFiles(at: urls, origin: .localFiles(urls))
+
+        #expect(manager.state == .ready)
+        #expect(manager.currentSource?.isLocalFile == true)
+        #expect(manager.currentPlan?.tracks.count == 3)
+        // No preparer wired → no cache entries.
+        #expect(manager.cache.count == 0)
+    }
+
+    @Test func cancel_midQueue_returnsToIdleWithPartialCache() async throws {
+        let manager = try makeLFManager()
+        let urls = threeURLs
+        // 80 ms per-file delay — plenty of headroom for the cancel to land
+        // after the first file's prep returns but before the second begins.
+        var results: [String: LocalFilePrepResult] = [:]
+        for (index, url) in urls.enumerated() {
+            let hash = String(format: "%064x", index + 1)
+            results[url.lastPathComponent] = makeStubPrepResult(url: url, hash: hash)
+        }
+        let stub = MultiStubLocalFilePreparer(results: results, preparationDelayMs: 80)
+        manager.localFilePreparer = stub
+
+        async let preparation: Void = manager.startLocalFiles(at: urls, origin: .localFiles(urls))
+        try await Task.sleep(nanoseconds: 30_000_000)                        // let the first file get started
+        manager.cancel()
+        await preparation
+
+        #expect(manager.state == .idle)
+        #expect(manager.currentSource == nil)
+        #expect(manager.currentPlan == nil)
+        // The first file's preparer call may have completed before cancel landed;
+        // subsequent files must NOT have been called.
+        #expect(stub.callCount < urls.count, "Cancel must short-circuit before all files prepared")
     }
 }
