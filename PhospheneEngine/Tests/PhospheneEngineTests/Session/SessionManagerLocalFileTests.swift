@@ -46,6 +46,35 @@ private final class StubLocalFilePreparer: LocalFilePreparing, @unchecked Sendab
     }
 }
 
+/// Stub that mirrors the production VisualizerEngine.prepareLocalFile shape —
+/// wraps the per-file work in `Task.detached(...).value`. Detached tasks
+/// don't inherit parent-task cancellation, so the delegate's per-file sleep
+/// completes its full duration even after the outer prep task is cancelled.
+/// Used by LF.5.fix.3-A's regression test to deterministically sequence A's
+/// .SLF resume AFTER B's `.ready` transition (so the test can prove A's
+/// continuation does NOT overwrite B's state).
+private final class UninterruptibleDelayLocalFilePreparer: LocalFilePreparing, @unchecked Sendable {
+
+    let result: LocalFilePrepResult?
+    let delayMs: UInt64
+    private(set) var callCount = 0
+
+    init(result: LocalFilePrepResult?, delayMs: UInt64) {
+        self.result = result
+        self.delayMs = delayMs
+    }
+
+    func prepareLocalFile(url: URL) async -> LocalFilePrepResult? {
+        callCount += 1
+        let delayMs = self.delayMs
+        let result = self.result
+        return await Task.detached(priority: .userInitiated) {
+            try? await Task.sleep(nanoseconds: delayMs * 1_000_000)
+            return result
+        }.value
+    }
+}
+
 /// Multi-URL variant of `StubLocalFilePreparer`: returns a different canned
 /// result per URL keyed by `url.lastPathComponent`. Falls back to `nil` for
 /// unknown URLs (exercises the LF.1 no-cache fallthrough per-track). Records
@@ -727,6 +756,61 @@ struct SessionManagerLocalFileTests {
         // The first file's preparer call may have completed before cancel landed;
         // subsequent files must NOT have been called.
         #expect(stub.callCount < urls.count, "Cancel must short-circuit before all files prepared")
+    }
+
+    // MARK: - LF.5.fix.3-A — superseded call must not transition to .ready
+
+    @Test func startLocalFiles_supersededCall_doesNotTransitionToReady() async throws {
+        // LF.5.fix.3-A regression gate. After a newer `startLocalFiles` call
+        // takes over, the older suspended call must NOT proceed to
+        // `_completeLocalFilesReady` — even though `cancellationRequested`
+        // was reset to false by the newer call's `_beginMultiFileTransition`.
+        // The generation counter is the authoritative supersession signal.
+        //
+        // The captured failure (session 2026-05-28T20-57-46Z line 19):
+        // folder A's prep was cancelled at 2/200 files, B took over, but A's
+        // `await preparer.prepareLocalFiles` resumed and wrote a 2-track
+        // currentPlan + .ready state — the engine then played folder A's
+        // tracks against folder B's URL queue.
+        //
+        // Sequencing trick: A's delegate uses Task.detached so its 200 ms
+        // delay does not honor parent cancellation. That guarantees A's
+        // continuation resumes AFTER B has finished and transitioned to
+        // .ready, so the assertion below would fail pre-fix.
+        let manager = try makeLFManager()
+        let urlsA = (0..<3).map { URL(fileURLWithPath: "/private/var/tmp/supersA\($0).m4a") }
+        let urlsB = [URL(fileURLWithPath: "/private/var/tmp/supersB.m4a")]
+
+        let resultA0 = makeStubPrepResult(url: urlsA[0], hash: String(format: "%064x", 0xA0))
+        let stubA = UninterruptibleDelayLocalFilePreparer(result: resultA0, delayMs: 200)
+        manager.localFilePreparer = stubA
+
+        async let prepA: Void = manager.startLocalFiles(at: urlsA, origin: .localFiles(urlsA))
+        try await Task.sleep(nanoseconds: 20_000_000)                       // A is in file-0's uninterruptible 200 ms wait
+
+        let resultB = makeStubPrepResult(url: urlsB[0], hash: String(format: "%064x", 0xB0))
+        let stubB = StubLocalFilePreparer(result: resultB)
+        manager.localFilePreparer = stubB
+
+        await manager.startLocalFiles(at: urlsB, origin: .localFiles(urlsB))
+
+        // Snapshot B's outcome BEFORE A's continuation resumes (A is still
+        // waiting on its uninterruptible delegate).
+        let stateAfterB = manager.state
+        let planIDAfterB = manager.currentPlan?.tracks.first?.spotifyID
+        let sourceURLAfterB = manager.currentSource?.localFileURL
+
+        // Now A's delegate completes, A's continuation runs the
+        // post-await gates. With the fix, gen mismatch → bail. Without
+        // the fix, A would write its (cancelled, 0-track) result over B's.
+        await prepA
+
+        #expect(manager.state == stateAfterB,
+                "Superseded A.continuation must not have changed state")
+        #expect(manager.currentPlan?.tracks.first?.spotifyID == planIDAfterB,
+                "Superseded A.continuation must not have overwritten currentPlan")
+        #expect(manager.currentSource?.localFileURL == sourceURLAfterB,
+                "Superseded A.continuation must not have changed currentSource")
     }
 
     // MARK: - LF.5.fix.3-B — cancellation race on second startLocalFiles
