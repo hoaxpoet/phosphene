@@ -176,7 +176,10 @@ struct PersistentStemCacheTests {
             .appendingPathComponent(Self.fixtureHash, isDirectory: true)
         let metadataPath = dir.appendingPathComponent("metadata.json")
         var json = try String(contentsOf: metadataPath, encoding: .utf8)
-        json = json.replacingOccurrences(of: "\"cacheSchemaVersion\" : 1", with: "\"cacheSchemaVersion\" : 999")
+        // Match the current schema literal (v2 after LF.5 / D-132); a future
+        // schema bump should update this to whatever currentSchemaVersion is.
+        let currentVersionLiteral = "\"cacheSchemaVersion\" : \(PersistentStemCache.currentSchemaVersion)"
+        json = json.replacingOccurrences(of: currentVersionLiteral, with: "\"cacheSchemaVersion\" : 999")
         try json.write(to: metadataPath, atomically: true, encoding: .utf8)
 
         #expect(throws: PersistentStemCacheError.self) {
@@ -313,6 +316,114 @@ struct PersistentStemCacheTests {
         let cache = try PersistentStemCache(rootDirectory: tempDir)
         #expect(cache.rootDirectory.path == tempDir.path)
         #expect(FileManager.default.fileExists(atPath: tempDir.path))
+    }
+
+    // MARK: - LF.5 schema v2 (metadata + artwork)
+
+    @Test("Roundtrip carries LocalFileMetadata title/artist/album")
+    func test_roundtrip_localFileMetadata() throws {
+        let tempDir = try Self.makeTempDir()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let cache = try PersistentStemCache(rootDirectory: tempDir)
+        let data = Self.makeCachedTrackData()
+        let metadata = LocalFileMetadata(
+            title: "Love Rehab",
+            artist: "Lily Allen",
+            album: "It's Not Me, It's You"
+        )
+
+        try cache.store(
+            data,
+            hash: Self.fixtureHash,
+            decodedDuration: Self.defaultDuration,
+            metadata: metadata
+        )
+        let entry = try cache.load(hash: Self.fixtureHash)
+
+        #expect(entry.metadata.title == "Love Rehab")
+        #expect(entry.metadata.artist == "Lily Allen")
+        #expect(entry.metadata.album == "It's Not Me, It's You")
+        #expect(entry.artworkData == nil)
+    }
+
+    @Test("Roundtrip with nil metadata returns empty LocalFileMetadata")
+    func test_roundtrip_emptyMetadata() throws {
+        let tempDir = try Self.makeTempDir()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let cache = try PersistentStemCache(rootDirectory: tempDir)
+        let data = Self.makeCachedTrackData()
+
+        try cache.store(data, hash: Self.fixtureHash, decodedDuration: Self.defaultDuration)
+        let entry = try cache.load(hash: Self.fixtureHash)
+
+        #expect(entry.metadata.isEmpty)
+        #expect(entry.metadata.title == nil)
+        #expect(entry.metadata.artist == nil)
+    }
+
+    @Test("Roundtrip with artwork persists sibling bytes")
+    func test_roundtrip_artworkSibling() throws {
+        let tempDir = try Self.makeTempDir()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let cache = try PersistentStemCache(rootDirectory: tempDir)
+        let data = Self.makeCachedTrackData()
+        let artwork = Data(repeating: 0xAB, count: 4096)                  // 4 KB stub
+
+        try cache.store(
+            data,
+            hash: Self.fixtureHash,
+            decodedDuration: Self.defaultDuration,
+            artworkData: artwork
+        )
+        let entry = try cache.load(hash: Self.fixtureHash)
+
+        #expect(entry.artworkData == artwork)
+        // Sibling exists on disk.
+        let dir = tempDir
+            .appendingPathComponent("sha256", isDirectory: true)
+            .appendingPathComponent(String(Self.fixtureHash.prefix(2)), isDirectory: true)
+            .appendingPathComponent(Self.fixtureHash, isDirectory: true)
+        let artworkPath = dir.appendingPathComponent("artwork.bin")
+        #expect(FileManager.default.fileExists(atPath: artworkPath.path))
+    }
+
+    @Test("Overwrite removes stale artwork sibling when new entry has none")
+    func test_store_overwrite_clearsArtworkWhenAbsent() throws {
+        let tempDir = try Self.makeTempDir()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let cache = try PersistentStemCache(rootDirectory: tempDir)
+        let data = Self.makeCachedTrackData()
+        let artwork = Data(repeating: 0xCD, count: 128)
+
+        try cache.store(
+            data,
+            hash: Self.fixtureHash,
+            decodedDuration: Self.defaultDuration,
+            artworkData: artwork
+        )
+        // Second store: no artwork.
+        try cache.store(data, hash: Self.fixtureHash, decodedDuration: Self.defaultDuration)
+
+        let entry = try cache.load(hash: Self.fixtureHash)
+        #expect(entry.artworkData == nil)
+        let dir = tempDir
+            .appendingPathComponent("sha256", isDirectory: true)
+            .appendingPathComponent(String(Self.fixtureHash.prefix(2)), isDirectory: true)
+            .appendingPathComponent(Self.fixtureHash, isDirectory: true)
+        let artworkPath = dir.appendingPathComponent("artwork.bin")
+        #expect(FileManager.default.fileExists(atPath: artworkPath.path) == false,
+                "Stale artwork.bin must be removed on overwrite-without-artwork")
+    }
+
+    @Test("Contains check ignores artwork (artwork is optional)")
+    func test_contains_artworkIsOptional() throws {
+        let tempDir = try Self.makeTempDir()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let cache = try PersistentStemCache(rootDirectory: tempDir)
+        let data = Self.makeCachedTrackData()
+        // Store WITHOUT artwork — the entry is still complete.
+        try cache.store(data, hash: Self.fixtureHash, decodedDuration: Self.defaultDuration)
+        #expect(cache.contains(hash: Self.fixtureHash) == true)
     }
 
     @Test("Two-byte hash prefix shards correctly")

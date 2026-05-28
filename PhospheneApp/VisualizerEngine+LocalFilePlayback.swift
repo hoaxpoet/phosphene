@@ -174,7 +174,7 @@ extension VisualizerEngine: LocalFilePreparing {
             return hit
         }
 
-        return analyzeAndPersist(
+        return await analyzeAndPersist(
             inputs: inputs,
             contentHash: contentHash,
             shortHash: shortHash
@@ -199,16 +199,17 @@ extension VisualizerEngine: LocalFilePreparing {
         }
         do {
             let entry = try persistentCache.load(hash: contentHash)
-            let identity = TrackIdentity(
-                title: inputs.filename,
-                artist: "local file",
+            let identity = makeLocalFileIdentity(
+                filename: inputs.filename,
+                contentHash: contentHash,
                 duration: entry.decodedDuration,
-                spotifyID: "local:sha256:" + contentHash
+                metadata: entry.metadata
             )
             let cached = entry.cached
             let bpmStr = String(format: "%.1f", cached.beatGrid.bpm)
             let beatCount = cached.beatGrid.beats.count
-            let msg = "STEM_CACHE_HIT: source=persistentDisk, track='\(inputs.filename)', "
+            let titleLabel = entry.metadata.title ?? inputs.filename
+            let msg = "STEM_CACHE_HIT: source=persistentDisk, track='\(titleLabel)', "
                 + "hash=\(shortHash), bpm=\(bpmStr), beats=\(beatCount)"
             inputs.recorder?.log(msg)
             lfLogger.info("\(msg, privacy: .public)")
@@ -235,11 +236,13 @@ extension VisualizerEngine: LocalFilePreparing {
         inputs: LocalFilePrepWorkerInputs,
         contentHash: String,
         shortHash: String
-    ) -> LocalFilePrepResult? {
+    ) async -> LocalFilePrepResult? {
         guard let separator = inputs.separator else {
             lfLogger.warning("[LF.4] no stem separator — continuing without cached install")
             return nil
         }
+        let extracted = await PreviewAudio.extractMetadata(at: inputs.url)
+        let artwork = await PreviewAudio.extractArtwork(at: inputs.url)
         let preview: PreviewAudio
         let cached: CachedTrackData
         do {
@@ -260,34 +263,86 @@ extension VisualizerEngine: LocalFilePreparing {
             return nil
         }
 
-        if let persistentCache = inputs.persistentCache {
-            let writeStart = Date()
-            do {
-                try persistentCache.store(
-                    cached,
-                    hash: contentHash,
-                    decodedDuration: preview.duration
-                )
-                let elapsedMs = Int(Date().timeIntervalSince(writeStart) * 1000)
-                let totalSamples = cached.stemWaveforms.reduce(0) { $0 + $1.count }
-                let bytes = totalSamples * MemoryLayout<Float>.size
-                let msg = "STEM_CACHE_WROTE: source=persistentDisk, track='\(inputs.filename)', "
-                    + "hash=\(shortHash), bytes=\(bytes), elapsedMs=\(elapsedMs)"
-                inputs.recorder?.log(msg)
-                lfLogger.info("\(msg, privacy: .public)")
-            } catch {
-                let msg = error.localizedDescription
-                lfLogger.warning(
-                    "[LF.4] persistent cache store failed: \(msg, privacy: .public)"
-                )
-            }
-        }
+        let outcome = FreshAnalysisOutcome(
+            cached: cached,
+            preview: preview,
+            metadata: extracted,
+            artwork: artwork
+        )
+        persistToDisk(
+            inputs: inputs,
+            outcome: outcome,
+            contentHash: contentHash,
+            shortHash: shortHash
+        )
 
+        let identity = makeLocalFileIdentity(
+            filename: inputs.filename,
+            contentHash: contentHash,
+            duration: preview.duration,
+            metadata: extracted
+        )
         return LocalFilePrepResult(
-            identity: preview.trackIdentity,
+            identity: identity,
             cached: cached,
             decodedDuration: preview.duration,
             source: .freshAnalysis
+        )
+    }
+
+    /// Write the freshly-analyzed entry + AVAsset-extracted metadata + optional
+    /// artwork bytes to disk. Persist failure is non-fatal — logged and
+    /// swallowed so the live pipeline still gets the in-memory install.
+    nonisolated private static func persistToDisk(
+        inputs: LocalFilePrepWorkerInputs,
+        outcome: FreshAnalysisOutcome,
+        contentHash: String,
+        shortHash: String
+    ) {
+        guard let persistentCache = inputs.persistentCache else { return }
+        let writeStart = Date()
+        do {
+            try persistentCache.store(
+                outcome.cached,
+                hash: contentHash,
+                decodedDuration: outcome.preview.duration,
+                metadata: outcome.metadata,
+                artworkData: outcome.artwork
+            )
+            let elapsedMs = Int(Date().timeIntervalSince(writeStart) * 1000)
+            let totalSamples = outcome.cached.stemWaveforms.reduce(0) { $0 + $1.count }
+            let stemBytes = totalSamples * MemoryLayout<Float>.size
+            let artworkBytes = outcome.artwork?.count ?? 0
+            let msg = "STEM_CACHE_WROTE: source=persistentDisk, track='\(inputs.filename)', "
+                + "hash=\(shortHash), bytes=\(stemBytes), artworkBytes=\(artworkBytes), "
+                + "elapsedMs=\(elapsedMs)"
+            inputs.recorder?.log(msg)
+            lfLogger.info("\(msg, privacy: .public)")
+        } catch {
+            let msg = error.localizedDescription
+            lfLogger.warning(
+                "[LF.4] persistent cache store failed: \(msg, privacy: .public)"
+            )
+        }
+    }
+
+    /// Build the LF.3 `local:sha256:<hash>` synthetic identity, layering in any
+    /// `AVAsset.commonMetadata` overrides for title / artist / album. Filename
+    /// is the fallback title; "local file" is the fallback artist (LF.4-shape).
+    /// Centralized so the cache-hit and fresh-analyze paths produce
+    /// byte-identical identities for the same inputs.
+    nonisolated private static func makeLocalFileIdentity(
+        filename: String,
+        contentHash: String,
+        duration: TimeInterval,
+        metadata: LocalFileMetadata
+    ) -> TrackIdentity {
+        TrackIdentity(
+            title: metadata.title ?? filename,
+            artist: metadata.artist ?? "local file",
+            album: metadata.album,
+            duration: duration,
+            spotifyID: "local:sha256:" + contentHash
         )
     }
 }
@@ -307,4 +362,15 @@ struct LocalFilePrepWorkerInputs: Sendable {
     let beatGridAnalyzer: (any BeatGridAnalyzing)?
     let persistentCache: PersistentStemCache?
     let recorder: SessionRecorder?
+}
+
+/// LF.5 fresh-analysis output bundle. Collapses the four values the
+/// `analyzeAndPersist` worker hands to `persistToDisk` (cached + preview
+/// + metadata + artwork) into one parameter so the persist helper stays
+/// under SwiftLint's 5-param cap.
+private struct FreshAnalysisOutcome: Sendable {
+    let cached: CachedTrackData
+    let preview: PreviewAudio
+    let metadata: LocalFileMetadata
+    let artwork: Data?
 }
