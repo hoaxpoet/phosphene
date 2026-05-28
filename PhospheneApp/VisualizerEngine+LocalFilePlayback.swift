@@ -162,22 +162,37 @@ extension VisualizerEngine: LocalFilePreparing {
                 recorder?.log("WIRING: \(msg)")
             }
 
-            // LF.5.fix.2-FU4: mirror the streaming track-change callback's
-            // destructive resets at `VisualizerEngine+Capture.swift:203-204`
-            // (and the FU-3 placement in `advanceLocalFileQueue`). Without
-            // these, `mir.elapsedSeconds` inherits whatever accumulated since
-            // `MIRPipeline()` init at session-prep time (pre-analysis,
-            // stem caching, etc.) — visible in session
-            // `2026-05-28T20-36-17Z` where the first `Orchestrator: wire
-            // active` line shows `elapsedTrackTime=440.1s` after 3 s of
-            // actual playback. FU-3 fixed this for Next/Prev advances; the
-            // startup case is the same bug at a different code site. Single
-            // call here zeroes the field at the moment audio actually
-            // starts, restoring per-track semantics for every consumer
-            // (`fv.trackElapsedS`, `featureStability` ramp curve, recording
-            // `playbackTime`).
+            // LF.5.fix.2-FU4 + FU-5: mirror the streaming track-change
+            // callback's destructive resets at
+            // `VisualizerEngine+Capture.swift:203-204` (and the FU-3
+            // placement in `advanceLocalFileQueue`), AND zero
+            // `lastAnalysisTime` so the very first audio frame's `dt`
+            // (computed at `VisualizerEngine+Audio.swift:137`) is small.
+            //
+            // FU-4 alone (the two reset() calls below) was necessary but
+            // insufficient — verification session `2026-05-28T21-08-33Z`
+            // showed `elapsedTrackTime=94.3s` on the first wire-active
+            // line despite FU-4 zeroing `mir.elapsedSeconds`. Root cause:
+            // `lastAnalysisTime` is initialized at engine setup
+            // (`VisualizerEngine+Audio.swift:28`) and only updated inside
+            // `processAnalysisFrame`. With a 91 s prep window before the
+            // first audio frame post-`audioRouter.start`,
+            // `dt = now - lastAnalysisTime ≈ 91 s` on that first frame —
+            // and that huge `dt` flows into `mir.process(deltaTime:)`,
+            // which executes `elapsedSeconds += Double(ctx.deltaTime)` at
+            // `MIRPipeline.swift:235`. The FU-4 reset zeroes
+            // `elapsedSeconds`; the single huge first-frame dt then
+            // re-adds the prep window in one go (94.3 s ≈ 91 s prep gap
+            // + 3 s real playback). FU-5 closes the second mover by
+            // setting `lastAnalysisTime` to "now" at the same instant.
+            //
+            // FU-3 (advance) didn't expose this because audio was flowing
+            // right up to `audioRouter.stop()`, so `lastAnalysisTime` was
+            // recent (last frame ~10 ms before stop). Restart's first
+            // frame sees a small dt and the FU-3 fix alone is sufficient.
             mirPipeline.reset()
             pipeline.resetAccumulatedAudioTime()
+            lastAnalysisTime = CFAbsoluteTimeGetCurrent()
 
             // Start the LF audio router (AVAudioEngine path).
             do {
